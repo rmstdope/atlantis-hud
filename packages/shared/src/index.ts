@@ -1,5 +1,7 @@
 export * from "./featureFlags";
 export * from "./logging";
+export * from "./mapData";
+export * from "./MapWorkspacePanel";
 export * from "./ReportImportPanel";
 export * from "./orderEditor";
 export * from "./OrderEditorPanel";

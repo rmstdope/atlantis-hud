@@ -582,7 +582,11 @@ pub fn load_order_draft(
             "SELECT project_id, faction_id, turn_number, order_text, updated_at
                 FROM order_drafts
                 WHERE project_id = ?1 AND faction_id = ?2 AND turn_number = ?3",
-            params![key.project_id.as_str(), key.faction_id.as_str(), key.turn_number],
+            params![
+                key.project_id.as_str(),
+                key.faction_id.as_str(),
+                key.turn_number
+            ],
             |row| {
                 Ok(OrderDraftRecord {
                     key: OrderDraftKey {
@@ -834,7 +838,8 @@ mod tests {
         };
 
         upsert_order_draft(&created.database_path, &draft).expect("draft should persist");
-        let loaded = load_order_draft(&created.database_path, &draft.key).expect("draft should load");
+        let loaded =
+            load_order_draft(&created.database_path, &draft.key).expect("draft should load");
 
         assert_eq!(loaded, Some(draft));
     }

@@ -7,8 +7,11 @@ edition = "2021"
 default = []
 desktop-runtime = []
 
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
 [dependencies]
 atlantis-hud-core-tauri = { path = "../../../crates/core-tauri" }
 
 [target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
-tauri = { version = "2", default-features = false, features = [] }
+tauri = { version = "2", default-features = false, features = ["wry"] }

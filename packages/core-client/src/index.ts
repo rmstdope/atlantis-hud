@@ -122,6 +122,12 @@ export type OrderDraftRecord = {
   updatedAt: string;
 };
 
+export type ImportedTurnRecord = {
+  key: OrderDraftKey;
+  rawReport: string;
+  parseResult: ReportParseResult;
+};
+
 type GameInfoWireShape = {
   id: string;
   name: string;
@@ -277,6 +283,14 @@ type OrderDraftRecordWireShape = {
   updated_at?: string;
 };
 
+type ImportedTurnRecordWireShape = {
+  key?: OrderDraftKeyWireShape;
+  rawReport?: string;
+  raw_report?: string;
+  parseResult?: ReportParseResultWireShape;
+  parse_result?: ReportParseResultWireShape;
+};
+
 export interface CoreAdapter {
   getGameInfo(): Promise<unknown> | unknown;
   createProject(projectFilePath: string, manifest: ProjectManifest): Promise<unknown> | unknown;
@@ -296,6 +310,12 @@ export interface CoreAdapter {
     allowOverwrite: boolean
   ): Promise<unknown> | unknown;
   validateOrders(rawOrders: string): Promise<unknown> | unknown;
+  loadImportedTurn(
+    databasePath: string,
+    projectId: string,
+    factionId: string,
+    turnNumber: number
+  ): Promise<unknown> | unknown;
   loadOrderDraft(
     databasePath: string,
     projectId: string,
@@ -331,6 +351,12 @@ export interface CoreClient {
     allowOverwrite: boolean
   ): Promise<ImportedTurnPreview>;
   validateOrders(rawOrders: string): Promise<OrderValidationResult>;
+  loadImportedTurn(
+    databasePath: string,
+    projectId: string,
+    factionId: string,
+    turnNumber: number
+  ): Promise<ImportedTurnRecord | null>;
   loadOrderDraft(
     databasePath: string,
     projectId: string,
@@ -366,6 +392,12 @@ export interface WasmBindings {
     allowOverwrite: boolean
   ): unknown;
   validate_orders_state(rawOrders: string): unknown;
+  load_imported_turn_state(
+    databasePath: string,
+    projectId: string,
+    factionId: string,
+    turnNumber: number
+  ): unknown;
   load_order_draft_state(
     databasePath: string,
     projectId: string,
@@ -735,6 +767,26 @@ function normalizeOrderDraftRecord(value: unknown): OrderDraftRecord {
   };
 }
 
+function normalizeImportedTurnRecord(value: unknown): ImportedTurnRecord {
+  if (typeof value !== "object" || value === null) {
+    throw new Error("invalid imported turn payload");
+  }
+
+  const payload = value as ImportedTurnRecordWireShape;
+  const rawReport = payload.rawReport ?? payload.raw_report;
+  const parseResult = payload.parseResult ?? payload.parse_result;
+
+  if (payload.key === undefined || typeof rawReport !== "string" || parseResult === undefined) {
+    throw new Error("incomplete imported turn payload");
+  }
+
+  return {
+    key: normalizeOrderDraftKey(payload.key),
+    rawReport,
+    parseResult: normalizeParseResult(parseResult)
+  };
+}
+
 function normalizeReportImportPreview(value: unknown): ReportImportPreview {
   if (typeof value !== "object" || value === null) {
     throw new Error("invalid report import preview payload");
@@ -797,6 +849,13 @@ export function createCoreClient(adapter: CoreAdapter): CoreClient {
     async validateOrders(rawOrders: string) {
       const value = await adapter.validateOrders(rawOrders);
       return normalizeOrderValidationResult(value);
+    },
+    async loadImportedTurn(databasePath: string, projectId: string, factionId: string, turnNumber: number) {
+      const value = await adapter.loadImportedTurn(databasePath, projectId, factionId, turnNumber);
+      if (value === null) {
+        return null;
+      }
+      return normalizeImportedTurnRecord(value);
     },
     async loadOrderDraft(databasePath: string, projectId: string, factionId: string, turnNumber: number) {
       const value = await adapter.loadOrderDraft(databasePath, projectId, factionId, turnNumber);
@@ -861,6 +920,9 @@ export function createWasmAdapter(bindings: WasmBindings): CoreAdapter {
     },
     validateOrders(rawOrders: string) {
       return bindings.validate_orders_state(rawOrders);
+    },
+    loadImportedTurn(databasePath: string, projectId: string, factionId: string, turnNumber: number) {
+      return bindings.load_imported_turn_state(databasePath, projectId, factionId, turnNumber);
     },
     loadOrderDraft(databasePath: string, projectId: string, factionId: string, turnNumber: number) {
       return bindings.load_order_draft_state(databasePath, projectId, factionId, turnNumber);
@@ -932,6 +994,14 @@ export function createTauriAdapter(invoke: TauriInvoke): CoreAdapter {
     validateOrders(rawOrders: string) {
       return invoke<OrderValidationResultWireShape>("validate_orders", {
         raw_orders: rawOrders
+      });
+    },
+    loadImportedTurn(databasePath: string, projectId: string, factionId: string, turnNumber: number) {
+      return invoke<ImportedTurnRecordWireShape | null>("load_imported_turn", {
+        database_path: databasePath,
+        project_id: projectId,
+        faction_id: factionId,
+        turn_number: turnNumber
       });
     },
     loadOrderDraft(databasePath: string, projectId: string, factionId: string, turnNumber: number) {
