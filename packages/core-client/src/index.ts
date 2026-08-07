@@ -28,6 +28,74 @@ export type OpenedProject = {
   manifest: ProjectManifest;
 };
 
+export type WarningSeverity = "warning" | "error";
+
+export type ParseWarning = {
+  code: string;
+  section: string;
+  message: string;
+  lineStart: number;
+  lineEnd: number;
+  severity: WarningSeverity;
+};
+
+export type TurnHeader = {
+  turnNumber: number;
+  season: string;
+};
+
+export type FactionInfo = {
+  factionId: string;
+  name: string;
+};
+
+export type RegionSummary = {
+  regionId: string;
+  name: string;
+};
+
+export type UnitSummary = {
+  unitId: string;
+  name: string;
+  regionId: string;
+};
+
+export type InventoryItem = {
+  unitId: string;
+  item: string;
+  quantity: number;
+};
+
+export type MessageSummary = {
+  kind: string;
+  source: string;
+  text: string;
+};
+
+export type ReportParseResult = {
+  turnHeader: TurnHeader | null;
+  detectedFactions: FactionInfo[];
+  regions: RegionSummary[];
+  units: UnitSummary[];
+  inventories: InventoryItem[];
+  messageSummaries: MessageSummary[];
+  warnings: ParseWarning[];
+  meetsMinimumImportThreshold: boolean;
+};
+
+export type ImportedTurnPreview = {
+  exists: boolean;
+  rawChanged: boolean;
+  parsedChanged: boolean;
+  warningsChanged: boolean;
+};
+
+export type ReportImportPreview = {
+  parseResult: ReportParseResult;
+  duplicatePreview: ImportedTurnPreview;
+  turnNumber: number | null;
+};
+
 type GameInfoWireShape = {
   id: string;
   name: string;
@@ -68,22 +136,148 @@ type OpenedProjectWireShape = {
   manifest?: ProjectManifestWireShape;
 };
 
+type TurnHeaderWireShape = {
+  turnNumber?: number;
+  turn_number?: number;
+  season?: string;
+};
+
+type FactionInfoWireShape = {
+  factionId?: string;
+  faction_id?: string;
+  name?: string;
+};
+
+type RegionSummaryWireShape = {
+  regionId?: string;
+  region_id?: string;
+  name?: string;
+};
+
+type UnitSummaryWireShape = {
+  unitId?: string;
+  unit_id?: string;
+  name?: string;
+  regionId?: string;
+  region_id?: string;
+};
+
+type InventoryItemWireShape = {
+  unitId?: string;
+  unit_id?: string;
+  item?: string;
+  quantity?: number;
+};
+
+type MessageSummaryWireShape = {
+  kind?: string;
+  source?: string;
+  text?: string;
+};
+
+type ParseWarningWireShape = {
+  code?: string;
+  section?: string;
+  message?: string;
+  lineStart?: number;
+  line_start?: number;
+  lineEnd?: number;
+  line_end?: number;
+  severity?: string;
+};
+
+type ReportParseResultWireShape = {
+  turnHeader?: TurnHeaderWireShape | null;
+  turn_header?: TurnHeaderWireShape | null;
+  detectedFactions?: FactionInfoWireShape[];
+  detected_factions?: FactionInfoWireShape[];
+  regions?: RegionSummaryWireShape[];
+  units?: UnitSummaryWireShape[];
+  inventories?: InventoryItemWireShape[];
+  messageSummaries?: MessageSummaryWireShape[];
+  message_summaries?: MessageSummaryWireShape[];
+  warnings?: ParseWarningWireShape[];
+  meetsMinimumImportThreshold?: boolean;
+  meets_minimum_import_threshold?: boolean;
+};
+
+type ImportedTurnPreviewWireShape = {
+  exists?: boolean;
+  rawChanged?: boolean;
+  raw_changed?: boolean;
+  parsedChanged?: boolean;
+  parsed_changed?: boolean;
+  warningsChanged?: boolean;
+  warnings_changed?: boolean;
+};
+
+type ReportImportPreviewWireShape = {
+  parseResult?: ReportParseResultWireShape;
+  parse_result?: ReportParseResultWireShape;
+  duplicatePreview?: ImportedTurnPreviewWireShape;
+  duplicate_preview?: ImportedTurnPreviewWireShape;
+  turnNumber?: number | null;
+  turn_number?: number | null;
+};
+
 export interface CoreAdapter {
   getGameInfo(): Promise<unknown> | unknown;
   createProject(projectFilePath: string, manifest: ProjectManifest): Promise<unknown> | unknown;
   openProject(projectFilePath: string): Promise<unknown> | unknown;
+  parseReport(rawReport: string): Promise<unknown> | unknown;
+  previewReportImport(
+    databasePath: string,
+    projectId: string,
+    confirmedFactionId: string,
+    rawReport: string
+  ): Promise<unknown> | unknown;
+  commitReportImport(
+    databasePath: string,
+    projectId: string,
+    confirmedFactionId: string,
+    rawReport: string,
+    allowOverwrite: boolean
+  ): Promise<unknown> | unknown;
 }
 
 export interface CoreClient {
   getGameInfo(): Promise<GameInfo>;
   createProject(projectFilePath: string, manifest: ProjectManifest): Promise<OpenedProject>;
   openProject(projectFilePath: string): Promise<OpenedProject>;
+  parseReport(rawReport: string): Promise<ReportParseResult>;
+  previewReportImport(
+    databasePath: string,
+    projectId: string,
+    confirmedFactionId: string,
+    rawReport: string
+  ): Promise<ReportImportPreview>;
+  commitReportImport(
+    databasePath: string,
+    projectId: string,
+    confirmedFactionId: string,
+    rawReport: string,
+    allowOverwrite: boolean
+  ): Promise<ImportedTurnPreview>;
 }
 
 export interface WasmBindings {
   get_game_info(): unknown;
   create_project_state(projectFilePath: string, manifest: ProjectManifest): unknown;
   open_project_state(projectFilePath: string): unknown;
+  parse_report_state(rawReport: string): unknown;
+  preview_report_import_state(
+    databasePath: string,
+    projectId: string,
+    confirmedFactionId: string,
+    rawReport: string
+  ): unknown;
+  commit_report_import_state(
+    databasePath: string,
+    projectId: string,
+    confirmedFactionId: string,
+    rawReport: string,
+    allowOverwrite: boolean
+  ): unknown;
 }
 
 export type TauriInvoke = <T>(command: string, args?: Record<string, unknown>) => Promise<T>;
@@ -198,6 +392,184 @@ function normalizeOpenedProject(value: unknown): OpenedProject {
   };
 }
 
+function normalizeTurnHeader(value: unknown): TurnHeader {
+  if (typeof value !== "object" || value === null) {
+    throw new Error("invalid turn header payload");
+  }
+  const payload = value as TurnHeaderWireShape;
+  const turnNumber = payload.turnNumber ?? payload.turn_number;
+  if (typeof turnNumber !== "number" || typeof payload.season !== "string") {
+    throw new Error("incomplete turn header payload");
+  }
+  return { turnNumber, season: payload.season };
+}
+
+function normalizeFaction(value: unknown): FactionInfo {
+  if (typeof value !== "object" || value === null) {
+    throw new Error("invalid faction payload");
+  }
+  const payload = value as FactionInfoWireShape;
+  const factionId = payload.factionId ?? payload.faction_id;
+  if (typeof factionId !== "string" || typeof payload.name !== "string") {
+    throw new Error("incomplete faction payload");
+  }
+  return { factionId, name: payload.name };
+}
+
+function normalizeRegion(value: unknown): RegionSummary {
+  if (typeof value !== "object" || value === null) {
+    throw new Error("invalid region payload");
+  }
+  const payload = value as RegionSummaryWireShape;
+  const regionId = payload.regionId ?? payload.region_id;
+  if (typeof regionId !== "string" || typeof payload.name !== "string") {
+    throw new Error("incomplete region payload");
+  }
+  return { regionId, name: payload.name };
+}
+
+function normalizeUnit(value: unknown): UnitSummary {
+  if (typeof value !== "object" || value === null) {
+    throw new Error("invalid unit payload");
+  }
+  const payload = value as UnitSummaryWireShape;
+  const unitId = payload.unitId ?? payload.unit_id;
+  const regionId = payload.regionId ?? payload.region_id;
+  if (typeof unitId !== "string" || typeof payload.name !== "string" || typeof regionId !== "string") {
+    throw new Error("incomplete unit payload");
+  }
+  return { unitId, name: payload.name, regionId };
+}
+
+function normalizeItem(value: unknown): InventoryItem {
+  if (typeof value !== "object" || value === null) {
+    throw new Error("invalid inventory item payload");
+  }
+  const payload = value as InventoryItemWireShape;
+  const unitId = payload.unitId ?? payload.unit_id;
+  if (typeof unitId !== "string" || typeof payload.item !== "string" || typeof payload.quantity !== "number") {
+    throw new Error("incomplete inventory item payload");
+  }
+  return { unitId, item: payload.item, quantity: payload.quantity };
+}
+
+function normalizeMessage(value: unknown): MessageSummary {
+  if (typeof value !== "object" || value === null) {
+    throw new Error("invalid message summary payload");
+  }
+  const payload = value as MessageSummaryWireShape;
+  if (typeof payload.kind !== "string" || typeof payload.source !== "string" || typeof payload.text !== "string") {
+    throw new Error("incomplete message summary payload");
+  }
+  return { kind: payload.kind, source: payload.source, text: payload.text };
+}
+
+function normalizeWarning(value: unknown): ParseWarning {
+  if (typeof value !== "object" || value === null) {
+    throw new Error("invalid warning payload");
+  }
+  const payload = value as ParseWarningWireShape;
+  const lineStart = payload.lineStart ?? payload.line_start;
+  const lineEnd = payload.lineEnd ?? payload.line_end;
+  if (
+    typeof payload.code !== "string" ||
+    typeof payload.section !== "string" ||
+    typeof payload.message !== "string" ||
+    typeof lineStart !== "number" ||
+    typeof lineEnd !== "number" ||
+    (payload.severity !== "warning" && payload.severity !== "error")
+  ) {
+    throw new Error("incomplete warning payload");
+  }
+  return {
+    code: payload.code,
+    section: payload.section,
+    message: payload.message,
+    lineStart,
+    lineEnd,
+    severity: payload.severity
+  };
+}
+
+function normalizeParseResult(value: unknown): ReportParseResult {
+  if (typeof value !== "object" || value === null) {
+    throw new Error("invalid parse result payload");
+  }
+  const payload = value as ReportParseResultWireShape;
+  const turnHeaderPayload = payload.turnHeader ?? payload.turn_header;
+  const detectedFactions = payload.detectedFactions ?? payload.detected_factions;
+  const messageSummaries = payload.messageSummaries ?? payload.message_summaries;
+  const meetsMinimumImportThreshold =
+    payload.meetsMinimumImportThreshold ?? payload.meets_minimum_import_threshold;
+  if (
+    !Array.isArray(detectedFactions) ||
+    !Array.isArray(payload.regions) ||
+    !Array.isArray(payload.units) ||
+    !Array.isArray(payload.inventories) ||
+    !Array.isArray(messageSummaries) ||
+    !Array.isArray(payload.warnings) ||
+    typeof meetsMinimumImportThreshold !== "boolean"
+  ) {
+    throw new Error("incomplete parse result payload");
+  }
+
+  return {
+    turnHeader: turnHeaderPayload === null || turnHeaderPayload === undefined ? null : normalizeTurnHeader(turnHeaderPayload),
+    detectedFactions: detectedFactions.map((faction) => normalizeFaction(faction)),
+    regions: payload.regions.map((region) => normalizeRegion(region)),
+    units: payload.units.map((unit) => normalizeUnit(unit)),
+    inventories: payload.inventories.map((item) => normalizeItem(item)),
+    messageSummaries: messageSummaries.map((summary) => normalizeMessage(summary)),
+    warnings: payload.warnings.map((warning) => normalizeWarning(warning)),
+    meetsMinimumImportThreshold
+  };
+}
+
+function normalizeImportedTurnPreview(value: unknown): ImportedTurnPreview {
+  if (typeof value !== "object" || value === null) {
+    throw new Error("invalid import preview payload");
+  }
+  const payload = value as ImportedTurnPreviewWireShape;
+  const rawChanged = payload.rawChanged ?? payload.raw_changed;
+  const parsedChanged = payload.parsedChanged ?? payload.parsed_changed;
+  const warningsChanged = payload.warningsChanged ?? payload.warnings_changed;
+  if (
+    typeof payload.exists !== "boolean" ||
+    typeof rawChanged !== "boolean" ||
+    typeof parsedChanged !== "boolean" ||
+    typeof warningsChanged !== "boolean"
+  ) {
+    throw new Error("incomplete import preview payload");
+  }
+  return {
+    exists: payload.exists,
+    rawChanged,
+    parsedChanged,
+    warningsChanged
+  };
+}
+
+function normalizeReportImportPreview(value: unknown): ReportImportPreview {
+  if (typeof value !== "object" || value === null) {
+    throw new Error("invalid report import preview payload");
+  }
+  const payload = value as ReportImportPreviewWireShape;
+  const parseResult = payload.parseResult ?? payload.parse_result;
+  const duplicatePreview = payload.duplicatePreview ?? payload.duplicate_preview;
+  const turnNumber = payload.turnNumber ?? payload.turn_number ?? null;
+  if (parseResult === undefined || duplicatePreview === undefined) {
+    throw new Error("incomplete report import preview payload");
+  }
+  if (turnNumber !== null && typeof turnNumber !== "number") {
+    throw new Error("incomplete report import preview payload");
+  }
+  return {
+    parseResult: normalizeParseResult(parseResult),
+    duplicatePreview: normalizeImportedTurnPreview(duplicatePreview),
+    turnNumber
+  };
+}
+
 export function createCoreClient(adapter: CoreAdapter): CoreClient {
   return {
     async getGameInfo() {
@@ -211,6 +583,30 @@ export function createCoreClient(adapter: CoreAdapter): CoreClient {
     async openProject(projectFilePath: string) {
       const value = await adapter.openProject(projectFilePath);
       return normalizeOpenedProject(value);
+    },
+    async parseReport(rawReport: string) {
+      const value = await adapter.parseReport(rawReport);
+      return normalizeParseResult(value);
+    },
+    async previewReportImport(databasePath: string, projectId: string, confirmedFactionId: string, rawReport: string) {
+      const value = await adapter.previewReportImport(databasePath, projectId, confirmedFactionId, rawReport);
+      return normalizeReportImportPreview(value);
+    },
+    async commitReportImport(
+      databasePath: string,
+      projectId: string,
+      confirmedFactionId: string,
+      rawReport: string,
+      allowOverwrite: boolean
+    ) {
+      const value = await adapter.commitReportImport(
+        databasePath,
+        projectId,
+        confirmedFactionId,
+        rawReport,
+        allowOverwrite
+      );
+      return normalizeImportedTurnPreview(value);
     }
   };
 }
@@ -225,6 +621,27 @@ export function createWasmAdapter(bindings: WasmBindings): CoreAdapter {
     },
     openProject(projectFilePath: string) {
       return bindings.open_project_state(projectFilePath);
+    },
+    parseReport(rawReport: string) {
+      return bindings.parse_report_state(rawReport);
+    },
+    previewReportImport(databasePath: string, projectId: string, confirmedFactionId: string, rawReport: string) {
+      return bindings.preview_report_import_state(databasePath, projectId, confirmedFactionId, rawReport);
+    },
+    commitReportImport(
+      databasePath: string,
+      projectId: string,
+      confirmedFactionId: string,
+      rawReport: string,
+      allowOverwrite: boolean
+    ) {
+      return bindings.commit_report_import_state(
+        databasePath,
+        projectId,
+        confirmedFactionId,
+        rawReport,
+        allowOverwrite
+      );
     }
   };
 }
@@ -243,6 +660,34 @@ export function createTauriAdapter(invoke: TauriInvoke): CoreAdapter {
     openProject(projectFilePath: string) {
       return invoke<OpenedProjectWireShape>("open_project", {
         project_file_path: projectFilePath
+      });
+    },
+    parseReport(rawReport: string) {
+      return invoke<ReportParseResultWireShape>("parse_report", {
+        raw_report: rawReport
+      });
+    },
+    previewReportImport(databasePath: string, projectId: string, confirmedFactionId: string, rawReport: string) {
+      return invoke<ReportImportPreviewWireShape>("preview_report_import", {
+        database_path: databasePath,
+        project_id: projectId,
+        confirmed_faction_id: confirmedFactionId,
+        raw_report: rawReport
+      });
+    },
+    commitReportImport(
+      databasePath: string,
+      projectId: string,
+      confirmedFactionId: string,
+      rawReport: string,
+      allowOverwrite: boolean
+    ) {
+      return invoke<ImportedTurnPreviewWireShape>("commit_report_import", {
+        database_path: databasePath,
+        project_id: projectId,
+        confirmed_faction_id: confirmedFactionId,
+        raw_report: rawReport,
+        allow_overwrite: allowOverwrite
       });
     }
   };

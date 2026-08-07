@@ -45,7 +45,7 @@ describe("resolveCoreWasmBindings", () => {
     expect(created).toEqual({
       projectFilePath: "/tmp/example.atlantis-project.json",
       databasePath: "memory:///tmp/example.atlantis-project.sqlite",
-      schemaVersion: 1,
+      schemaVersion: 2,
       manifest: {
         manifestVersion: 1,
         metadata: {

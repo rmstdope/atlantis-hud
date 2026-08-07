@@ -3,10 +3,12 @@
 #[cfg(not(target_arch = "wasm32"))]
 use std::path::Path;
 
-use atlantis_hud_core::game_info;
+use atlantis_hud_core::{game_info, parse_report};
 #[cfg(not(target_arch = "wasm32"))]
 use atlantis_hud_core_persistence::{
-    create_project, open_project, OpenedProject, ProjectManifest, ProjectMetadata, ReportSourceRef,
+    create_project, insert_imported_turn, open_project, preview_imported_turn,
+    upsert_imported_turn, ImportedTurnKey, ImportedTurnPreview, ImportedTurnRecord, OpenedProject,
+    PersistenceError, ProjectManifest, ProjectMetadata, ReportSourceRef,
 };
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
@@ -53,6 +55,28 @@ struct OpenedProjectDto {
     database_path: String,
     schema_version: u32,
     manifest: ProjectManifestDto,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg(not(target_arch = "wasm32"))]
+struct ImportedTurnPreviewDto {
+    exists: bool,
+    raw_changed: bool,
+    parsed_changed: bool,
+    warnings_changed: bool,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl From<ImportedTurnPreview> for ImportedTurnPreviewDto {
+    fn from(value: ImportedTurnPreview) -> Self {
+        Self {
+            exists: value.exists,
+            raw_changed: value.raw_changed,
+            parsed_changed: value.parsed_changed,
+            warnings_changed: value.warnings_changed,
+        }
+    }
 }
 
 impl From<atlantis_hud_core::GameInfo> for GameInfoDto {
@@ -147,6 +171,13 @@ pub fn get_game_info() -> Result<JsValue, JsValue> {
         .map_err(|error| JsValue::from_str(&error.to_string()))
 }
 
+/// Parses one report and returns tolerant parser output.
+#[wasm_bindgen]
+pub fn parse_report_state(raw_report: String) -> Result<JsValue, JsValue> {
+    let parsed = parse_report(&raw_report);
+    serde_wasm_bindgen::to_value(&parsed).map_err(|error| JsValue::from_str(&error.to_string()))
+}
+
 /// Creates a project manifest and sidecar SQLite database.
 #[wasm_bindgen]
 #[cfg(not(target_arch = "wasm32"))]
@@ -178,6 +209,106 @@ pub fn open_project_state(project_file_path: String) -> Result<JsValue, JsValue>
         .map_err(|error| JsValue::from_str(&error.to_string()))
 }
 
+/// Previews duplicate conflict for a report import candidate.
+#[wasm_bindgen]
+#[cfg(not(target_arch = "wasm32"))]
+pub fn preview_report_import_state(
+    database_path: String,
+    project_id: String,
+    confirmed_faction_id: String,
+    raw_report: String,
+) -> Result<JsValue, JsValue> {
+    let parsed = parse_report(&raw_report);
+    let turn_number = parsed
+        .turn_header
+        .as_ref()
+        .map(|header| header.turn_number)
+        .ok_or_else(|| JsValue::from_str("turn header missing from parsed report"))?;
+
+    let candidate = ImportedTurnRecord {
+        key: ImportedTurnKey {
+            project_id,
+            faction_id: confirmed_faction_id,
+            turn_number,
+        },
+        raw_report,
+        parsed_payload_json: serde_json::to_string(&parsed)
+            .map_err(|error| JsValue::from_str(&error.to_string()))?,
+        warnings_payload_json: serde_json::to_string(&parsed.warnings)
+            .map_err(|error| JsValue::from_str(&error.to_string()))?,
+    };
+
+    let preview = preview_imported_turn(Path::new(&database_path), &candidate)
+        .map_err(|error| JsValue::from_str(&error.to_string()))?;
+    serde_wasm_bindgen::to_value(&ImportedTurnPreviewDto::from(preview))
+        .map_err(|error| JsValue::from_str(&error.to_string()))
+}
+
+/// Commits a report import candidate to persistence.
+#[wasm_bindgen]
+#[cfg(not(target_arch = "wasm32"))]
+pub fn commit_report_import_state(
+    database_path: String,
+    project_id: String,
+    confirmed_faction_id: String,
+    raw_report: String,
+    allow_overwrite: bool,
+) -> Result<JsValue, JsValue> {
+    let parsed = parse_report(&raw_report);
+    if !parsed.meets_minimum_import_threshold() {
+        return Err(JsValue::from_str(
+            "parsed report did not meet minimum import threshold",
+        ));
+    }
+
+    let faction_is_detected = parsed
+        .detected_factions
+        .iter()
+        .any(|faction| faction.faction_id == confirmed_faction_id);
+    if !faction_is_detected {
+        return Err(JsValue::from_str(
+            "confirmed faction does not exist in parsed report candidates",
+        ));
+    }
+
+    let turn_number = parsed
+        .turn_header
+        .as_ref()
+        .map(|header| header.turn_number)
+        .ok_or_else(|| JsValue::from_str("turn header missing from parsed report"))?;
+
+    let candidate = ImportedTurnRecord {
+        key: ImportedTurnKey {
+            project_id,
+            faction_id: confirmed_faction_id,
+            turn_number,
+        },
+        raw_report,
+        parsed_payload_json: serde_json::to_string(&parsed)
+            .map_err(|error| JsValue::from_str(&error.to_string()))?,
+        warnings_payload_json: serde_json::to_string(&parsed.warnings)
+            .map_err(|error| JsValue::from_str(&error.to_string()))?,
+    };
+    let preview = preview_imported_turn(Path::new(&database_path), &candidate)
+        .map_err(|error| JsValue::from_str(&error.to_string()))?;
+    if allow_overwrite {
+        upsert_imported_turn(Path::new(&database_path), &candidate)
+            .map_err(|error| JsValue::from_str(&error.to_string()))?;
+    } else {
+        insert_imported_turn(Path::new(&database_path), &candidate).map_err(
+            |error| match error {
+                PersistenceError::DuplicateImportedTurn { .. } => JsValue::from_str(
+                    "duplicate import exists and requires explicit overwrite confirmation",
+                ),
+                _ => JsValue::from_str(&error.to_string()),
+            },
+        )?;
+    }
+
+    serde_wasm_bindgen::to_value(&ImportedTurnPreviewDto::from(preview))
+        .map_err(|error| JsValue::from_str(&error.to_string()))
+}
+
 /// Creates a project manifest and sidecar SQLite database.
 #[wasm_bindgen]
 #[cfg(target_arch = "wasm32")]
@@ -194,6 +325,35 @@ pub fn create_project_state(
 #[wasm_bindgen]
 #[cfg(target_arch = "wasm32")]
 pub fn open_project_state(_project_file_path: String) -> Result<JsValue, JsValue> {
+    Err(JsValue::from_str(
+        "project persistence is not linked in this wasm32 build",
+    ))
+}
+
+/// Previews duplicate conflict for a report import candidate.
+#[wasm_bindgen]
+#[cfg(target_arch = "wasm32")]
+pub fn preview_report_import_state(
+    _database_path: String,
+    _project_id: String,
+    _confirmed_faction_id: String,
+    _raw_report: String,
+) -> Result<JsValue, JsValue> {
+    Err(JsValue::from_str(
+        "project persistence is not linked in this wasm32 build",
+    ))
+}
+
+/// Commits a report import candidate to persistence.
+#[wasm_bindgen]
+#[cfg(target_arch = "wasm32")]
+pub fn commit_report_import_state(
+    _database_path: String,
+    _project_id: String,
+    _confirmed_faction_id: String,
+    _raw_report: String,
+    _allow_overwrite: bool,
+) -> Result<JsValue, JsValue> {
     Err(JsValue::from_str(
         "project persistence is not linked in this wasm32 build",
     ))

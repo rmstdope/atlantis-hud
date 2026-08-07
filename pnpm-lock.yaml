@@ -85,7 +85,11 @@ importers:
 
   packages/core-client: {}
 
-  packages/shared: {}
+  packages/shared:
+    dependencies:
+      react:
+        specifier: ^19.1.1
+        version: 19.2.8
 
 packages:
 
