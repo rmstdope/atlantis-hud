@@ -37,3 +37,24 @@ test("web order editor validates, autosaves, and restores drafts", async ({ page
   await reloadedPanel.getByLabel("Turn number").fill("12");
   await expect(reloadedPanel.getByTestId("order-editor-input")).toHaveValue("MOVE U100 R2");
 });
+
+test("web map workspace supports desktop and handheld region selection", async ({ page }) => {
+  await page.goto("/");
+
+  await expect(page.getByRole("heading", { name: "Map workspace" })).toBeVisible();
+  await page.getByLabel("Map database path").fill("/tmp/web-map.sqlite");
+  await page.getByLabel("Map project id").fill("faction-12");
+  await page.getByLabel("Map faction id").fill("17");
+  await page.getByLabel("Map turn number").fill("12");
+  await page.getByRole("button", { name: "Seed sample map import" }).click();
+  await page.getByRole("button", { name: "Load map turn" }).click();
+
+  await page.getByRole("button", { name: "hex A1" }).click();
+  await expect(page.getByTestId("map-selected-region-id")).toContainText("A1");
+  await expect(page.getByTestId("map-right-inspector")).toContainText("Coast of Dawn");
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole("button", { name: "hex B2" }).click();
+  await expect(page.getByTestId("map-selected-region-id")).toContainText("B2");
+  await expect(page.getByTestId("map-bottom-sheet")).toContainText("Forest of Whispers");
+});

@@ -64,6 +64,15 @@ describe("core client adapter contract parity", () => {
       order_text: "MOVE U100 R2",
       updated_at: "2026-08-07T12:00:00Z"
     };
+    const importedTurnPayload = {
+      key: {
+        project_id: "faction-12",
+        faction_id: "17",
+        turn_number: 12
+      },
+      raw_report: "TURN: 12 Spring\nFACTION: 17 | Crimson Tide\nREGION: A1 | Coast of Dawn",
+      parse_result: parsePayload
+    };
     const openedProjectPayload = {
       project_file_path: "/tmp/campaign.atlantis-project.json",
       database_path: "/tmp/campaign.atlantis-project.sqlite",
@@ -114,6 +123,9 @@ describe("core client adapter contract parity", () => {
       },
       validate_orders_state() {
         return orderValidationPayload;
+      },
+      load_imported_turn_state() {
+        return importedTurnPayload;
       },
       load_order_draft_state() {
         return orderDraftPayload;
@@ -220,6 +232,34 @@ describe("core client adapter contract parity", () => {
           updatedAt: "2026-08-07T12:00:00Z"
         } as T);
       }
+      if (command === "load_imported_turn") {
+        return Promise.resolve({
+          key: {
+            projectId: "faction-12",
+            factionId: "17",
+            turnNumber: 12
+          },
+          rawReport: "TURN: 12 Spring\nFACTION: 17 | Crimson Tide\nREGION: A1 | Coast of Dawn",
+          parseResult: {
+            turnHeader: {
+              turnNumber: 12,
+              season: "Spring"
+            },
+            detectedFactions: [
+              {
+                factionId: "17",
+                name: "Crimson Tide"
+              }
+            ],
+            regions: [{ regionId: "R1", name: "Coast of Dawn" }],
+            units: [{ unitId: "U100", name: "Guard Patrol", regionId: "R1" }],
+            inventories: [{ unitId: "U100", item: "silver", quantity: 12 }],
+            messageSummaries: [{ kind: "order", source: "U100", text: "MOVE R2" }],
+            warnings: [],
+            meetsMinimumImportThreshold: true
+          }
+        } as T);
+      }
       return Promise.resolve({
         projectFilePath: "/tmp/campaign.atlantis-project.json",
         databasePath: "/tmp/campaign.atlantis-project.sqlite",
@@ -281,6 +321,11 @@ describe("core client adapter contract parity", () => {
         "MOVE U100 R2",
         "2026-08-07T12:00:00Z"
       )
+    );
+    await expect(
+      wasmClient.loadImportedTurn("/tmp/campaign.atlantis-project.sqlite", "faction-12", "17", 12)
+    ).resolves.toEqual(
+      await tauriClient.loadImportedTurn("/tmp/campaign.atlantis-project.sqlite", "faction-12", "17", 12)
     );
   });
 });

@@ -385,6 +385,22 @@ export function resolveCoreWasmBindings(): WasmBindings {
     validate_orders_state(rawOrders: string) {
       return validateOrderText(rawOrders);
     },
+    load_imported_turn_state(databasePath: string, projectId: string, factionId: string, turnNumber: number) {
+      const stored = inMemoryImports.get(importKey(databasePath, projectId, factionId, turnNumber));
+      if (!stored) {
+        return null;
+      }
+
+      return {
+        key: {
+          project_id: projectId,
+          faction_id: factionId,
+          turn_number: turnNumber
+        },
+        raw_report: stored.rawReport,
+        parse_result: JSON.parse(stored.parsedPayloadJson)
+      };
+    },
     load_order_draft_state(databasePath: string, projectId: string, factionId: string, turnNumber: number) {
       const draft = loadDraftPayload(draftKey(databasePath, projectId, factionId, turnNumber));
       if (!draft) {

@@ -1,5 +1,6 @@
 import { createCoreClient, createTauriAdapter, type GameInfo } from "@atlantis/core-client";
 import {
+  MapWorkspacePanel,
   OrderEditorPanel,
   ReportImportPanel,
   resolveFeatureFlags,
@@ -65,6 +66,7 @@ export default function App() {
       >
         Export logs
       </button>
+      <MapWorkspacePanel client={client} />
       <OrderEditorPanel client={client} />
       <ReportImportPanel client={client} />
     </main>

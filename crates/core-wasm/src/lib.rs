@@ -6,7 +6,7 @@ use std::path::Path;
 use atlantis_hud_core::{game_info, parse_report, ReportParseResult};
 #[cfg(not(target_arch = "wasm32"))]
 use atlantis_hud_core_persistence::{
-    create_project, insert_imported_turn, open_project, preview_imported_turn,
+    create_project, insert_imported_turn, load_imported_turn, open_project, preview_imported_turn,
     upsert_imported_turn, ImportedTurnKey, ImportedTurnPreview, ImportedTurnRecord, OpenedProject,
     PersistenceError, ProjectManifest, ProjectMetadata, ReportSourceRef,
 };
@@ -105,6 +105,24 @@ struct ReportImportPreviewDto {
     parse_result: ReportParseResultDto,
     duplicate_preview: ImportedTurnPreviewDto,
     turn_number: Option<u32>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg(not(target_arch = "wasm32"))]
+struct ImportedTurnKeyDto {
+    project_id: String,
+    faction_id: String,
+    turn_number: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg(not(target_arch = "wasm32"))]
+struct ImportedTurnRecordDto {
+    key: ImportedTurnKeyDto,
+    raw_report: String,
+    parse_result: ReportParseResultDto,
 }
 
 impl From<atlantis_hud_core::GameInfo> for GameInfoDto {
@@ -347,6 +365,45 @@ pub fn commit_report_import_state(
         .map_err(|error| JsValue::from_str(&error.to_string()))
 }
 
+/// Loads one imported turn payload by composite key.
+#[wasm_bindgen]
+#[cfg(not(target_arch = "wasm32"))]
+pub fn load_imported_turn_state(
+    database_path: String,
+    project_id: String,
+    faction_id: String,
+    turn_number: u32,
+) -> Result<JsValue, JsValue> {
+    let loaded = load_imported_turn(
+        Path::new(&database_path),
+        &ImportedTurnKey {
+            project_id,
+            faction_id,
+            turn_number,
+        },
+    )
+    .map_err(|error| JsValue::from_str(&error.to_string()))?;
+
+    let dto = loaded
+        .map(|record| -> Result<ImportedTurnRecordDto, JsValue> {
+            let parse_result =
+                serde_json::from_str::<ReportParseResult>(&record.parsed_payload_json)
+                    .map_err(|error| JsValue::from_str(&error.to_string()))?;
+            Ok(ImportedTurnRecordDto {
+                key: ImportedTurnKeyDto {
+                    project_id: record.key.project_id,
+                    faction_id: record.key.faction_id,
+                    turn_number: record.key.turn_number,
+                },
+                raw_report: record.raw_report,
+                parse_result: ReportParseResultDto::from(parse_result),
+            })
+        })
+        .transpose()?;
+
+    serde_wasm_bindgen::to_value(&dto).map_err(|error| JsValue::from_str(&error.to_string()))
+}
+
 /// Creates a project manifest and sidecar SQLite database.
 #[wasm_bindgen]
 #[cfg(target_arch = "wasm32")]
@@ -391,6 +448,20 @@ pub fn commit_report_import_state(
     _confirmed_faction_id: String,
     _raw_report: String,
     _allow_overwrite: bool,
+) -> Result<JsValue, JsValue> {
+    Err(JsValue::from_str(
+        "project persistence is not linked in this wasm32 build",
+    ))
+}
+
+/// Loads one imported turn payload by composite key.
+#[wasm_bindgen]
+#[cfg(target_arch = "wasm32")]
+pub fn load_imported_turn_state(
+    _database_path: String,
+    _project_id: String,
+    _faction_id: String,
+    _turn_number: u32,
 ) -> Result<JsValue, JsValue> {
     Err(JsValue::from_str(
         "project persistence is not linked in this wasm32 build",
