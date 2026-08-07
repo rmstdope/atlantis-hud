@@ -26,6 +26,133 @@ pub fn game_info() -> GameInfo {
     }
 }
 
+/// Severity for order validation diagnostics.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum OrderDiagnosticSeverity {
+    Warning,
+    Error,
+}
+
+/// Structured diagnostic emitted by the order validator.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OrderDiagnostic {
+    pub code: String,
+    pub message: String,
+    pub line_start: usize,
+    pub line_end: usize,
+    pub severity: OrderDiagnosticSeverity,
+}
+
+/// Validation result for one draft of Atlantis orders.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OrderValidationResult {
+    pub diagnostics: Vec<OrderDiagnostic>,
+}
+
+impl OrderValidationResult {
+    #[must_use]
+    pub fn error_count(&self) -> usize {
+        self.diagnostics
+            .iter()
+            .filter(|diagnostic| matches!(diagnostic.severity, OrderDiagnosticSeverity::Error))
+            .count()
+    }
+
+    #[must_use]
+    pub fn warning_count(&self) -> usize {
+        self.diagnostics
+            .iter()
+            .filter(|diagnostic| matches!(diagnostic.severity, OrderDiagnosticSeverity::Warning))
+            .count()
+    }
+
+    #[must_use]
+    pub fn is_blocking(&self) -> bool {
+        self.diagnostics
+            .iter()
+            .any(|diagnostic| matches!(diagnostic.severity, OrderDiagnosticSeverity::Error))
+    }
+}
+
+/// Validates one text order draft using line-oriented command rules.
+#[must_use]
+pub fn validate_orders(source: &str) -> OrderValidationResult {
+    let mut diagnostics = Vec::new();
+
+    for (index, line) in source.lines().enumerate() {
+        let line_number = index + 1;
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+
+        let tokens = trimmed.split_whitespace().collect::<Vec<_>>();
+        let command = tokens[0];
+        let args = &tokens[1..];
+
+        match command {
+            "MOVE" => validate_command(
+                &mut diagnostics,
+                command,
+                args,
+                line_number,
+                2,
+                2,
+                true,
+            ),
+            "HOLD" => validate_command(
+                &mut diagnostics,
+                command,
+                args,
+                line_number,
+                0,
+                0,
+                false,
+            ),
+            _ => diagnostics.push(OrderDiagnostic {
+                code: "unknown-command".to_string(),
+                message: "unknown order command".to_string(),
+                line_start: line_number,
+                line_end: line_number,
+                severity: OrderDiagnosticSeverity::Error,
+            }),
+        }
+    }
+
+    OrderValidationResult { diagnostics }
+}
+
+fn validate_command(
+    diagnostics: &mut Vec<OrderDiagnostic>,
+    command: &str,
+    args: &[&str],
+    line_number: usize,
+    required_args: usize,
+    allowed_args: usize,
+    allow_extra_as_warning: bool,
+) {
+    if args.len() < required_args {
+        diagnostics.push(OrderDiagnostic {
+            code: "missing-arguments".to_string(),
+            message: format!("missing required arguments for {command}"),
+            line_start: line_number,
+            line_end: line_number,
+            severity: OrderDiagnosticSeverity::Error,
+        });
+        return;
+    }
+
+    if allow_extra_as_warning && args.len() > allowed_args {
+        diagnostics.push(OrderDiagnostic {
+            code: "extra-arguments".to_string(),
+            message: format!("extra arguments ignored for {command}"),
+            line_start: line_number,
+            line_end: line_number,
+            severity: OrderDiagnosticSeverity::Warning,
+        });
+    }
+}
+
 /// Severity level emitted by the tolerant report parser.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum WarningSeverity {
@@ -423,5 +550,60 @@ MESSAGE: summary | R1 | Local unrest reported";
             }]
         );
         assert!(parsed.meets_minimum_import_threshold());
+    }
+
+    #[test]
+    fn validate_orders_flags_unknown_commands_as_errors() {
+        let result = validate_orders("FLY 1 2");
+
+        assert_eq!(
+            result.diagnostics,
+            vec![OrderDiagnostic {
+                code: "unknown-command".to_string(),
+                message: "unknown order command".to_string(),
+                line_start: 1,
+                line_end: 1,
+                severity: OrderDiagnosticSeverity::Error,
+            }]
+        );
+        assert!(result.is_blocking());
+        assert_eq!(result.error_count(), 1);
+        assert_eq!(result.warning_count(), 0);
+    }
+
+    #[test]
+    fn validate_orders_flags_missing_required_arguments() {
+        let result = validate_orders("MOVE 1");
+
+        assert_eq!(
+            result.diagnostics,
+            vec![OrderDiagnostic {
+                code: "missing-arguments".to_string(),
+                message: "missing required arguments for MOVE".to_string(),
+                line_start: 1,
+                line_end: 1,
+                severity: OrderDiagnosticSeverity::Error,
+            }]
+        );
+        assert!(result.is_blocking());
+    }
+
+    #[test]
+    fn validate_orders_keeps_warnings_non_blocking() {
+        let result = validate_orders("MOVE 1 2 3");
+
+        assert_eq!(
+            result.diagnostics,
+            vec![OrderDiagnostic {
+                code: "extra-arguments".to_string(),
+                message: "extra arguments ignored for MOVE".to_string(),
+                line_start: 1,
+                line_end: 1,
+                severity: OrderDiagnosticSeverity::Warning,
+            }]
+        );
+        assert!(!result.is_blocking());
+        assert_eq!(result.warning_count(), 1);
+        assert_eq!(result.error_count(), 0);
     }
 }

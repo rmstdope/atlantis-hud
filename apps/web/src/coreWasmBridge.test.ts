@@ -62,5 +62,47 @@ describe("resolveCoreWasmBindings", () => {
     });
 
     expect(bindings.open_project_state("/tmp/example.atlantis-project.json")).toEqual(created);
+
+    expect(bindings.validate_orders_state("FLY 1 2")).toEqual({
+      diagnostics: [
+        {
+          code: "unknown-command",
+          message: "unknown order command",
+          line_start: 1,
+          line_end: 1,
+          severity: "error"
+        }
+      ]
+    });
+
+    expect(
+      bindings.save_order_draft_state(
+        "/tmp/example.atlantis-project.sqlite",
+        "faction-1",
+        "17",
+        12,
+        "MOVE U100 R2",
+        "2026-08-07T12:00:00Z"
+      )
+    ).toEqual({
+      key: {
+        project_id: "faction-1",
+        faction_id: "17",
+        turn_number: 12
+      },
+      order_text: "MOVE U100 R2",
+      updated_at: "2026-08-07T12:00:00Z"
+    });
+    expect(
+      bindings.load_order_draft_state("/tmp/example.atlantis-project.sqlite", "faction-1", "17", 12)
+    ).toEqual({
+      key: {
+        project_id: "faction-1",
+        faction_id: "17",
+        turn_number: 12
+      },
+      order_text: "MOVE U100 R2",
+      updated_at: "2026-08-07T12:00:00Z"
+    });
   });
 });

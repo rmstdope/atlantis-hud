@@ -96,6 +96,32 @@ export type ReportImportPreview = {
   turnNumber: number | null;
 };
 
+export type OrderDiagnosticSeverity = "warning" | "error";
+
+export type OrderDiagnostic = {
+  code: string;
+  message: string;
+  lineStart: number;
+  lineEnd: number;
+  severity: OrderDiagnosticSeverity;
+};
+
+export type OrderValidationResult = {
+  diagnostics: OrderDiagnostic[];
+};
+
+export type OrderDraftKey = {
+  projectId: string;
+  factionId: string;
+  turnNumber: number;
+};
+
+export type OrderDraftRecord = {
+  key: OrderDraftKey;
+  orderText: string;
+  updatedAt: string;
+};
+
 type GameInfoWireShape = {
   id: string;
   name: string;
@@ -220,6 +246,37 @@ type ReportImportPreviewWireShape = {
   turn_number?: number | null;
 };
 
+type OrderDiagnosticWireShape = {
+  code?: string;
+  message?: string;
+  lineStart?: number;
+  line_start?: number;
+  lineEnd?: number;
+  line_end?: number;
+  severity?: string;
+};
+
+type OrderValidationResultWireShape = {
+  diagnostics?: OrderDiagnosticWireShape[];
+};
+
+type OrderDraftKeyWireShape = {
+  projectId?: string;
+  project_id?: string;
+  factionId?: string;
+  faction_id?: string;
+  turnNumber?: number;
+  turn_number?: number;
+};
+
+type OrderDraftRecordWireShape = {
+  key?: OrderDraftKeyWireShape;
+  orderText?: string;
+  order_text?: string;
+  updatedAt?: string;
+  updated_at?: string;
+};
+
 export interface CoreAdapter {
   getGameInfo(): Promise<unknown> | unknown;
   createProject(projectFilePath: string, manifest: ProjectManifest): Promise<unknown> | unknown;
@@ -237,6 +294,21 @@ export interface CoreAdapter {
     confirmedFactionId: string,
     rawReport: string,
     allowOverwrite: boolean
+  ): Promise<unknown> | unknown;
+  validateOrders(rawOrders: string): Promise<unknown> | unknown;
+  loadOrderDraft(
+    databasePath: string,
+    projectId: string,
+    factionId: string,
+    turnNumber: number
+  ): Promise<unknown> | unknown;
+  saveOrderDraft(
+    databasePath: string,
+    projectId: string,
+    factionId: string,
+    turnNumber: number,
+    orderText: string,
+    updatedAt: string
   ): Promise<unknown> | unknown;
 }
 
@@ -258,6 +330,21 @@ export interface CoreClient {
     rawReport: string,
     allowOverwrite: boolean
   ): Promise<ImportedTurnPreview>;
+  validateOrders(rawOrders: string): Promise<OrderValidationResult>;
+  loadOrderDraft(
+    databasePath: string,
+    projectId: string,
+    factionId: string,
+    turnNumber: number
+  ): Promise<OrderDraftRecord | null>;
+  saveOrderDraft(
+    databasePath: string,
+    projectId: string,
+    factionId: string,
+    turnNumber: number,
+    orderText: string,
+    updatedAt: string
+  ): Promise<OrderDraftRecord>;
 }
 
 export interface WasmBindings {
@@ -277,6 +364,21 @@ export interface WasmBindings {
     confirmedFactionId: string,
     rawReport: string,
     allowOverwrite: boolean
+  ): unknown;
+  validate_orders_state(rawOrders: string): unknown;
+  load_order_draft_state(
+    databasePath: string,
+    projectId: string,
+    factionId: string,
+    turnNumber: number
+  ): unknown;
+  save_order_draft_state(
+    databasePath: string,
+    projectId: string,
+    factionId: string,
+    turnNumber: number,
+    orderText: string,
+    updatedAt: string
   ): unknown;
 }
 
@@ -549,6 +651,90 @@ function normalizeImportedTurnPreview(value: unknown): ImportedTurnPreview {
   };
 }
 
+function normalizeOrderValidationResult(value: unknown): OrderValidationResult {
+  if (typeof value !== "object" || value === null) {
+    throw new Error("invalid order validation payload");
+  }
+
+  const payload = value as OrderValidationResultWireShape;
+  const diagnostics = payload.diagnostics;
+
+  if (!Array.isArray(diagnostics)) {
+    throw new Error("incomplete order validation payload");
+  }
+
+  return {
+    diagnostics: diagnostics.map((diagnostic) => {
+      if (typeof diagnostic !== "object" || diagnostic === null) {
+        throw new Error("invalid order validation payload");
+      }
+
+      const entry = diagnostic as OrderDiagnosticWireShape;
+      const lineStart = entry.lineStart ?? entry.line_start;
+      const lineEnd = entry.lineEnd ?? entry.line_end;
+
+      if (
+        typeof entry.code !== "string" ||
+        typeof entry.message !== "string" ||
+        typeof lineStart !== "number" ||
+        typeof lineEnd !== "number" ||
+        (entry.severity !== "warning" && entry.severity !== "error")
+      ) {
+        throw new Error("incomplete order validation payload");
+      }
+
+      return {
+        code: entry.code,
+        message: entry.message,
+        lineStart,
+        lineEnd,
+        severity: entry.severity
+      };
+    })
+  };
+}
+
+function normalizeOrderDraftKey(value: unknown): OrderDraftKey {
+  if (typeof value !== "object" || value === null) {
+    throw new Error("invalid order draft payload");
+  }
+
+  const payload = value as OrderDraftKeyWireShape;
+  const projectId = payload.projectId ?? payload.project_id;
+  const factionId = payload.factionId ?? payload.faction_id;
+  const turnNumber = payload.turnNumber ?? payload.turn_number;
+
+  if (typeof projectId !== "string" || typeof factionId !== "string" || typeof turnNumber !== "number") {
+    throw new Error("incomplete order draft payload");
+  }
+
+  return {
+    projectId,
+    factionId,
+    turnNumber
+  };
+}
+
+function normalizeOrderDraftRecord(value: unknown): OrderDraftRecord {
+  if (typeof value !== "object" || value === null) {
+    throw new Error("invalid order draft payload");
+  }
+
+  const payload = value as OrderDraftRecordWireShape;
+  const orderText = payload.orderText ?? payload.order_text;
+  const updatedAt = payload.updatedAt ?? payload.updated_at;
+
+  if (payload.key === undefined || typeof orderText !== "string" || typeof updatedAt !== "string") {
+    throw new Error("incomplete order draft payload");
+  }
+
+  return {
+    key: normalizeOrderDraftKey(payload.key),
+    orderText,
+    updatedAt
+  };
+}
+
 function normalizeReportImportPreview(value: unknown): ReportImportPreview {
   if (typeof value !== "object" || value === null) {
     throw new Error("invalid report import preview payload");
@@ -607,6 +793,36 @@ export function createCoreClient(adapter: CoreAdapter): CoreClient {
         allowOverwrite
       );
       return normalizeImportedTurnPreview(value);
+    },
+    async validateOrders(rawOrders: string) {
+      const value = await adapter.validateOrders(rawOrders);
+      return normalizeOrderValidationResult(value);
+    },
+    async loadOrderDraft(databasePath: string, projectId: string, factionId: string, turnNumber: number) {
+      const value = await adapter.loadOrderDraft(databasePath, projectId, factionId, turnNumber);
+      if (value === null) {
+        return null;
+      }
+
+      return normalizeOrderDraftRecord(value);
+    },
+    async saveOrderDraft(
+      databasePath: string,
+      projectId: string,
+      factionId: string,
+      turnNumber: number,
+      orderText: string,
+      updatedAt: string
+    ) {
+      const value = await adapter.saveOrderDraft(
+        databasePath,
+        projectId,
+        factionId,
+        turnNumber,
+        orderText,
+        updatedAt
+      );
+      return normalizeOrderDraftRecord(value);
     }
   };
 }
@@ -641,6 +857,29 @@ export function createWasmAdapter(bindings: WasmBindings): CoreAdapter {
         confirmedFactionId,
         rawReport,
         allowOverwrite
+      );
+    },
+    validateOrders(rawOrders: string) {
+      return bindings.validate_orders_state(rawOrders);
+    },
+    loadOrderDraft(databasePath: string, projectId: string, factionId: string, turnNumber: number) {
+      return bindings.load_order_draft_state(databasePath, projectId, factionId, turnNumber);
+    },
+    saveOrderDraft(
+      databasePath: string,
+      projectId: string,
+      factionId: string,
+      turnNumber: number,
+      orderText: string,
+      updatedAt: string
+    ) {
+      return bindings.save_order_draft_state(
+        databasePath,
+        projectId,
+        factionId,
+        turnNumber,
+        orderText,
+        updatedAt
       );
     }
   };
@@ -688,6 +927,36 @@ export function createTauriAdapter(invoke: TauriInvoke): CoreAdapter {
         confirmed_faction_id: confirmedFactionId,
         raw_report: rawReport,
         allow_overwrite: allowOverwrite
+      });
+    },
+    validateOrders(rawOrders: string) {
+      return invoke<OrderValidationResultWireShape>("validate_orders", {
+        raw_orders: rawOrders
+      });
+    },
+    loadOrderDraft(databasePath: string, projectId: string, factionId: string, turnNumber: number) {
+      return invoke<OrderDraftRecordWireShape | null>("load_order_draft", {
+        database_path: databasePath,
+        project_id: projectId,
+        faction_id: factionId,
+        turn_number: turnNumber
+      });
+    },
+    saveOrderDraft(
+      databasePath: string,
+      projectId: string,
+      factionId: string,
+      turnNumber: number,
+      orderText: string,
+      updatedAt: string
+    ) {
+      return invoke<OrderDraftRecordWireShape>("save_order_draft", {
+        database_path: databasePath,
+        project_id: projectId,
+        faction_id: factionId,
+        turn_number: turnNumber,
+        order_text: orderText,
+        updated_at: updatedAt
       });
     }
   };

@@ -37,6 +37,33 @@ describe("core client adapter contract parity", () => {
       },
       turn_number: 12
     };
+    const orderValidationPayload = {
+      diagnostics: [
+        {
+          code: "unknown-command",
+          message: "unknown order command",
+          line_start: 1,
+          line_end: 1,
+          severity: "error"
+        },
+        {
+          code: "extra-arguments",
+          message: "extra arguments ignored for MOVE",
+          line_start: 2,
+          line_end: 2,
+          severity: "warning"
+        }
+      ]
+    };
+    const orderDraftPayload = {
+      key: {
+        project_id: "faction-12",
+        faction_id: "17",
+        turn_number: 12
+      },
+      order_text: "MOVE U100 R2",
+      updated_at: "2026-08-07T12:00:00Z"
+    };
     const openedProjectPayload = {
       project_file_path: "/tmp/campaign.atlantis-project.json",
       database_path: "/tmp/campaign.atlantis-project.sqlite",
@@ -84,6 +111,15 @@ describe("core client adapter contract parity", () => {
           parsed_changed: false,
           warnings_changed: false
         };
+      },
+      validate_orders_state() {
+        return orderValidationPayload;
+      },
+      load_order_draft_state() {
+        return orderDraftPayload;
+      },
+      save_order_draft_state() {
+        return orderDraftPayload;
       }
     };
 
@@ -153,6 +189,37 @@ describe("core client adapter contract parity", () => {
           warningsChanged: false
         } as T);
       }
+      if (command === "validate_orders") {
+        return Promise.resolve({
+          diagnostics: [
+            {
+              code: "unknown-command",
+              message: "unknown order command",
+              lineStart: 1,
+              lineEnd: 1,
+              severity: "error"
+            },
+            {
+              code: "extra-arguments",
+              message: "extra arguments ignored for MOVE",
+              lineStart: 2,
+              lineEnd: 2,
+              severity: "warning"
+            }
+          ]
+        } as T);
+      }
+      if (command === "load_order_draft" || command === "save_order_draft") {
+        return Promise.resolve({
+          key: {
+            projectId: "faction-12",
+            factionId: "17",
+            turnNumber: 12
+          },
+          orderText: "MOVE U100 R2",
+          updatedAt: "2026-08-07T12:00:00Z"
+        } as T);
+      }
       return Promise.resolve({
         projectFilePath: "/tmp/campaign.atlantis-project.json",
         databasePath: "/tmp/campaign.atlantis-project.sqlite",
@@ -189,6 +256,31 @@ describe("core client adapter contract parity", () => {
       wasmClient.commitReportImport("/tmp/campaign.atlantis-project.sqlite", "faction-12", "17", "same", true)
     ).resolves.toEqual(
       await tauriClient.commitReportImport("/tmp/campaign.atlantis-project.sqlite", "faction-12", "17", "same", true)
+    );
+    await expect(wasmClient.validateOrders("bad input")).resolves.toEqual(await tauriClient.validateOrders("bad input"));
+    await expect(
+      wasmClient.loadOrderDraft("/tmp/campaign.atlantis-project.sqlite", "faction-12", "17", 12)
+    ).resolves.toEqual(
+      await tauriClient.loadOrderDraft("/tmp/campaign.atlantis-project.sqlite", "faction-12", "17", 12)
+    );
+    await expect(
+      wasmClient.saveOrderDraft(
+        "/tmp/campaign.atlantis-project.sqlite",
+        "faction-12",
+        "17",
+        12,
+        "MOVE U100 R2",
+        "2026-08-07T12:00:00Z"
+      )
+    ).resolves.toEqual(
+      await tauriClient.saveOrderDraft(
+        "/tmp/campaign.atlantis-project.sqlite",
+        "faction-12",
+        "17",
+        12,
+        "MOVE U100 R2",
+        "2026-08-07T12:00:00Z"
+      )
     );
   });
 });
