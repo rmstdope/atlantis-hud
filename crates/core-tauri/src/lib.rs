@@ -7,10 +7,10 @@ use atlantis_hud_core::{
     WarningSeverity,
 };
 use atlantis_hud_core_persistence::{
-    create_project, insert_imported_turn, load_order_draft, open_project, preview_imported_turn,
-    upsert_imported_turn, upsert_order_draft, ImportedTurnKey, ImportedTurnPreview,
-    ImportedTurnRecord, OpenedProject, OrderDraftKey, OrderDraftRecord, PersistenceError,
-    ProjectManifest, ProjectMetadata, ReportSourceRef,
+    create_project, insert_imported_turn, load_imported_turn, load_order_draft, open_project,
+    preview_imported_turn, upsert_imported_turn, upsert_order_draft, ImportedTurnKey,
+    ImportedTurnPreview, ImportedTurnRecord, OpenedProject, OrderDraftKey, OrderDraftRecord,
+    PersistenceError, ProjectManifest, ProjectMetadata, ReportSourceRef,
 };
 use serde::{Deserialize, Serialize};
 
@@ -139,6 +139,14 @@ pub struct ReportImportPreviewDto {
     pub parse_result: ReportParseResultDto,
     pub duplicate_preview: ImportedTurnPreviewDto,
     pub turn_number: Option<u32>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportedTurnRecordDto {
+    pub key: OrderDraftKeyDto,
+    pub raw_report: String,
+    pub parse_result: ReportParseResultDto,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -548,6 +556,41 @@ pub fn command_load_order_draft(
     }))
 }
 
+/// Loads one imported turn payload for the Tauri command surface.
+pub fn command_load_imported_turn(
+    database_path: &str,
+    project_id: &str,
+    faction_id: &str,
+    turn_number: u32,
+) -> Result<Option<ImportedTurnRecordDto>, String> {
+    let loaded = load_imported_turn(
+        Path::new(database_path),
+        &ImportedTurnKey {
+            project_id: project_id.to_string(),
+            faction_id: faction_id.to_string(),
+            turn_number,
+        },
+    )
+    .map_err(|error| error.to_string())?;
+
+    loaded
+        .map(|record| {
+            let parse_result =
+                serde_json::from_str::<ReportParseResult>(&record.parsed_payload_json)
+                    .map_err(|error| error.to_string())?;
+            Ok(ImportedTurnRecordDto {
+                key: OrderDraftKeyDto {
+                    project_id: record.key.project_id,
+                    faction_id: record.key.faction_id,
+                    turn_number: record.key.turn_number,
+                },
+                raw_report: record.raw_report,
+                parse_result: ReportParseResultDto::from(parse_result),
+            })
+        })
+        .transpose()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -592,8 +635,8 @@ mod tests {
 
         assert_eq!(created.manifest, manifest);
         assert_eq!(reopened.manifest, manifest);
-        assert_eq!(created.schema_version, 2);
-        assert_eq!(reopened.schema_version, 2);
+        assert_eq!(created.schema_version, 3);
+        assert_eq!(reopened.schema_version, 3);
     }
 
     #[test]
@@ -678,5 +721,42 @@ MESSAGE: order | U100 | MOVE R2";
             .expect("load draft");
 
         assert_eq!(loaded, Some(saved));
+    }
+
+    #[test]
+    fn tauri_adapter_loads_imported_turn_payload_after_commit() {
+        let dir = tempdir().expect("tempdir");
+        let project_path = dir.path().join("campaign.atlantis-project.json");
+        let project_path_string = project_path.to_string_lossy().to_string();
+        let created = command_create_project(
+            &project_path_string,
+            ProjectManifestDto {
+                manifest_version: 1,
+                metadata: ProjectMetadataDto {
+                    project_id: "faction-12".to_string(),
+                    project_name: "Faction 12".to_string(),
+                },
+                report_sources: Vec::new(),
+            },
+        )
+        .expect("create project");
+        let report = "\
+TURN: 12 Spring
+FACTION: 17 | Crimson Tide
+REGION: A1 | Coast of Dawn
+UNIT: U100 | Guard Patrol | A1";
+
+        command_commit_report_import(&created.database_path, "faction-12", "17", report, false)
+            .expect("import commit should succeed");
+
+        let loaded = command_load_imported_turn(&created.database_path, "faction-12", "17", 12)
+            .expect("load imported turn should succeed")
+            .expect("imported turn should exist");
+
+        assert_eq!(loaded.key.project_id, "faction-12");
+        assert_eq!(loaded.key.faction_id, "17");
+        assert_eq!(loaded.key.turn_number, 12);
+        assert_eq!(loaded.parse_result.regions[0].region_id, "A1");
+        assert_eq!(loaded.parse_result.units[0].region_id, "A1");
     }
 }
