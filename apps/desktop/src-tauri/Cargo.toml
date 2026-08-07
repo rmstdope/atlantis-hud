@@ -3,4 +3,12 @@ name = "atlantis-hud-desktop-shell"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+default = []
+desktop-runtime = []
+
 [dependencies]
+atlantis-hud-core-tauri = { path = "../../../crates/core-tauri" }
+
+[target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
+tauri = { version = "2", default-features = false, features = [] }
