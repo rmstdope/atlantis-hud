@@ -1,0 +1,19 @@
+# Emacs
+*~
+
+# Node / pnpm
+node_modules/
+dist/
+playwright-report/
+test-results/
+
+# Logs and local app data
+*.log
+apps/desktop/.logs/
+
+# Rust
+target/
+
+# Local env files
+.env
+.env.*
