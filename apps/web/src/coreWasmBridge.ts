@@ -227,19 +227,22 @@ export function resolveCoreWasmBindings(): WasmBindings {
         turn_header: { turn_number: number } | null;
         warnings: unknown;
       };
-      if (!parsed.turn_header) {
-        throw new Error("turn header missing from parsed report");
-      }
-      const key = importKey(databasePath, projectId, confirmedFactionId, parsed.turn_header.turn_number);
-      const previous = inMemoryImports.get(key);
+      const turnNumber = parsed.turn_header?.turn_number ?? null;
+      const previous = turnNumber !== null
+        ? inMemoryImports.get(importKey(databasePath, projectId, confirmedFactionId, turnNumber))
+        : undefined;
       const parsedPayloadJson = JSON.stringify(parsed);
       const warningsPayloadJson = JSON.stringify(parsed.warnings);
 
       return {
-        exists: previous !== undefined,
-        raw_changed: previous ? previous.rawReport !== rawReport : false,
-        parsed_changed: previous ? previous.parsedPayloadJson !== parsedPayloadJson : false,
-        warnings_changed: previous ? previous.warningsPayloadJson !== warningsPayloadJson : false
+        parse_result: parsed,
+        duplicate_preview: {
+          exists: previous !== undefined,
+          raw_changed: previous ? previous.rawReport !== rawReport : false,
+          parsed_changed: previous ? previous.parsedPayloadJson !== parsedPayloadJson : false,
+          warnings_changed: previous ? previous.warningsPayloadJson !== warningsPayloadJson : false
+        },
+        turn_number: turnNumber
       };
     },
     commit_report_import_state(
@@ -251,6 +254,7 @@ export function resolveCoreWasmBindings(): WasmBindings {
     ) {
       const parsed = parseReportState(rawReport) as {
         turn_header: { turn_number: number } | null;
+        detected_factions: Array<{ faction_id: string }>;
         meets_minimum_import_threshold: boolean;
         warnings: unknown;
       };
@@ -259,6 +263,12 @@ export function resolveCoreWasmBindings(): WasmBindings {
       }
       if (!parsed.turn_header) {
         throw new Error("turn header missing from parsed report");
+      }
+      const factionDetected = parsed.detected_factions.some(
+        (faction) => faction.faction_id === confirmedFactionId
+      );
+      if (!factionDetected) {
+        throw new Error("confirmed faction does not exist in parsed report candidates");
       }
       const key = importKey(databasePath, projectId, confirmedFactionId, parsed.turn_header.turn_number);
       const previous = inMemoryImports.get(key);

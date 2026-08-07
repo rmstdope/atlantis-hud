@@ -3,7 +3,7 @@
 #[cfg(not(target_arch = "wasm32"))]
 use std::path::Path;
 
-use atlantis_hud_core::{game_info, parse_report};
+use atlantis_hud_core::{game_info, parse_report, ReportParseResult};
 #[cfg(not(target_arch = "wasm32"))]
 use atlantis_hud_core_persistence::{
     create_project, insert_imported_turn, open_project, preview_imported_turn,
@@ -77,6 +77,34 @@ impl From<ImportedTurnPreview> for ImportedTurnPreviewDto {
             warnings_changed: value.warnings_changed,
         }
     }
+}
+
+/// Wrapper over `ReportParseResult` that includes the computed threshold boolean.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ReportParseResultDto {
+    #[serde(flatten)]
+    inner: ReportParseResult,
+    meets_minimum_import_threshold: bool,
+}
+
+impl From<ReportParseResult> for ReportParseResultDto {
+    fn from(value: ReportParseResult) -> Self {
+        let threshold = value.meets_minimum_import_threshold();
+        Self {
+            inner: value,
+            meets_minimum_import_threshold: threshold,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg(not(target_arch = "wasm32"))]
+struct ReportImportPreviewDto {
+    parse_result: ReportParseResultDto,
+    duplicate_preview: ImportedTurnPreviewDto,
+    turn_number: Option<u32>,
 }
 
 impl From<atlantis_hud_core::GameInfo> for GameInfoDto {
@@ -171,10 +199,10 @@ pub fn get_game_info() -> Result<JsValue, JsValue> {
         .map_err(|error| JsValue::from_str(&error.to_string()))
 }
 
-/// Parses one report and returns tolerant parser output.
+/// Parses one report and returns tolerant parser output including the viability threshold flag.
 #[wasm_bindgen]
 pub fn parse_report_state(raw_report: String) -> Result<JsValue, JsValue> {
-    let parsed = parse_report(&raw_report);
+    let parsed = ReportParseResultDto::from(parse_report(&raw_report));
     serde_wasm_bindgen::to_value(&parsed).map_err(|error| JsValue::from_str(&error.to_string()))
 }
 
@@ -219,29 +247,39 @@ pub fn preview_report_import_state(
     raw_report: String,
 ) -> Result<JsValue, JsValue> {
     let parsed = parse_report(&raw_report);
-    let turn_number = parsed
-        .turn_header
-        .as_ref()
-        .map(|header| header.turn_number)
-        .ok_or_else(|| JsValue::from_str("turn header missing from parsed report"))?;
+    let turn_number = parsed.turn_header.as_ref().map(|header| header.turn_number);
 
-    let candidate = ImportedTurnRecord {
-        key: ImportedTurnKey {
-            project_id,
-            faction_id: confirmed_faction_id,
-            turn_number,
-        },
-        raw_report,
-        parsed_payload_json: serde_json::to_string(&parsed)
-            .map_err(|error| JsValue::from_str(&error.to_string()))?,
-        warnings_payload_json: serde_json::to_string(&parsed.warnings)
-            .map_err(|error| JsValue::from_str(&error.to_string()))?,
+    let duplicate_preview = if let Some(current_turn) = turn_number {
+        let candidate = ImportedTurnRecord {
+            key: ImportedTurnKey {
+                project_id,
+                faction_id: confirmed_faction_id,
+                turn_number: current_turn,
+            },
+            raw_report,
+            parsed_payload_json: serde_json::to_string(&parsed)
+                .map_err(|error| JsValue::from_str(&error.to_string()))?,
+            warnings_payload_json: serde_json::to_string(&parsed.warnings)
+                .map_err(|error| JsValue::from_str(&error.to_string()))?,
+        };
+        preview_imported_turn(Path::new(&database_path), &candidate)
+            .map(ImportedTurnPreviewDto::from)
+            .map_err(|error| JsValue::from_str(&error.to_string()))?
+    } else {
+        ImportedTurnPreviewDto {
+            exists: false,
+            raw_changed: false,
+            parsed_changed: false,
+            warnings_changed: false,
+        }
     };
 
-    let preview = preview_imported_turn(Path::new(&database_path), &candidate)
-        .map_err(|error| JsValue::from_str(&error.to_string()))?;
-    serde_wasm_bindgen::to_value(&ImportedTurnPreviewDto::from(preview))
-        .map_err(|error| JsValue::from_str(&error.to_string()))
+    let result = ReportImportPreviewDto {
+        parse_result: ReportParseResultDto::from(parsed),
+        duplicate_preview,
+        turn_number,
+    };
+    serde_wasm_bindgen::to_value(&result).map_err(|error| JsValue::from_str(&error.to_string()))
 }
 
 /// Commits a report import candidate to persistence.

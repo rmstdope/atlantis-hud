@@ -56,6 +56,20 @@ export function ReportImportPanel({ client }: ReportImportPanelProps) {
     [databasePath, projectId, reportText, confirmedFactionId]
   );
 
+  const canCommit = useMemo(
+    () =>
+      canPreviewOrImport &&
+      parseResult !== null &&
+      parseResult.meetsMinimumImportThreshold &&
+      preview !== null,
+    [canPreviewOrImport, parseResult, preview]
+  );
+
+  const resetPreviewOnInputChange = () => {
+    setPreview(null);
+    setAllowOverwrite(false);
+  };
+
   const onSelectFile = async (file: File) => {
     const text = await file.text();
     setReportText(text);
@@ -79,7 +93,7 @@ export function ReportImportPanel({ client }: ReportImportPanelProps) {
         <input
           type="text"
           value={databasePath}
-          onChange={(event) => setDatabasePath(event.target.value)}
+          onChange={(event) => { setDatabasePath(event.target.value); resetPreviewOnInputChange(); }}
           placeholder="/tmp/campaign.atlantis-project.sqlite"
         />
       </label>
@@ -88,7 +102,7 @@ export function ReportImportPanel({ client }: ReportImportPanelProps) {
         <input
           type="text"
           value={projectId}
-          onChange={(event) => setProjectId(event.target.value)}
+          onChange={(event) => { setProjectId(event.target.value); resetPreviewOnInputChange(); }}
           placeholder="faction-12"
         />
       </label>
@@ -154,7 +168,7 @@ export function ReportImportPanel({ client }: ReportImportPanelProps) {
             Confirm faction
             <select
               value={confirmedFactionId}
-              onChange={(event) => setConfirmedFactionId(event.target.value)}
+              onChange={(event) => { setConfirmedFactionId(event.target.value); resetPreviewOnInputChange(); }}
             >
               {parseResult.detectedFactions.map((faction) => (
                 <option key={faction.factionId} value={faction.factionId}>
@@ -204,7 +218,7 @@ export function ReportImportPanel({ client }: ReportImportPanelProps) {
       </label>
       <button
         type="button"
-        disabled={!canPreviewOrImport}
+        disabled={!canCommit}
         onClick={() => {
           client
             .commitReportImport(databasePath, projectId, confirmedFactionId, reportText, allowOverwrite)
