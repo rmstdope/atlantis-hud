@@ -2,20 +2,20 @@ import { resolveFeatureFlags, RingBufferLogger, toJsonLines } from "@atlantis/sh
 import fileFlags from "../config/feature-flags.json";
 
 const logger = new RingBufferLogger("desktop");
+logger.write("info", "desktop app initialized");
 
 function downloadLogs() {
-  const blob = new Blob([toJsonLines(logger.snapshot())], { type: "application/json" });
+  const blob = new Blob([toJsonLines(logger.snapshot())], { type: "application/x-ndjson" });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
   anchor.download = "desktop-logs.jsonl";
   anchor.click();
-  URL.revokeObjectURL(url);
+  setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
 export default function App() {
   const flags = resolveFeatureFlags(fileFlags, import.meta.env as Record<string, unknown>);
-  logger.write("info", "desktop app initialized");
 
   return (
     <main>
