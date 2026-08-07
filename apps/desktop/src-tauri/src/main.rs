@@ -3,9 +3,10 @@
     feature = "desktop-runtime"
 ))]
 use atlantis_hud_core_tauri::{
-    command_commit_report_import, command_create_project, command_open_project,
-    command_parse_report, command_preview_report_import, ImportedTurnPreviewDto, OpenedProjectDto,
-    ProjectManifestDto, ReportImportPreviewDto, ReportParseResultDto,
+    command_commit_report_import, command_create_project, command_load_imported_turn,
+    command_open_project, command_parse_report, command_preview_report_import,
+    ImportedTurnPreviewDto, ImportedTurnRecordDto, OpenedProjectDto, ProjectManifestDto,
+    ReportImportPreviewDto, ReportParseResultDto,
 };
 #[cfg(all(
     any(target_os = "macos", target_os = "windows"),
@@ -96,6 +97,20 @@ fn commit_report_import(
     any(target_os = "macos", target_os = "windows"),
     feature = "desktop-runtime"
 ))]
+#[tauri::command]
+fn load_imported_turn(
+    database_path: String,
+    project_id: String,
+    faction_id: String,
+    turn_number: u32,
+) -> Result<Option<ImportedTurnRecordDto>, String> {
+    command_load_imported_turn(&database_path, &project_id, &faction_id, turn_number)
+}
+
+#[cfg(all(
+    any(target_os = "macos", target_os = "windows"),
+    feature = "desktop-runtime"
+))]
 fn main() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
@@ -104,13 +119,10 @@ fn main() {
             open_project,
             parse_report,
             preview_report_import,
-            commit_report_import
+            commit_report_import,
+            load_imported_turn
         ])
-        .run(tauri::generate_context!(
-            "tauri.conf.json",
-            crate,
-            test = true
-        ))
+        .run(tauri::generate_context!())
         .expect("error while running atlantis-hud desktop shell");
 }
 
