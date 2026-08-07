@@ -29,25 +29,18 @@ function resolveWebDatabasePath(projectFilePath: string): string {
 
 export function resolveCoreWasmBindings(): WasmBindings {
   const bindings = (globalThis as AtlantisWasmGlobal).__ATLANTIS_CORE_WASM__;
-
-  if (
-    bindings &&
-    typeof bindings.get_game_info === "function" &&
-    typeof bindings.create_project_state === "function" &&
-    typeof bindings.open_project_state === "function"
-  ) {
-    return bindings;
-  }
+  const getGameInfo =
+    bindings && typeof bindings.get_game_info === "function"
+      ? bindings.get_game_info.bind(bindings)
+      : () => ({
+          id: "atlantis",
+          name: "Atlantis PBEM",
+          ruleset_version: "4.0",
+          max_faction_count: 128
+        });
 
   return {
-    get_game_info() {
-      return {
-        id: "atlantis",
-        name: "Atlantis PBEM",
-        ruleset_version: "4.0",
-        max_faction_count: 128
-      };
-    },
+    get_game_info: getGameInfo,
     create_project_state(projectFilePath: string, manifest: ProjectManifest) {
       const opened = {
         projectFilePath,

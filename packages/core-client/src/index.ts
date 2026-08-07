@@ -235,10 +235,15 @@ export function createTauriAdapter(invoke: TauriInvoke): CoreAdapter {
       return invoke<GameInfoWireShape>("get_game_info");
     },
     createProject(projectFilePath: string, manifest: ProjectManifest) {
-      return invoke<OpenedProjectWireShape>("create_project", { projectFilePath, manifest });
+      return invoke<OpenedProjectWireShape>("create_project", {
+        project_file_path: projectFilePath,
+        manifest
+      });
     },
     openProject(projectFilePath: string) {
-      return invoke<OpenedProjectWireShape>("open_project", { projectFilePath });
+      return invoke<OpenedProjectWireShape>("open_project", {
+        project_file_path: projectFilePath
+      });
     }
   };
 }

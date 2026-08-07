@@ -39,7 +39,10 @@ describe("core client adapter contract parity", () => {
       }
     };
 
-    const invoke: TauriInvoke = async <T>(command: string) => {
+    const invocations: Array<{ command: string; args?: Record<string, unknown> }> = [];
+    const invoke: TauriInvoke = async <T>(command: string, args?: Record<string, unknown>) => {
+      invocations.push({ command, args });
+
       if (command === "get_game_info") {
         return Promise.resolve({
           id: "atlantis",
@@ -114,9 +117,63 @@ describe("core client adapter contract parity", () => {
       }
     });
 
+    await expect(
+      tauriClient.createProject("/tmp/campaign.atlantis-project.json", {
+        manifestVersion: 1,
+        metadata: {
+          projectId: "faction-12",
+          projectName: "Faction 12"
+        },
+        reportSources: [
+          {
+            sourceId: "turn-12-report",
+            label: "Turn 12 report"
+          }
+        ]
+      })
+    ).resolves.toEqual(await wasmClient.createProject("/tmp/campaign.atlantis-project.json", {
+      manifestVersion: 1,
+      metadata: {
+        projectId: "faction-12",
+        projectName: "Faction 12"
+      },
+      reportSources: [
+        {
+          sourceId: "turn-12-report",
+          label: "Turn 12 report"
+        }
+      ]
+    }));
+
     await expect(tauriClient.openProject("/tmp/campaign.atlantis-project.json")).resolves.toEqual(
       await wasmClient.openProject("/tmp/campaign.atlantis-project.json")
     );
+
+    expect(invocations).toContainEqual({
+      command: "create_project",
+      args: {
+        project_file_path: "/tmp/campaign.atlantis-project.json",
+        manifest: {
+          manifestVersion: 1,
+          metadata: {
+            projectId: "faction-12",
+            projectName: "Faction 12"
+          },
+          reportSources: [
+            {
+              sourceId: "turn-12-report",
+              label: "Turn 12 report"
+            }
+          ]
+        }
+      }
+    });
+    expect(invocations).toContainEqual({
+      command: "open_project",
+      args: {
+        project_file_path: "/tmp/campaign.atlantis-project.json"
+      }
+    });
   });
 
   it("fails fast on invalid adapter payload", async () => {

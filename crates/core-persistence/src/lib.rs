@@ -68,6 +68,10 @@ pub enum PersistenceError {
     UnsupportedManifestVersion { max_supported: u32, actual: u32 },
     #[error("database file does not exist: {0}")]
     DatabaseFileMissing(String),
+    #[error("project file already exists: {0}")]
+    ProjectFileAlreadyExists(String),
+    #[error("database file already exists: {0}")]
+    DatabaseAlreadyExists(String),
 }
 
 /// Creates a new project file and initializes sidecar SQLite storage.
@@ -76,10 +80,20 @@ pub fn create_project(
     manifest: &ProjectManifest,
 ) -> Result<OpenedProject, PersistenceError> {
     ensure_supported_manifest_version(manifest.manifest_version)?;
+    if project_file_path.exists() {
+        return Err(PersistenceError::ProjectFileAlreadyExists(
+            project_file_path.to_string_lossy().to_string(),
+        ));
+    }
+
+    let database_path = sidecar_database_path(project_file_path);
+    if database_path.exists() {
+        return Err(PersistenceError::DatabaseAlreadyExists(
+            database_path.to_string_lossy().to_string(),
+        ));
+    }
 
     let temp_manifest_path = write_project_manifest_temp(project_file_path, manifest)?;
-    let database_path = sidecar_database_path(project_file_path);
-    let database_existed_before = database_path.exists();
 
     let mut connection = match open_database(&database_path) {
         Ok(connection) => connection,
@@ -91,25 +105,19 @@ pub fn create_project(
 
     if let Err(error) = apply_migrations(&mut connection) {
         cleanup_file_if_exists(&temp_manifest_path);
-        if !database_existed_before {
-            cleanup_file_if_exists(&database_path);
-        }
+        cleanup_file_if_exists(&database_path);
         return Err(error);
     }
 
     if let Err(error) = persist_project_snapshot(&mut connection, manifest) {
         cleanup_file_if_exists(&temp_manifest_path);
-        if !database_existed_before {
-            cleanup_file_if_exists(&database_path);
-        }
+        cleanup_file_if_exists(&database_path);
         return Err(error);
     }
 
     if let Err(error) = fs::rename(&temp_manifest_path, project_file_path) {
         cleanup_file_if_exists(&temp_manifest_path);
-        if !database_existed_before {
-            cleanup_file_if_exists(&database_path);
-        }
+        cleanup_file_if_exists(&database_path);
         return Err(PersistenceError::Io(error));
     }
 
@@ -391,5 +399,31 @@ mod tests {
 
         let error = schema_version(&missing_path).expect_err("missing database should fail");
         assert!(matches!(error, PersistenceError::DatabaseFileMissing(_)));
+    }
+
+    #[test]
+    fn create_project_fails_when_manifest_already_exists() {
+        let dir = tempdir().expect("tempdir");
+        let project_path = dir.path().join("campaign.atlantis-project.json");
+        fs::write(&project_path, b"existing project").expect("seed existing project file");
+
+        let error = create_project(&project_path, &fixture_manifest())
+            .expect_err("existing file should fail");
+        assert!(matches!(
+            error,
+            PersistenceError::ProjectFileAlreadyExists(_)
+        ));
+    }
+
+    #[test]
+    fn create_project_fails_when_database_already_exists() {
+        let dir = tempdir().expect("tempdir");
+        let project_path = dir.path().join("campaign.atlantis-project.json");
+        let database_path = sidecar_database_path(&project_path);
+        fs::write(&database_path, b"existing database").expect("seed existing db file");
+
+        let error = create_project(&project_path, &fixture_manifest())
+            .expect_err("existing db should fail");
+        assert!(matches!(error, PersistenceError::DatabaseAlreadyExists(_)));
     }
 }
