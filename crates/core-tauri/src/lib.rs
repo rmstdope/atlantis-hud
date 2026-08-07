@@ -2,11 +2,15 @@
 
 use std::path::Path;
 
-use atlantis_hud_core::{game_info, parse_report, ReportParseResult, WarningSeverity};
+use atlantis_hud_core::{
+    game_info, parse_report, validate_orders, OrderDiagnosticSeverity, ReportParseResult,
+    WarningSeverity,
+};
 use atlantis_hud_core_persistence::{
-    create_project, insert_imported_turn, open_project, preview_imported_turn,
-    upsert_imported_turn, ImportedTurnKey, ImportedTurnPreview, ImportedTurnRecord, OpenedProject,
-    PersistenceError, ProjectManifest, ProjectMetadata, ReportSourceRef,
+    create_project, insert_imported_turn, load_order_draft, open_project, preview_imported_turn,
+    upsert_imported_turn, upsert_order_draft, ImportedTurnKey, ImportedTurnPreview,
+    ImportedTurnRecord, OpenedProject, OrderDraftKey, OrderDraftRecord, PersistenceError,
+    ProjectManifest, ProjectMetadata, ReportSourceRef,
 };
 use serde::{Deserialize, Serialize};
 
@@ -135,6 +139,38 @@ pub struct ReportImportPreviewDto {
     pub parse_result: ReportParseResultDto,
     pub duplicate_preview: ImportedTurnPreviewDto,
     pub turn_number: Option<u32>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OrderDiagnosticDto {
+    pub code: String,
+    pub message: String,
+    pub line_start: usize,
+    pub line_end: usize,
+    pub severity: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OrderValidationResultDto {
+    pub diagnostics: Vec<OrderDiagnosticDto>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OrderDraftKeyDto {
+    pub project_id: String,
+    pub faction_id: String,
+    pub turn_number: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OrderDraftRecordDto {
+    pub key: OrderDraftKeyDto,
+    pub order_text: String,
+    pub updated_at: String,
 }
 
 impl From<atlantis_hud_core::GameInfo> for GameInfoDto {
@@ -432,6 +468,86 @@ pub fn command_commit_report_import(
     Ok(ImportedTurnPreviewDto::from(preview))
 }
 
+/// Validates one order draft for the Tauri command surface.
+#[must_use]
+pub fn command_validate_orders(raw_orders: &str) -> OrderValidationResultDto {
+    let result = validate_orders(raw_orders);
+    OrderValidationResultDto {
+        diagnostics: result
+            .diagnostics
+            .into_iter()
+            .map(|diagnostic| OrderDiagnosticDto {
+                code: diagnostic.code,
+                message: diagnostic.message,
+                line_start: diagnostic.line_start,
+                line_end: diagnostic.line_end,
+                severity: match diagnostic.severity {
+                    OrderDiagnosticSeverity::Warning => "warning".to_string(),
+                    OrderDiagnosticSeverity::Error => "error".to_string(),
+                },
+            })
+            .collect(),
+    }
+}
+
+/// Persists one order draft for the Tauri command surface.
+pub fn command_save_order_draft(
+    _database_path: &str,
+    project_id: &str,
+    faction_id: &str,
+    turn_number: u32,
+    order_text: &str,
+    updated_at: &str,
+) -> Result<OrderDraftRecordDto, String> {
+    let record = OrderDraftRecord {
+        key: OrderDraftKey {
+            project_id: project_id.to_string(),
+            faction_id: faction_id.to_string(),
+            turn_number,
+        },
+        order_text: order_text.to_string(),
+        updated_at: updated_at.to_string(),
+    };
+    upsert_order_draft(Path::new(_database_path), &record).map_err(|error| error.to_string())?;
+    Ok(OrderDraftRecordDto {
+        key: OrderDraftKeyDto {
+            project_id: record.key.project_id,
+            faction_id: record.key.faction_id,
+            turn_number: record.key.turn_number,
+        },
+        order_text: record.order_text,
+        updated_at: record.updated_at,
+    })
+}
+
+/// Loads one order draft for the Tauri command surface.
+pub fn command_load_order_draft(
+    _database_path: &str,
+    _project_id: &str,
+    _faction_id: &str,
+    _turn_number: u32,
+) -> Result<Option<OrderDraftRecordDto>, String> {
+    let loaded = load_order_draft(
+        Path::new(_database_path),
+        &OrderDraftKey {
+            project_id: _project_id.to_string(),
+            faction_id: _faction_id.to_string(),
+            turn_number: _turn_number,
+        },
+    )
+    .map_err(|error| error.to_string())?;
+
+    Ok(loaded.map(|record| OrderDraftRecordDto {
+        key: OrderDraftKeyDto {
+            project_id: record.key.project_id,
+            faction_id: record.key.faction_id,
+            turn_number: record.key.turn_number,
+        },
+        order_text: record.order_text,
+        updated_at: record.updated_at,
+    }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -517,5 +633,50 @@ MESSAGE: order | U100 | MOVE R2";
             command_commit_report_import(&created.database_path, "faction-12", "17", report, false)
                 .expect_err("duplicate without overwrite should fail");
         assert!(duplicate_error.contains("requires explicit overwrite confirmation"));
+    }
+
+    #[test]
+    fn tauri_adapter_validates_and_loads_order_drafts() {
+        let dir = tempdir().expect("tempdir");
+        let project_path = dir.path().join("campaign.atlantis-project.json");
+        let project_path_string = project_path.to_string_lossy().to_string();
+        let created = command_create_project(
+            &project_path_string,
+            ProjectManifestDto {
+                manifest_version: 1,
+                metadata: ProjectMetadataDto {
+                    project_id: "faction-12".to_string(),
+                    project_name: "Faction 12".to_string(),
+                },
+                report_sources: Vec::new(),
+            },
+        )
+        .expect("create project");
+
+        let validation = command_validate_orders("FLY 1 2");
+        assert_eq!(
+            validation.diagnostics,
+            vec![OrderDiagnosticDto {
+                code: "unknown-command".to_string(),
+                message: "unknown order command".to_string(),
+                line_start: 1,
+                line_end: 1,
+                severity: "error".to_string(),
+            }]
+        );
+
+        let saved = command_save_order_draft(
+            &created.database_path,
+            "faction-12",
+            "17",
+            12,
+            "MOVE U100 R2",
+            "2026-08-07T12:00:00Z",
+        )
+        .expect("save draft");
+        let loaded = command_load_order_draft(&created.database_path, "faction-12", "17", 12)
+            .expect("load draft");
+
+        assert_eq!(loaded, Some(saved));
     }
 }

@@ -17,9 +17,34 @@ const inMemoryImports = new Map<string, {
   parsedPayloadJson: string;
   warningsPayloadJson: string;
 }>();
+const inMemoryOrderDrafts = new Map<string, string>();
 
 function importKey(databasePath: string, projectId: string, factionId: string, turnNumber: number): string {
   return `${databasePath}::${projectId}::${factionId}::${turnNumber}`;
+}
+
+function draftKey(databasePath: string, projectId: string, factionId: string, turnNumber: number): string {
+  return `${databasePath}::${projectId}::${factionId}::${turnNumber}`;
+}
+
+function getDraftStorage() {
+  if (typeof window !== "undefined" && "localStorage" in window) {
+    return window.localStorage;
+  }
+
+  return {
+    getItem(key: string) {
+      return inMemoryOrderDrafts.get(key) ?? null;
+    },
+    setItem(key: string, value: string) {
+      inMemoryOrderDrafts.set(key, value);
+    }
+  };
+}
+
+function loadDraftPayload(key: string) {
+  const serialized = getDraftStorage().getItem(key);
+  return serialized ? (JSON.parse(serialized) as { key: unknown; order_text: string; updated_at: string }) : null;
 }
 
 function resolveWebDatabasePath(projectFilePath: string): string {
@@ -34,6 +59,74 @@ function resolveWebDatabasePath(projectFilePath: string): string {
   }
 
   return `memory://${stem}.sqlite`;
+}
+
+function validateOrderText(rawOrders: string) {
+  const diagnostics: Array<{
+    code: string;
+    message: string;
+    line_start: number;
+    line_end: number;
+    severity: "warning" | "error";
+  }> = [];
+
+  rawOrders.split(/\r?\n/u).forEach((line, index) => {
+    const lineNumber = index + 1;
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) {
+      return;
+    }
+
+    const tokens = trimmed.split(/\s+/u);
+    const command = tokens[0];
+    const args = tokens.slice(1);
+
+    if (command === "MOVE") {
+      if (args.length < 2) {
+        diagnostics.push({
+          code: "missing-arguments",
+          message: "missing required arguments for MOVE",
+          line_start: lineNumber,
+          line_end: lineNumber,
+          severity: "error"
+        });
+      } else if (args.length > 2) {
+        diagnostics.push({
+          code: "extra-arguments",
+          message: "extra arguments ignored for MOVE",
+          line_start: lineNumber,
+          line_end: lineNumber,
+          severity: "warning"
+        });
+      }
+      return;
+    }
+
+    if (command === "HOLD") {
+      if (args.length > 0) {
+        diagnostics.push({
+          code: "extra-arguments",
+          message: "extra arguments ignored for HOLD",
+          line_start: lineNumber,
+          line_end: lineNumber,
+          severity: "warning"
+        });
+      }
+      return;
+    }
+
+    diagnostics.push({
+      code: "unknown-command",
+      message: "unknown order command",
+      line_start: lineNumber,
+      line_end: lineNumber,
+      severity: "error"
+    });
+  });
+
+  return {
+    diagnostics
+  };
 }
 
 export function resolveCoreWasmBindings(): WasmBindings {
@@ -287,6 +380,57 @@ export function resolveCoreWasmBindings(): WasmBindings {
         raw_changed: previous ? previous.rawReport !== rawReport : false,
         parsed_changed: previous ? previous.parsedPayloadJson !== parsedPayloadJson : false,
         warnings_changed: previous ? previous.warningsPayloadJson !== warningsPayloadJson : false
+      };
+    },
+    validate_orders_state(rawOrders: string) {
+      return validateOrderText(rawOrders);
+    },
+    load_order_draft_state(databasePath: string, projectId: string, factionId: string, turnNumber: number) {
+      const draft = loadDraftPayload(draftKey(databasePath, projectId, factionId, turnNumber));
+      if (!draft) {
+        return null;
+      }
+
+      return {
+        key: {
+          project_id: projectId,
+          faction_id: factionId,
+          turn_number: turnNumber
+        },
+        order_text: draft.order_text,
+        updated_at: draft.updated_at
+      };
+    },
+    save_order_draft_state(
+      databasePath: string,
+      projectId: string,
+      factionId: string,
+      turnNumber: number,
+      orderText: string,
+      updatedAt: string
+    ) {
+      const storage = getDraftStorage();
+      storage.setItem(
+        draftKey(databasePath, projectId, factionId, turnNumber),
+        JSON.stringify({
+          key: {
+            project_id: projectId,
+            faction_id: factionId,
+            turn_number: turnNumber
+          },
+          order_text: orderText,
+          updated_at: updatedAt
+        })
+      );
+
+      return {
+        key: {
+          project_id: projectId,
+          faction_id: factionId,
+          turn_number: turnNumber
+        },
+        order_text: orderText,
+        updated_at: updatedAt
       };
     }
   };

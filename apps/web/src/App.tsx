@@ -1,5 +1,11 @@
 import { createCoreClient, createWasmAdapter, type GameInfo } from "@atlantis/core-client";
-import { ReportImportPanel, resolveFeatureFlags, RingBufferLogger, toJsonLines } from "@atlantis/shared";
+import {
+  OrderEditorPanel,
+  ReportImportPanel,
+  resolveFeatureFlags,
+  RingBufferLogger,
+  toJsonLines
+} from "@atlantis/shared";
 import { useEffect, useMemo, useState } from "react";
 import fileFlags from "../config/feature-flags.json";
 import { resolveCoreWasmBindings } from "./coreWasmBridge";
@@ -59,6 +65,7 @@ export default function App() {
       >
         Download logs
       </button>
+      <OrderEditorPanel client={client} />
       <ReportImportPanel client={client} />
     </main>
   );

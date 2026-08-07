@@ -8,17 +8,18 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 /// Current schema version expected by the persistence layer.
-pub const CURRENT_SCHEMA_VERSION: u32 = 2;
+pub const CURRENT_SCHEMA_VERSION: u32 = 3;
 const CURRENT_MANIFEST_VERSION: u32 = 1;
 const MIGRATION_0001_INITIAL: &str = include_str!("../migrations/0001_initial.sql");
 const MIGRATION_0002_IMPORTED_TURNS: &str = include_str!("../migrations/0002_imported_turns.sql");
+const MIGRATION_0003_ORDER_DRAFTS: &str = include_str!("../migrations/0003_order_drafts.sql");
 
 struct Migration {
     version: u32,
     sql: &'static str,
 }
 
-const MIGRATIONS: [Migration; 2] = [
+const MIGRATIONS: [Migration; 3] = [
     Migration {
         version: 1,
         sql: MIGRATION_0001_INITIAL,
@@ -26,6 +27,10 @@ const MIGRATIONS: [Migration; 2] = [
     Migration {
         version: 2,
         sql: MIGRATION_0002_IMPORTED_TURNS,
+    },
+    Migration {
+        version: 3,
+        sql: MIGRATION_0003_ORDER_DRAFTS,
     },
 ];
 
@@ -87,6 +92,22 @@ pub struct ImportedTurnPreview {
     pub raw_changed: bool,
     pub parsed_changed: bool,
     pub warnings_changed: bool,
+}
+
+/// Unique key for one persisted order draft.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OrderDraftKey {
+    pub project_id: String,
+    pub faction_id: String,
+    pub turn_number: u32,
+}
+
+/// Persisted order draft payload.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OrderDraftRecord {
+    pub key: OrderDraftKey,
+    pub order_text: String,
+    pub updated_at: String,
 }
 
 #[derive(Debug, Error)]
@@ -508,6 +529,76 @@ fn load_imported_turn_from_connection(
         .map_err(PersistenceError::from)
 }
 
+/// Inserts or updates one persisted order draft.
+pub fn upsert_order_draft(
+    database_path: &Path,
+    record: &OrderDraftRecord,
+) -> Result<(), PersistenceError> {
+    if !database_path.exists() {
+        return Err(PersistenceError::DatabaseFileMissing(
+            database_path.to_string_lossy().to_string(),
+        ));
+    }
+
+    let mut connection = open_database(database_path)?;
+    apply_migrations(&mut connection)?;
+    connection.execute(
+        "INSERT INTO order_drafts (
+            project_id,
+            faction_id,
+            turn_number,
+            order_text,
+            updated_at
+         ) VALUES (?1, ?2, ?3, ?4, ?5)
+         ON CONFLICT(project_id, faction_id, turn_number) DO UPDATE SET
+            order_text = excluded.order_text,
+            updated_at = excluded.updated_at",
+        params![
+            record.key.project_id.as_str(),
+            record.key.faction_id.as_str(),
+            record.key.turn_number,
+            record.order_text.as_str(),
+            record.updated_at.as_str(),
+        ],
+    )?;
+    Ok(())
+}
+
+/// Loads one persisted order draft by composite key.
+pub fn load_order_draft(
+    database_path: &Path,
+    key: &OrderDraftKey,
+) -> Result<Option<OrderDraftRecord>, PersistenceError> {
+    if !database_path.exists() {
+        return Err(PersistenceError::DatabaseFileMissing(
+            database_path.to_string_lossy().to_string(),
+        ));
+    }
+
+    let mut connection = open_database(database_path)?;
+    apply_migrations(&mut connection)?;
+    connection
+        .query_row(
+            "SELECT project_id, faction_id, turn_number, order_text, updated_at
+                FROM order_drafts
+                WHERE project_id = ?1 AND faction_id = ?2 AND turn_number = ?3",
+            params![key.project_id.as_str(), key.faction_id.as_str(), key.turn_number],
+            |row| {
+                Ok(OrderDraftRecord {
+                    key: OrderDraftKey {
+                        project_id: row.get::<_, String>(0)?,
+                        faction_id: row.get::<_, String>(1)?,
+                        turn_number: row.get::<_, u32>(2)?,
+                    },
+                    order_text: row.get::<_, String>(3)?,
+                    updated_at: row.get::<_, String>(4)?,
+                })
+            },
+        )
+        .optional()
+        .map_err(PersistenceError::from)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -722,5 +813,41 @@ mod tests {
             duplicate_error,
             PersistenceError::DuplicateImportedTurn { .. }
         ));
+    }
+
+    #[test]
+    fn order_draft_round_trips_through_persistence() {
+        let dir = tempdir().expect("tempdir");
+        let project_path = dir.path().join("campaign.atlantis-project.json");
+        let manifest = fixture_manifest();
+        let created =
+            create_project(&project_path, &manifest).expect("project creation should succeed");
+
+        let draft = OrderDraftRecord {
+            key: OrderDraftKey {
+                project_id: manifest.metadata.project_id.clone(),
+                faction_id: "17".to_string(),
+                turn_number: 12,
+            },
+            order_text: "MOVE U100 R2".to_string(),
+            updated_at: "2026-08-07T12:00:00Z".to_string(),
+        };
+
+        upsert_order_draft(&created.database_path, &draft).expect("draft should persist");
+        let loaded = load_order_draft(&created.database_path, &draft.key).expect("draft should load");
+
+        assert_eq!(loaded, Some(draft));
+    }
+
+    #[test]
+    fn order_draft_schema_version_is_bumped() {
+        let dir = tempdir().expect("tempdir");
+        let project_path = dir.path().join("campaign.atlantis-project.json");
+        let manifest = fixture_manifest();
+
+        let created =
+            create_project(&project_path, &manifest).expect("project creation should succeed");
+
+        assert_eq!(created.schema_version, 3);
     }
 }
