@@ -3,24 +3,31 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{params, Connection, ErrorCode, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 /// Current schema version expected by the persistence layer.
-pub const CURRENT_SCHEMA_VERSION: u32 = 1;
+pub const CURRENT_SCHEMA_VERSION: u32 = 2;
 const CURRENT_MANIFEST_VERSION: u32 = 1;
 const MIGRATION_0001_INITIAL: &str = include_str!("../migrations/0001_initial.sql");
+const MIGRATION_0002_IMPORTED_TURNS: &str = include_str!("../migrations/0002_imported_turns.sql");
 
 struct Migration {
     version: u32,
     sql: &'static str,
 }
 
-const MIGRATIONS: [Migration; 1] = [Migration {
-    version: 1,
-    sql: MIGRATION_0001_INITIAL,
-}];
+const MIGRATIONS: [Migration; 2] = [
+    Migration {
+        version: 1,
+        sql: MIGRATION_0001_INITIAL,
+    },
+    Migration {
+        version: 2,
+        sql: MIGRATION_0002_IMPORTED_TURNS,
+    },
+];
 
 /// Project metadata stored in project manifest and database.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -56,6 +63,32 @@ pub struct OpenedProject {
     pub manifest: ProjectManifest,
 }
 
+/// Unique key for one imported turn in a project.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ImportedTurnKey {
+    pub project_id: String,
+    pub faction_id: String,
+    pub turn_number: u32,
+}
+
+/// Persisted imported turn payload.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ImportedTurnRecord {
+    pub key: ImportedTurnKey,
+    pub raw_report: String,
+    pub parsed_payload_json: String,
+    pub warnings_payload_json: String,
+}
+
+/// Import conflict preview for duplicate imports.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ImportedTurnPreview {
+    pub exists: bool,
+    pub raw_changed: bool,
+    pub parsed_changed: bool,
+    pub warnings_changed: bool,
+}
+
 #[derive(Debug, Error)]
 pub enum PersistenceError {
     #[error("database error: {0}")]
@@ -72,6 +105,14 @@ pub enum PersistenceError {
     ProjectFileAlreadyExists(String),
     #[error("database file already exists: {0}")]
     DatabaseAlreadyExists(String),
+    #[error(
+        "imported turn already exists for project {project_id}, faction {faction_id}, turn {turn_number}"
+    )]
+    DuplicateImportedTurn {
+        project_id: String,
+        faction_id: String,
+        turn_number: u32,
+    },
 }
 
 /// Creates a new project file and initializes sidecar SQLite storage.
@@ -157,6 +198,140 @@ pub fn schema_version(database_path: &Path) -> Result<u32, PersistenceError> {
 
     let connection = Connection::open(database_path)?;
     current_schema_version_read_only(&connection)
+}
+
+/// Compares an incoming turn import against an existing row.
+pub fn preview_imported_turn(
+    database_path: &Path,
+    candidate: &ImportedTurnRecord,
+) -> Result<ImportedTurnPreview, PersistenceError> {
+    if !database_path.exists() {
+        return Err(PersistenceError::DatabaseFileMissing(
+            database_path.to_string_lossy().to_string(),
+        ));
+    }
+
+    let mut connection = open_database(database_path)?;
+    apply_migrations(&mut connection)?;
+    let existing = load_imported_turn_from_connection(&connection, &candidate.key)?;
+    let Some(existing_record) = existing else {
+        return Ok(ImportedTurnPreview {
+            exists: false,
+            raw_changed: false,
+            parsed_changed: false,
+            warnings_changed: false,
+        });
+    };
+
+    Ok(ImportedTurnPreview {
+        exists: true,
+        raw_changed: existing_record.raw_report != candidate.raw_report,
+        parsed_changed: existing_record.parsed_payload_json != candidate.parsed_payload_json,
+        warnings_changed: existing_record.warnings_payload_json != candidate.warnings_payload_json,
+    })
+}
+
+/// Inserts or updates one imported turn payload.
+pub fn upsert_imported_turn(
+    database_path: &Path,
+    record: &ImportedTurnRecord,
+) -> Result<(), PersistenceError> {
+    if !database_path.exists() {
+        return Err(PersistenceError::DatabaseFileMissing(
+            database_path.to_string_lossy().to_string(),
+        ));
+    }
+
+    let mut connection = open_database(database_path)?;
+    apply_migrations(&mut connection)?;
+    connection.execute(
+        "INSERT INTO imported_turns (
+            project_id,
+            faction_id,
+            turn_number,
+            raw_report,
+            parsed_payload_json,
+            warnings_payload_json,
+            updated_at
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, CURRENT_TIMESTAMP)
+         ON CONFLICT(project_id, faction_id, turn_number) DO UPDATE SET
+            raw_report = excluded.raw_report,
+            parsed_payload_json = excluded.parsed_payload_json,
+            warnings_payload_json = excluded.warnings_payload_json,
+            updated_at = CURRENT_TIMESTAMP",
+        params![
+            record.key.project_id.as_str(),
+            record.key.faction_id.as_str(),
+            record.key.turn_number,
+            record.raw_report.as_str(),
+            record.parsed_payload_json.as_str(),
+            record.warnings_payload_json.as_str(),
+        ],
+    )?;
+    Ok(())
+}
+
+/// Inserts one imported turn payload and fails if the key already exists.
+pub fn insert_imported_turn(
+    database_path: &Path,
+    record: &ImportedTurnRecord,
+) -> Result<(), PersistenceError> {
+    if !database_path.exists() {
+        return Err(PersistenceError::DatabaseFileMissing(
+            database_path.to_string_lossy().to_string(),
+        ));
+    }
+
+    let mut connection = open_database(database_path)?;
+    apply_migrations(&mut connection)?;
+    let insert_result = connection.execute(
+        "INSERT INTO imported_turns (
+            project_id,
+            faction_id,
+            turn_number,
+            raw_report,
+            parsed_payload_json,
+            warnings_payload_json,
+            updated_at
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, CURRENT_TIMESTAMP)",
+        params![
+            record.key.project_id.as_str(),
+            record.key.faction_id.as_str(),
+            record.key.turn_number,
+            record.raw_report.as_str(),
+            record.parsed_payload_json.as_str(),
+            record.warnings_payload_json.as_str(),
+        ],
+    );
+    match insert_result {
+        Ok(_) => Ok(()),
+        Err(rusqlite::Error::SqliteFailure(error, _))
+            if matches!(error.code, ErrorCode::ConstraintViolation) =>
+        {
+            Err(PersistenceError::DuplicateImportedTurn {
+                project_id: record.key.project_id.clone(),
+                faction_id: record.key.faction_id.clone(),
+                turn_number: record.key.turn_number,
+            })
+        }
+        Err(error) => Err(PersistenceError::Database(error)),
+    }
+}
+
+/// Loads one imported turn by composite key.
+pub fn load_imported_turn(
+    database_path: &Path,
+    key: &ImportedTurnKey,
+) -> Result<Option<ImportedTurnRecord>, PersistenceError> {
+    if !database_path.exists() {
+        return Err(PersistenceError::DatabaseFileMissing(
+            database_path.to_string_lossy().to_string(),
+        ));
+    }
+
+    let mut connection = open_database(database_path)?;
+    apply_migrations(&mut connection)?;
+    load_imported_turn_from_connection(&connection, key)
 }
 
 fn ensure_supported_manifest_version(version: u32) -> Result<(), PersistenceError> {
@@ -306,6 +481,33 @@ fn cleanup_file_if_exists(path: &Path) {
     }
 }
 
+fn load_imported_turn_from_connection(
+    connection: &Connection,
+    key: &ImportedTurnKey,
+) -> Result<Option<ImportedTurnRecord>, PersistenceError> {
+    connection
+        .query_row(
+            "SELECT project_id, faction_id, turn_number, raw_report, parsed_payload_json, warnings_payload_json
+                FROM imported_turns
+                WHERE project_id = ?1 AND faction_id = ?2 AND turn_number = ?3",
+            params![key.project_id.as_str(), key.faction_id.as_str(), key.turn_number],
+            |row| {
+                Ok(ImportedTurnRecord {
+                    key: ImportedTurnKey {
+                        project_id: row.get::<_, String>(0)?,
+                        faction_id: row.get::<_, String>(1)?,
+                        turn_number: row.get::<_, u32>(2)?,
+                    },
+                    raw_report: row.get::<_, String>(3)?,
+                    parsed_payload_json: row.get::<_, String>(4)?,
+                    warnings_payload_json: row.get::<_, String>(5)?,
+                })
+            },
+        )
+        .optional()
+        .map_err(PersistenceError::from)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -425,5 +627,100 @@ mod tests {
         let error = create_project(&project_path, &fixture_manifest())
             .expect_err("existing db should fail");
         assert!(matches!(error, PersistenceError::DatabaseAlreadyExists(_)));
+    }
+
+    #[test]
+    fn imported_turn_can_be_inserted_and_loaded() {
+        let dir = tempdir().expect("tempdir");
+        let project_path = dir.path().join("campaign.atlantis-project.json");
+        let manifest = fixture_manifest();
+        let created =
+            create_project(&project_path, &manifest).expect("project creation should succeed");
+
+        let record = ImportedTurnRecord {
+            key: ImportedTurnKey {
+                project_id: manifest.metadata.project_id.clone(),
+                faction_id: "17".to_string(),
+                turn_number: 12,
+            },
+            raw_report: "TURN: 12 Spring".to_string(),
+            parsed_payload_json: "{\"turn\":12}".to_string(),
+            warnings_payload_json: "[]".to_string(),
+        };
+
+        upsert_imported_turn(&created.database_path, &record).expect("import should persist");
+        let loaded =
+            load_imported_turn(&created.database_path, &record.key).expect("load should succeed");
+
+        assert_eq!(loaded, Some(record));
+    }
+
+    #[test]
+    fn imported_turn_preview_reports_diff_for_duplicate() {
+        let dir = tempdir().expect("tempdir");
+        let project_path = dir.path().join("campaign.atlantis-project.json");
+        let manifest = fixture_manifest();
+        let created =
+            create_project(&project_path, &manifest).expect("project creation should succeed");
+
+        let key = ImportedTurnKey {
+            project_id: manifest.metadata.project_id.clone(),
+            faction_id: "17".to_string(),
+            turn_number: 12,
+        };
+        let original = ImportedTurnRecord {
+            key: key.clone(),
+            raw_report: "TURN: 12 Spring".to_string(),
+            parsed_payload_json: "{\"turn\":12,\"regions\":1}".to_string(),
+            warnings_payload_json: "[]".to_string(),
+        };
+        upsert_imported_turn(&created.database_path, &original).expect("seed import");
+
+        let candidate = ImportedTurnRecord {
+            key,
+            raw_report: "TURN: 12 Spring -- updated".to_string(),
+            parsed_payload_json: "{\"turn\":12,\"regions\":2}".to_string(),
+            warnings_payload_json: "[{\"code\":\"unit-malformed-line\"}]".to_string(),
+        };
+        let preview = preview_imported_turn(&created.database_path, &candidate)
+            .expect("preview should succeed");
+
+        assert_eq!(
+            preview,
+            ImportedTurnPreview {
+                exists: true,
+                raw_changed: true,
+                parsed_changed: true,
+                warnings_changed: true,
+            }
+        );
+    }
+
+    #[test]
+    fn insert_imported_turn_fails_for_duplicate_key() {
+        let dir = tempdir().expect("tempdir");
+        let project_path = dir.path().join("campaign.atlantis-project.json");
+        let manifest = fixture_manifest();
+        let created =
+            create_project(&project_path, &manifest).expect("project creation should succeed");
+
+        let record = ImportedTurnRecord {
+            key: ImportedTurnKey {
+                project_id: manifest.metadata.project_id.clone(),
+                faction_id: "17".to_string(),
+                turn_number: 12,
+            },
+            raw_report: "TURN: 12 Spring".to_string(),
+            parsed_payload_json: "{\"turn\":12}".to_string(),
+            warnings_payload_json: "[]".to_string(),
+        };
+
+        insert_imported_turn(&created.database_path, &record).expect("first insert should succeed");
+        let duplicate_error = insert_imported_turn(&created.database_path, &record)
+            .expect_err("duplicate insert should fail");
+        assert!(matches!(
+            duplicate_error,
+            PersistenceError::DuplicateImportedTurn { .. }
+        ));
     }
 }

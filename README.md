@@ -17,6 +17,19 @@ Issue #3 adds:
 - `crates/core-tauri` (desktop command adapter via Tauri)
 - `packages/core-client` (shared TypeScript client abstraction for both adapters)
 
+Issue #4 adds:
+
+- `crates/core-persistence` (SQLite persistence layer with schema migrations and project file format)
+
+Issue #5 adds:
+
+- Tolerant Atlantis report parser in `crates/core` (TURN/FACTION/REGION/UNIT/ITEM/MESSAGE sections, structured warnings, partial-result contract)
+- Import persistence in `crates/core-persistence` (migration 0002, `imported_turns` table with composite key, duplicate-safe insert)
+- Parse/preview-import/commit-import commands through both Tauri and WASM adapters
+- Extended `packages/core-client` with all report domain types and normalizers
+- `ReportImportPanel` shared React component in `packages/shared` (drag-drop + file picker, faction confirmation, duplicate overwrite confirmation)
+- Import panel integrated in `apps/web` and `apps/desktop`
+
 ## Commands
 
 - `pnpm run lint`

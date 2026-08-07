@@ -1,6 +1,6 @@
 import { createCoreClient, createTauriAdapter, type GameInfo } from "@atlantis/core-client";
-import { resolveFeatureFlags, RingBufferLogger, toJsonLines } from "@atlantis/shared";
-import { useEffect, useState } from "react";
+import { ReportImportPanel, resolveFeatureFlags, RingBufferLogger, toJsonLines } from "@atlantis/shared";
+import { useEffect, useMemo, useState } from "react";
 import fileFlags from "../config/feature-flags.json";
 import { tauriInvokeBridge } from "./tauriInvokeBridge";
 
@@ -21,10 +21,12 @@ export default function App() {
   const [gameInfo, setGameInfo] = useState<GameInfo | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const flags = resolveFeatureFlags(fileFlags, import.meta.env as Record<string, unknown>);
+  const client = useMemo(
+    () => createCoreClient(createTauriAdapter(tauriInvokeBridge)),
+    []
+  );
 
   useEffect(() => {
-    const client = createCoreClient(createTauriAdapter(tauriInvokeBridge));
-
     client
       .getGameInfo()
       .then((metadata) => {
@@ -34,7 +36,7 @@ export default function App() {
         const message = error instanceof Error ? error.message : "unknown game metadata error";
         setLoadError(message);
       });
-  }, []);
+  }, [client]);
 
   return (
     <main>
@@ -57,6 +59,7 @@ export default function App() {
       >
         Export logs
       </button>
+      <ReportImportPanel client={client} />
     </main>
   );
 }
