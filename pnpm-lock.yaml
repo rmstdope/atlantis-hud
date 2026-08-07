@@ -38,6 +38,34 @@ importers:
 
   apps/desktop:
     dependencies:
+      '@atlantis/core-client':
+        specifier: workspace:*
+        version: link:../../packages/core-client
+      '@atlantis/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
+      '@tauri-apps/api':
+        specifier: ^2.0.0
+        version: 2.11.1
+      react:
+        specifier: ^19.1.1
+        version: 19.2.8
+      react-dom:
+        specifier: ^19.1.1
+        version: 19.2.8(react@19.2.8)
+    devDependencies:
+      '@vitejs/plugin-react':
+        specifier: ^5.0.2
+        version: 5.2.0(vite@7.3.6)
+      vite:
+        specifier: ^7.1.1
+        version: 7.3.6
+
+  apps/web:
+    dependencies:
+      '@atlantis/core-client':
+        specifier: workspace:*
+        version: link:../../packages/core-client
       '@atlantis/shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -55,24 +83,7 @@ importers:
         specifier: ^7.1.1
         version: 7.3.6
 
-  apps/web:
-    dependencies:
-      '@atlantis/shared':
-        specifier: workspace:*
-        version: link:../../packages/shared
-      react:
-        specifier: ^19.1.1
-        version: 19.2.8
-      react-dom:
-        specifier: ^19.1.1
-        version: 19.2.8(react@19.2.8)
-    devDependencies:
-      '@vitejs/plugin-react':
-        specifier: ^5.0.2
-        version: 5.2.0(vite@7.3.6)
-      vite:
-        specifier: ^7.1.1
-        version: 7.3.6
+  packages/core-client: {}
 
   packages/shared: {}
 
@@ -529,6 +540,9 @@ packages:
     resolution: {integrity: sha512-zD6NdeWEByGE9QF9vCrlJ5YQB4oq9q91kPZS37Jwj5hOkvR1lTBSpsKhKDw4IJtbQ35LsTS1HD9DZYGKIshU1Q==}
     cpu: [x64]
     os: [win32]
+
+  '@tauri-apps/api@2.11.1':
+    resolution: {integrity: sha512-M2FPuYND2m+wh5hfW9ZpSdxMPdEJovPBWwoHJmwUpysTYNHaOkVFN419m/K0LIgjb/7KU2vBgsUepJWugQCvAA==}
 
   '@types/babel__core@7.20.5':
     resolution: {integrity: sha512-qoQprZvz5wQFJwMDqeseRXWv3rqMvhgpbXFfVyWhbx9X47POIA6i/+dXefEmZKoAgOaTdaIgNSMqMIU61yRyzA==}
@@ -1623,6 +1637,8 @@ snapshots:
 
   '@rollup/rollup-win32-x64-msvc@4.62.4':
     optional: true
+
+  '@tauri-apps/api@2.11.1': {}
 
   '@types/babel__core@7.20.5':
     dependencies:

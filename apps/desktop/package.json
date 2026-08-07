@@ -13,7 +13,9 @@
     "logs:export": "node scripts/export-logs.mjs"
   },
   "dependencies": {
+    "@atlantis/core-client": "workspace:*",
     "@atlantis/shared": "workspace:*",
+    "@tauri-apps/api": "^2.0.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1"
   },

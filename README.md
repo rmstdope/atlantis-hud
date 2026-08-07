@@ -11,6 +11,12 @@ Issue #2 foundation introduces:
 - `packages/shared` (shared TypeScript primitives)
 - `crates/core` (shared Rust core placeholder)
 
+Issue #3 adds:
+
+- `crates/core-wasm` (WASM adapter via `wasm-bindgen`)
+- `crates/core-tauri` (desktop command adapter via Tauri)
+- `packages/core-client` (shared TypeScript client abstraction for both adapters)
+
 ## Commands
 
 - `pnpm run lint`

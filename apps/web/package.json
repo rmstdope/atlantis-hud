@@ -12,6 +12,7 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@atlantis/core-client": "workspace:*",
     "@atlantis/shared": "workspace:*",
     "react": "^19.1.1",
     "react-dom": "^19.1.1"
