@@ -16,13 +16,10 @@
         "width": 1200,
         "height": 800
       }
-    ],
-    "security": {
-      "csp": null
-    }
+    ]
   },
   "bundle": {
     "active": false,
-    "icon": []
+    "icon": ["icons/icon.ico"]
   }
 }
