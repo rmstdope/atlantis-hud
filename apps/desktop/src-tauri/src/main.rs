@@ -20,7 +20,11 @@ fn get_game_info() -> GameInfoDto {
 fn main() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![get_game_info])
-        .run(tauri::generate_context!())
+        .run(tauri::generate_context!(
+            "tauri.conf.json",
+            crate,
+            test = true
+        ))
         .expect("error while running atlantis-hud desktop shell");
 }
 

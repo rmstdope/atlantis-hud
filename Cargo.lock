@@ -83,7 +83,6 @@ version = "0.1.0"
 dependencies = [
  "atlantis-hud-core-tauri",
  "tauri",
- "tauri-build",
 ]
 
 [[package]]
