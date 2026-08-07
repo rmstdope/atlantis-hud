@@ -91,24 +91,8 @@ pub fn validate_orders(source: &str) -> OrderValidationResult {
         let args = &tokens[1..];
 
         match command {
-            "MOVE" => validate_command(
-                &mut diagnostics,
-                command,
-                args,
-                line_number,
-                2,
-                2,
-                true,
-            ),
-            "HOLD" => validate_command(
-                &mut diagnostics,
-                command,
-                args,
-                line_number,
-                0,
-                0,
-                false,
-            ),
+            "MOVE" => validate_command(&mut diagnostics, command, args, line_number, 2, 2, true),
+            "HOLD" => validate_command(&mut diagnostics, command, args, line_number, 0, 0, false),
             _ => diagnostics.push(OrderDiagnostic {
                 code: "unknown-command".to_string(),
                 message: "unknown order command".to_string(),
