@@ -1,7 +1,13 @@
 import type { CoreClient, ParsedReport } from "@atlantis/core-client";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { buildHexMapModel, unitsForHex, type HexMapModel } from "../hexMapModel";
+import {
+  buildHexMapModel,
+  unitsForHex,
+  type HexMapModel,
+  type StoredRegion
+} from "../hexMapModel";
 import { readUnitOrders, writeUnitOrders } from "../ordersDocument";
+import { rememberTurn } from "../projectMemory";
 import { useWorkspaceStore } from "../workspaceStore";
 import { AppHeader, type ImportStatus } from "./AppHeader";
 import { LayerChips } from "./LayerChips";
@@ -53,6 +59,9 @@ export function AppShell({
   platformLabel: string;
 }) {
   const [parsed, setParsed] = useState<ParsedReport | null>(null);
+  // Everywhere the faction has ever been, not just this turn. Without it the map stops at the
+  // fringe of the current report and no route can be longer than one step.
+  const [remembered, setRemembered] = useState<StoredRegion[]>([]);
   const [ordersDocument, setOrdersDocument] = useState("");
   const [status, setStatus] = useState<ImportStatus | null>(null);
   const [busy, setBusy] = useState(false);
@@ -65,7 +74,10 @@ export function AppShell({
   const level = useWorkspaceStore((state) => state.level);
   const layers = useWorkspaceStore((state) => state.layers);
 
-  const model = useMemo(() => (parsed ? buildHexMapModel(parsed) : EMPTY), [parsed]);
+  const model = useMemo(
+    () => (parsed ? buildHexMapModel(parsed, remembered) : EMPTY),
+    [parsed, remembered]
+  );
 
   /**
    * Selects a hex together with the first unit standing in it.
@@ -100,12 +112,20 @@ export function AppShell({
         setOrdersDocument(report.ordersTemplate?.text ?? "");
         setSavedAt(null);
 
+        // Commit the turn to the faction's project and read back every region it has ever seen.
+        // A report on its own describes the hexes the faction stood in and names their neighbours,
+        // but not *their* neighbours - so without this the map stops at the fringe and no route can
+        // be longer than one step. Failing to remember is a warning, never a reason to withhold a
+        // report that parsed perfectly well.
+        const memory = await rememberTurn(client, report, text);
+        setRemembered(memory.remembered);
+
         const unitCount = report.regions.reduce((total, region) => total + region.units.length, 0);
         setStatus({
           regionCount: report.regions.length,
           unitCount,
           errorCount: report.header.errors.length,
-          message: null,
+          message: memory.warning,
           failed: false
         });
 

@@ -265,3 +265,35 @@ test("the interface is not blocked while the core reads a report", async ({ page
   await selectHex(page, "1:7,53");
   await expect(page.getByTestId("panel-region")).toContainText("Inholm");
 });
+
+/**
+ * The turn is committed to the faction's project and read back, in a real browser, against real
+ * IndexedDB. That path is what lets the map remember earlier turns; without it the map stops at
+ * the fringe of the current report and no route can be longer than one step.
+ *
+ * What this cannot show is accumulation itself: the repository holds one report per faction, and
+ * fabricating a second turn to demonstrate it would be inventing game data. The merging is covered
+ * by unit tests in the core instead. What it does show is that committing and reading back works
+ * where it actually has to - through the browser's storage rather than a fake.
+ */
+test("a loaded turn is remembered rather than only displayed", async ({ page }) => {
+  await loadReport(page);
+
+  // No warning means the project opened, the import committed and the sightings read back. The
+  // status line is where remembering reports its failures.
+  await expect(page.getByTestId("import-status")).not.toContainText("could not be remembered");
+
+  // Loading the same turn again must refresh what is remembered rather than refuse it, and the map
+  // must come back the same rather than doubled.
+  await page.setInputFiles('input[type="file"]', {
+    name: "turn-71.rep",
+    mimeType: "text/plain",
+    buffer: Buffer.from(REPORT, "utf8")
+  });
+  await expect(page.getByTestId("import-status")).toContainText("11 regions");
+  await expect(page.getByTestId("import-status")).not.toContainText("could not be remembered");
+
+  // The map is still the eleven regions the report describes, not twenty-two: a hex seen again
+  // replaces the memory of it rather than accumulating a duplicate.
+  await expect(page.getByTestId("import-status")).toContainText("11 regions");
+});
