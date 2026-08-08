@@ -1,5 +1,6 @@
 export * from "./featureFlags";
 export * from "./logging";
+export * from "./hexMapModel";
 export * from "./mapData";
 export * from "./MapWorkspacePanel";
 export * from "./ReportImportPanel";

@@ -66,7 +66,7 @@ Collapse all four panels and the map opens to the full window, each panel leavin
 ## The chosen layout on real data
 
 Drawn from a real NewOrigins turn 71 report: Borg TNG (95), December Year 6, 4,028 lines,
-11 regions in this turn's report, 45 more known by name, 63 units in the selected hex.
+11 regions in this turn's report, 45 more known by name, 92 units in the selected hex.
 
 ![Variant 04 on turn 71, own unit selected](mockups/turn71-01-expanded.png)
 
@@ -106,8 +106,10 @@ changed the implementation plan:
 - **The map has four states**, not two: current, previously visited (data held but possibly stale),
   known by name only (from another region's `Exits` block), and unexplored. Staleness makes region
   records turn-versioned, so persistence needs a per-region last-seen turn.
-- **Regions can be large.** One region in the turn 71 report holds 63 units across 24 structures, so
-  the unit table needs virtualising and the side panels need summarise-then-expand.
+- **Regions can be large.** One region in the turn 71 report holds 92 units across 24 structures,
+  74 of them inside those structures, so the unit table needs virtualising and the side panels need
+  summarise-then-expand. (The mockups say 63, a figure asserted before anyone counted; the parser
+  in #19 counts 92 and asserts it in tests.)
 
 ## Caveats
 
