@@ -4,8 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
+    "build:wasm": "pnpm --filter @atlantis/browser-core build:wasm",
+    "dev": "pnpm run build:wasm && vite",
+    "build": "pnpm run build:wasm && vite build",
     "preview": "vite preview",
     "lint": "eslint src --max-warnings=0",
     "typecheck": "tsc --noEmit -p tsconfig.json",
@@ -15,7 +16,8 @@
     "@atlantis/core-client": "workspace:*",
     "@atlantis/shared": "workspace:*",
     "react": "^19.1.1",
-    "react-dom": "^19.1.1"
+    "react-dom": "^19.1.1",
+    "@atlantis/browser-core": "workspace:*"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^5.0.2",

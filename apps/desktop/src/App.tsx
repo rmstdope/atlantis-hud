@@ -1,4 +1,4 @@
-import { createCoreClient, createTauriAdapter, type GameInfo } from "@atlantis/core-client";
+import type { CoreClient, GameInfo } from "@atlantis/core-client";
 import {
   MapWorkspacePanel,
   OrderEditorPanel,
@@ -7,9 +7,8 @@ import {
   RingBufferLogger,
   toJsonLines
 } from "@atlantis/shared";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import fileFlags from "../config/feature-flags.json";
-import { tauriInvokeBridge } from "./tauriInvokeBridge";
 
 const logger = new RingBufferLogger("desktop");
 logger.write("info", "desktop app initialized");
@@ -24,14 +23,14 @@ function downloadLogs() {
   setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
-export default function App() {
+type AppProps = {
+  client: CoreClient;
+};
+
+export default function App({ client }: AppProps) {
   const [gameInfo, setGameInfo] = useState<GameInfo | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const flags = resolveFeatureFlags(fileFlags, import.meta.env as Record<string, unknown>);
-  const client = useMemo(
-    () => createCoreClient(createTauriAdapter(tauriInvokeBridge)),
-    []
-  );
 
   useEffect(() => {
     client

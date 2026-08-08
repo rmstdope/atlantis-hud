@@ -3,15 +3,36 @@
 #[cfg(not(target_arch = "wasm32"))]
 use std::path::Path;
 
-use atlantis_hud_core::{game_info, parse_report, ReportParseResult};
+use atlantis_hud_core::{
+    diff_imported_turn, game_info, parse_report, reject_import, validate_orders,
+    ImportedTurnSnapshot, OrderDiagnosticSeverity, OrderValidationResult, ReportParseResult,
+};
 #[cfg(not(target_arch = "wasm32"))]
 use atlantis_hud_core_persistence::{
-    create_project, insert_imported_turn, load_imported_turn, open_project, preview_imported_turn,
-    upsert_imported_turn, ImportedTurnKey, ImportedTurnPreview, ImportedTurnRecord, OpenedProject,
+    create_project, insert_imported_turn, load_imported_turn, load_order_draft, open_project,
+    preview_imported_turn, upsert_imported_turn, upsert_order_draft, ImportedTurnKey,
+    ImportedTurnPreview, ImportedTurnRecord, OpenedProject, OrderDraftKey, OrderDraftRecord,
     PersistenceError, ProjectManifest, ProjectMetadata, ReportSourceRef,
 };
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
+
+/// Converts a value into a plain JavaScript object.
+///
+/// Two defaults have to be overridden for TypeScript to read what Rust writes.
+///
+/// `serde_wasm_bindgen::to_value` emits a JS `Map` for anything map-shaped, and `#[serde(flatten)]`
+/// makes a struct map-shaped; a `Map` does not answer property access, so every field would read
+/// as `undefined`. It also emits `undefined` for `Option::None`, which fails the `=== null` checks
+/// the TypeScript side writes against its own `T | null` types. Always go through this.
+fn to_js<T: Serialize + ?Sized>(value: &T) -> Result<JsValue, JsValue> {
+    let serializer = serde_wasm_bindgen::Serializer::new()
+        .serialize_maps_as_objects(true)
+        .serialize_missing_as_null(true);
+    value
+        .serialize(&serializer)
+        .map_err(|error| JsValue::from_str(&error.to_string()))
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -20,6 +41,87 @@ struct GameInfoDto {
     name: String,
     ruleset_version: String,
     max_faction_count: u16,
+}
+
+/// Everything the browser storage adapter needs to persist one import.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PreparedImportDto {
+    turn_number: Option<u32>,
+    candidate: ImportedTurnSnapshot,
+    parse_result: ReportParseResultDto,
+    /// `None` when the report may be imported; otherwise why it may not be.
+    rejection: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct OrderDiagnosticDto {
+    code: String,
+    message: String,
+    line_start: usize,
+    line_end: usize,
+    severity: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct OrderValidationResultDto {
+    diagnostics: Vec<OrderDiagnosticDto>,
+}
+
+impl From<OrderValidationResult> for OrderValidationResultDto {
+    fn from(value: OrderValidationResult) -> Self {
+        Self {
+            diagnostics: value
+                .diagnostics
+                .into_iter()
+                .map(|diagnostic| OrderDiagnosticDto {
+                    code: diagnostic.code,
+                    message: diagnostic.message,
+                    line_start: diagnostic.line_start,
+                    line_end: diagnostic.line_end,
+                    severity: match diagnostic.severity {
+                        OrderDiagnosticSeverity::Warning => "warning".to_string(),
+                        OrderDiagnosticSeverity::Error => "error".to_string(),
+                    },
+                })
+                .collect(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg(not(target_arch = "wasm32"))]
+struct OrderDraftKeyDto {
+    project_id: String,
+    faction_id: String,
+    turn_number: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg(not(target_arch = "wasm32"))]
+struct OrderDraftRecordDto {
+    key: OrderDraftKeyDto,
+    order_text: String,
+    updated_at: String,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl From<OrderDraftRecord> for OrderDraftRecordDto {
+    fn from(value: OrderDraftRecord) -> Self {
+        Self {
+            key: OrderDraftKeyDto {
+                project_id: value.key.project_id,
+                faction_id: value.key.faction_id,
+                turn_number: value.key.turn_number,
+            },
+            order_text: value.order_text,
+            updated_at: value.updated_at,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -213,15 +315,86 @@ impl From<OpenedProject> for OpenedProjectDto {
 /// Returns game metadata serialized as a JS object.
 #[wasm_bindgen]
 pub fn get_game_info() -> Result<JsValue, JsValue> {
-    serde_wasm_bindgen::to_value(&GameInfoDto::from(game_info()))
-        .map_err(|error| JsValue::from_str(&error.to_string()))
+    to_js(&GameInfoDto::from(game_info()))
 }
 
 /// Parses one report and returns tolerant parser output including the viability threshold flag.
 #[wasm_bindgen]
 pub fn parse_report_state(raw_report: String) -> Result<JsValue, JsValue> {
     let parsed = ReportParseResultDto::from(parse_report(&raw_report));
-    serde_wasm_bindgen::to_value(&parsed).map_err(|error| JsValue::from_str(&error.to_string()))
+    to_js(&parsed)
+}
+
+/// Parses a report and returns everything needed to store it, alongside the parse result.
+///
+/// The browser has no SQLite, so its storage adapter supplies the read and the write while every
+/// rule about what gets stored stays here.
+#[wasm_bindgen]
+pub fn prepare_report_import_state(
+    raw_report: String,
+    confirmed_faction_id: String,
+) -> Result<JsValue, JsValue> {
+    let parsed = parse_report(&raw_report);
+    let turn_number = parsed.turn_header.as_ref().map(|header| header.turn_number);
+    let rejection = reject_import(&parsed, &confirmed_faction_id);
+
+    let candidate = ImportedTurnSnapshot {
+        parsed_payload_json: serde_json::to_string(&parsed)
+            .map_err(|error| JsValue::from_str(&error.to_string()))?,
+        warnings_payload_json: serde_json::to_string(&parsed.warnings)
+            .map_err(|error| JsValue::from_str(&error.to_string()))?,
+        raw_report,
+    };
+
+    let prepared = PreparedImportDto {
+        turn_number,
+        candidate,
+        parse_result: ReportParseResultDto::from(parsed),
+        rejection,
+    };
+
+    to_js(&prepared)
+}
+
+/// Rebuilds a parse result from a stored payload, recomputing the import threshold.
+///
+/// The threshold is a domain rule, so a storage adapter must never derive it itself.
+#[wasm_bindgen]
+pub fn hydrate_parse_result_state(parsed_payload_json: String) -> Result<JsValue, JsValue> {
+    let parsed = serde_json::from_str::<ReportParseResult>(&parsed_payload_json)
+        .map_err(|error| JsValue::from_str(&error.to_string()))?;
+
+    to_js(&ReportParseResultDto::from(parsed))
+}
+
+/// Compares a prepared import candidate against the stored snapshot, if any.
+///
+/// Pass `null` for `existing` when nothing is stored under the key.
+#[wasm_bindgen]
+pub fn diff_imported_turn_state(existing: JsValue, candidate: JsValue) -> Result<JsValue, JsValue> {
+    let existing: Option<ImportedTurnSnapshot> = if existing.is_null() || existing.is_undefined() {
+        None
+    } else {
+        Some(
+            serde_wasm_bindgen::from_value(existing)
+                .map_err(|error| JsValue::from_str(&error.to_string()))?,
+        )
+    };
+    let candidate: ImportedTurnSnapshot = serde_wasm_bindgen::from_value(candidate)
+        .map_err(|error| JsValue::from_str(&error.to_string()))?;
+
+    let diff = diff_imported_turn(existing.as_ref(), &candidate);
+    to_js(&diff)
+}
+
+/// Validates one draft of Atlantis orders and returns structured diagnostics.
+///
+/// Order validation is pure, so unlike the persistence entry points this is available on every
+/// target.
+#[wasm_bindgen]
+pub fn validate_orders_state(raw_orders: String) -> Result<JsValue, JsValue> {
+    let result = OrderValidationResultDto::from(validate_orders(&raw_orders));
+    to_js(&result)
 }
 
 /// Creates a project manifest and sidecar SQLite database.
@@ -240,8 +413,7 @@ pub fn create_project_state(
     )
     .map_err(|error| JsValue::from_str(&error.to_string()))?;
 
-    serde_wasm_bindgen::to_value(&OpenedProjectDto::from(opened))
-        .map_err(|error| JsValue::from_str(&error.to_string()))
+    to_js(&OpenedProjectDto::from(opened))
 }
 
 /// Opens an existing project and applies pending schema migrations.
@@ -251,8 +423,7 @@ pub fn open_project_state(project_file_path: String) -> Result<JsValue, JsValue>
     let opened = open_project(Path::new(&project_file_path))
         .map_err(|error| JsValue::from_str(&error.to_string()))?;
 
-    serde_wasm_bindgen::to_value(&OpenedProjectDto::from(opened))
-        .map_err(|error| JsValue::from_str(&error.to_string()))
+    to_js(&OpenedProjectDto::from(opened))
 }
 
 /// Previews duplicate conflict for a report import candidate.
@@ -297,7 +468,7 @@ pub fn preview_report_import_state(
         duplicate_preview,
         turn_number,
     };
-    serde_wasm_bindgen::to_value(&result).map_err(|error| JsValue::from_str(&error.to_string()))
+    to_js(&result)
 }
 
 /// Commits a report import candidate to persistence.
@@ -361,8 +532,7 @@ pub fn commit_report_import_state(
         )?;
     }
 
-    serde_wasm_bindgen::to_value(&ImportedTurnPreviewDto::from(preview))
-        .map_err(|error| JsValue::from_str(&error.to_string()))
+    to_js(&ImportedTurnPreviewDto::from(preview))
 }
 
 /// Loads one imported turn payload by composite key.
@@ -401,7 +571,57 @@ pub fn load_imported_turn_state(
         })
         .transpose()?;
 
-    serde_wasm_bindgen::to_value(&dto).map_err(|error| JsValue::from_str(&error.to_string()))
+    to_js(&dto)
+}
+
+/// Saves one order draft, keyed by project, faction and turn.
+#[wasm_bindgen]
+#[cfg(not(target_arch = "wasm32"))]
+pub fn save_order_draft_state(
+    database_path: String,
+    project_id: String,
+    faction_id: String,
+    turn_number: u32,
+    order_text: String,
+    updated_at: String,
+) -> Result<JsValue, JsValue> {
+    let record = OrderDraftRecord {
+        key: OrderDraftKey {
+            project_id,
+            faction_id,
+            turn_number,
+        },
+        order_text,
+        updated_at,
+    };
+
+    upsert_order_draft(Path::new(&database_path), &record)
+        .map_err(|error| JsValue::from_str(&error.to_string()))?;
+
+    to_js(&OrderDraftRecordDto::from(record))
+}
+
+/// Loads one order draft by composite key, or null when none is stored.
+#[wasm_bindgen]
+#[cfg(not(target_arch = "wasm32"))]
+pub fn load_order_draft_state(
+    database_path: String,
+    project_id: String,
+    faction_id: String,
+    turn_number: u32,
+) -> Result<JsValue, JsValue> {
+    let loaded = load_order_draft(
+        Path::new(&database_path),
+        &OrderDraftKey {
+            project_id,
+            faction_id,
+            turn_number,
+        },
+    )
+    .map_err(|error| JsValue::from_str(&error.to_string()))?;
+
+    let dto = loaded.map(OrderDraftRecordDto::from);
+    to_js(&dto)
 }
 
 /// Creates a project manifest and sidecar SQLite database.
@@ -468,6 +688,36 @@ pub fn load_imported_turn_state(
     ))
 }
 
+/// Saves one order draft, keyed by project, faction and turn.
+#[wasm_bindgen]
+#[cfg(target_arch = "wasm32")]
+pub fn save_order_draft_state(
+    _database_path: String,
+    _project_id: String,
+    _faction_id: String,
+    _turn_number: u32,
+    _order_text: String,
+    _updated_at: String,
+) -> Result<JsValue, JsValue> {
+    Err(JsValue::from_str(
+        "project persistence is not linked in this wasm32 build",
+    ))
+}
+
+/// Loads one order draft by composite key, or null when none is stored.
+#[wasm_bindgen]
+#[cfg(target_arch = "wasm32")]
+pub fn load_order_draft_state(
+    _database_path: String,
+    _project_id: String,
+    _faction_id: String,
+    _turn_number: u32,
+) -> Result<JsValue, JsValue> {
+    Err(JsValue::from_str(
+        "project persistence is not linked in this wasm32 build",
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -481,6 +731,47 @@ mod tests {
         assert_eq!(dto.name, "Atlantis PBEM");
         assert_eq!(dto.ruleset_version, "4.0");
         assert_eq!(dto.max_faction_count, 128);
+    }
+
+    #[test]
+    fn order_validation_dto_flattens_severity_to_strings() {
+        let dto = OrderValidationResultDto::from(validate_orders("FLY 1 2\nMOVE R1 R2 R3"));
+
+        let severities: Vec<&str> = dto
+            .diagnostics
+            .iter()
+            .map(|diagnostic| diagnostic.severity.as_str())
+            .collect();
+
+        assert_eq!(severities, vec!["error", "warning"]);
+        assert_eq!(dto.diagnostics[0].code, "unknown-command");
+        assert_eq!(dto.diagnostics[1].code, "extra-arguments");
+    }
+
+    #[test]
+    fn order_validation_dto_is_empty_for_valid_orders() {
+        let dto = OrderValidationResultDto::from(validate_orders("MOVE R1 R2\nHOLD"));
+        assert!(dto.diagnostics.is_empty());
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn order_draft_dto_maps_composite_key() {
+        let dto = OrderDraftRecordDto::from(OrderDraftRecord {
+            key: OrderDraftKey {
+                project_id: "faction-95".to_string(),
+                faction_id: "95".to_string(),
+                turn_number: 71,
+            },
+            order_text: "@study obse".to_string(),
+            updated_at: "2026-08-08T12:00:00Z".to_string(),
+        });
+
+        assert_eq!(dto.key.project_id, "faction-95");
+        assert_eq!(dto.key.faction_id, "95");
+        assert_eq!(dto.key.turn_number, 71);
+        assert_eq!(dto.order_text, "@study obse");
+        assert_eq!(dto.updated_at, "2026-08-08T12:00:00Z");
     }
 
     #[cfg(not(target_arch = "wasm32"))]

@@ -405,9 +405,223 @@ fn push_warning(
     });
 }
 
+/// Checks whether a parsed report may be imported under the confirmed faction.
+///
+/// Returns `None` when the import is admissible, and otherwise the reason to refuse it. Keeping
+/// this here rather than in each adapter is what stops the desktop and the browser from accepting
+/// different reports; the messages are part of the contract, so both platforms report the same
+/// refusal for the same input.
+#[must_use]
+pub fn reject_import(parsed: &ReportParseResult, confirmed_faction_id: &str) -> Option<String> {
+    if !parsed.meets_minimum_import_threshold() {
+        return Some("parsed report did not meet minimum import threshold".to_string());
+    }
+
+    let faction_is_detected = parsed
+        .detected_factions
+        .iter()
+        .any(|faction| faction.faction_id == confirmed_faction_id);
+    if !faction_is_detected {
+        return Some("confirmed faction does not exist in parsed report candidates".to_string());
+    }
+
+    if parsed.turn_header.is_none() {
+        return Some("turn header missing from parsed report".to_string());
+    }
+
+    None
+}
+
+/// The parts of a stored turn import that decide whether re-importing changes anything.
+///
+/// Deliberately free of any storage concern so both the desktop SQLite layer and the browser
+/// storage adapter can reach the same verdict.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportedTurnSnapshot {
+    pub raw_report: String,
+    pub parsed_payload_json: String,
+    pub warnings_payload_json: String,
+}
+
+/// How a candidate import compares against what is already stored for the same key.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportedTurnDiff {
+    pub exists: bool,
+    pub raw_changed: bool,
+    pub parsed_changed: bool,
+    pub warnings_changed: bool,
+}
+
+/// Borrowed view of a snapshot, so callers holding the payloads already need not copy them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ImportedTurnSnapshotRef<'a> {
+    pub raw_report: &'a str,
+    pub parsed_payload_json: &'a str,
+    pub warnings_payload_json: &'a str,
+}
+
+impl ImportedTurnSnapshot {
+    #[must_use]
+    pub fn as_ref(&self) -> ImportedTurnSnapshotRef<'_> {
+        ImportedTurnSnapshotRef {
+            raw_report: &self.raw_report,
+            parsed_payload_json: &self.parsed_payload_json,
+            warnings_payload_json: &self.warnings_payload_json,
+        }
+    }
+}
+
+/// Compares a candidate import against the stored one, if any.
+///
+/// A candidate with no stored counterpart reports `exists: false` and no changes, because there is
+/// nothing to overwrite. This is what drives the overwrite confirmation, so desktop and web must
+/// never disagree about it.
+#[must_use]
+pub fn diff_imported_turn(
+    existing: Option<&ImportedTurnSnapshot>,
+    candidate: &ImportedTurnSnapshot,
+) -> ImportedTurnDiff {
+    diff_imported_turn_fields(
+        existing.map(ImportedTurnSnapshot::as_ref),
+        candidate.as_ref(),
+    )
+}
+
+/// Borrowing form of [`diff_imported_turn`], for callers that already hold the payloads.
+#[must_use]
+pub fn diff_imported_turn_fields(
+    existing: Option<ImportedTurnSnapshotRef<'_>>,
+    candidate: ImportedTurnSnapshotRef<'_>,
+) -> ImportedTurnDiff {
+    let Some(existing) = existing else {
+        return ImportedTurnDiff {
+            exists: false,
+            raw_changed: false,
+            parsed_changed: false,
+            warnings_changed: false,
+        };
+    };
+
+    ImportedTurnDiff {
+        exists: true,
+        raw_changed: existing.raw_report != candidate.raw_report,
+        parsed_changed: existing.parsed_payload_json != candidate.parsed_payload_json,
+        warnings_changed: existing.warnings_payload_json != candidate.warnings_payload_json,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn snapshot(raw: &str, parsed: &str, warnings: &str) -> ImportedTurnSnapshot {
+        ImportedTurnSnapshot {
+            raw_report: raw.to_string(),
+            parsed_payload_json: parsed.to_string(),
+            warnings_payload_json: warnings.to_string(),
+        }
+    }
+
+    /// These structs cross the WebAssembly boundary into TypeScript, which expects camelCase.
+    /// A nested struct does not inherit its parent's `rename_all`, so the casing is pinned here:
+    /// getting it wrong silently hands the browser fields it cannot read.
+    #[test]
+    fn wire_shapes_are_camel_case() {
+        let snapshot = serde_json::to_string(&snapshot("raw", "parsed", "warnings"))
+            .expect("snapshot should serialize");
+        assert_eq!(
+            snapshot,
+            r#"{"rawReport":"raw","parsedPayloadJson":"parsed","warningsPayloadJson":"warnings"}"#
+        );
+
+        let diff = serde_json::to_string(&diff_imported_turn(None, &snapshot_default()))
+            .expect("diff should serialize");
+        assert_eq!(
+            diff,
+            r#"{"exists":false,"rawChanged":false,"parsedChanged":false,"warningsChanged":false}"#
+        );
+    }
+
+    fn snapshot_default() -> ImportedTurnSnapshot {
+        snapshot("raw", "parsed", "warnings")
+    }
+
+    const VIABLE_REPORT: &str = concat!(
+        "TURN: 12 Spring\n",
+        "FACTION: 17 | Crimson Tide\n",
+        "REGION: A1 | Coast of Dawn\n",
+        "UNIT: U100 | Guard Patrol | A1"
+    );
+
+    #[test]
+    fn admissible_import_is_not_rejected() {
+        assert_eq!(reject_import(&parse_report(VIABLE_REPORT), "17"), None);
+    }
+
+    #[test]
+    fn import_below_the_viability_threshold_is_rejected() {
+        let rejection = reject_import(&parse_report("REGION: A1 | Coast of Dawn"), "17");
+        assert_eq!(
+            rejection.as_deref(),
+            Some("parsed report did not meet minimum import threshold")
+        );
+    }
+
+    #[test]
+    fn import_under_an_undetected_faction_is_rejected() {
+        let rejection = reject_import(&parse_report(VIABLE_REPORT), "99");
+        assert_eq!(
+            rejection.as_deref(),
+            Some("confirmed faction does not exist in parsed report candidates")
+        );
+    }
+
+    #[test]
+    fn diff_reports_no_conflict_when_nothing_is_stored() {
+        let candidate = snapshot("raw", "parsed", "warnings");
+
+        assert_eq!(
+            diff_imported_turn(None, &candidate),
+            ImportedTurnDiff {
+                exists: false,
+                raw_changed: false,
+                parsed_changed: false,
+                warnings_changed: false,
+            }
+        );
+    }
+
+    #[test]
+    fn diff_reports_existing_but_unchanged_for_an_identical_reimport() {
+        let stored = snapshot("raw", "parsed", "warnings");
+        let candidate = stored.clone();
+
+        assert_eq!(
+            diff_imported_turn(Some(&stored), &candidate),
+            ImportedTurnDiff {
+                exists: true,
+                raw_changed: false,
+                parsed_changed: false,
+                warnings_changed: false,
+            }
+        );
+    }
+
+    #[test]
+    fn diff_flags_each_payload_independently() {
+        let stored = snapshot("raw", "parsed", "warnings");
+
+        let raw_only = diff_imported_turn(Some(&stored), &snapshot("other", "parsed", "warnings"));
+        assert!(raw_only.raw_changed && !raw_only.parsed_changed && !raw_only.warnings_changed);
+
+        let parsed_only = diff_imported_turn(Some(&stored), &snapshot("raw", "other", "warnings"));
+        assert!(!parsed_only.raw_changed && parsed_only.parsed_changed);
+
+        let warnings_only = diff_imported_turn(Some(&stored), &snapshot("raw", "parsed", "other"));
+        assert!(!warnings_only.parsed_changed && warnings_only.warnings_changed);
+    }
 
     #[test]
     fn game_info_uses_stable_identifier() {

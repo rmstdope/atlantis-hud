@@ -47,6 +47,10 @@ test("web map workspace supports desktop and handheld region selection", async (
   await page.getByLabel("Map faction id").fill("17");
   await page.getByLabel("Map turn number").fill("12");
   await page.getByRole("button", { name: "Seed sample map import" }).click();
+  // The seed writes asynchronously, so loading before it commits would race.
+  await expect(
+    page.getByTestId("map-workspace-panel").getByRole("status")
+  ).toContainText("seeded sample map import");
   await page.getByRole("button", { name: "Load map turn" }).click();
 
   await page.getByRole("button", { name: "hex A1" }).click();
