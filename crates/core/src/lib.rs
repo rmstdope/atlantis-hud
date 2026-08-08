@@ -410,6 +410,7 @@ fn push_warning(
 /// Deliberately free of any storage concern so both the desktop SQLite layer and the browser
 /// storage adapter can reach the same verdict.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ImportedTurnSnapshot {
     pub raw_report: String,
     pub parsed_payload_json: String,
@@ -418,6 +419,7 @@ pub struct ImportedTurnSnapshot {
 
 /// How a candidate import compares against what is already stored for the same key.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ImportedTurnDiff {
     pub exists: bool,
     pub raw_changed: bool,
@@ -462,6 +464,30 @@ mod tests {
             parsed_payload_json: parsed.to_string(),
             warnings_payload_json: warnings.to_string(),
         }
+    }
+
+    /// These structs cross the WebAssembly boundary into TypeScript, which expects camelCase.
+    /// A nested struct does not inherit its parent's `rename_all`, so the casing is pinned here:
+    /// getting it wrong silently hands the browser fields it cannot read.
+    #[test]
+    fn wire_shapes_are_camel_case() {
+        let snapshot = serde_json::to_string(&snapshot("raw", "parsed", "warnings"))
+            .expect("snapshot should serialize");
+        assert_eq!(
+            snapshot,
+            r#"{"rawReport":"raw","parsedPayloadJson":"parsed","warningsPayloadJson":"warnings"}"#
+        );
+
+        let diff = serde_json::to_string(&diff_imported_turn(None, &snapshot_default()))
+            .expect("diff should serialize");
+        assert_eq!(
+            diff,
+            r#"{"exists":false,"rawChanged":false,"parsedChanged":false,"warningsChanged":false}"#
+        );
+    }
+
+    fn snapshot_default() -> ImportedTurnSnapshot {
+        snapshot("raw", "parsed", "warnings")
     }
 
     #[test]

@@ -4,8 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
+    "build:wasm": "wasm-pack build ../../crates/core-wasm --target web --out-dir ../../apps/web/src/wasm --out-name atlantis_core",
+    "dev": "pnpm run build:wasm && vite",
+    "build": "pnpm run build:wasm && vite build",
     "preview": "vite preview",
     "lint": "eslint src --max-warnings=0",
     "typecheck": "tsc --noEmit -p tsconfig.json",

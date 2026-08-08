@@ -17,6 +17,18 @@ use atlantis_hud_core_persistence::{
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
 
+/// Converts a value into a plain JavaScript object.
+///
+/// `serde_wasm_bindgen::to_value` emits a JS `Map` for anything map-shaped, and `#[serde(flatten)]`
+/// makes a struct map-shaped. A `Map` does not answer property access, so the TypeScript
+/// normalizers would see `undefined` for every field. Always go through this.
+fn to_js<T: Serialize + ?Sized>(value: &T) -> Result<JsValue, JsValue> {
+    let serializer = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
+    value
+        .serialize(&serializer)
+        .map_err(|error| JsValue::from_str(&error.to_string()))
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct GameInfoDto {
@@ -296,15 +308,14 @@ impl From<OpenedProject> for OpenedProjectDto {
 /// Returns game metadata serialized as a JS object.
 #[wasm_bindgen]
 pub fn get_game_info() -> Result<JsValue, JsValue> {
-    serde_wasm_bindgen::to_value(&GameInfoDto::from(game_info()))
-        .map_err(|error| JsValue::from_str(&error.to_string()))
+    to_js(&GameInfoDto::from(game_info()))
 }
 
 /// Parses one report and returns tolerant parser output including the viability threshold flag.
 #[wasm_bindgen]
 pub fn parse_report_state(raw_report: String) -> Result<JsValue, JsValue> {
     let parsed = ReportParseResultDto::from(parse_report(&raw_report));
-    serde_wasm_bindgen::to_value(&parsed).map_err(|error| JsValue::from_str(&error.to_string()))
+    to_js(&parsed)
 }
 
 /// Parses a report and returns everything needed to store it, alongside the parse result.
@@ -330,7 +341,18 @@ pub fn prepare_report_import_state(raw_report: String) -> Result<JsValue, JsValu
         parse_result: ReportParseResultDto::from(parsed),
     };
 
-    serde_wasm_bindgen::to_value(&prepared).map_err(|error| JsValue::from_str(&error.to_string()))
+    to_js(&prepared)
+}
+
+/// Rebuilds a parse result from a stored payload, recomputing the import threshold.
+///
+/// The threshold is a domain rule, so a storage adapter must never derive it itself.
+#[wasm_bindgen]
+pub fn hydrate_parse_result_state(parsed_payload_json: String) -> Result<JsValue, JsValue> {
+    let parsed = serde_json::from_str::<ReportParseResult>(&parsed_payload_json)
+        .map_err(|error| JsValue::from_str(&error.to_string()))?;
+
+    to_js(&ReportParseResultDto::from(parsed))
 }
 
 /// Compares a prepared import candidate against the stored snapshot, if any.
@@ -350,7 +372,7 @@ pub fn diff_imported_turn_state(existing: JsValue, candidate: JsValue) -> Result
         .map_err(|error| JsValue::from_str(&error.to_string()))?;
 
     let diff = diff_imported_turn(existing.as_ref(), &candidate);
-    serde_wasm_bindgen::to_value(&diff).map_err(|error| JsValue::from_str(&error.to_string()))
+    to_js(&diff)
 }
 
 /// Validates one draft of Atlantis orders and returns structured diagnostics.
@@ -360,7 +382,7 @@ pub fn diff_imported_turn_state(existing: JsValue, candidate: JsValue) -> Result
 #[wasm_bindgen]
 pub fn validate_orders_state(raw_orders: String) -> Result<JsValue, JsValue> {
     let result = OrderValidationResultDto::from(validate_orders(&raw_orders));
-    serde_wasm_bindgen::to_value(&result).map_err(|error| JsValue::from_str(&error.to_string()))
+    to_js(&result)
 }
 
 /// Creates a project manifest and sidecar SQLite database.
@@ -379,8 +401,7 @@ pub fn create_project_state(
     )
     .map_err(|error| JsValue::from_str(&error.to_string()))?;
 
-    serde_wasm_bindgen::to_value(&OpenedProjectDto::from(opened))
-        .map_err(|error| JsValue::from_str(&error.to_string()))
+    to_js(&OpenedProjectDto::from(opened))
 }
 
 /// Opens an existing project and applies pending schema migrations.
@@ -390,8 +411,7 @@ pub fn open_project_state(project_file_path: String) -> Result<JsValue, JsValue>
     let opened = open_project(Path::new(&project_file_path))
         .map_err(|error| JsValue::from_str(&error.to_string()))?;
 
-    serde_wasm_bindgen::to_value(&OpenedProjectDto::from(opened))
-        .map_err(|error| JsValue::from_str(&error.to_string()))
+    to_js(&OpenedProjectDto::from(opened))
 }
 
 /// Previews duplicate conflict for a report import candidate.
@@ -436,7 +456,7 @@ pub fn preview_report_import_state(
         duplicate_preview,
         turn_number,
     };
-    serde_wasm_bindgen::to_value(&result).map_err(|error| JsValue::from_str(&error.to_string()))
+    to_js(&result)
 }
 
 /// Commits a report import candidate to persistence.
@@ -500,8 +520,7 @@ pub fn commit_report_import_state(
         )?;
     }
 
-    serde_wasm_bindgen::to_value(&ImportedTurnPreviewDto::from(preview))
-        .map_err(|error| JsValue::from_str(&error.to_string()))
+    to_js(&ImportedTurnPreviewDto::from(preview))
 }
 
 /// Loads one imported turn payload by composite key.
@@ -540,7 +559,7 @@ pub fn load_imported_turn_state(
         })
         .transpose()?;
 
-    serde_wasm_bindgen::to_value(&dto).map_err(|error| JsValue::from_str(&error.to_string()))
+    to_js(&dto)
 }
 
 /// Saves one order draft, keyed by project, faction and turn.
@@ -567,8 +586,7 @@ pub fn save_order_draft_state(
     upsert_order_draft(Path::new(&database_path), &record)
         .map_err(|error| JsValue::from_str(&error.to_string()))?;
 
-    serde_wasm_bindgen::to_value(&OrderDraftRecordDto::from(record))
-        .map_err(|error| JsValue::from_str(&error.to_string()))
+    to_js(&OrderDraftRecordDto::from(record))
 }
 
 /// Loads one order draft by composite key, or null when none is stored.
@@ -591,7 +609,7 @@ pub fn load_order_draft_state(
     .map_err(|error| JsValue::from_str(&error.to_string()))?;
 
     let dto = loaded.map(OrderDraftRecordDto::from);
-    serde_wasm_bindgen::to_value(&dto).map_err(|error| JsValue::from_str(&error.to_string()))
+    to_js(&dto)
 }
 
 /// Creates a project manifest and sidecar SQLite database.
