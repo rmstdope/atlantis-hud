@@ -11,6 +11,26 @@ import { RegionPanel } from "./RegionPanel";
 import { UnitPanel } from "./UnitPanel";
 import { UnitTableDock } from "./UnitTableDock";
 
+/**
+ * Turns whatever was thrown into something a user can act on.
+ *
+ * Tauri rejects with a plain string rather than an Error, so checking `instanceof Error` alone
+ * discards the only useful detail and leaves "unknown error" on screen.
+ */
+function describeError(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  if (typeof error === "string" && error.trim() !== "") {
+    return error;
+  }
+  try {
+    return JSON.stringify(error) ?? "unknown error";
+  } catch {
+    return "unknown error";
+  }
+}
+
 const EMPTY: HexMapModel = {
   hexes: [],
   levels: [1],
@@ -82,7 +102,7 @@ export function AppShell({
           regionCount: 0,
           unitCount: 0,
           errorCount: 0,
-          message: `could not read ${fileName}: ${error instanceof Error ? error.message : "unknown error"}`,
+          message: `could not read ${fileName}: ${describeError(error)}`,
           failed: true
         });
       } finally {
