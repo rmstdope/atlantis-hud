@@ -405,6 +405,33 @@ fn push_warning(
     });
 }
 
+/// Checks whether a parsed report may be imported under the confirmed faction.
+///
+/// Returns `None` when the import is admissible, and otherwise the reason to refuse it. Keeping
+/// this here rather than in each adapter is what stops the desktop and the browser from accepting
+/// different reports; the messages are part of the contract, so both platforms report the same
+/// refusal for the same input.
+#[must_use]
+pub fn reject_import(parsed: &ReportParseResult, confirmed_faction_id: &str) -> Option<String> {
+    if !parsed.meets_minimum_import_threshold() {
+        return Some("parsed report did not meet minimum import threshold".to_string());
+    }
+
+    let faction_is_detected = parsed
+        .detected_factions
+        .iter()
+        .any(|faction| faction.faction_id == confirmed_faction_id);
+    if !faction_is_detected {
+        return Some("confirmed faction does not exist in parsed report candidates".to_string());
+    }
+
+    if parsed.turn_header.is_none() {
+        return Some("turn header missing from parsed report".to_string());
+    }
+
+    None
+}
+
 /// The parts of a stored turn import that decide whether re-importing changes anything.
 ///
 /// Deliberately free of any storage concern so both the desktop SQLite layer and the browser
@@ -427,6 +454,25 @@ pub struct ImportedTurnDiff {
     pub warnings_changed: bool,
 }
 
+/// Borrowed view of a snapshot, so callers holding the payloads already need not copy them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ImportedTurnSnapshotRef<'a> {
+    pub raw_report: &'a str,
+    pub parsed_payload_json: &'a str,
+    pub warnings_payload_json: &'a str,
+}
+
+impl ImportedTurnSnapshot {
+    #[must_use]
+    pub fn as_ref(&self) -> ImportedTurnSnapshotRef<'_> {
+        ImportedTurnSnapshotRef {
+            raw_report: &self.raw_report,
+            parsed_payload_json: &self.parsed_payload_json,
+            warnings_payload_json: &self.warnings_payload_json,
+        }
+    }
+}
+
 /// Compares a candidate import against the stored one, if any.
 ///
 /// A candidate with no stored counterpart reports `exists: false` and no changes, because there is
@@ -436,6 +482,18 @@ pub struct ImportedTurnDiff {
 pub fn diff_imported_turn(
     existing: Option<&ImportedTurnSnapshot>,
     candidate: &ImportedTurnSnapshot,
+) -> ImportedTurnDiff {
+    diff_imported_turn_fields(
+        existing.map(ImportedTurnSnapshot::as_ref),
+        candidate.as_ref(),
+    )
+}
+
+/// Borrowing form of [`diff_imported_turn`], for callers that already hold the payloads.
+#[must_use]
+pub fn diff_imported_turn_fields(
+    existing: Option<ImportedTurnSnapshotRef<'_>>,
+    candidate: ImportedTurnSnapshotRef<'_>,
 ) -> ImportedTurnDiff {
     let Some(existing) = existing else {
         return ImportedTurnDiff {
@@ -488,6 +546,36 @@ mod tests {
 
     fn snapshot_default() -> ImportedTurnSnapshot {
         snapshot("raw", "parsed", "warnings")
+    }
+
+    const VIABLE_REPORT: &str = concat!(
+        "TURN: 12 Spring\n",
+        "FACTION: 17 | Crimson Tide\n",
+        "REGION: A1 | Coast of Dawn\n",
+        "UNIT: U100 | Guard Patrol | A1"
+    );
+
+    #[test]
+    fn admissible_import_is_not_rejected() {
+        assert_eq!(reject_import(&parse_report(VIABLE_REPORT), "17"), None);
+    }
+
+    #[test]
+    fn import_below_the_viability_threshold_is_rejected() {
+        let rejection = reject_import(&parse_report("REGION: A1 | Coast of Dawn"), "17");
+        assert_eq!(
+            rejection.as_deref(),
+            Some("parsed report did not meet minimum import threshold")
+        );
+    }
+
+    #[test]
+    fn import_under_an_undetected_faction_is_rejected() {
+        let rejection = reject_import(&parse_report(VIABLE_REPORT), "99");
+        assert_eq!(
+            rejection.as_deref(),
+            Some("confirmed faction does not exist in parsed report candidates")
+        );
     }
 
     #[test]

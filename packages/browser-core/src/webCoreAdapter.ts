@@ -16,7 +16,7 @@ export type CoreWasmModule = {
   get_game_info(): unknown;
   parse_report_state(rawReport: string): unknown;
   validate_orders_state(rawOrders: string): unknown;
-  prepare_report_import_state(rawReport: string): unknown;
+  prepare_report_import_state(rawReport: string, confirmedFactionId: string): unknown;
   diff_imported_turn_state(existing: unknown, candidate: unknown): unknown;
   hydrate_parse_result_state(parsedPayloadJson: string): unknown;
 };
@@ -25,6 +25,8 @@ type PreparedImport = {
   turnNumber: number | null;
   candidate: StoredTurnSnapshot;
   parseResult: unknown;
+  /** `null` when the report may be imported; otherwise the core's reason to refuse it. */
+  rejection: string | null;
 };
 
 type ImportedTurnDiff = {
@@ -42,9 +44,18 @@ function databaseHandleFor(projectFilePath: string): string {
   return `idb://${projectFilePath.replace(/\.json$/u, "")}`;
 }
 
-function requireTurnNumber(prepared: PreparedImport): number {
+/**
+ * Refuses an inadmissible import using the core's own wording.
+ *
+ * The desktop path refuses the same reports for the same reasons, because both ask the same Rust
+ * function. Never restate the rule here.
+ */
+function requireAdmissible(prepared: PreparedImport): number {
+  if (prepared.rejection !== null) {
+    throw new Error(prepared.rejection);
+  }
   if (prepared.turnNumber === null) {
-    throw new Error("report has no turn header, so it cannot be imported");
+    throw new Error("turn header missing from parsed report");
   }
   return prepared.turnNumber;
 }
@@ -53,16 +64,27 @@ export function createWebCoreAdapter(
   wasm: CoreWasmModule,
   store: WebStore = createWebStore()
 ): CoreAdapter {
-  const prepare = (rawReport: string) =>
-    wasm.prepare_report_import_state(rawReport) as PreparedImport;
+  const prepare = (rawReport: string, confirmedFactionId: string): PreparedImport => {
+    const prepared = wasm.prepare_report_import_state(rawReport, confirmedFactionId) as
+      PreparedImport;
+
+    // Rust's None can arrive as undefined rather than null depending on serializer settings, and
+    // the checks below are written against null. Normalise once, here.
+    return {
+      ...prepared,
+      turnNumber: prepared.turnNumber ?? null,
+      rejection: prepared.rejection ?? null
+    };
+  };
 
   const diffAgainstStored = async (
+    databasePath: string,
     projectId: string,
     factionId: string,
     turnNumber: number,
     candidate: StoredTurnSnapshot
   ): Promise<ImportedTurnDiff> => {
-    const stored = await store.getImportedTurn(projectId, factionId, turnNumber);
+    const stored = await store.getImportedTurn(databasePath, projectId, factionId, turnNumber);
     const existing: StoredTurnSnapshot | null = stored
       ? {
           rawReport: stored.rawReport,
@@ -112,16 +134,19 @@ export function createWebCoreAdapter(
     },
 
     async previewReportImport(
-      _databasePath: string,
+      databasePath: string,
       projectId: string,
       confirmedFactionId: string,
       rawReport: string
     ) {
-      const prepared = prepare(rawReport);
+      // Preview deliberately tolerates an inadmissible report: the panel shows the parse result
+      // and its warnings so the user can see why it would be refused.
+      const prepared = prepare(rawReport, confirmedFactionId);
       const duplicatePreview =
         prepared.turnNumber === null
           ? { exists: false, rawChanged: false, parsedChanged: false, warningsChanged: false }
           : await diffAgainstStored(
+              databasePath,
               projectId,
               confirmedFactionId,
               prepared.turnNumber,
@@ -136,15 +161,16 @@ export function createWebCoreAdapter(
     },
 
     async commitReportImport(
-      _databasePath: string,
+      databasePath: string,
       projectId: string,
       confirmedFactionId: string,
       rawReport: string,
       allowOverwrite: boolean
     ) {
-      const prepared = prepare(rawReport);
-      const turnNumber = requireTurnNumber(prepared);
+      const prepared = prepare(rawReport, confirmedFactionId);
+      const turnNumber = requireAdmissible(prepared);
       const diff = await diffAgainstStored(
+        databasePath,
         projectId,
         confirmedFactionId,
         turnNumber,
@@ -159,6 +185,7 @@ export function createWebCoreAdapter(
       }
 
       await store.putImportedTurn({
+        databasePath,
         projectId,
         factionId: confirmedFactionId,
         turnNumber,
@@ -169,12 +196,12 @@ export function createWebCoreAdapter(
     },
 
     async loadImportedTurn(
-      _databasePath: string,
+      databasePath: string,
       projectId: string,
       factionId: string,
       turnNumber: number
     ) {
-      const stored = await store.getImportedTurn(projectId, factionId, turnNumber);
+      const stored = await store.getImportedTurn(databasePath, projectId, factionId, turnNumber);
       if (!stored) {
         return null;
       }
@@ -187,14 +214,14 @@ export function createWebCoreAdapter(
     },
 
     async saveOrderDraft(
-      _databasePath: string,
+      databasePath: string,
       projectId: string,
       factionId: string,
       turnNumber: number,
       orderText: string,
       updatedAt: string
     ) {
-      const draft = { projectId, factionId, turnNumber, orderText, updatedAt };
+      const draft = { databasePath, projectId, factionId, turnNumber, orderText, updatedAt };
       await store.putOrderDraft(draft);
       return {
         key: { projectId, factionId, turnNumber },
@@ -204,12 +231,12 @@ export function createWebCoreAdapter(
     },
 
     async loadOrderDraft(
-      _databasePath: string,
+      databasePath: string,
       projectId: string,
       factionId: string,
       turnNumber: number
     ) {
-      const stored = await store.getOrderDraft(projectId, factionId, turnNumber);
+      const stored = await store.getOrderDraft(databasePath, projectId, factionId, turnNumber);
       if (!stored) {
         return null;
       }

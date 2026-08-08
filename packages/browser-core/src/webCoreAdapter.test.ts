@@ -13,15 +13,24 @@ function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
     get_game_info: () => ({ id: "atlantis", name: "Atlantis PBEM" }),
     parse_report_state: (raw: string) => ({ raw }),
     validate_orders_state: () => ({ diagnostics: [] }),
-    prepare_report_import_state: (raw: string) => ({
-      turnNumber: raw.includes("TURN: 12") ? 12 : null,
-      candidate: {
-        rawReport: raw,
-        parsedPayloadJson: `parsed:${raw}`,
-        warningsPayloadJson: "[]"
-      },
-      parseResult: { raw }
-    }),
+    prepare_report_import_state: (raw: string, confirmedFactionId: string) => {
+      const hasTurn = raw.includes("TURN: 12");
+      const factionMatches = raw.includes(`FACTION: ${confirmedFactionId}`);
+      return {
+        turnNumber: hasTurn ? 12 : null,
+        candidate: {
+          rawReport: raw,
+          parsedPayloadJson: `parsed:${raw}`,
+          warningsPayloadJson: "[]"
+        },
+        parseResult: { raw },
+        rejection: !hasTurn
+          ? "parsed report did not meet minimum import threshold"
+          : factionMatches
+            ? null
+            : "confirmed faction does not exist in parsed report candidates"
+      };
+    },
     diff_imported_turn_state: (existing: unknown, candidate: unknown) => {
       const stored = existing as StoredTurnSnapshot | null;
       const next = candidate as StoredTurnSnapshot;
@@ -40,7 +49,7 @@ function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
   };
 }
 
-const REPORT = "TURN: 12 Spring";
+const REPORT = "TURN: 12 Spring\nFACTION: 17 | Crimson Tide";
 const DB = "idb://project";
 
 describe("web core adapter", () => {
@@ -95,12 +104,82 @@ describe("web core adapter", () => {
     expect(loaded).toMatchObject({ rawReport: `${REPORT}\nextra` });
   });
 
-  it("rejects a report with no turn header rather than storing it under a guessed key", async () => {
+  it("refuses an import the core rejects, using the core's own wording", async () => {
     const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
 
     await expect(adapter.commitReportImport(DB, "p", "17", "no header", false)).rejects.toThrow(
-      /no turn header/u
+      /did not meet minimum import threshold/u
     );
+  });
+
+  it("refuses an import under a faction the report does not contain", async () => {
+    const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
+
+    await expect(adapter.commitReportImport(DB, "p", "99", REPORT, false)).rejects.toThrow(
+      /confirmed faction does not exist/u
+    );
+  });
+
+  it("treats an absent rejection field as admissible", async () => {
+    // serde_wasm_bindgen can emit undefined rather than null for Rust's None. An admissible
+    // import must not be refused just because the field arrived in that shape.
+    const wasm = fakeWasm({
+      prepare_report_import_state: (raw: string) => ({
+        turnNumber: 12,
+        candidate: {
+          rawReport: raw,
+          parsedPayloadJson: `parsed:${raw}`,
+          warningsPayloadJson: "[]"
+        },
+        parseResult: { raw }
+        // rejection deliberately absent
+      })
+    });
+    const adapter = createWebCoreAdapter(wasm, createMemoryWebStore());
+
+    await expect(adapter.commitReportImport(DB, "p", "17", REPORT, false)).resolves.toMatchObject({
+      exists: false
+    });
+  });
+
+  it("still previews a report it would refuse to import", async () => {
+    const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
+
+    await expect(adapter.previewReportImport(DB, "p", "99", REPORT)).resolves.toMatchObject({
+      turnNumber: 12
+    });
+  });
+
+  it("keeps projects apart even when they share a project id", async () => {
+    const store = createMemoryWebStore();
+    const adapter = createWebCoreAdapter(fakeWasm(), store);
+
+    await adapter.commitReportImport("idb://campaign-a", "p", "17", REPORT, false);
+
+    // Same projectId, different project: must not be seen as a duplicate, and must not collide.
+    const preview = await adapter.previewReportImport("idb://campaign-b", "p", "17", REPORT);
+    expect(preview).toMatchObject({ duplicatePreview: { exists: false } });
+
+    await adapter.commitReportImport("idb://campaign-b", "p", "17", `${REPORT}\nextra`, false);
+
+    const a = await adapter.loadImportedTurn("idb://campaign-a", "p", "17", 12);
+    const b = await adapter.loadImportedTurn("idb://campaign-b", "p", "17", 12);
+    expect(a).toMatchObject({ rawReport: REPORT });
+    expect(b).toMatchObject({ rawReport: `${REPORT}\nextra` });
+  });
+
+  it("keeps order drafts apart across projects sharing a project id", async () => {
+    const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
+
+    await adapter.saveOrderDraft("idb://campaign-a", "p", "17", 12, "@work", "t0");
+    await adapter.saveOrderDraft("idb://campaign-b", "p", "17", 12, "@study comb", "t1");
+
+    expect(await adapter.loadOrderDraft("idb://campaign-a", "p", "17", 12)).toMatchObject({
+      orderText: "@work"
+    });
+    expect(await adapter.loadOrderDraft("idb://campaign-b", "p", "17", 12)).toMatchObject({
+      orderText: "@study comb"
+    });
   });
 
   it("rehydrates a stored parse result through the core, not in TypeScript", async () => {

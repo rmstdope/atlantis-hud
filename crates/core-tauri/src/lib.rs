@@ -3,8 +3,8 @@
 use std::path::Path;
 
 use atlantis_hud_core::{
-    game_info, parse_report, validate_orders, OrderDiagnosticSeverity, ReportParseResult,
-    WarningSeverity,
+    game_info, parse_report, reject_import, validate_orders, OrderDiagnosticSeverity,
+    ReportParseResult, WarningSeverity,
 };
 use atlantis_hud_core_persistence::{
     create_project, insert_imported_turn, load_imported_turn, load_order_draft, open_project,
@@ -429,16 +429,8 @@ pub fn command_commit_report_import(
     allow_overwrite: bool,
 ) -> Result<ImportedTurnPreviewDto, String> {
     let parse_result = parse_report(raw_report);
-    if !parse_result.meets_minimum_import_threshold() {
-        return Err("parsed report did not meet minimum import threshold".to_string());
-    }
-
-    let faction_is_detected = parse_result
-        .detected_factions
-        .iter()
-        .any(|faction| faction.faction_id == confirmed_faction_id);
-    if !faction_is_detected {
-        return Err("confirmed faction does not exist in parsed report candidates".to_string());
+    if let Some(rejection) = reject_import(&parse_result, confirmed_faction_id) {
+        return Err(rejection);
     }
 
     let turn_number = parse_result

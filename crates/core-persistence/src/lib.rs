@@ -3,7 +3,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use atlantis_hud_core::{diff_imported_turn, ImportedTurnSnapshot};
+use atlantis_hud_core::{diff_imported_turn_fields, ImportedTurnSnapshotRef};
 use rusqlite::{params, Connection, ErrorCode, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -238,11 +238,10 @@ pub fn preview_imported_turn(
     let existing = load_imported_turn_from_connection(&connection, &candidate.key)?;
 
     // The comparison itself lives in `core` so the browser storage adapter, which has no SQLite,
-    // reaches an identical verdict.
-    let diff = diff_imported_turn(
-        existing.as_ref().map(snapshot_of).as_ref(),
-        &snapshot_of(candidate),
-    );
+    // reaches an identical verdict. Both sides are borrowed, so nothing is copied to compare them.
+    let existing_snapshot = existing.as_ref().map(borrow_snapshot);
+    let candidate_snapshot = borrow_snapshot(candidate);
+    let diff = diff_imported_turn_fields(existing_snapshot, candidate_snapshot);
 
     Ok(ImportedTurnPreview {
         exists: diff.exists,
@@ -252,11 +251,11 @@ pub fn preview_imported_turn(
     })
 }
 
-fn snapshot_of(record: &ImportedTurnRecord) -> ImportedTurnSnapshot {
-    ImportedTurnSnapshot {
-        raw_report: record.raw_report.clone(),
-        parsed_payload_json: record.parsed_payload_json.clone(),
-        warnings_payload_json: record.warnings_payload_json.clone(),
+fn borrow_snapshot(record: &ImportedTurnRecord) -> ImportedTurnSnapshotRef<'_> {
+    ImportedTurnSnapshotRef {
+        raw_report: &record.raw_report,
+        parsed_payload_json: &record.parsed_payload_json,
+        warnings_payload_json: &record.warnings_payload_json,
     }
 }
 

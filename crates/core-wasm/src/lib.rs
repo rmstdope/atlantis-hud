@@ -4,8 +4,8 @@
 use std::path::Path;
 
 use atlantis_hud_core::{
-    diff_imported_turn, game_info, parse_report, validate_orders, ImportedTurnSnapshot,
-    OrderDiagnosticSeverity, OrderValidationResult, ReportParseResult,
+    diff_imported_turn, game_info, parse_report, reject_import, validate_orders,
+    ImportedTurnSnapshot, OrderDiagnosticSeverity, OrderValidationResult, ReportParseResult,
 };
 #[cfg(not(target_arch = "wasm32"))]
 use atlantis_hud_core_persistence::{
@@ -19,11 +19,16 @@ use wasm_bindgen::prelude::*;
 
 /// Converts a value into a plain JavaScript object.
 ///
+/// Two defaults have to be overridden for TypeScript to read what Rust writes.
+///
 /// `serde_wasm_bindgen::to_value` emits a JS `Map` for anything map-shaped, and `#[serde(flatten)]`
-/// makes a struct map-shaped. A `Map` does not answer property access, so the TypeScript
-/// normalizers would see `undefined` for every field. Always go through this.
+/// makes a struct map-shaped; a `Map` does not answer property access, so every field would read
+/// as `undefined`. It also emits `undefined` for `Option::None`, which fails the `=== null` checks
+/// the TypeScript side writes against its own `T | null` types. Always go through this.
 fn to_js<T: Serialize + ?Sized>(value: &T) -> Result<JsValue, JsValue> {
-    let serializer = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
+    let serializer = serde_wasm_bindgen::Serializer::new()
+        .serialize_maps_as_objects(true)
+        .serialize_missing_as_null(true);
     value
         .serialize(&serializer)
         .map_err(|error| JsValue::from_str(&error.to_string()))
@@ -45,6 +50,8 @@ struct PreparedImportDto {
     turn_number: Option<u32>,
     candidate: ImportedTurnSnapshot,
     parse_result: ReportParseResultDto,
+    /// `None` when the report may be imported; otherwise why it may not be.
+    rejection: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -323,9 +330,13 @@ pub fn parse_report_state(raw_report: String) -> Result<JsValue, JsValue> {
 /// The browser has no SQLite, so its storage adapter supplies the read and the write while every
 /// rule about what gets stored stays here.
 #[wasm_bindgen]
-pub fn prepare_report_import_state(raw_report: String) -> Result<JsValue, JsValue> {
+pub fn prepare_report_import_state(
+    raw_report: String,
+    confirmed_faction_id: String,
+) -> Result<JsValue, JsValue> {
     let parsed = parse_report(&raw_report);
     let turn_number = parsed.turn_header.as_ref().map(|header| header.turn_number);
+    let rejection = reject_import(&parsed, &confirmed_faction_id);
 
     let candidate = ImportedTurnSnapshot {
         parsed_payload_json: serde_json::to_string(&parsed)
@@ -339,6 +350,7 @@ pub fn prepare_report_import_state(raw_report: String) -> Result<JsValue, JsValu
         turn_number,
         candidate,
         parse_result: ReportParseResultDto::from(parsed),
+        rejection,
     };
 
     to_js(&prepared)
