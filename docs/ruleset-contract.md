@@ -154,3 +154,34 @@ server's figures, so agreement is independent evidence rather than a restatement
 The oracle does not cover everything. No unit in either committed report carries a bare `can walk`
 item alongside a `Capacity:` line, so the `selfMobile` rule above is a derivation rather than a
 measurement, and its test says so on its face.
+
+## Why there is no worker
+
+Issue #8 lists a "worker/thread execution path for heavy computation" as a deliverable, and the
+implementation plan chose to move the whole core into a Web Worker. That was built, measured, and
+removed. The measurements, loading the committed turn 71 report:
+
+| | Wall time | Longest main-thread block |
+| --- | --- | --- |
+| Core called directly | ~150 ms | **70 ms** |
+| Core behind a Web Worker | ~850 ms | **755 ms** |
+
+The worker made the same load about five times slower and blocked the page ten times longer. The
+cause is the boundary rather than the worker: parsing four thousand lines takes under a tenth of a
+second, but the model it produces — eleven regions and some four hundred and fifty units, each with
+items and skills — has to be structured-cloned back, and deserializing that on the page costs far
+more than the parse ever did.
+
+The premise for choosing a worker was that report parsing was a source of jank. It is not, and was
+not: seventy milliseconds, once, when a file is opened. The route planner is smaller still — the
+search covers 57 known hexes and completes in microseconds.
+
+So #8's interactivity requirement is met by evidence instead of by architecture, and
+`tests/smoke/workspace.spec.ts` carries the regression guard: it samples how long the main thread
+goes unresponsive during a report load and fails if anything stops the page for a noticeable
+fraction of a second.
+
+This is worth revisiting if either number changes — a map accumulated over many turns, or a planner
+that searches thousands of hexes. The shape to reach for then is not "put the core in a worker" but
+"stop moving the large model across the boundary": keep the model worker-side and pass only what a
+panel needs.

@@ -202,3 +202,54 @@ test("the unit table filters", async ({ page }) => {
   await expect(page.getByTestId(`unit-row-${OWN_UNIT}`)).toBeVisible();
   await expect(page.getByTestId(`unit-row-${FOREIGN_UNIT}`)).toHaveCount(0);
 });
+
+/**
+ * Issue #8 asks that the interface stay interactive while the core works, and names a worker as the
+ * way to get there. Measurement said otherwise, so this test is the evidence that stands in its
+ * place.
+ *
+ * Loading the turn 71 report - four thousand lines, eleven regions, some four hundred and fifty
+ * units - blocks the main thread for about seventy milliseconds, once. A worker was built and
+ * measured before being removed: it made the same load roughly five times slower in wall time and
+ * blocked the main thread for 755ms, because the parsed model costs far more to clone across the
+ * boundary than it costs to parse in the first place.
+ *
+ * The threshold below is deliberately loose against the seventy milliseconds actually measured. It
+ * is a regression guard, not a benchmark: what it would catch is somebody reintroducing work that
+ * stops the page for a noticeable fraction of a second.
+ */
+test("the interface is not blocked while the core reads a report", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByTestId("app-header")).toBeVisible();
+
+  // Sample how long the main thread goes unresponsive, by watching a timer miss its deadline.
+  await page.evaluate(() => {
+    const state = window as unknown as { __gaps?: number[]; __sampler?: number };
+    state.__gaps = [];
+    let last = performance.now();
+    state.__sampler = window.setInterval(() => {
+      const now = performance.now();
+      state.__gaps?.push(now - last);
+      last = now;
+    }, 4);
+  });
+
+  await page.setInputFiles('input[type="file"]', {
+    name: "turn-71.rep",
+    mimeType: "text/plain",
+    buffer: Buffer.from(REPORT, "utf8")
+  });
+  await expect(page.getByTestId("import-status")).toContainText("11 regions");
+
+  const worstBlockMs = await page.evaluate(() => {
+    const state = window as unknown as { __gaps?: number[]; __sampler?: number };
+    window.clearInterval(state.__sampler);
+    return Math.max(...(state.__gaps ?? [0]));
+  });
+
+  expect(worstBlockMs).toBeLessThan(500);
+
+  // And it really is still interactive afterwards: a hex selects and the panels follow.
+  await selectHex(page, "1:7,53");
+  await expect(page.getByTestId("panel-region")).toContainText("Inholm");
+});
