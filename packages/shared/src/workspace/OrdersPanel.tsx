@@ -7,7 +7,7 @@ import { CollapsiblePanel } from "./CollapsiblePanel";
 /** Why the editor is refusing an edit. Each reason needs its own wording to be any use. */
 type Lock =
   | { kind: "no-unit" }
-  | { kind: "foreign"; factionName: string; factionId: string | null; ownFaction: string }
+  | { kind: "foreign"; factionName: string; factionId: string | null }
   | { kind: "not-in-turn"; lastSeenTurn: number | null }
   | { kind: "no-block" };
 
@@ -31,8 +31,7 @@ function lockFor(unit: ReportUnit | null, hex: HexNode | null, block: string | n
     return {
       kind: "foreign",
       factionName: unit.factionName ?? "another faction",
-      factionId: unit.factionId,
-      ownFaction: ""
+      factionId: unit.factionId
     };
   }
   // A unit carried over from an earlier turn cannot be ordered: you cannot command what you cannot

@@ -143,6 +143,20 @@ test("panels fold away and come back", async ({ page }) => {
   await expect(region).toHaveAttribute("data-collapsed", "false");
 });
 
+test("a folded panel is still folded after a reload", async ({ page }) => {
+  await loadReport(page);
+
+  const region = page.getByTestId("panel-region");
+  await region.getByRole("button", { name: /Region/ }).click();
+  await expect(region).toHaveAttribute("data-collapsed", "true");
+
+  await page.reload();
+
+  // The layout the user arranged outlives the reload; the report does not, so nothing is selected.
+  await expect(page.getByTestId("panel-region")).toHaveAttribute("data-collapsed", "true");
+  await expect(page.getByTestId("import-status")).toContainText("no report loaded");
+});
+
 test("layer toggles are operable and only staleness does anything yet", async ({ page }) => {
   await loadReport(page);
 

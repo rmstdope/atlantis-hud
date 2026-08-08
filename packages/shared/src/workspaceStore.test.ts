@@ -83,6 +83,24 @@ describe("panels and layers", () => {
     expect(store().collapsed.units).toBe(false);
   });
 
+  it("writes the layout to storage, and only the layout", async () => {
+    // A reload builds a fresh store and hydrates it from here, so what is written decides what
+    // survives. Selections deliberately are not: a reload leaves no report loaded, and restoring a
+    // hex that no longer exists would put stale headings over empty panels.
+    store().togglePanel("region");
+    store().toggleLayer("staleness");
+    store().selectRegion("1:7,53");
+
+    const options = useWorkspaceStore.persist.getOptions();
+    const raw = await options.storage?.getItem(options.name ?? "atlantis-hud-workspace");
+    const persisted = (raw as { state?: Record<string, unknown> } | null)?.state ?? {};
+
+    expect(persisted.collapsed).toMatchObject({ region: true, unit: false });
+    expect(persisted.layers).toMatchObject({ staleness: false, units: true });
+    expect(persisted).not.toHaveProperty("selectedRegionId");
+    expect(persisted).not.toHaveProperty("project");
+  });
+
   it("toggles a layer back and forth", () => {
     store().toggleLayer("staleness");
     expect(store().layers.staleness).toBe(false);
