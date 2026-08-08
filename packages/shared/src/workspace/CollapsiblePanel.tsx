@@ -35,7 +35,9 @@ export function CollapsiblePanel({
     <section
       data-testid={`panel-${panel}`}
       data-collapsed={collapsed}
-      className={`flex min-h-0 min-w-0 flex-col overflow-hidden rounded-md border border-edge bg-panel/95 shadow-lg backdrop-blur ${className}`}
+      // `h-full` matters: without it the section sizes to its content and spills out of whatever
+      // slot it was given, painting over the panel below.
+      className={`flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-md border border-edge bg-panel/95 shadow-lg backdrop-blur ${className}`}
     >
       <header className="flex h-7 flex-none items-center gap-2 border-b border-edge px-2.5">
         <button

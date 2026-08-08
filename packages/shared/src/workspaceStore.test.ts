@@ -18,6 +18,23 @@ describe("workspace selection", () => {
     expect(store().selectedUnitId).toBeNull();
   });
 
+  it("selects the unit the caller nominates for the new hex", () => {
+    // Landing on a hex with nothing selected leaves the detail and orders panels blank for no
+    // reason, so the caller passes the first unit standing there.
+    store().selectRegion("1:7,53", "18642");
+    expect(store().selectedUnitId).toBe("18642");
+
+    store().selectRegion("1:26,52", "13401");
+    expect(store().selectedRegionId).toBe("1:26,52");
+    expect(store().selectedUnitId).toBe("13401");
+  });
+
+  it("selects nothing when the new hex holds no units", () => {
+    store().selectRegion("1:7,53", "18642");
+    store().selectRegion("1:7,51");
+    expect(store().selectedUnitId).toBeNull();
+  });
+
   it("keeps the selected unit when the same hex is chosen again", () => {
     store().selectRegion("1:7,53");
     store().selectUnit("18642");

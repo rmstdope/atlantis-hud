@@ -26,6 +26,16 @@ const FOREIGN_UNIT = "12538";
  * a screen reader user selects one. Driving it this way tests the accessible path rather than
  * bypassing it with a forced click.
  */
+/**
+ * Clicks a unit in the table.
+ *
+ * Scoped to its row rather than found by accessible name: Playwright matches names by substring,
+ * and the orders panel header also reads "unit 18642" once that unit is selected.
+ */
+async function selectUnit(page: Page, unitId: string) {
+  await page.getByTestId(`unit-row-${unitId}`).getByRole("button").click();
+}
+
 async function selectHex(page: Page, regionId: string) {
   const hex = page.getByRole("button", { name: `hex ${regionId}` });
   await hex.focus();
@@ -64,11 +74,21 @@ test("selecting a hex fills the region panel and the unit table together", async
   await expect(page.getByTestId(`unit-row-${OWN_UNIT}`)).toBeVisible();
 });
 
+test("selecting a hex selects a unit in it, preferring your own", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+
+  // Ninety-two units stand here and one of them is the player's; landing on that one saves them
+  // hunting for it, and leaves no panel blank for no reason.
+  await expect(page.getByTestId("panel-unit")).toContainText("Seven of Eight");
+  await expect(page.getByTestId(`unit-row-${OWN_UNIT}`)).toHaveAttribute("data-selected", "true");
+});
+
 test("selecting your own unit fills the detail panel and opens its orders", async ({ page }) => {
   await loadReport(page);
   await selectHex(page, "1:7,53");
 
-  await page.getByRole("button", { name: `unit ${OWN_UNIT}` }).click();
+  await selectUnit(page, OWN_UNIT);
 
   await expect(page.getByTestId("panel-unit")).toContainText("Seven of Eight");
   await expect(page.getByTestId("panel-unit")).toContainText("your faction");
@@ -83,7 +103,7 @@ test("a foreign unit can be inspected but not ordered", async ({ page }) => {
   await loadReport(page);
   await selectHex(page, "1:7,53");
 
-  await page.getByRole("button", { name: `unit ${FOREIGN_UNIT}` }).click();
+  await selectUnit(page, FOREIGN_UNIT);
 
   // Inspecting a neighbour is legitimate; ordering one is not.
   await expect(page.getByTestId("panel-unit")).toContainText("Elder Tree Forests");
@@ -95,36 +115,39 @@ test("a foreign unit can be inspected but not ordered", async ({ page }) => {
   await expect(page.getByTestId("orders-input")).toHaveCount(0);
 });
 
-test("with no unit selected the detail panel is empty and orders are refused", async ({ page }) => {
+test("a hex with no units leaves the detail panel empty and orders refused", async ({ page }) => {
   await loadReport(page);
-  await selectHex(page, "1:7,53");
+
+  // A hex known only from a neighbour's exits carries no units at all.
+  await selectHex(page, "1:7,51");
 
   await expect(page.getByTestId("panel-unit")).toContainText("No unit selected");
   await expect(page.getByTestId("orders-locked")).toHaveAttribute("data-lock", "no-unit");
 });
 
-test("changing hex abandons the unit selected in the old one", async ({ page }) => {
+test("changing hex moves the selection to a unit in the new one", async ({ page }) => {
   await loadReport(page);
   await selectHex(page, "1:7,53");
-  await page.getByRole("button", { name: `unit ${OWN_UNIT}` }).click();
   await expect(page.getByTestId("panel-unit")).toContainText("Seven of Eight");
 
   await selectHex(page, "1:26,52");
 
-  await expect(page.getByTestId("panel-unit")).toContainText("No unit selected");
+  // The old hex's unit is gone from the panel rather than lingering over a list it is not in.
+  await expect(page.getByTestId("panel-unit")).not.toContainText("Seven of Eight");
+  await expect(page.getByTestId("panel-unit")).not.toContainText("No unit selected");
 });
 
 test("editing orders changes only the selected unit's block", async ({ page }) => {
   await loadReport(page);
   await selectHex(page, "1:7,53");
-  await page.getByRole("button", { name: `unit ${OWN_UNIT}` }).click();
+  await selectUnit(page, OWN_UNIT);
 
   await page.getByTestId("orders-input").fill("@work");
   await expect(page.getByTestId("orders-status")).toContainText("0 errors");
 
   // The other unit's block is untouched by that edit.
   await selectHex(page, "1:26,52");
-  await page.getByRole("button", { name: "unit 13401" }).click();
+  await selectUnit(page, "13401");
   await expect(page.getByTestId("orders-input")).toHaveValue(/@prepare staf/);
 });
 

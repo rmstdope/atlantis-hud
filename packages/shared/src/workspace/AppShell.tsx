@@ -1,6 +1,6 @@
 import type { CoreClient, ParsedReport } from "@atlantis/core-client";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { buildHexMapModel, type HexMapModel } from "../hexMapModel";
+import { buildHexMapModel, unitsForHex, type HexMapModel } from "../hexMapModel";
 import { readUnitOrders, writeUnitOrders } from "../ordersDocument";
 import { useWorkspaceStore } from "../workspaceStore";
 import { AppHeader, type ImportStatus } from "./AppHeader";
@@ -67,6 +67,20 @@ export function AppShell({
 
   const model = useMemo(() => (parsed ? buildHexMapModel(parsed) : EMPTY), [parsed]);
 
+  /**
+   * Selects a hex together with the first unit standing in it.
+   *
+   * `unitsForHex` sorts the player's own units first, so this lands on one of theirs whenever the
+   * hex holds any, and only falls to a foreign unit when it does not.
+   */
+  const selectHex = useCallback(
+    (regionId: string | null) => {
+      const target = model.hexes.find((candidate) => candidate.regionId === regionId) ?? null;
+      selectRegion(regionId, unitsForHex(target)[0]?.unitId ?? null);
+    },
+    [model, selectRegion]
+  );
+
   const hex = useMemo(
     () => model.hexes.find((candidate) => candidate.regionId === selectedRegionId) ?? null,
     [model, selectedRegionId]
@@ -95,8 +109,13 @@ export function AppShell({
           failed: false
         });
 
-        // Opening on a hex the player has units in beats opening on whatever came first.
-        selectRegion(buildHexMapModel(report).initialSelectedRegionId);
+        // Opening on a hex the player has units in beats opening on whatever came first, and the
+        // unit inside it is chosen for the same reason.
+        const opening = buildHexMapModel(report);
+        const openingHex = opening.hexes.find(
+          (candidate) => candidate.regionId === opening.initialSelectedRegionId
+        );
+        selectRegion(opening.initialSelectedRegionId, unitsForHex(openingHex ?? null)[0]?.unitId ?? null);
       } catch (error) {
         setStatus({
           regionCount: 0,
@@ -171,7 +190,7 @@ export function AppShell({
           model={model}
           level={level}
           selectedRegionId={selectedRegionId}
-          onSelectRegion={selectRegion}
+          onSelectRegion={selectHex}
           showStaleness={layers.staleness}
           showUnits={layers.units}
         />
@@ -180,31 +199,41 @@ export function AppShell({
           <LayerChips levels={model.levels} />
         </div>
 
-        {/* Region left, unit and orders right, units along the bottom: the approved layout. */}
-        <div className="pointer-events-none absolute inset-0 p-2.5 pt-12">
-          <div className="pointer-events-auto absolute bottom-[13.5rem] left-2.5 top-12 w-[19rem]">
-            <RegionPanel hex={hex} />
+        {/*
+          Region left, unit and orders right, units along the bottom.
+
+          Laid out as a column rather than by absolute offsets: the unit dock sits on the floor and
+          grows upward as a hex holds more units, and the row above yields the space. Pinning the
+          dock's height instead would either waste the screen on an empty hex or bury ninety units
+          in a scroller.
+        */}
+        <div className="pointer-events-none absolute inset-0 flex flex-col gap-2.5 p-2.5 pt-12">
+          <div className="flex min-h-0 flex-1 justify-between gap-2.5">
+            <div className="pointer-events-auto flex w-[19rem] min-h-0 flex-col">
+              <RegionPanel hex={hex} />
+            </div>
+
+            <div className="pointer-events-auto flex w-[21rem] min-h-0 flex-col gap-2.5">
+              {/* The unit panel yields space so the orders editor keeps a usable number of rows. */}
+              <div className="min-h-0 flex-1">
+                <UnitPanel unit={unit} hex={hex} />
+              </div>
+              <div className="h-[19rem] max-h-[55%] min-h-[9rem] flex-none">
+                <OrdersPanel
+                  unit={unit}
+                  hex={hex}
+                  document={ordersDocument}
+                  ownFactionName={factionLabel ?? "your faction"}
+                  onChange={onOrdersChange}
+                  errorCount={diagnostics.errors}
+                  warningCount={diagnostics.warnings}
+                  savedAt={savedAt}
+                />
+              </div>
+            </div>
           </div>
 
-          <div className="pointer-events-auto absolute bottom-[13.5rem] right-2.5 top-12 flex w-[21rem] flex-col gap-2.5">
-            <div className="min-h-0 flex-1">
-              <UnitPanel unit={unit} hex={hex} />
-            </div>
-            <div className="h-48 flex-none">
-              <OrdersPanel
-                unit={unit}
-                hex={hex}
-                document={ordersDocument}
-                ownFactionName={factionLabel ?? "your faction"}
-                onChange={onOrdersChange}
-                errorCount={diagnostics.errors}
-                warningCount={diagnostics.warnings}
-                savedAt={savedAt}
-              />
-            </div>
-          </div>
-
-          <div className="pointer-events-auto absolute bottom-2.5 left-2.5 right-2.5 h-[12rem]">
+          <div className="pointer-events-auto max-h-[45vh] flex-none">
             <UnitTableDock hex={hex} />
           </div>
         </div>

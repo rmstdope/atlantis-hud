@@ -35,7 +35,14 @@ export type WorkspaceState = {
 
   openProject: (project: WorkspaceProject) => void;
   closeProject: () => void;
-  selectRegion: (regionId: string | null) => void;
+  /**
+   * Selects a hex, and with it a unit inside that hex.
+   *
+   * `defaultUnitId` is supplied by the caller, which knows what the hex contains. Landing on a hex
+   * with nothing selected leaves the detail and orders panels empty for no reason, so the first
+   * unit is chosen straight away — the caller sorts its own faction first.
+   */
+  selectRegion: (regionId: string | null, defaultUnitId?: string | null) => void;
   selectUnit: (unitId: string | null) => void;
   setLevel: (level: number) => void;
   togglePanel: (panel: PanelName) => void;
@@ -115,11 +122,11 @@ export const useWorkspaceStore = create<WorkspaceState>()(
 
       // Moving to another hex abandons the unit that was selected in the old one: keeping it would
       // leave the detail panel and the orders editor describing a unit that is no longer in the list.
-      selectRegion: (regionId) =>
+      selectRegion: (regionId, defaultUnitId = null) =>
         set((state) =>
           state.selectedRegionId === regionId
             ? state
-            : { selectedRegionId: regionId, selectedUnitId: null }
+            : { selectedRegionId: regionId, selectedUnitId: defaultUnitId }
         ),
 
       selectUnit: (unitId) => set({ selectedUnitId: unitId }),
