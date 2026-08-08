@@ -7,8 +7,8 @@ use atlantis_hud_core_tauri::{
     command_load_order_draft, command_open_project, command_parse_report,
     command_parse_report_full, command_preview_report_import, command_save_order_draft,
     command_validate_orders, ImportedTurnPreviewDto, ImportedTurnRecordDto, OpenedProjectDto,
-    OrderDraftRecordDto, OrderValidationResultDto, ProjectManifestDto, ReportImportPreviewDto,
-    ReportParseResultDto,
+    OrderDraftRecordDto, OrderValidationResultDto, ParsedReport, ProjectManifestDto,
+    ReportImportPreviewDto, ReportParseResultDto,
 };
 #[cfg(all(
     any(target_os = "macos", target_os = "windows"),
@@ -60,7 +60,7 @@ fn parse_report(raw_report: String) -> ReportParseResultDto {
     feature = "desktop-runtime"
 ))]
 #[tauri::command]
-fn parse_report_full(raw_report: String) -> serde_json::Value {
+fn parse_report_full(raw_report: String) -> ParsedReport {
     command_parse_report_full(&raw_report)
 }
 
