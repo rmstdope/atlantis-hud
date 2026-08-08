@@ -1,0 +1,181 @@
+;Treasury:
+;
+;Item                                      Rank  Max        Total
+;=====================================================================
+;6 leaders [LEAD]                          3     8          236
+;26 hill dwarves [HDWA]                    3     68         200
+;159 silver [SILV]                         45    9200       52192
+
+Atlantis Report For:
+Borg (73) (Magic 5)
+March, Year 1
+
+Atlantis Engine Version: 5.2.5 (beta)
+NewOrigins, Version: 3.0.0 (beta)
+
+Faction Status:
+Regions: 0 (0)
+Quartermasters: 0 (0)
+Mages: 6 (6)
+Apprentices: 0 (15)
+
+Errors during turn:
+Unit (1387): BUY: Unit attempted to buy more than it could afford.
+Unit (1387): STUDY: Not enough funds.
+
+Events during turn:
+Times reward of 200 silver.
+Unit (1382): Claims $878.
+Unit (1383): Claims $878.
+Unit (1384): Claims $878.
+Unit (1385): Claims $878.
+Unit (1386): Claims $878.
+Unit (1387): Claims $255.
+Unit (1388): Claims $1020.
+Unit (1387): Buys 6 hill dwarves [HDWA] at $41 each.
+Unit (1388): Buys 20 hill dwarves [HDWA] at $41 each.
+Unit (1382): Buys leader [LEAD] at $728 each.
+Unit (1383): Buys leader [LEAD] at $728 each.
+Unit (1384): Buys leader [LEAD] at $728 each.
+Unit (1385): Buys leader [LEAD] at $728 each.
+Unit (1386): Buys leader [LEAD] at $728 each.
+Three of Five (793): Teaches force to Unit (1382).
+Three of Five (793): Teaches force to Unit (1383).
+Three of Five (793): Teaches force to Unit (1384).
+Three of Five (793): Teaches force to Unit (1385).
+Three of Five (793): Teaches force to Unit (1386).
+Unit (1382): Studies force and was taught for 30 days.
+Unit (1383): Studies force and was taught for 30 days.
+Unit (1384): Studies force and was taught for 30 days.
+Unit (1385): Studies force and was taught for 30 days.
+Unit (1386): Studies force and was taught for 30 days.
+Unit (1388): Earns 260 silver working in mountain (13,63) in
+  Liou'ecpu.
+
+Item reports:
+
+silver [SILV], weight 0. This is the currency of Atlantis.
+
+hill dwarf [HDWA], weight 10, walking capacity 5, moves 2 hexes per
+  month. This race may study armorer [ARMO], weaponsmith [WEAP],
+  quarrying [QUAR], mining [MINI] and building [BUIL] to level 5 and
+  all other skills to level 2.
+
+Declared Attitudes (default Neutral):
+Hostile : none.
+Unfriendly : Creatures (2).
+Neutral : none.
+Friendly : none.
+Ally : none.
+
+Unclaimed silver: 4935.
+
+mountain (13,63) in Liou'ecpu, contains Rihead [town], 7922 peasants
+  (hill dwarves), $4753.
+------------------------------------------------------------
+  Wages: $13.0 (Max: $950).
+  Wanted: 188 grain [GRAI] at $19, 172 livestock [LIVE] at $18, 130
+    fish [FISH] at $37, 17 bags [BAG] at $103, 15 longbows [LBOW] at
+    $84, 15 leather armor [LARM] at $75, 8 spears [SPEA] at $89, 33
+    truffles [TRUF] at $273, 2 cotton [COTT] at $243.
+  For Sale: 26 pearls [PEAR] at $111, 316 hill dwarves [HDWA] at $41,
+    63 leaders [LEAD] at $728.
+  Entertainment available: $316.
+  Products: 34 grain [GRAI], 20 iron [IRON], 14 stone [STON].
+
+Exits:
+  North : ocean (13,61) in Atlantis Ocean.
+  Northeast : ocean (14,62) in Atlantis Ocean.
+  Southeast : ocean (14,64) in Atlantis Ocean.
+  South : ocean (13,65) in Atlantis Ocean.
+  Southwest : ocean (12,64) in Atlantis Ocean.
+  Northwest : ocean (12,62) in Atlantis Ocean.
+
+- City Guard (89), on guard, The Guardsmen (1), 80 leaders [LEAD], 80
+  swords [SWOR].
+* Three of Five (793), Borg (73), behind, revealing faction, leader
+  [LEAD]. Weight: 10. Capacity: 0/0/15/0. Skills: observation [OBSE] 1
+  (35), force [FORC] 1 (35), pattern [PATT] 1 (30), spirit [SPIR] 1
+  (30), gate lore [GATE] 1 (30), fire [FIRE] 1 (30), combat [COMB] 3
+  (180). Can Study: earthquake [EQUA], force shield [FSHI], energy
+  shield [ESHI], spirit shield [SSHI], magical healing [MHEA],
+  farsight [FARS], mind reading [MIND], weather lore [WEAT], earth
+  lore [EART], necromancy [NECR], demon lore [DEMO], illusion [ILLU],
+  artifact lore [ARTI].
+* Unit (1382), Borg (73), behind, revealing faction, leader [LEAD].
+  Weight: 10. Capacity: 0/0/15/0. Skills: force [FORC] 1 (60). Can
+  Study: fire [FIRE], force shield [FSHI], energy shield [ESHI].
+* Unit (1383), Borg (73), behind, revealing faction, leader [LEAD].
+  Weight: 10. Capacity: 0/0/15/0. Skills: force [FORC] 1 (60). Can
+  Study: fire [FIRE], force shield [FSHI], energy shield [ESHI].
+* Unit (1384), Borg (73), behind, revealing faction, leader [LEAD].
+  Weight: 10. Capacity: 0/0/15/0. Skills: force [FORC] 1 (60). Can
+  Study: fire [FIRE], force shield [FSHI], energy shield [ESHI].
+* Unit (1385), Borg (73), behind, revealing faction, leader [LEAD].
+  Weight: 10. Capacity: 0/0/15/0. Skills: force [FORC] 1 (60). Can
+  Study: fire [FIRE], force shield [FSHI], energy shield [ESHI].
+* Unit (1386), Borg (73), behind, revealing faction, leader [LEAD].
+  Weight: 10. Capacity: 0/0/15/0. Skills: force [FORC] 1 (60). Can
+  Study: fire [FIRE], force shield [FSHI], energy shield [ESHI].
+* Unit (1387), Borg (73), behind, revealing faction, 6 hill dwarves
+  [HDWA]. Weight: 60. Capacity: 0/0/90/0. Skills: none.
+* Unit (1388), Borg (73), behind, revealing faction, 20 hill dwarves
+  [HDWA], 159 silver [SILV]. Weight: 200. Capacity: 0/0/300/0. Skills:
+  none.
+
+
+
+
+
+Orders Template (Long Format):
+
+#atlantis 73 "<password>"
+
+;*** mountain (13,63) in Liou'ecpu, contains Rihead [town] ***
+
+unit 793
+;Three of Five (793), behind, revealing faction, leader [LEAD]. Weight:
+;  10. Capacity: 0/0/15/0. Skills: observation [OBSE] 1 (35), force
+;  [FORC] 1 (35), pattern [PATT] 1 (30), spirit [SPIR] 1 (30), gate
+;  lore [GATE] 1 (30), fire [FIRE] 1 (30), combat [COMB] 3 (180). Can
+;  Study: earthquake [EQUA], force shield [FSHI], energy shield [ESHI],
+;  spirit shield [SSHI], magical healing [MHEA], farsight [FARS], mind
+;  reading [MIND], weather lore [WEAT], earth lore [EART], necromancy
+;  [NECR], demon lore [DEMO], illusion [ILLU], artifact lore [ARTI].
+
+unit 1382
+;Unit (1382), behind, revealing faction, leader [LEAD]. Weight: 10.
+;  Capacity: 0/0/15/0. Skills: force [FORC] 1 (60). Can Study: fire
+;  [FIRE], force shield [FSHI], energy shield [ESHI].
+
+unit 1383
+;Unit (1383), behind, revealing faction, leader [LEAD]. Weight: 10.
+;  Capacity: 0/0/15/0. Skills: force [FORC] 1 (60). Can Study: fire
+;  [FIRE], force shield [FSHI], energy shield [ESHI].
+
+unit 1384
+;Unit (1384), behind, revealing faction, leader [LEAD]. Weight: 10.
+;  Capacity: 0/0/15/0. Skills: force [FORC] 1 (60). Can Study: fire
+;  [FIRE], force shield [FSHI], energy shield [ESHI].
+
+unit 1385
+;Unit (1385), behind, revealing faction, leader [LEAD]. Weight: 10.
+;  Capacity: 0/0/15/0. Skills: force [FORC] 1 (60). Can Study: fire
+;  [FIRE], force shield [FSHI], energy shield [ESHI].
+
+unit 1386
+;Unit (1386), behind, revealing faction, leader [LEAD]. Weight: 10.
+;  Capacity: 0/0/15/0. Skills: force [FORC] 1 (60). Can Study: fire
+;  [FIRE], force shield [FSHI], energy shield [ESHI].
+
+unit 1387
+;Unit (1387), behind, revealing faction, 6 hill dwarves [HDWA]. Weight:
+;  60. Capacity: 0/0/90/0. Skills: none.
+
+unit 1388
+;Unit (1388), behind, revealing faction, 20 hill dwarves [HDWA], 159
+;  silver [SILV]. Weight: 200. Capacity: 0/0/300/0. Skills: none.
+@work
+
+#end
+

@@ -1,5 +1,7 @@
 //! Shared domain core for Atlantis HUD.
 
+pub mod report;
+
 use serde::{Deserialize, Serialize};
 
 /// Canonical cross-platform game metadata contract.
