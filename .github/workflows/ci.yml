@@ -26,9 +26,21 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+          targets: wasm32-unknown-unknown
+
+      # The web and desktop shells both run the Rust core as WebAssembly, so the module has to
+      # exist before typecheck, tests or the smoke run. No system toolchain is needed: the core is
+      # pure Rust, and nothing in the wasm build compiles C.
+      - name: Install wasm-pack
+        uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-pack
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Build WebAssembly core
+        run: pnpm --filter @atlantis/browser-core build:wasm
 
       - name: Install Playwright Chromium
         run: pnpm exec playwright install --with-deps chromium

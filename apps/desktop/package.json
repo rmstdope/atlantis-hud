@@ -4,20 +4,22 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite --port 4174",
-    "build": "vite build",
+    "dev": "pnpm run build:wasm && vite --port 4174",
+    "build": "pnpm run build:wasm && vite build",
     "preview": "vite preview --port 4174",
     "lint": "eslint src --max-warnings=0",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run --passWithNoTests",
-    "logs:export": "node scripts/export-logs.mjs"
+    "logs:export": "node scripts/export-logs.mjs",
+    "build:wasm": "pnpm --filter @atlantis/browser-core build:wasm"
   },
   "dependencies": {
     "@atlantis/core-client": "workspace:*",
     "@atlantis/shared": "workspace:*",
     "@tauri-apps/api": "^2.0.0",
     "react": "^19.1.1",
-    "react-dom": "^19.1.1"
+    "react-dom": "^19.1.1",
+    "@atlantis/browser-core": "workspace:*"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^5.0.2",

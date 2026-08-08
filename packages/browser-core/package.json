@@ -1,0 +1,16 @@
+{
+  "name": "@atlantis/browser-core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "build:wasm": "wasm-pack build ../../crates/core-wasm --target web --out-dir ../../packages/browser-core/src/wasm --out-name atlantis_core",
+    "lint": "eslint src --max-warnings=0",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@atlantis/core-client": "workspace:*"
+  }
+}

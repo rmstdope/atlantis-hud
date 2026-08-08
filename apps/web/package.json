@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build:wasm": "wasm-pack build ../../crates/core-wasm --target web --out-dir ../../apps/web/src/wasm --out-name atlantis_core",
+    "build:wasm": "pnpm --filter @atlantis/browser-core build:wasm",
     "dev": "pnpm run build:wasm && vite",
     "build": "pnpm run build:wasm && vite build",
     "preview": "vite preview",
@@ -16,7 +16,8 @@
     "@atlantis/core-client": "workspace:*",
     "@atlantis/shared": "workspace:*",
     "react": "^19.1.1",
-    "react-dom": "^19.1.1"
+    "react-dom": "^19.1.1",
+    "@atlantis/browser-core": "workspace:*"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^5.0.2",

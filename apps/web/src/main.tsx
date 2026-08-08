@@ -2,8 +2,7 @@ import { createCoreClient } from "@atlantis/core-client";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";
-import { loadCoreWasm } from "./coreWasm";
-import { createWebCoreAdapter } from "./webCoreAdapter";
+import { createWebCoreAdapter, loadCoreWasm } from "@atlantis/browser-core";
 
 const root = createRoot(document.getElementById("root")!);
 

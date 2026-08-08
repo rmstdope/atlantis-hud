@@ -38,6 +38,9 @@ importers:
 
   apps/desktop:
     dependencies:
+      '@atlantis/browser-core':
+        specifier: workspace:*
+        version: link:../../packages/browser-core
       '@atlantis/core-client':
         specifier: workspace:*
         version: link:../../packages/core-client
@@ -63,6 +66,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@atlantis/browser-core':
+        specifier: workspace:*
+        version: link:../../packages/browser-core
       '@atlantis/core-client':
         specifier: workspace:*
         version: link:../../packages/core-client
@@ -82,6 +88,12 @@ importers:
       vite:
         specifier: ^7.1.1
         version: 7.3.6
+
+  packages/browser-core:
+    dependencies:
+      '@atlantis/core-client':
+        specifier: workspace:*
+        version: link:../core-client
 
   packages/core-client: {}
 
