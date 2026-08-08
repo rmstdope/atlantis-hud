@@ -1,0 +1,237 @@
+/**
+ * Reads the item catalogue out of a game's own data page.
+ *
+ * This is the item reference the report parser has always lacked: without it a unit line like
+ * `50 leaders [LEAD], 30 swords [SWOR]` cannot be split into men and equipment, because nothing in
+ * the report marks which tags are people.
+ *
+ * Unlike the movement rules, this parser is tolerant in the same way the report parser is. A
+ * movement number that cannot be read makes every route wrong, so it stops the run; one exotic
+ * monster phrasing its attacks unusually should not cost us the other four hundred entries.
+ */
+
+import { preformattedText } from "./html";
+import { RulesetScrapeError } from "./rules";
+
+export type ItemKind = "man" | "mount" | "monster" | "ship" | "equipment";
+
+export type ItemCapacity = {
+  walk: number;
+  ride: number;
+  fly: number;
+  swim: number;
+};
+
+export type MonsterCombat = {
+  skill: number;
+  attacksPerRound: number;
+  hitsToKill: number;
+  damagePerAttack: number;
+};
+
+/** Which modes an item can move itself in, whether or not it has spare capacity to carry anything. */
+export type SelfMobility = {
+  walk: boolean;
+  ride: boolean;
+  fly: boolean;
+  swim: boolean;
+};
+
+export type ItemEntry = {
+  tag: string;
+  name: string;
+  kind: ItemKind;
+  weight: number;
+  capacity: ItemCapacity;
+  /**
+   * Capability, kept separate from capacity because the page states them separately.
+   *
+   * Most entries give a number (`walking capacity 20`), but thirteen state the bare capability
+   * instead (`livestock [LIVE], weight 50, can walk`). Recording only the number left those
+   * looking like items that cannot move at all.
+   */
+  selfMobile: SelfMobility;
+  /** Hexes per month this item can carry itself, when the page says. */
+  moves: number;
+  /** Present only for monsters, and only when the page stated all four numbers. */
+  combat?: MonsterCombat;
+  /**
+   * Cargo a ship carries, which is a different thing from an item carrying itself about.
+   *
+   * Ships state no weight of their own, so `weight` is 0 for all of them - not stated rather than
+   * measured. Fleet movement is out of scope for the planner; this is recorded so it is not lost.
+   */
+  cargoCapacity?: number;
+  /**
+   * The qualifier attached to a capacity, when the page attaches one.
+   *
+   * A wagon reads "walking capacity 200 when hitched to a horse", and the rules page adds that
+   * "the excess wagons count as weight, not capacity". Storing 200 with the condition thrown away
+   * would be exactly the sort of plausible-but-wrong number this package exists to avoid.
+   */
+  capacityCondition?: string;
+};
+
+export type ItemReference = Record<string, ItemEntry>;
+
+export { RulesetScrapeError };
+
+/**
+ * One entry, as the page lays it out: an opening line naming the item and its tag, then prose.
+ *
+ * Entries are separated by blank lines and continued by indentation, so the text is rejoined into
+ * a single line before anything is read out of it.
+ */
+function entryParagraphs(html: string): string[] {
+  const pre = preformattedText(html);
+  return pre
+    .split(/\n[ \t]*\n/)
+    .map((paragraph) => paragraph.replace(/\s+/g, " ").trim())
+    .filter((paragraph) => paragraph.length > 0);
+}
+
+function readNumber(text: string, pattern: RegExp): number | null {
+  const match = text.match(pattern);
+  if (!match) {
+    return null;
+  }
+  const value = Number.parseInt(match[1], 10);
+  return Number.isNaN(value) ? null : value;
+}
+
+/**
+ * Classifies an entry from the sentence the page uses to introduce it.
+ *
+ * Order matters: a mount is also described with capacities, and a monster entry can mention a
+ * race, so the most specific marker is tested first.
+ */
+function classify(text: string): ItemKind {
+  if (/\bThis is a monster\b/i.test(text)) {
+    return "monster";
+  }
+
+  // A race marker beats a mount marker, because a centaur carries both:
+  //
+  //   "centaur [CTAU] ... This race may study ... to level 2. This is a mount."
+  //
+  // Calling it a mount would keep it out of every headcount, which defeats the one thing this
+  // catalogue exists to make possible - telling men from equipment.
+  if (/\bThis race may study\b/i.test(text)) {
+    return "man";
+  }
+  if (/\bThis is a mount\b/i.test(text)) {
+    return "mount";
+  }
+
+  // Flying ships describe themselves as `a flying 'ship'`, quotes and all, so the literal phrase
+  // "This is a ship" misses Balloon, Airship and Cloudship.
+  if (/\bThis is an? (?:flying )?'?ship'?\b/i.test(text)) {
+    return "ship";
+  }
+  return "equipment";
+}
+
+function readCombat(text: string): MonsterCombat | undefined {
+  // Combat skill goes negative: the illusory monsters are all `combat skill of -5`, and a pattern
+  // demanding digits alone silently dropped every one of them.
+  const skill = readNumber(text, /monster attacks with a combat skill of (-?\d+)/i);
+  const attacks = readNumber(text, /monster has (-?\d+) melee attacks? per round/i);
+  const hits = readNumber(text, /takes (-?\d+) hits? to kill/i);
+
+  // Damage is anchored to the melee clause rather than read loose. A dozen monsters state damage
+  // twice - a spell's first, then melee - so an unanchored pattern reads the spell's number. Every
+  // figure in the committed fixture is 1, which is precisely why that would have gone unnoticed.
+  const damage = readNumber(
+    text,
+    /melee attacks? per round and takes -?\d+ hits? to kill and each attack deals (-?\d+) damage/i
+  );
+
+  if (skill === null || attacks === null || hits === null || damage === null) {
+    return undefined;
+  }
+  return { skill, attacksPerRound: attacks, hitsToKill: hits, damagePerAttack: damage };
+}
+
+/** Picks up a qualifier such as `walking capacity 200 when hitched to a horse`. */
+function conditionOf(text: string): { capacityCondition?: string } {
+  const match = text.match(/\b(?:walking|riding|flying|swimming) capacity \d+ (when [^,.]+)/i);
+  return match ? { capacityCondition: match[1].trim() } : {};
+}
+
+/** A ship's cargo hold, which the page states as `with a capacity of 150`. */
+function cargoOf(kind: ItemKind, text: string): { cargoCapacity?: number } {
+  if (kind !== "ship") {
+    return {};
+  }
+  const capacity = readNumber(text, /with a capacity of (\d+)/i);
+  return capacity === null ? {} : { cargoCapacity: capacity };
+}
+
+export function parseItemReference(html: string): ItemReference {
+  const items: ItemReference = {};
+
+  for (const paragraph of entryParagraphs(html)) {
+    // `leader [LEAD], weight 10, ...` or `Longship [LONG]. This is a ship ...`. A skill entry reads
+    // `mining [MINI] 1: ...`, which this deliberately does not match.
+    //
+    // The name may not contain sentence punctuation, which is what keeps the tag bound to the
+    // entry that opens the paragraph. Allowing it to wander produced a real bug: the structure
+    // entry `Dormant Monolith: This is a building. This structure requires a sacrifice of 50
+    // leaders [LEAD].` matched as though it were the definition of LEAD, and overwrote it.
+    const opening = paragraph.match(/^([^.:[\]]{1,40}) \[([A-Z0-9]{2,6})\][,.]/);
+    if (!opening) {
+      continue;
+    }
+
+    const [, name, tag] = opening;
+    const kind = classify(paragraph);
+
+    // A ship states its capacity as cargo, not as a way of carrying itself about, so it is not
+    // read into the movement capacities.
+    const capacity: ItemCapacity = {
+      walk: readNumber(paragraph, /walking capacity (\d+)/i) ?? 0,
+      ride: readNumber(paragraph, /riding capacity (\d+)/i) ?? 0,
+      fly: readNumber(paragraph, /flying capacity (\d+)/i) ?? 0,
+      swim: readNumber(paragraph, /swimming capacity (\d+)/i) ?? 0
+    };
+
+    // A stated number implies the capability; the bare `can walk` form states it on its own.
+    const selfMobile: SelfMobility = {
+      walk: capacity.walk > 0 || /\bcan walk\b/i.test(paragraph),
+      ride: capacity.ride > 0 || /\bcan ride\b/i.test(paragraph),
+      fly: capacity.fly > 0 || /\bcan fly\b/i.test(paragraph),
+      swim: capacity.swim > 0 || /\bcan swim\b/i.test(paragraph)
+    };
+
+    const entry: ItemEntry = {
+      tag,
+      name: name.trim(),
+      kind,
+      weight: readNumber(paragraph, /\bweight (\d+)/i) ?? 0,
+      capacity,
+      selfMobile,
+      ...conditionOf(paragraph),
+      ...cargoOf(kind, paragraph),
+      moves:
+        readNumber(paragraph, /moves (\d+) hexes? per month/i) ??
+        readNumber(paragraph, /speed of (\d+) hexes? per month/i) ??
+        0
+    };
+
+    const combat = kind === "monster" ? readCombat(paragraph) : undefined;
+    if (combat) {
+      entry.combat = combat;
+    }
+
+    items[tag] = entry;
+  }
+
+  if (Object.keys(items).length === 0) {
+    throw new RulesetScrapeError(
+      "could not read any item entries from the data page. Expected a <pre> block of entries " +
+        "shaped like `horse [HORS], weight 50, ...`; the page has probably changed shape."
+    );
+  }
+
+  return items;
+}

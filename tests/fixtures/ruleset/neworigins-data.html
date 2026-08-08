@@ -1,0 +1,3724 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <!-- Required meta tags -->
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <meta name="description" content="Play Atlantis PBEM game. Fantasy strategy game.">
+    <link rel="shortcut icon" href="/static/images/favicon.png" type="image/x-icon">
+
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:site" content="@atlantis-pbem">
+    <meta name="twitter:creator" content="@atlantis-pbem">
+    <meta name="twitter:title" content="Atlantis PBEM game">
+    <meta name="twitter:description" content="Play Atlantis PBEM game. Fantasy strategy game.">
+
+    <!-- Facebook -->
+    <meta property="og:url" content="https://atlantis-pbem.com">
+    <meta property="og:title" content="Atlantis PBEM game">
+    <meta property="og:description" content="Play Atlantis PBEM game. Fantasy strategy game.">
+    <meta property="og:type" content="website">
+
+    <!-- Google -->
+    <meta name="google-site-verification" content="PYXqos5OYrJmAqfQnXopwFOA9tW-j_2o4xejAgNhye8" />
+
+    <!-- Bootstrap CSS -->
+    <link rel="stylesheet" href="/static/css/bootstrap-5.3.3.min.css">
+
+    <title>Atlantis New Origins</title>
+  </head>
+  <body class="h-100">
+    <div class="min-vh-100 position-relative" style="padding-bottom: 100px;">
+      <!-- Navigation -->
+      <nav class="navbar navbar-expand-lg navbar-dark bg-dark fixed-top">
+        <div class="container">
+          <a class="navbar-brand mr-0 mr-md-2 position-relative" href="/" aria-label="Bootstrap">
+            <svg width="36" height="36" viewBox="0 -18 512 512" fill="#ffc107" xmlns="http://www.w3.org/2000/svg"><path d="m512 269.402344-45.378906-78.597656h-73.441406l-28.0625-48.605469 36.71875-63.601563-45.378907-78.597656h-90.753906l-36.722656 63.601562h-73.4375l-36.722657 63.601563h-73.441406l-45.378906 78.597656 45.378906 78.597657h73.441406l28.0625 48.605468-36.71875 63.601563 45.378907 78.597656h90.753906l36.722656-63.601563h73.441407l36.71875-63.601562h73.441406zm-172.855469-14.996094h-56.125l-28.066406-48.605469 28.066406-48.605469h56.125l28.0625 48.605469zm-166.289062-33.609375h56.125l28.0625 48.605469-28.0625 48.605468h-56.125l-28.0625-48.605468zm110.164062-190.804687h56.125l28.0625 48.605468-28.0625 48.605469h-56.125l-28.0625-48.605469zm-110.164062 63.601562h56.125l28.0625 48.605469-28.0625 48.605469h-56.125l-28.0625-48.605469zm-138.222657 112.207031 28.0625-48.605469h56.125l28.0625 48.605469-28.0625 48.605469h-56.125zm194.347657 239.410157h-56.125l-28.0625-48.605469 28.0625-48.605469h56.125l28.0625 48.605469zm110.164062-63.601563h-56.125l-28.066406-48.605469 28.066406-48.605468h56.125l28.0625 48.605468zm54.035157-63.601563-28.0625-48.605468 28.0625-48.605469h56.125l28.0625 48.605469-28.0625 48.605468zm0 0"/></svg>
+          </a>
+          <a class="navbar-brand" href="/">Atlantis: New Origins</a>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse"
+            data-bs-target="#navbarResponsive" aria-controls="navbarResponsive" aria-expanded="false"
+            aria-label="Toggle navigation">
+            <span class="navbar-toggler-icon"></span>
+          </button>
+          <div class="collapse navbar-collapse" id="navbarResponsive">
+            <ul class="navbar-nav ms-auto">
+              <li class="nav-item">
+                <a class="nav-link " href="/">Home</a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link " href="/game">Players & Turns</a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link " href="/times">Times</a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link " href="/messages">Messages</a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link " href="/rules">Rules</a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link " href="/changelog">Changelog</a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link " href="/quickstart">
+                  Quick Start Guide
+                </a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link " href="/game-client">Game Client</a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link active" href="/data">Game Data</a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link " href="/magic">Magic</a>
+              </li>
+            </ul>
+          </div>
+        </div>
+      </nav>
+      
+
+      <!-- Page Content -->
+      <div class="container-fluid p-5">
+        <div class="container pt-4">
+        <div class="alert alert-primary">
+          <img src="/static/images/ukraine.jpg" width="40px" height="25px" style="float: left; padding-right: 10px" />
+          We stand with Ukraine. <a href="https://savelife.in.ua/en/">Please support</a> the Ukrainian army to defend against the Russian invasion.
+        </div>
+      </div>
+
+        <div class="container my-5">
+<pre>
+Skill reports:
+
+mining [MINI] 1: This skill deals with all aspects of extracting raw
+  metals and gems from the earth. They tend to be found more often in
+  mountainous regions, but may be found elsewhere as well. A unit with
+  this skill may PRODUCE iron [IRON] at a rate of 1 per man-month.
+  This skill costs 10 silver per month of study.
+
+mining [MINI] 2: No skill report.
+
+mining [MINI] 3: A unit with this skill may PRODUCE mithril [MITH] at
+  a rate of 1 per man-month. A unit with this skill is able to
+  determine if a region contains mithril. A unit with this skill may
+  BUILD a Mine from 10 wood [WOOD] or stone [STON] or an Arcane Mine
+  from 10 mithril [MITH].
+
+mining [MINI] 4: No skill report.
+
+mining [MINI] 5: A unit with this skill may PRODUCE admantium [ADMT]
+  at a rate of 1 per man-month. A unit with this skill is able to
+  determine if a region contains admantium. A unit with this skill may
+  BUILD an Alchemist Lab from 10 admantium [ADMT].
+
+lumberjack [LUMB] 1: This skill deals with all aspects of various wood
+  production. Wood is most often found in forests, but may also be
+  found elsewhere. A unit with this skill may PRODUCE wood [WOOD] at a
+  rate of 1 per man-month. This skill costs 10 silver per month of
+  study.
+
+lumberjack [LUMB] 2: No skill report.
+
+lumberjack [LUMB] 3: A unit with this skill may PRODUCE ironwood
+  [IRWD] at a rate of 1 per man-month. A unit with this skill is able
+  to determine if a region contains ironwood. A unit with this skill
+  may BUILD a Timber Yard from 10 wood [WOOD] or stone [STON] or a
+  Forest Preserve from 10 ironwood [IRWD].
+
+lumberjack [LUMB] 4: No skill report.
+
+lumberjack [LUMB] 5: A unit with this skill may PRODUCE yew [YEW] at a
+  rate of 1 per man-month. A unit with this skill is able to determine
+  if a region contains yew. A unit with this skill may BUILD a Sacred
+  Grove from 10 yew [YEW].
+
+quarrying [QUAR] 1: This skill deals with all aspects of various stone
+  production. Mountains are the main producers of stone, but it may be
+  found in other regions as well. A unit with this skill may PRODUCE
+  stone [STON] at a rate of 1 per man-month. This skill costs 10
+  silver per month of study.
+
+quarrying [QUAR] 2: No skill report.
+
+quarrying [QUAR] 3: A unit with this skill may PRODUCE rootstone
+  [ROOT] at a rate of 1 per man-month. A unit with this skill is able
+  to determine if a region contains rootstone. A unit with this skill
+  may BUILD a Quarry from 10 wood [WOOD] or stone [STON] or a Mystic
+  Quarry from 10 rootstone [ROOT].
+
+quarrying [QUAR] 4: No skill report.
+
+quarrying [QUAR] 5: No skill report.
+
+hunting [HUNT] 1: This skill deals with all aspects of animal hide
+  production. A unit with this skill may PRODUCE furs [FUR] at a rate
+  of 1 per man-month. This skill costs 10 silver per month of study.
+
+hunting [HUNT] 2: No skill report.
+
+hunting [HUNT] 3: A unit with this skill may PRODUCE floater hides
+  [FLOA] at a rate of 1 per man-month. A unit with this skill is able
+  to determine if a region contains floater hides. A unit with this
+  skill may BUILD a Trapping Hut from 10 wood [WOOD] or stone [STON].
+
+hunting [HUNT] 4: No skill report.
+
+hunting [HUNT] 5: A unit with this skill may BUILD a Trapping Lodge
+  from 10 ironwood [IRWD].
+
+fishing [FISH] 1: This skill deals with all aspects of fish
+  production. A unit with this skill may PRODUCE fish [FISH] at a rate
+  of 1 per man-month and nets [NET] from herb [HERB] at a rate of 1
+  per man-month. This skill costs 10 silver per month of study.
+
+fishing [FISH] 2: No skill report.
+
+fishing [FISH] 3: A unit with this skill may PRODUCE giant turtles
+  [TURT] at a rate of 1 per man-month. A unit with this skill is able
+  to determine if a region contains giant turtles.
+
+fishing [FISH] 4: No skill report.
+
+fishing [FISH] 5: No skill report.
+
+herb lore [HERB] 1: This skill deals with all aspects of herb
+  production. A unit with this skill may PRODUCE herbs [HERB] at a
+  rate of 1 per man-month, lassoes [LASS] from herb [HERB] at a rate
+  of 1 per man-month, and bags [BAG] from herb [HERB] at a rate of 1
+  per man-month. This skill costs 10 silver per month of study.
+
+herb lore [HERB] 2: No skill report.
+
+herb lore [HERB] 3: A unit with this skill may PRODUCE mushrooms
+  [MUSH] at a rate of 1 per man-month. A unit with this skill is able
+  to determine if a region contains mushrooms. A unit with this skill
+  may BUILD a Faerie Ring from 10 mushroom [MUSH].
+
+herb lore [HERB] 4: No skill report.
+
+herb lore [HERB] 5: No skill report.
+
+horse training [HORS] 1: This skill deals with all aspects of horse
+  production. A unit with this skill may PRODUCE horses [HORS] at a
+  rate of 1 per man-month and camels [CAME] at a rate of 1 per
+  man-month. This skill costs 10 silver per month of study.
+
+horse training [HORS] 2: No skill report.
+
+horse training [HORS] 3: A unit with this skill may BUILD a Stables
+  from 10 wood [WOOD] or stone [STON] or an Oasis from 10 wood [WOOD]
+  or stone [STON].
+
+horse training [HORS] 4: No skill report.
+
+horse training [HORS] 5: A unit with this skill may PRODUCE winged
+  horses [WING] at a rate of 1 per man-month. A unit with this skill
+  is able to determine if a region contains winged horses. A unit with
+  this skill may BUILD a Mythic Stables from 10 ironwood [IRWD].
+
+weaponsmith [WEAP] 1: This skill deals with all aspects of weapon
+  construction and production. A unit with this skill may PRODUCE
+  swords [SWOR] from iron [IRON] at a rate of 1 per man-month,
+  crossbows [XBOW] from wood [WOOD] at a rate of 1 per man-month,
+  longbows [LBOW] from wood [WOOD] at a rate of 1 per man-month, picks
+  [PICK] from iron [IRON] at a rate of 1 per man-month, spears [SPEA]
+  from wood [WOOD] at a rate of 1 per man-month, axes [AXE] from wood
+  [WOOD] at a rate of 1 per man-month, hammers [HAMM] from iron [IRON]
+  at a rate of 1 per man-month, and javelins [JAVE] from wood [WOOD]
+  at a rate of 1 per man-month. This skill costs 10 silver per month
+  of study.
+
+weaponsmith [WEAP] 2: A unit with this skill may PRODUCE pikes [PIKE]
+  from wood [WOOD] at a rate of 1 per man-month.
+
+weaponsmith [WEAP] 3: A unit with this skill may PRODUCE mithril
+  swords [MSWO] from mithril [MITH] at a rate of 1 per man-month and
+  battle axes [BAXE] from ironwood [IRWD] at a rate of 1 per
+  man-month.
+
+weaponsmith [WEAP] 4: A unit with this skill may PRODUCE magic
+  crossbows [MXBO] from ironwood [IRWD] at a rate of 1 per man-month.
+
+weaponsmith [WEAP] 5: A unit with this skill may PRODUCE double bows
+  [DBOW] from yew [YEW] at a rate of 1 per man-month and admantium
+  swords [ASWR] from admantium [ADMT] at a rate of 1 per 2 man-months.
+
+armorer [ARMO] 1: This skill deals with all aspects of armor
+  construction and production. A unit with this skill may PRODUCE
+  chain armor [CARM] from iron [IRON] at a rate of 1 per man-month,
+  leather armor [LARM] from fur [FUR] at a rate of 1 per man-month,
+  and wooden shields [WSHD] from wood [WOOD] at a rate of 1 per
+  man-month. This skill costs 10 silver per month of study.
+
+armorer [ARMO] 2: No skill report.
+
+armorer [ARMO] 3: A unit with this skill may PRODUCE plate armor
+  [PARM] from 3 iron [IRON] at a rate of 1 per 3 man-months and iron
+  shields [ISHD] from iron [IRON] at a rate of 1 per man-month.
+
+armorer [ARMO] 4: No skill report.
+
+armorer [ARMO] 5: A unit with this skill may PRODUCE mithril armor
+  [MARM] from mithril [MITH] at a rate of 1 per man-month, admantium
+  ring mails [ARNG] from admantium [ADMT] at a rate of 1 per 2
+  man-months, admantium plate mails [AARM] from 3 admantium [ADMT] at
+  a rate of 1 per 4 man-months, and mithril shields [MSHD] from
+  mithril [MITH] at a rate of 1 per man-month.
+
+carpenter [CARP] 1: This skill deals with all aspects of wood based
+  item production other than for use as weapons. A unit with this
+  skill may PRODUCE wagons [WAGO] from wood [WOOD] at a rate of 1 per
+  man-month and spinning wheels [SPIN] from wood [WOOD] at a rate of 1
+  per man-month. This skill costs 10 silver per month of study.
+
+carpenter [CARP] 2: No skill report.
+
+carpenter [CARP] 3: A unit with this skill may PRODUCE magic wagons
+  [MWAG] from ironwood [IRWD] at a rate of 1 per man-month.
+
+carpenter [CARP] 4: A unit with this skill may PRODUCE catapults
+  [CATP] from 250 wood [WOOD], 30 ironwood [IRWD], 80 furs [FUR] and
+  3000 silver [SILV] at a rate of 1 per 4 man-months and steel
+  defenders [STED] from 30 rootstone [ROOT], 250 iron [IRON], 50 furs
+  [FUR] and 3000 silver [SILV] at a rate of 1 per 4 man-months.
+
+carpenter [CARP] 5: A unit with this skill may PRODUCE gliders [GLID]
+  from 2 floater hides [FLOA] at a rate of 1 per man-month.
+
+building [BUIL] 1: This skill deals with the construction of
+  fortifications, roads and other buildings, except for most trade
+  structures. A unit with this skill may BUILD a Tower from 10 stone
+  [STON], a Fort from 40 stone [STON] or a Stockade from 60 wood
+  [WOOD]. This skill costs 10 silver per month of study.
+
+building [BUIL] 2: A unit with this skill may BUILD a Castle from 300
+  stone [STON], a Road N from 30 stone [STON], a Road NW from 30 stone
+  [STON], a Road NE from 30 stone [STON], a Road SW from 30 stone
+  [STON], a Road SE from 30 stone [STON], a Road S from 30 stone
+  [STON] or a Caravanserai from 20 wood [WOOD] or stone [STON].
+
+building [BUIL] 3: A unit with this skill may BUILD a Citadel from 800
+  stone [STON], a Magical Tower from 10 rootstone [ROOT], a Magical
+  Fortress from 40 rootstone [ROOT], an Inn from 10 wood [WOOD] or
+  stone [STON], a Temple from 10 stone [STON] or a Hermits hut from 5
+  ironwood [IRWD].
+
+building [BUIL] 4: A unit with this skill may BUILD a Magical Castle
+  from 300 rootstone [ROOT].
+
+building [BUIL] 5: A unit with this skill may BUILD a Magical Citadel
+  from 800 rootstone [ROOT] or a Black Keep from 1000 rootstone
+  [ROOT].
+
+shipbuilding [SHIP] 1: This skill deals with the constructions of all
+  types of ships. A unit with this skill may BUILD Longships [LONG]
+  from 10 wood [WOOD] and Rafts [RAFT] from 10 wood [WOOD]. This skill
+  costs 10 silver per month of study.
+
+shipbuilding [SHIP] 2: A unit with this skill may BUILD Cogs [COG]
+  from 25 wood [WOOD].
+
+shipbuilding [SHIP] 3: A unit with this skill may BUILD Galleons
+  [GALL] from 75 wood [WOOD] and Galleys [GLLY] from 50 ironwood
+  [IRWD].
+
+shipbuilding [SHIP] 4: A unit with this skill may BUILD Corsairs
+  [CORS] from 50 wood [WOOD] and Balloons [BALL] from 20 floater hides
+  [FLOA].
+
+shipbuilding [SHIP] 5: A unit with this skill may BUILD Airships
+  [AIRS] from 60 floater hides [FLOA] and 60 wood [WOOD].
+
+entertainment [ENTE] 1: A unit with this skill may use the ENTERTAIN
+  order to generate funds. The amount of silver gained will be 30 per
+  man, times the level of the entertainers. This amount is limited by
+  the region that the unit is in. This skill costs 10 silver per month
+  of study.
+
+entertainment [ENTE] 2: No skill report.
+
+entertainment [ENTE] 3: No skill report.
+
+entertainment [ENTE] 4: No skill report.
+
+entertainment [ENTE] 5: No skill report.
+
+tactics [TACT] 1: Tactics allows the unit, and all allies, to gain a
+  bonus to their attack and defense during first battle round. Bonus
+  equals to the difference in skills but can be +3 at most. The army
+  with the highest level tactician in a battle will receive this bonus
+  round; if the highest levels are equal, no bonus is awarded. This
+  skill costs 200 silver per month of study.
+
+tactics [TACT] 2: No skill report.
+
+tactics [TACT] 3: No skill report.
+
+tactics [TACT] 4: No skill report.
+
+tactics [TACT] 5: No skill report.
+
+combat [COMB] 1: This skill gives the unit a bonus in hand to hand
+  combat. Also, a unit with this skill may TAX or PILLAGE. This skill
+  costs 10 silver per month of study.
+
+combat [COMB] 2: No skill report.
+
+combat [COMB] 3: No skill report.
+
+combat [COMB] 4: No skill report.
+
+combat [COMB] 5: No skill report.
+
+riding [RIDI] 1: A unit with this skill, if possessing a mount, may
+  gain a bonus in combat, if the battle is in a location where that
+  mount may be utilized and if the skill of the rider is sufficient to
+  control that mount. The bonus gained can vary with the mount, the
+  riders skill, and the terrain. This skill costs 10 silver per month
+  of study.
+
+riding [RIDI] 2: No skill report.
+
+riding [RIDI] 3: No skill report.
+
+riding [RIDI] 4: No skill report.
+
+riding [RIDI] 5: No skill report.
+
+crossbow [XBOW] 1: A unit with this skill may use a crossbow or other
+  bow derived from one, either in battle, or to TAX or PILLAGE a
+  region. This skill costs 10 silver per month of study.
+
+crossbow [XBOW] 2: No skill report.
+
+crossbow [XBOW] 3: No skill report.
+
+crossbow [XBOW] 4: No skill report.
+
+crossbow [XBOW] 5: No skill report.
+
+longbow [LBOW] 1: A unit with this skill may use a longbow or other
+  bow derived from one, either in battle, or to TAX or PILLAGE a
+  region. This skill costs 10 silver per month of study.
+
+longbow [LBOW] 2: No skill report.
+
+longbow [LBOW] 3: No skill report.
+
+longbow [LBOW] 4: No skill report.
+
+longbow [LBOW] 5: No skill report.
+
+stealth [STEA] 1: A unit with this skill is concealed from being seen,
+  except by units with an Observation skill greater than or equal to
+  the stealthy unit's Stealth level. This skill costs 50 silver per
+  month of study.
+
+stealth [STEA] 2: No skill report.
+
+stealth [STEA] 3: No skill report.
+
+stealth [STEA] 4: No skill report.
+
+stealth [STEA] 5: No skill report.
+
+observation [OBSE] 1: A unit with this skill can see stealthy units or
+  monsters whose stealth rating is less than or equal to the observing
+  unit's Observation level. The unit can also determine the faction
+  owning a unit, provided its Observation level is higher than the
+  other unit's Stealth level. This skill costs 50 silver per month of
+  study.
+
+observation [OBSE] 2: No skill report.
+
+observation [OBSE] 3: No skill report.
+
+observation [OBSE] 4: No skill report.
+
+observation [OBSE] 5: No skill report.
+
+healing [HEAL] 1: A unit with this skill is able to use herbs [HERB]
+  to heal units hurt in battle. A unit at this level of skill can
+  bring soldiers back from near death, healing up to 5 casualties,
+  with a 40 percent success rate. This skill costs 10 silver per month
+  of study.
+
+healing [HEAL] 2: A unit with this skill is able to use herbs [HERB]
+  to heal units hurt in battle. A unit at this level of skill can
+  bring soldiers back from near death, healing up to 5 casualties,
+  with a 45 percent success rate.
+
+healing [HEAL] 3: A unit with this skill is able to use herbs [HERB]
+  to heal units hurt in battle. A unit at this level of skill can
+  bring soldiers back from near death, healing up to 5 casualties,
+  with a 50 percent success rate. A unit with this skill may PRODUCE
+  healing potions [HPOT] from herb [HERB] and mushroom [MUSH] at a
+  rate of 1 per man-month.
+
+healing [HEAL] 4: A unit with this skill is able to use herbs [HERB]
+  to heal units hurt in battle. A unit at this level of skill can
+  bring soldiers back from near death, healing up to 5 casualties,
+  with a 55 percent success rate.
+
+healing [HEAL] 5: A unit with this skill is able to use herbs [HERB]
+  to heal units hurt in battle. A unit at this level of skill can
+  bring soldiers back from near death, healing up to 5 casualties,
+  with a 60 percent success rate.
+
+sailing [SAIL] 1: A unit with this skill may use the SAIL order to
+  sail ships. This skill costs 10 silver per month of study.
+
+sailing [SAIL] 2: No skill report.
+
+sailing [SAIL] 3: No skill report.
+
+sailing [SAIL] 4: No skill report.
+
+sailing [SAIL] 5: No skill report.
+
+farming [FARM] 1: This skill deals with all aspects of grain
+  production. A unit with this skill may PRODUCE grain [GRAI] at a
+  rate of 1 per man-month and livestock [LIVE] at a rate of 1 per
+  man-month. This skill costs 10 silver per month of study.
+
+farming [FARM] 2: No skill report.
+
+farming [FARM] 3: A unit with this skill may BUILD a Farm from 10 wood
+  [WOOD] or stone [STON] or a Ranch from 10 wood [WOOD] or stone
+  [STON].
+
+farming [FARM] 4: No skill report.
+
+farming [FARM] 5: No skill report.
+
+force [FORC] 1: The Force skill is not directly useful to a mage, but
+  is rather one of the Foundation skills on which other magical skills
+  are based. The Force skill determines the power of the magical
+  energy that a mage is able to use. Note that a Force skill level of
+  0 does not indicate that a mage cannot use magical energy, but
+  rather can only perform magical acts that do not require great
+  amounts of power. This skill costs 100 silver per month of study.
+
+force [FORC] 2: No skill report.
+
+force [FORC] 3: No skill report.
+
+force [FORC] 4: No skill report.
+
+force [FORC] 5: No skill report.
+
+pattern [PATT] 1: The Pattern skill is not directly useful to a mage,
+  but is rather one of the Foundation skills on which other magical
+  skills are based. A mage's Pattern skill indicates the ability to
+  handle complex magical patterns, and is important for complicated
+  tasks such as healing and controlling nature. This skill costs 100
+  silver per month of study.
+
+pattern [PATT] 2: No skill report.
+
+pattern [PATT] 3: No skill report.
+
+pattern [PATT] 4: No skill report.
+
+pattern [PATT] 5: No skill report.
+
+spirit [SPIR] 1: The Spirit skill is not directly useful to a mage,
+  but is rather one of the Foundation skills on which other magical
+  skills are based. Spirit skill indicates the mage's ability to
+  control and affect magic and other powers beyond the material world.
+  This skill costs 100 silver per month of study.
+
+spirit [SPIR] 2: No skill report.
+
+spirit [SPIR] 3: No skill report.
+
+spirit [SPIR] 4: No skill report.
+
+spirit [SPIR] 5: No skill report.
+
+fire [FIRE] 1:  A mage with this skill can cast a fireball in battle.
+  This ability does between 2 and 10 times the skill level of the mage
+  energy attacks and each attack deals 1 damage. In order to use this
+  spell in combat, the mage should use the COMBAT order to set it as
+  his combat spell. This skill requires force [FORC] 1 to begin to
+  study. This skill costs 100 silver per month of study.
+
+fire [FIRE] 2: No skill report.
+
+fire [FIRE] 3: No skill report.
+
+fire [FIRE] 4: No skill report.
+
+fire [FIRE] 5: No skill report.
+
+earthquake [EQUA] 1:  A mage with this skill can cast an earthquake in
+  battle. This ability will only target units inside structures, with
+  the exception of the following structures: Magical Tower, Magical
+  Fortress, Magical Castle, or Magical Citadel. The bonus given to
+  units inside buildings is not effective against this ability. This
+  ability does between 2 and 60 times the skill level of the mage
+  weather attacks and each attack deals 1 damage. In order to use this
+  spell in combat, the mage should use the COMBAT order to set it as
+  his combat spell. This skill requires force [FORC] 1 and pattern
+  [PATT] 1 to begin to study. This skill costs 100 silver per month of
+  study.
+
+earthquake [EQUA] 2: No skill report.
+
+earthquake [EQUA] 3: No skill report.
+
+earthquake [EQUA] 4: No skill report.
+
+earthquake [EQUA] 5: No skill report.
+
+force shield [FSHI] 1:  A mage with this skill can cast a force shield
+  in battle. This spell provides a shield against all ranged attacks
+  against the entire army at a level equal to the skill level of the
+  ability. This spell provides a defensive bonus of 1 per skill level
+  versus melee attacks to the user. In order to use this spell in
+  combat, the mage should use the COMBAT order to set it as his combat
+  spell. This skill requires force [FORC] 1 to begin to study. This
+  skill costs 100 silver per month of study.
+
+force shield [FSHI] 2: No skill report.
+
+force shield [FSHI] 3: No skill report.
+
+force shield [FSHI] 4: No skill report.
+
+force shield [FSHI] 5: No skill report.
+
+energy shield [ESHI] 1:  A mage with this skill can cast an energy
+  shield in battle. This spell provides a shield against all energy
+  attacks against the entire army at a level equal to the skill level
+  of the ability. In order to use this spell in combat, the mage
+  should use the COMBAT order to set it as his combat spell. This
+  skill requires force [FORC] 1 to begin to study. This skill costs
+  100 silver per month of study.
+
+energy shield [ESHI] 2: No skill report.
+
+energy shield [ESHI] 3: No skill report.
+
+energy shield [ESHI] 4: No skill report.
+
+energy shield [ESHI] 5: No skill report.
+
+spirit shield [SSHI] 1:  A mage with this skill can cast a spirit
+  shield in battle. This spell provides a shield against all spirit
+  attacks against the entire army at a level equal to the skill level
+  of the ability. In order to use this spell in combat, the mage
+  should use the COMBAT order to set it as his combat spell. This
+  skill requires spirit [SPIR] 1 and force [FORC] 1 to begin to study.
+  This skill costs 100 silver per month of study.
+
+spirit shield [SSHI] 2: No skill report.
+
+spirit shield [SSHI] 3: No skill report.
+
+spirit shield [SSHI] 4: No skill report.
+
+spirit shield [SSHI] 5: No skill report.
+
+magical healing [MHEA] 1: This skill enables the mage to magically
+  heal units after battle. No order is necessary to use this spell; it
+  will be used automatically when the mage is involved in a battle. A
+  mage at this level of skill can heal up to 5 casualties, with a 70
+  percent success rate. This skill requires pattern [PATT] 1 to begin
+  to study. This skill costs 100 silver per month of study.
+
+magical healing [MHEA] 2: A mage at this level of skill can heal up to
+  20 casualties, with a 75 percent success rate.
+
+magical healing [MHEA] 3: A mage at this level of skill can work
+  wonders of healing with his new-found powers; he may heal up to 40
+  casualties, with a 80 percent success rate.
+
+magical healing [MHEA] 4: A mage at this level of skill can work
+  wonders of healing with his new-found powers; he may heal up to 80
+  casualties, with a 85 percent success rate.
+
+magical healing [MHEA] 5: A mage at this level of skill can bring
+  soldiers back from near death, healing up to 160 casualties, with a
+  90 percent success rate.
+
+gate lore [GATE] 1: Gate Lore is the art of detecting and using
+  magical Gates, which are spread through the world. The Gates are
+  spread out randomly, so there is no correlation between the Gate
+  number and the Gate's location. A mage with skill 1 in Gate Lore can
+  see a Gate if one exists in the same region as the mage. This
+  detection is automatic; the Gate will appear in the region report. A
+  mage with skill 1 in Gate Lore may also jump through a Gate into
+  another region on the same level containing a gate, selected at
+  random. To use Gate Lore in this manner, use the syntax CAST
+  Gate_Lore RANDOM UNITS &lt;unit&gt; ... UNITS is followed by a list of
+  units to follow the mage through the Gate (the mage always jumps
+  through the Gate). At level 1, the mage may carry 15 weight units
+  through the Gate (including the weight of the mage). This skill
+  requires pattern [PATT] 1 and spirit [SPIR] 1 to begin to study.
+  This skill costs 100 silver per month of study.
+
+gate lore [GATE] 2: A mage with Gate Lore skill 2 can detect Gates in
+  adjacent regions. The mage should use the syntax CAST Gate_Lore
+  DETECT in order to detect these nearby Gates. Also at level 2 Gate
+  Lore, the mage may perform a random gate jump without being
+  restricted to the same level; use CAST Gate_Lore RANDOM LEVEL UNITS
+  &lt;unit&gt; ... to use this option; when calculating weight for multi
+  level jump, skill level is reduced by 1. The mage may also now carry
+  500 weight units through a Gate when doing a random jump. A mage
+  with Gate Lore skill 2 and higher can step through a Gate into
+  another region containing a specific Gate. To use this spell, use
+  the syntax CAST Gate_Lore GATE &lt;number&gt; UNITS &lt;unit&gt; ... &lt;number&gt;
+  specifies the Gate that the mage will jump to. UNITS is followed by
+  a list of units to follow the mage through the gate (the mage always
+  jumps through the gate). At level 2, the mage may carry 15 weight
+  units through the specific Gate (including the mage).
+
+gate lore [GATE] 3: A mage with Gate Lore skill 3 may carry 500 weight
+  units through a Gate. Also, a level 3 mage doing a random gate jump
+  may carry 1500 weight units through the Gate.
+
+gate lore [GATE] 4: A mage with Gate Lore skill 4 may carry 1500
+  weight units through a Gate. Also, a level 4 mage doing a random
+  gate jump may carry 3000 weight units through the Gate.
+
+gate lore [GATE] 5: A mage with Gate Lore skill 5 may carry 3000
+  weight units through a Gate. Also, a level 5 mage doing a random
+  gate jump may carry 6000 weight units through the Gate.
+
+farsight [FARS] 1: A mage with this skill may obtain region reports on
+  distant regions. The report will be as if the mage was in the
+  distant region himself. The target region must be within 4 times the
+  caster's skill level squared regions of the caster. Coordinates of
+  locations not on the surface are scaled to the surface coordinates
+  for this calculation. Attempting to view across different levels
+  increases the distance by 4 per level difference. To use this skill,
+  CAST Farsight REGION &lt;x&gt; &lt;y&gt; &lt;z&gt; where &lt;x&gt;, &lt;y&gt;, and &lt;z&gt; are the
+  coordinates of the region that you wish to view. If you omit the &lt;z&gt;
+  coordinate, the &lt;z&gt; coordinate of the caster's current region will
+  be used. The &lt;z&gt; coordinate for the surface is '1' and the
+  &lt;z&gt;-coordinate for the underworld is '2'. Note that Farsight cannot
+  be used either into or out of the Nexus. Any other skills which the
+  mage has which give region information will be used when farsight is
+  used. This skill requires pattern [PATT] 1 and spirit [SPIR] 1 to
+  begin to study. This skill costs 100 silver per month of study.
+
+farsight [FARS] 2: No skill report.
+
+farsight [FARS] 3: No skill report.
+
+farsight [FARS] 4: No skill report.
+
+farsight [FARS] 5: No skill report.
+
+teleportation [TELE] 1: A mage with this skill may teleport himself
+  across great distances, even without the use of a gate. The mage may
+  teleport up to 50 weight units per skill level. The target region
+  must be within 2 times the caster's skill level squared regions of
+  the caster. Coordinates of locations not on the surface are scaled
+  to the surface coordinates for this calculation. Attempting to view
+  across different levels increases the distance by 4 per level
+  difference. To use this skill, CAST Teleportation REGION &lt;x&gt; &lt;y&gt; &lt;z&gt;
+  where &lt;x&gt;, &lt;y&gt;, and &lt;z&gt; are the coordinates of the region that you
+  wish to teleport to. If you omit the &lt;z&gt; coordinate, the &lt;z&gt;
+  coordinate of the caster's current region will be used. The &lt;z&gt;
+  coordinate for the surface is '1' and the &lt;z&gt;-coordinate for the
+  underworld is '2'. Note that Teleportation cannot be used either
+  into or out of the Nexus. This skill requires gate lore [GATE] 1 and
+  farsight [FARS] 2 to begin to study. This skill costs 100 silver per
+  month of study.
+
+teleportation [TELE] 2: No skill report.
+
+teleportation [TELE] 3: No skill report.
+
+teleportation [TELE] 4: No skill report.
+
+teleportation [TELE] 5: No skill report.
+
+portal lore [PORT] 1: A mage with the Portal Lore skill may, with the
+  aid of another mage or apprentice, make a temporary Gate between two
+  regions, and send units from one region to another. In order to do
+  this, both mages (the caster, and the target mage) must have
+  Portals, and the caster must be trained in Portal Lore. The caster
+  may teleport units weighing up to 800 weight units times his skill
+  level, to the target mage's region.  The target region must be
+  within 2 times the caster's skill level squared regions of the
+  caster. To use this skill, CAST Portal_Lore &lt;target&gt; UNITS &lt;unit&gt;
+  ..., where &lt;target&gt; is the unit number of the target mage, and
+  &lt;unit&gt; is a list of units to be teleported (the casting mage may
+  teleport himself, if he so desires). This skill requires gate lore
+  [GATE] 2 and farsight [FARS] 1 to begin to study. This skill costs
+  100 silver per month of study.
+
+portal lore [PORT] 2: No skill report.
+
+portal lore [PORT] 3: No skill report.
+
+portal lore [PORT] 4: No skill report.
+
+portal lore [PORT] 5: No skill report.
+
+mind reading [MIND] 1: A mage with Mind Reading skill 1 may cast the
+  spell and determine the faction affiliation of any unit he can see.
+  To use the spell in this manner, CAST Mind_Reading &lt;unit&gt;, where
+  &lt;unit&gt; is the target unit. This skill requires pattern [PATT] 1 to
+  begin to study. This skill costs 100 silver per month of study.
+
+mind reading [MIND] 2: A mage with Mind Reading skill 2 will
+  automatically determine the faction affiliation of any unit he can
+  see. Usage of this skill is automatic, and no order is needed to use
+  it.
+
+mind reading [MIND] 3: A mage with Mind Reading skill 3 can get a full
+  unit report on any unit he can see. To use this skill, CAST
+  Mind_Reading &lt;unit&gt; where &lt;unit&gt; is the target unit.
+
+mind reading [MIND] 4: No skill report.
+
+mind reading [MIND] 5: No skill report.
+
+weather lore [WEAT] 1: Weather Lore is the magic of the weather; a
+  mage with this skill can predict the weather in nearby regions.
+  Weather Lore also allows further study into more powerful areas of
+  magic. The weather may be predicted for 3 months at level 1, 6
+  months at level 3 and a full year at level 5. The target region must
+  be within 4 times the caster's skill level squared regions of the
+  caster. Coordinates of locations not on the surface are scaled to
+  the surface coordinates for this calculation. Attempting to view
+  across different levels increases the distance by 4 per level
+  difference. To use this skill, CAST Weather_Lore REGION &lt;x&gt; &lt;y&gt; &lt;z&gt;
+  where &lt;x&gt;, &lt;y&gt;, and &lt;z&gt; are the coordinates of the region where you
+  wish to predict the weather. If you omit the &lt;z&gt; coordinate, the &lt;z&gt;
+  coordinate of the caster's current region will be used. The &lt;z&gt;
+  coordinate for the surface is '1' and the &lt;z&gt;-coordinate for the
+  underworld is '2'. Note that Weather Lore cannot be used either into
+  or out of the Nexus. A mage with Weather Lore skill will perceive
+  the use of Weather Lore by any other mage in the same region. This
+  skill requires force [FORC] 1 and pattern [PATT] 1 to begin to
+  study. This skill costs 100 silver per month of study.
+
+weather lore [WEAT] 2: No skill report.
+
+weather lore [WEAT] 3: No skill report.
+
+weather lore [WEAT] 4: No skill report.
+
+weather lore [WEAT] 5: No skill report.
+
+summon wind [SWIN] 1: A mage with knowledge of Summon Wind can summon
+  up the powers of the wind to aid him in sea or air travel. Usage of
+  this spell is automatic. A mage with this skill will add 2 movement
+  points to ships requiring up to 12 sailing skill points per skill
+  level of Summon Wind. The effects of all such mages in a fleet are
+  cumulative.  This skill requires weather lore [WEAT] 1 to begin to
+  study. This skill costs 100 silver per month of study.
+
+summon wind [SWIN] 2: No skill report.
+
+summon wind [SWIN] 3: A mage with this skill has a 20 percent times
+  their level chance to create a Cloudship [CLOU] via magic at a cost
+  of 75 floater hides [FLOA] and 75 ironwood [IRWD]. To use this
+  spell, the mage should CAST Summon_Wind.
+
+summon wind [SWIN] 4: No skill report.
+
+summon wind [SWIN] 5: No skill report.
+
+summon storm [SSTO] 1:  A mage with this skill can cast summon storm
+  in battle. This ability will not target creatures which are
+  currently affected by storm. This ability does between 2 and 100
+  times the skill level of the mage weather attacks and each attack
+  deals no damage. Each attack causes the target to be effected by
+  storm (-2 to attack, -2 versus melee attacks) for the rest of the
+  battle. In order to use this spell in combat, the mage should use
+  the COMBAT order to set it as his combat spell. This skill requires
+  weather lore [WEAT] 1 to begin to study. This skill costs 100 silver
+  per month of study.
+
+summon storm [SSTO] 2: No skill report.
+
+summon storm [SSTO] 3: No skill report.
+
+summon storm [SSTO] 4: No skill report.
+
+summon storm [SSTO] 5: No skill report.
+
+summon tornado [STOR] 1:  A mage with this skill can cast summon
+  tornado in battle. This ability does between 2 and 50 times the
+  skill level of the mage weather attacks and each attack deals 1
+  damage. In order to use this spell in combat, the mage should use
+  the COMBAT order to set it as his combat spell. This skill requires
+  weather lore [WEAT] 3 to begin to study. This skill costs 100 silver
+  per month of study.
+
+summon tornado [STOR] 2: No skill report.
+
+summon tornado [STOR] 3: No skill report.
+
+summon tornado [STOR] 4: No skill report.
+
+summon tornado [STOR] 5: No skill report.
+
+call lightning [CALL] 1:  A mage with this skill can cast a lightning
+  strike in battle. This ability does between 2 and 50 times the skill
+  level of the mage weather attacks and each attack deals 1 damage.
+  This ability does between 2 and 50 times the skill level of the mage
+  energy attacks and each attack deals 1 damage. In order to use this
+  spell in combat, the mage should use the COMBAT order to set it as
+  his combat spell. This skill requires weather lore [WEAT] 5 to begin
+  to study. This skill costs 100 silver per month of study.
+
+call lightning [CALL] 2: No skill report.
+
+call lightning [CALL] 3: No skill report.
+
+call lightning [CALL] 4: No skill report.
+
+call lightning [CALL] 5: No skill report.
+
+clear skies [CLEA] 1: When cast using the CAST order, it causes the
+  region to have good weather for the entire month; movement is at the
+  normal rate (even if it is winter) and the economic production of
+  the region is improved for a month (this improvement of the economy
+  will actually take effect during the turn after the spell is cast).
+  To use the spell in this fashion, CAST Clear_Skies; no arguments are
+  necessary. A mage with this skill can cast clear skies in battle.
+  This spell provides a shield against all weather attacks against the
+  entire army at a level equal to the skill level of the ability. In
+  order to use this spell in combat, the mage should use the COMBAT
+  order to set it as his combat spell. This skill requires weather
+  lore [WEAT] 1 to begin to study. This skill costs 100 silver per
+  month of study.
+
+clear skies [CLEA] 2: No skill report.
+
+clear skies [CLEA] 3: No skill report.
+
+clear skies [CLEA] 4: No skill report.
+
+clear skies [CLEA] 5: No skill report.
+
+earth lore [EART] 1: Earth Lore is the study of nature, plants, and
+  animals. A mage with knowledge of Earth Lore can use his knowledge
+  of nature to aid local farmers, raising money for himself, and
+  aiding the production of grain or livestock in the region. To use
+  the spell, CAST Earth_Lore; the mage will receive an amount of money
+  based on his level, and the economy of the region. Also, a mage with
+  knowledge of Earth Lore will detect the use of Earth Lore by any
+  other mage in the same region. This skill requires pattern [PATT] 1
+  and force [FORC] 1 to begin to study. This skill costs 100 silver
+  per month of study.
+
+earth lore [EART] 2: No skill report.
+
+earth lore [EART] 3: No skill report.
+
+earth lore [EART] 4: No skill report.
+
+earth lore [EART] 5: No skill report.
+
+wolf lore [WOLF] 1: A mage with Wolf Lore skill may summon wolves, who
+  will fight for him in combat. A mage may summon a number of wolves
+  averaging 200 percent times his skill level, and control a total
+  number of his skill level squared times 4 wolves; the wolves will be
+  placed in the mages inventory. To summon wolves, the mage should
+  issue the order CAST Wolf_Lore. A mage with this skill may create 2
+  times their level in wolves [WOLF] via magic. To use this spell, the
+  mage should CAST Wolf_Lore. This skill requires earth lore [EART] 1
+  to begin to study. This skill costs 100 silver per month of study.
+
+wolf lore [WOLF] 2: No skill report.
+
+wolf lore [WOLF] 3: No skill report.
+
+wolf lore [WOLF] 4: No skill report.
+
+wolf lore [WOLF] 5: No skill report.
+
+bird lore [BIRD] 1: A mage with Bird Lore may control the birds of the
+  sky. At skill level 1, the mage can control small birds, sending
+  them to an adjacent region to obtain a report on that region. (This
+  skill only works on the surface of the world, as there are no birds
+  elsewhere). To use this skill, CAST Bird_Lore DIRECTION &lt;dir&gt;, where
+  &lt;dir&gt; is the direction the mage wishes the birds to report on. This
+  skill requires earth lore [EART] 1 to begin to study. This skill
+  costs 100 silver per month of study.
+
+bird lore [BIRD] 2: No skill report.
+
+bird lore [BIRD] 3: A mage with Bird Lore 3 can summon eagles to join
+  him, who will aid him in combat, and provide for flying
+  transportation. A mage may summon an average of 100 percent times
+  his skill level minus 2 eagles per month, and may control a number
+  equal to his skill level minus 2, squared, times two. To summon an
+  eagle, issue the order CAST Bird_Lore EAGLE; the eagles will appear
+  in his inventory. A mage with this skill may create their level in
+  eagles [EAGL] via magic. To use this spell, the mage should CAST
+  Bird_Lore.
+
+bird lore [BIRD] 4: No skill report.
+
+bird lore [BIRD] 5: No skill report.
+
+dragon lore [DRAG] 1: A mage with Dragon Lore skill can summon dragons
+  to join him, to aid in battle, and provide flying transportation. A
+  mage has a 20% times his skill level chance to summon a dragon; the
+  total number of dragons that a mage may control at one time is equal
+  to his skill level. To attempt to summon a dragon, CAST Dragon_Lore.
+  A mage with this skill has a 20 percent times their level chance to
+  create a dragon [DRAG] via magic. To use this spell, the mage should
+  CAST Dragon_Lore. This skill requires bird lore [BIRD] 3 and wolf
+  lore [WOLF] 3 to begin to study. This skill costs 100 silver per
+  month of study.
+
+dragon lore [DRAG] 2: No skill report.
+
+dragon lore [DRAG] 3: No skill report.
+
+dragon lore [DRAG] 4: No skill report.
+
+dragon lore [DRAG] 5: No skill report.
+
+necromancy [NECR] 1: Necromancy is the magic of death; a mage versed
+  in Necromancy may raise and control the dead, and turn the powers of
+  death to his own nefarious purposes. The Necromancy skill does not
+  have any direct application, but is required to study the more
+  powerful Necromantic skills. A mage with knowledge of Necromancy
+  will detect the use of Necromancy by any other mage in the same
+  region. This skill requires force [FORC] 1 and spirit [SPIR] 1 to
+  begin to study. This skill costs 100 silver per month of study.
+
+necromancy [NECR] 2: No skill report.
+
+necromancy [NECR] 3: No skill report.
+
+necromancy [NECR] 4: No skill report.
+
+necromancy [NECR] 5: No skill report.
+
+summon skeletons [SUSK] 1: A mage with the Summon Skeletons skill may
+  summon skeletons into his inventory, to aid him in battle. Skeletons
+  may be given to other units, as they follow instructions mindlessly;
+  however, they have a 8 percent chance of decaying each turn. A mage
+  can summon skeletons at an average rate of 200 percent times his
+  skill level. To use the spell, use the order CAST Summon_Skeletons,
+  and the mage will summon as many skeletons as he is able. A mage
+  with this skill may create 2 times their level in skeletons [SKEL]
+  via magic. To use this spell, the mage should CAST Summon_Skeletons.
+  This skill requires necromancy [NECR] 1 to begin to study. This
+  skill costs 100 silver per month of study.
+
+summon skeletons [SUSK] 2: No skill report.
+
+summon skeletons [SUSK] 3: No skill report.
+
+summon skeletons [SUSK] 4: No skill report.
+
+summon skeletons [SUSK] 5: No skill report.
+
+raise undead [RAIS] 1: A mage with the Raise Undead skill may summon
+  undead into his inventory, to aid him in battle. Undead may be given
+  to other units, as they follow instructions mindlessly; however,
+  they have a 8 percent chance of decaying each turn. A mage can
+  summon undead at an average rate of 100 percent times his skill
+  level. To use the spell, use the order CAST Raise_Undead and the
+  mage will summon as many undead as he is able. A mage with this
+  skill may create their level in undead [UNDE] via magic. To use this
+  spell, the mage should CAST Raise_Undead. This skill requires summon
+  skeletons [SUSK] 3 to begin to study. This skill costs 100 silver
+  per month of study.
+
+raise undead [RAIS] 2: No skill report.
+
+raise undead [RAIS] 3: No skill report.
+
+raise undead [RAIS] 4: No skill report.
+
+raise undead [RAIS] 5: No skill report.
+
+summon lich [SULI] 1: A mage with the Summon Lich skill may summon a
+  lich into his inventory, to aid him in battle. Liches may be given
+  to other units, as they follow instructions mindlessly; however,
+  they have a 8 percent chance of decaying each turn. A mage has a 30
+  percent times his skill level chance of summoning a lich; to summon
+  a lich, use the order CAST Summon_Lich. A mage with this skill has a
+  30 percent times their level chance to create a lich [LICH] via
+  magic. To use this spell, the mage should CAST Summon_Lich. This
+  skill requires raise undead [RAIS] 3 to begin to study. This skill
+  costs 100 silver per month of study.
+
+summon lich [SULI] 2: No skill report.
+
+summon lich [SULI] 3: No skill report.
+
+summon lich [SULI] 4: No skill report.
+
+summon lich [SULI] 5: No skill report.
+
+create aura of fear [FEAR] 1:  A mage with this skill can cast cause
+  fear in battle. This ability will not target creatures which are
+  currently affected by fear. This ability cannot target monsters.
+  This ability does between 2 and 50 times the skill level of the mage
+  spirit attacks and each attack deals no damage. Each attack causes
+  the target to be effected by fear (-2 to attack, -2 versus melee
+  attacks, -2 versus riding attacks, -2 versus ranged attacks) for the
+  rest of the battle. In order to use this spell in combat, the mage
+  should use the COMBAT order to set it as his combat spell. This
+  skill requires necromancy [NECR] 1 to begin to study. This skill
+  costs 100 silver per month of study.
+
+create aura of fear [FEAR] 2: No skill report.
+
+create aura of fear [FEAR] 3: No skill report.
+
+create aura of fear [FEAR] 4: No skill report.
+
+create aura of fear [FEAR] 5: No skill report.
+
+summon black wind [SBLA] 1:  A mage with this skill can cast a black
+  wind in battle. This ability will not target skeletons [SKEL],
+  undead [UNDE], liches [LICH], imps [IMP], demons [DEMO], balrogs
+  [BALR], or devils [DEVL]. This ability does between 2 and 130 times
+  the skill level of the mage spirit attacks and each attack deals 1
+  damage. In order to use this spell in combat, the mage should use
+  the COMBAT order to set it as his combat spell. This skill requires
+  necromancy [NECR] 5 to begin to study. This skill costs 100 silver
+  per month of study.
+
+summon black wind [SBLA] 2: No skill report.
+
+summon black wind [SBLA] 3: No skill report.
+
+summon black wind [SBLA] 4: No skill report.
+
+summon black wind [SBLA] 5: No skill report.
+
+banish undead [BUND] 1:  A mage with this skill can cast banish undead
+  in battle. This ability will only target skeletons [SKEL], undead
+  [UNDE], or liches [LICH]. This ability does between 2 and 50 times
+  the skill level of the mage non-resistable attacks and each attack
+  deals 1 damage. In order to use this spell in combat, the mage
+  should use the COMBAT order to set it as his combat spell. This
+  skill requires necromancy [NECR] 1 to begin to study. This skill
+  costs 100 silver per month of study.
+
+banish undead [BUND] 2: No skill report.
+
+banish undead [BUND] 3: No skill report.
+
+banish undead [BUND] 4: No skill report.
+
+banish undead [BUND] 5: No skill report.
+
+demon lore [DEMO] 1: Demon Lore is the art of summoning and
+  controlling demons. The Demon Lore skill does not give the mage any
+  direct skills, but is required to study further into the Demonic
+  arts. A mage with knowledge of Demon Lore will detect the use of
+  Demon Lore by any other mage in the same region. This skill requires
+  force [FORC] 1 and spirit [SPIR] 1 to begin to study. This skill
+  costs 100 silver per month of study.
+
+demon lore [DEMO] 2: No skill report.
+
+demon lore [DEMO] 3: No skill report.
+
+demon lore [DEMO] 4: No skill report.
+
+demon lore [DEMO] 5: No skill report.
+
+summon imps [SUIM] 1: A mage with the Summon Imps skill may summon
+  imps into his inventory, to aid him in combat. A mage may summon 200
+  percent times his skill level imps; however, the imps have a chance
+  of breaking free of the mage's control at the end of each turn. Each
+  imp has a chance to escape equal to 1 in 20 times the mage's skill
+  level. If any one does escape, its first action will be to release
+  its companions. To use this spell, the mage should issue the order
+  CAST Summon_Imps, and the mage will summon as many imps as he is
+  able. A mage with this skill may create 2 times their level in imps
+  [IMP] via magic. To use this spell, the mage should CAST
+  Summon_Imps. This skill requires demon lore [DEMO] 1 to begin to
+  study. This skill costs 100 silver per month of study.
+
+summon imps [SUIM] 2: No skill report.
+
+summon imps [SUIM] 3: No skill report.
+
+summon imps [SUIM] 4: No skill report.
+
+summon imps [SUIM] 5: No skill report.
+
+summon demon [SUDE] 1: A mage with the Summon Demon skill may summon
+  demons into his inventory, to aid him in combat. A mage may summon
+  100 percent times his skill level demons each turn; however, the
+  demons have a chance of breaking free of the mage's control at the
+  end of each turn. Each demon has a chance to escape equal to 1 in 20
+  times the mage's skill level. If any one does escape, its first
+  action will be to release its companions. To use this spell, the
+  mage should issue the order CAST Summon_Demon. A mage with this
+  skill may create their level in demons [DEMO] via magic. To use this
+  spell, the mage should CAST Summon_Demon. This skill requires summon
+  imps [SUIM] 3 to begin to study. This skill costs 100 silver per
+  month of study.
+
+summon demon [SUDE] 2: No skill report.
+
+summon demon [SUDE] 3: No skill report.
+
+summon demon [SUDE] 4: No skill report.
+
+summon demon [SUDE] 5: No skill report.
+
+summon balrog [SUBA] 1: A mage with the Summon Balrog skill may summon
+  a balrog into his inventory, to aid him in combat. A mage has a 30
+  percent times his skill level chance of summoning a balrog, but may
+  only summon a balrog if one is not already under his control. As
+  with other demons, the balrog has a chance of breaking free of the
+  mage's control at the end of each turn. Each balrog has a chance to
+  escape equal to 1 in 20 times the mage's skill level. If any one
+  does escape, its first action will be to release its companions. To
+  use this spell, the mage should issue the order CAST Summon_Balrog.
+  A mage with this skill has a 30 percent times their level chance to
+  create a balrog [BALR] via magic. To use this spell, the mage should
+  CAST Summon_Balrog. This skill requires summon demon [SUDE] 3 to
+  begin to study. This skill costs 100 silver per month of study.
+
+summon balrog [SUBA] 2: No skill report.
+
+summon balrog [SUBA] 3: No skill report.
+
+summon balrog [SUBA] 4: No skill report.
+
+summon balrog [SUBA] 5: No skill report.
+
+banish demons [BDEM] 1:  A mage with this skill can cast banish demons
+  in battle. This ability will only target imps [IMP], demons [DEMO],
+  balrogs [BALR], or devils [DEVL]. This ability does between 2 and 50
+  times the skill level of the mage non-resistable attacks and each
+  attack deals 1 damage. In order to use this spell in combat, the
+  mage should use the COMBAT order to set it as his combat spell. This
+  skill requires demon lore [DEMO] 1 to begin to study. This skill
+  costs 100 silver per month of study.
+
+banish demons [BDEM] 2: No skill report.
+
+banish demons [BDEM] 3: No skill report.
+
+banish demons [BDEM] 4: No skill report.
+
+banish demons [BDEM] 5: No skill report.
+
+illusion [ILLU] 1: Illusion is the magic of creating images of things
+  that do not actually exist. The Illusion skill does not have any
+  direct applications, but is required for further study of
+  Illusionary magic. A mage with knowledge of the Illusion skill will
+  detect the use of Illusion by any other mage in the same region.
+  This skill requires force [FORC] 1 and pattern [PATT] 1 to begin to
+  study. This skill costs 100 silver per month of study.
+
+illusion [ILLU] 2: No skill report.
+
+illusion [ILLU] 3: No skill report.
+
+illusion [ILLU] 4: No skill report.
+
+illusion [ILLU] 5: No skill report.
+
+phantasmal entertainment [PHEN] 1: A mage with the Phantasmal
+  Entertainment skill may use his powers of Illusion to earn money by
+  creating illusionary fireworks, puppet shows, etc. In effect,
+  Phantasmal Entertainment grants the mage Entertainment skill equal
+  to 600 silver times his Phantasmal Entertainment level. To use this
+  skill, the mage should CAST Phantasmal_Entertainment. This skill
+  requires illusion [ILLU] 1 to begin to study. This skill costs 100
+  silver per month of study.
+
+phantasmal entertainment [PHEN] 2: No skill report.
+
+phantasmal entertainment [PHEN] 3: No skill report.
+
+phantasmal entertainment [PHEN] 4: No skill report.
+
+phantasmal entertainment [PHEN] 5: No skill report.
+
+create phantasmal beasts [PHBE] 1: A mage with Create Phantasmal
+  Beasts may summon illusionary beasts that appear in the mage's
+  inventory. These beasts will fight in combat, but do not attack, and
+  are killed whenever they are attacked. Create Phantasmal Beasts at
+  level 1 allows the mage to summon illusionary wolves; the number the
+  mage can summon, or have in his inventory at one time is equal to
+  the mage's skill squared times 4. To use this spell, the mage should
+  CAST Create_Phantasmal_Beasts WOLF &lt;number&gt;, where &lt;number&gt; is the
+  number of wolves that the mage wishes to have appear in his
+  inventory. Note: illusionary beasts will appear on reports as if
+  they were normal items, except on the owner's report, where they are
+  marked as illusionary. To reference these items in orders, you must
+  prepend an 'i' to the normal string. (For example: to reference an
+  illusionary wolf, you would use 'iwolf'). This skill requires
+  illusion [ILLU] 1 to begin to study. This skill costs 100 silver per
+  month of study.
+
+create phantasmal beasts [PHBE] 2: Create Phantasmal Beasts at level 2
+  allows the mage to summon illusionary eagles into his inventory. To
+  summon illusionary eagles, the mage should CAST
+  Create_Phantasmal_Beasts EAGLE &lt;number&gt;, where &lt;number&gt; is the
+  number of eagles that the mage wishes to have appear in his
+  inventory. The number of eagles that a mage may have in his
+  inventory is equal to mage's skill squared.
+
+create phantasmal beasts [PHBE] 3: Create Phantasmal Beasts at level 3
+  allows the mage to summon illusionary dragons into his inventory. To
+  summon illusionary dragons, the mage should CAST
+  Create_Phantasmal_Beasts DRAGON &lt;number&gt;. The number of dragons that
+  a mage may have in his inventory is equal to mage's skill level.
+
+create phantasmal beasts [PHBE] 4: No skill report.
+
+create phantasmal beasts [PHBE] 5: No skill report.
+
+create phantasmal demons [PHDE] 1: A mage with Create Phantasmal
+  Demons may summon illusionary demons that appear in the mage's
+  inventory. These demons will fight in combat, but do not attack, and
+  are killed whenever they are attacked. Create Phantasmal Demons at
+  level 1 allows the mage to summon illusionary imps; the number the
+  mage can summon, or have in his inventory at one time is equal to
+  the mage's skill squared times 4. To use this spell, the mage should
+  CAST Create_Phantasmal_Demons IMP &lt;number&gt;, where &lt;number&gt; is the
+  number of imps that the mage wishes to have appear in his inventory.
+  Note: illusionary demons will appear on reports as if they were
+  normal items, except on the owner's report, where they are marked as
+  illusionary. To reference these items in orders, you must prepend an
+  'i' to the normal string. (Example: to reference an illusionary imp,
+  you would use 'iimp'). This skill requires illusion [ILLU] 1 to
+  begin to study. This skill costs 100 silver per month of study.
+
+create phantasmal demons [PHDE] 2: Create Phantasmal Demons at level 2
+  allows the mage to summon illusionary demons into his inventory. To
+  summon illusionary demons, the mage should CAST
+  Create_Phantasmal_Demons DEMON &lt;number&gt;, where &lt;number&gt; is the
+  number of demons that the mage wishes to have appear in his
+  inventory. The number of demons that a mage may have in his
+  inventory is equal to mage's skill squared.
+
+create phantasmal demons [PHDE] 3: Create Phantasmal Demons at level 3
+  allows the mage to summon an illusionary balrog into his inventory.
+  To summon an illusionary balrog, the mage should CAST
+  Create_Phantasmal_Demons BALROG; the mage can only have one
+  illusionary balrog in his inventory at one time.
+
+create phantasmal demons [PHDE] 4: No skill report.
+
+create phantasmal demons [PHDE] 5: No skill report.
+
+invisibility [INVI] 1: The Invisibility skill allows a mage to render
+  other units nearly invisible to other factions, giving them a +3
+  bonus to Stealth. This invisibility will last until the next Magic
+  round. To cast this spell, use the order CAST Invisibility UNITS
+  &lt;unit&gt; ..., where &lt;unit&gt; is a list of the units that the mage wishes
+  to render invisible. A mage may render invisible a number of men or
+  creatures equal to his skill level squared. A mage automatically
+  gets his Invisibility skill added to his stealth. This skill
+  requires illusion [ILLU] 3 to begin to study. This skill costs 100
+  silver per month of study.
+
+invisibility [INVI] 2: No skill report.
+
+invisibility [INVI] 3: No skill report.
+
+invisibility [INVI] 4: No skill report.
+
+invisibility [INVI] 5: No skill report.
+
+true seeing [TRUE] 1: A mage with the True Seeing spell can see
+  illusions for what they really are. Whether or not the mage can see
+  through the illusion depends on his True Seeing skill being higher
+  that the Illusion skill of the mage casting the illusion. This spell
+  does not require any order to use; it is used automatically. In
+  addition, a mage with the True Seeing skill receives a bonus to his
+  Observation skill equal to his True Seeing skill. This skill
+  requires illusion [ILLU] 3 to begin to study. This skill costs 100
+  silver per month of study.
+
+true seeing [TRUE] 2: No skill report.
+
+true seeing [TRUE] 3: No skill report.
+
+true seeing [TRUE] 4: No skill report.
+
+true seeing [TRUE] 5: No skill report.
+
+dispel illusions [DISP] 1:  A mage with this skill can cast dispel
+  illusion in battle. This ability will only target illusions. This
+  ability does between 2 and 100 times the skill level of the mage
+  non-resistable attacks and each attack deals 1 damage. In order to
+  use this spell in combat, the mage should use the COMBAT order to
+  set it as his combat spell. This skill requires illusion [ILLU] 1 to
+  begin to study. This skill costs 100 silver per month of study.
+
+dispel illusions [DISP] 2: No skill report.
+
+dispel illusions [DISP] 3: No skill report.
+
+dispel illusions [DISP] 4: No skill report.
+
+dispel illusions [DISP] 5: No skill report.
+
+artifact lore [ARTI] 1: Artifact Lore is one of the most advanced
+  forms of magic; in general, creation of an artifact requires both
+  Artifact Lore, and the appropriate skill for the item being created.
+  A mage with knowledge of the Artifact Lore skill will detect the use
+  of Artifact Lore by any other mage in the region. This skill
+  requires force [FORC] 1, pattern [PATT] 1 and spirit [SPIR] 1 to
+  begin to study. This skill costs 100 silver per month of study.
+
+artifact lore [ARTI] 2: No skill report.
+
+artifact lore [ARTI] 3: No skill report.
+
+artifact lore [ARTI] 4: No skill report.
+
+artifact lore [ARTI] 5: No skill report.
+
+create ring of invisibility [CRRI] 1: A mage with this skill has a 20
+  percent times their level chance to create a ring of invisibility
+  [RING] via magic at a cost of 600 silver [SILV]. To use this spell,
+  the mage should CAST Create_Ring_Of_Invisibility. This skill
+  requires artifact lore [ARTI] 2 and invisibility [INVI] 3 to begin
+  to study. This skill costs 100 silver per month of study.
+
+create ring of invisibility [CRRI] 2: No skill report.
+
+create ring of invisibility [CRRI] 3: No skill report.
+
+create ring of invisibility [CRRI] 4: No skill report.
+
+create ring of invisibility [CRRI] 5: No skill report.
+
+create cloak of invulnerability [CRCL] 1: A mage with this skill has a
+  20 percent times their level chance to create a cloak of
+  invulnerability [CLOA] via magic at a cost of 4000 silver [SILV]. To
+  use this spell, the mage should CAST Create_Cloak_Of_Invulnerability
+  . This skill requires artifact lore [ARTI] 4 and force shield [FSHI]
+  4 to begin to study. This skill costs 100 silver per month of study.
+
+create cloak of invulnerability [CRCL] 2: No skill report.
+
+create cloak of invulnerability [CRCL] 3: No skill report.
+
+create cloak of invulnerability [CRCL] 4: No skill report.
+
+create cloak of invulnerability [CRCL] 5: No skill report.
+
+create staff of fire [CRSF] 1: A mage with this skill has a 40 percent
+  times their level chance to create a staff of fire [STAF] via magic
+  at a cost of 600 silver [SILV]. To use this spell, the mage should
+  CAST Create_Staff_Of_Fire. This skill requires artifact lore [ARTI]
+  2 and fire [FIRE] 3 to begin to study. This skill costs 100 silver
+  per month of study.
+
+create staff of fire [CRSF] 2: No skill report.
+
+create staff of fire [CRSF] 3: No skill report.
+
+create staff of fire [CRSF] 4: No skill report.
+
+create staff of fire [CRSF] 5: No skill report.
+
+create amulet of true seeing [CRTA] 1: A mage with this skill has a 20
+  percent times their level chance to create an amulet of true seeing
+  [AMTS] via magic at a cost of 600 silver [SILV]. To use this spell,
+  the mage should CAST Create_Amulet_Of_True_Seeing. This skill
+  requires artifact lore [ARTI] 2 and true seeing [TRUE] 3 to begin to
+  study. This skill costs 100 silver per month of study.
+
+create amulet of true seeing [CRTA] 2: No skill report.
+
+create amulet of true seeing [CRTA] 3: No skill report.
+
+create amulet of true seeing [CRTA] 4: No skill report.
+
+create amulet of true seeing [CRTA] 5: No skill report.
+
+create amulet of protection [CRPA] 1: A mage with this skill may
+  create their level in amulets of protection [AMPR] via magic at a
+  cost of 200 silver [SILV]. To use this spell, the mage should CAST
+  Create_Amulet_Of_Protection. This skill requires artifact lore
+  [ARTI] 1 and spirit shield [SSHI] 3 to begin to study. This skill
+  costs 100 silver per month of study.
+
+create amulet of protection [CRPA] 2: No skill report.
+
+create amulet of protection [CRPA] 3: No skill report.
+
+create amulet of protection [CRPA] 4: No skill report.
+
+create amulet of protection [CRPA] 5: No skill report.
+
+create runesword [CRRU] 1: A mage with this skill has a 90 percent
+  times their level chance to create a runesword [RUNE] via magic at a
+  cost of 600 silver [SILV]. To use this spell, the mage should CAST
+  Create_Runesword. This skill requires artifact lore [ARTI] 2 and
+  create aura of fear [FEAR] 3 to begin to study. This skill costs 100
+  silver per month of study.
+
+create runesword [CRRU] 2: No skill report.
+
+create runesword [CRRU] 3: No skill report.
+
+create runesword [CRRU] 4: No skill report.
+
+create runesword [CRRU] 5: No skill report.
+
+create shieldstone [CRSS] 1: A mage with this skill may create their
+  level in shieldstones [SHST] via magic at a cost of 200 silver
+  [SILV]. To use this spell, the mage should CAST Create_Shieldstone.
+  This skill requires artifact lore [ARTI] 1 and energy shield [ESHI]
+  3 to begin to study. This skill costs 100 silver per month of study.
+
+create shieldstone [CRSS] 2: No skill report.
+
+create shieldstone [CRSS] 3: No skill report.
+
+create shieldstone [CRSS] 4: No skill report.
+
+create shieldstone [CRSS] 5: No skill report.
+
+create magic carpet [CRMA] 1: A mage with this skill may create their
+  level in magic carpets [CARP] via magic at a cost of 400 silver
+  [SILV]. To use this spell, the mage should CAST Create_Magic_Carpet.
+  This skill requires artifact lore [ARTI] 1 and weather lore [WEAT] 3
+  to begin to study. This skill costs 100 silver per month of study.
+
+create magic carpet [CRMA] 2: No skill report.
+
+create magic carpet [CRMA] 3: No skill report.
+
+create magic carpet [CRMA] 4: No skill report.
+
+create magic carpet [CRMA] 5: No skill report.
+
+engrave runes of warding [ENGR] 1: A mage with the Engrave Runes of
+  Warding may engrave runes of warding on a building; these runes will
+  give any occupants of the building a personal Energy Shield and
+  Spirit Shield, both at level 3. A mage has a 20 percent chance per
+  level of succeeding with each attempt to cast this spell. To use
+  this spell, the mage should CAST Engrave_Runes_of_Warding, and be
+  within the building he wishes to engrave runes upon. This spell
+  costs 600 silver to cast. At level 1, the mage may engrave runes of
+  warding upon a Tower. This skill requires artifact lore [ARTI] 2,
+  energy shield [ESHI] 3 and spirit shield [SSHI] 3 to begin to study.
+  This skill costs 100 silver per month of study.
+
+engrave runes of warding [ENGR] 2: At this level, the mage may engrave
+  runes of warding upon a Fort.
+
+engrave runes of warding [ENGR] 3: At this level, the mage improves
+  the level of the Shields granted by these runes to level 5 for
+  buildings that are made from rootstone. The mage may now engrave
+  runes of warding upon a Castle or a Magical Tower.
+
+engrave runes of warding [ENGR] 4: At this level, the mage may engrave
+  runes of warding upon a Citadel or a Magical Fortress.
+
+engrave runes of warding [ENGR] 5: At this level, the mage may engrave
+  runes of warding upon a Magical Castle or a Magical Citadel.
+
+construct gate [CGAT] 1: A mage with the Construct Gate skill may
+  construct a Gate in a region. The mage has a 20 percent times his
+  skill level chance of success, and the attempt costs 1000 silver. To
+  use this spell, the mage should issue the order CAST Construct_Gate.
+  This skill requires artifact lore [ARTI] 2 and gate lore [GATE] 3 to
+  begin to study. This skill costs 100 silver per month of study.
+
+construct gate [CGAT] 2: No skill report.
+
+construct gate [CGAT] 3: No skill report.
+
+construct gate [CGAT] 4: No skill report.
+
+construct gate [CGAT] 5: No skill report.
+
+enchant swords [ESWO] 1: A mage with this skill may create 5 times
+  their level in mithril swords [MSWO] via magic at a cost of sword
+  [SWOR]. To use this spell, the mage should CAST Enchant_Swords. This
+  skill requires artifact lore [ARTI] 2 to begin to study. This skill
+  costs 100 silver per month of study.
+
+enchant swords [ESWO] 2: No skill report.
+
+enchant swords [ESWO] 3: No skill report.
+
+enchant swords [ESWO] 4: No skill report.
+
+enchant swords [ESWO] 5: No skill report.
+
+enchant armor [EARM] 1: A mage with this skill may create 5 times
+  their level in mithril armor [MARM] via magic at a cost of plate
+  armor [PARM]. To use this spell, the mage should CAST Enchant_Armor.
+  This skill requires artifact lore [ARTI] 2 to begin to study. This
+  skill costs 100 silver per month of study.
+
+enchant armor [EARM] 2: No skill report.
+
+enchant armor [EARM] 3: No skill report.
+
+enchant armor [EARM] 4: No skill report.
+
+enchant armor [EARM] 5: No skill report.
+
+enchant shields [ESHD] 1: A mage with this skill may create 5 times
+  their level in mithril shields [MSHD] via magic at a cost of iron
+  shield [ISHD]. To use this spell, the mage should CAST
+  Enchant_Shields. This skill requires artifact lore [ARTI] 1 to begin
+  to study. This skill costs 100 silver per month of study.
+
+enchant shields [ESHD] 2: No skill report.
+
+enchant shields [ESHD] 3: No skill report.
+
+enchant shields [ESHD] 4: No skill report.
+
+enchant shields [ESHD] 5: No skill report.
+
+construct portal [CPOR] 1: A mage with the Construct Portal skill may
+  construct a Portal for use with the Portal Lore skill. A mage with
+  this skill has a 20 percent times their level chance to create a
+  portal [PORT] via magic at a cost of 600 silver [SILV]. To use this
+  spell, the mage should CAST Construct_Portal. This skill requires
+  artifact lore [ARTI] 1 and portal lore [PORT] 2 to begin to study.
+  This skill costs 100 silver per month of study.
+
+construct portal [CPOR] 2: No skill report.
+
+construct portal [CPOR] 3: No skill report.
+
+construct portal [CPOR] 4: No skill report.
+
+construct portal [CPOR] 5: No skill report.
+
+manipulation [MANI] 1: A unit with this skill becomes an apprentice.
+  While apprentices cannot cast spells directly, they can use magic
+  items normally only usable by mages. This skill costs 100 silver per
+  month of study.
+
+manipulation [MANI] 2: No skill report.
+
+manipulation [MANI] 3: Continued study of this skill gives no further
+  advantages.
+
+manipulation [MANI] 4: No skill report.
+
+manipulation [MANI] 5: No skill report.
+
+create flaming sword [CFSW] 1: A mage with this skill has a 60 percent
+  times their level chance to create a flaming sword [FSWO] via magic
+  at a cost of 600 silver [SILV]. To use this spell, the mage should
+  CAST Create_Flaming_Sword. This skill requires artifact lore [ARTI]
+  2 and fire [FIRE] 3 to begin to study. This skill costs 100 silver
+  per month of study.
+
+create flaming sword [CFSW] 2: No skill report.
+
+create flaming sword [CFSW] 3: No skill report.
+
+create flaming sword [CFSW] 4: No skill report.
+
+create flaming sword [CFSW] 5: No skill report.
+
+cooking [COOK] 1: This skill deals with creating provisions from basic
+  foodstuffs. A skilled cook can feed many more people than a farmer
+  alone. A unit with this skill may PRODUCE a number of meals [MEAL]
+  equal to skill level divided by 2, rounded up from any of grain
+  [GRAI], livestock [LIVE] and fish [FISH] at a rate of 1 per
+  man-month. This skill costs 10 silver per month of study.
+
+cooking [COOK] 2: No skill report.
+
+cooking [COOK] 3: No skill report.
+
+cooking [COOK] 4: No skill report.
+
+cooking [COOK] 5: No skill report.
+
+quartermaster [QUAM] 1: This skill deals with transporting and
+  distributing goods between non-local units and transport structures.
+  The cost of shipping one weight unit from one transport structure to
+  another transport structure is 4-((level+1)/2) * 5 silver. Items may
+  be shipped between two transport structures which are up to 3 plus
+  (level+1)/3 hexes distant from each other. Items may be distributed
+  from a transport structure to any unit or transported to a transport
+  structure by any unit located within 2 hexes of the transport
+  structure. This skill costs 100 silver per month of study.
+
+quartermaster [QUAM] 2: No skill report.
+
+quartermaster [QUAM] 3: No skill report.
+
+quartermaster [QUAM] 4: No skill report.
+
+quartermaster [QUAM] 5: No skill report.
+
+create aegis [CRAG] 1: A mage with this skill has a 20 percent times
+  their level chance to create an aegis [AEGS] via magic at a cost of
+  5000 silver [SILV]. To use this spell, the mage should CAST
+  Create_Aegis. This skill requires artifact lore [ARTI] 2 and true
+  seeing [TRUE] 5 to begin to study. This skill costs 100 silver per
+  month of study.
+
+create aegis [CRAG] 2: No skill report.
+
+create aegis [CRAG] 3: No skill report.
+
+create aegis [CRAG] 4: No skill report.
+
+create aegis [CRAG] 5: No skill report.
+
+create windchime [CRWC] 1: A mage with this skill has a 40 percent
+  times their level chance to create a windchime [WCHM] via magic at a
+  cost of 500 silver [SILV]. To use this spell, the mage should CAST
+  Create_Windchime. This skill requires artifact lore [ARTI] 1 and
+  summon wind [SWIN] 2 to begin to study. This skill costs 100 silver
+  per month of study.
+
+create windchime [CRWC] 2: No skill report.
+
+create windchime [CRWC] 3: No skill report.
+
+create windchime [CRWC] 4: No skill report.
+
+create windchime [CRWC] 5: No skill report.
+
+create gate crystal [CRGC] 1: A mage with this skill has a 40 percent
+  times their level chance to create a gate crystal [GTCR] via magic
+  at a cost of 500 silver [SILV]. To use this spell, the mage should
+  CAST Create_Gate_Crystal. This skill requires artifact lore [ARTI] 2
+  and gate lore [GATE] 2 to begin to study. This skill costs 100
+  silver per month of study.
+
+create gate crystal [CRGC] 2: No skill report.
+
+create gate crystal [CRGC] 3: No skill report.
+
+create gate crystal [CRGC] 4: No skill report.
+
+create gate crystal [CRGC] 5: No skill report.
+
+create staff of healing [CRSH] 1: A mage with this skill has a 40
+  percent times their level chance to create a staff of healing [STAH]
+  via magic at a cost of 500 silver [SILV]. To use this spell, the
+  mage should CAST Create_Staff_Of_Healing. This skill requires
+  artifact lore [ARTI] 2 and magical healing [MHEA] 2 to begin to
+  study. This skill costs 100 silver per month of study.
+
+create staff of healing [CRSH] 2: No skill report.
+
+create staff of healing [CRSH] 3: No skill report.
+
+create staff of healing [CRSH] 4: No skill report.
+
+create staff of healing [CRSH] 5: No skill report.
+
+create scrying orb [CRSO] 1: A mage with this skill has a 40 percent
+  times their level chance to create a scrying orb [SORB] via magic at
+  a cost of 500 silver [SILV]. To use this spell, the mage should CAST
+  Create_Scrying_Orb. This skill requires artifact lore [ARTI] 2 and
+  farsight [FARS] 2 to begin to study. This skill costs 100 silver per
+  month of study.
+
+create scrying orb [CRSO] 2: No skill report.
+
+create scrying orb [CRSO] 3: No skill report.
+
+create scrying orb [CRSO] 4: No skill report.
+
+create scrying orb [CRSO] 5: No skill report.
+
+create cornucopia [CRCO] 1: A mage with this skill has a 40 percent
+  times their level chance to create a cornucopia [CORN] via magic at
+  a cost of 500 silver [SILV]. To use this spell, the mage should CAST
+  Create_Cornucopia. This skill requires artifact lore [ARTI] 1 and
+  earth lore [EART] 2 to begin to study. This skill costs 100 silver
+  per month of study.
+
+create cornucopia [CRCO] 2: No skill report.
+
+create cornucopia [CRCO] 3: No skill report.
+
+create cornucopia [CRCO] 4: No skill report.
+
+create cornucopia [CRCO] 5: No skill report.
+
+create book of exorcism [CRBX] 1: A mage with this skill has a 40
+  percent times their level chance to create a book of exorcism [BKEX]
+  via magic at a cost of 500 silver [SILV]. To use this spell, the
+  mage should CAST Create_Book_Of_Exorcism. This skill requires
+  artifact lore [ARTI] 2 and banish demons [BDEM] 2 to begin to study.
+  This skill costs 100 silver per month of study.
+
+create book of exorcism [CRBX] 2: No skill report.
+
+create book of exorcism [CRBX] 3: No skill report.
+
+create book of exorcism [CRBX] 4: No skill report.
+
+create book of exorcism [CRBX] 5: No skill report.
+
+create holy symbol [CRHS] 1: A mage with this skill has a 40 percent
+  times their level chance to create a holy symbol [HLYS] via magic at
+  a cost of 500 silver [SILV]. To use this spell, the mage should CAST
+  Create_Holy_Symbol. This skill requires artifact lore [ARTI] 2 and
+  banish undead [BUND] 2 to begin to study. This skill costs 100
+  silver per month of study.
+
+create holy symbol [CRHS] 2: No skill report.
+
+create holy symbol [CRHS] 3: No skill report.
+
+create holy symbol [CRHS] 4: No skill report.
+
+create holy symbol [CRHS] 5: No skill report.
+
+create censer of protection [CRCN] 1: A mage with this skill has a 40
+  percent times their level chance to create a censer of protection
+  [CNSR] via magic at a cost of 500 silver [SILV]. To use this spell,
+  the mage should CAST Create_Censer_Of_Protection. This skill
+  requires artifact lore [ARTI] 2 and force shield [FSHI] 3 to begin
+  to study. This skill costs 100 silver per month of study.
+
+create censer of protection [CRCN] 2: No skill report.
+
+create censer of protection [CRCN] 3: No skill report.
+
+create censer of protection [CRCN] 4: No skill report.
+
+create censer of protection [CRCN] 5: No skill report.
+
+transmutation [TRNS] 1: A mage with Transmutation may transform basic
+  resources into more esoteric ones. At level 1 the mage may transmute
+  2 stone [STON] times the skill level into rootstone [ROOT] or 2 iron
+  [IRON] times the skill level into mithril [MITH]. To use this spell,
+  the mage should issue the order CAST Transmutation &lt;material&gt;, where
+  &lt;material&gt; is the resource you wish to create. Should you wish to
+  create fewer than maximum, you may CAST Transmutation [number]
+  &lt;material&gt; instead. This skill requires artifact lore [ARTI] 1 to
+  begin to study. This skill costs 100 silver per month of study.
+
+transmutation [TRNS] 2: At this level the mage may transmute 2 wood
+  [WOOD] times the skill level into ironwood [IRWD].
+
+transmutation [TRNS] 3: At this level the mage may transmute 2 furs
+  [FUR] times the skill level into floater hide [FLOA].
+
+transmutation [TRNS] 4: At this level the mage may transmute 2 wood
+  [WOOD] times the skill level into yew [YEW].
+
+transmutation [TRNS] 5: At this level the mage may transmute 2 horses
+  [HORS] times the skill level into winged horses [WING]. At this
+  level the mage may transmute 2 iron [IRON] times the skill level
+  into admantium [ADMT].
+
+annihilation [ANNI] 1: A unit with access to the Annihilation skill
+  may destroy a region and all surrounding regions.  Regions destroyed
+  in this way will become barren.  All units and structures except for
+  shafts and anomalies in the region and the surrounding regions will
+  be destroyed as will production and cities.  This skill is only
+  available to the unit which controls the World-breaker Monolith.  To
+  use this skill, the owner of the World-breaker Monolith must issue
+  the order ANNIHILATE REGION &lt;x&gt; &lt;y&gt; &lt;z&gt;.   If the z coordinate is
+  not specified, it will default to the same z coordinate as the
+  region containing the World-breaker Monolith. This skill cannot be
+  studied via normal means. This skill cannot be taught to other
+  units.
+
+annihilation [ANNI] 2: This skill cannot be studied via normal means.
+  This skill cannot be taught to other units.
+
+annihilation [ANNI] 3: This skill cannot be studied via normal means.
+  This skill cannot be taught to other units.
+
+annihilation [ANNI] 4: This skill cannot be studied via normal means.
+  This skill cannot be taught to other units.
+
+annihilation [ANNI] 5: This skill cannot be studied via normal means.
+  This skill cannot be taught to other units.
+
+Item reports:
+
+leader [LEAD], weight 10, walking capacity 5, moves 2 hexes per month.
+  This race may study all skills to level 5.
+
+wood elf [WELF], weight 10, walking capacity 5, moves 2 hexes per
+  month. This race may study lumberjack [LUMB], longbow [LBOW],
+  entertainment [ENTE], carpenter [CARP], fishing [FISH] and cooking
+  [COOK] to level 5 and all other skills to level 2.
+
+high elf [HELF], weight 10, walking capacity 5, moves 2 hexes per
+  month. This race may study horse training [HORS], fishing [FISH],
+  longbow [LBOW], shipbuilding [SHIP] and sailing [SAIL] to level 5
+  and all other skills to level 2.
+
+ice dwarf [IDWA], weight 10, walking capacity 5, moves 2 hexes per
+  month. This race may study combat [COMB], weaponsmith [WEAP], mining
+  [MINI], fishing [FISH] and armorer [ARMO] to level 5 and all other
+  skills to level 2.
+
+hill dwarf [HDWA], weight 10, walking capacity 5, moves 2 hexes per
+  month. This race may study armorer [ARMO], weaponsmith [WEAP],
+  quarrying [QUAR], mining [MINI] and building [BUIL] to level 5 and
+  all other skills to level 2.
+
+under dwarf [UDWA], weight 10, walking capacity 5, moves 2 hexes per
+  month. This race may study weaponsmith [WEAP], armorer [ARMO],
+  quarrying [QUAR], mining [MINI] and building [BUIL] to level 5 and
+  all other skills to level 2.
+
+orc [ORC], weight 10, walking capacity 5, moves 2 hexes per month.
+  This race may study mining [MINI], lumberjack [LUMB], combat [COMB],
+  building [BUIL] and shipbuilding [SHIP] to level 5 and all other
+  skills to level 2.
+
+gnome [GNOM], weight 5, walking capacity 2, moves 2 hexes per month.
+  This race may study herb lore [HERB], quarrying [QUAR],
+  entertainment [ENTE], crossbow [XBOW] and healing [HEAL] to level 5
+  and all other skills to level 2.
+
+centaur [CTAU], weight 50, walking capacity 20, riding capacity 20,
+  moves 4 hexes per month. This race may study lumberjack [LUMB],
+  horse training [HORS], riding [RIDI], healing [HEAL] and farming
+  [FARM] to level 5 and all other skills to level 2. This is a mount.
+  This mount requires riding [RIDI] of at least level 1 to ride in
+  combat. This mount gives a minimum bonus of +1 when ridden into
+  combat. This mount gives a maximum bonus of +2 when ridden into
+  combat. This bonus is calculated as a RIDING skill divided by 2
+  (rounded up).
+
+silver [SILV], weight 0. This is the currency of Atlantis.
+
+grain [GRAI], weight 5, costs 37 silver to withdraw. This item is a
+  trade resource. This item can be eaten to provide 30 silver towards
+  a unit's maintenance cost.
+
+livestock [LIVE], weight 50, can walk, moves 2 hexes per month, costs
+  37 silver to withdraw. This item is a trade resource. This item can
+  be eaten to provide 30 silver towards a unit's maintenance cost.
+
+iron [IRON], weight 5, costs 75 silver to withdraw. This item is a
+  trade resource.
+
+wood [WOOD], weight 5, costs 75 silver to withdraw. This item is a
+  trade resource.
+
+stone [STON], weight 50, costs 75 silver to withdraw. This item is a
+  trade resource.
+
+fur [FUR], weight 1, costs 75 silver to withdraw. This item is a trade
+  resource.
+
+fish [FISH], weight 1, costs 75 silver to withdraw. This item is a
+  trade resource. This item can be eaten to provide 30 silver towards
+  a unit's maintenance cost.
+
+herb [HERB], weight 0, costs 75 silver to withdraw. This item is a
+  trade resource.
+
+horse [HORS], weight 50, walking capacity 20, riding capacity 20,
+  moves 4 hexes per month, costs 75 silver to withdraw. This is a
+  mount. This mount requires riding [RIDI] of at least level 1 to ride
+  in combat. This mount gives a minimum bonus of +1 when ridden into
+  combat. This mount gives a maximum bonus of +2 when ridden into
+  combat. This bonus is calculated as a RIDING skill divided by 2
+  (rounded up).
+
+Longship [LONG]. This is a ship with a capacity of 150 and a speed of
+  4 hexes per month. This ship requires a total of 4 levels of sailing
+  skill to sail.
+
+Raft [RAFT]. This is a ship with a capacity of 450 and a speed of 2
+  hexes per month. This ship requires a total of 2 levels of sailing
+  skill to sail.
+
+Cog [COG]. This is a ship with a capacity of 750 and a speed of 4
+  hexes per month. This ship requires a total of 6 levels of sailing
+  skill to sail.
+
+Galleon [GALL]. This is a ship with a capacity of 2700 and a speed of
+  4 hexes per month. This ship requires a total of 15 levels of
+  sailing skill to sail. This ship will allow one mage to study above
+  level 2.
+
+Galley [GLLY]. This is a ship with a capacity of 1200 and a speed of 4
+  hexes per month. This ship requires a total of 12 levels of sailing
+  skill to sail. This ship provides defense to the first 120 men
+  inside it, giving a defensive bonus of 2 against melee attacks, 2
+  against energy attacks, 2 against spirit attacks, 2 against weather
+  attacks, 2 against riding attacks and 2 against ranged attacks. This
+  ship will allow up to 2 mages to study above level 2.
+
+Corsair [CORS]. This is a ship with a capacity of 1500 and a speed of
+  5 hexes per month. This ship requires a total of 15 levels of
+  sailing skill to sail.
+
+Balloon [BALL]. This is a flying 'ship' with a capacity of 100 and a
+  speed of 4 hexes per month. This ship requires a total of 3 levels
+  of sailing skill to sail. This ship will allow one mage to study
+  above level 2.
+
+Airship [AIRS]. This is a flying 'ship' with a capacity of 800 and a
+  speed of 4 hexes per month. This ship requires a total of 10 levels
+  of sailing skill to sail. This ship will allow up to 2 mages to
+  study above level 2.
+
+Cloudship [CLOU]. This is a flying 'ship' with a capacity of 1500 and
+  a speed of 4 hexes per month. This ship requires a total of 15
+  levels of sailing skill to sail. This ship provides defense to the
+  first 140 men inside it, giving a defensive bonus of 3 against melee
+  attacks, 3 against energy attacks, 3 against spirit attacks, 3
+  against weather attacks, 3 against riding attacks and 3 against
+  ranged attacks. This ship will allow up to 5 mages to study above
+  level 2.
+
+sword [SWOR], weight 1, costs 150 silver to withdraw. This is a
+  slashing weapon and each attack deals 1 damage. No skill is needed
+  to wield this weapon. This weapon grants a bonus of 2 on attack and
+  defense. Wielders of this weapon, if mounted, get their riding skill
+  bonus on combat attack and defense. There is a 50% chance that the
+  wielder of this weapon gets a chance to attack in any given round.
+  This weapon attacks versus the target's defense against melee
+  attacks. This weapon allows a number of attacks equal to half the
+  skill level (rounded up) of the attacker per round.
+
+crossbow [XBOW], weight 1, costs 150 silver to withdraw. This is a
+  ranged armor-piercing weapon and each attack deals 1 damage.
+  Knowledge of crossbow [XBOW] is needed to wield this weapon.
+  Attackers do not get skill bonus on defense. There is a 50% chance
+  that the wielder of this weapon gets a chance to attack in any given
+  round. This weapon attacks versus the target's defense against
+  ranged attacks. This weapon allows 1 attack every 3 rounds.
+
+longbow [LBOW], weight 1, costs 150 silver to withdraw. This is a
+  ranged piercing weapon and each attack deals 1 damage. Knowledge of
+  longbow [LBOW] is needed to wield this weapon. This weapon grants a
+  penalty of 1 on attack. Attackers do not get skill bonus on defense.
+  There is a 50% chance that the wielder of this weapon gets a chance
+  to attack in any given round. This weapon attacks versus the
+  target's defense against ranged attacks. This weapon allows 1 attack
+  per round.
+
+chain armor [CARM], weight 1, costs 150 silver to withdraw. This is a
+  type of armor. This armor will protect its wearer 33% of the time
+  versus slashing attacks, 33% of the time versus piercing attacks,
+  33% of the time versus crushing attacks, 33% of the time versus
+  cleaving attacks, 16% of the time versus armor-piercing attacks, 16%
+  of the time versus energy attacks, 16% of the time versus spirit
+  attacks, and 16% of the time versus weather attacks.
+
+plate armor [PARM], weight 3, costs 625 silver to withdraw. This is a
+  type of armor. This armor will protect its wearer 67% of the time
+  versus slashing attacks, 67% of the time versus piercing attacks,
+  67% of the time versus crushing attacks, 67% of the time versus
+  cleaving attacks, 33% of the time versus armor-piercing attacks, 33%
+  of the time versus energy attacks, 33% of the time versus spirit
+  attacks, and 33% of the time versus weather attacks.
+
+wagon [WAGO], weight 50, walking capacity 200 when hitched to a horse,
+  moves 2 hexes per month, costs 250 silver to withdraw.
+
+mithril [MITH], weight 10. This item is a trade resource.
+
+ironwood [IRWD], weight 10. This item is a trade resource.
+
+winged horse [WING], weight 50, walking capacity 20, riding capacity
+  20, flying capacity 20, moves 4 hexes per month. This is a mount.
+  This mount requires riding [RIDI] of at least level 3 to ride in
+  combat. This mount gives a minimum bonus of +2 when ridden into
+  combat. This mount gives a maximum bonus of +3 when ridden into
+  combat. This bonus is calculated as a RIDING skill divided by 2
+  (rounded up). This mount gives a maximum bonus of +2 when ridden
+  into combat in terrain which allows ridden mounts but not flying
+  mounts.
+
+floater hide [FLOA], weight 1. This item is a trade resource.
+
+rootstone [ROOT], weight 50. This item is a trade resource.
+
+yew [YEW], weight 5. This item is a trade resource.
+
+mithril sword [MSWO], weight 1. This is a slashing weapon and each
+  attack deals 1 damage. No skill is needed to wield this weapon. This
+  weapon grants a bonus of 4 on attack and defense. Wielders of this
+  weapon, if mounted, get their riding skill bonus on combat attack
+  and defense. There is a 50% chance that the wielder of this weapon
+  gets a chance to attack in any given round. This weapon attacks
+  versus the target's defense against melee attacks. This weapon
+  allows a number of attacks equal to half the skill level (rounded
+  up) of the attacker per round.
+
+mithril armor [MARM], weight 1. This is a type of armor. This armor
+  will protect its wearer 85% of the time versus slashing attacks, 85%
+  of the time versus piercing attacks, 85% of the time versus crushing
+  attacks, 85% of the time versus cleaving attacks, 67% of the time
+  versus armor-piercing attacks, 67% of the time versus energy
+  attacks, 67% of the time versus spirit attacks, and 67% of the time
+  versus weather attacks.
+
+double bow [DBOW], weight 1. This is a ranged armor-piercing weapon
+  and each attack deals 1 damage. Knowledge of longbow [LBOW] is
+  needed to wield this weapon. Attackers do not get skill bonus on
+  defense. There is a 50% chance that the wielder of this weapon gets
+  a chance to attack in any given round. This weapon attacks versus
+  the target's defense against ranged attacks. This weapon allows a
+  number of attacks equal to half the skill level (rounded up) of the
+  attacker per round.
+
+ivory [IVOR], weight 1. This is a trade good. This item can be bought
+  for between 60 and 114 silver. This item can be sold for between 150
+  and 210 silver.
+
+pearls [PEAR], weight 1. This is a trade good. This item can be bought
+  for between 100 and 190 silver. This item can be sold for between
+  250 and 350 silver.
+
+jewelry [JEWE], weight 1. This is a trade good. This item can be
+  bought for between 160 and 304 silver. This item can be sold for
+  between 400 and 560 silver.
+
+figurines [FIGU], weight 1. This is a trade good. This item can be
+  bought for between 60 and 114 silver. This item can be sold for
+  between 150 and 210 silver.
+
+tarot cards [TARO], weight 1. This is a trade good. This item can be
+  bought for between 60 and 114 silver. This item can be sold for
+  between 150 and 210 silver.
+
+caviar [CAVI], weight 1. This is a trade good. This item can be bought
+  for between 60 and 114 silver. This item can be sold for between 150
+  and 210 silver.
+
+wine [WINE], weight 1. This is a trade good. This item can be bought
+  for between 80 and 152 silver. This item can be sold for between 200
+  and 280 silver.
+
+spices [SPIC], weight 1. This is a trade good. This item can be bought
+  for between 60 and 114 silver. This item can be sold for between 150
+  and 210 silver.
+
+chocolate [CHOC], weight 1. This is a trade good. This item can be
+  bought for between 80 and 152 silver. This item can be sold for
+  between 200 and 280 silver.
+
+truffles [TRUF], weight 1. This is a trade good. This item can be
+  bought for between 70 and 133 silver. This item can be sold for
+  between 175 and 245 silver.
+
+vodka [VODK], weight 1. This is a trade good. This item can be bought
+  for between 60 and 114 silver. This item can be sold for between 150
+  and 210 silver.
+
+perfume [PERF], weight 1. This is a trade good. This item can be
+  bought for between 90 and 171 silver. This item can be sold for
+  between 225 and 315 silver.
+
+silk [SILK], weight 1. This is a trade good. This item can be bought
+  for between 60 and 114 silver. This item can be sold for between 150
+  and 210 silver.
+
+cotton [COTT], weight 1. This is a trade good. This item can be bought
+  for between 60 and 114 silver. This item can be sold for between 150
+  and 210 silver.
+
+lion [LION], weight 10, walking capacity 5, moves 2 hexes per month.
+  This is a monster. This monster attacks with a combat skill of 3
+  This monster has a resistance of 3 to melee attacks. This monster
+  has a resistance of 0 to energy attacks. This monster has a
+  resistance of 0 to spirit attacks. This monster has a resistance of
+  0 to weather attacks. This monster has a resistance of 2 to riding
+  attacks. This monster has a resistance of 0 to ranged attacks. The
+  monster can spawn in the wilderness of plains. Monster prefers to
+  roam the plain terrain. Monster is unfriendly, and the player must
+  be pretty unlucky to be attacked by this monster. This monster has 2
+  melee attacks per round and takes 4 hits to kill and each attack
+  deals 1 damage. This monster has a tactics score of 3, a stealth
+  score of 2, and an observation score of 2. This monster might have
+  silver as treasure. This item cannot be given to other units.
+
+wolf [WOLF], weight 10, walking capacity 5, riding capacity 5, moves 4
+  hexes per month. This is a monster. This monster attacks with a
+  combat skill of 2 This monster has a resistance of 2 to melee
+  attacks. This monster has a resistance of 2 to energy attacks. This
+  monster has a resistance of 0 to spirit attacks. This monster has a
+  resistance of 2 to weather attacks. This monster has a resistance of
+  3 to riding attacks. This monster has a resistance of 0 to ranged
+  attacks. The monster can spawn in the wilderness of forests. Monster
+  prefers to roam the forest terrain. Monster is unfriendly, and the
+  player must be pretty unlucky to be attacked by this monster. This
+  monster has 2 melee attacks per round and takes 2 hits to kill and
+  each attack deals 1 damage. This monster has a tactics score of 1, a
+  stealth score of 2, and an observation score of 3. This monster
+  might have silver as treasure. This item cannot be given to other
+  units.
+
+grizzly bear [GRIZ], weight 50, walking capacity 10, moves 2 hexes per
+  month. This is a monster. This monster attacks with a combat skill
+  of 2 This monster has a resistance of 2 to melee attacks. This
+  monster has a resistance of 0 to energy attacks. This monster has a
+  resistance of 0 to spirit attacks. This monster has a resistance of
+  0 to weather attacks. This monster has a resistance of 0 to riding
+  attacks. This monster has a resistance of 0 to ranged attacks. The
+  monster can spawn in the wilderness of mountains. Monster prefers to
+  roam the mountain terrain. Monster is unfriendly, and the player
+  must be pretty unlucky to be attacked by this monster. This monster
+  has 10 melee attacks per round and takes 10 hits to kill and each
+  attack deals 1 damage. This monster has a tactics score of 0, a
+  stealth score of 0, and an observation score of 2. This monster
+  might have silver as treasure. This item cannot be given to other
+  units.
+
+crocodile [CROC], weight 10, walking capacity 5, moves 2 hexes per
+  month. This is a monster. This monster attacks with a combat skill
+  of 3 This monster has a resistance of 3 to melee attacks. This
+  monster has a resistance of 3 to energy attacks. This monster has a
+  resistance of 3 to spirit attacks. This monster has a resistance of
+  3 to weather attacks. This monster has a resistance of 0 to riding
+  attacks. This monster has a resistance of 0 to ranged attacks. The
+  monster can spawn in the wilderness of swamps. Monster prefers to
+  roam the swamp terrain. Monster is unfriendly, and the player must
+  be pretty unlucky to be attacked by this monster. This monster has 2
+  melee attacks per round and takes 2 hits to kill and each attack
+  deals 1 damage. This monster has a tactics score of 1, a stealth
+  score of 1, and an observation score of 1. This monster might have
+  silver as treasure. This item cannot be given to other units.
+
+anaconda [ANAC], weight 50, walking capacity 10, moves 2 hexes per
+  month. This is a monster. This monster attacks with a combat skill
+  of 3 This monster has a resistance of 3 to melee attacks. This
+  monster has a resistance of 3 to energy attacks. This monster has a
+  resistance of 3 to spirit attacks. This monster has a resistance of
+  3 to weather attacks. This monster has a resistance of 2 to riding
+  attacks. This monster has a resistance of 0 to ranged attacks. The
+  monster can spawn in the wilderness of jungles. Monster prefers to
+  roam the jungle terrain. Monster is unfriendly, and the player must
+  be pretty unlucky to be attacked by this monster. This monster has 2
+  melee attacks per round and takes 2 hits to kill and each attack
+  deals 1 damage. This monster has a tactics score of 2, a stealth
+  score of 2, and an observation score of 0. This monster might have
+  silver as treasure. This item cannot be given to other units.
+
+giant scorpion [SCOR], weight 10, walking capacity 5, moves 2 hexes
+  per month. This is a monster. This monster attacks with a combat
+  skill of 2 This monster has a resistance of 2 to melee attacks. This
+  monster has a resistance of 2 to energy attacks. This monster has a
+  resistance of 2 to spirit attacks. This monster has a resistance of
+  2 to weather attacks. This monster has a resistance of 2 to riding
+  attacks. This monster has a resistance of 0 to ranged attacks. The
+  monster can spawn in the wilderness of desert. Monster prefers to
+  roam the desert terrain. Monster is unfriendly, and the player must
+  be pretty unlucky to be attacked by this monster. This monster has 3
+  melee attacks per round and takes 3 hits to kill and each attack
+  deals 1 damage. This monster has a tactics score of 2, a stealth
+  score of 3, and an observation score of 0. This monster might have
+  silver as treasure. This item cannot be given to other units.
+
+polar bear [POLA], weight 50, walking capacity 10, moves 2 hexes per
+  month. This is a monster. This monster attacks with a combat skill
+  of 2 This monster has a resistance of 2 to melee attacks. This
+  monster has a resistance of 2 to energy attacks. This monster has a
+  resistance of 0 to spirit attacks. This monster has a resistance of
+  2 to weather attacks. This monster has a resistance of 0 to riding
+  attacks. This monster has a resistance of 0 to ranged attacks.
+  Monster prefers to roam the tundra terrain. Monster is unfriendly,
+  and the player must be pretty unlucky to be attacked by this
+  monster. This monster has 10 melee attacks per round and takes 10
+  hits to kill and each attack deals 1 damage. This monster has a
+  tactics score of 0, a stealth score of 0, and an observation score
+  of 2. This monster might have silver as treasure. This item cannot
+  be given to other units.
+
+giant rat [GRAT], weight 10, walking capacity 5, moves 2 hexes per
+  month. This is a monster. This monster attacks with a combat skill
+  of 1 This monster has a resistance of 1 to melee attacks. This
+  monster has a resistance of 1 to energy attacks. This monster has a
+  resistance of 1 to spirit attacks. This monster has a resistance of
+  1 to weather attacks. This monster has a resistance of 1 to riding
+  attacks. This monster has a resistance of 0 to ranged attacks.
+  Monster prefers to roam the cavern terrain. Monster is unfriendly,
+  and the player must be pretty unlucky to be attacked by this
+  monster. This monster has 1 melee attack per round and takes 1 hit
+  to kill and each attack deals 1 damage. This monster has a tactics
+  score of 0, a stealth score of 2, and an observation score of 0.
+  This monster might have silver as treasure. This item cannot be
+  given to other units.
+
+giant spider [GSPI], weight 50, walking capacity 10, moves 2 hexes per
+  month. This is a monster. This monster attacks with a combat skill
+  of 4 This monster has a resistance of 4 to melee attacks. This
+  monster has a resistance of 2 to energy attacks. This monster has a
+  resistance of 0 to spirit attacks. This monster has a resistance of
+  2 to weather attacks. This monster has a resistance of 2 to riding
+  attacks. This monster has a resistance of 0 to ranged attacks.
+  Monster prefers to roam the underforest terrain. Monster is
+  unfriendly, and the player must be pretty unlucky to be attacked by
+  this monster. This monster has 4 melee attacks per round and takes 4
+  hits to kill and each attack deals 1 damage. This monster has a
+  tactics score of 0, a stealth score of 2, and an observation score
+  of 2. This monster might have silver as treasure. This item cannot
+  be given to other units.
+
+giant lizard [GLIZ], weight 50, walking capacity 10, moves 2 hexes per
+  month. This is a monster. This monster attacks with a combat skill
+  of 3 This monster has a resistance of 3 to melee attacks. This
+  monster has a resistance of 3 to energy attacks. This monster has a
+  resistance of 0 to spirit attacks. This monster has a resistance of
+  3 to weather attacks. This monster has a resistance of 1 to riding
+  attacks. This monster has a resistance of 0 to ranged attacks.
+  Monster prefers to roam the tunnels terrain. Monster is aggressive
+  but, in most cases, will leave player units alone. This monster has
+  8 melee attacks per round and takes 8 hits to kill and each attack
+  deals 1 damage. This monster has a tactics score of 0, a stealth
+  score of 0, and an observation score of 0. This monster might have
+  silver as treasure. This item cannot be given to other units.
+
+trent [TREN], weight 250, walking capacity 50, moves 2 hexes per
+  month. This is a monster. This monster attacks with a combat skill
+  of 3 This monster has a resistance of 3 to melee attacks. This
+  monster has a resistance of 3 to energy attacks. This monster has a
+  resistance of 3 to spirit attacks. This monster has a resistance of
+  3 to weather attacks. This monster has a resistance of 0 to riding
+  attacks. This monster has a resistance of 1 to ranged attacks. The
+  monster can spawn in the wilderness of forests. This monster can
+  lair in the Lair. Monster prefers to roam the forest terrain.
+  Monster is aggressive but, in most cases, will leave player units
+  alone. This monster has 15 melee attacks per round and takes 15 hits
+  to kill and each attack deals 1 damage. This monsters regenerates 4
+  hits per round of battle. This monster has a tactics score of 2, a
+  stealth score of 3, and an observation score of 1. This monster
+  might have advanced items and silver as treasure. This item cannot
+  be given to other units.
+
+roc [ROC], weight 250, walking capacity 50, riding capacity 50, flying
+  capacity 50, moves 4 hexes per month. This is a monster. This
+  monster attacks with a combat skill of 4 This monster has a
+  resistance of 4 to melee attacks. This monster has a resistance of 3
+  to energy attacks. This monster has a resistance of 0 to spirit
+  attacks. This monster has a resistance of 3 to weather attacks. This
+  monster has a resistance of 4 to riding attacks. This monster has a
+  resistance of 2 to ranged attacks. The monster can spawn in the
+  wilderness of mountains. Monster prefers to roam the mountain
+  terrain. Monster is aggressive but, in most cases, will leave player
+  units alone. This monster has 25 melee attacks per round and takes
+  25 hits to kill and each attack deals 1 damage. This monster has a
+  tactics score of 2, a stealth score of 2, and an observation score
+  of 4. This monster might have advanced items and silver as treasure.
+  This item cannot be given to other units.
+
+bog thing [BOGT], weight 50, walking capacity 10, moves 2 hexes per
+  month. This is a monster. This monster attacks with a combat skill
+  of 4 This monster has a resistance of 4 to melee attacks. This
+  monster has a resistance of 1 to energy attacks. This monster has a
+  resistance of 0 to spirit attacks. This monster has a resistance of
+  3 to weather attacks. This monster has a resistance of 0 to riding
+  attacks. This monster has a resistance of 1 to ranged attacks. The
+  monster can spawn in the wilderness of swamps. Monster prefers to
+  roam the swamp terrain. Monster is aggressive but, in most cases,
+  will leave player units alone. This monster has 30 melee attacks per
+  round and takes 30 hits to kill and each attack deals 1 damage. This
+  monster has a tactics score of 3, a stealth score of 1, and an
+  observation score of 1. This monster might have advanced items and
+  silver as treasure. This item cannot be given to other units.
+
+kong [KONG], weight 250, walking capacity 50, moves 2 hexes per month.
+  This is a monster. This monster attacks with a combat skill of 5
+  This monster has a resistance of 5 to melee attacks. This monster
+  has a resistance of 3 to energy attacks. This monster has a
+  resistance of 0 to spirit attacks. This monster has a resistance of
+  3 to weather attacks. This monster has a resistance of 1 to riding
+  attacks. This monster has a resistance of 1 to ranged attacks. The
+  monster can spawn in the wilderness of jungles. Monster prefers to
+  roam the jungle terrain. Monster is very aggressive, but he will not
+  harm player units with good luck. This monster has 40 melee attacks
+  per round and takes 40 hits to kill and each attack deals 1 damage.
+  This monster has a tactics score of 3, a stealth score of 2, and an
+  observation score of 2. This monster might have advanced items and
+  silver as treasure. This item cannot be given to other units.
+
+sphinx [SPHI], weight 250, walking capacity 50, riding capacity 50,
+  moves 4 hexes per month. This is a monster. This monster attacks
+  with a combat skill of 5 This monster has a resistance of 5 to melee
+  attacks. This monster has a resistance of 4 to energy attacks. This
+  monster has a resistance of 4 to spirit attacks. This monster has a
+  resistance of 4 to weather attacks. This monster has a resistance of
+  3 to riding attacks. This monster has a resistance of 2 to ranged
+  attacks. The monster can spawn in the wilderness of desert. Monster
+  prefers to roam the desert terrain. Monster is aggressive but, in
+  most cases, will leave player units alone. This monster has 80 melee
+  attacks per round and takes 80 hits to kill and each attack deals 1
+  damage. This monster has a tactics score of 4, a stealth score of 0,
+  and an observation score of 4. This monster might have advanced
+  items and silver as treasure. This item cannot be given to other
+  units.
+
+ice wurm [ICEW], weight 250, walking capacity 50, moves 2 hexes per
+  month. This is a monster. This monster attacks with a combat skill
+  of 4 This monster has a resistance of 4 to melee attacks. This
+  monster has a resistance of 3 to energy attacks. This monster has a
+  resistance of 3 to spirit attacks. This monster has a resistance of
+  3 to weather attacks. This monster has a resistance of 3 to riding
+  attacks. This monster has a resistance of 1 to ranged attacks. The
+  monster can spawn in the wilderness of tundra. Monster prefers to
+  roam the tundra terrain. Monster is aggressive but, in most cases,
+  will leave player units alone. This monster has 10 melee attacks per
+  round and takes 10 hits to kill and each attack deals 1 damage. This
+  monster has a tactics score of 2, a stealth score of 4, and an
+  observation score of 1. This monster might have advanced items and
+  silver as treasure. This item cannot be given to other units.
+
+dragon [DRAG], weight 250, walking capacity 50, riding capacity 50,
+  flying capacity 50, moves 4 hexes per month. This is a monster. This
+  monster attacks with a combat skill of 6 This monster has a
+  resistance of 6 to melee attacks. This monster has a resistance of 6
+  to energy attacks. This monster has a resistance of 6 to spirit
+  attacks. This monster has a resistance of 6 to weather attacks. This
+  monster has a resistance of 5 to riding attacks. This monster has a
+  resistance of 0 to ranged attacks. Monster can cast fiery breath in
+  battle at a skill level of 6. This ability does between 2 and 60
+  energy attacks and each attack deals 1 damage. This monster can lair
+  in the Cave. The monster has no terrain preferences, and it can
+  travel through any terrain. Monster is very aggressive, but he will
+  not harm player units with good luck. This monster has 50 melee
+  attacks per round and takes 60 hits to kill and each attack deals 1
+  damage. This monster has a tactics score of 4, a stealth score of 1,
+  and an observation score of 3. This monster might have magic items
+  and silver as treasure. This item cannot be given to other units.
+
+centaur [CENT], weight 50, walking capacity 10, riding capacity 10,
+  moves 4 hexes per month. This is a monster. This monster attacks
+  with a combat skill of 4 This monster has a resistance of 4 to melee
+  attacks. This monster has a resistance of 0 to energy attacks. This
+  monster has a resistance of 0 to spirit attacks. This monster has a
+  resistance of 0 to weather attacks. This monster has a resistance of
+  3 to riding attacks. This monster has a resistance of 0 to ranged
+  attacks. The monster can spawn in the wilderness of plains. This
+  monster can lair in the Ruin. Monster prefers to roam the plain
+  terrain. Monster is unfriendly, and the player must be pretty
+  unlucky to be attacked by this monster. This monster has 4 melee
+  attacks per round and takes 4 hits to kill and each attack deals 1
+  damage. This monster has a tactics score of 0, a stealth score of 1,
+  and an observation score of 1. This monster might have normal or
+  trade items and silver as treasure. This item cannot be given to
+  other units.
+
+kobold [KOBO], weight 10, walking capacity 5, moves 2 hexes per month.
+  This is a monster. This monster attacks with a combat skill of 2
+  This monster has a resistance of 2 to melee attacks. This monster
+  has a resistance of 0 to energy attacks. This monster has a
+  resistance of 0 to spirit attacks. This monster has a resistance of
+  0 to weather attacks. This monster has a resistance of 0 to riding
+  attacks. This monster has a resistance of 0 to ranged attacks. The
+  monster can spawn in the wilderness of forests. Monster prefers to
+  roam the forest terrain. Monster is unfriendly, and the player must
+  be pretty unlucky to be attacked by this monster. This monster has 2
+  melee attacks per round and takes 2 hits to kill and each attack
+  deals 1 damage. This monster has a tactics score of 0, a stealth
+  score of 1, and an observation score of 0. This monster might have
+  normal or trade items and silver as treasure. This item cannot be
+  given to other units.
+
+ogre [OGRE], weight 50, walking capacity 10, moves 2 hexes per month.
+  This is a monster. This monster attacks with a combat skill of 3
+  This monster has a resistance of 3 to melee attacks. This monster
+  has a resistance of 2 to energy attacks. This monster has a
+  resistance of 0 to spirit attacks. This monster has a resistance of
+  2 to weather attacks. This monster has a resistance of 0 to riding
+  attacks. This monster has a resistance of 0 to ranged attacks. The
+  monster can spawn in the wilderness of mountains. Monster prefers to
+  roam the mountain terrain. Monster is unfriendly, and the player
+  must be pretty unlucky to be attacked by this monster. This monster
+  has 15 melee attacks per round and takes 15 hits to kill and each
+  attack deals 1 damage. This monster has a tactics score of 0, a
+  stealth score of 0, and an observation score of 0. This monster
+  might have normal or trade items and silver as treasure. This item
+  cannot be given to other units.
+
+lizard man [LMAN], weight 10, walking capacity 5, moves 2 hexes per
+  month. This is a monster. This monster attacks with a combat skill
+  of 3 This monster has a resistance of 3 to melee attacks. This
+  monster has a resistance of 3 to energy attacks. This monster has a
+  resistance of 0 to spirit attacks. This monster has a resistance of
+  3 to weather attacks. This monster has a resistance of 0 to riding
+  attacks. This monster has a resistance of 0 to ranged attacks. The
+  monster can spawn in the wilderness of swamps. Monster prefers to
+  roam the swamp terrain. Monster is unfriendly, and the player must
+  be pretty unlucky to be attacked by this monster. This monster has 2
+  melee attacks per round and takes 2 hits to kill and each attack
+  deals 1 damage. This monster has a tactics score of 0, a stealth
+  score of 0, and an observation score of 1. This monster might have
+  normal or trade items and silver as treasure. This item cannot be
+  given to other units.
+
+wild man [WMAN], weight 10, walking capacity 5, moves 2 hexes per
+  month. This is a monster. This monster attacks with a combat skill
+  of 3 This monster has a resistance of 3 to melee attacks. This
+  monster has a resistance of 0 to energy attacks. This monster has a
+  resistance of 0 to spirit attacks. This monster has a resistance of
+  0 to weather attacks. This monster has a resistance of 0 to riding
+  attacks. This monster has a resistance of 0 to ranged attacks. The
+  monster can spawn in the wilderness of jungles. Monster prefers to
+  roam the jungle terrain. Monster is unfriendly, and the player must
+  be pretty unlucky to be attacked by this monster. This monster has 2
+  melee attacks per round and takes 2 hits to kill and each attack
+  deals 1 damage. This monster has a tactics score of 0, a stealth
+  score of 2, and an observation score of 0. This monster might have
+  normal or trade items and silver as treasure. This item cannot be
+  given to other units.
+
+sandling [SAND], weight 10, walking capacity 5, moves 2 hexes per
+  month. This is a monster. This monster attacks with a combat skill
+  of 3 This monster has a resistance of 3 to melee attacks. This
+  monster has a resistance of 3 to energy attacks. This monster has a
+  resistance of 0 to spirit attacks. This monster has a resistance of
+  3 to weather attacks. This monster has a resistance of 2 to riding
+  attacks. This monster has a resistance of 0 to ranged attacks. The
+  monster can spawn in the wilderness of desert. Monster prefers to
+  roam the desert terrain. Monster is unfriendly, and the player must
+  be pretty unlucky to be attacked by this monster. This monster has 2
+  melee attacks per round and takes 2 hits to kill and each attack
+  deals 1 damage. This monster has a tactics score of 1, a stealth
+  score of 2, and an observation score of 1. This monster might have
+  normal or trade items and silver as treasure. This item cannot be
+  given to other units.
+
+yeti [YETI], weight 50, walking capacity 10, moves 2 hexes per month.
+  This is a monster. This monster attacks with a combat skill of 4
+  This monster has a resistance of 4 to melee attacks. This monster
+  has a resistance of 3 to energy attacks. This monster has a
+  resistance of 0 to spirit attacks. This monster has a resistance of
+  3 to weather attacks. This monster has a resistance of 3 to riding
+  attacks. This monster has a resistance of 0 to ranged attacks. The
+  monster can spawn in the wilderness of tundra. Monster prefers to
+  roam the tundra terrain. Monster is unfriendly, and the player must
+  be pretty unlucky to be attacked by this monster. This monster has 2
+  melee attacks per round and takes 4 hits to kill and each attack
+  deals 1 damage. This monster has a tactics score of 0, a stealth
+  score of 3, and an observation score of 1. This monster might have
+  normal or trade items and silver as treasure. This item cannot be
+  given to other units.
+
+goblin [GOBL], weight 10, walking capacity 5, moves 2 hexes per month.
+  This is a monster. This monster attacks with a combat skill of 2
+  This monster has a resistance of 2 to melee attacks. This monster
+  has a resistance of 0 to energy attacks. This monster has a
+  resistance of 0 to spirit attacks. This monster has a resistance of
+  0 to weather attacks. This monster has a resistance of 0 to riding
+  attacks. This monster has a resistance of 0 to ranged attacks.
+  Monster prefers to roam the cavern terrain. Monster is unfriendly,
+  and the player must be pretty unlucky to be attacked by this
+  monster. This monster has 2 melee attacks per round and takes 1 hit
+  to kill and each attack deals 1 damage. This monster has a tactics
+  score of 0, a stealth score of 0, and an observation score of 0.
+  This monster might have normal or trade items and silver as
+  treasure. This item cannot be given to other units.
+
+troll [TROL], weight 50, walking capacity 10, moves 2 hexes per month.
+  This is a monster. This monster attacks with a combat skill of 3
+  This monster has a resistance of 3 to melee attacks. This monster
+  has a resistance of 3 to energy attacks. This monster has a
+  resistance of 0 to spirit attacks. This monster has a resistance of
+  3 to weather attacks. This monster has a resistance of 0 to riding
+  attacks. This monster has a resistance of 0 to ranged attacks.
+  Monster prefers to roam the underforest, grotto terrains. Monster is
+  unfriendly, and the player must be pretty unlucky to be attacked by
+  this monster. This monster has 4 melee attacks per round and takes 8
+  hits to kill and each attack deals 1 damage. This monsters
+  regenerates 4 hits per round of battle. This monster has a tactics
+  score of 1, a stealth score of 0, and an observation score of 2.
+  This monster might have advanced items and silver as treasure. This
+  item cannot be given to other units.
+
+ettin [ETTI], weight 50, walking capacity 10, moves 2 hexes per month.
+  This is a monster. This monster attacks with a combat skill of 3
+  This monster has a resistance of 3 to melee attacks. This monster
+  has a resistance of 3 to energy attacks. This monster has a
+  resistance of 0 to spirit attacks. This monster has a resistance of
+  3 to weather attacks. This monster has a resistance of 0 to riding
+  attacks. This monster has a resistance of 0 to ranged attacks.
+  Monster prefers to roam the tunnels, grotto, chasm terrains. Monster
+  is unfriendly, and the player must be pretty unlucky to be attacked
+  by this monster. This monster has 32 melee attacks per round and
+  takes 50 hits to kill and each attack deals 1 damage. This monster
+  has a tactics score of 2, a stealth score of 0, and an observation
+  score of 0. This monster might have advanced items and silver as
+  treasure. This item cannot be given to other units.
+
+skeleton [SKEL], weight 10, walking capacity 5, moves 2 hexes per
+  month. This is a monster. This monster attacks with a combat skill
+  of 2 This monster has a resistance of 2 to melee attacks. This
+  monster has a resistance of 0 to energy attacks. This monster has a
+  resistance of 3 to spirit attacks. This monster has a resistance of
+  3 to weather attacks. This monster has a resistance of 0 to riding
+  attacks. This monster has a resistance of 4 to ranged attacks. This
+  monster can lair in the Crypt. The monster has no terrain
+  preferences, and it can travel through any terrain. Monster is
+  unfriendly, and the player must be pretty unlucky to be attacked by
+  this monster. This monster has 2 melee attacks per round and takes 2
+  hits to kill and each attack deals 1 damage. This monster has a
+  tactics score of 0, a stealth score of 0, and an observation score
+  of 0. This monster might have normal or trade items and silver as
+  treasure.
+
+undead [UNDE], weight 10, walking capacity 5, moves 2 hexes per month.
+  This is a monster. This monster attacks with a combat skill of 3
+  This monster has a resistance of 3 to melee attacks. This monster
+  has a resistance of 1 to energy attacks. This monster has a
+  resistance of 1 to spirit attacks. This monster has a resistance of
+  2 to weather attacks. This monster has a resistance of 0 to riding
+  attacks. This monster has a resistance of 4 to ranged attacks. The
+  monster has no terrain preferences, and it can travel through any
+  terrain. Monster is unbelievably aggressive and will attack player
+  units on sight. This monster has 12 melee attacks per round and
+  takes 12 hits to kill and each attack deals 1 damage. This monster
+  has a tactics score of 0, a stealth score of 0, and an observation
+  score of 0. This monster might have advanced items and silver as
+  treasure.
+
+lich [LICH], weight 10, walking capacity 5, moves 4 hexes per month.
+  This is a monster. This monster attacks with a combat skill of 4
+  This monster has a resistance of 4 to melee attacks. This monster
+  has a resistance of 0 to energy attacks. This monster has a
+  resistance of 4 to spirit attacks. This monster has a resistance of
+  4 to weather attacks. This monster has a resistance of 0 to riding
+  attacks. This monster has a resistance of 4 to ranged attacks.
+  Monster can cast icy breath in battle at a skill level of 4. This
+  ability does between 2 and 40 spirit attacks and each attack deals 1
+  damage. The monster has no terrain preferences, and it can travel
+  through any terrain. Monster is very aggressive, but he will not
+  harm player units with good luck. This monster has 50 melee attacks
+  per round and takes 50 hits to kill and each attack deals 1 damage.
+  This monster has a tactics score of 4, a stealth score of 0, and an
+  observation score of 3. This monster might have magic items and
+  silver as treasure.
+
+imp [IMP], weight 10, walking capacity 5, moves 2 hexes per month.
+  This is a monster. This monster attacks with a combat skill of 3
+  This monster has a resistance of 3 to melee attacks. This monster
+  has a resistance of 3 to energy attacks. This monster has a
+  resistance of 3 to spirit attacks. This monster has a resistance of
+  3 to weather attacks. This monster has a resistance of 0 to riding
+  attacks. This monster has a resistance of 0 to ranged attacks. This
+  monster can lair in the Demon Pit. The monster has no terrain
+  preferences, and it can travel through any terrain. Monster is
+  unfriendly, and the player must be pretty unlucky to be attacked by
+  this monster. This monster has 2 melee attacks per round and takes 2
+  hits to kill and each attack deals 1 damage. This monster has a
+  tactics score of 0, a stealth score of 3, and an observation score
+  of 0. This monster might have normal or trade items and silver as
+  treasure.
+
+demon [DEMO], weight 50, walking capacity 10, riding capacity 10,
+  moves 4 hexes per month. This is a monster. This monster attacks
+  with a combat skill of 4 This monster has a resistance of 4 to melee
+  attacks. This monster has a resistance of 4 to energy attacks. This
+  monster has a resistance of 4 to spirit attacks. This monster has a
+  resistance of 4 to weather attacks. This monster has a resistance of
+  3 to riding attacks. This monster has a resistance of 0 to ranged
+  attacks. The monster can spawn in the wilderness of volcanoes. The
+  monster has no terrain preferences, and it can travel through any
+  terrain. Monster is very aggressive, but he will not harm player
+  units with good luck. This monster has 12 melee attacks per round
+  and takes 12 hits to kill and each attack deals 1 damage. This
+  monster has a tactics score of 2, a stealth score of 2, and an
+  observation score of 3. This monster might have advanced items and
+  silver as treasure.
+
+balrog [BALR], weight 250, walking capacity 50, riding capacity 50,
+  flying capacity 50, moves 4 hexes per month. This is a monster. This
+  monster attacks with a combat skill of 6 This monster has a
+  resistance of 6 to melee attacks. This monster has a resistance of 6
+  to energy attacks. This monster has a resistance of 6 to spirit
+  attacks. This monster has a resistance of 6 to weather attacks. This
+  monster has a resistance of 5 to riding attacks. This monster has a
+  resistance of 0 to ranged attacks. Monster can cast hellfire in
+  battle at a skill level of 4. This ability does between 2 and 200
+  energy attacks and each attack deals 1 damage. The monster has no
+  terrain preferences, and it can travel through any terrain. Monster
+  is unbelievably aggressive and will attack player units on sight.
+  This monster has 200 melee attacks per round and takes 280 hits to
+  kill and each attack deals 1 damage. This monster has a tactics
+  score of 5, a stealth score of 1, and an observation score of 2.
+  This monster might have magic items and silver as treasure. A unit
+  may have at most 1 balrog [BALR].
+
+eagle [EAGL], weight 10, walking capacity 5, riding capacity 5, flying
+  capacity 5, moves 4 hexes per month. This is a monster. This monster
+  attacks with a combat skill of 4 This monster has a resistance of 4
+  to melee attacks. This monster has a resistance of 0 to energy
+  attacks. This monster has a resistance of 3 to spirit attacks. This
+  monster has a resistance of 4 to weather attacks. This monster has a
+  resistance of 5 to riding attacks. This monster has a resistance of
+  0 to ranged attacks. The monster has no terrain preferences, and it
+  can travel through any terrain. Monster is unfriendly, and the
+  player must be pretty unlucky to be attacked by this monster. This
+  monster has 3 melee attacks per round and takes 12 hits to kill and
+  each attack deals 1 damage. This monster has a tactics score of 2, a
+  stealth score of 2, and an observation score of 4. This monster
+  might have silver as treasure. This item cannot be given to other
+  units.
+
+amulet of invulnerability [XXXX], weight 0. This item is a
+  miscellaneous combat item. This item provides invulnerability in
+  battle at a skill level of 5. This ability provides the wielder with
+  a defence bonus of 5 against all all attacks.
+
+ring of invisibility [RING], weight 0. This item grants a 3 point
+  bonus to a unit's stealth skill (note that a unit must possess one
+  RING for each man to gain this bonus). A Ring of Invisibility has
+  one limitation; a unit possessing a RING cannot assassinate, nor
+  steal from, a unit with an Amulet of True Seeing.
+
+cloak of invulnerability [CLOA], weight 0. This is a type of armor.
+  This armor will protect its wearer 98% of the time versus slashing
+  attacks, 98% of the time versus piercing attacks, 98% of the time
+  versus crushing attacks, 98% of the time versus cleaving attacks,
+  98% of the time versus armor-piercing attacks, 98% of the time
+  versus energy attacks, 98% of the time versus spirit attacks, and
+  98% of the time versus weather attacks.
+
+staff of fire [STAF], weight 0. This item is a miscellaneous combat
+  item. This item may only be used by a mage or an apprentice. This
+  item can cast a fireball in battle at a skill level of 3. This
+  ability does between 2 and 30 energy attacks and each attack deals 1
+  damage.
+
+amulet of true seeing [AMTS], weight 0. This item grants a 2 point
+  bonus to a unit's observation skill. Also, a unit with an Amulet of
+  True Seeing cannot be assassinated by, nor have items stolen by, a
+  unit with a Ring of Invisibility (note that the unit must have at
+  least one Amulet of True Seeing per man in order to repel a unit
+  with a Ring of Invisibility).
+
+amulet of protection [AMPR], weight 0. This item is a miscellaneous
+  combat item. This item provides a spirit shield in battle at a skill
+  level of 3. This ability provides the wielder with a defence bonus
+  of 3 against all spirit attacks.
+
+runesword [RUNE], weight 1. This is a armor-piercing weapon and each
+  attack deals 1 damage. No skill is needed to wield this weapon. This
+  weapon grants a bonus of 5 on attack and defense. Wielders of this
+  weapon, if mounted, get their riding skill bonus on combat attack
+  and defense. There is a 50% chance that the wielder of this weapon
+  gets a chance to attack in any given round. This weapon attacks
+  versus the target's defense against melee attacks. This weapon
+  allows a number of attacks equal to the skill level of the attacker
+  per round. This item is a miscellaneous combat item. This item can
+  cast cause fear in battle at a skill level of 2. This ability will
+  not target creatures which are currently affected by fear. This
+  ability cannot target monsters. This ability does between 2 and 100
+  spirit attacks and each attack deals no damage. Each attack causes
+  the target to be effected by fear (-2 to attack, -2 versus melee
+  attacks, -2 versus riding attacks, -2 versus ranged attacks) for the
+  rest of the battle.
+
+shieldstone [SHST], weight 0. This item is a miscellaneous combat
+  item. This item provides an energy shield in battle at a skill level
+  of 3. This ability provides the wielder with a defence bonus of 3
+  against all energy attacks.
+
+magic carpet [CARP], weight 0, walking capacity 15, riding capacity
+  15, swimming capacity 15, flying capacity 15, moves 4 hexes per
+  month.
+
+illusory wolf [IWOLF], weight 1, can walk, can ride, can fly, moves 4
+  hexes per month. This is a monster. This monster attacks with a
+  combat skill of -5 This monster has a resistance of -5 to melee
+  attacks. This monster has a resistance of 0 to energy attacks. This
+  monster has a resistance of 0 to spirit attacks. This monster has a
+  resistance of 0 to weather attacks. This monster has a resistance of
+  -5 to riding attacks. This monster has a resistance of 0 to ranged
+  attacks. The monster has no terrain preferences, and it can travel
+  through any terrain. Monster is totally peaceful and will never
+  attack player units. This monster has 1 melee attack per round and
+  takes 1 hit to kill and each attack deals 1 damage. This monster has
+  a tactics score of 0, a stealth score of 5, and an observation score
+  of 0. This monster might have silver as treasure. This item cannot
+  be given to other units.
+
+illusory eagle [IEAGL], weight 1, can walk, can ride, can fly, moves 4
+  hexes per month. This is a monster. This monster attacks with a
+  combat skill of -5 This monster has a resistance of -5 to melee
+  attacks. This monster has a resistance of 0 to energy attacks. This
+  monster has a resistance of 0 to spirit attacks. This monster has a
+  resistance of 0 to weather attacks. This monster has a resistance of
+  -5 to riding attacks. This monster has a resistance of 0 to ranged
+  attacks. The monster has no terrain preferences, and it can travel
+  through any terrain. Monster is totally peaceful and will never
+  attack player units. This monster has 1 melee attack per round and
+  takes 8 hits to kill and each attack deals 1 damage. This monster
+  has a tactics score of 0, a stealth score of 5, and an observation
+  score of 0. This monster might have silver as treasure. This item
+  cannot be given to other units.
+
+illusory dragon [IDRAG], weight 1, can walk, can ride, can fly, moves
+  4 hexes per month. This is a monster. This monster attacks with a
+  combat skill of -5 This monster has a resistance of -5 to melee
+  attacks. This monster has a resistance of 0 to energy attacks. This
+  monster has a resistance of 0 to spirit attacks. This monster has a
+  resistance of 0 to weather attacks. This monster has a resistance of
+  -5 to riding attacks. This monster has a resistance of 0 to ranged
+  attacks. The monster has no terrain preferences, and it can travel
+  through any terrain. Monster is totally peaceful and will never
+  attack player units. This monster has 1 melee attack per round and
+  takes 50 hits to kill and each attack deals 1 damage. This monster
+  has a tactics score of 0, a stealth score of 5, and an observation
+  score of 0. This monster might have silver as treasure. This item
+  cannot be given to other units.
+
+illusory skeleton [ISKEL], weight 1, can walk, can ride, can fly,
+  moves 4 hexes per month. This is a monster. This monster attacks
+  with a combat skill of -5 This monster has a resistance of -5 to
+  melee attacks. This monster has a resistance of 0 to energy attacks.
+  This monster has a resistance of 0 to spirit attacks. This monster
+  has a resistance of 0 to weather attacks. This monster has a
+  resistance of -5 to riding attacks. This monster has a resistance of
+  0 to ranged attacks. The monster has no terrain preferences, and it
+  can travel through any terrain. Monster is totally peaceful and will
+  never attack player units. This monster has 1 melee attack per round
+  and takes 2 hits to kill and each attack deals 1 damage. This
+  monster has a tactics score of 0, a stealth score of 5, and an
+  observation score of 0. This monster might have silver as treasure.
+  This item cannot be given to other units.
+
+illusory undead [IUNDE], weight 1, can walk, can ride, can fly, moves
+  4 hexes per month. This is a monster. This monster attacks with a
+  combat skill of -5 This monster has a resistance of -5 to melee
+  attacks. This monster has a resistance of 0 to energy attacks. This
+  monster has a resistance of 0 to spirit attacks. This monster has a
+  resistance of 0 to weather attacks. This monster has a resistance of
+  -5 to riding attacks. This monster has a resistance of 0 to ranged
+  attacks. The monster has no terrain preferences, and it can travel
+  through any terrain. Monster is totally peaceful and will never
+  attack player units. This monster has 1 melee attack per round and
+  takes 10 hits to kill and each attack deals 1 damage. This monster
+  has a tactics score of 0, a stealth score of 5, and an observation
+  score of 0. This monster might have silver as treasure. This item
+  cannot be given to other units.
+
+illusory lich [ILICH], weight 1, can walk, can ride, can fly, moves 4
+  hexes per month. This is a monster. This monster attacks with a
+  combat skill of -5 This monster has a resistance of -5 to melee
+  attacks. This monster has a resistance of 0 to energy attacks. This
+  monster has a resistance of 0 to spirit attacks. This monster has a
+  resistance of 0 to weather attacks. This monster has a resistance of
+  -5 to riding attacks. This monster has a resistance of 0 to ranged
+  attacks. The monster has no terrain preferences, and it can travel
+  through any terrain. Monster is totally peaceful and will never
+  attack player units. This monster has 1 melee attack per round and
+  takes 40 hits to kill and each attack deals 1 damage. This monster
+  has a tactics score of 0, a stealth score of 5, and an observation
+  score of 0. This monster might have silver as treasure. This item
+  cannot be given to other units.
+
+illusory imp [IIMP], weight 1, can walk, can ride, can fly, moves 4
+  hexes per month. This is a monster. This monster attacks with a
+  combat skill of -5 This monster has a resistance of -5 to melee
+  attacks. This monster has a resistance of 0 to energy attacks. This
+  monster has a resistance of 0 to spirit attacks. This monster has a
+  resistance of 0 to weather attacks. This monster has a resistance of
+  -5 to riding attacks. This monster has a resistance of 0 to ranged
+  attacks. The monster has no terrain preferences, and it can travel
+  through any terrain. Monster is totally peaceful and will never
+  attack player units. This monster has 1 melee attack per round and
+  takes 1 hit to kill and each attack deals 1 damage. This monster has
+  a tactics score of 0, a stealth score of 5, and an observation score
+  of 0. This monster might have silver as treasure. This item cannot
+  be given to other units.
+
+illusory demon [IDEMO], weight 1, can walk, can ride, can fly, moves 4
+  hexes per month. This is a monster. This monster attacks with a
+  combat skill of -5 This monster has a resistance of -5 to melee
+  attacks. This monster has a resistance of 0 to energy attacks. This
+  monster has a resistance of 0 to spirit attacks. This monster has a
+  resistance of 0 to weather attacks. This monster has a resistance of
+  -5 to riding attacks. This monster has a resistance of 0 to ranged
+  attacks. The monster has no terrain preferences, and it can travel
+  through any terrain. Monster is totally peaceful and will never
+  attack player units. This monster has 1 melee attack per round and
+  takes 8 hits to kill and each attack deals 1 damage. This monster
+  has a tactics score of 0, a stealth score of 5, and an observation
+  score of 0. This monster might have silver as treasure. This item
+  cannot be given to other units.
+
+illusory balrog [IBALR], weight 1, can walk, can ride, can fly, moves
+  4 hexes per month. This is a monster. This monster attacks with a
+  combat skill of -5 This monster has a resistance of -5 to melee
+  attacks. This monster has a resistance of 0 to energy attacks. This
+  monster has a resistance of 0 to spirit attacks. This monster has a
+  resistance of 0 to weather attacks. This monster has a resistance of
+  -5 to riding attacks. This monster has a resistance of 0 to ranged
+  attacks. The monster has no terrain preferences, and it can travel
+  through any terrain. Monster is totally peaceful and will never
+  attack player units. This monster has 1 melee attack per round and
+  takes 250 hits to kill and each attack deals 1 damage. This monster
+  has a tactics score of 0, a stealth score of 5, and an observation
+  score of 0. This monster might have silver as treasure. This item
+  cannot be given to other units.
+
+portal [PORT], weight 1. This item is required for mages to use the
+  Portal Lore skill.
+
+pick [PICK], weight 1, costs 150 silver to withdraw. This is a
+  piercing weapon and each attack deals 1 damage. No skill is needed
+  to wield this weapon. This weapon grants a bonus of 1 on attack and
+  defense. Wielders of this weapon, if mounted, get their riding skill
+  bonus on combat attack and defense. There is a 50% chance that the
+  wielder of this weapon gets a chance to attack in any given round.
+  This weapon attacks versus the target's defense against melee
+  attacks. This weapon allows 1 attack per round. This is a tool. This
+  item increases the production of iron [IRON] by 1, stone [STON] by
+  1, mithril [MITH] by 1, rootstone [ROOT] by 1, and admantium [ADMT]
+  by 1.
+
+spear [SPEA], weight 1, costs 150 silver to withdraw. This is a
+  piercing weapon and each attack deals 1 damage. No skill is needed
+  to wield this weapon. This weapon grants a bonus of 1 on attack and
+  defense. Wielders of this weapon, if mounted, get their riding skill
+  bonus on combat attack and defense. There is a 50% chance that the
+  wielder of this weapon gets a chance to attack in any given round.
+  This weapon attacks versus the target's defense against melee
+  attacks. This weapon allows 1 attack per round. This is a tool. This
+  item increases the production of fur [FUR] by 1 and floater hide
+  [FLOA] by 1.
+
+axe [AXE], weight 1, costs 150 silver to withdraw. This is a cleaving
+  weapon and each attack deals 1 damage. No skill is needed to wield
+  this weapon. This weapon grants a bonus of 1 on attack and defense.
+  Wielders of this weapon, if mounted, get their riding skill bonus on
+  combat attack and defense. There is a 50% chance that the wielder of
+  this weapon gets a chance to attack in any given round. This weapon
+  attacks versus the target's defense against melee attacks. This
+  weapon allows 1 attack per round. This is a tool. This item
+  increases the production of wood [WOOD] by 1, crossbow [XBOW] by 1,
+  longbow [LBOW] by 1, wagon [WAGO] by 1, ironwood [IRWD] by 1, yew
+  [YEW] by 1, double bow [DBOW] by 1, spear [SPEA] by 1, axe [AXE] by
+  1, magic crossbow [MXBO] by 1, magic wagon [MWAG] by 1, glider
+  [GLID] by 1, spinning wheel [SPIN] by 1, javelin [JAVE] by 1, pike
+  [PIKE] by 1, and wooden shield [WSHD] by 1.
+
+hammer [HAMM], weight 1, costs 150 silver to withdraw. This is a
+  crushing weapon and each attack deals 1 damage. No skill is needed
+  to wield this weapon. This weapon grants a bonus of 1 on attack and
+  defense. Wielders of this weapon, if mounted, get their riding skill
+  bonus on combat attack and defense. There is a 50% chance that the
+  wielder of this weapon gets a chance to attack in any given round.
+  This weapon attacks versus the target's defense against melee
+  attacks. This weapon allows 1 attack per round. This is a tool. This
+  item increases the production of sword [SWOR] by 1, chain armor
+  [CARM] by 1, plate armor [PARM] by 1, mithril sword [MSWO] by 1,
+  mithril armor [MARM] by 1, pick [PICK] by 1, hammer [HAMM] by 1,
+  battle axe [BAXE] by 1, admantium sword [ASWR] by 1, admantium ring
+  mail [ARNG] by 1, admantium plate mail [AARM] by 1, mithril shield
+  [MSHD] by 1, and iron shield [ISHD] by 1.
+
+magic crossbow [MXBO], weight 1. This is a ranged armor-piercing
+  weapon and each attack deals 1 damage. Knowledge of crossbow [XBOW]
+  is needed to wield this weapon. Attackers do not get skill bonus on
+  defense. There is a 50% chance that the wielder of this weapon gets
+  a chance to attack in any given round. This weapon attacks versus
+  the target's defense against ranged attacks. This weapon allows 1
+  attack per round.
+
+magic wagon [MWAG], weight 50, walking capacity 200, riding capacity
+  200, moves 4 hexes per month.
+
+glider [GLID], weight 5, flying capacity 10, moves 4 hexes per month.
+
+net [NET], weight 1, costs 200 silver to withdraw. This is a tool.
+  This item increases the production of fish [FISH] by 2 and giant
+  turtle [TURT] by 1.
+
+lasso [LASS], weight 1, costs 150 silver to withdraw. This is a tool.
+  This item increases the production of livestock [LIVE] by 1, horse
+  [HORS] by 1, winged horse [WING] by 1, and camel [CAME] by 1.
+
+bag [BAG], weight 1, costs 150 silver to withdraw. This is a tool.
+  This item increases the production of grain [GRAI] by 2, herb [HERB]
+  by 2, and mushroom [MUSH] by 2.
+
+spinning wheel [SPIN], weight 1, costs 150 silver to withdraw. This is
+  a tool. This item increases the production of net [NET] by 2, lasso
+  [LASS] by 2, bag [BAG] by 2, and leather armor [LARM] by 2.
+
+leather armor [LARM], weight 1, costs 112 silver to withdraw. This is
+  a type of armor. This armor will protect its wearer 30% of the time
+  versus slashing attacks, 30% of the time versus piercing attacks,
+  30% of the time versus crushing attacks, 30% of the time versus
+  cleaving attacks, 13% of the time versus armor-piercing attacks, 13%
+  of the time versus energy attacks, 13% of the time versus spirit
+  attacks, and 13% of the time versus weather attacks. This armor may
+  be worn during assassination attempts.
+
+pirates [PIRA], weight 10, walking capacity 5, swimming capacity 5,
+  moves 2 hexes per month. This is a monster. This monster attacks
+  with a combat skill of 3 This monster has a resistance of 3 to melee
+  attacks. This monster has a resistance of 0 to energy attacks. This
+  monster has a resistance of 0 to spirit attacks. This monster has a
+  resistance of 0 to weather attacks. This monster has a resistance of
+  0 to riding attacks. This monster has a resistance of 0 to ranged
+  attacks. The monster can spawn in the wilderness of ocean. This
+  monster can lair in the Island. The monster has no terrain
+  preferences, and it can travel through any terrain. Monster is very
+  aggressive, but he will not harm player units with good luck. This
+  monster has 5 melee attacks per round and takes 5 hits to kill and
+  each attack deals 1 damage. This monster has a tactics score of 1, a
+  stealth score of 1, and an observation score of 1. This monster
+  might have advanced items and silver as treasure. This item cannot
+  be given to other units.
+
+kraken [KRAK], weight 10, swimming capacity 290, moves 2 hexes per
+  month. This is a monster. This monster attacks with a combat skill
+  of 6 This monster has a resistance of 6 to melee attacks. This
+  monster has a resistance of 5 to energy attacks. This monster has a
+  resistance of 5 to spirit attacks. This monster has a resistance of
+  5 to weather attacks. This monster has a resistance of 3 to riding
+  attacks. This monster has a resistance of 3 to ranged attacks.
+  Monster can cast summon tornado in battle at a skill level of 3.
+  This ability does between 2 and 150 weather attacks and each attack
+  deals 1 damage. The monster can spawn in the wilderness of ocean.
+  This monster can lair in the Derelict Ship. The monster has no
+  terrain preferences, and it can travel through any terrain. Monster
+  is very aggressive, but he will not harm player units with good
+  luck. This monster has 200 melee attacks per round and takes 200
+  hits to kill and each attack deals 1 damage. This monster has a
+  tactics score of 5, a stealth score of 1, and an observation score
+  of 3. This monster might have magic items and silver as treasure.
+  This item cannot be given to other units.
+
+merfolk [MERF], weight 10, swimming capacity 5, moves 2 hexes per
+  month. This is a monster. This monster attacks with a combat skill
+  of 2 This monster has a resistance of 2 to melee attacks. This
+  monster has a resistance of 0 to energy attacks. This monster has a
+  resistance of 0 to spirit attacks. This monster has a resistance of
+  2 to weather attacks. This monster has a resistance of 0 to riding
+  attacks. This monster has a resistance of 0 to ranged attacks. The
+  monster can spawn in the wilderness of ocean. This monster can lair
+  in the Cavern. The monster has no terrain preferences, and it can
+  travel through any terrain. Monster is unfriendly, and the player
+  must be pretty unlucky to be attacked by this monster. This monster
+  has 2 melee attacks per round and takes 2 hits to kill and each
+  attack deals 1 damage. This monster has a tactics score of 1, a
+  stealth score of 2, and an observation score of 3. This monster
+  might have normal or trade items and silver as treasure. This item
+  cannot be given to other units.
+
+elemental [ELEM], weight 250, walking capacity 50, swimming capacity
+  50, moves 2 hexes per month. This is a monster. This monster attacks
+  with a combat skill of 4 This monster has a resistance of 4 to melee
+  attacks. This monster has a resistance of 3 to energy attacks. This
+  monster has a resistance of 3 to spirit attacks. This monster has a
+  resistance of 3 to weather attacks. This monster has a resistance of
+  2 to riding attacks. This monster has a resistance of 6 to ranged
+  attacks. This monster can lair in the Whirlpool. The monster has no
+  terrain preferences, and it can travel through any terrain. Monster
+  is aggressive but, in most cases, will leave player units alone.
+  This monster has 20 melee attacks per round and takes 20 hits to
+  kill and each attack deals 1 damage. This monsters regenerates 5
+  hits per round of battle. This monster has a tactics score of 2, a
+  stealth score of 3, and an observation score of 2. This monster
+  might have advanced items and silver as treasure. This item cannot
+  be given to other units.
+
+human [HUMN], weight 10, walking capacity 5, moves 2 hexes per month.
+  This race may study building [BUIL], riding [RIDI], combat [COMB],
+  mining [MINI], farming [FARM] and cooking [COOK] to level 4 and all
+  other skills to level 2.
+
+lizardman [LIZA], weight 10, walking capacity 5, swimming capacity 5,
+  moves 2 hexes per month. This race may study hunting [HUNT], herb
+  lore [HERB], carpenter [CARP], sailing [SAIL] and healing [HEAL] to
+  level 5 and all other skills to level 2.
+
+goblin [GBLN], weight 5, walking capacity 2, moves 2 hexes per month.
+  This race may study quarrying [QUAR], crossbow [XBOW], shipbuilding
+  [SHIP], weaponsmith [WEAP] and entertainment [ENTE] to level 5 and
+  all other skills to level 2.
+
+gnoll [GNOL], weight 10, walking capacity 5, moves 2 hexes per month.
+  This race may study horse training [HORS], hunting [HUNT], combat
+  [COMB], armorer [ARMO], carpenter [CARP] and cooking [COOK] to level
+  5 and all other skills to level 2.
+
+drow elf [DRLF], weight 10, walking capacity 5, moves 2 hexes per
+  month. This race may study combat [COMB], hunting [HUNT], longbow
+  [LBOW], lumberjack [LUMB] and cooking [COOK] to level 5 and all
+  other skills to level 2.
+
+mushroom [MUSH], weight 0. This item is a trade resource.
+
+battle axe [BAXE], weight 2. This is a armor-piercing weapon and each
+  attack deals 1 damage. No skill is needed to wield this weapon. This
+  weapon grants a bonus of 4 on attack and a bonus of 3 on defense.
+  Wielders of this weapon, if mounted, get their riding skill bonus on
+  combat attack and defense. There is a 50% chance that the wielder of
+  this weapon gets a chance to attack in any given round. This weapon
+  attacks versus the target's defense against melee attacks. This
+  weapon allows 1 attack per round.
+
+admantium [ADMT], weight 10. This item is a trade resource.
+
+admantium sword [ASWR], weight 1. This is a slashing weapon and each
+  attack deals 1 damage. No skill is needed to wield this weapon. This
+  weapon grants a bonus of 5 on attack and defense. Wielders of this
+  weapon, if mounted, get their riding skill bonus on combat attack
+  and defense. There is a 50% chance that the wielder of this weapon
+  gets a chance to attack in any given round. This weapon attacks
+  versus the target's defense against melee attacks. This weapon
+  allows a number of attacks equal to half the skill level (rounded
+  up) of the attacker per round.
+
+admantium ring mail [ARNG], weight 2. This is a type of armor. This
+  armor will protect its wearer 90% of the time versus slashing
+  attacks, 90% of the time versus piercing attacks, 90% of the time
+  versus crushing attacks, 90% of the time versus cleaving attacks,
+  80% of the time versus armor-piercing attacks, 80% of the time
+  versus energy attacks, 80% of the time versus spirit attacks, and
+  80% of the time versus weather attacks.
+
+admantium plate mail [AARM], weight 3. This is a type of armor. This
+  armor will protect its wearer 95% of the time versus slashing
+  attacks, 95% of the time versus piercing attacks, 95% of the time
+  versus crushing attacks, 95% of the time versus cleaving attacks,
+  90% of the time versus armor-piercing attacks, 90% of the time
+  versus energy attacks, 90% of the time versus spirit attacks, and
+  90% of the time versus weather attacks.
+
+camel [CAME], weight 50, walking capacity 20, riding capacity 20,
+  moves 4 hexes per month, costs 75 silver to withdraw. This is a
+  mount. This mount requires riding [RIDI] of at least level 1 to ride
+  in combat. This mount gives a minimum bonus of +1 when ridden into
+  combat. This mount gives a maximum bonus of +1 when ridden into
+  combat. This bonus is calculated as a RIDING skill divided by 2
+  (rounded up). When ridden, this mount causes terrify horses in
+  battle at a skill level of 3. This ability will only target units
+  mounted on horses [HORS]. This ability will not target creatures
+  which are currently affected by spook, or spook. This ability does
+  between 1 and 0 riding attacks and each attack deals no damage. Each
+  attack causes the target to be effected by spook (-1 to attack, -1
+  versus melee attacks, -1 versus riding attacks, -1 versus ranged
+  attacks) for the rest of the battle.
+
+drow warrior [DROW], weight 10, walking capacity 5, moves 2 hexes per
+  month. This is a monster. This monster attacks with a combat skill
+  of 3 This monster has a resistance of 3 to melee attacks. This
+  monster has a resistance of 3 to energy attacks. This monster has a
+  resistance of 3 to spirit attacks. This monster has a resistance of
+  3 to weather attacks. This monster has a resistance of 0 to riding
+  attacks. This monster has a resistance of 0 to ranged attacks. The
+  monster has no terrain preferences, and it can travel through any
+  terrain. Monster is unbelievably aggressive and will attack player
+  units on sight. This monster has 2 melee attacks per round and takes
+  2 hits to kill and each attack deals 1 damage. This monster has a
+  tactics score of 1, a stealth score of 3, and an observation score
+  of 2. This monster might have normal or trade items and silver as
+  treasure. This item cannot be given to other units.
+
+hydra [HYDR], weight 250, walking capacity 50, moves 2 hexes per
+  month. This is a monster. This monster attacks with a combat skill
+  of 6 This monster has a resistance of 6 to melee attacks. This
+  monster has a resistance of 1 to energy attacks. This monster has a
+  resistance of 1 to spirit attacks. This monster has a resistance of
+  0 to weather attacks. This monster has a resistance of 0 to riding
+  attacks. This monster has a resistance of 3 to ranged attacks.
+  Monster can cast fiery breath in battle at a skill level of 4. This
+  ability does between 2 and 40 energy attacks and each attack deals 1
+  damage. This monster can lair in the Bog. Monster prefers to roam
+  the swamp terrain. Monster is very aggressive, but he will not harm
+  player units with good luck. This monster has 70 melee attacks per
+  round and takes 70 hits to kill and each attack deals 1 damage. This
+  monsters regenerates 30 hits per round of battle. This monster has a
+  tactics score of 4, a stealth score of 0, and an observation score
+  of 2. This monster might have magic items and silver as treasure.
+  This item cannot be given to other units.
+
+storm giant [STGI], weight 200, walking capacity 50, moves 2 hexes per
+  month. This is a monster. This monster attacks with a combat skill
+  of 10 This monster has a resistance of 10 to melee attacks. This
+  monster has a resistance of 2 to energy attacks. This monster has a
+  resistance of 0 to spirit attacks. This monster has a resistance of
+  8 to weather attacks. This monster has a resistance of 0 to riding
+  attacks. This monster has a resistance of 8 to ranged attacks.
+  Monster can cast summon storm in battle at a skill level of 5. This
+  ability will not target creatures which are currently affected by
+  storm. This ability does between 2 and 500 weather attacks and each
+  attack deals no damage. Each attack causes the target to be effected
+  by storm (-2 to attack, -2 versus melee attacks) for the rest of the
+  battle. This monster can lair in the Giant's Castle. The monster has
+  no terrain preferences, and it can travel through any terrain.
+  Monster is very aggressive, but he will not harm player units with
+  good luck. This monster has 80 melee attacks per round and takes 80
+  hits to kill and each attack deals 1 damage. This monster has a
+  tactics score of 5, a stealth score of 0, and an observation score
+  of 4. This monster might have magic items and silver as treasure.
+  This item cannot be given to other units.
+
+cloud giant [CLGI], weight 200, walking capacity 50, moves 2 hexes per
+  month. This is a monster. This monster attacks with a combat skill
+  of 7 This monster has a resistance of 7 to melee attacks. This
+  monster has a resistance of 3 to energy attacks. This monster has a
+  resistance of 3 to spirit attacks. This monster has a resistance of
+  8 to weather attacks. This monster has a resistance of 3 to riding
+  attacks. This monster has a resistance of 4 to ranged attacks.
+  Monster can cast a lightning strike in battle at a skill level of 2.
+  This ability does between 2 and 100 weather attacks and each attack
+  deals 1 damage. This ability does between 2 and 100 energy attacks
+  and each attack deals 1 damage. The monster has no terrain
+  preferences, and it can travel through any terrain. Monster is very
+  aggressive, but he will not harm player units with good luck. This
+  monster has 100 melee attacks per round and takes 100 hits to kill
+  and each attack deals 1 damage. This monster has a tactics score of
+  5, a stealth score of 1, and an observation score of 5. This monster
+  might have magic items and silver as treasure. This item cannot be
+  given to other units.
+
+illyrthid [ILLY], weight 50, walking capacity 25, moves 2 hexes per
+  month. This is a monster. This monster attacks with a combat skill
+  of 0 This monster has a resistance of 0 to melee attacks. This
+  monster has a resistance of 5 to energy attacks. This monster has a
+  resistance of 5 to spirit attacks. This monster has a resistance of
+  5 to weather attacks. This monster has a resistance of 2 to riding
+  attacks. This monster has a resistance of 2 to ranged attacks.
+  Monster can cast a mindblast in battle at a skill level of 4. This
+  ability does between 2 and 250 spirit attacks and each attack deals
+  1 damage. This monster can lair in the Lair. The monster has no
+  terrain preferences, and it can travel through any terrain. Monster
+  is very aggressive, but he will not harm player units with good
+  luck. This monster has 1 melee attack per round and takes 30 hits to
+  kill and each attack deals 1 damage. This monster has a tactics
+  score of 5, a stealth score of 0, and an observation score of 5.
+  This monster might have magic items and silver as treasure. This
+  item cannot be given to other units.
+
+evil sorcerer [SORC], weight 10, walking capacity 5, moves 2 hexes per
+  month. This is a monster. This monster attacks with a combat skill
+  of 1 This monster has a resistance of 1 to melee attacks. This
+  monster has a resistance of 1 to energy attacks. This monster has a
+  resistance of 1 to spirit attacks. This monster has a resistance of
+  1 to weather attacks. This monster has a resistance of 1 to riding
+  attacks. This monster has a resistance of 1 to ranged attacks.
+  Monster can cast cause fear in battle at a skill level of 3. This
+  ability will not target creatures which are currently affected by
+  fear. This ability cannot target monsters. This ability does between
+  2 and 150 spirit attacks and each attack deals no damage. Each
+  attack causes the target to be effected by fear (-2 to attack, -2
+  versus melee attacks, -2 versus riding attacks, -2 versus ranged
+  attacks) for the rest of the battle. The monster has no terrain
+  preferences, and it can travel through any terrain. Monster is
+  unbelievably aggressive and will attack player units on sight. This
+  monster has 1 melee attack per round and takes 1 hit to kill and
+  each attack deals 1 damage. This monster has a tactics score of 2, a
+  stealth score of 0, and an observation score of 2. This monster
+  might have advanced items and silver as treasure. This item cannot
+  be given to other units.
+
+evil magician [MAGI], weight 10, walking capacity 5, moves 2 hexes per
+  month. This is a monster. This monster attacks with a combat skill
+  of 2 This monster has a resistance of 2 to melee attacks. This
+  monster has a resistance of 2 to energy attacks. This monster has a
+  resistance of 2 to spirit attacks. This monster has a resistance of
+  2 to weather attacks. This monster has a resistance of 2 to riding
+  attacks. This monster has a resistance of 2 to ranged attacks.
+  Monster can cast a lightning strike in battle at a skill level of 2.
+  This ability does between 2 and 100 weather attacks and each attack
+  deals 1 damage. This ability does between 2 and 100 energy attacks
+  and each attack deals 1 damage. This monster can lair in the
+  Magician's Tower. The monster has no terrain preferences, and it can
+  travel through any terrain. Monster is unbelievably aggressive and
+  will attack player units on sight. This monster has 1 melee attack
+  per round and takes 1 hit to kill and each attack deals 1 damage.
+  This monster has a tactics score of 3, a stealth score of 0, and an
+  observation score of 3. This monster might have magic items and
+  silver as treasure. This item cannot be given to other units.
+
+dark mage [DMAG], weight 10, walking capacity 5, moves 2 hexes per
+  month. This is a monster. This monster attacks with a combat skill
+  of 3 This monster has a resistance of 3 to melee attacks. This
+  monster has a resistance of 3 to energy attacks. This monster has a
+  resistance of 3 to spirit attacks. This monster has a resistance of
+  3 to weather attacks. This monster has a resistance of 3 to riding
+  attacks. This monster has a resistance of 3 to ranged attacks.
+  Monster can cast a black wind in battle at a skill level of 1. This
+  ability will not target skeletons [SKEL], undead [UNDE], liches
+  [LICH], imps [IMP], demons [DEMO], balrogs [BALR], or devils [DEVL].
+  This ability does between 2 and 130 spirit attacks and each attack
+  deals 1 damage. This monster can lair in the Dark Mage Tower. The
+  monster has no terrain preferences, and it can travel through any
+  terrain. Monster is unbelievably aggressive and will attack player
+  units on sight. This monster has 1 melee attack per round and takes
+  1 hit to kill and each attack deals 1 damage. This monster has a
+  tactics score of 3, a stealth score of 0, and an observation score
+  of 3. This monster might have magic items and silver as treasure.
+  This item cannot be given to other units.
+
+evil warrior [WARR], weight 10, walking capacity 30, moves 2 hexes per
+  month. This is a monster. This monster attacks with a combat skill
+  of 4 This monster has a resistance of 3 to melee attacks. This
+  monster has a resistance of 2 to energy attacks. This monster has a
+  resistance of 2 to spirit attacks. This monster has a resistance of
+  2 to weather attacks. This monster has a resistance of 2 to riding
+  attacks. This monster has a resistance of 2 to ranged attacks. The
+  monster has no terrain preferences, and it can travel through any
+  terrain. Monster is unbelievably aggressive and will attack player
+  units on sight. This monster has 3 melee attacks per round and takes
+  3 hits to kill and each attack deals 1 damage. This monster has a
+  tactics score of 0, a stealth score of 0, and an observation score
+  of 0. This monster might have normal or trade items and silver as
+  treasure. This item cannot be given to other units.
+
+ice dragon [IDRA], weight 250, walking capacity 50, riding capacity
+  50, moves 4 hexes per month. This is a monster. This monster attacks
+  with a combat skill of 6 This monster has a resistance of 6 to melee
+  attacks. This monster has a resistance of 3 to energy attacks. This
+  monster has a resistance of 3 to spirit attacks. This monster has a
+  resistance of 3 to weather attacks. This monster has a resistance of
+  4 to riding attacks. This monster has a resistance of 3 to ranged
+  attacks. Monster can cast icy breath in battle at a skill level of
+  6. This ability does between 2 and 60 spirit attacks and each attack
+  deals 1 damage. The monster can spawn in the wilderness of tundra.
+  This monster can lair in the Ice Cave. Monster prefers to roam the
+  tundra terrain. Monster is very aggressive, but he will not harm
+  player units with good luck. This monster has 120 melee attacks per
+  round and takes 120 hits to kill and each attack deals 1 damage.
+  This monster has a tactics score of 5, a stealth score of 1, and an
+  observation score of 2. This monster might have magic items and
+  silver as treasure. This item cannot be given to other units.
+
+healing potion [HPOT], weight 1. This item allows its possessor to
+  heal wounded units after battle. No skill is necessary to use this
+  item; it will be used automatically when the possessor is involved
+  in a battle. It can heal up to 1 casualties, with a 70 percent
+  success rate. Healing consumes an item.
+
+gem [GEM], weight 1. This is a trade good. This item can be bought for
+  between 120 and 228 silver. This item can be sold for between 300
+  and 420 silver.
+
+javelin [JAVE], weight 1, costs 150 silver to withdraw. This is a
+  ranged piercing weapon and each attack deals 1 damage. No skill is
+  needed to wield this weapon. This weapon grants a penalty of 1 on
+  attack. Wielders of this weapon, if mounted, get their riding skill
+  bonus on combat defense. There is a 50% chance that the wielder of
+  this weapon gets a chance to attack in any given round. This weapon
+  attacks versus the target's defense against ranged attacks. This
+  weapon allows 1 attack every 2 rounds.
+
+pike [PIKE], weight 1, costs 250 silver to withdraw. This is a long
+  piercing weapon and each attack deals 1 damage. No skill is needed
+  to wield this weapon. This weapon grants a bonus of 2 on attack and
+  defense. Wielders of this weapon, if mounted, get their riding skill
+  bonus on combat attack and defense. There is a 50% chance that the
+  wielder of this weapon gets a chance to attack in any given round.
+  This weapon attacks versus the target's defense against melee
+  attacks. This weapon allows 1 attack per round.
+
+flaming sword [FSWO], weight 1. This is a armor-piercing weapon and
+  each attack deals 1 damage. No skill is needed to wield this weapon.
+  This weapon grants a bonus of 5 on attack and defense. Wielders of
+  this weapon, if mounted, get their riding skill bonus on combat
+  attack and defense. There is a 50% chance that the wielder of this
+  weapon gets a chance to attack in any given round. This weapon
+  attacks versus the target's defense against melee attacks. This
+  weapon allows a number of attacks equal to the skill level of the
+  attacker per round. This item is a miscellaneous combat item. This
+  item can cast a fireball in battle at a skill level of 1. This
+  ability does between 2 and 10 energy attacks and each attack deals 1
+  damage.
+
+meal [MEAL], weight 1, costs 20 silver to withdraw. This item can be
+  eaten to provide 30 silver towards a unit's maintenance cost.
+
+mithril shield [MSHD], weight 1. This item is a miscellaneous combat
+  item. This item provides a physical shield in battle at a skill
+  level of 6. This ability provides the wielder with a defence bonus
+  of 6 against all ranged attacks.
+
+iron shield [ISHD], weight 1, costs 200 silver to withdraw. This item
+  is a miscellaneous combat item. This item provides a physical shield
+  in battle at a skill level of 4. This ability provides the wielder
+  with a defence bonus of 4 against all ranged attacks.
+
+wooden shield [WSHD], weight 1, costs 100 silver to withdraw. This
+  item is a miscellaneous combat item. This item provides a physical
+  shield in battle at a skill level of 2. This ability provides the
+  wielder with a defence bonus of 2 against all ranged attacks.
+
+aegis [AEGS], weight 1. This item grants a 3 point bonus to a unit's
+  observation skill. This item may only be used by a mage or an
+  apprentice.
+
+windchime [WCHM], weight 0. The possessor of this item will add 2
+  movement points to ships requiring up to 24 sailing skill points.
+  This bonus is not cumulative with a mage's summon wind skill. This
+  item may only be used by a mage or an apprentice.
+
+gate crystal [GTCR], weight 0. This item allows its possessor to CAST
+  the gate lore spell as if their skill in gate lore was the highest
+  of their manipulation, pattern, force and spirit skills, up to a
+  maximum of level 2. This item may only be used by a mage or an
+  apprentice.
+
+staff of healing [STAH], weight 0. This item allows its possessor to
+  magically heal units after battle, as if their skill in Magical
+  Healing was the highest of their manipulation, pattern, force and
+  spirit skills, up to a maximum of level 2. This item may only be
+  used by a mage or an apprentice.
+
+scrying orb [SORB], weight 0. This item allows its possessor to CAST
+  the farsight spell as if their skill in farsight was the highest of
+  their manipulation, pattern, force and spirit skills, up to a
+  maximum of level 2. This item may only be used by a mage or an
+  apprentice.
+
+cornucopia [CORN], weight 0. This item allows its possessor to CAST
+  the earth lore spell as if their skill in earth lore was the highest
+  of their manipulation, pattern, force and spirit skills, up to a
+  maximum of level 2. This item may only be used by a mage or an
+  apprentice.
+
+book of exorcism [BKEX], weight 0. This item is a miscellaneous combat
+  item. This item may only be used by a mage or an apprentice. This
+  item can cast banish demons in battle at a skill level of 2. This
+  ability will only target imps [IMP], demons [DEMO], balrogs [BALR],
+  or devils [DEVL]. This ability does between 2 and 100 non-resistable
+  attacks and each attack deals 1 damage.
+
+holy symbol [HLYS], weight 0. This item is a miscellaneous combat
+  item. This item may only be used by a mage or an apprentice. This
+  item can cast banish undead in battle at a skill level of 2. This
+  ability will only target skeletons [SKEL], undead [UNDE], or liches
+  [LICH]. This ability does between 2 and 100 non-resistable attacks
+  and each attack deals 1 damage.
+
+censer of protection [CNSR], weight 0. This item is a miscellaneous
+  combat item. This item may only be used by a mage or an apprentice.
+  This item can cast a force shield in battle at a skill level of 3.
+  This spell provides a shield against all ranged attacks against the
+  entire army at a level equal to the skill level of the ability. This
+  spell provides a defensive bonus of 3 versus melee attacks to the
+  user.
+
+giant turtle [TURT], weight 50, walking capacity 20, riding capacity
+  20, swimming capacity 20, moves 4 hexes per month. This is a mount.
+  This mount requires riding [RIDI] of at least level 1 to ride in
+  combat. This mount gives a minimum bonus of +1 when ridden into
+  combat. This mount gives a maximum bonus of +1 when ridden into
+  combat. This bonus is calculated as a RIDING skill divided by 2
+  (rounded up).
+
+catapult [CATP], weight 800, can walk, moves 2 hexes per month. This
+  is a free-moving-item (FMI). This FMI attacks with a combat skill of
+  0. This FMI has a resistance of 3 to melee attacks. This FMI has a
+  resistance of 0 to energy attacks. This FMI has a resistance of 0 to
+  spirit attacks. This FMI has a resistance of 0 to weather attacks.
+  This FMI has a resistance of 3 to riding attacks. This FMI has a
+  resistance of 3 to ranged attacks. FMI can cast a catapult strike in
+  battle at a skill level of 6. This ability does between 1 and 48
+  ranged attacks and each attack deals 1 damage. This FMI has 1 melee
+  attack per round and takes 30 hits to kill and each attack deals no
+  damage. This FMI has a tactics score of 0, a stealth score of 0, and
+  an observation score of 0.
+
+steel defender [STED], weight 1000, can walk, moves 2 hexes per month.
+  This is a free-moving-item (FMI). This FMI attacks with a combat
+  skill of 0. This FMI has a resistance of 4 to melee attacks. This
+  FMI has a resistance of 1 to energy attacks. This FMI has a
+  resistance of 1 to spirit attacks. This FMI has a resistance of 1 to
+  weather attacks. This FMI has a resistance of 0 to riding attacks.
+  This FMI has a resistance of 4 to ranged attacks. This FMI has 1
+  melee attack per round and takes 100 hits to kill and each attack
+  deals no damage. This FMI has a tactics score of 0, a stealth score
+  of 0, and an observation score of 0.
+
+devil [DEVL], weight 250, walking capacity 50, riding capacity 50,
+  flying capacity 50, moves 4 hexes per month. This is a monster. This
+  monster attacks with a combat skill of 8 This monster has a
+  resistance of 8 to melee attacks. This monster has a resistance of 6
+  to energy attacks. This monster has a resistance of 6 to spirit
+  attacks. This monster has a resistance of 6 to weather attacks. This
+  monster has a resistance of 6 to riding attacks. This monster has a
+  resistance of 6 to ranged attacks. Monster can cast hellfire in
+  battle at a skill level of 5. This ability does between 2 and 250
+  energy attacks and each attack deals 1 damage. The monster can spawn
+  in the wilderness of volcanoes. The monster has no terrain
+  preferences, and it can travel through any terrain. Monster is
+  unbelievably aggressive and will attack player units on sight. This
+  monster has 250 melee attacks per round and takes 250 hits to kill
+  and each attack deals 1 damage. This monster has a tactics score of
+  5, a stealth score of 1, and an observation score of 5. This monster
+  might have magic items and silver as treasure. A unit may have at
+  most 1 devil [DEVL].
+
+imprisoned entity [IENT], weight 6000, can walk, can ride, moves 2
+  hexes per month. This item prevents the unit it is with from being
+  stealthy. This item prevents the unit it is with from entering a
+  shaft. This item desires to move toward the nearest Ritual Altar.
+  This item requires maintenance each turn of 1000 silver. Moving
+  toward the altar will reduce the maintenance cost in half. Moving
+  away from the altar will multiply the maintenance cost 5 time. This
+  item cannot be given to other units.
+
+Object reports:
+
+None: This is a building. This structure cannot be built by players.
+
+Fleet: This is a group of ships. Units may enter this structure.
+
+Tower: This is a building. Units may enter this structure. This
+  structure provides defense to the first 10 men inside it. This
+  structure gives a defensive bonus of 2 against melee attacks, 2
+  against energy attacks, 2 against spirit attacks, 2 against weather
+  attacks, 2 against riding attacks and 2 against ranged attacks. This
+  structure also protects in all adjacent regions.
+
+Fort: This is a building. Units may enter this structure. This
+  structure provides defense to the first 50 men inside it. This
+  structure gives a defensive bonus of 2 against melee attacks, 2
+  against energy attacks, 2 against spirit attacks, 2 against weather
+  attacks, 2 against riding attacks and 2 against ranged attacks. This
+  structure also protects in all adjacent regions. This structure will
+  allow one mage to study above level 2.
+
+Castle: This is a building. Units may enter this structure. This
+  structure provides defense to the first 300 men inside it. This
+  structure gives a defensive bonus of 3 against melee attacks, 2
+  against energy attacks, 2 against spirit attacks, 2 against weather
+  attacks, 3 against riding attacks and 3 against ranged attacks. This
+  structure also protects in all adjacent regions. This structure will
+  allow up to 2 mages to study above level 2.
+
+Citadel: This is a building. Units may enter this structure. This
+  structure provides defense to the first 1000 men inside it. This
+  structure gives a defensive bonus of 3 against melee attacks, 2
+  against energy attacks, 2 against spirit attacks, 2 against weather
+  attacks, 3 against riding attacks and 3 against ranged attacks. This
+  structure also protects in all adjacent regions. This structure will
+  allow up to 3 mages to study above level 2.
+
+Shaft: This is a building. Units may enter this structure. This
+  structure cannot be built by players.
+
+Lair: This is a building. Trents can potentially lair in this
+  structure. This structure cannot be built by players.
+
+Ruin: This is a building. Centaurs can potentially lair in this
+  structure. This structure cannot be built by players.
+
+Cave: This is a building. Dragons can potentially lair in this
+  structure. This structure cannot be built by players.
+
+Demon Pit: This is a building. Imps can potentially lair in this
+  structure. This structure cannot be built by players.
+
+Crypt: This is a building. Skeletons can potentially lair in this
+  structure. This structure cannot be built by players.
+
+Magical Tower: This is a building. Units may enter this structure.
+  This structure provides defense to the first 10 men inside it. This
+  structure gives a defensive bonus of 3 against melee attacks, 3
+  against energy attacks, 3 against spirit attacks, 3 against weather
+  attacks, 3 against riding attacks and 3 against ranged attacks. This
+  structure also protects in all adjacent regions. Units in this
+  structure are not affected by an earthquake. This structure will
+  allow up to 3 mages to study above level 2.
+
+Magical Fortress: This is a building. Units may enter this structure.
+  This structure provides defense to the first 50 men inside it. This
+  structure gives a defensive bonus of 3 against melee attacks, 3
+  against energy attacks, 3 against spirit attacks, 3 against weather
+  attacks, 3 against riding attacks and 3 against ranged attacks. This
+  structure also protects in all adjacent regions. Units in this
+  structure are not affected by an earthquake. This structure will
+  allow up to 10 mages to study above level 2.
+
+Magical Castle: This is a building. Units may enter this structure.
+  This structure provides defense to the first 300 men inside it. This
+  structure gives a defensive bonus of 4 against melee attacks, 4
+  against energy attacks, 4 against spirit attacks, 4 against weather
+  attacks, 4 against riding attacks and 4 against ranged attacks. This
+  structure also protects in all adjacent regions. Units in this
+  structure are not affected by an earthquake. This structure will
+  allow up to 30 mages to study above level 2.
+
+Magical Citadel: This is a building. Units may enter this structure.
+  This structure provides defense to the first 1000 men inside it.
+  This structure gives a defensive bonus of 4 against melee attacks, 4
+  against energy attacks, 4 against spirit attacks, 4 against weather
+  attacks, 4 against riding attacks and 4 against ranged attacks. This
+  structure also protects in all adjacent regions. Units in this
+  structure are not affected by an earthquake. This structure will
+  allow up to 50 mages to study above level 2.
+
+Mine: This is a building. Units may enter this structure. This trade
+  structure increases the amount of iron available in the region.
+
+Farm: This is a building. Units may enter this structure. This trade
+  structure increases the amount of grain available in the region.
+
+Ranch: This is a building. Units may enter this structure. This trade
+  structure increases the amount of livestock available in the region.
+
+Timber Yard: This is a building. Units may enter this structure. This
+  trade structure increases the amount of wood available in the
+  region.
+
+Inn: This is a building. Units may enter this structure. This trade
+  structure increases the amount of entertainment available in the
+  region.
+
+Quarry: This is a building. Units may enter this structure. This trade
+  structure increases the amount of stone available in the region.
+
+Island: This is a building. Pirates can potentially lair in this
+  structure. This structure cannot be built by players.
+
+Derelict Ship: This is a building. Kraken can potentially lair in this
+  structure. This structure cannot be built by players.
+
+Cavern: This is a building. Merfolk can potentially lair in this
+  structure. This structure cannot be built by players.
+
+Whirlpool: This is a building. Elementals can potentially lair in this
+  structure. This structure cannot be built by players.
+
+Road N: This is a building. Units may enter this structure.
+
+Road NW: This is a building. Units may enter this structure.
+
+Road NE: This is a building. Units may enter this structure.
+
+Road SW: This is a building. Units may enter this structure.
+
+Road SE: This is a building. Units may enter this structure.
+
+Road S: This is a building. Units may enter this structure.
+
+Temple: This is a building. Units may enter this structure. This trade
+  structure increases the amount of herbs available in the region.
+
+Mystic Quarry: This is a building. Units may enter this structure.
+  This trade structure increases the amount of rootstone available in
+  the region.
+
+Arcane Mine: This is a building. Units may enter this structure. This
+  trade structure increases the amount of mithril available in the
+  region.
+
+Forest Preserve: This is a building. Units may enter this structure.
+  This trade structure increases the amount of ironwood available in
+  the region.
+
+Sacred Grove: This is a building. Units may enter this structure. This
+  trade structure increases the amount of yew available in the region.
+
+Black Keep: This is a building. Units may enter this structure.
+
+Hermits hut: This is a building. Units may enter this structure. This
+  structure provides defense to the first 1 men inside it. This
+  structure gives a defensive bonus of  This structure also protects
+  in all adjacent regions. This structure will allow one mage to study
+  above level 2.
+
+Stockade: This is a building. Units may enter this structure. This
+  structure provides defense to the first 50 men inside it. This
+  structure gives a defensive bonus of 1 against melee attacks, 1
+  against energy attacks, 1 against spirit attacks, 1 against weather
+  attacks, 1 against riding attacks and 1 against ranged attacks. This
+  structure also protects in all adjacent regions. This structure will
+  allow one mage to study above level 2.
+
+Magician's Tower: This is a building. Evil magicians can potentially
+  lair in this structure. This structure cannot be built by players.
+
+Dark Mage Tower: This is a building. Dark mages can potentially lair
+  in this structure. This structure cannot be built by players.
+
+Giant's Castle: This is a building. Storm giants can potentially lair
+  in this structure. This structure cannot be built by players.
+
+Lair: This is a building. Illyrthil can potentially lair in this
+  structure. This structure cannot be built by players.
+
+Ice Cave: This is a building. Ice dragons can potentially lair in this
+  structure. This structure cannot be built by players.
+
+Bog: This is a building. Hydrae can potentially lair in this
+  structure. This structure cannot be built by players.
+
+Trapping Hut: This is a building. Units may enter this structure. This
+  trade structure increases the amount of furs available in the
+  region.
+
+Stables: This is a building. Units may enter this structure. This
+  trade structure increases the amount of horses available in the
+  region.
+
+Mythic Stables: This is a building. Units may enter this structure.
+  This trade structure increases the amount of winged horses available
+  in the region.
+
+Trapping Lodge: This is a building. Units may enter this structure.
+  This trade structure increases the amount of floater hides available
+  in the region.
+
+Faerie Ring: This is a building. Units may enter this structure. This
+  trade structure increases the amount of mushrooms available in the
+  region.
+
+Alchemist Lab: This is a building. Units may enter this structure.
+  This trade structure increases the amount of admantium available in
+  the region.
+
+Oasis: This is a building. Units may enter this structure. This trade
+  structure increases the amount of camels available in the region.
+
+Caravanserai: This is a building. Units may enter this structure.
+
+Gateway: This is a building. Units may enter this structure. This
+  structure cannot be built by players.
+
+Ritual Altar: This is a building. This structure requires a sacrifice
+  of 1 imprisoned entity [IENT]. This structure cannot be built by
+  players.
+
+Empowered Altar: This is a building. This structure cannot be built by
+  players.
+
+Mystical Anomaly: This is a building. This structure requires a
+  sacrifice of 10 leaders [LEAD]. This structure cannot be built by
+  players.
+
+Dormant Monolith: This is a building. This structure requires a
+  sacrifice of 50 leaders [LEAD]. This structure cannot be built by
+  players.
+
+World-breaker Monolith: This is a building. This structure grants the
+  owner the skill annihilation [ANNI] at a skill level of 1. Units may
+  enter this structure. This structure cannot be built by players.
+
+</pre>
+</div>
+      </div>
+
+      <!-- Footer -->
+      <footer class="py-5 bg-dark position-absolute w-100" style="bottom: 0">
+        <div class="container">
+          <p class="m-0 text-center text-white">Copyright &copy; Atlantis New Origins 2019-2024</p>
+        </div>
+        <!-- /.container -->
+      </footer>    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="/static/js/jquery-3.7.1.slim.min.js"></script>
+    <script src="/static/js/bootstrap-5.3.3.bundle.min.js"></script>
+  </body>
+</html>
