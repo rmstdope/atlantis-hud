@@ -622,6 +622,29 @@ pub fn command_load_imported_turn(
         .transpose()
 }
 
+/// Plans a route for one unit against a ruleset the caller supplies.
+///
+/// A thin delegation: the work lives in the core so the wasm adapter can call exactly the same
+/// function without depending on this crate, which pulls in native SQLite.
+///
+/// # Errors
+///
+/// Returns an error only when the ruleset itself cannot be used, or the destination is not a hex
+/// identifier. A route that cannot be planned is a successful answer carrying a reason.
+pub fn command_plan_route(
+    ruleset_json: &str,
+    raw_report: &str,
+    unit_id: &str,
+    destination: &str,
+) -> Result<atlantis_hud_core::movement::request::RoutePlanResponse, String> {
+    atlantis_hud_core::movement::request::plan_for_report(
+        ruleset_json,
+        raw_report,
+        unit_id,
+        destination,
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

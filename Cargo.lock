@@ -103,6 +103,7 @@ dependencies = [
 name = "atlantis-hud-desktop-shell"
 version = "0.1.0"
 dependencies = [
+ "atlantis-hud-core",
  "atlantis-hud-core-tauri",
  "tauri",
  "tauri-build",

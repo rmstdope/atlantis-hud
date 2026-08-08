@@ -14,6 +14,13 @@ function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
     parse_report_state: (raw: string) => ({ raw }),
     parse_report_full_state: (raw: string) => ({ header: {}, regions: [], ordersTemplate: null, raw }),
     validate_orders_state: () => ({ diagnostics: [] }),
+    plan_route_state: (rulesetJson: string, rawReport: string, unitId: string, destination: string) => ({
+      plan: null,
+      problem: { kind: "noKnownRoute" },
+      risk: null,
+      fullyModelled: false,
+      echoed: { rulesetJson, rawReport, unitId, destination }
+    }),
     prepare_report_import_state: (raw: string, confirmedFactionId: string) => {
       const hasTurn = raw.includes("TURN: 12");
       const factionMatches = raw.includes(`FACTION: ${confirmedFactionId}`);
@@ -233,5 +240,29 @@ describe("web core adapter", () => {
   it("fails to open a project that was never created", async () => {
     const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
     await expect(adapter.openProject("/missing.json")).rejects.toThrow(/does not exist/u);
+  });
+});
+
+describe("planning a route", () => {
+  /**
+   * Planning is pure, so the adapter has nothing to do but pass the four arguments through in the
+   * right order. Getting that order wrong would plan somebody else's move, so it is worth pinning.
+   */
+  it("passes the request straight to the core, unshuffled", async () => {
+    const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
+
+    const answer = (await adapter.planRoute(
+      "{ruleset}",
+      "{report}",
+      "18642",
+      "1:7,51"
+    )) as { echoed: Record<string, string> };
+
+    expect(answer.echoed).toEqual({
+      rulesetJson: "{ruleset}",
+      rawReport: "{report}",
+      unitId: "18642",
+      destination: "1:7,51"
+    });
   });
 });

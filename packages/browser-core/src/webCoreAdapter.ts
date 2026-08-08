@@ -17,6 +17,12 @@ export type CoreWasmModule = {
   parse_report_state(rawReport: string): unknown;
   parse_report_full_state(rawReport: string): unknown;
   validate_orders_state(rawOrders: string): unknown;
+  plan_route_state(
+    rulesetJson: string,
+    rawReport: string,
+    unitId: string,
+    destination: string
+  ): unknown;
   prepare_report_import_state(rawReport: string, confirmedFactionId: string): unknown;
   diff_imported_turn_state(existing: unknown, candidate: unknown): unknown;
   hydrate_parse_result_state(parsedPayloadJson: string): unknown;
@@ -110,6 +116,11 @@ export function createWebCoreAdapter(
       return wasm.parse_report_full_state(rawReport);
     },
 
+    planRoute(rulesetJson: string, rawReport: string, unitId: string, destination: string) {
+      // Straight through to the core: planning is pure, so unlike the persistence entry points
+      // there is no browser storage to stand in for a database.
+      return wasm.plan_route_state(rulesetJson, rawReport, unitId, destination);
+    },
     validateOrders(rawOrders: string) {
       return wasm.validate_orders_state(rawOrders);
     },

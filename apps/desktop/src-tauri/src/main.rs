@@ -60,6 +60,20 @@ fn parse_report(raw_report: String) -> ReportParseResultDto {
     feature = "desktop-runtime"
 ))]
 #[tauri::command(rename_all = "snake_case")]
+fn plan_route(
+    ruleset_json: String,
+    raw_report: String,
+    unit_id: String,
+    destination: String,
+) -> Result<atlantis_hud_core::movement::request::RoutePlanResponse, String> {
+    atlantis_hud_core_tauri::command_plan_route(&ruleset_json, &raw_report, &unit_id, &destination)
+}
+
+#[cfg(all(
+    any(target_os = "macos", target_os = "windows"),
+    feature = "desktop-runtime"
+))]
+#[tauri::command(rename_all = "snake_case")]
 fn parse_report_full(raw_report: String) -> ParsedReport {
     command_parse_report_full(&raw_report)
 }
@@ -181,7 +195,8 @@ fn main() {
             load_imported_turn,
             validate_orders,
             save_order_draft,
-            load_order_draft
+            load_order_draft,
+            plan_route
         ])
         .run(tauri::generate_context!())
         .expect("error while running atlantis-hud desktop shell");

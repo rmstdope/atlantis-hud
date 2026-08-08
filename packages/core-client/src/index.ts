@@ -143,6 +143,85 @@ export type ReportUnit = {
   structureId: string | null;
 };
 
+/** One of the six ways out of a hex, as the core names them. */
+export type Direction =
+  | "north"
+  | "northeast"
+  | "southeast"
+  | "south"
+  | "southwest"
+  | "northwest";
+
+/** One hex entered along a route. */
+export type RouteStep = {
+  direction: Direction;
+  to: Coordinate;
+  terrain: string;
+  cost: number;
+  /** Whether a road connected both sides and halved the cost. */
+  road: boolean;
+};
+
+/** Where the unit stands when a month runs out. */
+export type MonthLeg = { month: number; steps: number; endsAt: Coordinate };
+
+export type RoutePlan = {
+  from: Coordinate;
+  to: Coordinate;
+  mode: "fly" | "ride" | "walk";
+  steps: RouteStep[];
+  totalCost: number;
+  months: MonthLeg[];
+};
+
+/**
+ * Why a route could not be planned.
+ *
+ * Always a named reason rather than a bare failure: "the sea is in the way at (8,52)" is something
+ * a player can act on, where "no route" is not.
+ */
+export type RouteProblem =
+  | { kind: "notYourUnit" }
+  | { kind: "overloaded" }
+  | { kind: "mobilityUnstated" }
+  | { kind: "alreadyThere" }
+  | { kind: "noKnownRoute" }
+  | { kind: "originUnknown" }
+  | { kind: "unknownHex"; coordinate: Coordinate }
+  | { kind: "oceanNeedsShip"; coordinate: Coordinate }
+  | { kind: "flightWouldEndOverOcean"; coordinate: Coordinate };
+
+export type RiskLevel = "low" | "medium" | "high";
+
+export type HexRisk = {
+  coordinate: Coordinate;
+  level: RiskLevel;
+  hostileStrength: number;
+  ownStrength: number;
+  foreignUnits: number;
+  monsters: number;
+  guards: number;
+  /** Whether the hex could be assessed at all. An unassessable hex is never reported as safe. */
+  unknown: boolean;
+  lastSeenTurn: number | null;
+  reason: string;
+};
+
+/** A route is as dangerous as its worst hex, never an average of them. */
+export type RouteRisk = { level: RiskLevel; worst: HexRisk | null; hexes: HexRisk[] };
+
+/** Everything the planner has to say about one proposed move. */
+export type RoutePlanResponse = {
+  /** The route, when one was found. */
+  plan: RoutePlan | null;
+  /** Why there is none, when there is not. Exactly one of these two is present. */
+  problem: RouteProblem | null;
+  /** What stands along it. Present only alongside a route. */
+  risk: RouteRisk | null;
+  /** False while the ruleset has an open gap, which makes the cost a lower bound. */
+  fullyModelled: boolean;
+};
+
 export type ReportRegion = {
   regionId: string;
   coordinate: Coordinate;
@@ -423,6 +502,12 @@ export interface CoreAdapter {
     allowOverwrite: boolean
   ): Promise<unknown> | unknown;
   validateOrders(rawOrders: string): Promise<unknown> | unknown;
+  planRoute(
+    rulesetJson: string,
+    rawReport: string,
+    unitId: string,
+    destination: string
+  ): Promise<unknown> | unknown;
   loadImportedTurn(
     databasePath: string,
     projectId: string,
@@ -466,6 +551,18 @@ export interface CoreClient {
     allowOverwrite: boolean
   ): Promise<ImportedTurnPreview>;
   validateOrders(rawOrders: string): Promise<OrderValidationResult>;
+  /**
+   * Plans a route for one unit, or explains why there is none.
+   *
+   * `destination` is a hex identifier the way the game writes one, `1:7,53`. Rejects only when the
+   * ruleset cannot be used; a route that cannot be planned resolves with a stated reason.
+   */
+  planRoute(
+    rulesetJson: string,
+    rawReport: string,
+    unitId: string,
+    destination: string
+  ): Promise<RoutePlanResponse>;
   loadImportedTurn(
     databasePath: string,
     projectId: string,
@@ -508,6 +605,12 @@ export interface WasmBindings {
     allowOverwrite: boolean
   ): unknown;
   validate_orders_state(rawOrders: string): unknown;
+  plan_route_state(
+    rulesetJson: string,
+    rawReport: string,
+    unitId: string,
+    destination: string
+  ): unknown;
   load_imported_turn_state(
     databasePath: string,
     projectId: string,
@@ -1001,6 +1104,21 @@ export function createCoreClient(adapter: CoreAdapter): CoreClient {
         updatedAt
       );
       return normalizeOrderDraftRecord(value);
+    },
+    async planRoute(
+      rulesetJson: string,
+      rawReport: string,
+      unitId: string,
+      destination: string
+    ) {
+      // Returned as-is: the core already serializes to exactly this shape, and normalizing would
+      // only add a chance for the two to disagree.
+      return (await adapter.planRoute(
+        rulesetJson,
+        rawReport,
+        unitId,
+        destination
+      )) as RoutePlanResponse;
     }
   };
 }
@@ -1065,6 +1183,9 @@ export function createWasmAdapter(bindings: WasmBindings): CoreAdapter {
         orderText,
         updatedAt
       );
+    },
+    planRoute(rulesetJson: string, rawReport: string, unitId: string, destination: string) {
+      return bindings.plan_route_state(rulesetJson, rawReport, unitId, destination);
     }
   };
 }
@@ -1154,6 +1275,16 @@ export function createTauriAdapter(invoke: TauriInvoke): CoreAdapter {
         turn_number: turnNumber,
         order_text: orderText,
         updated_at: updatedAt
+      });
+    },
+    planRoute(rulesetJson: string, rawReport: string, unitId: string, destination: string) {
+      // Tauri is told the argument names are snake_case rather than translating here, which is what
+      // commit 24779d7 settled after the mismatch cost a debugging session.
+      return invoke<RoutePlanResponse>("plan_route", {
+        ruleset_json: rulesetJson,
+        raw_report: rawReport,
+        unit_id: unitId,
+        destination
       });
     }
   };
