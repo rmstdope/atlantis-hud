@@ -21,12 +21,18 @@ function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
       ruleset
     }),
     validate_orders_state: () => ({ diagnostics: [] }),
-    plan_route_state: (rulesetJson: string, rawReport: string, unitId: string, destination: string) => ({
+    plan_route_state: (
+      rulesetJson: string,
+      rawReport: string,
+      rememberedJson: string,
+      unitId: string,
+      destination: string
+    ) => ({
       plan: null,
       problem: { kind: "noKnownRoute" },
       risk: null,
       fullyModelled: false,
-      echoed: { rulesetJson, rawReport, unitId, destination }
+      echoed: { rulesetJson, rawReport, rememberedJson, unitId, destination }
     }),
     prepare_report_import_state: (raw: string, confirmedFactionId: string) => {
       const hasTurn = raw.includes("TURN: 12");
@@ -261,6 +267,7 @@ describe("planning a route", () => {
     const answer = (await adapter.planRoute(
       "{ruleset}",
       "{report}",
+      "[remembered]",
       "18642",
       "1:7,51"
     )) as { echoed: Record<string, string> };
@@ -268,6 +275,7 @@ describe("planning a route", () => {
     expect(answer.echoed).toEqual({
       rulesetJson: "{ruleset}",
       rawReport: "{report}",
+      rememberedJson: "[remembered]",
       unitId: "18642",
       destination: "1:7,51"
     });

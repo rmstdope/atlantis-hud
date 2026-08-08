@@ -1,13 +1,13 @@
-import type { CoreClient, ParsedReport, RoutePlanResponse } from "@atlantis/core-client";
+import type {
+  CoreClient,
+  ParsedReport,
+  RememberedRegion,
+  RoutePlanResponse
+} from "@atlantis/core-client";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  buildHexMapModel,
-  unitsForHex,
-  type HexMapModel,
-  type StoredRegion
-} from "../hexMapModel";
+import { buildHexMapModel, unitsForHex, type HexMapModel } from "../hexMapModel";
 import { readUnitOrders, writeUnitOrders } from "../ordersDocument";
-import { rememberTurn } from "../projectMemory";
+import { rememberTurn, toStoredRegions } from "../projectMemory";
 import { useWorkspaceStore } from "../workspaceStore";
 import { AppHeader, type ImportStatus } from "./AppHeader";
 import { LayerChips } from "./LayerChips";
@@ -62,7 +62,7 @@ export function AppShell({
   const [parsed, setParsed] = useState<ParsedReport | null>(null);
   // Everywhere the faction has ever been, not just this turn. Without it the map stops at the
   // fringe of the current report and no route can be longer than one step.
-  const [remembered, setRemembered] = useState<StoredRegion[]>([]);
+  const [remembered, setRemembered] = useState<RememberedRegion[]>([]);
   const [ordersDocument, setOrdersDocument] = useState("");
   const [status, setStatus] = useState<ImportStatus | null>(null);
   const [busy, setBusy] = useState(false);
@@ -85,9 +85,12 @@ export function AppShell({
   const planTo = useWorkspaceStore((state) => state.planTo);
   const clearPlan = useWorkspaceStore((state) => state.clearPlan);
 
+  // The map wants remembered regions flattened; the planner wants them as they are. Both come from
+  // the same list, so neither can drift out of step with the other.
+  const storedRegions = useMemo(() => toStoredRegions(remembered), [remembered]);
   const model = useMemo(
-    () => (parsed ? buildHexMapModel(parsed, remembered) : EMPTY),
-    [parsed, remembered]
+    () => (parsed ? buildHexMapModel(parsed, storedRegions) : EMPTY),
+    [parsed, storedRegions]
   );
 
   /**
@@ -212,7 +215,7 @@ export function AppShell({
     let cancelled = false;
     setPlanning(true);
     void client
-      .planRoute(ruleset, rawReport, unit.unitId, destination)
+      .planRoute(ruleset, rawReport, JSON.stringify(remembered), unit.unitId, destination)
       .then((answer) => {
         if (!cancelled) {
           setRoute(answer);
@@ -238,7 +241,7 @@ export function AppShell({
     return () => {
       cancelled = true;
     };
-  }, [client, planner.destinationId, unit, ruleset, rawReport]);
+  }, [client, planner.destinationId, unit, ruleset, rawReport, remembered]);
 
   // Validation follows the document, debounced so it does not run on every keystroke.
   useEffect(() => {

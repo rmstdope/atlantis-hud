@@ -411,12 +411,14 @@ pub fn parse_report_classified_state(
 pub fn plan_route_state(
     ruleset_json: String,
     raw_report: String,
+    remembered_json: String,
     unit_id: String,
     destination: String,
 ) -> Result<JsValue, JsValue> {
-    let response = atlantis_hud_core::movement::request::plan_for_report(
+    let response = atlantis_hud_core::movement::request::plan_for_remembered_report(
         &ruleset_json,
         &raw_report,
+        &remembered_json,
         &unit_id,
         &destination,
     )

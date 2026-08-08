@@ -684,15 +684,71 @@ pub fn command_parse_report_classified(raw_report: &str, ruleset_json: &str) -> 
 pub fn command_plan_route(
     ruleset_json: &str,
     raw_report: &str,
+    remembered_json: &str,
     unit_id: &str,
     destination: &str,
 ) -> Result<atlantis_hud_core::movement::request::RoutePlanResponse, String> {
-    atlantis_hud_core::movement::request::plan_for_report(
+    atlantis_hud_core::movement::request::plan_for_remembered_report(
         ruleset_json,
         raw_report,
+        remembered_json,
         unit_id,
         destination,
     )
+}
+
+#[cfg(test)]
+mod plan_route_command_tests {
+    use super::*;
+
+    const RULESET: &str = include_str!("../../../config/ruleset.json");
+
+    fn corridor(terrain: &str, x: i32, y: i32, exits: &str) -> String {
+        format!("{terrain} ({x},{y}) in Nowhere, 10 peasants (orcs), $5.\n\nExits:\n{exits}\n")
+    }
+
+    /// The command the interface actually calls must plan over the memory it is handed.
+    ///
+    /// This delegated with a hardcoded empty memory for a while, so importing a second turn grew
+    /// the drawn map and left the planner's graph untouched - every route stayed one step long
+    /// however many turns had been imported. The core function was correct throughout; nothing
+    /// ever called it with anything.
+    #[test]
+    fn plans_over_the_memory_it_is_handed() {
+        let current = format!(
+            "Foo (1) Report\n\n{}\n* Walker (900), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.\n",
+            corridor("plain", 1, 1, "  Southeast : plain (2,2) in Nowhere.")
+        );
+        let far_side = atlantis_hud_core::report::parse_report_full(&format!(
+            "Foo (1) Report\n\n{}",
+            corridor(
+                "plain",
+                2,
+                2,
+                "  Northwest : plain (1,1) in Nowhere.\n  Southeast : plain (3,3) in Nowhere."
+            )
+        ));
+        let remembered = format!(
+            "[{{\"region\":{},\"lastSeenTurn\":40}}]",
+            serde_json::to_string(&far_side.regions[0]).expect("serializes")
+        );
+
+        let alone =
+            command_plan_route(RULESET, &current, "[]", "900", "1:3,3").expect("the ruleset loads");
+        assert!(alone.plan.is_none(), "one report cannot reach that far");
+
+        let together = command_plan_route(RULESET, &current, &remembered, "900", "1:3,3")
+            .expect("the ruleset loads");
+        assert_eq!(
+            together
+                .plan
+                .expect("a route across remembered ground")
+                .steps
+                .len(),
+            2,
+            "the memory handed in has to reach the search"
+        );
+    }
 }
 
 #[cfg(test)]

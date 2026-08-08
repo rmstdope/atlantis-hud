@@ -109,6 +109,7 @@ describe("remembering a turn", () => {
     expect(outcome.warning).toBeNull();
     expect(outcome.remembered).toHaveLength(2);
     expect(outcome.remembered[0].lastSeenTurn).toBe(40);
+    expect(outcome.remembered[0].region.regionId).toBe("1:1,1");
     expect(core.commitReportImport).toHaveBeenCalledWith(
       "p.sqlite",
       "faction-95",

@@ -85,10 +85,17 @@ fn load_region_sightings(
 fn plan_route(
     ruleset_json: String,
     raw_report: String,
+    remembered_json: String,
     unit_id: String,
     destination: String,
 ) -> Result<atlantis_hud_core::movement::request::RoutePlanResponse, String> {
-    atlantis_hud_core_tauri::command_plan_route(&ruleset_json, &raw_report, &unit_id, &destination)
+    atlantis_hud_core_tauri::command_plan_route(
+        &ruleset_json,
+        &raw_report,
+        &remembered_json,
+        &unit_id,
+        &destination,
+    )
 }
 
 #[cfg(all(

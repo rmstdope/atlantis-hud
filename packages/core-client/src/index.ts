@@ -514,6 +514,7 @@ export interface CoreAdapter {
   planRoute(
     rulesetJson: string,
     rawReport: string,
+    rememberedJson: string,
     unitId: string,
     destination: string
   ): Promise<unknown> | unknown;
@@ -576,12 +577,18 @@ export interface CoreClient {
   /**
    * Plans a route for one unit, or explains why there is none.
    *
-   * `destination` is a hex identifier the way the game writes one, `1:7,53`. Rejects only when the
-   * ruleset cannot be used; a route that cannot be planned resolves with a stated reason.
+   * `destination` is a hex identifier the way the game writes one, `1:7,53`. `rememberedJson` is
+   * the accumulated map - regions the faction saw in earlier turns, as JSON - and it is what lets a
+   * route be longer than one step: a single report describes its neighbours but not theirs. Pass an
+   * empty array when there is nothing remembered.
+   *
+   * Rejects only when the ruleset cannot be used; a route that cannot be planned resolves with a
+   * stated reason.
    */
   planRoute(
     rulesetJson: string,
     rawReport: string,
+    rememberedJson: string,
     unitId: string,
     destination: string
   ): Promise<RoutePlanResponse>;
@@ -642,6 +649,7 @@ export interface WasmBindings {
   plan_route_state(
     rulesetJson: string,
     rawReport: string,
+    rememberedJson: string,
     unitId: string,
     destination: string
   ): unknown;
@@ -1150,6 +1158,7 @@ export function createCoreClient(adapter: CoreAdapter): CoreClient {
     async planRoute(
       rulesetJson: string,
       rawReport: string,
+      rememberedJson: string,
       unitId: string,
       destination: string
     ) {
@@ -1158,6 +1167,7 @@ export function createCoreClient(adapter: CoreAdapter): CoreClient {
       return (await adapter.planRoute(
         rulesetJson,
         rawReport,
+        rememberedJson,
         unitId,
         destination
       )) as RoutePlanResponse;
@@ -1233,8 +1243,14 @@ export function createWasmAdapter(bindings: WasmBindings): CoreAdapter {
         updatedAt
       );
     },
-    planRoute(rulesetJson: string, rawReport: string, unitId: string, destination: string) {
-      return bindings.plan_route_state(rulesetJson, rawReport, unitId, destination);
+    planRoute(
+      rulesetJson: string,
+      rawReport: string,
+      rememberedJson: string,
+      unitId: string,
+      destination: string
+    ) {
+      return bindings.plan_route_state(rulesetJson, rawReport, rememberedJson, unitId, destination);
     },
     loadRegionSightings(databasePath: string, projectId: string, factionId: string) {
       // Persistence is not linked into a wasm build, so a bare wasm adapter has nothing to read.
@@ -1337,12 +1353,19 @@ export function createTauriAdapter(invoke: TauriInvoke): CoreAdapter {
         updated_at: updatedAt
       });
     },
-    planRoute(rulesetJson: string, rawReport: string, unitId: string, destination: string) {
+    planRoute(
+      rulesetJson: string,
+      rawReport: string,
+      rememberedJson: string,
+      unitId: string,
+      destination: string
+    ) {
       // Tauri is told the argument names are snake_case rather than translating here, which is what
       // commit 24779d7 settled after the mismatch cost a debugging session.
       return invoke<RoutePlanResponse>("plan_route", {
         ruleset_json: rulesetJson,
         raw_report: rawReport,
+        remembered_json: rememberedJson,
         unit_id: unitId,
         destination
       });

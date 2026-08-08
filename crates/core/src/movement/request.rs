@@ -39,6 +39,11 @@ pub struct RoutePlanResponse {
 ///
 /// Returns an error only when the ruleset itself cannot be used. A route that cannot be planned is
 /// a successful answer carrying a reason, not a failure.
+/// Plans over the current report alone.
+///
+/// Kept for callers that genuinely have no memory to offer - tests, mostly. Anything with a project
+/// behind it should use [`plan_for_remembered_report`], because a single report cannot support a
+/// route longer than one step.
 pub fn plan_for_report(
     ruleset_json: &str,
     raw_report: &str,
@@ -314,5 +319,55 @@ mod remembered_tests {
             .expect("the ruleset loads");
 
         assert_eq!(response.plan.expect("a route").total_cost, 2);
+    }
+}
+
+#[cfg(test)]
+mod reaches_the_planner_tests {
+    use super::*;
+
+    const RULESET: &str = include_str!("../../../../config/ruleset.json");
+
+    /// The defect this pins: the command that the interface calls must plan over the remembered map,
+    /// not over the current report alone.
+    ///
+    /// Both adapters delegate here, and this hardcoded an empty memory for a while, so importing a
+    /// second turn grew the drawn map and left the planner's graph exactly as it was. Every route
+    /// stayed one step long however many turns were imported.
+    #[test]
+    fn the_command_plans_over_the_memory_it_is_given() {
+        let corridor = |terrain: &str, x: i32, y: i32, exits: &str| {
+            format!("{terrain} ({x},{y}) in Nowhere, 10 peasants (orcs), $5.\n\nExits:\n{exits}\n")
+        };
+
+        let current = format!(
+            "Foo (1) Report\n\n{}\n* Walker (900), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.\n",
+            corridor("plain", 1, 1, "  Southeast : plain (2,2) in Nowhere.")
+        );
+
+        let far_side = crate::report::parse_report_full(&format!(
+            "Foo (1) Report\n\n{}",
+            corridor(
+                "plain",
+                2,
+                2,
+                "  Northwest : plain (1,1) in Nowhere.\n  Southeast : plain (3,3) in Nowhere."
+            )
+        ));
+        let remembered = format!(
+            "[{{\"region\":{},\"lastSeenTurn\":40}}]",
+            serde_json::to_string(&far_side.regions[0]).expect("serializes")
+        );
+
+        // With nothing remembered the far hex is unreachable, which is the single-report ceiling.
+        let alone = plan_for_remembered_report(RULESET, &current, "[]", "900", "1:3,3")
+            .expect("the ruleset loads");
+        assert!(alone.plan.is_none(), "one report cannot reach that far");
+
+        // With the memory the interface actually holds, it is reachable.
+        let together = plan_for_remembered_report(RULESET, &current, &remembered, "900", "1:3,3")
+            .expect("the ruleset loads");
+        let plan = together.plan.expect("a route across remembered ground");
+        assert_eq!(plan.steps.len(), 2);
     }
 }

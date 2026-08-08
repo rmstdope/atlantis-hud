@@ -330,8 +330,8 @@ describe("core client adapter contract parity", () => {
 
     // The planner's answer must be identical on both transports, down to the nested route and its
     // risk: the desktop and the browser plan the same move or one of them is lying.
-    const wasmPlan = await wasmClient.planRoute("{}", "report", "18642", "1:7,51");
-    const tauriPlan = await tauriClient.planRoute("{}", "report", "18642", "1:7,51");
+    const wasmPlan = await wasmClient.planRoute("{}", "report", "[]", "18642", "1:7,51");
+    const tauriPlan = await tauriClient.planRoute("{}", "report", "[]", "18642", "1:7,51");
     expect(wasmPlan).toEqual(tauriPlan);
     expect(wasmPlan.plan?.totalCost).toBe(2);
     expect(wasmPlan.plan?.steps[0].terrain).toBe("mountain");

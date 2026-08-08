@@ -84,7 +84,14 @@ export function toStoredRegions(remembered: RememberedRegion[]): StoredRegion[] 
 /** What remembering a turn produced, and anything that went wrong doing it. */
 export type MemoryOutcome = {
   project: OpenProject | null;
-  remembered: StoredRegion[];
+  /**
+   * Everywhere the faction has been, as the core keeps it.
+   *
+   * Returned in the core's own shape rather than the map's, because both consumers need it: the map
+   * wants it flattened, and the planner wants it exactly as it is. Converting here and back again
+   * would be the shorter route to handing the planner nothing.
+   */
+  remembered: RememberedRegion[];
   /** Set when the turn could not be remembered. The report is still perfectly usable without it. */
   warning: string | null;
 };
@@ -133,7 +140,7 @@ export async function rememberTurn(
       factionId
     );
 
-    return { project, remembered: toStoredRegions(remembered), warning: null };
+    return { project, remembered, warning: null };
   } catch (error: unknown) {
     const detail = error instanceof Error ? error.message : String(error);
     return {
