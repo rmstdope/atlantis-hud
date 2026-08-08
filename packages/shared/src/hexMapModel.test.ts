@@ -24,6 +24,8 @@ function unit(unitId: string, own: boolean, name = unitId): ReportUnit {
     items: [],
     skills: [],
     men: 1,
+    menEstimated: false,
+    menByRace: [],
     weight: null,
     capacity: null,
     structureId: null

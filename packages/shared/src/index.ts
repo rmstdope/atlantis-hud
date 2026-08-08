@@ -4,6 +4,7 @@ export * from "./hexMapModel";
 export * from "./workspaceStore";
 export * from "./orderEditor";
 export * from "./ordersDocument";
+export * from "./unitComposition";
 
 export * from "./workspace/AppHeader";
 export * from "./workspace/AppShell";

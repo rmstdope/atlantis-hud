@@ -109,17 +109,35 @@ pub struct ReportUnit {
     pub flags: Vec<String>,
     pub items: Vec<ItemAmount>,
     pub skills: Vec<Skill>,
-    /// Size of the unit's leading item group, which the game uses to open a unit's description.
+    /// How many people the unit contains.
     ///
-    /// Not a true total when a unit contains more than one race: a report gives no marker
-    /// separating men from equipment, so `50 leaders [LEAD], 20 nomads [NOMA], 30 swords [SWOR]`
-    /// cannot be split without an item reference. A report does carry an `Item reports` section
-    /// describing races, which would settle it, but that section is not parsed yet.
+    /// Exact once the unit has been classified against the scraped item catalogue; until then it
+    /// is the size of the leading item group, which is right for the common case and wrong for a
+    /// unit holding two races. [`men_estimated`](Self::men_estimated) says which it is.
     pub men: i64,
+    /// Whether [`men`](Self::men) is a guess rather than a count.
+    ///
+    /// True until `classify_units` has run against a catalogue that recognises everything the unit
+    /// holds. A report writes a unit's people and its equipment as one undifferentiated list, so
+    /// the two cannot be separated without an item reference.
+    ///
+    /// Defaults to true, which matters for payloads persisted before this field existed: those
+    /// came from a build that could not classify at all, so the estimate is what they carry.
+    #[serde(default = "estimated_until_classified")]
+    pub men_estimated: bool,
+    /// The unit's people, by race, once it has been classified. Empty while estimated.
+    #[serde(default)]
+    pub men_by_race: Vec<ItemAmount>,
     pub weight: Option<i64>,
     pub capacity: Option<String>,
     /// Set when the unit sits inside a structure.
     pub structure_id: Option<String>,
+}
+
+/// A unit that has not been through classification carries an estimate, so that is the default a
+/// payload without the field gets.
+fn estimated_until_classified() -> bool {
+    true
 }
 
 /// A region as the report describes it.

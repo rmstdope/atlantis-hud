@@ -2,6 +2,7 @@ import type { ReportUnit } from "@atlantis/core-client";
 import { useMemo, useState } from "react";
 import type { HexNode } from "../hexMapModel";
 import { unitsForHex } from "../hexMapModel";
+import { describeMenBriefly, whyEstimated } from "../unitComposition";
 import { useWorkspaceStore } from "../workspaceStore";
 import { CollapsiblePanel } from "./CollapsiblePanel";
 import { Absent } from "./primitives";
@@ -130,7 +131,8 @@ function UnitRow({
         {unit.onGuard ? <span className="ml-1.5 text-[10px] text-warn">on guard</span> : null}
       </Td>
       <Td>{unit.factionName ? `${unit.factionName} (${unit.factionId})` : "—"}</Td>
-      <Td>{unit.men || ""}</Td>
+      {/* A tilde marks a count the parser guessed at; the unit panel spells out why. */}
+      <Td title={whyEstimated(unit)}>{describeMenBriefly(unit)}</Td>
       <Td className="max-w-56 truncate">{skills}</Td>
       <Td className="max-w-64 truncate">{items}</Td>
       <Td>{unit.structureId ? `[${unit.structureId}]` : ""}</Td>
@@ -138,6 +140,19 @@ function UnitRow({
   );
 }
 
-function Td({ children, className = "" }: { children?: React.ReactNode; className?: string }) {
-  return <td className={`border-b border-edge-soft px-2 py-0.5 ${className}`}>{children}</td>;
+function Td({
+  children,
+  className = "",
+  title
+}: {
+  children?: React.ReactNode;
+  className?: string;
+  /** Hover text, used to explain a figure the cell has no room to qualify. */
+  title?: string;
+}) {
+  return (
+    <td className={`border-b border-edge-soft px-2 py-0.5 ${className}`} title={title}>
+      {children}
+    </td>
+  );
 }

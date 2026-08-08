@@ -1,5 +1,6 @@
 import type { ReportUnit } from "@atlantis/core-client";
 import type { HexNode } from "../hexMapModel";
+import { describeMen } from "../unitComposition";
 import { CollapsiblePanel } from "./CollapsiblePanel";
 import { Absent, Field, Row, Section, StaleBanner } from "./primitives";
 
@@ -46,7 +47,13 @@ export function UnitPanel({ unit, hex }: { unit: ReportUnit | null; hex: HexNode
 
       <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-px">
         <Field label="Hex" value={unit.regionId} />
-        <Field label="Men" value={unit.men.toLocaleString()} />
+        {/*
+          A report writes a unit's people and its equipment as one list, so until the report has
+          been classified against the item catalogue the count is the leading group only - right
+          for most units, wrong for one holding two races. Marking the guess beats presenting it
+          as a count.
+        */}
+        <Field label="Men" value={describeMen(unit)} />
         {unit.weight === null ? null : <Field label="Weight" value={unit.weight} />}
         {unit.capacity === null ? null : <Field label="Capacity" value={unit.capacity} />}
         {unit.structureId === null ? null : <Field label="Structure" value={unit.structureId} />}

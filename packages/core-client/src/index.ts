@@ -126,8 +126,18 @@ export type ReportUnit = {
   flags: string[];
   items: ItemAmount[];
   skills: SkillInfo[];
-  /** Size of the unit's leading item group. Not a true total for a multi-race unit; see the Rust model. */
+  /**
+   * How many people the unit contains.
+   *
+   * Exact once the report has been classified against the scraped item catalogue; until then it is
+   * the size of the leading item group, which is right for the common case and wrong for a unit
+   * holding two races. `menEstimated` says which it is.
+   */
   men: number;
+  /** Whether `men` is a guess rather than a count. */
+  menEstimated: boolean;
+  /** The unit's people, by race, once classified. Empty while estimated. */
+  menByRace: ItemAmount[];
   weight: number | null;
   capacity: string | null;
   structureId: string | null;
