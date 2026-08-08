@@ -69,7 +69,6 @@ dependencies = [
  "rusqlite",
  "serde",
  "serde_json",
- "sqlite-wasm-rs",
  "tempfile",
  "thiserror 1.0.69",
 ]
