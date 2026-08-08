@@ -22,6 +22,22 @@ export type RiskThresholds = {
   highRatio: number;
 };
 
+/**
+ * Something the game does that this ruleset cannot describe.
+ *
+ * Recorded rather than omitted, so the file never implies it covers more than it does. A consumer
+ * can read `modelled: false` and say so in the interface instead of presenting a number as fact.
+ */
+export type Gap = {
+  modelled: false;
+  /** What the rule is, as far as the page reveals it. */
+  note: string;
+  /** What goes wrong while it is unmodelled, in the direction it goes wrong. */
+  consequence: string;
+  /** The page's own words, so the claim can be checked rather than taken on trust. */
+  evidence: string;
+};
+
 export type Ruleset = {
   source: {
     rulesUrl: string;
@@ -31,6 +47,7 @@ export type Ruleset = {
   };
   movement: MovementRules;
   risk: RiskThresholds;
+  gaps: { weather: Gap };
   items: ItemReference;
 };
 
@@ -49,6 +66,28 @@ const DEFAULT_RISK: RiskThresholds = {
     "strength reaches mediumRatio times our own, and high risk at highRatio.",
   mediumRatio: 1,
   highRatio: 3
+};
+
+/**
+ * The rules page never states a weather rule, but it proves one exists.
+ *
+ * A walker has two movement points and a mountain costs two, so two is exactly enough - yet the
+ * page says a walker cannot enter a mountain in winter in one turn. Winter therefore costs at
+ * least three, and the page gives no multiplier, no affected-terrain list, and no way to tell
+ * which months are winter. Turn reports carry no weather line either, so there is nothing to
+ * scrape and nothing to infer.
+ */
+const WEATHER_GAP: Gap = {
+  modelled: false,
+  note:
+    "The rules page states no weather rule, but implies one: winter raises the cost of at least " +
+    "mountain terrain above a walker's two movement points, by an amount the page never gives.",
+  consequence:
+    "A route crossing a winter month is under-cost, so a journey can look achievable when it is " +
+    "not. Present such a route as a lower bound rather than as fact.",
+  evidence:
+    "a unit on foot trying to move into a mountain region in winter would not have enough " +
+    "movement points to enter in one turn"
 };
 
 export function buildRuleset(input: BuildInput): Ruleset {
@@ -80,6 +119,7 @@ export function buildRuleset(input: BuildInput): Ruleset {
     },
     movement,
     risk: DEFAULT_RISK,
+    gaps: { weather: WEATHER_GAP },
     items
   };
 }

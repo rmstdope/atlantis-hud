@@ -39,6 +39,25 @@ describe("buildRuleset", () => {
    * The risk thresholds are ours, not the game's. Mixing them into a file whose whole point is
    * that it mirrors the server would be dishonest unless they say so on their face.
    */
+  /**
+   * The rules page proves a weather rule exists without ever stating it: a walker has 2 movement
+   * points and a mountain costs 2, yet the page says a walker "trying to move into a mountain
+   * region in winter would not have enough movement points to enter in one turn". So winter costs
+   * at least 3, and nothing on the page says by how much.
+   *
+   * A file that stays silent about that would be claiming to describe movement fully while
+   * quietly under-costing every winter route, which is the failure direction that matters.
+   */
+  it("records the weather gap rather than staying silent about it", () => {
+    const ruleset = built();
+
+    expect(ruleset.gaps.weather.modelled).toBe(false);
+    expect(ruleset.gaps.weather.note).toMatch(/winter/i);
+    expect(ruleset.gaps.weather.consequence).toMatch(/under-cost/i);
+    // Quoted from the page, so a reader can check the claim rather than take our word for it.
+    expect(ruleset.gaps.weather.evidence).toContain("in winter");
+  });
+
   it("marks the risk thresholds as chosen by us rather than scraped", () => {
     const ruleset = built();
 

@@ -1,4 +1,4 @@
-export { buildRuleset, type BuildInput, type RiskThresholds, type Ruleset } from "./build";
+export { buildRuleset, type BuildInput, type Gap, type RiskThresholds, type Ruleset } from "./build";
 export {
   parseItemReference,
   type ItemCapacity,

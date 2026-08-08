@@ -53,6 +53,33 @@ describe("parseMovementRules", () => {
     expect(rules.ocean.flyingMustEndOnLand).toBe(true);
   });
 
+  /**
+   * The planner has to recognise a water hex from the terrain string a report prints, and the name
+   * belongs to the game rather than to us. Taking it from the rule's own sentence beats hardcoding
+   * "ocean" in the core and hoping every ruleset agrees.
+   */
+  it("reads which terrain the water rule is about", () => {
+    const rules = parseMovementRules(RULES_HTML);
+
+    // "Units may not move through ocean regions without using the SAIL order..."
+    expect(rules.ocean.terrain).toBe("ocean");
+  });
+
+  /**
+   * Asserting "ocean" against a page that says "ocean" proves nothing - a hardcoded constant
+   * passes it identically. Renaming the terrain in the page is what separates reading it from
+   * assuming it.
+   */
+  it("takes the water terrain from the page rather than assuming it", () => {
+    const renamed = RULES_HTML.replace(
+      "Units may not move through ocean regions",
+      "Units may not move through water regions"
+    );
+    expect(renamed).not.toBe(RULES_HTML);
+
+    expect(parseMovementRules(renamed).ocean.terrain).toBe("water");
+  });
+
   it("records the sentence every value came from", () => {
     const rules = parseMovementRules(RULES_HTML);
 

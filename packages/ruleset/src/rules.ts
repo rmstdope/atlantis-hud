@@ -36,6 +36,14 @@ export type RoadRule = {
 export type OceanRule = {
   requiresShipUnlessFlying: boolean;
   flyingMustEndOnLand: boolean;
+  /**
+   * The terrain the rule is about, lower-cased.
+   *
+   * Taken from the rule's own sentence rather than assumed to be "ocean", so the planner can
+   * recognise a water hex from the terrain string a report prints without the core hardcoding a
+   * name that belongs to the game.
+   */
+  terrain: string;
 };
 
 export type MovementRules = {
@@ -159,7 +167,7 @@ export function parseMovementRules(html: string): MovementRules {
   const ocean = requireMatch(
     text,
     "ocean",
-    /Units may not move through ocean regions without using the\s*SAIL\s*order unless they are capable of flight, and even then, flying units must end their movement on land or else drown/i
+    /Units may not move through (\w+) regions without using the\s*SAIL\s*order unless they are capable of flight, and even then, flying units must end their movement on land or else drown/i
   );
 
   const walk = toNumber(points[1]);
@@ -200,7 +208,11 @@ export function parseMovementRules(html: string): MovementRules {
     movementPoints: { walk, ride, fly },
     terrainCosts: { normal, doubledCost, doubled },
     road: { divisor, minimumCost },
-    ocean: { requiresShipUnlessFlying: true, flyingMustEndOnLand: true },
+    ocean: {
+      requiresShipUnlessFlying: true,
+      flyingMustEndOnLand: true,
+      terrain: ocean[1].toLowerCase()
+    },
     provenance: {
       movementPoints: sentence(points),
       terrainCosts: sentence(terrain),

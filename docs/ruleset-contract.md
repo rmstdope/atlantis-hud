@@ -46,7 +46,10 @@ phrasing its attacks unusually should not cost us the other hundred and seventy.
 
 - `source` — both URLs, the fetch timestamp, and how to regenerate.
 - `movement` — `movementPoints`, `terrainCosts`, `road`, `ocean`, plus `provenance` giving the
-  sentence behind each value.
+  sentence behind each value. `ocean.terrain` is the name of the water terrain itself, read out of
+  the rule's own sentence rather than assumed to be `ocean`, so the core never hardcodes a name
+  that belongs to the game. This ruleset enumerates its terrain as *Ocean, Plain, Forest, Mountain,
+  Swamp, Jungle, Desert, Tundra* and has no other water type.
 - `risk` — **not scraped**, and says so on its face (`scraped: false`). These thresholds are ours
   to tune; nothing about them claims to mirror the server.
 - `items` — keyed by tag, each with `kind` (`man` / `mount` / `monster` / `ship` / `equipment`),
@@ -75,6 +78,23 @@ The shell fetches the JSON at startup and passes it to the Rust core, which vali
 core therefore performs no file I/O and still compiles to wasm. Correcting a value means editing
 the served file and reloading — no rebuild, which is the whole reason it is a config file.
 
+`Ruleset::from_json` in `crates/core/src/movement/rules.rs` distinguishes two failures.
+**Malformed** means the text is not a ruleset, and carries serde's own message, which names the
+field it wanted. **Unusable** means it parsed but says something no route could be costed against:
+a zero movement allowance, a zero terrain cost, a road divisor of zero, a water rule naming no
+terrain, risk thresholds the wrong way round, or a catalogue with no races in it. Each of those is
+well-formed JSON, which is exactly why serde alone is not enough.
+
+Two things the core decides, both stated at their definitions:
+
+- **Terrain the ruleset does not list costs the normal amount** rather than raising an error. The
+  rules page says its list is not closed — *"there may be other types of terrain to be discovered
+  as the game progresses"* — and the map renderer already knows `cavern`, `underforest` and
+  `wasteland` that this game's fixture never shows.
+- **Swimming has no allowance of its own**, so a swimming unit is costed at the walking rate. The
+  rules page gives allowances for walking, riding and flying only; a unit's swim capacity decides
+  whether water is passable, not how fast it crosses.
+
 ## Why the item catalogue matters beyond movement
 
 It is the item reference the report parser has always lacked. Without it a unit line like
@@ -85,9 +105,43 @@ weighs.
 
 ## What is deliberately not modelled
 
-- **Weather.** This ruleset's page states no weather effect on movement — winter appears only in a
-  passing example — and turn reports carry no weather line. There is nothing to scrape.
-- **Sailing.** Fleet movement is a second rule system; #8 plans land movement only.
+### Weather — a known gap that makes winter routes too cheap
+
+This one is a genuine hole, not an absence. The rules page never states a weather rule with
+numbers, but it does prove one exists:
+
+> a unit on foot trying to move into a mountain region **in winter** would not have enough movement
+> points to enter in one turn, but if it continues the same move on the next turn, it would use the
+> accumulated points from the last month and manage to enter the mountains at last.
+
+A walker has 2 movement points and a mountain costs 2, so 2 is exactly enough — which means winter
+must push a mountain to **at least 3**. The page gives no multiplier, no list of affected terrain,
+and no way to tell which months are winter in a given world; turn reports carry no weather line
+either. So there is nothing to scrape and nothing to infer.
+
+The consequence, stated plainly: **a route planned across a winter month is under-costed**, and
+under-costing is the failure direction that matters, because it makes a journey look achievable
+when it is not.
+
+**Decision (navigator, issue #8): the planner costs routes without weather and says nothing about
+it in the interface.** The gap is recorded rather than surfaced. `config/ruleset.json` carries it
+in a `gaps` block, `Ruleset::is_fully_modelled()` reports it, and this document explains it — so
+the file never claims more than it knows, and whoever picks the question up later has the evidence
+to hand. Revisiting it means either supplying the winter numbers by hand, marked `scraped: false`
+the way the risk thresholds are, or showing the total as a lower bound.
+
+### Sailing
+
+Fleet movement is a second rule system — fleets have their own speed and pay a flat one point for
+any region, coastal forest included — and #8 plans land movement only. `MovementMode` therefore has
+no `Sail`.
+
+### Swimming speed
+
+`MovementMode` has no `Swim` either. The page names exactly three modes of travel — *"walking,
+riding and flying"* — and gives swimming no allowance, so any swim speed would be invented. A
+unit's swim capacity still matters, but as a legality question rather than a speed one, and this
+ruleset's water rule exempts only flight from needing a ship.
 
 ## Evidence that the catalogue is read correctly
 
