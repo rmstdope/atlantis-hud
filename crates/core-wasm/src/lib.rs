@@ -387,6 +387,18 @@ pub fn diff_imported_turn_state(existing: JsValue, candidate: JsValue) -> Result
     to_js(&diff)
 }
 
+/// Parses a report and counts each unit's men against the catalogue.
+#[wasm_bindgen]
+pub fn parse_report_classified_state(
+    raw_report: String,
+    ruleset_json: String,
+) -> Result<JsValue, JsValue> {
+    to_js(&atlantis_hud_core::movement::request::parse_and_classify(
+        &raw_report,
+        &ruleset_json,
+    ))
+}
+
 /// Plans a route for one unit against a ruleset the caller supplies.
 ///
 /// Available on every target: planning is pure, so unlike the persistence entry points it needs no

@@ -125,7 +125,12 @@ export function AppShell({
     async (text: string, fileName: string) => {
       setBusy(true);
       try {
-        const report = await client.parseReportFull(text);
+        // Classified when the ruleset is to hand, so a unit's men are counted rather than guessed.
+        // Without it every unit reads as an estimate, including the single-race majority where the
+        // leading-group figure is exactly right.
+        const report = ruleset
+          ? await client.parseReportClassified(text, ruleset)
+          : await client.parseReportFull(text);
         setParsed(report);
         setRawReport(text);
         clearPlan();
@@ -169,7 +174,9 @@ export function AppShell({
         setBusy(false);
       }
     },
-    [client, selectRegion]
+    // `ruleset` belongs here: without it the callback closes over the value at first render, which
+    // is null, and every report is parsed unclassified however long the ruleset took to arrive.
+    [client, selectRegion, ruleset, clearPlan]
   );
 
   // The ruleset is a served file rather than something compiled in, so a movement value can be

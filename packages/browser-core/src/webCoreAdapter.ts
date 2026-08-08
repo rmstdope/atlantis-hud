@@ -16,6 +16,7 @@ export type CoreWasmModule = {
   get_game_info(): unknown;
   parse_report_state(rawReport: string): unknown;
   parse_report_full_state(rawReport: string): unknown;
+  parse_report_classified_state(rawReport: string, rulesetJson: string): unknown;
   validate_orders_state(rawOrders: string): unknown;
   plan_route_state(
     rulesetJson: string,
@@ -128,6 +129,9 @@ export function createWebCoreAdapter(
           return [];
         }
       });
+    },
+    parseReportClassified(rawReport: string, rulesetJson: string) {
+      return wasm.parse_report_classified_state(rawReport, rulesetJson);
     },
     planRoute(rulesetJson: string, rawReport: string, unitId: string, destination: string) {
       // Straight through to the core: planning is pure, so unlike the persistence entry points

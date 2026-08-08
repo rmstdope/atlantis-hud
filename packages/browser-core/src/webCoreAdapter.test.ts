@@ -13,6 +13,13 @@ function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
     get_game_info: () => ({ id: "atlantis", name: "Atlantis PBEM" }),
     parse_report_state: (raw: string) => ({ raw }),
     parse_report_full_state: (raw: string) => ({ header: {}, regions: [], ordersTemplate: null, raw }),
+    parse_report_classified_state: (raw: string, ruleset: string) => ({
+      header: {},
+      regions: [],
+      ordersTemplate: null,
+      raw,
+      ruleset
+    }),
     validate_orders_state: () => ({ diagnostics: [] }),
     plan_route_state: (rulesetJson: string, rawReport: string, unitId: string, destination: string) => ({
       plan: null,

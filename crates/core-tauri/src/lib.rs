@@ -663,6 +663,15 @@ pub fn command_load_region_sightings(
         .collect())
 }
 
+/// Parses a report and counts each unit's men against the catalogue.
+///
+/// The classifying counterpart of `command_parse_report_full`. Kept separate rather than replacing
+/// it, because parsing has to keep working with no ruleset loaded.
+#[must_use]
+pub fn command_parse_report_classified(raw_report: &str, ruleset_json: &str) -> ParsedReport {
+    atlantis_hud_core::movement::request::parse_and_classify(raw_report, ruleset_json)
+}
+
 /// Plans a route for one unit against a ruleset the caller supplies.
 ///
 /// A thin delegation: the work lives in the core so the wasm adapter can call exactly the same

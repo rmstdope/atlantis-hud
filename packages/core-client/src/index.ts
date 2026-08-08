@@ -496,6 +496,7 @@ export interface CoreAdapter {
   openProject(projectFilePath: string): Promise<unknown> | unknown;
   parseReport(rawReport: string): Promise<unknown> | unknown;
   parseReportFull(rawReport: string): Promise<unknown> | unknown;
+  parseReportClassified(rawReport: string, rulesetJson: string): Promise<unknown> | unknown;
   previewReportImport(
     databasePath: string,
     projectId: string,
@@ -550,6 +551,14 @@ export interface CoreClient {
   parseReport(rawReport: string): Promise<ReportParseResult>;
   /** The full domain model. Returned as-is: it is descriptive data, not a contract to normalize. */
   parseReportFull(rawReport: string): Promise<ParsedReport>;
+  /**
+   * The same, with each unit's men counted against the item catalogue.
+   *
+   * A report cannot be split into men and equipment on its own, so without this every unit reads
+   * as an estimate - including the great majority holding a single race, where the figure is exact.
+   * An unusable ruleset leaves the report as parsed rather than refusing it.
+   */
+  parseReportClassified(rawReport: string, rulesetJson: string): Promise<ParsedReport>;
   previewReportImport(
     databasePath: string,
     projectId: string,
@@ -615,6 +624,7 @@ export interface WasmBindings {
   open_project_state(projectFilePath: string): unknown;
   parse_report_state(rawReport: string): unknown;
   parse_report_full_state(rawReport: string): unknown;
+  parse_report_classified_state(rawReport: string, rulesetJson: string): unknown;
   preview_report_import_state(
     databasePath: string,
     projectId: string,
@@ -1074,6 +1084,9 @@ export function createCoreClient(adapter: CoreAdapter): CoreClient {
       const value = await adapter.parseReport(rawReport);
       return normalizeParseResult(value);
     },
+    async parseReportClassified(rawReport: string, rulesetJson: string) {
+      return (await adapter.parseReportClassified(rawReport, rulesetJson)) as ParsedReport;
+    },
     async parseReportFull(rawReport: string) {
       return (await adapter.parseReportFull(rawReport)) as ParsedReport;
     },
@@ -1173,6 +1186,9 @@ export function createWasmAdapter(bindings: WasmBindings): CoreAdapter {
     parseReportFull(rawReport: string) {
       return bindings.parse_report_full_state(rawReport);
     },
+    parseReportClassified(rawReport: string, rulesetJson: string) {
+      return bindings.parse_report_classified_state(rawReport, rulesetJson);
+    },
     previewReportImport(databasePath: string, projectId: string, confirmedFactionId: string, rawReport: string) {
       return bindings.preview_report_import_state(databasePath, projectId, confirmedFactionId, rawReport);
     },
@@ -1252,6 +1268,12 @@ export function createTauriAdapter(invoke: TauriInvoke): CoreAdapter {
     parseReportFull(rawReport: string) {
       return invoke<ParsedReport>("parse_report_full", {
         raw_report: rawReport
+      });
+    },
+    parseReportClassified(rawReport: string, rulesetJson: string) {
+      return invoke<ParsedReport>("parse_report_classified", {
+        raw_report: rawReport,
+        ruleset_json: rulesetJson
       });
     },
     previewReportImport(databasePath: string, projectId: string, confirmedFactionId: string, rawReport: string) {

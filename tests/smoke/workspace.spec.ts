@@ -423,3 +423,27 @@ test("the movement layer controls the route overlay and nothing else", async ({ 
   await expect(page.getByTestId("planner-route")).toBeVisible();
   await expect(page.getByTestId("planner-order")).toHaveText("MOVE N");
 });
+
+/**
+ * A report cannot be split into men and equipment on its own, so a unit's headcount is a guess
+ * until it has been counted against the scraped item catalogue. Classification is what removes the
+ * guess, and it has to run on the path that draws the table - not only inside the planner.
+ *
+ * It did not, briefly: every one of the 92 units in this hex rendered with a tilde, including the
+ * single-race majority whose figure was exactly right. The cause was a callback closing over the
+ * ruleset before it had loaded.
+ */
+test("men are counted rather than guessed once the ruleset is loaded", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+
+  const cells = await page.locator("[data-testid^='unit-row-'] td:nth-child(5)").allInnerTexts();
+  expect(cells.length).toBeGreaterThan(50);
+  expect(cells.filter((cell) => cell.startsWith("~"))).toEqual([]);
+
+  // And a multi-race unit reads as its parts rather than as its largest group.
+  await selectHex(page, "1:26,52");
+  await selectUnit(page, "15807");
+  await expect(page.getByTestId("panel-unit")).toContainText("99");
+  await expect(page.getByTestId("panel-unit")).toContainText("gnolls");
+});

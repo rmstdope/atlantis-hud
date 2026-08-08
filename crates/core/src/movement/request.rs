@@ -114,6 +114,26 @@ pub fn plan_for_remembered_report(
     })
 }
 
+/// Parses a report and counts each unit's men against the catalogue.
+///
+/// The plain parser cannot do this: telling men from equipment needs an item reference, and a
+/// report carries none. Without it every unit reads as an estimate, including the great majority
+/// holding a single race where the leading-group figure is exactly right.
+///
+/// An empty or unusable ruleset leaves the report exactly as parsed, estimates and all. Refusing to
+/// show a report because a ruleset would not load would trade something that works for something
+/// that does not.
+#[must_use]
+pub fn parse_and_classify(raw_report: &str, ruleset_json: &str) -> crate::report::ParsedReport {
+    use crate::report::{classify_units, parse_report_full};
+
+    let mut report = parse_report_full(raw_report);
+    if let Ok(ruleset) = crate::movement::rules::Ruleset::from_json(ruleset_json) {
+        classify_units(&mut report, &ruleset);
+    }
+    report
+}
+
 /// Reads `1:7,53`, the way the game writes a hex and the way a region id is stored.
 fn parse_hex_id(text: &str) -> Option<crate::report::model::Coordinate> {
     let (level, rest) = text.split_once(':')?;

@@ -161,6 +161,9 @@ describe("core client adapter contract parity", () => {
       load_order_draft_state() {
         return orderDraftPayload;
       },
+      parse_report_classified_state() {
+        return { header: {}, regions: [], ordersTemplate: null };
+      },
       plan_route_state() {
         return planPayload;
       },
@@ -170,6 +173,9 @@ describe("core client adapter contract parity", () => {
     };
 
     const invoke: TauriInvoke = async <T>(command: string) => {
+      if (command === "parse_report_classified") {
+        return Promise.resolve({ header: {}, regions: [], ordersTemplate: null } as T);
+      }
       if (command === "plan_route") {
         return Promise.resolve(planPayload as T);
       }
