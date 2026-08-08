@@ -2,7 +2,20 @@ import { defineConfig, devices } from "@playwright/test";
 
 export default defineConfig({
   testDir: "./tests/smoke",
-  timeout: 30_000,
+  /**
+   * Generous on purpose. The suite's own work is about three seconds a test, measured stage by
+   * stage; the rest of the budget goes on launching Chromium and letting the Vite dev server
+   * transform the app. Under CPU contention that startup roughly doubles while the app's own
+   * timings do not move at all, which at 30 seconds pushed whichever action happened to be last
+   * over the edge - and reported it as though that action were slow.
+   */
+  timeout: 90_000,
+  /**
+   * One retry, because the failure mode above is a machine being busy rather than a defect. A test
+   * that fails twice running is telling us something; a flake reported as a failure only teaches
+   * people to ignore the suite.
+   */
+  retries: 1,
   fullyParallel: false,
   workers: 1,
   use: {
