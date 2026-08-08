@@ -96,6 +96,14 @@ cargo clippy --workspace --all-targets -- -D warnings
 - Issue #4 adds:
   - `crates/core-persistence` (SQLite persistence layer with schema migrations and project file format)
 
+- Issue #19 adds:
+  - a real NewOrigins report parser in `crates/core/src/report` (line unwrapping, region blocks,
+    units with ownership and skills, structures, exits, markets, the preamble, and the orders
+    template)
+  - the NewOrigins order vocabulary, replacing the two-command placeholder
+  - migration 0004, giving regions their own rows with the turn they were last seen in
+  - `parseReportFull` on both platform adapters, carrying the full model to the UI
+  - real report fixtures under `tests/fixtures/reports`
 - Issue #18 adds:
   - `packages/browser-core` (WebAssembly loader, IndexedDB storage, and the browser `CoreAdapter`)
   - a `wasm-pack` build wired into both shells, replacing the hand-written TypeScript
