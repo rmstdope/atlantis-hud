@@ -297,3 +297,55 @@ test("a loaded turn is remembered rather than only displayed", async ({ page }) 
   // replaces the memory of it rather than accumulating a duplicate.
   await expect(page.getByTestId("import-status")).toContainText("11 regions");
 });
+
+test("planning a move shows its cost and what stands in the way", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+  await selectUnit(page, OWN_UNIT);
+
+  // "* Seven of Eight (18642)" is a walker with two movement points, in a mountain whose north
+  // neighbour is another mountain.
+  await page.getByTestId("planner-arm").click();
+  await selectHex(page, "1:7,51");
+
+  await expect(page.getByTestId("planner-route")).toBeVisible();
+  await expect(page.getByTestId("planner-route")).toContainText("2 movement points");
+  await expect(page.getByTestId("planner-route")).toContainText("this month");
+  await expect(page.getByTestId("planner-order")).toHaveText("MOVE N");
+  await expect(page.getByTestId("planner-risk")).toBeVisible();
+});
+
+test("an illegal move is refused with the reason", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+  await selectUnit(page, OWN_UNIT);
+
+  // "  Northeast : ocean (8,52) in Atlantis Ocean." - a walker cannot go there.
+  await page.getByTestId("planner-arm").click();
+  await selectHex(page, "1:8,52");
+
+  await expect(page.getByTestId("planner-problem")).toContainText("sea");
+  await expect(page.getByTestId("planner-problem")).toContainText("(8,52)");
+  await expect(page.getByTestId("planner-route")).toHaveCount(0);
+});
+
+test("a planned route can be written into the unit's orders", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+  await selectUnit(page, OWN_UNIT);
+
+  await page.getByTestId("planner-arm").click();
+  await selectHex(page, "1:7,51");
+  await expect(page.getByTestId("planner-order")).toHaveText("MOVE N");
+
+  await page.getByTestId("planner-apply").click();
+  await expect(page.getByTestId("orders-input")).toHaveValue(/MOVE N/);
+});
+
+test("only your own units can be planned for", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+  await selectUnit(page, FOREIGN_UNIT);
+
+  await expect(page.getByTestId("planner-arm")).toBeDisabled();
+});

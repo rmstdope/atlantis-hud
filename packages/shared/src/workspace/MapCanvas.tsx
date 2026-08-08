@@ -1,5 +1,6 @@
 import { Application, Container, Graphics, Text } from "pixi.js";
 import { useEffect, useRef } from "react";
+import type { Coordinate, HexRisk } from "@atlantis/core-client";
 import { hexCorners, hexToPixel, type HexMapModel, type HexNode } from "../hexMapModel";
 
 const HEX_RADIUS = 18;
@@ -21,6 +22,13 @@ const TERRAIN_COLOURS: Record<string, number> = {
 };
 
 const UNKNOWN = 0x161c24;
+
+/** How a hex on a planned route is tinted. Low is not green: a quiet hex is not a safe promise. */
+const RISK_COLOURS: Record<string, number> = {
+  low: 0x5ec8f0,
+  medium: 0xd9a441,
+  high: 0xf07070
+};
 
 function terrainColour(terrain: string): number {
   return TERRAIN_COLOURS[terrain.toLowerCase()] ?? 0x555f6b;
@@ -66,6 +74,10 @@ type MapCanvasProps = {
   onSelectRegion: (regionId: string) => void;
   showStaleness: boolean;
   showUnits: boolean;
+  /** Hexes a planned route passes through, in order. Empty when nothing is planned. */
+  route?: Coordinate[];
+  /** How dangerous each of those hexes is, so one bad step is visible rather than buried. */
+  routeRisk?: HexRisk[];
 };
 
 /**
@@ -86,7 +98,9 @@ export function MapCanvas({
   selectedRegionId,
   onSelectRegion,
   showStaleness,
-  showUnits
+  showUnits,
+  route = [],
+  routeRisk = []
 }: MapCanvasProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const appRef = useRef<Application | null>(null);
@@ -258,7 +272,39 @@ export function MapCanvas({
         world.addChild(pips);
       }
     }
-  }, [model, level, selectedRegionId, showStaleness, showUnits]);
+    // The route goes on last so it sits above the hexes it crosses. Each step is tinted by its own
+    // risk rather than the route's, because a single dangerous hex in an otherwise quiet path is
+    // exactly what a player needs to see.
+    const riskByHex = new Map(
+      routeRisk.map((hex) => [`${hex.coordinate.x},${hex.coordinate.y}`, hex.level])
+    );
+
+    const onLevel = route.filter((step) => step.z === level);
+    if (onLevel.length > 0) {
+      const line = new Graphics();
+      line.lineStyle(3, 0xd9a441, 0.9);
+      onLevel.forEach((step, index) => {
+        const centre = hexToPixel(step, HEX_RADIUS);
+        if (index === 0) {
+          line.moveTo(centre.x, centre.y);
+        } else {
+          line.lineTo(centre.x, centre.y);
+        }
+      });
+      world.addChild(line);
+
+      for (const step of onLevel) {
+        const centre = hexToPixel(step, HEX_RADIUS);
+        const level_ = riskByHex.get(`${step.x},${step.y}`);
+        const marker = new Graphics();
+        marker.lineStyle(2, RISK_COLOURS[level_ ?? "low"], 1);
+        marker.beginFill(RISK_COLOURS[level_ ?? "low"], 0.28);
+        trace(marker, centre);
+        marker.endFill();
+        world.addChild(marker);
+      }
+    }
+  }, [model, level, selectedRegionId, showStaleness, showUnits, route, routeRisk]);
 
   // Centres on the selection the first time a world arrives, so the view does not open on empty fog.
   const centredRef = useRef(false);

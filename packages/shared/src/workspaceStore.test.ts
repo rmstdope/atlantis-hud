@@ -125,3 +125,49 @@ describe("panels and layers", () => {
     expect(store().layers.staleness).toBe(true);
   });
 });
+
+describe("the planner's own state", () => {
+  /**
+   * Arming is a one-shot, not a mode. The map means one thing at a time, and a mode you can forget
+   * you are in turns every later click into a surprise.
+   */
+  it("arms for one pick and disarms once a destination is chosen", () => {
+    const store = useWorkspaceStore.getState();
+    expect(store.planner).toEqual({ armed: false, destinationId: null });
+
+    store.armPlanner();
+    expect(useWorkspaceStore.getState().planner.armed).toBe(true);
+
+    useWorkspaceStore.getState().planTo("1:7,51");
+    expect(useWorkspaceStore.getState().planner).toEqual({
+      armed: false,
+      destinationId: "1:7,51"
+    });
+  });
+
+  it("clears the route and any armed pick together", () => {
+    useWorkspaceStore.getState().armPlanner();
+    useWorkspaceStore.getState().planTo("1:7,51");
+
+    useWorkspaceStore.getState().clearPlan();
+
+    expect(useWorkspaceStore.getState().planner).toEqual({ armed: false, destinationId: null });
+  });
+
+  /**
+   * A route is about a unit and a turn, and both change. Persisting one would restore a plan for a
+   * unit that may not exist any more, which is worse than restoring nothing.
+   */
+  it("is not among the things that survive a reload", () => {
+    useWorkspaceStore.getState().planTo("1:7,51");
+
+    const storage = useWorkspaceStore.persist.getOptions().storage;
+    const persisted = storage?.getItem("atlantis-hud-workspace") as
+      | { state?: Record<string, unknown> }
+      | null
+      | undefined;
+
+    expect(persisted?.state).toBeDefined();
+    expect(persisted?.state).not.toHaveProperty("planner");
+  });
+});

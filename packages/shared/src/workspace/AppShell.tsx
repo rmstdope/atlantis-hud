@@ -1,4 +1,4 @@
-import type { CoreClient, ParsedReport } from "@atlantis/core-client";
+import type { CoreClient, ParsedReport, RoutePlanResponse } from "@atlantis/core-client";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   buildHexMapModel,
@@ -13,6 +13,7 @@ import { AppHeader, type ImportStatus } from "./AppHeader";
 import { LayerChips } from "./LayerChips";
 import { MapCanvas } from "./MapCanvas";
 import { OrdersPanel } from "./OrdersPanel";
+import { PlannerPanel } from "./PlannerPanel";
 import { RegionPanel } from "./RegionPanel";
 import { UnitPanel } from "./UnitPanel";
 import { UnitTableDock } from "./UnitTableDock";
@@ -67,12 +68,22 @@ export function AppShell({
   const [busy, setBusy] = useState(false);
   const [diagnostics, setDiagnostics] = useState({ errors: 0, warnings: 0 });
   const [savedAt, setSavedAt] = useState<string | null>(null);
+  // The planner takes the report as text: the core parses it again in milliseconds, and a stateless
+  // call means no session to invalidate when a new turn arrives.
+  const [rawReport, setRawReport] = useState("");
+  const [ruleset, setRuleset] = useState<string | null>(null);
+  const [route, setRoute] = useState<RoutePlanResponse | null>(null);
+  const [planning, setPlanning] = useState(false);
 
   const selectedRegionId = useWorkspaceStore((state) => state.selectedRegionId);
   const selectedUnitId = useWorkspaceStore((state) => state.selectedUnitId);
   const selectRegion = useWorkspaceStore((state) => state.selectRegion);
   const level = useWorkspaceStore((state) => state.level);
   const layers = useWorkspaceStore((state) => state.layers);
+  const planner = useWorkspaceStore((state) => state.planner);
+  const armPlanner = useWorkspaceStore((state) => state.armPlanner);
+  const planTo = useWorkspaceStore((state) => state.planTo);
+  const clearPlan = useWorkspaceStore((state) => state.clearPlan);
 
   const model = useMemo(
     () => (parsed ? buildHexMapModel(parsed, remembered) : EMPTY),
@@ -87,10 +98,17 @@ export function AppShell({
    */
   const selectHex = useCallback(
     (regionId: string | null) => {
+      // While the planner is armed the map means "where to", not "show me". One click, then it
+      // goes back to selecting - a mode you can forget you are in makes every later click a
+      // surprise.
+      if (planner.armed && regionId) {
+        planTo(regionId);
+        return;
+      }
       const target = model.hexes.find((candidate) => candidate.regionId === regionId) ?? null;
       selectRegion(regionId, unitsForHex(target)[0]?.unitId ?? null);
     },
-    [model, selectRegion]
+    [model, selectRegion, planner.armed, planTo]
   );
 
   const hex = useMemo(
@@ -109,6 +127,9 @@ export function AppShell({
       try {
         const report = await client.parseReportFull(text);
         setParsed(report);
+        setRawReport(text);
+        clearPlan();
+        setRoute(null);
         setOrdersDocument(report.ordersTemplate?.text ?? "");
         setSavedAt(null);
 
@@ -151,6 +172,67 @@ export function AppShell({
     [client, selectRegion]
   );
 
+  // The ruleset is a served file rather than something compiled in, so a movement value can be
+  // corrected by editing it and reloading. Its absence is not fatal: everything except the planner
+  // works without it.
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/ruleset.json")
+      .then((response) => (response.ok ? response.text() : null))
+      .then((text) => {
+        if (!cancelled) {
+          setRuleset(text);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setRuleset(null);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // A destination and a unit are all the planner needs; the answer carries either a route or the
+  // reason there is none.
+  useEffect(() => {
+    const destination = planner.destinationId;
+    if (!destination || !unit?.own || !ruleset || !rawReport) {
+      return undefined;
+    }
+
+    let cancelled = false;
+    setPlanning(true);
+    void client
+      .planRoute(ruleset, rawReport, unit.unitId, destination)
+      .then((answer) => {
+        if (!cancelled) {
+          setRoute(answer);
+        }
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) {
+          setStatus({
+            regionCount: 0,
+            unitCount: 0,
+            errorCount: 0,
+            message: `could not plan a route: ${describeError(error)}`,
+            failed: true
+          });
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setPlanning(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [client, planner.destinationId, unit, ruleset, rawReport]);
+
   // Validation follows the document, debounced so it does not run on every keystroke.
   useEffect(() => {
     if (!ordersDocument) {
@@ -172,6 +254,27 @@ export function AppShell({
     setOrdersDocument((document) => writeUnitOrders(document, unitId, orders));
     setSavedAt(new Date().toLocaleTimeString());
   }, []);
+
+  /** Writes a planned route into the selected unit's block, replacing any MOVE already there. */
+  const applyRoute = useCallback(
+    (order: string) => {
+      if (!unit) {
+        return;
+      }
+      setOrdersDocument((document) => {
+        const existing = readUnitOrders(document, unit.unitId) ?? "";
+        const withoutMove = existing
+          .split("\n")
+          .filter((line) => !/^\s*@?\s*(move|advance)\b/i.test(line))
+          .join("\n")
+          .trim();
+        const next = withoutMove ? `${withoutMove}\n${order}` : order;
+        return writeUnitOrders(document, unit.unitId, next);
+      });
+      setSavedAt(new Date().toLocaleTimeString());
+    },
+    [unit]
+  );
 
   const exportOrders = useCallback(() => {
     const blob = new Blob([ordersDocument], { type: "text/plain" });
@@ -213,6 +316,8 @@ export function AppShell({
           onSelectRegion={selectHex}
           showStaleness={layers.staleness}
           showUnits={layers.units}
+          route={layers.movement ? (route?.plan?.steps.map((step) => step.to) ?? []) : []}
+          routeRisk={layers.movement ? (route?.risk?.hexes ?? []) : []}
         />
 
         <div className="pointer-events-none absolute inset-x-0 top-2.5 flex justify-center">
@@ -237,6 +342,20 @@ export function AppShell({
               {/* The unit panel yields space so the orders editor keeps a usable number of rows. */}
               <div className="min-h-0 flex-1">
                 <UnitPanel unit={unit} hex={hex} />
+              </div>
+              <div className="flex-none">
+                <PlannerPanel
+                  unit={unit}
+                  armed={planner.armed}
+                  busy={planning}
+                  answer={route}
+                  onArm={armPlanner}
+                  onClear={() => {
+                    clearPlan();
+                    setRoute(null);
+                  }}
+                  onApply={applyRoute}
+                />
               </div>
               <div className="h-[19rem] max-h-[55%] min-h-[9rem] flex-none">
                 <OrdersPanel

@@ -11,7 +11,7 @@ import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
 /** The four panels that can be folded away to open up the map. */
-export type PanelName = "region" | "unit" | "orders" | "units";
+export type PanelName = "region" | "unit" | "orders" | "units" | "planner";
 
 /** Map layers the toolbar toggles. Only staleness has an effect so far. */
 export type LayerName = "units" | "structures" | "staleness" | "tradeRoutes" | "movement";
@@ -24,8 +24,22 @@ export type WorkspaceProject = {
   turnNumber: number;
 };
 
+/**
+ * What the planner is doing, if anything.
+ *
+ * `armed` means the next hex the player picks is a destination rather than a selection. It is a
+ * one-shot rather than a mode: the map means one thing at a time, and a mode you can forget you
+ * are in makes every later click a surprise.
+ */
+export type PlannerState = {
+  armed: boolean;
+  /** The hex a route was last planned to, kept so the overlay survives a re-render. */
+  destinationId: string | null;
+};
+
 export type WorkspaceState = {
   project: WorkspaceProject | null;
+  planner: PlannerState;
   selectedRegionId: string | null;
   selectedUnitId: string | null;
   /** Level being viewed. A report can describe more than one. */
@@ -47,13 +61,20 @@ export type WorkspaceState = {
   setLevel: (level: number) => void;
   togglePanel: (panel: PanelName) => void;
   toggleLayer: (layer: LayerName) => void;
+  /** Arms destination picking for exactly one click. */
+  armPlanner: () => void;
+  /** Records where a route was planned to, and disarms. */
+  planTo: (destinationId: string) => void;
+  /** Clears the route and any armed pick. */
+  clearPlan: () => void;
 };
 
 const INITIAL_COLLAPSED: Record<PanelName, boolean> = {
   region: false,
   unit: false,
   orders: false,
-  units: false
+  units: false,
+  planner: false
 };
 
 const INITIAL_LAYERS: Record<LayerName, boolean> = {
@@ -105,6 +126,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       level: 1,
       collapsed: INITIAL_COLLAPSED,
       layers: INITIAL_LAYERS,
+      planner: { armed: false, destinationId: null },
 
       openProject: (project) =>
         set({
@@ -145,7 +167,11 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       toggleLayer: (layer) =>
         set((state) => ({
           layers: { ...state.layers, [layer]: !state.layers[layer] }
-        }))
+        })),
+
+      armPlanner: () => set((state) => ({ planner: { ...state.planner, armed: true } })),
+      planTo: (destinationId) => set(() => ({ planner: { armed: false, destinationId } })),
+      clearPlan: () => set(() => ({ planner: { armed: false, destinationId: null } }))
     }),
     {
       name: "atlantis-hud-workspace",
