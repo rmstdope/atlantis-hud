@@ -387,6 +387,15 @@ pub fn diff_imported_turn_state(existing: JsValue, candidate: JsValue) -> Result
     to_js(&diff)
 }
 
+/// Parses a report into the full domain model: regions, units, structures, exits and markets.
+///
+/// The flat summary `parse_report_state` returns is derived from this same parse, and remains for
+/// the panels that have not moved over yet.
+#[wasm_bindgen]
+pub fn parse_report_full_state(raw_report: String) -> Result<JsValue, JsValue> {
+    to_js(&atlantis_hud_core::report::parse_report_full(&raw_report))
+}
+
 /// Validates one draft of Atlantis orders and returns structured diagnostics.
 ///
 /// Order validation is pure, so unlike the persistence entry points this is available on every

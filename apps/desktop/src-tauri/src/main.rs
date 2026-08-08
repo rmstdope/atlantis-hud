@@ -5,9 +5,10 @@
 use atlantis_hud_core_tauri::{
     command_commit_report_import, command_create_project, command_load_imported_turn,
     command_load_order_draft, command_open_project, command_parse_report,
-    command_preview_report_import, command_save_order_draft, command_validate_orders,
-    ImportedTurnPreviewDto, ImportedTurnRecordDto, OpenedProjectDto, OrderDraftRecordDto,
-    OrderValidationResultDto, ProjectManifestDto, ReportImportPreviewDto, ReportParseResultDto,
+    command_parse_report_full, command_preview_report_import, command_save_order_draft,
+    command_validate_orders, ImportedTurnPreviewDto, ImportedTurnRecordDto, OpenedProjectDto,
+    OrderDraftRecordDto, OrderValidationResultDto, ProjectManifestDto, ReportImportPreviewDto,
+    ReportParseResultDto,
 };
 #[cfg(all(
     any(target_os = "macos", target_os = "windows"),
@@ -52,6 +53,15 @@ fn open_project(project_file_path: String) -> Result<OpenedProjectDto, String> {
 #[tauri::command]
 fn parse_report(raw_report: String) -> ReportParseResultDto {
     command_parse_report(&raw_report)
+}
+
+#[cfg(all(
+    any(target_os = "macos", target_os = "windows"),
+    feature = "desktop-runtime"
+))]
+#[tauri::command]
+fn parse_report_full(raw_report: String) -> serde_json::Value {
+    command_parse_report_full(&raw_report)
 }
 
 #[cfg(all(
@@ -165,6 +175,7 @@ fn main() {
             create_project,
             open_project,
             parse_report,
+            parse_report_full,
             preview_report_import,
             commit_report_import,
             load_imported_turn,

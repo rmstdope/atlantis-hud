@@ -367,6 +367,16 @@ pub fn command_open_project(project_file_path: &str) -> Result<OpenedProjectDto,
         .map_err(|error| error.to_string())
 }
 
+/// Parses a report into the full domain model.
+///
+/// Returned as JSON rather than a DTO: the model is large, purely descriptive, and the shape the
+/// TypeScript side wants is exactly what serde already produces.
+#[must_use]
+pub fn command_parse_report_full(raw_report: &str) -> serde_json::Value {
+    serde_json::to_value(atlantis_hud_core::report::parse_report_full(raw_report))
+        .unwrap_or(serde_json::Value::Null)
+}
+
 /// Parses one report and returns tolerant parser output.
 #[must_use]
 pub fn command_parse_report(raw_report: &str) -> ReportParseResultDto {

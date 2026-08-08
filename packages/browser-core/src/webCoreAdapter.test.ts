@@ -12,6 +12,7 @@ function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
   return {
     get_game_info: () => ({ id: "atlantis", name: "Atlantis PBEM" }),
     parse_report_state: (raw: string) => ({ raw }),
+    parse_report_full_state: (raw: string) => ({ header: {}, regions: [], ordersTemplate: null, raw }),
     validate_orders_state: () => ({ diagnostics: [] }),
     prepare_report_import_state: (raw: string, confirmedFactionId: string) => {
       const hasTurn = raw.includes("TURN: 12");

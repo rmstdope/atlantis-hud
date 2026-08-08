@@ -15,6 +15,7 @@ import { createWebStore } from "./webStore";
 export type CoreWasmModule = {
   get_game_info(): unknown;
   parse_report_state(rawReport: string): unknown;
+  parse_report_full_state(rawReport: string): unknown;
   validate_orders_state(rawOrders: string): unknown;
   prepare_report_import_state(rawReport: string, confirmedFactionId: string): unknown;
   diff_imported_turn_state(existing: unknown, candidate: unknown): unknown;
@@ -103,6 +104,10 @@ export function createWebCoreAdapter(
 
     parseReport(rawReport: string) {
       return wasm.parse_report_state(rawReport);
+    },
+
+    parseReportFull(rawReport: string) {
+      return wasm.parse_report_full_state(rawReport);
     },
 
     validateOrders(rawOrders: string) {
