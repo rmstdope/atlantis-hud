@@ -9,18 +9,20 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 /// Current schema version expected by the persistence layer.
-pub const CURRENT_SCHEMA_VERSION: u32 = 3;
+pub const CURRENT_SCHEMA_VERSION: u32 = 4;
 const CURRENT_MANIFEST_VERSION: u32 = 1;
 const MIGRATION_0001_INITIAL: &str = include_str!("../migrations/0001_initial.sql");
 const MIGRATION_0002_IMPORTED_TURNS: &str = include_str!("../migrations/0002_imported_turns.sql");
 const MIGRATION_0003_ORDER_DRAFTS: &str = include_str!("../migrations/0003_order_drafts.sql");
+const MIGRATION_0004_REGION_SIGHTINGS: &str =
+    include_str!("../migrations/0004_region_sightings.sql");
 
 struct Migration {
     version: u32,
     sql: &'static str,
 }
 
-const MIGRATIONS: [Migration; 3] = [
+const MIGRATIONS: [Migration; 4] = [
     Migration {
         version: 1,
         sql: MIGRATION_0001_INITIAL,
@@ -32,6 +34,10 @@ const MIGRATIONS: [Migration; 3] = [
     Migration {
         version: 3,
         sql: MIGRATION_0003_ORDER_DRAFTS,
+    },
+    Migration {
+        version: 4,
+        sql: MIGRATION_0004_REGION_SIGHTINGS,
     },
 ];
 
@@ -93,6 +99,23 @@ pub struct ImportedTurnPreview {
     pub raw_changed: bool,
     pub parsed_changed: bool,
     pub warnings_changed: bool,
+}
+
+/// One region as last seen, with the turn it was seen in.
+///
+/// The map distinguishes a region present in the current report from one held over from an earlier
+/// turn, so a sighting carries its own turn rather than inheriting the latest import's.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RegionSighting {
+    pub region_id: String,
+    pub x: i32,
+    pub y: i32,
+    pub z: u32,
+    pub terrain: String,
+    pub province: String,
+    pub label: String,
+    pub last_seen_turn: u32,
+    pub payload_json: String,
 }
 
 /// Unique key for one persisted order draft.
@@ -536,6 +559,102 @@ fn load_imported_turn_from_connection(
         .map_err(PersistenceError::from)
 }
 
+/// Records regions seen in one turn, keeping the most recent sighting of each.
+///
+/// A region already stored from a later turn is left alone, so importing an older report cannot
+/// make the map go backwards.
+pub fn upsert_region_sightings(
+    database_path: &Path,
+    project_id: &str,
+    faction_id: &str,
+    sightings: &[RegionSighting],
+) -> Result<(), PersistenceError> {
+    if !database_path.exists() {
+        return Err(PersistenceError::DatabaseFileMissing(
+            database_path.to_string_lossy().to_string(),
+        ));
+    }
+
+    let mut connection = open_database(database_path)?;
+    apply_migrations(&mut connection)?;
+    let transaction = connection.transaction()?;
+
+    for sighting in sightings {
+        transaction.execute(
+            "INSERT INTO region_sightings (
+                project_id, faction_id, region_id, x, y, z, terrain, province, label,
+                last_seen_turn, payload_json
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+             ON CONFLICT(project_id, faction_id, region_id) DO UPDATE SET
+                x = excluded.x,
+                y = excluded.y,
+                z = excluded.z,
+                terrain = excluded.terrain,
+                province = excluded.province,
+                label = excluded.label,
+                last_seen_turn = excluded.last_seen_turn,
+                payload_json = excluded.payload_json
+             WHERE excluded.last_seen_turn >= region_sightings.last_seen_turn",
+            params![
+                project_id,
+                faction_id,
+                sighting.region_id.as_str(),
+                sighting.x,
+                sighting.y,
+                sighting.z,
+                sighting.terrain.as_str(),
+                sighting.province.as_str(),
+                sighting.label.as_str(),
+                sighting.last_seen_turn,
+                sighting.payload_json.as_str(),
+            ],
+        )?;
+    }
+
+    transaction.commit()?;
+    Ok(())
+}
+
+/// Loads every region known to a faction, most recently seen first.
+pub fn load_region_sightings(
+    database_path: &Path,
+    project_id: &str,
+    faction_id: &str,
+) -> Result<Vec<RegionSighting>, PersistenceError> {
+    if !database_path.exists() {
+        return Err(PersistenceError::DatabaseFileMissing(
+            database_path.to_string_lossy().to_string(),
+        ));
+    }
+
+    let mut connection = open_database(database_path)?;
+    apply_migrations(&mut connection)?;
+
+    let mut statement = connection.prepare(
+        "SELECT region_id, x, y, z, terrain, province, label, last_seen_turn, payload_json
+            FROM region_sightings
+            WHERE project_id = ?1 AND faction_id = ?2
+            ORDER BY last_seen_turn DESC, region_id ASC",
+    )?;
+
+    let rows = statement.query_map(params![project_id, faction_id], |row| {
+        Ok(RegionSighting {
+            region_id: row.get(0)?,
+            x: row.get(1)?,
+            y: row.get(2)?,
+            z: row.get(3)?,
+            terrain: row.get(4)?,
+            province: row.get(5)?,
+            label: row.get(6)?,
+            last_seen_turn: row.get(7)?,
+            payload_json: row.get(8)?,
+        })
+    })?;
+
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(PersistenceError::from)
+}
+
 /// Inserts or updates one persisted order draft.
 pub fn upsert_order_draft(
     database_path: &Path,
@@ -852,7 +971,7 @@ mod tests {
     }
 
     #[test]
-    fn order_draft_schema_version_is_bumped() {
+    fn schema_version_tracks_the_latest_migration() {
         let dir = tempdir().expect("tempdir");
         let project_path = dir.path().join("campaign.atlantis-project.json");
         let manifest = fixture_manifest();
@@ -860,6 +979,138 @@ mod tests {
         let created =
             create_project(&project_path, &manifest).expect("project creation should succeed");
 
-        assert_eq!(created.schema_version, 3);
+        assert_eq!(created.schema_version, CURRENT_SCHEMA_VERSION);
+        assert_eq!(
+            created.schema_version, 4,
+            "region sightings added migration 4"
+        );
+    }
+}
+
+#[cfg(test)]
+mod region_sighting_tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    fn project(dir: &std::path::Path) -> OpenedProject {
+        create_project(
+            &dir.join("campaign.atlantis-project.json"),
+            &ProjectManifest {
+                manifest_version: 1,
+                metadata: ProjectMetadata {
+                    project_id: "faction-95".to_string(),
+                    project_name: "Borg TNG".to_string(),
+                },
+                report_sources: Vec::new(),
+            },
+        )
+        .expect("project should be created")
+    }
+
+    fn sighting(region_id: &str, turn: u32) -> RegionSighting {
+        RegionSighting {
+            region_id: region_id.to_string(),
+            x: 7,
+            y: 53,
+            z: 1,
+            terrain: "mountain".to_string(),
+            province: "Inhead".to_string(),
+            label: format!("mountain (7,53) in Inhead, turn {turn}"),
+            last_seen_turn: turn,
+            payload_json: "{}".to_string(),
+        }
+    }
+
+    #[test]
+    fn a_region_records_the_turn_it_was_last_seen_in() {
+        let dir = tempdir().expect("tempdir");
+        let opened = project(dir.path());
+
+        upsert_region_sightings(
+            &opened.database_path,
+            "faction-95",
+            "95",
+            &[sighting("1:7,53", 71)],
+        )
+        .expect("sightings should persist");
+
+        let loaded =
+            load_region_sightings(&opened.database_path, "faction-95", "95").expect("load");
+        assert_eq!(loaded.len(), 1);
+        assert_eq!(loaded[0].last_seen_turn, 71);
+        assert_eq!(loaded[0].terrain, "mountain");
+    }
+
+    #[test]
+    fn a_newer_sighting_replaces_an_older_one() {
+        let dir = tempdir().expect("tempdir");
+        let opened = project(dir.path());
+
+        upsert_region_sightings(
+            &opened.database_path,
+            "faction-95",
+            "95",
+            &[sighting("1:7,53", 70)],
+        )
+        .expect("first");
+        upsert_region_sightings(
+            &opened.database_path,
+            "faction-95",
+            "95",
+            &[sighting("1:7,53", 71)],
+        )
+        .expect("second");
+
+        let loaded =
+            load_region_sightings(&opened.database_path, "faction-95", "95").expect("load");
+        assert_eq!(loaded.len(), 1);
+        assert_eq!(loaded[0].last_seen_turn, 71);
+        assert!(loaded[0].label.ends_with("turn 71"));
+    }
+
+    #[test]
+    fn importing_an_older_report_does_not_make_the_map_go_backwards() {
+        let dir = tempdir().expect("tempdir");
+        let opened = project(dir.path());
+
+        upsert_region_sightings(
+            &opened.database_path,
+            "faction-95",
+            "95",
+            &[sighting("1:7,53", 71)],
+        )
+        .expect("current");
+        upsert_region_sightings(
+            &opened.database_path,
+            "faction-95",
+            "95",
+            &[sighting("1:7,53", 60)],
+        )
+        .expect("older");
+
+        let loaded =
+            load_region_sightings(&opened.database_path, "faction-95", "95").expect("load");
+        assert_eq!(loaded[0].last_seen_turn, 71, "the later sighting survives");
+    }
+
+    #[test]
+    fn regions_from_different_turns_coexist_so_staleness_is_computable() {
+        let dir = tempdir().expect("tempdir");
+        let opened = project(dir.path());
+
+        upsert_region_sightings(
+            &opened.database_path,
+            "faction-95",
+            "95",
+            &[sighting("1:7,53", 71), sighting("1:26,52", 64)],
+        )
+        .expect("sightings");
+
+        let loaded =
+            load_region_sightings(&opened.database_path, "faction-95", "95").expect("load");
+        assert_eq!(loaded.len(), 2);
+        // Most recently seen first, which is the order the map wants for drawing.
+        assert_eq!(loaded[0].last_seen_turn, 71);
+        assert_eq!(loaded[1].last_seen_turn, 64);
     }
 }

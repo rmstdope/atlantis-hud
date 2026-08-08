@@ -627,8 +627,8 @@ mod tests {
 
         assert_eq!(created.manifest, manifest);
         assert_eq!(reopened.manifest, manifest);
-        assert_eq!(created.schema_version, 3);
-        assert_eq!(reopened.schema_version, 3);
+        assert_eq!(created.schema_version, 4);
+        assert_eq!(reopened.schema_version, 4);
     }
 
     #[test]
@@ -701,7 +701,7 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
             validation.diagnostics,
             vec![OrderDiagnosticDto {
                 code: "unknown-command".to_string(),
-                message: "unknown order command".to_string(),
+                message: "unknown order command: FLY".to_string(),
                 line_start: 1,
                 line_end: 1,
                 severity: "error".to_string(),

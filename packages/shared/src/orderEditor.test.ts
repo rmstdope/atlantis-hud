@@ -11,9 +11,11 @@ import {
 
 describe("orderEditor policy", () => {
   it("suggests known commands by prefix", () => {
-    expect(ORDER_COMMAND_VOCABULARY).toEqual(["MOVE", "HOLD"]);
-    expect(suggestOrderCommands("M")).toEqual(["MOVE"]);
-    expect(suggestOrderCommands("H")).toEqual(["HOLD"]);
+    expect(ORDER_COMMAND_VOCABULARY).toContain("MOVE");
+    expect(ORDER_COMMAND_VOCABULARY).toContain("STUDY");
+    expect(ORDER_COMMAND_VOCABULARY).toContain("SAIL");
+    expect(suggestOrderCommands("MO")).toEqual(["MOVE"]);
+    expect(suggestOrderCommands("HO")).toEqual(["HOLD"]);
   });
 
   it("summarizes validation and blocks export when errors are present", () => {

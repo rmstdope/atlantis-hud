@@ -735,7 +735,7 @@ mod tests {
 
     #[test]
     fn order_validation_dto_flattens_severity_to_strings() {
-        let dto = OrderValidationResultDto::from(validate_orders("FLY 1 2\nMOVE R1 R2 R3"));
+        let dto = OrderValidationResultDto::from(validate_orders("FLY 1 2\nMOVE"));
 
         let severities: Vec<&str> = dto
             .diagnostics
@@ -743,14 +743,14 @@ mod tests {
             .map(|diagnostic| diagnostic.severity.as_str())
             .collect();
 
-        assert_eq!(severities, vec!["error", "warning"]);
+        assert_eq!(severities, vec!["error", "error"]);
         assert_eq!(dto.diagnostics[0].code, "unknown-command");
-        assert_eq!(dto.diagnostics[1].code, "extra-arguments");
+        assert_eq!(dto.diagnostics[1].code, "missing-arguments");
     }
 
     #[test]
     fn order_validation_dto_is_empty_for_valid_orders() {
-        let dto = OrderValidationResultDto::from(validate_orders("MOVE R1 R2\nHOLD"));
+        let dto = OrderValidationResultDto::from(validate_orders("MOVE n n\nwork"));
         assert!(dto.diagnostics.is_empty());
     }
 

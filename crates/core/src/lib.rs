@@ -76,7 +76,83 @@ impl OrderValidationResult {
     }
 }
 
-/// Validates one text order draft using line-oriented command rules.
+/// Order commands the NewOrigins ruleset accepts.
+///
+/// Only the command name is checked. Argument shapes vary widely between orders and depend on game
+/// state the parser does not have, so inventing arity rules would reject valid orders — worse for a
+/// player than letting the server have the last word.
+pub const ORDER_COMMANDS: &[&str] = &[
+    "ADDRESS",
+    "ADVANCE",
+    "ANNIHILATE",
+    "ARMOR",
+    "ASSASSINATE",
+    "ATTACK",
+    "AUTOTAX",
+    "AVOID",
+    "BEHIND",
+    "BUILD",
+    "BUY",
+    "CAST",
+    "CLAIM",
+    "COMBAT",
+    "CONSUME",
+    "DECLARE",
+    "DESCRIBE",
+    "DESTROY",
+    "ENDFORM",
+    "ENDTURN",
+    "ENTER",
+    "ENTERTAIN",
+    "EVICT",
+    "EXCHANGE",
+    "FACTION",
+    "FIND",
+    "FORGET",
+    "FORM",
+    "GIVE",
+    "GUARD",
+    "HOLD",
+    "IDLE",
+    "JOIN",
+    "LEAVE",
+    "MOVE",
+    "NAME",
+    "NOAID",
+    "NOCROSS",
+    "NOSPOILS",
+    "OPTION",
+    "PASSWORD",
+    "PILLAGE",
+    "PREPARE",
+    "PRODUCE",
+    "PROMOTE",
+    "QUIT",
+    "RESTART",
+    "REVEAL",
+    "SAIL",
+    "SELL",
+    "SHARE",
+    "SHOW",
+    "SPOILS",
+    "STEAL",
+    "STUDY",
+    "SWEAR",
+    "TAKE",
+    "TAX",
+    "TEACH",
+    "TRANSPORT",
+    "TURN",
+    "WEAPON",
+    "WISHDRAW",
+    "WITHDRAW",
+    "WORK",
+];
+
+/// Validates one order document, line by line.
+///
+/// Tolerant by design: it rejects commands the ruleset has no such thing as, and otherwise leaves
+/// judgement to the server, which alone knows the game state an order depends on.
 #[must_use]
 pub fn validate_orders(source: &str) -> OrderValidationResult {
     let mut diagnostics = Vec::new();
@@ -84,59 +160,50 @@ pub fn validate_orders(source: &str) -> OrderValidationResult {
     for (index, line) in source.lines().enumerate() {
         let line_number = index + 1;
         let trimmed = line.trim();
-        if trimmed.is_empty() || trimmed.starts_with('#') {
+
+        // Blank lines, comments, and the document's own directives carry no orders.
+        if trimmed.is_empty() || trimmed.starts_with(';') || trimmed.starts_with('#') {
             continue;
         }
 
-        let tokens = trimmed.split_whitespace().collect::<Vec<_>>();
-        let command = tokens[0];
-        let args = &tokens[1..];
+        // A leading `@` marks a repeating order; it does not change which command this is.
+        let without_repeat = trimmed.strip_prefix('@').unwrap_or(trimmed);
+        let Some(command) = without_repeat.split_whitespace().next() else {
+            continue;
+        };
 
-        match command {
-            "MOVE" => validate_command(&mut diagnostics, command, args, line_number, 2, 2, true),
-            "HOLD" => validate_command(&mut diagnostics, command, args, line_number, 0, 0, false),
-            _ => diagnostics.push(OrderDiagnostic {
+        // `unit 1234` opens a unit's block in an orders document rather than ordering anything.
+        if command.eq_ignore_ascii_case("unit") {
+            continue;
+        }
+
+        if !ORDER_COMMANDS
+            .iter()
+            .any(|known| known.eq_ignore_ascii_case(command))
+        {
+            diagnostics.push(OrderDiagnostic {
                 code: "unknown-command".to_string(),
-                message: "unknown order command".to_string(),
+                message: format!("unknown order command: {command}"),
                 line_start: line_number,
                 line_end: line_number,
                 severity: OrderDiagnosticSeverity::Error,
-            }),
+            });
+            continue;
+        }
+
+        let args = without_repeat.split_whitespace().skip(1).count();
+        if command.eq_ignore_ascii_case("move") && args == 0 {
+            diagnostics.push(OrderDiagnostic {
+                code: "missing-arguments".to_string(),
+                message: "MOVE needs at least one direction".to_string(),
+                line_start: line_number,
+                line_end: line_number,
+                severity: OrderDiagnosticSeverity::Error,
+            });
         }
     }
 
     OrderValidationResult { diagnostics }
-}
-
-fn validate_command(
-    diagnostics: &mut Vec<OrderDiagnostic>,
-    command: &str,
-    args: &[&str],
-    line_number: usize,
-    required_args: usize,
-    allowed_args: usize,
-    allow_extra_as_warning: bool,
-) {
-    if args.len() < required_args {
-        diagnostics.push(OrderDiagnostic {
-            code: "missing-arguments".to_string(),
-            message: format!("missing required arguments for {command}"),
-            line_start: line_number,
-            line_end: line_number,
-            severity: OrderDiagnosticSeverity::Error,
-        });
-        return;
-    }
-
-    if allow_extra_as_warning && args.len() > allowed_args {
-        diagnostics.push(OrderDiagnostic {
-            code: "extra-arguments".to_string(),
-            message: format!("extra arguments ignored for {command}"),
-            line_start: line_number,
-            line_end: line_number,
-            severity: OrderDiagnosticSeverity::Warning,
-        });
-    }
 }
 
 /// Severity level emitted by the tolerant report parser.
@@ -442,6 +509,57 @@ pub fn diff_imported_turn_fields(
 mod tests {
     use super::*;
 
+    #[test]
+    fn validate_orders_accepts_the_neworigins_vocabulary() {
+        let result = validate_orders(concat!(
+            "@study obse\n",
+            "@claim 50\n",
+            "give 242 100 SILV\n",
+            "MOVE n n\n",
+            "sail se\n",
+            "work\n",
+        ));
+
+        assert!(
+            result.diagnostics.is_empty(),
+            "unexpected diagnostics: {:?}",
+            result.diagnostics
+        );
+    }
+
+    #[test]
+    fn validate_orders_ignores_document_structure_and_comments() {
+        // An orders document seeded from a report carries all of this verbatim.
+        let result = validate_orders(concat!(
+            "#atlantis 95 \"secret\"\n",
+            ";*** mountain (7,53) in Inhead ***\n",
+            "unit 18642\n",
+            ";Seven of Eight (18642), avoiding, behind.\n",
+            "@work\n",
+            "#end\n",
+        ));
+
+        assert!(result.diagnostics.is_empty());
+    }
+
+    #[test]
+    fn validate_orders_reports_an_unknown_command() {
+        let result = validate_orders("FLY 1 2");
+
+        assert_eq!(result.diagnostics.len(), 1);
+        assert_eq!(result.diagnostics[0].code, "unknown-command");
+        assert!(result.diagnostics[0].message.contains("FLY"));
+        assert!(result.is_blocking());
+    }
+
+    #[test]
+    fn validate_orders_requires_a_direction_for_move() {
+        let result = validate_orders("MOVE");
+
+        assert_eq!(result.diagnostics.len(), 1);
+        assert_eq!(result.diagnostics[0].code, "missing-arguments");
+    }
+
     fn snapshot(raw: &str, parsed: &str, warnings: &str) -> ImportedTurnSnapshot {
         ImportedTurnSnapshot {
             raw_report: raw.to_string(),
@@ -677,60 +795,5 @@ mod tests {
         assert_eq!(parsed.units.len(), 2, "units still parse");
         // Without a turn the import is not viable, which is the tolerant contract working.
         assert!(!parsed.meets_minimum_import_threshold());
-    }
-
-    #[test]
-    fn validate_orders_flags_unknown_commands_as_errors() {
-        let result = validate_orders("FLY 1 2");
-
-        assert_eq!(
-            result.diagnostics,
-            vec![OrderDiagnostic {
-                code: "unknown-command".to_string(),
-                message: "unknown order command".to_string(),
-                line_start: 1,
-                line_end: 1,
-                severity: OrderDiagnosticSeverity::Error,
-            }]
-        );
-        assert!(result.is_blocking());
-        assert_eq!(result.error_count(), 1);
-        assert_eq!(result.warning_count(), 0);
-    }
-
-    #[test]
-    fn validate_orders_flags_missing_required_arguments() {
-        let result = validate_orders("MOVE 1");
-
-        assert_eq!(
-            result.diagnostics,
-            vec![OrderDiagnostic {
-                code: "missing-arguments".to_string(),
-                message: "missing required arguments for MOVE".to_string(),
-                line_start: 1,
-                line_end: 1,
-                severity: OrderDiagnosticSeverity::Error,
-            }]
-        );
-        assert!(result.is_blocking());
-    }
-
-    #[test]
-    fn validate_orders_keeps_warnings_non_blocking() {
-        let result = validate_orders("MOVE 1 2 3");
-
-        assert_eq!(
-            result.diagnostics,
-            vec![OrderDiagnostic {
-                code: "extra-arguments".to_string(),
-                message: "extra arguments ignored for MOVE".to_string(),
-                line_start: 1,
-                line_end: 1,
-                severity: OrderDiagnosticSeverity::Warning,
-            }]
-        );
-        assert!(!result.is_blocking());
-        assert_eq!(result.warning_count(), 1);
-        assert_eq!(result.error_count(), 0);
     }
 }
