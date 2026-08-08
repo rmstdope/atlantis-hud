@@ -219,7 +219,19 @@ test("the unit table filters", async ({ page }) => {
  * stops the page for a noticeable fraction of a second.
  */
 test("the interface is not blocked while the core reads a report", async ({ page }) => {
+  // Load once and reload before measuring. The first load in a session pays for the dev server
+  // transforming modules on demand, which is not the application's work and swamped the figure -
+  // it was measured at 834ms cold against 70ms warm.
   await page.goto("/");
+  await expect(page.getByTestId("app-header")).toBeVisible();
+  await page.setInputFiles('input[type="file"]', {
+    name: "turn-71.rep",
+    mimeType: "text/plain",
+    buffer: Buffer.from(REPORT, "utf8")
+  });
+  await expect(page.getByTestId("import-status")).toContainText("11 regions");
+
+  await page.reload();
   await expect(page.getByTestId("app-header")).toBeVisible();
 
   // Sample how long the main thread goes unresponsive, by watching a timer miss its deadline.

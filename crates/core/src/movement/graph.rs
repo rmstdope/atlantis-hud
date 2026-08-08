@@ -13,7 +13,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::report::model::{Coordinate, ReportUnit};
+use crate::report::model::{Coordinate, ReportRegion, ReportUnit};
 use crate::report::ParsedReport;
 
 /// One of the six ways out of a hex.
@@ -115,11 +115,27 @@ pub struct KnownHex {
 pub struct MapKnowledge {
     hexes: BTreeMap<String, KnownHex>,
     exits: BTreeMap<String, Vec<(Direction, Coordinate)>>,
+    /// Exits held until every hex is in place, so adjacency can be resolved in either direction.
+    #[serde(default, skip)]
+    pending_exits: BTreeMap<String, Vec<crate::report::model::Exit>>,
 }
 
 /// Keys a hex the way the game writes one, so the map is stable and readable in a dump.
 fn key(coordinate: Coordinate) -> String {
     coordinate.id()
+}
+
+/// A region the faction saw in some earlier turn, recovered from storage.
+///
+/// Carries the whole region as it was written then, exits included, which is what lets a map
+/// accumulated over many turns join up into a graph a route can cross. A single report cannot: its
+/// visited hexes name their neighbours, but those neighbours describe no exits of their own, so
+/// every route is one step long.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RememberedRegion {
+    pub region: ReportRegion,
+    pub last_seen_turn: u32,
 }
 
 impl MapKnowledge {
@@ -178,6 +194,89 @@ impl MapKnowledge {
         }
 
         map
+    }
+
+    /// Builds the map from everything the faction has ever seen.
+    ///
+    /// The current report wins wherever the two disagree: a hex described this turn is worth more
+    /// than the same hex remembered from turn forty, and only the current description can be
+    /// trusted about who is standing in it. Remembered regions fill in everywhere the report is
+    /// silent, and bring their own exits, which is what makes the graph span more than one step.
+    #[must_use]
+    pub fn from_remembered(current: &ParsedReport, remembered: &[RememberedRegion]) -> Self {
+        let mut map = Self::default();
+
+        // Oldest first, so a more recent sighting overwrites an older one, and the current report
+        // overwrites both.
+        let mut ordered: Vec<&RememberedRegion> = remembered.iter().collect();
+        ordered.sort_by_key(|entry| entry.last_seen_turn);
+
+        for entry in ordered {
+            map.remember(&entry.region, Some(entry.last_seen_turn), false);
+        }
+        for region in &current.regions {
+            map.remember(region, current.header.turn_number, true);
+        }
+
+        // Exits are gathered after every hex is in place, so a remembered region can point at one
+        // the current report describes and vice versa.
+        map.rebuild_exits();
+        map
+    }
+
+    /// Enters one region, replacing whatever was there.
+    fn remember(&mut self, region: &ReportRegion, turn: Option<u32>, current: bool) {
+        self.hexes.insert(
+            key(region.coordinate),
+            KnownHex {
+                coordinate: region.coordinate,
+                terrain: region.terrain.clone(),
+                province: region.province.clone(),
+                visited: true,
+                roads: region
+                    .structures
+                    .iter()
+                    .filter_map(|structure| structure.kind.strip_prefix("Road "))
+                    .filter_map(Direction::parse)
+                    .collect(),
+                units: if current {
+                    region.units.clone()
+                } else {
+                    Vec::new()
+                },
+                last_seen_turn: turn,
+            },
+        );
+        self.pending_exits
+            .insert(key(region.coordinate), region.exits.clone());
+    }
+
+    /// Turns every region's exits into adjacency, and enters the hexes they name.
+    fn rebuild_exits(&mut self) {
+        let pending = std::mem::take(&mut self.pending_exits);
+
+        for (from, exits) in &pending {
+            let mut resolved = Vec::new();
+            for exit in exits {
+                let Some(direction) = Direction::parse(&exit.direction) else {
+                    continue;
+                };
+                resolved.push((direction, exit.coordinate));
+
+                self.hexes
+                    .entry(key(exit.coordinate))
+                    .or_insert_with(|| KnownHex {
+                        coordinate: exit.coordinate,
+                        terrain: exit.terrain.clone(),
+                        province: exit.province.clone(),
+                        visited: false,
+                        roads: Vec::new(),
+                        units: Vec::new(),
+                        last_seen_turn: None,
+                    });
+            }
+            self.exits.insert(from.clone(), resolved);
+        }
     }
 
     /// How many hexes are known at all, visited or merely named.

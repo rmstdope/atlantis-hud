@@ -256,3 +256,123 @@ fn swimming_is_read_from_the_swim_capacity_alone() {
         .expect("the report is full of foreign units");
     assert!(!can_swim(foreign));
 }
+
+/// A map remembered across turns is what makes a route longer than one step possible.
+///
+/// A single report describes eleven hexes and names fifty-four more, but the named ones carry no
+/// exits of their own, so the graph stops dead at the fringe. Regions remembered from earlier turns
+/// bring their exits with them, and the pieces join up.
+#[test]
+fn remembered_regions_join_the_map_up_where_one_report_cannot() {
+    use atlantis_hud_core::movement::graph::RememberedRegion;
+
+    // Two turns of the same corridor, each describing one end of it.
+    let older = parse_report_full(
+        "Foo (1) Report\n\n\
+         plain (1,1) in Nowhere, 10 peasants (orcs), $5.\n\n\
+         Exits:\n  Southeast : plain (2,2) in Nowhere.\n",
+    );
+    let newer = parse_report_full(
+        "Foo (1) Report\n\n\
+         plain (2,2) in Nowhere, 10 peasants (orcs), $5.\n\n\
+         Exits:\n  Northwest : plain (1,1) in Nowhere.\n  Southeast : plain (3,3) in Nowhere.\n",
+    );
+
+    // From the newer report alone, (1,1) is a name with no exits: nothing leads back out of it.
+    let alone = MapKnowledge::from_report(&newer);
+    assert_eq!(alone.neighbours(at(1, 1)).count(), 0);
+
+    let remembered = MapKnowledge::from_remembered(
+        &newer,
+        &[RememberedRegion {
+            region: older.regions[0].clone(),
+            last_seen_turn: 40,
+        }],
+    );
+
+    // Now (1,1) is a hex the faction stood in, with the exit it had at the time.
+    let hex = remembered.hex(at(1, 1)).expect("remembered");
+    assert!(hex.visited);
+    assert_eq!(hex.last_seen_turn, Some(40));
+    assert_eq!(
+        remembered.neighbours(at(1, 1)).collect::<Vec<_>>(),
+        vec![(Direction::Southeast, at(2, 2))]
+    );
+
+    // And the graph now spans both ends rather than stopping at the fringe.
+    assert_eq!(remembered.visited_count(), 2);
+}
+
+/// The current report wins wherever the two disagree. A hex described this turn is worth more than
+/// the same hex remembered from turn forty, and only the current description can be trusted about
+/// who is standing in it.
+#[test]
+fn the_current_report_overrides_what_was_remembered() {
+    use atlantis_hud_core::movement::graph::RememberedRegion;
+
+    let remembered_region = parse_report_full(
+        "Foo (1) Report\n\n\
+         plain (1,1) in Nowhere, 10 peasants (orcs), $5.\n\n\
+         Exits:\n  Southeast : plain (2,2) in Nowhere.\n\n\
+         - Someone (500), Bar (2), 3 orcs [ORC].\n",
+    )
+    .regions[0]
+        .clone();
+
+    // The same hex, now a mountain and empty of strangers.
+    let current = parse_report_full(
+        "Foo (1) Report\n\n\
+         mountain (1,1) in Nowhere, 10 peasants (orcs), $5.\n\n\
+         Exits:\n  Southeast : plain (2,2) in Nowhere.\n",
+    );
+
+    let map = MapKnowledge::from_remembered(
+        &current,
+        &[RememberedRegion {
+            region: remembered_region,
+            last_seen_turn: 40,
+        }],
+    );
+
+    let hex = map.hex(at(1, 1)).expect("known");
+    assert_eq!(hex.terrain, "mountain", "this turn's description wins");
+    assert!(
+        hex.units.is_empty(),
+        "a remembered garrison is not evidence of a present one"
+    );
+}
+
+/// A hex remembered twice keeps the more recent description.
+#[test]
+fn the_newer_of_two_memories_wins() {
+    use atlantis_hud_core::movement::graph::RememberedRegion;
+
+    let make = |terrain: &str| {
+        parse_report_full(&format!(
+            "Foo (1) Report\n\n\
+             {terrain} (5,5) in Nowhere, 10 peasants (orcs), $5.\n\n\
+             Exits:\n  North : plain (5,3) in Nowhere.\n"
+        ))
+        .regions[0]
+            .clone()
+    };
+
+    let empty = parse_report_full("Foo (1) Report\n");
+    let map = MapKnowledge::from_remembered(
+        &empty,
+        &[
+            RememberedRegion {
+                region: make("swamp"),
+                last_seen_turn: 60,
+            },
+            RememberedRegion {
+                region: make("forest"),
+                last_seen_turn: 20,
+            },
+        ],
+    );
+
+    let hex = map.hex(at(5, 5)).expect("remembered");
+    assert_eq!(hex.terrain, "swamp");
+    assert_eq!(hex.last_seen_turn, Some(60));
+}
