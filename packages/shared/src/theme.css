@@ -1,6 +1,17 @@
 @import "tailwindcss";
 
 /*
+ * Where the class names live.
+ *
+ * Automatic detection starts from the app that imports this file and does not follow the workspace
+ * link back out to the shared package, so every utility would be tree-shaken away and the app would
+ * render completely unstyled. Naming the sources is what keeps that from happening silently.
+ */
+@source "./**/*.{ts,tsx}";
+@source "../../../apps/web/src/**/*.{ts,tsx}";
+@source "../../../apps/desktop/src/**/*.{ts,tsx}";
+
+/*
  * Design tokens for the Atlantis HUD workspace.
  *
  * The palette is the one the layout proposals were approved in: a dark instrument panel with a
