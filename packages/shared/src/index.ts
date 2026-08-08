@@ -6,4 +6,5 @@ export * from "./mapData";
 export * from "./MapWorkspacePanel";
 export * from "./ReportImportPanel";
 export * from "./orderEditor";
+export * from "./ordersDocument";
 export * from "./OrderEditorPanel";
