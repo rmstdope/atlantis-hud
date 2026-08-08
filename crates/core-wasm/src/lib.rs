@@ -4,8 +4,8 @@
 use std::path::Path;
 
 use atlantis_hud_core::{
-    game_info, parse_report, validate_orders, OrderDiagnosticSeverity, OrderValidationResult,
-    ReportParseResult,
+    diff_imported_turn, game_info, parse_report, validate_orders, ImportedTurnSnapshot,
+    OrderDiagnosticSeverity, OrderValidationResult, ReportParseResult,
 };
 #[cfg(not(target_arch = "wasm32"))]
 use atlantis_hud_core_persistence::{
@@ -24,6 +24,15 @@ struct GameInfoDto {
     name: String,
     ruleset_version: String,
     max_faction_count: u16,
+}
+
+/// Everything the browser storage adapter needs to persist one import.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PreparedImportDto {
+    turn_number: Option<u32>,
+    candidate: ImportedTurnSnapshot,
+    parse_result: ReportParseResultDto,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -296,6 +305,52 @@ pub fn get_game_info() -> Result<JsValue, JsValue> {
 pub fn parse_report_state(raw_report: String) -> Result<JsValue, JsValue> {
     let parsed = ReportParseResultDto::from(parse_report(&raw_report));
     serde_wasm_bindgen::to_value(&parsed).map_err(|error| JsValue::from_str(&error.to_string()))
+}
+
+/// Parses a report and returns everything needed to store it, alongside the parse result.
+///
+/// The browser has no SQLite, so its storage adapter supplies the read and the write while every
+/// rule about what gets stored stays here.
+#[wasm_bindgen]
+pub fn prepare_report_import_state(raw_report: String) -> Result<JsValue, JsValue> {
+    let parsed = parse_report(&raw_report);
+    let turn_number = parsed.turn_header.as_ref().map(|header| header.turn_number);
+
+    let candidate = ImportedTurnSnapshot {
+        parsed_payload_json: serde_json::to_string(&parsed)
+            .map_err(|error| JsValue::from_str(&error.to_string()))?,
+        warnings_payload_json: serde_json::to_string(&parsed.warnings)
+            .map_err(|error| JsValue::from_str(&error.to_string()))?,
+        raw_report,
+    };
+
+    let prepared = PreparedImportDto {
+        turn_number,
+        candidate,
+        parse_result: ReportParseResultDto::from(parsed),
+    };
+
+    serde_wasm_bindgen::to_value(&prepared).map_err(|error| JsValue::from_str(&error.to_string()))
+}
+
+/// Compares a prepared import candidate against the stored snapshot, if any.
+///
+/// Pass `null` for `existing` when nothing is stored under the key.
+#[wasm_bindgen]
+pub fn diff_imported_turn_state(existing: JsValue, candidate: JsValue) -> Result<JsValue, JsValue> {
+    let existing: Option<ImportedTurnSnapshot> = if existing.is_null() || existing.is_undefined() {
+        None
+    } else {
+        Some(
+            serde_wasm_bindgen::from_value(existing)
+                .map_err(|error| JsValue::from_str(&error.to_string()))?,
+        )
+    };
+    let candidate: ImportedTurnSnapshot = serde_wasm_bindgen::from_value(candidate)
+        .map_err(|error| JsValue::from_str(&error.to_string()))?;
+
+    let diff = diff_imported_turn(existing.as_ref(), &candidate);
+    serde_wasm_bindgen::to_value(&diff).map_err(|error| JsValue::from_str(&error.to_string()))
 }
 
 /// Validates one draft of Atlantis orders and returns structured diagnostics.

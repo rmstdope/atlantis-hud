@@ -3,6 +3,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use atlantis_hud_core::{diff_imported_turn, ImportedTurnSnapshot};
 use rusqlite::{params, Connection, ErrorCode, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -235,21 +236,28 @@ pub fn preview_imported_turn(
     let mut connection = open_database(database_path)?;
     apply_migrations(&mut connection)?;
     let existing = load_imported_turn_from_connection(&connection, &candidate.key)?;
-    let Some(existing_record) = existing else {
-        return Ok(ImportedTurnPreview {
-            exists: false,
-            raw_changed: false,
-            parsed_changed: false,
-            warnings_changed: false,
-        });
-    };
+
+    // The comparison itself lives in `core` so the browser storage adapter, which has no SQLite,
+    // reaches an identical verdict.
+    let diff = diff_imported_turn(
+        existing.as_ref().map(snapshot_of).as_ref(),
+        &snapshot_of(candidate),
+    );
 
     Ok(ImportedTurnPreview {
-        exists: true,
-        raw_changed: existing_record.raw_report != candidate.raw_report,
-        parsed_changed: existing_record.parsed_payload_json != candidate.parsed_payload_json,
-        warnings_changed: existing_record.warnings_payload_json != candidate.warnings_payload_json,
+        exists: diff.exists,
+        raw_changed: diff.raw_changed,
+        parsed_changed: diff.parsed_changed,
+        warnings_changed: diff.warnings_changed,
     })
+}
+
+fn snapshot_of(record: &ImportedTurnRecord) -> ImportedTurnSnapshot {
+    ImportedTurnSnapshot {
+        raw_report: record.raw_report.clone(),
+        parsed_payload_json: record.parsed_payload_json.clone(),
+        warnings_payload_json: record.warnings_payload_json.clone(),
+    }
 }
 
 /// Inserts or updates one imported turn payload.

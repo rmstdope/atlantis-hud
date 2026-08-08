@@ -405,9 +405,109 @@ fn push_warning(
     });
 }
 
+/// The parts of a stored turn import that decide whether re-importing changes anything.
+///
+/// Deliberately free of any storage concern so both the desktop SQLite layer and the browser
+/// storage adapter can reach the same verdict.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ImportedTurnSnapshot {
+    pub raw_report: String,
+    pub parsed_payload_json: String,
+    pub warnings_payload_json: String,
+}
+
+/// How a candidate import compares against what is already stored for the same key.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ImportedTurnDiff {
+    pub exists: bool,
+    pub raw_changed: bool,
+    pub parsed_changed: bool,
+    pub warnings_changed: bool,
+}
+
+/// Compares a candidate import against the stored one, if any.
+///
+/// A candidate with no stored counterpart reports `exists: false` and no changes, because there is
+/// nothing to overwrite. This is what drives the overwrite confirmation, so desktop and web must
+/// never disagree about it.
+#[must_use]
+pub fn diff_imported_turn(
+    existing: Option<&ImportedTurnSnapshot>,
+    candidate: &ImportedTurnSnapshot,
+) -> ImportedTurnDiff {
+    let Some(existing) = existing else {
+        return ImportedTurnDiff {
+            exists: false,
+            raw_changed: false,
+            parsed_changed: false,
+            warnings_changed: false,
+        };
+    };
+
+    ImportedTurnDiff {
+        exists: true,
+        raw_changed: existing.raw_report != candidate.raw_report,
+        parsed_changed: existing.parsed_payload_json != candidate.parsed_payload_json,
+        warnings_changed: existing.warnings_payload_json != candidate.warnings_payload_json,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn snapshot(raw: &str, parsed: &str, warnings: &str) -> ImportedTurnSnapshot {
+        ImportedTurnSnapshot {
+            raw_report: raw.to_string(),
+            parsed_payload_json: parsed.to_string(),
+            warnings_payload_json: warnings.to_string(),
+        }
+    }
+
+    #[test]
+    fn diff_reports_no_conflict_when_nothing_is_stored() {
+        let candidate = snapshot("raw", "parsed", "warnings");
+
+        assert_eq!(
+            diff_imported_turn(None, &candidate),
+            ImportedTurnDiff {
+                exists: false,
+                raw_changed: false,
+                parsed_changed: false,
+                warnings_changed: false,
+            }
+        );
+    }
+
+    #[test]
+    fn diff_reports_existing_but_unchanged_for_an_identical_reimport() {
+        let stored = snapshot("raw", "parsed", "warnings");
+        let candidate = stored.clone();
+
+        assert_eq!(
+            diff_imported_turn(Some(&stored), &candidate),
+            ImportedTurnDiff {
+                exists: true,
+                raw_changed: false,
+                parsed_changed: false,
+                warnings_changed: false,
+            }
+        );
+    }
+
+    #[test]
+    fn diff_flags_each_payload_independently() {
+        let stored = snapshot("raw", "parsed", "warnings");
+
+        let raw_only = diff_imported_turn(Some(&stored), &snapshot("other", "parsed", "warnings"));
+        assert!(raw_only.raw_changed && !raw_only.parsed_changed && !raw_only.warnings_changed);
+
+        let parsed_only = diff_imported_turn(Some(&stored), &snapshot("raw", "other", "warnings"));
+        assert!(!parsed_only.raw_changed && parsed_only.parsed_changed);
+
+        let warnings_only = diff_imported_turn(Some(&stored), &snapshot("raw", "parsed", "other"));
+        assert!(!warnings_only.parsed_changed && warnings_only.warnings_changed);
+    }
 
     #[test]
     fn game_info_uses_stable_identifier() {
