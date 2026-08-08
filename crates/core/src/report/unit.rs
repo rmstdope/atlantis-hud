@@ -195,13 +195,15 @@ fn parse_skills(value: &str) -> Vec<Skill> {
         .collect()
 }
 
-/// Sums the men a unit contains.
+/// Size of the unit's leading item group.
 ///
-/// Men are the items that are not equipment, and the report gives no flag distinguishing them, so
-/// this excludes silver — which is never a man — and counts the first race-like entry group. In
-/// practice a unit's men are its leading item entries, so summing everything that is not silver
-/// would over-count carried goods; instead only the first item is counted when it is not silver,
-/// matching how the game lists a unit's composition first.
+/// A report lists a unit's composition first and its equipment after, with no marker between them,
+/// so `20 hill dwarves [HDWA], 159 silver [SILV]` gives 20 correctly while
+/// `50 leaders [LEAD], 20 nomads [NOMA]` gives only 50. Summing everything that is not silver would
+/// be worse, because equipment follows men far more often than a second race does.
+///
+/// Settling this properly needs the `Item reports` section, which names the races, and that is not
+/// parsed yet. Until then the leading group is the honest answer rather than a wrong total.
 fn count_men(items: &[ItemAmount]) -> i64 {
     items
         .first()
@@ -323,6 +325,26 @@ mod tests {
 
         assert!(unit.skills.is_empty());
         assert_eq!(unit.men, 6);
+    }
+
+    #[test]
+    fn counts_only_the_leading_group_for_a_multi_race_unit() {
+        // Documented limitation rather than an accident: without an item reference there is no way
+        // to tell where a unit's men end and its equipment begins.
+        let unit = parse_unit(
+            "- Mixed Company (500), Wanderers (83), 50 leaders [LEAD], 20 nomads [NOMA].",
+            false,
+            "1:7,53",
+            None,
+        )
+        .expect("unit should parse");
+
+        assert_eq!(unit.men, 50, "the leading group, not the sum");
+        assert_eq!(
+            unit.items.len(),
+            2,
+            "both groups are still available as items"
+        );
     }
 
     #[test]

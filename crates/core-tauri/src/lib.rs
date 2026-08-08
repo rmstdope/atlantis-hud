@@ -8,9 +8,10 @@ use atlantis_hud_core::{
 };
 use atlantis_hud_core_persistence::{
     create_project, insert_imported_turn, load_imported_turn, load_order_draft, open_project,
-    preview_imported_turn, upsert_imported_turn, upsert_order_draft, ImportedTurnKey,
-    ImportedTurnPreview, ImportedTurnRecord, OpenedProject, OrderDraftKey, OrderDraftRecord,
-    PersistenceError, ProjectManifest, ProjectMetadata, ReportSourceRef,
+    preview_imported_turn, upsert_imported_turn, upsert_order_draft, upsert_region_sightings,
+    ImportedTurnKey, ImportedTurnPreview, ImportedTurnRecord, OpenedProject, OrderDraftKey,
+    OrderDraftRecord, PersistenceError, ProjectManifest, ProjectMetadata, RegionSighting,
+    ReportSourceRef,
 };
 use serde::{Deserialize, Serialize};
 
@@ -475,6 +476,33 @@ pub fn command_commit_report_import(
         })?;
     }
 
+    // Regions get their own rows as well as living inside the turn payload, each carrying the turn
+    // it was seen in. Without this the map cannot tell a region in the current report from one held
+    // over from an earlier turn, which is the difference between two of its four states.
+    let sightings: Vec<RegionSighting> = atlantis_hud_core::report::parse_report_full(raw_report)
+        .regions
+        .iter()
+        .map(|region| RegionSighting {
+            region_id: region.region_id.clone(),
+            x: region.coordinate.x,
+            y: region.coordinate.y,
+            z: region.coordinate.z,
+            terrain: region.terrain.clone(),
+            province: region.province.clone(),
+            label: region.label(),
+            last_seen_turn: turn_number,
+            payload_json: serde_json::to_string(region).unwrap_or_else(|_| "null".to_string()),
+        })
+        .collect();
+
+    upsert_region_sightings(
+        Path::new(database_path),
+        project_id,
+        confirmed_faction_id,
+        &sightings,
+    )
+    .map_err(|error| error.to_string())?;
+
     Ok(ImportedTurnPreviewDto::from(preview))
 }
 
@@ -731,6 +759,51 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
             .expect("load draft");
 
         assert_eq!(loaded, Some(saved));
+    }
+
+    #[test]
+    fn committing_an_import_records_when_each_region_was_seen() {
+        use atlantis_hud_core_persistence::load_region_sightings;
+
+        let dir = tempdir().expect("tempdir");
+        let project_path = dir.path().join("campaign.atlantis-project.json");
+        let created = command_create_project(
+            &project_path.to_string_lossy(),
+            ProjectManifestDto {
+                manifest_version: 1,
+                metadata: ProjectMetadataDto {
+                    project_id: "faction-12".to_string(),
+                    project_name: "Faction 12".to_string(),
+                },
+                report_sources: Vec::new(),
+            },
+        )
+        .expect("create project");
+
+        let report = "\
+Atlantis Report For:
+Crimson Tide (17) (Magic 5)
+March, Year 1
+
+plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans), $500.
+------------------------------------------------------------
+  Wages: $12.0 (Max: $300).
+
+* Guard Patrol (100), Crimson Tide (17), behind, 10 humans [HUMN].
+";
+
+        command_commit_report_import(&created.database_path, "faction-12", "17", report, false)
+            .expect("commit import");
+
+        let sightings =
+            load_region_sightings(Path::new(&created.database_path), "faction-12", "17")
+                .expect("load sightings");
+
+        assert_eq!(sightings.len(), 1);
+        assert_eq!(sightings[0].region_id, "1:12,34");
+        assert_eq!(sightings[0].terrain, "plain");
+        // March of Year 1 is turn 2, and the sighting carries that rather than nothing.
+        assert_eq!(sightings[0].last_seen_turn, 2);
     }
 
     #[test]

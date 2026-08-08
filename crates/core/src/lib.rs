@@ -309,32 +309,21 @@ pub fn parse_report(source: &str) -> ReportParseResult {
             season,
         });
 
-    // The reporting faction comes first, then every other faction seen on a unit, in the order the
-    // report mentions them.
-    let mut detected_factions: Vec<FactionInfo> = Vec::new();
-    let push_faction = |id: String, name: String, into: &mut Vec<FactionInfo>| {
-        if !into.iter().any(|faction| faction.faction_id == id) {
-            into.push(FactionInfo {
-                faction_id: id,
-                name,
-            });
-        }
-    };
-
-    if let (Some(id), Some(name)) = (
+    // Only the reporting faction. This list is what `reject_import` treats as acceptable values for
+    // the confirmed faction, so it must never include the foreign factions a report merely makes
+    // visible: confirming under one of those would file the turn under someone else's faction.
+    // Foreign factions are still available, on the units that belong to them.
+    let detected_factions: Vec<FactionInfo> = match (
         parsed.header.faction_id.clone(),
         parsed.header.faction_name.clone(),
     ) {
-        push_faction(id, name, &mut detected_factions);
-    }
+        (Some(faction_id), Some(name)) => vec![FactionInfo { faction_id, name }],
+        _ => Vec::new(),
+    };
 
     let mut units = Vec::new();
     let mut inventories = Vec::new();
     for unit in parsed.units() {
-        if let (Some(id), Some(name)) = (unit.faction_id.clone(), unit.faction_name.clone()) {
-            push_faction(id, name, &mut detected_factions);
-        }
-
         units.push(UnitSummary {
             unit_id: unit.unit_id.clone(),
             name: unit.name.clone(),
@@ -634,6 +623,36 @@ mod tests {
         assert_eq!(
             rejection.as_deref(),
             Some("parsed report did not meet minimum import threshold")
+        );
+    }
+
+    #[test]
+    fn a_faction_that_merely_appears_in_the_report_is_not_a_candidate() {
+        // A report shows foreign units, and their factions are visible on those units. Confirming
+        // an import under one of them would file the turn under someone else's faction, so only the
+        // reporting faction is ever a candidate.
+        let with_neighbour = MINI_REPORT.replace(
+            "* Ranger Squad (200), Crimson Tide (17), behind, 5 humans [HUMN].",
+            "- Watcher (900), Distant Drummer (15), avoiding, behind, 1 human [HUMN].",
+        );
+
+        let parsed = parse_report(&with_neighbour);
+        assert_eq!(
+            parsed
+                .detected_factions
+                .iter()
+                .map(|faction| faction.faction_id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["17"],
+            "the neighbour is visible but is not a candidate"
+        );
+
+        // The neighbour is still reachable, on the unit that belongs to it.
+        assert!(parsed.units.iter().any(|unit| unit.unit_id == "900"));
+
+        assert_eq!(
+            reject_import(&parsed, "15").as_deref(),
+            Some("confirmed faction does not exist in parsed report candidates")
         );
     }
 

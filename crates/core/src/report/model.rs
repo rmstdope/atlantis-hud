@@ -109,7 +109,12 @@ pub struct ReportUnit {
     pub flags: Vec<String>,
     pub items: Vec<ItemAmount>,
     pub skills: Vec<Skill>,
-    /// Total men, summed across the races the unit contains.
+    /// Size of the unit's leading item group, which the game uses to open a unit's description.
+    ///
+    /// Not a true total when a unit contains more than one race: a report gives no marker
+    /// separating men from equipment, so `50 leaders [LEAD], 20 nomads [NOMA], 30 swords [SWOR]`
+    /// cannot be split without an item reference. A report does carry an `Item reports` section
+    /// describing races, which would settle it, but that section is not parsed yet.
     pub men: i64,
     pub weight: Option<i64>,
     pub capacity: Option<String>,

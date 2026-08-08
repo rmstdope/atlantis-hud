@@ -126,6 +126,7 @@ export type ReportUnit = {
   flags: string[];
   items: ItemAmount[];
   skills: SkillInfo[];
+  /** Size of the unit's leading item group. Not a true total for a multi-race unit; see the Rust model. */
   men: number;
   weight: number | null;
   capacity: string | null;
