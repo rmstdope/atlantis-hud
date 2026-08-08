@@ -107,7 +107,10 @@ describe("core client adapter contract parity", () => {
       open_project_state() {
         return openedProjectPayload;
       },
-      parse_report_state() {
+      parse_report_full_state() {
+      return { header: {}, regions: [], ordersTemplate: null };
+    },
+    parse_report_state() {
         return parsePayload;
       },
       preview_report_import_state() {

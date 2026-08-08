@@ -8,9 +8,10 @@ use atlantis_hud_core::{
 };
 use atlantis_hud_core_persistence::{
     create_project, insert_imported_turn, load_imported_turn, load_order_draft, open_project,
-    preview_imported_turn, upsert_imported_turn, upsert_order_draft, ImportedTurnKey,
-    ImportedTurnPreview, ImportedTurnRecord, OpenedProject, OrderDraftKey, OrderDraftRecord,
-    PersistenceError, ProjectManifest, ProjectMetadata, ReportSourceRef,
+    preview_imported_turn, upsert_imported_turn, upsert_order_draft, upsert_region_sightings,
+    ImportedTurnKey, ImportedTurnPreview, ImportedTurnRecord, OpenedProject, OrderDraftKey,
+    OrderDraftRecord, PersistenceError, ProjectManifest, ProjectMetadata, RegionSighting,
+    ReportSourceRef,
 };
 use serde::{Deserialize, Serialize};
 
@@ -367,6 +368,16 @@ pub fn command_open_project(project_file_path: &str) -> Result<OpenedProjectDto,
         .map_err(|error| error.to_string())
 }
 
+/// Parses a report into the full domain model.
+///
+/// Returned as JSON rather than a DTO: the model is large, purely descriptive, and the shape the
+/// TypeScript side wants is exactly what serde already produces.
+#[must_use]
+pub fn command_parse_report_full(raw_report: &str) -> serde_json::Value {
+    serde_json::to_value(atlantis_hud_core::report::parse_report_full(raw_report))
+        .unwrap_or(serde_json::Value::Null)
+}
+
 /// Parses one report and returns tolerant parser output.
 #[must_use]
 pub fn command_parse_report(raw_report: &str) -> ReportParseResultDto {
@@ -464,6 +475,33 @@ pub fn command_commit_report_import(
             _ => error.to_string(),
         })?;
     }
+
+    // Regions get their own rows as well as living inside the turn payload, each carrying the turn
+    // it was seen in. Without this the map cannot tell a region in the current report from one held
+    // over from an earlier turn, which is the difference between two of its four states.
+    let sightings: Vec<RegionSighting> = atlantis_hud_core::report::parse_report_full(raw_report)
+        .regions
+        .iter()
+        .map(|region| RegionSighting {
+            region_id: region.region_id.clone(),
+            x: region.coordinate.x,
+            y: region.coordinate.y,
+            z: region.coordinate.z,
+            terrain: region.terrain.clone(),
+            province: region.province.clone(),
+            label: region.label(),
+            last_seen_turn: turn_number,
+            payload_json: serde_json::to_string(region).unwrap_or_else(|_| "null".to_string()),
+        })
+        .collect();
+
+    upsert_region_sightings(
+        Path::new(database_path),
+        project_id,
+        confirmed_faction_id,
+        &sightings,
+    )
+    .map_err(|error| error.to_string())?;
 
     Ok(ImportedTurnPreviewDto::from(preview))
 }
@@ -627,8 +665,8 @@ mod tests {
 
         assert_eq!(created.manifest, manifest);
         assert_eq!(reopened.manifest, manifest);
-        assert_eq!(created.schema_version, 3);
-        assert_eq!(reopened.schema_version, 3);
+        assert_eq!(created.schema_version, 4);
+        assert_eq!(reopened.schema_version, 4);
     }
 
     #[test]
@@ -649,16 +687,24 @@ mod tests {
         )
         .expect("create project");
         let report = "\
-TURN: 12 Spring
-FACTION: 17 | Crimson Tide
-REGION: R1 | Coast of Dawn
-UNIT: U100 | Guard Patrol | R1
-MESSAGE: order | U100 | MOVE R2";
+Atlantis Report For:
+Crimson Tide (17) (Magic 5)
+March, Year 1
+
+Atlantis Engine Version: 5.2.5 (beta)
+NewOrigins, Version: 3.0.0 (beta)
+
+plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans), $500.
+------------------------------------------------------------
+  Wages: $12.0 (Max: $300).
+
+* Guard Patrol (100), Crimson Tide (17), behind, 10 humans [HUMN].
+";
 
         let preview =
             command_preview_report_import(&created.database_path, "faction-12", "17", report)
                 .expect("preview import");
-        assert_eq!(preview.turn_number, Some(12));
+        assert_eq!(preview.turn_number, Some(2));
         assert!(!preview.duplicate_preview.exists);
         assert!(preview.parse_result.meets_minimum_import_threshold);
 
@@ -693,7 +739,7 @@ MESSAGE: order | U100 | MOVE R2";
             validation.diagnostics,
             vec![OrderDiagnosticDto {
                 code: "unknown-command".to_string(),
-                message: "unknown order command".to_string(),
+                message: "unknown order command: FLY".to_string(),
                 line_start: 1,
                 line_end: 1,
                 severity: "error".to_string(),
@@ -716,6 +762,51 @@ MESSAGE: order | U100 | MOVE R2";
     }
 
     #[test]
+    fn committing_an_import_records_when_each_region_was_seen() {
+        use atlantis_hud_core_persistence::load_region_sightings;
+
+        let dir = tempdir().expect("tempdir");
+        let project_path = dir.path().join("campaign.atlantis-project.json");
+        let created = command_create_project(
+            &project_path.to_string_lossy(),
+            ProjectManifestDto {
+                manifest_version: 1,
+                metadata: ProjectMetadataDto {
+                    project_id: "faction-12".to_string(),
+                    project_name: "Faction 12".to_string(),
+                },
+                report_sources: Vec::new(),
+            },
+        )
+        .expect("create project");
+
+        let report = "\
+Atlantis Report For:
+Crimson Tide (17) (Magic 5)
+March, Year 1
+
+plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans), $500.
+------------------------------------------------------------
+  Wages: $12.0 (Max: $300).
+
+* Guard Patrol (100), Crimson Tide (17), behind, 10 humans [HUMN].
+";
+
+        command_commit_report_import(&created.database_path, "faction-12", "17", report, false)
+            .expect("commit import");
+
+        let sightings =
+            load_region_sightings(Path::new(&created.database_path), "faction-12", "17")
+                .expect("load sightings");
+
+        assert_eq!(sightings.len(), 1);
+        assert_eq!(sightings[0].region_id, "1:12,34");
+        assert_eq!(sightings[0].terrain, "plain");
+        // March of Year 1 is turn 2, and the sighting carries that rather than nothing.
+        assert_eq!(sightings[0].last_seen_turn, 2);
+    }
+
+    #[test]
     fn tauri_adapter_loads_imported_turn_payload_after_commit() {
         let dir = tempdir().expect("tempdir");
         let project_path = dir.path().join("campaign.atlantis-project.json");
@@ -733,22 +824,31 @@ MESSAGE: order | U100 | MOVE R2";
         )
         .expect("create project");
         let report = "\
-TURN: 12 Spring
-FACTION: 17 | Crimson Tide
-REGION: A1 | Coast of Dawn
-UNIT: U100 | Guard Patrol | A1";
+Atlantis Report For:
+Crimson Tide (17) (Magic 5)
+March, Year 1
+
+Atlantis Engine Version: 5.2.5 (beta)
+NewOrigins, Version: 3.0.0 (beta)
+
+plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans), $500.
+------------------------------------------------------------
+  Wages: $12.0 (Max: $300).
+
+* Guard Patrol (100), Crimson Tide (17), behind, 10 humans [HUMN].
+";
 
         command_commit_report_import(&created.database_path, "faction-12", "17", report, false)
             .expect("import commit should succeed");
 
-        let loaded = command_load_imported_turn(&created.database_path, "faction-12", "17", 12)
+        let loaded = command_load_imported_turn(&created.database_path, "faction-12", "17", 2)
             .expect("load imported turn should succeed")
             .expect("imported turn should exist");
 
         assert_eq!(loaded.key.project_id, "faction-12");
         assert_eq!(loaded.key.faction_id, "17");
-        assert_eq!(loaded.key.turn_number, 12);
-        assert_eq!(loaded.parse_result.regions[0].region_id, "A1");
-        assert_eq!(loaded.parse_result.units[0].region_id, "A1");
+        assert_eq!(loaded.key.turn_number, 2);
+        assert_eq!(loaded.parse_result.regions[0].region_id, "1:12,34");
+        assert_eq!(loaded.parse_result.units[0].region_id, "1:12,34");
     }
 }

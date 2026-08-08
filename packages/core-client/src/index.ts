@@ -83,6 +83,108 @@ export type ReportParseResult = {
   meetsMinimumImportThreshold: boolean;
 };
 
+
+/**
+ * Coordinates in the game's own space. Levels start at 1 for the surface.
+ *
+ * Only coordinates where `x + y` is even exist, which is why the map is drawn with flat-top hexes:
+ * north and south are direct neighbours.
+ */
+export type Coordinate = { x: number; y: number; z: number };
+
+export type ItemAmount = { amount: number; name: string; tag: string };
+export type MarketItem = ItemAmount & { price: number };
+export type SettlementInfo = { name: string; size: string };
+
+export type RegionExit = {
+  direction: string;
+  terrain: string;
+  coordinate: Coordinate;
+  province: string;
+  settlement: SettlementInfo | null;
+};
+
+export type StructureInfo = {
+  structureId: string;
+  name: string;
+  kind: string;
+  description: string | null;
+  needs: number | null;
+};
+
+export type SkillInfo = { name: string; tag: string; level: number; points: number };
+
+/** A unit as the report describes it. `own` comes from the report's marker, never from inference. */
+export type ReportUnit = {
+  unitId: string;
+  name: string;
+  regionId: string;
+  factionId: string | null;
+  factionName: string | null;
+  own: boolean;
+  onGuard: boolean;
+  flags: string[];
+  items: ItemAmount[];
+  skills: SkillInfo[];
+  /** Size of the unit's leading item group. Not a true total for a multi-race unit; see the Rust model. */
+  men: number;
+  weight: number | null;
+  capacity: string | null;
+  structureId: string | null;
+};
+
+export type ReportRegion = {
+  regionId: string;
+  coordinate: Coordinate;
+  terrain: string;
+  province: string;
+  settlement: SettlementInfo | null;
+  population: number | null;
+  race: string | null;
+  taxBase: number | null;
+  wages: string | null;
+  maxWages: number | null;
+  entertainment: number | null;
+  products: ItemAmount[];
+  wanted: MarketItem[];
+  forSale: MarketItem[];
+  exits: RegionExit[];
+  structures: StructureInfo[];
+  units: ReportUnit[];
+};
+
+export type ReportHeaderInfo = {
+  factionId: string | null;
+  factionName: string | null;
+  factionTypes: string[];
+  month: string | null;
+  year: number | null;
+  turnNumber: number | null;
+  engineVersion: string | null;
+  ruleset: string | null;
+  rulesetVersion: string | null;
+  unclaimedSilver: number | null;
+  errors: string[];
+  events: string[];
+};
+
+/** One unit's slice of the orders document, comments included so the document round trips. */
+export type UnitOrders = { unitId: string; lines: string[]; lineStart: number };
+
+export type OrdersTemplate = {
+  /** The document verbatim, from `#atlantis` through `#end`. Carries the faction password. */
+  text: string;
+  factionId: string | null;
+  units: UnitOrders[];
+};
+
+/** The full model a report describes, as opposed to the flat summary in `ReportParseResult`. */
+export type ParsedReport = {
+  header: ReportHeaderInfo;
+  regions: ReportRegion[];
+  ordersTemplate: OrdersTemplate | null;
+};
+
 export type ImportedTurnPreview = {
   exists: boolean;
   rawChanged: boolean;
@@ -296,6 +398,7 @@ export interface CoreAdapter {
   createProject(projectFilePath: string, manifest: ProjectManifest): Promise<unknown> | unknown;
   openProject(projectFilePath: string): Promise<unknown> | unknown;
   parseReport(rawReport: string): Promise<unknown> | unknown;
+  parseReportFull(rawReport: string): Promise<unknown> | unknown;
   previewReportImport(
     databasePath: string,
     projectId: string,
@@ -337,6 +440,8 @@ export interface CoreClient {
   createProject(projectFilePath: string, manifest: ProjectManifest): Promise<OpenedProject>;
   openProject(projectFilePath: string): Promise<OpenedProject>;
   parseReport(rawReport: string): Promise<ReportParseResult>;
+  /** The full domain model. Returned as-is: it is descriptive data, not a contract to normalize. */
+  parseReportFull(rawReport: string): Promise<ParsedReport>;
   previewReportImport(
     databasePath: string,
     projectId: string,
@@ -378,6 +483,7 @@ export interface WasmBindings {
   create_project_state(projectFilePath: string, manifest: ProjectManifest): unknown;
   open_project_state(projectFilePath: string): unknown;
   parse_report_state(rawReport: string): unknown;
+  parse_report_full_state(rawReport: string): unknown;
   preview_report_import_state(
     databasePath: string,
     projectId: string,
@@ -826,6 +932,9 @@ export function createCoreClient(adapter: CoreAdapter): CoreClient {
       const value = await adapter.parseReport(rawReport);
       return normalizeParseResult(value);
     },
+    async parseReportFull(rawReport: string) {
+      return (await adapter.parseReportFull(rawReport)) as ParsedReport;
+    },
     async previewReportImport(databasePath: string, projectId: string, confirmedFactionId: string, rawReport: string) {
       const value = await adapter.previewReportImport(databasePath, projectId, confirmedFactionId, rawReport);
       return normalizeReportImportPreview(value);
@@ -900,6 +1009,9 @@ export function createWasmAdapter(bindings: WasmBindings): CoreAdapter {
     parseReport(rawReport: string) {
       return bindings.parse_report_state(rawReport);
     },
+    parseReportFull(rawReport: string) {
+      return bindings.parse_report_full_state(rawReport);
+    },
     previewReportImport(databasePath: string, projectId: string, confirmedFactionId: string, rawReport: string) {
       return bindings.preview_report_import_state(databasePath, projectId, confirmedFactionId, rawReport);
     },
@@ -965,6 +1077,11 @@ export function createTauriAdapter(invoke: TauriInvoke): CoreAdapter {
     },
     parseReport(rawReport: string) {
       return invoke<ReportParseResultWireShape>("parse_report", {
+        raw_report: rawReport
+      });
+    },
+    parseReportFull(rawReport: string) {
+      return invoke<ParsedReport>("parse_report_full", {
         raw_report: rawReport
       });
     },

@@ -1,5 +1,7 @@
 //! Shared domain core for Atlantis HUD.
 
+pub mod report;
+
 use serde::{Deserialize, Serialize};
 
 /// Canonical cross-platform game metadata contract.
@@ -74,7 +76,83 @@ impl OrderValidationResult {
     }
 }
 
-/// Validates one text order draft using line-oriented command rules.
+/// Order commands the NewOrigins ruleset accepts.
+///
+/// Only the command name is checked. Argument shapes vary widely between orders and depend on game
+/// state the parser does not have, so inventing arity rules would reject valid orders — worse for a
+/// player than letting the server have the last word.
+pub const ORDER_COMMANDS: &[&str] = &[
+    "ADDRESS",
+    "ADVANCE",
+    "ANNIHILATE",
+    "ARMOR",
+    "ASSASSINATE",
+    "ATTACK",
+    "AUTOTAX",
+    "AVOID",
+    "BEHIND",
+    "BUILD",
+    "BUY",
+    "CAST",
+    "CLAIM",
+    "COMBAT",
+    "CONSUME",
+    "DECLARE",
+    "DESCRIBE",
+    "DESTROY",
+    "ENDFORM",
+    "ENDTURN",
+    "ENTER",
+    "ENTERTAIN",
+    "EVICT",
+    "EXCHANGE",
+    "FACTION",
+    "FIND",
+    "FORGET",
+    "FORM",
+    "GIVE",
+    "GUARD",
+    "HOLD",
+    "IDLE",
+    "JOIN",
+    "LEAVE",
+    "MOVE",
+    "NAME",
+    "NOAID",
+    "NOCROSS",
+    "NOSPOILS",
+    "OPTION",
+    "PASSWORD",
+    "PILLAGE",
+    "PREPARE",
+    "PRODUCE",
+    "PROMOTE",
+    "QUIT",
+    "RESTART",
+    "REVEAL",
+    "SAIL",
+    "SELL",
+    "SHARE",
+    "SHOW",
+    "SPOILS",
+    "STEAL",
+    "STUDY",
+    "SWEAR",
+    "TAKE",
+    "TAX",
+    "TEACH",
+    "TRANSPORT",
+    "TURN",
+    "WEAPON",
+    "WISHDRAW",
+    "WITHDRAW",
+    "WORK",
+];
+
+/// Validates one order document, line by line.
+///
+/// Tolerant by design: it rejects commands the ruleset has no such thing as, and otherwise leaves
+/// judgement to the server, which alone knows the game state an order depends on.
 #[must_use]
 pub fn validate_orders(source: &str) -> OrderValidationResult {
     let mut diagnostics = Vec::new();
@@ -82,59 +160,50 @@ pub fn validate_orders(source: &str) -> OrderValidationResult {
     for (index, line) in source.lines().enumerate() {
         let line_number = index + 1;
         let trimmed = line.trim();
-        if trimmed.is_empty() || trimmed.starts_with('#') {
+
+        // Blank lines, comments, and the document's own directives carry no orders.
+        if trimmed.is_empty() || trimmed.starts_with(';') || trimmed.starts_with('#') {
             continue;
         }
 
-        let tokens = trimmed.split_whitespace().collect::<Vec<_>>();
-        let command = tokens[0];
-        let args = &tokens[1..];
+        // A leading `@` marks a repeating order; it does not change which command this is.
+        let without_repeat = trimmed.strip_prefix('@').unwrap_or(trimmed);
+        let Some(command) = without_repeat.split_whitespace().next() else {
+            continue;
+        };
 
-        match command {
-            "MOVE" => validate_command(&mut diagnostics, command, args, line_number, 2, 2, true),
-            "HOLD" => validate_command(&mut diagnostics, command, args, line_number, 0, 0, false),
-            _ => diagnostics.push(OrderDiagnostic {
+        // `unit 1234` opens a unit's block in an orders document rather than ordering anything.
+        if command.eq_ignore_ascii_case("unit") {
+            continue;
+        }
+
+        if !ORDER_COMMANDS
+            .iter()
+            .any(|known| known.eq_ignore_ascii_case(command))
+        {
+            diagnostics.push(OrderDiagnostic {
                 code: "unknown-command".to_string(),
-                message: "unknown order command".to_string(),
+                message: format!("unknown order command: {command}"),
                 line_start: line_number,
                 line_end: line_number,
                 severity: OrderDiagnosticSeverity::Error,
-            }),
+            });
+            continue;
+        }
+
+        let args = without_repeat.split_whitespace().skip(1).count();
+        if command.eq_ignore_ascii_case("move") && args == 0 {
+            diagnostics.push(OrderDiagnostic {
+                code: "missing-arguments".to_string(),
+                message: "MOVE needs at least one direction".to_string(),
+                line_start: line_number,
+                line_end: line_number,
+                severity: OrderDiagnosticSeverity::Error,
+            });
         }
     }
 
     OrderValidationResult { diagnostics }
-}
-
-fn validate_command(
-    diagnostics: &mut Vec<OrderDiagnostic>,
-    command: &str,
-    args: &[&str],
-    line_number: usize,
-    required_args: usize,
-    allowed_args: usize,
-    allow_extra_as_warning: bool,
-) {
-    if args.len() < required_args {
-        diagnostics.push(OrderDiagnostic {
-            code: "missing-arguments".to_string(),
-            message: format!("missing required arguments for {command}"),
-            line_start: line_number,
-            line_end: line_number,
-            severity: OrderDiagnosticSeverity::Error,
-        });
-        return;
-    }
-
-    if allow_extra_as_warning && args.len() > allowed_args {
-        diagnostics.push(OrderDiagnostic {
-            code: "extra-arguments".to_string(),
-            message: format!("extra arguments ignored for {command}"),
-            line_start: line_number,
-            line_end: line_number,
-            severity: OrderDiagnosticSeverity::Warning,
-        });
-    }
 }
 
 /// Severity level emitted by the tolerant report parser.
@@ -223,186 +292,99 @@ impl ReportParseResult {
 }
 
 /// Parses a single Atlantis report using tolerant semantics.
+///
+/// This is the flat summary the wire contract has always exposed. It is now derived from the real
+/// NewOrigins parser in [`report`], so the same input drives both this and the richer model that
+/// [`report::parse_report_full`] returns.
 #[must_use]
-pub fn parse_report(_source: &str) -> ReportParseResult {
-    let mut result = ReportParseResult {
-        turn_header: None,
-        detected_factions: Vec::new(),
-        regions: Vec::new(),
-        units: Vec::new(),
-        inventories: Vec::new(),
-        message_summaries: Vec::new(),
-        warnings: Vec::new(),
+pub fn parse_report(source: &str) -> ReportParseResult {
+    let parsed = report::parse_report_full(source);
+
+    let turn_header = parsed
+        .header
+        .turn_number
+        .zip(parsed.header.month.clone())
+        .map(|(turn_number, season)| TurnHeader {
+            turn_number,
+            season,
+        });
+
+    // Only the reporting faction. This list is what `reject_import` treats as acceptable values for
+    // the confirmed faction, so it must never include the foreign factions a report merely makes
+    // visible: confirming under one of those would file the turn under someone else's faction.
+    // Foreign factions are still available, on the units that belong to them.
+    let detected_factions: Vec<FactionInfo> = match (
+        parsed.header.faction_id.clone(),
+        parsed.header.faction_name.clone(),
+    ) {
+        (Some(faction_id), Some(name)) => vec![FactionInfo { faction_id, name }],
+        _ => Vec::new(),
     };
 
-    for (index, line) in _source.lines().enumerate() {
-        let line_number = index + 1;
-        let trimmed = line.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
+    let mut units = Vec::new();
+    let mut inventories = Vec::new();
+    for unit in parsed.units() {
+        units.push(UnitSummary {
+            unit_id: unit.unit_id.clone(),
+            name: unit.name.clone(),
+            region_id: unit.region_id.clone(),
+        });
 
-        if let Some(payload) = trimmed.strip_prefix("TURN:") {
-            let parts = payload.split_whitespace().collect::<Vec<_>>();
-            if parts.len() < 2 {
-                push_warning(
-                    &mut result.warnings,
-                    "turn-malformed-line",
-                    "turn",
-                    "could not parse turn line",
-                    line_number,
-                );
-                continue;
-            }
-
-            let parsed_turn_number = parts[0].parse::<u32>();
-            match parsed_turn_number {
-                Ok(turn_number) => {
-                    result.turn_header = Some(TurnHeader {
-                        turn_number,
-                        season: parts[1].to_string(),
-                    });
-                }
-                Err(_) => push_warning(
-                    &mut result.warnings,
-                    "turn-malformed-line",
-                    "turn",
-                    "could not parse turn line",
-                    line_number,
-                ),
-            }
-            continue;
-        }
-
-        if let Some(payload) = trimmed.strip_prefix("FACTION:") {
-            match split_fields(payload, 2) {
-                Ok(fields) => result.detected_factions.push(FactionInfo {
-                    faction_id: fields[0].to_string(),
-                    name: fields[1].to_string(),
-                }),
-                Err(_) => push_warning(
-                    &mut result.warnings,
-                    "faction-malformed-line",
-                    "faction",
-                    "could not parse faction line",
-                    line_number,
-                ),
-            }
-            continue;
-        }
-
-        if let Some(payload) = trimmed.strip_prefix("REGION:") {
-            match split_fields(payload, 2) {
-                Ok(fields) => result.regions.push(RegionSummary {
-                    region_id: fields[0].to_string(),
-                    name: fields[1].to_string(),
-                }),
-                Err(_) => push_warning(
-                    &mut result.warnings,
-                    "region-malformed-line",
-                    "region",
-                    "could not parse region line",
-                    line_number,
-                ),
-            }
-            continue;
-        }
-
-        if let Some(payload) = trimmed.strip_prefix("UNIT:") {
-            match split_fields(payload, 3) {
-                Ok(fields) => result.units.push(UnitSummary {
-                    unit_id: fields[0].to_string(),
-                    name: fields[1].to_string(),
-                    region_id: fields[2].to_string(),
-                }),
-                Err(_) => push_warning(
-                    &mut result.warnings,
-                    "unit-malformed-line",
-                    "unit",
-                    "could not parse unit line",
-                    line_number,
-                ),
-            }
-            continue;
-        }
-
-        if let Some(payload) = trimmed.strip_prefix("ITEM:") {
-            match split_fields(payload, 3) {
-                Ok(fields) => match fields[2].parse::<i32>() {
-                    Ok(quantity) => result.inventories.push(InventoryItem {
-                        unit_id: fields[0].to_string(),
-                        item: fields[1].to_string(),
-                        quantity,
-                    }),
-                    Err(_) => push_warning(
-                        &mut result.warnings,
-                        "item-malformed-line",
-                        "item",
-                        "could not parse item line",
-                        line_number,
-                    ),
-                },
-                Err(_) => push_warning(
-                    &mut result.warnings,
-                    "item-malformed-line",
-                    "item",
-                    "could not parse item line",
-                    line_number,
-                ),
-            }
-            continue;
-        }
-
-        if let Some(payload) = trimmed.strip_prefix("MESSAGE:") {
-            match split_fields(payload, 3) {
-                Ok(fields) => result.message_summaries.push(MessageSummary {
-                    kind: fields[0].to_string(),
-                    source: fields[1].to_string(),
-                    text: fields[2].to_string(),
-                }),
-                Err(_) => push_warning(
-                    &mut result.warnings,
-                    "message-malformed-line",
-                    "message",
-                    "could not parse message line",
-                    line_number,
-                ),
-            }
-            continue;
+        for item in &unit.items {
+            inventories.push(InventoryItem {
+                unit_id: unit.unit_id.clone(),
+                item: item.name.clone(),
+                quantity: i32::try_from(item.amount).unwrap_or(i32::MAX),
+            });
         }
     }
 
-    result
-}
+    let regions = parsed
+        .regions
+        .iter()
+        .map(|region| RegionSummary {
+            region_id: region.region_id.clone(),
+            name: region.label(),
+        })
+        .collect();
 
-fn split_fields(input: &str, expected_len: usize) -> Result<Vec<&str>, ()> {
-    let fields = input
-        .split('|')
-        .map(str::trim)
-        .filter(|field| !field.is_empty())
-        .collect::<Vec<_>>();
-    if fields.len() == expected_len {
-        Ok(fields)
-    } else {
-        Err(())
+    let message_summaries = parsed
+        .header
+        .errors
+        .iter()
+        .map(|text| MessageSummary {
+            kind: "error".to_string(),
+            source: "turn".to_string(),
+            text: text.clone(),
+        })
+        .chain(parsed.header.events.iter().map(|text| MessageSummary {
+            kind: "event".to_string(),
+            source: "turn".to_string(),
+            text: text.clone(),
+        }))
+        .collect();
+
+    let mut warnings = Vec::new();
+    if turn_header.is_none() {
+        warnings.push(ParseWarning {
+            code: "turn-header-missing".to_string(),
+            section: "header".to_string(),
+            message: "report has no recognisable turn date".to_string(),
+            line_start: 1,
+            line_end: 1,
+            severity: WarningSeverity::Warning,
+        });
     }
-}
 
-fn push_warning(
-    warnings: &mut Vec<ParseWarning>,
-    code: &str,
-    section: &str,
-    message: &str,
-    line_number: usize,
-) {
-    warnings.push(ParseWarning {
-        code: code.to_string(),
-        section: section.to_string(),
-        message: message.to_string(),
-        line_start: line_number,
-        line_end: line_number,
-        severity: WarningSeverity::Warning,
-    });
+    ReportParseResult {
+        turn_header,
+        detected_factions,
+        regions,
+        units,
+        inventories,
+        message_summaries,
+        warnings,
+    }
 }
 
 /// Checks whether a parsed report may be imported under the confirmed faction.
@@ -516,6 +498,57 @@ pub fn diff_imported_turn_fields(
 mod tests {
     use super::*;
 
+    #[test]
+    fn validate_orders_accepts_the_neworigins_vocabulary() {
+        let result = validate_orders(concat!(
+            "@study obse\n",
+            "@claim 50\n",
+            "give 242 100 SILV\n",
+            "MOVE n n\n",
+            "sail se\n",
+            "work\n",
+        ));
+
+        assert!(
+            result.diagnostics.is_empty(),
+            "unexpected diagnostics: {:?}",
+            result.diagnostics
+        );
+    }
+
+    #[test]
+    fn validate_orders_ignores_document_structure_and_comments() {
+        // An orders document seeded from a report carries all of this verbatim.
+        let result = validate_orders(concat!(
+            "#atlantis 95 \"secret\"\n",
+            ";*** mountain (7,53) in Inhead ***\n",
+            "unit 18642\n",
+            ";Seven of Eight (18642), avoiding, behind.\n",
+            "@work\n",
+            "#end\n",
+        ));
+
+        assert!(result.diagnostics.is_empty());
+    }
+
+    #[test]
+    fn validate_orders_reports_an_unknown_command() {
+        let result = validate_orders("FLY 1 2");
+
+        assert_eq!(result.diagnostics.len(), 1);
+        assert_eq!(result.diagnostics[0].code, "unknown-command");
+        assert!(result.diagnostics[0].message.contains("FLY"));
+        assert!(result.is_blocking());
+    }
+
+    #[test]
+    fn validate_orders_requires_a_direction_for_move() {
+        let result = validate_orders("MOVE");
+
+        assert_eq!(result.diagnostics.len(), 1);
+        assert_eq!(result.diagnostics[0].code, "missing-arguments");
+    }
+
     fn snapshot(raw: &str, parsed: &str, warnings: &str) -> ImportedTurnSnapshot {
         ImportedTurnSnapshot {
             raw_report: raw.to_string(),
@@ -548,21 +581,45 @@ mod tests {
         snapshot("raw", "parsed", "warnings")
     }
 
-    const VIABLE_REPORT: &str = concat!(
-        "TURN: 12 Spring\n",
-        "FACTION: 17 | Crimson Tide\n",
-        "REGION: A1 | Coast of Dawn\n",
-        "UNIT: U100 | Guard Patrol | A1"
+    /// A small but genuine NewOrigins report, used wherever a test needs one inline.
+    const MINI_REPORT: &str = concat!(
+        "Atlantis Report For:\n",
+        "Crimson Tide (17) (Magic 5)\n",
+        "March, Year 1\n",
+        "\n",
+        "Atlantis Engine Version: 5.2.5 (beta)\n",
+        "NewOrigins, Version: 3.0.0 (beta)\n",
+        "\n",
+        "Errors during turn:\n",
+        "Unit (100): STUDY: Not enough funds.\n",
+        "\n",
+        "Unclaimed silver: 40.\n",
+        "\n",
+        "plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans), $500.\n",
+        "------------------------------------------------------------\n",
+        "  Wages: $12.0 (Max: $300).\n",
+        "  Products: 10 grain [GRAI].\n",
+        "\n",
+        "Exits:\n",
+        "  North : forest (12,32) in Forest of Whispers.\n",
+        "\n",
+        "* Guard Patrol (100), Crimson Tide (17), behind, 10 humans [HUMN].\n",
+        "\n",
+        "forest (12,32) in Forest of Whispers, 800 peasants (humans), $200.\n",
+        "------------------------------------------------------------\n",
+        "  Wages: $10.0 (Max: $200).\n",
+        "\n",
+        "* Ranger Squad (200), Crimson Tide (17), behind, 5 humans [HUMN].\n",
     );
 
     #[test]
     fn admissible_import_is_not_rejected() {
-        assert_eq!(reject_import(&parse_report(VIABLE_REPORT), "17"), None);
+        assert_eq!(reject_import(&parse_report(MINI_REPORT), "17"), None);
     }
 
     #[test]
     fn import_below_the_viability_threshold_is_rejected() {
-        let rejection = reject_import(&parse_report("REGION: A1 | Coast of Dawn"), "17");
+        let rejection = reject_import(&parse_report("no report here at all"), "17");
         assert_eq!(
             rejection.as_deref(),
             Some("parsed report did not meet minimum import threshold")
@@ -570,8 +627,38 @@ mod tests {
     }
 
     #[test]
+    fn a_faction_that_merely_appears_in_the_report_is_not_a_candidate() {
+        // A report shows foreign units, and their factions are visible on those units. Confirming
+        // an import under one of them would file the turn under someone else's faction, so only the
+        // reporting faction is ever a candidate.
+        let with_neighbour = MINI_REPORT.replace(
+            "* Ranger Squad (200), Crimson Tide (17), behind, 5 humans [HUMN].",
+            "- Watcher (900), Distant Drummer (15), avoiding, behind, 1 human [HUMN].",
+        );
+
+        let parsed = parse_report(&with_neighbour);
+        assert_eq!(
+            parsed
+                .detected_factions
+                .iter()
+                .map(|faction| faction.faction_id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["17"],
+            "the neighbour is visible but is not a candidate"
+        );
+
+        // The neighbour is still reachable, on the unit that belongs to it.
+        assert!(parsed.units.iter().any(|unit| unit.unit_id == "900"));
+
+        assert_eq!(
+            reject_import(&parsed, "15").as_deref(),
+            Some("confirmed faction does not exist in parsed report candidates")
+        );
+    }
+
+    #[test]
     fn import_under_an_undetected_faction_is_rejected() {
-        let rejection = reject_import(&parse_report(VIABLE_REPORT), "99");
+        let rejection = reject_import(&parse_report(MINI_REPORT), "99");
         assert_eq!(
             rejection.as_deref(),
             Some("confirmed faction does not exist in parsed report candidates")
@@ -643,21 +730,13 @@ mod tests {
 
     #[test]
     fn parse_report_extracts_major_sections_from_valid_report() {
-        let source = "\
-TURN: 12 Spring
-FACTION: 17 | Crimson Tide
-REGION: R1 | Coast of Dawn
-UNIT: U100 | Guard Patrol | R1
-ITEM: U100 | silver | 12
-MESSAGE: order | U100 | MOVE R2";
-
-        let parsed = parse_report(source);
+        let parsed = parse_report(MINI_REPORT);
 
         assert_eq!(
             parsed.turn_header,
             Some(TurnHeader {
-                turn_number: 12,
-                season: "Spring".to_string(),
+                turn_number: 2,
+                season: "March".to_string(),
             })
         );
         assert_eq!(
@@ -669,139 +748,71 @@ MESSAGE: order | U100 | MOVE R2";
         );
         assert_eq!(
             parsed.regions,
-            vec![RegionSummary {
-                region_id: "R1".to_string(),
-                name: "Coast of Dawn".to_string(),
-            }]
+            vec![
+                RegionSummary {
+                    region_id: "1:12,34".to_string(),
+                    name: "plain (12,34) in Coast of Dawn".to_string(),
+                },
+                RegionSummary {
+                    region_id: "1:12,32".to_string(),
+                    name: "forest (12,32) in Forest of Whispers".to_string(),
+                },
+            ]
         );
         assert_eq!(
             parsed.units,
-            vec![UnitSummary {
-                unit_id: "U100".to_string(),
-                name: "Guard Patrol".to_string(),
-                region_id: "R1".to_string(),
-            }]
+            vec![
+                UnitSummary {
+                    unit_id: "100".to_string(),
+                    name: "Guard Patrol".to_string(),
+                    region_id: "1:12,34".to_string(),
+                },
+                UnitSummary {
+                    unit_id: "200".to_string(),
+                    name: "Ranger Squad".to_string(),
+                    region_id: "1:12,32".to_string(),
+                },
+            ]
         );
         assert_eq!(
             parsed.inventories,
-            vec![InventoryItem {
-                unit_id: "U100".to_string(),
-                item: "silver".to_string(),
-                quantity: 12,
-            }]
+            vec![
+                InventoryItem {
+                    unit_id: "100".to_string(),
+                    item: "humans".to_string(),
+                    quantity: 10,
+                },
+                InventoryItem {
+                    unit_id: "200".to_string(),
+                    item: "humans".to_string(),
+                    quantity: 5,
+                },
+            ]
         );
-        assert_eq!(
-            parsed.message_summaries,
-            vec![MessageSummary {
-                kind: "order".to_string(),
-                source: "U100".to_string(),
-                text: "MOVE R2".to_string(),
-            }]
-        );
+        assert_eq!(parsed.message_summaries.len(), 1, "one turn error");
+        assert_eq!(parsed.message_summaries[0].kind, "error");
         assert!(parsed.warnings.is_empty());
         assert!(parsed.meets_minimum_import_threshold());
     }
 
     #[test]
-    fn parse_report_emits_warning_but_keeps_partial_results_for_malformed_sections() {
-        let source = "\
-TURN: 12 Spring
-FACTION: 17 | Crimson Tide
-REGION: R1 | Coast of Dawn
-UNIT: MALFORMED LINE
-UNIT: U101 | Caravan | R1
-MESSAGE: summary | R1 | Local unrest reported";
+    fn parse_report_warns_but_keeps_partial_results_when_the_date_is_unreadable() {
+        // The preamble is damaged, but the region blocks are intact and must survive.
+        let damaged = MINI_REPORT.replace("March, Year 1", "Sometime, Whenever");
+        let parsed = parse_report(&damaged);
 
-        let parsed = parse_report(source);
-
+        assert_eq!(parsed.turn_header, None);
         assert_eq!(
-            parsed.turn_header,
-            Some(TurnHeader {
-                turn_number: 12,
-                season: "Spring".to_string(),
-            })
+            parsed
+                .warnings
+                .iter()
+                .map(|w| w.code.as_str())
+                .collect::<Vec<_>>(),
+            vec!["turn-header-missing"]
         );
-        assert_eq!(
-            parsed.detected_factions,
-            vec![FactionInfo {
-                faction_id: "17".to_string(),
-                name: "Crimson Tide".to_string(),
-            }]
-        );
-        assert_eq!(
-            parsed.units,
-            vec![UnitSummary {
-                unit_id: "U101".to_string(),
-                name: "Caravan".to_string(),
-                region_id: "R1".to_string(),
-            }]
-        );
-        assert_eq!(
-            parsed.warnings,
-            vec![ParseWarning {
-                code: "unit-malformed-line".to_string(),
-                section: "unit".to_string(),
-                message: "could not parse unit line".to_string(),
-                line_start: 4,
-                line_end: 4,
-                severity: WarningSeverity::Warning,
-            }]
-        );
-        assert!(parsed.meets_minimum_import_threshold());
-    }
-
-    #[test]
-    fn validate_orders_flags_unknown_commands_as_errors() {
-        let result = validate_orders("FLY 1 2");
-
-        assert_eq!(
-            result.diagnostics,
-            vec![OrderDiagnostic {
-                code: "unknown-command".to_string(),
-                message: "unknown order command".to_string(),
-                line_start: 1,
-                line_end: 1,
-                severity: OrderDiagnosticSeverity::Error,
-            }]
-        );
-        assert!(result.is_blocking());
-        assert_eq!(result.error_count(), 1);
-        assert_eq!(result.warning_count(), 0);
-    }
-
-    #[test]
-    fn validate_orders_flags_missing_required_arguments() {
-        let result = validate_orders("MOVE 1");
-
-        assert_eq!(
-            result.diagnostics,
-            vec![OrderDiagnostic {
-                code: "missing-arguments".to_string(),
-                message: "missing required arguments for MOVE".to_string(),
-                line_start: 1,
-                line_end: 1,
-                severity: OrderDiagnosticSeverity::Error,
-            }]
-        );
-        assert!(result.is_blocking());
-    }
-
-    #[test]
-    fn validate_orders_keeps_warnings_non_blocking() {
-        let result = validate_orders("MOVE 1 2 3");
-
-        assert_eq!(
-            result.diagnostics,
-            vec![OrderDiagnostic {
-                code: "extra-arguments".to_string(),
-                message: "extra arguments ignored for MOVE".to_string(),
-                line_start: 1,
-                line_end: 1,
-                severity: OrderDiagnosticSeverity::Warning,
-            }]
-        );
-        assert!(!result.is_blocking());
-        assert_eq!(result.warning_count(), 1);
-        assert_eq!(result.error_count(), 0);
+        assert_eq!(parsed.regions.len(), 2, "regions still parse");
+        assert_eq!(parsed.units.len(), 2, "units still parse");
+        // Without a turn the import is not viable, which is the tolerant contract working.
+        assert!(!parsed.meets_minimum_import_threshold());
     }
 }

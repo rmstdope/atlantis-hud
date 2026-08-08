@@ -387,6 +387,15 @@ pub fn diff_imported_turn_state(existing: JsValue, candidate: JsValue) -> Result
     to_js(&diff)
 }
 
+/// Parses a report into the full domain model: regions, units, structures, exits and markets.
+///
+/// The flat summary `parse_report_state` returns is derived from this same parse, and remains for
+/// the panels that have not moved over yet.
+#[wasm_bindgen]
+pub fn parse_report_full_state(raw_report: String) -> Result<JsValue, JsValue> {
+    to_js(&atlantis_hud_core::report::parse_report_full(&raw_report))
+}
+
 /// Validates one draft of Atlantis orders and returns structured diagnostics.
 ///
 /// Order validation is pure, so unlike the persistence entry points this is available on every
@@ -735,7 +744,7 @@ mod tests {
 
     #[test]
     fn order_validation_dto_flattens_severity_to_strings() {
-        let dto = OrderValidationResultDto::from(validate_orders("FLY 1 2\nMOVE R1 R2 R3"));
+        let dto = OrderValidationResultDto::from(validate_orders("FLY 1 2\nMOVE"));
 
         let severities: Vec<&str> = dto
             .diagnostics
@@ -743,14 +752,14 @@ mod tests {
             .map(|diagnostic| diagnostic.severity.as_str())
             .collect();
 
-        assert_eq!(severities, vec!["error", "warning"]);
+        assert_eq!(severities, vec!["error", "error"]);
         assert_eq!(dto.diagnostics[0].code, "unknown-command");
-        assert_eq!(dto.diagnostics[1].code, "extra-arguments");
+        assert_eq!(dto.diagnostics[1].code, "missing-arguments");
     }
 
     #[test]
     fn order_validation_dto_is_empty_for_valid_orders() {
-        let dto = OrderValidationResultDto::from(validate_orders("MOVE R1 R2\nHOLD"));
+        let dto = OrderValidationResultDto::from(validate_orders("MOVE n n\nwork"));
         assert!(dto.diagnostics.is_empty());
     }
 
