@@ -225,186 +225,110 @@ impl ReportParseResult {
 }
 
 /// Parses a single Atlantis report using tolerant semantics.
+///
+/// This is the flat summary the wire contract has always exposed. It is now derived from the real
+/// NewOrigins parser in [`report`], so the same input drives both this and the richer model that
+/// [`report::parse_report_full`] returns.
 #[must_use]
-pub fn parse_report(_source: &str) -> ReportParseResult {
-    let mut result = ReportParseResult {
-        turn_header: None,
-        detected_factions: Vec::new(),
-        regions: Vec::new(),
-        units: Vec::new(),
-        inventories: Vec::new(),
-        message_summaries: Vec::new(),
-        warnings: Vec::new(),
+pub fn parse_report(source: &str) -> ReportParseResult {
+    let parsed = report::parse_report_full(source);
+
+    let turn_header = parsed
+        .header
+        .turn_number
+        .zip(parsed.header.month.clone())
+        .map(|(turn_number, season)| TurnHeader {
+            turn_number,
+            season,
+        });
+
+    // The reporting faction comes first, then every other faction seen on a unit, in the order the
+    // report mentions them.
+    let mut detected_factions: Vec<FactionInfo> = Vec::new();
+    let push_faction = |id: String, name: String, into: &mut Vec<FactionInfo>| {
+        if !into.iter().any(|faction| faction.faction_id == id) {
+            into.push(FactionInfo {
+                faction_id: id,
+                name,
+            });
+        }
     };
 
-    for (index, line) in _source.lines().enumerate() {
-        let line_number = index + 1;
-        let trimmed = line.trim();
-        if trimmed.is_empty() {
-            continue;
+    if let (Some(id), Some(name)) = (
+        parsed.header.faction_id.clone(),
+        parsed.header.faction_name.clone(),
+    ) {
+        push_faction(id, name, &mut detected_factions);
+    }
+
+    let mut units = Vec::new();
+    let mut inventories = Vec::new();
+    for unit in parsed.units() {
+        if let (Some(id), Some(name)) = (unit.faction_id.clone(), unit.faction_name.clone()) {
+            push_faction(id, name, &mut detected_factions);
         }
 
-        if let Some(payload) = trimmed.strip_prefix("TURN:") {
-            let parts = payload.split_whitespace().collect::<Vec<_>>();
-            if parts.len() < 2 {
-                push_warning(
-                    &mut result.warnings,
-                    "turn-malformed-line",
-                    "turn",
-                    "could not parse turn line",
-                    line_number,
-                );
-                continue;
-            }
+        units.push(UnitSummary {
+            unit_id: unit.unit_id.clone(),
+            name: unit.name.clone(),
+            region_id: unit.region_id.clone(),
+        });
 
-            let parsed_turn_number = parts[0].parse::<u32>();
-            match parsed_turn_number {
-                Ok(turn_number) => {
-                    result.turn_header = Some(TurnHeader {
-                        turn_number,
-                        season: parts[1].to_string(),
-                    });
-                }
-                Err(_) => push_warning(
-                    &mut result.warnings,
-                    "turn-malformed-line",
-                    "turn",
-                    "could not parse turn line",
-                    line_number,
-                ),
-            }
-            continue;
-        }
-
-        if let Some(payload) = trimmed.strip_prefix("FACTION:") {
-            match split_fields(payload, 2) {
-                Ok(fields) => result.detected_factions.push(FactionInfo {
-                    faction_id: fields[0].to_string(),
-                    name: fields[1].to_string(),
-                }),
-                Err(_) => push_warning(
-                    &mut result.warnings,
-                    "faction-malformed-line",
-                    "faction",
-                    "could not parse faction line",
-                    line_number,
-                ),
-            }
-            continue;
-        }
-
-        if let Some(payload) = trimmed.strip_prefix("REGION:") {
-            match split_fields(payload, 2) {
-                Ok(fields) => result.regions.push(RegionSummary {
-                    region_id: fields[0].to_string(),
-                    name: fields[1].to_string(),
-                }),
-                Err(_) => push_warning(
-                    &mut result.warnings,
-                    "region-malformed-line",
-                    "region",
-                    "could not parse region line",
-                    line_number,
-                ),
-            }
-            continue;
-        }
-
-        if let Some(payload) = trimmed.strip_prefix("UNIT:") {
-            match split_fields(payload, 3) {
-                Ok(fields) => result.units.push(UnitSummary {
-                    unit_id: fields[0].to_string(),
-                    name: fields[1].to_string(),
-                    region_id: fields[2].to_string(),
-                }),
-                Err(_) => push_warning(
-                    &mut result.warnings,
-                    "unit-malformed-line",
-                    "unit",
-                    "could not parse unit line",
-                    line_number,
-                ),
-            }
-            continue;
-        }
-
-        if let Some(payload) = trimmed.strip_prefix("ITEM:") {
-            match split_fields(payload, 3) {
-                Ok(fields) => match fields[2].parse::<i32>() {
-                    Ok(quantity) => result.inventories.push(InventoryItem {
-                        unit_id: fields[0].to_string(),
-                        item: fields[1].to_string(),
-                        quantity,
-                    }),
-                    Err(_) => push_warning(
-                        &mut result.warnings,
-                        "item-malformed-line",
-                        "item",
-                        "could not parse item line",
-                        line_number,
-                    ),
-                },
-                Err(_) => push_warning(
-                    &mut result.warnings,
-                    "item-malformed-line",
-                    "item",
-                    "could not parse item line",
-                    line_number,
-                ),
-            }
-            continue;
-        }
-
-        if let Some(payload) = trimmed.strip_prefix("MESSAGE:") {
-            match split_fields(payload, 3) {
-                Ok(fields) => result.message_summaries.push(MessageSummary {
-                    kind: fields[0].to_string(),
-                    source: fields[1].to_string(),
-                    text: fields[2].to_string(),
-                }),
-                Err(_) => push_warning(
-                    &mut result.warnings,
-                    "message-malformed-line",
-                    "message",
-                    "could not parse message line",
-                    line_number,
-                ),
-            }
-            continue;
+        for item in &unit.items {
+            inventories.push(InventoryItem {
+                unit_id: unit.unit_id.clone(),
+                item: item.name.clone(),
+                quantity: i32::try_from(item.amount).unwrap_or(i32::MAX),
+            });
         }
     }
 
-    result
-}
+    let regions = parsed
+        .regions
+        .iter()
+        .map(|region| RegionSummary {
+            region_id: region.region_id.clone(),
+            name: region.label(),
+        })
+        .collect();
 
-fn split_fields(input: &str, expected_len: usize) -> Result<Vec<&str>, ()> {
-    let fields = input
-        .split('|')
-        .map(str::trim)
-        .filter(|field| !field.is_empty())
-        .collect::<Vec<_>>();
-    if fields.len() == expected_len {
-        Ok(fields)
-    } else {
-        Err(())
+    let message_summaries = parsed
+        .header
+        .errors
+        .iter()
+        .map(|text| MessageSummary {
+            kind: "error".to_string(),
+            source: "turn".to_string(),
+            text: text.clone(),
+        })
+        .chain(parsed.header.events.iter().map(|text| MessageSummary {
+            kind: "event".to_string(),
+            source: "turn".to_string(),
+            text: text.clone(),
+        }))
+        .collect();
+
+    let mut warnings = Vec::new();
+    if turn_header.is_none() {
+        warnings.push(ParseWarning {
+            code: "turn-header-missing".to_string(),
+            section: "header".to_string(),
+            message: "report has no recognisable turn date".to_string(),
+            line_start: 1,
+            line_end: 1,
+            severity: WarningSeverity::Warning,
+        });
     }
-}
 
-fn push_warning(
-    warnings: &mut Vec<ParseWarning>,
-    code: &str,
-    section: &str,
-    message: &str,
-    line_number: usize,
-) {
-    warnings.push(ParseWarning {
-        code: code.to_string(),
-        section: section.to_string(),
-        message: message.to_string(),
-        line_start: line_number,
-        line_end: line_number,
-        severity: WarningSeverity::Warning,
-    });
+    ReportParseResult {
+        turn_header,
+        detected_factions,
+        regions,
+        units,
+        inventories,
+        message_summaries,
+        warnings,
+    }
 }
 
 /// Checks whether a parsed report may be imported under the confirmed faction.
@@ -550,21 +474,45 @@ mod tests {
         snapshot("raw", "parsed", "warnings")
     }
 
-    const VIABLE_REPORT: &str = concat!(
-        "TURN: 12 Spring\n",
-        "FACTION: 17 | Crimson Tide\n",
-        "REGION: A1 | Coast of Dawn\n",
-        "UNIT: U100 | Guard Patrol | A1"
+    /// A small but genuine NewOrigins report, used wherever a test needs one inline.
+    const MINI_REPORT: &str = concat!(
+        "Atlantis Report For:\n",
+        "Crimson Tide (17) (Magic 5)\n",
+        "March, Year 1\n",
+        "\n",
+        "Atlantis Engine Version: 5.2.5 (beta)\n",
+        "NewOrigins, Version: 3.0.0 (beta)\n",
+        "\n",
+        "Errors during turn:\n",
+        "Unit (100): STUDY: Not enough funds.\n",
+        "\n",
+        "Unclaimed silver: 40.\n",
+        "\n",
+        "plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans), $500.\n",
+        "------------------------------------------------------------\n",
+        "  Wages: $12.0 (Max: $300).\n",
+        "  Products: 10 grain [GRAI].\n",
+        "\n",
+        "Exits:\n",
+        "  North : forest (12,32) in Forest of Whispers.\n",
+        "\n",
+        "* Guard Patrol (100), Crimson Tide (17), behind, 10 humans [HUMN].\n",
+        "\n",
+        "forest (12,32) in Forest of Whispers, 800 peasants (humans), $200.\n",
+        "------------------------------------------------------------\n",
+        "  Wages: $10.0 (Max: $200).\n",
+        "\n",
+        "* Ranger Squad (200), Crimson Tide (17), behind, 5 humans [HUMN].\n",
     );
 
     #[test]
     fn admissible_import_is_not_rejected() {
-        assert_eq!(reject_import(&parse_report(VIABLE_REPORT), "17"), None);
+        assert_eq!(reject_import(&parse_report(MINI_REPORT), "17"), None);
     }
 
     #[test]
     fn import_below_the_viability_threshold_is_rejected() {
-        let rejection = reject_import(&parse_report("REGION: A1 | Coast of Dawn"), "17");
+        let rejection = reject_import(&parse_report("no report here at all"), "17");
         assert_eq!(
             rejection.as_deref(),
             Some("parsed report did not meet minimum import threshold")
@@ -573,7 +521,7 @@ mod tests {
 
     #[test]
     fn import_under_an_undetected_faction_is_rejected() {
-        let rejection = reject_import(&parse_report(VIABLE_REPORT), "99");
+        let rejection = reject_import(&parse_report(MINI_REPORT), "99");
         assert_eq!(
             rejection.as_deref(),
             Some("confirmed faction does not exist in parsed report candidates")
@@ -645,21 +593,13 @@ mod tests {
 
     #[test]
     fn parse_report_extracts_major_sections_from_valid_report() {
-        let source = "\
-TURN: 12 Spring
-FACTION: 17 | Crimson Tide
-REGION: R1 | Coast of Dawn
-UNIT: U100 | Guard Patrol | R1
-ITEM: U100 | silver | 12
-MESSAGE: order | U100 | MOVE R2";
-
-        let parsed = parse_report(source);
+        let parsed = parse_report(MINI_REPORT);
 
         assert_eq!(
             parsed.turn_header,
             Some(TurnHeader {
-                turn_number: 12,
-                season: "Spring".to_string(),
+                turn_number: 2,
+                season: "March".to_string(),
             })
         );
         assert_eq!(
@@ -671,85 +611,72 @@ MESSAGE: order | U100 | MOVE R2";
         );
         assert_eq!(
             parsed.regions,
-            vec![RegionSummary {
-                region_id: "R1".to_string(),
-                name: "Coast of Dawn".to_string(),
-            }]
+            vec![
+                RegionSummary {
+                    region_id: "1:12,34".to_string(),
+                    name: "plain (12,34) in Coast of Dawn".to_string(),
+                },
+                RegionSummary {
+                    region_id: "1:12,32".to_string(),
+                    name: "forest (12,32) in Forest of Whispers".to_string(),
+                },
+            ]
         );
         assert_eq!(
             parsed.units,
-            vec![UnitSummary {
-                unit_id: "U100".to_string(),
-                name: "Guard Patrol".to_string(),
-                region_id: "R1".to_string(),
-            }]
+            vec![
+                UnitSummary {
+                    unit_id: "100".to_string(),
+                    name: "Guard Patrol".to_string(),
+                    region_id: "1:12,34".to_string(),
+                },
+                UnitSummary {
+                    unit_id: "200".to_string(),
+                    name: "Ranger Squad".to_string(),
+                    region_id: "1:12,32".to_string(),
+                },
+            ]
         );
         assert_eq!(
             parsed.inventories,
-            vec![InventoryItem {
-                unit_id: "U100".to_string(),
-                item: "silver".to_string(),
-                quantity: 12,
-            }]
+            vec![
+                InventoryItem {
+                    unit_id: "100".to_string(),
+                    item: "humans".to_string(),
+                    quantity: 10,
+                },
+                InventoryItem {
+                    unit_id: "200".to_string(),
+                    item: "humans".to_string(),
+                    quantity: 5,
+                },
+            ]
         );
-        assert_eq!(
-            parsed.message_summaries,
-            vec![MessageSummary {
-                kind: "order".to_string(),
-                source: "U100".to_string(),
-                text: "MOVE R2".to_string(),
-            }]
-        );
+        assert_eq!(parsed.message_summaries.len(), 1, "one turn error");
+        assert_eq!(parsed.message_summaries[0].kind, "error");
         assert!(parsed.warnings.is_empty());
         assert!(parsed.meets_minimum_import_threshold());
     }
 
     #[test]
-    fn parse_report_emits_warning_but_keeps_partial_results_for_malformed_sections() {
-        let source = "\
-TURN: 12 Spring
-FACTION: 17 | Crimson Tide
-REGION: R1 | Coast of Dawn
-UNIT: MALFORMED LINE
-UNIT: U101 | Caravan | R1
-MESSAGE: summary | R1 | Local unrest reported";
+    fn parse_report_warns_but_keeps_partial_results_when_the_date_is_unreadable() {
+        // The preamble is damaged, but the region blocks are intact and must survive.
+        let damaged = MINI_REPORT.replace("March, Year 1", "Sometime, Whenever");
+        let parsed = parse_report(&damaged);
 
-        let parsed = parse_report(source);
-
+        assert_eq!(parsed.turn_header, None);
         assert_eq!(
-            parsed.turn_header,
-            Some(TurnHeader {
-                turn_number: 12,
-                season: "Spring".to_string(),
-            })
+            parsed
+                .warnings
+                .iter()
+                .map(|w| w.code.as_str())
+                .collect::<Vec<_>>(),
+            vec!["turn-header-missing"]
         );
-        assert_eq!(
-            parsed.detected_factions,
-            vec![FactionInfo {
-                faction_id: "17".to_string(),
-                name: "Crimson Tide".to_string(),
-            }]
-        );
-        assert_eq!(
-            parsed.units,
-            vec![UnitSummary {
-                unit_id: "U101".to_string(),
-                name: "Caravan".to_string(),
-                region_id: "R1".to_string(),
-            }]
-        );
-        assert_eq!(
-            parsed.warnings,
-            vec![ParseWarning {
-                code: "unit-malformed-line".to_string(),
-                section: "unit".to_string(),
-                message: "could not parse unit line".to_string(),
-                line_start: 4,
-                line_end: 4,
-                severity: WarningSeverity::Warning,
-            }]
-        );
-        assert!(parsed.meets_minimum_import_threshold());
+        assert_eq!(parsed.regions.len(), 2, "regions still parse");
+        assert_eq!(parsed.units.len(), 2, "units still parse");
+        // Without a turn the import is not viable, which is the tolerant contract working.
+        assert!(!parsed.meets_minimum_import_threshold());
     }
 
     #[test]

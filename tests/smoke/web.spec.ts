@@ -45,7 +45,7 @@ test("web map workspace supports desktop and handheld region selection", async (
   await page.getByLabel("Map database path").fill("/tmp/web-map.sqlite");
   await page.getByLabel("Map project id").fill("faction-12");
   await page.getByLabel("Map faction id").fill("17");
-  await page.getByLabel("Map turn number").fill("12");
+  await page.getByLabel("Map turn number").fill("2");
   await page.getByRole("button", { name: "Seed sample map import" }).click();
   // The seed writes asynchronously, so loading before it commits would race.
   await expect(
@@ -53,12 +53,12 @@ test("web map workspace supports desktop and handheld region selection", async (
   ).toContainText("seeded sample map import");
   await page.getByRole("button", { name: "Load map turn" }).click();
 
-  await page.getByRole("button", { name: "hex A1" }).click();
-  await expect(page.getByTestId("map-selected-region-id")).toContainText("A1");
+  await page.getByRole("button", { name: "hex 1:12,34" }).click();
+  await expect(page.getByTestId("map-selected-region-id")).toContainText("1:12,34");
   await expect(page.getByTestId("map-right-inspector")).toContainText("Coast of Dawn");
 
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.getByRole("button", { name: "hex B2" }).click();
-  await expect(page.getByTestId("map-selected-region-id")).toContainText("B2");
+  await page.getByRole("button", { name: "hex 1:12,32" }).click();
+  await expect(page.getByTestId("map-selected-region-id")).toContainText("1:12,32");
   await expect(page.getByTestId("map-bottom-sheet")).toContainText("Forest of Whispers");
 });

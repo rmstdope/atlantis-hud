@@ -4,13 +4,17 @@
 //! input the parser does not recognise produces a structured warning and partial results, never a
 //! hard failure, because a player would rather see most of a turn than none of it.
 
+pub mod header;
 pub mod model;
+pub mod orders;
 pub mod region;
 pub mod scan;
 pub mod unit;
 pub mod unwrap;
 
+use header::{parse_header, ReportHeader};
 use model::ReportRegion;
+use orders::{extract_orders_template, OrdersTemplate};
 use region::{parse_region_block, parse_region_header};
 use unwrap::{unwrap_lines, LogicalLine};
 
@@ -18,7 +22,22 @@ use unwrap::{unwrap_lines, LogicalLine};
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ParsedReport {
+    pub header: ReportHeader,
     pub regions: Vec<ReportRegion>,
+    /// The orders document for the coming turn, when the report carries one.
+    pub orders_template: Option<OrdersTemplate>,
+}
+
+impl ParsedReport {
+    /// Every unit across every region.
+    pub fn units(&self) -> impl Iterator<Item = &model::ReportUnit> {
+        self.regions.iter().flat_map(|region| region.units.iter())
+    }
+
+    /// Units belonging to the reporting faction.
+    pub fn own_units(&self) -> impl Iterator<Item = &model::ReportUnit> {
+        self.units().filter(|unit| unit.own)
+    }
 }
 
 /// A region header sits at the outer indent, carries no marker, and opens with a lowercase terrain
@@ -42,12 +61,12 @@ fn opens_a_region(line: &LogicalLine) -> bool {
     parse_region_header(body).is_some()
 }
 
-/// Parses the region blocks of a report.
+/// Parses a turn report.
 ///
 /// Sections the parser does not model yet are simply not region headers, so they fall away without
 /// producing warnings or stopping the parse.
 #[must_use]
-pub fn parse_regions(source: &str) -> ParsedReport {
+pub fn parse_report_full(source: &str) -> ParsedReport {
     let lines = unwrap_lines(source);
     let starts: Vec<usize> = lines
         .iter()
@@ -64,5 +83,12 @@ pub fn parse_regions(source: &str) -> ParsedReport {
         }
     }
 
-    ParsedReport { regions }
+    // The preamble is everything before the first region block.
+    let preamble_end = starts.first().copied().unwrap_or(lines.len());
+
+    ParsedReport {
+        header: parse_header(&lines[..preamble_end]),
+        regions,
+        orders_template: extract_orders_template(source),
+    }
 }

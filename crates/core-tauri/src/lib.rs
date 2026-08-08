@@ -649,16 +649,24 @@ mod tests {
         )
         .expect("create project");
         let report = "\
-TURN: 12 Spring
-FACTION: 17 | Crimson Tide
-REGION: R1 | Coast of Dawn
-UNIT: U100 | Guard Patrol | R1
-MESSAGE: order | U100 | MOVE R2";
+Atlantis Report For:
+Crimson Tide (17) (Magic 5)
+March, Year 1
+
+Atlantis Engine Version: 5.2.5 (beta)
+NewOrigins, Version: 3.0.0 (beta)
+
+plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans), $500.
+------------------------------------------------------------
+  Wages: $12.0 (Max: $300).
+
+* Guard Patrol (100), Crimson Tide (17), behind, 10 humans [HUMN].
+";
 
         let preview =
             command_preview_report_import(&created.database_path, "faction-12", "17", report)
                 .expect("preview import");
-        assert_eq!(preview.turn_number, Some(12));
+        assert_eq!(preview.turn_number, Some(2));
         assert!(!preview.duplicate_preview.exists);
         assert!(preview.parse_result.meets_minimum_import_threshold);
 
@@ -733,22 +741,31 @@ MESSAGE: order | U100 | MOVE R2";
         )
         .expect("create project");
         let report = "\
-TURN: 12 Spring
-FACTION: 17 | Crimson Tide
-REGION: A1 | Coast of Dawn
-UNIT: U100 | Guard Patrol | A1";
+Atlantis Report For:
+Crimson Tide (17) (Magic 5)
+March, Year 1
+
+Atlantis Engine Version: 5.2.5 (beta)
+NewOrigins, Version: 3.0.0 (beta)
+
+plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans), $500.
+------------------------------------------------------------
+  Wages: $12.0 (Max: $300).
+
+* Guard Patrol (100), Crimson Tide (17), behind, 10 humans [HUMN].
+";
 
         command_commit_report_import(&created.database_path, "faction-12", "17", report, false)
             .expect("import commit should succeed");
 
-        let loaded = command_load_imported_turn(&created.database_path, "faction-12", "17", 12)
+        let loaded = command_load_imported_turn(&created.database_path, "faction-12", "17", 2)
             .expect("load imported turn should succeed")
             .expect("imported turn should exist");
 
         assert_eq!(loaded.key.project_id, "faction-12");
         assert_eq!(loaded.key.faction_id, "17");
-        assert_eq!(loaded.key.turn_number, 12);
-        assert_eq!(loaded.parse_result.regions[0].region_id, "A1");
-        assert_eq!(loaded.parse_result.units[0].region_id, "A1");
+        assert_eq!(loaded.key.turn_number, 2);
+        assert_eq!(loaded.parse_result.regions[0].region_id, "1:12,34");
+        assert_eq!(loaded.parse_result.units[0].region_id, "1:12,34");
     }
 }

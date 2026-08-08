@@ -23,12 +23,29 @@ type MapWorkspacePanelProps = {
   client: MapWorkspaceClientLike;
 };
 
-const SAMPLE_REPORT = `TURN: 12 Spring
-FACTION: 17 | Crimson Tide
-REGION: A1 | Coast of Dawn
-REGION: B2 | Forest of Whispers
-UNIT: U100 | Guard Patrol | A1
-UNIT: U200 | Ranger Squad | B2`;
+const SAMPLE_REPORT = `Atlantis Report For:
+Crimson Tide (17) (Magic 5)
+March, Year 1
+
+Atlantis Engine Version: 5.2.5 (beta)
+NewOrigins, Version: 3.0.0 (beta)
+
+plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans), $500.
+------------------------------------------------------------
+  Wages: $12.0 (Max: $300).
+  Products: 10 grain [GRAI].
+
+Exits:
+  North : forest (12,32) in Forest of Whispers.
+
+* Guard Patrol (100), Crimson Tide (17), behind, 10 humans [HUMN].
+
+forest (12,32) in Forest of Whispers, 800 peasants (humans), $200.
+------------------------------------------------------------
+  Wages: $10.0 (Max: $200).
+
+* Ranger Squad (200), Crimson Tide (17), behind, 5 humans [HUMN].
+`;
 
 function useHandheldMode() {
   if (typeof window === "undefined") {
