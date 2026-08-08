@@ -13,14 +13,16 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@atlantis/browser-core": "workspace:*",
     "@atlantis/core-client": "workspace:*",
     "@atlantis/shared": "workspace:*",
     "react": "^19.1.1",
-    "react-dom": "^19.1.1",
-    "@atlantis/browser-core": "workspace:*"
+    "react-dom": "^19.1.1"
   },
   "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
     "@vitejs/plugin-react": "^5.0.2",
+    "tailwindcss": "^4.3.3",
     "vite": "^7.1.1"
   }
 }
