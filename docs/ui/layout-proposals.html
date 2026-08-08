@@ -1,0 +1,1270 @@
+<title>Atlantis HUD — three UI proposals (issue #17)</title>
+<style>
+  /* ============ page chrome tokens: theme-aware ============ */
+  :root {
+    --ground: #eef0f3;
+    --surface: #ffffff;
+    --edge: #d3d8de;
+    --ink: #1a2029;
+    --ink-soft: #5a6673;
+    --brass: #8a6410;
+    --brass-bright: #b8871c;
+    --rec: #1f6d4a;
+    --shadow: 0 1px 2px rgba(16,21,28,.06), 0 8px 28px rgba(16,21,28,.10);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #0c1015;
+      --surface: #141a22;
+      --edge: #252e3a;
+      --ink: #dde4ec;
+      --ink-soft: #8593a3;
+      --brass: #d9a441;
+      --brass-bright: #eebe63;
+      --rec: #57c894;
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 28px rgba(0,0,0,.45);
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #0c1015;
+    --surface: #141a22;
+    --edge: #252e3a;
+    --ink: #dde4ec;
+    --ink-soft: #8593a3;
+    --brass: #d9a441;
+    --brass-bright: #eebe63;
+    --rec: #57c894;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 28px rgba(0,0,0,.45);
+  }
+
+  /* ============ app-screen tokens: deliberately fixed dark ============ */
+  .screen {
+    --a-ground: #10151c;
+    --a-panel: #171d26;
+    --a-panel-2: #1c232e;
+    --a-edge: #26303d;
+    --a-edge-soft: #1e2733;
+    --a-ink: #dbe3ec;
+    --a-ink-soft: #7d8b9d;
+    --a-ink-dim: #5b6878;
+    --a-brass: #d9a441;
+    --a-sel: #4a9fd8;
+    --a-ok: #4fb783;
+    --a-warn: #d9a441;
+    --a-err: #d97070;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-size: 15px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap { max-width: 1240px; margin: 0 auto; padding: 0 24px 96px; }
+
+  /* ---------- page header ---------- */
+  header.page {
+    padding: 56px 0 32px;
+    border-bottom: 1px solid var(--edge);
+    margin-bottom: 40px;
+  }
+  .eyebrow {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 11px;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--brass);
+    margin: 0 0 14px;
+  }
+  h1 {
+    font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+    font-size: clamp(30px, 4.2vw, 46px);
+    line-height: 1.12;
+    font-weight: 600;
+    letter-spacing: -.015em;
+    text-wrap: balance;
+    margin: 0 0 18px;
+  }
+  header.page p { max-width: 64ch; color: var(--ink-soft); margin: 0; }
+
+  /* ---------- jump nav ---------- */
+  nav.jump {
+    position: sticky; top: 0; z-index: 40;
+    display: flex; flex-wrap: wrap; gap: 8px;
+    padding: 12px 0;
+    background: color-mix(in srgb, var(--ground) 92%, transparent);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--edge);
+    margin-bottom: 40px;
+  }
+  nav.jump a {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 12px; letter-spacing: .02em;
+    padding: 6px 12px; border-radius: 3px;
+    border: 1px solid var(--edge);
+    color: var(--ink-soft); text-decoration: none;
+    transition: color .15s, border-color .15s;
+  }
+  nav.jump a:hover, nav.jump a:focus-visible { color: var(--ink); border-color: var(--brass); }
+  nav.jump a:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+
+  /* ---------- proposal blocks ---------- */
+  section.proposal { margin-bottom: 72px; scroll-margin-top: 72px; }
+  .phead { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; margin-bottom: 6px; }
+  .pnum {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 12px; color: var(--brass); letter-spacing: .1em;
+  }
+  h2 {
+    font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+    font-size: 27px; font-weight: 600; letter-spacing: -.01em; margin: 0;
+  }
+  .badge {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 10px; letter-spacing: .1em; text-transform: uppercase;
+    padding: 3px 9px; border-radius: 3px;
+    border: 1px solid var(--rec); color: var(--rec);
+  }
+  .ptag { color: var(--ink-soft); max-width: 72ch; margin: 0 0 20px; }
+
+  .frame {
+    border: 1px solid var(--edge);
+    border-radius: 6px;
+    overflow: hidden;
+    box-shadow: var(--shadow);
+    background: #10151c;
+  }
+  .scroller { overflow-x: auto; }
+
+  .notes {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+    gap: 22px 32px; margin-top: 24px;
+  }
+  .notes h3 {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 11px; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--brass); margin: 0 0 8px; font-weight: 500;
+  }
+  .notes ul { margin: 0; padding-left: 17px; color: var(--ink-soft); font-size: 14px; }
+  .notes li { margin-bottom: 5px; }
+  .notes li b { color: var(--ink); font-weight: 600; }
+
+  /* ================= APP SCREEN SHELL ================= */
+  .screen {
+    width: 1180px;
+    height: 720px;
+    background: var(--a-ground);
+    color: var(--a-ink);
+    display: flex; flex-direction: column;
+    font-size: 11.5px; line-height: 1.45;
+    position: relative;
+  }
+  .screen, .screen * { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+
+  /* app bar */
+  .appbar {
+    height: 34px; flex: none;
+    display: flex; align-items: center; gap: 14px;
+    padding: 0 12px;
+    background: var(--a-panel);
+    border-bottom: 1px solid var(--a-edge);
+  }
+  .brand { color: var(--a-brass); letter-spacing: .06em; font-size: 11px; }
+  .abfield { display: flex; align-items: center; gap: 6px; color: var(--a-ink-soft); }
+  .abfield b { color: var(--a-ink); font-weight: 500; }
+  .sel-ctl {
+    background: var(--a-panel-2); border: 1px solid var(--a-edge);
+    border-radius: 3px; padding: 2px 8px; color: var(--a-ink);
+  }
+  .spacer { flex: 1; }
+  .btn {
+    background: var(--a-panel-2); border: 1px solid var(--a-edge);
+    border-radius: 3px; padding: 3px 10px; color: var(--a-ink);
+  }
+  .btn.primary { border-color: var(--a-brass); color: var(--a-brass); }
+
+  /* layer toggle bar */
+  .layerbar {
+    height: 30px; flex: none;
+    display: flex; align-items: center; gap: 14px;
+    padding: 0 12px;
+    background: var(--a-panel);
+    border-bottom: 1px solid var(--a-edge);
+    color: var(--a-ink-soft);
+  }
+  .tog { display: flex; align-items: center; gap: 5px; }
+  .box {
+    width: 11px; height: 11px; border-radius: 2px;
+    border: 1px solid var(--a-ink-dim); display: inline-block; flex: none;
+  }
+  .box.on { background: var(--a-sel); border-color: var(--a-sel); position: relative; }
+  .box.on::after {
+    content: ""; position: absolute; left: 3px; top: 0px;
+    width: 3px; height: 6px; border: solid #10151c;
+    border-width: 0 1.5px 1.5px 0; transform: rotate(42deg);
+  }
+  .tog.on { color: var(--a-ink); }
+
+  /* panels */
+  .panel { background: var(--a-panel); display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+  .ptitle {
+    height: 26px; flex: none;
+    display: flex; align-items: center; gap: 8px;
+    padding: 0 10px;
+    border-bottom: 1px solid var(--a-edge);
+    color: var(--a-brass);
+    font-size: 10px; letter-spacing: .12em; text-transform: uppercase;
+  }
+  .ptitle .hint { color: var(--a-ink-dim); letter-spacing: 0; text-transform: none; font-size: 10px; }
+  .pbody { padding: 8px 10px; overflow: hidden; flex: 1; min-height: 0; }
+
+  /* key/value rows */
+  .kv { display: grid; grid-template-columns: auto 1fr; gap: 1px 12px; }
+  .kv dt { color: var(--a-ink-soft); }
+  .kv dd { margin: 0; color: var(--a-ink); font-variant-numeric: tabular-nums; }
+  .sub {
+    color: var(--a-brass); font-size: 10px; letter-spacing: .1em;
+    text-transform: uppercase; margin: 9px 0 3px;
+  }
+  .row { display: flex; justify-content: space-between; gap: 12px; }
+  .row span:last-child { color: var(--a-ink-soft); font-variant-numeric: tabular-nums; }
+  .dim { color: var(--a-ink-soft); }
+  .region-head { color: var(--a-ink); margin-bottom: 7px; }
+  .region-head b { color: var(--a-brass); font-weight: 500; }
+
+  /* units table */
+  table.units { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  table.units th {
+    text-align: left; font-weight: 500; color: var(--a-ink-soft);
+    border-bottom: 1px solid var(--a-edge); padding: 3px 8px; font-size: 10px;
+    letter-spacing: .06em; text-transform: uppercase;
+  }
+  table.units td { padding: 2.5px 8px; border-bottom: 1px solid var(--a-edge-soft); white-space: nowrap; }
+  table.units tr.active td { background: #22354a; color: #eaf3fb; }
+  table.units tr.active td:first-child { box-shadow: inset 2px 0 0 var(--a-sel); }
+  table.units tr.foreign td { color: var(--a-ink-soft); }
+  .id { color: var(--a-sel); }
+  tr.foreign .id { color: #b98a8a; }
+  .filter {
+    border: 1px solid var(--a-edge); background: var(--a-ground);
+    border-radius: 3px; padding: 2px 8px; color: var(--a-ink-dim); width: 190px;
+  }
+
+  /* orders editor */
+  .editor { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+  .code { flex: 1; padding: 6px 0; overflow: hidden; background: var(--a-ground); }
+  .ln { display: flex; gap: 10px; padding: 0 10px; }
+  .ln > i { color: var(--a-ink-dim); font-style: normal; width: 14px; text-align: right; flex: none; }
+  .cmd { color: #7fb0e0; }
+  .arg { color: var(--a-ink); }
+  .cm { color: #5f7a52; }
+  .caret { display: inline-block; width: 6px; height: 12px; background: var(--a-sel); vertical-align: -2px; }
+  .statusline {
+    height: 22px; flex: none; display: flex; align-items: center; gap: 12px;
+    padding: 0 10px; border-top: 1px solid var(--a-edge); color: var(--a-ink-soft); font-size: 10px;
+  }
+  .dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
+  .dot.ok { background: var(--a-ok); }
+  .dot.warn { background: var(--a-warn); }
+  .locked {
+    flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 6px; color: var(--a-ink-dim); text-align: center; padding: 16px;
+  }
+  .lockbadge {
+    border: 1px solid var(--a-edge); border-radius: 3px; padding: 3px 9px;
+    color: var(--a-ink-soft); font-size: 10px; letter-spacing: .08em; text-transform: uppercase;
+  }
+
+  /* map */
+  .map { flex: 1; position: relative; overflow: hidden; background: #0b1017; min-height: 0; min-width: 0; }
+  .map svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .mapctl {
+    position: absolute; right: 10px; bottom: 10px;
+    display: flex; flex-direction: column; gap: 4px;
+  }
+  .mapctl button, .zbtn {
+    width: 24px; height: 24px; display: grid; place-items: center;
+    background: color-mix(in srgb, #171d26 88%, transparent);
+    border: 1px solid var(--a-edge); border-radius: 3px; color: var(--a-ink-soft);
+    font-size: 13px; padding: 0;
+  }
+  .coordchip {
+    position: absolute; left: 10px; bottom: 10px;
+    background: color-mix(in srgb, #171d26 88%, transparent);
+    border: 1px solid var(--a-edge); border-radius: 3px;
+    padding: 2px 8px; color: var(--a-ink-soft); font-size: 10px;
+  }
+
+  /* ---- layout 1: classic commander ---- */
+  .l1-body { flex: 1; display: flex; min-height: 0; }
+  .l1-main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  .l1-dock { height: 208px; flex: none; display: flex; border-top: 1px solid var(--a-edge); }
+  .l1-units { flex: 1.55; border-right: 1px solid var(--a-edge); min-width: 0; }
+  .l1-orders { flex: 1; min-width: 0; }
+  .l1-rail { width: 306px; flex: none; display: flex; flex-direction: column; border-left: 1px solid var(--a-edge); }
+  .l1-rail .panel:first-child { flex: 1.15; border-bottom: 1px solid var(--a-edge); }
+  .l1-rail .panel:last-child { flex: 1; }
+
+  /* ---- layout 2: three-column workbench ---- */
+  .l2-body { flex: 1; display: flex; min-height: 0; }
+  .l2-left { width: 258px; flex: none; display: flex; flex-direction: column; border-right: 1px solid var(--a-edge); }
+  .l2-left .panel:first-child { flex: none; height: 210px; border-bottom: 1px solid var(--a-edge); }
+  .l2-left .panel:last-child { flex: 1; }
+  .l2-center { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  .l2-units { height: 196px; flex: none; border-top: 1px solid var(--a-edge); }
+  .l2-right { width: 322px; flex: none; display: flex; flex-direction: column; border-left: 1px solid var(--a-edge); }
+  .l2-right .panel:first-child { flex: 1; border-bottom: 1px solid var(--a-edge); }
+  .l2-right .panel:last-child { flex: none; height: 250px; }
+
+  /* ---- layout 3: map-first inspector ---- */
+  .l3-stage { flex: 1; position: relative; min-height: 0; }
+  .float {
+    position: absolute; z-index: 5;
+    background: color-mix(in srgb, #171d26 94%, transparent);
+    border: 1px solid var(--a-edge); border-radius: 5px;
+    backdrop-filter: blur(6px);
+    box-shadow: 0 6px 22px rgba(0,0,0,.45);
+  }
+  .l3-top { top: 10px; left: 10px; display: flex; align-items: center; gap: 12px; padding: 5px 10px; }
+  .l3-chips { top: 10px; left: 50%; transform: translateX(-50%); display: flex; gap: 6px; padding: 5px 8px; }
+  .chip {
+    display: flex; align-items: center; gap: 5px;
+    padding: 2px 8px; border-radius: 3px;
+    border: 1px solid var(--a-edge); color: var(--a-ink-dim);
+  }
+  .chip.on { border-color: var(--a-sel); color: var(--a-ink); background: color-mix(in srgb, #4a9fd8 16%, transparent); }
+  .l3-left { top: 56px; left: 10px; bottom: 10px; width: 340px; display: flex; flex-direction: column; }
+  .l3-left .panel { background: transparent; }
+  .l3-left .panel:first-child { flex: none; border-bottom: 1px solid var(--a-edge); }
+  .l3-left .panel:last-child { flex: 1; min-height: 0; }
+  .l3-right { top: 56px; right: 10px; bottom: 10px; width: 330px; display: flex; flex-direction: column; }
+  .l3-right .panel { background: transparent; }
+  .acc { border-bottom: 1px solid var(--a-edge); display: flex; flex-direction: column; min-height: 0; }
+  .acc:last-child { border-bottom: none; }
+  .acc.open { flex: 1; }
+  .acc.shut { flex: none; }
+  .acc .ptitle { cursor: default; }
+  .acc .caretmark { margin-left: auto; color: var(--a-ink-dim); }
+
+  /* ---- layout 4: docked inspector ---- */
+  .l4-stage { flex: 1; position: relative; min-height: 0; }
+  .l4-chips { top: 10px; left: 50%; transform: translateX(-50%); display: flex; gap: 6px; padding: 5px 8px; }
+  .l4-left { top: 52px; left: 10px; bottom: 202px; width: 300px; display: flex; flex-direction: column; }
+  .l4-right { top: 52px; right: 10px; bottom: 202px; width: 334px; display: flex; flex-direction: column; }
+  .l4-right .panel:first-child { flex: 1; border-bottom: 1px solid var(--a-edge); min-height: 0; }
+  .l4-right .panel:last-child { flex: none; height: 196px; }
+  .l4-bottom { left: 10px; right: 10px; bottom: 10px; height: 182px; display: flex; flex-direction: column; }
+  .float .panel { background: transparent; }
+  .float .pbody { overflow: hidden; }
+  .caretmark { margin-left: 8px; color: var(--a-ink-dim); }
+  .screen.mini { height: 330px; }
+  .collapsed-strip {
+    position: absolute; display: flex; align-items: center; gap: 8px;
+    padding: 0 10px; height: 26px;
+    background: color-mix(in srgb, #171d26 94%, transparent);
+    border: 1px solid var(--a-edge); border-radius: 5px;
+    color: var(--a-brass); font-size: 10px; letter-spacing: .12em; text-transform: uppercase;
+    box-shadow: 0 6px 22px rgba(0,0,0,.45);
+  }
+  .collapsed-strip .hint { color: var(--a-ink-dim); letter-spacing: 0; text-transform: none; }
+
+  footer.page {
+    border-top: 1px solid var(--edge);
+    padding-top: 28px; color: var(--ink-soft); font-size: 14px;
+  }
+  footer.page b { color: var(--ink); }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
+</style>
+
+<svg width="0" height="0" aria-hidden="true" focusable="false" style="position:absolute">
+  <defs>
+    <g id="hx1"><polygon points="0,-26 22.5,-13 22.5,13 0,26 -22.5,13 -22.5,-13"/></g>
+  </defs>
+</svg>
+
+<div class="wrap">
+
+<header class="page">
+  <p class="eyebrow">Issue #17 · Basic UI for the app</p>
+  <h1>Three layouts for the Atlantis HUD workspace</h1>
+  <p>All four carry the same six widgets required by the issue — report loading, hex map with a layer bar, selected-hex info, a unit table, unit detail, and a per-unit orders editor. They differ in how those widgets are arranged and how the eye moves between them. Every screen below is drawn with real data from a live turn report, at true density.</p>
+</header>
+
+<nav class="jump">
+  <a href="#p1">01 — Classic Commander</a>
+  <a href="#p2">02 — Three-Column Workbench</a>
+  <a href="#p3">03 — Map-First Inspector</a>
+  <a href="#p4">04 — Docked Inspector</a>
+  <a href="#compare">Comparison</a>
+</nav>
+
+<!-- ================================================================= -->
+<!-- PROPOSAL 1                                                        -->
+<!-- ================================================================= -->
+<section class="proposal" id="p1">
+  <div class="phead">
+    <span class="pnum">01</span>
+    <h2>Classic Commander</h2>
+  </div>
+  <p class="ptag">The arrangement veterans already know: map dominant on the left, a tall inspector rail on the right holding region above unit, and a full-width dock along the bottom carrying the unit table beside the orders editor. This is the shape of the modern client in your fourth screenshot and of Atlantis Little Helper.</p>
+
+  <div class="frame scroller">
+  <div class="screen">
+    <div class="appbar">
+      <span class="brand">ATLANTIS HUD</span>
+      <span class="abfield">Project <b>gharama.atlantis-project</b></span>
+      <span class="abfield">Turn <span class="sel-ctl">17 · June, Year 9 ▾</span></span>
+      <span class="abfield">Faction <b>The Trade Group (11)</b></span>
+      <span class="spacer"></span>
+      <span class="btn primary">Load report…</span>
+      <span class="btn">Export orders</span>
+    </div>
+
+    <div class="layerbar">
+      <span class="tog on"><i class="box on"></i>Units</span>
+      <span class="tog on"><i class="box on"></i>Structures</span>
+      <span class="tog"><i class="box"></i>Trade routes</span>
+      <span class="tog"><i class="box"></i>Movement</span>
+      <span class="tog on"><i class="box on"></i>Staleness</span>
+      <span class="spacer"></span>
+      <span class="abfield">Level <span class="sel-ctl">surface ▾</span></span>
+    </div>
+
+    <div class="l1-body">
+      <div class="l1-main">
+        <div class="map">
+          <svg viewBox="0 0 760 386" preserveAspectRatio="xMidYMid slice" aria-label="Hex map of the surface level around Ealmouth">
+            <g stroke="#0b1017" stroke-width="1.2">
+              <use href="#hx1" x="40" y="30" fill="#1d3f63"/><use href="#hx1" x="85" y="30" fill="#1d3f63"/><use href="#hx1" x="130" y="30" fill="#2f5d3a"/><use href="#hx1" x="175" y="30" fill="#2f5d3a"/><use href="#hx1" x="220" y="30" fill="#7a7440"/><use href="#hx1" x="265" y="30" fill="#7a7440"/><use href="#hx1" x="310" y="30" fill="#4a4a52"/><use href="#hx1" x="355" y="30" fill="#1d3f63"/><use href="#hx1" x="400" y="30" fill="#1d3f63"/><use href="#hx1" x="445" y="30" fill="#1d3f63"/><use href="#hx1" x="490" y="30" fill="#2f5d3a"/><use href="#hx1" x="535" y="30" fill="#2f5d3a"/><use href="#hx1" x="580" y="30" fill="#7a7440"/><use href="#hx1" x="625" y="30" fill="#1d3f63"/><use href="#hx1" x="670" y="30" fill="#1d3f63"/><use href="#hx1" x="715" y="30" fill="#1d3f63"/>
+              <use href="#hx1" x="62" y="69" fill="#1d3f63"/><use href="#hx1" x="107" y="69" fill="#2f5d3a"/><use href="#hx1" x="152" y="69" fill="#2f5d3a"/><use href="#hx1" x="197" y="69" fill="#7a7440"/><use href="#hx1" x="242" y="69" fill="#7a7440"/><use href="#hx1" x="287" y="69" fill="#4a4a52"/><use href="#hx1" x="332" y="69" fill="#4a4a52"/><use href="#hx1" x="377" y="69" fill="#1d3f63"/><use href="#hx1" x="422" y="69" fill="#1d3f63"/><use href="#hx1" x="467" y="69" fill="#2f5d3a"/><use href="#hx1" x="512" y="69" fill="#7a7440"/><use href="#hx1" x="557" y="69" fill="#7a7440"/><use href="#hx1" x="602" y="69" fill="#8a7546"/><use href="#hx1" x="647" y="69" fill="#1d3f63"/><use href="#hx1" x="692" y="69" fill="#1d3f63"/>
+              <use href="#hx1" x="40" y="108" fill="#1d3f63"/><use href="#hx1" x="85" y="108" fill="#2f5d3a"/><use href="#hx1" x="130" y="108" fill="#7a7440"/><use href="#hx1" x="175" y="108" fill="#7a7440"/><use href="#hx1" x="220" y="108" fill="#3d4a2e"/><use href="#hx1" x="265" y="108" fill="#4a4a52"/><use href="#hx1" x="310" y="108" fill="#7a7440"/><use href="#hx1" x="355" y="108" fill="#7a7440"/><use href="#hx1" x="400" y="108" fill="#1d3f63"/><use href="#hx1" x="445" y="108" fill="#2f5d3a"/><use href="#hx1" x="490" y="108" fill="#7a7440"/><use href="#hx1" x="535" y="108" fill="#8a7546"/><use href="#hx1" x="580" y="108" fill="#8a7546"/><use href="#hx1" x="625" y="108" fill="#1d3f63"/><use href="#hx1" x="670" y="108" fill="#1d3f63"/><use href="#hx1" x="715" y="108" fill="#1d3f63"/>
+              <use href="#hx1" x="62" y="147" fill="#2f5d3a"/><use href="#hx1" x="107" y="147" fill="#7a7440"/><use href="#hx1" x="152" y="147" fill="#7a7440"/><use href="#hx1" x="197" y="147" fill="#3d4a2e"/><use href="#hx1" x="242" y="147" fill="#3d4a2e"/><use href="#hx1" x="287" y="147" fill="#7a7440"/><use href="#hx1" x="332" y="147" fill="#7a7440"/><use href="#hx1" x="377" y="147" fill="#7a7440"/><use href="#hx1" x="422" y="147" fill="#2f5d3a"/><use href="#hx1" x="467" y="147" fill="#7a7440"/><use href="#hx1" x="512" y="147" fill="#8a7546"/><use href="#hx1" x="557" y="147" fill="#4a4a52"/><use href="#hx1" x="602" y="147" fill="#1d3f63"/><use href="#hx1" x="647" y="147" fill="#1d3f63"/><use href="#hx1" x="692" y="147" fill="#1d3f63"/>
+              <use href="#hx1" x="40" y="186" fill="#2f5d3a"/><use href="#hx1" x="85" y="186" fill="#7a7440"/><use href="#hx1" x="130" y="186" fill="#3d4a2e"/><use href="#hx1" x="175" y="186" fill="#7a7440"/><use href="#hx1" x="220" y="186" fill="#7a7440"/><use href="#hx1" x="265" y="186" fill="#7a7440"/><use href="#hx1" x="310" y="186" fill="#7a7440"/><use href="#hx1" x="400" y="186" fill="#7a7440"/><use href="#hx1" x="445" y="186" fill="#7a7440"/><use href="#hx1" x="490" y="186" fill="#4a4a52"/><use href="#hx1" x="535" y="186" fill="#4a4a52"/><use href="#hx1" x="580" y="186" fill="#1d3f63"/><use href="#hx1" x="625" y="186" fill="#1d3f63"/><use href="#hx1" x="670" y="186" fill="#1d3f63"/><use href="#hx1" x="715" y="186" fill="#2f5d3a"/>
+              <use href="#hx1" x="62" y="225" fill="#7a7440"/><use href="#hx1" x="107" y="225" fill="#7a7440"/><use href="#hx1" x="152" y="225" fill="#7a7440"/><use href="#hx1" x="197" y="225" fill="#8a7546"/><use href="#hx1" x="242" y="225" fill="#8a7546"/><use href="#hx1" x="287" y="225" fill="#7a7440"/><use href="#hx1" x="332" y="225" fill="#7a7440"/><use href="#hx1" x="377" y="225" fill="#7a7440"/><use href="#hx1" x="422" y="225" fill="#2f5d3a"/><use href="#hx1" x="467" y="225" fill="#2f5d3a"/><use href="#hx1" x="512" y="225" fill="#4a4a52"/><use href="#hx1" x="557" y="225" fill="#1d3f63"/><use href="#hx1" x="602" y="225" fill="#1d3f63"/><use href="#hx1" x="647" y="225" fill="#2f5d3a"/><use href="#hx1" x="692" y="225" fill="#2f5d3a"/>
+              <use href="#hx1" x="40" y="264" fill="#7a7440"/><use href="#hx1" x="85" y="264" fill="#8a7546"/><use href="#hx1" x="130" y="264" fill="#8a7546"/><use href="#hx1" x="175" y="264" fill="#8a7546"/><use href="#hx1" x="220" y="264" fill="#7a7440"/><use href="#hx1" x="265" y="264" fill="#7a7440"/><use href="#hx1" x="310" y="264" fill="#2f5d3a"/><use href="#hx1" x="355" y="264" fill="#2f5d3a"/><use href="#hx1" x="400" y="264" fill="#4a4a52"/><use href="#hx1" x="445" y="264" fill="#4a4a52"/><use href="#hx1" x="490" y="264" fill="#1d3f63"/><use href="#hx1" x="535" y="264" fill="#1d3f63"/><use href="#hx1" x="580" y="264" fill="#2f5d3a"/><use href="#hx1" x="625" y="264" fill="#2f5d3a"/><use href="#hx1" x="670" y="264" fill="#7a7440"/><use href="#hx1" x="715" y="264" fill="#7a7440"/>
+              <use href="#hx1" x="62" y="303" fill="#8a7546"/><use href="#hx1" x="107" y="303" fill="#8a7546"/><use href="#hx1" x="152" y="303" fill="#7a7440"/><use href="#hx1" x="197" y="303" fill="#7a7440"/><use href="#hx1" x="242" y="303" fill="#7a7440"/><use href="#hx1" x="287" y="303" fill="#2f5d3a"/><use href="#hx1" x="332" y="303" fill="#4a4a52"/><use href="#hx1" x="377" y="303" fill="#4a4a52"/><use href="#hx1" x="422" y="303" fill="#1d3f63"/><use href="#hx1" x="467" y="303" fill="#1d3f63"/><use href="#hx1" x="512" y="303" fill="#1d3f63"/><use href="#hx1" x="557" y="303" fill="#2f5d3a"/><use href="#hx1" x="602" y="303" fill="#7a7440"/><use href="#hx1" x="647" y="303" fill="#7a7440"/><use href="#hx1" x="692" y="303" fill="#7a7440"/>
+              <use href="#hx1" x="40" y="342" fill="#8a7546"/><use href="#hx1" x="85" y="342" fill="#7a7440"/><use href="#hx1" x="130" y="342" fill="#7a7440"/><use href="#hx1" x="175" y="342" fill="#2f5d3a"/><use href="#hx1" x="220" y="342" fill="#2f5d3a"/><use href="#hx1" x="265" y="342" fill="#4a4a52"/><use href="#hx1" x="310" y="342" fill="#4a4a52"/><use href="#hx1" x="355" y="342" fill="#1d3f63"/><use href="#hx1" x="400" y="342" fill="#1d3f63"/><use href="#hx1" x="445" y="342" fill="#2f5d3a"/><use href="#hx1" x="490" y="342" fill="#2f5d3a"/><use href="#hx1" x="535" y="342" fill="#7a7440"/><use href="#hx1" x="580" y="342" fill="#7a7440"/><use href="#hx1" x="625" y="342" fill="#7a7440"/><use href="#hx1" x="670" y="342" fill="#8a7546"/><use href="#hx1" x="715" y="342" fill="#8a7546"/>
+            </g>
+            <!-- selected hex -->
+            <use href="#hx1" x="355" y="186" fill="#a08a48" stroke="#d9a441" stroke-width="2.6"/>
+            <!-- settlement + structure marks -->
+            <text x="355" y="205" fill="#f0e2bd" font-size="9.5" text-anchor="middle" font-family="ui-monospace, Menlo, monospace">Ealmouth</text>
+            <text x="355" y="176" fill="#f5efe0" font-size="11" text-anchor="middle" font-family="ui-monospace, Menlo, monospace">▣</text>
+            <text x="310" y="190" fill="#d8cfa8" font-size="9" text-anchor="middle" font-family="ui-monospace, Menlo, monospace">▲</text>
+            <text x="400" y="151" fill="#d8cfa8" font-size="9" text-anchor="middle" font-family="ui-monospace, Menlo, monospace">▲</text>
+            <text x="242" y="151" fill="#e8dcb4" font-size="9.5" text-anchor="middle" font-family="ui-monospace, Menlo, monospace">Bosac</text>
+            <text x="512" y="229" fill="#e8dcb4" font-size="9.5" text-anchor="middle" font-family="ui-monospace, Menlo, monospace">Ma'i</text>
+            <!-- unit presence pips -->
+            <g>
+              <circle cx="347" cy="169" r="3" fill="#5ec8f0"/><circle cx="357" cy="169" r="3" fill="#f07070"/><circle cx="367" cy="169" r="3" fill="#c48ae0"/>
+              <circle cx="304" cy="172" r="3" fill="#5ec8f0"/><circle cx="314" cy="172" r="3" fill="#f07070"/>
+              <circle cx="394" cy="211" r="3" fill="#5ec8f0"/>
+              <circle cx="265" cy="211" r="3" fill="#f07070"/><circle cx="275" cy="211" r="3" fill="#5ec8f0"/>
+              <circle cx="422" cy="133" r="3" fill="#5ec8f0"/>
+              <circle cx="467" cy="211" r="3" fill="#7de08a"/>
+              <circle cx="197" cy="250" r="3" fill="#5ec8f0"/>
+            </g>
+          </svg>
+          <div class="coordchip">1 · 58,30 &nbsp;·&nbsp; zoom 100%</div>
+          <div class="mapctl"><span class="zbtn">+</span><span class="zbtn">−</span><span class="zbtn">⤢</span></div>
+        </div>
+
+        <div class="l1-dock">
+          <div class="panel l1-units">
+            <div class="ptitle">Units in hex <span class="hint">— plain (58,30), 9 units</span><span class="spacer"></span><input class="filter" value="filter units…" readonly aria-label="Filter units"></div>
+            <div class="pbody" style="padding:0">
+              <table class="units">
+                <thead><tr><th>Id</th><th>Unit</th><th>Faction</th><th>Men</th><th>Silver</th><th>Skills</th><th>Items</th></tr></thead>
+                <tbody>
+                  <tr class="foreign"><td class="id">85</td><td>ambassador</td><td>Children of the Four Winds (4)</td><td></td><td></td><td></td><td>1 GNOL</td></tr>
+                  <tr><td class="id">242</td><td>Lord Brag</td><td>The Trade Group (11)</td><td>1</td><td></td><td>TACT 5 OBSE 5</td><td></td></tr>
+                  <tr><td class="id">5844</td><td>Guards</td><td>The Trade Group (11)</td><td>290</td><td></td><td>COMB 1</td><td></td></tr>
+                  <tr><td class="id">845</td><td>Ship Builders</td><td>The Trade Group (11)</td><td>4</td><td></td><td>SHIP 5</td><td></td></tr>
+                  <tr><td class="id">315</td><td>Horse Trainers</td><td>The Trade Group (11)</td><td>20</td><td></td><td>HORS 2</td><td>27 HORS, 7 LASS</td></tr>
+                  <tr class="active"><td class="id">2659</td><td>Lord Anthony</td><td>The Trade Group (11)</td><td>1</td><td>456,918</td><td>QUAM 4 STEA 5</td><td>52 LBOW, 30 AXE, 230 XBOW…</td></tr>
+                  <tr><td class="id">658</td><td>Farmers</td><td>The Trade Group (11)</td><td>20</td><td></td><td>FARM 3</td><td>20 BAG</td></tr>
+                  <tr><td class="id">607</td><td>Lord Matthew</td><td>The Trade Group (11)</td><td>1</td><td></td><td>WEAP 5</td><td></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="panel l1-orders">
+            <div class="ptitle">Orders <span class="hint">— Lord Anthony (2659)</span></div>
+            <div class="editor">
+              <div class="code">
+                <div class="ln"><i>1</i><span class="cm">@;keep the caravan moving</span></div>
+                <div class="ln"><i>2</i><span class="cmd">study</span> <span class="arg">QUAM</span></div>
+                <div class="ln"><i>3</i><span class="cmd">give</span> <span class="arg">242 100 SILV</span></div>
+                <div class="ln"><i>4</i><span class="cmd">move</span> <span class="arg">n n</span><span class="caret"></span></div>
+              </div>
+              <div class="statusline"><span><i class="dot ok"></i> 0 errors</span><span><i class="dot warn"></i> 1 warning</span><span class="spacer"></span><span>saved 14:22</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="l1-rail">
+        <div class="panel">
+          <div class="ptitle">Region</div>
+          <div class="pbody">
+            <div class="region-head"><b>plain (58,30)</b> in Popener<br>contains <b>Ealmouth</b> [town]</div>
+            <dl class="kv">
+              <dt>Population</dt><dd>7,413 humans</dd>
+              <dt>Tax</dt><dd>14,826</dd>
+              <dt>Wages</dt><dd>20 (max 2,965)</dd>
+              <dt>Entertainment</dt><dd>1,018</dd>
+            </dl>
+            <p class="sub">Products</p>
+            <div class="dim">57 grain · 27 horses · 13 winged horses</div>
+            <p class="sub">Wanted</p>
+            <div class="row"><span>grain</span><span>28s ×136</span></div>
+            <div class="row"><span>livestock</span><span>18s ×128</span></div>
+            <div class="row"><span>fish</span><span>47s ×124</span></div>
+            <div class="row"><span>spinning wheels</span><span>86s ×13</span></div>
+            <p class="sub">For sale</p>
+            <div class="row"><span>humans</span><span>64s ×296</span></div>
+            <div class="row"><span>leaders</span><span>1120s ×59</span></div>
+            <p class="sub">Exits</p>
+            <div class="dim">N&nbsp; plain (58,28) in Popener</div>
+            <div class="dim">NE ocean (59,29) Atlantis Ocean</div>
+            <div class="dim">SE ocean (59,31) Atlantis Ocean</div>
+            <p class="sub">Structures</p>
+            <div class="dim">Caravanserai · Tower · Fort ×3 · Inn · Citadel · Road S</div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="ptitle">Unit</div>
+          <div class="pbody">
+            <div class="region-head"><b>Lord Anthony (2659)</b><br>The Trade Group (11)</div>
+            <dl class="kv">
+              <dt>Hex</dt><dd>1 : 58,30</dd>
+              <dt>Men</dt><dd>1 leader</dd>
+            </dl>
+            <p class="sub">Flags</p>
+            <div class="dim">avoid · behind · hold · no-aid · no-cross · share · spoils all · reveal faction</div>
+            <p class="sub">Skills</p>
+            <div class="row"><span>stealth STEA</span><span>5 · 450 · 180</span></div>
+            <div class="row"><span>quartermaster QUAM</span><span>4 · 305 · 145</span></div>
+            <p class="sub">Items</p>
+            <div class="row"><span>silver SILV</span><span>456,918</span></div>
+            <div class="row"><span>horses HORS</span><span>3,102</span></div>
+            <div class="row"><span>stone STON</span><span>1,452</span></div>
+            <div class="row"><span>iron IRON</span><span>685</span></div>
+            <div class="row"><span>rootstone ROOT</span><span>357</span></div>
+            <div class="row"><span>furs FUR</span><span>314</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  </div>
+
+  <div class="notes">
+    <div>
+      <h3>Why this one</h3>
+      <ul>
+        <li>Matches the muscle memory of <b>all four reference clients</b> you linked.</li>
+        <li>The unit table gets the <b>full window width</b>, so faction, men, silver, skills and items all fit without truncation.</li>
+        <li>Map keeps the largest contiguous area of any of the three.</li>
+        <li>Orders sit <b>directly beside</b> the table you pick the unit from — shortest path for the app's core loop.</li>
+      </ul>
+    </div>
+    <div>
+      <h3>Trade-offs</h3>
+      <ul>
+        <li>Report loading lives behind a button in the app bar rather than as a persistent panel.</li>
+        <li>The bottom dock costs vertical space the map would otherwise use.</li>
+        <li>Region panel needs internal scrolling on dense hexes.</li>
+      </ul>
+    </div>
+    <div>
+      <h3>Handheld</h3>
+      <ul>
+        <li>Rail and dock collapse into a bottom sheet with segmented tabs: <b>Region / Units / Unit / Orders</b>.</li>
+        <li>Map stays full-bleed above the sheet.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ================================================================= -->
+<!-- PROPOSAL 2                                                        -->
+<!-- ================================================================= -->
+<section class="proposal" id="p2">
+  <div class="phead">
+    <span class="pnum">02</span>
+    <h2>Three-Column Workbench</h2>
+  </div>
+  <p class="ptag">An IDE reading: turn and place on the left, the world in the middle, the actor and its orders on the right. Nothing overlaps and nothing hides behind a tab — the six widgets each hold a fixed, permanent address on screen, and every column border is a drag handle.</p>
+
+  <div class="frame scroller">
+  <div class="screen">
+    <div class="appbar">
+      <span class="brand">ATLANTIS HUD</span>
+      <span class="abfield">gharama.atlantis-project</span>
+      <span class="abfield">Turn <span class="sel-ctl">17 · June, Year 9 ▾</span></span>
+      <span class="abfield">Faction <b>The Trade Group (11)</b></span>
+      <span class="spacer"></span>
+      <span class="btn">Export orders</span>
+    </div>
+
+    <div class="l2-body">
+      <div class="l2-left">
+        <div class="panel">
+          <div class="ptitle">Reports</div>
+          <div class="pbody">
+            <div style="border:1px dashed #2c3846;border-radius:4px;padding:12px 8px;text-align:center;color:#5b6878;margin-bottom:9px">
+              Drop a report file here<br><span style="color:#7d8b9d;text-decoration:underline">or choose a file…</span>
+            </div>
+            <p class="sub">Loaded turns</p>
+            <div class="row" style="color:#dbe3ec"><span>▸ Turn 17 · June, Y9</span><span>now</span></div>
+            <div class="row"><span>&nbsp;&nbsp;Turn 16 · April, Y9</span><span>7d</span></div>
+            <div class="row"><span>&nbsp;&nbsp;Turn 15 · Feb, Y9</span><span>21d</span></div>
+            <div class="statusline" style="border-top:none;padding:0;margin-top:6px"><span><i class="dot ok"></i> 61 regions, 214 units</span></div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="ptitle">Region</div>
+          <div class="pbody">
+            <div class="region-head"><b>plain (58,30)</b> in Popener<br>contains <b>Ealmouth</b> [town]</div>
+            <dl class="kv">
+              <dt>Population</dt><dd>7,413 humans</dd>
+              <dt>Tax</dt><dd>14,826</dd>
+              <dt>Wages</dt><dd>20 (max 2,965)</dd>
+              <dt>Entertain.</dt><dd>1,018</dd>
+            </dl>
+            <p class="sub">Products</p>
+            <div class="dim">57 grain · 27 horses<br>13 winged horses</div>
+            <p class="sub">Wanted</p>
+            <div class="row"><span>grain</span><span>28s ×136</span></div>
+            <div class="row"><span>livestock</span><span>18s ×128</span></div>
+            <div class="row"><span>fish</span><span>47s ×124</span></div>
+            <p class="sub">For sale</p>
+            <div class="row"><span>humans</span><span>64s ×296</span></div>
+            <div class="row"><span>leaders</span><span>1120s ×59</span></div>
+            <p class="sub">Exits</p>
+            <div class="dim">N&nbsp; plain (58,28)</div>
+            <div class="dim">NE ocean (59,29)</div>
+            <div class="dim">SE ocean (59,31)</div>
+            <p class="sub">Structures</p>
+            <div class="dim">Caravanserai · Tower<br>Fort ×3 · Inn · Citadel</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="l2-center">
+        <div class="layerbar">
+          <span class="tog on"><i class="box on"></i>Units</span>
+          <span class="tog on"><i class="box on"></i>Structures</span>
+          <span class="tog"><i class="box"></i>Trade routes</span>
+          <span class="tog"><i class="box"></i>Movement</span>
+          <span class="spacer"></span>
+          <span class="abfield">Level <span class="sel-ctl">surface ▾</span></span>
+        </div>
+        <div class="map">
+          <svg viewBox="0 0 600 300" preserveAspectRatio="xMidYMid slice" aria-label="Hex map of the surface level around Ealmouth">
+            <g stroke="#0b1017" stroke-width="1.2">
+              <use href="#hx1" x="40" y="30" fill="#1d3f63"/><use href="#hx1" x="85" y="30" fill="#2f5d3a"/><use href="#hx1" x="130" y="30" fill="#2f5d3a"/><use href="#hx1" x="175" y="30" fill="#7a7440"/><use href="#hx1" x="220" y="30" fill="#7a7440"/><use href="#hx1" x="265" y="30" fill="#4a4a52"/><use href="#hx1" x="310" y="30" fill="#1d3f63"/><use href="#hx1" x="355" y="30" fill="#1d3f63"/><use href="#hx1" x="400" y="30" fill="#2f5d3a"/><use href="#hx1" x="445" y="30" fill="#7a7440"/><use href="#hx1" x="490" y="30" fill="#7a7440"/><use href="#hx1" x="535" y="30" fill="#1d3f63"/><use href="#hx1" x="580" y="30" fill="#1d3f63"/>
+              <use href="#hx1" x="62" y="69" fill="#2f5d3a"/><use href="#hx1" x="107" y="69" fill="#7a7440"/><use href="#hx1" x="152" y="69" fill="#7a7440"/><use href="#hx1" x="197" y="69" fill="#3d4a2e"/><use href="#hx1" x="242" y="69" fill="#4a4a52"/><use href="#hx1" x="287" y="69" fill="#4a4a52"/><use href="#hx1" x="332" y="69" fill="#1d3f63"/><use href="#hx1" x="377" y="69" fill="#2f5d3a"/><use href="#hx1" x="422" y="69" fill="#7a7440"/><use href="#hx1" x="467" y="69" fill="#8a7546"/><use href="#hx1" x="512" y="69" fill="#8a7546"/><use href="#hx1" x="557" y="69" fill="#1d3f63"/>
+              <use href="#hx1" x="40" y="108" fill="#7a7440"/><use href="#hx1" x="85" y="108" fill="#7a7440"/><use href="#hx1" x="130" y="108" fill="#3d4a2e"/><use href="#hx1" x="175" y="108" fill="#7a7440"/><use href="#hx1" x="220" y="108" fill="#7a7440"/><use href="#hx1" x="265" y="108" fill="#7a7440"/><use href="#hx1" x="310" y="108" fill="#7a7440"/><use href="#hx1" x="400" y="108" fill="#7a7440"/><use href="#hx1" x="445" y="108" fill="#4a4a52"/><use href="#hx1" x="490" y="108" fill="#1d3f63"/><use href="#hx1" x="535" y="108" fill="#1d3f63"/><use href="#hx1" x="580" y="108" fill="#2f5d3a"/>
+              <use href="#hx1" x="62" y="147" fill="#7a7440"/><use href="#hx1" x="107" y="147" fill="#8a7546"/><use href="#hx1" x="152" y="147" fill="#8a7546"/><use href="#hx1" x="197" y="147" fill="#7a7440"/><use href="#hx1" x="242" y="147" fill="#7a7440"/><use href="#hx1" x="287" y="147" fill="#7a7440"/><use href="#hx1" x="332" y="147" fill="#2f5d3a"/><use href="#hx1" x="377" y="147" fill="#4a4a52"/><use href="#hx1" x="422" y="147" fill="#1d3f63"/><use href="#hx1" x="467" y="147" fill="#1d3f63"/><use href="#hx1" x="512" y="147" fill="#2f5d3a"/><use href="#hx1" x="557" y="147" fill="#7a7440"/>
+              <use href="#hx1" x="40" y="186" fill="#8a7546"/><use href="#hx1" x="85" y="186" fill="#8a7546"/><use href="#hx1" x="130" y="186" fill="#7a7440"/><use href="#hx1" x="175" y="186" fill="#7a7440"/><use href="#hx1" x="220" y="186" fill="#2f5d3a"/><use href="#hx1" x="265" y="186" fill="#4a4a52"/><use href="#hx1" x="310" y="186" fill="#4a4a52"/><use href="#hx1" x="355" y="186" fill="#1d3f63"/><use href="#hx1" x="400" y="186" fill="#1d3f63"/><use href="#hx1" x="445" y="186" fill="#2f5d3a"/><use href="#hx1" x="490" y="186" fill="#7a7440"/><use href="#hx1" x="535" y="186" fill="#7a7440"/><use href="#hx1" x="580" y="186" fill="#8a7546"/>
+              <use href="#hx1" x="62" y="225" fill="#8a7546"/><use href="#hx1" x="107" y="225" fill="#7a7440"/><use href="#hx1" x="152" y="225" fill="#2f5d3a"/><use href="#hx1" x="197" y="225" fill="#2f5d3a"/><use href="#hx1" x="242" y="225" fill="#4a4a52"/><use href="#hx1" x="287" y="225" fill="#1d3f63"/><use href="#hx1" x="332" y="225" fill="#1d3f63"/><use href="#hx1" x="377" y="225" fill="#2f5d3a"/><use href="#hx1" x="422" y="225" fill="#7a7440"/><use href="#hx1" x="467" y="225" fill="#7a7440"/><use href="#hx1" x="512" y="225" fill="#8a7546"/><use href="#hx1" x="557" y="225" fill="#8a7546"/>
+              <use href="#hx1" x="40" y="264" fill="#7a7440"/><use href="#hx1" x="85" y="264" fill="#2f5d3a"/><use href="#hx1" x="130" y="264" fill="#4a4a52"/><use href="#hx1" x="175" y="264" fill="#4a4a52"/><use href="#hx1" x="220" y="264" fill="#1d3f63"/><use href="#hx1" x="265" y="264" fill="#1d3f63"/><use href="#hx1" x="310" y="264" fill="#2f5d3a"/><use href="#hx1" x="355" y="264" fill="#7a7440"/><use href="#hx1" x="400" y="264" fill="#7a7440"/><use href="#hx1" x="445" y="264" fill="#7a7440"/><use href="#hx1" x="490" y="264" fill="#8a7546"/><use href="#hx1" x="535" y="264" fill="#8a7546"/><use href="#hx1" x="580" y="264" fill="#7a7440"/>
+            </g>
+            <use href="#hx1" x="355" y="108" fill="#a08a48" stroke="#d9a441" stroke-width="2.6"/>
+            <text x="355" y="127" fill="#f0e2bd" font-size="9.5" text-anchor="middle" font-family="ui-monospace, Menlo, monospace">Ealmouth</text>
+            <text x="355" y="98" fill="#f5efe0" font-size="11" text-anchor="middle" font-family="ui-monospace, Menlo, monospace">▣</text>
+            <text x="242" y="112" fill="#e8dcb4" font-size="9.5" text-anchor="middle" font-family="ui-monospace, Menlo, monospace">Bosac</text>
+            <text x="490" y="190" fill="#e8dcb4" font-size="9.5" text-anchor="middle" font-family="ui-monospace, Menlo, monospace">Ma'i</text>
+            <g>
+              <circle cx="347" cy="91" r="3" fill="#5ec8f0"/><circle cx="357" cy="91" r="3" fill="#f07070"/><circle cx="367" cy="91" r="3" fill="#c48ae0"/>
+              <circle cx="304" cy="94" r="3" fill="#5ec8f0"/><circle cx="242" cy="133" r="3" fill="#f07070"/>
+              <circle cx="400" cy="133" r="3" fill="#5ec8f0"/><circle cx="197" cy="172" r="3" fill="#7de08a"/>
+              <circle cx="445" cy="172" r="3" fill="#5ec8f0"/>
+            </g>
+          </svg>
+          <div class="coordchip">1 · 58,30 &nbsp;·&nbsp; zoom 100%</div>
+          <div class="mapctl"><span class="zbtn">+</span><span class="zbtn">−</span><span class="zbtn">⤢</span></div>
+        </div>
+        <div class="panel l2-units">
+          <div class="ptitle">Units in hex <span class="hint">— 9 units</span><span class="spacer"></span><input class="filter" value="filter units…" readonly aria-label="Filter units"></div>
+          <div class="pbody" style="padding:0">
+            <table class="units">
+              <thead><tr><th>Id</th><th>Unit</th><th>Faction</th><th>Men</th><th>Silver</th><th>Skills</th></tr></thead>
+              <tbody>
+                <tr class="foreign"><td class="id">85</td><td>ambassador</td><td>Children of the Four Winds (4)</td><td></td><td></td><td></td></tr>
+                <tr><td class="id">242</td><td>Lord Brag</td><td>The Trade Group (11)</td><td>1</td><td></td><td>TACT 5 OBSE 5</td></tr>
+                <tr><td class="id">5844</td><td>Guards</td><td>The Trade Group (11)</td><td>290</td><td></td><td>COMB 1</td></tr>
+                <tr><td class="id">845</td><td>Ship Builders</td><td>The Trade Group (11)</td><td>4</td><td></td><td>SHIP 5</td></tr>
+                <tr class="active"><td class="id">2659</td><td>Lord Anthony</td><td>The Trade Group (11)</td><td>1</td><td>456,918</td><td>QUAM 4 STEA 5</td></tr>
+                <tr><td class="id">315</td><td>Horse Trainers</td><td>The Trade Group (11)</td><td>20</td><td></td><td>HORS 2</td></tr>
+                <tr><td class="id">658</td><td>Farmers</td><td>The Trade Group (11)</td><td>20</td><td></td><td>FARM 3</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="l2-right">
+        <div class="panel">
+          <div class="ptitle">Unit</div>
+          <div class="pbody">
+            <div class="region-head"><b>Lord Anthony (2659)</b><br>The Trade Group (11)</div>
+            <dl class="kv">
+              <dt>Hex</dt><dd>1 : 58,30</dd>
+              <dt>Men</dt><dd>1 leader</dd>
+              <dt>Weight</dt><dd>10 · cap 0/0/15/0</dd>
+            </dl>
+            <p class="sub">Flags</p>
+            <div class="dim">avoid · behind · hold · no-aid · no-cross · share · spoils all · reveal faction</div>
+            <p class="sub">Skills</p>
+            <div class="row"><span>stealth STEA</span><span>5 · 450 · 180</span></div>
+            <div class="row"><span>quartermaster QUAM</span><span>4 · 305 · 145</span></div>
+            <p class="sub">Items</p>
+            <div class="row"><span>silver SILV</span><span>456,918</span></div>
+            <div class="row"><span>horses HORS</span><span>3,102</span></div>
+            <div class="row"><span>stone STON</span><span>1,452</span></div>
+            <div class="row"><span>iron IRON</span><span>685</span></div>
+            <div class="row"><span>rootstone ROOT</span><span>357</span></div>
+            <div class="row"><span>furs FUR</span><span>314</span></div>
+            <div class="row"><span>herbs HERB</span><span>306</span></div>
+            <div class="row"><span>crossbows XBOW</span><span>230</span></div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="ptitle">Orders <span class="hint">— unit 2659</span></div>
+          <div class="editor">
+            <div class="code">
+              <div class="ln"><i>1</i><span class="cm">@;keep the caravan moving</span></div>
+              <div class="ln"><i>2</i><span class="cmd">study</span> <span class="arg">QUAM</span></div>
+              <div class="ln"><i>3</i><span class="cmd">give</span> <span class="arg">242 100 SILV</span></div>
+              <div class="ln"><i>4</i><span class="cmd">move</span> <span class="arg">n n</span><span class="caret"></span></div>
+              <div class="ln"><i>5</i></div>
+            </div>
+            <div class="statusline"><span><i class="dot ok"></i> 0 errors</span><span><i class="dot warn"></i> 1 warning</span><span class="spacer"></span><span>saved 14:22</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  </div>
+
+  <div class="notes">
+    <div>
+      <h3>Strengths</h3>
+      <ul>
+        <li>All six widgets <b>permanently visible</b> — nothing is ever a click away.</li>
+        <li>Report loading is a <b>first-class panel</b> with turn history, closest to the issue's "loading/merging" wording.</li>
+        <li>Left-to-right reading order matches the task: turn → place → actor → orders.</li>
+        <li>Simplest layout to make resizable and to unit-test.</li>
+      </ul>
+    </div>
+    <div>
+      <h3>Trade-offs</h3>
+      <ul>
+        <li>Two side columns squeeze the map to roughly <b>half the window</b>.</li>
+        <li>The unit table is narrower, so items must be dropped or truncated.</li>
+        <li>Least like the clients your players already use.</li>
+      </ul>
+    </div>
+    <div>
+      <h3>Handheld</h3>
+      <ul>
+        <li>Columns stack into a single scroll; map pinned at top.</li>
+        <li>Maps most directly onto a narrow viewport of the three.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ================================================================= -->
+<!-- PROPOSAL 3                                                        -->
+<!-- ================================================================= -->
+<section class="proposal" id="p3">
+  <div class="phead">
+    <span class="pnum">03</span>
+    <h2>Map-First Inspector</h2>
+  </div>
+  <p class="ptag">The map is the application. It fills the entire window edge to edge, and the widgets float above it as dismissible glass panels — reports and units on the left, an accordion of region, unit and orders on the right. Collapse both and you get a full-screen map; the same drawers become bottom sheets on a phone.</p>
+
+  <div class="frame scroller">
+  <div class="screen">
+    <div class="l3-stage">
+      <div class="map" style="position:absolute;inset:0">
+        <svg viewBox="0 0 1180 686" preserveAspectRatio="xMidYMid slice" aria-label="Full-bleed hex map of the surface level around Ealmouth">
+          <g stroke="#0b1017" stroke-width="1.2">
+            <use href="#hx1" x="40" y="30" fill="#1d3f63"/><use href="#hx1" x="85" y="30" fill="#1d3f63"/><use href="#hx1" x="130" y="30" fill="#2f5d3a"/><use href="#hx1" x="175" y="30" fill="#2f5d3a"/><use href="#hx1" x="220" y="30" fill="#7a7440"/><use href="#hx1" x="265" y="30" fill="#7a7440"/><use href="#hx1" x="310" y="30" fill="#4a4a52"/><use href="#hx1" x="355" y="30" fill="#1d3f63"/><use href="#hx1" x="400" y="30" fill="#1d3f63"/><use href="#hx1" x="445" y="30" fill="#1d3f63"/><use href="#hx1" x="490" y="30" fill="#2f5d3a"/><use href="#hx1" x="535" y="30" fill="#2f5d3a"/><use href="#hx1" x="580" y="30" fill="#7a7440"/><use href="#hx1" x="625" y="30" fill="#1d3f63"/><use href="#hx1" x="670" y="30" fill="#1d3f63"/><use href="#hx1" x="715" y="30" fill="#1d3f63"/><use href="#hx1" x="760" y="30" fill="#2f5d3a"/><use href="#hx1" x="805" y="30" fill="#7a7440"/><use href="#hx1" x="850" y="30" fill="#7a7440"/><use href="#hx1" x="895" y="30" fill="#4a4a52"/><use href="#hx1" x="940" y="30" fill="#1d3f63"/><use href="#hx1" x="985" y="30" fill="#1d3f63"/><use href="#hx1" x="1030" y="30" fill="#2f5d3a"/><use href="#hx1" x="1075" y="30" fill="#2f5d3a"/><use href="#hx1" x="1120" y="30" fill="#7a7440"/><use href="#hx1" x="1165" y="30" fill="#7a7440"/>
+            <use href="#hx1" x="62" y="69" fill="#1d3f63"/><use href="#hx1" x="107" y="69" fill="#2f5d3a"/><use href="#hx1" x="152" y="69" fill="#2f5d3a"/><use href="#hx1" x="197" y="69" fill="#7a7440"/><use href="#hx1" x="242" y="69" fill="#7a7440"/><use href="#hx1" x="287" y="69" fill="#4a4a52"/><use href="#hx1" x="332" y="69" fill="#4a4a52"/><use href="#hx1" x="377" y="69" fill="#1d3f63"/><use href="#hx1" x="422" y="69" fill="#1d3f63"/><use href="#hx1" x="467" y="69" fill="#2f5d3a"/><use href="#hx1" x="512" y="69" fill="#7a7440"/><use href="#hx1" x="557" y="69" fill="#7a7440"/><use href="#hx1" x="602" y="69" fill="#8a7546"/><use href="#hx1" x="647" y="69" fill="#1d3f63"/><use href="#hx1" x="692" y="69" fill="#1d3f63"/><use href="#hx1" x="737" y="69" fill="#2f5d3a"/><use href="#hx1" x="782" y="69" fill="#7a7440"/><use href="#hx1" x="827" y="69" fill="#7a7440"/><use href="#hx1" x="872" y="69" fill="#4a4a52"/><use href="#hx1" x="917" y="69" fill="#4a4a52"/><use href="#hx1" x="962" y="69" fill="#1d3f63"/><use href="#hx1" x="1007" y="69" fill="#2f5d3a"/><use href="#hx1" x="1052" y="69" fill="#7a7440"/><use href="#hx1" x="1097" y="69" fill="#7a7440"/><use href="#hx1" x="1142" y="69" fill="#8a7546"/>
+            <use href="#hx1" x="40" y="108" fill="#1d3f63"/><use href="#hx1" x="85" y="108" fill="#2f5d3a"/><use href="#hx1" x="130" y="108" fill="#7a7440"/><use href="#hx1" x="175" y="108" fill="#7a7440"/><use href="#hx1" x="220" y="108" fill="#3d4a2e"/><use href="#hx1" x="265" y="108" fill="#4a4a52"/><use href="#hx1" x="310" y="108" fill="#7a7440"/><use href="#hx1" x="355" y="108" fill="#7a7440"/><use href="#hx1" x="400" y="108" fill="#1d3f63"/><use href="#hx1" x="445" y="108" fill="#2f5d3a"/><use href="#hx1" x="490" y="108" fill="#7a7440"/><use href="#hx1" x="535" y="108" fill="#8a7546"/><use href="#hx1" x="580" y="108" fill="#8a7546"/><use href="#hx1" x="625" y="108" fill="#1d3f63"/><use href="#hx1" x="670" y="108" fill="#1d3f63"/><use href="#hx1" x="715" y="108" fill="#1d3f63"/><use href="#hx1" x="760" y="108" fill="#7a7440"/><use href="#hx1" x="805" y="108" fill="#7a7440"/><use href="#hx1" x="850" y="108" fill="#3d4a2e"/><use href="#hx1" x="895" y="108" fill="#4a4a52"/><use href="#hx1" x="940" y="108" fill="#7a7440"/><use href="#hx1" x="985" y="108" fill="#7a7440"/><use href="#hx1" x="1030" y="108" fill="#1d3f63"/><use href="#hx1" x="1075" y="108" fill="#2f5d3a"/><use href="#hx1" x="1120" y="108" fill="#7a7440"/><use href="#hx1" x="1165" y="108" fill="#8a7546"/>
+            <use href="#hx1" x="62" y="147" fill="#2f5d3a"/><use href="#hx1" x="107" y="147" fill="#7a7440"/><use href="#hx1" x="152" y="147" fill="#7a7440"/><use href="#hx1" x="197" y="147" fill="#3d4a2e"/><use href="#hx1" x="242" y="147" fill="#3d4a2e"/><use href="#hx1" x="287" y="147" fill="#7a7440"/><use href="#hx1" x="332" y="147" fill="#7a7440"/><use href="#hx1" x="377" y="147" fill="#7a7440"/><use href="#hx1" x="422" y="147" fill="#2f5d3a"/><use href="#hx1" x="467" y="147" fill="#7a7440"/><use href="#hx1" x="512" y="147" fill="#8a7546"/><use href="#hx1" x="557" y="147" fill="#4a4a52"/><use href="#hx1" x="602" y="147" fill="#1d3f63"/><use href="#hx1" x="647" y="147" fill="#1d3f63"/><use href="#hx1" x="692" y="147" fill="#1d3f63"/><use href="#hx1" x="737" y="147" fill="#7a7440"/><use href="#hx1" x="782" y="147" fill="#3d4a2e"/><use href="#hx1" x="827" y="147" fill="#7a7440"/><use href="#hx1" x="872" y="147" fill="#7a7440"/><use href="#hx1" x="917" y="147" fill="#7a7440"/><use href="#hx1" x="962" y="147" fill="#2f5d3a"/><use href="#hx1" x="1007" y="147" fill="#7a7440"/><use href="#hx1" x="1052" y="147" fill="#8a7546"/><use href="#hx1" x="1097" y="147" fill="#4a4a52"/><use href="#hx1" x="1142" y="147" fill="#1d3f63"/>
+            <use href="#hx1" x="40" y="186" fill="#2f5d3a"/><use href="#hx1" x="85" y="186" fill="#7a7440"/><use href="#hx1" x="130" y="186" fill="#3d4a2e"/><use href="#hx1" x="175" y="186" fill="#7a7440"/><use href="#hx1" x="220" y="186" fill="#7a7440"/><use href="#hx1" x="265" y="186" fill="#7a7440"/><use href="#hx1" x="310" y="186" fill="#7a7440"/><use href="#hx1" x="400" y="186" fill="#7a7440"/><use href="#hx1" x="445" y="186" fill="#7a7440"/><use href="#hx1" x="490" y="186" fill="#4a4a52"/><use href="#hx1" x="535" y="186" fill="#4a4a52"/><use href="#hx1" x="580" y="186" fill="#1d3f63"/><use href="#hx1" x="625" y="186" fill="#1d3f63"/><use href="#hx1" x="670" y="186" fill="#1d3f63"/><use href="#hx1" x="715" y="186" fill="#2f5d3a"/><use href="#hx1" x="760" y="186" fill="#7a7440"/><use href="#hx1" x="805" y="186" fill="#7a7440"/><use href="#hx1" x="850" y="186" fill="#7a7440"/><use href="#hx1" x="895" y="186" fill="#8a7546"/><use href="#hx1" x="940" y="186" fill="#8a7546"/><use href="#hx1" x="985" y="186" fill="#4a4a52"/><use href="#hx1" x="1030" y="186" fill="#1d3f63"/><use href="#hx1" x="1075" y="186" fill="#1d3f63"/><use href="#hx1" x="1120" y="186" fill="#2f5d3a"/><use href="#hx1" x="1165" y="186" fill="#7a7440"/>
+            <use href="#hx1" x="62" y="225" fill="#7a7440"/><use href="#hx1" x="107" y="225" fill="#7a7440"/><use href="#hx1" x="152" y="225" fill="#7a7440"/><use href="#hx1" x="197" y="225" fill="#8a7546"/><use href="#hx1" x="242" y="225" fill="#8a7546"/><use href="#hx1" x="287" y="225" fill="#7a7440"/><use href="#hx1" x="332" y="225" fill="#7a7440"/><use href="#hx1" x="377" y="225" fill="#7a7440"/><use href="#hx1" x="422" y="225" fill="#2f5d3a"/><use href="#hx1" x="467" y="225" fill="#2f5d3a"/><use href="#hx1" x="512" y="225" fill="#4a4a52"/><use href="#hx1" x="557" y="225" fill="#1d3f63"/><use href="#hx1" x="602" y="225" fill="#1d3f63"/><use href="#hx1" x="647" y="225" fill="#2f5d3a"/><use href="#hx1" x="692" y="225" fill="#2f5d3a"/><use href="#hx1" x="737" y="225" fill="#7a7440"/><use href="#hx1" x="782" y="225" fill="#7a7440"/><use href="#hx1" x="827" y="225" fill="#8a7546"/><use href="#hx1" x="872" y="225" fill="#8a7546"/><use href="#hx1" x="917" y="225" fill="#7a7440"/><use href="#hx1" x="962" y="225" fill="#4a4a52"/><use href="#hx1" x="1007" y="225" fill="#1d3f63"/><use href="#hx1" x="1052" y="225" fill="#1d3f63"/><use href="#hx1" x="1097" y="225" fill="#2f5d3a"/><use href="#hx1" x="1142" y="225" fill="#7a7440"/>
+            <use href="#hx1" x="40" y="264" fill="#7a7440"/><use href="#hx1" x="85" y="264" fill="#8a7546"/><use href="#hx1" x="130" y="264" fill="#8a7546"/><use href="#hx1" x="175" y="264" fill="#8a7546"/><use href="#hx1" x="220" y="264" fill="#7a7440"/><use href="#hx1" x="265" y="264" fill="#7a7440"/><use href="#hx1" x="310" y="264" fill="#2f5d3a"/><use href="#hx1" x="355" y="264" fill="#2f5d3a"/><use href="#hx1" x="400" y="264" fill="#4a4a52"/><use href="#hx1" x="445" y="264" fill="#4a4a52"/><use href="#hx1" x="490" y="264" fill="#1d3f63"/><use href="#hx1" x="535" y="264" fill="#1d3f63"/><use href="#hx1" x="580" y="264" fill="#2f5d3a"/><use href="#hx1" x="625" y="264" fill="#2f5d3a"/><use href="#hx1" x="670" y="264" fill="#7a7440"/><use href="#hx1" x="715" y="264" fill="#7a7440"/><use href="#hx1" x="760" y="264" fill="#8a7546"/><use href="#hx1" x="805" y="264" fill="#7a7440"/><use href="#hx1" x="850" y="264" fill="#7a7440"/><use href="#hx1" x="895" y="264" fill="#2f5d3a"/><use href="#hx1" x="940" y="264" fill="#4a4a52"/><use href="#hx1" x="985" y="264" fill="#1d3f63"/><use href="#hx1" x="1030" y="264" fill="#1d3f63"/><use href="#hx1" x="1075" y="264" fill="#7a7440"/><use href="#hx1" x="1120" y="264" fill="#7a7440"/><use href="#hx1" x="1165" y="264" fill="#2f5d3a"/>
+            <use href="#hx1" x="62" y="303" fill="#8a7546"/><use href="#hx1" x="107" y="303" fill="#8a7546"/><use href="#hx1" x="152" y="303" fill="#7a7440"/><use href="#hx1" x="197" y="303" fill="#7a7440"/><use href="#hx1" x="242" y="303" fill="#7a7440"/><use href="#hx1" x="287" y="303" fill="#2f5d3a"/><use href="#hx1" x="332" y="303" fill="#4a4a52"/><use href="#hx1" x="377" y="303" fill="#4a4a52"/><use href="#hx1" x="422" y="303" fill="#1d3f63"/><use href="#hx1" x="467" y="303" fill="#1d3f63"/><use href="#hx1" x="512" y="303" fill="#1d3f63"/><use href="#hx1" x="557" y="303" fill="#2f5d3a"/><use href="#hx1" x="602" y="303" fill="#7a7440"/><use href="#hx1" x="647" y="303" fill="#7a7440"/><use href="#hx1" x="692" y="303" fill="#7a7440"/><use href="#hx1" x="737" y="303" fill="#8a7546"/><use href="#hx1" x="782" y="303" fill="#8a7546"/><use href="#hx1" x="827" y="303" fill="#7a7440"/><use href="#hx1" x="872" y="303" fill="#2f5d3a"/><use href="#hx1" x="917" y="303" fill="#2f5d3a"/><use href="#hx1" x="962" y="303" fill="#7a7440"/><use href="#hx1" x="1007" y="303" fill="#4a4a52"/><use href="#hx1" x="1052" y="303" fill="#1d3f63"/><use href="#hx1" x="1097" y="303" fill="#1d3f63"/><use href="#hx1" x="1142" y="303" fill="#2f5d3a"/>
+            <use href="#hx1" x="40" y="342" fill="#8a7546"/><use href="#hx1" x="85" y="342" fill="#7a7440"/><use href="#hx1" x="130" y="342" fill="#7a7440"/><use href="#hx1" x="175" y="342" fill="#2f5d3a"/><use href="#hx1" x="220" y="342" fill="#2f5d3a"/><use href="#hx1" x="265" y="342" fill="#4a4a52"/><use href="#hx1" x="310" y="342" fill="#4a4a52"/><use href="#hx1" x="355" y="342" fill="#1d3f63"/><use href="#hx1" x="400" y="342" fill="#1d3f63"/><use href="#hx1" x="445" y="342" fill="#2f5d3a"/><use href="#hx1" x="490" y="342" fill="#2f5d3a"/><use href="#hx1" x="535" y="342" fill="#7a7440"/><use href="#hx1" x="580" y="342" fill="#7a7440"/><use href="#hx1" x="625" y="342" fill="#7a7440"/><use href="#hx1" x="670" y="342" fill="#8a7546"/><use href="#hx1" x="715" y="342" fill="#8a7546"/><use href="#hx1" x="760" y="342" fill="#7a7440"/><use href="#hx1" x="805" y="342" fill="#2f5d3a"/><use href="#hx1" x="850" y="342" fill="#4a4a52"/><use href="#hx1" x="895" y="342" fill="#4a4a52"/><use href="#hx1" x="940" y="342" fill="#1d3f63"/><use href="#hx1" x="985" y="342" fill="#2f5d3a"/><use href="#hx1" x="1030" y="342" fill="#7a7440"/><use href="#hx1" x="1075" y="342" fill="#7a7440"/><use href="#hx1" x="1120" y="342" fill="#8a7546"/><use href="#hx1" x="1165" y="342" fill="#7a7440"/>
+            <use href="#hx1" x="62" y="381" fill="#7a7440"/><use href="#hx1" x="107" y="381" fill="#2f5d3a"/><use href="#hx1" x="152" y="381" fill="#2f5d3a"/><use href="#hx1" x="197" y="381" fill="#4a4a52"/><use href="#hx1" x="242" y="381" fill="#1d3f63"/><use href="#hx1" x="287" y="381" fill="#1d3f63"/><use href="#hx1" x="332" y="381" fill="#1d3f63"/><use href="#hx1" x="377" y="381" fill="#2f5d3a"/><use href="#hx1" x="422" y="381" fill="#7a7440"/><use href="#hx1" x="467" y="381" fill="#7a7440"/><use href="#hx1" x="512" y="381" fill="#7a7440"/><use href="#hx1" x="557" y="381" fill="#8a7546"/><use href="#hx1" x="602" y="381" fill="#8a7546"/><use href="#hx1" x="647" y="381" fill="#7a7440"/><use href="#hx1" x="692" y="381" fill="#2f5d3a"/><use href="#hx1" x="737" y="381" fill="#4a4a52"/><use href="#hx1" x="782" y="381" fill="#4a4a52"/><use href="#hx1" x="827" y="381" fill="#1d3f63"/><use href="#hx1" x="872" y="381" fill="#1d3f63"/><use href="#hx1" x="917" y="381" fill="#2f5d3a"/><use href="#hx1" x="962" y="381" fill="#7a7440"/><use href="#hx1" x="1007" y="381" fill="#7a7440"/><use href="#hx1" x="1052" y="381" fill="#8a7546"/><use href="#hx1" x="1097" y="381" fill="#7a7440"/><use href="#hx1" x="1142" y="381" fill="#2f5d3a"/>
+            <use href="#hx1" x="40" y="420" fill="#2f5d3a"/><use href="#hx1" x="85" y="420" fill="#4a4a52"/><use href="#hx1" x="130" y="420" fill="#1d3f63"/><use href="#hx1" x="175" y="420" fill="#1d3f63"/><use href="#hx1" x="220" y="420" fill="#1d3f63"/><use href="#hx1" x="265" y="420" fill="#2f5d3a"/><use href="#hx1" x="310" y="420" fill="#7a7440"/><use href="#hx1" x="355" y="420" fill="#7a7440"/><use href="#hx1" x="400" y="420" fill="#8a7546"/><use href="#hx1" x="445" y="420" fill="#8a7546"/><use href="#hx1" x="490" y="420" fill="#7a7440"/><use href="#hx1" x="535" y="420" fill="#2f5d3a"/><use href="#hx1" x="580" y="420" fill="#4a4a52"/><use href="#hx1" x="625" y="420" fill="#4a4a52"/><use href="#hx1" x="670" y="420" fill="#1d3f63"/><use href="#hx1" x="715" y="420" fill="#1d3f63"/><use href="#hx1" x="760" y="420" fill="#2f5d3a"/><use href="#hx1" x="805" y="420" fill="#7a7440"/><use href="#hx1" x="850" y="420" fill="#7a7440"/><use href="#hx1" x="895" y="420" fill="#7a7440"/><use href="#hx1" x="940" y="420" fill="#8a7546"/><use href="#hx1" x="985" y="420" fill="#8a7546"/><use href="#hx1" x="1030" y="420" fill="#4a4a52"/><use href="#hx1" x="1075" y="420" fill="#1d3f63"/><use href="#hx1" x="1120" y="420" fill="#1d3f63"/><use href="#hx1" x="1165" y="420" fill="#2f5d3a"/>
+            <use href="#hx1" x="62" y="459" fill="#4a4a52"/><use href="#hx1" x="107" y="459" fill="#1d3f63"/><use href="#hx1" x="152" y="459" fill="#1d3f63"/><use href="#hx1" x="197" y="459" fill="#2f5d3a"/><use href="#hx1" x="242" y="459" fill="#2f5d3a"/><use href="#hx1" x="287" y="459" fill="#7a7440"/><use href="#hx1" x="332" y="459" fill="#7a7440"/><use href="#hx1" x="377" y="459" fill="#8a7546"/><use href="#hx1" x="422" y="459" fill="#7a7440"/><use href="#hx1" x="467" y="459" fill="#7a7440"/><use href="#hx1" x="512" y="459" fill="#2f5d3a"/><use href="#hx1" x="557" y="459" fill="#4a4a52"/><use href="#hx1" x="602" y="459" fill="#4a4a52"/><use href="#hx1" x="647" y="459" fill="#1d3f63"/><use href="#hx1" x="692" y="459" fill="#1d3f63"/><use href="#hx1" x="737" y="459" fill="#2f5d3a"/><use href="#hx1" x="782" y="459" fill="#7a7440"/><use href="#hx1" x="827" y="459" fill="#7a7440"/><use href="#hx1" x="872" y="459" fill="#3d4a2e"/><use href="#hx1" x="917" y="459" fill="#8a7546"/><use href="#hx1" x="962" y="459" fill="#8a7546"/><use href="#hx1" x="1007" y="459" fill="#7a7440"/><use href="#hx1" x="1052" y="459" fill="#4a4a52"/><use href="#hx1" x="1097" y="459" fill="#1d3f63"/><use href="#hx1" x="1142" y="459" fill="#1d3f63"/>
+            <use href="#hx1" x="40" y="498" fill="#1d3f63"/><use href="#hx1" x="85" y="498" fill="#1d3f63"/><use href="#hx1" x="130" y="498" fill="#2f5d3a"/><use href="#hx1" x="175" y="498" fill="#2f5d3a"/><use href="#hx1" x="220" y="498" fill="#7a7440"/><use href="#hx1" x="265" y="498" fill="#7a7440"/><use href="#hx1" x="310" y="498" fill="#8a7546"/><use href="#hx1" x="355" y="498" fill="#8a7546"/><use href="#hx1" x="400" y="498" fill="#7a7440"/><use href="#hx1" x="445" y="498" fill="#2f5d3a"/><use href="#hx1" x="490" y="498" fill="#4a4a52"/><use href="#hx1" x="535" y="498" fill="#4a4a52"/><use href="#hx1" x="580" y="498" fill="#1d3f63"/><use href="#hx1" x="625" y="498" fill="#1d3f63"/><use href="#hx1" x="670" y="498" fill="#2f5d3a"/><use href="#hx1" x="715" y="498" fill="#7a7440"/><use href="#hx1" x="760" y="498" fill="#7a7440"/><use href="#hx1" x="805" y="498" fill="#3d4a2e"/><use href="#hx1" x="850" y="498" fill="#8a7546"/><use href="#hx1" x="895" y="498" fill="#7a7440"/><use href="#hx1" x="940" y="498" fill="#7a7440"/><use href="#hx1" x="985" y="498" fill="#4a4a52"/><use href="#hx1" x="1030" y="498" fill="#1d3f63"/><use href="#hx1" x="1075" y="498" fill="#1d3f63"/><use href="#hx1" x="1120" y="498" fill="#2f5d3a"/><use href="#hx1" x="1165" y="498" fill="#7a7440"/>
+            <use href="#hx1" x="62" y="537" fill="#1d3f63"/><use href="#hx1" x="107" y="537" fill="#2f5d3a"/><use href="#hx1" x="152" y="537" fill="#7a7440"/><use href="#hx1" x="197" y="537" fill="#7a7440"/><use href="#hx1" x="242" y="537" fill="#8a7546"/><use href="#hx1" x="287" y="537" fill="#8a7546"/><use href="#hx1" x="332" y="537" fill="#7a7440"/><use href="#hx1" x="377" y="537" fill="#2f5d3a"/><use href="#hx1" x="422" y="537" fill="#4a4a52"/><use href="#hx1" x="467" y="537" fill="#4a4a52"/><use href="#hx1" x="512" y="537" fill="#1d3f63"/><use href="#hx1" x="557" y="537" fill="#1d3f63"/><use href="#hx1" x="602" y="537" fill="#2f5d3a"/><use href="#hx1" x="647" y="537" fill="#7a7440"/><use href="#hx1" x="692" y="537" fill="#7a7440"/><use href="#hx1" x="737" y="537" fill="#8a7546"/><use href="#hx1" x="782" y="537" fill="#7a7440"/><use href="#hx1" x="827" y="537" fill="#7a7440"/><use href="#hx1" x="872" y="537" fill="#4a4a52"/><use href="#hx1" x="917" y="537" fill="#1d3f63"/><use href="#hx1" x="962" y="537" fill="#1d3f63"/><use href="#hx1" x="1007" y="537" fill="#2f5d3a"/><use href="#hx1" x="1052" y="537" fill="#7a7440"/><use href="#hx1" x="1097" y="537" fill="#7a7440"/><use href="#hx1" x="1142" y="537" fill="#8a7546"/>
+            <use href="#hx1" x="40" y="576" fill="#2f5d3a"/><use href="#hx1" x="85" y="576" fill="#7a7440"/><use href="#hx1" x="130" y="576" fill="#8a7546"/><use href="#hx1" x="175" y="576" fill="#8a7546"/><use href="#hx1" x="220" y="576" fill="#7a7440"/><use href="#hx1" x="265" y="576" fill="#2f5d3a"/><use href="#hx1" x="310" y="576" fill="#4a4a52"/><use href="#hx1" x="355" y="576" fill="#4a4a52"/><use href="#hx1" x="400" y="576" fill="#1d3f63"/><use href="#hx1" x="445" y="576" fill="#1d3f63"/><use href="#hx1" x="490" y="576" fill="#2f5d3a"/><use href="#hx1" x="535" y="576" fill="#7a7440"/><use href="#hx1" x="580" y="576" fill="#7a7440"/><use href="#hx1" x="625" y="576" fill="#8a7546"/><use href="#hx1" x="670" y="576" fill="#7a7440"/><use href="#hx1" x="715" y="576" fill="#2f5d3a"/><use href="#hx1" x="760" y="576" fill="#4a4a52"/><use href="#hx1" x="805" y="576" fill="#1d3f63"/><use href="#hx1" x="850" y="576" fill="#1d3f63"/><use href="#hx1" x="895" y="576" fill="#2f5d3a"/><use href="#hx1" x="940" y="576" fill="#7a7440"/><use href="#hx1" x="985" y="576" fill="#7a7440"/><use href="#hx1" x="1030" y="576" fill="#8a7546"/><use href="#hx1" x="1075" y="576" fill="#7a7440"/><use href="#hx1" x="1120" y="576" fill="#4a4a52"/><use href="#hx1" x="1165" y="576" fill="#1d3f63"/>
+            <use href="#hx1" x="62" y="615" fill="#7a7440"/><use href="#hx1" x="107" y="615" fill="#8a7546"/><use href="#hx1" x="152" y="615" fill="#7a7440"/><use href="#hx1" x="197" y="615" fill="#2f5d3a"/><use href="#hx1" x="242" y="615" fill="#4a4a52"/><use href="#hx1" x="287" y="615" fill="#4a4a52"/><use href="#hx1" x="332" y="615" fill="#1d3f63"/><use href="#hx1" x="377" y="615" fill="#1d3f63"/><use href="#hx1" x="422" y="615" fill="#2f5d3a"/><use href="#hx1" x="467" y="615" fill="#7a7440"/><use href="#hx1" x="512" y="615" fill="#7a7440"/><use href="#hx1" x="557" y="615" fill="#8a7546"/><use href="#hx1" x="602" y="615" fill="#8a7546"/><use href="#hx1" x="647" y="615" fill="#7a7440"/><use href="#hx1" x="692" y="615" fill="#4a4a52"/><use href="#hx1" x="737" y="615" fill="#1d3f63"/><use href="#hx1" x="782" y="615" fill="#1d3f63"/><use href="#hx1" x="827" y="615" fill="#2f5d3a"/><use href="#hx1" x="872" y="615" fill="#7a7440"/><use href="#hx1" x="917" y="615" fill="#7a7440"/><use href="#hx1" x="962" y="615" fill="#8a7546"/><use href="#hx1" x="1007" y="615" fill="#7a7440"/><use href="#hx1" x="1052" y="615" fill="#2f5d3a"/><use href="#hx1" x="1097" y="615" fill="#4a4a52"/><use href="#hx1" x="1142" y="615" fill="#1d3f63"/>
+            <use href="#hx1" x="40" y="654" fill="#8a7546"/><use href="#hx1" x="85" y="654" fill="#7a7440"/><use href="#hx1" x="130" y="654" fill="#2f5d3a"/><use href="#hx1" x="175" y="654" fill="#4a4a52"/><use href="#hx1" x="220" y="654" fill="#1d3f63"/><use href="#hx1" x="265" y="654" fill="#1d3f63"/><use href="#hx1" x="310" y="654" fill="#2f5d3a"/><use href="#hx1" x="355" y="654" fill="#7a7440"/><use href="#hx1" x="400" y="654" fill="#7a7440"/><use href="#hx1" x="445" y="654" fill="#8a7546"/><use href="#hx1" x="490" y="654" fill="#7a7440"/><use href="#hx1" x="535" y="654" fill="#4a4a52"/><use href="#hx1" x="580" y="654" fill="#1d3f63"/><use href="#hx1" x="625" y="654" fill="#1d3f63"/><use href="#hx1" x="670" y="654" fill="#2f5d3a"/><use href="#hx1" x="715" y="654" fill="#7a7440"/><use href="#hx1" x="760" y="654" fill="#7a7440"/><use href="#hx1" x="805" y="654" fill="#8a7546"/><use href="#hx1" x="850" y="654" fill="#7a7440"/><use href="#hx1" x="895" y="654" fill="#4a4a52"/><use href="#hx1" x="940" y="654" fill="#1d3f63"/><use href="#hx1" x="985" y="654" fill="#1d3f63"/><use href="#hx1" x="1030" y="654" fill="#2f5d3a"/><use href="#hx1" x="1075" y="654" fill="#7a7440"/><use href="#hx1" x="1120" y="654" fill="#8a7546"/><use href="#hx1" x="1165" y="654" fill="#7a7440"/>
+          </g>
+          <use href="#hx1" x="602" y="342" fill="#a08a48" stroke="#d9a441" stroke-width="3"/>
+          <text x="602" y="361" fill="#f0e2bd" font-size="10" text-anchor="middle" font-family="ui-monospace, Menlo, monospace">Ealmouth</text>
+          <text x="602" y="332" fill="#f5efe0" font-size="12" text-anchor="middle" font-family="ui-monospace, Menlo, monospace">▣</text>
+          <text x="782" y="229" fill="#e8dcb4" font-size="10" text-anchor="middle" font-family="ui-monospace, Menlo, monospace">Ma'i</text>
+          <text x="422" y="268" fill="#e8dcb4" font-size="10" text-anchor="middle" font-family="ui-monospace, Menlo, monospace">Bosac</text>
+          <text x="917" y="424" fill="#e8dcb4" font-size="10" text-anchor="middle" font-family="ui-monospace, Menlo, monospace">Sventla'e</text>
+          <g>
+            <circle cx="594" cy="325" r="3.4" fill="#5ec8f0"/><circle cx="605" cy="325" r="3.4" fill="#f07070"/><circle cx="616" cy="325" r="3.4" fill="#c48ae0"/>
+            <circle cx="557" cy="329" r="3.4" fill="#5ec8f0"/><circle cx="647" cy="368" r="3.4" fill="#5ec8f0"/>
+            <circle cx="512" cy="368" r="3.4" fill="#f07070"/><circle cx="737" cy="290" r="3.4" fill="#7de08a"/>
+            <circle cx="827" cy="446" r="3.4" fill="#5ec8f0"/><circle cx="467" cy="212" r="3.4" fill="#5ec8f0"/>
+            <circle cx="962" cy="329" r="3.4" fill="#c48ae0"/><circle cx="332" cy="446" r="3.4" fill="#5ec8f0"/>
+          </g>
+        </svg>
+        <div class="coordchip" style="left:auto;right:10px;bottom:44px">1 · 58,30 &nbsp;·&nbsp; zoom 100%</div>
+        <div class="mapctl" style="right:10px;bottom:10px;flex-direction:row"><span class="zbtn">+</span><span class="zbtn">−</span><span class="zbtn">⤢</span></div>
+      </div>
+
+      <div class="float l3-top">
+        <span class="brand">ATLANTIS HUD</span>
+        <span class="abfield">Turn <span class="sel-ctl">17 · June, Y9 ▾</span></span>
+        <span class="abfield"><b>The Trade Group (11)</b></span>
+      </div>
+
+      <div class="float l3-chips">
+        <span class="chip on"><i class="box on"></i>Units</span>
+        <span class="chip on"><i class="box on"></i>Structures</span>
+        <span class="chip"><i class="box"></i>Trade routes</span>
+        <span class="chip"><i class="box"></i>Movement</span>
+        <span class="chip">surface ▾</span>
+      </div>
+
+      <div class="float l3-left">
+        <div class="panel">
+          <div class="ptitle">Reports <span class="spacer"></span><span class="hint">◂ hide</span></div>
+          <div class="pbody" style="padding:7px 10px">
+            <div style="display:flex;gap:8px;align-items:center">
+              <span class="btn primary">Load report…</span>
+              <span class="dim">or drop a file anywhere</span>
+            </div>
+            <div class="statusline" style="border-top:none;padding:4px 0 0"><span><i class="dot ok"></i> Turn 17 · 61 regions · 214 units</span></div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="ptitle">Units in hex <span class="hint">— 9</span></div>
+          <div class="pbody" style="padding:0">
+            <table class="units">
+              <thead><tr><th>Id</th><th>Unit</th><th>Men</th><th>Skills</th></tr></thead>
+              <tbody>
+                <tr class="foreign"><td class="id">85</td><td>ambassador</td><td></td><td></td></tr>
+                <tr><td class="id">242</td><td>Lord Brag</td><td>1</td><td>TACT 5</td></tr>
+                <tr><td class="id">5844</td><td>Guards</td><td>290</td><td>COMB 1</td></tr>
+                <tr><td class="id">845</td><td>Ship Builders</td><td>4</td><td>SHIP 5</td></tr>
+                <tr class="active"><td class="id">2659</td><td>Lord Anthony</td><td>1</td><td>QUAM 4</td></tr>
+                <tr><td class="id">315</td><td>Horse Trainers</td><td>20</td><td>HORS 2</td></tr>
+                <tr><td class="id">658</td><td>Farmers</td><td>20</td><td>FARM 3</td></tr>
+                <tr><td class="id">607</td><td>Lord Matthew</td><td>1</td><td>WEAP 5</td></tr>
+                <tr class="foreign"><td class="id">698</td><td>Transporter</td><td>1</td><td></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="float l3-right">
+        <div class="acc shut">
+          <div class="ptitle">Region <span class="hint">— plain (58,30), Ealmouth</span><span class="caretmark">▸</span></div>
+        </div>
+        <div class="acc open">
+          <div class="ptitle">Unit <span class="hint">— Lord Anthony (2659)</span><span class="caretmark">▾</span></div>
+          <div class="pbody">
+            <div class="region-head">The Trade Group (11) · 1 leader</div>
+            <p class="sub">Flags</p>
+            <div class="dim">avoid · behind · hold · no-aid · no-cross · share · spoils all · reveal faction</div>
+            <p class="sub">Skills</p>
+            <div class="row"><span>stealth STEA</span><span>5 · 450 · 180</span></div>
+            <div class="row"><span>quartermaster QUAM</span><span>4 · 305 · 145</span></div>
+            <p class="sub">Items</p>
+            <div class="row"><span>silver SILV</span><span>456,918</span></div>
+            <div class="row"><span>horses HORS</span><span>3,102</span></div>
+            <div class="row"><span>stone STON</span><span>1,452</span></div>
+            <div class="row"><span>iron IRON</span><span>685</span></div>
+            <div class="row"><span>rootstone ROOT</span><span>357</span></div>
+          </div>
+        </div>
+        <div class="acc open">
+          <div class="ptitle">Orders <span class="hint">— unit 2659</span><span class="caretmark">▾</span></div>
+          <div class="editor">
+            <div class="code">
+              <div class="ln"><i>1</i><span class="cm">@;keep the caravan moving</span></div>
+              <div class="ln"><i>2</i><span class="cmd">study</span> <span class="arg">QUAM</span></div>
+              <div class="ln"><i>3</i><span class="cmd">give</span> <span class="arg">242 100 SILV</span></div>
+              <div class="ln"><i>4</i><span class="cmd">move</span> <span class="arg">n n</span><span class="caret"></span></div>
+            </div>
+            <div class="statusline"><span><i class="dot ok"></i> 0 errors</span><span><i class="dot warn"></i> 1 warning</span><span class="spacer"></span><span>saved 14:22</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  </div>
+
+  <div class="notes">
+    <div>
+      <h3>Strengths</h3>
+      <ul>
+        <li>The map gets <b>the whole window</b> — by far the best for scanning a large world.</li>
+        <li>Collapsing both drawers gives a genuine full-screen map with no layout reflow.</li>
+        <li>Cleanest path to a good phone and tablet experience: drawers become sheets.</li>
+        <li>Most contemporary look of the three.</li>
+      </ul>
+    </div>
+    <div>
+      <h3>Trade-offs</h3>
+      <ul>
+        <li>Panels <b>cover</b> the map they describe — the hex you selected can end up underneath a drawer.</li>
+        <li>Unit table is narrow; only 3–4 columns fit.</li>
+        <li>Region info is collapsed by default, so it costs a click.</li>
+        <li>Most complex to build and to test: z-order, focus traps, collapse state.</li>
+      </ul>
+    </div>
+    <div>
+      <h3>Handheld</h3>
+      <ul>
+        <li>Native fit — the drawers are already the bottom-sheet pattern.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ================================================================= -->
+<!-- PROPOSAL 4                                                        -->
+<!-- ================================================================= -->
+<section class="proposal" id="p4">
+  <div class="phead">
+    <span class="pnum">04</span>
+    <h2>Docked Inspector</h2>
+    <span class="badge">Recommended</span>
+  </div>
+  <p class="ptag">Proposal 03's full-bleed map, rebalanced. Report state is promoted out of a floating card into the solid application header where it belongs. The unit table becomes a screen-wide dock along the bottom, as in 01, so it gets the horizontal room the columns actually need. Region sits alone on the left; unit and orders pair up on the right. Every one of the four panels collapses to a title strip, so the map can be opened right up.</p>
+
+  <div class="frame scroller">
+  <div class="screen">
+    <div class="appbar">
+      <span class="brand">ATLANTIS HUD</span>
+      <span class="abfield">Project <b>gharama.atlantis-project</b></span>
+      <span class="abfield">Turn <span class="sel-ctl">17 · June, Year 9 ▾</span></span>
+      <span class="abfield">Faction <b>The Trade Group (11)</b></span>
+      <span class="abfield"><i class="dot ok"></i>&nbsp;61 regions · 214 units · imported 2m ago</span>
+      <span class="spacer"></span>
+      <span class="btn primary">Load report…</span>
+      <span class="btn">Export orders</span>
+    </div>
+
+    <div class="l4-stage">
+      <div class="map" style="position:absolute;inset:0">
+        <svg data-field data-w="26" data-h="16" viewBox="0 0 1180 686" preserveAspectRatio="xMidYMid slice" aria-label="Full-bleed hex map of the surface level around Ealmouth">
+          <use href="#hx1" x="602" y="342" fill="#a08a48" stroke="#d9a441" stroke-width="3"/>
+          <text x="602" y="361" fill="#f0e2bd" font-size="10" text-anchor="middle" font-family="ui-monospace, Menlo, monospace">Ealmouth</text>
+          <text x="602" y="332" fill="#f5efe0" font-size="12" text-anchor="middle" font-family="ui-monospace, Menlo, monospace">▣</text>
+          <text x="782" y="229" fill="#e8dcb4" font-size="10" text-anchor="middle" font-family="ui-monospace, Menlo, monospace">Ma'i</text>
+          <text x="467" y="268" fill="#e8dcb4" font-size="10" text-anchor="middle" font-family="ui-monospace, Menlo, monospace">Bosac</text>
+          <text x="872" y="424" fill="#e8dcb4" font-size="10" text-anchor="middle" font-family="ui-monospace, Menlo, monospace">Sventla'e</text>
+          <g>
+            <circle cx="594" cy="325" r="3.4" fill="#5ec8f0"/><circle cx="605" cy="325" r="3.4" fill="#f07070"/><circle cx="616" cy="325" r="3.4" fill="#c48ae0"/>
+            <circle cx="557" cy="329" r="3.4" fill="#5ec8f0"/><circle cx="647" cy="368" r="3.4" fill="#5ec8f0"/>
+            <circle cx="512" cy="368" r="3.4" fill="#f07070"/><circle cx="737" cy="290" r="3.4" fill="#7de08a"/>
+            <circle cx="827" cy="446" r="3.4" fill="#5ec8f0"/><circle cx="692" cy="212" r="3.4" fill="#5ec8f0"/>
+            <circle cx="962" cy="329" r="3.4" fill="#c48ae0"/><circle cx="422" cy="446" r="3.4" fill="#5ec8f0"/>
+          </g>
+        </svg>
+        <div class="coordchip" style="left:auto;right:352px;bottom:200px">1 · 58,30 &nbsp;·&nbsp; zoom 100%</div>
+        <div class="mapctl" style="right:352px;bottom:228px;flex-direction:row"><span class="zbtn">+</span><span class="zbtn">−</span><span class="zbtn">⤢</span></div>
+      </div>
+
+      <div class="float l4-chips">
+        <span class="chip on"><i class="box on"></i>Units</span>
+        <span class="chip on"><i class="box on"></i>Structures</span>
+        <span class="chip"><i class="box"></i>Trade routes</span>
+        <span class="chip"><i class="box"></i>Movement</span>
+        <span class="chip">surface ▾</span>
+      </div>
+
+      <div class="float l4-left">
+        <div class="panel" style="flex:1;min-height:0">
+          <div class="ptitle">Region <span class="hint">— plain (58,30)</span><span class="spacer"></span><span class="caretmark">▾</span></div>
+          <div class="pbody">
+            <div class="region-head">in Popener · contains <b>Ealmouth</b> [town]</div>
+            <dl class="kv">
+              <dt>Population</dt><dd>7,413 humans</dd>
+              <dt>Tax</dt><dd>14,826</dd>
+              <dt>Wages</dt><dd>20 (max 2,965)</dd>
+              <dt>Entertain.</dt><dd>1,018</dd>
+            </dl>
+            <p class="sub">Products</p>
+            <div class="dim">57 grain · 27 horses · 13 winged horses</div>
+            <p class="sub">Wanted</p>
+            <div class="row"><span>grain</span><span>28s ×136</span></div>
+            <div class="row"><span>livestock</span><span>18s ×128</span></div>
+            <div class="row"><span>fish</span><span>47s ×124</span></div>
+            <div class="row"><span>spinning wheels</span><span>86s ×13</span></div>
+            <p class="sub">For sale</p>
+            <div class="row"><span>humans</span><span>64s ×296</span></div>
+            <div class="row"><span>leaders</span><span>1120s ×59</span></div>
+            <p class="sub">Exits</p>
+            <div class="dim">N&nbsp; plain (58,28) in Popener</div>
+            <div class="dim">NE ocean (59,29) Atlantis Ocean</div>
+            <div class="dim">SE ocean (59,31) Atlantis Ocean</div>
+            <div class="dim">S&nbsp; plain (58,32) in Popener</div>
+            <p class="sub">Structures</p>
+            <div class="dim">Caravanserai · Tower · Fort ×3 · Inn · Citadel · Road S</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="float l4-right">
+        <div class="panel">
+          <div class="ptitle">Unit <span class="hint">— Lord Anthony (2659)</span><span class="spacer"></span><span class="caretmark">▾</span></div>
+          <div class="pbody">
+            <div class="region-head">The Trade Group (11) · 1 leader</div>
+            <p class="sub">Flags</p>
+            <div class="dim">avoid · behind · hold · no-aid · no-cross · share · spoils all · reveal faction</div>
+            <p class="sub">Skills</p>
+            <div class="row"><span>stealth STEA</span><span>5 · 450 · 180</span></div>
+            <div class="row"><span>quartermaster QUAM</span><span>4 · 305 · 145</span></div>
+            <p class="sub">Items</p>
+            <div class="row"><span>silver SILV</span><span>456,918</span></div>
+            <div class="row"><span>horses HORS</span><span>3,102</span></div>
+            <div class="row"><span>stone STON</span><span>1,452</span></div>
+            <div class="row"><span>iron IRON</span><span>685</span></div>
+            <div class="row"><span>rootstone ROOT</span><span>357</span></div>
+            <div class="row"><span>furs FUR</span><span>314</span></div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="ptitle">Orders <span class="hint">— unit 2659</span><span class="spacer"></span><span class="caretmark">▾</span></div>
+          <div class="editor">
+            <div class="code">
+              <div class="ln"><i>1</i><span class="cm">@;keep the caravan moving</span></div>
+              <div class="ln"><i>2</i><span class="cmd">study</span> <span class="arg">QUAM</span></div>
+              <div class="ln"><i>3</i><span class="cmd">give</span> <span class="arg">242 100 SILV</span></div>
+              <div class="ln"><i>4</i><span class="cmd">move</span> <span class="arg">n n</span><span class="caret"></span></div>
+            </div>
+            <div class="statusline"><span><i class="dot ok"></i> 0 errors</span><span><i class="dot warn"></i> 1 warning</span><span class="spacer"></span><span>saved 14:22</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="float l4-bottom">
+        <div class="panel" style="flex:1;min-height:0">
+          <div class="ptitle">Units in hex <span class="hint">— plain (58,30), 9 units</span><span class="spacer"></span><input class="filter" value="filter units…" readonly aria-label="Filter units"><span class="caretmark">▾</span></div>
+          <div class="pbody" style="padding:0">
+            <table class="units">
+              <thead><tr><th>Id</th><th>Unit</th><th>Faction</th><th>Men</th><th>Silver</th><th>Skills</th><th>Items</th><th>Structure</th></tr></thead>
+              <tbody>
+                <tr class="foreign"><td class="id">85</td><td>ambassador</td><td>Children of the Four Winds (4)</td><td></td><td></td><td></td><td>1 GNOL</td><td></td></tr>
+                <tr><td class="id">242</td><td>Lord Brag</td><td>The Trade Group (11)</td><td>1</td><td></td><td>TACT 5 OBSE 5</td><td></td><td>Citadel [1]</td></tr>
+                <tr><td class="id">5844</td><td>Guards</td><td>The Trade Group (11)</td><td>290</td><td></td><td>COMB 1</td><td></td><td>Citadel [1]</td></tr>
+                <tr><td class="id">845</td><td>Ship Builders</td><td>The Trade Group (11)</td><td>4</td><td></td><td>SHIP 5</td><td></td><td></td></tr>
+                <tr class="active"><td class="id">2659</td><td>Lord Anthony</td><td>The Trade Group (11)</td><td>1</td><td>456,918</td><td>QUAM 4 STEA 5</td><td>52 LBOW, 30 AXE, 230 XBOW, 3102 HORS…</td><td>Caravanserai [4]</td></tr>
+                <tr><td class="id">315</td><td>Horse Trainers</td><td>The Trade Group (11)</td><td>20</td><td></td><td>HORS 2</td><td>27 HORS, 7 LASS</td><td></td></tr>
+                <tr><td class="id">658</td><td>Farmers</td><td>The Trade Group (11)</td><td>20</td><td></td><td>FARM 3</td><td>20 BAG</td><td></td></tr>
+                <tr><td class="id">607</td><td>Lord Matthew</td><td>The Trade Group (11)</td><td>1</td><td></td><td>WEAP 5</td><td></td><td>Tower [2]</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  </div>
+
+  <p class="ptag" style="margin-top:22px">Collapse all four and the map opens to the full window — the header stays, the layer chips stay, and each panel leaves behind a title strip you click to bring it back:</p>
+
+  <div class="frame scroller">
+  <div class="screen mini">
+    <div class="appbar">
+      <span class="brand">ATLANTIS HUD</span>
+      <span class="abfield">Project <b>gharama.atlantis-project</b></span>
+      <span class="abfield">Turn <span class="sel-ctl">17 · June, Year 9 ▾</span></span>
+      <span class="abfield">Faction <b>The Trade Group (11)</b></span>
+      <span class="abfield"><i class="dot ok"></i>&nbsp;61 regions · 214 units · imported 2m ago</span>
+      <span class="spacer"></span>
+      <span class="btn primary">Load report…</span>
+      <span class="btn">Export orders</span>
+    </div>
+    <div class="l4-stage">
+      <div class="map" style="position:absolute;inset:0">
+        <svg data-field data-w="26" data-h="8" viewBox="0 0 1180 296" preserveAspectRatio="xMidYMid slice" aria-label="Hex map with all inspector panels collapsed">
+          <use href="#hx1" x="602" y="147" fill="#a08a48" stroke="#d9a441" stroke-width="3"/>
+          <text x="602" y="166" fill="#f0e2bd" font-size="10" text-anchor="middle" font-family="ui-monospace, Menlo, monospace">Ealmouth</text>
+          <text x="602" y="137" fill="#f5efe0" font-size="12" text-anchor="middle" font-family="ui-monospace, Menlo, monospace">▣</text>
+          <text x="242" y="112" fill="#e8dcb4" font-size="10" text-anchor="middle" font-family="ui-monospace, Menlo, monospace">Bosac</text>
+          <text x="962" y="190" fill="#e8dcb4" font-size="10" text-anchor="middle" font-family="ui-monospace, Menlo, monospace">Ma'i</text>
+          <g>
+            <circle cx="594" cy="130" r="3.4" fill="#5ec8f0"/><circle cx="605" cy="130" r="3.4" fill="#f07070"/><circle cx="616" cy="130" r="3.4" fill="#c48ae0"/>
+            <circle cx="242" cy="94" r="3.4" fill="#f07070"/><circle cx="962" cy="172" r="3.4" fill="#5ec8f0"/>
+            <circle cx="422" cy="211" r="3.4" fill="#7de08a"/><circle cx="782" cy="94" r="3.4" fill="#5ec8f0"/>
+          </g>
+        </svg>
+      </div>
+      <div class="float l4-chips">
+        <span class="chip on"><i class="box on"></i>Units</span>
+        <span class="chip on"><i class="box on"></i>Structures</span>
+        <span class="chip"><i class="box"></i>Trade routes</span>
+        <span class="chip"><i class="box"></i>Movement</span>
+        <span class="chip">surface ▾</span>
+      </div>
+      <div class="collapsed-strip" style="top:52px;left:10px;width:300px">Region <span class="hint">— plain (58,30)</span><span class="spacer"></span>▸</div>
+      <div class="collapsed-strip" style="top:52px;right:10px;width:334px">Unit <span class="hint">— Lord Anthony</span><span class="spacer"></span>▸</div>
+      <div class="collapsed-strip" style="top:86px;right:10px;width:334px">Orders <span class="hint">— unit 2659</span><span class="spacer"></span>▸</div>
+      <div class="collapsed-strip" style="bottom:10px;left:10px;right:10px">Units in hex <span class="hint">— 9 units</span><span class="spacer"></span>▴</div>
+    </div>
+  </div>
+  </div>
+
+  <div class="notes">
+    <div>
+      <h3>What it takes from each</h3>
+      <ul>
+        <li><b>From 03:</b> full-bleed map, floating glass panels, collapse-to-reveal.</li>
+        <li><b>From 01:</b> screen-wide unit table with room for every column — here it even fits a <b>Structure</b> column the others could not.</li>
+        <li><b>New:</b> report state lives in the header as persistent status rather than as a panel competing for space.</li>
+      </ul>
+    </div>
+    <div>
+      <h3>Strengths</h3>
+      <ul>
+        <li>Best balance of the four: full map <b>and</b> a full-width table.</li>
+        <li>Report info is always visible but costs no map area.</li>
+        <li>Left/right split keeps region reading separate from the unit-and-orders working pair.</li>
+        <li>Collapse state is per-panel, so you can keep just orders open while scanning the map.</li>
+      </ul>
+    </div>
+    <div>
+      <h3>Trade-offs</h3>
+      <ul>
+        <li>Panels still overlay the map; the selected hex can sit under the bottom dock on a short window.</li>
+        <li>Four independent collapse states are more to persist and more to test than a fixed grid.</li>
+        <li>Loading a report is a button, not a drop target you can always see — drag-and-drop onto the whole window covers this.</li>
+      </ul>
+    </div>
+    <div>
+      <h3>Handheld</h3>
+      <ul>
+        <li>Left and right panels become one bottom sheet with <b>Region / Unit / Orders</b> tabs.</li>
+        <li>The units dock stays the bottom sheet's fourth tab.</li>
+        <li>Header collapses to project and turn only.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ================================================================= -->
+<section class="proposal" id="compare">
+  <div class="phead"><span class="pnum">·</span><h2>Choosing between them</h2></div>
+  <p class="ptag">All four satisfy the six requirements in the issue and all four are built from the same shared React components, so native and web stay identical in every case. The differences that actually matter:</p>
+
+  <div class="notes">
+    <div>
+      <h3>Pick 01 if</h3>
+      <ul>
+        <li>Familiarity to existing Atlantis players is the priority.</li>
+        <li>You want a fixed grid where nothing ever overlaps the map.</li>
+        <li>You want the shortest path from picking a unit to writing its orders.</li>
+      </ul>
+    </div>
+    <div>
+      <h3>Pick 02 if</h3>
+      <ul>
+        <li>You never want a widget hidden or collapsed.</li>
+        <li>Report and turn history deserve a permanent home.</li>
+        <li>You value the simplest thing to build, resize and test.</li>
+      </ul>
+    </div>
+    <div>
+      <h3>Pick 03 if</h3>
+      <ul>
+        <li>The map is the thing you stare at, and everything else is a lookup.</li>
+        <li>You are happy with a narrow, 3–4 column unit table.</li>
+      </ul>
+    </div>
+    <div>
+      <h3>Pick 04 if</h3>
+      <ul>
+        <li>You want the full map <b>and</b> the full-width unit table.</li>
+        <li>You want to open the map right up on demand without a layout change.</li>
+        <li>Phone and tablet use is a near-term goal.</li>
+      </ul>
+    </div>
+  </div>
+
+  <p style="margin-top:28px;color:var(--ink-soft);max-width:72ch">
+    <b style="color:var(--ink)">Recommendation: 04, Docked Inspector.</b> It resolves the tension that made 01 and 03 each imperfect. 03 gave the map the whole window but starved the unit table; 01 gave the table its full width but permanently spent a third of the window on chrome. 04 gets both, because the table is an overlay that collapses rather than a fixed row — and moving report state into the header removes the one panel that never needed map-adjacent space. The cost is four collapse states to persist and test, and panels that overlay the map they describe. If you would rather never have a panel cover a hex, 01 remains the conservative pick.
+  </p>
+</section>
+
+<footer class="page">
+  <b>Note on scope.</b> These are layout proposals, not a visual style guide. Colour, spacing and type in the real build come from Tailwind tokens as specified in <span style="font-family:ui-monospace,Menlo,monospace">docs/implementation-plan.md</span>; light and dark themes are issue #9's scope. The hexes here are drawn as SVG for the mockup — the real map stays on PixiJS.
+</footer>
+
+</div>
+
+<script>
+  (function () {
+    var NS = "http://www.w3.org/2000/svg";
+
+    function hash(c, r) {
+      var v = Math.sin(c * 12.9898 + r * 78.233) * 43758.5453;
+      return v - Math.floor(v);
+    }
+
+    function terrain(c, r) {
+      var low = (Math.sin(c * 0.33) + Math.cos(r * 0.44) + Math.sin((c + r) * 0.19)) / 3;
+      var v = ((low + 1) / 2) * 0.78 + hash(c, r) * 0.22;
+      if (v < 0.30) { return "#1d3f63"; }   /* ocean    */
+      if (v < 0.42) { return "#2f5d3a"; }   /* forest   */
+      if (v < 0.58) { return "#7a7440"; }   /* plain    */
+      if (v < 0.68) { return "#8a7546"; }   /* desert   */
+      if (v < 0.80) { return "#4a4a52"; }   /* mountain */
+      return "#3d4a2e";                     /* swamp    */
+    }
+
+    document.querySelectorAll("svg[data-field]").forEach(function (svg) {
+      var cols = Number(svg.dataset.w);
+      var rows = Number(svg.dataset.h);
+      var field = document.createElementNS(NS, "g");
+      field.setAttribute("stroke", "#0b1017");
+      field.setAttribute("stroke-width", "1.2");
+
+      for (var r = 0; r < rows; r += 1) {
+        for (var c = 0; c < cols; c += 1) {
+          var hex = document.createElementNS(NS, "use");
+          hex.setAttribute("href", "#hx1");
+          hex.setAttribute("x", String(40 + c * 45 + (r % 2 ? 22.5 : 0)));
+          hex.setAttribute("y", String(30 + r * 39));
+          hex.setAttribute("fill", terrain(c, r));
+          field.appendChild(hex);
+        }
+      }
+
+      svg.insertBefore(field, svg.firstChild);
+    });
+  }());
+</script>

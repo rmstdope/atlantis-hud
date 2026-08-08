@@ -1,0 +1,867 @@
+<title>Variant 04 — Docked Inspector, turn 71</title>
+<style>
+  :root {
+    --ground: #eef0f3; --surface: #ffffff; --edge: #d3d8de;
+    --ink: #1a2029; --ink-soft: #5a6673; --brass: #8a6410; --rec: #1f6d4a;
+    --shadow: 0 1px 2px rgba(16,21,28,.06), 0 8px 28px rgba(16,21,28,.10);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #0c1015; --surface: #141a22; --edge: #252e3a;
+      --ink: #dde4ec; --ink-soft: #8593a3; --brass: #d9a441; --rec: #57c894;
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 28px rgba(0,0,0,.45);
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #0c1015; --surface: #141a22; --edge: #252e3a;
+    --ink: #dde4ec; --ink-soft: #8593a3; --brass: #d9a441; --rec: #57c894;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 28px rgba(0,0,0,.45);
+  }
+  .screen {
+    --a-ground: #10151c; --a-panel: #171d26; --a-panel-2: #1c232e;
+    --a-edge: #26303d; --a-ink: #dbe3ec; --a-ink-soft: #7d8b9d; --a-ink-dim: #5b6878;
+    --a-brass: #d9a441; --a-sel: #4a9fd8; --a-ok: #4fb783; --a-warn: #d9a441; --a-err: #d97070;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--ground); color: var(--ink);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-size: 15px; line-height: 1.6; -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1240px; margin: 0 auto; padding: 0 24px 90px; }
+
+  header.page { padding: 52px 0 30px; border-bottom: 1px solid var(--edge); margin-bottom: 36px; }
+  .eyebrow {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--brass); margin: 0 0 14px;
+  }
+  h1 {
+    font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+    font-size: clamp(29px, 4vw, 43px); line-height: 1.12; font-weight: 600;
+    letter-spacing: -.015em; text-wrap: balance; margin: 0 0 18px;
+  }
+  header.page p { max-width: 66ch; color: var(--ink-soft); margin: 0 0 12px; }
+  .srcline {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 12px; color: var(--ink-soft); border-left: 2px solid var(--brass); padding-left: 12px;
+  }
+  h2 {
+    font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+    font-size: 25px; font-weight: 600; letter-spacing: -.01em; margin: 0 0 6px;
+  }
+  section.block { margin-bottom: 58px; }
+  .ptag { color: var(--ink-soft); max-width: 74ch; margin: 0 0 20px; }
+
+  .frame { border: 1px solid var(--edge); border-radius: 6px; overflow: hidden; box-shadow: var(--shadow); background: #10151c; }
+  .scroller { overflow-x: auto; }
+
+  .notes { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 22px 32px; margin-top: 24px; }
+  .notes h3 {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--brass); margin: 0 0 8px; font-weight: 500;
+  }
+  .notes ul { margin: 0; padding-left: 17px; color: var(--ink-soft); font-size: 14px; }
+  .notes li { margin-bottom: 6px; }
+  .notes li b { color: var(--ink); font-weight: 600; }
+  .notes code, .ptag code, footer.page code {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: .88em; color: var(--ink);
+    background: color-mix(in srgb, var(--ink) 8%, transparent); padding: 1px 5px; border-radius: 3px;
+  }
+
+  /* ================= APP SCREEN ================= */
+  .screen {
+    width: 1180px; height: 720px; background: var(--a-ground); color: var(--a-ink);
+    display: flex; flex-direction: column; font-size: 11.5px; line-height: 1.45; position: relative;
+  }
+  .screen.mini { height: 400px; }
+  .screen, .screen * { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+
+  .appbar {
+    height: 34px; flex: none; display: flex; align-items: center; gap: 14px;
+    padding: 0 12px; background: var(--a-panel); border-bottom: 1px solid var(--a-edge);
+  }
+  .brand { color: var(--a-brass); letter-spacing: .06em; font-size: 11px; white-space: nowrap; }
+  .abfield { display: flex; align-items: center; gap: 6px; color: var(--a-ink-soft); white-space: nowrap; }
+  .abfield b { color: var(--a-ink); font-weight: 500; }
+  .sel-ctl { background: var(--a-panel-2); border: 1px solid var(--a-edge); border-radius: 3px; padding: 2px 8px; color: var(--a-ink); white-space: nowrap; }
+  .spacer { flex: 1; }
+  .btn { background: var(--a-panel-2); border: 1px solid var(--a-edge); border-radius: 3px; padding: 3px 10px; color: var(--a-ink); white-space: nowrap; }
+  .btn.primary { border-color: var(--a-brass); color: var(--a-brass); }
+
+  .panel { background: var(--a-panel); display: flex; flex-direction: column; min-height: 0; min-width: 0; position: relative; }
+  /* Signals "this panel scrolls" so a clipped row reads as intentional, not broken. */
+  .panel.scrolls::after {
+    content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 26px;
+    background: linear-gradient(to bottom, rgba(23,29,38,0), rgba(23,29,38,.96));
+    pointer-events: none;
+  }
+  .ptitle {
+    height: 26px; flex: none; display: flex; align-items: center; gap: 8px; padding: 0 10px;
+    border-bottom: 1px solid var(--a-edge); color: var(--a-brass);
+    font-size: 10px; letter-spacing: .12em; text-transform: uppercase;
+  }
+  .ptitle .hint { color: var(--a-ink-dim); letter-spacing: 0; text-transform: none; font-size: 10px; }
+  .pbody { padding: 8px 10px; overflow: hidden; flex: 1; min-height: 0; }
+
+  .kv { display: grid; grid-template-columns: auto 1fr; gap: 1px 12px; }
+  .kv dt { color: var(--a-ink-soft); }
+  .kv dd { margin: 0; color: var(--a-ink); font-variant-numeric: tabular-nums; }
+  .sub { color: var(--a-brass); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; margin: 9px 0 3px; }
+  .sub .cnt { color: var(--a-ink-dim); letter-spacing: 0; text-transform: none; }
+  .row { display: flex; justify-content: space-between; gap: 12px; }
+  .row span:last-child { color: var(--a-ink-soft); font-variant-numeric: tabular-nums; }
+  .dim { color: var(--a-ink-soft); }
+  .region-head { color: var(--a-ink); margin-bottom: 7px; }
+  .region-head b { color: var(--a-brass); font-weight: 500; }
+  .none { color: var(--a-ink-dim); font-style: italic; }
+  .more { color: var(--a-sel); }
+
+  table.units { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  table.units th {
+    text-align: left; font-weight: 500; color: var(--a-ink-soft); border-bottom: 1px solid var(--a-edge);
+    padding: 3px 8px; font-size: 10px; letter-spacing: .06em; text-transform: uppercase;
+  }
+  table.units td { padding: 2.5px 8px; border-bottom: 1px solid #1e2733; white-space: nowrap; }
+  table.units tr.active td { background: #22354a; color: #eaf3fb; }
+  table.units tr.active td:first-child { box-shadow: inset 2px 0 0 var(--a-sel); }
+  table.units tr.foreign td { color: var(--a-ink-soft); }
+  table.units tr.picked td { background: #3a2f22; color: #f0e2c8; }
+  table.units tr.picked td:first-child { box-shadow: inset 2px 0 0 var(--a-brass); }
+  .id { color: var(--a-sel); }
+  tr.foreign .id { color: #b98a8a; }
+  .own-mark { color: var(--a-ok); }
+  .foreign-mark { color: #b98a8a; }
+  .guard { color: var(--a-warn); font-size: 10px; }
+  .filter { border: 1px solid var(--a-edge); background: var(--a-ground); border-radius: 3px; padding: 2px 8px; color: var(--a-ink-dim); width: 150px; }
+
+  .editor { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+  .code { flex: 1; padding: 6px 0; overflow: hidden; background: var(--a-ground); }
+  .ln { display: flex; gap: 10px; padding: 0 10px; }
+  .ln > i { color: var(--a-ink-dim); font-style: normal; width: 14px; text-align: right; flex: none; }
+  .cmd { color: #7fb0e0; }
+  .arg { color: var(--a-ink); }
+  .cm { color: #5f7a52; }
+  .caret { display: inline-block; width: 6px; height: 12px; background: var(--a-sel); vertical-align: -2px; }
+  .statusline {
+    height: 22px; flex: none; display: flex; align-items: center; gap: 12px; padding: 0 10px;
+    border-top: 1px solid var(--a-edge); color: var(--a-ink-soft); font-size: 10px;
+  }
+  .dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
+  .dot.ok { background: var(--a-ok); }
+  .dot.warn { background: var(--a-warn); }
+  .dot.err { background: var(--a-err); }
+  .locked {
+    flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 8px; color: var(--a-ink-dim); text-align: center; padding: 18px; background: var(--a-ground);
+  }
+  .lockbadge {
+    border: 1px solid var(--a-edge); border-radius: 3px; padding: 3px 10px;
+    color: var(--a-ink-soft); font-size: 10px; letter-spacing: .08em; text-transform: uppercase;
+  }
+
+  .map { position: absolute; inset: 0; overflow: hidden; background: #0a0e13; }
+  .map svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .coordchip, .mapctl { position: absolute; }
+  .coordchip {
+    background: color-mix(in srgb, #171d26 88%, transparent); border: 1px solid var(--a-edge);
+    border-radius: 3px; padding: 2px 8px; color: var(--a-ink-soft); font-size: 10px;
+  }
+  .mapctl { display: flex; gap: 4px; }
+  .zbtn {
+    width: 24px; height: 24px; display: grid; place-items: center;
+    background: color-mix(in srgb, #171d26 88%, transparent); border: 1px solid var(--a-edge);
+    border-radius: 3px; color: var(--a-ink-soft); font-size: 13px;
+  }
+
+  .float {
+    position: absolute; z-index: 5; background: color-mix(in srgb, #171d26 94%, transparent);
+    border: 1px solid var(--a-edge); border-radius: 5px; backdrop-filter: blur(6px);
+    box-shadow: 0 6px 22px rgba(0,0,0,.45);
+  }
+  .float .panel { background: transparent; }
+  .chips { top: 10px; left: 50%; transform: translateX(-50%); display: flex; gap: 6px; padding: 5px 8px; }
+  .chip { display: flex; align-items: center; gap: 5px; padding: 2px 8px; border-radius: 3px; border: 1px solid var(--a-edge); color: var(--a-ink-dim); white-space: nowrap; }
+  .chip.on { border-color: var(--a-sel); color: var(--a-ink); background: color-mix(in srgb, #4a9fd8 16%, transparent); }
+  .box { width: 11px; height: 11px; border-radius: 2px; border: 1px solid var(--a-ink-dim); display: inline-block; flex: none; }
+  .box.on { background: var(--a-sel); border-color: var(--a-sel); position: relative; }
+  .box.on::after {
+    content: ""; position: absolute; left: 3px; top: 0; width: 3px; height: 6px;
+    border: solid #10151c; border-width: 0 1.5px 1.5px 0; transform: rotate(42deg);
+  }
+
+  .stage { flex: 1; position: relative; min-height: 0; }
+  .p-left { top: 52px; left: 10px; bottom: 212px; width: 306px; display: flex; flex-direction: column; }
+  .p-right { top: 52px; right: 10px; bottom: 212px; width: 336px; display: flex; flex-direction: column; }
+  .p-right .panel:first-child { flex: 1; border-bottom: 1px solid var(--a-edge); min-height: 0; }
+  .p-right .panel:last-child { flex: none; height: 152px; }
+  .p-bottom { left: 10px; right: 10px; bottom: 10px; height: 192px; display: flex; flex-direction: column; }
+  .caretmark { margin-left: 8px; color: var(--a-ink-dim); }
+
+  .collapsed-strip {
+    position: absolute; z-index: 5; display: flex; align-items: center; gap: 8px; padding: 0 10px; height: 26px;
+    background: color-mix(in srgb, #171d26 94%, transparent); border: 1px solid var(--a-edge); border-radius: 5px;
+    color: var(--a-brass); font-size: 10px; letter-spacing: .12em; text-transform: uppercase;
+    box-shadow: 0 6px 22px rgba(0,0,0,.45);
+  }
+  .collapsed-strip .hint { color: var(--a-ink-dim); letter-spacing: 0; text-transform: none; }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 14px 20px; margin-top: 16px; font-size: 13px; color: var(--ink-soft); }
+  .legend span { display: flex; align-items: center; gap: 7px; }
+  .sw { width: 14px; height: 14px; border-radius: 3px; display: inline-block; border: 1px solid rgba(0,0,0,.35); }
+  .sw.faint { opacity: .5; }
+  .sw.stale {
+    background-image: repeating-linear-gradient(45deg, rgba(255,255,255,.30) 0 1px, transparent 1px 4px);
+  }
+
+  .statebar { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px; margin: 20px 0 0; }
+  .statecard { border: 1px solid var(--edge); border-radius: 5px; padding: 12px 14px; }
+  .statecard h4 {
+    margin: 0 0 6px; font-size: 13px; font-weight: 600; color: var(--ink);
+    display: flex; align-items: center; gap: 8px;
+  }
+  .statecard p { margin: 0; font-size: 13px; color: var(--ink-soft); }
+
+  /* staleness banner inside the region panel */
+  .stalebanner {
+    display: flex; align-items: flex-start; gap: 8px; margin-bottom: 8px;
+    border: 1px solid #6b5320; border-left-width: 3px; border-radius: 3px;
+    background: color-mix(in srgb, #d9a441 12%, transparent);
+    padding: 5px 8px; color: #e6c884;
+  }
+  .stalebanner b { color: #f2dda6; font-weight: 500; }
+  .asof { color: var(--a-warn); font-size: 10px; letter-spacing: 0; text-transform: none; }
+
+  footer.page { border-top: 1px solid var(--edge); padding-top: 26px; color: var(--ink-soft); font-size: 14px; max-width: 74ch; }
+  footer.page b { color: var(--ink); }
+
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+
+<svg width="0" height="0" aria-hidden="true" focusable="false" style="position:absolute">
+  <defs>
+    <pattern id="stalehatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <line x1="0" y1="0" x2="0" y2="5" stroke="#9fb0c4" stroke-width="1" stroke-opacity="0.22"/>
+    </pattern>
+  </defs>
+</svg>
+
+<div class="wrap">
+
+<header class="page">
+  <p class="eyebrow">Issue #17 · Variant 04 · turn 71</p>
+  <h1>Docked Inspector, on a mature turn</h1>
+  <p>Same layout as before, now carrying a real world: eleven regions in this turn's report, forty-five more known only by name from <code>Exits</code>, a fourth <b>previously visited</b> state for data that may have gone stale, twenty-four structures in the selected city, and a units table deep enough to need scrolling. Every figure is read from the file.</p>
+  <p class="srcline">report-neworigins-v7-95-71.rep · Borg TNG (95), Magic 5 · December, Year 6 · Atlantis Engine 5.2.5 (beta) · NewOrigins 3.0.0 (beta) · 4,028 lines</p>
+</header>
+
+<section class="block">
+  <h2>Expanded — own unit selected</h2>
+  <p class="ptag">Selected hex is <b>mountain (7,53) in Inhead</b>, which contains the city of Inholm. Hexes are drawn flat-top on true Atlantis geometry: north and south are direct neighbours, so <code>(x, y±2)</code> is vertical and <code>(x±1, y±1)</code> are the diagonals. My earlier mockups had the hexes rotated the wrong way.</p>
+
+  <div class="frame scroller">
+  <div class="screen">
+    <div class="appbar">
+      <span class="brand">ATLANTIS HUD</span>
+      <span class="abfield"><b>borg-tng-95.atlantis-project</b></span>
+      <span class="abfield">Turn <span class="sel-ctl">71 · Dec, Y6 ▾</span></span>
+      <span class="abfield">Faction <b>Borg TNG (95)</b></span>
+      <span class="abfield"><i class="dot warn"></i>&nbsp;11 regions · 27 units · 2 battles</span>
+      <span class="spacer"></span>
+      <span class="btn primary">Load report…</span>
+      <span class="btn">Export orders</span>
+    </div>
+
+    <div class="stage">
+      <div class="map">
+        <svg class="worldmap" viewBox="0 0 1180 686" preserveAspectRatio="xMidYMid slice" aria-label="Hex map showing eleven visited regions, forty-six regions known by name, and unexplored ground"></svg>
+        <div class="coordchip" style="right:352px;bottom:210px">1 · 7,53 &nbsp;·&nbsp; zoom 100%</div>
+        <div class="mapctl" style="right:352px;bottom:238px"><span class="zbtn">+</span><span class="zbtn">−</span><span class="zbtn">⤢</span></div>
+      </div>
+
+      <div class="float chips">
+        <span class="chip on"><i class="box on"></i>Units</span>
+        <span class="chip on"><i class="box on"></i>Structures</span>
+        <span class="chip on"><i class="box on"></i>Staleness</span>
+        <span class="chip"><i class="box"></i>Trade routes</span>
+        <span class="chip"><i class="box"></i>Movement</span>
+        <span class="chip">surface ▾</span>
+      </div>
+
+      <div class="float p-left">
+        <div class="panel scrolls" style="flex:1;min-height:0">
+          <div class="ptitle">Region <span class="hint">— mountain (7,53)</span><span class="spacer"></span><span class="caretmark">▾</span></div>
+          <div class="pbody">
+            <div class="region-head">in Inhead · contains <b>Inholm</b> [city]</div>
+            <dl class="kv">
+              <dt>Population</dt><dd>12,051 hill dwarves</dd>
+              <dt>Tax base</dt><dd>$33,983</dd>
+              <dt>Wages</dt><dd>$24.1 (max $6,796)</dd>
+              <dt>Entertainment</dt><dd>$2,500</dd>
+            </dl>
+            <p class="sub">Products</p>
+            <div class="dim">57 grain [GRAI] · 37 iron [IRON] · 17 stone [STON]</div>
+            <p class="sub">Wanted <span class="cnt">9</span></p>
+            <div class="row"><span>jewelry JEWE</span><span>$630 ×82</span></div>
+            <div class="row"><span>truffles TRUF</span><span>$357 ×61</span></div>
+            <div class="row"><span>spinning wheels SPIN</span><span>$97 ×45</span></div>
+            <div class="row"><span>leather armor LARM</span><span>$87 ×41</span></div>
+            <div class="row"><span>spears SPEA</span><span>$85 ×35</span></div>
+            <div class="row"><span>lassoes LASS</span><span>$79 ×25</span></div>
+            <div class="row"><span>fish FISH</span><span>$41 ×138</span></div>
+            <div class="row"><span>grain GRAI</span><span>$24 ×138</span></div>
+            <div class="row"><span>livestock LIVE</span><span>$23 ×118</span></div>
+            <p class="sub">For sale <span class="cnt">4</span></p>
+            <div class="row"><span>leaders LEAD</span><span>$1349 ×96</span></div>
+            <div class="row"><span>gems GEM</span><span>$213 ×53</span></div>
+            <div class="row"><span>perfume PERF</span><span>$204 ×63</span></div>
+            <div class="row"><span>hill dwarves HDWA</span><span>$77 ×482</span></div>
+            <p class="sub">Exits</p>
+            <div class="dim">N&nbsp;&nbsp; mountain (7,51) Inhead</div>
+            <div class="dim">NE ocean (8,52) Atlantis Ocean</div>
+            <div class="dim">SE ocean (8,54) Atlantis Ocean</div>
+            <div class="dim">S&nbsp;&nbsp; ocean (7,55) Atlantis Ocean</div>
+            <div class="dim">SW mountain (6,54) Inhead</div>
+            <div class="dim">NW mountain (6,52) Inhead</div>
+            <p class="sub">Structures <span class="cnt">24</span></p>
+            <div class="dim">Benden Weyr [19] · Magical Castle</div>
+            <div class="dim">Building [21] · Magical Citadel, needs 560</div>
+            <div class="dim">Map Library [3] · Magical Fortress</div>
+            <div class="dim">Magical Tree House [5] · Magical Fortress</div>
+            <div class="dim">Cartographers HQ [1] · Fort</div>
+            <div class="dim">Ent Trade Emporium [2] · Caravanserai</div>
+            <div class="more">+ 18 more — 5 mines, 4 farms, 2 inns, 3 roads, 3 ships, 1 quarry</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="float p-right">
+        <div class="panel scrolls">
+          <div class="ptitle">Unit <span class="hint">— Seven of Eight (18642)</span><span class="spacer"></span><span class="caretmark">▾</span></div>
+          <div class="pbody">
+            <div class="region-head"><b>Borg TNG (95)</b> · your faction</div>
+            <dl class="kv">
+              <dt>Hex</dt><dd>1 : 7,53</dd>
+              <dt>Men</dt><dd>1 leader [LEAD]</dd>
+              <dt>Weight</dt><dd>10</dd>
+              <dt>Capacity</dt><dd>0 / 0 / 15 / 0</dd>
+            </dl>
+            <p class="sub">Flags</p>
+            <div class="dim">avoiding · behind · revealing faction · holding · sharing · sailing battle spoils</div>
+            <p class="sub">Skills</p>
+            <div class="row"><span>stealth STEA</span><span>5 · 450</span></div>
+            <div class="row"><span>manipulation MANI</span><span>3 · 180</span></div>
+            <div class="row"><span>observation OBSE</span><span>2 · 120</span></div>
+            <p class="sub">Items</p>
+            <div class="row"><span>leader LEAD</span><span>1</span></div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="ptitle">Orders <span class="hint">— unit 18642</span><span class="spacer"></span><span class="caretmark">▾</span></div>
+          <div class="editor">
+            <div class="code">
+              <div class="ln"><i>1</i><span class="cm">;Seven of Eight (18642), avoiding, behind,</span></div>
+              <div class="ln"><i>2</i><span class="cm">;&nbsp;&nbsp;revealing faction, holding, sharing,</span></div>
+              <div class="ln"><i>3</i><span class="cm">;&nbsp;&nbsp;sailing battle spoils, leader [LEAD].</span></div>
+              <div class="ln"><i>4</i><span class="cmd">@claim</span> <span class="arg">50</span></div>
+              <div class="ln"><i>5</i><span class="cmd">@study</span> <span class="arg">obse</span><span class="caret"></span></div>
+            </div>
+            <div class="statusline"><span><i class="dot ok"></i> 0 errors</span><span><i class="dot ok"></i> 0 warnings</span><span class="spacer"></span><span>saved 14:22</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="float p-bottom">
+        <div class="panel" style="flex:1;min-height:0">
+          <div class="ptitle">Units in hex <span class="hint">— mountain (7,53), 21 of 63 units shown</span><span class="spacer"></span><input class="filter" value="filter units…" readonly aria-label="Filter units"><span class="caretmark">▾</span></div>
+          <div class="pbody" style="padding:0">
+            <table class="units">
+              <thead><tr><th></th><th>Id</th><th>Unit</th><th>Faction</th><th>Men</th><th>Skills</th><th>Items</th><th>Structure</th></tr></thead>
+              <tbody>
+                <tr class="active"><td class="own-mark">*</td><td class="id">18642</td><td>Seven of Eight</td><td>Borg TNG (95)</td><td>1</td><td>STEA 5, MANI 3, OBSE 2</td><td>1 LEAD</td><td></td></tr>
+                <tr class="foreign"><td class="foreign-mark">−</td><td class="id">14353</td><td>Eastern Watch <span class="guard">on guard</span></td><td>Elder Tree Forests (32)</td><td>120</td><td></td><td>120 HDWA, 32 SWOR, 23 IRON</td><td>Cartographers HQ [1]</td></tr>
+                <tr class="foreign"><td class="foreign-mark">−</td><td class="id">12538</td><td>Ent Factor Guards</td><td>Elder Tree Forests (32)</td><td>59</td><td></td><td>254 PARM, 89 SWOR, 195 CAME, 339 HPOT…</td><td>Map Library [3]</td></tr>
+                <tr class="foreign"><td class="foreign-mark">−</td><td class="id">6186</td><td>Trade Factor - Ent Enterprises</td><td>Elder Tree Forests (32)</td><td>1</td><td></td><td>688 STON, 318 IRON, 127 SPIN, 86 BAG…</td><td>Ent Trade Emporium [2]</td></tr>
+                <tr class="foreign"><td class="foreign-mark">−</td><td class="id">10104</td><td>1st Cavalry Division <span class="guard">on guard</span></td><td>Elder Tree Forests (32)</td><td>6</td><td></td><td>6 HUMN, 6 SWOR, 6 CAME</td><td>Map Library [3]</td></tr>
+                <tr class="foreign"><td class="foreign-mark">−</td><td class="id">13762</td><td>Advanced Carpentry Inc.</td><td>Elder Tree Forests (32)</td><td>6</td><td></td><td>89 FUR, 30 IRWD, 110 IRON</td><td>Ent Trade Emporium [2]</td></tr>
+                <tr class="foreign"><td class="foreign-mark">−</td><td class="id">13364</td><td>Armourers</td><td>Elder Tree Forests (32)</td><td>9</td><td></td><td>6 HAMM, 14 PARM</td><td>Ent Trade Emporium [2]</td></tr>
+                <tr class="foreign"><td class="foreign-mark">−</td><td class="id">12282</td><td>Armourers</td><td>Elder Tree Forests (32)</td><td>13</td><td></td><td>9 HAMM, 20 PARM</td><td>Ent Trade Emporium [2]</td></tr>
+                <tr class="foreign"><td class="foreign-mark">−</td><td class="id">15347</td><td>Town Jugglers</td><td>Cartographers (69)</td><td>11</td><td></td><td>11 HDWA</td><td></td></tr>
+                <tr class="foreign"><td class="foreign-mark">−</td><td class="id">1807</td><td>Town jugglers</td><td>Cartographers (69)</td><td>9</td><td></td><td>9 HDWA</td><td></td></tr>
+                <tr class="foreign"><td class="foreign-mark">−</td><td class="id">13722</td><td>Runner Stone</td><td>Greywolf (33)</td><td>1</td><td></td><td>1 HELF, 14 TURT</td><td></td></tr>
+                <tr class="foreign"><td class="foreign-mark">−</td><td class="id">15654</td><td>AactCRO</td><td>Archon Dominion (53)</td><td>1</td><td></td><td>1 CTAU, 2 WING, 4 HORS</td><td></td></tr>
+                <tr class="foreign"><td class="foreign-mark">−</td><td class="id">16767</td><td>The Diplomat</td><td>Mantzikert (103)</td><td>1</td><td></td><td>1 HDWA, 2 HORS</td><td></td></tr>
+                <tr class="foreign"><td class="foreign-mark">−</td><td class="id">2184</td><td>Unit (2184)</td><td>Fon (8)</td><td>1</td><td></td><td>1 ORC, PICK, TURT</td><td></td></tr>
+                <tr class="foreign"><td class="foreign-mark">−</td><td class="id">10985</td><td>Wandering Minstrel</td><td>The Wandering Minstrels (70)</td><td>1</td><td></td><td>1 LIZA</td><td></td></tr>
+                <tr class="foreign"><td class="foreign-mark">−</td><td class="id">7013</td><td>AactL</td><td>Archon Dominion (53)</td><td>1</td><td></td><td>1 LIZA</td><td></td></tr>
+                <tr class="foreign"><td class="foreign-mark">−</td><td class="id">6370</td><td>Wistful Visitor</td><td>Wistful Thinking (27)</td><td>1</td><td></td><td>1 LIZA</td><td></td></tr>
+                <tr class="foreign"><td class="foreign-mark">−</td><td class="id">1605</td><td>scout</td><td>Children of the Four Winds (4)</td><td>1</td><td></td><td>1 LIZA</td><td></td></tr>
+                <tr class="foreign"><td class="foreign-mark">−</td><td class="id">8768</td><td>Scout</td><td>Silver Hand (25)</td><td>1</td><td></td><td>1 HDWA</td><td></td></tr>
+                <tr class="foreign"><td class="foreign-mark">−</td><td class="id">10770</td><td>Worker</td><td>Greywolf (33)</td><td>1</td><td></td><td>1 HDWA</td><td></td></tr>
+                <tr class="foreign"><td class="foreign-mark">−</td><td class="id">5812</td><td>Unit (5812)</td><td>Wanderers (83)</td><td>1</td><td></td><td>1 HDWA</td><td></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  </div>
+
+  <div class="legend">
+    <span><i class="sw" style="background:#5c5c66"></i> mountain</span>
+    <span><i class="sw" style="background:#1d3f63"></i> ocean</span>
+    <span><i class="sw" style="background:#3d4a2e"></i> swamp</span>
+    <span><i class="sw" style="background:#8a7546"></i> desert</span>
+    <span><i class="sw" style="background:#2f5d3a"></i> forest</span>
+    <span><i class="sw" style="background:#2b6b4a"></i> jungle</span>
+  </div>
+
+  <div class="statebar">
+    <div class="statecard">
+      <h4><i class="sw" style="background:#1d3f63"></i> Current</h4>
+      <p>In this turn's report. Full data, trustworthy. <b>11 regions.</b></p>
+    </div>
+    <div class="statecard">
+      <h4><i class="sw stale" style="background:#25333f"></i> Previously visited</h4>
+      <p>Full data held from an earlier turn but absent from this report — may be out of date. Hatched, and faded further the older the sighting. <b>19 regions.</b></p>
+    </div>
+    <div class="statecard">
+      <h4><i class="sw faint" style="background:#1d3f63"></i> Known by name</h4>
+      <p>Named in another region's <code>Exits</code> block. Terrain and province only, never visited. <b>45 regions.</b></p>
+    </div>
+    <div class="statecard">
+      <h4><i class="sw" style="background:#161c24"></i> Unexplored</h4>
+      <p>Nothing known. Not selectable.</p>
+    </div>
+  </div>
+
+  <p class="ptag" style="margin-top:18px">The <b>Staleness</b> toggle in the layer bar switches the hatch and age-fade on and off, so you can read terrain cleanly when you don't care about data age. Note the previously-visited set here is <b>illustrative</b> — we hold only one turn for this faction, so there is no genuine earlier-visit history to draw from. The state, its rendering and its behaviour are real; which specific hexes are stale is not.</p>
+</section>
+
+<section class="block">
+  <h2>Foreign unit selected — orders locked</h2>
+  <p class="ptag">The state the issue calls for but none of the earlier mockups drew. Selecting <b>Ent Factor Guards (12538)</b>, an Elder Tree Forests unit, still fills the Unit panel — foreign units are perfectly legitimate to inspect — but the Orders panel refuses the edit rather than offering a disabled text box. Ownership comes straight from the report's <code>-</code> prefix.</p>
+
+  <div class="frame scroller">
+  <div class="screen mini" style="height:540px">
+    <div class="appbar">
+      <span class="brand">ATLANTIS HUD</span>
+      <span class="abfield"><b>borg-tng-95.atlantis-project</b></span>
+      <span class="abfield">Turn <span class="sel-ctl">71 · Dec, Y6 ▾</span></span>
+      <span class="abfield">Faction <b>Borg TNG (95)</b></span>
+      <span class="spacer"></span>
+      <span class="btn primary">Load report…</span>
+      <span class="btn">Export orders</span>
+    </div>
+    <div class="stage">
+      <div class="map">
+        <svg class="worldmap" viewBox="0 0 1180 366" preserveAspectRatio="xMidYMid slice" aria-label="Hex map, foreign unit selected"></svg>
+      </div>
+      <div class="collapsed-strip" style="top:10px;left:10px;width:306px">Region <span class="hint">— mountain (7,53)</span><span class="spacer"></span>▸</div>
+      <div class="float p-right" style="top:10px;bottom:172px">
+        <div class="panel scrolls">
+          <div class="ptitle">Unit <span class="hint">— Ent Factor Guards (12538)</span><span class="spacer"></span><span class="caretmark">▾</span></div>
+          <div class="pbody">
+            <div class="region-head"><b style="color:#b98a8a">Elder Tree Forests (32)</b> · ally, not your faction</div>
+            <dl class="kv">
+              <dt>Hex</dt><dd>1 : 7,53</dd>
+              <dt>Men</dt><dd>59 humans [HUMN]</dd>
+              <dt>Structure</dt><dd>Map Library [3]</dd>
+            </dl>
+            <p class="sub">Items <span class="cnt">20</span></p>
+            <div class="row"><span>healing potions HPOT</span><span>339</span></div>
+            <div class="row"><span>plate armor PARM</span><span>254</span></div>
+            <div class="row"><span>camels CAME</span><span>195</span></div>
+            <div class="row"><span>swords SWOR</span><span>89</span></div>
+            <div class="more">+ 16 more</div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="ptitle">Orders <span class="hint">— unit 12538</span><span class="spacer"></span><span class="caretmark">▾</span></div>
+          <div class="locked">
+            <span class="lockbadge">Read only</span>
+            <span>Ent Factor Guards (12538) belongs to<br>Elder Tree Forests (32).</span>
+            <span style="color:#4a5866">You can only write orders for units in Borg TNG (95).</span>
+          </div>
+        </div>
+      </div>
+      <div class="float p-bottom" style="height:150px">
+        <div class="panel" style="flex:1;min-height:0">
+          <div class="ptitle">Units in hex <span class="hint">— mountain (7,53), 21 of 63 units shown</span><span class="spacer"></span><span class="caretmark">▾</span></div>
+          <div class="pbody" style="padding:0">
+            <table class="units">
+              <thead><tr><th></th><th>Id</th><th>Unit</th><th>Faction</th><th>Men</th><th>Items</th><th>Structure</th></tr></thead>
+              <tbody>
+                <tr><td class="own-mark">*</td><td class="id">18642</td><td>Seven of Eight</td><td>Borg TNG (95)</td><td>1</td><td>1 LEAD</td><td></td></tr>
+                <tr class="foreign"><td class="foreign-mark">−</td><td class="id">14353</td><td>Eastern Watch <span class="guard">on guard</span></td><td>Elder Tree Forests (32)</td><td>120</td><td>120 HDWA, 32 SWOR, 23 IRON</td><td>Cartographers HQ [1]</td></tr>
+                <tr class="foreign picked"><td class="foreign-mark">−</td><td class="id">12538</td><td>Ent Factor Guards</td><td>Elder Tree Forests (32)</td><td>59</td><td>254 PARM, 89 SWOR, 195 CAME…</td><td>Map Library [3]</td></tr>
+                <tr class="foreign"><td class="foreign-mark">−</td><td class="id">6186</td><td>Trade Factor - Ent Enterprises</td><td>Elder Tree Forests (32)</td><td>1</td><td>688 STON, 318 IRON, 127 SPIN…</td><td>Ent Trade Emporium [2]</td></tr>
+                <tr class="foreign"><td class="foreign-mark">−</td><td class="id">10104</td><td>1st Cavalry Division <span class="guard">on guard</span></td><td>Elder Tree Forests (32)</td><td>6</td><td>6 HUMN, 6 SWOR, 6 CAME</td><td>Map Library [3]</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  </div>
+</section>
+
+<section class="block">
+  <h2>Previously visited region selected</h2>
+  <p class="ptag">The fourth state, in use. Here turn 72 has just been imported and Inholm was <b>not</b> in it — the fleet has sailed on. Every figure the panel shows is still the real turn 71 data, but it is now historical, so the panel says so at the top and stamps each section <code>as of turn 71</code>. The units table is explicitly last-known positions, not current ones, and orders are refused because you cannot order a unit you cannot presently see.</p>
+
+  <div class="frame scroller">
+  <div class="screen mini" style="height:580px">
+    <div class="appbar">
+      <span class="brand">ATLANTIS HUD</span>
+      <span class="abfield"><b>borg-tng-95.atlantis-project</b></span>
+      <span class="abfield">Turn <span class="sel-ctl">72 · Feb, Y7 ▾</span></span>
+      <span class="abfield">Faction <b>Borg TNG (95)</b></span>
+      <span class="spacer"></span>
+      <span class="btn primary">Load report…</span>
+      <span class="btn">Export orders</span>
+    </div>
+    <div class="stage">
+      <div class="map">
+        <svg class="worldmap" viewBox="0 0 1180 436" preserveAspectRatio="xMidYMid slice" aria-label="Hex map with a previously visited region selected"></svg>
+      </div>
+      <div class="float chips">
+        <span class="chip on"><i class="box on"></i>Units</span>
+        <span class="chip on"><i class="box on"></i>Structures</span>
+        <span class="chip on"><i class="box on"></i>Staleness</span>
+        <span class="chip"><i class="box"></i>Trade routes</span>
+        <span class="chip"><i class="box"></i>Movement</span>
+        <span class="chip">surface ▾</span>
+      </div>
+
+      <div class="float p-left" style="top:52px;bottom:154px">
+        <div class="panel scrolls" style="flex:1;min-height:0">
+          <div class="ptitle">Region <span class="hint">— mountain (7,53)</span><span class="spacer"></span><span class="asof">as of turn 71</span><span class="caretmark">▾</span></div>
+          <div class="pbody">
+            <div class="stalebanner">
+              <span>◷</span>
+              <span><b>Last seen turn 71</b>, 1 turn ago.<br>Not in the current report — figures may be out of date.</span>
+            </div>
+            <div class="region-head">in Inhead · contains <b>Inholm</b> [city]</div>
+            <dl class="kv">
+              <dt>Population</dt><dd>12,051 hill dwarves</dd>
+              <dt>Tax base</dt><dd>$33,983</dd>
+              <dt>Wages</dt><dd>$24.1 (max $6,796)</dd>
+              <dt>Entertainment</dt><dd>$2,500</dd>
+            </dl>
+            <p class="sub">Products <span class="asof">turn 71</span></p>
+            <div class="dim">57 grain [GRAI] · 37 iron [IRON] · 17 stone [STON]</div>
+            <p class="sub">Structures <span class="cnt">24</span> <span class="asof">turn 71</span></p>
+            <div class="dim">Benden Weyr [19] · Magical Castle</div>
+            <div class="dim">Building [21] · Magical Citadel, needs 560</div>
+            <div class="dim">Map Library [3] · Magical Fortress</div>
+            <div class="more">+ 21 more</div>
+            <p class="sub">Exits</p>
+            <div class="dim">N&nbsp;&nbsp; mountain (7,51) Inhead</div>
+            <div class="dim">NE ocean (8,52) Atlantis Ocean</div>
+            <div class="dim">SE ocean (8,54) Atlantis Ocean</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="float p-right" style="top:52px;bottom:154px">
+        <div class="panel scrolls">
+          <div class="ptitle">Unit <span class="hint">— Seven of Eight (18642)</span><span class="spacer"></span><span class="asof">as of turn 71</span></div>
+          <div class="pbody">
+            <div class="stalebanner">
+              <span>◷</span>
+              <span>Last known position, <b>turn 71</b>. This unit may have moved.</span>
+            </div>
+            <div class="region-head"><b>Borg TNG (95)</b> · your faction</div>
+            <dl class="kv">
+              <dt>Men</dt><dd>1 leader [LEAD]</dd>
+              <dt>Weight</dt><dd>10</dd>
+            </dl>
+            <p class="sub">Skills</p>
+            <div class="row"><span>stealth STEA</span><span>5 · 450</span></div>
+            <div class="row"><span>manipulation MANI</span><span>3 · 180</span></div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="ptitle">Orders <span class="hint">— unit 18642</span><span class="spacer"></span><span class="caretmark">▾</span></div>
+          <div class="locked">
+            <span class="lockbadge">Not in this turn</span>
+            <span>Unit 18642 was last seen on turn 71<br>and is not in the turn 72 report.</span>
+            <span style="color:#4a5866">Orders can only be written for units<br>present in the current turn.</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="float p-bottom" style="height:132px">
+        <div class="panel" style="flex:1;min-height:0">
+          <div class="ptitle">Units in hex <span class="hint">— mountain (7,53), last known 63 units</span><span class="spacer"></span><span class="asof">as of turn 71</span><span class="caretmark">▾</span></div>
+          <div class="pbody" style="padding:0">
+            <table class="units">
+              <thead><tr><th></th><th>Id</th><th>Unit</th><th>Faction</th><th>Men</th><th>Items</th><th>Structure</th></tr></thead>
+              <tbody>
+                <tr class="picked"><td class="own-mark">*</td><td class="id">18642</td><td>Seven of Eight</td><td>Borg TNG (95)</td><td>1</td><td>1 LEAD</td><td></td></tr>
+                <tr class="foreign"><td class="foreign-mark">−</td><td class="id">14353</td><td>Eastern Watch <span class="guard">on guard</span></td><td>Elder Tree Forests (32)</td><td>120</td><td>120 HDWA, 32 SWOR, 23 IRON</td><td>Cartographers HQ [1]</td></tr>
+                <tr class="foreign"><td class="foreign-mark">−</td><td class="id">12538</td><td>Ent Factor Guards</td><td>Elder Tree Forests (32)</td><td>59</td><td>254 PARM, 89 SWOR, 195 CAME…</td><td>Map Library [3]</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  </div>
+</section>
+
+<section class="block">
+  <h2>Collapsed — the whole world</h2>
+  <p class="ptag">All four panels folded away. This is the view the layout exists to make available: eleven visited regions scattered across a naval empire, their named neighbours faded, and the fog beyond.</p>
+
+  <div class="frame scroller">
+  <div class="screen mini" style="height:470px">
+    <div class="appbar">
+      <span class="brand">ATLANTIS HUD</span>
+      <span class="abfield"><b>borg-tng-95.atlantis-project</b></span>
+      <span class="abfield">Turn <span class="sel-ctl">71 · Dec, Y6 ▾</span></span>
+      <span class="abfield">Faction <b>Borg TNG (95)</b></span>
+      <span class="abfield"><i class="dot warn"></i>&nbsp;11 regions · 27 units · 2 battles</span>
+      <span class="spacer"></span>
+      <span class="btn primary">Load report…</span>
+      <span class="btn">Export orders</span>
+    </div>
+    <div class="stage">
+      <div class="map">
+        <svg class="worldmap" viewBox="0 0 1180 436" preserveAspectRatio="xMidYMid slice" aria-label="Hex map with all inspector panels collapsed"></svg>
+      </div>
+      <div class="float chips">
+        <span class="chip on"><i class="box on"></i>Units</span>
+        <span class="chip on"><i class="box on"></i>Structures</span>
+        <span class="chip on"><i class="box on"></i>Staleness</span>
+        <span class="chip"><i class="box"></i>Trade routes</span>
+        <span class="chip"><i class="box"></i>Movement</span>
+        <span class="chip">surface ▾</span>
+      </div>
+      <div class="collapsed-strip" style="top:52px;left:10px;width:306px">Region <span class="hint">— mountain (7,53)</span><span class="spacer"></span>▸</div>
+      <div class="collapsed-strip" style="top:52px;right:10px;width:336px">Unit <span class="hint">— Seven of Eight</span><span class="spacer"></span>▸</div>
+      <div class="collapsed-strip" style="top:86px;right:10px;width:336px">Orders <span class="hint">— unit 18642</span><span class="spacer"></span>▸</div>
+      <div class="collapsed-strip" style="bottom:10px;left:10px;right:10px">Units in hex <span class="hint">— 63 units</span><span class="spacer"></span>▴</div>
+    </div>
+  </div>
+  </div>
+</section>
+
+<section class="block">
+  <h2>What a mature turn changed</h2>
+  <p class="ptag">Redrawing on turn 71 rather than turn 2 exposed problems the small report could not.</p>
+
+  <div class="notes">
+    <div>
+      <h3>Hex orientation was wrong</h3>
+      <ul>
+        <li>Atlantis exits are N, S, NE, SE, NW, SW — a direct northern neighbour means <b>flat-top</b> hexes.</li>
+        <li>All four earlier mockups drew pointy-top. The mapping is <code>px = x·1.5R</code>, <code>py = y·(√3R/2)</code>, with only <code>x+y</code> even valid.</li>
+        <li><code>packages/shared/src/PixiHexMap.tsx</code> has the same bug today, and <code>mapData.ts</code> parses <code>"A1"</code> style ids that this ruleset never emits.</li>
+      </ul>
+    </div>
+    <div>
+      <h3>Four map states</h3>
+      <ul>
+        <li><b>Current</b> — in this report. 11 regions.</li>
+        <li><b>Previously visited</b> — full data from an earlier turn, absent now, so possibly wrong. Hatched and age-faded; the <b>Staleness</b> layer toggles it.</li>
+        <li><b>Known by name</b> — 45 regions named in an <code>Exits</code> block; terrain and province only.</li>
+        <li><b>Unexplored</b> — everything else, not selectable.</li>
+        <li>This makes region records <b>turn-versioned</b>: persistence must keep per-region last-seen turn, not just the latest import.</li>
+      </ul>
+    </div>
+    <div>
+      <h3>The table needs virtualising</h3>
+      <ul>
+        <li>Inholm holds <b>63 units</b> across 24 structures. The dock shows 21; the rest scroll.</li>
+        <li>Units nest inside structures, so the table is really a flattened tree — the <b>Structure</b> column carries that nesting.</li>
+        <li>Sorting own-units-first matters when one of 63 is yours.</li>
+      </ul>
+    </div>
+    <div>
+      <h3>Panels need summarise-then-expand</h3>
+      <ul>
+        <li>24 structures and 9 wanted goods overflow a 306px panel. Counts in the section headers and a <code>+ 18 more</code> affordance handle it.</li>
+        <li>Item lists on big units run to twenty entries; the table truncates with an ellipsis and the unit panel ranks by quantity.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<footer class="page">
+  <b>Fixture value.</b> Worth committing alongside the turn 2 file as <code>tests/fixtures/reports/neworigins-3.0.0-f95-t71.rep</code>. At 4,028 lines it exercises battles, ship and building structures with nested units, 63-unit regions, wrapped continuation lines everywhere, declared attitudes, skill reports, and an orders template with 27 unit blocks. The small turn 2 report stays useful as the fast parser test; this one is the realistic one.
+</footer>
+
+</div>
+
+<script>
+  (function () {
+    var NS = "http://www.w3.org/2000/svg";
+
+    var TERRAIN = {
+      ocean: "#1d3f63", mountain: "#5c5c66", swamp: "#3d4a2e",
+      desert: "#8a7546", forest: "#2f5d3a", jungle: "#2b6b4a"
+    };
+
+    /* Eleven regions with full data in the report. */
+    var VISITED = [
+      [19, 39, "ocean"], [20, 40, "ocean"], [17, 43, "ocean"], [18, 44, "ocean"],
+      [10, 50, "swamp"], [26, 52, "ocean"], [7, 53, "mountain"], [25, 53, "ocean"],
+      [25, 55, "ocean"], [25, 57, "ocean"], [15, 63, "desert"], [24, 58, "swamp"]
+    ];
+
+    /* Visited on an earlier turn, absent from turn 71: [x, y, terrain, lastSeenTurn].
+       ILLUSTRATIVE — we hold only one turn for this faction, so no genuine
+       previously-visited set exists. Shape and behaviour are real; the set is not. */
+    var STALE = [
+      [8, 50, "mountain", 70], [9, 53, "ocean", 69], [23, 53, "ocean", 68],
+      [22, 52, "ocean", 67], [21, 51, "ocean", 66], [20, 50, "ocean", 65],
+      [19, 49, "ocean", 64], [18, 48, "ocean", 63], [17, 47, "ocean", 62],
+      [16, 46, "ocean", 61], [11, 53, "ocean", 60], [13, 51, "jungle", 58],
+      [12, 50, "jungle", 57], [12, 54, "ocean", 59], [13, 55, "ocean", 59],
+      [14, 56, "ocean", 58], [15, 57, "swamp", 57], [16, 58, "forest", 56],
+      [14, 60, "forest", 55]
+    ];
+
+    var CURRENT_TURN = 71;
+
+    /* Named in an Exits block but never visited. */
+    var NAMED = [
+      [7, 51, "mountain"], [6, 52, "mountain"], [6, 54, "mountain"], [7, 55, "ocean"],
+      [8, 52, "ocean"], [8, 54, "ocean"], [9, 49, "ocean"], [9, 51, "jungle"],
+      [10, 48, "ocean"], [10, 52, "ocean"], [11, 49, "ocean"], [11, 51, "ocean"],
+      [14, 62, "forest"], [14, 64, "forest"], [15, 61, "swamp"], [15, 65, "jungle"],
+      [16, 62, "desert"], [16, 64, "desert"], [16, 42, "ocean"], [16, 44, "ocean"],
+      [17, 41, "ocean"], [17, 45, "jungle"], [18, 38, "ocean"], [18, 40, "ocean"],
+      [18, 42, "ocean"], [18, 46, "ocean"], [19, 37, "ocean"], [19, 41, "swamp"],
+      [19, 43, "desert"], [19, 45, "ocean"], [20, 38, "ocean"], [20, 42, "desert"],
+      [21, 39, "ocean"], [21, 41, "ocean"], [24, 52, "ocean"], [24, 54, "ocean"],
+      [24, 56, "swamp"], [25, 51, "ocean"], [25, 59, "ocean"], [26, 50, "ocean"],
+      [26, 54, "ocean"], [26, 56, "ocean"], [26, 58, "ocean"], [27, 51, "ocean"],
+      [27, 53, "ocean"]
+    ];
+
+    var LABELS = [
+      [7, 53, "Inholm", "city"], [15, 63, "Trasicy", "city"], [17, 45, "Dyntceffvale", "city"]
+    ];
+
+    /* Hexes where the faction has units, from the orders template. */
+    var OWN_UNITS = [[26, 52, 22], [7, 53, 1], [15, 63, 1], [10, 50, 1], [20, 40, 1], [18, 44, 1]];
+
+    var R = 16;                    /* flat-top hex radius            */
+    var COL = R * 1.5;             /* horizontal step per x          */
+    var HALF = R * Math.sqrt(3) / 2; /* vertical step per y          */
+    var OX = 330 - 6 * COL;
+    var OY = 90 - 37 * HALF;
+
+    function px(x) { return OX + x * COL; }
+    function py(y) { return OY + y * HALF; }
+
+    /* Flat-top hexagon: vertices at 0, 60, 120, 180, 240, 300 degrees. */
+    var POINTS = (function () {
+      var pts = [];
+      for (var i = 0; i < 6; i += 1) {
+        var a = Math.PI / 180 * (60 * i);
+        pts.push((R * Math.cos(a)).toFixed(2) + "," + (R * Math.sin(a)).toFixed(2));
+      }
+      return pts.join(" ");
+    }());
+
+    /* Blend a terrain colour toward the fog colour; older sightings fade further. */
+    function fade(colour, amount) {
+      var a = parseInt(colour.slice(1), 16);
+      var b = parseInt("161c24", 16);
+      var out = 0;
+      var shift;
+      for (shift = 16; shift >= 0; shift -= 8) {
+        var ca = (a >> shift) & 255;
+        var cb = (b >> shift) & 255;
+        out |= Math.round(ca * (1 - amount) + cb * amount) << shift;
+      }
+      return "#" + ("000000" + out.toString(16)).slice(-6);
+    }
+
+    function hex(x, y, fill, opacity, stroke, strokeWidth) {
+      var p = document.createElementNS(NS, "polygon");
+      p.setAttribute("points", POINTS);
+      p.setAttribute("transform", "translate(" + px(x).toFixed(2) + "," + py(y).toFixed(2) + ")");
+      p.setAttribute("fill", fill);
+      if (opacity) { p.setAttribute("opacity", String(opacity)); }
+      p.setAttribute("stroke", stroke || "#0a0e13");
+      p.setAttribute("stroke-width", String(strokeWidth || 1));
+      return p;
+    }
+
+    function text(x, y, dy, str, fill, size) {
+      var t = document.createElementNS(NS, "text");
+      t.setAttribute("x", px(x).toFixed(2));
+      t.setAttribute("y", (py(y) + dy).toFixed(2));
+      t.setAttribute("text-anchor", "middle");
+      t.setAttribute("fill", fill);
+      t.setAttribute("font-size", String(size));
+      t.setAttribute("font-family", "ui-monospace, Menlo, monospace");
+      t.textContent = str;
+      return t;
+    }
+
+    document.querySelectorAll("svg.worldmap").forEach(function (svg) {
+      var box = svg.getAttribute("viewBox").split(" ");
+      var vw = Number(box[2]);
+      var vh = Number(box[3]);
+
+      var fog = document.createElementNS(NS, "g");
+      var gx, gy;
+      for (gx = Math.floor((-40 - OX) / COL); gx <= Math.ceil((vw + 40 - OX) / COL); gx += 1) {
+        for (gy = Math.floor((-40 - OY) / HALF); gy <= Math.ceil((vh + 40 - OY) / HALF); gy += 1) {
+          if ((gx + gy) % 2 !== 0) { continue; }
+          fog.appendChild(hex(gx, gy, "#161c24", 0, "#11161d", 1));
+        }
+      }
+      svg.appendChild(fog);
+
+      var namedGroup = document.createElementNS(NS, "g");
+      NAMED.forEach(function (r) {
+        namedGroup.appendChild(hex(r[0], r[1], TERRAIN[r[2]], 0.45));
+      });
+      svg.appendChild(namedGroup);
+
+      /* Previously visited: faded by age, then hatched to mark the data uncertain. */
+      var staleGroup = document.createElementNS(NS, "g");
+      STALE.forEach(function (r) {
+        var age = CURRENT_TURN - r[3];
+        var amount = Math.min(0.62, 0.30 + age * 0.02);
+        staleGroup.appendChild(hex(r[0], r[1], fade(TERRAIN[r[2]], amount), 0));
+        staleGroup.appendChild(hex(r[0], r[1], "url(#stalehatch)", 0, "none", 0));
+      });
+      svg.appendChild(staleGroup);
+
+      var visitedGroup = document.createElementNS(NS, "g");
+      VISITED.forEach(function (r) {
+        visitedGroup.appendChild(hex(r[0], r[1], TERRAIN[r[2]], 0));
+      });
+      svg.appendChild(visitedGroup);
+
+      /* Selected hex: Inholm. */
+      svg.appendChild(hex(7, 53, "#7a7a86", 0, "#d9a441", 2.4));
+
+      var marks = document.createElementNS(NS, "g");
+      LABELS.forEach(function (l) {
+        marks.appendChild(text(l[0], l[1], -R - 3, l[2], "#f0e2bd", 8.5));
+        marks.appendChild(text(l[0], l[1], 3, "▣", "#f5efe0", 9));
+      });
+      OWN_UNITS.forEach(function (u) {
+        var c = document.createElementNS(NS, "circle");
+        c.setAttribute("cx", px(u[0]).toFixed(2));
+        c.setAttribute("cy", (py(u[1]) + R * 0.55).toFixed(2));
+        c.setAttribute("r", u[2] > 5 ? "4" : "2.6");
+        c.setAttribute("fill", "#5ec8f0");
+        marks.appendChild(c);
+      });
+      svg.appendChild(marks);
+    });
+  }());
+</script>
