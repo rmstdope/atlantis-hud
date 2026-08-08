@@ -166,8 +166,12 @@ pub fn validate_orders(source: &str) -> OrderValidationResult {
             continue;
         }
 
-        // A leading `@` marks a repeating order; it does not change which command this is.
+        // A leading `@` marks a repeating order; it does not change which command this is. A
+        // repeating comment, `@;`, is still only a comment.
         let without_repeat = trimmed.strip_prefix('@').unwrap_or(trimmed);
+        if without_repeat.starts_with(';') {
+            continue;
+        }
         let Some(command) = without_repeat.split_whitespace().next() else {
             continue;
         };
@@ -529,6 +533,18 @@ mod tests {
         ));
 
         assert!(result.diagnostics.is_empty());
+    }
+
+    #[test]
+    fn validate_orders_treats_a_repeating_comment_as_a_comment() {
+        // Real reports carry "@;" lines. Stripping the "@" and reading ";" as a command turned
+        // every one of them into an error.
+        let result = validate_orders("@;keep the caravan moving\n@study obse");
+        assert!(
+            result.diagnostics.is_empty(),
+            "unexpected diagnostics: {:?}",
+            result.diagnostics
+        );
     }
 
     #[test]

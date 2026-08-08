@@ -1,0 +1,70 @@
+@import "tailwindcss";
+
+/*
+ * Where the class names live.
+ *
+ * Automatic detection starts from the app that imports this file and does not follow the workspace
+ * link back out to the shared package, so every utility would be tree-shaken away and the app would
+ * render completely unstyled. Naming the sources is what keeps that from happening silently.
+ */
+@source "./**/*.{ts,tsx}";
+@source "../../../apps/web/src/**/*.{ts,tsx}";
+@source "../../../apps/desktop/src/**/*.{ts,tsx}";
+
+/*
+ * Design tokens for the Atlantis HUD workspace.
+ *
+ * The palette is the one the layout proposals were approved in: a dark instrument panel with a
+ * slight blue bias, a cartographer's brass for emphasis and selection, and map blue for the active
+ * item. Terrain colours are part of the data, not decoration, so they live here too rather than
+ * being scattered through the renderer.
+ *
+ * Light and dark theming is issue #9's scope; this commits to the dark ground the reference
+ * clients all use.
+ */
+@theme {
+  --color-ground: #10151c;
+  --color-panel: #171d26;
+  --color-panel-raised: #1c232e;
+  --color-edge: #26303d;
+  --color-edge-soft: #1e2733;
+
+  --color-ink: #dbe3ec;
+  --color-ink-soft: #7d8b9d;
+  --color-ink-dim: #5b6878;
+
+  --color-brass: #d9a441;
+  --color-brass-bright: #eebe63;
+  --color-select: #4a9fd8;
+
+  --color-ok: #4fb783;
+  --color-warn: #d9a441;
+  --color-danger: #d97070;
+
+  /* Terrain. Read from the report, so these are data rather than styling choices. */
+  --color-terrain-ocean: #1d3f63;
+  --color-terrain-plain: #7a7440;
+  --color-terrain-forest: #2f5d3a;
+  --color-terrain-mountain: #5c5c66;
+  --color-terrain-swamp: #3d4a2e;
+  --color-terrain-desert: #8a7546;
+  --color-terrain-jungle: #2b6b4a;
+  --color-terrain-unknown: #161c24;
+
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
+/*
+ * The app is a fixed workspace, not a document: the map fills the window and the panels float over
+ * it, so the page itself must never scroll.
+ */
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: var(--color-ground);
+  color: var(--color-ink);
+  font-family: var(--font-mono);
+}

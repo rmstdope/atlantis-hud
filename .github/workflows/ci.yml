@@ -62,3 +62,23 @@ jobs:
 
       - name: Rust clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
+
+  # The Tauri binary is gated behind `any(target_os = "macos", target_os = "windows")` and the
+  # `desktop-runtime` feature, so the Linux job above never compiles it at all. A missing dependency
+  # in the desktop shell reached a developer's machine before this job existed.
+  desktop-shell:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Check the native desktop shell
+        run: cargo check -p atlantis-hud-desktop-shell --features desktop-runtime
+
+      - name: Clippy the native desktop shell
+        run: cargo clippy -p atlantis-hud-desktop-shell --features desktop-runtime -- -D warnings

@@ -7,8 +7,8 @@ use atlantis_hud_core_tauri::{
     command_load_order_draft, command_open_project, command_parse_report,
     command_parse_report_full, command_preview_report_import, command_save_order_draft,
     command_validate_orders, ImportedTurnPreviewDto, ImportedTurnRecordDto, OpenedProjectDto,
-    OrderDraftRecordDto, OrderValidationResultDto, ProjectManifestDto, ReportImportPreviewDto,
-    ReportParseResultDto,
+    OrderDraftRecordDto, OrderValidationResultDto, ParsedReport, ProjectManifestDto,
+    ReportImportPreviewDto, ReportParseResultDto,
 };
 #[cfg(all(
     any(target_os = "macos", target_os = "windows"),
@@ -20,7 +20,7 @@ use atlantis_hud_core_tauri::{command_get_game_info, GameInfoDto};
     any(target_os = "macos", target_os = "windows"),
     feature = "desktop-runtime"
 ))]
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 fn get_game_info() -> GameInfoDto {
     command_get_game_info()
 }
@@ -29,7 +29,7 @@ fn get_game_info() -> GameInfoDto {
     any(target_os = "macos", target_os = "windows"),
     feature = "desktop-runtime"
 ))]
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 fn create_project(
     project_file_path: String,
     manifest: ProjectManifestDto,
@@ -41,7 +41,7 @@ fn create_project(
     any(target_os = "macos", target_os = "windows"),
     feature = "desktop-runtime"
 ))]
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 fn open_project(project_file_path: String) -> Result<OpenedProjectDto, String> {
     command_open_project(&project_file_path)
 }
@@ -50,7 +50,7 @@ fn open_project(project_file_path: String) -> Result<OpenedProjectDto, String> {
     any(target_os = "macos", target_os = "windows"),
     feature = "desktop-runtime"
 ))]
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 fn parse_report(raw_report: String) -> ReportParseResultDto {
     command_parse_report(&raw_report)
 }
@@ -59,8 +59,8 @@ fn parse_report(raw_report: String) -> ReportParseResultDto {
     any(target_os = "macos", target_os = "windows"),
     feature = "desktop-runtime"
 ))]
-#[tauri::command]
-fn parse_report_full(raw_report: String) -> serde_json::Value {
+#[tauri::command(rename_all = "snake_case")]
+fn parse_report_full(raw_report: String) -> ParsedReport {
     command_parse_report_full(&raw_report)
 }
 
@@ -68,7 +68,7 @@ fn parse_report_full(raw_report: String) -> serde_json::Value {
     any(target_os = "macos", target_os = "windows"),
     feature = "desktop-runtime"
 ))]
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 fn preview_report_import(
     database_path: String,
     project_id: String,
@@ -87,7 +87,7 @@ fn preview_report_import(
     any(target_os = "macos", target_os = "windows"),
     feature = "desktop-runtime"
 ))]
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 fn commit_report_import(
     database_path: String,
     project_id: String,
@@ -108,7 +108,7 @@ fn commit_report_import(
     any(target_os = "macos", target_os = "windows"),
     feature = "desktop-runtime"
 ))]
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 fn load_imported_turn(
     database_path: String,
     project_id: String,
@@ -122,7 +122,7 @@ fn load_imported_turn(
     any(target_os = "macos", target_os = "windows"),
     feature = "desktop-runtime"
 ))]
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 fn validate_orders(raw_orders: String) -> OrderValidationResultDto {
     command_validate_orders(&raw_orders)
 }
@@ -131,7 +131,7 @@ fn validate_orders(raw_orders: String) -> OrderValidationResultDto {
     any(target_os = "macos", target_os = "windows"),
     feature = "desktop-runtime"
 ))]
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 fn save_order_draft(
     database_path: String,
     project_id: String,
@@ -154,7 +154,7 @@ fn save_order_draft(
     any(target_os = "macos", target_os = "windows"),
     feature = "desktop-runtime"
 ))]
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 fn load_order_draft(
     database_path: String,
     project_id: String,

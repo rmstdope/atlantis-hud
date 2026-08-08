@@ -10,13 +10,13 @@ export default defineConfig({
   },
   projects: [
     {
+      // Both projects run the same spec. The shells share their components, so a walk that passes
+      // for one and fails for the other is a divergence, which is what this suite exists to catch.
       name: "web",
-      testMatch: /web\.spec\.ts/,
       use: { ...devices["Desktop Chrome"], baseURL: "http://127.0.0.1:4173" }
     },
     {
       name: "desktop-shell",
-      testMatch: /desktop\.spec\.ts/,
       use: { ...devices["Desktop Chrome"], baseURL: "http://127.0.0.1:4174" }
     }
   ],

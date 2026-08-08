@@ -1,3 +1,5 @@
+import "@atlantis/shared/src/theme.css";
+
 import { createCoreClient } from "@atlantis/core-client";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";

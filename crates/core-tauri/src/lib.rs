@@ -2,6 +2,7 @@
 
 use std::path::Path;
 
+pub use atlantis_hud_core::report::ParsedReport;
 use atlantis_hud_core::{
     game_info, parse_report, reject_import, validate_orders, OrderDiagnosticSeverity,
     ReportParseResult, WarningSeverity,
@@ -370,12 +371,12 @@ pub fn command_open_project(project_file_path: &str) -> Result<OpenedProjectDto,
 
 /// Parses a report into the full domain model.
 ///
-/// Returned as JSON rather than a DTO: the model is large, purely descriptive, and the shape the
-/// TypeScript side wants is exactly what serde already produces.
+/// Returned as the model itself rather than as JSON. It already serializes to exactly the shape the
+/// TypeScript side declares, so converting to a `Value` first would only add a round trip, and it
+/// would force the desktop shell to depend on `serde_json` for a type it never inspects.
 #[must_use]
-pub fn command_parse_report_full(raw_report: &str) -> serde_json::Value {
-    serde_json::to_value(atlantis_hud_core::report::parse_report_full(raw_report))
-        .unwrap_or(serde_json::Value::Null)
+pub fn command_parse_report_full(raw_report: &str) -> ParsedReport {
+    atlantis_hud_core::report::parse_report_full(raw_report)
 }
 
 /// Parses one report and returns tolerant parser output.

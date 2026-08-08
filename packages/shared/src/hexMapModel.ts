@@ -1,0 +1,222 @@
+/**
+ * The map's view model: what the player knows about the world, and how confident they can be in it.
+ *
+ * A report only ever describes part of the world, so the map has four states rather than two, and
+ * the distinction between them is the whole point of the thing:
+ *
+ * - `current`  — in this turn's report. Trustworthy.
+ * - `stale`    — visited before, absent from this report. The data is real but may have moved on.
+ * - `named`    — named in another region's `Exits` block. Terrain and province only, never visited.
+ * - unexplored — not represented here at all; the renderer draws the empty lattice.
+ */
+
+import type { Coordinate, ParsedReport, ReportRegion } from "@atlantis/core-client";
+
+/** How much the player can trust what the map shows for a hex. */
+export type HexKnowledge = "current" | "stale" | "named";
+
+export type HexNode = {
+  regionId: string;
+  coordinate: Coordinate;
+  terrain: string;
+  province: string;
+  label: string;
+  knowledge: HexKnowledge;
+  /** Turn this hex was last seen in, when known. */
+  lastSeenTurn: number | null;
+  /** Turns between `lastSeenTurn` and the current turn. Zero for a hex in this report. */
+  ageInTurns: number | null;
+  settlementName: string | null;
+  /** Full detail, present only for a hex that has actually been visited. */
+  region: ReportRegion | null;
+  ownUnitCount: number;
+  foreignUnitCount: number;
+};
+
+export type HexMapModel = {
+  hexes: HexNode[];
+  /** Level the hexes belong to; a report can describe more than one. */
+  levels: number[];
+  currentTurn: number | null;
+  initialSelectedRegionId: string | null;
+};
+
+/** A region carried over from an earlier turn, as persistence hands it back. */
+export type StoredRegion = {
+  regionId: string;
+  coordinate: Coordinate;
+  terrain: string;
+  province: string;
+  label: string;
+  lastSeenTurn: number;
+  region: ReportRegion | null;
+};
+
+/**
+ * Flat-top hex geometry, in the game's own coordinate space.
+ *
+ * Atlantis exits are north, south and the four diagonals, so a hex has a direct northern neighbour
+ * and the hexes are flat-top. `(x, y +/- 2)` is vertical and `(x +/- 1, y +/- 1)` are the diagonals,
+ * and only coordinates where `x + y` is even exist.
+ *
+ * The previous renderer drew pointy-top hexes, which have no northern neighbour at all.
+ */
+export function hexToPixel(coordinate: Coordinate, radius: number): { x: number; y: number } {
+  return {
+    x: coordinate.x * radius * 1.5,
+    y: (coordinate.y * radius * Math.sqrt(3)) / 2
+  };
+}
+
+/** Corner offsets of a flat-top hexagon, for a renderer to trace. */
+export function hexCorners(radius: number): Array<{ x: number; y: number }> {
+  return Array.from({ length: 6 }, (_, corner) => {
+    const angle = (Math.PI / 180) * (60 * corner);
+    return { x: radius * Math.cos(angle), y: radius * Math.sin(angle) };
+  });
+}
+
+/** Whether a coordinate can exist: the lattice only uses positions where `x + y` is even. */
+export function isValidCoordinate(coordinate: Coordinate): boolean {
+  return (coordinate.x + coordinate.y) % 2 === 0;
+}
+
+function keyOf(coordinate: Coordinate): string {
+  return `${coordinate.z}:${coordinate.x},${coordinate.y}`;
+}
+
+function countUnits(region: ReportRegion | null) {
+  if (!region) {
+    return { ownUnitCount: 0, foreignUnitCount: 0 };
+  }
+  return {
+    ownUnitCount: region.units.filter((unit) => unit.own).length,
+    foreignUnitCount: region.units.filter((unit) => !unit.own).length
+  };
+}
+
+function nodeFromRegion(
+  region: ReportRegion,
+  knowledge: HexKnowledge,
+  lastSeenTurn: number | null,
+  currentTurn: number | null
+): HexNode {
+  return {
+    regionId: region.regionId,
+    coordinate: region.coordinate,
+    terrain: region.terrain,
+    province: region.province,
+    label: `${region.terrain} (${region.coordinate.x},${region.coordinate.y}) in ${region.province}`,
+    knowledge,
+    lastSeenTurn,
+    ageInTurns:
+      currentTurn !== null && lastSeenTurn !== null ? Math.max(0, currentTurn - lastSeenTurn) : null,
+    settlementName: region.settlement?.name ?? null,
+    region,
+    ...countUnits(region)
+  };
+}
+
+/**
+ * Builds the map from this turn's report and whatever earlier turns left behind.
+ *
+ * Precedence matters and is deliberate: a hex in the current report always wins over a stored
+ * sighting, and a visited hex always wins over one merely named by a neighbour's exit. Otherwise a
+ * hex would lose detail it already has, or be marked less certain than it deserves.
+ */
+export function buildHexMapModel(
+  parsed: ParsedReport,
+  storedRegions: StoredRegion[] = []
+): HexMapModel {
+  const currentTurn = parsed.header.turnNumber;
+  const byKey = new Map<string, HexNode>();
+
+  // Weakest first, so stronger knowledge overwrites it.
+  for (const region of parsed.regions) {
+    for (const exit of region.exits) {
+      const key = keyOf(exit.coordinate);
+      if (byKey.has(key)) {
+        continue;
+      }
+      byKey.set(key, {
+        regionId: `${exit.coordinate.z}:${exit.coordinate.x},${exit.coordinate.y}`,
+        coordinate: exit.coordinate,
+        terrain: exit.terrain,
+        province: exit.province,
+        label: `${exit.terrain} (${exit.coordinate.x},${exit.coordinate.y}) in ${exit.province}`,
+        knowledge: "named",
+        lastSeenTurn: null,
+        ageInTurns: null,
+        settlementName: exit.settlement?.name ?? null,
+        region: null,
+        ownUnitCount: 0,
+        foreignUnitCount: 0
+      });
+    }
+  }
+
+  for (const stored of storedRegions) {
+    const key = keyOf(stored.coordinate);
+    const existing = byKey.get(key);
+    if (existing && existing.knowledge !== "named") {
+      continue;
+    }
+    byKey.set(key, {
+      regionId: stored.regionId,
+      coordinate: stored.coordinate,
+      terrain: stored.terrain,
+      province: stored.province,
+      label: stored.label,
+      knowledge: "stale",
+      lastSeenTurn: stored.lastSeenTurn,
+      ageInTurns: currentTurn === null ? null : Math.max(0, currentTurn - stored.lastSeenTurn),
+      settlementName: stored.region?.settlement?.name ?? null,
+      region: stored.region,
+      ...countUnits(stored.region)
+    });
+  }
+
+  for (const region of parsed.regions) {
+    byKey.set(
+      keyOf(region.coordinate),
+      nodeFromRegion(region, "current", currentTurn, currentTurn)
+    );
+  }
+
+  const hexes = [...byKey.values()].sort((left, right) => {
+    if (left.coordinate.z !== right.coordinate.z) {
+      return left.coordinate.z - right.coordinate.z;
+    }
+    if (left.coordinate.y !== right.coordinate.y) {
+      return left.coordinate.y - right.coordinate.y;
+    }
+    return left.coordinate.x - right.coordinate.x;
+  });
+
+  const levels = [...new Set(hexes.map((hex) => hex.coordinate.z))].sort((a, b) => a - b);
+
+  // Open on a hex the player has units in, falling back to any visited hex. Opening on a hex they
+  // have never been to would be a strange place to start.
+  const withOwnUnits = hexes.find((hex) => hex.ownUnitCount > 0);
+  const visited = hexes.find((hex) => hex.knowledge === "current");
+
+  return {
+    hexes,
+    levels,
+    currentTurn,
+    initialSelectedRegionId: (withOwnUnits ?? visited)?.regionId ?? null
+  };
+}
+
+/** Units of one hex, own faction first, then by name — one of 92 being yours should not be buried. */
+export function unitsForHex(hex: HexNode | null) {
+  if (!hex?.region) {
+    return [];
+  }
+  return [...hex.region.units].sort((left, right) => {
+    if (left.own !== right.own) {
+      return left.own ? -1 : 1;
+    }
+    return left.name.localeCompare(right.name);
+  });
+}
