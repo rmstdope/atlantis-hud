@@ -8,11 +8,12 @@
  */
 
 const DATABASE_NAME = "atlantis-hud";
-const DATABASE_VERSION = 2;
+const DATABASE_VERSION = 3;
 
 const PROJECT_STORE = "projects";
 const IMPORTED_TURN_STORE = "importedTurns";
 const ORDER_DRAFT_STORE = "orderDrafts";
+const REGION_SIGHTING_STORE = "regionSightings";
 
 /** Opaque payload of one stored turn import. Mirrors `ImportedTurnSnapshot` in the Rust core. */
 export type StoredTurnSnapshot = {
@@ -26,6 +27,23 @@ export type StoredTurn = StoredTurnSnapshot & {
   projectId: string;
   factionId: string;
   turnNumber: number;
+};
+
+/**
+ * One region as it stood when the faction last saw it.
+ *
+ * Kept per hex rather than per turn, so the map remembers everywhere it has been rather than only
+ * the latest report. The payload is a whole region, exits included, which is what lets a route
+ * cross ground the current turn does not describe.
+ */
+export type StoredRegionSighting = {
+  databasePath: string;
+  projectId: string;
+  factionId: string;
+  regionId: string;
+  lastSeenTurn: number;
+  /** A `ReportRegion`, serialized. Opaque here: the store holds no game rules. */
+  payloadJson: string;
 };
 
 export type StoredOrderDraft = {
@@ -54,6 +72,12 @@ export interface WebStore {
     factionId: string,
     turnNumber: number
   ): Promise<StoredTurn | null>;
+  putRegionSightings(sightings: StoredRegionSighting[]): Promise<void>;
+  getRegionSightings(
+    databasePath: string,
+    projectId: string,
+    factionId: string
+  ): Promise<StoredRegionSighting[]>;
   putOrderDraft(draft: StoredOrderDraft): Promise<void>;
   getOrderDraft(
     databasePath: string,
@@ -96,6 +120,14 @@ function openDatabase(): Promise<IDBDatabase> {
       database.createObjectStore(ORDER_DRAFT_STORE, {
         keyPath: ["databasePath", "projectId", "factionId", "turnNumber"]
       });
+
+      // v3 adds remembered regions. Keyed by hex rather than by turn, so a later sighting of the
+      // same hex replaces the earlier one instead of accumulating duplicates.
+      if (!database.objectStoreNames.contains(REGION_SIGHTING_STORE)) {
+        database.createObjectStore(REGION_SIGHTING_STORE, {
+          keyPath: ["databasePath", "projectId", "factionId", "regionId"]
+        });
+      }
     };
 
     request.onsuccess = () => resolve(request.result);
@@ -135,12 +167,38 @@ export function createIndexedDbWebStore(): WebStore {
     });
   };
 
+  /** Everything in one store matching a prefix of its key. */
+  const readAll = async <T>(storeName: string, prefix: IDBValidKey[]): Promise<T[]> => {
+    const store = (await database()).transaction(storeName, "readonly").objectStore(storeName);
+    // A bound range over the composite key: everything from [...prefix] up to [...prefix, ∞].
+    const range = IDBKeyRange.bound(prefix, [...prefix, []]);
+    return promisify<T[]>(store.getAll(range) as IDBRequest<T[]>);
+  };
+
   return {
     putProject: (project) => write(PROJECT_STORE, project),
     getProject: (projectFilePath) => read<StoredProject>(PROJECT_STORE, projectFilePath),
     putImportedTurn: (turn) => write(IMPORTED_TURN_STORE, turn),
     getImportedTurn: (databasePath, projectId, factionId, turnNumber) =>
       read<StoredTurn>(IMPORTED_TURN_STORE, [databasePath, projectId, factionId, turnNumber]),
+    async putRegionSightings(sightings) {
+      // One transaction for the lot: a report is committed as a whole, and half a remembered map
+      // is worse than none.
+      const transaction = (await database()).transaction(REGION_SIGHTING_STORE, "readwrite");
+      const store = transaction.objectStore(REGION_SIGHTING_STORE);
+      for (const sighting of sightings) {
+        store.put(sighting);
+      }
+      await new Promise<void>((resolve, reject) => {
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () =>
+          reject(transaction.error ?? new Error("indexeddb write failed"));
+        transaction.onabort = () =>
+          reject(transaction.error ?? new Error("indexeddb write aborted"));
+      });
+    },
+    getRegionSightings: (databasePath, projectId, factionId) =>
+      readAll<StoredRegionSighting>(REGION_SIGHTING_STORE, [databasePath, projectId, factionId]),
     putOrderDraft: (draft) => write(ORDER_DRAFT_STORE, draft),
     getOrderDraft: (databasePath, projectId, factionId, turnNumber) =>
       read<StoredOrderDraft>(ORDER_DRAFT_STORE, [databasePath, projectId, factionId, turnNumber])
@@ -157,6 +215,7 @@ export function createMemoryWebStore(): WebStore {
   const projects = new Map<string, StoredProject>();
   const turns = new Map<string, StoredTurn>();
   const drafts = new Map<string, StoredOrderDraft>();
+  const sightings = new Map<string, StoredRegionSighting>();
 
   const composite = (
     databasePath: string,
@@ -180,6 +239,27 @@ export function createMemoryWebStore(): WebStore {
     },
     async getImportedTurn(databasePath, projectId, factionId, turnNumber) {
       return turns.get(composite(databasePath, projectId, factionId, turnNumber)) ?? null;
+    },
+    async putRegionSightings(incoming) {
+      for (const sighting of incoming) {
+        sightings.set(
+          JSON.stringify([
+            sighting.databasePath,
+            sighting.projectId,
+            sighting.factionId,
+            sighting.regionId
+          ]),
+          sighting
+        );
+      }
+    },
+    async getRegionSightings(databasePath, projectId, factionId) {
+      return [...sightings.values()].filter(
+        (sighting) =>
+          sighting.databasePath === databasePath &&
+          sighting.projectId === projectId &&
+          sighting.factionId === factionId
+      );
     },
     async putOrderDraft(draft) {
       drafts.set(

@@ -116,6 +116,19 @@ export function createWebCoreAdapter(
       return wasm.parse_report_full_state(rawReport);
     },
 
+    async loadRegionSightings(databasePath: string, projectId: string, factionId: string) {
+      const stored = await store.getRegionSightings(databasePath, projectId, factionId);
+
+      // A payload written by an older build may not parse. Dropping one remembered hex beats
+      // losing the whole map, which is what the desktop does too.
+      return stored.flatMap((sighting) => {
+        try {
+          return [{ region: JSON.parse(sighting.payloadJson), lastSeenTurn: sighting.lastSeenTurn }];
+        } catch {
+          return [];
+        }
+      });
+    },
     planRoute(rulesetJson: string, rawReport: string, unitId: string, destination: string) {
       // Straight through to the core: planning is pure, so unlike the persistence entry points
       // there is no browser storage to stand in for a database.
@@ -207,6 +220,26 @@ export function createWebCoreAdapter(
         turnNumber,
         ...prepared.candidate
       });
+
+      // Regions also get remembered one by one, each carrying the turn it was seen in. Without
+      // this the map only ever knows the latest report, and no route can be longer than one step.
+      // The desktop does the same thing into SQLite; this is the browser's half of it.
+      const parsed = wasm.parse_report_full_state(rawReport) as {
+        regions?: Array<{ regionId?: string; region_id?: string }>;
+      };
+      const regions = parsed.regions ?? [];
+      if (regions.length > 0) {
+        await store.putRegionSightings(
+          regions.map((region) => ({
+            databasePath,
+            projectId,
+            factionId: confirmedFactionId,
+            regionId: region.regionId ?? region.region_id ?? "",
+            lastSeenTurn: turnNumber,
+            payloadJson: JSON.stringify(region)
+          }))
+        );
+      }
 
       return diff;
     },

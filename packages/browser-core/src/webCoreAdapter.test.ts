@@ -266,3 +266,71 @@ describe("planning a route", () => {
     });
   });
 });
+
+describe("remembering the map across turns", () => {
+  /**
+   * The browser's half of what the desktop does into SQLite. Without it the map only ever knows the
+   * latest report, and no route can be longer than one step - a report describes its neighbours but
+   * not theirs.
+   */
+  it("remembers every region a committed import described", async () => {
+    const wasm = fakeWasm({
+      parse_report_full_state: () => ({
+        regions: [
+          { regionId: "1:1,1", terrain: "plain", exits: [] },
+          { regionId: "1:2,2", terrain: "mountain", exits: [] }
+        ]
+      })
+    });
+    const adapter = createWebCoreAdapter(wasm, createMemoryWebStore());
+
+    await adapter.commitReportImport("/db", "p", "12", "TURN: 12\nFACTION: 12", true);
+    const remembered = await adapter.loadRegionSightings("/db", "p", "12");
+
+    expect(remembered).toEqual([
+      { region: { regionId: "1:1,1", terrain: "plain", exits: [] }, lastSeenTurn: 12 },
+      { region: { regionId: "1:2,2", terrain: "mountain", exits: [] }, lastSeenTurn: 12 }
+    ]);
+  });
+
+  /** A hex seen again replaces the older memory of it rather than accumulating a duplicate. */
+  it("keeps one memory per hex, not one per turn", async () => {
+    const store = createMemoryWebStore();
+    const seen = (terrain: string) => ({ regions: [{ regionId: "1:1,1", terrain, exits: [] }] });
+
+    let terrain = "plain";
+    const adapter = createWebCoreAdapter(
+      fakeWasm({ parse_report_full_state: () => seen(terrain) }),
+      store
+    );
+
+    await adapter.commitReportImport("/db", "p", "12", "TURN: 12\nFACTION: 12", true);
+    terrain = "mountain";
+    await adapter.commitReportImport("/db", "p", "12", "TURN: 12\nFACTION: 12", true);
+
+    const remembered = (await adapter.loadRegionSightings("/db", "p", "12")) as Array<{
+      region: { terrain: string };
+    }>;
+    expect(remembered).toHaveLength(1);
+    expect(remembered[0].region.terrain).toBe("mountain");
+  });
+
+  it("has nothing to remember before anything is imported", async () => {
+    const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
+
+    await expect(adapter.loadRegionSightings("/db", "p", "12")).resolves.toEqual([]);
+  });
+
+  /** A payload an older build wrote may not parse. Losing one hex beats losing the whole map. */
+  it("skips a memory it cannot read rather than failing the lot", async () => {
+    const store = createMemoryWebStore();
+    await store.putRegionSightings([
+      { databasePath: "/db", projectId: "p", factionId: "12", regionId: "1:1,1", lastSeenTurn: 9, payloadJson: "{" },
+      { databasePath: "/db", projectId: "p", factionId: "12", regionId: "1:2,2", lastSeenTurn: 9, payloadJson: '{"regionId":"1:2,2"}' }
+    ]);
+    const adapter = createWebCoreAdapter(fakeWasm(), store);
+
+    const remembered = await adapter.loadRegionSightings("/db", "p", "12");
+    expect(remembered).toEqual([{ region: { regionId: "1:2,2" }, lastSeenTurn: 9 }]);
+  });
+});

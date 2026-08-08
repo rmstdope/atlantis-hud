@@ -8,11 +8,11 @@ use atlantis_hud_core::{
     ReportParseResult, WarningSeverity,
 };
 use atlantis_hud_core_persistence::{
-    create_project, insert_imported_turn, load_imported_turn, load_order_draft, open_project,
-    preview_imported_turn, upsert_imported_turn, upsert_order_draft, upsert_region_sightings,
-    ImportedTurnKey, ImportedTurnPreview, ImportedTurnRecord, OpenedProject, OrderDraftKey,
-    OrderDraftRecord, PersistenceError, ProjectManifest, ProjectMetadata, RegionSighting,
-    ReportSourceRef,
+    create_project, insert_imported_turn, load_imported_turn, load_order_draft,
+    load_region_sightings, open_project, preview_imported_turn, upsert_imported_turn,
+    upsert_order_draft, upsert_region_sightings, ImportedTurnKey, ImportedTurnPreview,
+    ImportedTurnRecord, OpenedProject, OrderDraftKey, OrderDraftRecord, PersistenceError,
+    ProjectManifest, ProjectMetadata, RegionSighting, ReportSourceRef,
 };
 use serde::{Deserialize, Serialize};
 
@@ -622,6 +622,47 @@ pub fn command_load_imported_turn(
         .transpose()
 }
 
+/// One region the faction saw in some earlier turn, as the map wants it.
+///
+/// The stored payload is a whole `ReportRegion`, exits included, which is what lets an accumulated
+/// map join up into a graph a route can cross.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RememberedRegionDto {
+    pub region: serde_json::Value,
+    pub last_seen_turn: u32,
+}
+
+/// Reads back every region this faction has ever been seen in.
+///
+/// A sighting whose payload cannot be parsed is skipped rather than failing the lot: it was written
+/// by an older build, and losing one remembered hex is better than losing the map.
+///
+/// # Errors
+///
+/// Returns an error when the database cannot be read.
+pub fn command_load_region_sightings(
+    database_path: &str,
+    project_id: &str,
+    faction_id: &str,
+) -> Result<Vec<RememberedRegionDto>, String> {
+    let sightings = load_region_sightings(Path::new(database_path), project_id, faction_id)
+        .map_err(|error| error.to_string())?;
+
+    Ok(sightings
+        .into_iter()
+        .filter_map(|sighting| {
+            serde_json::from_str::<serde_json::Value>(&sighting.payload_json)
+                .ok()
+                .filter(|payload| !payload.is_null())
+                .map(|region| RememberedRegionDto {
+                    region,
+                    last_seen_turn: sighting.last_seen_turn,
+                })
+        })
+        .collect())
+}
+
 /// Plans a route for one unit against a ruleset the caller supplies.
 ///
 /// A thin delegation: the work lives in the core so the wasm adapter can call exactly the same
@@ -643,6 +684,77 @@ pub fn command_plan_route(
         unit_id,
         destination,
     )
+}
+
+#[cfg(test)]
+mod sightings_tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    const TURN_71: &str =
+        include_str!("../../../tests/fixtures/reports/neworigins-3.0.0-f95-t71.rep");
+
+    fn project(directory: &std::path::Path) -> OpenedProjectDto {
+        command_create_project(
+            directory
+                .join("campaign.atlantis-project.json")
+                .to_str()
+                .expect("a path"),
+            ProjectManifestDto {
+                manifest_version: 1,
+                metadata: ProjectMetadataDto {
+                    project_id: "faction-95".to_string(),
+                    project_name: "Borg TNG".to_string(),
+                },
+                report_sources: Vec::new(),
+            },
+        )
+        .expect("the project is created")
+    }
+
+    /// A committed import is what puts regions in the store, and reading them back is what makes a
+    /// route longer than one step possible. Nothing had ever read them back before.
+    #[test]
+    fn reads_back_the_regions_a_committed_import_stored() {
+        let directory = tempdir().expect("a temporary directory");
+        let created = project(directory.path());
+
+        command_commit_report_import(&created.database_path, "faction-95", "95", TURN_71, true)
+            .expect("the import commits");
+
+        let remembered = command_load_region_sightings(&created.database_path, "faction-95", "95")
+            .expect("the sightings load");
+
+        assert_eq!(
+            remembered.len(),
+            11,
+            "the eleven regions the report visited"
+        );
+        assert!(
+            remembered.iter().all(|entry| entry.last_seen_turn == 71),
+            "every one of them was seen in turn 71"
+        );
+
+        // The payload is a whole region, exits included - which is the point of storing it, and
+        // what lets an accumulated map join up.
+        let first = &remembered[0].region;
+        assert!(
+            first.get("exits").is_some(),
+            "a remembered region keeps its exits"
+        );
+        assert!(first.get("terrain").is_some());
+    }
+
+    #[test]
+    fn a_project_with_no_imports_remembers_nothing() {
+        let directory = tempdir().expect("a temporary directory");
+        let created = project(directory.path());
+
+        let remembered = command_load_region_sightings(&created.database_path, "faction-95", "95")
+            .expect("the sightings load");
+
+        assert!(remembered.is_empty());
+    }
 }
 
 #[cfg(test)]

@@ -210,6 +210,14 @@ export type HexRisk = {
 /** A route is as dangerous as its worst hex, never an average of them. */
 export type RouteRisk = { level: RiskLevel; worst: HexRisk | null; hexes: HexRisk[] };
 
+/**
+ * One region the faction saw in an earlier turn.
+ *
+ * `region` is a `ReportRegion` with its exits intact, which is what lets an accumulated map join up
+ * into a graph a route can cross. A single report describes its neighbours but not theirs.
+ */
+export type RememberedRegion = { region: ReportRegion; lastSeenTurn: number };
+
 /** Everything the planner has to say about one proposed move. */
 export type RoutePlanResponse = {
   /** The route, when one was found. */
@@ -508,6 +516,11 @@ export interface CoreAdapter {
     unitId: string,
     destination: string
   ): Promise<unknown> | unknown;
+  loadRegionSightings(
+    databasePath: string,
+    projectId: string,
+    factionId: string
+  ): Promise<unknown> | unknown;
   loadImportedTurn(
     databasePath: string,
     projectId: string,
@@ -563,6 +576,17 @@ export interface CoreClient {
     unitId: string,
     destination: string
   ): Promise<RoutePlanResponse>;
+  /**
+   * Every region this faction has been seen in, across every turn imported into the project.
+   *
+   * Empty for a project with no committed imports, which is not an error: it is what a map looks
+   * like before anything has been remembered.
+   */
+  loadRegionSightings(
+    databasePath: string,
+    projectId: string,
+    factionId: string
+  ): Promise<RememberedRegion[]>;
   loadImportedTurn(
     databasePath: string,
     projectId: string,
@@ -610,6 +634,11 @@ export interface WasmBindings {
     rawReport: string,
     unitId: string,
     destination: string
+  ): unknown;
+  load_region_sightings_state?(
+    databasePath: string,
+    projectId: string,
+    factionId: string
   ): unknown;
   load_imported_turn_state(
     databasePath: string,
@@ -1119,6 +1148,10 @@ export function createCoreClient(adapter: CoreAdapter): CoreClient {
         unitId,
         destination
       )) as RoutePlanResponse;
+    },
+    async loadRegionSightings(databasePath: string, projectId: string, factionId: string) {
+      const value = await adapter.loadRegionSightings(databasePath, projectId, factionId);
+      return (Array.isArray(value) ? value : []) as RememberedRegion[];
     }
   };
 }
@@ -1186,6 +1219,11 @@ export function createWasmAdapter(bindings: WasmBindings): CoreAdapter {
     },
     planRoute(rulesetJson: string, rawReport: string, unitId: string, destination: string) {
       return bindings.plan_route_state(rulesetJson, rawReport, unitId, destination);
+    },
+    loadRegionSightings(databasePath: string, projectId: string, factionId: string) {
+      // Persistence is not linked into a wasm build, so a bare wasm adapter has nothing to read.
+      // The browser adapter in `@atlantis/browser-core` supplies its own, backed by IndexedDB.
+      return bindings.load_region_sightings_state?.(databasePath, projectId, factionId) ?? [];
     }
   };
 }
@@ -1285,6 +1323,13 @@ export function createTauriAdapter(invoke: TauriInvoke): CoreAdapter {
         raw_report: rawReport,
         unit_id: unitId,
         destination
+      });
+    },
+    loadRegionSightings(databasePath: string, projectId: string, factionId: string) {
+      return invoke<RememberedRegion[]>("load_region_sightings", {
+        database_path: databasePath,
+        project_id: projectId,
+        faction_id: factionId
       });
     }
   };

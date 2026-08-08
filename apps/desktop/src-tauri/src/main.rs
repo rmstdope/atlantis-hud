@@ -60,6 +60,19 @@ fn parse_report(raw_report: String) -> ReportParseResultDto {
     feature = "desktop-runtime"
 ))]
 #[tauri::command(rename_all = "snake_case")]
+fn load_region_sightings(
+    database_path: String,
+    project_id: String,
+    faction_id: String,
+) -> Result<Vec<atlantis_hud_core_tauri::RememberedRegionDto>, String> {
+    atlantis_hud_core_tauri::command_load_region_sightings(&database_path, &project_id, &faction_id)
+}
+
+#[cfg(all(
+    any(target_os = "macos", target_os = "windows"),
+    feature = "desktop-runtime"
+))]
+#[tauri::command(rename_all = "snake_case")]
 fn plan_route(
     ruleset_json: String,
     raw_report: String,
@@ -196,7 +209,8 @@ fn main() {
             validate_orders,
             save_order_draft,
             load_order_draft,
-            plan_route
+            plan_route,
+            load_region_sightings
         ])
         .run(tauri::generate_context!())
         .expect("error while running atlantis-hud desktop shell");
