@@ -7,4 +7,5 @@
 
 pub mod graph;
 pub mod mode;
+pub mod plan;
 pub mod rules;

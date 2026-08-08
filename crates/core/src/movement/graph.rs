@@ -204,6 +204,21 @@ impl MapKnowledge {
         self.hexes.get(&key(coordinate))
     }
 
+    /// What is known about one hex, addressed the way the game writes it, as in `1:7,53`.
+    #[must_use]
+    pub fn hex_by_key(&self, key: &str) -> Option<&KnownHex> {
+        self.hexes.get(key)
+    }
+
+    /// The hex a unit is standing in.
+    ///
+    /// A unit carries its own region id, so this is a lookup rather than a search - but it returns
+    /// nothing when the map does not know that hex, which is what a caller has to handle.
+    #[must_use]
+    pub fn hex_of_unit(&self, unit: &ReportUnit) -> Option<&KnownHex> {
+        self.hexes.get(&unit.region_id)
+    }
+
     /// The hexes reachable in one step, as the report names them.
     ///
     /// Empty for a hex known only by name: nothing described *its* exits, so the graph stops there
@@ -225,6 +240,27 @@ impl MapKnowledge {
     /// unknowable - and unknowable is not a bonus.
     #[must_use]
     pub fn road_connects(&self, from: Coordinate, direction: Direction) -> bool {
+        let Some((_, neighbour)) = self
+            .neighbours(from)
+            .find(|(heading, _)| *heading == direction)
+        else {
+            return false;
+        };
+        self.road_connects_to(from, direction, neighbour)
+    }
+
+    /// The same question, asked about a neighbour the caller has already identified.
+    ///
+    /// Preferred wherever the neighbour is known, because looking it up by direction alone takes
+    /// the *first* exit heading that way - and a hex naming two would have a road credited to the
+    /// wrong one.
+    #[must_use]
+    pub fn road_connects_to(
+        &self,
+        from: Coordinate,
+        direction: Direction,
+        neighbour: Coordinate,
+    ) -> bool {
         let Some(here) = self.hex(from) else {
             return false;
         };
@@ -232,15 +268,8 @@ impl MapKnowledge {
             return false;
         }
 
-        let Some(neighbour) = self
-            .neighbours(from)
-            .find(|(heading, _)| *heading == direction)
-            .and_then(|(_, coordinate)| self.hex(coordinate))
-        else {
-            return false;
-        };
-
-        neighbour.roads.contains(&direction.opposite())
+        self.hex(neighbour)
+            .is_some_and(|far| far.roads.contains(&direction.opposite()))
     }
 }
 

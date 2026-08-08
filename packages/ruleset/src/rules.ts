@@ -24,6 +24,14 @@ export type TerrainCosts = {
   doubledCost: number;
   /** Lower-cased terrain names, in the order the page lists them. */
   doubled: string[];
+  /**
+   * The modes of travel the premium applies to, lower-cased.
+   *
+   * The sentence names them - "take two movement points for riding or walking units to enter" -
+   * and flight is deliberately absent, so a flier pays the ordinary cost everywhere. Reading this
+   * rather than assuming it keeps the exception where the game put it.
+   */
+  doubledFor: string[];
 };
 
 export type RoadRule = {
@@ -144,7 +152,7 @@ export function parseMovementRules(html: string): MovementRules {
     "terrainCosts",
     new RegExp(
       `Moving from one region to another normally takes ${NUMBER_PATTERN} movement point[^.]*?` +
-        `terrain types take ${NUMBER_PATTERN} movement points for riding or walking units to ` +
+        `terrain types take ${NUMBER_PATTERN} movement points for ([a-z ]+?) units to ` +
         `enter: ([^.]+)\\.`,
       "i"
     )
@@ -195,7 +203,21 @@ export function parseMovementRules(html: string): MovementRules {
     throw new RulesetScrapeError(`could not read road: unknown fraction ${road[1]}`);
   }
 
-  const doubled = terrain[3]
+  // "riding or walking" names the modes as the page conjugates them; the ruleset speaks of ride,
+  // walk and fly, so they are normalised to that vocabulary.
+  const doubledFor = terrain[3]
+    .split(/,| and | or /i)
+    .map((mode) => mode.trim().toLowerCase())
+    .map((mode) => ({ riding: "ride", walking: "walk", flying: "fly", swimming: "swim" })[mode])
+    .filter((mode): mode is string => mode !== undefined);
+
+  if (doubledFor.length === 0) {
+    throw new RulesetScrapeError(
+      "could not read terrainCosts: the page named no modes of travel the premium applies to"
+    );
+  }
+
+  const doubled = terrain[4]
     .split(/,| and /i)
     .map((entry) => entry.trim().toLowerCase())
     .filter((entry) => entry.length > 0);
@@ -206,7 +228,7 @@ export function parseMovementRules(html: string): MovementRules {
 
   return {
     movementPoints: { walk, ride, fly },
-    terrainCosts: { normal, doubledCost, doubled },
+    terrainCosts: { normal, doubledCost, doubled, doubledFor },
     road: { divisor, minimumCost },
     ocean: {
       requiresShipUnlessFlying: true,

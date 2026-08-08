@@ -30,9 +30,9 @@ fn costs_terrain_as_the_rules_page_states_it() {
     //  enter: Forest, Mountain, Swamp, Jungle, and Tundra."
     for doubled in ["forest", "mountain", "swamp", "jungle", "tundra"] {
         assert_eq!(
-            ruleset.terrain_cost(doubled),
+            ruleset.terrain_cost(doubled, MovementMode::Walk),
             2,
-            "{doubled} should cost two"
+            "{doubled} should cost a walker two"
         );
     }
 
@@ -43,7 +43,29 @@ fn costs_terrain_as_the_rules_page_states_it() {
     // Ocean is deliberately not in this list: nothing can walk into it, so what it "costs" is a
     // number with no meaning to pin.
     for normal in ["plain", "desert", "cavern", "underforest", "wasteland"] {
-        assert_eq!(ruleset.terrain_cost(normal), 1, "{normal} should cost one");
+        assert_eq!(
+            ruleset.terrain_cost(normal, MovementMode::Walk),
+            1,
+            "{normal} should cost one"
+        );
+    }
+}
+
+/// "the following terrain types take two movement points **for riding or walking units** to enter".
+///
+/// Flight is deliberately absent from that list, so difficult ground is no obstacle to a flier -
+/// which the scraped `doubledFor` records rather than the core assuming.
+#[test]
+fn difficult_going_costs_a_flier_nothing_extra() {
+    let ruleset = ruleset();
+
+    for doubled in ["forest", "mountain", "swamp", "jungle", "tundra"] {
+        assert_eq!(
+            ruleset.terrain_cost(doubled, MovementMode::Fly),
+            1,
+            "{doubled} should cost a flier the ordinary amount"
+        );
+        assert_eq!(ruleset.terrain_cost(doubled, MovementMode::Ride), 2);
     }
 }
 
@@ -53,8 +75,8 @@ fn terrain_cost_ignores_case() {
     // stay that way, and a mis-cased miss would silently under-cost a route.
     let ruleset = ruleset();
 
-    assert_eq!(ruleset.terrain_cost("Forest"), 2);
-    assert_eq!(ruleset.terrain_cost("MOUNTAIN"), 2);
+    assert_eq!(ruleset.terrain_cost("Forest", MovementMode::Walk), 2);
+    assert_eq!(ruleset.terrain_cost("MOUNTAIN", MovementMode::Walk), 2);
 }
 
 #[test]

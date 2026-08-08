@@ -38,6 +38,27 @@ describe("parseMovementRules", () => {
     expect(rules.terrainCosts.doubledCost).toBe(2);
   });
 
+  /**
+   * The premium is not universal, and the sentence says so: "take two movement points for riding
+   * or walking units to enter". Flight is absent from that list, so a flier pays the ordinary cost
+   * everywhere. Hardcoding that in the core would be assuming it; reading it is not.
+   */
+  it("reads which modes of travel the terrain premium applies to", () => {
+    const rules = parseMovementRules(RULES_HTML);
+
+    expect(rules.terrainCosts.doubledFor).toEqual(["ride", "walk"]);
+  });
+
+  it("takes the affected modes from the page rather than assuming them", () => {
+    const reworded = RULES_HTML.replace(
+      "movement points for riding or\n            walking units to enter:",
+      "movement points for walking units to enter:"
+    );
+    expect(reworded).not.toBe(RULES_HTML);
+
+    expect(parseMovementRules(reworded).terrainCosts.doubledFor).toEqual(["walk"]);
+  });
+
   it("reads the road bonus and its floor", () => {
     const rules = parseMovementRules(RULES_HTML);
 

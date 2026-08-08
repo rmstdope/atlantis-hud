@@ -42,6 +42,12 @@ pub struct TerrainCosts {
     pub doubled_cost: u32,
     /// Lower-cased terrain names that cost `doubled_cost` rather than `normal`.
     pub doubled: Vec<String>,
+    /// The modes of travel the premium applies to.
+    ///
+    /// Scraped rather than assumed: the sentence reads "take two movement points **for riding or
+    /// walking units** to enter", and flight is absent from it, so difficult ground costs a flier
+    /// nothing extra. Charging one anyway is a wrong number presented as fact.
+    pub doubled_for: Vec<MovementMode>,
 }
 
 /// What a connected road does to a cost.
@@ -354,18 +360,34 @@ impl Ruleset {
     /// Terrain the ruleset does not list costs the normal amount. The rules page is explicit that
     /// its list is not closed - "there may be other types of terrain to be discovered as the game
     /// progresses" - so an unknown name is ordinary going rather than an error.
+    ///
+    /// The premium applies only to the modes the ruleset names, which for this game is riding and
+    /// walking. A flier crosses a mountain as cheaply as a plain.
     #[must_use]
-    pub fn terrain_cost(&self, terrain: &str) -> u32 {
+    pub fn terrain_cost(&self, terrain: &str, mode: MovementMode) -> u32 {
         let costs = &self.movement.terrain_costs;
-        if costs
+        let difficult = costs
             .doubled
             .iter()
-            .any(|listed| listed.eq_ignore_ascii_case(terrain))
-        {
+            .any(|listed| listed.eq_ignore_ascii_case(terrain));
+
+        if difficult && costs.doubled_for.contains(&mode) {
             costs.doubled_cost
         } else {
             costs.normal
         }
+    }
+
+    /// Whether crossing water needs a ship, for a unit that cannot fly.
+    #[must_use]
+    pub fn water_needs_a_ship(&self) -> bool {
+        self.movement.ocean.requires_ship_unless_flying
+    }
+
+    /// Whether a flier that ends a month over water drowns.
+    #[must_use]
+    pub fn flight_must_end_on_land(&self) -> bool {
+        self.movement.ocean.flying_must_end_on_land
     }
 
     /// Movement points per month for a mode.
