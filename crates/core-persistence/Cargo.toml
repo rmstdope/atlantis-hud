@@ -7,10 +7,19 @@ edition = "2021"
 path = "src/lib.rs"
 
 [dependencies]
-rusqlite = { version = "0.32", features = ["bundled"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 thiserror = "1.0"
+
+# Native builds bundle SQLite. The wasm32 build cannot: bundled SQLite is C
+# compiled for the host, so it links sqlite-wasm-rs instead via rusqlite's
+# ffi-sqlite-wasm-rs feature, which persists through the opfs-sahpool VFS.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+rusqlite = { version = "0.40", features = ["bundled"] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+rusqlite = { version = "0.40", default-features = false, features = ["ffi-sqlite-wasm-rs"] }
+sqlite-wasm-rs = "0.5"
 
 [dev-dependencies]
 tempfile = "3.12"

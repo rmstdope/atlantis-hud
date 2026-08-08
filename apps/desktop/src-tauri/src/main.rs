@@ -4,9 +4,10 @@
 ))]
 use atlantis_hud_core_tauri::{
     command_commit_report_import, command_create_project, command_load_imported_turn,
-    command_open_project, command_parse_report, command_preview_report_import,
-    ImportedTurnPreviewDto, ImportedTurnRecordDto, OpenedProjectDto, ProjectManifestDto,
-    ReportImportPreviewDto, ReportParseResultDto,
+    command_load_order_draft, command_open_project, command_parse_report,
+    command_preview_report_import, command_save_order_draft, command_validate_orders,
+    ImportedTurnPreviewDto, ImportedTurnRecordDto, OpenedProjectDto, OrderDraftRecordDto,
+    OrderValidationResultDto, ProjectManifestDto, ReportImportPreviewDto, ReportParseResultDto,
 };
 #[cfg(all(
     any(target_os = "macos", target_os = "windows"),
@@ -111,6 +112,52 @@ fn load_imported_turn(
     any(target_os = "macos", target_os = "windows"),
     feature = "desktop-runtime"
 ))]
+#[tauri::command]
+fn validate_orders(raw_orders: String) -> OrderValidationResultDto {
+    command_validate_orders(&raw_orders)
+}
+
+#[cfg(all(
+    any(target_os = "macos", target_os = "windows"),
+    feature = "desktop-runtime"
+))]
+#[tauri::command]
+fn save_order_draft(
+    database_path: String,
+    project_id: String,
+    faction_id: String,
+    turn_number: u32,
+    order_text: String,
+    updated_at: String,
+) -> Result<OrderDraftRecordDto, String> {
+    command_save_order_draft(
+        &database_path,
+        &project_id,
+        &faction_id,
+        turn_number,
+        &order_text,
+        &updated_at,
+    )
+}
+
+#[cfg(all(
+    any(target_os = "macos", target_os = "windows"),
+    feature = "desktop-runtime"
+))]
+#[tauri::command]
+fn load_order_draft(
+    database_path: String,
+    project_id: String,
+    faction_id: String,
+    turn_number: u32,
+) -> Result<Option<OrderDraftRecordDto>, String> {
+    command_load_order_draft(&database_path, &project_id, &faction_id, turn_number)
+}
+
+#[cfg(all(
+    any(target_os = "macos", target_os = "windows"),
+    feature = "desktop-runtime"
+))]
 fn main() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
@@ -120,7 +167,10 @@ fn main() {
             parse_report,
             preview_report_import,
             commit_report_import,
-            load_imported_turn
+            load_imported_turn,
+            validate_orders,
+            save_order_draft,
+            load_order_draft
         ])
         .run(tauri::generate_context!())
         .expect("error while running atlantis-hud desktop shell");

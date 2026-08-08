@@ -3,11 +3,15 @@
 #[cfg(not(target_arch = "wasm32"))]
 use std::path::Path;
 
-use atlantis_hud_core::{game_info, parse_report, ReportParseResult};
+use atlantis_hud_core::{
+    game_info, parse_report, validate_orders, OrderDiagnosticSeverity, OrderValidationResult,
+    ReportParseResult,
+};
 #[cfg(not(target_arch = "wasm32"))]
 use atlantis_hud_core_persistence::{
-    create_project, insert_imported_turn, load_imported_turn, open_project, preview_imported_turn,
-    upsert_imported_turn, ImportedTurnKey, ImportedTurnPreview, ImportedTurnRecord, OpenedProject,
+    create_project, insert_imported_turn, load_imported_turn, load_order_draft, open_project,
+    preview_imported_turn, upsert_imported_turn, upsert_order_draft, ImportedTurnKey,
+    ImportedTurnPreview, ImportedTurnRecord, OpenedProject, OrderDraftKey, OrderDraftRecord,
     PersistenceError, ProjectManifest, ProjectMetadata, ReportSourceRef,
 };
 use serde::{Deserialize, Serialize};
@@ -20,6 +24,76 @@ struct GameInfoDto {
     name: String,
     ruleset_version: String,
     max_faction_count: u16,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct OrderDiagnosticDto {
+    code: String,
+    message: String,
+    line_start: usize,
+    line_end: usize,
+    severity: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct OrderValidationResultDto {
+    diagnostics: Vec<OrderDiagnosticDto>,
+}
+
+impl From<OrderValidationResult> for OrderValidationResultDto {
+    fn from(value: OrderValidationResult) -> Self {
+        Self {
+            diagnostics: value
+                .diagnostics
+                .into_iter()
+                .map(|diagnostic| OrderDiagnosticDto {
+                    code: diagnostic.code,
+                    message: diagnostic.message,
+                    line_start: diagnostic.line_start,
+                    line_end: diagnostic.line_end,
+                    severity: match diagnostic.severity {
+                        OrderDiagnosticSeverity::Warning => "warning".to_string(),
+                        OrderDiagnosticSeverity::Error => "error".to_string(),
+                    },
+                })
+                .collect(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg(not(target_arch = "wasm32"))]
+struct OrderDraftKeyDto {
+    project_id: String,
+    faction_id: String,
+    turn_number: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg(not(target_arch = "wasm32"))]
+struct OrderDraftRecordDto {
+    key: OrderDraftKeyDto,
+    order_text: String,
+    updated_at: String,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl From<OrderDraftRecord> for OrderDraftRecordDto {
+    fn from(value: OrderDraftRecord) -> Self {
+        Self {
+            key: OrderDraftKeyDto {
+                project_id: value.key.project_id,
+                faction_id: value.key.faction_id,
+                turn_number: value.key.turn_number,
+            },
+            order_text: value.order_text,
+            updated_at: value.updated_at,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -224,6 +298,16 @@ pub fn parse_report_state(raw_report: String) -> Result<JsValue, JsValue> {
     serde_wasm_bindgen::to_value(&parsed).map_err(|error| JsValue::from_str(&error.to_string()))
 }
 
+/// Validates one draft of Atlantis orders and returns structured diagnostics.
+///
+/// Order validation is pure, so unlike the persistence entry points this is available on every
+/// target.
+#[wasm_bindgen]
+pub fn validate_orders_state(raw_orders: String) -> Result<JsValue, JsValue> {
+    let result = OrderValidationResultDto::from(validate_orders(&raw_orders));
+    serde_wasm_bindgen::to_value(&result).map_err(|error| JsValue::from_str(&error.to_string()))
+}
+
 /// Creates a project manifest and sidecar SQLite database.
 #[wasm_bindgen]
 #[cfg(not(target_arch = "wasm32"))]
@@ -404,6 +488,57 @@ pub fn load_imported_turn_state(
     serde_wasm_bindgen::to_value(&dto).map_err(|error| JsValue::from_str(&error.to_string()))
 }
 
+/// Saves one order draft, keyed by project, faction and turn.
+#[wasm_bindgen]
+#[cfg(not(target_arch = "wasm32"))]
+pub fn save_order_draft_state(
+    database_path: String,
+    project_id: String,
+    faction_id: String,
+    turn_number: u32,
+    order_text: String,
+    updated_at: String,
+) -> Result<JsValue, JsValue> {
+    let record = OrderDraftRecord {
+        key: OrderDraftKey {
+            project_id,
+            faction_id,
+            turn_number,
+        },
+        order_text,
+        updated_at,
+    };
+
+    upsert_order_draft(Path::new(&database_path), &record)
+        .map_err(|error| JsValue::from_str(&error.to_string()))?;
+
+    serde_wasm_bindgen::to_value(&OrderDraftRecordDto::from(record))
+        .map_err(|error| JsValue::from_str(&error.to_string()))
+}
+
+/// Loads one order draft by composite key, or null when none is stored.
+#[wasm_bindgen]
+#[cfg(not(target_arch = "wasm32"))]
+pub fn load_order_draft_state(
+    database_path: String,
+    project_id: String,
+    faction_id: String,
+    turn_number: u32,
+) -> Result<JsValue, JsValue> {
+    let loaded = load_order_draft(
+        Path::new(&database_path),
+        &OrderDraftKey {
+            project_id,
+            faction_id,
+            turn_number,
+        },
+    )
+    .map_err(|error| JsValue::from_str(&error.to_string()))?;
+
+    let dto = loaded.map(OrderDraftRecordDto::from);
+    serde_wasm_bindgen::to_value(&dto).map_err(|error| JsValue::from_str(&error.to_string()))
+}
+
 /// Creates a project manifest and sidecar SQLite database.
 #[wasm_bindgen]
 #[cfg(target_arch = "wasm32")]
@@ -468,6 +603,36 @@ pub fn load_imported_turn_state(
     ))
 }
 
+/// Saves one order draft, keyed by project, faction and turn.
+#[wasm_bindgen]
+#[cfg(target_arch = "wasm32")]
+pub fn save_order_draft_state(
+    _database_path: String,
+    _project_id: String,
+    _faction_id: String,
+    _turn_number: u32,
+    _order_text: String,
+    _updated_at: String,
+) -> Result<JsValue, JsValue> {
+    Err(JsValue::from_str(
+        "project persistence is not linked in this wasm32 build",
+    ))
+}
+
+/// Loads one order draft by composite key, or null when none is stored.
+#[wasm_bindgen]
+#[cfg(target_arch = "wasm32")]
+pub fn load_order_draft_state(
+    _database_path: String,
+    _project_id: String,
+    _faction_id: String,
+    _turn_number: u32,
+) -> Result<JsValue, JsValue> {
+    Err(JsValue::from_str(
+        "project persistence is not linked in this wasm32 build",
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -481,6 +646,47 @@ mod tests {
         assert_eq!(dto.name, "Atlantis PBEM");
         assert_eq!(dto.ruleset_version, "4.0");
         assert_eq!(dto.max_faction_count, 128);
+    }
+
+    #[test]
+    fn order_validation_dto_flattens_severity_to_strings() {
+        let dto = OrderValidationResultDto::from(validate_orders("FLY 1 2\nMOVE R1 R2 R3"));
+
+        let severities: Vec<&str> = dto
+            .diagnostics
+            .iter()
+            .map(|diagnostic| diagnostic.severity.as_str())
+            .collect();
+
+        assert_eq!(severities, vec!["error", "warning"]);
+        assert_eq!(dto.diagnostics[0].code, "unknown-command");
+        assert_eq!(dto.diagnostics[1].code, "extra-arguments");
+    }
+
+    #[test]
+    fn order_validation_dto_is_empty_for_valid_orders() {
+        let dto = OrderValidationResultDto::from(validate_orders("MOVE R1 R2\nHOLD"));
+        assert!(dto.diagnostics.is_empty());
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn order_draft_dto_maps_composite_key() {
+        let dto = OrderDraftRecordDto::from(OrderDraftRecord {
+            key: OrderDraftKey {
+                project_id: "faction-95".to_string(),
+                faction_id: "95".to_string(),
+                turn_number: 71,
+            },
+            order_text: "@study obse".to_string(),
+            updated_at: "2026-08-08T12:00:00Z".to_string(),
+        });
+
+        assert_eq!(dto.key.project_id, "faction-95");
+        assert_eq!(dto.key.faction_id, "95");
+        assert_eq!(dto.key.turn_number, 71);
+        assert_eq!(dto.order_text, "@study obse");
+        assert_eq!(dto.updated_at, "2026-08-08T12:00:00Z");
     }
 
     #[cfg(not(target_arch = "wasm32"))]
