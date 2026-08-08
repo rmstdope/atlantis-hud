@@ -178,8 +178,16 @@ search covers 57 known hexes and completes in microseconds.
 
 So #8's interactivity requirement is met by evidence instead of by architecture, and
 `tests/smoke/workspace.spec.ts` carries the regression guard: it samples how long the main thread
-goes unresponsive during a report load and fails if anything stops the page for a noticeable
-fraction of a second.
+goes unresponsive during a report load and fails if anything stops the page for whole seconds.
+
+One later measurement belongs here too. **Remembering a turn costs more than parsing it.**
+Committing the import and reading the sightings back parses the report again and round-trips eleven
+regions through JSON, which measures at 345–515 ms of blocking and about 1.2 s of wall time,
+against ~70 ms for parsing alone. That is the price of a map that spans more than one report, and
+it is paid once when a file is opened rather than during interaction — but it is the largest single
+cost in the application, and the obvious place to look if loading ever feels slow. The cheapest win
+available is the third parse: `commitReportImport` in the web adapter re-parses the report purely
+to collect regions for the sightings store.
 
 This is worth revisiting if either number changes — a map accumulated over many turns, or a planner
 that searches thousands of hexes. The shape to reach for then is not "put the core in a worker" but

@@ -121,3 +121,25 @@ cargo clippy --workspace --all-targets -- -D warnings
   - Extended `packages/core-client` with all report domain types and normalizers
   - `ReportImportPanel` shared React component in `packages/shared` (drag-drop + file picker, faction confirmation, duplicate overwrite confirmation)
   - Import panel integrated in `apps/web` and `apps/desktop`
+
+- Issue #8 adds:
+  - `packages/ruleset`, which scrapes a game's own rules and data pages into `config/ruleset.json`
+    rather than hard-coding movement numbers that differ between games
+  - `crates/core/src/movement`: the ruleset and its validation, a map built from everything the
+    faction has seen, movement modes read from the report's own capacity figures, a Dijkstra route
+    planner that refuses with a named reason, a risk heuristic, and MOVE order reading and writing
+  - the item catalogue the report parser had always lacked, so a unit's men can finally be told
+    from its equipment
+  - a project per faction, so a loaded turn is remembered and the map spans more than one report
+  - the planner panel, the arm-one-pick gesture, and the route overlay the movement chip controls
+
+To fetch the ruleset for a game other than the committed one:
+
+```bash
+pnpm --filter @atlantis/ruleset scrape -- \
+  --rules https://atlantis-pbem.com/rules \
+  --data  https://atlantis-pbem.com/data
+```
+
+See `docs/ruleset-contract.md` for what is scraped, what is deliberately not modelled, and why
+there is no worker.
