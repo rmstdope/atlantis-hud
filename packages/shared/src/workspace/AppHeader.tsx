@@ -11,7 +11,7 @@ export type ImportStatus = {
 
 type AppHeaderProps = {
   platformLabel: string;
-  projectName: string | null;
+  gameName: string | null;
   factionLabel: string | null;
   turnLabel: string | null;
   status: ImportStatus | null;
@@ -22,14 +22,14 @@ type AppHeaderProps = {
 };
 
 /**
- * Project, turn and faction, with report state alongside them.
+ * Game, turn and faction, with report state alongside them.
  *
  * Report loading lives here rather than in a panel of its own: it is something you do occasionally
  * and then want out of the way, and putting it in the header means it costs no map area at all.
  */
 export function AppHeader({
   platformLabel,
-  projectName,
+  gameName,
   factionLabel,
   turnLabel,
   status,
@@ -71,7 +71,7 @@ export function AppHeader({
       <span className="tracking-[0.06em] text-brass">ATLANTIS HUD</span>
       <span className="text-ink-soft">{platformLabel}</span>
 
-      {projectName ? <span className="text-ink">{projectName}</span> : null}
+      {gameName ? <span className="text-ink">{gameName}</span> : null}
       {turnLabel ? (
         <span className="text-ink-soft">
           Turn <span className="rounded border border-edge bg-panel-raised px-2 py-0.5 text-ink">{turnLabel}</span>

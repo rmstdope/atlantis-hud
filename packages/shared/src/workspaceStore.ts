@@ -3,7 +3,7 @@
  *
  * The widgets in this workspace are not independent: choosing a hex changes which units are listed,
  * choosing a unit changes what the detail panel and the orders editor show. Previously each panel
- * held its own state and separately asked the user to retype the project, faction and turn, so
+ * held its own state and separately asked the user to retype the game, faction and turn, so
  * nothing could be linked to anything else. One store fixes that.
  */
 
@@ -16,10 +16,10 @@ export type PanelName = "region" | "unit" | "orders" | "units" | "planner";
 /** Map layers the toolbar toggles. Only staleness has an effect so far. */
 export type LayerName = "units" | "structures" | "staleness" | "tradeRoutes" | "movement";
 
-export type WorkspaceProject = {
-  projectFilePath: string;
+export type WorkspaceGame = {
+  gameFilePath: string;
   databasePath: string;
-  projectId: string;
+  gameId: string;
   factionId: string;
   turnNumber: number;
 };
@@ -38,7 +38,7 @@ export type PlannerState = {
 };
 
 export type WorkspaceState = {
-  project: WorkspaceProject | null;
+  game: WorkspaceGame | null;
   planner: PlannerState;
   selectedRegionId: string | null;
   selectedUnitId: string | null;
@@ -47,8 +47,8 @@ export type WorkspaceState = {
   collapsed: Record<PanelName, boolean>;
   layers: Record<LayerName, boolean>;
 
-  openProject: (project: WorkspaceProject) => void;
-  closeProject: () => void;
+  openGame: (game: WorkspaceGame) => void;
+  closeGame: () => void;
   /**
    * Selects a hex, and with it a unit inside that hex.
    *
@@ -120,7 +120,7 @@ type Persisted = Pick<WorkspaceState, "collapsed" | "layers">;
 export const useWorkspaceStore = create<WorkspaceState>()(
   persist(
     (set) => ({
-      project: null,
+      game: null,
       selectedRegionId: null,
       selectedUnitId: null,
       level: 1,
@@ -128,16 +128,16 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       layers: INITIAL_LAYERS,
       planner: { armed: false, destinationId: null },
 
-      openProject: (project) =>
+      openGame: (game) =>
         set({
-          project,
+          game,
           selectedRegionId: null,
           selectedUnitId: null
         }),
 
-      closeProject: () =>
+      closeGame: () =>
         set({
-          project: null,
+          game: null,
           selectedRegionId: null,
           selectedUnitId: null
         }),
@@ -189,7 +189,7 @@ export function resetWorkspaceStore() {
   MEMORY.clear();
   optionalStorage()?.removeItem("atlantis-hud-workspace");
   useWorkspaceStore.setState({
-    project: null,
+    game: null,
     selectedRegionId: null,
     selectedUnitId: null,
     level: 1,

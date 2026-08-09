@@ -94,7 +94,7 @@ cargo clippy --workspace --all-targets -- -D warnings
   - `packages/core-client` (shared TypeScript client abstraction for both adapters)
 
 - Issue #4 adds:
-  - `crates/core-persistence` (SQLite persistence layer with schema migrations and project file format)
+  - `crates/core-persistence` (SQLite persistence layer with schema migrations and game file format)
 
 - Issue #20 adds:
   - the workspace UI in `packages/shared/src/workspace`, shared by both shells: header, map,
@@ -130,7 +130,7 @@ cargo clippy --workspace --all-targets -- -D warnings
     planner that refuses with a named reason, a risk heuristic, and MOVE order reading and writing
   - the item catalogue the report parser had always lacked, so a unit's men can finally be told
     from its equipment
-  - a project per faction, so a loaded turn is remembered and the map spans more than one report
+  - a game per faction, so a loaded turn is remembered and the map spans more than one report
   - the planner panel, the arm-one-pick gesture, and the route overlay the movement chip controls
 
 To fetch the ruleset for a game other than the committed one:

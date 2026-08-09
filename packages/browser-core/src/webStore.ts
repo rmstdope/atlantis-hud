@@ -10,7 +10,7 @@
 const DATABASE_NAME = "atlantis-hud";
 const DATABASE_VERSION = 3;
 
-const PROJECT_STORE = "projects";
+const GAME_STORE = "games";
 const IMPORTED_TURN_STORE = "importedTurns";
 const ORDER_DRAFT_STORE = "orderDrafts";
 const REGION_SIGHTING_STORE = "regionSightings";
@@ -24,7 +24,7 @@ export type StoredTurnSnapshot = {
 
 export type StoredTurn = StoredTurnSnapshot & {
   databasePath: string;
-  projectId: string;
+  gameId: string;
   factionId: string;
   turnNumber: number;
 };
@@ -38,7 +38,7 @@ export type StoredTurn = StoredTurnSnapshot & {
  */
 export type StoredRegionSighting = {
   databasePath: string;
-  projectId: string;
+  gameId: string;
   factionId: string;
   regionId: string;
   lastSeenTurn: number;
@@ -48,40 +48,40 @@ export type StoredRegionSighting = {
 
 export type StoredOrderDraft = {
   databasePath: string;
-  projectId: string;
+  gameId: string;
   factionId: string;
   turnNumber: number;
   orderText: string;
   updatedAt: string;
 };
 
-export type StoredProject = {
-  projectFilePath: string;
+export type StoredGame = {
+  gameFilePath: string;
   databasePath: string;
   schemaVersion: number;
   manifest: unknown;
 };
 
 export interface WebStore {
-  putProject(project: StoredProject): Promise<void>;
-  getProject(projectFilePath: string): Promise<StoredProject | null>;
+  putGame(game: StoredGame): Promise<void>;
+  getGame(gameFilePath: string): Promise<StoredGame | null>;
   putImportedTurn(turn: StoredTurn): Promise<void>;
   getImportedTurn(
     databasePath: string,
-    projectId: string,
+    gameId: string,
     factionId: string,
     turnNumber: number
   ): Promise<StoredTurn | null>;
   putRegionSightings(sightings: StoredRegionSighting[]): Promise<void>;
   getRegionSightings(
     databasePath: string,
-    projectId: string,
+    gameId: string,
     factionId: string
   ): Promise<StoredRegionSighting[]>;
   putOrderDraft(draft: StoredOrderDraft): Promise<void>;
   getOrderDraft(
     databasePath: string,
-    projectId: string,
+    gameId: string,
     factionId: string,
     turnNumber: number
   ): Promise<StoredOrderDraft | null>;
@@ -102,7 +102,7 @@ function openDatabase(): Promise<IDBDatabase> {
       const database = request.result;
 
       // v1 keyed turns and drafts without the database handle, so records from different
-      // projects could overwrite one another. Those stores are recreated rather than migrated:
+      // games could overwrite one another. Those stores are recreated rather than migrated:
       // the schema predates any release, and a stale record under an ambiguous key is worse
       // than an empty store the user can re-import into.
       for (const name of [IMPORTED_TURN_STORE, ORDER_DRAFT_STORE]) {
@@ -111,21 +111,21 @@ function openDatabase(): Promise<IDBDatabase> {
         }
       }
 
-      if (!database.objectStoreNames.contains(PROJECT_STORE)) {
-        database.createObjectStore(PROJECT_STORE, { keyPath: "projectFilePath" });
+      if (!database.objectStoreNames.contains(GAME_STORE)) {
+        database.createObjectStore(GAME_STORE, { keyPath: "gameFilePath" });
       }
       database.createObjectStore(IMPORTED_TURN_STORE, {
-        keyPath: ["databasePath", "projectId", "factionId", "turnNumber"]
+        keyPath: ["databasePath", "gameId", "factionId", "turnNumber"]
       });
       database.createObjectStore(ORDER_DRAFT_STORE, {
-        keyPath: ["databasePath", "projectId", "factionId", "turnNumber"]
+        keyPath: ["databasePath", "gameId", "factionId", "turnNumber"]
       });
 
       // v3 adds remembered regions. Keyed by hex rather than by turn, so a later sighting of the
       // same hex replaces the earlier one instead of accumulating duplicates.
       if (!database.objectStoreNames.contains(REGION_SIGHTING_STORE)) {
         database.createObjectStore(REGION_SIGHTING_STORE, {
-          keyPath: ["databasePath", "projectId", "factionId", "regionId"]
+          keyPath: ["databasePath", "gameId", "factionId", "regionId"]
         });
       }
     };
@@ -176,11 +176,11 @@ export function createIndexedDbWebStore(): WebStore {
   };
 
   return {
-    putProject: (project) => write(PROJECT_STORE, project),
-    getProject: (projectFilePath) => read<StoredProject>(PROJECT_STORE, projectFilePath),
+    putGame: (game) => write(GAME_STORE, game),
+    getGame: (gameFilePath) => read<StoredGame>(GAME_STORE, gameFilePath),
     putImportedTurn: (turn) => write(IMPORTED_TURN_STORE, turn),
-    getImportedTurn: (databasePath, projectId, factionId, turnNumber) =>
-      read<StoredTurn>(IMPORTED_TURN_STORE, [databasePath, projectId, factionId, turnNumber]),
+    getImportedTurn: (databasePath, gameId, factionId, turnNumber) =>
+      read<StoredTurn>(IMPORTED_TURN_STORE, [databasePath, gameId, factionId, turnNumber]),
     async putRegionSightings(sightings) {
       // One transaction for the lot: a report is committed as a whole, and half a remembered map
       // is worse than none.
@@ -197,11 +197,11 @@ export function createIndexedDbWebStore(): WebStore {
           reject(transaction.error ?? new Error("indexeddb write aborted"));
       });
     },
-    getRegionSightings: (databasePath, projectId, factionId) =>
-      readAll<StoredRegionSighting>(REGION_SIGHTING_STORE, [databasePath, projectId, factionId]),
+    getRegionSightings: (databasePath, gameId, factionId) =>
+      readAll<StoredRegionSighting>(REGION_SIGHTING_STORE, [databasePath, gameId, factionId]),
     putOrderDraft: (draft) => write(ORDER_DRAFT_STORE, draft),
-    getOrderDraft: (databasePath, projectId, factionId, turnNumber) =>
-      read<StoredOrderDraft>(ORDER_DRAFT_STORE, [databasePath, projectId, factionId, turnNumber])
+    getOrderDraft: (databasePath, gameId, factionId, turnNumber) =>
+      read<StoredOrderDraft>(ORDER_DRAFT_STORE, [databasePath, gameId, factionId, turnNumber])
   };
 }
 
@@ -212,40 +212,40 @@ export function createIndexedDbWebStore(): WebStore {
  * window that blocks it. Data does not survive a reload.
  */
 export function createMemoryWebStore(): WebStore {
-  const projects = new Map<string, StoredProject>();
+  const games = new Map<string, StoredGame>();
   const turns = new Map<string, StoredTurn>();
   const drafts = new Map<string, StoredOrderDraft>();
   const sightings = new Map<string, StoredRegionSighting>();
 
   const composite = (
     databasePath: string,
-    projectId: string,
+    gameId: string,
     factionId: string,
     turnNumber: number
-  ) => JSON.stringify([databasePath, projectId, factionId, turnNumber]);
+  ) => JSON.stringify([databasePath, gameId, factionId, turnNumber]);
 
   return {
-    async putProject(project) {
-      projects.set(project.projectFilePath, project);
+    async putGame(game) {
+      games.set(game.gameFilePath, game);
     },
-    async getProject(projectFilePath) {
-      return projects.get(projectFilePath) ?? null;
+    async getGame(gameFilePath) {
+      return games.get(gameFilePath) ?? null;
     },
     async putImportedTurn(turn) {
       turns.set(
-        composite(turn.databasePath, turn.projectId, turn.factionId, turn.turnNumber),
+        composite(turn.databasePath, turn.gameId, turn.factionId, turn.turnNumber),
         turn
       );
     },
-    async getImportedTurn(databasePath, projectId, factionId, turnNumber) {
-      return turns.get(composite(databasePath, projectId, factionId, turnNumber)) ?? null;
+    async getImportedTurn(databasePath, gameId, factionId, turnNumber) {
+      return turns.get(composite(databasePath, gameId, factionId, turnNumber)) ?? null;
     },
     async putRegionSightings(incoming) {
       for (const sighting of incoming) {
         sightings.set(
           JSON.stringify([
             sighting.databasePath,
-            sighting.projectId,
+            sighting.gameId,
             sighting.factionId,
             sighting.regionId
           ]),
@@ -253,22 +253,22 @@ export function createMemoryWebStore(): WebStore {
         );
       }
     },
-    async getRegionSightings(databasePath, projectId, factionId) {
+    async getRegionSightings(databasePath, gameId, factionId) {
       return [...sightings.values()].filter(
         (sighting) =>
           sighting.databasePath === databasePath &&
-          sighting.projectId === projectId &&
+          sighting.gameId === gameId &&
           sighting.factionId === factionId
       );
     },
     async putOrderDraft(draft) {
       drafts.set(
-        composite(draft.databasePath, draft.projectId, draft.factionId, draft.turnNumber),
+        composite(draft.databasePath, draft.gameId, draft.factionId, draft.turnNumber),
         draft
       );
     },
-    async getOrderDraft(databasePath, projectId, factionId, turnNumber) {
-      return drafts.get(composite(databasePath, projectId, factionId, turnNumber)) ?? null;
+    async getOrderDraft(databasePath, gameId, factionId, turnNumber) {
+      return drafts.get(composite(databasePath, gameId, factionId, turnNumber)) ?? null;
     }
   };
 }

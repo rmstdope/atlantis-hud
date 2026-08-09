@@ -7,7 +7,7 @@
  * different verdicts. Only the read and the write are the browser's own, and those carry no rules.
  */
 
-import type { CoreAdapter, ProjectManifest } from "@atlantis/core-client";
+import type { CoreAdapter, GameManifest } from "@atlantis/core-client";
 import type { StoredTurnSnapshot, WebStore } from "./webStore";
 import { createWebStore } from "./webStore";
 
@@ -46,11 +46,11 @@ type ImportedTurnDiff = {
 };
 
 /**
- * The web has no filesystem, so a project's "database path" is just a stable handle derived from
- * the project file path. It keeps the `CoreClient` contract identical across platforms.
+ * The web has no filesystem, so a game's "database path" is just a stable handle derived from
+ * the game file path. It keeps the `CoreClient` contract identical across platforms.
  */
-function databaseHandleFor(projectFilePath: string): string {
-  return `idb://${projectFilePath.replace(/\.json$/u, "")}`;
+function databaseHandleFor(gameFilePath: string): string {
+  return `idb://${gameFilePath.replace(/\.json$/u, "")}`;
 }
 
 /**
@@ -88,12 +88,12 @@ export function createWebCoreAdapter(
 
   const diffAgainstStored = async (
     databasePath: string,
-    projectId: string,
+    gameId: string,
     factionId: string,
     turnNumber: number,
     candidate: StoredTurnSnapshot
   ): Promise<ImportedTurnDiff> => {
-    const stored = await store.getImportedTurn(databasePath, projectId, factionId, turnNumber);
+    const stored = await store.getImportedTurn(databasePath, gameId, factionId, turnNumber);
     const existing: StoredTurnSnapshot | null = stored
       ? {
           rawReport: stored.rawReport,
@@ -118,8 +118,8 @@ export function createWebCoreAdapter(
       return wasm.parse_report_full_state(rawReport);
     },
 
-    async loadRegionSightings(databasePath: string, projectId: string, factionId: string) {
-      const stored = await store.getRegionSightings(databasePath, projectId, factionId);
+    async loadRegionSightings(databasePath: string, gameId: string, factionId: string) {
+      const stored = await store.getRegionSightings(databasePath, gameId, factionId);
 
       // A payload written by an older build may not parse. Dropping one remembered hex beats
       // losing the whole map, which is what the desktop does too.
@@ -149,33 +149,33 @@ export function createWebCoreAdapter(
       return wasm.validate_orders_state(rawOrders);
     },
 
-    async createProject(projectFilePath: string, manifest: ProjectManifest) {
-      const existing = await store.getProject(projectFilePath);
+    async createGame(gameFilePath: string, manifest: GameManifest) {
+      const existing = await store.getGame(gameFilePath);
       if (existing) {
-        throw new Error(`project file already exists: ${projectFilePath}`);
+        throw new Error(`game file already exists: ${gameFilePath}`);
       }
 
-      const project = {
-        projectFilePath,
-        databasePath: databaseHandleFor(projectFilePath),
+      const game = {
+        gameFilePath,
+        databasePath: databaseHandleFor(gameFilePath),
         schemaVersion: 1,
         manifest
       };
-      await store.putProject(project);
-      return project;
+      await store.putGame(game);
+      return game;
     },
 
-    async openProject(projectFilePath: string) {
-      const project = await store.getProject(projectFilePath);
-      if (!project) {
-        throw new Error(`project file does not exist: ${projectFilePath}`);
+    async openGame(gameFilePath: string) {
+      const game = await store.getGame(gameFilePath);
+      if (!game) {
+        throw new Error(`game file does not exist: ${gameFilePath}`);
       }
-      return project;
+      return game;
     },
 
     async previewReportImport(
       databasePath: string,
-      projectId: string,
+      gameId: string,
       confirmedFactionId: string,
       rawReport: string
     ) {
@@ -187,7 +187,7 @@ export function createWebCoreAdapter(
           ? { exists: false, rawChanged: false, parsedChanged: false, warningsChanged: false }
           : await diffAgainstStored(
               databasePath,
-              projectId,
+              gameId,
               confirmedFactionId,
               prepared.turnNumber,
               prepared.candidate
@@ -202,7 +202,7 @@ export function createWebCoreAdapter(
 
     async commitReportImport(
       databasePath: string,
-      projectId: string,
+      gameId: string,
       confirmedFactionId: string,
       rawReport: string,
       allowOverwrite: boolean
@@ -211,7 +211,7 @@ export function createWebCoreAdapter(
       const turnNumber = requireAdmissible(prepared);
       const diff = await diffAgainstStored(
         databasePath,
-        projectId,
+        gameId,
         confirmedFactionId,
         turnNumber,
         prepared.candidate
@@ -219,14 +219,14 @@ export function createWebCoreAdapter(
 
       if (diff.exists && !allowOverwrite) {
         throw new Error(
-          `imported turn already exists for project ${projectId}, faction ${confirmedFactionId}, ` +
+          `imported turn already exists for game ${gameId}, faction ${confirmedFactionId}, ` +
             `turn ${turnNumber} and requires explicit overwrite confirmation`
         );
       }
 
       await store.putImportedTurn({
         databasePath,
-        projectId,
+        gameId,
         factionId: confirmedFactionId,
         turnNumber,
         ...prepared.candidate
@@ -243,7 +243,7 @@ export function createWebCoreAdapter(
         await store.putRegionSightings(
           regions.map((region) => ({
             databasePath,
-            projectId,
+            gameId,
             factionId: confirmedFactionId,
             regionId: region.regionId ?? region.region_id ?? "",
             lastSeenTurn: turnNumber,
@@ -257,17 +257,17 @@ export function createWebCoreAdapter(
 
     async loadImportedTurn(
       databasePath: string,
-      projectId: string,
+      gameId: string,
       factionId: string,
       turnNumber: number
     ) {
-      const stored = await store.getImportedTurn(databasePath, projectId, factionId, turnNumber);
+      const stored = await store.getImportedTurn(databasePath, gameId, factionId, turnNumber);
       if (!stored) {
         return null;
       }
 
       return {
-        key: { projectId, factionId, turnNumber },
+        key: { gameId, factionId, turnNumber },
         rawReport: stored.rawReport,
         parseResult: wasm.hydrate_parse_result_state(stored.parsedPayloadJson)
       };
@@ -275,16 +275,16 @@ export function createWebCoreAdapter(
 
     async saveOrderDraft(
       databasePath: string,
-      projectId: string,
+      gameId: string,
       factionId: string,
       turnNumber: number,
       orderText: string,
       updatedAt: string
     ) {
-      const draft = { databasePath, projectId, factionId, turnNumber, orderText, updatedAt };
+      const draft = { databasePath, gameId, factionId, turnNumber, orderText, updatedAt };
       await store.putOrderDraft(draft);
       return {
-        key: { projectId, factionId, turnNumber },
+        key: { gameId, factionId, turnNumber },
         orderText,
         updatedAt
       };
@@ -292,17 +292,17 @@ export function createWebCoreAdapter(
 
     async loadOrderDraft(
       databasePath: string,
-      projectId: string,
+      gameId: string,
       factionId: string,
       turnNumber: number
     ) {
-      const stored = await store.getOrderDraft(databasePath, projectId, factionId, turnNumber);
+      const stored = await store.getOrderDraft(databasePath, gameId, factionId, turnNumber);
       if (!stored) {
         return null;
       }
 
       return {
-        key: { projectId, factionId, turnNumber },
+        key: { gameId, factionId, turnNumber },
         orderText: stored.orderText,
         updatedAt: stored.updatedAt
       };

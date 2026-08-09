@@ -1,11 +1,11 @@
 import type { CoreClient, ParsedReport, RememberedRegion } from "@atlantis/core-client";
 import { describe, expect, it, vi } from "vitest";
 import {
-  openOrCreateProject,
-  projectPathFor,
+  openOrCreateGame,
+  gamePathFor,
   rememberTurn,
   toStoredRegions
-} from "./projectMemory";
+} from "./gameMemory";
 
 function region(regionId: string, x: number, y: number) {
   return {
@@ -52,12 +52,12 @@ function report(factionId: string | null): ParsedReport {
 
 function client(overrides: Partial<CoreClient> = {}): CoreClient {
   return {
-    openProject: vi.fn().mockRejectedValue(new Error("no such project")),
-    createProject: vi.fn().mockResolvedValue({
-      projectFilePath: "p.json",
+    openGame: vi.fn().mockRejectedValue(new Error("no such game")),
+    createGame: vi.fn().mockResolvedValue({
+      gameFilePath: "p.json",
       databasePath: "p.sqlite",
       schemaVersion: 4,
-      manifest: { manifestVersion: 1, metadata: { projectId: "faction-95", projectName: "Borg TNG" }, reportSources: [] }
+      manifest: { manifestVersion: 1, metadata: { gameId: "faction-95", gameName: "Borg TNG" }, reportSources: [] }
     }),
     commitReportImport: vi.fn().mockResolvedValue({}),
     loadRegionSightings: vi.fn().mockResolvedValue([]),
@@ -65,34 +65,34 @@ function client(overrides: Partial<CoreClient> = {}): CoreClient {
   } as unknown as CoreClient;
 }
 
-describe("finding a faction's project", () => {
-  it("names the project after the faction, so nobody has to choose a path", () => {
-    expect(projectPathFor("95")).toContain("faction-95");
+describe("finding a faction's game", () => {
+  it("names the game after the faction, so nobody has to choose a path", () => {
+    expect(gamePathFor("95")).toContain("faction-95");
   });
 
-  it("opens the project when it is already there", async () => {
-    const openProject = vi.fn().mockResolvedValue({
-      projectFilePath: "existing.json",
+  it("opens the game when it is already there", async () => {
+    const openGame = vi.fn().mockResolvedValue({
+      gameFilePath: "existing.json",
       databasePath: "existing.sqlite",
       schemaVersion: 4,
-      manifest: { manifestVersion: 1, metadata: { projectId: "faction-95", projectName: "x" }, reportSources: [] }
+      manifest: { manifestVersion: 1, metadata: { gameId: "faction-95", gameName: "x" }, reportSources: [] }
     });
-    const core = client({ openProject });
+    const core = client({ openGame });
 
-    const project = await openOrCreateProject(core, "95", "Borg TNG");
+    const game = await openOrCreateGame(core, "95", "Borg TNG");
 
-    expect(project.databasePath).toBe("existing.sqlite");
-    expect(core.createProject).not.toHaveBeenCalled();
+    expect(game.databasePath).toBe("existing.sqlite");
+    expect(core.createGame).not.toHaveBeenCalled();
   });
 
-  /** The first import of a faction has no project yet. That is ordinary, not a failure. */
-  it("creates the project the first time, without complaining", async () => {
+  /** The first import of a faction has no game yet. That is ordinary, not a failure. */
+  it("creates the game the first time, without complaining", async () => {
     const core = client();
 
-    const project = await openOrCreateProject(core, "95", "Borg TNG");
+    const game = await openOrCreateGame(core, "95", "Borg TNG");
 
-    expect(project.databasePath).toBe("p.sqlite");
-    expect(core.createProject).toHaveBeenCalledOnce();
+    expect(game.databasePath).toBe("p.sqlite");
+    expect(core.createGame).toHaveBeenCalledOnce();
   });
 });
 
@@ -132,7 +132,7 @@ describe("remembering a turn", () => {
 
     expect(outcome.warning).toContain("disk is full");
     expect(outcome.remembered).toEqual([]);
-    expect(outcome.project).toBeNull();
+    expect(outcome.game).toBeNull();
   });
 
   it("says so when the report does not name its faction", async () => {

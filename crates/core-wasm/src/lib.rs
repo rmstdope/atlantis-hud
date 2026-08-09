@@ -9,10 +9,10 @@ use atlantis_hud_core::{
 };
 #[cfg(not(target_arch = "wasm32"))]
 use atlantis_hud_core_persistence::{
-    create_project, insert_imported_turn, load_imported_turn, load_order_draft, open_project,
-    preview_imported_turn, upsert_imported_turn, upsert_order_draft, ImportedTurnKey,
-    ImportedTurnPreview, ImportedTurnRecord, OpenedProject, OrderDraftKey, OrderDraftRecord,
-    PersistenceError, ProjectManifest, ProjectMetadata, ReportSourceRef,
+    create_game, insert_imported_turn, load_imported_turn, load_order_draft, open_game,
+    preview_imported_turn, upsert_imported_turn, upsert_order_draft, GameManifest, GameMetadata,
+    ImportedTurnKey, ImportedTurnPreview, ImportedTurnRecord, OpenedGame, OrderDraftKey,
+    OrderDraftRecord, PersistenceError, ReportSourceRef,
 };
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
@@ -95,7 +95,7 @@ impl From<OrderValidationResult> for OrderValidationResultDto {
 #[serde(rename_all = "camelCase")]
 #[cfg(not(target_arch = "wasm32"))]
 struct OrderDraftKeyDto {
-    project_id: String,
+    game_id: String,
     faction_id: String,
     turn_number: u32,
 }
@@ -114,7 +114,7 @@ impl From<OrderDraftRecord> for OrderDraftRecordDto {
     fn from(value: OrderDraftRecord) -> Self {
         Self {
             key: OrderDraftKeyDto {
-                project_id: value.key.project_id,
+                game_id: value.key.game_id,
                 faction_id: value.key.faction_id,
                 turn_number: value.key.turn_number,
             },
@@ -127,9 +127,9 @@ impl From<OrderDraftRecord> for OrderDraftRecordDto {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg(not(target_arch = "wasm32"))]
-struct ProjectMetadataDto {
-    project_id: String,
-    project_name: String,
+struct GameMetadataDto {
+    game_id: String,
+    game_name: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -143,20 +143,20 @@ struct ReportSourceRefDto {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg(not(target_arch = "wasm32"))]
-struct ProjectManifestDto {
+struct GameManifestDto {
     manifest_version: u32,
-    metadata: ProjectMetadataDto,
+    metadata: GameMetadataDto,
     report_sources: Vec<ReportSourceRefDto>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg(not(target_arch = "wasm32"))]
-struct OpenedProjectDto {
-    project_file_path: String,
+struct OpenedGameDto {
+    game_file_path: String,
     database_path: String,
     schema_version: u32,
-    manifest: ProjectManifestDto,
+    manifest: GameManifestDto,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -213,7 +213,7 @@ struct ReportImportPreviewDto {
 #[serde(rename_all = "camelCase")]
 #[cfg(not(target_arch = "wasm32"))]
 struct ImportedTurnKeyDto {
-    project_id: String,
+    game_id: String,
     faction_id: String,
     turn_number: u32,
 }
@@ -239,11 +239,11 @@ impl From<atlantis_hud_core::EngineInfo> for EngineInfoDto {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-impl From<ProjectMetadataDto> for ProjectMetadata {
-    fn from(value: ProjectMetadataDto) -> Self {
+impl From<GameMetadataDto> for GameMetadata {
+    fn from(value: GameMetadataDto) -> Self {
         Self {
-            project_id: value.project_id,
-            project_name: value.project_name,
+            game_id: value.game_id,
+            game_name: value.game_name,
         }
     }
 }
@@ -259,8 +259,8 @@ impl From<ReportSourceRefDto> for ReportSourceRef {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-impl From<ProjectManifestDto> for ProjectManifest {
-    fn from(value: ProjectManifestDto) -> Self {
+impl From<GameManifestDto> for GameManifest {
+    fn from(value: GameManifestDto) -> Self {
         Self {
             manifest_version: value.manifest_version,
             metadata: value.metadata.into(),
@@ -270,11 +270,11 @@ impl From<ProjectManifestDto> for ProjectManifest {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-impl From<ProjectMetadata> for ProjectMetadataDto {
-    fn from(value: ProjectMetadata) -> Self {
+impl From<GameMetadata> for GameMetadataDto {
+    fn from(value: GameMetadata) -> Self {
         Self {
-            project_id: value.project_id,
-            project_name: value.project_name,
+            game_id: value.game_id,
+            game_name: value.game_name,
         }
     }
 }
@@ -290,8 +290,8 @@ impl From<ReportSourceRef> for ReportSourceRefDto {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-impl From<ProjectManifest> for ProjectManifestDto {
-    fn from(value: ProjectManifest) -> Self {
+impl From<GameManifest> for GameManifestDto {
+    fn from(value: GameManifest) -> Self {
         Self {
             manifest_version: value.manifest_version,
             metadata: value.metadata.into(),
@@ -301,10 +301,10 @@ impl From<ProjectManifest> for ProjectManifestDto {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-impl From<OpenedProject> for OpenedProjectDto {
-    fn from(value: OpenedProject) -> Self {
+impl From<OpenedGame> for OpenedGameDto {
+    fn from(value: OpenedGame) -> Self {
         Self {
-            project_file_path: value.project_file_path.to_string_lossy().to_string(),
+            game_file_path: value.game_file_path.to_string_lossy().to_string(),
             database_path: value.database_path.to_string_lossy().to_string(),
             schema_version: value.schema_version,
             manifest: value.manifest.into(),
@@ -445,33 +445,30 @@ pub fn validate_orders_state(raw_orders: String) -> Result<JsValue, JsValue> {
     to_js(&result)
 }
 
-/// Creates a project manifest and sidecar SQLite database.
+/// Creates a game manifest and sidecar SQLite database.
 #[wasm_bindgen]
 #[cfg(not(target_arch = "wasm32"))]
-pub fn create_project_state(
-    project_file_path: String,
-    manifest: JsValue,
-) -> Result<JsValue, JsValue> {
-    let manifest_dto = serde_wasm_bindgen::from_value::<ProjectManifestDto>(manifest)
+pub fn create_game_state(game_file_path: String, manifest: JsValue) -> Result<JsValue, JsValue> {
+    let manifest_dto = serde_wasm_bindgen::from_value::<GameManifestDto>(manifest)
         .map_err(|error| JsValue::from_str(&error.to_string()))?;
 
-    let opened = create_project(
-        Path::new(&project_file_path),
-        &ProjectManifest::from(manifest_dto),
+    let opened = create_game(
+        Path::new(&game_file_path),
+        &GameManifest::from(manifest_dto),
     )
     .map_err(|error| JsValue::from_str(&error.to_string()))?;
 
-    to_js(&OpenedProjectDto::from(opened))
+    to_js(&OpenedGameDto::from(opened))
 }
 
-/// Opens an existing project and applies pending schema migrations.
+/// Opens an existing game and applies pending schema migrations.
 #[wasm_bindgen]
 #[cfg(not(target_arch = "wasm32"))]
-pub fn open_project_state(project_file_path: String) -> Result<JsValue, JsValue> {
-    let opened = open_project(Path::new(&project_file_path))
+pub fn open_game_state(game_file_path: String) -> Result<JsValue, JsValue> {
+    let opened = open_game(Path::new(&game_file_path))
         .map_err(|error| JsValue::from_str(&error.to_string()))?;
 
-    to_js(&OpenedProjectDto::from(opened))
+    to_js(&OpenedGameDto::from(opened))
 }
 
 /// Previews duplicate conflict for a report import candidate.
@@ -479,7 +476,7 @@ pub fn open_project_state(project_file_path: String) -> Result<JsValue, JsValue>
 #[cfg(not(target_arch = "wasm32"))]
 pub fn preview_report_import_state(
     database_path: String,
-    project_id: String,
+    game_id: String,
     confirmed_faction_id: String,
     raw_report: String,
 ) -> Result<JsValue, JsValue> {
@@ -489,7 +486,7 @@ pub fn preview_report_import_state(
     let duplicate_preview = if let Some(current_turn) = turn_number {
         let candidate = ImportedTurnRecord {
             key: ImportedTurnKey {
-                project_id,
+                game_id,
                 faction_id: confirmed_faction_id,
                 turn_number: current_turn,
             },
@@ -524,7 +521,7 @@ pub fn preview_report_import_state(
 #[cfg(not(target_arch = "wasm32"))]
 pub fn commit_report_import_state(
     database_path: String,
-    project_id: String,
+    game_id: String,
     confirmed_faction_id: String,
     raw_report: String,
     allow_overwrite: bool,
@@ -554,7 +551,7 @@ pub fn commit_report_import_state(
 
     let candidate = ImportedTurnRecord {
         key: ImportedTurnKey {
-            project_id,
+            game_id,
             faction_id: confirmed_faction_id,
             turn_number,
         },
@@ -588,14 +585,14 @@ pub fn commit_report_import_state(
 #[cfg(not(target_arch = "wasm32"))]
 pub fn load_imported_turn_state(
     database_path: String,
-    project_id: String,
+    game_id: String,
     faction_id: String,
     turn_number: u32,
 ) -> Result<JsValue, JsValue> {
     let loaded = load_imported_turn(
         Path::new(&database_path),
         &ImportedTurnKey {
-            project_id,
+            game_id,
             faction_id,
             turn_number,
         },
@@ -609,7 +606,7 @@ pub fn load_imported_turn_state(
                     .map_err(|error| JsValue::from_str(&error.to_string()))?;
             Ok(ImportedTurnRecordDto {
                 key: ImportedTurnKeyDto {
-                    project_id: record.key.project_id,
+                    game_id: record.key.game_id,
                     faction_id: record.key.faction_id,
                     turn_number: record.key.turn_number,
                 },
@@ -622,12 +619,12 @@ pub fn load_imported_turn_state(
     to_js(&dto)
 }
 
-/// Saves one order draft, keyed by project, faction and turn.
+/// Saves one order draft, keyed by game, faction and turn.
 #[wasm_bindgen]
 #[cfg(not(target_arch = "wasm32"))]
 pub fn save_order_draft_state(
     database_path: String,
-    project_id: String,
+    game_id: String,
     faction_id: String,
     turn_number: u32,
     order_text: String,
@@ -635,7 +632,7 @@ pub fn save_order_draft_state(
 ) -> Result<JsValue, JsValue> {
     let record = OrderDraftRecord {
         key: OrderDraftKey {
-            project_id,
+            game_id,
             faction_id,
             turn_number,
         },
@@ -654,14 +651,14 @@ pub fn save_order_draft_state(
 #[cfg(not(target_arch = "wasm32"))]
 pub fn load_order_draft_state(
     database_path: String,
-    project_id: String,
+    game_id: String,
     faction_id: String,
     turn_number: u32,
 ) -> Result<JsValue, JsValue> {
     let loaded = load_order_draft(
         Path::new(&database_path),
         &OrderDraftKey {
-            project_id,
+            game_id,
             faction_id,
             turn_number,
         },
@@ -672,24 +669,21 @@ pub fn load_order_draft_state(
     to_js(&dto)
 }
 
-/// Creates a project manifest and sidecar SQLite database.
+/// Creates a game manifest and sidecar SQLite database.
 #[wasm_bindgen]
 #[cfg(target_arch = "wasm32")]
-pub fn create_project_state(
-    _project_file_path: String,
-    _manifest: JsValue,
-) -> Result<JsValue, JsValue> {
+pub fn create_game_state(_game_file_path: String, _manifest: JsValue) -> Result<JsValue, JsValue> {
     Err(JsValue::from_str(
-        "project persistence is not linked in this wasm32 build",
+        "game persistence is not linked in this wasm32 build",
     ))
 }
 
-/// Opens an existing project and applies pending schema migrations.
+/// Opens an existing game and applies pending schema migrations.
 #[wasm_bindgen]
 #[cfg(target_arch = "wasm32")]
-pub fn open_project_state(_project_file_path: String) -> Result<JsValue, JsValue> {
+pub fn open_game_state(_game_file_path: String) -> Result<JsValue, JsValue> {
     Err(JsValue::from_str(
-        "project persistence is not linked in this wasm32 build",
+        "game persistence is not linked in this wasm32 build",
     ))
 }
 
@@ -698,12 +692,12 @@ pub fn open_project_state(_project_file_path: String) -> Result<JsValue, JsValue
 #[cfg(target_arch = "wasm32")]
 pub fn preview_report_import_state(
     _database_path: String,
-    _project_id: String,
+    _game_id: String,
     _confirmed_faction_id: String,
     _raw_report: String,
 ) -> Result<JsValue, JsValue> {
     Err(JsValue::from_str(
-        "project persistence is not linked in this wasm32 build",
+        "game persistence is not linked in this wasm32 build",
     ))
 }
 
@@ -712,13 +706,13 @@ pub fn preview_report_import_state(
 #[cfg(target_arch = "wasm32")]
 pub fn commit_report_import_state(
     _database_path: String,
-    _project_id: String,
+    _game_id: String,
     _confirmed_faction_id: String,
     _raw_report: String,
     _allow_overwrite: bool,
 ) -> Result<JsValue, JsValue> {
     Err(JsValue::from_str(
-        "project persistence is not linked in this wasm32 build",
+        "game persistence is not linked in this wasm32 build",
     ))
 }
 
@@ -727,28 +721,28 @@ pub fn commit_report_import_state(
 #[cfg(target_arch = "wasm32")]
 pub fn load_imported_turn_state(
     _database_path: String,
-    _project_id: String,
+    _game_id: String,
     _faction_id: String,
     _turn_number: u32,
 ) -> Result<JsValue, JsValue> {
     Err(JsValue::from_str(
-        "project persistence is not linked in this wasm32 build",
+        "game persistence is not linked in this wasm32 build",
     ))
 }
 
-/// Saves one order draft, keyed by project, faction and turn.
+/// Saves one order draft, keyed by game, faction and turn.
 #[wasm_bindgen]
 #[cfg(target_arch = "wasm32")]
 pub fn save_order_draft_state(
     _database_path: String,
-    _project_id: String,
+    _game_id: String,
     _faction_id: String,
     _turn_number: u32,
     _order_text: String,
     _updated_at: String,
 ) -> Result<JsValue, JsValue> {
     Err(JsValue::from_str(
-        "project persistence is not linked in this wasm32 build",
+        "game persistence is not linked in this wasm32 build",
     ))
 }
 
@@ -757,12 +751,12 @@ pub fn save_order_draft_state(
 #[cfg(target_arch = "wasm32")]
 pub fn load_order_draft_state(
     _database_path: String,
-    _project_id: String,
+    _game_id: String,
     _faction_id: String,
     _turn_number: u32,
 ) -> Result<JsValue, JsValue> {
     Err(JsValue::from_str(
-        "project persistence is not linked in this wasm32 build",
+        "game persistence is not linked in this wasm32 build",
     ))
 }
 
@@ -807,7 +801,7 @@ mod tests {
     fn order_draft_dto_maps_composite_key() {
         let dto = OrderDraftRecordDto::from(OrderDraftRecord {
             key: OrderDraftKey {
-                project_id: "faction-95".to_string(),
+                game_id: "faction-95".to_string(),
                 faction_id: "95".to_string(),
                 turn_number: 71,
             },
@@ -815,7 +809,7 @@ mod tests {
             updated_at: "2026-08-08T12:00:00Z".to_string(),
         });
 
-        assert_eq!(dto.key.project_id, "faction-95");
+        assert_eq!(dto.key.game_id, "faction-95");
         assert_eq!(dto.key.faction_id, "95");
         assert_eq!(dto.key.turn_number, 71);
         assert_eq!(dto.order_text, "@study obse");
@@ -825,11 +819,11 @@ mod tests {
     #[cfg(not(target_arch = "wasm32"))]
     #[test]
     fn persistence_dto_maps_bidirectionally() {
-        let dto = ProjectManifestDto {
+        let dto = GameManifestDto {
             manifest_version: 1,
-            metadata: ProjectMetadataDto {
-                project_id: "faction-7".to_string(),
-                project_name: "Faction 7".to_string(),
+            metadata: GameMetadataDto {
+                game_id: "faction-7".to_string(),
+                game_name: "Faction 7".to_string(),
             },
             report_sources: vec![ReportSourceRefDto {
                 source_id: "report-7".to_string(),
@@ -837,20 +831,20 @@ mod tests {
             }],
         };
 
-        let manifest = ProjectManifest::from(dto.clone());
-        assert_eq!(ProjectManifestDto::from(manifest), dto);
+        let manifest = GameManifest::from(dto.clone());
+        assert_eq!(GameManifestDto::from(manifest), dto);
     }
 
     #[cfg(not(target_arch = "wasm32"))]
     #[test]
-    fn create_project_state_can_be_reopened() {
+    fn create_game_state_can_be_reopened() {
         let dir = tempdir().expect("tempdir");
-        let project_path = dir.path().join("web.atlantis-project.json");
-        let manifest = ProjectManifest {
+        let game_path = dir.path().join("web.atlantis-game.json");
+        let manifest = GameManifest {
             manifest_version: 1,
-            metadata: ProjectMetadata {
-                project_id: "faction-web".to_string(),
-                project_name: "Faction Web".to_string(),
+            metadata: GameMetadata {
+                game_id: "faction-web".to_string(),
+                game_name: "Faction Web".to_string(),
             },
             report_sources: vec![ReportSourceRef {
                 source_id: "report-web".to_string(),
@@ -858,8 +852,8 @@ mod tests {
             }],
         };
 
-        let created = create_project(&project_path, &manifest).expect("project should be created");
-        let reopened = open_project(&project_path).expect("project should reopen");
+        let created = create_game(&game_path, &manifest).expect("game should be created");
+        let reopened = open_game(&game_path).expect("game should reopen");
         assert_eq!(created.schema_version, reopened.schema_version);
         assert_eq!(reopened.manifest, manifest);
     }

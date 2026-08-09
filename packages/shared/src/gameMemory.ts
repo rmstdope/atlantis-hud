@@ -1,13 +1,13 @@
 /**
  * Remembering the map across turns.
  *
- * The workspace had no project concept at all: it parsed a report and drew it, and everything the
+ * The workspace had no game concept at all: it parsed a report and drew it, and everything the
  * faction had seen in earlier turns stayed on disk unread. That is why the map stopped at the fringe
  * of the current report, and why no route could be longer than one step - a report describes its
  * neighbours but not theirs.
  *
  * This is deliberately a plain module rather than something the component does inline, so the parts
- * that can go wrong - a project that will not open, an import that will not commit - are testable
+ * that can go wrong - a game that will not open, an import that will not commit - are testable
  * without rendering anything.
  */
 
@@ -15,50 +15,50 @@ import type { CoreClient, ParsedReport, RememberedRegion } from "@atlantis/core-
 import type { StoredRegion } from "./hexMapModel";
 
 /**
- * Where a faction's project lives.
+ * Where a faction's game lives.
  *
- * One project per faction, named after it. The player never chose a path and should not have to:
- * a report names its own faction, which is enough to know which project it belongs to.
+ * One game per faction, named after it. The player never chose a path and should not have to:
+ * a report names its own faction, which is enough to know which game it belongs to.
  */
-export function projectPathFor(factionId: string): string {
-  return `atlantis-hud/faction-${factionId}.atlantis-project.json`;
+export function gamePathFor(factionId: string): string {
+  return `atlantis-hud/faction-${factionId}.atlantis-game.json`;
 }
 
-/** The identity a project is addressed by, once it is open. */
-export type OpenProject = {
-  projectFilePath: string;
+/** The identity a game is addressed by, once it is open. */
+export type OpenGame = {
+  gameFilePath: string;
   databasePath: string;
-  projectId: string;
+  gameId: string;
   factionId: string;
 };
 
 /**
- * Opens the project for a faction, creating it the first time.
+ * Opens the game for a faction, creating it the first time.
  *
- * Opening is tried first because it is the common case; only a project that is not there yet is
+ * Opening is tried first because it is the common case; only a game that is not there yet is
  * created. Both are ordinary outcomes, so neither is reported as an error.
  */
-export async function openOrCreateProject(
+export async function openOrCreateGame(
   client: CoreClient,
   factionId: string,
   factionName: string
-): Promise<OpenProject> {
-  const projectFilePath = projectPathFor(factionId);
-  const projectId = `faction-${factionId}`;
+): Promise<OpenGame> {
+  const gameFilePath = gamePathFor(factionId);
+  const gameId = `faction-${factionId}`;
 
-  const opened = await client.openProject(projectFilePath).catch(() => null);
-  const project =
+  const opened = await client.openGame(gameFilePath).catch(() => null);
+  const game =
     opened ??
-    (await client.createProject(projectFilePath, {
+    (await client.createGame(gameFilePath, {
       manifestVersion: 1,
-      metadata: { projectId, projectName: factionName },
+      metadata: { gameId, gameName: factionName },
       reportSources: []
     }));
 
   return {
-    projectFilePath: project.projectFilePath,
-    databasePath: project.databasePath,
-    projectId,
+    gameFilePath: game.gameFilePath,
+    databasePath: game.databasePath,
+    gameId,
     factionId
   };
 }
@@ -83,7 +83,7 @@ export function toStoredRegions(remembered: RememberedRegion[]): StoredRegion[] 
 
 /** What remembering a turn produced, and anything that went wrong doing it. */
 export type MemoryOutcome = {
-  project: OpenProject | null;
+  game: OpenGame | null;
   /**
    * Everywhere the faction has been, as the core keeps it.
    *
@@ -97,7 +97,7 @@ export type MemoryOutcome = {
 };
 
 /**
- * Commits a report to the project and reads back everything the faction has ever seen.
+ * Commits a report to the game and reads back everything the faction has ever seen.
  *
  * Failing to remember a turn is a warning rather than an error. The report in front of the player
  * parsed perfectly well, and refusing to show it because a database would not open would be trading
@@ -111,14 +111,14 @@ export async function rememberTurn(
   const factionId = parsed.header.factionId;
   if (!factionId) {
     return {
-      project: null,
+      game: null,
       remembered: [],
       warning: "the report does not name its faction, so it cannot be remembered"
     };
   }
 
   try {
-    const project = await openOrCreateProject(
+    const game = await openOrCreateGame(
       client,
       factionId,
       parsed.header.factionName ?? `Faction ${factionId}`
@@ -127,24 +127,24 @@ export async function rememberTurn(
     // Overwriting is right here: re-importing the same turn should refresh what is remembered
     // rather than refuse, and the player has already chosen this file.
     await client.commitReportImport(
-      project.databasePath,
-      project.projectId,
+      game.databasePath,
+      game.gameId,
       factionId,
       rawReport,
       true
     );
 
     const remembered = await client.loadRegionSightings(
-      project.databasePath,
-      project.projectId,
+      game.databasePath,
+      game.gameId,
       factionId
     );
 
-    return { project, remembered, warning: null };
+    return { game, remembered, warning: null };
   } catch (error: unknown) {
     const detail = error instanceof Error ? error.message : String(error);
     return {
-      project: null,
+      game: null,
       remembered: [],
       warning: `the turn could not be remembered: ${detail}`
     };

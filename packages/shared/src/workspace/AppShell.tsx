@@ -7,7 +7,7 @@ import type {
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { buildHexMapModel, unitsForHex, type HexMapModel } from "../hexMapModel";
 import { readUnitOrders, writeUnitOrders } from "../ordersDocument";
-import { rememberTurn, toStoredRegions } from "../projectMemory";
+import { rememberTurn, toStoredRegions } from "../gameMemory";
 import { useWorkspaceStore } from "../workspaceStore";
 import { AppHeader, type ImportStatus } from "./AppHeader";
 import { LayerChips } from "./LayerChips";
@@ -141,7 +141,7 @@ export function AppShell({
         setOrdersDocument(report.ordersTemplate?.text ?? "");
         setSavedAt(null);
 
-        // Commit the turn to the faction's project and read back every region it has ever seen.
+        // Commit the turn to the faction's game and read back every region it has ever seen.
         // A report on its own describes the hexes the faction stood in and names their neighbours,
         // but not *their* neighbours - so without this the map stops at the fringe and no route can
         // be longer than one step. Failing to remember is a warning, never a reason to withhold a
@@ -308,7 +308,7 @@ export function AppShell({
     <div className="flex h-full flex-col bg-ground text-ink">
       <AppHeader
         platformLabel={platformLabel}
-        projectName={parsed ? "current turn" : null}
+        gameName={parsed ? "current turn" : null}
         factionLabel={factionLabel}
         turnLabel={turnLabel}
         status={status}

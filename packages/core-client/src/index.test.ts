@@ -57,7 +57,7 @@ describe("core client adapter contract parity", () => {
     };
     const orderDraftPayload = {
       key: {
-        project_id: "faction-12",
+        game_id: "faction-12",
         faction_id: "17",
         turn_number: 12
       },
@@ -66,22 +66,22 @@ describe("core client adapter contract parity", () => {
     };
     const importedTurnPayload = {
       key: {
-        project_id: "faction-12",
+        game_id: "faction-12",
         faction_id: "17",
         turn_number: 12
       },
       raw_report: "TURN: 12 Spring\nFACTION: 17 | Crimson Tide\nREGION: A1 | Coast of Dawn",
       parse_result: parsePayload
     };
-    const openedProjectPayload = {
-      project_file_path: "/tmp/campaign.atlantis-project.json",
-      database_path: "/tmp/campaign.atlantis-project.sqlite",
+    const openedGamePayload = {
+      game_file_path: "/tmp/campaign.atlantis-game.json",
+      database_path: "/tmp/campaign.atlantis-game.sqlite",
       schema_version: 2,
       manifest: {
         manifest_version: 1,
         metadata: {
-          project_id: "faction-12",
-          project_name: "Faction 12"
+          game_id: "faction-12",
+          game_name: "Faction 12"
         },
         report_sources: [
           {
@@ -129,11 +129,11 @@ describe("core client adapter contract parity", () => {
           max_faction_count: 128
         };
       },
-      create_project_state() {
-        return openedProjectPayload;
+      create_game_state() {
+        return openedGamePayload;
       },
-      open_project_state() {
-        return openedProjectPayload;
+      open_game_state() {
+        return openedGamePayload;
       },
       parse_report_full_state() {
       return { header: {}, regions: [], ordersTemplate: null };
@@ -267,7 +267,7 @@ describe("core client adapter contract parity", () => {
       if (command === "load_order_draft" || command === "save_order_draft") {
         return Promise.resolve({
           key: {
-            projectId: "faction-12",
+            gameId: "faction-12",
             factionId: "17",
             turnNumber: 12
           },
@@ -278,7 +278,7 @@ describe("core client adapter contract parity", () => {
       if (command === "load_imported_turn") {
         return Promise.resolve({
           key: {
-            projectId: "faction-12",
+            gameId: "faction-12",
             factionId: "17",
             turnNumber: 12
           },
@@ -304,14 +304,14 @@ describe("core client adapter contract parity", () => {
         } as T);
       }
       return Promise.resolve({
-        projectFilePath: "/tmp/campaign.atlantis-project.json",
-        databasePath: "/tmp/campaign.atlantis-project.sqlite",
+        gameFilePath: "/tmp/campaign.atlantis-game.json",
+        databasePath: "/tmp/campaign.atlantis-game.sqlite",
         schemaVersion: 2,
         manifest: {
           manifestVersion: 1,
           metadata: {
-            projectId: "faction-12",
-            projectName: "Faction 12"
+            gameId: "faction-12",
+            gameName: "Faction 12"
           },
           reportSources: [
             {
@@ -341,24 +341,24 @@ describe("core client adapter contract parity", () => {
       wasmClient.parseReport("TURN: 12 Spring\nFACTION: 17 | Crimson Tide\nREGION: R1 | Coast of Dawn")
     ).resolves.toEqual(await tauriClient.parseReport("same"));
     await expect(
-      wasmClient.previewReportImport("/tmp/campaign.atlantis-project.sqlite", "faction-12", "17", "same")
+      wasmClient.previewReportImport("/tmp/campaign.atlantis-game.sqlite", "faction-12", "17", "same")
     ).resolves.toEqual(
-      await tauriClient.previewReportImport("/tmp/campaign.atlantis-project.sqlite", "faction-12", "17", "same")
+      await tauriClient.previewReportImport("/tmp/campaign.atlantis-game.sqlite", "faction-12", "17", "same")
     );
     await expect(
-      wasmClient.commitReportImport("/tmp/campaign.atlantis-project.sqlite", "faction-12", "17", "same", true)
+      wasmClient.commitReportImport("/tmp/campaign.atlantis-game.sqlite", "faction-12", "17", "same", true)
     ).resolves.toEqual(
-      await tauriClient.commitReportImport("/tmp/campaign.atlantis-project.sqlite", "faction-12", "17", "same", true)
+      await tauriClient.commitReportImport("/tmp/campaign.atlantis-game.sqlite", "faction-12", "17", "same", true)
     );
     await expect(wasmClient.validateOrders("bad input")).resolves.toEqual(await tauriClient.validateOrders("bad input"));
     await expect(
-      wasmClient.loadOrderDraft("/tmp/campaign.atlantis-project.sqlite", "faction-12", "17", 12)
+      wasmClient.loadOrderDraft("/tmp/campaign.atlantis-game.sqlite", "faction-12", "17", 12)
     ).resolves.toEqual(
-      await tauriClient.loadOrderDraft("/tmp/campaign.atlantis-project.sqlite", "faction-12", "17", 12)
+      await tauriClient.loadOrderDraft("/tmp/campaign.atlantis-game.sqlite", "faction-12", "17", 12)
     );
     await expect(
       wasmClient.saveOrderDraft(
-        "/tmp/campaign.atlantis-project.sqlite",
+        "/tmp/campaign.atlantis-game.sqlite",
         "faction-12",
         "17",
         12,
@@ -367,7 +367,7 @@ describe("core client adapter contract parity", () => {
       )
     ).resolves.toEqual(
       await tauriClient.saveOrderDraft(
-        "/tmp/campaign.atlantis-project.sqlite",
+        "/tmp/campaign.atlantis-game.sqlite",
         "faction-12",
         "17",
         12,
@@ -376,9 +376,9 @@ describe("core client adapter contract parity", () => {
       )
     );
     await expect(
-      wasmClient.loadImportedTurn("/tmp/campaign.atlantis-project.sqlite", "faction-12", "17", 12)
+      wasmClient.loadImportedTurn("/tmp/campaign.atlantis-game.sqlite", "faction-12", "17", 12)
     ).resolves.toEqual(
-      await tauriClient.loadImportedTurn("/tmp/campaign.atlantis-project.sqlite", "faction-12", "17", 12)
+      await tauriClient.loadImportedTurn("/tmp/campaign.atlantis-game.sqlite", "faction-12", "17", 12)
     );
   });
 });

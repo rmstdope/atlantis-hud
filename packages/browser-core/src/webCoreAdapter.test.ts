@@ -71,7 +71,7 @@ function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
 }
 
 const REPORT = "TURN: 12 Spring\nFACTION: 17 | Crimson Tide";
-const DB = "idb://project";
+const DB = "idb://game";
 
 describe("web core adapter", () => {
   it("routes logic calls to the core rather than to storage", async () => {
@@ -171,13 +171,13 @@ describe("web core adapter", () => {
     });
   });
 
-  it("keeps projects apart even when they share a project id", async () => {
+  it("keeps games apart even when they share a game id", async () => {
     const store = createMemoryWebStore();
     const adapter = createWebCoreAdapter(fakeWasm(), store);
 
     await adapter.commitReportImport("idb://campaign-a", "p", "17", REPORT, false);
 
-    // Same projectId, different project: must not be seen as a duplicate, and must not collide.
+    // Same gameId, different game: must not be seen as a duplicate, and must not collide.
     const preview = await adapter.previewReportImport("idb://campaign-b", "p", "17", REPORT);
     expect(preview).toMatchObject({ duplicatePreview: { exists: false } });
 
@@ -189,7 +189,7 @@ describe("web core adapter", () => {
     expect(b).toMatchObject({ rawReport: `${REPORT}\nextra` });
   });
 
-  it("keeps order drafts apart across projects sharing a project id", async () => {
+  it("keeps order drafts apart across games sharing a game id", async () => {
     const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
 
     await adapter.saveOrderDraft("idb://campaign-a", "p", "17", 12, "@work", "t0");
@@ -210,7 +210,7 @@ describe("web core adapter", () => {
     const loaded = await adapter.loadImportedTurn(DB, "p", "17", 12);
 
     expect(loaded).toMatchObject({
-      key: { projectId: "p", factionId: "17", turnNumber: 12 },
+      key: { gameId: "p", factionId: "17", turnNumber: 12 },
       parseResult: { hydratedFrom: `parsed:${REPORT}` }
     });
   });
@@ -226,7 +226,7 @@ describe("web core adapter", () => {
     await adapter.saveOrderDraft(DB, "p", "17", 12, "@work", "2026-08-08T00:00:00Z");
 
     expect(await adapter.loadOrderDraft(DB, "p", "17", 12)).toEqual({
-      key: { projectId: "p", factionId: "17", turnNumber: 12 },
+      key: { gameId: "p", factionId: "17", turnNumber: 12 },
       orderText: "@work",
       updatedAt: "2026-08-08T00:00:00Z"
     });
@@ -237,22 +237,22 @@ describe("web core adapter", () => {
     expect(await adapter.loadOrderDraft(DB, "p", "17", 12)).toBeNull();
   });
 
-  it("refuses to create a project over an existing one", async () => {
+  it("refuses to create a game over an existing one", async () => {
     const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
     const manifest = {
       manifestVersion: 1,
-      metadata: { projectId: "p", projectName: "P" },
+      metadata: { gameId: "p", gameName: "P" },
       reportSources: []
     };
 
-    await adapter.createProject("/p.json", manifest);
+    await adapter.createGame("/p.json", manifest);
 
-    await expect(adapter.createProject("/p.json", manifest)).rejects.toThrow(/already exists/u);
+    await expect(adapter.createGame("/p.json", manifest)).rejects.toThrow(/already exists/u);
   });
 
-  it("fails to open a project that was never created", async () => {
+  it("fails to open a game that was never created", async () => {
     const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
-    await expect(adapter.openProject("/missing.json")).rejects.toThrow(/does not exist/u);
+    await expect(adapter.openGame("/missing.json")).rejects.toThrow(/does not exist/u);
   });
 });
 
@@ -340,8 +340,8 @@ describe("remembering the map across turns", () => {
   it("skips a memory it cannot read rather than failing the lot", async () => {
     const store = createMemoryWebStore();
     await store.putRegionSightings([
-      { databasePath: "/db", projectId: "p", factionId: "12", regionId: "1:1,1", lastSeenTurn: 9, payloadJson: "{" },
-      { databasePath: "/db", projectId: "p", factionId: "12", regionId: "1:2,2", lastSeenTurn: 9, payloadJson: '{"regionId":"1:2,2"}' }
+      { databasePath: "/db", gameId: "p", factionId: "12", regionId: "1:1,1", lastSeenTurn: 9, payloadJson: "{" },
+      { databasePath: "/db", gameId: "p", factionId: "12", regionId: "1:2,2", lastSeenTurn: 9, payloadJson: '{"regionId":"1:2,2"}' }
     ]);
     const adapter = createWebCoreAdapter(fakeWasm(), store);
 

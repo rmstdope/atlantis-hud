@@ -3,12 +3,12 @@
     feature = "desktop-runtime"
 ))]
 use atlantis_hud_core_tauri::{
-    command_commit_report_import, command_create_project, command_load_imported_turn,
-    command_load_order_draft, command_open_project, command_parse_report,
-    command_parse_report_full, command_preview_report_import, command_save_order_draft,
-    command_validate_orders, ImportedTurnPreviewDto, ImportedTurnRecordDto, OpenedProjectDto,
-    OrderDraftRecordDto, OrderValidationResultDto, ParsedReport, ProjectManifestDto,
-    ReportImportPreviewDto, ReportParseResultDto,
+    command_commit_report_import, command_create_game, command_load_imported_turn,
+    command_load_order_draft, command_open_game, command_parse_report, command_parse_report_full,
+    command_preview_report_import, command_save_order_draft, command_validate_orders,
+    GameManifestDto, ImportedTurnPreviewDto, ImportedTurnRecordDto, OpenedGameDto,
+    OrderDraftRecordDto, OrderValidationResultDto, ParsedReport, ReportImportPreviewDto,
+    ReportParseResultDto,
 };
 #[cfg(all(
     any(target_os = "macos", target_os = "windows"),
@@ -30,11 +30,8 @@ fn get_engine_info() -> EngineInfoDto {
     feature = "desktop-runtime"
 ))]
 #[tauri::command(rename_all = "snake_case")]
-fn create_project(
-    project_file_path: String,
-    manifest: ProjectManifestDto,
-) -> Result<OpenedProjectDto, String> {
-    command_create_project(&project_file_path, manifest)
+fn create_game(game_file_path: String, manifest: GameManifestDto) -> Result<OpenedGameDto, String> {
+    command_create_game(&game_file_path, manifest)
 }
 
 #[cfg(all(
@@ -42,8 +39,8 @@ fn create_project(
     feature = "desktop-runtime"
 ))]
 #[tauri::command(rename_all = "snake_case")]
-fn open_project(project_file_path: String) -> Result<OpenedProjectDto, String> {
-    command_open_project(&project_file_path)
+fn open_game(game_file_path: String) -> Result<OpenedGameDto, String> {
+    command_open_game(&game_file_path)
 }
 
 #[cfg(all(
@@ -71,10 +68,10 @@ fn parse_report_classified(raw_report: String, ruleset_json: String) -> ParsedRe
 #[tauri::command(rename_all = "snake_case")]
 fn load_region_sightings(
     database_path: String,
-    project_id: String,
+    game_id: String,
     faction_id: String,
 ) -> Result<Vec<atlantis_hud_core_tauri::RememberedRegionDto>, String> {
-    atlantis_hud_core_tauri::command_load_region_sightings(&database_path, &project_id, &faction_id)
+    atlantis_hud_core_tauri::command_load_region_sightings(&database_path, &game_id, &faction_id)
 }
 
 #[cfg(all(
@@ -114,16 +111,11 @@ fn parse_report_full(raw_report: String) -> ParsedReport {
 #[tauri::command(rename_all = "snake_case")]
 fn preview_report_import(
     database_path: String,
-    project_id: String,
+    game_id: String,
     confirmed_faction_id: String,
     raw_report: String,
 ) -> Result<ReportImportPreviewDto, String> {
-    command_preview_report_import(
-        &database_path,
-        &project_id,
-        &confirmed_faction_id,
-        &raw_report,
-    )
+    command_preview_report_import(&database_path, &game_id, &confirmed_faction_id, &raw_report)
 }
 
 #[cfg(all(
@@ -133,14 +125,14 @@ fn preview_report_import(
 #[tauri::command(rename_all = "snake_case")]
 fn commit_report_import(
     database_path: String,
-    project_id: String,
+    game_id: String,
     confirmed_faction_id: String,
     raw_report: String,
     allow_overwrite: bool,
 ) -> Result<ImportedTurnPreviewDto, String> {
     command_commit_report_import(
         &database_path,
-        &project_id,
+        &game_id,
         &confirmed_faction_id,
         &raw_report,
         allow_overwrite,
@@ -154,11 +146,11 @@ fn commit_report_import(
 #[tauri::command(rename_all = "snake_case")]
 fn load_imported_turn(
     database_path: String,
-    project_id: String,
+    game_id: String,
     faction_id: String,
     turn_number: u32,
 ) -> Result<Option<ImportedTurnRecordDto>, String> {
-    command_load_imported_turn(&database_path, &project_id, &faction_id, turn_number)
+    command_load_imported_turn(&database_path, &game_id, &faction_id, turn_number)
 }
 
 #[cfg(all(
@@ -177,7 +169,7 @@ fn validate_orders(raw_orders: String) -> OrderValidationResultDto {
 #[tauri::command(rename_all = "snake_case")]
 fn save_order_draft(
     database_path: String,
-    project_id: String,
+    game_id: String,
     faction_id: String,
     turn_number: u32,
     order_text: String,
@@ -185,7 +177,7 @@ fn save_order_draft(
 ) -> Result<OrderDraftRecordDto, String> {
     command_save_order_draft(
         &database_path,
-        &project_id,
+        &game_id,
         &faction_id,
         turn_number,
         &order_text,
@@ -200,11 +192,11 @@ fn save_order_draft(
 #[tauri::command(rename_all = "snake_case")]
 fn load_order_draft(
     database_path: String,
-    project_id: String,
+    game_id: String,
     faction_id: String,
     turn_number: u32,
 ) -> Result<Option<OrderDraftRecordDto>, String> {
-    command_load_order_draft(&database_path, &project_id, &faction_id, turn_number)
+    command_load_order_draft(&database_path, &game_id, &faction_id, turn_number)
 }
 
 #[cfg(all(
@@ -215,8 +207,8 @@ fn main() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
             get_engine_info,
-            create_project,
-            open_project,
+            create_game,
+            open_game,
             parse_report,
             parse_report_full,
             preview_report_import,
