@@ -604,11 +604,19 @@ export function AppShell({
 
     let cancelled = false;
     const timer = setTimeout(() => {
-      void client.validateOrders(ordersDocument).then((result) => {
-        if (!cancelled) {
-          setValidated({ text: ordersDocument, diagnostics: result.diagnostics });
-        }
-      });
+      void client
+        .validateOrders(ordersDocument)
+        .then((result) => {
+          if (!cancelled) {
+            setValidated({ text: ordersDocument, diagnostics: result.diagnostics });
+          }
+        })
+        // A validation that will not run leaves the last one standing rather than replacing it with
+        // an empty verdict. Saying "0 errors" because the check failed is the one answer worse than
+        // an answer a few keystrokes old, and validation is advisory in any case - the server has
+        // the last word on every order. Without this the rejection is unhandled and the state stays
+        // stale anyway, silently.
+        .catch(() => undefined);
     }, 300);
 
     return () => {

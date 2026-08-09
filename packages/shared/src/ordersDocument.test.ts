@@ -225,6 +225,16 @@ describe("dropping the server's unit descriptions", () => {
     expect(stripUnitComments(withRepeat)).toBe(withRepeat);
   });
 
+  it("goes by the first non-blank character, so indentation hides nothing and spares nothing", () => {
+    const indented = ["unit 793", "  ;an indented description", "  @;keep me", "@study obse"].join(
+      "\n"
+    );
+
+    expect(stripUnitComments(indented)).toBe(
+      ["unit 793", "  @;keep me", "@study obse"].join("\n")
+    );
+  });
+
   it("leaves a document that carries no descriptions exactly as it was", () => {
     const plain = ["#atlantis 73 \"secret\"", "unit 793", "@study obse", "#end"].join("\n");
     expect(stripUnitComments(plain)).toBe(plain);

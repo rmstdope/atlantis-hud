@@ -90,7 +90,9 @@ export function OrdersPanel({
       ? []
       : diagnosticsForUnit(validated.text, unitId, validated.diagnostics);
   const here = summarizeOrderValidation({ diagnostics: problems });
-  const documentErrors = summarizeOrderValidation(validated).errorCount;
+  // What the rest of the faction has wrong, counted apart from this unit's own. A whole-document
+  // total sitting beside a per-unit count reads as though the two should be added together.
+  const elsewhere = summarizeOrderValidation(validated).errorCount - here.errorCount;
 
   return (
     <CollapsiblePanel
@@ -126,8 +128,8 @@ export function OrdersPanel({
             <span className={here.warningCount > 0 ? "text-warn" : "text-ok"}>
               {here.warningCount} warning{here.warningCount === 1 ? "" : "s"}
             </span>
-            {documentErrors > here.errorCount ? (
-              <span className="text-ink-dim">{documentErrors} in document</span>
+            {elsewhere > 0 ? (
+              <span className="text-ink-dim">{elsewhere} elsewhere</span>
             ) : null}
             <span className="flex-1" />
             <SaveNotice save={save} />

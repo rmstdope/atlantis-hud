@@ -127,8 +127,9 @@ export function writeUnitOrders(document: string, unitId: string, orders: string
  * yet it is the entire contents.
  *
  * Only inside a block, which is what spares the region banners and the `#atlantis` line. Only a
- * line whose first character is `;`, which is what spares `@;` - a repeating comment is an order
- * the server acts on rather than something it wrote.
+ * line whose first non-blank character is `;`, which is what spares `@;` - a repeating comment is
+ * an order the server acts on rather than something it wrote. Leading blanks are ignored because
+ * the server indents a description's continuation lines and a player may indent anything.
  *
  * Meant for a template as it arrives, not for a document already in play: a `;` line in a saved
  * draft was typed by the player and is theirs to keep.

@@ -151,7 +151,8 @@ test("a bad order names itself, and belongs to the unit that carries it", async 
   await selectUnit(page, "13401");
   await expect(page.getByTestId("orders-diagnostic")).toHaveCount(0);
   await expect(page.getByTestId("orders-status")).toContainText("0 errors");
-  await expect(page.getByTestId("orders-status")).toContainText("1 in document");
+  // Counted apart from this unit's own, so the two figures are never added up by mistake.
+  await expect(page.getByTestId("orders-status")).toContainText("1 elsewhere");
 });
 
 test("a foreign unit can be inspected but not ordered", async ({ page }) => {
