@@ -11,6 +11,20 @@ type Lock =
   | { kind: "not-in-turn"; lastSeenTurn: number | null }
   | { kind: "no-block" };
 
+/**
+ * Where the document stands with storage.
+ *
+ * Four states rather than a timestamp, because the panel used to show one that was made out of
+ * `new Date()` and meant nothing. "failed" carries its reason: orders are the player's own typed
+ * work, and a write that fails silently is the one failure that loses it.
+ */
+export type SaveState =
+  | { kind: "clean" }
+  | { kind: "dirty" }
+  | { kind: "saving" }
+  | { kind: "saved"; at: string }
+  | { kind: "failed"; reason: string };
+
 type OrdersPanelProps = {
   unit: ReportUnit | null;
   hex: HexNode | null;
@@ -20,7 +34,7 @@ type OrdersPanelProps = {
   onChange: (unitId: string, orders: string) => void;
   errorCount: number;
   warningCount: number;
-  savedAt: string | null;
+  save: SaveState;
 };
 
 function lockFor(unit: ReportUnit | null, hex: HexNode | null, block: string | null): Lock | null {
@@ -53,7 +67,7 @@ export function OrdersPanel({
   onChange,
   errorCount,
   warningCount,
-  savedAt
+  save
 }: OrdersPanelProps) {
   const unitId = unit?.unitId ?? null;
   const block = unitId === null ? null : readUnitOrders(document, unitId);
@@ -102,12 +116,33 @@ export function OrdersPanel({
               {warningCount} warning{warningCount === 1 ? "" : "s"}
             </span>
             <span className="flex-1" />
-            <span>{savedAt ? `saved ${savedAt}` : "not saved yet"}</span>
+            <SaveNotice save={save} />
           </p>
         </div>
       )}
     </CollapsiblePanel>
   );
+}
+
+/**
+ * What the document's last dealings with storage were.
+ *
+ * A failure is coloured and left standing rather than fading back to "unsaved changes": the player
+ * needs to know their evening is not on disk, and needs to know why.
+ */
+function SaveNotice({ save }: { save: SaveState }) {
+  switch (save.kind) {
+    case "clean":
+      return <span>not saved yet</span>;
+    case "dirty":
+      return <span className="text-warn">unsaved changes</span>;
+    case "saving":
+      return <span>saving…</span>;
+    case "saved":
+      return <span>saved {save.at}</span>;
+    case "failed":
+      return <span className="text-danger">could not save: {save.reason}</span>;
+  }
 }
 
 function LockNotice({ lock, ownFaction }: { lock: Lock; ownFaction: string }) {

@@ -6,6 +6,7 @@ export * from "./orderEditor";
 export * from "./ordersDocument";
 export * from "./gameMemory";
 export * from "./gameSession";
+export * from "./orderDraft";
 export * from "./rulesets";
 export * from "./unitComposition";
 

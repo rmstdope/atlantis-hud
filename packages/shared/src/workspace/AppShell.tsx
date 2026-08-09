@@ -6,10 +6,19 @@ import type {
   RememberedRegion,
   RoutePlanResponse
 } from "@atlantis/core-client";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { buildHexMapModel, unitsForHex, type HexMapModel } from "../hexMapModel";
 import { readUnitOrders, writeUnitOrders } from "../ordersDocument";
 import { rememberTurn, toStoredRegions } from "../gameMemory";
+import {
+  AUTOSAVE_CEILING_MS,
+  AUTOSAVE_IDLE_MS,
+  documentFor,
+  draftKeyFor,
+  saveDraft,
+  type DraftKey
+} from "../orderDraft";
+import { shouldTriggerAutosave } from "../orderEditor";
 import {
   gameAfterDelete,
   newGameId,
@@ -23,7 +32,7 @@ import { GameGate } from "./GameGate";
 import { GamePicker } from "./GamePicker";
 import { LayerChips } from "./LayerChips";
 import { MapCanvas } from "./MapCanvas";
-import { OrdersPanel } from "./OrdersPanel";
+import { OrdersPanel, type SaveState } from "./OrdersPanel";
 import { PlannerPanel } from "./PlannerPanel";
 import { RegionPanel } from "./RegionPanel";
 import { UnitPanel } from "./UnitPanel";
@@ -57,6 +66,24 @@ const EMPTY: HexMapModel = {
 };
 
 /**
+ * How a freshly loaded document stands with storage.
+ *
+ * A restored draft is on disk already, so it says so and gives the time it was written. A template
+ * has never been saved, and says that instead. Timestamps are stored in ISO and shown in the
+ * player's own reading of the clock.
+ */
+function savedStateFor(savedAt: string | null): SaveState {
+  if (savedAt === null) {
+    return { kind: "clean" };
+  }
+  const at = new Date(savedAt);
+  return {
+    kind: "saved",
+    at: Number.isNaN(at.getTime()) ? savedAt : at.toLocaleTimeString()
+  };
+}
+
+/**
  * The whole workspace, shared by both platforms.
  *
  * Both shells render this and differ only in which `CoreClient` they hand it, which is what makes
@@ -78,7 +105,7 @@ export function AppShell({
   const [status, setStatus] = useState<ImportStatus | null>(null);
   const [busy, setBusy] = useState(false);
   const [diagnostics, setDiagnostics] = useState({ errors: 0, warnings: 0 });
-  const [savedAt, setSavedAt] = useState<string | null>(null);
+  const [save, setSave] = useState<SaveState>({ kind: "clean" });
   // The planner takes the report as text: the core parses it again in milliseconds, and a stateless
   // call means no session to invalidate when a new turn arrives.
   const [rawReport, setRawReport] = useState("");
@@ -104,6 +131,78 @@ export function AppShell({
   const clearPlan = useWorkspaceStore((state) => state.clearPlan);
   const openGameInStore = useWorkspaceStore((state) => state.openGame);
   const closeGameInStore = useWorkspaceStore((state) => state.closeGame);
+
+  /**
+   * What is waiting to be written, held as one thing.
+   *
+   * The game, the key and the text travel together on purpose. Reading any of them at write time
+   * instead is the bug where importing a new turn while a save is in flight files the previous
+   * turn's orders under the new turn's number - the same document, in the wrong place, with no
+   * undo to reach for. A ref rather than state because a flush has to see the latest text without
+   * waiting for a render, and because the quit handler runs outside React's world entirely.
+   */
+  const pending = useRef<{ game: OpenedGame; key: DraftKey; text: string } | null>(null);
+  /** One write at a time. A forced flush must not overlap the timed one and lose to it. */
+  const writing = useRef<Promise<void> | null>(null);
+  /** When the document first went dirty, which is what the ceiling below is measured from. */
+  const dirtySince = useRef<number | null>(null);
+
+  /**
+   * Writes whatever is waiting, if anything is.
+   *
+   * Idempotent and serialised: called by the idle timer, by the ceiling, by switching games and by
+   * quitting, in any order and sometimes at once. Clearing `pending` before the write rather than
+   * after is what stops two callers writing the same document twice; an edit arriving mid-write
+   * puts a fresh one back and the next call picks it up.
+   */
+  const flush = useCallback(async () => {
+    if (writing.current) {
+      await writing.current;
+    }
+    const waiting = pending.current;
+    if (!waiting) {
+      return;
+    }
+    pending.current = null;
+    dirtySince.current = null;
+    setSave({ kind: "saving" });
+
+    const write = (async () => {
+      const outcome = await saveDraft(
+        client,
+        waiting.game,
+        waiting.key,
+        waiting.text,
+        new Date().toISOString()
+      );
+      if (outcome.warning === null) {
+        setSave({ kind: "saved", at: new Date().toLocaleTimeString() });
+      } else {
+        // Put it back: the text is still unwritten, and the next keystroke or the next flush
+        // should try again rather than treat a failed save as a finished one.
+        pending.current = waiting;
+        dirtySince.current = Date.now();
+        setSave({ kind: "failed", reason: outcome.warning });
+      }
+    })();
+
+    writing.current = write;
+    await write;
+    writing.current = null;
+  }, [client]);
+
+  /** Records an edit and marks the document unwritten. The timers below do the writing. */
+  const markDirty = useCallback(
+    (openGame: OpenedGame | null, key: DraftKey | null, text: string) => {
+      if (!openGame || !key) {
+        return;
+      }
+      pending.current = { game: openGame, key, text };
+      dirtySince.current ??= Date.now();
+      setSave({ kind: "dirty" });
+    },
+    []
+  );
 
   // The map wants remembered regions flattened; the planner wants them as they are. Both come from
   // the same list, so neither can drift out of step with the other.
@@ -148,6 +247,10 @@ export function AppShell({
     async (text: string, fileName: string) => {
       setBusy(true);
       try {
+        // Whatever was being written belongs to the turn that is about to be replaced. Saved before
+        // anything else, because the state below is what tells the flush which draft it is.
+        await flush();
+
         // Classified when the ruleset is to hand, so a unit's men are counted rather than guessed.
         // Without it every unit reads as an estimate, including the single-race majority where the
         // leading-group figure is exactly right.
@@ -158,8 +261,6 @@ export function AppShell({
         setRawReport(text);
         clearPlan();
         setRoute(null);
-        setOrdersDocument(report.ordersTemplate?.text ?? "");
-        setSavedAt(null);
 
         // Commit the turn to the faction's game and read back every region it has ever seen.
         // A report on its own describes the hexes the faction stood in and names their neighbours,
@@ -171,12 +272,22 @@ export function AppShell({
           : { remembered: [], warning: null };
         setRemembered(memory.remembered);
 
+        // Saved orders beat the report's own template, including on opening the same file again.
+        // There is no undo anywhere in this application, and a stray file-open must not silently
+        // erase an evening's work; a new turn's report brings a clean template with it.
+        const template = report.ordersTemplate?.text ?? "";
+        const chosen = game
+          ? await documentFor(client, game, draftKeyFor(report), template)
+          : { text: template, restored: false, savedAt: null, warning: null };
+        setOrdersDocument(chosen.text);
+        setSave(savedStateFor(chosen.savedAt));
+
         const unitCount = report.regions.reduce((total, region) => total + region.units.length, 0);
         setStatus({
           regionCount: report.regions.length,
           unitCount,
           errorCount: report.header.errors.length,
-          message: memory.warning,
+          message: memory.warning ?? chosen.warning ?? (chosen.restored ? "saved orders restored" : null),
           failed: false
         });
 
@@ -254,7 +365,7 @@ export function AppShell({
       setRawReport("");
       setOrdersDocument("");
       setStatus(null);
-      setSavedAt(null);
+      setSave({ kind: "clean" });
       setRoute(null);
       clearPlan();
       openGameInStore({
@@ -272,6 +383,9 @@ export function AppShell({
       setBusy(true);
       setGameError(null);
       try {
+        // Before the workspace lets go of the old game. `enterGame` wipes the document, and
+        // whatever was in it belongs to a game the player is walking away from.
+        await flush();
         enterGame(await client.openGame(gameId, new Date().toISOString()));
         await refreshGames();
         setPickerOpen(false);
@@ -281,7 +395,7 @@ export function AppShell({
         setBusy(false);
       }
     },
-    [client, enterGame, refreshGames]
+    [client, enterGame, refreshGames, flush]
   );
 
   const createGame = useCallback(
@@ -289,6 +403,7 @@ export function AppShell({
       setBusy(true);
       setGameError(null);
       try {
+        await flush();
         const now = new Date().toISOString();
         enterGame(await client.createGame(newGameManifest(name, rulesetId, now, newGameId())));
         await refreshGames();
@@ -299,7 +414,7 @@ export function AppShell({
         setBusy(false);
       }
     },
-    [client, enterGame, refreshGames]
+    [client, enterGame, refreshGames, flush]
   );
 
 
@@ -341,12 +456,20 @@ export function AppShell({
    * Deleting the game on screen leaves the workspace describing something that no longer exists,
    * so the next most recently opened game takes its place - or the gate does, when that was the
    * last one.
+   *
+   * Nothing is flushed on the way out. Deleting the open game destroys the database its orders
+   * would be written to, and the `enterGame` below would otherwise try to save into it on the way
+   * to the next game. Deleting some other game leaves the open document exactly where it was.
    */
   const deleteGame = useCallback(
     async (gameId: string) => {
       setBusy(true);
       setGameError(null);
       try {
+        if (game?.manifest.metadata.gameId === gameId) {
+          pending.current = null;
+          dirtySince.current = null;
+        }
         await client.deleteGame(gameId);
         const remaining = await client.listGames();
         setGames(remaining);
@@ -426,10 +549,19 @@ export function AppShell({
     return () => clearTimeout(timer);
   }, [client, ordersDocument]);
 
-  const onOrdersChange = useCallback((unitId: string, orders: string) => {
-    setOrdersDocument((document) => writeUnitOrders(document, unitId, orders));
-    setSavedAt(new Date().toLocaleTimeString());
-  }, []);
+  /** The faction and turn the document in front of the player belongs to. */
+  const draftKey = useMemo(() => draftKeyFor(parsed), [parsed]);
+
+  const onOrdersChange = useCallback(
+    (unitId: string, orders: string) => {
+      setOrdersDocument((document) => {
+        const next = writeUnitOrders(document, unitId, orders);
+        markDirty(game, draftKey, next);
+        return next;
+      });
+    },
+    [game, draftKey, markDirty]
+  );
 
   /** Writes a planned route into the selected unit's block, replacing any MOVE already there. */
   const applyRoute = useCallback(
@@ -445,12 +577,47 @@ export function AppShell({
           .join("\n")
           .trim();
         const next = withoutMove ? `${withoutMove}\n${order}` : order;
-        return writeUnitOrders(document, unit.unitId, next);
+        const written = writeUnitOrders(document, unit.unitId, next);
+        markDirty(game, draftKey, written);
+        return written;
       });
-      setSavedAt(new Date().toLocaleTimeString());
     },
-    [unit]
+    [unit, game, draftKey, markDirty]
   );
+
+  /**
+   * The autosave: five seconds after the last keystroke, and thirty at the outside.
+   *
+   * The idle timer re-arms on every edit, which is what keeps a sentence from being written a
+   * character at a time. On its own it has a hole: someone writing steadily for ten minutes never
+   * pauses, so nothing is ever written, and that is exactly the session worth protecting. The
+   * ceiling is measured from when the document first went dirty and is not re-armed, so it closes
+   * that hole without turning the idle rule back into a ticker.
+   */
+  useEffect(() => {
+    if (save.kind !== "dirty") {
+      return undefined;
+    }
+    const since = dirtySince.current ?? Date.now();
+    const idle = window.setTimeout(() => void flush(), AUTOSAVE_IDLE_MS);
+    const ceiling = window.setTimeout(
+      () => {
+        // Asked rather than assumed: a timer scheduled against a wall clock can fire early, and a
+        // machine that slept can fire it very late. The predicate is the rule; the timer only says
+        // when to check it.
+        if (shouldTriggerAutosave(since, Date.now(), AUTOSAVE_CEILING_MS)) {
+          void flush();
+        }
+      },
+      Math.max(0, since + AUTOSAVE_CEILING_MS - Date.now())
+    );
+    return () => {
+      window.clearTimeout(idle);
+      window.clearTimeout(ceiling);
+    };
+    // `ordersDocument` is what re-arms the idle timer: every edit replaces the document, and
+    // `save.kind` alone stays "dirty" across all of them.
+  }, [save.kind, ordersDocument, flush]);
 
   const exportOrders = useCallback(() => {
     const blob = new Blob([ordersDocument], { type: "text/plain" });
@@ -578,7 +745,7 @@ export function AppShell({
                   onChange={onOrdersChange}
                   errorCount={diagnostics.errors}
                   warningCount={diagnostics.warnings}
-                  savedAt={savedAt}
+                  save={save}
                 />
               </div>
             </div>
