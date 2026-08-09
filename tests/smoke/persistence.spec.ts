@@ -59,8 +59,15 @@ async function selectHex(page: Page, regionId: string) {
   await hex.press("Enter");
 }
 
+/** Filtered down first, because the table only builds the rows that are on screen. */
 async function selectUnit(page: Page, unitId: string) {
-  await page.getByTestId(`unit-row-${unitId}`).getByRole("button").click();
+  const box = page.getByLabel("Filter units");
+  await box.fill(unitId);
+  const row = page.getByTestId(`unit-row-${unitId}`);
+  await expect(row).toHaveCount(1);
+  await expect(row).toBeVisible();
+  await row.getByRole("button").click();
+  await box.clear();
 }
 
 /** Puts the orders editor for the player's own unit on screen. */

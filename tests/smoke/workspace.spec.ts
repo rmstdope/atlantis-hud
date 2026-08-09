@@ -20,6 +20,28 @@ const OWN_UNIT = "18642";
 const FOREIGN_UNIT = "12538";
 
 /**
+ * Clicks a unit in the table.
+ *
+ * Scoped to its row rather than found by accessible name: Playwright matches names by substring,
+ * and the orders panel header also reads "unit 18642" once that unit is selected.
+ *
+ * Filtered down to the one unit first, because the table only builds the rows on screen and a unit
+ * sitting three hundred rows down is not in the page to be clicked. This is also how a player
+ * finds one unit among the three hundred in an ocean hex. The two waits matter: the filter matches
+ * on structure id as well as unit id, and typing into it re-renders the table underneath the row
+ * we are about to click.
+ */
+async function selectUnit(page: Page, unitId: string) {
+  const box = page.getByLabel("Filter units");
+  await box.fill(unitId);
+  const row = page.getByTestId(`unit-row-${unitId}`);
+  await expect(row).toHaveCount(1);
+  await expect(row).toBeVisible();
+  await row.getByRole("button").click();
+  await box.clear();
+}
+
+/**
  * Selects a hex the way assistive technology does.
  *
  * The map is a canvas, so each hex also exists as a visually hidden button. Hidden means a mouse
@@ -27,16 +49,6 @@ const FOREIGN_UNIT = "12538";
  * a screen reader user selects one. Driving it this way tests the accessible path rather than
  * bypassing it with a forced click.
  */
-/**
- * Clicks a unit in the table.
- *
- * Scoped to its row rather than found by accessible name: Playwright matches names by substring,
- * and the orders panel header also reads "unit 18642" once that unit is selected.
- */
-async function selectUnit(page: Page, unitId: string) {
-  await page.getByTestId(`unit-row-${unitId}`).getByRole("button").click();
-}
-
 async function selectHex(page: Page, regionId: string) {
   const hex = page.getByRole("button", { name: `hex ${regionId}` });
   await hex.focus();
@@ -254,8 +266,15 @@ test("the unit table filters", async ({ page }) => {
   await loadReport(page);
   await selectHex(page, "1:7,53");
 
+  // Asserting the count, not just that one row went: the table windows its rows, so a unit far
+  // down the list is absent from the page whether it was filtered out or merely scrolled past.
+  // Only "every row but one has gone" tells the two apart.
+  const rows = page.locator("[data-testid^='unit-row-']");
+  expect(await rows.count()).toBeGreaterThan(1);
+
   await page.getByLabel("Filter units").fill("Seven of Eight");
 
+  await expect(rows).toHaveCount(1);
   await expect(page.getByTestId(`unit-row-${OWN_UNIT}`)).toBeVisible();
   await expect(page.getByTestId(`unit-row-${FOREIGN_UNIT}`)).toHaveCount(0);
 });
@@ -525,8 +544,12 @@ test("men are counted rather than guessed once the ruleset is loaded", async ({ 
   await loadReport(page);
   await selectHex(page, "1:7,53");
 
+  // The table windows its rows, so this sweeps what is on screen rather than all 92. The bug it
+  // guards against tilde'd every unit in the hex, the first one included, so a screenful still
+  // catches it — but it is a screenful, not the lot.
   const cells = await page.locator("[data-testid^='unit-row-'] td:nth-child(5)").allInnerTexts();
-  expect(cells.length).toBeGreaterThan(50);
+  expect(cells.length).toBeGreaterThan(5);
+  expect(cells.length).toBeLessThan(50);
   expect(cells.filter((cell) => cell.startsWith("~"))).toEqual([]);
 
   // And a multi-race unit reads as its parts rather than as its largest group.
@@ -534,4 +557,159 @@ test("men are counted rather than guessed once the ruleset is loaded", async ({ 
   await selectUnit(page, "15807");
   await expect(page.getByTestId("panel-unit")).toContainText("99");
   await expect(page.getByTestId("panel-unit")).toContainText("gnolls");
+});
+
+/** The ocean hex the report gives three hundred and eleven units. */
+const CROWDED_HEX = "1:26,52";
+
+/**
+ * The point of issue #27. Selecting this hex used to build 311 rows of eight cells each in one
+ * synchronous render; now it builds what fits on screen and stands in for the rest.
+ */
+test("a hex of three hundred units renders only the rows that fit", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, CROWDED_HEX);
+
+  await expect(page.getByTestId("panel-units")).toContainText("311 units");
+
+  const rows = page.locator("[data-testid^='unit-row-']");
+  const count = await rows.count();
+  expect(count).toBeGreaterThan(5);
+  expect(count).toBeLessThan(50);
+
+  // The whole list is still there to scroll through: the table claims all 311 rows to assistive
+  // technology, the header counting as one of them. It is a grid rather than a table because its
+  // rows are selectable.
+  await expect(page.getByTestId("panel-units").getByRole("grid")).toHaveAttribute(
+    "aria-rowcount",
+    "312"
+  );
+});
+
+/**
+ * Rows are stood in for by spacers of a fixed height, so a row that renders taller than the
+ * constant would drift the list out of alignment — by a pixel a row, which over 311 rows puts the
+ * bottom of the list out of reach.
+ */
+test("a row is exactly as tall as the windowing arithmetic assumes", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+
+  const box = await page.getByTestId(`unit-row-${OWN_UNIT}`).boundingBox();
+  expect(box?.height).toBe(22);
+});
+
+/**
+ * Issue #20 asked for a sortable table and did not deliver one. Sorting must not bury the player's
+ * own units, which is why ownership is compared before the column and never reversed.
+ */
+test("sorting by a column reorders the table, own units still first", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+
+  // Position in the whole list, not position among the rendered rows: only a screenful is built,
+  // so the first row in the page is whatever the window starts at. aria-rowindex counts the header
+  // as row one, so the first unit is row two.
+  const ownRow = page.getByTestId(`unit-row-${OWN_UNIT}`);
+  await expect(ownRow).toHaveAttribute("aria-rowindex", "2");
+
+  // Descending by men puts the biggest stack on top — of the foreign block. Inholm holds exactly
+  // one unit of the player's, and it stays above all 91 others.
+  //
+  // Scoped to the panel: names match by substring, and the planner's "Movement" strip contains
+  // "men" too.
+  const men = page.getByTestId("panel-units").getByRole("button", { name: "Men" });
+  await men.click();
+  await men.click();
+
+  await expect(
+    page.getByTestId("panel-units").getByRole("columnheader", { name: "Men" })
+  ).toHaveAttribute("aria-sort", "descending");
+  await expect(ownRow).toHaveAttribute("aria-rowindex", "2");
+
+  // The column really did reorder: every foreign row on screen runs biggest first.
+  const counts = await page.locator("[data-testid^='unit-row-'] td:nth-child(5)").allInnerTexts();
+  const foreign = counts.slice(1).map((cell) => Number(cell.replace(/[^0-9]/g, "")));
+  expect(foreign.length).toBeGreaterThan(3);
+  expect(foreign).toEqual([...foreign].sort((left, right) => right - left));
+});
+
+/**
+ * The grouping is a default, not a cage: releasing it lets the biggest stack in the hex rise to the
+ * top whoever it belongs to.
+ */
+test("the ownership toggle releases the own-units-first grouping", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+
+  const men = page.getByTestId("panel-units").getByRole("button", { name: "Men" });
+  await men.click();
+  await men.click();
+
+  const ownRow = page.getByTestId(`unit-row-${OWN_UNIT}`);
+  await expect(ownRow).toHaveAttribute("aria-rowindex", "2");
+
+  const grouping = page.getByRole("button", { name: "Group own units first" });
+  await expect(grouping).toHaveAttribute("aria-pressed", "true");
+  await grouping.click();
+  await expect(grouping).toHaveAttribute("aria-pressed", "false");
+
+  // Released, the player's single unit sinks to wherever its headcount puts it among the other
+  // ninety-one. It is still on screen, because the table follows the selection.
+  await expect(ownRow).not.toHaveAttribute("aria-rowindex", "2");
+});
+
+/**
+ * Tab reaches the table once and the arrows take over from there, so a keyboard user is not made
+ * to walk through every unit on screen to get past the dock.
+ *
+ * The last assertion is the one with history: arrowing past the end of the list selects the row
+ * already selected, which re-renders nothing. An earlier version armed a pending focus before
+ * asking for that no-op selection, and the focus was never spent — it was left owing, and landed
+ * on whatever was selected next. Pressing End twice and then selecting a hex would drag focus out
+ * of the map and into the table.
+ */
+test("the units table is navigable by keyboard", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+
+  const firstRow = page.getByTestId(`unit-row-${OWN_UNIT}`);
+  await firstRow.focus();
+  await expect(firstRow).toBeFocused();
+
+  await page.keyboard.press("ArrowDown");
+  await expect(firstRow).not.toBeFocused();
+  await expect(page.locator("[data-testid^='unit-row-'][data-selected='true']")).toHaveAttribute(
+    "aria-rowindex",
+    "3"
+  );
+
+  await page.keyboard.press("ArrowUp");
+  await expect(firstRow).toBeFocused();
+  await expect(firstRow).toHaveAttribute("data-selected", "true");
+
+  // End walks to the bottom of all 92, which is well outside the window it started in.
+  await page.keyboard.press("End");
+  await expect(page.locator("[data-testid^='unit-row-'][data-selected='true']")).toHaveAttribute(
+    "aria-rowindex",
+    "93"
+  );
+
+  // Arrowing past the end is a no-op: same row, so nothing re-renders.
+  await page.keyboard.press("End");
+
+  // Which is where a focus owed from that no-op would be spent. Selecting with the mouse must not
+  // haul focus onto a row: only the arrow keys move focus, because only they asked to.
+  await page.locator("[data-testid^='unit-row-']").first().getByRole("button").click();
+  await expect(page.locator("[data-testid^='unit-row-']:focus")).toHaveCount(0);
+});
+
+/** Filtering everything out used to leave bare column headings over an empty table. */
+test("a filter that matches nothing says so", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+
+  await page.getByLabel("Filter units").fill("no such unit");
+
+  await expect(page.getByTestId("panel-units")).toContainText("No unit matches that filter.");
 });
