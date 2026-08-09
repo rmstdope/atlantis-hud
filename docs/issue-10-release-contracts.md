@@ -33,7 +33,35 @@ The guard is a failing first step rather than a job-level `if:`. A skipped job r
 and a deploy that quietly did not happen is exactly what the guard exists to prevent.
 
 The workflow builds, runs the PWA suite **against the bytes it is about to upload**, and only then
-uploads. CI has already tested the commit, but CI tested a build it made itself.
+uploads. CI has already tested the commit, but CI tested a build it made itself. Afterwards it
+fetches the live site and checks that what came back is this build — an upload can succeed into a
+directory the web server does not serve, and that is the mistake `ONECOM_FTP_SERVER_DIR` invites.
+
+### Uploading is SFTP, not FTPS (issue #43)
+
+The first version of this pipeline used `SamKirkland/FTP-Deploy-Action` over FTPS, on the assumption
+that one.com offers FTPS on every plan. It does not answer FTPS at all — it aborts the TLS handshake
+with `tlsv1 alert internal error` — and the assumption had never been tested, because no credentials
+existed when the pipeline was written.
+
+SFTP runs over SSH, so this was not a flag on the same action: `FTP-Deploy-Action` speaks `ftp`,
+`ftps` and `ftps-legacy` only and cannot reach this host by any configuration.
+
+The replacement is `lftp`, chosen over the various SFTP actions because it authenticates with a
+password without needing an SSH key on the account, and because `mirror` is a recursive upload with
+retries rather than a loop over `put`. The password arrives through `LFTP_PASSWORD` and
+`--env-password` rather than on the command line, where it would be readable by anything that can
+list processes on the runner.
+
+Two settings are deliberate:
+
+- `set cmd:fail-exit yes` stops at the first failing command instead of carrying on to `bye` and
+  exiting on *its* status. A refused connection fails the job either way — measured — but a partial
+  failure part-way through would otherwise report success.
+- **No `--delete`.** Vite names assets by content hash, so an old file is never overwritten by a
+  different one; it simply stops being referenced. Deleting them breaks exactly the client this is
+  most careful about — a browser holding a cached service worker still asking for the previous
+  build's chunk names. They cost kilobytes.
 
 ### The macOS artifact is unsigned
 
@@ -63,10 +91,15 @@ Tauri reads as "sign", and then fails importing a certificate that is not there.
 
 | Name | Kind | What it is |
 | --- | --- | --- |
-| `ONECOM_FTP_SERVER` | secret | one.com FTP hostname |
-| `ONECOM_FTP_USERNAME` | secret | FTP user for the subdomain's webspace |
+| `ONECOM_FTP_SERVER` | secret | one.com SSH/SFTP hostname |
+| `ONECOM_FTP_USERNAME` | secret | SFTP user for the subdomain's webspace |
 | `ONECOM_FTP_PASSWORD` | secret | that user's password |
-| `ONECOM_FTP_SERVER_DIR` | variable | remote directory, **with a trailing slash** |
+| `ONECOM_FTP_SERVER_DIR` | variable | remote directory the domain serves, e.g. `/webroots/36700328/` |
+| `ONECOM_SFTP_PORT` | variable | optional; defaults to 22 |
+
+The `FTP` in those three names is a fossil of the original FTPS design. They were already configured
+when the protocol changed and renaming them would have meant re-entering credentials to no effect,
+so they kept their names. They hold SFTP credentials.
 | `APPLE_*` (six) | secrets | Absent. Signing stays off until they exist. |
 
 `deploy.yml` checks all four before it builds, rather than discovering a missing one at the upload

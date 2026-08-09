@@ -91,16 +91,21 @@ Full detail, and the reasoning, in `docs/issue-10-release-contracts.md`.
 
 Published by hand, from the Actions tab: **Deploy web** → Run workflow, on `main`. It refuses to run
 on any other branch. The job builds, runs the PWA suite against the build it is about to upload, and
-then syncs it over FTPS to `https://atlantis-hud.kurelid.se`.
+then uploads it over SFTP to `https://atlantis-hud.kurelid.se` and checks the live site is serving
+what it just sent.
 
 It needs three secrets and one variable configured on the repository:
 
 | Name | Kind |
 | --- | --- |
-| `ONECOM_FTP_SERVER` | secret |
+| `ONECOM_FTP_SERVER` | secret — the SSH/SFTP hostname |
 | `ONECOM_FTP_USERNAME` | secret |
 | `ONECOM_FTP_PASSWORD` | secret |
-| `ONECOM_FTP_SERVER_DIR` | variable, with a trailing slash |
+| `ONECOM_FTP_SERVER_DIR` | variable — the directory the domain serves |
+| `ONECOM_SFTP_PORT` | variable, optional — defaults to 22 |
+
+The `FTP` in those names is a fossil: the pipeline originally used FTPS, which one.com does not
+answer (#43). They hold SFTP credentials.
 
 ### The desktop application
 
