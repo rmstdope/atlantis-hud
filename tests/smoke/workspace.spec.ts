@@ -2,6 +2,9 @@ import { expect, test, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import { clearGames, createGame } from "./gameSetup";
 import { join } from "node:path";
+// The real constant, not a copy of it: this test exists to catch the rendered height and the
+// windowing arithmetic drifting apart, which a hard-coded 22 here would hide.
+import { ROW_HEIGHT } from "../../packages/shared/src/unitTable";
 
 /**
  * Walks the workspace on a real turn report, in whichever shell the project targets.
@@ -595,8 +598,20 @@ test("a row is exactly as tall as the windowing arithmetic assumes", async ({ pa
   await loadReport(page);
   await selectHex(page, "1:7,53");
 
-  const box = await page.getByTestId(`unit-row-${OWN_UNIT}`).boundingBox();
-  expect(box?.height).toBe(22);
+  // Every rendered row, not one of them: the drift this guards against would come from a cell
+  // whose contents happen to be taller, so measuring only the player's own short row would miss
+  // it. Sampling the whole window costs nothing and covers the claim the comment above makes.
+  const heights = await page
+    .locator("[data-testid^='unit-row-']")
+    .evaluateAll((rows) => rows.map((row) => row.getBoundingClientRect().height));
+
+  expect(heights.length).toBeGreaterThan(5);
+  for (const height of heights) {
+    // Close-to rather than exact: the value is pinned by an inline style, so it is deterministic,
+    // but a bounding box is a float and sub-pixel noise should not fail the suite. The tolerance
+    // is far tighter than the one-pixel drift that would actually break the list.
+    expect(height).toBeCloseTo(ROW_HEIGHT, 1);
+  }
 });
 
 /**

@@ -1,5 +1,13 @@
 import type { ReportUnit } from "@atlantis/core-client";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type ReactNode
+} from "react";
 import type { HexNode } from "../hexMapModel";
 import { unitsForHex } from "../hexMapModel";
 import { describeMenBriefly, whyEstimated } from "../unitComposition";
@@ -80,9 +88,6 @@ export function UnitTableDock({ hex }: { hex: HexNode | null }) {
   }, [scroller, head]);
 
   const regionId = hex?.regionId ?? null;
-  // Everything that changes which rows are on show and in what order. Anything the table is
-  // rearranged by has to be here, or the scroll below is left pointing at the old arrangement.
-  const arrangement = `${regionId}|${sort.column}|${sort.direction}|${sort.groupOwnFirst}|${filter}`;
 
   /**
    * Decides where the table is scrolled to, and is the only thing that does.
@@ -95,6 +100,10 @@ export function UnitTableDock({ hex }: { hex: HexNode | null }) {
    * A selection is followed by the shortest scroll that brings it into view, so a rearrangement
    * that leaves it where it was does not move the table at all. With nothing selected there is
    * nothing to follow, and the top is the only sensible place to be.
+   *
+   * The dependencies are the values themselves rather than a string built from them: `sort` is
+   * state, so it is a fresh object exactly when the ordering changes, and comparing the values
+   * directly cannot confuse two arrangements the way a delimited key could.
    */
   useEffect(() => {
     if (!scroller) {
@@ -115,7 +124,7 @@ export function UnitTableDock({ hex }: { hex: HexNode | null }) {
     // Assigning scrollTop fires its scroll event asynchronously, so the state has to be set here
     // too — otherwise the next render windows from the old offset and the table paints blank.
     setScrollTop(next);
-  }, [scroller, head, selectedIndex, arrangement, visible.length, viewportHeight]);
+  }, [scroller, head, selectedIndex, regionId, sort, filter, visible.length, viewportHeight]);
 
   // Arrowing to a row that was outside the window selects it before it exists, so the focus has to
   // wait for the render that brings it in.
@@ -150,7 +159,7 @@ export function UnitTableDock({ hex }: { hex: HexNode | null }) {
     }
   };
 
-  const onRowKeyDown = (event: React.KeyboardEvent<HTMLTableRowElement>, index: number) => {
+  const onRowKeyDown = (event: KeyboardEvent<HTMLTableRowElement>, index: number) => {
     // The unit id button sits inside the row and bubbles its own key events up here.
     if (event.target !== event.currentTarget) {
       return;
@@ -300,7 +309,7 @@ function Spacer({ rows }: { rows: number }) {
   );
 }
 
-function Th({ children }: { children?: React.ReactNode }) {
+function Th({ children }: { children?: ReactNode }) {
   return (
     // The background is opaque and sits on the cells rather than the row: the panel behind is
     // translucent over the map, and a see-through header would show the rows sliding under it.
@@ -354,7 +363,7 @@ function UnitRow({
   index: number;
   selected: boolean;
   onSelect: () => void;
-  onKeyDown: (event: React.KeyboardEvent<HTMLTableRowElement>, index: number) => void;
+  onKeyDown: (event: KeyboardEvent<HTMLTableRowElement>, index: number) => void;
 }) {
   const skills = unit.skills.map((skill) => `${skill.tag} ${skill.level}`).join(", ");
   const items = unit.items.map((item) => `${item.amount} ${item.tag}`).join(", ");
@@ -411,7 +420,7 @@ function Td({
   className = "",
   title
 }: {
-  children?: React.ReactNode;
+  children?: ReactNode;
   className?: string;
   /** Hover text, used to explain a figure the cell has no room to qualify. */
   title?: string;
