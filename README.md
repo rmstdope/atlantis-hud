@@ -144,6 +144,17 @@ cargo clippy --workspace --all-targets -- -D warnings
   - `create_game`/`open_game`/`list_games`/`delete_game` through both adapters, and migration 0005
     renaming the schema's `project` to `game`
 
+- Issue #28 adds:
+  - `crates/core/src/cache.rs`, which parses a turn once and keeps it, keyed on the report text the
+    caller already passes: the same four thousand lines were being parsed three times per import
+    and once more for every route planned
+  - `region_sightings` in the core, so both platforms build the remembered-region rows the same way
+    and the browser no longer asks for the whole parsed model back just to serialize eleven regions
+  - the longest main-thread block on a report load down from 1204-1945ms to 262-429ms, and the
+    same measurement taken while a route is planned down from 397-1391ms to about 150ms - the
+    second figure mostly because the load it follows got cheaper, so `docs/ruleset-contract.md`
+    says which part of the gain came from where
+
 - Issue #34 adds:
   - order drafts that are actually written — five seconds after the last keystroke, thirty at the
     outside, on switching games and on quitting (`docs/issue-34-persistence-contracts.md`)

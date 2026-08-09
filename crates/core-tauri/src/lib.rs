@@ -12,7 +12,7 @@ use atlantis_hud_core_persistence::{
     load_latest_imported_turn, load_order_draft, load_region_sightings, open_game,
     preview_imported_turn, upsert_imported_turn, upsert_order_draft, upsert_region_sightings,
     GameManifest, GameMetadata, ImportedTurnKey, ImportedTurnPreview, ImportedTurnRecord,
-    OpenedGame, OrderDraftKey, OrderDraftRecord, PersistenceError, RegionSighting, ReportSourceRef,
+    OpenedGame, OrderDraftKey, OrderDraftRecord, PersistenceError, ReportSourceRef,
 };
 use serde::{Deserialize, Serialize};
 
@@ -482,7 +482,11 @@ pub fn command_commit_report_import(
     allow_overwrite: bool,
     imported_at: &str,
 ) -> Result<ImportedTurnPreviewDto, String> {
-    let parse_result = parse_report(raw_report);
+    // Both shapes come off one parse, and that parse is the one the shell already made when it
+    // showed the turn: the flat summary the import rules are decided against and that gets stored,
+    // and the full model the remembered regions are built from further down.
+    let report = atlantis_hud_core::cache::with_global(|cache| cache.report(raw_report));
+    let parse_result = atlantis_hud_core::summarize(&report);
     if let Some(rejection) = reject_import(&parse_result, confirmed_faction_id) {
         return Err(rejection);
     }
@@ -525,21 +529,7 @@ pub fn command_commit_report_import(
     // Regions get their own rows as well as living inside the turn payload, each carrying the turn
     // it was seen in. Without this the map cannot tell a region in the current report from one held
     // over from an earlier turn, which is the difference between two of its four states.
-    let sightings: Vec<RegionSighting> = atlantis_hud_core::report::parse_report_full(raw_report)
-        .regions
-        .iter()
-        .map(|region| RegionSighting {
-            region_id: region.region_id.clone(),
-            x: region.coordinate.x,
-            y: region.coordinate.y,
-            z: region.coordinate.z,
-            terrain: region.terrain.clone(),
-            province: region.province.clone(),
-            label: region.label(),
-            last_seen_turn: turn_number,
-            payload_json: serde_json::to_string(region).unwrap_or_else(|_| "null".to_string()),
-        })
-        .collect();
+    let sightings = atlantis_hud_core::report::sighting::region_sightings(&report, turn_number);
 
     upsert_region_sightings(
         Path::new(database_path),
@@ -738,7 +728,10 @@ pub fn command_load_region_sightings(
 /// it, because parsing has to keep working with no ruleset loaded.
 #[must_use]
 pub fn command_parse_report_classified(raw_report: &str, ruleset_json: &str) -> ParsedReport {
-    atlantis_hud_core::movement::request::parse_and_classify(raw_report, ruleset_json)
+    let report = atlantis_hud_core::cache::with_global(|cache| {
+        atlantis_hud_core::movement::request::parse_and_classify(cache, raw_report, ruleset_json)
+    });
+    (*report).clone()
 }
 
 /// Plans a route for one unit against a ruleset the caller supplies.
@@ -757,13 +750,16 @@ pub fn command_plan_route(
     unit_id: &str,
     destination: &str,
 ) -> Result<atlantis_hud_core::movement::request::RoutePlanResponse, String> {
-    atlantis_hud_core::movement::request::plan_for_remembered_report(
-        ruleset_json,
-        raw_report,
-        remembered_json,
-        unit_id,
-        destination,
-    )
+    atlantis_hud_core::cache::with_global(|cache| {
+        atlantis_hud_core::movement::request::plan_for_remembered_report(
+            cache,
+            ruleset_json,
+            raw_report,
+            remembered_json,
+            unit_id,
+            destination,
+        )
+    })
 }
 
 #[cfg(test)]

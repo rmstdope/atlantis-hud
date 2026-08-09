@@ -45,6 +45,7 @@ function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
           parsedPayloadJson: `parsed:${raw}`,
           warningsPayloadJson: "[]"
         },
+        regionSightings: [],
         parseResult: { raw },
         rejection: !hasTurn
           ? "parsed report did not meet minimum import threshold"
@@ -397,19 +398,44 @@ describe("planning a route", () => {
 
 describe("remembering the map across turns", () => {
   /**
+   * Builds the sighting rows the core hands over with a prepared import.
+   *
+   * These used to be harvested here from a second `parse_report_full_state` call, which meant the
+   * report was parsed a third time and every region was serialized again in JavaScript. The core
+   * has the parsed regions already, so it serializes them once and only the strings cross.
+   */
+  const prepareWith = (
+    regions: Array<{ regionId: string; terrain: string }>
+  ): Partial<CoreWasmModule> => ({
+    prepare_report_import_state: (raw: string) => ({
+      turnNumber: 12,
+      candidate: {
+        rawReport: raw,
+        parsedPayloadJson: `parsed:${raw}`,
+        warningsPayloadJson: "[]"
+      },
+      regionSightings: regions.map((region) => ({
+        regionId: region.regionId,
+        lastSeenTurn: 12,
+        payloadJson: JSON.stringify({ ...region, exits: [] })
+      })),
+      parseResult: { raw },
+      rejection: null
+    })
+  });
+
+  /**
    * The browser's half of what the desktop does into SQLite. Without it the map only ever knows the
    * latest report, and no route can be longer than one step - a report describes its neighbours but
    * not theirs.
    */
   it("remembers every region a committed import described", async () => {
-    const wasm = fakeWasm({
-      parse_report_full_state: () => ({
-        regions: [
-          { regionId: "1:1,1", terrain: "plain", exits: [] },
-          { regionId: "1:2,2", terrain: "mountain", exits: [] }
-        ]
-      })
-    });
+    const wasm = fakeWasm(
+      prepareWith([
+        { regionId: "1:1,1", terrain: "plain" },
+        { regionId: "1:2,2", terrain: "mountain" }
+      ])
+    );
     const adapter = createWebCoreAdapter(wasm, createMemoryWebStore());
 
     await adapter.commitReportImport("/db", "p", "12", "TURN: 12\nFACTION: 12", true, IMPORTED_AT);
@@ -421,14 +447,56 @@ describe("remembering the map across turns", () => {
     ]);
   });
 
+  /**
+   * Committing must not ask the core to read the report again.
+   *
+   * The report has already been parsed by the time this runs - once, for the map, which is the
+   * parse the prepared import then reuses. Reading it again here cost more than that parse did,
+   * because the whole model has to be converted into JavaScript objects to reach this function at
+   * all, only to be thrown away once its regions have been serialized.
+   */
+  it("does not parse the report again to collect its regions", async () => {
+    let fullParses = 0;
+    const wasm = fakeWasm({
+      ...prepareWith([{ regionId: "1:1,1", terrain: "plain" }]),
+      parse_report_full_state: (raw: string) => {
+        fullParses += 1;
+        return { header: {}, regions: [], ordersTemplate: null, raw };
+      }
+    });
+    const adapter = createWebCoreAdapter(wasm, createMemoryWebStore());
+
+    await adapter.commitReportImport("/db", "p", "12", "TURN: 12\nFACTION: 12", true, IMPORTED_AT);
+
+    expect(fullParses).toBe(0);
+    await expect(adapter.loadRegionSightings("/db", "p", "12")).resolves.toHaveLength(1);
+  });
+
   /** A hex seen again replaces the older memory of it rather than accumulating a duplicate. */
   it("keeps one memory per hex, not one per turn", async () => {
     const store = createMemoryWebStore();
-    const seen = (terrain: string) => ({ regions: [{ regionId: "1:1,1", terrain, exits: [] }] });
 
     let terrain = "plain";
     const adapter = createWebCoreAdapter(
-      fakeWasm({ parse_report_full_state: () => seen(terrain) }),
+      fakeWasm({
+        prepare_report_import_state: (raw: string) => ({
+          turnNumber: 12,
+          candidate: {
+            rawReport: raw,
+            parsedPayloadJson: `parsed:${raw}`,
+            warningsPayloadJson: "[]"
+          },
+          regionSightings: [
+            {
+              regionId: "1:1,1",
+              lastSeenTurn: 12,
+              payloadJson: JSON.stringify({ regionId: "1:1,1", terrain, exits: [] })
+            }
+          ],
+          parseResult: { raw },
+          rejection: null
+        })
+      }),
       store
     );
 

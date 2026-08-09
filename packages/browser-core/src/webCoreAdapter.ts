@@ -30,9 +30,24 @@ export type CoreWasmModule = {
   hydrate_parse_result_state(parsedPayloadJson: string): unknown;
 };
 
+/** One region as the core serialized it, ready to be written as a row. */
+type PreparedRegionSighting = {
+  regionId: string;
+  lastSeenTurn: number;
+  payloadJson: string;
+};
+
 type PreparedImport = {
   turnNumber: number | null;
   candidate: StoredTurnSnapshot;
+  /**
+   * Every region the report described, already serialized.
+   *
+   * The core builds these from the parse it has just made. Asking for the whole model back and
+   * serializing each region here instead meant a third parse of the same report and a JSON round
+   * trip of eleven regions, which together cost more than the parsing did.
+   */
+  regionSightings: PreparedRegionSighting[];
   parseResult: unknown;
   /** `null` when the report may be imported; otherwise the core's reason to refuse it. */
   rejection: string | null;
@@ -87,14 +102,8 @@ export function createWebCoreAdapter(
     };
   };
 
-  const diffAgainstStored = async (
-    databasePath: string,
-    gameId: string,
-    factionId: string,
-    turnNumber: number,
-    candidate: StoredTurnSnapshot
-  ): Promise<ImportedTurnDiff> => {
-    const stored = await store.getImportedTurn(databasePath, gameId, factionId, turnNumber);
+  /** Whether a candidate changes what is already stored, given whatever is already stored. */
+  const diffAgainst = (stored: StoredTurn | null, candidate: StoredTurnSnapshot) => {
     const existing: StoredTurnSnapshot | null = stored
       ? {
           rawReport: stored.rawReport,
@@ -105,6 +114,18 @@ export function createWebCoreAdapter(
 
     return wasm.diff_imported_turn_state(existing, candidate) as ImportedTurnDiff;
   };
+
+  const diffAgainstStored = async (
+    databasePath: string,
+    gameId: string,
+    factionId: string,
+    turnNumber: number,
+    candidate: StoredTurnSnapshot
+  ): Promise<ImportedTurnDiff> =>
+    diffAgainst(
+      await store.getImportedTurn(databasePath, gameId, factionId, turnNumber),
+      candidate
+    );
 
   return {
     getEngineInfo() {
@@ -142,8 +163,9 @@ export function createWebCoreAdapter(
       unitId: string,
       destination: string
     ) {
-      // Straight through to the core: planning is pure, so unlike the persistence entry points
-      // there is no browser storage to stand in for a database.
+      // Straight through to the core: unlike the persistence entry points there is no browser
+      // storage to stand in for a database. The report goes as text, which is what the core keys
+      // its last parse on, so planning over the turn already on screen re-parses nothing.
       return wasm.plan_route_state(rulesetJson, rawReport, rememberedJson, unitId, destination);
     },
     validateOrders(rawOrders: string) {
@@ -206,6 +228,11 @@ export function createWebCoreAdapter(
     ) {
       // Preview deliberately tolerates an inadmissible report: the panel shows the parse result
       // and its warnings so the user can see why it would be refused.
+      //
+      // It shares `prepare` with the commit, so it also receives region rows it has no use for.
+      // Left as it is rather than split into two core calls: the parse behind them is a cache hit,
+      // what is left is serializing eleven regions, and nothing on the report-loading path calls
+      // this. Worth splitting the moment something does.
       const prepared = prepare(rawReport, confirmedFactionId);
       const duplicatePreview =
         prepared.turnNumber === null
@@ -235,13 +262,17 @@ export function createWebCoreAdapter(
     ) {
       const prepared = prepare(rawReport, confirmedFactionId);
       const turnNumber = requireAdmissible(prepared);
-      const diff = await diffAgainstStored(
+
+      // Read once and used twice: the diff needs the stored payloads, and the write below needs
+      // the timestamp on the same record. Asking storage for it a second time would be the kind of
+      // repeated work issue #28 spent a whole PR taking back out of this path.
+      const existing = await store.getImportedTurn(
         databasePath,
         gameId,
         confirmedFactionId,
-        turnNumber,
-        prepared.candidate
+        turnNumber
       );
+      const diff = diffAgainst(existing, prepared.candidate);
 
       if (diff.exists && !allowOverwrite) {
         throw new Error(
@@ -253,13 +284,6 @@ export function createWebCoreAdapter(
       // `importedAt` lands on the record for the same reason the desktop writes it into SQLite:
       // ranking a game's turns against its order drafts needs one clock and one format, and the
       // browser has no more business inventing either than the Rust core does.
-      const existing = await store.getImportedTurn(
-        databasePath,
-        gameId,
-        confirmedFactionId,
-        turnNumber
-      );
-
       await store.putImportedTurn({
         databasePath,
         gameId,
@@ -274,20 +298,18 @@ export function createWebCoreAdapter(
 
       // Regions also get remembered one by one, each carrying the turn it was seen in. Without
       // this the map only ever knows the latest report, and no route can be longer than one step.
-      // The desktop does the same thing into SQLite; this is the browser's half of it.
-      const parsed = wasm.parse_report_full_state(rawReport) as {
-        regions?: Array<{ regionId?: string; region_id?: string }>;
-      };
-      const regions = parsed.regions ?? [];
-      if (regions.length > 0) {
+      // The desktop does the same thing into SQLite; this is the browser's half of it, and both
+      // build the rows with the same core function so a remembered hex cannot come out different.
+      const sightings = prepared.regionSightings ?? [];
+      if (sightings.length > 0) {
         await store.putRegionSightings(
-          regions.map((region) => ({
+          sightings.map((sighting) => ({
             databasePath,
             gameId,
             factionId: confirmedFactionId,
-            regionId: region.regionId ?? region.region_id ?? "",
-            lastSeenTurn: turnNumber,
-            payloadJson: JSON.stringify(region)
+            regionId: sighting.regionId,
+            lastSeenTurn: sighting.lastSeenTurn,
+            payloadJson: sighting.payloadJson
           }))
         );
       }

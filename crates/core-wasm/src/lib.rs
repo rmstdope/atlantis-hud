@@ -3,6 +3,7 @@
 #[cfg(not(target_arch = "wasm32"))]
 use std::path::Path;
 
+use atlantis_hud_core::report::sighting::{region_sightings, RegionSighting};
 use atlantis_hud_core::{
     diff_imported_turn, engine_info, parse_report, reject_import, validate_orders,
     ImportedTurnSnapshot, OrderDiagnosticSeverity, OrderValidationResult, ReportParseResult,
@@ -50,6 +51,13 @@ struct EngineInfoDto {
 struct PreparedImportDto {
     turn_number: Option<u32>,
     candidate: ImportedTurnSnapshot,
+    /// Every region the report described, ready to be written one row at a time.
+    ///
+    /// Serialized here rather than in the browser. The storage adapter used to ask for the whole
+    /// parsed model back and stringify each region itself, which meant converting eleven regions
+    /// and some four hundred and fifty units into JavaScript objects only to turn them straight
+    /// back into text. These are already text, so only the text crosses.
+    region_sightings: Vec<RegionSighting>,
     parse_result: ReportParseResultDto,
     /// `None` when the report may be imported; otherwise why it may not be.
     rejection: Option<String>,
@@ -331,7 +339,8 @@ pub fn get_engine_info() -> Result<JsValue, JsValue> {
 /// Parses one report and returns tolerant parser output including the viability threshold flag.
 #[wasm_bindgen]
 pub fn parse_report_state(raw_report: String) -> Result<JsValue, JsValue> {
-    let parsed = ReportParseResultDto::from(parse_report(&raw_report));
+    let report = atlantis_hud_core::cache::with_global(|cache| cache.report(&raw_report));
+    let parsed = ReportParseResultDto::from(atlantis_hud_core::summarize(&report));
     to_js(&parsed)
 }
 
@@ -344,7 +353,11 @@ pub fn prepare_report_import_state(
     raw_report: String,
     confirmed_faction_id: String,
 ) -> Result<JsValue, JsValue> {
-    let parsed = parse_report(&raw_report);
+    // The report the shell already showed is the report being imported, so this is a cache hit and
+    // no parsing happens here at all. Both shapes come off the one model: the flat summary the
+    // import rules are decided against, and the regions that get remembered one by one.
+    let full = atlantis_hud_core::cache::with_global(|cache| cache.report(&raw_report));
+    let parsed = atlantis_hud_core::summarize(&full);
     let turn_number = parsed.turn_header.as_ref().map(|header| header.turn_number);
     let rejection = reject_import(&parsed, &confirmed_faction_id);
 
@@ -359,6 +372,10 @@ pub fn prepare_report_import_state(
     let prepared = PreparedImportDto {
         turn_number,
         candidate,
+        // An unimportable report has no turn to file its regions under, so it contributes none.
+        region_sightings: turn_number
+            .map(|turn| region_sightings(&full, turn))
+            .unwrap_or_default(),
         parse_result: ReportParseResultDto::from(parsed),
         rejection,
     };
@@ -403,17 +420,24 @@ pub fn parse_report_classified_state(
     raw_report: String,
     ruleset_json: String,
 ) -> Result<JsValue, JsValue> {
-    to_js(&atlantis_hud_core::movement::request::parse_and_classify(
-        &raw_report,
-        &ruleset_json,
-    ))
+    // The lock is released before serializing: the model is large, and the cache is of no use to
+    // anyone while it is being converted into JS objects.
+    let report = atlantis_hud_core::cache::with_global(|cache| {
+        atlantis_hud_core::movement::request::parse_and_classify(cache, &raw_report, &ruleset_json)
+    });
+    to_js(&*report)
 }
 
 /// Plans a route for one unit against a ruleset the caller supplies.
 ///
-/// Available on every target: planning is pure, so unlike the persistence entry points it needs no
-/// native backing. The ruleset arrives as text because the shell loads it from a served file - the
-/// core never touches a filesystem, which is what keeps it compiling to wasm at all.
+/// Available on every target: planning needs no native backing, unlike the persistence entry
+/// points. The ruleset arrives as text because the shell loads it from a served file - the core
+/// never touches a filesystem, which is what keeps it compiling to wasm at all.
+///
+/// The call is stateless in the sense that matters: there is no session to open and none to
+/// invalidate, because the report text is itself the key the core remembers its last parse under.
+/// Planning the same turn twice therefore parses nothing the second time. See
+/// `atlantis_hud_core::cache`.
 ///
 /// A route that cannot be planned resolves rather than rejecting: the reason is part of the answer.
 /// Only a ruleset the core cannot use is an error.
@@ -425,13 +449,16 @@ pub fn plan_route_state(
     unit_id: String,
     destination: String,
 ) -> Result<JsValue, JsValue> {
-    let response = atlantis_hud_core::movement::request::plan_for_remembered_report(
-        &ruleset_json,
-        &raw_report,
-        &remembered_json,
-        &unit_id,
-        &destination,
-    )
+    let response = atlantis_hud_core::cache::with_global(|cache| {
+        atlantis_hud_core::movement::request::plan_for_remembered_report(
+            cache,
+            &ruleset_json,
+            &raw_report,
+            &remembered_json,
+            &unit_id,
+            &destination,
+        )
+    })
     .map_err(|error| JsValue::from_str(&error))?;
     to_js(&response)
 }
@@ -440,9 +467,14 @@ pub fn plan_route_state(
 ///
 /// The flat summary `parse_report_state` returns is derived from this same parse, and remains for
 /// the panels that have not moved over yet.
+///
+/// Goes through the cache like every other entry point. The shell takes this branch rather than the
+/// classified one whenever the ruleset has not arrived yet, and a report shown this way still has
+/// to be the report the import and the planner get, or the load pays for two parses.
 #[wasm_bindgen]
 pub fn parse_report_full_state(raw_report: String) -> Result<JsValue, JsValue> {
-    to_js(&atlantis_hud_core::report::parse_report_full(&raw_report))
+    let report = atlantis_hud_core::cache::with_global(|cache| cache.report(&raw_report));
+    to_js(&*report)
 }
 
 /// Validates one draft of Atlantis orders and returns structured diagnostics.

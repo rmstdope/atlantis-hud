@@ -119,8 +119,9 @@ export function AppShell({
   const [busy, setBusy] = useState(false);
   const [diagnostics, setDiagnostics] = useState({ errors: 0, warnings: 0 });
   const [save, setSave] = useState<SaveState>({ kind: "clean" });
-  // The planner takes the report as text: the core parses it again in milliseconds, and a stateless
-  // call means no session to invalidate when a new turn arrives.
+  // The planner takes the report as text, which keeps the call stateless: there is no session to
+  // invalidate when a new turn arrives. The text is also the key the core remembers its last parse
+  // under, so the report shown here is the one the planner searches rather than a fresh parse.
   const [rawReport, setRawReport] = useState("");
   const [ruleset, setRuleset] = useState<RulesetState>({ status: "loading" });
   const [route, setRoute] = useState<RoutePlanResponse | null>(null);
@@ -164,6 +165,10 @@ export function AppShell({
   // The map wants remembered regions flattened; the planner wants them as they are. Both come from
   // the same list, so neither can drift out of step with the other.
   const storedRegions = useMemo(() => toStoredRegions(remembered), [remembered]);
+  // Serialized once per imported turn rather than once per route. The memory changes when a turn
+  // is imported and at no other time, so doing this inside the planning effect meant serializing
+  // every hex the faction has ever seen on the click that picks a destination.
+  const rememberedJson = useMemo(() => JSON.stringify(remembered), [remembered]);
   const model = useMemo(
     () => (parsed ? buildHexMapModel(parsed, storedRegions) : EMPTY),
     [parsed, storedRegions]
@@ -555,7 +560,7 @@ export function AppShell({
     let cancelled = false;
     setPlanning(true);
     void client
-      .planRoute(ruleset.text, rawReport, JSON.stringify(remembered), unit.unitId, destination)
+      .planRoute(ruleset.text, rawReport, rememberedJson, unit.unitId, destination)
       .then((answer) => {
         if (!cancelled) {
           setRoute(answer);
@@ -581,7 +586,7 @@ export function AppShell({
     return () => {
       cancelled = true;
     };
-  }, [client, planner.destinationId, unit, ruleset, rawReport, remembered]);
+  }, [client, planner.destinationId, unit, ruleset, rawReport, rememberedJson]);
 
   // Validation follows the document, debounced so it does not run on every keystroke.
   useEffect(() => {
