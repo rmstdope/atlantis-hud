@@ -1,5 +1,7 @@
 import type {
   CoreClient,
+  GameManifest,
+  OpenedGame,
   ParsedReport,
   RememberedRegion,
   RoutePlanResponse
@@ -8,8 +10,17 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { buildHexMapModel, unitsForHex, type HexMapModel } from "../hexMapModel";
 import { readUnitOrders, writeUnitOrders } from "../ordersDocument";
 import { rememberTurn, toStoredRegions } from "../gameMemory";
+import {
+  gameAfterDelete,
+  newGameId,
+  newGameManifest,
+  openNewestGame,
+  rulesetUrlFor
+} from "../gameSession";
 import { useWorkspaceStore } from "../workspaceStore";
 import { AppHeader, type ImportStatus } from "./AppHeader";
+import { GameGate } from "./GameGate";
+import { GamePicker } from "./GamePicker";
 import { LayerChips } from "./LayerChips";
 import { MapCanvas } from "./MapCanvas";
 import { OrdersPanel } from "./OrdersPanel";
@@ -74,6 +85,13 @@ export function AppShell({
   const [ruleset, setRuleset] = useState<string | null>(null);
   const [route, setRoute] = useState<RoutePlanResponse | null>(null);
   const [planning, setPlanning] = useState(false);
+  // Which game is open, and every game there is. Both live here because both change together:
+  // creating, switching and deleting all move the open game and the list in one step.
+  const [game, setGame] = useState<OpenedGame | null>(null);
+  const [games, setGames] = useState<GameManifest[]>([]);
+  const [gamesLoaded, setGamesLoaded] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [gameError, setGameError] = useState<string | null>(null);
 
   const selectedRegionId = useWorkspaceStore((state) => state.selectedRegionId);
   const selectedUnitId = useWorkspaceStore((state) => state.selectedUnitId);
@@ -84,6 +102,8 @@ export function AppShell({
   const armPlanner = useWorkspaceStore((state) => state.armPlanner);
   const planTo = useWorkspaceStore((state) => state.planTo);
   const clearPlan = useWorkspaceStore((state) => state.clearPlan);
+  const openGameInStore = useWorkspaceStore((state) => state.openGame);
+  const closeGameInStore = useWorkspaceStore((state) => state.closeGame);
 
   // The map wants remembered regions flattened; the planner wants them as they are. Both come from
   // the same list, so neither can drift out of step with the other.
@@ -146,7 +166,9 @@ export function AppShell({
         // but not *their* neighbours - so without this the map stops at the fringe and no route can
         // be longer than one step. Failing to remember is a warning, never a reason to withhold a
         // report that parsed perfectly well.
-        const memory = await rememberTurn(client, report, text);
+        const memory = game
+          ? await rememberTurn(client, game, report, text)
+          : { remembered: [], warning: null };
         setRemembered(memory.remembered);
 
         const unitCount = report.regions.reduce((total, region) => total + region.units.length, 0);
@@ -179,15 +201,23 @@ export function AppShell({
     },
     // `ruleset` belongs here: without it the callback closes over the value at first render, which
     // is null, and every report is parsed unclassified however long the ruleset took to arrive.
-    [client, selectRegion, ruleset, clearPlan]
+    // `game` for the same reason: a report loaded after switching games must land in the new one.
+    [client, selectRegion, ruleset, clearPlan, game]
   );
 
   // The ruleset is a served file rather than something compiled in, so a movement value can be
-  // corrected by editing it and reloading. Its absence is not fatal: everything except the planner
-  // works without it.
+  // corrected by editing it and reloading. Which file is the open game's business: a game records
+  // the ruleset it is played under, and two games on different servers do not share movement costs.
+  // Its absence is not fatal: everything except the planner works without it.
   useEffect(() => {
+    if (!game) {
+      setRuleset(null);
+      return undefined;
+    }
+
     let cancelled = false;
-    fetch("/ruleset.json")
+    void Promise.resolve()
+      .then(() => fetch(rulesetUrlFor(game.manifest.metadata.rulesetId)))
       .then((response) => (response.ok ? response.text() : null))
       .then((text) => {
         if (!cancelled) {
@@ -202,7 +232,136 @@ export function AppShell({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [game]);
+
+  /** Re-reads the list of games. Every change to a game changes what the picker should show. */
+  const refreshGames = useCallback(async () => {
+    setGames(await client.listGames());
+  }, [client]);
+
+  // On startup, reopen the game the player was last in. No games is the ordinary first run, and
+  // the gate below answers it.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const opened = await openNewestGame(client, new Date().toISOString());
+        if (!cancelled) {
+          setGame(opened);
+          setGames(await client.listGames());
+        }
+      } catch (error: unknown) {
+        if (!cancelled) {
+          setGameError(describeError(error));
+        }
+      } finally {
+        if (!cancelled) {
+          setGamesLoaded(true);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [client]);
+
+  /**
+   * Moves the workspace into a game.
+   *
+   * Everything the previous game put on screen goes with it. A report belongs to the game it was
+   * imported into, and leaving one turn's map and orders standing under another game's name would
+   * be worse than showing nothing.
+   */
+  const enterGame = useCallback(
+    (opened: OpenedGame) => {
+      setGame(opened);
+      setParsed(null);
+      setRemembered([]);
+      setRawReport("");
+      setOrdersDocument("");
+      setStatus(null);
+      setSavedAt(null);
+      setRoute(null);
+      clearPlan();
+      openGameInStore({
+        gameId: opened.manifest.metadata.gameId,
+        gameName: opened.manifest.metadata.gameName,
+        databasePath: opened.databasePath,
+        rulesetId: opened.manifest.metadata.rulesetId
+      });
+    },
+    [clearPlan, openGameInStore]
+  );
+
+  const openGameById = useCallback(
+    async (gameId: string) => {
+      setBusy(true);
+      setGameError(null);
+      try {
+        enterGame(await client.openGame(gameId, new Date().toISOString()));
+        await refreshGames();
+        setPickerOpen(false);
+      } catch (error: unknown) {
+        setGameError(describeError(error));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [client, enterGame, refreshGames]
+  );
+
+  const createGame = useCallback(
+    async (name: string, rulesetId: string) => {
+      setBusy(true);
+      setGameError(null);
+      try {
+        const now = new Date().toISOString();
+        enterGame(await client.createGame(newGameManifest(name, rulesetId, now, newGameId())));
+        await refreshGames();
+        setPickerOpen(false);
+      } catch (error: unknown) {
+        setGameError(describeError(error));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [client, enterGame, refreshGames]
+  );
+
+  /**
+   * Deletes a game and lands the player somewhere.
+   *
+   * Deleting the game on screen leaves the workspace describing something that no longer exists,
+   * so the next most recently opened game takes its place - or the gate does, when that was the
+   * last one.
+   */
+  const deleteGame = useCallback(
+    async (gameId: string) => {
+      setBusy(true);
+      setGameError(null);
+      try {
+        await client.deleteGame(gameId);
+        const remaining = await client.listGames();
+        setGames(remaining);
+
+        if (game?.manifest.metadata.gameId === gameId) {
+          const next = gameAfterDelete(remaining, gameId);
+          if (next) {
+            enterGame(await client.openGame(next.metadata.gameId, new Date().toISOString()));
+          } else {
+            setGame(null);
+            closeGameInStore();
+          }
+        }
+        setPickerOpen(false);
+      } catch (error: unknown) {
+        setGameError(describeError(error));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [client, enterGame, game, closeGameInStore]
+  );
 
   // A destination and a unit are all the planner needs; the answer carries either a route or the
   // reason there is none.
@@ -304,11 +463,47 @@ export function AppShell({
       ? null
       : `${parsed.header.turnNumber} · ${parsed.header.month}, Year ${parsed.header.year}`;
 
+  // Nothing until the games are known: rendering the gate first and the workspace a moment later
+  // would flash "no game yet" at a player who has several.
+  if (!gamesLoaded) {
+    return <div className="h-full bg-ground" />;
+  }
+
+  // No game means there is nowhere to put a report, an order or a remembered map, so the workspace
+  // is not rendered at all and creating a game is the only thing on offer.
+  if (!game) {
+    return (
+      <GameGate
+        platformLabel={platformLabel}
+        busy={busy}
+        error={gameError}
+        onCreate={(name, rulesetId) => void createGame(name, rulesetId)}
+      />
+    );
+  }
+
   return (
     <div className="flex h-full flex-col bg-ground text-ink">
       <AppHeader
         platformLabel={platformLabel}
-        gameName={parsed ? "current turn" : null}
+        gameName={game.manifest.metadata.gameName}
+        pickerOpen={pickerOpen}
+        onTogglePicker={() => {
+          setGameError(null);
+          setPickerOpen((open) => !open);
+        }}
+        picker={
+          <GamePicker
+            games={games}
+            currentGameId={game.manifest.metadata.gameId}
+            busy={busy}
+            error={gameError}
+            onOpen={(gameId) => void openGameById(gameId)}
+            onCreate={(name, rulesetId) => void createGame(name, rulesetId)}
+            onDelete={(gameId) => void deleteGame(gameId)}
+            onDismiss={() => setPickerOpen(false)}
+          />
+        }
         factionLabel={factionLabel}
         turnLabel={turnLabel}
         status={status}

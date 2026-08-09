@@ -66,14 +66,13 @@ describe("workspace selection", () => {
     store().selectUnit("18642");
 
     store().openGame({
-      gameFilePath: "/p.json",
+      gameId: "aug-2026",
+      gameName: "NewOrigins Aug 2026",
       databasePath: "/p.sqlite",
-      gameId: "faction-95",
-      factionId: "95",
-      turnNumber: 71
+      rulesetId: "neworigins"
     });
 
-    expect(store().game?.factionId).toBe("95");
+    expect(store().game?.gameName).toBe("NewOrigins Aug 2026");
     expect(store().selectedRegionId).toBeNull();
     expect(store().selectedUnitId).toBeNull();
   });

@@ -16,12 +16,17 @@ export type PanelName = "region" | "unit" | "orders" | "units" | "planner";
 /** Map layers the toolbar toggles. Only staleness has an effect so far. */
 export type LayerName = "units" | "structures" | "staleness" | "tradeRoutes" | "movement";
 
+/**
+ * The game the workspace is showing.
+ *
+ * Everything here is known the moment a game is opened. The faction and the turn are deliberately
+ * absent: they come from whatever report is loaded next, and a game can hold several factions.
+ */
 export type WorkspaceGame = {
-  gameFilePath: string;
-  databasePath: string;
   gameId: string;
-  factionId: string;
-  turnNumber: number;
+  gameName: string;
+  databasePath: string;
+  rulesetId: string;
 };
 
 /**
@@ -47,6 +52,7 @@ export type WorkspaceState = {
   collapsed: Record<PanelName, boolean>;
   layers: Record<LayerName, boolean>;
 
+  /** Opens a game, abandoning any selection made in the one before it. */
   openGame: (game: WorkspaceGame) => void;
   closeGame: () => void;
   /**

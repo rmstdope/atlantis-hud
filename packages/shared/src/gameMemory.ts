@@ -6,63 +6,17 @@
  * of the current report, and why no route could be longer than one step - a report describes its
  * neighbours but not theirs.
  *
+ * A turn is remembered in the game the player has open. It used to be remembered in a game derived
+ * from the report's own faction, which meant storage appeared wherever a report happened to come
+ * from and the player never chose anything; issue #33 made the choice explicit.
+ *
  * This is deliberately a plain module rather than something the component does inline, so the parts
  * that can go wrong - a game that will not open, an import that will not commit - are testable
  * without rendering anything.
  */
 
-import type { CoreClient, ParsedReport, RememberedRegion } from "@atlantis/core-client";
+import type { CoreClient, OpenedGame, ParsedReport, RememberedRegion } from "@atlantis/core-client";
 import type { StoredRegion } from "./hexMapModel";
-
-/**
- * The id of the game a faction's reports were filed under before games were explicit.
- *
- * Kept only until the player picks games themselves; see {@link openOrCreateGame}.
- */
-export function gameIdFor(factionId: string): string {
-  return `faction-${factionId}`;
-}
-
-/** The identity a game is addressed by, once it is open. */
-export type OpenGame = {
-  gameFilePath: string;
-  databasePath: string;
-  gameId: string;
-  factionId: string;
-};
-
-/**
- * Opens the game for a faction, creating it the first time.
- *
- * Opening is tried first because it is the common case; only a game that is not there yet is
- * created. Both are ordinary outcomes, so neither is reported as an error.
- */
-export async function openOrCreateGame(
-  client: CoreClient,
-  factionId: string,
-  factionName: string
-): Promise<OpenGame> {
-  const gameId = gameIdFor(factionId);
-  const now = new Date().toISOString();
-
-  const opened = await client.openGame(gameId, now).catch(() => null);
-  const game =
-    opened ??
-    (await client.createGame({
-      manifestVersion: 1,
-      metadata: { gameId, gameName: factionName, rulesetId: "neworigins" },
-      reportSources: [],
-      createdAt: now,
-      lastOpenedAt: now
-    }));
-
-  return {
-    gameFilePath: game.gameFilePath,
-    databasePath: game.databasePath,
-    gameId,
-    factionId
-  };
-}
 
 /**
  * Turns what the core remembers into what the map wants.
@@ -84,7 +38,6 @@ export function toStoredRegions(remembered: RememberedRegion[]): StoredRegion[] 
 
 /** What remembering a turn produced, and anything that went wrong doing it. */
 export type MemoryOutcome = {
-  game: OpenGame | null;
   /**
    * Everywhere the faction has been, as the core keeps it.
    *
@@ -106,46 +59,31 @@ export type MemoryOutcome = {
  */
 export async function rememberTurn(
   client: CoreClient,
+  game: OpenedGame,
   parsed: ParsedReport,
   rawReport: string
 ): Promise<MemoryOutcome> {
   const factionId = parsed.header.factionId;
   if (!factionId) {
     return {
-      game: null,
       remembered: [],
       warning: "the report does not name its faction, so it cannot be remembered"
     };
   }
 
-  try {
-    const game = await openOrCreateGame(
-      client,
-      factionId,
-      parsed.header.factionName ?? `Faction ${factionId}`
-    );
+  const gameId = game.manifest.metadata.gameId;
 
+  try {
     // Overwriting is right here: re-importing the same turn should refresh what is remembered
     // rather than refuse, and the player has already chosen this file.
-    await client.commitReportImport(
-      game.databasePath,
-      game.gameId,
-      factionId,
-      rawReport,
-      true
-    );
+    await client.commitReportImport(game.databasePath, gameId, factionId, rawReport, true);
 
-    const remembered = await client.loadRegionSightings(
-      game.databasePath,
-      game.gameId,
-      factionId
-    );
+    const remembered = await client.loadRegionSightings(game.databasePath, gameId, factionId);
 
-    return { game, remembered, warning: null };
+    return { remembered, warning: null };
   } catch (error: unknown) {
     const detail = error instanceof Error ? error.message : String(error);
     return {
-      game: null,
       remembered: [],
       warning: `the turn could not be remembered: ${detail}`
     };

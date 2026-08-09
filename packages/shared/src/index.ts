@@ -5,10 +5,14 @@ export * from "./workspaceStore";
 export * from "./orderEditor";
 export * from "./ordersDocument";
 export * from "./gameMemory";
+export * from "./gameSession";
+export * from "./rulesets";
 export * from "./unitComposition";
 
 export * from "./workspace/AppHeader";
 export * from "./workspace/AppShell";
+export * from "./workspace/GameGate";
+export * from "./workspace/GamePicker";
 export * from "./workspace/CollapsiblePanel";
 export * from "./workspace/LayerChips";
 export * from "./workspace/MapCanvas";
