@@ -230,7 +230,8 @@ export function createWebCoreAdapter(
       gameId: string,
       confirmedFactionId: string,
       rawReport: string,
-      allowOverwrite: boolean
+      allowOverwrite: boolean,
+      importedAt: string
     ) {
       const prepared = prepare(rawReport, confirmedFactionId);
       const turnNumber = requireAdmissible(prepared);
@@ -249,11 +250,25 @@ export function createWebCoreAdapter(
         );
       }
 
+      // `importedAt` lands on the record for the same reason the desktop writes it into SQLite:
+      // ranking a game's turns against its order drafts needs one clock and one format, and the
+      // browser has no more business inventing either than the Rust core does.
+      const existing = await store.getImportedTurn(
+        databasePath,
+        gameId,
+        confirmedFactionId,
+        turnNumber
+      );
+
       await store.putImportedTurn({
         databasePath,
         gameId,
         factionId: confirmedFactionId,
         turnNumber,
+        // Re-importing moves `updatedAt` and leaves `importedAt`: when a turn first arrived does
+        // not change because it arrived again. The desktop's UPSERT says the same thing in SQL.
+        importedAt: existing?.importedAt ?? importedAt,
+        updatedAt: importedAt,
         ...prepared.candidate
       });
 

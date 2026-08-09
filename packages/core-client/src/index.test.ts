@@ -393,9 +393,23 @@ describe("core client adapter contract parity", () => {
       await tauriClient.previewReportImport("/tmp/campaign.atlantis-game.sqlite", "faction-12", "17", "same")
     );
     await expect(
-      wasmClient.commitReportImport("/tmp/campaign.atlantis-game.sqlite", "faction-12", "17", "same", true)
+      wasmClient.commitReportImport(
+        "/tmp/campaign.atlantis-game.sqlite",
+        "faction-12",
+        "17",
+        "same",
+        true,
+        "2026-08-09T18:00:00Z"
+      )
     ).resolves.toEqual(
-      await tauriClient.commitReportImport("/tmp/campaign.atlantis-game.sqlite", "faction-12", "17", "same", true)
+      await tauriClient.commitReportImport(
+        "/tmp/campaign.atlantis-game.sqlite",
+        "faction-12",
+        "17",
+        "same",
+        true,
+        "2026-08-09T18:00:00Z"
+      )
     );
     await expect(wasmClient.validateOrders("bad input")).resolves.toEqual(await tauriClient.validateOrders("bad input"));
     await expect(

@@ -167,7 +167,7 @@ export function AppShell({
         // be longer than one step. Failing to remember is a warning, never a reason to withhold a
         // report that parsed perfectly well.
         const memory = game
-          ? await rememberTurn(client, game, report, text)
+          ? await rememberTurn(client, game, report, text, new Date().toISOString())
           : { remembered: [], warning: null };
         setRemembered(memory.remembered);
 

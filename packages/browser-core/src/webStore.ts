@@ -34,6 +34,15 @@ export type StoredTurn = StoredTurnSnapshot & {
   gameId: string;
   factionId: string;
   turnNumber: number;
+  /**
+   * When the turn first arrived, and when it was last re-imported, both ISO-8601 from the caller.
+   *
+   * The desktop keeps the same two columns. They are optional here only because a record written
+   * before they existed has neither, and one game with an unrankable turn must not become a game
+   * that cannot be opened.
+   */
+  importedAt?: string;
+  updatedAt?: string;
 };
 
 /**

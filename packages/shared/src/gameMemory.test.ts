@@ -72,6 +72,9 @@ const OPEN_GAME = {
   }
 } as OpenedGame;
 
+/** The clock is the caller's, so a test can state it rather than mock one. */
+const NOW = "2026-08-09T18:30:00Z";
+
 describe("remembering a turn", () => {
   it("commits the report and reads back everything the faction has seen", async () => {
     const remembered: RememberedRegion[] = [
@@ -80,19 +83,21 @@ describe("remembering a turn", () => {
     ];
     const core = client({ loadRegionSightings: vi.fn().mockResolvedValue(remembered) });
 
-    const outcome = await rememberTurn(core, OPEN_GAME, report("95"), "raw text");
+    const outcome = await rememberTurn(core, OPEN_GAME, report("95"), "raw text", NOW);
 
     expect(outcome.warning).toBeNull();
     expect(outcome.remembered).toHaveLength(2);
     expect(outcome.remembered[0].lastSeenTurn).toBe(40);
     expect(outcome.remembered[0].region.regionId).toBe("1:1,1");
     // The open game decides where the turn lands, not the faction the report happens to name.
+    // The clock comes from the caller so both platforms stamp the same format.
     expect(core.commitReportImport).toHaveBeenCalledWith(
       "p.sqlite",
       "aug-2026",
       "95",
       "raw text",
-      true
+      true,
+      NOW
     );
   });
 
@@ -105,7 +110,7 @@ describe("remembering a turn", () => {
       commitReportImport: vi.fn().mockRejectedValue(new Error("disk is full"))
     });
 
-    const outcome = await rememberTurn(core, OPEN_GAME, report("95"), "raw text");
+    const outcome = await rememberTurn(core, OPEN_GAME, report("95"), "raw text", NOW);
 
     expect(outcome.warning).toContain("disk is full");
     expect(outcome.remembered).toEqual([]);
@@ -114,7 +119,7 @@ describe("remembering a turn", () => {
   it("says so when the report does not name its faction", async () => {
     const core = client();
 
-    const outcome = await rememberTurn(core, OPEN_GAME, report(null), "raw text");
+    const outcome = await rememberTurn(core, OPEN_GAME, report(null), "raw text", NOW);
 
     expect(outcome.warning).toContain("faction");
     expect(core.commitReportImport).not.toHaveBeenCalled();

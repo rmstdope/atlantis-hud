@@ -532,7 +532,8 @@ export interface CoreAdapter {
     gameId: string,
     confirmedFactionId: string,
     rawReport: string,
-    allowOverwrite: boolean
+    allowOverwrite: boolean,
+    importedAt: string
   ): Promise<unknown> | unknown;
   validateOrders(rawOrders: string): Promise<unknown> | unknown;
   planRoute(
@@ -600,12 +601,20 @@ export interface CoreClient {
     confirmedFactionId: string,
     rawReport: string
   ): Promise<ReportImportPreview>;
+  /**
+   * Stores a turn in the open game, and remembers the regions it describes.
+   *
+   * `importedAt` is the caller's clock, in ISO-8601, the way `openGame` and `saveOrderDraft`
+   * already take one. The persistence layer reads no clock of its own, so a turn and an order
+   * draft can be compared to work out which the player touched last.
+   */
   commitReportImport(
     databasePath: string,
     gameId: string,
     confirmedFactionId: string,
     rawReport: string,
-    allowOverwrite: boolean
+    allowOverwrite: boolean,
+    importedAt: string
   ): Promise<ImportedTurnPreview>;
   validateOrders(rawOrders: string): Promise<OrderValidationResult>;
   /**
@@ -679,7 +688,8 @@ export interface WasmBindings {
     gameId: string,
     confirmedFactionId: string,
     rawReport: string,
-    allowOverwrite: boolean
+    allowOverwrite: boolean,
+    importedAt: string
   ): unknown;
   validate_orders_state(rawOrders: string): unknown;
   plan_route_state(
@@ -1171,14 +1181,16 @@ export function createCoreClient(adapter: CoreAdapter): CoreClient {
       gameId: string,
       confirmedFactionId: string,
       rawReport: string,
-      allowOverwrite: boolean
+      allowOverwrite: boolean,
+      importedAt: string
     ) {
       const value = await adapter.commitReportImport(
         databasePath,
         gameId,
         confirmedFactionId,
         rawReport,
-        allowOverwrite
+        allowOverwrite,
+        importedAt
       );
       return normalizeImportedTurnPreview(value);
     },
@@ -1277,14 +1289,16 @@ export function createWasmAdapter(bindings: WasmBindings): CoreAdapter {
       gameId: string,
       confirmedFactionId: string,
       rawReport: string,
-      allowOverwrite: boolean
+      allowOverwrite: boolean,
+      importedAt: string
     ) {
       return bindings.commit_report_import_state(
         databasePath,
         gameId,
         confirmedFactionId,
         rawReport,
-        allowOverwrite
+        allowOverwrite,
+        importedAt
       );
     },
     validateOrders(rawOrders: string) {
@@ -1379,14 +1393,16 @@ export function createTauriAdapter(invoke: TauriInvoke): CoreAdapter {
       gameId: string,
       confirmedFactionId: string,
       rawReport: string,
-      allowOverwrite: boolean
+      allowOverwrite: boolean,
+      importedAt: string
     ) {
       return invoke<ImportedTurnPreviewWireShape>("commit_report_import", {
         database_path: databasePath,
         game_id: gameId,
         confirmed_faction_id: confirmedFactionId,
         raw_report: rawReport,
-        allow_overwrite: allowOverwrite
+        allow_overwrite: allowOverwrite,
+        imported_at: importedAt
       });
     },
     validateOrders(rawOrders: string) {

@@ -172,6 +172,7 @@ fn commit_report_import(
     confirmed_faction_id: String,
     raw_report: String,
     allow_overwrite: bool,
+    imported_at: String,
 ) -> Result<ImportedTurnPreviewDto, String> {
     command_commit_report_import(
         &database_path,
@@ -179,6 +180,7 @@ fn commit_report_import(
         &confirmed_faction_id,
         &raw_report,
         allow_overwrite,
+        &imported_at,
     )
 }
 

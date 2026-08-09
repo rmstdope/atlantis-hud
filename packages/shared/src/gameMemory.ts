@@ -61,7 +61,8 @@ export async function rememberTurn(
   client: CoreClient,
   game: OpenedGame,
   parsed: ParsedReport,
-  rawReport: string
+  rawReport: string,
+  now: string
 ): Promise<MemoryOutcome> {
   const factionId = parsed.header.factionId;
   if (!factionId) {
@@ -76,7 +77,7 @@ export async function rememberTurn(
   try {
     // Overwriting is right here: re-importing the same turn should refresh what is remembered
     // rather than refuse, and the player has already chosen this file.
-    await client.commitReportImport(game.databasePath, gameId, factionId, rawReport, true);
+    await client.commitReportImport(game.databasePath, gameId, factionId, rawReport, true, now);
 
     const remembered = await client.loadRegionSightings(game.databasePath, gameId, factionId);
 

@@ -559,6 +559,7 @@ pub fn commit_report_import_state(
     confirmed_faction_id: String,
     raw_report: String,
     allow_overwrite: bool,
+    imported_at: String,
 ) -> Result<JsValue, JsValue> {
     let parsed = parse_report(&raw_report);
     if !parsed.meets_minimum_import_threshold() {
@@ -598,10 +599,10 @@ pub fn commit_report_import_state(
     let preview = preview_imported_turn(Path::new(&database_path), &candidate)
         .map_err(|error| JsValue::from_str(&error.to_string()))?;
     if allow_overwrite {
-        upsert_imported_turn(Path::new(&database_path), &candidate)
+        upsert_imported_turn(Path::new(&database_path), &candidate, &imported_at)
             .map_err(|error| JsValue::from_str(&error.to_string()))?;
     } else {
-        insert_imported_turn(Path::new(&database_path), &candidate).map_err(
+        insert_imported_turn(Path::new(&database_path), &candidate, &imported_at).map_err(
             |error| match error {
                 PersistenceError::DuplicateImportedTurn { .. } => JsValue::from_str(
                     "duplicate import exists and requires explicit overwrite confirmation",
@@ -766,6 +767,7 @@ pub fn commit_report_import_state(
     _confirmed_faction_id: String,
     _raw_report: String,
     _allow_overwrite: bool,
+    _imported_at: String,
 ) -> Result<JsValue, JsValue> {
     Err(JsValue::from_str(
         "game persistence is not linked in this wasm32 build",
