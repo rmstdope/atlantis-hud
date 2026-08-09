@@ -1,12 +1,19 @@
-import type { CoreClient, ParsedReport } from "@atlantis/core-client";
+import type {
+  CoreClient,
+  ParsedReport,
+  RememberedRegion,
+  RoutePlanResponse
+} from "@atlantis/core-client";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { buildHexMapModel, unitsForHex, type HexMapModel } from "../hexMapModel";
 import { readUnitOrders, writeUnitOrders } from "../ordersDocument";
+import { rememberTurn, toStoredRegions } from "../projectMemory";
 import { useWorkspaceStore } from "../workspaceStore";
 import { AppHeader, type ImportStatus } from "./AppHeader";
 import { LayerChips } from "./LayerChips";
 import { MapCanvas } from "./MapCanvas";
 import { OrdersPanel } from "./OrdersPanel";
+import { PlannerPanel } from "./PlannerPanel";
 import { RegionPanel } from "./RegionPanel";
 import { UnitPanel } from "./UnitPanel";
 import { UnitTableDock } from "./UnitTableDock";
@@ -53,19 +60,38 @@ export function AppShell({
   platformLabel: string;
 }) {
   const [parsed, setParsed] = useState<ParsedReport | null>(null);
+  // Everywhere the faction has ever been, not just this turn. Without it the map stops at the
+  // fringe of the current report and no route can be longer than one step.
+  const [remembered, setRemembered] = useState<RememberedRegion[]>([]);
   const [ordersDocument, setOrdersDocument] = useState("");
   const [status, setStatus] = useState<ImportStatus | null>(null);
   const [busy, setBusy] = useState(false);
   const [diagnostics, setDiagnostics] = useState({ errors: 0, warnings: 0 });
   const [savedAt, setSavedAt] = useState<string | null>(null);
+  // The planner takes the report as text: the core parses it again in milliseconds, and a stateless
+  // call means no session to invalidate when a new turn arrives.
+  const [rawReport, setRawReport] = useState("");
+  const [ruleset, setRuleset] = useState<string | null>(null);
+  const [route, setRoute] = useState<RoutePlanResponse | null>(null);
+  const [planning, setPlanning] = useState(false);
 
   const selectedRegionId = useWorkspaceStore((state) => state.selectedRegionId);
   const selectedUnitId = useWorkspaceStore((state) => state.selectedUnitId);
   const selectRegion = useWorkspaceStore((state) => state.selectRegion);
   const level = useWorkspaceStore((state) => state.level);
   const layers = useWorkspaceStore((state) => state.layers);
+  const planner = useWorkspaceStore((state) => state.planner);
+  const armPlanner = useWorkspaceStore((state) => state.armPlanner);
+  const planTo = useWorkspaceStore((state) => state.planTo);
+  const clearPlan = useWorkspaceStore((state) => state.clearPlan);
 
-  const model = useMemo(() => (parsed ? buildHexMapModel(parsed) : EMPTY), [parsed]);
+  // The map wants remembered regions flattened; the planner wants them as they are. Both come from
+  // the same list, so neither can drift out of step with the other.
+  const storedRegions = useMemo(() => toStoredRegions(remembered), [remembered]);
+  const model = useMemo(
+    () => (parsed ? buildHexMapModel(parsed, storedRegions) : EMPTY),
+    [parsed, storedRegions]
+  );
 
   /**
    * Selects a hex together with the first unit standing in it.
@@ -75,10 +101,17 @@ export function AppShell({
    */
   const selectHex = useCallback(
     (regionId: string | null) => {
+      // While the planner is armed the map means "where to", not "show me". One click, then it
+      // goes back to selecting - a mode you can forget you are in makes every later click a
+      // surprise.
+      if (planner.armed && regionId) {
+        planTo(regionId);
+        return;
+      }
       const target = model.hexes.find((candidate) => candidate.regionId === regionId) ?? null;
       selectRegion(regionId, unitsForHex(target)[0]?.unitId ?? null);
     },
-    [model, selectRegion]
+    [model, selectRegion, planner.armed, planTo]
   );
 
   const hex = useMemo(
@@ -95,17 +128,33 @@ export function AppShell({
     async (text: string, fileName: string) => {
       setBusy(true);
       try {
-        const report = await client.parseReportFull(text);
+        // Classified when the ruleset is to hand, so a unit's men are counted rather than guessed.
+        // Without it every unit reads as an estimate, including the single-race majority where the
+        // leading-group figure is exactly right.
+        const report = ruleset
+          ? await client.parseReportClassified(text, ruleset)
+          : await client.parseReportFull(text);
         setParsed(report);
+        setRawReport(text);
+        clearPlan();
+        setRoute(null);
         setOrdersDocument(report.ordersTemplate?.text ?? "");
         setSavedAt(null);
+
+        // Commit the turn to the faction's project and read back every region it has ever seen.
+        // A report on its own describes the hexes the faction stood in and names their neighbours,
+        // but not *their* neighbours - so without this the map stops at the fringe and no route can
+        // be longer than one step. Failing to remember is a warning, never a reason to withhold a
+        // report that parsed perfectly well.
+        const memory = await rememberTurn(client, report, text);
+        setRemembered(memory.remembered);
 
         const unitCount = report.regions.reduce((total, region) => total + region.units.length, 0);
         setStatus({
           regionCount: report.regions.length,
           unitCount,
           errorCount: report.header.errors.length,
-          message: null,
+          message: memory.warning,
           failed: false
         });
 
@@ -128,8 +177,71 @@ export function AppShell({
         setBusy(false);
       }
     },
-    [client, selectRegion]
+    // `ruleset` belongs here: without it the callback closes over the value at first render, which
+    // is null, and every report is parsed unclassified however long the ruleset took to arrive.
+    [client, selectRegion, ruleset, clearPlan]
   );
+
+  // The ruleset is a served file rather than something compiled in, so a movement value can be
+  // corrected by editing it and reloading. Its absence is not fatal: everything except the planner
+  // works without it.
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/ruleset.json")
+      .then((response) => (response.ok ? response.text() : null))
+      .then((text) => {
+        if (!cancelled) {
+          setRuleset(text);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setRuleset(null);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // A destination and a unit are all the planner needs; the answer carries either a route or the
+  // reason there is none.
+  useEffect(() => {
+    const destination = planner.destinationId;
+    if (!destination || !unit?.own || !ruleset || !rawReport) {
+      return undefined;
+    }
+
+    let cancelled = false;
+    setPlanning(true);
+    void client
+      .planRoute(ruleset, rawReport, JSON.stringify(remembered), unit.unitId, destination)
+      .then((answer) => {
+        if (!cancelled) {
+          setRoute(answer);
+        }
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) {
+          setStatus({
+            regionCount: 0,
+            unitCount: 0,
+            errorCount: 0,
+            message: `could not plan a route: ${describeError(error)}`,
+            failed: true
+          });
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setPlanning(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [client, planner.destinationId, unit, ruleset, rawReport, remembered]);
 
   // Validation follows the document, debounced so it does not run on every keystroke.
   useEffect(() => {
@@ -152,6 +264,27 @@ export function AppShell({
     setOrdersDocument((document) => writeUnitOrders(document, unitId, orders));
     setSavedAt(new Date().toLocaleTimeString());
   }, []);
+
+  /** Writes a planned route into the selected unit's block, replacing any MOVE already there. */
+  const applyRoute = useCallback(
+    (order: string) => {
+      if (!unit) {
+        return;
+      }
+      setOrdersDocument((document) => {
+        const existing = readUnitOrders(document, unit.unitId) ?? "";
+        const withoutMove = existing
+          .split("\n")
+          .filter((line) => !/^\s*@?\s*(move|advance)\b/i.test(line))
+          .join("\n")
+          .trim();
+        const next = withoutMove ? `${withoutMove}\n${order}` : order;
+        return writeUnitOrders(document, unit.unitId, next);
+      });
+      setSavedAt(new Date().toLocaleTimeString());
+    },
+    [unit]
+  );
 
   const exportOrders = useCallback(() => {
     const blob = new Blob([ordersDocument], { type: "text/plain" });
@@ -193,6 +326,8 @@ export function AppShell({
           onSelectRegion={selectHex}
           showStaleness={layers.staleness}
           showUnits={layers.units}
+          route={layers.movement ? (route?.plan?.steps.map((step) => step.to) ?? []) : []}
+          routeRisk={layers.movement ? (route?.risk?.hexes ?? []) : []}
         />
 
         <div className="pointer-events-none absolute inset-x-0 top-2.5 flex justify-center">
@@ -217,6 +352,20 @@ export function AppShell({
               {/* The unit panel yields space so the orders editor keeps a usable number of rows. */}
               <div className="min-h-0 flex-1">
                 <UnitPanel unit={unit} hex={hex} />
+              </div>
+              <div className="flex-none">
+                <PlannerPanel
+                  unit={unit}
+                  armed={planner.armed}
+                  busy={planning}
+                  answer={route}
+                  onArm={armPlanner}
+                  onClear={() => {
+                    clearPlan();
+                    setRoute(null);
+                  }}
+                  onApply={applyRoute}
+                />
               </div>
               <div className="h-[19rem] max-h-[55%] min-h-[9rem] flex-none">
                 <OrdersPanel

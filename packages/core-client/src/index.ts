@@ -126,11 +126,108 @@ export type ReportUnit = {
   flags: string[];
   items: ItemAmount[];
   skills: SkillInfo[];
-  /** Size of the unit's leading item group. Not a true total for a multi-race unit; see the Rust model. */
+  /**
+   * How many people the unit contains.
+   *
+   * Exact once the report has been classified against the scraped item catalogue; until then it is
+   * the size of the leading item group, which is right for the common case and wrong for a unit
+   * holding two races. `menEstimated` says which it is.
+   */
   men: number;
+  /** Whether `men` is a guess rather than a count. */
+  menEstimated: boolean;
+  /** The unit's people, by race, once classified. Empty while estimated. */
+  menByRace: ItemAmount[];
   weight: number | null;
   capacity: string | null;
   structureId: string | null;
+};
+
+/** One of the six ways out of a hex, as the core names them. */
+export type Direction =
+  | "north"
+  | "northeast"
+  | "southeast"
+  | "south"
+  | "southwest"
+  | "northwest";
+
+/** One hex entered along a route. */
+export type RouteStep = {
+  direction: Direction;
+  to: Coordinate;
+  terrain: string;
+  cost: number;
+  /** Whether a road connected both sides and halved the cost. */
+  road: boolean;
+};
+
+/** Where the unit stands when a month runs out. */
+export type MonthLeg = { month: number; steps: number; endsAt: Coordinate };
+
+export type RoutePlan = {
+  from: Coordinate;
+  to: Coordinate;
+  mode: "fly" | "ride" | "walk";
+  steps: RouteStep[];
+  totalCost: number;
+  months: MonthLeg[];
+};
+
+/**
+ * Why a route could not be planned.
+ *
+ * Always a named reason rather than a bare failure: "the sea is in the way at (8,52)" is something
+ * a player can act on, where "no route" is not.
+ */
+export type RouteProblem =
+  | { kind: "notYourUnit" }
+  | { kind: "overloaded" }
+  | { kind: "mobilityUnstated" }
+  | { kind: "alreadyThere" }
+  | { kind: "noKnownRoute" }
+  | { kind: "originUnknown" }
+  | { kind: "unknownHex"; coordinate: Coordinate }
+  | { kind: "oceanNeedsShip"; coordinate: Coordinate }
+  | { kind: "flightWouldEndOverOcean"; coordinate: Coordinate };
+
+export type RiskLevel = "low" | "medium" | "high";
+
+export type HexRisk = {
+  coordinate: Coordinate;
+  level: RiskLevel;
+  hostileStrength: number;
+  ownStrength: number;
+  foreignUnits: number;
+  monsters: number;
+  guards: number;
+  /** Whether the hex could be assessed at all. An unassessable hex is never reported as safe. */
+  unknown: boolean;
+  lastSeenTurn: number | null;
+  reason: string;
+};
+
+/** A route is as dangerous as its worst hex, never an average of them. */
+export type RouteRisk = { level: RiskLevel; worst: HexRisk | null; hexes: HexRisk[] };
+
+/**
+ * One region the faction saw in an earlier turn.
+ *
+ * `region` is a `ReportRegion` with its exits intact, which is what lets an accumulated map join up
+ * into a graph a route can cross. A single report describes its neighbours but not theirs.
+ */
+export type RememberedRegion = { region: ReportRegion; lastSeenTurn: number };
+
+/** Everything the planner has to say about one proposed move. */
+export type RoutePlanResponse = {
+  /** The route, when one was found. */
+  plan: RoutePlan | null;
+  /** Why there is none, when there is not. Exactly one of these two is present. */
+  problem: RouteProblem | null;
+  /** What stands along it. Present only alongside a route. */
+  risk: RouteRisk | null;
+  /** False while the ruleset has an open gap, which makes the cost a lower bound. */
+  fullyModelled: boolean;
 };
 
 export type ReportRegion = {
@@ -399,6 +496,7 @@ export interface CoreAdapter {
   openProject(projectFilePath: string): Promise<unknown> | unknown;
   parseReport(rawReport: string): Promise<unknown> | unknown;
   parseReportFull(rawReport: string): Promise<unknown> | unknown;
+  parseReportClassified(rawReport: string, rulesetJson: string): Promise<unknown> | unknown;
   previewReportImport(
     databasePath: string,
     projectId: string,
@@ -413,6 +511,18 @@ export interface CoreAdapter {
     allowOverwrite: boolean
   ): Promise<unknown> | unknown;
   validateOrders(rawOrders: string): Promise<unknown> | unknown;
+  planRoute(
+    rulesetJson: string,
+    rawReport: string,
+    rememberedJson: string,
+    unitId: string,
+    destination: string
+  ): Promise<unknown> | unknown;
+  loadRegionSightings(
+    databasePath: string,
+    projectId: string,
+    factionId: string
+  ): Promise<unknown> | unknown;
   loadImportedTurn(
     databasePath: string,
     projectId: string,
@@ -442,6 +552,14 @@ export interface CoreClient {
   parseReport(rawReport: string): Promise<ReportParseResult>;
   /** The full domain model. Returned as-is: it is descriptive data, not a contract to normalize. */
   parseReportFull(rawReport: string): Promise<ParsedReport>;
+  /**
+   * The same, with each unit's men counted against the item catalogue.
+   *
+   * A report cannot be split into men and equipment on its own, so without this every unit reads
+   * as an estimate - including the great majority holding a single race, where the figure is exact.
+   * An unusable ruleset leaves the report as parsed rather than refusing it.
+   */
+  parseReportClassified(rawReport: string, rulesetJson: string): Promise<ParsedReport>;
   previewReportImport(
     databasePath: string,
     projectId: string,
@@ -456,6 +574,35 @@ export interface CoreClient {
     allowOverwrite: boolean
   ): Promise<ImportedTurnPreview>;
   validateOrders(rawOrders: string): Promise<OrderValidationResult>;
+  /**
+   * Plans a route for one unit, or explains why there is none.
+   *
+   * `destination` is a hex identifier the way the game writes one, `1:7,53`. `rememberedJson` is
+   * the accumulated map - regions the faction saw in earlier turns, as JSON - and it is what lets a
+   * route be longer than one step: a single report describes its neighbours but not theirs. Pass an
+   * empty array when there is nothing remembered.
+   *
+   * Rejects only when the ruleset cannot be used; a route that cannot be planned resolves with a
+   * stated reason.
+   */
+  planRoute(
+    rulesetJson: string,
+    rawReport: string,
+    rememberedJson: string,
+    unitId: string,
+    destination: string
+  ): Promise<RoutePlanResponse>;
+  /**
+   * Every region this faction has been seen in, across every turn imported into the project.
+   *
+   * Empty for a project with no committed imports, which is not an error: it is what a map looks
+   * like before anything has been remembered.
+   */
+  loadRegionSightings(
+    databasePath: string,
+    projectId: string,
+    factionId: string
+  ): Promise<RememberedRegion[]>;
   loadImportedTurn(
     databasePath: string,
     projectId: string,
@@ -484,6 +631,7 @@ export interface WasmBindings {
   open_project_state(projectFilePath: string): unknown;
   parse_report_state(rawReport: string): unknown;
   parse_report_full_state(rawReport: string): unknown;
+  parse_report_classified_state(rawReport: string, rulesetJson: string): unknown;
   preview_report_import_state(
     databasePath: string,
     projectId: string,
@@ -498,6 +646,18 @@ export interface WasmBindings {
     allowOverwrite: boolean
   ): unknown;
   validate_orders_state(rawOrders: string): unknown;
+  plan_route_state(
+    rulesetJson: string,
+    rawReport: string,
+    rememberedJson: string,
+    unitId: string,
+    destination: string
+  ): unknown;
+  load_region_sightings_state?(
+    databasePath: string,
+    projectId: string,
+    factionId: string
+  ): unknown;
   load_imported_turn_state(
     databasePath: string,
     projectId: string,
@@ -932,6 +1092,9 @@ export function createCoreClient(adapter: CoreAdapter): CoreClient {
       const value = await adapter.parseReport(rawReport);
       return normalizeParseResult(value);
     },
+    async parseReportClassified(rawReport: string, rulesetJson: string) {
+      return (await adapter.parseReportClassified(rawReport, rulesetJson)) as ParsedReport;
+    },
     async parseReportFull(rawReport: string) {
       return (await adapter.parseReportFull(rawReport)) as ParsedReport;
     },
@@ -991,6 +1154,27 @@ export function createCoreClient(adapter: CoreAdapter): CoreClient {
         updatedAt
       );
       return normalizeOrderDraftRecord(value);
+    },
+    async planRoute(
+      rulesetJson: string,
+      rawReport: string,
+      rememberedJson: string,
+      unitId: string,
+      destination: string
+    ) {
+      // Returned as-is: the core already serializes to exactly this shape, and normalizing would
+      // only add a chance for the two to disagree.
+      return (await adapter.planRoute(
+        rulesetJson,
+        rawReport,
+        rememberedJson,
+        unitId,
+        destination
+      )) as RoutePlanResponse;
+    },
+    async loadRegionSightings(databasePath: string, projectId: string, factionId: string) {
+      const value = await adapter.loadRegionSightings(databasePath, projectId, factionId);
+      return (Array.isArray(value) ? value : []) as RememberedRegion[];
     }
   };
 }
@@ -1011,6 +1195,9 @@ export function createWasmAdapter(bindings: WasmBindings): CoreAdapter {
     },
     parseReportFull(rawReport: string) {
       return bindings.parse_report_full_state(rawReport);
+    },
+    parseReportClassified(rawReport: string, rulesetJson: string) {
+      return bindings.parse_report_classified_state(rawReport, rulesetJson);
     },
     previewReportImport(databasePath: string, projectId: string, confirmedFactionId: string, rawReport: string) {
       return bindings.preview_report_import_state(databasePath, projectId, confirmedFactionId, rawReport);
@@ -1055,6 +1242,20 @@ export function createWasmAdapter(bindings: WasmBindings): CoreAdapter {
         orderText,
         updatedAt
       );
+    },
+    planRoute(
+      rulesetJson: string,
+      rawReport: string,
+      rememberedJson: string,
+      unitId: string,
+      destination: string
+    ) {
+      return bindings.plan_route_state(rulesetJson, rawReport, rememberedJson, unitId, destination);
+    },
+    loadRegionSightings(databasePath: string, projectId: string, factionId: string) {
+      // Persistence is not linked into a wasm build, so a bare wasm adapter has nothing to read.
+      // The browser adapter in `@atlantis/browser-core` supplies its own, backed by IndexedDB.
+      return bindings.load_region_sightings_state?.(databasePath, projectId, factionId) ?? [];
     }
   };
 }
@@ -1083,6 +1284,12 @@ export function createTauriAdapter(invoke: TauriInvoke): CoreAdapter {
     parseReportFull(rawReport: string) {
       return invoke<ParsedReport>("parse_report_full", {
         raw_report: rawReport
+      });
+    },
+    parseReportClassified(rawReport: string, rulesetJson: string) {
+      return invoke<ParsedReport>("parse_report_classified", {
+        raw_report: rawReport,
+        ruleset_json: rulesetJson
       });
     },
     previewReportImport(databasePath: string, projectId: string, confirmedFactionId: string, rawReport: string) {
@@ -1144,6 +1351,30 @@ export function createTauriAdapter(invoke: TauriInvoke): CoreAdapter {
         turn_number: turnNumber,
         order_text: orderText,
         updated_at: updatedAt
+      });
+    },
+    planRoute(
+      rulesetJson: string,
+      rawReport: string,
+      rememberedJson: string,
+      unitId: string,
+      destination: string
+    ) {
+      // Tauri is told the argument names are snake_case rather than translating here, which is what
+      // commit 24779d7 settled after the mismatch cost a debugging session.
+      return invoke<RoutePlanResponse>("plan_route", {
+        ruleset_json: rulesetJson,
+        raw_report: rawReport,
+        remembered_json: rememberedJson,
+        unit_id: unitId,
+        destination
+      });
+    },
+    loadRegionSightings(databasePath: string, projectId: string, factionId: string) {
+      return invoke<RememberedRegion[]>("load_region_sightings", {
+        database_path: databasePath,
+        project_id: projectId,
+        faction_id: factionId
       });
     }
   };

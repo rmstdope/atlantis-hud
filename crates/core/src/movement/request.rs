@@ -1,0 +1,373 @@
+//! One call that answers everything the interface needs about a proposed move.
+//!
+//! The adapters are deliberately thin over this: both the Tauri command and the wasm binding call
+//! straight into it, so the desktop and the browser cannot drift into planning differently.
+//!
+//! The report arrives as text rather than as a parsed model. The core parses it in milliseconds,
+//! and keeping the call stateless means there is no session to invalidate when a new turn is
+//! imported.
+
+use serde::{Deserialize, Serialize};
+
+/// Everything the planner has to say about one proposed move.
+///
+/// Carries either a route or the reason there is none, never both. The two are separate fields
+/// rather than a tagged union because the wire contract is consumed by TypeScript, where a plain
+/// optional reads more naturally than a discriminated one.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RoutePlanResponse {
+    /// The route, when one was found.
+    pub plan: Option<crate::movement::plan::RoutePlan>,
+    /// Why there is none, when there is not.
+    pub problem: Option<crate::movement::plan::RouteProblem>,
+    /// What stands along it. Present only alongside a route.
+    pub risk: Option<crate::movement::risk::RouteRisk>,
+    /// Whether the ruleset describes movement completely.
+    ///
+    /// False while a gap is open - weather, today - which makes the cost a lower bound. Carried so
+    /// a caller can say so; whether it does is the caller's business.
+    pub fully_modelled: bool,
+}
+
+/// Plans a route for one unit, against a ruleset the caller supplies.
+///
+/// The report arrives as text rather than as a parsed model: the core parses it in milliseconds,
+/// and keeping the command stateless means no session to invalidate when a new turn is imported.
+///
+/// # Errors
+///
+/// Returns an error only when the ruleset itself cannot be used. A route that cannot be planned is
+/// a successful answer carrying a reason, not a failure.
+/// Plans over the current report alone.
+///
+/// Kept for callers that genuinely have no memory to offer - tests, mostly. Anything with a project
+/// behind it should use [`plan_for_remembered_report`], because a single report cannot support a
+/// route longer than one step.
+pub fn plan_for_report(
+    ruleset_json: &str,
+    raw_report: &str,
+    unit_id: &str,
+    destination: &str,
+) -> Result<RoutePlanResponse, String> {
+    plan_for_remembered_report(ruleset_json, raw_report, "[]", unit_id, destination)
+}
+
+/// The same, over a map accumulated across turns.
+///
+/// `remembered_json` is a JSON array of regions the faction saw in earlier turns, each with the
+/// turn it was seen in. They bring their own exits, which is what lets a route be longer than one
+/// step: a single report describes its neighbours but not *their* neighbours, so the graph
+/// otherwise stops at the fringe.
+///
+/// # Errors
+///
+/// As [`plan_for_report`], plus an error when the remembered regions cannot be read.
+pub fn plan_for_remembered_report(
+    ruleset_json: &str,
+    raw_report: &str,
+    remembered_json: &str,
+    unit_id: &str,
+    destination: &str,
+) -> Result<RoutePlanResponse, String> {
+    use crate::movement::graph::MapKnowledge;
+    use crate::movement::plan::{plan_route, RouteProblem};
+    use crate::movement::risk::assess_route;
+    use crate::movement::rules::Ruleset;
+    use crate::report::{classify_units, parse_report_full};
+
+    let ruleset = Ruleset::from_json(ruleset_json).map_err(|error| error.to_string())?;
+    let destination = parse_hex_id(destination)
+        .ok_or_else(|| format!("{destination} is not a hex identifier such as 1:7,53"))?;
+
+    // Classified first, because the risk heuristic weighs men and a unit's men are only exact once
+    // the catalogue has been consulted.
+    let remembered: Vec<crate::movement::graph::RememberedRegion> =
+        serde_json::from_str(remembered_json)
+            .map_err(|error| format!("remembered regions could not be read: {error}"))?;
+
+    let mut report = parse_report_full(raw_report);
+    classify_units(&mut report, &ruleset);
+    let map = MapKnowledge::from_remembered(&report, &remembered);
+
+    let Some(unit) = report.units().find(|unit| unit.unit_id == unit_id).cloned() else {
+        return Ok(RoutePlanResponse {
+            plan: None,
+            problem: Some(RouteProblem::OriginUnknown),
+            risk: None,
+            fully_modelled: ruleset.is_fully_modelled(),
+        });
+    };
+
+    Ok(match plan_route(&map, &ruleset, &unit, destination) {
+        Ok(plan) => {
+            let hexes: Vec<_> = plan.steps.iter().map(|step| step.to).collect();
+            let risk = assess_route(&map, &ruleset, &hexes, &unit);
+            RoutePlanResponse {
+                plan: Some(plan),
+                problem: None,
+                risk: Some(risk),
+                fully_modelled: ruleset.is_fully_modelled(),
+            }
+        }
+        Err(problem) => RoutePlanResponse {
+            plan: None,
+            problem: Some(problem),
+            risk: None,
+            fully_modelled: ruleset.is_fully_modelled(),
+        },
+    })
+}
+
+/// Parses a report and counts each unit's men against the catalogue.
+///
+/// The plain parser cannot do this: telling men from equipment needs an item reference, and a
+/// report carries none. Without it every unit reads as an estimate, including the great majority
+/// holding a single race where the leading-group figure is exactly right.
+///
+/// An empty or unusable ruleset leaves the report exactly as parsed, estimates and all. Refusing to
+/// show a report because a ruleset would not load would trade something that works for something
+/// that does not.
+#[must_use]
+pub fn parse_and_classify(raw_report: &str, ruleset_json: &str) -> crate::report::ParsedReport {
+    use crate::report::{classify_units, parse_report_full};
+
+    let mut report = parse_report_full(raw_report);
+    if let Ok(ruleset) = crate::movement::rules::Ruleset::from_json(ruleset_json) {
+        classify_units(&mut report, &ruleset);
+    }
+    report
+}
+
+/// Reads `1:7,53`, the way the game writes a hex and the way a region id is stored.
+fn parse_hex_id(text: &str) -> Option<crate::report::model::Coordinate> {
+    let (level, rest) = text.split_once(':')?;
+    let (x, y) = rest.split_once(',')?;
+    Some(crate::report::model::Coordinate {
+        x: x.trim().parse().ok()?,
+        y: y.trim().parse().ok()?,
+        z: level.trim().parse().ok()?,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const TURN_71: &str =
+        include_str!("../../../../tests/fixtures/reports/neworigins-3.0.0-f95-t71.rep");
+    const RULESET: &str = include_str!("../../../../config/public/ruleset.json");
+
+    #[test]
+    fn plans_a_route_and_assesses_what_stands_along_it() {
+        // "* Seven of Eight (18642)" walks north from the mountain at (7,53) to the one at (7,51).
+        let response =
+            plan_for_report(RULESET, TURN_71, "18642", "1:7,51").expect("the ruleset loads");
+
+        let plan = response.plan.expect("a route");
+        assert_eq!(plan.total_cost, 2);
+        assert_eq!(plan.months.len(), 1);
+        assert!(response.problem.is_none());
+
+        let risk = response.risk.expect("an assessment");
+        assert_eq!(risk.hexes.len(), 1, "one hex entered, one hex weighed");
+    }
+
+    /// A route that cannot be planned is a successful answer carrying a reason, not a failure. The
+    /// caller has something to show either way.
+    #[test]
+    fn a_refusal_comes_back_as_an_answer_rather_than_an_error() {
+        // "  Northeast : ocean (8,52)" - not walkable.
+        let response =
+            plan_for_report(RULESET, TURN_71, "18642", "1:8,52").expect("the ruleset loads");
+
+        assert!(response.plan.is_none());
+        assert!(response.risk.is_none());
+        assert!(matches!(
+            response.problem,
+            Some(crate::movement::plan::RouteProblem::OceanNeedsShip { .. })
+        ));
+    }
+
+    #[test]
+    fn a_unit_the_report_does_not_carry_is_reported_rather_than_panicking() {
+        let response =
+            plan_for_report(RULESET, TURN_71, "no-such-unit", "1:7,51").expect("still answers");
+
+        assert!(response.plan.is_none());
+        assert!(response.problem.is_some());
+    }
+
+    /// The one genuine error: a ruleset the core cannot use at all. Everything else is an answer.
+    #[test]
+    fn an_unusable_ruleset_is_an_error() {
+        let error = plan_for_report("{}", TURN_71, "18642", "1:7,51").expect_err("should fail");
+        assert!(error.contains("ruleset"), "message was: {error}");
+    }
+
+    #[test]
+    fn a_destination_that_is_not_a_hex_identifier_is_refused_by_name() {
+        let error =
+            plan_for_report(RULESET, TURN_71, "18642", "over there").expect_err("should fail");
+        assert!(error.contains("hex identifier"), "message was: {error}");
+    }
+
+    /// The weather gap travels with the answer, so a caller can qualify the total if it chooses.
+    #[test]
+    fn the_answer_says_whether_the_ruleset_describes_movement_completely() {
+        let response =
+            plan_for_report(RULESET, TURN_71, "18642", "1:7,51").expect("the ruleset loads");
+
+        assert!(
+            !response.fully_modelled,
+            "weather is unmodelled, so the cost is a lower bound"
+        );
+    }
+
+    #[test]
+    fn reads_a_hex_identifier_the_way_the_game_writes_one() {
+        assert_eq!(
+            parse_hex_id("1:7,53"),
+            Some(crate::report::model::Coordinate { x: 7, y: 53, z: 1 })
+        );
+        assert_eq!(
+            parse_hex_id("2:-3,4"),
+            Some(crate::report::model::Coordinate { x: -3, y: 4, z: 2 })
+        );
+        for bad in ["", "7,53", "1:7", "x:7,53", "1:7,53,9"] {
+            assert_eq!(parse_hex_id(bad), None, "{bad} should be refused");
+        }
+    }
+}
+
+#[cfg(test)]
+mod remembered_tests {
+    use super::*;
+
+    const RULESET: &str = include_str!("../../../../config/public/ruleset.json");
+    const TURN_71: &str =
+        include_str!("../../../../tests/fixtures/reports/neworigins-3.0.0-f95-t71.rep");
+
+    /// The payoff for remembering the map: a route with more than one step in it.
+    ///
+    /// One report describes a hex and names its neighbours, but the neighbours describe nothing, so
+    /// every route is a single step. Three turns of memory make a corridor a unit can actually walk.
+    #[test]
+    fn a_remembered_map_carries_a_route_a_single_report_could_not() {
+        let region = |terrain: &str, x: i32, y: i32, exits: &str| {
+            format!("{terrain} ({x},{y}) in Nowhere, 10 peasants (orcs), $5.\n\nExits:\n{exits}\n")
+        };
+
+        // The turn the unit is standing in.
+        let current = format!(
+            "Foo (1) Report\n\n{}\n* Walker (900), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.\n",
+            region("plain", 1, 1, "  Southeast : plain (2,2) in Nowhere.")
+        );
+
+        // Two hexes remembered from earlier turns, each bringing its own exits.
+        let remembered = format!(
+            "[{{\"region\":{},\"lastSeenTurn\":40}},{{\"region\":{},\"lastSeenTurn\":41}}]",
+            serde_json::to_string(
+                &crate::report::parse_report_full(&format!(
+                    "Foo (1) Report\n\n{}",
+                    region(
+                        "plain",
+                        2,
+                        2,
+                        "  Northwest : plain (1,1) in Nowhere.\n  Southeast : plain (3,3) in Nowhere."
+                    )
+                ))
+                .regions[0]
+            )
+            .expect("serializes"),
+            serde_json::to_string(
+                &crate::report::parse_report_full(&format!(
+                    "Foo (1) Report\n\n{}",
+                    region("plain", 3, 3, "  Northwest : plain (2,2) in Nowhere.")
+                ))
+                .regions[0]
+            )
+            .expect("serializes")
+        );
+
+        // Without memory, the far end is a name with no way through to it.
+        let alone = plan_for_report(RULESET, &current, "900", "1:3,3").expect("the ruleset loads");
+        assert!(alone.plan.is_none(), "one report cannot reach that far");
+
+        let together = plan_for_remembered_report(RULESET, &current, &remembered, "900", "1:3,3")
+            .expect("the ruleset loads");
+        let plan = together.plan.expect("a route across remembered ground");
+        assert_eq!(plan.steps.len(), 2);
+        assert_eq!(plan.total_cost, 2);
+        assert_eq!(plan.months.len(), 1, "two plains at two points a month");
+    }
+
+    /// Unreadable memory is an error rather than a silently smaller map: a route planned over half
+    /// a map, presented as though it were the whole one, is exactly the wrong kind of answer.
+    #[test]
+    fn memory_that_cannot_be_read_is_refused_rather_than_ignored() {
+        let error =
+            plan_for_remembered_report(RULESET, "Foo (1) Report\n", "not json", "900", "1:1,1")
+                .expect_err("should refuse");
+
+        assert!(error.contains("remembered regions"), "message was: {error}");
+    }
+
+    #[test]
+    fn no_memory_at_all_is_simply_one_report() {
+        let response = plan_for_remembered_report(RULESET, TURN_71, "[]", "18642", "1:7,51")
+            .expect("the ruleset loads");
+
+        assert_eq!(response.plan.expect("a route").total_cost, 2);
+    }
+}
+
+#[cfg(test)]
+mod reaches_the_planner_tests {
+    use super::*;
+
+    const RULESET: &str = include_str!("../../../../config/public/ruleset.json");
+
+    /// The defect this pins: the command that the interface calls must plan over the remembered map,
+    /// not over the current report alone.
+    ///
+    /// Both adapters delegate here, and this hardcoded an empty memory for a while, so importing a
+    /// second turn grew the drawn map and left the planner's graph exactly as it was. Every route
+    /// stayed one step long however many turns were imported.
+    #[test]
+    fn the_command_plans_over_the_memory_it_is_given() {
+        let corridor = |terrain: &str, x: i32, y: i32, exits: &str| {
+            format!("{terrain} ({x},{y}) in Nowhere, 10 peasants (orcs), $5.\n\nExits:\n{exits}\n")
+        };
+
+        let current = format!(
+            "Foo (1) Report\n\n{}\n* Walker (900), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.\n",
+            corridor("plain", 1, 1, "  Southeast : plain (2,2) in Nowhere.")
+        );
+
+        let far_side = crate::report::parse_report_full(&format!(
+            "Foo (1) Report\n\n{}",
+            corridor(
+                "plain",
+                2,
+                2,
+                "  Northwest : plain (1,1) in Nowhere.\n  Southeast : plain (3,3) in Nowhere."
+            )
+        ));
+        let remembered = format!(
+            "[{{\"region\":{},\"lastSeenTurn\":40}}]",
+            serde_json::to_string(&far_side.regions[0]).expect("serializes")
+        );
+
+        // With nothing remembered the far hex is unreachable, which is the single-report ceiling.
+        let alone = plan_for_remembered_report(RULESET, &current, "[]", "900", "1:3,3")
+            .expect("the ruleset loads");
+        assert!(alone.plan.is_none(), "one report cannot reach that far");
+
+        // With the memory the interface actually holds, it is reachable.
+        let together = plan_for_remembered_report(RULESET, &current, &remembered, "900", "1:3,3")
+            .expect("the ruleset loads");
+        let plan = together.plan.expect("a route across remembered ground");
+        assert_eq!(plan.steps.len(), 2);
+    }
+}

@@ -140,6 +140,8 @@ pub fn parse_unit(
         items: Vec::new(),
         skills: Vec::new(),
         men: 0,
+        men_estimated: true,
+        men_by_race: Vec::new(),
         weight: None,
         capacity: None,
         structure_id: structure_id.map(str::to_string),
@@ -199,11 +201,12 @@ fn parse_skills(value: &str) -> Vec<Skill> {
 ///
 /// A report lists a unit's composition first and its equipment after, with no marker between them,
 /// so `20 hill dwarves [HDWA], 159 silver [SILV]` gives 20 correctly while
-/// `50 leaders [LEAD], 20 nomads [NOMA]` gives only 50. Summing everything that is not silver would
-/// be worse, because equipment follows men far more often than a second race does.
+/// `50 gnolls [GNOL], 49 orcs [ORC]` gives only 50. Summing everything that is not silver would be
+/// worse, because equipment follows men far more often than a second race does.
 ///
-/// Settling this properly needs the `Item reports` section, which names the races, and that is not
-/// parsed yet. Until then the leading group is the honest answer rather than a wrong total.
+/// This is now only the opening estimate. `classify_units` settles it exactly against the scraped
+/// item catalogue and clears `men_estimated`; parsing keeps working without a ruleset, so the
+/// estimate is what a unit carries until that pass has run.
 fn count_men(items: &[ItemAmount]) -> i64 {
     items
         .first()

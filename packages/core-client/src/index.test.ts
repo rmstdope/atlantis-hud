@@ -92,6 +92,34 @@ describe("core client adapter contract parity", () => {
       }
     };
 
+    // The planner's answer is the same object shape on both transports: the core serializes it
+    // once and neither adapter reshapes it. Pinning it here is what stops one of them drifting.
+    const planPayload = {
+      plan: {
+        from: { x: 7, y: 53, z: 1 },
+        to: { x: 7, y: 51, z: 1 },
+        mode: "walk",
+        steps: [
+          {
+            direction: "north",
+            to: { x: 7, y: 51, z: 1 },
+            terrain: "mountain",
+            cost: 2,
+            road: false
+          }
+        ],
+        totalCost: 2,
+        months: [{ month: 1, steps: 1, endsAt: { x: 7, y: 51, z: 1 } }]
+      },
+      problem: null,
+      risk: {
+        level: "medium",
+        worst: null,
+        hexes: []
+      },
+      fullyModelled: false
+    };
+
     const wasmBindings: WasmBindings = {
       get_game_info() {
         return {
@@ -133,12 +161,24 @@ describe("core client adapter contract parity", () => {
       load_order_draft_state() {
         return orderDraftPayload;
       },
+      parse_report_classified_state() {
+        return { header: {}, regions: [], ordersTemplate: null };
+      },
+      plan_route_state() {
+        return planPayload;
+      },
       save_order_draft_state() {
         return orderDraftPayload;
       }
     };
 
     const invoke: TauriInvoke = async <T>(command: string) => {
+      if (command === "parse_report_classified") {
+        return Promise.resolve({ header: {}, regions: [], ordersTemplate: null } as T);
+      }
+      if (command === "plan_route") {
+        return Promise.resolve(planPayload as T);
+      }
       if (command === "get_game_info") {
         return Promise.resolve({
           id: "atlantis",
@@ -287,6 +327,16 @@ describe("core client adapter contract parity", () => {
     const tauriClient = createCoreClient(createTauriAdapter(invoke));
 
     await expect(wasmClient.getGameInfo()).resolves.toEqual(await tauriClient.getGameInfo());
+
+    // The planner's answer must be identical on both transports, down to the nested route and its
+    // risk: the desktop and the browser plan the same move or one of them is lying.
+    const wasmPlan = await wasmClient.planRoute("{}", "report", "[]", "18642", "1:7,51");
+    const tauriPlan = await tauriClient.planRoute("{}", "report", "[]", "18642", "1:7,51");
+    expect(wasmPlan).toEqual(tauriPlan);
+    expect(wasmPlan.plan?.totalCost).toBe(2);
+    expect(wasmPlan.plan?.steps[0].terrain).toBe("mountain");
+    expect(wasmPlan.problem).toBeNull();
+    expect(wasmPlan.fullyModelled).toBe(false);
     await expect(
       wasmClient.parseReport("TURN: 12 Spring\nFACTION: 17 | Crimson Tide\nREGION: R1 | Coast of Dawn")
     ).resolves.toEqual(await tauriClient.parseReport("same"));

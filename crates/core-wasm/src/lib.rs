@@ -387,6 +387,45 @@ pub fn diff_imported_turn_state(existing: JsValue, candidate: JsValue) -> Result
     to_js(&diff)
 }
 
+/// Parses a report and counts each unit's men against the catalogue.
+#[wasm_bindgen]
+pub fn parse_report_classified_state(
+    raw_report: String,
+    ruleset_json: String,
+) -> Result<JsValue, JsValue> {
+    to_js(&atlantis_hud_core::movement::request::parse_and_classify(
+        &raw_report,
+        &ruleset_json,
+    ))
+}
+
+/// Plans a route for one unit against a ruleset the caller supplies.
+///
+/// Available on every target: planning is pure, so unlike the persistence entry points it needs no
+/// native backing. The ruleset arrives as text because the shell loads it from a served file - the
+/// core never touches a filesystem, which is what keeps it compiling to wasm at all.
+///
+/// A route that cannot be planned resolves rather than rejecting: the reason is part of the answer.
+/// Only a ruleset the core cannot use is an error.
+#[wasm_bindgen]
+pub fn plan_route_state(
+    ruleset_json: String,
+    raw_report: String,
+    remembered_json: String,
+    unit_id: String,
+    destination: String,
+) -> Result<JsValue, JsValue> {
+    let response = atlantis_hud_core::movement::request::plan_for_remembered_report(
+        &ruleset_json,
+        &raw_report,
+        &remembered_json,
+        &unit_id,
+        &destination,
+    )
+    .map_err(|error| JsValue::from_str(&error))?;
+    to_js(&response)
+}
+
 /// Parses a report into the full domain model: regions, units, structures, exits and markets.
 ///
 /// The flat summary `parse_report_state` returns is derived from this same parse, and remains for

@@ -4,6 +4,7 @@
 //! input the parser does not recognise produces a structured warning and partial results, never a
 //! hard failure, because a player would rather see most of a turn than none of it.
 
+pub mod composition;
 pub mod header;
 pub mod model;
 pub mod orders;
@@ -11,6 +12,8 @@ pub mod region;
 pub mod scan;
 pub mod unit;
 pub mod unwrap;
+
+pub use composition::{classify_units, Classification};
 
 use header::{parse_header, ReportHeader};
 use model::ReportRegion;

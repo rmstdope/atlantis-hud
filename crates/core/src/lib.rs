@@ -1,5 +1,6 @@
 //! Shared domain core for Atlantis HUD.
 
+pub mod movement;
 pub mod report;
 
 use serde::{Deserialize, Serialize};

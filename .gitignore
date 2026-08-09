@@ -25,3 +25,6 @@ packages/browser-core/src/wasm/
 
 # Local temp files
 .tmp/
+
+# Local agent scratch space; never part of the project.
+.claude/

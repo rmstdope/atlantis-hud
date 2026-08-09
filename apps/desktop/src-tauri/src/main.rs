@@ -60,6 +60,49 @@ fn parse_report(raw_report: String) -> ReportParseResultDto {
     feature = "desktop-runtime"
 ))]
 #[tauri::command(rename_all = "snake_case")]
+fn parse_report_classified(raw_report: String, ruleset_json: String) -> ParsedReport {
+    atlantis_hud_core_tauri::command_parse_report_classified(&raw_report, &ruleset_json)
+}
+
+#[cfg(all(
+    any(target_os = "macos", target_os = "windows"),
+    feature = "desktop-runtime"
+))]
+#[tauri::command(rename_all = "snake_case")]
+fn load_region_sightings(
+    database_path: String,
+    project_id: String,
+    faction_id: String,
+) -> Result<Vec<atlantis_hud_core_tauri::RememberedRegionDto>, String> {
+    atlantis_hud_core_tauri::command_load_region_sightings(&database_path, &project_id, &faction_id)
+}
+
+#[cfg(all(
+    any(target_os = "macos", target_os = "windows"),
+    feature = "desktop-runtime"
+))]
+#[tauri::command(rename_all = "snake_case")]
+fn plan_route(
+    ruleset_json: String,
+    raw_report: String,
+    remembered_json: String,
+    unit_id: String,
+    destination: String,
+) -> Result<atlantis_hud_core::movement::request::RoutePlanResponse, String> {
+    atlantis_hud_core_tauri::command_plan_route(
+        &ruleset_json,
+        &raw_report,
+        &remembered_json,
+        &unit_id,
+        &destination,
+    )
+}
+
+#[cfg(all(
+    any(target_os = "macos", target_os = "windows"),
+    feature = "desktop-runtime"
+))]
+#[tauri::command(rename_all = "snake_case")]
 fn parse_report_full(raw_report: String) -> ParsedReport {
     command_parse_report_full(&raw_report)
 }
@@ -181,7 +224,10 @@ fn main() {
             load_imported_turn,
             validate_orders,
             save_order_draft,
-            load_order_draft
+            load_order_draft,
+            plan_route,
+            load_region_sightings,
+            parse_report_classified
         ])
         .run(tauri::generate_context!())
         .expect("error while running atlantis-hud desktop shell");
