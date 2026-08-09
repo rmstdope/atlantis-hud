@@ -9,6 +9,7 @@ export * from "./gameSession";
 export * from "./orderDraft";
 export * from "./rulesets";
 export * from "./unitComposition";
+export * from "./unitTable";
 
 export * from "./workspace/AppHeader";
 export * from "./workspace/AppShell";
