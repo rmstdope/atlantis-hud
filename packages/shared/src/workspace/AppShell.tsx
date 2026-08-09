@@ -20,7 +20,7 @@ import {
   type DraftWriter,
   type SaveState
 } from "../orderDraft";
-import { shouldTriggerAutosave } from "../orderEditor";
+import { shouldTriggerAutosave, type ValidatedOrders } from "../orderEditor";
 import {
   gameAfterDelete,
   newGameId,
@@ -117,7 +117,7 @@ export function AppShell({
   const [ordersDocument, setOrdersDocument] = useState("");
   const [status, setStatus] = useState<ImportStatus | null>(null);
   const [busy, setBusy] = useState(false);
-  const [diagnostics, setDiagnostics] = useState({ errors: 0, warnings: 0 });
+  const [validated, setValidated] = useState<ValidatedOrders>({ text: "", diagnostics: [] });
   const [save, setSave] = useState<SaveState>({ kind: "clean" });
   // The planner takes the report as text, which keeps the call stateless: there is no session to
   // invalidate when a new turn arrives. The text is also the key the core remembers its last parse
@@ -588,21 +588,41 @@ export function AppShell({
     };
   }, [client, planner.destinationId, unit, ruleset, rawReport, rememberedJson]);
 
-  // Validation follows the document, debounced so it does not run on every keystroke.
+  // Validation follows the document, debounced so it does not run on every keystroke. Kept whole
+  // rather than counted here: the orders panel shows one unit, and which of these belong to it is a
+  // question only the panel can answer - one it answers by line number, which is why the text that
+  // was validated is kept alongside the answer rather than thrown away.
+  //
+  // Cancelled on the way out as well as debounced. Two validations can be in flight at once and
+  // there is no promise that they finish in order, so without this an older reply can land last and
+  // leave the panel pointing at lines that moved several keystrokes ago.
   useEffect(() => {
     if (!ordersDocument) {
-      setDiagnostics({ errors: 0, warnings: 0 });
+      setValidated({ text: "", diagnostics: [] });
       return undefined;
     }
+
+    let cancelled = false;
     const timer = setTimeout(() => {
-      void client.validateOrders(ordersDocument).then((result) => {
-        setDiagnostics({
-          errors: result.diagnostics.filter((entry) => entry.severity === "error").length,
-          warnings: result.diagnostics.filter((entry) => entry.severity === "warning").length
-        });
-      });
+      void client
+        .validateOrders(ordersDocument)
+        .then((result) => {
+          if (!cancelled) {
+            setValidated({ text: ordersDocument, diagnostics: result.diagnostics });
+          }
+        })
+        // A validation that will not run leaves the last one standing rather than replacing it with
+        // an empty verdict. Saying "0 errors" because the check failed is the one answer worse than
+        // an answer a few keystrokes old, and validation is advisory in any case - the server has
+        // the last word on every order. Without this the rejection is unhandled and the state stays
+        // stale anyway, silently.
+        .catch(() => undefined);
     }, 300);
-    return () => clearTimeout(timer);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
   }, [client, ordersDocument]);
 
   /** The faction and turn the document in front of the player belongs to. */
@@ -839,8 +859,7 @@ export function AppShell({
                   document={ordersDocument}
                   ownFactionName={factionLabel ?? "your faction"}
                   onChange={onOrdersChange}
-                  errorCount={diagnostics.errors}
-                  warningCount={diagnostics.warnings}
+                  validated={validated}
                   save={save}
                 />
               </div>

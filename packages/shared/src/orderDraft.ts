@@ -11,6 +11,7 @@
  */
 
 import type { CoreClient, OpenedGame, ParsedReport } from "@atlantis/core-client";
+import { stripUnitComments } from "./ordersDocument";
 
 /**
  * Which draft a document is.
@@ -97,6 +98,11 @@ export type DocumentChoice = {
  *
  * A draft that cannot be read leaves the template standing and says so. Refusing to show a report
  * that parsed perfectly well would trade something that works for something that does not.
+ *
+ * This is also where the server's unit descriptions are dropped, because it is the one place a
+ * template becomes a document. They are the server's writing, not the player's, and the panel that
+ * would otherwise show them is the panel for writing orders. A restored draft goes through
+ * untouched: a `;` line in one is a note the player left themselves.
  */
 export async function documentFor(
   client: CoreClient,
@@ -104,8 +110,10 @@ export async function documentFor(
   key: DraftKey | null,
   template: string
 ): Promise<DocumentChoice> {
+  const clean = stripUnitComments(template);
+
   if (key === null) {
-    return { text: template, restored: false, savedAt: null, warning: null };
+    return { text: clean, restored: false, savedAt: null, warning: null };
   }
 
   try {
@@ -116,7 +124,7 @@ export async function documentFor(
       key.turnNumber
     );
     if (draft === null) {
-      return { text: template, restored: false, savedAt: null, warning: null };
+      return { text: clean, restored: false, savedAt: null, warning: null };
     }
     return {
       text: draft.orderText,
@@ -127,7 +135,7 @@ export async function documentFor(
   } catch (error: unknown) {
     const detail = error instanceof Error ? error.message : String(error);
     return {
-      text: template,
+      text: clean,
       restored: false,
       savedAt: null,
       warning: `saved orders could not be read: ${detail}`

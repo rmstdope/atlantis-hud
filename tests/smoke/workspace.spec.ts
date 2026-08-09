@@ -100,6 +100,59 @@ test("selecting your own unit fills the detail panel and opens its orders", asyn
   const orders = page.getByTestId("orders-input");
   await expect(orders).toBeVisible();
   await expect(orders).toHaveValue(/@study obse/);
+
+  // The server's own description of the unit is not an order and does not belong in the editor.
+  // The unit panel above already says all of it.
+  await expect(orders).not.toHaveValue(/Seven of Eight/);
+  await expect(orders).not.toHaveValue(/;/);
+});
+
+/**
+ * The editor writes every keystroke into the faction document and reads it straight back, and the
+ * document cannot hold a blank line at the end of a block. Taking that answer unconditionally used
+ * to swallow the newline, leaving the player able to overtype the lines already there and nothing
+ * else.
+ */
+test("a new line can be opened at the end of a unit's orders", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+  await selectUnit(page, OWN_UNIT);
+
+  const orders = page.getByTestId("orders-input");
+  const before = (await orders.inputValue()).trimEnd();
+
+  await orders.click();
+  // The caret goes to the very end deterministically: End and Control+End differ by platform, and
+  // this suite runs on both shells.
+  await orders.evaluate((element: HTMLTextAreaElement) => {
+    element.setSelectionRange(element.value.length, element.value.length);
+  });
+  await orders.press("Enter");
+  await orders.pressSequentially("@work");
+
+  await expect(orders).toHaveValue(`${before}\n@work`);
+});
+
+test("a bad order names itself, and belongs to the unit that carries it", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+  await selectUnit(page, OWN_UNIT);
+
+  await page.getByTestId("orders-input").fill("@study obse\nWROK");
+
+  const problems = page.getByTestId("orders-diagnostics");
+  await expect(problems).toContainText("unknown order command: WROK");
+  // Numbered from the top of this unit's block, which is what the editor shows.
+  await expect(problems).toContainText("line 2");
+  await expect(page.getByTestId("orders-status")).toContainText("1 error");
+
+  // Another unit is not answerable for it, though the document still is.
+  await selectHex(page, "1:26,52");
+  await selectUnit(page, "13401");
+  await expect(page.getByTestId("orders-diagnostic")).toHaveCount(0);
+  await expect(page.getByTestId("orders-status")).toContainText("0 errors");
+  // Counted apart from this unit's own, so the two figures are never added up by mistake.
+  await expect(page.getByTestId("orders-status")).toContainText("1 elsewhere");
 });
 
 test("a foreign unit can be inspected but not ordered", async ({ page }) => {

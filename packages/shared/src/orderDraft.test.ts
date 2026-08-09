@@ -172,6 +172,54 @@ describe("choosing which document to show", () => {
     expect(choice.text).toBe("#atlantis 95 pass");
     expect(core.loadOrderDraft).not.toHaveBeenCalled();
   });
+
+  /**
+   * The server opens every unit's block with a description of that unit, wrapped over as many lines
+   * as it takes. The unit panel already says all of it, and leaving it in the editor buries the one
+   * thing the player came to write. It is dropped here, where a template becomes a document.
+   */
+  it("drops the descriptions the server wrote into the template", async () => {
+    const core = client();
+    const template = ["unit 793", ";Three of Five (793), leader [LEAD].", "@study obse"].join("\n");
+
+    const choice = await documentFor(core, OPEN_GAME, KEY, template);
+
+    expect(choice.text).toBe(["unit 793", "@study obse"].join("\n"));
+  });
+
+  it("drops them for a report that has no draft key either", async () => {
+    const core = client();
+    const template = ["unit 793", ";Three of Five (793), leader [LEAD]."].join("\n");
+
+    expect((await documentFor(core, OPEN_GAME, null, template)).text).toBe("unit 793");
+  });
+
+  it("leaves them out of the template a failed read falls back to", async () => {
+    const core = client({
+      loadOrderDraft: vi.fn().mockRejectedValue(new Error("database is locked"))
+    });
+    const template = ["unit 793", ";Three of Five (793), leader [LEAD]."].join("\n");
+
+    expect((await documentFor(core, OPEN_GAME, KEY, template)).text).toBe("unit 793");
+  });
+
+  /**
+   * A saved draft is the player's own text, not the server's. A `;` line in one was typed by them,
+   * and deleting a player's own note every time the game reopens would be its own bug.
+   */
+  it("leaves a comment in saved orders alone, because the player wrote it", async () => {
+    const core = client({
+      loadOrderDraft: vi.fn().mockResolvedValue({
+        key: { gameId: "aug-2026", factionId: "95", turnNumber: 71 },
+        orderText: "unit 793\n;tax here next turn\n@study obse",
+        updatedAt: NOW
+      })
+    });
+
+    const choice = await documentFor(core, OPEN_GAME, KEY, "unit 793\n;Three of Five (793).");
+
+    expect(choice.text).toBe("unit 793\n;tax here next turn\n@study obse");
+  });
 });
 
 describe("keeping track of what is owed to storage", () => {

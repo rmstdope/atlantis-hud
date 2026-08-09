@@ -1,7 +1,13 @@
-import type { ReportUnit } from "@atlantis/core-client";
+import type { OrderDiagnostic, ReportUnit } from "@atlantis/core-client";
 import { useEffect, useState } from "react";
 import type { HexNode } from "../hexMapModel";
 import { readableTime, type SaveState } from "../orderDraft";
+import {
+  diagnosticsForUnit,
+  draftAfterDocumentChange,
+  summarizeOrderValidation,
+  type ValidatedOrders
+} from "../orderEditor";
 import { readUnitOrders } from "../ordersDocument";
 import { CollapsiblePanel } from "./CollapsiblePanel";
 
@@ -19,8 +25,14 @@ type OrdersPanelProps = {
   document: string;
   ownFactionName: string;
   onChange: (unitId: string, orders: string) => void;
-  errorCount: number;
-  warningCount: number;
+  /**
+   * Everything wrong with the faction's orders, and the text that was found wrong.
+   *
+   * Which of it is this unit's is worked out here, by line number - so it has to be worked out
+   * against the document those line numbers were counted in, which validation being debounced means
+   * is not always the one on screen.
+   */
+  validated: ValidatedOrders;
   save: SaveState;
 };
 
@@ -52,8 +64,7 @@ export function OrdersPanel({
   document,
   ownFactionName,
   onChange,
-  errorCount,
-  warningCount,
+  validated,
   save
 }: OrdersPanelProps) {
   const unitId = unit?.unitId ?? null;
@@ -61,12 +72,27 @@ export function OrdersPanel({
   const lock = lockFor(unit, hex, block);
   const [draft, setDraft] = useState(block ?? "");
 
-  // Reload when the selection or the document changes, not on every render: re-reading constantly
-  // would fight the user's typing, while never reloading would show one unit's orders under
-  // another's name.
+  // Reload when the selection moves or this unit's own lines change, rather than on every edit
+  // anywhere in the document: never reloading would show one unit's orders under another's name,
+  // and reloading constantly would fight the player's typing. `draftAfterDocumentChange` settles
+  // the case the two rules disagree about - the text coming back from a document that cannot hold
+  // the blank line just typed at the end of it.
   useEffect(() => {
-    setDraft(unitId === null ? "" : readUnitOrders(document, unitId) ?? "");
-  }, [unitId, document]);
+    setDraft((current) => draftAfterDocumentChange(current, block ?? ""));
+  }, [unitId, block]);
+
+  // This unit's problems, and how many the rest of the faction has. The document-wide figure is
+  // what stops a mistake in a unit nobody is looking at from reaching the server unnoticed. Not
+  // worked out at all behind a lock: there is no editor under it to report anything about, and
+  // finding a block means walking the whole document.
+  const problems =
+    lock || unitId === null
+      ? []
+      : diagnosticsForUnit(validated.text, unitId, validated.diagnostics);
+  const here = summarizeOrderValidation({ diagnostics: problems });
+  // What the rest of the faction has wrong, counted apart from this unit's own. A whole-document
+  // total sitting beside a per-unit count reads as though the two should be added together.
+  const elsewhere = summarizeOrderValidation(validated).errorCount - here.errorCount;
 
   return (
     <CollapsiblePanel
@@ -96,18 +122,52 @@ export function OrdersPanel({
             data-testid="orders-status"
             className="m-0 flex items-center gap-3 border-t border-edge pt-1.5 text-[10px] text-ink-soft"
           >
-            <span className={errorCount > 0 ? "text-danger" : "text-ok"}>
-              {errorCount} error{errorCount === 1 ? "" : "s"}
+            <span className={here.errorCount > 0 ? "text-danger" : "text-ok"}>
+              {here.errorCount} error{here.errorCount === 1 ? "" : "s"}
             </span>
-            <span className={warningCount > 0 ? "text-warn" : "text-ok"}>
-              {warningCount} warning{warningCount === 1 ? "" : "s"}
+            <span className={here.warningCount > 0 ? "text-warn" : "text-ok"}>
+              {here.warningCount} warning{here.warningCount === 1 ? "" : "s"}
             </span>
+            {elsewhere > 0 ? (
+              <span className="text-ink-dim">{elsewhere} elsewhere</span>
+            ) : null}
             <span className="flex-1" />
             <SaveNotice save={save} />
           </p>
+          {problems.length > 0 ? <ProblemList problems={problems} /> : null}
         </div>
       )}
     </CollapsiblePanel>
+  );
+}
+
+/**
+ * What is wrong with this unit's orders, line by line.
+ *
+ * Counts alone told the player a number and left them to find it. The line is the one the editor
+ * above is showing, so it can be counted down to; scrolled rather than allowed to grow, because the
+ * panel's height is fixed and the editor is what the space is for.
+ */
+function ProblemList({ problems }: { problems: OrderDiagnostic[] }) {
+  return (
+    <ul
+      data-testid="orders-diagnostics"
+      className="m-0 max-h-20 list-none overflow-y-auto p-0 pt-1 text-[10px] leading-snug"
+    >
+      {problems.map((problem, index) => (
+        <li
+          key={`${problem.code}-${problem.lineStart}-${index}`}
+          data-testid="orders-diagnostic"
+          data-severity={problem.severity}
+          className="flex gap-2"
+        >
+          <span className="shrink-0 tabular-nums text-ink-dim">line {problem.lineStart}</span>
+          <span className={problem.severity === "error" ? "text-danger" : "text-warn"}>
+            {problem.message}
+          </span>
+        </li>
+      ))}
+    </ul>
   );
 }
 

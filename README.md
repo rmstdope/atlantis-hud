@@ -169,6 +169,23 @@ cargo clippy --workspace --all-targets -- -D warnings
   - the desktop shell's first Tauri capability, so a native window close can be held open long
     enough to finish the write
 
+- Issue #37 fixes the orders panel, which three faults between them had left unusable:
+  - the server's description of each unit — name, weight, capacity, every skill, wrapped over as
+    many as eight `;` lines — is dropped when a template becomes a document, so the editor holds
+    the player's orders and nothing else. The unit panel already says all of it. A `;` line in a
+    saved draft is the player's own note and is left alone
+  - a unit's block now ends at the banner announcing the next region, instead of swallowing it.
+    Every region's last unit had been showing the next region's heading as part of its orders
+  - a new line can be opened at the end of a block. Each keystroke is written into the faction
+    document and read straight back, and a block cannot hold a blank line at its end, so pressing
+    Enter used to be undone by the answer coming back — leaving the lines already there as the only
+    ones that could be edited. The editor now keeps its own draft where the document disagrees with
+    it about nothing else, which also stops the caret jumping and lets undo work
+  - the error and warning counts belong to the selected unit rather than to the whole faction, and
+    each problem is listed with the line it is on, counted from the top of the block on screen. A
+    tally of the rest of the document stays alongside, so a mistake in a unit nobody is looking at
+    is still visible before export
+
 To fetch the ruleset for a game other than the committed one:
 
 ```bash
