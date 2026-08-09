@@ -12,7 +12,7 @@ name: Deploy web
 on:
   workflow_dispatch:
 
-# Serialised rather than cancelled. An interrupted FTP sync leaves the site half-replaced, which is
+# Serialised rather than cancelled. An interrupted upload leaves the site half-replaced, which is
 # worse than waiting for the run in front to finish.
 concurrency:
   group: deploy-web
@@ -51,10 +51,7 @@ jobs:
             echo "::error::Not configured to publish. Missing:$missing"
             exit 1
           fi
-          case "$SERVER_DIR" in
-            */) ;;
-            *) echo "::error::ONECOM_FTP_SERVER_DIR must end in a slash; the action treats it as a directory."; exit 1 ;;
-          esac
+          echo "Publishing to $SERVER_DIR"
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -108,21 +105,70 @@ jobs:
       - name: Verify the build that is about to be published
         run: pnpm run test:pwa
 
-      - name: Publish over FTPS
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
-        with:
-          server: ${{ secrets.ONECOM_FTP_SERVER }}
-          username: ${{ secrets.ONECOM_FTP_USERNAME }}
-          password: ${{ secrets.ONECOM_FTP_PASSWORD }}
-          # Explicit TLS. one.com offers it on every plan, and the alternative sends the password in
-          # the clear.
-          protocol: ftps
-          local-dir: apps/web/dist/
-          server-dir: ${{ vars.ONECOM_FTP_SERVER_DIR }}
-          # `dangerous-clean-slate` is deliberately left off. The action keeps a sync state file on
-          # the server and uploads only what changed; wiping the remote first would discard it, and
-          # would briefly serve nothing at all to a browser holding a cached service worker that is
-          # still asking for the old asset names.
+      # SFTP, over SSH. one.com does not answer FTPS - it aborts the TLS handshake outright - and
+      # SFTP is a different protocol rather than a flag, so `SamKirkland/FTP-Deploy-Action` cannot
+      # reach this host at all: it speaks ftp, ftps and ftps-legacy only.
+      #
+      # lftp rather than one of the SFTP actions, because it authenticates with a password without
+      # needing an SSH key on the account, and because `mirror` is a recursive upload with retries
+      # rather than a loop over `put`. The whole site is about 1.3 MB, so there is nothing to gain
+      # from being cleverer than that.
+      - name: Install lftp
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq lftp
 
-      - name: Say where it went
-        run: echo "::notice::Published to https://atlantis-hud.kurelid.se"
+      - name: Publish over SFTP
+        env:
+          SERVER: ${{ secrets.ONECOM_FTP_SERVER }}
+          USERNAME: ${{ secrets.ONECOM_FTP_USERNAME }}
+          # `--env-password` reads this rather than taking the password on the command line, where
+          # it would be visible to anything that can list processes on the runner.
+          LFTP_PASSWORD: ${{ secrets.ONECOM_FTP_PASSWORD }}
+          SERVER_DIR: ${{ vars.ONECOM_FTP_SERVER_DIR }}
+          PORT: ${{ vars.ONECOM_SFTP_PORT || '22' }}
+        run: |
+          lftp -u "$USERNAME" --env-password "sftp://$SERVER:$PORT" <<LFTP
+          # Stop at the first command that fails, rather than carrying on to `bye` and exiting on
+          # its status. A refused connection fails the job either way - that much was measured - but
+          # a partial failure part-way through the script would otherwise be reported as success.
+          set cmd:fail-exit yes
+          set sftp:auto-confirm yes
+          set net:timeout 30
+          set net:max-retries 3
+          set mirror:parallel-transfer-count 4
+          mirror --reverse --verbose --continue "apps/web/dist/" "$SERVER_DIR"
+          bye
+          LFTP
+
+          # No --delete, on purpose. Vite names its assets by content hash, so an old file is never
+          # overwritten by a different one - it is simply no longer referenced. Removing them would
+          # break exactly the client this is most careful about: a browser holding a cached service
+          # worker that is still asking for the previous build's chunk names. They cost kilobytes.
+
+      # Proof rather than assumption. An upload can succeed into a directory the web server does not
+      # serve - which is the mistake `ONECOM_FTP_SERVER_DIR` invites - and the job would otherwise
+      # report success over a site that never changed.
+      - name: Check the site is serving what was uploaded
+        run: |
+          site="https://atlantis-hud.kurelid.se"
+          for attempt in 1 2 3; do
+            status="$(curl -sS -o page.html -w '%{http_code}' --max-time 30 "$site/" || echo 000)"
+            [ "$status" = "200" ] && break
+            echo "Attempt $attempt: $site/ returned $status"
+            sleep 10
+          done
+          if [ "$status" != "200" ]; then
+            echo "::error::$site/ returned $status. Is ONECOM_FTP_SERVER_DIR the directory this domain serves, and is HTTPS enabled?"
+            exit 1
+          fi
+          if ! grep -q "manifest.webmanifest" page.html; then
+            echo "::error::$site/ answered, but the page served is not this build - no manifest link in it."
+            exit 1
+          fi
+          manifest="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 30 "$site/manifest.webmanifest" || echo 000)"
+          if [ "$manifest" != "200" ]; then
+            echo "::error::The manifest returned $manifest. Without it the application cannot be installed."
+            exit 1
+          fi
+          echo "::notice::Published to $site"
