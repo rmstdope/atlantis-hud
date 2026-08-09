@@ -133,6 +133,17 @@ cargo clippy --workspace --all-targets -- -D warnings
   - a game per faction, so a loaded turn is remembered and the map spans more than one report
   - the planner panel, the arm-one-pick gesture, and the route overlay the movement chip controls
 
+- Issue #33 adds:
+  - games as a first-class thing the player creates, names, switches between and deletes, each with
+    a database of its own so no data can leak between them (`docs/issue-33-game-contracts.md`)
+  - the game indicator in the header, the picker beneath it, and the create screen that is all the
+    application offers until a game exists
+  - a ruleset chosen per game, recorded by id and fetched from the file that id names
+  - games kept in the platform application data directory, resolved by the desktop shell, so no
+    storage path is ever composed by the frontend
+  - `create_game`/`open_game`/`list_games`/`delete_game` through both adapters, and migration 0005
+    renaming the schema's `project` to `game`
+
 To fetch the ruleset for a game other than the committed one:
 
 ```bash

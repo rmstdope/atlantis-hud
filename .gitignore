@@ -28,3 +28,8 @@ packages/browser-core/src/wasm/
 
 # Local agent scratch space; never part of the project.
 .claude/
+
+# Games live in the platform application data directory, never in the repository. This is a
+# backstop against a stray relative path putting one here again, as one did before issue #33.
+apps/desktop/src-tauri/atlantis-hud/
+*.sqlite
