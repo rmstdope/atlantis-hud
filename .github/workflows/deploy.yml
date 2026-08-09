@@ -1,0 +1,128 @@
+# Publishing the web application to atlantis-hud.kurelid.se.
+#
+# By hand, deliberately. There is one environment and it is the live one, so a push to main
+# publishing straight to it leaves no moment at which somebody decides that this build should be
+# the one people see. The button costs a press; the alternative costs a bad afternoon.
+#
+# Not GitHub Pages: this repository is private, and Pages from a private repository needs a paid
+# plan and publishes a public site regardless - so it would cost money to get less.
+
+name: Deploy web
+
+on:
+  workflow_dispatch:
+
+# Serialised rather than cancelled. An interrupted FTP sync leaves the site half-replaced, which is
+# worse than waiting for the run in front to finish.
+concurrency:
+  group: deploy-web
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      # A failing step rather than a job-level `if`. A skipped job reports as success, and a deploy
+      # that quietly did not happen is the one failure mode this guard exists to prevent.
+      - name: Refuse to publish anything but main
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "::error::Refusing to deploy ${{ github.ref }}. This workflow publishes to the live site, so it only runs on main."
+          exit 1
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Checked before ten minutes of building rather than after. A missing secret is otherwise
+      # discovered by the upload step, at the end, every time.
+      - name: Check the publishing credentials are configured
+        env:
+          SERVER: ${{ secrets.ONECOM_FTP_SERVER }}
+          USERNAME: ${{ secrets.ONECOM_FTP_USERNAME }}
+          PASSWORD: ${{ secrets.ONECOM_FTP_PASSWORD }}
+          SERVER_DIR: ${{ vars.ONECOM_FTP_SERVER_DIR }}
+        run: |
+          missing=""
+          [ -n "$SERVER" ] || missing="$missing ONECOM_FTP_SERVER(secret)"
+          [ -n "$USERNAME" ] || missing="$missing ONECOM_FTP_USERNAME(secret)"
+          [ -n "$PASSWORD" ] || missing="$missing ONECOM_FTP_PASSWORD(secret)"
+          [ -n "$SERVER_DIR" ] || missing="$missing ONECOM_FTP_SERVER_DIR(variable)"
+          if [ -n "$missing" ]; then
+            echo "::error::Not configured to publish. Missing:$missing"
+            exit 1
+          fi
+          case "$SERVER_DIR" in
+            */) ;;
+            *) echo "::error::ONECOM_FTP_SERVER_DIR must end in a slash; the action treats it as a directory."; exit 1 ;;
+          esac
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      # Same key as CI's, so this run inherits a warm cache rather than compiling the core cold.
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: wasm
+
+      - name: Install wasm-pack
+        uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-pack
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Cache the Playwright browser
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+
+      - name: Install Playwright Chromium
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Install Playwright system dependencies
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: pnpm exec playwright install-deps chromium
+
+      - name: Build the web application
+        run: pnpm run build:web
+
+      # Against the very bytes that are about to be uploaded, not a rebuild of them. CI already
+      # tested this commit, but CI tested a build it made itself.
+      - name: Verify the build that is about to be published
+        run: pnpm run test:pwa
+
+      - name: Publish over FTPS
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.ONECOM_FTP_SERVER }}
+          username: ${{ secrets.ONECOM_FTP_USERNAME }}
+          password: ${{ secrets.ONECOM_FTP_PASSWORD }}
+          # Explicit TLS. one.com offers it on every plan, and the alternative sends the password in
+          # the clear.
+          protocol: ftps
+          local-dir: apps/web/dist/
+          server-dir: ${{ vars.ONECOM_FTP_SERVER_DIR }}
+          # `dangerous-clean-slate` is deliberately left off. The action keeps a sync state file on
+          # the server and uploads only what changed; wiping the remote first would discard it, and
+          # would briefly serve nothing at all to a browser holding a cached service worker that is
+          # still asking for the old asset names.
+
+      - name: Say where it went
+        run: echo "::notice::Published to https://atlantis-hud.kurelid.se"

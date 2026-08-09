@@ -24,6 +24,10 @@ type AppHeaderProps = {
   onLoadReport: (text: string, fileName: string) => void;
   onExportOrders: () => void;
   canExport: boolean;
+  /** Whether the settings panel is showing. Same split as the picker: header owns the button. */
+  settingsOpen: boolean;
+  onToggleSettings: () => void;
+  settings: ReactNode;
 };
 
 /**
@@ -47,7 +51,10 @@ export function AppHeader({
   busy,
   onLoadReport,
   onExportOrders,
-  canExport
+  canExport,
+  settingsOpen,
+  onToggleSettings,
+  settings
 }: AppHeaderProps) {
   const fileRef = useRef<HTMLInputElement | null>(null);
 
@@ -155,6 +162,22 @@ export function AppHeader({
       >
         Export orders
       </button>
+
+      {/* Relative for the same reason the game indicator is: the panel hangs off this button. */}
+      <span className="relative">
+        <button
+          type="button"
+          data-testid="settings-indicator"
+          aria-haspopup="dialog"
+          aria-expanded={settingsOpen}
+          aria-label="Settings"
+          onClick={onToggleSettings}
+          className="rounded border border-edge bg-panel-raised px-2 py-1 text-ink-soft hover:border-brass hover:text-ink"
+        >
+          <span aria-hidden>⚙</span>
+        </button>
+        {settingsOpen ? settings : null}
+      </span>
     </header>
   );
 }

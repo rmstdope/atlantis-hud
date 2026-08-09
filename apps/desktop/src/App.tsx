@@ -1,6 +1,7 @@
 import type { CoreClient } from "@atlantis/core-client";
 import { AppShell } from "@atlantis/shared";
 import { beforeQuit } from "./quitGuard";
+import { useDesktopAppUpdate } from "./updateCheck";
 
 /**
  * The desktop shell.
@@ -11,5 +12,12 @@ import { beforeQuit } from "./quitGuard";
  * can be held open until unsaved orders are on disk.
  */
 export default function App({ client }: { client: CoreClient }) {
-  return <AppShell client={client} platformLabel="desktop" registerBeforeQuit={beforeQuit} />;
+  return (
+    <AppShell
+      client={client}
+      platformLabel="desktop"
+      registerBeforeQuit={beforeQuit}
+      appUpdate={useDesktopAppUpdate()}
+    />
+  );
 }

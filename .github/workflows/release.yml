@@ -1,0 +1,127 @@
+# Cutting a macOS release.
+#
+# A tag rather than a merge: a full `tauri build` is minutes of compilation, and putting it on every
+# pull request would undo the work that got this pipeline down to about five. The tag is also the
+# only record of what shipped, so the version it claims is checked against the files that produce
+# it before anything is built.
+#
+# The artifact is not notarized. That needs a paid Apple Developer Program membership and there is
+# no free path to one, so Tauri ad-hoc signs instead and the download arrives with Gatekeeper's
+# quarantine flag on it. See the release notes below, and `docs/issue-10-release-contracts.md`.
+
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  macos:
+    runs-on: macos-latest
+    permissions:
+      # To create the release and attach the bundle to it.
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+
+      # First, and before any compilation. A tag that disagrees with the manifests produces an
+      # application whose About box and whose installer name different versions, and the cheapest
+      # moment to notice is now rather than eight minutes from now. The same pairing is asserted on
+      # every pull request by `packages/shared/src/appVersion.test.ts`; this adds the tag to it.
+      - name: Check the tag against the versions it claims
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          package="$(node -p "require('./package.json').version")"
+          tauri="$(node -p "require('./apps/desktop/src-tauri/tauri.conf.json').version")"
+          echo "tag=$tag package.json=$package tauri.conf.json=$tauri"
+          if [ "$tag" != "$package" ] || [ "$tag" != "$tauri" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match package.json ($package) and tauri.conf.json ($tauri)."
+            exit 1
+          fi
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          # macos-latest is Apple Silicon, so the native target needs no naming. The wasm target
+          # does: `tauri build` runs the frontend build first, and that builds the core for the
+          # browser - the desktop shell falls back to it when there is no IPC.
+          targets: wasm32-unknown-unknown
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: release-macos
+
+      - name: Install wasm-pack
+        uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-pack
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Signing turns itself on the day the credentials exist and stays off until then.
+      #
+      # The variables are exported here rather than set on the build step, because an unset secret
+      # interpolates to an empty string and an empty string is still a set environment variable -
+      # which Tauri reads as "sign", and then fails importing a certificate that is not there.
+      - name: Enable signing if the credentials are configured
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          if [ -z "$APPLE_CERTIFICATE" ]; then
+            echo "::notice::No Apple credentials configured. The bundle will be ad-hoc signed and will need its quarantine flag cleared on first launch."
+            exit 0
+          fi
+          {
+            echo "APPLE_CERTIFICATE=$APPLE_CERTIFICATE"
+            echo "APPLE_CERTIFICATE_PASSWORD=$APPLE_CERTIFICATE_PASSWORD"
+            echo "APPLE_SIGNING_IDENTITY=$APPLE_SIGNING_IDENTITY"
+            echo "APPLE_ID=$APPLE_ID"
+            echo "APPLE_PASSWORD=$APPLE_PASSWORD"
+            echo "APPLE_TEAM_ID=$APPLE_TEAM_ID"
+          } >> "$GITHUB_ENV"
+          echo "::notice::Apple credentials found. Signing and notarizing."
+
+      # `beforeBuildCommand` in tauri.conf.json already chains the wasm build and `vite build`, so
+      # this one command produces the frontend and the bundle together.
+      - name: Build the macOS bundle
+        run: pnpm --filter @atlantis/desktop exec tauri build --features desktop-runtime
+
+      - name: Publish the release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: target/release/bundle/dmg/*.dmg
+          generate_release_notes: true
+          body: |
+            ## Installing
+
+            Download the `.dmg`, open it, and drag **Atlantis HUD** to Applications.
+
+            This build is **not signed by Apple**, so macOS will refuse to open it the first time
+            and say it is damaged. It is not. Clear the quarantine flag once:
+
+            ```
+            xattr -dr com.apple.quarantine "/Applications/Atlantis HUD.app"
+            ```
+
+            Signing and notarizing needs a paid Apple Developer Program membership; until there is
+            one, this is the cost. See `docs/issue-10-release-contracts.md`.
+
+            Apple Silicon only.
