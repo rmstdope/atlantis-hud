@@ -9,10 +9,10 @@ use atlantis_hud_core::{
 };
 #[cfg(not(target_arch = "wasm32"))]
 use atlantis_hud_core_persistence::{
-    create_game, insert_imported_turn, load_imported_turn, load_order_draft, open_game,
-    preview_imported_turn, upsert_imported_turn, upsert_order_draft, GameManifest, GameMetadata,
-    ImportedTurnKey, ImportedTurnPreview, ImportedTurnRecord, OpenedGame, OrderDraftKey,
-    OrderDraftRecord, PersistenceError, ReportSourceRef,
+    create_game, delete_game, insert_imported_turn, list_games, load_imported_turn,
+    load_order_draft, open_game, preview_imported_turn, upsert_imported_turn, upsert_order_draft,
+    GameManifest, GameMetadata, ImportedTurnKey, ImportedTurnPreview, ImportedTurnRecord,
+    OpenedGame, OrderDraftKey, OrderDraftRecord, PersistenceError, ReportSourceRef,
 };
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
@@ -130,6 +130,7 @@ impl From<OrderDraftRecord> for OrderDraftRecordDto {
 struct GameMetadataDto {
     game_id: String,
     game_name: String,
+    ruleset_id: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -147,6 +148,8 @@ struct GameManifestDto {
     manifest_version: u32,
     metadata: GameMetadataDto,
     report_sources: Vec<ReportSourceRefDto>,
+    created_at: String,
+    last_opened_at: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -244,6 +247,7 @@ impl From<GameMetadataDto> for GameMetadata {
         Self {
             game_id: value.game_id,
             game_name: value.game_name,
+            ruleset_id: value.ruleset_id,
         }
     }
 }
@@ -265,6 +269,8 @@ impl From<GameManifestDto> for GameManifest {
             manifest_version: value.manifest_version,
             metadata: value.metadata.into(),
             report_sources: value.report_sources.into_iter().map(Into::into).collect(),
+            created_at: value.created_at,
+            last_opened_at: value.last_opened_at,
         }
     }
 }
@@ -275,6 +281,7 @@ impl From<GameMetadata> for GameMetadataDto {
         Self {
             game_id: value.game_id,
             game_name: value.game_name,
+            ruleset_id: value.ruleset_id,
         }
     }
 }
@@ -296,6 +303,8 @@ impl From<GameManifest> for GameManifestDto {
             manifest_version: value.manifest_version,
             metadata: value.metadata.into(),
             report_sources: value.report_sources.into_iter().map(Into::into).collect(),
+            created_at: value.created_at,
+            last_opened_at: value.last_opened_at,
         }
     }
 }
@@ -448,24 +457,49 @@ pub fn validate_orders_state(raw_orders: String) -> Result<JsValue, JsValue> {
 /// Creates a game manifest and sidecar SQLite database.
 #[wasm_bindgen]
 #[cfg(not(target_arch = "wasm32"))]
-pub fn create_game_state(game_file_path: String, manifest: JsValue) -> Result<JsValue, JsValue> {
+pub fn create_game_state(games_root: String, manifest: JsValue) -> Result<JsValue, JsValue> {
     let manifest_dto = serde_wasm_bindgen::from_value::<GameManifestDto>(manifest)
         .map_err(|error| JsValue::from_str(&error.to_string()))?;
 
-    let opened = create_game(
-        Path::new(&game_file_path),
-        &GameManifest::from(manifest_dto),
-    )
-    .map_err(|error| JsValue::from_str(&error.to_string()))?;
+    let opened = create_game(Path::new(&games_root), &GameManifest::from(manifest_dto))
+        .map_err(|error| JsValue::from_str(&error.to_string()))?;
 
     to_js(&OpenedGameDto::from(opened))
+}
+
+/// Every game under the games directory.
+#[wasm_bindgen]
+#[cfg(not(target_arch = "wasm32"))]
+pub fn list_games_state(games_root: String) -> Result<JsValue, JsValue> {
+    let games = list_games(Path::new(&games_root))
+        .map_err(|error| JsValue::from_str(&error.to_string()))?;
+
+    to_js(
+        &games
+            .into_iter()
+            .map(GameManifestDto::from)
+            .collect::<Vec<_>>(),
+    )
+}
+
+/// Deletes a game and everything it stored.
+#[wasm_bindgen]
+#[cfg(not(target_arch = "wasm32"))]
+pub fn delete_game_state(games_root: String, game_id: String) -> Result<JsValue, JsValue> {
+    delete_game(Path::new(&games_root), &game_id)
+        .map_err(|error| JsValue::from_str(&error.to_string()))?;
+    Ok(JsValue::NULL)
 }
 
 /// Opens an existing game and applies pending schema migrations.
 #[wasm_bindgen]
 #[cfg(not(target_arch = "wasm32"))]
-pub fn open_game_state(game_file_path: String) -> Result<JsValue, JsValue> {
-    let opened = open_game(Path::new(&game_file_path))
+pub fn open_game_state(
+    games_root: String,
+    game_id: String,
+    opened_at: String,
+) -> Result<JsValue, JsValue> {
+    let opened = open_game(Path::new(&games_root), &game_id, &opened_at)
         .map_err(|error| JsValue::from_str(&error.to_string()))?;
 
     to_js(&OpenedGameDto::from(opened))
@@ -672,7 +706,25 @@ pub fn load_order_draft_state(
 /// Creates a game manifest and sidecar SQLite database.
 #[wasm_bindgen]
 #[cfg(target_arch = "wasm32")]
-pub fn create_game_state(_game_file_path: String, _manifest: JsValue) -> Result<JsValue, JsValue> {
+pub fn create_game_state(_games_root: String, _manifest: JsValue) -> Result<JsValue, JsValue> {
+    Err(JsValue::from_str(
+        "game persistence is not linked in this wasm32 build",
+    ))
+}
+
+/// Every game under the games directory.
+#[wasm_bindgen]
+#[cfg(target_arch = "wasm32")]
+pub fn list_games_state(_games_root: String) -> Result<JsValue, JsValue> {
+    Err(JsValue::from_str(
+        "game persistence is not linked in this wasm32 build",
+    ))
+}
+
+/// Deletes a game and everything it stored.
+#[wasm_bindgen]
+#[cfg(target_arch = "wasm32")]
+pub fn delete_game_state(_games_root: String, _game_id: String) -> Result<JsValue, JsValue> {
     Err(JsValue::from_str(
         "game persistence is not linked in this wasm32 build",
     ))
@@ -681,7 +733,11 @@ pub fn create_game_state(_game_file_path: String, _manifest: JsValue) -> Result<
 /// Opens an existing game and applies pending schema migrations.
 #[wasm_bindgen]
 #[cfg(target_arch = "wasm32")]
-pub fn open_game_state(_game_file_path: String) -> Result<JsValue, JsValue> {
+pub fn open_game_state(
+    _games_root: String,
+    _game_id: String,
+    _opened_at: String,
+) -> Result<JsValue, JsValue> {
     Err(JsValue::from_str(
         "game persistence is not linked in this wasm32 build",
     ))
@@ -824,11 +880,14 @@ mod tests {
             metadata: GameMetadataDto {
                 game_id: "faction-7".to_string(),
                 game_name: "Faction 7".to_string(),
+                ruleset_id: "neworigins".to_string(),
             },
             report_sources: vec![ReportSourceRefDto {
                 source_id: "report-7".to_string(),
                 label: "Turn 7 report".to_string(),
             }],
+            created_at: "2026-08-01T09:00:00Z".to_string(),
+            last_opened_at: "2026-08-02T09:00:00Z".to_string(),
         };
 
         let manifest = GameManifest::from(dto.clone());
@@ -839,21 +898,24 @@ mod tests {
     #[test]
     fn create_game_state_can_be_reopened() {
         let dir = tempdir().expect("tempdir");
-        let game_path = dir.path().join("web.atlantis-game.json");
         let manifest = GameManifest {
             manifest_version: 1,
             metadata: GameMetadata {
                 game_id: "faction-web".to_string(),
                 game_name: "Faction Web".to_string(),
+                ruleset_id: "neworigins".to_string(),
             },
             report_sources: vec![ReportSourceRef {
                 source_id: "report-web".to_string(),
                 label: "Web report".to_string(),
             }],
+            created_at: "2026-08-01T09:00:00Z".to_string(),
+            last_opened_at: "2026-08-01T09:00:00Z".to_string(),
         };
 
-        let created = create_game(&game_path, &manifest).expect("game should be created");
-        let reopened = open_game(&game_path).expect("game should reopen");
+        let created = create_game(dir.path(), &manifest).expect("game should be created");
+        let reopened = open_game(dir.path(), "faction-web", "2026-08-01T09:00:00Z")
+            .expect("game should reopen");
         assert_eq!(created.schema_version, reopened.schema_version);
         assert_eq!(reopened.manifest, manifest);
     }

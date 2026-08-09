@@ -8,11 +8,11 @@ use atlantis_hud_core::{
     ReportParseResult, WarningSeverity,
 };
 use atlantis_hud_core_persistence::{
-    create_game, insert_imported_turn, load_imported_turn, load_order_draft, load_region_sightings,
-    open_game, preview_imported_turn, upsert_imported_turn, upsert_order_draft,
-    upsert_region_sightings, GameManifest, GameMetadata, ImportedTurnKey, ImportedTurnPreview,
-    ImportedTurnRecord, OpenedGame, OrderDraftKey, OrderDraftRecord, PersistenceError,
-    RegionSighting, ReportSourceRef,
+    create_game, delete_game, insert_imported_turn, list_games, load_imported_turn,
+    load_order_draft, load_region_sightings, open_game, preview_imported_turn,
+    upsert_imported_turn, upsert_order_draft, upsert_region_sightings, GameManifest, GameMetadata,
+    ImportedTurnKey, ImportedTurnPreview, ImportedTurnRecord, OpenedGame, OrderDraftKey,
+    OrderDraftRecord, PersistenceError, RegionSighting, ReportSourceRef,
 };
 use serde::{Deserialize, Serialize};
 
@@ -31,6 +31,7 @@ pub struct EngineInfoDto {
 pub struct GameMetadataDto {
     pub game_id: String,
     pub game_name: String,
+    pub ruleset_id: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -46,6 +47,8 @@ pub struct GameManifestDto {
     pub manifest_version: u32,
     pub metadata: GameMetadataDto,
     pub report_sources: Vec<ReportSourceRefDto>,
+    pub created_at: String,
+    pub last_opened_at: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -199,6 +202,7 @@ impl From<GameMetadataDto> for GameMetadata {
         Self {
             game_id: value.game_id,
             game_name: value.game_name,
+            ruleset_id: value.ruleset_id,
         }
     }
 }
@@ -218,6 +222,8 @@ impl From<GameManifestDto> for GameManifest {
             manifest_version: value.manifest_version,
             metadata: value.metadata.into(),
             report_sources: value.report_sources.into_iter().map(Into::into).collect(),
+            created_at: value.created_at,
+            last_opened_at: value.last_opened_at,
         }
     }
 }
@@ -227,6 +233,7 @@ impl From<GameMetadata> for GameMetadataDto {
         Self {
             game_id: value.game_id,
             game_name: value.game_name,
+            ruleset_id: value.ruleset_id,
         }
     }
 }
@@ -246,6 +253,8 @@ impl From<GameManifest> for GameManifestDto {
             manifest_version: value.manifest_version,
             metadata: value.metadata.into(),
             report_sources: value.report_sources.into_iter().map(Into::into).collect(),
+            created_at: value.created_at,
+            last_opened_at: value.last_opened_at,
         }
     }
 }
@@ -349,19 +358,51 @@ pub fn command_get_engine_info() -> EngineInfoDto {
     EngineInfoDto::from(engine_info())
 }
 
-/// Creates a game manifest + sidecar SQLite database and applies migrations.
+/// Creates a game under the application's games directory and applies migrations.
+///
+/// # Errors
+///
+/// Returns an error when a game already exists under this id, or when it cannot be written.
 pub fn command_create_game(
-    game_file_path: &str,
+    games_root: &str,
     manifest: GameManifestDto,
 ) -> Result<OpenedGameDto, String> {
-    create_game(Path::new(game_file_path), &GameManifest::from(manifest))
+    create_game(Path::new(games_root), &GameManifest::from(manifest))
         .map(OpenedGameDto::from)
         .map_err(|error| error.to_string())
 }
 
-/// Opens an existing game and applies pending migrations.
-pub fn command_open_game(game_file_path: &str) -> Result<OpenedGameDto, String> {
-    open_game(Path::new(game_file_path))
+/// Every game the player has, newest activity first is the caller's business, not ours.
+///
+/// # Errors
+///
+/// Returns an error when the games directory exists but cannot be read.
+pub fn command_list_games(games_root: &str) -> Result<Vec<GameManifestDto>, String> {
+    list_games(Path::new(games_root))
+        .map(|games| games.into_iter().map(GameManifestDto::from).collect())
+        .map_err(|error| error.to_string())
+}
+
+/// Deletes a game and everything it stored.
+///
+/// # Errors
+///
+/// Returns an error naming the game when it does not exist, or when it cannot be removed.
+pub fn command_delete_game(games_root: &str, game_id: &str) -> Result<(), String> {
+    delete_game(Path::new(games_root), game_id).map_err(|error| error.to_string())
+}
+
+/// Opens a game by id, applies pending migrations, and records that it was opened.
+///
+/// # Errors
+///
+/// Returns an error when no game exists under this id, or when its database cannot be opened.
+pub fn command_open_game(
+    games_root: &str,
+    game_id: &str,
+    opened_at: &str,
+) -> Result<OpenedGameDto, String> {
+    open_game(Path::new(games_root), game_id, opened_at)
         .map(OpenedGameDto::from)
         .map_err(|error| error.to_string())
 }
@@ -748,8 +789,32 @@ mod plan_route_command_tests {
     }
 }
 
+/// Manifest fixtures, shared by the test modules below so a change to the manifest shape lands in
+/// one place rather than six.
+#[cfg(test)]
+mod test_support {
+    use super::{GameManifestDto, GameMetadataDto};
+
+    pub const OPENED_AT: &str = "2026-08-09T09:00:00Z";
+
+    pub fn manifest_dto(game_id: &str, game_name: &str) -> GameManifestDto {
+        GameManifestDto {
+            manifest_version: 1,
+            metadata: GameMetadataDto {
+                game_id: game_id.to_string(),
+                game_name: game_name.to_string(),
+                ruleset_id: "neworigins".to_string(),
+            },
+            report_sources: Vec::new(),
+            created_at: OPENED_AT.to_string(),
+            last_opened_at: OPENED_AT.to_string(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod sightings_tests {
+    use super::test_support::manifest_dto;
     use super::*;
     use tempfile::tempdir;
 
@@ -758,18 +823,8 @@ mod sightings_tests {
 
     fn game(directory: &std::path::Path) -> OpenedGameDto {
         command_create_game(
-            directory
-                .join("campaign.atlantis-game.json")
-                .to_str()
-                .expect("a path"),
-            GameManifestDto {
-                manifest_version: 1,
-                metadata: GameMetadataDto {
-                    game_id: "faction-95".to_string(),
-                    game_name: "Borg TNG".to_string(),
-                },
-                report_sources: Vec::new(),
-            },
+            directory.to_str().expect("a path"),
+            manifest_dto("faction-95", "Borg TNG"),
         )
         .expect("the game is created")
     }
@@ -821,6 +876,7 @@ mod sightings_tests {
 
 #[cfg(test)]
 mod tests {
+    use super::test_support::{manifest_dto, OPENED_AT};
     use super::*;
     use tempfile::tempdir;
 
@@ -842,23 +898,17 @@ mod tests {
     #[test]
     fn tauri_adapter_creates_and_reopens_a_game() {
         let dir = tempdir().expect("tempdir");
-        let game_path = dir.path().join("campaign.atlantis-game.json");
-        let game_path_string = game_path.to_string_lossy().to_string();
-        let manifest = GameManifestDto {
-            manifest_version: 1,
-            metadata: GameMetadataDto {
-                game_id: "faction-12".to_string(),
-                game_name: "Faction 12".to_string(),
-            },
-            report_sources: vec![ReportSourceRefDto {
-                source_id: "report-12".to_string(),
-                label: "Turn 12 report".to_string(),
-            }],
-        };
+        let root = dir.path().to_str().expect("a path");
+        let mut manifest = manifest_dto("faction-12", "Faction 12");
+        manifest.report_sources = vec![ReportSourceRefDto {
+            source_id: "report-12".to_string(),
+            label: "Turn 12 report".to_string(),
+        }];
 
-        let created = command_create_game(&game_path_string, manifest.clone())
-            .expect("game creation should succeed");
-        let reopened = command_open_game(&game_path_string).expect("game reopen should succeed");
+        let created =
+            command_create_game(root, manifest.clone()).expect("game creation should succeed");
+        let reopened =
+            command_open_game(root, "faction-12", OPENED_AT).expect("game reopen should succeed");
 
         assert_eq!(created.manifest, manifest);
         assert_eq!(reopened.manifest, manifest);
@@ -877,18 +927,9 @@ mod tests {
     #[test]
     fn tauri_adapter_previews_and_commits_imports() {
         let dir = tempdir().expect("tempdir");
-        let game_path = dir.path().join("campaign.atlantis-game.json");
-        let game_path_string = game_path.to_string_lossy().to_string();
         let created = command_create_game(
-            &game_path_string,
-            GameManifestDto {
-                manifest_version: 1,
-                metadata: GameMetadataDto {
-                    game_id: "faction-12".to_string(),
-                    game_name: "Faction 12".to_string(),
-                },
-                report_sources: Vec::new(),
-            },
+            dir.path().to_str().expect("a path"),
+            manifest_dto("faction-12", "Faction 12"),
         )
         .expect("create game");
         let report = "\
@@ -924,18 +965,9 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
     #[test]
     fn tauri_adapter_validates_and_loads_order_drafts() {
         let dir = tempdir().expect("tempdir");
-        let game_path = dir.path().join("campaign.atlantis-game.json");
-        let game_path_string = game_path.to_string_lossy().to_string();
         let created = command_create_game(
-            &game_path_string,
-            GameManifestDto {
-                manifest_version: 1,
-                metadata: GameMetadataDto {
-                    game_id: "faction-12".to_string(),
-                    game_name: "Faction 12".to_string(),
-                },
-                report_sources: Vec::new(),
-            },
+            dir.path().to_str().expect("a path"),
+            manifest_dto("faction-12", "Faction 12"),
         )
         .expect("create game");
 
@@ -971,17 +1003,9 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
         use atlantis_hud_core_persistence::load_region_sightings;
 
         let dir = tempdir().expect("tempdir");
-        let game_path = dir.path().join("campaign.atlantis-game.json");
         let created = command_create_game(
-            &game_path.to_string_lossy(),
-            GameManifestDto {
-                manifest_version: 1,
-                metadata: GameMetadataDto {
-                    game_id: "faction-12".to_string(),
-                    game_name: "Faction 12".to_string(),
-                },
-                report_sources: Vec::new(),
-            },
+            dir.path().to_str().expect("a path"),
+            manifest_dto("faction-12", "Faction 12"),
         )
         .expect("create game");
 
@@ -1014,18 +1038,9 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
     #[test]
     fn tauri_adapter_loads_imported_turn_payload_after_commit() {
         let dir = tempdir().expect("tempdir");
-        let game_path = dir.path().join("campaign.atlantis-game.json");
-        let game_path_string = game_path.to_string_lossy().to_string();
         let created = command_create_game(
-            &game_path_string,
-            GameManifestDto {
-                manifest_version: 1,
-                metadata: GameMetadataDto {
-                    game_id: "faction-12".to_string(),
-                    game_name: "Faction 12".to_string(),
-                },
-                report_sources: Vec::new(),
-            },
+            dir.path().to_str().expect("a path"),
+            manifest_dto("faction-12", "Faction 12"),
         )
         .expect("create game");
         let report = "\

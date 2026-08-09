@@ -11,6 +11,9 @@ use thiserror::Error;
 /// Current schema version expected by the persistence layer.
 pub const CURRENT_SCHEMA_VERSION: u32 = 5;
 const CURRENT_MANIFEST_VERSION: u32 = 1;
+/// The manifest file inside a game's directory. The directory is named after the game's id, so the
+/// file itself does not have to be, and a game can be found without parsing any filename.
+pub const GAME_MANIFEST_FILE_NAME: &str = "game.json";
 const MIGRATION_0001_INITIAL: &str = include_str!("../migrations/0001_initial.sql");
 const MIGRATION_0002_IMPORTED_TURNS: &str = include_str!("../migrations/0002_imported_turns.sql");
 const MIGRATION_0003_ORDER_DRAFTS: &str = include_str!("../migrations/0003_order_drafts.sql");
@@ -53,6 +56,12 @@ const MIGRATIONS: [Migration; 5] = [
 pub struct GameMetadata {
     pub game_id: String,
     pub game_name: String,
+    /// Which ruleset this game is played under, by identifier rather than by content.
+    ///
+    /// The rules themselves are a served file the shell hands to the core per call, so a game
+    /// records which one it wants and nothing more. Storing the whole ruleset here would freeze a
+    /// scrape into every game and make correcting a movement value a data migration.
+    pub ruleset_id: String,
 }
 
 /// Logical report source stored in the game manifest and database.
@@ -70,6 +79,14 @@ pub struct GameManifest {
     pub manifest_version: u32,
     pub metadata: GameMetadata,
     pub report_sources: Vec<ReportSourceRef>,
+    /// When the game was created, as an ISO 8601 string.
+    pub created_at: String,
+    /// When the game was last opened, as an ISO 8601 string.
+    ///
+    /// This is what decides which game reopens on the next launch, which is why it lives in each
+    /// game's own manifest rather than in an index beside them: there is no second copy to fall
+    /// out of step with the games it describes.
+    pub last_opened_at: String,
 }
 
 /// Snapshot returned after game create/open operations.
@@ -156,6 +173,8 @@ pub enum PersistenceError {
     GameFileAlreadyExists(String),
     #[error("database file already exists: {0}")]
     DatabaseAlreadyExists(String),
+    #[error("no game with id {0}")]
+    GameNotFound(String),
     #[error(
         "imported turn already exists for game {game_id}, faction {faction_id}, turn {turn_number}"
     )]
@@ -166,11 +185,23 @@ pub enum PersistenceError {
     },
 }
 
-/// Creates a new game file and initializes sidecar SQLite storage.
+/// Creates a game under `games_root`, in a directory of its own.
+///
+/// The caller supplies a root and an identity, never a path. The player names a game; where its
+/// bytes live is the application's business, and letting the frontend compose that path is how a
+/// database once ended up committed inside the repository.
+///
+/// # Errors
+///
+/// Returns an error when a game already exists under this id, when the manifest version is not
+/// supported, or when the directory cannot be written.
 pub fn create_game(
-    game_file_path: &Path,
+    games_root: &Path,
     manifest: &GameManifest,
 ) -> Result<OpenedGame, PersistenceError> {
+    let home = game_home(games_root, &manifest.metadata.game_id);
+    let game_file_path = home.join(GAME_MANIFEST_FILE_NAME);
+
     ensure_supported_manifest_version(manifest.manifest_version)?;
     if game_file_path.exists() {
         return Err(PersistenceError::GameFileAlreadyExists(
@@ -178,14 +209,14 @@ pub fn create_game(
         ));
     }
 
-    let database_path = sidecar_database_path(game_file_path);
+    let database_path = sidecar_database_path(&game_file_path);
     if database_path.exists() {
         return Err(PersistenceError::DatabaseAlreadyExists(
             database_path.to_string_lossy().to_string(),
         ));
     }
 
-    let temp_manifest_path = write_game_manifest_temp(game_file_path, manifest)?;
+    let temp_manifest_path = write_game_manifest_temp(&game_file_path, manifest)?;
 
     let mut connection = match open_database(&database_path) {
         Ok(connection) => connection,
@@ -207,36 +238,113 @@ pub fn create_game(
         return Err(error);
     }
 
-    if let Err(error) = fs::rename(&temp_manifest_path, game_file_path) {
+    if let Err(error) = fs::rename(&temp_manifest_path, &game_file_path) {
         cleanup_file_if_exists(&temp_manifest_path);
         cleanup_file_if_exists(&database_path);
         return Err(PersistenceError::Io(error));
     }
 
     Ok(OpenedGame {
-        game_file_path: game_file_path.to_path_buf(),
+        game_file_path,
         database_path,
         schema_version: current_schema_version(&connection)?,
         manifest: manifest.clone(),
     })
 }
 
-/// Opens an existing game and upgrades schema if needed.
-pub fn open_game(game_file_path: &Path) -> Result<OpenedGame, PersistenceError> {
-    let manifest = load_game_manifest(game_file_path)?;
-    ensure_supported_manifest_version(manifest.manifest_version)?;
+/// Opens a game by id, upgrading its schema if needed and stamping when it was opened.
+///
+/// The stamp is written back to the manifest because it is what decides which game reopens next
+/// time. `opened_at` comes from the caller rather than from the clock here: the browser and the
+/// desktop then agree on the format, and this crate acquires no notion of time it would otherwise
+/// have to be told about in tests.
+///
+/// # Errors
+///
+/// Returns an error when no game exists under this id, when its manifest cannot be read, or when
+/// the database cannot be opened or migrated.
+pub fn open_game(
+    games_root: &Path,
+    game_id: &str,
+    opened_at: &str,
+) -> Result<OpenedGame, PersistenceError> {
+    let game_file_path = game_home(games_root, game_id).join(GAME_MANIFEST_FILE_NAME);
+    if !game_file_path.exists() {
+        return Err(PersistenceError::GameNotFound(game_id.to_string()));
+    }
 
-    let database_path = sidecar_database_path(game_file_path);
+    let mut manifest = load_game_manifest(&game_file_path)?;
+    ensure_supported_manifest_version(manifest.manifest_version)?;
+    manifest.last_opened_at = opened_at.to_string();
+
+    let database_path = sidecar_database_path(&game_file_path);
     let mut connection = open_database(&database_path)?;
     apply_migrations(&mut connection)?;
     persist_game_snapshot(&mut connection, &manifest)?;
+    save_game_manifest(&game_file_path, &manifest)?;
 
     Ok(OpenedGame {
-        game_file_path: game_file_path.to_path_buf(),
+        game_file_path,
         database_path,
         schema_version: current_schema_version(&connection)?,
         manifest,
     })
+}
+
+/// Every game under `games_root`, read from the games themselves.
+///
+/// There is no index to consult: the games on disk are the list. That costs one small read per
+/// game and buys the guarantee that a listing can never disagree with what is actually there.
+///
+/// A directory whose manifest is missing or unreadable is skipped rather than failing the whole
+/// listing, because one broken game must not hide every other game from the player.
+///
+/// # Errors
+///
+/// Returns an error when the root exists but cannot be read. A root that does not exist yet is the
+/// ordinary first-run case and yields an empty list.
+pub fn list_games(games_root: &Path) -> Result<Vec<GameManifest>, PersistenceError> {
+    if !games_root.exists() {
+        return Ok(Vec::new());
+    }
+
+    let mut games = Vec::new();
+    for entry in fs::read_dir(games_root)? {
+        let entry = entry?;
+        if !entry.file_type()?.is_dir() {
+            continue;
+        }
+
+        let manifest_path = entry.path().join(GAME_MANIFEST_FILE_NAME);
+        match load_game_manifest(&manifest_path) {
+            Ok(manifest) if manifest.manifest_version <= CURRENT_MANIFEST_VERSION => {
+                games.push(manifest);
+            }
+            _ => continue,
+        }
+    }
+
+    Ok(games)
+}
+
+/// Deletes a game and everything it stored.
+///
+/// The whole directory goes, which is what makes the deletion complete: a game's turns, orders and
+/// remembered map live nowhere else, so there is nothing left behind to leak into the next game
+/// that happens to reuse an id.
+///
+/// # Errors
+///
+/// Returns an error naming the game when no game exists under this id, or when the directory
+/// cannot be removed.
+pub fn delete_game(games_root: &Path, game_id: &str) -> Result<(), PersistenceError> {
+    let home = game_home(games_root, game_id);
+    if !home.join(GAME_MANIFEST_FILE_NAME).exists() {
+        return Err(PersistenceError::GameNotFound(game_id.to_string()));
+    }
+
+    fs::remove_dir_all(&home)?;
+    Ok(())
 }
 
 /// Reads schema version from an existing database file.
@@ -410,19 +518,21 @@ fn open_database(database_path: &Path) -> Result<Connection, PersistenceError> {
     Ok(Connection::open(database_path)?)
 }
 
-#[cfg(test)]
+/// Where one game keeps its manifest and its database.
+fn game_home(games_root: &Path, game_id: &str) -> PathBuf {
+    games_root.join(game_id)
+}
+
+/// Writes a manifest in place, via a temporary file, so a failed write cannot truncate the old one.
 fn save_game_manifest(
     game_file_path: &Path,
     manifest: &GameManifest,
 ) -> Result<(), PersistenceError> {
-    if let Some(parent_dir) = game_file_path.parent() {
-        fs::create_dir_all(parent_dir)?;
+    let temp_path = write_game_manifest_temp(game_file_path, manifest)?;
+    if let Err(error) = fs::rename(&temp_path, game_file_path) {
+        cleanup_file_if_exists(&temp_path);
+        return Err(PersistenceError::Io(error));
     }
-
-    let serialized = serde_json::to_vec_pretty(manifest)?;
-    let temp_path = game_file_path.with_extension("json.tmp");
-    fs::write(&temp_path, serialized)?;
-    fs::rename(temp_path, game_file_path)?;
     Ok(())
 }
 
@@ -514,11 +624,13 @@ fn persist_game_snapshot(
     transaction.execute("DELETE FROM game_metadata", [])?;
     transaction.execute("DELETE FROM report_sources", [])?;
     transaction.execute(
-        "INSERT INTO game_metadata (game_id, game_name, manifest_version) VALUES (?1, ?2, ?3)",
+        "INSERT INTO game_metadata (game_id, game_name, manifest_version, ruleset_id)
+         VALUES (?1, ?2, ?3, ?4)",
         params![
             manifest.metadata.game_id.as_str(),
             manifest.metadata.game_name.as_str(),
-            manifest.manifest_version
+            manifest.manifest_version,
+            manifest.metadata.ruleset_id.as_str()
         ],
     )?;
 
@@ -741,12 +853,20 @@ mod tests {
     use rusqlite::Connection;
     use tempfile::tempdir;
 
+    const GAME_ID: &str = "faction-12";
+    const CREATED_AT: &str = "2026-08-01T09:00:00Z";
+
     fn fixture_manifest() -> GameManifest {
+        manifest_named(GAME_ID, "Faction 12 - Spring 12")
+    }
+
+    fn manifest_named(game_id: &str, game_name: &str) -> GameManifest {
         GameManifest {
             manifest_version: 1,
             metadata: GameMetadata {
-                game_id: "faction-12".to_string(),
-                game_name: "Faction 12 - Spring 12".to_string(),
+                game_id: game_id.to_string(),
+                game_name: game_name.to_string(),
+                ruleset_id: "neworigins".to_string(),
             },
             report_sources: vec![
                 ReportSourceRef {
@@ -758,7 +878,188 @@ mod tests {
                     label: "Turn 12 appendix".to_string(),
                 },
             ],
+            created_at: CREATED_AT.to_string(),
+            last_opened_at: CREATED_AT.to_string(),
         }
+    }
+
+    fn turn_in(game: &OpenedGame, faction_id: &str, raw: &str) -> ImportedTurnRecord {
+        ImportedTurnRecord {
+            key: ImportedTurnKey {
+                game_id: game.manifest.metadata.game_id.clone(),
+                faction_id: faction_id.to_string(),
+                turn_number: 12,
+            },
+            raw_report: raw.to_string(),
+            parsed_payload_json: "{}".to_string(),
+            warnings_payload_json: "[]".to_string(),
+        }
+    }
+
+    #[test]
+    fn a_game_gets_a_directory_of_its_own() {
+        let dir = tempdir().expect("tempdir");
+
+        let created =
+            create_game(dir.path(), &fixture_manifest()).expect("creation should succeed");
+
+        let home = dir.path().join(GAME_ID);
+        assert!(home.is_dir(), "the game should own a directory");
+        assert!(home.join(GAME_MANIFEST_FILE_NAME).exists());
+        assert_eq!(created.database_path, home.join("game.sqlite"));
+        assert!(created.database_path.exists());
+        assert_eq!(created.schema_version, CURRENT_SCHEMA_VERSION);
+    }
+
+    #[test]
+    fn listing_finds_every_game_that_was_created() {
+        let dir = tempdir().expect("tempdir");
+        create_game(dir.path(), &manifest_named("alpha", "Alpha")).expect("alpha");
+        create_game(dir.path(), &manifest_named("beta", "Beta")).expect("beta");
+
+        let mut listed: Vec<String> = list_games(dir.path())
+            .expect("listing should succeed")
+            .into_iter()
+            .map(|manifest| manifest.metadata.game_id)
+            .collect();
+        listed.sort();
+
+        assert_eq!(listed, vec!["alpha".to_string(), "beta".to_string()]);
+    }
+
+    /// A player with no games yet is the ordinary first-run case, not a failure.
+    #[test]
+    fn listing_a_root_that_does_not_exist_yet_is_empty() {
+        let dir = tempdir().expect("tempdir");
+
+        let listed = list_games(&dir.path().join("never-created")).expect("listing should succeed");
+
+        assert!(listed.is_empty());
+    }
+
+    /// One unreadable game must not hide the others.
+    ///
+    /// The alternative - failing the whole listing - would leave a player who cannot be told which
+    /// game is broken unable to reach any of the games that are fine.
+    #[test]
+    fn listing_skips_a_game_whose_manifest_cannot_be_read() {
+        let dir = tempdir().expect("tempdir");
+        create_game(dir.path(), &manifest_named("good", "Good")).expect("good");
+
+        let broken = dir.path().join("broken");
+        fs::create_dir_all(&broken).expect("broken dir");
+        fs::write(broken.join(GAME_MANIFEST_FILE_NAME), b"{ not json").expect("broken manifest");
+
+        let listed = list_games(dir.path()).expect("listing should succeed");
+
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].metadata.game_id, "good");
+    }
+
+    /// Which game reopens on the next launch is decided by this stamp, so opening has to move it.
+    #[test]
+    fn opening_a_game_stamps_when_it_was_last_opened() {
+        let dir = tempdir().expect("tempdir");
+        create_game(dir.path(), &fixture_manifest()).expect("creation should succeed");
+
+        let reopened =
+            open_game(dir.path(), GAME_ID, "2026-08-09T18:30:00Z").expect("reopen should succeed");
+
+        assert_eq!(reopened.manifest.last_opened_at, "2026-08-09T18:30:00Z");
+        assert_eq!(reopened.manifest.created_at, CREATED_AT);
+
+        // The stamp has to survive on disk, not just in the value handed back.
+        let listed = list_games(dir.path()).expect("listing should succeed");
+        assert_eq!(listed[0].last_opened_at, "2026-08-09T18:30:00Z");
+    }
+
+    #[test]
+    fn a_game_remembers_which_ruleset_it_is_played_under() {
+        let dir = tempdir().expect("tempdir");
+        create_game(dir.path(), &fixture_manifest()).expect("creation should succeed");
+
+        let reopened = open_game(dir.path(), GAME_ID, CREATED_AT).expect("reopen should succeed");
+
+        assert_eq!(reopened.manifest.metadata.ruleset_id, "neworigins");
+
+        let stored: String = Connection::open(&reopened.database_path)
+            .expect("db should open")
+            .query_row("SELECT ruleset_id FROM game_metadata", [], |row| row.get(0))
+            .expect("the ruleset should be mirrored into the database");
+        assert_eq!(stored, "neworigins");
+    }
+
+    #[test]
+    fn opening_a_game_that_is_not_there_names_it() {
+        let dir = tempdir().expect("tempdir");
+
+        let error = open_game(dir.path(), "no-such-game", CREATED_AT)
+            .expect_err("opening a missing game should fail");
+
+        assert!(matches!(error, PersistenceError::GameNotFound(ref id) if id == "no-such-game"));
+    }
+
+    /// Deleting a game must take its database with it, and leave every other game alone.
+    #[test]
+    fn deleting_a_game_takes_its_database_and_nothing_else() {
+        let dir = tempdir().expect("tempdir");
+        let doomed = create_game(dir.path(), &manifest_named("doomed", "Doomed")).expect("doomed");
+        let kept = create_game(dir.path(), &manifest_named("kept", "Kept")).expect("kept");
+        upsert_imported_turn(
+            &doomed.database_path,
+            &turn_in(&doomed, "17", "doomed turn"),
+        )
+        .expect("seed doomed");
+        upsert_imported_turn(&kept.database_path, &turn_in(&kept, "17", "kept turn"))
+            .expect("seed kept");
+
+        delete_game(dir.path(), "doomed").expect("deletion should succeed");
+
+        assert!(!dir.path().join("doomed").exists());
+        assert!(!doomed.database_path.exists());
+
+        let survivor = load_imported_turn(&kept.database_path, &turn_in(&kept, "17", "").key)
+            .expect("load should succeed")
+            .expect("the other game's turn should be untouched");
+        assert_eq!(survivor.raw_report, "kept turn");
+    }
+
+    #[test]
+    fn deleting_a_game_that_is_not_there_names_it() {
+        let dir = tempdir().expect("tempdir");
+
+        let error = delete_game(dir.path(), "no-such-game")
+            .expect_err("deleting a missing game should fail");
+
+        assert!(matches!(error, PersistenceError::GameNotFound(ref id) if id == "no-such-game"));
+    }
+
+    /// The point of a database per game: what one game imported is invisible to the other.
+    #[test]
+    fn two_games_cannot_see_each_others_turns() {
+        let dir = tempdir().expect("tempdir");
+        let alpha = create_game(dir.path(), &manifest_named("alpha", "Alpha")).expect("alpha");
+        let beta = create_game(dir.path(), &manifest_named("beta", "Beta")).expect("beta");
+
+        upsert_imported_turn(&alpha.database_path, &turn_in(&alpha, "17", "alpha turn"))
+            .expect("seed alpha");
+
+        let seen_from_beta =
+            load_imported_turn(&beta.database_path, &turn_in(&alpha, "17", "").key)
+                .expect("load should succeed");
+
+        assert_eq!(seen_from_beta, None);
+    }
+
+    #[test]
+    fn creating_a_game_twice_under_one_id_fails() {
+        let dir = tempdir().expect("tempdir");
+        create_game(dir.path(), &fixture_manifest()).expect("first creation should succeed");
+
+        let error = create_game(dir.path(), &fixture_manifest())
+            .expect_err("a second game under the same id should fail");
+
+        assert!(matches!(error, PersistenceError::GameFileAlreadyExists(_)));
     }
 
     /// A database written before games had a name of their own must keep its turns.
@@ -772,11 +1073,13 @@ mod tests {
     #[test]
     fn upgrading_from_version_four_keeps_imported_turns() {
         let dir = tempdir().expect("tempdir");
-        let game_path = dir.path().join("legacy.atlantis-game.json");
         let manifest = fixture_manifest();
-        save_game_manifest(&game_path, &manifest).expect("manifest save should succeed");
+        let home = dir.path().join(GAME_ID);
+        fs::create_dir_all(&home).expect("game home");
+        save_game_manifest(&home.join(GAME_MANIFEST_FILE_NAME), &manifest)
+            .expect("manifest save should succeed");
 
-        let database_path = sidecar_database_path(&game_path);
+        let database_path = home.join("game.sqlite");
         let connection = Connection::open(&database_path).expect("db should open");
         connection
             .execute_batch(&format!(
@@ -793,7 +1096,7 @@ mod tests {
             .expect("legacy version 4 setup should succeed");
         drop(connection);
 
-        let reopened = open_game(&game_path).expect("upgrade should succeed");
+        let reopened = open_game(dir.path(), GAME_ID, CREATED_AT).expect("upgrade should succeed");
 
         assert_eq!(reopened.schema_version, CURRENT_SCHEMA_VERSION);
 
@@ -812,27 +1115,13 @@ mod tests {
     }
 
     #[test]
-    fn create_game_initializes_manifest_and_database() {
-        let dir = tempdir().expect("tempdir");
-        let game_path = dir.path().join("campaign.atlantis-game.json");
-        let manifest = fixture_manifest();
-
-        let created = create_game(&game_path, &manifest).expect("game creation should succeed");
-
-        assert_eq!(created.schema_version, CURRENT_SCHEMA_VERSION);
-        assert!(game_path.exists());
-        assert!(created.database_path.exists());
-        assert_eq!(created.manifest, manifest);
-    }
-
-    #[test]
     fn open_game_reuses_saved_manifest_and_schema() {
         let dir = tempdir().expect("tempdir");
-        let game_path = dir.path().join("campaign.atlantis-game.json");
         let manifest = fixture_manifest();
 
-        let created = create_game(&game_path, &manifest).expect("game creation should succeed");
-        let reopened = open_game(&game_path).expect("game reopen should succeed");
+        let created = create_game(dir.path(), &manifest).expect("game creation should succeed");
+        let reopened =
+            open_game(dir.path(), GAME_ID, CREATED_AT).expect("game reopen should succeed");
 
         assert_eq!(reopened.manifest, created.manifest);
         assert_eq!(reopened.schema_version, CURRENT_SCHEMA_VERSION);
@@ -845,10 +1134,12 @@ mod tests {
     #[test]
     fn open_game_upgrades_existing_database_schema() {
         let dir = tempdir().expect("tempdir");
-        let game_path = dir.path().join("upgrade.atlantis-game.json");
         let manifest = fixture_manifest();
-        save_game_manifest(&game_path, &manifest).expect("manifest save should succeed");
-        let database_path = sidecar_database_path(&game_path);
+        let home = dir.path().join(GAME_ID);
+        fs::create_dir_all(&home).expect("game home");
+        save_game_manifest(&home.join(GAME_MANIFEST_FILE_NAME), &manifest)
+            .expect("manifest save should succeed");
+        let database_path = home.join("game.sqlite");
         let connection = Connection::open(&database_path).expect("db should open");
         connection
             .execute_batch(
@@ -860,7 +1151,7 @@ mod tests {
             )
             .expect("legacy schema setup should succeed");
 
-        let reopened = open_game(&game_path).expect("upgrade should succeed");
+        let reopened = open_game(dir.path(), GAME_ID, CREATED_AT).expect("upgrade should succeed");
 
         assert_eq!(reopened.schema_version, CURRENT_SCHEMA_VERSION);
         assert_eq!(
@@ -878,35 +1169,24 @@ mod tests {
         assert!(matches!(error, PersistenceError::DatabaseFileMissing(_)));
     }
 
+    /// A leftover database under a fresh game's id must not be adopted silently.
     #[test]
-    fn create_game_fails_when_manifest_already_exists() {
+    fn create_game_fails_when_a_database_is_already_sitting_there() {
         let dir = tempdir().expect("tempdir");
-        let game_path = dir.path().join("campaign.atlantis-game.json");
-        fs::write(&game_path, b"existing game").expect("seed existing game file");
+        let home = dir.path().join(GAME_ID);
+        fs::create_dir_all(&home).expect("game home");
+        fs::write(home.join("game.sqlite"), b"existing database").expect("seed existing db file");
 
         let error =
-            create_game(&game_path, &fixture_manifest()).expect_err("existing file should fail");
-        assert!(matches!(error, PersistenceError::GameFileAlreadyExists(_)));
-    }
-
-    #[test]
-    fn create_game_fails_when_database_already_exists() {
-        let dir = tempdir().expect("tempdir");
-        let game_path = dir.path().join("campaign.atlantis-game.json");
-        let database_path = sidecar_database_path(&game_path);
-        fs::write(&database_path, b"existing database").expect("seed existing db file");
-
-        let error =
-            create_game(&game_path, &fixture_manifest()).expect_err("existing db should fail");
+            create_game(dir.path(), &fixture_manifest()).expect_err("existing db should fail");
         assert!(matches!(error, PersistenceError::DatabaseAlreadyExists(_)));
     }
 
     #[test]
     fn imported_turn_can_be_inserted_and_loaded() {
         let dir = tempdir().expect("tempdir");
-        let game_path = dir.path().join("campaign.atlantis-game.json");
         let manifest = fixture_manifest();
-        let created = create_game(&game_path, &manifest).expect("game creation should succeed");
+        let created = create_game(dir.path(), &manifest).expect("game creation should succeed");
 
         let record = ImportedTurnRecord {
             key: ImportedTurnKey {
@@ -929,9 +1209,8 @@ mod tests {
     #[test]
     fn imported_turn_preview_reports_diff_for_duplicate() {
         let dir = tempdir().expect("tempdir");
-        let game_path = dir.path().join("campaign.atlantis-game.json");
         let manifest = fixture_manifest();
-        let created = create_game(&game_path, &manifest).expect("game creation should succeed");
+        let created = create_game(dir.path(), &manifest).expect("game creation should succeed");
 
         let key = ImportedTurnKey {
             game_id: manifest.metadata.game_id.clone(),
@@ -969,9 +1248,8 @@ mod tests {
     #[test]
     fn insert_imported_turn_fails_for_duplicate_key() {
         let dir = tempdir().expect("tempdir");
-        let game_path = dir.path().join("campaign.atlantis-game.json");
         let manifest = fixture_manifest();
-        let created = create_game(&game_path, &manifest).expect("game creation should succeed");
+        let created = create_game(dir.path(), &manifest).expect("game creation should succeed");
 
         let record = ImportedTurnRecord {
             key: ImportedTurnKey {
@@ -996,9 +1274,8 @@ mod tests {
     #[test]
     fn order_draft_round_trips_through_persistence() {
         let dir = tempdir().expect("tempdir");
-        let game_path = dir.path().join("campaign.atlantis-game.json");
         let manifest = fixture_manifest();
-        let created = create_game(&game_path, &manifest).expect("game creation should succeed");
+        let created = create_game(dir.path(), &manifest).expect("game creation should succeed");
 
         let draft = OrderDraftRecord {
             key: OrderDraftKey {
@@ -1020,10 +1297,9 @@ mod tests {
     #[test]
     fn schema_version_tracks_the_latest_migration() {
         let dir = tempdir().expect("tempdir");
-        let game_path = dir.path().join("campaign.atlantis-game.json");
         let manifest = fixture_manifest();
 
-        let created = create_game(&game_path, &manifest).expect("game creation should succeed");
+        let created = create_game(dir.path(), &manifest).expect("game creation should succeed");
 
         assert_eq!(created.schema_version, CURRENT_SCHEMA_VERSION);
         assert_eq!(
@@ -1040,14 +1316,17 @@ mod region_sighting_tests {
 
     fn game(dir: &std::path::Path) -> OpenedGame {
         create_game(
-            &dir.join("campaign.atlantis-game.json"),
+            dir,
             &GameManifest {
                 manifest_version: 1,
                 metadata: GameMetadata {
                     game_id: "faction-95".to_string(),
                     game_name: "Borg TNG".to_string(),
+                    ruleset_id: "neworigins".to_string(),
                 },
                 report_sources: Vec::new(),
+                created_at: "2026-08-01T09:00:00Z".to_string(),
+                last_opened_at: "2026-08-01T09:00:00Z".to_string(),
             },
         )
         .expect("game should be created")
