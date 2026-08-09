@@ -123,7 +123,7 @@ cargo clippy --workspace --all-targets -- -D warnings
   - Import panel integrated in `apps/web` and `apps/desktop`
 
 - Issue #8 adds:
-  - `packages/ruleset`, which scrapes a game's own rules and data pages into `config/ruleset.json`
+  - `packages/ruleset`, which scrapes a game's own rules and data pages into `config/public/ruleset.json`
     rather than hard-coding movement numbers that differ between games
   - `crates/core/src/movement`: the ruleset and its validation, a map built from everything the
     faction has seen, movement modes read from the report's own capacity figures, a Dijkstra route

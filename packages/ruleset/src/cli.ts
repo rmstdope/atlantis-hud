@@ -1,5 +1,5 @@
 /**
- * Fetches a game's rules and data pages and writes `config/ruleset.json`.
+ * Fetches a game's rules and data pages and writes `config/public/ruleset.json`.
  *
  *   pnpm --filter @atlantis/ruleset scrape -- \
  *     --rules https://atlantis-pbem.com/rules \
@@ -19,7 +19,7 @@ import { pathToFileURL } from "node:url";
 import { buildRuleset } from "./build";
 import { RulesetScrapeError } from "./rules";
 
-const DEFAULT_OUTPUT = new URL("../../../config/ruleset.json", import.meta.url);
+const DEFAULT_OUTPUT = new URL("../../../config/public/ruleset.json", import.meta.url);
 
 /**
  * Reads `--name value`.
@@ -106,7 +106,7 @@ main().catch((error: unknown) => {
     // The page did not say what we needed. Naming the value is the whole point: the fix is to
     // update the pattern in rules.ts, never to invent a number.
     console.error(`ruleset scrape failed: ${error.message}`);
-    console.error("config/ruleset.json was left untouched.");
+    console.error("config/public/ruleset.json was left untouched.");
   } else {
     console.error(error instanceof Error ? error.message : String(error));
   }

@@ -390,7 +390,7 @@ mod tests {
              Exits:\n  Southeast : plain (2,2) in Nowhere.\n",
         );
         let map = MapKnowledge::from_report(&report);
-        let ruleset = Ruleset::from_json(include_str!("../../../../config/ruleset.json"))
+        let ruleset = Ruleset::from_json(include_str!("../../../../config/public/ruleset.json"))
             .expect("the committed ruleset loads");
 
         let here = Coordinate { x: 1, y: 1, z: 1 };

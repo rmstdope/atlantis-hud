@@ -25,6 +25,3 @@ packages/browser-core/src/wasm/
 
 # Local temp files
 .tmp/
-
-# Copied from config/ruleset.json by `pnpm run ruleset:sync`; the committed copy is the real one.
-apps/*/public/ruleset.json

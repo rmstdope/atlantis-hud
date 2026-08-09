@@ -12,7 +12,7 @@ use atlantis_hud_core::movement::rules::Ruleset;
 use atlantis_hud_core::report::{classify_units, parse_report_full, ParsedReport};
 
 const TURN_71: &str = include_str!("../../../tests/fixtures/reports/neworigins-3.0.0-f95-t71.rep");
-const RULESET: &str = include_str!("../../../config/ruleset.json");
+const RULESET: &str = include_str!("../../../config/public/ruleset.json");
 
 fn ruleset() -> Ruleset {
     Ruleset::from_json(RULESET).expect("the committed ruleset should load")

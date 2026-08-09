@@ -24,9 +24,9 @@ pnpm --filter @atlantis/ruleset scrape -- \
   --data  https://atlantis-pbem.com/data
 ```
 
-Writes `config/ruleset.json`. Either argument may be a local file instead of a URL; a relative path
+Writes `config/public/ruleset.json`. Either argument may be a local file instead of a URL; a relative path
 resolves against the repository root. The script is run deliberately, never as part of a build, and
-never in CI — `config/ruleset.json` is committed so that a fresh clone and CI need no network.
+never in CI — `config/public/ruleset.json` is committed so that a fresh clone and CI need no network.
 
 The script is named `scrape` rather than `fetch` because `pnpm fetch` is a builtin command that
 would shadow it.
@@ -34,7 +34,7 @@ would shadow it.
 ## Failure policy
 
 **Movement values fail loudly.** If a required sentence does not match, the run aborts with a
-non-zero exit naming the value, and `config/ruleset.json` is left untouched. There is deliberately
+non-zero exit naming the value, and `config/public/ruleset.json` is left untouched. There is deliberately
 no fallback to a default: a movement number that is quietly wrong produces routes that are
 confidently wrong, which is worse than no planner at all. The fix for a reworded page is to update
 the pattern, never to invent a value.
@@ -42,7 +42,7 @@ the pattern, never to invent a value.
 **The item catalogue is tolerant**, in the same spirit as the report parser. One exotic entry
 phrasing its attacks unusually should not cost us the other hundred and seventy.
 
-## Shape of `config/ruleset.json`
+## Shape of `config/public/ruleset.json`
 
 - `source` — both URLs, the fetch timestamp, and how to regenerate.
 - `movement` — `movementPoints`, `terrainCosts`, `road`, `ocean`, plus `provenance` giving the
@@ -124,7 +124,7 @@ under-costing is the failure direction that matters, because it makes a journey 
 when it is not.
 
 **Decision (navigator, issue #8): the planner costs routes without weather and says nothing about
-it in the interface.** The gap is recorded rather than surfaced. `config/ruleset.json` carries it
+it in the interface.** The gap is recorded rather than surfaced. `config/public/ruleset.json` carries it
 in a `gaps` block, `Ruleset::is_fully_modelled()` reports it, and this document explains it — so
 the file never claims more than it knows, and whoever picks the question up later has the evidence
 to hand. Revisiting it means either supplying the winter numbers by hand, marked `scraped: false`

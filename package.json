@@ -8,8 +8,7 @@
     "typecheck": "pnpm -r run typecheck && cargo check --workspace",
     "test": "pnpm -r run test && cargo test --workspace",
     "test:smoke": "playwright test",
-    "check": "pnpm run ruleset:sync && pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run test:smoke && cargo fmt --check && cargo clippy --workspace --all-targets -- -D warnings",
-    "ruleset:sync": "node -e \"const {copyFileSync,mkdirSync}=require('fs');for(const a of ['web','desktop']){mkdirSync('apps/'+a+'/public',{recursive:true});copyFileSync('config/ruleset.json','apps/'+a+'/public/ruleset.json')}\""
+    "check": "pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run test:smoke && cargo fmt --check && cargo clippy --workspace --all-targets -- -D warnings"
   },
   "devDependencies": {
     "@playwright/test": "^1.55.0",

@@ -1,5 +1,5 @@
 /**
- * Assembles the one file the application reads: `config/ruleset.json`.
+ * Assembles the one file the application reads: `config/public/ruleset.json`.
  *
  * The shell fetches this at startup and hands it to the Rust core, which is what keeps the core
  * free of file I/O and therefore still able to compile to wasm. Correcting a value means editing

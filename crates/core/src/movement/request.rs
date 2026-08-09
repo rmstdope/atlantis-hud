@@ -156,7 +156,7 @@ mod tests {
 
     const TURN_71: &str =
         include_str!("../../../../tests/fixtures/reports/neworigins-3.0.0-f95-t71.rep");
-    const RULESET: &str = include_str!("../../../../config/ruleset.json");
+    const RULESET: &str = include_str!("../../../../config/public/ruleset.json");
 
     #[test]
     fn plans_a_route_and_assesses_what_stands_along_it() {
@@ -244,7 +244,7 @@ mod tests {
 mod remembered_tests {
     use super::*;
 
-    const RULESET: &str = include_str!("../../../../config/ruleset.json");
+    const RULESET: &str = include_str!("../../../../config/public/ruleset.json");
     const TURN_71: &str =
         include_str!("../../../../tests/fixtures/reports/neworigins-3.0.0-f95-t71.rep");
 
@@ -326,7 +326,7 @@ mod remembered_tests {
 mod reaches_the_planner_tests {
     use super::*;
 
-    const RULESET: &str = include_str!("../../../../config/ruleset.json");
+    const RULESET: &str = include_str!("../../../../config/public/ruleset.json");
 
     /// The defect this pins: the command that the interface calls must plan over the remembered map,
     /// not over the current report alone.

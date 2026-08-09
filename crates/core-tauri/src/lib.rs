@@ -701,7 +701,7 @@ pub fn command_plan_route(
 mod plan_route_command_tests {
     use super::*;
 
-    const RULESET: &str = include_str!("../../../config/ruleset.json");
+    const RULESET: &str = include_str!("../../../config/public/ruleset.json");
 
     fn corridor(terrain: &str, x: i32, y: i32, exits: &str) -> String {
         format!("{terrain} ({x},{y}) in Nowhere, 10 peasants (orcs), $5.\n\nExits:\n{exits}\n")
