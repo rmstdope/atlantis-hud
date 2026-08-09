@@ -14,15 +14,15 @@ use atlantis_hud_core_tauri::{
     any(target_os = "macos", target_os = "windows"),
     feature = "desktop-runtime"
 ))]
-use atlantis_hud_core_tauri::{command_get_game_info, GameInfoDto};
+use atlantis_hud_core_tauri::{command_get_engine_info, EngineInfoDto};
 
 #[cfg(all(
     any(target_os = "macos", target_os = "windows"),
     feature = "desktop-runtime"
 ))]
 #[tauri::command(rename_all = "snake_case")]
-fn get_game_info() -> GameInfoDto {
-    command_get_game_info()
+fn get_engine_info() -> EngineInfoDto {
+    command_get_engine_info()
 }
 
 #[cfg(all(
@@ -214,7 +214,7 @@ fn load_order_draft(
 fn main() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
-            get_game_info,
+            get_engine_info,
             create_project,
             open_project,
             parse_report,

@@ -10,7 +10,7 @@ import { createMemoryWebStore, type StoredTurnSnapshot } from "./webStore";
  */
 function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
   return {
-    get_game_info: () => ({ id: "atlantis", name: "Atlantis PBEM" }),
+    get_engine_info: () => ({ id: "atlantis", name: "Atlantis PBEM" }),
     parse_report_state: (raw: string) => ({ raw }),
     parse_report_full_state: (raw: string) => ({ header: {}, regions: [], ordersTemplate: null, raw }),
     parse_report_classified_state: (raw: string, ruleset: string) => ({
@@ -77,7 +77,7 @@ describe("web core adapter", () => {
   it("routes logic calls to the core rather than to storage", async () => {
     const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
 
-    expect(await adapter.getGameInfo()).toEqual({ id: "atlantis", name: "Atlantis PBEM" });
+    expect(await adapter.getEngineInfo()).toEqual({ id: "atlantis", name: "Atlantis PBEM" });
     expect(await adapter.parseReport("anything")).toEqual({ raw: "anything" });
     expect(await adapter.validateOrders("MOVE R1 R2")).toEqual({ diagnostics: [] });
   });

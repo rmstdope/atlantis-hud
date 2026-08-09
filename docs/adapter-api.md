@@ -2,7 +2,7 @@
 
 Issue #3 defines one canonical metadata contract served by both platform adapters.
 
-## Core contract (`GameInfo`)
+## Core contract (`EngineInfo`)
 
 ```json
 {
@@ -18,7 +18,7 @@ Map topology is intentionally omitted from this payload because it is a fixed ga
 ## WASM adapter surface
 
 - Rust crate: `crates/core-wasm`
-- Exported function: `get_game_info() -> Result<JsValue, JsValue>`
+- Exported function: `get_engine_info() -> Result<JsValue, JsValue>`
 - Wire shape returned to JS (camelCase):
   - `id`
   - `name`
@@ -28,7 +28,7 @@ Map topology is intentionally omitted from this payload because it is a fixed ga
 ## Tauri adapter surface
 
 - Rust crate: `crates/core-tauri`
-- Exported command: `get_game_info`
+- Exported command: `get_engine_info`
 - Response shape (camelCase):
   - `id`
   - `name`
@@ -44,4 +44,4 @@ Map topology is intentionally omitted from this payload because it is a fixed ga
   - `createCoreClient(adapter)`
 - Contract normalization:
   - Accepts adapter wire payloads in either `camelCase` or `snake_case`
-  - Returns canonical `GameInfo` in `camelCase`
+  - Returns canonical `EngineInfo` in `camelCase`

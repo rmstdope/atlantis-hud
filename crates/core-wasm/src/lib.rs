@@ -4,7 +4,7 @@
 use std::path::Path;
 
 use atlantis_hud_core::{
-    diff_imported_turn, game_info, parse_report, reject_import, validate_orders,
+    diff_imported_turn, engine_info, parse_report, reject_import, validate_orders,
     ImportedTurnSnapshot, OrderDiagnosticSeverity, OrderValidationResult, ReportParseResult,
 };
 #[cfg(not(target_arch = "wasm32"))]
@@ -36,7 +36,7 @@ fn to_js<T: Serialize + ?Sized>(value: &T) -> Result<JsValue, JsValue> {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct GameInfoDto {
+struct EngineInfoDto {
     id: String,
     name: String,
     ruleset_version: String,
@@ -227,8 +227,8 @@ struct ImportedTurnRecordDto {
     parse_result: ReportParseResultDto,
 }
 
-impl From<atlantis_hud_core::GameInfo> for GameInfoDto {
-    fn from(value: atlantis_hud_core::GameInfo) -> Self {
+impl From<atlantis_hud_core::EngineInfo> for EngineInfoDto {
+    fn from(value: atlantis_hud_core::EngineInfo) -> Self {
         Self {
             id: value.id,
             name: value.name,
@@ -312,10 +312,10 @@ impl From<OpenedProject> for OpenedProjectDto {
     }
 }
 
-/// Returns game metadata serialized as a JS object.
+/// Returns engine metadata serialized as a JS object.
 #[wasm_bindgen]
-pub fn get_game_info() -> Result<JsValue, JsValue> {
-    to_js(&GameInfoDto::from(game_info()))
+pub fn get_engine_info() -> Result<JsValue, JsValue> {
+    to_js(&EngineInfoDto::from(engine_info()))
 }
 
 /// Parses one report and returns tolerant parser output including the viability threshold flag.
@@ -774,7 +774,7 @@ mod tests {
 
     #[test]
     fn dto_maps_core_fields() {
-        let dto = GameInfoDto::from(game_info());
+        let dto = EngineInfoDto::from(engine_info());
         assert_eq!(dto.id, "atlantis");
         assert_eq!(dto.name, "Atlantis PBEM");
         assert_eq!(dto.ruleset_version, "4.0");

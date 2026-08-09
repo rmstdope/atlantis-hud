@@ -13,7 +13,7 @@ import { createWebStore } from "./webStore";
 
 /** The subset of the generated wasm module this adapter needs. */
 export type CoreWasmModule = {
-  get_game_info(): unknown;
+  get_engine_info(): unknown;
   parse_report_state(rawReport: string): unknown;
   parse_report_full_state(rawReport: string): unknown;
   parse_report_classified_state(rawReport: string, rulesetJson: string): unknown;
@@ -106,8 +106,8 @@ export function createWebCoreAdapter(
   };
 
   return {
-    getGameInfo() {
-      return wasm.get_game_info();
+    getEngineInfo() {
+      return wasm.get_engine_info();
     },
 
     parseReport(rawReport: string) {

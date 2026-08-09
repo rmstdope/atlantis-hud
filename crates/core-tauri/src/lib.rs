@@ -4,7 +4,7 @@ use std::path::Path;
 
 pub use atlantis_hud_core::report::ParsedReport;
 use atlantis_hud_core::{
-    game_info, parse_report, reject_import, validate_orders, OrderDiagnosticSeverity,
+    engine_info, parse_report, reject_import, validate_orders, OrderDiagnosticSeverity,
     ReportParseResult, WarningSeverity,
 };
 use atlantis_hud_core_persistence::{
@@ -16,10 +16,10 @@ use atlantis_hud_core_persistence::{
 };
 use serde::{Deserialize, Serialize};
 
-/// JSON contract returned by Tauri for game metadata.
+/// JSON contract returned by Tauri for engine metadata.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct GameInfoDto {
+pub struct EngineInfoDto {
     pub id: String,
     pub name: String,
     pub ruleset_version: String,
@@ -183,8 +183,8 @@ pub struct OrderDraftRecordDto {
     pub updated_at: String,
 }
 
-impl From<atlantis_hud_core::GameInfo> for GameInfoDto {
-    fn from(value: atlantis_hud_core::GameInfo) -> Self {
+impl From<atlantis_hud_core::EngineInfo> for EngineInfoDto {
+    fn from(value: atlantis_hud_core::EngineInfo) -> Self {
         Self {
             id: value.id,
             name: value.name,
@@ -343,10 +343,10 @@ impl From<ReportParseResult> for ReportParseResultDto {
     }
 }
 
-/// Returns canonical game metadata for a Tauri command wrapper.
+/// Returns canonical engine metadata for a Tauri command wrapper.
 #[must_use]
-pub fn command_get_game_info() -> GameInfoDto {
-    GameInfoDto::from(game_info())
+pub fn command_get_engine_info() -> EngineInfoDto {
+    EngineInfoDto::from(engine_info())
 }
 
 /// Creates a project manifest + sidecar SQLite database and applies migrations.
@@ -829,11 +829,11 @@ mod tests {
 
     #[test]
     fn tauri_adapter_returns_core_contract_values() {
-        let response = command_get_game_info();
+        let response = command_get_engine_info();
 
         assert_eq!(
             response,
-            GameInfoDto {
+            EngineInfoDto {
                 id: "atlantis".to_string(),
                 name: "Atlantis PBEM".to_string(),
                 ruleset_version: "4.0".to_string(),

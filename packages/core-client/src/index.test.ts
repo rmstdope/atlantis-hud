@@ -121,7 +121,7 @@ describe("core client adapter contract parity", () => {
     };
 
     const wasmBindings: WasmBindings = {
-      get_game_info() {
+      get_engine_info() {
         return {
           id: "atlantis",
           name: "Atlantis PBEM",
@@ -179,7 +179,7 @@ describe("core client adapter contract parity", () => {
       if (command === "plan_route") {
         return Promise.resolve(planPayload as T);
       }
-      if (command === "get_game_info") {
+      if (command === "get_engine_info") {
         return Promise.resolve({
           id: "atlantis",
           name: "Atlantis PBEM",
@@ -326,7 +326,7 @@ describe("core client adapter contract parity", () => {
     const wasmClient = createCoreClient(createWasmAdapter(wasmBindings));
     const tauriClient = createCoreClient(createTauriAdapter(invoke));
 
-    await expect(wasmClient.getGameInfo()).resolves.toEqual(await tauriClient.getGameInfo());
+    await expect(wasmClient.getEngineInfo()).resolves.toEqual(await tauriClient.getEngineInfo());
 
     // The planner's answer must be identical on both transports, down to the nested route and its
     // risk: the desktop and the browser plan the same move or one of them is lying.

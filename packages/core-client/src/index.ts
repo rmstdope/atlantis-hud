@@ -1,4 +1,4 @@
-export type GameInfo = {
+export type EngineInfo = {
   id: string;
   name: string;
   rulesetVersion: string;
@@ -327,7 +327,7 @@ export type ImportedTurnRecord = {
   parseResult: ReportParseResult;
 };
 
-type GameInfoWireShape = {
+type EngineInfoWireShape = {
   id: string;
   name: string;
   rulesetVersion?: string;
@@ -491,7 +491,7 @@ type ImportedTurnRecordWireShape = {
 };
 
 export interface CoreAdapter {
-  getGameInfo(): Promise<unknown> | unknown;
+  getEngineInfo(): Promise<unknown> | unknown;
   createProject(projectFilePath: string, manifest: ProjectManifest): Promise<unknown> | unknown;
   openProject(projectFilePath: string): Promise<unknown> | unknown;
   parseReport(rawReport: string): Promise<unknown> | unknown;
@@ -546,7 +546,7 @@ export interface CoreAdapter {
 }
 
 export interface CoreClient {
-  getGameInfo(): Promise<GameInfo>;
+  getEngineInfo(): Promise<EngineInfo>;
   createProject(projectFilePath: string, manifest: ProjectManifest): Promise<OpenedProject>;
   openProject(projectFilePath: string): Promise<OpenedProject>;
   parseReport(rawReport: string): Promise<ReportParseResult>;
@@ -626,7 +626,7 @@ export interface CoreClient {
 }
 
 export interface WasmBindings {
-  get_game_info(): unknown;
+  get_engine_info(): unknown;
   create_project_state(projectFilePath: string, manifest: ProjectManifest): unknown;
   open_project_state(projectFilePath: string): unknown;
   parse_report_state(rawReport: string): unknown;
@@ -682,12 +682,12 @@ export interface WasmBindings {
 
 export type TauriInvoke = <T>(command: string, args?: Record<string, unknown>) => Promise<T>;
 
-function normalizeGameInfo(value: unknown): GameInfo {
+function normalizeEngineInfo(value: unknown): EngineInfo {
   if (typeof value !== "object" || value === null) {
-    throw new Error("invalid game info payload");
+    throw new Error("invalid engine info payload");
   }
 
-  const payload = value as GameInfoWireShape;
+  const payload = value as EngineInfoWireShape;
   const rulesetVersion = payload.rulesetVersion ?? payload.ruleset_version;
   const maxFactionCount = payload.maxFactionCount ?? payload.max_faction_count;
 
@@ -697,7 +697,7 @@ function normalizeGameInfo(value: unknown): GameInfo {
     typeof rulesetVersion !== "string" ||
     typeof maxFactionCount !== "number"
   ) {
-    throw new Error("incomplete game info payload");
+    throw new Error("incomplete engine info payload");
   }
 
   return {
@@ -1076,9 +1076,9 @@ function normalizeReportImportPreview(value: unknown): ReportImportPreview {
 
 export function createCoreClient(adapter: CoreAdapter): CoreClient {
   return {
-    async getGameInfo() {
-      const value = await adapter.getGameInfo();
-      return normalizeGameInfo(value);
+    async getEngineInfo() {
+      const value = await adapter.getEngineInfo();
+      return normalizeEngineInfo(value);
     },
     async createProject(projectFilePath: string, manifest: ProjectManifest) {
       const value = await adapter.createProject(projectFilePath, manifest);
@@ -1181,8 +1181,8 @@ export function createCoreClient(adapter: CoreAdapter): CoreClient {
 
 export function createWasmAdapter(bindings: WasmBindings): CoreAdapter {
   return {
-    getGameInfo() {
-      return bindings.get_game_info();
+    getEngineInfo() {
+      return bindings.get_engine_info();
     },
     createProject(projectFilePath: string, manifest: ProjectManifest) {
       return bindings.create_project_state(projectFilePath, manifest);
@@ -1262,8 +1262,8 @@ export function createWasmAdapter(bindings: WasmBindings): CoreAdapter {
 
 export function createTauriAdapter(invoke: TauriInvoke): CoreAdapter {
   return {
-    getGameInfo() {
-      return invoke<GameInfoWireShape>("get_game_info");
+    getEngineInfo() {
+      return invoke<EngineInfoWireShape>("get_engine_info");
     },
     createProject(projectFilePath: string, manifest: ProjectManifest) {
       return invoke<OpenedProjectWireShape>("create_project", {
