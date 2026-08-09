@@ -144,6 +144,20 @@ cargo clippy --workspace --all-targets -- -D warnings
   - `create_game`/`open_game`/`list_games`/`delete_game` through both adapters, and migration 0005
     renaming the schema's `project` to `game`
 
+- Issue #34 adds:
+  - order drafts that are actually written — five seconds after the last keystroke, thirty at the
+    outside, on switching games and on quitting (`docs/issue-34-persistence-contracts.md`)
+  - reopening a game on the turn it was last worked on, with its map and its orders, instead of an
+    empty workspace over a database that held all three
+  - `load_latest_imported_turn` through both adapters, ranking a game's turns by the later of when
+    each was imported and when its orders were last edited
+  - caller-supplied ISO-8601 import timestamps, and migration 0006 rewriting the rows SQLite had
+    stamped in its own format
+  - a real save indicator in the orders panel, replacing one made out of `new Date()` that wrote
+    nothing
+  - the desktop shell's first Tauri capability, so a native window close can be held open long
+    enough to finish the write
+
 To fetch the ruleset for a game other than the committed one:
 
 ```bash
