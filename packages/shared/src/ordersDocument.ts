@@ -22,9 +22,25 @@ export type UnitBlock = {
 
 const UNIT_LINE = /^unit\s+(\S+)\s*$/u;
 const DOCUMENT_END = "#end";
+/** `;*** mountain (7,53) in Inhead, contains Inholm [city] ***`, one before each region's units. */
+const REGION_BANNER = /^;\*\*\*/u;
 
-function isDocumentDirective(line: string): boolean {
-  return line.trim() === DOCUMENT_END || line.trim().startsWith("#atlantis");
+/**
+ * Whether a line is the document's own furniture rather than any unit's orders.
+ *
+ * The banner matters as much as the directives. It announces the *next* region, so it sits between
+ * the last unit of one region and the first unit of the next - and a block that runs to the line
+ * before the next `unit` swallows it, putting another region's heading in this unit's editor and
+ * appending everything typed afterwards below it.
+ */
+function belongsToDocument(line: string): boolean {
+  const trimmed = line.trim();
+  return (
+    trimmed === "" ||
+    trimmed === DOCUMENT_END ||
+    trimmed.startsWith("#atlantis") ||
+    REGION_BANNER.test(trimmed)
+  );
 }
 
 /** Finds every unit block in a document. */
@@ -48,12 +64,10 @@ export function findUnitBlocks(document: string): UnitBlock[] {
     const next = blocks[position + 1];
     let end = next ? next.headerLine - 1 : lines.length - 1;
 
-    // A closing directive belongs to the document, not to the last unit above it.
-    while (end >= block.firstLine && isDocumentDirective(lines[end] ?? "")) {
-      end -= 1;
-    }
-    // Neither do the blank lines separating one unit from the next.
-    while (end >= block.firstLine && (lines[end] ?? "").trim() === "") {
+    // Wind back over everything between this unit's last order and the next unit's header: the
+    // separating blank lines, the closing directive, and the banner announcing the next region.
+    // None of them belong to the unit above them, and they arrive in no fixed order.
+    while (end >= block.firstLine && belongsToDocument(lines[end] ?? "")) {
       end -= 1;
     }
 
@@ -91,11 +105,65 @@ export function writeUnitOrders(document: string, unitId: string, orders: string
   }
 
   const lines = document.split("\n");
-  const replacement = orders === "" ? [] : orders.split("\n");
+  // Trailing blank lines are dropped rather than written. The editor keeps one while a line is
+  // being opened, which is what makes Enter work, but a block read back never includes it - so a
+  // blank line written here would sit above the next write instead of being replaced by it, and
+  // every line the player opened would leave one behind for good.
+  const kept = withoutTrailingBlankLines(orders);
+  const replacement = kept === "" ? [] : kept.split("\n");
   const before = lines.slice(0, block.firstLine);
   const after = lines.slice(block.lastLine + 1);
 
   return [...before, ...replacement, ...after].join("\n");
+}
+
+/**
+ * The document with the server's unit descriptions thrown away.
+ *
+ * Every `unit` block in a report's template opens with a description of that unit - name, flags,
+ * weight, capacity, every skill and everything it could study - wrapped over as many `;` lines as
+ * it takes, which for a leader is eight. The unit panel already says all of it, so in the editor it
+ * is nothing but the thing you have to scroll past to write an order, and on a unit with no orders
+ * yet it is the entire contents.
+ *
+ * Only inside a block, which is what spares the region banners and the `#atlantis` line. Only a
+ * line whose first character is `;`, which is what spares `@;` - a repeating comment is an order
+ * the server acts on rather than something it wrote.
+ *
+ * Meant for a template as it arrives, not for a document already in play: a `;` line in a saved
+ * draft was typed by the player and is theirs to keep.
+ */
+export function stripUnitComments(document: string): string {
+  const lines = document.split("\n");
+  const descriptions = new Set<number>();
+
+  for (const block of findUnitBlocks(document)) {
+    for (let index = block.firstLine; index <= block.lastLine; index += 1) {
+      if ((lines[index] ?? "").trim().startsWith(";")) {
+        descriptions.add(index);
+      }
+    }
+  }
+
+  return lines.filter((_, index) => !descriptions.has(index)).join("\n");
+}
+
+/**
+ * The text with any blank lines at the end removed.
+ *
+ * The one thing a block cannot hold. A blank line at the end of one is indistinguishable from the
+ * blank line separating it from the next unit, so the document gives back less than it was handed -
+ * which is why the editor compares what it sent this way rather than taking the answer whole.
+ */
+export function withoutTrailingBlankLines(text: string): string {
+  const lines = text.split("\n");
+  let end = lines.length;
+
+  while (end > 0 && (lines[end - 1] ?? "").trim() === "") {
+    end -= 1;
+  }
+
+  return lines.slice(0, end).join("\n");
 }
 
 /**
