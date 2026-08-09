@@ -8,7 +8,9 @@
     "typecheck": "pnpm -r run typecheck && cargo check --workspace",
     "test": "pnpm -r run test && cargo test --workspace",
     "test:smoke": "playwright test",
-    "check": "pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run test:smoke && cargo fmt --check && cargo clippy --workspace --all-targets -- -D warnings"
+    "build:web": "pnpm --filter @atlantis/web build",
+    "test:pwa": "playwright test --config playwright.pwa.config.ts",
+    "check": "pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run test:smoke && pnpm run build:web && pnpm run test:pwa && cargo fmt --check && cargo clippy --workspace --all-targets -- -D warnings"
   },
   "devDependencies": {
     "@playwright/test": "^1.55.0",

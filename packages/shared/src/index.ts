@@ -1,3 +1,4 @@
+export * from "./appVersion";
 export * from "./featureFlags";
 export * from "./logging";
 export * from "./hexMapModel";
@@ -10,6 +11,7 @@ export * from "./orderDraft";
 export * from "./rulesets";
 export * from "./unitComposition";
 
+export * from "./workspace/appUpdate";
 export * from "./workspace/AppHeader";
 export * from "./workspace/AppShell";
 export * from "./workspace/GameGate";
@@ -19,5 +21,6 @@ export * from "./workspace/LayerChips";
 export * from "./workspace/MapCanvas";
 export * from "./workspace/OrdersPanel";
 export * from "./workspace/RegionPanel";
+export * from "./workspace/SettingsPanel";
 export * from "./workspace/UnitPanel";
 export * from "./workspace/UnitTableDock";

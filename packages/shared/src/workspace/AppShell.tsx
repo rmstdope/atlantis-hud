@@ -31,6 +31,9 @@ import {
 import { useWorkspaceStore } from "../workspaceStore";
 import { AppHeader, type ImportStatus } from "./AppHeader";
 import { GameGate } from "./GameGate";
+import { SettingsPanel } from "./SettingsPanel";
+import type { AppUpdateControl } from "./appUpdate";
+import { UNSUPPORTED_UPDATES } from "./appUpdate";
 import { GamePicker } from "./GamePicker";
 import { LayerChips } from "./LayerChips";
 import { MapCanvas } from "./MapCanvas";
@@ -104,11 +107,21 @@ export type RegisterBeforeQuit = (handler: () => Promise<void>) => () => void;
 export function AppShell({
   client,
   platformLabel,
-  registerBeforeQuit
+  registerBeforeQuit,
+  appUpdate = UNSUPPORTED_UPDATES
 }: {
   client: CoreClient;
   platformLabel: string;
   registerBeforeQuit?: RegisterBeforeQuit;
+  /**
+   * How this shell answers "is there a newer version". Injected for the same reason
+   * `registerBeforeQuit` is: the web answer is a service worker and the desktop answer is Tauri,
+   * and neither belongs in a package whose job is to be identical on both.
+   *
+   * Defaulted rather than optional at the use site, because there is a real third case - the
+   * desktop bundle opened in a plain browser - and it needs a control that says so.
+   */
+  appUpdate?: AppUpdateControl;
 }) {
   const [parsed, setParsed] = useState<ParsedReport | null>(null);
   // Everywhere the faction has ever been, not just this turn. Without it the map stops at the
@@ -132,6 +145,7 @@ export function AppShell({
   const [games, setGames] = useState<GameManifest[]>([]);
   const [gamesLoaded, setGamesLoaded] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [gameError, setGameError] = useState<string | null>(null);
 
   const selectedRegionId = useWorkspaceStore((state) => state.selectedRegionId);
@@ -759,6 +773,16 @@ export function AppShell({
     return <div className="h-full bg-ground" />;
   }
 
+  // The same panel on both screens below, because settings are not part of the workspace: they are
+  // part of the application, and the application exists before any game does.
+  const settingsPanel = (
+    <SettingsPanel
+      platformLabel={platformLabel}
+      appUpdate={appUpdate}
+      onDismiss={() => setSettingsOpen(false)}
+    />
+  );
+
   // No game means there is nowhere to put a report, an order or a remembered map, so the workspace
   // is not rendered at all and creating a game is the only thing on offer.
   if (!game) {
@@ -768,6 +792,9 @@ export function AppShell({
         busy={busy}
         error={gameError}
         onCreate={(name, rulesetId) => void createGame(name, rulesetId)}
+        settingsOpen={settingsOpen}
+        onToggleSettings={() => setSettingsOpen((open) => !open)}
+        settings={settingsPanel}
       />
     );
   }
@@ -801,6 +828,9 @@ export function AppShell({
         onLoadReport={(text, fileName) => void loadReport(text, fileName)}
         onExportOrders={exportOrders}
         canExport={ordersDocument.length > 0}
+        settingsOpen={settingsOpen}
+        onToggleSettings={() => setSettingsOpen((open) => !open)}
+        settings={settingsPanel}
       />
 
       <div className="relative min-h-0 flex-1">

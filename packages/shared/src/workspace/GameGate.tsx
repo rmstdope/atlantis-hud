@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { GameForm } from "./GameForm";
 
 /**
@@ -12,18 +13,44 @@ export function GameGate({
   platformLabel,
   busy,
   error,
-  onCreate
+  onCreate,
+  settingsOpen,
+  onToggleSettings,
+  settings
 }: {
   platformLabel: string;
   busy: boolean;
   error: string | null;
   onCreate: (name: string, rulesetId: string) => void;
+  /**
+   * Settings are reachable here too, before any game exists. Asking which version you are running,
+   * or whether a newer one has been published, is not a question that should require having created
+   * a game first - and on first run this screen is the whole application.
+   */
+  settingsOpen: boolean;
+  onToggleSettings: () => void;
+  settings: ReactNode;
 }) {
   return (
     <div className="flex h-full flex-col bg-ground text-ink">
       <header className="flex h-9 flex-none items-center gap-3.5 border-b border-edge bg-panel px-3 text-[11.5px] whitespace-nowrap">
         <span className="tracking-[0.06em] text-brass">ATLANTIS HUD</span>
         <span className="text-ink-soft">{platformLabel}</span>
+        <span className="flex-1" />
+        <span className="relative">
+          <button
+            type="button"
+            data-testid="settings-indicator"
+            aria-haspopup="dialog"
+            aria-expanded={settingsOpen}
+            aria-label="Settings"
+            onClick={onToggleSettings}
+            className="rounded border border-edge bg-panel-raised px-2 py-1 text-ink-soft hover:border-brass hover:text-ink"
+          >
+            <span aria-hidden>⚙</span>
+          </button>
+          {settingsOpen ? settings : null}
+        </span>
       </header>
 
       <main

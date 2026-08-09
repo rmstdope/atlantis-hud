@@ -16,3 +16,6 @@ atlantis-hud-core-tauri = { path = "../../../crates/core-tauri" }
 
 [target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
 tauri = { version = "2", default-features = false, features = ["wry"] }
+# Handing a URL to the operating system. Gated with `tauri` itself, because the Linux jobs never
+# compile the shell at all and pulling this in unconditionally would give them something to build.
+tauri-plugin-opener = "2"

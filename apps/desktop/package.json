@@ -18,11 +18,13 @@
     "@atlantis/core-client": "workspace:*",
     "@atlantis/shared": "workspace:*",
     "@tauri-apps/api": "^2.0.0",
+    "@tauri-apps/plugin-opener": "^2.5.4",
     "react": "^19.1.1",
     "react-dom": "^19.1.1"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.3",
+    "@tauri-apps/cli": "^2.11.4",
     "@vitejs/plugin-react": "^5.0.2",
     "tailwindcss": "^4.3.3",
     "vite": "^7.1.1"

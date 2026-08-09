@@ -9,7 +9,7 @@
 - PixiJS map renderer
 - SQLite on desktop and on web (WASM + OPFS)
 - Offline-first, no backend in milestone 1
-- PWA early, deployed with GitHub Pages + GitHub Actions
+- PWA early, deployed to atlantis-hud.kurelid.se (one.com) over FTPS from GitHub Actions
 - Tailwind + headless UI primitives
 - Zustand + TanStack Query
 - CodeMirror 6 for orders editor
@@ -193,19 +193,37 @@ Each sub-issue is independently executable by following this contract:
 ### #10 Deployment, PWA, and desktop release pipeline
 
 - Dependency handoff:
-  - editor/map/productivity outputs from #6, #7, #9
+  - editor/map outputs from #6 and #7. #9 is listed as a dependency in the epic, but nothing here
+    needs it: the settings panel this issue introduces is where #9's theme toggle will land, so the
+    order between them is a convenience rather than a constraint.
 - Deliverables:
-  - PWA configuration and installability
-  - GitHub Pages deployment workflow
-  - macOS signing and notarization pipeline
-  - manual update-check entry in desktop settings
+  - PWA configuration and installability, with an offline-capable service worker
+  - manual web deployment workflow publishing to atlantis-hud.kurelid.se over FTPS
+  - tag-triggered macOS release workflow producing a `.dmg` attached to a GitHub Release
+  - settings panel showing the app version, with a manual update check
 - Out of scope:
   - adding cloud backend/sync, adding new gameplay features
+  - Windows and Linux bundles, and in-app auto-update
 - Validation:
-  - push to main triggers deploy workflow and publishes web app
-  - PWA install flow works on target browsers
-  - signed/notarized macOS artifact can be generated in CI
-  - desktop update check action executes without app instability
+  - `workflow_dispatch` on main builds the app, passes the PWA suite, and publishes the web app
+  - PWA install flow works on target browsers, and the app loads with the network cut
+  - a `v*` tag produces a macOS artifact in CI
+  - desktop update check opens the releases page without app instability
+
+Two of these diverge from the original wording of the issue, and deliberately.
+
+Deployment is **manual rather than on merge**. The alternative was a push to main publishing
+straight to the only environment there is; a dispatch that refuses to run off main, and that builds
+and tests before it uploads, costs one button press and removes that.
+
+The macOS artifact is **unsigned**. Signing and notarization need a paid Apple Developer Program
+membership, and there is no free path to a notarized build. The workflow is written so that the six
+Apple secrets switch it on when they exist and ad-hoc signing is used when they do not, which keeps
+the decision reversible without a rewrite. Until then the download carries Gatekeeper's quarantine
+flag and needs clearing once.
+
+Hosting is **one.com rather than GitHub Pages**, because this repository is private: Pages from a
+private repository needs a paid plan and publishes a site that is public anyway.
 
 ## Recommended execution order
 

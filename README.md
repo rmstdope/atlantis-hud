@@ -45,15 +45,13 @@ This starts the desktop shell as a Vite app on port `4174`.
 
 ### Native desktop runtime
 
-The native desktop app uses Tauri and requires the Tauri CLI:
+The native desktop app uses Tauri. Its CLI is a workspace dev dependency, so `pnpm install` is all the setup there is:
 
 ```bash
-cargo install tauri-cli --version "^2"
-cd apps/desktop/src-tauri
-cargo tauri dev --features desktop-runtime
+pnpm --filter @atlantis/desktop exec tauri dev --features desktop-runtime
 ```
 
-`cargo tauri dev` reads the local `tauri.conf.json`, which starts the desktop Vite dev server automatically through `beforeDevCommand`.
+`tauri dev` reads `apps/desktop/src-tauri/tauri.conf.json`, which starts the desktop Vite dev server automatically through `beforeDevCommand`.
 
 ## Check and test
 
@@ -70,7 +68,12 @@ pnpm run lint
 pnpm run typecheck
 pnpm run test
 pnpm run test:smoke
+pnpm run build:web && pnpm run test:pwa
 ```
+
+`test:pwa` runs against a production build and needs one made first — it is the only suite here that
+does. It is also the only place the service worker exists at all, which is why it is separate from
+the smoke suite rather than a third project in it.
 
 Rust-only checks:
 
@@ -79,6 +82,54 @@ cargo test --workspace
 cargo fmt --check
 cargo clippy --workspace --all-targets -- -D warnings
 ```
+
+## Ship it
+
+Full detail, and the reasoning, in `docs/issue-10-release-contracts.md`.
+
+### The web application
+
+Published by hand, from the Actions tab: **Deploy web** → Run workflow, on `main`. It refuses to run
+on any other branch. The job builds, runs the PWA suite against the build it is about to upload, and
+then syncs it over FTPS to `https://atlantis-hud.kurelid.se`.
+
+It needs three secrets and one variable configured on the repository:
+
+| Name | Kind |
+| --- | --- |
+| `ONECOM_FTP_SERVER` | secret |
+| `ONECOM_FTP_USERNAME` | secret |
+| `ONECOM_FTP_PASSWORD` | secret |
+| `ONECOM_FTP_SERVER_DIR` | variable, with a trailing slash |
+
+### The desktop application
+
+Tagging is the release. Bump the version in **both** `package.json` and
+`apps/desktop/src-tauri/tauri.conf.json`, then:
+
+```bash
+git tag v0.2.0 && git push origin v0.2.0
+```
+
+That builds an Apple Silicon `.dmg` and attaches it to a GitHub Release. The first step of the job
+checks that the tag and the two files agree, so a half-done bump fails in seconds rather than after
+the compile.
+
+To build one locally:
+
+```bash
+pnpm --filter @atlantis/desktop exec tauri build --features desktop-runtime
+```
+
+**The artifact is not signed by Apple.** That needs a paid Developer Program membership. macOS will
+refuse to open the download and say it is damaged; it is not. Clear the quarantine flag once:
+
+```bash
+xattr -dr com.apple.quarantine "/Applications/Atlantis HUD.app"
+```
+
+The release workflow starts signing and notarizing by itself the day the six `APPLE_*` secrets
+exist. Nothing else needs changing.
 
 ## Workspace bootstrap
 

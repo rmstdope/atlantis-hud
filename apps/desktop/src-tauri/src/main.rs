@@ -262,6 +262,10 @@ fn load_order_draft(
 ))]
 fn main() {
     tauri::Builder::default()
+        // Opening the releases page in the player's own browser is the whole of the desktop update
+        // check. It has to be their browser rather than a window of ours: this repository is
+        // private, so the page needs a GitHub session, and the one they already have is in there.
+        .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             get_engine_info,
             create_game,
