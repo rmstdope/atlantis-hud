@@ -136,6 +136,137 @@ export async function documentFor(
 }
 
 /**
+ * Where the document stands with storage.
+ *
+ * Four states rather than a timestamp, because the orders panel used to show one made out of
+ * `new Date()` that meant nothing. "failed" carries its reason: orders are the player's own typed
+ * work, and a write that fails silently is the one failure that loses it.
+ */
+export type SaveState =
+  | { kind: "clean" }
+  | { kind: "dirty" }
+  | { kind: "saving" }
+  /** `at` is an ISO-8601 instant, as stored. Turning it into a time to read is the panel's job. */
+  | { kind: "saved"; at: string }
+  | { kind: "failed"; reason: string };
+
+/** The stored instant, in the player's own reading of the clock. Left alone if it will not parse. */
+export function readableTime(isoInstant: string): string {
+  const at = new Date(isoInstant);
+  return Number.isNaN(at.getTime()) ? isoInstant : at.toLocaleTimeString();
+}
+
+/**
+ * How a freshly loaded document stands with storage.
+ *
+ * A restored draft is on disk already and says so, with the time it was written. A template has
+ * never been saved and says that instead.
+ */
+export function savedStateFor(savedAt: string | null): SaveState {
+  return savedAt === null ? { kind: "clean" } : { kind: "saved", at: savedAt };
+}
+
+/** One document waiting to be written, with everything needed to write it in the right place. */
+type Waiting = { game: OpenedGame; key: DraftKey; text: string };
+
+export type DraftWriter = {
+  /** Records an edit. Scheduling is the caller's - this only remembers what is owed. */
+  markDirty: (game: OpenedGame | null, key: DraftKey | null, text: string) => void;
+  /** Writes whatever is waiting, if anything is. Safe to call at any time, from anywhere. */
+  flush: () => Promise<void>;
+  /** When the document first went unwritten, for a caller measuring a ceiling against it. */
+  dirtySince: () => number | null;
+  /** Forgets what is owed without writing it. For a game being deleted out from under it. */
+  discard: () => void;
+};
+
+/**
+ * The bookkeeping behind autosave: what is owed, and one write at a time.
+ *
+ * Deliberately a plain closure rather than refs inside a component. Every interesting case here is
+ * a race - a keystroke landing mid-write, a forced flush arriving while a timed one is in flight, a
+ * failure with newer text already queued behind it - and none of them can be tested at all while
+ * this lives inside a React component, which is how the first version shipped with two of them
+ * wrong.
+ *
+ * `onState` reports every transition; `now` and `clock` are injected so a test can state the time
+ * rather than mock one.
+ */
+export function createDraftWriter(
+  client: CoreClient,
+  onState: (state: SaveState) => void,
+  now: () => string = () => new Date().toISOString(),
+  clock: () => number = () => Date.now()
+): DraftWriter {
+  let pending: Waiting | null = null;
+  let writing: Promise<void> | null = null;
+  let dirtySince: number | null = null;
+
+  return {
+    markDirty(game, key, text) {
+      // No game or no report means no key, and a key invented here would file this turn's orders
+      // somewhere the next launch will not look.
+      if (!game || !key) {
+        return;
+      }
+      pending = { game, key, text };
+      dirtySince ??= clock();
+      onState({ kind: "dirty" });
+    },
+
+    dirtySince: () => dirtySince,
+
+    discard() {
+      pending = null;
+      dirtySince = null;
+    },
+
+    async flush() {
+      // Serialised: a quit and the idle timer can arrive together, and two writes of the same
+      // document racing each other decide the winner by which finishes last.
+      if (writing) {
+        await writing;
+      }
+      const waiting = pending;
+      if (!waiting) {
+        return;
+      }
+      // Cleared before the write rather than after, so a second caller does not write it again.
+      pending = null;
+      dirtySince = null;
+      onState({ kind: "saving" });
+
+      const write = (async () => {
+        const outcome = await saveDraft(client, waiting.game, waiting.key, waiting.text, now());
+
+        if (outcome.warning !== null) {
+          // Put it back so the next attempt retries it - unless a keystroke landed while this
+          // write was in flight, in which case what is waiting is newer and must not be
+          // overwritten by the text that failed.
+          pending ??= waiting;
+          dirtySince ??= clock();
+          onState({ kind: "failed", reason: outcome.warning });
+          return;
+        }
+
+        // Only say "saved" if nothing arrived behind it. Announcing it unconditionally would be
+        // true of the text that was written and false of the text on screen - and worse, callers
+        // schedule autosave off this state, so the transition would cancel the timers that
+        // mid-write keystroke had just armed and put nothing in their place. The newest work would
+        // then sit unwritten under a panel reading "saved", which is the loss this exists to stop.
+        if (pending === null) {
+          onState({ kind: "saved", at: outcome.savedAt });
+        }
+      })();
+
+      writing = write;
+      await write;
+      writing = null;
+    }
+  };
+}
+
+/**
  * How long after the last keystroke a draft is written.
  *
  * Long enough that a sentence is not written a character at a time, short enough that a player who

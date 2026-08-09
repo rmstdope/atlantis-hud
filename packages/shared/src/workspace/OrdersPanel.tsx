@@ -1,6 +1,7 @@
 import type { ReportUnit } from "@atlantis/core-client";
 import { useEffect, useState } from "react";
 import type { HexNode } from "../hexMapModel";
+import { readableTime, type SaveState } from "../orderDraft";
 import { readUnitOrders } from "../ordersDocument";
 import { CollapsiblePanel } from "./CollapsiblePanel";
 
@@ -10,20 +11,6 @@ type Lock =
   | { kind: "foreign"; factionName: string; factionId: string | null }
   | { kind: "not-in-turn"; lastSeenTurn: number | null }
   | { kind: "no-block" };
-
-/**
- * Where the document stands with storage.
- *
- * Four states rather than a timestamp, because the panel used to show one that was made out of
- * `new Date()` and meant nothing. "failed" carries its reason: orders are the player's own typed
- * work, and a write that fails silently is the one failure that loses it.
- */
-export type SaveState =
-  | { kind: "clean" }
-  | { kind: "dirty" }
-  | { kind: "saving" }
-  | { kind: "saved"; at: string }
-  | { kind: "failed"; reason: string };
 
 type OrdersPanelProps = {
   unit: ReportUnit | null;
@@ -139,7 +126,7 @@ function SaveNotice({ save }: { save: SaveState }) {
     case "saving":
       return <span>saving…</span>;
     case "saved":
-      return <span>saved {save.at}</span>;
+      return <span>saved {readableTime(save.at)}</span>;
     case "failed":
       return <span className="text-danger">could not save: {save.reason}</span>;
   }

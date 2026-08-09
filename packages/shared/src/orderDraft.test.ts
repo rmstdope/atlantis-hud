@@ -1,6 +1,12 @@
 import type { CoreClient, OpenedGame, ParsedReport } from "@atlantis/core-client";
 import { describe, expect, it, vi } from "vitest";
-import { documentFor, draftKeyFor, saveDraft } from "./orderDraft";
+import {
+  createDraftWriter,
+  documentFor,
+  draftKeyFor,
+  saveDraft,
+  type SaveState
+} from "./orderDraft";
 
 function report(factionId: string | null, turnNumber: number | null): ParsedReport {
   return {
@@ -165,5 +171,168 @@ describe("choosing which document to show", () => {
 
     expect(choice.text).toBe("#atlantis 95 pass");
     expect(core.loadOrderDraft).not.toHaveBeenCalled();
+  });
+});
+
+describe("keeping track of what is owed to storage", () => {
+  /** A save the test decides when to finish, so a keystroke can land in the middle of one. */
+  function heldWrite(fail = false) {
+    let release!: () => void;
+    const finished = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const saveOrderDraft = vi.fn().mockImplementation(async () => {
+      await finished;
+      if (fail) {
+        throw new Error("disk is full");
+      }
+      return {};
+    });
+    return { saveOrderDraft, release };
+  }
+
+  function writerOn(core: CoreClient) {
+    const states: SaveState[] = [];
+    const writer = createDraftWriter(
+      core,
+      (state) => states.push(state),
+      () => NOW
+    );
+    return { writer, states, last: () => states[states.length - 1] };
+  }
+
+  it("writes what is owed, once, and says when", async () => {
+    const core = client();
+    const { writer, states } = writerOn(core);
+
+    writer.markDirty(OPEN_GAME, KEY, "@work");
+    await writer.flush();
+
+    expect(core.saveOrderDraft).toHaveBeenCalledTimes(1);
+    expect(states).toEqual([{ kind: "dirty" }, { kind: "saving" }, { kind: "saved", at: NOW }]);
+
+    // Nothing owed, nothing written, and no state churn to make the panel flicker.
+    await writer.flush();
+    expect(core.saveOrderDraft).toHaveBeenCalledTimes(1);
+    expect(states).toHaveLength(3);
+  });
+
+  /**
+   * The race this module was pulled out of the component for.
+   *
+   * A keystroke landing while the write is in flight leaves the newest text owed. Announcing
+   * "saved" then would be true of what was written and false of what is on screen - and callers
+   * schedule autosave off that state, so the announcement cancels the timers the keystroke had just
+   * armed and puts nothing in their place. The newest work would sit unwritten under a panel
+   * reading "saved" until the next keystroke, game switch or quit: exactly the loss autosave is for.
+   */
+  it("does not claim to be saved when a keystroke landed mid-write", async () => {
+    const { saveOrderDraft, release } = heldWrite();
+    const core = client({ saveOrderDraft });
+    const { writer, last } = writerOn(core);
+
+    writer.markDirty(OPEN_GAME, KEY, "@work");
+    const inFlight = writer.flush();
+    expect(last()).toEqual({ kind: "saving" });
+
+    writer.markDirty(OPEN_GAME, KEY, "@work\n@study combat");
+    release();
+    await inFlight;
+
+    expect(last()).toEqual({ kind: "dirty" });
+
+    // And the newer text is what the next write carries, not the text already sent.
+    await writer.flush();
+    expect(saveOrderDraft).toHaveBeenLastCalledWith(
+      "g.sqlite",
+      "aug-2026",
+      "95",
+      71,
+      "@work\n@study combat",
+      NOW
+    );
+    expect(last()).toEqual({ kind: "saved", at: NOW });
+  });
+
+  /** The same race on the failing path: what is waiting is newer than what could not be written. */
+  it("does not overwrite a mid-write keystroke with the text that failed", async () => {
+    const { saveOrderDraft, release } = heldWrite(true);
+    const core = client({ saveOrderDraft });
+    const { writer, last } = writerOn(core);
+
+    writer.markDirty(OPEN_GAME, KEY, "@work");
+    const inFlight = writer.flush();
+    writer.markDirty(OPEN_GAME, KEY, "@work\n@study combat");
+    release();
+    await inFlight;
+
+    expect(last()).toEqual({ kind: "failed", reason: "disk is full" });
+
+    saveOrderDraft.mockResolvedValue({});
+    await writer.flush();
+
+    expect(saveOrderDraft).toHaveBeenLastCalledWith(
+      "g.sqlite",
+      "aug-2026",
+      "95",
+      71,
+      "@work\n@study combat",
+      NOW
+    );
+  });
+
+  it("keeps a failed write owed so the next attempt retries it", async () => {
+    const saveOrderDraft = vi.fn().mockRejectedValueOnce(new Error("database is locked"));
+    const core = client({ saveOrderDraft });
+    const { writer, last } = writerOn(core);
+
+    writer.markDirty(OPEN_GAME, KEY, "@work");
+    await writer.flush();
+    expect(last()).toEqual({ kind: "failed", reason: "database is locked" });
+
+    saveOrderDraft.mockResolvedValue({});
+    await writer.flush();
+
+    expect(saveOrderDraft).toHaveBeenCalledTimes(2);
+    expect(last()).toEqual({ kind: "saved", at: NOW });
+  });
+
+  /** A quit and the idle timer arrive together. Two writes racing decide the winner by luck. */
+  it("writes once when two callers flush at the same moment", async () => {
+    const { saveOrderDraft, release } = heldWrite();
+    const core = client({ saveOrderDraft });
+    const { writer } = writerOn(core);
+
+    writer.markDirty(OPEN_GAME, KEY, "@work");
+    const both = Promise.all([writer.flush(), writer.flush()]);
+    release();
+    await both;
+
+    expect(saveOrderDraft).toHaveBeenCalledTimes(1);
+  });
+
+  it("has nothing to write for a game or a report that cannot key a draft", async () => {
+    const core = client();
+    const { writer, states } = writerOn(core);
+
+    writer.markDirty(null, KEY, "@work");
+    writer.markDirty(OPEN_GAME, null, "@work");
+    await writer.flush();
+
+    expect(core.saveOrderDraft).not.toHaveBeenCalled();
+    expect(states).toEqual([]);
+  });
+
+  /** Deleting the open game destroys the database those orders would have gone to. */
+  it("forgets what is owed when it is discarded", async () => {
+    const core = client();
+    const { writer } = writerOn(core);
+
+    writer.markDirty(OPEN_GAME, KEY, "@work");
+    writer.discard();
+    await writer.flush();
+
+    expect(core.saveOrderDraft).not.toHaveBeenCalled();
+    expect(writer.dirtySince()).toBeNull();
   });
 });

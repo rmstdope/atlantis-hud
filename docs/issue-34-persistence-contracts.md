@@ -39,8 +39,28 @@ called it.**
   is what bounds the loss. `beforeunload` is deliberately unused: it is the least reliable of the
   three, and its one real power is prompting the player to stay, which is a worse answer than
   saving.
+- **Again, after a failed write.** A write that could not land leaves the text owed, and waiting for
+  the player to type again would make a passing database hiccup cost the rest of the session. The
+  panel keeps showing the reason until one lands.
 - **Not** on deleting the open game. The database those orders would go to is about to stop
   existing, and the move to the next game would otherwise write into it.
+
+## The writer, and why it is not in the component
+
+`createDraftWriter` in `packages/shared/src/orderDraft.ts` owns what is owed and enforces one write
+at a time. It began as refs inside `AppShell` and moved out because every interesting case in it is
+a race, and none of them can be tested while they live inside a React component — which is how the
+first version shipped with two of them wrong:
+
+- A keystroke landing **during** a write left the newest text owed, but the write announced *saved*
+  anyway. Callers schedule autosave off that state, so the announcement cancelled the timers that
+  keystroke had just armed and put nothing in their place: the newest work sat unwritten under a
+  panel reading "saved" until the next keystroke, game switch or quit. `saved` is now only
+  announced when nothing arrived behind the write.
+- On the failing path the same keystroke was **overwritten** by the text that had just failed, so
+  those characters were gone. The failed text is now only put back if nothing newer is waiting.
+
+Both are pinned by tests that fail against the previous version.
 
 On the desktop the quit is exact rather than best-effort: `apps/desktop/src/quitGuard.ts` refuses
 the window close, awaits the write and then destroys the window. It reaches `AppShell` as the
