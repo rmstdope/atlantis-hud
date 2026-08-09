@@ -215,11 +215,25 @@ Three runs each rather than one, because the figures are noisy: the spread withi
 wider than some of the differences this document used to record. Treat any single number here as
 indicative and the ratio as the finding.
 
+**Both rows are the branch against main, not one change each.** Reverting only the planner's cache
+leaves the route-plan row where it is — 152 ms either way — because the parse it saves is smaller
+than the largest gap that window already contains, and because the window opens immediately after a
+load and catches its tail. So the route-plan row is mostly the load getting cheaper. That the
+planner stopped re-parsing is real, and is pinned by counting parses in the core's own tests rather
+than by this stopwatch: a timing guard can only say the page stayed responsive, which is all it is
+being asked.
+
 Those absolute figures are also higher than the 345–515 ms and 674–919 ms recorded above them,
 which were taken on different hardware and before the game concept landed. That is exactly why the
 guards in `tests/smoke/workspace.spec.ts` are calibrated against a CI run rather than a local one,
 and why both now print the block they measured: the number this project cares about is the one the
 slowest machine sees, and it should be readable from a log rather than guessed at.
+
+On CI the same two guards measure **400 ms** (web) and **464 ms** (desktop shell) for the load, and
+**620 ms** and **640 ms** for the plan — the planner costs roughly three times more there than
+locally, which is the whole argument for calibrating on it. The thresholds are 900 ms and 1000 ms:
+comfortably above what CI measures, and comfortably below what a revert would cost it, since
+undoing either change roughly triples the local figure.
 
 This is worth revisiting if either number changes — a map accumulated over many turns, or a planner
 that searches thousands of hexes. The shape to reach for then is still not "put the core in a

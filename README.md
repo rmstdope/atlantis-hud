@@ -150,8 +150,10 @@ cargo clippy --workspace --all-targets -- -D warnings
     and once more for every route planned
   - `region_sightings` in the core, so both platforms build the remembered-region rows the same way
     and the browser no longer asks for the whole parsed model back just to serialize eleven regions
-  - the longest main-thread block down from 1204-1945ms to 262-429ms on a report load, and from
-    397-1391ms to 153-182ms on the gesture that plans a route
+  - the longest main-thread block on a report load down from 1204-1945ms to 262-429ms, and the
+    same measurement taken while a route is planned down from 397-1391ms to about 150ms - the
+    second figure mostly because the load it follows got cheaper, so `docs/ruleset-contract.md`
+    says which part of the gain came from where
 
 To fetch the ruleset for a game other than the committed one:
 

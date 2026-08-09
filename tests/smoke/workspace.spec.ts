@@ -268,10 +268,12 @@ test("the interface is not blocked while the core reads a report", async ({ page
   });
 
   // Reported so the figure this threshold is calibrated against can be read off a CI run rather
-  // than guessed at. The guard is deliberately set well above the measurement; a guard calibrated
-  // on the fastest machine available is a guard that fails everywhere else.
+  // than guessed at. A guard calibrated on the fastest machine available is a guard that fails
+  // everywhere else, so the number below comes from CI: 400ms for the web project and 464ms for
+  // the desktop shell. 900 sits about twice the slower of those, and below the 1204-1945ms this
+  // same measurement gave before the change.
   console.log(`report load: worst main-thread block ${Math.round(worstBlockMs)}ms`);
-  expect(worstBlockMs).toBeLessThan(1_000);
+  expect(worstBlockMs).toBeLessThan(900);
 
   // And it really is still interactive afterwards: a hex selects and the panels follow.
   await selectHex(page, "1:7,53");
@@ -365,11 +367,14 @@ test("only your own units can be planned for", async ({ page }) => {
 /**
  * Issue #8's third vector: the map still pans and selects while the planner is working.
  *
- * The search itself is microseconds over the 57 hexes the faction knows. What used to cost was
- * everything around it: planning hands the core the report as text, and every plan re-parsed four
- * thousand lines and re-classified every unit before searching. Issue #28 made that text the key
- * the core remembers its last parse under, so a route over the turn already on screen parses
- * nothing. Measured over three runs on one machine, the block fell from 397-1391ms to 153-182ms.
+ * The search itself is microseconds over the 57 hexes the faction knows. Planning hands the core
+ * the report as text, and every plan used to re-parse four thousand lines and re-classify every
+ * unit before searching; issue #28 made that text the key the core remembers its last parse under,
+ * so a route over the turn already on screen parses nothing.
+ *
+ * Measured over three runs on one machine, the block here fell from 397-1391ms to ~150ms - but
+ * that is mostly the load getting cheaper, since this window opens right after one and catches its
+ * tail. Removing the planner's re-parse on its own does not move this figure.
  *
  * The threshold below is set against a CI run rather than a local one, because a
  * guard calibrated on the fastest machine available is a guard that fails everywhere else. It still
@@ -400,8 +405,14 @@ test("the map still answers while a route is being planned", async ({ page }) =>
     window.clearInterval(state.__sampler);
     return Math.max(...(state.__gaps ?? [0]));
   });
+  // Measured on CI at 620ms for the web project and 640ms for the desktop shell, against 2000ms
+  // before. Note what this figure is and is not: reverting the planner's cache alone does not move
+  // it locally (152ms either way), because the parse it saves is smaller than the worst gap this
+  // window already contains. What fell from 397-1391ms to ~150ms was the tail of a much cheaper
+  // load spilling into the sample. That the planner stopped re-parsing is pinned by counting, in
+  // `a_second_route_over_the_same_turn_parses_nothing`, not by this stopwatch.
   console.log(`route plan: worst main-thread block ${Math.round(worstBlockMs)}ms`);
-  expect(worstBlockMs).toBeLessThan(2_000);
+  expect(worstBlockMs).toBeLessThan(1_000);
 
   // And the map is still a map: dragging pans it, and a hex still selects.
   const canvas = page.getByTestId("map-canvas");

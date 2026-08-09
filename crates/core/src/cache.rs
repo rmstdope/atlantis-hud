@@ -4,8 +4,8 @@
 //! stateless: there is no session to open, and no session to invalidate when a new turn arrives.
 //! The price was that the same four thousand lines were parsed three times per import and once more
 //! for every route planned. Measured over three runs on one machine, that blocked the main thread
-//! for 1204-1945 ms on a file open and 397-1391 ms on the gesture that picks a destination; with
-//! this it is 262-429 ms and 153-182 ms. See the performance section of `docs/ruleset-contract.md`.
+//! for 1204-1945 ms on a file open, against 262-429 ms with this. See the performance section of
+//! `docs/ruleset-contract.md`, which also says which part of the gain came from where.
 //!
 //! This keeps the calls exactly as stateless as they were. The cache is keyed on the very text it
 //! was built from, so asking twice with the same input is the same question and gets the same
