@@ -15,13 +15,12 @@ import type { CoreClient, ParsedReport, RememberedRegion } from "@atlantis/core-
 import type { StoredRegion } from "./hexMapModel";
 
 /**
- * Where a faction's game lives.
+ * The id of the game a faction's reports were filed under before games were explicit.
  *
- * One game per faction, named after it. The player never chose a path and should not have to:
- * a report names its own faction, which is enough to know which game it belongs to.
+ * Kept only until the player picks games themselves; see {@link openOrCreateGame}.
  */
-export function gamePathFor(factionId: string): string {
-  return `atlantis-hud/faction-${factionId}.atlantis-game.json`;
+export function gameIdFor(factionId: string): string {
+  return `faction-${factionId}`;
 }
 
 /** The identity a game is addressed by, once it is open. */
@@ -43,16 +42,18 @@ export async function openOrCreateGame(
   factionId: string,
   factionName: string
 ): Promise<OpenGame> {
-  const gameFilePath = gamePathFor(factionId);
-  const gameId = `faction-${factionId}`;
+  const gameId = gameIdFor(factionId);
+  const now = new Date().toISOString();
 
-  const opened = await client.openGame(gameFilePath).catch(() => null);
+  const opened = await client.openGame(gameId, now).catch(() => null);
   const game =
     opened ??
-    (await client.createGame(gameFilePath, {
+    (await client.createGame({
       manifestVersion: 1,
-      metadata: { gameId, gameName: factionName },
-      reportSources: []
+      metadata: { gameId, gameName: factionName, rulesetId: "neworigins" },
+      reportSources: [],
+      createdAt: now,
+      lastOpenedAt: now
     }));
 
   return {

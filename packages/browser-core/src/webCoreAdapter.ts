@@ -46,11 +46,12 @@ type ImportedTurnDiff = {
 };
 
 /**
- * The web has no filesystem, so a game's "database path" is just a stable handle derived from
- * the game file path. It keeps the `CoreClient` contract identical across platforms.
+ * The web has no filesystem, so a game's "database path" is just a stable handle derived from its
+ * id. It keeps the `CoreClient` contract identical across platforms: the desktop puts a real path
+ * in this slot, the browser puts a handle, and neither caller has to know which.
  */
-function databaseHandleFor(gameFilePath: string): string {
-  return `idb://${gameFilePath.replace(/\.json$/u, "")}`;
+function databaseHandleFor(gameId: string): string {
+  return `idb://game-${gameId}`;
 }
 
 /**
@@ -149,28 +150,52 @@ export function createWebCoreAdapter(
       return wasm.validate_orders_state(rawOrders);
     },
 
-    async createGame(gameFilePath: string, manifest: GameManifest) {
-      const existing = await store.getGame(gameFilePath);
+    async listGames() {
+      return (await store.listGames()).map((game) => game.manifest);
+    },
+
+    async createGame(manifest: GameManifest) {
+      const gameId = manifest.metadata.gameId;
+      const existing = await store.getGame(gameId);
       if (existing) {
-        throw new Error(`game file already exists: ${gameFilePath}`);
+        throw new Error(`game already exists: ${gameId}`);
       }
 
       const game = {
-        gameFilePath,
-        databasePath: databaseHandleFor(gameFilePath),
+        gameId,
+        databasePath: databaseHandleFor(gameId),
         schemaVersion: 1,
         manifest
       };
       await store.putGame(game);
-      return game;
+      return { ...game, gameFilePath: game.databasePath };
     },
 
-    async openGame(gameFilePath: string) {
-      const game = await store.getGame(gameFilePath);
+    async openGame(gameId: string, openedAt: string) {
+      const game = await store.getGame(gameId);
       if (!game) {
-        throw new Error(`game file does not exist: ${gameFilePath}`);
+        throw new Error(`no game with id ${gameId}`);
       }
-      return game;
+
+      // Opening stamps the manifest, exactly as the desktop does, because that stamp is what
+      // decides which game reopens next launch. Storing it only on the desktop would make the
+      // two platforms disagree about which game the player was last in.
+      const manifest = {
+        ...(game.manifest as GameManifest),
+        lastOpenedAt: openedAt
+      };
+      const opened = { ...game, manifest };
+      await store.putGame(opened);
+      return { ...opened, gameFilePath: opened.databasePath };
+    },
+
+    async deleteGame(gameId: string) {
+      const game = await store.getGame(gameId);
+      if (!game) {
+        throw new Error(`no game with id ${gameId}`);
+      }
+      await store.deleteGame(gameId);
+      return null;
     },
 
     async previewReportImport(

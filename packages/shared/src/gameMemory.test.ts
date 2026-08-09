@@ -2,7 +2,7 @@ import type { CoreClient, ParsedReport, RememberedRegion } from "@atlantis/core-
 import { describe, expect, it, vi } from "vitest";
 import {
   openOrCreateGame,
-  gamePathFor,
+  gameIdFor,
   rememberTurn,
   toStoredRegions
 } from "./gameMemory";
@@ -67,7 +67,7 @@ function client(overrides: Partial<CoreClient> = {}): CoreClient {
 
 describe("finding a faction's game", () => {
   it("names the game after the faction, so nobody has to choose a path", () => {
-    expect(gamePathFor("95")).toContain("faction-95");
+    expect(gameIdFor("95")).toBe("faction-95");
   });
 
   it("opens the game when it is already there", async () => {

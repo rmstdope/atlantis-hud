@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createWebCoreAdapter, type CoreWasmModule } from "./webCoreAdapter";
+import type { GameManifest } from "@atlantis/core-client";
 import { createMemoryWebStore, type StoredTurnSnapshot } from "./webStore";
 
 /**
@@ -72,6 +73,17 @@ function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
 
 const REPORT = "TURN: 12 Spring\nFACTION: 17 | Crimson Tide";
 const DB = "idb://game";
+const NOW = "2026-08-01T09:00:00Z";
+
+function manifest(gameId: string, gameName: string): GameManifest {
+  return {
+    manifestVersion: 1,
+    metadata: { gameId, gameName, rulesetId: "neworigins" },
+    reportSources: [],
+    createdAt: NOW,
+    lastOpenedAt: NOW
+  };
+}
 
 describe("web core adapter", () => {
   it("routes logic calls to the core rather than to storage", async () => {
@@ -239,20 +251,77 @@ describe("web core adapter", () => {
 
   it("refuses to create a game over an existing one", async () => {
     const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
-    const manifest = {
-      manifestVersion: 1,
-      metadata: { gameId: "p", gameName: "P" },
-      reportSources: []
-    };
 
-    await adapter.createGame("/p.json", manifest);
+    await adapter.createGame(manifest("p", "P"));
 
-    await expect(adapter.createGame("/p.json", manifest)).rejects.toThrow(/already exists/u);
+    await expect(adapter.createGame(manifest("p", "P"))).rejects.toThrow(/already exists/u);
   });
 
   it("fails to open a game that was never created", async () => {
     const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
-    await expect(adapter.openGame("/missing.json")).rejects.toThrow(/does not exist/u);
+    await expect(adapter.openGame("missing", NOW)).rejects.toThrow(/no game/u);
+  });
+});
+
+describe("managing games", () => {
+  it("lists every game that was created", async () => {
+    const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
+    await adapter.createGame(manifest("alpha", "Alpha"));
+    await adapter.createGame(manifest("beta", "Beta"));
+
+    const listed = (await adapter.listGames()) as GameManifest[];
+
+    expect(listed.map((game) => game.metadata.gameId).sort()).toEqual(["alpha", "beta"]);
+  });
+
+  it("has no games before any is created", async () => {
+    const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
+    expect(await adapter.listGames()).toEqual([]);
+  });
+
+  /** Which game reopens next launch is read off this stamp, so opening has to move it. */
+  it("stamps when a game was last opened", async () => {
+    const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
+    await adapter.createGame(manifest("alpha", "Alpha"));
+
+    await adapter.openGame("alpha", "2026-08-09T18:30:00Z");
+
+    const listed = (await adapter.listGames()) as GameManifest[];
+    expect(listed[0].lastOpenedAt).toBe("2026-08-09T18:30:00Z");
+    expect(listed[0].createdAt).toBe(NOW);
+  });
+
+  it("remembers which ruleset a game is played under", async () => {
+    const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
+    await adapter.createGame(manifest("alpha", "Alpha"));
+
+    const opened = (await adapter.openGame("alpha", NOW)) as { manifest: GameManifest };
+
+    expect(opened.manifest.metadata.rulesetId).toBe("neworigins");
+  });
+
+  /**
+   * The whole point of a database per game. A turn committed to one game must be invisible to the
+   * other, and deleting a game must take its turns with it while leaving the survivor intact.
+   */
+  it("keeps one game's turns out of another, and deletes them with the game", async () => {
+    const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
+    const alpha = (await adapter.createGame(manifest("alpha", "Alpha"))) as { databasePath: string };
+    const beta = (await adapter.createGame(manifest("beta", "Beta"))) as { databasePath: string };
+
+    await adapter.commitReportImport(alpha.databasePath, "alpha", "17", REPORT, false);
+
+    expect(await adapter.loadImportedTurn(beta.databasePath, "beta", "17", 12)).toBeNull();
+
+    await adapter.deleteGame("alpha");
+
+    expect((await adapter.listGames()) as GameManifest[]).toHaveLength(1);
+    expect(await adapter.loadImportedTurn(alpha.databasePath, "alpha", "17", 12)).toBeNull();
+  });
+
+  it("fails to delete a game that is not there", async () => {
+    const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
+    await expect(adapter.deleteGame("missing")).rejects.toThrow(/no game/u);
   });
 });
 

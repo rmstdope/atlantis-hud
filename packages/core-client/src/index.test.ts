@@ -81,14 +81,17 @@ describe("core client adapter contract parity", () => {
         manifest_version: 1,
         metadata: {
           game_id: "faction-12",
-          game_name: "Faction 12"
+          game_name: "Faction 12",
+          ruleset_id: "neworigins"
         },
         report_sources: [
           {
             source_id: "turn-12-report",
             label: "Turn 12 report"
           }
-        ]
+        ],
+        created_at: "2026-08-01T09:00:00Z",
+        last_opened_at: "2026-08-09T18:00:00Z"
       }
     };
 
@@ -131,6 +134,12 @@ describe("core client adapter contract parity", () => {
       },
       create_game_state() {
         return openedGamePayload;
+      },
+      list_games_state() {
+        return [openedGamePayload.manifest];
+      },
+      delete_game_state() {
+        return null;
       },
       open_game_state() {
         return openedGamePayload;
@@ -178,6 +187,24 @@ describe("core client adapter contract parity", () => {
       }
       if (command === "plan_route") {
         return Promise.resolve(planPayload as T);
+      }
+      if (command === "list_games") {
+        return Promise.resolve([
+          {
+            manifestVersion: 1,
+            metadata: {
+              gameId: "faction-12",
+              gameName: "Faction 12",
+              rulesetId: "neworigins"
+            },
+            reportSources: [{ sourceId: "turn-12-report", label: "Turn 12 report" }],
+            createdAt: "2026-08-01T09:00:00Z",
+            lastOpenedAt: "2026-08-09T18:00:00Z"
+          }
+        ] as T);
+      }
+      if (command === "delete_game") {
+        return Promise.resolve(null as T);
       }
       if (command === "get_engine_info") {
         return Promise.resolve({
@@ -311,14 +338,17 @@ describe("core client adapter contract parity", () => {
           manifestVersion: 1,
           metadata: {
             gameId: "faction-12",
-            gameName: "Faction 12"
+            gameName: "Faction 12",
+            rulesetId: "neworigins"
           },
           reportSources: [
             {
               sourceId: "turn-12-report",
               label: "Turn 12 report"
             }
-          ]
+          ],
+          createdAt: "2026-08-01T09:00:00Z",
+          lastOpenedAt: "2026-08-09T18:00:00Z"
         }
       } as T);
     };
@@ -327,6 +357,23 @@ describe("core client adapter contract parity", () => {
     const tauriClient = createCoreClient(createTauriAdapter(invoke));
 
     await expect(wasmClient.getEngineInfo()).resolves.toEqual(await tauriClient.getEngineInfo());
+
+    // Game management crosses the same boundary as everything else, so it gets the same
+    // treatment: one payload per transport, in that transport's own casing, normalized to one
+    // answer. A game that lists differently on desktop and on web is two applications.
+    const wasmGames = await wasmClient.listGames();
+    expect(wasmGames).toEqual(await tauriClient.listGames());
+    expect(wasmGames[0].metadata.rulesetId).toBe("neworigins");
+    expect(wasmGames[0].lastOpenedAt).toBe("2026-08-09T18:00:00Z");
+
+    await expect(wasmClient.createGame(wasmGames[0])).resolves.toEqual(
+      await tauriClient.createGame(wasmGames[0])
+    );
+    await expect(wasmClient.openGame("faction-12", "2026-08-09T18:00:00Z")).resolves.toEqual(
+      await tauriClient.openGame("faction-12", "2026-08-09T18:00:00Z")
+    );
+    await expect(wasmClient.deleteGame("faction-12")).resolves.toBeUndefined();
+    await expect(tauriClient.deleteGame("faction-12")).resolves.toBeUndefined();
 
     // The planner's answer must be identical on both transports, down to the nested route and its
     // risk: the desktop and the browser plan the same move or one of them is lying.

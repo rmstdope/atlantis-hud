@@ -8,6 +8,13 @@ export type EngineInfo = {
 export type GameMetadata = {
   gameId: string;
   gameName: string;
+  /**
+   * Which ruleset the game is played under, by identifier.
+   *
+   * The rules themselves are a served file handed to the core per call, so a game records which
+   * one it wants rather than a copy of it.
+   */
+  rulesetId: string;
 };
 
 export type ReportSourceRef = {
@@ -19,6 +26,15 @@ export type GameManifest = {
   manifestVersion: number;
   metadata: GameMetadata;
   reportSources: ReportSourceRef[];
+  /** ISO 8601. */
+  createdAt: string;
+  /**
+   * ISO 8601, rewritten every time the game is opened.
+   *
+   * This decides which game reopens on the next launch. It lives on each game rather than in an
+   * index beside them, so there is no second copy to fall out of step.
+   */
+  lastOpenedAt: string;
 };
 
 export type OpenedGame = {
@@ -341,6 +357,8 @@ type GameMetadataWireShape = {
   game_id?: string;
   gameName?: string;
   game_name?: string;
+  rulesetId?: string;
+  ruleset_id?: string;
 };
 
 type ReportSourceRefWireShape = {
@@ -355,6 +373,10 @@ type GameManifestWireShape = {
   metadata?: GameMetadataWireShape;
   reportSources?: ReportSourceRefWireShape[];
   report_sources?: ReportSourceRefWireShape[];
+  createdAt?: string;
+  created_at?: string;
+  lastOpenedAt?: string;
+  last_opened_at?: string;
 };
 
 type OpenedGameWireShape = {
@@ -492,8 +514,10 @@ type ImportedTurnRecordWireShape = {
 
 export interface CoreAdapter {
   getEngineInfo(): Promise<unknown> | unknown;
-  createGame(gameFilePath: string, manifest: GameManifest): Promise<unknown> | unknown;
-  openGame(gameFilePath: string): Promise<unknown> | unknown;
+  listGames(): Promise<unknown> | unknown;
+  createGame(manifest: GameManifest): Promise<unknown> | unknown;
+  openGame(gameId: string, openedAt: string): Promise<unknown> | unknown;
+  deleteGame(gameId: string): Promise<unknown> | unknown;
   parseReport(rawReport: string): Promise<unknown> | unknown;
   parseReportFull(rawReport: string): Promise<unknown> | unknown;
   parseReportClassified(rawReport: string, rulesetJson: string): Promise<unknown> | unknown;
@@ -547,8 +571,18 @@ export interface CoreAdapter {
 
 export interface CoreClient {
   getEngineInfo(): Promise<EngineInfo>;
-  createGame(gameFilePath: string, manifest: GameManifest): Promise<OpenedGame>;
-  openGame(gameFilePath: string): Promise<OpenedGame>;
+  /**
+   * Every game this installation holds, in whatever order storage produced them.
+   *
+   * Ordering is the caller's business: the picker sorts by when each was last opened, and baking
+   * that into the contract would make the storage layer answer a question about presentation.
+   */
+  listGames(): Promise<GameManifest[]>;
+  createGame(manifest: GameManifest): Promise<OpenedGame>;
+  /** Opens a game and records that it was opened, which is what decides the next launch. */
+  openGame(gameId: string, openedAt: string): Promise<OpenedGame>;
+  /** Erases a game and everything it stored. There is no undo. */
+  deleteGame(gameId: string): Promise<void>;
   parseReport(rawReport: string): Promise<ReportParseResult>;
   /** The full domain model. Returned as-is: it is descriptive data, not a contract to normalize. */
   parseReportFull(rawReport: string): Promise<ParsedReport>;
@@ -627,8 +661,10 @@ export interface CoreClient {
 
 export interface WasmBindings {
   get_engine_info(): unknown;
-  create_game_state(gameFilePath: string, manifest: GameManifest): unknown;
-  open_game_state(gameFilePath: string): unknown;
+  list_games_state(): unknown;
+  create_game_state(manifest: GameManifest): unknown;
+  open_game_state(gameId: string, openedAt: string): unknown;
+  delete_game_state(gameId: string): unknown;
   parse_report_state(rawReport: string): unknown;
   parse_report_full_state(rawReport: string): unknown;
   parse_report_classified_state(rawReport: string, rulesetJson: string): unknown;
@@ -716,14 +752,16 @@ function normalizeGameMetadata(value: unknown): GameMetadata {
   const payload = value as GameMetadataWireShape;
   const gameId = payload.gameId ?? payload.game_id;
   const gameName = payload.gameName ?? payload.game_name;
+  const rulesetId = payload.rulesetId ?? payload.ruleset_id;
 
-  if (typeof gameId !== "string" || typeof gameName !== "string") {
+  if (typeof gameId !== "string" || typeof gameName !== "string" || typeof rulesetId !== "string") {
     throw new Error("incomplete game metadata payload");
   }
 
   return {
     gameId,
-    gameName
+    gameName,
+    rulesetId
   };
 }
 
@@ -753,16 +791,34 @@ function normalizeGameManifest(value: unknown): GameManifest {
   const payload = value as GameManifestWireShape;
   const manifestVersion = payload.manifestVersion ?? payload.manifest_version;
   const reportSources = payload.reportSources ?? payload.report_sources;
+  const createdAt = payload.createdAt ?? payload.created_at;
+  const lastOpenedAt = payload.lastOpenedAt ?? payload.last_opened_at;
 
-  if (typeof manifestVersion !== "number" || !Array.isArray(reportSources) || payload.metadata === undefined) {
+  if (
+    typeof manifestVersion !== "number" ||
+    !Array.isArray(reportSources) ||
+    payload.metadata === undefined ||
+    typeof createdAt !== "string" ||
+    typeof lastOpenedAt !== "string"
+  ) {
     throw new Error("incomplete game manifest payload");
   }
 
   return {
     manifestVersion,
     metadata: normalizeGameMetadata(payload.metadata),
-    reportSources: reportSources.map((source) => normalizeReportSourceRef(source))
+    reportSources: reportSources.map((source) => normalizeReportSourceRef(source)),
+    createdAt,
+    lastOpenedAt
   };
+}
+
+function normalizeGameList(value: unknown): GameManifest[] {
+  if (!Array.isArray(value)) {
+    throw new Error("invalid game list payload");
+  }
+
+  return value.map((entry) => normalizeGameManifest(entry));
 }
 
 function normalizeOpenedGame(value: unknown): OpenedGame {
@@ -1080,13 +1136,21 @@ export function createCoreClient(adapter: CoreAdapter): CoreClient {
       const value = await adapter.getEngineInfo();
       return normalizeEngineInfo(value);
     },
-    async createGame(gameFilePath: string, manifest: GameManifest) {
-      const value = await adapter.createGame(gameFilePath, manifest);
+    async listGames() {
+      const value = await adapter.listGames();
+      return normalizeGameList(value);
+    },
+    async createGame(manifest: GameManifest) {
+      const value = await adapter.createGame(manifest);
       return normalizeOpenedGame(value);
     },
-    async openGame(gameFilePath: string) {
-      const value = await adapter.openGame(gameFilePath);
+    async openGame(gameId: string, openedAt: string) {
+      const value = await adapter.openGame(gameId, openedAt);
       return normalizeOpenedGame(value);
+    },
+    async deleteGame(gameId: string) {
+      // Nothing to normalize: a deletion either happened or threw.
+      await adapter.deleteGame(gameId);
     },
     async parseReport(rawReport: string) {
       const value = await adapter.parseReport(rawReport);
@@ -1184,11 +1248,17 @@ export function createWasmAdapter(bindings: WasmBindings): CoreAdapter {
     getEngineInfo() {
       return bindings.get_engine_info();
     },
-    createGame(gameFilePath: string, manifest: GameManifest) {
-      return bindings.create_game_state(gameFilePath, manifest);
+    listGames() {
+      return bindings.list_games_state();
     },
-    openGame(gameFilePath: string) {
-      return bindings.open_game_state(gameFilePath);
+    createGame(manifest: GameManifest) {
+      return bindings.create_game_state(manifest);
+    },
+    openGame(gameId: string, openedAt: string) {
+      return bindings.open_game_state(gameId, openedAt);
+    },
+    deleteGame(gameId: string) {
+      return bindings.delete_game_state(gameId);
     },
     parseReport(rawReport: string) {
       return bindings.parse_report_state(rawReport);
@@ -1265,16 +1335,20 @@ export function createTauriAdapter(invoke: TauriInvoke): CoreAdapter {
     getEngineInfo() {
       return invoke<EngineInfoWireShape>("get_engine_info");
     },
-    createGame(gameFilePath: string, manifest: GameManifest) {
-      return invoke<OpenedGameWireShape>("create_game", {
-        game_file_path: gameFilePath,
-        manifest
+    listGames() {
+      return invoke<GameManifestWireShape[]>("list_games");
+    },
+    createGame(manifest: GameManifest) {
+      return invoke<OpenedGameWireShape>("create_game", { manifest });
+    },
+    openGame(gameId: string, openedAt: string) {
+      return invoke<OpenedGameWireShape>("open_game", {
+        game_id: gameId,
+        opened_at: openedAt
       });
     },
-    openGame(gameFilePath: string) {
-      return invoke<OpenedGameWireShape>("open_game", {
-        game_file_path: gameFilePath
-      });
+    deleteGame(gameId: string) {
+      return invoke<void>("delete_game", { game_id: gameId });
     },
     parseReport(rawReport: string) {
       return invoke<ReportParseResultWireShape>("parse_report", {
