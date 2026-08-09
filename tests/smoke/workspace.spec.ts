@@ -405,14 +405,18 @@ test("the map still answers while a route is being planned", async ({ page }) =>
     window.clearInterval(state.__sampler);
     return Math.max(...(state.__gaps ?? [0]));
   });
-  // Measured on CI at 620ms for the web project and 640ms for the desktop shell, against 2000ms
-  // before. Note what this figure is and is not: reverting the planner's cache alone does not move
-  // it locally (152ms either way), because the parse it saves is smaller than the worst gap this
-  // window already contains. What fell from 397-1391ms to ~150ms was the tail of a much cheaper
-  // load spilling into the sample. That the planner stopped re-parsing is pinned by counting, in
-  // `a_second_route_over_the_same_turn_parses_nothing`, not by this stopwatch.
+  // This window is the noisy one on CI: two runs of the same commit gave 620ms and 640ms, then
+  // 809ms and 824ms. So the guard sits at roughly twice the worst of those rather than just above
+  // it, which is the difference between a guard and a flake. Locally it measures about 150ms.
+  //
+  // Note what the figure is and is not. Reverting the planner's cache does not move it at all
+  // (152ms either way): the parse that saves is smaller than the largest gap this window already
+  // contains, and the window opens right after a load and catches its tail, so what fell from
+  // 397-1391ms was mostly the load getting cheaper. That the planner stopped re-parsing is pinned
+  // by counting parses in `a_second_route_over_the_same_turn_parses_nothing`, not by this
+  // stopwatch. What this guard is for is the page staying responsive, and that is all it claims.
   console.log(`route plan: worst main-thread block ${Math.round(worstBlockMs)}ms`);
-  expect(worstBlockMs).toBeLessThan(1_000);
+  expect(worstBlockMs).toBeLessThan(1_500);
 
   // And the map is still a map: dragging pans it, and a hex still selects.
   const canvas = page.getByTestId("map-canvas");

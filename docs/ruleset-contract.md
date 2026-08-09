@@ -229,11 +229,12 @@ guards in `tests/smoke/workspace.spec.ts` are calibrated against a CI run rather
 and why both now print the block they measured: the number this project cares about is the one the
 slowest machine sees, and it should be readable from a log rather than guessed at.
 
-On CI the same two guards measure **400 ms** (web) and **464 ms** (desktop shell) for the load, and
-**620 ms** and **640 ms** for the plan — the planner costs roughly three times more there than
-locally, which is the whole argument for calibrating on it. The thresholds are 900 ms and 1000 ms:
-comfortably above what CI measures, and comfortably below what a revert would cost it, since
-undoing either change roughly triples the local figure.
+On CI the load guard measures **400 ms** (web) and **451–464 ms** (desktop shell), steady across
+runs, and its threshold is **900 ms** — about twice the worst, and below the 1204–1945 ms the same
+measurement gave before. The plan guard is noisier: two runs of the same commit gave 620/640 ms and
+then 809/824 ms, so its threshold is **1500 ms**, roughly twice the worst rather than just above it.
+Calibrating that one on the local figure of ~150 ms would have produced a guard that failed on the
+first busy runner.
 
 This is worth revisiting if either number changes — a map accumulated over many turns, or a planner
 that searches thousands of hexes. The shape to reach for then is still not "put the core in a
