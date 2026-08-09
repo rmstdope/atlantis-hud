@@ -1,67 +1,22 @@
 /**
  * Remembering the map across turns.
  *
- * The workspace had no project concept at all: it parsed a report and drew it, and everything the
+ * The workspace had no game concept at all: it parsed a report and drew it, and everything the
  * faction had seen in earlier turns stayed on disk unread. That is why the map stopped at the fringe
  * of the current report, and why no route could be longer than one step - a report describes its
  * neighbours but not theirs.
  *
+ * A turn is remembered in the game the player has open. It used to be remembered in a game derived
+ * from the report's own faction, which meant storage appeared wherever a report happened to come
+ * from and the player never chose anything; issue #33 made the choice explicit.
+ *
  * This is deliberately a plain module rather than something the component does inline, so the parts
- * that can go wrong - a project that will not open, an import that will not commit - are testable
+ * that can go wrong - a game that will not open, an import that will not commit - are testable
  * without rendering anything.
  */
 
-import type { CoreClient, ParsedReport, RememberedRegion } from "@atlantis/core-client";
+import type { CoreClient, OpenedGame, ParsedReport, RememberedRegion } from "@atlantis/core-client";
 import type { StoredRegion } from "./hexMapModel";
-
-/**
- * Where a faction's project lives.
- *
- * One project per faction, named after it. The player never chose a path and should not have to:
- * a report names its own faction, which is enough to know which project it belongs to.
- */
-export function projectPathFor(factionId: string): string {
-  return `atlantis-hud/faction-${factionId}.atlantis-project.json`;
-}
-
-/** The identity a project is addressed by, once it is open. */
-export type OpenProject = {
-  projectFilePath: string;
-  databasePath: string;
-  projectId: string;
-  factionId: string;
-};
-
-/**
- * Opens the project for a faction, creating it the first time.
- *
- * Opening is tried first because it is the common case; only a project that is not there yet is
- * created. Both are ordinary outcomes, so neither is reported as an error.
- */
-export async function openOrCreateProject(
-  client: CoreClient,
-  factionId: string,
-  factionName: string
-): Promise<OpenProject> {
-  const projectFilePath = projectPathFor(factionId);
-  const projectId = `faction-${factionId}`;
-
-  const opened = await client.openProject(projectFilePath).catch(() => null);
-  const project =
-    opened ??
-    (await client.createProject(projectFilePath, {
-      manifestVersion: 1,
-      metadata: { projectId, projectName: factionName },
-      reportSources: []
-    }));
-
-  return {
-    projectFilePath: project.projectFilePath,
-    databasePath: project.databasePath,
-    projectId,
-    factionId
-  };
-}
 
 /**
  * Turns what the core remembers into what the map wants.
@@ -83,7 +38,6 @@ export function toStoredRegions(remembered: RememberedRegion[]): StoredRegion[] 
 
 /** What remembering a turn produced, and anything that went wrong doing it. */
 export type MemoryOutcome = {
-  project: OpenProject | null;
   /**
    * Everywhere the faction has been, as the core keeps it.
    *
@@ -97,7 +51,7 @@ export type MemoryOutcome = {
 };
 
 /**
- * Commits a report to the project and reads back everything the faction has ever seen.
+ * Commits a report to the game and reads back everything the faction has ever seen.
  *
  * Failing to remember a turn is a warning rather than an error. The report in front of the player
  * parsed perfectly well, and refusing to show it because a database would not open would be trading
@@ -105,46 +59,31 @@ export type MemoryOutcome = {
  */
 export async function rememberTurn(
   client: CoreClient,
+  game: OpenedGame,
   parsed: ParsedReport,
   rawReport: string
 ): Promise<MemoryOutcome> {
   const factionId = parsed.header.factionId;
   if (!factionId) {
     return {
-      project: null,
       remembered: [],
       warning: "the report does not name its faction, so it cannot be remembered"
     };
   }
 
-  try {
-    const project = await openOrCreateProject(
-      client,
-      factionId,
-      parsed.header.factionName ?? `Faction ${factionId}`
-    );
+  const gameId = game.manifest.metadata.gameId;
 
+  try {
     // Overwriting is right here: re-importing the same turn should refresh what is remembered
     // rather than refuse, and the player has already chosen this file.
-    await client.commitReportImport(
-      project.databasePath,
-      project.projectId,
-      factionId,
-      rawReport,
-      true
-    );
+    await client.commitReportImport(game.databasePath, gameId, factionId, rawReport, true);
 
-    const remembered = await client.loadRegionSightings(
-      project.databasePath,
-      project.projectId,
-      factionId
-    );
+    const remembered = await client.loadRegionSightings(game.databasePath, gameId, factionId);
 
-    return { project, remembered, warning: null };
+    return { remembered, warning: null };
   } catch (error: unknown) {
     const detail = error instanceof Error ? error.message : String(error);
     return {
-      project: null,
       remembered: [],
       warning: `the turn could not be remembered: ${detail}`
     };

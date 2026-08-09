@@ -61,19 +61,18 @@ describe("workspace selection", () => {
     expect(store().selectedRegionId).toBe("1:7,53");
   });
 
-  it("clears selections when a project is opened", () => {
+  it("clears selections when a game is opened", () => {
     store().selectRegion("1:7,53");
     store().selectUnit("18642");
 
-    store().openProject({
-      projectFilePath: "/p.json",
+    store().openGame({
+      gameId: "aug-2026",
+      gameName: "NewOrigins Aug 2026",
       databasePath: "/p.sqlite",
-      projectId: "faction-95",
-      factionId: "95",
-      turnNumber: 71
+      rulesetId: "neworigins"
     });
 
-    expect(store().project?.factionId).toBe("95");
+    expect(store().game?.gameName).toBe("NewOrigins Aug 2026");
     expect(store().selectedRegionId).toBeNull();
     expect(store().selectedUnitId).toBeNull();
   });
@@ -115,7 +114,7 @@ describe("panels and layers", () => {
     expect(persisted.collapsed).toMatchObject({ region: true, unit: false });
     expect(persisted.layers).toMatchObject({ staleness: false, units: true });
     expect(persisted).not.toHaveProperty("selectedRegionId");
-    expect(persisted).not.toHaveProperty("project");
+    expect(persisted).not.toHaveProperty("game");
   });
 
   it("toggles a layer back and forth", () => {

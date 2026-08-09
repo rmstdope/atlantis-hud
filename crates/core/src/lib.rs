@@ -5,23 +5,27 @@ pub mod report;
 
 use serde::{Deserialize, Serialize};
 
-/// Canonical cross-platform game metadata contract.
+/// Canonical cross-platform metadata about the Atlantis engine itself.
+///
+/// This describes the *engine* a report comes from, not a game the player has created. The two
+/// were both called `GameInfo` until games became a first-class thing the player names and picks
+/// between, at which point one name for two unrelated ideas stopped being tolerable.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct GameInfo {
+pub struct EngineInfo {
     /// Stable identifier used by platform adapters and clients.
     pub id: String,
-    /// Display name for the game.
+    /// Display name for the engine.
     pub name: String,
     /// Semantic version for the currently supported ruleset.
     pub ruleset_version: String,
-    /// Maximum number of factions supported by the game.
+    /// Maximum number of factions supported by the engine.
     pub max_faction_count: u16,
 }
 
-/// Returns default game metadata shared across all platform adapters.
+/// Returns default engine metadata shared across all platform adapters.
 #[must_use]
-pub fn game_info() -> GameInfo {
-    GameInfo {
+pub fn engine_info() -> EngineInfo {
+    EngineInfo {
         id: "atlantis".to_string(),
         name: "Atlantis PBEM".to_string(),
         ruleset_version: "4.0".to_string(),
@@ -728,15 +732,15 @@ mod tests {
     }
 
     #[test]
-    fn game_info_uses_stable_identifier() {
-        assert_eq!(game_info().id, "atlantis");
+    fn engine_info_uses_stable_identifier() {
+        assert_eq!(engine_info().id, "atlantis");
     }
 
     #[test]
-    fn game_info_exposes_expected_metadata() {
+    fn engine_info_exposes_expected_metadata() {
         assert_eq!(
-            game_info(),
-            GameInfo {
+            engine_info(),
+            EngineInfo {
                 id: "atlantis".to_string(),
                 name: "Atlantis PBEM".to_string(),
                 ruleset_version: "4.0".to_string(),

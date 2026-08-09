@@ -1,13 +1,20 @@
-export type GameInfo = {
+export type EngineInfo = {
   id: string;
   name: string;
   rulesetVersion: string;
   maxFactionCount: number;
 };
 
-export type ProjectMetadata = {
-  projectId: string;
-  projectName: string;
+export type GameMetadata = {
+  gameId: string;
+  gameName: string;
+  /**
+   * Which ruleset the game is played under, by identifier.
+   *
+   * The rules themselves are a served file handed to the core per call, so a game records which
+   * one it wants rather than a copy of it.
+   */
+  rulesetId: string;
 };
 
 export type ReportSourceRef = {
@@ -15,17 +22,26 @@ export type ReportSourceRef = {
   label: string;
 };
 
-export type ProjectManifest = {
+export type GameManifest = {
   manifestVersion: number;
-  metadata: ProjectMetadata;
+  metadata: GameMetadata;
   reportSources: ReportSourceRef[];
+  /** ISO 8601. */
+  createdAt: string;
+  /**
+   * ISO 8601, rewritten every time the game is opened.
+   *
+   * This decides which game reopens on the next launch. It lives on each game rather than in an
+   * index beside them, so there is no second copy to fall out of step.
+   */
+  lastOpenedAt: string;
 };
 
-export type OpenedProject = {
-  projectFilePath: string;
+export type OpenedGame = {
+  gameFilePath: string;
   databasePath: string;
   schemaVersion: number;
-  manifest: ProjectManifest;
+  manifest: GameManifest;
 };
 
 export type WarningSeverity = "warning" | "error";
@@ -310,7 +326,7 @@ export type OrderValidationResult = {
 };
 
 export type OrderDraftKey = {
-  projectId: string;
+  gameId: string;
   factionId: string;
   turnNumber: number;
 };
@@ -327,7 +343,7 @@ export type ImportedTurnRecord = {
   parseResult: ReportParseResult;
 };
 
-type GameInfoWireShape = {
+type EngineInfoWireShape = {
   id: string;
   name: string;
   rulesetVersion?: string;
@@ -336,11 +352,13 @@ type GameInfoWireShape = {
   max_faction_count?: number;
 };
 
-type ProjectMetadataWireShape = {
-  projectId?: string;
-  project_id?: string;
-  projectName?: string;
-  project_name?: string;
+type GameMetadataWireShape = {
+  gameId?: string;
+  game_id?: string;
+  gameName?: string;
+  game_name?: string;
+  rulesetId?: string;
+  ruleset_id?: string;
 };
 
 type ReportSourceRefWireShape = {
@@ -349,22 +367,26 @@ type ReportSourceRefWireShape = {
   label?: string;
 };
 
-type ProjectManifestWireShape = {
+type GameManifestWireShape = {
   manifestVersion?: number;
   manifest_version?: number;
-  metadata?: ProjectMetadataWireShape;
+  metadata?: GameMetadataWireShape;
   reportSources?: ReportSourceRefWireShape[];
   report_sources?: ReportSourceRefWireShape[];
+  createdAt?: string;
+  created_at?: string;
+  lastOpenedAt?: string;
+  last_opened_at?: string;
 };
 
-type OpenedProjectWireShape = {
-  projectFilePath?: string;
-  project_file_path?: string;
+type OpenedGameWireShape = {
+  gameFilePath?: string;
+  game_file_path?: string;
   databasePath?: string;
   database_path?: string;
   schemaVersion?: number;
   schema_version?: number;
-  manifest?: ProjectManifestWireShape;
+  manifest?: GameManifestWireShape;
 };
 
 type TurnHeaderWireShape = {
@@ -466,8 +488,8 @@ type OrderValidationResultWireShape = {
 };
 
 type OrderDraftKeyWireShape = {
-  projectId?: string;
-  project_id?: string;
+  gameId?: string;
+  game_id?: string;
   factionId?: string;
   faction_id?: string;
   turnNumber?: number;
@@ -491,21 +513,23 @@ type ImportedTurnRecordWireShape = {
 };
 
 export interface CoreAdapter {
-  getGameInfo(): Promise<unknown> | unknown;
-  createProject(projectFilePath: string, manifest: ProjectManifest): Promise<unknown> | unknown;
-  openProject(projectFilePath: string): Promise<unknown> | unknown;
+  getEngineInfo(): Promise<unknown> | unknown;
+  listGames(): Promise<unknown> | unknown;
+  createGame(manifest: GameManifest): Promise<unknown> | unknown;
+  openGame(gameId: string, openedAt: string): Promise<unknown> | unknown;
+  deleteGame(gameId: string): Promise<unknown> | unknown;
   parseReport(rawReport: string): Promise<unknown> | unknown;
   parseReportFull(rawReport: string): Promise<unknown> | unknown;
   parseReportClassified(rawReport: string, rulesetJson: string): Promise<unknown> | unknown;
   previewReportImport(
     databasePath: string,
-    projectId: string,
+    gameId: string,
     confirmedFactionId: string,
     rawReport: string
   ): Promise<unknown> | unknown;
   commitReportImport(
     databasePath: string,
-    projectId: string,
+    gameId: string,
     confirmedFactionId: string,
     rawReport: string,
     allowOverwrite: boolean
@@ -520,24 +544,24 @@ export interface CoreAdapter {
   ): Promise<unknown> | unknown;
   loadRegionSightings(
     databasePath: string,
-    projectId: string,
+    gameId: string,
     factionId: string
   ): Promise<unknown> | unknown;
   loadImportedTurn(
     databasePath: string,
-    projectId: string,
+    gameId: string,
     factionId: string,
     turnNumber: number
   ): Promise<unknown> | unknown;
   loadOrderDraft(
     databasePath: string,
-    projectId: string,
+    gameId: string,
     factionId: string,
     turnNumber: number
   ): Promise<unknown> | unknown;
   saveOrderDraft(
     databasePath: string,
-    projectId: string,
+    gameId: string,
     factionId: string,
     turnNumber: number,
     orderText: string,
@@ -546,9 +570,19 @@ export interface CoreAdapter {
 }
 
 export interface CoreClient {
-  getGameInfo(): Promise<GameInfo>;
-  createProject(projectFilePath: string, manifest: ProjectManifest): Promise<OpenedProject>;
-  openProject(projectFilePath: string): Promise<OpenedProject>;
+  getEngineInfo(): Promise<EngineInfo>;
+  /**
+   * Every game this installation holds, in whatever order storage produced them.
+   *
+   * Ordering is the caller's business: the picker sorts by when each was last opened, and baking
+   * that into the contract would make the storage layer answer a question about presentation.
+   */
+  listGames(): Promise<GameManifest[]>;
+  createGame(manifest: GameManifest): Promise<OpenedGame>;
+  /** Opens a game and records that it was opened, which is what decides the next launch. */
+  openGame(gameId: string, openedAt: string): Promise<OpenedGame>;
+  /** Erases a game and everything it stored. There is no undo. */
+  deleteGame(gameId: string): Promise<void>;
   parseReport(rawReport: string): Promise<ReportParseResult>;
   /** The full domain model. Returned as-is: it is descriptive data, not a contract to normalize. */
   parseReportFull(rawReport: string): Promise<ParsedReport>;
@@ -562,13 +596,13 @@ export interface CoreClient {
   parseReportClassified(rawReport: string, rulesetJson: string): Promise<ParsedReport>;
   previewReportImport(
     databasePath: string,
-    projectId: string,
+    gameId: string,
     confirmedFactionId: string,
     rawReport: string
   ): Promise<ReportImportPreview>;
   commitReportImport(
     databasePath: string,
-    projectId: string,
+    gameId: string,
     confirmedFactionId: string,
     rawReport: string,
     allowOverwrite: boolean
@@ -593,31 +627,31 @@ export interface CoreClient {
     destination: string
   ): Promise<RoutePlanResponse>;
   /**
-   * Every region this faction has been seen in, across every turn imported into the project.
+   * Every region this faction has been seen in, across every turn imported into the game.
    *
-   * Empty for a project with no committed imports, which is not an error: it is what a map looks
+   * Empty for a game with no committed imports, which is not an error: it is what a map looks
    * like before anything has been remembered.
    */
   loadRegionSightings(
     databasePath: string,
-    projectId: string,
+    gameId: string,
     factionId: string
   ): Promise<RememberedRegion[]>;
   loadImportedTurn(
     databasePath: string,
-    projectId: string,
+    gameId: string,
     factionId: string,
     turnNumber: number
   ): Promise<ImportedTurnRecord | null>;
   loadOrderDraft(
     databasePath: string,
-    projectId: string,
+    gameId: string,
     factionId: string,
     turnNumber: number
   ): Promise<OrderDraftRecord | null>;
   saveOrderDraft(
     databasePath: string,
-    projectId: string,
+    gameId: string,
     factionId: string,
     turnNumber: number,
     orderText: string,
@@ -626,21 +660,23 @@ export interface CoreClient {
 }
 
 export interface WasmBindings {
-  get_game_info(): unknown;
-  create_project_state(projectFilePath: string, manifest: ProjectManifest): unknown;
-  open_project_state(projectFilePath: string): unknown;
+  get_engine_info(): unknown;
+  list_games_state(): unknown;
+  create_game_state(manifest: GameManifest): unknown;
+  open_game_state(gameId: string, openedAt: string): unknown;
+  delete_game_state(gameId: string): unknown;
   parse_report_state(rawReport: string): unknown;
   parse_report_full_state(rawReport: string): unknown;
   parse_report_classified_state(rawReport: string, rulesetJson: string): unknown;
   preview_report_import_state(
     databasePath: string,
-    projectId: string,
+    gameId: string,
     confirmedFactionId: string,
     rawReport: string
   ): unknown;
   commit_report_import_state(
     databasePath: string,
-    projectId: string,
+    gameId: string,
     confirmedFactionId: string,
     rawReport: string,
     allowOverwrite: boolean
@@ -655,24 +691,24 @@ export interface WasmBindings {
   ): unknown;
   load_region_sightings_state?(
     databasePath: string,
-    projectId: string,
+    gameId: string,
     factionId: string
   ): unknown;
   load_imported_turn_state(
     databasePath: string,
-    projectId: string,
+    gameId: string,
     factionId: string,
     turnNumber: number
   ): unknown;
   load_order_draft_state(
     databasePath: string,
-    projectId: string,
+    gameId: string,
     factionId: string,
     turnNumber: number
   ): unknown;
   save_order_draft_state(
     databasePath: string,
-    projectId: string,
+    gameId: string,
     factionId: string,
     turnNumber: number,
     orderText: string,
@@ -682,12 +718,12 @@ export interface WasmBindings {
 
 export type TauriInvoke = <T>(command: string, args?: Record<string, unknown>) => Promise<T>;
 
-function normalizeGameInfo(value: unknown): GameInfo {
+function normalizeEngineInfo(value: unknown): EngineInfo {
   if (typeof value !== "object" || value === null) {
-    throw new Error("invalid game info payload");
+    throw new Error("invalid engine info payload");
   }
 
-  const payload = value as GameInfoWireShape;
+  const payload = value as EngineInfoWireShape;
   const rulesetVersion = payload.rulesetVersion ?? payload.ruleset_version;
   const maxFactionCount = payload.maxFactionCount ?? payload.max_faction_count;
 
@@ -697,7 +733,7 @@ function normalizeGameInfo(value: unknown): GameInfo {
     typeof rulesetVersion !== "string" ||
     typeof maxFactionCount !== "number"
   ) {
-    throw new Error("incomplete game info payload");
+    throw new Error("incomplete engine info payload");
   }
 
   return {
@@ -708,22 +744,24 @@ function normalizeGameInfo(value: unknown): GameInfo {
   };
 }
 
-function normalizeProjectMetadata(value: unknown): ProjectMetadata {
+function normalizeGameMetadata(value: unknown): GameMetadata {
   if (typeof value !== "object" || value === null) {
-    throw new Error("invalid project metadata payload");
+    throw new Error("invalid game metadata payload");
   }
 
-  const payload = value as ProjectMetadataWireShape;
-  const projectId = payload.projectId ?? payload.project_id;
-  const projectName = payload.projectName ?? payload.project_name;
+  const payload = value as GameMetadataWireShape;
+  const gameId = payload.gameId ?? payload.game_id;
+  const gameName = payload.gameName ?? payload.game_name;
+  const rulesetId = payload.rulesetId ?? payload.ruleset_id;
 
-  if (typeof projectId !== "string" || typeof projectName !== "string") {
-    throw new Error("incomplete project metadata payload");
+  if (typeof gameId !== "string" || typeof gameName !== "string" || typeof rulesetId !== "string") {
+    throw new Error("incomplete game metadata payload");
   }
 
   return {
-    projectId,
-    projectName
+    gameId,
+    gameName,
+    rulesetId
   };
 }
 
@@ -745,50 +783,68 @@ function normalizeReportSourceRef(value: unknown): ReportSourceRef {
   };
 }
 
-function normalizeProjectManifest(value: unknown): ProjectManifest {
+function normalizeGameManifest(value: unknown): GameManifest {
   if (typeof value !== "object" || value === null) {
-    throw new Error("invalid project manifest payload");
+    throw new Error("invalid game manifest payload");
   }
 
-  const payload = value as ProjectManifestWireShape;
+  const payload = value as GameManifestWireShape;
   const manifestVersion = payload.manifestVersion ?? payload.manifest_version;
   const reportSources = payload.reportSources ?? payload.report_sources;
+  const createdAt = payload.createdAt ?? payload.created_at;
+  const lastOpenedAt = payload.lastOpenedAt ?? payload.last_opened_at;
 
-  if (typeof manifestVersion !== "number" || !Array.isArray(reportSources) || payload.metadata === undefined) {
-    throw new Error("incomplete project manifest payload");
+  if (
+    typeof manifestVersion !== "number" ||
+    !Array.isArray(reportSources) ||
+    payload.metadata === undefined ||
+    typeof createdAt !== "string" ||
+    typeof lastOpenedAt !== "string"
+  ) {
+    throw new Error("incomplete game manifest payload");
   }
 
   return {
     manifestVersion,
-    metadata: normalizeProjectMetadata(payload.metadata),
-    reportSources: reportSources.map((source) => normalizeReportSourceRef(source))
+    metadata: normalizeGameMetadata(payload.metadata),
+    reportSources: reportSources.map((source) => normalizeReportSourceRef(source)),
+    createdAt,
+    lastOpenedAt
   };
 }
 
-function normalizeOpenedProject(value: unknown): OpenedProject {
-  if (typeof value !== "object" || value === null) {
-    throw new Error("invalid opened project payload");
+function normalizeGameList(value: unknown): GameManifest[] {
+  if (!Array.isArray(value)) {
+    throw new Error("invalid game list payload");
   }
 
-  const payload = value as OpenedProjectWireShape;
-  const projectFilePath = payload.projectFilePath ?? payload.project_file_path;
+  return value.map((entry) => normalizeGameManifest(entry));
+}
+
+function normalizeOpenedGame(value: unknown): OpenedGame {
+  if (typeof value !== "object" || value === null) {
+    throw new Error("invalid opened game payload");
+  }
+
+  const payload = value as OpenedGameWireShape;
+  const gameFilePath = payload.gameFilePath ?? payload.game_file_path;
   const databasePath = payload.databasePath ?? payload.database_path;
   const schemaVersion = payload.schemaVersion ?? payload.schema_version;
 
   if (
-    typeof projectFilePath !== "string" ||
+    typeof gameFilePath !== "string" ||
     typeof databasePath !== "string" ||
     typeof schemaVersion !== "number" ||
     payload.manifest === undefined
   ) {
-    throw new Error("incomplete opened project payload");
+    throw new Error("incomplete opened game payload");
   }
 
   return {
-    projectFilePath,
+    gameFilePath,
     databasePath,
     schemaVersion,
-    manifest: normalizeProjectManifest(payload.manifest)
+    manifest: normalizeGameManifest(payload.manifest)
   };
 }
 
@@ -998,16 +1054,16 @@ function normalizeOrderDraftKey(value: unknown): OrderDraftKey {
   }
 
   const payload = value as OrderDraftKeyWireShape;
-  const projectId = payload.projectId ?? payload.project_id;
+  const gameId = payload.gameId ?? payload.game_id;
   const factionId = payload.factionId ?? payload.faction_id;
   const turnNumber = payload.turnNumber ?? payload.turn_number;
 
-  if (typeof projectId !== "string" || typeof factionId !== "string" || typeof turnNumber !== "number") {
+  if (typeof gameId !== "string" || typeof factionId !== "string" || typeof turnNumber !== "number") {
     throw new Error("incomplete order draft payload");
   }
 
   return {
-    projectId,
+    gameId,
     factionId,
     turnNumber
   };
@@ -1076,17 +1132,25 @@ function normalizeReportImportPreview(value: unknown): ReportImportPreview {
 
 export function createCoreClient(adapter: CoreAdapter): CoreClient {
   return {
-    async getGameInfo() {
-      const value = await adapter.getGameInfo();
-      return normalizeGameInfo(value);
+    async getEngineInfo() {
+      const value = await adapter.getEngineInfo();
+      return normalizeEngineInfo(value);
     },
-    async createProject(projectFilePath: string, manifest: ProjectManifest) {
-      const value = await adapter.createProject(projectFilePath, manifest);
-      return normalizeOpenedProject(value);
+    async listGames() {
+      const value = await adapter.listGames();
+      return normalizeGameList(value);
     },
-    async openProject(projectFilePath: string) {
-      const value = await adapter.openProject(projectFilePath);
-      return normalizeOpenedProject(value);
+    async createGame(manifest: GameManifest) {
+      const value = await adapter.createGame(manifest);
+      return normalizeOpenedGame(value);
+    },
+    async openGame(gameId: string, openedAt: string) {
+      const value = await adapter.openGame(gameId, openedAt);
+      return normalizeOpenedGame(value);
+    },
+    async deleteGame(gameId: string) {
+      // Nothing to normalize: a deletion either happened or threw.
+      await adapter.deleteGame(gameId);
     },
     async parseReport(rawReport: string) {
       const value = await adapter.parseReport(rawReport);
@@ -1098,20 +1162,20 @@ export function createCoreClient(adapter: CoreAdapter): CoreClient {
     async parseReportFull(rawReport: string) {
       return (await adapter.parseReportFull(rawReport)) as ParsedReport;
     },
-    async previewReportImport(databasePath: string, projectId: string, confirmedFactionId: string, rawReport: string) {
-      const value = await adapter.previewReportImport(databasePath, projectId, confirmedFactionId, rawReport);
+    async previewReportImport(databasePath: string, gameId: string, confirmedFactionId: string, rawReport: string) {
+      const value = await adapter.previewReportImport(databasePath, gameId, confirmedFactionId, rawReport);
       return normalizeReportImportPreview(value);
     },
     async commitReportImport(
       databasePath: string,
-      projectId: string,
+      gameId: string,
       confirmedFactionId: string,
       rawReport: string,
       allowOverwrite: boolean
     ) {
       const value = await adapter.commitReportImport(
         databasePath,
-        projectId,
+        gameId,
         confirmedFactionId,
         rawReport,
         allowOverwrite
@@ -1122,15 +1186,15 @@ export function createCoreClient(adapter: CoreAdapter): CoreClient {
       const value = await adapter.validateOrders(rawOrders);
       return normalizeOrderValidationResult(value);
     },
-    async loadImportedTurn(databasePath: string, projectId: string, factionId: string, turnNumber: number) {
-      const value = await adapter.loadImportedTurn(databasePath, projectId, factionId, turnNumber);
+    async loadImportedTurn(databasePath: string, gameId: string, factionId: string, turnNumber: number) {
+      const value = await adapter.loadImportedTurn(databasePath, gameId, factionId, turnNumber);
       if (value === null) {
         return null;
       }
       return normalizeImportedTurnRecord(value);
     },
-    async loadOrderDraft(databasePath: string, projectId: string, factionId: string, turnNumber: number) {
-      const value = await adapter.loadOrderDraft(databasePath, projectId, factionId, turnNumber);
+    async loadOrderDraft(databasePath: string, gameId: string, factionId: string, turnNumber: number) {
+      const value = await adapter.loadOrderDraft(databasePath, gameId, factionId, turnNumber);
       if (value === null) {
         return null;
       }
@@ -1139,7 +1203,7 @@ export function createCoreClient(adapter: CoreAdapter): CoreClient {
     },
     async saveOrderDraft(
       databasePath: string,
-      projectId: string,
+      gameId: string,
       factionId: string,
       turnNumber: number,
       orderText: string,
@@ -1147,7 +1211,7 @@ export function createCoreClient(adapter: CoreAdapter): CoreClient {
     ) {
       const value = await adapter.saveOrderDraft(
         databasePath,
-        projectId,
+        gameId,
         factionId,
         turnNumber,
         orderText,
@@ -1172,8 +1236,8 @@ export function createCoreClient(adapter: CoreAdapter): CoreClient {
         destination
       )) as RoutePlanResponse;
     },
-    async loadRegionSightings(databasePath: string, projectId: string, factionId: string) {
-      const value = await adapter.loadRegionSightings(databasePath, projectId, factionId);
+    async loadRegionSightings(databasePath: string, gameId: string, factionId: string) {
+      const value = await adapter.loadRegionSightings(databasePath, gameId, factionId);
       return (Array.isArray(value) ? value : []) as RememberedRegion[];
     }
   };
@@ -1181,14 +1245,20 @@ export function createCoreClient(adapter: CoreAdapter): CoreClient {
 
 export function createWasmAdapter(bindings: WasmBindings): CoreAdapter {
   return {
-    getGameInfo() {
-      return bindings.get_game_info();
+    getEngineInfo() {
+      return bindings.get_engine_info();
     },
-    createProject(projectFilePath: string, manifest: ProjectManifest) {
-      return bindings.create_project_state(projectFilePath, manifest);
+    listGames() {
+      return bindings.list_games_state();
     },
-    openProject(projectFilePath: string) {
-      return bindings.open_project_state(projectFilePath);
+    createGame(manifest: GameManifest) {
+      return bindings.create_game_state(manifest);
+    },
+    openGame(gameId: string, openedAt: string) {
+      return bindings.open_game_state(gameId, openedAt);
+    },
+    deleteGame(gameId: string) {
+      return bindings.delete_game_state(gameId);
     },
     parseReport(rawReport: string) {
       return bindings.parse_report_state(rawReport);
@@ -1199,19 +1269,19 @@ export function createWasmAdapter(bindings: WasmBindings): CoreAdapter {
     parseReportClassified(rawReport: string, rulesetJson: string) {
       return bindings.parse_report_classified_state(rawReport, rulesetJson);
     },
-    previewReportImport(databasePath: string, projectId: string, confirmedFactionId: string, rawReport: string) {
-      return bindings.preview_report_import_state(databasePath, projectId, confirmedFactionId, rawReport);
+    previewReportImport(databasePath: string, gameId: string, confirmedFactionId: string, rawReport: string) {
+      return bindings.preview_report_import_state(databasePath, gameId, confirmedFactionId, rawReport);
     },
     commitReportImport(
       databasePath: string,
-      projectId: string,
+      gameId: string,
       confirmedFactionId: string,
       rawReport: string,
       allowOverwrite: boolean
     ) {
       return bindings.commit_report_import_state(
         databasePath,
-        projectId,
+        gameId,
         confirmedFactionId,
         rawReport,
         allowOverwrite
@@ -1220,15 +1290,15 @@ export function createWasmAdapter(bindings: WasmBindings): CoreAdapter {
     validateOrders(rawOrders: string) {
       return bindings.validate_orders_state(rawOrders);
     },
-    loadImportedTurn(databasePath: string, projectId: string, factionId: string, turnNumber: number) {
-      return bindings.load_imported_turn_state(databasePath, projectId, factionId, turnNumber);
+    loadImportedTurn(databasePath: string, gameId: string, factionId: string, turnNumber: number) {
+      return bindings.load_imported_turn_state(databasePath, gameId, factionId, turnNumber);
     },
-    loadOrderDraft(databasePath: string, projectId: string, factionId: string, turnNumber: number) {
-      return bindings.load_order_draft_state(databasePath, projectId, factionId, turnNumber);
+    loadOrderDraft(databasePath: string, gameId: string, factionId: string, turnNumber: number) {
+      return bindings.load_order_draft_state(databasePath, gameId, factionId, turnNumber);
     },
     saveOrderDraft(
       databasePath: string,
-      projectId: string,
+      gameId: string,
       factionId: string,
       turnNumber: number,
       orderText: string,
@@ -1236,7 +1306,7 @@ export function createWasmAdapter(bindings: WasmBindings): CoreAdapter {
     ) {
       return bindings.save_order_draft_state(
         databasePath,
-        projectId,
+        gameId,
         factionId,
         turnNumber,
         orderText,
@@ -1252,29 +1322,33 @@ export function createWasmAdapter(bindings: WasmBindings): CoreAdapter {
     ) {
       return bindings.plan_route_state(rulesetJson, rawReport, rememberedJson, unitId, destination);
     },
-    loadRegionSightings(databasePath: string, projectId: string, factionId: string) {
+    loadRegionSightings(databasePath: string, gameId: string, factionId: string) {
       // Persistence is not linked into a wasm build, so a bare wasm adapter has nothing to read.
       // The browser adapter in `@atlantis/browser-core` supplies its own, backed by IndexedDB.
-      return bindings.load_region_sightings_state?.(databasePath, projectId, factionId) ?? [];
+      return bindings.load_region_sightings_state?.(databasePath, gameId, factionId) ?? [];
     }
   };
 }
 
 export function createTauriAdapter(invoke: TauriInvoke): CoreAdapter {
   return {
-    getGameInfo() {
-      return invoke<GameInfoWireShape>("get_game_info");
+    getEngineInfo() {
+      return invoke<EngineInfoWireShape>("get_engine_info");
     },
-    createProject(projectFilePath: string, manifest: ProjectManifest) {
-      return invoke<OpenedProjectWireShape>("create_project", {
-        project_file_path: projectFilePath,
-        manifest
+    listGames() {
+      return invoke<GameManifestWireShape[]>("list_games");
+    },
+    createGame(manifest: GameManifest) {
+      return invoke<OpenedGameWireShape>("create_game", { manifest });
+    },
+    openGame(gameId: string, openedAt: string) {
+      return invoke<OpenedGameWireShape>("open_game", {
+        game_id: gameId,
+        opened_at: openedAt
       });
     },
-    openProject(projectFilePath: string) {
-      return invoke<OpenedProjectWireShape>("open_project", {
-        project_file_path: projectFilePath
-      });
+    deleteGame(gameId: string) {
+      return invoke<void>("delete_game", { game_id: gameId });
     },
     parseReport(rawReport: string) {
       return invoke<ReportParseResultWireShape>("parse_report", {
@@ -1292,24 +1366,24 @@ export function createTauriAdapter(invoke: TauriInvoke): CoreAdapter {
         ruleset_json: rulesetJson
       });
     },
-    previewReportImport(databasePath: string, projectId: string, confirmedFactionId: string, rawReport: string) {
+    previewReportImport(databasePath: string, gameId: string, confirmedFactionId: string, rawReport: string) {
       return invoke<ReportImportPreviewWireShape>("preview_report_import", {
         database_path: databasePath,
-        project_id: projectId,
+        game_id: gameId,
         confirmed_faction_id: confirmedFactionId,
         raw_report: rawReport
       });
     },
     commitReportImport(
       databasePath: string,
-      projectId: string,
+      gameId: string,
       confirmedFactionId: string,
       rawReport: string,
       allowOverwrite: boolean
     ) {
       return invoke<ImportedTurnPreviewWireShape>("commit_report_import", {
         database_path: databasePath,
-        project_id: projectId,
+        game_id: gameId,
         confirmed_faction_id: confirmedFactionId,
         raw_report: rawReport,
         allow_overwrite: allowOverwrite
@@ -1320,25 +1394,25 @@ export function createTauriAdapter(invoke: TauriInvoke): CoreAdapter {
         raw_orders: rawOrders
       });
     },
-    loadImportedTurn(databasePath: string, projectId: string, factionId: string, turnNumber: number) {
+    loadImportedTurn(databasePath: string, gameId: string, factionId: string, turnNumber: number) {
       return invoke<ImportedTurnRecordWireShape | null>("load_imported_turn", {
         database_path: databasePath,
-        project_id: projectId,
+        game_id: gameId,
         faction_id: factionId,
         turn_number: turnNumber
       });
     },
-    loadOrderDraft(databasePath: string, projectId: string, factionId: string, turnNumber: number) {
+    loadOrderDraft(databasePath: string, gameId: string, factionId: string, turnNumber: number) {
       return invoke<OrderDraftRecordWireShape | null>("load_order_draft", {
         database_path: databasePath,
-        project_id: projectId,
+        game_id: gameId,
         faction_id: factionId,
         turn_number: turnNumber
       });
     },
     saveOrderDraft(
       databasePath: string,
-      projectId: string,
+      gameId: string,
       factionId: string,
       turnNumber: number,
       orderText: string,
@@ -1346,7 +1420,7 @@ export function createTauriAdapter(invoke: TauriInvoke): CoreAdapter {
     ) {
       return invoke<OrderDraftRecordWireShape>("save_order_draft", {
         database_path: databasePath,
-        project_id: projectId,
+        game_id: gameId,
         faction_id: factionId,
         turn_number: turnNumber,
         order_text: orderText,
@@ -1370,10 +1444,10 @@ export function createTauriAdapter(invoke: TauriInvoke): CoreAdapter {
         destination
       });
     },
-    loadRegionSightings(databasePath: string, projectId: string, factionId: string) {
+    loadRegionSightings(databasePath: string, gameId: string, factionId: string) {
       return invoke<RememberedRegion[]>("load_region_sightings", {
         database_path: databasePath,
-        project_id: projectId,
+        game_id: gameId,
         faction_id: factionId
       });
     }

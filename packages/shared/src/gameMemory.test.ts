@@ -1,11 +1,11 @@
-import type { CoreClient, ParsedReport, RememberedRegion } from "@atlantis/core-client";
+import type {
+  CoreClient,
+  OpenedGame,
+  ParsedReport,
+  RememberedRegion
+} from "@atlantis/core-client";
 import { describe, expect, it, vi } from "vitest";
-import {
-  openOrCreateProject,
-  projectPathFor,
-  rememberTurn,
-  toStoredRegions
-} from "./projectMemory";
+import { rememberTurn, toStoredRegions } from "./gameMemory";
 
 function region(regionId: string, x: number, y: number) {
   return {
@@ -52,49 +52,25 @@ function report(factionId: string | null): ParsedReport {
 
 function client(overrides: Partial<CoreClient> = {}): CoreClient {
   return {
-    openProject: vi.fn().mockRejectedValue(new Error("no such project")),
-    createProject: vi.fn().mockResolvedValue({
-      projectFilePath: "p.json",
-      databasePath: "p.sqlite",
-      schemaVersion: 4,
-      manifest: { manifestVersion: 1, metadata: { projectId: "faction-95", projectName: "Borg TNG" }, reportSources: [] }
-    }),
     commitReportImport: vi.fn().mockResolvedValue({}),
     loadRegionSightings: vi.fn().mockResolvedValue([]),
     ...overrides
   } as unknown as CoreClient;
 }
 
-describe("finding a faction's project", () => {
-  it("names the project after the faction, so nobody has to choose a path", () => {
-    expect(projectPathFor("95")).toContain("faction-95");
-  });
-
-  it("opens the project when it is already there", async () => {
-    const openProject = vi.fn().mockResolvedValue({
-      projectFilePath: "existing.json",
-      databasePath: "existing.sqlite",
-      schemaVersion: 4,
-      manifest: { manifestVersion: 1, metadata: { projectId: "faction-95", projectName: "x" }, reportSources: [] }
-    });
-    const core = client({ openProject });
-
-    const project = await openOrCreateProject(core, "95", "Borg TNG");
-
-    expect(project.databasePath).toBe("existing.sqlite");
-    expect(core.createProject).not.toHaveBeenCalled();
-  });
-
-  /** The first import of a faction has no project yet. That is ordinary, not a failure. */
-  it("creates the project the first time, without complaining", async () => {
-    const core = client();
-
-    const project = await openOrCreateProject(core, "95", "Borg TNG");
-
-    expect(project.databasePath).toBe("p.sqlite");
-    expect(core.createProject).toHaveBeenCalledOnce();
-  });
-});
+/** The game the player has open. Remembering files a turn here and nowhere else. */
+const OPEN_GAME = {
+  gameFilePath: "p.json",
+  databasePath: "p.sqlite",
+  schemaVersion: 5,
+  manifest: {
+    manifestVersion: 1,
+    metadata: { gameId: "aug-2026", gameName: "Borg TNG", rulesetId: "neworigins" },
+    reportSources: [],
+    createdAt: "2026-08-01T09:00:00Z",
+    lastOpenedAt: "2026-08-09T18:00:00Z"
+  }
+} as OpenedGame;
 
 describe("remembering a turn", () => {
   it("commits the report and reads back everything the faction has seen", async () => {
@@ -104,15 +80,16 @@ describe("remembering a turn", () => {
     ];
     const core = client({ loadRegionSightings: vi.fn().mockResolvedValue(remembered) });
 
-    const outcome = await rememberTurn(core, report("95"), "raw text");
+    const outcome = await rememberTurn(core, OPEN_GAME, report("95"), "raw text");
 
     expect(outcome.warning).toBeNull();
     expect(outcome.remembered).toHaveLength(2);
     expect(outcome.remembered[0].lastSeenTurn).toBe(40);
     expect(outcome.remembered[0].region.regionId).toBe("1:1,1");
+    // The open game decides where the turn lands, not the faction the report happens to name.
     expect(core.commitReportImport).toHaveBeenCalledWith(
       "p.sqlite",
-      "faction-95",
+      "aug-2026",
       "95",
       "raw text",
       true
@@ -128,17 +105,16 @@ describe("remembering a turn", () => {
       commitReportImport: vi.fn().mockRejectedValue(new Error("disk is full"))
     });
 
-    const outcome = await rememberTurn(core, report("95"), "raw text");
+    const outcome = await rememberTurn(core, OPEN_GAME, report("95"), "raw text");
 
     expect(outcome.warning).toContain("disk is full");
     expect(outcome.remembered).toEqual([]);
-    expect(outcome.project).toBeNull();
   });
 
   it("says so when the report does not name its faction", async () => {
     const core = client();
 
-    const outcome = await rememberTurn(core, report(null), "raw text");
+    const outcome = await rememberTurn(core, OPEN_GAME, report(null), "raw text");
 
     expect(outcome.warning).toContain("faction");
     expect(core.commitReportImport).not.toHaveBeenCalled();

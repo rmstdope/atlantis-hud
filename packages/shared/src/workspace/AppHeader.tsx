@@ -1,4 +1,4 @@
-import type { ChangeEvent, DragEvent } from "react";
+import type { ChangeEvent, DragEvent, ReactNode } from "react";
 import { useRef } from "react";
 
 export type ImportStatus = {
@@ -11,7 +11,12 @@ export type ImportStatus = {
 
 type AppHeaderProps = {
   platformLabel: string;
-  projectName: string | null;
+  gameName: string;
+  /** Whether the picker is showing. The header owns the button; the shell owns the panel. */
+  pickerOpen: boolean;
+  onTogglePicker: () => void;
+  /** The picker itself, rendered under the indicator when it is open. */
+  picker: ReactNode;
   factionLabel: string | null;
   turnLabel: string | null;
   status: ImportStatus | null;
@@ -22,14 +27,20 @@ type AppHeaderProps = {
 };
 
 /**
- * Project, turn and faction, with report state alongside them.
+ * Game, turn and faction, with report state alongside them.
+ *
+ * The game is a button rather than a label: it is both the answer to "which game am I in" and the
+ * way to change it, which is the whole of what issue #33 asks the top menu for.
  *
  * Report loading lives here rather than in a panel of its own: it is something you do occasionally
  * and then want out of the way, and putting it in the header means it costs no map area at all.
  */
 export function AppHeader({
   platformLabel,
-  projectName,
+  gameName,
+  pickerOpen,
+  onTogglePicker,
+  picker,
   factionLabel,
   turnLabel,
   status,
@@ -71,7 +82,26 @@ export function AppHeader({
       <span className="tracking-[0.06em] text-brass">ATLANTIS HUD</span>
       <span className="text-ink-soft">{platformLabel}</span>
 
-      {projectName ? <span className="text-ink">{projectName}</span> : null}
+      {/*
+        The game indicator. Relative, because the picker hangs off it and should open under the
+        name it belongs to rather than at the edge of the window.
+      */}
+      <span className="relative">
+        <button
+          type="button"
+          data-testid="game-indicator"
+          aria-haspopup="dialog"
+          aria-expanded={pickerOpen}
+          onClick={onTogglePicker}
+          className="rounded border border-edge bg-panel-raised px-2 py-0.5 text-ink hover:border-brass"
+        >
+          {gameName}
+          <span aria-hidden className="ml-1 text-ink-dim">
+            ▾
+          </span>
+        </button>
+        {pickerOpen ? picker : null}
+      </span>
       {turnLabel ? (
         <span className="text-ink-soft">
           Turn <span className="rounded border border-edge bg-panel-raised px-2 py-0.5 text-ink">{turnLabel}</span>

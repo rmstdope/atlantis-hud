@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createWebCoreAdapter, type CoreWasmModule } from "./webCoreAdapter";
+import type { GameManifest } from "@atlantis/core-client";
 import { createMemoryWebStore, type StoredTurnSnapshot } from "./webStore";
 
 /**
@@ -10,7 +11,7 @@ import { createMemoryWebStore, type StoredTurnSnapshot } from "./webStore";
  */
 function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
   return {
-    get_game_info: () => ({ id: "atlantis", name: "Atlantis PBEM" }),
+    get_engine_info: () => ({ id: "atlantis", name: "Atlantis PBEM" }),
     parse_report_state: (raw: string) => ({ raw }),
     parse_report_full_state: (raw: string) => ({ header: {}, regions: [], ordersTemplate: null, raw }),
     parse_report_classified_state: (raw: string, ruleset: string) => ({
@@ -71,13 +72,24 @@ function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
 }
 
 const REPORT = "TURN: 12 Spring\nFACTION: 17 | Crimson Tide";
-const DB = "idb://project";
+const DB = "idb://game";
+const NOW = "2026-08-01T09:00:00Z";
+
+function manifest(gameId: string, gameName: string): GameManifest {
+  return {
+    manifestVersion: 1,
+    metadata: { gameId, gameName, rulesetId: "neworigins" },
+    reportSources: [],
+    createdAt: NOW,
+    lastOpenedAt: NOW
+  };
+}
 
 describe("web core adapter", () => {
   it("routes logic calls to the core rather than to storage", async () => {
     const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
 
-    expect(await adapter.getGameInfo()).toEqual({ id: "atlantis", name: "Atlantis PBEM" });
+    expect(await adapter.getEngineInfo()).toEqual({ id: "atlantis", name: "Atlantis PBEM" });
     expect(await adapter.parseReport("anything")).toEqual({ raw: "anything" });
     expect(await adapter.validateOrders("MOVE R1 R2")).toEqual({ diagnostics: [] });
   });
@@ -171,13 +183,13 @@ describe("web core adapter", () => {
     });
   });
 
-  it("keeps projects apart even when they share a project id", async () => {
+  it("keeps games apart even when they share a game id", async () => {
     const store = createMemoryWebStore();
     const adapter = createWebCoreAdapter(fakeWasm(), store);
 
     await adapter.commitReportImport("idb://campaign-a", "p", "17", REPORT, false);
 
-    // Same projectId, different project: must not be seen as a duplicate, and must not collide.
+    // Same gameId, different game: must not be seen as a duplicate, and must not collide.
     const preview = await adapter.previewReportImport("idb://campaign-b", "p", "17", REPORT);
     expect(preview).toMatchObject({ duplicatePreview: { exists: false } });
 
@@ -189,7 +201,7 @@ describe("web core adapter", () => {
     expect(b).toMatchObject({ rawReport: `${REPORT}\nextra` });
   });
 
-  it("keeps order drafts apart across projects sharing a project id", async () => {
+  it("keeps order drafts apart across games sharing a game id", async () => {
     const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
 
     await adapter.saveOrderDraft("idb://campaign-a", "p", "17", 12, "@work", "t0");
@@ -210,7 +222,7 @@ describe("web core adapter", () => {
     const loaded = await adapter.loadImportedTurn(DB, "p", "17", 12);
 
     expect(loaded).toMatchObject({
-      key: { projectId: "p", factionId: "17", turnNumber: 12 },
+      key: { gameId: "p", factionId: "17", turnNumber: 12 },
       parseResult: { hydratedFrom: `parsed:${REPORT}` }
     });
   });
@@ -226,7 +238,7 @@ describe("web core adapter", () => {
     await adapter.saveOrderDraft(DB, "p", "17", 12, "@work", "2026-08-08T00:00:00Z");
 
     expect(await adapter.loadOrderDraft(DB, "p", "17", 12)).toEqual({
-      key: { projectId: "p", factionId: "17", turnNumber: 12 },
+      key: { gameId: "p", factionId: "17", turnNumber: 12 },
       orderText: "@work",
       updatedAt: "2026-08-08T00:00:00Z"
     });
@@ -237,22 +249,79 @@ describe("web core adapter", () => {
     expect(await adapter.loadOrderDraft(DB, "p", "17", 12)).toBeNull();
   });
 
-  it("refuses to create a project over an existing one", async () => {
+  it("refuses to create a game over an existing one", async () => {
     const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
-    const manifest = {
-      manifestVersion: 1,
-      metadata: { projectId: "p", projectName: "P" },
-      reportSources: []
-    };
 
-    await adapter.createProject("/p.json", manifest);
+    await adapter.createGame(manifest("p", "P"));
 
-    await expect(adapter.createProject("/p.json", manifest)).rejects.toThrow(/already exists/u);
+    await expect(adapter.createGame(manifest("p", "P"))).rejects.toThrow(/already exists/u);
   });
 
-  it("fails to open a project that was never created", async () => {
+  it("fails to open a game that was never created", async () => {
     const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
-    await expect(adapter.openProject("/missing.json")).rejects.toThrow(/does not exist/u);
+    await expect(adapter.openGame("missing", NOW)).rejects.toThrow(/no game/u);
+  });
+});
+
+describe("managing games", () => {
+  it("lists every game that was created", async () => {
+    const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
+    await adapter.createGame(manifest("alpha", "Alpha"));
+    await adapter.createGame(manifest("beta", "Beta"));
+
+    const listed = (await adapter.listGames()) as GameManifest[];
+
+    expect(listed.map((game) => game.metadata.gameId).sort()).toEqual(["alpha", "beta"]);
+  });
+
+  it("has no games before any is created", async () => {
+    const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
+    expect(await adapter.listGames()).toEqual([]);
+  });
+
+  /** Which game reopens next launch is read off this stamp, so opening has to move it. */
+  it("stamps when a game was last opened", async () => {
+    const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
+    await adapter.createGame(manifest("alpha", "Alpha"));
+
+    await adapter.openGame("alpha", "2026-08-09T18:30:00Z");
+
+    const listed = (await adapter.listGames()) as GameManifest[];
+    expect(listed[0].lastOpenedAt).toBe("2026-08-09T18:30:00Z");
+    expect(listed[0].createdAt).toBe(NOW);
+  });
+
+  it("remembers which ruleset a game is played under", async () => {
+    const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
+    await adapter.createGame(manifest("alpha", "Alpha"));
+
+    const opened = (await adapter.openGame("alpha", NOW)) as { manifest: GameManifest };
+
+    expect(opened.manifest.metadata.rulesetId).toBe("neworigins");
+  });
+
+  /**
+   * The whole point of a database per game. A turn committed to one game must be invisible to the
+   * other, and deleting a game must take its turns with it while leaving the survivor intact.
+   */
+  it("keeps one game's turns out of another, and deletes them with the game", async () => {
+    const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
+    const alpha = (await adapter.createGame(manifest("alpha", "Alpha"))) as { databasePath: string };
+    const beta = (await adapter.createGame(manifest("beta", "Beta"))) as { databasePath: string };
+
+    await adapter.commitReportImport(alpha.databasePath, "alpha", "17", REPORT, false);
+
+    expect(await adapter.loadImportedTurn(beta.databasePath, "beta", "17", 12)).toBeNull();
+
+    await adapter.deleteGame("alpha");
+
+    expect((await adapter.listGames()) as GameManifest[]).toHaveLength(1);
+    expect(await adapter.loadImportedTurn(alpha.databasePath, "alpha", "17", 12)).toBeNull();
+  });
+
+  it("fails to delete a game that is not there", async () => {
+    const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
+    await expect(adapter.deleteGame("missing")).rejects.toThrow(/no game/u);
   });
 });
 
@@ -340,8 +409,8 @@ describe("remembering the map across turns", () => {
   it("skips a memory it cannot read rather than failing the lot", async () => {
     const store = createMemoryWebStore();
     await store.putRegionSightings([
-      { databasePath: "/db", projectId: "p", factionId: "12", regionId: "1:1,1", lastSeenTurn: 9, payloadJson: "{" },
-      { databasePath: "/db", projectId: "p", factionId: "12", regionId: "1:2,2", lastSeenTurn: 9, payloadJson: '{"regionId":"1:2,2"}' }
+      { databasePath: "/db", gameId: "p", factionId: "12", regionId: "1:1,1", lastSeenTurn: 9, payloadJson: "{" },
+      { databasePath: "/db", gameId: "p", factionId: "12", regionId: "1:2,2", lastSeenTurn: 9, payloadJson: '{"regionId":"1:2,2"}' }
     ]);
     const adapter = createWebCoreAdapter(fakeWasm(), store);
 

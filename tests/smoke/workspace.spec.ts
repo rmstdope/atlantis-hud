@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
+import { clearGames, createGame } from "./gameSetup";
 import { join } from "node:path";
 
 /**
@@ -43,7 +44,9 @@ async function selectHex(page: Page, regionId: string) {
 }
 
 async function loadReport(page: Page) {
-  await page.goto("/");
+  await clearGames(page);
+  await expect(page.getByTestId("game-gate")).toBeVisible();
+  await createGame(page, "Smoke game");
   await expect(page.getByTestId("app-header")).toBeVisible();
 
   await page.setInputFiles('input[type="file"]', {
@@ -227,8 +230,8 @@ test("the interface is not blocked while the core reads a report", async ({ page
   // Load once and reload before measuring. The first load in a session pays for the dev server
   // transforming modules on demand, which is not the application's work and swamped the figure -
   // it was measured at 834ms cold against 70ms warm.
-  await page.goto("/");
-  await expect(page.getByTestId("app-header")).toBeVisible();
+  await clearGames(page);
+  await createGame(page, "Perf game");
   await page.setInputFiles('input[type="file"]', {
     name: "turn-71.rep",
     mimeType: "text/plain",

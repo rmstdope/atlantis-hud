@@ -4,22 +4,22 @@ use std::path::Path;
 
 pub use atlantis_hud_core::report::ParsedReport;
 use atlantis_hud_core::{
-    game_info, parse_report, reject_import, validate_orders, OrderDiagnosticSeverity,
+    engine_info, parse_report, reject_import, validate_orders, OrderDiagnosticSeverity,
     ReportParseResult, WarningSeverity,
 };
 use atlantis_hud_core_persistence::{
-    create_project, insert_imported_turn, load_imported_turn, load_order_draft,
-    load_region_sightings, open_project, preview_imported_turn, upsert_imported_turn,
-    upsert_order_draft, upsert_region_sightings, ImportedTurnKey, ImportedTurnPreview,
-    ImportedTurnRecord, OpenedProject, OrderDraftKey, OrderDraftRecord, PersistenceError,
-    ProjectManifest, ProjectMetadata, RegionSighting, ReportSourceRef,
+    create_game, delete_game, insert_imported_turn, list_games, load_imported_turn,
+    load_order_draft, load_region_sightings, open_game, preview_imported_turn,
+    upsert_imported_turn, upsert_order_draft, upsert_region_sightings, GameManifest, GameMetadata,
+    ImportedTurnKey, ImportedTurnPreview, ImportedTurnRecord, OpenedGame, OrderDraftKey,
+    OrderDraftRecord, PersistenceError, RegionSighting, ReportSourceRef,
 };
 use serde::{Deserialize, Serialize};
 
-/// JSON contract returned by Tauri for game metadata.
+/// JSON contract returned by Tauri for engine metadata.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct GameInfoDto {
+pub struct EngineInfoDto {
     pub id: String,
     pub name: String,
     pub ruleset_version: String,
@@ -28,9 +28,10 @@ pub struct GameInfoDto {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ProjectMetadataDto {
-    pub project_id: String,
-    pub project_name: String,
+pub struct GameMetadataDto {
+    pub game_id: String,
+    pub game_name: String,
+    pub ruleset_id: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -42,19 +43,21 @@ pub struct ReportSourceRefDto {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ProjectManifestDto {
+pub struct GameManifestDto {
     pub manifest_version: u32,
-    pub metadata: ProjectMetadataDto,
+    pub metadata: GameMetadataDto,
     pub report_sources: Vec<ReportSourceRefDto>,
+    pub created_at: String,
+    pub last_opened_at: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct OpenedProjectDto {
-    pub project_file_path: String,
+pub struct OpenedGameDto {
+    pub game_file_path: String,
     pub database_path: String,
     pub schema_version: u32,
-    pub manifest: ProjectManifestDto,
+    pub manifest: GameManifestDto,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -170,7 +173,7 @@ pub struct OrderValidationResultDto {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OrderDraftKeyDto {
-    pub project_id: String,
+    pub game_id: String,
     pub faction_id: String,
     pub turn_number: u32,
 }
@@ -183,8 +186,8 @@ pub struct OrderDraftRecordDto {
     pub updated_at: String,
 }
 
-impl From<atlantis_hud_core::GameInfo> for GameInfoDto {
-    fn from(value: atlantis_hud_core::GameInfo) -> Self {
+impl From<atlantis_hud_core::EngineInfo> for EngineInfoDto {
+    fn from(value: atlantis_hud_core::EngineInfo) -> Self {
         Self {
             id: value.id,
             name: value.name,
@@ -194,11 +197,12 @@ impl From<atlantis_hud_core::GameInfo> for GameInfoDto {
     }
 }
 
-impl From<ProjectMetadataDto> for ProjectMetadata {
-    fn from(value: ProjectMetadataDto) -> Self {
+impl From<GameMetadataDto> for GameMetadata {
+    fn from(value: GameMetadataDto) -> Self {
         Self {
-            project_id: value.project_id,
-            project_name: value.project_name,
+            game_id: value.game_id,
+            game_name: value.game_name,
+            ruleset_id: value.ruleset_id,
         }
     }
 }
@@ -212,21 +216,24 @@ impl From<ReportSourceRefDto> for ReportSourceRef {
     }
 }
 
-impl From<ProjectManifestDto> for ProjectManifest {
-    fn from(value: ProjectManifestDto) -> Self {
+impl From<GameManifestDto> for GameManifest {
+    fn from(value: GameManifestDto) -> Self {
         Self {
             manifest_version: value.manifest_version,
             metadata: value.metadata.into(),
             report_sources: value.report_sources.into_iter().map(Into::into).collect(),
+            created_at: value.created_at,
+            last_opened_at: value.last_opened_at,
         }
     }
 }
 
-impl From<ProjectMetadata> for ProjectMetadataDto {
-    fn from(value: ProjectMetadata) -> Self {
+impl From<GameMetadata> for GameMetadataDto {
+    fn from(value: GameMetadata) -> Self {
         Self {
-            project_id: value.project_id,
-            project_name: value.project_name,
+            game_id: value.game_id,
+            game_name: value.game_name,
+            ruleset_id: value.ruleset_id,
         }
     }
 }
@@ -240,20 +247,22 @@ impl From<ReportSourceRef> for ReportSourceRefDto {
     }
 }
 
-impl From<ProjectManifest> for ProjectManifestDto {
-    fn from(value: ProjectManifest) -> Self {
+impl From<GameManifest> for GameManifestDto {
+    fn from(value: GameManifest) -> Self {
         Self {
             manifest_version: value.manifest_version,
             metadata: value.metadata.into(),
             report_sources: value.report_sources.into_iter().map(Into::into).collect(),
+            created_at: value.created_at,
+            last_opened_at: value.last_opened_at,
         }
     }
 }
 
-impl From<OpenedProject> for OpenedProjectDto {
-    fn from(value: OpenedProject) -> Self {
+impl From<OpenedGame> for OpenedGameDto {
+    fn from(value: OpenedGame) -> Self {
         Self {
-            project_file_path: value.project_file_path.to_string_lossy().to_string(),
+            game_file_path: value.game_file_path.to_string_lossy().to_string(),
             database_path: value.database_path.to_string_lossy().to_string(),
             schema_version: value.schema_version,
             manifest: value.manifest.into(),
@@ -343,29 +352,58 @@ impl From<ReportParseResult> for ReportParseResultDto {
     }
 }
 
-/// Returns canonical game metadata for a Tauri command wrapper.
+/// Returns canonical engine metadata for a Tauri command wrapper.
 #[must_use]
-pub fn command_get_game_info() -> GameInfoDto {
-    GameInfoDto::from(game_info())
+pub fn command_get_engine_info() -> EngineInfoDto {
+    EngineInfoDto::from(engine_info())
 }
 
-/// Creates a project manifest + sidecar SQLite database and applies migrations.
-pub fn command_create_project(
-    project_file_path: &str,
-    manifest: ProjectManifestDto,
-) -> Result<OpenedProjectDto, String> {
-    create_project(
-        Path::new(project_file_path),
-        &ProjectManifest::from(manifest),
-    )
-    .map(OpenedProjectDto::from)
-    .map_err(|error| error.to_string())
+/// Creates a game under the application's games directory and applies migrations.
+///
+/// # Errors
+///
+/// Returns an error when a game already exists under this id, or when it cannot be written.
+pub fn command_create_game(
+    games_root: &str,
+    manifest: GameManifestDto,
+) -> Result<OpenedGameDto, String> {
+    create_game(Path::new(games_root), &GameManifest::from(manifest))
+        .map(OpenedGameDto::from)
+        .map_err(|error| error.to_string())
 }
 
-/// Opens an existing project and applies pending migrations.
-pub fn command_open_project(project_file_path: &str) -> Result<OpenedProjectDto, String> {
-    open_project(Path::new(project_file_path))
-        .map(OpenedProjectDto::from)
+/// Every game the player has, newest activity first is the caller's business, not ours.
+///
+/// # Errors
+///
+/// Returns an error when the games directory exists but cannot be read.
+pub fn command_list_games(games_root: &str) -> Result<Vec<GameManifestDto>, String> {
+    list_games(Path::new(games_root))
+        .map(|games| games.into_iter().map(GameManifestDto::from).collect())
+        .map_err(|error| error.to_string())
+}
+
+/// Deletes a game and everything it stored.
+///
+/// # Errors
+///
+/// Returns an error naming the game when it does not exist, or when it cannot be removed.
+pub fn command_delete_game(games_root: &str, game_id: &str) -> Result<(), String> {
+    delete_game(Path::new(games_root), game_id).map_err(|error| error.to_string())
+}
+
+/// Opens a game by id, applies pending migrations, and records that it was opened.
+///
+/// # Errors
+///
+/// Returns an error when no game exists under this id, or when its database cannot be opened.
+pub fn command_open_game(
+    games_root: &str,
+    game_id: &str,
+    opened_at: &str,
+) -> Result<OpenedGameDto, String> {
+    open_game(Path::new(games_root), game_id, opened_at)
+        .map(OpenedGameDto::from)
         .map_err(|error| error.to_string())
 }
 
@@ -388,7 +426,7 @@ pub fn command_parse_report(raw_report: &str) -> ReportParseResultDto {
 /// Parses one report and previews duplicate conflict for a confirmed faction.
 pub fn command_preview_report_import(
     database_path: &str,
-    project_id: &str,
+    game_id: &str,
     confirmed_faction_id: &str,
     raw_report: &str,
 ) -> Result<ReportImportPreviewDto, String> {
@@ -405,7 +443,7 @@ pub fn command_preview_report_import(
     let preview = if let Some(current_turn_number) = turn_number {
         let candidate = ImportedTurnRecord {
             key: ImportedTurnKey {
-                project_id: project_id.to_string(),
+                game_id: game_id.to_string(),
                 faction_id: confirmed_faction_id.to_string(),
                 turn_number: current_turn_number,
             },
@@ -435,7 +473,7 @@ pub fn command_preview_report_import(
 /// Parses and commits one report import after faction confirmation.
 pub fn command_commit_report_import(
     database_path: &str,
-    project_id: &str,
+    game_id: &str,
     confirmed_faction_id: &str,
     raw_report: &str,
     allow_overwrite: bool,
@@ -453,7 +491,7 @@ pub fn command_commit_report_import(
 
     let record = ImportedTurnRecord {
         key: ImportedTurnKey {
-            project_id: project_id.to_string(),
+            game_id: game_id.to_string(),
             faction_id: confirmed_faction_id.to_string(),
             turn_number,
         },
@@ -498,7 +536,7 @@ pub fn command_commit_report_import(
 
     upsert_region_sightings(
         Path::new(database_path),
-        project_id,
+        game_id,
         confirmed_faction_id,
         &sightings,
     )
@@ -532,7 +570,7 @@ pub fn command_validate_orders(raw_orders: &str) -> OrderValidationResultDto {
 /// Persists one order draft for the Tauri command surface.
 pub fn command_save_order_draft(
     _database_path: &str,
-    project_id: &str,
+    game_id: &str,
     faction_id: &str,
     turn_number: u32,
     order_text: &str,
@@ -540,7 +578,7 @@ pub fn command_save_order_draft(
 ) -> Result<OrderDraftRecordDto, String> {
     let record = OrderDraftRecord {
         key: OrderDraftKey {
-            project_id: project_id.to_string(),
+            game_id: game_id.to_string(),
             faction_id: faction_id.to_string(),
             turn_number,
         },
@@ -550,7 +588,7 @@ pub fn command_save_order_draft(
     upsert_order_draft(Path::new(_database_path), &record).map_err(|error| error.to_string())?;
     Ok(OrderDraftRecordDto {
         key: OrderDraftKeyDto {
-            project_id: record.key.project_id,
+            game_id: record.key.game_id,
             faction_id: record.key.faction_id,
             turn_number: record.key.turn_number,
         },
@@ -562,14 +600,14 @@ pub fn command_save_order_draft(
 /// Loads one order draft for the Tauri command surface.
 pub fn command_load_order_draft(
     _database_path: &str,
-    _project_id: &str,
+    _game_id: &str,
     _faction_id: &str,
     _turn_number: u32,
 ) -> Result<Option<OrderDraftRecordDto>, String> {
     let loaded = load_order_draft(
         Path::new(_database_path),
         &OrderDraftKey {
-            project_id: _project_id.to_string(),
+            game_id: _game_id.to_string(),
             faction_id: _faction_id.to_string(),
             turn_number: _turn_number,
         },
@@ -578,7 +616,7 @@ pub fn command_load_order_draft(
 
     Ok(loaded.map(|record| OrderDraftRecordDto {
         key: OrderDraftKeyDto {
-            project_id: record.key.project_id,
+            game_id: record.key.game_id,
             faction_id: record.key.faction_id,
             turn_number: record.key.turn_number,
         },
@@ -590,14 +628,14 @@ pub fn command_load_order_draft(
 /// Loads one imported turn payload for the Tauri command surface.
 pub fn command_load_imported_turn(
     database_path: &str,
-    project_id: &str,
+    game_id: &str,
     faction_id: &str,
     turn_number: u32,
 ) -> Result<Option<ImportedTurnRecordDto>, String> {
     let loaded = load_imported_turn(
         Path::new(database_path),
         &ImportedTurnKey {
-            project_id: project_id.to_string(),
+            game_id: game_id.to_string(),
             faction_id: faction_id.to_string(),
             turn_number,
         },
@@ -611,7 +649,7 @@ pub fn command_load_imported_turn(
                     .map_err(|error| error.to_string())?;
             Ok(ImportedTurnRecordDto {
                 key: OrderDraftKeyDto {
-                    project_id: record.key.project_id,
+                    game_id: record.key.game_id,
                     faction_id: record.key.faction_id,
                     turn_number: record.key.turn_number,
                 },
@@ -643,10 +681,10 @@ pub struct RememberedRegionDto {
 /// Returns an error when the database cannot be read.
 pub fn command_load_region_sightings(
     database_path: &str,
-    project_id: &str,
+    game_id: &str,
     faction_id: &str,
 ) -> Result<Vec<RememberedRegionDto>, String> {
-    let sightings = load_region_sightings(Path::new(database_path), project_id, faction_id)
+    let sightings = load_region_sightings(Path::new(database_path), game_id, faction_id)
         .map_err(|error| error.to_string())?;
 
     Ok(sightings
@@ -751,30 +789,44 @@ mod plan_route_command_tests {
     }
 }
 
+/// Manifest fixtures, shared by the test modules below so a change to the manifest shape lands in
+/// one place rather than six.
+#[cfg(test)]
+mod test_support {
+    use super::{GameManifestDto, GameMetadataDto};
+
+    pub const OPENED_AT: &str = "2026-08-09T09:00:00Z";
+
+    pub fn manifest_dto(game_id: &str, game_name: &str) -> GameManifestDto {
+        GameManifestDto {
+            manifest_version: 1,
+            metadata: GameMetadataDto {
+                game_id: game_id.to_string(),
+                game_name: game_name.to_string(),
+                ruleset_id: "neworigins".to_string(),
+            },
+            report_sources: Vec::new(),
+            created_at: OPENED_AT.to_string(),
+            last_opened_at: OPENED_AT.to_string(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod sightings_tests {
+    use super::test_support::manifest_dto;
     use super::*;
     use tempfile::tempdir;
 
     const TURN_71: &str =
         include_str!("../../../tests/fixtures/reports/neworigins-3.0.0-f95-t71.rep");
 
-    fn project(directory: &std::path::Path) -> OpenedProjectDto {
-        command_create_project(
-            directory
-                .join("campaign.atlantis-project.json")
-                .to_str()
-                .expect("a path"),
-            ProjectManifestDto {
-                manifest_version: 1,
-                metadata: ProjectMetadataDto {
-                    project_id: "faction-95".to_string(),
-                    project_name: "Borg TNG".to_string(),
-                },
-                report_sources: Vec::new(),
-            },
+    fn game(directory: &std::path::Path) -> OpenedGameDto {
+        command_create_game(
+            directory.to_str().expect("a path"),
+            manifest_dto("faction-95", "Borg TNG"),
         )
-        .expect("the project is created")
+        .expect("the game is created")
     }
 
     /// A committed import is what puts regions in the store, and reading them back is what makes a
@@ -782,7 +834,7 @@ mod sightings_tests {
     #[test]
     fn reads_back_the_regions_a_committed_import_stored() {
         let directory = tempdir().expect("a temporary directory");
-        let created = project(directory.path());
+        let created = game(directory.path());
 
         command_commit_report_import(&created.database_path, "faction-95", "95", TURN_71, true)
             .expect("the import commits");
@@ -811,9 +863,9 @@ mod sightings_tests {
     }
 
     #[test]
-    fn a_project_with_no_imports_remembers_nothing() {
+    fn a_game_with_no_imports_remembers_nothing() {
         let directory = tempdir().expect("a temporary directory");
-        let created = project(directory.path());
+        let created = game(directory.path());
 
         let remembered = command_load_region_sightings(&created.database_path, "faction-95", "95")
             .expect("the sightings load");
@@ -824,16 +876,17 @@ mod sightings_tests {
 
 #[cfg(test)]
 mod tests {
+    use super::test_support::{manifest_dto, OPENED_AT};
     use super::*;
     use tempfile::tempdir;
 
     #[test]
     fn tauri_adapter_returns_core_contract_values() {
-        let response = command_get_game_info();
+        let response = command_get_engine_info();
 
         assert_eq!(
             response,
-            GameInfoDto {
+            EngineInfoDto {
                 id: "atlantis".to_string(),
                 name: "Atlantis PBEM".to_string(),
                 ruleset_version: "4.0".to_string(),
@@ -843,50 +896,42 @@ mod tests {
     }
 
     #[test]
-    fn tauri_adapter_creates_and_reopens_project() {
+    fn tauri_adapter_creates_and_reopens_a_game() {
         let dir = tempdir().expect("tempdir");
-        let project_path = dir.path().join("campaign.atlantis-project.json");
-        let project_path_string = project_path.to_string_lossy().to_string();
-        let manifest = ProjectManifestDto {
-            manifest_version: 1,
-            metadata: ProjectMetadataDto {
-                project_id: "faction-12".to_string(),
-                project_name: "Faction 12".to_string(),
-            },
-            report_sources: vec![ReportSourceRefDto {
-                source_id: "report-12".to_string(),
-                label: "Turn 12 report".to_string(),
-            }],
-        };
+        let root = dir.path().to_str().expect("a path");
+        let mut manifest = manifest_dto("faction-12", "Faction 12");
+        manifest.report_sources = vec![ReportSourceRefDto {
+            source_id: "report-12".to_string(),
+            label: "Turn 12 report".to_string(),
+        }];
 
-        let created = command_create_project(&project_path_string, manifest.clone())
-            .expect("project creation should succeed");
+        let created =
+            command_create_game(root, manifest.clone()).expect("game creation should succeed");
         let reopened =
-            command_open_project(&project_path_string).expect("project reopen should succeed");
+            command_open_game(root, "faction-12", OPENED_AT).expect("game reopen should succeed");
 
         assert_eq!(created.manifest, manifest);
         assert_eq!(reopened.manifest, manifest);
-        assert_eq!(created.schema_version, 4);
-        assert_eq!(reopened.schema_version, 4);
+        // The number itself is pinned in the persistence crate, which owns the migrations. What
+        // this test is for is that the adapter hands back whatever that layer decided, unaltered.
+        assert_eq!(
+            created.schema_version,
+            atlantis_hud_core_persistence::CURRENT_SCHEMA_VERSION
+        );
+        assert_eq!(
+            reopened.schema_version,
+            atlantis_hud_core_persistence::CURRENT_SCHEMA_VERSION
+        );
     }
 
     #[test]
     fn tauri_adapter_previews_and_commits_imports() {
         let dir = tempdir().expect("tempdir");
-        let project_path = dir.path().join("campaign.atlantis-project.json");
-        let project_path_string = project_path.to_string_lossy().to_string();
-        let created = command_create_project(
-            &project_path_string,
-            ProjectManifestDto {
-                manifest_version: 1,
-                metadata: ProjectMetadataDto {
-                    project_id: "faction-12".to_string(),
-                    project_name: "Faction 12".to_string(),
-                },
-                report_sources: Vec::new(),
-            },
+        let created = command_create_game(
+            dir.path().to_str().expect("a path"),
+            manifest_dto("faction-12", "Faction 12"),
         )
-        .expect("create project");
+        .expect("create game");
         let report = "\
 Atlantis Report For:
 Crimson Tide (17) (Magic 5)
@@ -920,20 +965,11 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
     #[test]
     fn tauri_adapter_validates_and_loads_order_drafts() {
         let dir = tempdir().expect("tempdir");
-        let project_path = dir.path().join("campaign.atlantis-project.json");
-        let project_path_string = project_path.to_string_lossy().to_string();
-        let created = command_create_project(
-            &project_path_string,
-            ProjectManifestDto {
-                manifest_version: 1,
-                metadata: ProjectMetadataDto {
-                    project_id: "faction-12".to_string(),
-                    project_name: "Faction 12".to_string(),
-                },
-                report_sources: Vec::new(),
-            },
+        let created = command_create_game(
+            dir.path().to_str().expect("a path"),
+            manifest_dto("faction-12", "Faction 12"),
         )
-        .expect("create project");
+        .expect("create game");
 
         let validation = command_validate_orders("FLY 1 2");
         assert_eq!(
@@ -967,19 +1003,11 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
         use atlantis_hud_core_persistence::load_region_sightings;
 
         let dir = tempdir().expect("tempdir");
-        let project_path = dir.path().join("campaign.atlantis-project.json");
-        let created = command_create_project(
-            &project_path.to_string_lossy(),
-            ProjectManifestDto {
-                manifest_version: 1,
-                metadata: ProjectMetadataDto {
-                    project_id: "faction-12".to_string(),
-                    project_name: "Faction 12".to_string(),
-                },
-                report_sources: Vec::new(),
-            },
+        let created = command_create_game(
+            dir.path().to_str().expect("a path"),
+            manifest_dto("faction-12", "Faction 12"),
         )
-        .expect("create project");
+        .expect("create game");
 
         let report = "\
 Atlantis Report For:
@@ -1010,20 +1038,11 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
     #[test]
     fn tauri_adapter_loads_imported_turn_payload_after_commit() {
         let dir = tempdir().expect("tempdir");
-        let project_path = dir.path().join("campaign.atlantis-project.json");
-        let project_path_string = project_path.to_string_lossy().to_string();
-        let created = command_create_project(
-            &project_path_string,
-            ProjectManifestDto {
-                manifest_version: 1,
-                metadata: ProjectMetadataDto {
-                    project_id: "faction-12".to_string(),
-                    project_name: "Faction 12".to_string(),
-                },
-                report_sources: Vec::new(),
-            },
+        let created = command_create_game(
+            dir.path().to_str().expect("a path"),
+            manifest_dto("faction-12", "Faction 12"),
         )
-        .expect("create project");
+        .expect("create game");
         let report = "\
 Atlantis Report For:
 Crimson Tide (17) (Magic 5)
@@ -1046,7 +1065,7 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
             .expect("load imported turn should succeed")
             .expect("imported turn should exist");
 
-        assert_eq!(loaded.key.project_id, "faction-12");
+        assert_eq!(loaded.key.game_id, "faction-12");
         assert_eq!(loaded.key.faction_id, "17");
         assert_eq!(loaded.key.turn_number, 2);
         assert_eq!(loaded.parse_result.regions[0].region_id, "1:12,34");
