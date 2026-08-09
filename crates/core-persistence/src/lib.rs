@@ -518,6 +518,65 @@ pub fn load_imported_turn(
     load_imported_turn_from_connection(&connection, key)
 }
 
+/// The turn in this game the player worked on most recently, if there is one.
+///
+/// "Worked on" is the later of when the turn was imported and when its orders were last edited.
+/// Ranking by the import alone would send a player who imported a second faction and then spent
+/// the evening writing the first one's orders back to the faction they only glanced at; editing
+/// orders is the strongest signal of attention there is.
+///
+/// `None` means the game holds no imports, which is the ordinary state of a game just created
+/// rather than a failure. Ties break on the turn number so the answer is the same every time.
+pub fn load_latest_imported_turn(
+    database_path: &Path,
+    game_id: &str,
+) -> Result<Option<ImportedTurnRecord>, PersistenceError> {
+    if !database_path.exists() {
+        return Err(PersistenceError::DatabaseFileMissing(
+            database_path.to_string_lossy().to_string(),
+        ));
+    }
+
+    let mut connection = open_database(database_path)?;
+    apply_migrations(&mut connection)?;
+
+    // MAX with two arguments is SQLite's scalar maximum, not the aggregate. Both sides are ISO-8601
+    // since migration 6, which is what makes comparing them mean anything.
+    let record = connection
+        .query_row(
+            "SELECT t.game_id,
+                    t.faction_id,
+                    t.turn_number,
+                    t.raw_report,
+                    t.parsed_payload_json,
+                    t.warnings_payload_json
+               FROM imported_turns AS t
+               LEFT JOIN order_drafts AS d
+                 ON  d.game_id = t.game_id
+                 AND d.faction_id = t.faction_id
+                 AND d.turn_number = t.turn_number
+              WHERE t.game_id = ?1
+              ORDER BY MAX(t.updated_at, COALESCE(d.updated_at, '')) DESC, t.turn_number DESC
+              LIMIT 1",
+            params![game_id],
+            |row| {
+                Ok(ImportedTurnRecord {
+                    key: ImportedTurnKey {
+                        game_id: row.get(0)?,
+                        faction_id: row.get(1)?,
+                        turn_number: row.get(2)?,
+                    },
+                    raw_report: row.get(3)?,
+                    parsed_payload_json: row.get(4)?,
+                    warnings_payload_json: row.get(5)?,
+                })
+            },
+        )
+        .optional()?;
+
+    Ok(record)
+}
+
 fn ensure_supported_manifest_version(version: u32) -> Result<(), PersistenceError> {
     if version <= CURRENT_MANIFEST_VERSION {
         return Ok(());
@@ -1398,6 +1457,98 @@ mod tests {
         assert_eq!(
             import_stamps(&created.database_path, &record.key),
             (IMPORTED_AT.to_string(), IMPORTED_AT.to_string())
+        );
+    }
+
+    /// The ordinary state of a game just created. Nothing to reopen is not something going wrong.
+    #[test]
+    fn a_game_with_no_imports_has_no_latest_turn() {
+        let dir = tempdir().expect("tempdir");
+        let created =
+            create_game(dir.path(), &fixture_manifest()).expect("game creation should succeed");
+
+        let latest = load_latest_imported_turn(&created.database_path, GAME_ID)
+            .expect("the query should succeed");
+
+        assert_eq!(latest, None);
+    }
+
+    /// Which turn reopens is decided by attention, not by arrival.
+    ///
+    /// A player imports one faction's turn, then another's, then spends the evening writing the
+    /// first one's orders. Coming back to the faction they only glanced at would be wrong.
+    #[test]
+    fn the_turn_most_recently_edited_wins_over_the_one_most_recently_imported() {
+        let dir = tempdir().expect("tempdir");
+        let created =
+            create_game(dir.path(), &fixture_manifest()).expect("game creation should succeed");
+
+        upsert_imported_turn(
+            &created.database_path,
+            &turn_in(&created, "17", "worked on"),
+            "2026-08-09T18:00:00Z",
+        )
+        .expect("seed the first faction");
+        upsert_imported_turn(
+            &created.database_path,
+            &turn_in(&created, "18", "only glanced at"),
+            "2026-08-09T19:00:00Z",
+        )
+        .expect("seed the second faction");
+
+        // Without a draft, the later import is the answer.
+        assert_eq!(
+            load_latest_imported_turn(&created.database_path, GAME_ID)
+                .expect("the query should succeed")
+                .map(|turn| turn.key.faction_id),
+            Some("18".to_string())
+        );
+
+        upsert_order_draft(
+            &created.database_path,
+            &OrderDraftRecord {
+                key: OrderDraftKey {
+                    game_id: GAME_ID.to_string(),
+                    faction_id: "17".to_string(),
+                    turn_number: 12,
+                },
+                order_text: "MOVE U100 R2".to_string(),
+                updated_at: "2026-08-09T22:00:00Z".to_string(),
+            },
+        )
+        .expect("the draft should persist");
+
+        let latest = load_latest_imported_turn(&created.database_path, GAME_ID)
+            .expect("the query should succeed")
+            .expect("there is a turn to come back to");
+
+        assert_eq!(latest.key.faction_id, "17");
+        assert_eq!(latest.raw_report, "worked on");
+    }
+
+    /// The point of a database per game, asked of the new query too.
+    #[test]
+    fn one_games_latest_turn_is_invisible_to_another() {
+        let dir = tempdir().expect("tempdir");
+        let alpha = create_game(dir.path(), &manifest_named("alpha", "Alpha")).expect("alpha");
+        let beta = create_game(dir.path(), &manifest_named("beta", "Beta")).expect("beta");
+
+        upsert_imported_turn(
+            &alpha.database_path,
+            &turn_in(&alpha, "17", "alpha turn"),
+            IMPORTED_AT,
+        )
+        .expect("seed alpha");
+
+        assert_eq!(
+            load_latest_imported_turn(&beta.database_path, "alpha")
+                .expect("the query should succeed"),
+            None
+        );
+        assert_eq!(
+            load_latest_imported_turn(&beta.database_path, "beta")
+                .expect("the query should succeed"),
+            None
         );
     }
 
