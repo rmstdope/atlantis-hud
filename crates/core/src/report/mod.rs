@@ -10,6 +10,7 @@ pub mod model;
 pub mod orders;
 pub mod region;
 pub mod scan;
+pub mod sighting;
 pub mod unit;
 pub mod unwrap;
 

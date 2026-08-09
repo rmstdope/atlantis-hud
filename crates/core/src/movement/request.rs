@@ -3,11 +3,16 @@
 //! The adapters are deliberately thin over this: both the Tauri command and the wasm binding call
 //! straight into it, so the desktop and the browser cannot drift into planning differently.
 //!
-//! The report arrives as text rather than as a parsed model. The core parses it in milliseconds,
-//! and keeping the call stateless means there is no session to invalidate when a new turn is
-//! imported.
+//! The report arrives as text rather than as a parsed model, which is what keeps the calls
+//! stateless: there is no session to open and none to invalidate when a new turn is imported. The
+//! text is also the key the [`ReportCache`] the caller passes in remembers its last answer under,
+//! so asking the same question twice costs the parse once. See [`crate::cache`].
+
+use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
+
+use crate::cache::ReportCache;
 
 /// Everything the planner has to say about one proposed move.
 ///
@@ -30,27 +35,24 @@ pub struct RoutePlanResponse {
     pub fully_modelled: bool,
 }
 
-/// Plans a route for one unit, against a ruleset the caller supplies.
+/// Plans over the current report alone.
 ///
-/// The report arrives as text rather than as a parsed model: the core parses it in milliseconds,
-/// and keeping the command stateless means no session to invalidate when a new turn is imported.
+/// Kept for callers that genuinely have no memory to offer - tests, mostly. Anything with a game
+/// behind it should use [`plan_for_remembered_report`], because a single report cannot support a
+/// route longer than one step.
 ///
 /// # Errors
 ///
 /// Returns an error only when the ruleset itself cannot be used. A route that cannot be planned is
 /// a successful answer carrying a reason, not a failure.
-/// Plans over the current report alone.
-///
-/// Kept for callers that genuinely have no memory to offer - tests, mostly. Anything with a project
-/// behind it should use [`plan_for_remembered_report`], because a single report cannot support a
-/// route longer than one step.
 pub fn plan_for_report(
+    cache: &mut ReportCache,
     ruleset_json: &str,
     raw_report: &str,
     unit_id: &str,
     destination: &str,
 ) -> Result<RoutePlanResponse, String> {
-    plan_for_remembered_report(ruleset_json, raw_report, "[]", unit_id, destination)
+    plan_for_remembered_report(cache, ruleset_json, raw_report, "[]", unit_id, destination)
 }
 
 /// The same, over a map accumulated across turns.
@@ -64,6 +66,7 @@ pub fn plan_for_report(
 ///
 /// As [`plan_for_report`], plus an error when the remembered regions cannot be read.
 pub fn plan_for_remembered_report(
+    cache: &mut ReportCache,
     ruleset_json: &str,
     raw_report: &str,
     remembered_json: &str,
@@ -73,10 +76,10 @@ pub fn plan_for_remembered_report(
     use crate::movement::graph::MapKnowledge;
     use crate::movement::plan::{plan_route, RouteProblem};
     use crate::movement::risk::assess_route;
-    use crate::movement::rules::Ruleset;
-    use crate::report::{classify_units, parse_report_full};
 
-    let ruleset = Ruleset::from_json(ruleset_json).map_err(|error| error.to_string())?;
+    let ruleset = cache
+        .ruleset(ruleset_json)
+        .map_err(|error| error.to_string())?;
     let destination = parse_hex_id(destination)
         .ok_or_else(|| format!("{destination} is not a hex identifier such as 1:7,53"))?;
 
@@ -86,8 +89,7 @@ pub fn plan_for_remembered_report(
         serde_json::from_str(remembered_json)
             .map_err(|error| format!("remembered regions could not be read: {error}"))?;
 
-    let mut report = parse_report_full(raw_report);
-    classify_units(&mut report, &ruleset);
+    let report = cache.classified(raw_report, ruleset_json);
     let map = MapKnowledge::from_remembered(&report, &remembered);
 
     let Some(unit) = report.units().find(|unit| unit.unit_id == unit_id).cloned() else {
@@ -128,15 +130,17 @@ pub fn plan_for_remembered_report(
 /// An empty or unusable ruleset leaves the report exactly as parsed, estimates and all. Refusing to
 /// show a report because a ruleset would not load would trade something that works for something
 /// that does not.
+///
+/// The answer is shared rather than owned, because the planner reads the same model on the very
+/// next gesture and copying four hundred and fifty units to hand it over would cost more than the
+/// search it feeds.
 #[must_use]
-pub fn parse_and_classify(raw_report: &str, ruleset_json: &str) -> crate::report::ParsedReport {
-    use crate::report::{classify_units, parse_report_full};
-
-    let mut report = parse_report_full(raw_report);
-    if let Ok(ruleset) = crate::movement::rules::Ruleset::from_json(ruleset_json) {
-        classify_units(&mut report, &ruleset);
-    }
-    report
+pub fn parse_and_classify(
+    cache: &mut ReportCache,
+    raw_report: &str,
+    ruleset_json: &str,
+) -> Arc<crate::report::ParsedReport> {
+    cache.classified(raw_report, ruleset_json)
 }
 
 /// Reads `1:7,53`, the way the game writes a hex and the way a region id is stored.
@@ -162,7 +166,8 @@ mod tests {
     fn plans_a_route_and_assesses_what_stands_along_it() {
         // "* Seven of Eight (18642)" walks north from the mountain at (7,53) to the one at (7,51).
         let response =
-            plan_for_report(RULESET, TURN_71, "18642", "1:7,51").expect("the ruleset loads");
+            plan_for_report(&mut ReportCache::new(), RULESET, TURN_71, "18642", "1:7,51")
+                .expect("the ruleset loads");
 
         let plan = response.plan.expect("a route");
         assert_eq!(plan.total_cost, 2);
@@ -179,7 +184,8 @@ mod tests {
     fn a_refusal_comes_back_as_an_answer_rather_than_an_error() {
         // "  Northeast : ocean (8,52)" - not walkable.
         let response =
-            plan_for_report(RULESET, TURN_71, "18642", "1:8,52").expect("the ruleset loads");
+            plan_for_report(&mut ReportCache::new(), RULESET, TURN_71, "18642", "1:8,52")
+                .expect("the ruleset loads");
 
         assert!(response.plan.is_none());
         assert!(response.risk.is_none());
@@ -191,8 +197,14 @@ mod tests {
 
     #[test]
     fn a_unit_the_report_does_not_carry_is_reported_rather_than_panicking() {
-        let response =
-            plan_for_report(RULESET, TURN_71, "no-such-unit", "1:7,51").expect("still answers");
+        let response = plan_for_report(
+            &mut ReportCache::new(),
+            RULESET,
+            TURN_71,
+            "no-such-unit",
+            "1:7,51",
+        )
+        .expect("still answers");
 
         assert!(response.plan.is_none());
         assert!(response.problem.is_some());
@@ -201,14 +213,21 @@ mod tests {
     /// The one genuine error: a ruleset the core cannot use at all. Everything else is an answer.
     #[test]
     fn an_unusable_ruleset_is_an_error() {
-        let error = plan_for_report("{}", TURN_71, "18642", "1:7,51").expect_err("should fail");
+        let error = plan_for_report(&mut ReportCache::new(), "{}", TURN_71, "18642", "1:7,51")
+            .expect_err("should fail");
         assert!(error.contains("ruleset"), "message was: {error}");
     }
 
     #[test]
     fn a_destination_that_is_not_a_hex_identifier_is_refused_by_name() {
-        let error =
-            plan_for_report(RULESET, TURN_71, "18642", "over there").expect_err("should fail");
+        let error = plan_for_report(
+            &mut ReportCache::new(),
+            RULESET,
+            TURN_71,
+            "18642",
+            "over there",
+        )
+        .expect_err("should fail");
         assert!(error.contains("hex identifier"), "message was: {error}");
     }
 
@@ -216,12 +235,63 @@ mod tests {
     #[test]
     fn the_answer_says_whether_the_ruleset_describes_movement_completely() {
         let response =
-            plan_for_report(RULESET, TURN_71, "18642", "1:7,51").expect("the ruleset loads");
+            plan_for_report(&mut ReportCache::new(), RULESET, TURN_71, "18642", "1:7,51")
+                .expect("the ruleset loads");
 
         assert!(
             !response.fully_modelled,
             "weather is unmodelled, so the cost is a lower bound"
         );
+    }
+
+    /// The parse the file-open made has to be the parse the planner searches over.
+    ///
+    /// This is the whole point of #28: planning took the report as text and re-parsed four
+    /// thousand lines before every search, on a user gesture. The search itself is microseconds
+    /// over 57 hexes.
+    ///
+    /// Note what this can and cannot show. `parses()` counts what the cache was asked to read, so
+    /// it pins that the planner did not make the cache parse twice - but a planner that ignored the
+    /// cache entirely and parsed the text itself would leave the count at one and pass here. That
+    /// case is what `a_second_route_over_the_same_turn_parses_nothing` exists to catch, by
+    /// asserting the planner asked the cache at all.
+    #[test]
+    fn planning_does_not_make_the_cache_read_the_report_twice() {
+        let mut cache = ReportCache::new();
+
+        let shown = parse_and_classify(&mut cache, TURN_71, RULESET);
+        let response = plan_for_report(&mut cache, RULESET, TURN_71, "18642", "1:7,51")
+            .expect("the ruleset loads");
+
+        assert!(response.plan.is_some(), "and it still plans the route");
+        assert!(shown.units().any(|unit| !unit.men_estimated));
+        assert_eq!(
+            cache.parses(),
+            1,
+            "the planner made the cache re-read the report"
+        );
+    }
+
+    /// Picking a second destination is the same turn asked a different question.
+    ///
+    /// The first assertion is the one that catches a planner which stopped consulting the cache:
+    /// nothing else in the suite notices, because parsing the same text again produces an
+    /// identical model and no answer changes.
+    #[test]
+    fn a_second_route_over_the_same_turn_parses_nothing() {
+        let mut cache = ReportCache::new();
+
+        plan_for_report(&mut cache, RULESET, TURN_71, "18642", "1:7,51")
+            .expect("the ruleset loads");
+        plan_for_report(&mut cache, RULESET, TURN_71, "18642", "1:8,52")
+            .expect("the ruleset loads");
+
+        assert_ne!(
+            cache.parses(),
+            0,
+            "the planner never asked the cache for the report"
+        );
+        assert_eq!(cache.parses(), 1, "the second route re-read the report");
     }
 
     #[test]
@@ -291,11 +361,19 @@ mod remembered_tests {
         );
 
         // Without memory, the far end is a name with no way through to it.
-        let alone = plan_for_report(RULESET, &current, "900", "1:3,3").expect("the ruleset loads");
+        let alone = plan_for_report(&mut ReportCache::new(), RULESET, &current, "900", "1:3,3")
+            .expect("the ruleset loads");
         assert!(alone.plan.is_none(), "one report cannot reach that far");
 
-        let together = plan_for_remembered_report(RULESET, &current, &remembered, "900", "1:3,3")
-            .expect("the ruleset loads");
+        let together = plan_for_remembered_report(
+            &mut ReportCache::new(),
+            RULESET,
+            &current,
+            &remembered,
+            "900",
+            "1:3,3",
+        )
+        .expect("the ruleset loads");
         let plan = together.plan.expect("a route across remembered ground");
         assert_eq!(plan.steps.len(), 2);
         assert_eq!(plan.total_cost, 2);
@@ -306,17 +384,30 @@ mod remembered_tests {
     /// a map, presented as though it were the whole one, is exactly the wrong kind of answer.
     #[test]
     fn memory_that_cannot_be_read_is_refused_rather_than_ignored() {
-        let error =
-            plan_for_remembered_report(RULESET, "Foo (1) Report\n", "not json", "900", "1:1,1")
-                .expect_err("should refuse");
+        let error = plan_for_remembered_report(
+            &mut ReportCache::new(),
+            RULESET,
+            "Foo (1) Report\n",
+            "not json",
+            "900",
+            "1:1,1",
+        )
+        .expect_err("should refuse");
 
         assert!(error.contains("remembered regions"), "message was: {error}");
     }
 
     #[test]
     fn no_memory_at_all_is_simply_one_report() {
-        let response = plan_for_remembered_report(RULESET, TURN_71, "[]", "18642", "1:7,51")
-            .expect("the ruleset loads");
+        let response = plan_for_remembered_report(
+            &mut ReportCache::new(),
+            RULESET,
+            TURN_71,
+            "[]",
+            "18642",
+            "1:7,51",
+        )
+        .expect("the ruleset loads");
 
         assert_eq!(response.plan.expect("a route").total_cost, 2);
     }
@@ -360,13 +451,27 @@ mod reaches_the_planner_tests {
         );
 
         // With nothing remembered the far hex is unreachable, which is the single-report ceiling.
-        let alone = plan_for_remembered_report(RULESET, &current, "[]", "900", "1:3,3")
-            .expect("the ruleset loads");
+        let alone = plan_for_remembered_report(
+            &mut ReportCache::new(),
+            RULESET,
+            &current,
+            "[]",
+            "900",
+            "1:3,3",
+        )
+        .expect("the ruleset loads");
         assert!(alone.plan.is_none(), "one report cannot reach that far");
 
         // With the memory the interface actually holds, it is reachable.
-        let together = plan_for_remembered_report(RULESET, &current, &remembered, "900", "1:3,3")
-            .expect("the ruleset loads");
+        let together = plan_for_remembered_report(
+            &mut ReportCache::new(),
+            RULESET,
+            &current,
+            &remembered,
+            "900",
+            "1:3,3",
+        )
+        .expect("the ruleset loads");
         let plan = together.plan.expect("a route across remembered ground");
         assert_eq!(plan.steps.len(), 2);
     }

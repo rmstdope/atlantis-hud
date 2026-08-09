@@ -1,5 +1,6 @@
 //! Shared domain core for Atlantis HUD.
 
+pub mod cache;
 pub mod movement;
 pub mod report;
 
@@ -307,8 +308,16 @@ impl ReportParseResult {
 /// [`report::parse_report_full`] returns.
 #[must_use]
 pub fn parse_report(source: &str) -> ReportParseResult {
-    let parsed = report::parse_report_full(source);
+    summarize(&report::parse_report_full(source))
+}
 
+/// The same flat summary, from a report that has already been parsed.
+///
+/// Split out from [`parse_report`] so that an import can have both shapes for one parse: the
+/// summary is what gets stored and what the import rules are decided against, while the regions
+/// that get remembered one by one come from the full model beside it.
+#[must_use]
+pub fn summarize(parsed: &report::ParsedReport) -> ReportParseResult {
     let turn_header = parsed
         .header
         .turn_number
@@ -506,6 +515,49 @@ pub fn diff_imported_turn_fields(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const TURN_71: &str =
+        include_str!("../../../tests/fixtures/reports/neworigins-3.0.0-f95-t71.rep");
+
+    /// What the summary carries, asserted against the report rather than against itself.
+    ///
+    /// Comparing `summarize(&parse_report_full(x))` with `parse_report(x)` would prove nothing:
+    /// the second is now defined as the first, so the two sides are the same expression and the
+    /// parser being deterministic is all it could ever show.
+    #[test]
+    fn the_summary_carries_the_turn_the_faction_and_what_it_saw() {
+        let summary = summarize(&report::parse_report_full(TURN_71));
+
+        assert_eq!(
+            summary.turn_header,
+            Some(TurnHeader {
+                turn_number: 71,
+                season: "December".to_string(),
+            })
+        );
+        assert_eq!(summary.detected_factions.len(), 1, "only the reporting one");
+        assert_eq!(summary.detected_factions[0].faction_id, "95");
+        assert_eq!(summary.regions.len(), 11);
+        assert!(summary.units.len() > 400);
+        assert!(summary.meets_minimum_import_threshold());
+    }
+
+    /// The warning branch, which a report that parses cleanly never reaches.
+    #[test]
+    fn a_report_with_no_turn_header_is_summarized_as_one_and_says_so() {
+        let summary = summarize(&report::parse_report_full("Lonely (1) Report\n"));
+
+        assert_eq!(summary.turn_header, None);
+        assert!(
+            summary
+                .warnings
+                .iter()
+                .any(|warning| warning.code == "turn-header-missing"),
+            "warnings were: {:?}",
+            summary.warnings
+        );
+        assert!(!summary.meets_minimum_import_threshold());
+    }
 
     #[test]
     fn validate_orders_accepts_the_neworigins_vocabulary() {
