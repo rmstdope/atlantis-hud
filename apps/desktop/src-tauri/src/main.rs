@@ -203,6 +203,18 @@ fn load_imported_turn(
     feature = "desktop-runtime"
 ))]
 #[tauri::command(rename_all = "snake_case")]
+fn load_latest_imported_turn(
+    database_path: String,
+    game_id: String,
+) -> Result<Option<ImportedTurnRecordDto>, String> {
+    atlantis_hud_core_tauri::command_load_latest_imported_turn(&database_path, &game_id)
+}
+
+#[cfg(all(
+    any(target_os = "macos", target_os = "windows"),
+    feature = "desktop-runtime"
+))]
+#[tauri::command(rename_all = "snake_case")]
 fn validate_orders(raw_orders: String) -> OrderValidationResultDto {
     command_validate_orders(&raw_orders)
 }
@@ -261,6 +273,7 @@ fn main() {
             preview_report_import,
             commit_report_import,
             load_imported_turn,
+            load_latest_imported_turn,
             validate_orders,
             save_order_draft,
             load_order_draft,

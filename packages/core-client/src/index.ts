@@ -554,6 +554,7 @@ export interface CoreAdapter {
     factionId: string,
     turnNumber: number
   ): Promise<unknown> | unknown;
+  loadLatestImportedTurn(databasePath: string, gameId: string): Promise<unknown> | unknown;
   loadOrderDraft(
     databasePath: string,
     gameId: string,
@@ -652,6 +653,14 @@ export interface CoreClient {
     factionId: string,
     turnNumber: number
   ): Promise<ImportedTurnRecord | null>;
+  /**
+   * The turn this game was last worked on, or `null` when it holds no imports.
+   *
+   * "Worked on" is the later of when a turn was imported and when its orders were last edited, so
+   * a player who imported a second faction and then spent the evening on the first one's orders
+   * comes back to the first. `null` is the ordinary state of a game just created.
+   */
+  loadLatestImportedTurn(databasePath: string, gameId: string): Promise<ImportedTurnRecord | null>;
   loadOrderDraft(
     databasePath: string,
     gameId: string,
@@ -710,6 +719,7 @@ export interface WasmBindings {
     factionId: string,
     turnNumber: number
   ): unknown;
+  load_latest_imported_turn_state(databasePath: string, gameId: string): unknown;
   load_order_draft_state(
     databasePath: string,
     gameId: string,
@@ -1205,6 +1215,15 @@ export function createCoreClient(adapter: CoreAdapter): CoreClient {
       }
       return normalizeImportedTurnRecord(value);
     },
+    async loadLatestImportedTurn(databasePath: string, gameId: string) {
+      const value = await adapter.loadLatestImportedTurn(databasePath, gameId);
+      // Undefined as well as null: serde_wasm_bindgen can emit either for Rust's None, and a game
+      // with nothing to reopen must not read as a payload that failed to normalize.
+      if (value === null || value === undefined) {
+        return null;
+      }
+      return normalizeImportedTurnRecord(value);
+    },
     async loadOrderDraft(databasePath: string, gameId: string, factionId: string, turnNumber: number) {
       const value = await adapter.loadOrderDraft(databasePath, gameId, factionId, turnNumber);
       if (value === null) {
@@ -1306,6 +1325,9 @@ export function createWasmAdapter(bindings: WasmBindings): CoreAdapter {
     },
     loadImportedTurn(databasePath: string, gameId: string, factionId: string, turnNumber: number) {
       return bindings.load_imported_turn_state(databasePath, gameId, factionId, turnNumber);
+    },
+    loadLatestImportedTurn(databasePath: string, gameId: string) {
+      return bindings.load_latest_imported_turn_state(databasePath, gameId);
     },
     loadOrderDraft(databasePath: string, gameId: string, factionId: string, turnNumber: number) {
       return bindings.load_order_draft_state(databasePath, gameId, factionId, turnNumber);
@@ -1416,6 +1438,12 @@ export function createTauriAdapter(invoke: TauriInvoke): CoreAdapter {
         game_id: gameId,
         faction_id: factionId,
         turn_number: turnNumber
+      });
+    },
+    loadLatestImportedTurn(databasePath: string, gameId: string) {
+      return invoke<ImportedTurnRecordWireShape | null>("load_latest_imported_turn", {
+        database_path: databasePath,
+        game_id: gameId
       });
     },
     loadOrderDraft(databasePath: string, gameId: string, factionId: string, turnNumber: number) {

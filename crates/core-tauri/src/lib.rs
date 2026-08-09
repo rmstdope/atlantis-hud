@@ -9,10 +9,10 @@ use atlantis_hud_core::{
 };
 use atlantis_hud_core_persistence::{
     create_game, delete_game, insert_imported_turn, list_games, load_imported_turn,
-    load_order_draft, load_region_sightings, open_game, preview_imported_turn,
-    upsert_imported_turn, upsert_order_draft, upsert_region_sightings, GameManifest, GameMetadata,
-    ImportedTurnKey, ImportedTurnPreview, ImportedTurnRecord, OpenedGame, OrderDraftKey,
-    OrderDraftRecord, PersistenceError, RegionSighting, ReportSourceRef,
+    load_latest_imported_turn, load_order_draft, load_region_sightings, open_game,
+    preview_imported_turn, upsert_imported_turn, upsert_order_draft, upsert_region_sightings,
+    GameManifest, GameMetadata, ImportedTurnKey, ImportedTurnPreview, ImportedTurnRecord,
+    OpenedGame, OrderDraftKey, OrderDraftRecord, PersistenceError, RegionSighting, ReportSourceRef,
 };
 use serde::{Deserialize, Serialize};
 
@@ -575,8 +575,12 @@ pub fn command_validate_orders(raw_orders: &str) -> OrderValidationResultDto {
 }
 
 /// Persists one order draft for the Tauri command surface.
+///
+/// # Errors
+///
+/// Returns an error when the game's database cannot be written.
 pub fn command_save_order_draft(
-    _database_path: &str,
+    database_path: &str,
     game_id: &str,
     faction_id: &str,
     turn_number: u32,
@@ -592,7 +596,7 @@ pub fn command_save_order_draft(
         order_text: order_text.to_string(),
         updated_at: updated_at.to_string(),
     };
-    upsert_order_draft(Path::new(_database_path), &record).map_err(|error| error.to_string())?;
+    upsert_order_draft(Path::new(database_path), &record).map_err(|error| error.to_string())?;
     Ok(OrderDraftRecordDto {
         key: OrderDraftKeyDto {
             game_id: record.key.game_id,
@@ -605,18 +609,22 @@ pub fn command_save_order_draft(
 }
 
 /// Loads one order draft for the Tauri command surface.
+///
+/// # Errors
+///
+/// Returns an error when the game's database cannot be read.
 pub fn command_load_order_draft(
-    _database_path: &str,
-    _game_id: &str,
-    _faction_id: &str,
-    _turn_number: u32,
+    database_path: &str,
+    game_id: &str,
+    faction_id: &str,
+    turn_number: u32,
 ) -> Result<Option<OrderDraftRecordDto>, String> {
     let loaded = load_order_draft(
-        Path::new(_database_path),
+        Path::new(database_path),
         &OrderDraftKey {
-            game_id: _game_id.to_string(),
-            faction_id: _faction_id.to_string(),
-            turn_number: _turn_number,
+            game_id: game_id.to_string(),
+            faction_id: faction_id.to_string(),
+            turn_number,
         },
     )
     .map_err(|error| error.to_string())?;
@@ -649,22 +657,38 @@ pub fn command_load_imported_turn(
     )
     .map_err(|error| error.to_string())?;
 
-    loaded
-        .map(|record| {
-            let parse_result =
-                serde_json::from_str::<ReportParseResult>(&record.parsed_payload_json)
-                    .map_err(|error| error.to_string())?;
-            Ok(ImportedTurnRecordDto {
-                key: OrderDraftKeyDto {
-                    game_id: record.key.game_id,
-                    faction_id: record.key.faction_id,
-                    turn_number: record.key.turn_number,
-                },
-                raw_report: record.raw_report,
-                parse_result: ReportParseResultDto::from(parse_result),
-            })
-        })
+    loaded.map(imported_turn_dto).transpose()
+}
+
+/// Loads the turn this game was last worked on, for the Tauri command surface.
+///
+/// `None` means the game holds no imports, which is what a game just created looks like.
+///
+/// # Errors
+///
+/// Returns an error when the database cannot be read, or when a stored payload will not parse.
+pub fn command_load_latest_imported_turn(
+    database_path: &str,
+    game_id: &str,
+) -> Result<Option<ImportedTurnRecordDto>, String> {
+    load_latest_imported_turn(Path::new(database_path), game_id)
+        .map_err(|error| error.to_string())?
+        .map(imported_turn_dto)
         .transpose()
+}
+
+fn imported_turn_dto(record: ImportedTurnRecord) -> Result<ImportedTurnRecordDto, String> {
+    let parse_result = serde_json::from_str::<ReportParseResult>(&record.parsed_payload_json)
+        .map_err(|error| error.to_string())?;
+    Ok(ImportedTurnRecordDto {
+        key: OrderDraftKeyDto {
+            game_id: record.key.game_id,
+            faction_id: record.key.faction_id,
+            turn_number: record.key.turn_number,
+        },
+        raw_report: record.raw_report,
+        parse_result: ReportParseResultDto::from(parse_result),
+    })
 }
 
 /// One region the faction saw in some earlier turn, as the map wants it.

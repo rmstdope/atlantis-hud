@@ -92,6 +92,10 @@ export interface WebStore {
     factionId: string,
     turnNumber: number
   ): Promise<StoredTurn | null>;
+  /** Every turn in one game, in whatever order storage produced them. Ranking is the caller's. */
+  getImportedTurns(databasePath: string, gameId: string): Promise<StoredTurn[]>;
+  /** Every order draft in one game, for the same reason. */
+  getOrderDrafts(databasePath: string, gameId: string): Promise<StoredOrderDraft[]>;
   putRegionSightings(sightings: StoredRegionSighting[]): Promise<void>;
   getRegionSightings(
     databasePath: string,
@@ -236,6 +240,13 @@ export function createIndexedDbWebStore(): WebStore {
     return promisify<T[]>(store.getAll(range) as IDBRequest<T[]>);
   };
 
+  /** A whole store. The database handle already selects one game, so there is nothing to narrow. */
+  const readStore = async <T>(databasePath: string, storeName: string): Promise<T[]> => {
+    const database = await gameDatabase(databasePath);
+    const store = database.transaction(storeName, "readonly").objectStore(storeName);
+    return promisify<T[]>(store.getAll() as IDBRequest<T[]>);
+  };
+
   return {
     async listGames() {
       const database = await registry();
@@ -283,6 +294,10 @@ export function createIndexedDbWebStore(): WebStore {
     putImportedTurn: (turn) => write(turn.databasePath, IMPORTED_TURN_STORE, turn),
     getImportedTurn: (databasePath, _gameId, factionId, turnNumber) =>
       read<StoredTurn>(databasePath, IMPORTED_TURN_STORE, [factionId, turnNumber]),
+    getImportedTurns: (databasePath, _gameId) =>
+      readStore<StoredTurn>(databasePath, IMPORTED_TURN_STORE),
+    getOrderDrafts: (databasePath, _gameId) =>
+      readStore<StoredOrderDraft>(databasePath, ORDER_DRAFT_STORE),
     async putRegionSightings(sightings) {
       const first = sightings[0];
       if (!first) {
@@ -356,6 +371,12 @@ export function createMemoryWebStore(): WebStore {
     },
     async getImportedTurn(databasePath, _gameId, factionId, turnNumber) {
       return turns.get(composite(databasePath, factionId, turnNumber)) ?? null;
+    },
+    async getImportedTurns(databasePath, _gameId) {
+      return [...turns.values()].filter((turn) => turn.databasePath === databasePath);
+    },
+    async getOrderDrafts(databasePath, _gameId) {
+      return [...drafts.values()].filter((draft) => draft.databasePath === databasePath);
     },
     async putRegionSightings(incoming) {
       for (const sighting of incoming) {

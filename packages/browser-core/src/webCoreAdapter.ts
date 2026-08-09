@@ -8,7 +8,7 @@
  */
 
 import type { CoreAdapter, GameManifest } from "@atlantis/core-client";
-import type { StoredTurnSnapshot, WebStore } from "./webStore";
+import type { StoredTurn, StoredTurnSnapshot, WebStore } from "./webStore";
 import { createWebStore } from "./webStore";
 
 /** The subset of the generated wasm module this adapter needs. */
@@ -310,6 +310,52 @@ export function createWebCoreAdapter(
         key: { gameId, factionId, turnNumber },
         rawReport: stored.rawReport,
         parseResult: wasm.hydrate_parse_result_state(stored.parsedPayloadJson)
+      };
+    },
+
+    /**
+     * The turn this game was last worked on.
+     *
+     * The desktop asks SQLite for this with a LEFT JOIN; IndexedDB has no joins, so the two stores
+     * are read and matched here. The ranking rule is the same on both: the later of when a turn was
+     * imported and when its orders were last edited, ties broken by turn number.
+     */
+    async loadLatestImportedTurn(databasePath: string, gameId: string) {
+      const [turns, drafts] = await Promise.all([
+        store.getImportedTurns(databasePath, gameId),
+        store.getOrderDrafts(databasePath, gameId)
+      ]);
+
+      const editedAt = new Map(
+        drafts.map((draft) => [`${draft.factionId}:${draft.turnNumber}`, draft.updatedAt])
+      );
+      // A record written before turns carried a time has none. It sorts last rather than being
+      // dropped: one unrankable turn must not turn into a game that reopens on nothing.
+      const touchedAt = (turn: StoredTurn) => {
+        const edited = editedAt.get(`${turn.factionId}:${turn.turnNumber}`) ?? "";
+        const imported = turn.updatedAt ?? "";
+        return edited > imported ? edited : imported;
+      };
+
+      const latest = turns.reduce<StoredTurn | null>((best, turn) => {
+        if (best === null) {
+          return turn;
+        }
+        const [a, b] = [touchedAt(turn), touchedAt(best)];
+        if (a !== b) {
+          return a > b ? turn : best;
+        }
+        return turn.turnNumber > best.turnNumber ? turn : best;
+      }, null);
+
+      if (!latest) {
+        return null;
+      }
+
+      return {
+        key: { gameId, factionId: latest.factionId, turnNumber: latest.turnNumber },
+        rawReport: latest.rawReport,
+        parseResult: wasm.hydrate_parse_result_state(latest.parsedPayloadJson)
       };
     },
 

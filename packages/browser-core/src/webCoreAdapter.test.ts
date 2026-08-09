@@ -234,6 +234,48 @@ describe("web core adapter", () => {
     expect(await adapter.loadImportedTurn(DB, "p", "17", 99)).toBeNull();
   });
 
+  it("has no latest turn in a game that holds no imports", async () => {
+    const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
+
+    // A game just created, not a failure. The workspace opens empty rather than refusing.
+    expect(await adapter.loadLatestImportedTurn(DB, "p")).toBeNull();
+  });
+
+  /**
+   * The browser answers "which turn was I last in" the same way the desktop does.
+   *
+   * SQLite gets there with a LEFT JOIN; IndexedDB has none, so the adapter matches the two stores
+   * itself. What must not differ is the rule: attention, not arrival.
+   */
+  it("reopens on the turn last edited rather than the one last imported", async () => {
+    const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
+    const OTHER = "TURN: 12 Spring\nFACTION: 18 | Azure Wake";
+
+    await adapter.commitReportImport(DB, "p", "17", REPORT, false, "2026-08-09T18:00:00Z");
+    await adapter.commitReportImport(DB, "p", "18", OTHER, false, "2026-08-09T19:00:00Z");
+
+    // With nothing written, the later import is the answer.
+    expect(await adapter.loadLatestImportedTurn(DB, "p")).toMatchObject({
+      key: { gameId: "p", factionId: "18", turnNumber: 12 }
+    });
+
+    // An evening spent on the first faction's orders moves it back in front.
+    await adapter.saveOrderDraft(DB, "p", "17", 12, "@work", "2026-08-09T22:00:00Z");
+
+    expect(await adapter.loadLatestImportedTurn(DB, "p")).toMatchObject({
+      key: { gameId: "p", factionId: "17", turnNumber: 12 },
+      rawReport: REPORT
+    });
+  });
+
+  it("never reopens one game on another game's turn", async () => {
+    const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
+
+    await adapter.commitReportImport("idb://campaign-a", "p", "17", REPORT, false, IMPORTED_AT);
+
+    expect(await adapter.loadLatestImportedTurn("idb://campaign-b", "p")).toBeNull();
+  });
+
   it("round trips an order draft", async () => {
     const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
 
