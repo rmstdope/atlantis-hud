@@ -76,7 +76,10 @@ export function GamePicker({
       // The header is the drop target for report files, so a panel hanging off it must not swallow
       // a drag that was meant for the header underneath.
       onDragOver={(event) => event.stopPropagation()}
-      className="absolute left-0 top-full z-20 mt-1 w-72 rounded border border-edge bg-panel-raised p-2 text-[11.5px] shadow-lg"
+      // `whitespace-normal` undoes the header's `whitespace-nowrap`, which keeps the turn and
+      // faction labels on one line up there and inherits into anything rendered inside it. The
+      // delete confirmation is prose and has to wrap, or it runs off the side of this panel.
+      className="absolute left-0 top-full z-20 mt-1 w-72 rounded border border-edge bg-panel-raised p-2 text-[11.5px] whitespace-normal shadow-lg"
     >
       <ul className="flex flex-col">
         {sorted.map((game) => {

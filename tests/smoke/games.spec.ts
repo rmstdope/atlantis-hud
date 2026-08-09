@@ -119,6 +119,34 @@ test("a report loaded in one game is not in the other", async ({ page }) => {
   await expect(page.getByTestId("import-status")).toContainText("no report loaded");
 });
 
+/**
+ * The picker renders inside the header, which sets `whitespace-nowrap` so the turn and faction
+ * labels never wrap. That inherits, and the delete confirmation is the one piece of prose in
+ * there: left alone it runs off the side of the panel as a single line.
+ */
+test("the delete confirmation wraps inside the picker rather than running off it", async ({
+  page
+}) => {
+  await clearGames(page);
+  await createGame(page, "A game with a fairly long name");
+
+  await page.getByTestId("game-indicator").click();
+  await page.getByRole("button", { name: "delete A game with a fairly long name" }).click();
+
+  // The box is constrained by its parent either way; what escapes is the text inside it, so the
+  // question is whether the line is wider than the box that holds it.
+  const overflow = await page
+    .getByTestId(/^game-delete-confirm-/u)
+    .first()
+    .locator("p")
+    .evaluate((element) => ({
+      scrollWidth: element.scrollWidth,
+      clientWidth: element.clientWidth
+    }));
+
+  expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.clientWidth);
+});
+
 test("deleting a game asks first, then falls back to the one that is left", async ({ page }) => {
   await clearGames(page);
   await createGame(page, "Kept game");
