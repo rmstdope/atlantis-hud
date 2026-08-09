@@ -90,12 +90,28 @@ function savedStateFor(savedAt: string | null): SaveState {
  * the desktop and the web builds identical rather than merely similar. Previously each shell had
  * its own copy of the layout.
  */
+/**
+ * Somewhere to hang a handler that runs before the application closes.
+ *
+ * The web needs nothing here: `pagehide` covers a tab closing, a reload and a navigation away, and
+ * this shell registers it itself. A native window close is not a page event and Tauri does not
+ * promise to fire one, so the desktop shell passes an implementation that intercepts the close,
+ * lets the handler finish and then destroys the window.
+ *
+ * A prop rather than a Tauri import in here, because `packages/shared` is what makes the two builds
+ * identical: reaching for `@tauri-apps/api` from shared code would put half a desktop in the web
+ * bundle. Returns whatever undoes the registration.
+ */
+export type RegisterBeforeQuit = (handler: () => Promise<void>) => () => void;
+
 export function AppShell({
   client,
-  platformLabel
+  platformLabel,
+  registerBeforeQuit
 }: {
   client: CoreClient;
   platformLabel: string;
+  registerBeforeQuit?: RegisterBeforeQuit;
 }) {
   const [parsed, setParsed] = useState<ParsedReport | null>(null);
   // Everywhere the faction has ever been, not just this turn. Without it the map stops at the
@@ -618,6 +634,41 @@ export function AppShell({
     // `ordersDocument` is what re-arms the idle timer: every edit replaces the document, and
     // `save.kind` alone stays "dirty" across all of them.
   }, [save.kind, ordersDocument, flush]);
+
+  /**
+   * Saving on the way out.
+   *
+   * `pagehide` fires when a tab closes, when the page is reloaded and when the player navigates
+   * away; `visibilitychange` catches the phone or laptop being put down, which on mobile is often
+   * the last event a page ever gets. Neither can be awaited - the browser is leaving - so the write
+   * is started and the thirty-second ceiling is what bounds the loss when it does not finish.
+   *
+   * `beforeunload` is deliberately not used. It is the least reliable of the three on mobile, and
+   * its only real power is prompting the player to stay, which is a worse answer than saving.
+   */
+  useEffect(() => {
+    const onHide = () => void flush();
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") {
+        void flush();
+      }
+    };
+
+    window.addEventListener("pagehide", onHide);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("pagehide", onHide);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [flush]);
+
+  /**
+   * The native close, when the shell offers one.
+   *
+   * This one can be awaited: the desktop holds the window open until the write finishes, so a quit
+   * loses nothing at all rather than nearly nothing.
+   */
+  useEffect(() => registerBeforeQuit?.(flush), [registerBeforeQuit, flush]);
 
   const exportOrders = useCallback(() => {
     const blob = new Blob([ordersDocument], { type: "text/plain" });
