@@ -24,6 +24,18 @@ export default defineConfig({
    */
   expect: { timeout: 15_000 },
   fullyParallel: false,
+  /**
+   * One worker, deliberately, and parallelism bought at the job level instead.
+   *
+   * Two reasons, both measured. Four fully-parallel workers took 3m54 against 2m32 serial and
+   * produced a failure: one worker already drives the machine to roughly 280% CPU, so more workers
+   * contend over the same dev servers rather than finding idle cores. And two workers - one per
+   * project - broke both interactivity guards, because a test that measures how long the main
+   * thread is blocked measures contention instead the moment something else is running beside it.
+   *
+   * CI runs the two projects as separate jobs, which is worth more than either and leaves the
+   * measurements meaning what they say.
+   */
   workers: 1,
   use: {
     trace: "on-first-retry"
@@ -42,12 +54,15 @@ export default defineConfig({
   ],
   webServer: [
     {
-      command: "pnpm --filter @atlantis/web dev --host 127.0.0.1 --port 4173",
+      // `vite` rather than the `dev` script, which is `build:wasm && vite`. The module is built
+      // once before the suite runs - by CI explicitly, and locally by whatever last touched it -
+      // so letting each server rebuild it made four wasm builds per CI run instead of one.
+      command: "pnpm --filter @atlantis/web exec vite --host 127.0.0.1 --port 4173",
       url: "http://127.0.0.1:4173",
       reuseExistingServer: !process.env.CI
     },
     {
-      command: "pnpm --filter @atlantis/desktop dev --host 127.0.0.1 --port 4174",
+      command: "pnpm --filter @atlantis/desktop exec vite --host 127.0.0.1 --port 4174",
       url: "http://127.0.0.1:4174",
       reuseExistingServer: !process.env.CI
     }

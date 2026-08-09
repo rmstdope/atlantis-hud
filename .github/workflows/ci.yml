@@ -6,6 +6,59 @@ on:
     branches: [main]
 
 jobs:
+  # The web and desktop shells both run the Rust core as WebAssembly, so the module has to exist
+  # before typecheck, tests or the smoke run. Built once here and handed to the jobs that need it,
+  # which is what lets the smoke jobs skip the Rust toolchain entirely. No system toolchain is
+  # needed: the core is pure Rust, and nothing in the wasm build compiles C.
+  wasm:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      # Without this every job recompiles the whole workspace from scratch. Cold, the four Rust
+      # steps in this workflow came to about 212 seconds; warm they are a few.
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: wasm
+
+      - name: Install wasm-pack
+        uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-pack
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build WebAssembly core
+        run: pnpm --filter @atlantis/browser-core build:wasm
+
+      - name: Upload the WebAssembly core
+        uses: actions/upload-artifact@v4
+        with:
+          name: wasm-core
+          path: packages/browser-core/src/wasm
+          retention-days: 1
+
+  # Independent of the wasm job on purpose, so it runs beside it rather than after: `pnpm run
+  # typecheck` builds the module itself through browser-core's pretypecheck hook, which is also what
+  # keeps a fresh clone working locally.
   checks:
     runs-on: ubuntu-latest
     steps:
@@ -28,9 +81,11 @@ jobs:
           components: rustfmt, clippy
           targets: wasm32-unknown-unknown
 
-      # The web and desktop shells both run the Rust core as WebAssembly, so the module has to
-      # exist before typecheck, tests or the smoke run. No system toolchain is needed: the core is
-      # pure Rust, and nothing in the wasm build compiles C.
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: wasm
+
       - name: Install wasm-pack
         uses: taiki-e/install-action@v2
         with:
@@ -38,12 +93,6 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-
-      - name: Build WebAssembly core
-        run: pnpm --filter @atlantis/browser-core build:wasm
-
-      - name: Install Playwright Chromium
-        run: pnpm exec playwright install --with-deps chromium
 
       - name: Run lint
         run: pnpm run lint
@@ -54,17 +103,78 @@ jobs:
       - name: Run tests
         run: pnpm run test
 
-      - name: Run smoke tests
-        run: pnpm run test:smoke
-
       - name: Rust format check
         run: cargo fmt --check
 
       - name: Rust clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
 
+  # One job per Playwright project, because the suite is deliberately single-worker. Two of its
+  # tests measure how long the main thread is blocked, and anything running beside them turns that
+  # into a measurement of contention - so parallelism is bought here, where each runner walks one
+  # shell on its own, rather than inside Playwright.
+  #
+  # These need no Rust at all: the wasm module arrives as an artifact.
+  smoke:
+    runs-on: ubuntu-latest
+    needs: wasm
+    strategy:
+      fail-fast: false
+      matrix:
+        project: [web, desktop-shell]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Download the WebAssembly core
+        uses: actions/download-artifact@v4
+        with:
+          name: wasm-core
+          path: packages/browser-core/src/wasm
+
+      - name: Cache the Playwright browser
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+
+      # The browser itself caches; the system libraries it links against do not, so those are
+      # installed either way.
+      - name: Install Playwright Chromium
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Install Playwright system dependencies
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: pnpm exec playwright install-deps chromium
+
+      - name: Run smoke tests
+        run: pnpm exec playwright test --project=${{ matrix.project }}
+
+      - name: Upload the report of a failed run
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-${{ matrix.project }}
+          path: test-results
+          retention-days: 7
+
   # The Tauri binary is gated behind `any(target_os = "macos", target_os = "windows")` and the
-  # `desktop-runtime` feature, so the Linux job above never compiles it at all. A missing dependency
+  # `desktop-runtime` feature, so the Linux jobs above never compile it at all. A missing dependency
   # in the desktop shell reached a developer's machine before this job existed.
   desktop-shell:
     runs-on: macos-latest
@@ -76,6 +186,9 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
 
       - name: Check the native desktop shell
         run: cargo check -p atlantis-hud-desktop-shell --features desktop-runtime
