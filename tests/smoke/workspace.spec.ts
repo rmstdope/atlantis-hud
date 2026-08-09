@@ -216,15 +216,15 @@ test("the unit table filters", async ({ page }) => {
  * removed: it made the same load roughly five times slower and blocked the page for 755ms, because
  * the parsed model costs far more to clone across a thread boundary than it costs to parse.
  *
- * Remembering the turn costs more than parsing it. Committing the import and reading the sightings
- * back parses the report again and round-trips eleven regions through JSON, which measures at
- * 345-515ms of blocking and about 1.2 seconds of wall time. That is the price of a map that spans
- * more than one report, and it is paid once, when a file is opened, rather than during
- * interaction.
+ * Remembering the turn used to cost more than parsing it, because committing the import parsed the
+ * report a third time and round-tripped eleven regions through JSON. Issue #28 removed both: the
+ * core remembers the parse it already made, and hands the region rows over already serialized.
+ * Measured over three runs on one machine, the block fell from 1204-1945ms to 262-429ms.
  *
- * So the threshold is set against what remembering actually costs rather than against parsing
- * alone. It is a regression guard, not a benchmark: it catches somebody reintroducing work that
- * stops the page for whole seconds, which is the failure that would matter.
+ * So the threshold is set against what remembering actually costs, and against a CI run rather
+ * than a local one - a guard calibrated on the fastest machine available is a guard that fails
+ * everywhere else. It is a regression guard, not a benchmark: it catches somebody reintroducing
+ * work that stops the page, which is the failure that would matter.
  */
 test("the interface is not blocked while the core reads a report", async ({ page }) => {
   // Load once and reload before measuring. The first load in a session pays for the dev server
@@ -267,6 +267,10 @@ test("the interface is not blocked while the core reads a report", async ({ page
     return Math.max(...(state.__gaps ?? [0]));
   });
 
+  // Reported so the figure this threshold is calibrated against can be read off a CI run rather
+  // than guessed at. The guard is deliberately set well above the measurement; a guard calibrated
+  // on the fastest machine available is a guard that fails everywhere else.
+  console.log(`report load: worst main-thread block ${Math.round(worstBlockMs)}ms`);
   expect(worstBlockMs).toBeLessThan(1_000);
 
   // And it really is still interactive afterwards: a hex selects and the panels follow.
@@ -361,13 +365,13 @@ test("only your own units can be planned for", async ({ page }) => {
 /**
  * Issue #8's third vector: the map still pans and selects while the planner is working.
  *
- * The search itself is microseconds over the 57 hexes the faction knows. What costs is everything
- * around it: planning hands the core the report as text, so every plan re-parses four thousand
- * lines and re-classifies every unit before searching. Measured at 674-919ms on CI hardware, under
- * 500ms here.
+ * The search itself is microseconds over the 57 hexes the faction knows. What used to cost was
+ * everything around it: planning hands the core the report as text, and every plan re-parsed four
+ * thousand lines and re-classified every unit before searching. Issue #28 made that text the key
+ * the core remembers its last parse under, so a route over the turn already on screen parses
+ * nothing. Measured over three runs on one machine, the block fell from 397-1391ms to 153-182ms.
  *
- * That is a real cost on a user gesture and is tracked in the follow-up about redundant parsing.
- * The threshold below is set against the slower measurement rather than the faster one, because a
+ * The threshold below is set against a CI run rather than a local one, because a
  * guard calibrated on the fastest machine available is a guard that fails everywhere else. It still
  * catches the thing worth catching: planning stopping the page for seconds.
  */
@@ -396,6 +400,7 @@ test("the map still answers while a route is being planned", async ({ page }) =>
     window.clearInterval(state.__sampler);
     return Math.max(...(state.__gaps ?? [0]));
   });
+  console.log(`route plan: worst main-thread block ${Math.round(worstBlockMs)}ms`);
   expect(worstBlockMs).toBeLessThan(2_000);
 
   // And the map is still a map: dragging pans it, and a hex still selects.

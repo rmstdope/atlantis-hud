@@ -180,22 +180,48 @@ So #8's interactivity requirement is met by evidence instead of by architecture,
 `tests/smoke/workspace.spec.ts` carries the regression guard: it samples how long the main thread
 goes unresponsive during a report load and fails if anything stops the page for whole seconds.
 
-Planning is not free either, for the same reason. `plan_route` takes the report as text so the call
-can stay stateless, which means every plan re-parses four thousand lines and re-classifies every
-unit before the search runs. The search is microseconds over 57 hexes; the parsing around it
-measures at **674–919 ms on CI hardware** and under 500 ms locally. That is a noticeable freeze on
-a user gesture, and the obvious fix — not re-parsing per plan — is the same one as below.
+What did turn out to cost is below, and it was none of these things.
 
-One later measurement belongs here too. **Remembering a turn costs more than parsing it.**
-Committing the import and reading the sightings back parses the report again and round-trips eleven
-regions through JSON, which measures at 345–515 ms of blocking and about 1.2 s of wall time,
-against ~70 ms for parsing alone. That is the price of a map that spans more than one report, and
-it is paid once when a file is opened rather than during interaction — but it is the largest single
-cost in the application, and the obvious place to look if loading ever feels slow. The cheapest win
-available is the third parse: `commitReportImport` in the web adapter re-parses the report purely
-to collect regions for the sightings store.
+### The cost was repetition, not parsing (issue #28)
+
+Two later measurements said the same thing twice. **Remembering a turn cost more than parsing it**,
+and **planning re-parsed the whole report on every gesture.** Both had one cause: the same four
+thousand lines were parsed three times per import and once more for every route, because every
+entry point took the report as text and the text was thrown away after each call.
+
+`plan_route` was the worse of the two, because it happened on a user gesture rather than on a file
+open: arming the planner and picking a hex re-parsed the report and re-classified every unit before
+the search ran. The search itself is microseconds over 57 hexes. Committing the import was the
+larger figure, because on top of a third parse it asked for the whole parsed model back across the
+wasm boundary purely to serialize eleven regions into the sightings store — the same boundary cost
+the worker experiment measured, paid on the way out instead of the way in.
+
+The fix is not to parse faster or elsewhere. It is to parse once and keep the result:
+`crates/core/src/cache.rs` remembers the last report parsed, the last one classified, and the last
+ruleset read, each keyed on the exact text it was built from. The calls stay as stateless as they
+ever were — there is no session to open and none to invalidate, because a new turn is simply a
+different key — and the file-open parse is the one the planner then searches over, so the freeze
+does not happen once, it does not happen. Alongside it, `prepare_report_import_state` now returns
+the region rows already serialized, so nothing large crosses the boundary on import at all.
+
+Measured on the committed turn 71 report, warmed, on one machine so the two columns compare:
+
+| Longest main-thread block | Before (main at `6f49277`) | After |
+| --- | --- | --- |
+| Report load | 1204 / 1945 / 1525 ms | **429 / 272 / 262 ms** |
+| Route plan | 1391 / 397 / 664 ms | **153 / 172 / 182 ms** |
+
+Three runs each rather than one, because the figures are noisy: the spread within a column is
+wider than some of the differences this document used to record. Treat any single number here as
+indicative and the ratio as the finding.
+
+Those absolute figures are also higher than the 345–515 ms and 674–919 ms recorded above them,
+which were taken on different hardware and before the game concept landed. That is exactly why the
+guards in `tests/smoke/workspace.spec.ts` are calibrated against a CI run rather than a local one,
+and why both now print the block they measured: the number this project cares about is the one the
+slowest machine sees, and it should be readable from a log rather than guessed at.
 
 This is worth revisiting if either number changes — a map accumulated over many turns, or a planner
-that searches thousands of hexes. The shape to reach for then is not "put the core in a worker" but
-"stop moving the large model across the boundary": keep the model worker-side and pass only what a
-panel needs.
+that searches thousands of hexes. The shape to reach for then is still not "put the core in a
+worker" but "stop moving the large model across the boundary": keep the model core-side and pass
+only what a panel needs.

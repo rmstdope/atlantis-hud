@@ -128,18 +128,10 @@ pub struct ImportedTurnPreview {
 ///
 /// The map distinguishes a region present in the current report from one held over from an earlier
 /// turn, so a sighting carries its own turn rather than inheriting the latest import's.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RegionSighting {
-    pub region_id: String,
-    pub x: i32,
-    pub y: i32,
-    pub z: u32,
-    pub terrain: String,
-    pub province: String,
-    pub label: String,
-    pub last_seen_turn: u32,
-    pub payload_json: String,
-}
+///
+/// Defined in the core rather than here, because the browser stores exactly the same rows through
+/// IndexedDB and the two must not be able to drift apart.
+pub use atlantis_hud_core::report::sighting::RegionSighting;
 
 /// Unique key for one persisted order draft.
 #[derive(Debug, Clone, PartialEq, Eq)]
