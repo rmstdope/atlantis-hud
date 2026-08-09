@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "What the shell needs in order to get unsaved orders onto disk before the window closes. There was no capability file at all until now, because commands this application defines itself are not gated by the ACL; onCloseRequested and destroy are core-plugin calls and are refused without one. core:default is Tauri's own baseline and carries the event listening; destroy is not in it, being the one call that ends the window, so it is named here.",
+  "windows": ["main"],
+  "permissions": ["core:default", "core:window:allow-destroy"]
+}

@@ -9,10 +9,10 @@ use atlantis_hud_core::{
 };
 use atlantis_hud_core_persistence::{
     create_game, delete_game, insert_imported_turn, list_games, load_imported_turn,
-    load_order_draft, load_region_sightings, open_game, preview_imported_turn,
-    upsert_imported_turn, upsert_order_draft, upsert_region_sightings, GameManifest, GameMetadata,
-    ImportedTurnKey, ImportedTurnPreview, ImportedTurnRecord, OpenedGame, OrderDraftKey,
-    OrderDraftRecord, PersistenceError, ReportSourceRef,
+    load_latest_imported_turn, load_order_draft, load_region_sightings, open_game,
+    preview_imported_turn, upsert_imported_turn, upsert_order_draft, upsert_region_sightings,
+    GameManifest, GameMetadata, ImportedTurnKey, ImportedTurnPreview, ImportedTurnRecord,
+    OpenedGame, OrderDraftKey, OrderDraftRecord, PersistenceError, ReportSourceRef,
 };
 use serde::{Deserialize, Serialize};
 
@@ -471,12 +471,16 @@ pub fn command_preview_report_import(
 }
 
 /// Parses and commits one report import after faction confirmation.
+///
+/// `imported_at` comes from the shell rather than from a clock here, the way `opened_at` and an
+/// order draft's `updated_at` already do, so both platforms write the same format.
 pub fn command_commit_report_import(
     database_path: &str,
     game_id: &str,
     confirmed_faction_id: &str,
     raw_report: &str,
     allow_overwrite: bool,
+    imported_at: &str,
 ) -> Result<ImportedTurnPreviewDto, String> {
     // Both shapes come off one parse, and that parse is the one the shell already made when it
     // showed the turn: the flat summary the import rules are decided against and that gets stored,
@@ -508,14 +512,17 @@ pub fn command_commit_report_import(
     let preview = preview_imported_turn(Path::new(database_path), &record)
         .map_err(|error| error.to_string())?;
     if allow_overwrite {
-        upsert_imported_turn(Path::new(database_path), &record)
+        upsert_imported_turn(Path::new(database_path), &record, imported_at)
             .map_err(|error| error.to_string())?;
     } else {
-        insert_imported_turn(Path::new(database_path), &record).map_err(|error| match error {
-            PersistenceError::DuplicateImportedTurn { .. } => {
-                "duplicate import exists and requires explicit overwrite confirmation".to_string()
+        insert_imported_turn(Path::new(database_path), &record, imported_at).map_err(|error| {
+            match error {
+                PersistenceError::DuplicateImportedTurn { .. } => {
+                    "duplicate import exists and requires explicit overwrite confirmation"
+                        .to_string()
+                }
+                _ => error.to_string(),
             }
-            _ => error.to_string(),
         })?;
     }
 
@@ -558,8 +565,12 @@ pub fn command_validate_orders(raw_orders: &str) -> OrderValidationResultDto {
 }
 
 /// Persists one order draft for the Tauri command surface.
+///
+/// # Errors
+///
+/// Returns an error when the game's database cannot be written.
 pub fn command_save_order_draft(
-    _database_path: &str,
+    database_path: &str,
     game_id: &str,
     faction_id: &str,
     turn_number: u32,
@@ -575,7 +586,7 @@ pub fn command_save_order_draft(
         order_text: order_text.to_string(),
         updated_at: updated_at.to_string(),
     };
-    upsert_order_draft(Path::new(_database_path), &record).map_err(|error| error.to_string())?;
+    upsert_order_draft(Path::new(database_path), &record).map_err(|error| error.to_string())?;
     Ok(OrderDraftRecordDto {
         key: OrderDraftKeyDto {
             game_id: record.key.game_id,
@@ -588,18 +599,22 @@ pub fn command_save_order_draft(
 }
 
 /// Loads one order draft for the Tauri command surface.
+///
+/// # Errors
+///
+/// Returns an error when the game's database cannot be read.
 pub fn command_load_order_draft(
-    _database_path: &str,
-    _game_id: &str,
-    _faction_id: &str,
-    _turn_number: u32,
+    database_path: &str,
+    game_id: &str,
+    faction_id: &str,
+    turn_number: u32,
 ) -> Result<Option<OrderDraftRecordDto>, String> {
     let loaded = load_order_draft(
-        Path::new(_database_path),
+        Path::new(database_path),
         &OrderDraftKey {
-            game_id: _game_id.to_string(),
-            faction_id: _faction_id.to_string(),
-            turn_number: _turn_number,
+            game_id: game_id.to_string(),
+            faction_id: faction_id.to_string(),
+            turn_number,
         },
     )
     .map_err(|error| error.to_string())?;
@@ -632,22 +647,38 @@ pub fn command_load_imported_turn(
     )
     .map_err(|error| error.to_string())?;
 
-    loaded
-        .map(|record| {
-            let parse_result =
-                serde_json::from_str::<ReportParseResult>(&record.parsed_payload_json)
-                    .map_err(|error| error.to_string())?;
-            Ok(ImportedTurnRecordDto {
-                key: OrderDraftKeyDto {
-                    game_id: record.key.game_id,
-                    faction_id: record.key.faction_id,
-                    turn_number: record.key.turn_number,
-                },
-                raw_report: record.raw_report,
-                parse_result: ReportParseResultDto::from(parse_result),
-            })
-        })
+    loaded.map(imported_turn_dto).transpose()
+}
+
+/// Loads the turn this game was last worked on, for the Tauri command surface.
+///
+/// `None` means the game holds no imports, which is what a game just created looks like.
+///
+/// # Errors
+///
+/// Returns an error when the database cannot be read, or when a stored payload will not parse.
+pub fn command_load_latest_imported_turn(
+    database_path: &str,
+    game_id: &str,
+) -> Result<Option<ImportedTurnRecordDto>, String> {
+    load_latest_imported_turn(Path::new(database_path), game_id)
+        .map_err(|error| error.to_string())?
+        .map(imported_turn_dto)
         .transpose()
+}
+
+fn imported_turn_dto(record: ImportedTurnRecord) -> Result<ImportedTurnRecordDto, String> {
+    let parse_result = serde_json::from_str::<ReportParseResult>(&record.parsed_payload_json)
+        .map_err(|error| error.to_string())?;
+    Ok(ImportedTurnRecordDto {
+        key: OrderDraftKeyDto {
+            game_id: record.key.game_id,
+            faction_id: record.key.faction_id,
+            turn_number: record.key.turn_number,
+        },
+        raw_report: record.raw_report,
+        parse_result: ReportParseResultDto::from(parse_result),
+    })
 }
 
 /// One region the faction saw in some earlier turn, as the map wants it.
@@ -792,6 +823,8 @@ mod test_support {
     use super::{GameManifestDto, GameMetadataDto};
 
     pub const OPENED_AT: &str = "2026-08-09T09:00:00Z";
+    /// The shell's clock, which is where an import's timestamp comes from.
+    pub const IMPORTED_AT: &str = "2026-08-09T10:00:00Z";
 
     pub fn manifest_dto(game_id: &str, game_name: &str) -> GameManifestDto {
         GameManifestDto {
@@ -810,7 +843,7 @@ mod test_support {
 
 #[cfg(test)]
 mod sightings_tests {
-    use super::test_support::manifest_dto;
+    use super::test_support::{manifest_dto, IMPORTED_AT};
     use super::*;
     use tempfile::tempdir;
 
@@ -832,8 +865,15 @@ mod sightings_tests {
         let directory = tempdir().expect("a temporary directory");
         let created = game(directory.path());
 
-        command_commit_report_import(&created.database_path, "faction-95", "95", TURN_71, true)
-            .expect("the import commits");
+        command_commit_report_import(
+            &created.database_path,
+            "faction-95",
+            "95",
+            TURN_71,
+            true,
+            IMPORTED_AT,
+        )
+        .expect("the import commits");
 
         let remembered = command_load_region_sightings(&created.database_path, "faction-95", "95")
             .expect("the sightings load");
@@ -872,7 +912,7 @@ mod sightings_tests {
 
 #[cfg(test)]
 mod tests {
-    use super::test_support::{manifest_dto, OPENED_AT};
+    use super::test_support::{manifest_dto, IMPORTED_AT, OPENED_AT};
     use super::*;
     use tempfile::tempdir;
 
@@ -950,11 +990,24 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
         assert!(!preview.duplicate_preview.exists);
         assert!(preview.parse_result.meets_minimum_import_threshold);
 
-        command_commit_report_import(&created.database_path, "faction-12", "17", report, false)
-            .expect("first import should commit");
-        let duplicate_error =
-            command_commit_report_import(&created.database_path, "faction-12", "17", report, false)
-                .expect_err("duplicate without overwrite should fail");
+        command_commit_report_import(
+            &created.database_path,
+            "faction-12",
+            "17",
+            report,
+            false,
+            IMPORTED_AT,
+        )
+        .expect("first import should commit");
+        let duplicate_error = command_commit_report_import(
+            &created.database_path,
+            "faction-12",
+            "17",
+            report,
+            false,
+            IMPORTED_AT,
+        )
+        .expect_err("duplicate without overwrite should fail");
         assert!(duplicate_error.contains("requires explicit overwrite confirmation"));
     }
 
@@ -1017,8 +1070,15 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
 * Guard Patrol (100), Crimson Tide (17), behind, 10 humans [HUMN].
 ";
 
-        command_commit_report_import(&created.database_path, "faction-12", "17", report, false)
-            .expect("commit import");
+        command_commit_report_import(
+            &created.database_path,
+            "faction-12",
+            "17",
+            report,
+            false,
+            IMPORTED_AT,
+        )
+        .expect("commit import");
 
         let sightings =
             load_region_sightings(Path::new(&created.database_path), "faction-12", "17")
@@ -1054,8 +1114,15 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
 * Guard Patrol (100), Crimson Tide (17), behind, 10 humans [HUMN].
 ";
 
-        command_commit_report_import(&created.database_path, "faction-12", "17", report, false)
-            .expect("import commit should succeed");
+        command_commit_report_import(
+            &created.database_path,
+            "faction-12",
+            "17",
+            report,
+            false,
+            IMPORTED_AT,
+        )
+        .expect("import commit should succeed");
 
         let loaded = command_load_imported_turn(&created.database_path, "faction-12", "17", 2)
             .expect("load imported turn should succeed")

@@ -113,6 +113,7 @@ only invite the player to hunt for the way in.
 
 ## Out of scope
 
-- Order-draft autosave and save-on-quit — issue #34.
+- Order-draft autosave and save-on-quit. Delivered by issue #34, which also found that a committed
+  turn was never read back either — see `docs/issue-34-persistence-contracts.md`.
 - Renaming, exporting or importing a game.
 - Letting a player point a game at their own server's rules and data pages.

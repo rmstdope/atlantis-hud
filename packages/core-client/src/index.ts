@@ -532,7 +532,8 @@ export interface CoreAdapter {
     gameId: string,
     confirmedFactionId: string,
     rawReport: string,
-    allowOverwrite: boolean
+    allowOverwrite: boolean,
+    importedAt: string
   ): Promise<unknown> | unknown;
   validateOrders(rawOrders: string): Promise<unknown> | unknown;
   planRoute(
@@ -553,6 +554,7 @@ export interface CoreAdapter {
     factionId: string,
     turnNumber: number
   ): Promise<unknown> | unknown;
+  loadLatestImportedTurn(databasePath: string, gameId: string): Promise<unknown> | unknown;
   loadOrderDraft(
     databasePath: string,
     gameId: string,
@@ -600,12 +602,20 @@ export interface CoreClient {
     confirmedFactionId: string,
     rawReport: string
   ): Promise<ReportImportPreview>;
+  /**
+   * Stores a turn in the open game, and remembers the regions it describes.
+   *
+   * `importedAt` is the caller's clock, in ISO-8601, the way `openGame` and `saveOrderDraft`
+   * already take one. The persistence layer reads no clock of its own, so a turn and an order
+   * draft can be compared to work out which the player touched last.
+   */
   commitReportImport(
     databasePath: string,
     gameId: string,
     confirmedFactionId: string,
     rawReport: string,
-    allowOverwrite: boolean
+    allowOverwrite: boolean,
+    importedAt: string
   ): Promise<ImportedTurnPreview>;
   validateOrders(rawOrders: string): Promise<OrderValidationResult>;
   /**
@@ -643,6 +653,14 @@ export interface CoreClient {
     factionId: string,
     turnNumber: number
   ): Promise<ImportedTurnRecord | null>;
+  /**
+   * The turn this game was last worked on, or `null` when it holds no imports.
+   *
+   * "Worked on" is the later of when a turn was imported and when its orders were last edited, so
+   * a player who imported a second faction and then spent the evening on the first one's orders
+   * comes back to the first. `null` is the ordinary state of a game just created.
+   */
+  loadLatestImportedTurn(databasePath: string, gameId: string): Promise<ImportedTurnRecord | null>;
   loadOrderDraft(
     databasePath: string,
     gameId: string,
@@ -679,7 +697,8 @@ export interface WasmBindings {
     gameId: string,
     confirmedFactionId: string,
     rawReport: string,
-    allowOverwrite: boolean
+    allowOverwrite: boolean,
+    importedAt: string
   ): unknown;
   validate_orders_state(rawOrders: string): unknown;
   plan_route_state(
@@ -700,6 +719,7 @@ export interface WasmBindings {
     factionId: string,
     turnNumber: number
   ): unknown;
+  load_latest_imported_turn_state(databasePath: string, gameId: string): unknown;
   load_order_draft_state(
     databasePath: string,
     gameId: string,
@@ -1171,14 +1191,16 @@ export function createCoreClient(adapter: CoreAdapter): CoreClient {
       gameId: string,
       confirmedFactionId: string,
       rawReport: string,
-      allowOverwrite: boolean
+      allowOverwrite: boolean,
+      importedAt: string
     ) {
       const value = await adapter.commitReportImport(
         databasePath,
         gameId,
         confirmedFactionId,
         rawReport,
-        allowOverwrite
+        allowOverwrite,
+        importedAt
       );
       return normalizeImportedTurnPreview(value);
     },
@@ -1189,6 +1211,15 @@ export function createCoreClient(adapter: CoreAdapter): CoreClient {
     async loadImportedTurn(databasePath: string, gameId: string, factionId: string, turnNumber: number) {
       const value = await adapter.loadImportedTurn(databasePath, gameId, factionId, turnNumber);
       if (value === null) {
+        return null;
+      }
+      return normalizeImportedTurnRecord(value);
+    },
+    async loadLatestImportedTurn(databasePath: string, gameId: string) {
+      const value = await adapter.loadLatestImportedTurn(databasePath, gameId);
+      // Undefined as well as null: serde_wasm_bindgen can emit either for Rust's None, and a game
+      // with nothing to reopen must not read as a payload that failed to normalize.
+      if (value === null || value === undefined) {
         return null;
       }
       return normalizeImportedTurnRecord(value);
@@ -1277,14 +1308,16 @@ export function createWasmAdapter(bindings: WasmBindings): CoreAdapter {
       gameId: string,
       confirmedFactionId: string,
       rawReport: string,
-      allowOverwrite: boolean
+      allowOverwrite: boolean,
+      importedAt: string
     ) {
       return bindings.commit_report_import_state(
         databasePath,
         gameId,
         confirmedFactionId,
         rawReport,
-        allowOverwrite
+        allowOverwrite,
+        importedAt
       );
     },
     validateOrders(rawOrders: string) {
@@ -1292,6 +1325,9 @@ export function createWasmAdapter(bindings: WasmBindings): CoreAdapter {
     },
     loadImportedTurn(databasePath: string, gameId: string, factionId: string, turnNumber: number) {
       return bindings.load_imported_turn_state(databasePath, gameId, factionId, turnNumber);
+    },
+    loadLatestImportedTurn(databasePath: string, gameId: string) {
+      return bindings.load_latest_imported_turn_state(databasePath, gameId);
     },
     loadOrderDraft(databasePath: string, gameId: string, factionId: string, turnNumber: number) {
       return bindings.load_order_draft_state(databasePath, gameId, factionId, turnNumber);
@@ -1379,14 +1415,16 @@ export function createTauriAdapter(invoke: TauriInvoke): CoreAdapter {
       gameId: string,
       confirmedFactionId: string,
       rawReport: string,
-      allowOverwrite: boolean
+      allowOverwrite: boolean,
+      importedAt: string
     ) {
       return invoke<ImportedTurnPreviewWireShape>("commit_report_import", {
         database_path: databasePath,
         game_id: gameId,
         confirmed_faction_id: confirmedFactionId,
         raw_report: rawReport,
-        allow_overwrite: allowOverwrite
+        allow_overwrite: allowOverwrite,
+        imported_at: importedAt
       });
     },
     validateOrders(rawOrders: string) {
@@ -1400,6 +1438,12 @@ export function createTauriAdapter(invoke: TauriInvoke): CoreAdapter {
         game_id: gameId,
         faction_id: factionId,
         turn_number: turnNumber
+      });
+    },
+    loadLatestImportedTurn(databasePath: string, gameId: string) {
+      return invoke<ImportedTurnRecordWireShape | null>("load_latest_imported_turn", {
+        database_path: databasePath,
+        game_id: gameId
       });
     },
     loadOrderDraft(databasePath: string, gameId: string, factionId: string, turnNumber: number) {

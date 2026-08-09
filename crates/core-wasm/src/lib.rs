@@ -11,9 +11,10 @@ use atlantis_hud_core::{
 #[cfg(not(target_arch = "wasm32"))]
 use atlantis_hud_core_persistence::{
     create_game, delete_game, insert_imported_turn, list_games, load_imported_turn,
-    load_order_draft, open_game, preview_imported_turn, upsert_imported_turn, upsert_order_draft,
-    GameManifest, GameMetadata, ImportedTurnKey, ImportedTurnPreview, ImportedTurnRecord,
-    OpenedGame, OrderDraftKey, OrderDraftRecord, PersistenceError, ReportSourceRef,
+    load_latest_imported_turn, load_order_draft, open_game, preview_imported_turn,
+    upsert_imported_turn, upsert_order_draft, GameManifest, GameMetadata, ImportedTurnKey,
+    ImportedTurnPreview, ImportedTurnRecord, OpenedGame, OrderDraftKey, OrderDraftRecord,
+    PersistenceError, ReportSourceRef,
 };
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
@@ -591,6 +592,7 @@ pub fn commit_report_import_state(
     confirmed_faction_id: String,
     raw_report: String,
     allow_overwrite: bool,
+    imported_at: String,
 ) -> Result<JsValue, JsValue> {
     let parsed = parse_report(&raw_report);
     if !parsed.meets_minimum_import_threshold() {
@@ -630,10 +632,10 @@ pub fn commit_report_import_state(
     let preview = preview_imported_turn(Path::new(&database_path), &candidate)
         .map_err(|error| JsValue::from_str(&error.to_string()))?;
     if allow_overwrite {
-        upsert_imported_turn(Path::new(&database_path), &candidate)
+        upsert_imported_turn(Path::new(&database_path), &candidate, &imported_at)
             .map_err(|error| JsValue::from_str(&error.to_string()))?;
     } else {
-        insert_imported_turn(Path::new(&database_path), &candidate).map_err(
+        insert_imported_turn(Path::new(&database_path), &candidate, &imported_at).map_err(
             |error| match error {
                 PersistenceError::DuplicateImportedTurn { .. } => JsValue::from_str(
                     "duplicate import exists and requires explicit overwrite confirmation",
@@ -665,24 +667,37 @@ pub fn load_imported_turn_state(
     )
     .map_err(|error| JsValue::from_str(&error.to_string()))?;
 
-    let dto = loaded
-        .map(|record| -> Result<ImportedTurnRecordDto, JsValue> {
-            let parse_result =
-                serde_json::from_str::<ReportParseResult>(&record.parsed_payload_json)
-                    .map_err(|error| JsValue::from_str(&error.to_string()))?;
-            Ok(ImportedTurnRecordDto {
-                key: ImportedTurnKeyDto {
-                    game_id: record.key.game_id,
-                    faction_id: record.key.faction_id,
-                    turn_number: record.key.turn_number,
-                },
-                raw_report: record.raw_report,
-                parse_result: ReportParseResultDto::from(parse_result),
-            })
-        })
-        .transpose()?;
+    let dto = loaded.map(imported_turn_dto).transpose()?;
 
     to_js(&dto)
+}
+
+/// Loads the turn this game was last worked on.
+#[wasm_bindgen]
+#[cfg(not(target_arch = "wasm32"))]
+pub fn load_latest_imported_turn_state(
+    database_path: String,
+    game_id: String,
+) -> Result<JsValue, JsValue> {
+    let loaded = load_latest_imported_turn(Path::new(&database_path), &game_id)
+        .map_err(|error| JsValue::from_str(&error.to_string()))?;
+
+    to_js(&loaded.map(imported_turn_dto).transpose()?)
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn imported_turn_dto(record: ImportedTurnRecord) -> Result<ImportedTurnRecordDto, JsValue> {
+    let parse_result = serde_json::from_str::<ReportParseResult>(&record.parsed_payload_json)
+        .map_err(|error| JsValue::from_str(&error.to_string()))?;
+    Ok(ImportedTurnRecordDto {
+        key: ImportedTurnKeyDto {
+            game_id: record.key.game_id,
+            faction_id: record.key.faction_id,
+            turn_number: record.key.turn_number,
+        },
+        raw_report: record.raw_report,
+        parse_result: ReportParseResultDto::from(parse_result),
+    })
 }
 
 /// Saves one order draft, keyed by game, faction and turn.
@@ -798,6 +813,7 @@ pub fn commit_report_import_state(
     _confirmed_faction_id: String,
     _raw_report: String,
     _allow_overwrite: bool,
+    _imported_at: String,
 ) -> Result<JsValue, JsValue> {
     Err(JsValue::from_str(
         "game persistence is not linked in this wasm32 build",
@@ -812,6 +828,18 @@ pub fn load_imported_turn_state(
     _game_id: String,
     _faction_id: String,
     _turn_number: u32,
+) -> Result<JsValue, JsValue> {
+    Err(JsValue::from_str(
+        "game persistence is not linked in this wasm32 build",
+    ))
+}
+
+/// Loads the turn this game was last worked on.
+#[wasm_bindgen]
+#[cfg(target_arch = "wasm32")]
+pub fn load_latest_imported_turn_state(
+    _database_path: String,
+    _game_id: String,
 ) -> Result<JsValue, JsValue> {
     Err(JsValue::from_str(
         "game persistence is not linked in this wasm32 build",

@@ -14,7 +14,13 @@ import { createWebCoreAdapter, loadCoreWasm } from "@atlantis/browser-core";
 import type { CoreAdapter, TauriInvoke } from "@atlantis/core-client";
 import { createTauriAdapter } from "@atlantis/core-client";
 
-function hasTauriRuntime(): boolean {
+/**
+ * Whether this build is running inside the Tauri shell rather than a plain browser.
+ *
+ * Exported because the quit guard asks the same question: there is a native window to hold open
+ * only when there is a native runtime, and two copies of this check would eventually disagree.
+ */
+export function hasTauriRuntime(): boolean {
   return (
     typeof window !== "undefined" &&
     Boolean((window as typeof window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__)

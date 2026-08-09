@@ -167,6 +167,9 @@ describe("core client adapter contract parity", () => {
       load_imported_turn_state() {
         return importedTurnPayload;
       },
+      load_latest_imported_turn_state() {
+        return importedTurnPayload;
+      },
       load_order_draft_state() {
         return orderDraftPayload;
       },
@@ -302,7 +305,9 @@ describe("core client adapter contract parity", () => {
           updatedAt: "2026-08-07T12:00:00Z"
         } as T);
       }
-      if (command === "load_imported_turn") {
+      // Both turn loads answer with the same record; only the question differs. The wasm side
+      // returns the snake_case payload above, so this is where the casing must be bridged.
+      if (command === "load_imported_turn" || command === "load_latest_imported_turn") {
         return Promise.resolve({
           key: {
             gameId: "faction-12",
@@ -393,9 +398,23 @@ describe("core client adapter contract parity", () => {
       await tauriClient.previewReportImport("/tmp/campaign.atlantis-game.sqlite", "faction-12", "17", "same")
     );
     await expect(
-      wasmClient.commitReportImport("/tmp/campaign.atlantis-game.sqlite", "faction-12", "17", "same", true)
+      wasmClient.commitReportImport(
+        "/tmp/campaign.atlantis-game.sqlite",
+        "faction-12",
+        "17",
+        "same",
+        true,
+        "2026-08-09T18:00:00Z"
+      )
     ).resolves.toEqual(
-      await tauriClient.commitReportImport("/tmp/campaign.atlantis-game.sqlite", "faction-12", "17", "same", true)
+      await tauriClient.commitReportImport(
+        "/tmp/campaign.atlantis-game.sqlite",
+        "faction-12",
+        "17",
+        "same",
+        true,
+        "2026-08-09T18:00:00Z"
+      )
     );
     await expect(wasmClient.validateOrders("bad input")).resolves.toEqual(await tauriClient.validateOrders("bad input"));
     await expect(
@@ -427,5 +446,15 @@ describe("core client adapter contract parity", () => {
     ).resolves.toEqual(
       await tauriClient.loadImportedTurn("/tmp/campaign.atlantis-game.sqlite", "faction-12", "17", 12)
     );
+    // The turn a game reopens on must be the same record on both transports. It decides what the
+    // player sees on launch, so a divergence here is two applications rather than one.
+    const wasmLatest = await wasmClient.loadLatestImportedTurn(
+      "/tmp/campaign.atlantis-game.sqlite",
+      "faction-12"
+    );
+    expect(wasmLatest).toEqual(
+      await tauriClient.loadLatestImportedTurn("/tmp/campaign.atlantis-game.sqlite", "faction-12")
+    );
+    expect(wasmLatest?.key).toEqual({ gameId: "faction-12", factionId: "17", turnNumber: 12 });
   });
 });

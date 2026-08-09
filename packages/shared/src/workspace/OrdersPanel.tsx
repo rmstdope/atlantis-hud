@@ -1,6 +1,7 @@
 import type { ReportUnit } from "@atlantis/core-client";
 import { useEffect, useState } from "react";
 import type { HexNode } from "../hexMapModel";
+import { readableTime, type SaveState } from "../orderDraft";
 import { readUnitOrders } from "../ordersDocument";
 import { CollapsiblePanel } from "./CollapsiblePanel";
 
@@ -20,7 +21,7 @@ type OrdersPanelProps = {
   onChange: (unitId: string, orders: string) => void;
   errorCount: number;
   warningCount: number;
-  savedAt: string | null;
+  save: SaveState;
 };
 
 function lockFor(unit: ReportUnit | null, hex: HexNode | null, block: string | null): Lock | null {
@@ -53,7 +54,7 @@ export function OrdersPanel({
   onChange,
   errorCount,
   warningCount,
-  savedAt
+  save
 }: OrdersPanelProps) {
   const unitId = unit?.unitId ?? null;
   const block = unitId === null ? null : readUnitOrders(document, unitId);
@@ -102,12 +103,33 @@ export function OrdersPanel({
               {warningCount} warning{warningCount === 1 ? "" : "s"}
             </span>
             <span className="flex-1" />
-            <span>{savedAt ? `saved ${savedAt}` : "not saved yet"}</span>
+            <SaveNotice save={save} />
           </p>
         </div>
       )}
     </CollapsiblePanel>
   );
+}
+
+/**
+ * What the document's last dealings with storage were.
+ *
+ * A failure is coloured and left standing rather than fading back to "unsaved changes": the player
+ * needs to know their evening is not on disk, and needs to know why.
+ */
+function SaveNotice({ save }: { save: SaveState }) {
+  switch (save.kind) {
+    case "clean":
+      return <span>not saved yet</span>;
+    case "dirty":
+      return <span className="text-warn">unsaved changes</span>;
+    case "saving":
+      return <span>saving…</span>;
+    case "saved":
+      return <span>saved {readableTime(save.at)}</span>;
+    case "failed":
+      return <span className="text-danger">could not save: {save.reason}</span>;
+  }
 }
 
 function LockNotice({ lock, ownFaction }: { lock: Lock; ownFaction: string }) {

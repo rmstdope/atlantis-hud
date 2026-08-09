@@ -17,6 +17,7 @@
 
 import type { CoreClient, OpenedGame, ParsedReport, RememberedRegion } from "@atlantis/core-client";
 import type { StoredRegion } from "./hexMapModel";
+import { documentFor, draftKeyFor } from "./orderDraft";
 
 /**
  * Turns what the core remembers into what the map wants.
@@ -61,7 +62,8 @@ export async function rememberTurn(
   client: CoreClient,
   game: OpenedGame,
   parsed: ParsedReport,
-  rawReport: string
+  rawReport: string,
+  now: string
 ): Promise<MemoryOutcome> {
   const factionId = parsed.header.factionId;
   if (!factionId) {
@@ -76,7 +78,7 @@ export async function rememberTurn(
   try {
     // Overwriting is right here: re-importing the same turn should refresh what is remembered
     // rather than refuse, and the player has already chosen this file.
-    await client.commitReportImport(game.databasePath, gameId, factionId, rawReport, true);
+    await client.commitReportImport(game.databasePath, gameId, factionId, rawReport, true, now);
 
     const remembered = await client.loadRegionSightings(game.databasePath, gameId, factionId);
 
@@ -88,4 +90,75 @@ export async function rememberTurn(
       warning: `the turn could not be remembered: ${detail}`
     };
   }
+}
+
+/** Everything a reopened game needs to put back on screen. */
+export type RestoredTurn = {
+  parsed: ParsedReport;
+  rawReport: string;
+  factionId: string;
+  turnNumber: number;
+  remembered: RememberedRegion[];
+  /** The saved draft if there is one, else the stored report's own orders template. */
+  orders: string;
+  /** When those orders were written, as stored, or `null` when they are the template. */
+  ordersSavedAt: string | null;
+  warning: string | null;
+};
+
+/**
+ * Puts back the turn the player was last working on.
+ *
+ * Every part of this was already on disk and none of it was ever read back: opening a game showed
+ * an empty workspace over a database holding the turn, the accumulated map and, once #34 wired it
+ * up, the orders. That is what issue #34 means by "reloaded again when the game is opened".
+ *
+ * `parse` is injected rather than chosen here, because whether a report can be parsed *classified*
+ * depends on a ruleset this module has no business fetching - and parsing twice to find out is the
+ * redundancy issue #28 exists to remove.
+ *
+ * Nothing is committed. The turn is already stored, and re-committing would move its `updated_at`,
+ * which would make merely opening a game look exactly like working in it - and the ranking that
+ * decides which turn reopens is built on that column.
+ *
+ * `null` means the game holds no imports, which is a game just created rather than a failure.
+ */
+export async function restoreLatestTurn(
+  client: CoreClient,
+  game: OpenedGame,
+  parse: (rawReport: string) => Promise<ParsedReport>
+): Promise<RestoredTurn | null> {
+  const gameId = game.manifest.metadata.gameId;
+  const stored = await client.loadLatestImportedTurn(game.databasePath, gameId);
+  if (stored === null) {
+    return null;
+  }
+
+  const { factionId, turnNumber } = stored.key;
+  const parsed = await parse(stored.rawReport);
+
+  // The map and the orders are read separately from the turn, and either can fail without making
+  // the turn itself unusable. A warning says which; the report stays on screen either way.
+  let remembered: RememberedRegion[] = [];
+  let warning: string | null = null;
+  try {
+    remembered = await client.loadRegionSightings(game.databasePath, gameId, factionId);
+  } catch (error: unknown) {
+    const detail = error instanceof Error ? error.message : String(error);
+    warning = `the remembered map could not be read: ${detail}`;
+  }
+
+  const template = parsed.ordersTemplate?.text ?? "";
+  const chosen = await documentFor(client, game, draftKeyFor(parsed), template);
+
+  return {
+    parsed,
+    rawReport: stored.rawReport,
+    factionId,
+    turnNumber,
+    remembered,
+    orders: chosen.text,
+    ordersSavedAt: chosen.savedAt,
+    warning: warning ?? chosen.warning
+  };
 }

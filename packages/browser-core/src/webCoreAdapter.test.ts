@@ -75,6 +75,8 @@ function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
 const REPORT = "TURN: 12 Spring\nFACTION: 17 | Crimson Tide";
 const DB = "idb://game";
 const NOW = "2026-08-01T09:00:00Z";
+/** The clock is the caller's, here as on the desktop, so a test states it rather than mocks one. */
+const IMPORTED_AT = "2026-08-01T10:00:00Z";
 
 function manifest(gameId: string, gameName: string): GameManifest {
   return {
@@ -108,7 +110,7 @@ describe("web core adapter", () => {
 
   it("detects a changed re-import of the same turn", async () => {
     const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
-    await adapter.commitReportImport(DB, "p", "17", REPORT, false);
+    await adapter.commitReportImport(DB, "p", "17", REPORT, false, IMPORTED_AT);
 
     const preview = await adapter.previewReportImport(DB, "p", "17", `${REPORT}\nextra`);
 
@@ -119,19 +121,19 @@ describe("web core adapter", () => {
 
   it("refuses to overwrite an existing turn without confirmation", async () => {
     const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
-    await adapter.commitReportImport(DB, "p", "17", REPORT, false);
+    await adapter.commitReportImport(DB, "p", "17", REPORT, false, IMPORTED_AT);
 
-    await expect(adapter.commitReportImport(DB, "p", "17", REPORT, false)).rejects.toThrow(
+    await expect(adapter.commitReportImport(DB, "p", "17", REPORT, false, IMPORTED_AT)).rejects.toThrow(
       /requires explicit overwrite confirmation/u
     );
   });
 
   it("overwrites when confirmation is given", async () => {
     const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
-    await adapter.commitReportImport(DB, "p", "17", REPORT, false);
+    await adapter.commitReportImport(DB, "p", "17", REPORT, false, IMPORTED_AT);
 
     await expect(
-      adapter.commitReportImport(DB, "p", "17", `${REPORT}\nextra`, true)
+      adapter.commitReportImport(DB, "p", "17", `${REPORT}\nextra`, true, IMPORTED_AT)
     ).resolves.toMatchObject({ exists: true, rawChanged: true });
 
     const loaded = await adapter.loadImportedTurn(DB, "p", "17", 12);
@@ -141,7 +143,7 @@ describe("web core adapter", () => {
   it("refuses an import the core rejects, using the core's own wording", async () => {
     const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
 
-    await expect(adapter.commitReportImport(DB, "p", "17", "no header", false)).rejects.toThrow(
+    await expect(adapter.commitReportImport(DB, "p", "17", "no header", false, IMPORTED_AT)).rejects.toThrow(
       /did not meet minimum import threshold/u
     );
   });
@@ -149,7 +151,7 @@ describe("web core adapter", () => {
   it("refuses an import under a faction the report does not contain", async () => {
     const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
 
-    await expect(adapter.commitReportImport(DB, "p", "99", REPORT, false)).rejects.toThrow(
+    await expect(adapter.commitReportImport(DB, "p", "99", REPORT, false, IMPORTED_AT)).rejects.toThrow(
       /confirmed faction does not exist/u
     );
   });
@@ -171,7 +173,7 @@ describe("web core adapter", () => {
     });
     const adapter = createWebCoreAdapter(wasm, createMemoryWebStore());
 
-    await expect(adapter.commitReportImport(DB, "p", "17", REPORT, false)).resolves.toMatchObject({
+    await expect(adapter.commitReportImport(DB, "p", "17", REPORT, false, IMPORTED_AT)).resolves.toMatchObject({
       exists: false
     });
   });
@@ -188,13 +190,13 @@ describe("web core adapter", () => {
     const store = createMemoryWebStore();
     const adapter = createWebCoreAdapter(fakeWasm(), store);
 
-    await adapter.commitReportImport("idb://campaign-a", "p", "17", REPORT, false);
+    await adapter.commitReportImport("idb://campaign-a", "p", "17", REPORT, false, IMPORTED_AT);
 
     // Same gameId, different game: must not be seen as a duplicate, and must not collide.
     const preview = await adapter.previewReportImport("idb://campaign-b", "p", "17", REPORT);
     expect(preview).toMatchObject({ duplicatePreview: { exists: false } });
 
-    await adapter.commitReportImport("idb://campaign-b", "p", "17", `${REPORT}\nextra`, false);
+    await adapter.commitReportImport("idb://campaign-b", "p", "17", `${REPORT}\nextra`, false, IMPORTED_AT);
 
     const a = await adapter.loadImportedTurn("idb://campaign-a", "p", "17", 12);
     const b = await adapter.loadImportedTurn("idb://campaign-b", "p", "17", 12);
@@ -218,7 +220,7 @@ describe("web core adapter", () => {
 
   it("rehydrates a stored parse result through the core, not in TypeScript", async () => {
     const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
-    await adapter.commitReportImport(DB, "p", "17", REPORT, false);
+    await adapter.commitReportImport(DB, "p", "17", REPORT, false, IMPORTED_AT);
 
     const loaded = await adapter.loadImportedTurn(DB, "p", "17", 12);
 
@@ -231,6 +233,48 @@ describe("web core adapter", () => {
   it("returns null for a turn that was never imported", async () => {
     const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
     expect(await adapter.loadImportedTurn(DB, "p", "17", 99)).toBeNull();
+  });
+
+  it("has no latest turn in a game that holds no imports", async () => {
+    const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
+
+    // A game just created, not a failure. The workspace opens empty rather than refusing.
+    expect(await adapter.loadLatestImportedTurn(DB, "p")).toBeNull();
+  });
+
+  /**
+   * The browser answers "which turn was I last in" the same way the desktop does.
+   *
+   * SQLite gets there with a LEFT JOIN; IndexedDB has none, so the adapter matches the two stores
+   * itself. What must not differ is the rule: attention, not arrival.
+   */
+  it("reopens on the turn last edited rather than the one last imported", async () => {
+    const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
+    const OTHER = "TURN: 12 Spring\nFACTION: 18 | Azure Wake";
+
+    await adapter.commitReportImport(DB, "p", "17", REPORT, false, "2026-08-09T18:00:00Z");
+    await adapter.commitReportImport(DB, "p", "18", OTHER, false, "2026-08-09T19:00:00Z");
+
+    // With nothing written, the later import is the answer.
+    expect(await adapter.loadLatestImportedTurn(DB, "p")).toMatchObject({
+      key: { gameId: "p", factionId: "18", turnNumber: 12 }
+    });
+
+    // An evening spent on the first faction's orders moves it back in front.
+    await adapter.saveOrderDraft(DB, "p", "17", 12, "@work", "2026-08-09T22:00:00Z");
+
+    expect(await adapter.loadLatestImportedTurn(DB, "p")).toMatchObject({
+      key: { gameId: "p", factionId: "17", turnNumber: 12 },
+      rawReport: REPORT
+    });
+  });
+
+  it("never reopens one game on another game's turn", async () => {
+    const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
+
+    await adapter.commitReportImport("idb://campaign-a", "p", "17", REPORT, false, IMPORTED_AT);
+
+    expect(await adapter.loadLatestImportedTurn("idb://campaign-b", "p")).toBeNull();
   });
 
   it("round trips an order draft", async () => {
@@ -310,7 +354,7 @@ describe("managing games", () => {
     const alpha = (await adapter.createGame(manifest("alpha", "Alpha"))) as { databasePath: string };
     const beta = (await adapter.createGame(manifest("beta", "Beta"))) as { databasePath: string };
 
-    await adapter.commitReportImport(alpha.databasePath, "alpha", "17", REPORT, false);
+    await adapter.commitReportImport(alpha.databasePath, "alpha", "17", REPORT, false, IMPORTED_AT);
 
     expect(await adapter.loadImportedTurn(beta.databasePath, "beta", "17", 12)).toBeNull();
 
@@ -394,7 +438,7 @@ describe("remembering the map across turns", () => {
     );
     const adapter = createWebCoreAdapter(wasm, createMemoryWebStore());
 
-    await adapter.commitReportImport("/db", "p", "12", "TURN: 12\nFACTION: 12", true);
+    await adapter.commitReportImport("/db", "p", "12", "TURN: 12\nFACTION: 12", true, IMPORTED_AT);
     const remembered = await adapter.loadRegionSightings("/db", "p", "12");
 
     expect(remembered).toEqual([
@@ -422,7 +466,7 @@ describe("remembering the map across turns", () => {
     });
     const adapter = createWebCoreAdapter(wasm, createMemoryWebStore());
 
-    await adapter.commitReportImport("/db", "p", "12", "TURN: 12\nFACTION: 12", true);
+    await adapter.commitReportImport("/db", "p", "12", "TURN: 12\nFACTION: 12", true, IMPORTED_AT);
 
     expect(fullParses).toBe(0);
     await expect(adapter.loadRegionSightings("/db", "p", "12")).resolves.toHaveLength(1);
@@ -456,9 +500,9 @@ describe("remembering the map across turns", () => {
       store
     );
 
-    await adapter.commitReportImport("/db", "p", "12", "TURN: 12\nFACTION: 12", true);
+    await adapter.commitReportImport("/db", "p", "12", "TURN: 12\nFACTION: 12", true, IMPORTED_AT);
     terrain = "mountain";
-    await adapter.commitReportImport("/db", "p", "12", "TURN: 12\nFACTION: 12", true);
+    await adapter.commitReportImport("/db", "p", "12", "TURN: 12\nFACTION: 12", true, IMPORTED_AT);
 
     const remembered = (await adapter.loadRegionSightings("/db", "p", "12")) as Array<{
       region: { terrain: string };

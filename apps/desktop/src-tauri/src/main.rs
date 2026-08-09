@@ -172,6 +172,7 @@ fn commit_report_import(
     confirmed_faction_id: String,
     raw_report: String,
     allow_overwrite: bool,
+    imported_at: String,
 ) -> Result<ImportedTurnPreviewDto, String> {
     command_commit_report_import(
         &database_path,
@@ -179,6 +180,7 @@ fn commit_report_import(
         &confirmed_faction_id,
         &raw_report,
         allow_overwrite,
+        &imported_at,
     )
 }
 
@@ -194,6 +196,18 @@ fn load_imported_turn(
     turn_number: u32,
 ) -> Result<Option<ImportedTurnRecordDto>, String> {
     command_load_imported_turn(&database_path, &game_id, &faction_id, turn_number)
+}
+
+#[cfg(all(
+    any(target_os = "macos", target_os = "windows"),
+    feature = "desktop-runtime"
+))]
+#[tauri::command(rename_all = "snake_case")]
+fn load_latest_imported_turn(
+    database_path: String,
+    game_id: String,
+) -> Result<Option<ImportedTurnRecordDto>, String> {
+    atlantis_hud_core_tauri::command_load_latest_imported_turn(&database_path, &game_id)
 }
 
 #[cfg(all(
@@ -259,6 +273,7 @@ fn main() {
             preview_report_import,
             commit_report_import,
             load_imported_turn,
+            load_latest_imported_turn,
             validate_orders,
             save_order_draft,
             load_order_draft,

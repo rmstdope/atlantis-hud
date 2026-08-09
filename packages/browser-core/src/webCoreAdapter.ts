@@ -8,7 +8,7 @@
  */
 
 import type { CoreAdapter, GameManifest } from "@atlantis/core-client";
-import type { StoredTurnSnapshot, WebStore } from "./webStore";
+import type { StoredTurn, StoredTurnSnapshot, WebStore } from "./webStore";
 import { createWebStore } from "./webStore";
 
 /** The subset of the generated wasm module this adapter needs. */
@@ -102,14 +102,8 @@ export function createWebCoreAdapter(
     };
   };
 
-  const diffAgainstStored = async (
-    databasePath: string,
-    gameId: string,
-    factionId: string,
-    turnNumber: number,
-    candidate: StoredTurnSnapshot
-  ): Promise<ImportedTurnDiff> => {
-    const stored = await store.getImportedTurn(databasePath, gameId, factionId, turnNumber);
+  /** Whether a candidate changes what is already stored, given whatever is already stored. */
+  const diffAgainst = (stored: StoredTurn | null, candidate: StoredTurnSnapshot) => {
     const existing: StoredTurnSnapshot | null = stored
       ? {
           rawReport: stored.rawReport,
@@ -120,6 +114,18 @@ export function createWebCoreAdapter(
 
     return wasm.diff_imported_turn_state(existing, candidate) as ImportedTurnDiff;
   };
+
+  const diffAgainstStored = async (
+    databasePath: string,
+    gameId: string,
+    factionId: string,
+    turnNumber: number,
+    candidate: StoredTurnSnapshot
+  ): Promise<ImportedTurnDiff> =>
+    diffAgainst(
+      await store.getImportedTurn(databasePath, gameId, factionId, turnNumber),
+      candidate
+    );
 
   return {
     getEngineInfo() {
@@ -251,17 +257,22 @@ export function createWebCoreAdapter(
       gameId: string,
       confirmedFactionId: string,
       rawReport: string,
-      allowOverwrite: boolean
+      allowOverwrite: boolean,
+      importedAt: string
     ) {
       const prepared = prepare(rawReport, confirmedFactionId);
       const turnNumber = requireAdmissible(prepared);
-      const diff = await diffAgainstStored(
+
+      // Read once and used twice: the diff needs the stored payloads, and the write below needs
+      // the timestamp on the same record. Asking storage for it a second time would be the kind of
+      // repeated work issue #28 spent a whole PR taking back out of this path.
+      const existing = await store.getImportedTurn(
         databasePath,
         gameId,
         confirmedFactionId,
-        turnNumber,
-        prepared.candidate
+        turnNumber
       );
+      const diff = diffAgainst(existing, prepared.candidate);
 
       if (diff.exists && !allowOverwrite) {
         throw new Error(
@@ -270,11 +281,18 @@ export function createWebCoreAdapter(
         );
       }
 
+      // `importedAt` lands on the record for the same reason the desktop writes it into SQLite:
+      // ranking a game's turns against its order drafts needs one clock and one format, and the
+      // browser has no more business inventing either than the Rust core does.
       await store.putImportedTurn({
         databasePath,
         gameId,
         factionId: confirmedFactionId,
         turnNumber,
+        // Re-importing moves `updatedAt` and leaves `importedAt`: when a turn first arrived does
+        // not change because it arrived again. The desktop's UPSERT says the same thing in SQL.
+        importedAt: existing?.importedAt ?? importedAt,
+        updatedAt: importedAt,
         ...prepared.candidate
       });
 
@@ -314,6 +332,52 @@ export function createWebCoreAdapter(
         key: { gameId, factionId, turnNumber },
         rawReport: stored.rawReport,
         parseResult: wasm.hydrate_parse_result_state(stored.parsedPayloadJson)
+      };
+    },
+
+    /**
+     * The turn this game was last worked on.
+     *
+     * The desktop asks SQLite for this with a LEFT JOIN; IndexedDB has no joins, so the two stores
+     * are read and matched here. The ranking rule is the same on both: the later of when a turn was
+     * imported and when its orders were last edited, ties broken by turn number.
+     */
+    async loadLatestImportedTurn(databasePath: string, gameId: string) {
+      const [turns, drafts] = await Promise.all([
+        store.getImportedTurns(databasePath, gameId),
+        store.getOrderDrafts(databasePath, gameId)
+      ]);
+
+      const editedAt = new Map(
+        drafts.map((draft) => [`${draft.factionId}:${draft.turnNumber}`, draft.updatedAt])
+      );
+      // A record written before turns carried a time has none. It sorts last rather than being
+      // dropped: one unrankable turn must not turn into a game that reopens on nothing.
+      const touchedAt = (turn: StoredTurn) => {
+        const edited = editedAt.get(`${turn.factionId}:${turn.turnNumber}`) ?? "";
+        const imported = turn.updatedAt ?? "";
+        return edited > imported ? edited : imported;
+      };
+
+      const latest = turns.reduce<StoredTurn | null>((best, turn) => {
+        if (best === null) {
+          return turn;
+        }
+        const [a, b] = [touchedAt(turn), touchedAt(best)];
+        if (a !== b) {
+          return a > b ? turn : best;
+        }
+        return turn.turnNumber > best.turnNumber ? turn : best;
+      }, null);
+
+      if (!latest) {
+        return null;
+      }
+
+      return {
+        key: { gameId, factionId: latest.factionId, turnNumber: latest.turnNumber },
+        rawReport: latest.rawReport,
+        parseResult: wasm.hydrate_parse_result_state(latest.parsedPayloadJson)
       };
     },
 
