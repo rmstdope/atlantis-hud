@@ -239,32 +239,6 @@ export function AppShell({
     setGames(await client.listGames());
   }, [client]);
 
-  // On startup, reopen the game the player was last in. No games is the ordinary first run, and
-  // the gate below answers it.
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      try {
-        const opened = await openNewestGame(client, new Date().toISOString());
-        if (!cancelled) {
-          setGame(opened);
-          setGames(await client.listGames());
-        }
-      } catch (error: unknown) {
-        if (!cancelled) {
-          setGameError(describeError(error));
-        }
-      } finally {
-        if (!cancelled) {
-          setGamesLoaded(true);
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [client]);
-
   /**
    * Moves the workspace into a game.
    *
@@ -327,6 +301,39 @@ export function AppShell({
     },
     [client, enterGame, refreshGames]
   );
+
+
+  // On startup, reopen the game the player was last in. No games is the ordinary first run, and
+  // the gate below answers it.
+  //
+  // Through `enterGame` like every other way into a game, so the workspace store learns which game
+  // is open here too. Setting the local state alone left the store saying `null` while the app
+  // displayed a game, and the next panel to read it would have believed the store.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const opened = await openNewestGame(client, new Date().toISOString());
+        if (!cancelled && opened) {
+          enterGame(opened);
+        }
+        if (!cancelled) {
+          setGames(await client.listGames());
+        }
+      } catch (error: unknown) {
+        if (!cancelled) {
+          setGameError(describeError(error));
+        }
+      } finally {
+        if (!cancelled) {
+          setGamesLoaded(true);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [client, enterGame]);
 
   /**
    * Deletes a game and lands the player somewhere.

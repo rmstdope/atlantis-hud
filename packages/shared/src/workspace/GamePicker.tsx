@@ -44,8 +44,13 @@ export function GamePicker({
     };
     // Pointer rather than click: a click that started inside and ended outside is still a drag
     // within the panel, not a dismissal.
+    //
+    // The wrapper rather than the panel, because the indicator that opened this sits beside it
+    // inside that wrapper. Testing the panel alone dismisses on the indicator's own press, and the
+    // button's toggle then reopens it - leaving a control that can only ever open the picker.
     const onPointerDown = (event: PointerEvent) => {
-      if (!panelRef.current?.contains(event.target as Node)) {
+      const trigger = panelRef.current?.parentElement ?? panelRef.current;
+      if (!trigger?.contains(event.target as Node)) {
         onDismiss();
       }
     };

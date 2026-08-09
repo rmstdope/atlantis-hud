@@ -68,6 +68,38 @@ test("the header names the open game, and the picker switches between them", asy
   await expect(page.getByTestId("game-picker")).toHaveCount(0);
 });
 
+/**
+ * The indicator is a toggle, not a one-way switch.
+ *
+ * The trigger sits outside the picker panel, so a dismiss-on-outside-press that does not account
+ * for it fires first and closes the picker, and then the button's own toggle reopens it - leaving
+ * a control that can only ever open.
+ */
+test("the indicator closes the picker as well as opening it", async ({ page }) => {
+  await clearGames(page);
+  await createGame(page, "Toggle game");
+
+  await page.getByTestId("game-indicator").click();
+  await expect(page.getByTestId("game-picker")).toBeVisible();
+
+  await page.getByTestId("game-indicator").click();
+  await expect(page.getByTestId("game-picker")).toHaveCount(0);
+});
+
+test("the picker still goes away on Escape and on a press elsewhere", async ({ page }) => {
+  await clearGames(page);
+  await createGame(page, "Dismiss game");
+
+  await page.getByTestId("game-indicator").click();
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("game-picker")).toHaveCount(0);
+
+  await page.getByTestId("game-indicator").click();
+  await expect(page.getByTestId("game-picker")).toBeVisible();
+  await page.getByTestId("map-canvas").click({ position: { x: 5, y: 5 } });
+  await expect(page.getByTestId("game-picker")).toHaveCount(0);
+});
+
 test("a report loaded in one game is not in the other", async ({ page }) => {
   await clearGames(page);
   await createGame(page, "Holds the turn");
