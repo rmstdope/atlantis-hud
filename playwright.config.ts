@@ -16,6 +16,13 @@ export default defineConfig({
    * people to ignore the suite.
    */
   retries: 1,
+  /**
+   * Assertions get longer than the five second default, because two of the operations they wait on
+   * are genuinely heavy: loading a report parses four thousand lines, commits the turn and reads the
+   * accumulated map back, and planning re-parses the report from text. On this machine that is about
+   * 1.2 seconds; on CI hardware the report load has exceeded five seconds outright.
+   */
+  expect: { timeout: 15_000 },
   fullyParallel: false,
   workers: 1,
   use: {

@@ -180,6 +180,12 @@ So #8's interactivity requirement is met by evidence instead of by architecture,
 `tests/smoke/workspace.spec.ts` carries the regression guard: it samples how long the main thread
 goes unresponsive during a report load and fails if anything stops the page for whole seconds.
 
+Planning is not free either, for the same reason. `plan_route` takes the report as text so the call
+can stay stateless, which means every plan re-parses four thousand lines and re-classifies every
+unit before the search runs. The search is microseconds over 57 hexes; the parsing around it
+measures at **674–919 ms on CI hardware** and under 500 ms locally. That is a noticeable freeze on
+a user gesture, and the obvious fix — not re-parsing per plan — is the same one as below.
+
 One later measurement belongs here too. **Remembering a turn costs more than parsing it.**
 Committing the import and reading the sightings back parses the report again and round-trips eleven
 regions through JSON, which measures at 345–515 ms of blocking and about 1.2 s of wall time,
