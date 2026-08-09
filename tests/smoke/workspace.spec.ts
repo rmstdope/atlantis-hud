@@ -178,9 +178,10 @@ test("a folded panel is still folded after a reload", async ({ page }) => {
 
   await page.reload();
 
-  // The layout the user arranged outlives the reload; the report does not, so nothing is selected.
+  // The layout the user arranged outlives the reload, and since issue #34 so does the turn: the
+  // game reopens on what was last worked on rather than on an empty workspace over a full database.
   await expect(page.getByTestId("panel-region")).toHaveAttribute("data-collapsed", "true");
-  await expect(page.getByTestId("import-status")).toContainText("no report loaded");
+  await expect(page.getByTestId("import-status")).toContainText("restored turn 71");
 });
 
 test("layer toggles are operable and only staleness does anything yet", async ({ page }) => {
@@ -241,6 +242,11 @@ test("the interface is not blocked while the core reads a report", async ({ page
 
   await page.reload();
   await expect(page.getByTestId("app-header")).toBeVisible();
+
+  // And wait for the reload's own work to finish before starting the clock. Since issue #34 a
+  // reload reopens the stored turn, which parses the report - so without this wait that parse
+  // lands inside the sampling window and is charged to the import being measured.
+  await expect(page.getByTestId("import-status")).toContainText("restored turn 71");
 
   // Sample how long the main thread goes unresponsive, by watching a timer miss its deadline.
   await page.evaluate(() => {

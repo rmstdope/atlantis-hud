@@ -9,7 +9,7 @@ import type {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { buildHexMapModel, unitsForHex, type HexMapModel } from "../hexMapModel";
 import { readUnitOrders, writeUnitOrders } from "../ordersDocument";
-import { rememberTurn, toStoredRegions } from "../gameMemory";
+import { rememberTurn, restoreLatestTurn, toStoredRegions } from "../gameMemory";
 import {
   AUTOSAVE_CEILING_MS,
   AUTOSAVE_IDLE_MS,
@@ -64,6 +64,19 @@ const EMPTY: HexMapModel = {
   currentTurn: null,
   initialSelectedRegionId: null
 };
+
+/**
+ * Where the open game's ruleset has got to.
+ *
+ * "Still arriving" and "not coming" have to be told apart. A report parsed while the fetch is in
+ * flight is parsed unclassified, which turns every unit's man-count into an estimate; a single
+ * nullable string cannot say which of the two is happening, so the restore below cannot know
+ * whether waiting would help.
+ */
+type RulesetState =
+  | { status: "loading" }
+  | { status: "ready"; text: string }
+  | { status: "unavailable" };
 
 /**
  * How a freshly loaded document stands with storage.
@@ -125,7 +138,7 @@ export function AppShell({
   // The planner takes the report as text: the core parses it again in milliseconds, and a stateless
   // call means no session to invalidate when a new turn arrives.
   const [rawReport, setRawReport] = useState("");
-  const [ruleset, setRuleset] = useState<string | null>(null);
+  const [ruleset, setRuleset] = useState<RulesetState>({ status: "loading" });
   const [route, setRoute] = useState<RoutePlanResponse | null>(null);
   const [planning, setPlanning] = useState(false);
   // Which game is open, and every game there is. Both live here because both change together:
@@ -270,9 +283,10 @@ export function AppShell({
         // Classified when the ruleset is to hand, so a unit's men are counted rather than guessed.
         // Without it every unit reads as an estimate, including the single-race majority where the
         // leading-group figure is exactly right.
-        const report = ruleset
-          ? await client.parseReportClassified(text, ruleset)
-          : await client.parseReportFull(text);
+        const report =
+          ruleset.status === "ready"
+            ? await client.parseReportClassified(text, ruleset.text)
+            : await client.parseReportFull(text);
         setParsed(report);
         setRawReport(text);
         clearPlan();
@@ -298,12 +312,15 @@ export function AppShell({
         setOrdersDocument(chosen.text);
         setSave(savedStateFor(chosen.savedAt));
 
+        // The banner keeps the import summary. That saved orders were preferred to the template is
+        // the orders panel's business, and it says so there with the time they were written -
+        // putting it here would cost the region and unit counts the player just asked for.
         const unitCount = report.regions.reduce((total, region) => total + region.units.length, 0);
         setStatus({
           regionCount: report.regions.length,
           unitCount,
           errorCount: report.header.errors.length,
-          message: memory.warning ?? chosen.warning ?? (chosen.restored ? "saved orders restored" : null),
+          message: memory.warning ?? chosen.warning,
           failed: false
         });
 
@@ -336,30 +353,121 @@ export function AppShell({
   // corrected by editing it and reloading. Which file is the open game's business: a game records
   // the ruleset it is played under, and two games on different servers do not share movement costs.
   // Its absence is not fatal: everything except the planner works without it.
+  //
+  // Three states rather than a nullable string. "Still arriving" and "not coming" used to look
+  // identical, and a report opened during the fetch was quietly parsed unclassified - which makes
+  // every unit's man-count an estimate, including the single-race majority where the leading-group
+  // figure is exactly right. Nothing said so.
   useEffect(() => {
     if (!game) {
-      setRuleset(null);
+      setRuleset({ status: "unavailable" });
       return undefined;
     }
 
     let cancelled = false;
+    setRuleset({ status: "loading" });
     void Promise.resolve()
       .then(() => fetch(rulesetUrlFor(game.manifest.metadata.rulesetId)))
       .then((response) => (response.ok ? response.text() : null))
       .then((text) => {
         if (!cancelled) {
-          setRuleset(text);
+          setRuleset(text === null ? { status: "unavailable" } : { status: "ready", text });
         }
       })
       .catch(() => {
         if (!cancelled) {
-          setRuleset(null);
+          setRuleset({ status: "unavailable" });
         }
       });
     return () => {
       cancelled = true;
     };
   }, [game]);
+
+  /**
+   * Puts back the turn the player was last working on.
+   *
+   * Everything here was already on disk and none of it was ever read back: opening a game showed an
+   * empty workspace over a database holding the turn, the map it accumulated and its orders. This
+   * is the half of issue #34 that is not about saving.
+   *
+   * It waits for the ruleset to settle rather than running as soon as the game opens. `loading` and
+   * `unavailable` used to be the same value, so restoring on the first render would parse the
+   * report unclassified whenever the fetch had not landed yet - and every unit's man-count would
+   * read as an estimate for no reason but timing. Waiting costs a moment; parsing twice to fix it
+   * afterwards costs the redundancy issue #28 exists to remove.
+   *
+   * Keyed on the game and on the ruleset settling, not on `parsed`: this must not re-run when the
+   * player then opens a report of their own.
+   */
+  useEffect(() => {
+    if (!game || ruleset.status === "loading") {
+      return undefined;
+    }
+
+    let cancelled = false;
+    setBusy(true);
+    const parse = (text: string) =>
+      ruleset.status === "ready"
+        ? client.parseReportClassified(text, ruleset.text)
+        : client.parseReportFull(text);
+
+    void restoreLatestTurn(client, game, parse)
+      .then((restored) => {
+        if (cancelled || !restored) {
+          return;
+        }
+        setParsed(restored.parsed);
+        setRawReport(restored.rawReport);
+        setRemembered(restored.remembered);
+        setOrdersDocument(restored.orders);
+        setSave(savedStateFor(restored.ordersSavedAt));
+
+        const unitCount = restored.parsed.regions.reduce(
+          (total, region) => total + region.units.length,
+          0
+        );
+        setStatus({
+          regionCount: restored.parsed.regions.length,
+          unitCount,
+          errorCount: restored.parsed.header.errors.length,
+          message: restored.warning ?? `restored turn ${restored.turnNumber}`,
+          failed: false
+        });
+
+        // Opening on a hex the player has units in, exactly as loading a report does.
+        const opening = buildHexMapModel(restored.parsed);
+        const openingHex = opening.hexes.find(
+          (candidate) => candidate.regionId === opening.initialSelectedRegionId
+        );
+        selectRegion(
+          opening.initialSelectedRegionId,
+          unitsForHex(openingHex ?? null)[0]?.unitId ?? null
+        );
+      })
+      .catch((error: unknown) => {
+        // A game whose stored turn will not come back must say so. Silence here is exactly the
+        // empty workspace this issue is about, only now with a reason nobody can see.
+        if (!cancelled) {
+          setStatus({
+            regionCount: 0,
+            unitCount: 0,
+            errorCount: 0,
+            message: `the last turn could not be restored: ${describeError(error)}`,
+            failed: true
+          });
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setBusy(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [client, game, ruleset, selectRegion]);
 
   /** Re-reads the list of games. Every change to a game changes what the picker should show. */
   const refreshGames = useCallback(async () => {
@@ -513,14 +621,14 @@ export function AppShell({
   // reason there is none.
   useEffect(() => {
     const destination = planner.destinationId;
-    if (!destination || !unit?.own || !ruleset || !rawReport) {
+    if (!destination || !unit?.own || ruleset.status !== "ready" || !rawReport) {
       return undefined;
     }
 
     let cancelled = false;
     setPlanning(true);
     void client
-      .planRoute(ruleset, rawReport, JSON.stringify(remembered), unit.unitId, destination)
+      .planRoute(ruleset.text, rawReport, JSON.stringify(remembered), unit.unitId, destination)
       .then((answer) => {
         if (!cancelled) {
           setRoute(answer);

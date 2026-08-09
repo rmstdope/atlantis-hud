@@ -5,7 +5,7 @@ import type {
   RememberedRegion
 } from "@atlantis/core-client";
 import { describe, expect, it, vi } from "vitest";
-import { rememberTurn, toStoredRegions } from "./gameMemory";
+import { rememberTurn, restoreLatestTurn, toStoredRegions } from "./gameMemory";
 
 function region(regionId: string, x: number, y: number) {
   return {
@@ -123,6 +123,104 @@ describe("remembering a turn", () => {
 
     expect(outcome.warning).toContain("faction");
     expect(core.commitReportImport).not.toHaveBeenCalled();
+  });
+});
+
+describe("reopening the turn the player was last in", () => {
+  const STORED_TURN = {
+    key: { gameId: "aug-2026", factionId: "95", turnNumber: 71 },
+    rawReport: "raw text of turn 71",
+    parseResult: {}
+  };
+
+  function restoring(overrides: Partial<CoreClient> = {}): CoreClient {
+    return client({
+      loadLatestImportedTurn: vi.fn().mockResolvedValue(STORED_TURN),
+      loadOrderDraft: vi.fn().mockResolvedValue(null),
+      ...overrides
+    });
+  }
+
+  it("brings back the turn, the map and the orders", async () => {
+    const remembered: RememberedRegion[] = [
+      { region: region("1:7,53", 7, 53), lastSeenTurn: 71 }
+    ];
+    const core = restoring({
+      loadRegionSightings: vi.fn().mockResolvedValue(remembered),
+      loadOrderDraft: vi.fn().mockResolvedValue({
+        key: { gameId: "aug-2026", factionId: "95", turnNumber: 71 },
+        orderText: "@work",
+        updatedAt: NOW
+      })
+    });
+    const parse = vi.fn().mockResolvedValue(report("95"));
+
+    const restored = await restoreLatestTurn(core, OPEN_GAME, parse);
+
+    expect(parse).toHaveBeenCalledWith("raw text of turn 71");
+    expect(restored).toMatchObject({
+      factionId: "95",
+      turnNumber: 71,
+      rawReport: "raw text of turn 71",
+      orders: "@work",
+      ordersSavedAt: NOW,
+      warning: null
+    });
+    expect(restored?.remembered).toHaveLength(1);
+  });
+
+  /**
+   * The turn is already stored. Re-committing would move its `updated_at`, and that column is what
+   * decides which turn reopens - so merely opening a game would look exactly like working in it.
+   */
+  it("does not commit the turn it just read", async () => {
+    const core = restoring();
+
+    await restoreLatestTurn(core, OPEN_GAME, vi.fn().mockResolvedValue(report("95")));
+
+    expect(core.commitReportImport).not.toHaveBeenCalled();
+  });
+
+  it("has nothing to restore in a game that holds no imports", async () => {
+    const core = restoring({ loadLatestImportedTurn: vi.fn().mockResolvedValue(null) });
+    const parse = vi.fn();
+
+    expect(await restoreLatestTurn(core, OPEN_GAME, parse)).toBeNull();
+    // A game just created, not a failure: nothing is parsed and nothing is complained about.
+    expect(parse).not.toHaveBeenCalled();
+  });
+
+  /**
+   * The report and the map are read separately and either can fail alone. A turn that parsed
+   * perfectly well must still be shown when the accumulated map will not load.
+   */
+  it("still restores the turn when the remembered map cannot be read", async () => {
+    const core = restoring({
+      loadRegionSightings: vi.fn().mockRejectedValue(new Error("database is locked"))
+    });
+
+    const restored = await restoreLatestTurn(
+      core,
+      OPEN_GAME,
+      vi.fn().mockResolvedValue(report("95"))
+    );
+
+    expect(restored?.turnNumber).toBe(71);
+    expect(restored?.remembered).toEqual([]);
+    expect(restored?.warning).toContain("database is locked");
+  });
+
+  it("falls back to the stored report's own template when nothing was written", async () => {
+    const core = restoring();
+    const withTemplate = {
+      ...report("95"),
+      ordersTemplate: { text: "#atlantis 95 pass", factionId: "95", units: [] }
+    };
+
+    const restored = await restoreLatestTurn(core, OPEN_GAME, vi.fn().mockResolvedValue(withTemplate));
+
+    expect(restored?.orders).toBe("#atlantis 95 pass");
+    expect(restored?.ordersSavedAt).toBeNull();
   });
 });
 
