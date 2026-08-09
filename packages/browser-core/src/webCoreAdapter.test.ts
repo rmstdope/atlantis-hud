@@ -406,9 +406,10 @@ describe("remembering the map across turns", () => {
   /**
    * Committing must not ask the core to read the report again.
    *
-   * The report has already been parsed by the time this runs - once for the map, once inside the
-   * prepared import - and a third parse cost more than either, because the whole model has to be
-   * converted into JavaScript objects to reach this function at all.
+   * The report has already been parsed by the time this runs - once, for the map, which is the
+   * parse the prepared import then reuses. Reading it again here cost more than that parse did,
+   * because the whole model has to be converted into JavaScript objects to reach this function at
+   * all, only to be thrown away once its regions have been serialized.
    */
   it("does not parse the report again to collect its regions", async () => {
     let fullParses = 0;
