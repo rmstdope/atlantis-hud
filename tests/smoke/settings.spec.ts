@@ -195,41 +195,59 @@ async function selectHex(page: Page, regionId: string) {
   await hex.press("Enter");
 }
 
-test("the unit list limit caps the units-in-hex table and survives a reload", async ({ page }) => {
+/** The units pane's outer height, as the player sees it. */
+async function unitsPaneHeight(page: Page): Promise<number> {
+  const box = await page.getByTestId("panel-units").boundingBox();
+  if (!box) {
+    throw new Error("the units pane is not on screen to measure");
+  }
+  return box.height;
+}
+
+test("the unit list limit sizes the pane while the whole list stays scrollable", async ({
+  page
+}) => {
   await clearGames(page);
   await createGame(page, "Limit game");
   await openReport(page);
   await selectHex(page, "1:7,53");
 
-  // The default cap of twelve already bites in a 92-unit city, and the panel header owns up to
-  // the truncation rather than letting a screenful pass for the whole hex.
-  const rows = page.locator('[data-testid^="unit-row-"]');
-  await expect(rows).toHaveCount(12);
-  await expect(page.getByTestId("panel-units")).toContainText("92 units, 12 shown");
+  // The limit sizes the pane rather than trimming the list: all 92 units stay reachable, and the
+  // header never claims fewer.
+  await expect(page.getByTestId("panel-units")).toContainText("92 units");
+  await expect(page.getByTestId("panel-units")).not.toContainText("shown");
+  const atTwelve = await unitsPaneHeight(page);
 
   await page.getByTestId("settings-indicator").click();
   const limit = page.getByTestId("unit-list-limit");
   await expect(limit).toHaveValue("12");
-  // Never fewer than three rows, never more than sixteen.
+  // Never fewer than three rows on screen, never more than sixteen.
   await expect(limit).toHaveAttribute("min", "3");
   await expect(limit).toHaveAttribute("max", "16");
 
-  // Applies as it is dragged - the table is on screen behind the dialog, its own preview.
+  // Applies as it is dragged - the pane is on screen behind the dialog, its own preview.
   await limit.fill("3");
-  await expect(rows).toHaveCount(3);
-  await expect(page.getByTestId("panel-units")).toContainText("3 shown");
-  // The cap keeps the front of the sorted list, and own units sort first: the player's own unit
-  // survives out of 92, not whichever foreign unit the report listed first.
-  await expect(page.getByTestId("unit-row-18642")).toBeVisible();
+  await expect.poll(() => unitsPaneHeight(page)).toBeLessThan(atTwelve);
+
+  // The rest of the hex is a scroll away, not gone: End walks the selection to the last of all
+  // 92 rows, the scroller following - the same journey a mouse wheel makes.
+  await page.keyboard.press("Escape");
+  const ownRow = page.getByTestId("unit-row-18642");
+  await ownRow.focus();
+  await page.keyboard.press("End");
+  await expect(page.locator("[data-testid^='unit-row-'][data-selected='true']")).toHaveAttribute(
+    "aria-rowindex",
+    "93"
+  );
 
   // A preference, not a session choice: it holds across a reload.
   await page.reload();
   await expect(page.getByTestId("import-status")).toContainText("restored turn 71");
   await selectHex(page, "1:7,53");
-  await expect(rows).toHaveCount(3);
+  await expect.poll(() => unitsPaneHeight(page)).toBeLessThan(atTwelve);
 
   // Back to the default, so later tests inherit the look they expect.
   await page.getByTestId("settings-indicator").click();
   await page.getByTestId("unit-list-limit").fill("12");
-  await expect(rows).toHaveCount(12);
+  await expect.poll(() => unitsPaneHeight(page)).toBeGreaterThanOrEqual(atTwelve - 1);
 });

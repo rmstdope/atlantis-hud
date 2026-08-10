@@ -30,11 +30,10 @@ export type SettingsState = {
    */
   paneTransparency: number;
   /**
-   * How many rows the "Units in hex" table shows at most, 3 to 16.
+   * How many rows tall the "Units in hex" pane stands, 3 to 16.
    *
-   * The cap lands after sorting and filtering, so with own-first grouping on it trims the
-   * foreign crowd rather than the player's own units - and the filter still reaches every unit
-   * the cap hides.
+   * A ceiling on the pane, never a cut in the list: every unit stays reachable by scrolling and
+   * by the arrow keys, this many of them on screen at a time.
    */
   unitListLimit: number;
   /**

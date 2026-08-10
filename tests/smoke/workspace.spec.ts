@@ -1086,29 +1086,26 @@ test("a merged hex's men are counted rather than guessed", async ({ page }) => {
 const CROWDED_HEX = "1:26,52";
 
 /**
- * Selecting this hex used to build 311 rows of eight cells each in one synchronous render
- * (issue #27's windowing was the first answer). Today the unit list limit caps the table well
- * before the windowing has to act, so what this pins is the cap and the row count the grid
- * claims; the windowing arithmetic itself is covered by unitTable's unit tests.
+ * The point of issue #27. Selecting this hex used to build 311 rows of eight cells each in one
+ * synchronous render; now it builds what fits on screen and stands in for the rest.
  */
-test("a hex of three hundred units renders only the capped rows", async ({ page }) => {
+test("a hex of three hundred units renders only the rows that fit", async ({ page }) => {
   await loadReport(page);
   await selectHex(page, CROWDED_HEX);
 
   await expect(page.getByTestId("panel-units")).toContainText("311 units");
 
-  // The global unit list limit trims the table to its default of twelve rows before the
-  // windowing ever has to: the header says what the hex really holds, and the filter still
-  // reaches every unit the cap hides. The windowing arithmetic remains behind the cap for the
-  // rows it is handed.
   const rows = page.locator("[data-testid^='unit-row-']");
-  await expect(rows).toHaveCount(12);
+  const count = await rows.count();
+  expect(count).toBeGreaterThan(5);
+  expect(count).toBeLessThan(50);
 
-  // The table claims exactly the capped rows to assistive technology, the header counting as one
-  // of them. It is a grid rather than a table because its rows are selectable.
+  // The whole list is still there to scroll through: the table claims all 311 rows to assistive
+  // technology, the header counting as one of them. It is a grid rather than a table because its
+  // rows are selectable.
   await expect(page.getByTestId("panel-units").getByRole("grid")).toHaveAttribute(
     "aria-rowcount",
-    "13"
+    "312"
   );
 });
 
@@ -1193,10 +1190,10 @@ test("the ownership toggle releases the own-units-first grouping", async ({ page
   await expect(grouping).toHaveAttribute("aria-pressed", "false");
 
   // Released, the player's single unit sinks to wherever its headcount puts it among the other
-  // ninety-one - past the unit list limit's twelve rows, so it leaves the table entirely. It is
-  // still selected: the unit panel keeps showing it, and the filter finds it.
-  await expect(ownRow).toHaveCount(0);
-  await expect(page.getByTestId("panel-unit")).toContainText("Seven of Eight");
+  // ninety-one. Visibility asserted first: a negated attribute check alone would also pass if the
+  // row vanished from the table, which is the regression the pane-height limit exists to avoid.
+  await expect(ownRow).toBeVisible();
+  await expect(ownRow).not.toHaveAttribute("aria-rowindex", "2");
 });
 
 /**
@@ -1228,12 +1225,12 @@ test("the units table is navigable by keyboard", async ({ page }) => {
   await expect(firstRow).toBeFocused();
   await expect(firstRow).toHaveAttribute("data-selected", "true");
 
-  // End walks to the bottom of the list as capped by the unit list limit: twelve rows of the 92,
-  // the header counting as row one.
+  // End walks to the bottom of all 92, which is well outside the window it started in - the unit
+  // list limit sizes the pane, never the list.
   await page.keyboard.press("End");
   await expect(page.locator("[data-testid^='unit-row-'][data-selected='true']")).toHaveAttribute(
     "aria-rowindex",
-    "13"
+    "93"
   );
 
   // Arrowing past the end is a no-op: same row, so nothing re-renders.

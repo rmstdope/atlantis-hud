@@ -17,7 +17,6 @@ import {
   DEFAULT_SORT,
   ROW_HEIGHT,
   filterUnits,
-  limitUnits,
   sortUnits,
   windowRange,
   type SortColumn,
@@ -70,17 +69,15 @@ export function UnitTableDock({
 
   // unitsForHex rather than hex.region.units: sorting it again is a no-op because Array.sort is
   // stable, and it guarantees the table cannot drift from the order AppShell picks defaults from.
-  // The orders preview folds in on top, so every pipeline below it - filter, sort, cap - already
+  // The orders preview folds in on top, so everything below it - filter and sort - already
   // works over the coming month's rows, arrivals and formed units included.
   const units = useMemo(() => mergePreview(unitsForHex(hex), preview), [hex, preview]);
-  // The global cap cuts last, after sorting: what survives is the front of the arrangement the
-  // player chose, which with own-first grouping is their own units. The hint below owns up to the
-  // truncation the same way it does for a filter.
+  // The global limit sizes the pane, never the list: every unit stays in the table to scroll and
+  // arrow through, and the scroller below is simply never taller than this many rows. An earlier
+  // version truncated the list instead, which read as the pane refusing to scroll - the rows
+  // beyond the cap were not merely out of view, they were gone.
   const unitListLimit = useSettingsStore((state) => state.unitListLimit);
-  const visible = useMemo(
-    () => limitUnits(sortUnits(filterUnits(units, filter), sort), unitListLimit),
-    [units, filter, sort, unitListLimit]
-  );
+  const visible = useMemo(() => sortUnits(filterUnits(units, filter), sort), [units, filter, sort]);
   const selectedIndex = useMemo(
     () => visible.findIndex((unit) => unit.unitId === selectedUnitId),
     [visible, selectedUnitId]
@@ -286,6 +283,10 @@ export function UnitTableDock({
           // would resize the table, which would remeasure the viewport, which would change the
           // window again.
           className="h-full overflow-y-scroll overflow-x-hidden"
+          // The unit list limit, applied as the scroller's ceiling: the header plus this many
+          // rows. The pane hugs a shorter list and scrolls a longer one; the surrounding layout's
+          // own ceiling still applies whichever is smaller.
+          style={{ maxHeight: (head?.offsetHeight ?? 0) + unitListLimit * ROW_HEIGHT }}
         >
           <table
             // A grid rather than a plain table: rows here are selectable, and a screen reader only
