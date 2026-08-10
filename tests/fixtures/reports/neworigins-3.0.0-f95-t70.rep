@@ -1,0 +1,69 @@
+;Treasury:
+;
+;Item                                      Rank  Max        Total
+;=====================================================================
+;22 leaders [LEAD]                         32    336        3194
+;70100 silver [SILV]                       31    3914020    28913609
+
+Atlantis Report For:
+Borg TNG (95) (Magic 5)
+November, Year 6
+
+Atlantis Engine Version: 5.2.5 (beta)
+NewOrigins, Version: 3.0.0 (beta)
+
+Faction Status:
+Regions: 1 (10)
+Quartermasters: 0 (0)
+Mages: 6 (6)
+Apprentices: 0 (15)
+
+Errors during turn:
+Unit (13432): STUDY: Not enough funds.
+
+Events during turn:
+Unit (13432): Earns 12 silver working in swamp (10,50) in Cebo.
+
+Declared Attitudes (default Neutral):
+Hostile : none.
+Unfriendly : none.
+Neutral : none.
+Friendly : none.
+Ally : Borg (73).
+
+Unclaimed silver: 40.
+
+swamp (10,50) in Cebo, 2011 peasants (lizardmen), $1040.
+------------------------------------------------------------
+  Wages: $12.6 (Max: $434).
+  Wanted: none.
+  For Sale: 80 lizardmen [LIZA] at $40, 16 leaders [LEAD] at $705.
+  Entertainment available: $74.
+  Products: 17 grain [GRAI], 16 wood [WOOD], 10 herbs [HERB].
+
+Exits:
+  North : ocean (10,48) in Atlantis Ocean.
+  Northeast : ocean (11,49) in Atlantis Ocean.
+  Southeast : ocean (11,51) in Atlantis Ocean.
+  South : ocean (10,52) in Atlantis Ocean.
+  Southwest : jungle (9,51) in Maput.
+  Northwest : ocean (9,49) in Atlantis Ocean.
+
+- Unit (4921), lizardman [LIZA].
+* Drone (13432), Borg TNG (95), avoiding, behind, revealing faction,
+  hill dwarf [HDWA], horse [HORS], 22 silver [SILV]. Weight: 60.
+  Capacity: 0/70/85/0. Skills: none.
+
+Orders Template (Long Format):
+
+#atlantis 95 "<password>"
+
+;*** swamp (10,50) in Cebo ***
+
+unit 13432
+;Drone (13432), avoiding, behind, revealing faction, hill dwarf [HDWA],
+;  horse [HORS], 22 silver [SILV]. Weight: 60. Capacity: 0/70/85/0.
+;  Skills: none.
+@work
+
+#end

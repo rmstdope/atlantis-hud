@@ -6,6 +6,7 @@
 
 pub mod composition;
 pub mod header;
+pub mod merge;
 pub mod model;
 pub mod orders;
 pub mod region;

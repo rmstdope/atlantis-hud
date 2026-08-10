@@ -25,6 +25,13 @@ type AppHeaderProps = {
   picker: ReactNode;
   factionLabel: string | null;
   turnLabel: string | null;
+  /** How many allied reports have been folded into this turn. Zero hides the chip entirely. */
+  mergedCount: number;
+  /** Whether the merged-factions panel is showing. Same split as the picker. */
+  mergedOpen: boolean;
+  onToggleMerged: () => void;
+  /** The panel itself, rendered under the chip when it is open. */
+  mergedPanel: ReactNode;
   status: ImportStatus | null;
   /** The loaded turn's errors and events, or null when no turn is loaded. */
   messages: TurnMessages | null;
@@ -60,6 +67,10 @@ export function AppHeader({
   picker,
   factionLabel,
   turnLabel,
+  mergedCount,
+  mergedOpen,
+  onToggleMerged,
+  mergedPanel,
   status,
   messages,
   messagesOpen,
@@ -134,9 +145,35 @@ export function AppHeader({
           Turn <span className="rounded border border-edge bg-panel-raised px-2 py-0.5 text-ink">{turnLabel}</span>
         </span>
       ) : null}
+      {/*
+        The faction, and whose reports have been folded into it.
+
+        Relative, because the merged-factions panel hangs off the chip. The chip answers "whose eyes
+        am I looking through" right where the faction is named: merging an ally's report leaves this
+        label saying the same thing it said before while the map quietly grows, and after a reload
+        the status line that reported the merge is gone.
+      */}
       {factionLabel ? (
-        <span className="text-ink-soft">
+        <span className="relative text-ink-soft">
           Faction <span className="text-ink">{factionLabel}</span>
+          {mergedCount > 0 ? (
+            <>
+              <button
+                type="button"
+                data-testid="merged-factions-chip"
+                aria-haspopup="dialog"
+                aria-expanded={mergedOpen}
+                onClick={onToggleMerged}
+                className="ml-1.5 rounded border border-edge bg-panel-raised px-2 py-0.5 text-ink-soft hover:border-brass"
+              >
+                +{mergedCount} merged
+                <span aria-hidden className="ml-1 text-ink-dim">
+                  ▾
+                </span>
+              </button>
+              {mergedOpen ? mergedPanel : null}
+            </>
+          ) : null}
         </span>
       ) : null}
 

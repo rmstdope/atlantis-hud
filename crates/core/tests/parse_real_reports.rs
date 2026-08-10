@@ -7,6 +7,12 @@ use atlantis_hud_core::report::parse_report_full as parse_regions;
 
 const TURN_2: &str = include_str!("../../../tests/fixtures/reports/neworigins-3.0.0-f73-t2.rep");
 const TURN_71: &str = include_str!("../../../tests/fixtures/reports/neworigins-3.0.0-f95-t71.rep");
+/// Faction 73's own turn 71, written for issue #53 so a merge has two reports of one turn to work
+/// with. Hand-written rather than captured, because no second real report of this turn exists.
+const ALLY_TURN_71: &str =
+    include_str!("../../../tests/fixtures/reports/neworigins-3.0.0-f73-t71.rep");
+/// Faction 95's turn 70, so loading an older report of one's *own* faction can still be tested.
+const TURN_70: &str = include_str!("../../../tests/fixtures/reports/neworigins-3.0.0-f95-t70.rep");
 
 #[test]
 fn turn_2_yields_its_single_region() {
@@ -258,4 +264,54 @@ fn a_unit_with_orders_keeps_them_apart_from_its_description() {
         .lines
         .iter()
         .any(|line| line.starts_with(";Seven of Eight")));
+}
+
+#[test]
+fn the_ally_report_describes_the_same_turn_as_faction_95() {
+    let parsed = parse_regions(ALLY_TURN_71);
+
+    assert_eq!(parsed.header.faction_id.as_deref(), Some("73"));
+    assert_eq!(parsed.header.faction_name.as_deref(), Some("Borg"));
+    assert_eq!(parsed.header.turn_number, Some(71), "December, Year 6");
+    assert_eq!(parsed.regions.len(), 3);
+}
+
+#[test]
+fn the_ally_report_stands_in_the_swamp_faction_95_also_reports() {
+    let parsed = parse_regions(ALLY_TURN_71);
+    let swamp = &parsed.regions[0];
+
+    assert_eq!(swamp.region_id, "1:10,50");
+    assert_eq!(swamp.terrain, "swamp");
+    assert_eq!(swamp.province, "Cebo");
+    assert_eq!(swamp.population, Some(1980), "not faction 95's 2018");
+    assert_eq!(swamp.exits.len(), 6);
+    assert_eq!(swamp.structures.len(), 1, "Cebo Watchpost");
+
+    // Four of its own across the report, and a stranger faction 95 reports as well.
+    assert_eq!(parsed.own_units().count(), 4);
+    assert!(swamp.units.iter().any(|unit| unit.unit_id == "12694"));
+}
+
+#[test]
+fn the_ally_report_reaches_two_hexes_faction_95_never_stood_in() {
+    let parsed = parse_regions(ALLY_TURN_71);
+
+    let ids: Vec<&str> = parsed
+        .regions
+        .iter()
+        .map(|region| region.region_id.as_str())
+        .collect();
+    assert_eq!(ids, vec!["1:10,50", "1:9,51", "1:9,53"]);
+    assert!(!TURN_71.contains("(9,53)"), "the plain is new to the map");
+}
+
+#[test]
+fn turn_70_is_the_same_faction_one_turn_earlier() {
+    let parsed = parse_regions(TURN_70);
+
+    assert_eq!(parsed.header.faction_id.as_deref(), Some("95"));
+    assert_eq!(parsed.header.turn_number, Some(70), "November, Year 6");
+    assert_eq!(parsed.regions.len(), 1);
+    assert!(parsed.orders_template.is_some());
 }

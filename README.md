@@ -37,6 +37,22 @@ sends you.** If a game is ever lost, loading those reports back in, oldest first
 Being able to save a whole game to a single file, and load it back or move it to another device, is
 planned — see issue #50.
 
+### Playing alongside an ally
+
+Load a report belonging to a faction other than the one on screen and the app stops to ask what you
+meant by it, because there are two reasonable answers:
+
+- **Merge** — everywhere that faction went is added to your map, and you go on playing your own
+  faction with your own orders. Their units show on the shared hexes and cannot be ordered. Only
+  offered for a report from the *same turn* as the one you have open, because two reports of one
+  turn describe the same moment and neither can be out of date.
+- **Switch faction** — the report opens as itself. The map, the units and the orders all become
+  that faction's. This is what loading such a report has always done; now it is a choice rather
+  than a surprise.
+
+After a merge the header says who is in your map, next to the faction name, and goes on saying it
+after a reload. Merging the same ally twice changes nothing.
+
 ### Two smaller things
 
 Your orders are saved as you type, a few seconds after you stop, so a crash costs at most the last

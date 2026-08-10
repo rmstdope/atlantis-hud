@@ -458,3 +458,129 @@ describe("core client adapter contract parity", () => {
     expect(wasmLatest?.key).toEqual({ gameId: "faction-12", factionId: "17", turnNumber: 12 });
   });
 });
+
+/**
+ * Merging an ally's report, across the same boundary as everything else.
+ *
+ * The argument names are asserted literally rather than through a helper. Tauri's commands are
+ * declared `rename_all = "snake_case"`, so a camelCase key does not fail loudly - it arrives as a
+ * missing argument, and the command answers as though the caller meant nothing by it.
+ */
+describe("merging an allied report", () => {
+  const DB = "/tmp/campaign.atlantis-game.sqlite";
+
+  const mergePayload = {
+    turn_number: 71,
+    merged_faction_id: "73",
+    merged_faction_name: "Borg",
+    merged_region_count: 3,
+    new_region_count: 2
+  };
+
+  it("asks tauri to merge with the argument names its commands declare", async () => {
+    const calls: Array<{ command: string; args?: Record<string, unknown> }> = [];
+    const invoke: TauriInvoke = <T,>(command: string, args?: Record<string, unknown>) => {
+      calls.push({ command, args });
+      return Promise.resolve(mergePayload as T);
+    };
+
+    await createCoreClient(createTauriAdapter(invoke)).mergeReport(
+      DB,
+      "faction-95",
+      "95",
+      71,
+      "the ally's report",
+      "2026-08-10T18:30:00Z"
+    );
+
+    expect(calls).toEqual([
+      {
+        command: "merge_report",
+        args: {
+          database_path: DB,
+          game_id: "faction-95",
+          viewer_faction_id: "95",
+          viewer_turn_number: 71,
+          raw_report: "the ally's report",
+          merged_at: "2026-08-10T18:30:00Z"
+        }
+      }
+    ]);
+  });
+
+  it("asks tauri for merged reports by faction and turn", async () => {
+    const calls: Array<{ command: string; args?: Record<string, unknown> }> = [];
+    const invoke: TauriInvoke = <T,>(command: string, args?: Record<string, unknown>) => {
+      calls.push({ command, args });
+      return Promise.resolve([] as T);
+    };
+
+    await createCoreClient(createTauriAdapter(invoke)).loadMergedReports(DB, "faction-95", "95", 71);
+
+    expect(calls).toEqual([
+      {
+        command: "load_merged_reports",
+        args: {
+          database_path: DB,
+          game_id: "faction-95",
+          faction_id: "95",
+          turn_number: 71
+        }
+      }
+    ]);
+  });
+
+  it("normalizes the outcome whichever casing it arrives in", async () => {
+    const snake: TauriInvoke = <T,>() => Promise.resolve(mergePayload as T);
+    const camel: TauriInvoke = <T,>() =>
+      Promise.resolve({
+        turnNumber: 71,
+        mergedFactionId: "73",
+        mergedFactionName: "Borg",
+        mergedRegionCount: 3,
+        newRegionCount: 2
+      } as T);
+
+    const merge = (invoke: TauriInvoke) =>
+      createCoreClient(createTauriAdapter(invoke)).mergeReport(DB, "g", "95", 71, "r", "now");
+
+    await expect(merge(snake)).resolves.toEqual({
+      turnNumber: 71,
+      mergedFactionId: "73",
+      mergedFactionName: "Borg",
+      mergedRegionCount: 3,
+      newRegionCount: 2
+    });
+    expect(await merge(camel)).toEqual(await merge(snake));
+  });
+
+  // Strict on purpose: a count nobody can read would have the status line say the merge did
+  // nothing while the database says otherwise.
+  it("refuses an outcome it cannot read rather than reporting an empty merge", async () => {
+    const invoke: TauriInvoke = <T,>() => Promise.resolve({ turn_number: 71 } as T);
+
+    await expect(
+      createCoreClient(createTauriAdapter(invoke)).mergeReport(DB, "g", "95", 71, "r", "now")
+    ).rejects.toThrow("incomplete report merge payload");
+  });
+
+  // Tolerant on purpose: a turn with nothing merged into it is the ordinary case.
+  it("treats an unreadable list of merges as no merges", async () => {
+    const invoke: TauriInvoke = <T,>() => Promise.resolve(null as T);
+
+    await expect(
+      createCoreClient(createTauriAdapter(invoke)).loadMergedReports(DB, "g", "95", 71)
+    ).resolves.toEqual([]);
+  });
+
+  it("refuses to merge through a wasm build with no persistence linked in", async () => {
+    const bindings = {} as WasmBindings;
+
+    expect(() => createWasmAdapter(bindings).mergeReport(DB, "g", "95", 71, "r", "now")).toThrow(
+      "game persistence is not linked into this wasm build"
+    );
+    await expect(
+      createCoreClient(createWasmAdapter(bindings)).loadMergedReports(DB, "g", "95", 71)
+    ).resolves.toEqual([]);
+  });
+});

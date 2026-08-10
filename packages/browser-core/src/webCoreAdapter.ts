@@ -26,6 +26,11 @@ export type CoreWasmModule = {
     destination: string
   ): unknown;
   prepare_report_import_state(rawReport: string, confirmedFactionId: string): unknown;
+  prepare_report_merge_state(
+    rawReport: string,
+    viewerTurnNumber: number,
+    existingSightingsJson: string
+  ): unknown;
   diff_imported_turn_state(existing: unknown, candidate: unknown): unknown;
   hydrate_parse_result_state(parsedPayloadJson: string): unknown;
 };
@@ -50,6 +55,18 @@ type PreparedImport = {
   regionSightings: PreparedRegionSighting[];
   parseResult: unknown;
   /** `null` when the report may be imported; otherwise the core's reason to refuse it. */
+  rejection: string | null;
+};
+
+type PreparedMerge = {
+  turnNumber: number | null;
+  mergedFactionId: string | null;
+  mergedFactionName: string | null;
+  /** Only the rows that changed. The core decides which those are; the store just writes them. */
+  regionSightings: PreparedRegionSighting[];
+  mergedRegionCount: number;
+  newRegionCount: number;
+  /** `null` when the report may be merged; otherwise the core's reason to refuse it. */
   rejection: string | null;
 };
 
@@ -153,6 +170,113 @@ export function createWebCoreAdapter(
         }
       });
     },
+    /**
+     * Folds an allied report into the viewer's map: read, rule, write.
+     *
+     * The three steps are the desktop's three steps, in the same order, against a different store.
+     * Only the middle one carries any judgement and it is the core's: which account of a hex wins,
+     * which of the ally's units may be commanded, whether the report belongs to this turn at all.
+     *
+     * The rows are written under `viewerFactionId`, never the report's own. That is the whole point
+     * of merging rather than importing - the map is read back one faction at a time, so a row filed
+     * under the ally would be stored perfectly and never looked at. Nothing is written to
+     * `importedTurns`, so which turn the game reopens on is left exactly as it was.
+     */
+    async mergeReport(
+      databasePath: string,
+      gameId: string,
+      viewerFactionId: string,
+      viewerTurnNumber: number,
+      rawReport: string,
+      mergedAt: string
+    ) {
+      const existing = await store.getRegionSightings(databasePath, gameId, viewerFactionId);
+      const prepared = wasm.prepare_report_merge_state(
+        rawReport,
+        viewerTurnNumber,
+        // Three fields, because three fields are all a merge reads and all this store holds. The
+        // coordinate and label a sighting also carries are derived from the payload, and the core
+        // derives them again from the merged one.
+        JSON.stringify(
+          existing.map((sighting) => ({
+            regionId: sighting.regionId,
+            lastSeenTurn: sighting.lastSeenTurn,
+            payloadJson: sighting.payloadJson
+          }))
+        )
+      ) as PreparedMerge;
+
+      if (prepared.rejection) {
+        throw new Error(prepared.rejection);
+      }
+      if (prepared.turnNumber === null || prepared.mergedFactionId === null) {
+        throw new Error("merged report does not name its turn or its faction");
+      }
+      // The desktop refuses this in the same words. It cannot be decided in the core, which is
+      // never told whose map is being merged into - only that a report is being folded into a turn
+      // - so the one place that knows both is here. Refused before anything is written: a faction's
+      // own report is loaded, not merged, and merging it would file its regions by a route that
+      // deliberately stores no turn.
+      if (prepared.mergedFactionId === viewerFactionId) {
+        throw new Error("a faction's own report is loaded rather than merged");
+      }
+
+      await store.putRegionSightings(
+        prepared.regionSightings.map((sighting) => ({
+          databasePath,
+          gameId,
+          factionId: viewerFactionId,
+          regionId: sighting.regionId,
+          lastSeenTurn: sighting.lastSeenTurn,
+          payloadJson: sighting.payloadJson
+        }))
+      );
+
+      await store.putMergedReport({
+        databasePath,
+        gameId,
+        factionId: viewerFactionId,
+        turnNumber: prepared.turnNumber,
+        mergedFactionId: prepared.mergedFactionId,
+        mergedFactionName: prepared.mergedFactionName ?? prepared.mergedFactionId,
+        mergedAt
+      });
+
+      return {
+        turnNumber: prepared.turnNumber,
+        mergedFactionId: prepared.mergedFactionId,
+        mergedFactionName: prepared.mergedFactionName ?? prepared.mergedFactionId,
+        mergedRegionCount: prepared.mergedRegionCount,
+        newRegionCount: prepared.newRegionCount
+      };
+    },
+
+    async loadMergedReports(
+      databasePath: string,
+      gameId: string,
+      factionId: string,
+      turnNumber: number
+    ) {
+      const stored = await store.getMergedReports(databasePath, gameId, factionId, turnNumber);
+
+      // Oldest merge first, matching the desktop's ORDER BY. The panel lists them in the order
+      // they happened, and a list that reorders itself between platforms is two applications.
+      return [...stored]
+        .sort(
+          (left, right) =>
+            left.mergedAt.localeCompare(right.mergedAt) ||
+            left.mergedFactionId.localeCompare(right.mergedFactionId)
+        )
+        .map((record) => ({
+          gameId: record.gameId,
+          factionId: record.factionId,
+          turnNumber: record.turnNumber,
+          mergedFactionId: record.mergedFactionId,
+          mergedFactionName: record.mergedFactionName,
+          mergedAt: record.mergedAt
+        }));
+    },
+
     parseReportClassified(rawReport: string, rulesetJson: string) {
       return wasm.parse_report_classified_state(rawReport, rulesetJson);
     },

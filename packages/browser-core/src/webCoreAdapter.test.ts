@@ -68,6 +68,59 @@ function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
       };
     },
     hydrate_parse_result_state: (json: string) => ({ hydratedFrom: json }),
+    /**
+     * Self-consistent, not correct: it reads `MERGE: <factionId> <turn> <regionId,…>` out of the
+     * text and folds those regions into whatever the adapter handed it. Which account of a hex wins
+     * is the real core's business and is tested in Rust; what matters here is that the adapter reads
+     * the *viewer's* rows, sends them across, and writes what comes back under the viewer's faction.
+     */
+    prepare_report_merge_state: (
+      raw: string,
+      viewerTurnNumber: number,
+      existingSightingsJson: string
+    ) => {
+      const [, factionId, turn, regionList] = /MERGE: (\S+) (\d+) (\S+)/u.exec(raw) ?? [];
+      if (!factionId) {
+        return {
+          turnNumber: null,
+          mergedFactionId: null,
+          mergedFactionName: null,
+          regionSightings: [],
+          mergedRegionCount: 0,
+          newRegionCount: 0,
+          rejection: "parsed report did not meet minimum import threshold"
+        };
+      }
+      if (Number(turn) !== viewerTurnNumber) {
+        return {
+          turnNumber: Number(turn),
+          mergedFactionId: null,
+          mergedFactionName: null,
+          regionSightings: [],
+          mergedRegionCount: 0,
+          newRegionCount: 0,
+          rejection: `a report from turn ${turn} cannot be merged into turn ${viewerTurnNumber}`
+        };
+      }
+
+      const existing = JSON.parse(existingSightingsJson) as Array<{ regionId: string }>;
+      const known = new Set(existing.map((sighting) => sighting.regionId));
+      // Split on "|", because a region id has a comma in it.
+      const regions = regionList.split("|");
+      return {
+        turnNumber: viewerTurnNumber,
+        mergedFactionId: factionId,
+        mergedFactionName: `Faction ${factionId}`,
+        regionSightings: regions.map((regionId) => ({
+          regionId,
+          lastSeenTurn: viewerTurnNumber,
+          payloadJson: JSON.stringify({ regionId, mergedFrom: factionId })
+        })),
+        mergedRegionCount: regions.length,
+        newRegionCount: regions.filter((regionId) => !known.has(regionId)).length,
+        rejection: null
+      };
+    },
     ...overrides
   };
 }
@@ -528,5 +581,135 @@ describe("remembering the map across turns", () => {
 
     const remembered = await adapter.loadRegionSightings("/db", "p", "12");
     expect(remembered).toEqual([{ region: { regionId: "1:2,2" }, lastSeenTurn: 9 }]);
+  });
+});
+
+describe("merging an allied report", () => {
+  const MERGED_AT = "2026-08-10T18:30:00Z";
+  /** Faction 73's turn 71, covering a hex the viewer has and one it has not. */
+  const ALLY = "MERGE: 73 71 1:1,1|1:9,9";
+
+  const withViewersMap = async () => {
+    const store = createMemoryWebStore();
+    await store.putRegionSightings([
+      {
+        databasePath: "/db",
+        gameId: "p",
+        factionId: "95",
+        regionId: "1:1,1",
+        lastSeenTurn: 71,
+        payloadJson: '{"regionId":"1:1,1"}'
+      }
+    ]);
+    return store;
+  };
+
+  /**
+   * The rows have to land under the viewer, not the reporter. The map is read back one faction at
+   * a time, so a row filed under the ally would be written perfectly and never looked at again.
+   */
+  it("writes the ally's hexes into the viewer's map", async () => {
+    const store = await withViewersMap();
+    const adapter = createWebCoreAdapter(fakeWasm(), store);
+
+    const result = await adapter.mergeReport("/db", "p", "95", 71, ALLY, MERGED_AT);
+
+    expect(result).toEqual({
+      turnNumber: 71,
+      mergedFactionId: "73",
+      mergedFactionName: "Faction 73",
+      mergedRegionCount: 2,
+      newRegionCount: 1
+    });
+    await expect(adapter.loadRegionSightings("/db", "p", "95")).resolves.toHaveLength(2);
+    await expect(adapter.loadRegionSightings("/db", "p", "73")).resolves.toEqual([]);
+  });
+
+  /**
+   * The proof that merging is not importing. Storing the ally's turn would put it at the top of
+   * `loadLatestImportedTurn`, so reopening the game would silently come back up as the ally.
+   */
+  it("stores no turn of the ally's", async () => {
+    const store = await withViewersMap();
+    const adapter = createWebCoreAdapter(fakeWasm(), store);
+
+    await adapter.mergeReport("/db", "p", "95", 71, ALLY, MERGED_AT);
+
+    await expect(store.getImportedTurns("/db", "p")).resolves.toEqual([]);
+    await expect(adapter.loadLatestImportedTurn("/db", "p")).resolves.toBeNull();
+  });
+
+  it("records who was merged, and reads it back oldest first", async () => {
+    const store = await withViewersMap();
+    const adapter = createWebCoreAdapter(fakeWasm(), store);
+
+    await adapter.mergeReport("/db", "p", "95", 71, "MERGE: 81 71 1:5,5", "2026-08-10T19:00:00Z");
+    await adapter.mergeReport("/db", "p", "95", 71, ALLY, MERGED_AT);
+
+    const merged = await adapter.loadMergedReports("/db", "p", "95", 71);
+    expect(merged).toEqual([
+      {
+        gameId: "p",
+        factionId: "95",
+        turnNumber: 71,
+        mergedFactionId: "73",
+        mergedFactionName: "Faction 73",
+        mergedAt: MERGED_AT
+      },
+      {
+        gameId: "p",
+        factionId: "95",
+        turnNumber: 71,
+        mergedFactionId: "81",
+        mergedFactionName: "Faction 81",
+        mergedAt: "2026-08-10T19:00:00Z"
+      }
+    ]);
+  });
+
+  it("keeps one record per ally however often it is merged", async () => {
+    const store = await withViewersMap();
+    const adapter = createWebCoreAdapter(fakeWasm(), store);
+
+    await adapter.mergeReport("/db", "p", "95", 71, ALLY, MERGED_AT);
+    await adapter.mergeReport("/db", "p", "95", 71, ALLY, "2026-08-10T21:00:00Z");
+
+    const merged = await store.getMergedReports("/db", "p", "95", 71);
+    expect(merged).toHaveLength(1);
+    expect(merged[0].mergedAt).toBe("2026-08-10T21:00:00Z");
+  });
+
+  it("refuses a report the core will not merge, in the core's own words", async () => {
+    const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
+
+    await expect(
+      adapter.mergeReport("/db", "p", "95", 71, "MERGE: 73 2 1:1,1", MERGED_AT)
+    ).rejects.toThrow("a report from turn 2 cannot be merged into turn 71");
+  });
+
+  /**
+   * The desktop's `command_merge_report` refuses this in the same words, and the two commands have
+   * to stay equivalent. The workspace never asks for it - `decideReportLoad` only offers a merge
+   * when the factions differ - but the adapter is a contract, not only the thing that shell calls,
+   * and a faction's own report merged rather than loaded would write its regions by a route that
+   * stores no turn at all.
+   */
+  it("refuses a faction's own report, as the desktop does", async () => {
+    const store = await withViewersMap();
+    const adapter = createWebCoreAdapter(fakeWasm(), store);
+
+    await expect(
+      adapter.mergeReport("/db", "p", "95", 71, "MERGE: 95 71 1:1,1", MERGED_AT)
+    ).rejects.toThrow("a faction's own report is loaded rather than merged");
+
+    // And refuses it before writing anything, rather than half way through.
+    await expect(store.getMergedReports("/db", "p", "95", 71)).resolves.toEqual([]);
+    await expect(store.getRegionSightings("/db", "p", "95")).resolves.toHaveLength(1);
+  });
+
+  it("has nothing merged into a turn nothing was merged into", async () => {
+    const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
+
+    await expect(adapter.loadMergedReports("/db", "p", "95", 71)).resolves.toEqual([]);
   });
 });

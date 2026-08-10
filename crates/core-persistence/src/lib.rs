@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 /// Current schema version expected by the persistence layer.
-pub const CURRENT_SCHEMA_VERSION: u32 = 6;
+pub const CURRENT_SCHEMA_VERSION: u32 = 7;
 const CURRENT_MANIFEST_VERSION: u32 = 1;
 /// The manifest file inside a game's directory. The directory is named after the game's id, so the
 /// file itself does not have to be, and a game can be found without parsing any filename.
@@ -23,13 +23,14 @@ const MIGRATION_0005_RENAME_PROJECT_TO_GAME: &str =
     include_str!("../migrations/0005_rename_project_to_game.sql");
 const MIGRATION_0006_ISO_IMPORT_TIMESTAMPS: &str =
     include_str!("../migrations/0006_iso_import_timestamps.sql");
+const MIGRATION_0007_MERGED_REPORTS: &str = include_str!("../migrations/0007_merged_reports.sql");
 
 struct Migration {
     version: u32,
     sql: &'static str,
 }
 
-const MIGRATIONS: [Migration; 6] = [
+const MIGRATIONS: [Migration; 7] = [
     Migration {
         version: 1,
         sql: MIGRATION_0001_INITIAL,
@@ -53,6 +54,10 @@ const MIGRATIONS: [Migration; 6] = [
     Migration {
         version: 6,
         sql: MIGRATION_0006_ISO_IMPORT_TIMESTAMPS,
+    },
+    Migration {
+        version: 7,
+        sql: MIGRATION_0007_MERGED_REPORTS,
     },
 ];
 
@@ -155,6 +160,22 @@ pub struct OrderDraftRecord {
     pub key: OrderDraftKey,
     pub order_text: String,
     pub updated_at: String,
+}
+
+/// One allied report folded into a faction's map for one turn.
+///
+/// A merge writes the ally's regions under the viewer's own faction and stores no turn of the
+/// ally's, so this row is the only thing that remembers it happened. `faction_id` is the map that
+/// grew; `merged_faction_id` is whose report grew it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MergedReportRecord {
+    pub game_id: String,
+    pub faction_id: String,
+    pub turn_number: u32,
+    pub merged_faction_id: String,
+    pub merged_faction_name: String,
+    pub merged_at: String,
 }
 
 #[derive(Debug, Error)]
@@ -845,6 +866,89 @@ pub fn load_region_sightings(
         .map_err(PersistenceError::from)
 }
 
+/// Records that an allied report was folded into a faction's map.
+///
+/// Merging the same ally again re-stamps the row rather than adding a second one: a merge is a
+/// statement about whose sightings are in the map, and doing it twice does not put them in twice.
+///
+/// # Errors
+///
+/// Returns an error when the database file is missing or cannot be written.
+pub fn upsert_merged_report(
+    database_path: &Path,
+    record: &MergedReportRecord,
+) -> Result<(), PersistenceError> {
+    if !database_path.exists() {
+        return Err(PersistenceError::DatabaseFileMissing(
+            database_path.to_string_lossy().to_string(),
+        ));
+    }
+
+    let mut connection = open_database(database_path)?;
+    apply_migrations(&mut connection)?;
+
+    connection.execute(
+        "INSERT INTO merged_reports (
+            game_id, faction_id, turn_number, merged_faction_id, merged_faction_name, merged_at
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+         ON CONFLICT(game_id, faction_id, turn_number, merged_faction_id) DO UPDATE SET
+            merged_faction_name = excluded.merged_faction_name,
+            merged_at = excluded.merged_at",
+        params![
+            record.game_id.as_str(),
+            record.faction_id.as_str(),
+            record.turn_number,
+            record.merged_faction_id.as_str(),
+            record.merged_faction_name.as_str(),
+            record.merged_at.as_str(),
+        ],
+    )?;
+
+    Ok(())
+}
+
+/// Every allied report folded into one faction's map for one turn, in the order they were merged.
+///
+/// # Errors
+///
+/// Returns an error when the database file is missing or cannot be read.
+pub fn load_merged_reports(
+    database_path: &Path,
+    game_id: &str,
+    faction_id: &str,
+    turn_number: u32,
+) -> Result<Vec<MergedReportRecord>, PersistenceError> {
+    if !database_path.exists() {
+        return Err(PersistenceError::DatabaseFileMissing(
+            database_path.to_string_lossy().to_string(),
+        ));
+    }
+
+    let mut connection = open_database(database_path)?;
+    apply_migrations(&mut connection)?;
+
+    let mut statement = connection.prepare(
+        "SELECT merged_faction_id, merged_faction_name, merged_at
+            FROM merged_reports
+            WHERE game_id = ?1 AND faction_id = ?2 AND turn_number = ?3
+            ORDER BY merged_at ASC, merged_faction_id ASC",
+    )?;
+
+    let rows = statement.query_map(params![game_id, faction_id, turn_number], |row| {
+        Ok(MergedReportRecord {
+            game_id: game_id.to_string(),
+            faction_id: faction_id.to_string(),
+            turn_number,
+            merged_faction_id: row.get(0)?,
+            merged_faction_name: row.get(1)?,
+            merged_at: row.get(2)?,
+        })
+    })?;
+
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(PersistenceError::from)
+}
+
 /// Inserts or updates one persisted order draft.
 pub fn upsert_order_draft(
     database_path: &Path,
@@ -1387,8 +1491,8 @@ mod tests {
 
         assert_eq!(created.schema_version, CURRENT_SCHEMA_VERSION);
         assert_eq!(
-            created.schema_version, 6,
-            "putting import timestamps in ISO added migration 6"
+            created.schema_version, 7,
+            "remembering which allied reports were merged added migration 7"
         );
     }
 
@@ -1433,15 +1537,17 @@ mod tests {
         let record = turn_in(&created, "17", "TURN: 12 Spring");
         upsert_imported_turn(&created.database_path, &record, IMPORTED_AT).expect("seed import");
 
-        // Put the database back the way an earlier build left it, migration row included, so the
-        // rewrite has to run rather than being skipped as already applied.
+        // Put the database back the way an earlier build left it, migration rows included, so the
+        // rewrite has to run rather than being skipped as already applied. Everything from 6 up
+        // goes, because migrations are replayed from the highest version recorded: leaving a later
+        // row behind would keep this one skipped and quietly stop testing anything.
         let connection = Connection::open(&created.database_path).expect("open");
         connection
             .execute_batch(
                 "UPDATE imported_turns
                     SET imported_at = '2026-08-01 10:00:00',
                         updated_at  = '2026-08-01 10:00:00';
-                 DELETE FROM schema_migrations WHERE version = 6;",
+                 DELETE FROM schema_migrations WHERE version >= 6;",
             )
             .expect("rewind");
         drop(connection);
@@ -1691,5 +1797,138 @@ mod region_sighting_tests {
         // Most recently seen first, which is the order the map wants for drawing.
         assert_eq!(loaded[0].last_seen_turn, 71);
         assert_eq!(loaded[1].last_seen_turn, 64);
+    }
+}
+
+#[cfg(test)]
+mod merged_report_tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    const GAME: &str = "faction-95";
+
+    fn game(dir: &std::path::Path) -> OpenedGame {
+        create_game(
+            dir,
+            &GameManifest {
+                manifest_version: 1,
+                metadata: GameMetadata {
+                    game_id: GAME.to_string(),
+                    game_name: "Borg TNG".to_string(),
+                    ruleset_id: "neworigins".to_string(),
+                },
+                report_sources: Vec::new(),
+                created_at: "2026-08-01T09:00:00Z".to_string(),
+                last_opened_at: "2026-08-01T09:00:00Z".to_string(),
+            },
+        )
+        .expect("game should be created")
+    }
+
+    fn merge_of(merged_faction_id: &str, turn_number: u32, merged_at: &str) -> MergedReportRecord {
+        MergedReportRecord {
+            game_id: GAME.to_string(),
+            faction_id: "95".to_string(),
+            turn_number,
+            merged_faction_id: merged_faction_id.to_string(),
+            merged_faction_name: format!("Ally {merged_faction_id}"),
+            merged_at: merged_at.to_string(),
+        }
+    }
+
+    #[test]
+    fn an_allied_report_is_recorded_against_the_map_it_grew() {
+        let dir = tempdir().expect("tempdir");
+        let opened = game(dir.path());
+
+        upsert_merged_report(
+            &opened.database_path,
+            &merge_of("73", 71, "2026-08-10T10:00:00Z"),
+        )
+        .expect("the merge should be recorded");
+
+        let loaded = load_merged_reports(&opened.database_path, GAME, "95", 71)
+            .expect("load should succeed");
+        assert_eq!(loaded, vec![merge_of("73", 71, "2026-08-10T10:00:00Z")]);
+    }
+
+    #[test]
+    fn merging_the_same_ally_again_restamps_rather_than_duplicating() {
+        let dir = tempdir().expect("tempdir");
+        let opened = game(dir.path());
+
+        upsert_merged_report(
+            &opened.database_path,
+            &merge_of("73", 71, "2026-08-10T10:00:00Z"),
+        )
+        .expect("first merge");
+        upsert_merged_report(
+            &opened.database_path,
+            &merge_of("73", 71, "2026-08-10T18:30:00Z"),
+        )
+        .expect("second merge");
+
+        let loaded = load_merged_reports(&opened.database_path, GAME, "95", 71).expect("load");
+        assert_eq!(loaded.len(), 1);
+        assert_eq!(loaded[0].merged_at, "2026-08-10T18:30:00Z");
+    }
+
+    #[test]
+    fn several_allies_read_back_in_the_order_they_were_merged() {
+        let dir = tempdir().expect("tempdir");
+        let opened = game(dir.path());
+
+        upsert_merged_report(
+            &opened.database_path,
+            &merge_of("81", 71, "2026-08-10T11:00:00Z"),
+        )
+        .expect("second ally, merged first");
+        upsert_merged_report(
+            &opened.database_path,
+            &merge_of("73", 71, "2026-08-10T10:00:00Z"),
+        )
+        .expect("first ally");
+
+        let ids: Vec<String> = load_merged_reports(&opened.database_path, GAME, "95", 71)
+            .expect("load")
+            .into_iter()
+            .map(|record| record.merged_faction_id)
+            .collect();
+        assert_eq!(ids, vec!["73".to_string(), "81".to_string()]);
+    }
+
+    /// A merge belongs to the turn it was made in, so next turn's map starts from nobody.
+    #[test]
+    fn a_turn_that_has_had_nothing_merged_into_it_reads_empty() {
+        let dir = tempdir().expect("tempdir");
+        let opened = game(dir.path());
+
+        upsert_merged_report(
+            &opened.database_path,
+            &merge_of("73", 71, "2026-08-10T10:00:00Z"),
+        )
+        .expect("turn 71");
+
+        assert!(load_merged_reports(&opened.database_path, GAME, "95", 72)
+            .expect("load")
+            .is_empty());
+    }
+
+    /// The row says whose map grew, not only whose report grew it: two factions in one game keep
+    /// separate maps, and merging into one must not claim to have merged into the other.
+    #[test]
+    fn one_factions_merges_are_invisible_to_another() {
+        let dir = tempdir().expect("tempdir");
+        let opened = game(dir.path());
+
+        upsert_merged_report(
+            &opened.database_path,
+            &merge_of("73", 71, "2026-08-10T10:00:00Z"),
+        )
+        .expect("merged into 95's map");
+
+        assert!(load_merged_reports(&opened.database_path, GAME, "73", 71)
+            .expect("load")
+            .is_empty());
     }
 }

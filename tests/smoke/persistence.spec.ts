@@ -172,6 +172,86 @@ test("a game with no imports opens on an empty workspace rather than an error", 
   await expect(page.getByTestId("import-status")).toContainText("no report loaded");
 });
 
+/**
+ * A game made before merged reports existed still opens.
+ *
+ * Issue #53 bumped the per-game IndexedDB version from 1 to 2 to add a store. Version 1 created its
+ * three stores unconditionally in `onupgradeneeded`, which was harmless while there was only ever
+ * one version and a `ConstraintError` on every existing database the moment a second one appeared -
+ * so every game a player already had would have become unopenable.
+ *
+ * The only way to test that is to put a version-1 database back, which is what this does. Nothing
+ * else in either suite would notice: a fresh game creates the current schema in one step and never
+ * takes the upgrade path at all.
+ */
+test("a game created before the merge store still opens", async ({ page }) => {
+  await clearGames(page);
+
+  // Written from scratch rather than by downgrading a live one: the workspace holds its game
+  // database open, so deleting it from here would block for ever. With no game open there is
+  // nothing to block, and a database the application has never seen is exactly what a game from
+  // the previous release is.
+  await page.evaluate(async () => {
+    const stamp = "2026-08-01T09:00:00Z";
+    await new Promise<void>((resolve, reject) => {
+      const request = indexedDB.open("atlantis-hud-game-legacy", 1);
+      request.onupgradeneeded = () => {
+        const database = request.result;
+        database.createObjectStore("importedTurns", { keyPath: ["factionId", "turnNumber"] });
+        database.createObjectStore("orderDrafts", { keyPath: ["factionId", "turnNumber"] });
+        database.createObjectStore("regionSightings", { keyPath: ["factionId", "regionId"] });
+      };
+      request.onsuccess = () => {
+        request.result.close();
+        resolve();
+      };
+      request.onerror = () => reject(request.error);
+    });
+
+    await new Promise<void>((resolve, reject) => {
+      const request = indexedDB.open("atlantis-hud", 4);
+      request.onupgradeneeded = () => {
+        const database = request.result;
+        if (!database.objectStoreNames.contains("games")) {
+          database.createObjectStore("games", { keyPath: "gameId" });
+        }
+      };
+      request.onsuccess = () => {
+        const database = request.result;
+        const transaction = database.transaction("games", "readwrite");
+        transaction.objectStore("games").put({
+          gameId: "legacy",
+          databasePath: "idb://game-legacy",
+          schemaVersion: 1,
+          manifest: {
+            manifestVersion: 1,
+            metadata: { gameId: "legacy", gameName: "Legacy game", rulesetId: "neworigins" },
+            reportSources: [],
+            createdAt: stamp,
+            lastOpenedAt: stamp
+          }
+        });
+        transaction.oncomplete = () => {
+          database.close();
+          resolve();
+        };
+        transaction.onerror = () => reject(transaction.error);
+      };
+      request.onerror = () => reject(request.error);
+    });
+  });
+
+  await page.reload();
+
+  // Opening it runs the upgrade, which has to add the one missing store and leave the three that
+  // are already there alone. Creating them unconditionally would throw here, and the workspace
+  // would never appear.
+  await expect(page.getByTestId("game-indicator")).toContainText("Legacy game");
+  await expect(page.getByTestId("import-status")).not.toContainText("could not");
+  await openReport(page);
+  await expect(page.getByTestId("import-status")).toContainText("11 regions");
+});
+
 test("re-opening the same report keeps the orders already written for that turn", async ({
   page
 }) => {

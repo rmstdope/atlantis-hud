@@ -432,6 +432,38 @@ pub fn reject_import(parsed: &ReportParseResult, confirmed_faction_id: &str) -> 
     None
 }
 
+/// Checks whether a parsed report may be merged into the turn the viewer has open.
+///
+/// Deliberately not [`reject_import`]. That asks whether a report may be *filed under* a faction,
+/// and it answers by looking in `detected_factions` - which holds only the reporting faction, on
+/// purpose. An ally's report is never filed under the viewer, so asking `reject_import` about it
+/// would refuse every merge there is. What matters here is different: that the report is worth
+/// reading at all, that it says whose it is, and that it describes the same turn the viewer is
+/// looking at. Same turn, because two reports for one turn describe the same moment and neither is
+/// staler than the other - which is the whole reason a merge needs no arbitration by age.
+///
+/// A report that clears the threshold has already been found to name its faction, so the caller
+/// can read the faction off it without checking again.
+#[must_use]
+pub fn reject_merge(parsed: &ReportParseResult, viewer_turn_number: u32) -> Option<String> {
+    if !parsed.meets_minimum_import_threshold() {
+        return Some("parsed report did not meet minimum import threshold".to_string());
+    }
+
+    let Some(turn_header) = parsed.turn_header.as_ref() else {
+        return Some("turn header missing from parsed report".to_string());
+    };
+
+    if turn_header.turn_number != viewer_turn_number {
+        return Some(format!(
+            "a report from turn {} cannot be merged into turn {viewer_turn_number}",
+            turn_header.turn_number
+        ));
+    }
+
+    None
+}
+
 /// The parts of a stored turn import that decide whether re-importing changes anything.
 ///
 /// Deliberately free of any storage concern so both the desktop SQLite layer and the browser
@@ -735,6 +767,44 @@ mod tests {
         assert_eq!(
             rejection.as_deref(),
             Some("confirmed faction does not exist in parsed report candidates")
+        );
+    }
+
+    /// The mini report is March, Year 1, which the header module numbers turn 2.
+    #[test]
+    fn a_report_for_the_turn_on_screen_may_be_merged() {
+        assert_eq!(reject_merge(&parse_report(MINI_REPORT), 2), None);
+    }
+
+    #[test]
+    fn a_report_from_another_turn_cannot_be_merged() {
+        let rejection = reject_merge(&parse_report(MINI_REPORT), 71);
+        assert_eq!(
+            rejection.as_deref(),
+            Some("a report from turn 2 cannot be merged into turn 71"),
+            "the refusal names both turns, because the player has to know which file to find"
+        );
+    }
+
+    #[test]
+    fn a_merge_below_the_viability_threshold_is_rejected() {
+        let rejection = reject_merge(&parse_report("no report here at all"), 2);
+        assert_eq!(
+            rejection.as_deref(),
+            Some("parsed report did not meet minimum import threshold")
+        );
+    }
+
+    /// The trap this function exists to avoid: `detected_factions` holds only the reporting
+    /// faction, so deciding a merge with [`reject_import`] would refuse every ally there is.
+    #[test]
+    fn a_merge_is_not_refused_for_belonging_to_the_wrong_faction() {
+        let parsed = parse_report(MINI_REPORT);
+
+        assert_eq!(reject_merge(&parsed, 2), None);
+        assert!(
+            reject_import(&parsed, "95").is_some(),
+            "the same report filed under the viewer would be refused"
         );
     }
 

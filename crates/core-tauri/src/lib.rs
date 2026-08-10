@@ -2,17 +2,19 @@
 
 use std::path::Path;
 
+use atlantis_hud_core::report::merge::{merge_report_into_sightings, StoredSighting};
 pub use atlantis_hud_core::report::ParsedReport;
 use atlantis_hud_core::{
-    engine_info, parse_report, reject_import, validate_orders, OrderDiagnosticSeverity,
-    ReportParseResult, WarningSeverity,
+    engine_info, parse_report, reject_import, reject_merge, validate_orders,
+    OrderDiagnosticSeverity, ReportParseResult, WarningSeverity,
 };
 use atlantis_hud_core_persistence::{
     create_game, delete_game, insert_imported_turn, list_games, load_imported_turn,
-    load_latest_imported_turn, load_order_draft, load_region_sightings, open_game,
-    preview_imported_turn, upsert_imported_turn, upsert_order_draft, upsert_region_sightings,
-    GameManifest, GameMetadata, ImportedTurnKey, ImportedTurnPreview, ImportedTurnRecord,
-    OpenedGame, OrderDraftKey, OrderDraftRecord, PersistenceError, ReportSourceRef,
+    load_latest_imported_turn, load_merged_reports, load_order_draft, load_region_sightings,
+    open_game, preview_imported_turn, upsert_imported_turn, upsert_merged_report,
+    upsert_order_draft, upsert_region_sightings, GameManifest, GameMetadata, ImportedTurnKey,
+    ImportedTurnPreview, ImportedTurnRecord, MergedReportRecord, OpenedGame, OrderDraftKey,
+    OrderDraftRecord, PersistenceError, ReportSourceRef,
 };
 use serde::{Deserialize, Serialize};
 
@@ -722,6 +724,141 @@ pub fn command_load_region_sightings(
         .collect())
 }
 
+/// What merging one allied report did to a faction's map.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReportMergeResultDto {
+    pub turn_number: u32,
+    pub merged_faction_id: String,
+    pub merged_faction_name: String,
+    /// Regions the allied report contributed.
+    pub merged_region_count: u32,
+    /// Of those, the hexes that were new to the map.
+    pub new_region_count: u32,
+}
+
+/// One allied report folded into a faction's map, as the workspace reads it back.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MergedReportRecordDto {
+    pub game_id: String,
+    pub faction_id: String,
+    pub turn_number: u32,
+    pub merged_faction_id: String,
+    pub merged_faction_name: String,
+    pub merged_at: String,
+}
+
+impl From<MergedReportRecord> for MergedReportRecordDto {
+    fn from(record: MergedReportRecord) -> Self {
+        Self {
+            game_id: record.game_id,
+            faction_id: record.faction_id,
+            turn_number: record.turn_number,
+            merged_faction_id: record.merged_faction_id,
+            merged_faction_name: record.merged_faction_name,
+            merged_at: record.merged_at,
+        }
+    }
+}
+
+/// Folds an allied report for the same turn into the viewer's remembered map.
+///
+/// Deliberately stores no imported turn of the ally's. The turn on screen is still the viewer's,
+/// and writing the ally's would put it at the top of `load_latest_imported_turn` - so reopening the
+/// game would come back up as the ally, silently performing the faction switch the player declined.
+///
+/// The sightings land under `viewer_faction_id`, which is what makes them visible at all: the map
+/// is read back for one faction, and a row written under the ally's id would be stored perfectly
+/// and never looked at.
+///
+/// # Errors
+///
+/// Returns an error when the report cannot be merged into this turn, or when the database cannot be
+/// read or written.
+pub fn command_merge_report(
+    database_path: &str,
+    game_id: &str,
+    viewer_faction_id: &str,
+    viewer_turn_number: u32,
+    raw_report: &str,
+    merged_at: &str,
+) -> Result<ReportMergeResultDto, String> {
+    // A cache hit: the shell parsed this report a moment ago to find out whose it was.
+    let report = atlantis_hud_core::cache::with_global(|cache| cache.report(raw_report));
+    let parse_result = atlantis_hud_core::summarize(&report);
+    if let Some(rejection) = reject_merge(&parse_result, viewer_turn_number) {
+        return Err(rejection);
+    }
+
+    // Clearing the threshold means the report named its faction, so this is present.
+    let ally = parse_result
+        .detected_factions
+        .first()
+        .ok_or_else(|| "parsed report does not name the faction it belongs to".to_string())?;
+    if ally.faction_id == viewer_faction_id {
+        return Err("a faction's own report is loaded rather than merged".to_string());
+    }
+
+    let existing: Vec<StoredSighting> =
+        load_region_sightings(Path::new(database_path), game_id, viewer_faction_id)
+            .map_err(|error| error.to_string())?
+            .iter()
+            .map(StoredSighting::from)
+            .collect();
+    let outcome = merge_report_into_sightings(&existing, &report, viewer_turn_number);
+
+    upsert_region_sightings(
+        Path::new(database_path),
+        game_id,
+        viewer_faction_id,
+        &outcome.sightings,
+    )
+    .map_err(|error| error.to_string())?;
+
+    upsert_merged_report(
+        Path::new(database_path),
+        &MergedReportRecord {
+            game_id: game_id.to_string(),
+            faction_id: viewer_faction_id.to_string(),
+            turn_number: viewer_turn_number,
+            merged_faction_id: ally.faction_id.clone(),
+            merged_faction_name: ally.name.clone(),
+            merged_at: merged_at.to_string(),
+        },
+    )
+    .map_err(|error| error.to_string())?;
+
+    Ok(ReportMergeResultDto {
+        turn_number: viewer_turn_number,
+        merged_faction_id: ally.faction_id.clone(),
+        merged_faction_name: ally.name.clone(),
+        merged_region_count: u32::try_from(outcome.merged_region_count).unwrap_or(u32::MAX),
+        new_region_count: u32::try_from(outcome.new_region_count).unwrap_or(u32::MAX),
+    })
+}
+
+/// Every allied report folded into one faction's map for one turn.
+///
+/// # Errors
+///
+/// Returns an error when the database cannot be read.
+pub fn command_load_merged_reports(
+    database_path: &str,
+    game_id: &str,
+    faction_id: &str,
+    turn_number: u32,
+) -> Result<Vec<MergedReportRecordDto>, String> {
+    load_merged_reports(Path::new(database_path), game_id, faction_id, turn_number)
+        .map(|records| {
+            records
+                .into_iter()
+                .map(MergedReportRecordDto::from)
+                .collect()
+        })
+        .map_err(|error| error.to_string())
+}
+
 /// Parses a report and counts each unit's men against the catalogue.
 ///
 /// The classifying counterpart of `command_parse_report_full`. Kept separate rather than replacing
@@ -907,6 +1044,169 @@ mod sightings_tests {
             .expect("the sightings load");
 
         assert!(remembered.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod merge_tests {
+    use super::test_support::{manifest_dto, IMPORTED_AT};
+    use super::*;
+    use tempfile::tempdir;
+
+    const TURN_71: &str =
+        include_str!("../../../tests/fixtures/reports/neworigins-3.0.0-f95-t71.rep");
+    const ALLY_TURN_71: &str =
+        include_str!("../../../tests/fixtures/reports/neworigins-3.0.0-f73-t71.rep");
+    const TURN_2: &str =
+        include_str!("../../../tests/fixtures/reports/neworigins-3.0.0-f73-t2.rep");
+    const MERGED_AT: &str = "2026-08-10T18:30:00Z";
+
+    /// A game with faction 95's turn 71 already imported, which is the state a merge starts from.
+    fn game_with_turn_71(directory: &std::path::Path) -> OpenedGameDto {
+        let created = command_create_game(
+            directory.to_str().expect("a path"),
+            manifest_dto("faction-95", "Borg TNG"),
+        )
+        .expect("the game is created");
+
+        command_commit_report_import(
+            &created.database_path,
+            "faction-95",
+            "95",
+            TURN_71,
+            true,
+            IMPORTED_AT,
+        )
+        .expect("the viewer's own turn commits");
+
+        created
+    }
+
+    #[test]
+    fn merging_an_allied_report_grows_the_map_without_giving_it_away() {
+        let directory = tempdir().expect("a temporary directory");
+        let created = game_with_turn_71(directory.path());
+
+        let result = command_merge_report(
+            &created.database_path,
+            "faction-95",
+            "95",
+            71,
+            ALLY_TURN_71,
+            MERGED_AT,
+        )
+        .expect("the merge succeeds");
+
+        assert_eq!(result.merged_faction_id, "73");
+        assert_eq!(result.merged_faction_name, "Borg");
+        assert_eq!(result.merged_region_count, 3);
+        assert_eq!(result.new_region_count, 2);
+
+        let viewers_map = command_load_region_sightings(&created.database_path, "faction-95", "95")
+            .expect("the sightings load");
+        assert_eq!(
+            viewers_map.len(),
+            13,
+            "eleven of its own and two of the ally's"
+        );
+
+        let allys_map = command_load_region_sightings(&created.database_path, "faction-95", "73")
+            .expect("the sightings load");
+        assert!(
+            allys_map.is_empty(),
+            "the ally's own map is untouched; merging is not importing"
+        );
+    }
+
+    /// The proof that merging does not switch faction behind the player's back: reopening a game
+    /// restores whichever turn was touched last, and a merged-in report must not be a candidate.
+    #[test]
+    fn merging_leaves_the_turn_that_reopens_alone() {
+        let directory = tempdir().expect("a temporary directory");
+        let created = game_with_turn_71(directory.path());
+
+        command_merge_report(
+            &created.database_path,
+            "faction-95",
+            "95",
+            71,
+            ALLY_TURN_71,
+            MERGED_AT,
+        )
+        .expect("the merge succeeds");
+
+        let latest = command_load_latest_imported_turn(&created.database_path, "faction-95")
+            .expect("the lookup succeeds")
+            .expect("a turn reopens");
+        assert_eq!(latest.key.faction_id, "95");
+        assert_eq!(latest.key.turn_number, 71);
+    }
+
+    #[test]
+    fn merging_records_who_was_merged_and_when() {
+        let directory = tempdir().expect("a temporary directory");
+        let created = game_with_turn_71(directory.path());
+
+        command_merge_report(
+            &created.database_path,
+            "faction-95",
+            "95",
+            71,
+            ALLY_TURN_71,
+            MERGED_AT,
+        )
+        .expect("the merge succeeds");
+
+        let merged = command_load_merged_reports(&created.database_path, "faction-95", "95", 71)
+            .expect("the record loads");
+        assert_eq!(merged.len(), 1);
+        assert_eq!(merged[0].merged_faction_id, "73");
+        assert_eq!(merged[0].merged_faction_name, "Borg");
+        assert_eq!(merged[0].merged_at, MERGED_AT);
+    }
+
+    #[test]
+    fn a_report_from_another_turn_cannot_be_merged() {
+        let directory = tempdir().expect("a temporary directory");
+        let created = game_with_turn_71(directory.path());
+
+        let rejection = command_merge_report(
+            &created.database_path,
+            "faction-95",
+            "95",
+            71,
+            TURN_2,
+            MERGED_AT,
+        )
+        .expect_err("turn 2 is not turn 71");
+
+        assert_eq!(
+            rejection,
+            "a report from turn 2 cannot be merged into turn 71"
+        );
+    }
+
+    /// A faction's own report is loaded, not merged. Allowing it would write the turn's regions
+    /// twice by two different routes, one of which stores no turn at all.
+    #[test]
+    fn a_factions_own_report_is_not_something_to_merge() {
+        let directory = tempdir().expect("a temporary directory");
+        let created = game_with_turn_71(directory.path());
+
+        let rejection = command_merge_report(
+            &created.database_path,
+            "faction-95",
+            "95",
+            71,
+            TURN_71,
+            MERGED_AT,
+        )
+        .expect_err("the viewer's own report is refused");
+
+        assert_eq!(
+            rejection,
+            "a faction's own report is loaded rather than merged"
+        );
     }
 }
 
