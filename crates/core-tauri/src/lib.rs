@@ -965,6 +965,90 @@ pub fn command_plan_route(
     })
 }
 
+/// Traces the MOVE or ADVANCE order in a unit's written orders across the remembered map.
+///
+/// The desktop twin of the wasm binding, delegating to the same core entry so the two shells
+/// cannot drift into tracing differently.
+///
+/// # Errors
+///
+/// Returns an error only when the ruleset or the remembered regions cannot be read. An order that
+/// cannot be traced is a successful answer carrying no path.
+pub fn command_trace_move_orders(
+    ruleset_json: &str,
+    raw_report: &str,
+    remembered_json: &str,
+    unit_id: &str,
+    orders: &str,
+) -> Result<atlantis_hud_core::movement::request::MoveOrderTraceResponse, String> {
+    atlantis_hud_core::cache::with_global(|cache| {
+        atlantis_hud_core::movement::request::trace_orders_for_remembered_report(
+            cache,
+            ruleset_json,
+            raw_report,
+            remembered_json,
+            unit_id,
+            orders,
+        )
+    })
+}
+
+#[cfg(test)]
+mod trace_move_orders_command_tests {
+    use super::*;
+
+    const RULESET: &str = include_str!("../../../config/public/ruleset.json");
+
+    fn corridor(terrain: &str, x: i32, y: i32, exits: &str) -> String {
+        format!("{terrain} ({x},{y}) in Nowhere, 10 peasants (orcs), $5.\n\nExits:\n{exits}\n")
+    }
+
+    /// The command must trace over the memory it is handed, exactly as the planner learned to.
+    /// A hardcoded empty memory here would draw every order one step long.
+    #[test]
+    fn traces_over_the_memory_it_is_handed() {
+        let current = format!(
+            "Foo (1) Report\n\n{}\n* Walker (900), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.\n",
+            corridor("plain", 1, 1, "  Southeast : plain (2,2) in Nowhere.")
+        );
+        let far_side = atlantis_hud_core::report::parse_report_full(&format!(
+            "Foo (1) Report\n\n{}",
+            corridor(
+                "plain",
+                2,
+                2,
+                "  Northwest : plain (1,1) in Nowhere.\n  Southeast : plain (3,3) in Nowhere."
+            )
+        ));
+        let remembered = format!(
+            "[{{\"region\":{},\"lastSeenTurn\":40}}]",
+            serde_json::to_string(&far_side.regions[0]).expect("serializes")
+        );
+
+        let answer = command_trace_move_orders(RULESET, &current, &remembered, "900", "MOVE SE SE")
+            .expect("the ruleset loads");
+        let path = answer.path.expect("a traced path");
+
+        assert_eq!(path.steps.len(), 2);
+        assert_eq!(
+            path.steps[1].terrain, "plain",
+            "the remembered hex named the far side, so its terrain is real rather than guessed"
+        );
+    }
+
+    #[test]
+    fn an_order_that_is_not_movement_answers_with_no_path() {
+        let current = format!(
+            "Foo (1) Report\n\n{}\n* Walker (900), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.\n",
+            corridor("plain", 1, 1, "  Southeast : plain (2,2) in Nowhere.")
+        );
+
+        let answer = command_trace_move_orders(RULESET, &current, "[]", "900", "work")
+            .expect("the ruleset loads");
+        assert_eq!(answer.path, None);
+    }
+}
+
 #[cfg(test)]
 mod plan_route_command_tests {
     use super::*;

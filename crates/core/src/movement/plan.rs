@@ -213,7 +213,9 @@ fn blocked_by_water(
 }
 
 /// What entering `into` costs from `from`, or `None` when the unit may not go there at all.
-fn step_cost(
+///
+/// Shared with the order tracer, which uses the refusal as its cue to guess instead.
+pub(crate) fn step_cost(
     map: &MapKnowledge,
     ruleset: &Ruleset,
     mode: MovementMode,
@@ -325,7 +327,8 @@ fn rebuild(
 /// The rules page is explicit that points carry over, which is why this accumulates rather than
 /// giving each month a fresh budget: costs of one, two and one take a two-point walker two months,
 /// not three.
-fn split_into_months(
+/// Shared with the order tracer, so a drawn order and a planned route split identically.
+pub(crate) fn split_into_months(
     ruleset: &Ruleset,
     mode: MovementMode,
     origin: Coordinate,

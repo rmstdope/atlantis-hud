@@ -129,6 +129,25 @@ describe("core client adapter contract parity", () => {
       fullyModelled: false
     };
 
+    // A traced order rides the same wire shape as a planned route's pieces, with the path
+    // optional and the mode nullable for a unit whose speed is unknown.
+    const tracePayload = {
+      path: {
+        from: { x: 7, y: 53, z: 1 },
+        steps: [
+          {
+            direction: "north",
+            to: { x: 7, y: 51, z: 1 },
+            terrain: "mountain",
+            cost: 2,
+            road: false
+          }
+        ],
+        months: [{ month: 1, steps: 1, endsAt: { x: 7, y: 51, z: 1 } }],
+        mode: "walk"
+      }
+    };
+
     const wasmBindings: WasmBindings = {
       get_engine_info() {
         return {
@@ -188,6 +207,9 @@ describe("core client adapter contract parity", () => {
       plan_route_state() {
         return planPayload;
       },
+      trace_move_orders_state() {
+        return tracePayload;
+      },
       save_order_draft_state() {
         return orderDraftPayload;
       }
@@ -199,6 +221,9 @@ describe("core client adapter contract parity", () => {
       }
       if (command === "plan_route") {
         return Promise.resolve(planPayload as T);
+      }
+      if (command === "trace_move_orders") {
+        return Promise.resolve(tracePayload as T);
       }
       if (command === "list_games") {
         return Promise.resolve([
@@ -405,6 +430,14 @@ describe("core client adapter contract parity", () => {
     expect(wasmPlan.plan?.steps[0].terrain).toBe("mountain");
     expect(wasmPlan.problem).toBeNull();
     expect(wasmPlan.fullyModelled).toBe(false);
+
+    // A traced order must come back identically on both transports too, for the same reason.
+    const wasmTrace = await wasmClient.traceMoveOrders("{}", "report", "[]", "18642", "MOVE N");
+    const tauriTrace = await tauriClient.traceMoveOrders("{}", "report", "[]", "18642", "MOVE N");
+    expect(wasmTrace).toEqual(tauriTrace);
+    expect(wasmTrace.path?.steps[0].terrain).toBe("mountain");
+    expect(wasmTrace.path?.months[0].endsAt).toEqual({ x: 7, y: 51, z: 1 });
+    expect(wasmTrace.path?.mode).toBe("walk");
     await expect(
       wasmClient.parseReport("TURN: 12 Spring\nFACTION: 17 | Crimson Tide\nREGION: R1 | Coast of Dawn")
     ).resolves.toEqual(await tauriClient.parseReport("same"));

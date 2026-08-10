@@ -261,6 +261,26 @@ export type ReportMergeResult = {
   newRegionCount: number;
 };
 
+/**
+ * Where a unit's written MOVE order takes it, hex by hex and month by month.
+ *
+ * Terrain is a guess wherever the map could not say, and the trace never refuses: an order into
+ * unexplored country is extrapolated to its end, because it is still the player's stated intent.
+ */
+export type TracedPath = {
+  from: Coordinate;
+  steps: RouteStep[];
+  /** Empty when `mode` is null - the timing cannot be split without knowing the unit's speed. */
+  months: MonthLeg[];
+  /** How the unit travels, or null when it is overloaded or the report never said. */
+  mode: "fly" | "ride" | "walk" | null;
+};
+
+/** The traced order, or nothing when the unit has no readable movement order to draw. */
+export type MoveOrderTraceResponse = {
+  path: TracedPath | null;
+};
+
 /** Everything the planner has to say about one proposed move. */
 export type RoutePlanResponse = {
   /** The route, when one was found. */
@@ -599,6 +619,13 @@ export interface CoreAdapter {
     unitId: string,
     destination: string
   ): Promise<unknown> | unknown;
+  traceMoveOrders(
+    rulesetJson: string,
+    rawReport: string,
+    rememberedJson: string,
+    unitId: string,
+    orders: string
+  ): Promise<unknown> | unknown;
   loadRegionSightings(
     databasePath: string,
     gameId: string,
@@ -738,6 +765,21 @@ export interface CoreClient {
     destination: string
   ): Promise<RoutePlanResponse>;
   /**
+   * Where the MOVE or ADVANCE order in a unit's written orders takes it.
+   *
+   * `orders` is the unit's own order block as the editor holds it; the last readable movement
+   * line wins, matching how the game executes a re-issued order. Resolves with no path when
+   * there is nothing to draw - no order, no such unit, or an unknown origin. Rejects only when
+   * the ruleset or the remembered regions cannot be read.
+   */
+  traceMoveOrders(
+    rulesetJson: string,
+    rawReport: string,
+    rememberedJson: string,
+    unitId: string,
+    orders: string
+  ): Promise<MoveOrderTraceResponse>;
+  /**
    * Every region this faction has been seen in, across every turn imported into the game.
    *
    * Empty for a game with no committed imports, which is not an error: it is what a map looks
@@ -847,6 +889,13 @@ export interface WasmBindings {
     rememberedJson: string,
     unitId: string,
     destination: string
+  ): unknown;
+  trace_move_orders_state(
+    rulesetJson: string,
+    rawReport: string,
+    rememberedJson: string,
+    unitId: string,
+    orders: string
   ): unknown;
   load_region_sightings_state?(
     databasePath: string,
@@ -1486,6 +1535,22 @@ export function createCoreClient(adapter: CoreAdapter): CoreClient {
         destination
       )) as RoutePlanResponse;
     },
+    async traceMoveOrders(
+      rulesetJson: string,
+      rawReport: string,
+      rememberedJson: string,
+      unitId: string,
+      orders: string
+    ) {
+      // Returned as-is for the same reason planRoute is: the core already serializes this shape.
+      return (await adapter.traceMoveOrders(
+        rulesetJson,
+        rawReport,
+        rememberedJson,
+        unitId,
+        orders
+      )) as MoveOrderTraceResponse;
+    },
     async loadRegionSightings(databasePath: string, gameId: string, factionId: string) {
       const value = await adapter.loadRegionSightings(databasePath, gameId, factionId);
       return (Array.isArray(value) ? value : []) as RememberedRegion[];
@@ -1628,6 +1693,15 @@ export function createWasmAdapter(bindings: WasmBindings): CoreAdapter {
       destination: string
     ) {
       return bindings.plan_route_state(rulesetJson, rawReport, rememberedJson, unitId, destination);
+    },
+    traceMoveOrders(
+      rulesetJson: string,
+      rawReport: string,
+      rememberedJson: string,
+      unitId: string,
+      orders: string
+    ) {
+      return bindings.trace_move_orders_state(rulesetJson, rawReport, rememberedJson, unitId, orders);
     },
     loadRegionSightings(databasePath: string, gameId: string, factionId: string) {
       // Persistence is not linked into a wasm build, so a bare wasm adapter has nothing to read.
@@ -1811,6 +1885,21 @@ export function createTauriAdapter(invoke: TauriInvoke): CoreAdapter {
         remembered_json: rememberedJson,
         unit_id: unitId,
         destination
+      });
+    },
+    traceMoveOrders(
+      rulesetJson: string,
+      rawReport: string,
+      rememberedJson: string,
+      unitId: string,
+      orders: string
+    ) {
+      return invoke<MoveOrderTraceResponse>("trace_move_orders", {
+        ruleset_json: rulesetJson,
+        raw_report: rawReport,
+        remembered_json: rememberedJson,
+        unit_id: unitId,
+        orders
       });
     },
     loadRegionSightings(databasePath: string, gameId: string, factionId: string) {

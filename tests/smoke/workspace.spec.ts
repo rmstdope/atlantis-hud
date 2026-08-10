@@ -896,6 +896,41 @@ test("the movement layer controls the route overlay and nothing else", async ({ 
 });
 
 /**
+ * Issue #83: a unit's written MOVE order is drawn on the map - solid through what the coming month
+ * covers, dotted for the rest - and it follows the editor as the player types.
+ *
+ * "* Seven of Eight (18642)" is a walker with two movement points in the mountain at (7,53). Its
+ * north neighbour (7,51) is another mountain at two points, so MOVE N N N is one hex a month:
+ * one solid step, then a dotted tail extrapolated into country nobody has described.
+ */
+test("a written move order is drawn solid for next turn and dotted beyond", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+  await selectUnit(page, OWN_UNIT);
+
+  // Movement lines follow the movement layer chip, order paths and planner previews alike.
+  await page.getByTestId("layer-chips").getByLabel("movement").click();
+  await page.getByTestId("orders-input").fill("MOVE N N N");
+
+  // Asserted by count and points rather than visibility: a due-north path is a straight vertical
+  // line, whose zero-width bounding box Playwright counts as hidden.
+  await expect(page.getByTestId("route-line-solid")).toHaveCount(1);
+  await expect(page.getByTestId("route-line-solid")).toHaveAttribute("points", /.+ .+/);
+  await expect(page.getByTestId("route-line-dotted")).toHaveCount(1);
+  await expect(page.getByTestId("route-line-dotted")).toHaveAttribute("points", /.+ .+ .+/);
+
+  // Cutting the order down to what one month affords leaves nothing for the dotted tail.
+  await page.getByTestId("orders-input").fill("MOVE N");
+  await expect(page.getByTestId("route-line-dotted")).toHaveCount(0);
+  await expect(page.getByTestId("route-line-solid")).toHaveCount(1);
+
+  // Arming the planner is a gesture about a different journey, so the order path steps aside.
+  await page.getByTestId("planner-arm").click();
+  await expect(page.getByTestId("route-line-solid")).toHaveCount(0);
+  await expect(page.getByTestId("route-line-dotted")).toHaveCount(0);
+});
+
+/**
  * A report cannot be split into men and equipment on its own, so a unit's headcount is a guess
  * until it has been counted against the scraped item catalogue. Classification is what removes the
  * guess, and it has to run on the path that draws the table - not only inside the planner.

@@ -4,6 +4,7 @@ import type {
   MergedReportRecord,
   OpenedGame,
   ParsedReport,
+  MoveOrderTraceResponse,
   RememberedRegion,
   RoutePlanResponse
 } from "@atlantis/core-client";
@@ -47,6 +48,7 @@ import { MapCanvas } from "./MapCanvas";
 import { OrdersPanel } from "./OrdersPanel";
 import { ordersSlotClass, unitSlotClass } from "./panelLayout";
 import { PlannerPanel } from "./PlannerPanel";
+import { chooseRouteOverlay } from "./routeOverlay";
 import { RegionPanel } from "./RegionPanel";
 import { TurnMessagesPanel, type TurnMessagesTab } from "./TurnMessagesPanel";
 import { UnitPanel } from "./UnitPanel";
@@ -203,6 +205,9 @@ export function AppShell({
   const rulesetText = ruleset.status === "ready" ? ruleset.text : null;
   const [route, setRoute] = useState<RoutePlanResponse | null>(null);
   const [planning, setPlanning] = useState(false);
+  // The selected unit's written MOVE order, traced so the map can draw it. Follows the editor
+  // rather than the saved draft, exactly as validation does.
+  const [orderTrace, setOrderTrace] = useState<MoveOrderTraceResponse | null>(null);
   // Which game is open, and every game there is. Both live here because both change together:
   // creating, switching and deleting all move the open game and the list in one step.
   const [game, setGame] = useState<OpenedGame | null>(null);
@@ -954,6 +959,44 @@ export function AppShell({
     };
   }, [client, planner.destinationId, unit, ruleset, rawReport, rememberedJson]);
 
+  // A trace answers a question about one unit, so it must not outlive the selection that asked
+  // it: without this, unit A's path stays on the map for the debounce-plus-round-trip it takes
+  // unit B's own trace to arrive - or forever, when that trace fails.
+  const selectedForTrace = unit?.own ? unit.unitId : null;
+  useEffect(() => {
+    setOrderTrace(null);
+  }, [selectedForTrace]);
+
+  // The selected unit's written movement order, traced across the remembered map as the player
+  // types, on the same debounce rhythm as validation. The overlay is advisory, so a trace that
+  // fails leaves the last one standing rather than replacing the line with an error. Skipped
+  // entirely while the movement layer is off: the answer could not be drawn, and toggling the
+  // layer back on re-runs this and asks again.
+  useEffect(() => {
+    const orders = (unit?.own ? readUnitOrders(ordersDocument, unit.unitId) : null) ?? "";
+    if (!layers.movement || !unit?.own || !orders.trim() || ruleset.status !== "ready" || !rawReport) {
+      setOrderTrace(null);
+      return undefined;
+    }
+
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      void client
+        .traceMoveOrders(ruleset.text, rawReport, rememberedJson, unit.unitId, orders)
+        .then((answer) => {
+          if (!cancelled) {
+            setOrderTrace(answer);
+          }
+        })
+        .catch(() => undefined);
+    }, 300);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [client, unit, ordersDocument, ruleset, rawReport, rememberedJson, layers.movement]);
+
   // Validation follows the document, debounced so it does not run on every keystroke. Kept whole
   // rather than counted here: the orders panel shows one unit, and which of these belong to it is a
   // question only the panel can answer - one it answers by line number, which is why the text that
@@ -1268,8 +1311,13 @@ export function AppShell({
           showTextures={showTextures}
           showUnits={layers.units}
           showStructures={layers.structures}
-          route={layers.movement ? (route?.plan?.steps.map((step) => step.to) ?? []) : []}
-          routeRisk={layers.movement ? (route?.risk?.hexes ?? []) : []}
+          route={chooseRouteOverlay({
+            movementLayerOn: layers.movement,
+            plannerArmed: planner.armed,
+            plan: route?.plan ?? null,
+            trace: orderTrace?.path ?? null
+          })}
+          routeRisk={layers.movement && route?.plan ? (route.risk?.hexes ?? []) : []}
         />
 
         <div className="pointer-events-none absolute inset-x-0 top-2.5 flex justify-center">

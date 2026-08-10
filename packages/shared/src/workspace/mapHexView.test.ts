@@ -9,6 +9,7 @@ import {
   hexPaint,
   hexPointsAttribute,
   routePoints,
+  routeSegments,
   staleFadeAmount,
   terrainTexturePatternId,
   terrainTextureUrl,
@@ -294,6 +295,55 @@ describe("the planned route", () => {
 
   it("draws nothing when there is no route", () => {
     expect(routePoints([], 1)).toBe("");
+  });
+});
+
+describe("a route split into what happens next turn and what comes later", () => {
+  const pairs = (points: string) => (points === "" ? [] : points.trim().split(" "));
+
+  it("puts the first month's steps in the solid line and the rest in the dotted one", () => {
+    // Origin plus three steps, of which the first month covers one.
+    const segments = routeSegments([at(7, 53), at(7, 51), at(7, 49), at(7, 47)], 1, 1);
+
+    expect(pairs(segments.solid)).toHaveLength(2);
+    expect(pairs(segments.dotted)).toHaveLength(3);
+    // The dotted line begins where the solid one ends, so the two join seamlessly.
+    expect(pairs(segments.dotted)[0]).toBe(pairs(segments.solid)[1]);
+  });
+
+  it("starts the solid line at the unit's own hex", () => {
+    const segments = routeSegments([at(7, 53), at(7, 51)], 1, 1);
+    const [x, y] = pairs(segments.solid)[0].split(",").map(Number);
+
+    expect(x).toBeCloseTo(7 * COLUMN_PITCH);
+    expect(y).toBeCloseTo(53 * ROW_PITCH);
+    expect(segments.dotted).toBe("");
+  });
+
+  it("draws everything dotted when the unit's speed is unknown", () => {
+    const segments = routeSegments([at(7, 53), at(7, 51), at(7, 49)], null, 1);
+
+    expect(segments.solid).toBe("");
+    expect(pairs(segments.dotted)).toHaveLength(3);
+  });
+
+  it("draws everything dotted when the first month is spent saving points", () => {
+    // A first hex dearer than a month's allowance means zero steps next turn - legitimate, and
+    // the whole path is later-turn work.
+    const segments = routeSegments([at(7, 53), at(7, 51)], 0, 1);
+
+    expect(segments.solid).toBe("");
+    expect(pairs(segments.dotted)).toHaveLength(2);
+  });
+
+  it("draws no lone points, which a polyline cannot show", () => {
+    expect(routeSegments([at(7, 53)], 1, 1)).toEqual({ solid: "", dotted: "" });
+    expect(routeSegments([], null, 1)).toEqual({ solid: "", dotted: "" });
+  });
+
+  it("leaves out steps on another level, exactly as the flat route does", () => {
+    const segments = routeSegments([at(7, 53), at(8, 52, 2), at(9, 51)], 2, 1);
+    expect(pairs(segments.solid)).toHaveLength(2);
   });
 });
 

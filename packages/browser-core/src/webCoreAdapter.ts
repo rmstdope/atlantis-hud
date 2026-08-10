@@ -29,6 +29,13 @@ export type CoreWasmModule = {
     unitId: string,
     destination: string
   ): unknown;
+  trace_move_orders_state(
+    rulesetJson: string,
+    rawReport: string,
+    rememberedJson: string,
+    unitId: string,
+    orders: string
+  ): unknown;
   prepare_report_import_state(
     rawReport: string,
     confirmedFactionId: string,
@@ -540,6 +547,16 @@ export function createWebCoreAdapter(
       // storage to stand in for a database. The report goes as text, which is what the core keys
       // its last parse on, so planning over the turn already on screen re-parses nothing.
       return wasm.plan_route_state(rulesetJson, rawReport, rememberedJson, unitId, destination);
+    },
+    traceMoveOrders(
+      rulesetJson: string,
+      rawReport: string,
+      rememberedJson: string,
+      unitId: string,
+      orders: string
+    ) {
+      // Straight through for the same reason planRoute is: no browser storage stands in.
+      return wasm.trace_move_orders_state(rulesetJson, rawReport, rememberedJson, unitId, orders);
     },
     validateOrders(rawOrders: string, rulesetJson: string | null) {
       return wasm.validate_orders_state(rawOrders, rulesetJson);
