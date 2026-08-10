@@ -123,11 +123,16 @@ export async function loadReportUi(reportText: string): Promise<void> {
  * the rest regardless. It also sidesteps WebKitWebDriver's opinions about clicking SVG shapes.
  */
 export async function selectHex(regionId: string): Promise<void> {
-  const hex = $(`[aria-label="hex ${regionId}"]`);
-  await hex.waitForExist();
-  await browser.execute((element) => {
-    (element as unknown as SVGElement & { focus(): void }).focus();
-  }, hex);
+  await $(`[aria-label="hex ${regionId}"]`).waitForExist();
+  // Found and focused inside the page: WebKitWebDriver hands `execute` arguments a reference
+  // it cannot call `focus()` through, so the element is looked up where it can be.
+  await browser.execute((label) => {
+    const hex = document.querySelector(`[aria-label="${label}"]`);
+    if (!hex) {
+      throw new Error(`no element labelled "${label}" to focus`);
+    }
+    (hex as SVGElement & { focus(): void }).focus();
+  }, `hex ${regionId}`);
   await browser.keys("Enter");
 }
 
