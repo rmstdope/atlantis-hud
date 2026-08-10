@@ -69,8 +69,8 @@ describe("describeMen", () => {
 });
 
 describe("describeMenBriefly", () => {
-  it("marks a guess with a tilde", () => {
-    expect(describeMenBriefly(unit({ men: 50, menEstimated: true }))).toBe("~50");
+  it("shows a guessed figure as a plain number", () => {
+    expect(describeMenBriefly(unit({ men: 50, menEstimated: true }))).toBe("50");
   });
 
   it("writes a counted figure plainly", () => {

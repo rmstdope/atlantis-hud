@@ -35,11 +35,11 @@ export function describeMen(unit: ReportUnit): string {
 /**
  * The compact form, for a table cell.
  *
- * A tilde marks a figure the parser guessed at. Zero is written out rather than left blank: a unit
- * of nobody is worth seeing, and a blank cell reads as missing data.
+ * Zero is written out rather than left blank: a unit of nobody is worth seeing, and a blank cell
+ * reads as missing data.
  */
 export function describeMenBriefly(unit: ReportUnit): string {
-  return `${unit.menEstimated ? "~" : ""}${unit.men.toLocaleString()}`;
+  return unit.men.toLocaleString();
 }
 
 /** Why a figure is marked as a guess, for a tooltip. */
