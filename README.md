@@ -145,6 +145,17 @@ pnpm run build:web && pnpm run test:pwa
 does. It is also the only place the service worker exists at all, which is why it is separate from
 the smoke suite rather than a third project in it.
 
+`test:native` drives the real desktop binary over Tauri IPC and is Linux-only: WebKitGTK is the one
+webview that speaks WebDriver, so on macOS and Windows this suite runs in CI rather than locally.
+On Linux it needs `webkit2gtk-driver` installed, `cargo install tauri-driver --locked`, and a shell
+built first:
+
+```bash
+pnpm --filter @atlantis/desktop exec vite build
+pnpm --filter @atlantis/desktop exec tauri build --debug --no-bundle --features desktop-runtime
+xvfb-run pnpm run test:native   # or plain `pnpm run test:native` inside a desktop session
+```
+
 Rust-only checks:
 
 ```bash

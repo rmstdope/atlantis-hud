@@ -13,8 +13,15 @@ import { join } from "node:path";
  * `app_data_dir()` resolves to `$XDG_DATA_HOME/com.atlantis.hud` and every game the suite creates
  * lands under a directory the Node side of the tests can open directly.
  */
-export const DATA_HOME =
-  process.env.ATLANTIS_NATIVE_DATA_HOME ?? join(os.tmpdir(), "atlantis-hud-native-e2e");
+/**
+ * Always suffixed, even under the override: the launcher deletes this directory recursively at
+ * the start of every run, and an override pointing at, say, `~/.local/share` must never make
+ * that wipe reach anything but the suite's own subdirectory.
+ */
+export const DATA_HOME = join(
+  process.env.ATLANTIS_NATIVE_DATA_HOME ?? os.tmpdir(),
+  "atlantis-hud-native-e2e"
+);
 
 export const APP_DATA_DIR = join(DATA_HOME, "com.atlantis.hud");
 

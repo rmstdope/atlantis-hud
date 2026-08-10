@@ -47,16 +47,24 @@ describe("native desktop workspace", () => {
     await expect($('[data-testid="app-header"]')).toHaveText(expect.stringContaining("71"));
 
     // The half the browser suites cannot see: the turn is a row in a file on disk, not an
-    // IndexedDB entry, and it is readable from outside the application.
-    const db = openGameDb();
-    try {
-      const rows = db
-        .prepare("SELECT faction_id, turn_number FROM imported_turns ORDER BY turn_number")
-        .all();
-      expect(rows).toEqual([{ faction_id: "95", turn_number: 71 }]);
-    } finally {
-      db.close();
-    }
+    // IndexedDB entry, and it is readable from outside the application. Polled, because the
+    // shell holds the writing connection and a reader can land inside its transaction.
+    await browser.waitUntil(
+      () => {
+        const db = openGameDb();
+        try {
+          const rows = db
+            .prepare("SELECT faction_id, turn_number FROM imported_turns ORDER BY turn_number")
+            .all();
+          return (
+            rows.length === 1 && rows[0].faction_id === "95" && rows[0].turn_number === 71
+          );
+        } finally {
+          db.close();
+        }
+      },
+      { timeoutMsg: "imported_turns never held exactly the row (95, 71)" }
+    );
   });
 
   it("selecting hex 1:7,53 lists its ninety-two units", async () => {

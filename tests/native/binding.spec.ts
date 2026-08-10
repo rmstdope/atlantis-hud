@@ -33,11 +33,13 @@ const ISO = "2026-08-10T12:00:00Z";
 const GAME_ID = "native-binding-sweep";
 
 /**
- * The failures this sweep is about. Tauri phrases an unregistered command as "Command X not
- * found" and a binding miss as "invalid args `name` for command X"; anything else a command
- * throws is its own business.
+ * The failures this sweep is about, anchored to the exact shapes Tauri 2 produces: a binding
+ * miss is "invalid args `name` for command `x`: ...", an unregistered command is "Command x not
+ * found", and a capability miss is "Command x not allowed by ACL". Anchored rather than loose,
+ * because a domain error is a pass here and domain text is free to contain words like "not
+ * found" without tripping the sweep.
  */
-const BINDING_FAILURE = /invalid args|not found|unknown/iu;
+const BINDING_FAILURE = /invalid args `|^Command .+ not (found|allowed)/u;
 
 /**
  * Filled in when `create_game` — deliberately the first entry — returns its `OpenedGameDto`.
@@ -184,11 +186,17 @@ describe("tauri command binding", () => {
       join(ROOT, "apps", "desktop", "src-tauri", "src", "main.rs"),
       "utf8"
     );
-    const block = source.match(/generate_handler!\[([\s\S]*?)\]/u);
-    if (!block) {
-      throw new Error("no generate_handler! registration found in main.rs");
+    // The full call, not the bare macro name, so a commented-out registration or a second
+    // builder cannot shadow the real one unseen.
+    const registrations = [
+      ...source.matchAll(/\.invoke_handler\(tauri::generate_handler!\[([\s\S]*?)\]/gu)
+    ];
+    if (registrations.length !== 1) {
+      throw new Error(
+        `expected exactly one invoke_handler(generate_handler![...]) in main.rs, found ${registrations.length}`
+      );
     }
-    const registered = block[1]
+    const registered = registrations[0][1]
       .split(",")
       .map((entry) => entry.trim())
       .filter((entry) => entry.length > 0);

@@ -57,6 +57,20 @@ function waitForPort(port: number, timeoutMs: number): Promise<void> {
   });
 }
 
+/** One connection attempt: resolves true if something is already listening. */
+function portInUse(port: number): Promise<boolean> {
+  return new Promise((resolveCheck) => {
+    const socket = createConnection({ host: "127.0.0.1", port }, () => {
+      socket.end();
+      resolveCheck(true);
+    });
+    socket.on("error", () => {
+      socket.destroy();
+      resolveCheck(false);
+    });
+  });
+}
+
 export const config: WebdriverIO.Config = {
   runner: "local",
   hostname: "127.0.0.1",
@@ -95,6 +109,12 @@ export const config: WebdriverIO.Config = {
     mkdirSync(DATA_HOME, { recursive: true });
     mkdirSync(RESULTS_DIR, { recursive: true });
 
+    // A stranger already on the port would answer the readiness poll below, and wdio would
+    // then drive whatever it is - after the data directory has already been wiped.
+    if (await portInUse(TAURI_DRIVER_PORT)) {
+      throw new Error(`something is already listening on port ${TAURI_DRIVER_PORT}`);
+    }
+
     // tauri-driver launches the application itself, and the application inherits this
     // environment — which is the only place XDG_DATA_HOME can be planted.
     tauriDriver = spawn(
@@ -105,10 +125,22 @@ export const config: WebdriverIO.Config = {
         env: { ...process.env, XDG_DATA_HOME: DATA_HOME }
       }
     );
-    tauriDriver.on("error", (error) => {
-      throw new Error(`tauri-driver failed to start: ${error.message}`);
+    // However this process ends, the driver must not outlive it on a developer's machine.
+    process.on("exit", () => tauriDriver?.kill());
+
+    // Raced rather than listened to: a spawn failure (tauri-driver not installed being the
+    // usual one) must reject onPrepare with its own message, not surface minutes later as a
+    // port timeout or crash the launcher from inside an event callback.
+    const spawnFailure = new Promise<never>((_, reject) => {
+      tauriDriver?.on("error", (error) => {
+        reject(
+          new Error(
+            `tauri-driver failed to start: ${error.message} (install it with: cargo install tauri-driver --locked)`
+          )
+        );
+      });
     });
-    await waitForPort(TAURI_DRIVER_PORT, 30_000);
+    await Promise.race([waitForPort(TAURI_DRIVER_PORT, 30_000), spawnFailure]);
   },
 
   onComplete: () => {
@@ -117,8 +149,14 @@ export const config: WebdriverIO.Config = {
 
   afterTest: async (test, _context, { passed }) => {
     if (!passed) {
-      const name = test.title.replace(/[^a-z0-9]+/giu, "-").toLowerCase();
-      await browser.saveScreenshot(join(RESULTS_DIR, `${name}.png`));
+      // Suite-prefixed so same-titled tests in different files cannot overwrite each other,
+      // and guarded because a session that died mid-test has no screenshot to give.
+      const name = `${test.parent}-${test.title}`.replace(/[^a-z0-9]+/giu, "-").toLowerCase();
+      try {
+        await browser.saveScreenshot(join(RESULTS_DIR, `${name}.png`));
+      } catch {
+        // The failure being reported is the interesting one, not the screenshot's.
+      }
     }
   }
 };
