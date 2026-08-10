@@ -327,6 +327,8 @@ export function MapCanvas({
       window.removeEventListener("pointerup", up);
       if (draggedRef.current) {
         commit(viewRef.current);
+        setCursor(null);
+        setMapFocused(false);
       }
     };
     window.addEventListener("pointermove", move);
