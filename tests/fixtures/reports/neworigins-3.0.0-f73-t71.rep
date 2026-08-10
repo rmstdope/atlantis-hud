@@ -1,0 +1,135 @@
+;Treasury:
+;
+;Item                                      Rank  Max        Total
+;=====================================================================
+;12 leaders [LEAD]                         30    336        3194
+;480 lizardmen [LIZA]                      18    1219       4542
+;310 silver [SILV]                         44    3914020    28913609
+
+Atlantis Report For:
+Borg (73) (Magic 5)
+December, Year 6
+
+Atlantis Engine Version: 5.2.5 (beta)
+NewOrigins, Version: 3.0.0 (beta)
+
+Faction Status:
+Regions: 3 (10)
+Quartermasters: 0 (0)
+Mages: 6 (6)
+Apprentices: 0 (15)
+
+Errors during turn:
+Unit (2003): STUDY: Not enough funds.
+
+Events during turn:
+Unit (2001): Earns 84 silver working in swamp (10,50) in Cebo.
+Unit (2004): Claims $120.
+
+Declared Attitudes (default Neutral):
+Hostile : none.
+Unfriendly : none.
+Neutral : none.
+Friendly : none.
+Ally : Borg TNG (95).
+
+Unclaimed silver: 310.
+
+swamp (10,50) in Cebo, 1980 peasants (lizardmen), $1010.
+------------------------------------------------------------
+  Wages: $9.0 (Max: $410).
+  Wanted: 40 grain [GRAI] at $21.
+  For Sale: 74 lizardmen [LIZA] at $44.
+  Entertainment available: $61.
+  Products: 15 grain [GRAI], 14 wood [WOOD].
+
+Exits:
+  North : ocean (10,48) in Atlantis Ocean.
+  Northeast : ocean (11,49) in Atlantis Ocean.
+  Southeast : ocean (11,51) in Atlantis Ocean.
+  South : ocean (10,52) in Atlantis Ocean.
+  Southwest : jungle (9,51) in Maput.
+  Northwest : ocean (9,49) in Atlantis Ocean.
+
+- Fern Collectors (12694), 4 lizardmen [LIZA], 2 axes [AXE].
+* Swamp Watch (2001), Borg (73), behind, revealing faction, 4
+  lizardmen [LIZA], 3 spears [SPEA]. Weight: 45. Capacity: 0/0/60/0.
+  Skills: combat [COMB] 2 (90).
+
++ Cebo Watchpost [21] : Tower.
+  * Tower Guard (2002), Borg (73), on guard, revealing faction, 6
+    lizardmen [LIZA]. Weight: 60. Capacity: 0/0/90/0. Skills: none.
+
+jungle (9,51) in Maput, 640 peasants (lizardmen), $310.
+------------------------------------------------------------
+  Wages: $10.5 (Max: $155).
+  Wanted: 22 fish [FISH] at $39.
+  For Sale: 25 lizardmen [LIZA] at $46.
+  Entertainment available: $24.
+  Products: 12 wood [WOOD], 9 herbs [HERB].
+
+Exits:
+  North : ocean (9,49) in Atlantis Ocean.
+  Northeast : swamp (10,50) in Cebo.
+  Southeast : ocean (10,52) in Atlantis Ocean.
+  South : plain (9,53) in Maput.
+  Southwest : ocean (8,52) in Atlantis Ocean.
+  Northwest : ocean (8,50) in Atlantis Ocean.
+
+- Wandering Herbalist (9114), 2 lizardmen [LIZA].
+* Jungle Scout (2003), Borg (73), avoiding, behind, revealing faction,
+  lizardman [LIZA], 40 silver [SILV]. Weight: 10. Capacity: 0/0/15/0.
+  Skills: observation [OBSE] 2 (90).
+
+plain (9,53) in Maput, 1204 peasants (lizardmen), $602.
+------------------------------------------------------------
+  Wages: $11.0 (Max: $240).
+  Wanted: none.
+  For Sale: 48 lizardmen [LIZA] at $42, 6 leaders [LEAD] at $712.
+  Entertainment available: $37.
+  Products: 18 grain [GRAI], 11 livestock [LIVE].
+
+Exits:
+  North : jungle (9,51) in Maput.
+  Northeast : ocean (10,52) in Atlantis Ocean.
+  Southeast : ocean (10,54) in Atlantis Ocean.
+  South : ocean (9,55) in Atlantis Ocean.
+  Southwest : ocean (8,54) in Atlantis Ocean.
+  Northwest : ocean (8,52) in Atlantis Ocean.
+
+* Plain Camp (2004), Borg (73), behind, revealing faction, 8 lizardmen
+  [LIZA], 120 silver [SILV]. Weight: 80. Capacity: 0/0/120/0. Skills:
+  none.
+
+Orders Template (Long Format):
+
+#atlantis 73 "<password>"
+
+;*** swamp (10,50) in Cebo ***
+
+unit 2001
+;Swamp Watch (2001), behind, revealing faction, 4 lizardmen [LIZA], 3
+;  spears [SPEA]. Weight: 45. Capacity: 0/0/60/0. Skills: combat
+;  [COMB] 2 (90).
+@work
+
+unit 2002
+;Tower Guard (2002), on guard, revealing faction, 6 lizardmen [LIZA].
+;  Weight: 60. Capacity: 0/0/90/0. Skills: none.
+
+;*** jungle (9,51) in Maput ***
+
+unit 2003
+;Jungle Scout (2003), avoiding, behind, revealing faction, lizardman
+;  [LIZA], 40 silver [SILV]. Weight: 10. Capacity: 0/0/15/0. Skills:
+;  observation [OBSE] 2 (90).
+@study obse
+
+;*** plain (9,53) in Maput ***
+
+unit 2004
+;Plain Camp (2004), behind, revealing faction, 8 lizardmen [LIZA], 120
+;  silver [SILV]. Weight: 80. Capacity: 0/0/120/0. Skills: none.
+@work
+
+#end

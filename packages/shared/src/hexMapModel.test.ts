@@ -278,3 +278,71 @@ describe("unit ordering", () => {
     expect(unitsForHex(null)).toEqual([]);
   });
 });
+
+/**
+ * A hex the player stands in that an ally also stood in this turn.
+ *
+ * Merging (issue #53) writes the combined hex into storage, but the current report wins any hex it
+ * describes, so without an additive rule the merged detail would be stored and never drawn.
+ */
+describe("a hex an ally also saw this turn", () => {
+  const stored = (units: ReportUnit[], lastSeenTurn: number): StoredRegion => ({
+    regionId: "1:7,53",
+    coordinate: at(7, 53),
+    terrain: "mountain",
+    province: "Inhead",
+    label: "mountain (7,53) in Inhead",
+    lastSeenTurn,
+    region: region(at(7, 53), { units })
+  });
+
+  const mine = region(at(7, 53), { units: [unit("13432", true, "Drone")] });
+
+  it("gains the units the ally saw there", () => {
+    const hex = buildHexMapModel(report([mine]), [
+      stored([unit("13432", false, "Drone"), unit("2001", false, "Swamp Watch")], 71)
+    ]).hexes[0];
+
+    expect(unitsForHex(hex).map((entry) => entry.name)).toEqual(["Drone", "Swamp Watch"]);
+    expect(hex.foreignUnitCount).toBe(1);
+  });
+
+  it("loses none of its own, and keeps its own account of them", () => {
+    const hex = buildHexMapModel(report([mine]), [
+      stored([unit("13432", false, "Drone as the ally saw it"), unit("2001", false)], 71)
+    ]).hexes[0];
+
+    const drone = unitsForHex(hex)[0];
+    expect(drone.name).toBe("Drone");
+    expect(drone.own).toBe(true);
+    expect(hex.ownUnitCount).toBe(1);
+  });
+
+  /**
+   * The merge marks everything it contributes as somebody else's before storing it. Trusting that
+   * blindly would be one release away from a bug, so the rule restates it rather than assuming it.
+   */
+  it("does not hand the player command of the ally's units", () => {
+    const hex = buildHexMapModel(report([mine]), [stored([unit("2001", true, "Swamp Watch")], 71)])
+      .hexes[0];
+
+    expect(unitsForHex(hex).find((entry) => entry.unitId === "2001")?.own).toBe(false);
+    expect(hex.ownUnitCount).toBe(1);
+  });
+
+  it("is still the current report's hex, not a stale one", () => {
+    const hex = buildHexMapModel(report([mine]), [stored([unit("2001", false)], 71)]).hexes[0];
+
+    expect(hex.knowledge).toBe("current");
+    expect(hex.ageInTurns).toBe(0);
+  });
+
+  /** An earlier turn describes the hex before whatever has happened in it since. */
+  it("does not let an earlier turn's memory of the hex intrude", () => {
+    const hex = buildHexMapModel(report([mine]), [
+      stored([unit("2001", false, "Swamp Watch")], 63)
+    ]).hexes[0];
+
+    expect(unitsForHex(hex).map((entry) => entry.name)).toEqual(["Drone"]);
+  });
+});

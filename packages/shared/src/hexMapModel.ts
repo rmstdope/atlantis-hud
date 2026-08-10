@@ -95,6 +95,43 @@ function countUnits(region: ReportRegion | null) {
   };
 }
 
+/**
+ * A hex in the current report, plus whatever an ally saw standing in it this same turn.
+ *
+ * The current report always wins a hex it describes, and that is right: it is the classified parse,
+ * so its units carry exact man counts where a stored payload's carry estimates. But an ally's
+ * report merged into this same turn (issue #53) is stored and not on screen, so without this the
+ * deep merge of a hex both factions stood in would be written correctly and never drawn - it would
+ * surface next turn, once the hex goes stale, which is a strange thing for "merged 31 regions" to
+ * mean.
+ *
+ * Additive only. Nothing of the current report is replaced; units it does not already name are
+ * appended, and by construction those are all foreign - the merge marks every unit it contributes
+ * as somebody else's before it stores it. `ownUnitCount` and `foreignUnitCount` recount from the
+ * result, so the tallies follow without being told.
+ *
+ * Restricted to a stored sighting of *this* turn. An older one describes a hex before whatever
+ * happened in it since, and letting that intrude would put last month's army back on the board.
+ */
+function withAlliesUnits(
+  region: ReportRegion,
+  stored: StoredRegion | undefined,
+  currentTurn: number | null
+): ReportRegion {
+  const alsoSeen = stored?.region;
+  if (!alsoSeen || currentTurn === null || stored.lastSeenTurn !== currentTurn) {
+    return region;
+  }
+
+  const named = new Set(region.units.map((unit) => unit.unitId));
+  const extra = alsoSeen.units.filter((unit) => !named.has(unit.unitId));
+  if (extra.length === 0) {
+    return region;
+  }
+
+  return { ...region, units: [...region.units, ...extra.map((unit) => ({ ...unit, own: false }))] };
+}
+
 function nodeFromRegion(
   region: ReportRegion,
   knowledge: HexKnowledge,
@@ -130,6 +167,7 @@ export function buildHexMapModel(
 ): HexMapModel {
   const currentTurn = parsed.header.turnNumber;
   const byKey = new Map<string, HexNode>();
+  const storedByKey = new Map(storedRegions.map((stored) => [keyOf(stored.coordinate), stored]));
 
   // Weakest first, so stronger knowledge overwrites it.
   for (const region of parsed.regions) {
@@ -177,9 +215,15 @@ export function buildHexMapModel(
   }
 
   for (const region of parsed.regions) {
+    const key = keyOf(region.coordinate);
     byKey.set(
-      keyOf(region.coordinate),
-      nodeFromRegion(region, "current", currentTurn, currentTurn)
+      key,
+      nodeFromRegion(
+        withAlliesUnits(region, storedByKey.get(key), currentTurn),
+        "current",
+        currentTurn,
+        currentTurn
+      )
     );
   }
 

@@ -234,6 +234,33 @@ export type RouteRisk = { level: RiskLevel; worst: HexRisk | null; hexes: HexRis
  */
 export type RememberedRegion = { region: ReportRegion; lastSeenTurn: number };
 
+/**
+ * One allied report folded into a faction's map for one turn.
+ *
+ * Merging writes the ally's regions under the viewer's own faction id and stores no turn of the
+ * ally's, so afterwards nothing else in the game says where the extra hexes came from. `factionId`
+ * is the map that grew; `mergedFactionId` is whose report grew it.
+ */
+export type MergedReportRecord = {
+  gameId: string;
+  factionId: string;
+  turnNumber: number;
+  mergedFactionId: string;
+  mergedFactionName: string;
+  mergedAt: string;
+};
+
+/** What merging one allied report did to a faction's map. */
+export type ReportMergeResult = {
+  turnNumber: number;
+  mergedFactionId: string;
+  mergedFactionName: string;
+  /** Regions the allied report contributed. */
+  mergedRegionCount: number;
+  /** Of those, the hexes that were new to the map. */
+  newRegionCount: number;
+};
+
 /** Everything the planner has to say about one proposed move. */
 export type RoutePlanResponse = {
   /** The route, when one was found. */
@@ -504,6 +531,19 @@ type OrderDraftRecordWireShape = {
   updated_at?: string;
 };
 
+type ReportMergeResultWireShape = {
+  turnNumber?: number;
+  turn_number?: number;
+  mergedFactionId?: string;
+  merged_faction_id?: string;
+  mergedFactionName?: string;
+  merged_faction_name?: string;
+  mergedRegionCount?: number;
+  merged_region_count?: number;
+  newRegionCount?: number;
+  new_region_count?: number;
+};
+
 type ImportedTurnRecordWireShape = {
   key?: OrderDraftKeyWireShape;
   rawReport?: string;
@@ -547,6 +587,20 @@ export interface CoreAdapter {
     databasePath: string,
     gameId: string,
     factionId: string
+  ): Promise<unknown> | unknown;
+  mergeReport(
+    databasePath: string,
+    gameId: string,
+    viewerFactionId: string,
+    viewerTurnNumber: number,
+    rawReport: string,
+    mergedAt: string
+  ): Promise<unknown> | unknown;
+  loadMergedReports(
+    databasePath: string,
+    gameId: string,
+    factionId: string,
+    turnNumber: number
   ): Promise<unknown> | unknown;
   loadImportedTurn(
     databasePath: string,
@@ -647,6 +701,36 @@ export interface CoreClient {
     gameId: string,
     factionId: string
   ): Promise<RememberedRegion[]>;
+  /**
+   * Folds an allied report for the same turn into the viewer's remembered map.
+   *
+   * The regions land under `viewerFactionId`, which is what makes them visible: the map is read
+   * back one faction at a time, so a row written under the ally's id would be stored perfectly and
+   * never looked at. No turn of the ally's is stored, so which turn the game reopens on does not
+   * change - merging adds to the map without changing whose turn is on screen.
+   *
+   * Rejects when the report is not from `viewerTurnNumber`, which is the only turn it can be
+   * merged into: two reports of one turn describe the same moment, so neither is staler.
+   */
+  mergeReport(
+    databasePath: string,
+    gameId: string,
+    viewerFactionId: string,
+    viewerTurnNumber: number,
+    rawReport: string,
+    mergedAt: string
+  ): Promise<ReportMergeResult>;
+  /**
+   * Every allied report folded into one faction's map for one turn, oldest merge first.
+   *
+   * Empty is the ordinary case: most turns have nothing merged into them.
+   */
+  loadMergedReports(
+    databasePath: string,
+    gameId: string,
+    factionId: string,
+    turnNumber: number
+  ): Promise<MergedReportRecord[]>;
   loadImportedTurn(
     databasePath: string,
     gameId: string,
@@ -712,6 +796,25 @@ export interface WasmBindings {
     databasePath: string,
     gameId: string,
     factionId: string
+  ): unknown;
+  /**
+   * Optional for the same reason `load_region_sightings_state` is: a wasm build without the
+   * persistence half still parses and plans, and refusing to construct an adapter over it would
+   * cost that.
+   */
+  merge_report_state?(
+    databasePath: string,
+    gameId: string,
+    viewerFactionId: string,
+    viewerTurnNumber: number,
+    rawReport: string,
+    mergedAt: string
+  ): unknown;
+  load_merged_reports_state?(
+    databasePath: string,
+    gameId: string,
+    factionId: string,
+    turnNumber: number
   ): unknown;
   load_imported_turn_state(
     databasePath: string,
@@ -1025,6 +1128,35 @@ function normalizeImportedTurnPreview(value: unknown): ImportedTurnPreview {
   };
 }
 
+/**
+ * A merge outcome, or a refusal to believe one.
+ *
+ * Strict rather than tolerant, unlike `loadMergedReports` beside it. A count nobody can read means
+ * the status line would say the merge did nothing while the database says otherwise, and the two
+ * disagreeing quietly is worse than the merge visibly failing.
+ */
+function normalizeReportMergeResult(value: unknown): ReportMergeResult {
+  if (typeof value !== "object" || value === null) {
+    throw new Error("invalid report merge payload");
+  }
+  const payload = value as ReportMergeResultWireShape;
+  const turnNumber = payload.turnNumber ?? payload.turn_number;
+  const mergedFactionId = payload.mergedFactionId ?? payload.merged_faction_id;
+  const mergedFactionName = payload.mergedFactionName ?? payload.merged_faction_name;
+  const mergedRegionCount = payload.mergedRegionCount ?? payload.merged_region_count;
+  const newRegionCount = payload.newRegionCount ?? payload.new_region_count;
+  if (
+    typeof turnNumber !== "number" ||
+    typeof mergedFactionId !== "string" ||
+    typeof mergedFactionName !== "string" ||
+    typeof mergedRegionCount !== "number" ||
+    typeof newRegionCount !== "number"
+  ) {
+    throw new Error("incomplete report merge payload");
+  }
+  return { turnNumber, mergedFactionId, mergedFactionName, mergedRegionCount, newRegionCount };
+}
+
 function normalizeOrderValidationResult(value: unknown): OrderValidationResult {
   if (typeof value !== "object" || value === null) {
     throw new Error("invalid order validation payload");
@@ -1270,6 +1402,36 @@ export function createCoreClient(adapter: CoreAdapter): CoreClient {
     async loadRegionSightings(databasePath: string, gameId: string, factionId: string) {
       const value = await adapter.loadRegionSightings(databasePath, gameId, factionId);
       return (Array.isArray(value) ? value : []) as RememberedRegion[];
+    },
+    async mergeReport(
+      databasePath: string,
+      gameId: string,
+      viewerFactionId: string,
+      viewerTurnNumber: number,
+      rawReport: string,
+      mergedAt: string
+    ) {
+      return normalizeReportMergeResult(
+        await adapter.mergeReport(
+          databasePath,
+          gameId,
+          viewerFactionId,
+          viewerTurnNumber,
+          rawReport,
+          mergedAt
+        )
+      );
+    },
+    async loadMergedReports(
+      databasePath: string,
+      gameId: string,
+      factionId: string,
+      turnNumber: number
+    ) {
+      // Tolerated the way `loadRegionSightings` tolerates it: a turn with nothing merged into it
+      // is the ordinary case, and a store that answers oddly should cost the chip, not the turn.
+      const value = await adapter.loadMergedReports(databasePath, gameId, factionId, turnNumber);
+      return (Array.isArray(value) ? value : []) as MergedReportRecord[];
     }
   };
 }
@@ -1362,6 +1524,37 @@ export function createWasmAdapter(bindings: WasmBindings): CoreAdapter {
       // Persistence is not linked into a wasm build, so a bare wasm adapter has nothing to read.
       // The browser adapter in `@atlantis/browser-core` supplies its own, backed by IndexedDB.
       return bindings.load_region_sightings_state?.(databasePath, gameId, factionId) ?? [];
+    },
+    mergeReport(
+      databasePath: string,
+      gameId: string,
+      viewerFactionId: string,
+      viewerTurnNumber: number,
+      rawReport: string,
+      mergedAt: string
+    ) {
+      // Refused rather than answered emptily, because a merge is a write: reading nothing back is
+      // a fair account of an empty map, but writing nothing and saying it worked is not.
+      const merge = bindings.merge_report_state;
+      if (!merge) {
+        throw new Error("game persistence is not linked into this wasm build");
+      }
+      return merge(
+        databasePath,
+        gameId,
+        viewerFactionId,
+        viewerTurnNumber,
+        rawReport,
+        mergedAt
+      );
+    },
+    loadMergedReports(
+      databasePath: string,
+      gameId: string,
+      factionId: string,
+      turnNumber: number
+    ) {
+      return bindings.load_merged_reports_state?.(databasePath, gameId, factionId, turnNumber) ?? [];
     }
   };
 }
@@ -1493,6 +1686,36 @@ export function createTauriAdapter(invoke: TauriInvoke): CoreAdapter {
         database_path: databasePath,
         game_id: gameId,
         faction_id: factionId
+      });
+    },
+    mergeReport(
+      databasePath: string,
+      gameId: string,
+      viewerFactionId: string,
+      viewerTurnNumber: number,
+      rawReport: string,
+      mergedAt: string
+    ) {
+      return invoke<ReportMergeResult>("merge_report", {
+        database_path: databasePath,
+        game_id: gameId,
+        viewer_faction_id: viewerFactionId,
+        viewer_turn_number: viewerTurnNumber,
+        raw_report: rawReport,
+        merged_at: mergedAt
+      });
+    },
+    loadMergedReports(
+      databasePath: string,
+      gameId: string,
+      factionId: string,
+      turnNumber: number
+    ) {
+      return invoke<MergedReportRecord[]>("load_merged_reports", {
+        database_path: databasePath,
+        game_id: gameId,
+        faction_id: factionId,
+        turn_number: turnNumber
       });
     }
   };

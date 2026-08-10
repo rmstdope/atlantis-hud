@@ -17,8 +17,19 @@ const REPORT = readFileSync(
   join(__dirname, "..", "fixtures", "reports", "neworigins-3.0.0-f95-t71.rep"),
   "utf8"
 );
-const OLDER_REPORT = readFileSync(
+/** Another faction, and another turn: it can be switched to, but never merged. */
+const OTHER_FACTION_OLDER = readFileSync(
   join(__dirname, "..", "fixtures", "reports", "neworigins-3.0.0-f73-t2.rep"),
+  "utf8"
+);
+/** Another faction, same turn: the one case a merge is offered for. */
+const ALLY_REPORT = readFileSync(
+  join(__dirname, "..", "fixtures", "reports", "neworigins-3.0.0-f73-t71.rep"),
+  "utf8"
+);
+/** The player's own faction, one turn back, which is what the plain older-turn warning guards. */
+const OWN_OLDER_REPORT = readFileSync(
+  join(__dirname, "..", "fixtures", "reports", "neworigins-3.0.0-f95-t70.rep"),
   "utf8"
 );
 
@@ -85,16 +96,28 @@ test("loads a report and shows the turn it describes", async ({ page }) => {
   await expect(page.getByTestId("import-status")).toContainText("units");
 });
 
-test("loading an older report can be refused", async ({ page }) => {
+/** Drops a file onto the workspace the way the hidden file input receives one. */
+async function choose(page: Page, name: string, contents: string) {
+  await page.setInputFiles('input[type="file"]', {
+    name,
+    mimeType: "text/plain",
+    buffer: Buffer.from(contents, "utf8")
+  });
+}
+
+/**
+ * An older report of the player's *own* faction still gets the plain warning from issue #47.
+ *
+ * Kept on its own fixture rather than reusing faction 73's turn 2, which is also another faction
+ * and so now goes to the prompt below instead. Without this the native confirmation would have no
+ * end-to-end coverage at all and could be deleted by a refactor without anything failing.
+ */
+test("an older report from your own faction still asks first", async ({ page }) => {
   await loadReport(page);
   await expect(page.getByTestId("app-header")).toContainText(/Turn\s*71\b/);
 
   const dialog = page.waitForEvent("dialog");
-  await page.setInputFiles('input[type="file"]', {
-    name: "turn-2.rep",
-    mimeType: "text/plain",
-    buffer: Buffer.from(OLDER_REPORT, "utf8")
-  });
+  await choose(page, "turn-70.rep", OWN_OLDER_REPORT);
   const confirmation = await dialog;
   expect(confirmation.type()).toBe("confirm");
   expect(confirmation.message()).toContain("older than the currently loaded turn");
@@ -103,21 +126,104 @@ test("loading an older report can be refused", async ({ page }) => {
   await expect(page.getByTestId("app-header")).toContainText(/Turn\s*71\b/);
 });
 
-test("loading an older report can be accepted", async ({ page }) => {
+test("a report from another faction can be turned away", async ({ page }) => {
   await loadReport(page);
   await expect(page.getByTestId("app-header")).toContainText(/Turn\s*71\b/);
 
-  const dialog = page.waitForEvent("dialog");
-  await page.setInputFiles('input[type="file"]', {
-    name: "turn-2.rep",
-    mimeType: "text/plain",
-    buffer: Buffer.from(OLDER_REPORT, "utf8")
-  });
-  const confirmation = await dialog;
-  expect(confirmation.type()).toBe("confirm");
-  await confirmation.accept();
+  await choose(page, "turn-2.rep", OTHER_FACTION_OLDER);
+
+  const prompt = page.getByTestId("foreign-report-prompt");
+  await expect(prompt).toBeVisible();
+  // Another turn, so merging is not on offer at all, and the box says why as well as warning that
+  // the report is older than the one loaded.
+  await expect(page.getByTestId("foreign-report-merge")).toHaveCount(0);
+  await expect(prompt).toContainText("Merging needs a report from turn 71");
+  await expect(prompt).toContainText("older than the turn you have loaded");
+
+  await page.getByTestId("foreign-report-cancel").click();
+
+  await expect(prompt).toHaveCount(0);
+  await expect(page.getByTestId("app-header")).toContainText(/Turn\s*71\b/);
+  await expect(page.getByTestId("app-header")).toContainText("Borg TNG (95)");
+});
+
+test("a report from another faction can take over the workspace", async ({ page }) => {
+  await loadReport(page);
+  await expect(page.getByTestId("app-header")).toContainText(/Turn\s*71\b/);
+
+  await choose(page, "turn-2.rep", OTHER_FACTION_OLDER);
+  await page.getByTestId("foreign-report-switch").click();
 
   await expect(page.getByTestId("app-header")).toContainText(/Turn\s*2\b/);
+  await expect(page.getByTestId("app-header")).toContainText("Borg (73)");
+});
+
+/**
+ * The whole of issue #53: an ally's report for the same turn, folded into the map, without the
+ * player ceasing to be who they were.
+ *
+ * Faction 95 stands in the swamp at (10,50) and knows the jungle at (9,51) only as a name on that
+ * swamp's south-west exit. Faction 73 stands in both, and in a plain at (9,53) that faction 95 has
+ * never heard of - so the hex the map gains is proof the merge reached storage and came back.
+ */
+test("an ally's report for the same turn can be merged into the map", async ({ page }) => {
+  await loadReport(page);
+
+  await choose(page, "turn-71-f73.rep", ALLY_REPORT);
+  const prompt = page.getByTestId("foreign-report-prompt");
+  await expect(prompt).toContainText("Borg (73)");
+  await page.getByTestId("foreign-report-merge").click();
+
+  await expect(page.getByTestId("import-status")).toContainText("merged 3 regions from Borg (73)");
+  await expect(page.getByTestId("import-status")).toContainText("2 new to your map");
+
+  // Still faction 95's turn 71. That is the difference between merging and switching.
+  await expect(page.getByTestId("app-header")).toContainText(/Turn\s*71\b/);
+  await expect(page.getByTestId("app-header")).toContainText("Borg TNG (95)");
+
+  // And the header now says whose eyes are in the map.
+  await expect(page.getByTestId("merged-factions-chip")).toContainText("+1 merged");
+  await page.getByTestId("merged-factions-chip").click();
+  await expect(page.getByTestId("merged-factions")).toContainText("Borg (73)");
+
+  // A hex only faction 73 ever stood in is now on the map and can be selected.
+  await selectHex(page, "1:9,53");
+  await expect(page.getByTestId("panel-region")).toContainText("(9,53)");
+});
+
+/** What merging must leave alone: the turn on screen has not changed, so nothing else may move. */
+test("merging leaves the orders and the selection where they were", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+  await selectUnit(page, OWN_UNIT);
+  await expect(page.getByTestId("panel-unit")).toContainText("Seven of Eight");
+
+  const orders = page.getByTestId("orders-input");
+  await orders.fill("@study obse\n@work");
+  await expect(orders).toHaveValue("@study obse\n@work");
+
+  await choose(page, "turn-71-f73.rep", ALLY_REPORT);
+  await page.getByTestId("foreign-report-merge").click();
+  await expect(page.getByTestId("import-status")).toContainText("merged");
+
+  await expect(orders).toHaveValue("@study obse\n@work");
+  await expect(page.getByTestId("panel-unit")).toContainText("Seven of Eight");
+  await expect(page.getByTestId("panel-region")).toContainText("Inholm");
+});
+
+/** Merging is remembered, so a reopened game still says whose eyes are in its map. */
+test("a merge survives a reload", async ({ page }) => {
+  await loadReport(page);
+  await choose(page, "turn-71-f73.rep", ALLY_REPORT);
+  await page.getByTestId("foreign-report-merge").click();
+  await expect(page.getByTestId("merged-factions-chip")).toContainText("+1 merged");
+
+  await page.reload();
+
+  await expect(page.getByTestId("import-status")).toContainText("restored turn 71");
+  await expect(page.getByTestId("merged-factions-chip")).toContainText("+1 merged");
+  await selectHex(page, "1:9,53");
+  await expect(page.getByTestId("panel-region")).toContainText("(9,53)");
 });
 
 test("selecting a hex fills the region panel and the unit table together", async ({ page }) => {

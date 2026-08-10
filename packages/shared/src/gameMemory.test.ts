@@ -5,7 +5,7 @@ import type {
   RememberedRegion
 } from "@atlantis/core-client";
 import { describe, expect, it, vi } from "vitest";
-import { rememberTurn, restoreLatestTurn, toStoredRegions } from "./gameMemory";
+import { mergeTurn, rememberTurn, restoreLatestTurn, toStoredRegions } from "./gameMemory";
 
 function region(regionId: string, x: number, y: number) {
   return {
@@ -54,9 +54,28 @@ function client(overrides: Partial<CoreClient> = {}): CoreClient {
   return {
     commitReportImport: vi.fn().mockResolvedValue({}),
     loadRegionSightings: vi.fn().mockResolvedValue([]),
+    loadMergedReports: vi.fn().mockResolvedValue([]),
+    mergeReport: vi.fn().mockResolvedValue(MERGE_RESULT),
     ...overrides
   } as unknown as CoreClient;
 }
+
+const MERGE_RESULT = {
+  turnNumber: 71,
+  mergedFactionId: "73",
+  mergedFactionName: "Borg",
+  mergedRegionCount: 3,
+  newRegionCount: 2
+};
+
+const MERGE_RECORD = {
+  gameId: "aug-2026",
+  factionId: "95",
+  turnNumber: 71,
+  mergedFactionId: "73",
+  mergedFactionName: "Borg",
+  mergedAt: "2026-08-09T18:30:00Z"
+};
 
 /** The game the player has open. Remembering files a turn here and nowhere else. */
 const OPEN_GAME = {
@@ -123,6 +142,80 @@ describe("remembering a turn", () => {
 
     expect(outcome.warning).toContain("faction");
     expect(core.commitReportImport).not.toHaveBeenCalled();
+  });
+
+  /** The chip belongs to the turn on screen, so loading one has to bring its own merges with it. */
+  it("brings back who has been merged into the turn it just loaded", async () => {
+    const core = client({ loadMergedReports: vi.fn().mockResolvedValue([MERGE_RECORD]) });
+
+    const outcome = await rememberTurn(core, OPEN_GAME, report("95"), "raw text", NOW);
+
+    expect(outcome.merged).toEqual([MERGE_RECORD]);
+    expect(core.loadMergedReports).toHaveBeenCalledWith("p.sqlite", "aug-2026", "95", 71);
+  });
+
+  /** Losing the chip is not worth losing the turn it sits beside. */
+  it("still remembers the turn when the list of merges cannot be read", async () => {
+    const core = client({
+      loadMergedReports: vi.fn().mockRejectedValue(new Error("database is locked"))
+    });
+
+    const outcome = await rememberTurn(core, OPEN_GAME, report("95"), "raw text", NOW);
+
+    expect(outcome.warning).toBeNull();
+    expect(outcome.merged).toEqual([]);
+  });
+});
+
+describe("merging an ally's report into the turn on screen", () => {
+  it("merges under the viewer's faction and turn, not the report's", async () => {
+    const core = client();
+
+    await mergeTurn(core, OPEN_GAME, "95", 71, "the ally's report", NOW);
+
+    expect(core.mergeReport).toHaveBeenCalledWith(
+      "p.sqlite",
+      "aug-2026",
+      "95",
+      71,
+      "the ally's report",
+      NOW
+    );
+    expect(core.loadRegionSightings).toHaveBeenCalledWith("p.sqlite", "aug-2026", "95");
+  });
+
+  it("reads back the grown map and everyone who has been merged into it", async () => {
+    const remembered: RememberedRegion[] = [
+      { region: region("1:9,51", 9, 51), lastSeenTurn: 71 },
+      { region: region("1:9,53", 9, 53), lastSeenTurn: 71 }
+    ];
+    const core = client({
+      loadRegionSightings: vi.fn().mockResolvedValue(remembered),
+      loadMergedReports: vi.fn().mockResolvedValue([MERGE_RECORD])
+    });
+
+    const outcome = await mergeTurn(core, OPEN_GAME, "95", 71, "the ally's report", NOW);
+
+    expect(outcome.remembered).toHaveLength(2);
+    expect(outcome.merged).toEqual([MERGE_RECORD]);
+    expect(outcome.result).toEqual(MERGE_RESULT);
+  });
+
+  /**
+   * Unlike remembering a turn, this fails loudly. There is no report to salvage - nothing else
+   * happened on this path - and a status line saying the merge worked over a database that was
+   * never written would be a lie.
+   */
+  it("fails rather than warning when the merge is refused", async () => {
+    const core = client({
+      mergeReport: vi
+        .fn()
+        .mockRejectedValue(new Error("a report from turn 2 cannot be merged into turn 71"))
+    });
+
+    await expect(mergeTurn(core, OPEN_GAME, "95", 71, "an older report", NOW)).rejects.toThrow(
+      "cannot be merged into turn 71"
+    );
   });
 });
 
@@ -208,6 +301,36 @@ describe("reopening the turn the player was last in", () => {
     expect(restored?.turnNumber).toBe(71);
     expect(restored?.remembered).toEqual([]);
     expect(restored?.warning).toContain("database is locked");
+  });
+
+  /** A reopened game has to say whose eyes it is showing, or the extra hexes have no explanation. */
+  it("brings back who was merged into the turn it reopens", async () => {
+    const core = restoring({ loadMergedReports: vi.fn().mockResolvedValue([MERGE_RECORD]) });
+
+    const restored = await restoreLatestTurn(
+      core,
+      OPEN_GAME,
+      vi.fn().mockResolvedValue(report("95"))
+    );
+
+    expect(restored?.merged).toEqual([MERGE_RECORD]);
+    expect(core.loadMergedReports).toHaveBeenCalledWith("p.sqlite", "aug-2026", "95", 71);
+  });
+
+  it("still reopens the turn when the list of merges cannot be read", async () => {
+    const core = restoring({
+      loadMergedReports: vi.fn().mockRejectedValue(new Error("database is locked"))
+    });
+
+    const restored = await restoreLatestTurn(
+      core,
+      OPEN_GAME,
+      vi.fn().mockResolvedValue(report("95"))
+    );
+
+    expect(restored?.turnNumber).toBe(71);
+    expect(restored?.merged).toEqual([]);
+    expect(restored?.warning).toBeNull();
   });
 
   it("falls back to the stored report's own template when nothing was written", async () => {

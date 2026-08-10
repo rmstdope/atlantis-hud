@@ -15,7 +15,14 @@
  * without rendering anything.
  */
 
-import type { CoreClient, OpenedGame, ParsedReport, RememberedRegion } from "@atlantis/core-client";
+import type {
+  CoreClient,
+  MergedReportRecord,
+  OpenedGame,
+  ParsedReport,
+  RememberedRegion,
+  ReportMergeResult
+} from "@atlantis/core-client";
 import type { StoredRegion } from "./hexMapModel";
 import { documentFor, draftKeyFor } from "./orderDraft";
 
@@ -47,6 +54,14 @@ export type MemoryOutcome = {
    * would be the shorter route to handing the planner nothing.
    */
   remembered: RememberedRegion[];
+  /**
+   * Whose allied reports have been folded into this faction's map for this turn.
+   *
+   * Read here rather than separately because it belongs to the turn just loaded: a merge made at
+   * turn 71 says nothing about turn 72, so a header that kept showing it would be lying by the
+   * time the next report arrives.
+   */
+  merged: MergedReportRecord[];
   /** Set when the turn could not be remembered. The report is still perfectly usable without it. */
   warning: string | null;
 };
@@ -69,6 +84,7 @@ export async function rememberTurn(
   if (!factionId) {
     return {
       remembered: [],
+      merged: [],
       warning: "the report does not name its faction, so it cannot be remembered"
     };
   }
@@ -81,15 +97,92 @@ export async function rememberTurn(
     await client.commitReportImport(game.databasePath, gameId, factionId, rawReport, true, now);
 
     const remembered = await client.loadRegionSightings(game.databasePath, gameId, factionId);
+    const merged = await mergedReportsFor(client, game, factionId, parsed.header.turnNumber);
 
-    return { remembered, warning: null };
+    return { remembered, merged, warning: null };
   } catch (error: unknown) {
     const detail = error instanceof Error ? error.message : String(error);
     return {
       remembered: [],
+      merged: [],
       warning: `the turn could not be remembered: ${detail}`
     };
   }
+}
+
+/**
+ * Who has been merged into this faction's map for this turn, or nobody when it cannot be told.
+ *
+ * Never throws. This answers a chip in the header, and losing that is not worth losing the turn it
+ * sits beside - the same trade the remembered map already makes on the way back in.
+ */
+async function mergedReportsFor(
+  client: CoreClient,
+  game: OpenedGame,
+  factionId: string,
+  turnNumber: number | null
+): Promise<MergedReportRecord[]> {
+  if (turnNumber === null) {
+    return [];
+  }
+
+  try {
+    return await client.loadMergedReports(
+      game.databasePath,
+      game.manifest.metadata.gameId,
+      factionId,
+      turnNumber
+    );
+  } catch {
+    return [];
+  }
+}
+
+/** What merging an allied report produced, and the map it produced it into. */
+export type MergeOutcome = {
+  /** Everywhere the viewer's faction has been, the ally's contribution included. */
+  remembered: RememberedRegion[];
+  /** Everyone whose report has been folded into this turn, the new one included. */
+  merged: MergedReportRecord[];
+  /** What the merge itself did, for the status line to report. */
+  result: ReportMergeResult;
+};
+
+/**
+ * Folds an ally's report for this same turn into the map, without changing whose turn is on screen.
+ *
+ * The regions land under `viewerFactionId`, which is what makes them visible at all: the map is
+ * read back one faction at a time, so a row filed under the ally would be stored perfectly and
+ * never looked at. Nothing else about the workspace moves - not the report, not the orders, not
+ * the selection - because nothing else about it has changed.
+ *
+ * Unlike [`rememberTurn`], a failure here throws. That function warns because the report it failed
+ * to remember is still on screen and still perfectly usable; here there is nothing to salvage, and
+ * a status line reading "merged 0 regions" over a database that was never written would be a lie.
+ */
+export async function mergeTurn(
+  client: CoreClient,
+  game: OpenedGame,
+  viewerFactionId: string,
+  viewerTurnNumber: number,
+  rawReport: string,
+  now: string
+): Promise<MergeOutcome> {
+  const gameId = game.manifest.metadata.gameId;
+
+  const result = await client.mergeReport(
+    game.databasePath,
+    gameId,
+    viewerFactionId,
+    viewerTurnNumber,
+    rawReport,
+    now
+  );
+
+  const remembered = await client.loadRegionSightings(game.databasePath, gameId, viewerFactionId);
+  const merged = await mergedReportsFor(client, game, viewerFactionId, viewerTurnNumber);
+
+  return { remembered, merged, result };
 }
 
 /** Everything a reopened game needs to put back on screen. */
@@ -99,6 +192,8 @@ export type RestoredTurn = {
   factionId: string;
   turnNumber: number;
   remembered: RememberedRegion[];
+  /** Whose allied reports were folded into this turn, so a reopened game still says whose eyes. */
+  merged: MergedReportRecord[];
   /** The saved draft if there is one, else the stored report's own orders template. */
   orders: string;
   /** When those orders were written, as stored, or `null` when they are the template. */
@@ -148,6 +243,8 @@ export async function restoreLatestTurn(
     warning = `the remembered map could not be read: ${detail}`;
   }
 
+  const merged = await mergedReportsFor(client, game, factionId, turnNumber);
+
   const template = parsed.ordersTemplate?.text ?? "";
   const chosen = await documentFor(client, game, draftKeyFor(parsed), template);
 
@@ -157,6 +254,7 @@ export async function restoreLatestTurn(
     factionId,
     turnNumber,
     remembered,
+    merged,
     orders: chosen.text,
     ordersSavedAt: chosen.savedAt,
     warning: warning ?? chosen.warning

@@ -15,12 +15,14 @@
 
 const REGISTRY_DATABASE_NAME = "atlantis-hud";
 const REGISTRY_DATABASE_VERSION = 4;
-const GAME_DATABASE_VERSION = 1;
+/** 2 since issue #53 added the merged-report store. See `openGameDatabase` for what a bump costs. */
+const GAME_DATABASE_VERSION = 2;
 
 const GAME_STORE = "games";
 const IMPORTED_TURN_STORE = "importedTurns";
 const ORDER_DRAFT_STORE = "orderDrafts";
 const REGION_SIGHTING_STORE = "regionSightings";
+const MERGED_REPORT_STORE = "mergedReports";
 
 /** Opaque payload of one stored turn import. Mirrors `ImportedTurnSnapshot` in the Rust core. */
 export type StoredTurnSnapshot = {
@@ -60,6 +62,23 @@ export type StoredRegionSighting = {
   lastSeenTurn: number;
   /** A `ReportRegion`, serialized. Opaque here: the store holds no game rules. */
   payloadJson: string;
+};
+
+/**
+ * One allied report folded into a faction's map for one turn.
+ *
+ * `factionId` is the map that grew; `mergedFactionId` is whose report grew it. Merging writes the
+ * ally's regions under the viewer's own faction and stores no turn of the ally's, so without this
+ * row nothing would say where the extra hexes came from once the page is reloaded.
+ */
+export type StoredMergedReport = {
+  databasePath: string;
+  gameId: string;
+  factionId: string;
+  turnNumber: number;
+  mergedFactionId: string;
+  mergedFactionName: string;
+  mergedAt: string;
 };
 
 export type StoredOrderDraft = {
@@ -102,6 +121,14 @@ export interface WebStore {
     gameId: string,
     factionId: string
   ): Promise<StoredRegionSighting[]>;
+  putMergedReport(record: StoredMergedReport): Promise<void>;
+  /** Every allied report folded into one faction's map for one turn. Ordering is the caller's. */
+  getMergedReports(
+    databasePath: string,
+    gameId: string,
+    factionId: string,
+    turnNumber: number
+  ): Promise<StoredMergedReport[]>;
   putOrderDraft(draft: StoredOrderDraft): Promise<void>;
   getOrderDraft(
     databasePath: string,
@@ -175,10 +202,28 @@ function openGameDatabase(databasePath: string): Promise<IDBDatabase> {
 
       // The database belongs to one game, so its keys no longer carry the game: a turn is
       // identified by its faction and number, and a sighting by its faction and hex.
-      database.createObjectStore(IMPORTED_TURN_STORE, { keyPath: ["factionId", "turnNumber"] });
-      database.createObjectStore(ORDER_DRAFT_STORE, { keyPath: ["factionId", "turnNumber"] });
-      database.createObjectStore(REGION_SIGHTING_STORE, { keyPath: ["factionId", "regionId"] });
+      //
+      // Guarded, because this now runs on databases that already hold the first three stores.
+      // Version 1 created them unconditionally, which was safe while there was only ever one
+      // version; the moment a bump exists, an unconditional create is a ConstraintError on every
+      // game made before the release - which is every game the player has.
+      const create = (name: string, keyPath: string[]) => {
+        if (!database.objectStoreNames.contains(name)) {
+          database.createObjectStore(name, { keyPath });
+        }
+      };
+
+      create(IMPORTED_TURN_STORE, ["factionId", "turnNumber"]);
+      create(ORDER_DRAFT_STORE, ["factionId", "turnNumber"]);
+      create(REGION_SIGHTING_STORE, ["factionId", "regionId"]);
+      create(MERGED_REPORT_STORE, ["factionId", "turnNumber", "mergedFactionId"]);
     };
+
+    // An upgrade waits for every other connection to the database to close, and a second tab
+    // holding one open never does. Without this the promise simply never settles and the workspace
+    // sits on a spinner for ever; the first version had nothing to upgrade, so it could not happen.
+    request.onblocked = () =>
+      reject(new Error("this game is open in another tab, which is holding its storage open"));
 
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error ?? new Error("failed to open indexeddb"));
@@ -315,6 +360,9 @@ export function createIndexedDbWebStore(): WebStore {
     },
     getRegionSightings: (databasePath, _gameId, factionId) =>
       readAll<StoredRegionSighting>(databasePath, REGION_SIGHTING_STORE, [factionId]),
+    putMergedReport: (record) => write(record.databasePath, MERGED_REPORT_STORE, record),
+    getMergedReports: (databasePath, _gameId, factionId, turnNumber) =>
+      readAll<StoredMergedReport>(databasePath, MERGED_REPORT_STORE, [factionId, turnNumber]),
     putOrderDraft: (draft) => write(draft.databasePath, ORDER_DRAFT_STORE, draft),
     getOrderDraft: (databasePath, _gameId, factionId, turnNumber) =>
       read<StoredOrderDraft>(databasePath, ORDER_DRAFT_STORE, [factionId, turnNumber])
@@ -332,6 +380,7 @@ export function createMemoryWebStore(): WebStore {
   const turns = new Map<string, StoredTurn>();
   const drafts = new Map<string, StoredOrderDraft>();
   const sightings = new Map<string, StoredRegionSighting>();
+  const merges = new Map<string, StoredMergedReport>();
 
   // The database handle leads the key here for the same reason it selects the database in the
   // IndexedDB store: it is what keeps one game's records out of another's.
@@ -365,6 +414,7 @@ export function createMemoryWebStore(): WebStore {
       dropDatabase(turns, stored.databasePath);
       dropDatabase(drafts, stored.databasePath);
       dropDatabase(sightings, stored.databasePath);
+      dropDatabase(merges, stored.databasePath);
     },
     async putImportedTurn(turn) {
       turns.set(composite(turn.databasePath, turn.factionId, turn.turnNumber), turn);
@@ -390,6 +440,25 @@ export function createMemoryWebStore(): WebStore {
       return [...sightings.values()].filter(
         (sighting) =>
           sighting.databasePath === databasePath && sighting.factionId === factionId
+      );
+    },
+    async putMergedReport(record) {
+      merges.set(
+        JSON.stringify([
+          record.databasePath,
+          record.factionId,
+          record.turnNumber,
+          record.mergedFactionId
+        ]),
+        record
+      );
+    },
+    async getMergedReports(databasePath, _gameId, factionId, turnNumber) {
+      return [...merges.values()].filter(
+        (record) =>
+          record.databasePath === databasePath &&
+          record.factionId === factionId &&
+          record.turnNumber === turnNumber
       );
     },
     async putOrderDraft(draft) {

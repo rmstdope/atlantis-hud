@@ -1,6 +1,7 @@
 import type {
   CoreClient,
   GameManifest,
+  MergedReportRecord,
   OpenedGame,
   ParsedReport,
   RememberedRegion,
@@ -9,7 +10,9 @@ import type {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { buildHexMapModel, unitsForHex, type HexMapModel } from "../hexMapModel";
 import { readUnitOrders, writeUnitOrders } from "../ordersDocument";
-import { rememberTurn, restoreLatestTurn, toStoredRegions } from "../gameMemory";
+import { mergeTurn, rememberTurn, restoreLatestTurn, toStoredRegions } from "../gameMemory";
+import { decideReportLoad, shouldConfirmOlderTurnLoad } from "../reportLoadDecision";
+import { describeMerge } from "../foreignReport";
 import {
   AUTOSAVE_CEILING_MS,
   AUTOSAVE_IDLE_MS,
@@ -34,7 +37,9 @@ import { GameGate } from "./GameGate";
 import { SettingsPanel } from "./SettingsPanel";
 import type { AppUpdateControl } from "./appUpdate";
 import { UNSUPPORTED_UPDATES } from "./appUpdate";
+import { ForeignReportPrompt } from "./ForeignReportPrompt";
 import { GamePicker } from "./GamePicker";
+import { MergedFactionsPanel } from "./MergedFactionsPanel";
 import { LayerChips } from "./LayerChips";
 import { MapCanvas } from "./MapCanvas";
 import { OrdersPanel } from "./OrdersPanel";
@@ -64,12 +69,13 @@ function describeError(error: unknown): string {
   }
 }
 
-export function shouldConfirmOlderTurnLoad(
-  currentTurn: number | null | undefined,
-  loadedTurn: number | null | undefined
-): boolean {
-  return typeof currentTurn === "number" && typeof loadedTurn === "number" && loadedTurn < currentTurn;
-}
+/**
+ * Re-exported rather than defined here since issue #53 moved the rule into `reportLoadDecision`.
+ *
+ * It is now one branch of a larger decision, and it sits beside the others in a plain module that
+ * can be tested without rendering anything.
+ */
+export { shouldConfirmOlderTurnLoad };
 
 export function confirmOlderTurnLoad(currentTurn: number, loadedTurn: number): boolean {
   if (typeof globalThis.confirm !== "function") {
@@ -79,6 +85,40 @@ export function confirmOlderTurnLoad(currentTurn: number, loadedTurn: number): b
     `Turn ${loadedTurn} is older than the currently loaded turn ${currentTurn}. ` +
       "Load it anyway? It may not be the latest report."
   );
+}
+
+/**
+ * A parsed report from another faction, held while the player decides what to do with it.
+ *
+ * The viewer's identity is a snapshot taken when the question was raised, not read again when it is
+ * answered. The report on screen can change underneath an open prompt - a game finishing its
+ * restore is enough - and merging into whoever happens to be showing by then is not what was asked.
+ */
+type PendingReportLoad = {
+  report: ParsedReport;
+  text: string;
+  fileName: string;
+  /** False when the turns do not match, in which case only switching is on offer. */
+  canMerge: boolean;
+  viewer: { factionId: string; factionLabel: string; turnNumber: number | null };
+  incoming: { factionLabel: string; turnNumber: number | null };
+};
+
+/**
+ * How a report names its own faction, as `Borg TNG (95)`, or `null` when it names none.
+ *
+ * The header has always shown this; the foreign-report prompt needs it too, and for two reports at
+ * once. A report with an id and no name still has something to say, so it says that rather than
+ * nothing - but a header with no report loaded shows no faction at all, which is why this stays
+ * nullable rather than inventing a placeholder here.
+ */
+function factionLabelOf(report: ParsedReport | null): string | null {
+  const name = report?.header.factionName;
+  const id = report?.header.factionId;
+  if (name && id) {
+    return `${name} (${id})`;
+  }
+  return name ?? id ?? null;
 }
 
 const EMPTY: HexMapModel = {
@@ -169,6 +209,11 @@ export function AppShell({
   // store, exactly as the game picker is: it is a panel that is open for a moment, not a preference.
   const [messagesOpen, setMessagesOpen] = useState(false);
   const [messagesTab, setMessagesTab] = useState<TurnMessagesTab>("errors");
+  // A report from another faction, parsed and waiting for the player to say what to do with it,
+  // and whose reports have already been folded into the turn on screen.
+  const [pendingLoad, setPendingLoad] = useState<PendingReportLoad | null>(null);
+  const [mergedReports, setMergedReports] = useState<MergedReportRecord[]>([]);
+  const [mergedOpen, setMergedOpen] = useState(false);
 
   const selectedRegionId = useWorkspaceStore((state) => state.selectedRegionId);
   const selectedUnitId = useWorkspaceStore((state) => state.selectedUnitId);
@@ -296,29 +341,18 @@ export function AppShell({
     [unitRegions, level, setLevel, selectRegion, selectUnit]
   );
 
-  const loadReport = useCallback(
-    async (text: string, fileName: string) => {
-      setBusy(true);
+  /**
+   * Puts a parsed report on screen and files it in the game.
+   *
+   * Split out of `loadReport` so that the direct path and the path through the foreign-report
+   * prompt run identical code: a report the player reached by pressing "Switch faction" must land
+   * exactly as one they simply opened. Deliberately does not depend on `parsed` - only the decision
+   * above needs to know what is already loaded, and putting it here would rebuild this callback
+   * every time a report is opened.
+   */
+  const applyReport = useCallback(
+    async (report: ParsedReport, text: string, fileName: string) => {
       try {
-        // Whatever was being written belongs to the turn that is about to be replaced. Saved before
-        // anything else, because the state below is what tells the flush which draft it is.
-        await flush();
-
-        // Classified when the ruleset is to hand, so a unit's men are counted rather than guessed.
-        // Without it every unit reads as an estimate, including the single-race majority where the
-        // leading-group figure is exactly right.
-        const report =
-          ruleset.status === "ready"
-            ? await client.parseReportClassified(text, ruleset.text)
-            : await client.parseReportFull(text);
-        const currentTurn = parsed?.header.turnNumber;
-        const incomingTurn = report.header.turnNumber;
-        if (
-          shouldConfirmOlderTurnLoad(currentTurn, incomingTurn) &&
-          !confirmOlderTurnLoad(currentTurn as number, incomingTurn as number)
-        ) {
-          return;
-        }
         setParsed(report);
         setRawReport(text);
         clearPlan();
@@ -331,8 +365,11 @@ export function AppShell({
         // report that parsed perfectly well.
         const memory = game
           ? await rememberTurn(client, game, report, text, new Date().toISOString())
-          : { remembered: [], warning: null };
+          : { remembered: [], merged: [], warning: null };
         setRemembered(memory.remembered);
+        // Reset from the turn just loaded, never merely added to: a merge belongs to the turn it
+        // was made in, so turn 71's allies must not still be claimed on turn 72's map.
+        setMergedReports(memory.merged);
 
         // Saved orders beat the report's own template, including on opening the same file again.
         // There is no undo anywhere in this application, and a stray file-open must not silently
@@ -369,15 +406,143 @@ export function AppShell({
           message: `could not read ${fileName}: ${describeError(error)}`,
           failed: true
         });
+      }
+    },
+    [client, selectRegion, clearPlan, game]
+  );
+
+  const loadReport = useCallback(
+    async (text: string, fileName: string) => {
+      setBusy(true);
+      try {
+        // Whatever was being written belongs to the turn that is about to be replaced. Saved before
+        // anything else, because the state below is what tells the flush which draft it is.
+        await flush();
+
+        // Classified when the ruleset is to hand, so a unit's men are counted rather than guessed.
+        // Without it every unit reads as an estimate, including the single-race majority where the
+        // leading-group figure is exactly right.
+        const report =
+          ruleset.status === "ready"
+            ? await client.parseReportClassified(text, ruleset.text)
+            : await client.parseReportFull(text);
+
+        const decision = decideReportLoad(
+          parsed ? { factionId: parsed.header.factionId, turnNumber: parsed.header.turnNumber } : null,
+          { factionId: report.header.factionId, turnNumber: report.header.turnNumber }
+        );
+
+        if (decision.kind === "ask") {
+          // The question is asked and the load stops here. `busy` is released by the `finally`,
+          // because it disables the button that opened this file and a prompt the player cannot
+          // answer would be worse than no prompt. A second file dropped while this is up simply
+          // replaces the question rather than queueing behind it.
+          setPendingLoad({
+            report,
+            text,
+            fileName,
+            canMerge: decision.canMerge,
+            viewer: {
+              factionId: parsed?.header.factionId as string,
+              factionLabel: factionLabelOf(parsed) ?? "an unnamed faction",
+              turnNumber: parsed?.header.turnNumber ?? null
+            },
+            incoming: {
+              factionLabel: factionLabelOf(report) ?? "an unnamed faction",
+              turnNumber: report.header.turnNumber
+            }
+          });
+          return;
+        }
+
+        if (
+          decision.kind === "confirmOlder" &&
+          !confirmOlderTurnLoad(decision.currentTurn, decision.incomingTurn)
+        ) {
+          return;
+        }
+
+        await applyReport(report, text, fileName);
+      } catch (error) {
+        setStatus({
+          regionCount: 0,
+          unitCount: 0,
+          message: `could not read ${fileName}: ${describeError(error)}`,
+          failed: true
+        });
       } finally {
         setBusy(false);
       }
     },
     // `ruleset` belongs here: without it the callback closes over the value at first render, which
     // is null, and every report is parsed unclassified however long the ruleset took to arrive.
-    // `game` for the same reason: a report loaded after switching games must land in the new one.
-    [client, selectRegion, ruleset, clearPlan, game, parsed]
+    // `parsed` because the decision above is made against whatever is on screen.
+    [client, ruleset, parsed, applyReport]
   );
+
+  /** Opens the pending report as its own faction: today's behaviour, chosen rather than assumed. */
+  const switchFaction = useCallback(() => {
+    const pending = pendingLoad;
+    if (!pending) {
+      return;
+    }
+    setPendingLoad(null);
+    void (async () => {
+      setBusy(true);
+      try {
+        await applyReport(pending.report, pending.text, pending.fileName);
+      } finally {
+        setBusy(false);
+      }
+    })();
+  }, [pendingLoad, applyReport]);
+
+  /**
+   * Folds the pending report into the map and leaves everything else exactly as it is.
+   *
+   * Deliberately calls none of `setParsed`, `setRawReport`, `setOrdersDocument`, `setSave`,
+   * `clearPlan`, `setRoute` or `selectRegion`. The turn on screen has not changed - that is the
+   * whole of the difference between merging and switching - so the orders being written, the route
+   * being planned and the hex being looked at all stay where the player left them. It will be
+   * tempting to make this look more like `applyReport`; that temptation is the bug.
+   */
+  const mergeReport = useCallback(() => {
+    const pending = pendingLoad;
+    if (!pending || !pending.canMerge || !game || pending.viewer.turnNumber === null) {
+      return;
+    }
+    setPendingLoad(null);
+    void (async () => {
+      setBusy(true);
+      try {
+        const outcome = await mergeTurn(
+          client,
+          game,
+          pending.viewer.factionId,
+          pending.viewer.turnNumber as number,
+          pending.text,
+          new Date().toISOString()
+        );
+        setRemembered(outcome.remembered);
+        setMergedReports(outcome.merged);
+        setStatus({
+          regionCount: outcome.result.mergedRegionCount,
+          unitCount: 0,
+          message: describeMerge(outcome.result),
+          failed: false
+        });
+      } catch (error) {
+        setStatus({
+          regionCount: 0,
+          unitCount: 0,
+          message: `could not merge ${pending.fileName}: ${describeError(error)}`,
+          failed: true
+        });
+      } finally {
+        setBusy(false);
+      }
+    })();
+  }, [pendingLoad, client, game]);
 
   // The ruleset is a served file rather than something compiled in, so a movement value can be
   // corrected by editing it and reloading. Which file is the open game's business: a game records
@@ -450,6 +615,9 @@ export function AppShell({
         setParsed(restored.parsed);
         setRawReport(restored.rawReport);
         setRemembered(restored.remembered);
+        // Whose reports were folded into this turn. Without it a reopened game shows the merged
+        // hexes with nothing to say where they came from, which is the question the chip answers.
+        setMergedReports(restored.merged);
         setOrdersDocument(restored.orders);
         setSave(savedStateFor(restored.ordersSavedAt));
 
@@ -520,6 +688,11 @@ export function AppShell({
       setSave({ kind: "clean" });
       setRoute(null);
       clearPlan();
+      // A question raised in the game being left must not be answered into the game being entered:
+      // the prompt holds a faction id and a turn that belong to another database entirely.
+      setPendingLoad(null);
+      setMergedReports([]);
+      setMergedOpen(false);
       openGameInStore({
         gameId: opened.manifest.metadata.gameId,
         gameName: opened.manifest.metadata.gameName,
@@ -839,9 +1012,7 @@ export function AppShell({
     setTimeout(() => URL.revokeObjectURL(url), 0);
   }, [ordersDocument, parsed]);
 
-  const factionLabel = parsed?.header.factionName
-    ? `${parsed.header.factionName} (${parsed.header.factionId})`
-    : null;
+  const factionLabel = factionLabelOf(parsed);
   const turnLabel =
     parsed?.header.turnNumber === null || parsed?.header.turnNumber === undefined
       ? null
@@ -903,6 +1074,16 @@ export function AppShell({
         }
         factionLabel={factionLabel}
         turnLabel={turnLabel}
+        mergedCount={mergedReports.length}
+        mergedOpen={mergedOpen}
+        onToggleMerged={() => setMergedOpen((open) => !open)}
+        mergedPanel={
+          <MergedFactionsPanel
+            turnLabel={turnLabel}
+            merged={mergedReports}
+            onDismiss={() => setMergedOpen(false)}
+          />
+        }
         status={status}
         messages={messages}
         messagesOpen={messagesOpen}
@@ -938,6 +1119,26 @@ export function AppShell({
         onToggleSettings={() => setSettingsOpen((open) => !open)}
         settings={settingsPanel}
       />
+
+      {/*
+        In the flow rather than over the map, so the map is pushed down until the question is
+        answered. A decision the player has to make should not be dismissible by clicking elsewhere,
+        which rules out the popover shape the other header panels use.
+      */}
+      {pendingLoad ? (
+        <ForeignReportPrompt
+          fileName={pendingLoad.fileName}
+          incomingFactionLabel={pendingLoad.incoming.factionLabel}
+          viewerFactionLabel={pendingLoad.viewer.factionLabel}
+          incomingTurn={pendingLoad.incoming.turnNumber}
+          viewerTurn={pendingLoad.viewer.turnNumber}
+          canMerge={pendingLoad.canMerge}
+          busy={busy}
+          onMerge={mergeReport}
+          onSwitch={switchFaction}
+          onCancel={() => setPendingLoad(null)}
+        />
+      ) : null}
 
       <div className="relative min-h-0 flex-1">
         <MapCanvas

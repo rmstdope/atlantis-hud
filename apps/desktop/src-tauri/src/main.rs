@@ -122,6 +122,48 @@ fn load_region_sightings(
     feature = "desktop-runtime"
 ))]
 #[tauri::command(rename_all = "snake_case")]
+fn merge_report(
+    database_path: String,
+    game_id: String,
+    viewer_faction_id: String,
+    viewer_turn_number: u32,
+    raw_report: String,
+    merged_at: String,
+) -> Result<atlantis_hud_core_tauri::ReportMergeResultDto, String> {
+    atlantis_hud_core_tauri::command_merge_report(
+        &database_path,
+        &game_id,
+        &viewer_faction_id,
+        viewer_turn_number,
+        &raw_report,
+        &merged_at,
+    )
+}
+
+#[cfg(all(
+    any(target_os = "linux", target_os = "macos", target_os = "windows"),
+    feature = "desktop-runtime"
+))]
+#[tauri::command(rename_all = "snake_case")]
+fn load_merged_reports(
+    database_path: String,
+    game_id: String,
+    faction_id: String,
+    turn_number: u32,
+) -> Result<Vec<atlantis_hud_core_tauri::MergedReportRecordDto>, String> {
+    atlantis_hud_core_tauri::command_load_merged_reports(
+        &database_path,
+        &game_id,
+        &faction_id,
+        turn_number,
+    )
+}
+
+#[cfg(all(
+    any(target_os = "linux", target_os = "macos", target_os = "windows"),
+    feature = "desktop-runtime"
+))]
+#[tauri::command(rename_all = "snake_case")]
 fn plan_route(
     ruleset_json: String,
     raw_report: String,
@@ -283,6 +325,8 @@ fn main() {
             load_order_draft,
             plan_route,
             load_region_sightings,
+            merge_report,
+            load_merged_reports,
             parse_report_classified
         ])
         .run(tauri::generate_context!())

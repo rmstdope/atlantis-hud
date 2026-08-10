@@ -3,9 +3,10 @@
 #[cfg(not(target_arch = "wasm32"))]
 use std::path::Path;
 
+use atlantis_hud_core::report::merge::{merge_report_into_sightings, StoredSighting};
 use atlantis_hud_core::report::sighting::{region_sightings, RegionSighting};
 use atlantis_hud_core::{
-    diff_imported_turn, engine_info, parse_report, reject_import, validate_orders,
+    diff_imported_turn, engine_info, parse_report, reject_import, reject_merge, validate_orders,
     ImportedTurnSnapshot, OrderDiagnosticSeverity, OrderValidationResult, ReportParseResult,
 };
 #[cfg(not(target_arch = "wasm32"))]
@@ -60,6 +61,21 @@ struct PreparedImportDto {
     region_sightings: Vec<RegionSighting>,
     parse_result: ReportParseResultDto,
     /// `None` when the report may be imported; otherwise why it may not be.
+    rejection: Option<String>,
+}
+
+/// Everything the browser storage adapter needs to complete one merge.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PreparedMergeDto {
+    turn_number: Option<u32>,
+    merged_faction_id: Option<String>,
+    merged_faction_name: Option<String>,
+    /// Only the rows that changed, ready to be written under the viewer's faction.
+    region_sightings: Vec<RegionSighting>,
+    merged_region_count: u32,
+    new_region_count: u32,
+    /// `None` when the report may be merged; otherwise why it may not be.
     rejection: Option<String>,
 }
 
@@ -381,6 +397,65 @@ pub fn prepare_report_import_state(
     };
 
     to_js(&prepared)
+}
+
+/// Folds an allied report into a stored map and returns the rows to write.
+///
+/// The counterpart of [`prepare_report_import_state`] for issue #53. The browser supplies the read
+/// and the write - it hands over what it has stored for the viewer's faction and writes back what
+/// comes out - while every rule about which account of a hex wins stays in the core, so a hex
+/// merged in the browser and the same hex merged on the desktop cannot come out different.
+///
+/// `existing_sightings_json` is what the store already holds for the *viewer*, as
+/// `[{ regionId, lastSeenTurn, payloadJson }]`. That is the whole of what a merge reads, and the
+/// whole of what the browser's own row shape can offer.
+///
+/// # Errors
+///
+/// Returns an error when the stored sightings cannot be read as JSON, or when the outcome cannot be
+/// handed back to JavaScript. A report that may not be merged is not an error: it comes back with
+/// `rejection` set, so the caller can say why in the same shape it says everything else.
+#[wasm_bindgen]
+pub fn prepare_report_merge_state(
+    raw_report: String,
+    viewer_turn_number: u32,
+    existing_sightings_json: String,
+) -> Result<JsValue, JsValue> {
+    let existing: Vec<StoredSighting> = serde_json::from_str(&existing_sightings_json)
+        .map_err(|error| JsValue::from_str(&error.to_string()))?;
+
+    // A cache hit: the shell parsed this report a moment ago to find out whose it was.
+    let report = atlantis_hud_core::cache::with_global(|cache| cache.report(&raw_report));
+    let parse_result = atlantis_hud_core::summarize(&report);
+
+    // `reject_merge`, never `reject_import`. The latter asks whether a report may be filed under a
+    // faction, and answers from a candidate list that holds only the reporting faction - so it
+    // refuses every ally there is.
+    if let Some(rejection) = reject_merge(&parse_result, viewer_turn_number) {
+        return to_js(&PreparedMergeDto {
+            turn_number: parse_result.turn_header.as_ref().map(|it| it.turn_number),
+            merged_faction_id: None,
+            merged_faction_name: None,
+            region_sightings: Vec::new(),
+            merged_region_count: 0,
+            new_region_count: 0,
+            rejection: Some(rejection),
+        });
+    }
+
+    // Clearing the threshold means the report named its faction, so this is present.
+    let ally = parse_result.detected_factions.first();
+    let outcome = merge_report_into_sightings(&existing, &report, viewer_turn_number);
+
+    to_js(&PreparedMergeDto {
+        turn_number: Some(viewer_turn_number),
+        merged_faction_id: ally.map(|faction| faction.faction_id.clone()),
+        merged_faction_name: ally.map(|faction| faction.name.clone()),
+        region_sightings: outcome.sightings,
+        merged_region_count: u32::try_from(outcome.merged_region_count).unwrap_or(u32::MAX),
+        new_region_count: u32::try_from(outcome.new_region_count).unwrap_or(u32::MAX),
+        rejection: None,
+    })
 }
 
 /// Rebuilds a parse result from a stored payload, recomputing the import threshold.
