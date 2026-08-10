@@ -6,9 +6,9 @@ use atlantis_hud_core_tauri::{
     command_commit_report_import, command_create_game, command_delete_game, command_list_games,
     command_load_imported_turn, command_load_order_draft, command_open_game, command_parse_report,
     command_parse_report_full, command_preview_report_import, command_save_order_draft,
-    command_validate_orders, GameManifestDto, ImportedTurnPreviewDto, ImportedTurnRecordDto,
-    OpenedGameDto, OrderDraftRecordDto, OrderValidationResultDto, ParsedReport,
-    ReportImportPreviewDto, ReportParseResultDto,
+    command_set_game_ruleset, command_validate_orders, GameManifestDto, ImportedTurnPreviewDto,
+    ImportedTurnRecordDto, OpenedGameDto, OrderDraftRecordDto, OrderValidationResultDto,
+    ParsedReport, ReportImportPreviewDto, ReportParseResultDto,
 };
 #[cfg(all(
     any(target_os = "linux", target_os = "macos", target_os = "windows"),
@@ -84,6 +84,19 @@ fn list_games(app: tauri::AppHandle) -> Result<Vec<GameManifestDto>, String> {
 #[tauri::command(rename_all = "snake_case")]
 fn delete_game(app: tauri::AppHandle, game_id: String) -> Result<(), String> {
     command_delete_game(&games_root(&app)?, &game_id)
+}
+
+#[cfg(all(
+    any(target_os = "linux", target_os = "macos", target_os = "windows"),
+    feature = "desktop-runtime"
+))]
+#[tauri::command(rename_all = "snake_case")]
+fn set_game_ruleset(
+    app: tauri::AppHandle,
+    game_id: String,
+    ruleset_id: String,
+) -> Result<GameManifestDto, String> {
+    command_set_game_ruleset(&games_root(&app)?, &game_id, &ruleset_id)
 }
 
 #[cfg(all(
@@ -314,6 +327,7 @@ fn main() {
             open_game,
             list_games,
             delete_game,
+            set_game_ruleset,
             parse_report,
             parse_report_full,
             preview_report_import,
