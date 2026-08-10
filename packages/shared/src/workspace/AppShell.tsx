@@ -947,6 +947,7 @@ export function AppShell({
           onSelectRegion={selectHex}
           showStaleness={layers.staleness}
           showUnits={layers.units}
+          showStructures={layers.structures}
           route={layers.movement ? (route?.plan?.steps.map((step) => step.to) ?? []) : []}
           routeRisk={layers.movement ? (route?.risk?.hexes ?? []) : []}
         />

@@ -6,7 +6,7 @@
 - Shared Rust core with platform adapters (WASM and Tauri)
 - React + TypeScript SPA frontend
 - Tauri desktop shell
-- PixiJS map renderer
+- SVG map renderer (PixiJS until #58; a canvas cannot keep text sharp under zoom)
 - SQLite on desktop and on web (WASM + OPFS)
 - Offline-first, no backend in milestone 1
 - PWA early, deployed to atlantis-hud.kurelid.se (one.com) over FTPS from GitHub Actions

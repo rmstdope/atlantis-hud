@@ -201,7 +201,8 @@ exist. Nothing else needs changing.
   - the workspace UI in `packages/shared/src/workspace`, shared by both shells: header, map,
     layer toggles, and collapsible region, unit, orders and unit-table panels
   - Tailwind tokens and a Zustand selection store
-  - a rewritten PixiJS map with flat-top hex geometry and four knowledge states
+  - a rewritten map with flat-top hex geometry and four knowledge states (on PixiJS then; moved to
+    SVG in #58)
 - Issue #19 adds:
   - a real NewOrigins report parser in `crates/core/src/report` (line unwrapping, region blocks,
     units with ownership and skills, structures, exits, markets, the preamble, and the orders

@@ -3,9 +3,12 @@ import { useWorkspaceStore, type LayerName } from "../workspaceStore";
 /**
  * Layer toggles above the map.
  *
- * Only staleness does anything so far; the rest are present and operable but have nothing behind
- * them yet, which is what the issue asks for. They start off rather than on, so an inert toggle
+ * Units, structures, staleness and movement all drive the map. Trade routes is the last one still
+ * present and operable with nothing behind it, and it starts off rather than on, so an inert toggle
  * cannot be mistaken for one that is working.
+ *
+ * Structures joined the working ones in #58: the map draws a marker on a hex that holds any, so
+ * leaving the toggle inert would have made it a control that visibly lies.
  */
 const LAYERS: Array<{ name: LayerName; label: string }> = [
   { name: "units", label: "Units" },

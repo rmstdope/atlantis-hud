@@ -51,10 +51,14 @@ async function selectUnit(page: Page, unitId: string) {
 /**
  * Selects a hex the way assistive technology does.
  *
- * The map is a canvas, so each hex also exists as a visually hidden button. Hidden means a mouse
- * cannot reach it — that is the point — but it stays focusable, and focus plus Enter is exactly how
- * a screen reader user selects one. Driving it this way tests the accessible path rather than
- * bypassing it with a forced click.
+ * Each hex in the map is itself a button — an SVG shape carrying a role, a label and a tabindex.
+ * It used to be a separate off-screen element, because a canvas says nothing to a screen reader,
+ * but the map is SVG now and the shape and the control are the same thing.
+ *
+ * Focus plus Enter rather than a click: that is how a keyboard user selects a hex, so driving it
+ * this way tests the accessible path instead of bypassing it. Only the focused hex carries
+ * `tabindex="0"` — the map is one tab stop, not several thousand — and `focus()` reaches the
+ * others regardless, which is why this keeps working for any hex on the level.
  */
 async function selectHex(page: Page, regionId: string) {
   const hex = page.getByRole("button", { name: `hex ${regionId}` });
@@ -291,7 +295,7 @@ test("a folded panel is still folded after a reload", async ({ page }) => {
   await expect(page.getByTestId("import-status")).toContainText("restored turn 71");
 });
 
-test("layer toggles are operable and only staleness does anything yet", async ({ page }) => {
+test("layer toggles are operable and only trade routes is still inert", async ({ page }) => {
   await loadReport(page);
 
   const chips = page.getByTestId("layer-chips");
@@ -821,4 +825,115 @@ test("the turn messages panel closes on Escape", async ({ page }) => {
   await page.keyboard.press("Escape");
 
   await expect(page.getByTestId("turn-messages")).toHaveCount(0);
+});
+
+/*
+ * The map itself.
+ *
+ * None of this could be asserted while the map was a canvas: a canvas is one opaque element, so
+ * the suite could only check that the accessibility shim beside it existed. These read the drawing.
+ */
+
+test("terrain is drawn as itself rather than as a picture of itself", async ({ page }) => {
+  await loadReport(page);
+
+  // Inholm is mountain, and several of the hexes this turn describes are ocean. If the colour
+  // classes were built from a template Tailwind would have tree-shaken them away and every hex
+  // would render unstyled, which is exactly the failure this catches.
+  await expect(page.locator("polygon.fill-terrain-mountain").first()).toBeAttached();
+  await expect(page.locator("polygon.fill-terrain-ocean").first()).toBeAttached();
+});
+
+test("coordinate rulers stay pinned to the edges of the view", async ({ page }) => {
+  await loadReport(page);
+
+  const across = page.getByTestId("map-ruler-x");
+  const down = page.getByTestId("map-ruler-y");
+  await expect(across).toBeAttached();
+  await expect(down).toBeAttached();
+
+  // The numbers are the point: a ruler with no readable coordinate on it is decoration.
+  await expect(across).toContainText(/\d/);
+  await expect(down).toContainText(/\d/);
+});
+
+test("zooming in and back out returns the map to the scale it started at", async ({ page }) => {
+  await loadReport(page);
+  const map = page.locator("[data-testid='map-canvas'] svg");
+  const scale = () =>
+    map.evaluate((node) => getComputedStyle(node).getPropertyValue("--map-scale").trim());
+
+  const before = await scale();
+  for (let step = 0; step < 3; step += 1) {
+    await page.getByRole("button", { name: "Zoom in" }).click();
+  }
+  expect(await scale()).not.toBe(before);
+
+  for (let step = 0; step < 3; step += 1) {
+    await page.getByRole("button", { name: "Zoom out" }).click();
+  }
+
+  // The old renderer multiplied by 1.1 in and 0.9 out, so it never came back to where it started.
+  expect(await scale()).toBe(before);
+});
+
+test("the map carries less detail the further out it is zoomed", async ({ page }) => {
+  await loadReport(page);
+  const map = page.locator("[data-testid='map-canvas'] svg");
+
+  for (let step = 0; step < 8; step += 1) {
+    await page.getByRole("button", { name: "Zoom out" }).click();
+  }
+  await expect(map).toHaveClass(/map-far/);
+
+  for (let step = 0; step < 12; step += 1) {
+    await page.getByRole("button", { name: "Zoom in" }).click();
+  }
+  await expect(map).toHaveClass(/map-near/);
+});
+
+test("arrow keys walk from hex to neighbouring hex", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+
+  // North of Inholm is (7,51), which this turn knows only from a neighbour's exits. Flat-top
+  // geometry is what gives a hex a direct northern neighbour at all.
+  await page.getByRole("button", { name: "hex 1:7,53" }).press("ArrowUp");
+  await expect(page.locator("polygon:focus")).toHaveAttribute("aria-label", "hex 1:7,51");
+  await page.locator("polygon:focus").press("ArrowDown");
+  await expect(page.locator("polygon:focus")).toHaveAttribute("aria-label", "hex 1:7,53");
+
+  // Left and right step to opposite corners of the hex, so one undoes the other. Two keys that
+  // both led north would let focus drift with no way back.
+  await page.locator("polygon:focus").press("ArrowRight");
+  await expect(page.locator("polygon:focus")).toHaveAttribute("aria-label", "hex 1:8,52");
+  await page.locator("polygon:focus").press("ArrowLeft");
+  await expect(page.locator("polygon:focus")).toHaveAttribute("aria-label", "hex 1:7,53");
+});
+
+test("arrow keys stop at the edge of what the faction knows", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+
+  // Unexplored ground is one patterned rectangle, not thousands of elements, so there is nothing
+  // out there to focus. Walking far enough in one direction must run out of known hexes and stop
+  // on the last one, rather than leaving focus on nothing at all.
+  await page.getByRole("button", { name: "hex 1:7,53" }).press("ArrowUp");
+  for (let step = 0; step < 25; step += 1) {
+    await page.locator("polygon:focus").press("ArrowUp");
+  }
+
+  // Asserted without naming a hex: which ones this faction knows is the report's business, and a
+  // test that hard-codes the frontier breaks whenever the fixture changes.
+  await expect(page.locator("polygon:focus")).toHaveAttribute("aria-label", /^hex 1:/);
+});
+
+test("the map is a single tab stop rather than one per hex", async ({ page }) => {
+  await loadReport(page);
+
+  // Every hex is focusable, but only one is in the tab order: tabbing through a few thousand
+  // hexes to reach the panel beyond them would be worse than the shim this replaced.
+  const inTabOrder = page.locator("polygon[role='button'][tabindex='0']");
+  await expect(inTabOrder).toHaveCount(1);
+  await expect(page.locator("polygon[role='button']").first()).toBeAttached();
 });

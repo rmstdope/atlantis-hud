@@ -1,71 +1,50 @@
-import { Application, Container, Graphics, Text } from "pixi.js";
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Coordinate, HexRisk } from "@atlantis/core-client";
-import { hexCorners, hexToPixel, type HexMapModel, type HexNode } from "../hexMapModel";
+import type { HexMapModel, HexNode } from "../hexMapModel";
+import {
+  accumulateWheel,
+  centreOn,
+  fitTo,
+  HEX_RADIUS,
+  isOffScreen,
+  neighbour,
+  rulerTicks,
+  scaleOf,
+  transformString,
+  wheelPixels,
+  worldOf,
+  zoomAt,
+  zoomBand,
+  type ArrowKey,
+  type Viewport
+} from "./mapViewport";
+import {
+  fogPatternTile,
+  hexLayers,
+  hexPaint,
+  hexPointsAttribute,
+  routePoints,
+  unitPipRadius
+} from "./mapHexView";
 
-const HEX_RADIUS = 18;
-const MIN_SCALE = 0.25;
-const MAX_SCALE = 3;
+const HEX_POINTS = hexPointsAttribute(HEX_RADIUS);
+const FOG_TILE = fogPatternTile(HEX_RADIUS);
+const ORIGIN: Viewport = { tx: 0, ty: 0, step: 0 };
 
-const TERRAIN_COLOURS: Record<string, number> = {
-  ocean: 0x1d3f63,
-  plain: 0x7a7440,
-  forest: 0x2f5d3a,
-  mountain: 0x5c5c66,
-  swamp: 0x3d4a2e,
-  desert: 0x8a7546,
-  jungle: 0x2b6b4a,
-  tundra: 0x6b7a80,
-  cavern: 0x3a3a44,
-  underforest: 0x2a4433,
-  wasteland: 0x6a5a46
+/** How far the pointer may travel before a press stops counting as a click on a hex. */
+const DRAG_SLOP = 4;
+
+/** Room a coordinate label needs before its neighbour has to be dropped. */
+const COLUMN_LABEL_ROOM = 44;
+const ROW_LABEL_ROOM = 16;
+
+const ARROWS: ArrowKey[] = ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"];
+
+const RISK_CLASSES: Record<string, string> = {
+  low: "fill-risk-low stroke-risk-low",
+  medium: "fill-risk-medium stroke-risk-medium",
+  high: "fill-risk-high stroke-risk-high"
 };
-
-const UNKNOWN = 0x161c24;
-
-/** How a hex on a planned route is tinted. Low is not green: a quiet hex is not a safe promise. */
-const RISK_COLOURS: Record<string, number> = {
-  low: 0x5ec8f0,
-  medium: 0xd9a441,
-  high: 0xf07070
-};
-
-function terrainColour(terrain: string): number {
-  return TERRAIN_COLOURS[terrain.toLowerCase()] ?? 0x555f6b;
-}
-
-/** Blends a colour toward the unexplored ground, so an older sighting reads as fainter. */
-function fade(colour: number, amount: number): number {
-  const mix = (shift: number) => {
-    const from = (colour >> shift) & 0xff;
-    const to = (UNKNOWN >> shift) & 0xff;
-    return Math.round(from * (1 - amount) + to * amount) << shift;
-  };
-  return mix(16) | mix(8) | mix(0);
-}
-
-/**
- * How a hex is painted, given how much the player can trust it.
- *
- * Staleness fades with age rather than switching on at a threshold: a hex seen last turn is nearly
- * current, one seen twenty turns ago is nearly a rumour, and a single flat "stale" colour would
- * throw that away.
- */
-function fillFor(hex: HexNode, showStaleness: boolean): { colour: number; alpha: number } {
-  const base = terrainColour(hex.terrain);
-
-  if (hex.knowledge === "current") {
-    return { colour: base, alpha: 1 };
-  }
-  if (hex.knowledge === "named") {
-    return { colour: base, alpha: 0.45 };
-  }
-  if (!showStaleness) {
-    return { colour: base, alpha: 1 };
-  }
-  const age = hex.ageInTurns ?? 0;
-  return { colour: fade(base, Math.min(0.62, 0.3 + age * 0.02)), alpha: 1 };
-}
 
 type MapCanvasProps = {
   model: HexMapModel;
@@ -74,6 +53,7 @@ type MapCanvasProps = {
   onSelectRegion: (regionId: string) => void;
   showStaleness: boolean;
   showUnits: boolean;
+  showStructures: boolean;
   /** Hexes a planned route passes through, in order. Empty when nothing is planned. */
   route?: Coordinate[];
   /** How dangerous each of those hexes is, so one bad step is visible rather than buried. */
@@ -83,14 +63,22 @@ type MapCanvasProps = {
 /**
  * The world map.
  *
- * Rewritten rather than adjusted: the previous renderer destroyed and recreated the entire Pixi
- * application on every pan, zoom and selection change, and hit-tested with invisible DOM buttons
- * laid over the canvas. Here the application is created once and only the hex layer is redrawn,
- * panning and zooming move the world container without touching the scene, and Pixi does its own
- * hit-testing.
+ * Drawn in SVG rather than into a canvas, which is what makes the rest of it possible: the browser
+ * re-rasterises every glyph at device resolution on every paint, so a settlement name is as sharp
+ * at maximum zoom as at minimum. The canvas renderer baked each label into a texture once, at nine
+ * pixels, and then magnified it up to threefold.
  *
- * An accessible button per hex is still rendered, off-screen, because a canvas is invisible to
- * assistive technology and to end-to-end tests alike.
+ * Three things are worth knowing before changing it:
+ *
+ * - **The unexplored lattice is one rectangle.** It used to be a loop over every position in the
+ *   bounding box, which grew with the map. As a `<pattern>` it costs the same whatever the faction
+ *   has explored, and it is what makes drawing every known hex affordable.
+ * - **Panning writes no React state.** The view transform lives in a ref and is written straight to
+ *   one group; `transform` is deliberately absent from the JSX, because React only touches an
+ *   attribute it has a previous value for. A drag therefore costs no reconciliation at all.
+ * - **The hexes are the accessible layer.** There is no longer a parallel set of off-screen
+ *   buttons: each hex is itself a button, focusable and labelled, with the roving tabindex a grid
+ *   is supposed to have so the map is one tab stop rather than several thousand.
  */
 export function MapCanvas({
   model,
@@ -99,254 +87,619 @@ export function MapCanvas({
   onSelectRegion,
   showStaleness,
   showUnits,
+  showStructures,
   route = [],
   routeRisk = []
 }: MapCanvasProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
-  const appRef = useRef<Application | null>(null);
-  const worldRef = useRef<Container | null>(null);
+  const rootRef = useRef<SVGSVGElement | null>(null);
+  const worldRef = useRef<SVGGElement | null>(null);
+  const fogRef = useRef<SVGPatternElement | null>(null);
+  const rulerXRef = useRef<SVGGElement | null>(null);
+  const rulerYRef = useRef<SVGGElement | null>(null);
+
+  const viewRef = useRef<Viewport>(ORIGIN);
+  const carryRef = useRef(0);
+  const draggedRef = useRef(false);
+  const pendingFocusRef = useRef<string | null>(null);
+  const framedRef = useRef<{ model: HexMapModel | null; level: number | null }>({
+    model: null,
+    level: null
+  });
+
+  const [view, setView] = useState<Viewport>(ORIGIN);
+  const [size, setSize] = useState({ width: 0, height: 0 });
+  const [focusedRegionId, setFocusedRegionId] = useState<string | null>(null);
+
   const selectRef = useRef(onSelectRegion);
   selectRef.current = onSelectRegion;
 
-  // Created once. Everything after this mutates the scene rather than rebuilding it.
+  const layers = useMemo(() => hexLayers(model.hexes, level), [model, level]);
+  const onLevel = useMemo(
+    () => model.hexes.filter((hex) => hex.coordinate.z === level),
+    [model, level]
+  );
+
+  /**
+   * Pushes the current view into the DOM.
+   *
+   * Called after every commit rather than only when the view changes, so a re-render that
+   * remounted the group cannot leave the map sitting at the origin.
+   */
+  const applyView = useCallback(() => {
+    const current = viewRef.current;
+    const transform = transformString(current);
+    worldRef.current?.setAttribute("transform", transform);
+    fogRef.current?.setAttribute("patternTransform", transform);
+    rulerXRef.current?.setAttribute("transform", `translate(${current.tx.toFixed(2)},0)`);
+    rulerYRef.current?.setAttribute("transform", `translate(0,${current.ty.toFixed(2)})`);
+    rootRef.current?.style.setProperty("--map-scale", scaleOf(current.step).toFixed(4));
+  }, []);
+
+  useLayoutEffect(() => {
+    applyView();
+    if (pendingFocusRef.current) {
+      const target = rootRef.current?.querySelector<SVGPolygonElement>(
+        `[data-region-id="${CSS.escape(pendingFocusRef.current)}"]`
+      );
+      pendingFocusRef.current = null;
+      target?.focus();
+    }
+  });
+
+  /** Moves the view and re-renders anything that reads it, such as the rulers. */
+  const commit = useCallback(
+    (next: Viewport) => {
+      viewRef.current = next;
+      applyView();
+      setView(next);
+    },
+    [applyView]
+  );
+
+  /** Moves the view without re-rendering, which is what keeps a drag free. */
+  const slide = useCallback(
+    (next: Viewport) => {
+      viewRef.current = next;
+      applyView();
+    },
+    [applyView]
+  );
+
+  // The canvas renderer got its size from Pixi's `resizeTo`. Rulers and framing need it too.
   useEffect(() => {
     const host = hostRef.current;
     if (!host) {
       return undefined;
     }
-
-    const app = new Application({
-      resizeTo: host,
-      antialias: true,
-      backgroundColor: 0x0a0e13
-    });
-    const world = new Container();
-    app.stage.addChild(world);
-
-    appRef.current = app;
-    worldRef.current = world;
-    host.appendChild(app.view as unknown as Node);
-
-    let dragging = false;
-    let moved = false;
-    let originX = 0;
-    let originY = 0;
-
-    const canvas = app.view as unknown as HTMLCanvasElement;
-
-    const onPointerDown = (event: PointerEvent) => {
-      dragging = true;
-      moved = false;
-      originX = event.clientX - world.position.x;
-      originY = event.clientY - world.position.y;
-    };
-    const onPointerMove = (event: PointerEvent) => {
-      if (!dragging) {
-        return;
-      }
-      world.position.set(event.clientX - originX, event.clientY - originY);
-      moved = true;
-    };
-    const onPointerUp = () => {
-      dragging = false;
-    };
-    const onWheel = (event: WheelEvent) => {
-      event.preventDefault();
-      const previous = world.scale.x;
-      const next = Math.min(MAX_SCALE, Math.max(MIN_SCALE, previous * (event.deltaY < 0 ? 1.1 : 0.9)));
-      // Zoom about the pointer rather than the origin, so the hex under the cursor stays put.
-      const bounds = canvas.getBoundingClientRect();
-      const pointerX = event.clientX - bounds.left;
-      const pointerY = event.clientY - bounds.top;
-      world.position.set(
-        pointerX - ((pointerX - world.position.x) / previous) * next,
-        pointerY - ((pointerY - world.position.y) / previous) * next
+    const observer = new ResizeObserver(() => {
+      const width = Math.round(host.clientWidth);
+      const height = Math.round(host.clientHeight);
+      setSize((previous) =>
+        previous.width === width && previous.height === height ? previous : { width, height }
       );
-      world.scale.set(next);
-    };
-
-    canvas.addEventListener("pointerdown", onPointerDown);
-    window.addEventListener("pointermove", onPointerMove);
-    window.addEventListener("pointerup", onPointerUp);
-    canvas.addEventListener("wheel", onWheel, { passive: false });
-    // A drag that ended on a hex must not also select it.
-    canvas.addEventListener("click", (event) => {
-      if (moved) {
-        event.stopPropagation();
-      }
     });
-
-    return () => {
-      canvas.removeEventListener("pointerdown", onPointerDown);
-      window.removeEventListener("pointermove", onPointerMove);
-      window.removeEventListener("pointerup", onPointerUp);
-      canvas.removeEventListener("wheel", onWheel);
-      app.destroy(true);
-      appRef.current = null;
-      worldRef.current = null;
-    };
+    observer.observe(host);
+    return () => observer.disconnect();
   }, []);
 
-  // Redraws the hex layer only. The application, its canvas and the view transform survive.
+  // Frames the world when the report or the level changes. Another level's hexes can sit somewhere
+  // completely different, so keeping the old transform would open on empty fog.
   useEffect(() => {
-    const world = worldRef.current;
-    if (!world) {
+    if (size.width === 0 || size.height === 0) {
       return;
     }
-
-    world.removeChildren();
-    const corners = hexCorners(HEX_RADIUS);
-    const visible = model.hexes.filter((hex) => hex.coordinate.z === level);
-
-    const trace = (shape: Graphics, centre: { x: number; y: number }) => {
-      corners.forEach((corner, index) => {
-        const x = centre.x + corner.x;
-        const y = centre.y + corner.y;
-        if (index === 0) {
-          shape.moveTo(x, y);
-        } else {
-          shape.lineTo(x, y);
-        }
-      });
-      shape.closePath();
-    };
-
-    // The unexplored lattice. Without it the known hexes float as islands on a black field and the
-    // map reads as broken rather than as mostly unexplored, which is the honest picture: a faction
-    // knows a handful of hexes out of a world.
-    if (visible.length > 0) {
-      const xs = visible.map((hex) => hex.coordinate.x);
-      const ys = visible.map((hex) => hex.coordinate.y);
-      const margin = 6;
-      const fog = new Graphics();
-      fog.lineStyle(1, 0x11161d, 1);
-      fog.beginFill(UNKNOWN, 1);
-      for (let x = Math.min(...xs) - margin; x <= Math.max(...xs) + margin; x += 1) {
-        for (let y = Math.min(...ys) - margin; y <= Math.max(...ys) + margin; y += 1) {
-          // Only half the lattice positions exist.
-          if ((x + y) % 2 !== 0) {
-            continue;
-          }
-          trace(fog, hexToPixel({ x, y, z: level }, HEX_RADIUS));
-        }
-      }
-      fog.endFill();
-      world.addChild(fog);
+    const framed = framedRef.current;
+    if (framed.model === model && framed.level === level) {
+      return;
     }
+    framedRef.current = { model, level };
 
-    for (const hex of visible) {
-      const centre = hexToPixel(hex.coordinate, HEX_RADIUS);
-      const selected = hex.regionId === selectedRegionId;
-      const { colour, alpha } = fillFor(hex, showStaleness);
-
-      const shape = new Graphics();
-      shape.lineStyle(selected ? 2.5 : 1, selected ? 0xd9a441 : 0x0a0e13, 1);
-      shape.beginFill(colour, alpha);
-      trace(shape, centre);
-      shape.endFill();
-
-      shape.eventMode = "static";
-      shape.cursor = "pointer";
-      shape.on("pointertap", () => selectRef.current(hex.regionId));
-      world.addChild(shape);
-
-      if (hex.settlementName) {
-        const label = new Text(hex.settlementName, {
-          fill: 0xf0e2bd,
-          fontSize: 9,
-          fontFamily: "monospace"
-        });
-        label.anchor.set(0.5, 0);
-        label.position.set(centre.x, centre.y + 4);
-        world.addChild(label);
-      }
-
-      if (showUnits && hex.ownUnitCount + hex.foreignUnitCount > 0) {
-        const pips = new Graphics();
-        if (hex.ownUnitCount > 0) {
-          pips.beginFill(0x5ec8f0).drawCircle(centre.x - 4, centre.y - 7, 2.6).endFill();
-        }
-        if (hex.foreignUnitCount > 0) {
-          pips.beginFill(0xf07070).drawCircle(centre.x + 4, centre.y - 7, 2.6).endFill();
-        }
-        world.addChild(pips);
-      }
-    }
-    // The route goes on last so it sits above the hexes it crosses. Each step is tinted by its own
-    // risk rather than the route's, because a single dangerous hex in an otherwise quiet path is
-    // exactly what a player needs to see.
-    const riskByHex = new Map(
-      routeRisk.map((hex) => [`${hex.coordinate.x},${hex.coordinate.y}`, hex.level])
+    const fitted = fitTo(
+      onLevel.map((hex) => hex.coordinate),
+      size.width,
+      size.height
     );
-
-    const onLevel = route.filter((step) => step.z === level);
-    if (onLevel.length > 0) {
-      const line = new Graphics();
-      line.lineStyle(3, 0xd9a441, 0.9);
-      onLevel.forEach((step, index) => {
-        const centre = hexToPixel(step, HEX_RADIUS);
-        if (index === 0) {
-          line.moveTo(centre.x, centre.y);
-        } else {
-          line.lineTo(centre.x, centre.y);
-        }
-      });
-      world.addChild(line);
-
-      for (const step of onLevel) {
-        const centre = hexToPixel(step, HEX_RADIUS);
-        const level_ = riskByHex.get(`${step.x},${step.y}`);
-        const marker = new Graphics();
-        marker.lineStyle(2, RISK_COLOURS[level_ ?? "low"], 1);
-        marker.beginFill(RISK_COLOURS[level_ ?? "low"], 0.28);
-        trace(marker, centre);
-        marker.endFill();
-        world.addChild(marker);
-      }
+    if (fitted) {
+      commit(fitted);
     }
-  }, [model, level, selectedRegionId, showStaleness, showUnits, route, routeRisk]);
+  }, [model, level, onLevel, size, commit]);
 
-  // Centres on the selection the first time a world arrives, so the view does not open on empty fog.
-  const centredRef = useRef(false);
+  // Brings the selection into view when it arrives from somewhere other than the map — the units
+  // table, or a restored session. A hex clicked on the map is already visible, so nothing moves.
   useEffect(() => {
-    const app = appRef.current;
-    const world = worldRef.current;
-    if (!app || !world || centredRef.current) {
+    if (!selectedRegionId || size.width === 0) {
       return;
     }
-    const target =
-      model.hexes.find((hex) => hex.regionId === selectedRegionId) ??
-      model.hexes.find((hex) => hex.knowledge === "current");
+    const hex = onLevel.find((node) => node.regionId === selectedRegionId);
+    if (hex && isOffScreen(hex.coordinate, viewRef.current, size.width, size.height)) {
+      commit(centreOn(hex.coordinate, viewRef.current, size.width, size.height));
+    }
+  }, [selectedRegionId, onLevel, size, commit]);
+
+  // React attaches `wheel` passively, so `preventDefault` inside an `onWheel` prop does nothing and
+  // the page zooms instead of the map. This has to be a manual listener.
+  useEffect(() => {
+    const root = rootRef.current;
+    const host = hostRef.current;
+    if (!root || !host) {
+      return undefined;
+    }
+    const onWheel = (event: WheelEvent) => {
+      event.preventDefault();
+      const pixels = wheelPixels(event.deltaY, event.deltaMode, host.clientHeight);
+      const { steps, carry } = accumulateWheel(carryRef.current, pixels);
+      carryRef.current = carry;
+      if (steps === 0) {
+        return;
+      }
+      const bounds = root.getBoundingClientRect();
+      // Wheel down is positive and means zoom out.
+      commit(
+        zoomAt(viewRef.current, -steps, event.clientX - bounds.left, event.clientY - bounds.top)
+      );
+    };
+    root.addEventListener("wheel", onWheel, { passive: false });
+    return () => root.removeEventListener("wheel", onWheel);
+  }, [commit]);
+
+  const onPointerDown = (event: React.PointerEvent<SVGSVGElement>) => {
+    if (event.button !== 0) {
+      return;
+    }
+    draggedRef.current = false;
+    const start = { x: event.clientX, y: event.clientY };
+    const origin = viewRef.current;
+    event.currentTarget.setPointerCapture(event.pointerId);
+
+    const move = (moved: PointerEvent) => {
+      const dx = moved.clientX - start.x;
+      const dy = moved.clientY - start.y;
+      if (Math.abs(dx) > DRAG_SLOP || Math.abs(dy) > DRAG_SLOP) {
+        draggedRef.current = true;
+      }
+      slide({ tx: origin.tx + dx, ty: origin.ty + dy, step: origin.step });
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      if (draggedRef.current) {
+        commit(viewRef.current);
+      }
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
+
+  const zoomBy = useCallback(
+    (steps: number) => {
+      commit(zoomAt(viewRef.current, steps, size.width / 2, size.height / 2));
+    },
+    [commit, size]
+  );
+
+  const frameAll = useCallback(() => {
+    const fitted = fitTo(
+      onLevel.map((hex) => hex.coordinate),
+      size.width,
+      size.height
+    );
+    if (fitted) {
+      commit(fitted);
+    }
+  }, [onLevel, size, commit]);
+
+  const onHexKeyDown = (event: React.KeyboardEvent<SVGPolygonElement>, hex: HexNode) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      selectRef.current(hex.regionId);
+      return;
+    }
+    if (event.key === "+" || event.key === "=" || event.key === "-") {
+      event.preventDefault();
+      zoomBy(event.key === "-" ? -1 : 1);
+      return;
+    }
+    if (event.key === "0") {
+      event.preventDefault();
+      frameAll();
+      return;
+    }
+    if (!ARROWS.includes(event.key as ArrowKey)) {
+      return;
+    }
+    event.preventDefault();
+
+    if (event.shiftKey) {
+      // Pans without moving focus, for reading around a hex without leaving it.
+      const nudge = HEX_RADIUS * 2 * scaleOf(viewRef.current.step);
+      const current = viewRef.current;
+      const dx = event.key === "ArrowLeft" ? nudge : event.key === "ArrowRight" ? -nudge : 0;
+      const dy = event.key === "ArrowUp" ? nudge : event.key === "ArrowDown" ? -nudge : 0;
+      commit({ tx: current.tx + dx, ty: current.ty + dy, step: current.step });
+      return;
+    }
+
+    const wanted = neighbour(hex.coordinate, event.key as ArrowKey);
+    // Only hexes the faction knows about exist as elements; unexplored ground is one rectangle and
+    // has nothing to focus.
+    const target = onLevel.find(
+      (node) => node.coordinate.x === wanted.x && node.coordinate.y === wanted.y
+    );
     if (!target) {
       return;
     }
-    const centre = hexToPixel(target.coordinate, HEX_RADIUS);
-    world.position.set(app.renderer.width / 2 - centre.x, app.renderer.height / 2 - centre.y);
-    centredRef.current = true;
-  }, [model, selectedRegionId]);
+    setFocusedRegionId(target.regionId);
+    pendingFocusRef.current = target.regionId;
+    if (isOffScreen(target.coordinate, viewRef.current, size.width, size.height)) {
+      commit(centreOn(target.coordinate, viewRef.current, size.width, size.height));
+    }
+  };
+
+  const band = zoomBand(view.step);
+
+  // Padded by a viewport on each side so an ordinary drag never outruns the tick list, which is
+  // only rebuilt when the view is committed.
+  const ticksX = useMemo(
+    () =>
+      size.width === 0
+        ? []
+        : rulerTicks(
+            "x",
+            { ...view, tx: view.tx + size.width },
+            size.width * 3,
+            COLUMN_LABEL_ROOM
+          ),
+    [view, size]
+  );
+  const ticksY = useMemo(
+    () =>
+      size.height === 0
+        ? []
+        : rulerTicks("y", { ...view, ty: view.ty + size.height }, size.height * 3, ROW_LABEL_ROOM),
+    [view, size]
+  );
+
+  const riskByHex = useMemo(
+    () => new Map(routeRisk.map((hex) => [`${hex.coordinate.x},${hex.coordinate.y}`, hex.level])),
+    [routeRisk]
+  );
+  const routeLine = useMemo(() => routePoints(route, level), [route, level]);
+  const routeOnLevel = useMemo(() => route.filter((step) => step.z === level), [route, level]);
+
+  const selected = onLevel.find((hex) => hex.regionId === selectedRegionId) ?? null;
+  const focusTarget = focusedRegionId ?? selectedRegionId ?? onLevel[0]?.regionId ?? null;
 
   return (
-    <div className="absolute inset-0" data-testid="map-canvas">
-      <div ref={hostRef} className="h-full w-full" />
-      {/*
-        A canvas says nothing to a screen reader or to Playwright, so every hex also exists as a
-        button. Positioned off-screen rather than hidden, so it stays focusable and clickable.
-      */}
-      <div className="sr-only">
-        {model.hexes
-          .filter((hex) => hex.coordinate.z === level)
-          .map((hex) => (
-            <button
-              key={hex.regionId}
-              type="button"
-              aria-label={`hex ${hex.regionId}`}
-              aria-pressed={hex.regionId === selectedRegionId}
-              onClick={() => onSelectRegion(hex.regionId)}
-            >
-              {hex.label}
-            </button>
+    <div ref={hostRef} className="absolute inset-0" data-testid="map-canvas">
+      <svg
+        ref={rootRef}
+        className={`h-full w-full touch-none map-${band}`}
+        onPointerDown={onPointerDown}
+      >
+        <defs>
+          <pattern
+            ref={fogRef}
+            id="fog-lattice"
+            patternUnits="userSpaceOnUse"
+            width={FOG_TILE.width}
+            height={FOG_TILE.height}
+          >
+            <path
+              d={FOG_TILE.d}
+              fill="none"
+              className="stroke-fog-edge"
+              strokeWidth="calc(1px / var(--map-scale, 1))"
+            />
+          </pattern>
+          <pattern
+            id="stale-hatch"
+            width="5"
+            height="5"
+            patternUnits="userSpaceOnUse"
+            patternTransform="rotate(45)"
+          >
+            <line x1="0" y1="0" x2="0" y2="5" stroke="#9fb0c4" strokeOpacity="0.22" />
+          </pattern>
+        </defs>
+
+        {/* The unexplored world, and the only thing that does not scale with how much is known. */}
+        <rect className="fill-ground" width="100%" height="100%" />
+        <rect className="fill-terrain-unknown" width="100%" height="100%" pointerEvents="none" />
+        <rect
+          width="100%"
+          height="100%"
+          fill="url(#fog-lattice)"
+          pointerEvents="none"
+          aria-hidden="true"
+        />
+
+        {/* Transform is written by hand, never as a prop. See applyView. */}
+        <g ref={worldRef}>
+          <HexLayer hexes={layers.named} showStaleness={showStaleness} />
+          <HexLayer hexes={layers.stale} showStaleness={showStaleness} />
+          <HexLayer hexes={layers.current} showStaleness={showStaleness} />
+
+          {routeLine && (
+            <g pointerEvents="none">
+              {/* A casing under the line, so a route stays readable over any terrain. */}
+              <polyline
+                points={routeLine}
+                fill="none"
+                className="stroke-ground"
+                strokeWidth={5}
+                strokeLinejoin="round"
+                vectorEffect="non-scaling-stroke"
+              />
+              <polyline
+                points={routeLine}
+                fill="none"
+                className="stroke-brass"
+                strokeWidth={3}
+                strokeLinejoin="round"
+                vectorEffect="non-scaling-stroke"
+              />
+              {routeOnLevel.map((step, index) => {
+                const world = worldOf(step);
+                const risk = riskByHex.get(`${step.x},${step.y}`) ?? "low";
+                return (
+                  <polygon
+                    key={`${step.x},${step.y},${index}`}
+                    points={HEX_POINTS}
+                    transform={`translate(${world.x},${world.y})`}
+                    className={RISK_CLASSES[risk]}
+                    fillOpacity={0.28}
+                    strokeWidth={2}
+                    vectorEffect="non-scaling-stroke"
+                  />
+                );
+              })}
+            </g>
+          )}
+
+          <MarkLayer hexes={onLevel} showUnits={showUnits} showStructures={showStructures} />
+
+          {selected && (
+            <polygon
+              points={HEX_POINTS}
+              transform={translateOf(selected)}
+              fill="none"
+              className="stroke-brass"
+              strokeWidth={2.5}
+              vectorEffect="non-scaling-stroke"
+              pointerEvents="none"
+            />
+          )}
+
+          {/*
+            The hit and accessibility layer: flat, in model order, and last so nothing paints over
+            it. Keeping it separate from the terrain buckets is what stops a hex being remounted —
+            and losing focus mid-keystroke — when its knowledge changes.
+          */}
+          <g>
+            {onLevel.map((hex) => (
+              <polygon
+                key={hex.regionId}
+                data-region-id={hex.regionId}
+                points={HEX_POINTS}
+                transform={translateOf(hex)}
+                fill="none"
+                pointerEvents="all"
+                className="cursor-pointer outline-none focus-visible:stroke-brass-bright"
+                strokeWidth={2}
+                vectorEffect="non-scaling-stroke"
+                role="button"
+                tabIndex={hex.regionId === focusTarget ? 0 : -1}
+                aria-label={`hex ${hex.regionId}`}
+                aria-pressed={hex.regionId === selectedRegionId}
+                onFocus={() => setFocusedRegionId(hex.regionId)}
+                onKeyDown={(event) => onHexKeyDown(event, hex)}
+                onClick={() => {
+                  if (!draggedRef.current) {
+                    selectRef.current(hex.regionId);
+                  }
+                }}
+              >
+                <title>{hex.label}</title>
+              </polygon>
+            ))}
+          </g>
+        </g>
+
+        {/* Rulers, pinned to the viewport so they never scroll away. */}
+        <g ref={rulerXRef} pointerEvents="none" aria-hidden="true" data-testid="map-ruler-x">
+          {ticksX.map((tick) => (
+            <g key={tick.index} className="fill-ink-soft">
+              <text x={tick.offset} y={13} textAnchor="middle" fontSize={10}>
+                {tick.index}
+              </text>
+              <text x={tick.offset} y={size.height - 5} textAnchor="middle" fontSize={10}>
+                {tick.index}
+              </text>
+            </g>
           ))}
+        </g>
+        <g ref={rulerYRef} pointerEvents="none" aria-hidden="true" data-testid="map-ruler-y">
+          {ticksY.map((tick) => (
+            <g key={tick.index} className="fill-ink-soft">
+              <text x={4} y={tick.offset} dominantBaseline="middle" fontSize={10}>
+                {tick.index}
+              </text>
+              <text
+                x={size.width - 4}
+                y={tick.offset}
+                textAnchor="end"
+                dominantBaseline="middle"
+                fontSize={10}
+              >
+                {tick.index}
+              </text>
+            </g>
+          ))}
+        </g>
+      </svg>
+
+      {/*
+        Along the top, beside the layer chips. The inspector panels cover the rest of the map with
+        a full-bleed overlay that only clears the first forty-eight pixels, so controls anywhere
+        else are unreachable however visible they look.
+      */}
+      <div className="absolute right-2.5 top-2.5 flex gap-1">
+        <ZoomButton label="Zoom in" onClick={() => zoomBy(1)}>
+          +
+        </ZoomButton>
+        <ZoomButton label="Zoom out" onClick={() => zoomBy(-1)}>
+          −
+        </ZoomButton>
+        <ZoomButton label="Zoom to fit" onClick={frameAll}>
+          ⤢
+        </ZoomButton>
       </div>
     </div>
+  );
+}
+
+function translateOf(hex: HexNode): string {
+  const world = worldOf(hex.coordinate);
+  return `translate(${world.x.toFixed(2)},${world.y.toFixed(2)})`;
+}
+
+/** One knowledge bucket. Split out so a selection change does not reconcile the terrain. */
+function HexLayer({ hexes, showStaleness }: { hexes: HexNode[]; showStaleness: boolean }) {
+  return (
+    <g pointerEvents="none">
+      {hexes.map((hex) => {
+        const paint = hexPaint(hex, showStaleness);
+        const transform = translateOf(hex);
+        return (
+          <g key={hex.regionId}>
+            <polygon
+              points={HEX_POINTS}
+              transform={transform}
+              className={`${paint.terrainClass} stroke-map-edge`}
+              strokeWidth={1}
+              vectorEffect="non-scaling-stroke"
+            />
+            {paint.fogOpacity > 0 && (
+              <polygon
+                points={HEX_POINTS}
+                transform={transform}
+                className="fill-terrain-unknown"
+                fillOpacity={paint.fogOpacity}
+              />
+            )}
+            {paint.hatched && (
+              <polygon points={HEX_POINTS} transform={transform} fill="url(#stale-hatch)" />
+            )}
+          </g>
+        );
+      })}
+    </g>
+  );
+}
+
+/** Settlements, units and structures. What of it shows is decided by the zoom band, in CSS. */
+function MarkLayer({
+  hexes,
+  showUnits,
+  showStructures
+}: {
+  hexes: HexNode[];
+  showUnits: boolean;
+  showStructures: boolean;
+}) {
+  return (
+    <g pointerEvents="none">
+      {hexes.map((hex) => {
+        const world = worldOf(hex.coordinate);
+        const own = unitPipRadius(hex.ownUnitCount);
+        const foreign = unitPipRadius(hex.foreignUnitCount);
+        const structures = hex.region?.structures?.length ?? 0;
+        return (
+          <g key={hex.regionId}>
+            {hex.settlementName && (
+              <>
+                <text
+                  className="map-label map-name fill-settlement"
+                  x={world.x}
+                  y={world.y - HEX_RADIUS - 3}
+                  textAnchor="middle"
+                >
+                  {hex.settlementName}
+                </text>
+                <text
+                  className="map-glyph fill-settlement"
+                  x={world.x}
+                  y={world.y + 3}
+                  textAnchor="middle"
+                  fontSize={9}
+                >
+                  ▣
+                </text>
+              </>
+            )}
+            {showUnits && own > 0 && (
+              <circle
+                className="map-pip fill-unit-own"
+                cx={world.x - 4}
+                cy={world.y + HEX_RADIUS * 0.55}
+                r={own}
+              />
+            )}
+            {showUnits && foreign > 0 && (
+              <circle
+                className="map-pip fill-unit-foreign"
+                cx={world.x + 4}
+                cy={world.y + HEX_RADIUS * 0.55}
+                r={foreign}
+              />
+            )}
+            {showUnits && hex.ownUnitCount + hex.foreignUnitCount > 0 && (
+              <text
+                className="map-label map-count fill-ink"
+                x={world.x}
+                y={world.y - 4}
+                textAnchor="middle"
+              >
+                {hex.ownUnitCount}
+                {hex.foreignUnitCount > 0 ? `/${hex.foreignUnitCount}` : ""}
+              </text>
+            )}
+            {showStructures && structures > 0 && (
+              <text
+                className="map-glyph fill-brass"
+                x={world.x + HEX_RADIUS * 0.5}
+                y={world.y - HEX_RADIUS * 0.4}
+                textAnchor="middle"
+                fontSize={7}
+              >
+                ⌂
+              </text>
+            )}
+          </g>
+        );
+      })}
+    </g>
+  );
+}
+
+function ZoomButton({
+  label,
+  onClick,
+  children
+}: {
+  label: string;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      onClick={onClick}
+      className="h-7 w-7 rounded border border-edge bg-panel/95 text-ink-soft shadow hover:text-ink"
+    >
+      {children}
+    </button>
   );
 }
