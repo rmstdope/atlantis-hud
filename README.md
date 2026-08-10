@@ -157,12 +157,13 @@ Tagging is the release. Bump the version in **both** `package.json` and
 git tag v0.2.0 && git push origin v0.2.0
 ```
 
-That builds an Apple Silicon `.dmg`, attaches it to a GitHub Release, **and then publishes the
-website from the same tag**. The first step of the job checks that the tag and the two files agree,
-so a half-done bump fails in seconds rather than after the compile.
+That builds an Apple Silicon `.dmg` and a Linux `.AppImage`, attaches them to a GitHub Release,
+**and then publishes the website from the same tag**. The first step of the job checks that the tag
+and the two files agree, so a half-done bump fails in seconds rather than after the compile.
 
-The website step runs only if the bundle built, so a release is all or nothing. When a macOS build
-fails but a web fix is waiting, run **Deploy web** by hand — that is what the manual trigger is for.
+The website step runs only if both desktop bundles built, so a release is all or nothing. When a
+desktop build fails but a web fix is waiting, run **Deploy web** by hand — that is what the manual
+trigger is for.
 
 To build one locally:
 
