@@ -38,6 +38,7 @@ import { GamePicker } from "./GamePicker";
 import { LayerChips } from "./LayerChips";
 import { MapCanvas } from "./MapCanvas";
 import { OrdersPanel } from "./OrdersPanel";
+import { ordersSlotClass, unitSlotClass } from "./panelLayout";
 import { PlannerPanel } from "./PlannerPanel";
 import { RegionPanel } from "./RegionPanel";
 import { TurnMessagesPanel, type TurnMessagesTab } from "./TurnMessagesPanel";
@@ -177,6 +178,9 @@ export function AppShell({
   const level = useWorkspaceStore((state) => state.level);
   const setLevel = useWorkspaceStore((state) => state.setLevel);
   const layers = useWorkspaceStore((state) => state.layers);
+  // Which panels are folded is a layout question as well as a panel one: a folded panel hands the
+  // space it gives up to the panel beside it, and only the shell knows what is beside what.
+  const collapsed = useWorkspaceStore((state) => state.collapsed);
   const planner = useWorkspaceStore((state) => state.planner);
   const armPlanner = useWorkspaceStore((state) => state.armPlanner);
   const planTo = useWorkspaceStore((state) => state.planTo);
@@ -963,16 +967,23 @@ export function AppShell({
           grows upward as a hex holds more units, and the row above yields the space. Pinning the
           dock's height instead would either waste the screen on an empty hex or bury ninety units
           in a scroller.
+
+          Nothing here takes clicks. Each panel claims its own (see `CollapsiblePanel`), so the
+          gaps between them, and everything a folded panel gives up, stays live map rather than a
+          transparent slab that swallows every hex under it.
+
+          A folded panel's slot shrinks to its title bar and the space goes to the panel beside it -
+          fold the unit panel and the orders editor takes the column. `panelLayout` decides which
+          slot is the flexible one; only this file knows what sits next to what.
         */}
         <div className="pointer-events-none absolute inset-0 flex flex-col gap-2.5 p-2.5 pt-12">
           <div className="flex min-h-0 flex-1 justify-between gap-2.5">
-            <div className="pointer-events-auto flex w-[19rem] min-h-0 flex-col">
+            <div className="flex w-[19rem] min-h-0 flex-col">
               <RegionPanel hex={hex} />
             </div>
 
-            <div className="pointer-events-auto flex w-[21rem] min-h-0 flex-col gap-2.5">
-              {/* The unit panel yields space so the orders editor keeps a usable number of rows. */}
-              <div className="min-h-0 flex-1">
+            <div className="flex w-[21rem] min-h-0 flex-col gap-2.5">
+              <div className={unitSlotClass(collapsed)}>
                 <UnitPanel unit={unit} hex={hex} />
               </div>
               <div className="flex-none">
@@ -989,7 +1000,7 @@ export function AppShell({
                   onApply={applyRoute}
                 />
               </div>
-              <div className="h-[19rem] max-h-[55%] min-h-[9rem] flex-none">
+              <div className={ordersSlotClass(collapsed)}>
                 <OrdersPanel
                   unit={unit}
                   hex={hex}
@@ -1003,7 +1014,7 @@ export function AppShell({
             </div>
           </div>
 
-          <div className="pointer-events-auto max-h-[45vh] flex-none">
+          <div className="max-h-[45vh] flex-none">
             <UnitTableDock hex={hex} />
           </div>
         </div>

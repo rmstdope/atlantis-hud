@@ -35,9 +35,16 @@ export function CollapsiblePanel({
     <section
       data-testid={`panel-${panel}`}
       data-collapsed={collapsed}
-      // `h-full` matters: without it the section sizes to its content and spills out of whatever
-      // slot it was given, painting over the panel below.
-      className={`flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-md border border-edge bg-panel/95 shadow-lg backdrop-blur ${className}`}
+      // `pointer-events-auto` sits here rather than on the slot around it: the shell's overlay is
+      // pointer-events-none, so the panel takes clicks and everything the panel is not - the gaps
+      // between panels, and the space a folded one gives up - stays live map. `LayerChips` does
+      // the same thing for the same reason.
+      //
+      // `h-full` only while open. Expanded, the section has to fill the slot it was given or it
+      // sizes to its content and spills out, painting over the panel below. Folded, it must do the
+      // opposite and shrink to its title bar - which is what issue #60 was: the body disappeared
+      // and the frame stayed, a full-height empty slab over the map.
+      className={`pointer-events-auto flex min-h-0 min-w-0 flex-col overflow-hidden rounded-md border border-edge bg-panel/95 shadow-lg backdrop-blur ${collapsed ? "" : "h-full"} ${className}`}
     >
       <header className="flex h-7 flex-none items-center gap-2 border-b border-edge px-2.5">
         <button
