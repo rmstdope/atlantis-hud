@@ -246,7 +246,9 @@ pub enum PersistenceError {
     UnsupportedManifestVersion { max_supported: u32, actual: u32 },
     #[error("backup file is not an Atlantis HUD game export")]
     InvalidGameBackupFormat,
-    #[error("backup file format version {actual} is newer than this build supports ({max_supported})")]
+    #[error(
+        "backup file format version {actual} is newer than this build supports ({max_supported})"
+    )]
     UnsupportedGameBackupVersion { max_supported: u32, actual: u32 },
     #[error("invalid game backup: {0}")]
     InvalidGameBackup(String),
@@ -750,7 +752,10 @@ pub fn import_game(
                     z,
                     terrain,
                     province,
-                    format!("{terrain} ({x},{y}) in {province}, turn {}", sighting.last_seen_turn),
+                    format!(
+                        "{terrain} ({x},{y}) in {province}, turn {}",
+                        sighting.last_seen_turn
+                    ),
                     sighting.last_seen_turn,
                     sighting.payload_json.as_str(),
                 ],
@@ -2320,7 +2325,8 @@ mod region_sighting_tests {
                 turn_number: 12,
             },
             raw_report: "TURN: 12".to_string(),
-            parsed_payload_json: r#"{"turnHeader":{"turnNumber":12,"season":"Spring"}}"#.to_string(),
+            parsed_payload_json: r#"{"turnHeader":{"turnNumber":12,"season":"Spring"}}"#
+                .to_string(),
             warnings_payload_json: "[]".to_string(),
         };
         upsert_imported_turn(&opened.database_path, &turn, "2026-08-01T10:00:00Z")
@@ -2434,9 +2440,7 @@ mod region_sighting_tests {
             "2026-08-01T09:00:00Z",
         )
         .expect_err("future backup should be refused");
-        assert!(error
-            .to_string()
-            .contains("newer than this build supports"));
+        assert!(error.to_string().contains("newer than this build supports"));
     }
 }
 

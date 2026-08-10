@@ -92,7 +92,11 @@ fn delete_game(app: tauri::AppHandle, game_id: String) -> Result<(), String> {
     feature = "desktop-runtime"
 ))]
 #[tauri::command(rename_all = "snake_case")]
-fn export_game(app: tauri::AppHandle, game_id: String, exported_at: String) -> Result<String, String> {
+fn export_game(
+    app: tauri::AppHandle,
+    game_id: String,
+    exported_at: String,
+) -> Result<String, String> {
     command_export_game(&games_root(&app)?, &game_id, &exported_at)
 }
 
