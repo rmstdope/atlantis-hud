@@ -197,6 +197,39 @@ test("an ally's report for the same turn can be merged into the map", async ({ p
   await expect(page.getByTestId("panel-region")).toContainText("(9,53)");
 });
 
+/**
+ * The header says things once. The platform tag repeated what the About tab says, the routine
+ * import status repeated what the Turn chip says, and the load button carried an ellipsis. The
+ * status line stays in the page - tests and screen readers key on its text - but it only takes up
+ * room when it has something to say: an import that failed, or one that worked with a warning.
+ */
+test("the header keeps quiet about routine state", async ({ page }) => {
+  await clearGames(page);
+  await expect(page.getByTestId("game-gate")).toBeVisible();
+  // The platform tag is the About tab's business, on the gate screen as in the workspace.
+  await expect(page.locator("header")).not.toContainText(/web|desktop/u);
+
+  await loadReport(page);
+  await expect(page.getByTestId("app-header")).not.toContainText(/web|desktop/u);
+  await expect(page.getByRole("button", { name: "Load report", exact: true })).toBeVisible();
+
+  // Loaded and well: the status is out of sight, its text still present for whoever asks.
+  const status = page.getByTestId("import-status");
+  await expect(status).toContainText("11 regions");
+  const quiet = await status.boundingBox();
+  expect(quiet === null || quiet.width <= 1).toBe(true);
+
+  // Something going wrong is the moment the line earns its room back. Junk parses to a turn
+  // that names no faction, which cannot be remembered - a warning the player should see.
+  await page.setInputFiles('input[type="file"]', {
+    name: "junk.rep",
+    mimeType: "text/plain",
+    buffer: Buffer.from("this is not a report", "utf8")
+  });
+  await expect(status).toContainText("cannot be remembered");
+  await expect.poll(async () => (await status.boundingBox())?.width ?? 0).toBeGreaterThan(1);
+});
+
 /** What merging must leave alone: the turn on screen has not changed, so nothing else may move. */
 test("merging leaves the orders and the selection where they were", async ({ page }) => {
   await loadReport(page);

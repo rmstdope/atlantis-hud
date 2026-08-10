@@ -407,7 +407,9 @@ export function AppShell({
           regionCount: report.regions.length,
           unitCount,
           message: memory.warning ?? chosen.warning,
-          failed: false
+          failed: false,
+          // A message here is always a warning: the routine case is the counts, message-less.
+          warning: (memory.warning ?? chosen.warning) !== null
         });
 
         // Opening on a hex the player has units in beats opening on whatever came first, and the
@@ -422,7 +424,8 @@ export function AppShell({
           regionCount: 0,
           unitCount: 0,
           message: `could not read ${fileName}: ${describeError(error)}`,
-          failed: true
+          failed: true,
+          warning: false
         });
       }
     },
@@ -486,7 +489,8 @@ export function AppShell({
           regionCount: 0,
           unitCount: 0,
           message: `could not read ${fileName}: ${describeError(error)}`,
-          failed: true
+          failed: true,
+          warning: false
         });
       } finally {
         setBusy(false);
@@ -548,14 +552,16 @@ export function AppShell({
           regionCount: outcome.result.mergedRegionCount,
           unitCount: 0,
           message: describeMerge(outcome.result),
-          failed: false
+          failed: false,
+          warning: false
         });
       } catch (error) {
         setStatus({
           regionCount: 0,
           unitCount: 0,
           message: `could not merge ${pending.fileName}: ${describeError(error)}`,
-          failed: true
+          failed: true,
+          warning: false
         });
       } finally {
         setBusy(false);
@@ -648,7 +654,8 @@ export function AppShell({
           regionCount: restored.parsed.regions.length,
           unitCount,
           message: restored.warning ?? `restored turn ${restored.turnNumber}`,
-          failed: false
+          failed: false,
+          warning: restored.warning !== null
         });
 
         // Opening on a hex the player has units in, exactly as loading a report does — unless a
@@ -673,7 +680,8 @@ export function AppShell({
             regionCount: 0,
             unitCount: 0,
             message: `the last turn could not be restored: ${describeError(error)}`,
-            failed: true
+            failed: true,
+            warning: false
           });
         }
       })
@@ -944,7 +952,8 @@ export function AppShell({
             regionCount: 0,
             unitCount: 0,
             message: `could not plan a route: ${describeError(error)}`,
-            failed: true
+            failed: true,
+            warning: false
           });
         }
       })
@@ -1196,7 +1205,6 @@ export function AppShell({
   if (!game) {
     return (
       <GameGate
-        platformLabel={platformLabel}
         busy={busy}
         error={gameError}
         onCreate={(name, rulesetId) => void createGame(name, rulesetId)}
@@ -1211,7 +1219,6 @@ export function AppShell({
   return (
     <div className="flex h-full flex-col bg-ground text-ink">
       <AppHeader
-        platformLabel={platformLabel}
         gameName={game.manifest.metadata.gameName}
         pickerOpen={pickerOpen}
         onTogglePicker={() => {
