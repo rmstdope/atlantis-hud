@@ -206,7 +206,9 @@ test("merging leaves the orders and the selection where they were", async ({ pag
 
   const orders = page.getByTestId("orders-input");
   await orders.fill("@study obse\n@work");
-  await expect(orders).toHaveValue("@study obse\n@work");
+  // The trailing newline is optional on purpose: the editor appends one the moment an autosave
+  // lands, and whether that has happened yet is a race this test has no business betting on.
+  await expect(orders).toHaveValue(/^@study obse\n@work\n?$/u);
 
   await choose(page, "turn-71-f73.rep", ALLY_REPORT);
   await page.getByTestId("foreign-report-merge").click();
@@ -887,12 +889,54 @@ test("the movement layer controls the route overlay and nothing else", async ({ 
   await selectHex(page, "1:7,51");
   await expect(page.getByTestId("planner-route")).toBeVisible();
 
+  // The chip starts on since #83, so this click turns the drawing OFF.
   const movement = page.getByTestId("layer-chips").getByLabel("movement");
   await movement.click();
+  await expect(page.getByTestId("route-line-solid")).toHaveCount(0);
 
   // The panel still knows the route; only the drawing follows the chip.
   await expect(page.getByTestId("planner-route")).toBeVisible();
   await expect(page.getByTestId("planner-order")).toHaveText("MOVE N");
+});
+
+/**
+ * Issue #83: a unit's written MOVE order is drawn on the map - solid through what the coming month
+ * covers, dotted for the rest - and it follows the editor as the player types.
+ *
+ * "* Seven of Eight (18642)" is a walker with two movement points in the mountain at (7,53). Its
+ * north neighbour (7,51) is another mountain at two points, so MOVE N N N is one hex a month:
+ * one solid step, then a dotted tail extrapolated into country nobody has described.
+ */
+test("a written move order is drawn solid for next turn and dotted beyond", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+  await selectUnit(page, OWN_UNIT);
+
+  // The movement layer is on by default, so typing an order is all it takes to draw it.
+  await page.getByTestId("orders-input").fill("MOVE N N N");
+
+  // Asserted by count and points rather than visibility: a due-north path is a straight vertical
+  // line, whose zero-width bounding box Playwright counts as hidden.
+  await expect(page.getByTestId("route-line-solid")).toHaveCount(1);
+  await expect(page.getByTestId("route-line-solid")).toHaveAttribute("points", /.+ .+/);
+  await expect(page.getByTestId("route-line-dotted")).toHaveCount(1);
+  await expect(page.getByTestId("route-line-dotted")).toHaveAttribute("points", /.+ .+ .+/);
+
+  // Cutting the order down to what one month affords leaves nothing for the dotted tail.
+  await page.getByTestId("orders-input").fill("MOVE N");
+  await expect(page.getByTestId("route-line-dotted")).toHaveCount(0);
+  await expect(page.getByTestId("route-line-solid")).toHaveCount(1);
+
+  // "  Northeast : ocean (8,52)" - a walker's order to sea is drawn, but as doubt: nothing is
+  // solid, however cheap the month arithmetic says the crossing is.
+  await page.getByTestId("orders-input").fill("MOVE NE");
+  await expect(page.getByTestId("route-line-dotted")).toHaveCount(1);
+  await expect(page.getByTestId("route-line-solid")).toHaveCount(0);
+
+  // Arming the planner is a gesture about a different journey, so the order path steps aside.
+  await page.getByTestId("planner-arm").click();
+  await expect(page.getByTestId("route-line-solid")).toHaveCount(0);
+  await expect(page.getByTestId("route-line-dotted")).toHaveCount(0);
 });
 
 /**

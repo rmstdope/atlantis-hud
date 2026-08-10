@@ -70,6 +70,22 @@ impl Direction {
         }
     }
 
+    /// Where one step this way lands on the hex lattice, as `(dx, dy)`.
+    ///
+    /// The lattice only holds hexes where `x + y` is even, so vertical steps move two rows and
+    /// diagonal steps one row and one column.
+    #[must_use]
+    pub fn offset(self) -> (i32, i32) {
+        match self {
+            Self::North => (0, -2),
+            Self::Northeast => (1, -1),
+            Self::Southeast => (1, 1),
+            Self::South => (0, 2),
+            Self::Southwest => (-1, 1),
+            Self::Northwest => (-1, -1),
+        }
+    }
+
     /// Reads either form, so `SW`, `Southwest` and `southwest` all mean the same thing.
     #[must_use]
     pub fn parse(text: &str) -> Option<Self> {
@@ -87,6 +103,22 @@ impl Direction {
             trimmed.eq_ignore_ascii_case(direction.label())
                 || trimmed.eq_ignore_ascii_case(direction.abbreviation())
         })
+    }
+}
+
+/// The coordinate a step lands on when the map itself cannot say.
+///
+/// This is the arithmetic the module header warns against, kept as the deliberate exception: an
+/// order marching into unexplored country has no report-stated exit to follow, and drawing the
+/// intent roughly right everywhere except across the wrap seam beats drawing nothing. Callers must
+/// prefer a stated exit wherever one exists.
+#[must_use]
+pub fn geometric_neighbour(from: Coordinate, direction: Direction) -> Coordinate {
+    let (dx, dy) = direction.offset();
+    Coordinate {
+        x: from.x + dx,
+        y: from.y + dy,
+        z: from.z,
     }
 }
 
@@ -415,6 +447,59 @@ mod tests {
     fn refuses_something_that_is_not_a_direction() {
         for text in ["", "IN", "OUT", "up", "Northwestern"] {
             assert_eq!(Direction::parse(text), None, "{text} should be refused");
+        }
+    }
+
+    /// The lattice puts hexes only where `x + y` is even, so North and South cross two rows while
+    /// the diagonals cross one row and one column. Getting one of these wrong draws an order's
+    /// path into a hex that does not exist.
+    #[test]
+    fn each_direction_steps_to_the_adjacent_lattice_point() {
+        assert_eq!(Direction::North.offset(), (0, -2));
+        assert_eq!(Direction::Northeast.offset(), (1, -1));
+        assert_eq!(Direction::Southeast.offset(), (1, 1));
+        assert_eq!(Direction::South.offset(), (0, 2));
+        assert_eq!(Direction::Southwest.offset(), (-1, 1));
+        assert_eq!(Direction::Northwest.offset(), (-1, -1));
+    }
+
+    #[test]
+    fn a_geometric_step_stays_on_the_lattice_and_on_the_level() {
+        let from = Coordinate { x: 7, y: 53, z: 1 };
+        for direction in [
+            Direction::North,
+            Direction::Northeast,
+            Direction::Southeast,
+            Direction::South,
+            Direction::Southwest,
+            Direction::Northwest,
+        ] {
+            let stepped = geometric_neighbour(from, direction);
+            assert_eq!(
+                (stepped.x + stepped.y).rem_euclid(2),
+                0,
+                "{direction:?} left the lattice at {stepped:?}"
+            );
+            assert_ne!((stepped.x, stepped.y), (from.x, from.y));
+            assert_eq!(stepped.z, from.z, "{direction:?} changed level");
+        }
+    }
+
+    /// A step and the step back must cancel, or a MOVE N S order would drift.
+    #[test]
+    fn a_geometric_step_reversed_comes_home() {
+        let from = Coordinate { x: 7, y: 53, z: 1 };
+        for direction in [
+            Direction::North,
+            Direction::Northeast,
+            Direction::Southeast,
+            Direction::South,
+            Direction::Southwest,
+            Direction::Northwest,
+        ] {
+            let there = geometric_neighbour(from, direction);
+            let back = geometric_neighbour(there, direction.opposite());
+            assert_eq!(back, from, "{direction:?} then back drifted");
         }
     }
 

@@ -21,13 +21,14 @@ import {
   type Viewport
 } from "./mapViewport";
 import { loadSavedViewport, saveViewportForGame } from "./mapViewportStorage";
+import type { RouteOverlay } from "./routeOverlay";
 import { guardSelection } from "./selectionGuard";
 import {
   fogPatternTile,
   hexLayers,
   hexPaint,
   hexPointsAttribute,
-  routePoints,
+  routeSegments,
   terrainTexturePatternId,
   terrainTextureUrl,
   unitPipRadius
@@ -93,9 +94,13 @@ type MapCanvasProps = {
   showTextures: boolean;
   showUnits: boolean;
   showStructures: boolean;
-  /** Hexes a planned route passes through, in order. Empty when nothing is planned. */
-  route?: Coordinate[];
-  /** How dangerous each of those hexes is, so one bad step is visible rather than buried. */
+  /**
+   * The movement line to draw, whatever its source - the planner's preview or a written order.
+   * Solid through the hexes the coming month covers, dotted for the rest; a null `solidSteps`
+   * means the unit's speed is unknown and the whole line is dotted.
+   */
+  route?: RouteOverlay | null;
+  /** How dangerous each hex entered is, so one bad step is visible rather than buried. */
   routeRisk?: HexRisk[];
 };
 
@@ -129,7 +134,7 @@ export function MapCanvas({
   showTextures,
   showUnits,
   showStructures,
-  route = [],
+  route = null,
   routeRisk = []
 }: MapCanvasProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
@@ -462,8 +467,18 @@ export function MapCanvas({
     () => new Map(routeRisk.map((hex) => [`${hex.coordinate.x},${hex.coordinate.y}`, hex.level])),
     [routeRisk]
   );
-  const routeLine = useMemo(() => routePoints(route, level), [route, level]);
-  const routeOnLevel = useMemo(() => route.filter((step) => step.z === level), [route, level]);
+  const routeLine = useMemo(
+    () =>
+      route
+        ? routeSegments([route.origin, ...route.hexes], route.solidSteps, level)
+        : { solid: "", dotted: "" },
+    [route, level]
+  );
+  // Risk is painted on hexes the unit enters, never its own - which is why the origin stays out.
+  const routeOnLevel = useMemo(
+    () => (route?.hexes ?? []).filter((step) => step.z === level),
+    [route, level]
+  );
   const reach = useMemo(() => hexBounds(onLevel.map((hex) => hex.coordinate)), [onLevel]);
 
   const selected = onLevel.find((hex) => hex.regionId === selectedRegionId) ?? null;
@@ -551,25 +566,53 @@ export function MapCanvas({
             showTextures={showTextures}
           />
 
-          {routeLine && (
+          {(routeLine.solid || routeLine.dotted) && (
             <g pointerEvents="none">
-              {/* A casing under the line, so a route stays readable over any terrain. */}
-              <polyline
-                points={routeLine}
-                fill="none"
-                className="stroke-ground"
-                strokeWidth={5}
-                strokeLinejoin="round"
-                vectorEffect="non-scaling-stroke"
-              />
-              <polyline
-                points={routeLine}
-                fill="none"
-                className="stroke-brass"
-                strokeWidth={3}
-                strokeLinejoin="round"
-                vectorEffect="non-scaling-stroke"
-              />
+              {/* A casing under each line, so a route stays readable over any terrain. */}
+              {routeLine.solid && (
+                <>
+                  <polyline
+                    points={routeLine.solid}
+                    fill="none"
+                    className="stroke-ground"
+                    strokeWidth={5}
+                    strokeLinejoin="round"
+                    vectorEffect="non-scaling-stroke"
+                  />
+                  <polyline
+                    points={routeLine.solid}
+                    fill="none"
+                    className="stroke-brass"
+                    strokeWidth={3}
+                    strokeLinejoin="round"
+                    vectorEffect="non-scaling-stroke"
+                    data-testid="route-line-solid"
+                  />
+                </>
+              )}
+              {routeLine.dotted && (
+                <>
+                  <polyline
+                    points={routeLine.dotted}
+                    fill="none"
+                    className="stroke-ground"
+                    strokeWidth={5}
+                    strokeLinejoin="round"
+                    strokeDasharray="6 6"
+                    vectorEffect="non-scaling-stroke"
+                  />
+                  <polyline
+                    points={routeLine.dotted}
+                    fill="none"
+                    className="stroke-brass"
+                    strokeWidth={3}
+                    strokeLinejoin="round"
+                    strokeDasharray="6 6"
+                    vectorEffect="non-scaling-stroke"
+                    data-testid="route-line-dotted"
+                  />
+                </>
+              )}
               {routeOnLevel.map((step, index) => {
                 const world = worldOf(step);
                 const risk = riskByHex.get(`${step.x},${step.y}`) ?? "low";

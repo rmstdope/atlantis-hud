@@ -256,6 +256,36 @@ export function routePoints(route: Coordinate[], level: number): string {
     .join(" ");
 }
 
+/** A route cut into the part a unit walks next turn and the part that comes later. */
+export type RouteSegments = {
+  /** Polyline through the origin and every hex reached in the coming month. */
+  solid: string;
+  /** Polyline for the rest, starting at the last solid hex so the two join seamlessly. */
+  dotted: string;
+};
+
+/**
+ * Splits a route - origin included - at the end of the coming month.
+ *
+ * `solidSteps` is how many hexes the first month covers; null means the unit's speed is unknown
+ * and the whole path is drawn dotted, and zero is a real answer too - a first hex dearer than one
+ * month's points means the month is spent saving. A segment left with a single point renders as
+ * nothing, because a polyline cannot show one.
+ */
+export function routeSegments(
+  route: Coordinate[],
+  solidSteps: number | null,
+  level: number
+): RouteSegments {
+  const boundary = solidSteps === null ? 0 : Math.min(solidSteps + 1, route.length);
+  const line = (hexes: Coordinate[]) => (hexes.length < 2 ? "" : routePoints(hexes, level));
+
+  return {
+    solid: line(route.slice(0, boundary)),
+    dotted: line(route.slice(Math.max(0, boundary - 1)))
+  };
+}
+
 /** Attribute values are rounded: unrounded floats are seventeen characters on every node. */
 function round(value: number): string {
   const text = value.toFixed(3);

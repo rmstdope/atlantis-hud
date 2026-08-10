@@ -181,7 +181,9 @@ fn flies(mode: MovementMode) -> bool {
 ///
 /// Reads the ruleset's own water rule rather than assuming it: a game that let anyone cross water
 /// would otherwise be quietly overruled by a hardcoded belief.
-fn blocks(ruleset: &Ruleset, mode: MovementMode, terrain: &str) -> bool {
+///
+/// Shared with the order tracer, which draws the blocked step anyway and marks it as doubt.
+pub(crate) fn blocks(ruleset: &Ruleset, mode: MovementMode, terrain: &str) -> bool {
     ruleset.is_water(terrain) && ruleset.water_needs_a_ship() && !flies(mode)
 }
 
@@ -213,7 +215,9 @@ fn blocked_by_water(
 }
 
 /// What entering `into` costs from `from`, or `None` when the unit may not go there at all.
-fn step_cost(
+///
+/// Shared with the order tracer, which uses the refusal as its cue to guess instead.
+pub(crate) fn step_cost(
     map: &MapKnowledge,
     ruleset: &Ruleset,
     mode: MovementMode,
@@ -325,7 +329,8 @@ fn rebuild(
 /// The rules page is explicit that points carry over, which is why this accumulates rather than
 /// giving each month a fresh budget: costs of one, two and one take a two-point walker two months,
 /// not three.
-fn split_into_months(
+/// Shared with the order tracer, so a drawn order and a planned route split identically.
+pub(crate) fn split_into_months(
     ruleset: &Ruleset,
     mode: MovementMode,
     origin: Coordinate,

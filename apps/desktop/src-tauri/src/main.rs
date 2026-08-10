@@ -227,6 +227,27 @@ fn plan_route(
     feature = "desktop-runtime"
 ))]
 #[tauri::command(rename_all = "snake_case")]
+fn trace_move_orders(
+    ruleset_json: String,
+    raw_report: String,
+    remembered_json: String,
+    unit_id: String,
+    orders: String,
+) -> Result<atlantis_hud_core::movement::request::MoveOrderTraceResponse, String> {
+    atlantis_hud_core_tauri::command_trace_move_orders(
+        &ruleset_json,
+        &raw_report,
+        &remembered_json,
+        &unit_id,
+        &orders,
+    )
+}
+
+#[cfg(all(
+    any(target_os = "linux", target_os = "macos", target_os = "windows"),
+    feature = "desktop-runtime"
+))]
+#[tauri::command(rename_all = "snake_case")]
 fn parse_report_full(raw_report: String) -> ParsedReport {
     command_parse_report_full(&raw_report)
 }
@@ -381,6 +402,7 @@ fn main() {
             save_order_draft,
             load_order_draft,
             plan_route,
+            trace_move_orders,
             load_region_sightings,
             merge_report,
             load_merged_reports,
