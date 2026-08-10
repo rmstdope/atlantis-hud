@@ -1,5 +1,5 @@
 #[cfg(all(
-    any(target_os = "macos", target_os = "windows"),
+    any(target_os = "linux", target_os = "macos", target_os = "windows"),
     feature = "desktop-runtime"
 ))]
 use atlantis_hud_core_tauri::{
@@ -11,13 +11,13 @@ use atlantis_hud_core_tauri::{
     ReportImportPreviewDto, ReportParseResultDto,
 };
 #[cfg(all(
-    any(target_os = "macos", target_os = "windows"),
+    any(target_os = "linux", target_os = "macos", target_os = "windows"),
     feature = "desktop-runtime"
 ))]
 use atlantis_hud_core_tauri::{command_get_engine_info, EngineInfoDto};
 
 #[cfg(all(
-    any(target_os = "macos", target_os = "windows"),
+    any(target_os = "linux", target_os = "macos", target_os = "windows"),
     feature = "desktop-runtime"
 ))]
 #[tauri::command(rename_all = "snake_case")]
@@ -26,7 +26,7 @@ fn get_engine_info() -> EngineInfoDto {
 }
 
 #[cfg(all(
-    any(target_os = "macos", target_os = "windows"),
+    any(target_os = "linux", target_os = "macos", target_os = "windows"),
     feature = "desktop-runtime"
 ))]
 /// Where this installation keeps its games.
@@ -47,7 +47,7 @@ fn games_root(app: &tauri::AppHandle) -> Result<String, String> {
 }
 
 #[cfg(all(
-    any(target_os = "macos", target_os = "windows"),
+    any(target_os = "linux", target_os = "macos", target_os = "windows"),
     feature = "desktop-runtime"
 ))]
 #[tauri::command(rename_all = "snake_case")]
@@ -56,7 +56,7 @@ fn create_game(app: tauri::AppHandle, manifest: GameManifestDto) -> Result<Opene
 }
 
 #[cfg(all(
-    any(target_os = "macos", target_os = "windows"),
+    any(target_os = "linux", target_os = "macos", target_os = "windows"),
     feature = "desktop-runtime"
 ))]
 #[tauri::command(rename_all = "snake_case")]
@@ -69,7 +69,7 @@ fn open_game(
 }
 
 #[cfg(all(
-    any(target_os = "macos", target_os = "windows"),
+    any(target_os = "linux", target_os = "macos", target_os = "windows"),
     feature = "desktop-runtime"
 ))]
 #[tauri::command(rename_all = "snake_case")]
@@ -78,7 +78,7 @@ fn list_games(app: tauri::AppHandle) -> Result<Vec<GameManifestDto>, String> {
 }
 
 #[cfg(all(
-    any(target_os = "macos", target_os = "windows"),
+    any(target_os = "linux", target_os = "macos", target_os = "windows"),
     feature = "desktop-runtime"
 ))]
 #[tauri::command(rename_all = "snake_case")]
@@ -87,7 +87,7 @@ fn delete_game(app: tauri::AppHandle, game_id: String) -> Result<(), String> {
 }
 
 #[cfg(all(
-    any(target_os = "macos", target_os = "windows"),
+    any(target_os = "linux", target_os = "macos", target_os = "windows"),
     feature = "desktop-runtime"
 ))]
 #[tauri::command(rename_all = "snake_case")]
@@ -96,7 +96,7 @@ fn parse_report(raw_report: String) -> ReportParseResultDto {
 }
 
 #[cfg(all(
-    any(target_os = "macos", target_os = "windows"),
+    any(target_os = "linux", target_os = "macos", target_os = "windows"),
     feature = "desktop-runtime"
 ))]
 #[tauri::command(rename_all = "snake_case")]
@@ -105,7 +105,7 @@ fn parse_report_classified(raw_report: String, ruleset_json: String) -> ParsedRe
 }
 
 #[cfg(all(
-    any(target_os = "macos", target_os = "windows"),
+    any(target_os = "linux", target_os = "macos", target_os = "windows"),
     feature = "desktop-runtime"
 ))]
 #[tauri::command(rename_all = "snake_case")]
@@ -118,7 +118,7 @@ fn load_region_sightings(
 }
 
 #[cfg(all(
-    any(target_os = "macos", target_os = "windows"),
+    any(target_os = "linux", target_os = "macos", target_os = "windows"),
     feature = "desktop-runtime"
 ))]
 #[tauri::command(rename_all = "snake_case")]
@@ -139,7 +139,7 @@ fn plan_route(
 }
 
 #[cfg(all(
-    any(target_os = "macos", target_os = "windows"),
+    any(target_os = "linux", target_os = "macos", target_os = "windows"),
     feature = "desktop-runtime"
 ))]
 #[tauri::command(rename_all = "snake_case")]
@@ -148,7 +148,7 @@ fn parse_report_full(raw_report: String) -> ParsedReport {
 }
 
 #[cfg(all(
-    any(target_os = "macos", target_os = "windows"),
+    any(target_os = "linux", target_os = "macos", target_os = "windows"),
     feature = "desktop-runtime"
 ))]
 #[tauri::command(rename_all = "snake_case")]
@@ -162,7 +162,7 @@ fn preview_report_import(
 }
 
 #[cfg(all(
-    any(target_os = "macos", target_os = "windows"),
+    any(target_os = "linux", target_os = "macos", target_os = "windows"),
     feature = "desktop-runtime"
 ))]
 #[tauri::command(rename_all = "snake_case")]
@@ -185,7 +185,7 @@ fn commit_report_import(
 }
 
 #[cfg(all(
-    any(target_os = "macos", target_os = "windows"),
+    any(target_os = "linux", target_os = "macos", target_os = "windows"),
     feature = "desktop-runtime"
 ))]
 #[tauri::command(rename_all = "snake_case")]
@@ -199,7 +199,7 @@ fn load_imported_turn(
 }
 
 #[cfg(all(
-    any(target_os = "macos", target_os = "windows"),
+    any(target_os = "linux", target_os = "macos", target_os = "windows"),
     feature = "desktop-runtime"
 ))]
 #[tauri::command(rename_all = "snake_case")]
@@ -211,7 +211,7 @@ fn load_latest_imported_turn(
 }
 
 #[cfg(all(
-    any(target_os = "macos", target_os = "windows"),
+    any(target_os = "linux", target_os = "macos", target_os = "windows"),
     feature = "desktop-runtime"
 ))]
 #[tauri::command(rename_all = "snake_case")]
@@ -220,7 +220,7 @@ fn validate_orders(raw_orders: String) -> OrderValidationResultDto {
 }
 
 #[cfg(all(
-    any(target_os = "macos", target_os = "windows"),
+    any(target_os = "linux", target_os = "macos", target_os = "windows"),
     feature = "desktop-runtime"
 ))]
 #[tauri::command(rename_all = "snake_case")]
@@ -243,7 +243,7 @@ fn save_order_draft(
 }
 
 #[cfg(all(
-    any(target_os = "macos", target_os = "windows"),
+    any(target_os = "linux", target_os = "macos", target_os = "windows"),
     feature = "desktop-runtime"
 ))]
 #[tauri::command(rename_all = "snake_case")]
@@ -257,7 +257,7 @@ fn load_order_draft(
 }
 
 #[cfg(all(
-    any(target_os = "macos", target_os = "windows"),
+    any(target_os = "linux", target_os = "macos", target_os = "windows"),
     feature = "desktop-runtime"
 ))]
 fn main() {
@@ -290,7 +290,7 @@ fn main() {
 }
 
 #[cfg(not(all(
-    any(target_os = "macos", target_os = "windows"),
+    any(target_os = "linux", target_os = "macos", target_os = "windows"),
     feature = "desktop-runtime"
 )))]
 fn main() {
