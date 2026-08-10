@@ -584,3 +584,72 @@ describe("merging an allied report", () => {
     ).resolves.toEqual([]);
   });
 });
+
+/**
+ * Changing a game's ruleset after creation, across the same boundary as everything else.
+ *
+ * Same literal argument-name assertions as the merge suite above, and for the same reason: a
+ * camelCase key does not fail loudly under `rename_all = "snake_case"`, it just arrives missing.
+ */
+describe("changing a game's ruleset", () => {
+  const wireManifest = {
+    manifest_version: 1,
+    metadata: {
+      game_id: "faction-12",
+      game_name: "Faction 12",
+      ruleset_id: "magicdeep"
+    },
+    report_sources: [],
+    created_at: "2026-08-01T09:00:00Z",
+    last_opened_at: "2026-08-09T18:00:00Z"
+  };
+
+  it("asks tauri with the argument names its command declares, and normalizes the answer", async () => {
+    const calls: Array<{ command: string; args?: Record<string, unknown> }> = [];
+    const invoke: TauriInvoke = <T,>(command: string, args?: Record<string, unknown>) => {
+      calls.push({ command, args });
+      return Promise.resolve(wireManifest as T);
+    };
+
+    const manifest = await createCoreClient(createTauriAdapter(invoke)).setGameRuleset(
+      "faction-12",
+      "magicdeep"
+    );
+
+    expect(calls).toEqual([
+      {
+        command: "set_game_ruleset",
+        args: { game_id: "faction-12", ruleset_id: "magicdeep" }
+      }
+    ]);
+    expect(manifest.metadata.rulesetId).toBe("magicdeep");
+    expect(manifest.lastOpenedAt).toBe("2026-08-09T18:00:00Z");
+  });
+
+  it("normalizes the wasm answer to the same manifest", async () => {
+    const bindings = {
+      set_game_ruleset_state: (gameId: string, rulesetId: string) => ({
+        ...wireManifest,
+        metadata: { ...wireManifest.metadata, game_id: gameId, ruleset_id: rulesetId }
+      })
+    } as unknown as WasmBindings;
+
+    const manifest = await createCoreClient(createWasmAdapter(bindings)).setGameRuleset(
+      "faction-12",
+      "magicdeep"
+    );
+
+    expect(manifest.metadata.gameId).toBe("faction-12");
+    expect(manifest.metadata.rulesetId).toBe("magicdeep");
+  });
+
+  // A write, so it refuses rather than answering emptily: a change that quietly went nowhere
+  // would leave the dialog claiming a ruleset the manifest does not hold.
+  it("refuses through a wasm build with no persistence linked in", () => {
+    const bindings = {} as WasmBindings;
+
+    expect(() => createWasmAdapter(bindings).setGameRuleset("g", "magicdeep")).toThrow(
+      "game persistence is not linked into this wasm build"
+    );
+  });
+});
