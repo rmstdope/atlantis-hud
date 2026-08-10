@@ -5,6 +5,7 @@
   "packageManager": "pnpm@9.12.0",
   "scripts": {
     "lint": "pnpm -r run lint",
+    "release": "tsx scripts/release.ts",
     "typecheck": "pnpm -r run typecheck && cargo check --workspace",
     "test": "pnpm -r run test && cargo test --workspace",
     "test:smoke": "playwright test",
