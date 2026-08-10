@@ -2,6 +2,46 @@
 
 A frontend for Atlantis (PBEM) that can be deployed both as a web and as a desktop application.
 
+## Where your games are kept
+
+Atlantis HUD has no server. Nothing you load or type is ever sent anywhere — your games stay on the
+machine you are using. That keeps them private, and it means keeping them safe is partly up to you.
+
+**On the desktop app**, each game is an ordinary file in your user folder, alongside your documents
+and photos. It stays there until you delete it, and your usual backups will pick it up.
+
+**In the browser**, games are kept in storage that belongs to that browser on that device. This is
+convenient — nothing to install, and your game is there when you come back — but it is not as
+durable as a file, and it is worth knowing how it can go away.
+
+### How a browser game can be lost
+
+- **Clearing your browsing history or site data deletes it.** In the dialog your browser offers,
+  Atlantis HUD's games look like any other site's data, so "clear everything" takes them too.
+- **Safari deletes it after seven days if you do not visit.** This is Safari's normal behaviour for
+  websites, and a week between turns is perfectly ordinary in a play-by-email game. **If you use
+  Safari, install the app** (Share → Add to Home Screen, or Add to Dock) — installed apps are exempt.
+- **A browser short of space may clear it out.** The app now asks your browser to hold on to your
+  games, which most will agree to, especially once the app is installed. It is a request, not a
+  guarantee.
+- **Private or Incognito windows forget everything** the moment you close them.
+- **Each browser and each device is separate.** A game started in Chrome on your laptop will not be
+  in Safari, or on your phone. There is no syncing between them.
+
+### Keeping a copy
+
+Right now the surest safety net is the turn reports themselves: **keep the report files your game
+sends you.** If a game is ever lost, loading those reports back in, oldest first, rebuilds it.
+
+Being able to save a whole game to a single file, and load it back or move it to another device, is
+planned — see issue #50.
+
+### Two smaller things
+
+Your orders are saved as you type, a few seconds after you stop, so a crash costs at most the last
+sentence or so. And **deleting a game cannot be undone** — the app asks first, and says what will be
+lost, because there is no way back.
+
 ## Requirements
 
 - Node.js 20+
