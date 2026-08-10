@@ -17,6 +17,7 @@ on:
 
 jobs:
   macos:
+    name: macOS bundle
     runs-on: macos-latest
     permissions:
       # To create the release and attach the bundle to it.
@@ -125,3 +126,21 @@ jobs:
             one, this is the cost. See `docs/issue-10-release-contracts.md`.
 
             Apple Silicon only.
+
+  # The website goes out with the release, from the same tag, in the same run.
+  #
+  # `needs: macos`, so a release is all or nothing: if the bundle does not build, the site is not
+  # republished either and the tag can be deleted and redone without anything having escaped. The
+  # cost is real and worth naming - a Rust compile error, or a flaky macOS runner, holds back a web
+  # fix that was otherwise ready. `Deploy web` can still be run by hand when that happens, which is
+  # the release valve.
+  #
+  # This calls deploy.yml rather than repeating it, so the tagged publish is the same publish as the
+  # manual one: the same guards, the same PWA suite against the same bytes, the same check that the
+  # live site changed.
+  web:
+    name: Website
+    needs: macos
+    uses: ./.github/workflows/deploy.yml
+    # The called workflow needs the one.com credentials, and they are the caller's to pass.
+    secrets: inherit
