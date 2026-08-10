@@ -5,6 +5,8 @@ import { join } from "node:path";
 // The real constant, not a copy of it: this test exists to catch the rendered height and the
 // windowing arithmetic drifting apart, which a hard-coded 22 here would hide.
 import { ROW_HEIGHT } from "../../packages/shared/src/unitTable";
+// Likewise the hover delay: the test waits a fraction of it, so a copy here could outlive a change.
+import { HOVER_DELAY_MS } from "../../packages/shared/src/unitTooltip";
 
 /**
  * Walks the workspace on a real turn report, in whichever shell the project targets.
@@ -350,8 +352,9 @@ test("resting on a unit row summarises it", async ({ page }) => {
   const tip = page.getByTestId("unit-tooltip");
 
   await row.hover();
-  // Well short of the delay: nothing yet.
-  await page.waitForTimeout(400);
+  // A third of the wait, taken from the constant itself rather than written out: shortening the
+  // delay must not quietly turn this into a check made after the tooltip was already due.
+  await page.waitForTimeout(HOVER_DELAY_MS / 3);
   await expect(tip).toHaveCount(0);
 
   await expect(tip).toBeVisible();

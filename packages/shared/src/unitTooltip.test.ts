@@ -25,8 +25,8 @@ function unit(overrides: Partial<ReportUnit> = {}): ReportUnit {
 }
 
 describe("HOVER_DELAY_MS", () => {
-  it("waits about a second, so passing the pointer over the table shows nothing", () => {
-    expect(HOVER_DELAY_MS).toBe(1000);
+  it("waits long enough that passing the pointer over the table shows nothing", () => {
+    expect(HOVER_DELAY_MS).toBe(300);
   });
 });
 

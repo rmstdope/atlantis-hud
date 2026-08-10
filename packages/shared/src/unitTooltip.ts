@@ -14,9 +14,9 @@ import type { ReportUnit } from "@atlantis/core-client";
  * How long the pointer must rest on a row before its summary appears.
  *
  * Long enough that crossing the table on the way to the map leaves no trail of tooltips behind,
- * short enough to feel like an answer to stopping rather than a delay.
+ * short enough that it reads as an answer to stopping rather than as a delay.
  */
-export const HOVER_DELAY_MS = 1000;
+export const HOVER_DELAY_MS = 300;
 
 /** How far from the pointer the tooltip sits, so the cursor does not cover its first line. */
 const GAP = 12;
