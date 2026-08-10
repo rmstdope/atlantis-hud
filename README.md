@@ -173,11 +173,14 @@ Tagging is the release. Bump the version in **both** `package.json` and
 git tag v0.2.0 && git push origin v0.2.0
 ```
 
-That builds an Apple Silicon `.dmg` and a Linux `.AppImage`, attaches them to a GitHub Release,
-**and then publishes the website from the same tag**. The first step of the job checks that the tag
-and the two files agree, so a half-done bump fails in seconds rather than after the compile.
+That builds a macOS `.dmg`, a Linux `.AppImage` and a Windows installer, attaches them to a GitHub
+Release, **and then publishes the website from the same tag**. The first step of the job checks that
+the tag and the two files agree, so a half-done bump fails in seconds rather than after the compile.
 
-The website step runs only if both desktop bundles built, so a release is all or nothing. When a
+There is one macOS download, not two: the bundle is universal, so it runs on Apple Silicon and on
+Intel (#56). The job asserts both slices are really in it before publishing anything.
+
+The website step runs only if every desktop bundle built, so a release is all or nothing. When a
 desktop build fails but a web fix is waiting, run **Deploy web** by hand — that is what the manual
 trigger is for.
 
@@ -185,6 +188,14 @@ To build one locally:
 
 ```bash
 pnpm --filter @atlantis/desktop exec tauri build --features desktop-runtime
+```
+
+That is your own architecture only, which is what you want while developing. What the tag builds is
+the universal bundle, and it takes about twice as long:
+
+```bash
+pnpm --filter @atlantis/desktop exec tauri build --features desktop-runtime \
+  --target universal-apple-darwin
 ```
 
 **The artifact is not signed by Apple.** That needs a paid Developer Program membership. macOS will

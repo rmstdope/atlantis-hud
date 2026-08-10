@@ -54,10 +54,12 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          # macos-latest is Apple Silicon, so the native target needs no naming. The wasm target
-          # does: `tauri build` runs the frontend build first, and that builds the core for the
-          # browser - the desktop shell falls back to it when there is no IPC.
-          targets: wasm32-unknown-unknown
+          # The bundle is universal (#56), so both halves are named rather than leaning on the
+          # host's - macos-latest is Apple Silicon and would otherwise supply only that one. The
+          # wasm target is a third thing: `tauri build` runs the frontend build first, and that
+          # builds the core for the browser - the desktop shell falls back to it when there is no
+          # IPC.
+          targets: wasm32-unknown-unknown, aarch64-apple-darwin, x86_64-apple-darwin
 
       - name: Cache Rust build
         uses: Swatinem/rust-cache@v2
@@ -102,14 +104,42 @@ jobs:
 
       # `beforeBuildCommand` in tauri.conf.json already chains the wasm build and `vite build`, so
       # this one command produces the frontend and the bundle together.
+      #
+      # `--target universal-apple-darwin` compiles the shell twice and lipos the two into one
+      # binary, so the release page offers a single macOS file that runs on Apple Silicon and on
+      # Intel and nobody can download the wrong one. It also moves the bundle: a named target
+      # builds into `target/<triple>/release/` rather than `target/release/`, which the upload
+      # below has to follow.
       - name: Build the macOS bundle
-        run: pnpm --filter @atlantis/desktop exec tauri build --features desktop-runtime
+        run: pnpm --filter @atlantis/desktop exec tauri build --features desktop-runtime --target universal-apple-darwin
+
+      # `tauri build` reports success for a universal target whether or not both slices ended up in
+      # the binary, and an arm64-only bundle looks exactly like this one until somebody on an Intel
+      # Mac double-clicks the download. Eight minutes of compile is the wrong place to stop being
+      # careful.
+      - name: Check the bundle carries both architectures
+        run: |
+          # The executable is named for the Cargo package rather than for `productName`, and those
+          # are two different files to keep in step - so it is matched rather than spelled out.
+          # There is exactly one thing in `MacOS/`; if there is not, `lipo` says so and fails.
+          app="target/universal-apple-darwin/release/bundle/macos/Atlantis HUD.app"
+          archs="$(lipo -archs "$app/Contents/MacOS/"*)"
+          echo "archs=$archs"
+          for want in x86_64 arm64; do
+            case " $archs " in
+              *" $want "*) ;;
+              *)
+                echo "::error::The bundle has no $want slice (lipo reports: $archs)."
+                exit 1
+                ;;
+            esac
+          done
 
       - name: Upload the macOS bundle
         uses: actions/upload-artifact@v4
         with:
           name: macos-bundle
-          path: target/release/bundle/dmg/*.dmg
+          path: target/universal-apple-darwin/release/bundle/dmg/*.dmg
           if-no-files-found: error
 
   linux:
@@ -254,9 +284,10 @@ jobs:
           body: |
             ## Installing
 
-            **macOS (Apple Silicon)**
+            **macOS**
 
-            Download the `.dmg`, open it, and drag **Atlantis HUD** to Applications.
+            Download the `.dmg`, open it, and drag **Atlantis HUD** to Applications. There is one
+            macOS download and it runs on both Apple Silicon and Intel Macs.
 
             This build is **not signed by Apple**, so macOS will refuse to open it the first time
             and say it is damaged. It is not. Clear the quarantine flag once:
