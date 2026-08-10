@@ -51,8 +51,9 @@ travels as raw text, which is the key the core's parse cache remembers it under.
   written orders across the remembered map, extrapolating geometrically past everything known and
   guessing unknown terrain from the previous hex. `path` is `null` when there is nothing to draw
   (no movement order, no such unit, or an unknown origin); `path.months` is empty and `path.mode`
-  `null` when the unit's speed is unknown (overloaded or unstated). Rejects on the same two
-  grounds as `plan_route`.
+  `null` when the unit's speed is unknown (overloaded or unstated); `path.blockedFrom` is the
+  index of the first step the game would refuse (a walker entering the sea), or `null`. Rejects
+  on the same two grounds as `plan_route`.
 
 The Tauri commands take snake_case argument names verbatim (`rename_all = "snake_case"`); the
 TypeScript Tauri adapter passes them explicitly rather than translating.

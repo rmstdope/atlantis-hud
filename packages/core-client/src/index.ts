@@ -274,6 +274,12 @@ export type TracedPath = {
   months: MonthLeg[];
   /** How the unit travels, or null when it is overloaded or the report never said. */
   mode: "fly" | "ride" | "walk" | null;
+  /**
+   * Index of the first step the game would refuse - a walker entering the sea - or null when the
+   * whole path is passable or there is no mode to rule with. Everything from this step onward is
+   * doubt rather than plan, whatever month it falls in.
+   */
+  blockedFrom: number | null;
 };
 
 /** The traced order, or nothing when the unit has no readable movement order to draw. */

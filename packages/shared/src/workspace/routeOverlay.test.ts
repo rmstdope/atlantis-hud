@@ -27,7 +27,8 @@ const trace: TracedPath = {
     { month: 1, steps: 1, endsAt: at(7, 51) },
     { month: 2, steps: 2, endsAt: at(7, 47) }
   ],
-  mode: "walk"
+  mode: "walk",
+  blockedFrom: null
 };
 
 describe("which movement line the map draws", () => {
@@ -73,6 +74,27 @@ describe("which movement line the map draws", () => {
       hexes: [at(7, 51), at(7, 49), at(7, 47)],
       solidSteps: 1
     });
+  });
+
+  it("dots everything from a step the game would refuse, whatever month it falls in", () => {
+    // The first month covers one step, but that step is already the sea: nothing is solid.
+    const blockedAtOnce = chooseRouteOverlay({
+      movementLayerOn: true,
+      plannerArmed: false,
+      plan: null,
+      trace: { ...trace, blockedFrom: 0 }
+    });
+    expect(blockedAtOnce?.solidSteps).toBe(0);
+
+    // Blocked beyond the first month's reach: the month split already dots it, and the clamp
+    // must not widen the solid line either.
+    const blockedLater = chooseRouteOverlay({
+      movementLayerOn: true,
+      plannerArmed: false,
+      plan: null,
+      trace: { ...trace, blockedFrom: 2 }
+    });
+    expect(blockedLater?.solidSteps).toBe(1);
   });
 
   it("marks the whole order as later-turn work when the unit's speed is unknown", () => {

@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 use crate::movement::graph::{geometric_neighbour, MapKnowledge};
 use crate::movement::mode::{mobility, Mobility};
 use crate::movement::orders::MoveStep;
-use crate::movement::plan::{split_into_months, step_cost, MonthLeg, RouteStep};
+use crate::movement::plan::{blocks, split_into_months, step_cost, MonthLeg, RouteStep};
 use crate::movement::rules::{MovementMode, Ruleset};
 use crate::report::model::ReportUnit;
 
@@ -32,6 +32,10 @@ pub struct TracedPath {
     pub months: Vec<MonthLeg>,
     /// How the unit travels, or nothing when it is overloaded or the report never said.
     pub mode: Option<MovementMode>,
+    /// The index of the first step the game would refuse - a walker entering the sea - and
+    /// nothing when the whole path is passable or no mode is known to rule with. Everything from
+    /// this step onward is doubt rather than plan, whatever month it falls in.
+    pub blocked_from: Option<usize>,
 }
 
 /// Walks a MOVE order from where the unit stands.
@@ -56,6 +60,7 @@ pub fn trace_move(
     let mut position = from;
     let mut terrain = origin.terrain.clone();
     let mut route = Vec::new();
+    let mut blocked_from = None;
 
     for step in steps {
         let MoveStep::Go(direction) = step else {
@@ -84,6 +89,12 @@ pub fn trace_move(
                 .unwrap_or_else(|| (ruleset.terrain_cost(&next_terrain, mode), false))
         });
 
+        // The first step the game would refuse marks everything after it as doubt. Judged by the
+        // planner's own rule, so the two never disagree about what the sea stops.
+        if blocked_from.is_none() && mode.is_some_and(|mode| blocks(ruleset, mode, &next_terrain)) {
+            blocked_from = Some(route.len());
+        }
+
         route.push(RouteStep {
             direction: *direction,
             to: next,
@@ -104,6 +115,7 @@ pub fn trace_move(
         steps: route,
         months,
         mode,
+        blocked_from,
     })
 }
 
@@ -332,6 +344,79 @@ mod tests {
         assert_eq!(path.steps.len(), 1);
         assert_eq!(path.steps[0].terrain, "ocean");
         assert_eq!(path.steps[0].cost, 1, "ocean is not on the doubled list");
+    }
+
+    /// Drawn, but marked: the step into the sea and everything past it will not happen as
+    /// written, and the path says from which step onward that is.
+    #[test]
+    fn the_path_says_where_the_sea_stops_it() {
+        let path = trace(
+            &corridor(&["plain", "plain", "ocean", "plain"]),
+            "MOVE SE SE SE",
+        )
+        .expect("an origin");
+
+        assert_eq!(
+            path.blocked_from,
+            Some(1),
+            "the second step enters the ocean"
+        );
+
+        let clear =
+            trace(&corridor(&["plain", "plain", "plain"]), "MOVE SE SE").expect("an origin");
+        assert_eq!(clear.blocked_from, None, "nothing on this path blocks");
+    }
+
+    /// A guess can block too: fog beyond the sea is costed as sea, so the doubt starts at the
+    /// first real ocean hex and never clears on invented ground.
+    #[test]
+    fn fog_guessed_as_ocean_stays_blocked() {
+        let path = trace(&corridor(&["plain", "ocean"]), "MOVE SE SE").expect("an origin");
+
+        assert_eq!(path.blocked_from, Some(0), "the first step is already sea");
+        assert_eq!(
+            path.steps[1].terrain, "ocean",
+            "the guess carries the sea onward"
+        );
+    }
+
+    /// The sea only stops what cannot fly over it, exactly as the planner rules it.
+    #[test]
+    fn a_flier_is_not_blocked_by_the_sea() {
+        let mut text = String::from("Foo (1) Report\n\n");
+        text.push_str("plain (1,1) in Nowhere, 10 peasants (orcs), $5.\n\n");
+        text.push_str("Exits:\n  Southeast : ocean (2,2) in Sea.\n\n");
+        text.push_str(
+            "* Flier (900), Foo (1), leader [LEAD]. Weight: 10. Capacity: 100/0/100/0.\n",
+        );
+        let report = parse_report_full(&text);
+
+        let path = trace(&report, "MOVE SE").expect("an origin");
+        assert_eq!(path.mode, Some(MovementMode::Fly));
+        assert_eq!(path.blocked_from, None);
+    }
+
+    /// With no mode there is no legality to rule on, and the empty months already dot the whole
+    /// path - a blocked index would be a second answer to the same question.
+    #[test]
+    fn a_unit_without_a_mode_has_no_blocked_step_either() {
+        let report = corridor(&["plain", "ocean"]);
+        let map = MapKnowledge::from_report(&report);
+        let mut unit = report
+            .units()
+            .find(|unit| unit.unit_id == "900")
+            .expect("the walker")
+            .clone();
+        unit.weight = Some(1000);
+
+        let path = trace_move(
+            &map,
+            &ruleset(),
+            &unit,
+            &parse_move("MOVE SE").expect("a readable order"),
+        )
+        .expect("the path is still drawn");
+        assert_eq!(path.blocked_from, None);
     }
 
     /// A terrain name the ruleset has never heard of must cost something rather than panic - the

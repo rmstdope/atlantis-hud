@@ -48,9 +48,16 @@ export function chooseRouteOverlay(input: {
   if (!input.trace) {
     return null;
   }
+  // The solid line reaches as far as the coming month does - but never past a step the game
+  // would refuse. A walker ordered to sea sees its whole crossing dotted, whatever the month
+  // arithmetic says: doubt trumps timing.
+  const monthReach = input.trace.months[0]?.steps ?? 0;
   return {
     origin: input.trace.from,
     hexes: input.trace.steps.map((step) => step.to),
-    solidSteps: input.trace.mode === null ? null : (input.trace.months[0]?.steps ?? 0)
+    solidSteps:
+      input.trace.mode === null
+        ? null
+        : Math.min(monthReach, input.trace.blockedFrom ?? monthReach)
   };
 }

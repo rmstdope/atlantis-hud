@@ -181,9 +181,24 @@ fn the_answer_serializes_the_way_typescript_reads_it() {
         "camelCase, not ends_at"
     );
     assert!(path["months"][0]["steps"].is_number());
+    assert!(
+        path["blockedFrom"].is_null(),
+        "camelCase, and nothing on this path blocks"
+    );
 
     let none = serde_json::to_value(trace("18642", "work")).expect("serializes");
     assert!(none["path"].is_null());
+}
+
+/// A walker ordered to sea gets its whole path drawn, with the doubt starting at the water: the
+/// map dots everything from the blocked step onward, whatever month it falls in.
+#[test]
+fn an_order_into_the_sea_says_where_the_doubt_starts() {
+    // "  Northeast : ocean (8,52) in Atlantis Ocean." - not walkable for Seven of Eight.
+    let path = trace("18642", "MOVE NE N").path.expect("a traced path");
+
+    assert_eq!(path.blocked_from, Some(0), "the very first step is the sea");
+    assert_eq!(path.steps.len(), 2, "the path is still drawn to its end");
 }
 
 /// An order into country nobody has described is drawn to its end: geometric steps into the fog,

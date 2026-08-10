@@ -926,6 +926,12 @@ test("a written move order is drawn solid for next turn and dotted beyond", asyn
   await expect(page.getByTestId("route-line-dotted")).toHaveCount(0);
   await expect(page.getByTestId("route-line-solid")).toHaveCount(1);
 
+  // "  Northeast : ocean (8,52)" - a walker's order to sea is drawn, but as doubt: nothing is
+  // solid, however cheap the month arithmetic says the crossing is.
+  await page.getByTestId("orders-input").fill("MOVE NE");
+  await expect(page.getByTestId("route-line-dotted")).toHaveCount(1);
+  await expect(page.getByTestId("route-line-solid")).toHaveCount(0);
+
   // Arming the planner is a gesture about a different journey, so the order path steps aside.
   await page.getByTestId("planner-arm").click();
   await expect(page.getByTestId("route-line-solid")).toHaveCount(0);

@@ -181,7 +181,9 @@ fn flies(mode: MovementMode) -> bool {
 ///
 /// Reads the ruleset's own water rule rather than assuming it: a game that let anyone cross water
 /// would otherwise be quietly overruled by a hardcoded belief.
-fn blocks(ruleset: &Ruleset, mode: MovementMode, terrain: &str) -> bool {
+///
+/// Shared with the order tracer, which draws the blocked step anyway and marks it as doubt.
+pub(crate) fn blocks(ruleset: &Ruleset, mode: MovementMode, terrain: &str) -> bool {
     ruleset.is_water(terrain) && ruleset.water_needs_a_ship() && !flies(mode)
 }
 

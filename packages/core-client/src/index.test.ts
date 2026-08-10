@@ -144,7 +144,8 @@ describe("core client adapter contract parity", () => {
           }
         ],
         months: [{ month: 1, steps: 1, endsAt: { x: 7, y: 51, z: 1 } }],
-        mode: "walk"
+        mode: "walk",
+        blockedFrom: null
       }
     };
 
