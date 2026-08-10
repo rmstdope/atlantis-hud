@@ -46,17 +46,29 @@ export type SettingsState = {
    * reported whatever this says, because that is a change you may not have meant.
    */
   warnOnUnguardedHex: boolean;
+  /**
+   * Whether the Movement pane shows at all. A feature flag rather than a preference: the planner
+   * is the one piece of the workspace still finding its shape, so it starts off and stays off
+   * until asked for.
+   */
+  movementPlanner: boolean;
   /** Applies instantly: the settings dialog has no OK button to wait for. */
   setTheme: (theme: ThemeName) => void;
   setBiomeTextures: (enabled: boolean) => void;
   setPaneTransparency: (percent: number) => void;
   setUnitListLimit: (count: number) => void;
   setWarnOnUnguardedHex: (enabled: boolean) => void;
+  setMovementPlanner: (enabled: boolean) => void;
 };
 
 type Persisted = Pick<
   SettingsState,
-  "theme" | "biomeTextures" | "paneTransparency" | "unitListLimit" | "warnOnUnguardedHex"
+  | "theme"
+  | "biomeTextures"
+  | "paneTransparency"
+  | "unitListLimit"
+  | "warnOnUnguardedHex"
+  | "movementPlanner"
 >;
 
 /**
@@ -154,6 +166,7 @@ export const useSettingsStore = create<SettingsState>()(
       paneTransparency: DEFAULT_PANE_TRANSPARENCY,
       unitListLimit: DEFAULT_UNIT_LIST_LIMIT,
       warnOnUnguardedHex: false,
+      movementPlanner: false,
 
       setTheme: (theme) => {
         applyTheme(theme);
@@ -176,6 +189,10 @@ export const useSettingsStore = create<SettingsState>()(
 
       setWarnOnUnguardedHex: (warnOnUnguardedHex) => {
         set({ warnOnUnguardedHex });
+      },
+
+      setMovementPlanner: (movementPlanner) => {
+        set({ movementPlanner });
       }
     }),
     {
@@ -186,7 +203,8 @@ export const useSettingsStore = create<SettingsState>()(
         biomeTextures: state.biomeTextures,
         paneTransparency: state.paneTransparency,
         unitListLimit: state.unitListLimit,
-        warnOnUnguardedHex: state.warnOnUnguardedHex
+        warnOnUnguardedHex: state.warnOnUnguardedHex,
+        movementPlanner: state.movementPlanner
       })
     }
   )
@@ -221,7 +239,9 @@ export function resetSettingsStore() {
     theme: "dark",
     biomeTextures: true,
     paneTransparency: DEFAULT_PANE_TRANSPARENCY,
-    unitListLimit: DEFAULT_UNIT_LIST_LIMIT
+    unitListLimit: DEFAULT_UNIT_LIST_LIMIT,
+    warnOnUnguardedHex: false,
+    movementPlanner: false
   });
   applyTheme("dark");
   applyPaneTransparency(DEFAULT_PANE_TRANSPARENCY);

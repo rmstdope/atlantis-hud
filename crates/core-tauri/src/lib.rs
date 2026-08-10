@@ -1018,6 +1018,46 @@ pub fn command_trace_move_orders(
     })
 }
 
+/// What the orders document makes of the faction's units, region by region.
+///
+/// Returns an error only when the ruleset or the remembered regions cannot be read. Orders that
+/// change nothing are a successful, empty answer.
+pub fn command_preview_orders(
+    ruleset_json: &str,
+    raw_report: &str,
+    remembered_json: &str,
+    orders_document: &str,
+) -> Result<atlantis_hud_core::orders::effects::OrdersPreviewResponse, String> {
+    atlantis_hud_core::cache::with_global(|cache| {
+        atlantis_hud_core::orders::effects::preview_orders_for_remembered_report(
+            cache,
+            ruleset_json,
+            raw_report,
+            remembered_json,
+            orders_document,
+        )
+    })
+}
+
+#[cfg(test)]
+mod preview_orders_command_tests {
+    use super::*;
+
+    const RULESET: &str = include_str!("../../../config/public/ruleset.json");
+
+    #[test]
+    fn previews_the_orders_it_is_handed() {
+        let report = "Foo (1) Report\n\nplain (1,1) in Nowhere, 10 peasants (orcs), $5.\n\n* Walker (900), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.\n";
+
+        let answer =
+            command_preview_orders(RULESET, report, "[]", "unit 900\nNAME UNIT \"Renamed\"\n")
+                .expect("the ruleset loads");
+
+        assert_eq!(answer.regions.len(), 1);
+        assert_eq!(answer.regions[0].units[0].unit.name, "Renamed");
+    }
+}
+
 #[cfg(test)]
 mod trace_move_orders_command_tests {
     use super::*;

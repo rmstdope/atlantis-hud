@@ -5,8 +5,12 @@ use std::path::Path;
 
 use atlantis_hud_core::report::merge::{merge_report_into_sightings, StoredSighting};
 use atlantis_hud_core::report::sighting::{region_sightings, RegionSighting};
+// Only the persistence-backed import previews call it, and those are not linked into a wasm
+// build, so on wasm32 this import would sit unused and trip the warning gate.
+#[cfg(not(target_arch = "wasm32"))]
+use atlantis_hud_core::parse_report;
 use atlantis_hud_core::{
-    diff_imported_turn, engine_info, parse_report, reject_import, reject_merge, validate_orders,
+    diff_imported_turn, engine_info, reject_import, reject_merge, validate_orders,
     ImportedTurnSnapshot, OrderCheckOptions, OrderDiagnosticSeverity, OrderValidationResult,
     ReportParseResult,
 };
@@ -579,6 +583,31 @@ pub fn trace_move_orders_state(
             &remembered_json,
             &unit_id,
             &orders,
+        )
+    })
+    .map_err(|error| JsValue::from_str(&error))?;
+    to_js(&response)
+}
+
+/// What the orders document makes of the faction's units, region by region.
+///
+/// Thin over the core exactly as the trace is, and for the same reason: the desktop and the
+/// browser must preview the same coming month. An order that changes nothing resolves to an empty
+/// answer; only an unusable ruleset or unreadable memory rejects.
+#[wasm_bindgen]
+pub fn preview_orders_state(
+    ruleset_json: String,
+    raw_report: String,
+    remembered_json: String,
+    orders_document: String,
+) -> Result<JsValue, JsValue> {
+    let response = atlantis_hud_core::cache::with_global(|cache| {
+        atlantis_hud_core::orders::effects::preview_orders_for_remembered_report(
+            cache,
+            &ruleset_json,
+            &raw_report,
+            &remembered_json,
+            &orders_document,
         )
     })
     .map_err(|error| JsValue::from_str(&error))?;

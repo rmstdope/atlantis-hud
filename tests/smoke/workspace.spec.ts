@@ -585,6 +585,13 @@ test("panels fold away and come back", async ({ page }) => {
  */
 const STRIP_HEIGHT = 40;
 
+/** Turns the movement planner's feature flag on through the settings dialog, as a player would. */
+async function enableMovementPlanner(page: Page) {
+  await page.getByTestId("settings-indicator").click();
+  await page.getByTestId("settings-movement-planner").check();
+  await page.keyboard.press("Escape");
+}
+
 /** Folds a panel by its own toggle, which is the only expanded control in its header. */
 async function foldPanel(page: Page, panel: string) {
   const section = page.getByTestId(`panel-${panel}`);
@@ -637,6 +644,7 @@ test("the orders editor takes the space a folded unit panel leaves", async ({ pa
 
 test("the map under a folded panel can be clicked", async ({ page }) => {
   await loadReport(page);
+  await enableMovementPlanner(page);
   await selectHex(page, "1:7,53");
 
   // The whole right-hand column, so what is freed is a rectangle rather than a sliver: with all
@@ -710,6 +718,25 @@ test("layer toggles are operable and none is inert", async ({ page }) => {
   await chips.getByRole("checkbox", { name: "Structures" }).uncheck();
   await expect(chips.getByRole("checkbox", { name: "Structures" })).not.toBeChecked();
   await expect(page.getByTestId("map-canvas")).toBeVisible();
+});
+
+/**
+ * The movement planner is behind a feature flag, and the flag starts off: the pane is the one
+ * piece of the workspace still finding its shape, and a player who has not asked for it should
+ * not have to scroll past it. The flag is a preference, so turning it on holds across a reload.
+ */
+test("the movement pane stays hidden until its flag is turned on", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+  await expect(page.getByTestId("panel-unit")).toBeVisible();
+  await expect(page.getByTestId("panel-planner")).toHaveCount(0);
+
+  await enableMovementPlanner(page);
+  await expect(page.getByTestId("panel-planner")).toBeVisible();
+
+  await page.reload();
+  await expect(page.getByTestId("import-status")).toContainText("restored turn 71");
+  await expect(page.getByTestId("panel-planner")).toBeVisible();
 });
 
 /**
@@ -861,6 +888,7 @@ test("a loaded turn is remembered rather than only displayed", async ({ page }) 
 
 test("planning a move shows its cost and what stands in the way", async ({ page }) => {
   await loadReport(page);
+  await enableMovementPlanner(page);
   await selectHex(page, "1:7,53");
   await selectUnit(page, OWN_UNIT);
 
@@ -878,6 +906,7 @@ test("planning a move shows its cost and what stands in the way", async ({ page 
 
 test("an illegal move is refused with the reason", async ({ page }) => {
   await loadReport(page);
+  await enableMovementPlanner(page);
   await selectHex(page, "1:7,53");
   await selectUnit(page, OWN_UNIT);
 
@@ -892,6 +921,7 @@ test("an illegal move is refused with the reason", async ({ page }) => {
 
 test("a planned route can be written into the unit's orders", async ({ page }) => {
   await loadReport(page);
+  await enableMovementPlanner(page);
   await selectHex(page, "1:7,53");
   await selectUnit(page, OWN_UNIT);
 
@@ -905,6 +935,7 @@ test("a planned route can be written into the unit's orders", async ({ page }) =
 
 test("only your own units can be planned for", async ({ page }) => {
   await loadReport(page);
+  await enableMovementPlanner(page);
   await selectHex(page, "1:7,53");
   await selectUnit(page, FOREIGN_UNIT);
 
@@ -929,6 +960,7 @@ test("only your own units can be planned for", async ({ page }) => {
  */
 test("the map still answers while a route is being planned", async ({ page }) => {
   await loadReport(page);
+  await enableMovementPlanner(page);
   await selectHex(page, "1:7,53");
   await selectUnit(page, OWN_UNIT);
 
@@ -985,6 +1017,7 @@ test("the map still answers while a route is being planned", async ({ page }) =>
  */
 test("the movement layer controls the route overlay and nothing else", async ({ page }) => {
   await loadReport(page);
+  await enableMovementPlanner(page);
   await selectHex(page, "1:7,53");
   await selectUnit(page, OWN_UNIT);
 
@@ -1012,6 +1045,7 @@ test("the movement layer controls the route overlay and nothing else", async ({ 
  */
 test("a written move order is drawn solid for next turn and dotted beyond", async ({ page }) => {
   await loadReport(page);
+  await enableMovementPlanner(page);
   await selectHex(page, "1:7,53");
   await selectUnit(page, OWN_UNIT);
 
@@ -1711,4 +1745,54 @@ test("the unexplored lattice keeps a constant hairline at every zoom", async ({ 
   expect(atRest).toBeCloseTo(1, 3);
   expect(zoomedIn).toBeCloseTo(1, 3);
   expect(zoomedOut).toBeCloseTo(1, 3);
+});
+
+/**
+ * Issue #81: the units table and the unit panel show the coming month as the player types orders.
+ *
+ * A renamed unit's row carries the new name styled as predicted, with the report's name in the
+ * cell's hover text; GUARD raises the badge; a MOVE dims the row and says where the unit is bound.
+ * All of it follows the editor on the same debounce as validation, so typing is all it takes.
+ */
+test("orders change the units table to show the coming month", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+  await selectUnit(page, OWN_UNIT);
+
+  const row = page.getByTestId(`unit-row-${OWN_UNIT}`);
+  await expect(row).toContainText("Seven of Eight");
+
+  await page.getByTestId("orders-input").fill('NAME UNIT "Nine of Eight"\nGUARD 1');
+
+  await expect(row).toContainText("Nine of Eight");
+  await expect(row.locator('[data-predicted="true"]').first()).toHaveAttribute(
+    "title",
+    "was: Seven of Eight"
+  );
+  await expect(row).toContainText("on guard");
+
+  // AVOID is a flag the table has no column for; the unit panel's flag list shows the coming
+  // month instead - the report's "avoiding" gone, the rest still standing.
+  await page.getByTestId("orders-input").fill("AVOID 0");
+  const flags = page.getByTestId("panel-unit").locator('[data-predicted="true"]');
+  await expect(flags).toContainText("behind");
+  await expect(flags).not.toContainText("avoiding");
+
+  // A move dims the row into a departure that names where the unit ends the month, and the
+  // destination hex's table gains the arriving row.
+  await page.getByTestId("orders-input").fill("MOVE N");
+  await expect(row).toHaveAttribute("data-preview-status", "departing");
+  await expect(row).toContainText("→ 1:7,51");
+  await selectHex(page, "1:7,51");
+  await expect(page.getByTestId(`unit-row-${OWN_UNIT}`)).toHaveAttribute(
+    "data-preview-status",
+    "arriving"
+  );
+
+  // Blanking the orders puts the report back on screen.
+  await selectHex(page, "1:7,53");
+  await selectUnit(page, OWN_UNIT);
+  await page.getByTestId("orders-input").fill("");
+  await expect(row).toContainText("Seven of Eight");
+  await expect(row).not.toHaveAttribute("data-preview-status", /.+/);
 });
