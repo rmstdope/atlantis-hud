@@ -333,8 +333,8 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libssl-dev libxdo-dev \
-            webkit2gtk-driver xvfb
+          sudo apt-get install -y --no-install-recommends libwebkit2gtk-4.1-dev libgtk-3-dev \
+            libssl-dev libxdo-dev webkit2gtk-driver xvfb
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -349,12 +349,14 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
-      # Its own key: this is the only job building the workspace in release profile with the
-      # desktop-runtime feature, so sharing the debug `native` cache would just thrash both.
+      # Its own key: this is the only job building the workspace with the desktop-runtime
+      # feature, so sharing the `native` cache would just thrash both. Saved even on a failed
+      # run, so a red suite still leaves the next run a warm build.
       - name: Cache Rust build
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: native-e2e
+          cache-on-failure: true
 
       - name: Cache tauri-driver
         id: tauri-driver
@@ -382,9 +384,12 @@ jobs:
       - name: Build the desktop frontend
         run: pnpm --filter @atlantis/desktop exec vite build
 
+      # Debug profile: the suite asserts argument binding and rows in a database, which no
+      # optimization level can change, and the release build costs four minutes a run against
+      # the debug build's one. The optimized binary ships from the release workflow, not here.
       - name: Build the native shell
         run: >-
-          pnpm --filter @atlantis/desktop exec tauri build --no-bundle
+          pnpm --filter @atlantis/desktop exec tauri build --debug --no-bundle
           --features desktop-runtime
           --config '{"build":{"beforeBuildCommand":null}}'
 

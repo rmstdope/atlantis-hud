@@ -17,8 +17,17 @@ import { DATA_HOME } from "./tests/native/env";
 
 const ROOT = __dirname;
 
-/** The binary `tauri build --features desktop-runtime --no-bundle` leaves behind. */
-const APP_BINARY = resolve(ROOT, "target", "release", "atlantis-hud-desktop-shell");
+/**
+ * The binary `tauri build --debug --features desktop-runtime --no-bundle` leaves behind.
+ *
+ * Debug rather than release, because this suite asserts IPC binding and persistence — neither of
+ * which optimization level can change — and the release build costs CI four minutes a run where
+ * the debug build costs one. The optimized binary this suite skips is still built and shipped by
+ * the release workflow. Overridable for driving a different build locally.
+ */
+const APP_BINARY =
+  process.env.ATLANTIS_NATIVE_BINARY ??
+  resolve(ROOT, "target", "debug", "atlantis-hud-desktop-shell");
 
 const RESULTS_DIR = join(ROOT, "test-results", "native");
 
