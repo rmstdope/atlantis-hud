@@ -138,16 +138,3 @@ export function sortUnits(units: ReportUnit[], sort: SortState): ReportUnit[] {
     return "settled" in outcome ? outcome.settled : outcome.compare * direction;
   });
 }
-
-/**
- * The list capped at the given number of rows, 0 meaning no cap - though the settings store only
- * ever hands the dock 3 to 16.
- *
- * Applied after sorting and filtering, so what is kept is the front of the arrangement the player
- * chose - with own-first grouping on, the foreign crowd is what gets trimmed, never the player's
- * own units. The same array comes back whenever nothing needs cutting, so the effects hanging off
- * the visible rows do not re-run over a cut that removed nothing.
- */
-export function limitUnits(units: ReportUnit[], limit: number): ReportUnit[] {
-  return limit > 0 && units.length > limit ? units.slice(0, limit) : units;
-}

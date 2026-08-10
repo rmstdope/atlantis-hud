@@ -273,9 +273,10 @@ function GlobalSettings() {
           <span className="text-ink">{unitListLimit}</span>
         </span>
         {/*
-          Bounded at both ends: fewer than three rows stops being a list, and past sixteen the
-          table is scrolling anyway - the filter is the tool for finding one unit among hundreds.
-          Applies as it is dragged, the table behind the dialog being its own preview.
+          How many rows tall the pane stands - a ceiling on the pane, never a cut in the list,
+          which stays scrollable to its end. Bounded at both ends: fewer than three rows stops
+          being a list, and past sixteen the pane is most of the map. Applies as it is dragged,
+          the pane behind the dialog being its own preview.
         */}
         <input
           type="range"
