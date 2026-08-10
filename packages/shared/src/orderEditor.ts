@@ -132,6 +132,19 @@ export function draftAfterDocumentChange(current: string, stored: string): strin
 }
 
 /**
+ * The draft as it should read once a save has landed: ended with the newline an orders file ends
+ * with.
+ *
+ * Only after a save, so the tidying never races the player's typing, and only in the editor - the
+ * block boundary neither holds nor needs a trailing newline, so the document and what is on disk
+ * are the same either way. An empty draft stays empty rather than gaining a blank line the player
+ * never opened.
+ */
+export function draftAfterSave(draft: string): string {
+  return draft === "" || draft.endsWith("\n") ? draft : `${draft}\n`;
+}
+
+/**
  * A document as it was validated, together with what the core said about it.
  *
  * The two travel as one because a diagnostic is only meaningful against the text it was produced

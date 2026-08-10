@@ -114,6 +114,36 @@ test("orders typed into a game are still there after a reload", async ({ page })
   await expect(page.getByTestId("orders-status")).toContainText(SAVED);
 });
 
+test("a saved draft gains its missing trailing newline without moving the cursor", async ({
+  page
+}) => {
+  await clearGames(page);
+  await createGame(page, "Newline game");
+  await openReport(page);
+  await openOrders(page);
+
+  const editor = page.getByTestId("orders-input");
+  await editor.fill("@work\n@study combat");
+  // Park the caret mid-word, where an append at the end must not disturb it - and where the
+  // browser's own answer to a programmatic value change (caret to the end) visibly would.
+  await editor.evaluate((element) => {
+    (element as HTMLTextAreaElement).setSelectionRange(3, 3);
+  });
+
+  // Untouched until the save lands: tidying on the keystroke would be the racy behaviour the
+  // save gate exists to rule out, and would pass the assertions below by accident.
+  await expect(editor).toHaveValue(/@study combat$/u);
+
+  await expect(page.getByTestId("orders-status")).toContainText(SAVED, { timeout: 20_000 });
+
+  await expect(editor).toHaveValue(/@study combat\n$/u);
+  const caret = await editor.evaluate((element) => {
+    const input = element as HTMLTextAreaElement;
+    return { start: input.selectionStart, end: input.selectionEnd };
+  });
+  expect(caret).toEqual({ start: 3, end: 3 });
+});
+
 test("switching to another game and back loses neither the turn nor the orders", async ({
   page
 }) => {
