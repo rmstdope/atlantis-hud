@@ -450,7 +450,7 @@ describe("exporting and importing games", () => {
     const adapter = createWebCoreAdapter(fakeWasm(), store);
     const opened = (await adapter.createGame(manifest("alpha", "Alpha"))) as { databasePath: string };
 
-    await adapter.commitReportImport(opened.databasePath, "alpha", "17", REPORT, false, IMPORTED_AT);
+    await adapter.commitReportImport(opened.databasePath, "alpha", "17", REPORT, null, false, IMPORTED_AT);
     await adapter.saveOrderDraft(
       opened.databasePath,
       "alpha",
