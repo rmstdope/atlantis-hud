@@ -31,6 +31,7 @@ import {
   openNewestGame,
   rulesetUrlFor
 } from "../gameSession";
+import { rulesetById } from "../rulesets";
 import { useWorkspaceStore } from "../workspaceStore";
 import { AppHeader, type ImportStatus } from "./AppHeader";
 import { GameGate } from "./GameGate";
@@ -232,6 +233,7 @@ export function AppShell({
   const clearPlan = useWorkspaceStore((state) => state.clearPlan);
   const openGameInStore = useWorkspaceStore((state) => state.openGame);
   const closeGameInStore = useWorkspaceStore((state) => state.closeGame);
+  const updateGameRulesetInStore = useWorkspaceStore((state) => state.updateGameRuleset);
 
   /**
    * What is owed to storage, and one write at a time.
@@ -727,6 +729,43 @@ export function AppShell({
     [client, enterGame, refreshGames, flush]
   );
 
+  /**
+   * Moves the open game to another ruleset, and re-reads the world under it.
+   *
+   * Handing `setGame` a fresh object is the second half of the change: the ruleset fetch effect is
+   * keyed on `game`, so the new identity makes it fetch the new ruleset, and the turn-restore
+   * effect then re-parses the stored turn under it. Without that, every unit count would silently
+   * keep the old ruleset's reading until the next manual reload.
+   */
+  const changeRuleset = useCallback(
+    async (rulesetId: string) => {
+      if (!game || game.manifest.metadata.rulesetId === rulesetId) {
+        return;
+      }
+      // This build has to be able to fetch what it is about to store; the backend deliberately
+      // stores ids as opaque strings, so this is the only gate.
+      if (!rulesetById(rulesetId)) {
+        setGameError(`unknown ruleset: ${rulesetId}`);
+        return;
+      }
+      setBusy(true);
+      setGameError(null);
+      try {
+        // The re-restore below re-reads orders from the database, so the draft must be there first.
+        await flush();
+        const manifest = await client.setGameRuleset(game.manifest.metadata.gameId, rulesetId);
+        setGame({ ...game, manifest });
+        updateGameRulesetInStore(rulesetId);
+        await refreshGames();
+      } catch (error: unknown) {
+        setGameError(describeError(error));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [client, game, flush, refreshGames, updateGameRulesetInStore]
+  );
+
   const createGame = useCallback(
     async (name: string, rulesetId: string) => {
       setBusy(true);
@@ -1046,7 +1085,7 @@ export function AppShell({
       }
       busy={busy}
       error={gameError}
-      onChangeRuleset={() => {}}
+      onChangeRuleset={(rulesetId) => void changeRuleset(rulesetId)}
       onDismiss={() => setSettingsOpen(false)}
     />
   );
