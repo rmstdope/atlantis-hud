@@ -79,13 +79,43 @@ into the environment **only when `APPLE_CERTIFICATE` is non-empty**, because an 
 interpolates to an empty string and an empty string is still a set environment variable — which
 Tauri reads as "sign", and then fails importing a certificate that is not there.
 
+### The macOS artifact is universal (issue #56)
+
+`macos-latest` is Apple Silicon, and for three releases the job named no target and so got what the
+runner is: `Atlantis.HUD_<version>_aarch64.dmg`, which does not run on an Intel Mac. The build now
+passes `--target universal-apple-darwin`, and the shell is compiled twice and `lipo`ed into one
+binary.
+
+One file rather than two. Publishing an `x86_64.dmg` beside an `aarch64.dmg` puts a question on the
+release page that a player can answer wrongly, and the wrong answer either refuses to launch or runs
+under Rosetta without saying so. A universal bundle costs a second compile and roughly doubles the
+binary inside the `.dmg`; both are cheaper than that.
+
+Cross-compiled from the Apple Silicon runner rather than built natively on `macos-13`, because
+GitHub is retiring its Intel macOS images and a second job would be pinned to one on its way out.
+
+The step after the build is the guard: `lipo -archs` on the executable inside the `.app`, failing
+the job unless both `x86_64` and `arm64` are there. `tauri build` reports success for a universal
+target whether or not the two slices were really combined, and an arm64-only bundle is
+indistinguishable from a correct one until it reaches somebody's Intel Mac. Nothing at pull-request
+time can catch that — no bundle is built then — so the assert lives on the tag, before `publish`
+downloads anything.
+
+A named target also moves the output, from `target/release/bundle/` to
+`target/universal-apple-darwin/release/bundle/`. The upload path follows it; forgetting that is a
+full compile followed by `if-no-files-found: error`.
+
+`minimumSystemVersion` stays `"10.15"`. It described nothing enforceable while the bundle was Apple
+Silicon only — that hardware starts at macOS 11 — but it is now what the Intel slice is compiled
+against, and it is the widest reach the webview supports.
+
 ## What publishes what
 
 | Trigger | Workflow | Produces |
 | --- | --- | --- |
 | Every push and pull request | `ci.yml` | Nothing. Gates only, now including a production build. |
 | `workflow_dispatch` on `main` | `deploy.yml` | The web application at `https://atlantis-hud.kurelid.se` |
-| A `v*` tag | `release.yml` | A GitHub Release with an Apple Silicon `.dmg` and a Linux `.AppImage`, **and then** the web application |
+| A `v*` tag | `release.yml` | A GitHub Release with a universal macOS `.dmg`, a Linux `.AppImage` and a Windows installer, **and then** the web application |
 
 ### Tagging publishes both (issue #46)
 
@@ -205,7 +235,8 @@ part of this issue; when it happens, both builds change together because both re
 
 ## Not done here
 
-Windows bundles.
+Windows bundles were out of scope for issue #10 and have since been added; `release.yml` builds an
+NSIS installer alongside the other two.
 
 In-app auto-update via `tauri-plugin-updater`. It needs a public endpoint, and self-replacing an
 un-notarized `.app` is fragile. "Manual update check" is what the issue asks for and what this does.
