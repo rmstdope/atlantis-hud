@@ -11,10 +11,11 @@ use atlantis_hud_core::{
 use atlantis_hud_core_persistence::{
     create_game, delete_game, export_game, import_game, insert_imported_turn, list_games,
     load_imported_turn, load_latest_imported_turn, load_merged_reports, load_order_draft,
-    load_region_sightings, open_game, preview_imported_turn, upsert_imported_turn,
-    upsert_merged_report, upsert_order_draft, upsert_region_sightings, GameManifest, GameMetadata,
-    ImportedTurnKey, ImportedTurnPreview, ImportedTurnRecord, MergedReportRecord, OpenedGame,
-    OrderDraftKey, OrderDraftRecord, PersistenceError, ReportSourceRef,
+    load_region_sightings, open_game, preview_imported_turn, set_game_ruleset,
+    upsert_imported_turn, upsert_merged_report, upsert_order_draft, upsert_region_sightings,
+    GameManifest, GameMetadata, ImportedTurnKey, ImportedTurnPreview, ImportedTurnRecord,
+    MergedReportRecord, OpenedGame, OrderDraftKey, OrderDraftRecord, PersistenceError,
+    ReportSourceRef,
 };
 use serde::{Deserialize, Serialize};
 
@@ -382,6 +383,21 @@ pub fn command_create_game(
 pub fn command_list_games(games_root: &str) -> Result<Vec<GameManifestDto>, String> {
     list_games(Path::new(games_root))
         .map(|games| games.into_iter().map(GameManifestDto::from).collect())
+        .map_err(|error| error.to_string())
+}
+
+/// Changes which ruleset a game is played under, returning the updated manifest.
+///
+/// # Errors
+///
+/// Returns an error when no game exists under this id, or when the change cannot be written.
+pub fn command_set_game_ruleset(
+    games_root: &str,
+    game_id: &str,
+    ruleset_id: &str,
+) -> Result<GameManifestDto, String> {
+    set_game_ruleset(Path::new(games_root), game_id, ruleset_id)
+        .map(GameManifestDto::from)
         .map_err(|error| error.to_string())
 }
 
@@ -995,6 +1011,41 @@ mod test_support {
             created_at: OPENED_AT.to_string(),
             last_opened_at: OPENED_AT.to_string(),
         }
+    }
+}
+
+#[cfg(test)]
+mod ruleset_command_tests {
+    use super::test_support::manifest_dto;
+    use super::*;
+    use tempfile::tempdir;
+
+    /// The settings dialog's per-game tab drives this command; what it needs back is the updated
+    /// manifest, so the shell can refresh its state without a second round trip.
+    #[test]
+    fn changing_a_games_ruleset_returns_the_updated_manifest() {
+        let dir = tempdir().expect("tempdir");
+        let root = dir.path().to_str().expect("a path");
+        command_create_game(root, manifest_dto("faction-95", "Borg TNG")).expect("created");
+
+        let updated = command_set_game_ruleset(root, "faction-95", "magicdeep")
+            .expect("the ruleset change should succeed");
+        assert_eq!(updated.metadata.ruleset_id, "magicdeep");
+
+        // And it stuck: a fresh listing reads the manifest back off disk.
+        let listed = command_list_games(root).expect("listing should succeed");
+        assert_eq!(listed[0].metadata.ruleset_id, "magicdeep");
+    }
+
+    #[test]
+    fn changing_the_ruleset_of_a_missing_game_names_it() {
+        let dir = tempdir().expect("tempdir");
+        let root = dir.path().to_str().expect("a path");
+
+        let error = command_set_game_ruleset(root, "no-such-game", "magicdeep")
+            .expect_err("changing a missing game should fail");
+
+        assert!(error.contains("no-such-game"));
     }
 }
 

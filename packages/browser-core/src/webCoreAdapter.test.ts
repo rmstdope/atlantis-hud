@@ -142,6 +142,27 @@ function manifest(gameId: string, gameName: string): GameManifest {
 }
 
 describe("web core adapter", () => {
+  it("changes a game's ruleset in the stored manifest", async () => {
+    const store = createMemoryWebStore();
+    const adapter = createWebCoreAdapter(fakeWasm(), store);
+    await adapter.createGame(manifest("g1", "Game One"));
+
+    const updated = (await adapter.setGameRuleset("g1", "magicdeep")) as GameManifest;
+
+    expect(updated.metadata.rulesetId).toBe("magicdeep");
+    // And it stuck: the registry's copy is what every later open reads.
+    const stored = await store.getGame("g1");
+    expect((stored?.manifest as GameManifest).metadata.rulesetId).toBe("magicdeep");
+  });
+
+  it("refuses to change the ruleset of a game it does not hold", async () => {
+    const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
+
+    await expect(adapter.setGameRuleset("ghost", "magicdeep")).rejects.toThrow(
+      "no game with id ghost"
+    );
+  });
+
   it("routes logic calls to the core rather than to storage", async () => {
     const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
 

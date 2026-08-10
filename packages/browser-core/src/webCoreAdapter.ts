@@ -631,6 +631,22 @@ export function createWebCoreAdapter(
       );
     },
 
+    async setGameRuleset(gameId: string, rulesetId: string) {
+      const game = await store.getGame(gameId);
+      if (!game) {
+        throw new Error(`no game with id ${gameId}`);
+      }
+
+      // The registry's copy of the manifest is what every later open reads, so the change lands
+      // there — the web's counterpart of the desktop rewriting the JSON manifest on disk.
+      const manifest = {
+        ...(game.manifest as GameManifest),
+        metadata: { ...(game.manifest as GameManifest).metadata, rulesetId }
+      };
+      await store.putGame({ ...game, manifest });
+      return manifest;
+    },
+
     async importGame(backupJson: string, openedAt: string) {
       const backup = parseBackupJson(backupJson);
       const gameId = backup.manifest.metadata.gameId;

@@ -31,10 +31,11 @@ import {
   openNewestGame,
   rulesetUrlFor
 } from "../gameSession";
+import { rulesetById } from "../rulesets";
 import { useWorkspaceStore } from "../workspaceStore";
 import { AppHeader, type ImportStatus } from "./AppHeader";
 import { GameGate } from "./GameGate";
-import { SettingsPanel } from "./SettingsPanel";
+import { SettingsDialog } from "./SettingsDialog";
 import type { AppUpdateControl } from "./appUpdate";
 import { UNSUPPORTED_UPDATES } from "./appUpdate";
 import { ForeignReportPrompt } from "./ForeignReportPrompt";
@@ -232,6 +233,7 @@ export function AppShell({
   const clearPlan = useWorkspaceStore((state) => state.clearPlan);
   const openGameInStore = useWorkspaceStore((state) => state.openGame);
   const closeGameInStore = useWorkspaceStore((state) => state.closeGame);
+  const updateGameRulesetInStore = useWorkspaceStore((state) => state.updateGameRuleset);
 
   /**
    * What is owed to storage, and one write at a time.
@@ -636,15 +638,19 @@ export function AppShell({
           failed: false
         });
 
-        // Opening on a hex the player has units in, exactly as loading a report does.
-        const opening = buildHexMapModel(restored.parsed);
-        const openingHex = opening.hexes.find(
-          (candidate) => candidate.regionId === opening.initialSelectedRegionId
-        );
-        selectRegion(
-          opening.initialSelectedRegionId,
-          unitsForHex(openingHex ?? null)[0]?.unitId ?? null
-        );
+        // Opening on a hex the player has units in, exactly as loading a report does — unless a
+        // hex is already selected. This effect also re-runs after a ruleset change re-parse, and
+        // yanking the player to the opening hex would make the settings dialog feel like a reload.
+        if (useWorkspaceStore.getState().selectedRegionId === null) {
+          const opening = buildHexMapModel(restored.parsed);
+          const openingHex = opening.hexes.find(
+            (candidate) => candidate.regionId === opening.initialSelectedRegionId
+          );
+          selectRegion(
+            opening.initialSelectedRegionId,
+            unitsForHex(openingHex ?? null)[0]?.unitId ?? null
+          );
+        }
       })
       .catch((error: unknown) => {
         // A game whose stored turn will not come back must say so. Silence here is exactly the
@@ -725,6 +731,43 @@ export function AppShell({
       }
     },
     [client, enterGame, refreshGames, flush]
+  );
+
+  /**
+   * Moves the open game to another ruleset, and re-reads the world under it.
+   *
+   * Handing `setGame` a fresh object is the second half of the change: the ruleset fetch effect is
+   * keyed on `game`, so the new identity makes it fetch the new ruleset, and the turn-restore
+   * effect then re-parses the stored turn under it. Without that, every unit count would silently
+   * keep the old ruleset's reading until the next manual reload.
+   */
+  const changeRuleset = useCallback(
+    async (rulesetId: string) => {
+      if (!game || game.manifest.metadata.rulesetId === rulesetId) {
+        return;
+      }
+      // This build has to be able to fetch what it is about to store; the backend deliberately
+      // stores ids as opaque strings, so this is the only gate.
+      if (!rulesetById(rulesetId)) {
+        setGameError(`unknown ruleset: ${rulesetId}`);
+        return;
+      }
+      setBusy(true);
+      setGameError(null);
+      try {
+        // The re-restore below re-reads orders from the database, so the draft must be there first.
+        await flush();
+        const manifest = await client.setGameRuleset(game.manifest.metadata.gameId, rulesetId);
+        setGame({ ...game, manifest });
+        updateGameRulesetInStore(rulesetId);
+        await refreshGames();
+      } catch (error: unknown) {
+        setGameError(describeError(error));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [client, game, flush, refreshGames, updateGameRulesetInStore]
   );
 
   const createGame = useCallback(
@@ -1072,12 +1115,25 @@ export function AppShell({
     return <div className="h-full bg-ground" />;
   }
 
-  // The same panel on both screens below, because settings are not part of the workspace: they are
-  // part of the application, and the application exists before any game does.
+  // The same dialog on both screens below, because settings are not part of the workspace: they
+  // are part of the application, and the application exists before any game does.
   const settingsPanel = (
-    <SettingsPanel
+    <SettingsDialog
       platformLabel={platformLabel}
       appUpdate={appUpdate}
+      game={
+        game
+          ? {
+              gameId: game.manifest.metadata.gameId,
+              gameName: game.manifest.metadata.gameName,
+              databasePath: game.databasePath,
+              rulesetId: game.manifest.metadata.rulesetId
+            }
+          : null
+      }
+      busy={busy}
+      error={gameError}
+      onChangeRuleset={(rulesetId) => void changeRuleset(rulesetId)}
       onDismiss={() => setSettingsOpen(false)}
     />
   );

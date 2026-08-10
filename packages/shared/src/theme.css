@@ -76,6 +76,74 @@
 }
 
 /*
+ * Native chrome — scrollbars, form controls, the ruleset select's dropdown — follows this rather
+ * than the token variables, so it must be told which side the app is on. The light half lives in
+ * the light block below.
+ */
+:root {
+  color-scheme: dark;
+}
+
+/*
+ * The light theme.
+ *
+ * Tailwind emits the `@theme` tokens on `:root` and compiles utilities to `var()` references, so
+ * redefining the variables under `:root[data-theme="light"]` (set by the settings store) switches
+ * the whole app at runtime — utilities, the page background below, and the map alike. Every
+ * `--color-*` token above must have a counterpart here; theme.test.ts enforces that, because a
+ * missing one would silently keep its dark value.
+ *
+ * The palette is the dark instrument panel turned into a chart table: paper grounds, dark ink,
+ * the same brass and map blue darkened until they hold contrast on paper, and terrain tints that
+ * keep each terrain's hue identity while sitting comfortably under dark labels.
+ */
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --color-ground: #f2efe8;
+  --color-panel: #eae6da;
+  --color-panel-raised: #f7f4ec;
+  --color-edge: #c9c2b0;
+  --color-edge-soft: #d8d2c2;
+
+  --color-ink: #2a3038;
+  --color-ink-soft: #5a6472;
+  --color-ink-dim: #8b93a0;
+
+  --color-brass: #9a6f1d;
+  --color-brass-bright: #7d5a15;
+  --color-select: #2470a8;
+
+  --color-ok: #2e7d54;
+  --color-warn: #9a6f1d;
+  --color-danger: #b04a4a;
+
+  --color-terrain-ocean: #a9c5de;
+  --color-terrain-plain: #d9d2a0;
+  --color-terrain-forest: #a3c9ab;
+  --color-terrain-mountain: #babac2;
+  --color-terrain-swamp: #b3bd96;
+  --color-terrain-desert: #e0cd9e;
+  --color-terrain-jungle: #93c7ac;
+  --color-terrain-tundra: #bcc9ce;
+  --color-terrain-cavern: #b6b6c2;
+  --color-terrain-underforest: #a8c3b2;
+  --color-terrain-wasteland: #c7b298;
+  --color-terrain-unknown: #e3dfd3;
+  --color-terrain-other: #b7bec7;
+
+  --color-map-edge: #9a958a;
+  --color-fog-edge: #cfcabd;
+  --color-unit-own: #1c7fae;
+  --color-unit-foreign: #c05252;
+  --color-settlement: #8a6d3b;
+
+  --color-risk-low: #1c7fae;
+  --color-risk-medium: #9a6f1d;
+  --color-risk-high: #c05252;
+}
+
+/*
  * How much the map shows at a given zoom.
  *
  * Labels are drawn at a constant screen size, so as hexes shrink the text does not: past a point

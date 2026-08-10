@@ -56,10 +56,10 @@ export function Absent({ children }: { children: ReactNode }) {
 /** Warns that what follows was true at some earlier turn and may since have changed. */
 export function StaleBanner({ lastSeenTurn, ageInTurns }: { lastSeenTurn: number; ageInTurns: number }) {
   return (
-    <p className="mb-2 flex gap-2 rounded border border-l-[3px] border-brass/60 bg-brass/10 px-2 py-1.5 text-[#e6c884]">
+    <p className="mb-2 flex gap-2 rounded border border-l-[3px] border-brass/60 bg-brass/10 px-2 py-1.5 text-brass">
       <span aria-hidden>&#9719;</span>
       <span>
-        <strong className="font-medium text-[#f2dda6]">Last seen turn {lastSeenTurn}</strong>
+        <strong className="font-medium text-brass-bright">Last seen turn {lastSeenTurn}</strong>
         {ageInTurns > 0 ? `, ${ageInTurns} turn${ageInTurns === 1 ? "" : "s"} ago` : ""}. Not in the
         current report, so these figures may be out of date.
       </span>

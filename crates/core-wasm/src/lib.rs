@@ -13,9 +13,9 @@ use atlantis_hud_core::{
 use atlantis_hud_core_persistence::{
     create_game, delete_game, insert_imported_turn, list_games, load_imported_turn,
     load_latest_imported_turn, load_order_draft, open_game, preview_imported_turn,
-    upsert_imported_turn, upsert_order_draft, GameManifest, GameMetadata, ImportedTurnKey,
-    ImportedTurnPreview, ImportedTurnRecord, OpenedGame, OrderDraftKey, OrderDraftRecord,
-    PersistenceError, ReportSourceRef,
+    set_game_ruleset, upsert_imported_turn, upsert_order_draft, GameManifest, GameMetadata,
+    ImportedTurnKey, ImportedTurnPreview, ImportedTurnRecord, OpenedGame, OrderDraftKey,
+    OrderDraftRecord, PersistenceError, ReportSourceRef,
 };
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
@@ -613,6 +613,20 @@ pub fn open_game_state(
     to_js(&OpenedGameDto::from(opened))
 }
 
+/// Changes which ruleset a game is played under, returning the updated manifest.
+#[wasm_bindgen]
+#[cfg(not(target_arch = "wasm32"))]
+pub fn set_game_ruleset_state(
+    games_root: String,
+    game_id: String,
+    ruleset_id: String,
+) -> Result<JsValue, JsValue> {
+    let manifest = set_game_ruleset(Path::new(&games_root), &game_id, &ruleset_id)
+        .map_err(|error| JsValue::from_str(&error.to_string()))?;
+
+    to_js(&GameManifestDto::from(manifest))
+}
+
 /// Previews duplicate conflict for a report import candidate.
 #[wasm_bindgen]
 #[cfg(not(target_arch = "wasm32"))]
@@ -859,6 +873,19 @@ pub fn open_game_state(
     _games_root: String,
     _game_id: String,
     _opened_at: String,
+) -> Result<JsValue, JsValue> {
+    Err(JsValue::from_str(
+        "game persistence is not linked in this wasm32 build",
+    ))
+}
+
+/// Changes which ruleset a game is played under.
+#[wasm_bindgen]
+#[cfg(target_arch = "wasm32")]
+pub fn set_game_ruleset_state(
+    _games_root: String,
+    _game_id: String,
+    _ruleset_id: String,
 ) -> Result<JsValue, JsValue> {
     Err(JsValue::from_str(
         "game persistence is not linked in this wasm32 build",

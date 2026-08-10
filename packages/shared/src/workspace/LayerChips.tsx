@@ -40,7 +40,7 @@ export function LayerChips({ levels }: { levels: number[] }) {
             type="checkbox"
             checked={layers[name]}
             onChange={() => toggleLayer(name)}
-            className="h-3 w-3 accent-[#4a9fd8]"
+            className="h-3 w-3 accent-select"
           />
           {label}
         </label>
