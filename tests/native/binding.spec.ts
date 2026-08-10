@@ -77,6 +77,10 @@ const SWEEP: SweepEntry[] = [
   { command: "get_engine_info", args: () => ({}) },
   { command: "list_games", args: () => ({}) },
   { command: "open_game", args: () => ({ game_id: GAME_ID, opened_at: ISO }) },
+  { command: "export_game", args: () => ({ game_id: GAME_ID, exported_at: ISO }) },
+  // A backup no game can have: importing refuses an existing id, and a domain refusal is
+  // exactly as good a binding proof as a success.
+  { command: "import_game", args: () => ({ backup_json: "{}", opened_at: ISO }) },
   { command: "set_game_ruleset", args: () => ({ game_id: GAME_ID, ruleset_id: "neworigins" }) },
   { command: "parse_report", args: () => ({ raw_report: REPORT }) },
   { command: "parse_report_full", args: () => ({ raw_report: REPORT }) },
