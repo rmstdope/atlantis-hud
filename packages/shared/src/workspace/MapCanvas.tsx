@@ -423,7 +423,10 @@ export function MapCanvas({
               d={FOG_TILE.d}
               fill="none"
               className="stroke-fog-edge"
-              strokeWidth="calc(1px / var(--map-scale, 1))"
+              // A declaration rather than a presentation attribute. Chromium resolves the custom
+              // property either way, but the desktop shell renders in the system webview and
+              // older WebKit substitutes it only in a declaration.
+              style={{ strokeWidth: "calc(1px / var(--map-scale, 1))" }}
             />
           </pattern>
           <pattern

@@ -1087,3 +1087,32 @@ test("standing on unexplored ground selects nothing, and the way back still work
   await page.locator("polygon:focus").press("ArrowDown");
   await expect(page.locator("polygon:focus")).toHaveAttribute("aria-label", "hex 1:7,53");
 });
+
+test("the unexplored lattice keeps a constant hairline at every zoom", async ({ page }) => {
+  await loadReport(page);
+
+  const measure = () =>
+    page.evaluate(() => {
+      const path = document.querySelector("#fog-lattice path")!;
+      const svg = document.querySelector('[data-testid="map-canvas"] svg')!;
+      const scale = Number(getComputedStyle(svg).getPropertyValue("--map-scale"));
+      // The pattern is drawn under the world transform, so a stroke of 1/scale user units is
+      // exactly one pixel on screen. Anything that fails to resolve falls back to 1 user unit and
+      // the lattice thickens as the map is zoomed in.
+      return parseFloat(getComputedStyle(path).strokeWidth) * scale;
+    });
+
+  const atRest = await measure();
+  for (let step = 0; step < 4; step += 1) {
+    await page.getByRole("button", { name: "Zoom in" }).click();
+  }
+  const zoomedIn = await measure();
+  for (let step = 0; step < 8; step += 1) {
+    await page.getByRole("button", { name: "Zoom out" }).click();
+  }
+  const zoomedOut = await measure();
+
+  expect(atRest).toBeCloseTo(1, 3);
+  expect(zoomedIn).toBeCloseTo(1, 3);
+  expect(zoomedOut).toBeCloseTo(1, 3);
+});

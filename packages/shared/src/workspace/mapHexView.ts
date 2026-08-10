@@ -3,11 +3,13 @@
  *
  * Pure, so the decisions can be tested without a renderer. Two of them are worth naming:
  *
- * - **Colour is a class, never an inline value.** `var(--color-terrain-ocean)` in an SVG `fill`
- *   attribute does nothing: custom properties are substituted in CSS declarations, not in
- *   presentation attributes. The classes below are written out in full because Tailwind only
- *   generates a utility it has literally seen, so a template like `fill-terrain-${terrain}` would
- *   be tree-shaken away and the map would render unstyled.
+ * - **Colour is a class, never an inline value.** Current Chromium does substitute custom
+ *   properties in SVG presentation attributes, so `fill="var(--color-terrain-ocean)"` happens to
+ *   work where the smoke suite runs — but the desktop shell renders in whatever webview the system
+ *   provides, and older WebKit does not. Classes also keep the palette in one place for the
+ *   theming issue. They are written out in full because Tailwind only generates a utility it has
+ *   literally seen, so a template like `fill-terrain-${terrain}` would be tree-shaken away and the
+ *   map would render unstyled.
  * - **Age is drawn, not computed.** An older sighting is the terrain with fog laid over it at an
  *   opacity, which composites to exactly the blend the previous renderer calculated by hand:
  *   `terrain * (1 - a) + fog * a` either way.
