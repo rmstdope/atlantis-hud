@@ -941,6 +941,7 @@ export function AppShell({
 
       <div className="relative min-h-0 flex-1">
         <MapCanvas
+          gameId={game?.manifest.metadata.gameId ?? null}
           model={model}
           level={level}
           selectedRegionId={selectedRegionId}
