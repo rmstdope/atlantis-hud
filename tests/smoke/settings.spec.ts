@@ -168,7 +168,7 @@ test("the per-game tab shows the open game's ruleset", async ({ page }) => {
   await expect(ruleset).toHaveValue("neworigins");
 });
 
-/** The turn-71 fixture; Inholm at (7,53) holds 92 units, so a cap of one is visibly a cap. */
+/** The turn-71 fixture; Inholm at (7,53) holds 92 units, so every cap the slider offers bites. */
 const REPORT = readFileSync(
   join(__dirname, "..", "fixtures", "reports", "neworigins-3.0.0-f95-t71.rep"),
   "utf8"
@@ -201,31 +201,35 @@ test("the unit list limit caps the units-in-hex table and survives a reload", as
   await openReport(page);
   await selectHex(page, "1:7,53");
 
-  // The city hex holds several units, so a cap of one is visibly a cap.
+  // The default cap of twelve already bites in a 92-unit city, and the panel header owns up to
+  // the truncation rather than letting a screenful pass for the whole hex.
   const rows = page.locator('[data-testid^="unit-row-"]');
-  expect(await rows.count()).toBeGreaterThan(1);
+  await expect(rows).toHaveCount(12);
+  await expect(page.getByTestId("panel-units")).toContainText("92 units, 12 shown");
 
   await page.getByTestId("settings-indicator").click();
   const limit = page.getByTestId("unit-list-limit");
-  await expect(limit).toHaveValue("0");
-  await limit.fill("1");
+  await expect(limit).toHaveValue("12");
+  // Never fewer than three rows, never more than sixteen.
+  await expect(limit).toHaveAttribute("min", "3");
+  await expect(limit).toHaveAttribute("max", "16");
 
-  // Applies as it is typed - the table is on screen behind the dialog, its own preview - and the
-  // panel header owns up to the truncation rather than letting it pass for the whole hex.
-  await expect(rows).toHaveCount(1);
-  await expect(page.getByTestId("panel-units")).toContainText("1 shown");
-  // The cap keeps the front of the sorted list, and own units sort first: what survives out of 92
-  // is the player's own unit, not whichever foreign unit the report listed first.
+  // Applies as it is dragged - the table is on screen behind the dialog, its own preview.
+  await limit.fill("3");
+  await expect(rows).toHaveCount(3);
+  await expect(page.getByTestId("panel-units")).toContainText("3 shown");
+  // The cap keeps the front of the sorted list, and own units sort first: the player's own unit
+  // survives out of 92, not whichever foreign unit the report listed first.
   await expect(page.getByTestId("unit-row-18642")).toBeVisible();
 
   // A preference, not a session choice: it holds across a reload.
   await page.reload();
   await expect(page.getByTestId("import-status")).toContainText("restored turn 71");
   await selectHex(page, "1:7,53");
-  await expect(rows).toHaveCount(1);
+  await expect(rows).toHaveCount(3);
 
-  // Back to showing all, so later tests inherit the look they expect.
+  // Back to the default, so later tests inherit the look they expect.
   await page.getByTestId("settings-indicator").click();
-  await page.getByTestId("unit-list-limit").fill("0");
-  await expect(page.getByTestId("panel-units")).not.toContainText("shown");
+  await page.getByTestId("unit-list-limit").fill("12");
+  await expect(rows).toHaveCount(12);
 });

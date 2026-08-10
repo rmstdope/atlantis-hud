@@ -185,13 +185,16 @@ describe("settings store", () => {
     expect(stub.documentElement.style.properties["--pane-transparency"]).toBe("40");
   });
 
-  it("defaults the unit list limit to zero, meaning every unit is shown", () => {
-    expect(store().unitListLimit).toBe(0);
+  it("defaults the unit list limit to twelve rows", () => {
+    expect(store().unitListLimit).toBe(12);
   });
 
-  it("clamps the unit list limit to a whole, non-negative count", () => {
-    store().setUnitListLimit(-5);
-    expect(store().unitListLimit).toBe(0);
+  it("clamps the unit list limit to what the slider offers, 3 to 16", () => {
+    store().setUnitListLimit(150);
+    expect(store().unitListLimit).toBe(16);
+
+    store().setUnitListLimit(1);
+    expect(store().unitListLimit).toBe(3);
 
     // A fraction rounds rather than leaving a decimal no row count can honour.
     store().setUnitListLimit(12.6);
@@ -199,8 +202,8 @@ describe("settings store", () => {
   });
 
   it("persists the unit list limit", async () => {
-    store().setUnitListLimit(25);
-    expect(store().unitListLimit).toBe(25);
+    store().setUnitListLimit(15);
+    expect(store().unitListLimit).toBe(15);
 
     const storage = useSettingsStore.persist.getOptions().storage;
     const persisted = await storage?.getItem("atlantis-hud-settings");
@@ -208,35 +211,48 @@ describe("settings store", () => {
       throw new Error("settings storage was not available");
     }
 
-    useSettingsStore.setState({ unitListLimit: 0 });
+    useSettingsStore.setState({ unitListLimit: 12 });
     await storage.setItem("atlantis-hud-settings", persisted);
     await useSettingsStore.persist.rehydrate();
 
-    expect(store().unitListLimit).toBe(25);
+    expect(store().unitListLimit).toBe(15);
   });
 
-  it("sanitizes a persisted unit list limit, garbage falling back to showing all", () => {
+  /**
+   * The earlier build persisted 0 as "show all", and it was the default - so it is what every
+   * untouched settings blob holds. Clamping it to the floor would greet the whole existing user
+   * base with the tightest cap; it means "no preference" and becomes the default instead.
+   */
+  it("migrates the earlier build's show-all zero to the default rather than the floor", () => {
+    useSettingsStore.setState({ unitListLimit: 0 });
+
+    applyPersistedSettings();
+
+    expect(store().unitListLimit).toBe(12);
+  });
+
+  it("sanitizes a persisted unit list limit, garbage falling back to the default", () => {
     useSettingsStore.setState({ unitListLimit: "not a number" as unknown as number });
 
     applyPersistedSettings();
 
-    expect(store().unitListLimit).toBe(0);
+    expect(store().unitListLimit).toBe(12);
   });
 
   it("reads a persisted unit list limit that storage kept as a string", () => {
-    useSettingsStore.setState({ unitListLimit: "25" as unknown as number });
+    useSettingsStore.setState({ unitListLimit: "14" as unknown as number });
 
     applyPersistedSettings();
 
-    expect(store().unitListLimit).toBe(25);
+    expect(store().unitListLimit).toBe(14);
   });
 
   it("resets the unit list limit to its default", () => {
-    store().setUnitListLimit(10);
+    store().setUnitListLimit(16);
 
     resetSettingsStore();
 
-    expect(store().unitListLimit).toBe(0);
+    expect(store().unitListLimit).toBe(12);
   });
 
   it("resets the pane transparency to its default", () => {

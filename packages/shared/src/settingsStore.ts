@@ -16,6 +16,9 @@ export type ThemeName = "dark" | "light";
 /** How see-through the floating panes start out: enough map underneath to navigate by. */
 export const DEFAULT_PANE_TRANSPARENCY = 90;
 
+/** How many rows the units-in-hex table starts out showing: a readable screenful. */
+export const DEFAULT_UNIT_LIST_LIMIT = 12;
+
 export type SettingsState = {
   theme: ThemeName;
   biomeTextures: boolean;
@@ -27,10 +30,11 @@ export type SettingsState = {
    */
   paneTransparency: number;
   /**
-   * How many rows the "Units in hex" table shows at most, 0 meaning every one of them.
+   * How many rows the "Units in hex" table shows at most, 3 to 16.
    *
    * The cap lands after sorting and filtering, so with own-first grouping on it trims the
-   * foreign crowd rather than the player's own units.
+   * foreign crowd rather than the player's own units - and the filter still reaches every unit
+   * the cap hides.
    */
   unitListLimit: number;
   /** Applies instantly: the settings dialog has no OK button to wait for. */
@@ -73,16 +77,22 @@ function clampTransparency(percent: number): number {
 }
 
 /**
- * Any whole, non-negative count is acceptable, 0 meaning every unit is shown; garbage falls back
- * to showing all rather than to hiding everything. Same reasoning as the transparency clamp:
+ * What the slider offers is also what the store accepts: 3 to 16 whole rows, garbage falling back
+ * to the default rather than to either extreme. Same reasoning as the transparency clamp:
  * storage is hand-editable and other writers exist.
  */
 function clampUnitListLimit(count: number): number {
   const numeric = Number(count);
   if (!Number.isFinite(numeric)) {
-    return 0;
+    return DEFAULT_UNIT_LIST_LIMIT;
   }
-  return Math.max(0, Math.round(numeric));
+  // The earlier build persisted 0 as "show all", and as its default - so it is what every
+  // untouched settings blob from that build holds. It means "no preference", not "as few as
+  // possible", and clamping it to the floor would greet everyone upgrading with the tightest cap.
+  if (numeric === 0) {
+    return DEFAULT_UNIT_LIST_LIMIT;
+  }
+  return Math.min(16, Math.max(3, Math.round(numeric)));
 }
 
 /**
@@ -132,7 +142,7 @@ export const useSettingsStore = create<SettingsState>()(
       theme: "dark",
       biomeTextures: true,
       paneTransparency: DEFAULT_PANE_TRANSPARENCY,
-      unitListLimit: 0,
+      unitListLimit: DEFAULT_UNIT_LIST_LIMIT,
 
       setTheme: (theme) => {
         applyTheme(theme);
@@ -195,7 +205,7 @@ export function resetSettingsStore() {
     theme: "dark",
     biomeTextures: true,
     paneTransparency: DEFAULT_PANE_TRANSPARENCY,
-    unitListLimit: 0
+    unitListLimit: DEFAULT_UNIT_LIST_LIMIT
   });
   applyTheme("dark");
   applyPaneTransparency(DEFAULT_PANE_TRANSPARENCY);

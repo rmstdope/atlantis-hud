@@ -239,23 +239,26 @@ function GlobalSettings() {
         />
       </label>
 
-      <label className="flex items-center justify-between gap-2 text-ink-soft">
-        <span>
-          <span className="block">Units in hex list</span>
-          <span className="block text-[10px] text-ink-dim">
-            Shows at most this many units; 0 shows all.
-          </span>
+      <label className="flex flex-col gap-1">
+        <span className="flex items-baseline justify-between gap-2">
+          <span className="text-ink-soft">Units in hex list</span>
+          <span className="text-ink">{unitListLimit}</span>
         </span>
+        {/*
+          Bounded at both ends: fewer than three rows stops being a list, and past sixteen the
+          table is scrolling anyway - the filter is the tool for finding one unit among hundreds.
+          Applies as it is dragged, the table behind the dialog being its own preview.
+        */}
         <input
-          type="number"
+          type="range"
           data-testid="unit-list-limit"
-          aria-label="Units in hex list limit"
-          min={0}
+          aria-label="units in hex list"
+          min={3}
+          max={16}
           step={1}
           value={unitListLimit}
-          // An emptied field reads as 0, which is "show all" - the safe end of the range.
           onChange={(event) => setUnitListLimit(Number(event.target.value))}
-          className="w-20 rounded border border-edge bg-ground px-2 py-0.5 text-right text-ink focus:border-select focus:outline-none"
+          className="accent-brass"
         />
       </label>
     </div>
