@@ -17,6 +17,10 @@ const REPORT = readFileSync(
   join(__dirname, "..", "fixtures", "reports", "neworigins-3.0.0-f95-t71.rep"),
   "utf8"
 );
+const OLDER_REPORT = readFileSync(
+  join(__dirname, "..", "fixtures", "reports", "neworigins-3.0.0-f73-t2.rep"),
+  "utf8"
+);
 
 /** Inholm: a city with 24 structures and 92 units, one of them the player's. */
 const OWN_UNIT = "18642";
@@ -79,6 +83,41 @@ test("loads a report and shows the turn it describes", async ({ page }) => {
   await expect(page.getByTestId("app-header")).toContainText("Borg TNG (95)");
   await expect(page.getByTestId("app-header")).toContainText("71");
   await expect(page.getByTestId("import-status")).toContainText("units");
+});
+
+test("loading an older report can be refused", async ({ page }) => {
+  await loadReport(page);
+  await expect(page.getByTestId("app-header")).toContainText(/Turn\s*71\b/);
+
+  const dialog = page.waitForEvent("dialog");
+  await page.setInputFiles('input[type="file"]', {
+    name: "turn-2.rep",
+    mimeType: "text/plain",
+    buffer: Buffer.from(OLDER_REPORT, "utf8")
+  });
+  const confirmation = await dialog;
+  expect(confirmation.type()).toBe("confirm");
+  expect(confirmation.message()).toContain("older than the currently loaded turn");
+  await confirmation.dismiss();
+
+  await expect(page.getByTestId("app-header")).toContainText(/Turn\s*71\b/);
+});
+
+test("loading an older report can be accepted", async ({ page }) => {
+  await loadReport(page);
+  await expect(page.getByTestId("app-header")).toContainText(/Turn\s*71\b/);
+
+  const dialog = page.waitForEvent("dialog");
+  await page.setInputFiles('input[type="file"]', {
+    name: "turn-2.rep",
+    mimeType: "text/plain",
+    buffer: Buffer.from(OLDER_REPORT, "utf8")
+  });
+  const confirmation = await dialog;
+  expect(confirmation.type()).toBe("confirm");
+  await confirmation.accept();
+
+  await expect(page.getByTestId("app-header")).toContainText(/Turn\s*2\b/);
 });
 
 test("selecting a hex fills the region panel and the unit table together", async ({ page }) => {
