@@ -10,9 +10,8 @@ use atlantis_hud_core::report::sighting::{region_sightings, RegionSighting};
 #[cfg(not(target_arch = "wasm32"))]
 use atlantis_hud_core::parse_report;
 use atlantis_hud_core::{
-    diff_imported_turn, engine_info, reject_import, reject_merge, validate_orders,
-    ImportedTurnSnapshot, OrderCheckOptions, OrderDiagnosticSeverity, OrderValidationResult,
-    ReportParseResult,
+    diff_imported_turn, engine_info, reject_import, reject_merge, ImportedTurnSnapshot,
+    OrderCheckOptions, OrderDiagnosticSeverity, OrderValidationResult, ReportParseResult,
 };
 #[cfg(not(target_arch = "wasm32"))]
 use atlantis_hud_core_persistence::{
@@ -1105,6 +1104,10 @@ pub fn load_order_draft_state(
 #[cfg(test)]
 mod tests {
     use super::*;
+    // The syntax-only entry point, which the binding above no longer calls: it goes through
+    // `validate_turn` so the checks that read the report come with it. These DTO tests want the
+    // narrow one, since what they are about is the severity mapping and not the checking.
+    use atlantis_hud_core::validate_orders;
     #[cfg(not(target_arch = "wasm32"))]
     use tempfile::tempdir;
 
