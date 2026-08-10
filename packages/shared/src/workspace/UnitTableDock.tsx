@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
   type KeyboardEvent,
+  type PointerEvent,
   type ReactNode
 } from "react";
 import type { HexNode } from "../hexMapModel";
@@ -20,9 +21,11 @@ import {
   type SortColumn,
   type SortState
 } from "../unitTable";
+import { HOVER_DELAY_MS, type Point } from "../unitTooltip";
 import { useWorkspaceStore } from "../workspaceStore";
 import { CollapsiblePanel } from "./CollapsiblePanel";
 import { Absent } from "./primitives";
+import { UnitTooltip } from "./UnitTooltip";
 
 /** Rows built beyond each edge of the viewport, so a flick of the wheel does not show a gap. */
 const OVERSCAN = 6;
@@ -141,6 +144,50 @@ export function UnitTableDock({ hex }: { hex: HexNode | null }) {
     }
   }, [scroller, selectedUnitId, start, end]);
 
+  /**
+   * The row the pointer has rested on, and where it rested.
+   *
+   * The point is taken from the pointer rather than from the row, because a row is the width of
+   * the table and its own position says nothing about where the user is looking. It is kept in a
+   * ref until the wait is up: following the pointer through state would re-render the table on
+   * every mouse move, for a figure only one timeout ever reads.
+   */
+  const [hovered, setHovered] = useState<{ unit: ReportUnit; at: Point } | null>(null);
+  const pointerAt = useRef<Point>({ x: 0, y: 0 });
+  const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const forgetHover = () => {
+    if (hoverTimer.current !== null) {
+      clearTimeout(hoverTimer.current);
+      hoverTimer.current = null;
+    }
+    setHovered(null);
+  };
+
+  const restOn = (unit: ReportUnit) => {
+    forgetHover();
+    hoverTimer.current = setTimeout(() => {
+      hoverTimer.current = null;
+      setHovered({ unit, at: pointerAt.current });
+    }, HOVER_DELAY_MS);
+  };
+
+  // A tooltip that outlived its row would hang over the map with nothing to point at, and every
+  // rearrangement of the table does that: another hex, another filter, another report of the same
+  // hex, or the panel folded away. `visible` is a fresh array for exactly those and no others, so
+  // depending on it rather than on the things that produce it cannot miss one. The work is in the
+  // cleanup, which React runs both when the rows change and when the table goes.
+  useEffect(
+    () => () => {
+      if (hoverTimer.current !== null) {
+        clearTimeout(hoverTimer.current);
+        hoverTimer.current = null;
+      }
+      setHovered(null);
+    },
+    [visible]
+  );
+
   const sortByColumn = (column: SortColumn) =>
     setSort((current) =>
       current.column === column
@@ -209,7 +256,13 @@ export function UnitTableDock({ hex }: { hex: HexNode | null }) {
       ) : (
         <div
           ref={setScroller}
-          onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
+          onScroll={(event) => {
+            // The rows slide out from under the pointer, so whatever is being pointed at is not
+            // what the tooltip was opened for.
+            forgetHover();
+            setScrollTop(event.currentTarget.scrollTop);
+          }}
+          onPointerLeave={forgetHover}
           // The vertical bar is always reserved: letting it come and go as the window changes
           // would resize the table, which would remeasure the viewport, which would change the
           // window again.
@@ -284,16 +337,25 @@ export function UnitTableDock({ hex }: { hex: HexNode | null }) {
                   selected={unit.unitId === selectedUnitId}
                   onSelect={() => selectUnit(unit.unitId)}
                   onKeyDown={onRowKeyDown}
+                  onPointerRest={restOn}
+                  onPointerAt={(point) => {
+                    pointerAt.current = point;
+                  }}
+                  onPointerGone={forgetHover}
                 />
               ))}
               <Spacer rows={visible.length - end} />
             </tbody>
           </table>
+          {hovered ? <UnitTooltip unit={hovered.unit} at={hovered.at} /> : null}
         </div>
       )}
     </CollapsiblePanel>
   );
 }
+
+/** Whether an event came from a mouse, as opposed to a finger or a pen held against the screen. */
+const byMouse = (event: PointerEvent<HTMLElement>) => event.pointerType === "mouse";
 
 /** Stands in for the rows above or below the window, so the scrollbar reflects the whole list. */
 function Spacer({ rows }: { rows: number }) {
@@ -357,13 +419,21 @@ function UnitRow({
   index,
   selected,
   onSelect,
-  onKeyDown
+  onKeyDown,
+  onPointerRest,
+  onPointerAt,
+  onPointerGone
 }: {
   unit: ReportUnit;
   index: number;
   selected: boolean;
   onSelect: () => void;
   onKeyDown: (event: KeyboardEvent<HTMLTableRowElement>, index: number) => void;
+  /** The pointer has arrived: start counting towards this unit's summary. */
+  onPointerRest: (unit: ReportUnit) => void;
+  /** Where the pointer is now, so the summary opens where the user stopped looking. */
+  onPointerAt: (point: Point) => void;
+  onPointerGone: () => void;
 }) {
   const skills = unit.skills.map((skill) => `${skill.tag} ${skill.level}`).join(", ");
   const items = unit.items.map((item) => `${item.amount} ${item.tag}`).join(", ");
@@ -374,6 +444,21 @@ function UnitRow({
       data-selected={selected}
       onClick={onSelect}
       onKeyDown={(event) => onKeyDown(event, index)}
+      // Pointer events rather than mouse events, for the guard: a finger has no hover to leave,
+      // so a touch would open a summary that never closed. Only a mouse can rest on something.
+      onPointerEnter={(event) => {
+        if (!byMouse(event)) {
+          return;
+        }
+        onPointerAt({ x: event.clientX, y: event.clientY });
+        onPointerRest(unit);
+      }}
+      onPointerMove={(event) => {
+        if (byMouse(event)) {
+          onPointerAt({ x: event.clientX, y: event.clientY });
+        }
+      }}
+      onPointerLeave={onPointerGone}
       // Only the selected row is in the tab order, so Tab reaches the table once rather than
       // stopping at every unit on screen; the arrow keys move from there.
       tabIndex={selected ? 0 : -1}

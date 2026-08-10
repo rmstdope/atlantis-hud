@@ -335,6 +335,46 @@ test("a foreign unit can be inspected but not ordered", async ({ page }) => {
   await expect(page.getByTestId("orders-input")).toHaveCount(0);
 });
 
+/**
+ * The table truncates Skills and Items to fit, so resting on a row spells out what was cut.
+ *
+ * It waits: a pointer crossing the table on its way to the map must not leave a trail of
+ * tooltips behind it, so the summary is only worth showing once the user has stopped.
+ */
+test("resting on a unit row summarises it", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+
+  const row = page.getByTestId(`unit-row-${OWN_UNIT}`);
+  await expect(row).toBeVisible();
+  const tip = page.getByTestId("unit-tooltip");
+
+  await row.hover();
+  // Well short of the delay: nothing yet.
+  await page.waitForTimeout(400);
+  await expect(tip).toHaveCount(0);
+
+  await expect(tip).toBeVisible();
+  await expect(tip).toContainText("Seven of Eight (18642)");
+  // Every skill and every item, not the truncated summary the row has room for.
+  await expect(tip).toContainText("manipulation MANI");
+  await expect(tip).toContainText("stealth STEA");
+  await expect(tip).toContainText("observation OBSE");
+  await expect(tip).toContainText("leader LEAD");
+
+  // It is on screen, which a tooltip placed off the edge of the window would not be.
+  const box = (await tip.boundingBox())!;
+  const view = page.viewportSize()!;
+  expect(box.x).toBeGreaterThanOrEqual(0);
+  expect(box.y).toBeGreaterThanOrEqual(0);
+  expect(box.x + box.width).toBeLessThanOrEqual(view.width);
+  expect(box.y + box.height).toBeLessThanOrEqual(view.height);
+
+  // Leaving the row takes it away at once.
+  await page.getByTestId("panel-region").hover();
+  await expect(tip).toHaveCount(0);
+});
+
 test("a hex with no units leaves the detail panel empty and orders refused", async ({ page }) => {
   await loadReport(page);
 
