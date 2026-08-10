@@ -1203,8 +1203,6 @@ mod tests {
     }
 
     /// A stated quantity needs no such caution: the order says how much, and optimism grants it.
-    /// Without this pairing the rule above would read as "TAKE silences everything".
-    /// A stated quantity needs no such caution: the order says how much, and optimism grants it.
     /// Without this pairing the rule above would read as "any TAKE silences the unit".
     #[test]
     fn taking_a_stated_amount_from_outside_the_hex_is_still_counted() {
