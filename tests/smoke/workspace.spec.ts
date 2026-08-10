@@ -648,17 +648,37 @@ test("a folded panel is still folded after a reload", async ({ page }) => {
   await expect(page.getByTestId("import-status")).toContainText("restored turn 71");
 });
 
-test("layer toggles are operable and only trade routes is still inert", async ({ page }) => {
+test("layer toggles are operable and none is inert", async ({ page }) => {
   await loadReport(page);
 
   const chips = page.getByTestId("layer-chips");
-  await expect(chips.getByRole("checkbox", { name: "Trade routes" })).not.toBeChecked();
+  // Trade routes is gone entirely: it was the last toggle with nothing behind it, and a control
+  // that does nothing is worse than no control.
+  await expect(chips.getByRole("checkbox", { name: "Trade routes" })).toHaveCount(0);
   await expect(chips.getByRole("checkbox", { name: "Staleness" })).toBeChecked();
 
-  await chips.getByRole("checkbox", { name: "Trade routes" }).check();
-  await expect(chips.getByRole("checkbox", { name: "Trade routes" })).toBeChecked();
-  // Nothing behind it yet, and nothing breaks.
+  await chips.getByRole("checkbox", { name: "Structures" }).uncheck();
+  await expect(chips.getByRole("checkbox", { name: "Structures" })).not.toBeChecked();
   await expect(page.getByTestId("map-canvas")).toBeVisible();
+});
+
+/**
+ * The region panel writes everything out. It used to preview six market or structure lines and
+ * offer the rest as "+ N more" that nothing could expand, so the only way to the full list was
+ * the raw report; the pane scrolls, and scrolling is better than not knowing. Exits use the
+ * compass shorthand MOVE orders are written in rather than the report's long names.
+ */
+test("the region panel writes every line out and abbreviates the exits", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+
+  const region = page.getByTestId("panel-region");
+  // Inholm wants nine things; truffles are the ninth, which the six-line preview cut.
+  await expect(region).toContainText("truffles");
+  await expect(region).not.toContainText("more");
+  // The sixth exit, in shorthand - and no long name anywhere in the list.
+  await expect(region).toContainText("SE — ocean (8,54)");
+  await expect(region).not.toContainText("Southeast");
 });
 
 test("the unit table filters", async ({ page }) => {

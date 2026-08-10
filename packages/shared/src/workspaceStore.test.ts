@@ -116,8 +116,9 @@ describe("panels and layers", () => {
     // Movement earned its default when #83 gave it something to draw: a selected unit's own
     // orders, not just a planner mid-gesture. Off by default hid the feature entirely.
     expect(store().layers.movement).toBe(true);
-    // A toggle with nothing behind it yet starts off, so it cannot mislead.
-    expect(store().layers.tradeRoutes).toBe(false);
+    // Trade routes is gone entirely: it was the last toggle with nothing behind it, and a
+    // control that does nothing is worse than no control.
+    expect("tradeRoutes" in store().layers).toBe(false);
   });
 
   it("folds one panel without disturbing the others", () => {

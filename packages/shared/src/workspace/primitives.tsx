@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-/** A labelled group inside a panel, with an optional count so the user knows what is hidden. */
+/** A labelled group inside a panel, with an optional total for a list longer than the view. */
 export function Section({
   title,
   count,

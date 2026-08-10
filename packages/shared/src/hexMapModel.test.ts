@@ -1,6 +1,7 @@
 import type { Coordinate, ParsedReport, ReportRegion, ReportUnit } from "@atlantis/core-client";
 import { describe, expect, it } from "vitest";
 import {
+  abbreviateDirection,
   buildHexMapModel,
   hexCorners,
   hexToPixel,
@@ -344,5 +345,28 @@ describe("a hex an ally also saw this turn", () => {
     ]).hexes[0];
 
     expect(unitsForHex(hex).map((entry) => entry.name)).toEqual(["Drone"]);
+  });
+});
+
+/**
+ * The region panel's exits list uses the compass shorthand every Atlantis player writes MOVE
+ * orders in, not the report's long names - "SE" is both shorter and the word the game speaks.
+ */
+describe("abbreviateDirection", () => {
+  it("shortens the six compass directions", () => {
+    expect(abbreviateDirection("North")).toBe("N");
+    expect(abbreviateDirection("Northeast")).toBe("NE");
+    expect(abbreviateDirection("Southeast")).toBe("SE");
+    expect(abbreviateDirection("South")).toBe("S");
+    expect(abbreviateDirection("Southwest")).toBe("SW");
+    expect(abbreviateDirection("Northwest")).toBe("NW");
+  });
+
+  it("shortens regardless of the report's casing", () => {
+    expect(abbreviateDirection("southeast")).toBe("SE");
+  });
+
+  it("passes through a direction it does not know rather than guessing", () => {
+    expect(abbreviateDirection("Portal")).toBe("Portal");
   });
 });
