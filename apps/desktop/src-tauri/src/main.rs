@@ -6,9 +6,10 @@ use atlantis_hud_core_tauri::{
     command_commit_report_import, command_create_game, command_delete_game, command_export_game,
     command_import_game, command_list_games, command_load_imported_turn, command_load_order_draft,
     command_open_game, command_parse_report, command_parse_report_full,
-    command_set_game_ruleset, command_validate_orders, GameManifestDto, ImportedTurnPreviewDto,
-    ImportedTurnRecordDto, OpenedGameDto, OrderDraftRecordDto, OrderValidationResultDto,
-    ParsedReport, ReportImportPreviewDto, ReportParseResultDto,
+    command_preview_report_import, command_save_order_draft, command_set_game_ruleset,
+    command_validate_orders, GameManifestDto, ImportedTurnPreviewDto, ImportedTurnRecordDto,
+    OpenedGameDto, OrderDraftRecordDto, OrderValidationResultDto, ParsedReport,
+    ReportImportPreviewDto, ReportParseResultDto,
 };
 #[cfg(all(
     any(target_os = "linux", target_os = "macos", target_os = "windows"),
