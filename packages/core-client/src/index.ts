@@ -558,7 +558,7 @@ export interface CoreAdapter {
   createGame(manifest: GameManifest): Promise<unknown> | unknown;
   openGame(gameId: string, openedAt: string): Promise<unknown> | unknown;
   deleteGame(gameId: string): Promise<unknown> | unknown;
-  exportGame(gameId: string): Promise<unknown> | unknown;
+  exportGame(gameId: string, exportedAt: string): Promise<unknown> | unknown;
   importGame(backupJson: string, openedAt: string): Promise<unknown> | unknown;
   parseReport(rawReport: string): Promise<unknown> | unknown;
   parseReportFull(rawReport: string): Promise<unknown> | unknown;
@@ -642,7 +642,7 @@ export interface CoreClient {
   /** Erases a game and everything it stored. There is no undo. */
   deleteGame(gameId: string): Promise<void>;
   /** Serializes one whole game, including turns, drafts and remembered map, to one JSON file. */
-  exportGame(gameId: string): Promise<string>;
+  exportGame(gameId: string, exportedAt: string): Promise<string>;
   /** Creates one game from an exported JSON file and opens it at `openedAt`. */
   importGame(backupJson: string, openedAt: string): Promise<OpenedGame>;
   parseReport(rawReport: string): Promise<ReportParseResult>;
@@ -1310,8 +1310,8 @@ export function createCoreClient(adapter: CoreAdapter): CoreClient {
       // Nothing to normalize: a deletion either happened or threw.
       await adapter.deleteGame(gameId);
     },
-    async exportGame(gameId: string) {
-      const value = await adapter.exportGame(gameId);
+    async exportGame(gameId: string, exportedAt: string) {
+      const value = await adapter.exportGame(gameId, exportedAt);
       if (typeof value !== "string") {
         throw new Error("invalid exported game payload");
       }
@@ -1470,7 +1470,7 @@ export function createWasmAdapter(bindings: WasmBindings): CoreAdapter {
     deleteGame(gameId: string) {
       return bindings.delete_game_state(gameId);
     },
-    exportGame(_gameId: string) {
+    exportGame(_gameId: string, _exportedAt: string) {
       throw new Error("game persistence is not linked into this wasm build");
     },
     importGame(_backupJson: string, _openedAt: string) {
@@ -1602,8 +1602,8 @@ export function createTauriAdapter(invoke: TauriInvoke): CoreAdapter {
     deleteGame(gameId: string) {
       return invoke<void>("delete_game", { game_id: gameId });
     },
-    exportGame(gameId: string) {
-      return invoke<string>("export_game", { game_id: gameId });
+    exportGame(gameId: string, exportedAt: string) {
+      return invoke<string>("export_game", { game_id: gameId, exported_at: exportedAt });
     },
     importGame(backupJson: string, openedAt: string) {
       return invoke<OpenedGameWireShape>("import_game", {

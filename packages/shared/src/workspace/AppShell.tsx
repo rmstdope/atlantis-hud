@@ -827,7 +827,7 @@ export function AppShell({
       setGameError(null);
       try {
         await flush();
-        const backup = await client.exportGame(gameId);
+        const backup = await client.exportGame(gameId, new Date().toISOString());
         const blob = new Blob([backup], { type: "application/json" });
         const url = URL.createObjectURL(blob);
         const anchor = document.createElement("a");

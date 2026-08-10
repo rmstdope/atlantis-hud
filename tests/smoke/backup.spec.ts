@@ -40,7 +40,7 @@ async function openOrders(page: Page) {
 
 async function gameIdentityFor(page: Page, gameName: string) {
   return page.evaluate(async (name) => {
-    const open = indexedDB.open("atlantis-hud", 4);
+    const open = indexedDB.open("atlantis-hud");
     const database = await new Promise<IDBDatabase>((resolve, reject) => {
       open.onsuccess = () => resolve(open.result);
       open.onerror = () => reject(open.error);
@@ -73,7 +73,7 @@ async function gameIdentityFor(page: Page, gameName: string) {
 async function storageCountsFor(page: Page, databasePath: string) {
   return page.evaluate(async (path) => {
     const name = `atlantis-hud-${path.replace(/^idb:\/\//u, "")}`;
-    const open = indexedDB.open(name, 2);
+    const open = indexedDB.open(name);
     const database = await new Promise<IDBDatabase>((resolve, reject) => {
       open.onsuccess = () => resolve(open.result);
       open.onerror = () => reject(open.error);

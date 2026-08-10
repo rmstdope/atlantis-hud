@@ -578,7 +578,7 @@ export function createWebCoreAdapter(
       return null;
     },
 
-    async exportGame(gameId: string) {
+    async exportGame(gameId: string, exportedAt: string) {
       const game = await store.getGame(gameId);
       if (!game) {
         throw new Error(`no game with id ${gameId}`);
@@ -595,7 +595,7 @@ export function createWebCoreAdapter(
         {
           format: GAME_BACKUP_FORMAT,
           version: CURRENT_GAME_BACKUP_VERSION,
-          exportedAt: new Date().toISOString(),
+          exportedAt,
           manifest: game.manifest,
           importedTurns: importedTurns.map((turn) => ({
             factionId: turn.factionId,

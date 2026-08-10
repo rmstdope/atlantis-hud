@@ -458,10 +458,11 @@ describe("exporting and importing games", () => {
       mergedAt: "2026-08-08T00:05:00Z"
     });
 
-    const backupJson = (await adapter.exportGame("alpha")) as string;
+    const backupJson = (await adapter.exportGame("alpha", NOW)) as string;
     expect(JSON.parse(backupJson)).toMatchObject({
       format: "atlantis-hud-game-backup",
       version: 1,
+      exportedAt: NOW,
       manifest: { metadata: { gameId: "alpha" } },
       importedTurns: [{ factionId: "17", turnNumber: 12, rawReport: REPORT }],
       orderDrafts: [{ factionId: "17", turnNumber: 12, orderText: "@work\n@study combat" }],

@@ -395,8 +395,12 @@ pub fn command_delete_game(games_root: &str, game_id: &str) -> Result<(), String
 }
 
 /// Serializes one whole game to one JSON document.
-pub fn command_export_game(games_root: &str, game_id: &str) -> Result<String, String> {
-    export_game(Path::new(games_root), game_id).map_err(|error| error.to_string())
+pub fn command_export_game(
+    games_root: &str,
+    game_id: &str,
+    exported_at: &str,
+) -> Result<String, String> {
+    export_game(Path::new(games_root), game_id, exported_at).map_err(|error| error.to_string())
 }
 
 /// Creates and opens one whole game from one exported JSON document.

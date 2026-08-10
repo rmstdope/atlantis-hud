@@ -431,7 +431,11 @@ pub fn delete_game(games_root: &Path, game_id: &str) -> Result<(), PersistenceEr
 }
 
 /// Exports one whole game to one JSON document.
-pub fn export_game(games_root: &Path, game_id: &str) -> Result<String, PersistenceError> {
+pub fn export_game(
+    games_root: &Path,
+    game_id: &str,
+    exported_at: &str,
+) -> Result<String, PersistenceError> {
     let game_file_path = game_home(games_root, game_id).join(GAME_MANIFEST_FILE_NAME);
     if !game_file_path.exists() {
         return Err(PersistenceError::GameNotFound(game_id.to_string()));
@@ -530,7 +534,7 @@ pub fn export_game(games_root: &Path, game_id: &str) -> Result<String, Persisten
     serde_json::to_string_pretty(&GameBackup {
         format: GAME_BACKUP_FORMAT.to_string(),
         version: CURRENT_GAME_BACKUP_VERSION,
-        exported_at: manifest.last_opened_at.clone(),
+        exported_at: exported_at.to_string(),
         manifest,
         imported_turns,
         order_drafts,
@@ -711,7 +715,7 @@ pub fn import_game(
                     z,
                     terrain,
                     province,
-                    format!("{terrain} ({x},{y}) in {province}"),
+                    format!("{terrain} ({x},{y}) in {province}, turn {}", sighting.last_seen_turn),
                     sighting.last_seen_turn,
                     sighting.payload_json.as_str(),
                 ],
@@ -2285,9 +2289,12 @@ mod region_sighting_tests {
         )
         .expect("sighting should save");
 
-        let mut backup =
-            serde_json::from_str::<serde_json::Value>(&export_game(dir.path(), "alpha").expect("backup should export"))
-                .expect("backup should parse");
+        let mut backup = serde_json::from_str::<serde_json::Value>(
+            &export_game(dir.path(), "alpha", "2026-08-09T19:00:00Z")
+                .expect("backup should export"),
+        )
+        .expect("backup should parse");
+        assert_eq!(backup["exportedAt"], "2026-08-09T19:00:00Z");
         backup["manifest"]["metadata"]["gameId"] = serde_json::Value::String("beta".to_string());
         let restored = import_game(
             dir.path(),
