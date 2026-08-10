@@ -1,5 +1,34 @@
 import { defineConfig, devices } from "@playwright/test";
 
+/**
+ * One server per shell, keyed by the project that talks to it. Playwright starts every entry in
+ * `webServer` no matter which `--project` is selected, so a CI job walking one shell would still
+ * build and serve the other; SMOKE_PROJECT lets that job name the one it needs. Unset - which is
+ * every local run - both come up, and `--project` keeps working unrestricted.
+ */
+const SERVERS = {
+  web: {
+    command:
+      "pnpm --filter @atlantis/web exec vite build && pnpm --filter @atlantis/web exec vite preview --host 127.0.0.1 --port 4173 --strictPort",
+    env: { ATLANTIS_PWA_DISABLE: "1" },
+    url: "http://127.0.0.1:4173",
+    reuseExistingServer: !process.env.CI,
+    timeout: 120_000
+  },
+  "desktop-shell": {
+    command:
+      "pnpm --filter @atlantis/desktop exec vite build && pnpm --filter @atlantis/desktop exec vite preview --host 127.0.0.1 --port 4174 --strictPort",
+    url: "http://127.0.0.1:4174",
+    reuseExistingServer: !process.env.CI,
+    timeout: 120_000
+  }
+};
+
+const only = process.env.SMOKE_PROJECT;
+if (only && !(only in SERVERS)) {
+  throw new Error(`SMOKE_PROJECT is "${only}", which names no server: ${Object.keys(SERVERS)}`);
+}
+
 export default defineConfig({
   testDir: "./tests/smoke",
   /**
@@ -75,21 +104,5 @@ export default defineConfig({
    * ATLANTIS_PWA_DISABLE keeps the web build's service worker out of the way, exactly as the dev
    * server did by never registering one; `tests/pwa` covers the worker against the real build.
    */
-  webServer: [
-    {
-      command:
-        "pnpm --filter @atlantis/web exec vite build && pnpm --filter @atlantis/web exec vite preview --host 127.0.0.1 --port 4173 --strictPort",
-      env: { ATLANTIS_PWA_DISABLE: "1" },
-      url: "http://127.0.0.1:4173",
-      reuseExistingServer: !process.env.CI,
-      timeout: 120_000
-    },
-    {
-      command:
-        "pnpm --filter @atlantis/desktop exec vite build && pnpm --filter @atlantis/desktop exec vite preview --host 127.0.0.1 --port 4174 --strictPort",
-      url: "http://127.0.0.1:4174",
-      reuseExistingServer: !process.env.CI,
-      timeout: 120_000
-    }
-  ]
+  webServer: only ? [SERVERS[only as keyof typeof SERVERS]] : Object.values(SERVERS)
 });
