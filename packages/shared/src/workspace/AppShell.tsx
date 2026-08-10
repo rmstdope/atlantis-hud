@@ -34,7 +34,7 @@ import {
 import { useWorkspaceStore } from "../workspaceStore";
 import { AppHeader, type ImportStatus } from "./AppHeader";
 import { GameGate } from "./GameGate";
-import { SettingsPanel } from "./SettingsPanel";
+import { SettingsDialog } from "./SettingsDialog";
 import type { AppUpdateControl } from "./appUpdate";
 import { UNSUPPORTED_UPDATES } from "./appUpdate";
 import { ForeignReportPrompt } from "./ForeignReportPrompt";
@@ -1028,12 +1028,25 @@ export function AppShell({
     return <div className="h-full bg-ground" />;
   }
 
-  // The same panel on both screens below, because settings are not part of the workspace: they are
-  // part of the application, and the application exists before any game does.
+  // The same dialog on both screens below, because settings are not part of the workspace: they
+  // are part of the application, and the application exists before any game does.
   const settingsPanel = (
-    <SettingsPanel
+    <SettingsDialog
       platformLabel={platformLabel}
       appUpdate={appUpdate}
+      game={
+        game
+          ? {
+              gameId: game.manifest.metadata.gameId,
+              gameName: game.manifest.metadata.gameName,
+              databasePath: game.databasePath,
+              rulesetId: game.manifest.metadata.rulesetId
+            }
+          : null
+      }
+      busy={busy}
+      error={gameError}
+      onChangeRuleset={() => {}}
       onDismiss={() => setSettingsOpen(false)}
     />
   );
