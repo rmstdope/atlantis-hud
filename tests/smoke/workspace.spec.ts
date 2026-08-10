@@ -767,3 +767,58 @@ test("a filter that matches nothing says so", async ({ page }) => {
 
   await expect(page.getByTestId("panel-units")).toContainText("No unit matches that filter.");
 });
+
+/**
+ * The turn's own account of itself, which the header used to count and never show.
+ *
+ * Turn 71 is one error and several hundred events, so this also exercises the case the panel was
+ * sized for: a list long enough to scroll, read once and dismissed.
+ */
+test("the header chip opens the turn's errors and events", async ({ page }) => {
+  await loadReport(page);
+
+  const chip = page.getByTestId("turn-messages-chip");
+  await expect(chip).toContainText("1 error");
+  await expect(chip).toContainText("events");
+
+  await chip.click();
+
+  // Opens on the errors, because this turn has one.
+  const panel = page.getByTestId("turn-messages");
+  await expect(panel).toBeVisible();
+  await expect(panel.getByTestId("turn-messages-tab-errors")).toHaveAttribute(
+    "aria-selected",
+    "true"
+  );
+  // The verb is set apart from the message it belongs to, rather than left buried at the front of
+  // the sentence.
+  await expect(panel).toContainText("DECLARE");
+  await expect(panel).toContainText("Can't declare towards your own faction.");
+
+  await panel.getByTestId("turn-messages-tab-events").click();
+  await expect(panel).toContainText("Claims $50.");
+});
+
+test("a unit named in a turn message is a way back to it", async ({ page }) => {
+  await loadReport(page);
+  await page.getByTestId("turn-messages-chip").click();
+  await page.getByTestId("turn-messages-tab-events").click();
+
+  await page.getByTestId(`turn-messages-unit-${OWN_UNIT}`).first().click();
+
+  // The panel has said what it had to say, and the workspace behind it is now describing the unit.
+  await expect(page.getByTestId("turn-messages")).toHaveCount(0);
+  await expect(page.getByTestId("panel-unit")).toContainText("Seven of Eight");
+  await expect(page.getByTestId("panel-region")).toContainText("Inholm");
+});
+
+test("the turn messages panel closes on Escape", async ({ page }) => {
+  await loadReport(page);
+
+  await page.getByTestId("turn-messages-chip").click();
+  await expect(page.getByTestId("turn-messages")).toBeVisible();
+
+  await page.keyboard.press("Escape");
+
+  await expect(page.getByTestId("turn-messages")).toHaveCount(0);
+});
