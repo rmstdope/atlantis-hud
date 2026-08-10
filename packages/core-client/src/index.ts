@@ -345,6 +345,13 @@ export type OrderDiagnostic = {
   message: string;
   lineStart: number;
   lineEnd: number;
+  /**
+   * Where the offending text starts within its line, counted from 0 in UTF-16 code units - which
+   * is what JavaScript string indices already are, so `line.slice(...)` below is correct as written.
+   */
+  columnStart: number;
+  /** One past the end of it, so `line.slice(columnStart, columnEnd)` is what is wrong. */
+  columnEnd: number;
   severity: OrderDiagnosticSeverity;
 };
 
@@ -507,6 +514,10 @@ type OrderDiagnosticWireShape = {
   line_start?: number;
   lineEnd?: number;
   line_end?: number;
+  columnStart?: number;
+  column_start?: number;
+  columnEnd?: number;
+  column_end?: number;
   severity?: string;
 };
 
@@ -579,7 +590,8 @@ export interface CoreAdapter {
     allowOverwrite: boolean,
     importedAt: string
   ): Promise<unknown> | unknown;
-  validateOrders(rawOrders: string): Promise<unknown> | unknown;
+  validateOrders(rawOrders: string, rulesetJson: string | null): Promise<unknown> | unknown;
+  orderCommands(): Promise<unknown> | unknown;
   planRoute(
     rulesetJson: string,
     rawReport: string,
@@ -693,7 +705,20 @@ export interface CoreClient {
     allowOverwrite: boolean,
     importedAt: string
   ): Promise<ImportedTurnPreview>;
-  validateOrders(rawOrders: string): Promise<OrderValidationResult>;
+  /**
+   * Checks one orders document for syntax errors.
+   *
+   * `rulesetJson` is the served ruleset when the shell has it. Without it the shape of every order
+   * is still checked; only item names go unexamined, and an unrecognised one is a warning anyway.
+   */
+  validateOrders(rawOrders: string, rulesetJson: string | null): Promise<OrderValidationResult>;
+  /**
+   * Every order command the core knows.
+   *
+   * Asked for rather than kept, because a copy in the shell is a copy that drifts: the one this
+   * replaced had four orders the ruleset has no such thing as and was missing END.
+   */
+  orderCommands(): Promise<string[]>;
   /**
    * Plans a route for one unit, or explains why there is none.
    *
@@ -814,7 +839,8 @@ export interface WasmBindings {
     allowOverwrite: boolean,
     importedAt: string
   ): unknown;
-  validate_orders_state(rawOrders: string): unknown;
+  validate_orders_state(rawOrders: string, rulesetJson: string | null): unknown;
+  order_commands_state(): unknown;
   plan_route_state(
     rulesetJson: string,
     rawReport: string,
@@ -1209,12 +1235,16 @@ function normalizeOrderValidationResult(value: unknown): OrderValidationResult {
       const entry = diagnostic as OrderDiagnosticWireShape;
       const lineStart = entry.lineStart ?? entry.line_start;
       const lineEnd = entry.lineEnd ?? entry.line_end;
+      const columnStart = entry.columnStart ?? entry.column_start;
+      const columnEnd = entry.columnEnd ?? entry.column_end;
 
       if (
         typeof entry.code !== "string" ||
         typeof entry.message !== "string" ||
         typeof lineStart !== "number" ||
         typeof lineEnd !== "number" ||
+        typeof columnStart !== "number" ||
+        typeof columnEnd !== "number" ||
         (entry.severity !== "warning" && entry.severity !== "error")
       ) {
         throw new Error("incomplete order validation payload");
@@ -1225,6 +1255,8 @@ function normalizeOrderValidationResult(value: unknown): OrderValidationResult {
         message: entry.message,
         lineStart,
         lineEnd,
+        columnStart,
+        columnEnd,
         severity: entry.severity
       };
     })
@@ -1384,9 +1416,16 @@ export function createCoreClient(adapter: CoreAdapter): CoreClient {
       );
       return normalizeImportedTurnPreview(value);
     },
-    async validateOrders(rawOrders: string) {
-      const value = await adapter.validateOrders(rawOrders);
+    async validateOrders(rawOrders: string, rulesetJson: string | null) {
+      const value = await adapter.validateOrders(rawOrders, rulesetJson);
       return normalizeOrderValidationResult(value);
+    },
+    async orderCommands() {
+      const value = await adapter.orderCommands();
+      if (!Array.isArray(value) || value.some((command) => typeof command !== "string")) {
+        throw new Error("invalid order vocabulary payload");
+      }
+      return value as string[];
     },
     async loadImportedTurn(databasePath: string, gameId: string, factionId: string, turnNumber: number) {
       const value = await adapter.loadImportedTurn(databasePath, gameId, factionId, turnNumber);
@@ -1549,8 +1588,11 @@ export function createWasmAdapter(bindings: WasmBindings): CoreAdapter {
         importedAt
       );
     },
-    validateOrders(rawOrders: string) {
-      return bindings.validate_orders_state(rawOrders);
+    validateOrders(rawOrders: string, rulesetJson: string | null) {
+      return bindings.validate_orders_state(rawOrders, rulesetJson);
+    },
+    orderCommands() {
+      return bindings.order_commands_state();
     },
     loadImportedTurn(databasePath: string, gameId: string, factionId: string, turnNumber: number) {
       return bindings.load_imported_turn_state(databasePath, gameId, factionId, turnNumber);
@@ -1706,10 +1748,14 @@ export function createTauriAdapter(invoke: TauriInvoke): CoreAdapter {
         imported_at: importedAt
       });
     },
-    validateOrders(rawOrders: string) {
+    validateOrders(rawOrders: string, rulesetJson: string | null) {
       return invoke<OrderValidationResultWireShape>("validate_orders", {
-        raw_orders: rawOrders
+        raw_orders: rawOrders,
+        ruleset_json: rulesetJson
       });
+    },
+    orderCommands() {
+      return invoke<string[]>("order_commands");
     },
     loadImportedTurn(databasePath: string, gameId: string, factionId: string, turnNumber: number) {
       return invoke<ImportedTurnRecordWireShape | null>("load_imported_turn", {

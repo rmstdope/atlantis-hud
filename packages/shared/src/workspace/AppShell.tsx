@@ -971,7 +971,9 @@ export function AppShell({
     let cancelled = false;
     const timer = setTimeout(() => {
       void client
-        .validateOrders(ordersDocument)
+        // The ruleset is what lets an item name be checked against the catalogue. It arrives
+        // asynchronously, so this effect re-runs when it lands and the item warnings appear then.
+        .validateOrders(ordersDocument, rulesetText)
         .then((result) => {
           if (!cancelled) {
             setValidated({ text: ordersDocument, diagnostics: result.diagnostics });
@@ -989,7 +991,7 @@ export function AppShell({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [client, ordersDocument]);
+  }, [client, ordersDocument, rulesetText]);
 
   /** The faction and turn the document in front of the player belongs to. */
   const draftKey = useMemo(() => draftKeyFor(parsed), [parsed]);

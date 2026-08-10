@@ -88,7 +88,14 @@ const SWEEP: SweepEntry[] = [
     command: "parse_report_classified",
     args: () => ({ raw_report: REPORT, ruleset_json: RULESET })
   },
-  { command: "validate_orders", args: () => ({ raw_orders: "unit 18642\n@work" }) },
+  {
+    command: "validate_orders",
+    // The ruleset is what lets an item name be checked against the catalogue, and it crosses as its
+    // own argument: a name this side does not match deserializes to `None` over there without an
+    // error, and every item would silently go unchecked.
+    args: () => ({ raw_orders: "unit 18642\n@work", ruleset_json: RULESET })
+  },
+  { command: "order_commands", args: () => ({}) },
   {
     command: "plan_route",
     args: () => ({
