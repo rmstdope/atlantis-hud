@@ -6,7 +6,7 @@
  * is a convenience and should never crash the application.
  */
 
-import type { Viewport } from "./mapViewport";
+import { MAX_STEP, MIN_STEP, type Viewport } from "./mapViewport";
 
 /** The minimal interface this module needs from any storage backend. */
 export type ViewportStorage = Pick<Storage, "getItem" | "setItem">;
@@ -54,7 +54,17 @@ export function loadSavedViewport(
       typeof (parsed as Record<string, unknown>).ty === "number" &&
       typeof (parsed as Record<string, unknown>).step === "number"
     ) {
-      return parsed as Viewport;
+      const tx = (parsed as Record<string, number>).tx;
+      const ty = (parsed as Record<string, number>).ty;
+      const step = (parsed as Record<string, number>).step;
+      if (!Number.isFinite(tx) || !Number.isFinite(ty) || !Number.isFinite(step)) {
+        return null;
+      }
+      return {
+        tx,
+        ty,
+        step: Math.min(MAX_STEP, Math.max(MIN_STEP, Math.trunc(step)))
+      };
     }
     return null;
   } catch {

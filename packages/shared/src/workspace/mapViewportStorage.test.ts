@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { loadSavedViewport, saveViewportForGame, type ViewportStorage } from "./mapViewportStorage";
-import type { Viewport } from "./mapViewport";
+import { MAX_STEP, type Viewport } from "./mapViewport";
 
 const GAME_A = "game-abc";
 const GAME_B = "game-xyz";
@@ -55,6 +55,20 @@ describe("saveViewportForGame / loadSavedViewport", () => {
     const [key] = [...storage.data.keys()];
     storage.data.set(key, "not-json{{");
     expect(loadSavedViewport(GAME_A, storage)).toBeNull();
+  });
+
+  it("returns null when stored values are not finite numbers", () => {
+    saveViewportForGame(GAME_A, { tx: 0, ty: 0, step: 0 }, storage);
+    const [key] = [...storage.data.keys()];
+    storage.data.set(key, JSON.stringify({ tx: Number.POSITIVE_INFINITY, ty: 1, step: 1 }));
+    expect(loadSavedViewport(GAME_A, storage)).toBeNull();
+  });
+
+  it("normalizes and clamps the saved step", () => {
+    saveViewportForGame(GAME_A, { tx: 0, ty: 0, step: 0 }, storage);
+    const [key] = [...storage.data.keys()];
+    storage.data.set(key, JSON.stringify({ tx: 10, ty: 20, step: 99.9 }));
+    expect(loadSavedViewport(GAME_A, storage)).toEqual({ tx: 10, ty: 20, step: MAX_STEP });
   });
 
   it("returns null when the stored object is missing fields", () => {
