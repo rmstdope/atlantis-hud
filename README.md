@@ -16,8 +16,9 @@ durable as a file, and it is worth knowing how it can go away.
 
 ### How a browser game can be lost
 
-- **Clearing your browsing history or site data deletes it.** In the dialog your browser offers,
-  Atlantis HUD's games look like any other site's data, so "clear everything" takes them too.
+- **Clearing your browser's site data deletes it.** Clearing your *history* on its own normally
+  leaves games alone — it is the "cookies and site data" option, or clearing everything, that
+  removes them. In that dialog Atlantis HUD's games look like any other site's data.
 - **Safari deletes it after seven days if you do not visit.** This is Safari's normal behaviour for
   websites, and a week between turns is perfectly ordinary in a play-by-email game. **If you use
   Safari, install the app** (Share → Add to Home Screen, or Add to Dock) — installed apps are exempt.
