@@ -638,15 +638,19 @@ export function AppShell({
           failed: false
         });
 
-        // Opening on a hex the player has units in, exactly as loading a report does.
-        const opening = buildHexMapModel(restored.parsed);
-        const openingHex = opening.hexes.find(
-          (candidate) => candidate.regionId === opening.initialSelectedRegionId
-        );
-        selectRegion(
-          opening.initialSelectedRegionId,
-          unitsForHex(openingHex ?? null)[0]?.unitId ?? null
-        );
+        // Opening on a hex the player has units in, exactly as loading a report does — unless a
+        // hex is already selected. This effect also re-runs after a ruleset change re-parse, and
+        // yanking the player to the opening hex would make the settings dialog feel like a reload.
+        if (useWorkspaceStore.getState().selectedRegionId === null) {
+          const opening = buildHexMapModel(restored.parsed);
+          const openingHex = opening.hexes.find(
+            (candidate) => candidate.regionId === opening.initialSelectedRegionId
+          );
+          selectRegion(
+            opening.initialSelectedRegionId,
+            unitsForHex(openingHex ?? null)[0]?.unitId ?? null
+          );
+        }
       })
       .catch((error: unknown) => {
         // A game whose stored turn will not come back must say so. Silence here is exactly the

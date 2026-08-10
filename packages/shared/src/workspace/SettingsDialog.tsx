@@ -1,13 +1,12 @@
 import { useEffect, useState } from "react";
 import { APP_VERSION } from "../appVersion";
-import { RULESETS } from "../rulesets";
 import { useSettingsStore } from "../settingsStore";
 import type { ThemeName } from "../settingsStore";
 import type { WorkspaceGame } from "../workspaceStore";
 import type { AppUpdateControl } from "./appUpdate";
 import { updatePresentationFor } from "./appUpdate";
 import type { SettingsTabId } from "./settingsTabs";
-import { SETTINGS_TABS, gameSettingsPresentation } from "./settingsTabs";
+import { SETTINGS_TABS, gameSettingsPresentation, rulesetOptions } from "./settingsTabs";
 
 /**
  * The settings dialog: global preferences, the open game's, and what this build is.
@@ -48,13 +47,17 @@ export function SettingsDialog({
   const [tab, setTab] = useState<SettingsTabId>("global");
 
   useEffect(() => {
+    // Captured, and stopped, because Escape must mean only "close this dialog". Other surfaces
+    // listen for Escape on the document too — the foreign-report prompt cancels a pending decision
+    // on it — and a bubble-phase listener here would let one keypress answer both.
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
+        event.stopPropagation();
         onDismiss();
       }
     };
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
+    document.addEventListener("keydown", onKeyDown, true);
+    return () => document.removeEventListener("keydown", onKeyDown, true);
   }, [onDismiss]);
 
   return (
@@ -66,6 +69,17 @@ export function SettingsDialog({
         if (event.target === event.currentTarget) {
           onDismiss();
         }
+      }}
+      // The dialog is mounted inside the header, which is the report drop target, so drags that
+      // land on the backdrop would bubble into it — turning the whole dimmed screen into a drop
+      // zone while a modal claims exclusivity. Swallowed instead: a modal means what it dims.
+      onDragOver={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+      }}
+      onDrop={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
       }}
       className="fixed inset-0 z-30 flex items-center justify-center bg-black/50"
     >
@@ -84,6 +98,10 @@ export function SettingsDialog({
             type="button"
             data-testid="settings-close"
             aria-label="close settings"
+            // Focus starts inside the dialog, not on the cog behind the backdrop, so the keyboard
+            // is where `aria-modal` says it is. A full focus trap can follow when the dialog
+            // grows controls that need one.
+            autoFocus
             onClick={onDismiss}
             className="rounded border border-edge px-1.5 py-0.5 text-ink-soft hover:border-brass hover:text-brass"
           >
@@ -222,9 +240,9 @@ function GameSettings({
           onChange={(event) => onChangeRuleset(event.target.value)}
           className="rounded border border-edge bg-panel px-2 py-1 text-ink disabled:opacity-50"
         >
-          {RULESETS.map((ruleset) => (
-            <option key={ruleset.id} value={ruleset.id}>
-              {ruleset.label}
+          {rulesetOptions(presentation.rulesetId).map((option) => (
+            <option key={option.id} value={option.id}>
+              {option.label}
             </option>
           ))}
         </select>

@@ -3,6 +3,7 @@
  * without rendering — the same split `gameSession.ts` makes for the shell.
  */
 
+import { RULESETS } from "../rulesets";
 import type { WorkspaceGame } from "../workspaceStore";
 
 export type SettingsTabId = "global" | "game" | "about";
@@ -18,6 +19,21 @@ export const SETTINGS_TABS: readonly SettingsTab[] = [
   { id: "game", label: "Per game" },
   { id: "about", label: "About" }
 ];
+
+export type RulesetOption = { id: string; label: string; shipped: boolean };
+
+/**
+ * What the ruleset select offers: every shipped ruleset, plus the game's own id when this build
+ * does not ship it (a newer build's manifest, or a hand edit). Without that entry the select
+ * would render the first shipped option and claim the game runs under a ruleset it does not.
+ */
+export function rulesetOptions(currentId: string): RulesetOption[] {
+  const options: RulesetOption[] = RULESETS.map(({ id, label }) => ({ id, label, shipped: true }));
+  if (!options.some((option) => option.id === currentId)) {
+    options.push({ id: currentId, label: `${currentId} (not shipped)`, shipped: false });
+  }
+  return options;
+}
 
 export type GameSettingsPresentation =
   | { kind: "empty" }

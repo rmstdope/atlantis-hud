@@ -468,12 +468,12 @@ function UnitRow({
       aria-rowindex={index + 2}
       style={{ height: ROW_HEIGHT }}
       className={`cursor-pointer whitespace-nowrap focus-visible:outline focus-visible:outline-1 focus-visible:outline-select ${
-        selected ? "bg-[#22354a] text-[#eaf3fb]" : unit.own ? "text-ink" : "text-ink-soft"
+        selected ? "bg-select/25 text-ink" : unit.own ? "text-ink" : "text-ink-soft"
       }`}
     >
       {/* The report's own ownership marker, so the distinction reads before the faction name does. */}
       <Td className={unit.own ? "text-ok" : "text-danger"}>{unit.own ? "*" : "−"}</Td>
-      <Td className={unit.own ? "text-select" : "text-[#b98a8a]"}>
+      <Td className={unit.own ? "text-select" : "text-unit-foreign/70"}>
         <button
           type="button"
           onClick={onSelect}

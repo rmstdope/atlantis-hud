@@ -76,6 +76,15 @@
 }
 
 /*
+ * Native chrome — scrollbars, form controls, the ruleset select's dropdown — follows this rather
+ * than the token variables, so it must be told which side the app is on. The light half lives in
+ * the light block below.
+ */
+:root {
+  color-scheme: dark;
+}
+
+/*
  * The light theme.
  *
  * Tailwind emits the `@theme` tokens on `:root` and compiles utilities to `var()` references, so
@@ -89,6 +98,8 @@
  * keep each terrain's hue identity while sitting comfortably under dark labels.
  */
 :root[data-theme="light"] {
+  color-scheme: light;
+
   --color-ground: #f2efe8;
   --color-panel: #eae6da;
   --color-panel-raised: #f7f4ec;

@@ -34,6 +34,30 @@ function extractBlock(source: string, opener: RegExp): string {
 }
 
 describe("theme palette", () => {
+  it("keeps every colour in the token system: no hex literals in components", async () => {
+    // A hard-coded colour is invisible to the light theme: it neither fails the parity test above
+    // nor follows `data-theme`, it just renders wrong in one of the two modes. All colour goes
+    // through `--color-*` tokens, so components must never name a hex value directly.
+    const { readdirSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const root = fileURLToPath(new URL(".", import.meta.url));
+    const offenders: string[] = [];
+    const visit = (dir: string) => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const path = join(dir, entry.name);
+        if (entry.isDirectory()) {
+          visit(path);
+        } else if (/\.tsx?$/.test(entry.name) && !entry.name.endsWith(".test.ts")) {
+          if (/#[0-9a-fA-F]{6}\b/.test(readFileSync(path, "utf8"))) {
+            offenders.push(entry.name);
+          }
+        }
+      }
+    };
+    visit(root);
+    expect(offenders).toEqual([]);
+  });
+
   it("gives every dark token a light counterpart", () => {
     const darkTokens = colorTokens(extractBlock(css, /@theme\b/));
     expect(darkTokens.length).toBeGreaterThan(0);
