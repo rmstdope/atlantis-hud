@@ -191,6 +191,8 @@ function GlobalSettings() {
   const setPaneTransparency = useSettingsStore((state) => state.setPaneTransparency);
   const unitListLimit = useSettingsStore((state) => state.unitListLimit);
   const setUnitListLimit = useSettingsStore((state) => state.setUnitListLimit);
+  const movementPlanner = useSettingsStore((state) => state.movementPlanner);
+  const setMovementPlanner = useSettingsStore((state) => state.setMovementPlanner);
 
   return (
     <div className="flex flex-col gap-3">
@@ -258,6 +260,23 @@ function GlobalSettings() {
           step={1}
           value={unitListLimit}
           onChange={(event) => setUnitListLimit(Number(event.target.value))}
+          className="accent-brass"
+        />
+      </label>
+
+      <label className="flex items-center justify-between gap-2 text-ink-soft">
+        <span>
+          <span className="block">Movement planner</span>
+          <span className="block text-[10px] text-ink-dim">
+            Shows the experimental Movement pane for planning MOVE routes on the map.
+          </span>
+        </span>
+        <input
+          type="checkbox"
+          data-testid="settings-movement-planner"
+          aria-label="Movement planner"
+          checked={movementPlanner}
+          onChange={(event) => setMovementPlanner(event.target.checked)}
           className="accent-brass"
         />
       </label>

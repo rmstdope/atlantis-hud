@@ -247,6 +247,35 @@ describe("settings store", () => {
     expect(store().unitListLimit).toBe(14);
   });
 
+  it("keeps the movement planner behind its flag, off by default", () => {
+    expect(store().movementPlanner).toBe(false);
+  });
+
+  it("persists the movement planner flag", async () => {
+    store().setMovementPlanner(true);
+    expect(store().movementPlanner).toBe(true);
+
+    const storage = useSettingsStore.persist.getOptions().storage;
+    const persisted = await storage?.getItem("atlantis-hud-settings");
+    if (!storage || !persisted) {
+      throw new Error("settings storage was not available");
+    }
+
+    useSettingsStore.setState({ movementPlanner: false });
+    await storage.setItem("atlantis-hud-settings", persisted);
+    await useSettingsStore.persist.rehydrate();
+
+    expect(store().movementPlanner).toBe(true);
+  });
+
+  it("resets the movement planner flag to off", () => {
+    store().setMovementPlanner(true);
+
+    resetSettingsStore();
+
+    expect(store().movementPlanner).toBe(false);
+  });
+
   it("resets the unit list limit to its default", () => {
     store().setUnitListLimit(16);
 

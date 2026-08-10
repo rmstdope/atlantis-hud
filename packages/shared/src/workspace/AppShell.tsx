@@ -234,6 +234,7 @@ export function AppShell({
   const setLevel = useWorkspaceStore((state) => state.setLevel);
   const layers = useWorkspaceStore((state) => state.layers);
   const showTextures = useSettingsStore((state) => state.biomeTextures);
+  const movementPlanner = useSettingsStore((state) => state.movementPlanner);
   // Which panels are folded is a layout question as well as a panel one: a folded panel hands the
   // space it gives up to the panel beside it, and only the shell knows what is beside what.
   const collapsed = useWorkspaceStore((state) => state.collapsed);
@@ -242,6 +243,17 @@ export function AppShell({
   const planTo = useWorkspaceStore((state) => state.planTo);
   const clearPlan = useWorkspaceStore((state) => state.clearPlan);
   const openGameInStore = useWorkspaceStore((state) => state.openGame);
+
+  // Turning the flag off mid-gesture must take the gesture with it. An armed planner would go on
+  // swallowing map clicks with no pane to say why, and a planned route would go on shadowing the
+  // selected unit's own orders on the movement layer.
+  useEffect(() => {
+    if (!movementPlanner) {
+      clearPlan();
+      setRoute(null);
+    }
+  }, [movementPlanner, clearPlan]);
+
   const closeGameInStore = useWorkspaceStore((state) => state.closeGame);
   const updateGameRulesetInStore = useWorkspaceStore((state) => state.updateGameRuleset);
 
@@ -1357,20 +1369,23 @@ export function AppShell({
               <div className={unitSlotClass(collapsed)}>
                 <UnitPanel unit={unit} hex={hex} />
               </div>
-              <div className="flex-none">
-                <PlannerPanel
-                  unit={unit}
-                  armed={planner.armed}
-                  busy={planning}
-                  answer={route}
-                  onArm={armPlanner}
-                  onClear={() => {
-                    clearPlan();
-                    setRoute(null);
-                  }}
-                  onApply={applyRoute}
-                />
-              </div>
+              {/* Behind its feature flag, off by default: the pane is still finding its shape. */}
+              {movementPlanner ? (
+                <div className="flex-none">
+                  <PlannerPanel
+                    unit={unit}
+                    armed={planner.armed}
+                    busy={planning}
+                    answer={route}
+                    onArm={armPlanner}
+                    onClear={() => {
+                      clearPlan();
+                      setRoute(null);
+                    }}
+                    onApply={applyRoute}
+                  />
+                </div>
+              ) : null}
               <div className={ordersSlotClass(collapsed)}>
                 <OrdersPanel
                   unit={unit}

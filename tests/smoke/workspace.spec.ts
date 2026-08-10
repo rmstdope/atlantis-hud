@@ -535,6 +535,13 @@ test("panels fold away and come back", async ({ page }) => {
  */
 const STRIP_HEIGHT = 40;
 
+/** Turns the movement planner's feature flag on through the settings dialog, as a player would. */
+async function enableMovementPlanner(page: Page) {
+  await page.getByTestId("settings-indicator").click();
+  await page.getByTestId("settings-movement-planner").check();
+  await page.keyboard.press("Escape");
+}
+
 /** Folds a panel by its own toggle, which is the only expanded control in its header. */
 async function foldPanel(page: Page, panel: string) {
   const section = page.getByTestId(`panel-${panel}`);
@@ -587,6 +594,7 @@ test("the orders editor takes the space a folded unit panel leaves", async ({ pa
 
 test("the map under a folded panel can be clicked", async ({ page }) => {
   await loadReport(page);
+  await enableMovementPlanner(page);
   await selectHex(page, "1:7,53");
 
   // The whole right-hand column, so what is freed is a rectangle rather than a sliver: with all
@@ -660,6 +668,25 @@ test("layer toggles are operable and none is inert", async ({ page }) => {
   await chips.getByRole("checkbox", { name: "Structures" }).uncheck();
   await expect(chips.getByRole("checkbox", { name: "Structures" })).not.toBeChecked();
   await expect(page.getByTestId("map-canvas")).toBeVisible();
+});
+
+/**
+ * The movement planner is behind a feature flag, and the flag starts off: the pane is the one
+ * piece of the workspace still finding its shape, and a player who has not asked for it should
+ * not have to scroll past it. The flag is a preference, so turning it on holds across a reload.
+ */
+test("the movement pane stays hidden until its flag is turned on", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+  await expect(page.getByTestId("panel-unit")).toBeVisible();
+  await expect(page.getByTestId("panel-planner")).toHaveCount(0);
+
+  await enableMovementPlanner(page);
+  await expect(page.getByTestId("panel-planner")).toBeVisible();
+
+  await page.reload();
+  await expect(page.getByTestId("import-status")).toContainText("restored turn 71");
+  await expect(page.getByTestId("panel-planner")).toBeVisible();
 });
 
 /**
@@ -811,6 +838,7 @@ test("a loaded turn is remembered rather than only displayed", async ({ page }) 
 
 test("planning a move shows its cost and what stands in the way", async ({ page }) => {
   await loadReport(page);
+  await enableMovementPlanner(page);
   await selectHex(page, "1:7,53");
   await selectUnit(page, OWN_UNIT);
 
@@ -828,6 +856,7 @@ test("planning a move shows its cost and what stands in the way", async ({ page 
 
 test("an illegal move is refused with the reason", async ({ page }) => {
   await loadReport(page);
+  await enableMovementPlanner(page);
   await selectHex(page, "1:7,53");
   await selectUnit(page, OWN_UNIT);
 
@@ -842,6 +871,7 @@ test("an illegal move is refused with the reason", async ({ page }) => {
 
 test("a planned route can be written into the unit's orders", async ({ page }) => {
   await loadReport(page);
+  await enableMovementPlanner(page);
   await selectHex(page, "1:7,53");
   await selectUnit(page, OWN_UNIT);
 
@@ -855,6 +885,7 @@ test("a planned route can be written into the unit's orders", async ({ page }) =
 
 test("only your own units can be planned for", async ({ page }) => {
   await loadReport(page);
+  await enableMovementPlanner(page);
   await selectHex(page, "1:7,53");
   await selectUnit(page, FOREIGN_UNIT);
 
@@ -879,6 +910,7 @@ test("only your own units can be planned for", async ({ page }) => {
  */
 test("the map still answers while a route is being planned", async ({ page }) => {
   await loadReport(page);
+  await enableMovementPlanner(page);
   await selectHex(page, "1:7,53");
   await selectUnit(page, OWN_UNIT);
 
@@ -935,6 +967,7 @@ test("the map still answers while a route is being planned", async ({ page }) =>
  */
 test("the movement layer controls the route overlay and nothing else", async ({ page }) => {
   await loadReport(page);
+  await enableMovementPlanner(page);
   await selectHex(page, "1:7,53");
   await selectUnit(page, OWN_UNIT);
 
@@ -962,6 +995,7 @@ test("the movement layer controls the route overlay and nothing else", async ({ 
  */
 test("a written move order is drawn solid for next turn and dotted beyond", async ({ page }) => {
   await loadReport(page);
+  await enableMovementPlanner(page);
   await selectHex(page, "1:7,53");
   await selectUnit(page, OWN_UNIT);
 

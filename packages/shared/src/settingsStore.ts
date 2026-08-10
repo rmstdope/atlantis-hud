@@ -37,16 +37,23 @@ export type SettingsState = {
    * the cap hides.
    */
   unitListLimit: number;
+  /**
+   * Whether the Movement pane shows at all. A feature flag rather than a preference: the planner
+   * is the one piece of the workspace still finding its shape, so it starts off and stays off
+   * until asked for.
+   */
+  movementPlanner: boolean;
   /** Applies instantly: the settings dialog has no OK button to wait for. */
   setTheme: (theme: ThemeName) => void;
   setBiomeTextures: (enabled: boolean) => void;
   setPaneTransparency: (percent: number) => void;
   setUnitListLimit: (count: number) => void;
+  setMovementPlanner: (enabled: boolean) => void;
 };
 
 type Persisted = Pick<
   SettingsState,
-  "theme" | "biomeTextures" | "paneTransparency" | "unitListLimit"
+  "theme" | "biomeTextures" | "paneTransparency" | "unitListLimit" | "movementPlanner"
 >;
 
 /**
@@ -143,6 +150,7 @@ export const useSettingsStore = create<SettingsState>()(
       biomeTextures: true,
       paneTransparency: DEFAULT_PANE_TRANSPARENCY,
       unitListLimit: DEFAULT_UNIT_LIST_LIMIT,
+      movementPlanner: false,
 
       setTheme: (theme) => {
         applyTheme(theme);
@@ -161,6 +169,10 @@ export const useSettingsStore = create<SettingsState>()(
 
       setUnitListLimit: (count) => {
         set({ unitListLimit: clampUnitListLimit(count) });
+      },
+
+      setMovementPlanner: (movementPlanner) => {
+        set({ movementPlanner });
       }
     }),
     {
@@ -170,7 +182,8 @@ export const useSettingsStore = create<SettingsState>()(
         theme: state.theme,
         biomeTextures: state.biomeTextures,
         paneTransparency: state.paneTransparency,
-        unitListLimit: state.unitListLimit
+        unitListLimit: state.unitListLimit,
+        movementPlanner: state.movementPlanner
       })
     }
   )
@@ -205,7 +218,8 @@ export function resetSettingsStore() {
     theme: "dark",
     biomeTextures: true,
     paneTransparency: DEFAULT_PANE_TRANSPARENCY,
-    unitListLimit: DEFAULT_UNIT_LIST_LIMIT
+    unitListLimit: DEFAULT_UNIT_LIST_LIMIT,
+    movementPlanner: false
   });
   applyTheme("dark");
   applyPaneTransparency(DEFAULT_PANE_TRANSPARENCY);
