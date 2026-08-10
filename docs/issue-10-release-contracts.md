@@ -85,7 +85,25 @@ Tauri reads as "sign", and then fails importing a certificate that is not there.
 | --- | --- | --- |
 | Every push and pull request | `ci.yml` | Nothing. Gates only, now including a production build. |
 | `workflow_dispatch` on `main` | `deploy.yml` | The web application at `https://atlantis-hud.kurelid.se` |
-| A `v*` tag | `release.yml` | A GitHub Release with an Apple Silicon `.dmg` attached |
+| A `v*` tag | `release.yml` | A GitHub Release with an Apple Silicon `.dmg`, **and then** the web application |
+
+### Tagging publishes both (issue #46)
+
+`release.yml` has a second job, `web`, which calls `deploy.yml` as a reusable workflow. Calling it
+rather than repeating its steps is the point: the tagged publish is the *same* publish as the manual
+one — same guards, same PWA suite against the same bytes, same check that the live site changed — so
+there is no second copy to drift.
+
+`needs: macos`, so a release is all or nothing. If the bundle does not build, the site is not
+republished and the tag can be deleted and redone with nothing having escaped. The cost is real and
+worth naming: a Rust compile error, or a flaky macOS runner, holds back a web fix that was otherwise
+ready. Running `Deploy web` by hand is the release valve when that happens, and it is why the manual
+trigger stays.
+
+The `main`-only guard had to grow a second case. A tag is not a branch, so on a tag the check is
+that its commit is an **ancestor of `main`** — a tag pushed from a feature branch would otherwise
+put unreviewed work on the live site while looking exactly like a release. That comparison needs
+history, which is why the checkout is `fetch-depth: 0`.
 
 ### Configuration this needs
 
@@ -96,14 +114,14 @@ Tauri reads as "sign", and then fails importing a certificate that is not there.
 | `ONECOM_FTP_PASSWORD` | secret | that user's password |
 | `ONECOM_FTP_SERVER_DIR` | variable | remote directory the domain serves, e.g. `/webroots/36700328/` |
 | `ONECOM_SFTP_PORT` | variable | optional; defaults to 22 |
+| `APPLE_*` (six) | secrets | Absent. Signing stays off until they exist. |
 
 The `FTP` in those three names is a fossil of the original FTPS design. They were already configured
 when the protocol changed and renaming them would have meant re-entering credentials to no effect,
 so they kept their names. They hold SFTP credentials.
-| `APPLE_*` (six) | secrets | Absent. Signing stays off until they exist. |
 
-`deploy.yml` checks all four before it builds, rather than discovering a missing one at the upload
-step ten minutes later.
+`deploy.yml` checks the four one.com values before it builds, rather than discovering a missing one
+at the upload step ten minutes later.
 
 The site must be served over **HTTPS**. A service worker will not register otherwise, and without
 one there is no installability and no offline.

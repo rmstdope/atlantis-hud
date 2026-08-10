@@ -11,6 +11,11 @@ name: Deploy web
 
 on:
   workflow_dispatch:
+  # Called by release.yml once a tag's macOS bundle is built, so that tagging publishes both the
+  # download and the site. Reusing this workflow rather than repeating its steps over there is what
+  # keeps "how the web is published" in one file - and means the tagged deploy is the same deploy,
+  # guards and post-publish check included, rather than a second version of it that drifts.
+  workflow_call:
 
 # Serialised rather than cancelled. An interrupted upload leaves the site half-replaced, which is
 # worse than waiting for the run in front to finish.
@@ -22,16 +27,39 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      # A failing step rather than a job-level `if`. A skipped job reports as success, and a deploy
-      # that quietly did not happen is the one failure mode this guard exists to prevent.
-      - name: Refuse to publish anything but main
-        if: github.ref != 'refs/heads/main'
-        run: |
-          echo "::error::Refusing to deploy ${{ github.ref }}. This workflow publishes to the live site, so it only runs on main."
-          exit 1
-
+      # Full history, because the guard below has to decide whether a tag is on main, and a shallow
+      # clone cannot answer that.
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # A failing step rather than a job-level `if`. A skipped job reports as success, and a deploy
+      # that quietly did not happen is the one failure mode this guard exists to prevent.
+      #
+      # Two ways in, so two things to check. By hand it must be main. From a tag - which is how
+      # release.yml calls this - the tag itself is not a branch, so what is checked instead is that
+      # its commit is an ancestor of main. A tag pushed from a feature branch would otherwise put
+      # unreviewed work on the live site while looking exactly like a release.
+      - name: Refuse to publish anything but main, or a tag on main
+        run: |
+          case "$GITHUB_REF" in
+            refs/heads/main)
+              echo "Publishing from main."
+              ;;
+            refs/tags/*)
+              if git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+                echo "Publishing $GITHUB_REF_NAME, whose commit is on main."
+              else
+                echo "::error::Refusing to deploy $GITHUB_REF_NAME. Its commit is not on main, so this tag would publish work that never landed there."
+                exit 1
+              fi
+              ;;
+            *)
+              echo "::error::Refusing to deploy $GITHUB_REF. This workflow publishes to the live site, so it runs only on main or on a tag pointing at main."
+              exit 1
+              ;;
+          esac
 
       # Checked before ten minutes of building rather than after. A missing secret is otherwise
       # discovered by the upload step, at the end, every time.
