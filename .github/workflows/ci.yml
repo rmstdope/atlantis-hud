@@ -109,10 +109,12 @@ jobs:
       - name: Rust clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
 
-  # One job per Playwright project, because the suite is deliberately single-worker. Two of its
-  # tests measure how long the main thread is blocked, and anything running beside them turns that
-  # into a measurement of contention - so parallelism is bought here, where each runner walks one
-  # shell on its own, rather than inside Playwright.
+  # One job per Playwright project and shard, because the suite is deliberately single-worker. Two
+  # of its tests measure how long the main thread is blocked, and anything running beside them
+  # turns that into a measurement of contention - so parallelism is bought here, where each runner
+  # walks its slice of one shell on its own, rather than inside Playwright. Two shards, because
+  # each job pays a fixed ~45 seconds of setup before the first test runs: at two the split still
+  # roughly halves the test time; at three the setup starts to dominate what it saves.
   #
   # These need no Rust at all: the wasm module arrives as an artifact.
   smoke:
@@ -122,6 +124,7 @@ jobs:
       fail-fast: false
       matrix:
         project: [web, desktop-shell]
+        shard: [1, 2]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -163,13 +166,13 @@ jobs:
         run: pnpm exec playwright install-deps chromium
 
       - name: Run smoke tests
-        run: pnpm exec playwright test --project=${{ matrix.project }}
+        run: pnpm exec playwright test --project=${{ matrix.project }} --shard=${{ matrix.shard }}/2
 
       - name: Upload the report of a failed run
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-report-${{ matrix.project }}
+          name: playwright-report-${{ matrix.project }}-${{ matrix.shard }}
           path: test-results
           retention-days: 7
 
