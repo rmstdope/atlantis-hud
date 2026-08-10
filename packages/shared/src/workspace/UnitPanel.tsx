@@ -1,5 +1,6 @@
-import type { ReportUnit } from "@atlantis/core-client";
+import type { ReportUnit, UnitPreview } from "@atlantis/core-client";
 import type { HexNode } from "../hexMapModel";
+import { originalTooltip } from "../unitPreview";
 import { describeMen } from "../unitComposition";
 import { CollapsiblePanel } from "./CollapsiblePanel";
 import { Absent, Field, Row, Section, StaleBanner } from "./primitives";
@@ -11,8 +12,20 @@ const PREVIEW = 8;
  *
  * Foreign units are shown in full: inspecting a neighbour is legitimate and useful. It is only
  * *ordering* one that is refused, which the orders panel handles.
+ *
+ * With an orders preview for the unit, the name and flags show the coming month - the fields the
+ * table has no room for - each styled as predicted and carrying what the report said.
  */
-export function UnitPanel({ unit, hex }: { unit: ReportUnit | null; hex: HexNode | null }) {
+export function UnitPanel({
+  unit,
+  hex,
+  preview = null
+}: {
+  unit: ReportUnit | null;
+  hex: HexNode | null;
+  /** The unit as the orders leave it, when they change it. */
+  preview?: UnitPreview | null;
+}) {
   const stale = hex?.knowledge === "stale";
   const asOf = stale && hex.lastSeenTurn !== null ? `as of turn ${hex.lastSeenTurn}` : null;
 
@@ -26,11 +39,17 @@ export function UnitPanel({ unit, hex }: { unit: ReportUnit | null; hex: HexNode
 
   const items = [...unit.items].sort((left, right) => right.amount - left.amount);
 
+  // What the orders make of the unit, where they touch what this panel shows.
+  const nameChange = preview?.changes.find((change) => change.field === "name");
+  const flagsChange = preview?.changes.find((change) => change.field === "flags");
+  const predictedName = nameChange ? preview?.unit.name : null;
+  const predictedFlags = flagsChange ? preview?.unit.flags : null;
+
   return (
     <CollapsiblePanel
       panel="unit"
       title="Unit"
-      hint={`— ${unit.name} (${unit.unitId})`}
+      hint={`— ${predictedName ?? unit.name} (${unit.unitId})`}
       asOf={asOf}
     >
       {stale && hex.lastSeenTurn !== null ? (
@@ -60,7 +79,15 @@ export function UnitPanel({ unit, hex }: { unit: ReportUnit | null; hex: HexNode
       </dl>
 
       <Section title="Flags">
-        {unit.flags.length === 0 ? (
+        {predictedFlags ? (
+          <p
+            className="m-0 italic text-brass"
+            data-predicted="true"
+            title={originalTooltip(flagsChange)}
+          >
+            {predictedFlags.length === 0 ? "none" : predictedFlags.join(" · ")}
+          </p>
+        ) : unit.flags.length === 0 ? (
           <Absent>none</Absent>
         ) : (
           <p className="m-0 text-ink-soft">{unit.flags.join(" · ")}</p>

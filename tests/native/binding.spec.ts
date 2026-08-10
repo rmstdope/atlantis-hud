@@ -117,6 +117,15 @@ const SWEEP: SweepEntry[] = [
     })
   },
   {
+    command: "preview_orders",
+    args: () => ({
+      ruleset_json: RULESET,
+      raw_report: REPORT,
+      remembered_json: "[]",
+      orders_document: "unit 18642\nGUARD 1"
+    })
+  },
+  {
     command: "preview_report_import",
     args: () => ({
       database_path: context.databasePath,

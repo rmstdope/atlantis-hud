@@ -46,6 +46,15 @@ function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
       path: null,
       echoed: { rulesetJson, rawReport, rememberedJson, unitId, orders }
     }),
+    preview_orders_state: (
+      rulesetJson: string,
+      rawReport: string,
+      rememberedJson: string,
+      ordersDocument: string
+    ) => ({
+      regions: [],
+      echoed: { rulesetJson, rawReport, rememberedJson, ordersDocument }
+    }),
     prepare_report_import_state: (raw: string, confirmedFactionId: string) => {
       const hasTurn = raw.includes("TURN: 12");
       const factionMatches = raw.includes(`FACTION: ${confirmedFactionId}`);
