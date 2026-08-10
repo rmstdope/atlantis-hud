@@ -139,6 +139,45 @@ export function accumulateWheel(carry: number, pixels: number): { steps: number;
   return { steps, carry: total - steps * PIXELS_PER_STEP };
 }
 
+/** The rectangle of game coordinates the faction knows anything about. */
+export type Bounds = { minX: number; maxX: number; minY: number; maxY: number };
+
+export function hexBounds(coordinates: Coordinate[]): Bounds | null {
+  if (coordinates.length === 0) {
+    return null;
+  }
+  return {
+    minX: Math.min(...coordinates.map((one) => one.x)),
+    maxX: Math.max(...coordinates.map((one) => one.x)),
+    minY: Math.min(...coordinates.map((one) => one.y)),
+    maxY: Math.max(...coordinates.map((one) => one.y))
+  };
+}
+
+/**
+ * Whether the keyboard cursor is allowed to stand on a coordinate.
+ *
+ * Deliberately not "is there a hex here". Two islands of known ground with unvisited hexes between
+ * them have to be reachable from one another, so the cursor crosses the gap; only selecting cares
+ * whether anything is actually there. The margin stops a held arrow key from carrying the cursor
+ * off into ground nobody will ever have a reason to look at.
+ */
+export function isWithinReach(
+  coordinate: Coordinate,
+  bounds: Bounds | null,
+  margin: number
+): boolean {
+  if (!bounds) {
+    return false;
+  }
+  return (
+    coordinate.x >= bounds.minX - margin &&
+    coordinate.x <= bounds.maxX + margin &&
+    coordinate.y >= bounds.minY - margin &&
+    coordinate.y <= bounds.maxY + margin
+  );
+}
+
 export function fitTo(
   coordinates: Coordinate[],
   width: number,

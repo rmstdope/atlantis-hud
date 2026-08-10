@@ -5,7 +5,9 @@ import {
   centreOn,
   COLUMN_PITCH,
   fitTo,
+  hexBounds,
   isOffScreen,
+  isWithinReach,
   MAX_STEP,
   MIN_STEP,
   neighbour,
@@ -314,5 +316,36 @@ describe("ruler ticks", () => {
     const ticks = rulerTicks("x", view, 800, 1);
 
     expect(ticks[0].index).toBeLessThan(0);
+  });
+});
+
+describe("how far the cursor may roam", () => {
+  const known = [at(7, 53), at(8, 52), at(20, 40)];
+
+  it("measures the ground the faction knows", () => {
+    const bounds = hexBounds(known);
+    expect(bounds).toEqual({ minX: 7, maxX: 20, minY: 40, maxY: 53 });
+  });
+
+  it("has no bounds for a world with nothing in it", () => {
+    expect(hexBounds([])).toBeNull();
+  });
+
+  it("lets the cursor cross unexplored ground between what is known", () => {
+    const bounds = hexBounds(known);
+    // The whole point: two islands of known hexes with unvisited ground between them have to be
+    // reachable from one another, or half the map is unnavigable by keyboard.
+    expect(isWithinReach(at(14, 46), bounds, 6)).toBe(true);
+  });
+
+  it("lets the cursor step past the edge of what is known, but not wander off", () => {
+    const bounds = hexBounds(known);
+    expect(isWithinReach(at(24, 40), bounds, 6)).toBe(true);
+    expect(isWithinReach(at(27, 40), bounds, 6)).toBe(false);
+    expect(isWithinReach(at(7, 60), bounds, 6)).toBe(false);
+  });
+
+  it("keeps the cursor still when nothing at all is known", () => {
+    expect(isWithinReach(at(0, 0), null, 6)).toBe(false);
   });
 });

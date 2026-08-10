@@ -5,8 +5,10 @@ import {
   accumulateWheel,
   centreOn,
   fitTo,
+  hexBounds,
   HEX_RADIUS,
   isOffScreen,
+  isWithinReach,
   neighbour,
   rulerTicks,
   scaleOf,
@@ -39,6 +41,22 @@ const COLUMN_LABEL_ROOM = 44;
 const ROW_LABEL_ROOM = 16;
 
 const ARROWS: ArrowKey[] = ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"];
+
+/** How far past the edge of what the faction knows the cursor may wander. */
+const CURSOR_MARGIN = 6;
+
+/** Identifies a position on the lattice, whether or not a hex is known to be there. */
+function cursorKeyOf(coordinate: Coordinate): string {
+  return `${coordinate.x},${coordinate.y}`;
+}
+
+function hexAt(hexes: HexNode[], coordinate: Coordinate): HexNode | null {
+  return (
+    hexes.find(
+      (hex) => hex.coordinate.x === coordinate.x && hex.coordinate.y === coordinate.y
+    ) ?? null
+  );
+}
 
 const RISK_CLASSES: Record<string, string> = {
   low: "fill-risk-low stroke-risk-low",
@@ -109,7 +127,9 @@ export function MapCanvas({
 
   const [view, setView] = useState<Viewport>(ORIGIN);
   const [size, setSize] = useState({ width: 0, height: 0 });
-  const [focusedRegionId, setFocusedRegionId] = useState<string | null>(null);
+  // Where the keyboard is, as a coordinate rather than a hex: the cursor is allowed to stand on
+  // ground nobody has visited, which is what makes crossing between known islands possible.
+  const [cursor, setCursor] = useState<Coordinate | null>(null);
   const [mapFocused, setMapFocused] = useState(false);
 
   const selectRef = useRef(onSelectRegion);
@@ -140,8 +160,10 @@ export function MapCanvas({
   useLayoutEffect(() => {
     applyView();
     if (pendingFocusRef.current) {
+      // Keyed on the lattice position rather than a region id, because the cursor can be standing
+      // on ground that has no region.
       const target = rootRef.current?.querySelector<SVGPolygonElement>(
-        `[data-region-id="${CSS.escape(pendingFocusRef.current)}"]`
+        `[data-cursor="${pendingFocusRef.current}"]`
       );
       pendingFocusRef.current = null;
       target?.focus();
@@ -293,10 +315,15 @@ export function MapCanvas({
     }
   }, [onLevel, size, commit]);
 
-  const onHexKeyDown = (event: React.KeyboardEvent<SVGPolygonElement>, hex: HexNode) => {
+  const onMapKeyDown = (event: React.KeyboardEvent<SVGPolygonElement>, from: Coordinate) => {
     if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
-      selectRef.current(hex.regionId);
+      // Only a hex can be selected. Standing on unexplored ground is allowed and does nothing,
+      // which is the honest answer: there is nothing there to inspect.
+      const here = hexAt(onLevel, from);
+      if (here) {
+        selectRef.current(here.regionId);
+      }
       return;
     }
     if (event.key === "+" || event.key === "=" || event.key === "-") {
@@ -324,19 +351,17 @@ export function MapCanvas({
       return;
     }
 
-    const wanted = neighbour(hex.coordinate, event.key as ArrowKey);
-    // Only hexes the faction knows about exist as elements; unexplored ground is one rectangle and
-    // has nothing to focus.
-    const target = onLevel.find(
-      (node) => node.coordinate.x === wanted.x && node.coordinate.y === wanted.y
-    );
-    if (!target) {
+    const wanted = neighbour(from, event.key as ArrowKey);
+    // The cursor crosses unexplored ground rather than stopping at the edge of what is known:
+    // otherwise two islands of visited hexes with unvisited ground between them cannot be reached
+    // from one another, and half the map is unnavigable by keyboard.
+    if (!isWithinReach(wanted, reach, CURSOR_MARGIN)) {
       return;
     }
-    setFocusedRegionId(target.regionId);
-    pendingFocusRef.current = target.regionId;
-    if (isOffScreen(target.coordinate, viewRef.current, size.width, size.height)) {
-      commit(centreOn(target.coordinate, viewRef.current, size.width, size.height));
+    setCursor(wanted);
+    pendingFocusRef.current = cursorKeyOf(wanted);
+    if (isOffScreen(wanted, viewRef.current, size.width, size.height)) {
+      commit(centreOn(wanted, viewRef.current, size.width, size.height));
     }
   };
 
@@ -370,12 +395,14 @@ export function MapCanvas({
   );
   const routeLine = useMemo(() => routePoints(route, level), [route, level]);
   const routeOnLevel = useMemo(() => route.filter((step) => step.z === level), [route, level]);
+  const reach = useMemo(() => hexBounds(onLevel.map((hex) => hex.coordinate)), [onLevel]);
 
   const selected = onLevel.find((hex) => hex.regionId === selectedRegionId) ?? null;
-  const focusTarget = focusedRegionId ?? selectedRegionId ?? onLevel[0]?.regionId ?? null;
-  const focused = mapFocused
-    ? (onLevel.find((hex) => hex.regionId === focusedRegionId) ?? null)
-    : null;
+
+  // Where the cursor rests before anyone has moved it, and how far it may go from there.
+  const resting = cursor ?? selected?.coordinate ?? onLevel[0]?.coordinate ?? null;
+  const restingKey = resting ? cursorKeyOf(resting) : null;
+  const overGround = resting ? hexAt(onLevel, resting) === null : false;
 
   return (
     <div ref={hostRef} className="absolute inset-0" data-testid="map-canvas">
@@ -484,10 +511,10 @@ export function MapCanvas({
             the arrow keys read as dead. Dashed so the two rings are never confused, and only while
             the map actually holds focus.
           */}
-          {focused && (
+          {mapFocused && resting && (
             <polygon
               points={HEX_POINTS}
-              transform={translateOf(focused)}
+              transform={translateAt(resting)}
               fill="none"
               className="stroke-brass-bright"
               strokeWidth={2}
@@ -517,6 +544,7 @@ export function MapCanvas({
               <polygon
                 key={hex.regionId}
                 data-region-id={hex.regionId}
+                data-cursor={cursorKeyOf(hex.coordinate)}
                 points={HEX_POINTS}
                 transform={translateOf(hex)}
                 fill="none"
@@ -525,11 +553,11 @@ export function MapCanvas({
                 strokeWidth={2}
                 vectorEffect="non-scaling-stroke"
                 role="button"
-                tabIndex={hex.regionId === focusTarget ? 0 : -1}
+                tabIndex={cursorKeyOf(hex.coordinate) === restingKey ? 0 : -1}
                 aria-label={`hex ${hex.regionId}`}
                 aria-pressed={hex.regionId === selectedRegionId}
-                onFocus={() => setFocusedRegionId(hex.regionId)}
-                onKeyDown={(event) => onHexKeyDown(event, hex)}
+                onFocus={() => setCursor(hex.coordinate)}
+                onKeyDown={(event) => onMapKeyDown(event, hex.coordinate)}
                 onClick={(event) => {
                   if (draggedRef.current) {
                     return;
@@ -544,6 +572,29 @@ export function MapCanvas({
                 <title>{hex.label}</title>
               </polygon>
             ))}
+
+            {/*
+              The cursor standing on ground nobody has visited.
+
+              Unexplored hexes are a single patterned rectangle, so there is no element out there to
+              focus. This is the one that carries the cursor across the gap between two islands of
+              known ground. Deliberately not a button: there is nothing here to select, and giving
+              it that role would make it answer to searches for a hex it is not.
+            */}
+            {resting && overGround && (
+              <polygon
+                data-cursor={restingKey}
+                data-testid="map-cursor"
+                points={HEX_POINTS}
+                transform={translateAt(resting)}
+                fill="none"
+                pointerEvents="none"
+                className="outline-none"
+                tabIndex={0}
+                aria-label={`unexplored ${level}:${resting.x},${resting.y}`}
+                onKeyDown={(event) => onMapKeyDown(event, resting)}
+              />
+            )}
           </g>
         </g>
 
@@ -600,9 +651,13 @@ export function MapCanvas({
   );
 }
 
-function translateOf(hex: HexNode): string {
-  const world = worldOf(hex.coordinate);
+function translateAt(coordinate: Coordinate): string {
+  const world = worldOf(coordinate);
   return `translate(${world.x.toFixed(2)},${world.y.toFixed(2)})`;
+}
+
+function translateOf(hex: HexNode): string {
+  return translateAt(hex.coordinate);
 }
 
 /** One knowledge bucket. Split out so a selection change does not reconcile the terrain. */

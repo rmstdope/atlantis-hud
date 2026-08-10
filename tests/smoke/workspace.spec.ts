@@ -911,21 +911,25 @@ test("arrow keys walk from hex to neighbouring hex", async ({ page }) => {
   await expect(page.locator("polygon:focus")).toHaveAttribute("aria-label", "hex 1:7,53");
 });
 
-test("arrow keys stop at the edge of what the faction knows", async ({ page }) => {
+test("the cursor comes to rest rather than wandering off the map", async ({ page }) => {
   await loadReport(page);
   await selectHex(page, "1:7,53");
 
-  // Unexplored ground is one patterned rectangle, not thousands of elements, so there is nothing
-  // out there to focus. Walking far enough in one direction must run out of known hexes and stop
-  // on the last one, rather than leaving focus on nothing at all.
+  // The cursor is free to leave the hexes the report describes — that is what makes crossing to
+  // another island of known ground possible — but not free to keep going forever, or a held arrow
+  // key strands the player in a void with no landmark to steer back by.
   await page.getByRole("button", { name: "hex 1:7,53" }).press("ArrowUp");
-  for (let step = 0; step < 25; step += 1) {
+  for (let step = 0; step < 40; step += 1) {
     await page.locator("polygon:focus").press("ArrowUp");
   }
+  const settled = await page.locator("polygon:focus").getAttribute("aria-label");
 
-  // Asserted without naming a hex: which ones this faction knows is the report's business, and a
-  // test that hard-codes the frontier breaks whenever the fixture changes.
-  await expect(page.locator("polygon:focus")).toHaveAttribute("aria-label", /^hex 1:/);
+  // Still on something: focus never falls through to the body.
+  expect(settled).toBeTruthy();
+
+  // And pressing on does not move it any further.
+  await page.locator("polygon:focus").press("ArrowUp");
+  await expect(page.locator("polygon:focus")).toHaveAttribute("aria-label", settled ?? "");
 });
 
 test("the map is a single tab stop rather than one per hex", async ({ page }) => {
@@ -1034,4 +1038,52 @@ test("the focused hex is visibly marked, so arrowing about is not invisible", as
 
   await page.locator("polygon:focus").press("ArrowUp");
   await expect(ring).not.toHaveAttribute("transform", before ?? "");
+});
+
+test("the keyboard cursor crosses unexplored ground between known hexes", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+
+  // Unexplored hexes are one patterned rectangle, so there is no element out there to focus. The
+  // cursor still has to cross them: two islands of visited ground with unvisited hexes between
+  // them are otherwise unreachable from one another, and half the map cannot be walked at all.
+  const seen: string[] = [];
+  for (let step = 0; step < 6; step += 1) {
+    await page.locator("polygon:focus").press("ArrowRight");
+    seen.push((await page.locator("polygon:focus").getAttribute("aria-label")) ?? "");
+  }
+
+  // It leaves the hexes the report describes and keeps going.
+  expect(seen.some((label) => label.startsWith("unexplored "))).toBe(true);
+  // And it is still somewhere: focus never falls off the map onto the body.
+  expect(seen[seen.length - 1]).not.toBe("");
+});
+
+test("standing on unexplored ground selects nothing, and the way back still works", async ({
+  page
+}) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+  await expect(page.getByRole("button", { name: "hex 1:7,53" })).toHaveAttribute(
+    "aria-pressed",
+    "true"
+  );
+
+  // North of Inholm twice is ground this turn says nothing about.
+  await page.locator("polygon:focus").press("ArrowUp");
+  await page.locator("polygon:focus").press("ArrowUp");
+  const away = await page.locator("polygon:focus").getAttribute("aria-label");
+  expect(away).toMatch(/^unexplored /);
+
+  // Enter on empty ground is a no-op rather than an error: there is nothing there to inspect.
+  await page.locator("polygon:focus").press("Enter");
+  await expect(page.getByRole("button", { name: "hex 1:7,53" })).toHaveAttribute(
+    "aria-pressed",
+    "true"
+  );
+
+  // Down twice returns to where it started, because each arrow undoes its opposite.
+  await page.locator("polygon:focus").press("ArrowDown");
+  await page.locator("polygon:focus").press("ArrowDown");
+  await expect(page.locator("polygon:focus")).toHaveAttribute("aria-label", "hex 1:7,53");
 });
