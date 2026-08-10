@@ -6,6 +6,7 @@
   "scripts": {
     "lint": "pnpm -r run lint",
     "release": "tsx scripts/release.ts",
+    "generate:biomes": "tsx scripts/genBiomes.ts",
     "typecheck": "pnpm -r run typecheck && cargo check --workspace",
     "test": "pnpm -r run test && cargo test --workspace",
     "test:smoke": "playwright test",
@@ -22,6 +23,7 @@
     "@typescript-eslint/parser": "^8.40.0",
     "eslint": "^9.34.0",
     "eslint-plugin-react-hooks": "^5.2.0",
+    "sharp": "^0.35.3",
     "tsx": "^4.23.11",
     "typescript": "^5.9.2",
     "vitest": "^3.2.4"

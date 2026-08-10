@@ -27,6 +27,8 @@ import {
   hexPaint,
   hexPointsAttribute,
   routePoints,
+  terrainTexturePatternId,
+  terrainTextureUrl,
   unitPipRadius
 } from "./mapHexView";
 
@@ -42,6 +44,20 @@ const COLUMN_LABEL_ROOM = 44;
 const ROW_LABEL_ROOM = 16;
 
 const ARROWS: ArrowKey[] = ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"];
+const TEXTURED_TERRAIN_NAMES = [
+  "ocean",
+  "plain",
+  "forest",
+  "mountain",
+  "swamp",
+  "jungle",
+  "desert",
+  "tundra",
+  "volcano",
+  "cavern",
+  "underforest",
+  "wasteland"
+] as const;
 
 /** How far past the edge of what the faction knows the cursor may wander. */
 const CURSOR_MARGIN = 6;
@@ -73,6 +89,7 @@ type MapCanvasProps = {
   selectedRegionId: string | null;
   onSelectRegion: (regionId: string) => void;
   showStaleness: boolean;
+  showTextures: boolean;
   showUnits: boolean;
   showStructures: boolean;
   /** Hexes a planned route passes through, in order. Empty when nothing is planned. */
@@ -108,6 +125,7 @@ export function MapCanvas({
   selectedRegionId,
   onSelectRegion,
   showStaleness,
+  showTextures,
   showUnits,
   showStructures,
   route = [],
@@ -476,6 +494,27 @@ export function MapCanvas({
           >
             <line x1="0" y1="0" x2="0" y2="5" className="stroke-ink-soft" strokeOpacity="0.22" />
           </pattern>
+          {showTextures
+            ? TEXTURED_TERRAIN_NAMES.map((terrain) => (
+                <pattern
+                  key={terrain}
+                  id={terrainTexturePatternId(terrain) ?? undefined}
+                  patternUnits="objectBoundingBox"
+                  patternContentUnits="objectBoundingBox"
+                  width="1"
+                  height="1"
+                >
+                  <image
+                    href={terrainTextureUrl(terrain) ?? undefined}
+                    x="0"
+                    y="0"
+                    width="1"
+                    height="1"
+                    preserveAspectRatio="xMidYMid slice"
+                  />
+                </pattern>
+              ))
+            : null}
         </defs>
 
         {/* The unexplored world, and the only thing that does not scale with how much is known. */}
@@ -491,9 +530,13 @@ export function MapCanvas({
 
         {/* Transform is written by hand, never as a prop. See applyView. */}
         <g ref={worldRef}>
-          <HexLayer hexes={layers.named} showStaleness={showStaleness} />
-          <HexLayer hexes={layers.stale} showStaleness={showStaleness} />
-          <HexLayer hexes={layers.current} showStaleness={showStaleness} />
+          <HexLayer hexes={layers.named} showStaleness={showStaleness} showTextures={showTextures} />
+          <HexLayer hexes={layers.stale} showStaleness={showStaleness} showTextures={showTextures} />
+          <HexLayer
+            hexes={layers.current}
+            showStaleness={showStaleness}
+            showTextures={showTextures}
+          />
 
           {routeLine && (
             <g pointerEvents="none">
@@ -702,7 +745,15 @@ function translateOf(hex: HexNode): string {
 }
 
 /** One knowledge bucket. Split out so a selection change does not reconcile the terrain. */
-function HexLayer({ hexes, showStaleness }: { hexes: HexNode[]; showStaleness: boolean }) {
+function HexLayer({
+  hexes,
+  showStaleness,
+  showTextures
+}: {
+  hexes: HexNode[];
+  showStaleness: boolean;
+  showTextures: boolean;
+}) {
   return (
     <g pointerEvents="none">
       {hexes.map((hex) => {
@@ -714,6 +765,11 @@ function HexLayer({ hexes, showStaleness }: { hexes: HexNode[]; showStaleness: b
               points={HEX_POINTS}
               transform={transform}
               className={`${paint.terrainClass} stroke-map-edge`}
+              style={
+                showTextures && paint.texturePatternId
+                  ? { fill: `url(#${paint.texturePatternId})` }
+                  : undefined
+              }
               strokeWidth={1}
               vectorEffect="non-scaling-stroke"
             />

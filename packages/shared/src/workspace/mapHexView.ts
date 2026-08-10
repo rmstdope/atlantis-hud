@@ -34,12 +34,27 @@ const TERRAIN_CLASSES: Record<string, string> = {
   desert: "fill-terrain-desert",
   jungle: "fill-terrain-jungle",
   tundra: "fill-terrain-tundra",
+  volcano: "fill-terrain-volcano",
   cavern: "fill-terrain-cavern",
   underforest: "fill-terrain-underforest",
   wasteland: "fill-terrain-wasteland"
 };
 
 const TERRAIN_FALLBACK = "fill-terrain-other";
+const TEXTURED_TERRAINS = new Set([
+  "ocean",
+  "plain",
+  "forest",
+  "mountain",
+  "swamp",
+  "jungle",
+  "desert",
+  "tundra",
+  "volcano",
+  "cavern",
+  "underforest",
+  "wasteland"
+]);
 
 /** A hex named by a neighbour's exits is terrain and province only, and is drawn as that much. */
 const NAMED_FOG_OPACITY = 0.55;
@@ -56,6 +71,8 @@ const CROWD_PIP_RADIUS = 4;
 
 export type HexPaint = {
   terrainClass: string;
+  textureUrl: string | null;
+  texturePatternId: string | null;
   /** How much unexplored ground shows through, which is how age is drawn. */
   fogOpacity: number;
   /** Whether the hex is also hatched, marking the data as held but possibly out of date. */
@@ -64,6 +81,16 @@ export type HexPaint = {
 
 export function terrainFillClass(terrain: string): string {
   return TERRAIN_CLASSES[terrain.toLowerCase()] ?? TERRAIN_FALLBACK;
+}
+
+export function terrainTextureUrl(terrain: string): string | null {
+  const name = terrain.toLowerCase();
+  return TEXTURED_TERRAINS.has(name) ? `/biomes/${name}_512.png` : null;
+}
+
+export function terrainTexturePatternId(terrain: string): string | null {
+  const name = terrain.toLowerCase();
+  return TEXTURED_TERRAINS.has(name) ? `biome-texture-${name}` : null;
 }
 
 /**
@@ -80,16 +107,30 @@ export function staleFadeAmount(ageInTurns: number | null): number {
 
 export function hexPaint(hex: HexNode, showStaleness: boolean): HexPaint {
   const terrainClass = terrainFillClass(hex.terrain);
+  const textureUrl = terrainTextureUrl(hex.terrain);
+  const texturePatternId = terrainTexturePatternId(hex.terrain);
 
   if (hex.knowledge === "named") {
     // Staleness is about age, and a named hex has none: it was never visited at all, so the layer
     // toggle has nothing to say about it.
-    return { terrainClass, fogOpacity: NAMED_FOG_OPACITY, hatched: false };
+    return {
+      terrainClass,
+      textureUrl,
+      texturePatternId,
+      fogOpacity: NAMED_FOG_OPACITY,
+      hatched: false
+    };
   }
   if (hex.knowledge === "current" || !showStaleness) {
-    return { terrainClass, fogOpacity: 0, hatched: false };
+    return { terrainClass, textureUrl, texturePatternId, fogOpacity: 0, hatched: false };
   }
-  return { terrainClass, fogOpacity: staleFadeAmount(hex.ageInTurns), hatched: true };
+  return {
+    terrainClass,
+    textureUrl,
+    texturePatternId,
+    fogOpacity: staleFadeAmount(hex.ageInTurns),
+    hatched: true
+  };
 }
 
 export type Point = { x: number; y: number };

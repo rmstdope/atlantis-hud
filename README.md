@@ -82,6 +82,13 @@ requires.
 pnpm install
 ```
 
+Biome textures are committed under `config/public/biomes/`. Regenerate them after changing the
+generator with:
+
+```bash
+pnpm run generate:biomes
+```
+
 ## Run the app
 
 ### Web app

@@ -10,6 +10,8 @@ import {
   hexPointsAttribute,
   routePoints,
   staleFadeAmount,
+  terrainTexturePatternId,
+  terrainTextureUrl,
   terrainFillClass,
   unitPipRadius,
   type Point
@@ -43,6 +45,7 @@ describe("terrain colour", () => {
     expect(terrainFillClass("ocean")).toBe("fill-terrain-ocean");
     expect(terrainFillClass("wasteland")).toBe("fill-terrain-wasteland");
     expect(terrainFillClass("underforest")).toBe("fill-terrain-underforest");
+    expect(terrainFillClass("volcano")).toBe("fill-terrain-volcano");
   });
 
   it("reads the terrain whatever case the report wrote it in", () => {
@@ -53,6 +56,26 @@ describe("terrain colour", () => {
     // The parser takes whatever word the ruleset uses, so this list can never be exhaustive.
     expect(terrainFillClass("nexus")).toBe("fill-terrain-other");
     expect(terrainFillClass("")).toBe("fill-terrain-other");
+  });
+});
+
+describe("terrain texture", () => {
+  it("maps every generated biome to a public texture asset", () => {
+    expect(terrainTextureUrl("ocean")).toBe("/biomes/ocean_512.png");
+    expect(terrainTextureUrl("cavern")).toBe("/biomes/cavern_512.png");
+    expect(terrainTextureUrl("underforest")).toBe("/biomes/underforest_512.png");
+    expect(terrainTextureUrl("wasteland")).toBe("/biomes/wasteland_512.png");
+    expect(terrainTexturePatternId("wasteland")).toBe("biome-texture-wasteland");
+  });
+
+  it("reads texture names case-insensitively", () => {
+    expect(terrainTextureUrl("Mountain")).toBe("/biomes/mountain_512.png");
+  });
+
+  it("keeps fallback and unexplored states solid", () => {
+    expect(terrainTextureUrl("nexus")).toBeNull();
+    expect(terrainTextureUrl("unknown")).toBeNull();
+    expect(terrainTexturePatternId("unknown")).toBeNull();
   });
 });
 
