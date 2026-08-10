@@ -212,6 +212,14 @@ export function createWebCoreAdapter(
       if (prepared.turnNumber === null || prepared.mergedFactionId === null) {
         throw new Error("merged report does not name its turn or its faction");
       }
+      // The desktop refuses this in the same words. It cannot be decided in the core, which is
+      // never told whose map is being merged into - only that a report is being folded into a turn
+      // - so the one place that knows both is here. Refused before anything is written: a faction's
+      // own report is loaded, not merged, and merging it would file its regions by a route that
+      // deliberately stores no turn.
+      if (prepared.mergedFactionId === viewerFactionId) {
+        throw new Error("a faction's own report is loaded rather than merged");
+      }
 
       await store.putRegionSightings(
         prepared.regionSightings.map((sighting) => ({

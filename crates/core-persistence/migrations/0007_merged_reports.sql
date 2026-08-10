@@ -10,6 +10,10 @@
 --
 -- Keyed by the turn as well as the two factions: merging is only ever allowed between reports of
 -- one turn, so which turn a merge belongs to is part of what happened, not an incidental detail.
+--
+-- No secondary index. This is a rowid table, so the composite primary key already builds one, and
+-- its leading columns are exactly the three the only query filters on. An index on that same prefix
+-- would be a second copy of the first, paid for on every write.
 CREATE TABLE IF NOT EXISTS merged_reports (
     game_id TEXT NOT NULL,
     faction_id TEXT NOT NULL,
@@ -19,6 +23,3 @@ CREATE TABLE IF NOT EXISTS merged_reports (
     merged_at TEXT NOT NULL,
     PRIMARY KEY (game_id, faction_id, turn_number, merged_faction_id)
 );
-
-CREATE INDEX IF NOT EXISTS merged_reports_turn_idx
-    ON merged_reports (game_id, faction_id, turn_number);

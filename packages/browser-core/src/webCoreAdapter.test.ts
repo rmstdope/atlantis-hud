@@ -687,6 +687,26 @@ describe("merging an allied report", () => {
     ).rejects.toThrow("a report from turn 2 cannot be merged into turn 71");
   });
 
+  /**
+   * The desktop's `command_merge_report` refuses this in the same words, and the two commands have
+   * to stay equivalent. The workspace never asks for it - `decideReportLoad` only offers a merge
+   * when the factions differ - but the adapter is a contract, not only the thing that shell calls,
+   * and a faction's own report merged rather than loaded would write its regions by a route that
+   * stores no turn at all.
+   */
+  it("refuses a faction's own report, as the desktop does", async () => {
+    const store = await withViewersMap();
+    const adapter = createWebCoreAdapter(fakeWasm(), store);
+
+    await expect(
+      adapter.mergeReport("/db", "p", "95", 71, "MERGE: 95 71 1:1,1", MERGED_AT)
+    ).rejects.toThrow("a faction's own report is loaded rather than merged");
+
+    // And refuses it before writing anything, rather than half way through.
+    await expect(store.getMergedReports("/db", "p", "95", 71)).resolves.toEqual([]);
+    await expect(store.getRegionSightings("/db", "p", "95")).resolves.toHaveLength(1);
+  });
+
   it("has nothing merged into a turn nothing was merged into", async () => {
     const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
 
