@@ -1337,6 +1337,44 @@ test("a drag that crosses a pane does not select its text", async ({ page }) => 
   expect(selected).toBe("");
 });
 
+/**
+ * The other direction of the same gesture: a selection that STARTS in a pane may sweep the whole
+ * pane, but must stop at its edge - dragging on past it used to mark every pane and the map too,
+ * because nothing told the browser the panes are islands.
+ */
+test("a selection dragged out of a pane stays inside it", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+  await expect(page.getByTestId("panel-region")).toContainText("Inholm");
+
+  const pane = await page.getByTestId("panel-region").boundingBox();
+  const point = await clearHexPoint(page);
+
+  // Anchor in the pane's text, then drag well past its edge onto open map.
+  await page.mouse.move(pane!.x + 12, pane!.y + 40);
+  await page.mouse.down();
+  await page.mouse.move(point!.x, point!.y, { steps: 12 });
+  await page.mouse.up();
+
+  const verdict = await page.evaluate(() => {
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
+      return { selected: false, contained: true };
+    }
+    const paneNode = document.querySelector('[data-testid="panel-region"]');
+    return {
+      selected: selection.toString().length > 0,
+      contained:
+        paneNode !== null &&
+        paneNode.contains(selection.anchorNode) &&
+        paneNode.contains(selection.focusNode)
+    };
+  });
+  // Marking the whole pane is fine; marking anything beyond it is the bug.
+  expect(verdict.selected).toBe(true);
+  expect(verdict.contained).toBe(true);
+});
+
 /** The control for the test above: killing selection during a pan must not kill it in the panes. */
 test("text in a pane can still be selected by dragging inside it", async ({ page }) => {
   await loadReport(page);

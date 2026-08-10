@@ -1,5 +1,6 @@
-import type { ReactNode } from "react";
+import type { PointerEvent, ReactNode } from "react";
 import { useWorkspaceStore, type PanelName } from "../workspaceStore";
+import { guardSelection } from "./selectionGuard";
 
 type CollapsiblePanelProps = {
   panel: PanelName;
@@ -31,10 +32,28 @@ export function CollapsiblePanel({
   const collapsed = useWorkspaceStore((state) => state.collapsed[panel]);
   const togglePanel = useWorkspaceStore((state) => state.togglePanel);
 
+  // A selection that starts in this pane may sweep the whole pane but must stop at its edge:
+  // dragging on past it used to mark every pane and the map too. The guard makes this pane the
+  // one selectable island until the pointer comes up, wherever it comes up.
+  const confineSelection = (event: PointerEvent<HTMLElement>) => {
+    if (event.button !== 0) {
+      return;
+    }
+    const release = guardSelection(event.currentTarget);
+    const done = () => {
+      window.removeEventListener("pointerup", done);
+      window.removeEventListener("pointercancel", done);
+      release();
+    };
+    window.addEventListener("pointerup", done);
+    window.addEventListener("pointercancel", done);
+  };
+
   return (
     <section
       data-testid={`panel-${panel}`}
       data-collapsed={collapsed}
+      onPointerDown={confineSelection}
       // `pointer-events-auto` sits here rather than on the slot around it: the shell's overlay is
       // pointer-events-none, so the panel takes clicks and everything the panel is not - the gaps
       // between panels, and the space a folded one gives up - stays live map. `LayerChips` does

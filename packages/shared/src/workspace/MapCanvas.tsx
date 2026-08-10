@@ -21,6 +21,7 @@ import {
   type Viewport
 } from "./mapViewport";
 import { loadSavedViewport, saveViewportForGame } from "./mapViewportStorage";
+import { guardSelection } from "./selectionGuard";
 import {
   fogPatternTile,
   hexLayers,
@@ -336,11 +337,8 @@ export function MapCanvas({
     // the engine the desktop shell runs in - anchors a native text selection on the SVG, and a
     // drag whose pointer crossed a pane left the whole window reading as selected until the next
     // click. Selection is off for the document exactly while the pointer is down; text in the
-    // panes is selectable again the moment the hand leaves the map. Both spellings, because older
-    // WKWebViews only honour the prefixed one.
-    const bodyStyle = document.body.style;
-    bodyStyle.userSelect = "none";
-    bodyStyle.webkitUserSelect = "none";
+    // panes is selectable again the moment the hand leaves the map.
+    const releaseSelection = guardSelection();
 
     const move = (moved: PointerEvent) => {
       const dx = moved.clientX - start.x;
@@ -356,8 +354,7 @@ export function MapCanvas({
       // `pointercancel` as well as `pointerup`, because a gesture the browser takes over (a touch
       // becoming a scroll, for instance) would otherwise leave selection off everywhere for good.
       window.removeEventListener("pointercancel", up);
-      bodyStyle.userSelect = "";
-      bodyStyle.webkitUserSelect = "";
+      releaseSelection();
       if (draggedRef.current) {
         commit(viewRef.current);
         setCursor(null);
