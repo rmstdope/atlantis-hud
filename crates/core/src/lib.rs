@@ -49,13 +49,17 @@ pub struct OrderDiagnostic {
     pub message: String,
     pub line_start: usize,
     pub line_end: usize,
-    /// Byte offset of the offending text within its line, counted from 0.
+    /// Where the offending text starts within its line, counted from 0 in **UTF-16 code units**.
     ///
     /// The parser knows which *token* is wrong, not merely which line, and throwing that away would
     /// have to be recovered later: the editor this feeds is to gain inline underlines in #6. A
     /// diagnostic about a whole line spans the whole line.
+    ///
+    /// UTF-16 rather than bytes because this is a wire type: it crosses into JavaScript, which
+    /// indexes strings by UTF-16 code unit, and a consumer slicing with byte offsets would quote the
+    /// wrong characters on any line carrying an accent. See [`orders::lexer::Token`].
     pub column_start: usize,
-    /// Byte offset one past the offending text, so `line[column_start..column_end]` is what is wrong.
+    /// One past the end of it, on the same counting, so the consumer can slice `[start..end]`.
     pub column_end: usize,
     pub severity: OrderDiagnosticSeverity,
 }

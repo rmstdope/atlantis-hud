@@ -345,9 +345,12 @@ export type OrderDiagnostic = {
   message: string;
   lineStart: number;
   lineEnd: number;
-  /** Byte offset of the offending text within its line, counted from 0. */
+  /**
+   * Where the offending text starts within its line, counted from 0 in UTF-16 code units - which
+   * is what JavaScript string indices already are, so `line.slice(...)` below is correct as written.
+   */
   columnStart: number;
-  /** Byte offset one past it, so `line.slice(columnStart, columnEnd)` is what is wrong. */
+  /** One past the end of it, so `line.slice(columnStart, columnEnd)` is what is wrong. */
   columnEnd: number;
   severity: OrderDiagnosticSeverity;
 };

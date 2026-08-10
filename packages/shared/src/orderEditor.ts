@@ -27,6 +27,9 @@ export function suggestOrderCommands(prefix: string, commands: readonly string[]
  * the line rather than about anything in it, and repeating it would only take up room. Also `null`
  * when the span falls outside `text`, which happens ordinarily rather than exceptionally -
  * validation is debounced, so the diagnostics on screen are sometimes a keystroke behind.
+ *
+ * The columns are UTF-16 code units, which is what `slice` wants, so a line carrying an accent is
+ * quoted correctly. The core counts them that way deliberately for this reason.
  */
 export function offendingText(text: string, diagnostic: OrderDiagnostic): string | null {
   const line = text.split("\n")[diagnostic.lineStart - 1];

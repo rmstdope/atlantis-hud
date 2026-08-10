@@ -265,6 +265,23 @@ describe("offendingText", () => {
     expect(offendingText(DOCUMENT, diagnostic)).toBe("swords");
   });
 
+  // The core counts columns in UTF-16 code units precisely so this works: a byte-counted span
+  // would be (12, 13) here and quote nothing at all.
+  it("quotes the right word on a line carrying an accent", () => {
+    const accented = ["unit 18642", "STUDY Mörk x"].join("\n");
+    const diagnostic: OrderDiagnostic = {
+      code: "bad-argument",
+      message: 'expected a number, found "x"',
+      lineStart: 2,
+      lineEnd: 2,
+      columnStart: 11,
+      columnEnd: 12,
+      severity: "error"
+    };
+
+    expect(offendingText(accented, diagnostic)).toBe("x");
+  });
+
   it("has nothing to quote for a problem about a whole line", () => {
     // An unclosed block spans its whole line; quoting the line back adds nothing to the message.
     const wholeLine: OrderDiagnostic = {

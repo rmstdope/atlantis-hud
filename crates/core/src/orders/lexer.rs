@@ -29,8 +29,14 @@ pub enum TokenKind {
 
 /// One token, and where on the line it was written.
 ///
-/// The columns are byte offsets into the *original* line, indentation and the `@` included, so a
-/// diagnostic points at what the player typed rather than at some normalised copy of it.
+/// The columns index the *original* line, indentation and the `@` included, so a diagnostic points
+/// at what the player typed rather than at some normalised copy of it.
+///
+/// They are counted in **UTF-16 code units**, not bytes, which is the one detail here worth knowing.
+/// Rust would rather count bytes, but nothing in Rust consumes these: they exist so a browser can
+/// slice the offending token out of a line and, in #6, underline it. JavaScript indexes strings by
+/// UTF-16 code unit, so handing it byte offsets works perfectly until a unit is named `Mörk` and
+/// then quietly points one character short.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Token {
     pub kind: TokenKind,
@@ -47,8 +53,18 @@ impl Token {
     }
 }
 
-/// A half-open byte range within a line.
+/// A half-open range within a line, counted in UTF-16 code units as [`Token`] explains.
 pub type Span = (usize, usize);
+
+/// How many UTF-16 code units of `line` come before this byte offset.
+///
+/// Scanning the prefix each time is quadratic in principle and irrelevant in practice: an order is
+/// one short line with a handful of tokens on it, and the alternative threads a running count
+/// through every branch of the scanner to save nothing measurable.
+#[must_use]
+pub fn utf16_column(line: &str, byte_offset: usize) -> usize {
+    line[..byte_offset].encode_utf16().count()
+}
 
 /// One line, split.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -95,12 +111,12 @@ pub fn lex_line(line: &str) -> LexedLine {
         match bytes[at] {
             b';' => {
                 lexed.comment = Some((at, end));
-                return lexed;
+                return in_utf16_columns(lexed, line);
             }
             b'"' => {
                 let Some(closing) = find_byte(bytes, at + 1, b'"') else {
                     lexed.unterminated_quote = Some((at, end));
-                    return lexed;
+                    return in_utf16_columns(lexed, line);
                 };
                 lexed.tokens.push(Token {
                     kind: TokenKind::Quoted,
@@ -125,13 +141,31 @@ pub fn lex_line(line: &str) -> LexedLine {
                 });
                 if comment_starts {
                     lexed.comment = Some((word_end, end));
-                    return lexed;
+                    return in_utf16_columns(lexed, line);
                 }
                 at = word_end;
             }
         }
     }
 
+    in_utf16_columns(lexed, line)
+}
+
+/// Restates every span of a freshly lexed line in UTF-16 code units.
+///
+/// Done in one pass at the end rather than at each `push`, so the scanner above stays about scanning
+/// and there is a single place where the counting convention lives.
+fn in_utf16_columns(mut lexed: LexedLine, line: &str) -> LexedLine {
+    for token in &mut lexed.tokens {
+        token.column_start = utf16_column(line, token.column_start);
+        token.column_end = utf16_column(line, token.column_end);
+    }
+    for span in [&mut lexed.comment, &mut lexed.unterminated_quote]
+        .into_iter()
+        .flatten()
+    {
+        *span = (utf16_column(line, span.0), utf16_column(line, span.1));
+    }
     lexed
 }
 
@@ -201,8 +235,41 @@ mod tests {
         );
     }
 
+    /// Columns are counted the way the only consumer counts.
+    ///
+    /// These spans exist to be sliced out of a JavaScript string - the panel quotes the offending
+    /// token, and #6's editor will underline it. JavaScript indexes strings by UTF-16 code unit, so
+    /// a byte offset silently points at the wrong character the moment a line carries anything
+    /// outside ASCII, and unit names may carry anything at all.
     #[test]
-    fn columns_are_byte_offsets_into_the_line_as_written() {
+    fn columns_are_counted_in_utf16_code_units_not_bytes() {
+        let line = "STUDY Mörk x";
+        let lexed = lex_line(line);
+        let last = lexed.tokens.last().expect("three tokens");
+
+        assert_eq!(last.text, "x");
+        // "ö" is two bytes but one UTF-16 code unit, so the byte offset would be 12 and wrong.
+        assert_eq!((last.column_start, last.column_end), (11, 12));
+
+        // What the panel does with it, spelled out: this is the slice JavaScript would take.
+        let utf16: Vec<u16> = line.encode_utf16().collect();
+        assert_eq!(
+            String::from_utf16(&utf16[last.column_start..last.column_end]).expect("valid"),
+            "x"
+        );
+    }
+
+    #[test]
+    fn a_span_covering_a_non_ascii_token_covers_the_whole_of_it() {
+        let lexed = lex_line("STUDY Mörk");
+        let skill = &lexed.tokens[1];
+
+        assert_eq!(skill.text, "Mörk");
+        assert_eq!((skill.column_start, skill.column_end), (6, 10));
+    }
+
+    #[test]
+    fn columns_are_offsets_into_the_line_as_written() {
         let lexed = lex_line("  @give 0 all spea");
         let columns: Vec<(usize, usize)> = lexed
             .tokens

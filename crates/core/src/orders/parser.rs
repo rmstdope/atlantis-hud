@@ -7,7 +7,7 @@
 //! see.
 
 use super::grammar::{find_order, match_order, Mismatch};
-use super::lexer::{lex_line, Token, TokenKind};
+use super::lexer::{lex_line, utf16_column, Token, TokenKind};
 use crate::movement::rules::Ruleset;
 use crate::{OrderDiagnostic, OrderDiagnosticSeverity, OrderValidationResult};
 
@@ -235,7 +235,7 @@ impl Document {
             self.error(
                 number,
                 command.column_start,
-                line.len(),
+                utf16_column(line, line.len()),
                 "missing-arguments",
                 format!("{name} needs {}", mismatch.expected),
             );
@@ -291,7 +291,7 @@ impl Document {
             self.error(
                 number,
                 0,
-                last.len(),
+                utf16_column(last, last.len()),
                 "missing-document-end",
                 "the document opens with #atlantis and never ends with #end".to_string(),
             );
@@ -429,6 +429,27 @@ mod tests {
             (diagnostic.column_start, diagnostic.column_end),
             (10, 16),
             "the span covers the offending token"
+        );
+    }
+
+    /// The span has to be usable by the thing that uses it, which is a browser slicing a string.
+    ///
+    /// A unit may be named anything, so a line with an accent on it is ordinary rather than exotic.
+    /// Counted in bytes this span would be (12, 13), and the panel would quote the empty string.
+    #[test]
+    fn a_span_on_a_line_with_an_accent_still_covers_the_offending_word() {
+        let line = "STUDY Mörk x";
+        let diagnostic = only(line);
+
+        assert_eq!(diagnostic.code, "bad-argument");
+        assert_eq!((diagnostic.column_start, diagnostic.column_end), (11, 12));
+
+        // Sliced the way JavaScript slices, which is what these numbers are for.
+        let utf16: Vec<u16> = line.encode_utf16().collect();
+        assert_eq!(
+            String::from_utf16(&utf16[diagnostic.column_start..diagnostic.column_end])
+                .expect("valid"),
+            "x"
         );
     }
 
