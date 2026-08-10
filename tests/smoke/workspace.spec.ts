@@ -1696,3 +1696,53 @@ test("the unexplored lattice keeps a constant hairline at every zoom", async ({ 
   expect(zoomedIn).toBeCloseTo(1, 3);
   expect(zoomedOut).toBeCloseTo(1, 3);
 });
+
+/**
+ * Issue #81: the units table and the unit panel show the coming month as the player types orders.
+ *
+ * A renamed unit's row carries the new name styled as predicted, with the report's name in the
+ * cell's hover text; GUARD raises the badge; a MOVE dims the row and says where the unit is bound.
+ * All of it follows the editor on the same debounce as validation, so typing is all it takes.
+ */
+test("orders change the units table to show the coming month", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+  await selectUnit(page, OWN_UNIT);
+
+  const row = page.getByTestId(`unit-row-${OWN_UNIT}`);
+  await expect(row).toContainText("Seven of Eight");
+
+  await page.getByTestId("orders-input").fill('NAME UNIT "Nine of Eight"\nGUARD 1');
+
+  await expect(row).toContainText("Nine of Eight");
+  await expect(row.locator('[data-predicted="true"]').first()).toHaveAttribute(
+    "title",
+    "was: Seven of Eight"
+  );
+  await expect(row).toContainText("on guard");
+
+  // AVOID is a flag the table has no column for; the unit panel's flag list shows the coming
+  // month instead - the report's "avoiding" gone, the rest still standing.
+  await page.getByTestId("orders-input").fill("AVOID 0");
+  const flags = page.getByTestId("panel-unit").locator('[data-predicted="true"]');
+  await expect(flags).toContainText("behind");
+  await expect(flags).not.toContainText("avoiding");
+
+  // A move dims the row into a departure that names where the unit ends the month, and the
+  // destination hex's table gains the arriving row.
+  await page.getByTestId("orders-input").fill("MOVE N");
+  await expect(row).toHaveAttribute("data-preview-status", "departing");
+  await expect(row).toContainText("→ 1:7,51");
+  await selectHex(page, "1:7,51");
+  await expect(page.getByTestId(`unit-row-${OWN_UNIT}`)).toHaveAttribute(
+    "data-preview-status",
+    "arriving"
+  );
+
+  // Blanking the orders puts the report back on screen.
+  await selectHex(page, "1:7,53");
+  await selectUnit(page, OWN_UNIT);
+  await page.getByTestId("orders-input").fill("");
+  await expect(row).toContainText("Seven of Eight");
+  await expect(row).not.toHaveAttribute("data-preview-status", /.+/);
+});

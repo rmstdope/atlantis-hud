@@ -149,6 +149,40 @@ describe("core client adapter contract parity", () => {
       }
     };
 
+    const previewPayload = {
+      regions: [
+        {
+          regionId: "1:7,53",
+          units: [
+            {
+              unit: {
+                unitId: "18642",
+                name: "Nine of Eight",
+                regionId: "1:7,53",
+                factionId: "95",
+                factionName: "Foo",
+                own: true,
+                onGuard: true,
+                flags: ["guarding"],
+                items: [],
+                skills: [],
+                men: 1,
+                menEstimated: false,
+                menByRace: [],
+                weight: 10,
+                capacity: "0/0/15/0",
+                structureId: null
+              },
+              status: "departing",
+              changes: [{ field: "name", original: "Seven of Eight" }],
+              arrivingFrom: null,
+              departingTo: "1:7,51"
+            }
+          ]
+        }
+      ]
+    };
+
     const wasmBindings: WasmBindings = {
       get_engine_info() {
         return {
@@ -211,6 +245,9 @@ describe("core client adapter contract parity", () => {
       trace_move_orders_state() {
         return tracePayload;
       },
+      preview_orders_state() {
+        return previewPayload;
+      },
       save_order_draft_state() {
         return orderDraftPayload;
       }
@@ -225,6 +262,9 @@ describe("core client adapter contract parity", () => {
       }
       if (command === "trace_move_orders") {
         return Promise.resolve(tracePayload as T);
+      }
+      if (command === "preview_orders") {
+        return Promise.resolve(previewPayload as T);
       }
       if (command === "list_games") {
         return Promise.resolve([
@@ -439,6 +479,19 @@ describe("core client adapter contract parity", () => {
     expect(wasmTrace.path?.steps[0].terrain).toBe("mountain");
     expect(wasmTrace.path?.months[0].endsAt).toEqual({ x: 7, y: 51, z: 1 });
     expect(wasmTrace.path?.mode).toBe("walk");
+
+    // The orders preview must come back identically on both transports as well: the table shows
+    // the coming month, and the desktop and the browser must show the same one.
+    const wasmPreview = await wasmClient.previewOrders("{}", "report", "[]", "orders");
+    const tauriPreview = await tauriClient.previewOrders("{}", "report", "[]", "orders");
+    expect(wasmPreview).toEqual(tauriPreview);
+    expect(wasmPreview.regions[0].units[0].status).toBe("departing");
+    expect(wasmPreview.regions[0].units[0].unit.name).toBe("Nine of Eight");
+    expect(wasmPreview.regions[0].units[0].changes[0]).toEqual({
+      field: "name",
+      original: "Seven of Eight"
+    });
+    expect(wasmPreview.regions[0].units[0].departingTo).toBe("1:7,51");
     await expect(
       wasmClient.parseReport("TURN: 12 Spring\nFACTION: 17 | Crimson Tide\nREGION: R1 | Coast of Dawn")
     ).resolves.toEqual(await tauriClient.parseReport("same"));

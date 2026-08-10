@@ -287,6 +287,41 @@ export type MoveOrderTraceResponse = {
   path: TracedPath | null;
 };
 
+/** How a previewed unit relates to the hex its row sits in. */
+export type UnitPreviewStatus = "present" | "departing" | "arriving" | "formed";
+
+/** One field the orders change, with what the report said before, formatted for a tooltip. */
+export type FieldChange = {
+  /** The `ReportUnit` field: `name`, `onGuard`, `flags`, `items`, `men` or `structureId`. */
+  field: string;
+  original: string;
+};
+
+/** One unit as the orders leave it: the full predicted state, so the row renders like any other. */
+export type UnitPreview = {
+  unit: ReportUnit;
+  status: UnitPreviewStatus;
+  changes: FieldChange[];
+  /** Where an arriving unit set out from. */
+  arrivingFrom: string | null;
+  /** Where a departing unit ends the month, when the trace can say. */
+  departingTo: string | null;
+};
+
+/** Every previewed unit standing in (or bound for) one region. */
+export type RegionPreview = {
+  regionId: string;
+  units: UnitPreview[];
+};
+
+/**
+ * What the orders document changes, region by region. Regions and units the orders leave alone
+ * are absent, so an empty answer means the report already shows the coming month.
+ */
+export type OrdersPreviewResponse = {
+  regions: RegionPreview[];
+};
+
 /** Everything the planner has to say about one proposed move. */
 export type RoutePlanResponse = {
   /** The route, when one was found. */
@@ -632,6 +667,12 @@ export interface CoreAdapter {
     unitId: string,
     orders: string
   ): Promise<unknown> | unknown;
+  previewOrders(
+    rulesetJson: string,
+    rawReport: string,
+    rememberedJson: string,
+    ordersDocument: string
+  ): Promise<unknown> | unknown;
   loadRegionSightings(
     databasePath: string,
     gameId: string,
@@ -786,6 +827,20 @@ export interface CoreClient {
     orders: string
   ): Promise<MoveOrderTraceResponse>;
   /**
+   * What the whole orders document makes of the faction's units, region by region.
+   *
+   * `ordersDocument` is the full document rather than one unit's block, because GIVE crosses
+   * units and MOVE crosses hexes: only the whole text says what a hex looks like next month.
+   * Resolves with an empty answer when the orders change nothing the preview models. Rejects
+   * only when the ruleset or the remembered regions cannot be read.
+   */
+  previewOrders(
+    rulesetJson: string,
+    rawReport: string,
+    rememberedJson: string,
+    ordersDocument: string
+  ): Promise<OrdersPreviewResponse>;
+  /**
    * Every region this faction has been seen in, across every turn imported into the game.
    *
    * Empty for a game with no committed imports, which is not an error: it is what a map looks
@@ -902,6 +957,12 @@ export interface WasmBindings {
     rememberedJson: string,
     unitId: string,
     orders: string
+  ): unknown;
+  preview_orders_state(
+    rulesetJson: string,
+    rawReport: string,
+    rememberedJson: string,
+    ordersDocument: string
   ): unknown;
   load_region_sightings_state?(
     databasePath: string,
@@ -1557,6 +1618,20 @@ export function createCoreClient(adapter: CoreAdapter): CoreClient {
         orders
       )) as MoveOrderTraceResponse;
     },
+    async previewOrders(
+      rulesetJson: string,
+      rawReport: string,
+      rememberedJson: string,
+      ordersDocument: string
+    ) {
+      // Returned as-is for the same reason planRoute is: the core already serializes this shape.
+      return (await adapter.previewOrders(
+        rulesetJson,
+        rawReport,
+        rememberedJson,
+        ordersDocument
+      )) as OrdersPreviewResponse;
+    },
     async loadRegionSightings(databasePath: string, gameId: string, factionId: string) {
       const value = await adapter.loadRegionSightings(databasePath, gameId, factionId);
       return (Array.isArray(value) ? value : []) as RememberedRegion[];
@@ -1708,6 +1783,14 @@ export function createWasmAdapter(bindings: WasmBindings): CoreAdapter {
       orders: string
     ) {
       return bindings.trace_move_orders_state(rulesetJson, rawReport, rememberedJson, unitId, orders);
+    },
+    previewOrders(
+      rulesetJson: string,
+      rawReport: string,
+      rememberedJson: string,
+      ordersDocument: string
+    ) {
+      return bindings.preview_orders_state(rulesetJson, rawReport, rememberedJson, ordersDocument);
     },
     loadRegionSightings(databasePath: string, gameId: string, factionId: string) {
       // Persistence is not linked into a wasm build, so a bare wasm adapter has nothing to read.
@@ -1906,6 +1989,19 @@ export function createTauriAdapter(invoke: TauriInvoke): CoreAdapter {
         remembered_json: rememberedJson,
         unit_id: unitId,
         orders
+      });
+    },
+    previewOrders(
+      rulesetJson: string,
+      rawReport: string,
+      rememberedJson: string,
+      ordersDocument: string
+    ) {
+      return invoke<OrdersPreviewResponse>("preview_orders", {
+        ruleset_json: rulesetJson,
+        raw_report: rawReport,
+        remembered_json: rememberedJson,
+        orders_document: ordersDocument
       });
     },
     loadRegionSightings(databasePath: string, gameId: string, factionId: string) {

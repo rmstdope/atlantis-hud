@@ -9,6 +9,7 @@
 //! it alone. The regression bar for that is a real report: the orders template committed at
 //! `tests/fixtures/reports/neworigins-3.0.0-f95-t71.rep` must validate with nothing to say.
 
+pub mod effects;
 pub mod grammar;
 pub mod items;
 pub mod lexer;

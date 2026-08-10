@@ -5,6 +5,8 @@ import type {
   OpenedGame,
   ParsedReport,
   MoveOrderTraceResponse,
+  OrdersPreviewResponse,
+  RegionPreview,
   RememberedRegion,
   RoutePlanResponse
 } from "@atlantis/core-client";
@@ -208,6 +210,9 @@ export function AppShell({
   // The selected unit's written MOVE order, traced so the map can draw it. Follows the editor
   // rather than the saved draft, exactly as validation does.
   const [orderTrace, setOrderTrace] = useState<MoveOrderTraceResponse | null>(null);
+  // What the whole orders document makes of the faction's units, so the units table and the unit
+  // panel show the coming month. Follows the editor exactly as validation does.
+  const [ordersPreview, setOrdersPreview] = useState<OrdersPreviewResponse | null>(null);
   // Which game is open, and every game there is. Both live here because both change together:
   // creating, switching and deleting all move the open game and the list in one step.
   const [game, setGame] = useState<OpenedGame | null>(null);
@@ -1057,6 +1062,50 @@ export function AppShell({
     };
   }, [client, ordersDocument, rulesetText]);
 
+  // The whole document previewed at once, unlike the per-unit trace, because GIVE crosses units
+  // and MOVE crosses hexes: only the full text says what a hex looks like next month. Same
+  // debounce, same stale-reply guard, same policy of leaving the last answer standing on failure -
+  // the preview is advisory, and the server has the last word on every order.
+  useEffect(() => {
+    if (!ordersDocument || ruleset.status !== "ready" || !rawReport) {
+      setOrdersPreview(null);
+      return undefined;
+    }
+
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      void client
+        .previewOrders(ruleset.text, rawReport, rememberedJson, ordersDocument)
+        .then((answer) => {
+          if (!cancelled) {
+            setOrdersPreview(answer);
+          }
+        })
+        .catch(() => undefined);
+    }, 300);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [client, ordersDocument, ruleset, rawReport, rememberedJson]);
+
+  /** The selected hex's slice of the preview, or nothing when the orders leave it alone. */
+  const hexPreview = useMemo<RegionPreview | null>(() => {
+    if (!hex || !ordersPreview) {
+      return null;
+    }
+    return ordersPreview.regions.find((region) => region.regionId === hex.regionId) ?? null;
+  }, [hex, ordersPreview]);
+
+  /** The selected unit as the orders leave it, for the unit panel. */
+  const unitPreview = useMemo(() => {
+    if (!unit || !hexPreview) {
+      return null;
+    }
+    return hexPreview.units.find((previewed) => previewed.unit.unitId === unit.unitId) ?? null;
+  }, [unit, hexPreview]);
+
   /** The faction and turn the document in front of the player belongs to. */
   const draftKey = useMemo(() => draftKeyFor(parsed), [parsed]);
 
@@ -1367,7 +1416,7 @@ export function AppShell({
 
             <div className="flex w-[21rem] min-h-0 flex-col gap-2.5">
               <div className={unitSlotClass(collapsed)}>
-                <UnitPanel unit={unit} hex={hex} />
+                <UnitPanel unit={unit} hex={hex} preview={unitPreview} />
               </div>
               {/* Behind its feature flag, off by default: the pane is still finding its shape. */}
               {movementPlanner ? (
@@ -1401,7 +1450,7 @@ export function AppShell({
           </div>
 
           <div className="max-h-[45vh] flex-none">
-            <UnitTableDock hex={hex} />
+            <UnitTableDock hex={hex} preview={hexPreview} />
           </div>
         </div>
       </div>

@@ -1,4 +1,4 @@
-import type { ReportUnit } from "@atlantis/core-client";
+import type { RegionPreview, ReportUnit } from "@atlantis/core-client";
 import {
   useEffect,
   useLayoutEffect,
@@ -23,6 +23,7 @@ import {
   type SortColumn,
   type SortState
 } from "../unitTable";
+import { changeFor, mergePreview, originalTooltip, type PreviewedUnit } from "../unitPreview";
 import { HOVER_DELAY_MS, type Point } from "../unitTooltip";
 import { useWorkspaceStore } from "../workspaceStore";
 import { CollapsiblePanel } from "./CollapsiblePanel";
@@ -46,7 +47,14 @@ const COLUMNS = 8;
  * rows of the right height, which is why every row is pinned to ROW_HEIGHT: the arithmetic and the
  * rendering read the same constant, so they cannot drift apart and leave the list misaligned.
  */
-export function UnitTableDock({ hex }: { hex: HexNode | null }) {
+export function UnitTableDock({
+  hex,
+  preview = null
+}: {
+  hex: HexNode | null;
+  /** The hex's slice of the orders preview, so rows show the coming month. */
+  preview?: RegionPreview | null;
+}) {
   const selectedUnitId = useWorkspaceStore((state) => state.selectedUnitId);
   const selectUnit = useWorkspaceStore((state) => state.selectUnit);
   const [filter, setFilter] = useState("");
@@ -62,7 +70,9 @@ export function UnitTableDock({ hex }: { hex: HexNode | null }) {
 
   // unitsForHex rather than hex.region.units: sorting it again is a no-op because Array.sort is
   // stable, and it guarantees the table cannot drift from the order AppShell picks defaults from.
-  const units = useMemo(() => unitsForHex(hex), [hex]);
+  // The orders preview folds in on top, so every pipeline below it - filter, sort, cap - already
+  // works over the coming month's rows, arrivals and formed units included.
+  const units = useMemo(() => mergePreview(unitsForHex(hex), preview), [hex, preview]);
   // The global cap cuts last, after sorting: what survives is the front of the arrangement the
   // player chose, which with own-first grouping is their own units. The hint below owns up to the
   // truncation the same way it does for a filter.
@@ -423,6 +433,9 @@ function SortableTh({
   );
 }
 
+/** How a changed cell says it shows the coming month rather than the report. */
+const PREDICTED = "italic text-brass";
+
 function UnitRow({
   unit,
   index,
@@ -433,7 +446,7 @@ function UnitRow({
   onPointerAt,
   onPointerGone
 }: {
-  unit: ReportUnit;
+  unit: PreviewedUnit;
   index: number;
   selected: boolean;
   onSelect: () => void;
@@ -447,10 +460,20 @@ function UnitRow({
   const skills = unit.skills.map((skill) => `${skill.tag} ${skill.level}`).join(", ");
   const items = unit.items.map((item) => `${item.amount} ${item.tag}`).join(", ");
 
+  // Which cells the orders changed, so each one can say so and show what the report said.
+  const nameChange = changeFor(unit, "name");
+  const guardChange = changeFor(unit, "onGuard");
+  const menChange = changeFor(unit, "men");
+  const itemsChange = changeFor(unit, "items");
+  const structureChange = changeFor(unit, "structureId");
+  // A row that is somewhere else next month reads dimmed; its marker says where it went.
+  const departing = unit.previewStatus === "departing";
+
   return (
     <tr
       data-testid={`unit-row-${unit.unitId}`}
       data-selected={selected}
+      data-preview-status={unit.previewStatus}
       onClick={onSelect}
       onKeyDown={(event) => onKeyDown(event, index)}
       // Pointer events rather than mouse events, for the guard: a finger has no hover to leave,
@@ -478,7 +501,7 @@ function UnitRow({
       style={{ height: ROW_HEIGHT }}
       className={`cursor-pointer whitespace-nowrap focus-visible:outline focus-visible:outline-1 focus-visible:outline-select ${
         selected ? "bg-select/25 text-ink" : unit.own ? "text-ink" : "text-ink-soft"
-      }`}
+      }${departing ? " opacity-60" : ""}`}
     >
       {/* The report's own ownership marker, so the distinction reads before the faction name does. */}
       <Td className={unit.own ? "text-ok" : "text-danger"}>{unit.own ? "*" : "−"}</Td>
@@ -494,17 +517,54 @@ function UnitRow({
         </button>
       </Td>
       <Td className="truncate">
-        {unit.name}
-        {unit.onGuard ? <span className="ml-1.5 text-[10px] text-warn">on guard</span> : null}
+        <span
+          className={nameChange ? PREDICTED : undefined}
+          data-predicted={nameChange ? "true" : undefined}
+          title={originalTooltip(nameChange)}
+        >
+          {unit.name}
+        </span>
+        {unit.onGuard ? (
+          <span
+            className={`ml-1.5 text-[10px] text-warn${guardChange ? " italic" : ""}`}
+            data-predicted={guardChange ? "true" : undefined}
+            title={originalTooltip(guardChange)}
+          >
+            on guard
+          </span>
+        ) : null}
+        {/* Where the unit is bound or from, said inline: the row is the story of a move. */}
+        {departing && unit.departingTo ? (
+          <span className="ml-1.5 text-[10px] text-ink-dim">→ {unit.departingTo}</span>
+        ) : null}
+        {departing && !unit.departingTo ? (
+          <span className="ml-1.5 text-[10px] text-ink-dim">→ …</span>
+        ) : null}
+        {unit.previewStatus === "arriving" ? (
+          <span className={`ml-1.5 text-[10px] ${PREDICTED}`}>← {unit.arrivingFrom ?? "…"}</span>
+        ) : null}
+        {unit.previewStatus === "formed" ? (
+          <span className={`ml-1.5 text-[10px] ${PREDICTED}`}>new</span>
+        ) : null}
       </Td>
       <Td className="truncate">
         {unit.factionName ? `${unit.factionName} (${unit.factionId})` : "—"}
       </Td>
-      {/* A tilde marks a count the parser guessed at; the unit panel spells out why. */}
-      <Td title={whyEstimated(unit)}>{describeMenBriefly(unit)}</Td>
+      {/* A tilde marks a count the parser guessed at; the unit panel spells out why. A count the
+          orders changed explains itself with the report's figure instead. */}
+      <Td
+        className={menChange ? PREDICTED : ""}
+        title={originalTooltip(menChange) ?? whyEstimated(unit)}
+      >
+        {describeMenBriefly(unit)}
+      </Td>
       <Td className="truncate">{skills}</Td>
-      <Td className="truncate">{items}</Td>
-      <Td>{unit.structureId ? `[${unit.structureId}]` : ""}</Td>
+      <Td className={`truncate${itemsChange ? ` ${PREDICTED}` : ""}`} title={originalTooltip(itemsChange)}>
+        {items}
+      </Td>
+      <Td className={structureChange ? PREDICTED : ""} title={originalTooltip(structureChange)}>
+        {unit.structureId ? `[${unit.structureId}]` : ""}
+      </Td>
     </tr>
   );
 }
