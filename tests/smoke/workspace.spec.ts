@@ -280,6 +280,113 @@ test("panels fold away and come back", async ({ page }) => {
   await expect(region).toHaveAttribute("data-collapsed", "false");
 });
 
+/**
+ * The tallest a title bar can be.
+ *
+ * The bar is `h-7`, so 28px, and the frame adds a border above and below it. Bounded rather than
+ * measured exactly: the rounding differs between the browsers this suite runs in, and what these
+ * tests are about is a strip rather than a slab.
+ */
+const STRIP_HEIGHT = 40;
+
+/** Folds a panel by its own toggle, which is the only expanded control in its header. */
+async function foldPanel(page: Page, panel: string) {
+  const section = page.getByTestId(`panel-${panel}`);
+  await section.getByRole("button", { expanded: true }).click();
+  await expect(section).toHaveAttribute("data-collapsed", "true");
+}
+
+/** Where a panel is on screen, having asserted it is on screen at all. */
+async function boxOf(page: Page, panel: string) {
+  const box = await page.getByTestId(`panel-${panel}`).boundingBox();
+  expect(box).not.toBeNull();
+  return box!;
+}
+
+test("a folded panel shrinks to its title bar", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+
+  const open = await boxOf(page, "region");
+  expect(open.height).toBeGreaterThan(100);
+
+  await foldPanel(page, "region");
+
+  // Issue #60: the body used to go and the frame used to stay, leaving a full-height empty slab
+  // over the map.
+  const strip = await boxOf(page, "region");
+  expect(strip.height).toBeLessThan(STRIP_HEIGHT);
+  // Sideways it does not move, so re-opening it is a click in the same place.
+  expect(strip.width).toBeCloseTo(open.width, 0);
+  expect(strip.y).toBeCloseTo(open.y, 0);
+});
+
+test("the orders editor takes the space a folded unit panel leaves", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+  await selectUnit(page, OWN_UNIT);
+
+  const pinned = await boxOf(page, "orders");
+
+  await foldPanel(page, "unit");
+
+  expect((await boxOf(page, "unit")).height).toBeLessThan(STRIP_HEIGHT);
+
+  // The space goes to the panel beside it rather than to the map: the editor grows, and it grows
+  // upward into what the unit panel gave up rather than pushing the column off the floor.
+  const grown = await boxOf(page, "orders");
+  expect(grown.height).toBeGreaterThan(pinned.height);
+  expect(grown.y).toBeLessThan(pinned.y);
+});
+
+test("the map under a folded panel can be clicked", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+
+  // The whole right-hand column, so what is freed is a rectangle rather than a sliver: with all
+  // three folded the column is three title bars and live map below them.
+  const covered = await boxOf(page, "orders");
+  await foldPanel(page, "unit");
+  await foldPanel(page, "planner");
+  await foldPanel(page, "orders");
+  const strip = await boxOf(page, "orders");
+
+  // The ground the column used to stand on and no longer does.
+  const freed = {
+    left: covered.x,
+    right: covered.x + covered.width,
+    top: strip.y + strip.height,
+    bottom: covered.y + covered.height
+  };
+
+  // Which hex is under there depends on where the map framed itself, so it is asked for rather
+  // than assumed. Any hex whose middle falls inside the freed rectangle will do, so long as it is
+  // not the one already selected - that click would prove nothing.
+  const target = await page.evaluate((rect) => {
+    for (const hex of document.querySelectorAll<SVGPolygonElement>("polygon[data-region-id]")) {
+      if (hex.getAttribute("aria-pressed") === "true") {
+        continue;
+      }
+      const box = hex.getBoundingClientRect();
+      const x = box.x + box.width / 2;
+      const y = box.y + box.height / 2;
+      if (x > rect.left && x < rect.right && y > rect.top && y < rect.bottom) {
+        return { regionId: hex.getAttribute("data-region-id") ?? "", x, y };
+      }
+    }
+    return null;
+  }, freed);
+  expect(target, "no hex sits under the folded panels").not.toBeNull();
+
+  // `page.mouse` rather than `locator.click()`: before this was fixed the overlay swallowed the
+  // click, and Playwright reports that as "element intercepts pointer events" - a murkier failure
+  // than the selection simply not moving.
+  await page.mouse.click(target!.x, target!.y);
+
+  const [, coordinates] = target!.regionId.split(":");
+  await expect(page.getByTestId("panel-units")).toContainText(`(${coordinates})`);
+});
+
 test("a folded panel is still folded after a reload", async ({ page }) => {
   await loadReport(page);
 
