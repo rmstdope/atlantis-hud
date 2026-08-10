@@ -558,6 +558,7 @@ export interface CoreAdapter {
   createGame(manifest: GameManifest): Promise<unknown> | unknown;
   openGame(gameId: string, openedAt: string): Promise<unknown> | unknown;
   deleteGame(gameId: string): Promise<unknown> | unknown;
+  setGameRuleset(gameId: string, rulesetId: string): Promise<unknown> | unknown;
   parseReport(rawReport: string): Promise<unknown> | unknown;
   parseReportFull(rawReport: string): Promise<unknown> | unknown;
   parseReportClassified(rawReport: string, rulesetJson: string): Promise<unknown> | unknown;
@@ -639,6 +640,13 @@ export interface CoreClient {
   openGame(gameId: string, openedAt: string): Promise<OpenedGame>;
   /** Erases a game and everything it stored. There is no undo. */
   deleteGame(gameId: string): Promise<void>;
+  /**
+   * Changes which ruleset a game is played under, returning the updated manifest.
+   *
+   * The manifest comes back so the shell can refresh what it holds without a second round trip —
+   * and re-fetch the ruleset itself, because everything parsed under the old one is now suspect.
+   */
+  setGameRuleset(gameId: string, rulesetId: string): Promise<GameManifest>;
   parseReport(rawReport: string): Promise<ReportParseResult>;
   /** The full domain model. Returned as-is: it is descriptive data, not a contract to normalize. */
   parseReportFull(rawReport: string): Promise<ParsedReport>;
@@ -767,6 +775,8 @@ export interface WasmBindings {
   create_game_state(manifest: GameManifest): unknown;
   open_game_state(gameId: string, openedAt: string): unknown;
   delete_game_state(gameId: string): unknown;
+  /** Optional for the reason `merge_report_state` is; it refuses rather than answers when absent. */
+  set_game_ruleset_state?(gameId: string, rulesetId: string): unknown;
   parse_report_state(rawReport: string): unknown;
   parse_report_full_state(rawReport: string): unknown;
   parse_report_classified_state(rawReport: string, rulesetJson: string): unknown;
@@ -1304,6 +1314,10 @@ export function createCoreClient(adapter: CoreAdapter): CoreClient {
       // Nothing to normalize: a deletion either happened or threw.
       await adapter.deleteGame(gameId);
     },
+    async setGameRuleset(gameId: string, rulesetId: string) {
+      const value = await adapter.setGameRuleset(gameId, rulesetId);
+      return normalizeGameManifest(value);
+    },
     async parseReport(rawReport: string) {
       const value = await adapter.parseReport(rawReport);
       return normalizeParseResult(value);
@@ -1453,6 +1467,15 @@ export function createWasmAdapter(bindings: WasmBindings): CoreAdapter {
     deleteGame(gameId: string) {
       return bindings.delete_game_state(gameId);
     },
+    setGameRuleset(gameId: string, rulesetId: string) {
+      // Refused rather than answered emptily, for the reason `mergeReport` gives: this is a write,
+      // and writing nothing while saying it worked is not an account of anything.
+      const setRuleset = bindings.set_game_ruleset_state;
+      if (!setRuleset) {
+        throw new Error("game persistence is not linked into this wasm build");
+      }
+      return setRuleset(gameId, rulesetId);
+    },
     parseReport(rawReport: string) {
       return bindings.parse_report_state(rawReport);
     },
@@ -1578,6 +1601,12 @@ export function createTauriAdapter(invoke: TauriInvoke): CoreAdapter {
     },
     deleteGame(gameId: string) {
       return invoke<void>("delete_game", { game_id: gameId });
+    },
+    setGameRuleset(gameId: string, rulesetId: string) {
+      return invoke<GameManifestWireShape>("set_game_ruleset", {
+        game_id: gameId,
+        ruleset_id: rulesetId
+      });
     },
     parseReport(rawReport: string) {
       return invoke<ReportParseResultWireShape>("parse_report", {

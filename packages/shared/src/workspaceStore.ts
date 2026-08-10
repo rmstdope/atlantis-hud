@@ -56,6 +56,13 @@ export type WorkspaceState = {
   openGame: (game: WorkspaceGame) => void;
   closeGame: () => void;
   /**
+   * Records that the open game is now played under another ruleset.
+   *
+   * Unlike `openGame` this keeps the selection: a ruleset change is not a game switch, and the hex
+   * and unit the player was looking at are still there.
+   */
+  updateGameRuleset: (rulesetId: string) => void;
+  /**
    * Selects a hex, and with it a unit inside that hex.
    *
    * `defaultUnitId` is supplied by the caller, which knows what the hex contains. Landing on a hex
@@ -147,6 +154,9 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           selectedRegionId: null,
           selectedUnitId: null
         }),
+
+      updateGameRuleset: (rulesetId) =>
+        set((state) => (state.game ? { game: { ...state.game, rulesetId } } : state)),
 
       // Moving to another hex abandons the unit that was selected in the old one: keeping it would
       // leave the detail panel and the orders editor describing a unit that is no longer in the list.

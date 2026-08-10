@@ -312,6 +312,41 @@ pub fn open_game(
     })
 }
 
+/// Changes which ruleset a game is played under, after creation.
+///
+/// The id is stored as an opaque string, exactly as `create_game` accepts one: which rulesets ship
+/// is a concern of the frontends' registry, and this crate refusing ids it has not heard of would
+/// make every new ruleset a lockstep release of both.
+///
+/// # Errors
+///
+/// Returns an error when no game exists under this id, when its manifest cannot be read, or when
+/// the database cannot be opened or migrated.
+pub fn set_game_ruleset(
+    games_root: &Path,
+    game_id: &str,
+    ruleset_id: &str,
+) -> Result<GameManifest, PersistenceError> {
+    let game_file_path = game_home(games_root, game_id).join(GAME_MANIFEST_FILE_NAME);
+    if !game_file_path.exists() {
+        return Err(PersistenceError::GameNotFound(game_id.to_string()));
+    }
+
+    let mut manifest = load_game_manifest(&game_file_path)?;
+    ensure_supported_manifest_version(manifest.manifest_version)?;
+    manifest.metadata.ruleset_id = ruleset_id.to_string();
+
+    // Database first, manifest second — the order `open_game` writes in, so a failure between the
+    // two leaves the manifest (which the frontends read) still agreeing with itself.
+    let database_path = sidecar_database_path(&game_file_path);
+    let mut connection = open_database(&database_path)?;
+    apply_migrations(&mut connection)?;
+    persist_game_snapshot(&mut connection, &manifest)?;
+    save_game_manifest(&game_file_path, &manifest)?;
+
+    Ok(manifest)
+}
+
 /// Every game under `games_root`, read from the games themselves.
 ///
 /// There is no index to consult: the games on disk are the list. That costs one small read per
@@ -1164,6 +1199,38 @@ mod tests {
             .query_row("SELECT ruleset_id FROM game_metadata", [], |row| row.get(0))
             .expect("the ruleset should be mirrored into the database");
         assert_eq!(stored, "neworigins");
+    }
+
+    /// The settings dialog lets a player change rulesets after creation, so the change must land
+    /// in both places the id lives: the manifest the frontends read, and the row the database
+    /// mirrors it into.
+    #[test]
+    fn changing_a_games_ruleset_updates_manifest_and_database() {
+        let dir = tempdir().expect("tempdir");
+        create_game(dir.path(), &fixture_manifest()).expect("creation should succeed");
+
+        let updated = set_game_ruleset(dir.path(), GAME_ID, "magicdeep")
+            .expect("the ruleset change should succeed");
+        assert_eq!(updated.metadata.ruleset_id, "magicdeep");
+
+        let reopened = open_game(dir.path(), GAME_ID, CREATED_AT).expect("reopen should succeed");
+        assert_eq!(reopened.manifest.metadata.ruleset_id, "magicdeep");
+
+        let stored: String = Connection::open(&reopened.database_path)
+            .expect("db should open")
+            .query_row("SELECT ruleset_id FROM game_metadata", [], |row| row.get(0))
+            .expect("the ruleset should be mirrored into the database");
+        assert_eq!(stored, "magicdeep");
+    }
+
+    #[test]
+    fn changing_the_ruleset_of_a_missing_game_names_it() {
+        let dir = tempdir().expect("tempdir");
+
+        let error = set_game_ruleset(dir.path(), "no-such-game", "magicdeep")
+            .expect_err("changing a missing game should fail");
+
+        assert!(matches!(error, PersistenceError::GameNotFound(ref id) if id == "no-such-game"));
     }
 
     #[test]

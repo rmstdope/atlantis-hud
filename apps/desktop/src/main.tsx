@@ -1,10 +1,14 @@
 import "@atlantis/shared/src/theme.css";
 
+import { applyPersistedSettings } from "@atlantis/shared";
 import { createCoreClient } from "@atlantis/core-client";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";
 import { createDesktopCoreAdapter } from "./desktopCore";
+
+// Before React mounts, so a light-theme user never sees a dark flash.
+applyPersistedSettings();
 
 const root = createRoot(document.getElementById("root")!);
 

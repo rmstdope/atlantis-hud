@@ -3,6 +3,34 @@ import { resetWorkspaceStore, useWorkspaceStore } from "./workspaceStore";
 
 const store = () => useWorkspaceStore.getState();
 
+describe("changing the open game's ruleset", () => {
+  beforeEach(resetWorkspaceStore);
+
+  it("updates the ruleset without abandoning the selection", () => {
+    // A ruleset change is not a game switch: the hex and unit the player is looking at are still
+    // there, and wiping them would make the settings dialog feel like a reload.
+    store().openGame({
+      gameId: "g1",
+      gameName: "Spring campaign",
+      databasePath: "idb://g1",
+      rulesetId: "neworigins"
+    });
+    store().selectRegion("1:7,53", "18642");
+
+    store().updateGameRuleset("magicdeep");
+
+    expect(store().game?.rulesetId).toBe("magicdeep");
+    expect(store().selectedRegionId).toBe("1:7,53");
+    expect(store().selectedUnitId).toBe("18642");
+  });
+
+  it("does nothing when no game is open", () => {
+    store().updateGameRuleset("magicdeep");
+
+    expect(store().game).toBeNull();
+  });
+});
+
 describe("workspace selection", () => {
   beforeEach(resetWorkspaceStore);
 

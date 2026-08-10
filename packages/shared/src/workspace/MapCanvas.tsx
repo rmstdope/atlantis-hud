@@ -474,7 +474,7 @@ export function MapCanvas({
             patternUnits="userSpaceOnUse"
             patternTransform="rotate(45)"
           >
-            <line x1="0" y1="0" x2="0" y2="5" stroke="#9fb0c4" strokeOpacity="0.22" />
+            <line x1="0" y1="0" x2="0" y2="5" className="stroke-ink-soft" strokeOpacity="0.22" />
           </pattern>
         </defs>
 
