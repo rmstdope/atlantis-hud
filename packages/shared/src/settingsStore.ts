@@ -15,9 +15,13 @@ export type ThemeName = "dark" | "light";
 
 export type SettingsState = {
   theme: ThemeName;
+  biomeTextures: boolean;
   /** Applies instantly: the settings dialog has no OK button to wait for. */
   setTheme: (theme: ThemeName) => void;
+  setBiomeTextures: (enabled: boolean) => void;
 };
+
+type Persisted = Pick<SettingsState, "theme" | "biomeTextures">;
 
 /**
  * Stamps the theme where the stylesheet can see it. The dark tokens are the `:root` defaults, and
@@ -60,22 +64,25 @@ const STORAGE = createJSONStorage<Persisted>(() => {
   };
 });
 
-type Persisted = Pick<SettingsState, "theme">;
-
 export const useSettingsStore = create<SettingsState>()(
-  persist(
+  persist<SettingsState, [], [], Persisted>(
     (set) => ({
       theme: "dark",
+      biomeTextures: true,
 
       setTheme: (theme) => {
         applyTheme(theme);
         set({ theme });
+      },
+
+      setBiomeTextures: (biomeTextures) => {
+        set({ biomeTextures });
       }
     }),
     {
       name: "atlantis-hud-settings",
       storage: STORAGE,
-      partialize: (state) => ({ theme: state.theme })
+      partialize: (state) => ({ theme: state.theme, biomeTextures: state.biomeTextures })
     }
   )
 );
@@ -93,6 +100,6 @@ export function applyPersistedSettings() {
 export function resetSettingsStore() {
   MEMORY.clear();
   optionalStorage()?.removeItem("atlantis-hud-settings");
-  useSettingsStore.setState({ theme: "dark" });
+  useSettingsStore.setState({ theme: "dark", biomeTextures: true });
   applyTheme("dark");
 }

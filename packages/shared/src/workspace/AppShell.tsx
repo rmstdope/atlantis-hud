@@ -33,6 +33,7 @@ import {
 } from "../gameSession";
 import { rulesetById } from "../rulesets";
 import { useWorkspaceStore } from "../workspaceStore";
+import { useSettingsStore } from "../settingsStore";
 import { AppHeader, type ImportStatus } from "./AppHeader";
 import { GameGate } from "./GameGate";
 import { SettingsDialog } from "./SettingsDialog";
@@ -227,6 +228,7 @@ export function AppShell({
   const level = useWorkspaceStore((state) => state.level);
   const setLevel = useWorkspaceStore((state) => state.setLevel);
   const layers = useWorkspaceStore((state) => state.layers);
+  const showTextures = useSettingsStore((state) => state.biomeTextures);
   // Which panels are folded is a layout question as well as a panel one: a folded panel hands the
   // space it gives up to the panel beside it, and only the shell knows what is beside what.
   const collapsed = useWorkspaceStore((state) => state.collapsed);
@@ -1214,6 +1216,7 @@ export function AppShell({
           selectedRegionId={selectedRegionId}
           onSelectRegion={selectHex}
           showStaleness={layers.staleness}
+          showTextures={showTextures}
           showUnits={layers.units}
           showStructures={layers.structures}
           route={layers.movement ? (route?.plan?.steps.map((step) => step.to) ?? []) : []}

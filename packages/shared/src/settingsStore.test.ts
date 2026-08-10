@@ -35,12 +35,25 @@ describe("settings store", () => {
     expect(store().theme).toBe("dark");
   });
 
+  it("enables biome textures by default", () => {
+    expect(store().biomeTextures).toBe(true);
+  });
+
   it("switches the theme instantly when set", () => {
     store().setTheme("light");
     expect(store().theme).toBe("light");
 
     store().setTheme("dark");
     expect(store().theme).toBe("dark");
+  });
+
+  it("persists the biome texture preference", () => {
+    store().setBiomeTextures(false);
+    expect(store().biomeTextures).toBe(false);
+
+    applyPersistedSettings();
+
+    expect(store().biomeTextures).toBe(false);
   });
 
   it("stamps the chosen theme onto the document root", () => {

@@ -182,14 +182,32 @@ function Tab({
 function GlobalSettings() {
   const theme = useSettingsStore((state) => state.theme);
   const setTheme = useSettingsStore((state) => state.setTheme);
+  const biomeTextures = useSettingsStore((state) => state.biomeTextures);
+  const setBiomeTextures = useSettingsStore((state) => state.setBiomeTextures);
 
   return (
-    <div className="flex items-center justify-between gap-2">
-      <span className="text-ink-soft">Theme</span>
-      <div className="flex gap-1">
-        <ThemeChoice name="dark" label="Dark" current={theme} onPick={setTheme} />
-        <ThemeChoice name="light" label="Light" current={theme} onPick={setTheme} />
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-ink-soft">Theme</span>
+        <div className="flex gap-1">
+          <ThemeChoice name="dark" label="Dark" current={theme} onPick={setTheme} />
+          <ThemeChoice name="light" label="Light" current={theme} onPick={setTheme} />
+        </div>
       </div>
+      <label className="flex items-center justify-between gap-2 text-ink-soft">
+        <span>
+          <span className="block">Biome textures</span>
+          <span className="block text-[10px] text-ink-dim">Uses image tiles for known biomes.</span>
+        </span>
+        <input
+          type="checkbox"
+          data-testid="settings-biome-textures"
+          aria-label="Biome textures"
+          checked={biomeTextures}
+          onChange={(event) => setBiomeTextures(event.target.checked)}
+          className="accent-brass"
+        />
+      </label>
     </div>
   );
 }
