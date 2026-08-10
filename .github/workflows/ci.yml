@@ -104,7 +104,12 @@ jobs:
         run: pnpm run test
 
       - name: Rust format check
-        run: cargo fmt --check --exclude atlantis-hud-desktop-shell
+        run: >
+          cargo fmt --check
+          -p atlantis-hud-core
+          -p atlantis-hud-core-persistence
+          -p atlantis-hud-core-wasm
+          -p atlantis-hud-core-tauri
 
       - name: Rust clippy
         run: cargo clippy --workspace --exclude atlantis-hud-desktop-shell --all-targets -- -D warnings
