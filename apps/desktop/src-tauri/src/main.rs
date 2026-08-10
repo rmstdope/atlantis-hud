@@ -130,7 +130,7 @@ fn set_game_ruleset(
     any(target_os = "linux", target_os = "macos", target_os = "windows"),
     feature = "desktop-runtime"
 ))]
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 fn parse_report(raw_report: String) -> ReportParseResultDto {
     command_parse_report(&raw_report)
 }
@@ -373,7 +373,8 @@ fn main() {
             plan_route,
             load_region_sightings,
             merge_report,
-            load_merged_reports
+            load_merged_reports,
+            parse_report_classified
         ])
         .run(tauri::generate_context!())
         .expect("error while running atlantis-hud desktop shell");
