@@ -75,8 +75,19 @@ export function TurnMessagesPanel({
       data-testid="turn-messages"
       role="dialog"
       aria-label="Turn messages"
-      // The header is the drop target for report files, so a panel hanging off it must not swallow
-      // a drag that was meant for the header underneath.
+      /*
+       * Not a drop target, deliberately.
+       *
+       * This panel is a child of the header in the DOM but floats over the map, and the header is
+       * what accepts a dropped report - it is the only element that calls `preventDefault` on a
+       * dragover, which is what makes a drop legal at all. Left alone, this rectangle would inherit
+       * that and become the one place outside the 36px header bar where a file could be dropped:
+       * an invisible target sitting over the map, present only while a list of errors happens to be
+       * open. Stopping the event here keeps the answer to "where do reports go" the same whether
+       * this is open or shut, at the cost of a drop onto the panel itself doing nothing.
+       *
+       * The game picker does the same, for the same reason.
+       */
       onDragOver={(event) => event.stopPropagation()}
       // `whitespace-normal` undoes the header's `whitespace-nowrap`, which keeps the turn and
       // faction labels on one line up there and inherits into anything rendered inside it. These

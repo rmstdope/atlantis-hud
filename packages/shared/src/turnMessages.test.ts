@@ -73,6 +73,16 @@ describe("splitTurnMessage", () => {
     expect(message.text).toBe("Not enough funds.");
     expect(message.raw).toBe(line);
   });
+
+  it("trims a line it recognised nothing in, and still keeps the original", () => {
+    // The report wraps long lines and the unwrapper joins them with the indent still attached, so
+    // an unrecognised line arrives padded. `text` is for reading; `raw` is what was printed.
+    const line = "  Times reward of 200 silver.  ";
+    const message = splitTurnMessage(line);
+
+    expect(message.text).toBe("Times reward of 200 silver.");
+    expect(message.raw).toBe(line);
+  });
 });
 
 describe("splitTurnMessages", () => {

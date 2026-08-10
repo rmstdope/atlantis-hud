@@ -19,7 +19,14 @@ export type TurnMessage = {
   unitName: string | null;
   /** The order that failed, for the lines that name one. Errors have these; events rarely do. */
   verb: string | null;
-  /** What is left once the prefixes above are taken off. The whole line when neither matched. */
+  /**
+   * What is left once the prefixes above are taken off, trimmed.
+   *
+   * The trimmed line itself when neither prefix matched - nothing but surrounding whitespace is
+   * ever dropped, and `raw` keeps even that. A report wraps its long lines and the unwrapper joins
+   * them back with the indent still on, so trimming is what stops a wrapped message arriving with
+   * two spaces down its front.
+   */
   text: string;
   /** The line as printed, so nothing is ever lost to a shape this did not expect. */
   raw: string;
@@ -49,9 +56,9 @@ const VERB_PREFIX = /^([A-Z]{2,}):\s+/;
  * Splits one printed line into the fields a row shows.
  *
  * Both prefixes are optional and independent: an error can name a unit and a verb, a verb alone, or
- * neither. Whatever is left after the ones that matched is the message, and a line matching nothing
- * comes back with three nulls and its own text - shown in full rather than mangled by a rule that
- * did not fit it.
+ * neither. Whatever is left after the ones that matched is the message, trimmed, and a line
+ * matching nothing comes back with three nulls and the whole of itself - shown in full rather than
+ * mangled by a rule that did not fit it.
  */
 export function splitTurnMessage(line: string): TurnMessage {
   const raw = line;
