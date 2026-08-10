@@ -1,9 +1,9 @@
 # Deployment and release (issue #10)
 
 The web application is installable, works with the network cut, and can be published to
-`atlantis-hud.kurelid.se`. The desktop application can be built into a `.dmg` and attached to a
-GitHub Release. Both shells show the version they are running and offer a way to look for a newer
-one.
+`atlantis-hud.kurelid.se`. The desktop application can be built into macOS and Linux bundles and
+attached to a GitHub Release. Both shells show the version they are running and offer a way to look
+for a newer one.
 
 Until this issue, nothing in the repository published anything. There was one workflow, it ended at
 `cargo clippy`, and `tauri.conf.json` had `"bundle": { "active": false }` — no `.app` had ever been
@@ -85,7 +85,7 @@ Tauri reads as "sign", and then fails importing a certificate that is not there.
 | --- | --- | --- |
 | Every push and pull request | `ci.yml` | Nothing. Gates only, now including a production build. |
 | `workflow_dispatch` on `main` | `deploy.yml` | The web application at `https://atlantis-hud.kurelid.se` |
-| A `v*` tag | `release.yml` | A GitHub Release with an Apple Silicon `.dmg`, **and then** the web application |
+| A `v*` tag | `release.yml` | A GitHub Release with an Apple Silicon `.dmg` and a Linux `.AppImage`, **and then** the web application |
 
 ### Tagging publishes both (issue #46)
 
@@ -94,11 +94,11 @@ rather than repeating its steps is the point: the tagged publish is the *same* p
 one — same guards, same PWA suite against the same bytes, same check that the live site changed — so
 there is no second copy to drift.
 
-`needs: macos`, so a release is all or nothing. If the bundle does not build, the site is not
-republished and the tag can be deleted and redone with nothing having escaped. The cost is real and
-worth naming: a Rust compile error, or a flaky macOS runner, holds back a web fix that was otherwise
-ready. Running `Deploy web` by hand is the release valve when that happens, and it is why the manual
-trigger stays.
+`needs: publish`, so a release is all or nothing. If either desktop bundle does not build, the site
+is not republished and the tag can be deleted and redone with nothing having escaped. The cost is
+real and worth naming: a Rust compile error, or a flaky runner, holds back a web fix that was
+otherwise ready. Running `Deploy web` by hand is the release valve when that happens, and it is why
+the manual trigger stays.
 
 The `main`-only guard had to grow a second case. A tag is not a branch, so on a tag the check is
 that its commit is an **ancestor of `main`** — a tag pushed from a feature branch would otherwise
@@ -205,8 +205,7 @@ part of this issue; when it happens, both builds change together because both re
 
 ## Not done here
 
-Windows and Linux bundles. The Tauri dependencies in `apps/desktop/src-tauri/Cargo.toml` are
-`cfg`-gated to macOS and Windows, so Linux would need crate changes as well as a workflow.
+Windows bundles.
 
 In-app auto-update via `tauri-plugin-updater`. It needs a public endpoint, and self-replacing an
 un-notarized `.app` is fragile. "Manual update check" is what the issue asks for and what this does.
