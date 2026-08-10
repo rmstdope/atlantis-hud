@@ -12,10 +12,12 @@ import {
 import type { HexNode } from "../hexMapModel";
 import { unitsForHex } from "../hexMapModel";
 import { describeMenBriefly, whyEstimated } from "../unitComposition";
+import { useSettingsStore } from "../settingsStore";
 import {
   DEFAULT_SORT,
   ROW_HEIGHT,
   filterUnits,
+  limitUnits,
   sortUnits,
   windowRange,
   type SortColumn,
@@ -61,7 +63,14 @@ export function UnitTableDock({ hex }: { hex: HexNode | null }) {
   // unitsForHex rather than hex.region.units: sorting it again is a no-op because Array.sort is
   // stable, and it guarantees the table cannot drift from the order AppShell picks defaults from.
   const units = useMemo(() => unitsForHex(hex), [hex]);
-  const visible = useMemo(() => sortUnits(filterUnits(units, filter), sort), [units, filter, sort]);
+  // The global cap cuts last, after sorting: what survives is the front of the arrangement the
+  // player chose, which with own-first grouping is their own units. The hint below owns up to the
+  // truncation the same way it does for a filter.
+  const unitListLimit = useSettingsStore((state) => state.unitListLimit);
+  const visible = useMemo(
+    () => limitUnits(sortUnits(filterUnits(units, filter), sort), unitListLimit),
+    [units, filter, sort, unitListLimit]
+  );
   const selectedIndex = useMemo(
     () => visible.findIndex((unit) => unit.unitId === selectedUnitId),
     [visible, selectedUnitId]

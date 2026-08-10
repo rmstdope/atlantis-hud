@@ -212,7 +212,10 @@ test("merging leaves the orders and the selection where they were", async ({ pag
   await page.getByTestId("foreign-report-merge").click();
   await expect(page.getByTestId("import-status")).toContainText("merged");
 
-  await expect(orders).toHaveValue("@study obse\n@work");
+  // With the trailing newline the editor appends once a draft is saved - merging flushes the
+  // draft on its way in, so the save has landed by the time the merge reports done. The words
+  // themselves are what merging must not move.
+  await expect(orders).toHaveValue("@study obse\n@work\n");
   await expect(page.getByTestId("panel-unit")).toContainText("Seven of Eight");
   await expect(page.getByTestId("panel-region")).toContainText("Inholm");
 });

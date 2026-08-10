@@ -1,6 +1,13 @@
 import type { ReportUnit } from "@atlantis/core-client";
 import { describe, expect, it } from "vitest";
-import { DEFAULT_SORT, filterUnits, sortUnits, windowRange, type SortState } from "./unitTable";
+import {
+  DEFAULT_SORT,
+  filterUnits,
+  limitUnits,
+  sortUnits,
+  windowRange,
+  type SortState
+} from "./unitTable";
 
 /**
  * Names are deliberately plain ASCII. The comparators use bare localeCompare to match
@@ -261,5 +268,26 @@ describe("filterUnits", () => {
 
   it("returns nothing when no unit matches", () => {
     expect(filterUnits(units, "nobody")).toEqual([]);
+  });
+});
+
+/**
+ * The global cap on how many rows the table shows. Zero means all, and the cap keeps the front of
+ * the list, which is where sorting has already put the player's own units.
+ */
+describe("limitUnits", () => {
+  it("shows the whole list when the limit is zero", () => {
+    const list = [unit("101", true), unit("102", false)];
+    expect(limitUnits(list, 0)).toBe(list);
+  });
+
+  it("caps the list at the limit, keeping the front of it", () => {
+    const list = [unit("101", true), unit("102", false), unit("103", false)];
+    expect(ids(limitUnits(list, 2))).toEqual(["101", "102"]);
+  });
+
+  it("leaves a list already within the limit whole", () => {
+    const list = [unit("101", true)];
+    expect(limitUnits(list, 5)).toBe(list);
   });
 });
