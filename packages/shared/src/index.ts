@@ -2,6 +2,7 @@ export * from "./appVersion";
 export * from "./featureFlags";
 export * from "./logging";
 export * from "./hexMapModel";
+export * from "./settingsStore";
 export * from "./workspaceStore";
 export * from "./orderEditor";
 export * from "./ordersDocument";
