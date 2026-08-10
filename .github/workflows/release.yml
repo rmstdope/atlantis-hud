@@ -170,10 +170,57 @@ jobs:
           path: target/release/bundle/appimage/*.AppImage
           if-no-files-found: error
 
+  windows:
+    name: Windows bundle
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: release-windows
+
+      - name: Install wasm-pack
+        uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-pack
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build the Windows bundle
+        run: pnpm --filter @atlantis/desktop exec tauri build --features desktop-runtime --bundles nsis
+
+      - name: Upload the Windows bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-bundle
+          path: target/release/bundle/nsis/*.exe
+          if-no-files-found: error
+
   publish:
     name: Publish desktop release
     runs-on: ubuntu-latest
-    needs: [macos, linux]
+    needs: [macos, linux, windows]
     permissions:
       # To create the release and attach the bundles to it.
       contents: write
@@ -190,12 +237,19 @@ jobs:
           name: linux-bundle
           path: release-artifacts/linux
 
+      - name: Download the Windows bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-bundle
+          path: release-artifacts/windows
+
       - name: Publish the release
         uses: softprops/action-gh-release@v2
         with:
           files: |
             release-artifacts/macos/*.dmg
             release-artifacts/linux/*.AppImage
+            release-artifacts/windows/*.exe
           generate_release_notes: true
           body: |
             ## Installing
@@ -219,6 +273,12 @@ jobs:
             chmod +x Atlantis\ HUD_*.AppImage
             ./Atlantis\ HUD_*.AppImage
             ```
+
+            **Windows**
+
+            Download the `.exe` installer and run it. Windows SmartScreen may warn that the
+            application is from an unknown publisher. Click **More info** → **Run anyway** to
+            proceed.
 
             Signing and notarizing needs a paid Apple Developer Program membership; until there is
             one, this is the cost. See `docs/issue-10-release-contracts.md`.
