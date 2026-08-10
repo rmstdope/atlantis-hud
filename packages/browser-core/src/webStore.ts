@@ -121,6 +121,8 @@ export interface WebStore {
     gameId: string,
     factionId: string
   ): Promise<StoredRegionSighting[]>;
+  /** Every remembered region in one game, for export. */
+  getAllRegionSightings(databasePath: string, gameId: string): Promise<StoredRegionSighting[]>;
   putMergedReport(record: StoredMergedReport): Promise<void>;
   /** Every allied report folded into one faction's map for one turn. Ordering is the caller's. */
   getMergedReports(
@@ -129,6 +131,8 @@ export interface WebStore {
     factionId: string,
     turnNumber: number
   ): Promise<StoredMergedReport[]>;
+  /** Every allied report folded into this game's maps, for export. */
+  getAllMergedReports(databasePath: string, gameId: string): Promise<StoredMergedReport[]>;
   putOrderDraft(draft: StoredOrderDraft): Promise<void>;
   getOrderDraft(
     databasePath: string,
@@ -360,9 +364,13 @@ export function createIndexedDbWebStore(): WebStore {
     },
     getRegionSightings: (databasePath, _gameId, factionId) =>
       readAll<StoredRegionSighting>(databasePath, REGION_SIGHTING_STORE, [factionId]),
+    getAllRegionSightings: (databasePath, _gameId) =>
+      readStore<StoredRegionSighting>(databasePath, REGION_SIGHTING_STORE),
     putMergedReport: (record) => write(record.databasePath, MERGED_REPORT_STORE, record),
     getMergedReports: (databasePath, _gameId, factionId, turnNumber) =>
       readAll<StoredMergedReport>(databasePath, MERGED_REPORT_STORE, [factionId, turnNumber]),
+    getAllMergedReports: (databasePath, _gameId) =>
+      readStore<StoredMergedReport>(databasePath, MERGED_REPORT_STORE),
     putOrderDraft: (draft) => write(draft.databasePath, ORDER_DRAFT_STORE, draft),
     getOrderDraft: (databasePath, _gameId, factionId, turnNumber) =>
       read<StoredOrderDraft>(databasePath, ORDER_DRAFT_STORE, [factionId, turnNumber])
@@ -442,6 +450,9 @@ export function createMemoryWebStore(): WebStore {
           sighting.databasePath === databasePath && sighting.factionId === factionId
       );
     },
+    async getAllRegionSightings(databasePath, _gameId) {
+      return [...sightings.values()].filter((sighting) => sighting.databasePath === databasePath);
+    },
     async putMergedReport(record) {
       merges.set(
         JSON.stringify([
@@ -460,6 +471,9 @@ export function createMemoryWebStore(): WebStore {
           record.factionId === factionId &&
           record.turnNumber === turnNumber
       );
+    },
+    async getAllMergedReports(databasePath, _gameId) {
+      return [...merges.values()].filter((record) => record.databasePath === databasePath);
     },
     async putOrderDraft(draft) {
       drafts.set(composite(draft.databasePath, draft.factionId, draft.turnNumber), draft);

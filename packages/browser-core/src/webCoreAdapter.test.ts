@@ -423,6 +423,120 @@ describe("managing games", () => {
   });
 });
 
+describe("exporting and importing games", () => {
+  it("round trips one whole game through one backup file", async () => {
+    const store = createMemoryWebStore();
+    const adapter = createWebCoreAdapter(fakeWasm(), store);
+    const opened = (await adapter.createGame(manifest("alpha", "Alpha"))) as { databasePath: string };
+
+    await adapter.commitReportImport(opened.databasePath, "alpha", "17", REPORT, false, IMPORTED_AT);
+    await adapter.saveOrderDraft(
+      opened.databasePath,
+      "alpha",
+      "17",
+      12,
+      "@work\n@study combat",
+      "2026-08-08T00:00:00Z"
+    );
+    await store.putRegionSightings([
+      {
+        databasePath: opened.databasePath,
+        gameId: "alpha",
+        factionId: "17",
+        regionId: "1:7,53",
+        lastSeenTurn: 12,
+        payloadJson: JSON.stringify({ regionId: "1:7,53", terrain: "plain", exits: [] })
+      }
+    ]);
+    await store.putMergedReport({
+      databasePath: opened.databasePath,
+      gameId: "alpha",
+      factionId: "17",
+      turnNumber: 12,
+      mergedFactionId: "73",
+      mergedFactionName: "Faction 73",
+      mergedAt: "2026-08-08T00:05:00Z"
+    });
+
+    const backupJson = (await adapter.exportGame("alpha")) as string;
+    expect(JSON.parse(backupJson)).toMatchObject({
+      format: "atlantis-hud-game-backup",
+      version: 1,
+      manifest: { metadata: { gameId: "alpha" } },
+      importedTurns: [{ factionId: "17", turnNumber: 12, rawReport: REPORT }],
+      orderDrafts: [{ factionId: "17", turnNumber: 12, orderText: "@work\n@study combat" }],
+      regionSightings: [{ factionId: "17", regionId: "1:7,53", lastSeenTurn: 12 }],
+      mergedReports: [{ factionId: "17", turnNumber: 12, mergedFactionId: "73" }]
+    });
+
+    const imported = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
+    const restored = (await imported.importGame(
+      backupJson,
+      "2026-08-09T18:30:00Z"
+    )) as { databasePath: string; manifest: GameManifest };
+
+    expect(restored.manifest.lastOpenedAt).toBe("2026-08-09T18:30:00Z");
+    expect(await imported.loadImportedTurn(restored.databasePath, "alpha", "17", 12)).toEqual({
+      key: { gameId: "alpha", factionId: "17", turnNumber: 12 },
+      rawReport: REPORT,
+      parseResult: { hydratedFrom: `parsed:${REPORT}` }
+    });
+    expect(await imported.loadOrderDraft(restored.databasePath, "alpha", "17", 12)).toEqual({
+      key: { gameId: "alpha", factionId: "17", turnNumber: 12 },
+      orderText: "@work\n@study combat",
+      updatedAt: "2026-08-08T00:00:00Z"
+    });
+    expect(await imported.loadRegionSightings(restored.databasePath, "alpha", "17")).toEqual([
+      {
+        region: { regionId: "1:7,53", terrain: "plain", exits: [] },
+        lastSeenTurn: 12
+      }
+    ]);
+    expect(await imported.loadMergedReports(restored.databasePath, "alpha", "17", 12)).toEqual([
+      {
+        gameId: "alpha",
+        factionId: "17",
+        turnNumber: 12,
+        mergedFactionId: "73",
+        mergedFactionName: "Faction 73",
+        mergedAt: "2026-08-08T00:05:00Z"
+      }
+    ]);
+  });
+
+  it("refuses a backup file from a newer format version", async () => {
+    const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
+    const backup = JSON.stringify({
+      format: "atlantis-hud-game-backup",
+      version: 99,
+      manifest: manifest("alpha", "Alpha"),
+      importedTurns: [],
+      orderDrafts: [],
+      regionSightings: [],
+      mergedReports: []
+    });
+
+    await expect(adapter.importGame(backup, NOW)).rejects.toThrow(/newer than this build supports/u);
+  });
+
+  it("refuses to import over an existing game", async () => {
+    const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
+    await adapter.createGame(manifest("alpha", "Alpha"));
+
+    const backup = JSON.stringify({
+      format: "atlantis-hud-game-backup",
+      version: 1,
+      manifest: manifest("alpha", "Alpha"),
+      importedTurns: [],
+      orderDrafts: [],
+      regionSightings: [],
+      mergedReports: []
+    });
+
+    await expect(adapter.importGame(backup, NOW)).rejects.toThrow(/already exists/u);
+  });
+});
+
 describe("planning a route", () => {
   /**
    * Planning is pure, so the adapter has nothing to do but pass the four arguments through in the

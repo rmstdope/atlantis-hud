@@ -31,11 +31,17 @@ durable as a file, and it is worth knowing how it can go away.
 
 ### Keeping a copy
 
-Right now the surest safety net is the turn reports themselves: **keep the report files your game
-sends you.** If a game is ever lost, loading those reports back in, oldest first, rebuilds it.
+You can now **export one whole game to a single backup file** and **import that file again** on the
+same platform or the other one. In a game's menu, open the **This game** tab and use **Export game
+backup…** to save a copy. With no game open, the first screen also offers **Import game backup…** so
+an empty browser can be restored straight from that file.
 
-Being able to save a whole game to a single file, and load it back or move it to another device, is
-planned — see issue #50.
+The backup includes the game manifest, every imported turn and its raw report text, saved order
+drafts, and the remembered map. Importing creates a new game and refuses if that game's id already
+exists, so a backup cannot silently overwrite what is already there.
+
+The turn reports are still worth keeping as well: they are the raw source material the game was built
+from, and they remain a second line of defence if you ever need one.
 
 ### Playing alongside an ally
 

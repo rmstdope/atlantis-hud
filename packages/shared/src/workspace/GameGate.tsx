@@ -1,4 +1,5 @@
-import type { ReactNode } from "react";
+import type { ChangeEvent, ReactNode } from "react";
+import { useRef } from "react";
 import { GameForm } from "./GameForm";
 
 /**
@@ -14,6 +15,7 @@ export function GameGate({
   busy,
   error,
   onCreate,
+  onImport,
   settingsOpen,
   onToggleSettings,
   settings
@@ -22,6 +24,7 @@ export function GameGate({
   busy: boolean;
   error: string | null;
   onCreate: (name: string, rulesetId: string) => void;
+  onImport: (file: File) => void;
   /**
    * Settings are reachable here too, before any game exists. Asking which version you are running,
    * or whether a newer one has been published, is not a question that should require having created
@@ -31,6 +34,15 @@ export function GameGate({
   onToggleSettings: () => void;
   settings: ReactNode;
 }) {
+  const importRef = useRef<HTMLInputElement | null>(null);
+  const onPickImport = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      onImport(file);
+    }
+    event.target.value = "";
+  };
+
   return (
     <div className="flex h-full flex-col bg-ground text-ink">
       <header className="flex h-9 flex-none items-center gap-3.5 border-b border-edge bg-panel px-3 text-[11.5px] whitespace-nowrap">
@@ -63,6 +75,25 @@ export function GameGate({
             Every turn you load belongs to a game. Name one to begin.
           </p>
           <GameForm busy={busy} error={error} onCreate={onCreate} />
+          <div className="mt-2 border-t border-edge pt-2">
+            <button
+              type="button"
+              data-testid="game-gate-import"
+              disabled={busy}
+              onClick={() => importRef.current?.click()}
+              className="w-full rounded border border-edge px-2.5 py-1 text-left text-brass disabled:opacity-50"
+            >
+              Import game backup…
+            </button>
+            <input
+              ref={importRef}
+              data-testid="game-gate-import-input"
+              type="file"
+              accept=".json"
+              className="hidden"
+              onChange={onPickImport}
+            />
+          </div>
         </div>
       </main>
     </div>
