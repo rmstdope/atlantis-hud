@@ -29,32 +29,52 @@ export interface InvokeResult {
  *
  * A rejection is returned rather than thrown, since for most of the sweep a domain error — an
  * unreadable database, a missing game — is a pass: the arguments bound and the command ran.
+ *
+ * Fire-and-poll rather than `executeAsync`, and not by preference: on this webview an invoke
+ * rejection aborts whatever Execute Async Script command is in flight, carrying the rejection
+ * text as a WebDriverError — an in-page `.catch` notwithstanding. Parking the outcome on
+ * `window` and collecting it with a later, separate round trip leaves the rejection nothing to
+ * abort, which is what lets a domain error come back as a value instead of a crash.
  */
 export async function invokeNative(
   command: string,
   args: Record<string, unknown> = {}
 ): Promise<InvokeResult> {
-  return browser.executeAsync<InvokeResult, [string, Record<string, unknown>]>(
-    (cmd, cmdArgs, done) => {
-      const tauri = (
-        window as unknown as {
-          __TAURI_INTERNALS__?: {
-            invoke(name: string, payload: Record<string, unknown>): Promise<unknown>;
-          };
-        }
-      ).__TAURI_INTERNALS__;
-      if (!tauri) {
-        done({ ok: false, error: "__TAURI_INTERNALS__ is missing: not running under Tauri" });
+  await browser.execute(
+    (cmd, cmdArgs) => {
+      const scope = window as unknown as {
+        __invokeOutcome?: InvokeResult;
+        __TAURI_INTERNALS__?: {
+          invoke(name: string, payload: Record<string, unknown>): Promise<unknown>;
+        };
+      };
+      scope.__invokeOutcome = undefined;
+      if (!scope.__TAURI_INTERNALS__) {
+        scope.__invokeOutcome = {
+          ok: false,
+          error: "__TAURI_INTERNALS__ is missing: not running under Tauri"
+        };
         return;
       }
-      tauri
-        .invoke(cmd, cmdArgs)
-        .then((value) => done({ ok: true, value }))
-        .catch((error: unknown) => done({ ok: false, error: String(error) }));
+      scope.__TAURI_INTERNALS__.invoke(cmd, cmdArgs)
+        .then((value) => {
+          scope.__invokeOutcome = { ok: true, value };
+        })
+        .catch((error: unknown) => {
+          scope.__invokeOutcome = { ok: false, error: String(error) };
+        });
     },
     command,
     args
   );
+  const outcome = await browser.waitUntil(
+    () =>
+      browser.execute(
+        () => (window as unknown as { __invokeOutcome?: InvokeResult }).__invokeOutcome
+      ),
+    { timeoutMsg: `invoke(${command}) never settled` }
+  );
+  return outcome as InvokeResult;
 }
 
 /**
