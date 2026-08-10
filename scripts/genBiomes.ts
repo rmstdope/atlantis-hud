@@ -221,8 +221,12 @@ async function writeComparisonSheet(masters: Map<string, Buffer>) {
     const column = index % columns;
     const x = pad + column * (cell + pad);
     const y = pad + row * (cell + labelHeight + pad);
+    const master = masters.get(name);
+    if (!master) {
+      throw new Error(`Missing generated master for biome: ${name}`);
+    }
     composites.push({
-      input: await sharp(masters.get(name), {
+      input: await sharp(master, {
         raw: { width: RENDER, height: RENDER, channels: 3 }
       })
         .resize(cell, cell)

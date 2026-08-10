@@ -44,6 +44,20 @@ const COLUMN_LABEL_ROOM = 44;
 const ROW_LABEL_ROOM = 16;
 
 const ARROWS: ArrowKey[] = ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"];
+const TEXTURED_TERRAIN_NAMES = [
+  "ocean",
+  "plain",
+  "forest",
+  "mountain",
+  "swamp",
+  "jungle",
+  "desert",
+  "tundra",
+  "volcano",
+  "cavern",
+  "underforest",
+  "wasteland"
+] as const;
 
 /** How far past the edge of what the faction knows the cursor may wander. */
 const CURSOR_MARGIN = 6;
@@ -480,38 +494,27 @@ export function MapCanvas({
           >
             <line x1="0" y1="0" x2="0" y2="5" className="stroke-ink-soft" strokeOpacity="0.22" />
           </pattern>
-          {[
-            "ocean",
-            "plain",
-            "forest",
-            "mountain",
-            "swamp",
-            "jungle",
-            "desert",
-            "tundra",
-            "volcano",
-            "cavern",
-            "underforest",
-            "wasteland"
-          ].map((terrain) => (
-            <pattern
-              key={terrain}
-              id={terrainTexturePatternId(terrain) ?? undefined}
-              patternUnits="objectBoundingBox"
-              patternContentUnits="objectBoundingBox"
-              width="1"
-              height="1"
-            >
-              <image
-                href={terrainTextureUrl(terrain) ?? undefined}
-                x="0"
-                y="0"
-                width="1"
-                height="1"
-                preserveAspectRatio="xMidYMid slice"
-              />
-            </pattern>
-          ))}
+          {showTextures
+            ? TEXTURED_TERRAIN_NAMES.map((terrain) => (
+                <pattern
+                  key={terrain}
+                  id={terrainTexturePatternId(terrain) ?? undefined}
+                  patternUnits="objectBoundingBox"
+                  patternContentUnits="objectBoundingBox"
+                  width="1"
+                  height="1"
+                >
+                  <image
+                    href={terrainTextureUrl(terrain) ?? undefined}
+                    x="0"
+                    y="0"
+                    width="1"
+                    height="1"
+                    preserveAspectRatio="xMidYMid slice"
+                  />
+                </pattern>
+              ))
+            : null}
         </defs>
 
         {/* The unexplored world, and the only thing that does not scale with how much is known. */}
