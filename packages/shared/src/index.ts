@@ -14,6 +14,7 @@ export * from "./rulesets";
 export * from "./turnMessages";
 export * from "./unitComposition";
 export * from "./unitTable";
+export * from "./unitTooltip";
 
 export * from "./workspace/appUpdate";
 export * from "./workspace/AppHeader";
