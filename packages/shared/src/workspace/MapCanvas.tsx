@@ -20,6 +20,7 @@ import {
   type ArrowKey,
   type Viewport
 } from "./mapViewport";
+import { loadSavedViewport, saveViewportForGame } from "./mapViewportStorage";
 import {
   fogPatternTile,
   hexLayers,
@@ -65,6 +66,8 @@ const RISK_CLASSES: Record<string, string> = {
 };
 
 type MapCanvasProps = {
+  /** The open game's identifier, used to save and restore the map position across sessions. */
+  gameId: string | null;
   model: HexMapModel;
   level: number;
   selectedRegionId: string | null;
@@ -99,6 +102,7 @@ type MapCanvasProps = {
  *   is supposed to have so the map is one tab stop rather than several thousand.
  */
 export function MapCanvas({
+  gameId,
   model,
   level,
   selectedRegionId,
@@ -134,6 +138,15 @@ export function MapCanvas({
 
   const selectRef = useRef(onSelectRegion);
   selectRef.current = onSelectRegion;
+
+  // Kept in a ref so that the commit callback can read the current gameId without being
+  // re-created whenever the game changes.
+  const gameIdRef = useRef<string | null>(gameId);
+  gameIdRef.current = gameId;
+
+  // Holds a viewport that should be applied the next time the frame effect runs. Set when the game
+  // changes and the player has a saved position for it; cleared once the position is applied.
+  const pendingRestoreRef = useRef<Viewport | null>(null);
 
   const layers = useMemo(() => hexLayers(model.hexes, level), [model, level]);
   const onLevel = useMemo(
@@ -176,6 +189,10 @@ export function MapCanvas({
       viewRef.current = next;
       applyView();
       setView(next);
+      const id = gameIdRef.current;
+      if (id) {
+        saveViewportForGame(id, next);
+      }
     },
     [applyView]
   );
@@ -206,6 +223,17 @@ export function MapCanvas({
     return () => observer.disconnect();
   }, []);
 
+  // Loads the saved viewport when the game changes so it is ready for the frame effect below.
+  // This effect runs before the frame effect (effects fire in definition order), which is what
+  // makes the restore win over the default fit when both happen in the same render cycle.
+  useEffect(() => {
+    if (gameId === null) {
+      pendingRestoreRef.current = null;
+      return;
+    }
+    pendingRestoreRef.current = loadSavedViewport(gameId);
+  }, [gameId]);
+
   // Frames the world when the report or the level changes. Another level's hexes can sit somewhere
   // completely different, so keeping the old transform would open on empty fog.
   useEffect(() => {
@@ -217,6 +245,14 @@ export function MapCanvas({
       return;
     }
     framedRef.current = { model, level };
+
+    // If a saved viewport is waiting (game just opened), restore it instead of fitting to the map.
+    if (pendingRestoreRef.current) {
+      const restored = pendingRestoreRef.current;
+      pendingRestoreRef.current = null;
+      commit(restored);
+      return;
+    }
 
     const fitted = fitTo(
       onLevel.map((hex) => hex.coordinate),
