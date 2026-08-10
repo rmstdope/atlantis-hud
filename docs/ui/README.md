@@ -118,4 +118,7 @@ changed the implementation plan:
   its rendering and its behaviour are real; which specific hexes are stale is not.
 - Colour, spacing and type here are indicative. The implementation uses Tailwind tokens as specified
   in `docs/implementation-plan.md`, and light/dark theming is issue #9's scope.
-- The maps here are SVG for convenience. The real renderer stays on PixiJS.
+- The maps here are SVG, and so is the real renderer. It began on PixiJS and moved to SVG in #58,
+  because a canvas bakes each label into a texture at one size: zoomed in, a settlement name was a
+  nine-pixel bitmap magnified threefold. The stale hatch and the settlement glyph drawn here were
+  part of that move.

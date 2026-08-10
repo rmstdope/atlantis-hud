@@ -49,9 +49,63 @@
   --color-terrain-swamp: #3d4a2e;
   --color-terrain-desert: #8a7546;
   --color-terrain-jungle: #2b6b4a;
+  --color-terrain-tundra: #6b7a80;
+  --color-terrain-cavern: #3a3a44;
+  --color-terrain-underforest: #2a4433;
+  --color-terrain-wasteland: #6a5a46;
   --color-terrain-unknown: #161c24;
+  /* The ruleset can name a terrain nobody has listed here, and it must still be drawn. */
+  --color-terrain-other: #555f6b;
+
+  /*
+   * Map furniture. These were hard-coded in the renderer until the map moved to SVG; they belong
+   * here for the same reason the terrain colours do.
+   */
+  --color-map-edge: #0a0e13;
+  --color-fog-edge: #11161d;
+  --color-unit-own: #5ec8f0;
+  --color-unit-foreign: #f07070;
+  --color-settlement: #f0e2bd;
+
+  /* Route risk. Low is not green: a quiet hex is not a safe promise. */
+  --color-risk-low: #5ec8f0;
+  --color-risk-medium: #d9a441;
+  --color-risk-high: #f07070;
 
   --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
+/*
+ * How much the map shows at a given zoom.
+ *
+ * Labels are drawn at a constant screen size, so as hexes shrink the text does not: past a point
+ * every label overlaps its neighbours. Expressing the policy as rules rather than as branches in
+ * the renderer means changing band costs one class swap and no re-render at all.
+ */
+.map-far .map-pip,
+.map-far .map-glyph,
+.map-far .map-label,
+.map-far .map-count,
+.map-mid .map-count {
+  display: none;
+}
+
+.map-far .map-name,
+.map-mid .map-name {
+  display: none;
+}
+
+/*
+ * Text lives inside the scaled world, so it is divided back out: a label must stay the same size
+ * on screen whether a hex is nine pixels across or seventy. This is the whole reason the map left
+ * the canvas, where a label was a bitmap baked at one size and then magnified.
+ */
+.map-label {
+  font-size: calc(9px / var(--map-scale, 1));
+  paint-order: stroke fill;
+  stroke: var(--color-ground);
+  stroke-width: calc(2.5px / var(--map-scale, 1));
+  stroke-linejoin: round;
 }
 
 /*

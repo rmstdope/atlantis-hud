@@ -1,0 +1,303 @@
+import { describe, expect, it } from "vitest";
+import type { Coordinate } from "@atlantis/core-client";
+import type { HexKnowledge, HexNode } from "../hexMapModel";
+import { COLUMN_PITCH, ROW_PITCH } from "./mapViewport";
+import {
+  fogPatternTile,
+  hexEdgeMotif,
+  hexLayers,
+  hexPaint,
+  hexPointsAttribute,
+  routePoints,
+  staleFadeAmount,
+  terrainFillClass,
+  unitPipRadius,
+  type Point
+} from "./mapHexView";
+
+function at(x: number, y: number, z = 1): Coordinate {
+  return { x, y, z };
+}
+
+function hex(overrides: Partial<HexNode> & { knowledge: HexKnowledge }): HexNode {
+  return {
+    regionId: "1:7,53",
+    coordinate: at(7, 53),
+    terrain: "mountain",
+    province: "Inhead",
+    label: "mountain (7,53) in Inhead",
+    lastSeenTurn: 71,
+    ageInTurns: 0,
+    settlementName: null,
+    region: null,
+    ownUnitCount: 0,
+    foreignUnitCount: 0,
+    ...overrides
+  };
+}
+
+describe("terrain colour", () => {
+  it("names a class for every terrain the renderer knows", () => {
+    // Written out in full rather than built from a template: Tailwind only generates a utility it
+    // has literally seen in a source file.
+    expect(terrainFillClass("ocean")).toBe("fill-terrain-ocean");
+    expect(terrainFillClass("wasteland")).toBe("fill-terrain-wasteland");
+    expect(terrainFillClass("underforest")).toBe("fill-terrain-underforest");
+  });
+
+  it("reads the terrain whatever case the report wrote it in", () => {
+    expect(terrainFillClass("Mountain")).toBe("fill-terrain-mountain");
+  });
+
+  it("falls back rather than vanishing on a terrain it has never seen", () => {
+    // The parser takes whatever word the ruleset uses, so this list can never be exhaustive.
+    expect(terrainFillClass("nexus")).toBe("fill-terrain-other");
+    expect(terrainFillClass("")).toBe("fill-terrain-other");
+  });
+});
+
+describe("how age is drawn", () => {
+  it("fades further the longer ago a hex was seen", () => {
+    expect(staleFadeAmount(0)).toBeCloseTo(0.3);
+    expect(staleFadeAmount(1)).toBeCloseTo(0.32);
+    expect(staleFadeAmount(10)).toBeCloseTo(0.5);
+  });
+
+  it("stops fading before a hex becomes indistinguishable from unexplored ground", () => {
+    // A twenty-turn-old sighting is nearly a rumour, but it is not nothing.
+    expect(staleFadeAmount(16)).toBeCloseTo(0.62);
+    expect(staleFadeAmount(40)).toBeCloseTo(0.62);
+    expect(staleFadeAmount(400)).toBeCloseTo(0.62);
+  });
+
+  it("treats an unknown age as the freshest a stale hex can be", () => {
+    expect(staleFadeAmount(null)).toBeCloseTo(0.3);
+  });
+});
+
+describe("painting a hex", () => {
+  it("paints a hex from this turn's report at full strength", () => {
+    const paint = hexPaint(hex({ knowledge: "current" }), true);
+
+    expect(paint.terrainClass).toBe("fill-terrain-mountain");
+    expect(paint.fogOpacity).toBe(0);
+    expect(paint.hatched).toBe(false);
+  });
+
+  it("shows a hex known only from a neighbour's exits as mostly unexplored", () => {
+    const paint = hexPaint(hex({ knowledge: "named" }), true);
+
+    // Terrain and province is all the report gives, so terrain and province is all it should look
+    // like it gives.
+    expect(paint.fogOpacity).toBeGreaterThan(0.5);
+    expect(paint.hatched).toBe(false);
+  });
+
+  it("fades and hatches a hex held over from an earlier turn", () => {
+    const paint = hexPaint(hex({ knowledge: "stale", ageInTurns: 7 }), true);
+
+    expect(paint.fogOpacity).toBeCloseTo(0.44);
+    // The hatch is what separates "old data" from "dim terrain" at a glance.
+    expect(paint.hatched).toBe(true);
+  });
+
+  it("drops both the fade and the hatch when the staleness layer is off", () => {
+    const paint = hexPaint(hex({ knowledge: "stale", ageInTurns: 7 }), false);
+
+    // Turning the layer off is asking to read terrain without caring about age; a half-off
+    // treatment would answer neither question.
+    expect(paint.fogOpacity).toBe(0);
+    expect(paint.hatched).toBe(false);
+  });
+
+  it("keeps a named hex faded even when the staleness layer is off", () => {
+    // Staleness is about age. A named hex has no age: it was never visited at all.
+    expect(hexPaint(hex({ knowledge: "named" }), false).fogOpacity).toBeGreaterThan(0.5);
+  });
+});
+
+describe("hex geometry", () => {
+  it("traces a hexagon with a vertex due east, not due north", () => {
+    const points = hexPointsAttribute(10)
+      .split(" ")
+      .map((pair) => pair.split(",").map(Number));
+
+    expect(points).toHaveLength(6);
+    expect(points[0][0]).toBeCloseTo(10);
+    expect(points[0][1]).toBeCloseTo(0);
+    // A pointy-top hexagon would have a corner directly above the centre; a flat-top one does not.
+    expect(points.some(([x]) => Math.abs(x) < 0.001)).toBe(false);
+  });
+});
+
+describe("the unexplored lattice", () => {
+  const RADIUS = 18;
+
+  it("repeats over a tile three radii wide and one hex tall", () => {
+    const tile = fogPatternTile(RADIUS);
+
+    // Verified against the lattice: (x+2, y+2) is the shortest purely horizontal repeat, and the
+    // tile holds exactly two hex centres.
+    expect(tile.width).toBeCloseTo(3 * RADIUS);
+    expect(tile.height).toBeCloseTo(RADIUS * Math.sqrt(3));
+  });
+
+  it("draws every edge of the lattice exactly once", () => {
+    // Each hex owns three of its six edges; the other three belong to its northern and western
+    // neighbours. Drawing all six would double every line and make the grid twice as heavy.
+    const drawn = new Map<string, number>();
+    const all = new Map<string, number>();
+
+    for (let x = -6; x <= 6; x += 1) {
+      for (let y = -8; y <= 8; y += 1) {
+        if ((x + y) % 2 !== 0) {
+          continue;
+        }
+        const centre = { x: COLUMN_PITCH * x, y: ROW_PITCH * y };
+        for (const edge of allEdges(centre, RADIUS)) {
+          all.set(edgeKey(edge), (all.get(edgeKey(edge)) ?? 0) + 1);
+        }
+        for (const edge of hexEdgeMotif(RADIUS)) {
+          const moved = edge.map((point) => ({ x: point.x + centre.x, y: point.y + centre.y }));
+          drawn.set(edgeKey(moved), (drawn.get(edgeKey(moved)) ?? 0) + 1);
+        }
+      }
+    }
+
+    let interior = 0;
+    for (const [key, shared] of all) {
+      // Only edges between two hexes that are both inside the patch; the rim is an artefact.
+      if (shared !== 2) {
+        continue;
+      }
+      interior += 1;
+      expect(drawn.get(key) ?? 0).toBe(1);
+    }
+    expect(interior).toBeGreaterThan(200);
+  });
+
+  it("draws the copies that straddle the tile edge, because a pattern clips rather than wraps", () => {
+    const tile = fogPatternTile(RADIUS);
+    const subpaths = tile.d.trim().split(/(?=M)/).filter(Boolean);
+
+    // One motif is not enough: the shapes overflow the tile, and SVG does not wrap the spill
+    // round to the other side.
+    expect(subpaths.length).toBeGreaterThan(1);
+
+    // Every lattice edge crossing the tile must be produced by one of them.
+    const produced = new Set<string>();
+    for (const subpath of subpaths) {
+      const numbers = subpath.match(/-?\d+(\.\d+)?/g)?.map(Number) ?? [];
+      for (let index = 0; index + 3 < numbers.length; index += 2) {
+        produced.add(
+          edgeKey([
+            { x: numbers[index], y: numbers[index + 1] },
+            { x: numbers[index + 2], y: numbers[index + 3] }
+          ])
+        );
+      }
+    }
+
+    let needed = 0;
+    for (let x = -4; x <= 6; x += 1) {
+      for (let y = -6; y <= 8; y += 1) {
+        if ((x + y) % 2 !== 0) {
+          continue;
+        }
+        const centre = { x: COLUMN_PITCH * x, y: ROW_PITCH * y };
+        for (const edge of hexEdgeMotif(RADIUS)) {
+          const moved = edge.map((point) => ({ x: point.x + centre.x, y: point.y + centre.y }));
+          if (!touchesTile(moved, tile.width, tile.height)) {
+            continue;
+          }
+          needed += 1;
+          expect(produced.has(edgeKey(moved))).toBe(true);
+        }
+      }
+    }
+    expect(needed).toBeGreaterThan(0);
+  });
+});
+
+describe("marks on a hex", () => {
+  it("draws a bigger pip for a crowd than for a lone unit", () => {
+    // Twenty-two units in a hex should not read the same as one.
+    expect(unitPipRadius(22)).toBeGreaterThan(unitPipRadius(1));
+  });
+
+  it("draws no pip at all for an empty hex", () => {
+    expect(unitPipRadius(0)).toBe(0);
+  });
+});
+
+describe("layering the map", () => {
+  const hexes = [
+    hex({ regionId: "a", knowledge: "named" }),
+    hex({ regionId: "b", knowledge: "current" }),
+    hex({ regionId: "c", knowledge: "stale" }),
+    hex({ regionId: "d", knowledge: "current" }),
+    hex({ regionId: "e", knowledge: "current", coordinate: at(7, 53, 2) })
+  ];
+
+  it("paints what is known least first, so better knowledge is never buried", () => {
+    const layers = hexLayers(hexes, 1);
+
+    expect(layers.named.map((node) => node.regionId)).toEqual(["a"]);
+    expect(layers.stale.map((node) => node.regionId)).toEqual(["c"]);
+    expect(layers.current.map((node) => node.regionId)).toEqual(["b", "d"]);
+  });
+
+  it("leaves out the levels the player is not looking at", () => {
+    expect(hexLayers(hexes, 1).current.some((node) => node.regionId === "e")).toBe(false);
+    expect(hexLayers(hexes, 2).current.map((node) => node.regionId)).toEqual(["e"]);
+  });
+});
+
+describe("the planned route", () => {
+  it("runs a line through the centre of each hex in turn", () => {
+    const points = routePoints([at(7, 53), at(8, 52), at(9, 51)], 1);
+    const pairs = points.trim().split(" ");
+
+    expect(pairs).toHaveLength(3);
+    const [x, y] = pairs[0].split(",").map(Number);
+    expect(x).toBeCloseTo(7 * COLUMN_PITCH);
+    expect(y).toBeCloseTo(53 * ROW_PITCH);
+  });
+
+  it("leaves out steps on another level, which are not on this map", () => {
+    const points = routePoints([at(7, 53), at(8, 52, 2), at(9, 51)], 1);
+    expect(points.trim().split(" ")).toHaveLength(2);
+  });
+
+  it("draws nothing when there is no route", () => {
+    expect(routePoints([], 1)).toBe("");
+  });
+});
+
+/** All six edges of a hex, for the coverage check above. */
+function allEdges(centre: Point, radius: number): Point[][] {
+  const vertices = Array.from({ length: 6 }, (_, corner) => {
+    const angle = (Math.PI / 180) * (60 * corner);
+    return { x: centre.x + radius * Math.cos(angle), y: centre.y + radius * Math.sin(angle) };
+  });
+  return vertices.map((vertex, index) => [vertex, vertices[(index + 1) % 6]]);
+}
+
+/** An edge identified independently of which end it was drawn from. */
+function edgeKey(edge: Point[]): string {
+  return edge
+    .map((point) => `${point.x.toFixed(3)},${point.y.toFixed(3)}`)
+    .sort()
+    .join("|");
+}
+
+function touchesTile(edge: Point[], width: number, height: number): boolean {
+  const xs = edge.map((point) => point.x);
+  const ys = edge.map((point) => point.y);
+  return (
+    Math.max(...xs) >= 0 &&
+    Math.min(...xs) <= width &&
+    Math.max(...ys) >= 0 &&
+    Math.min(...ys) <= height
+  );
+}

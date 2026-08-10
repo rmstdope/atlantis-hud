@@ -64,7 +64,8 @@ export default defineConfig({
         // is useless, which is worse than not opening at all.
         globPatterns: ["**/*.{js,css,html,ico,png,svg,wasm,json}"],
         // Headroom rather than a fix. The chunk carrying the map renderer and the orders editor is
-        // around 750 KiB against Workbox's 2 MiB default, and nothing today is close - but the
+        // around 290 KiB against Workbox's 2 MiB default - it was roughly 750 KiB until #58 took
+        // the map off PixiJS - and nothing today is close, but the
         // failure when something does cross it is that the file is silently dropped from the
         // precache, and an installed application quietly stops working offline.
         maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,

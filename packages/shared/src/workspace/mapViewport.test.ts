@@ -1,0 +1,351 @@
+import { describe, expect, it } from "vitest";
+import type { Coordinate } from "@atlantis/core-client";
+import {
+  accumulateWheel,
+  centreOn,
+  COLUMN_PITCH,
+  fitTo,
+  hexBounds,
+  isOffScreen,
+  isWithinReach,
+  MAX_STEP,
+  MIN_STEP,
+  neighbour,
+  PIXELS_PER_STEP,
+  ROW_PITCH,
+  rulerTicks,
+  scaleOf,
+  transformString,
+  wheelPixels,
+  worldOf,
+  zoomAt,
+  zoomBand,
+  type Viewport
+} from "./mapViewport";
+
+function at(x: number, y: number, z = 1): Coordinate {
+  return { x, y, z };
+}
+
+const ORIGIN: Viewport = { tx: 0, ty: 0, step: 0 };
+
+const PIXEL_MODE = 0;
+const LINE_MODE = 1;
+const PAGE_MODE = 2;
+
+describe("zoom steps", () => {
+  it("reads a step of zero as life size", () => {
+    expect(scaleOf(0)).toBe(1);
+  });
+
+  it("doubles the scale every four steps", () => {
+    expect(scaleOf(4)).toBeCloseTo(2);
+    expect(scaleOf(-4)).toBeCloseTo(0.5);
+    expect(scaleOf(8)).toBeCloseTo(4);
+  });
+
+  it("returns to the identical scale after zooming in and back out", () => {
+    let view = ORIGIN;
+    for (let step = 0; step < 5; step += 1) {
+      view = zoomAt(view, 1, 400, 300);
+    }
+    expect(view.step).toBe(5);
+
+    for (let step = 0; step < 5; step += 1) {
+      view = zoomAt(view, -1, 400, 300);
+    }
+
+    // Whole numbers are the point: the old renderer multiplied by 1.1 and 0.9, losing 1% per
+    // round trip. Exact equality, not approximate.
+    expect(view.step).toBe(0);
+    expect(scaleOf(view.step)).toBe(1);
+  });
+
+  it("never zooms past the limits, however hard the wheel is spun", () => {
+    let view = ORIGIN;
+    for (let step = 0; step < 50; step += 1) {
+      view = zoomAt(view, 1, 400, 300);
+    }
+    expect(view.step).toBe(MAX_STEP);
+
+    for (let step = 0; step < 100; step += 1) {
+      view = zoomAt(view, -1, 400, 300);
+    }
+    expect(view.step).toBe(MIN_STEP);
+  });
+
+  it("keeps the point under the cursor where it is", () => {
+    const before: Viewport = { tx: 40, ty: 25, step: 0 };
+    const pointerX = 300;
+    const pointerY = 180;
+
+    const scaleBefore = scaleOf(before.step);
+    const worldX = (pointerX - before.tx) / scaleBefore;
+    const worldY = (pointerY - before.ty) / scaleBefore;
+
+    const after = zoomAt(before, 3, pointerX, pointerY);
+    const scaleAfter = scaleOf(after.step);
+
+    expect(after.tx + worldX * scaleAfter).toBeCloseTo(pointerX);
+    expect(after.ty + worldY * scaleAfter).toBeCloseTo(pointerY);
+  });
+
+  it("writes a transform a browser can read", () => {
+    expect(transformString({ tx: 12.3456, ty: -7, step: 4 })).toMatch(
+      /^translate\([\d.-]+ ?,? ?[\d.-]+\) scale\([\d.]+\)$/
+    );
+  });
+});
+
+describe("zoom bands", () => {
+  it("drops to the sparsest band once hexes are too small to label", () => {
+    expect(zoomBand(MIN_STEP)).toBe("far");
+    expect(zoomBand(-3)).toBe("far");
+  });
+
+  it("shows the middle band across the range the map is normally read at", () => {
+    expect(zoomBand(-2)).toBe("mid");
+    expect(zoomBand(0)).toBe("mid");
+    expect(zoomBand(2)).toBe("mid");
+  });
+
+  it("shows the richest band only when a hex is big enough to hold detail", () => {
+    expect(zoomBand(3)).toBe("near");
+    expect(zoomBand(MAX_STEP)).toBe("near");
+  });
+
+  it("changes band at most once per step, so a jittering wheel cannot flicker", () => {
+    const bands = [];
+    for (let step = MIN_STEP; step <= MAX_STEP; step += 1) {
+      bands.push(zoomBand(step));
+    }
+    // Bands must be contiguous: far... mid... near, never alternating.
+    expect(bands.join(",")).toBe(
+      ["far", "far", "far", "far", "far", "far", "mid", "mid", "mid", "mid", "mid", "near", "near", "near", "near", "near", "near"].join(",")
+    );
+  });
+});
+
+describe("reading the wheel", () => {
+  it("treats a line of travel as more than a pixel, and a page as more than a line", () => {
+    // A trackpad reports pixels and a mouse wheel often reports lines. Reading them as the same
+    // number makes one crawl and the other race.
+    expect(wheelPixels(1, PIXEL_MODE, 600)).toBe(1);
+    expect(wheelPixels(1, LINE_MODE, 600)).toBeGreaterThan(1);
+    expect(wheelPixels(1, PAGE_MODE, 600)).toBe(600);
+  });
+
+  it("keeps the direction of travel", () => {
+    expect(wheelPixels(-3, LINE_MODE, 600)).toBeLessThan(0);
+  });
+
+  it("earns no step until the wheel has travelled far enough", () => {
+    // A trackpad emits a stream of two-pixel deltas. One step per event would slam the zoom to
+    // its limit in a single gesture.
+    const small = accumulateWheel(0, 2);
+    expect(small.steps).toBe(0);
+    expect(small.carry).toBe(2);
+  });
+
+  it("earns exactly one step per unit of travel, carrying the remainder", () => {
+    const first = accumulateWheel(0, PIXELS_PER_STEP + 10);
+    expect(first.steps).toBe(1);
+    expect(first.carry).toBe(10);
+
+    const second = accumulateWheel(first.carry, PIXELS_PER_STEP - 10);
+    expect(second.steps).toBe(1);
+    expect(second.carry).toBe(0);
+  });
+
+  it("accumulates in both directions and resets the carry when direction reverses", () => {
+    const up = accumulateWheel(0, -PIXELS_PER_STEP * 2);
+    expect(up.steps).toBe(-2);
+
+    // Travel banked in one direction must not count toward a step in the other.
+    const reversed = accumulateWheel(30, -10);
+    expect(reversed.steps).toBe(0);
+    expect(Math.abs(reversed.carry)).toBeLessThanOrEqual(30);
+  });
+});
+
+describe("framing the world", () => {
+  it("frames every known hex inside the viewport", () => {
+    const coordinates = [at(7, 53), at(26, 52), at(15, 63), at(19, 39)];
+
+    const view = fitTo(coordinates, 800, 600);
+    if (!view) {
+      throw new Error("expected a viewport for a non-empty world");
+    }
+
+    for (const coordinate of coordinates) {
+      expect(isOffScreen(coordinate, view, 800, 600)).toBe(false);
+    }
+  });
+
+  it("refuses to frame a world with nothing in it", () => {
+    // A faction with no known hexes has no meaningful view, and inventing one would put the
+    // player somewhere arbitrary rather than nowhere.
+    expect(fitTo([], 800, 600)).toBeNull();
+  });
+
+  it("never frames tighter or wider than the zoom limits allow", () => {
+    const single = fitTo([at(7, 53)], 800, 600);
+    expect(single?.step).toBeLessThanOrEqual(MAX_STEP);
+    expect(single?.step).toBeGreaterThanOrEqual(MIN_STEP);
+
+    const sprawling = fitTo([at(-400, -400), at(400, 400)], 800, 600);
+    expect(sprawling?.step).toBeGreaterThanOrEqual(MIN_STEP);
+  });
+
+  it("frames on whole steps, so fitting does not invent a scale zooming cannot reach", () => {
+    const view = fitTo([at(7, 53), at(26, 52)], 800, 600);
+    expect(Number.isInteger(view?.step)).toBe(true);
+  });
+});
+
+describe("bringing a hex into view", () => {
+  it("puts the hex in the middle of the viewport without changing the zoom", () => {
+    const before: Viewport = { tx: 0, ty: 0, step: 2 };
+
+    const after = centreOn(at(7, 53), before, 800, 600);
+
+    expect(after.step).toBe(before.step);
+    const world = worldOf(at(7, 53));
+    const scale = scaleOf(after.step);
+    expect(after.tx + world.x * scale).toBeCloseTo(400);
+    expect(after.ty + world.y * scale).toBeCloseTo(300);
+  });
+
+  it("reports a hex outside the viewport as off screen, and one inside as not", () => {
+    const view = centreOn(at(7, 53), ORIGIN, 800, 600);
+
+    expect(isOffScreen(at(7, 53), view, 800, 600)).toBe(false);
+    expect(isOffScreen(at(400, 400), view, 800, 600)).toBe(true);
+  });
+
+  it("counts a hex clipped by the viewport edge as off screen", () => {
+    // Only part of it is showing, which is not good enough to call it visible: a selection ring
+    // half off the screen is a selection the player cannot see.
+    const centred = centreOn(at(7, 53), ORIGIN, 800, 600);
+    const nudged: Viewport = { ...centred, tx: centred.tx - 400 };
+
+    expect(isOffScreen(at(7, 53), nudged, 800, 600)).toBe(true);
+  });
+});
+
+describe("arrow keys", () => {
+  it("moves north and south to the direct vertical neighbours", () => {
+    // Flat-top geometry: (x, y +/- 2) is straight up and down, which is why the map is flat-top
+    // in the first place.
+    expect(neighbour(at(7, 53), "ArrowUp")).toEqual(at(7, 51));
+    expect(neighbour(at(7, 53), "ArrowDown")).toEqual(at(7, 55));
+  });
+
+  it("moves left and right to opposite corners, so each undoes the other", () => {
+    expect(neighbour(at(7, 53), "ArrowLeft")).toEqual(at(6, 54));
+    expect(neighbour(at(7, 53), "ArrowRight")).toEqual(at(8, 52));
+  });
+
+  it("returns to where it started when a key is undone by its opposite", () => {
+    // The whole reason left is south-west rather than north-west: two keys that both lead north
+    // would let focus drift with no way back.
+    const start = at(7, 53);
+    expect(neighbour(neighbour(start, "ArrowRight"), "ArrowLeft")).toEqual(start);
+    expect(neighbour(neighbour(start, "ArrowLeft"), "ArrowRight")).toEqual(start);
+    expect(neighbour(neighbour(start, "ArrowUp"), "ArrowDown")).toEqual(start);
+  });
+
+  it("reaches the remaining two corners in two presses", () => {
+    const start = at(7, 53);
+    expect(neighbour(neighbour(start, "ArrowUp"), "ArrowLeft")).toEqual(at(6, 52));
+    expect(neighbour(neighbour(start, "ArrowDown"), "ArrowRight")).toEqual(at(8, 54));
+  });
+
+  it("only ever lands on coordinates the lattice has room for", () => {
+    const keys = ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"] as const;
+    for (const key of keys) {
+      const moved = neighbour(at(7, 53), key);
+      expect(Math.abs((moved.x + moved.y) % 2)).toBe(0);
+    }
+  });
+
+  it("stays on the level it started on", () => {
+    expect(neighbour(at(7, 53, 2), "ArrowUp").z).toBe(2);
+  });
+});
+
+describe("ruler ticks", () => {
+  it("covers the coordinates on screen and no others", () => {
+    const view: Viewport = { tx: 0, ty: 0, step: 0 };
+    const ticks = rulerTicks("x", view, 800, 1);
+
+    // At life size a column is COLUMN_PITCH wide, so 800px holds columns 0..29.
+    expect(ticks[0]?.index).toBe(0);
+    expect(ticks[ticks.length - 1]?.index).toBe(Math.floor(800 / COLUMN_PITCH));
+  });
+
+  it("places each tick where its column actually falls", () => {
+    const view: Viewport = { tx: 0, ty: 0, step: 0 };
+    const ticks = rulerTicks("x", view, 800, 1);
+
+    // The offset excludes the pan, so the ruler group can be translated rather than rebuilt.
+    const third = ticks.find((tick) => tick.index === 3);
+    expect(third?.offset).toBeCloseTo(3 * COLUMN_PITCH);
+  });
+
+  it("thins the ticks out rather than letting the numbers collide", () => {
+    const view: Viewport = { tx: 0, ty: 0, step: MIN_STEP };
+    const dense = rulerTicks("x", view, 800, 1);
+    const readable = rulerTicks("x", view, 800, 44);
+
+    expect(readable.length).toBeLessThan(dense.length);
+    for (let index = 1; index < readable.length; index += 1) {
+      const gap = readable[index].offset - readable[index - 1].offset;
+      expect(gap).toBeGreaterThanOrEqual(44);
+    }
+  });
+
+  it("steps rows by two, because a column only holds every second one", () => {
+    const ticks = rulerTicks("y", ORIGIN, 600, 1);
+    expect(ticks[1].index - ticks[0].index).toBe(2);
+    expect(ticks[1].offset - ticks[0].offset).toBeCloseTo(2 * ROW_PITCH);
+  });
+
+  it("follows the map when it is panned to negative coordinates", () => {
+    const view: Viewport = { tx: 300, ty: 0, step: 0 };
+    const ticks = rulerTicks("x", view, 800, 1);
+
+    expect(ticks[0].index).toBeLessThan(0);
+  });
+});
+
+describe("how far the cursor may roam", () => {
+  const known = [at(7, 53), at(8, 52), at(20, 40)];
+
+  it("measures the ground the faction knows", () => {
+    const bounds = hexBounds(known);
+    expect(bounds).toEqual({ minX: 7, maxX: 20, minY: 40, maxY: 53 });
+  });
+
+  it("has no bounds for a world with nothing in it", () => {
+    expect(hexBounds([])).toBeNull();
+  });
+
+  it("lets the cursor cross unexplored ground between what is known", () => {
+    const bounds = hexBounds(known);
+    // The whole point: two islands of known hexes with unvisited ground between them have to be
+    // reachable from one another, or half the map is unnavigable by keyboard.
+    expect(isWithinReach(at(14, 46), bounds, 6)).toBe(true);
+  });
+
+  it("lets the cursor step past the edge of what is known, but not wander off", () => {
+    const bounds = hexBounds(known);
+    expect(isWithinReach(at(24, 40), bounds, 6)).toBe(true);
+    expect(isWithinReach(at(27, 40), bounds, 6)).toBe(false);
+    expect(isWithinReach(at(7, 60), bounds, 6)).toBe(false);
+  });
+
+  it("keeps the cursor still when nothing at all is known", () => {
+    expect(isWithinReach(at(0, 0), null, 6)).toBe(false);
+  });
+});
