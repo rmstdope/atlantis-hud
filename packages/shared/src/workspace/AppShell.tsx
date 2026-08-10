@@ -63,6 +63,23 @@ function describeError(error: unknown): string {
   }
 }
 
+export function shouldConfirmOlderTurnLoad(
+  currentTurn: number | null | undefined,
+  loadedTurn: number | null | undefined
+): boolean {
+  return typeof currentTurn === "number" && typeof loadedTurn === "number" && loadedTurn < currentTurn;
+}
+
+export function confirmOlderTurnLoad(currentTurn: number, loadedTurn: number): boolean {
+  if (typeof globalThis.confirm !== "function") {
+    return true;
+  }
+  return globalThis.confirm(
+    `Turn ${loadedTurn} is older than the currently loaded turn ${currentTurn}. ` +
+      "Load it anyway? It may not be the latest report."
+  );
+}
+
 const EMPTY: HexMapModel = {
   hexes: [],
   levels: [1],
@@ -234,6 +251,14 @@ export function AppShell({
           ruleset.status === "ready"
             ? await client.parseReportClassified(text, ruleset.text)
             : await client.parseReportFull(text);
+        const currentTurn = parsed?.header.turnNumber;
+        const incomingTurn = report.header.turnNumber;
+        if (
+          shouldConfirmOlderTurnLoad(currentTurn, incomingTurn) &&
+          !confirmOlderTurnLoad(currentTurn as number, incomingTurn as number)
+        ) {
+          return;
+        }
         setParsed(report);
         setRawReport(text);
         clearPlan();
@@ -293,7 +318,7 @@ export function AppShell({
     // `ruleset` belongs here: without it the callback closes over the value at first render, which
     // is null, and every report is parsed unclassified however long the ruleset took to arrive.
     // `game` for the same reason: a report loaded after switching games must land in the new one.
-    [client, selectRegion, ruleset, clearPlan, game]
+    [client, selectRegion, ruleset, clearPlan, game, parsed]
   );
 
   // The ruleset is a served file rather than something compiled in, so a movement value can be
