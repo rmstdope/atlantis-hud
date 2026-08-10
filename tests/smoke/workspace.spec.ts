@@ -861,6 +861,34 @@ test("men are counted rather than guessed once the ruleset is loaded", async ({ 
   await expect(page.getByTestId("panel-unit")).toContainText("gnolls");
 });
 
+/**
+ * The same guarantee for units that reach the screen through storage rather than the live parse.
+ *
+ * A merged ally's units exist only as stored sightings, and those used to be built from the plain
+ * parse - so every merged unit wore a tilde forever, however complete the catalogue, and a reload
+ * changed nothing. The hex here is one only faction 73 stood in, so everything in it came through
+ * the merge.
+ */
+test("a merged hex's men are counted rather than guessed", async ({ page }) => {
+  await loadReport(page);
+  await choose(page, "turn-71-f73.rep", ALLY_REPORT);
+  await page.getByTestId("foreign-report-merge").click();
+  await expect(page.getByTestId("import-status")).toContainText("merged");
+
+  await selectHex(page, "1:9,53");
+  const cells = await page.locator("[data-testid^='unit-row-'] td:nth-child(5)").allInnerTexts();
+  expect(cells.length).toBeGreaterThan(0);
+  expect(cells.filter((cell) => cell.startsWith("~"))).toEqual([]);
+
+  // And still counted when the same units come back off disk rather than out of the merge.
+  await page.reload();
+  await expect(page.getByTestId("import-status")).toContainText("restored turn 71");
+  await selectHex(page, "1:9,53");
+  const restored = await page.locator("[data-testid^='unit-row-'] td:nth-child(5)").allInnerTexts();
+  expect(restored.length).toBeGreaterThan(0);
+  expect(restored.filter((cell) => cell.startsWith("~"))).toEqual([]);
+});
+
 /** The ocean hex the report gives three hundred and eleven units. */
 const CROWDED_HEX = "1:26,52";
 

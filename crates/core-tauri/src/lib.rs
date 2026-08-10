@@ -496,13 +496,20 @@ pub fn command_commit_report_import(
     game_id: &str,
     confirmed_faction_id: &str,
     raw_report: &str,
+    ruleset_json: Option<&str>,
     allow_overwrite: bool,
     imported_at: &str,
 ) -> Result<ImportedTurnPreviewDto, String> {
     // Both shapes come off one parse, and that parse is the one the shell already made when it
     // showed the turn: the flat summary the import rules are decided against and that gets stored,
     // and the full model the remembered regions are built from further down.
-    let report = atlantis_hud_core::cache::with_global(|cache| cache.report(raw_report));
+    //
+    // Classified when the shell has a ruleset, exactly as the turn on screen is. The sightings
+    // below are the only account of a hex the map ever reads back, so an estimate stored here is
+    // an estimate forever - a tilde on every remembered unit, however complete the catalogue.
+    let report = atlantis_hud_core::cache::with_global(|cache| {
+        cache.classified_when_possible(raw_report, ruleset_json)
+    });
     let parse_result = atlantis_hud_core::summarize(&report);
     if let Some(rejection) = reject_import(&parse_result, confirmed_faction_id) {
         return Err(rejection);
@@ -797,10 +804,14 @@ pub fn command_merge_report(
     viewer_faction_id: &str,
     viewer_turn_number: u32,
     raw_report: &str,
+    ruleset_json: Option<&str>,
     merged_at: &str,
 ) -> Result<ReportMergeResultDto, String> {
-    // A cache hit: the shell parsed this report a moment ago to find out whose it was.
-    let report = atlantis_hud_core::cache::with_global(|cache| cache.report(raw_report));
+    // Classified for the same reason an import is: the ally's units enter the map through these
+    // sightings and nowhere else, so what is stored here is what the table will draw.
+    let report = atlantis_hud_core::cache::with_global(|cache| {
+        cache.classified_when_possible(raw_report, ruleset_json)
+    });
     let parse_result = atlantis_hud_core::summarize(&report);
     if let Some(rejection) = reject_merge(&parse_result, viewer_turn_number) {
         return Err(rejection);
@@ -1036,6 +1047,8 @@ mod sightings_tests {
 
     const TURN_71: &str =
         include_str!("../../../tests/fixtures/reports/neworigins-3.0.0-f95-t71.rep");
+    /// The catalogue the shell serves, which recognises everything these fixtures carry.
+    const RULESET: &str = include_str!("../../../config/public/ruleset.json");
 
     fn game(directory: &std::path::Path) -> OpenedGameDto {
         command_create_game(
@@ -1057,6 +1070,7 @@ mod sightings_tests {
             "faction-95",
             "95",
             TURN_71,
+            None,
             true,
             IMPORTED_AT,
         )
@@ -1095,6 +1109,93 @@ mod sightings_tests {
 
         assert!(remembered.is_empty());
     }
+
+    /// The shell shows this turn classified, so what it stores must say the same thing: a hex read
+    /// back from memory used to carry `menEstimated: true` on every unit forever, however good the
+    /// catalogue - which is why merged and remembered units all wore a tilde.
+    #[test]
+    fn remembered_units_are_counted_when_the_ruleset_is_to_hand() {
+        let directory = tempdir().expect("a temporary directory");
+        let created = game(directory.path());
+
+        command_commit_report_import(
+            &created.database_path,
+            "faction-95",
+            "95",
+            TURN_71,
+            Some(RULESET),
+            true,
+            IMPORTED_AT,
+        )
+        .expect("the import commits");
+
+        let remembered = command_load_region_sightings(&created.database_path, "faction-95", "95")
+            .expect("the sightings load");
+
+        let estimated = units_still_estimated(&remembered);
+        assert!(
+            estimated.is_empty(),
+            "every unit in this report classifies exactly, yet these stayed estimates: {estimated:?}"
+        );
+    }
+
+    /// Without a ruleset the estimate is all there is, and the payload must keep saying so.
+    #[test]
+    fn without_a_ruleset_the_stored_estimate_says_it_is_one() {
+        let directory = tempdir().expect("a temporary directory");
+        let created = game(directory.path());
+
+        command_commit_report_import(
+            &created.database_path,
+            "faction-95",
+            "95",
+            TURN_71,
+            None,
+            true,
+            IMPORTED_AT,
+        )
+        .expect("the import commits");
+
+        let remembered = command_load_region_sightings(&created.database_path, "faction-95", "95")
+            .expect("the sightings load");
+
+        assert!(
+            !units_still_estimated(&remembered).is_empty(),
+            "with no catalogue to count against, the stored figures are estimates and say so"
+        );
+    }
+}
+
+/// Every `region_id:unit_id` in the stored payloads whose men count is still marked as a guess.
+#[cfg(test)]
+fn units_still_estimated(remembered: &[RememberedRegionDto]) -> Vec<String> {
+    remembered
+        .iter()
+        .flat_map(|entry| {
+            entry
+                .region
+                .get("units")
+                .and_then(|units| units.as_array())
+                .into_iter()
+                .flatten()
+        })
+        .filter(|unit| {
+            unit.get("menEstimated")
+                .and_then(serde_json::Value::as_bool)
+                == Some(true)
+        })
+        .map(|unit| {
+            format!(
+                "{}:{}",
+                unit.get("regionId")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or("?"),
+                unit.get("unitId")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or("?"),
+            )
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -1109,6 +1210,7 @@ mod merge_tests {
         include_str!("../../../tests/fixtures/reports/neworigins-3.0.0-f73-t71.rep");
     const TURN_2: &str =
         include_str!("../../../tests/fixtures/reports/neworigins-3.0.0-f73-t2.rep");
+    const RULESET: &str = include_str!("../../../config/public/ruleset.json");
     const MERGED_AT: &str = "2026-08-10T18:30:00Z";
 
     /// A game with faction 95's turn 71 already imported, which is the state a merge starts from.
@@ -1124,6 +1226,7 @@ mod merge_tests {
             "faction-95",
             "95",
             TURN_71,
+            None,
             true,
             IMPORTED_AT,
         )
@@ -1143,6 +1246,7 @@ mod merge_tests {
             "95",
             71,
             ALLY_TURN_71,
+            None,
             MERGED_AT,
         )
         .expect("the merge succeeds");
@@ -1168,6 +1272,50 @@ mod merge_tests {
         );
     }
 
+    /// The ally's units enter the map through storage and nowhere else, so what the merge writes
+    /// is what the table draws. Written from the plain parse they all read as guesses - the tilde
+    /// on every merged unit - however complete the catalogue was at the time.
+    #[test]
+    fn merged_units_are_counted_when_the_ruleset_is_to_hand() {
+        let directory = tempdir().expect("a temporary directory");
+        let created = command_create_game(
+            directory.path().to_str().expect("a path"),
+            manifest_dto("faction-95", "Borg TNG"),
+        )
+        .expect("the game is created");
+
+        command_commit_report_import(
+            &created.database_path,
+            "faction-95",
+            "95",
+            TURN_71,
+            Some(RULESET),
+            true,
+            IMPORTED_AT,
+        )
+        .expect("the viewer's own turn commits");
+
+        command_merge_report(
+            &created.database_path,
+            "faction-95",
+            "95",
+            71,
+            ALLY_TURN_71,
+            Some(RULESET),
+            MERGED_AT,
+        )
+        .expect("the merge succeeds");
+
+        let viewers_map = command_load_region_sightings(&created.database_path, "faction-95", "95")
+            .expect("the sightings load");
+
+        let estimated = units_still_estimated(&viewers_map);
+        assert!(
+            estimated.is_empty(),
+            "both reports classify exactly, yet these stayed estimates: {estimated:?}"
+        );
+    }
+
     /// The proof that merging does not switch faction behind the player's back: reopening a game
     /// restores whichever turn was touched last, and a merged-in report must not be a candidate.
     #[test]
@@ -1181,6 +1329,7 @@ mod merge_tests {
             "95",
             71,
             ALLY_TURN_71,
+            None,
             MERGED_AT,
         )
         .expect("the merge succeeds");
@@ -1203,6 +1352,7 @@ mod merge_tests {
             "95",
             71,
             ALLY_TURN_71,
+            None,
             MERGED_AT,
         )
         .expect("the merge succeeds");
@@ -1226,6 +1376,7 @@ mod merge_tests {
             "95",
             71,
             TURN_2,
+            None,
             MERGED_AT,
         )
         .expect_err("turn 2 is not turn 71");
@@ -1249,6 +1400,7 @@ mod merge_tests {
             "95",
             71,
             TURN_71,
+            None,
             MERGED_AT,
         )
         .expect_err("the viewer's own report is refused");
@@ -1345,6 +1497,7 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
             "faction-12",
             "17",
             report,
+            None,
             false,
             IMPORTED_AT,
         )
@@ -1354,6 +1507,7 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
             "faction-12",
             "17",
             report,
+            None,
             false,
             IMPORTED_AT,
         )
@@ -1425,6 +1579,7 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
             "faction-12",
             "17",
             report,
+            None,
             false,
             IMPORTED_AT,
         )
@@ -1469,6 +1624,7 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
             "faction-12",
             "17",
             report,
+            None,
             false,
             IMPORTED_AT,
         )

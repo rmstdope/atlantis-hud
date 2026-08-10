@@ -98,8 +98,9 @@ function countUnits(region: ReportRegion | null) {
 /**
  * A hex in the current report, plus whatever an ally saw standing in it this same turn.
  *
- * The current report always wins a hex it describes, and that is right: it is the classified parse,
- * so its units carry exact man counts where a stored payload's carry estimates. But an ally's
+ * The current report always wins a hex it describes, and that is right: it is the freshest account
+ * there is, and a stored payload from before the ruleset was fetchable may still carry estimated
+ * man counts where the live parse carries exact ones. But an ally's
  * report merged into this same turn (issue #53) is stored and not on screen, so without this the
  * deep merge of a hex both factions stood in would be written correctly and never drawn - it would
  * surface next turn, once the hex goes stale, which is a strange thing for "merged 31 regions" to

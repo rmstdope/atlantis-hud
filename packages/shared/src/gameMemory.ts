@@ -72,12 +72,18 @@ export type MemoryOutcome = {
  * Failing to remember a turn is a warning rather than an error. The report in front of the player
  * parsed perfectly well, and refusing to show it because a database would not open would be trading
  * something that works for something that does not.
+ *
+ * `rulesetJson` is the same text the shell parsed the on-screen report with, or `null` when none
+ * could be fetched. What gets remembered must be classified the way what is shown is: the stored
+ * sightings are the only account of a hex the map ever reads back, so an estimate stored here
+ * would wear its tilde forever.
  */
 export async function rememberTurn(
   client: CoreClient,
   game: OpenedGame,
   parsed: ParsedReport,
   rawReport: string,
+  rulesetJson: string | null,
   now: string
 ): Promise<MemoryOutcome> {
   const factionId = parsed.header.factionId;
@@ -94,7 +100,15 @@ export async function rememberTurn(
   try {
     // Overwriting is right here: re-importing the same turn should refresh what is remembered
     // rather than refuse, and the player has already chosen this file.
-    await client.commitReportImport(game.databasePath, gameId, factionId, rawReport, true, now);
+    await client.commitReportImport(
+      game.databasePath,
+      gameId,
+      factionId,
+      rawReport,
+      rulesetJson,
+      true,
+      now
+    );
 
     const remembered = await client.loadRegionSightings(game.databasePath, gameId, factionId);
     const merged = await mergedReportsFor(client, game, factionId, parsed.header.turnNumber);
@@ -166,6 +180,7 @@ export async function mergeTurn(
   viewerFactionId: string,
   viewerTurnNumber: number,
   rawReport: string,
+  rulesetJson: string | null,
   now: string
 ): Promise<MergeOutcome> {
   const gameId = game.manifest.metadata.gameId;
@@ -176,6 +191,7 @@ export async function mergeTurn(
     viewerFactionId,
     viewerTurnNumber,
     rawReport,
+    rulesetJson,
     now
   );
 

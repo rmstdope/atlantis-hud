@@ -25,11 +25,16 @@ export type CoreWasmModule = {
     unitId: string,
     destination: string
   ): unknown;
-  prepare_report_import_state(rawReport: string, confirmedFactionId: string): unknown;
+  prepare_report_import_state(
+    rawReport: string,
+    confirmedFactionId: string,
+    rulesetJson: string | null
+  ): unknown;
   prepare_report_merge_state(
     rawReport: string,
     viewerTurnNumber: number,
-    existingSightingsJson: string
+    existingSightingsJson: string,
+    rulesetJson: string | null
   ): unknown;
   diff_imported_turn_state(existing: unknown, candidate: unknown): unknown;
   hydrate_parse_result_state(parsedPayloadJson: string): unknown;
@@ -106,9 +111,16 @@ export function createWebCoreAdapter(
   wasm: CoreWasmModule,
   store: WebStore = createWebStore()
 ): CoreAdapter {
-  const prepare = (rawReport: string, confirmedFactionId: string): PreparedImport => {
-    const prepared = wasm.prepare_report_import_state(rawReport, confirmedFactionId) as
-      PreparedImport;
+  const prepare = (
+    rawReport: string,
+    confirmedFactionId: string,
+    rulesetJson: string | null
+  ): PreparedImport => {
+    const prepared = wasm.prepare_report_import_state(
+      rawReport,
+      confirmedFactionId,
+      rulesetJson
+    ) as PreparedImport;
 
     // Rust's None can arrive as undefined rather than null depending on serializer settings, and
     // the checks below are written against null. Normalise once, here.
@@ -188,6 +200,7 @@ export function createWebCoreAdapter(
       viewerFactionId: string,
       viewerTurnNumber: number,
       rawReport: string,
+      rulesetJson: string | null,
       mergedAt: string
     ) {
       const existing = await store.getRegionSightings(databasePath, gameId, viewerFactionId);
@@ -203,7 +216,8 @@ export function createWebCoreAdapter(
             lastSeenTurn: sighting.lastSeenTurn,
             payloadJson: sighting.payloadJson
           }))
-        )
+        ),
+        rulesetJson
       ) as PreparedMerge;
 
       if (prepared.rejection) {
@@ -373,7 +387,9 @@ export function createWebCoreAdapter(
       // Left as it is rather than split into two core calls: the parse behind them is a cache hit,
       // what is left is serializing eleven regions, and nothing on the report-loading path calls
       // this. Worth splitting the moment something does.
-      const prepared = prepare(rawReport, confirmedFactionId);
+      //
+      // No ruleset: a preview stores nothing, and the summary it compares carries no men counts.
+      const prepared = prepare(rawReport, confirmedFactionId, null);
       const duplicatePreview =
         prepared.turnNumber === null
           ? { exists: false, rawChanged: false, parsedChanged: false, warningsChanged: false }
@@ -397,10 +413,11 @@ export function createWebCoreAdapter(
       gameId: string,
       confirmedFactionId: string,
       rawReport: string,
+      rulesetJson: string | null,
       allowOverwrite: boolean,
       importedAt: string
     ) {
-      const prepared = prepare(rawReport, confirmedFactionId);
+      const prepared = prepare(rawReport, confirmedFactionId, rulesetJson);
       const turnNumber = requireAdmissible(prepared);
 
       // Read once and used twice: the diff needs the stored payloads, and the write below needs

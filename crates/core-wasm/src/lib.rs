@@ -368,11 +368,18 @@ pub fn parse_report_state(raw_report: String) -> Result<JsValue, JsValue> {
 pub fn prepare_report_import_state(
     raw_report: String,
     confirmed_faction_id: String,
+    ruleset_json: Option<String>,
 ) -> Result<JsValue, JsValue> {
     // The report the shell already showed is the report being imported, so this is a cache hit and
     // no parsing happens here at all. Both shapes come off the one model: the flat summary the
     // import rules are decided against, and the regions that get remembered one by one.
-    let full = atlantis_hud_core::cache::with_global(|cache| cache.report(&raw_report));
+    //
+    // Classified when the shell has a ruleset, exactly as the turn on screen is. The sightings are
+    // the only account of a hex the map ever reads back, so an estimate stored here would put a
+    // tilde on every remembered unit forever, however complete the catalogue.
+    let full = atlantis_hud_core::cache::with_global(|cache| {
+        cache.classified_when_possible(&raw_report, ruleset_json.as_deref())
+    });
     let parsed = atlantis_hud_core::summarize(&full);
     let turn_number = parsed.turn_header.as_ref().map(|header| header.turn_number);
     let rejection = reject_import(&parsed, &confirmed_faction_id);
@@ -420,12 +427,16 @@ pub fn prepare_report_merge_state(
     raw_report: String,
     viewer_turn_number: u32,
     existing_sightings_json: String,
+    ruleset_json: Option<String>,
 ) -> Result<JsValue, JsValue> {
     let existing: Vec<StoredSighting> = serde_json::from_str(&existing_sightings_json)
         .map_err(|error| JsValue::from_str(&error.to_string()))?;
 
-    // A cache hit: the shell parsed this report a moment ago to find out whose it was.
-    let report = atlantis_hud_core::cache::with_global(|cache| cache.report(&raw_report));
+    // Classified for the same reason an import is: the ally's units enter the map through these
+    // sightings and nowhere else, so what is stored here is what the table will draw.
+    let report = atlantis_hud_core::cache::with_global(|cache| {
+        cache.classified_when_possible(&raw_report, ruleset_json.as_deref())
+    });
     let parse_result = atlantis_hud_core::summarize(&report);
 
     // `reject_merge`, never `reject_import`. The latter asks whether a report may be filed under a
@@ -680,6 +691,10 @@ pub fn commit_report_import_state(
     game_id: String,
     confirmed_faction_id: String,
     raw_report: String,
+    // Accepted to keep every export of this name positionally identical to the adapter's
+    // declaration. This variant stores only the turn payload - a flat summary carrying no men
+    // counts - and no sightings, so there is nothing here for a ruleset to classify.
+    _ruleset_json: Option<String>,
     allow_overwrite: bool,
     imported_at: String,
 ) -> Result<JsValue, JsValue> {
@@ -914,6 +929,7 @@ pub fn commit_report_import_state(
     _game_id: String,
     _confirmed_faction_id: String,
     _raw_report: String,
+    _ruleset_json: Option<String>,
     _allow_overwrite: bool,
     _imported_at: String,
 ) -> Result<JsValue, JsValue> {

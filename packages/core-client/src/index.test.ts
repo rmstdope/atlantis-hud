@@ -403,6 +403,7 @@ describe("core client adapter contract parity", () => {
         "faction-12",
         "17",
         "same",
+        null,
         true,
         "2026-08-09T18:00:00Z"
       )
@@ -412,6 +413,7 @@ describe("core client adapter contract parity", () => {
         "faction-12",
         "17",
         "same",
+        null,
         true,
         "2026-08-09T18:00:00Z"
       )
@@ -490,6 +492,7 @@ describe("merging an allied report", () => {
       "95",
       71,
       "the ally's report",
+      "the ruleset it is classified against",
       "2026-08-10T18:30:00Z"
     );
 
@@ -502,7 +505,51 @@ describe("merging an allied report", () => {
           viewer_faction_id: "95",
           viewer_turn_number: 71,
           raw_report: "the ally's report",
+          ruleset_json: "the ruleset it is classified against",
           merged_at: "2026-08-10T18:30:00Z"
+        }
+      }
+    ]);
+  });
+
+  /**
+   * The same pinning for the import: a typo in the `ruleset_json` key would deserialize as `None`
+   * on the Rust side without an error, and every remembered unit would quietly go back to being an
+   * estimate. Only the key names catch that, so the key names are what this asserts.
+   */
+  it("asks tauri to commit an import with the argument names its commands declare", async () => {
+    const calls: Array<{ command: string; args?: Record<string, unknown> }> = [];
+    const invoke: TauriInvoke = <T,>(command: string, args?: Record<string, unknown>) => {
+      calls.push({ command, args });
+      return Promise.resolve({
+        exists: false,
+        raw_changed: false,
+        parsed_changed: false,
+        warnings_changed: false
+      } as T);
+    };
+
+    await createCoreClient(createTauriAdapter(invoke)).commitReportImport(
+      DB,
+      "faction-95",
+      "95",
+      "the turn's report",
+      "the ruleset it is classified against",
+      true,
+      "2026-08-10T18:30:00Z"
+    );
+
+    expect(calls).toEqual([
+      {
+        command: "commit_report_import",
+        args: {
+          database_path: DB,
+          game_id: "faction-95",
+          confirmed_faction_id: "95",
+          raw_report: "the turn's report",
+          ruleset_json: "the ruleset it is classified against",
+          allow_overwrite: true,
+          imported_at: "2026-08-10T18:30:00Z"
         }
       }
     ]);
@@ -542,7 +589,7 @@ describe("merging an allied report", () => {
       } as T);
 
     const merge = (invoke: TauriInvoke) =>
-      createCoreClient(createTauriAdapter(invoke)).mergeReport(DB, "g", "95", 71, "r", "now");
+      createCoreClient(createTauriAdapter(invoke)).mergeReport(DB, "g", "95", 71, "r", null, "now");
 
     await expect(merge(snake)).resolves.toEqual({
       turnNumber: 71,
@@ -560,7 +607,7 @@ describe("merging an allied report", () => {
     const invoke: TauriInvoke = <T,>() => Promise.resolve({ turn_number: 71 } as T);
 
     await expect(
-      createCoreClient(createTauriAdapter(invoke)).mergeReport(DB, "g", "95", 71, "r", "now")
+      createCoreClient(createTauriAdapter(invoke)).mergeReport(DB, "g", "95", 71, "r", null, "now")
     ).rejects.toThrow("incomplete report merge payload");
   });
 
@@ -576,7 +623,7 @@ describe("merging an allied report", () => {
   it("refuses to merge through a wasm build with no persistence linked in", async () => {
     const bindings = {} as WasmBindings;
 
-    expect(() => createWasmAdapter(bindings).mergeReport(DB, "g", "95", 71, "r", "now")).toThrow(
+    expect(() => createWasmAdapter(bindings).mergeReport(DB, "g", "95", 71, "r", null, "now")).toThrow(
       "game persistence is not linked into this wasm build"
     );
     await expect(

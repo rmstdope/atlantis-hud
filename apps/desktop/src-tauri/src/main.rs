@@ -141,6 +141,7 @@ fn merge_report(
     viewer_faction_id: String,
     viewer_turn_number: u32,
     raw_report: String,
+    ruleset_json: Option<String>,
     merged_at: String,
 ) -> Result<atlantis_hud_core_tauri::ReportMergeResultDto, String> {
     atlantis_hud_core_tauri::command_merge_report(
@@ -149,6 +150,7 @@ fn merge_report(
         &viewer_faction_id,
         viewer_turn_number,
         &raw_report,
+        ruleset_json.as_deref(),
         &merged_at,
     )
 }
@@ -226,6 +228,7 @@ fn commit_report_import(
     game_id: String,
     confirmed_faction_id: String,
     raw_report: String,
+    ruleset_json: Option<String>,
     allow_overwrite: bool,
     imported_at: String,
 ) -> Result<ImportedTurnPreviewDto, String> {
@@ -234,6 +237,7 @@ fn commit_report_import(
         &game_id,
         &confirmed_faction_id,
         &raw_report,
+        ruleset_json.as_deref(),
         allow_overwrite,
         &imported_at,
     )

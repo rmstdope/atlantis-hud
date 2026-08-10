@@ -94,6 +94,9 @@ const OPEN_GAME = {
 /** The clock is the caller's, so a test can state it rather than mock one. */
 const NOW = "2026-08-09T18:30:00Z";
 
+/** Stands in for the served catalogue; the tests only assert it is handed on untouched. */
+const RULESET = '{"items":{}}';
+
 describe("remembering a turn", () => {
   it("commits the report and reads back everything the faction has seen", async () => {
     const remembered: RememberedRegion[] = [
@@ -102,19 +105,21 @@ describe("remembering a turn", () => {
     ];
     const core = client({ loadRegionSightings: vi.fn().mockResolvedValue(remembered) });
 
-    const outcome = await rememberTurn(core, OPEN_GAME, report("95"), "raw text", NOW);
+    const outcome = await rememberTurn(core, OPEN_GAME, report("95"), "raw text", RULESET, NOW);
 
     expect(outcome.warning).toBeNull();
     expect(outcome.remembered).toHaveLength(2);
     expect(outcome.remembered[0].lastSeenTurn).toBe(40);
     expect(outcome.remembered[0].region.regionId).toBe("1:1,1");
     // The open game decides where the turn lands, not the faction the report happens to name.
-    // The clock comes from the caller so both platforms stamp the same format.
+    // The clock comes from the caller so both platforms stamp the same format. The ruleset rides
+    // along so what is stored is classified the way what is shown is.
     expect(core.commitReportImport).toHaveBeenCalledWith(
       "p.sqlite",
       "aug-2026",
       "95",
       "raw text",
+      RULESET,
       true,
       NOW
     );
@@ -129,7 +134,7 @@ describe("remembering a turn", () => {
       commitReportImport: vi.fn().mockRejectedValue(new Error("disk is full"))
     });
 
-    const outcome = await rememberTurn(core, OPEN_GAME, report("95"), "raw text", NOW);
+    const outcome = await rememberTurn(core, OPEN_GAME, report("95"), "raw text", RULESET, NOW);
 
     expect(outcome.warning).toContain("disk is full");
     expect(outcome.remembered).toEqual([]);
@@ -138,7 +143,7 @@ describe("remembering a turn", () => {
   it("says so when the report does not name its faction", async () => {
     const core = client();
 
-    const outcome = await rememberTurn(core, OPEN_GAME, report(null), "raw text", NOW);
+    const outcome = await rememberTurn(core, OPEN_GAME, report(null), "raw text", RULESET, NOW);
 
     expect(outcome.warning).toContain("faction");
     expect(core.commitReportImport).not.toHaveBeenCalled();
@@ -148,7 +153,7 @@ describe("remembering a turn", () => {
   it("brings back who has been merged into the turn it just loaded", async () => {
     const core = client({ loadMergedReports: vi.fn().mockResolvedValue([MERGE_RECORD]) });
 
-    const outcome = await rememberTurn(core, OPEN_GAME, report("95"), "raw text", NOW);
+    const outcome = await rememberTurn(core, OPEN_GAME, report("95"), "raw text", RULESET, NOW);
 
     expect(outcome.merged).toEqual([MERGE_RECORD]);
     expect(core.loadMergedReports).toHaveBeenCalledWith("p.sqlite", "aug-2026", "95", 71);
@@ -160,7 +165,7 @@ describe("remembering a turn", () => {
       loadMergedReports: vi.fn().mockRejectedValue(new Error("database is locked"))
     });
 
-    const outcome = await rememberTurn(core, OPEN_GAME, report("95"), "raw text", NOW);
+    const outcome = await rememberTurn(core, OPEN_GAME, report("95"), "raw text", RULESET, NOW);
 
     expect(outcome.warning).toBeNull();
     expect(outcome.merged).toEqual([]);
@@ -171,7 +176,7 @@ describe("merging an ally's report into the turn on screen", () => {
   it("merges under the viewer's faction and turn, not the report's", async () => {
     const core = client();
 
-    await mergeTurn(core, OPEN_GAME, "95", 71, "the ally's report", NOW);
+    await mergeTurn(core, OPEN_GAME, "95", 71, "the ally's report", RULESET, NOW);
 
     expect(core.mergeReport).toHaveBeenCalledWith(
       "p.sqlite",
@@ -179,6 +184,7 @@ describe("merging an ally's report into the turn on screen", () => {
       "95",
       71,
       "the ally's report",
+      RULESET,
       NOW
     );
     expect(core.loadRegionSightings).toHaveBeenCalledWith("p.sqlite", "aug-2026", "95");
@@ -194,7 +200,7 @@ describe("merging an ally's report into the turn on screen", () => {
       loadMergedReports: vi.fn().mockResolvedValue([MERGE_RECORD])
     });
 
-    const outcome = await mergeTurn(core, OPEN_GAME, "95", 71, "the ally's report", NOW);
+    const outcome = await mergeTurn(core, OPEN_GAME, "95", 71, "the ally's report", RULESET, NOW);
 
     expect(outcome.remembered).toHaveLength(2);
     expect(outcome.merged).toEqual([MERGE_RECORD]);
@@ -213,7 +219,7 @@ describe("merging an ally's report into the turn on screen", () => {
         .mockRejectedValue(new Error("a report from turn 2 cannot be merged into turn 71"))
     });
 
-    await expect(mergeTurn(core, OPEN_GAME, "95", 71, "an older report", NOW)).rejects.toThrow(
+    await expect(mergeTurn(core, OPEN_GAME, "95", 71, "an older report", RULESET, NOW)).rejects.toThrow(
       "cannot be merged into turn 71"
     );
   });

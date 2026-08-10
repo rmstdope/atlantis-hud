@@ -83,6 +83,24 @@ impl ReportCache {
         classified
     }
 
+    /// [`classified`](Self::classified) when a ruleset is to hand, [`report`](Self::report) when
+    /// none is.
+    ///
+    /// For the callers that store a report rather than draw it: whether a ruleset was fetchable is
+    /// the shell's situation, not a parsing decision, and both storage adapters answering it with
+    /// this one function is what keeps a turn stored on the desktop and the same turn stored in
+    /// the browser identical.
+    pub fn classified_when_possible(
+        &mut self,
+        raw: &str,
+        ruleset_json: Option<&str>,
+    ) -> Arc<ParsedReport> {
+        match ruleset_json {
+            Some(ruleset_json) => self.classified(raw, ruleset_json),
+            None => self.report(raw),
+        }
+    }
+
     /// The ruleset that text describes, validated at most once.
     ///
     /// # Errors

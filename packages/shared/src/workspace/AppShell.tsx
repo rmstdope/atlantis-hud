@@ -197,6 +197,9 @@ export function AppShell({
   // under, so the report shown here is the one the planner searches rather than a fresh parse.
   const [rawReport, setRawReport] = useState("");
   const [ruleset, setRuleset] = useState<RulesetState>({ status: "loading" });
+  // The same ruleset as the storage layer wants it: its text once it arrived, `null` while it has
+  // not. What gets stored is classified with exactly what the screen was classified with.
+  const rulesetText = ruleset.status === "ready" ? ruleset.text : null;
   const [route, setRoute] = useState<RoutePlanResponse | null>(null);
   const [planning, setPlanning] = useState(false);
   // Which game is open, and every game there is. Both live here because both change together:
@@ -369,8 +372,10 @@ export function AppShell({
         // but not *their* neighbours - so without this the map stops at the fringe and no route can
         // be longer than one step. Failing to remember is a warning, never a reason to withhold a
         // report that parsed perfectly well.
+        // The same ruleset the report was parsed with, so what is remembered is classified the
+        // way what is shown is. `null` when none could be fetched, which stores the estimates.
         const memory = game
-          ? await rememberTurn(client, game, report, text, new Date().toISOString())
+          ? await rememberTurn(client, game, report, text, rulesetText, new Date().toISOString())
           : { remembered: [], merged: [], warning: null };
         setRemembered(memory.remembered);
         // Reset from the turn just loaded, never merely added to: a merge belongs to the turn it
@@ -414,7 +419,7 @@ export function AppShell({
         });
       }
     },
-    [client, selectRegion, clearPlan, game]
+    [client, selectRegion, clearPlan, game, rulesetText]
   );
 
   const loadReport = useCallback(
@@ -527,6 +532,7 @@ export function AppShell({
           pending.viewer.factionId,
           pending.viewer.turnNumber as number,
           pending.text,
+          rulesetText,
           new Date().toISOString()
         );
         setRemembered(outcome.remembered);
@@ -548,7 +554,7 @@ export function AppShell({
         setBusy(false);
       }
     })();
-  }, [pendingLoad, client, game]);
+  }, [pendingLoad, client, game, rulesetText]);
 
   // The ruleset is a served file rather than something compiled in, so a movement value can be
   // corrected by editing it and reloading. Which file is the open game's business: a game records

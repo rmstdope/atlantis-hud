@@ -573,6 +573,7 @@ export interface CoreAdapter {
     gameId: string,
     confirmedFactionId: string,
     rawReport: string,
+    rulesetJson: string | null,
     allowOverwrite: boolean,
     importedAt: string
   ): Promise<unknown> | unknown;
@@ -595,6 +596,7 @@ export interface CoreAdapter {
     viewerFactionId: string,
     viewerTurnNumber: number,
     rawReport: string,
+    rulesetJson: string | null,
     mergedAt: string
   ): Promise<unknown> | unknown;
   loadMergedReports(
@@ -670,12 +672,18 @@ export interface CoreClient {
    * `importedAt` is the caller's clock, in ISO-8601, the way `openGame` and `saveOrderDraft`
    * already take one. The persistence layer reads no clock of its own, so a turn and an order
    * draft can be compared to work out which the player touched last.
+   *
+   * `rulesetJson` classifies what gets remembered, exactly as `parseReportClassified` classifies
+   * what gets shown. The stored sightings are the only account of a hex the map ever reads back,
+   * so an estimate stored here is an estimate forever - a tilde on every remembered unit. `null`
+   * when no ruleset could be fetched, which stores the estimates and says that is what they are.
    */
   commitReportImport(
     databasePath: string,
     gameId: string,
     confirmedFactionId: string,
     rawReport: string,
+    rulesetJson: string | null,
     allowOverwrite: boolean,
     importedAt: string
   ): Promise<ImportedTurnPreview>;
@@ -719,6 +727,10 @@ export interface CoreClient {
    *
    * Rejects when the report is not from `viewerTurnNumber`, which is the only turn it can be
    * merged into: two reports of one turn describe the same moment, so neither is staler.
+   *
+   * `rulesetJson` classifies the ally's units before they are stored, for the reason
+   * `commitReportImport` gives: the merged units enter the map through these sightings and
+   * nowhere else.
    */
   mergeReport(
     databasePath: string,
@@ -726,6 +738,7 @@ export interface CoreClient {
     viewerFactionId: string,
     viewerTurnNumber: number,
     rawReport: string,
+    rulesetJson: string | null,
     mergedAt: string
   ): Promise<ReportMergeResult>;
   /**
@@ -791,6 +804,7 @@ export interface WasmBindings {
     gameId: string,
     confirmedFactionId: string,
     rawReport: string,
+    rulesetJson: string | null,
     allowOverwrite: boolean,
     importedAt: string
   ): unknown;
@@ -818,6 +832,7 @@ export interface WasmBindings {
     viewerFactionId: string,
     viewerTurnNumber: number,
     rawReport: string,
+    rulesetJson: string | null,
     mergedAt: string
   ): unknown;
   load_merged_reports_state?(
@@ -1337,6 +1352,7 @@ export function createCoreClient(adapter: CoreAdapter): CoreClient {
       gameId: string,
       confirmedFactionId: string,
       rawReport: string,
+      rulesetJson: string | null,
       allowOverwrite: boolean,
       importedAt: string
     ) {
@@ -1345,6 +1361,7 @@ export function createCoreClient(adapter: CoreAdapter): CoreClient {
         gameId,
         confirmedFactionId,
         rawReport,
+        rulesetJson,
         allowOverwrite,
         importedAt
       );
@@ -1423,6 +1440,7 @@ export function createCoreClient(adapter: CoreAdapter): CoreClient {
       viewerFactionId: string,
       viewerTurnNumber: number,
       rawReport: string,
+      rulesetJson: string | null,
       mergedAt: string
     ) {
       return normalizeReportMergeResult(
@@ -1432,6 +1450,7 @@ export function createCoreClient(adapter: CoreAdapter): CoreClient {
           viewerFactionId,
           viewerTurnNumber,
           rawReport,
+          rulesetJson,
           mergedAt
         )
       );
@@ -1493,6 +1512,7 @@ export function createWasmAdapter(bindings: WasmBindings): CoreAdapter {
       gameId: string,
       confirmedFactionId: string,
       rawReport: string,
+      rulesetJson: string | null,
       allowOverwrite: boolean,
       importedAt: string
     ) {
@@ -1501,6 +1521,7 @@ export function createWasmAdapter(bindings: WasmBindings): CoreAdapter {
         gameId,
         confirmedFactionId,
         rawReport,
+        rulesetJson,
         allowOverwrite,
         importedAt
       );
@@ -1554,6 +1575,7 @@ export function createWasmAdapter(bindings: WasmBindings): CoreAdapter {
       viewerFactionId: string,
       viewerTurnNumber: number,
       rawReport: string,
+      rulesetJson: string | null,
       mergedAt: string
     ) {
       // Refused rather than answered emptily, because a merge is a write: reading nothing back is
@@ -1568,6 +1590,7 @@ export function createWasmAdapter(bindings: WasmBindings): CoreAdapter {
         viewerFactionId,
         viewerTurnNumber,
         rawReport,
+        rulesetJson,
         mergedAt
       );
     },
@@ -1637,6 +1660,7 @@ export function createTauriAdapter(invoke: TauriInvoke): CoreAdapter {
       gameId: string,
       confirmedFactionId: string,
       rawReport: string,
+      rulesetJson: string | null,
       allowOverwrite: boolean,
       importedAt: string
     ) {
@@ -1645,6 +1669,7 @@ export function createTauriAdapter(invoke: TauriInvoke): CoreAdapter {
         game_id: gameId,
         confirmed_faction_id: confirmedFactionId,
         raw_report: rawReport,
+        ruleset_json: rulesetJson,
         allow_overwrite: allowOverwrite,
         imported_at: importedAt
       });
@@ -1723,6 +1748,7 @@ export function createTauriAdapter(invoke: TauriInvoke): CoreAdapter {
       viewerFactionId: string,
       viewerTurnNumber: number,
       rawReport: string,
+      rulesetJson: string | null,
       mergedAt: string
     ) {
       return invoke<ReportMergeResult>("merge_report", {
@@ -1731,6 +1757,7 @@ export function createTauriAdapter(invoke: TauriInvoke): CoreAdapter {
         viewer_faction_id: viewerFactionId,
         viewer_turn_number: viewerTurnNumber,
         raw_report: rawReport,
+        ruleset_json: rulesetJson,
         merged_at: mergedAt
       });
     },
