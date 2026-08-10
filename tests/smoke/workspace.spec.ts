@@ -206,7 +206,9 @@ test("merging leaves the orders and the selection where they were", async ({ pag
 
   const orders = page.getByTestId("orders-input");
   await orders.fill("@study obse\n@work");
-  await expect(orders).toHaveValue("@study obse\n@work");
+  // The trailing newline is optional on purpose: the editor appends one the moment an autosave
+  // lands, and whether that has happened yet is a race this test has no business betting on.
+  await expect(orders).toHaveValue(/^@study obse\n@work\n?$/u);
 
   await choose(page, "turn-71-f73.rep", ALLY_REPORT);
   await page.getByTestId("foreign-report-merge").click();
