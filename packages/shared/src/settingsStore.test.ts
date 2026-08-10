@@ -185,6 +185,60 @@ describe("settings store", () => {
     expect(stub.documentElement.style.properties["--pane-transparency"]).toBe("40");
   });
 
+  it("defaults the unit list limit to zero, meaning every unit is shown", () => {
+    expect(store().unitListLimit).toBe(0);
+  });
+
+  it("clamps the unit list limit to a whole, non-negative count", () => {
+    store().setUnitListLimit(-5);
+    expect(store().unitListLimit).toBe(0);
+
+    // A fraction rounds rather than leaving a decimal no row count can honour.
+    store().setUnitListLimit(12.6);
+    expect(store().unitListLimit).toBe(13);
+  });
+
+  it("persists the unit list limit", async () => {
+    store().setUnitListLimit(25);
+    expect(store().unitListLimit).toBe(25);
+
+    const storage = useSettingsStore.persist.getOptions().storage;
+    const persisted = await storage?.getItem("atlantis-hud-settings");
+    if (!storage || !persisted) {
+      throw new Error("settings storage was not available");
+    }
+
+    useSettingsStore.setState({ unitListLimit: 0 });
+    await storage.setItem("atlantis-hud-settings", persisted);
+    await useSettingsStore.persist.rehydrate();
+
+    expect(store().unitListLimit).toBe(25);
+  });
+
+  it("sanitizes a persisted unit list limit, garbage falling back to showing all", () => {
+    useSettingsStore.setState({ unitListLimit: "not a number" as unknown as number });
+
+    applyPersistedSettings();
+
+    expect(store().unitListLimit).toBe(0);
+  });
+
+  it("reads a persisted unit list limit that storage kept as a string", () => {
+    useSettingsStore.setState({ unitListLimit: "25" as unknown as number });
+
+    applyPersistedSettings();
+
+    expect(store().unitListLimit).toBe(25);
+  });
+
+  it("resets the unit list limit to its default", () => {
+    store().setUnitListLimit(10);
+
+    resetSettingsStore();
+
+    expect(store().unitListLimit).toBe(0);
+  });
+
   it("resets the pane transparency to its default", () => {
     const stub = installDocumentStub();
     store().setPaneTransparency(10);

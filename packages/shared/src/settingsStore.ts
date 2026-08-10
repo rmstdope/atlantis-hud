@@ -26,13 +26,24 @@ export type SettingsState = {
    * cannot be seen at all can also not be found to make visible again.
    */
   paneTransparency: number;
+  /**
+   * How many rows the "Units in hex" table shows at most, 0 meaning every one of them.
+   *
+   * The cap lands after sorting and filtering, so with own-first grouping on it trims the
+   * foreign crowd rather than the player's own units.
+   */
+  unitListLimit: number;
   /** Applies instantly: the settings dialog has no OK button to wait for. */
   setTheme: (theme: ThemeName) => void;
   setBiomeTextures: (enabled: boolean) => void;
   setPaneTransparency: (percent: number) => void;
+  setUnitListLimit: (count: number) => void;
 };
 
-type Persisted = Pick<SettingsState, "theme" | "biomeTextures" | "paneTransparency">;
+type Persisted = Pick<
+  SettingsState,
+  "theme" | "biomeTextures" | "paneTransparency" | "unitListLimit"
+>;
 
 /**
  * Stamps the theme where the stylesheet can see it. The dark tokens are the `:root` defaults, and
@@ -59,6 +70,19 @@ function clampTransparency(percent: number): number {
     return DEFAULT_PANE_TRANSPARENCY;
   }
   return Math.min(95, Math.max(0, Math.round(numeric)));
+}
+
+/**
+ * Any whole, non-negative count is acceptable, 0 meaning every unit is shown; garbage falls back
+ * to showing all rather than to hiding everything. Same reasoning as the transparency clamp:
+ * storage is hand-editable and other writers exist.
+ */
+function clampUnitListLimit(count: number): number {
+  const numeric = Number(count);
+  if (!Number.isFinite(numeric)) {
+    return 0;
+  }
+  return Math.max(0, Math.round(numeric));
 }
 
 /**
@@ -108,6 +132,7 @@ export const useSettingsStore = create<SettingsState>()(
       theme: "dark",
       biomeTextures: true,
       paneTransparency: DEFAULT_PANE_TRANSPARENCY,
+      unitListLimit: 0,
 
       setTheme: (theme) => {
         applyTheme(theme);
@@ -122,6 +147,10 @@ export const useSettingsStore = create<SettingsState>()(
         const clamped = clampTransparency(percent);
         applyPaneTransparency(clamped);
         set({ paneTransparency: clamped });
+      },
+
+      setUnitListLimit: (count) => {
+        set({ unitListLimit: clampUnitListLimit(count) });
       }
     }),
     {
@@ -130,7 +159,8 @@ export const useSettingsStore = create<SettingsState>()(
       partialize: (state) => ({
         theme: state.theme,
         biomeTextures: state.biomeTextures,
-        paneTransparency: state.paneTransparency
+        paneTransparency: state.paneTransparency,
+        unitListLimit: state.unitListLimit
       })
     }
   )
@@ -149,6 +179,12 @@ export function applyPersistedSettings() {
   const transparency = clampTransparency(useSettingsStore.getState().paneTransparency);
   useSettingsStore.setState({ paneTransparency: transparency });
   applyPaneTransparency(transparency);
+  // The limit reaches no stylesheet, but the same reconciliation applies: rehydration bypasses
+  // the setter, and a hand-edited value must not leave the table cutting by a figure the dialog
+  // would refuse.
+  useSettingsStore.setState({
+    unitListLimit: clampUnitListLimit(useSettingsStore.getState().unitListLimit)
+  });
 }
 
 /** Resets the store, remembered preferences included. Tests would otherwise leak state. */
@@ -158,7 +194,8 @@ export function resetSettingsStore() {
   useSettingsStore.setState({
     theme: "dark",
     biomeTextures: true,
-    paneTransparency: DEFAULT_PANE_TRANSPARENCY
+    paneTransparency: DEFAULT_PANE_TRANSPARENCY,
+    unitListLimit: 0
   });
   applyTheme("dark");
   applyPaneTransparency(DEFAULT_PANE_TRANSPARENCY);

@@ -1,4 +1,6 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { clearGames, createGame } from "./gameSetup";
 
 /**
@@ -164,4 +166,66 @@ test("the per-game tab shows the open game's ruleset", async ({ page }) => {
   await expect(ruleset).toBeVisible();
   await expect(ruleset).toBeEnabled();
   await expect(ruleset).toHaveValue("neworigins");
+});
+
+/** The turn-71 fixture; Inholm at (7,53) holds 92 units, so a cap of one is visibly a cap. */
+const REPORT = readFileSync(
+  join(__dirname, "..", "fixtures", "reports", "neworigins-3.0.0-f95-t71.rep"),
+  "utf8"
+);
+
+/** Same idiom as persistence.spec.ts: the button leaving "Loading…" says the import is over. */
+async function openReport(page: Page) {
+  const load = page.getByRole("button", { name: /Load report/ });
+  await expect(load).toBeEnabled();
+
+  await page.setInputFiles('input[type="file"]', {
+    name: "turn-71.rep",
+    mimeType: "text/plain",
+    buffer: Buffer.from(REPORT, "utf8")
+  });
+
+  await expect(page.getByTestId("import-status")).toContainText("11 regions");
+  await expect(load).toBeEnabled();
+}
+
+async function selectHex(page: Page, regionId: string) {
+  const hex = page.getByRole("button", { name: `hex ${regionId}` });
+  await hex.focus();
+  await hex.press("Enter");
+}
+
+test("the unit list limit caps the units-in-hex table and survives a reload", async ({ page }) => {
+  await clearGames(page);
+  await createGame(page, "Limit game");
+  await openReport(page);
+  await selectHex(page, "1:7,53");
+
+  // The city hex holds several units, so a cap of one is visibly a cap.
+  const rows = page.locator('[data-testid^="unit-row-"]');
+  expect(await rows.count()).toBeGreaterThan(1);
+
+  await page.getByTestId("settings-indicator").click();
+  const limit = page.getByTestId("unit-list-limit");
+  await expect(limit).toHaveValue("0");
+  await limit.fill("1");
+
+  // Applies as it is typed - the table is on screen behind the dialog, its own preview - and the
+  // panel header owns up to the truncation rather than letting it pass for the whole hex.
+  await expect(rows).toHaveCount(1);
+  await expect(page.getByTestId("panel-units")).toContainText("1 shown");
+  // The cap keeps the front of the sorted list, and own units sort first: what survives out of 92
+  // is the player's own unit, not whichever foreign unit the report listed first.
+  await expect(page.getByTestId("unit-row-18642")).toBeVisible();
+
+  // A preference, not a session choice: it holds across a reload.
+  await page.reload();
+  await expect(page.getByTestId("import-status")).toContainText("restored turn 71");
+  await selectHex(page, "1:7,53");
+  await expect(rows).toHaveCount(1);
+
+  // Back to showing all, so later tests inherit the look they expect.
+  await page.getByTestId("settings-indicator").click();
+  await page.getByTestId("unit-list-limit").fill("0");
+  await expect(page.getByTestId("panel-units")).not.toContainText("shown");
 });

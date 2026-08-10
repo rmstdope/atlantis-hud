@@ -178,7 +178,10 @@ function Tab({
   );
 }
 
-/** Settings that hold for every game: the theme, the map's textures, how see-through panes are. */
+/**
+ * Settings that hold for every game: the theme, the map's textures, how see-through panes are,
+ * and how many units the hex list shows.
+ */
 function GlobalSettings() {
   const theme = useSettingsStore((state) => state.theme);
   const setTheme = useSettingsStore((state) => state.setTheme);
@@ -186,6 +189,8 @@ function GlobalSettings() {
   const setBiomeTextures = useSettingsStore((state) => state.setBiomeTextures);
   const paneTransparency = useSettingsStore((state) => state.paneTransparency);
   const setPaneTransparency = useSettingsStore((state) => state.setPaneTransparency);
+  const unitListLimit = useSettingsStore((state) => state.unitListLimit);
+  const setUnitListLimit = useSettingsStore((state) => state.setUnitListLimit);
 
   return (
     <div className="flex flex-col gap-3">
@@ -231,6 +236,26 @@ function GlobalSettings() {
           value={paneTransparency}
           onChange={(event) => setPaneTransparency(Number(event.target.value))}
           className="accent-brass"
+        />
+      </label>
+
+      <label className="flex items-center justify-between gap-2 text-ink-soft">
+        <span>
+          <span className="block">Units in hex list</span>
+          <span className="block text-[10px] text-ink-dim">
+            Shows at most this many units; 0 shows all.
+          </span>
+        </span>
+        <input
+          type="number"
+          data-testid="unit-list-limit"
+          aria-label="Units in hex list limit"
+          min={0}
+          step={1}
+          value={unitListLimit}
+          // An emptied field reads as 0, which is "show all" - the safe end of the range.
+          onChange={(event) => setUnitListLimit(Number(event.target.value))}
+          className="w-20 rounded border border-edge bg-ground px-2 py-0.5 text-right text-ink focus:border-select focus:outline-none"
         />
       </label>
     </div>
