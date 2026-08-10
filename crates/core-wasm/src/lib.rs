@@ -86,6 +86,8 @@ struct OrderDiagnosticDto {
     message: String,
     line_start: usize,
     line_end: usize,
+    column_start: usize,
+    column_end: usize,
     severity: String,
 }
 
@@ -106,6 +108,8 @@ impl From<OrderValidationResult> for OrderValidationResultDto {
                     message: diagnostic.message,
                     line_start: diagnostic.line_start,
                     line_end: diagnostic.line_end,
+                    column_start: diagnostic.column_start,
+                    column_end: diagnostic.column_end,
                     severity: match diagnostic.severity {
                         OrderDiagnosticSeverity::Warning => "warning".to_string(),
                         OrderDiagnosticSeverity::Error => "error".to_string(),
@@ -568,9 +572,19 @@ pub fn parse_report_full_state(raw_report: String) -> Result<JsValue, JsValue> {
 /// Order validation is pure, so unlike the persistence entry points this is available on every
 /// target.
 #[wasm_bindgen]
-pub fn validate_orders_state(raw_orders: String) -> Result<JsValue, JsValue> {
-    let result = OrderValidationResultDto::from(validate_orders(&raw_orders));
+pub fn validate_orders_state(
+    raw_orders: String,
+    ruleset_json: Option<String>,
+) -> Result<JsValue, JsValue> {
+    let result =
+        OrderValidationResultDto::from(validate_orders(&raw_orders, ruleset_json.as_deref()));
     to_js(&result)
+}
+
+/// The order vocabulary, so the shell need not keep a copy of its own.
+#[wasm_bindgen]
+pub fn order_commands_state() -> Result<JsValue, JsValue> {
+    to_js(&atlantis_hud_core::order_commands())
 }
 
 /// Creates a game manifest and sidecar SQLite database.
@@ -1011,7 +1025,7 @@ mod tests {
 
     #[test]
     fn order_validation_dto_flattens_severity_to_strings() {
-        let dto = OrderValidationResultDto::from(validate_orders("FLY 1 2\nMOVE"));
+        let dto = OrderValidationResultDto::from(validate_orders("FLY 1 2\nMOVE", None));
 
         let severities: Vec<&str> = dto
             .diagnostics
@@ -1026,7 +1040,7 @@ mod tests {
 
     #[test]
     fn order_validation_dto_is_empty_for_valid_orders() {
-        let dto = OrderValidationResultDto::from(validate_orders("MOVE n n\nwork"));
+        let dto = OrderValidationResultDto::from(validate_orders("MOVE n n\nwork", None));
         assert!(dto.diagnostics.is_empty());
     }
 

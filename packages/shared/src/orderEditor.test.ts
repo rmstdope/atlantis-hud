@@ -5,7 +5,7 @@ import {
   canExportOrders,
   diagnosticsForUnit,
   draftAfterDocumentChange,
-  ORDER_COMMAND_VOCABULARY,
+  offendingText,
   shouldSaveOnBlur,
   shouldTriggerAutosave,
   suggestOrderCommands,
@@ -13,12 +13,16 @@ import {
 } from "./orderEditor";
 
 describe("orderEditor policy", () => {
-  it("suggests known commands by prefix", () => {
-    expect(ORDER_COMMAND_VOCABULARY).toContain("MOVE");
-    expect(ORDER_COMMAND_VOCABULARY).toContain("STUDY");
-    expect(ORDER_COMMAND_VOCABULARY).toContain("SAIL");
-    expect(suggestOrderCommands("MO")).toEqual(["MOVE"]);
-    expect(suggestOrderCommands("HO")).toEqual(["HOLD"]);
+  // The vocabulary is the core's, fetched through the client, so that the two cannot drift. The
+  // copy that used to live here had four orders the ruleset has no such thing as and was missing
+  // END, which closes every FORM block.
+  it("suggests commands by prefix from the vocabulary it is given", () => {
+    const vocabulary = ["HOLD", "MOVE", "SAIL", "STUDY"];
+
+    expect(suggestOrderCommands("MO", vocabulary)).toEqual(["MOVE"]);
+    expect(suggestOrderCommands("ho", vocabulary)).toEqual(["HOLD"]);
+    expect(suggestOrderCommands(" s ", vocabulary)).toEqual(["SAIL", "STUDY"]);
+    expect(suggestOrderCommands("MO", [])).toEqual([]);
   });
 
   it("summarizes validation and blocks export when errors are present", () => {
@@ -29,6 +33,8 @@ describe("orderEditor policy", () => {
           message: "unknown order command",
           lineStart: 1,
           lineEnd: 1,
+          columnStart: 0,
+          columnEnd: 0,
           severity: "error"
         },
         {
@@ -36,6 +42,8 @@ describe("orderEditor policy", () => {
           message: "extra arguments ignored for MOVE",
           lineStart: 2,
           lineEnd: 2,
+          columnStart: 0,
+          columnEnd: 0,
           severity: "warning"
         }
       ]
@@ -58,6 +66,8 @@ describe("orderEditor policy", () => {
           message: "extra arguments ignored for MOVE",
           lineStart: 1,
           lineEnd: 1,
+          columnStart: 0,
+          columnEnd: 0,
           severity: "warning"
         }
       ]
@@ -125,6 +135,8 @@ const diagnostic = (lineStart: number, message: string): OrderDiagnostic => ({
   message,
   lineStart,
   lineEnd: lineStart,
+  columnStart: 0,
+  columnEnd: 0,
   severity: "error"
 });
 
@@ -142,6 +154,8 @@ describe("the diagnostics belonging to one unit", () => {
         message: "unknown order command: WROK",
         lineStart: 2,
         lineEnd: 2,
+        columnStart: 0,
+        columnEnd: 0,
         severity: "error"
       }
     ]);
@@ -171,6 +185,8 @@ describe("the diagnostics belonging to one unit", () => {
       message: "starts above",
       lineStart: 2,
       lineEnd: 4,
+      columnStart: 0,
+      columnEnd: 0,
       severity: "warning"
     };
 
@@ -185,6 +201,8 @@ describe("the diagnostics belonging to one unit", () => {
       message: "ends below",
       lineStart: 5,
       lineEnd: 9,
+      columnStart: 0,
+      columnEnd: 0,
       severity: "warning"
     };
 
@@ -199,11 +217,64 @@ describe("the diagnostics belonging to one unit", () => {
       message: "two lines",
       lineStart: 4,
       lineEnd: 5,
+      columnStart: 0,
+      columnEnd: 0,
       severity: "warning"
     };
 
     expect(diagnosticsForUnit(VALIDATED, "18642", [spanning])).toEqual([
       { ...spanning, lineStart: 1, lineEnd: 2 }
     ]);
+  });
+});
+
+describe("offendingText", () => {
+  const DOCUMENT = ["unit 18642", "GIVE 4573 swords", "@work"].join("\n");
+
+  it("quotes the token a diagnostic points at", () => {
+    const diagnostic: OrderDiagnostic = {
+      code: "bad-argument",
+      message: 'expected a number, found "swords"',
+      lineStart: 2,
+      lineEnd: 2,
+      columnStart: 10,
+      columnEnd: 16,
+      severity: "error"
+    };
+
+    expect(offendingText(DOCUMENT, diagnostic)).toBe("swords");
+  });
+
+  it("has nothing to quote for a problem about a whole line", () => {
+    // An unclosed block spans its whole line; quoting the line back adds nothing to the message.
+    const wholeLine: OrderDiagnostic = {
+      code: "unclosed-block",
+      message: "the TURN block opened on line 1 is never closed by ENDTURN",
+      lineStart: 3,
+      lineEnd: 3,
+      columnStart: 0,
+      columnEnd: 5,
+      severity: "error"
+    };
+
+    expect(offendingText(DOCUMENT, wholeLine)).toBeNull();
+  });
+
+  it("has nothing to quote when the span is outside the text it is given", () => {
+    // Validation is debounced, so the diagnostics on screen can be a keystroke behind the document.
+    const stale: OrderDiagnostic = {
+      code: "bad-argument",
+      message: "gone",
+      lineStart: 9,
+      lineEnd: 9,
+      columnStart: 4,
+      columnEnd: 9,
+      severity: "error"
+    };
+
+    expect(offendingText(DOCUMENT, stale)).toBeNull();
+    expect(
+      offendingText(DOCUMENT, { ...stale, lineStart: 2, lineEnd: 2, columnEnd: 400 })
+    ).toBeNull();
   });
 });

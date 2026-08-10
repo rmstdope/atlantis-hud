@@ -44,6 +44,8 @@ describe("core client adapter contract parity", () => {
           message: "unknown order command",
           line_start: 1,
           line_end: 1,
+          column_start: 0,
+          column_end: 3,
           severity: "error"
         },
         {
@@ -51,10 +53,14 @@ describe("core client adapter contract parity", () => {
           message: "extra arguments ignored for MOVE",
           line_start: 2,
           line_end: 2,
+          column_start: 5,
+          column_end: 9,
           severity: "warning"
         }
       ]
     };
+    // Both transports hand back the core's own list, so parity here is the two agreeing about it.
+    const orderVocabulary = ["GIVE", "MOVE", "WORK"];
     const orderDraftPayload = {
       key: {
         game_id: "faction-12",
@@ -163,6 +169,9 @@ describe("core client adapter contract parity", () => {
       },
       validate_orders_state() {
         return orderValidationPayload;
+      },
+      order_commands_state() {
+        return orderVocabulary;
       },
       load_imported_turn_state() {
         return importedTurnPayload;
@@ -274,6 +283,9 @@ describe("core client adapter contract parity", () => {
           warningsChanged: false
         } as T);
       }
+      if (command === "order_commands") {
+        return Promise.resolve(orderVocabulary as T);
+      }
       if (command === "validate_orders") {
         return Promise.resolve({
           diagnostics: [
@@ -282,6 +294,8 @@ describe("core client adapter contract parity", () => {
               message: "unknown order command",
               lineStart: 1,
               lineEnd: 1,
+              columnStart: 0,
+              columnEnd: 3,
               severity: "error"
             },
             {
@@ -289,6 +303,8 @@ describe("core client adapter contract parity", () => {
               message: "extra arguments ignored for MOVE",
               lineStart: 2,
               lineEnd: 2,
+              columnStart: 5,
+              columnEnd: 9,
               severity: "warning"
             }
           ]
@@ -418,7 +434,10 @@ describe("core client adapter contract parity", () => {
         "2026-08-09T18:00:00Z"
       )
     );
-    await expect(wasmClient.validateOrders("bad input")).resolves.toEqual(await tauriClient.validateOrders("bad input"));
+    await expect(wasmClient.validateOrders("bad input", null)).resolves.toEqual(
+      await tauriClient.validateOrders("bad input", null)
+    );
+    await expect(wasmClient.orderCommands()).resolves.toEqual(await tauriClient.orderCommands());
     await expect(
       wasmClient.loadOrderDraft("/tmp/campaign.atlantis-game.sqlite", "faction-12", "17", 12)
     ).resolves.toEqual(
@@ -478,6 +497,71 @@ describe("merging an allied report", () => {
     merged_region_count: 3,
     new_region_count: 2
   };
+
+  /**
+   * The ruleset is what turns an unrecognised item name into a warning, so a mistyped key would
+   * deserialize as `None` on the Rust side without an error and quietly stop every item from being
+   * checked. Only the key names catch that.
+   */
+  it("asks tauri to validate with the argument names its command declares", async () => {
+    const calls: Array<{ command: string; args?: Record<string, unknown> }> = [];
+    const invoke: TauriInvoke = <T,>(command: string, args?: Record<string, unknown>) => {
+      calls.push({ command, args });
+      return Promise.resolve({ diagnostics: [] } as T);
+    };
+
+    await createCoreClient(createTauriAdapter(invoke)).validateOrders(
+      "@work",
+      "the ruleset its items are checked against"
+    );
+
+    expect(calls).toEqual([
+      {
+        command: "validate_orders",
+        args: {
+          raw_orders: "@work",
+          ruleset_json: "the ruleset its items are checked against"
+        }
+      }
+    ]);
+  });
+
+  it("carries the column span a diagnostic points at, in either casing", async () => {
+    const snake: TauriInvoke = <T,>() =>
+      Promise.resolve({
+        diagnostics: [
+          {
+            code: "bad-argument",
+            message: 'expected a number, found "swords"',
+            line_start: 2,
+            line_end: 2,
+            column_start: 10,
+            column_end: 16,
+            severity: "error"
+          }
+        ]
+      } as T);
+
+    const result = await createCoreClient(createTauriAdapter(snake)).validateOrders("x", null);
+
+    expect(result.diagnostics[0].columnStart).toBe(10);
+    expect(result.diagnostics[0].columnEnd).toBe(16);
+  });
+
+  it("asks tauri for the order vocabulary rather than keeping one of its own", async () => {
+    const calls: string[] = [];
+    const invoke: TauriInvoke = <T,>(command: string) => {
+      calls.push(command);
+      return Promise.resolve(["GIVE", "MOVE", "WORK"] as T);
+    };
+
+    await expect(createCoreClient(createTauriAdapter(invoke)).orderCommands()).resolves.toEqual([
+      "GIVE",
+      "MOVE",
+      "WORK"
+    ]);
+    expect(calls).toEqual(["order_commands"]);
+  });
 
   it("asks tauri to merge with the argument names its commands declare", async () => {
     const calls: Array<{ command: string; args?: Record<string, unknown> }> = [];

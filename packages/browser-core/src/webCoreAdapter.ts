@@ -20,7 +20,8 @@ export type CoreWasmModule = {
   parse_report_state(rawReport: string): unknown;
   parse_report_full_state(rawReport: string): unknown;
   parse_report_classified_state(rawReport: string, rulesetJson: string): unknown;
-  validate_orders_state(rawOrders: string): unknown;
+  validate_orders_state(rawOrders: string, rulesetJson: string | null): unknown;
+  order_commands_state(): unknown;
   plan_route_state(
     rulesetJson: string,
     rawReport: string,
@@ -540,8 +541,11 @@ export function createWebCoreAdapter(
       // its last parse on, so planning over the turn already on screen re-parses nothing.
       return wasm.plan_route_state(rulesetJson, rawReport, rememberedJson, unitId, destination);
     },
-    validateOrders(rawOrders: string) {
-      return wasm.validate_orders_state(rawOrders);
+    validateOrders(rawOrders: string, rulesetJson: string | null) {
+      return wasm.validate_orders_state(rawOrders, rulesetJson);
+    },
+    orderCommands() {
+      return wasm.order_commands_state();
     },
 
     async listGames() {

@@ -5,6 +5,7 @@ import { readableTime, type SaveState } from "../orderDraft";
 import {
   diagnosticsForUnit,
   draftAfterDocumentChange,
+  offendingText,
   summarizeOrderValidation,
   type ValidatedOrders
 } from "../orderEditor";
@@ -89,6 +90,11 @@ export function OrdersPanel({
     lock || unitId === null
       ? []
       : diagnosticsForUnit(validated.text, unitId, validated.diagnostics);
+  // The text those line and column numbers were counted in, which validation being debounced means
+  // is not always the draft on screen. Quoting a token out of the draft instead would occasionally
+  // quote whatever now sits at those columns.
+  const validatedBlock =
+    unitId === null ? "" : (readUnitOrders(validated.text, unitId) ?? "");
   const here = summarizeOrderValidation({ diagnostics: problems });
   // What the rest of the faction has wrong, counted apart from this unit's own. A whole-document
   // total sitting beside a per-unit count reads as though the two should be added together.
@@ -134,7 +140,7 @@ export function OrdersPanel({
             <span className="flex-1" />
             <SaveNotice save={save} />
           </p>
-          {problems.length > 0 ? <ProblemList problems={problems} /> : null}
+          {problems.length > 0 ? <ProblemList problems={problems} text={validatedBlock} /> : null}
         </div>
       )}
     </CollapsiblePanel>
@@ -147,26 +153,43 @@ export function OrdersPanel({
  * Counts alone told the player a number and left them to find it. The line is the one the editor
  * above is showing, so it can be counted down to; scrolled rather than allowed to grow, because the
  * panel's height is fixed and the editor is what the space is for.
+ *
+ * The parser knows which token is wrong and not merely which line, so the token is quoted beside the
+ * message - "line 4, swords" beats "line 4" on a line with four arguments on it. `text` is the text
+ * the diagnostics were counted in rather than the draft on screen, so the quote is of what was
+ * actually found wrong; a span that no longer fits goes unquoted rather than quoting the wrong thing.
  */
-function ProblemList({ problems }: { problems: OrderDiagnostic[] }) {
+function ProblemList({ problems, text }: { problems: OrderDiagnostic[]; text: string }) {
   return (
     <ul
       data-testid="orders-diagnostics"
       className="m-0 max-h-20 list-none overflow-y-auto p-0 pt-1 text-[10px] leading-snug"
     >
-      {problems.map((problem, index) => (
-        <li
-          key={`${problem.code}-${problem.lineStart}-${index}`}
-          data-testid="orders-diagnostic"
-          data-severity={problem.severity}
-          className="flex gap-2"
-        >
-          <span className="shrink-0 tabular-nums text-ink-dim">line {problem.lineStart}</span>
-          <span className={problem.severity === "error" ? "text-danger" : "text-warn"}>
-            {problem.message}
-          </span>
-        </li>
-      ))}
+      {problems.map((problem, index) => {
+        const found = offendingText(text, problem);
+
+        return (
+          <li
+            key={`${problem.code}-${problem.lineStart}-${index}`}
+            data-testid="orders-diagnostic"
+            data-severity={problem.severity}
+            className="flex gap-2"
+          >
+            <span className="shrink-0 tabular-nums text-ink-dim">line {problem.lineStart}</span>
+            {found === null ? null : (
+              <code
+                data-testid="orders-diagnostic-token"
+                className="shrink-0 rounded bg-edge/40 px-1 font-mono text-ink-soft"
+              >
+                {found}
+              </code>
+            )}
+            <span className={problem.severity === "error" ? "text-danger" : "text-warn"}>
+              {problem.message}
+            </span>
+          </li>
+        );
+      })}
     </ul>
   );
 }

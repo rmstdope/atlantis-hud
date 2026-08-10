@@ -22,6 +22,7 @@ function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
       ruleset
     }),
     validate_orders_state: () => ({ diagnostics: [] }),
+    order_commands_state: () => ["GIVE", "MOVE", "WORK"],
     plan_route_state: (
       rulesetJson: string,
       rawReport: string,
@@ -168,7 +169,8 @@ describe("web core adapter", () => {
 
     expect(await adapter.getEngineInfo()).toEqual({ id: "atlantis", name: "Atlantis PBEM" });
     expect(await adapter.parseReport("anything")).toEqual({ raw: "anything" });
-    expect(await adapter.validateOrders("MOVE R1 R2")).toEqual({ diagnostics: [] });
+    expect(await adapter.validateOrders("MOVE R1 R2", null)).toEqual({ diagnostics: [] });
+    expect(await adapter.orderCommands()).toEqual(["GIVE", "MOVE", "WORK"]);
   });
 
   /**

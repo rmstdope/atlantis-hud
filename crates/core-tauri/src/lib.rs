@@ -5,7 +5,7 @@ use std::path::Path;
 use atlantis_hud_core::report::merge::{merge_report_into_sightings, StoredSighting};
 pub use atlantis_hud_core::report::ParsedReport;
 use atlantis_hud_core::{
-    engine_info, parse_report, reject_import, reject_merge, validate_orders,
+    engine_info, order_commands, parse_report, reject_import, reject_merge, validate_orders,
     OrderDiagnosticSeverity, ReportParseResult, WarningSeverity,
 };
 use atlantis_hud_core_persistence::{
@@ -164,6 +164,8 @@ pub struct OrderDiagnosticDto {
     pub message: String,
     pub line_start: usize,
     pub line_end: usize,
+    pub column_start: usize,
+    pub column_end: usize,
     pub severity: String,
 }
 
@@ -587,10 +589,25 @@ pub fn command_commit_report_import(
     Ok(ImportedTurnPreviewDto::from(preview))
 }
 
-/// Validates one order draft for the Tauri command surface.
+/// The order vocabulary, for the Tauri command surface.
+///
+/// Exposed so the shell need not keep a hand-copied list of its own beside the core's; the two used
+/// to drift, and one of them was wrong.
 #[must_use]
-pub fn command_validate_orders(raw_orders: &str) -> OrderValidationResultDto {
-    let result = validate_orders(raw_orders);
+pub fn command_order_commands() -> Vec<String> {
+    order_commands().into_iter().map(str::to_string).collect()
+}
+
+/// Validates one order draft for the Tauri command surface.
+///
+/// `ruleset_json` is the served ruleset when the shell has it; without it item names go unchecked
+/// and everything else is checked as usual.
+#[must_use]
+pub fn command_validate_orders(
+    raw_orders: &str,
+    ruleset_json: Option<&str>,
+) -> OrderValidationResultDto {
+    let result = validate_orders(raw_orders, ruleset_json);
     OrderValidationResultDto {
         diagnostics: result
             .diagnostics
@@ -600,6 +617,8 @@ pub fn command_validate_orders(raw_orders: &str) -> OrderValidationResultDto {
                 message: diagnostic.message,
                 line_start: diagnostic.line_start,
                 line_end: diagnostic.line_end,
+                column_start: diagnostic.column_start,
+                column_end: diagnostic.column_end,
                 severity: match diagnostic.severity {
                     OrderDiagnosticSeverity::Warning => "warning".to_string(),
                     OrderDiagnosticSeverity::Error => "error".to_string(),
@@ -1545,7 +1564,7 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
         )
         .expect("create game");
 
-        let validation = command_validate_orders("FLY 1 2");
+        let validation = command_validate_orders("FLY 1 2", None);
         assert_eq!(
             validation.diagnostics,
             vec![OrderDiagnosticDto {
@@ -1553,6 +1572,8 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
                 message: "unknown order command: FLY".to_string(),
                 line_start: 1,
                 line_end: 1,
+                column_start: 0,
+                column_end: 3,
                 severity: "error".to_string(),
             }]
         );

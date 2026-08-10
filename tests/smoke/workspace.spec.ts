@@ -321,6 +321,45 @@ test("a bad order names itself, and belongs to the unit that carries it", async 
   await expect(page.getByTestId("orders-status")).toContainText("1 elsewhere");
 });
 
+test("an order with the wrong argument is caught, and the offending word quoted", async ({
+  page
+}) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+  await selectUnit(page, OWN_UNIT);
+
+  // GIVE takes a quantity before the item, and "swords" is not one. Only a parser that reads the
+  // arguments finds this; checking the command name alone accepts it.
+  await page.getByTestId("orders-input").fill("GIVE 4573 swords");
+
+  const problems = page.getByTestId("orders-diagnostics");
+  await expect(problems).toContainText("found \"swords\"");
+  // The word itself, quoted out of the line by column, so the player is not left counting across.
+  await expect(page.getByTestId("orders-diagnostic-token")).toHaveText("swords");
+  await expect(page.getByTestId("orders-status")).toContainText("1 error");
+
+  // Corrected, it is accepted.
+  await page.getByTestId("orders-input").fill("GIVE 4573 10 swords");
+  await expect(page.getByTestId("orders-status")).toContainText("0 errors");
+  await expect(page.getByTestId("orders-diagnostic")).toHaveCount(0);
+});
+
+test("an item the catalogue does not know is a warning rather than an error", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+  await selectUnit(page, OWN_UNIT);
+
+  // The shape is right, so this is not a refusal - the catalogue is scraped and may simply be
+  // missing an entry. It is said out loud all the same, because it is usually a typo.
+  await page.getByTestId("orders-input").fill("GIVE 4573 10 swordz");
+
+  await expect(page.getByTestId("orders-diagnostics")).toContainText("swordz");
+  const status = page.getByTestId("orders-status");
+  await expect(status).toContainText("1 warning");
+  await expect(status).toContainText("0 errors");
+  await expect(page.getByTestId("orders-diagnostic")).toHaveAttribute("data-severity", "warning");
+});
+
 test("a foreign unit can be inspected but not ordered", async ({ page }) => {
   await loadReport(page);
   await selectHex(page, "1:7,53");

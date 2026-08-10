@@ -5,7 +5,7 @@
 use atlantis_hud_core_tauri::{
     command_commit_report_import, command_create_game, command_delete_game, command_export_game,
     command_import_game, command_list_games, command_load_imported_turn, command_load_order_draft,
-    command_open_game, command_parse_report, command_parse_report_full,
+    command_open_game, command_order_commands, command_parse_report, command_parse_report_full,
     command_preview_report_import, command_save_order_draft, command_set_game_ruleset,
     command_validate_orders, GameManifestDto, ImportedTurnPreviewDto, ImportedTurnRecordDto,
     OpenedGameDto, OrderDraftRecordDto, OrderValidationResultDto, ParsedReport,
@@ -301,8 +301,17 @@ fn load_latest_imported_turn(
     feature = "desktop-runtime"
 ))]
 #[tauri::command(rename_all = "snake_case")]
-fn validate_orders(raw_orders: String) -> OrderValidationResultDto {
-    command_validate_orders(&raw_orders)
+fn validate_orders(raw_orders: String, ruleset_json: Option<String>) -> OrderValidationResultDto {
+    command_validate_orders(&raw_orders, ruleset_json.as_deref())
+}
+
+#[cfg(all(
+    any(target_os = "linux", target_os = "macos", target_os = "windows"),
+    feature = "desktop-runtime"
+))]
+#[tauri::command(rename_all = "snake_case")]
+fn order_commands() -> Vec<String> {
+    command_order_commands()
 }
 
 #[cfg(all(
@@ -368,6 +377,7 @@ fn main() {
             load_imported_turn,
             load_latest_imported_turn,
             validate_orders,
+            order_commands,
             save_order_draft,
             load_order_draft,
             plan_route,

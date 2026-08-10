@@ -1,80 +1,6 @@
 import type { OrderDiagnostic, OrderValidationResult } from "@atlantis/core-client";
 import { findUnitBlocks, withoutTrailingBlankLines } from "./ordersDocument";
 
-/**
- * Order commands the NewOrigins ruleset accepts.
- *
- * Mirrors ORDER_COMMANDS in crates/core. The Rust core is the authority: it decides what validates,
- * and this list exists only so the editor can offer completions without a round trip.
- */
-export const ORDER_COMMAND_VOCABULARY = [
-  "ADDRESS",
-  "ADVANCE",
-  "ANNIHILATE",
-  "ARMOR",
-  "ASSASSINATE",
-  "ATTACK",
-  "AUTOTAX",
-  "AVOID",
-  "BEHIND",
-  "BUILD",
-  "BUY",
-  "CAST",
-  "CLAIM",
-  "COMBAT",
-  "CONSUME",
-  "DECLARE",
-  "DESCRIBE",
-  "DESTROY",
-  "ENDFORM",
-  "ENDTURN",
-  "ENTER",
-  "ENTERTAIN",
-  "EVICT",
-  "EXCHANGE",
-  "FACTION",
-  "FIND",
-  "FORGET",
-  "FORM",
-  "GIVE",
-  "GUARD",
-  "HOLD",
-  "IDLE",
-  "JOIN",
-  "LEAVE",
-  "MOVE",
-  "NAME",
-  "NOAID",
-  "NOCROSS",
-  "NOSPOILS",
-  "OPTION",
-  "PASSWORD",
-  "PILLAGE",
-  "PREPARE",
-  "PRODUCE",
-  "PROMOTE",
-  "QUIT",
-  "RESTART",
-  "REVEAL",
-  "SAIL",
-  "SELL",
-  "SHARE",
-  "SHOW",
-  "SPOILS",
-  "STEAL",
-  "STUDY",
-  "SWEAR",
-  "TAKE",
-  "TAX",
-  "TEACH",
-  "TRANSPORT",
-  "TURN",
-  "WEAPON",
-  "WISHDRAW",
-  "WITHDRAW",
-  "WORK"
-] as const;
-
 export type OrderValidationSummary = {
   errorCount: number;
   warningCount: number;
@@ -82,9 +8,35 @@ export type OrderValidationSummary = {
   diagnostics: OrderDiagnostic[];
 };
 
-export function suggestOrderCommands(prefix: string): string[] {
+/**
+ * Completions for a half-typed command.
+ *
+ * `commands` is the core's own vocabulary, fetched through `CoreClient.orderCommands`. It used to be
+ * a list kept here and hand-copied from the Rust one, and the two had drifted: this side carried
+ * four orders the ruleset has no such thing as and was missing END.
+ */
+export function suggestOrderCommands(prefix: string, commands: readonly string[]): string[] {
   const normalizedPrefix = prefix.trim().toUpperCase();
-  return ORDER_COMMAND_VOCABULARY.filter((command) => command.startsWith(normalizedPrefix));
+  return commands.filter((command) => command.startsWith(normalizedPrefix));
+}
+
+/**
+ * The text a diagnostic points at, for quoting back beside its message.
+ *
+ * Returns `null` when there is nothing useful to quote: a problem covering its whole line is about
+ * the line rather than about anything in it, and repeating it would only take up room. Also `null`
+ * when the span falls outside `text`, which happens ordinarily rather than exceptionally -
+ * validation is debounced, so the diagnostics on screen are sometimes a keystroke behind.
+ */
+export function offendingText(text: string, diagnostic: OrderDiagnostic): string | null {
+  const line = text.split("\n")[diagnostic.lineStart - 1];
+  if (line === undefined || diagnostic.columnEnd > line.length) {
+    return null;
+  }
+
+  const slice = line.slice(diagnostic.columnStart, diagnostic.columnEnd);
+  const coversTheWholeLine = diagnostic.columnStart === 0 && diagnostic.columnEnd === line.length;
+  return slice.length > 0 && !coversTheWholeLine ? slice : null;
 }
 
 export function summarizeOrderValidation(result: OrderValidationResult): OrderValidationSummary {
