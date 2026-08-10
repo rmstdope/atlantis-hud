@@ -40,6 +40,7 @@ import { MapCanvas } from "./MapCanvas";
 import { OrdersPanel } from "./OrdersPanel";
 import { PlannerPanel } from "./PlannerPanel";
 import { RegionPanel } from "./RegionPanel";
+import { TurnMessagesPanel, type TurnMessagesTab } from "./TurnMessagesPanel";
 import { UnitPanel } from "./UnitPanel";
 import { UnitTableDock } from "./UnitTableDock";
 
@@ -164,11 +165,17 @@ export function AppShell({
   const [pickerOpen, setPickerOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [gameError, setGameError] = useState<string | null>(null);
+  // Which of the turn's two lists is being read, and whether either is. Local rather than in the
+  // store, exactly as the game picker is: it is a panel that is open for a moment, not a preference.
+  const [messagesOpen, setMessagesOpen] = useState(false);
+  const [messagesTab, setMessagesTab] = useState<TurnMessagesTab>("errors");
 
   const selectedRegionId = useWorkspaceStore((state) => state.selectedRegionId);
   const selectedUnitId = useWorkspaceStore((state) => state.selectedUnitId);
   const selectRegion = useWorkspaceStore((state) => state.selectRegion);
+  const selectUnit = useWorkspaceStore((state) => state.selectUnit);
   const level = useWorkspaceStore((state) => state.level);
+  const setLevel = useWorkspaceStore((state) => state.setLevel);
   const layers = useWorkspaceStore((state) => state.layers);
   const planner = useWorkspaceStore((state) => state.planner);
   const armPlanner = useWorkspaceStore((state) => state.armPlanner);
@@ -236,6 +243,59 @@ export function AppShell({
     [hex, selectedUnitId]
   );
 
+  /** What the engine said about this turn. Null when there is no turn on screen to say it about. */
+  const messages = useMemo(
+    () => (parsed ? { errors: parsed.header.errors, events: parsed.header.events } : null),
+    [parsed]
+  );
+
+  /**
+   * Where every unit the turn describes is standing.
+   *
+   * Foreign units included: a message can name one - being robbed by someone is an event about
+   * their unit as much as yours - and a hex is a hex whoever is standing in it.
+   */
+  const unitRegions = useMemo(() => {
+    const found = new Map<string, string>();
+    for (const region of parsed?.regions ?? []) {
+      for (const candidate of region.units) {
+        found.set(candidate.unitId, region.regionId);
+      }
+    }
+    return found;
+  }, [parsed]);
+
+  /** Which of the units a message names can actually be gone to. */
+  const knownUnitIds = useMemo(() => new Set(unitRegions.keys()), [unitRegions]);
+
+  /**
+   * Goes to the unit a turn message names.
+   *
+   * A unit can be standing on a level the player is not looking at, and the map draws one level at
+   * a time. `setLevel` clears the selection when the level changes, so it has to come first -
+   * selecting and then switching would leave nothing selected at all.
+   */
+  const goToUnit = useCallback(
+    (unitId: string) => {
+      const regionId = unitRegions.get(unitId);
+      if (!regionId) {
+        return;
+      }
+      // Region ids are `z:x,y`, so the level the unit is on is written on the front of its hex.
+      const target = Number(regionId.split(":")[0]);
+      if (Number.isFinite(target) && target !== level) {
+        setLevel(target);
+      }
+      selectRegion(regionId, unitId);
+      // And the unit itself, because `selectRegion` leaves the selection alone when the hex is
+      // already the one on screen - which is exactly the case where a second message names a
+      // different unit standing beside the first.
+      selectUnit(unitId);
+      setMessagesOpen(false);
+    },
+    [unitRegions, level, setLevel, selectRegion, selectUnit]
+  );
+
   const loadReport = useCallback(
     async (text: string, fileName: string) => {
       setBusy(true);
@@ -291,7 +351,6 @@ export function AppShell({
         setStatus({
           regionCount: report.regions.length,
           unitCount,
-          errorCount: report.header.errors.length,
           message: memory.warning ?? chosen.warning,
           failed: false
         });
@@ -307,7 +366,6 @@ export function AppShell({
         setStatus({
           regionCount: 0,
           unitCount: 0,
-          errorCount: 0,
           message: `could not read ${fileName}: ${describeError(error)}`,
           failed: true
         });
@@ -402,7 +460,6 @@ export function AppShell({
         setStatus({
           regionCount: restored.parsed.regions.length,
           unitCount,
-          errorCount: restored.parsed.header.errors.length,
           message: restored.warning ?? `restored turn ${restored.turnNumber}`,
           failed: false
         });
@@ -424,7 +481,6 @@ export function AppShell({
           setStatus({
             regionCount: 0,
             unitCount: 0,
-            errorCount: 0,
             message: `the last turn could not be restored: ${describeError(error)}`,
             failed: true
           });
@@ -610,7 +666,6 @@ export function AppShell({
           setStatus({
             regionCount: 0,
             unitCount: 0,
-            errorCount: 0,
             message: `could not plan a route: ${describeError(error)}`,
             failed: true
           });
@@ -849,6 +904,32 @@ export function AppShell({
         factionLabel={factionLabel}
         turnLabel={turnLabel}
         status={status}
+        messages={messages}
+        messagesOpen={messagesOpen}
+        onToggleMessages={() =>
+          setMessagesOpen((open) => {
+            // Opening lands on the list that has something in it. A turn with no errors would
+            // otherwise open onto an empty Errors tab and hide the events behind a second click.
+            if (!open) {
+              setMessagesTab(messages && messages.errors.length > 0 ? "errors" : "events");
+            }
+            return !open;
+          })
+        }
+        messagesPanel={
+          messages ? (
+            <TurnMessagesPanel
+              turnLabel={turnLabel}
+              errors={messages.errors}
+              events={messages.events}
+              tab={messagesTab}
+              onTab={setMessagesTab}
+              knownUnitIds={knownUnitIds}
+              onSelectUnit={goToUnit}
+              onDismiss={() => setMessagesOpen(false)}
+            />
+          ) : null
+        }
         busy={busy}
         onLoadReport={(text, fileName) => void loadReport(text, fileName)}
         onExportOrders={exportOrders}

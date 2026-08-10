@@ -1,12 +1,18 @@
 import type { ChangeEvent, DragEvent, ReactNode } from "react";
 import { useRef } from "react";
+import { describeTurnMessages } from "../turnMessages";
 
 export type ImportStatus = {
   regionCount: number;
   unitCount: number;
-  errorCount: number;
   message: string | null;
   failed: boolean;
+};
+
+/** What the engine said about the loaded turn, as the report printed it. */
+export type TurnMessages = {
+  errors: string[];
+  events: string[];
 };
 
 type AppHeaderProps = {
@@ -20,6 +26,13 @@ type AppHeaderProps = {
   factionLabel: string | null;
   turnLabel: string | null;
   status: ImportStatus | null;
+  /** The loaded turn's errors and events, or null when no turn is loaded. */
+  messages: TurnMessages | null;
+  /** Whether the messages panel is showing. As with the picker, the shell owns the panel. */
+  messagesOpen: boolean;
+  onToggleMessages: () => void;
+  /** The panel itself, rendered under the chip when it is open. */
+  messagesPanel: ReactNode;
   busy: boolean;
   onLoadReport: (text: string, fileName: string) => void;
   onExportOrders: () => void;
@@ -48,6 +61,10 @@ export function AppHeader({
   factionLabel,
   turnLabel,
   status,
+  messages,
+  messagesOpen,
+  onToggleMessages,
+  messagesPanel,
   busy,
   onLoadReport,
   onExportOrders,
@@ -57,6 +74,9 @@ export function AppHeader({
   settings
 }: AppHeaderProps) {
   const fileRef = useRef<HTMLInputElement | null>(null);
+
+  const errorCount = messages?.errors.length ?? 0;
+  const chipLabel = describeTurnMessages(errorCount, messages?.events.length ?? 0);
 
   const readFile = async (file: File) => {
     onLoadReport(await file.text(), file.name);
@@ -126,16 +146,50 @@ export function AppHeader({
             <span
               aria-hidden
               className={`inline-block h-1.5 w-1.5 rounded-full ${
-                status.failed ? "bg-danger" : status.errorCount > 0 ? "bg-warn" : "bg-ok"
+                status.failed ? "bg-danger" : errorCount > 0 ? "bg-warn" : "bg-ok"
               }`}
             />
             {status.message ??
-              `${status.regionCount} region${status.regionCount === 1 ? "" : "s"} · ${status.unitCount} unit${status.unitCount === 1 ? "" : "s"}${status.errorCount > 0 ? ` · ${status.errorCount} turn error${status.errorCount === 1 ? "" : "s"}` : ""}`}
+              `${status.regionCount} region${status.regionCount === 1 ? "" : "s"} · ${status.unitCount} unit${status.unitCount === 1 ? "" : "s"}`}
           </>
         ) : (
           <span className="text-ink-dim">no report loaded</span>
         )}
       </span>
+
+      {/*
+        What the engine said about the turn, and the way to read it.
+
+        A control of its own rather than more text in the status above, because that line shows a
+        message *instead of* its counts whenever there is one - so on a restored turn the errors
+        would have had nowhere to appear at all. Relative, because the panel hangs off it.
+
+        Withheld while an import is failed: that status describes a report that did not load, and a
+        chip beside it would be counting the turn still on screen, which is a different turn.
+      */}
+      {chipLabel && status && !status.failed ? (
+        <span className="relative">
+          <button
+            type="button"
+            data-testid="turn-messages-chip"
+            aria-haspopup="dialog"
+            aria-expanded={messagesOpen}
+            onClick={onToggleMessages}
+            className={`rounded border px-2 py-0.5 ${
+              errorCount > 0
+                ? "border-warn text-warn"
+                : "border-edge bg-panel-raised text-ink-soft hover:border-brass"
+            }`}
+          >
+            {errorCount > 0 ? <span aria-hidden>⚠ </span> : null}
+            {chipLabel}
+            <span aria-hidden className="ml-1 text-ink-dim">
+              ▾
+            </span>
+          </button>
+          {messagesOpen ? messagesPanel : null}
+        </span>
+      ) : null}
 
       <span className="flex-1" />
 

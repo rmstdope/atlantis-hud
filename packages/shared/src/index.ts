@@ -9,6 +9,7 @@ export * from "./gameMemory";
 export * from "./gameSession";
 export * from "./orderDraft";
 export * from "./rulesets";
+export * from "./turnMessages";
 export * from "./unitComposition";
 export * from "./unitTable";
 
@@ -23,5 +24,6 @@ export * from "./workspace/MapCanvas";
 export * from "./workspace/OrdersPanel";
 export * from "./workspace/RegionPanel";
 export * from "./workspace/SettingsPanel";
+export * from "./workspace/TurnMessagesPanel";
 export * from "./workspace/UnitPanel";
 export * from "./workspace/UnitTableDock";
