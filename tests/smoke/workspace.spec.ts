@@ -1279,6 +1279,19 @@ test("a drag that ends over a hex pans without selecting it", async ({ page }) =
   );
 });
 
+test("the focus ring does not appear after a drag", async ({ page }) => {
+  await loadReport(page);
+
+  const point = await clearHexPoint(page);
+  await page.mouse.move(point!.x, point!.y);
+  await page.mouse.down();
+  await page.mouse.move(point!.x + 90, point!.y + 60, { steps: 8 });
+  await page.mouse.up();
+
+  // Panning must not leave a focus ring on the hex the drag started from.
+  await expect(page.getByTestId("map-focus-ring")).not.toBeAttached();
+});
+
 test("the focused hex is visibly marked, so arrowing about is not invisible", async ({ page }) => {
   await loadReport(page);
 
