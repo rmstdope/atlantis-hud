@@ -44,7 +44,9 @@ export function CollapsiblePanel({
       // sizes to its content and spills out, painting over the panel below. Folded, it must do the
       // opposite and shrink to its title bar - which is what issue #60 was: the body disappeared
       // and the frame stayed, a full-height empty slab over the map.
-      className={`pointer-events-auto flex min-h-0 min-w-0 flex-col overflow-hidden rounded-md border border-edge bg-panel/95 shadow-lg backdrop-blur ${collapsed ? "" : "h-full"} ${className}`}
+      // `bg-pane`, not `bg-panel/95`: the panes' alpha is the transparency setting, one custom
+      // property stamped on the root, so the slider re-paints every pane without a re-render.
+      className={`pointer-events-auto flex min-h-0 min-w-0 flex-col overflow-hidden rounded-md border border-edge bg-pane shadow-lg backdrop-blur ${collapsed ? "" : "h-full"} ${className}`}
     >
       <header className="flex h-7 flex-none items-center gap-2 border-b border-edge px-2.5">
         <button

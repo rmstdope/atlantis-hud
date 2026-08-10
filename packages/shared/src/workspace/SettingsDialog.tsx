@@ -178,12 +178,14 @@ function Tab({
   );
 }
 
-/** Settings that hold for every game: just the theme, until more arrive. */
+/** Settings that hold for every game: the theme, the map's textures, how see-through panes are. */
 function GlobalSettings() {
   const theme = useSettingsStore((state) => state.theme);
   const setTheme = useSettingsStore((state) => state.setTheme);
   const biomeTextures = useSettingsStore((state) => state.biomeTextures);
   const setBiomeTextures = useSettingsStore((state) => state.setBiomeTextures);
+  const paneTransparency = useSettingsStore((state) => state.paneTransparency);
+  const setPaneTransparency = useSettingsStore((state) => state.setPaneTransparency);
 
   return (
     <div className="flex flex-col gap-3">
@@ -205,6 +207,29 @@ function GlobalSettings() {
           aria-label="Biome textures"
           checked={biomeTextures}
           onChange={(event) => setBiomeTextures(event.target.checked)}
+          className="accent-brass"
+        />
+      </label>
+
+      <label className="flex flex-col gap-1">
+        <span className="flex items-baseline justify-between gap-2">
+          <span className="text-ink-soft">Pane transparency</span>
+          <span className="text-ink">{paneTransparency}%</span>
+        </span>
+        {/*
+          Capped at 90 rather than 100, because a fully transparent pane can neither be read nor
+          found again to turn back. Applies as it is dragged: the panes are on screen behind the
+          dialog, so the slider is its own preview.
+        */}
+        <input
+          type="range"
+          data-testid="pane-transparency"
+          aria-label="pane transparency"
+          min={0}
+          max={90}
+          step={5}
+          value={paneTransparency}
+          onChange={(event) => setPaneTransparency(Number(event.target.value))}
           className="accent-brass"
         />
       </label>

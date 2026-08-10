@@ -13,15 +13,26 @@ import { createJSONStorage, persist } from "zustand/middleware";
 
 export type ThemeName = "dark" | "light";
 
+/** How see-through the floating panes start out: enough map underneath to navigate by. */
+export const DEFAULT_PANE_TRANSPARENCY = 75;
+
 export type SettingsState = {
   theme: ThemeName;
   biomeTextures: boolean;
+  /**
+   * How see-through the panes floating over the map are, in percent.
+   *
+   * 0 is opaque and 90 is the most transparent the slider offers - never 100, because a pane that
+   * cannot be seen at all can also not be found to make visible again.
+   */
+  paneTransparency: number;
   /** Applies instantly: the settings dialog has no OK button to wait for. */
   setTheme: (theme: ThemeName) => void;
   setBiomeTextures: (enabled: boolean) => void;
+  setPaneTransparency: (percent: number) => void;
 };
 
-type Persisted = Pick<SettingsState, "theme" | "biomeTextures">;
+type Persisted = Pick<SettingsState, "theme" | "biomeTextures" | "paneTransparency">;
 
 /**
  * Stamps the theme where the stylesheet can see it. The dark tokens are the `:root` defaults, and
@@ -33,6 +44,33 @@ function applyTheme(theme: ThemeName) {
     return;
   }
   document.documentElement.dataset.theme = theme;
+}
+
+/**
+ * What the slider offers is also what the store accepts: storage is hand-editable, and a value
+ * from outside the range must not paint the panes invisible or leave a long decimal in the CSS.
+ * Anything unreadable falls back to the default rather than to an extreme.
+ */
+function clampTransparency(percent: number): number {
+  // Coerced before the finite check: storage is hand-editable and other writers exist, so the
+  // "number" rehydrated into state can arrive as its string form.
+  const numeric = Number(percent);
+  if (!Number.isFinite(numeric)) {
+    return DEFAULT_PANE_TRANSPARENCY;
+  }
+  return Math.min(90, Math.max(0, Math.round(numeric)));
+}
+
+/**
+ * Stamps the transparency where the stylesheet can see it. `.bg-pane` derives its alpha from this
+ * one custom property, so a slider move re-paints every pane at once - the same mechanism, and the
+ * same reason, as the theme attribute above.
+ */
+function applyPaneTransparency(percent: number) {
+  if (typeof document === "undefined") {
+    return;
+  }
+  document.documentElement.style.setProperty("--pane-transparency", String(percent));
 }
 
 /**
@@ -69,6 +107,7 @@ export const useSettingsStore = create<SettingsState>()(
     (set) => ({
       theme: "dark",
       biomeTextures: true,
+      paneTransparency: DEFAULT_PANE_TRANSPARENCY,
 
       setTheme: (theme) => {
         applyTheme(theme);
@@ -77,12 +116,22 @@ export const useSettingsStore = create<SettingsState>()(
 
       setBiomeTextures: (biomeTextures) => {
         set({ biomeTextures });
+      },
+
+      setPaneTransparency: (percent) => {
+        const clamped = clampTransparency(percent);
+        applyPaneTransparency(clamped);
+        set({ paneTransparency: clamped });
       }
     }),
     {
       name: "atlantis-hud-settings",
       storage: STORAGE,
-      partialize: (state) => ({ theme: state.theme, biomeTextures: state.biomeTextures })
+      partialize: (state) => ({
+        theme: state.theme,
+        biomeTextures: state.biomeTextures,
+        paneTransparency: state.paneTransparency
+      })
     }
   )
 );
@@ -94,12 +143,23 @@ export const useSettingsStore = create<SettingsState>()(
  */
 export function applyPersistedSettings() {
   applyTheme(useSettingsStore.getState().theme);
+  // Rehydration merges storage straight into state without the setter, so an out-of-range or
+  // string value must be reconciled in BOTH places here: stamped clamped into the CSS, and
+  // written back into the store so the slider does not claim a value the panes are not painting.
+  const transparency = clampTransparency(useSettingsStore.getState().paneTransparency);
+  useSettingsStore.setState({ paneTransparency: transparency });
+  applyPaneTransparency(transparency);
 }
 
 /** Resets the store, remembered preferences included. Tests would otherwise leak state. */
 export function resetSettingsStore() {
   MEMORY.clear();
   optionalStorage()?.removeItem("atlantis-hud-settings");
-  useSettingsStore.setState({ theme: "dark", biomeTextures: true });
+  useSettingsStore.setState({
+    theme: "dark",
+    biomeTextures: true,
+    paneTransparency: DEFAULT_PANE_TRANSPARENCY
+  });
   applyTheme("dark");
+  applyPaneTransparency(DEFAULT_PANE_TRANSPARENCY);
 }

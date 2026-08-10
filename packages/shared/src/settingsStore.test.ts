@@ -12,10 +12,30 @@ const store = () => useSettingsStore.getState();
  * `documentElement.dataset` is enough to observe the theme attribute the store applies; it is
  * removed again so other suites see the environment they expect.
  */
-type DocumentStub = { documentElement: { dataset: Record<string, string> } };
+type DocumentStub = {
+  documentElement: {
+    dataset: Record<string, string>;
+    /** Stands in for CSSStyleDeclaration: the store only ever calls `setProperty`. */
+    style: {
+      properties: Record<string, string>;
+      setProperty: (name: string, value: string) => void;
+    };
+  };
+};
 
 function installDocumentStub(): DocumentStub {
-  const stub: DocumentStub = { documentElement: { dataset: {} } };
+  const properties: Record<string, string> = {};
+  const stub: DocumentStub = {
+    documentElement: {
+      dataset: {},
+      style: {
+        properties,
+        setProperty: (name, value) => {
+          properties[name] = value;
+        }
+      }
+    }
+  };
   (globalThis as { document?: unknown }).document = stub;
   return stub;
 }
@@ -99,5 +119,79 @@ describe("settings store", () => {
 
     expect(store().theme).toBe("dark");
     expect(stub.documentElement.dataset.theme).toBe("dark");
+  });
+
+  it("defaults the pane transparency to 75 percent", () => {
+    expect(store().paneTransparency).toBe(75);
+  });
+
+  it("stamps the chosen pane transparency onto the document root", () => {
+    const stub = installDocumentStub();
+
+    store().setPaneTransparency(40);
+
+    expect(store().paneTransparency).toBe(40);
+    expect(stub.documentElement.style.properties["--pane-transparency"]).toBe("40");
+  });
+
+  /**
+   * The slider only offers 0 to 90, but the store is also fed by whatever localStorage holds, and
+   * a hand-edited or corrupted value must not paint the panes invisible or the setter throw.
+   */
+  it("clamps the transparency to what the slider offers, 0 to 90", () => {
+    store().setPaneTransparency(150);
+    expect(store().paneTransparency).toBe(90);
+
+    store().setPaneTransparency(-10);
+    expect(store().paneTransparency).toBe(0);
+
+    // A fraction rounds rather than stamping a long decimal into the CSS.
+    store().setPaneTransparency(33.4);
+    expect(store().paneTransparency).toBe(33);
+  });
+
+  it("applies the persisted pane transparency at startup", () => {
+    store().setPaneTransparency(20);
+    const stub = installDocumentStub();
+
+    applyPersistedSettings();
+
+    expect(stub.documentElement.style.properties["--pane-transparency"]).toBe("20");
+  });
+
+  /**
+   * Rehydration merges storage straight into state without the setter, so a hand-edited or
+   * corrupt value would otherwise leave the label saying one thing and the panes painting
+   * another. Startup must reconcile both sides, not just the CSS.
+   */
+  it("sanitizes a persisted transparency from outside the range, state and stamp alike", () => {
+    useSettingsStore.setState({ paneTransparency: 150 });
+    const stub = installDocumentStub();
+
+    applyPersistedSettings();
+
+    expect(store().paneTransparency).toBe(90);
+    expect(stub.documentElement.style.properties["--pane-transparency"]).toBe("90");
+  });
+
+  it("reads a persisted transparency that storage kept as a string", () => {
+    // JSON round-trips preserve numbers, but storage is hand-editable and other writers exist.
+    useSettingsStore.setState({ paneTransparency: "40" as unknown as number });
+    const stub = installDocumentStub();
+
+    applyPersistedSettings();
+
+    expect(store().paneTransparency).toBe(40);
+    expect(stub.documentElement.style.properties["--pane-transparency"]).toBe("40");
+  });
+
+  it("resets the pane transparency to its default", () => {
+    const stub = installDocumentStub();
+    store().setPaneTransparency(10);
+
+    resetSettingsStore();
+
+    expect(store().paneTransparency).toBe(75);
+    expect(stub.documentElement.style.properties["--pane-transparency"]).toBe("75");
   });
 });

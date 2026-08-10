@@ -101,6 +101,58 @@ test("the theme choice restyles the app and survives a reload", async ({ page })
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
 });
 
+/**
+ * How see-through the panes over the map are, as painted. The slider is the mechanism; the
+ * computed background alpha of a floating pane is the proof it reached the stylesheet, exactly as
+ * the theme test reads a computed colour rather than trusting the attribute.
+ */
+async function paneAlpha(page: import("@playwright/test").Page): Promise<number> {
+  return page.getByTestId("panel-region").evaluate((el) => {
+    const painted = getComputedStyle(el).backgroundColor.trim();
+    // The engine picks the serialization - rgba(r, g, b, a), color(srgb r g b / a),
+    // oklab(l a b / alpha) - but every functional form writes the alpha last, after a slash or a
+    // final comma, and omits it entirely when it is exactly 1.
+    const slashed = /\/\s*([\d.]+%?)\s*\)$/u.exec(painted);
+    const legacy = /^rgba\([^)]*,\s*([\d.]+)\s*\)$/u.exec(painted);
+    const alpha = slashed?.[1] ?? legacy?.[1];
+    if (alpha === undefined) {
+      return 1;
+    }
+    return alpha.endsWith("%") ? Number(alpha.slice(0, -1)) / 100 : Number(alpha);
+  });
+}
+
+test("the pane transparency slider repaints the panes and survives a reload", async ({ page }) => {
+  await clearGames(page);
+  await createGame(page, "Settings game");
+
+  // 75% transparency is the default, so the panes start at a quarter opacity.
+  expect(await paneAlpha(page)).toBeCloseTo(0.25, 2);
+
+  await page.getByTestId("settings-indicator").click();
+  const slider = page.getByTestId("pane-transparency");
+  await expect(slider).toHaveValue("75");
+
+  // Fully opaque at one end of the range...
+  await slider.fill("0");
+  expect(await paneAlpha(page)).toBeCloseTo(1, 2);
+
+  // ...and never past 90 at the other, so a pane cannot be made invisible.
+  await expect(slider).toHaveAttribute("min", "0");
+  await expect(slider).toHaveAttribute("max", "90");
+  await slider.fill("90");
+  expect(await paneAlpha(page)).toBeCloseTo(0.1, 2);
+
+  // A preference, not a session choice: it holds across a reload.
+  await page.reload();
+  expect(await paneAlpha(page)).toBeCloseTo(0.1, 2);
+
+  // Back to the default, so later tests inherit the look they expect.
+  await page.getByTestId("settings-indicator").click();
+  await page.getByTestId("pane-transparency").fill("75");
+  expect(await paneAlpha(page)).toBeCloseTo(0.25, 2);
+});
+
 test("the per-game tab shows the open game's ruleset", async ({ page }) => {
   await clearGames(page);
   await createGame(page, "Settings game");
