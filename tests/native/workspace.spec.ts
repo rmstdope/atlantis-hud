@@ -4,6 +4,7 @@ import { browser, $, expect } from "@wdio/globals";
 import {
   clearGamesNative,
   createGameUi,
+  importStatusText,
   loadReportUi,
   openGameDb,
   selectHex,
@@ -38,9 +39,9 @@ describe("native desktop workspace", () => {
     await createGameUi("Native game");
     await loadReportUi(REPORT);
 
-    await expect($('[data-testid="import-status"]')).toHaveText(
-      expect.stringContaining("11 regions")
-    );
+    // Through textContent, not Get Element Text: the routine status is sr-only and
+    // WebKitWebDriver reports hidden text as empty.
+    expect(await importStatusText()).toContain("11 regions");
     await expect($('[data-testid="app-header"]')).toHaveText(
       expect.stringContaining("Borg TNG (95)")
     );

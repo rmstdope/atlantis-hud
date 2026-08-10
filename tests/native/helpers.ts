@@ -120,9 +120,21 @@ export async function loadReportUi(reportText: string): Promise<void> {
     input.files = transfer.files;
     input.dispatchEvent(new Event("change", { bubbles: true }));
   }, reportText);
-  await browser.waitUntil(
-    async () => (await $('[data-testid="import-status"]').getText()).includes("11 regions"),
-    { timeoutMsg: "the import status never reported 11 regions" }
+  await browser.waitUntil(async () => (await importStatusText()).includes("11 regions"), {
+    timeoutMsg: "the import status never reported 11 regions"
+  });
+}
+
+/**
+ * The import status's text as the page holds it.
+ *
+ * Read through `textContent` rather than WebDriver's Get Element Text, because the routine status
+ * is `sr-only` - present for screen readers and suites, out of the header's way - and
+ * WebKitWebDriver answers "" for text it considers invisible, where chromedriver answers the text.
+ */
+export async function importStatusText(): Promise<string> {
+  return browser.execute(
+    () => document.querySelector('[data-testid="import-status"]')?.textContent ?? ""
   );
 }
 

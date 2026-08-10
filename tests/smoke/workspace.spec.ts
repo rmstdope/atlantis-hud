@@ -197,6 +197,39 @@ test("an ally's report for the same turn can be merged into the map", async ({ p
   await expect(page.getByTestId("panel-region")).toContainText("(9,53)");
 });
 
+/**
+ * The header says things once. The platform tag repeated what the About tab says, the routine
+ * import status repeated what the Turn chip says, and the load button carried an ellipsis. The
+ * status line stays in the page - tests and screen readers key on its text - but it only takes up
+ * room when it has something to say: an import that failed, or one that worked with a warning.
+ */
+test("the header keeps quiet about routine state", async ({ page }) => {
+  await clearGames(page);
+  await expect(page.getByTestId("game-gate")).toBeVisible();
+  // The platform tag is the About tab's business, on the gate screen as in the workspace.
+  await expect(page.locator("header")).not.toContainText(/web|desktop/u);
+
+  await loadReport(page);
+  await expect(page.getByTestId("app-header")).not.toContainText(/web|desktop/u);
+  await expect(page.getByRole("button", { name: "Load report", exact: true })).toBeVisible();
+
+  // Loaded and well: the status is out of sight, its text still present for whoever asks.
+  const status = page.getByTestId("import-status");
+  await expect(status).toContainText("11 regions");
+  const quiet = await status.boundingBox();
+  expect(quiet === null || quiet.width <= 1).toBe(true);
+
+  // Something going wrong is the moment the line earns its room back. Junk parses to a turn
+  // that names no faction, which cannot be remembered - a warning the player should see.
+  await page.setInputFiles('input[type="file"]', {
+    name: "junk.rep",
+    mimeType: "text/plain",
+    buffer: Buffer.from("this is not a report", "utf8")
+  });
+  await expect(status).toContainText("cannot be remembered");
+  await expect.poll(async () => (await status.boundingBox())?.width ?? 0).toBeGreaterThan(1);
+});
+
 /** What merging must leave alone: the turn on screen has not changed, so nothing else may move. */
 test("merging leaves the orders and the selection where they were", async ({ page }) => {
   await loadReport(page);
@@ -206,7 +239,9 @@ test("merging leaves the orders and the selection where they were", async ({ pag
 
   const orders = page.getByTestId("orders-input");
   await orders.fill("@study obse\n@work");
-  await expect(orders).toHaveValue("@study obse\n@work");
+  // The trailing newline is optional on purpose: the editor appends one the moment an autosave
+  // lands, and whether that has happened yet is a race this test has no business betting on.
+  await expect(orders).toHaveValue(/^@study obse\n@work\n?$/u);
 
   await choose(page, "turn-71-f73.rep", ALLY_REPORT);
   await page.getByTestId("foreign-report-merge").click();
@@ -663,17 +698,37 @@ test("a folded panel is still folded after a reload", async ({ page }) => {
   await expect(page.getByTestId("import-status")).toContainText("restored turn 71");
 });
 
-test("layer toggles are operable and only trade routes is still inert", async ({ page }) => {
+test("layer toggles are operable and none is inert", async ({ page }) => {
   await loadReport(page);
 
   const chips = page.getByTestId("layer-chips");
-  await expect(chips.getByRole("checkbox", { name: "Trade routes" })).not.toBeChecked();
+  // Trade routes is gone entirely: it was the last toggle with nothing behind it, and a control
+  // that does nothing is worse than no control.
+  await expect(chips.getByRole("checkbox", { name: "Trade routes" })).toHaveCount(0);
   await expect(chips.getByRole("checkbox", { name: "Staleness" })).toBeChecked();
 
-  await chips.getByRole("checkbox", { name: "Trade routes" }).check();
-  await expect(chips.getByRole("checkbox", { name: "Trade routes" })).toBeChecked();
-  // Nothing behind it yet, and nothing breaks.
+  await chips.getByRole("checkbox", { name: "Structures" }).uncheck();
+  await expect(chips.getByRole("checkbox", { name: "Structures" })).not.toBeChecked();
   await expect(page.getByTestId("map-canvas")).toBeVisible();
+});
+
+/**
+ * The region panel writes everything out. It used to preview six market or structure lines and
+ * offer the rest as "+ N more" that nothing could expand, so the only way to the full list was
+ * the raw report; the pane scrolls, and scrolling is better than not knowing. Exits use the
+ * compass shorthand MOVE orders are written in rather than the report's long names.
+ */
+test("the region panel writes every line out and abbreviates the exits", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+
+  const region = page.getByTestId("panel-region");
+  // Inholm wants nine things; truffles are the ninth, which the six-line preview cut.
+  await expect(region).toContainText("truffles");
+  await expect(region).not.toContainText("more");
+  // The sixth exit, in shorthand - and no long name anywhere in the list.
+  await expect(region).toContainText("SE — ocean (8,54)");
+  await expect(region).not.toContainText("Southeast");
 });
 
 test("the unit table filters", async ({ page }) => {
@@ -937,12 +992,54 @@ test("the movement layer controls the route overlay and nothing else", async ({ 
   await selectHex(page, "1:7,51");
   await expect(page.getByTestId("planner-route")).toBeVisible();
 
+  // The chip starts on since #83, so this click turns the drawing OFF.
   const movement = page.getByTestId("layer-chips").getByLabel("movement");
   await movement.click();
+  await expect(page.getByTestId("route-line-solid")).toHaveCount(0);
 
   // The panel still knows the route; only the drawing follows the chip.
   await expect(page.getByTestId("planner-route")).toBeVisible();
   await expect(page.getByTestId("planner-order")).toHaveText("MOVE N");
+});
+
+/**
+ * Issue #83: a unit's written MOVE order is drawn on the map - solid through what the coming month
+ * covers, dotted for the rest - and it follows the editor as the player types.
+ *
+ * "* Seven of Eight (18642)" is a walker with two movement points in the mountain at (7,53). Its
+ * north neighbour (7,51) is another mountain at two points, so MOVE N N N is one hex a month:
+ * one solid step, then a dotted tail extrapolated into country nobody has described.
+ */
+test("a written move order is drawn solid for next turn and dotted beyond", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+  await selectUnit(page, OWN_UNIT);
+
+  // The movement layer is on by default, so typing an order is all it takes to draw it.
+  await page.getByTestId("orders-input").fill("MOVE N N N");
+
+  // Asserted by count and points rather than visibility: a due-north path is a straight vertical
+  // line, whose zero-width bounding box Playwright counts as hidden.
+  await expect(page.getByTestId("route-line-solid")).toHaveCount(1);
+  await expect(page.getByTestId("route-line-solid")).toHaveAttribute("points", /.+ .+/);
+  await expect(page.getByTestId("route-line-dotted")).toHaveCount(1);
+  await expect(page.getByTestId("route-line-dotted")).toHaveAttribute("points", /.+ .+ .+/);
+
+  // Cutting the order down to what one month affords leaves nothing for the dotted tail.
+  await page.getByTestId("orders-input").fill("MOVE N");
+  await expect(page.getByTestId("route-line-dotted")).toHaveCount(0);
+  await expect(page.getByTestId("route-line-solid")).toHaveCount(1);
+
+  // "  Northeast : ocean (8,52)" - a walker's order to sea is drawn, but as doubt: nothing is
+  // solid, however cheap the month arithmetic says the crossing is.
+  await page.getByTestId("orders-input").fill("MOVE NE");
+  await expect(page.getByTestId("route-line-dotted")).toHaveCount(1);
+  await expect(page.getByTestId("route-line-solid")).toHaveCount(0);
+
+  // Arming the planner is a gesture about a different journey, so the order path steps aside.
+  await page.getByTestId("planner-arm").click();
+  await expect(page.getByTestId("route-line-solid")).toHaveCount(0);
+  await expect(page.getByTestId("route-line-dotted")).toHaveCount(0);
 });
 
 /**

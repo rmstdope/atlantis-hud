@@ -3,9 +3,9 @@ import { useWorkspaceStore, type LayerName } from "../workspaceStore";
 /**
  * Layer toggles above the map.
  *
- * Units, structures, staleness and movement all drive the map. Trade routes is the last one still
- * present and operable with nothing behind it, and it starts off rather than on, so an inert toggle
- * cannot be mistaken for one that is working.
+ * Every toggle here drives the map. Trade routes used to sit alongside them with nothing behind
+ * it, waiting for a feature that never came; a control that does nothing is worse than no
+ * control, so it went the way inert controls should.
  *
  * Structures joined the working ones in #58: the map draws a marker on a hex that holds any, so
  * leaving the toggle inert would have made it a control that visibly lies.
@@ -14,7 +14,6 @@ const LAYERS: Array<{ name: LayerName; label: string }> = [
   { name: "units", label: "Units" },
   { name: "structures", label: "Structures" },
   { name: "staleness", label: "Staleness" },
-  { name: "tradeRoutes", label: "Trade routes" },
   { name: "movement", label: "Movement" }
 ];
 

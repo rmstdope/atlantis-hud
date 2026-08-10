@@ -107,6 +107,16 @@ const SWEEP: SweepEntry[] = [
     })
   },
   {
+    command: "trace_move_orders",
+    args: () => ({
+      ruleset_json: RULESET,
+      raw_report: REPORT,
+      remembered_json: "[]",
+      unit_id: "18642",
+      orders: "MOVE N"
+    })
+  },
+  {
     command: "preview_report_import",
     args: () => ({
       database_path: context.databasePath,

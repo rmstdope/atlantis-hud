@@ -13,8 +13,8 @@ import { createJSONStorage, persist } from "zustand/middleware";
 /** The four panels that can be folded away to open up the map. */
 export type PanelName = "region" | "unit" | "orders" | "units" | "planner";
 
-/** Map layers the toolbar toggles. Only staleness has an effect so far. */
-export type LayerName = "units" | "structures" | "staleness" | "tradeRoutes" | "movement";
+/** Map layers the toolbar toggles. Every one of them drives the map. */
+export type LayerName = "units" | "structures" | "staleness" | "movement";
 
 /**
  * The game the workspace is showing.
@@ -94,8 +94,9 @@ const INITIAL_LAYERS: Record<LayerName, boolean> = {
   units: true,
   structures: true,
   staleness: true,
-  tradeRoutes: false,
-  movement: false
+  // On by default since #83: the layer draws a selected unit's own orders, and a default of off
+  // hid that entirely behind a chip nobody had reason to press.
+  movement: true
 };
 
 /**

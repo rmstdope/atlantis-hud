@@ -1,17 +1,15 @@
 import type { OrderDiagnostic } from "@atlantis/core-client";
-import type { HexNode } from "../hexMapModel";
+import { abbreviateDirection, type HexNode } from "../hexMapModel";
 import { CollapsiblePanel } from "./CollapsiblePanel";
 import { Absent, Field, Row, Section, StaleBanner } from "./primitives";
-
-/** How many market or structure entries to show before offering the rest as a count. */
-const PREVIEW = 6;
 
 /**
  * Everything the report says about the selected hex. Purely informational, as the issue requires:
  * nothing here is interactive.
  *
- * A city can carry two dozen structures and ten market lines, far more than fits, so each section
- * summarises and states what it is holding back rather than silently truncating.
+ * Every line is written out, however many a city carries: the pane scrolls, and a "+ N more"
+ * that nothing could expand left the raw report as the only way to the full list. Scrolling is
+ * better than not knowing.
  */
 export function RegionPanel({
   hex,
@@ -101,27 +99,25 @@ export function RegionPanel({
 
           {region.wanted.length > 0 ? (
             <Section title="Wanted" count={region.wanted.length}>
-              {region.wanted.slice(0, PREVIEW).map((item) => (
+              {region.wanted.map((item) => (
                 <Row
                   key={item.tag}
                   label={`${item.name} ${item.tag}`}
                   value={`$${item.price} ×${item.amount}`}
                 />
               ))}
-              <More total={region.wanted.length} shown={PREVIEW} />
             </Section>
           ) : null}
 
           {region.forSale.length > 0 ? (
             <Section title="For sale" count={region.forSale.length}>
-              {region.forSale.slice(0, PREVIEW).map((item) => (
+              {region.forSale.map((item) => (
                 <Row
                   key={item.tag}
                   label={`${item.name} ${item.tag}`}
                   value={`$${item.price} ×${item.amount}`}
                 />
               ))}
-              <More total={region.forSale.length} shown={PREVIEW} />
             </Section>
           ) : null}
 
@@ -131,8 +127,9 @@ export function RegionPanel({
             ) : (
               region.exits.map((exit) => (
                 <p key={exit.direction} className="m-0 text-ink-soft">
-                  {exit.direction} — {exit.terrain} ({exit.coordinate.x},{exit.coordinate.y}) in{" "}
-                  {exit.province}
+                  {/* The shorthand MOVE orders are written in, not the report's long name. */}
+                  {abbreviateDirection(exit.direction)} — {exit.terrain} ({exit.coordinate.x},
+                  {exit.coordinate.y}) in {exit.province}
                 </p>
               ))
             )}
@@ -142,15 +139,12 @@ export function RegionPanel({
             {region.structures.length === 0 ? (
               <Absent>none reported</Absent>
             ) : (
-              <>
-                {region.structures.slice(0, PREVIEW).map((structure) => (
-                  <p key={structure.structureId} className="m-0 text-ink-soft">
-                    {structure.name} [{structure.structureId}] · {structure.kind}
-                    {structure.needs === null ? null : `, needs ${structure.needs}`}
-                  </p>
-                ))}
-                <More total={region.structures.length} shown={PREVIEW} />
-              </>
+              region.structures.map((structure) => (
+                <p key={structure.structureId} className="m-0 text-ink-soft">
+                  {structure.name} [{structure.structureId}] · {structure.kind}
+                  {structure.needs === null ? null : `, needs ${structure.needs}`}
+                </p>
+              ))
             )}
           </Section>
         </>
@@ -194,11 +188,4 @@ function Problems({ problems }: { problems: OrderDiagnostic[] }) {
       </ul>
     </Section>
   );
-}
-
-function More({ total, shown }: { total: number; shown: number }) {
-  if (total <= shown) {
-    return null;
-  }
-  return <p className="m-0 text-select">+ {total - shown} more</p>;
 }

@@ -1,4 +1,5 @@
 import type { RoutePlanResponse, RouteProblem, ReportUnit } from "@atlantis/core-client";
+import { abbreviateDirection } from "../hexMapModel";
 import { CollapsiblePanel } from "./CollapsiblePanel";
 import { Absent, Field, Row, Section } from "./primitives";
 
@@ -111,15 +112,7 @@ function Refusal({ problem }: { problem: RouteProblem }) {
 /** The order a route becomes, as the game writes it. */
 export function routeAsOrder(answer: RoutePlanResponse): string {
   const steps = answer.plan?.steps ?? [];
-  const abbreviations: Record<string, string> = {
-    north: "N",
-    northeast: "NE",
-    southeast: "SE",
-    south: "S",
-    southwest: "SW",
-    northwest: "NW"
-  };
-  return `MOVE ${steps.map((step) => abbreviations[step.direction]).join(" ")}`;
+  return `MOVE ${steps.map((step) => abbreviateDirection(step.direction)).join(" ")}`;
 }
 
 function Route({
@@ -153,7 +146,8 @@ function Route({
           {plan.steps.map((step, index) => (
             <li key={`${step.to.x},${step.to.y},${index}`}>
               <Row
-                label={`${index + 1}. ${step.direction}`}
+                // The same shorthand the exits list and the MOVE order itself use.
+                label={`${index + 1}. ${abbreviateDirection(step.direction)}`}
                 value={`${step.terrain} (${step.to.x},${step.to.y}) · ${step.cost}${step.road ? " · road" : ""}`}
               />
             </li>

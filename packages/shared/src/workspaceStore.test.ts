@@ -109,13 +109,16 @@ describe("workspace selection", () => {
 describe("panels and layers", () => {
   beforeEach(resetWorkspaceStore);
 
-  it("opens every panel and shows units, structures and staleness by default", () => {
+  it("opens every panel and shows units, structures, staleness and movement by default", () => {
     expect(Object.values(store().collapsed).every((value) => value === false)).toBe(true);
     expect(store().layers.units).toBe(true);
     expect(store().layers.staleness).toBe(true);
-    // Toggles with nothing behind them yet start off, so they cannot mislead.
-    expect(store().layers.tradeRoutes).toBe(false);
-    expect(store().layers.movement).toBe(false);
+    // Movement earned its default when #83 gave it something to draw: a selected unit's own
+    // orders, not just a planner mid-gesture. Off by default hid the feature entirely.
+    expect(store().layers.movement).toBe(true);
+    // Trade routes is gone entirely: it was the last toggle with nothing behind it, and a
+    // control that does nothing is worse than no control.
+    expect("tradeRoutes" in store().layers).toBe(false);
   });
 
   it("folds one panel without disturbing the others", () => {

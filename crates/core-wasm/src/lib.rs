@@ -558,6 +558,33 @@ pub fn plan_route_state(
     to_js(&response)
 }
 
+/// Traces the MOVE or ADVANCE order in a unit's written orders across the remembered map.
+///
+/// The browser twin of the desktop command, calling the same core entry so the two shells cannot
+/// drift into tracing differently. An order that cannot be traced resolves to an answer carrying
+/// no path; only an unusable ruleset or unreadable memory rejects.
+#[wasm_bindgen]
+pub fn trace_move_orders_state(
+    ruleset_json: String,
+    raw_report: String,
+    remembered_json: String,
+    unit_id: String,
+    orders: String,
+) -> Result<JsValue, JsValue> {
+    let response = atlantis_hud_core::cache::with_global(|cache| {
+        atlantis_hud_core::movement::request::trace_orders_for_remembered_report(
+            cache,
+            &ruleset_json,
+            &raw_report,
+            &remembered_json,
+            &unit_id,
+            &orders,
+        )
+    })
+    .map_err(|error| JsValue::from_str(&error))?;
+    to_js(&response)
+}
+
 /// Parses a report into the full domain model: regions, units, structures, exits and markets.
 ///
 /// The flat summary `parse_report_state` returns is derived from this same parse, and remains for

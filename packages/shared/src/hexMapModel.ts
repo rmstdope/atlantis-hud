@@ -265,3 +265,23 @@ export function unitsForHex(hex: HexNode | null) {
     return left.name.localeCompare(right.name);
   });
 }
+
+/** The report's long direction names, in the shorthand MOVE orders are written in. */
+const DIRECTION_SHORTHAND: Record<string, string> = {
+  north: "N",
+  northeast: "NE",
+  southeast: "SE",
+  south: "S",
+  southwest: "SW",
+  northwest: "NW"
+};
+
+/**
+ * "Southeast" as the compass shorthand "SE" - both shorter and the word the game itself speaks.
+ *
+ * A direction outside the six passes through untouched rather than being guessed at: the report's
+ * exits have carried nothing else so far, but a wrong abbreviation would point somewhere real.
+ */
+export function abbreviateDirection(direction: string): string {
+  return DIRECTION_SHORTHAND[direction.toLowerCase()] ?? direction;
+}

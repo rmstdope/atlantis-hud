@@ -7,6 +7,11 @@ export type ImportStatus = {
   unitCount: number;
   message: string | null;
   failed: boolean;
+  /**
+   * The import worked but something along the way did not - a turn that could not be remembered,
+   * a draft that could not be read. Worth room in the header where a routine success is not.
+   */
+  warning: boolean;
 };
 
 /** What the engine said about the loaded turn, as the report printed it. */
@@ -16,7 +21,6 @@ export type TurnMessages = {
 };
 
 type AppHeaderProps = {
-  platformLabel: string;
   gameName: string;
   /** Whether the picker is showing. The header owns the button; the shell owns the panel. */
   pickerOpen: boolean;
@@ -71,7 +75,6 @@ type AppHeaderProps = {
  * and then want out of the way, and putting it in the header means it costs no map area at all.
  */
 export function AppHeader({
-  platformLabel,
   gameName,
   pickerOpen,
   onTogglePicker,
@@ -132,8 +135,8 @@ export function AppHeader({
       onDrop={onDrop}
       className="flex h-9 flex-none items-center gap-3.5 border-b border-edge bg-panel px-3 text-[11.5px] whitespace-nowrap"
     >
+      {/* Just the title: which build this is belongs to the About tab, not the title bar. */}
       <span className="tracking-[0.06em] text-brass">ATLANTIS HUD</span>
-      <span className="text-ink-soft">{platformLabel}</span>
 
       {/*
         The game indicator. Relative, because the picker hangs off it and should open under the
@@ -192,15 +195,31 @@ export function AppHeader({
         </span>
       ) : null}
 
-      <span data-testid="import-status" className="flex items-center gap-1.5 text-ink-soft">
+      {/*
+        The import status, taking up room only when it has something to say: an import that
+        failed, or one that worked with a warning. A loaded turn already announces itself through
+        the Turn chip and the map, so the routine "restored turn 39" was the header saying the
+        same thing twice. The line itself stays in the page - screen readers and the test suite
+        key on its text - via `sr-only` rather than `hidden`, for exactly those two readers.
+      */}
+      <span
+        data-testid="import-status"
+        className={
+          status?.failed || status?.warning
+            ? "flex items-center gap-1.5 text-ink-soft"
+            : "sr-only"
+        }
+      >
         {status ? (
           <>
-            <span
-              aria-hidden
-              className={`inline-block h-1.5 w-1.5 rounded-full ${
-                status.failed ? "bg-danger" : errorCount > 0 ? "bg-warn" : "bg-ok"
-              }`}
-            />
+            {status.failed || status.warning ? (
+              <span
+                aria-hidden
+                className={`inline-block h-1.5 w-1.5 rounded-full ${
+                  status.failed ? "bg-danger" : "bg-warn"
+                }`}
+              />
+            ) : null}
             {status.message ??
               `${status.regionCount} region${status.regionCount === 1 ? "" : "s"} · ${status.unitCount} unit${status.unitCount === 1 ? "" : "s"}`}
           </>
@@ -286,7 +305,7 @@ export function AppHeader({
         onClick={() => fileRef.current?.click()}
         className="rounded border border-brass px-2.5 py-1 text-brass disabled:opacity-50"
       >
-        {busy ? "Loading…" : "Load report…"}
+        {busy ? "Loading…" : "Load report"}
       </button>
       <button
         type="button"

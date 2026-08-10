@@ -121,6 +121,101 @@ pub fn plan_for_remembered_report(
     })
 }
 
+/// Where a unit's written MOVE order takes it, or nothing when it has none.
+///
+/// Nothing here is a refusal by design: an order that cannot be traced is an absent path, not a
+/// problem to describe, because the map simply draws nothing. Contrast [`RoutePlanResponse`],
+/// where the player asked a question and deserves the reason there is no answer.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MoveOrderTraceResponse {
+    /// The traced path, absent when the unit has no readable movement order, is unknown to the
+    /// report, or stands in a hex the map has never heard of.
+    pub path: Option<crate::movement::trace::TracedPath>,
+}
+
+/// Traces the MOVE or ADVANCE order in a unit's written orders across the remembered map.
+///
+/// `orders` is the unit's own order block as the editor holds it. The last readable movement line
+/// wins, because a later order replaces an earlier one when the game executes them - but only
+/// among the lines that are this unit's own for this turn. A `TURN` block holds orders for the
+/// turn after this one, and a `FORM` block's orders belong to the unit being formed, so movement
+/// inside either says nothing about where this unit goes next.
+///
+/// # Errors
+///
+/// As [`plan_for_remembered_report`]: only an unusable ruleset or unreadable memory is an error.
+/// An order that cannot be traced is a successful answer carrying no path.
+pub fn trace_orders_for_remembered_report(
+    cache: &mut ReportCache,
+    ruleset_json: &str,
+    raw_report: &str,
+    remembered_json: &str,
+    unit_id: &str,
+    orders: &str,
+) -> Result<MoveOrderTraceResponse, String> {
+    use crate::movement::graph::MapKnowledge;
+    use crate::movement::trace::trace_move;
+
+    let ruleset = cache
+        .ruleset(ruleset_json)
+        .map_err(|error| error.to_string())?;
+    let remembered: Vec<crate::movement::graph::RememberedRegion> =
+        serde_json::from_str(remembered_json)
+            .map_err(|error| format!("remembered regions could not be read: {error}"))?;
+
+    let report = cache.classified(raw_report, ruleset_json);
+
+    let Some(steps) = last_top_level_move(orders) else {
+        return Ok(MoveOrderTraceResponse { path: None });
+    };
+    let Some(unit) = report.units().find(|unit| unit.unit_id == unit_id).cloned() else {
+        return Ok(MoveOrderTraceResponse { path: None });
+    };
+
+    let map = MapKnowledge::from_remembered(&report, &remembered);
+    Ok(MoveOrderTraceResponse {
+        path: trace_move(&map, &ruleset, &unit, &steps),
+    })
+}
+
+/// The last readable MOVE or ADVANCE among the lines that are this unit's own for this turn.
+///
+/// Lines inside `TURN…ENDTURN` and `FORM…ENDFORM` are skipped: the former belong to the turn
+/// after this one, the latter to the unit being formed. The blocks nest - a FORM inside a TURN is
+/// legal - so a depth counter rather than a flag. An unmatched opener swallows the rest of the
+/// block, which errs on drawing nothing rather than drawing someone else's order.
+fn last_top_level_move(orders: &str) -> Option<Vec<crate::movement::orders::MoveStep>> {
+    use crate::movement::orders::parse_move;
+
+    let mut depth = 0_usize;
+    let mut last = None;
+
+    for line in orders.lines() {
+        let trimmed = line.trim();
+        // A repeating order is still the order it repeats, `@TURN` included.
+        let command = trimmed
+            .strip_prefix('@')
+            .unwrap_or(trimmed)
+            .split_whitespace()
+            .next()
+            .unwrap_or("");
+
+        if command.eq_ignore_ascii_case("turn") || command.eq_ignore_ascii_case("form") {
+            depth += 1;
+        } else if command.eq_ignore_ascii_case("endturn") || command.eq_ignore_ascii_case("endform")
+        {
+            depth = depth.saturating_sub(1);
+        } else if depth == 0 {
+            if let Some(steps) = parse_move(line) {
+                last = Some(steps);
+            }
+        }
+    }
+
+    last
+}
+
 /// Parses a report and counts each unit's men against the catalogue.
 ///
 /// The plain parser cannot do this: telling men from equipment needs an item reference, and a
