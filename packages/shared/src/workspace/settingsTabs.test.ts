@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SETTINGS_TABS, gameSettingsPresentation, rulesetOptions } from "./settingsTabs";
+import { SETTINGS_TABS, gameSettingsPresentation, nextTab, rulesetOptions } from "./settingsTabs";
 
 describe("settings dialog tabs", () => {
   it("offers global, per-game and about, in that order", () => {
@@ -9,6 +9,24 @@ describe("settings dialog tabs", () => {
     for (const tab of SETTINGS_TABS) {
       expect(tab.label.length).toBeGreaterThan(0);
     }
+  });
+});
+
+describe("arrow-key tab navigation", () => {
+  it("moves right with wrap-around", () => {
+    expect(nextTab("global", "ArrowRight")).toBe("game");
+    expect(nextTab("game", "ArrowRight")).toBe("about");
+    expect(nextTab("about", "ArrowRight")).toBe("global");
+  });
+
+  it("moves left with wrap-around", () => {
+    expect(nextTab("global", "ArrowLeft")).toBe("about");
+    expect(nextTab("about", "ArrowLeft")).toBe("game");
+  });
+
+  it("ignores keys that are not arrow navigation", () => {
+    expect(nextTab("global", "Enter")).toBeNull();
+    expect(nextTab("global", "ArrowDown")).toBeNull();
   });
 });
 

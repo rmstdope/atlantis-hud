@@ -6,7 +6,7 @@ import type { WorkspaceGame } from "../workspaceStore";
 import type { AppUpdateControl } from "./appUpdate";
 import { updatePresentationFor } from "./appUpdate";
 import type { SettingsTabId } from "./settingsTabs";
-import { SETTINGS_TABS, gameSettingsPresentation, rulesetOptions } from "./settingsTabs";
+import { SETTINGS_TABS, gameSettingsPresentation, nextTab, rulesetOptions } from "./settingsTabs";
 
 /**
  * The settings dialog: global preferences, the open game's, and what this build is.
@@ -109,7 +109,23 @@ export function SettingsDialog({
           </button>
         </div>
 
-        <div role="tablist" aria-label="Settings sections" className="mt-2 flex gap-1">
+        <div
+          role="tablist"
+          aria-label="Settings sections"
+          // One tab stop, not three: only the selected tab is tabbable and the arrows move within
+          // the list, selection following focus, as the ARIA tabs pattern asks.
+          onKeyDown={(event) => {
+            const target = nextTab(tab, event.key);
+            if (target) {
+              event.preventDefault();
+              setTab(target);
+              event.currentTarget
+                .querySelector<HTMLButtonElement>(`[data-testid="settings-tab-${target}"]`)
+                ?.focus();
+            }
+          }}
+          className="mt-2 flex gap-1"
+        >
           {SETTINGS_TABS.map((entry) => (
             <Tab key={entry.id} id={entry.id} label={entry.label} active={tab} onTab={setTab} />
           ))}
@@ -150,6 +166,7 @@ function Tab({
       type="button"
       role="tab"
       aria-selected={selected}
+      tabIndex={selected ? 0 : -1}
       data-testid={`settings-tab-${id}`}
       onClick={() => onTab(id)}
       className={`rounded border px-2 py-0.5 ${

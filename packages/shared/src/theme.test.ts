@@ -49,7 +49,8 @@ describe("theme palette", () => {
           visit(path);
         } else if (/\.tsx?$/.test(entry.name) && !entry.name.endsWith(".test.ts")) {
           if (/#[0-9a-fA-F]{6}\b/.test(readFileSync(path, "utf8"))) {
-            offenders.push(entry.name);
+            // The path relative to src/, so a failure names the offending file unambiguously.
+            offenders.push(path.slice(root.length));
           }
         }
       }

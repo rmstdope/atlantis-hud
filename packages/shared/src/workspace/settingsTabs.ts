@@ -20,6 +20,21 @@ export const SETTINGS_TABS: readonly SettingsTab[] = [
   { id: "about", label: "About" }
 ];
 
+/**
+ * Where an arrow key moves the active tab, wrapping at the ends, or `null` for any other key.
+ *
+ * ARIA tabs are one tab stop: only the selected tab is tabbable and the arrows move within the
+ * list, so the reading order of `SETTINGS_TABS` is also the navigation order.
+ */
+export function nextTab(current: SettingsTabId, key: string): SettingsTabId | null {
+  const step = key === "ArrowRight" ? 1 : key === "ArrowLeft" ? -1 : 0;
+  if (step === 0) {
+    return null;
+  }
+  const ids = SETTINGS_TABS.map((tab) => tab.id);
+  return ids[(ids.indexOf(current) + step + ids.length) % ids.length];
+}
+
 export type RulesetOption = { id: string; label: string; shipped: boolean };
 
 /**
