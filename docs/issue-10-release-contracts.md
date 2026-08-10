@@ -82,9 +82,13 @@ Tauri reads as "sign", and then fails importing a certificate that is not there.
 ### The macOS artifact is universal (issue #56)
 
 `macos-latest` is Apple Silicon, and for three releases the job named no target and so got what the
-runner is: `Atlantis.HUD_<version>_aarch64.dmg`, which does not run on an Intel Mac. The build now
-passes `--target universal-apple-darwin`, and the shell is compiled twice and `lipo`ed into one
-binary.
+runner is: an `_aarch64.dmg`, which does not run on an Intel Mac. The build now passes
+`--target universal-apple-darwin`, and the shell is compiled twice and `lipo`ed into one binary.
+
+The bundle is named twice over, and it is worth knowing which name is which before going looking for
+one. Tauri writes `Atlantis HUD_<version>_universal.dmg`, with the space `productName` has; GitHub
+substitutes dots for spaces when it attaches an asset, so the release page offers
+`Atlantis.HUD_<version>_universal.dmg`. Same file.
 
 One file rather than two. Publishing an `x86_64.dmg` beside an `aarch64.dmg` puts a question on the
 release page that a player can answer wrongly, and the wrong answer either refuses to launch or runs
