@@ -238,9 +238,10 @@ jobs:
           path: test-results
           retention-days: 7
 
-  # The Tauri binary is gated behind `any(target_os = "macos", target_os = "windows")` and the
-  # `desktop-runtime` feature, so the Linux jobs above never compile it at all. A missing dependency
-  # in the desktop shell reached a developer's machine before this job existed.
+  # The Tauri binary is gated behind `any(target_os = "linux", target_os = "macos", target_os = "windows")`
+  # and the `desktop-runtime` feature. Without that feature the Linux jobs above compile the shell
+  # without tauri and its native system-library dependencies. A missing dependency in the desktop
+  # shell reached a developer's machine before this job existed.
   desktop-shell:
     runs-on: macos-latest
     steps:

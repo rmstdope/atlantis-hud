@@ -203,11 +203,11 @@ Each sub-issue is independently executable by following this contract:
   - settings panel showing the app version, with a manual update check
 - Out of scope:
   - adding cloud backend/sync, adding new gameplay features
-  - Windows and Linux bundles, and in-app auto-update
+  - Windows bundles, and in-app auto-update
 - Validation:
   - `workflow_dispatch` on main builds the app, passes the PWA suite, and publishes the web app
   - PWA install flow works on target browsers, and the app loads with the network cut
-  - a `v*` tag produces a macOS artifact in CI
+  - a `v*` tag produces macOS and Linux artifacts in CI
   - desktop update check opens the releases page without app instability
 
 Two of these diverge from the original wording of the issue, and deliberately.
