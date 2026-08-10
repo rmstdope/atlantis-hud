@@ -1307,6 +1307,52 @@ test("a drag that ends over a hex pans without selecting it", async ({ page }) =
   );
 });
 
+/**
+ * A pan is a hand on the map, not a selection gesture. The browser does not know that: a drag
+ * whose pointer crosses a pane starts native text selection there, and by the end of the pan the
+ * whole window read as selected and stayed that way until the next click.
+ *
+ * Only WebKit - the engine the desktop shell actually runs in - anchors a selection on the SVG
+ * and exhibits the bug; this Chromium suite never selects, so the outcome assertion at the end is
+ * vacuous here (it was verified red under a webkit-engine run before the fix). What keeps this
+ * test honest in Chromium is the pair in the middle: selection is switched off for the document
+ * exactly while the pointer is down, and switched back on the moment it is released.
+ */
+test("a drag that crosses a pane does not select its text", async ({ page }) => {
+  await loadReport(page);
+
+  const point = await clearHexPoint(page);
+  const pane = await page.getByTestId("panel-region").boundingBox();
+  expect(pane, "the region pane must be on screen to drag across").not.toBeNull();
+
+  await page.mouse.move(point!.x, point!.y);
+  await page.mouse.down();
+  // Through the middle of the region pane's text, the way a real pan wanders over it.
+  await page.mouse.move(pane!.x + pane!.width / 2, pane!.y + pane!.height / 2, { steps: 12 });
+  expect(await page.evaluate(() => document.body.style.userSelect)).toBe("none");
+  await page.mouse.up();
+  expect(await page.evaluate(() => document.body.style.userSelect)).toBe("");
+
+  const selected = await page.evaluate(() => window.getSelection()?.toString() ?? "");
+  expect(selected).toBe("");
+});
+
+/** The control for the test above: killing selection during a pan must not kill it in the panes. */
+test("text in a pane can still be selected by dragging inside it", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+  await expect(page.getByTestId("panel-region")).toContainText("Inholm");
+
+  const pane = await page.getByTestId("panel-region").boundingBox();
+  await page.mouse.move(pane!.x + 12, pane!.y + 40);
+  await page.mouse.down();
+  await page.mouse.move(pane!.x + pane!.width - 12, pane!.y + pane!.height - 12, { steps: 8 });
+  await page.mouse.up();
+
+  const selected = await page.evaluate(() => window.getSelection()?.toString() ?? "");
+  expect(selected).not.toBe("");
+});
+
 test("the focus ring does not appear after a drag", async ({ page }) => {
   await loadReport(page);
 

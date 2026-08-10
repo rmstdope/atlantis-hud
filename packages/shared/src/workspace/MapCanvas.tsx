@@ -332,6 +332,16 @@ export function MapCanvas({
     // but refuse to select. The window listeners below already carry a drag outside the element,
     // which is the only thing capture would have bought.
 
+    // A pan is a hand on the map, not a selection gesture, but the browser cannot tell: WebKit -
+    // the engine the desktop shell runs in - anchors a native text selection on the SVG, and a
+    // drag whose pointer crossed a pane left the whole window reading as selected until the next
+    // click. Selection is off for the document exactly while the pointer is down; text in the
+    // panes is selectable again the moment the hand leaves the map. Both spellings, because older
+    // WKWebViews only honour the prefixed one.
+    const bodyStyle = document.body.style;
+    bodyStyle.userSelect = "none";
+    bodyStyle.webkitUserSelect = "none";
+
     const move = (moved: PointerEvent) => {
       const dx = moved.clientX - start.x;
       const dy = moved.clientY - start.y;
@@ -343,6 +353,11 @@ export function MapCanvas({
     const up = () => {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
+      // `pointercancel` as well as `pointerup`, because a gesture the browser takes over (a touch
+      // becoming a scroll, for instance) would otherwise leave selection off everywhere for good.
+      window.removeEventListener("pointercancel", up);
+      bodyStyle.userSelect = "";
+      bodyStyle.webkitUserSelect = "";
       if (draggedRef.current) {
         commit(viewRef.current);
         setCursor(null);
@@ -351,6 +366,7 @@ export function MapCanvas({
     };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
   };
 
   const zoomBy = useCallback(
