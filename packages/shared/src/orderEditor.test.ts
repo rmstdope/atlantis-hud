@@ -5,6 +5,7 @@ import {
   canExportOrders,
   diagnosticsForUnit,
   draftAfterDocumentChange,
+  draftAfterSave,
   offendingText,
   shouldSaveOnBlur,
   shouldTriggerAutosave,
@@ -113,6 +114,25 @@ describe("keeping the editor's draft in step with the document", () => {
 
   it("keeps the blank lines the player typed into an empty block", () => {
     expect(draftAfterDocumentChange("\n\n", "")).toBe("\n\n");
+  });
+});
+
+/**
+ * Once a save has landed, the editor tidies the draft so it ends the way an orders file must: with
+ * a newline. Only after a save, so the tidying never races the player's typing, and only in the
+ * editor - the document's block boundary neither holds nor needs the trailing newline.
+ */
+describe("tidying the draft after a save", () => {
+  it("appends the missing newline to a saved draft", () => {
+    expect(draftAfterSave("@work\n@study combat")).toBe("@work\n@study combat\n");
+  });
+
+  it("leaves a draft already ending in a newline alone", () => {
+    expect(draftAfterSave("@work\n")).toBe("@work\n");
+  });
+
+  it("leaves an empty draft empty rather than opening a blank line", () => {
+    expect(draftAfterSave("")).toBe("");
   });
 });
 

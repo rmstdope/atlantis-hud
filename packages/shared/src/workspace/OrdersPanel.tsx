@@ -1,10 +1,11 @@
 import type { OrderDiagnostic, ReportUnit } from "@atlantis/core-client";
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { HexNode } from "../hexMapModel";
 import { readableTime, type SaveState } from "../orderDraft";
 import {
   diagnosticsForUnit,
   draftAfterDocumentChange,
+  draftAfterSave,
   offendingText,
   summarizeOrderValidation,
   type ValidatedOrders
@@ -72,6 +73,8 @@ export function OrdersPanel({
   const block = unitId === null ? null : readUnitOrders(document, unitId);
   const lock = lockFor(unit, hex, block);
   const [draft, setDraft] = useState(block ?? "");
+  const input = useRef<HTMLTextAreaElement | null>(null);
+  const keepCaret = useRef<{ start: number; end: number } | null>(null);
 
   // Reload when the selection moves or this unit's own lines change, rather than on every edit
   // anywhere in the document: never reloading would show one unit's orders under another's name,
@@ -81,6 +84,36 @@ export function OrdersPanel({
   useEffect(() => {
     setDraft((current) => draftAfterDocumentChange(current, block ?? ""));
   }, [unitId, block]);
+
+  // While the document stands saved, end the draft with the newline an orders file ends with -
+  // which tidies a draft the moment its save lands, and a saved draft the moment it is browsed
+  // to. Never while the document is dirty, so the tidying cannot land mid-sentence; and without
+  // touching the document, which cannot hold a trailing blank line and so already stores the same
+  // bytes either way. A functional update, deliberately: the reload above queues one too, and a
+  // plain value computed from this render's draft would overwrite it with a stale unit's text.
+  useEffect(() => {
+    if (save.kind !== "saved") {
+      return;
+    }
+    // The browser answers a programmatic value change by throwing the caret to the end of the
+    // text, so where it stood is recorded here and put back once the newline has rendered.
+    const editor = input.current;
+    if (editor && draftAfterSave(editor.value) !== editor.value) {
+      keepCaret.current = { start: editor.selectionStart, end: editor.selectionEnd };
+    }
+    setDraft((current) => draftAfterSave(current));
+  }, [save, draft]);
+
+  useLayoutEffect(() => {
+    const caret = keepCaret.current;
+    // Consumed whether or not it can be applied: a recording left standing across an unmount
+    // would otherwise be applied to whichever unit's textarea appears next.
+    keepCaret.current = null;
+    const editor = input.current;
+    if (caret && editor) {
+      editor.setSelectionRange(caret.start, caret.end);
+    }
+  }, [draft]);
 
   // This unit's problems, and how many the rest of the faction has. The document-wide figure is
   // what stops a mistake in a unit nobody is looking at from reaching the server unnoticed. Not
@@ -112,6 +145,7 @@ export function OrdersPanel({
       ) : (
         <div className="flex h-full min-h-0 flex-col">
           <textarea
+            ref={input}
             data-testid="orders-input"
             aria-label={`Orders for unit ${unit?.unitId ?? ""}`}
             value={draft}
