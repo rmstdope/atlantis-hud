@@ -9,7 +9,7 @@
     "lint": "eslint src --max-warnings=0",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
-    "pretypecheck": "pnpm run build:wasm"
+    "pretypecheck": "node ../../scripts/ensure-wasm.mjs"
   },
   "dependencies": {
     "@atlantis/core-client": "workspace:*"
