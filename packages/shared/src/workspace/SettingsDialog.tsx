@@ -217,7 +217,7 @@ function GlobalSettings() {
           <span className="text-ink">{paneTransparency}%</span>
         </span>
         {/*
-          Capped at 90 rather than 100, because a fully transparent pane can neither be read nor
+          Capped at 95 rather than 100, because a fully transparent pane can neither be read nor
           found again to turn back. Applies as it is dragged: the panes are on screen behind the
           dialog, so the slider is its own preview.
         */}
@@ -226,7 +226,7 @@ function GlobalSettings() {
           data-testid="pane-transparency"
           aria-label="pane transparency"
           min={0}
-          max={90}
+          max={95}
           step={5}
           value={paneTransparency}
           onChange={(event) => setPaneTransparency(Number(event.target.value))}

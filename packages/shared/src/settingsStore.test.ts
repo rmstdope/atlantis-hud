@@ -121,8 +121,8 @@ describe("settings store", () => {
     expect(stub.documentElement.dataset.theme).toBe("dark");
   });
 
-  it("defaults the pane transparency to 75 percent", () => {
-    expect(store().paneTransparency).toBe(75);
+  it("defaults the pane transparency to 90 percent", () => {
+    expect(store().paneTransparency).toBe(90);
   });
 
   it("stamps the chosen pane transparency onto the document root", () => {
@@ -135,12 +135,12 @@ describe("settings store", () => {
   });
 
   /**
-   * The slider only offers 0 to 90, but the store is also fed by whatever localStorage holds, and
+   * The slider only offers 0 to 95, but the store is also fed by whatever localStorage holds, and
    * a hand-edited or corrupted value must not paint the panes invisible or the setter throw.
    */
-  it("clamps the transparency to what the slider offers, 0 to 90", () => {
+  it("clamps the transparency to what the slider offers, 0 to 95", () => {
     store().setPaneTransparency(150);
-    expect(store().paneTransparency).toBe(90);
+    expect(store().paneTransparency).toBe(95);
 
     store().setPaneTransparency(-10);
     expect(store().paneTransparency).toBe(0);
@@ -170,8 +170,8 @@ describe("settings store", () => {
 
     applyPersistedSettings();
 
-    expect(store().paneTransparency).toBe(90);
-    expect(stub.documentElement.style.properties["--pane-transparency"]).toBe("90");
+    expect(store().paneTransparency).toBe(95);
+    expect(stub.documentElement.style.properties["--pane-transparency"]).toBe("95");
   });
 
   it("reads a persisted transparency that storage kept as a string", () => {
@@ -191,7 +191,7 @@ describe("settings store", () => {
 
     resetSettingsStore();
 
-    expect(store().paneTransparency).toBe(75);
-    expect(stub.documentElement.style.properties["--pane-transparency"]).toBe("75");
+    expect(store().paneTransparency).toBe(90);
+    expect(stub.documentElement.style.properties["--pane-transparency"]).toBe("90");
   });
 });

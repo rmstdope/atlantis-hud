@@ -182,13 +182,13 @@
  * The floating panes' ground.
  *
  * How see-through the panes over the map are is a preference, not a design constant: the settings
- * store stamps `--pane-transparency` (a percentage, 0-90) onto the root, and this one rule turns
+ * store stamps `--pane-transparency` (a percentage, 0-95) onto the root, and this one rule turns
  * it into the panes' alpha - so a slider move re-paints every pane at once, and the value works
  * before React mounts exactly as the theme attribute does. The default here matches
  * DEFAULT_PANE_TRANSPARENCY in settingsStore.ts, for the first paint before anything is stamped.
  */
 :root {
-  --pane-transparency: 75;
+  --pane-transparency: 90;
 }
 
 .bg-pane {

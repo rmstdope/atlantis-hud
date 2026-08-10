@@ -14,7 +14,7 @@ import { createJSONStorage, persist } from "zustand/middleware";
 export type ThemeName = "dark" | "light";
 
 /** How see-through the floating panes start out: enough map underneath to navigate by. */
-export const DEFAULT_PANE_TRANSPARENCY = 75;
+export const DEFAULT_PANE_TRANSPARENCY = 90;
 
 export type SettingsState = {
   theme: ThemeName;
@@ -22,7 +22,7 @@ export type SettingsState = {
   /**
    * How see-through the panes floating over the map are, in percent.
    *
-   * 0 is opaque and 90 is the most transparent the slider offers - never 100, because a pane that
+   * 0 is opaque and 95 is the most transparent the slider offers - never 100, because a pane that
    * cannot be seen at all can also not be found to make visible again.
    */
   paneTransparency: number;
@@ -58,7 +58,7 @@ function clampTransparency(percent: number): number {
   if (!Number.isFinite(numeric)) {
     return DEFAULT_PANE_TRANSPARENCY;
   }
-  return Math.min(90, Math.max(0, Math.round(numeric)));
+  return Math.min(95, Math.max(0, Math.round(numeric)));
 }
 
 /**
