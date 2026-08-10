@@ -889,8 +889,10 @@ test("the movement layer controls the route overlay and nothing else", async ({ 
   await selectHex(page, "1:7,51");
   await expect(page.getByTestId("planner-route")).toBeVisible();
 
+  // The chip starts on since #83, so this click turns the drawing OFF.
   const movement = page.getByTestId("layer-chips").getByLabel("movement");
   await movement.click();
+  await expect(page.getByTestId("route-line-solid")).toHaveCount(0);
 
   // The panel still knows the route; only the drawing follows the chip.
   await expect(page.getByTestId("planner-route")).toBeVisible();
@@ -910,8 +912,7 @@ test("a written move order is drawn solid for next turn and dotted beyond", asyn
   await selectHex(page, "1:7,53");
   await selectUnit(page, OWN_UNIT);
 
-  // Movement lines follow the movement layer chip, order paths and planner previews alike.
-  await page.getByTestId("layer-chips").getByLabel("movement").click();
+  // The movement layer is on by default, so typing an order is all it takes to draw it.
   await page.getByTestId("orders-input").fill("MOVE N N N");
 
   // Asserted by count and points rather than visibility: a due-north path is a straight vertical

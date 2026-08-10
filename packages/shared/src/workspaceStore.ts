@@ -95,7 +95,9 @@ const INITIAL_LAYERS: Record<LayerName, boolean> = {
   structures: true,
   staleness: true,
   tradeRoutes: false,
-  movement: false
+  // On by default since #83: the layer draws a selected unit's own orders, and a default of off
+  // hid that entirely behind a chip nobody had reason to press.
+  movement: true
 };
 
 /**
