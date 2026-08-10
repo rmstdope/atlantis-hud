@@ -252,10 +252,10 @@ export function AppShell({
             ? await client.parseReportClassified(text, ruleset.text)
             : await client.parseReportFull(text);
         const currentTurn = parsed?.header.turnNumber;
-        const loadedTurn = report.header.turnNumber;
+        const incomingTurn = report.header.turnNumber;
         if (
-          shouldConfirmOlderTurnLoad(currentTurn, loadedTurn) &&
-          !confirmOlderTurnLoad(currentTurn as number, loadedTurn as number)
+          shouldConfirmOlderTurnLoad(currentTurn, incomingTurn) &&
+          !confirmOlderTurnLoad(currentTurn as number, incomingTurn as number)
         ) {
           return;
         }
