@@ -27,9 +27,13 @@ pub fn validate(source: &str, ruleset_json: Option<&str>) -> OrderValidationResu
     }
     document.finish(source);
 
-    OrderValidationResult {
-        diagnostics: document.diagnostics,
-    }
+    let mut diagnostics = document.diagnostics;
+    // An unclosed block is only discovered at the line that had to close it, and is then filed
+    // against the line that opened it - so the list is not built in line order. The panel counts on
+    // that order, and so does anyone reading it.
+    diagnostics.sort_by_key(|diagnostic| diagnostic.line_start);
+
+    OrderValidationResult { diagnostics }
 }
 
 /// A block waiting for its terminator.
@@ -39,6 +43,9 @@ struct OpenBlock {
     /// The keyword that has to close it.
     terminator: &'static str,
     line: usize,
+    /// Where the opening keyword sits on that line.
+    column_start: usize,
+    column_end: usize,
 }
 
 /// The state a document accumulates as it is read.
@@ -75,16 +82,16 @@ impl Document {
         };
 
         if command.text.starts_with('#') {
-            self.read_directive(number, line, command, arguments);
+            self.read_directive(number, command, arguments);
         } else if command.is("unit") {
-            self.read_unit_line(number, line, command, arguments);
+            self.read_unit_line(number, command, arguments);
         } else {
             self.read_order(number, line, command, arguments, ruleset);
         }
     }
 
     /// `#atlantis` opens the document and `#end` closes it; the rules give it no other directives.
-    fn read_directive(&mut self, number: usize, line: &str, command: &Token, arguments: &[Token]) {
+    fn read_directive(&mut self, number: usize, command: &Token, arguments: &[Token]) {
         if command.is("#atlantis") {
             self.opened = true;
             // Everything after the faction number is the faction's password. It is never read, and
@@ -102,7 +109,7 @@ impl Document {
                 );
             }
         } else if command.is("#end") {
-            self.close_open_blocks(number, line);
+            self.close_open_blocks();
             self.closed = true;
         } else {
             self.error(
@@ -115,9 +122,9 @@ impl Document {
         }
     }
 
-    fn read_unit_line(&mut self, number: usize, line: &str, command: &Token, arguments: &[Token]) {
+    fn read_unit_line(&mut self, number: usize, command: &Token, arguments: &[Token]) {
         // A unit's orders end where the next unit's begin, so anything still open was left open.
-        self.close_open_blocks(number, line);
+        self.close_open_blocks();
 
         if !arguments
             .first()
@@ -178,11 +185,15 @@ impl Document {
                 opener: "TURN",
                 terminator: "ENDTURN",
                 line: number,
+                column_start: command.column_start,
+                column_end: command.column_end,
             }),
             "FORM" => self.blocks.push(OpenBlock {
                 opener: "FORM",
                 terminator: "END",
                 line: number,
+                column_start: command.column_start,
+                column_end: command.column_end,
             }),
             "ENDTURN" | "END" => {
                 if self
@@ -248,18 +259,23 @@ impl Document {
     }
 
     /// Complains about every block still open, and forgets them so one mistake is reported once.
-    fn close_open_blocks(&mut self, number: usize, line: &str) {
+    ///
+    /// Filed against the line that *opened* the block rather than the line that discovered it. The
+    /// discovering line is the next `unit` line or `#end`, which is outside the block of the unit
+    /// whose orders are wrong - and the panel takes a unit's problems by line, so a diagnostic left
+    /// there was shown to nobody and the offending unit reported no errors at all.
+    fn close_open_blocks(&mut self) {
         for block in std::mem::take(&mut self.blocks) {
             self.diagnostics.push(OrderDiagnostic {
                 code: "unclosed-block".to_string(),
                 message: format!(
-                    "the {} block opened on line {} is never closed by {}",
-                    block.opener, block.line, block.terminator
+                    "this {} block is never closed by {}",
+                    block.opener, block.terminator
                 ),
-                line_start: number,
-                line_end: number,
-                column_start: 0,
-                column_end: line.len(),
+                line_start: block.line,
+                line_end: block.line,
+                column_start: block.column_start,
+                column_end: block.column_end,
                 severity: OrderDiagnosticSeverity::Error,
             });
         }
@@ -269,7 +285,7 @@ impl Document {
         let last = source.lines().last().unwrap_or_default();
         let number = self.last_line.max(1);
 
-        self.close_open_blocks(number, last);
+        self.close_open_blocks();
 
         if self.opened && !self.closed {
             self.error(
@@ -527,6 +543,12 @@ mod tests {
         ));
     }
 
+    /// Reported against the line that opened the block, not the line that had to close it.
+    ///
+    /// The closing point is the *next* unit's line, or `#end` - both outside the block of the unit
+    /// whose orders are actually wrong. The panel shows one unit at a time and takes its problems by
+    /// line, so a diagnostic filed there belonged to nobody: the unit carrying the mistake read
+    /// "0 errors". It also sent the player to the wrong line, when `TURN` is what they have to fix.
     #[test]
     fn a_turn_block_left_open_at_the_next_unit_is_an_error() {
         let diagnostics = diagnose(concat!(
@@ -539,14 +561,47 @@ mod tests {
 
         assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
         assert_eq!(diagnostics[0].code, "unclosed-block");
+        assert_eq!(diagnostics[0].line_start, 2, "the line that opened it");
         assert_eq!(
-            diagnostics[0].line_start, 4,
-            "reported where it had to close"
+            (diagnostics[0].column_start, diagnostics[0].column_end),
+            (0, 4),
+            "the span covers the TURN keyword itself"
         );
-        assert!(
-            diagnostics[0].message.contains('2'),
-            "the message names the line it was opened on: {}",
-            diagnostics[0].message
+    }
+
+    /// The report that found this: typed into the pane, it showed nothing wrong at all.
+    #[test]
+    fn an_unclosed_turn_is_reported_against_the_unit_that_wrote_it() {
+        let diagnostics = diagnose(concat!(
+            "#atlantis 95 \"x\"\n",
+            "unit 18642\n",
+            "turn\n",
+            "study illu\n",
+            "\n",
+            "unit 13401\n",
+            "@work\n",
+            "#end\n",
+        ));
+
+        assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+        assert_eq!(diagnostics[0].code, "unclosed-block");
+        assert_eq!(
+            diagnostics[0].line_start, 3,
+            "inside unit 18642's block, which is the only place the panel will show it"
+        );
+    }
+
+    #[test]
+    fn every_block_left_open_is_reported_against_its_own_opening_line() {
+        let diagnostics = diagnose("TURN\nFORM 1\nWORK\n");
+
+        assert_eq!(
+            diagnostics
+                .iter()
+                .map(|diagnostic| diagnostic.line_start)
+                .collect::<Vec<_>>(),
+            vec![1, 2],
+            "both, each at its own opener: {diagnostics:?}"
         );
     }
 
@@ -694,5 +749,20 @@ mod tests {
             .collect();
 
         assert_eq!(lines, [1, 3]);
+    }
+
+    /// An unclosed block is noticed long after the line it is reported against, so the list is no
+    /// longer built in line order and has to be put back into it.
+    #[test]
+    fn a_problem_found_late_is_still_listed_where_its_line_falls() {
+        let diagnostics = diagnose("TURN\nFLY\n");
+
+        assert_eq!(
+            diagnostics
+                .iter()
+                .map(|diagnostic| (diagnostic.line_start, diagnostic.code.as_str()))
+                .collect::<Vec<_>>(),
+            vec![(1, "unclosed-block"), (2, "unknown-command")]
+        );
     }
 }

@@ -344,6 +344,26 @@ test("an order with the wrong argument is caught, and the offending word quoted"
   await expect(page.getByTestId("orders-diagnostic")).toHaveCount(0);
 });
 
+test("a TURN block left open is reported against the unit that wrote it", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+  await selectUnit(page, OWN_UNIT);
+
+  // The block is closed by ENDTURN, and is not. The core always found this, but filed it against
+  // the line that discovered it - the *next* unit's line - which is outside this unit's block, so
+  // the panel showed the unit that wrote it nothing at all.
+  await page.getByTestId("orders-input").fill("turn\nstudy illu");
+
+  const problems = page.getByTestId("orders-diagnostics");
+  await expect(problems).toContainText("never closed by ENDTURN");
+  await expect(problems).toContainText("line 1");
+  await expect(page.getByTestId("orders-status")).toContainText("1 error");
+
+  // Closed, it is accepted.
+  await page.getByTestId("orders-input").fill("turn\nstudy illu\nendturn");
+  await expect(page.getByTestId("orders-status")).toContainText("0 errors");
+});
+
 test("an item the catalogue does not know is a warning rather than an error", async ({ page }) => {
   await loadReport(page);
   await selectHex(page, "1:7,53");
