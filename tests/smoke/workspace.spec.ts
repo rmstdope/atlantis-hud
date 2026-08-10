@@ -937,3 +937,101 @@ test("the map is a single tab stop rather than one per hex", async ({ page }) =>
   await expect(inTabOrder).toHaveCount(1);
   await expect(page.locator("polygon[role='button']").first()).toBeAttached();
 });
+
+/**
+ * Finds a point on the map where a hex is genuinely the topmost element.
+ *
+ * The inspector panels float over the map, so a hex can be perfectly visible and still sit under
+ * one. Probing for a clear point tests the pointer path itself rather than the panel layout.
+ */
+async function clearHexPoint(page: Page) {
+  return page.evaluate(() => {
+    const map = document.querySelector('[data-testid="map-canvas"]');
+    const bounds = map!.getBoundingClientRect();
+    for (let down = 0.3; down <= 0.7; down += 0.04) {
+      for (let across = 0.2; across <= 0.8; across += 0.04) {
+        const x = bounds.x + bounds.width * across;
+        const y = bounds.y + bounds.height * down;
+        const top = document.elementFromPoint(x, y);
+        if (top?.tagName === "polygon" && top.getAttribute("role") === "button") {
+          return { x, y, label: top.getAttribute("aria-label") ?? "" };
+        }
+      }
+    }
+    return null;
+  });
+}
+
+/*
+ * Clicking, specifically.
+ *
+ * Every other hex test here drives focus and Enter, which is the keyboard path. That left the
+ * pointer path with no coverage at all, and it broke: capturing the pointer on the map root to
+ * make dragging work retargets the click to the root, so no hex ever received one. The map panned
+ * and zoomed and refused to select.
+ */
+test("clicking a hex selects it", async ({ page }) => {
+  await loadReport(page);
+
+  const point = await clearHexPoint(page);
+  expect(point, "expected some hex to be clickable, not covered by a panel").not.toBeNull();
+
+  await page.mouse.click(point!.x, point!.y);
+
+  await expect(page.getByRole("button", { name: point!.label })).toHaveAttribute(
+    "aria-pressed",
+    "true"
+  );
+});
+
+test("clicking a hex also focuses it, so the arrow keys work straight away", async ({ page }) => {
+  await loadReport(page);
+
+  const point = await clearHexPoint(page);
+  await page.mouse.click(point!.x, point!.y);
+
+  // Without this a player has to tab in past the whole header before a single arrow key does
+  // anything, which reads as the keyboard being dead.
+  await expect(page.locator("polygon:focus")).toHaveAttribute("aria-label", point!.label);
+
+  await page.locator("polygon:focus").press("ArrowUp");
+  await expect(page.locator("polygon:focus")).not.toHaveAttribute("aria-label", point!.label);
+});
+
+test("a drag that ends over a hex pans without selecting it", async ({ page }) => {
+  await loadReport(page);
+
+  const point = await clearHexPoint(page);
+  const before = await page
+    .getByRole("button", { name: point!.label })
+    .getAttribute("aria-pressed");
+
+  await page.mouse.move(point!.x, point!.y);
+  await page.mouse.down();
+  await page.mouse.move(point!.x + 90, point!.y + 60, { steps: 8 });
+  await page.mouse.up();
+
+  // Panning and selecting share the same gesture up to the point where the pointer moves, so a
+  // drag that happens to finish over a hex must not also pick it.
+  await expect(page.getByRole("button", { name: point!.label })).toHaveAttribute(
+    "aria-pressed",
+    before ?? "false"
+  );
+});
+
+test("the focused hex is visibly marked, so arrowing about is not invisible", async ({ page }) => {
+  await loadReport(page);
+
+  const point = await clearHexPoint(page);
+  await page.mouse.click(point!.x, point!.y);
+
+  // Styling the hex with focus-visible was not enough: that pseudo-class does not apply after a
+  // mouse click, so every arrow key moved a focus ring that was never drawn and the keyboard
+  // looked dead.
+  const ring = page.getByTestId("map-focus-ring");
+  await expect(ring).toBeAttached();
+  const before = await ring.getAttribute("transform");
+
+  await page.locator("polygon:focus").press("ArrowUp");
+  await expect(ring).not.toHaveAttribute("transform", before ?? "");
+});

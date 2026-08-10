@@ -110,6 +110,7 @@ export function MapCanvas({
   const [view, setView] = useState<Viewport>(ORIGIN);
   const [size, setSize] = useState({ width: 0, height: 0 });
   const [focusedRegionId, setFocusedRegionId] = useState<string | null>(null);
+  const [mapFocused, setMapFocused] = useState(false);
 
   const selectRef = useRef(onSelectRegion);
   selectRef.current = onSelectRegion;
@@ -250,7 +251,10 @@ export function MapCanvas({
     draggedRef.current = false;
     const start = { x: event.clientX, y: event.clientY };
     const origin = viewRef.current;
-    event.currentTarget.setPointerCapture(event.pointerId);
+    // Deliberately no `setPointerCapture`. Capturing the pointer on the root retargets the click
+    // to the capturing element, so no hex would ever receive one and the map would pan and zoom
+    // but refuse to select. The window listeners below already carry a drag outside the element,
+    // which is the only thing capture would have bought.
 
     const move = (moved: PointerEvent) => {
       const dx = moved.clientX - start.x;
@@ -369,6 +373,9 @@ export function MapCanvas({
 
   const selected = onLevel.find((hex) => hex.regionId === selectedRegionId) ?? null;
   const focusTarget = focusedRegionId ?? selectedRegionId ?? onLevel[0]?.regionId ?? null;
+  const focused = mapFocused
+    ? (onLevel.find((hex) => hex.regionId === focusedRegionId) ?? null)
+    : null;
 
   return (
     <div ref={hostRef} className="absolute inset-0" data-testid="map-canvas">
@@ -472,11 +479,40 @@ export function MapCanvas({
           )}
 
           {/*
+            Where the keyboard is, drawn separately from where the selection is: arrowing across
+            the map moves focus without selecting anything, and with nothing on screen to show it
+            the arrow keys read as dead. Dashed so the two rings are never confused, and only while
+            the map actually holds focus.
+          */}
+          {focused && (
+            <polygon
+              points={HEX_POINTS}
+              transform={translateOf(focused)}
+              fill="none"
+              className="stroke-brass-bright"
+              strokeWidth={2}
+              strokeDasharray="4 3"
+              vectorEffect="non-scaling-stroke"
+              pointerEvents="none"
+              data-testid="map-focus-ring"
+            />
+          )}
+
+          {/*
             The hit and accessibility layer: flat, in model order, and last so nothing paints over
             it. Keeping it separate from the terrain buckets is what stops a hex being remounted —
             and losing focus mid-keystroke — when its knowledge changes.
           */}
-          <g>
+          <g
+            onFocus={() => setMapFocused(true)}
+            onBlur={(event) => {
+              // Moving between hexes blurs one and focuses the next; only leaving the map entirely
+              // should put the ring away.
+              if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                setMapFocused(false);
+              }
+            }}
+          >
             {onLevel.map((hex) => (
               <polygon
                 key={hex.regionId}
@@ -485,7 +521,7 @@ export function MapCanvas({
                 transform={translateOf(hex)}
                 fill="none"
                 pointerEvents="all"
-                className="cursor-pointer outline-none focus-visible:stroke-brass-bright"
+                className="cursor-pointer outline-none"
                 strokeWidth={2}
                 vectorEffect="non-scaling-stroke"
                 role="button"
@@ -494,10 +530,15 @@ export function MapCanvas({
                 aria-pressed={hex.regionId === selectedRegionId}
                 onFocus={() => setFocusedRegionId(hex.regionId)}
                 onKeyDown={(event) => onHexKeyDown(event, hex)}
-                onClick={() => {
-                  if (!draggedRef.current) {
-                    selectRef.current(hex.regionId);
+                onClick={(event) => {
+                  if (draggedRef.current) {
+                    return;
                   }
+                  // Focused as well as selected, so the arrow keys carry on from the hex just
+                  // clicked. Chromium happens to focus an SVG shape on pointerdown anyway, but
+                  // that is not something to rely on across the two shells' webviews.
+                  event.currentTarget.focus();
+                  selectRef.current(hex.regionId);
                 }}
               >
                 <title>{hex.label}</title>
