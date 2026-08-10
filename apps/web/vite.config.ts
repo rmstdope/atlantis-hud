@@ -28,11 +28,16 @@ export default defineConfig({
     // story, and giving it a second cache in front of a bundle it already ships locally would only
     // add a way for the two to disagree.
     VitePWA({
+      // The smoke suite runs against a production build for speed, but a service worker caching
+      // pages between tests would make that build a different application than the one the suite
+      // was written for. The flag keeps it out; `tests/pwa` exercises the real build, worker and
+      // all. The virtual `pwa-register` modules still resolve when disabled - they become no-ops.
+      disable: process.env.ATLANTIS_PWA_DISABLE === "1",
       // The application holds unsaved order drafts. Swapping the running code underneath somebody
       // mid-sentence is not worth the few seconds it saves, so a new deployment waits and says so.
       registerType: "prompt",
-      // Off, so the two existing Playwright projects keep running against dev servers with no
-      // service worker in the way. The production build is exercised by `tests/pwa` instead.
+      // Off: the dev server serves no service worker either way, and turning one on there would
+      // put a cache in front of every local iteration loop for nothing.
       devOptions: { enabled: false },
       includeAssets: ["favicon.ico", "apple-touch-icon.png"],
       manifest: {

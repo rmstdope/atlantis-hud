@@ -1,13 +1,43 @@
 import { defineConfig, devices } from "@playwright/test";
 
+/**
+ * One server per shell, keyed by the project that talks to it. Playwright starts every entry in
+ * `webServer` no matter which `--project` is selected, so a CI job walking one shell would still
+ * build and serve the other; SMOKE_PROJECT lets that job name the one it needs. Unset - which is
+ * every local run - both come up, and `--project` keeps working unrestricted.
+ */
+const SERVERS = {
+  web: {
+    command:
+      "pnpm --filter @atlantis/web exec vite build && pnpm --filter @atlantis/web exec vite preview --host 127.0.0.1 --port 4173 --strictPort",
+    env: { ATLANTIS_PWA_DISABLE: "1" },
+    url: "http://127.0.0.1:4173",
+    reuseExistingServer: !process.env.CI,
+    timeout: 120_000
+  },
+  "desktop-shell": {
+    command:
+      "pnpm --filter @atlantis/desktop exec vite build && pnpm --filter @atlantis/desktop exec vite preview --host 127.0.0.1 --port 4174 --strictPort",
+    url: "http://127.0.0.1:4174",
+    reuseExistingServer: !process.env.CI,
+    timeout: 120_000
+  }
+};
+
+const only = process.env.SMOKE_PROJECT;
+if (only && !(only in SERVERS)) {
+  throw new Error(`SMOKE_PROJECT is "${only}", which names no server: ${Object.keys(SERVERS)}`);
+}
+
 export default defineConfig({
   testDir: "./tests/smoke",
   /**
    * Generous on purpose. The suite's own work is about three seconds a test, measured stage by
-   * stage; the rest of the budget goes on launching Chromium and letting the Vite dev server
-   * transform the app. Under CPU contention that startup roughly doubles while the app's own
-   * timings do not move at all, which at 30 seconds pushed whichever action happened to be last
-   * over the edge - and reported it as though that action were slow.
+   * stage; the rest of the budget went on launching Chromium and, before the suite moved to built
+   * bundles, letting the Vite dev server transform the app. Under CPU contention that startup
+   * roughly doubles while the app's own timings do not move at all, which at 30 seconds pushed
+   * whichever action happened to be last over the edge - and reported it as though that action
+   * were slow.
    */
   timeout: 90_000,
   /**
@@ -23,7 +53,14 @@ export default defineConfig({
    * 1.2 seconds; on CI hardware the report load has exceeded five seconds outright.
    */
   expect: { timeout: 15_000 },
-  fullyParallel: false,
+  /**
+   * True not for concurrency - `workers: 1` below still runs one test at a time - but for
+   * sharding granularity. Every test in this suite opens its own page and starts from
+   * `clearGames`, so none depends on another, and telling Playwright so lets `--shard` split the
+   * suite evenly by test instead of handing whole files to a shard - workspace.spec.ts alone
+   * would otherwise be a shard by itself.
+   */
+  fullyParallel: true,
   /**
    * One worker, deliberately, and parallelism bought at the job level instead.
    *
@@ -52,19 +89,20 @@ export default defineConfig({
       use: { ...devices["Desktop Chrome"], baseURL: "http://127.0.0.1:4174" }
     }
   ],
-  webServer: [
-    {
-      // `vite` rather than the `dev` script, which is `build:wasm && vite`. The module is built
-      // once before the suite runs - by CI explicitly, and locally by whatever last touched it -
-      // so letting each server rebuild it made four wasm builds per CI run instead of one.
-      command: "pnpm --filter @atlantis/web exec vite --host 127.0.0.1 --port 4173",
-      url: "http://127.0.0.1:4173",
-      reuseExistingServer: !process.env.CI
-    },
-    {
-      command: "pnpm --filter @atlantis/desktop exec vite --host 127.0.0.1 --port 4174",
-      url: "http://127.0.0.1:4174",
-      reuseExistingServer: !process.env.CI
-    }
-  ]
+  /**
+   * Built bundles served by `vite preview`, not dev servers. The dev server transforms every
+   * module on first request, and with every test paying a page load in `loadReport` that transform
+   * cost was most of the suite's runtime; `vite build` takes a few seconds and the pages it
+   * produces load in a fraction of the time. It is also one less way for the suite to diverge from
+   * what ships.
+   *
+   * `vite build` directly rather than the `build` script, which is `build:wasm && vite build`. The
+   * wasm module is built once before the suite runs - by CI explicitly, and locally by whatever
+   * last touched it - so letting each server rebuild it made four wasm builds per CI run instead
+   * of one.
+   *
+   * ATLANTIS_PWA_DISABLE keeps the web build's service worker out of the way, exactly as the dev
+   * server did by never registering one; `tests/pwa` covers the worker against the real build.
+   */
+  webServer: only ? [SERVERS[only as keyof typeof SERVERS]] : Object.values(SERVERS)
 });

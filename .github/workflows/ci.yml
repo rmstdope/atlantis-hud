@@ -16,38 +16,44 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      # The module itself, keyed on everything it is built from. Most changes touch no Rust at
+      # all, and for those this job is a restore and an upload rather than a toolchain and a
+      # build - which matters because every smoke and pwa job waits on it.
+      - name: Cache the built module
+        id: wasm-module
+        uses: actions/cache@v4
         with:
-          node-version-file: ".nvmrc"
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 9.12.0
+          path: packages/browser-core/src/wasm
+          key: wasm-module-${{ hashFiles('crates/**', 'Cargo.toml', 'Cargo.lock') }}
 
       - name: Setup Rust
+        if: steps.wasm-module.outputs.cache-hit != 'true'
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
 
-      # Without this every job recompiles the whole workspace from scratch. Cold, the four Rust
-      # steps in this workflow came to about 212 seconds; warm they are a few.
+      # Without this every job recompiles the whole workspace from scratch. Cold, the Rust steps
+      # in this workflow came to about 212 seconds; warm they are a few.
       - name: Cache Rust build
+        if: steps.wasm-module.outputs.cache-hit != 'true'
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: wasm
 
       - name: Install wasm-pack
+        if: steps.wasm-module.outputs.cache-hit != 'true'
         uses: taiki-e/install-action@v2
         with:
           tool: wasm-pack
 
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
+      # Through the ensure script rather than `build:wasm`, because the script writes the
+      # fingerprint stamp beside the module. The stamp travels in the cache - not the artifact,
+      # which drops hidden files, and whose consumers never build - and it is what lets the checks
+      # job's `pretypecheck` hook see a restored module as current instead of rebuilding it. The
+      # script needs no pnpm workspace, so this job installs none.
       - name: Build WebAssembly core
-        run: pnpm --filter @atlantis/browser-core build:wasm
+        if: steps.wasm-module.outputs.cache-hit != 'true'
+        run: node scripts/ensure-wasm.mjs
 
       - name: Upload the WebAssembly core
         uses: actions/upload-artifact@v4
@@ -56,14 +62,26 @@ jobs:
           path: packages/browser-core/src/wasm
           retention-days: 1
 
-  # Independent of the wasm job on purpose, so it runs beside it rather than after: `pnpm run
-  # typecheck` builds the module itself through browser-core's pretypecheck hook, which is also what
-  # keeps a fresh clone working locally.
+  # The JavaScript half of the checks. Independent of the wasm job on purpose, so it runs beside
+  # it rather than after: browser-core's pretypecheck hook can build the module itself, which is
+  # also what keeps a fresh clone working locally. Most runs never do - the module cache below
+  # restores it, stamp and all, and the hook sees it as current.
+  #
+  # `pnpm -r run typecheck` and `pnpm -r run test` rather than the root scripts, which chain
+  # `cargo check` and `cargo test` on the end: the Rust half lives in the rust job beside this
+  # one, where clippy subsumes the check.
   checks:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Cache the built module
+        id: wasm-module
+        uses: actions/cache@v4
+        with:
+          path: packages/browser-core/src/wasm
+          key: wasm-module-${{ hashFiles('crates/**', 'Cargo.toml', 'Cargo.lock') }}
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -75,18 +93,22 @@ jobs:
         with:
           version: 9.12.0
 
+      # The Rust toolchain is only here for the fallback where the module cache missed and the
+      # pretypecheck hook has to build the module after all.
       - name: Setup Rust
+        if: steps.wasm-module.outputs.cache-hit != 'true'
         uses: dtolnay/rust-toolchain@stable
         with:
-          components: rustfmt, clippy
           targets: wasm32-unknown-unknown
 
       - name: Cache Rust build
+        if: steps.wasm-module.outputs.cache-hit != 'true'
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: wasm
 
       - name: Install wasm-pack
+        if: steps.wasm-module.outputs.cache-hit != 'true'
         uses: taiki-e/install-action@v2
         with:
           tool: wasm-pack
@@ -98,10 +120,29 @@ jobs:
         run: pnpm run lint
 
       - name: Run typecheck
-        run: pnpm run typecheck
+        run: pnpm -r run typecheck
 
       - name: Run tests
-        run: pnpm run test
+        run: pnpm -r run test
+
+  # The Rust half, beside the JavaScript half rather than after it. Everything here compiles for
+  # the host, so it shares nothing with the wasm cache and keeps its own. `cargo check` from the
+  # root typecheck script is absent deliberately: clippy over the same targets is a superset of it.
+  rust:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: native
 
       - name: Rust format check
         run: cargo fmt --check
@@ -109,10 +150,15 @@ jobs:
       - name: Rust clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
 
-  # One job per Playwright project, because the suite is deliberately single-worker. Two of its
-  # tests measure how long the main thread is blocked, and anything running beside them turns that
-  # into a measurement of contention - so parallelism is bought here, where each runner walks one
-  # shell on its own, rather than inside Playwright.
+      - name: Rust tests
+        run: cargo test --workspace
+
+  # One job per Playwright project and shard, because the suite is deliberately single-worker. Two
+  # of its tests measure how long the main thread is blocked, and anything running beside them
+  # turns that into a measurement of contention - so parallelism is bought here, where each runner
+  # walks its slice of one shell on its own, rather than inside Playwright. Two shards, because
+  # each job pays a fixed ~45 seconds of setup before the first test runs: at two the split still
+  # roughly halves the test time; at three the setup starts to dominate what it saves.
   #
   # These need no Rust at all: the wasm module arrives as an artifact.
   smoke:
@@ -122,6 +168,8 @@ jobs:
       fail-fast: false
       matrix:
         project: [web, desktop-shell]
+        shardIndex: [1, 2]
+        shardTotal: [2]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -162,14 +210,18 @@ jobs:
         if: steps.playwright-cache.outputs.cache-hit == 'true'
         run: pnpm exec playwright install-deps chromium
 
+      # SMOKE_PROJECT keeps the config from also building and serving the shell this job is not
+      # walking: Playwright starts every `webServer` entry no matter which project runs.
       - name: Run smoke tests
-        run: pnpm exec playwright test --project=${{ matrix.project }}
+        run: pnpm exec playwright test --project=${{ matrix.project }} --shard=${{ matrix.shardIndex }}/${{ matrix.shardTotal }}
+        env:
+          SMOKE_PROJECT: ${{ matrix.project }}
 
       - name: Upload the report of a failed run
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-report-${{ matrix.project }}
+          name: playwright-report-${{ matrix.project }}-${{ matrix.shardIndex }}
           path: test-results
           retention-days: 7
 
