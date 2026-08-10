@@ -61,10 +61,23 @@ describe("summariseUnit", () => {
       })
     );
 
-    expect(summary.items).toEqual([
-      { label: "silver SILV", value: "1,200" },
-      { label: "swords SWOR", value: "2" }
-    ]);
+    expect(summary.items.map((item) => item.label)).toEqual(["silver SILV", "swords SWOR"]);
+    // The digits, not the grouping: see the locale test below.
+    expect(summary.items.map((item) => item.value.replace(/\D/g, ""))).toEqual(["1200", "2"]);
+  });
+
+  /**
+   * Asserting "1,200" would pin en-US and fail under a Swedish or German locale while passing on
+   * CI - a works-here-fails-there trap the unit composition tests already avoid. The property that
+   * matters is that the digits survive and a separator was added, whatever that separator is.
+   */
+  it("groups thousands in whatever way the reader's locale does", () => {
+    const [silver] = summariseUnit(
+      unit({ items: [{ amount: 1200, name: "silver", tag: "SILV" }] })
+    ).items;
+
+    expect(silver.value.replace(/\D/g, "")).toBe("1200");
+    expect(silver.value).not.toBe("1200");
   });
 
   it("does not reorder the unit's own skills or items lists", () => {
