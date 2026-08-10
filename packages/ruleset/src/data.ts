@@ -74,6 +74,29 @@ export type ItemEntry = {
 
 export type ItemReference = Record<string, ItemEntry>;
 
+/**
+ * A skill, and what a month of studying it costs.
+ *
+ * Kept apart from the item catalogue rather than merged into it: ten tags mean one thing as a
+ * skill and another as an item - FISH is fishing and also fish, HERB is herb lore and also herbs -
+ * so one map would have each pair overwrite the other.
+ */
+export type SkillEntry = {
+  tag: string;
+  name: string;
+  /**
+   * Silver per man per month, or null for a skill the page prices nowhere.
+   *
+   * Only annihilation, which "cannot be studied via normal means". A null is what lets a consumer
+   * stay silent about it; a 0 would say studying it is free, and a 10 would invent a figure.
+   */
+  cost: number | null;
+  /** The highest level the page gives the skill an entry for. */
+  maxLevel: number;
+};
+
+export type SkillReference = Record<string, SkillEntry>;
+
 export { RulesetScrapeError };
 
 /**
@@ -234,4 +257,56 @@ export function parseItemReference(html: string): ItemReference {
   }
 
   return items;
+}
+
+/**
+ * A skill entry's opening: `mining [MINI] 1: This skill deals with ...`.
+ *
+ * The level and the colon are what separate this from an item, which opens `horse [HORS], weight`.
+ * Both live in the same `<pre>` block, and `parseItemReference` skips these paragraphs for exactly
+ * the same reason this one skips its own.
+ */
+const SKILL_OPENING = /^([^.:[\]]{1,40}) \[([A-Z0-9]{2,6})\] (\d+): /;
+
+/** "This skill costs 10 silver per month of study." Stated once per skill, on its level 1 entry. */
+const STUDY_COST = /This skill costs (\d+) silver per month of study/i;
+
+/**
+ * Reads the skill catalogue out of the same data page the items come from.
+ *
+ * A skill has five entries, one per level, and only the first states the cost - so the entries are
+ * folded together by tag: the cost from whichever level states it, the name from the lowest, and
+ * the level from the highest.
+ */
+export function parseSkillReference(html: string): SkillReference {
+  const skills: SkillReference = {};
+
+  for (const paragraph of entryParagraphs(html)) {
+    const opening = paragraph.match(SKILL_OPENING);
+    if (!opening) {
+      continue;
+    }
+
+    const [, name, tag, level] = opening;
+    const stated = readNumber(paragraph, STUDY_COST);
+    const existing = skills[tag];
+
+    skills[tag] = {
+      tag,
+      name: existing?.name ?? name.trim(),
+      // Kept once found. Levels above the first say nothing about cost, and letting a later entry
+      // write null over a figure the page did give would lose every cost in the catalogue.
+      cost: existing?.cost ?? stated,
+      maxLevel: Math.max(existing?.maxLevel ?? 0, Number.parseInt(level, 10))
+    };
+  }
+
+  if (Object.keys(skills).length === 0) {
+    throw new RulesetScrapeError(
+      "could not read any skill entries from the data page. Expected a <pre> block of entries " +
+        "shaped like `mining [MINI] 1: ...`; the page has probably changed shape."
+    );
+  }
+
+  return skills;
 }

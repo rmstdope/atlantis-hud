@@ -36,6 +36,18 @@ describe("buildRuleset", () => {
   });
 
   /**
+   * Order validation prices a STUDY order from this block, so a ruleset without it can say nothing
+   * about whether a unit can afford what it has been told to learn.
+   */
+  it("carries the skill catalogue with its study costs", () => {
+    const ruleset = built();
+
+    expect(ruleset.skills.MINI).toMatchObject({ name: "mining", cost: 10 });
+    expect(ruleset.skills.TACT.cost).toBe(200);
+    expect(Object.keys(ruleset.skills).length).toBe(96);
+  });
+
+  /**
    * The risk thresholds are ours, not the game's. Mixing them into a file whose whole point is
    * that it mirrors the server would be dishonest unless they say so on their face.
    */

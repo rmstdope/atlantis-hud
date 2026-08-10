@@ -5,7 +5,7 @@ use std::path::Path;
 use atlantis_hud_core::report::merge::{merge_report_into_sightings, StoredSighting};
 pub use atlantis_hud_core::report::ParsedReport;
 use atlantis_hud_core::{
-    engine_info, order_commands, parse_report, reject_import, reject_merge, validate_orders,
+    engine_info, order_commands, parse_report, reject_import, reject_merge, OrderCheckOptions,
     OrderDiagnosticSeverity, ReportParseResult, WarningSeverity,
 };
 use atlantis_hud_core_persistence::{
@@ -162,10 +162,12 @@ pub struct ImportedTurnRecordDto {
 pub struct OrderDiagnosticDto {
     pub code: String,
     pub message: String,
-    pub line_start: usize,
-    pub line_end: usize,
-    pub column_start: usize,
-    pub column_end: usize,
+    pub line_start: Option<usize>,
+    pub line_end: Option<usize>,
+    pub column_start: Option<usize>,
+    pub column_end: Option<usize>,
+    pub region_id: Option<String>,
+    pub unit_id: Option<String>,
     pub severity: String,
 }
 
@@ -601,13 +603,34 @@ pub fn command_order_commands() -> Vec<String> {
 /// Validates one order draft for the Tauri command surface.
 ///
 /// `ruleset_json` is the served ruleset when the shell has it; without it item names go unchecked
-/// and everything else is checked as usual.
+/// and everything else is checked as usual. `raw_report` is the turn the orders were written for,
+/// when one has been imported: with it the answer covers the checks that read what each unit holds
+/// and where it stands, and without it the answer is the syntax check alone.
+///
+/// Both go through the cache, as they do on the web. This runs whenever the player stops typing,
+/// and the desktop is not entitled to be slower about it than the browser.
 #[must_use]
 pub fn command_validate_orders(
     raw_orders: &str,
     ruleset_json: Option<&str>,
+    raw_report: Option<&str>,
+    warn_on_unguarded_hex: bool,
 ) -> OrderValidationResultDto {
-    let result = validate_orders(raw_orders, ruleset_json);
+    let options = OrderCheckOptions {
+        warn_on_unguarded_hex,
+    };
+    let (ruleset, report) = atlantis_hud_core::cache::with_global(|cache| {
+        let ruleset = ruleset_json.and_then(|json| cache.ruleset(json).ok());
+        let report = raw_report.map(|raw| cache.classified_when_possible(raw, ruleset_json));
+        (ruleset, report)
+    });
+
+    let result = atlantis_hud_core::validate_turn(
+        raw_orders,
+        ruleset.as_deref(),
+        report.as_deref(),
+        options,
+    );
     OrderValidationResultDto {
         diagnostics: result
             .diagnostics
@@ -619,6 +642,8 @@ pub fn command_validate_orders(
                 line_end: diagnostic.line_end,
                 column_start: diagnostic.column_start,
                 column_end: diagnostic.column_end,
+                region_id: diagnostic.region_id,
+                unit_id: diagnostic.unit_id,
                 severity: match diagnostic.severity {
                     OrderDiagnosticSeverity::Warning => "warning".to_string(),
                     OrderDiagnosticSeverity::Error => "error".to_string(),
@@ -1564,16 +1589,19 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
         )
         .expect("create game");
 
-        let validation = command_validate_orders("FLY 1 2", None);
+        let validation = command_validate_orders("FLY 1 2", None, None, false);
         assert_eq!(
             validation.diagnostics,
             vec![OrderDiagnosticDto {
                 code: "unknown-command".to_string(),
                 message: "unknown order command: FLY".to_string(),
-                line_start: 1,
-                line_end: 1,
-                column_start: 0,
-                column_end: 3,
+                line_start: Some(1),
+                line_end: Some(1),
+                column_start: Some(0),
+                column_end: Some(3),
+                // A misspelled keyword belongs to no hex and to no unit.
+                region_id: None,
+                unit_id: None,
                 severity: "error".to_string(),
             }]
         );

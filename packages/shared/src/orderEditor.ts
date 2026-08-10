@@ -32,6 +32,11 @@ export function suggestOrderCommands(prefix: string, commands: readonly string[]
  * quoted correctly. The core counts them that way deliberately for this reason.
  */
 export function offendingText(text: string, diagnostic: OrderDiagnostic): string | null {
+  // A finding about a hex sits on no line, so there is no text to quote and nothing went wrong.
+  if (diagnostic.lineStart === null || diagnostic.columnStart === null || diagnostic.columnEnd === null) {
+    return null;
+  }
+
   const line = text.split("\n")[diagnostic.lineStart - 1];
   if (line === undefined || diagnostic.columnEnd > line.length) {
     return null;
@@ -116,6 +121,11 @@ export type ValidatedOrders = { text: string; diagnostics: OrderDiagnostic[] };
  * which is the right answer to a question the editor is not asking. The panel shows one unit, so a
  * problem in another unit's orders reported under this one is worse than no report at all - and
  * "line 604" means nothing to someone looking at a four-line block.
+ *
+ * A finding that names a unit is placed by that name and not by its line. The two agree in every
+ * ordinary case; where they could disagree - adjacent blocks, a document edited since validation
+ * ran - the name is what the core actually decided and the line is where it happened to land.
+ * A finding that names no unit at all belongs to the hex, and is shown by the region panel.
  */
 export function diagnosticsForUnit(
   document: string,
@@ -133,14 +143,73 @@ export function diagnosticsForUnit(
   const last = block.lastLine + 1;
 
   return diagnostics
-    // Anything overlapping the block, not merely starting inside it: the core reports single lines
-    // today, but a range reaching in from above is this unit's business too, and testing only where
-    // it starts would drop it.
-    .filter((diagnostic) => diagnostic.lineEnd >= first && diagnostic.lineStart <= last)
+    .filter((diagnostic) => {
+      if (diagnostic.unitId !== null) {
+        return diagnostic.unitId === unitId;
+      }
+      // A finding about the hex names neither a unit nor a line, and belongs to no unit's list.
+      if (diagnostic.lineStart === null || diagnostic.lineEnd === null) {
+        return false;
+      }
+      // Anything overlapping the block, not merely starting inside it: the core reports single
+      // lines today, but a range reaching in from above is this unit's business too, and testing
+      // only where it starts would drop it.
+      return diagnostic.lineEnd >= first && diagnostic.lineStart <= last;
+    })
     .map((diagnostic) => ({
       ...diagnostic,
       // Clamped, so a range running past either end still points at a line the editor is showing.
-      lineStart: Math.max(diagnostic.lineStart, first) - block.firstLine,
-      lineEnd: Math.min(diagnostic.lineEnd, last) - block.firstLine
+      // A finding of this unit's that carries no line keeps none: there is nothing to count to.
+      lineStart:
+        diagnostic.lineStart === null
+          ? null
+          : Math.max(diagnostic.lineStart, first) - block.firstLine,
+      lineEnd:
+        diagnostic.lineEnd === null ? null : Math.min(diagnostic.lineEnd, last) - block.firstLine
     }));
+}
+
+/** Everything the checks found in one hex, unit-level and hex-level alike. */
+export function findingsForHex(
+  diagnostics: OrderDiagnostic[],
+  regionId: string | null
+): OrderDiagnostic[] {
+  if (regionId === null) {
+    return [];
+  }
+  return diagnostics.filter((diagnostic) => diagnostic.regionId === regionId);
+}
+
+/** One hex's worth of findings, for the map-wide list. */
+export type HexFindings = { regionId: string; findings: OrderDiagnostic[] };
+
+/**
+ * Everything the checks found, grouped by the hex it belongs to.
+ *
+ * This is what the header chip counts, and it is the reason the whole map is validated rather than
+ * only the hex on screen: a unit that cannot pay for its orders in a hex nobody has clicked on
+ * would otherwise go out with the turn unnoticed.
+ *
+ * Syntax diagnostics belong to no hex and are left out. They are already counted by the orders
+ * panel, against the unit whose line they sit on.
+ *
+ * Hexes come back in the order their first finding appeared, which is the order the core produced
+ * them in - region by region, as the report lists them.
+ */
+export function findingsByHex(diagnostics: OrderDiagnostic[]): HexFindings[] {
+  const byHex = new Map<string, OrderDiagnostic[]>();
+
+  for (const diagnostic of diagnostics) {
+    if (diagnostic.regionId === null) {
+      continue;
+    }
+    const found = byHex.get(diagnostic.regionId);
+    if (found) {
+      found.push(diagnostic);
+    } else {
+      byHex.set(diagnostic.regionId, [diagnostic]);
+    }
+  }
+
+  return [...byHex].map(([regionId, findings]) => ({ regionId, findings }));
 }

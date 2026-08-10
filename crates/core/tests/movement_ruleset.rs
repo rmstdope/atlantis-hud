@@ -305,3 +305,91 @@ fn rejects_risk_thresholds_that_are_the_wrong_way_round() {
     let error = Ruleset::from_json(&broken).expect_err("should refuse");
     assert!(matches!(error, RulesetError::Unusable(_)));
 }
+
+// --- the skill catalogue --------------------------------------------------------------------
+//
+// What a month of study costs, which is what order validation prices a STUDY order from. The
+// figures are the ones the rules page singles out: "Most skills cost $10 per person per month to
+// study ... The exceptions are Stealth and Observation (both of which cost $50), Magic skills
+// (which cost $100), and Tactics (which costs $200)."
+
+#[test]
+fn reads_what_a_month_of_study_costs() {
+    let ruleset = ruleset();
+
+    assert_eq!(cost_of(&ruleset, "MINI"), Some(10));
+    assert_eq!(cost_of(&ruleset, "TACT"), Some(200));
+    assert_eq!(cost_of(&ruleset, "STEA"), Some(50));
+    assert_eq!(cost_of(&ruleset, "FORC"), Some(100));
+}
+
+fn cost_of(ruleset: &Ruleset, text: &str) -> Option<i64> {
+    ruleset.find_skill(text).and_then(|skill| skill.cost)
+}
+
+/// A player writes a skill the way they like: `STUDY obse`, `STUDY COMBAT`, `STUDY herb_lore`. The
+/// abbreviation is the tag, and a name with a space in it comes quoted or underscored.
+#[test]
+fn finds_a_skill_by_tag_or_name_however_it_is_written() {
+    let ruleset = ruleset();
+
+    assert_eq!(tag_of(&ruleset, "obse"), Some("OBSE"));
+    assert_eq!(tag_of(&ruleset, "COMBAT"), Some("COMB"));
+    assert_eq!(tag_of(&ruleset, "herb_lore"), Some("HERB"));
+    assert_eq!(tag_of(&ruleset, "herb lore"), Some("HERB"));
+}
+
+fn tag_of<'a>(ruleset: &'a Ruleset, text: &str) -> Option<&'a str> {
+    ruleset.find_skill(text).map(|skill| skill.tag.as_str())
+}
+
+/// Ten tags name a skill and an item both - FISH is fishing and also fish. The two catalogues are
+/// separate, so looking one up must never answer with the other.
+#[test]
+fn a_tag_shared_with_an_item_still_finds_the_skill() {
+    let ruleset = ruleset();
+
+    assert_eq!(
+        ruleset.find_skill("FISH").map(|skill| skill.name.as_str()),
+        Some("fishing")
+    );
+    assert_eq!(ruleset.items["FISH"].name, "fish");
+}
+
+/// "annihilation [ANNI] 1: ... This skill cannot be studied via normal means." The page prices it
+/// nowhere, so the catalogue carries no price and the validator can stay silent rather than invent
+/// one.
+#[test]
+fn a_skill_the_page_prices_nowhere_carries_no_cost() {
+    let ruleset = ruleset();
+
+    let skill = ruleset
+        .find_skill("ANNI")
+        .expect("annihilation is in the catalogue");
+    assert_eq!(skill.cost, None);
+}
+
+#[test]
+fn a_skill_the_catalogue_does_not_have_is_not_found() {
+    let ruleset = ruleset();
+
+    assert!(ruleset.find_skill("flying").is_none());
+    assert!(ruleset.find_skill("").is_none());
+}
+
+/// A ruleset from before the skills block existed must still load. The shell serves whatever file
+/// is deployed, and a player's orders are not at fault for a config that predates a feature.
+#[test]
+fn a_ruleset_without_a_skill_catalogue_still_loads() {
+    let mut value: serde_json::Value = serde_json::from_str(RULESET).expect("the ruleset is JSON");
+    value
+        .as_object_mut()
+        .expect("a ruleset is an object")
+        .remove("skills")
+        .expect("the committed ruleset has a skills block");
+    let stripped = serde_json::to_string(&value).expect("it serialises back");
+
+    let ruleset = Ruleset::from_json(&stripped).expect("a ruleset without skills should load");
+    assert_eq!(ruleset.movement_points(MovementMode::Walk), 2);
+    assert!(ruleset.find_skill("MINI").is_none());
+}

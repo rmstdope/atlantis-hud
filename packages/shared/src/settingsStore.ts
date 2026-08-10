@@ -37,16 +37,26 @@ export type SettingsState = {
    * the cap hides.
    */
   unitListLimit: number;
+  /**
+   * Whether order validation warns about a hex holding your units and no guard at all.
+   *
+   * Off by default. Most hexes are deliberately unguarded, so this speaks about hex after hex -
+   * against the committed turn 71 it is one warning per hex the faction stands in - and a panel
+   * that always has something to say is a panel nobody reads. Dropping a guard you *had* is
+   * reported whatever this says, because that is a change you may not have meant.
+   */
+  warnOnUnguardedHex: boolean;
   /** Applies instantly: the settings dialog has no OK button to wait for. */
   setTheme: (theme: ThemeName) => void;
   setBiomeTextures: (enabled: boolean) => void;
   setPaneTransparency: (percent: number) => void;
   setUnitListLimit: (count: number) => void;
+  setWarnOnUnguardedHex: (enabled: boolean) => void;
 };
 
 type Persisted = Pick<
   SettingsState,
-  "theme" | "biomeTextures" | "paneTransparency" | "unitListLimit"
+  "theme" | "biomeTextures" | "paneTransparency" | "unitListLimit" | "warnOnUnguardedHex"
 >;
 
 /**
@@ -143,6 +153,7 @@ export const useSettingsStore = create<SettingsState>()(
       biomeTextures: true,
       paneTransparency: DEFAULT_PANE_TRANSPARENCY,
       unitListLimit: DEFAULT_UNIT_LIST_LIMIT,
+      warnOnUnguardedHex: false,
 
       setTheme: (theme) => {
         applyTheme(theme);
@@ -161,6 +172,10 @@ export const useSettingsStore = create<SettingsState>()(
 
       setUnitListLimit: (count) => {
         set({ unitListLimit: clampUnitListLimit(count) });
+      },
+
+      setWarnOnUnguardedHex: (warnOnUnguardedHex) => {
+        set({ warnOnUnguardedHex });
       }
     }),
     {
@@ -170,7 +185,8 @@ export const useSettingsStore = create<SettingsState>()(
         theme: state.theme,
         biomeTextures: state.biomeTextures,
         paneTransparency: state.paneTransparency,
-        unitListLimit: state.unitListLimit
+        unitListLimit: state.unitListLimit,
+        warnOnUnguardedHex: state.warnOnUnguardedHex
       })
     }
   )

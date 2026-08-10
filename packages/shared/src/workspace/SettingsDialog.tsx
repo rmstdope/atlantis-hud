@@ -191,6 +191,8 @@ function GlobalSettings() {
   const setPaneTransparency = useSettingsStore((state) => state.setPaneTransparency);
   const unitListLimit = useSettingsStore((state) => state.unitListLimit);
   const setUnitListLimit = useSettingsStore((state) => state.setUnitListLimit);
+  const warnOnUnguardedHex = useSettingsStore((state) => state.warnOnUnguardedHex);
+  const setWarnOnUnguardedHex = useSettingsStore((state) => state.setWarnOnUnguardedHex);
 
   return (
     <div className="flex flex-col gap-3">
@@ -212,6 +214,30 @@ function GlobalSettings() {
           aria-label="Biome textures"
           checked={biomeTextures}
           onChange={(event) => setBiomeTextures(event.target.checked)}
+          className="accent-brass"
+        />
+      </label>
+
+      {/*
+        Off by default, and deliberately. Most hexes are left unguarded on purpose - against the
+        committed turn 71 this warns about every hex the faction stands in - and a panel that
+        always has something to say is one nobody reads. Losing a guard you had is reported
+        whatever this says, because that is a change the player may not have meant.
+      */}
+      <label className="flex items-center justify-between gap-2 text-ink-soft">
+        <span>
+          <span className="block">Warn about unguarded hexes</span>
+          <span className="block text-[10px] text-ink-dim">
+            Every hex holding your units with nobody guarding it. Losing a guard is always warned
+            about.
+          </span>
+        </span>
+        <input
+          type="checkbox"
+          data-testid="settings-warn-unguarded"
+          aria-label="Warn about unguarded hexes"
+          checked={warnOnUnguardedHex}
+          onChange={(event) => setWarnOnUnguardedHex(event.target.checked)}
           className="accent-brass"
         />
       </label>

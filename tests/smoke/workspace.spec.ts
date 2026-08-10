@@ -324,6 +324,46 @@ test("a bad order names itself, and belongs to the unit that carries it", async 
   await expect(page.getByTestId("orders-status")).toContainText("1 elsewhere");
 });
 
+/**
+ * The checks that read the report, end to end (#82).
+ *
+ * Worth a smoke test rather than leaving it to the Rust suite: this is the one place where the
+ * shell, the wasm binding, the cached parse and the panels all have to agree about a finding that
+ * has no line to sit on. A unit-level check would pass with the report never reaching the core.
+ */
+test("a unit told to spend silver it has not got is warned about, without blocking export", async ({
+  page
+}) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+  await selectUnit(page, OWN_UNIT);
+
+  // Nine figures is beyond any holding or income in the game, so this is short whatever the
+  // optimistic estimates allow.
+  await page.getByTestId("orders-input").fill("GIVE 13401 999999999 SILV");
+
+  // Every unit in this faction shares its purse, so the shortfall is the hex's rather than one
+  // unit's - and the region panel is where a finding with no unit and no line belongs.
+  const problems = page.getByTestId("region-problems");
+  await expect(problems).toContainText("short");
+  await expect(problems).toContainText("sharing");
+
+  // A warning, never an error: the server would accept this file, the turn would just go badly.
+  await expect(page.getByTestId("orders-status")).toContainText("0 errors");
+  await expect(page.getByRole("button", { name: "Export orders" })).toBeEnabled();
+
+  // And the whole map is counted, so the same problem is reachable from the header.
+  const chip = page.getByTestId("problems-chip");
+  await expect(chip).toContainText("1 problem");
+  await chip.click();
+  await expect(page.getByTestId("problems-panel")).toContainText("mountain (7,53)");
+
+  // Corrected, it goes away entirely.
+  await page.getByTestId("orders-input").fill("@work");
+  await expect(page.getByTestId("region-problems")).toHaveCount(0);
+  await expect(page.getByTestId("problems-chip")).toHaveCount(0);
+});
+
 test("an order with the wrong argument is caught, and the offending word quoted", async ({
   page
 }) => {
@@ -341,10 +381,20 @@ test("an order with the wrong argument is caught, and the offending word quoted"
   await expect(page.getByTestId("orders-diagnostic-token")).toHaveText("swords");
   await expect(page.getByTestId("orders-status")).toContainText("1 error");
 
-  // Corrected, it is accepted.
+  // Corrected, the syntax error goes.
   await page.getByTestId("orders-input").fill("GIVE 4573 10 swords");
   await expect(page.getByTestId("orders-status")).toContainText("0 errors");
+
+  // What is left is a different objection, and a true one (#82): Seven of Eight carries a leader
+  // and nothing else, so there are no ten swords to give. Reading the arguments cannot find that -
+  // it takes the report. A warning, so the export is not blocked over it.
+  await expect(page.getByTestId("orders-diagnostics")).toContainText("sword");
+  await expect(page.getByTestId("orders-status")).toContainText("1 warning");
+
+  // An order the unit can actually carry out leaves nothing to say at all.
+  await page.getByTestId("orders-input").fill("@work");
   await expect(page.getByTestId("orders-diagnostic")).toHaveCount(0);
+  await expect(page.getByTestId("orders-status")).toContainText("0 warnings");
 });
 
 test("a TURN block left open is reported against the unit that wrote it", async ({ page }) => {

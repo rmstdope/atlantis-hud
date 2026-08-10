@@ -55,6 +55,16 @@ phrasing its attacks unusually should not cost us the other hundred and seventy.
 - `items` — keyed by tag, each with `kind` (`man` / `mount` / `monster` / `ship` / `equipment`),
   `weight`, four `capacity` values, `selfMobile` and `moves`; monsters additionally carry `combat`,
   ships a `cargoCapacity`, and a conditional capacity its `capacityCondition`.
+- `skills` — keyed by tag, each with `name`, `maxLevel`, and `cost`: what one man pays for one
+  month of study. Read from the level 1 entry, which is the only one that states it
+  (`This skill costs 10 silver per month of study`). `cost` is **null** for a skill the page prices
+  nowhere, which in this ruleset is annihilation alone — "This skill cannot be studied via normal
+  means". Null rather than zero, deliberately: zero would say studying it is free, and order
+  validation stays silent about a skill it cannot price rather than inventing a figure.
+
+  Kept as its own block rather than merged into `items`, because ten tags mean one thing as a
+  skill and another as an item — `FISH` is fishing and also fish, `HERB` is herb lore and also
+  herbs — so one map would have each pair overwrite the other.
 
 ### Two things that are easy to get wrong
 
@@ -102,6 +112,11 @@ It is the item reference the report parser has always lacked. Without it a unit 
 because nothing in a report marks which tags are people — the caveat recorded at
 `crates/core/src/report/model.rs`. It also supplies the monster combat stats the risk heuristic
 weighs.
+
+That same headcount is what prices a STUDY order (#82): the cost is per man per month, so a unit
+whose men are a guess is one whose study cannot be priced, and order validation declines to judge
+it rather than guessing twice over. This is why the shell classifies a report before validating
+against it, and why `validate_orders_state` takes the classified parse where a ruleset allows one.
 
 ## What is deliberately not modelled
 

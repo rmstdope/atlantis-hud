@@ -7,7 +7,8 @@ use atlantis_hud_core::report::merge::{merge_report_into_sightings, StoredSighti
 use atlantis_hud_core::report::sighting::{region_sightings, RegionSighting};
 use atlantis_hud_core::{
     diff_imported_turn, engine_info, parse_report, reject_import, reject_merge, validate_orders,
-    ImportedTurnSnapshot, OrderDiagnosticSeverity, OrderValidationResult, ReportParseResult,
+    ImportedTurnSnapshot, OrderCheckOptions, OrderDiagnosticSeverity, OrderValidationResult,
+    ReportParseResult,
 };
 #[cfg(not(target_arch = "wasm32"))]
 use atlantis_hud_core_persistence::{
@@ -84,10 +85,12 @@ struct PreparedMergeDto {
 struct OrderDiagnosticDto {
     code: String,
     message: String,
-    line_start: usize,
-    line_end: usize,
-    column_start: usize,
-    column_end: usize,
+    line_start: Option<usize>,
+    line_end: Option<usize>,
+    column_start: Option<usize>,
+    column_end: Option<usize>,
+    region_id: Option<String>,
+    unit_id: Option<String>,
     severity: String,
 }
 
@@ -110,6 +113,8 @@ impl From<OrderValidationResult> for OrderValidationResultDto {
                     line_end: diagnostic.line_end,
                     column_start: diagnostic.column_start,
                     column_end: diagnostic.column_end,
+                    region_id: diagnostic.region_id,
+                    unit_id: diagnostic.unit_id,
                     severity: match diagnostic.severity {
                         OrderDiagnosticSeverity::Warning => "warning".to_string(),
                         OrderDiagnosticSeverity::Error => "error".to_string(),
@@ -571,13 +576,46 @@ pub fn parse_report_full_state(raw_report: String) -> Result<JsValue, JsValue> {
 ///
 /// Order validation is pure, so unlike the persistence entry points this is available on every
 /// target.
+///
+/// `raw_report` is the turn the orders were written for, when one has been imported. With it the
+/// answer covers the checks that need to know what each unit holds and where it stands; without it
+/// the answer is the syntax check alone, which is what the pane needs before any import. The report
+/// goes through the same cache every other entry point uses, so the whole-map pass this runs on
+/// each keystroke re-parses nothing.
 #[wasm_bindgen]
 pub fn validate_orders_state(
     raw_orders: String,
     ruleset_json: Option<String>,
+    raw_report: Option<String>,
+    warn_on_unguarded_hex: Option<bool>,
 ) -> Result<JsValue, JsValue> {
-    let result =
-        OrderValidationResultDto::from(validate_orders(&raw_orders, ruleset_json.as_deref()));
+    let options = OrderCheckOptions {
+        warn_on_unguarded_hex: warn_on_unguarded_hex.unwrap_or(false),
+    };
+
+    // Both the ruleset and the report come from the cache. This runs every time the player stops
+    // typing, and re-reading a seventy-kilobyte ruleset and re-parsing four hundred units to reach
+    // the same two objects would be the whole cost of the feature. A ruleset that cannot be used is
+    // treated as no ruleset at all, as everywhere else: bad config, not bad orders.
+    //
+    // The report is classified where a ruleset allows it. A headcount that is a guess prices no
+    // study, so the unclassified parse would silence every studying unit in the turn.
+    let (ruleset, report) = atlantis_hud_core::cache::with_global(|cache| {
+        let ruleset = ruleset_json
+            .as_deref()
+            .and_then(|json| cache.ruleset(json).ok());
+        let report = raw_report
+            .as_deref()
+            .map(|raw| cache.classified_when_possible(raw, ruleset_json.as_deref()));
+        (ruleset, report)
+    });
+
+    let result = OrderValidationResultDto::from(atlantis_hud_core::validate_turn(
+        &raw_orders,
+        ruleset.as_deref(),
+        report.as_deref(),
+        options,
+    ));
     to_js(&result)
 }
 

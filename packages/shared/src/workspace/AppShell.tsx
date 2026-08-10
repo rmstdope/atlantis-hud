@@ -23,7 +23,12 @@ import {
   type DraftWriter,
   type SaveState
 } from "../orderDraft";
-import { shouldTriggerAutosave, type ValidatedOrders } from "../orderEditor";
+import {
+  findingsByHex,
+  findingsForHex,
+  shouldTriggerAutosave,
+  type ValidatedOrders
+} from "../orderEditor";
 import {
   gameAfterDelete,
   newGameId,
@@ -48,6 +53,7 @@ import { OrdersPanel } from "./OrdersPanel";
 import { ordersSlotClass, unitSlotClass } from "./panelLayout";
 import { PlannerPanel } from "./PlannerPanel";
 import { RegionPanel } from "./RegionPanel";
+import { ProblemsPanel } from "./ProblemsPanel";
 import { TurnMessagesPanel, type TurnMessagesTab } from "./TurnMessagesPanel";
 import { UnitPanel } from "./UnitPanel";
 import { UnitTableDock } from "./UnitTableDock";
@@ -214,6 +220,7 @@ export function AppShell({
   // Which of the turn's two lists is being read, and whether either is. Local rather than in the
   // store, exactly as the game picker is: it is a panel that is open for a moment, not a preference.
   const [messagesOpen, setMessagesOpen] = useState(false);
+  const [problemsOpen, setProblemsOpen] = useState(false);
   const [messagesTab, setMessagesTab] = useState<TurnMessagesTab>("errors");
   // A report from another faction, parsed and waiting for the player to say what to do with it,
   // and whose reports have already been folded into the turn on screen.
@@ -229,6 +236,7 @@ export function AppShell({
   const setLevel = useWorkspaceStore((state) => state.setLevel);
   const layers = useWorkspaceStore((state) => state.layers);
   const showTextures = useSettingsStore((state) => state.biomeTextures);
+  const warnOnUnguardedHex = useSettingsStore((state) => state.warnOnUnguardedHex);
   // Which panels are folded is a layout question as well as a panel one: a folded panel hands the
   // space it gives up to the panel beside it, and only the shell knows what is beside what.
   const collapsed = useWorkspaceStore((state) => state.collapsed);
@@ -292,6 +300,20 @@ export function AppShell({
   const hex = useMemo(
     () => model.hexes.find((candidate) => candidate.regionId === selectedRegionId) ?? null,
     [model, selectedRegionId]
+  );
+
+  /**
+   * How a hex reads in the problems list. The id `1:7,53` is what the core files a finding under
+   * and is no way to tell a player which hex they should go and look at.
+   */
+  const hexLabel = useCallback(
+    (regionId: string) => {
+      const found = model.hexes.find((candidate) => candidate.regionId === regionId);
+      return found
+        ? `${found.terrain} (${found.coordinate.x},${found.coordinate.y})`
+        : regionId;
+    },
+    [model]
   );
 
   const unit = useMemo(
@@ -973,7 +995,12 @@ export function AppShell({
       void client
         // The ruleset is what lets an item name be checked against the catalogue. It arrives
         // asynchronously, so this effect re-runs when it lands and the item warnings appear then.
-        .validateOrders(ordersDocument, rulesetText)
+        // The report is what the checks beyond syntax read - who holds what, who guards where.
+        // It goes across as text, which is what the core keys its cached parse on, so the
+        // whole-map pass this runs costs one walk of the orders and no re-parse of the turn.
+        .validateOrders(ordersDocument, rulesetText, rawReport || null, {
+          warnOnUnguardedHex
+        })
         .then((result) => {
           if (!cancelled) {
             setValidated({ text: ordersDocument, diagnostics: result.diagnostics });
@@ -991,7 +1018,16 @@ export function AppShell({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [client, ordersDocument, rulesetText]);
+  }, [client, ordersDocument, rulesetText, rawReport, warnOnUnguardedHex]);
+
+  /**
+   * What the checks found, hex by hex, for the header chip and the list it opens.
+   *
+   * Only the findings that belong to a hex. Syntax diagnostics are already counted by the orders
+   * panel, against the unit whose line they sit on, and counting them twice under two different
+   * headings would read as two separate problems.
+   */
+  const problemsByHex = useMemo(() => findingsByHex(validated.diagnostics), [validated]);
 
   /** The faction and turn the document in front of the player belongs to. */
   const draftKey = useMemo(() => draftKeyFor(parsed), [parsed]);
@@ -1228,6 +1264,17 @@ export function AppShell({
             />
           ) : null
         }
+        problemCount={problemsByHex.reduce((count, hex) => count + hex.findings.length, 0)}
+        problemsOpen={problemsOpen}
+        onToggleProblems={() => setProblemsOpen((open) => !open)}
+        problemsPanel={
+          <ProblemsPanel
+            hexes={problemsByHex}
+            labelFor={hexLabel}
+            onSelectHex={selectHex}
+            onDismiss={() => setProblemsOpen(false)}
+          />
+        }
         busy={busy}
         onLoadReport={(text, fileName) => void loadReport(text, fileName)}
         onExportOrders={exportOrders}
@@ -1295,7 +1342,10 @@ export function AppShell({
         <div className="pointer-events-none absolute inset-0 flex flex-col gap-2.5 p-2.5 pt-12">
           <div className="flex min-h-0 flex-1 justify-between gap-2.5">
             <div className="flex w-[19rem] min-h-0 flex-col">
-              <RegionPanel hex={hex} />
+              <RegionPanel
+                hex={hex}
+                problems={findingsForHex(validated.diagnostics, hex?.regionId ?? null)}
+              />
             </div>
 
             <div className="flex w-[21rem] min-h-0 flex-col gap-2.5">

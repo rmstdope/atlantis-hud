@@ -20,10 +20,19 @@ use crate::{OrderDiagnostic, OrderDiagnosticSeverity, OrderValidationResult};
 #[must_use]
 pub fn validate(source: &str, ruleset_json: Option<&str>) -> OrderValidationResult {
     let ruleset = ruleset_json.and_then(|json| Ruleset::from_json(json).ok());
+    validate_against(source, ruleset.as_ref())
+}
+
+/// The same check, for a caller that has already parsed the ruleset.
+///
+/// [`super::validate_turn`] holds one across calls rather than re-reading a seventy-kilobyte file
+/// every time the player stops typing.
+#[must_use]
+pub fn validate_against(source: &str, ruleset: Option<&Ruleset>) -> OrderValidationResult {
     let mut document = Document::default();
 
     for (index, line) in source.lines().enumerate() {
-        document.read_line(index + 1, line, ruleset.as_ref());
+        document.read_line(index + 1, line, ruleset);
     }
     document.finish(source);
 
@@ -272,10 +281,12 @@ impl Document {
                     "this {} block is never closed by {}",
                     block.opener, block.terminator
                 ),
-                line_start: block.line,
-                line_end: block.line,
-                column_start: block.column_start,
-                column_end: block.column_end,
+                line_start: Some(block.line),
+                line_end: Some(block.line),
+                column_start: Some(block.column_start),
+                column_end: Some(block.column_end),
+                region_id: None,
+                unit_id: None,
                 severity: OrderDiagnosticSeverity::Error,
             });
         }
@@ -332,10 +343,14 @@ impl Document {
         self.diagnostics.push(OrderDiagnostic {
             code: code.to_string(),
             message,
-            line_start: line,
-            line_end: line,
-            column_start,
-            column_end,
+            line_start: Some(line),
+            line_end: Some(line),
+            column_start: Some(column_start),
+            column_end: Some(column_end),
+            // The syntax checker knows nothing of the map, and a diagnostic about a misspelled
+            // keyword belongs to no hex.
+            region_id: None,
+            unit_id: None,
             severity,
         });
     }
@@ -398,7 +413,10 @@ mod tests {
         assert_eq!(diagnostic.code, "unknown-command");
         assert!(diagnostic.message.contains("FLY"));
         assert_eq!(diagnostic.severity, OrderDiagnosticSeverity::Error);
-        assert_eq!((diagnostic.column_start, diagnostic.column_end), (0, 3));
+        assert_eq!(
+            (diagnostic.column_start, diagnostic.column_end),
+            (Some(0), Some(3))
+        );
     }
 
     /// The list this parser replaces was missing END, so every correct FORM block reported an error.
@@ -427,7 +445,7 @@ mod tests {
         );
         assert_eq!(
             (diagnostic.column_start, diagnostic.column_end),
-            (10, 16),
+            (Some(10), Some(16)),
             "the span covers the offending token"
         );
     }
@@ -442,15 +460,22 @@ mod tests {
         let diagnostic = only(line);
 
         assert_eq!(diagnostic.code, "bad-argument");
-        assert_eq!((diagnostic.column_start, diagnostic.column_end), (11, 12));
+        assert_eq!(
+            (diagnostic.column_start, diagnostic.column_end),
+            (Some(11), Some(12))
+        );
 
         // Sliced the way JavaScript slices, which is what these numbers are for.
         let utf16: Vec<u16> = line.encode_utf16().collect();
-        assert_eq!(
-            String::from_utf16(&utf16[diagnostic.column_start..diagnostic.column_end])
-                .expect("valid"),
-            "x"
+        let (start, end) = (
+            diagnostic
+                .column_start
+                .expect("a bad argument sits on a line"),
+            diagnostic
+                .column_end
+                .expect("a bad argument sits on a line"),
         );
+        assert_eq!(String::from_utf16(&utf16[start..end]).expect("valid"), "x");
     }
 
     #[test]
@@ -582,10 +607,14 @@ mod tests {
 
         assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
         assert_eq!(diagnostics[0].code, "unclosed-block");
-        assert_eq!(diagnostics[0].line_start, 2, "the line that opened it");
+        assert_eq!(
+            diagnostics[0].line_start,
+            Some(2),
+            "the line that opened it"
+        );
         assert_eq!(
             (diagnostics[0].column_start, diagnostics[0].column_end),
-            (0, 4),
+            (Some(0), Some(4)),
             "the span covers the TURN keyword itself"
         );
     }
@@ -607,7 +636,8 @@ mod tests {
         assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
         assert_eq!(diagnostics[0].code, "unclosed-block");
         assert_eq!(
-            diagnostics[0].line_start, 3,
+            diagnostics[0].line_start,
+            Some(3),
             "inside unit 18642's block, which is the only place the panel will show it"
         );
     }
@@ -621,7 +651,7 @@ mod tests {
                 .iter()
                 .map(|diagnostic| diagnostic.line_start)
                 .collect::<Vec<_>>(),
-            vec![1, 2],
+            vec![Some(1), Some(2)],
             "both, each at its own opener: {diagnostics:?}"
         );
     }
@@ -727,7 +757,7 @@ mod tests {
                 result.diagnostics[0].column_start,
                 result.diagnostics[0].column_end
             ),
-            (11, 17)
+            (Some(11), Some(17))
         );
     }
 
@@ -764,12 +794,12 @@ mod tests {
     #[test]
     fn diagnostics_come_back_in_the_order_the_lines_are_written() {
         let diagnostics = diagnose("FLY\nWORK\nSWIM\n");
-        let lines: Vec<usize> = diagnostics
+        let lines: Vec<Option<usize>> = diagnostics
             .iter()
             .map(|diagnostic| diagnostic.line_start)
             .collect();
 
-        assert_eq!(lines, [1, 3]);
+        assert_eq!(lines, [Some(1), Some(3)]);
     }
 
     /// An unclosed block is noticed long after the line it is reported against, so the list is no
@@ -783,7 +813,7 @@ mod tests {
                 .iter()
                 .map(|diagnostic| (diagnostic.line_start, diagnostic.code.as_str()))
                 .collect::<Vec<_>>(),
-            vec![(1, "unclosed-block"), (2, "unknown-command")]
+            vec![(Some(1), "unclosed-block"), (Some(2), "unknown-command")]
         );
     }
 }

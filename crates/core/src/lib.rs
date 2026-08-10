@@ -43,12 +43,20 @@ pub enum OrderDiagnosticSeverity {
 }
 
 /// Structured diagnostic emitted by the order validator.
+///
+/// Every anchor is optional, and each for its own reason. A misspelled keyword belongs to a line
+/// and to no hex; a unit that cannot pay for its orders belongs to a line, a unit and a hex; a hex
+/// that nobody is left guarding belongs to a hex and to nothing else. Filling the missing ones in
+/// with a plausible value - line 0, or the first unit in the region - would send the player to a
+/// place where nothing is wrong.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct OrderDiagnostic {
     pub code: String,
     pub message: String,
-    pub line_start: usize,
-    pub line_end: usize,
+    /// The line it sits on, or `None` when it belongs to a hex rather than to any one order.
+    pub line_start: Option<usize>,
+    pub line_end: Option<usize>,
     /// Where the offending text starts within its line, counted from 0 in **UTF-16 code units**.
     ///
     /// The parser knows which *token* is wrong, not merely which line, and throwing that away would
@@ -58,9 +66,16 @@ pub struct OrderDiagnostic {
     /// UTF-16 rather than bytes because this is a wire type: it crosses into JavaScript, which
     /// indexes strings by UTF-16 code unit, and a consumer slicing with byte offsets would quote the
     /// wrong characters on any line carrying an accent. See [`orders::lexer::Token`].
-    pub column_start: usize,
+    pub column_start: Option<usize>,
     /// One past the end of it, on the same counting, so the consumer can slice `[start..end]`.
-    pub column_end: usize,
+    pub column_end: Option<usize>,
+    /// The hex it concerns, for the checks that read the report. Never set by the syntax checker,
+    /// which knows nothing of the map.
+    #[serde(default)]
+    pub region_id: Option<String>,
+    /// The unit at fault, where one unit is at fault.
+    #[serde(default)]
+    pub unit_id: Option<String>,
     pub severity: OrderDiagnosticSeverity,
 }
 
@@ -100,7 +115,8 @@ impl OrderValidationResult {
 /// Re-exported here because the adapters and the wire contract have always reached for them at the
 /// crate root. What changed underneath is that a command name is no longer all that is checked: see
 /// [`orders`] for the lexer and grammar that replaced the list this used to be.
-pub use orders::{order_commands, validate_orders};
+pub use orders::semantics::CheckOptions as OrderCheckOptions;
+pub use orders::{order_commands, validate_orders, validate_turn};
 
 /// Severity level emitted by the tolerant report parser.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -436,6 +452,146 @@ mod tests {
 
     const TURN_71: &str =
         include_str!("../../../tests/fixtures/reports/neworigins-3.0.0-f95-t71.rep");
+
+    // --- the widened validation contract ----------------------------------------------------
+
+    const MINI_ORDERS_REPORT: &str = concat!(
+        "Atlantis Report For:\n",
+        "Crimson Tide (17) (Magic 5)\n",
+        "March, Year 1\n",
+        "\n",
+        "plain (12,34) in Coast of Dawn, 1200 peasants (humans), $500.\n",
+        "------------------------------------------------------------\n",
+        "  Wages: $12.0 (Max: $300).\n",
+        "\n",
+        "* Guard Patrol (100), Crimson Tide (17), behind, 10 humans [HUMN], 40 silver [SILV].\n",
+    );
+
+    fn turn(orders: &str) -> OrderValidationResult {
+        let parsed = report::parse_report_full(MINI_ORDERS_REPORT);
+        validate_turn(orders, None, Some(&parsed), OrderCheckOptions::default())
+    }
+
+    /// The whole point of widening the call: one list, syntax and semantics together, so the panel
+    /// has one place to look and one count to show.
+    #[test]
+    fn one_call_returns_both_the_syntax_and_the_semantic_problems() {
+        let result = turn("unit 100\nFLY 1 2\nGIVE 7 100 SILV\n");
+
+        assert_eq!(
+            result
+                .diagnostics
+                .iter()
+                .map(|diagnostic| diagnostic.code.as_str())
+                .collect::<Vec<_>>(),
+            vec!["unknown-command", "not-enough-silver"]
+        );
+    }
+
+    #[test]
+    fn a_semantic_finding_is_a_warning_and_never_blocks_the_export() {
+        let result = turn("unit 100\nGIVE 7 100 SILV\n");
+
+        assert_eq!(result.diagnostics.len(), 1, "{:?}", result.diagnostics);
+        assert_eq!(
+            result.diagnostics[0].severity,
+            OrderDiagnosticSeverity::Warning
+        );
+        assert!(
+            !result.is_blocking(),
+            "a bad turn is still an exportable one"
+        );
+    }
+
+    /// A syntax error still blocks, because the server refuses the file over it. That is the whole
+    /// distinction the severity carries.
+    #[test]
+    fn a_syntax_error_still_blocks_the_export() {
+        assert!(turn("unit 100\nFLY 1 2\n").is_blocking());
+    }
+
+    #[test]
+    fn a_semantic_finding_carries_the_hex_and_the_unit_it_belongs_to() {
+        let diagnostic = turn("unit 100\nGIVE 7 100 SILV\n").diagnostics.remove(0);
+
+        assert_eq!(diagnostic.region_id.as_deref(), Some("1:12,34"));
+        assert_eq!(diagnostic.unit_id.as_deref(), Some("100"));
+        assert_eq!(diagnostic.line_start, Some(2));
+    }
+
+    /// "Nobody is guarding this hex" is the hex's problem and sits on no line at all, which is why
+    /// the anchors had to become optional rather than be faked.
+    #[test]
+    fn a_finding_that_belongs_to_no_line_carries_none_rather_than_a_pretend_one() {
+        let options = OrderCheckOptions {
+            warn_on_unguarded_hex: true,
+        };
+        let parsed = report::parse_report_full(MINI_ORDERS_REPORT);
+        let result = validate_turn("unit 100\n@work\n", None, Some(&parsed), options);
+
+        assert_eq!(
+            result
+                .diagnostics
+                .iter()
+                .map(|diagnostic| diagnostic.code.as_str())
+                .collect::<Vec<_>>(),
+            vec!["hex-unguarded"]
+        );
+        assert_eq!(result.diagnostics[0].line_start, None);
+        assert_eq!(result.diagnostics[0].column_start, None);
+        assert_eq!(result.diagnostics[0].unit_id, None);
+        assert_eq!(result.diagnostics[0].region_id.as_deref(), Some("1:12,34"));
+    }
+
+    /// A syntax diagnostic knows its line and always did; widening the type must not have quietly
+    /// cost it that.
+    #[test]
+    fn a_syntax_diagnostic_still_knows_exactly_where_it_is() {
+        let diagnostic = turn("unit 100\nGIVE 4573 swords\n").diagnostics.remove(0);
+
+        assert_eq!(diagnostic.code, "bad-argument");
+        assert_eq!(diagnostic.line_start, Some(2));
+        assert_eq!(
+            (diagnostic.column_start, diagnostic.column_end),
+            (Some(10), Some(16))
+        );
+        assert_eq!(
+            diagnostic.region_id, None,
+            "a misspelling belongs to no hex"
+        );
+    }
+
+    /// Before a report is imported the panel still validates what is being typed. Without one, the
+    /// answer must be exactly what it was before this feature existed.
+    #[test]
+    fn without_a_report_validation_is_the_syntax_check_it_always_was() {
+        let with_none = validate_turn(
+            "unit 100\nFLY 1 2\nGIVE 7 100 SILV\n",
+            None,
+            None,
+            OrderCheckOptions::default(),
+        );
+
+        assert_eq!(
+            with_none,
+            validate_orders("unit 100\nFLY 1 2\nGIVE 7 100 SILV\n", None)
+        );
+    }
+
+    /// A report the parser could make nothing of holds no regions, so there is nothing to check
+    /// against and nothing is said. The player's orders are not at fault for a bad file.
+    #[test]
+    fn a_report_with_nothing_in_it_produces_no_semantic_findings() {
+        let parsed = report::parse_report_full("no report here at all");
+        let result = validate_turn(
+            "unit 100\nGIVE 7 100 SILV\n",
+            None,
+            Some(&parsed),
+            OrderCheckOptions::default(),
+        );
+
+        assert_eq!(result.diagnostics, vec![]);
+    }
 
     /// What the summary carries, asserted against the report rather than against itself.
     ///

@@ -59,6 +59,35 @@ describe("settings store", () => {
     expect(store().biomeTextures).toBe(true);
   });
 
+  /**
+   * Off by default, and that is the whole point of it being a setting. Most hexes are deliberately
+   * left unguarded, so this check speaks about hex after hex - measured against the committed turn
+   * 71, one warning for every hex the faction stands in. Losing a guard you had is reported either
+   * way, because that is a change the player may not have meant.
+   */
+  it("leaves the unguarded-hex warning off until it is asked for", () => {
+    expect(store().warnOnUnguardedHex).toBe(false);
+
+    store().setWarnOnUnguardedHex(true);
+    expect(store().warnOnUnguardedHex).toBe(true);
+  });
+
+  it("persists the unguarded-hex preference", async () => {
+    store().setWarnOnUnguardedHex(true);
+
+    const storage = useSettingsStore.persist.getOptions().storage;
+    const persisted = await storage?.getItem("atlantis-hud-settings");
+    if (!storage || !persisted) {
+      throw new Error("settings storage was not available");
+    }
+
+    useSettingsStore.setState({ warnOnUnguardedHex: false });
+    await storage.setItem("atlantis-hud-settings", persisted);
+    await useSettingsStore.persist.rehydrate();
+
+    expect(store().warnOnUnguardedHex).toBe(true);
+  });
+
   it("switches the theme instantly when set", () => {
     store().setTheme("light");
     expect(store().theme).toBe("light");
