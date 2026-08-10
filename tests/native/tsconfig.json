@@ -1,0 +1,10 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "noEmit": true,
+    "types": ["node", "@wdio/globals/types", "@wdio/mocha-framework"]
+  },
+  "include": ["./**/*.ts", "../../wdio.conf.ts"]
+}

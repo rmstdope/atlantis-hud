@@ -313,3 +313,88 @@ jobs:
 
       - name: Clippy the native desktop shell
         run: cargo clippy -p atlantis-hud-desktop-shell --features desktop-runtime -- -D warnings
+
+  # The macOS job above proves the shell compiles; this one proves its commands work. WebdriverIO
+  # talks to tauri-driver, which launches the real release binary under xvfb - so every assertion
+  # crosses genuine Tauri IPC, which no browser-hosted suite ever does. Linux rather than macOS,
+  # because WebKitGTK is the one webview that exposes a WebDriver endpoint at all: WKWebView
+  # cannot be driven, and an argument that fails to bind fails identically on every platform.
+  native:
+    runs-on: ubuntu-latest
+    needs: wasm
+    env:
+      TAURI_DRIVER_VERSION: 2.0.6
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # The -dev packages are what `tauri build` links against; webkit2gtk-driver is the
+      # WebKitWebDriver binary tauri-driver proxies to; xvfb gives the app a display.
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libssl-dev libxdo-dev \
+            webkit2gtk-driver xvfb
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      # Its own key: this is the only job building the workspace in release profile with the
+      # desktop-runtime feature, so sharing the debug `native` cache would just thrash both.
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: native-e2e
+
+      - name: Cache tauri-driver
+        id: tauri-driver
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/tauri-driver
+          key: tauri-driver-${{ runner.os }}-${{ env.TAURI_DRIVER_VERSION }}
+
+      - name: Install tauri-driver
+        if: steps.tauri-driver.outputs.cache-hit != 'true'
+        run: cargo install tauri-driver --version ${{ env.TAURI_DRIVER_VERSION }} --locked
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Download the WebAssembly core
+        uses: actions/download-artifact@v4
+        with:
+          name: wasm-core
+          path: packages/browser-core/src/wasm
+
+      # `vite build` directly, then `tauri build` with the hook nulled out: the configured
+      # `beforeBuildCommand` chains `build:wasm`, which rebuilds the module unconditionally and
+      # would drag wasm-pack into a job whose module just arrived as an artifact.
+      - name: Build the desktop frontend
+        run: pnpm --filter @atlantis/desktop exec vite build
+
+      - name: Build the native shell
+        run: >-
+          pnpm --filter @atlantis/desktop exec tauri build --no-bundle
+          --features desktop-runtime
+          --config '{"build":{"beforeBuildCommand":null}}'
+
+      - name: Run the native end-to-end tests
+        run: xvfb-run --auto-servernum pnpm run test:native
+
+      - name: Upload the results of a failed run
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-e2e-results
+          path: test-results/native
+          retention-days: 7
