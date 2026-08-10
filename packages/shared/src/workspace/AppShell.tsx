@@ -872,6 +872,50 @@ export function AppShell({
     [client, enterGame, game, closeGameInStore, writer]
   );
 
+  const exportGameBackup = useCallback(
+    async (gameId: string) => {
+      setBusy(true);
+      setGameError(null);
+      try {
+        await flush();
+        const backup = await client.exportGame(gameId, new Date().toISOString());
+        const blob = new Blob([backup], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement("a");
+        anchor.href = url;
+        anchor.download = `${gameId}.atlantis-hud-game.json`;
+        anchor.click();
+        setTimeout(() => URL.revokeObjectURL(url), 0);
+        setPickerOpen(false);
+      } catch (error: unknown) {
+        setGameError(describeError(error));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [client, flush]
+  );
+
+  const importGameBackup = useCallback(
+    async (file: File) => {
+      setBusy(true);
+      setGameError(null);
+      try {
+        await flush();
+        const backupJson = await file.text();
+        enterGame(await client.importGame(backupJson, new Date().toISOString()));
+        await refreshGames();
+        setPickerOpen(false);
+        setSettingsOpen(false);
+      } catch (error: unknown) {
+        setGameError(`could not import ${file.name}: ${describeError(error)}`);
+      } finally {
+        setBusy(false);
+      }
+    },
+    [client, enterGame, refreshGames, flush]
+  );
+
   // A destination and a unit are all the planner needs; the answer carries either a route or the
   // reason there is none.
   useEffect(() => {
@@ -1111,6 +1155,7 @@ export function AppShell({
         busy={busy}
         error={gameError}
         onCreate={(name, rulesetId) => void createGame(name, rulesetId)}
+        onImport={(file) => void importGameBackup(file)}
         settingsOpen={settingsOpen}
         onToggleSettings={() => setSettingsOpen((open) => !open)}
         settings={settingsPanel}
@@ -1137,6 +1182,8 @@ export function AppShell({
             onOpen={(gameId) => void openGameById(gameId)}
             onCreate={(name, rulesetId) => void createGame(name, rulesetId)}
             onDelete={(gameId) => void deleteGame(gameId)}
+            onExport={(gameId) => void exportGameBackup(gameId)}
+            onImport={(file) => void importGameBackup(file)}
             onDismiss={() => setPickerOpen(false)}
           />
         }

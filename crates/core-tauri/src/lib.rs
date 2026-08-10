@@ -9,12 +9,13 @@ use atlantis_hud_core::{
     OrderDiagnosticSeverity, ReportParseResult, WarningSeverity,
 };
 use atlantis_hud_core_persistence::{
-    create_game, delete_game, insert_imported_turn, list_games, load_imported_turn,
-    load_latest_imported_turn, load_merged_reports, load_order_draft, load_region_sightings,
-    open_game, preview_imported_turn, set_game_ruleset, upsert_imported_turn, upsert_merged_report,
-    upsert_order_draft, upsert_region_sightings, GameManifest, GameMetadata, ImportedTurnKey,
-    ImportedTurnPreview, ImportedTurnRecord, MergedReportRecord, OpenedGame, OrderDraftKey,
-    OrderDraftRecord, PersistenceError, ReportSourceRef,
+    create_game, delete_game, export_game, import_game, insert_imported_turn, list_games,
+    load_imported_turn, load_latest_imported_turn, load_merged_reports, load_order_draft,
+    load_region_sightings, open_game, preview_imported_turn, set_game_ruleset,
+    upsert_imported_turn, upsert_merged_report, upsert_order_draft, upsert_region_sightings,
+    GameManifest, GameMetadata, ImportedTurnKey, ImportedTurnPreview, ImportedTurnRecord,
+    MergedReportRecord, OpenedGame, OrderDraftKey, OrderDraftRecord, PersistenceError,
+    ReportSourceRef,
 };
 use serde::{Deserialize, Serialize};
 
@@ -407,6 +408,26 @@ pub fn command_set_game_ruleset(
 /// Returns an error naming the game when it does not exist, or when it cannot be removed.
 pub fn command_delete_game(games_root: &str, game_id: &str) -> Result<(), String> {
     delete_game(Path::new(games_root), game_id).map_err(|error| error.to_string())
+}
+
+/// Serializes one whole game to one JSON document.
+pub fn command_export_game(
+    games_root: &str,
+    game_id: &str,
+    exported_at: &str,
+) -> Result<String, String> {
+    export_game(Path::new(games_root), game_id, exported_at).map_err(|error| error.to_string())
+}
+
+/// Creates and opens one whole game from one exported JSON document.
+pub fn command_import_game(
+    games_root: &str,
+    backup_json: &str,
+    opened_at: &str,
+) -> Result<OpenedGameDto, String> {
+    import_game(Path::new(games_root), backup_json, opened_at)
+        .map(OpenedGameDto::from)
+        .map_err(|error| error.to_string())
 }
 
 /// Opens a game by id, applies pending migrations, and records that it was opened.

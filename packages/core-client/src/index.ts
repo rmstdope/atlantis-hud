@@ -558,6 +558,8 @@ export interface CoreAdapter {
   createGame(manifest: GameManifest): Promise<unknown> | unknown;
   openGame(gameId: string, openedAt: string): Promise<unknown> | unknown;
   deleteGame(gameId: string): Promise<unknown> | unknown;
+  exportGame(gameId: string, exportedAt: string): Promise<unknown> | unknown;
+  importGame(backupJson: string, openedAt: string): Promise<unknown> | unknown;
   setGameRuleset(gameId: string, rulesetId: string): Promise<unknown> | unknown;
   parseReport(rawReport: string): Promise<unknown> | unknown;
   parseReportFull(rawReport: string): Promise<unknown> | unknown;
@@ -642,6 +644,10 @@ export interface CoreClient {
   openGame(gameId: string, openedAt: string): Promise<OpenedGame>;
   /** Erases a game and everything it stored. There is no undo. */
   deleteGame(gameId: string): Promise<void>;
+  /** Serializes one whole game, including turns, drafts and remembered map, to one JSON file. */
+  exportGame(gameId: string, exportedAt: string): Promise<string>;
+  /** Creates one game from an exported JSON file and opens it at `openedAt`. */
+  importGame(backupJson: string, openedAt: string): Promise<OpenedGame>;
   /**
    * Changes which ruleset a game is played under, returning the updated manifest.
    *
@@ -1329,6 +1335,17 @@ export function createCoreClient(adapter: CoreAdapter): CoreClient {
       // Nothing to normalize: a deletion either happened or threw.
       await adapter.deleteGame(gameId);
     },
+    async exportGame(gameId: string, exportedAt: string) {
+      const value = await adapter.exportGame(gameId, exportedAt);
+      if (typeof value !== "string") {
+        throw new Error("invalid exported game payload");
+      }
+      return value;
+    },
+    async importGame(backupJson: string, openedAt: string) {
+      const value = await adapter.importGame(backupJson, openedAt);
+      return normalizeOpenedGame(value);
+    },
     async setGameRuleset(gameId: string, rulesetId: string) {
       const value = await adapter.setGameRuleset(gameId, rulesetId);
       return normalizeGameManifest(value);
@@ -1486,6 +1503,12 @@ export function createWasmAdapter(bindings: WasmBindings): CoreAdapter {
     deleteGame(gameId: string) {
       return bindings.delete_game_state(gameId);
     },
+    exportGame(_gameId: string, _exportedAt: string) {
+      throw new Error("game persistence is not linked into this wasm build");
+    },
+    importGame(_backupJson: string, _openedAt: string) {
+      throw new Error("game persistence is not linked into this wasm build");
+    },
     setGameRuleset(gameId: string, rulesetId: string) {
       // Refused rather than answered emptily, for the reason `mergeReport` gives: this is a write,
       // and writing nothing while saying it worked is not an account of anything.
@@ -1624,6 +1647,15 @@ export function createTauriAdapter(invoke: TauriInvoke): CoreAdapter {
     },
     deleteGame(gameId: string) {
       return invoke<void>("delete_game", { game_id: gameId });
+    },
+    exportGame(gameId: string, exportedAt: string) {
+      return invoke<string>("export_game", { game_id: gameId, exported_at: exportedAt });
+    },
+    importGame(backupJson: string, openedAt: string) {
+      return invoke<OpenedGameWireShape>("import_game", {
+        backup_json: backupJson,
+        opened_at: openedAt
+      });
     },
     setGameRuleset(gameId: string, rulesetId: string) {
       return invoke<GameManifestWireShape>("set_game_ruleset", {

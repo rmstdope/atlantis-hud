@@ -3,12 +3,13 @@
     feature = "desktop-runtime"
 ))]
 use atlantis_hud_core_tauri::{
-    command_commit_report_import, command_create_game, command_delete_game, command_list_games,
-    command_load_imported_turn, command_load_order_draft, command_open_game, command_parse_report,
-    command_parse_report_full, command_preview_report_import, command_save_order_draft,
-    command_set_game_ruleset, command_validate_orders, GameManifestDto, ImportedTurnPreviewDto,
-    ImportedTurnRecordDto, OpenedGameDto, OrderDraftRecordDto, OrderValidationResultDto,
-    ParsedReport, ReportImportPreviewDto, ReportParseResultDto,
+    command_commit_report_import, command_create_game, command_delete_game, command_export_game,
+    command_import_game, command_list_games, command_load_imported_turn, command_load_order_draft,
+    command_open_game, command_parse_report, command_parse_report_full,
+    command_preview_report_import, command_save_order_draft, command_set_game_ruleset,
+    command_validate_orders, GameManifestDto, ImportedTurnPreviewDto, ImportedTurnRecordDto,
+    OpenedGameDto, OrderDraftRecordDto, OrderValidationResultDto, ParsedReport,
+    ReportImportPreviewDto, ReportParseResultDto,
 };
 #[cfg(all(
     any(target_os = "linux", target_os = "macos", target_os = "windows"),
@@ -84,6 +85,32 @@ fn list_games(app: tauri::AppHandle) -> Result<Vec<GameManifestDto>, String> {
 #[tauri::command(rename_all = "snake_case")]
 fn delete_game(app: tauri::AppHandle, game_id: String) -> Result<(), String> {
     command_delete_game(&games_root(&app)?, &game_id)
+}
+
+#[cfg(all(
+    any(target_os = "linux", target_os = "macos", target_os = "windows"),
+    feature = "desktop-runtime"
+))]
+#[tauri::command(rename_all = "snake_case")]
+fn export_game(
+    app: tauri::AppHandle,
+    game_id: String,
+    exported_at: String,
+) -> Result<String, String> {
+    command_export_game(&games_root(&app)?, &game_id, &exported_at)
+}
+
+#[cfg(all(
+    any(target_os = "linux", target_os = "macos", target_os = "windows"),
+    feature = "desktop-runtime"
+))]
+#[tauri::command(rename_all = "snake_case")]
+fn import_game(
+    app: tauri::AppHandle,
+    backup_json: String,
+    opened_at: String,
+) -> Result<OpenedGameDto, String> {
+    command_import_game(&games_root(&app)?, &backup_json, &opened_at)
 }
 
 #[cfg(all(
@@ -331,6 +358,8 @@ fn main() {
             open_game,
             list_games,
             delete_game,
+            export_game,
+            import_game,
             set_game_ruleset,
             parse_report,
             parse_report_full,
