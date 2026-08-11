@@ -1,10 +1,15 @@
 /**
- * Saving a file, the one way both shells do it.
+ * Handing a file to the browser, which is how both shells save most things.
  *
- * The desktop shell has no filesystem plugin and needs none: it renders the same web application,
- * so an anchor download opens the system save dialog there and the browser's downloads folder
- * here. Written once because there are now three callers, and a fourth that got the object URL
- * revocation wrong would leak the whole file for as long as the session lasts.
+ * An anchor download is all a web page can do, and it is enough for orders and for a game backup:
+ * the player asked for the file and the browser puts it where it puts files. Written once because
+ * there are three callers, and a fourth that got the object URL revocation wrong would leak the
+ * whole file for as long as the session lasts.
+ *
+ * The map export is the exception, and [`TextFileSaver`] below is why: a file meant to be found
+ * again and sent to somebody else needs a path the application can name, and a download reports
+ * none. The desktop shell implements that port with a native save dialog (see the desktop app's
+ * `saveTextFile.ts`); a browser has nothing to implement it with and falls back to here.
  */
 /**
  * A shell that can put a file where the player asks and say where that was.

@@ -1,4 +1,5 @@
 export * from "./appVersion";
+export * from "./copyText";
 export * from "./downloadFile";
 export * from "./featureFlags";
 export * from "./logging";

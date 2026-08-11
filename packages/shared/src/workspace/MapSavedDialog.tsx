@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { copyText } from "../copyText";
 import { savedFile } from "../mapExport";
 import { useEscapeToDismiss } from "./dismissLayer";
 
@@ -56,12 +57,10 @@ export function MapSavedDialog({
             type="button"
             data-testid="map-saved-copy"
             onClick={() => {
-              // Best effort: a clipboard the browser refuses is not a failed export, and the text
-              // is on screen to be selected either way.
-              void navigator.clipboard?.writeText(saved.location).then(
-                () => setCopied(true),
-                () => setCopied(false)
-              );
+              // Best effort: a clipboard the browser does not offer, or refuses, is not a failed
+              // export, and the text is on screen to be selected either way. Saying "Copied" only
+              // when it was is the whole of the error handling this needs.
+              void copyText(saved.location).then(setCopied);
             }}
             className="rounded border border-edge px-2 py-0.5 text-ink-soft hover:border-brass hover:text-brass"
           >
