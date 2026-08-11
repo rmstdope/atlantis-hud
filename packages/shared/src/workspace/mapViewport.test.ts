@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { Coordinate } from "@atlantis/core-client";
+import { isValidCoordinate } from "../hexMapModel";
 import {
   accumulateWheel,
   centreOn,
   COLUMN_PITCH,
+  coordinateAt,
   fitTo,
-  hexBounds,
   isOffScreen,
-  isWithinReach,
   MAX_STEP,
   MIN_STEP,
   neighbour,
@@ -319,33 +319,57 @@ describe("ruler ticks", () => {
   });
 });
 
-describe("how far the cursor may roam", () => {
-  const known = [at(7, 53), at(8, 52), at(20, 40)];
+describe("which hex a point falls in", () => {
+  const spread = [at(0, 0), at(7, 53), at(8, 52), at(-3, 5), at(20, 40), at(112, -68)];
 
-  it("measures the ground the faction knows", () => {
-    const bounds = hexBounds(known);
-    expect(bounds).toEqual({ minX: 7, maxX: 20, minY: 40, maxY: 53 });
+  /**
+   * The whole reason this exists: unexplored ground is drawn as one patterned rectangle, so there
+   * is no element under the pointer to ask. The hex has to be worked out from the pixel.
+   */
+  it("finds the hex a pointer is standing in the middle of", () => {
+    for (const view of [ORIGIN, { tx: 120, ty: -45, step: 3 }, { tx: -600, ty: 210, step: -5 }]) {
+      const scale = scaleOf(view.step);
+      for (const coordinate of spread) {
+        const world = worldOf(coordinate);
+        const point = { x: view.tx + world.x * scale, y: view.ty + world.y * scale };
+        expect(coordinateAt(point.x, point.y, view, coordinate.z)).toEqual(coordinate);
+      }
+    }
   });
 
-  it("has no bounds for a world with nothing in it", () => {
-    expect(hexBounds([])).toBeNull();
+  it("answers with the nearer of two hexes for a point near the side between them", () => {
+    const scale = scaleOf(ORIGIN.step);
+    const here = worldOf(at(8, 52));
+    const there = worldOf(at(9, 51));
+
+    // Just short of halfway to the north-east neighbour, and just past it.
+    const nearer = coordinateAt(
+      (here.x + (there.x - here.x) * 0.45) * scale,
+      (here.y + (there.y - here.y) * 0.45) * scale,
+      ORIGIN,
+      1
+    );
+    const further = coordinateAt(
+      (here.x + (there.x - here.x) * 0.55) * scale,
+      (here.y + (there.y - here.y) * 0.55) * scale,
+      ORIGIN,
+      1
+    );
+
+    expect(nearer).toEqual(at(8, 52));
+    expect(further).toEqual(at(9, 51));
   });
 
-  it("lets the cursor cross unexplored ground between what is known", () => {
-    const bounds = hexBounds(known);
-    // The whole point: two islands of known hexes with unvisited ground between them have to be
-    // reachable from one another, or half the map is unnavigable by keyboard.
-    expect(isWithinReach(at(14, 46), bounds, 6)).toBe(true);
+  /** Only positions where `x + y` is even exist, so no pixel may ever answer with another. */
+  it("never answers with a position the lattice does not hold", () => {
+    for (let x = -60; x <= 60; x += 7) {
+      for (let y = -60; y <= 60; y += 3) {
+        expect(isValidCoordinate(coordinateAt(x, y, { tx: 13, ty: -7, step: 2 }, 1))).toBe(true);
+      }
+    }
   });
 
-  it("lets the cursor step past the edge of what is known, but not wander off", () => {
-    const bounds = hexBounds(known);
-    expect(isWithinReach(at(24, 40), bounds, 6)).toBe(true);
-    expect(isWithinReach(at(27, 40), bounds, 6)).toBe(false);
-    expect(isWithinReach(at(7, 60), bounds, 6)).toBe(false);
-  });
-
-  it("keeps the cursor still when nothing at all is known", () => {
-    expect(isWithinReach(at(0, 0), null, 6)).toBe(false);
+  it("answers on the level being looked at", () => {
+    expect(coordinateAt(0, 0, ORIGIN, 3).z).toBe(3);
   });
 });

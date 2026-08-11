@@ -31,6 +31,16 @@ pub enum Direction {
 }
 
 impl Direction {
+    /// Every way out of a hex, clockwise from north, as a report writes them.
+    pub const ALL: [Self; 6] = [
+        Self::North,
+        Self::Northeast,
+        Self::Southeast,
+        Self::South,
+        Self::Southwest,
+        Self::Northwest,
+    ];
+
     /// The way back.
     #[must_use]
     pub fn opposite(self) -> Self {
@@ -329,16 +339,18 @@ impl MapKnowledge {
         self.hexes.values().filter(|hex| hex.visited).count()
     }
 
+    /// Every hex the faction knows anything about, in no particular order.
+    ///
+    /// The planner uses this to work out how far its search may wander into unexplored country:
+    /// the ground that is known is what bounds the ground that is guessed at.
+    pub fn coordinates(&self) -> impl Iterator<Item = Coordinate> + '_ {
+        self.hexes.values().map(|hex| hex.coordinate)
+    }
+
     /// What is known about one hex, if anything.
     #[must_use]
     pub fn hex(&self, coordinate: Coordinate) -> Option<&KnownHex> {
         self.hexes.get(&key(coordinate))
-    }
-
-    /// What is known about one hex, addressed the way the game writes it, as in `1:7,53`.
-    #[must_use]
-    pub fn hex_by_key(&self, key: &str) -> Option<&KnownHex> {
-        self.hexes.get(key)
     }
 
     /// The hex a unit is standing in.

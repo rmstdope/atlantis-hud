@@ -1,6 +1,6 @@
 import type { RoutePlanResponse } from "@atlantis/core-client";
 import { describe, expect, it } from "vitest";
-import { describeProblem, routeAsOrder } from "./PlannerPanel";
+import { describeEstimate, describeProblem, routeAsOrder } from "./PlannerPanel";
 
 describe("explaining why there is no route", () => {
   /**
@@ -10,9 +10,6 @@ describe("explaining why there is no route", () => {
   it("names the hex that stopped it", () => {
     expect(describeProblem({ kind: "oceanNeedsShip", coordinate: { x: 8, y: 52, z: 1 } })).toContain(
       "(8,52)"
-    );
-    expect(describeProblem({ kind: "unknownHex", coordinate: { x: 99, y: 99, z: 1 } })).toContain(
-      "(99,99)"
     );
   });
 
@@ -56,7 +53,8 @@ describe("writing a route as an order", () => {
         to: { x: index, y: index, z: 1 },
         terrain: "plain",
         cost: 1,
-        road: false
+        road: false,
+        estimated: false
       })),
       totalCost: directions.length,
       months: []
@@ -69,5 +67,36 @@ describe("writing a route as an order", () => {
   it("writes the abbreviations the game uses", () => {
     expect(routeAsOrder(answer(["southeast", "southeast"]))).toBe("MOVE SE SE");
     expect(routeAsOrder(answer(["north", "northwest", "south"]))).toBe("MOVE N NW S");
+  });
+});
+
+/**
+ * A route through unexplored country is a guess, and a cost that looks like every other cost would
+ * be read as a fact. The panel has to say how much of it was invented.
+ */
+describe("saying how much of a route is guesswork", () => {
+  const step = (estimated: boolean) => ({
+    direction: "southeast" as never,
+    to: { x: 1, y: 1, z: 1 },
+    terrain: "plain",
+    cost: 1,
+    road: false,
+    estimated
+  });
+
+  it("says nothing at all about a route the reports describe in full", () => {
+    expect(describeEstimate([step(false), step(false)])).toBeNull();
+  });
+
+  it("counts the unexplored hexes and warns what is unknown about them", () => {
+    const sentence = describeEstimate([step(false), step(true), step(true)]);
+
+    expect(sentence).toContain("2");
+    expect(sentence).toContain("unexplored");
+    expect(sentence?.endsWith(".")).toBe(true);
+  });
+
+  it("reads as one hex rather than as 1 hexes", () => {
+    expect(describeEstimate([step(true)])).toContain("1 of these hexes is unexplored");
   });
 });

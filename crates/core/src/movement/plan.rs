@@ -1,13 +1,31 @@
 //! Working out how a unit gets from where it stands to where you want it.
 //!
-//! The search is a plain Dijkstra over hexes the faction knows, weighted by what the ruleset says
-//! each terrain costs. Two things make it more than a shortest-path exercise.
+//! The search is a plain Dijkstra weighted by what the ruleset says each terrain costs. Three
+//! things make it more than a shortest-path exercise.
 //!
-//! The first is that it refuses rather than guesses. A hex nobody has described has no terrain, so
-//! a route through it would have an invented cost; the route stops and names the hex instead. The
-//! same goes for water a unit cannot cross.
+//! The first is unexplored country. A player is told coordinates by an ally and wants to know how
+//! far away they are, so a route to a hex nobody has described crosses the fog rather than refusing
+//! at the fringe of what is known. Every such step is taken for the terrain of the hex behind it -
+//! biomes cluster, and it is the same assumption [`crate::movement::trace`] makes when it draws a
+//! written MOVE into the fog - and every such step is marked [`RouteStep::estimated`], because a
+//! guessed cost presented as a real one is worse than no cost at all. Two rules keep the guessing
+//! to what was asked for:
 //!
-//! The second is that months are not fixed budgets. The rules page says unspent movement points
+//! - A route to a hex the map *does* describe never leaves described ground. Otherwise a walker
+//!   facing a known sea would be sent round it through hexes nobody has ever seen, which may well
+//!   be more sea; "there is no way there" is the better answer, and it is the true one.
+//! - A route to an unexplored hex takes as few unexplored steps as it can, and only then the
+//!   cheapest of those. It hugs the ground the faction knows for as long as that ground leads
+//!   anywhere useful, rather than striking out across the fog because the guess happens to be
+//!   cheaper than the mountains it can see.
+//!
+//! Water the unit cannot cross is still a hard refusal wherever the map actually says water.
+//!
+//! The second is that the fog is infinite and the search must not be. It may only wander a little
+//! way outside the rectangle holding the ground the faction knows, the unit and the destination,
+//! which is finite whatever the player clicks on.
+//!
+//! The third is that months are not fixed budgets. The rules page says unspent movement points
 //! carry from one month into the next, so a route costing four points takes a two-point walker two
 //! months even when no single month can afford the middle step on its own. Packing each month
 //! separately would waste the odd point and report a journey longer than the game will charge.
@@ -16,7 +34,7 @@ use std::collections::{BTreeMap, BinaryHeap};
 
 use serde::{Deserialize, Serialize};
 
-use crate::movement::graph::{Direction, MapKnowledge};
+use crate::movement::graph::{geometric_neighbour, Direction, MapKnowledge};
 use crate::movement::mode::{mobility, Mobility};
 use crate::movement::rules::{MovementMode, Ruleset};
 use crate::report::model::{Coordinate, ReportUnit};
@@ -33,9 +51,7 @@ pub enum RouteProblem {
     MobilityUnstated,
     /// The unit is already standing there.
     AlreadyThere,
-    /// Nothing is known about that hex, so a route to it would have an invented cost.
-    UnknownHex { coordinate: Coordinate },
-    /// The hexes are known but nothing joins them up.
+    /// Nothing joins the two hexes up.
     NoKnownRoute,
     /// The map does not know the hex the unit is standing in, so there is nothing to plan from.
     OriginUnknown,
@@ -62,6 +78,11 @@ pub struct RouteStep {
     pub cost: u32,
     /// Whether a road connected both sides and halved the cost.
     pub road: bool,
+    /// Whether the terrain and the cost are guesses rather than anything a report stated.
+    ///
+    /// True for a step into unexplored country, which is costed as the terrain of the hex it was
+    /// entered from. Nothing about such a step is knowledge, and a caller must say so.
+    pub estimated: bool,
 }
 
 /// Where the unit stands when a month runs out.
@@ -117,11 +138,12 @@ pub fn plan_route(
     }
 
     // Refuse the two cases whose reason is worth naming before searching, so the answer is
-    // "that hex is water" rather than the far less useful "no route".
-    let target = map.hex(destination).ok_or(RouteProblem::UnknownHex {
-        coordinate: destination,
-    })?;
-    if blocks(ruleset, mode, &target.terrain) {
+    // "that hex is water" rather than the far less useful "no route". An unexplored destination is
+    // neither: nothing says it is water, so the route goes and the estimate says what it is worth.
+    if map
+        .hex(destination)
+        .is_some_and(|target| blocks(ruleset, mode, &target.terrain))
+    {
         return Err(RouteProblem::OceanNeedsShip {
             coordinate: destination,
         });
@@ -237,7 +259,69 @@ pub(crate) fn step_cost(
     Some((if road { ruleset.road_cost(base) } else { base }, road))
 }
 
-/// Dijkstra over the known hexes.
+/// How far outside the ground the faction knows the search may wander.
+///
+/// The fog is unbounded, so something has to say where the search stops. A couple of hexes past the
+/// rectangle holding the known world, the unit and the destination is enough to walk round the
+/// outside of an obstacle at the fringe, and it keeps a click a long way off the map finite: the
+/// rectangle grows to hold the destination and no further.
+const FOG_MARGIN: i32 = 2;
+
+/// The rectangle the search may not leave.
+struct SearchArea {
+    min_x: i32,
+    max_x: i32,
+    min_y: i32,
+    max_y: i32,
+}
+
+impl SearchArea {
+    fn around(map: &MapKnowledge, origin: Coordinate, destination: Coordinate) -> Self {
+        let mut area = Self {
+            min_x: origin.x.min(destination.x),
+            max_x: origin.x.max(destination.x),
+            min_y: origin.y.min(destination.y),
+            max_y: origin.y.max(destination.y),
+        };
+        for known in map.coordinates() {
+            area.min_x = area.min_x.min(known.x);
+            area.max_x = area.max_x.max(known.x);
+            area.min_y = area.min_y.min(known.y);
+            area.max_y = area.max_y.max(known.y);
+        }
+        area.min_x -= FOG_MARGIN;
+        area.max_x += FOG_MARGIN;
+        area.min_y -= FOG_MARGIN;
+        area.max_y += FOG_MARGIN;
+        area
+    }
+
+    fn holds(&self, coordinate: Coordinate) -> bool {
+        coordinate.x >= self.min_x
+            && coordinate.x <= self.max_x
+            && coordinate.y >= self.min_y
+            && coordinate.y <= self.max_y
+    }
+}
+
+/// What a route is judged on, cheapest first.
+///
+/// Unexplored steps come before movement points because they are a different currency: one is a
+/// number the game will charge, the other is how much of the answer was invented. A player asking
+/// for a hex out in the fog wants the least invention that gets them there, and among those the
+/// cheapest walk.
+type Price = (usize, u32);
+
+/// Where the route stands: a hex, and the terrain it is being taken for.
+///
+/// The terrain is part of the state rather than a property of the hex because an unexplored hex has
+/// none of its own: it is taken for whatever the route carried into it, so the cost of the step
+/// after it depends on how it was reached. For a hex the map describes the terrain is always that
+/// hex's own, so everywhere outside the fog this collapses back to the hex and the search is the
+/// same Dijkstra it always was.
+type Standing = (String, String);
+
+/// Dijkstra over the known hexes, and over the fog around them.
 fn cheapest_path(
     map: &MapKnowledge,
     ruleset: &Ruleset,
@@ -245,79 +329,164 @@ fn cheapest_path(
     origin: Coordinate,
     destination: Coordinate,
 ) -> Result<Vec<RouteStep>, RouteProblem> {
-    // Ordered so the smallest cost comes off a max-heap first; the key is (cost, hex) so ties break
+    // Guessing is for reaching a hex the map cannot describe. Where it can, the described ground is
+    // the whole answer, and a detour through country nobody has seen is not an improvement on it.
+    let may_guess = map.hex(destination).is_none();
+    let area = SearchArea::around(map, origin, destination);
+    let origin_terrain = map
+        .hex(origin)
+        .map(|hex| hex.terrain.clone())
+        .unwrap_or_default();
+
+    // Ordered so the cheapest comes off a max-heap first; the key is (price, standing) so ties break
     // on a stable ordering rather than on hash iteration order.
-    let mut frontier: BinaryHeap<std::cmp::Reverse<(u32, String)>> = BinaryHeap::new();
-    let mut best: BTreeMap<String, u32> = BTreeMap::new();
-    let mut came_from: BTreeMap<String, (Coordinate, RouteStep)> = BTreeMap::new();
+    let mut frontier: BinaryHeap<std::cmp::Reverse<(Price, Standing)>> = BinaryHeap::new();
+    let mut best: BTreeMap<Standing, Price> = BTreeMap::new();
+    let mut came_from: BTreeMap<Standing, (Standing, RouteStep)> = BTreeMap::new();
+    // Where each hex the search has reached actually is. A hex the map has never heard of cannot be
+    // looked up, so the search remembers the coordinate it arrived at.
+    let mut position: BTreeMap<String, Coordinate> = BTreeMap::new();
 
-    best.insert(origin.id(), 0);
-    frontier.push(std::cmp::Reverse((0, origin.id())));
+    let start: Standing = (origin.id(), origin_terrain);
+    position.insert(origin.id(), origin);
+    best.insert(start.clone(), (0, 0));
+    frontier.push(std::cmp::Reverse(((0, 0), start.clone())));
 
-    while let Some(std::cmp::Reverse((cost, key))) = frontier.pop() {
-        if key == destination.id() {
-            return Ok(rebuild(&came_from, origin, destination));
+    while let Some(std::cmp::Reverse((price, standing))) = frontier.pop() {
+        if standing.0 == destination.id() {
+            return Ok(rebuild(&came_from, &start, &standing));
         }
-        if best.get(&key).is_some_and(|known| cost > *known) {
+        if best.get(&standing).is_some_and(|known| price > *known) {
             continue;
         }
 
-        let Some(here) = map.hex_by_key(&key).map(|hex| hex.coordinate) else {
+        let Some(here) = position.get(&standing.0).copied() else {
             continue;
         };
 
-        for (direction, neighbour) in map.neighbours(here) {
-            let Some((step, road)) = step_cost(map, ruleset, mode, here, direction, neighbour)
+        for (direction, neighbour) in ways_out(map, here) {
+            if !area.holds(neighbour) || (!may_guess && map.hex(neighbour).is_none()) {
+                continue;
+            }
+            let Some(step) = step_into(map, ruleset, mode, here, &standing.1, direction, neighbour)
             else {
                 continue;
             };
-            let total = cost + step;
-            let neighbour_key = neighbour.id();
-            if best
-                .get(&neighbour_key)
-                .is_some_and(|known| total >= *known)
-            {
+            let total: Price = (price.0 + usize::from(step.estimated), price.1 + step.cost);
+            let reached: Standing = (neighbour.id(), step.terrain.clone());
+            if best.get(&reached).is_some_and(|known| total >= *known) {
                 continue;
             }
 
-            best.insert(neighbour_key.clone(), total);
+            position.entry(neighbour.id()).or_insert(neighbour);
+            best.insert(reached.clone(), total);
             came_from.insert(
-                neighbour_key.clone(),
+                reached.clone(),
                 (
-                    here,
+                    standing.clone(),
                     RouteStep {
                         direction,
                         to: neighbour,
-                        terrain: map
-                            .hex(neighbour)
-                            .map(|hex| hex.terrain.clone())
-                            .unwrap_or_default(),
-                        cost: step,
-                        road,
+                        terrain: step.terrain,
+                        cost: step.cost,
+                        road: step.road,
+                        estimated: step.estimated,
                     },
                 ),
             );
-            frontier.push(std::cmp::Reverse((total, neighbour_key)));
+            frontier.push(std::cmp::Reverse((total, reached)));
         }
     }
 
     Err(RouteProblem::NoKnownRoute)
 }
 
+/// Every way out of a hex: the exits the reports state, and arithmetic into the fog.
+///
+/// A stated exit is the map's own word and survives the wrap seam, so it always wins. Arithmetic is
+/// the same deliberate exception the order tracer makes, and it is what lets a route leave the
+/// fringe of the known world at all: a hex nobody has described states no exits.
+///
+/// It is confined to steps where one end is unexplored. Two hexes the reports both describe are
+/// neighbours when a report says they are and not otherwise - the map wraps east to west and
+/// nothing says where the seam is, so a computed adjacency between two known hexes would be a
+/// crossing the reports had every chance to mention and did not. Standing *in* the fog there is no
+/// such word to go on and no such objection: an unexplored hex states no exits at all, so
+/// arithmetic is the only way on, and it is also what lets a route come back out onto described
+/// ground rather than being stuck in the fog for the rest of the journey.
+fn ways_out(map: &MapKnowledge, here: Coordinate) -> Vec<(Direction, Coordinate)> {
+    let mut ways: Vec<(Direction, Coordinate)> = map.neighbours(here).collect();
+    let in_the_fog = map.hex(here).is_none();
+    for direction in Direction::ALL {
+        let guessed = geometric_neighbour(here, direction);
+        if (in_the_fog || map.hex(guessed).is_none())
+            && !ways.iter().any(|(stated, _)| *stated == direction)
+        {
+            ways.push((direction, guessed));
+        }
+    }
+    ways
+}
+
+/// What one step costs, and what is known about the hex it lands in.
+struct Step {
+    cost: u32,
+    road: bool,
+    terrain: String,
+    estimated: bool,
+}
+
+/// Entering a hex, described or not.
+///
+/// A described hex is costed by [`step_cost`], which also refuses the ones the unit may not enter.
+/// An unexplored one is taken for the terrain behind it, and marked so nobody mistakes the number
+/// for a fact.
+fn step_into(
+    map: &MapKnowledge,
+    ruleset: &Ruleset,
+    mode: MovementMode,
+    from: Coordinate,
+    carried: &str,
+    direction: Direction,
+    into: Coordinate,
+) -> Option<Step> {
+    if let Some(hex) = map.hex(into) {
+        let (cost, road) = step_cost(map, ruleset, mode, from, direction, into)?;
+        return Some(Step {
+            cost,
+            road,
+            terrain: hex.terrain.clone(),
+            estimated: false,
+        });
+    }
+
+    // A route that is already at sea - a unit aboard a fleet - would be guessing itself further out
+    // to sea, and the sea is exactly what a walker may not cross.
+    if blocks(ruleset, mode, carried) {
+        return None;
+    }
+    Some(Step {
+        cost: ruleset.terrain_cost(carried, mode),
+        road: false,
+        terrain: carried.to_string(),
+        estimated: true,
+    })
+}
+
 fn rebuild(
-    came_from: &BTreeMap<String, (Coordinate, RouteStep)>,
-    origin: Coordinate,
-    destination: Coordinate,
+    came_from: &BTreeMap<Standing, (Standing, RouteStep)>,
+    start: &Standing,
+    arrival: &Standing,
 ) -> Vec<RouteStep> {
     let mut steps = Vec::new();
-    let mut cursor = destination;
+    let mut cursor = arrival.clone();
 
-    while cursor != origin {
-        let Some((previous, step)) = came_from.get(&cursor.id()) else {
+    while cursor != *start {
+        let Some((previous, step)) = came_from.get(&cursor) else {
             break;
         };
         steps.push(step.clone());
-        cursor = *previous;
+        cursor = previous.clone();
     }
 
     steps.reverse();

@@ -1,5 +1,5 @@
-import type { OrderDiagnostic } from "@atlantis/core-client";
-import { abbreviateDirection, type HexNode } from "../hexMapModel";
+import type { Coordinate, OrderDiagnostic } from "@atlantis/core-client";
+import { abbreviateDirection, SURFACE, type HexNode } from "../hexMapModel";
 import { CollapsiblePanel } from "./CollapsiblePanel";
 import { Absent, Field, Row, Section, StaleBanner } from "./primitives";
 
@@ -13,9 +13,17 @@ import { Absent, Field, Row, Section, StaleBanner } from "./primitives";
  */
 export function RegionPanel({
   hex,
+  unknown = null,
   problems = []
 }: {
   hex: HexNode | null;
+  /**
+   * The hex that is selected when no report has ever described it.
+   *
+   * Clicking empty ground is how a player finds out which hex an ally's coordinates name, so the
+   * panel has to answer with the coordinates and with the honest nothing that goes with them.
+   */
+  unknown?: Coordinate | null;
   /**
    * What order validation found in this hex, unit-level and hex-level alike.
    *
@@ -30,8 +38,19 @@ export function RegionPanel({
 
   if (!hex) {
     return (
-      <CollapsiblePanel panel="region" title="Region">
-        <Absent>No hex selected.</Absent>
+      <CollapsiblePanel
+        panel="region"
+        title="Region"
+        hint={unknown ? `— unexplored (${unknown.x},${unknown.y})` : undefined}
+      >
+        {unknown ? (
+          <Absent>
+            Nothing is known about this hex. No report has described it, and no neighbour has named
+            it{unknown.z === SURFACE ? "" : `, on level ${unknown.z}`}.
+          </Absent>
+        ) : (
+          <Absent>No hex selected.</Absent>
+        )}
       </CollapsiblePanel>
     );
   }

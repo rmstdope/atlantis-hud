@@ -473,10 +473,15 @@ mod remembered_tests {
             .expect("serializes")
         );
 
-        // Without memory, the far end is a name with no way through to it.
+        // Without memory, the far end is a name with nothing described between here and there, so
+        // the only route to it is guesswork.
         let alone = plan_for_report(&mut ReportCache::new(), RULESET, &current, "900", "1:3,3")
             .expect("the ruleset loads");
-        assert!(alone.plan.is_none(), "one report cannot reach that far");
+        let guessed = alone.plan.expect("the fog is crossed by estimate");
+        assert!(
+            guessed.steps.iter().any(|step| step.estimated),
+            "one report cannot describe that far, so part of the route is invented"
+        );
 
         let together = plan_for_remembered_report(
             &mut ReportCache::new(),
@@ -491,6 +496,10 @@ mod remembered_tests {
         assert_eq!(plan.steps.len(), 2);
         assert_eq!(plan.total_cost, 2);
         assert_eq!(plan.months.len(), 1, "two plains at two points a month");
+        assert!(
+            plan.steps.iter().all(|step| !step.estimated),
+            "remembered ground is described, so nothing along it is guessed at"
+        );
     }
 
     /// Unreadable memory is an error rather than a silently smaller map: a route planned over half
@@ -563,7 +572,8 @@ mod reaches_the_planner_tests {
             serde_json::to_string(&far_side.regions[0]).expect("serializes")
         );
 
-        // With nothing remembered the far hex is unreachable, which is the single-report ceiling.
+        // With nothing remembered the far hex can only be guessed at, which is the single-report
+        // ceiling.
         let alone = plan_for_remembered_report(
             &mut ReportCache::new(),
             RULESET,
@@ -573,7 +583,15 @@ mod reaches_the_planner_tests {
             "1:3,3",
         )
         .expect("the ruleset loads");
-        assert!(alone.plan.is_none(), "one report cannot reach that far");
+        assert!(
+            alone
+                .plan
+                .expect("the fog is crossed by estimate")
+                .steps
+                .iter()
+                .any(|step| step.estimated),
+            "one report cannot describe that far"
+        );
 
         // With the memory the interface actually holds, it is reachable.
         let together = plan_for_remembered_report(
@@ -587,5 +605,9 @@ mod reaches_the_planner_tests {
         .expect("the ruleset loads");
         let plan = together.plan.expect("a route across remembered ground");
         assert_eq!(plan.steps.len(), 2);
+        assert!(
+            plan.steps.iter().all(|step| !step.estimated),
+            "the memory describes the way, so nothing along it is guessed at"
+        );
     }
 }

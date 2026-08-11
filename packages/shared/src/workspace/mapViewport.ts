@@ -139,43 +139,47 @@ export function accumulateWheel(carry: number, pixels: number): { steps: number;
   return { steps, carry: total - steps * PIXELS_PER_STEP };
 }
 
-/** The rectangle of game coordinates the faction knows anything about. */
-export type Bounds = { minX: number; maxX: number; minY: number; maxY: number };
-
-export function hexBounds(coordinates: Coordinate[]): Bounds | null {
-  if (coordinates.length === 0) {
-    return null;
-  }
-  return {
-    minX: Math.min(...coordinates.map((one) => one.x)),
-    maxX: Math.max(...coordinates.map((one) => one.x)),
-    minY: Math.min(...coordinates.map((one) => one.y)),
-    maxY: Math.max(...coordinates.map((one) => one.y))
-  };
-}
-
 /**
- * Whether the keyboard cursor is allowed to stand on a coordinate.
+ * Which hex a point on screen falls in - the inverse of [`worldOf`], through the view transform.
  *
- * Deliberately not "is there a hex here". Two islands of known ground with unvisited hexes between
- * them have to be reachable from one another, so the cursor crosses the gap; only selecting cares
- * whether anything is actually there. The margin stops a held arrow key from carrying the cursor
- * off into ground nobody will ever have a reason to look at.
+ * This is what makes unexplored ground clickable at all. Known hexes are elements and answer for
+ * themselves; the fog is a single patterned rectangle covering the whole map, so there is nothing
+ * out there to ask and the hex has to be worked out from the pixel.
+ *
+ * The lattice only holds positions where `x + y` is even, so rounding each axis on its own would
+ * land on positions that do not exist. The candidates around the point are measured instead, and
+ * the nearest wins - which is also what makes the answer agree with what the player sees, since a
+ * hex is the set of points closer to its centre than to any other.
  */
-export function isWithinReach(
-  coordinate: Coordinate,
-  bounds: Bounds | null,
-  margin: number
-): boolean {
-  if (!bounds) {
-    return false;
+export function coordinateAt(
+  pointerX: number,
+  pointerY: number,
+  viewport: Viewport,
+  level: number
+): Coordinate {
+  const scale = scaleOf(viewport.step);
+  const worldX = (pointerX - viewport.tx) / scale;
+  const worldY = (pointerY - viewport.ty) / scale;
+
+  const column = worldX / COLUMN_PITCH;
+  const row = worldY / ROW_PITCH;
+
+  let nearest = { x: 0, y: 0, z: level };
+  let shortest = Infinity;
+  for (const x of [Math.floor(column), Math.ceil(column)]) {
+    // The rows this column holds are the ones matching its parity, two apart.
+    const y = Math.round((row - x) / 2) * 2 + x;
+    for (const candidate of [{ x, y }, { x, y: y - 2 }, { x, y: y + 2 }]) {
+      const dx = (candidate.x - column) * COLUMN_PITCH;
+      const dy = (candidate.y - row) * ROW_PITCH;
+      const distance = dx * dx + dy * dy;
+      if (distance < shortest) {
+        shortest = distance;
+        nearest = { ...candidate, z: level };
+      }
+    }
   }
-  return (
-    coordinate.x >= bounds.minX - margin &&
-    coordinate.x <= bounds.maxX + margin &&
-    coordinate.y >= bounds.minY - margin &&
-    coordinate.y <= bounds.maxY + margin
-  );
+  return nearest;
 }
 
 export function fitTo(

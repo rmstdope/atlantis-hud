@@ -11,7 +11,12 @@ import type {
   RoutePlanResponse
 } from "@atlantis/core-client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { buildHexMapModel, unitsForHex, type HexMapModel } from "../hexMapModel";
+import {
+  buildHexMapModel,
+  parseRegionId,
+  unitsForHex,
+  type HexMapModel
+} from "../hexMapModel";
 import { readUnitOrders, writeUnitOrders } from "../ordersDocument";
 import { mergeTurn, rememberTurn, restoreLatestTurn, toStoredRegions } from "../gameMemory";
 import { decideReportLoad, shouldConfirmOlderTurnLoad } from "../reportLoadDecision";
@@ -355,15 +360,29 @@ export function AppShell({
   );
 
   /**
+   * The selected hex when no report has ever described it.
+   *
+   * Clicking empty ground is how a player finds out which hex an ally's coordinates name, and there
+   * is no node in the model for such a hex - the map holds only what is known. The id is all there
+   * is, and the coordinate it names is all the panel can say.
+   */
+  const unknownHex = useMemo(
+    () => (hex || selectedRegionId === null ? null : parseRegionId(selectedRegionId)),
+    [hex, selectedRegionId]
+  );
+
+  /**
    * How a hex reads in the problems list. The id `1:7,53` is what the core files a finding under
    * and is no way to tell a player which hex they should go and look at.
    */
   const hexLabel = useCallback(
     (regionId: string) => {
       const found = model.hexes.find((candidate) => candidate.regionId === regionId);
-      return found
-        ? `${found.terrain} (${found.coordinate.x},${found.coordinate.y})`
-        : regionId;
+      if (found) {
+        return `${found.terrain} (${found.coordinate.x},${found.coordinate.y})`;
+      }
+      const unexplored = parseRegionId(regionId);
+      return unexplored ? `unexplored (${unexplored.x},${unexplored.y})` : regionId;
     },
     [model]
   );
@@ -1690,6 +1709,7 @@ export function AppShell({
             <div className="flex w-[19rem] min-h-0 flex-col">
               <RegionPanel
                 hex={hex}
+                unknown={unknownHex}
                 problems={findingsForHex(validated.diagnostics, hex?.regionId ?? null)}
               />
             </div>

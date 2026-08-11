@@ -76,13 +76,51 @@ export function hexCorners(radius: number): Array<{ x: number; y: number }> {
   });
 }
 
+/** The level a report describes unless it says otherwise; levels are counted from here. */
+export const SURFACE = 1;
+
 /** Whether a coordinate can exist: the lattice only uses positions where `x + y` is even. */
 export function isValidCoordinate(coordinate: Coordinate): boolean {
   return (coordinate.x + coordinate.y) % 2 === 0;
 }
 
-function keyOf(coordinate: Coordinate): string {
+/**
+ * How a hex is addressed, as the game writes it: `1:7,53`.
+ *
+ * Unexplored ground has no region behind it, so this id is all a selection can be - which is why
+ * writing and reading one live here rather than being spelled out wherever a hex is named.
+ */
+export function regionIdOf(coordinate: Coordinate): string {
   return `${coordinate.z}:${coordinate.x},${coordinate.y}`;
+}
+
+/** How a hex reads to a player: `mountain (7,53) in Inhead`, the way the report writes it. */
+export function hexLabelOf(where: {
+  terrain: string;
+  coordinate: Coordinate;
+  province: string;
+}): string {
+  return `${where.terrain} (${where.coordinate.x},${where.coordinate.y}) in ${where.province}`;
+}
+
+/**
+ * The coordinate an id names, or nothing when the text does not name one the game could hold.
+ *
+ * Held to the whole contract rather than to the shape of the text: levels are counted from the
+ * surface, which is one, and only positions where `x + y` is even exist. A garbled id has to read
+ * as no hex at all, because the alternative is a selection ring drawn off the lattice, or a
+ * heading naming a level nobody plays on, with the panel looking as though it knew something.
+ */
+export function parseRegionId(regionId: string): Coordinate | null {
+  const match = /^(\d+):(-?\d+),(-?\d+)$/.exec(regionId);
+  if (!match) {
+    return null;
+  }
+  const coordinate = { z: Number(match[1]), x: Number(match[2]), y: Number(match[3]) };
+  if (coordinate.z < SURFACE || !isValidCoordinate(coordinate)) {
+    return null;
+  }
+  return coordinate;
 }
 
 function countUnits(region: ReportRegion | null) {
@@ -144,7 +182,7 @@ function nodeFromRegion(
     coordinate: region.coordinate,
     terrain: region.terrain,
     province: region.province,
-    label: `${region.terrain} (${region.coordinate.x},${region.coordinate.y}) in ${region.province}`,
+    label: hexLabelOf(region),
     knowledge,
     lastSeenTurn,
     ageInTurns:
@@ -168,21 +206,21 @@ export function buildHexMapModel(
 ): HexMapModel {
   const currentTurn = parsed.header.turnNumber;
   const byKey = new Map<string, HexNode>();
-  const storedByKey = new Map(storedRegions.map((stored) => [keyOf(stored.coordinate), stored]));
+  const storedByKey = new Map(storedRegions.map((stored) => [regionIdOf(stored.coordinate), stored]));
 
   // Weakest first, so stronger knowledge overwrites it.
   for (const region of parsed.regions) {
     for (const exit of region.exits) {
-      const key = keyOf(exit.coordinate);
+      const key = regionIdOf(exit.coordinate);
       if (byKey.has(key)) {
         continue;
       }
       byKey.set(key, {
-        regionId: `${exit.coordinate.z}:${exit.coordinate.x},${exit.coordinate.y}`,
+        regionId: key,
         coordinate: exit.coordinate,
         terrain: exit.terrain,
         province: exit.province,
-        label: `${exit.terrain} (${exit.coordinate.x},${exit.coordinate.y}) in ${exit.province}`,
+        label: hexLabelOf(exit),
         knowledge: "named",
         lastSeenTurn: null,
         ageInTurns: null,
@@ -195,7 +233,7 @@ export function buildHexMapModel(
   }
 
   for (const stored of storedRegions) {
-    const key = keyOf(stored.coordinate);
+    const key = regionIdOf(stored.coordinate);
     const existing = byKey.get(key);
     if (existing && existing.knowledge !== "named") {
       continue;
@@ -216,7 +254,7 @@ export function buildHexMapModel(
   }
 
   for (const region of parsed.regions) {
-    const key = keyOf(region.coordinate);
+    const key = regionIdOf(region.coordinate);
     byKey.set(
       key,
       nodeFromRegion(

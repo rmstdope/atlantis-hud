@@ -8,7 +8,14 @@ function at(x: number, y: number, z = 1): Coordinate {
 }
 
 function step(x: number, y: number) {
-  return { direction: "north" as const, to: at(x, y), terrain: "plain", cost: 1, road: false };
+  return {
+    direction: "north" as const,
+    to: at(x, y),
+    terrain: "plain",
+    cost: 1,
+    road: false,
+    estimated: false
+  };
 }
 
 const plan: RoutePlan = {

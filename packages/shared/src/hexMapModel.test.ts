@@ -6,6 +6,8 @@ import {
   hexCorners,
   hexToPixel,
   isValidCoordinate,
+  parseRegionId,
+  regionIdOf,
   unitsForHex,
   type StoredRegion
 } from "./hexMapModel";
@@ -112,6 +114,42 @@ describe("hex geometry", () => {
   it("rejects coordinates the lattice has no room for", () => {
     expect(isValidCoordinate(at(7, 53))).toBe(true);
     expect(isValidCoordinate(at(7, 52))).toBe(false);
+  });
+});
+
+/**
+ * A hex is addressed as `z:x,y` everywhere - in the core's findings, in the planner's requests, and
+ * as the map's own selection. Unexplored ground has no region behind it, so the id is all there is,
+ * and reading one back has to give the coordinate it names.
+ */
+describe("addressing a hex", () => {
+  it("writes and reads the id the game uses", () => {
+    expect(regionIdOf(at(7, 53))).toBe("1:7,53");
+    expect(regionIdOf(at(-3, 5, 2))).toBe("2:-3,5");
+
+    for (const coordinate of [at(7, 53), at(-3, 5, 2), at(0, 0), at(112, -68)]) {
+      expect(parseRegionId(regionIdOf(coordinate))).toEqual(coordinate);
+    }
+  });
+
+  it("refuses anything that is not one", () => {
+    for (const text of ["", "7,53", "1:7", "surface:7,53", "1:7,x", "1:7,53,2"]) {
+      expect(parseRegionId(text), `${text} should not read as a hex`).toBeNull();
+    }
+  });
+
+  /**
+   * A garbled id has to read as no hex rather than as a hex that cannot exist. Anything else puts a
+   * selection ring on a position off the lattice, or a heading naming a level nobody plays on, and
+   * the panel looks as though it knows something.
+   */
+  it("refuses a hex the game could not hold", () => {
+    // Levels are counted from the surface, which is one.
+    expect(parseRegionId("0:7,53")).toBeNull();
+    expect(parseRegionId("-1:7,53")).toBeNull();
+    // Only positions where x + y is even exist.
+    expect(parseRegionId("1:7,52")).toBeNull();
+    expect(parseRegionId("1:-3,0")).toBeNull();
   });
 });
 
