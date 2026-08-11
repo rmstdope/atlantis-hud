@@ -100,9 +100,15 @@ export function hexLabelOf(where: {
   return `${where.terrain} (${where.coordinate.x},${where.coordinate.y}) in ${where.province}`;
 }
 
-/** The coordinate an id names, or nothing when the text is not one. */
+/**
+ * The coordinate an id names, or nothing when the text is not one.
+ *
+ * Levels are counted from the surface and never negative - the core holds one as an unsigned
+ * number and refuses an id carrying anything else - so reading one leniently here would only turn
+ * a bad id into a parse error further down, in a status line, rather than into no selection at all.
+ */
 export function parseRegionId(regionId: string): Coordinate | null {
-  const match = /^(-?\d+):(-?\d+),(-?\d+)$/.exec(regionId);
+  const match = /^(\d+):(-?\d+),(-?\d+)$/.exec(regionId);
   if (!match) {
     return null;
   }

@@ -407,15 +407,21 @@ fn cheapest_path(
 /// the same deliberate exception the order tracer makes, and it is what lets a route leave the
 /// fringe of the known world at all: a hex nobody has described states no exits.
 ///
-/// It is used only for a step into unexplored ground. Two hexes the reports both describe are
+/// It is confined to steps where one end is unexplored. Two hexes the reports both describe are
 /// neighbours when a report says they are and not otherwise - the map wraps east to west and
 /// nothing says where the seam is, so a computed adjacency between two known hexes would be a
-/// crossing the reports had every chance to mention and did not.
+/// crossing the reports had every chance to mention and did not. Standing *in* the fog there is no
+/// such word to go on and no such objection: an unexplored hex states no exits at all, so
+/// arithmetic is the only way on, and it is also what lets a route come back out onto described
+/// ground rather than being stuck in the fog for the rest of the journey.
 fn ways_out(map: &MapKnowledge, here: Coordinate) -> Vec<(Direction, Coordinate)> {
     let mut ways: Vec<(Direction, Coordinate)> = map.neighbours(here).collect();
+    let in_the_fog = map.hex(here).is_none();
     for direction in Direction::ALL {
         let guessed = geometric_neighbour(here, direction);
-        if map.hex(guessed).is_none() && !ways.iter().any(|(stated, _)| *stated == direction) {
+        if (in_the_fog || map.hex(guessed).is_none())
+            && !ways.iter().any(|(stated, _)| *stated == direction)
+        {
             ways.push((direction, guessed));
         }
     }

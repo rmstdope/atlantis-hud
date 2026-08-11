@@ -127,13 +127,15 @@ describe("addressing a hex", () => {
     expect(regionIdOf(at(7, 53))).toBe("1:7,53");
     expect(regionIdOf(at(-3, 5, 2))).toBe("2:-3,5");
 
-    for (const coordinate of [at(7, 53), at(-3, 5, 2), at(0, 0, -1), at(112, -68)]) {
+    for (const coordinate of [at(7, 53), at(-3, 5, 2), at(0, 0), at(112, -68)]) {
       expect(parseRegionId(regionIdOf(coordinate))).toEqual(coordinate);
     }
   });
 
+  // A level is counted from the surface and is never negative; the core holds it as an unsigned
+  // number and rejects the id outright, so reading one here would only defer the complaint.
   it("refuses anything that is not one", () => {
-    for (const text of ["", "7,53", "1:7", "surface:7,53", "1:7,x", "1:7,53,2"]) {
+    for (const text of ["", "7,53", "1:7", "surface:7,53", "1:7,x", "1:7,53,2", "-1:7,53"]) {
       expect(parseRegionId(text), `${text} should not read as a hex`).toBeNull();
     }
   });

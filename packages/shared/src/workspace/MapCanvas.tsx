@@ -286,15 +286,19 @@ export function MapCanvas({
 
   // Brings the selection into view when it arrives from somewhere other than the map — the units
   // table, or a restored session. A hex clicked on the map is already visible, so nothing moves.
+  //
+  // Read from the id rather than looked up among the hexes, so unexplored ground is brought into
+  // view too: it carries the selection ring and the keyboard cursor like any other hex, and one of
+  // those off screen is a ring nobody can see and a tab stop nobody can find.
   useEffect(() => {
-    if (!selectedRegionId || size.width === 0) {
+    const coordinate = selectedRegionId === null ? null : parseRegionId(selectedRegionId);
+    if (!coordinate || coordinate.z !== level || size.width === 0) {
       return;
     }
-    const hex = onLevel.find((node) => node.regionId === selectedRegionId);
-    if (hex && isOffScreen(hex.coordinate, viewRef.current, size.width, size.height)) {
-      commit(centreOn(hex.coordinate, viewRef.current, size.width, size.height));
+    if (isOffScreen(coordinate, viewRef.current, size.width, size.height)) {
+      commit(centreOn(coordinate, viewRef.current, size.width, size.height));
     }
-  }, [selectedRegionId, onLevel, size, commit]);
+  }, [selectedRegionId, level, size, commit]);
 
   // React attaches `wheel` passively, so `preventDefault` inside an `onWheel` prop does nothing and
   // the page zooms instead of the map. This has to be a manual listener.

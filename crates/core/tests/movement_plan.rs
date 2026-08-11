@@ -169,6 +169,65 @@ fn a_destination_out_in_the_fog_is_reached_across_it() {
     );
 }
 
+/// A second island of described ground on the way, with fog on both sides of it.
+///
+/// The route crosses the gap, walks the island, and steps off its far end into the fog: three
+/// guesses, not a detour of six round the outside of it. Ground the faction has actually seen is
+/// worth using even when the way to it is guesswork, which means the search has to be able to come
+/// back out of the fog as well as go into it.
+#[test]
+fn a_route_into_the_fog_uses_the_described_ground_it_passes() {
+    let region = |terrain: &str, x: i32, y: i32, exits: &str| {
+        format!("{terrain} ({x},{y}) in Nowhere, 10 peasants (orcs), $5.\n\nExits:\n{exits}\n\n")
+    };
+
+    let mut text = String::from("Foo (1) Report\n\n");
+    // Where the unit stands, and its one described neighbour.
+    text.push_str(&region(
+        "plain",
+        1,
+        1,
+        "  Southeast : plain (2,2) in Nowhere.",
+    ));
+    text.push_str("* Walker (900), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.\n\n");
+    text.push_str(&region(
+        "plain",
+        2,
+        2,
+        "  Northwest : plain (1,1) in Nowhere.",
+    ));
+    // An island two hexes of fog further on, described but joined to nothing the unit can see.
+    text.push_str(&region(
+        "plain",
+        5,
+        5,
+        "  Southeast : plain (6,6) in Nowhere.",
+    ));
+    text.push_str(&region(
+        "plain",
+        6,
+        6,
+        "  Northwest : plain (5,5) in Nowhere.",
+    ));
+
+    let report = parse_report_full(&text);
+    let route = plan(&report, "900", at(7, 7)).expect("a route across the gap");
+
+    assert_eq!(route.steps.len(), 6, "six southeast steps");
+    assert_eq!(
+        route.steps.iter().filter(|step| step.estimated).count(),
+        3,
+        "the two hexes of the gap and the destination, and nothing else"
+    );
+    // (2,2) described, (3,3) and (4,4) the gap, then the island at (5,5) and (6,6).
+    assert!(
+        !route.steps[3].estimated && !route.steps[4].estimated,
+        "the island in the middle is described ground and is walked as such"
+    );
+    assert_eq!(route.steps[3].to, at(5, 5));
+    assert_eq!(route.steps[4].to, at(6, 6));
+}
+
 /// Guessing is for reaching what the map cannot describe. A hex it *can* describe is reached over
 /// described ground or not at all: sending a walker round a known sea through hexes nobody has seen
 /// - which may well be more sea - would be an invention presented as a plan.
