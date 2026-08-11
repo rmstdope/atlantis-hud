@@ -1,6 +1,6 @@
 import type { OrderDiagnostic } from "@atlantis/core-client";
 import { autocompletion } from "@codemirror/autocomplete";
-import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
+import { defaultKeymap, history, historyKeymap, redo } from "@codemirror/commands";
 import { lintGutter, setDiagnostics } from "@codemirror/lint";
 import { Annotation, EditorState, Transaction } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
@@ -89,7 +89,18 @@ export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(fu
         doc: latest.current.value,
         extensions: [
           history(),
-          keymap.of([...editingKeymap, ...historyKeymap]),
+          // Mod-Shift-z redoes on every platform, deliberately beyond what historyKeymap binds:
+          // its stock redo bindings are platform-variants (mac Mod-Shift-z, a linux-only
+          // Ctrl-Shift-z), so anywhere platform detection disagrees with the keyboard the chord
+          // fell through to the browser's NATIVE contenteditable history - which replays stale
+          // DOM records from before CodeMirror rewrote the surface, resurrecting text the
+          // player had left. preventDefault stands even when there is nothing to redo, so the
+          // native history can never answer this chord.
+          keymap.of([
+            ...editingKeymap,
+            ...historyKeymap,
+            { key: "Mod-Shift-z", run: redo, preventDefault: true }
+          ]),
           autocompletion({
             override: [
               (context) => orderCommandCompletions(latest.current.commands)(context)
