@@ -106,8 +106,9 @@ impl UnitIntents {
 #[must_use]
 pub fn read_intents(source: &str) -> Vec<UnitIntents> {
     let mut units: Vec<UnitIntents> = Vec::new();
-    // How deep inside TURN or FORM blocks the reader currently is. Nothing is collected above zero.
-    let mut nesting = 0_usize;
+    // The keyword each open TURN or FORM block is waiting for, innermost last. Nothing is collected
+    // while any of them is open.
+    let mut blocks: Vec<&str> = Vec::new();
 
     for (index, line) in source.lines().enumerate() {
         let number = index + 1;
@@ -119,7 +120,7 @@ pub fn read_intents(source: &str) -> Vec<UnitIntents> {
         if command.is("unit") {
             // A unit line ends the previous block, nesting and all: an unclosed TURN cannot swallow
             // the next unit's orders, which the syntax checker reports separately.
-            nesting = 0;
+            blocks.clear();
             if let Some(id) = arguments.first().filter(|id| id.kind == TokenKind::Number) {
                 units.push(UnitIntents {
                     unit_id: id.text.clone(),
@@ -130,15 +131,24 @@ pub fn read_intents(source: &str) -> Vec<UnitIntents> {
             continue;
         }
 
-        if command.is("TURN") || command.is("FORM") {
-            nesting += 1;
+        if command.is("TURN") {
+            blocks.push("ENDTURN");
+            continue;
+        }
+        if command.is("FORM") {
+            blocks.push("END");
             continue;
         }
         if command.is("ENDTURN") || command.is("END") {
-            nesting = nesting.saturating_sub(1);
+            // Only the closer the innermost block is waiting for closes it: `END` closes a FORM
+            // and `ENDTURN` a TURN. Counting depth alone let a stray `END` close a TURN, and
+            // everything after it - next month's orders - was then recorded as this month's.
+            if blocks.last().is_some_and(|expected| command.is(expected)) {
+                blocks.pop();
+            }
             continue;
         }
-        if nesting > 0 {
+        if !blocks.is_empty() {
             continue;
         }
 
@@ -574,6 +584,42 @@ mod tests {
                 "ENDTURN\n",
             )),
             vec![Intent::Work]
+        );
+    }
+
+    /// Each closer closes its own kind of block, as in the syntax checker (#95).
+    ///
+    /// `END` closes a FORM and `ENDTURN` closes a TURN. Counting depth without minding which is
+    /// which let a stray `END` close a TURN block, and everything after it - next month's orders -
+    /// would have been recorded as this month's.
+    #[test]
+    fn end_does_not_close_a_turn_block() {
+        assert_eq!(
+            intents(concat!(
+                "unit 5\n",
+                "TURN\n",
+                "END\n",
+                "WORK\n",
+                "ENDTURN\n",
+            )),
+            vec![],
+            "everything here is next month's"
+        );
+    }
+
+    /// And the other way about, so this is a pairing rather than one blunt rule.
+    #[test]
+    fn endturn_does_not_close_a_form_block() {
+        assert_eq!(
+            intents(concat!(
+                "unit 5\n",
+                "FORM 1\n",
+                "ENDTURN\n",
+                "WORK\n",
+                "END\n",
+            )),
+            vec![],
+            "everything here belongs to the unit being formed"
         );
     }
 
