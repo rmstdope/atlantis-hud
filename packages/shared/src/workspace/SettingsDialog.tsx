@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { APP_VERSION } from "../appVersion";
+import { snippetBodyProblem, snippetNameProblem } from "../orderSnippets";
 import { useSettingsStore } from "../settingsStore";
 import type { ThemeName } from "../settingsStore";
 import type { WorkspaceGame } from "../workspaceStore";
@@ -141,6 +142,7 @@ export function SettingsDialog({
               onChangeRuleset={onChangeRuleset}
             />
           ) : null}
+          {tab === "snippets" ? <SnippetSettings /> : null}
           {tab === "about" ? <About platformLabel={platformLabel} appUpdate={appUpdate} /> : null}
         </div>
       </div>
@@ -386,6 +388,119 @@ function GameSettings({
           {error}
         </span>
       ) : null}
+    </div>
+  );
+}
+
+/**
+ * The player's snippet library: reusable order blocks, insertable by name from the editor's
+ * completion popup. A body may carry ${field} markers, which expand as tab-through placeholders.
+ *
+ * Add and delete, no in-place editing: a snippet is small enough that delete-and-retype is the
+ * simpler story, and the store's `updateSnippet` waits for the day that stops being true.
+ */
+function SnippetSettings() {
+  const snippets = useSettingsStore((state) => state.snippets);
+  const addSnippet = useSettingsStore((state) => state.addSnippet);
+  const removeSnippet = useSettingsStore((state) => state.removeSnippet);
+  const [name, setName] = useState("");
+  const [body, setBody] = useState("");
+  const [problem, setProblem] = useState<string | null>(null);
+
+  const add = () => {
+    const found = snippetNameProblem(name, snippets) ?? snippetBodyProblem(body);
+    if (found) {
+      setProblem(found);
+      return;
+    }
+    addSnippet({ id: crypto.randomUUID(), name: name.trim(), body });
+    setName("");
+    setBody("");
+    setProblem(null);
+  };
+
+  return (
+    <div className="flex flex-col gap-2">
+      {snippets.length === 0 ? (
+        <p className="text-ink-soft">
+          No snippets yet. A snippet is a block of orders you insert by typing its name in the
+          orders editor.
+        </p>
+      ) : (
+        <ul className="m-0 flex max-h-40 list-none flex-col gap-1 overflow-y-auto p-0">
+          {snippets.map((snippet) => (
+            <li
+              key={snippet.id}
+              data-testid="snippet-row"
+              className="flex items-start justify-between gap-2 rounded border border-edge px-2 py-1"
+            >
+              <span className="min-w-0">
+                <span className="block text-ink">{snippet.name}</span>
+                <span className="block truncate font-mono text-[10px] text-ink-dim">
+                  {snippet.body.split("\n")[0]}
+                  {snippet.body.includes("\n") ? " …" : ""}
+                </span>
+              </span>
+              <button
+                type="button"
+                data-testid="snippet-delete"
+                aria-label={`delete snippet ${snippet.name}`}
+                onClick={() => {
+                  removeSnippet(snippet.id);
+                  // The error usually names this row as the conflict; deleting it resolves that.
+                  setProblem(null);
+                }}
+                className="rounded border border-edge px-1.5 py-0.5 text-ink-soft hover:border-danger hover:text-danger"
+              >
+                ×
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <label className="flex flex-col gap-1">
+        <span className="text-ink-soft">Name</span>
+        <input
+          type="text"
+          data-testid="snippet-name"
+          aria-label="snippet name"
+          value={name}
+          onChange={(event) => {
+            setName(event.target.value);
+            setProblem(null);
+          }}
+          className="rounded border border-edge bg-panel px-2 py-1 text-ink"
+        />
+      </label>
+      <label className="flex flex-col gap-1">
+        <span className="text-ink-soft">Orders</span>
+        <textarea
+          data-testid="snippet-body"
+          aria-label="snippet orders"
+          value={body}
+          spellCheck={false}
+          rows={3}
+          onChange={(event) => {
+            setBody(event.target.value);
+            setProblem(null);
+          }}
+          className="resize-none rounded border border-edge bg-panel px-2 py-1 font-mono text-ink"
+        />
+      </label>
+      {problem ? (
+        <span data-testid="snippet-error" role="alert" className="text-danger">
+          {problem}
+        </span>
+      ) : null}
+      <button
+        type="button"
+        data-testid="snippet-add"
+        onClick={add}
+        className="rounded border border-edge bg-panel px-2 py-1 text-brass hover:border-brass"
+      >
+        Add snippet
+      </button>
     </div>
   );
 }

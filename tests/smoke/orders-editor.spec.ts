@@ -155,3 +155,33 @@ test("a bad order is marked in the editor's own margin", async ({ page }) => {
   await expect(page.getByTestId("orders-input").locator(".cm-lint-marker")).toBeVisible();
   await expect(page.getByTestId("orders-diagnostics")).toContainText("WROK");
 });
+
+test("an accepted snippet expands with a tab-through placeholder", async ({ page }) => {
+  await loadReport(page);
+
+  // The snippet is created through the same settings pane the player would use.
+  await page.getByTestId("settings-indicator").click();
+  await page.getByTestId("settings-tab-snippets").click();
+  await page.getByTestId("snippet-name").fill("patrol");
+  await page.getByTestId("snippet-body").fill("MOVE ${dir}\nGUARD 1");
+  await page.getByTestId("snippet-add").click();
+  await expect(page.getByTestId("snippet-row")).toHaveCount(1);
+  await page.getByTestId("settings-close").click();
+
+  await fillOrders(page, "");
+  await ordersInput(page).click();
+  await page.keyboard.type("pat");
+
+  const popup = page.locator(".cm-tooltip-autocomplete");
+  await expect(popup).toBeVisible();
+  await expect(popup.locator("li[aria-selected]")).toContainText("patrol");
+  // Past acceptCompletion's 75ms interaction delay, as the completion walk above explains.
+  await page.waitForTimeout(150);
+  await page.keyboard.press("Enter");
+
+  // The ${dir} field arrives as selected placeholder text, so typing replaces it - which is the
+  // whole point of a field over a plain insertion.
+  await expectOrders(page, /^MOVE dir\nGUARD 1\n?$/);
+  await page.keyboard.type("N");
+  await expectOrders(page, /^MOVE N\nGUARD 1\n?$/);
+});
