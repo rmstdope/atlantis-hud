@@ -101,6 +101,8 @@ pub fn trace_move(
             terrain: next_terrain.clone(),
             cost,
             road,
+            // The trace guesses wherever the map runs out, exactly as the planner does.
+            estimated: map.hex(next).is_none(),
         });
         position = next;
         terrain = next_terrain;

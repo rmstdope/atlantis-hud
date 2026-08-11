@@ -1,4 +1,9 @@
-import type { RoutePlanResponse, RouteProblem, ReportUnit } from "@atlantis/core-client";
+import type {
+  ReportUnit,
+  RoutePlanResponse,
+  RouteProblem,
+  RouteStep
+} from "@atlantis/core-client";
 import { abbreviateDirection } from "../hexMapModel";
 import { CollapsiblePanel } from "./CollapsiblePanel";
 import { Absent, Field, Row, Section } from "./primitives";
@@ -92,8 +97,6 @@ export function describeProblem(problem: RouteProblem): string {
       return "Nothing the faction has seen joins those two hexes up.";
     case "originUnknown":
       return "The map does not know the hex this unit is standing in.";
-    case "unknownHex":
-      return `Nothing is known about (${problem.coordinate.x},${problem.coordinate.y}), so a route there would have an invented cost.`;
     case "oceanNeedsShip":
       return `The sea at (${problem.coordinate.x},${problem.coordinate.y}) is in the way, and crossing it needs a ship.`;
     case "flightWouldEndOverOcean":
@@ -107,6 +110,23 @@ function Refusal({ problem }: { problem: RouteProblem }) {
       {describeProblem(problem)}
     </p>
   );
+}
+
+/**
+ * How much of a route was invented, or nothing when none of it was.
+ *
+ * A cost that looks like every other cost is read as a fact, and the cost of a step into
+ * unexplored country is not one: the core takes such a hex for the terrain behind it, which is a
+ * guess about the going, about whether the way is even passable, and about what is standing there.
+ * Saying how many hexes that covers is what keeps the rest of the panel honest.
+ */
+export function describeEstimate(steps: RouteStep[]): string | null {
+  const guessed = steps.filter((step) => step.estimated).length;
+  if (guessed === 0) {
+    return null;
+  }
+
+  return `${guessed} of these hexes ${guessed === 1 ? "is" : "are"} unexplored: the terrain, the cost and whatever stands there are guesses, and one of them may be sea.`;
 }
 
 /** The order a route becomes, as the game writes it. */
@@ -129,9 +149,16 @@ function Route({
 
   const months = plan.months.length;
   const order = routeAsOrder(answer);
+  const estimate = describeEstimate(plan.steps);
 
   return (
     <div data-testid="planner-route">
+      {estimate ? (
+        <p data-testid="planner-estimate" className="m-0 mb-2 text-warn">
+          {estimate}
+        </p>
+      ) : null}
+
       <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-px">
         <Field label="To" value={`(${plan.to.x},${plan.to.y})`} />
         <Field label="Travel" value={plan.mode} />
@@ -148,7 +175,14 @@ function Route({
               <Row
                 // The same shorthand the exits list and the MOVE order itself use.
                 label={`${index + 1}. ${abbreviateDirection(step.direction)}`}
-                value={`${step.terrain} (${step.to.x},${step.to.y}) · ${step.cost}${step.road ? " · road" : ""}`}
+                // An unexplored hex is named as such rather than by the terrain it was taken for:
+                // that terrain is the guess, and printing it as though it were reported would be
+                // the panel inventing a sighting.
+                value={
+                  step.estimated
+                    ? `unexplored (${step.to.x},${step.to.y}) · ${step.cost} · estimated`
+                    : `${step.terrain} (${step.to.x},${step.to.y}) · ${step.cost}${step.road ? " · road" : ""}`
+                }
               />
             </li>
           ))}

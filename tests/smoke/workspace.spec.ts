@@ -604,6 +604,13 @@ async function foldPanel(page: Page, panel: string) {
   await expect(section).toHaveAttribute("data-collapsed", "true");
 }
 
+/** Unfolds a folded panel again, by the same toggle. */
+async function unfoldPanel(page: Page, panel: string) {
+  const section = page.getByTestId(`panel-${panel}`);
+  await section.getByRole("button", { expanded: false }).click();
+  await expect(section).toHaveAttribute("data-collapsed", "false");
+}
+
 /** Where a panel is on screen, having asserted it is on screen at all. */
 async function boxOf(page: Page, panel: string) {
   const box = await page.getByTestId(`panel-${panel}`).boundingBox();
@@ -1446,25 +1453,19 @@ test("arrow keys walk from hex to neighbouring hex", async ({ page }) => {
   await expect(page.locator("polygon:focus")).toHaveAttribute("aria-label", "hex 1:7,53");
 });
 
-test("the cursor comes to rest rather than wandering off the map", async ({ page }) => {
+test("the cursor may wander as far into the unexplored as it likes", async ({ page }) => {
   await loadReport(page);
   await selectHex(page, "1:7,53");
 
-  // The cursor is free to leave the hexes the report describes — that is what makes crossing to
-  // another island of known ground possible — but not free to keep going forever, or a held arrow
-  // key strands the player in a void with no landmark to steer back by.
+  // Coordinates an ally names can lie a long way outside anything the faction has seen, so the
+  // cursor is not fenced in. The view follows it, and focus never falls through to the body.
   await page.getByRole("button", { name: "hex 1:7,53" }).press("ArrowUp");
   for (let step = 0; step < 40; step += 1) {
     await page.locator("polygon:focus").press("ArrowUp");
   }
-  const settled = await page.locator("polygon:focus").getAttribute("aria-label");
 
-  // Still on something: focus never falls through to the body.
-  expect(settled).toBeTruthy();
-
-  // And pressing on does not move it any further.
-  await page.locator("polygon:focus").press("ArrowUp");
-  await expect(page.locator("polygon:focus")).toHaveAttribute("aria-label", settled ?? "");
+  await expect(page.locator("polygon:focus")).toHaveAttribute("aria-label", "unexplored 1:7,-29");
+  await expect(page.getByTestId("map-focus-ring")).toBeVisible();
 });
 
 test("the map is a single tab stop rather than one per hex", async ({ page }) => {
@@ -1691,7 +1692,7 @@ test("the keyboard cursor crosses unexplored ground between known hexes", async 
   expect(seen[seen.length - 1]).not.toBe("");
 });
 
-test("standing on unexplored ground selects nothing, and the way back still works", async ({
+test("unexplored ground can be selected from the keyboard, and the way back still works", async ({
   page
 }) => {
   await loadReport(page);
@@ -1705,19 +1706,70 @@ test("standing on unexplored ground selects nothing, and the way back still work
   await page.locator("polygon:focus").press("ArrowUp");
   await page.locator("polygon:focus").press("ArrowUp");
   const away = await page.locator("polygon:focus").getAttribute("aria-label");
-  expect(away).toMatch(/^unexplored /);
+  expect(away).toBe("unexplored 1:7,49");
 
-  // Enter on empty ground is a no-op rather than an error: there is nothing there to inspect.
+  // Coordinates a friend gave you are the whole reason to stand here, so Enter selects it and the
+  // panel says which hex it is.
   await page.locator("polygon:focus").press("Enter");
+  await expect(page.getByTestId("panel-region")).toContainText("unexplored (7,49)");
+  await expect(page.getByTestId("panel-region")).toContainText("Nothing is known");
   await expect(page.getByRole("button", { name: "hex 1:7,53" })).toHaveAttribute(
     "aria-pressed",
-    "true"
+    "false"
   );
 
   // Down twice returns to where it started, because each arrow undoes its opposite.
   await page.locator("polygon:focus").press("ArrowDown");
   await page.locator("polygon:focus").press("ArrowDown");
   await expect(page.locator("polygon:focus")).toHaveAttribute("aria-label", "hex 1:7,53");
+});
+
+test("clicking empty ground names the hex that was clicked", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+
+  // Inholm sits under the region panel, and a panel takes its own clicks. Folding it leaves the
+  // map beneath live, which is where the hex being aimed at is.
+  await foldPanel(page, "region");
+
+  // One hex further north than Inholm's northern neighbour, stepped out in pixels from the two of
+  // them: unexplored ground is one patterned rectangle, so there is no element out there to click
+  // by name.
+  const centre = (regionId: string) =>
+    page.locator(`polygon[data-region-id="${regionId}"]`).evaluate((hex) => {
+      const box = hex.getBoundingClientRect();
+      return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+    });
+  const here = await centre("1:7,53");
+  const north = await centre("1:7,51");
+  await page.mouse.click(north.x + (north.x - here.x), north.y + (north.y - here.y));
+
+  await unfoldPanel(page, "region");
+
+  await expect(page.getByTestId("panel-region")).toContainText("unexplored (7,49)");
+  await expect(page.getByRole("button", { name: "hex 1:7,53" })).toHaveAttribute(
+    "aria-pressed",
+    "false"
+  );
+});
+
+test("a move can be planned into unexplored country, and says it is a guess", async ({ page }) => {
+  await loadReport(page);
+  await enableMovementPlanner(page);
+  await selectHex(page, "1:7,53");
+  await selectUnit(page, OWN_UNIT);
+
+  // (7,51) is a mountain the report names; (7,49) beyond it is unexplored, and a friend's
+  // coordinates are exactly the case this exists for.
+  await page.getByTestId("planner-arm").click();
+  await page.getByRole("button", { name: "hex 1:7,51" }).focus();
+  await page.locator("polygon:focus").press("ArrowUp");
+  await page.locator("polygon:focus").press("Enter");
+
+  await expect(page.getByTestId("planner-route")).toBeVisible();
+  await expect(page.getByTestId("planner-order")).toHaveText("MOVE N N");
+  await expect(page.getByTestId("planner-estimate")).toContainText("unexplored");
+  await expect(page.getByTestId("planner-route")).toContainText("estimated");
 });
 
 test("the unexplored lattice keeps a constant hairline at every zoom", async ({ page }) => {

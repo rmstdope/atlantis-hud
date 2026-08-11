@@ -176,6 +176,13 @@ export type RouteStep = {
   cost: number;
   /** Whether a road connected both sides and halved the cost. */
   road: boolean;
+  /**
+   * Whether the terrain and the cost are guesses rather than anything a report stated.
+   *
+   * True for a step into unexplored country, which the core costs as the terrain of the hex behind
+   * it. Nothing about such a step is knowledge, and the interface has to say so.
+   */
+  estimated: boolean;
 };
 
 /** Where the unit stands when a month runs out. */
@@ -203,7 +210,6 @@ export type RouteProblem =
   | { kind: "alreadyThere" }
   | { kind: "noKnownRoute" }
   | { kind: "originUnknown" }
-  | { kind: "unknownHex"; coordinate: Coordinate }
   | { kind: "oceanNeedsShip"; coordinate: Coordinate }
   | { kind: "flightWouldEndOverOcean"; coordinate: Coordinate };
 

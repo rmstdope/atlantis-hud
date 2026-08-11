@@ -1,14 +1,13 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Coordinate, HexRisk } from "@atlantis/core-client";
-import type { HexMapModel, HexNode } from "../hexMapModel";
+import { parseRegionId, regionIdOf, type HexMapModel, type HexNode } from "../hexMapModel";
 import {
   accumulateWheel,
   centreOn,
+  coordinateAt,
   fitTo,
-  hexBounds,
   HEX_RADIUS,
   isOffScreen,
-  isWithinReach,
   neighbour,
   rulerTicks,
   scaleOf,
@@ -60,9 +59,6 @@ const TEXTURED_TERRAIN_NAMES = [
   "underforest",
   "wasteland"
 ] as const;
-
-/** How far past the edge of what the faction knows the cursor may wander. */
-const CURSOR_MARGIN = 6;
 
 /** Identifies a position on the lattice, whether or not a hex is known to be there. */
 function cursorKeyOf(coordinate: Coordinate): string {
@@ -392,12 +388,9 @@ export function MapCanvas({
   const onMapKeyDown = (event: React.KeyboardEvent<SVGPolygonElement>, from: Coordinate) => {
     if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
-      // Only a hex can be selected. Standing on unexplored ground is allowed and does nothing,
-      // which is the honest answer: there is nothing there to inspect.
-      const here = hexAt(onLevel, from);
-      if (here) {
-        selectRef.current(here.regionId);
-      }
+      // Unexplored ground is selectable too, and selects by position: an ally's coordinates are
+      // the whole reason to be standing out here, and the panel can at least say which hex it is.
+      selectRef.current(hexAt(onLevel, from)?.regionId ?? regionIdOf(from));
       return;
     }
     if (event.key === "+" || event.key === "=" || event.key === "-") {
@@ -430,13 +423,10 @@ export function MapCanvas({
       return;
     }
 
+    // The cursor goes wherever it is pointed, however far outside what the faction knows: the
+    // coordinates an ally names can lie a long way off the ground anybody has walked, and the view
+    // follows the cursor there so it is never lost.
     const wanted = neighbour(from, event.key as ArrowKey);
-    // The cursor crosses unexplored ground rather than stopping at the edge of what is known:
-    // otherwise two islands of visited hexes with unvisited ground between them cannot be reached
-    // from one another, and half the map is unnavigable by keyboard.
-    if (!isWithinReach(wanted, reach, CURSOR_MARGIN)) {
-      return;
-    }
     setCursor(wanted);
     pendingFocusRef.current = cursorKeyOf(wanted);
     if (isOffScreen(wanted, viewRef.current, size.width, size.height)) {
@@ -484,12 +474,15 @@ export function MapCanvas({
     () => (route?.hexes ?? []).filter((step) => step.z === level),
     [route, level]
   );
-  const reach = useMemo(() => hexBounds(onLevel.map((hex) => hex.coordinate)), [onLevel]);
+  // Unexplored ground is selectable and has no hex to look up, so the ring is drawn from the id
+  // itself. Only on this level: a selection made on another one is not on screen.
+  const selectedAt = useMemo(() => {
+    const coordinate = selectedRegionId === null ? null : parseRegionId(selectedRegionId);
+    return coordinate?.z === level ? coordinate : null;
+  }, [selectedRegionId, level]);
 
-  const selected = onLevel.find((hex) => hex.regionId === selectedRegionId) ?? null;
-
-  // Where the cursor rests before anyone has moved it, and how far it may go from there.
-  const resting = cursor ?? selected?.coordinate ?? onLevel[0]?.coordinate ?? null;
+  // Where the cursor rests before anyone has moved it.
+  const resting = cursor ?? selectedAt ?? onLevel[0]?.coordinate ?? null;
   const restingKey = resting ? cursorKeyOf(resting) : null;
   const overGround = resting ? hexAt(onLevel, resting) === null : false;
 
@@ -550,8 +543,34 @@ export function MapCanvas({
             : null}
         </defs>
 
-        {/* The unexplored world, and the only thing that does not scale with how much is known. */}
-        <rect className="fill-ground" width="100%" height="100%" />
+        {/*
+          The unexplored world, and the only thing that does not scale with how much is known.
+
+          It is also the hit target for every hex nobody has described. There is no element out
+          there to click - that is the point of drawing the fog as one rectangle - so the hex is
+          worked out from where the pointer landed.
+        */}
+        <rect
+          className="fill-ground"
+          width="100%"
+          height="100%"
+          onClick={(event) => {
+            if (draggedRef.current) {
+              return;
+            }
+            const bounds = event.currentTarget.getBoundingClientRect();
+            const coordinate = coordinateAt(
+              event.clientX - bounds.left,
+              event.clientY - bounds.top,
+              viewRef.current,
+              level
+            );
+            // Focus follows the click, as it does on a hex, so the arrow keys carry on from here.
+            setCursor(coordinate);
+            pendingFocusRef.current = cursorKeyOf(coordinate);
+            selectRef.current(regionIdOf(coordinate));
+          }}
+        />
         <rect className="fill-terrain-unknown" width="100%" height="100%" pointerEvents="none" />
         <rect
           width="100%"
@@ -640,10 +659,10 @@ export function MapCanvas({
 
           <MarkLayer hexes={onLevel} showUnits={showUnits} showStructures={showStructures} />
 
-          {selected && (
+          {selectedAt && (
             <polygon
               points={HEX_POINTS}
-              transform={translateOf(selected)}
+              transform={translateAt(selectedAt)}
               fill="none"
               className="stroke-brass"
               strokeWidth={2.5}
@@ -725,8 +744,10 @@ export function MapCanvas({
 
               Unexplored hexes are a single patterned rectangle, so there is no element out there to
               focus. This is the one that carries the cursor across the gap between two islands of
-              known ground. Deliberately not a button: there is nothing here to select, and giving
-              it that role would make it answer to searches for a hex it is not.
+              known ground - and it is selectable, because coordinates an ally names are the whole
+              reason to be out here. It takes no pointer events: a click lands on the fog rectangle
+              beneath, which works out the hex wherever the pointer is rather than only under the
+              cursor.
             */}
             {resting && overGround && (
               <polygon
@@ -737,8 +758,10 @@ export function MapCanvas({
                 fill="none"
                 pointerEvents="none"
                 className="outline-none"
+                role="button"
                 tabIndex={0}
-                aria-label={`unexplored ${level}:${resting.x},${resting.y}`}
+                aria-label={`unexplored ${regionIdOf(resting)}`}
+                aria-pressed={regionIdOf(resting) === selectedRegionId}
                 onKeyDown={(event) => onMapKeyDown(event, resting)}
               />
             )}

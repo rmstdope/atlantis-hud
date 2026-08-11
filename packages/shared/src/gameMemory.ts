@@ -23,7 +23,7 @@ import type {
   RememberedRegion,
   ReportMergeResult
 } from "@atlantis/core-client";
-import type { StoredRegion } from "./hexMapModel";
+import { hexLabelOf, type StoredRegion } from "./hexMapModel";
 import { documentFor, draftKeyFor } from "./orderDraft";
 
 /**
@@ -38,7 +38,7 @@ export function toStoredRegions(remembered: RememberedRegion[]): StoredRegion[] 
     coordinate: entry.region.coordinate,
     terrain: entry.region.terrain,
     province: entry.region.province,
-    label: `${entry.region.terrain} (${entry.region.coordinate.x},${entry.region.coordinate.y}) in ${entry.region.province}`,
+    label: hexLabelOf(entry.region),
     lastSeenTurn: entry.lastSeenTurn,
     region: entry.region
   }));

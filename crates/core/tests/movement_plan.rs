@@ -111,28 +111,119 @@ fn a_unit_standing_at_sea_cannot_walk_ashore() {
     );
 }
 
-/// Routing only through hexes whose terrain is known is what keeps the cost a real number rather
-/// than a guess. A hex nobody has described stops the route and is named.
+/// A hex nobody has described can still be walked to: the player picks one on the map because a
+/// friend named the coordinates, and refusing to say anything about getting there is no help.
+///
+/// The cost is a guess and says so. Every step through unexplored country carries the terrain of
+/// the hex it was entered from - biomes cluster, which is the same assumption the order tracer
+/// makes when it draws a written MOVE into the fog.
 #[test]
-fn a_destination_nobody_has_described_is_refused_by_name() {
+fn a_destination_nobody_has_described_is_reached_by_estimate() {
     let report = turn_71();
-    let problem = plan(&report, "18642", at(99, 99)).expect_err("nothing is known of it");
 
-    assert!(matches!(
-        problem,
-        RouteProblem::UnknownHex { coordinate } if coordinate == at(99, 99)
-    ));
+    // "* Seven of Eight (18642)" stands in the mountain at (7,53), whose north neighbour (7,51) is
+    // another mountain. (7,49) beyond it is unexplored.
+    let route = plan(&report, "18642", at(7, 49)).expect("a route into the fog");
+
+    assert_eq!(route.steps.len(), 2);
+    assert!(
+        !route.steps[0].estimated,
+        "the first step is a hex the report describes"
+    );
+    assert!(
+        route.steps[1].estimated,
+        "the second is unexplored, so its terrain and cost are guesses"
+    );
+    assert_eq!(
+        route.steps[1].terrain, "mountain",
+        "the terrain of the hex it was entered from is carried forward"
+    );
+    assert_eq!(
+        route.steps[1].cost, 2,
+        "costed as the mountain it is taken for"
+    );
+    assert_eq!(route.total_cost, 4);
 }
 
-/// Two hexes the faction has stood in, with nothing known joining them up.
+/// A hex out in the country between two islands of known ground, which is where an ally's
+/// coordinates usually land.
+///
+/// The route runs from the known island across the fog to it. Only the first steps are described,
+/// so most of what is reported is estimate.
 #[test]
-fn a_destination_with_no_path_to_it_says_so() {
+fn a_destination_out_in_the_fog_is_reached_across_it() {
     let report = turn_71();
 
-    // Both (7,53) and (15,63) were visited, but every hex between them is unheard of.
-    let problem = plan(&report, "18642", at(15, 63)).expect_err("no way through");
+    // (7,53) was visited and (15,63) was too, but everything between them - (11,57) among it - is
+    // unheard of.
+    let route = plan(&report, "18642", at(11, 57)).expect("a route through the fog");
 
-    assert!(matches!(problem, RouteProblem::NoKnownRoute));
+    assert_eq!(route.steps.last().expect("a final step").to, at(11, 57));
+    assert!(
+        route.steps.iter().any(|step| step.estimated),
+        "the country between them is unexplored"
+    );
+    assert_eq!(
+        route.total_cost,
+        route.steps.iter().map(|step| step.cost).sum::<u32>()
+    );
+}
+
+/// Guessing is for reaching what the map cannot describe. A hex it *can* describe is reached over
+/// described ground or not at all: sending a walker round a known sea through hexes nobody has seen
+/// - which may well be more sea - would be an invention presented as a plan.
+#[test]
+fn a_described_destination_is_never_reached_by_guessing_a_way_round() {
+    let mut text = String::from("Foo (1) Report\n\n");
+    text.push_str("plain (1,1) in Nowhere, 10 peasants (orcs), $5.\n\n");
+    text.push_str("Exits:\n  Southeast : ocean (2,2) in Sea.\n\n");
+    text.push_str("* Walker (900), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.\n\n");
+    text.push_str("ocean (2,2) in Sea.\n\n");
+    text.push_str(
+        "Exits:\n  Northwest : plain (1,1) in Nowhere.\n  Southeast : plain (3,3) in Nowhere.\n\n",
+    );
+    text.push_str("plain (3,3) in Nowhere, 10 peasants (orcs), $5.\n\n");
+    text.push_str("Exits:\n  Northwest : ocean (2,2) in Sea.\n");
+
+    let report = parse_report_full(&text);
+    let problem = plan(&report, "900", at(3, 3)).expect_err("the sea is in the way");
+
+    assert!(
+        matches!(problem, RouteProblem::OceanNeedsShip { .. }),
+        "expected the sea to be named, got {problem:?}"
+    );
+}
+
+/// The cost carried into the fog is the terrain the route left, not a fixed assumption: stepping
+/// off a plain into unexplored country costs a plain, where stepping off a mountain costs a
+/// mountain.
+#[test]
+fn a_step_into_the_fog_costs_what_the_hex_behind_it_costs() {
+    let report = corridor(&["plain", "plain"]);
+
+    // (1,1) and (2,2) are described; (3,3) beyond them is not.
+    let route = plan(&report, "900", at(3, 3)).expect("a route into the fog");
+
+    assert_eq!(route.steps.len(), 2);
+    assert!(!route.steps[0].estimated);
+    assert!(route.steps[1].estimated);
+    assert_eq!(route.steps[1].terrain, "plain");
+    assert_eq!(route.total_cost, 2, "two ordinary steps at one point each");
+}
+
+/// A destination far outside anything the faction has seen is still answered rather than searched
+/// for forever. The search is bounded by the ground it knows, widened to hold the destination.
+#[test]
+fn a_destination_far_out_in_the_fog_is_still_answered() {
+    let report = corridor(&["plain", "plain"]);
+    let route = plan(&report, "900", at(41, 41)).expect("a long guess is still a route");
+
+    assert_eq!(route.steps.last().expect("a final step").to, at(41, 41));
+    assert_eq!(route.steps.len(), 40, "forty southeast steps");
+    assert!(
+        route.steps.iter().skip(1).all(|step| step.estimated),
+        "everything past the described corridor is a guess"
+    );
 }
 
 /// "Thirteen of Eight (13972) ... Weight: 17. Capacity: 0/0/15/0." - heavier than all four of its

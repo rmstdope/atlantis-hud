@@ -1152,7 +1152,15 @@ mod plan_route_command_tests {
 
         let alone =
             command_plan_route(RULESET, &current, "[]", "900", "1:3,3").expect("the ruleset loads");
-        assert!(alone.plan.is_none(), "one report cannot reach that far");
+        assert!(
+            alone
+                .plan
+                .expect("the fog is crossed by estimate")
+                .steps
+                .iter()
+                .any(|step| step.estimated),
+            "one report cannot describe that far, so part of the route is invented"
+        );
 
         let together = command_plan_route(RULESET, &current, &remembered, "900", "1:3,3")
             .expect("the ruleset loads");
