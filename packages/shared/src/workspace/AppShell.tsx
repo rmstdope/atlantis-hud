@@ -524,11 +524,11 @@ export function AppShell({
         return;
       }
       const target = event.target instanceof Element ? event.target : null;
-      const isOrdersEditor = target?.closest('[data-testid="orders-input"]') !== null && target !== null;
+      const isOrdersEditor = target !== null && target.closest('[data-testid="orders-input"]') !== null;
       const isTextInput =
         isOrdersEditor ||
-        (target?.closest('input, textarea, select, [contenteditable="true"]') !== null &&
-          target !== null);
+        (target !== null &&
+          target.closest('input, textarea, select, [contenteditable="true"]') !== null);
       if (!firesInContext(id, { isTextInput, isOrdersEditor })) {
         return;
       }
