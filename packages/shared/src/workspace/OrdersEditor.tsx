@@ -8,6 +8,7 @@ import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef } f
 import { minimalChange } from "../editorReconcile";
 import { orderCommandCompletions } from "../orderCompletion";
 import { toEditorDiagnostics } from "../orderLint";
+import { snippetCompletionSource, type OrderSnippet } from "../orderSnippets";
 
 /** What the shell may do to the editor from outside: shortcut work lands on these two. */
 export type OrdersEditorHandle = {
@@ -25,6 +26,8 @@ type OrdersEditorProps = {
   problems: OrderDiagnostic[];
   /** The core's order vocabulary, for the completion popup. Empty until fetched, which just keeps it quiet. */
   commands: readonly string[];
+  /** The player's snippet library, offered in the same popup and expanded with tab-through fields. */
+  snippets: readonly OrderSnippet[];
   onChange: (text: string) => void;
 };
 
@@ -59,7 +62,7 @@ const editingKeymap = defaultKeymap.filter(
  * one unit's editor can never rewind into another unit's text.
  */
 export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(function OrdersEditor(
-  { unitId, value, ariaLabel, problems, commands, onChange },
+  { unitId, value, ariaLabel, problems, commands, snippets, onChange },
   ref
 ) {
   const container = useRef<HTMLDivElement | null>(null);
@@ -74,8 +77,8 @@ export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(fu
   const pendingEchoes = useRef<string[]>([]);
 
   // Read through refs by the editor's callbacks, so a fresh render never means a rebuilt editor.
-  const latest = useRef({ value, ariaLabel, commands, onChange });
-  latest.current = { value, ariaLabel, commands, onChange };
+  const latest = useRef({ value, ariaLabel, commands, snippets, onChange });
+  latest.current = { value, ariaLabel, commands, snippets, onChange };
 
   useLayoutEffect(() => {
     const parent = container.current;
@@ -102,7 +105,8 @@ export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(fu
           ]),
           autocompletion({
             override: [
-              (context) => orderCommandCompletions(latest.current.commands)(context)
+              (context) => orderCommandCompletions(latest.current.commands)(context),
+              (context) => snippetCompletionSource(latest.current.snippets)(context)
             ]
           }),
           lintGutter(),

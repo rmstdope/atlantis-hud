@@ -322,4 +322,60 @@ describe("settings store", () => {
     expect(store().paneTransparency).toBe(90);
     expect(stub.documentElement.style.properties["--pane-transparency"]).toBe("90");
   });
+
+  it("starts with no snippets", () => {
+    expect(store().snippets).toEqual([]);
+  });
+
+  it("adds, edits and removes snippets", () => {
+    store().addSnippet({ id: "s1", name: "patrol", body: "MOVE ${dir}\nGUARD 1" });
+    store().addSnippet({ id: "s2", name: "taxes", body: "@tax" });
+    expect(store().snippets.map((snippet) => snippet.name)).toEqual(["patrol", "taxes"]);
+
+    store().updateSnippet("s1", { name: "scout", body: "MOVE ${dir}" });
+    expect(store().snippets[0]).toEqual({ id: "s1", name: "scout", body: "MOVE ${dir}" });
+
+    store().removeSnippet("s2");
+    expect(store().snippets.map((snippet) => snippet.id)).toEqual(["s1"]);
+  });
+
+  it("persists snippets", async () => {
+    store().addSnippet({ id: "s1", name: "patrol", body: "@work" });
+
+    const storage = useSettingsStore.persist.getOptions().storage;
+    const persisted = await storage?.getItem("atlantis-hud-settings");
+    if (!storage || !persisted) {
+      throw new Error("settings storage was not available");
+    }
+
+    useSettingsStore.setState({ snippets: [] });
+    await storage.setItem("atlantis-hud-settings", persisted);
+    await useSettingsStore.persist.rehydrate();
+
+    expect(store().snippets).toEqual([{ id: "s1", name: "patrol", body: "@work" }]);
+  });
+
+  it("drops malformed snippets from storage instead of breaking on them", () => {
+    // Rehydration merges storage straight into state without any setter, and storage is
+    // hand-editable - the same door every other persisted setting guards at startup.
+    useSettingsStore.setState({
+      snippets: [
+        { id: "ok", name: "patrol", body: "@work" },
+        { id: 9, name: "bad", body: "@tax" },
+        "garbage"
+      ] as never
+    });
+
+    applyPersistedSettings();
+
+    expect(store().snippets).toEqual([{ id: "ok", name: "patrol", body: "@work" }]);
+  });
+
+  it("resets snippets with everything else", () => {
+    store().addSnippet({ id: "s1", name: "patrol", body: "@work" });
+
+    resetSettingsStore();
+
+    expect(store().snippets).toEqual([]);
+  });
 });

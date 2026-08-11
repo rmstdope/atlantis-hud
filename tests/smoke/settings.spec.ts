@@ -251,3 +251,37 @@ test("the unit list limit sizes the pane while the whole list stays scrollable",
   await page.getByTestId("unit-list-limit").fill("12");
   await expect.poll(() => unitsPaneHeight(page)).toBeGreaterThanOrEqual(atTwelve - 1);
 });
+
+test("a snippet is created in settings, refuses duplicates, and survives a reload", async ({
+  page
+}) => {
+  await clearGames(page);
+  await createGame(page, "Snippet game");
+
+  await page.getByTestId("settings-indicator").click();
+  await page.getByTestId("settings-tab-snippets").click();
+
+  await page.getByTestId("snippet-name").fill("patrol");
+  await page.getByTestId("snippet-body").fill("MOVE ${dir}\nGUARD 1");
+  await page.getByTestId("snippet-add").click();
+  await expect(page.getByTestId("snippet-row")).toHaveCount(1);
+  await expect(page.getByTestId("snippet-row")).toContainText("patrol");
+
+  // A second snippet by the same name, in any case, is refused with a visible reason.
+  await page.getByTestId("snippet-name").fill("PATROL");
+  await page.getByTestId("snippet-body").fill("@work");
+  await page.getByTestId("snippet-add").click();
+  await expect(page.getByTestId("snippet-error")).toBeVisible();
+  await expect(page.getByTestId("snippet-row")).toHaveCount(1);
+
+  await page.reload();
+  await expect(page.getByTestId("game-indicator")).toContainText("Snippet game");
+  await page.getByTestId("settings-indicator").click();
+  await page.getByTestId("settings-tab-snippets").click();
+  await expect(page.getByTestId("snippet-row")).toHaveCount(1);
+  await expect(page.getByTestId("snippet-row")).toContainText("patrol");
+
+  // Deleting empties the library again.
+  await page.getByTestId("snippet-delete").click();
+  await expect(page.getByTestId("snippet-row")).toHaveCount(0);
+});
