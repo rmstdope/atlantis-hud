@@ -64,6 +64,14 @@ export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(fu
 ) {
   const container = useRef<HTMLDivElement | null>(null);
   const view = useRef<EditorView | null>(null);
+  // Every text this editor has handed to `onChange` and not yet heard back, oldest first, so
+  // its own echoes can be told from real external updates. The round trip through React is
+  // asynchronous: under load, `value` lags the document by several commits, and dispatching a
+  // lagging echo threw the document backwards - the burst of mutations a whole-draft
+  // replacement produces arrived faster than the commits echoing them (caught by CI machines
+  // slow enough to interleave them). A queue rather than one remembered text, because the echo
+  // that arrives can be any of the unacknowledged ones, not only the newest.
+  const pendingEchoes = useRef<string[]>([]);
 
   // Read through refs by the editor's callbacks, so a fresh render never means a rebuilt editor.
   const latest = useRef({ value, ariaLabel, commands, onChange });
@@ -96,7 +104,13 @@ export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(fu
             if (update.transactions.every((transaction) => transaction.annotation(External))) {
               return;
             }
-            latest.current.onChange(update.state.doc.toString());
+            const text = update.state.doc.toString();
+            pendingEchoes.current.push(text);
+            // Bounded: an acknowledgement that never comes must not become a leak.
+            if (pendingEchoes.current.length > 128) {
+              pendingEchoes.current.shift();
+            }
+            latest.current.onChange(text);
           }),
           EditorView.contentAttributes.of({
             "aria-label": latest.current.ariaLabel,
@@ -143,6 +157,8 @@ export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(fu
     });
 
     view.current = created;
+    // A fresh unit is a fresh conversation: nothing has been emitted yet.
+    pendingEchoes.current = [];
     return () => {
       created.destroy();
       view.current = null;
@@ -156,6 +172,16 @@ export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(fu
     if (!editor) {
       return;
     }
+    // The editor's own words coming back are never applied, however stale: while the player
+    // types, `value` lags the document by however many commits React is behind, and splicing a
+    // lagging echo in rewound the editor to text the player had already left. Hearing an echo
+    // acknowledges it and everything emitted before it. Only a value the editor never emitted
+    // is genuinely external.
+    const echoed = pendingEchoes.current.indexOf(value);
+    if (echoed >= 0) {
+      pendingEchoes.current.splice(0, echoed + 1);
+      return;
+    }
     const change = minimalChange(editor.state.doc.toString(), value);
     if (change) {
       // Kept out of the undo history as well as out of `onChange`: the document coming back is
@@ -165,6 +191,9 @@ export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(fu
         changes: change,
         annotations: [External.of(true), Transaction.addToHistory.of(false)]
       });
+      // A genuinely external update supersedes whatever was in flight; the applied text is as
+      // good as emitted, so hearing it back later is an echo like any other.
+      pendingEchoes.current = [value];
     }
   }, [value, unitId]);
 
@@ -206,6 +235,10 @@ export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(fu
     <div
       ref={container}
       data-testid="orders-input"
+      // Whether the completion popup has anything to offer yet: the vocabulary arrives from the
+      // core asynchronously, and a test typing before it lands would get silence and no way to
+      // tell why. Observable state, not decoration.
+      data-commands-ready={commands.length > 0}
       className="min-h-0 w-full flex-1 overflow-hidden rounded border border-edge bg-ground font-mono text-ink focus-within:border-select"
     />
   );

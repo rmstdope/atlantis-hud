@@ -59,7 +59,15 @@ test("typing can be undone and redone from the keyboard", async ({ page }) => {
   // History groups edits that land within half a second of each other; standing well clear of
   // that window is what makes "one undo, one step" deterministic rather than a race.
   await page.waitForTimeout(700);
-  await fillOrders(page, "@work\nTAX");
+  // The second edit is typed rather than filled: keystrokes are what the history feature
+  // serves, and a whole-draft replacement is a burst of mutations whose echoes can still be
+  // crossing React while the next assertion reads the editor.
+  const orders = ordersInput(page);
+  await orders.click();
+  await orders.press("ControlOrMeta+a");
+  await orders.press("ArrowRight");
+  await orders.press("Enter");
+  await orders.pressSequentially("TAX");
   await expectOrders(page, /TAX/);
 
   await ordersInput(page).press("ControlOrMeta+z");
@@ -94,6 +102,10 @@ test("undo cannot resurrect another unit's orders", async ({ page }) => {
 test("a half-typed command offers its completions", async ({ page }) => {
   await loadReport(page);
 
+  // The vocabulary arrives from the core asynchronously; typing before it lands would get
+  // silence and prove nothing about completion.
+  await expect(page.locator('[data-commands-ready="true"]')).toBeVisible();
+
   // The template arrives with orders already on the unit; completion speaks only at the start
   // of a command, so the walk starts from a clean line rather than mid-word in "@study obse".
   await fillOrders(page, "");
@@ -102,7 +114,14 @@ test("a half-typed command offers its completions", async ({ page }) => {
 
   const popup = page.locator(".cm-tooltip-autocomplete");
   await expect(popup).toBeVisible();
-  await expect(popup).toContainText("STUDY");
+  // The *selected* option, not merely a listed one: Enter accepts the selection, and until the
+  // popup has made one it falls through to a plain newline - a race an assertion on the list
+  // alone walked straight into.
+  await expect(popup.locator("li[aria-selected]")).toContainText("STUDY");
+  // acceptCompletion deliberately ignores Enter within 75ms of the popup opening (its
+  // interactionDelay, there to stop a newline meant for the document accepting a completion).
+  // A human never presses inside that window; this test just did.
+  await page.waitForTimeout(150);
 
   await page.keyboard.press("Enter");
   await expectOrders(page, /STUDY/);
