@@ -73,7 +73,11 @@ test("typing can be undone and redone from the keyboard", async ({ page }) => {
   await ordersInput(page).press("ControlOrMeta+z");
   await expectOrders(page, /^@work\n?$/);
 
-  await ordersInput(page).press("ControlOrMeta+Shift+z");
+  // Capital Z, deliberately: a real keyboard reports key "Z" for this chord, and CodeMirror
+  // resolves the binding from that. Lowercase "z" here made Playwright synthesize an event no
+  // keyboard produces - ctrl+shift with key "z" - whose first lookup candidate is Ctrl-z, which
+  // is undo: the chord stepped BACKWARD, deterministically, on any non-mac platform.
+  await ordersInput(page).press("ControlOrMeta+Shift+Z");
   await expectOrders(page, /TAX/);
 });
 

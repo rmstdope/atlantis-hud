@@ -89,13 +89,12 @@ export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(fu
         doc: latest.current.value,
         extensions: [
           history(),
-          // Mod-Shift-z redoes on every platform, deliberately beyond what historyKeymap binds:
-          // its stock redo bindings are platform-variants (mac Mod-Shift-z, a linux-only
-          // Ctrl-Shift-z), so anywhere platform detection disagrees with the keyboard the chord
-          // fell through to the browser's NATIVE contenteditable history - which replays stale
-          // DOM records from before CodeMirror rewrote the surface, resurrecting text the
-          // player had left. preventDefault stands even when there is nothing to redo, so the
-          // native history can never answer this chord.
+          // Mod-Shift-z redoes on every platform, deliberately beyond what historyKeymap
+          // binds: its stock redo bindings are platform variants (mac Mod-Shift-z, a
+          // linux-only Ctrl-Shift-z), and windows users expect the chord too. preventDefault
+          // stands even when there is nothing to redo, so the browser's native contenteditable
+          // history - which replays DOM records from before CodeMirror rewrote the surface -
+          // can never answer it.
           keymap.of([
             ...editingKeymap,
             ...historyKeymap,
