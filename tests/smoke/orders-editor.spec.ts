@@ -109,6 +109,19 @@ test("a half-typed command offers its completions", async ({ page }) => {
   await expect(popup).toHaveCount(0);
 });
 
+test("the caret follows the theme instead of defaulting to black", async ({ page }) => {
+  await loadReport(page);
+
+  // The editor uses the browser's native caret, and CodeMirror's base styles paint it black
+  // unless told otherwise - invisible on the dark theme's near-black ground. Pinning the caret
+  // to the text colour asserts the mechanism whatever the theme in force.
+  const colors = await ordersInput(page).evaluate((element) => {
+    const style = getComputedStyle(element);
+    return { caret: style.caretColor, text: style.color };
+  });
+  expect(colors.caret).toBe(colors.text);
+});
+
 test("a bad order is marked in the editor's own margin", async ({ page }) => {
   await loadReport(page);
 

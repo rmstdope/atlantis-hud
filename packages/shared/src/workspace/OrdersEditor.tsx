@@ -112,6 +112,10 @@ export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(fu
             "&": { height: "100%", fontSize: "11.5px", color: "var(--color-ink)" },
             ".cm-scroller": { fontFamily: "inherit" },
             "&.cm-focused": { outline: "none" },
+            // The native caret, which is what an editor without drawSelection actually shows.
+            // CodeMirror's base styles paint it black unless the theme says otherwise, and
+            // black on the dark theme's ground is invisible.
+            ".cm-content": { caretColor: "var(--color-ink)" },
             ".cm-cursor, .cm-dropCursor": { borderLeftColor: "var(--color-ink)" },
             ".cm-gutters": {
               backgroundColor: "transparent",
