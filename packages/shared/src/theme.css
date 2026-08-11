@@ -6,6 +6,7 @@
  * in the stylesheet knows a theme by name.
  */
 @import "./workspace/mapThemes/classic/theme.css";
+@import "./workspace/mapThemes/cartographersTable/theme.css";
 
 /*
  * Where the class names live.

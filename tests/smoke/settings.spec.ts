@@ -106,12 +106,9 @@ test("the theme choice restyles the app and survives a reload", async ({ page })
 /**
  * Which hex rendering the map draws with.
  *
- * A theme *change* is not exercised here, for the same reason a ruleset change is not: only one map
- * theme ships so far, so there is nothing to change to. What can be asserted is the part that has
- * to be right before a second theme is worth adding - that the picker is populated from the
- * registry rather than from a list of its own, and that the choice actually reaches the renderer.
- * The switching itself is covered by unit tests, and each theme sub-issue under #103 brings the
- * option this test will then have something to pick.
+ * The picker is populated from the theme registry rather than from a list of its own, which is what
+ * makes adding a theme one module and one registry entry. The map is re-drawn in the chosen style
+ * immediately - no reload - and the choice is a preference, so it survives one.
  */
 test("the map theme picker offers the registered themes and reaches the map", async ({ page }) => {
   await clearGames(page);
@@ -121,15 +118,52 @@ test("the map theme picker offers the registered themes and reaches the map", as
   const picker = page.getByTestId("settings-map-theme");
   await expect(picker).toBeVisible();
 
-  // Populated from the theme registry: an empty picker would mean the registry never reached it.
-  const options = picker.locator("option");
-  expect(await options.count()).toBeGreaterThan(0);
+  // Populated from the registry: an empty picker would mean the registry never reached it.
+  expect(await picker.locator("option").count()).toBeGreaterThan(1);
   await expect(picker).toHaveValue("classic");
 
   await page.keyboard.press("Escape");
 
   // The chosen theme is stamped on the map's root, which is what its stylesheet hangs off - the
   // proof the setting reached the renderer rather than merely the store.
+  const map = page.getByTestId("map-canvas").locator("svg");
+  await expect(map).toHaveClass(/map-theme-classic/);
+});
+
+test("choosing another map theme redraws the open map, and the choice outlives a reload", async ({
+  page
+}) => {
+  await clearGames(page);
+  await createGame(page, "Settings game");
+  // A real report, because the point of this test is that the theme *draws* - an empty map would
+  // pass a class assertion while rendering nothing at all.
+  await openReport(page);
+
+  const map = page.getByTestId("map-canvas").locator("svg");
+  await expect(map).toHaveClass(/map-theme-classic/);
+  // Classic's settlement glyph, which the atlas replaces with a keep.
+  await expect(map.getByText("▣").first()).toBeAttached();
+
+  await page.getByTestId("settings-indicator").click();
+  await page.getByTestId("settings-map-theme").selectOption("cartographers-table");
+
+  // Redrawn in place: no reload, and the dialog is still open over it.
+  await expect(map).toHaveClass(/map-theme-cartographers-table/);
+  await expect(map).not.toHaveClass(/map-theme-classic/);
+  // Marks only the atlas draws, so this is the theme's own rendering and not just a class swap -
+  // and Classic's own glyph is gone, so the two are not simply layered on top of each other.
+  await expect(map.locator('[data-mark="settlement"]').first()).toBeAttached();
+  await expect(map.getByText("▣")).toHaveCount(0);
+
+  await page.keyboard.press("Escape");
+  await page.reload();
+  await expect(page.getByTestId("map-canvas").locator("svg")).toHaveClass(
+    /map-theme-cartographers-table/
+  );
+
+  // Back to the default, so later tests inherit the look they expect.
+  await page.getByTestId("settings-indicator").click();
+  await page.getByTestId("settings-map-theme").selectOption("classic");
   await expect(page.getByTestId("map-canvas").locator("svg")).toHaveClass(/map-theme-classic/);
 });
 

@@ -1,0 +1,225 @@
+/*
+ * Cartographer's Table: a hand-drawn atlas.
+ *
+ * The dark values are the design proposal's own (hex-design-proposals.html, proposal 01), which was
+ * drawn against the app's dark ground. The light values push the same palette further towards
+ * paper - this is the one theme where light mode is the more natural home, so the parchment gets
+ * lighter and the pigments cleaner rather than merely inverted.
+ *
+ * Terrain here is the atlas's own muted pigment, not the app's terrain palette: the ground colour
+ * is half of what makes this design an atlas rather than a readout.
+ */
+
+:root {
+  /* Ink, paper, and the timber everything built is drawn in. */
+  --ct-ink: #4a3a22;
+  --ct-ink-strong: #3a2f1d;
+  --ct-parchment: #efe3c2;
+  --ct-timber: #8a5c33;
+  --ct-name: #2a2118;
+  --ct-void: #241c12;
+
+  --ct-road: #6b4f2a;
+  --ct-road-dash: #c9b088;
+
+  /* Blood for what fights, and the gate's cold violet. */
+  --ct-blood: #7d2b23;
+  --ct-gate: #4a3a55;
+
+  /* The unit groups, as heraldry: own, other factions, monsters. */
+  --ct-own: #4caf7d;
+  --ct-foreign: #5ec8f0;
+  --ct-monster: #f07070;
+
+  --ct-terrain-ocean: #7fa0b8;
+  --ct-terrain-plain: #b3a565;
+  --ct-terrain-forest: #6e8a5c;
+  --ct-terrain-mountain: #8d8a83;
+  --ct-terrain-swamp: #7d8a5e;
+  --ct-terrain-desert: #c2ab74;
+  --ct-terrain-jungle: #5f8a63;
+  --ct-terrain-tundra: #a9b3ae;
+  --ct-terrain-volcano: #9c7a6a;
+  --ct-terrain-cavern: #8f8a86;
+  --ct-terrain-underforest: #6b8a72;
+  --ct-terrain-wasteland: #b0a288;
+  --ct-terrain-other: #9a9a90;
+}
+
+:root[data-theme="light"] {
+  --ct-ink: #5c4a2e;
+  --ct-ink-strong: #4a3c25;
+  --ct-parchment: #fbf4e2;
+  --ct-timber: #9c6a3c;
+  --ct-name: #3a2f22;
+  --ct-void: #3b3020;
+
+  --ct-road: #7d5f36;
+  --ct-road-dash: #e0cba4;
+
+  --ct-blood: #93362c;
+  --ct-gate: #5f4c72;
+
+  --ct-own: #2f8c5c;
+  --ct-foreign: #2d7fa8;
+  --ct-monster: #c25050;
+
+  --ct-terrain-ocean: #a8c4d8;
+  --ct-terrain-plain: #d8cb92;
+  --ct-terrain-forest: #9dba8c;
+  --ct-terrain-mountain: #bcb9b2;
+  --ct-terrain-swamp: #adb88b;
+  --ct-terrain-desert: #e6d5a8;
+  --ct-terrain-jungle: #93bd94;
+  --ct-terrain-tundra: #d0d8d4;
+  --ct-terrain-volcano: #c9a89a;
+  --ct-terrain-cavern: #c0bab4;
+  --ct-terrain-underforest: #9fbfa6;
+  --ct-terrain-wasteland: #d8cbb2;
+  --ct-terrain-other: #c4c4ba;
+}
+
+/* Terrain pigment. */
+.ct-terrain-ocean {
+  fill: var(--ct-terrain-ocean);
+}
+.ct-terrain-plain {
+  fill: var(--ct-terrain-plain);
+}
+.ct-terrain-forest {
+  fill: var(--ct-terrain-forest);
+}
+.ct-terrain-mountain {
+  fill: var(--ct-terrain-mountain);
+}
+.ct-terrain-swamp {
+  fill: var(--ct-terrain-swamp);
+}
+.ct-terrain-desert {
+  fill: var(--ct-terrain-desert);
+}
+.ct-terrain-jungle {
+  fill: var(--ct-terrain-jungle);
+}
+.ct-terrain-tundra {
+  fill: var(--ct-terrain-tundra);
+}
+.ct-terrain-volcano {
+  fill: var(--ct-terrain-volcano);
+}
+.ct-terrain-cavern {
+  fill: var(--ct-terrain-cavern);
+}
+.ct-terrain-underforest {
+  fill: var(--ct-terrain-underforest);
+}
+.ct-terrain-wasteland {
+  fill: var(--ct-terrain-wasteland);
+}
+.ct-terrain-other {
+  fill: var(--ct-terrain-other);
+}
+
+.ct-edge {
+  stroke: var(--ct-ink);
+}
+
+/* The sheet ageing, and the surveyor's pencil over it. */
+.ct-wash,
+.ct-gauze {
+  fill: var(--ct-parchment);
+}
+.ct-hatch {
+  stroke: var(--ct-ink);
+}
+
+.ct-road {
+  stroke: var(--ct-road);
+}
+.ct-road-dash {
+  stroke: var(--ct-road-dash);
+}
+
+/* Line art: drawn in ink, filled with paper. */
+.ct-glyph {
+  stroke: var(--ct-ink);
+}
+.ct-building {
+  fill: var(--ct-parchment);
+}
+.ct-roof {
+  fill: var(--ct-timber);
+}
+.ct-sail {
+  fill: var(--ct-parchment);
+}
+.ct-void {
+  fill: var(--ct-void);
+}
+.ct-rungs {
+  stroke: var(--ct-road-dash);
+}
+.ct-battle,
+.ct-monsters {
+  stroke: var(--ct-blood);
+}
+.ct-gate {
+  stroke: var(--ct-gate);
+}
+.ct-shield {
+  stroke: var(--ct-ink-strong);
+}
+.ct-fill-own {
+  fill: var(--ct-own);
+}
+.ct-fill-foreign {
+  fill: var(--ct-foreign);
+}
+.ct-fill-monster {
+  fill: var(--ct-monster);
+}
+
+/*
+ * Labels are drawn at a constant size on screen, so the font divides back out by the map's scale -
+ * the same mechanism the shared `map-label` uses, but with the atlas's own italic serif and a
+ * parchment halo instead of the app's ground colour.
+ */
+.ct-label {
+  paint-order: stroke fill;
+  stroke: var(--ct-parchment);
+  stroke-width: calc(2px / var(--map-scale, 1));
+  stroke-linejoin: round;
+}
+/*
+ * Longhand rather than the `font` shorthand, deliberately. A `calc()` inside the shorthand is valid
+ * CSS that some renderers drop on the floor - the label then falls back to a default size, which at
+ * this zoom is several times the hex. The desktop shell draws in whatever WebKit the system
+ * provides, so the map does not gamble on shorthand parsing.
+ */
+.ct-name {
+  font-family: Georgia, "Times New Roman", serif;
+  font-style: italic;
+  font-size: calc(10px / var(--map-scale, 1));
+  fill: var(--ct-name);
+}
+.ct-count {
+  font-family: Georgia, "Times New Roman", serif;
+  font-weight: bold;
+  font-size: calc(8px / var(--map-scale, 1));
+  fill: var(--ct-name);
+}
+
+/*
+ * Zoom bands.
+ *
+ * Line art thins out aggressively as the hex shrinks: this design carries more strokes per hex than
+ * any other, and past a point they stop being glyphs and become noise. Far keeps terrain, roads and
+ * the map's own rings only.
+ *
+ * Scoped to this theme, because every theme's stylesheet is loaded whichever one is selected.
+ */
+.map-theme-cartographers-table.map-far .ct-glyph,
+.map-theme-cartographers-table.map-far .ct-label,
+.map-theme-cartographers-table.map-mid .ct-label {
+  display: none;
+}

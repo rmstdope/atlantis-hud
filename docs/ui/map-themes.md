@@ -148,7 +148,19 @@ from a mockup by dividing by 46 and express it as a fraction of the radius — `
 contract, not the absolute pixel sizes.
 
 By the map's convention, glyphs and pips scale with the world while labels stay screen-constant:
-give a label the shared `map-label` class, which divides its font size by `--map-scale`.
+give a label the shared `map-label` class, which divides its font size by `--map-scale`, or divide by
+it yourself if the theme wants its own type.
+
+Two things worth copying from Cartographer's Table:
+
+- **Draw the whole hex in the mockup's coordinates and scale it once.** That theme sets
+  `SCALE = HEX_RADIUS / 46` and wraps each hex's marks in `scale(SCALE)`, so every number in the
+  module can be read straight off the proposal and compared with it. Labels stay *outside* that
+  group, because scaling text with the hex is the thing this map left a canvas to avoid.
+- **Use `font-size` longhand, never the `font` shorthand.** A `calc()` inside the shorthand is valid
+  CSS that some renderers drop, and a label that loses its `calc()` falls back to a default size
+  several times the width of the hex. The desktop shell draws in whatever WebKit the system
+  provides, so the map does not gamble on shorthand parsing.
 
 ### Testing
 
