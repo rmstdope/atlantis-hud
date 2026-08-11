@@ -59,6 +59,63 @@ describe("theme palette", () => {
     expect(offenders).toEqual([]);
   });
 
+  /**
+   * The greys have to be readable, not merely present.
+   *
+   * `ink-soft` and `ink-dim` carry the small print - field labels, the sentence under a checkbox,
+   * a hex's coordinates - and small print is exactly where a colour chosen by eye on one monitor
+   * turns into something nobody can read on another. WCAG AA asks 4.5:1 for text this size, and
+   * the dark theme's dim grey was at 2.78:1 against a raised panel.
+   *
+   * Measured against every surface either grey is written on, in both themes.
+   */
+  const INK_TOKENS = ["--color-ink", "--color-ink-soft", "--color-ink-dim"];
+  const SURFACES = ["--color-ground", "--color-panel", "--color-panel-raised"];
+  const AA_SMALL_TEXT = 4.5;
+
+  function tokenValues(block: string): Map<string, string> {
+    return new Map(
+      [...block.matchAll(/(--color-[\w-]+)\s*:\s*(#[0-9a-fA-F]{6})/g)].map((match) => [
+        match[1],
+        match[2]
+      ])
+    );
+  }
+
+  function relativeLuminance(hex: string): number {
+    const channels = [1, 3, 5].map((at) => Number.parseInt(hex.slice(at, at + 2), 16) / 255);
+    const linear = channels.map((value) =>
+      value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4
+    );
+    return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2];
+  }
+
+  function contrast(one: string, other: string): number {
+    const [brighter, darker] = [relativeLuminance(one), relativeLuminance(other)].sort(
+      (a, b) => b - a
+    );
+    return (brighter + 0.05) / (darker + 0.05);
+  }
+
+  it.each([
+    ["dark", /@theme\b/],
+    ["light", /:root\[data-theme="light"\]/]
+  ])("keeps %s grey text readable on every surface it is written on", (_theme, opener) => {
+    const values = tokenValues(extractBlock(css, opener));
+
+    const unreadable: string[] = [];
+    for (const ink of INK_TOKENS) {
+      for (const surface of SURFACES) {
+        const ratio = contrast(values.get(ink)!, values.get(surface)!);
+        if (ratio < AA_SMALL_TEXT) {
+          unreadable.push(`${ink} on ${surface} is ${ratio.toFixed(2)}:1`);
+        }
+      }
+    }
+
+    expect(unreadable).toEqual([]);
+  });
+
   it("gives every dark token a light counterpart", () => {
     const darkTokens = colorTokens(extractBlock(css, /@theme\b/));
     expect(darkTokens.length).toBeGreaterThan(0);

@@ -18,7 +18,7 @@ import {
   unitsForHex,
   type HexMapModel
 } from "../hexMapModel";
-import { downloadTextFile } from "../downloadFile";
+import { downloadTextFile, type TextFileSaver } from "../downloadFile";
 import { exportFileName, exportRequestOf } from "../mapExport";
 import { readUnitOrders, writeUnitOrders } from "../ordersDocument";
 import { mergeTurn, rememberTurn, restoreLatestTurn, toStoredRegions } from "../gameMemory";
@@ -61,7 +61,8 @@ import { MergedFactionsPanel } from "./MergedFactionsPanel";
 import { LayerChips } from "./LayerChips";
 import { MapCanvas } from "./MapCanvas";
 import { MapExportDialog } from "./MapExportDialog";
-import { boundsOfKnown, type MapRect } from "./mapMarquee";
+import { MapSavedDialog } from "./MapSavedDialog";
+import { type MapRect } from "./mapMarquee";
 import { OrdersPanel } from "./OrdersPanel";
 import type { OrdersEditorHandle } from "./OrdersEditor";
 import { CommandPalette } from "./CommandPalette";
@@ -99,9 +100,6 @@ function describeError(error: unknown): string {
     return "unknown error";
   }
 }
-
-/** What the export dialog opens on when the level holds nothing visited: one hex at the origin. */
-const EMPTY_RECT = { fromX: 0, fromY: 0, toX: 0, toY: 0 };
 
 /**
  * Re-exported rather than defined here since issue #53 moved the rule into `reportLoadDecision`.
@@ -200,11 +198,20 @@ export function AppShell({
   client,
   platformLabel,
   registerBeforeQuit,
+  saveTextFile,
   appUpdate = UNSUPPORTED_UPDATES
 }: {
   client: CoreClient;
   platformLabel: string;
   registerBeforeQuit?: RegisterBeforeQuit;
+  /**
+   * How this shell puts a file where the player asks, when it can.
+   *
+   * Injected for the same reason `registerBeforeQuit` is. Absent in a browser, which can only hand
+   * the file to the download machinery and cannot learn where it went; present on the desktop,
+   * which asks and can then say.
+   */
+  saveTextFile?: TextFileSaver;
   /**
    * How this shell answers "is there a newer version". Injected for the same reason
    * `registerBeforeQuit` is: the web answer is a service worker and the desktop answer is Tauri,
@@ -266,6 +273,10 @@ export function AppShell({
   const [exportRect, setExportRect] = useState<MapRect | null>(null);
   const [exportBusy, setExportBusy] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
+  // The file just written, until the player has been told where it went.
+  const [savedExport, setSavedExport] = useState<{ path: string | null; fileName: string } | null>(
+    null
+  );
   // The F8 walk's stop and its pending cross-unit landing. A ref for the stop: pressing F8
   // twice must not wait a render between the steps.
   const lastDiagnostic = useRef<number | null>(null);
@@ -1548,11 +1559,21 @@ export function AppShell({
           rememberedJson,
           exportRequestOf(rect, level, content)
         );
-        downloadTextFile(
-          exportFileName(parsed?.header.turnNumber ?? null, level),
-          text,
-          "text/plain"
-        );
+        const fileName = exportFileName(parsed?.header.turnNumber ?? null, level);
+
+        // A shell that can put the file where the player asks does; the browser gets the download
+        // it is capable of. Only the first can say where the file went, and a cancelled save
+        // dialog says nothing happened at all.
+        if (saveTextFile) {
+          const path = await saveTextFile(fileName, text);
+          if (path === null) {
+            return;
+          }
+          setSavedExport({ path, fileName });
+        } else {
+          downloadTextFile(fileName, text, "text/plain");
+          setSavedExport({ path: null, fileName });
+        }
         setExportOpen(false);
       } catch (error: unknown) {
         setExportError(describeError(error));
@@ -1560,7 +1581,7 @@ export function AppShell({
         setExportBusy(false);
       }
     },
-    [client, level, parsed, rawReport, rememberedJson]
+    [client, level, parsed, rawReport, rememberedJson, saveTextFile]
   );
 
   const factionLabel = factionLabelOf(parsed);
@@ -1833,14 +1854,18 @@ export function AppShell({
         <MapExportDialog
           hexes={model.hexes}
           level={level}
-          // The dragged rectangle when there is one; otherwise everything known on this level, so
-          // opening the dialog from the header or the palette offers the whole map rather than a
-          // point at the origin.
-          rect={exportRect ?? boundsOfKnown(model.hexes, level) ?? EMPTY_RECT}
+          selection={exportRect}
           busy={exportBusy}
           error={exportError}
           onExport={(rect, content) => void exportMap(rect, content)}
           onDismiss={() => setExportOpen(false)}
+        />
+      ) : null}
+      {savedExport ? (
+        <MapSavedDialog
+          path={savedExport.path}
+          fileName={savedExport.fileName}
+          onDismiss={() => setSavedExport(null)}
         />
       ) : null}
       {keyboardPanels}

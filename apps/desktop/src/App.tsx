@@ -1,6 +1,7 @@
 import type { CoreClient } from "@atlantis/core-client";
 import { AppShell } from "@atlantis/shared";
 import { beforeQuit } from "./quitGuard";
+import { desktopTextFileSaver } from "./saveTextFile";
 import { useDesktopAppUpdate } from "./updateCheck";
 
 /**
@@ -17,6 +18,9 @@ export default function App({ client }: { client: CoreClient }) {
       client={client}
       platformLabel="desktop"
       registerBeforeQuit={beforeQuit}
+      // Undefined when this bundle is opened in a plain browser, which is what the preview server
+      // and the smoke suite do: there is no native dialog there, and the download is the answer.
+      saveTextFile={desktopTextFileSaver()}
       appUpdate={useDesktopAppUpdate()}
     />
   );

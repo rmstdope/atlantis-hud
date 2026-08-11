@@ -38,24 +38,53 @@ export function exportFileName(turnNumber: number | null, level: number): string
 }
 
 /**
- * What a typed corner field means, or nothing while it means nothing yet.
+ * What the export covers, in words rather than in four numbers.
  *
- * A number input hands back the raw text, and every field passes through states that are not a
- * coordinate on the way to being one: empty while it is being retyped, a lone minus before the
- * digits. `Number("")` is 0, so testing the parsed value alone would snap the corner to the map
- * origin the moment the field is cleared - dragging the rectangle away under the player's hands
- * and recomputing the count against it. Nothing means "leave the corner where it was".
+ * The rectangle comes from a drag on the map, so the player has already seen it; repeating it as
+ * editable coordinates asked them to check arithmetic they never did. Absent means no drag, and
+ * the export covers everything known on the level - which is worth saying outright, because it is
+ * the case where the file is largest and the player chose nothing.
  */
-export function cornerValue(raw: string): number | null {
-  const text = raw.trim();
-  if (text === "" || text === "-" || text === "+") {
-    return null;
+export function exportAreaSummary(selection: MapRect | null): string {
+  if (!selection) {
+    return "The entire known map on this level.";
   }
-  const value = Number(text);
-  return Number.isFinite(value) ? Math.trunc(value) : null;
+
+  const from = `(${selection.fromX},${selection.fromY})`;
+  const to = `(${selection.toX},${selection.toY})`;
+  return from === to
+    ? `The area you selected: ${from}.`
+    : `The area you selected: ${from} to ${to}.`;
 }
 
-/** The line under the rectangle fields, saying what the file will hold. */
+/** Where the file went, as far as the shell that wrote it can say. */
+export type SavedFile = {
+  /** The full path where one is known, the bare filename otherwise. */
+  location: string;
+  /** What to add when the location is only a name. */
+  note: string | null;
+  copyLabel: string;
+};
+
+/**
+ * What to tell the player once the file is written.
+ *
+ * The desktop shell writes through a save dialog and knows exactly where the file went. A browser
+ * download does not report a path to the page at all, so there the name is the whole truth - and
+ * the note is what keeps that from reading as an export that went nowhere.
+ */
+export function savedFile(path: string | null, fileName: string): SavedFile {
+  if (path === null) {
+    return {
+      location: fileName,
+      note: "Saved to your browser's downloads folder.",
+      copyLabel: "Copy filename"
+    };
+  }
+  return { location: path, note: null, copyLabel: "Copy path" };
+}
+
+/** The line under the content switches, saying what the file will hold. */
 export function exportSummary(regions: number): string {
   if (regions === 0) {
     return "No regions you have visited lie inside this rectangle.";

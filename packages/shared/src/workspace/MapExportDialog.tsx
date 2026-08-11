@@ -1,25 +1,26 @@
 import { useState } from "react";
 import type { MapExportContent } from "@atlantis/core-client";
-import { cornerValue, DEFAULT_EXPORT_CONTENT, exportSummary } from "../mapExport";
+import { DEFAULT_EXPORT_CONTENT, exportAreaSummary, exportSummary } from "../mapExport";
 import { useEscapeToDismiss } from "./dismissLayer";
-import { hexesInRect, type MapRect } from "./mapMarquee";
+import { boundsOfKnown, hexesInRect, type MapRect } from "./mapMarquee";
 import type { HexNode } from "../hexMapModel";
 
 /**
  * What to send an ally, and how much of it.
  *
- * The rectangle arrives from a Shift+drag on the map, but the four corners are editable here as
- * well - a drag is quick and imprecise, the keyboard cannot drag at all, and a player who wants
- * exactly the province they can name should not have to aim for it.
+ * The area is stated rather than edited. It comes from a Shift+drag the player has already seen on
+ * the map, or - when they did not drag - from everything known on this level, which is worth
+ * saying in words. Coordinate fields here asked the player to check arithmetic they never did, and
+ * put a second, editable answer beside the one the map had already given them.
  *
  * The three content switches are the point of the dialog. Everything is shared by default because
  * that is the usual answer to an ally who asked for a map; withholding is the deliberate act, and
- * the count under the fields says how much is going either way.
+ * the count under the switches says how much is going either way.
  */
 export function MapExportDialog({
   hexes,
   level,
-  rect,
+  selection,
   busy,
   error,
   onExport,
@@ -27,39 +28,21 @@ export function MapExportDialog({
 }: {
   hexes: HexNode[];
   level: number;
-  /** The dragged rectangle, or the bounds of everything known when nothing was dragged. */
-  rect: MapRect;
+  /** The rectangle a Shift+drag left behind, or nothing when the whole level is going. */
+  selection: MapRect | null;
   busy: boolean;
   error: string | null;
   onExport: (rect: MapRect, content: MapExportContent) => void;
   onDismiss: () => void;
 }) {
-  const [bounds, setBounds] = useState<MapRect>(rect);
   const [content, setContent] = useState<MapExportContent>(DEFAULT_EXPORT_CONTENT);
 
   useEscapeToDismiss(onDismiss);
 
+  // Everything known on the level, when no area was picked. A level holding nothing visited leaves
+  // a rectangle covering one hex at the origin, which the count below correctly calls empty.
+  const bounds = selection ?? boundsOfKnown(hexes, level) ?? EMPTY;
   const regions = hexesInRect(hexes, bounds, level);
-  const corner = (key: keyof MapRect, label: string) => (
-    <label className="flex items-center gap-1 text-ink-soft">
-      <span className="w-6 text-[10px] uppercase tracking-wide text-ink-dim">{label}</span>
-      <input
-        type="number"
-        data-testid={`map-export-${key}`}
-        aria-label={label}
-        value={bounds[key]}
-        onChange={(event) => {
-          // A field mid-edit is not a coordinate yet; the corner stays where it was until it is
-          // one. See `cornerValue`.
-          const value = cornerValue(event.target.value);
-          if (value !== null) {
-            setBounds({ ...bounds, [key]: value });
-          }
-        }}
-        className="w-16 rounded border border-edge bg-panel px-1 py-0.5 text-ink"
-      />
-    </label>
-  );
 
   const toggle = (key: keyof MapExportContent, label: string, description: string) => (
     <label className="flex items-center justify-between gap-2 text-ink-soft">
@@ -109,16 +92,12 @@ export function MapExportDialog({
           </button>
         </div>
 
-        <p className="text-[10px] text-ink-dim">
-          Shift-drag on the map to pick an area, or set the corners here. Level {level}.
+        <p data-testid="map-export-area" className="text-ink">
+          {exportAreaSummary(selection)}
         </p>
-
-        <div className="flex flex-wrap gap-2">
-          {corner("fromX", "x from")}
-          {corner("toX", "x to")}
-          {corner("fromY", "y from")}
-          {corner("toY", "y to")}
-        </div>
+        <p className="text-[10px] text-ink-dim">
+          Shift-drag on the map to export part of it instead.
+        </p>
 
         <div className="flex flex-col gap-1.5 border-t border-edge pt-2">
           {toggle("structures", "Structures", "Buildings, ships and roads.")}
@@ -163,3 +142,6 @@ export function MapExportDialog({
     </div>
   );
 }
+
+/** A level with nothing visited on it: one hex at the origin, which holds no regions. */
+const EMPTY: MapRect = { fromX: 0, fromY: 0, toX: 0, toY: 0 };

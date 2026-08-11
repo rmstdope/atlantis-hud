@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
-  cornerValue,
   DEFAULT_EXPORT_CONTENT,
+  exportAreaSummary,
   exportFileName,
   exportRequestOf,
-  exportSummary
+  exportSummary,
+  savedFile
 } from "./mapExport";
 
 const RECT = { fromX: 4, fromY: 50, toX: 8, toY: 54 };
@@ -40,26 +41,46 @@ describe("what the export dialog hands to the core", () => {
   });
 });
 
-describe("a corner being typed", () => {
-  it("reads a coordinate, negative ones included", () => {
-    expect(cornerValue("12")).toBe(12);
-    expect(cornerValue("-4")).toBe(-4);
-    expect(cornerValue(" 7 ")).toBe(7);
+describe("what the player is told after the file is written", () => {
+  it("gives the full path when the shell knows one", () => {
+    expect(savedFile("/Users/henrikku/Downloads/map-turn-71-level-1.txt", "map-turn-71-level-1.txt")).toEqual({
+      location: "/Users/henrikku/Downloads/map-turn-71-level-1.txt",
+      note: null,
+      copyLabel: "Copy path"
+    });
   });
 
   /**
-   * The states a field passes through on the way to a number. `Number("")` is 0, so a cleared
-   * field would otherwise read as the map origin and drag the rectangle there mid-edit.
+   * A browser download never tells the page where the file landed, so the name is all there is.
+   * The note is what stops that reading as an export that went nowhere.
    */
-  it("means nothing while it is half typed", () => {
-    expect(cornerValue("")).toBeNull();
-    expect(cornerValue("-")).toBeNull();
-    expect(cornerValue("  ")).toBeNull();
-    expect(cornerValue("nine")).toBeNull();
+  it("gives the name and says where to look when it does not", () => {
+    expect(savedFile(null, "map-turn-71-level-1.txt")).toEqual({
+      location: "map-turn-71-level-1.txt",
+      note: "Saved to your browser's downloads folder.",
+      copyLabel: "Copy filename"
+    });
+  });
+});
+
+describe("what the export dialog says it will export", () => {
+  it("names the area a shift-drag picked", () => {
+    expect(exportAreaSummary(RECT)).toBe("The area you selected: (4,50) to (8,54).");
   });
 
-  it("keeps coordinates whole", () => {
-    expect(cornerValue("6.7")).toBe(6);
+  /**
+   * Without a drag the export covers everything known on the level, and saying so is the whole
+   * point: a player who has not selected anything should not have to work out from four numbers
+   * whether that is what they are about to send.
+   */
+  it("says so plainly when nothing was selected", () => {
+    expect(exportAreaSummary(null)).toBe("The entire known map on this level.");
+  });
+
+  it("names a single hex as the area it is", () => {
+    expect(exportAreaSummary({ fromX: 7, fromY: 53, toX: 7, toY: 53 })).toBe(
+      "The area you selected: (7,53)."
+    );
   });
 });
 

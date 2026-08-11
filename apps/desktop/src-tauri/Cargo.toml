@@ -5,7 +5,12 @@ edition = "2021"
 
 [features]
 default = []
-desktop-runtime = ["dep:tauri", "dep:tauri-plugin-opener"]
+desktop-runtime = [
+  "dep:tauri",
+  "dep:tauri-plugin-opener",
+  "dep:tauri-plugin-dialog",
+  "dep:tauri-plugin-fs",
+]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -17,3 +22,8 @@ tauri = { version = "2", optional = true, default-features = false, features = [
 # Handing a URL to the operating system. Gated behind desktop-runtime so the native system
 # libraries are only required when actually building the desktop shell.
 tauri-plugin-opener = { version = "2", optional = true }
+# Asking the operating system where to put a file, and then writing it there. The map export is
+# what needs them: a browser download cannot tell the player where the file went, and on the
+# desktop that is the one thing they want to know. Gated with the rest of the desktop runtime.
+tauri-plugin-dialog = { version = "2", optional = true }
+tauri-plugin-fs = { version = "2", optional = true }
