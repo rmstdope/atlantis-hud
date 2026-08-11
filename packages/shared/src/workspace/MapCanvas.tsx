@@ -413,6 +413,11 @@ export function MapCanvas({
     if (!ARROWS.includes(event.key as ArrowKey)) {
       return;
     }
+    // Alt+Arrow is the global unit walk, not the map cursor: handling it here too would move
+    // both from one keypress, cursor and selection ending up in different hexes.
+    if (event.altKey) {
+      return;
+    }
     event.preventDefault();
 
     if (event.shiftKey) {

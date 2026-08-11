@@ -12,8 +12,9 @@ import {
 } from "../orderEditor";
 import type { OrderSnippet } from "../orderSnippets";
 import { readUnitOrders } from "../ordersDocument";
+import type { Ref } from "react";
 import { CollapsiblePanel } from "./CollapsiblePanel";
-import { OrdersEditor } from "./OrdersEditor";
+import { OrdersEditor, type OrdersEditorHandle } from "./OrdersEditor";
 
 /** Why the editor is refusing an edit. Each reason needs its own wording to be any use. */
 type Lock =
@@ -42,6 +43,8 @@ type OrdersPanelProps = {
   commands: readonly string[];
   /** The player's snippet library, offered in the same popup. */
   snippets: readonly OrderSnippet[];
+  /** The shell's line to the editor, for the shortcut layer's jumps and insertions. */
+  editorRef?: Ref<OrdersEditorHandle>;
 };
 
 function lockFor(unit: ReportUnit | null, hex: HexNode | null, block: string | null): Lock | null {
@@ -75,7 +78,8 @@ export function OrdersPanel({
   validated,
   save,
   commands,
-  snippets
+  snippets,
+  editorRef
 }: OrdersPanelProps) {
   const unitId = unit?.unitId ?? null;
   const block = unitId === null ? null : readUnitOrders(document, unitId);
@@ -152,6 +156,7 @@ export function OrdersPanel({
       ) : (
         <div className="flex h-full min-h-0 flex-col">
           <OrdersEditor
+            ref={editorRef}
             unitId={unit?.unitId ?? ""}
             value={draft}
             ariaLabel={`Orders for unit ${unit?.unitId ?? ""}`}

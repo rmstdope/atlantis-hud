@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useEscapeToDismiss } from "./dismissLayer";
 import { APP_VERSION } from "../appVersion";
 import { snippetBodyProblem, snippetNameProblem } from "../orderSnippets";
 import { useSettingsStore } from "../settingsStore";
@@ -47,19 +48,9 @@ export function SettingsDialog({
   // which is the wanted default.
   const [tab, setTab] = useState<SettingsTabId>("global");
 
-  useEffect(() => {
-    // Captured, and stopped, because Escape must mean only "close this dialog". Other surfaces
-    // listen for Escape on the document too — the foreign-report prompt cancels a pending decision
-    // on it — and a bubble-phase listener here would let one keypress answer both.
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.stopPropagation();
-        onDismiss();
-      }
-    };
-    document.addEventListener("keydown", onKeyDown, true);
-    return () => document.removeEventListener("keydown", onKeyDown, true);
-  }, [onDismiss]);
+  // Escape closes this dialog - unless something newer stands over it, which is the command
+  // palette's whole opening move.
+  useEscapeToDismiss(onDismiss);
 
   return (
     <div

@@ -53,6 +53,14 @@ import { MergedFactionsPanel } from "./MergedFactionsPanel";
 import { LayerChips } from "./LayerChips";
 import { MapCanvas } from "./MapCanvas";
 import { OrdersPanel } from "./OrdersPanel";
+import type { OrdersEditorHandle } from "./OrdersEditor";
+import { CommandPalette } from "./CommandPalette";
+import { ShortcutHelp } from "./ShortcutHelp";
+import { buildPaletteEntries } from "../commandPalette";
+import { diagnosticTargets, stepDiagnostic } from "../diagnosticNav";
+import { hasOpenDismissLayers } from "../dismissStack";
+import { firesInContext, isMacPlatform, matchShortcut, SHORTCUTS } from "../shortcuts";
+import { nextOwnUnit } from "../unitCycle";
 import { ordersSlotClass, unitSlotClass } from "./panelLayout";
 import { PlannerPanel } from "./PlannerPanel";
 import { chooseRouteOverlay } from "./routeOverlay";
@@ -236,6 +244,15 @@ export function AppShell({
   const [gamesLoaded, setGamesLoaded] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
+  // The F8 walk's stop and its pending cross-unit landing. A ref for the stop: pressing F8
+  // twice must not wait a render between the steps.
+  const lastDiagnostic = useRef<number | null>(null);
+  const [pendingProblem, setPendingProblem] = useState<
+    ReturnType<typeof diagnosticTargets>[number] | null
+  >(null);
+  const ordersEditor = useRef<OrdersEditorHandle | null>(null);
   const [gameError, setGameError] = useState<string | null>(null);
   // Which of the turn's two lists is being read, and whether either is. Local rather than in the
   // store, exactly as the game picker is: it is a panel that is open for a moment, not a preference.
@@ -259,6 +276,8 @@ export function AppShell({
   const warnOnUnguardedHex = useSettingsStore((state) => state.warnOnUnguardedHex);
   const movementPlanner = useSettingsStore((state) => state.movementPlanner);
   const snippets = useSettingsStore((state) => state.snippets);
+  const theme = useSettingsStore((state) => state.theme);
+  const setTheme = useSettingsStore((state) => state.setTheme);
   // Which panels are folded is a layout question as well as a panel one: a folded panel hands the
   // space it gives up to the panel beside it, and only the shell knows what is beside what.
   const collapsed = useWorkspaceStore((state) => state.collapsed);
@@ -406,6 +425,165 @@ export function AppShell({
     },
     [unitRegions, level, setLevel, selectRegion, selectUnit]
   );
+
+  // The player's own units in the report's own order - region by region, units within each -
+  // which is the order the Alt+Arrow walk reads them in.
+  const orderedOwnUnitIds = useMemo(
+    () =>
+      parsed
+        ? parsed.regions.flatMap((region) =>
+            region.units.filter((candidate) => candidate.own).map((candidate) => candidate.unitId)
+          )
+        : [],
+    [parsed]
+  );
+
+  // Every problem the F8 walk can visit, in document order, against the text validation saw.
+  const problemTargets = useMemo(
+    () => diagnosticTargets(validated.text, validated.diagnostics),
+    [validated]
+  );
+
+  // A fresh validation is a fresh walk: the old stop indexes a list that no longer exists.
+  useEffect(() => {
+    lastDiagnostic.current = null;
+  }, [validated]);
+
+  // A cross-unit F8 landing: the unit's editor mounts on the commit after goToUnit, so the
+  // selection is placed from here rather than from the keydown that asked for it.
+  useEffect(() => {
+    if (!pendingProblem) {
+      return;
+    }
+    if (unit?.unitId === pendingProblem.unitId) {
+      ordersEditor.current?.selectProblem(pendingProblem.problem);
+    }
+    // Consumed either way once the selection has moved at all: a landing left waiting would
+    // fire on some much later, unrelated visit to that unit.
+    setPendingProblem(null);
+  }, [pendingProblem, unit]);
+
+  const walkProblems = useCallback(
+    (direction: 1 | -1) => {
+      const step = stepDiagnostic(problemTargets.length, lastDiagnostic.current, direction);
+      if (step === null) {
+        return;
+      }
+      lastDiagnostic.current = step;
+      const target = problemTargets[step];
+      if (unit?.unitId === target.unitId) {
+        ordersEditor.current?.selectProblem(target.problem);
+      } else {
+        goToUnit(target.unitId);
+        setPendingProblem(target);
+      }
+    },
+    [problemTargets, unit, goToUnit]
+  );
+
+  const dispatchShortcut = useCallback(
+    (id: ReturnType<typeof matchShortcut> & string) => {
+      switch (id) {
+        case "palette":
+          setPaletteOpen((open) => !open);
+          break;
+        case "help":
+          setHelpOpen((open) => !open);
+          break;
+        case "nextUnit":
+        case "prevUnit": {
+          const target = nextOwnUnit(
+            orderedOwnUnitIds,
+            unit?.unitId ?? null,
+            id === "nextUnit" ? 1 : -1
+          );
+          if (target) {
+            goToUnit(target);
+          }
+          break;
+        }
+        case "nextDiagnostic":
+          walkProblems(1);
+          break;
+        case "prevDiagnostic":
+          walkProblems(-1);
+          break;
+      }
+    },
+    [orderedOwnUnitIds, unit, goToUnit, walkProblems]
+  );
+
+  // The global keyboard layer: one bubble-phase listener, so every widget's own keys - the
+  // map's arrows, the table's, Escape everywhere - get first refusal, and only the chords the
+  // table claims are taken. preventDefault matters beyond politeness: Mod+K is the browser's
+  // own search-the-address-bar chord.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const id = matchShortcut(event, isMacPlatform());
+      if (!id) {
+        return;
+      }
+      const target = event.target instanceof Element ? event.target : null;
+      const isOrdersEditor = target !== null && target.closest('[data-testid="orders-input"]') !== null;
+      const isTextInput =
+        isOrdersEditor ||
+        (target !== null &&
+          target.closest('input, textarea, select, [contenteditable="true"]') !== null);
+      if (!firesInContext(id, { isTextInput, isOrdersEditor })) {
+        return;
+      }
+      // Behind an open dialog or palette the cycling chords stand down: walking the selection
+      // under an overlay mutates what nobody can see. The palette and help stay reachable -
+      // pressing their chord again is how they toggle closed.
+      if (id !== "palette" && id !== "help" && hasOpenDismissLayers()) {
+        return;
+      }
+      event.preventDefault();
+      dispatchShortcut(id);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [dispatchShortcut]);
+
+  // Everything the palette can reach, rebuilt only when the world it names changes.
+  const paletteEntries = useMemo(() => {
+    const mac = isMacPlatform();
+    const helpSpec = SHORTCUTS.find((entry) => entry.id === "help");
+    return buildPaletteEntries({
+      ownUnits: orderedOwnUnitIds.map((unitId) => {
+        const owner = parsed?.regions
+          .flatMap((region) => region.units)
+          .find((candidate) => candidate.unitId === unitId);
+        return { unitId, name: owner?.name ?? unitId, run: () => goToUnit(unitId) };
+      }),
+      regions: model.hexes.map((candidate) => ({
+        regionId: candidate.regionId,
+        label: candidate.label,
+        run: () => selectHex(candidate.regionId)
+      })),
+      actions: [
+        { id: "settings", label: "Open settings", run: () => setSettingsOpen(true) },
+        // Only where the picker can actually open: on the gate screen it renders nowhere, and
+        // a pickerOpen left true would pop the picker uninvited into the next game.
+        ...(game
+          ? [{ id: "switch-game", label: "Switch game", run: () => setPickerOpen(true) }]
+          : []),
+        {
+          id: "toggle-theme",
+          label: "Toggle theme",
+          run: () => setTheme(theme === "dark" ? "light" : "dark")
+        },
+        {
+          id: "shortcuts",
+          label: "Keyboard shortcuts",
+          binding: helpSpec ? (mac ? helpSpec.mac : helpSpec.other) : undefined,
+          run: () => setHelpOpen(true)
+        }
+      ],
+      orderCommands,
+      insertOrder: (command) => ordersEditor.current?.insertOrder(command)
+    });
+  }, [orderedOwnUnitIds, parsed, model, goToUnit, selectHex, setTheme, theme, orderCommands, game]);
 
   /**
    * Puts a parsed report on screen and files it in the game.
@@ -1335,10 +1513,22 @@ export function AppShell({
     />
   );
 
+  // The keyboard layer's surfaces, mounted beside the settings dialog for the same reason it
+  // is: they belong to the application, whichever screen is up.
+  const keyboardPanels = (
+    <>
+      {paletteOpen ? (
+        <CommandPalette entries={paletteEntries} onDismiss={() => setPaletteOpen(false)} />
+      ) : null}
+      {helpOpen ? <ShortcutHelp isMac={isMacPlatform()} onDismiss={() => setHelpOpen(false)} /> : null}
+    </>
+  );
+
   // No game means there is nowhere to put a report, an order or a remembered map, so the workspace
   // is not rendered at all and creating a game is the only thing on offer.
   if (!game) {
     return (
+      <>
       <GameGate
         busy={busy}
         error={gameError}
@@ -1348,6 +1538,8 @@ export function AppShell({
         onToggleSettings={() => setSettingsOpen((open) => !open)}
         settings={settingsPanel}
       />
+      {keyboardPanels}
+    </>
     );
   }
 
@@ -1534,6 +1726,7 @@ export function AppShell({
                   save={save}
                   commands={orderCommands}
                   snippets={snippets}
+                  editorRef={ordersEditor}
                 />
               </div>
             </div>
@@ -1544,6 +1737,7 @@ export function AppShell({
           </div>
         </div>
       </div>
+      {keyboardPanels}
     </div>
   );
 }
