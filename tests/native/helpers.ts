@@ -189,3 +189,18 @@ export function openGameDb(): DatabaseSync {
   }
   return new DatabaseSync(join(GAMES_DIR, entries[0].name, "game.sqlite"), { readOnly: true });
 }
+
+/**
+ * Replaces the orders draft, the way `setValue` did when the editor was a textarea.
+ *
+ * The editor is CodeMirror now: the text lives in a contenteditable surface WebDriver's
+ * `setValue` does not speak, so this goes through the keyboard - click, select everything,
+ * type over it. Control rather than Meta because this suite only runs under WebKitGTK on Linux.
+ */
+export async function fillOrders(text: string): Promise<void> {
+  const content = $('[data-testid="orders-input"] .cm-content');
+  await content.waitForDisplayed();
+  await content.click();
+  await browser.keys(["Control", "a"]);
+  await browser.keys(text);
+}

@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { clearGames, createGame } from "./gameSetup";
+import { clearGames, createGame, expectOrders, fillOrders } from "./gameSetup";
 
 const TURN_70 = readFileSync(
   join(__dirname, "..", "fixtures", "reports", "neworigins-3.0.0-f95-t70.rep"),
@@ -109,7 +109,7 @@ test("a game backup restores turns, orders and remembered map after storage is c
   await expect(page.getByTestId("import-status")).toContainText("11 regions");
 
   await openOrders(page);
-  await page.getByTestId("orders-input").fill("@work\n@study combat");
+  await fillOrders(page, "@work\n@study combat");
   await expect(page.getByTestId("orders-status")).toContainText(/saved \d/u, { timeout: 20_000 });
 
   const originalGame = await gameIdentityFor(page, "Backup game");
@@ -135,7 +135,7 @@ test("a game backup restores turns, orders and remembered map after storage is c
   await expect(page.getByTestId("game-indicator")).toContainText("Backup game");
   await expect(page.getByTestId("import-status")).toContainText("restored turn 71");
   await openOrders(page);
-  await expect(page.getByTestId("orders-input")).toHaveValue(/@study combat/u);
+  await expectOrders(page, /@study combat/u);
 
   const restoredGame = await gameIdentityFor(page, "Backup game");
   expect(restoredGame).not.toBeNull();

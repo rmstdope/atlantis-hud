@@ -208,6 +208,9 @@ export function AppShell({
   // under, so the report shown here is the one the planner searches rather than a fresh parse.
   const [rawReport, setRawReport] = useState("");
   const [ruleset, setRuleset] = useState<RulesetState>({ status: "loading" });
+  // The core's order vocabulary, fetched once for the editor's completion popup. Empty until it
+  // arrives - or if it never does, which just leaves the popup with nothing to say.
+  const [orderCommands, setOrderCommands] = useState<readonly string[]>([]);
   // The same ruleset as the storage layer wants it: its text once it arrived, `null` while it has
   // not. What gets stored is classified with exactly what the screen was classified with.
   const rulesetText = ruleset.status === "ready" ? ruleset.text : null;
@@ -642,6 +645,23 @@ export function AppShell({
       cancelled = true;
     };
   }, [game]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void Promise.resolve()
+      .then(() => client.orderCommands())
+      .then((commands) => {
+        if (!cancelled) {
+          setOrderCommands(commands);
+        }
+      })
+      .catch(() => {
+        // Completion is a convenience; the editor works without it.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [client]);
 
   /**
    * Puts back the turn the player was last working on.
@@ -1494,6 +1514,7 @@ export function AppShell({
                   onChange={onOrdersChange}
                   validated={validated}
                   save={save}
+                  commands={orderCommands}
                 />
               </div>
             </div>
