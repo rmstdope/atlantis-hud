@@ -1,10 +1,7 @@
 import type { Coordinate, OrderDiagnostic } from "@atlantis/core-client";
-import { abbreviateDirection, type HexNode } from "../hexMapModel";
+import { abbreviateDirection, SURFACE, type HexNode } from "../hexMapModel";
 import { CollapsiblePanel } from "./CollapsiblePanel";
 import { Absent, Field, Row, Section, StaleBanner } from "./primitives";
-
-/** The level a report describes unless it says otherwise, and the one not worth naming. */
-const SURFACE = 1;
 
 /**
  * Everything the report says about the selected hex. Purely informational, as the issue requires:

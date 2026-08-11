@@ -76,6 +76,9 @@ export function hexCorners(radius: number): Array<{ x: number; y: number }> {
   });
 }
 
+/** The level a report describes unless it says otherwise; levels are counted from here. */
+export const SURFACE = 1;
+
 /** Whether a coordinate can exist: the lattice only uses positions where `x + y` is even. */
 export function isValidCoordinate(coordinate: Coordinate): boolean {
   return (coordinate.x + coordinate.y) % 2 === 0;
@@ -101,18 +104,23 @@ export function hexLabelOf(where: {
 }
 
 /**
- * The coordinate an id names, or nothing when the text is not one.
+ * The coordinate an id names, or nothing when the text does not name one the game could hold.
  *
- * Levels are counted from the surface and never negative - the core holds one as an unsigned
- * number and refuses an id carrying anything else - so reading one leniently here would only turn
- * a bad id into a parse error further down, in a status line, rather than into no selection at all.
+ * Held to the whole contract rather than to the shape of the text: levels are counted from the
+ * surface, which is one, and only positions where `x + y` is even exist. A garbled id has to read
+ * as no hex at all, because the alternative is a selection ring drawn off the lattice, or a
+ * heading naming a level nobody plays on, with the panel looking as though it knew something.
  */
 export function parseRegionId(regionId: string): Coordinate | null {
   const match = /^(\d+):(-?\d+),(-?\d+)$/.exec(regionId);
   if (!match) {
     return null;
   }
-  return { z: Number(match[1]), x: Number(match[2]), y: Number(match[3]) };
+  const coordinate = { z: Number(match[1]), x: Number(match[2]), y: Number(match[3]) };
+  if (coordinate.z < SURFACE || !isValidCoordinate(coordinate)) {
+    return null;
+  }
+  return coordinate;
 }
 
 function countUnits(region: ReportRegion | null) {
