@@ -153,6 +153,35 @@ test("a saved draft gains its missing trailing newline without moving the cursor
   expect(caret).toEqual({ offset: 3, collapsed: true, line: "@work" });
 });
 
+/**
+ * The late restore must not clobber what the player has since typed.
+ *
+ * Opening a game starts a restore that waits for the ruleset fetch; importing a report and
+ * typing does not wait for either. On a slow connection the restore therefore resolves *after*
+ * the player is already working, and re-applying the stored snapshot then wiped their typing -
+ * caught as a CI-only flake, because only CI machines were slow enough. The route delay below
+ * makes that ordering deterministic instead of machine-dependent.
+ */
+test("a slow ruleset fetch cannot wipe orders typed after an import", async ({ page }) => {
+  await page.route("**/ruleset.json", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 1_500));
+    await route.continue();
+  });
+
+  await clearGames(page);
+  await createGame(page, "Slow ruleset game");
+  await openReport(page);
+  await openOrders(page);
+  await fillOrders(page, "@work");
+  await expectOrders(page, /^@work\n?$/u);
+
+  // The restore lands - the status says so - and the words the player typed still stand.
+  await expect(page.getByTestId("import-status")).toContainText("restored turn 71", {
+    timeout: 20_000
+  });
+  await expectOrders(page, /^@work\n?$/u);
+});
+
 test("switching to another game and back loses neither the turn nor the orders", async ({
   page
 }) => {
