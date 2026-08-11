@@ -561,6 +561,29 @@ pub fn plan_route_state(
     to_js(&response)
 }
 
+/// Writes the known map inside one rectangle out as report-shaped text.
+///
+/// The browser twin of the desktop command, calling the same core entry so a map exported in the
+/// browser and the same map exported on the desktop come out byte for byte identical. The text is
+/// the whole answer: the core never touches a filesystem, so saving it is the shell's business.
+#[wasm_bindgen]
+pub fn export_map_state(
+    raw_report: String,
+    remembered_json: String,
+    request_json: String,
+) -> Result<JsValue, JsValue> {
+    let text = atlantis_hud_core::cache::with_global(|cache| {
+        atlantis_hud_core::report::export::export_map_text(
+            cache,
+            &raw_report,
+            &remembered_json,
+            &request_json,
+        )
+    })
+    .map_err(|error| JsValue::from_str(&error))?;
+    to_js(&text)
+}
+
 /// Traces the MOVE or ADVANCE order in a unit's written orders across the remembered map.
 ///
 /// The browser twin of the desktop command, calling the same core entry so the two shells cannot

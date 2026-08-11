@@ -1,6 +1,7 @@
 import type {
   CoreClient,
   GameManifest,
+  MapExportContent,
   MergedReportRecord,
   OpenedGame,
   ParsedReport,
@@ -17,6 +18,8 @@ import {
   unitsForHex,
   type HexMapModel
 } from "../hexMapModel";
+import { downloadTextFile } from "../downloadFile";
+import { exportFileName, exportRequestOf } from "../mapExport";
 import { readUnitOrders, writeUnitOrders } from "../ordersDocument";
 import { mergeTurn, rememberTurn, restoreLatestTurn, toStoredRegions } from "../gameMemory";
 import { decideReportLoad, shouldConfirmOlderTurnLoad } from "../reportLoadDecision";
@@ -57,6 +60,8 @@ import { GamePicker } from "./GamePicker";
 import { MergedFactionsPanel } from "./MergedFactionsPanel";
 import { LayerChips } from "./LayerChips";
 import { MapCanvas } from "./MapCanvas";
+import { MapExportDialog } from "./MapExportDialog";
+import { boundsOfKnown, type MapRect } from "./mapMarquee";
 import { OrdersPanel } from "./OrdersPanel";
 import type { OrdersEditorHandle } from "./OrdersEditor";
 import { CommandPalette } from "./CommandPalette";
@@ -94,6 +99,9 @@ function describeError(error: unknown): string {
     return "unknown error";
   }
 }
+
+/** What the export dialog opens on when the level holds nothing visited: one hex at the origin. */
+const EMPTY_RECT = { fromX: 0, fromY: 0, toX: 0, toY: 0 };
 
 /**
  * Re-exported rather than defined here since issue #53 moved the rule into `reportLoadDecision`.
@@ -251,6 +259,13 @@ export function AppShell({
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
+  // The map export: whether its dialog is open, the rectangle a Shift+drag left behind, and how
+  // the last attempt went. The rectangle outlives the dialog so re-opening it offers the same
+  // area, and a drag while the dialog is closed is remembered rather than wasted.
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exportRect, setExportRect] = useState<MapRect | null>(null);
+  const [exportBusy, setExportBusy] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
   // The F8 walk's stop and its pending cross-unit landing. A ref for the stop: pressing F8
   // twice must not wait a render between the steps.
   const lastDiagnostic = useRef<number | null>(null);
@@ -597,7 +612,10 @@ export function AppShell({
           label: "Keyboard shortcuts",
           binding: helpSpec ? (mac ? helpSpec.mac : helpSpec.other) : undefined,
           run: () => setHelpOpen(true)
-        }
+        },
+        // Only with a report on screen: an export needs a turn to name itself after and a map to
+        // describe, and neither exists before one is imported.
+        ...(parsed ? [{ id: "export-map", label: "Export map", run: () => openExport() }] : [])
       ],
       orderCommands,
       insertOrder: (command) => ordersEditor.current?.insertOrder(command)
@@ -1166,13 +1184,7 @@ export function AppShell({
       try {
         await flush();
         const backup = await client.exportGame(gameId, new Date().toISOString());
-        const blob = new Blob([backup], { type: "application/json" });
-        const url = URL.createObjectURL(blob);
-        const anchor = document.createElement("a");
-        anchor.href = url;
-        anchor.download = `${gameId}.atlantis-hud-game.json`;
-        anchor.click();
-        setTimeout(() => URL.revokeObjectURL(url), 0);
+        downloadTextFile(`${gameId}.atlantis-hud-game.json`, backup, "application/json");
         setPickerOpen(false);
       } catch (error: unknown) {
         setGameError(describeError(error));
@@ -1488,14 +1500,68 @@ export function AppShell({
   useEffect(() => registerBeforeQuit?.(flush), [registerBeforeQuit, flush]);
 
   const exportOrders = useCallback(() => {
-    const blob = new Blob([ordersDocument], { type: "text/plain" });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `orders-turn-${parsed?.header.turnNumber ?? "unknown"}.txt`;
-    anchor.click();
-    setTimeout(() => URL.revokeObjectURL(url), 0);
+    downloadTextFile(
+      `orders-turn-${parsed?.header.turnNumber ?? "unknown"}.txt`,
+      ordersDocument,
+      "text/plain"
+    );
   }, [ordersDocument, parsed]);
+
+  /**
+   * Opens the export dialog on a clean slate.
+   *
+   * The failure of a previous attempt belongs to that attempt: a message left standing in a
+   * freshly opened dialog reads as something already wrong with the export in front of the player.
+   */
+  // A rectangle belongs to the map it was dragged on. Switching game, loading another turn or
+  // changing level leaves it describing somewhere else, so it goes and the dialog falls back to
+  // the bounds of what is known here.
+  useEffect(() => {
+    setExportRect(null);
+  }, [game?.manifest.metadata.gameId, level, rawReport]);
+
+  const openExport = useCallback((rect?: MapRect) => {
+    if (rect) {
+      setExportRect(rect);
+    }
+    setExportError(null);
+    setExportOpen(true);
+  }, []);
+
+  /**
+   * Writes the chosen rectangle out as a report-shaped file for an ally to read.
+   *
+   * The core is handed the same pair the planner takes - this turn's report and the remembered
+   * map - so what is exported is everything known about the area, not just the hexes described
+   * this month.
+   */
+  const exportMap = useCallback(
+    async (rect: MapRect, content: MapExportContent) => {
+      if (!rawReport) {
+        return;
+      }
+      setExportBusy(true);
+      setExportError(null);
+      try {
+        const text = await client.exportMap(
+          rawReport,
+          rememberedJson,
+          exportRequestOf(rect, level, content)
+        );
+        downloadTextFile(
+          exportFileName(parsed?.header.turnNumber ?? null, level),
+          text,
+          "text/plain"
+        );
+        setExportOpen(false);
+      } catch (error: unknown) {
+        setExportError(describeError(error));
+      } finally {
+        setExportBusy(false);
+      }
+    },
+    [client, level, parsed, rawReport, rememberedJson]
+  );
 
   const factionLabel = factionLabelOf(parsed);
   const turnLabel =
@@ -1639,6 +1705,8 @@ export function AppShell({
         onLoadReport={(text, fileName) => void loadReport(text, fileName)}
         onExportOrders={exportOrders}
         canExport={ordersDocument.length > 0}
+        onExportMap={() => openExport()}
+        canExportMap={parsed !== null}
         settingsOpen={settingsOpen}
         onToggleSettings={() => setSettingsOpen((open) => !open)}
         settings={settingsPanel}
@@ -1682,6 +1750,10 @@ export function AppShell({
             trace: orderTrace?.path ?? null
           })}
           routeRisk={layers.movement && route?.plan ? (route.risk?.hexes ?? []) : []}
+          // Gated on a report for the same reason the header button and the palette entry are:
+          // there is nothing to export a map of until one is loaded, and a dialog that opened
+          // anyway could only refuse.
+          onMarquee={parsed ? (rect) => openExport(rect) : undefined}
         />
 
         <div className="pointer-events-none absolute inset-x-0 top-2.5 flex justify-center">
@@ -1757,6 +1829,20 @@ export function AppShell({
           </div>
         </div>
       </div>
+      {exportOpen ? (
+        <MapExportDialog
+          hexes={model.hexes}
+          level={level}
+          // The dragged rectangle when there is one; otherwise everything known on this level, so
+          // opening the dialog from the header or the palette offers the whole map rather than a
+          // point at the origin.
+          rect={exportRect ?? boundsOfKnown(model.hexes, level) ?? EMPTY_RECT}
+          busy={exportBusy}
+          error={exportError}
+          onExport={(rect, content) => void exportMap(rect, content)}
+          onDismiss={() => setExportOpen(false)}
+        />
+      ) : null}
       {keyboardPanels}
     </div>
   );

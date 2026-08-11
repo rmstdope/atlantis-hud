@@ -59,6 +59,9 @@ type AppHeaderProps = {
   onLoadReport: (text: string, fileName: string) => void;
   onExportOrders: () => void;
   canExport: boolean;
+  /** Opens the map export dialog. Off until a report is on screen to export a map of. */
+  onExportMap: () => void;
+  canExportMap: boolean;
   /** Whether the settings panel is showing. Same split as the picker: header owns the button. */
   settingsOpen: boolean;
   onToggleSettings: () => void;
@@ -98,6 +101,8 @@ export function AppHeader({
   onLoadReport,
   onExportOrders,
   canExport,
+  onExportMap,
+  canExportMap,
   settingsOpen,
   onToggleSettings,
   settings
@@ -314,6 +319,15 @@ export function AppHeader({
         className="rounded border border-edge bg-panel-raised px-2.5 py-1 text-ink disabled:opacity-40"
       >
         Export orders
+      </button>
+      <button
+        type="button"
+        data-testid="export-map"
+        disabled={!canExportMap}
+        onClick={onExportMap}
+        className="rounded border border-edge bg-panel-raised px-2.5 py-1 text-ink disabled:opacity-40"
+      >
+        Export map
       </button>
 
       {/* Relative for the same reason the game indicator is: the panel hangs off this button. */}

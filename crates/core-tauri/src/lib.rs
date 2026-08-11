@@ -990,6 +990,30 @@ pub fn command_plan_route(
     })
 }
 
+/// Writes the known map inside one rectangle out as report-shaped text.
+///
+/// The desktop twin of the wasm binding, delegating to the same core entry so a map exported on
+/// the desktop and the same map exported in the browser come out byte for byte identical.
+///
+/// # Errors
+///
+/// Returns an error when the remembered regions or the request cannot be read. An empty rectangle
+/// is a successful answer carrying a header and no regions.
+pub fn command_export_map(
+    raw_report: &str,
+    remembered_json: &str,
+    request_json: &str,
+) -> Result<String, String> {
+    atlantis_hud_core::cache::with_global(|cache| {
+        atlantis_hud_core::report::export::export_map_text(
+            cache,
+            raw_report,
+            remembered_json,
+            request_json,
+        )
+    })
+}
+
 /// Traces the MOVE or ADVANCE order in a unit's written orders across the remembered map.
 ///
 /// The desktop twin of the wasm binding, delegating to the same core entry so the two shells

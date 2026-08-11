@@ -117,6 +117,24 @@ const SWEEP: SweepEntry[] = [
     })
   },
   {
+    command: "export_map",
+    // The request crosses as text of its own: a key this side the core does not know deserializes
+    // to a refusal naming the request rather than the key, so only real IPC proves the three
+    // arguments arrive.
+    args: () => ({
+      raw_report: REPORT,
+      remembered_json: "[]",
+      request_json: JSON.stringify({
+        level: 1,
+        fromX: 0,
+        fromY: 0,
+        toX: 20,
+        toY: 60,
+        content: { structures: true, units: true, advancedResources: true }
+      })
+    })
+  },
+  {
     command: "preview_orders",
     args: () => ({
       ruleset_json: RULESET,

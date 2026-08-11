@@ -20,7 +20,7 @@
 ///
 /// Measured from real reports rather than assumed: no body line exceeds 70. The only 71-column
 /// lines are the `;` comments in the orders template, where the marker is prepended after wrapping.
-const WRAP_COLUMN: usize = 70;
+pub(crate) const WRAP_COLUMN: usize = 70;
 
 /// One logical line, with the physical lines it was reassembled from.
 ///
@@ -54,7 +54,7 @@ fn indent_of(line: &str) -> usize {
 
 /// `*` is an own unit, `-` a foreign one, `+` a structure. The space matters: a name may begin with
 /// a hyphen, as `-= 0 =- (7323)` does in a real report.
-fn marker_of(body: &str) -> Option<char> {
+pub(crate) fn marker_of(body: &str) -> Option<char> {
     let mut chars = body.chars();
     match (chars.next(), chars.next()) {
         (Some(marker @ ('*' | '-' | '+')), Some(' ')) => Some(marker),
@@ -62,7 +62,7 @@ fn marker_of(body: &str) -> Option<char> {
     }
 }
 
-fn first_word_len(body: &str) -> usize {
+pub(crate) fn first_word_len(body: &str) -> usize {
     body.split_whitespace().next().map_or(0, str::len)
 }
 

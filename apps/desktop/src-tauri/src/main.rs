@@ -227,6 +227,19 @@ fn plan_route(
     feature = "desktop-runtime"
 ))]
 #[tauri::command(rename_all = "snake_case")]
+fn export_map(
+    raw_report: String,
+    remembered_json: String,
+    request_json: String,
+) -> Result<String, String> {
+    atlantis_hud_core_tauri::command_export_map(&raw_report, &remembered_json, &request_json)
+}
+
+#[cfg(all(
+    any(target_os = "linux", target_os = "macos", target_os = "windows"),
+    feature = "desktop-runtime"
+))]
+#[tauri::command(rename_all = "snake_case")]
 fn trace_move_orders(
     ruleset_json: String,
     raw_report: String,
@@ -431,6 +444,7 @@ fn main() {
             save_order_draft,
             load_order_draft,
             plan_route,
+            export_map,
             trace_move_orders,
             preview_orders,
             load_region_sightings,
