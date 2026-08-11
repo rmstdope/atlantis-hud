@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "pnpm run build:wasm && vite --port 4174",
+    "dev": "pnpm run build:wasm && vite --port 4174 --strictPort",
     "build": "pnpm run build:wasm && vite build",
     "preview": "vite preview --port 4174",
     "lint": "eslint src --max-warnings=0",
