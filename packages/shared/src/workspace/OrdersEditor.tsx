@@ -10,11 +10,18 @@ import { orderCommandCompletions } from "../orderCompletion";
 import { toEditorDiagnostics } from "../orderLint";
 import { snippetCompletionSource, type OrderSnippet } from "../orderSnippets";
 
-/** What the shell may do to the editor from outside: shortcut work lands on these two. */
+/** What the shell may do to the editor from outside: the shortcut layer lands here. */
 export type OrdersEditorHandle = {
   focus(): void;
-  /** Puts the selection on a span and scrolls it into view - how "jump to problem" arrives. */
+  /** Puts the selection on a span and scrolls it into view. */
   select(from: number, to?: number): void;
+  /**
+   * Selects the text a diagnostic points at - the F8 walk's landing. The problem arrives in
+   * block-relative lines, exactly as `diagnosticsForUnit` and `diagnosticTargets` speak.
+   */
+  selectProblem(problem: OrderDiagnostic): void;
+  /** Types a command at the cursor, for the palette's order-help entries. */
+  insertOrder(command: string): void;
 };
 
 type OrdersEditorProps = {
@@ -240,6 +247,37 @@ export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(fu
       editor.dispatch({
         selection: { anchor, head },
         scrollIntoView: true
+      });
+      editor.focus();
+    },
+    selectProblem(problem) {
+      const editor = view.current;
+      if (!editor) {
+        return;
+      }
+      // The same mapping the lint gutter uses, so the walk lands exactly where the underline
+      // is - clamping included, for a diagnostic a keystroke behind the document.
+      const [placed] = toEditorDiagnostics(editor.state.doc.toString(), [problem]);
+      if (!placed) {
+        return;
+      }
+      editor.dispatch({
+        selection: { anchor: placed.from, head: placed.to },
+        scrollIntoView: true
+      });
+      editor.focus();
+    },
+    insertOrder(command) {
+      const editor = view.current;
+      if (!editor) {
+        return;
+      }
+      const { from, to } = editor.state.selection.main;
+      editor.dispatch({
+        changes: { from, to, insert: command },
+        selection: { anchor: from + command.length },
+        scrollIntoView: true,
+        userEvent: "input"
       });
       editor.focus();
     }
