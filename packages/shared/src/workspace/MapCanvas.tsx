@@ -24,14 +24,13 @@ import type { RouteOverlay } from "./routeOverlay";
 import { guardSelection } from "./selectionGuard";
 import {
   fogPatternTile,
-  hexLayers,
-  hexPaint,
   hexPointsAttribute,
   routeSegments,
   terrainTexturePatternId,
-  terrainTextureUrl,
-  unitPipRadius
+  terrainTextureUrl
 } from "./mapHexView";
+import { buildHexViews } from "./mapThemes/hexView";
+import type { MapTheme } from "./mapThemes/mapTheme";
 
 const HEX_POINTS = hexPointsAttribute(HEX_RADIUS);
 const FOG_TILE = fogPatternTile(HEX_RADIUS);
@@ -83,6 +82,11 @@ type MapCanvasProps = {
   /** The open game's identifier, used to save and restore the map position across sessions. */
   gameId: string | null;
   model: HexMapModel;
+  /**
+   * How to draw a hex. Everything theme-specific lives behind this: the map itself knows about
+   * geometry, interaction and the route overlay, and nothing about parchment or bevels.
+   */
+  theme: MapTheme;
   level: number;
   selectedRegionId: string | null;
   onSelectRegion: (regionId: string) => void;
@@ -123,6 +127,7 @@ type MapCanvasProps = {
 export function MapCanvas({
   gameId,
   model,
+  theme,
   level,
   selectedRegionId,
   onSelectRegion,
@@ -168,10 +173,32 @@ export function MapCanvas({
   // changes and the player has a saved position for it; cleared once the position is applied.
   const pendingRestoreRef = useRef<Viewport | null>(null);
 
-  const layers = useMemo(() => hexLayers(model.hexes, level), [model, level]);
   const onLevel = useMemo(
     () => model.hexes.filter((hex) => hex.coordinate.z === level),
     [model, level]
+  );
+
+  /**
+   * What each hex shows, worked out once for whichever theme is drawing.
+   *
+   * The layer chips are applied here rather than passed on, so a theme draws exactly what the view
+   * model says and cannot forget to honour a toggle - there is nothing left to forget.
+   */
+  const viewOptions = useMemo(
+    () => ({ showStaleness, showTextures, showUnits, showStructures }),
+    [showStaleness, showTextures, showUnits, showStructures]
+  );
+  const allViews = useMemo(() => buildHexViews(onLevel, viewOptions), [onLevel, viewOptions]);
+  // The knowledge buckets are cut from that one pass rather than built again from `hexLayers`:
+  // every view carries its own knowledge, and building them twice meant two structure tallies and
+  // two unit scans for every hex on screen. Model order is preserved either way.
+  const buckets = useMemo(
+    () => ({
+      named: allViews.filter((view) => view.knowledge === "named"),
+      stale: allViews.filter((view) => view.knowledge === "stale"),
+      current: allViews.filter((view) => view.knowledge === "current")
+    }),
+    [allViews]
   );
 
   /**
@@ -494,7 +521,7 @@ export function MapCanvas({
     <div ref={hostRef} className="absolute inset-0" data-testid="map-canvas">
       <svg
         ref={rootRef}
-        className={`h-full w-full touch-none map-${band}`}
+        className={`h-full w-full touch-none map-${band} map-theme-${theme.id}`}
         onPointerDown={onPointerDown}
       >
         <defs>
@@ -545,6 +572,11 @@ export function MapCanvas({
                 </pattern>
               ))
             : null}
+          {/*
+            Whatever gradients, hatches or filters the theme needs. The fog lattice and the biome
+            patterns above are shared, because they are the same for every theme.
+          */}
+          {theme.Defs ? <theme.Defs /> : null}
         </defs>
 
         {/*
@@ -586,15 +618,16 @@ export function MapCanvas({
 
         {/* Transform is written by hand, never as a prop. See applyView. */}
         <g ref={worldRef}>
-          <HexLayer hexes={layers.named} showStaleness={showStaleness} showTextures={showTextures} />
-          <HexLayer hexes={layers.stale} showStaleness={showStaleness} showTextures={showTextures} />
-          <HexLayer
-            hexes={layers.current}
-            showStaleness={showStaleness}
-            showTextures={showTextures}
-          />
+          {/*
+            Weakest knowledge first, so a hex the report describes in full is never painted
+            underneath one a neighbour merely mentioned.
+          */}
+          <theme.TerrainLayer views={buckets.named} />
+          <theme.TerrainLayer views={buckets.stale} />
+          <theme.TerrainLayer views={buckets.current} />
 
-          <RoadLayer hexes={onLevel} show={showStructures} />
+          {/* Beneath the route overlay, so a movement path crosses a road the way a traveller would. */}
+          <theme.RoadLayer views={allViews} />
 
           {(routeLine.solid || routeLine.dotted) && (
             <g pointerEvents="none">
@@ -661,7 +694,7 @@ export function MapCanvas({
             </g>
           )}
 
-          <MarkLayer hexes={onLevel} showUnits={showUnits} showStructures={showStructures} />
+          <theme.MarkLayer views={allViews} />
 
           {selectedAt && (
             <polygon
@@ -832,254 +865,6 @@ function translateAt(coordinate: Coordinate): string {
 
 function translateOf(hex: HexNode): string {
   return translateAt(hex.coordinate);
-}
-
-/** One knowledge bucket. Split out so a selection change does not reconcile the terrain. */
-function HexLayer({
-  hexes,
-  showStaleness,
-  showTextures
-}: {
-  hexes: HexNode[];
-  showStaleness: boolean;
-  showTextures: boolean;
-}) {
-  return (
-    <g pointerEvents="none">
-      {hexes.map((hex) => {
-        const paint = hexPaint(hex, showStaleness);
-        const transform = translateOf(hex);
-        return (
-          <g key={hex.regionId}>
-            <polygon
-              points={HEX_POINTS}
-              transform={transform}
-              className={`${paint.terrainClass} stroke-map-edge`}
-              style={
-                showTextures && paint.texturePatternId
-                  ? { fill: `url(#${paint.texturePatternId})` }
-                  : undefined
-              }
-              strokeWidth={1}
-              vectorEffect="non-scaling-stroke"
-            />
-            {paint.fogOpacity > 0 && (
-              <polygon
-                points={HEX_POINTS}
-                transform={transform}
-                className="fill-terrain-unknown"
-                fillOpacity={paint.fogOpacity}
-              />
-            )}
-            {paint.hatched && (
-              <polygon points={HEX_POINTS} transform={transform} fill="url(#stale-hatch)" />
-            )}
-          </g>
-        );
-      })}
-    </g>
-  );
-}
-
-/** Settlements, units and structures. What of it shows is decided by the zoom band, in CSS. */
-/**
- * Where each road direction's edge lies, as a unit vector from the hex's centre. Flat-top hexes
- * put the six edge midpoints at 0.87R along exactly these six bearings, which are also the six
- * directions Atlantis roads run.
- */
-const ROAD_BEARINGS: Record<string, { x: number; y: number }> = {
-  n: { x: 0, y: -1 },
-  ne: { x: 0.866, y: -0.5 },
-  se: { x: 0.866, y: 0.5 },
-  s: { x: 0, y: 1 },
-  sw: { x: -0.866, y: 0.5 },
-  nw: { x: -0.866, y: -0.5 }
-};
-
-/** The bearing a road structure runs in, or `null` for any other kind of structure. */
-function roadBearing(kind: string): { x: number; y: number } | null {
-  const match = /^road\s+(\w+)$/iu.exec(kind.trim());
-  return match ? (ROAD_BEARINGS[match[1].toLowerCase()] ?? null) : null;
-}
-
-/** Every road in the hex, as the bearings their lines run along. */
-function roadBearingsOf(hex: HexNode): Array<{ x: number; y: number }> {
-  return (hex.region?.structures ?? [])
-    .map((structure) => roadBearing(structure.kind))
-    .filter((bearing): bearing is { x: number; y: number } => bearing !== null);
-}
-
-/**
- * Whether a structure can sail away: a ship gets a ship mark, not a building's roof. The report
- * offers no flag for this, only the kind's name, so the classic hull names are listed and
- * "ship"/"boat" catch the rest (Longship, Airship, Longboat and their kin).
- */
-const SHIP_KINDS = new Set(["galley", "raft", "cog", "clipper", "galleon", "corsair", "balloon"]);
-
-function isShipKind(kind: string): boolean {
-  const name = kind.trim().toLowerCase();
-  return SHIP_KINDS.has(name) || name.includes("ship") || name.includes("boat");
-}
-
-/**
- * How many roofs a count of buildings earns: one for a hamlet's worth, two for a handful, three
- * for a town of works. A glyph per building drowned the hex; a single glyph said nothing about
- * scale.
- */
-function structureGlyphCount(buildings: number): number {
-  if (buildings <= 0) {
-    return 0;
-  }
-  if (buildings <= 3) {
-    return 1;
-  }
-  if (buildings <= 6) {
-    return 2;
-  }
-  return 3;
-}
-
-/**
- * Road spokes, in a layer of their own beneath the route overlay: a movement path crosses a road
- * on top of it, the way the traveller would. Slightly wider than the path's 5px casing, and
- * non-scaling like it, so whether a path runs along a road or misses it stays legible at every
- * zoom - the road always peeks out from underneath.
- */
-function RoadLayer({ hexes, show }: { hexes: HexNode[]; show: boolean }) {
-  if (!show) {
-    return null;
-  }
-  return (
-    <g pointerEvents="none">
-      {hexes.flatMap((hex) => {
-        const world = worldOf(hex.coordinate);
-        return roadBearingsOf(hex).map((bearing, index) => (
-          <line
-            key={`${hex.regionId}-${index}`}
-            className="map-road"
-            x1={world.x}
-            y1={world.y}
-            x2={world.x + bearing.x * HEX_RADIUS * 0.87}
-            y2={world.y + bearing.y * HEX_RADIUS * 0.87}
-            stroke="black"
-            strokeWidth={7}
-            strokeLinecap="round"
-            vectorEffect="non-scaling-stroke"
-          />
-        ));
-      })}
-    </g>
-  );
-}
-
-function MarkLayer({
-  hexes,
-  showUnits,
-  showStructures
-}: {
-  hexes: HexNode[];
-  showUnits: boolean;
-  showStructures: boolean;
-}) {
-  return (
-    <g pointerEvents="none">
-      {hexes.map((hex) => {
-        const world = worldOf(hex.coordinate);
-        const own = unitPipRadius(hex.ownUnitCount);
-        const foreign = unitPipRadius(hex.foreignUnitCount);
-        // Roads are drawn as roads - in RoadLayer, under the route overlay - and ships get a
-        // hull mark of their own; neither counts among the buildings the roofs stand for.
-        const allStructures = hex.region?.structures ?? [];
-        const ships = allStructures.filter((structure) => isShipKind(structure.kind)).length;
-        const buildings = allStructures.length - ships - roadBearingsOf(hex).length;
-        return (
-          <g key={hex.regionId}>
-            {showUnits && own > 0 && (
-              <circle
-                className="map-pip fill-unit-own"
-                cx={world.x - 4}
-                cy={world.y + HEX_RADIUS * 0.55}
-                r={own}
-              />
-            )}
-            {showUnits && foreign > 0 && (
-              <circle
-                className="map-pip fill-unit-foreign"
-                cx={world.x + 4}
-                cy={world.y + HEX_RADIUS * 0.55}
-                r={foreign}
-              />
-            )}
-            {showUnits && hex.ownUnitCount + hex.foreignUnitCount > 0 && (
-              // In the hex's own upper third - a flat-top hex only reaches 0.87R up, so anything
-              // nearer the rim reads as the neighbour's. A town hex pushes it one step higher,
-              // because the settlement name owns the slot above the glyph.
-              <text
-                className="map-label map-count fill-ink"
-                x={world.x}
-                y={world.y - (hex.settlementName ? 13 : 9)}
-                textAnchor="middle"
-              >
-                {hex.ownUnitCount}
-                {hex.foreignUnitCount > 0 ? `/${hex.foreignUnitCount}` : ""}
-              </text>
-            )}
-            {/*
-              One glyph per structure up to three, cascading right and down, so a hex holding a
-              whole town of works reads busier than one holding a single mine - without trying to
-              print two dozen roofs into eighteen pixels.
-            */}
-            {showStructures &&
-              Array.from({ length: structureGlyphCount(buildings) }, (_, index) => (
-                <text
-                  key={index}
-                  className="map-glyph fill-brass"
-                  x={world.x + HEX_RADIUS * 0.35 + index * 1.8}
-                  y={world.y - 3 + index * 1.8}
-                  textAnchor="middle"
-                  fontSize={7}
-                >
-                  ⌂
-                </text>
-              ))}
-            {showStructures && ships > 0 && (
-              // A hull with a sail in the hex's upper-left corner: something here can leave.
-              <g
-                className="map-glyph fill-brass"
-                transform={`translate(${world.x - HEX_RADIUS * 0.45}, ${world.y - HEX_RADIUS * 0.5})`}
-              >
-                <path d="M 0 -4.5 L 0 0.5 L 3.5 0.5 Z" />
-                <path d="M -4 1.5 L 4 1.5 L 2.5 4 L -2.5 4 Z" />
-              </g>
-            )}
-            {/* Last in the hex, so the name and its glyph paint over the roofs and the hull. */}
-            {hex.settlementName && (
-              <>
-                {/* Tight above the town glyph it names, not floating at the hex's rim. */}
-                <text
-                  className="map-label map-name fill-settlement"
-                  x={world.x}
-                  y={world.y - 6}
-                  textAnchor="middle"
-                >
-                  {hex.settlementName}
-                </text>
-                <text
-                  className="map-glyph fill-settlement"
-                  x={world.x}
-                  y={world.y + 3}
-                  textAnchor="middle"
-                  fontSize={9}
-                >
-                  ▣
-                </text>
-              </>
-            )}
-          </g>
-        );
-      })}
-    </g>
-  );
 }
 
 function ZoomButton({

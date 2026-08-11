@@ -57,6 +57,7 @@ import { GamePicker } from "./GamePicker";
 import { MergedFactionsPanel } from "./MergedFactionsPanel";
 import { LayerChips } from "./LayerChips";
 import { MapCanvas } from "./MapCanvas";
+import { getMapTheme } from "./mapThemes";
 import { OrdersPanel } from "./OrdersPanel";
 import type { OrdersEditorHandle } from "./OrdersEditor";
 import { CommandPalette } from "./CommandPalette";
@@ -278,6 +279,7 @@ export function AppShell({
   const setLevel = useWorkspaceStore((state) => state.setLevel);
   const layers = useWorkspaceStore((state) => state.layers);
   const showTextures = useSettingsStore((state) => state.biomeTextures);
+  const mapThemeId = useSettingsStore((state) => state.mapTheme);
   const warnOnUnguardedHex = useSettingsStore((state) => state.warnOnUnguardedHex);
   const movementPlanner = useSettingsStore((state) => state.movementPlanner);
   const snippets = useSettingsStore((state) => state.snippets);
@@ -1668,6 +1670,7 @@ export function AppShell({
         <MapCanvas
           gameId={game?.manifest.metadata.gameId ?? null}
           model={model}
+          theme={getMapTheme(mapThemeId)}
           level={level}
           selectedRegionId={selectedRegionId}
           onSelectRegion={selectHex}
