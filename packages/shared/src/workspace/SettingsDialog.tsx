@@ -4,6 +4,7 @@ import { APP_VERSION } from "../appVersion";
 import { snippetBodyProblem, snippetNameProblem } from "../orderSnippets";
 import { useSettingsStore } from "../settingsStore";
 import type { ThemeName } from "../settingsStore";
+import { mapThemeOptions } from "./mapThemes";
 import type { WorkspaceGame } from "../workspaceStore";
 import type { AppUpdateControl } from "./appUpdate";
 import { updatePresentationFor } from "./appUpdate";
@@ -178,6 +179,8 @@ function Tab({
 function GlobalSettings() {
   const theme = useSettingsStore((state) => state.theme);
   const setTheme = useSettingsStore((state) => state.setTheme);
+  const mapTheme = useSettingsStore((state) => state.mapTheme);
+  const setMapTheme = useSettingsStore((state) => state.setMapTheme);
   const biomeTextures = useSettingsStore((state) => state.biomeTextures);
   const setBiomeTextures = useSettingsStore((state) => state.setBiomeTextures);
   const paneTransparency = useSettingsStore((state) => state.paneTransparency);
@@ -192,12 +195,37 @@ function GlobalSettings() {
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between gap-2">
-        <span className="text-ink-soft">Theme</span>
+        <span className="text-ink-soft">App theme</span>
         <div className="flex gap-1">
           <ThemeChoice name="dark" label="Dark" current={theme} onPick={setTheme} />
           <ThemeChoice name="light" label="Light" current={theme} onPick={setTheme} />
         </div>
       </div>
+
+      {/*
+        The options come from the theme registry, never from a list kept here: a new map theme is
+        one module and one registry entry, and it must appear in this picker without touching it.
+      */}
+      <label className="flex items-center justify-between gap-2 text-ink-soft">
+        <span>
+          <span className="block">Map theme</span>
+          <span className="block text-[10px] text-ink-dim">How the world map draws each hex.</span>
+        </span>
+        <select
+          data-testid="settings-map-theme"
+          aria-label="Map theme"
+          value={mapTheme}
+          onChange={(event) => setMapTheme(event.target.value)}
+          className="rounded border border-edge bg-panel-raised px-1.5 py-0.5 text-ink"
+        >
+          {mapThemeOptions().map((option) => (
+            <option key={option.id} value={option.id}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </label>
+
       <label className="flex items-center justify-between gap-2 text-ink-soft">
         <span>
           <span className="block">Biome textures</span>

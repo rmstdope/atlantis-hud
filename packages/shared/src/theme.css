@@ -1,6 +1,13 @@
 @import "tailwindcss";
 
 /*
+ * One import per map theme, each file holding that theme's own colours and zoom-band policy.
+ * Adding a theme adds a line here; removing one deletes the line and the directory. Nothing else
+ * in the stylesheet knows a theme by name.
+ */
+@import "./workspace/mapThemes/classic/theme.css";
+
+/*
  * Where the class names live.
  *
  * Automatic detection starts from the app that imports this file and does not follow the workspace
@@ -143,26 +150,6 @@
   --color-risk-low: #1c7fae;
   --color-risk-medium: #9a6f1d;
   --color-risk-high: #c05252;
-}
-
-/*
- * How much the map shows at a given zoom.
- *
- * Labels are drawn at a constant screen size, so as hexes shrink the text does not: past a point
- * every label overlaps its neighbours. Expressing the policy as rules rather than as branches in
- * the renderer means changing band costs one class swap and no re-render at all.
- */
-.map-far .map-pip,
-.map-far .map-glyph,
-.map-far .map-label,
-.map-far .map-count,
-.map-mid .map-count {
-  display: none;
-}
-
-.map-far .map-name,
-.map-mid .map-name {
-  display: none;
 }
 
 /*

@@ -2,8 +2,22 @@
 
 How a single hex on the world map is drawn. This is the graphical design contract for the map
 widget; the implementation lives in `packages/shared/src/workspace/MapCanvas.tsx` (composition),
-`packages/shared/src/workspace/mapHexView.ts` (paint decisions), and
-`packages/shared/src/theme.css` (colors and zoom-band visibility).
+`packages/shared/src/workspace/mapHexView.ts` (shared geometry and terrain decisions), and
+`packages/shared/src/theme.css` (colors).
+
+> **Hex rendering is now pluggable.** The layers described below are split between the map, which
+> owns all of them once, and the selected *map theme*, which owns terrain, knowledge overlays,
+> roads and marks. Everything this document describes as drawn is what the **Classic** theme draws —
+> it is the map as it was before themes existed, and it is deliberately frozen so the designed
+> themes have a stable reference. What a theme receives, and how to add one, is in
+> [`map-themes.md`](map-themes.md); the designed alternatives are in
+> [`hex-design-proposals.html`](hex-design-proposals.html).
+>
+> The shared view model already exposes more vocabulary than Classic draws — settlement tiers,
+> guards, monsters, shafts and lairs are all derived from what reports already provide. The
+> "not yet implemented" list at the foot of this document is therefore about Classic and about the
+> parser, not about the data being unavailable: only **battle** and **gate** genuinely await parser
+> work, and attitude groups await faction attitudes.
 
 ## Foundations
 

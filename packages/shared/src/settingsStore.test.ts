@@ -4,6 +4,7 @@ import {
   resetSettingsStore,
   useSettingsStore
 } from "./settingsStore";
+import { DEFAULT_MAP_THEME_ID, MAP_THEMES } from "./workspace/mapThemes";
 
 const store = () => useSettingsStore.getState();
 
@@ -377,5 +378,95 @@ describe("settings store", () => {
     resetSettingsStore();
 
     expect(store().snippets).toEqual([]);
+  });
+});
+
+/**
+ * Which of the map's hex renderings the world map draws with. Global rather than per game: it is a
+ * statement about how this player likes to read a map, not about one campaign.
+ */
+describe("the map theme", () => {
+  beforeEach(() => {
+    removeDocumentStub();
+    resetSettingsStore();
+  });
+  afterEach(removeDocumentStub);
+
+  it("opens on Classic, which is the map as it has always looked", () => {
+    expect(store().mapTheme).toBe(DEFAULT_MAP_THEME_ID);
+  });
+
+  it("changes to any theme the registry ships", () => {
+    for (const theme of MAP_THEMES) {
+      store().setMapTheme(theme.id);
+      expect(store().mapTheme).toBe(theme.id);
+    }
+  });
+
+  it("refuses a theme nothing can draw, keeping the map rather than blanking it", () => {
+    store().setMapTheme("no-such-theme");
+
+    expect(store().mapTheme).toBe(DEFAULT_MAP_THEME_ID);
+  });
+
+  /**
+   * Asserted against the written blob rather than by setting a theme and reading it back.
+   *
+   * Only one theme ships so far, and it is also the default - so a round trip could only ever
+   * compare the default with itself, and would pass just as happily if the setting were missing
+   * from `partialize` altogether and never written at all. What has to be true is that the key
+   * reaches storage; that is what a restart reads.
+   */
+  it("writes the chosen theme to storage, which is what survives a restart", async () => {
+    store().setMapTheme(DEFAULT_MAP_THEME_ID);
+
+    const storage = useSettingsStore.persist.getOptions().storage;
+    const persisted = await storage?.getItem("atlantis-hud-settings");
+    if (!persisted) {
+      throw new Error("settings storage was not available");
+    }
+
+    expect(persisted.state.mapTheme).toBe(DEFAULT_MAP_THEME_ID);
+  });
+
+  it("restores the theme storage names, rather than the default", async () => {
+    // Written straight into the blob, because the id has to be one the setter would accept and
+    // there is only one of those today. Rehydration is the path a restart actually takes.
+    const storage = useSettingsStore.persist.getOptions().storage;
+    const persisted = await storage?.getItem("atlantis-hud-settings");
+    if (!storage || !persisted) {
+      throw new Error("settings storage was not available");
+    }
+    const theme = MAP_THEMES.at(-1)?.id ?? DEFAULT_MAP_THEME_ID;
+
+    await storage.setItem("atlantis-hud-settings", {
+      ...persisted,
+      state: { ...persisted.state, mapTheme: theme, paneTransparency: 35 }
+    });
+    await useSettingsStore.persist.rehydrate();
+
+    // The transparency rides along as a control: it proves the blob was read at all, using a value
+    // no default could have produced.
+    expect(store().paneTransparency).toBe(35);
+    expect(store().mapTheme).toBe(theme);
+  });
+
+  it("falls back at startup when storage names a theme this build has never had", () => {
+    // Rehydration merges storage straight into state without the setter, and a build can be
+    // downgraded past a theme it once shipped. Reconciled here, as every other setting is.
+    useSettingsStore.setState({ mapTheme: "removed-in-a-later-build" });
+
+    applyPersistedSettings();
+
+    expect(store().mapTheme).toBe(DEFAULT_MAP_THEME_ID);
+  });
+
+  it("resets with everything else", () => {
+    const theme = MAP_THEMES.at(-1);
+    store().setMapTheme(theme?.id ?? DEFAULT_MAP_THEME_ID);
+
+    resetSettingsStore();
+
+    expect(store().mapTheme).toBe(DEFAULT_MAP_THEME_ID);
   });
 });

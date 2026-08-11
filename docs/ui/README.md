@@ -4,8 +4,10 @@ Design artefacts for issue #17, "Basic UI for the app". These are **mockups**, n
 code — they exist so the layout could be chosen before implementation starts.
 
 For the graphical design of the map itself as implemented, see [hex-rendering.md](hex-rendering.md).
-Four candidate directions for a future hex design are drawn in
-[hex-design-proposals.html](hex-design-proposals.html).
+Five candidate directions for a future hex design are drawn in
+[hex-design-proposals.html](hex-design-proposals.html), and
+[map-themes.md](map-themes.md) describes the theme engine those designs plug into, including how to
+add or remove a map theme.
 
 ## Files
 
