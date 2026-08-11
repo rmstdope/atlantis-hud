@@ -181,14 +181,24 @@ pub fn trace_orders_for_remembered_report(
 
 /// The last readable MOVE or ADVANCE among the lines that are this unit's own for this turn.
 ///
-/// Lines inside `TURN…ENDTURN` and `FORM…ENDFORM` are skipped: the former belong to the turn
-/// after this one, the latter to the unit being formed. The blocks nest - a FORM inside a TURN is
-/// legal - so a depth counter rather than a flag. An unmatched opener swallows the rest of the
-/// block, which errs on drawing nothing rather than drawing someone else's order.
+/// Lines inside `TURN…ENDTURN` and `FORM…END` are skipped: the former belong to the turn after
+/// this one, the latter to the unit being formed. The blocks nest - a FORM inside a TURN is legal -
+/// so the openers are kept on a stack, each remembering the keyword that closes it.
+///
+/// A stack rather than a plain depth count, because the two closers are not interchangeable: `END`
+/// closes a FORM and `ENDTURN` closes a TURN, and letting either close whichever block happened to
+/// be open would read next month's movement as this month's. There is deliberately no `ENDFORM` -
+/// the NewOrigins vocabulary in [`crate::orders::grammar`] leaves it out and the syntax checker
+/// calls it an unknown command, so honouring it here would mean this reader alone accepting an
+/// order the rest of the application refuses.
+///
+/// An unmatched opener swallows the rest of the document, which errs on drawing nothing rather
+/// than drawing someone else's order.
 fn last_top_level_move(orders: &str) -> Option<Vec<crate::movement::orders::MoveStep>> {
     use crate::movement::orders::parse_move;
 
-    let mut depth = 0_usize;
+    // The keyword each open block is waiting for, innermost last.
+    let mut blocks: Vec<&str> = Vec::new();
     let mut last = None;
 
     for line in orders.lines() {
@@ -201,12 +211,20 @@ fn last_top_level_move(orders: &str) -> Option<Vec<crate::movement::orders::Move
             .next()
             .unwrap_or("");
 
-        if command.eq_ignore_ascii_case("turn") || command.eq_ignore_ascii_case("form") {
-            depth += 1;
-        } else if command.eq_ignore_ascii_case("endturn") || command.eq_ignore_ascii_case("endform")
-        {
-            depth = depth.saturating_sub(1);
-        } else if depth == 0 {
+        if command.eq_ignore_ascii_case("turn") {
+            blocks.push("ENDTURN");
+        } else if command.eq_ignore_ascii_case("form") {
+            blocks.push("END");
+        } else if command.eq_ignore_ascii_case("endturn") || command.eq_ignore_ascii_case("end") {
+            // Only the closer the innermost block is waiting for closes it. A mismatched one is
+            // the syntax checker's business to report and changes nothing here.
+            if blocks
+                .last()
+                .is_some_and(|expected| command.eq_ignore_ascii_case(expected))
+            {
+                blocks.pop();
+            }
+        } else if blocks.is_empty() {
             if let Some(steps) = parse_move(line) {
                 last = Some(steps);
             }

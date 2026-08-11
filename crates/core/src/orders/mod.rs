@@ -10,9 +10,9 @@
 //! `tests/fixtures/reports/neworigins-3.0.0-f95-t71.rep` must validate with nothing to say.
 
 pub mod effects;
+pub mod forms;
 pub mod grammar;
 pub mod intents;
-pub mod items;
 pub mod lexer;
 pub mod parser;
 pub mod semantics;

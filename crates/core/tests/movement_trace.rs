@@ -92,13 +92,45 @@ fn a_move_inside_a_turn_block_is_not_this_turns_move() {
 /// A FORM block's orders belong to the unit being formed, not to the unit that issues them.
 #[test]
 fn a_move_inside_a_form_block_belongs_to_the_formed_unit() {
-    let path = trace("18642", "MOVE N\nFORM 2\nMOVE SE\nENDFORM\n")
+    // Closed with END, which is what closes a FORM. The rules have no ENDFORM at all - the
+    // vocabulary in `orders::grammar` leaves it out on purpose, and the validator calls it an
+    // unknown command - so a document written with one is not a document this has to read.
+    let path = trace("18642", "MOVE N\nFORM 2\nMOVE SE\nEND\n")
         .path
         .expect("a traced path");
     assert_eq!(
         path.steps[0].to,
         at(7, 51),
         "the formed unit's MOVE SE is not this unit's path"
+    );
+}
+
+/// A FORM block that has been closed gives the unit its own orders back (#95).
+///
+/// The reader used to close a block on `ENDTURN` and `ENDFORM` and never on plain `END`, so a
+/// correctly written `FORM … END` left the depth counter stuck at one and every later line - the
+/// unit's real movement among them - was read as though it still belonged to the formed unit. The
+/// order was written, the server would run it, and the map drew nothing.
+#[test]
+fn a_move_after_a_closed_form_block_is_this_units_own() {
+    let path = trace("18642", "FORM 2\nBUY 5 Plainsmen\nEND\nMOVE N\n")
+        .path
+        .expect("the MOVE after the block is this unit's");
+
+    assert_eq!(path.from, at(7, 53));
+    assert_eq!(path.steps[0].to, at(7, 51));
+}
+
+/// The other half: a TURN block still holds next month's orders, and END does not close one.
+#[test]
+fn end_does_not_close_a_turn_block() {
+    // `END` belongs to FORM. Were it allowed to close a TURN, the MOVE below would be read as this
+    // month's when it is next month's.
+    let deferred = trace("18642", "TURN\nEND\nMOVE N\nENDTURN\n");
+
+    assert_eq!(
+        deferred.path, None,
+        "everything here is inside the TURN block"
     );
 }
 

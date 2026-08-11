@@ -210,6 +210,33 @@ pub struct Gaps {
     pub weather: Gap,
 }
 
+/// Every spelling an order's item argument stands for, in the order they must be tried.
+///
+/// The rules let a player write an item three ways - by tag (`SWOR`), by name (`sword`), or by the
+/// plural the examples themselves use (`GIVE 4573 10 swords`) - and a name containing spaces comes
+/// quoted or underscored, which the caller normalises before asking.
+///
+/// The plural rule is crude on purpose: the text as written first, then with a trailing `es` or
+/// `s` removed. **The order matters and is the caller's to honour**: every spelling must be tried
+/// across the whole catalogue before the next one is, or an entry whose own name ends in `s` -
+/// `pearls`, `spices`, `figurines` - could be beaten by some other entry matching its stripped
+/// form. Nothing in the committed ruleset collides that way today, which is precisely why the
+/// rule is stated here rather than left to each caller's loop to imply.
+///
+/// Returned as a fixed array of options rather than a `Vec`: there are at most three, and two of
+/// them borrow from the caller's own normalised string.
+#[must_use]
+pub fn item_spellings(written: &str) -> [Option<&str>; 3] {
+    if written.is_empty() {
+        return [None, None, None];
+    }
+    [
+        Some(written),
+        written.strip_suffix("es"),
+        written.strip_suffix('s'),
+    ]
+}
+
 /// A skill, and what a month of studying it costs.
 ///
 /// Separate from the item catalogue rather than merged into it, because ten tags mean one thing as
@@ -464,29 +491,19 @@ impl Ruleset {
     /// The item an order names, written as a tag, a name, or the plural the rules' own examples
     /// use.
     ///
-    /// The plural rule is crude on purpose: try the text as written first, then with a trailing
-    /// `s` or `es` removed. Trying the unstripped form first is what keeps the catalogue's own
-    /// plural entries - `pearls`, `spices`, `figurines` - recognisable, because stripping them
-    /// would find nothing.
+    /// Spelling-major, for the reason [`item_spellings`] gives.
     #[must_use]
     pub fn find_item(&self, text: &str) -> Option<&ItemEntry> {
-        if text.is_empty() {
-            return None;
-        }
-
         let written = text.replace('_', " ");
-        let candidates = [
-            Some(written.as_str()),
-            written.strip_suffix("es"),
-            written.strip_suffix('s'),
-        ];
-
-        let found = candidates.into_iter().flatten().find_map(|candidate| {
-            self.items.values().find(|item| {
-                item.tag.eq_ignore_ascii_case(candidate)
-                    || item.name.eq_ignore_ascii_case(candidate)
-            })
-        });
+        let found = item_spellings(&written)
+            .into_iter()
+            .flatten()
+            .find_map(|spelling| {
+                self.items.values().find(|item| {
+                    item.tag.eq_ignore_ascii_case(spelling)
+                        || item.name.eq_ignore_ascii_case(spelling)
+                })
+            });
         found
     }
 
@@ -514,5 +531,123 @@ impl Ruleset {
                     .values()
                     .find(|skill| skill.name.eq_ignore_ascii_case(&written))
             })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const RULESET: &str = include_str!("../../../../config/public/ruleset.json");
+
+    fn ruleset() -> Ruleset {
+        Ruleset::from_json(RULESET).expect("the committed ruleset should be usable")
+    }
+
+    // How an order may name an item. These moved here from `orders/items.rs` when the rule they
+    // cover became `item_spellings`, shared by the catalogue search, the orders preview and the
+    // semantic checks. They were the only coverage the rule had anywhere.
+    //
+    // Failing to recognise a name is a **warning** wherever it is asked, never an error: the
+    // catalogue is scraped from the game being played and may be stale, absent, or simply missing
+    // an entry, and none of that is grounds for telling a player their order is wrong.
+
+    #[test]
+    fn a_tag_is_recognised_whatever_its_case() {
+        let ruleset = ruleset();
+        assert!(ruleset.find_item("SWOR").is_some());
+        // Real orders carry lower-cased tags: the turn 71 template has "@give 0 all spea".
+        assert!(ruleset.find_item("spea").is_some());
+    }
+
+    #[test]
+    fn a_singular_name_is_recognised() {
+        assert!(ruleset().find_item("sword").is_some());
+    }
+
+    #[test]
+    fn the_plural_the_rules_own_examples_use_is_recognised() {
+        let ruleset = ruleset();
+        // "GIVE 4573 10 swords" and "SELL 10 furs" are both examples on the rules page.
+        assert!(ruleset.find_item("swords").is_some());
+        assert!(ruleset.find_item("furs").is_some());
+        assert!(ruleset.find_item("crossbows").is_some());
+    }
+
+    #[test]
+    fn a_name_that_is_already_plural_survives_the_plural_rule() {
+        // Stripping first would look for "pearl", which the catalogue does not have.
+        let ruleset = ruleset();
+        assert_eq!(
+            ruleset.find_item("pearls").map(|item| item.name.as_str()),
+            Some("pearls")
+        );
+        assert_eq!(
+            ruleset.find_item("spices").map(|item| item.name.as_str()),
+            Some("spices")
+        );
+    }
+
+    #[test]
+    fn a_name_with_spaces_is_recognised_quoted_or_underscored() {
+        let ruleset = ruleset();
+        // The lexer has already removed the quotes by the time this is asked.
+        assert!(ruleset.find_item("Plate Armor").is_some());
+        assert!(ruleset.find_item("Plate_Armor").is_some());
+    }
+
+    #[test]
+    fn a_name_the_catalogue_does_not_have_is_not_recognised() {
+        let ruleset = ruleset();
+        assert!(ruleset.find_item("swordz").is_none());
+        assert!(ruleset.find_item("").is_none());
+    }
+
+    /// The spellings come back in the order they must be tried, and an empty text names nothing.
+    #[test]
+    fn the_spellings_are_the_written_form_first() {
+        assert_eq!(
+            item_spellings("swords"),
+            [Some("swords"), None, Some("sword")]
+        );
+        assert_eq!(
+            item_spellings("spices"),
+            [Some("spices"), Some("spic"), Some("spice")]
+        );
+        assert_eq!(item_spellings("sword"), [Some("sword"), None, None]);
+        assert_eq!(item_spellings(""), [None, None, None]);
+    }
+
+    /// What the spelling-major order protects, asserted rather than left to a doc comment.
+    ///
+    /// No entry can be beaten by another matching its stripped form, because no two entries
+    /// collide that way. A future scraped ruleset could, and then the loops honouring the order
+    /// would be the only thing keeping `pearls` resolving to pearls.
+    #[test]
+    fn no_two_catalogue_entries_collide_across_the_plural_rule() {
+        let ruleset = ruleset();
+
+        for item in ruleset.items.values() {
+            // A stripped form matching the entry's *own* other spelling is no collision at all -
+            // `spices [SPIC]` strips to exactly its own tag. Only another entry answering to it
+            // could change which item a name resolves to, so entries are compared by tag.
+            for spelling in [item.tag.as_str(), item.name.as_str()] {
+                for stripped in [spelling.strip_suffix("es"), spelling.strip_suffix('s')]
+                    .into_iter()
+                    .flatten()
+                {
+                    let other = ruleset.items.values().find(|candidate| {
+                        candidate.tag != item.tag
+                            && (candidate.tag.eq_ignore_ascii_case(stripped)
+                                || candidate.name.eq_ignore_ascii_case(stripped))
+                    });
+                    assert!(
+                        other.is_none(),
+                        "{spelling} strips to {stripped}, which {} also answers to",
+                        other.expect("just checked").tag
+                    );
+                }
+            }
+        }
     }
 }
