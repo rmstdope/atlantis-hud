@@ -599,7 +599,9 @@ describe("merging an allied report", () => {
 
     await createCoreClient(createTauriAdapter(invoke)).validateOrders(
       "@work",
-      "the ruleset its items are checked against"
+      "the ruleset its items are checked against",
+      "the report the orders were written for",
+      { warnOnUnguardedHex: true }
     );
 
     expect(calls).toEqual([
@@ -607,8 +609,34 @@ describe("merging an allied report", () => {
         command: "validate_orders",
         args: {
           raw_orders: "@work",
-          ruleset_json: "the ruleset its items are checked against"
+          ruleset_json: "the ruleset its items are checked against",
+          raw_report: "the report the orders were written for",
+          warn_on_unguarded_hex: true
         }
+      }
+    ]);
+  });
+
+  /**
+   * Before a report is imported there is nothing to check the orders against, and the pane still
+   * has to validate what is being typed. The report and the options are therefore optional, and
+   * their absence has to reach the core as an absence rather than as a mistyped key.
+   */
+  it("validates without a report, which is what the pane does before an import", async () => {
+    const calls: Array<Record<string, unknown> | undefined> = [];
+    const invoke: TauriInvoke = <T,>(_command: string, args?: Record<string, unknown>) => {
+      calls.push(args);
+      return Promise.resolve({ diagnostics: [] } as T);
+    };
+
+    await createCoreClient(createTauriAdapter(invoke)).validateOrders("@work", null);
+
+    expect(calls).toEqual([
+      {
+        raw_orders: "@work",
+        ruleset_json: null,
+        raw_report: null,
+        warn_on_unguarded_hex: false
       }
     ]);
   });
@@ -633,6 +661,69 @@ describe("merging an allied report", () => {
 
     expect(result.diagnostics[0].columnStart).toBe(10);
     expect(result.diagnostics[0].columnEnd).toBe(16);
+    expect(result.diagnostics[0].regionId).toBeNull();
+    expect(result.diagnostics[0].unitId).toBeNull();
+  });
+
+  /**
+   * A semantic finding carries the hex and the unit instead of, or as well as, a line. "Nobody is
+   * guarding this hex" sits on no line at all, so a normalizer that insisted on one would throw
+   * the whole payload away and leave the panel showing nothing.
+   */
+  it("carries a finding that belongs to a hex rather than to a line", async () => {
+    const wire: TauriInvoke = <T,>() =>
+      Promise.resolve({
+        diagnostics: [
+          {
+            code: "hex-unguarded",
+            message: "you have units here and none of them is guarding this hex",
+            line_start: null,
+            line_end: null,
+            column_start: null,
+            column_end: null,
+            region_id: "1:7,53",
+            unit_id: null,
+            severity: "warning"
+          },
+          {
+            code: "not-enough-silver",
+            message: "short $60",
+            lineStart: 4,
+            lineEnd: 4,
+            columnStart: 0,
+            columnEnd: 4,
+            regionId: "1:7,53",
+            unitId: "18642",
+            severity: "warning"
+          }
+        ]
+      } as T);
+
+    const result = await createCoreClient(createTauriAdapter(wire)).validateOrders("x", null);
+
+    expect(result.diagnostics[0]).toEqual({
+      code: "hex-unguarded",
+      message: "you have units here and none of them is guarding this hex",
+      lineStart: null,
+      lineEnd: null,
+      columnStart: null,
+      columnEnd: null,
+      regionId: "1:7,53",
+      unitId: null,
+      severity: "warning"
+    });
+    expect(result.diagnostics[1].lineStart).toBe(4);
+    expect(result.diagnostics[1].unitId).toBe("18642");
+  });
+
+  /** A payload with no anchors at all is still incomplete if it says nothing else either. */
+  it("still refuses a diagnostic missing its code or severity", async () => {
+    const broken: TauriInvoke = <T,>() =>
+      Promise.resolve({ diagnostics: [{ message: "no code here", severity: "warning" }] } as T);
+
+    await expect(
+      createCoreClient(createTauriAdapter(broken)).validateOrders("x", null)
+    ).rejects.toThrow(/incomplete order validation payload/);
   });
 
   it("asks tauri for the order vocabulary rather than keeping one of its own", async () => {

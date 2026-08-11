@@ -4,6 +4,8 @@ import type { OrderDiagnostic } from "@atlantis/core-client";
 import {
   canExportOrders,
   diagnosticsForUnit,
+  findingsByHex,
+  findingsForHex,
   draftAfterDocumentChange,
   draftAfterSave,
   offendingText,
@@ -36,6 +38,8 @@ describe("orderEditor policy", () => {
           lineEnd: 1,
           columnStart: 0,
           columnEnd: 0,
+          regionId: null,
+          unitId: null,
           severity: "error"
         },
         {
@@ -45,6 +49,8 @@ describe("orderEditor policy", () => {
           lineEnd: 2,
           columnStart: 0,
           columnEnd: 0,
+          regionId: null,
+          unitId: null,
           severity: "warning"
         }
       ]
@@ -69,6 +75,8 @@ describe("orderEditor policy", () => {
           lineEnd: 1,
           columnStart: 0,
           columnEnd: 0,
+          regionId: null,
+          unitId: null,
           severity: "warning"
         }
       ]
@@ -157,6 +165,8 @@ const diagnostic = (lineStart: number, message: string): OrderDiagnostic => ({
   lineEnd: lineStart,
   columnStart: 0,
   columnEnd: 0,
+  regionId: null,
+  unitId: null,
   severity: "error"
 });
 
@@ -176,6 +186,8 @@ describe("the diagnostics belonging to one unit", () => {
         lineEnd: 2,
         columnStart: 0,
         columnEnd: 0,
+        regionId: null,
+        unitId: null,
         severity: "error"
       }
     ]);
@@ -207,6 +219,8 @@ describe("the diagnostics belonging to one unit", () => {
       lineEnd: 4,
       columnStart: 0,
       columnEnd: 0,
+      regionId: null,
+      unitId: null,
       severity: "warning"
     };
 
@@ -223,6 +237,8 @@ describe("the diagnostics belonging to one unit", () => {
       lineEnd: 9,
       columnStart: 0,
       columnEnd: 0,
+      regionId: null,
+      unitId: null,
       severity: "warning"
     };
 
@@ -239,6 +255,8 @@ describe("the diagnostics belonging to one unit", () => {
       lineEnd: 5,
       columnStart: 0,
       columnEnd: 0,
+      regionId: null,
+      unitId: null,
       severity: "warning"
     };
 
@@ -259,6 +277,8 @@ describe("offendingText", () => {
       lineEnd: 2,
       columnStart: 10,
       columnEnd: 16,
+      regionId: null,
+      unitId: null,
       severity: "error"
     };
 
@@ -276,6 +296,8 @@ describe("offendingText", () => {
       lineEnd: 2,
       columnStart: 11,
       columnEnd: 12,
+      regionId: null,
+      unitId: null,
       severity: "error"
     };
 
@@ -291,6 +313,8 @@ describe("offendingText", () => {
       lineEnd: 3,
       columnStart: 0,
       columnEnd: 5,
+      regionId: null,
+      unitId: null,
       severity: "error"
     };
 
@@ -306,6 +330,8 @@ describe("offendingText", () => {
       lineEnd: 9,
       columnStart: 4,
       columnEnd: 9,
+      regionId: null,
+      unitId: null,
       severity: "error"
     };
 
@@ -313,5 +339,118 @@ describe("offendingText", () => {
     expect(
       offendingText(DOCUMENT, { ...stale, lineStart: 2, lineEnd: 2, columnEnd: 400 })
     ).toBeNull();
+  });
+
+  it("has nothing to quote for a finding that sits on no line at all", () => {
+    expect(offendingText(DOCUMENT, hexFinding("hex-unguarded"))).toBeNull();
+  });
+});
+
+// --- the checks that read the report -----------------------------------------------------------
+
+/** A finding about a hex: no line, no column, no unit. */
+function hexFinding(code: string, regionId = "1:7,53"): OrderDiagnostic {
+  return {
+    code,
+    message: "you have units here and none of them is guarding this hex",
+    lineStart: null,
+    lineEnd: null,
+    columnStart: null,
+    columnEnd: null,
+    regionId,
+    unitId: null,
+    severity: "warning"
+  };
+}
+
+/** A finding about one unit, on one of its lines. */
+function unitFinding(unitId: string, line: number, regionId = "1:7,53"): OrderDiagnostic {
+  return {
+    code: "not-enough-silver",
+    message: "short $60",
+    lineStart: line,
+    lineEnd: line,
+    columnStart: 0,
+    columnEnd: 4,
+    regionId,
+    unitId,
+    severity: "warning"
+  };
+}
+
+describe("findings that belong to a hex", () => {
+  const DOCUMENT = ["unit 18642", "@work", "unit 13401", "@study obse", "MOVE N"].join("\n");
+
+  it("gives a unit the findings raised against it, renumbered into its own block", () => {
+    // The editor shows a unit's orders and not its `unit` line, so document line 5 - the second
+    // of unit 13401's two orders - is line 2 of what the player is looking at.
+    const found = diagnosticsForUnit(DOCUMENT, "13401", [unitFinding("13401", 5)]);
+
+    expect(found).toHaveLength(1);
+    expect(found[0].lineStart).toBe(2);
+  });
+
+  /**
+   * The unit is what a finding names, and it beats the line it happens to sit on. Two units'
+   * blocks are adjacent, and a finding filed under one must never surface under the other because
+   * a line number landed in the wrong range.
+   */
+  it("does not give a unit a finding raised against a different unit", () => {
+    expect(diagnosticsForUnit(DOCUMENT, "18642", [unitFinding("13401", 2)])).toEqual([]);
+  });
+
+  /**
+   * "Nobody is guarding this hex" is the region panel's business. Showing it under whichever unit
+   * happens to be selected would say a unit has a problem when the hex does.
+   */
+  it("keeps a finding about a hex out of every unit's list", () => {
+    expect(diagnosticsForUnit(DOCUMENT, "13401", [hexFinding("hex-unguarded")])).toEqual([]);
+    expect(diagnosticsForUnit(DOCUMENT, "18642", [hexFinding("hex-unguarded")])).toEqual([]);
+  });
+
+  /** A syntax diagnostic names no unit and is placed by its line, exactly as before. */
+  it("still places a syntax diagnostic by its line", () => {
+    const syntax: OrderDiagnostic = { ...unitFinding("x", 4), unitId: null, regionId: null };
+
+    expect(diagnosticsForUnit(DOCUMENT, "13401", [syntax])).toHaveLength(1);
+    expect(diagnosticsForUnit(DOCUMENT, "18642", [syntax])).toEqual([]);
+  });
+
+  it("collects everything belonging to one hex, whether it names a unit or not", () => {
+    const all = [
+      hexFinding("hex-unguarded", "1:7,53"),
+      unitFinding("13401", 5, "1:7,53"),
+      unitFinding("999", 9, "1:9,51"),
+      { ...unitFinding("13401", 2), regionId: null }
+    ];
+
+    expect(findingsForHex(all, "1:7,53").map((finding) => finding.code)).toEqual([
+      "hex-unguarded",
+      "not-enough-silver"
+    ]);
+    expect(findingsForHex(all, null)).toEqual([]);
+  });
+
+  /**
+   * The header chip counts what is wrong across the whole map, so a mistake in a hex nobody is
+   * looking at cannot reach the server unnoticed. Syntax diagnostics belong to no hex and are
+   * counted separately, by the orders panel.
+   */
+  it("groups the map's findings by hex, in a stable order", () => {
+    const all = [
+      unitFinding("999", 9, "1:9,51"),
+      hexFinding("hex-unguarded", "1:7,53"),
+      unitFinding("13401", 5, "1:7,53"),
+      { ...unitFinding("13401", 2), regionId: null }
+    ];
+
+    expect(findingsByHex(all)).toEqual([
+      { regionId: "1:9,51", findings: [all[0]] },
+      { regionId: "1:7,53", findings: [all[1], all[2]] }
+    ]);
+  });
+
+  it("has no groups when nothing is wrong anywhere", () => {
+    expect(findingsByHex([])).toEqual([]);
   });
 });

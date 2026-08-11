@@ -16,29 +16,11 @@ use crate::movement::rules::Ruleset;
 
 /// Whether the catalogue knows the item this text names.
 ///
-/// The plural rule is crude on purpose: try the text as written first, then with a trailing `s` or
-/// `es` removed. Trying the unstripped form first is what keeps the catalogue's own plural entries -
-/// `pearls`, `spices`, `figurines` - recognisable, because stripping them would find nothing.
+/// The matching itself lives on [`Ruleset::find_item`], because the semantic checks need the entry
+/// and not merely the verdict - and two spellings of the same rule would eventually disagree.
 #[must_use]
 pub fn is_known_item(text: &str, ruleset: &Ruleset) -> bool {
-    if text.is_empty() {
-        return false;
-    }
-
-    let written = text.replace('_', " ");
-    let candidates = [
-        Some(written.as_str()),
-        written.strip_suffix("es"),
-        written.strip_suffix('s'),
-    ];
-
-    let recognised = candidates.into_iter().flatten().any(|candidate| {
-        ruleset.items.values().any(|item| {
-            item.tag.eq_ignore_ascii_case(candidate) || item.name.eq_ignore_ascii_case(candidate)
-        })
-    });
-
-    recognised
+    ruleset.find_item(text).is_some()
 }
 
 #[cfg(test)]

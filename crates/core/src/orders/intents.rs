@@ -1,0 +1,750 @@
+//! What each unit's orders are *trying to do*, as opposed to whether they are spelled correctly.
+//!
+//! [`super::parser`] answers "is this a legal line". This answers "what would happen if the server
+//! ran it", which is the question every semantic check needs and none of them should have to ask
+//! the text directly. One walk of the document produces one [`UnitIntents`] per unit block, and the
+//! checks in [`super::semantics`] are then plain functions over report data and these.
+//!
+//! Deliberately tolerant, and deliberately lossy. A line whose shape is wrong yields no intent at
+//! all: the syntax checker has already said so, and guessing at what a malformed order meant would
+//! feed a wrong premise into every check downstream. Orders that no check reads are not modelled.
+
+use super::lexer::{lex_line, Token, TokenKind};
+use crate::movement::orders::{parse_move, MoveStep};
+
+/// How much of something an order names.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Amount {
+    /// A plain count: `GIVE 42 100 SILV`.
+    Exact(i64),
+    /// `ALL`, less an `EXCEPT` reserve where one is written.
+    All { except: i64 },
+}
+
+/// What a transfer moves: one named item, or a whole class of them.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Selector {
+    /// An item as the order wrote it - a tag, a name, or a plural. Resolving it needs a catalogue.
+    Item(String),
+    /// One of the classes the rules enumerate, as in `GIVE 42 ALL ITEMS`.
+    Class(String),
+    /// `GIVE 42 UNIT`, which hands over the unit itself rather than anything it holds.
+    WholeUnit,
+}
+
+/// Who an order names on its other side.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Party {
+    /// An existing unit, by number.
+    Unit(String),
+    /// A unit formed this turn, by alias. Its contents are not known from the report.
+    New(String),
+    /// Another faction's new unit.
+    Foreign { faction: String, alias: String },
+    /// Unit zero, which is the game's way of destroying something.
+    Discard,
+}
+
+/// One thing a unit's orders would do.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Intent {
+    Give {
+        to: Party,
+        what: Selector,
+        amount: Amount,
+    },
+    /// `TAKE FROM`, which is a GIVE written from the other end.
+    Take {
+        from: Party,
+        what: Selector,
+        amount: Amount,
+    },
+    Buy {
+        amount: Amount,
+        item: String,
+    },
+    Sell {
+        amount: Amount,
+        item: String,
+    },
+    Study {
+        skill: String,
+    },
+    Teach {
+        students: Vec<Party>,
+    },
+    /// `GUARD 1` or `GUARD 0`.
+    Guard(bool),
+    /// `CLAIM`, which draws on the faction's unclaimed silver.
+    Claim(i64),
+    Tax,
+    Pillage,
+    Work,
+    Entertain,
+    /// `WITHDRAW`, whose price the ruleset does not carry. Recorded so a check can decline to
+    /// judge a unit that spends money we cannot count.
+    Withdraw,
+    /// An order that takes the whole month and that no check reads any further.
+    ///
+    /// Occupying the month is the whole of what these say, and it is enough: a unit already
+    /// spending its month cannot be offered as somebody's spare teacher. Carries the keyword so a
+    /// message can name it.
+    MonthLong(&'static str),
+    Move {
+        steps: Vec<MoveStep>,
+    },
+}
+
+/// One intent, and where on the page it was written.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PlacedIntent {
+    pub intent: Intent,
+    pub line: usize,
+    /// The span of the order's keyword, counted as [`super::lexer::Token`] counts.
+    pub column_start: usize,
+    pub column_end: usize,
+}
+
+/// One unit's block, read.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnitIntents {
+    pub unit_id: String,
+    /// The `unit NNNN` line that opened the block.
+    pub line: usize,
+    pub intents: Vec<PlacedIntent>,
+}
+
+impl UnitIntents {
+    /// The first intent of a kind the predicate accepts.
+    pub fn find(&self, mut predicate: impl FnMut(&Intent) -> bool) -> Option<&PlacedIntent> {
+        self.intents.iter().find(|placed| predicate(&placed.intent))
+    }
+
+    /// Whether the block carries an intent the predicate accepts.
+    pub fn any(&self, predicate: impl FnMut(&Intent) -> bool) -> bool {
+        self.find(predicate).is_some()
+    }
+}
+
+/// Reads a whole orders document into one entry per unit block.
+///
+/// Lines before the first `unit` line belong to no unit and are dropped: they are the `#atlantis`
+/// header, and a fragment being edited before a block is opened.
+///
+/// Two kinds of nesting are skipped rather than read. A `TURN` block holds *next* month's orders,
+/// and a `FORM` block holds the orders of a unit that does not exist yet and has no number to file
+/// them under. Reading either as though it were the surrounding unit's would charge that unit for
+/// work it is not doing and move it out of a hex it is still standing in.
+#[must_use]
+pub fn read_intents(source: &str) -> Vec<UnitIntents> {
+    let mut units: Vec<UnitIntents> = Vec::new();
+    // How deep inside TURN or FORM blocks the reader currently is. Nothing is collected above zero.
+    let mut nesting = 0_usize;
+
+    for (index, line) in source.lines().enumerate() {
+        let number = index + 1;
+        let lexed = lex_line(line);
+        let Some((command, arguments)) = lexed.tokens.split_first() else {
+            continue;
+        };
+
+        if command.is("unit") {
+            // A unit line ends the previous block, nesting and all: an unclosed TURN cannot swallow
+            // the next unit's orders, which the syntax checker reports separately.
+            nesting = 0;
+            if let Some(id) = arguments.first().filter(|id| id.kind == TokenKind::Number) {
+                units.push(UnitIntents {
+                    unit_id: id.text.clone(),
+                    line: number,
+                    intents: Vec::new(),
+                });
+            }
+            continue;
+        }
+
+        if command.is("TURN") || command.is("FORM") {
+            nesting += 1;
+            continue;
+        }
+        if command.is("ENDTURN") || command.is("END") {
+            nesting = nesting.saturating_sub(1);
+            continue;
+        }
+        if nesting > 0 {
+            continue;
+        }
+
+        let Some(unit) = units.last_mut() else {
+            continue;
+        };
+        if let Some(intent) = read_order(command, arguments) {
+            unit.intents.push(PlacedIntent {
+                intent,
+                line: number,
+                column_start: command.column_start,
+                column_end: command.column_end,
+            });
+        }
+    }
+
+    units
+}
+
+/// One order line, as an intent - or nothing, for an order no check reads and for one whose shape
+/// is wrong. The two are deliberately indistinguishable here: the syntax checker owns the second.
+fn read_order(command: &Token, arguments: &[Token]) -> Option<Intent> {
+    let name = command.text.to_ascii_uppercase();
+
+    match name.as_str() {
+        "GIVE" => {
+            let (to, rest) = read_party(arguments)?;
+            let (what, amount) = read_transfer(rest)?;
+            Some(Intent::Give { to, what, amount })
+        }
+        "TAKE" => {
+            let rest = arguments.split_first().filter(|(kw, _)| kw.is("FROM"))?.1;
+            let (from, rest) = read_party(rest)?;
+            let (what, amount) = read_transfer(rest)?;
+            Some(Intent::Take { from, what, amount })
+        }
+        "BUY" | "SELL" => {
+            let (amount, rest) = read_amount(arguments)?;
+            let item = rest.first().filter(|_| rest.len() == 1)?.text.clone();
+            if name == "BUY" {
+                Some(Intent::Buy { amount, item })
+            } else {
+                Some(Intent::Sell { amount, item })
+            }
+        }
+        // "STUDY [skill]" and "STUDY [skill] [level]". The level says how far to go, not what a
+        // month costs, so it changes nothing any check reads.
+        "STUDY" => {
+            let skill = arguments.first()?;
+            let trailing = arguments.get(1);
+            if arguments.len() > 2 || trailing.is_some_and(|token| token.kind != TokenKind::Number)
+            {
+                return None;
+            }
+            Some(Intent::Study {
+                skill: skill.text.clone(),
+            })
+        }
+        "TEACH" => {
+            let mut students = Vec::new();
+            let mut rest = arguments;
+            while !rest.is_empty() {
+                let (student, remaining) = read_party(rest)?;
+                students.push(student);
+                rest = remaining;
+            }
+            if students.is_empty() {
+                return None;
+            }
+            Some(Intent::Teach { students })
+        }
+        "GUARD" => Some(Intent::Guard(read_flag(arguments)?)),
+        "CLAIM" => Some(Intent::Claim(read_only_number(arguments)?)),
+        "TAX" if arguments.is_empty() => Some(Intent::Tax),
+        "PILLAGE" if arguments.is_empty() => Some(Intent::Pillage),
+        "WORK" if arguments.is_empty() => Some(Intent::Work),
+        "ENTERTAIN" if arguments.is_empty() => Some(Intent::Entertain),
+        "WITHDRAW" => Some(Intent::Withdraw),
+        // "This is a full month order." Nothing here reads them further; what matters is that the
+        // unit's month is spoken for.
+        "BUILD" => Some(Intent::MonthLong("BUILD")),
+        "PRODUCE" => Some(Intent::MonthLong("PRODUCE")),
+        "SAIL" => Some(Intent::MonthLong("SAIL")),
+        // Not every spell takes a month, but the rules make no promise about which, and a mage
+        // offered as somebody's spare teacher is worse than one left alone.
+        "CAST" => Some(Intent::MonthLong("CAST")),
+        "MOVE" | "ADVANCE" => {
+            // Rebuilt as a line because `parse_move` reads text, and it is the planner's reading of
+            // a route that must be reused rather than reimplemented beside it.
+            let written = std::iter::once(name.as_str())
+                .chain(arguments.iter().map(|token| token.text.as_str()))
+                .collect::<Vec<_>>()
+                .join(" ");
+            Some(Intent::Move {
+                steps: parse_move(&written)?,
+            })
+        }
+        _ => None,
+    }
+}
+
+/// A unit as an order names it: `17`, `NEW 2`, or `FACTION 15 NEW 2`. Returns what is left.
+fn read_party(tokens: &[Token]) -> Option<(Party, &[Token])> {
+    let (first, rest) = tokens.split_first()?;
+
+    if first.is("FACTION") {
+        let (faction, rest) = rest
+            .split_first()
+            .filter(|(f, _)| f.kind == TokenKind::Number)?;
+        let rest = rest.split_first().filter(|(kw, _)| kw.is("NEW"))?.1;
+        let (alias, rest) = rest
+            .split_first()
+            .filter(|(a, _)| a.kind == TokenKind::Number)?;
+        return Some((
+            Party::Foreign {
+                faction: faction.text.clone(),
+                alias: alias.text.clone(),
+            },
+            rest,
+        ));
+    }
+
+    if first.is("NEW") {
+        let (alias, rest) = rest
+            .split_first()
+            .filter(|(a, _)| a.kind == TokenKind::Number)?;
+        return Some((Party::New(alias.text.clone()), rest));
+    }
+
+    if first.kind != TokenKind::Number {
+        return None;
+    }
+    // "GIVE 0" destroys what is given rather than handing it to a unit numbered zero.
+    if first.text.trim_start_matches('0').is_empty() {
+        return Some((Party::Discard, rest));
+    }
+    Some((Party::Unit(first.text.clone()), rest))
+}
+
+/// The `[quantity] [item]` half of a transfer, in all the forms the rules give it.
+fn read_transfer(tokens: &[Token]) -> Option<(Selector, Amount)> {
+    // `GIVE 75 UNIT` hands over the unit itself.
+    if tokens.len() == 1 && tokens[0].is("UNIT") {
+        return Some((Selector::WholeUnit, Amount::All { except: 0 }));
+    }
+
+    let (amount, rest) = read_amount(tokens)?;
+    let (item, rest) = rest.split_first()?;
+
+    // `ALL [item] EXCEPT [n]` keeps a reserve back. Only the ALL form takes one.
+    let amount = match (amount, rest) {
+        (Amount::All { .. }, [keyword, reserve]) if keyword.is("EXCEPT") => Amount::All {
+            except: read_number(reserve)?,
+        },
+        (amount, []) => amount,
+        _ => return None,
+    };
+
+    let selector = if is_item_class(&item.text) {
+        Selector::Class(item.text.clone())
+    } else {
+        Selector::Item(item.text.clone())
+    };
+    Some((selector, amount))
+}
+
+/// `ALL`, or a plain count. Returns what is left.
+fn read_amount(tokens: &[Token]) -> Option<(Amount, &[Token])> {
+    let (first, rest) = tokens.split_first()?;
+    if first.is("ALL") {
+        return Some((Amount::All { except: 0 }, rest));
+    }
+    Some((Amount::Exact(read_number(first)?), rest))
+}
+
+fn read_number(token: &Token) -> Option<i64> {
+    (token.kind == TokenKind::Number)
+        .then(|| token.text.parse().ok())
+        .flatten()
+}
+
+fn read_only_number(tokens: &[Token]) -> Option<i64> {
+    match tokens {
+        [only] => read_number(only),
+        _ => None,
+    }
+}
+
+fn read_flag(tokens: &[Token]) -> Option<bool> {
+    match read_only_number(tokens)? {
+        0 => Some(false),
+        1 => Some(true),
+        _ => None,
+    }
+}
+
+/// Whether a transfer names a whole class of items rather than one of them.
+///
+/// Checked against the rules page's own list rather than against the item catalogue: a class is
+/// engine vocabulary and is there whether or not a ruleset has been loaded.
+fn is_item_class(text: &str) -> bool {
+    super::grammar::ITEM_CLASSES
+        .iter()
+        .any(|class| class.eq_ignore_ascii_case(text))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn only_unit(source: &str) -> UnitIntents {
+        let mut units = read_intents(source);
+        assert_eq!(units.len(), 1, "expected one unit block: {units:?}");
+        units.remove(0)
+    }
+
+    fn intents(source: &str) -> Vec<Intent> {
+        only_unit(source)
+            .intents
+            .into_iter()
+            .map(|placed| placed.intent)
+            .collect()
+    }
+
+    // --- the document's own shape ---------------------------------------------------------
+
+    #[test]
+    fn each_unit_block_is_read_under_its_own_number() {
+        let units = read_intents(concat!(
+            "#atlantis 95 \"secret\"\n",
+            "unit 18642\n",
+            "@work\n",
+            "unit 13401\n",
+            "TAX\n",
+            "#end\n",
+        ));
+
+        assert_eq!(
+            units
+                .iter()
+                .map(|unit| (unit.unit_id.as_str(), unit.line))
+                .collect::<Vec<_>>(),
+            vec![("18642", 2), ("13401", 4)]
+        );
+        assert_eq!(units[0].intents.len(), 1);
+        assert_eq!(units[1].intents[0].intent, Intent::Tax);
+    }
+
+    /// The `#atlantis` line belongs to the faction, not to any unit, and orders typed before a
+    /// block is opened belong to nobody yet.
+    #[test]
+    fn orders_outside_a_unit_block_belong_to_no_unit() {
+        assert_eq!(read_intents("#atlantis 95\nWORK\n#end\n"), vec![]);
+    }
+
+    #[test]
+    fn an_intent_remembers_the_line_and_the_span_of_its_keyword() {
+        let unit = only_unit("unit 5\n  @study combat\n");
+        let placed = &unit.intents[0];
+
+        assert_eq!(placed.line, 2);
+        // The `@` is part of the line but not of the keyword.
+        assert_eq!((placed.column_start, placed.column_end), (3, 8));
+    }
+
+    /// A repeating order is still an order; the `@` says when, not what.
+    #[test]
+    fn a_repeating_order_carries_the_same_intent() {
+        assert_eq!(intents("unit 5\n@tax\n"), vec![Intent::Tax]);
+    }
+
+    /// Everything the syntax checker rejects, this drops. Guessing at a malformed order would put
+    /// a wrong premise under every check that reads these.
+    #[test]
+    fn a_line_that_does_not_parse_yields_no_intent() {
+        assert_eq!(intents("unit 5\nGIVE 42 swords\n"), vec![]);
+        assert_eq!(intents("unit 5\nFLY 1 2\n"), vec![]);
+        assert_eq!(intents("unit 5\nSTUDY\n"), vec![]);
+    }
+
+    #[test]
+    fn comments_and_blank_lines_yield_nothing() {
+        assert_eq!(
+            intents("unit 5\n;a comment\n\n   \nWORK\n"),
+            vec![Intent::Work]
+        );
+    }
+
+    /// Orders nobody checks are not modelled, and must not be mistaken for ones that are.
+    #[test]
+    fn an_order_no_check_reads_yields_no_intent() {
+        assert_eq!(
+            intents("unit 5\nAVOID 1\nBEHIND 0\nNAME UNIT \"Guards\"\n"),
+            vec![]
+        );
+    }
+
+    // --- transfers --------------------------------------------------------------------------
+
+    #[test]
+    fn a_give_names_its_recipient_its_item_and_its_quantity() {
+        assert_eq!(
+            intents("unit 5\nGIVE 4573 100 SILV\n"),
+            vec![Intent::Give {
+                to: Party::Unit("4573".to_string()),
+                what: Selector::Item("SILV".to_string()),
+                amount: Amount::Exact(100),
+            }]
+        );
+    }
+
+    #[test]
+    fn giving_all_of_something_is_not_a_quantity() {
+        assert_eq!(
+            intents("unit 5\nGIVE 4573 ALL swords\n"),
+            vec![Intent::Give {
+                to: Party::Unit("4573".to_string()),
+                what: Selector::Item("swords".to_string()),
+                amount: Amount::All { except: 0 },
+            }]
+        );
+    }
+
+    #[test]
+    fn an_except_clause_is_the_reserve_kept_back() {
+        assert_eq!(
+            intents("unit 5\nGIVE 4573 ALL swords EXCEPT 10\n"),
+            vec![Intent::Give {
+                to: Party::Unit("4573".to_string()),
+                what: Selector::Item("swords".to_string()),
+                amount: Amount::All { except: 10 },
+            }]
+        );
+    }
+
+    #[test]
+    fn a_whole_class_of_items_is_kept_apart_from_one_named_item() {
+        assert_eq!(
+            intents("unit 5\nGIVE 4573 ALL ITEMS\n"),
+            vec![Intent::Give {
+                to: Party::Unit("4573".to_string()),
+                what: Selector::Class("ITEMS".to_string()),
+                amount: Amount::All { except: 0 },
+            }]
+        );
+    }
+
+    #[test]
+    fn giving_the_unit_itself_is_its_own_thing() {
+        assert_eq!(
+            intents("unit 5\nGIVE 75 UNIT\n"),
+            vec![Intent::Give {
+                to: Party::Unit("75".to_string()),
+                what: Selector::WholeUnit,
+                amount: Amount::All { except: 0 },
+            }]
+        );
+    }
+
+    /// "GIVE 0" destroys what is given. The turn 71 template does exactly this with spears.
+    #[test]
+    fn giving_to_unit_zero_is_discarding() {
+        assert_eq!(
+            intents("unit 5\n@give 0 all spea\n"),
+            vec![Intent::Give {
+                to: Party::Discard,
+                what: Selector::Item("spea".to_string()),
+                amount: Amount::All { except: 0 },
+            }]
+        );
+    }
+
+    #[test]
+    fn a_recipient_may_be_a_new_unit_of_ours_or_of_another_faction() {
+        assert_eq!(
+            intents("unit 5\nGIVE NEW 1 1000 silver\n"),
+            vec![Intent::Give {
+                to: Party::New("1".to_string()),
+                what: Selector::Item("silver".to_string()),
+                amount: Amount::Exact(1000),
+            }]
+        );
+        assert_eq!(
+            intents("unit 5\nGIVE FACTION 14 NEW 2 5 \"Chain armor\"\n"),
+            vec![Intent::Give {
+                to: Party::Foreign {
+                    faction: "14".to_string(),
+                    alias: "2".to_string(),
+                },
+                what: Selector::Item("Chain armor".to_string()),
+                amount: Amount::Exact(5),
+            }]
+        );
+    }
+
+    /// TAKE is a GIVE written from the other end, and moves silver just as surely.
+    #[test]
+    fn a_take_is_read_as_the_transfer_it_is() {
+        assert_eq!(
+            intents("unit 5\nTAKE FROM 4573 10 swords\n"),
+            vec![Intent::Take {
+                from: Party::Unit("4573".to_string()),
+                what: Selector::Item("swords".to_string()),
+                amount: Amount::Exact(10),
+            }]
+        );
+    }
+
+    // --- the market -------------------------------------------------------------------------
+
+    #[test]
+    fn buying_and_selling_carry_their_quantity_and_item() {
+        assert_eq!(
+            intents("unit 5\nBUY 5 Plainsmen\nSELL 10 furs\n"),
+            vec![
+                Intent::Buy {
+                    amount: Amount::Exact(5),
+                    item: "Plainsmen".to_string(),
+                },
+                Intent::Sell {
+                    amount: Amount::Exact(10),
+                    item: "furs".to_string(),
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn buying_all_of_what_is_offered_is_not_a_quantity() {
+        assert_eq!(
+            intents("unit 5\nBUY ALL grain\n"),
+            vec![Intent::Buy {
+                amount: Amount::All { except: 0 },
+                item: "grain".to_string(),
+            }]
+        );
+    }
+
+    // --- learning ---------------------------------------------------------------------------
+
+    #[test]
+    fn studying_carries_the_skill_as_written() {
+        assert_eq!(
+            intents("unit 5\n@study obse\n"),
+            vec![Intent::Study {
+                skill: "obse".to_string()
+            }]
+        );
+    }
+
+    /// "STUDY [skill] [level]" is the form that studies towards a level. The level changes nothing
+    /// about the cost, which is per month, so only the skill is kept.
+    #[test]
+    fn a_study_order_with_a_target_level_is_still_a_study_of_that_skill() {
+        assert_eq!(
+            intents("unit 5\nSTUDY COMBAT 3\n"),
+            vec![Intent::Study {
+                skill: "COMBAT".to_string()
+            }]
+        );
+    }
+
+    #[test]
+    fn teaching_carries_every_student_named() {
+        assert_eq!(
+            intents("unit 5\nTEACH 18642 13401 NEW 2\n"),
+            vec![Intent::Teach {
+                students: vec![
+                    Party::Unit("18642".to_string()),
+                    Party::Unit("13401".to_string()),
+                    Party::New("2".to_string()),
+                ]
+            }]
+        );
+    }
+
+    // --- flags, money and movement ----------------------------------------------------------
+
+    #[test]
+    fn guard_carries_which_way_it_was_set() {
+        assert_eq!(intents("unit 5\nGUARD 1\n"), vec![Intent::Guard(true)]);
+        assert_eq!(intents("unit 5\nGUARD 0\n"), vec![Intent::Guard(false)]);
+    }
+
+    #[test]
+    fn claiming_carries_the_silver_it_draws() {
+        assert_eq!(intents("unit 5\n@claim 50\n"), vec![Intent::Claim(50)]);
+    }
+
+    #[test]
+    fn the_orders_that_earn_are_each_their_own_intent() {
+        assert_eq!(
+            intents("unit 5\nTAX\n"),
+            vec![Intent::Tax],
+            "TAX takes no arguments"
+        );
+        assert_eq!(intents("unit 5\nPILLAGE\n"), vec![Intent::Pillage]);
+        assert_eq!(intents("unit 5\nWORK\n"), vec![Intent::Work]);
+        assert_eq!(intents("unit 5\nENTERTAIN\n"), vec![Intent::Entertain]);
+    }
+
+    /// The ruleset carries no withdrawal prices, so this is recorded as spending that cannot be
+    /// counted rather than as spending of nothing.
+    #[test]
+    fn a_withdrawal_is_recorded_even_though_its_price_is_unknown() {
+        assert_eq!(
+            intents("unit 5\nWITHDRAW 10 grain\n"),
+            vec![Intent::Withdraw]
+        );
+    }
+
+    #[test]
+    fn a_move_carries_the_steps_the_planner_already_understands() {
+        assert_eq!(
+            intents("unit 5\nMOVE N NE\n"),
+            vec![Intent::Move {
+                steps: parse_move("MOVE N NE").expect("the planner reads this")
+            }]
+        );
+    }
+
+    /// ADVANCE is MOVE that attacks whatever bars the way; it leaves the hex just the same, which
+    /// is all the guard check cares about.
+    #[test]
+    fn an_advance_moves_the_unit_as_a_move_does() {
+        assert_eq!(
+            intents("unit 5\nADVANCE N\n"),
+            vec![Intent::Move {
+                steps: parse_move("ADVANCE N").expect("the planner reads this")
+            }]
+        );
+    }
+
+    /// A TURN block's contents are next month's orders, not this month's. Reading them as though
+    /// they were would charge a unit twice and move it out of a hex it is still standing in.
+    #[test]
+    fn orders_inside_a_turn_block_are_not_this_month() {
+        assert_eq!(
+            intents(concat!(
+                "unit 5\n",
+                "WORK\n",
+                "TURN\n",
+                "MOVE N\n",
+                "ENDTURN\n",
+            )),
+            vec![Intent::Work]
+        );
+    }
+
+    /// A FORM block is a different unit's orders, nested inside this one's block. Attributing them
+    /// to the forming unit would charge it for what the new unit does.
+    #[test]
+    fn orders_inside_a_form_block_belong_to_the_unit_being_formed() {
+        let units = read_intents(concat!(
+            "unit 5\n",
+            "WORK\n",
+            "FORM 1\n",
+            "BUY 5 Plainsmen\n",
+            "END\n",
+            "TAX\n",
+        ));
+
+        assert_eq!(
+            units.len(),
+            1,
+            "the formed unit has no number yet: {units:?}"
+        );
+        assert_eq!(
+            units[0]
+                .intents
+                .iter()
+                .map(|placed| placed.intent.clone())
+                .collect::<Vec<_>>(),
+            vec![Intent::Work, Intent::Tax]
+        );
+    }
+}

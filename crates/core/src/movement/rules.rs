@@ -210,6 +210,22 @@ pub struct Gaps {
     pub weather: Gap,
 }
 
+/// A skill, and what a month of studying it costs.
+///
+/// Separate from the item catalogue rather than merged into it, because ten tags mean one thing as
+/// a skill and another as an item: FISH is fishing and also fish, HERB is herb lore and also herbs.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SkillEntry {
+    pub tag: String,
+    pub name: String,
+    /// Silver per man per month. Absent for a skill the data page prices nowhere, which is its way
+    /// of saying the skill cannot be studied by ordinary means.
+    pub cost: Option<i64>,
+    /// How far the page says the skill goes.
+    pub max_level: u32,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Ruleset {
@@ -218,6 +234,10 @@ pub struct Ruleset {
     pub risk: RiskThresholds,
     pub gaps: Gaps,
     pub items: BTreeMap<String, ItemEntry>,
+    /// Empty for a ruleset generated before study costs were scraped. A missing catalogue means
+    /// nothing can be priced, not that everything is free.
+    #[serde(default)]
+    pub skills: BTreeMap<String, SkillEntry>,
 }
 
 /// Why a ruleset could not be used.
@@ -439,5 +459,60 @@ impl Ruleset {
         self.items
             .get(tag)
             .is_some_and(|item| item.kind == ItemKind::Man)
+    }
+
+    /// The item an order names, written as a tag, a name, or the plural the rules' own examples
+    /// use.
+    ///
+    /// The plural rule is crude on purpose: try the text as written first, then with a trailing
+    /// `s` or `es` removed. Trying the unstripped form first is what keeps the catalogue's own
+    /// plural entries - `pearls`, `spices`, `figurines` - recognisable, because stripping them
+    /// would find nothing.
+    #[must_use]
+    pub fn find_item(&self, text: &str) -> Option<&ItemEntry> {
+        if text.is_empty() {
+            return None;
+        }
+
+        let written = text.replace('_', " ");
+        let candidates = [
+            Some(written.as_str()),
+            written.strip_suffix("es"),
+            written.strip_suffix('s'),
+        ];
+
+        let found = candidates.into_iter().flatten().find_map(|candidate| {
+            self.items.values().find(|item| {
+                item.tag.eq_ignore_ascii_case(candidate)
+                    || item.name.eq_ignore_ascii_case(candidate)
+            })
+        });
+        found
+    }
+
+    /// The skill an order names, written as a tag or as a name.
+    ///
+    /// A player writes it whichever way is shortest: `STUDY obse` uses the tag, `STUDY COMBAT` the
+    /// name, and a name with a space in it arrives underscored or (quotes already stripped by the
+    /// lexer) with the space intact. There is no plural rule here, unlike items - nobody studies
+    /// "combats".
+    ///
+    /// Tags are tried before names because ten of them are shared with an item and one skill's tag
+    /// could otherwise be read as another skill's name.
+    #[must_use]
+    pub fn find_skill(&self, text: &str) -> Option<&SkillEntry> {
+        if text.is_empty() {
+            return None;
+        }
+        let written = text.replace('_', " ");
+
+        self.skills
+            .values()
+            .find(|skill| skill.tag.eq_ignore_ascii_case(&written))
+            .or_else(|| {
+                self.skills
+                    .values()
+                    .find(|skill| skill.name.eq_ignore_ascii_case(&written))
+            })
     }
 }

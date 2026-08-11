@@ -44,6 +44,17 @@ type AppHeaderProps = {
   onToggleMessages: () => void;
   /** The panel itself, rendered under the chip when it is open. */
   messagesPanel: ReactNode;
+  /**
+   * How many things order validation found across the whole map. Zero hides the chip entirely.
+   *
+   * Counted over every hex rather than the one on screen: the mistake that goes out with the turn
+   * is the one in the hex nobody clicked on.
+   */
+  problemCount: number;
+  /** Whether the problems panel is showing. Same split as the picker: the shell owns the panel. */
+  problemsOpen: boolean;
+  onToggleProblems: () => void;
+  problemsPanel: ReactNode;
   busy: boolean;
   onLoadReport: (text: string, fileName: string) => void;
   onExportOrders: () => void;
@@ -79,6 +90,10 @@ export function AppHeader({
   messagesOpen,
   onToggleMessages,
   messagesPanel,
+  problemCount,
+  problemsOpen,
+  onToggleProblems,
+  problemsPanel,
   busy,
   onLoadReport,
   onExportOrders,
@@ -244,6 +259,34 @@ export function AppHeader({
             </span>
           </button>
           {messagesOpen ? messagesPanel : null}
+        </span>
+      ) : null}
+
+      {/*
+        What order validation found across the whole map.
+
+        Here rather than only in the region panel because the region panel shows the hex you are
+        looking at, and the mistake that reaches the server is the one in the hex you are not.
+        Hidden entirely when there is nothing wrong: a chip reading "0 problems" is a chip that
+        earns none of the room it takes.
+      */}
+      {problemCount > 0 ? (
+        <span className="relative">
+          <button
+            type="button"
+            data-testid="problems-chip"
+            aria-haspopup="dialog"
+            aria-expanded={problemsOpen}
+            onClick={onToggleProblems}
+            className="rounded border border-warn px-2 py-0.5 text-warn"
+          >
+            <span aria-hidden>⚠ </span>
+            {problemCount} problem{problemCount === 1 ? "" : "s"}
+            <span aria-hidden className="ml-1 text-ink-dim">
+              ▾
+            </span>
+          </button>
+          {problemsOpen ? problemsPanel : null}
         </span>
       ) : null}
 

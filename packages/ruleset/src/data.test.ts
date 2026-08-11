@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { parseItemReference, RulesetScrapeError } from "./data";
+import { parseItemReference, parseSkillReference, RulesetScrapeError } from "./data";
 import { preformattedText } from "./html";
 
 const DATA_HTML = readFileSync(
@@ -298,6 +298,100 @@ drake [DRKE], weight 10, walking capacity 5, moves 4 hexes per month.
 
   it("fails loudly when the page carries no item entries at all", () => {
     expect(() => parseItemReference("<html><body><p>nothing here</p></body></html>")).toThrowError(
+      RulesetScrapeError
+    );
+  });
+});
+
+/**
+ * What a month of study costs, which is the one number order validation cannot do without.
+ *
+ * A unit ordered to STUDY spends `cost x men` silver, and until this block existed there was no
+ * way to say whether it could afford to. The page states the figure once per skill, on the level 1
+ * entry: "This skill costs 10 silver per month of study."
+ *
+ * The item parser deliberately skips these paragraphs - a skill entry reads `mining [MINI] 1:`,
+ * with a level and a colon where an item has a comma - so this is a second pass over the same
+ * `<pre>` block rather than a widening of the first.
+ */
+describe("parseSkillReference", () => {
+  it("reads the cost stated on a skill's level 1 entry", () => {
+    const skills = parseSkillReference(DATA_HTML);
+
+    // "mining [MINI] 1: ... This skill costs 10 silver per month of study."
+    expect(skills.MINI).toMatchObject({ tag: "MINI", name: "mining", cost: 10 });
+  });
+
+  /**
+   * The rules page names the exceptions to the $10 rule: "Stealth and Observation (both of which
+   * cost $50), Magic skills (which cost $100), and Tactics (which costs $200)". A parser that read
+   * the first cost sentence it found anywhere, or defaulted to 10, would pass on mining alone.
+   */
+  it("reads each of the costs the rules single out as exceptional", () => {
+    const skills = parseSkillReference(DATA_HTML);
+
+    expect(skills.STEA.cost).toBe(50);
+    expect(skills.OBSE.cost).toBe(50);
+    expect(skills.FORC.cost).toBe(100);
+    expect(skills.TACT.cost).toBe(200);
+  });
+
+  /**
+   * Ten tags mean one thing as a skill and another as an item: FISH is both fishing and fish, HERB
+   * both herb lore and herbs. Merging the two catalogues would have one overwrite the other.
+   */
+  it("keeps a skill apart from the item that shares its tag", () => {
+    const skills = parseSkillReference(DATA_HTML);
+    const items = parseItemReference(DATA_HTML);
+
+    expect(skills.FISH.name).toBe("fishing");
+    expect(items.FISH.name).toBe("fish");
+  });
+
+  /**
+   * Annihilation states no cost at any level, because it "cannot be studied via normal means".
+   * Recording it as free, or defaulting it to 10, would invent a number the page refuses to give;
+   * a null is what lets the validator stay silent about it instead.
+   */
+  it("records no cost for a skill the page prices nowhere", () => {
+    const skills = parseSkillReference(DATA_HTML);
+
+    expect(skills.ANNI).toBeDefined();
+    expect(skills.ANNI.cost).toBeNull();
+  });
+
+  it("records how far a skill can be studied", () => {
+    const skills = parseSkillReference(DATA_HTML);
+
+    // Every skill in the fixture runs from level 1 to level 5.
+    expect(skills.MINI.maxLevel).toBe(5);
+  });
+
+  /**
+   * Guards against silent truncation, as the item parser's own sweep does. The skills share their
+   * `<pre>` block with the item and structure reports, so a dropped entry raises no error at all.
+   */
+  it("skips no paragraph that looks like a skill entry", () => {
+    const skills = parseSkillReference(DATA_HTML);
+    const looksLikeAnEntry = /^[^.:[\]]{1,40} \[[A-Z0-9]{2,6}\] \d+: /;
+
+    const paragraphs = preformattedText(DATA_HTML)
+      .split(/\n[ \t]*\n/)
+      .map((paragraph) => paragraph.replace(/\s+/g, " ").trim())
+      .filter((paragraph) => looksLikeAnEntry.test(paragraph));
+
+    expect(paragraphs.length).toBeGreaterThan(0);
+    for (const paragraph of paragraphs) {
+      const tag = paragraph.match(/\[([A-Z0-9]{2,6})\]/)?.[1];
+      expect(skills[tag ?? ""], `entry dropped: ${paragraph.slice(0, 70)}`).toBeDefined();
+    }
+    // Measured from the committed fixture, which is frozen, so this catches drift rather than
+    // pinning anything the live page could change under us.
+    expect(Object.keys(skills).length).toBe(96);
+  });
+
+  it("fails loudly when the page carries no skill entries at all", () => {
+    expect(() => parseSkillReference("<html><body><p>nothing here</p></body></html>")).toThrowError(
       RulesetScrapeError
     );
   });

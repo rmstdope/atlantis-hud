@@ -37,6 +37,15 @@ export type SettingsState = {
    */
   unitListLimit: number;
   /**
+   * Whether order validation warns about a hex holding your units and no guard at all.
+   *
+   * Off by default. Most hexes are deliberately unguarded, so this speaks about hex after hex -
+   * against the committed turn 71 it is one warning per hex the faction stands in - and a panel
+   * that always has something to say is a panel nobody reads. Dropping a guard you *had* is
+   * reported whatever this says, because that is a change you may not have meant.
+   */
+  warnOnUnguardedHex: boolean;
+  /**
    * Whether the Movement pane shows at all. A feature flag rather than a preference: the planner
    * is the one piece of the workspace still finding its shape, so it starts off and stays off
    * until asked for.
@@ -47,12 +56,18 @@ export type SettingsState = {
   setBiomeTextures: (enabled: boolean) => void;
   setPaneTransparency: (percent: number) => void;
   setUnitListLimit: (count: number) => void;
+  setWarnOnUnguardedHex: (enabled: boolean) => void;
   setMovementPlanner: (enabled: boolean) => void;
 };
 
 type Persisted = Pick<
   SettingsState,
-  "theme" | "biomeTextures" | "paneTransparency" | "unitListLimit" | "movementPlanner"
+  | "theme"
+  | "biomeTextures"
+  | "paneTransparency"
+  | "unitListLimit"
+  | "warnOnUnguardedHex"
+  | "movementPlanner"
 >;
 
 /**
@@ -149,6 +164,7 @@ export const useSettingsStore = create<SettingsState>()(
       biomeTextures: true,
       paneTransparency: DEFAULT_PANE_TRANSPARENCY,
       unitListLimit: DEFAULT_UNIT_LIST_LIMIT,
+      warnOnUnguardedHex: false,
       movementPlanner: false,
 
       setTheme: (theme) => {
@@ -170,6 +186,10 @@ export const useSettingsStore = create<SettingsState>()(
         set({ unitListLimit: clampUnitListLimit(count) });
       },
 
+      setWarnOnUnguardedHex: (warnOnUnguardedHex) => {
+        set({ warnOnUnguardedHex });
+      },
+
       setMovementPlanner: (movementPlanner) => {
         set({ movementPlanner });
       }
@@ -182,6 +202,7 @@ export const useSettingsStore = create<SettingsState>()(
         biomeTextures: state.biomeTextures,
         paneTransparency: state.paneTransparency,
         unitListLimit: state.unitListLimit,
+        warnOnUnguardedHex: state.warnOnUnguardedHex,
         movementPlanner: state.movementPlanner
       })
     }
@@ -218,6 +239,7 @@ export function resetSettingsStore() {
     biomeTextures: true,
     paneTransparency: DEFAULT_PANE_TRANSPARENCY,
     unitListLimit: DEFAULT_UNIT_LIST_LIMIT,
+    warnOnUnguardedHex: false,
     movementPlanner: false
   });
   applyTheme("dark");

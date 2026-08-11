@@ -404,16 +404,38 @@ export type OrderDiagnosticSeverity = "warning" | "error";
 export type OrderDiagnostic = {
   code: string;
   message: string;
-  lineStart: number;
-  lineEnd: number;
+  /**
+   * The line it sits on, or null when it belongs to a hex rather than to any one order.
+   *
+   * "Nobody is guarding this hex" is nobody's line. Filling one in - line 0, or the first unit in
+   * the region - would send the player somewhere nothing is wrong.
+   */
+  lineStart: number | null;
+  lineEnd: number | null;
   /**
    * Where the offending text starts within its line, counted from 0 in UTF-16 code units - which
    * is what JavaScript string indices already are, so `line.slice(...)` below is correct as written.
    */
-  columnStart: number;
+  columnStart: number | null;
   /** One past the end of it, so `line.slice(columnStart, columnEnd)` is what is wrong. */
-  columnEnd: number;
+  columnEnd: number | null;
+  /** The hex it concerns. Null for a syntax diagnostic, which knows nothing of the map. */
+  regionId: string | null;
+  /** The unit at fault, where one unit is at fault. */
+  unitId: string | null;
   severity: OrderDiagnosticSeverity;
+};
+
+/** Which of the checks that read the report to run. */
+export type OrderCheckOptions = {
+  /**
+   * Whether to warn about a hex holding your units and no guard at all.
+   *
+   * Off unless asked for. Most hexes are deliberately unguarded, so this speaks about hex after
+   * hex; dropping a guard you had is reported either way, because that is a change you may not
+   * have meant.
+   */
+  warnOnUnguardedHex?: boolean;
 };
 
 export type OrderValidationResult = {
@@ -572,13 +594,17 @@ type OrderDiagnosticWireShape = {
   code?: string;
   message?: string;
   lineStart?: number;
-  line_start?: number;
-  lineEnd?: number;
-  line_end?: number;
-  columnStart?: number;
-  column_start?: number;
-  columnEnd?: number;
-  column_end?: number;
+  line_start?: number | null;
+  lineEnd?: number | null;
+  line_end?: number | null;
+  columnStart?: number | null;
+  column_start?: number | null;
+  columnEnd?: number | null;
+  column_end?: number | null;
+  regionId?: string | null;
+  region_id?: string | null;
+  unitId?: string | null;
+  unit_id?: string | null;
   severity?: string;
 };
 
@@ -651,7 +677,12 @@ export interface CoreAdapter {
     allowOverwrite: boolean,
     importedAt: string
   ): Promise<unknown> | unknown;
-  validateOrders(rawOrders: string, rulesetJson: string | null): Promise<unknown> | unknown;
+  validateOrders(
+    rawOrders: string,
+    rulesetJson: string | null,
+    rawReport: string | null,
+    warnOnUnguardedHex: boolean
+  ): Promise<unknown> | unknown;
   orderCommands(): Promise<unknown> | unknown;
   planRoute(
     rulesetJson: string,
@@ -780,12 +811,22 @@ export interface CoreClient {
     importedAt: string
   ): Promise<ImportedTurnPreview>;
   /**
-   * Checks one orders document for syntax errors.
+   * Checks one orders document, and the turn it was written for.
    *
    * `rulesetJson` is the served ruleset when the shell has it. Without it the shape of every order
    * is still checked; only item names go unexamined, and an unrecognised one is a warning anyway.
+   *
+   * `rawReport` is the imported turn. With it the answer also covers what no amount of reading the
+   * text could settle - whether the silver goes round the hex, whether anyone is left guarding it,
+   * whether a teacher's students are studying. Without it the answer is the syntax check alone,
+   * which is what the pane needs before any report has been imported.
    */
-  validateOrders(rawOrders: string, rulesetJson: string | null): Promise<OrderValidationResult>;
+  validateOrders(
+    rawOrders: string,
+    rulesetJson: string | null,
+    rawReport?: string | null,
+    options?: OrderCheckOptions
+  ): Promise<OrderValidationResult>;
   /**
    * Every order command the core knows.
    *
@@ -942,7 +983,12 @@ export interface WasmBindings {
     allowOverwrite: boolean,
     importedAt: string
   ): unknown;
-  validate_orders_state(rawOrders: string, rulesetJson: string | null): unknown;
+  validate_orders_state(
+    rawOrders: string,
+    rulesetJson: string | null,
+    rawReport: string | null,
+    warnOnUnguardedHex: boolean
+  ): unknown;
   order_commands_state(): unknown;
   plan_route_state(
     rulesetJson: string,
@@ -1330,6 +1376,15 @@ function normalizeReportMergeResult(value: unknown): ReportMergeResult {
   return { turnNumber, mergedFactionId, mergedFactionName, mergedRegionCount, newRegionCount };
 }
 
+/** A wire field that may be absent, null, or the wrong type entirely. */
+function optionalNumber(value: unknown): number | null {
+  return typeof value === "number" ? value : null;
+}
+
+function optionalText(value: unknown): string | null {
+  return typeof value === "string" ? value : null;
+}
+
 function normalizeOrderValidationResult(value: unknown): OrderValidationResult {
   if (typeof value !== "object" || value === null) {
     throw new Error("invalid order validation payload");
@@ -1349,18 +1404,10 @@ function normalizeOrderValidationResult(value: unknown): OrderValidationResult {
       }
 
       const entry = diagnostic as OrderDiagnosticWireShape;
-      const lineStart = entry.lineStart ?? entry.line_start;
-      const lineEnd = entry.lineEnd ?? entry.line_end;
-      const columnStart = entry.columnStart ?? entry.column_start;
-      const columnEnd = entry.columnEnd ?? entry.column_end;
 
       if (
         typeof entry.code !== "string" ||
         typeof entry.message !== "string" ||
-        typeof lineStart !== "number" ||
-        typeof lineEnd !== "number" ||
-        typeof columnStart !== "number" ||
-        typeof columnEnd !== "number" ||
         (entry.severity !== "warning" && entry.severity !== "error")
       ) {
         throw new Error("incomplete order validation payload");
@@ -1369,10 +1416,15 @@ function normalizeOrderValidationResult(value: unknown): OrderValidationResult {
       return {
         code: entry.code,
         message: entry.message,
-        lineStart,
-        lineEnd,
-        columnStart,
-        columnEnd,
+        // Every anchor is optional now, and a missing one is a fact rather than a defect: a
+        // finding about a hex sits on no line, and a syntax error belongs to no hex. Demanding
+        // them all would throw away the whole payload over the one diagnostic that has none.
+        lineStart: optionalNumber(entry.lineStart ?? entry.line_start),
+        lineEnd: optionalNumber(entry.lineEnd ?? entry.line_end),
+        columnStart: optionalNumber(entry.columnStart ?? entry.column_start),
+        columnEnd: optionalNumber(entry.columnEnd ?? entry.column_end),
+        regionId: optionalText(entry.regionId ?? entry.region_id),
+        unitId: optionalText(entry.unitId ?? entry.unit_id),
         severity: entry.severity
       };
     })
@@ -1532,8 +1584,18 @@ export function createCoreClient(adapter: CoreAdapter): CoreClient {
       );
       return normalizeImportedTurnPreview(value);
     },
-    async validateOrders(rawOrders: string, rulesetJson: string | null) {
-      const value = await adapter.validateOrders(rawOrders, rulesetJson);
+    async validateOrders(
+      rawOrders: string,
+      rulesetJson: string | null,
+      rawReport: string | null = null,
+      options: OrderCheckOptions = {}
+    ) {
+      const value = await adapter.validateOrders(
+        rawOrders,
+        rulesetJson,
+        rawReport,
+        options.warnOnUnguardedHex ?? false
+      );
       return normalizeOrderValidationResult(value);
     },
     async orderCommands() {
@@ -1734,8 +1796,13 @@ export function createWasmAdapter(bindings: WasmBindings): CoreAdapter {
         importedAt
       );
     },
-    validateOrders(rawOrders: string, rulesetJson: string | null) {
-      return bindings.validate_orders_state(rawOrders, rulesetJson);
+    validateOrders(
+      rawOrders: string,
+      rulesetJson: string | null,
+      rawReport: string | null,
+      warnOnUnguardedHex: boolean
+    ) {
+      return bindings.validate_orders_state(rawOrders, rulesetJson, rawReport, warnOnUnguardedHex);
     },
     orderCommands() {
       return bindings.order_commands_state();
@@ -1911,10 +1978,17 @@ export function createTauriAdapter(invoke: TauriInvoke): CoreAdapter {
         imported_at: importedAt
       });
     },
-    validateOrders(rawOrders: string, rulesetJson: string | null) {
+    validateOrders(
+      rawOrders: string,
+      rulesetJson: string | null,
+      rawReport: string | null,
+      warnOnUnguardedHex: boolean
+    ) {
       return invoke<OrderValidationResultWireShape>("validate_orders", {
         raw_orders: rawOrders,
-        ruleset_json: rulesetJson
+        ruleset_json: rulesetJson,
+        raw_report: rawReport,
+        warn_on_unguarded_hex: warnOnUnguardedHex
       });
     },
     orderCommands() {

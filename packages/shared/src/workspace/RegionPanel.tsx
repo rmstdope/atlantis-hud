@@ -1,3 +1,4 @@
+import type { OrderDiagnostic } from "@atlantis/core-client";
 import { abbreviateDirection, type HexNode } from "../hexMapModel";
 import { CollapsiblePanel } from "./CollapsiblePanel";
 import { Absent, Field, Row, Section, StaleBanner } from "./primitives";
@@ -10,7 +11,20 @@ import { Absent, Field, Row, Section, StaleBanner } from "./primitives";
  * that nothing could expand left the raw report as the only way to the full list. Scrolling is
  * better than not knowing.
  */
-export function RegionPanel({ hex }: { hex: HexNode | null }) {
+export function RegionPanel({
+  hex,
+  problems = []
+}: {
+  hex: HexNode | null;
+  /**
+   * What order validation found in this hex, unit-level and hex-level alike.
+   *
+   * Shown here rather than only in the orders panel because a good half of it is nobody's line:
+   * "nobody is guarding this hex" belongs to the hex, and so does a shared purse that will not
+   * stretch. The orders panel keeps showing what belongs to the selected unit.
+   */
+  problems?: OrderDiagnostic[];
+}) {
   const stale = hex?.knowledge === "stale";
   const asOf = stale && hex.lastSeenTurn !== null ? `as of turn ${hex.lastSeenTurn}` : null;
 
@@ -34,6 +48,8 @@ export function RegionPanel({ hex }: { hex: HexNode | null }) {
       {stale && hex.lastSeenTurn !== null ? (
         <StaleBanner lastSeenTurn={hex.lastSeenTurn} ageInTurns={hex.ageInTurns ?? 0} />
       ) : null}
+
+      <Problems problems={problems} />
 
       <p className="m-0 mb-2">
         in {hex.province}
@@ -134,5 +150,42 @@ export function RegionPanel({ hex }: { hex: HexNode | null }) {
         </>
       )}
     </CollapsiblePanel>
+  );
+}
+
+/**
+ * What order validation found in this hex.
+ *
+ * Absent entirely when there is nothing to say. A section reading "none reported" every turn is a
+ * line of furniture in a panel that is short of room, and unlike products or structures the
+ * absence of a problem is not a fact anyone came here to check.
+ *
+ * A finding that names a unit says which; one that does not is the hex's own.
+ */
+function Problems({ problems }: { problems: OrderDiagnostic[] }) {
+  if (problems.length === 0) {
+    return null;
+  }
+
+  return (
+    <Section title="Problems" count={problems.length}>
+      <ul data-testid="region-problems" className="m-0 list-none p-0">
+        {problems.map((problem, index) => (
+          <li
+            key={`${problem.code}-${problem.unitId ?? "hex"}-${index}`}
+            data-testid="region-problem"
+            data-code={problem.code}
+            className="flex gap-1.5"
+          >
+            {problem.unitId === null ? null : (
+              <span className="shrink-0 tabular-nums text-ink-dim">{problem.unitId}</span>
+            )}
+            <span className={problem.severity === "error" ? "text-danger" : "text-warn"}>
+              {problem.message}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </Section>
   );
 }

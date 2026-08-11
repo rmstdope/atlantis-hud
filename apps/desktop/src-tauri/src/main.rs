@@ -341,8 +341,18 @@ fn load_latest_imported_turn(
     feature = "desktop-runtime"
 ))]
 #[tauri::command(rename_all = "snake_case")]
-fn validate_orders(raw_orders: String, ruleset_json: Option<String>) -> OrderValidationResultDto {
-    command_validate_orders(&raw_orders, ruleset_json.as_deref())
+fn validate_orders(
+    raw_orders: String,
+    ruleset_json: Option<String>,
+    raw_report: Option<String>,
+    warn_on_unguarded_hex: Option<bool>,
+) -> OrderValidationResultDto {
+    command_validate_orders(
+        &raw_orders,
+        ruleset_json.as_deref(),
+        raw_report.as_deref(),
+        warn_on_unguarded_hex.unwrap_or(false),
+    )
 }
 
 #[cfg(all(
