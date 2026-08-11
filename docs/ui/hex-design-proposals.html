@@ -1,0 +1,1255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hex design proposals</title>
+<style>
+  :root { --bg:#10141a; --card:#181f29; --edge:#2b3542; --ink:#e8e3d8; --soft:#9aa5b1; --brass:#c9a86a; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--bg); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header { max-width:1180px; margin:0 auto 28px; }
+  h1 { font-size:26px; letter-spacing:0.4px; }
+  h1 span { color:var(--brass); }
+  header p { color:var(--soft); max-width:80ch; margin-top:8px; }
+  .cards { display:grid; gap:22px; max-width:1180px; margin:0 auto; }
+  .card { background:var(--card); border:1px solid var(--edge); border-radius:10px; padding:20px 22px; }
+  .card h2 { font-size:19px; margin-bottom:2px; }
+  .card h2 em { color:var(--brass); font-style:normal; font-size:13px; letter-spacing:1.5px; margin-right:8px; }
+  .concept { color:var(--soft); font-size:13.5px; margin:6px 0 12px; max-width:100ch; }
+  .pair { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  .pair figure { margin:0; }
+  .pair figcaption { text-align:center; color:var(--soft); font-size:12px; font-style:italic; margin-top:5px; }
+  .stage { background:#0c1015; border:1px solid var(--edge); border-radius:8px; padding:6px; }
+  .stage svg { display:block; width:100%; height:auto; }
+  .notes { list-style:none; margin-top:12px; font-size:13px; color:var(--soft); display:grid; gap:3px; }
+  .notes li::before { content:"+ "; color:#4caf7d; font-weight:bold; }
+  .notes li.con::before { content:"− "; color:#f07070; }
+  .caption { max-width:1180px; margin:20px auto 0; color:var(--soft); font-size:13px; font-style:italic; }
+
+  .v1name { font:italic 10px Georgia,serif; fill:#2a2118; paint-order:stroke fill; stroke:#efe3c2; stroke-width:2px; }
+  .v1count { font:bold 8px Georgia,serif; fill:#2a2118; }
+  .v2name { font:8.5px 'SF Mono',Consolas,monospace; fill:#c9d6e2; letter-spacing:1px; }
+  .v2count { font:bold 8.5px 'SF Mono',Consolas,monospace; }
+  .v2meta { font:7.5px 'SF Mono',Consolas,monospace; fill:#c9d6e2; }
+  .v3name { font:bold 10px Verdana,sans-serif; fill:#f0e2bd; paint-order:stroke fill; stroke:#10141a; stroke-width:2.4px; }
+  .v3count { font:bold 8px Verdana,sans-serif; fill:#f0e2bd; paint-order:stroke fill; stroke:#10141a; stroke-width:2px; }
+  .v4name { font:9.5px 'Helvetica Neue',Arial,sans-serif; fill:#e8e3d8; paint-order:stroke fill; stroke:#10141a; stroke-width:2.2px; }
+  .v4count { font:bold 8px 'Helvetica Neue',Arial,sans-serif; fill:#e8e3d8; paint-order:stroke fill; stroke:#10141a; stroke-width:2px; }
+  .v5name { font:bold 10px 'Helvetica Neue',Arial,sans-serif; fill:#f0e2bd; paint-order:stroke fill; stroke:#10141a; stroke-width:2.4px; }
+  .v5count { font:bold 8px 'Helvetica Neue',Arial,sans-serif; fill:#0d1117; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Hex design proposals <span>· five candidates</span></h1>
+  <p>Five visual directions for a future map hex, drawn over the vocabulary in
+  <code>hex-rendering.md</code>: terrain, settlement tiers, attitude-grouped units, guard,
+  battle, monsters, lairs, shafts, gates, ships, buildings, roads, and stale knowledge.
+  The neighbourhood is deliberately congested &mdash; most hexes stack many marks at once
+  (city + battle + structures + guard + units; cave + shaft + battle + monsters + units) &mdash;
+  because the real test of a hex design is not the sparse hex but the full one. Each design
+  therefore states where every mark lives, so that any combination composes without
+  collision. Every proposal is shown twice: flat terrain colours, and the application&rsquo;s
+  biome textures under the marks.</p>
+</header>
+<main class="cards">
+
+<section class="card">
+  <h2><em>01</em>Cartographer&rsquo;s Table</h2>
+  <p class="concept">A hand-drawn atlas. Muted pigment terrain, line-art glyphs and italic
+  serif names. Every mark keeps a fixed compass anchor, like conventions on a survey sheet:
+  guard banner NW, battle swords NE, name N, gate arch W, monsters E, workshops between them,
+  shaft SW, lair and harbour SE, unit shields along the S edge. A full hex reads like a busy
+  page of the same atlas, not a different design. Staleness is a parchment wash with pencil
+  hatching; over textures, a light parchment gauze keeps the ink legible.</p>
+  <div class="pair">
+    <figure><div class="stage"><svg viewBox="-129 -142 258 271" role="img"><g transform="translate(0,0)"><polygon points="46.0,0.0 23.0,39.8 -23.0,39.8 -46.0,0.0 -23.0,-39.8 23.0,-39.8" fill="#b3a565" stroke="#4a3a22" stroke-width="1.4"/><line x1="0" y1="0" x2="0.0" y2="-40.0" stroke="#6b4f2a" stroke-width="4" stroke-linecap="round"/>
+      <line x1="0" y1="0" x2="0.0" y2="-40.0" stroke="#c9b088" stroke-width="1.4" stroke-dasharray="3 3"/><line x1="0" y1="0" x2="34.7" y2="20.0" stroke="#6b4f2a" stroke-width="4" stroke-linecap="round"/>
+      <line x1="0" y1="0" x2="34.7" y2="20.0" stroke="#c9b088" stroke-width="1.4" stroke-dasharray="3 3"/><g stroke="#4a3a22" stroke-width="1.2" fill="#efe3c2" transform="translate(0,-2)">
+        <rect x="-13" y="-8" width="26" height="10"/>
+        <rect x="-16" y="-14" width="7" height="16"/><rect x="9" y="-14" width="7" height="16"/>
+        <rect x="-3.5" y="-19" width="7" height="21"/>
+        <path d="M-16,-14 h7 M9,-14 h7 M-3.5,-19 h7" stroke-width="2.4"/>
+      </g><text y="-26" text-anchor="middle" class="v1name">Marn</text><g transform="translate(23,-14.72)" fill="#efe3c2" stroke="#4a3a22" stroke-width="1">
+    <rect x="-4" y="-3" width="8" height="6"/>
+    <path d="M-5,-3 L0,-7.4 L5,-3 Z" fill="#8a5c33"/>
+  </g><g transform="translate(27.599999999999998,-7.82)" fill="#efe3c2" stroke="#4a3a22" stroke-width="1">
+    <rect x="-4" y="-3" width="8" height="6"/>
+    <path d="M-5,-3 L0,-7.4 L5,-3 Z" fill="#8a5c33"/>
+  </g><g transform="translate(16.56,10.12) scale(0.75)" stroke="#3a2f1d" stroke-width="1.4">
+      <path d="M-11,4 h22 l-5,6 h-12 z" fill="#8a5c33"/>
+      <line x1="0" y1="4" x2="0" y2="-12"/>
+      <path d="M0,-12 l9,10 h-9 z" fill="#efe3c2"/>
+    </g><g transform="translate(-14,27.599999999999998)">
+      <path d="M-4,-5 h8 v6 q0,3.5 -4,4.5 q-4,-1 -4,-4.5 z" fill="#4caf7d" stroke="#3a2f1d" stroke-width="1"/>
+      <text y="12.5" text-anchor="middle" class="v1count">12</text>
+    </g><g transform="translate(0,27.599999999999998)">
+      <path d="M-4,-5 h8 v6 q0,3.5 -4,4.5 q-4,-1 -4,-4.5 z" fill="#5ec8f0" stroke="#3a2f1d" stroke-width="1"/>
+      <text y="12.5" text-anchor="middle" class="v1count">3</text>
+    </g><g transform="translate(14,27.599999999999998)">
+      <path d="M-4,-5 h8 v6 q0,3.5 -4,4.5 q-4,-1 -4,-4.5 z" fill="#f07070" stroke="#3a2f1d" stroke-width="1"/>
+      <text y="12.5" text-anchor="middle" class="v1count">5</text>
+    </g><g transform="translate(-24.840000000000003,-19.32)" stroke="#3a2f1d" stroke-width="1">
+      <line x1="0" y1="10" x2="0" y2="-8"/>
+      <path d="M0,-8 h11 l-3.5,3.5 L11,-1 H0 Z" fill="#4caf7d"/>
+    </g><g transform="translate(20.24,-20.24)" stroke="#7d2b23" stroke-width="2.2" stroke-linecap="round">
+      <line x1="-6" y1="-6" x2="6" y2="6"/><line x1="6" y1="-6" x2="-6" y2="6"/>
+      <line x1="-5.5" y1="2.5" x2="-2" y2="6" stroke-width="1.4"/><line x1="5.5" y1="2.5" x2="2" y2="6" stroke-width="1.4"/>
+    </g></g>
+<g transform="translate(0,-79.67433714816835)"><polygon points="46.0,0.0 23.0,39.8 -23.0,39.8 -46.0,0.0 -23.0,-39.8 23.0,-39.8" fill="#8d8a83" stroke="#4a3a22" stroke-width="1.4"/><line x1="0" y1="0" x2="0.0" y2="40.0" stroke="#6b4f2a" stroke-width="4" stroke-linecap="round"/>
+      <line x1="0" y1="0" x2="0.0" y2="40.0" stroke="#c9b088" stroke-width="1.4" stroke-dasharray="3 3"/><g transform="translate(23,-14.72)" fill="#efe3c2" stroke="#4a3a22" stroke-width="1">
+    <rect x="-4" y="-3" width="8" height="6"/>
+    <path d="M-5,-3 L0,-7.4 L5,-3 Z" fill="#8a5c33"/>
+  </g><g transform="translate(27.599999999999998,-1)" stroke="#7d2b23" stroke-width="1.8" fill="none" stroke-linecap="round">
+      <path d="M-4,-4 q3,3 2.2,8"/><path d="M0,-5 q2,4 1.4,9"/><path d="M4,-4 q-0.5,4 -1.4,8"/>
+    </g><g transform="translate(-15.64,14.72)">
+      <rect x="-6.5" y="-6.5" width="13" height="13" fill="#241c12" stroke="#4a3a22" stroke-width="1.2"/>
+      <path d="M-2.8,-6.5 v13 M2.8,-6.5 v13 M-2.8,-2.2 h5.6 M-2.8,2.2 h5.6" stroke="#c9b088" stroke-width="1.1"/>
+    </g><g transform="translate(14.72,13.799999999999999)">
+      <path d="M-8,6 a8,8 0 0 1 16,0 z" fill="#241c12" stroke="#4a3a22" stroke-width="1.2"/>
+    </g><g transform="translate(0,27.599999999999998)">
+      <path d="M-4,-5 h8 v6 q0,3.5 -4,4.5 q-4,-1 -4,-4.5 z" fill="#f07070" stroke="#3a2f1d" stroke-width="1"/>
+      <text y="12.5" text-anchor="middle" class="v1count">6</text>
+    </g><g transform="translate(-24.840000000000003,-19.32)" stroke="#3a2f1d" stroke-width="1">
+      <line x1="0" y1="10" x2="0" y2="-8"/>
+      <path d="M0,-8 h11 l-3.5,3.5 L11,-1 H0 Z" fill="#f07070"/>
+    </g><g transform="translate(20.24,-20.24)" stroke="#7d2b23" stroke-width="2.2" stroke-linecap="round">
+      <line x1="-6" y1="-6" x2="6" y2="6"/><line x1="6" y1="-6" x2="-6" y2="6"/>
+      <line x1="-5.5" y1="2.5" x2="-2" y2="6" stroke-width="1.4"/><line x1="5.5" y1="2.5" x2="2" y2="6" stroke-width="1.4"/>
+    </g></g>
+<g transform="translate(69,-39.837168574084174)"><polygon points="46.0,0.0 23.0,39.8 -23.0,39.8 -46.0,0.0 -23.0,-39.8 23.0,-39.8" fill="#6e8a5c" stroke="#4a3a22" stroke-width="1.4"/><line x1="0" y1="0" x2="-34.7" y2="-20.0" stroke="#6b4f2a" stroke-width="4" stroke-linecap="round"/>
+      <line x1="0" y1="0" x2="-34.7" y2="-20.0" stroke="#c9b088" stroke-width="1.4" stroke-dasharray="3 3"/><g transform="translate(-6,-3)" fill="#efe3c2" stroke="#4a3a22" stroke-width="1">
+    <rect x="-4.5" y="-3.5" width="9" height="7"/>
+    <path d="M-5.5,-3.5 L0,-8.45 L5.5,-3.5 Z" fill="#8a5c33"/>
+  </g><g transform="translate(6,-5)" fill="#efe3c2" stroke="#4a3a22" stroke-width="1">
+    <rect x="-4.5" y="-3.5" width="9" height="7"/>
+    <path d="M-5.5,-3.5 L0,-8.45 L5.5,-3.5 Z" fill="#8a5c33"/>
+  </g><text y="-15" text-anchor="middle" class="v1name">Eda</text><g transform="translate(23,-14.72)" fill="#efe3c2" stroke="#4a3a22" stroke-width="1">
+    <rect x="-4" y="-3" width="8" height="6"/>
+    <path d="M-5,-3 L0,-7.4 L5,-3 Z" fill="#8a5c33"/>
+  </g><g transform="translate(-27.599999999999998,0)" stroke="#4a3a55" stroke-width="2.2" fill="none">
+      <path d="M-6,7 v-7 a6,6 0 0 1 12,0 v7"/><line x1="-8.5" y1="7" x2="8.5" y2="7"/>
+    </g><g transform="translate(-7,27.599999999999998)">
+      <path d="M-4,-5 h8 v6 q0,3.5 -4,4.5 q-4,-1 -4,-4.5 z" fill="#4caf7d" stroke="#3a2f1d" stroke-width="1"/>
+      <text y="12.5" text-anchor="middle" class="v1count">4</text>
+    </g><g transform="translate(7,27.599999999999998)">
+      <path d="M-4,-5 h8 v6 q0,3.5 -4,4.5 q-4,-1 -4,-4.5 z" fill="#5ec8f0" stroke="#3a2f1d" stroke-width="1"/>
+      <text y="12.5" text-anchor="middle" class="v1count">2</text>
+    </g><g transform="translate(-24.840000000000003,-19.32)" stroke="#3a2f1d" stroke-width="1">
+      <line x1="0" y1="10" x2="0" y2="-8"/>
+      <path d="M0,-8 h11 l-3.5,3.5 L11,-1 H0 Z" fill="#4caf7d"/>
+    </g></g>
+<g transform="translate(69,39.837168574084174)"><polygon points="46.0,0.0 23.0,39.8 -23.0,39.8 -46.0,0.0 -23.0,-39.8 23.0,-39.8" fill="#7fa0b8" stroke="#4a3a22" stroke-width="1.4"/><g transform="translate(16.56,10.12) scale(0.75)" stroke="#3a2f1d" stroke-width="1.4">
+      <path d="M-11,4 h22 l-5,6 h-12 z" fill="#8a5c33"/>
+      <line x1="0" y1="4" x2="0" y2="-12"/>
+      <path d="M0,-12 l9,10 h-9 z" fill="#efe3c2"/>
+    </g><g transform="translate(-7,27.599999999999998)">
+      <path d="M-4,-5 h8 v6 q0,3.5 -4,4.5 q-4,-1 -4,-4.5 z" fill="#5ec8f0" stroke="#3a2f1d" stroke-width="1"/>
+      <text y="12.5" text-anchor="middle" class="v1count">2</text>
+    </g><g transform="translate(7,27.599999999999998)">
+      <path d="M-4,-5 h8 v6 q0,3.5 -4,4.5 q-4,-1 -4,-4.5 z" fill="#f07070" stroke="#3a2f1d" stroke-width="1"/>
+      <text y="12.5" text-anchor="middle" class="v1count">3</text>
+    </g><g transform="translate(20.24,-20.24)" stroke="#7d2b23" stroke-width="2.2" stroke-linecap="round">
+      <line x1="-6" y1="-6" x2="6" y2="6"/><line x1="6" y1="-6" x2="-6" y2="6"/>
+      <line x1="-5.5" y1="2.5" x2="-2" y2="6" stroke-width="1.4"/><line x1="5.5" y1="2.5" x2="2" y2="6" stroke-width="1.4"/>
+    </g></g>
+<g transform="translate(0,79.67433714816835)"><polygon points="46.0,0.0 23.0,39.8 -23.0,39.8 -46.0,0.0 -23.0,-39.8 23.0,-39.8" fill="#7d8a5e" stroke="#4a3a22" stroke-width="1.4"/><g transform="translate(27.599999999999998,-1)" stroke="#7d2b23" stroke-width="1.8" fill="none" stroke-linecap="round">
+      <path d="M-4,-4 q3,3 2.2,8"/><path d="M0,-5 q2,4 1.4,9"/><path d="M4,-4 q-0.5,4 -1.4,8"/>
+    </g><g transform="translate(-27.599999999999998,0)" stroke="#4a3a55" stroke-width="2.2" fill="none">
+      <path d="M-6,7 v-7 a6,6 0 0 1 12,0 v7"/><line x1="-8.5" y1="7" x2="8.5" y2="7"/>
+    </g><g transform="translate(14.72,13.799999999999999)">
+      <path d="M-8,6 a8,8 0 0 1 16,0 z" fill="#241c12" stroke="#4a3a22" stroke-width="1.2"/>
+    </g><g transform="translate(0,27.599999999999998)">
+      <path d="M-4,-5 h8 v6 q0,3.5 -4,4.5 q-4,-1 -4,-4.5 z" fill="#f07070" stroke="#3a2f1d" stroke-width="1"/>
+      <text y="12.5" text-anchor="middle" class="v1count">2</text>
+    </g></g>
+<g transform="translate(-69,39.837168574084174)"><polygon points="46.0,0.0 23.0,39.8 -23.0,39.8 -46.0,0.0 -23.0,-39.8 23.0,-39.8" fill="#c2ab74" stroke="#4a3a22" stroke-width="1.4"/><g transform="translate(0,-4)" fill="#efe3c2" stroke="#4a3a22" stroke-width="1">
+    <rect x="-4.5" y="-3.5" width="9" height="7"/>
+    <path d="M-5.5,-3.5 L0,-8.45 L5.5,-3.5 Z" fill="#8a5c33"/>
+  </g><text y="-15" text-anchor="middle" class="v1name">Kel</text><g transform="translate(23,-14.72)" fill="#efe3c2" stroke="#4a3a22" stroke-width="1">
+    <rect x="-4" y="-3" width="8" height="6"/>
+    <path d="M-5,-3 L0,-7.4 L5,-3 Z" fill="#8a5c33"/>
+  </g><g transform="translate(-15.64,14.72)">
+      <rect x="-6.5" y="-6.5" width="13" height="13" fill="#241c12" stroke="#4a3a22" stroke-width="1.2"/>
+      <path d="M-2.8,-6.5 v13 M2.8,-6.5 v13 M-2.8,-2.2 h5.6 M-2.8,2.2 h5.6" stroke="#c9b088" stroke-width="1.1"/>
+    </g><g transform="translate(0,27.599999999999998)">
+      <path d="M-4,-5 h8 v6 q0,3.5 -4,4.5 q-4,-1 -4,-4.5 z" fill="#5ec8f0" stroke="#3a2f1d" stroke-width="1"/>
+      <text y="12.5" text-anchor="middle" class="v1count">4</text>
+    </g></g>
+<g transform="translate(-69,-39.837168574084174)"><polygon points="46.0,0.0 23.0,39.8 -23.0,39.8 -46.0,0.0 -23.0,-39.8 23.0,-39.8" fill="#a9b3ae" stroke="#4a3a22" stroke-width="1.4"/><g transform="translate(-6,-3)" fill="#efe3c2" stroke="#4a3a22" stroke-width="1">
+    <rect x="-4.5" y="-3.5" width="9" height="7"/>
+    <path d="M-5.5,-3.5 L0,-8.45 L5.5,-3.5 Z" fill="#8a5c33"/>
+  </g><g transform="translate(6,-5)" fill="#efe3c2" stroke="#4a3a22" stroke-width="1">
+    <rect x="-4.5" y="-3.5" width="9" height="7"/>
+    <path d="M-5.5,-3.5 L0,-8.45 L5.5,-3.5 Z" fill="#8a5c33"/>
+  </g><text y="-15" text-anchor="middle" class="v1name">Hut</text><g transform="translate(23,-14.72)" fill="#efe3c2" stroke="#4a3a22" stroke-width="1">
+    <rect x="-4" y="-3" width="8" height="6"/>
+    <path d="M-5,-3 L0,-7.4 L5,-3 Z" fill="#8a5c33"/>
+  </g><g transform="translate(0,27.599999999999998)">
+      <path d="M-4,-5 h8 v6 q0,3.5 -4,4.5 q-4,-1 -4,-4.5 z" fill="#4caf7d" stroke="#3a2f1d" stroke-width="1"/>
+      <text y="12.5" text-anchor="middle" class="v1count">1</text>
+    </g><polygon points="46.0,0.0 23.0,39.8 -23.0,39.8 -46.0,0.0 -23.0,-39.8 23.0,-39.8" fill="#efe3c2" opacity="0.38"/>
+      <path d="M-30,26 L26,-30 M-14,34 L36,-16 M-38,10 L12,-40" stroke="#4a3a22" stroke-width="0.8" opacity="0.35"/></g></svg></div><figcaption>Flat colour</figcaption></figure>
+    <figure><div class="stage"><svg viewBox="-129 -142 258 271" role="img"><defs><pattern id="tx-1t-plain" patternUnits="objectBoundingBox" patternContentUnits="objectBoundingBox" width="1" height="1">
+        <image href="../../config/public/biomes/plain_512.png" x="0" y="0" width="1" height="1" preserveAspectRatio="xMidYMid slice"/>
+      </pattern><pattern id="tx-1t-mountain" patternUnits="objectBoundingBox" patternContentUnits="objectBoundingBox" width="1" height="1">
+        <image href="../../config/public/biomes/mountain_512.png" x="0" y="0" width="1" height="1" preserveAspectRatio="xMidYMid slice"/>
+      </pattern><pattern id="tx-1t-forest" patternUnits="objectBoundingBox" patternContentUnits="objectBoundingBox" width="1" height="1">
+        <image href="../../config/public/biomes/forest_512.png" x="0" y="0" width="1" height="1" preserveAspectRatio="xMidYMid slice"/>
+      </pattern><pattern id="tx-1t-ocean" patternUnits="objectBoundingBox" patternContentUnits="objectBoundingBox" width="1" height="1">
+        <image href="../../config/public/biomes/ocean_512.png" x="0" y="0" width="1" height="1" preserveAspectRatio="xMidYMid slice"/>
+      </pattern><pattern id="tx-1t-swamp" patternUnits="objectBoundingBox" patternContentUnits="objectBoundingBox" width="1" height="1">
+        <image href="../../config/public/biomes/swamp_512.png" x="0" y="0" width="1" height="1" preserveAspectRatio="xMidYMid slice"/>
+      </pattern><pattern id="tx-1t-desert" patternUnits="objectBoundingBox" patternContentUnits="objectBoundingBox" width="1" height="1">
+        <image href="../../config/public/biomes/desert_512.png" x="0" y="0" width="1" height="1" preserveAspectRatio="xMidYMid slice"/>
+      </pattern><pattern id="tx-1t-tundra" patternUnits="objectBoundingBox" patternContentUnits="objectBoundingBox" width="1" height="1">
+        <image href="../../config/public/biomes/tundra_512.png" x="0" y="0" width="1" height="1" preserveAspectRatio="xMidYMid slice"/>
+      </pattern></defs><g transform="translate(0,0)"><polygon points="46.0,0.0 23.0,39.8 -23.0,39.8 -46.0,0.0 -23.0,-39.8 23.0,-39.8" fill="url(#tx-1t-plain)" stroke="#4a3a22" stroke-width="1.4"/><polygon points="46.0,0.0 23.0,39.8 -23.0,39.8 -46.0,0.0 -23.0,-39.8 23.0,-39.8" fill="#efe3c2" opacity="0.2"/><line x1="0" y1="0" x2="0.0" y2="-40.0" stroke="#6b4f2a" stroke-width="4" stroke-linecap="round"/>
+      <line x1="0" y1="0" x2="0.0" y2="-40.0" stroke="#c9b088" stroke-width="1.4" stroke-dasharray="3 3"/><line x1="0" y1="0" x2="34.7" y2="20.0" stroke="#6b4f2a" stroke-width="4" stroke-linecap="round"/>
+      <line x1="0" y1="0" x2="34.7" y2="20.0" stroke="#c9b088" stroke-width="1.4" stroke-dasharray="3 3"/><g stroke="#4a3a22" stroke-width="1.2" fill="#efe3c2" transform="translate(0,-2)">
+        <rect x="-13" y="-8" width="26" height="10"/>
+        <rect x="-16" y="-14" width="7" height="16"/><rect x="9" y="-14" width="7" height="16"/>
+        <rect x="-3.5" y="-19" width="7" height="21"/>
+        <path d="M-16,-14 h7 M9,-14 h7 M-3.5,-19 h7" stroke-width="2.4"/>
+      </g><text y="-26" text-anchor="middle" class="v1name">Marn</text><g transform="translate(23,-14.72)" fill="#efe3c2" stroke="#4a3a22" stroke-width="1">
+    <rect x="-4" y="-3" width="8" height="6"/>
+    <path d="M-5,-3 L0,-7.4 L5,-3 Z" fill="#8a5c33"/>
+  </g><g transform="translate(27.599999999999998,-7.82)" fill="#efe3c2" stroke="#4a3a22" stroke-width="1">
+    <rect x="-4" y="-3" width="8" height="6"/>
+    <path d="M-5,-3 L0,-7.4 L5,-3 Z" fill="#8a5c33"/>
+  </g><g transform="translate(16.56,10.12) scale(0.75)" stroke="#3a2f1d" stroke-width="1.4">
+      <path d="M-11,4 h22 l-5,6 h-12 z" fill="#8a5c33"/>
+      <line x1="0" y1="4" x2="0" y2="-12"/>
+      <path d="M0,-12 l9,10 h-9 z" fill="#efe3c2"/>
+    </g><g transform="translate(-14,27.599999999999998)">
+      <path d="M-4,-5 h8 v6 q0,3.5 -4,4.5 q-4,-1 -4,-4.5 z" fill="#4caf7d" stroke="#3a2f1d" stroke-width="1"/>
+      <text y="12.5" text-anchor="middle" class="v1count">12</text>
+    </g><g transform="translate(0,27.599999999999998)">
+      <path d="M-4,-5 h8 v6 q0,3.5 -4,4.5 q-4,-1 -4,-4.5 z" fill="#5ec8f0" stroke="#3a2f1d" stroke-width="1"/>
+      <text y="12.5" text-anchor="middle" class="v1count">3</text>
+    </g><g transform="translate(14,27.599999999999998)">
+      <path d="M-4,-5 h8 v6 q0,3.5 -4,4.5 q-4,-1 -4,-4.5 z" fill="#f07070" stroke="#3a2f1d" stroke-width="1"/>
+      <text y="12.5" text-anchor="middle" class="v1count">5</text>
+    </g><g transform="translate(-24.840000000000003,-19.32)" stroke="#3a2f1d" stroke-width="1">
+      <line x1="0" y1="10" x2="0" y2="-8"/>
+      <path d="M0,-8 h11 l-3.5,3.5 L11,-1 H0 Z" fill="#4caf7d"/>
+    </g><g transform="translate(20.24,-20.24)" stroke="#7d2b23" stroke-width="2.2" stroke-linecap="round">
+      <line x1="-6" y1="-6" x2="6" y2="6"/><line x1="6" y1="-6" x2="-6" y2="6"/>
+      <line x1="-5.5" y1="2.5" x2="-2" y2="6" stroke-width="1.4"/><line x1="5.5" y1="2.5" x2="2" y2="6" stroke-width="1.4"/>
+    </g></g>
+<g transform="translate(0,-79.67433714816835)"><polygon points="46.0,0.0 23.0,39.8 -23.0,39.8 -46.0,0.0 -23.0,-39.8 23.0,-39.8" fill="url(#tx-1t-mountain)" stroke="#4a3a22" stroke-width="1.4"/><polygon points="46.0,0.0 23.0,39.8 -23.0,39.8 -46.0,0.0 -23.0,-39.8 23.0,-39.8" fill="#efe3c2" opacity="0.2"/><line x1="0" y1="0" x2="0.0" y2="40.0" stroke="#6b4f2a" stroke-width="4" stroke-linecap="round"/>
+      <line x1="0" y1="0" x2="0.0" y2="40.0" stroke="#c9b088" stroke-width="1.4" stroke-dasharray="3 3"/><g transform="translate(23,-14.72)" fill="#efe3c2" stroke="#4a3a22" stroke-width="1">
+    <rect x="-4" y="-3" width="8" height="6"/>
+    <path d="M-5,-3 L0,-7.4 L5,-3 Z" fill="#8a5c33"/>
+  </g><g transform="translate(27.599999999999998,-1)" stroke="#7d2b23" stroke-width="1.8" fill="none" stroke-linecap="round">
+      <path d="M-4,-4 q3,3 2.2,8"/><path d="M0,-5 q2,4 1.4,9"/><path d="M4,-4 q-0.5,4 -1.4,8"/>
+    </g><g transform="translate(-15.64,14.72)">
+      <rect x="-6.5" y="-6.5" width="13" height="13" fill="#241c12" stroke="#4a3a22" stroke-width="1.2"/>
+      <path d="M-2.8,-6.5 v13 M2.8,-6.5 v13 M-2.8,-2.2 h5.6 M-2.8,2.2 h5.6" stroke="#c9b088" stroke-width="1.1"/>
+    </g><g transform="translate(14.72,13.799999999999999)">
+      <path d="M-8,6 a8,8 0 0 1 16,0 z" fill="#241c12" stroke="#4a3a22" stroke-width="1.2"/>
+    </g><g transform="translate(0,27.599999999999998)">
+      <path d="M-4,-5 h8 v6 q0,3.5 -4,4.5 q-4,-1 -4,-4.5 z" fill="#f07070" stroke="#3a2f1d" stroke-width="1"/>
+      <text y="12.5" text-anchor="middle" class="v1count">6</text>
+    </g><g transform="translate(-24.840000000000003,-19.32)" stroke="#3a2f1d" stroke-width="1">
+      <line x1="0" y1="10" x2="0" y2="-8"/>
+      <path d="M0,-8 h11 l-3.5,3.5 L11,-1 H0 Z" fill="#f07070"/>
+    </g><g transform="translate(20.24,-20.24)" stroke="#7d2b23" stroke-width="2.2" stroke-linecap="round">
+      <line x1="-6" y1="-6" x2="6" y2="6"/><line x1="6" y1="-6" x2="-6" y2="6"/>
+      <line x1="-5.5" y1="2.5" x2="-2" y2="6" stroke-width="1.4"/><line x1="5.5" y1="2.5" x2="2" y2="6" stroke-width="1.4"/>
+    </g></g>
+<g transform="translate(69,-39.837168574084174)"><polygon points="46.0,0.0 23.0,39.8 -23.0,39.8 -46.0,0.0 -23.0,-39.8 23.0,-39.8" fill="url(#tx-1t-forest)" stroke="#4a3a22" stroke-width="1.4"/><polygon points="46.0,0.0 23.0,39.8 -23.0,39.8 -46.0,0.0 -23.0,-39.8 23.0,-39.8" fill="#efe3c2" opacity="0.2"/><line x1="0" y1="0" x2="-34.7" y2="-20.0" stroke="#6b4f2a" stroke-width="4" stroke-linecap="round"/>
+      <line x1="0" y1="0" x2="-34.7" y2="-20.0" stroke="#c9b088" stroke-width="1.4" stroke-dasharray="3 3"/><g transform="translate(-6,-3)" fill="#efe3c2" stroke="#4a3a22" stroke-width="1">
+    <rect x="-4.5" y="-3.5" width="9" height="7"/>
+    <path d="M-5.5,-3.5 L0,-8.45 L5.5,-3.5 Z" fill="#8a5c33"/>
+  </g><g transform="translate(6,-5)" fill="#efe3c2" stroke="#4a3a22" stroke-width="1">
+    <rect x="-4.5" y="-3.5" width="9" height="7"/>
+    <path d="M-5.5,-3.5 L0,-8.45 L5.5,-3.5 Z" fill="#8a5c33"/>
+  </g><text y="-15" text-anchor="middle" class="v1name">Eda</text><g transform="translate(23,-14.72)" fill="#efe3c2" stroke="#4a3a22" stroke-width="1">
+    <rect x="-4" y="-3" width="8" height="6"/>
+    <path d="M-5,-3 L0,-7.4 L5,-3 Z" fill="#8a5c33"/>
+  </g><g transform="translate(-27.599999999999998,0)" stroke="#4a3a55" stroke-width="2.2" fill="none">
+      <path d="M-6,7 v-7 a6,6 0 0 1 12,0 v7"/><line x1="-8.5" y1="7" x2="8.5" y2="7"/>
+    </g><g transform="translate(-7,27.599999999999998)">
+      <path d="M-4,-5 h8 v6 q0,3.5 -4,4.5 q-4,-1 -4,-4.5 z" fill="#4caf7d" stroke="#3a2f1d" stroke-width="1"/>
+      <text y="12.5" text-anchor="middle" class="v1count">4</text>
+    </g><g transform="translate(7,27.599999999999998)">
+      <path d="M-4,-5 h8 v6 q0,3.5 -4,4.5 q-4,-1 -4,-4.5 z" fill="#5ec8f0" stroke="#3a2f1d" stroke-width="1"/>
+      <text y="12.5" text-anchor="middle" class="v1count">2</text>
+    </g><g transform="translate(-24.840000000000003,-19.32)" stroke="#3a2f1d" stroke-width="1">
+      <line x1="0" y1="10" x2="0" y2="-8"/>
+      <path d="M0,-8 h11 l-3.5,3.5 L11,-1 H0 Z" fill="#4caf7d"/>
+    </g></g>
+<g transform="translate(69,39.837168574084174)"><polygon points="46.0,0.0 23.0,39.8 -23.0,39.8 -46.0,0.0 -23.0,-39.8 23.0,-39.8" fill="url(#tx-1t-ocean)" stroke="#4a3a22" stroke-width="1.4"/><polygon points="46.0,0.0 23.0,39.8 -23.0,39.8 -46.0,0.0 -23.0,-39.8 23.0,-39.8" fill="#efe3c2" opacity="0.2"/><g transform="translate(16.56,10.12) scale(0.75)" stroke="#3a2f1d" stroke-width="1.4">
+      <path d="M-11,4 h22 l-5,6 h-12 z" fill="#8a5c33"/>
+      <line x1="0" y1="4" x2="0" y2="-12"/>
+      <path d="M0,-12 l9,10 h-9 z" fill="#efe3c2"/>
+    </g><g transform="translate(-7,27.599999999999998)">
+      <path d="M-4,-5 h8 v6 q0,3.5 -4,4.5 q-4,-1 -4,-4.5 z" fill="#5ec8f0" stroke="#3a2f1d" stroke-width="1"/>
+      <text y="12.5" text-anchor="middle" class="v1count">2</text>
+    </g><g transform="translate(7,27.599999999999998)">
+      <path d="M-4,-5 h8 v6 q0,3.5 -4,4.5 q-4,-1 -4,-4.5 z" fill="#f07070" stroke="#3a2f1d" stroke-width="1"/>
+      <text y="12.5" text-anchor="middle" class="v1count">3</text>
+    </g><g transform="translate(20.24,-20.24)" stroke="#7d2b23" stroke-width="2.2" stroke-linecap="round">
+      <line x1="-6" y1="-6" x2="6" y2="6"/><line x1="6" y1="-6" x2="-6" y2="6"/>
+      <line x1="-5.5" y1="2.5" x2="-2" y2="6" stroke-width="1.4"/><line x1="5.5" y1="2.5" x2="2" y2="6" stroke-width="1.4"/>
+    </g></g>
+<g transform="translate(0,79.67433714816835)"><polygon points="46.0,0.0 23.0,39.8 -23.0,39.8 -46.0,0.0 -23.0,-39.8 23.0,-39.8" fill="url(#tx-1t-swamp)" stroke="#4a3a22" stroke-width="1.4"/><polygon points="46.0,0.0 23.0,39.8 -23.0,39.8 -46.0,0.0 -23.0,-39.8 23.0,-39.8" fill="#efe3c2" opacity="0.2"/><g transform="translate(27.599999999999998,-1)" stroke="#7d2b23" stroke-width="1.8" fill="none" stroke-linecap="round">
+      <path d="M-4,-4 q3,3 2.2,8"/><path d="M0,-5 q2,4 1.4,9"/><path d="M4,-4 q-0.5,4 -1.4,8"/>
+    </g><g transform="translate(-27.599999999999998,0)" stroke="#4a3a55" stroke-width="2.2" fill="none">
+      <path d="M-6,7 v-7 a6,6 0 0 1 12,0 v7"/><line x1="-8.5" y1="7" x2="8.5" y2="7"/>
+    </g><g transform="translate(14.72,13.799999999999999)">
+      <path d="M-8,6 a8,8 0 0 1 16,0 z" fill="#241c12" stroke="#4a3a22" stroke-width="1.2"/>
+    </g><g transform="translate(0,27.599999999999998)">
+      <path d="M-4,-5 h8 v6 q0,3.5 -4,4.5 q-4,-1 -4,-4.5 z" fill="#f07070" stroke="#3a2f1d" stroke-width="1"/>
+      <text y="12.5" text-anchor="middle" class="v1count">2</text>
+    </g></g>
+<g transform="translate(-69,39.837168574084174)"><polygon points="46.0,0.0 23.0,39.8 -23.0,39.8 -46.0,0.0 -23.0,-39.8 23.0,-39.8" fill="url(#tx-1t-desert)" stroke="#4a3a22" stroke-width="1.4"/><polygon points="46.0,0.0 23.0,39.8 -23.0,39.8 -46.0,0.0 -23.0,-39.8 23.0,-39.8" fill="#efe3c2" opacity="0.2"/><g transform="translate(0,-4)" fill="#efe3c2" stroke="#4a3a22" stroke-width="1">
+    <rect x="-4.5" y="-3.5" width="9" height="7"/>
+    <path d="M-5.5,-3.5 L0,-8.45 L5.5,-3.5 Z" fill="#8a5c33"/>
+  </g><text y="-15" text-anchor="middle" class="v1name">Kel</text><g transform="translate(23,-14.72)" fill="#efe3c2" stroke="#4a3a22" stroke-width="1">
+    <rect x="-4" y="-3" width="8" height="6"/>
+    <path d="M-5,-3 L0,-7.4 L5,-3 Z" fill="#8a5c33"/>
+  </g><g transform="translate(-15.64,14.72)">
+      <rect x="-6.5" y="-6.5" width="13" height="13" fill="#241c12" stroke="#4a3a22" stroke-width="1.2"/>
+      <path d="M-2.8,-6.5 v13 M2.8,-6.5 v13 M-2.8,-2.2 h5.6 M-2.8,2.2 h5.6" stroke="#c9b088" stroke-width="1.1"/>
+    </g><g transform="translate(0,27.599999999999998)">
+      <path d="M-4,-5 h8 v6 q0,3.5 -4,4.5 q-4,-1 -4,-4.5 z" fill="#5ec8f0" stroke="#3a2f1d" stroke-width="1"/>
+      <text y="12.5" text-anchor="middle" class="v1count">4</text>
+    </g></g>
+<g transform="translate(-69,-39.837168574084174)"><polygon points="46.0,0.0 23.0,39.8 -23.0,39.8 -46.0,0.0 -23.0,-39.8 23.0,-39.8" fill="url(#tx-1t-tundra)" stroke="#4a3a22" stroke-width="1.4"/><polygon points="46.0,0.0 23.0,39.8 -23.0,39.8 -46.0,0.0 -23.0,-39.8 23.0,-39.8" fill="#efe3c2" opacity="0.2"/><g transform="translate(-6,-3)" fill="#efe3c2" stroke="#4a3a22" stroke-width="1">
+    <rect x="-4.5" y="-3.5" width="9" height="7"/>
+    <path d="M-5.5,-3.5 L0,-8.45 L5.5,-3.5 Z" fill="#8a5c33"/>
+  </g><g transform="translate(6,-5)" fill="#efe3c2" stroke="#4a3a22" stroke-width="1">
+    <rect x="-4.5" y="-3.5" width="9" height="7"/>
+    <path d="M-5.5,-3.5 L0,-8.45 L5.5,-3.5 Z" fill="#8a5c33"/>
+  </g><text y="-15" text-anchor="middle" class="v1name">Hut</text><g transform="translate(23,-14.72)" fill="#efe3c2" stroke="#4a3a22" stroke-width="1">
+    <rect x="-4" y="-3" width="8" height="6"/>
+    <path d="M-5,-3 L0,-7.4 L5,-3 Z" fill="#8a5c33"/>
+  </g><g transform="translate(0,27.599999999999998)">
+      <path d="M-4,-5 h8 v6 q0,3.5 -4,4.5 q-4,-1 -4,-4.5 z" fill="#4caf7d" stroke="#3a2f1d" stroke-width="1"/>
+      <text y="12.5" text-anchor="middle" class="v1count">1</text>
+    </g><polygon points="46.0,0.0 23.0,39.8 -23.0,39.8 -46.0,0.0 -23.0,-39.8 23.0,-39.8" fill="#efe3c2" opacity="0.38"/>
+      <path d="M-30,26 L26,-30 M-14,34 L36,-16 M-38,10 L12,-40" stroke="#4a3a22" stroke-width="0.8" opacity="0.35"/></g></svg></div><figcaption>Biome textures</figcaption></figure>
+  </div>
+  <ul class="notes">
+    <li>Warm and atmospheric; fits the play-by-mail fantasy register.</li>
+    <li>Every mark is a distinct pictogram &mdash; nothing depends on colour alone.</li>
+    <li>Fixed compass anchors mean the full city hex and the empty plain use one visual grammar.</li>
+    <li class="con">At full occupancy the hex is dense; line-art needs the most zoom-band pruning of the five.</li>
+    <li class="con">Muted palette leaves less contrast headroom for risk/route overlays.</li>
+  </ul>
+</section>
+
+<section class="card">
+  <h2><em>02</em>Tactical HUD</h2>
+  <p class="concept">A modern strategy readout built for exactly this problem: seven reserved
+  stations per hex &mdash; ship TL, battle TC, gate TR, shaft ML, monster MR, lair BL, building
+  count BR &mdash; plus the settlement in the centre with its name along the S edge, unit counters above the name, and
+  guard as an inner perimeter. A mark is present or its station is empty; nothing ever moves
+  or collides. Stale hexes dim and state their age (&ldquo;T-9&rdquo;). Textures are dimmed hard so the
+  readout stays a readout.</p>
+  <div class="pair">
+    <figure><div class="stage"><svg viewBox="-129 -142 258 271" role="img"><g transform="translate(0,0)"><polygon points="46.0,0.0 23.0,39.8 -23.0,39.8 -46.0,0.0 -23.0,-39.8 23.0,-39.8" fill="#4a4630" stroke="#5e788c" stroke-width="1"/><line x1="0" y1="0" x2="0.0" y2="-40.0" stroke="#c9d6e2" stroke-width="2" stroke-dasharray="5 3"/><line x1="0" y1="0" x2="34.7" y2="20.0" stroke="#c9d6e2" stroke-width="2" stroke-dasharray="5 3"/><polygon points="38.6,0.0 19.3,33.5 -19.3,33.5 -38.6,0.0 -19.3,-33.5 19.3,-33.5" fill="none" stroke="#4caf7d" stroke-width="2"/><rect x="-7.75" y="-11.75" width="15.5" height="15.5" fill="none" stroke="#e8d9a8" stroke-width="1.6"/><rect x="-4.25" y="-8.25" width="8.5" height="8.5" fill="#e8d9a8"/><text y="35.88" text-anchor="middle" class="v2name">MARN</text><g transform="translate(-19,24.840000000000003)">
+      <rect x="-8.5" y="-5.5" width="17" height="11" rx="1.5" fill="#0d1117" stroke="#4caf7d" stroke-width="1.4"/>
+      <text y="3" text-anchor="middle" class="v2count" fill="#4caf7d">12</text>
+    </g><g transform="translate(0,24.840000000000003)">
+      <rect x="-8.5" y="-5.5" width="17" height="11" rx="1.5" fill="#0d1117" stroke="#5ec8f0" stroke-width="1.4"/>
+      <text y="3" text-anchor="middle" class="v2count" fill="#5ec8f0">3</text>
+    </g><g transform="translate(19,24.840000000000003)">
+      <rect x="-8.5" y="-5.5" width="17" height="11" rx="1.5" fill="#0d1117" stroke="#f07070" stroke-width="1.4"/>
+      <text y="3" text-anchor="middle" class="v2count" fill="#f07070">5</text>
+    </g><g transform="translate(0,-28.98)">
+      <path d="M0,-8 L8,6 H-8 Z" fill="#0d1117" stroke="#d9a441" stroke-width="1.4"/>
+      <path d="M-2.8,-1.5 L2.8,3.5 M2.8,-1.5 L-2.8,3.5" stroke="#d9a441" stroke-width="1.4" stroke-linecap="round"/>
+    </g><g transform="translate(-18.400000000000002,-17.48)">
+    <rect x="-8" y="-8" width="16" height="16" rx="3" fill="#0d1117" stroke="#9fb4c8" stroke-width="1.2"/>
+    <path d="M-5,2 h10 l-2.5,3 h-5 z M0,2 v-7 l4.5,5 h-4.5" fill="none" stroke="#9fb4c8" stroke-width="1.3"/>
+  </g><text x="25.76" y="14.72" text-anchor="middle" class="v2meta">B7</text></g>
+<g transform="translate(0,-79.67433714816835)"><polygon points="46.0,0.0 23.0,39.8 -23.0,39.8 -46.0,0.0 -23.0,-39.8 23.0,-39.8" fill="#3c3c44" stroke="#5e788c" stroke-width="1"/><line x1="0" y1="0" x2="0.0" y2="40.0" stroke="#c9d6e2" stroke-width="2" stroke-dasharray="5 3"/><polygon points="38.6,0.0 19.3,33.5 -19.3,33.5 -38.6,0.0 -19.3,-33.5 19.3,-33.5" fill="none" stroke="#f07070" stroke-width="2"/><g transform="translate(0,24.840000000000003)">
+      <rect x="-8.5" y="-5.5" width="17" height="11" rx="1.5" fill="#0d1117" stroke="#f07070" stroke-width="1.4"/>
+      <text y="3" text-anchor="middle" class="v2count" fill="#f07070">6</text>
+    </g><g transform="translate(0,-28.98)">
+      <path d="M0,-8 L8,6 H-8 Z" fill="#0d1117" stroke="#d9a441" stroke-width="1.4"/>
+      <path d="M-2.8,-1.5 L2.8,3.5 M2.8,-1.5 L-2.8,3.5" stroke="#d9a441" stroke-width="1.4" stroke-linecap="round"/>
+    </g><g transform="translate(-26.68,0)">
+    <rect x="-8" y="-8" width="16" height="16" rx="3" fill="#0d1117" stroke="#e8d9a8" stroke-width="1.2"/>
+    <path d="M-4.5,-4.5 h9 v9 h-9 z M-1.8,-4.5 v9 M1.8,-4.5 v9 M-1.8,-1 h3.6 M-1.8,2 h3.6" fill="none" stroke="#e8d9a8" stroke-width="1.1"/>
+  </g><g transform="translate(26.68,0)">
+    <rect x="-8" y="-8" width="16" height="16" rx="3" fill="#0d1117" stroke="#f07070" stroke-width="1.2"/>
+    <path d="M-4,-3 q2.5,2.5 2,7 M0,-4 q1.6,3.5 1.2,8 M4,-3 q-0.4,3.5 -1.2,7" fill="none" stroke="#f07070" stroke-width="1.4" stroke-linecap="round"/>
+  </g><g transform="translate(-18.400000000000002,18.400000000000002)">
+    <rect x="-8" y="-8" width="16" height="16" rx="3" fill="#0d1117" stroke="#f07070" stroke-width="1.2"/>
+    <path d="M-5,4 a5,5 0 0 1 10,0 z" fill="#f07070"/>
+  </g><text x="25.76" y="14.72" text-anchor="middle" class="v2meta">B3</text></g>
+<g transform="translate(69,-39.837168574084174)"><polygon points="46.0,0.0 23.0,39.8 -23.0,39.8 -46.0,0.0 -23.0,-39.8 23.0,-39.8" fill="#28402c" stroke="#5e788c" stroke-width="1"/><line x1="0" y1="0" x2="-34.7" y2="-20.0" stroke="#c9d6e2" stroke-width="2" stroke-dasharray="5 3"/><polygon points="38.6,0.0 19.3,33.5 -19.3,33.5 -38.6,0.0 -19.3,-33.5 19.3,-33.5" fill="none" stroke="#4caf7d" stroke-width="2"/><rect x="-6" y="-10" width="12" height="12" fill="none" stroke="#e8d9a8" stroke-width="1.6"/><rect x="-2.5" y="-6.5" width="5" height="5" fill="#e8d9a8"/><text y="35.88" text-anchor="middle" class="v2name">EDA</text><g transform="translate(-9.5,24.840000000000003)">
+      <rect x="-8.5" y="-5.5" width="17" height="11" rx="1.5" fill="#0d1117" stroke="#4caf7d" stroke-width="1.4"/>
+      <text y="3" text-anchor="middle" class="v2count" fill="#4caf7d">4</text>
+    </g><g transform="translate(9.5,24.840000000000003)">
+      <rect x="-8.5" y="-5.5" width="17" height="11" rx="1.5" fill="#0d1117" stroke="#5ec8f0" stroke-width="1.4"/>
+      <text y="3" text-anchor="middle" class="v2count" fill="#5ec8f0">2</text>
+    </g><g transform="translate(18.400000000000002,-17.48)">
+    <rect x="-8" y="-8" width="16" height="16" rx="3" fill="#0d1117" stroke="#b48ce0" stroke-width="1.2"/>
+    <path d="M-4,4.5 v-4 a4,4 0 0 1 8,0 v4 M-6,4.5 h12" fill="none" stroke="#b48ce0" stroke-width="1.4"/>
+  </g><text x="25.76" y="14.72" text-anchor="middle" class="v2meta">B2</text></g>
+<g transform="translate(69,39.837168574084174)"><polygon points="46.0,0.0 23.0,39.8 -23.0,39.8 -46.0,0.0 -23.0,-39.8 23.0,-39.8" fill="#1c3247" stroke="#5e788c" stroke-width="1"/><g transform="translate(-9.5,24.840000000000003)">
+      <rect x="-8.5" y="-5.5" width="17" height="11" rx="1.5" fill="#0d1117" stroke="#5ec8f0" stroke-width="1.4"/>
+      <text y="3" text-anchor="middle" class="v2count" fill="#5ec8f0">2</text>
+    </g><g transform="translate(9.5,24.840000000000003)">
+      <rect x="-8.5" y="-5.5" width="17" height="11" rx="1.5" fill="#0d1117" stroke="#f07070" stroke-width="1.4"/>
+      <text y="3" text-anchor="middle" class="v2count" fill="#f07070">3</text>
+    </g><g transform="translate(0,-28.98)">
+      <path d="M0,-8 L8,6 H-8 Z" fill="#0d1117" stroke="#d9a441" stroke-width="1.4"/>
+      <path d="M-2.8,-1.5 L2.8,3.5 M2.8,-1.5 L-2.8,3.5" stroke="#d9a441" stroke-width="1.4" stroke-linecap="round"/>
+    </g><g transform="translate(-18.400000000000002,-17.48)">
+    <rect x="-8" y="-8" width="16" height="16" rx="3" fill="#0d1117" stroke="#9fb4c8" stroke-width="1.2"/>
+    <path d="M-5,2 h10 l-2.5,3 h-5 z M0,2 v-7 l4.5,5 h-4.5" fill="none" stroke="#9fb4c8" stroke-width="1.3"/>
+  </g></g>
+<g transform="translate(0,79.67433714816835)"><polygon points="46.0,0.0 23.0,39.8 -23.0,39.8 -46.0,0.0 -23.0,-39.8 23.0,-39.8" fill="#333c26" stroke="#5e788c" stroke-width="1"/><g transform="translate(0,24.840000000000003)">
+      <rect x="-8.5" y="-5.5" width="17" height="11" rx="1.5" fill="#0d1117" stroke="#f07070" stroke-width="1.4"/>
+      <text y="3" text-anchor="middle" class="v2count" fill="#f07070">2</text>
+    </g><g transform="translate(18.400000000000002,-17.48)">
+    <rect x="-8" y="-8" width="16" height="16" rx="3" fill="#0d1117" stroke="#b48ce0" stroke-width="1.2"/>
+    <path d="M-4,4.5 v-4 a4,4 0 0 1 8,0 v4 M-6,4.5 h12" fill="none" stroke="#b48ce0" stroke-width="1.4"/>
+  </g><g transform="translate(26.68,0)">
+    <rect x="-8" y="-8" width="16" height="16" rx="3" fill="#0d1117" stroke="#f07070" stroke-width="1.2"/>
+    <path d="M-4,-3 q2.5,2.5 2,7 M0,-4 q1.6,3.5 1.2,8 M4,-3 q-0.4,3.5 -1.2,7" fill="none" stroke="#f07070" stroke-width="1.4" stroke-linecap="round"/>
+  </g><g transform="translate(-18.400000000000002,18.400000000000002)">
+    <rect x="-8" y="-8" width="16" height="16" rx="3" fill="#0d1117" stroke="#f07070" stroke-width="1.2"/>
+    <path d="M-5,4 a5,5 0 0 1 10,0 z" fill="#f07070"/>
+  </g></g>
+<g transform="translate(-69,39.837168574084174)"><polygon points="46.0,0.0 23.0,39.8 -23.0,39.8 -46.0,0.0 -23.0,-39.8 23.0,-39.8" fill="#4e422a" stroke="#5e788c" stroke-width="1"/><rect x="-4.25" y="-8.25" width="8.5" height="8.5" fill="none" stroke="#e8d9a8" stroke-width="1.6"/><text y="35.88" text-anchor="middle" class="v2name">KEL</text><g transform="translate(0,24.840000000000003)">
+      <rect x="-8.5" y="-5.5" width="17" height="11" rx="1.5" fill="#0d1117" stroke="#5ec8f0" stroke-width="1.4"/>
+      <text y="3" text-anchor="middle" class="v2count" fill="#5ec8f0">4</text>
+    </g><g transform="translate(-26.68,0)">
+    <rect x="-8" y="-8" width="16" height="16" rx="3" fill="#0d1117" stroke="#e8d9a8" stroke-width="1.2"/>
+    <path d="M-4.5,-4.5 h9 v9 h-9 z M-1.8,-4.5 v9 M1.8,-4.5 v9 M-1.8,-1 h3.6 M-1.8,2 h3.6" fill="none" stroke="#e8d9a8" stroke-width="1.1"/>
+  </g><text x="25.76" y="14.72" text-anchor="middle" class="v2meta">B1</text></g>
+<g transform="translate(-69,-39.837168574084174)"><polygon points="46.0,0.0 23.0,39.8 -23.0,39.8 -46.0,0.0 -23.0,-39.8 23.0,-39.8" fill="#39444a" stroke="#5e788c" stroke-width="1"/><rect x="-6" y="-10" width="12" height="12" fill="none" stroke="#e8d9a8" stroke-width="1.6"/><rect x="-2.5" y="-6.5" width="5" height="5" fill="#e8d9a8"/><text y="35.88" text-anchor="middle" class="v2name">HUT</text><g transform="translate(0,24.840000000000003)">
+      <rect x="-8.5" y="-5.5" width="17" height="11" rx="1.5" fill="#0d1117" stroke="#4caf7d" stroke-width="1.4"/>
+      <text y="3" text-anchor="middle" class="v2count" fill="#4caf7d">1</text>
+    </g><text x="25.76" y="14.72" text-anchor="middle" class="v2meta">B2</text><polygon points="46.0,0.0 23.0,39.8 -23.0,39.8 -46.0,0.0 -23.0,-39.8 23.0,-39.8" fill="#0d1117" opacity="0.45"/>
+      <text y="11.96" text-anchor="middle" class="v2meta" opacity="0.9">T-9</text></g></svg></div><figcaption>Flat colour</figcaption></figure>
+    <figure><div class="stage"><svg viewBox="-129 -142 258 271" role="img"><defs><pattern id="tx-2t-plain" patternUnits="objectBoundingBox" patternContentUnits="objectBoundingBox" width="1" height="1">
+        <image href="../../config/public/biomes/plain_512.png" x="0" y="0" width="1" height="1" preserveAspectRatio="xMidYMid slice"/>
+      </pattern><pattern id="tx-2t-mountain" patternUnits="objectBoundingBox" patternContentUnits="objectBoundingBox" width="1" height="1">
+        <image href="../../config/public/biomes/mountain_512.png" x="0" y="0" width="1" height="1" preserveAspectRatio="xMidYMid slice"/>
+      </pattern><pattern id="tx-2t-forest" patternUnits="objectBoundingBox" patternContentUnits="objectBoundingBox" width="1" height="1">
+        <image href="../../config/public/biomes/forest_512.png" x="0" y="0" width="1" height="1" preserveAspectRatio="xMidYMid slice"/>
+      </pattern><pattern id="tx-2t-ocean" patternUnits="objectBoundingBox" patternContentUnits="objectBoundingBox" width="1" height="1">
+        <image href="../../config/public/biomes/ocean_512.png" x="0" y="0" width="1" height="1" preserveAspectRatio="xMidYMid slice"/>
+      </pattern><pattern id="tx-2t-swamp" patternUnits="objectBoundingBox" patternContentUnits="objectBoundingBox" width="1" height="1">
+        <image href="../../config/public/biomes/swamp_512.png" x="0" y="0" width="1" height="1" preserveAspectRatio="xMidYMid slice"/>
+      </pattern><pattern id="tx-2t-desert" patternUnits="objectBoundingBox" patternContentUnits="objectBoundingBox" width="1" height="1">
+        <image href="../../config/public/biomes/desert_512.png" x="0" y="0" width="1" height="1" preserveAspectRatio="xMidYMid slice"/>
+      </pattern><pattern id="tx-2t-tundra" patternUnits="objectBoundingBox" patternContentUnits="objectBoundingBox" width="1" height="1">
+        <image href="../../config/public/biomes/tundra_512.png" x="0" y="0" width="1" height="1" preserveAspectRatio="xMidYMid slice"/>
+      </pattern></defs><g transform="translate(0,0)"><polygon points="46.0,0.0 23.0,39.8 -23.0,39.8 -46.0,0.0 -23.0,-39.8 23.0,-39.8" fill="url(#tx-2t-plain)" stroke="#5e788c" stroke-width="1"/><polygon points="46.0,0.0 23.0,39.8 -23.0,39.8 -46.0,0.0 -23.0,-39.8 23.0,-39.8" fill="#0d1117" opacity="0.52"/><line x1="0" y1="0" x2="0.0" y2="-40.0" stroke="#c9d6e2" stroke-width="2" stroke-dasharray="5 3"/><line x1="0" y1="0" x2="34.7" y2="20.0" stroke="#c9d6e2" stroke-width="2" stroke-dasharray="5 3"/><polygon points="38.6,0.0 19.3,33.5 -19.3,33.5 -38.6,0.0 -19.3,-33.5 19.3,-33.5" fill="none" stroke="#4caf7d" stroke-width="2"/><rect x="-7.75" y="-11.75" width="15.5" height="15.5" fill="none" stroke="#e8d9a8" stroke-width="1.6"/><rect x="-4.25" y="-8.25" width="8.5" height="8.5" fill="#e8d9a8"/><text y="35.88" text-anchor="middle" class="v2name">MARN</text><g transform="translate(-19,24.840000000000003)">
+      <rect x="-8.5" y="-5.5" width="17" height="11" rx="1.5" fill="#0d1117" stroke="#4caf7d" stroke-width="1.4"/>
+      <text y="3" text-anchor="middle" class="v2count" fill="#4caf7d">12</text>
+    </g><g transform="translate(0,24.840000000000003)">
+      <rect x="-8.5" y="-5.5" width="17" height="11" rx="1.5" fill="#0d1117" stroke="#5ec8f0" stroke-width="1.4"/>
+      <text y="3" text-anchor="middle" class="v2count" fill="#5ec8f0">3</text>
+    </g><g transform="translate(19,24.840000000000003)">
+      <rect x="-8.5" y="-5.5" width="17" height="11" rx="1.5" fill="#0d1117" stroke="#f07070" stroke-width="1.4"/>
+      <text y="3" text-anchor="middle" class="v2count" fill="#f07070">5</text>
+    </g><g transform="translate(0,-28.98)">
+      <path d="M0,-8 L8,6 H-8 Z" fill="#0d1117" stroke="#d9a441" stroke-width="1.4"/>
+      <path d="M-2.8,-1.5 L2.8,3.5 M2.8,-1.5 L-2.8,3.5" stroke="#d9a441" stroke-width="1.4" stroke-linecap="round"/>
+    </g><g transform="translate(-18.400000000000002,-17.48)">
+    <rect x="-8" y="-8" width="16" height="16" rx="3" fill="#0d1117" stroke="#9fb4c8" stroke-width="1.2"/>
+    <path d="M-5,2 h10 l-2.5,3 h-5 z M0,2 v-7 l4.5,5 h-4.5" fill="none" stroke="#9fb4c8" stroke-width="1.3"/>
+  </g><text x="25.76" y="14.72" text-anchor="middle" class="v2meta">B7</text></g>
+<g transform="translate(0,-79.67433714816835)"><polygon points="46.0,0.0 23.0,39.8 -23.0,39.8 -46.0,0.0 -23.0,-39.8 23.0,-39.8" fill="url(#tx-2t-mountain)" stroke="#5e788c" stroke-width="1"/><polygon points="46.0,0.0 23.0,39.8 -23.0,39.8 -46.0,0.0 -23.0,-39.8 23.0,-39.8" fill="#0d1117" opacity="0.52"/><line x1="0" y1="0" x2="0.0" y2="40.0" stroke="#c9d6e2" stroke-width="2" stroke-dasharray="5 3"/><polygon points="38.6,0.0 19.3,33.5 -19.3,33.5 -38.6,0.0 -19.3,-33.5 19.3,-33.5" fill="none" stroke="#f07070" stroke-width="2"/><g transform="translate(0,24.840000000000003)">
+      <rect x="-8.5" y="-5.5" width="17" height="11" rx="1.5" fill="#0d1117" stroke="#f07070" stroke-width="1.4"/>
+      <text y="3" text-anchor="middle" class="v2count" fill="#f07070">6</text>
+    </g><g transform="translate(0,-28.98)">
+      <path d="M0,-8 L8,6 H-8 Z" fill="#0d1117" stroke="#d9a441" stroke-width="1.4"/>
+      <path d="M-2.8,-1.5 L2.8,3.5 M2.8,-1.5 L-2.8,3.5" stroke="#d9a441" stroke-width="1.4" stroke-linecap="round"/>
+    </g><g transform="translate(-26.68,0)">
+    <rect x="-8" y="-8" width="16" height="16" rx="3" fill="#0d1117" stroke="#e8d9a8" stroke-width="1.2"/>
+    <path d="M-4.5,-4.5 h9 v9 h-9 z M-1.8,-4.5 v9 M1.8,-4.5 v9 M-1.8,-1 h3.6 M-1.8,2 h3.6" fill="none" stroke="#e8d9a8" stroke-width="1.1"/>
+  </g><g transform="translate(26.68,0)">
+    <rect x="-8" y="-8" width="16" height="16" rx="3" fill="#0d1117" stroke="#f07070" stroke-width="1.2"/>
+    <path d="M-4,-3 q2.5,2.5 2,7 M0,-4 q1.6,3.5 1.2,8 M4,-3 q-0.4,3.5 -1.2,7" fill="none" stroke="#f07070" stroke-width="1.4" stroke-linecap="round"/>
+  </g><g transform="translate(-18.400000000000002,18.400000000000002)">
+    <rect x="-8" y="-8" width="16" height="16" rx="3" fill="#0d1117" stroke="#f07070" stroke-width="1.2"/>
+    <path d="M-5,4 a5,5 0 0 1 10,0 z" fill="#f07070"/>
+  </g><text x="25.76" y="14.72" text-anchor="middle" class="v2meta">B3</text></g>
+<g transform="translate(69,-39.837168574084174)"><polygon points="46.0,0.0 23.0,39.8 -23.0,39.8 -46.0,0.0 -23.0,-39.8 23.0,-39.8" fill="url(#tx-2t-forest)" stroke="#5e788c" stroke-width="1"/><polygon points="46.0,0.0 23.0,39.8 -23.0,39.8 -46.0,0.0 -23.0,-39.8 23.0,-39.8" fill="#0d1117" opacity="0.52"/><line x1="0" y1="0" x2="-34.7" y2="-20.0" stroke="#c9d6e2" stroke-width="2" stroke-dasharray="5 3"/><polygon points="38.6,0.0 19.3,33.5 -19.3,33.5 -38.6,0.0 -19.3,-33.5 19.3,-33.5" fill="none" stroke="#4caf7d" stroke-width="2"/><rect x="-6" y="-10" width="12" height="12" fill="none" stroke="#e8d9a8" stroke-width="1.6"/><rect x="-2.5" y="-6.5" width="5" height="5" fill="#e8d9a8"/><text y="35.88" text-anchor="middle" class="v2name">EDA</text><g transform="translate(-9.5,24.840000000000003)">
+      <rect x="-8.5" y="-5.5" width="17" height="11" rx="1.5" fill="#0d1117" stroke="#4caf7d" stroke-width="1.4"/>
+      <text y="3" text-anchor="middle" class="v2count" fill="#4caf7d">4</text>
+    </g><g transform="translate(9.5,24.840000000000003)">
+      <rect x="-8.5" y="-5.5" width="17" height="11" rx="1.5" fill="#0d1117" stroke="#5ec8f0" stroke-width="1.4"/>
+      <text y="3" text-anchor="middle" class="v2count" fill="#5ec8f0">2</text>
+    </g><g transform="translate(18.400000000000002,-17.48)">
+    <rect x="-8" y="-8" width="16" height="16" rx="3" fill="#0d1117" stroke="#b48ce0" stroke-width="1.2"/>
+    <path d="M-4,4.5 v-4 a4,4 0 0 1 8,0 v4 M-6,4.5 h12" fill="none" stroke="#b48ce0" stroke-width="1.4"/>
+  </g><text x="25.76" y="14.72" text-anchor="middle" class="v2meta">B2</text></g>
+<g transform="translate(69,39.837168574084174)"><polygon points="46.0,0.0 23.0,39.8 -23.0,39.8 -46.0,0.0 -23.0,-39.8 23.0,-39.8" fill="url(#tx-2t-ocean)" stroke="#5e788c" stroke-width="1"/><polygon points="46.0,0.0 23.0,39.8 -23.0,39.8 -46.0,0.0 -23.0,-39.8 23.0,-39.8" fill="#0d1117" opacity="0.52"/><g transform="translate(-9.5,24.840000000000003)">
+      <rect x="-8.5" y="-5.5" width="17" height="11" rx="1.5" fill="#0d1117" stroke="#5ec8f0" stroke-width="1.4"/>
+      <text y="3" text-anchor="middle" class="v2count" fill="#5ec8f0">2</text>
+    </g><g transform="translate(9.5,24.840000000000003)">
+      <rect x="-8.5" y="-5.5" width="17" height="11" rx="1.5" fill="#0d1117" stroke="#f07070" stroke-width="1.4"/>
+      <text y="3" text-anchor="middle" class="v2count" fill="#f07070">3</text>
+    </g><g transform="translate(0,-28.98)">
+      <path d="M0,-8 L8,6 H-8 Z" fill="#0d1117" stroke="#d9a441" stroke-width="1.4"/>
+      <path d="M-2.8,-1.5 L2.8,3.5 M2.8,-1.5 L-2.8,3.5" stroke="#d9a441" stroke-width="1.4" stroke-linecap="round"/>
+    </g><g transform="translate(-18.400000000000002,-17.48)">
+    <rect x="-8" y="-8" width="16" height="16" rx="3" fill="#0d1117" stroke="#9fb4c8" stroke-width="1.2"/>
+    <path d="M-5,2 h10 l-2.5,3 h-5 z M0,2 v-7 l4.5,5 h-4.5" fill="none" stroke="#9fb4c8" stroke-width="1.3"/>
+  </g></g>
+<g transform="translate(0,79.67433714816835)"><polygon points="46.0,0.0 23.0,39.8 -23.0,39.8 -46.0,0.0 -23.0,-39.8 23.0,-39.8" fill="url(#tx-2t-swamp)" stroke="#5e788c" stroke-width="1"/><polygon points="46.0,0.0 23.0,39.8 -23.0,39.8 -46.0,0.0 -23.0,-39.8 23.0,-39.8" fill="#0d1117" opacity="0.52"/><g transform="translate(0,24.840000000000003)">
+      <rect x="-8.5" y="-5.5" width="17" height="11" rx="1.5" fill="#0d1117" stroke="#f07070" stroke-width="1.4"/>
+      <text y="3" text-anchor="middle" class="v2count" fill="#f07070">2</text>
+    </g><g transform="translate(18.400000000000002,-17.48)">
+    <rect x="-8" y="-8" width="16" height="16" rx="3" fill="#0d1117" stroke="#b48ce0" stroke-width="1.2"/>
+    <path d="M-4,4.5 v-4 a4,4 0 0 1 8,0 v4 M-6,4.5 h12" fill="none" stroke="#b48ce0" stroke-width="1.4"/>
+  </g><g transform="translate(26.68,0)">
+    <rect x="-8" y="-8" width="16" height="16" rx="3" fill="#0d1117" stroke="#f07070" stroke-width="1.2"/>
+    <path d="M-4,-3 q2.5,2.5 2,7 M0,-4 q1.6,3.5 1.2,8 M4,-3 q-0.4,3.5 -1.2,7" fill="none" stroke="#f07070" stroke-width="1.4" stroke-linecap="round"/>
+  </g><g transform="translate(-18.400000000000002,18.400000000000002)">
+    <rect x="-8" y="-8" width="16" height="16" rx="3" fill="#0d1117" stroke="#f07070" stroke-width="1.2"/>
+    <path d="M-5,4 a5,5 0 0 1 10,0 z" fill="#f07070"/>
+  </g></g>
+<g transform="translate(-69,39.837168574084174)"><polygon points="46.0,0.0 23.0,39.8 -23.0,39.8 -46.0,0.0 -23.0,-39.8 23.0,-39.8" fill="url(#tx-2t-desert)" stroke="#5e788c" stroke-width="1"/><polygon points="46.0,0.0 23.0,39.8 -23.0,39.8 -46.0,0.0 -23.0,-39.8 23.0,-39.8" fill="#0d1117" opacity="0.52"/><rect x="-4.25" y="-8.25" width="8.5" height="8.5" fill="none" stroke="#e8d9a8" stroke-width="1.6"/><text y="35.88" text-anchor="middle" class="v2name">KEL</text><g transform="translate(0,24.840000000000003)">
+      <rect x="-8.5" y="-5.5" width="17" height="11" rx="1.5" fill="#0d1117" stroke="#5ec8f0" stroke-width="1.4"/>
+      <text y="3" text-anchor="middle" class="v2count" fill="#5ec8f0">4</text>
+    </g><g transform="translate(-26.68,0)">
+    <rect x="-8" y="-8" width="16" height="16" rx="3" fill="#0d1117" stroke="#e8d9a8" stroke-width="1.2"/>
+    <path d="M-4.5,-4.5 h9 v9 h-9 z M-1.8,-4.5 v9 M1.8,-4.5 v9 M-1.8,-1 h3.6 M-1.8,2 h3.6" fill="none" stroke="#e8d9a8" stroke-width="1.1"/>
+  </g><text x="25.76" y="14.72" text-anchor="middle" class="v2meta">B1</text></g>
+<g transform="translate(-69,-39.837168574084174)"><polygon points="46.0,0.0 23.0,39.8 -23.0,39.8 -46.0,0.0 -23.0,-39.8 23.0,-39.8" fill="url(#tx-2t-tundra)" stroke="#5e788c" stroke-width="1"/><polygon points="46.0,0.0 23.0,39.8 -23.0,39.8 -46.0,0.0 -23.0,-39.8 23.0,-39.8" fill="#0d1117" opacity="0.52"/><rect x="-6" y="-10" width="12" height="12" fill="none" stroke="#e8d9a8" stroke-width="1.6"/><rect x="-2.5" y="-6.5" width="5" height="5" fill="#e8d9a8"/><text y="35.88" text-anchor="middle" class="v2name">HUT</text><g transform="translate(0,24.840000000000003)">
+      <rect x="-8.5" y="-5.5" width="17" height="11" rx="1.5" fill="#0d1117" stroke="#4caf7d" stroke-width="1.4"/>
+      <text y="3" text-anchor="middle" class="v2count" fill="#4caf7d">1</text>
+    </g><text x="25.76" y="14.72" text-anchor="middle" class="v2meta">B2</text><polygon points="46.0,0.0 23.0,39.8 -23.0,39.8 -46.0,0.0 -23.0,-39.8 23.0,-39.8" fill="#0d1117" opacity="0.45"/>
+      <text y="11.96" text-anchor="middle" class="v2meta" opacity="0.9">T-9</text></g></svg></div><figcaption>Biome textures</figcaption></figure>
+  </div>
+  <ul class="notes">
+    <li>Congestion-proof by construction &mdash; the full mountain hex is as tidy as the empty tundra.</li>
+    <li>Numbers everywhere; counts and age are read, not estimated.</li>
+    <li>Station discipline makes scanning trainable: the eye learns where gates live.</li>
+    <li class="con">Coldest of the five; the game&rsquo;s fantasy flavour lives elsewhere.</li>
+    <li class="con">All stations filled reads as a wall of badges; needs the zoom bands to thin it.</li>
+  </ul>
+</section>
+
+<section class="card">
+  <h2><em>03</em>Miniature World</h2>
+  <p class="concept">A board-game diorama where a full hex is a full scene, composed like a
+  painting with fixed grounds: the settlement holds the centre, the battle smokes over it,
+  the guard stands at the NW approach, monsters prowl the eastern rim, the arch rises in the
+  west, the pit sinks in the SW, cave and harbour share the SE shore, workshops sit NE, and
+  the people gather along the bottom. Staleness is a grey wash, like fading memory. With
+  textures on, the biome image replaces the painted decorations and the miniatures stand
+  directly on it.</p>
+  <div class="pair">
+    <figure><div class="stage"><svg viewBox="-129 -142 258 271" role="img"><defs><radialGradient id="g3-3f-plain" cx="0.42" cy="0.38" r="0.85">
+          <stop offset="0" stop-color="#8f8449"/><stop offset="1" stop-color="#6f6636"/>
+        </radialGradient><radialGradient id="g3-3f-forest" cx="0.42" cy="0.38" r="0.85">
+          <stop offset="0" stop-color="#3d7048"/><stop offset="1" stop-color="#2a5234"/>
+        </radialGradient><radialGradient id="g3-3f-mountain" cx="0.42" cy="0.38" r="0.85">
+          <stop offset="0" stop-color="#73737e"/><stop offset="1" stop-color="#565660"/>
+        </radialGradient><radialGradient id="g3-3f-ocean" cx="0.42" cy="0.38" r="0.85">
+          <stop offset="0" stop-color="#2b5a86"/><stop offset="1" stop-color="#1d3f63"/>
+        </radialGradient><radialGradient id="g3-3f-swamp" cx="0.42" cy="0.38" r="0.85">
+          <stop offset="0" stop-color="#55663b"/><stop offset="1" stop-color="#3d4a2e"/>
+        </radialGradient><radialGradient id="g3-3f-desert" cx="0.42" cy="0.38" r="0.85">
+          <stop offset="0" stop-color="#b4995c"/><stop offset="1" stop-color="#8a7546"/>
+        </radialGradient><radialGradient id="g3-3f-tundra" cx="0.42" cy="0.38" r="0.85">
+          <stop offset="0" stop-color="#8fa0a6"/><stop offset="1" stop-color="#6b7a80"/>
+        </radialGradient></defs><g transform="translate(0,0)"><polygon points="46.0,0.0 23.0,39.8 -23.0,39.8 -46.0,0.0 -23.0,-39.8 23.0,-39.8" fill="url(#g3-3f-plain)" stroke="#1c1712" stroke-width="1.6"/><line x1="0" y1="0" x2="0.0" y2="-40.0" stroke="#c2a06a" stroke-width="5" stroke-linecap="round"/><line x1="0" y1="0" x2="34.7" y2="20.0" stroke="#c2a06a" stroke-width="5" stroke-linecap="round"/><circle cy="-2" r="15" fill="#00000022"/><g transform="translate(-9,-5) scale(1)" stroke="#2a2118" stroke-width="0.9">
+    <rect x="-4" y="-3" width="8" height="6" fill="#d9c9a3"/>
+    <path d="M-5,-3 L0,-7.5 L5,-3 Z" fill="#a34f35"/>
+  </g><g transform="translate(0,-11) scale(1.1)" stroke="#2a2118" stroke-width="0.9">
+    <rect x="-4" y="-3" width="8" height="6" fill="#d9c9a3"/>
+    <path d="M-5,-3 L0,-7.5 L5,-3 Z" fill="#a34f35"/>
+  </g><g transform="translate(9,-5) scale(1)" stroke="#2a2118" stroke-width="0.9">
+    <rect x="-4" y="-3" width="8" height="6" fill="#d9c9a3"/>
+    <path d="M-5,-3 L0,-7.5 L5,-3 Z" fill="#a34f35"/>
+  </g><g transform="translate(0,-1) scale(0.9)" stroke="#2a2118" stroke-width="0.9">
+    <rect x="-4" y="-3" width="8" height="6" fill="#d9c9a3"/>
+    <path d="M-5,-3 L0,-7.5 L5,-3 Z" fill="#a34f35"/>
+  </g><g transform="translate(-8,-12) scale(0.8)" stroke="#2a2118" stroke-width="0.9">
+    <rect x="-4" y="-3" width="8" height="6" fill="#d9c9a3"/>
+    <path d="M-5,-3 L0,-7.5 L5,-3 Z" fill="#a34f35"/>
+  </g><g transform="translate(8,-12) scale(0.8)" stroke="#2a2118" stroke-width="0.9">
+    <rect x="-4" y="-3" width="8" height="6" fill="#d9c9a3"/>
+    <path d="M-5,-3 L0,-7.5 L5,-3 Z" fill="#a34f35"/>
+  </g><text y="-22" text-anchor="middle" class="v3name">Marn</text><g transform="translate(23.92,-13.799999999999999) scale(0.9)" stroke="#2a2118" stroke-width="0.9">
+    <rect x="-4" y="-3" width="8" height="6" fill="#b8b8c2"/>
+    <path d="M-5,-3 L0,-7.5 L5,-3 Z" fill="#a34f35"/>
+  </g><g transform="translate(28.52,-6.44) scale(0.8)" stroke="#2a2118" stroke-width="0.9">
+    <rect x="-4" y="-3" width="8" height="6" fill="#b8b8c2"/>
+    <path d="M-5,-3 L0,-7.5 L5,-3 Z" fill="#a34f35"/>
+  </g><g transform="translate(-22,25.76)" fill="#4caf7d" stroke="#10141a" stroke-width="0.7">
+    <circle cy="-4.5" r="2.2"/>
+    <path d="M-2.6,4 q0,-6.5 2.6,-6.5 q2.6,0 2.6,6.5 z"/>
+  </g><g transform="translate(-17,25.76)" fill="#4caf7d" stroke="#10141a" stroke-width="0.7">
+    <circle cy="-4.5" r="2.2"/>
+    <path d="M-2.6,4 q0,-6.5 2.6,-6.5 q2.6,0 2.6,6.5 z"/>
+  </g><g transform="translate(-12,25.76)" fill="#4caf7d" stroke="#10141a" stroke-width="0.7">
+    <circle cy="-4.5" r="2.2"/>
+    <path d="M-2.6,4 q0,-6.5 2.6,-6.5 q2.6,0 2.6,6.5 z"/>
+  </g><text x="-17" y="37.760000000000005" text-anchor="middle" class="v3count">12</text><g transform="translate(0,25.76)" fill="#5ec8f0" stroke="#10141a" stroke-width="0.7">
+    <circle cy="-4.5" r="2.2"/>
+    <path d="M-2.6,4 q0,-6.5 2.6,-6.5 q2.6,0 2.6,6.5 z"/>
+  </g><text x="0" y="37.760000000000005" text-anchor="middle" class="v3count">3</text><g transform="translate(14.5,25.76)" fill="#f07070" stroke="#10141a" stroke-width="0.7">
+    <circle cy="-4.5" r="2.2"/>
+    <path d="M-2.6,4 q0,-6.5 2.6,-6.5 q2.6,0 2.6,6.5 z"/>
+  </g><g transform="translate(19.5,25.76)" fill="#f07070" stroke="#10141a" stroke-width="0.7">
+    <circle cy="-4.5" r="2.2"/>
+    <path d="M-2.6,4 q0,-6.5 2.6,-6.5 q2.6,0 2.6,6.5 z"/>
+  </g><text x="17" y="37.760000000000005" text-anchor="middle" class="v3count">5</text><g transform="translate(-23.92,-16.56)">
+      <g transform="translate(0,0)" fill="#4caf7d" stroke="#10141a" stroke-width="0.7">
+    <circle cy="-4.5" r="2.2"/>
+    <path d="M-2.6,4 q0,-6.5 2.6,-6.5 q2.6,0 2.6,6.5 z"/>
+  </g>
+      <line x1="4.5" y1="4" x2="4.5" y2="-9" stroke="#8a6d3b" stroke-width="1.4"/>
+      <path d="M4.5,-9 L11,-6.5 L4.5,-4 Z" fill="#4caf7d"/>
+    </g><g transform="translate(20.7,-21.16)">
+      <circle r="8.5" fill="#00000055"/>
+      <g stroke="#e8d9a8" stroke-width="2" stroke-linecap="round"><line x1="-5.5" y1="-5.5" x2="5.5" y2="5.5"/><line x1="5.5" y1="-5.5" x2="-5.5" y2="5.5"/></g>
+      <circle cx="6" cy="-6" r="1.5" fill="#d9a441"/>
+    </g><g transform="translate(17.48,8.28) scale(0.75)" stroke="#2a2118" stroke-width="1.4">
+      <path d="M-13,4 h26 l-6,7 h-14 z" fill="#8a5c33"/>
+      <line x1="-1" y1="4" x2="-1" y2="-14"/>
+      <path d="M-1,-14 q10,3 10,12 h-10" fill="#e8ddc2"/>
+    </g></g>
+<g transform="translate(0,-79.67433714816835)"><polygon points="46.0,0.0 23.0,39.8 -23.0,39.8 -46.0,0.0 -23.0,-39.8 23.0,-39.8" fill="url(#g3-3f-mountain)" stroke="#1c1712" stroke-width="1.6"/><path d="M-18,4 L-9,-12 L-2,0 M-4,2 L6,-16 L16,4" fill="none" stroke="#4a4a54" stroke-width="2.4" stroke-linejoin="round"/>
+        <path d="M2,-9 L6,-16 L10,-9" fill="#e8e8ee" stroke="none"/><line x1="0" y1="0" x2="0.0" y2="40.0" stroke="#c2a06a" stroke-width="5" stroke-linecap="round"/><g transform="translate(23.92,-13.799999999999999) scale(0.9)" stroke="#2a2118" stroke-width="0.9">
+    <rect x="-4" y="-3" width="8" height="6" fill="#b8b8c2"/>
+    <path d="M-5,-3 L0,-7.5 L5,-3 Z" fill="#a34f35"/>
+  </g><g transform="translate(-2.5,25.76)" fill="#f07070" stroke="#10141a" stroke-width="0.7">
+    <circle cy="-4.5" r="2.2"/>
+    <path d="M-2.6,4 q0,-6.5 2.6,-6.5 q2.6,0 2.6,6.5 z"/>
+  </g><g transform="translate(2.5,25.76)" fill="#f07070" stroke="#10141a" stroke-width="0.7">
+    <circle cy="-4.5" r="2.2"/>
+    <path d="M-2.6,4 q0,-6.5 2.6,-6.5 q2.6,0 2.6,6.5 z"/>
+  </g><text x="0" y="37.760000000000005" text-anchor="middle" class="v3count">6</text><g transform="translate(-23.92,-16.56)">
+      <g transform="translate(0,0)" fill="#f07070" stroke="#10141a" stroke-width="0.7">
+    <circle cy="-4.5" r="2.2"/>
+    <path d="M-2.6,4 q0,-6.5 2.6,-6.5 q2.6,0 2.6,6.5 z"/>
+  </g>
+      <line x1="4.5" y1="4" x2="4.5" y2="-9" stroke="#8a6d3b" stroke-width="1.4"/>
+      <path d="M4.5,-9 L11,-6.5 L4.5,-4 Z" fill="#f07070"/>
+    </g><g transform="translate(20.7,-21.16)">
+      <circle r="8.5" fill="#00000055"/>
+      <g stroke="#e8d9a8" stroke-width="2" stroke-linecap="round"><line x1="-5.5" y1="-5.5" x2="5.5" y2="5.5"/><line x1="5.5" y1="-5.5" x2="-5.5" y2="5.5"/></g>
+      <circle cx="6" cy="-6" r="1.5" fill="#d9a441"/>
+    </g><g transform="translate(-14.72,14.72)">
+      <ellipse rx="8.5" ry="5" fill="#0d0a06" stroke="#2a2118" stroke-width="1.2"/>
+      <path d="M-2.5,-4.5 v9 M2.5,-4.5 v9 M-2.5,-1 h5 M-2.5,2 h5" stroke="#c2a06a" stroke-width="1.2"/>
+    </g><g transform="translate(13.799999999999999,12.88) scale(0.9)">
+      <path d="M-10,7 a10,10 0 0 1 20,0 z" fill="#14100a" stroke="#2a2118" stroke-width="1.4"/>
+      <circle cx="-3" cy="3.5" r="1.2" fill="#e8c95c"/><circle cx="3" cy="3.5" r="1.2" fill="#e8c95c"/>
+    </g><g transform="translate(27.599999999999998,-4)">
+      <path d="M-5,4 q-2,-8 3,-9 q6,-1 6,5 q0,4 -3,5 z" fill="#7d4a8c" stroke="#10141a" stroke-width="0.9"/>
+      <path d="M-2,-5 l-2,-4 M2,-5.5 l2.5,-3.5" stroke="#7d4a8c" stroke-width="1.6"/>
+      <circle cx="0" cy="-1" r="1.1" fill="#f0e2bd"/>
+    </g></g>
+<g transform="translate(69,-39.837168574084174)"><polygon points="46.0,0.0 23.0,39.8 -23.0,39.8 -46.0,0.0 -23.0,-39.8 23.0,-39.8" fill="url(#g3-3f-forest)" stroke="#1c1712" stroke-width="1.6"/><g transform="translate(-16,10)"><line y1="0" y2="-4" stroke="#3a2c1a" stroke-width="1.6"/><circle cy="-7" r="4.4" fill="#22452c"/></g><g transform="translate(18,12)"><line y1="0" y2="-4" stroke="#3a2c1a" stroke-width="1.6"/><circle cy="-7" r="4.4" fill="#22452c"/></g><g transform="translate(-4,20)"><line y1="0" y2="-4" stroke="#3a2c1a" stroke-width="1.6"/><circle cy="-7" r="4.4" fill="#22452c"/></g><line x1="0" y1="0" x2="-34.7" y2="-20.0" stroke="#c2a06a" stroke-width="5" stroke-linecap="round"/><g transform="translate(-6,-5) scale(1)" stroke="#2a2118" stroke-width="0.9">
+    <rect x="-4" y="-3" width="8" height="6" fill="#d9c9a3"/>
+    <path d="M-5,-3 L0,-7.5 L5,-3 Z" fill="#a34f35"/>
+  </g><g transform="translate(6,-7) scale(0.9)" stroke="#2a2118" stroke-width="0.9">
+    <rect x="-4" y="-3" width="8" height="6" fill="#d9c9a3"/>
+    <path d="M-5,-3 L0,-7.5 L5,-3 Z" fill="#a34f35"/>
+  </g><text y="-16" text-anchor="middle" class="v3name">Eda</text><g transform="translate(23.92,-13.799999999999999) scale(0.9)" stroke="#2a2118" stroke-width="0.9">
+    <rect x="-4" y="-3" width="8" height="6" fill="#b8b8c2"/>
+    <path d="M-5,-3 L0,-7.5 L5,-3 Z" fill="#a34f35"/>
+  </g><g transform="translate(-8.5,25.76)" fill="#4caf7d" stroke="#10141a" stroke-width="0.7">
+    <circle cy="-4.5" r="2.2"/>
+    <path d="M-2.6,4 q0,-6.5 2.6,-6.5 q2.6,0 2.6,6.5 z"/>
+  </g><text x="-8.5" y="37.760000000000005" text-anchor="middle" class="v3count">4</text><g transform="translate(8.5,25.76)" fill="#5ec8f0" stroke="#10141a" stroke-width="0.7">
+    <circle cy="-4.5" r="2.2"/>
+    <path d="M-2.6,4 q0,-6.5 2.6,-6.5 q2.6,0 2.6,6.5 z"/>
+  </g><text x="8.5" y="37.760000000000005" text-anchor="middle" class="v3count">2</text><g transform="translate(-23.92,-16.56)">
+      <g transform="translate(0,0)" fill="#4caf7d" stroke="#10141a" stroke-width="0.7">
+    <circle cy="-4.5" r="2.2"/>
+    <path d="M-2.6,4 q0,-6.5 2.6,-6.5 q2.6,0 2.6,6.5 z"/>
+  </g>
+      <line x1="4.5" y1="4" x2="4.5" y2="-9" stroke="#8a6d3b" stroke-width="1.4"/>
+      <path d="M4.5,-9 L11,-6.5 L4.5,-4 Z" fill="#4caf7d"/>
+    </g><g transform="translate(-25.76,-2) scale(0.9)">
+      <ellipse cy="10" rx="9" ry="2.5" fill="#8bd0f066"/>
+      <path d="M-7,10 v-8 a7,7 0 0 1 14,0 v8" fill="none" stroke="#8bd0f0" stroke-width="2.6"/>
+      <path d="M-4,10 v-7 a4,4 0 0 1 8,0 v7" fill="#8bd0f033" stroke="none"/>
+    </g></g>
+<g transform="translate(69,39.837168574084174)"><polygon points="46.0,0.0 23.0,39.8 -23.0,39.8 -46.0,0.0 -23.0,-39.8 23.0,-39.8" fill="url(#g3-3f-ocean)" stroke="#1c1712" stroke-width="1.6"/><path d="M-22,10 q4,-3 8,0 t8,0 M-6,18 q4,-3 8,0 t8,0" fill="none" stroke="#7fb2d9" stroke-width="1.4" stroke-linecap="round"/><g transform="translate(-8.5,25.76)" fill="#5ec8f0" stroke="#10141a" stroke-width="0.7">
+    <circle cy="-4.5" r="2.2"/>
+    <path d="M-2.6,4 q0,-6.5 2.6,-6.5 q2.6,0 2.6,6.5 z"/>
+  </g><text x="-8.5" y="37.760000000000005" text-anchor="middle" class="v3count">2</text><g transform="translate(8.5,25.76)" fill="#f07070" stroke="#10141a" stroke-width="0.7">
+    <circle cy="-4.5" r="2.2"/>
+    <path d="M-2.6,4 q0,-6.5 2.6,-6.5 q2.6,0 2.6,6.5 z"/>
+  </g><text x="8.5" y="37.760000000000005" text-anchor="middle" class="v3count">3</text><g transform="translate(20.7,-21.16)">
+      <circle r="8.5" fill="#00000055"/>
+      <g stroke="#e8d9a8" stroke-width="2" stroke-linecap="round"><line x1="-5.5" y1="-5.5" x2="5.5" y2="5.5"/><line x1="5.5" y1="-5.5" x2="-5.5" y2="5.5"/></g>
+      <circle cx="6" cy="-6" r="1.5" fill="#d9a441"/>
+    </g><g transform="translate(17.48,8.28) scale(0.75)" stroke="#2a2118" stroke-width="1.4">
+      <path d="M-13,4 h26 l-6,7 h-14 z" fill="#8a5c33"/>
+      <line x1="-1" y1="4" x2="-1" y2="-14"/>
+      <path d="M-1,-14 q10,3 10,12 h-10" fill="#e8ddc2"/>
+    </g></g>
+<g transform="translate(0,79.67433714816835)"><polygon points="46.0,0.0 23.0,39.8 -23.0,39.8 -46.0,0.0 -23.0,-39.8 23.0,-39.8" fill="url(#g3-3f-swamp)" stroke="#1c1712" stroke-width="1.6"/><g transform="translate(-16,10)"><line y1="0" y2="-4" stroke="#3a2c1a" stroke-width="1.6"/><circle cy="-7" r="4.4" fill="#22452c"/></g><g transform="translate(18,12)"><line y1="0" y2="-4" stroke="#3a2c1a" stroke-width="1.6"/><circle cy="-7" r="4.4" fill="#22452c"/></g><g transform="translate(-4,20)"><line y1="0" y2="-4" stroke="#3a2c1a" stroke-width="1.6"/><circle cy="-7" r="4.4" fill="#22452c"/></g><g transform="translate(0,25.76)" fill="#f07070" stroke="#10141a" stroke-width="0.7">
+    <circle cy="-4.5" r="2.2"/>
+    <path d="M-2.6,4 q0,-6.5 2.6,-6.5 q2.6,0 2.6,6.5 z"/>
+  </g><text x="0" y="37.760000000000005" text-anchor="middle" class="v3count">2</text><g transform="translate(-25.76,-2) scale(0.9)">
+      <ellipse cy="10" rx="9" ry="2.5" fill="#8bd0f066"/>
+      <path d="M-7,10 v-8 a7,7 0 0 1 14,0 v8" fill="none" stroke="#8bd0f0" stroke-width="2.6"/>
+      <path d="M-4,10 v-7 a4,4 0 0 1 8,0 v7" fill="#8bd0f033" stroke="none"/>
+    </g><g transform="translate(13.799999999999999,12.88) scale(0.9)">
+      <path d="M-10,7 a10,10 0 0 1 20,0 z" fill="#14100a" stroke="#2a2118" stroke-width="1.4"/>
+      <circle cx="-3" cy="3.5" r="1.2" fill="#e8c95c"/><circle cx="3" cy="3.5" r="1.2" fill="#e8c95c"/>
+    </g><g transform="translate(27.599999999999998,-4)">
+      <path d="M-5,4 q-2,-8 3,-9 q6,-1 6,5 q0,4 -3,5 z" fill="#7d4a8c" stroke="#10141a" stroke-width="0.9"/>
+      <path d="M-2,-5 l-2,-4 M2,-5.5 l2.5,-3.5" stroke="#7d4a8c" stroke-width="1.6"/>
+      <circle cx="0" cy="-1" r="1.1" fill="#f0e2bd"/>
+    </g></g>
+<g transform="translate(-69,39.837168574084174)"><polygon points="46.0,0.0 23.0,39.8 -23.0,39.8 -46.0,0.0 -23.0,-39.8 23.0,-39.8" fill="url(#g3-3f-desert)" stroke="#1c1712" stroke-width="1.6"/><g transform="translate(0,-6) scale(1)" stroke="#2a2118" stroke-width="0.9">
+    <rect x="-4" y="-3" width="8" height="6" fill="#d9c9a3"/>
+    <path d="M-5,-3 L0,-7.5 L5,-3 Z" fill="#a34f35"/>
+  </g><text y="-16" text-anchor="middle" class="v3name">Kel</text><g transform="translate(23.92,-13.799999999999999) scale(0.9)" stroke="#2a2118" stroke-width="0.9">
+    <rect x="-4" y="-3" width="8" height="6" fill="#b8b8c2"/>
+    <path d="M-5,-3 L0,-7.5 L5,-3 Z" fill="#a34f35"/>
+  </g><g transform="translate(0,25.76)" fill="#5ec8f0" stroke="#10141a" stroke-width="0.7">
+    <circle cy="-4.5" r="2.2"/>
+    <path d="M-2.6,4 q0,-6.5 2.6,-6.5 q2.6,0 2.6,6.5 z"/>
+  </g><text x="0" y="37.760000000000005" text-anchor="middle" class="v3count">4</text><g transform="translate(-14.72,14.72)">
+      <ellipse rx="8.5" ry="5" fill="#0d0a06" stroke="#2a2118" stroke-width="1.2"/>
+      <path d="M-2.5,-4.5 v9 M2.5,-4.5 v9 M-2.5,-1 h5 M-2.5,2 h5" stroke="#c2a06a" stroke-width="1.2"/>
+    </g></g>
+<g transform="translate(-69,-39.837168574084174)"><polygon points="46.0,0.0 23.0,39.8 -23.0,39.8 -46.0,0.0 -23.0,-39.8 23.0,-39.8" fill="url(#g3-3f-tundra)" stroke="#1c1712" stroke-width="1.6"/><g transform="translate(-6,-5) scale(1)" stroke="#2a2118" stroke-width="0.9">
+    <rect x="-4" y="-3" width="8" height="6" fill="#d9c9a3"/>
+    <path d="M-5,-3 L0,-7.5 L5,-3 Z" fill="#a34f35"/>
+  </g><g transform="translate(6,-7) scale(0.9)" stroke="#2a2118" stroke-width="0.9">
+    <rect x="-4" y="-3" width="8" height="6" fill="#d9c9a3"/>
+    <path d="M-5,-3 L0,-7.5 L5,-3 Z" fill="#a34f35"/>
+  </g><text y="-16" text-anchor="middle" class="v3name">Hut</text><g transform="translate(23.92,-13.799999999999999) scale(0.9)" stroke="#2a2118" stroke-width="0.9">
+    <rect x="-4" y="-3" width="8" height="6" fill="#b8b8c2"/>
+    <path d="M-5,-3 L0,-7.5 L5,-3 Z" fill="#a34f35"/>
+  </g><g transform="translate(0,25.76)" fill="#4caf7d" stroke="#10141a" stroke-width="0.7">
+    <circle cy="-4.5" r="2.2"/>
+    <path d="M-2.6,4 q0,-6.5 2.6,-6.5 q2.6,0 2.6,6.5 z"/>
+  </g><text x="0" y="37.760000000000005" text-anchor="middle" class="v3count">1</text><polygon points="46.0,0.0 23.0,39.8 -23.0,39.8 -46.0,0.0 -23.0,-39.8 23.0,-39.8" fill="#9a958a" opacity="0.5"/></g></svg></div><figcaption>Flat colour</figcaption></figure>
+    <figure><div class="stage"><svg viewBox="-129 -142 258 271" role="img"><defs><pattern id="tx-3t-plain" patternUnits="objectBoundingBox" patternContentUnits="objectBoundingBox" width="1" height="1">
+        <image href="../../config/public/biomes/plain_512.png" x="0" y="0" width="1" height="1" preserveAspectRatio="xMidYMid slice"/>
+      </pattern><pattern id="tx-3t-mountain" patternUnits="objectBoundingBox" patternContentUnits="objectBoundingBox" width="1" height="1">
+        <image href="../../config/public/biomes/mountain_512.png" x="0" y="0" width="1" height="1" preserveAspectRatio="xMidYMid slice"/>
+      </pattern><pattern id="tx-3t-forest" patternUnits="objectBoundingBox" patternContentUnits="objectBoundingBox" width="1" height="1">
+        <image href="../../config/public/biomes/forest_512.png" x="0" y="0" width="1" height="1" preserveAspectRatio="xMidYMid slice"/>
+      </pattern><pattern id="tx-3t-ocean" patternUnits="objectBoundingBox" patternContentUnits="objectBoundingBox" width="1" height="1">
+        <image href="../../config/public/biomes/ocean_512.png" x="0" y="0" width="1" height="1" preserveAspectRatio="xMidYMid slice"/>
+      </pattern><pattern id="tx-3t-swamp" patternUnits="objectBoundingBox" patternContentUnits="objectBoundingBox" width="1" height="1">
+        <image href="../../config/public/biomes/swamp_512.png" x="0" y="0" width="1" height="1" preserveAspectRatio="xMidYMid slice"/>
+      </pattern><pattern id="tx-3t-desert" patternUnits="objectBoundingBox" patternContentUnits="objectBoundingBox" width="1" height="1">
+        <image href="../../config/public/biomes/desert_512.png" x="0" y="0" width="1" height="1" preserveAspectRatio="xMidYMid slice"/>
+      </pattern><pattern id="tx-3t-tundra" patternUnits="objectBoundingBox" patternContentUnits="objectBoundingBox" width="1" height="1">
+        <image href="../../config/public/biomes/tundra_512.png" x="0" y="0" width="1" height="1" preserveAspectRatio="xMidYMid slice"/>
+      </pattern></defs><g transform="translate(0,0)"><polygon points="46.0,0.0 23.0,39.8 -23.0,39.8 -46.0,0.0 -23.0,-39.8 23.0,-39.8" fill="url(#tx-3t-plain)" stroke="#1c1712" stroke-width="1.6"/><line x1="0" y1="0" x2="0.0" y2="-40.0" stroke="#c2a06a" stroke-width="5" stroke-linecap="round"/><line x1="0" y1="0" x2="34.7" y2="20.0" stroke="#c2a06a" stroke-width="5" stroke-linecap="round"/><circle cy="-2" r="15" fill="#00000022"/><g transform="translate(-9,-5) scale(1)" stroke="#2a2118" stroke-width="0.9">
+    <rect x="-4" y="-3" width="8" height="6" fill="#d9c9a3"/>
+    <path d="M-5,-3 L0,-7.5 L5,-3 Z" fill="#a34f35"/>
+  </g><g transform="translate(0,-11) scale(1.1)" stroke="#2a2118" stroke-width="0.9">
+    <rect x="-4" y="-3" width="8" height="6" fill="#d9c9a3"/>
+    <path d="M-5,-3 L0,-7.5 L5,-3 Z" fill="#a34f35"/>
+  </g><g transform="translate(9,-5) scale(1)" stroke="#2a2118" stroke-width="0.9">
+    <rect x="-4" y="-3" width="8" height="6" fill="#d9c9a3"/>
+    <path d="M-5,-3 L0,-7.5 L5,-3 Z" fill="#a34f35"/>
+  </g><g transform="translate(0,-1) scale(0.9)" stroke="#2a2118" stroke-width="0.9">
+    <rect x="-4" y="-3" width="8" height="6" fill="#d9c9a3"/>
+    <path d="M-5,-3 L0,-7.5 L5,-3 Z" fill="#a34f35"/>
+  </g><g transform="translate(-8,-12) scale(0.8)" stroke="#2a2118" stroke-width="0.9">
+    <rect x="-4" y="-3" width="8" height="6" fill="#d9c9a3"/>
+    <path d="M-5,-3 L0,-7.5 L5,-3 Z" fill="#a34f35"/>
+  </g><g transform="translate(8,-12) scale(0.8)" stroke="#2a2118" stroke-width="0.9">
+    <rect x="-4" y="-3" width="8" height="6" fill="#d9c9a3"/>
+    <path d="M-5,-3 L0,-7.5 L5,-3 Z" fill="#a34f35"/>
+  </g><text y="-22" text-anchor="middle" class="v3name">Marn</text><g transform="translate(23.92,-13.799999999999999) scale(0.9)" stroke="#2a2118" stroke-width="0.9">
+    <rect x="-4" y="-3" width="8" height="6" fill="#b8b8c2"/>
+    <path d="M-5,-3 L0,-7.5 L5,-3 Z" fill="#a34f35"/>
+  </g><g transform="translate(28.52,-6.44) scale(0.8)" stroke="#2a2118" stroke-width="0.9">
+    <rect x="-4" y="-3" width="8" height="6" fill="#b8b8c2"/>
+    <path d="M-5,-3 L0,-7.5 L5,-3 Z" fill="#a34f35"/>
+  </g><g transform="translate(-22,25.76)" fill="#4caf7d" stroke="#10141a" stroke-width="0.7">
+    <circle cy="-4.5" r="2.2"/>
+    <path d="M-2.6,4 q0,-6.5 2.6,-6.5 q2.6,0 2.6,6.5 z"/>
+  </g><g transform="translate(-17,25.76)" fill="#4caf7d" stroke="#10141a" stroke-width="0.7">
+    <circle cy="-4.5" r="2.2"/>
+    <path d="M-2.6,4 q0,-6.5 2.6,-6.5 q2.6,0 2.6,6.5 z"/>
+  </g><g transform="translate(-12,25.76)" fill="#4caf7d" stroke="#10141a" stroke-width="0.7">
+    <circle cy="-4.5" r="2.2"/>
+    <path d="M-2.6,4 q0,-6.5 2.6,-6.5 q2.6,0 2.6,6.5 z"/>
+  </g><text x="-17" y="37.760000000000005" text-anchor="middle" class="v3count">12</text><g transform="translate(0,25.76)" fill="#5ec8f0" stroke="#10141a" stroke-width="0.7">
+    <circle cy="-4.5" r="2.2"/>
+    <path d="M-2.6,4 q0,-6.5 2.6,-6.5 q2.6,0 2.6,6.5 z"/>
+  </g><text x="0" y="37.760000000000005" text-anchor="middle" class="v3count">3</text><g transform="translate(14.5,25.76)" fill="#f07070" stroke="#10141a" stroke-width="0.7">
+    <circle cy="-4.5" r="2.2"/>
+    <path d="M-2.6,4 q0,-6.5 2.6,-6.5 q2.6,0 2.6,6.5 z"/>
+  </g><g transform="translate(19.5,25.76)" fill="#f07070" stroke="#10141a" stroke-width="0.7">
+    <circle cy="-4.5" r="2.2"/>
+    <path d="M-2.6,4 q0,-6.5 2.6,-6.5 q2.6,0 2.6,6.5 z"/>
+  </g><text x="17" y="37.760000000000005" text-anchor="middle" class="v3count">5</text><g transform="translate(-23.92,-16.56)">
+      <g transform="translate(0,0)" fill="#4caf7d" stroke="#10141a" stroke-width="0.7">
+    <circle cy="-4.5" r="2.2"/>
+    <path d="M-2.6,4 q0,-6.5 2.6,-6.5 q2.6,0 2.6,6.5 z"/>
+  </g>
+      <line x1="4.5" y1="4" x2="4.5" y2="-9" stroke="#8a6d3b" stroke-width="1.4"/>
+      <path d="M4.5,-9 L11,-6.5 L4.5,-4 Z" fill="#4caf7d"/>
+    </g><g transform="translate(20.7,-21.16)">
+      <circle r="8.5" fill="#00000055"/>
+      <g stroke="#e8d9a8" stroke-width="2" stroke-linecap="round"><line x1="-5.5" y1="-5.5" x2="5.5" y2="5.5"/><line x1="5.5" y1="-5.5" x2="-5.5" y2="5.5"/></g>
+      <circle cx="6" cy="-6" r="1.5" fill="#d9a441"/>
+    </g><g transform="translate(17.48,8.28) scale(0.75)" stroke="#2a2118" stroke-width="1.4">
+      <path d="M-13,4 h26 l-6,7 h-14 z" fill="#8a5c33"/>
+      <line x1="-1" y1="4" x2="-1" y2="-14"/>
+      <path d="M-1,-14 q10,3 10,12 h-10" fill="#e8ddc2"/>
+    </g></g>
+<g transform="translate(0,-79.67433714816835)"><polygon points="46.0,0.0 23.0,39.8 -23.0,39.8 -46.0,0.0 -23.0,-39.8 23.0,-39.8" fill="url(#tx-3t-mountain)" stroke="#1c1712" stroke-width="1.6"/><line x1="0" y1="0" x2="0.0" y2="40.0" stroke="#c2a06a" stroke-width="5" stroke-linecap="round"/><g transform="translate(23.92,-13.799999999999999) scale(0.9)" stroke="#2a2118" stroke-width="0.9">
+    <rect x="-4" y="-3" width="8" height="6" fill="#b8b8c2"/>
+    <path d="M-5,-3 L0,-7.5 L5,-3 Z" fill="#a34f35"/>
+  </g><g transform="translate(-2.5,25.76)" fill="#f07070" stroke="#10141a" stroke-width="0.7">
+    <circle cy="-4.5" r="2.2"/>
+    <path d="M-2.6,4 q0,-6.5 2.6,-6.5 q2.6,0 2.6,6.5 z"/>
+  </g><g transform="translate(2.5,25.76)" fill="#f07070" stroke="#10141a" stroke-width="0.7">
+    <circle cy="-4.5" r="2.2"/>
+    <path d="M-2.6,4 q0,-6.5 2.6,-6.5 q2.6,0 2.6,6.5 z"/>
+  </g><text x="0" y="37.760000000000005" text-anchor="middle" class="v3count">6</text><g transform="translate(-23.92,-16.56)">
+      <g transform="translate(0,0)" fill="#f07070" stroke="#10141a" stroke-width="0.7">
+    <circle cy="-4.5" r="2.2"/>
+    <path d="M-2.6,4 q0,-6.5 2.6,-6.5 q2.6,0 2.6,6.5 z"/>
+  </g>
+      <line x1="4.5" y1="4" x2="4.5" y2="-9" stroke="#8a6d3b" stroke-width="1.4"/>
+      <path d="M4.5,-9 L11,-6.5 L4.5,-4 Z" fill="#f07070"/>
+    </g><g transform="translate(20.7,-21.16)">
+      <circle r="8.5" fill="#00000055"/>
+      <g stroke="#e8d9a8" stroke-width="2" stroke-linecap="round"><line x1="-5.5" y1="-5.5" x2="5.5" y2="5.5"/><line x1="5.5" y1="-5.5" x2="-5.5" y2="5.5"/></g>
+      <circle cx="6" cy="-6" r="1.5" fill="#d9a441"/>
+    </g><g transform="translate(-14.72,14.72)">
+      <ellipse rx="8.5" ry="5" fill="#0d0a06" stroke="#2a2118" stroke-width="1.2"/>
+      <path d="M-2.5,-4.5 v9 M2.5,-4.5 v9 M-2.5,-1 h5 M-2.5,2 h5" stroke="#c2a06a" stroke-width="1.2"/>
+    </g><g transform="translate(13.799999999999999,12.88) scale(0.9)">
+      <path d="M-10,7 a10,10 0 0 1 20,0 z" fill="#14100a" stroke="#2a2118" stroke-width="1.4"/>
+      <circle cx="-3" cy="3.5" r="1.2" fill="#e8c95c"/><circle cx="3" cy="3.5" r="1.2" fill="#e8c95c"/>
+    </g><g transform="translate(27.599999999999998,-4)">
+      <path d="M-5,4 q-2,-8 3,-9 q6,-1 6,5 q0,4 -3,5 z" fill="#7d4a8c" stroke="#10141a" stroke-width="0.9"/>
+      <path d="M-2,-5 l-2,-4 M2,-5.5 l2.5,-3.5" stroke="#7d4a8c" stroke-width="1.6"/>
+      <circle cx="0" cy="-1" r="1.1" fill="#f0e2bd"/>
+    </g></g>
+<g transform="translate(69,-39.837168574084174)"><polygon points="46.0,0.0 23.0,39.8 -23.0,39.8 -46.0,0.0 -23.0,-39.8 23.0,-39.8" fill="url(#tx-3t-forest)" stroke="#1c1712" stroke-width="1.6"/><line x1="0" y1="0" x2="-34.7" y2="-20.0" stroke="#c2a06a" stroke-width="5" stroke-linecap="round"/><g transform="translate(-6,-5) scale(1)" stroke="#2a2118" stroke-width="0.9">
+    <rect x="-4" y="-3" width="8" height="6" fill="#d9c9a3"/>
+    <path d="M-5,-3 L0,-7.5 L5,-3 Z" fill="#a34f35"/>
+  </g><g transform="translate(6,-7) scale(0.9)" stroke="#2a2118" stroke-width="0.9">
+    <rect x="-4" y="-3" width="8" height="6" fill="#d9c9a3"/>
+    <path d="M-5,-3 L0,-7.5 L5,-3 Z" fill="#a34f35"/>
+  </g><text y="-16" text-anchor="middle" class="v3name">Eda</text><g transform="translate(23.92,-13.799999999999999) scale(0.9)" stroke="#2a2118" stroke-width="0.9">
+    <rect x="-4" y="-3" width="8" height="6" fill="#b8b8c2"/>
+    <path d="M-5,-3 L0,-7.5 L5,-3 Z" fill="#a34f35"/>
+  </g><g transform="translate(-8.5,25.76)" fill="#4caf7d" stroke="#10141a" stroke-width="0.7">
+    <circle cy="-4.5" r="2.2"/>
+    <path d="M-2.6,4 q0,-6.5 2.6,-6.5 q2.6,0 2.6,6.5 z"/>
+  </g><text x="-8.5" y="37.760000000000005" text-anchor="middle" class="v3count">4</text><g transform="translate(8.5,25.76)" fill="#5ec8f0" stroke="#10141a" stroke-width="0.7">
+    <circle cy="-4.5" r="2.2"/>
+    <path d="M-2.6,4 q0,-6.5 2.6,-6.5 q2.6,0 2.6,6.5 z"/>
+  </g><text x="8.5" y="37.760000000000005" text-anchor="middle" class="v3count">2</text><g transform="translate(-23.92,-16.56)">
+      <g transform="translate(0,0)" fill="#4caf7d" stroke="#10141a" stroke-width="0.7">
+    <circle cy="-4.5" r="2.2"/>
+    <path d="M-2.6,4 q0,-6.5 2.6,-6.5 q2.6,0 2.6,6.5 z"/>
+  </g>
+      <line x1="4.5" y1="4" x2="4.5" y2="-9" stroke="#8a6d3b" stroke-width="1.4"/>
+      <path d="M4.5,-9 L11,-6.5 L4.5,-4 Z" fill="#4caf7d"/>
+    </g><g transform="translate(-25.76,-2) scale(0.9)">
+      <ellipse cy="10" rx="9" ry="2.5" fill="#8bd0f066"/>
+      <path d="M-7,10 v-8 a7,7 0 0 1 14,0 v8" fill="none" stroke="#8bd0f0" stroke-width="2.6"/>
+      <path d="M-4,10 v-7 a4,4 0 0 1 8,0 v7" fill="#8bd0f033" stroke="none"/>
+    </g></g>
+<g transform="translate(69,39.837168574084174)"><polygon points="46.0,0.0 23.0,39.8 -23.0,39.8 -46.0,0.0 -23.0,-39.8 23.0,-39.8" fill="url(#tx-3t-ocean)" stroke="#1c1712" stroke-width="1.6"/><g transform="translate(-8.5,25.76)" fill="#5ec8f0" stroke="#10141a" stroke-width="0.7">
+    <circle cy="-4.5" r="2.2"/>
+    <path d="M-2.6,4 q0,-6.5 2.6,-6.5 q2.6,0 2.6,6.5 z"/>
+  </g><text x="-8.5" y="37.760000000000005" text-anchor="middle" class="v3count">2</text><g transform="translate(8.5,25.76)" fill="#f07070" stroke="#10141a" stroke-width="0.7">
+    <circle cy="-4.5" r="2.2"/>
+    <path d="M-2.6,4 q0,-6.5 2.6,-6.5 q2.6,0 2.6,6.5 z"/>
+  </g><text x="8.5" y="37.760000000000005" text-anchor="middle" class="v3count">3</text><g transform="translate(20.7,-21.16)">
+      <circle r="8.5" fill="#00000055"/>
+      <g stroke="#e8d9a8" stroke-width="2" stroke-linecap="round"><line x1="-5.5" y1="-5.5" x2="5.5" y2="5.5"/><line x1="5.5" y1="-5.5" x2="-5.5" y2="5.5"/></g>
+      <circle cx="6" cy="-6" r="1.5" fill="#d9a441"/>
+    </g><g transform="translate(17.48,8.28) scale(0.75)" stroke="#2a2118" stroke-width="1.4">
+      <path d="M-13,4 h26 l-6,7 h-14 z" fill="#8a5c33"/>
+      <line x1="-1" y1="4" x2="-1" y2="-14"/>
+      <path d="M-1,-14 q10,3 10,12 h-10" fill="#e8ddc2"/>
+    </g></g>
+<g transform="translate(0,79.67433714816835)"><polygon points="46.0,0.0 23.0,39.8 -23.0,39.8 -46.0,0.0 -23.0,-39.8 23.0,-39.8" fill="url(#tx-3t-swamp)" stroke="#1c1712" stroke-width="1.6"/><g transform="translate(0,25.76)" fill="#f07070" stroke="#10141a" stroke-width="0.7">
+    <circle cy="-4.5" r="2.2"/>
+    <path d="M-2.6,4 q0,-6.5 2.6,-6.5 q2.6,0 2.6,6.5 z"/>
+  </g><text x="0" y="37.760000000000005" text-anchor="middle" class="v3count">2</text><g transform="translate(-25.76,-2) scale(0.9)">
+      <ellipse cy="10" rx="9" ry="2.5" fill="#8bd0f066"/>
+      <path d="M-7,10 v-8 a7,7 0 0 1 14,0 v8" fill="none" stroke="#8bd0f0" stroke-width="2.6"/>
+      <path d="M-4,10 v-7 a4,4 0 0 1 8,0 v7" fill="#8bd0f033" stroke="none"/>
+    </g><g transform="translate(13.799999999999999,12.88) scale(0.9)">
+      <path d="M-10,7 a10,10 0 0 1 20,0 z" fill="#14100a" stroke="#2a2118" stroke-width="1.4"/>
+      <circle cx="-3" cy="3.5" r="1.2" fill="#e8c95c"/><circle cx="3" cy="3.5" r="1.2" fill="#e8c95c"/>
+    </g><g transform="translate(27.599999999999998,-4)">
+      <path d="M-5,4 q-2,-8 3,-9 q6,-1 6,5 q0,4 -3,5 z" fill="#7d4a8c" stroke="#10141a" stroke-width="0.9"/>
+      <path d="M-2,-5 l-2,-4 M2,-5.5 l2.5,-3.5" stroke="#7d4a8c" stroke-width="1.6"/>
+      <circle cx="0" cy="-1" r="1.1" fill="#f0e2bd"/>
+    </g></g>
+<g transform="translate(-69,39.837168574084174)"><polygon points="46.0,0.0 23.0,39.8 -23.0,39.8 -46.0,0.0 -23.0,-39.8 23.0,-39.8" fill="url(#tx-3t-desert)" stroke="#1c1712" stroke-width="1.6"/><g transform="translate(0,-6) scale(1)" stroke="#2a2118" stroke-width="0.9">
+    <rect x="-4" y="-3" width="8" height="6" fill="#d9c9a3"/>
+    <path d="M-5,-3 L0,-7.5 L5,-3 Z" fill="#a34f35"/>
+  </g><text y="-16" text-anchor="middle" class="v3name">Kel</text><g transform="translate(23.92,-13.799999999999999) scale(0.9)" stroke="#2a2118" stroke-width="0.9">
+    <rect x="-4" y="-3" width="8" height="6" fill="#b8b8c2"/>
+    <path d="M-5,-3 L0,-7.5 L5,-3 Z" fill="#a34f35"/>
+  </g><g transform="translate(0,25.76)" fill="#5ec8f0" stroke="#10141a" stroke-width="0.7">
+    <circle cy="-4.5" r="2.2"/>
+    <path d="M-2.6,4 q0,-6.5 2.6,-6.5 q2.6,0 2.6,6.5 z"/>
+  </g><text x="0" y="37.760000000000005" text-anchor="middle" class="v3count">4</text><g transform="translate(-14.72,14.72)">
+      <ellipse rx="8.5" ry="5" fill="#0d0a06" stroke="#2a2118" stroke-width="1.2"/>
+      <path d="M-2.5,-4.5 v9 M2.5,-4.5 v9 M-2.5,-1 h5 M-2.5,2 h5" stroke="#c2a06a" stroke-width="1.2"/>
+    </g></g>
+<g transform="translate(-69,-39.837168574084174)"><polygon points="46.0,0.0 23.0,39.8 -23.0,39.8 -46.0,0.0 -23.0,-39.8 23.0,-39.8" fill="url(#tx-3t-tundra)" stroke="#1c1712" stroke-width="1.6"/><g transform="translate(-6,-5) scale(1)" stroke="#2a2118" stroke-width="0.9">
+    <rect x="-4" y="-3" width="8" height="6" fill="#d9c9a3"/>
+    <path d="M-5,-3 L0,-7.5 L5,-3 Z" fill="#a34f35"/>
+  </g><g transform="translate(6,-7) scale(0.9)" stroke="#2a2118" stroke-width="0.9">
+    <rect x="-4" y="-3" width="8" height="6" fill="#d9c9a3"/>
+    <path d="M-5,-3 L0,-7.5 L5,-3 Z" fill="#a34f35"/>
+  </g><text y="-16" text-anchor="middle" class="v3name">Hut</text><g transform="translate(23.92,-13.799999999999999) scale(0.9)" stroke="#2a2118" stroke-width="0.9">
+    <rect x="-4" y="-3" width="8" height="6" fill="#b8b8c2"/>
+    <path d="M-5,-3 L0,-7.5 L5,-3 Z" fill="#a34f35"/>
+  </g><g transform="translate(0,25.76)" fill="#4caf7d" stroke="#10141a" stroke-width="0.7">
+    <circle cy="-4.5" r="2.2"/>
+    <path d="M-2.6,4 q0,-6.5 2.6,-6.5 q2.6,0 2.6,6.5 z"/>
+  </g><text x="0" y="37.760000000000005" text-anchor="middle" class="v3count">1</text><polygon points="46.0,0.0 23.0,39.8 -23.0,39.8 -46.0,0.0 -23.0,-39.8 23.0,-39.8" fill="#9a958a" opacity="0.5"/></g></svg></div><figcaption>Biome textures</figcaption></figure>
+  </div>
+  <ul class="notes">
+    <li>Most legible at a glance for new players &mdash; things look like what they are.</li>
+    <li>A congested hex reads as a rich scene rather than a pile of icons; density becomes flavour.</li>
+    <li>The style most flattered by the biome textures &mdash; diorama ground under diorama pieces.</li>
+    <li class="con">Most drawing work per hex, and the scene composition rules are the most delicate to maintain.</li>
+    <li class="con">Illustrations resist screen-constant scaling; needs per-band simplified forms.</li>
+  </ul>
+</section>
+
+<section class="card">
+  <h2><em>04</em>Emblem &amp; Dots</h2>
+  <p class="concept">Built on the premise that everything can be present at once: however
+  much a hex holds, it shows one large medallion emblem &mdash; its most important fact by fixed
+  priority (battle, then settlement, gate, shaft, lair, ship) &mdash; and every other feature
+  drops into small coloured dots, up to two tidy rows along the bottom edge. Units are one
+  proportional bar with a total &mdash; length is head-count, colour split is attitude. Guard is
+  an inner perimeter; staleness dims the hex and dashes its rim. The congested city hex and
+  the empty plain differ only in how many dots the row carries.</p>
+  <div class="pair">
+    <figure><div class="stage"><svg viewBox="-129 -142 258 271" role="img"><g transform="translate(0,0)"><polygon points="46.0,0.0 23.0,39.8 -23.0,39.8 -46.0,0.0 -23.0,-39.8 23.0,-39.8" fill="#6e6738" stroke="#141a22" stroke-width="1.6"/><line x1="0" y1="0" x2="0.0" y2="-40.0" stroke="#c8c2b4" stroke-width="3.4" stroke-linecap="round" opacity="0.85"/><line x1="0" y1="0" x2="34.7" y2="20.0" stroke="#c8c2b4" stroke-width="3.4" stroke-linecap="round" opacity="0.85"/><polygon points="39.6,0.0 19.8,34.3 -19.8,34.3 -39.6,0.0 -19.8,-34.3 19.8,-34.3" fill="none" stroke="#4caf7d" stroke-width="1.8"/><g transform="translate(0,-8)">
+      <circle r="14" fill="#0d1117" stroke="#3c4654" stroke-width="1.2"/>
+      <g stroke="#d9a441" stroke-width="2.4" stroke-linecap="round">
+    <line x1="-6" y1="-6" x2="6" y2="6"/><line x1="6" y1="-6" x2="-6" y2="6"/>
+    <line x1="-5.5" y1="2.5" x2="-2" y2="6" stroke-width="1.6"/><line x1="5.5" y1="2.5" x2="2" y2="6" stroke-width="1.6"/>
+  </g>
+    </g><text y="-28" text-anchor="middle" class="v4name">Marn</text><rect x="-16" y="15.559999999999999" width="32" height="7" rx="2" fill="#0d1117"/><rect x="-15.0" y="16.56" width="18.0" height="5" fill="#4caf7d"/><rect x="3.0" y="16.56" width="4.5" height="5" fill="#5ec8f0"/><rect x="7.5" y="16.56" width="7.5" height="5" fill="#f07070"/><text x="19" y="22.06" text-anchor="start" class="v4count">20</text><g transform="translate(-9,26.68)"><rect x="-2.6" y="-2.6" width="5.2" height="5.2" fill="#f0e2bd"/></g><g transform="translate(0,26.68)"><circle r="2.7" fill="#8bd0f0"/></g><g transform="translate(9,26.68)"><circle r="2.7" fill="#c8c2b4"/></g></g>
+<g transform="translate(0,-79.67433714816835)"><polygon points="46.0,0.0 23.0,39.8 -23.0,39.8 -46.0,0.0 -23.0,-39.8 23.0,-39.8" fill="#54545e" stroke="#141a22" stroke-width="1.6"/><line x1="0" y1="0" x2="0.0" y2="40.0" stroke="#c8c2b4" stroke-width="3.4" stroke-linecap="round" opacity="0.85"/><polygon points="39.6,0.0 19.8,34.3 -19.8,34.3 -39.6,0.0 -19.8,-34.3 19.8,-34.3" fill="none" stroke="#f07070" stroke-width="1.8"/><g transform="translate(0,-8)">
+      <circle r="14" fill="#0d1117" stroke="#3c4654" stroke-width="1.2"/>
+      <g stroke="#d9a441" stroke-width="2.4" stroke-linecap="round">
+    <line x1="-6" y1="-6" x2="6" y2="6"/><line x1="6" y1="-6" x2="-6" y2="6"/>
+    <line x1="-5.5" y1="2.5" x2="-2" y2="6" stroke-width="1.6"/><line x1="5.5" y1="2.5" x2="2" y2="6" stroke-width="1.6"/>
+  </g>
+    </g><rect x="-16" y="15.559999999999999" width="32" height="7" rx="2" fill="#0d1117"/><rect x="-15.0" y="16.56" width="30.0" height="5" fill="#f07070"/><text x="19" y="22.06" text-anchor="start" class="v4count">6</text><g transform="translate(-13.5,26.68)"><circle r="2.7" fill="#e0c98c"/></g><g transform="translate(-4.5,26.68)"><circle r="2.7" fill="#f07070"/></g><g transform="translate(4.5,26.68)"><rect x="-2.6" y="-2.6" width="5.2" height="5.2" transform="rotate(45)" fill="#f07070"/></g><g transform="translate(13.5,26.68)"><circle r="2.7" fill="#c8c2b4"/></g></g>
+<g transform="translate(69,-39.837168574084174)"><polygon points="46.0,0.0 23.0,39.8 -23.0,39.8 -46.0,0.0 -23.0,-39.8 23.0,-39.8" fill="#31543a" stroke="#141a22" stroke-width="1.6"/><line x1="0" y1="0" x2="-34.7" y2="-20.0" stroke="#c8c2b4" stroke-width="3.4" stroke-linecap="round" opacity="0.85"/><polygon points="39.6,0.0 19.8,34.3 -19.8,34.3 -39.6,0.0 -19.8,-34.3 19.8,-34.3" fill="none" stroke="#4caf7d" stroke-width="1.8"/><g transform="translate(0,-8)">
+      <circle r="14" fill="#0d1117" stroke="#3c4654" stroke-width="1.2"/>
+      <g fill="#f0e2bd"><rect x="-7" y="-2" width="14" height="7"/>
+    <rect x="-8.5" y="-7" width="4" height="12"/><rect x="4.5" y="-7" width="4" height="12"/>
+    <rect x="-2" y="-9" width="4" height="14"/></g>
+    </g><g fill="#f0e2bd"><circle cx="-3" cy="9" r="1.8"/><circle cx="3" cy="9" r="1.8"/></g><text y="-28" text-anchor="middle" class="v4name">Eda</text><rect x="-16" y="15.559999999999999" width="32" height="7" rx="2" fill="#0d1117"/><rect x="-15.0" y="16.56" width="20.0" height="5" fill="#4caf7d"/><rect x="5.0" y="16.56" width="10.0" height="5" fill="#5ec8f0"/><text x="19" y="22.06" text-anchor="start" class="v4count">6</text><g transform="translate(-4.5,26.68)"><rect x="-2.6" y="-2.6" width="5.2" height="5.2" transform="rotate(45)" fill="#b48ce0"/></g><g transform="translate(4.5,26.68)"><circle r="2.7" fill="#c8c2b4"/></g></g>
+<g transform="translate(69,39.837168574084174)"><polygon points="46.0,0.0 23.0,39.8 -23.0,39.8 -46.0,0.0 -23.0,-39.8 23.0,-39.8" fill="#20415e" stroke="#141a22" stroke-width="1.6"/><g transform="translate(0,-8)">
+      <circle r="14" fill="#0d1117" stroke="#3c4654" stroke-width="1.2"/>
+      <g stroke="#d9a441" stroke-width="2.4" stroke-linecap="round">
+    <line x1="-6" y1="-6" x2="6" y2="6"/><line x1="6" y1="-6" x2="-6" y2="6"/>
+    <line x1="-5.5" y1="2.5" x2="-2" y2="6" stroke-width="1.6"/><line x1="5.5" y1="2.5" x2="2" y2="6" stroke-width="1.6"/>
+  </g>
+    </g><rect x="-16" y="15.559999999999999" width="32" height="7" rx="2" fill="#0d1117"/><rect x="-15.0" y="16.56" width="12.0" height="5" fill="#5ec8f0"/><rect x="-3.0" y="16.56" width="18.0" height="5" fill="#f07070"/><text x="19" y="22.06" text-anchor="start" class="v4count">5</text><g transform="translate(0,26.68)"><circle r="2.7" fill="#8bd0f0"/></g></g>
+<g transform="translate(0,79.67433714816835)"><polygon points="46.0,0.0 23.0,39.8 -23.0,39.8 -46.0,0.0 -23.0,-39.8 23.0,-39.8" fill="#46532f" stroke="#141a22" stroke-width="1.6"/><g transform="translate(0,-8)">
+      <circle r="14" fill="#0d1117" stroke="#3c4654" stroke-width="1.2"/>
+      <path d="M-6,7 v-7 a6,6 0 0 1 12,0 v7 M-8.5,7 h17" fill="none" stroke="#b48ce0" stroke-width="2.4"/>
+    </g><rect x="-16" y="15.559999999999999" width="32" height="7" rx="2" fill="#0d1117"/><rect x="-15.0" y="16.56" width="30.0" height="5" fill="#f07070"/><text x="19" y="22.06" text-anchor="start" class="v4count">2</text><g transform="translate(-4.5,26.68)"><circle r="2.7" fill="#f07070"/></g><g transform="translate(4.5,26.68)"><rect x="-2.6" y="-2.6" width="5.2" height="5.2" transform="rotate(45)" fill="#f07070"/></g></g>
+<g transform="translate(-69,39.837168574084174)"><polygon points="46.0,0.0 23.0,39.8 -23.0,39.8 -46.0,0.0 -23.0,-39.8 23.0,-39.8" fill="#7d6a3e" stroke="#141a22" stroke-width="1.6"/><g transform="translate(0,-8)">
+      <circle r="14" fill="#0d1117" stroke="#3c4654" stroke-width="1.2"/>
+      <g fill="#f0e2bd"><rect x="-7" y="-2" width="14" height="7"/>
+    <rect x="-8.5" y="-7" width="4" height="12"/><rect x="4.5" y="-7" width="4" height="12"/>
+    <rect x="-2" y="-9" width="4" height="14"/></g>
+    </g><g fill="#f0e2bd"><circle cx="0" cy="9" r="1.8"/></g><text y="-28" text-anchor="middle" class="v4name">Kel</text><rect x="-16" y="15.559999999999999" width="32" height="7" rx="2" fill="#0d1117"/><rect x="-15.0" y="16.56" width="30.0" height="5" fill="#5ec8f0"/><text x="19" y="22.06" text-anchor="start" class="v4count">4</text><g transform="translate(-4.5,26.68)"><circle r="2.7" fill="#e0c98c"/></g><g transform="translate(4.5,26.68)"><circle r="2.7" fill="#c8c2b4"/></g></g>
+<g transform="translate(-69,-39.837168574084174)"><polygon points="46.0,0.0 23.0,39.8 -23.0,39.8 -46.0,0.0 -23.0,-39.8 23.0,-39.8" fill="#5b6b71" stroke="#141a22" stroke-width="1.6"/><g transform="translate(0,-8)">
+      <circle r="14" fill="#0d1117" stroke="#3c4654" stroke-width="1.2"/>
+      <g fill="#f0e2bd"><rect x="-7" y="-2" width="14" height="7"/>
+    <rect x="-8.5" y="-7" width="4" height="12"/><rect x="4.5" y="-7" width="4" height="12"/>
+    <rect x="-2" y="-9" width="4" height="14"/></g>
+    </g><g fill="#f0e2bd"><circle cx="-3" cy="9" r="1.8"/><circle cx="3" cy="9" r="1.8"/></g><text y="-28" text-anchor="middle" class="v4name">Hut</text><rect x="-16" y="15.559999999999999" width="32" height="7" rx="2" fill="#0d1117"/><rect x="-15.0" y="16.56" width="30.0" height="5" fill="#4caf7d"/><text x="19" y="22.06" text-anchor="start" class="v4count">1</text><g transform="translate(0,26.68)"><circle r="2.7" fill="#c8c2b4"/></g><polygon points="46.0,0.0 23.0,39.8 -23.0,39.8 -46.0,0.0 -23.0,-39.8 23.0,-39.8" fill="#10141a" opacity="0.42"/>
+      <polygon points="44.6,0.0 22.3,38.6 -22.3,38.6 -44.6,0.0 -22.3,-38.6 22.3,-38.6" fill="none" stroke="#8c94a0" stroke-width="1.2" stroke-dasharray="4 3"/></g></svg></div><figcaption>Flat colour</figcaption></figure>
+    <figure><div class="stage"><svg viewBox="-129 -142 258 271" role="img"><defs><pattern id="tx-4t-plain" patternUnits="objectBoundingBox" patternContentUnits="objectBoundingBox" width="1" height="1">
+        <image href="../../config/public/biomes/plain_512.png" x="0" y="0" width="1" height="1" preserveAspectRatio="xMidYMid slice"/>
+      </pattern><pattern id="tx-4t-mountain" patternUnits="objectBoundingBox" patternContentUnits="objectBoundingBox" width="1" height="1">
+        <image href="../../config/public/biomes/mountain_512.png" x="0" y="0" width="1" height="1" preserveAspectRatio="xMidYMid slice"/>
+      </pattern><pattern id="tx-4t-forest" patternUnits="objectBoundingBox" patternContentUnits="objectBoundingBox" width="1" height="1">
+        <image href="../../config/public/biomes/forest_512.png" x="0" y="0" width="1" height="1" preserveAspectRatio="xMidYMid slice"/>
+      </pattern><pattern id="tx-4t-ocean" patternUnits="objectBoundingBox" patternContentUnits="objectBoundingBox" width="1" height="1">
+        <image href="../../config/public/biomes/ocean_512.png" x="0" y="0" width="1" height="1" preserveAspectRatio="xMidYMid slice"/>
+      </pattern><pattern id="tx-4t-swamp" patternUnits="objectBoundingBox" patternContentUnits="objectBoundingBox" width="1" height="1">
+        <image href="../../config/public/biomes/swamp_512.png" x="0" y="0" width="1" height="1" preserveAspectRatio="xMidYMid slice"/>
+      </pattern><pattern id="tx-4t-desert" patternUnits="objectBoundingBox" patternContentUnits="objectBoundingBox" width="1" height="1">
+        <image href="../../config/public/biomes/desert_512.png" x="0" y="0" width="1" height="1" preserveAspectRatio="xMidYMid slice"/>
+      </pattern><pattern id="tx-4t-tundra" patternUnits="objectBoundingBox" patternContentUnits="objectBoundingBox" width="1" height="1">
+        <image href="../../config/public/biomes/tundra_512.png" x="0" y="0" width="1" height="1" preserveAspectRatio="xMidYMid slice"/>
+      </pattern></defs><g transform="translate(0,0)"><polygon points="46.0,0.0 23.0,39.8 -23.0,39.8 -46.0,0.0 -23.0,-39.8 23.0,-39.8" fill="url(#tx-4t-plain)" stroke="#141a22" stroke-width="1.6"/><polygon points="46.0,0.0 23.0,39.8 -23.0,39.8 -46.0,0.0 -23.0,-39.8 23.0,-39.8" fill="#141a22" opacity="0.38"/><line x1="0" y1="0" x2="0.0" y2="-40.0" stroke="#c8c2b4" stroke-width="3.4" stroke-linecap="round" opacity="0.85"/><line x1="0" y1="0" x2="34.7" y2="20.0" stroke="#c8c2b4" stroke-width="3.4" stroke-linecap="round" opacity="0.85"/><polygon points="39.6,0.0 19.8,34.3 -19.8,34.3 -39.6,0.0 -19.8,-34.3 19.8,-34.3" fill="none" stroke="#4caf7d" stroke-width="1.8"/><g transform="translate(0,-8)">
+      <circle r="14" fill="#0d1117" stroke="#3c4654" stroke-width="1.2"/>
+      <g stroke="#d9a441" stroke-width="2.4" stroke-linecap="round">
+    <line x1="-6" y1="-6" x2="6" y2="6"/><line x1="6" y1="-6" x2="-6" y2="6"/>
+    <line x1="-5.5" y1="2.5" x2="-2" y2="6" stroke-width="1.6"/><line x1="5.5" y1="2.5" x2="2" y2="6" stroke-width="1.6"/>
+  </g>
+    </g><text y="-28" text-anchor="middle" class="v4name">Marn</text><rect x="-16" y="15.559999999999999" width="32" height="7" rx="2" fill="#0d1117"/><rect x="-15.0" y="16.56" width="18.0" height="5" fill="#4caf7d"/><rect x="3.0" y="16.56" width="4.5" height="5" fill="#5ec8f0"/><rect x="7.5" y="16.56" width="7.5" height="5" fill="#f07070"/><text x="19" y="22.06" text-anchor="start" class="v4count">20</text><g transform="translate(-9,26.68)"><rect x="-2.6" y="-2.6" width="5.2" height="5.2" fill="#f0e2bd"/></g><g transform="translate(0,26.68)"><circle r="2.7" fill="#8bd0f0"/></g><g transform="translate(9,26.68)"><circle r="2.7" fill="#c8c2b4"/></g></g>
+<g transform="translate(0,-79.67433714816835)"><polygon points="46.0,0.0 23.0,39.8 -23.0,39.8 -46.0,0.0 -23.0,-39.8 23.0,-39.8" fill="url(#tx-4t-mountain)" stroke="#141a22" stroke-width="1.6"/><polygon points="46.0,0.0 23.0,39.8 -23.0,39.8 -46.0,0.0 -23.0,-39.8 23.0,-39.8" fill="#141a22" opacity="0.38"/><line x1="0" y1="0" x2="0.0" y2="40.0" stroke="#c8c2b4" stroke-width="3.4" stroke-linecap="round" opacity="0.85"/><polygon points="39.6,0.0 19.8,34.3 -19.8,34.3 -39.6,0.0 -19.8,-34.3 19.8,-34.3" fill="none" stroke="#f07070" stroke-width="1.8"/><g transform="translate(0,-8)">
+      <circle r="14" fill="#0d1117" stroke="#3c4654" stroke-width="1.2"/>
+      <g stroke="#d9a441" stroke-width="2.4" stroke-linecap="round">
+    <line x1="-6" y1="-6" x2="6" y2="6"/><line x1="6" y1="-6" x2="-6" y2="6"/>
+    <line x1="-5.5" y1="2.5" x2="-2" y2="6" stroke-width="1.6"/><line x1="5.5" y1="2.5" x2="2" y2="6" stroke-width="1.6"/>
+  </g>
+    </g><rect x="-16" y="15.559999999999999" width="32" height="7" rx="2" fill="#0d1117"/><rect x="-15.0" y="16.56" width="30.0" height="5" fill="#f07070"/><text x="19" y="22.06" text-anchor="start" class="v4count">6</text><g transform="translate(-13.5,26.68)"><circle r="2.7" fill="#e0c98c"/></g><g transform="translate(-4.5,26.68)"><circle r="2.7" fill="#f07070"/></g><g transform="translate(4.5,26.68)"><rect x="-2.6" y="-2.6" width="5.2" height="5.2" transform="rotate(45)" fill="#f07070"/></g><g transform="translate(13.5,26.68)"><circle r="2.7" fill="#c8c2b4"/></g></g>
+<g transform="translate(69,-39.837168574084174)"><polygon points="46.0,0.0 23.0,39.8 -23.0,39.8 -46.0,0.0 -23.0,-39.8 23.0,-39.8" fill="url(#tx-4t-forest)" stroke="#141a22" stroke-width="1.6"/><polygon points="46.0,0.0 23.0,39.8 -23.0,39.8 -46.0,0.0 -23.0,-39.8 23.0,-39.8" fill="#141a22" opacity="0.38"/><line x1="0" y1="0" x2="-34.7" y2="-20.0" stroke="#c8c2b4" stroke-width="3.4" stroke-linecap="round" opacity="0.85"/><polygon points="39.6,0.0 19.8,34.3 -19.8,34.3 -39.6,0.0 -19.8,-34.3 19.8,-34.3" fill="none" stroke="#4caf7d" stroke-width="1.8"/><g transform="translate(0,-8)">
+      <circle r="14" fill="#0d1117" stroke="#3c4654" stroke-width="1.2"/>
+      <g fill="#f0e2bd"><rect x="-7" y="-2" width="14" height="7"/>
+    <rect x="-8.5" y="-7" width="4" height="12"/><rect x="4.5" y="-7" width="4" height="12"/>
+    <rect x="-2" y="-9" width="4" height="14"/></g>
+    </g><g fill="#f0e2bd"><circle cx="-3" cy="9" r="1.8"/><circle cx="3" cy="9" r="1.8"/></g><text y="-28" text-anchor="middle" class="v4name">Eda</text><rect x="-16" y="15.559999999999999" width="32" height="7" rx="2" fill="#0d1117"/><rect x="-15.0" y="16.56" width="20.0" height="5" fill="#4caf7d"/><rect x="5.0" y="16.56" width="10.0" height="5" fill="#5ec8f0"/><text x="19" y="22.06" text-anchor="start" class="v4count">6</text><g transform="translate(-4.5,26.68)"><rect x="-2.6" y="-2.6" width="5.2" height="5.2" transform="rotate(45)" fill="#b48ce0"/></g><g transform="translate(4.5,26.68)"><circle r="2.7" fill="#c8c2b4"/></g></g>
+<g transform="translate(69,39.837168574084174)"><polygon points="46.0,0.0 23.0,39.8 -23.0,39.8 -46.0,0.0 -23.0,-39.8 23.0,-39.8" fill="url(#tx-4t-ocean)" stroke="#141a22" stroke-width="1.6"/><polygon points="46.0,0.0 23.0,39.8 -23.0,39.8 -46.0,0.0 -23.0,-39.8 23.0,-39.8" fill="#141a22" opacity="0.38"/><g transform="translate(0,-8)">
+      <circle r="14" fill="#0d1117" stroke="#3c4654" stroke-width="1.2"/>
+      <g stroke="#d9a441" stroke-width="2.4" stroke-linecap="round">
+    <line x1="-6" y1="-6" x2="6" y2="6"/><line x1="6" y1="-6" x2="-6" y2="6"/>
+    <line x1="-5.5" y1="2.5" x2="-2" y2="6" stroke-width="1.6"/><line x1="5.5" y1="2.5" x2="2" y2="6" stroke-width="1.6"/>
+  </g>
+    </g><rect x="-16" y="15.559999999999999" width="32" height="7" rx="2" fill="#0d1117"/><rect x="-15.0" y="16.56" width="12.0" height="5" fill="#5ec8f0"/><rect x="-3.0" y="16.56" width="18.0" height="5" fill="#f07070"/><text x="19" y="22.06" text-anchor="start" class="v4count">5</text><g transform="translate(0,26.68)"><circle r="2.7" fill="#8bd0f0"/></g></g>
+<g transform="translate(0,79.67433714816835)"><polygon points="46.0,0.0 23.0,39.8 -23.0,39.8 -46.0,0.0 -23.0,-39.8 23.0,-39.8" fill="url(#tx-4t-swamp)" stroke="#141a22" stroke-width="1.6"/><polygon points="46.0,0.0 23.0,39.8 -23.0,39.8 -46.0,0.0 -23.0,-39.8 23.0,-39.8" fill="#141a22" opacity="0.38"/><g transform="translate(0,-8)">
+      <circle r="14" fill="#0d1117" stroke="#3c4654" stroke-width="1.2"/>
+      <path d="M-6,7 v-7 a6,6 0 0 1 12,0 v7 M-8.5,7 h17" fill="none" stroke="#b48ce0" stroke-width="2.4"/>
+    </g><rect x="-16" y="15.559999999999999" width="32" height="7" rx="2" fill="#0d1117"/><rect x="-15.0" y="16.56" width="30.0" height="5" fill="#f07070"/><text x="19" y="22.06" text-anchor="start" class="v4count">2</text><g transform="translate(-4.5,26.68)"><circle r="2.7" fill="#f07070"/></g><g transform="translate(4.5,26.68)"><rect x="-2.6" y="-2.6" width="5.2" height="5.2" transform="rotate(45)" fill="#f07070"/></g></g>
+<g transform="translate(-69,39.837168574084174)"><polygon points="46.0,0.0 23.0,39.8 -23.0,39.8 -46.0,0.0 -23.0,-39.8 23.0,-39.8" fill="url(#tx-4t-desert)" stroke="#141a22" stroke-width="1.6"/><polygon points="46.0,0.0 23.0,39.8 -23.0,39.8 -46.0,0.0 -23.0,-39.8 23.0,-39.8" fill="#141a22" opacity="0.38"/><g transform="translate(0,-8)">
+      <circle r="14" fill="#0d1117" stroke="#3c4654" stroke-width="1.2"/>
+      <g fill="#f0e2bd"><rect x="-7" y="-2" width="14" height="7"/>
+    <rect x="-8.5" y="-7" width="4" height="12"/><rect x="4.5" y="-7" width="4" height="12"/>
+    <rect x="-2" y="-9" width="4" height="14"/></g>
+    </g><g fill="#f0e2bd"><circle cx="0" cy="9" r="1.8"/></g><text y="-28" text-anchor="middle" class="v4name">Kel</text><rect x="-16" y="15.559999999999999" width="32" height="7" rx="2" fill="#0d1117"/><rect x="-15.0" y="16.56" width="30.0" height="5" fill="#5ec8f0"/><text x="19" y="22.06" text-anchor="start" class="v4count">4</text><g transform="translate(-4.5,26.68)"><circle r="2.7" fill="#e0c98c"/></g><g transform="translate(4.5,26.68)"><circle r="2.7" fill="#c8c2b4"/></g></g>
+<g transform="translate(-69,-39.837168574084174)"><polygon points="46.0,0.0 23.0,39.8 -23.0,39.8 -46.0,0.0 -23.0,-39.8 23.0,-39.8" fill="url(#tx-4t-tundra)" stroke="#141a22" stroke-width="1.6"/><polygon points="46.0,0.0 23.0,39.8 -23.0,39.8 -46.0,0.0 -23.0,-39.8 23.0,-39.8" fill="#141a22" opacity="0.38"/><g transform="translate(0,-8)">
+      <circle r="14" fill="#0d1117" stroke="#3c4654" stroke-width="1.2"/>
+      <g fill="#f0e2bd"><rect x="-7" y="-2" width="14" height="7"/>
+    <rect x="-8.5" y="-7" width="4" height="12"/><rect x="4.5" y="-7" width="4" height="12"/>
+    <rect x="-2" y="-9" width="4" height="14"/></g>
+    </g><g fill="#f0e2bd"><circle cx="-3" cy="9" r="1.8"/><circle cx="3" cy="9" r="1.8"/></g><text y="-28" text-anchor="middle" class="v4name">Hut</text><rect x="-16" y="15.559999999999999" width="32" height="7" rx="2" fill="#0d1117"/><rect x="-15.0" y="16.56" width="30.0" height="5" fill="#4caf7d"/><text x="19" y="22.06" text-anchor="start" class="v4count">1</text><g transform="translate(0,26.68)"><circle r="2.7" fill="#c8c2b4"/></g><polygon points="46.0,0.0 23.0,39.8 -23.0,39.8 -46.0,0.0 -23.0,-39.8 23.0,-39.8" fill="#10141a" opacity="0.42"/>
+      <polygon points="44.6,0.0 22.3,38.6 -22.3,38.6 -44.6,0.0 -22.3,-38.6 22.3,-38.6" fill="none" stroke="#8c94a0" stroke-width="1.2" stroke-dasharray="4 3"/></g></svg></div><figcaption>Biome textures</figcaption></figure>
+  </div>
+  <ul class="notes">
+    <li>Degrades most gracefully under congestion &mdash; density never changes the layout, only the dot count.</li>
+    <li>A glance across the map reads the one thing that matters per hex; battles pop everywhere they happen.</li>
+    <li>The unit bar shows size and force balance in one mark.</li>
+    <li class="con">The priority order is opinionated &mdash; a city in battle shows swords, and the city becomes a dot.</li>
+    <li class="con">Dots need a legend; at speed, similar dots are hard to tell apart.</li>
+  </ul>
+</section>
+
+<section class="card">
+  <h2><em>05</em>Beveled Tile</h2>
+  <p class="concept">A physical game board. Every hex is a raised tile &mdash; lit upper left,
+  shadowed lower right, seamed to its neighbours &mdash; and everything on it racks into one chip
+  grammar: the battle chip owns the top-centre, other feature chips fill the side rails
+  (left first, then right), unit tokens with counts hold the bottom row, and the settlement
+  is a central medallion whose size and pips give the tier. A full tile is a full rack, and
+  a stale tile loses its bevel and sinks flush, dimmed and dash-rimmed.</p>
+  <div class="pair">
+    <figure><div class="stage"><svg viewBox="-129 -142 258 271" role="img"><g transform="translate(0,0)"><polygon points="42.8,0.0 21.4,37.0 -21.4,37.0 -42.8,0.0 -21.4,-37.0 21.4,-37.0" fill="#807748"/><path d="M-42.8,0.0 L-21.4,-37.0 L21.4,-37.0 L42.8,0.0" fill="none" stroke="#ffffff" stroke-opacity="0.3" stroke-width="2.6" stroke-linejoin="round"/><path d="M42.8,0.0 L21.4,37.0 L-21.4,37.0 L-42.8,0.0" fill="none" stroke="#000000" stroke-opacity="0.42" stroke-width="2.6" stroke-linejoin="round"/><line x1="0" y1="0" x2="0.0" y2="-38.2" stroke="#e6dfcf" stroke-width="4" stroke-linecap="round" opacity="0.9"/><line x1="0" y1="0" x2="33.1" y2="19.1" stroke="#e6dfcf" stroke-width="4" stroke-linecap="round" opacity="0.9"/><polygon points="45.5,0.0 22.8,39.4 -22.8,39.4 -45.5,0.0 -22.8,-39.4 22.8,-39.4" fill="none" stroke="#4caf7d" stroke-width="2.2"/><circle cy="-4" r="13.9" fill="#f0e2bd" stroke="#6b4f2a" stroke-width="1.6"/><g fill="#6b4f2a"><circle cx="-5.5" cy="-4" r="2"/><circle cx="0" cy="-4" r="2"/><circle cx="5.5" cy="-4" r="2"/></g><text x="-7" y="-22.9" text-anchor="middle" class="v5name">Marn</text><g fill="#e6dfcf"><path d="M-4,13.799999999999999 h4 v3 h-4 z M-5,13.799999999999999 l3,-2.6 3,2.6 z"/><path d="M2,13.799999999999999 h4 v3 h-4 z M1,13.799999999999999 l3,-2.6 3,2.6 z"/><path d="M8,13.799999999999999 h4 v3 h-4 z M7,13.799999999999999 l3,-2.6 3,2.6 z"/></g><g transform="translate(-17,25.76)">
+      <circle r="7.5" fill="#4caf7d" stroke="#0d1117" stroke-width="1.2"/>
+      <text y="3" text-anchor="middle" class="v5count">12</text>
+    </g><g transform="translate(0,25.76)">
+      <circle r="7.5" fill="#5ec8f0" stroke="#0d1117" stroke-width="1.2"/>
+      <text y="3" text-anchor="middle" class="v5count">3</text>
+    </g><g transform="translate(17,25.76)">
+      <circle r="7.5" fill="#f07070" stroke="#0d1117" stroke-width="1.2"/>
+      <text y="3" text-anchor="middle" class="v5count">5</text>
+    </g><g transform="translate(-25.3,-12)">
+    <circle r="7" fill="#3c7ea8"/>
+    <path d="M-3.5,1.5 h7 l-1.8,2.2 h-3.4 z M0,1.5 v-5 l3.2,3.6 h-3.2" fill="none" stroke="#fff" stroke-width="1.1"/>
+  </g><g transform="translate(17.48,-25.76)">
+    <circle r="7" fill="#c05252"/>
+    <g stroke="#fff" stroke-width="1.5" stroke-linecap="round"><line x1="-3.2" y1="-3.2" x2="3.2" y2="3.2"/><line x1="3.2" y1="-3.2" x2="-3.2" y2="3.2"/></g>
+  </g></g>
+<g transform="translate(0,-79.67433714816835)"><polygon points="42.8,0.0 21.4,37.0 -21.4,37.0 -42.8,0.0 -21.4,-37.0 21.4,-37.0" fill="#63636e"/><path d="M-42.8,0.0 L-21.4,-37.0 L21.4,-37.0 L42.8,0.0" fill="none" stroke="#ffffff" stroke-opacity="0.3" stroke-width="2.6" stroke-linejoin="round"/><path d="M42.8,0.0 L21.4,37.0 L-21.4,37.0 L-42.8,0.0" fill="none" stroke="#000000" stroke-opacity="0.42" stroke-width="2.6" stroke-linejoin="round"/><line x1="0" y1="0" x2="0.0" y2="38.2" stroke="#e6dfcf" stroke-width="4" stroke-linecap="round" opacity="0.9"/><polygon points="45.5,0.0 22.8,39.4 -22.8,39.4 -45.5,0.0 -22.8,-39.4 22.8,-39.4" fill="none" stroke="#f07070" stroke-width="2.2"/><g fill="#e6dfcf"><path d="M-4,13.799999999999999 h4 v3 h-4 z M-5,13.799999999999999 l3,-2.6 3,2.6 z"/></g><g transform="translate(0,25.76)">
+      <circle r="7.5" fill="#f07070" stroke="#0d1117" stroke-width="1.2"/>
+      <text y="3" text-anchor="middle" class="v5count">6</text>
+    </g><g transform="translate(-25.3,-12)">
+    <circle r="7" fill="#a8863c"/>
+    <path d="M-1.6,-3.5 v7 M1.6,-3.5 v7 M-1.6,-1 h3.2 M-1.6,1.5 h3.2" stroke="#fff" stroke-width="1.2"/>
+  </g><g transform="translate(-25.3,4)">
+    <circle r="7" fill="#7d2b23"/>
+    <path d="M-3.5,2.5 a3.5,3.5 0 0 1 7,0 z" fill="#fff"/>
+  </g><g transform="translate(25.3,-12)">
+    <circle r="7" fill="#c05252"/>
+    <path d="M-2.4,-2.4 q1.6,1.6 1.3,4.8 M1,-2.8 q1.2,2 1,5" fill="none" stroke="#fff" stroke-width="1.3" stroke-linecap="round"/>
+  </g><g transform="translate(0,-25.76)">
+    <circle r="7" fill="#c05252"/>
+    <g stroke="#fff" stroke-width="1.5" stroke-linecap="round"><line x1="-3.2" y1="-3.2" x2="3.2" y2="3.2"/><line x1="3.2" y1="-3.2" x2="-3.2" y2="3.2"/></g>
+  </g></g>
+<g transform="translate(69,-39.837168574084174)"><polygon points="42.8,0.0 21.4,37.0 -21.4,37.0 -42.8,0.0 -21.4,-37.0 21.4,-37.0" fill="#3a6346"/><path d="M-42.8,0.0 L-21.4,-37.0 L21.4,-37.0 L42.8,0.0" fill="none" stroke="#ffffff" stroke-opacity="0.3" stroke-width="2.6" stroke-linejoin="round"/><path d="M42.8,0.0 L21.4,37.0 L-21.4,37.0 L-42.8,0.0" fill="none" stroke="#000000" stroke-opacity="0.42" stroke-width="2.6" stroke-linejoin="round"/><line x1="0" y1="0" x2="-33.1" y2="-19.1" stroke="#e6dfcf" stroke-width="4" stroke-linecap="round" opacity="0.9"/><polygon points="45.5,0.0 22.8,39.4 -22.8,39.4 -45.5,0.0 -22.8,-39.4 22.8,-39.4" fill="none" stroke="#4caf7d" stroke-width="2.2"/><circle cy="-4" r="12.1" fill="#f0e2bd" stroke="#6b4f2a" stroke-width="1.6"/><g fill="#6b4f2a"><circle cx="-2.75" cy="-4" r="2"/><circle cx="2.75" cy="-4" r="2"/></g><text x="0" y="-21.1" text-anchor="middle" class="v5name">Eda</text><g fill="#e6dfcf"><path d="M-4,13.799999999999999 h4 v3 h-4 z M-5,13.799999999999999 l3,-2.6 3,2.6 z"/></g><g transform="translate(-8.5,25.76)">
+      <circle r="7.5" fill="#4caf7d" stroke="#0d1117" stroke-width="1.2"/>
+      <text y="3" text-anchor="middle" class="v5count">4</text>
+    </g><g transform="translate(8.5,25.76)">
+      <circle r="7.5" fill="#5ec8f0" stroke="#0d1117" stroke-width="1.2"/>
+      <text y="3" text-anchor="middle" class="v5count">2</text>
+    </g><g transform="translate(-25.3,-12)">
+    <circle r="7" fill="#8a63b8"/>
+    <path d="M-3,3.5 v-3 a3,3 0 0 1 6,0 v3 M-4.5,3.5 h9" fill="none" stroke="#fff" stroke-width="1.4"/>
+  </g></g>
+<g transform="translate(69,39.837168574084174)"><polygon points="42.8,0.0 21.4,37.0 -21.4,37.0 -42.8,0.0 -21.4,-37.0 21.4,-37.0" fill="#26517a"/><path d="M-42.8,0.0 L-21.4,-37.0 L21.4,-37.0 L42.8,0.0" fill="none" stroke="#ffffff" stroke-opacity="0.3" stroke-width="2.6" stroke-linejoin="round"/><path d="M42.8,0.0 L21.4,37.0 L-21.4,37.0 L-42.8,0.0" fill="none" stroke="#000000" stroke-opacity="0.42" stroke-width="2.6" stroke-linejoin="round"/><g transform="translate(-8.5,25.76)">
+      <circle r="7.5" fill="#5ec8f0" stroke="#0d1117" stroke-width="1.2"/>
+      <text y="3" text-anchor="middle" class="v5count">2</text>
+    </g><g transform="translate(8.5,25.76)">
+      <circle r="7.5" fill="#f07070" stroke="#0d1117" stroke-width="1.2"/>
+      <text y="3" text-anchor="middle" class="v5count">3</text>
+    </g><g transform="translate(-25.3,-12)">
+    <circle r="7" fill="#3c7ea8"/>
+    <path d="M-3.5,1.5 h7 l-1.8,2.2 h-3.4 z M0,1.5 v-5 l3.2,3.6 h-3.2" fill="none" stroke="#fff" stroke-width="1.1"/>
+  </g><g transform="translate(0,-25.76)">
+    <circle r="7" fill="#c05252"/>
+    <g stroke="#fff" stroke-width="1.5" stroke-linecap="round"><line x1="-3.2" y1="-3.2" x2="3.2" y2="3.2"/><line x1="3.2" y1="-3.2" x2="-3.2" y2="3.2"/></g>
+  </g></g>
+<g transform="translate(0,79.67433714816835)"><polygon points="42.8,0.0 21.4,37.0 -21.4,37.0 -42.8,0.0 -21.4,-37.0 21.4,-37.0" fill="#4e5c36"/><path d="M-42.8,0.0 L-21.4,-37.0 L21.4,-37.0 L42.8,0.0" fill="none" stroke="#ffffff" stroke-opacity="0.3" stroke-width="2.6" stroke-linejoin="round"/><path d="M42.8,0.0 L21.4,37.0 L-21.4,37.0 L-42.8,0.0" fill="none" stroke="#000000" stroke-opacity="0.42" stroke-width="2.6" stroke-linejoin="round"/><g transform="translate(0,25.76)">
+      <circle r="7.5" fill="#f07070" stroke="#0d1117" stroke-width="1.2"/>
+      <text y="3" text-anchor="middle" class="v5count">2</text>
+    </g><g transform="translate(-25.3,-12)">
+    <circle r="7" fill="#8a63b8"/>
+    <path d="M-3,3.5 v-3 a3,3 0 0 1 6,0 v3 M-4.5,3.5 h9" fill="none" stroke="#fff" stroke-width="1.4"/>
+  </g><g transform="translate(-25.3,4)">
+    <circle r="7" fill="#7d2b23"/>
+    <path d="M-3.5,2.5 a3.5,3.5 0 0 1 7,0 z" fill="#fff"/>
+  </g><g transform="translate(25.3,-12)">
+    <circle r="7" fill="#c05252"/>
+    <path d="M-2.4,-2.4 q1.6,1.6 1.3,4.8 M1,-2.8 q1.2,2 1,5" fill="none" stroke="#fff" stroke-width="1.3" stroke-linecap="round"/>
+  </g></g>
+<g transform="translate(-69,39.837168574084174)"><polygon points="42.8,0.0 21.4,37.0 -21.4,37.0 -42.8,0.0 -21.4,-37.0 21.4,-37.0" fill="#a08954"/><path d="M-42.8,0.0 L-21.4,-37.0 L21.4,-37.0 L42.8,0.0" fill="none" stroke="#ffffff" stroke-opacity="0.3" stroke-width="2.6" stroke-linejoin="round"/><path d="M42.8,0.0 L21.4,37.0 L-21.4,37.0 L-42.8,0.0" fill="none" stroke="#000000" stroke-opacity="0.42" stroke-width="2.6" stroke-linejoin="round"/><circle cy="-4" r="10.3" fill="#f0e2bd" stroke="#6b4f2a" stroke-width="1.6"/><g fill="#6b4f2a"><circle cx="0" cy="-4" r="2"/></g><text x="0" y="-19.3" text-anchor="middle" class="v5name">Kel</text><g fill="#e6dfcf"><path d="M-4,13.799999999999999 h4 v3 h-4 z M-5,13.799999999999999 l3,-2.6 3,2.6 z"/></g><g transform="translate(0,25.76)">
+      <circle r="7.5" fill="#5ec8f0" stroke="#0d1117" stroke-width="1.2"/>
+      <text y="3" text-anchor="middle" class="v5count">4</text>
+    </g><g transform="translate(-25.3,-12)">
+    <circle r="7" fill="#a8863c"/>
+    <path d="M-1.6,-3.5 v7 M1.6,-3.5 v7 M-1.6,-1 h3.2 M-1.6,1.5 h3.2" stroke="#fff" stroke-width="1.2"/>
+  </g></g>
+<g transform="translate(-69,-39.837168574084174)"><polygon points="42.8,0.0 21.4,37.0 -21.4,37.0 -42.8,0.0 -21.4,-37.0 21.4,-37.0" fill="#75868c"/><circle cy="-4" r="12.1" fill="#f0e2bd" stroke="#6b4f2a" stroke-width="1.6"/><g fill="#6b4f2a"><circle cx="-2.75" cy="-4" r="2"/><circle cx="2.75" cy="-4" r="2"/></g><text x="0" y="-21.1" text-anchor="middle" class="v5name">Hut</text><g fill="#e6dfcf"><path d="M-4,13.799999999999999 h4 v3 h-4 z M-5,13.799999999999999 l3,-2.6 3,2.6 z"/></g><g transform="translate(0,25.76)">
+      <circle r="7.5" fill="#4caf7d" stroke="#0d1117" stroke-width="1.2"/>
+      <text y="3" text-anchor="middle" class="v5count">1</text>
+    </g><polygon points="42.8,0.0 21.4,37.0 -21.4,37.0 -42.8,0.0 -21.4,-37.0 21.4,-37.0" fill="#10141a" opacity="0.45"/>
+      <polygon points="42.8,0.0 21.4,37.0 -21.4,37.0 -42.8,0.0 -21.4,-37.0 21.4,-37.0" fill="none" stroke="#8c94a0" stroke-width="1.4" stroke-dasharray="4 3"/></g></svg></div><figcaption>Flat colour</figcaption></figure>
+    <figure><div class="stage"><svg viewBox="-129 -142 258 271" role="img"><defs><pattern id="tx-5t-plain" patternUnits="objectBoundingBox" patternContentUnits="objectBoundingBox" width="1" height="1">
+        <image href="../../config/public/biomes/plain_512.png" x="0" y="0" width="1" height="1" preserveAspectRatio="xMidYMid slice"/>
+      </pattern><pattern id="tx-5t-mountain" patternUnits="objectBoundingBox" patternContentUnits="objectBoundingBox" width="1" height="1">
+        <image href="../../config/public/biomes/mountain_512.png" x="0" y="0" width="1" height="1" preserveAspectRatio="xMidYMid slice"/>
+      </pattern><pattern id="tx-5t-forest" patternUnits="objectBoundingBox" patternContentUnits="objectBoundingBox" width="1" height="1">
+        <image href="../../config/public/biomes/forest_512.png" x="0" y="0" width="1" height="1" preserveAspectRatio="xMidYMid slice"/>
+      </pattern><pattern id="tx-5t-ocean" patternUnits="objectBoundingBox" patternContentUnits="objectBoundingBox" width="1" height="1">
+        <image href="../../config/public/biomes/ocean_512.png" x="0" y="0" width="1" height="1" preserveAspectRatio="xMidYMid slice"/>
+      </pattern><pattern id="tx-5t-swamp" patternUnits="objectBoundingBox" patternContentUnits="objectBoundingBox" width="1" height="1">
+        <image href="../../config/public/biomes/swamp_512.png" x="0" y="0" width="1" height="1" preserveAspectRatio="xMidYMid slice"/>
+      </pattern><pattern id="tx-5t-desert" patternUnits="objectBoundingBox" patternContentUnits="objectBoundingBox" width="1" height="1">
+        <image href="../../config/public/biomes/desert_512.png" x="0" y="0" width="1" height="1" preserveAspectRatio="xMidYMid slice"/>
+      </pattern><pattern id="tx-5t-tundra" patternUnits="objectBoundingBox" patternContentUnits="objectBoundingBox" width="1" height="1">
+        <image href="../../config/public/biomes/tundra_512.png" x="0" y="0" width="1" height="1" preserveAspectRatio="xMidYMid slice"/>
+      </pattern></defs><g transform="translate(0,0)"><polygon points="42.8,0.0 21.4,37.0 -21.4,37.0 -42.8,0.0 -21.4,-37.0 21.4,-37.0" fill="url(#tx-5t-plain)"/><polygon points="42.8,0.0 21.4,37.0 -21.4,37.0 -42.8,0.0 -21.4,-37.0 21.4,-37.0" fill="#10141a" opacity="0.14"/><path d="M-42.8,0.0 L-21.4,-37.0 L21.4,-37.0 L42.8,0.0" fill="none" stroke="#ffffff" stroke-opacity="0.3" stroke-width="2.6" stroke-linejoin="round"/><path d="M42.8,0.0 L21.4,37.0 L-21.4,37.0 L-42.8,0.0" fill="none" stroke="#000000" stroke-opacity="0.42" stroke-width="2.6" stroke-linejoin="round"/><line x1="0" y1="0" x2="0.0" y2="-38.2" stroke="#e6dfcf" stroke-width="4" stroke-linecap="round" opacity="0.9"/><line x1="0" y1="0" x2="33.1" y2="19.1" stroke="#e6dfcf" stroke-width="4" stroke-linecap="round" opacity="0.9"/><polygon points="45.5,0.0 22.8,39.4 -22.8,39.4 -45.5,0.0 -22.8,-39.4 22.8,-39.4" fill="none" stroke="#4caf7d" stroke-width="2.2"/><circle cy="-4" r="13.9" fill="#f0e2bd" stroke="#6b4f2a" stroke-width="1.6"/><g fill="#6b4f2a"><circle cx="-5.5" cy="-4" r="2"/><circle cx="0" cy="-4" r="2"/><circle cx="5.5" cy="-4" r="2"/></g><text x="-7" y="-22.9" text-anchor="middle" class="v5name">Marn</text><g fill="#e6dfcf"><path d="M-4,13.799999999999999 h4 v3 h-4 z M-5,13.799999999999999 l3,-2.6 3,2.6 z"/><path d="M2,13.799999999999999 h4 v3 h-4 z M1,13.799999999999999 l3,-2.6 3,2.6 z"/><path d="M8,13.799999999999999 h4 v3 h-4 z M7,13.799999999999999 l3,-2.6 3,2.6 z"/></g><g transform="translate(-17,25.76)">
+      <circle r="7.5" fill="#4caf7d" stroke="#0d1117" stroke-width="1.2"/>
+      <text y="3" text-anchor="middle" class="v5count">12</text>
+    </g><g transform="translate(0,25.76)">
+      <circle r="7.5" fill="#5ec8f0" stroke="#0d1117" stroke-width="1.2"/>
+      <text y="3" text-anchor="middle" class="v5count">3</text>
+    </g><g transform="translate(17,25.76)">
+      <circle r="7.5" fill="#f07070" stroke="#0d1117" stroke-width="1.2"/>
+      <text y="3" text-anchor="middle" class="v5count">5</text>
+    </g><g transform="translate(-25.3,-12)">
+    <circle r="7" fill="#3c7ea8"/>
+    <path d="M-3.5,1.5 h7 l-1.8,2.2 h-3.4 z M0,1.5 v-5 l3.2,3.6 h-3.2" fill="none" stroke="#fff" stroke-width="1.1"/>
+  </g><g transform="translate(17.48,-25.76)">
+    <circle r="7" fill="#c05252"/>
+    <g stroke="#fff" stroke-width="1.5" stroke-linecap="round"><line x1="-3.2" y1="-3.2" x2="3.2" y2="3.2"/><line x1="3.2" y1="-3.2" x2="-3.2" y2="3.2"/></g>
+  </g></g>
+<g transform="translate(0,-79.67433714816835)"><polygon points="42.8,0.0 21.4,37.0 -21.4,37.0 -42.8,0.0 -21.4,-37.0 21.4,-37.0" fill="url(#tx-5t-mountain)"/><polygon points="42.8,0.0 21.4,37.0 -21.4,37.0 -42.8,0.0 -21.4,-37.0 21.4,-37.0" fill="#10141a" opacity="0.14"/><path d="M-42.8,0.0 L-21.4,-37.0 L21.4,-37.0 L42.8,0.0" fill="none" stroke="#ffffff" stroke-opacity="0.3" stroke-width="2.6" stroke-linejoin="round"/><path d="M42.8,0.0 L21.4,37.0 L-21.4,37.0 L-42.8,0.0" fill="none" stroke="#000000" stroke-opacity="0.42" stroke-width="2.6" stroke-linejoin="round"/><line x1="0" y1="0" x2="0.0" y2="38.2" stroke="#e6dfcf" stroke-width="4" stroke-linecap="round" opacity="0.9"/><polygon points="45.5,0.0 22.8,39.4 -22.8,39.4 -45.5,0.0 -22.8,-39.4 22.8,-39.4" fill="none" stroke="#f07070" stroke-width="2.2"/><g fill="#e6dfcf"><path d="M-4,13.799999999999999 h4 v3 h-4 z M-5,13.799999999999999 l3,-2.6 3,2.6 z"/></g><g transform="translate(0,25.76)">
+      <circle r="7.5" fill="#f07070" stroke="#0d1117" stroke-width="1.2"/>
+      <text y="3" text-anchor="middle" class="v5count">6</text>
+    </g><g transform="translate(-25.3,-12)">
+    <circle r="7" fill="#a8863c"/>
+    <path d="M-1.6,-3.5 v7 M1.6,-3.5 v7 M-1.6,-1 h3.2 M-1.6,1.5 h3.2" stroke="#fff" stroke-width="1.2"/>
+  </g><g transform="translate(-25.3,4)">
+    <circle r="7" fill="#7d2b23"/>
+    <path d="M-3.5,2.5 a3.5,3.5 0 0 1 7,0 z" fill="#fff"/>
+  </g><g transform="translate(25.3,-12)">
+    <circle r="7" fill="#c05252"/>
+    <path d="M-2.4,-2.4 q1.6,1.6 1.3,4.8 M1,-2.8 q1.2,2 1,5" fill="none" stroke="#fff" stroke-width="1.3" stroke-linecap="round"/>
+  </g><g transform="translate(0,-25.76)">
+    <circle r="7" fill="#c05252"/>
+    <g stroke="#fff" stroke-width="1.5" stroke-linecap="round"><line x1="-3.2" y1="-3.2" x2="3.2" y2="3.2"/><line x1="3.2" y1="-3.2" x2="-3.2" y2="3.2"/></g>
+  </g></g>
+<g transform="translate(69,-39.837168574084174)"><polygon points="42.8,0.0 21.4,37.0 -21.4,37.0 -42.8,0.0 -21.4,-37.0 21.4,-37.0" fill="url(#tx-5t-forest)"/><polygon points="42.8,0.0 21.4,37.0 -21.4,37.0 -42.8,0.0 -21.4,-37.0 21.4,-37.0" fill="#10141a" opacity="0.14"/><path d="M-42.8,0.0 L-21.4,-37.0 L21.4,-37.0 L42.8,0.0" fill="none" stroke="#ffffff" stroke-opacity="0.3" stroke-width="2.6" stroke-linejoin="round"/><path d="M42.8,0.0 L21.4,37.0 L-21.4,37.0 L-42.8,0.0" fill="none" stroke="#000000" stroke-opacity="0.42" stroke-width="2.6" stroke-linejoin="round"/><line x1="0" y1="0" x2="-33.1" y2="-19.1" stroke="#e6dfcf" stroke-width="4" stroke-linecap="round" opacity="0.9"/><polygon points="45.5,0.0 22.8,39.4 -22.8,39.4 -45.5,0.0 -22.8,-39.4 22.8,-39.4" fill="none" stroke="#4caf7d" stroke-width="2.2"/><circle cy="-4" r="12.1" fill="#f0e2bd" stroke="#6b4f2a" stroke-width="1.6"/><g fill="#6b4f2a"><circle cx="-2.75" cy="-4" r="2"/><circle cx="2.75" cy="-4" r="2"/></g><text x="0" y="-21.1" text-anchor="middle" class="v5name">Eda</text><g fill="#e6dfcf"><path d="M-4,13.799999999999999 h4 v3 h-4 z M-5,13.799999999999999 l3,-2.6 3,2.6 z"/></g><g transform="translate(-8.5,25.76)">
+      <circle r="7.5" fill="#4caf7d" stroke="#0d1117" stroke-width="1.2"/>
+      <text y="3" text-anchor="middle" class="v5count">4</text>
+    </g><g transform="translate(8.5,25.76)">
+      <circle r="7.5" fill="#5ec8f0" stroke="#0d1117" stroke-width="1.2"/>
+      <text y="3" text-anchor="middle" class="v5count">2</text>
+    </g><g transform="translate(-25.3,-12)">
+    <circle r="7" fill="#8a63b8"/>
+    <path d="M-3,3.5 v-3 a3,3 0 0 1 6,0 v3 M-4.5,3.5 h9" fill="none" stroke="#fff" stroke-width="1.4"/>
+  </g></g>
+<g transform="translate(69,39.837168574084174)"><polygon points="42.8,0.0 21.4,37.0 -21.4,37.0 -42.8,0.0 -21.4,-37.0 21.4,-37.0" fill="url(#tx-5t-ocean)"/><polygon points="42.8,0.0 21.4,37.0 -21.4,37.0 -42.8,0.0 -21.4,-37.0 21.4,-37.0" fill="#10141a" opacity="0.14"/><path d="M-42.8,0.0 L-21.4,-37.0 L21.4,-37.0 L42.8,0.0" fill="none" stroke="#ffffff" stroke-opacity="0.3" stroke-width="2.6" stroke-linejoin="round"/><path d="M42.8,0.0 L21.4,37.0 L-21.4,37.0 L-42.8,0.0" fill="none" stroke="#000000" stroke-opacity="0.42" stroke-width="2.6" stroke-linejoin="round"/><g transform="translate(-8.5,25.76)">
+      <circle r="7.5" fill="#5ec8f0" stroke="#0d1117" stroke-width="1.2"/>
+      <text y="3" text-anchor="middle" class="v5count">2</text>
+    </g><g transform="translate(8.5,25.76)">
+      <circle r="7.5" fill="#f07070" stroke="#0d1117" stroke-width="1.2"/>
+      <text y="3" text-anchor="middle" class="v5count">3</text>
+    </g><g transform="translate(-25.3,-12)">
+    <circle r="7" fill="#3c7ea8"/>
+    <path d="M-3.5,1.5 h7 l-1.8,2.2 h-3.4 z M0,1.5 v-5 l3.2,3.6 h-3.2" fill="none" stroke="#fff" stroke-width="1.1"/>
+  </g><g transform="translate(0,-25.76)">
+    <circle r="7" fill="#c05252"/>
+    <g stroke="#fff" stroke-width="1.5" stroke-linecap="round"><line x1="-3.2" y1="-3.2" x2="3.2" y2="3.2"/><line x1="3.2" y1="-3.2" x2="-3.2" y2="3.2"/></g>
+  </g></g>
+<g transform="translate(0,79.67433714816835)"><polygon points="42.8,0.0 21.4,37.0 -21.4,37.0 -42.8,0.0 -21.4,-37.0 21.4,-37.0" fill="url(#tx-5t-swamp)"/><polygon points="42.8,0.0 21.4,37.0 -21.4,37.0 -42.8,0.0 -21.4,-37.0 21.4,-37.0" fill="#10141a" opacity="0.14"/><path d="M-42.8,0.0 L-21.4,-37.0 L21.4,-37.0 L42.8,0.0" fill="none" stroke="#ffffff" stroke-opacity="0.3" stroke-width="2.6" stroke-linejoin="round"/><path d="M42.8,0.0 L21.4,37.0 L-21.4,37.0 L-42.8,0.0" fill="none" stroke="#000000" stroke-opacity="0.42" stroke-width="2.6" stroke-linejoin="round"/><g transform="translate(0,25.76)">
+      <circle r="7.5" fill="#f07070" stroke="#0d1117" stroke-width="1.2"/>
+      <text y="3" text-anchor="middle" class="v5count">2</text>
+    </g><g transform="translate(-25.3,-12)">
+    <circle r="7" fill="#8a63b8"/>
+    <path d="M-3,3.5 v-3 a3,3 0 0 1 6,0 v3 M-4.5,3.5 h9" fill="none" stroke="#fff" stroke-width="1.4"/>
+  </g><g transform="translate(-25.3,4)">
+    <circle r="7" fill="#7d2b23"/>
+    <path d="M-3.5,2.5 a3.5,3.5 0 0 1 7,0 z" fill="#fff"/>
+  </g><g transform="translate(25.3,-12)">
+    <circle r="7" fill="#c05252"/>
+    <path d="M-2.4,-2.4 q1.6,1.6 1.3,4.8 M1,-2.8 q1.2,2 1,5" fill="none" stroke="#fff" stroke-width="1.3" stroke-linecap="round"/>
+  </g></g>
+<g transform="translate(-69,39.837168574084174)"><polygon points="42.8,0.0 21.4,37.0 -21.4,37.0 -42.8,0.0 -21.4,-37.0 21.4,-37.0" fill="url(#tx-5t-desert)"/><polygon points="42.8,0.0 21.4,37.0 -21.4,37.0 -42.8,0.0 -21.4,-37.0 21.4,-37.0" fill="#10141a" opacity="0.14"/><path d="M-42.8,0.0 L-21.4,-37.0 L21.4,-37.0 L42.8,0.0" fill="none" stroke="#ffffff" stroke-opacity="0.3" stroke-width="2.6" stroke-linejoin="round"/><path d="M42.8,0.0 L21.4,37.0 L-21.4,37.0 L-42.8,0.0" fill="none" stroke="#000000" stroke-opacity="0.42" stroke-width="2.6" stroke-linejoin="round"/><circle cy="-4" r="10.3" fill="#f0e2bd" stroke="#6b4f2a" stroke-width="1.6"/><g fill="#6b4f2a"><circle cx="0" cy="-4" r="2"/></g><text x="0" y="-19.3" text-anchor="middle" class="v5name">Kel</text><g fill="#e6dfcf"><path d="M-4,13.799999999999999 h4 v3 h-4 z M-5,13.799999999999999 l3,-2.6 3,2.6 z"/></g><g transform="translate(0,25.76)">
+      <circle r="7.5" fill="#5ec8f0" stroke="#0d1117" stroke-width="1.2"/>
+      <text y="3" text-anchor="middle" class="v5count">4</text>
+    </g><g transform="translate(-25.3,-12)">
+    <circle r="7" fill="#a8863c"/>
+    <path d="M-1.6,-3.5 v7 M1.6,-3.5 v7 M-1.6,-1 h3.2 M-1.6,1.5 h3.2" stroke="#fff" stroke-width="1.2"/>
+  </g></g>
+<g transform="translate(-69,-39.837168574084174)"><polygon points="42.8,0.0 21.4,37.0 -21.4,37.0 -42.8,0.0 -21.4,-37.0 21.4,-37.0" fill="url(#tx-5t-tundra)"/><polygon points="42.8,0.0 21.4,37.0 -21.4,37.0 -42.8,0.0 -21.4,-37.0 21.4,-37.0" fill="#10141a" opacity="0.14"/><circle cy="-4" r="12.1" fill="#f0e2bd" stroke="#6b4f2a" stroke-width="1.6"/><g fill="#6b4f2a"><circle cx="-2.75" cy="-4" r="2"/><circle cx="2.75" cy="-4" r="2"/></g><text x="0" y="-21.1" text-anchor="middle" class="v5name">Hut</text><g fill="#e6dfcf"><path d="M-4,13.799999999999999 h4 v3 h-4 z M-5,13.799999999999999 l3,-2.6 3,2.6 z"/></g><g transform="translate(0,25.76)">
+      <circle r="7.5" fill="#4caf7d" stroke="#0d1117" stroke-width="1.2"/>
+      <text y="3" text-anchor="middle" class="v5count">1</text>
+    </g><polygon points="42.8,0.0 21.4,37.0 -21.4,37.0 -42.8,0.0 -21.4,-37.0 21.4,-37.0" fill="#10141a" opacity="0.45"/>
+      <polygon points="42.8,0.0 21.4,37.0 -21.4,37.0 -42.8,0.0 -21.4,-37.0 21.4,-37.0" fill="none" stroke="#8c94a0" stroke-width="1.4" stroke-dasharray="4 3"/></g></svg></div><figcaption>Biome textures</figcaption></figure>
+  </div>
+  <ul class="notes">
+    <li>Tiles separate cleanly at every zoom; the relief makes the lattice legible without heavy outlines.</li>
+    <li>One chip grammar for every feature &mdash; congestion fills rails predictably, and a future mark is one more chip.</li>
+    <li>&ldquo;Sunken&rdquo; staleness is instantly felt, before it is read.</li>
+    <li class="con">Side rails hold five chips at most; beyond that the design has no answer but overflow.</li>
+    <li class="con">Tile seams fragment continuous features &mdash; roads and routes visibly jump the gaps.</li>
+  </ul>
+</section>
+
+</main>
+<p class="caption">The same seven hexes in every proposal, deliberately congested so each design has to
+show its layout rules under load. Centre: city + battle + guard + three unit groups + seven
+buildings + a ship + roads. N: mountain with cave + shaft + battle + hostile guard + monsters +
+units + mines. NE: town + gate + guard + units + buildings. SE: sea battle with a fleet and two
+unit groups. S: lair + monsters + gate. SW: village + shaft + units. NW: a stale town sighting
+with buildings and a unit. Textures are the real biome images the application ships
+(config/public/biomes).</p>
+</body>
+</html>

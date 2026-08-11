@@ -3,6 +3,10 @@
 Design artefacts for issue #17, "Basic UI for the app". These are **mockups**, not application
 code — they exist so the layout could be chosen before implementation starts.
 
+For the graphical design of the map itself as implemented, see [hex-rendering.md](hex-rendering.md).
+Four candidate directions for a future hex design are drawn in
+[hex-design-proposals.html](hex-design-proposals.html).
+
 ## Files
 
 | File | What it is |
