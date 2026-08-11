@@ -10,6 +10,7 @@ import {
   summarizeOrderValidation,
   type ValidatedOrders
 } from "../orderEditor";
+import type { OrderSnippet } from "../orderSnippets";
 import { readUnitOrders } from "../ordersDocument";
 import { CollapsiblePanel } from "./CollapsiblePanel";
 import { OrdersEditor } from "./OrdersEditor";
@@ -39,6 +40,8 @@ type OrdersPanelProps = {
   save: SaveState;
   /** The core's order vocabulary, for the editor's completion popup. */
   commands: readonly string[];
+  /** The player's snippet library, offered in the same popup. */
+  snippets: readonly OrderSnippet[];
 };
 
 function lockFor(unit: ReportUnit | null, hex: HexNode | null, block: string | null): Lock | null {
@@ -71,7 +74,8 @@ export function OrdersPanel({
   onChange,
   validated,
   save,
-  commands
+  commands,
+  snippets
 }: OrdersPanelProps) {
   const unitId = unit?.unitId ?? null;
   const block = unitId === null ? null : readUnitOrders(document, unitId);
@@ -153,6 +157,7 @@ export function OrdersPanel({
             ariaLabel={`Orders for unit ${unit?.unitId ?? ""}`}
             problems={problems}
             commands={commands}
+            snippets={snippets}
             onChange={(text) => {
               setDraft(text);
               if (unit) {

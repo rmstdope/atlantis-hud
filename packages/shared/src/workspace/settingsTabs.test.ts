@@ -2,10 +2,10 @@ import { describe, expect, it } from "vitest";
 import { SETTINGS_TABS, gameSettingsPresentation, nextTab, rulesetOptions } from "./settingsTabs";
 
 describe("settings dialog tabs", () => {
-  it("offers global, per-game and about, in that order", () => {
+  it("offers global, per-game, snippets and about, in that order", () => {
     // The order is the reading order of the dialog: what applies everywhere, what applies to the
     // open game, and what this build is. Global first is also the default tab on open.
-    expect(SETTINGS_TABS.map((tab) => tab.id)).toEqual(["global", "game", "about"]);
+    expect(SETTINGS_TABS.map((tab) => tab.id)).toEqual(["global", "game", "snippets", "about"]);
     for (const tab of SETTINGS_TABS) {
       expect(tab.label.length).toBeGreaterThan(0);
     }
@@ -15,13 +15,15 @@ describe("settings dialog tabs", () => {
 describe("arrow-key tab navigation", () => {
   it("moves right with wrap-around", () => {
     expect(nextTab("global", "ArrowRight")).toBe("game");
-    expect(nextTab("game", "ArrowRight")).toBe("about");
+    expect(nextTab("game", "ArrowRight")).toBe("snippets");
+    expect(nextTab("snippets", "ArrowRight")).toBe("about");
     expect(nextTab("about", "ArrowRight")).toBe("global");
   });
 
   it("moves left with wrap-around", () => {
     expect(nextTab("global", "ArrowLeft")).toBe("about");
-    expect(nextTab("about", "ArrowLeft")).toBe("game");
+    expect(nextTab("about", "ArrowLeft")).toBe("snippets");
+    expect(nextTab("snippets", "ArrowLeft")).toBe("game");
   });
 
   it("ignores keys that are not arrow navigation", () => {

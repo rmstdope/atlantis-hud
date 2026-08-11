@@ -10,6 +10,7 @@
 
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
+import { normalizeSnippets, type OrderSnippet } from "./orderSnippets";
 
 export type ThemeName = "dark" | "light";
 
@@ -51,6 +52,11 @@ export type SettingsState = {
    * until asked for.
    */
   movementPlanner: boolean;
+  /**
+   * The player's order snippets, insertable by name from the editor's completion popup.
+   * Global on purpose: a patrol block is the same routine whichever game it is typed into.
+   */
+  snippets: OrderSnippet[];
   /** Applies instantly: the settings dialog has no OK button to wait for. */
   setTheme: (theme: ThemeName) => void;
   setBiomeTextures: (enabled: boolean) => void;
@@ -58,6 +64,9 @@ export type SettingsState = {
   setUnitListLimit: (count: number) => void;
   setWarnOnUnguardedHex: (enabled: boolean) => void;
   setMovementPlanner: (enabled: boolean) => void;
+  addSnippet: (snippet: OrderSnippet) => void;
+  updateSnippet: (id: string, changes: Pick<OrderSnippet, "name" | "body">) => void;
+  removeSnippet: (id: string) => void;
 };
 
 type Persisted = Pick<
@@ -68,6 +77,7 @@ type Persisted = Pick<
   | "unitListLimit"
   | "warnOnUnguardedHex"
   | "movementPlanner"
+  | "snippets"
 >;
 
 /**
@@ -166,6 +176,7 @@ export const useSettingsStore = create<SettingsState>()(
       unitListLimit: DEFAULT_UNIT_LIST_LIMIT,
       warnOnUnguardedHex: false,
       movementPlanner: false,
+      snippets: [],
 
       setTheme: (theme) => {
         applyTheme(theme);
@@ -192,6 +203,24 @@ export const useSettingsStore = create<SettingsState>()(
 
       setMovementPlanner: (movementPlanner) => {
         set({ movementPlanner });
+      },
+
+      addSnippet: (snippet) => {
+        set((state) => ({ snippets: [...state.snippets, snippet] }));
+      },
+
+      updateSnippet: (id, changes) => {
+        set((state) => ({
+          snippets: state.snippets.map((snippet) =>
+            snippet.id === id ? { ...snippet, ...changes } : snippet
+          )
+        }));
+      },
+
+      removeSnippet: (id) => {
+        set((state) => ({
+          snippets: state.snippets.filter((snippet) => snippet.id !== id)
+        }));
       }
     }),
     {
@@ -203,7 +232,8 @@ export const useSettingsStore = create<SettingsState>()(
         paneTransparency: state.paneTransparency,
         unitListLimit: state.unitListLimit,
         warnOnUnguardedHex: state.warnOnUnguardedHex,
-        movementPlanner: state.movementPlanner
+        movementPlanner: state.movementPlanner,
+        snippets: state.snippets
       })
     }
   )
@@ -228,6 +258,11 @@ export function applyPersistedSettings() {
   useSettingsStore.setState({
     unitListLimit: clampUnitListLimit(useSettingsStore.getState().unitListLimit)
   });
+  // Same reconciliation for the snippets: rehydration bypasses the setters, storage is
+  // hand-editable, and an older blob has no snippets key at all.
+  useSettingsStore.setState({
+    snippets: normalizeSnippets(useSettingsStore.getState().snippets)
+  });
 }
 
 /** Resets the store, remembered preferences included. Tests would otherwise leak state. */
@@ -240,7 +275,8 @@ export function resetSettingsStore() {
     paneTransparency: DEFAULT_PANE_TRANSPARENCY,
     unitListLimit: DEFAULT_UNIT_LIST_LIMIT,
     warnOnUnguardedHex: false,
-    movementPlanner: false
+    movementPlanner: false,
+    snippets: []
   });
   applyTheme("dark");
   applyPaneTransparency(DEFAULT_PANE_TRANSPARENCY);

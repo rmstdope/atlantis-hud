@@ -258,6 +258,7 @@ export function AppShell({
   const showTextures = useSettingsStore((state) => state.biomeTextures);
   const warnOnUnguardedHex = useSettingsStore((state) => state.warnOnUnguardedHex);
   const movementPlanner = useSettingsStore((state) => state.movementPlanner);
+  const snippets = useSettingsStore((state) => state.snippets);
   // Which panels are folded is a layout question as well as a panel one: a folded panel hands the
   // space it gives up to the panel beside it, and only the shell knows what is beside what.
   const collapsed = useWorkspaceStore((state) => state.collapsed);
@@ -1532,6 +1533,7 @@ export function AppShell({
                   validated={validated}
                   save={save}
                   commands={orderCommands}
+                  snippets={snippets}
                 />
               </div>
             </div>
