@@ -18,9 +18,10 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use super::intents::{read_intents, Amount, Intent, Party, PlacedIntent, Selector, UnitIntents};
+use super::forms::{Amount, Party, Selector};
+use super::intents::{read_intents, Intent, PlacedIntent, UnitIntents};
 use crate::movement::orders::MoveStep;
-use crate::movement::rules::Ruleset;
+use crate::movement::rules::{item_spellings, Ruleset};
 use crate::report::model::{ItemAmount, MarketItem, ReportRegion, ReportUnit};
 use crate::report::ParsedReport;
 
@@ -583,16 +584,19 @@ fn resolve_item(
 }
 
 /// Whether an order's item argument names this tag or name, plural and underscores allowed.
+///
+/// This answers about one entry, and `resolve_item` above walks the inventories asking it entry by
+/// entry - the opposite nesting to the two catalogue searches, which try each spelling across
+/// everything before the next. So an inventory holding both `pearl` and `pearls` could resolve
+/// `pearls` to the wrong one here where `Ruleset::find_item` would not. No such pair exists in the
+/// committed catalogue, and this searches a hex's inventories rather than the catalogue, so it has
+/// never mattered; it is written down because the difference is invisible until it is not.
 fn names_the_same_item(text: &str, tag: &str, name: &str) -> bool {
     let written = text.replace('_', " ");
-    let matched = [
-        Some(written.as_str()),
-        written.strip_suffix("es"),
-        written.strip_suffix('s'),
-    ]
-    .into_iter()
-    .flatten()
-    .any(|candidate| tag.eq_ignore_ascii_case(candidate) || name.eq_ignore_ascii_case(candidate));
+    let matched = item_spellings(&written)
+        .into_iter()
+        .flatten()
+        .any(|spelling| tag.eq_ignore_ascii_case(spelling) || name.eq_ignore_ascii_case(spelling));
     matched
 }
 

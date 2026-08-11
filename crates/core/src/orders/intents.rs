@@ -9,41 +9,9 @@
 //! all: the syntax checker has already said so, and guessing at what a malformed order meant would
 //! feed a wrong premise into every check downstream. Orders that no check reads are not modelled.
 
+use super::forms::{self, Amount, Party, Selector};
 use super::lexer::{lex_line, Token, TokenKind};
-use crate::movement::orders::{parse_move, MoveStep};
-
-/// How much of something an order names.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Amount {
-    /// A plain count: `GIVE 42 100 SILV`.
-    Exact(i64),
-    /// `ALL`, less an `EXCEPT` reserve where one is written.
-    All { except: i64 },
-}
-
-/// What a transfer moves: one named item, or a whole class of them.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Selector {
-    /// An item as the order wrote it - a tag, a name, or a plural. Resolving it needs a catalogue.
-    Item(String),
-    /// One of the classes the rules enumerate, as in `GIVE 42 ALL ITEMS`.
-    Class(String),
-    /// `GIVE 42 UNIT`, which hands over the unit itself rather than anything it holds.
-    WholeUnit,
-}
-
-/// Who an order names on its other side.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Party {
-    /// An existing unit, by number.
-    Unit(String),
-    /// A unit formed this turn, by alias. Its contents are not known from the report.
-    New(String),
-    /// Another faction's new unit.
-    Foreign { faction: String, alias: String },
-    /// Unit zero, which is the game's way of destroying something.
-    Discard,
-}
+use crate::movement::orders::MoveStep;
 
 /// One thing a unit's orders would do.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -197,18 +165,18 @@ fn read_order(command: &Token, arguments: &[Token]) -> Option<Intent> {
 
     match name.as_str() {
         "GIVE" => {
-            let (to, rest) = read_party(arguments)?;
-            let (what, amount) = read_transfer(rest)?;
+            let (to, rest) = forms::read_party(arguments)?;
+            let (what, amount) = forms::read_transfer(rest)?;
             Some(Intent::Give { to, what, amount })
         }
         "TAKE" => {
             let rest = arguments.split_first().filter(|(kw, _)| kw.is("FROM"))?.1;
-            let (from, rest) = read_party(rest)?;
-            let (what, amount) = read_transfer(rest)?;
+            let (from, rest) = forms::read_party(rest)?;
+            let (what, amount) = forms::read_transfer(rest)?;
             Some(Intent::Take { from, what, amount })
         }
         "BUY" | "SELL" => {
-            let (amount, rest) = read_amount(arguments)?;
+            let (amount, rest) = forms::read_amount(arguments)?;
             let item = rest.first().filter(|_| rest.len() == 1)?.text.clone();
             if name == "BUY" {
                 Some(Intent::Buy { amount, item })
@@ -233,7 +201,7 @@ fn read_order(command: &Token, arguments: &[Token]) -> Option<Intent> {
             let mut students = Vec::new();
             let mut rest = arguments;
             while !rest.is_empty() {
-                let (student, remaining) = read_party(rest)?;
+                let (student, remaining) = forms::read_party(rest)?;
                 students.push(student);
                 rest = remaining;
             }
@@ -242,8 +210,8 @@ fn read_order(command: &Token, arguments: &[Token]) -> Option<Intent> {
             }
             Some(Intent::Teach { students })
         }
-        "GUARD" => Some(Intent::Guard(read_flag(arguments)?)),
-        "CLAIM" => Some(Intent::Claim(read_only_number(arguments)?)),
+        "GUARD" => Some(Intent::Guard(forms::read_flag(arguments)?)),
+        "CLAIM" => Some(Intent::Claim(forms::read_only_number(arguments)?)),
         "TAX" if arguments.is_empty() => Some(Intent::Tax),
         "PILLAGE" if arguments.is_empty() => Some(Intent::Pillage),
         "WORK" if arguments.is_empty() => Some(Intent::Work),
@@ -257,124 +225,11 @@ fn read_order(command: &Token, arguments: &[Token]) -> Option<Intent> {
         // Not every spell takes a month, but the rules make no promise about which, and a mage
         // offered as somebody's spare teacher is worse than one left alone.
         "CAST" => Some(Intent::MonthLong("CAST")),
-        "MOVE" | "ADVANCE" => {
-            // Rebuilt as a line because `parse_move` reads text, and it is the planner's reading of
-            // a route that must be reused rather than reimplemented beside it.
-            let written = std::iter::once(name.as_str())
-                .chain(arguments.iter().map(|token| token.text.as_str()))
-                .collect::<Vec<_>>()
-                .join(" ");
-            Some(Intent::Move {
-                steps: parse_move(&written)?,
-            })
-        }
+        "MOVE" | "ADVANCE" => Some(Intent::Move {
+            steps: forms::read_move_line(command, arguments)?,
+        }),
         _ => None,
     }
-}
-
-/// A unit as an order names it: `17`, `NEW 2`, or `FACTION 15 NEW 2`. Returns what is left.
-fn read_party(tokens: &[Token]) -> Option<(Party, &[Token])> {
-    let (first, rest) = tokens.split_first()?;
-
-    if first.is("FACTION") {
-        let (faction, rest) = rest
-            .split_first()
-            .filter(|(f, _)| f.kind == TokenKind::Number)?;
-        let rest = rest.split_first().filter(|(kw, _)| kw.is("NEW"))?.1;
-        let (alias, rest) = rest
-            .split_first()
-            .filter(|(a, _)| a.kind == TokenKind::Number)?;
-        return Some((
-            Party::Foreign {
-                faction: faction.text.clone(),
-                alias: alias.text.clone(),
-            },
-            rest,
-        ));
-    }
-
-    if first.is("NEW") {
-        let (alias, rest) = rest
-            .split_first()
-            .filter(|(a, _)| a.kind == TokenKind::Number)?;
-        return Some((Party::New(alias.text.clone()), rest));
-    }
-
-    if first.kind != TokenKind::Number {
-        return None;
-    }
-    // "GIVE 0" destroys what is given rather than handing it to a unit numbered zero.
-    if first.text.trim_start_matches('0').is_empty() {
-        return Some((Party::Discard, rest));
-    }
-    Some((Party::Unit(first.text.clone()), rest))
-}
-
-/// The `[quantity] [item]` half of a transfer, in all the forms the rules give it.
-fn read_transfer(tokens: &[Token]) -> Option<(Selector, Amount)> {
-    // `GIVE 75 UNIT` hands over the unit itself.
-    if tokens.len() == 1 && tokens[0].is("UNIT") {
-        return Some((Selector::WholeUnit, Amount::All { except: 0 }));
-    }
-
-    let (amount, rest) = read_amount(tokens)?;
-    let (item, rest) = rest.split_first()?;
-
-    // `ALL [item] EXCEPT [n]` keeps a reserve back. Only the ALL form takes one.
-    let amount = match (amount, rest) {
-        (Amount::All { .. }, [keyword, reserve]) if keyword.is("EXCEPT") => Amount::All {
-            except: read_number(reserve)?,
-        },
-        (amount, []) => amount,
-        _ => return None,
-    };
-
-    let selector = if is_item_class(&item.text) {
-        Selector::Class(item.text.clone())
-    } else {
-        Selector::Item(item.text.clone())
-    };
-    Some((selector, amount))
-}
-
-/// `ALL`, or a plain count. Returns what is left.
-fn read_amount(tokens: &[Token]) -> Option<(Amount, &[Token])> {
-    let (first, rest) = tokens.split_first()?;
-    if first.is("ALL") {
-        return Some((Amount::All { except: 0 }, rest));
-    }
-    Some((Amount::Exact(read_number(first)?), rest))
-}
-
-fn read_number(token: &Token) -> Option<i64> {
-    (token.kind == TokenKind::Number)
-        .then(|| token.text.parse().ok())
-        .flatten()
-}
-
-fn read_only_number(tokens: &[Token]) -> Option<i64> {
-    match tokens {
-        [only] => read_number(only),
-        _ => None,
-    }
-}
-
-fn read_flag(tokens: &[Token]) -> Option<bool> {
-    match read_only_number(tokens)? {
-        0 => Some(false),
-        1 => Some(true),
-        _ => None,
-    }
-}
-
-/// Whether a transfer names a whole class of items rather than one of them.
-///
-/// Checked against the rules page's own list rather than against the item catalogue: a class is
-/// engine vocabulary and is there whether or not a ruleset has been loaded.
-fn is_item_class(text: &str) -> bool {
-    super::grammar::ITEM_CLASSES
-        .iter()
-        .any(|class| class.eq_ignore_ascii_case(text))
 }
 
 #[cfg(test)]
@@ -687,7 +542,8 @@ mod tests {
         assert_eq!(
             intents("unit 5\nMOVE N NE\n"),
             vec![Intent::Move {
-                steps: parse_move("MOVE N NE").expect("the planner reads this")
+                steps: crate::movement::orders::parse_move("MOVE N NE")
+                    .expect("the planner reads this")
             }]
         );
     }
@@ -699,7 +555,8 @@ mod tests {
         assert_eq!(
             intents("unit 5\nADVANCE N\n"),
             vec![Intent::Move {
-                steps: parse_move("ADVANCE N").expect("the planner reads this")
+                steps: crate::movement::orders::parse_move("ADVANCE N")
+                    .expect("the planner reads this")
             }]
         );
     }

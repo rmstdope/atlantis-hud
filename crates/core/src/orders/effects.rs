@@ -15,6 +15,7 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use crate::cache::ReportCache;
+use crate::movement::rules::item_spellings;
 use crate::report::model::ReportUnit;
 
 /// How a previewed unit relates to the hex its row sits in.
@@ -337,7 +338,7 @@ impl Working {
                 .copied();
         } else if command.is("form") {
             self.open_form(arguments);
-        } else if command.is("end") || command.is("endform") {
+        } else if command.is("end") {
             self.forming.pop();
         } else {
             self.read_order(command, arguments);
@@ -353,7 +354,12 @@ impl Working {
     }
 
     fn open_form(&mut self, arguments: &[super::lexer::Token]) {
-        let (Some(alias), Some(parent)) = (arguments.first(), self.active()) else {
+        // The alias has to be a number: `GIVE NEW n` is the only way to reach the formed unit, and
+        // the grammar's `Arg::Unit` accepts `NEW 1` and never `NEW a`.
+        let alias = arguments
+            .first()
+            .filter(|alias| alias.kind == super::lexer::TokenKind::Number);
+        let (Some(alias), Some(parent)) = (alias, self.active()) else {
             // A FORM that cannot be read still opens a block, or its orders would fall through
             // to the unit outside it.
             self.forming.push(None);
@@ -407,14 +413,7 @@ impl Working {
         };
 
         if command.is("move") || command.is("advance") {
-            // Rebuilt from the lexed tokens rather than read from the raw line, so a trailing
-            // comment cannot make the order unreadable and quietly preview the unit as staying.
-            let order = std::iter::once(command)
-                .chain(arguments)
-                .map(|token| token.text.as_str())
-                .collect::<Vec<_>>()
-                .join(" ");
-            if let Some(steps) = crate::movement::orders::parse_move(&order) {
+            if let Some(steps) = super::forms::read_move_line(command, arguments) {
                 // The last movement order wins, because a later order replaces an earlier one
                 // when the game executes them.
                 self.units[active].move_steps = Some(steps);
@@ -422,7 +421,7 @@ impl Working {
         } else if command.is("name") {
             self.rename(active, arguments);
         } else if command.is("guard") {
-            if let Some(set) = flag_argument(arguments) {
+            if let Some(set) = super::forms::read_flag(arguments) {
                 let unit = &mut self.units[active].unit;
                 unit.on_guard = set;
                 set_flag(&mut unit.flags, "guarding", set);
@@ -433,7 +432,7 @@ impl Working {
                 }
             }
         } else if command.is("avoid") {
-            if let Some(set) = flag_argument(arguments) {
+            if let Some(set) = super::forms::read_flag(arguments) {
                 let unit = &mut self.units[active].unit;
                 set_flag(&mut unit.flags, "avoiding", set);
                 if set {
@@ -442,7 +441,7 @@ impl Working {
                 }
             }
         } else if command.is("behind") {
-            if let Some(set) = flag_argument(arguments) {
+            if let Some(set) = super::forms::read_flag(arguments) {
                 set_flag(&mut self.units[active].unit.flags, "behind", set);
             }
         } else if command.is("enter") {
@@ -474,37 +473,48 @@ impl Working {
             .replace('_', " ");
     }
 
-    /// `GIVE target amount item`, where the target is a unit, `NEW n`, or `0` to discard.
+    /// `GIVE target amount item`, where the target is a unit, `NEW n`, another faction's new unit,
+    /// or `0` to discard.
+    ///
+    /// The shapes are read by [`super::forms`], the same reader the validator and the intent pass
+    /// use, so an order this previews is an order the validator accepts. What is left here is
+    /// resolution: which unit the target names, whether the giver holds what it is giving, and how
+    /// much actually moves.
     ///
     /// A target the walker cannot find - another hex, another faction, an alias never formed -
     /// makes the whole order a no-op: the validator flags what the server would refuse, and
     /// half-applying it here would show a transfer that will not happen.
     fn give(&mut self, giver: usize, arguments: &[super::lexer::Token]) {
-        let mut arguments = arguments.iter();
-        let Some(target) = arguments.next() else {
+        use super::forms::{Amount, Party, Selector};
+
+        let Some((target, rest)) = super::forms::read_party(arguments) else {
+            return;
+        };
+        let Some((what, amount)) = super::forms::read_transfer(rest) else {
             return;
         };
 
-        let receiver = if target.is("new") {
-            let Some(alias) = arguments.next() else {
-                return;
-            };
-            let key = (self.units[giver].unit.region_id.clone(), alias.text.clone());
-            match self.by_alias.get(&key) {
-                Some(index) => Some(*index),
-                None => return,
+        let receiver = match target {
+            Party::New(alias) => {
+                let key = (self.units[giver].unit.region_id.clone(), alias);
+                match self.by_alias.get(&key) {
+                    Some(index) => Some(*index),
+                    None => return,
+                }
             }
-        } else if target.text == "0" {
-            None
-        } else {
-            match self.by_id.get(&target.text) {
+            Party::Discard => None,
+            // Another faction's new unit is not a row of ours. It has to be turned away here
+            // rather than left to fall through: read as a plain id it would find nothing, but
+            // read as a zero it would silently destroy the goods.
+            Party::Foreign { .. } => return,
+            Party::Unit(id) => match self.by_id.get(&id) {
                 Some(&index)
                     if self.units[index].unit.region_id == self.units[giver].unit.region_id =>
                 {
                     Some(index)
                 }
                 _ => return,
-            }
+            },
         };
 
         // The server refuses a unit giving to itself, and even a net-zero application here would
@@ -513,15 +523,13 @@ impl Working {
             return;
         }
 
-        let Some(amount) = arguments.next() else {
+        let Selector::Item(item) = what else {
+            // `GIVE target UNIT` hands over the whole unit, and `ALL ITEMS` a whole class of them.
+            // Ownership is a different question from what a row shows, and a class needs every
+            // item the unit holds classified; both are left to a later issue.
             return;
         };
-        let Some(item) = arguments.next() else {
-            // `GIVE target UNIT` hands over the whole unit; ownership is a different question
-            // from what a row shows, so it is left to a later issue.
-            return;
-        };
-        let Some(held) = find_item(&self.units[giver].unit.items, &item.text) else {
+        let Some(held) = find_item(&self.units[giver].unit.items, &item) else {
             return;
         };
         let (name, tag, held_amount) = {
@@ -529,25 +537,10 @@ impl Working {
             (held.name.clone(), held.tag.clone(), held.amount)
         };
 
-        let requested = if amount.is("all") {
-            // `GIVE target ALL item EXCEPT n` keeps n back. An EXCEPT that cannot be read makes
-            // the whole order unreadable, and an unreadable order changes nothing - falling back
-            // to the full stock would preview a unit giving away what it was told to keep.
-            match (arguments.next(), arguments.next()) {
-                (None, _) => held_amount,
-                (Some(except), Some(kept)) if except.is("except") => {
-                    match kept.text.parse::<i64>() {
-                        Ok(kept) => held_amount.saturating_sub(kept),
-                        Err(_) => return,
-                    }
-                }
-                _ => return,
-            }
-        } else {
-            match amount.text.parse::<i64>() {
-                Ok(amount) => amount,
-                Err(_) => return,
-            }
+        let requested = match amount {
+            // `GIVE target ALL item EXCEPT n` keeps n back.
+            Amount::All { except } => held_amount.saturating_sub(except),
+            Amount::Exact(count) => count,
         };
         let moved = requested.clamp(0, held_amount);
         if moved == 0 {
@@ -575,15 +568,6 @@ impl Working {
     }
 }
 
-/// The `0` or `1` a flag order carries, or nothing when it carries anything else.
-fn flag_argument(arguments: &[super::lexer::Token]) -> Option<bool> {
-    match arguments.first().map(|token| token.text.as_str()) {
-        Some("1") => Some(true),
-        Some("0") => Some(false),
-        _ => None,
-    }
-}
-
 /// Adds or removes a flag, in the report's own vocabulary, without disturbing the others' order.
 fn set_flag(flags: &mut Vec<String>, flag: &str, set: bool) {
     let present = flags.iter().any(|existing| existing == flag);
@@ -594,20 +578,19 @@ fn set_flag(flags: &mut Vec<String>, flag: &str, set: bool) {
     }
 }
 
-/// The index of the item this text names, accepting the same spellings the game does: tag or
-/// name, any case, underscores for spaces, and the plural the rules' own examples use.
+/// The index of the item this text names, accepting the same spellings the game does.
+///
+/// Spelling-major, as [`item_spellings`] requires.
 fn find_item(items: &[crate::report::model::ItemAmount], text: &str) -> Option<usize> {
     let written = text.replace('_', " ");
-    let candidates = [
-        Some(written.as_str()),
-        written.strip_suffix("es"),
-        written.strip_suffix('s'),
-    ];
-    let found = candidates.into_iter().flatten().find_map(|candidate| {
-        items.iter().position(|item| {
-            item.tag.eq_ignore_ascii_case(candidate) || item.name.eq_ignore_ascii_case(candidate)
-        })
-    });
+    let found = item_spellings(&written)
+        .into_iter()
+        .flatten()
+        .find_map(|spelling| {
+            items.iter().position(|item| {
+                item.tag.eq_ignore_ascii_case(spelling) || item.name.eq_ignore_ascii_case(spelling)
+            })
+        });
     found
 }
 
@@ -790,6 +773,166 @@ mod tests {
         // order changes nothing - it must not fall back to giving everything away.
         let unreadable = preview("unit 900\nGIVE 901 ALL SWOR EXCEPT x\n");
         assert!(unreadable.regions.is_empty(), "{:?}", unreadable.regions);
+    }
+
+    // --- orders the validator refuses (#92) ---------------------------------------------------
+    //
+    // This walker used to read its own arguments and was looser than the syntax checker about
+    // them: it would act on lines the editor was underlining in red. Now that both read through
+    // `super::forms`, an order the validator refuses previews nothing, which is the only answer
+    // that agrees with what the server will do with the file.
+    //
+    // Each of these is a line the validator already reports as an error today.
+
+    #[test]
+    fn a_give_with_a_trailing_token_is_unreadable() {
+        // "extra-arguments" from the validator. Reading the first three arguments and ignoring
+        // the rest previewed a gift the server would never make.
+        let response = preview("unit 900\nGIVE 901 1 SWOR junk\n");
+        assert!(response.regions.is_empty(), "{:?}", response.regions);
+    }
+
+    #[test]
+    fn an_except_without_all_is_unreadable() {
+        // EXCEPT belongs to the ALL form alone. Taken as a plain quantity with trailing noise,
+        // this previewed a gift of two.
+        let response = preview("unit 900\nGIVE 901 2 SWOR EXCEPT 1\n");
+        assert!(response.regions.is_empty(), "{:?}", response.regions);
+    }
+
+    /// The lexer calls a token a number only when it is all digits, so `-1` is a word. Parsing it
+    /// as an integer made `EXCEPT -1` keep back minus one sword, which is to say all of them.
+    #[test]
+    fn a_negative_reserve_is_unreadable_rather_than_giving_everything() {
+        let response = preview("unit 900\nGIVE 901 ALL SWOR EXCEPT -1\n");
+        assert!(response.regions.is_empty(), "{:?}", response.regions);
+    }
+
+    #[test]
+    fn a_flag_order_with_a_trailing_token_is_unreadable() {
+        let response = preview("unit 900\nGUARD 1 junk\n");
+        assert!(response.regions.is_empty(), "{:?}", response.regions);
+
+        // The control, so this is not passing because GUARD stopped working altogether.
+        let set = preview("unit 900\nGUARD 1\n");
+        assert!(only_unit(&set).unit.on_guard);
+    }
+
+    /// A flag is the literal `0` or `1`. `01` parses to one but is not an order the game has, and
+    /// the validator says so - so the preview must not quietly set the flag anyway.
+    #[test]
+    fn a_flag_written_with_a_leading_zero_is_unreadable() {
+        let response = preview("unit 900\nGUARD 01\n");
+        assert!(response.regions.is_empty(), "{:?}", response.regions);
+    }
+
+    /// `GIVE 0` destroys what is given, and the game writes zero however it likes. Matching the
+    /// literal `"0"` sent `000` down the unit-lookup path, where it found nothing and did nothing.
+    #[test]
+    fn any_way_of_writing_zero_discards() {
+        let response = preview("unit 900\n@give 000 1 SWOR\n");
+
+        let giver = only_unit(&response);
+        assert_eq!(giver.unit.unit_id, "900");
+        assert_eq!(
+            giver
+                .unit
+                .items
+                .iter()
+                .find(|item| item.tag == "SWOR")
+                .map_or(0, |item| item.amount),
+            2,
+            "one of the three swords is destroyed"
+        );
+    }
+
+    /// The grammar requires a numeric alias (`Arg::Unit` accepts `NEW 1`, never `NEW a`), so a
+    /// FORM the server would refuse must form nothing here either.
+    #[test]
+    fn a_form_alias_that_is_not_a_number_forms_nothing() {
+        let response = preview("unit 900\nFORM a\nNAME UNIT \"Ghost\"\nEND\n");
+
+        // Nothing at all, which is the stronger claim: a FORM that cannot be read still has to
+        // open a block, or the orders inside it fall through and rename unit 900 instead. Asking
+        // only that no row is `Formed` would not notice that.
+        assert!(response.regions.is_empty(), "{:?}", response.regions);
+    }
+
+    /// NewOrigins has no ENDFORM - `grammar.rs` deliberately dropped it from the vocabulary, and
+    /// the validator calls it an unknown command. A block it appears to close is not closed, so
+    /// the orders after it still belong to the unit being formed.
+    #[test]
+    fn endform_closes_nothing_because_the_rules_have_no_such_order() {
+        let response = preview("unit 900\nFORM 1\nENDFORM\nNAME UNIT \"Formed\"\n");
+
+        let formed = response.regions[0]
+            .units
+            .iter()
+            .find(|unit| unit.status == UnitPreviewStatus::Formed)
+            .expect("a formed unit");
+        assert_eq!(
+            formed.unit.name, "Formed",
+            "the NAME belongs to the formed unit, because ENDFORM closed nothing"
+        );
+    }
+
+    /// Handing over a whole unit is ownership, not a row's contents, and stays out of the preview.
+    /// Worth its own test now that the shared reader hands this over as a selector rather than
+    /// simply running out of arguments.
+    #[test]
+    fn giving_the_unit_itself_previews_nothing() {
+        let response = preview("unit 900\nGIVE 901 UNIT\n");
+        assert!(response.regions.is_empty(), "{:?}", response.regions);
+
+        // The control: the same giver and receiver, with a transfer the preview does model. An
+        // empty answer above has to mean "this selector is turned away", not "this GIVE never
+        // resolves anything".
+        let moved = preview("unit 900\nGIVE 901 1 SWOR\n");
+        assert!(
+            !moved.regions.is_empty(),
+            "the control must preview something"
+        );
+    }
+
+    /// Likewise a whole class of items: the shared reader recognises `ALL ITEMS` where the old
+    /// inline parse merely failed to find an item called "ITEMS".
+    #[test]
+    fn giving_a_class_of_items_previews_nothing() {
+        let response = preview("unit 900\nGIVE 901 ALL ITEMS\n");
+        assert!(response.regions.is_empty(), "{:?}", response.regions);
+
+        // The control: `ALL` of one named item is modelled, so the emptiness above is the class
+        // being turned away rather than `ALL` failing to read.
+        let named = preview("unit 900\nGIVE 901 ALL SWOR\n");
+        assert!(
+            !named.regions.is_empty(),
+            "the control must preview something"
+        );
+    }
+
+    /// A gift to another faction's new unit leaves this faction's rows alone. The shared reader
+    /// recognises the `FACTION f NEW n` form, so it has to be turned away deliberately - taken as
+    /// a plain unit id it would find nothing, but taken as a zero it would silently destroy the
+    /// goods.
+    #[test]
+    fn giving_to_another_factions_new_unit_previews_nothing() {
+        let response = preview("unit 900\nGIVE FACTION 14 NEW 2 1 SWOR\n");
+        assert!(response.regions.is_empty(), "{:?}", response.regions);
+
+        // The control: our own new unit, same order shape. Without it this test would pass just as
+        // well against a reader that had stopped understanding `NEW` at all - and the arm it
+        // guards is the dangerous one, since a foreign target read as a zero would destroy the
+        // swords rather than merely fail to move them.
+        let ours = preview("unit 900\nFORM 2\nEND\nGIVE NEW 2 1 SWOR\n");
+        assert!(
+            ours.regions[0]
+                .units
+                .iter()
+                .any(|unit| unit.status == UnitPreviewStatus::Formed
+                    && unit.unit.items.iter().any(|item| item.tag == "SWOR")),
+            "the control must hand the sword to our own formed unit: {:?}",
+            ours.regions
+        );
     }
 
     #[test]

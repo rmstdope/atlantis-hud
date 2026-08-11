@@ -11,7 +11,6 @@
 //! say", and it accepts anything, including nothing. That is the accept-on-doubt policy made
 //! concrete: a `CAST` whose arguments depend on the spell must not be guessed at.
 
-use super::items::is_known_item;
 use super::lexer::{Token, TokenKind};
 use crate::movement::graph::Direction;
 use crate::movement::rules::Ruleset;
@@ -574,10 +573,10 @@ fn match_arg(
     let consumed = match argument {
         Arg::Kw(keyword) => usize::from(token.is(keyword)),
         Arg::OneOf(keywords) => usize::from(keywords.iter().any(|keyword| token.is(keyword))),
-        Arg::ItemClass => usize::from(ITEM_CLASSES.iter().any(|class| token.is(class))),
+        Arg::ItemClass => usize::from(super::forms::is_item_class(&token.text)),
         Arg::Unit => match_unit(arguments, at),
         Arg::Faction | Arg::Object | Arg::Number => usize::from(token.kind == TokenKind::Number),
-        Arg::Flag => usize::from(token.text == "0" || token.text == "1"),
+        Arg::Flag => usize::from(super::forms::flag_value(token).is_some()),
         Arg::MoveStep => usize::from(
             Direction::parse(&token.text).is_some()
                 || token.is("in")
@@ -586,7 +585,11 @@ fn match_arg(
         ),
         Arg::Item => {
             if let Some(ruleset) = ruleset {
-                if !is_known_item(&token.text, ruleset) {
+                // A name the catalogue does not have is a **warning**, never an error: the
+                // catalogue is scraped from the game being played and may be stale, absent, or
+                // simply missing an entry, and none of that is grounds for telling a player their
+                // order is wrong.
+                if ruleset.find_item(&token.text).is_none() {
                     unknown.push(UnknownItem {
                         text: token.text.clone(),
                         column_start: token.column_start,
@@ -619,28 +622,12 @@ fn match_arg(
 /// use the form `NEW #` if the unit belongs to your faction, or `FACTION # NEW #` if the unit belongs
 /// to a different faction."
 fn match_unit(arguments: &[Token], at: usize) -> usize {
-    let token = &arguments[at];
-
-    if token.is("faction") {
-        let is_foreign_alias = arguments
-            .get(at + 1)
-            .is_some_and(|faction| faction.kind == TokenKind::Number)
-            && arguments.get(at + 2).is_some_and(|new| new.is("new"))
-            && arguments
-                .get(at + 3)
-                .is_some_and(|alias| alias.kind == TokenKind::Number);
-        return if is_foreign_alias { 4 } else { 0 };
-    }
-
-    if token.is("new") {
-        let has_alias = arguments
-            .get(at + 1)
-            .is_some_and(|alias| alias.kind == TokenKind::Number);
-        return if has_alias { 2 } else { 0 };
-    }
-
-    // Unit 0 is the game's own, which is how an order discards items.
-    usize::from(token.kind == TokenKind::Number)
+    // The reader's own answer, so the shape checker and the readers cannot part company about
+    // what a unit reference is. `match_arg` has already established that `at` is in range.
+    //
+    // Zero means "these tokens are not a unit", which the caller turns into a mismatch *at* this
+    // position rather than a missing argument - the form-ranking heuristic keys off that position.
+    super::forms::unit_token_count(&arguments[at..])
 }
 
 /// What to call an argument when telling a player it is missing or wrong.
