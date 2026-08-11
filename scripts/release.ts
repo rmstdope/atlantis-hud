@@ -12,9 +12,12 @@
  * fails eight minutes into a compile rather than here. This script is the reason that never
  * happens: it reads both, refuses to continue if they already disagree, and writes both.
  *
- * Nothing irreversible happens before every check has passed. The commit, the tag and the two
- * pushes are the last four things it does, in that order, and `--dry-run` stops short of all of
- * them while still doing the reading and the arithmetic.
+ * Nothing is written before every check has passed - the state checks on the tree, and then the
+ * same local quality gate CI runs: lint, typecheck, the unit tests, and the Rust suite. A release
+ * that would fail those checks eight minutes into the workflow fails here instead, with the
+ * manifests untouched. The commit, the tag and the two pushes are the last four things it does,
+ * in that order, and `--dry-run` stops short of all of them while still doing the reading, the
+ * arithmetic and the checks - a dry run is a rehearsal, and the checks are most of the show.
  */
 
 import { execFileSync } from "node:child_process";
@@ -122,6 +125,37 @@ if (git("ls-remote", "--tags", "origin", tag) !== "") {
 }
 
 console.log(`release: ${rootVersion} -> ${nextVersion} (${bump}) on ${branch}`);
+
+// --- The local quality gate --------------------------------------------------------------------
+
+/**
+ * The same gate CI's `checks` and `rust` jobs run, in the same order, cheap to dear. The browser
+ * suites (smoke, pwa, native) are deliberately not here: they need built bundles and free ports,
+ * and they run against the release commit in CI either way - this gate exists to catch what would
+ * otherwise fail the workflow minutes after the tag is already out.
+ */
+const CHECKS: ReadonlyArray<{ label: string; command: string; args: string[] }> = [
+  { label: "lint", command: "pnpm", args: ["run", "lint"] },
+  { label: "typecheck", command: "pnpm", args: ["run", "typecheck"] },
+  { label: "unit tests", command: "pnpm", args: ["-r", "run", "test"] },
+  { label: "rustfmt", command: "cargo", args: ["fmt", "--check"] },
+  {
+    label: "clippy",
+    command: "cargo",
+    args: ["clippy", "--workspace", "--all-targets", "--", "-D", "warnings"]
+  },
+  { label: "rust tests", command: "cargo", args: ["test", "--workspace"] }
+];
+
+for (const check of CHECKS) {
+  console.log(`release: ${check.label}...`);
+  try {
+    execFileSync(check.command, check.args, { cwd: repoFile("."), stdio: "inherit" });
+  } catch {
+    fail(`${check.label} failed, so the version was not touched. Fix it and release again.`);
+  }
+}
+console.log("release: every local check passed.");
 
 if (dryRun) {
   console.log("release: --dry-run, so nothing was written, committed, tagged or pushed.");
