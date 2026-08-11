@@ -566,6 +566,8 @@ export function MapCanvas({
             showTextures={showTextures}
           />
 
+          <RoadLayer hexes={onLevel} show={showStructures} />
+
           {(routeLine.solid || routeLine.dotted) && (
             <g pointerEvents="none">
               {/* A casing under each line, so a route stays readable over any terrain. */}
@@ -848,6 +850,96 @@ function HexLayer({
 }
 
 /** Settlements, units and structures. What of it shows is decided by the zoom band, in CSS. */
+/**
+ * Where each road direction's edge lies, as a unit vector from the hex's centre. Flat-top hexes
+ * put the six edge midpoints at 0.87R along exactly these six bearings, which are also the six
+ * directions Atlantis roads run.
+ */
+const ROAD_BEARINGS: Record<string, { x: number; y: number }> = {
+  n: { x: 0, y: -1 },
+  ne: { x: 0.866, y: -0.5 },
+  se: { x: 0.866, y: 0.5 },
+  s: { x: 0, y: 1 },
+  sw: { x: -0.866, y: 0.5 },
+  nw: { x: -0.866, y: -0.5 }
+};
+
+/** The bearing a road structure runs in, or `null` for any other kind of structure. */
+function roadBearing(kind: string): { x: number; y: number } | null {
+  const match = /^road\s+(\w+)$/iu.exec(kind.trim());
+  return match ? (ROAD_BEARINGS[match[1].toLowerCase()] ?? null) : null;
+}
+
+/** Every road in the hex, as the bearings their lines run along. */
+function roadBearingsOf(hex: HexNode): Array<{ x: number; y: number }> {
+  return (hex.region?.structures ?? [])
+    .map((structure) => roadBearing(structure.kind))
+    .filter((bearing): bearing is { x: number; y: number } => bearing !== null);
+}
+
+/**
+ * Whether a structure can sail away: a ship gets a ship mark, not a building's roof. The report
+ * offers no flag for this, only the kind's name, so the classic hull names are listed and
+ * "ship"/"boat" catch the rest (Longship, Airship, Longboat and their kin).
+ */
+const SHIP_KINDS = new Set(["galley", "raft", "cog", "clipper", "galleon", "corsair", "balloon"]);
+
+function isShipKind(kind: string): boolean {
+  const name = kind.trim().toLowerCase();
+  return SHIP_KINDS.has(name) || name.includes("ship") || name.includes("boat");
+}
+
+/**
+ * How many roofs a count of buildings earns: one for a hamlet's worth, two for a handful, three
+ * for a town of works. A glyph per building drowned the hex; a single glyph said nothing about
+ * scale.
+ */
+function structureGlyphCount(buildings: number): number {
+  if (buildings <= 0) {
+    return 0;
+  }
+  if (buildings <= 3) {
+    return 1;
+  }
+  if (buildings <= 6) {
+    return 2;
+  }
+  return 3;
+}
+
+/**
+ * Road spokes, in a layer of their own beneath the route overlay: a movement path crosses a road
+ * on top of it, the way the traveller would. Slightly wider than the path's 5px casing, and
+ * non-scaling like it, so whether a path runs along a road or misses it stays legible at every
+ * zoom - the road always peeks out from underneath.
+ */
+function RoadLayer({ hexes, show }: { hexes: HexNode[]; show: boolean }) {
+  if (!show) {
+    return null;
+  }
+  return (
+    <g pointerEvents="none">
+      {hexes.flatMap((hex) => {
+        const world = worldOf(hex.coordinate);
+        return roadBearingsOf(hex).map((bearing, index) => (
+          <line
+            key={`${hex.regionId}-${index}`}
+            className="map-road"
+            x1={world.x}
+            y1={world.y}
+            x2={world.x + bearing.x * HEX_RADIUS * 0.87}
+            y2={world.y + bearing.y * HEX_RADIUS * 0.87}
+            stroke="black"
+            strokeWidth={7}
+            strokeLinecap="round"
+            vectorEffect="non-scaling-stroke"
+          />
+        ));
+      })}
+    </g>
+  );
+}
+
 function MarkLayer({
   hexes,
   showUnits,
@@ -863,30 +955,13 @@ function MarkLayer({
         const world = worldOf(hex.coordinate);
         const own = unitPipRadius(hex.ownUnitCount);
         const foreign = unitPipRadius(hex.foreignUnitCount);
-        const structures = hex.region?.structures?.length ?? 0;
+        // Roads are drawn as roads - in RoadLayer, under the route overlay - and ships get a
+        // hull mark of their own; neither counts among the buildings the roofs stand for.
+        const allStructures = hex.region?.structures ?? [];
+        const ships = allStructures.filter((structure) => isShipKind(structure.kind)).length;
+        const buildings = allStructures.length - ships - roadBearingsOf(hex).length;
         return (
           <g key={hex.regionId}>
-            {hex.settlementName && (
-              <>
-                <text
-                  className="map-label map-name fill-settlement"
-                  x={world.x}
-                  y={world.y - HEX_RADIUS - 3}
-                  textAnchor="middle"
-                >
-                  {hex.settlementName}
-                </text>
-                <text
-                  className="map-glyph fill-settlement"
-                  x={world.x}
-                  y={world.y + 3}
-                  textAnchor="middle"
-                  fontSize={9}
-                >
-                  ▣
-                </text>
-              </>
-            )}
             {showUnits && own > 0 && (
               <circle
                 className="map-pip fill-unit-own"
@@ -904,26 +979,69 @@ function MarkLayer({
               />
             )}
             {showUnits && hex.ownUnitCount + hex.foreignUnitCount > 0 && (
+              // In the hex's own upper third - a flat-top hex only reaches 0.87R up, so anything
+              // nearer the rim reads as the neighbour's. A town hex pushes it one step higher,
+              // because the settlement name owns the slot above the glyph.
               <text
                 className="map-label map-count fill-ink"
                 x={world.x}
-                y={world.y - 4}
+                y={world.y - (hex.settlementName ? 13 : 9)}
                 textAnchor="middle"
               >
                 {hex.ownUnitCount}
                 {hex.foreignUnitCount > 0 ? `/${hex.foreignUnitCount}` : ""}
               </text>
             )}
-            {showStructures && structures > 0 && (
-              <text
+            {/*
+              One glyph per structure up to three, cascading right and down, so a hex holding a
+              whole town of works reads busier than one holding a single mine - without trying to
+              print two dozen roofs into eighteen pixels.
+            */}
+            {showStructures &&
+              Array.from({ length: structureGlyphCount(buildings) }, (_, index) => (
+                <text
+                  key={index}
+                  className="map-glyph fill-brass"
+                  x={world.x + HEX_RADIUS * 0.35 + index * 1.8}
+                  y={world.y - 3 + index * 1.8}
+                  textAnchor="middle"
+                  fontSize={7}
+                >
+                  ⌂
+                </text>
+              ))}
+            {showStructures && ships > 0 && (
+              // A hull with a sail in the hex's upper-left corner: something here can leave.
+              <g
                 className="map-glyph fill-brass"
-                x={world.x + HEX_RADIUS * 0.5}
-                y={world.y - HEX_RADIUS * 0.4}
-                textAnchor="middle"
-                fontSize={7}
+                transform={`translate(${world.x - HEX_RADIUS * 0.45}, ${world.y - HEX_RADIUS * 0.5})`}
               >
-                ⌂
-              </text>
+                <path d="M 0 -4.5 L 0 0.5 L 3.5 0.5 Z" />
+                <path d="M -4 1.5 L 4 1.5 L 2.5 4 L -2.5 4 Z" />
+              </g>
+            )}
+            {/* Last in the hex, so the name and its glyph paint over the roofs and the hull. */}
+            {hex.settlementName && (
+              <>
+                {/* Tight above the town glyph it names, not floating at the hex's rim. */}
+                <text
+                  className="map-label map-name fill-settlement"
+                  x={world.x}
+                  y={world.y - 6}
+                  textAnchor="middle"
+                >
+                  {hex.settlementName}
+                </text>
+                <text
+                  className="map-glyph fill-settlement"
+                  x={world.x}
+                  y={world.y + 3}
+                  textAnchor="middle"
+                  fontSize={9}
+                >
+                  ▣
+                </text>
+              </>
             )}
           </g>
         );
