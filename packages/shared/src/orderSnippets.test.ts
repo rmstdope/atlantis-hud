@@ -57,6 +57,19 @@ describe("normalizeSnippets", () => {
     const shadow = { id: "z9", name: "PATROL", body: "@tax" };
     expect(normalizeSnippets([PATROL, shadow])).toEqual([PATROL]);
   });
+
+  it("drops entries the dialog itself would have refused", () => {
+    // Storage is hand-editable: what comes back must satisfy the same rules the dialog
+    // enforces, or a blank-bodied snippet acts as a delete key and an out-of-shape name is
+    // permanently uninsertable.
+    const kept = normalizeSnippets([
+      { id: "a", name: "2move", body: "@work" },
+      { id: "b", name: "my patrol", body: "@work" },
+      { id: "c", name: "patrol", body: "   \n " },
+      TAXES
+    ]);
+    expect(kept).toEqual([TAXES]);
+  });
 });
 
 describe("snippetNameProblem", () => {
@@ -130,6 +143,17 @@ describe("snippetCompletionSource", () => {
   it("answers null with nothing to offer", () => {
     expect(complete([], "pat")).toBeNull();
     expect(complete([PATROL], "xyz")).toBeNull();
+  });
+
+  it("keeps a result valid only for words the source itself would answer", () => {
+    // validFor lets CodeMirror keep filtering without re-querying; wider than the source's own
+    // word shape, it would keep a result alive for words the source would refuse.
+    const result = complete([PATROL], "pat");
+    const validFor = result?.validFor as RegExp;
+    expect(validFor.test("patro")).toBe(true);
+    expect(validFor.test("")).toBe(true);
+    expect(validFor.test("1abc")).toBe(false);
+    expect(validFor.test("-x")).toBe(false);
   });
 
   it("lists the whole library when summoned explicitly on an empty word", () => {

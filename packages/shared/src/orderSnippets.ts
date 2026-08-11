@@ -28,12 +28,19 @@ export function normalizeSnippets(value: unknown): OrderSnippet[] {
     if (typeof id !== "string" || typeof name !== "string" || typeof body !== "string") {
       continue;
     }
-    // Trimmed the way the dialog stores them: a name wearing spaces could never be matched by
-    // the popup, which reads a word out of the line. Names dedupe case-insensitively for the
-    // same reason the dialog refuses them: two entries differing only in case are
+    // Trimmed the way the dialog stores them, and held to the dialog's own rules: a name the
+    // popup could never match or a body whose insertion would eat the typed word must not come
+    // back through the side door of hand-edited storage. Names dedupe case-insensitively for
+    // the same reason the dialog refuses them: two entries differing only in case are
     // indistinguishable where they are offered.
     const trimmed = name.trim();
-    if (id === "" || trimmed === "" || seenIds.has(id) || seenNames.has(trimmed.toLowerCase())) {
+    if (
+      id === "" ||
+      seenIds.has(id) ||
+      seenNames.has(trimmed.toLowerCase()) ||
+      snippetNameProblem(trimmed, []) !== null ||
+      snippetBodyProblem(body) !== null
+    ) {
       continue;
     }
     seenIds.add(id);
@@ -114,7 +121,9 @@ export function snippetCompletionSource(snippets: readonly OrderSnippet[]): Comp
     return {
       from: line.from + match[1].length,
       options: matching,
-      validFor: /^[\w-]*$/
+      // Exactly the words this source itself answers, or a result would stay alive for a word
+      // it would refuse - empty included, which explicit invocation makes reachable.
+      validFor: /^([A-Za-z][\w-]*)?$/
     };
   };
 }
