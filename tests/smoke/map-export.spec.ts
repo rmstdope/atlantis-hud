@@ -83,11 +83,8 @@ test("exports the whole known map when nothing was selected", async ({ page }, t
   expect(text).toContain("mountain (7,53) in Inhead");
   expect(text).toContain("North : mountain (7,51) in Inhead.");
 
-  // And the player is told where it went, with the name to hand.
-  await expect(page.getByTestId("map-saved-panel")).toBeVisible();
-  await expect(page.getByTestId("map-saved-location")).toHaveText("map-turn-71-level-1.txt");
-  await page.getByTestId("map-saved-close").click();
-  await expect(page.getByTestId("map-saved-panel")).toHaveCount(0);
+  // The dialog closes behind the export rather than being replaced by another one.
+  await expect(page.getByTestId("map-export-panel")).toHaveCount(0);
 });
 
 test("exports only the area a shift-drag selected", async ({ page }, testInfo) => {

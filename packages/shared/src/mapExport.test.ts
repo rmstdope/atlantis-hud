@@ -4,8 +4,7 @@ import {
   exportAreaSummary,
   exportFileName,
   exportRequestOf,
-  exportSummary,
-  savedFile
+  exportSummary
 } from "./mapExport";
 
 const RECT = { fromX: 4, fromY: 50, toX: 8, toY: 54 };
@@ -38,28 +37,6 @@ describe("what the export dialog hands to the core", () => {
   // not silently overwrite in the browser's downloads folder.
   it("names a file from a game with no turn yet", () => {
     expect(exportFileName(null, 2)).toBe("map-level-2.txt");
-  });
-});
-
-describe("what the player is told after the file is written", () => {
-  it("gives the full path when the shell knows one", () => {
-    expect(savedFile("/Users/henrikku/Downloads/map-turn-71-level-1.txt", "map-turn-71-level-1.txt")).toEqual({
-      location: "/Users/henrikku/Downloads/map-turn-71-level-1.txt",
-      note: null,
-      copyLabel: "Copy path"
-    });
-  });
-
-  /**
-   * A browser download never tells the page where the file landed, so the name is all there is.
-   * The note is what stops that reading as an export that went nowhere.
-   */
-  it("gives the name and says where to look when it does not", () => {
-    expect(savedFile(null, "map-turn-71-level-1.txt")).toEqual({
-      location: "map-turn-71-level-1.txt",
-      note: "Saved to your browser's downloads folder.",
-      copyLabel: "Copy filename"
-    });
   });
 });
 

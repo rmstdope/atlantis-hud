@@ -57,33 +57,6 @@ export function exportAreaSummary(selection: MapRect | null): string {
     : `The area you selected: ${from} to ${to}.`;
 }
 
-/** Where the file went, as far as the shell that wrote it can say. */
-export type SavedFile = {
-  /** The full path where one is known, the bare filename otherwise. */
-  location: string;
-  /** What to add when the location is only a name. */
-  note: string | null;
-  copyLabel: string;
-};
-
-/**
- * What to tell the player once the file is written.
- *
- * The desktop shell writes through a save dialog and knows exactly where the file went. A browser
- * download does not report a path to the page at all, so there the name is the whole truth - and
- * the note is what keeps that from reading as an export that went nowhere.
- */
-export function savedFile(path: string | null, fileName: string): SavedFile {
-  if (path === null) {
-    return {
-      location: fileName,
-      note: "Saved to your browser's downloads folder.",
-      copyLabel: "Copy filename"
-    };
-  }
-  return { location: path, note: null, copyLabel: "Copy path" };
-}
-
 /** The line under the content switches, saying what the file will hold. */
 export function exportSummary(regions: number): string {
   if (regions === 0) {
