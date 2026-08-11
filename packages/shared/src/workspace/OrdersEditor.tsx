@@ -169,7 +169,9 @@ export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(fu
   }, [value, unitId]);
 
   // Diagnostics are pushed rather than pulled: validation already runs debounced in the shell,
-  // and CodeMirror's own lint scheduler would only add a second debounce on top of it.
+  // and CodeMirror's own lint scheduler would only add a second debounce on top of it. Only when
+  // the problems themselves move - the lint extension maps the spans it holds through document
+  // changes on its own, so re-dispatching per keystroke would be a transaction for nothing.
   useEffect(() => {
     const editor = view.current;
     if (!editor) {
@@ -178,7 +180,7 @@ export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(fu
     editor.dispatch(
       setDiagnostics(editor.state, toEditorDiagnostics(editor.state.doc.toString(), problems))
     );
-  }, [problems, value, unitId]);
+  }, [problems, unitId]);
 
   useImperativeHandle(ref, () => ({
     focus() {

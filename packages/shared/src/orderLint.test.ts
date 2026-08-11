@@ -93,6 +93,19 @@ describe("toEditorDiagnostics", () => {
     expect(text.slice(result[0].from, result[0].to)).toBe("WROK");
   });
 
+  it("keeps a diagnostic on an empty line as a point rather than dropping it", () => {
+    // CodeMirror renders a zero-width diagnostic as a point marker, so "this empty line is the
+    // problem" stays visible. The non-empty-line cases above are the control: same collapsed
+    // input, widened instead.
+    const text = "MOVE N\n\nTAX";
+    const result = toEditorDiagnostics(text, [
+      problem({ lineStart: 2, lineEnd: 2, columnStart: 0, columnEnd: 0 })
+    ]);
+    expect(result).toHaveLength(1);
+    expect(result[0].from).toBe("MOVE N\n".length);
+    expect(result[0].to).toBe(result[0].from);
+  });
+
   it("counts columns in UTF-16 code units, so an accent does not shift the span", () => {
     const text = "NAME UNIT \"Ragnarök\"\nWROK";
     const result = toEditorDiagnostics(text, [

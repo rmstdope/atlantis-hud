@@ -10,8 +10,10 @@ import type { OrderDiagnostic } from "@atlantis/core-client";
  * keystroke behind `text`: a line that has left the document is dropped rather than pointed at
  * whatever now sits there, and a span running past its line is clamped to it.
  *
- * A diagnostic with no columns - or whose columns collapse to nothing - covers its whole line: a
- * zero-width marker is invisible in the editor, which is worse than imprecise.
+ * A diagnostic with no columns - or whose columns collapse to nothing - covers its whole line: an
+ * underline that marks nothing reads as no problem at all. On an empty line there is nothing to
+ * cover, and the span collapses to a point on purpose: CodeMirror renders a zero-width diagnostic
+ * as a point marker, which is exactly what "this empty line is the problem" should look like.
  */
 export function toEditorDiagnostics(text: string, problems: OrderDiagnostic[]): Diagnostic[] {
   const lines = text.split("\n");
@@ -38,6 +40,8 @@ export function toEditorDiagnostics(text: string, problems: OrderDiagnostic[]): 
     let from =
       problem.columnStart === null ? 0 : Math.max(0, Math.min(problem.columnStart, line.length));
     let to = problem.columnEnd === null ? line.length : Math.min(problem.columnEnd, line.length);
+    // A collapsed span widens to its line where the line has anything to underline; an empty
+    // line keeps the collapsed span, which CodeMirror shows as a point marker.
     if (to <= from) {
       from = 0;
       to = line.length;
