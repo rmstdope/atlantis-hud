@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { clearGames, createGame } from "./gameSetup";
+import { clearGames, createGame, expectOrders, expectOrdersNot, fillOrders, ordersInput } from "./gameSetup";
 
 /**
  * The acceptance vectors of issue #34, end to end, in both shells.
@@ -98,8 +98,7 @@ test("orders typed into a game are still there after a reload", async ({ page })
   await openReport(page);
   await openOrders(page);
 
-  const editor = page.getByTestId("orders-input");
-  await editor.fill("@work\n@study combat");
+  await fillOrders(page, "@work\n@study combat");
 
   // The panel says what has actually happened, rather than stamping the clock as it used to.
   await expect(page.getByTestId("orders-status")).toContainText("unsaved changes");
@@ -109,7 +108,7 @@ test("orders typed into a game are still there after a reload", async ({ page })
   await expect(page.getByTestId("import-status")).toContainText("restored turn 71");
   await openOrders(page);
 
-  await expect(page.getByTestId("orders-input")).toHaveValue(/@study combat/u);
+  await expectOrders(page, /@study combat/u);
   // And it comes back knowing it is saved, rather than claiming never to have been.
   await expect(page.getByTestId("orders-status")).toContainText(SAVED);
 });
@@ -122,26 +121,65 @@ test("a saved draft gains its missing trailing newline without moving the cursor
   await openReport(page);
   await openOrders(page);
 
-  const editor = page.getByTestId("orders-input");
-  await editor.fill("@work\n@study combat");
-  // Park the caret mid-word, where an append at the end must not disturb it - and where the
-  // browser's own answer to a programmatic value change (caret to the end) visibly would.
-  await editor.evaluate((element) => {
-    (element as HTMLTextAreaElement).setSelectionRange(3, 3);
-  });
+  const editor = ordersInput(page);
+  await fillOrders(page, "@work\n@study combat");
+  // Park the caret mid-word, where an append at the end must not disturb it - and where a
+  // whole-value replacement (the old editor's answer to an external change) visibly would.
+  // Select-all, collapse to the start, then walk three steps: the same caret on every platform.
+  await editor.click();
+  await editor.press("ControlOrMeta+a");
+  await editor.press("ArrowLeft");
+  await editor.press("ArrowRight");
+  await editor.press("ArrowRight");
+  await editor.press("ArrowRight");
 
   // Untouched until the save lands: tidying on the keystroke would be the racy behaviour the
   // save gate exists to rule out, and would pass the assertions below by accident.
-  await expect(editor).toHaveValue(/@study combat$/u);
+  await expectOrders(page, /@study combat$/u);
 
   await expect(page.getByTestId("orders-status")).toContainText(SAVED, { timeout: 20_000 });
 
-  await expect(editor).toHaveValue(/@study combat\n$/u);
-  const caret = await editor.evaluate((element) => {
-    const input = element as HTMLTextAreaElement;
-    return { start: input.selectionStart, end: input.selectionEnd };
+  await expectOrders(page, /@study combat\n$/u);
+  // The caret sits where it was parked: three characters into "@work", still collapsed. The
+  // selection lives in the first line's text node, so its offset counts the same three steps.
+  const caret = await editor.evaluate(() => {
+    const selection = window.getSelection();
+    return {
+      offset: selection?.anchorOffset ?? -1,
+      collapsed: selection?.isCollapsed ?? false,
+      line: selection?.anchorNode?.textContent ?? ""
+    };
   });
-  expect(caret).toEqual({ start: 3, end: 3 });
+  expect(caret).toEqual({ offset: 3, collapsed: true, line: "@work" });
+});
+
+/**
+ * The late restore must not clobber what the player has since typed.
+ *
+ * Opening a game starts a restore that waits for the ruleset fetch; importing a report and
+ * typing does not wait for either. On a slow connection the restore therefore resolves *after*
+ * the player is already working, and re-applying the stored snapshot then wiped their typing -
+ * caught as a CI-only flake, because only CI machines were slow enough. The route delay below
+ * makes that ordering deterministic instead of machine-dependent.
+ */
+test("a slow ruleset fetch cannot wipe orders typed after an import", async ({ page }) => {
+  await page.route("**/ruleset.json", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 1_500));
+    await route.continue();
+  });
+
+  await clearGames(page);
+  await createGame(page, "Slow ruleset game");
+  await openReport(page);
+  await openOrders(page);
+  await fillOrders(page, "@work");
+  await expectOrders(page, /^@work\n?$/u);
+
+  // The restore lands - the status says so - and the words the player typed still stand.
+  await expect(page.getByTestId("import-status")).toContainText("restored turn 71", {
+    timeout: 20_000
+  });
+  await expectOrders(page, /^@work\n?$/u);
 });
 
 test("switching to another game and back loses neither the turn nor the orders", async ({
@@ -151,7 +189,7 @@ test("switching to another game and back loses neither the turn nor the orders",
   await createGame(page, "First game");
   await openReport(page);
   await openOrders(page);
-  await page.getByTestId("orders-input").fill("@work\n@teach 18642");
+  await fillOrders(page, "@work\n@teach 18642");
 
   // Straight to another game, without waiting for the autosave: switching is one of the three
   // moments issue #34 names, and it has to write on its own.
@@ -167,7 +205,7 @@ test("switching to another game and back loses neither the turn nor the orders",
 
   await expect(page.getByTestId("import-status")).toContainText("restored turn 71");
   await openOrders(page);
-  await expect(page.getByTestId("orders-input")).toHaveValue(/@teach 18642/u);
+  await expectOrders(page, /@teach 18642/u);
 });
 
 test("one game's orders never appear in another", async ({ page }) => {
@@ -175,7 +213,7 @@ test("one game's orders never appear in another", async ({ page }) => {
   await createGame(page, "Alpha game");
   await openReport(page);
   await openOrders(page);
-  await page.getByTestId("orders-input").fill("@work\n@build");
+  await fillOrders(page, "@work\n@build");
   await expect(page.getByTestId("orders-status")).toContainText(SAVED, { timeout: 20_000 });
 
   await page.getByTestId("game-indicator").click();
@@ -185,7 +223,7 @@ test("one game's orders never appear in another", async ({ page }) => {
   await openOrders(page);
 
   // The same faction and the same turn, in a different game: its own database, its own template.
-  await expect(page.getByTestId("orders-input")).not.toHaveValue(/@build/u);
+  await expectOrdersNot(page, /@build/u);
 });
 
 test("a game with no imports opens on an empty workspace rather than an error", async ({ page }) => {
@@ -289,12 +327,12 @@ test("re-opening the same report keeps the orders already written for that turn"
   await createGame(page, "Re-import game");
   await openReport(page);
   await openOrders(page);
-  await page.getByTestId("orders-input").fill("@work\n@entertain");
+  await fillOrders(page, "@work\n@entertain");
   await expect(page.getByTestId("orders-status")).toContainText(SAVED, { timeout: 20_000 });
 
   // There is no undo anywhere in this application, so a stray file-open must not erase an evening.
   await openReport(page);
   await openOrders(page);
 
-  await expect(page.getByTestId("orders-input")).toHaveValue(/@entertain/u);
+  await expectOrders(page, /@entertain/u);
 });

@@ -4,6 +4,7 @@ import { browser, $, expect } from "@wdio/globals";
 import {
   clearGamesNative,
   createGameUi,
+  fillOrders,
   importStatusText,
   loadReportUi,
   openGameDb,
@@ -77,9 +78,7 @@ describe("native desktop workspace", () => {
 
   it("exports edited orders with the #atlantis header intact", async () => {
     await selectUnit(OWN_UNIT);
-    const ordersInput = $('[data-testid="orders-input"]');
-    await ordersInput.waitForDisplayed();
-    await ordersInput.setValue("@work");
+    await fillOrders("@work");
     await expect($('[data-testid="orders-status"]')).toHaveText(
       expect.stringContaining("0 errors")
     );

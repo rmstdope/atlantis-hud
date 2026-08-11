@@ -1,6 +1,14 @@
 import { expect, test, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
-import { clearGames, createGame } from "./gameSetup";
+import {
+  clearGames,
+  createGame,
+  expectOrders,
+  expectOrdersNot,
+  fillOrders,
+  ordersInput,
+  ordersText
+} from "./gameSetup";
 import { join } from "node:path";
 // The real constant, not a copy of it: this test exists to catch the rendered height and the
 // windowing arithmetic drifting apart, which a hard-coded 22 here would hide.
@@ -237,11 +245,10 @@ test("merging leaves the orders and the selection where they were", async ({ pag
   await selectUnit(page, OWN_UNIT);
   await expect(page.getByTestId("panel-unit")).toContainText("Seven of Eight");
 
-  const orders = page.getByTestId("orders-input");
-  await orders.fill("@study obse\n@work");
+  await fillOrders(page, "@study obse\n@work");
   // The trailing newline is optional on purpose: the editor appends one the moment an autosave
   // lands, and whether that has happened yet is a race this test has no business betting on.
-  await expect(orders).toHaveValue(/^@study obse\n@work\n?$/u);
+  await expectOrders(page, /^@study obse\n@work\n?$/u);
 
   await choose(page, "turn-71-f73.rep", ALLY_REPORT);
   await page.getByTestId("foreign-report-merge").click();
@@ -250,7 +257,7 @@ test("merging leaves the orders and the selection where they were", async ({ pag
   // With the trailing newline the editor appends once a draft is saved - merging flushes the
   // draft on its way in, so the save has landed by the time the merge reports done. The words
   // themselves are what merging must not move.
-  await expect(orders).toHaveValue("@study obse\n@work\n");
+  await expectOrders(page, /^@study obse\n@work\n$/u);
   await expect(page.getByTestId("panel-unit")).toContainText("Seven of Eight");
   await expect(page.getByTestId("panel-region")).toContainText("Inholm");
 });
@@ -301,14 +308,13 @@ test("selecting your own unit fills the detail panel and opens its orders", asyn
   await expect(page.getByTestId("panel-unit")).toContainText("your faction");
   await expect(page.getByTestId("panel-unit")).toContainText("STEA");
 
-  const orders = page.getByTestId("orders-input");
-  await expect(orders).toBeVisible();
-  await expect(orders).toHaveValue(/@study obse/);
+  await expect(page.getByTestId("orders-input")).toBeVisible();
+  await expectOrders(page, /@study obse/);
 
   // The server's own description of the unit is not an order and does not belong in the editor.
   // The unit panel above already says all of it.
-  await expect(orders).not.toHaveValue(/Seven of Eight/);
-  await expect(orders).not.toHaveValue(/;/);
+  await expectOrdersNot(page, /Seven of Eight/);
+  await expectOrdersNot(page, /;/);
 });
 
 /**
@@ -322,19 +328,18 @@ test("a new line can be opened at the end of a unit's orders", async ({ page }) 
   await selectHex(page, "1:7,53");
   await selectUnit(page, OWN_UNIT);
 
-  const orders = page.getByTestId("orders-input");
-  const before = (await orders.inputValue()).trimEnd();
+  const before = (await ordersText(page)).trimEnd();
 
+  const orders = ordersInput(page);
   await orders.click();
-  // The caret goes to the very end deterministically: End and Control+End differ by platform, and
-  // this suite runs on both shells.
-  await orders.evaluate((element: HTMLTextAreaElement) => {
-    element.setSelectionRange(element.value.length, element.value.length);
-  });
+  // The caret goes to the very end deterministically: select-all then ArrowRight collapses the
+  // selection to the end of the document, the same way on every platform this suite runs on.
+  await orders.press("ControlOrMeta+a");
+  await orders.press("ArrowRight");
   await orders.press("Enter");
   await orders.pressSequentially("@work");
 
-  await expect(orders).toHaveValue(`${before}\n@work`);
+  await expect.poll(() => ordersText(page)).toBe(`${before}\n@work`);
 });
 
 test("a bad order names itself, and belongs to the unit that carries it", async ({ page }) => {
@@ -342,7 +347,7 @@ test("a bad order names itself, and belongs to the unit that carries it", async 
   await selectHex(page, "1:7,53");
   await selectUnit(page, OWN_UNIT);
 
-  await page.getByTestId("orders-input").fill("@study obse\nWROK");
+  await fillOrders(page, "@study obse\nWROK");
 
   const problems = page.getByTestId("orders-diagnostics");
   await expect(problems).toContainText("unknown order command: WROK");
@@ -375,7 +380,7 @@ test("a unit told to spend silver it has not got is warned about, without blocki
 
   // Nine figures is beyond any holding or income in the game, so this is short whatever the
   // optimistic estimates allow.
-  await page.getByTestId("orders-input").fill("GIVE 13401 999999999 SILV");
+  await fillOrders(page, "GIVE 13401 999999999 SILV");
 
   // Every unit in this faction shares its purse, so the shortfall is the hex's rather than one
   // unit's - and the region panel is where a finding with no unit and no line belongs.
@@ -394,7 +399,7 @@ test("a unit told to spend silver it has not got is warned about, without blocki
   await expect(page.getByTestId("problems-panel")).toContainText("mountain (7,53)");
 
   // Corrected, it goes away entirely.
-  await page.getByTestId("orders-input").fill("@work");
+  await fillOrders(page, "@work");
   await expect(page.getByTestId("region-problems")).toHaveCount(0);
   await expect(page.getByTestId("problems-chip")).toHaveCount(0);
 });
@@ -408,7 +413,7 @@ test("an order with the wrong argument is caught, and the offending word quoted"
 
   // GIVE takes a quantity before the item, and "swords" is not one. Only a parser that reads the
   // arguments finds this; checking the command name alone accepts it.
-  await page.getByTestId("orders-input").fill("GIVE 4573 swords");
+  await fillOrders(page, "GIVE 4573 swords");
 
   const problems = page.getByTestId("orders-diagnostics");
   await expect(problems).toContainText("found \"swords\"");
@@ -417,7 +422,7 @@ test("an order with the wrong argument is caught, and the offending word quoted"
   await expect(page.getByTestId("orders-status")).toContainText("1 error");
 
   // Corrected, the syntax error goes.
-  await page.getByTestId("orders-input").fill("GIVE 4573 10 swords");
+  await fillOrders(page, "GIVE 4573 10 swords");
   await expect(page.getByTestId("orders-status")).toContainText("0 errors");
 
   // What is left is a different objection, and a true one (#82): Seven of Eight carries a leader
@@ -427,7 +432,7 @@ test("an order with the wrong argument is caught, and the offending word quoted"
   await expect(page.getByTestId("orders-status")).toContainText("1 warning");
 
   // An order the unit can actually carry out leaves nothing to say at all.
-  await page.getByTestId("orders-input").fill("@work");
+  await fillOrders(page, "@work");
   await expect(page.getByTestId("orders-diagnostic")).toHaveCount(0);
   await expect(page.getByTestId("orders-status")).toContainText("0 warnings");
 });
@@ -440,7 +445,7 @@ test("a TURN block left open is reported against the unit that wrote it", async 
   // The block is closed by ENDTURN, and is not. The core always found this, but filed it against
   // the line that discovered it - the *next* unit's line - which is outside this unit's block, so
   // the panel showed the unit that wrote it nothing at all.
-  await page.getByTestId("orders-input").fill("turn\nstudy illu");
+  await fillOrders(page, "turn\nstudy illu");
 
   const problems = page.getByTestId("orders-diagnostics");
   await expect(problems).toContainText("never closed by ENDTURN");
@@ -448,7 +453,7 @@ test("a TURN block left open is reported against the unit that wrote it", async 
   await expect(page.getByTestId("orders-status")).toContainText("1 error");
 
   // Closed, it is accepted.
-  await page.getByTestId("orders-input").fill("turn\nstudy illu\nendturn");
+  await fillOrders(page, "turn\nstudy illu\nendturn");
   await expect(page.getByTestId("orders-status")).toContainText("0 errors");
 });
 
@@ -459,7 +464,7 @@ test("an item the catalogue does not know is a warning rather than an error", as
 
   // The shape is right, so this is not a refusal - the catalogue is scraped and may simply be
   // missing an entry. It is said out loud all the same, because it is usually a typo.
-  await page.getByTestId("orders-input").fill("GIVE 4573 10 swordz");
+  await fillOrders(page, "GIVE 4573 10 swordz");
 
   await expect(page.getByTestId("orders-diagnostics")).toContainText("swordz");
   const status = page.getByTestId("orders-status");
@@ -552,13 +557,13 @@ test("editing orders changes only the selected unit's block", async ({ page }) =
   await selectHex(page, "1:7,53");
   await selectUnit(page, OWN_UNIT);
 
-  await page.getByTestId("orders-input").fill("@work");
+  await fillOrders(page, "@work");
   await expect(page.getByTestId("orders-status")).toContainText("0 errors");
 
   // The other unit's block is untouched by that edit.
   await selectHex(page, "1:26,52");
   await selectUnit(page, "13401");
-  await expect(page.getByTestId("orders-input")).toHaveValue(/@prepare staf/);
+  await expectOrders(page, /@prepare staf/);
 });
 
 test("panels fold away and come back", async ({ page }) => {
@@ -930,7 +935,7 @@ test("a planned route can be written into the unit's orders", async ({ page }) =
   await expect(page.getByTestId("planner-order")).toHaveText("MOVE N");
 
   await page.getByTestId("planner-apply").click();
-  await expect(page.getByTestId("orders-input")).toHaveValue(/MOVE N/);
+  await expectOrders(page, /MOVE N/);
 });
 
 test("only your own units can be planned for", async ({ page }) => {
@@ -1050,7 +1055,7 @@ test("a written move order is drawn solid for next turn and dotted beyond", asyn
   await selectUnit(page, OWN_UNIT);
 
   // The movement layer is on by default, so typing an order is all it takes to draw it.
-  await page.getByTestId("orders-input").fill("MOVE N N N");
+  await fillOrders(page, "MOVE N N N");
 
   // Asserted by count and points rather than visibility: a due-north path is a straight vertical
   // line, whose zero-width bounding box Playwright counts as hidden.
@@ -1060,13 +1065,13 @@ test("a written move order is drawn solid for next turn and dotted beyond", asyn
   await expect(page.getByTestId("route-line-dotted")).toHaveAttribute("points", /.+ .+ .+/);
 
   // Cutting the order down to what one month affords leaves nothing for the dotted tail.
-  await page.getByTestId("orders-input").fill("MOVE N");
+  await fillOrders(page, "MOVE N");
   await expect(page.getByTestId("route-line-dotted")).toHaveCount(0);
   await expect(page.getByTestId("route-line-solid")).toHaveCount(1);
 
   // "  Northeast : ocean (8,52)" - a walker's order to sea is drawn, but as doubt: nothing is
   // solid, however cheap the month arithmetic says the crossing is.
-  await page.getByTestId("orders-input").fill("MOVE NE");
+  await fillOrders(page, "MOVE NE");
   await expect(page.getByTestId("route-line-dotted")).toHaveCount(1);
   await expect(page.getByTestId("route-line-solid")).toHaveCount(0);
 
@@ -1759,7 +1764,7 @@ test("orders change the units table to show the coming month", async ({ page }) 
   const row = page.getByTestId(`unit-row-${OWN_UNIT}`);
   await expect(row).toContainText("Seven of Eight");
 
-  await page.getByTestId("orders-input").fill('NAME UNIT "Nine of Eight"\nGUARD 1');
+  await fillOrders(page, 'NAME UNIT "Nine of Eight"\nGUARD 1');
 
   await expect(row).toContainText("Nine of Eight");
   await expect(row.locator('[data-predicted="true"]').first()).toHaveAttribute(
@@ -1770,14 +1775,14 @@ test("orders change the units table to show the coming month", async ({ page }) 
 
   // AVOID is a flag the table has no column for; the unit panel's flag list shows the coming
   // month instead - the report's "avoiding" gone, the rest still standing.
-  await page.getByTestId("orders-input").fill("AVOID 0");
+  await fillOrders(page, "AVOID 0");
   const flags = page.getByTestId("panel-unit").locator('[data-predicted="true"]');
   await expect(flags).toContainText("behind");
   await expect(flags).not.toContainText("avoiding");
 
   // A move dims the row into a departure that names where the unit ends the month, and the
   // destination hex's table gains the arriving row.
-  await page.getByTestId("orders-input").fill("MOVE N");
+  await fillOrders(page, "MOVE N");
   await expect(row).toHaveAttribute("data-preview-status", "departing");
   await expect(row).toContainText("→ 1:7,51");
   await selectHex(page, "1:7,51");
@@ -1789,7 +1794,7 @@ test("orders change the units table to show the coming month", async ({ page }) 
   // Blanking the orders puts the report back on screen.
   await selectHex(page, "1:7,53");
   await selectUnit(page, OWN_UNIT);
-  await page.getByTestId("orders-input").fill("");
+  await fillOrders(page, "");
   await expect(row).toContainText("Seven of Eight");
   await expect(row).not.toHaveAttribute("data-preview-status", /.+/);
 });

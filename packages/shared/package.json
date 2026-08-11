@@ -7,11 +7,10 @@
   "dependencies": {
     "@atlantis/core-client": "workspace:*",
     "@codemirror/autocomplete": "^6.20.3",
+    "@codemirror/commands": "^6.10.4",
     "@codemirror/lint": "^6.9.7",
     "@codemirror/state": "^6.7.1",
     "@codemirror/view": "^6.43.8",
-    "@uiw/react-codemirror": "^4.25.11",
-    "codemirror": "^6.0.2",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "zustand": "^5.0.14"

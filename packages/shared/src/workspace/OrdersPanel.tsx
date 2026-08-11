@@ -1,5 +1,5 @@
 import type { OrderDiagnostic, ReportUnit } from "@atlantis/core-client";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { HexNode } from "../hexMapModel";
 import { readableTime, type SaveState } from "../orderDraft";
 import {
@@ -12,6 +12,7 @@ import {
 } from "../orderEditor";
 import { readUnitOrders } from "../ordersDocument";
 import { CollapsiblePanel } from "./CollapsiblePanel";
+import { OrdersEditor } from "./OrdersEditor";
 
 /** Why the editor is refusing an edit. Each reason needs its own wording to be any use. */
 type Lock =
@@ -36,6 +37,8 @@ type OrdersPanelProps = {
    */
   validated: ValidatedOrders;
   save: SaveState;
+  /** The core's order vocabulary, for the editor's completion popup. */
+  commands: readonly string[];
 };
 
 function lockFor(unit: ReportUnit | null, hex: HexNode | null, block: string | null): Lock | null {
@@ -67,20 +70,29 @@ export function OrdersPanel({
   ownFactionName,
   onChange,
   validated,
-  save
+  save,
+  commands
 }: OrdersPanelProps) {
   const unitId = unit?.unitId ?? null;
   const block = unitId === null ? null : readUnitOrders(document, unitId);
   const lock = lockFor(unit, hex, block);
   const [draft, setDraft] = useState(block ?? "");
-  const input = useRef<HTMLTextAreaElement | null>(null);
-  const keepCaret = useRef<{ start: number; end: number } | null>(null);
+  const [draftUnit, setDraftUnit] = useState(unitId);
 
-  // Reload when the selection moves or this unit's own lines change, rather than on every edit
-  // anywhere in the document: never reloading would show one unit's orders under another's name,
-  // and reloading constantly would fight the player's typing. `draftAfterDocumentChange` settles
-  // the case the two rules disagree about - the text coming back from a document that cannot hold
-  // the blank line just typed at the end of it.
+  // A different unit means a different draft *now*, in this very render - not an effect later.
+  // Waiting for the effect below handed the editor the old unit's text for one commit, which
+  // painted one unit's orders under another's name for a frame and made the editor mount with a
+  // document it then had to be corrected out of.
+  if (draftUnit !== unitId) {
+    setDraftUnit(unitId);
+    setDraft(block ?? "");
+  }
+
+  // Reload when this unit's own lines change, rather than on every edit anywhere in the
+  // document: never reloading would show stale text, and reloading constantly would fight the
+  // player's typing. `draftAfterDocumentChange` settles the case the two rules disagree about -
+  // the text coming back from a document that cannot hold the blank line just typed at the end
+  // of it.
   useEffect(() => {
     setDraft((current) => draftAfterDocumentChange(current, block ?? ""));
   }, [unitId, block]);
@@ -91,38 +103,29 @@ export function OrdersPanel({
   // touching the document, which cannot hold a trailing blank line and so already stores the same
   // bytes either way. A functional update, deliberately: the reload above queues one too, and a
   // plain value computed from this render's draft would overwrite it with a stale unit's text.
+  // The caret needs no bookkeeping here any more: the editor receives this as a minimal splice at
+  // the end of the text and maps the selection through it.
   useEffect(() => {
     if (save.kind !== "saved") {
       return;
     }
-    // The browser answers a programmatic value change by throwing the caret to the end of the
-    // text, so where it stood is recorded here and put back once the newline has rendered.
-    const editor = input.current;
-    if (editor && draftAfterSave(editor.value) !== editor.value) {
-      keepCaret.current = { start: editor.selectionStart, end: editor.selectionEnd };
-    }
     setDraft((current) => draftAfterSave(current));
   }, [save, draft]);
-
-  useLayoutEffect(() => {
-    const caret = keepCaret.current;
-    // Consumed whether or not it can be applied: a recording left standing across an unmount
-    // would otherwise be applied to whichever unit's textarea appears next.
-    keepCaret.current = null;
-    const editor = input.current;
-    if (caret && editor) {
-      editor.setSelectionRange(caret.start, caret.end);
-    }
-  }, [draft]);
 
   // This unit's problems, and how many the rest of the faction has. The document-wide figure is
   // what stops a mistake in a unit nobody is looking at from reaching the server unnoticed. Not
   // worked out at all behind a lock: there is no editor under it to report anything about, and
   // finding a block means walking the whole document.
-  const problems =
-    lock || unitId === null
-      ? []
-      : diagnosticsForUnit(validated.text, unitId, validated.diagnostics);
+  // Memoised so the editor's diagnostics effect sees the same array until validation actually
+  // moves - a fresh array every keystroke meant a needless editor transaction every keystroke.
+  const locked = lock !== null;
+  const problems = useMemo(
+    () =>
+      locked || unitId === null
+        ? []
+        : diagnosticsForUnit(validated.text, unitId, validated.diagnostics),
+    [locked, unitId, validated]
+  );
   // The text those line and column numbers were counted in, which validation being debounced means
   // is not always the draft on screen. Quoting a token out of the draft instead would occasionally
   // quote whatever now sits at those columns.
@@ -144,19 +147,18 @@ export function OrdersPanel({
         <LockNotice lock={lock} ownFaction={ownFactionName} />
       ) : (
         <div className="flex h-full min-h-0 flex-col">
-          <textarea
-            ref={input}
-            data-testid="orders-input"
-            aria-label={`Orders for unit ${unit?.unitId ?? ""}`}
+          <OrdersEditor
+            unitId={unit?.unitId ?? ""}
             value={draft}
-            spellCheck={false}
-            onChange={(event) => {
-              setDraft(event.target.value);
+            ariaLabel={`Orders for unit ${unit?.unitId ?? ""}`}
+            problems={problems}
+            commands={commands}
+            onChange={(text) => {
+              setDraft(text);
               if (unit) {
-                onChange(unit.unitId, event.target.value);
+                onChange(unit.unitId, text);
               }
             }}
-            className="min-h-0 w-full flex-1 resize-none rounded border border-edge bg-ground p-2 font-mono text-[11.5px] text-ink outline-none focus:border-select"
           />
           <p
             data-testid="orders-status"

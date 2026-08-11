@@ -195,6 +195,13 @@ export function AppShell({
   appUpdate?: AppUpdateControl;
 }) {
   const [parsed, setParsed] = useState<ParsedReport | null>(null);
+  // The report currently on screen, readable at async resolve time. The restore effect below
+  // needs to know whether anything is showing *when its promise lands*, which state in its
+  // closure cannot say.
+  const displayedTurn = useRef<ParsedReport | null>(null);
+  useEffect(() => {
+    displayedTurn.current = parsed;
+  }, [parsed]);
   // Everywhere the faction has ever been, not just this turn. Without it the map stops at the
   // fringe of the current report and no route can be longer than one step.
   const [remembered, setRemembered] = useState<RememberedRegion[]>([]);
@@ -208,6 +215,9 @@ export function AppShell({
   // under, so the report shown here is the one the planner searches rather than a fresh parse.
   const [rawReport, setRawReport] = useState("");
   const [ruleset, setRuleset] = useState<RulesetState>({ status: "loading" });
+  // The core's order vocabulary, fetched once for the editor's completion popup. Empty until it
+  // arrives - or if it never does, which just leaves the popup with nothing to say.
+  const [orderCommands, setOrderCommands] = useState<readonly string[]>([]);
   // The same ruleset as the storage layer wants it: its text once it arrived, `null` while it has
   // not. What gets stored is classified with exactly what the screen was classified with.
   const rulesetText = ruleset.status === "ready" ? ruleset.text : null;
@@ -643,6 +653,23 @@ export function AppShell({
     };
   }, [game]);
 
+  useEffect(() => {
+    let cancelled = false;
+    void Promise.resolve()
+      .then(() => client.orderCommands())
+      .then((commands) => {
+        if (!cancelled) {
+          setOrderCommands(commands);
+        }
+      })
+      .catch(() => {
+        // Completion is a convenience; the editor works without it.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [client]);
+
   /**
    * Puts back the turn the player was last working on.
    *
@@ -676,14 +703,24 @@ export function AppShell({
         if (cancelled || !restored) {
           return;
         }
+        // Whether a turn is already on screen when this lands, read at resolve time. Opening a
+        // game clears `parsed`, so this is false on every plain open - and true when the player
+        // imported a report while the restore was still waiting on the ruleset fetch, or when a
+        // ruleset change re-runs this to re-parse. In both of those the orders on screen are
+        // newer than the stored snapshot: the player has been typing while storage stood still,
+        // and re-applying the snapshot wiped their words. The turn itself is still applied - a
+        // re-parse is the second case's whole purpose.
+        const turnAlreadyShowing = displayedTurn.current !== null;
         setParsed(restored.parsed);
         setRawReport(restored.rawReport);
         setRemembered(restored.remembered);
         // Whose reports were folded into this turn. Without it a reopened game shows the merged
         // hexes with nothing to say where they came from, which is the question the chip answers.
         setMergedReports(restored.merged);
-        setOrdersDocument(restored.orders);
-        setSave(savedStateFor(restored.ordersSavedAt));
+        if (!turnAlreadyShowing) {
+          setOrdersDocument(restored.orders);
+          setSave(savedStateFor(restored.ordersSavedAt));
+        }
 
         const unitCount = restored.parsed.regions.reduce(
           (total, region) => total + region.units.length,
@@ -1494,6 +1531,7 @@ export function AppShell({
                   onChange={onOrdersChange}
                   validated={validated}
                   save={save}
+                  commands={orderCommands}
                 />
               </div>
             </div>
