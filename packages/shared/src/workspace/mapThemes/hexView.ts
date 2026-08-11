@@ -196,6 +196,18 @@ function tallyStructures(region: ReportRegion | null): StructureTally {
 }
 
 /**
+ * The biome image to paint under the theme's own treatment.
+ *
+ * Worked out only when textures are asked for: with the toggle off this runs for every hex on
+ * screen to produce a null, and it lowercases the terrain word and probes a set to do it.
+ */
+function textureOf(terrain: string): { url: string; patternId: string } | null {
+  const url = terrainTextureUrl(terrain);
+  const patternId = terrainTexturePatternId(terrain);
+  return url && patternId ? { url, patternId } : null;
+}
+
+/**
  * The town's tier, or null when the report never said.
  *
  * A hex named by a neighbour's exits carries the settlement's name and nothing else about it, and
@@ -231,14 +243,12 @@ export function buildHexView(hex: HexNode, options: HexViewOptions): HexView {
   const paint = hexPaint(hex, options.showStaleness);
   const structures = options.showStructures ? tallyStructures(hex.region) : noStructures();
   const units = hex.region?.units ?? [];
-  const texture = terrainTextureUrl(hex.terrain);
-  const patternId = terrainTexturePatternId(hex.terrain);
 
   return {
     key: hex.regionId,
     at: worldOf(hex.coordinate),
     terrain: hex.terrain,
-    texture: options.showTextures && texture && patternId ? { url: texture, patternId } : null,
+    texture: options.showTextures ? textureOf(hex.terrain) : null,
     fogOpacity: paint.fogOpacity,
     hatched: paint.hatched,
     knowledge: hex.knowledge,

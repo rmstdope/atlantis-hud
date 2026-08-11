@@ -26,12 +26,16 @@ export function isMapThemeId(id: string, themes: readonly MapTheme[] = MAP_THEME
  * Falls back rather than failing: storage is hand-editable, and a build can be downgraded past a
  * theme it once shipped. A map that renders in the wrong style is a nuisance; one that renders
  * nothing is a broken app.
+ *
+ * The last resort is Classic itself rather than the registry's first entry, so the signature holds
+ * even for a registry that is empty - which the shipped one never is, but a caller passing its own
+ * list can be.
  */
 export function getMapTheme(id: string, themes: readonly MapTheme[] = MAP_THEMES): MapTheme {
   return (
     themes.find((theme) => theme.id === id) ??
     themes.find((theme) => theme.id === DEFAULT_MAP_THEME_ID) ??
-    themes[0]
+    classic
   );
 }
 

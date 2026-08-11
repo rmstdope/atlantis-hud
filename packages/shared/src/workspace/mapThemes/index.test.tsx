@@ -71,6 +71,14 @@ describe("the map theme registry", () => {
     expect(isMapThemeId("no-such-theme")).toBe(false);
     expect(isMapThemeId(DEFAULT_MAP_THEME_ID)).toBe(true);
   });
+
+  it("still answers with a theme when handed a registry holding none", () => {
+    // The signature promises a MapTheme, and the map crashes on anything else. An empty registry
+    // is not reachable from the shipped one, but the promise has to hold for the argument form
+    // too - which is what the tests and the picker use.
+    expect(getMapTheme("classic", []).id).toBe(DEFAULT_MAP_THEME_ID);
+    expect(isMapThemeId(DEFAULT_MAP_THEME_ID, [])).toBe(false);
+  });
 });
 
 describe("what the settings picker offers", () => {
