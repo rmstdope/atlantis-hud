@@ -182,14 +182,53 @@ export function coordinateAt(
   return nearest;
 }
 
+/**
+ * Screen the map owns but cannot show anything in, because a pane is drawn over it.
+ *
+ * The panes float above the canvas rather than shrinking it, so the canvas size says nothing
+ * about what the player can see. Everything that frames, centres or asks "is this visible" works
+ * against the strip these leave rather than against the whole canvas.
+ */
+export type Insets = { left: number; right: number; top: number; bottom: number };
+
+export const NO_INSETS: Insets = { left: 0, right: 0, top: 0, bottom: 0 };
+
+/**
+ * The narrowest strip worth framing into. Below this the panes have all but met - a window too
+ * small for them - and framing into what is left would be a view of nothing. The whole canvas is
+ * the honest fallback: partly covered beats off screen.
+ */
+const MIN_VISIBLE = 120;
+
+/** The part of the canvas the panes leave, or the whole canvas where they leave too little. */
+export function visibleRect(
+  width: number,
+  height: number,
+  insets: Insets = NO_INSETS
+): { x: number; y: number; width: number; height: number } {
+  const strip = (size: number, near: number, far: number) =>
+    size - near - far >= MIN_VISIBLE ? { start: near, size: size - near - far } : { start: 0, size };
+
+  const horizontal = strip(width, insets.left, insets.right);
+  const vertical = strip(height, insets.top, insets.bottom);
+  return {
+    x: horizontal.start,
+    y: vertical.start,
+    width: horizontal.size,
+    height: vertical.size
+  };
+}
+
 export function fitTo(
   coordinates: Coordinate[],
   width: number,
-  height: number
+  height: number,
+  insets: Insets = NO_INSETS
 ): Viewport | null {
   if (coordinates.length === 0 || width <= 0 || height <= 0) {
     return null;
   }
+  const visible = visibleRect(width, height, insets);
 
   const worlds = coordinates.map(worldOf);
   const minX = Math.min(...worlds.map((world) => world.x));
@@ -201,15 +240,15 @@ export function fitTo(
   const spanX = maxX - minX + HEX_RADIUS * 2;
   const spanY = maxY - minY + ROW_PITCH * 2;
 
-  const wanted = Math.min(width / spanX, height / spanY);
+  const wanted = Math.min(visible.width / spanX, visible.height / spanY);
   // Floored to a whole step so that fitting never lands on a scale zooming cannot return to, and
   // never rounds up into a frame that clips the outermost hex.
   const step = clampStep(Math.floor(Math.log2(wanted) * STEPS_PER_DOUBLING));
   const scale = scaleOf(step);
 
   return {
-    tx: width / 2 - ((minX + maxX) / 2) * scale,
-    ty: height / 2 - ((minY + maxY) / 2) * scale,
+    tx: visible.x + visible.width / 2 - ((minX + maxX) / 2) * scale,
+    ty: visible.y + visible.height / 2 - ((minY + maxY) / 2) * scale,
     step
   };
 }
@@ -218,11 +257,17 @@ export function centreOn(
   coordinate: Coordinate,
   viewport: Viewport,
   width: number,
-  height: number
+  height: number,
+  insets: Insets = NO_INSETS
 ): Viewport {
   const world = worldOf(coordinate);
   const scale = scaleOf(viewport.step);
-  return { tx: width / 2 - world.x * scale, ty: height / 2 - world.y * scale, step: viewport.step };
+  const visible = visibleRect(width, height, insets);
+  return {
+    tx: visible.x + visible.width / 2 - world.x * scale,
+    ty: visible.y + visible.height / 2 - world.y * scale,
+    step: viewport.step
+  };
 }
 
 /**
@@ -235,7 +280,8 @@ export function isOffScreen(
   coordinate: Coordinate,
   viewport: Viewport,
   width: number,
-  height: number
+  height: number,
+  insets: Insets = NO_INSETS
 ): boolean {
   const world = worldOf(coordinate);
   const scale = scaleOf(viewport.step);
@@ -243,9 +289,13 @@ export function isOffScreen(
   const y = viewport.ty + world.y * scale;
   const halfWidth = HEX_RADIUS * scale;
   const halfHeight = ROW_PITCH * scale;
+  const visible = visibleRect(width, height, insets);
 
   return (
-    x - halfWidth < 0 || x + halfWidth > width || y - halfHeight < 0 || y + halfHeight > height
+    x - halfWidth < visible.x ||
+    x + halfWidth > visible.x + visible.width ||
+    y - halfHeight < visible.y ||
+    y + halfHeight > visible.y + visible.height
   );
 }
 

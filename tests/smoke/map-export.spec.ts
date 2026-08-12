@@ -52,6 +52,12 @@ async function dragRectangle(page: Page) {
   await page.keyboard.up("Shift");
 }
 
+/** Opens the map export from the header, which is one press inside the Export menu. */
+async function openMapExport(page: Page) {
+  await page.getByTestId("export-menu").click();
+  await page.getByTestId("export-map").click();
+}
+
 /** Saves whatever the export downloads and hands back its text. */
 async function exportAndRead(page: Page, testInfo: { outputPath: (name: string) => string }) {
   const downloading = page.waitForEvent("download");
@@ -67,7 +73,7 @@ test("exports the whole known map when nothing was selected", async ({ page }, t
   await createGame(page, "Export game");
   await importReport(page, TURN_71);
 
-  await page.getByTestId("export-map").click();
+  await openMapExport(page);
   await expect(page.getByTestId("map-export-panel")).toBeVisible();
   // Said in words rather than as four coordinates the player would have to read back.
   await expect(page.getByTestId("map-export-area")).toHaveText(
@@ -117,7 +123,7 @@ test("leaves out the content the player unticks", async ({ page }, testInfo) => 
   await createGame(page, "Export game");
   await importReport(page, TURN_71);
 
-  await page.getByTestId("export-map").click();
+  await openMapExport(page);
   await page.getByTestId("map-export-units").uncheck();
   await page.getByTestId("map-export-structures").uncheck();
 

@@ -1790,8 +1790,16 @@ export function AppShell({
           onMarquee={parsed ? (rect) => openExport(rect) : undefined}
         />
 
+        {/*
+          `data-map-overlay` on each pane tells the map which of its edges is covered, so framing
+          fits the world into the strip the player can actually see rather than centring it under
+          a panel. The chips row is marked rather than the strip that holds it: an unmarked
+          full-width wrapper would read as covering the map from left to right.
+        */}
         <div className="pointer-events-none absolute inset-x-0 top-2.5 flex justify-center">
-          <LayerChips levels={model.levels} />
+          <div data-map-overlay="top">
+            <LayerChips levels={model.levels} />
+          </div>
         </div>
 
         {/*
@@ -1812,7 +1820,7 @@ export function AppShell({
         */}
         <div className="pointer-events-none absolute inset-0 flex flex-col gap-2.5 p-2.5 pt-12">
           <div className="flex min-h-0 flex-1 justify-between gap-2.5">
-            <div className="flex w-[19rem] min-h-0 flex-col">
+            <div className="flex w-[19rem] min-h-0 flex-col" data-map-overlay="left">
               <RegionPanel
                 hex={hex}
                 unknown={unknownHex}
@@ -1820,7 +1828,7 @@ export function AppShell({
               />
             </div>
 
-            <div className="flex w-[21rem] min-h-0 flex-col gap-2.5">
+            <div className="flex w-[21rem] min-h-0 flex-col gap-2.5" data-map-overlay="right">
               <div className={unitSlotClass(collapsed)}>
                 <UnitPanel unit={unit} hex={hex} preview={unitPreview} />
               </div>
@@ -1858,7 +1866,7 @@ export function AppShell({
             </div>
           </div>
 
-          <div className="max-h-[45vh] flex-none">
+          <div className="max-h-[45vh] flex-none" data-map-overlay="bottom">
             <UnitTableDock hex={hex} preview={hexPreview} />
           </div>
         </div>

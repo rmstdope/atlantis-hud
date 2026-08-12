@@ -201,6 +201,48 @@ describe("framing the world", () => {
     const view = fitTo([at(7, 53), at(26, 52)], 800, 600);
     expect(Number.isInteger(view?.step)).toBe(true);
   });
+
+  it("frames into the strip the panes leave, not the whole canvas underneath them", () => {
+    const coordinates = [at(7, 53), at(26, 52), at(15, 63), at(19, 39)];
+    const insets = { left: 300, right: 330, top: 48, bottom: 180 };
+
+    const view = fitTo(coordinates, 1000, 800, insets);
+    if (!view) {
+      throw new Error("expected a viewport for a non-empty world");
+    }
+
+    for (const coordinate of coordinates) {
+      expect(isOffScreen(coordinate, view, 1000, 800, insets)).toBe(false);
+    }
+  });
+
+  it("centres the world in the visible strip rather than behind a pane", () => {
+    const insets = { left: 300, right: 0, top: 0, bottom: 0 };
+
+    const view = fitTo([at(10, 40), at(20, 60)], 1000, 800, insets);
+    if (!view) {
+      throw new Error("expected a viewport for a non-empty world");
+    }
+
+    const scale = scaleOf(view.step);
+    const centreX = ((worldOf(at(10, 40)).x + worldOf(at(20, 60)).x) / 2) * scale + view.tx;
+    // Halfway between the pane's inner edge and the right side of the canvas.
+    expect(centreX).toBeCloseTo(650, 5);
+  });
+
+  it("falls back to the whole canvas when the panes leave no room to frame into", () => {
+    // A window narrow enough for the panes to meet still has to show the map somewhere; framing
+    // into a negative strip would put the world off screen entirely.
+    const view = fitTo([at(7, 53), at(26, 52)], 400, 300, {
+      left: 300,
+      right: 330,
+      top: 0,
+      bottom: 0
+    });
+
+    expect(view).not.toBeNull();
+    expect(isOffScreen(at(7, 53), view as Viewport, 400, 300)).toBe(false);
+  });
 });
 
 describe("bringing a hex into view", () => {
@@ -230,6 +272,19 @@ describe("bringing a hex into view", () => {
     const nudged: Viewport = { ...centred, tx: centred.tx - 400 };
 
     expect(isOffScreen(at(7, 53), nudged, 800, 600)).toBe(true);
+  });
+
+  it("counts a hex hidden behind a pane as off screen, and centres it clear of one", () => {
+    // A unit dock holding a long list reaches past the middle of the canvas, so a hex centred on
+    // the canvas is underneath it.
+    const insets = { left: 300, right: 330, top: 48, bottom: 520 };
+    const behindPane = centreOn(at(7, 53), ORIGIN, 1000, 800);
+
+    expect(isOffScreen(at(7, 53), behindPane, 1000, 800)).toBe(false);
+    expect(isOffScreen(at(7, 53), behindPane, 1000, 800, insets)).toBe(true);
+
+    const cleared = centreOn(at(7, 53), ORIGIN, 1000, 800, insets);
+    expect(isOffScreen(at(7, 53), cleared, 1000, 800, insets)).toBe(false);
   });
 });
 
