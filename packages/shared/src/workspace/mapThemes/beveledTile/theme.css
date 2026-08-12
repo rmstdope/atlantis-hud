@@ -1,0 +1,263 @@
+/*
+ * Beveled Tile: a physical game board.
+ *
+ * Dark values are the design proposal's own (hex-design-proposals.html, proposal 05). The light
+ * values keep the same tiles under a brighter lamp - the bevel does the separating in both, so the
+ * terrains only have to be distinguishable, not high-contrast.
+ *
+ * The bevel is two rim strokes rather than a gradient or a filter: white at low opacity along the
+ * upper-left edges, black along the lower-right. It costs two paths per tile, survives any zoom,
+ * and needs no defs at all.
+ */
+
+:root {
+  --bt-terrain-ocean: #26517a;
+  --bt-terrain-plain: #807748;
+  --bt-terrain-forest: #3a6346;
+  --bt-terrain-mountain: #63636e;
+  --bt-terrain-swamp: #4e5c36;
+  --bt-terrain-desert: #a08954;
+  --bt-terrain-jungle: #2f6a4c;
+  --bt-terrain-tundra: #75868c;
+  --bt-terrain-volcano: #6b3a35;
+  --bt-terrain-cavern: #4f4f5a;
+  --bt-terrain-underforest: #33553f;
+  --bt-terrain-wasteland: #7c6c52;
+  --bt-terrain-other: #5a606a;
+
+  --bt-chip-battle: #c05252;
+  --bt-chip-gate: #8a63b8;
+  --bt-chip-shaft: #a8863c;
+  --bt-chip-lair: #7d2b23;
+  --bt-chip-ship: #3c7ea8;
+  --bt-chip-monsters: #c05252;
+
+  /* The rims that make a tile an object. */
+  --bt-light: #ffffff;
+  --bt-shadow: #000000;
+  --bt-sunk-rim: #8c94a0;
+  --bt-dim: #10141a;
+
+  --bt-road: #e6dfcf;
+  --bt-chip-ink: #ffffff;
+  --bt-chip-face: #ffffff;
+
+  --bt-medallion: #f0e2bd;
+  --bt-medallion-rim: #6b4f2a;
+  --bt-pip: #6b4f2a;
+  --bt-buildings: #e6dfcf;
+
+  --bt-own: #4caf7d;
+  --bt-foreign: #5ec8f0;
+  --bt-monster: #f07070;
+  --bt-token-rim: #0d1117;
+
+  --bt-ink: #f0e2bd;
+  --bt-count-ink: #0d1117;
+  --bt-halo: #10141a;
+}
+
+:root[data-theme="light"] {
+  --bt-terrain-ocean: #a9c5de;
+  --bt-terrain-plain: #d9d2a0;
+  --bt-terrain-forest: #a3c9ab;
+  --bt-terrain-mountain: #babac2;
+  --bt-terrain-swamp: #b3bd96;
+  --bt-terrain-desert: #e0cd9e;
+  --bt-terrain-jungle: #93c7ac;
+  --bt-terrain-tundra: #bcc9ce;
+  --bt-terrain-volcano: #b98f8b;
+  --bt-terrain-cavern: #b6b6c2;
+  --bt-terrain-underforest: #a8c3b2;
+  --bt-terrain-wasteland: #c7b298;
+  --bt-terrain-other: #b7bec7;
+
+  --bt-chip-battle: #a83e3e;
+  --bt-chip-gate: #6b4a99;
+  --bt-chip-shaft: #7a6420;
+  --bt-chip-lair: #8a3a30;
+  --bt-chip-ship: #2b6b93;
+  --bt-chip-monsters: #a83e3e;
+
+  --bt-light: #ffffff;
+  --bt-shadow: #4a4438;
+  --bt-sunk-rim: #7d786c;
+  --bt-dim: #6b6659;
+
+  --bt-road: #8a7f66;
+  --bt-chip-ink: #ffffff;
+  --bt-chip-face: #ffffff;
+
+  --bt-medallion: #fbf4e2;
+  --bt-medallion-rim: #7d5a2e;
+  --bt-pip: #7d5a2e;
+  --bt-buildings: #6b6250;
+
+  --bt-own: #2b7d52;
+  --bt-foreign: #1f6f96;
+  --bt-monster: #b04a4a;
+  --bt-token-rim: #f7f2e4;
+
+  --bt-ink: #33291a;
+  --bt-count-ink: #f7f2e4;
+  --bt-halo: #f7f2e4;
+}
+
+.bt-terrain-ocean {
+  fill: var(--bt-terrain-ocean);
+}
+.bt-terrain-plain {
+  fill: var(--bt-terrain-plain);
+}
+.bt-terrain-forest {
+  fill: var(--bt-terrain-forest);
+}
+.bt-terrain-mountain {
+  fill: var(--bt-terrain-mountain);
+}
+.bt-terrain-swamp {
+  fill: var(--bt-terrain-swamp);
+}
+.bt-terrain-desert {
+  fill: var(--bt-terrain-desert);
+}
+.bt-terrain-jungle {
+  fill: var(--bt-terrain-jungle);
+}
+.bt-terrain-tundra {
+  fill: var(--bt-terrain-tundra);
+}
+.bt-terrain-volcano {
+  fill: var(--bt-terrain-volcano);
+}
+.bt-terrain-cavern {
+  fill: var(--bt-terrain-cavern);
+}
+.bt-terrain-underforest {
+  fill: var(--bt-terrain-underforest);
+}
+.bt-terrain-wasteland {
+  fill: var(--bt-terrain-wasteland);
+}
+.bt-terrain-other {
+  fill: var(--bt-terrain-other);
+}
+
+/*
+ * The bevel. Opacity rather than a solid colour, so one pair of rims works over every terrain -
+ * a lit edge is the terrain plus light, not a colour of its own.
+ */
+.bt-bevel-light {
+  stroke: var(--bt-light);
+  stroke-opacity: 0.3;
+}
+.bt-bevel-shadow {
+  stroke: var(--bt-shadow);
+  stroke-opacity: 0.42;
+}
+.bt-sunk-rim {
+  stroke: var(--bt-sunk-rim);
+}
+.bt-tint {
+  fill: var(--bt-dim);
+}
+.bt-road {
+  stroke: var(--bt-road);
+}
+
+.bt-chip-battle {
+  fill: var(--bt-chip-battle);
+}
+.bt-chip-gate {
+  fill: var(--bt-chip-gate);
+}
+.bt-chip-shaft {
+  fill: var(--bt-chip-shaft);
+}
+.bt-chip-lair {
+  fill: var(--bt-chip-lair);
+}
+.bt-chip-ship {
+  fill: var(--bt-chip-ship);
+}
+.bt-chip-monsters {
+  fill: var(--bt-chip-monsters);
+}
+
+.bt-chip-ink {
+  stroke: var(--bt-chip-ink);
+}
+.bt-chip-face {
+  fill: var(--bt-chip-face);
+}
+
+.bt-medallion {
+  fill: var(--bt-medallion);
+  stroke: var(--bt-medallion-rim);
+}
+.bt-pip {
+  fill: var(--bt-pip);
+}
+.bt-buildings {
+  fill: var(--bt-buildings);
+  stroke: var(--bt-buildings);
+}
+
+.bt-guard-own {
+  stroke: var(--bt-own);
+}
+.bt-guard-foreign {
+  stroke: var(--bt-foreign);
+}
+.bt-token-own {
+  fill: var(--bt-own);
+  stroke: var(--bt-token-rim);
+}
+.bt-token-foreign {
+  fill: var(--bt-foreign);
+  stroke: var(--bt-token-rim);
+}
+.bt-token-monster {
+  fill: var(--bt-monster);
+  stroke: var(--bt-token-rim);
+}
+
+/*
+ * Type. `font-size` longhand, never the `font` shorthand: a calc() inside the shorthand is valid CSS
+ * that some renderers drop, and the label then falls back to several times the width of a tile.
+ */
+.bt-label {
+  font-family: "Helvetica Neue", Arial, sans-serif;
+  font-weight: bold;
+}
+.bt-name {
+  font-size: calc(10px / var(--map-scale, 1));
+  fill: var(--bt-ink);
+  paint-order: stroke fill;
+  stroke: var(--bt-halo);
+  stroke-width: calc(2.4px / var(--map-scale, 1));
+  stroke-linejoin: round;
+}
+/* Printed *inside* its token, so it needs no halo - the token is the halo. */
+.bt-count {
+  font-size: calc(8px / var(--map-scale, 1));
+  fill: var(--bt-count-ink);
+}
+
+/*
+ * Zoom bands.
+ *
+ * Chips and tokens drop band by band; far keeps the tile, its bevel and the roads - which is what a
+ * board looks like from across the room, and is exactly the point of building the design on a
+ * physical tile rather than on marks.
+ *
+ * Scoped to this theme, because every theme's stylesheet is loaded whichever one is selected.
+ */
+.map-theme-beveled-tile.map-far [data-chip],
+.map-theme-beveled-tile.map-far [data-token],
+.map-theme-beveled-tile.map-far [data-medallion],
+.map-theme-beveled-tile.map-far [data-buildings],
+.map-theme-beveled-tile.map-far .bt-label,
+.map-theme-beveled-tile.map-mid .bt-label {
+  display: none;
+}
