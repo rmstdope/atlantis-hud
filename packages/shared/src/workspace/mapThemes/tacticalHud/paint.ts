@@ -44,7 +44,9 @@ export const AGE_Y = 11.96;
 export type Counter = { group: "own" | "foreign" | "monster"; count: number; x: number };
 
 /**
- * The unit counters, one box per group with its head-count printed in it.
+ * The unit counters, one box per group with its unit count printed in it.
+ *
+ * Units, not people: the view model counts units and says so.
  *
  * The three groups partition the hex. The view model's `foreign` is the whole foreign tally with
  * the monsters still inside it, so a row built from it directly would count every monster twice.

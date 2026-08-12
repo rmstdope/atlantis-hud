@@ -9,6 +9,7 @@
 @import "./workspace/mapThemes/cartographersTable/theme.css";
 @import "./workspace/mapThemes/tacticalHud/theme.css";
 @import "./workspace/mapThemes/miniatureWorld/theme.css";
+@import "./workspace/mapThemes/emblemAndDots/theme.css";
 
 /*
  * Where the class names live.

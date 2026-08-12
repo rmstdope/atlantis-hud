@@ -1,0 +1,252 @@
+/*
+ * Emblem & Dots: one medallion, everything else a dot.
+ *
+ * Dark values are the design proposal's own (hex-design-proposals.html, proposal 04). The light
+ * values lift the terrains onto paper while the feature tones darken - this design leans hardest of
+ * the five on colour telling features apart, so each tone has to hold its own identity in both.
+ * Every dot also has its own *shape*, so the row still reads when the colours do not.
+ */
+
+:root {
+  --ed-terrain-ocean: #1f4260;
+  --ed-terrain-plain: #6e6738;
+  --ed-terrain-forest: #31543a;
+  --ed-terrain-mountain: #54545e;
+  --ed-terrain-swamp: #46532f;
+  --ed-terrain-desert: #7d6a3e;
+  --ed-terrain-jungle: #2c5f45;
+  --ed-terrain-tundra: #5b6b71;
+  --ed-terrain-volcano: #5a2f2c;
+  --ed-terrain-cavern: #43434e;
+  --ed-terrain-underforest: #2b4c39;
+  --ed-terrain-wasteland: #6a5c46;
+  --ed-terrain-other: #4b515a;
+
+  --ed-edge: #141a22;
+  --ed-road: #c8c2b4;
+  /* One tint for both the states that are not this turn's report. */
+  --ed-dim: #141a22;
+
+  /* The medallion is a well cut into the hex, so the emblem sits on its own ground. */
+  --ed-medallion: #0d1117;
+  --ed-medallion-rim: #3c4654;
+
+  /* Feature tones, shared by an emblem and its dot. */
+  --ed-battle: #d9a441;
+  --ed-settlement: #f0e2bd;
+  --ed-gate: #b48ce0;
+  --ed-shaft: #e0c98c;
+  --ed-lair: #d98f5e;
+  --ed-ship: #8bd0f0;
+  --ed-monster: #f07070;
+  --ed-building: #c8c2b4;
+  --ed-eye: #e8c95c;
+
+  /* The unit groups, along one bar. */
+  --ed-own: #4caf7d;
+  --ed-foreign: #5ec8f0;
+  --ed-monster-unit: #f07070;
+
+  --ed-ink: #e8e3d8;
+  --ed-halo: #10141a;
+}
+
+:root[data-theme="light"] {
+  --ed-terrain-ocean: #a9c5de;
+  --ed-terrain-plain: #d9d2a0;
+  --ed-terrain-forest: #a3c9ab;
+  --ed-terrain-mountain: #babac2;
+  --ed-terrain-swamp: #b3bd96;
+  --ed-terrain-desert: #e0cd9e;
+  --ed-terrain-jungle: #93c7ac;
+  --ed-terrain-tundra: #bcc9ce;
+  --ed-terrain-volcano: #b98f8b;
+  --ed-terrain-cavern: #b6b6c2;
+  --ed-terrain-underforest: #a8c3b2;
+  --ed-terrain-wasteland: #c7b298;
+  --ed-terrain-other: #b7bec7;
+
+  --ed-edge: #8b8578;
+  --ed-road: #6d675c;
+  --ed-dim: #6b6659;
+
+  --ed-medallion: #f7f4ec;
+  --ed-medallion-rim: #8f8778;
+
+  --ed-battle: #8a6414;
+  --ed-settlement: #6f5c22;
+  --ed-gate: #6b4a99;
+  --ed-shaft: #7a6420;
+  --ed-lair: #9a5a2a;
+  --ed-ship: #1f6f96;
+  --ed-monster: #b04a4a;
+  --ed-building: #5f5a50;
+  --ed-eye: #a37a11;
+
+  --ed-own: #2b7d52;
+  --ed-foreign: #1f6f96;
+  --ed-monster-unit: #b04a4a;
+
+  --ed-ink: #2a3038;
+  --ed-halo: #f7f2e4;
+}
+
+.ed-terrain-ocean {
+  fill: var(--ed-terrain-ocean);
+}
+.ed-terrain-plain {
+  fill: var(--ed-terrain-plain);
+}
+.ed-terrain-forest {
+  fill: var(--ed-terrain-forest);
+}
+.ed-terrain-mountain {
+  fill: var(--ed-terrain-mountain);
+}
+.ed-terrain-swamp {
+  fill: var(--ed-terrain-swamp);
+}
+.ed-terrain-desert {
+  fill: var(--ed-terrain-desert);
+}
+.ed-terrain-jungle {
+  fill: var(--ed-terrain-jungle);
+}
+.ed-terrain-tundra {
+  fill: var(--ed-terrain-tundra);
+}
+.ed-terrain-volcano {
+  fill: var(--ed-terrain-volcano);
+}
+.ed-terrain-cavern {
+  fill: var(--ed-terrain-cavern);
+}
+.ed-terrain-underforest {
+  fill: var(--ed-terrain-underforest);
+}
+.ed-terrain-wasteland {
+  fill: var(--ed-terrain-wasteland);
+}
+.ed-terrain-other {
+  fill: var(--ed-terrain-other);
+}
+
+.ed-edge {
+  stroke: var(--ed-edge);
+}
+.ed-tint {
+  fill: var(--ed-dim);
+}
+.ed-road {
+  stroke: var(--ed-road);
+}
+
+.ed-medallion {
+  fill: var(--ed-medallion);
+  stroke: var(--ed-medallion-rim);
+}
+.ed-battle {
+  stroke: var(--ed-battle);
+}
+.ed-settlement {
+  fill: var(--ed-settlement);
+}
+.ed-gate {
+  stroke: var(--ed-gate);
+}
+.ed-shaft {
+  stroke: var(--ed-shaft);
+}
+.ed-lair {
+  fill: var(--ed-lair);
+}
+.ed-ship {
+  fill: var(--ed-ship);
+}
+.ed-eye {
+  fill: var(--ed-eye);
+}
+.ed-pip {
+  fill: var(--ed-settlement);
+}
+
+.ed-dot-battle {
+  fill: var(--ed-battle);
+}
+.ed-dot-settlement {
+  fill: var(--ed-settlement);
+}
+.ed-dot-gate {
+  fill: var(--ed-gate);
+}
+.ed-dot-shaft {
+  fill: var(--ed-shaft);
+}
+.ed-dot-lair {
+  fill: var(--ed-lair);
+}
+.ed-dot-ship {
+  fill: var(--ed-ship);
+}
+.ed-dot-monsters {
+  fill: var(--ed-monster);
+}
+.ed-dot-buildings {
+  fill: var(--ed-building);
+}
+
+.ed-guard-own {
+  stroke: var(--ed-own);
+}
+.ed-guard-foreign {
+  stroke: var(--ed-foreign);
+}
+.ed-bar-track {
+  fill: var(--ed-medallion);
+}
+.ed-bar-own {
+  fill: var(--ed-own);
+}
+.ed-bar-foreign {
+  fill: var(--ed-foreign);
+}
+.ed-bar-monster {
+  fill: var(--ed-monster-unit);
+}
+
+/*
+ * Type. `font-size` longhand, never the `font` shorthand: a calc() inside the shorthand is valid CSS
+ * that some renderers drop, and the label then falls back to several times the width of a hex.
+ */
+.ed-label {
+  font-family: "Helvetica Neue", Arial, sans-serif;
+  paint-order: stroke fill;
+  stroke: var(--ed-halo);
+  stroke-width: calc(2.2px / var(--map-scale, 1));
+  stroke-linejoin: round;
+  fill: var(--ed-ink);
+}
+.ed-name {
+  font-size: calc(9.5px / var(--map-scale, 1));
+}
+.ed-count {
+  font-weight: bold;
+  font-size: calc(8px / var(--map-scale, 1));
+}
+
+/*
+ * Zoom bands.
+ *
+ * Far keeps the terrain and the emblem, which is the whole point of having one: the most important
+ * fact about a hex survives to the smallest size the map draws. Dots appear at mid; the bar's number
+ * and the name at near.
+ *
+ * Scoped to this theme, because every theme's stylesheet is loaded whichever one is selected.
+ */
+.map-theme-emblem-and-dots.map-far [data-dot],
+.map-theme-emblem-and-dots.map-far [data-bar],
+.map-theme-emblem-and-dots.map-far [data-pip],
+.map-theme-emblem-and-dots.map-far .ed-label,
+.map-theme-emblem-and-dots.map-mid .ed-label {
+  display: none;
+}
