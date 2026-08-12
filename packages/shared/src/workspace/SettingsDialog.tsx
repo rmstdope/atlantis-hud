@@ -189,6 +189,8 @@ function GlobalSettings() {
   const setUnitListLimit = useSettingsStore((state) => state.setUnitListLimit);
   const warnOnUnguardedHex = useSettingsStore((state) => state.warnOnUnguardedHex);
   const setWarnOnUnguardedHex = useSettingsStore((state) => state.setWarnOnUnguardedHex);
+  const showShortcutsAtStartup = useSettingsStore((state) => state.showShortcutsAtStartup);
+  const setShowShortcutsAtStartup = useSettingsStore((state) => state.setShowShortcutsAtStartup);
   const movementPlanner = useSettingsStore((state) => state.movementPlanner);
   const setMovementPlanner = useSettingsStore((state) => state.setMovementPlanner);
 
@@ -261,6 +263,28 @@ function GlobalSettings() {
           aria-label="Warn about unguarded hexes"
           checked={warnOnUnguardedHex}
           onChange={(event) => setWarnOnUnguardedHex(event.target.checked)}
+          className="accent-brass"
+        />
+      </label>
+
+      {/*
+        The same switch the overlay itself carries. Here as well because the overlay is the one
+        screen a player can turn off from inside and then be unable to find again: the key that
+        opens it is written on the thing they just dismissed.
+      */}
+      <label className="flex items-center justify-between gap-2 text-ink-soft">
+        <span>
+          <span className="block">Show keyboard shortcuts at startup</span>
+          <span className="block text-[10px] text-ink-dim">
+            The shortcuts overlay greets you when the application opens.
+          </span>
+        </span>
+        <input
+          type="checkbox"
+          data-testid="settings-shortcuts-at-startup"
+          aria-label="Show keyboard shortcuts at startup"
+          checked={showShortcutsAtStartup}
+          onChange={(event) => setShowShortcutsAtStartup(event.target.checked)}
           className="accent-brass"
         />
       </label>
