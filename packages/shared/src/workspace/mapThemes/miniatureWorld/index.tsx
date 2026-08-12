@@ -176,10 +176,14 @@ function TerrainLayer({ views }: LayerProps) {
                 points={HEX_POINTS_MOCKUP}
                 className={unpainted ? "mw-unpainted mw-edge" : "mw-edge"}
                 style={{
-                  fill: view.texture
-                    ? `url(#${view.texture.patternId})`
-                    : unpainted
-                      ? undefined
+                  // `unpainted` wins over the texture, not the other way round. The view model
+                  // offers a biome image for any terrain, and a named hex has a terrain - a
+                  // neighbour said so - but nobody has *been* there, and a photograph of ground
+                  // nobody has seen is the claim the unpainted board exists to avoid making.
+                  fill: unpainted
+                    ? undefined
+                    : view.texture
+                      ? `url(#${view.texture.patternId})`
                       : `url(#${gradientOf(view.terrain)})`
                 }}
                 strokeWidth={1.6}
@@ -382,7 +386,7 @@ function MarkLayer({ views }: LayerProps) {
                 <g
                   data-scene="guard"
                   data-guard={view.guard}
-                  className={view.guard === "own" ? "mw-figure-own" : "mw-figure-monster"}
+                  className={view.guard === "own" ? "mw-figure-own" : "mw-figure-foreign"}
                   transform={at(GROUNDS.guard)}
                   strokeWidth={0.7}
                   vectorEffect="non-scaling-stroke"

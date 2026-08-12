@@ -309,7 +309,7 @@ function MarkLayer({ views }: LayerProps) {
                   <line x1={0} y1={10} x2={0} y2={-8} />
                   <path
                     d="M0,-8 h11 l-3.5,3.5 L11,-1 H0 Z"
-                    className={view.guard === "own" ? "ct-fill-own" : "ct-fill-monster"}
+                    className={view.guard === "own" ? "ct-fill-own" : "ct-fill-foreign"}
                   />
                 </g>
               )}

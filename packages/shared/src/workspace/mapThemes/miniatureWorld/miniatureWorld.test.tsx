@@ -285,3 +285,36 @@ describe("how loudly unpainted board is stated", () => {
     expect(Number(/data-wash="unpainted"[^>]*opacity="([\d.]+)"/.exec(svg)?.[1])).toBeCloseTo(0.75);
   });
 });
+
+/**
+ * Two faults found in review, both about states that are easy to test only in their happy case.
+ */
+describe("what unvisited ground and a foreign guard look like", () => {
+  it("leaves unpainted board unpainted even with the biome images on", () => {
+    // The view model offers a texture for any terrain, and a named hex has a terrain - a neighbour
+    // said so. But nobody has *been* there, and a photograph of ground nobody has seen is exactly
+    // the claim this theme's unpainted board exists to avoid making.
+    const svg = draw(
+      miniatureWorld.TerrainLayer,
+      [{ ...NAMED_ONLY, terrain: "mountain", knowledge: "named" }],
+      { showTextures: true }
+    );
+
+    expect(svg).not.toContain("url(#biome-texture-mountain)");
+    expect(svg).toContain('data-wash="unpainted"');
+  });
+
+  it("stands a foreign guard in its own colour, not the monsters'", () => {
+    // `guard` says who holds the hex, and "somebody else" is not "a wandering monster". Painting
+    // both red makes a rival faction's garrison read as wildlife.
+    // Scoped to the guard figure itself: the people gathered along the bottom carry these same
+    // classes, so a bare `toContain` over the whole hex would pass whatever the guard were painted.
+    const figure = (guard: "own" | "foreign") =>
+      /<g[^>]*data-scene="guard"[\s\S]*?<\/g>/.exec(marks([viewWith({ guard })]))?.[0] ?? "";
+
+    expect(figure("foreign")).toContain('data-guard="foreign"');
+    expect(figure("foreign")).toContain("mw-figure-foreign");
+    expect(figure("foreign")).not.toContain("mw-figure-monster");
+    expect(figure("own")).toContain("mw-figure-own");
+  });
+});
