@@ -238,9 +238,9 @@ const REPORT = readFileSync(
   "utf8"
 );
 
-/** Same idiom as persistence.spec.ts: the button leaving "Loading…" says the import is over. */
+/** Same idiom as persistence.spec.ts: the button leaving "Importing…" says the import is over. */
 async function openReport(page: Page) {
-  const load = page.getByRole("button", { name: /Load report/ });
+  const load = page.getByRole("button", { name: "Import", exact: true });
   await expect(load).toBeEnabled();
 
   await page.setInputFiles('input[type="file"]', {

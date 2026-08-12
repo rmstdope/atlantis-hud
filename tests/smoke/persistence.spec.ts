@@ -36,11 +36,11 @@ const SAVED = /saved \d/u;
  *
  * Waiting on the status banner alone is not enough the second time: it is already reading
  * "11 regions" from the first import, so the assertion passes before the new one has run and the
- * selection made afterwards is then wiped when it does. The button leaving its "Loading…" state is
+ * selection made afterwards is then wiped when it does. The button leaving its "Importing…" state is
  * the shell saying the work is over.
  */
 async function openReport(page: Page) {
-  const load = page.getByRole("button", { name: /Load report/ });
+  const load = page.getByRole("button", { name: "Import", exact: true });
   await expect(load).toBeEnabled();
 
   await page.setInputFiles('input[type="file"]', {
