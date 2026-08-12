@@ -69,6 +69,28 @@ export async function invokeNative(
 }
 
 /**
+ * Turns off the shortcuts overlay that greets a first launch.
+ *
+ * The window this suite drives is a real first launch every time, and the overlay covers the whole
+ * of it while it is up - so the first click of every walk would land on its backdrop rather than on
+ * the gate behind it. Written straight into the preference the application reads, before the
+ * reload `clearGamesNative` performs anyway, so the frontend comes back up without it.
+ *
+ * The greeting itself is covered where it can be asserted rather than merely avoided: the smoke
+ * suite's `startup-help.spec.ts`.
+ */
+async function standDownStartupGreeting(): Promise<void> {
+  await browser.execute(() => {
+    const stored = window.localStorage.getItem("atlantis-hud-settings");
+    const blob = stored ? (JSON.parse(stored) as { state?: Record<string, unknown> }) : {};
+    window.localStorage.setItem(
+      "atlantis-hud-settings",
+      JSON.stringify({ ...blob, state: { ...blob.state, showShortcutsAtStartup: false } })
+    );
+  });
+}
+
+/**
  * Deletes every game the shell knows about, then reloads so the frontend notices.
  *
  * The native shell keeps its registry on disk rather than in IndexedDB, so the smoke suite's
@@ -76,6 +98,7 @@ export async function invokeNative(
  * the same path a user's delete does and leaves the manifest directory truly empty.
  */
 export async function clearGamesNative(): Promise<void> {
+  await standDownStartupGreeting();
   const listed = await invokeNative("list_games");
   if (!listed.ok) {
     throw new Error(`list_games failed while clearing games: ${listed.error}`);
