@@ -27,6 +27,7 @@ import { HOVER_DELAY_MS, type Point } from "../unitTooltip";
 import { useWorkspaceStore } from "../workspaceStore";
 import { CollapsiblePanel } from "./CollapsiblePanel";
 import { Absent } from "./primitives";
+import { UnitListLimitStepper } from "./UnitListLimitStepper";
 import { UnitTooltip } from "./UnitTooltip";
 
 /** Rows built beyond each edge of the viewport, so a flick of the wheel does not show a gap. */
@@ -77,6 +78,7 @@ export function UnitTableDock({
   // version truncated the list instead, which read as the pane refusing to scroll - the rows
   // beyond the cap were not merely out of view, they were gone.
   const unitListLimit = useSettingsStore((state) => state.unitListLimit);
+  const setUnitListLimit = useSettingsStore((state) => state.setUnitListLimit);
   const visible = useMemo(() => sortUnits(filterUnits(units, filter), sort), [units, filter, sort]);
   const selectedIndex = useMemo(
     () => visible.findIndex((unit) => unit.unitId === selectedUnitId),
@@ -255,14 +257,19 @@ export function UnitTableDock({
       hint={hint}
       asOf={stale && hex.lastSeenTurn !== null ? `as of turn ${hex.lastSeenTurn}` : null}
       actions={
-        <input
-          type="text"
-          value={filter}
-          onChange={(event) => setFilter(event.target.value)}
-          placeholder="filter units…"
-          aria-label="Filter units"
-          className="w-44 rounded border border-edge bg-ground px-2 py-0.5 text-[11px] text-ink placeholder:text-ink-dim focus:border-select focus:outline-none"
-        />
+        <>
+          <input
+            type="text"
+            value={filter}
+            onChange={(event) => setFilter(event.target.value)}
+            placeholder="filter units…"
+            aria-label="Filter units"
+            className="w-44 rounded border border-edge bg-ground px-2 py-0.5 text-[11px] text-ink placeholder:text-ink-dim focus:border-select focus:outline-none"
+          />
+          {/* The settings dialog's slider and this stepper are the same preference, reached from
+              the two places it is wanted from: while configuring, and while reading a hex. */}
+          <UnitListLimitStepper value={unitListLimit} onChange={setUnitListLimit} />
+        </>
       }
     >
       {units.length === 0 ? (

@@ -21,6 +21,19 @@ export const DEFAULT_PANE_TRANSPARENCY = 90;
 /** How many rows the units-in-hex table starts out showing: a readable screenful. */
 export const DEFAULT_UNIT_LIST_LIMIT = 12;
 
+/**
+ * The ends of what the units-in-hex row count may be set to, by the pane's own + and - as much as
+ * by the settings slider. Both controls and the clamp read these, so the three cannot drift apart
+ * and leave a button that offers a value the store then refuses.
+ *
+ * One row rather than three: shrunk to a single row the pane is nearly out of the way of the map
+ * while still being a list you can scroll, which is a reasonable thing to want. Sixteen is the
+ * ceiling because the pane is already bounded to a fraction of the window height, so rows past it
+ * would mostly change nothing a player can see.
+ */
+export const UNIT_LIST_LIMIT_MIN = 1;
+export const UNIT_LIST_LIMIT_MAX = 16;
+
 export type SettingsState = {
   theme: ThemeName;
   /**
@@ -40,7 +53,8 @@ export type SettingsState = {
    */
   paneTransparency: number;
   /**
-   * How many rows tall the "Units in hex" pane stands, 3 to 16.
+   * How many rows tall the "Units in hex" pane stands, between UNIT_LIST_LIMIT_MIN and
+   * UNIT_LIST_LIMIT_MAX.
    *
    * A ceiling on the pane, never a cut in the list: every unit stays reachable by scrolling and
    * by the arrow keys, this many of them on screen at a time.
@@ -139,9 +153,9 @@ function clampTransparency(percent: number): number {
 }
 
 /**
- * What the slider offers is also what the store accepts: 3 to 16 whole rows, garbage falling back
- * to the default rather than to either extreme. Same reasoning as the transparency clamp:
- * storage is hand-editable and other writers exist.
+ * What the controls offer is also what the store accepts: whole rows between the two bounds above,
+ * garbage falling back to the default rather than to either extreme. Same reasoning as the
+ * transparency clamp: storage is hand-editable and other writers exist.
  */
 function clampUnitListLimit(count: number): number {
   const numeric = Number(count);
@@ -154,7 +168,7 @@ function clampUnitListLimit(count: number): number {
   if (numeric === 0) {
     return DEFAULT_UNIT_LIST_LIMIT;
   }
-  return Math.min(16, Math.max(3, Math.round(numeric)));
+  return Math.min(UNIT_LIST_LIMIT_MAX, Math.max(UNIT_LIST_LIMIT_MIN, Math.round(numeric)));
 }
 
 /**

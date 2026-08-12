@@ -219,12 +219,17 @@ describe("settings store", () => {
     expect(store().unitListLimit).toBe(12);
   });
 
-  it("clamps the unit list limit to what the slider offers, 3 to 16", () => {
+  it("clamps the unit list limit to what the controls offer, 1 to 16", () => {
     store().setUnitListLimit(150);
     expect(store().unitListLimit).toBe(16);
 
+    // A single row is a legitimate choice: the pane still scrolls, and shrunk to one row it is
+    // nearly out of the way of the map without being folded shut.
     store().setUnitListLimit(1);
-    expect(store().unitListLimit).toBe(3);
+    expect(store().unitListLimit).toBe(1);
+
+    store().setUnitListLimit(-5);
+    expect(store().unitListLimit).toBe(1);
 
     // A fraction rounds rather than leaving a decimal no row count can honour.
     store().setUnitListLimit(12.6);
