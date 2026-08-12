@@ -143,9 +143,39 @@ describe("the saved map view", () => {
     expect(loadSavedView(GAME_A, storage)?.level).toBeNull();
   });
 
+  // Storage is hand-editable, and a level is a z coordinate: whole, and no shallower than the
+  // surface. A fraction matches no hex on any level, so the map would draw nothing at all.
+  it("ignores a level that is not a whole number", () => {
+    saveViewportForGame(GAME_A, { tx: 0, ty: 0, step: 0 }, storage);
+    storage.data.set(keyOf(storage), JSON.stringify({ tx: 1, ty: 2, step: 0, level: 1.5 }));
+    expect(loadSavedView(GAME_A, storage)?.level).toBeNull();
+  });
+
+  it("ignores a level above the surface", () => {
+    saveViewportForGame(GAME_A, { tx: 0, ty: 0, step: 0 }, storage);
+    storage.data.set(keyOf(storage), JSON.stringify({ tx: 1, ty: 2, step: 0, level: 0 }));
+    expect(loadSavedView(GAME_A, storage)?.level).toBeNull();
+  });
+
   it("ignores a hex id that is not a string", () => {
     saveViewportForGame(GAME_A, { tx: 0, ty: 0, step: 0 }, storage);
     storage.data.set(keyOf(storage), JSON.stringify({ tx: 1, ty: 2, step: 0, regionId: 17 }));
+    expect(loadSavedView(GAME_A, storage)?.regionId).toBeNull();
+  });
+
+  // Same door: a string that names no hex would be selected, and the panels would describe a
+  // place that is not on the map.
+  it("ignores a hex id that names no coordinate", () => {
+    saveViewportForGame(GAME_A, { tx: 0, ty: 0, step: 0 }, storage);
+    storage.data.set(keyOf(storage), JSON.stringify({ tx: 1, ty: 2, step: 0, regionId: "nowhere" }));
+    expect(loadSavedView(GAME_A, storage)?.regionId).toBeNull();
+  });
+
+  // Hexes come in a lattice, so only half the coordinate pairs are real ones. `parseRegionId` is
+  // the rule, rather than a shape check repeated here and left to drift away from it.
+  it("ignores a hex id that is off the lattice", () => {
+    saveViewportForGame(GAME_A, { tx: 0, ty: 0, step: 0 }, storage);
+    storage.data.set(keyOf(storage), JSON.stringify({ tx: 1, ty: 2, step: 0, regionId: "1:7,52" }));
     expect(loadSavedView(GAME_A, storage)?.regionId).toBeNull();
   });
 

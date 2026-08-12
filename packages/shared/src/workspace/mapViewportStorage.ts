@@ -11,6 +11,7 @@
  * the other's half of the view.
  */
 
+import { parseRegionId, SURFACE } from "../hexMapModel";
 import { MAX_STEP, MIN_STEP, type Viewport } from "./mapViewport";
 
 /** The minimal interface this module needs from any storage backend. */
@@ -77,6 +78,39 @@ function viewportIn(stored: StoredView): Viewport | null {
   return { tx, ty, step: Math.min(MAX_STEP, Math.max(MIN_STEP, Math.trunc(step))) };
 }
 
+/**
+ * The level in a stored record, or `null` when it holds none worth using.
+ *
+ * A level is a z coordinate: a whole number, and no shallower than the surface. Rejected rather
+ * than rounded, because a record that has been edited by hand into something impossible is not a
+ * record whose intent can be guessed - and the caller's fallback is the surface, which is where a
+ * game with no saved level opens anyway. A fraction would be the worst of the three to let
+ * through: it matches no hex on any level, so the map would draw nothing at all.
+ */
+function levelIn(stored: StoredView): number | null {
+  const { level } = stored;
+  if (typeof level !== "number" || !Number.isInteger(level) || level < SURFACE) {
+    return null;
+  }
+  return level;
+}
+
+/**
+ * The selected hex in a stored record, or `null` when it names no real one.
+ *
+ * Judged by `parseRegionId` rather than by a shape check written again here, so this cannot drift
+ * away from what the rest of the application will accept: half the coordinate pairs are off the
+ * hex lattice entirely, and a selection pointing at one would have the panels describing a place
+ * that is not on the map.
+ */
+function regionIdIn(stored: StoredView): string | null {
+  const { regionId } = stored;
+  if (typeof regionId !== "string" || parseRegionId(regionId) === null) {
+    return null;
+  }
+  return regionId;
+}
+
 /** Reads the raw record, or `null` when there is none or it will not parse. */
 function storedView(gameId: string, storage: ViewportStorage | null): StoredView | null {
   if (!storage) return null;
@@ -111,9 +145,8 @@ export function loadSavedView(
   }
 
   const viewport = viewportIn(stored);
-  const level =
-    typeof stored.level === "number" && Number.isFinite(stored.level) ? stored.level : null;
-  const regionId = typeof stored.regionId === "string" ? stored.regionId : null;
+  const level = levelIn(stored);
+  const regionId = regionIdIn(stored);
 
   if (viewport === null && level === null && regionId === null) {
     return null;
