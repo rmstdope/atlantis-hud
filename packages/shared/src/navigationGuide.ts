@@ -160,8 +160,8 @@ export const NAVIGATION_MOVES: readonly NavigationMove[] = [
     group: ORDERS,
     // On the bar and not on the window: the header is what listens for a drop, and a guide that
     // said "anywhere" would be sending reports to a map that cannot take them.
-    description: "Load a turn report",
-    mouse: "Drop the file on the bar at the top, or the Load report button",
+    description: "Import turn reports, your own and your allies’",
+    mouse: "Drop the files on the bar at the top, or the Import button",
     keys: null
   },
   {

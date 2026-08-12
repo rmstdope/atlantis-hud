@@ -5,7 +5,14 @@ import type {
   RememberedRegion
 } from "@atlantis/core-client";
 import { describe, expect, it, vi } from "vitest";
-import { mergeTurn, rememberTurn, restoreLatestTurn, toStoredRegions } from "./gameMemory";
+import {
+  commitTurn,
+  mergeTurn,
+  readMemory,
+  rememberTurn,
+  restoreLatestTurn,
+  toStoredRegions
+} from "./gameMemory";
 
 function region(regionId: string, x: number, y: number) {
   return {
@@ -169,6 +176,96 @@ describe("remembering a turn", () => {
 
     expect(outcome.warning).toBeNull();
     expect(outcome.merged).toEqual([]);
+  });
+});
+
+/**
+ * The halves [`rememberTurn`] is made of, which a batch import needs separately: thirty reports
+ * mean thirty commits but only one read-back, and reading the whole remembered map back after each
+ * one is the entire cost of importing a run of turns.
+ */
+describe("committing a turn without reading the map back", () => {
+  it("commits exactly what remembering a turn commits", async () => {
+    const core = client();
+
+    const outcome = await commitTurn(core, OPEN_GAME, report("95"), "raw text", RULESET, NOW);
+
+    expect(outcome.warning).toBeNull();
+    expect(core.commitReportImport).toHaveBeenCalledWith(
+      "p.sqlite",
+      "aug-2026",
+      "95",
+      "raw text",
+      RULESET,
+      true,
+      NOW
+    );
+  });
+
+  it("does not read the remembered map back", async () => {
+    const core = client();
+
+    await commitTurn(core, OPEN_GAME, report("95"), "raw text", RULESET, NOW);
+
+    expect(core.loadRegionSightings).not.toHaveBeenCalled();
+    expect(core.loadMergedReports).not.toHaveBeenCalled();
+  });
+
+  it("warns rather than failing when the turn cannot be committed", async () => {
+    const core = client({
+      commitReportImport: vi.fn().mockRejectedValue(new Error("disk is full"))
+    });
+
+    const outcome = await commitTurn(core, OPEN_GAME, report("95"), "raw text", RULESET, NOW);
+
+    expect(outcome.warning).toContain("disk is full");
+  });
+
+  it("says so when the report does not name its faction", async () => {
+    const core = client();
+
+    const outcome = await commitTurn(core, OPEN_GAME, report(null), "raw text", RULESET, NOW);
+
+    expect(outcome.warning).toContain("faction");
+    expect(core.commitReportImport).not.toHaveBeenCalled();
+  });
+});
+
+describe("reading a faction's memory back", () => {
+  it("answers with the map and everyone merged into the turn", async () => {
+    const remembered: RememberedRegion[] = [{ region: region("1:1,1", 1, 1), lastSeenTurn: 71 }];
+    const core = client({
+      loadRegionSightings: vi.fn().mockResolvedValue(remembered),
+      loadMergedReports: vi.fn().mockResolvedValue([MERGE_RECORD])
+    });
+
+    const memory = await readMemory(core, OPEN_GAME, "95", 71);
+
+    expect(memory.remembered).toEqual(remembered);
+    expect(memory.merged).toEqual([MERGE_RECORD]);
+    expect(memory.warning).toBeNull();
+  });
+
+  /** The same trade remembering a turn makes: a map that will not load is a warning, not a failure. */
+  it("warns rather than failing when the map cannot be read", async () => {
+    const core = client({
+      loadRegionSightings: vi.fn().mockRejectedValue(new Error("database is locked"))
+    });
+
+    const memory = await readMemory(core, OPEN_GAME, "95", 71);
+
+    expect(memory.warning).toContain("database is locked");
+    expect(memory.remembered).toEqual([]);
+  });
+
+  /** Nothing on screen to hang a merge chip off, so there is no turn to ask about. */
+  it("asks for nobody's merges when the turn is unknown", async () => {
+    const core = client();
+
+    const memory = await readMemory(core, OPEN_GAME, "95", null);
+
+    expect(memory.merged).toEqual([]);
+    expect(core.loadMergedReports).not.toHaveBeenCalled();
   });
 });
 

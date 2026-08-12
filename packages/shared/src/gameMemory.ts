@@ -86,41 +86,87 @@ export async function rememberTurn(
   rulesetJson: string | null,
   now: string
 ): Promise<MemoryOutcome> {
-  const factionId = parsed.header.factionId;
-  if (!factionId) {
-    return {
-      remembered: [],
-      merged: [],
-      warning: "the report does not name its faction, so it cannot be remembered"
-    };
+  const committed = await commitTurn(client, game, parsed, rawReport, rulesetJson, now);
+  if (committed.warning !== null) {
+    return { remembered: [], merged: [], warning: committed.warning };
   }
 
-  const gameId = game.manifest.metadata.gameId;
+  return readMemory(
+    client,
+    game,
+    parsed.header.factionId as string,
+    parsed.header.turnNumber
+  );
+}
+
+/** What committing a turn produced. Nothing, when it worked: the map is read back separately. */
+export type CommitOutcome = {
+  /** Set when the turn could not be committed. The report is still perfectly usable without it. */
+  warning: string | null;
+};
+
+/**
+ * Files a report in the game, and stops there.
+ *
+ * The half of [`rememberTurn`] that writes. Split out for importing a selection of reports, where
+ * the read-back is the whole cost: thirty reports mean thirty commits but only one map worth
+ * looking at, and reading every sighting back after each one would make a run of turns thirty times
+ * slower than it needs to be for a map that is thrown away twenty-nine times.
+ */
+export async function commitTurn(
+  client: CoreClient,
+  game: OpenedGame,
+  parsed: ParsedReport,
+  rawReport: string,
+  rulesetJson: string | null,
+  now: string
+): Promise<CommitOutcome> {
+  const factionId = parsed.header.factionId;
+  if (!factionId) {
+    return { warning: "the report does not name its faction, so it cannot be remembered" };
+  }
 
   try {
     // Overwriting is right here: re-importing the same turn should refresh what is remembered
     // rather than refuse, and the player has already chosen this file.
     await client.commitReportImport(
       game.databasePath,
-      gameId,
+      game.manifest.metadata.gameId,
       factionId,
       rawReport,
       rulesetJson,
       true,
       now
     );
+    return { warning: null };
+  } catch (error: unknown) {
+    const detail = error instanceof Error ? error.message : String(error);
+    return { warning: `the turn could not be remembered: ${detail}` };
+  }
+}
 
+/**
+ * Reads back everything one faction has seen, and who has been merged into a turn of theirs.
+ *
+ * The half of [`rememberTurn`] that reads. Makes the same trade the whole of it made: a map that
+ * will not load is a warning rather than a failure, because the report it belongs to parsed
+ * perfectly well and is already on screen.
+ */
+export async function readMemory(
+  client: CoreClient,
+  game: OpenedGame,
+  factionId: string,
+  turnNumber: number | null
+): Promise<MemoryOutcome> {
+  const gameId = game.manifest.metadata.gameId;
+
+  try {
     const remembered = await client.loadRegionSightings(game.databasePath, gameId, factionId);
-    const merged = await mergedReportsFor(client, game, factionId, parsed.header.turnNumber);
-
+    const merged = await mergedReportsFor(client, game, factionId, turnNumber);
     return { remembered, merged, warning: null };
   } catch (error: unknown) {
     const detail = error instanceof Error ? error.message : String(error);
-    return {
-      remembered: [],
-      merged: [],
-      warning: `the turn could not be remembered: ${detail}`
-    };
+    return { remembered: [], merged: [], warning: `the turn could not be remembered: ${detail}` };
   }
 }
 

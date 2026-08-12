@@ -219,7 +219,7 @@ test("the header keeps quiet about routine state", async ({ page }) => {
 
   await loadReport(page);
   await expect(page.getByTestId("app-header")).not.toContainText(/web|desktop/u);
-  await expect(page.getByRole("button", { name: "Load report", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Import", exact: true })).toBeVisible();
 
   // Loaded and well: the status is out of sight, its text still present for whoever asks.
   const status = page.getByTestId("import-status");
@@ -236,6 +236,106 @@ test("the header keeps quiet about routine state", async ({ page }) => {
   });
   await expect(status).toContainText("cannot be remembered");
   await expect.poll(async () => (await status.boundingBox())?.width ?? 0).toBeGreaterThan(1);
+});
+
+/**
+ * A whole run of turns, and an ally's account of them, in one action.
+ *
+ * The point of the batch: the files are handed over in the order a file dialog happens to list
+ * them, and the application sorts them out from the turn in each header. Chosen deliberately
+ * out of order here, and with the ally's turn 2 among them, so a shell that simply imported the
+ * last file - which is what it used to do - could not pass.
+ */
+test("imports a run of turns and an ally's report in one action", async ({ page }) => {
+  await clearGames(page);
+  await createGame(page, "Batch game");
+  await expect(page.getByTestId("app-header")).toBeVisible();
+
+  await page.setInputFiles('input[type="file"]', [
+    { name: "f73-t71.rep", mimeType: "text/plain", buffer: Buffer.from(ALLY_REPORT, "utf8") },
+    { name: "f95-t71.rep", mimeType: "text/plain", buffer: Buffer.from(REPORT, "utf8") },
+    { name: "f95-t70.rep", mimeType: "text/plain", buffer: Buffer.from(OWN_OLDER_REPORT, "utf8") }
+  ]);
+
+  // Neither question a report can raise: a batch of an obvious shape decides everything itself.
+  await expect(page.getByTestId("foreign-report-prompt")).toHaveCount(0);
+  await expect(page.getByTestId("viewer-faction-prompt")).toHaveCount(0);
+
+  const dialog = page.getByTestId("import-summary");
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText("Imported 2 turns for Borg TNG (95)");
+  await expect(dialog).toContainText("merged 1 allied report");
+  // Sorted by the turn in each header, not by the order they were handed over.
+  await expect(dialog).toContainText("f95-t70.rep — imported as turn 70");
+  await expect(dialog).toContainText("f95-t71.rep — imported as turn 71");
+  await expect(dialog).toContainText("f73-t71.rep — merged into turn 71");
+
+  await dialog.getByRole("button", { name: "Close" }).click();
+  await expect(dialog).toHaveCount(0);
+
+  // The newest own turn is what is left on screen, and the ally of that turn is on the chip.
+  await expect(page.getByTestId("app-header")).toContainText("Borg TNG (95)");
+  await expect(page.getByTestId("app-header")).toContainText("71");
+  await expect(page.getByTestId("merged-factions-chip")).toContainText("1 merged");
+
+  /*
+    The ally's units are still in a hex both factions stood in.
+
+    (10,50) is the one region of turn 71 that appears in both reports, which makes it the only
+    place a batch can lose a merge without losing the chip that claims it: putting the final turn
+    on screen must not re-commit it, because committing rewrites that turn's sightings from the
+    own report alone and an ally's contribution to a shared hex would go with them. A hex only the
+    ally saw would survive that and prove nothing.
+  */
+  await selectHex(page, "1:10,50");
+  await expect(page.getByTestId("panel-units")).toContainText("Swamp Watch");
+  await expect(page.getByTestId("panel-units")).toContainText("Tower Guard");
+});
+
+/**
+ * Two of your turns and two of an ally's, with nothing on screen: the headers tie on every measure
+ * there is, and guessing wrong would import the ally's turns as yours.
+ */
+test("asks which faction is yours when the batch cannot say", async ({ page }) => {
+  await clearGames(page);
+  await createGame(page, "Ambiguous game");
+  await expect(page.getByTestId("app-header")).toBeVisible();
+
+  await page.setInputFiles('input[type="file"]', [
+    { name: "f73-t71.rep", mimeType: "text/plain", buffer: Buffer.from(ALLY_REPORT, "utf8") },
+    { name: "f95-t71.rep", mimeType: "text/plain", buffer: Buffer.from(REPORT, "utf8") },
+    { name: "f73-t2.rep", mimeType: "text/plain", buffer: Buffer.from(OTHER_FACTION_OLDER, "utf8") },
+    { name: "f95-t70.rep", mimeType: "text/plain", buffer: Buffer.from(OWN_OLDER_REPORT, "utf8") }
+  ]);
+
+  const question = page.getByTestId("viewer-faction-prompt");
+  await expect(question).toBeVisible();
+  await expect(question).toContainText("equally well");
+  // Nothing is written until it is answered: no summary, and no turn on the header.
+  await expect(page.getByTestId("import-summary")).toHaveCount(0);
+
+  await question.getByRole("button", { name: "Borg TNG (95)" }).click();
+
+  const dialog = page.getByTestId("import-summary");
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText("Imported 2 turns for Borg TNG (95)");
+  await expect(dialog).toContainText("merged 2 allied reports");
+  // An ally's account of a turn you never played still fills in ground you have not stood on.
+  await expect(dialog).toContainText("f73-t2.rep — merged into turn 2");
+
+  await dialog.getByRole("button", { name: "Close" }).click();
+  await expect(page.getByTestId("app-header")).toContainText("Borg TNG (95)");
+  await expect(page.getByTestId("app-header")).toContainText("71");
+});
+
+/** One file is still one file: the question that guards a change of faction has not moved. */
+test("a single ally report still asks before it changes anything", async ({ page }) => {
+  await loadReport(page);
+
+  await choose(page, "ally.rep", ALLY_REPORT);
+
+  await expect(page.getByTestId("foreign-report-prompt")).toBeVisible();
+  await expect(page.getByTestId("import-summary")).toHaveCount(0);
 });
 
 /**

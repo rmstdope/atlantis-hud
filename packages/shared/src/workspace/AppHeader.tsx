@@ -21,6 +21,16 @@ export type TurnMessages = {
   events: string[];
 };
 
+/**
+ * What the import button says while it is working.
+ *
+ * Counted only for a batch. One report is over before a count could be read, and "Importing 1/1…"
+ * is a progress bar for a journey of one step.
+ */
+function importingLabel(progress: { done: number; total: number } | null): string {
+  return progress === null ? "Importing…" : `Importing ${progress.done}/${progress.total}…`;
+}
+
 type AppHeaderProps = {
   gameName: string;
   /** Whether the picker is showing. The header owns the button; the shell owns the panel. */
@@ -57,7 +67,21 @@ type AppHeaderProps = {
   onToggleProblems: () => void;
   problemsPanel: ReactNode;
   busy: boolean;
-  onLoadReport: (text: string, fileName: string) => void;
+  /**
+   * Every report the player chose, in the order the file dialog handed them over.
+   *
+   * A list rather than one report, because the order files arrive in is not the order they belong
+   * in: the shell reads the turn out of each header and sorts them. One file is still one file and
+   * still gets the questions a single report has always been given.
+   */
+  onImportReports: (files: File[]) => void;
+  /**
+   * How far a batch has got, or null when nothing is running or only one file is.
+   *
+   * A run of thirty turns is thirty database commits, which is long enough that a button reading
+   * only "Importing…" looks like a hang.
+   */
+  progress: { done: number; total: number } | null;
   onExportOrders: () => void;
   canExport: boolean;
   /** Opens the map export dialog. Off until a report is on screen to export a map of. */
@@ -99,7 +123,8 @@ export function AppHeader({
   onToggleProblems,
   problemsPanel,
   busy,
-  onLoadReport,
+  onImportReports,
+  progress,
   onExportOrders,
   canExport,
   onExportMap,
@@ -121,22 +146,27 @@ export function AppHeader({
   const errorCount = messages?.errors.length ?? 0;
   const chipLabel = describeTurnMessages(errorCount, messages?.events.length ?? 0);
 
-  const readFile = async (file: File) => {
-    onLoadReport(await file.text(), file.name);
-  };
-
   const onDrop = (event: DragEvent<HTMLElement>) => {
     event.preventDefault();
-    const file = event.dataTransfer.files[0];
-    if (file) {
-      void readFile(file);
+    // Refused while one is already running, as the button is. A drop is the one way in that a
+    // disabled button cannot cover, and a second batch started over the first would interleave two
+    // walks writing the same turns, fight over the progress count, and leave only the later
+    // summary - discarding the only account of what the first one skipped.
+    if (busy) {
+      return;
+    }
+    // Every file dropped, not just the first. A player dragging a folder's worth of turns onto the
+    // bar means all of them, and taking one silently was the old behaviour's quietest failure.
+    const files = [...event.dataTransfer.files];
+    if (files.length > 0) {
+      onImportReports(files);
     }
   };
 
   const onPick = (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      void readFile(file);
+    const files = [...(event.target.files ?? [])];
+    if (files.length > 0) {
+      onImportReports(files);
     }
     // Cleared so choosing the same file twice still fires a change.
     event.target.value = "";
@@ -309,6 +339,7 @@ export function AppHeader({
       <input
         ref={fileRef}
         type="file"
+        multiple
         accept=".rep,.txt,.report,text/plain"
         onChange={onPick}
         className="hidden"
@@ -319,7 +350,7 @@ export function AppHeader({
         onClick={() => fileRef.current?.click()}
         className="rounded border border-brass px-2.5 py-1 text-brass disabled:opacity-50"
       >
-        {busy ? "Loading…" : "Load report"}
+        {busy ? importingLabel(progress) : "Import"}
       </button>
       {/* Relative, because the menu hangs off the button rather than off the window's edge. */}
       <span className="relative">

@@ -24,7 +24,7 @@ test("with no game, creating one is the only thing on offer", async ({ page }) =
   // None of the workspace exists yet: there is nowhere for a report or an order to go.
   await expect(page.getByTestId("map-canvas")).toHaveCount(0);
   await expect(page.getByTestId("panel-region")).toHaveCount(0);
-  await expect(page.getByRole("button", { name: /Load report/ })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Import", exact: true })).toHaveCount(0);
 });
 
 test("creating a game asks which ruleset it is played under", async ({ page }) => {
