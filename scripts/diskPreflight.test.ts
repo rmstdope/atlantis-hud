@@ -40,4 +40,13 @@ describe("describeSpace", () => {
   it("names the build directory, which is the thing that fills the disk", () => {
     expect(describeSpace(1.5)).toContain("target");
   });
+
+  it("never rounds a refusal up into looking like a pass", () => {
+    // 4.96 rounded to one decimal is "5.0", which would read as "5.0 GB free, below the 5 GB
+    // floor" - a sentence that argues with itself exactly when someone needs to believe it.
+    const said = describeSpace(4.96);
+    expect(said).toContain("4.9");
+    expect(said).not.toContain("5.0 GB free");
+    expect(said).toContain("below");
+  });
 });
