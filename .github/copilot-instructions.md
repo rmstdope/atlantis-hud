@@ -16,13 +16,24 @@ The application shall be possible to deploy both as a standalone desktop applica
 
 ## General Instructions
 
-## Implementation Plan
+## Work tracking
 
-Before starting implementation work, always read `docs/implementation-plan.md` and follow the issue dependencies, scope boundaries, acceptance criteria, and validation guidance defined there.
+Planned work is tracked in **beads** (`bd`), not in GitHub issues. Each work package is a bead;
+dependencies between them are edges in the bead graph, so `bd ready` answers "what can be worked on
+now". GitHub issues remain the inbox for external requests and bug reports only.
+
+Before starting implementation work, run `bd ready` to see what is available and `bd show <id>` for
+the scope, acceptance criteria and validation of the bead you are about to work on. Read
+`docs/implementation-plan.md` for the stack and deployment decisions and for the shape a work
+package is expected to have.
 
 ## Skills Usage
 
 Always select the appropriate skill for a specific task. Be sure to ALWAYS explicitly write in the chat what skills that are currently being used. Always follow the instructions in the skills to the letter.
+
+In this repository the `beads-workflow` skill supersedes `github-issue-designer` and
+`github-administration` for planned work. Those two still apply when writing or administering an
+external-facing GitHub issue, such as a bug report.
 
 ## Development Practices
 
@@ -44,33 +55,49 @@ Keep al generic code separate so that it can be easily reused by different demos
 All code changes must be reviewed by at least one other person (the navigator) before being merged into the main codebase. This practice helps to catch potential issues, improve code quality, and ensure adherence to coding standards and best practices. No automatic merging of code changes without review is allowed.
 Always ensure all pre-merge checks pass before merging any code changes to ensure that new changes do not introduce regressions or break existing functionality. NEVER merge code changes that have not passed all tests.
 
-### Issues and branches
+### Work packages and branches
 
-When starting to work on any feature that exists as a github issue, assign that feature to the user that is working on it. Each feature should have a corresponding issue in the issue tracker that describes the work to be done.
+Every piece of planned work is a bead. Follow the `beads-workflow` skill for the command detail; the
+rules that must always hold are:
 
-If you are working on a task that is found to be larger than a small increment, break it down into smaller sub-tasks that can be completed independently. Each sub-task should have its own issue in the issue tracker and should be linked back to the main task issue for traceability. Prefix the sub-issues with ""Sub-issue (<<issue-number>>):"" to clearly indicate their relationship to the main feature issue. <<issue-number>> should be replaced with the main issue number.
-All sub-issues should be linked back to the main issue in their description to maintain clear traceability. Vice versa, all main issues should reference their sub-issues.
-
-When working on an issue, this is important:
-
-- ALWAYS use the test-driven-development skill when working on issues.
-- ALWAYS assign the issue to the developer working on it.
-- ALWAYS create a new branch from **the latest main** (unless instructed otherwise) named after the issue number and a short description of the work to be done, e.g., `42-add-user-authentication`. Run `git checkout main && git pull origin main` before branching. Once the work is completed and reviewed, merge the branch back into main using a pull request.
-- ALWAYS create a pull request (PR) for merging the sub-issue branch back into main.
+- ALWAYS use the test-driven-development skill when working on a bead.
+- ALWAYS claim the bead you are working on with `bd update <id> --claim` so it is assigned and in
+  progress.
+- ALWAYS create a new branch from **the latest main** (unless instructed otherwise) named after the
+  bead ID and a short description of the work, e.g., `ah-t65-load-multiple-reports`. Run
+  `git checkout main && git pull origin main` before branching.
+- ALWAYS put the bead ID in the commit subject, e.g., `feat(ah-t65): load multiple reports`, so work
+  stays traceable to the bead.
+- ALWAYS create a pull request for merging the branch back into main.
 - Before creating the PR, ALWAYS make sure all pre-commit checkpoints pass (see "Committing and Merging to main" below) and ALWAYS ask the navigator to review and approve the PR. Even if any issue existed previously, it shall be fixed before merging. Do not merge any code that has known issues, even if they existed before.
-- ALWAYS merge an issue branch back into main before starting to work on another issue. This ensures that the latest changes are always incorporated and reduces the risk of merge conflicts.
+- ALWAYS merge a bead branch back into main before starting to work on another bead. This ensures that the latest changes are always incorporated and reduces the risk of merge conflicts.
 
-When a PR is merged, the issue should be closed and the branch deleted to keep the repository clean and organized. If the issue is a sub-issue of a larger feature, ensure that the main issue is updated with relevant information about the progress made and that it is closed when all sub-issues are completed.
-When a sub-issue is closed, the main issue's description should be updated to reflect the completion of that sub-issue and any remaining work that needs to be done on the main issue.
+When a PR is merged, close the bead with `bd close <id> --reason "..."` and delete the branch to keep
+the repository clean and organized.
+
+If a bead is found to be larger than a small increment, break it down into child beads with
+`bd create --parent <id>` and wire the ordering with `bd dep add`. Beads models parents and
+dependencies natively, so no naming convention is needed to express the relationship.
+
+Beads data lives in `.beads/`. The Dolt database is local and git-ignored; `.beads/issues.jsonl` is a
+readable export that is committed. ALWAYS run `bd dolt push` before ending a working session so the
+bead database is backed up to the remote.
 
 ### Github CLI
 
-Use the comand line command 'gh' for interacting with github issues. Be careful with quoting when using gh. NEVER use backticks in the text with gh and use real newlines instead of \n.
+GitHub issues are the inbox for external requests and bug reports. Use the command line command 'gh'
+for interacting with them. Be careful with quoting when using gh. NEVER use backticks in the text
+with gh and use real newlines instead of \n.
 When creating issues, always add the appropriate labels to the issue using gh:
 
 - bug - for all bugs
 - feature - for any feature development
 - enhanced - for issues created or updated with AI assistance workflows
+
+To take a reported GitHub issue into planned work, triage it into a bead
+(`GITHUB_TOKEN=$(gh auth token) bd github pull <issue-number>`, or `bd create --external-ref gh-<n>`
+when the bead needs a rewritten scope), then work it as a bead. Close the GitHub issue with a comment
+naming the bead that now tracks it. Nothing is pushed from beads to GitHub automatically.
 
 ## Framework decisions
 

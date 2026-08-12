@@ -1,4 +1,4 @@
-# Atlantis HUD Implementation Plan (Executable Issues)
+# Atlantis HUD Implementation Plan
 
 ## Stack and deployment decisions
 
@@ -15,42 +15,43 @@
 - CodeMirror 6 for orders editor
 - CI gates required before merge: Rust tests, Vitest, Playwright smoke, lint, typecheck
 
-## Operating rules for all implementation issues
+## Operating rules for all work packages
 
-Each sub-issue is independently executable by following this contract:
+Each work package is independently executable by following this contract:
 
-1. **Inputs required** are listed per issue under "Dependency handoff".
-2. **Scope and out-of-scope** are explicit to avoid bleed.
-3. **Acceptance criteria** are observable and testable.
-4. **Validation** includes concrete commands and/or manual checks.
-5. **Deliverables** define exactly what must be committed.
+1. **Inputs required** are the bead's dependency edges (`bd dep add`), not prose. `bd ready` only
+   offers a bead once they are satisfied.
+2. **Scope and out-of-scope** are explicit in the bead description, to avoid bleed.
+3. **Acceptance criteria** are observable and testable, and live in the bead's acceptance field
+   (`bd create --acceptance`).
+4. **Validation** includes concrete commands and/or manual checks, in the bead description.
+5. **Deliverables** define exactly what must be committed, in the bead description.
 
-## Issue tree
+## Tracking
 
-- Epic: #1 https://github.com/rmstdope/atlantis-hud/issues/1
-- #2 Foundation workspaces and CI gates
-- #3 Shared Rust core and platform adapters
-- #4 SQLite persistence, migrations, and project file format
-- #5 Report parsing and import workflow
-- #6 Order editor, validation, and autosave
-- #7 Map renderer and cross-device interaction model
-- #8 Movement planning and risk visualization
-- #9 Productivity UX, diffs, themes, and snippets
-- #10 Deployment, PWA, and desktop release pipeline
+Work packages are tracked in beads, not in this file and not in GitHub issues. The backlog, its
+dependency graph and its execution order are all queries:
 
-## Dependency graph
+    bd ready        # work with no open blockers, in priority order
+    bd list         # the whole backlog
+    bd blocked      # what is waiting, and on what
+    bd show <id>    # one work package's full contract
 
-- #2 has no dependencies
-- #3 depends on #2
-- #4 depends on #2 and #3
-- #5 depends on #3 and #4
-- #6 depends on #3, #4, and #5
-- #7 depends on #5
-- #8 depends on #3 and #7
-- #9 depends on #6 and #7
-- #10 depends on #6, #7, and #9
+See `.claude/skills/beads-workflow/SKILL.md` for the workflow, and `.beads/issues.jsonl` for a
+readable snapshot of the backlog as committed.
 
-## Executable issue contracts
+## Appendix: delivered milestone-1 contracts (historical)
+
+The contracts below describe milestone 1, delivered as GitHub issues #1–#10 before work packages
+moved to beads. They are kept as a record of what was built and as a worked example of the contract
+shape required above. They are not a live backlog.
+
+The milestone was structured as epic #1 with children #2 Foundation workspaces and CI gates, #3
+Shared Rust core and platform adapters, #4 SQLite persistence and project file format, #5 Report
+parsing and import workflow, #6 Order editor, validation and autosave, #7 Map renderer and
+cross-device interaction model, #8 Movement planning and risk visualization, #9 Productivity UX,
+diffs, themes and snippets, and #10 Deployment, PWA and desktop release pipeline — each depending on
+those before it as recorded under "Dependency handoff" in the contracts.
 
 ### #2 Foundation workspaces and CI gates
 
@@ -225,11 +226,6 @@ flag and needs clearing once.
 Hosting is **one.com rather than GitHub Pages**, because this repository is private: Pages from a
 private repository needs a paid plan and publishes a site that is public anyway.
 
-## Recommended execution order
-
-1. #2
-2. #3 and #4
-3. #5
-4. #6 and #7
-5. #8 and #9
-6. #10
+Milestone 1 was executed in this order: #2, then #3 and #4 in parallel, then #5, then #6 and #7, then
+#8 and #9, then #10. For current work, the equivalent order is computed from the dependency graph by
+`bd ready`.
