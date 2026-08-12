@@ -99,6 +99,27 @@ GitHub automatically; the sync is pull-only and manual.
 
 Never commit a GitHub token to `.beads/config.yaml` — pass it as `GITHUB_TOKEN` per command.
 
+## Traps
+
+**The auto-export can be stale.** Auto-export is throttled, and the pre-commit hook has been seen
+writing a snapshot that still held a bead deleted minutes earlier. Run
+`bd export -o .beads/issues.jsonl` explicitly before committing, and check what actually landed:
+
+```bash
+git show HEAD:.beads/issues.jsonl | wc -l      # against `bd list` — the counts must agree
+```
+
+**`bd config set` accepts unknown keys silently.** A mistyped or invented key prints
+`Set <key> = <value>` and does nothing, so config probing reads as success while changing nothing.
+Confirm the effect, not the acknowledgement. Writing config also rewrites `.beads/config.yaml` — it
+has rewritten a commented-out default and dropped the file's trailing newline — so read the diff
+before committing it.
+
+**`owner` comes from `git config user.email`** at creation time and has no override.  `--actor`
+sets `created_by` only, `--assignee` is a separate field, and no config key changes it. The
+committed export therefore carries the repo's committer address; that is the same identity every
+commit already carries here, so it is expected rather than a leak.
+
 ## Checklist before ending a session
 
 - [ ] Bead claimed or closed to match reality
