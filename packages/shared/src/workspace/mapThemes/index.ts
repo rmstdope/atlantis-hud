@@ -10,10 +10,11 @@
 import type { MapTheme } from "./mapTheme";
 import { cartographersTable } from "./cartographersTable/index";
 import { classic } from "./classic/index";
+import { miniatureWorld } from "./miniatureWorld/index";
 import { tacticalHud } from "./tacticalHud/index";
 
 /** In the order the settings picker offers them: the map as it was, then the five designs. */
-export const MAP_THEMES: readonly MapTheme[] = [classic, cartographersTable, tacticalHud];
+export const MAP_THEMES: readonly MapTheme[] = [classic, cartographersTable, tacticalHud, miniatureWorld];
 
 /** The map as it has always looked, and what an unrecognised choice falls back to. */
 export const DEFAULT_MAP_THEME_ID = "classic";

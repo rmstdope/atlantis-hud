@@ -59,6 +59,13 @@ hex is data you hold that may have gone out of date, and it is the one that carr
 Branch on `knowledge`, and give the two different treatments. Cartographer's Table got this wrong
 first time round and painted unvisited ground as an aged page.
 
+And whatever tells the three states apart **must survive the far zoom band**, where every label is
+hidden. Tactical HUD first distinguished "old reading" from "never surveyed" by a printed `T-` number
+and nothing else, which meant it distinguished them only when zoomed in; it also used a fixed dim, so
+a one-turn-old and a forty-turn-old reading were identical once the number went. Carry the
+distinction in something the bands keep — the fade itself, an outline, a rim — and let the label
+confirm it rather than carry it.
+
 While you are there: a fade meant to *hide* ground and a treatment meant to *age* it are not the same
 strength. Laying a theme's own wash at the full `fogOpacity` buries the terrain, and every faded hex
 comes out the same colour whatever it is made of — a stale ocean has to still read as ocean. Scale

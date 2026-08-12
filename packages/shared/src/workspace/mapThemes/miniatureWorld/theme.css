@@ -1,0 +1,366 @@
+/*
+ * Miniature World: a board-game diorama.
+ *
+ * Dark values are the design proposal's own (hex-design-proposals.html, proposal 03). The light
+ * values lift each ground towards a daylit tabletop rather than inverting it - a diorama seen under
+ * a lamp is still a diorama, and the miniatures keep their own colours in both.
+ *
+ * Terrain is a radial gradient rather than a flat fill: it is the cheapest possible imitation of a
+ * light source over a board, and it is what makes a hex read as a modelled surface. `stop-color` is
+ * an ordinary CSS property, so the gradients are themed here like everything else.
+ */
+
+:root {
+  --mw-lit-ocean: #2b5a86;
+  --mw-shade-ocean: #1d3f63;
+  --mw-lit-plain: #8f8449;
+  --mw-shade-plain: #6f6636;
+  --mw-lit-forest: #3d7048;
+  --mw-shade-forest: #2a5234;
+  --mw-lit-mountain: #73737e;
+  --mw-shade-mountain: #565660;
+  --mw-lit-swamp: #4e5a37;
+  --mw-shade-swamp: #3a4429;
+  --mw-lit-desert: #c2a86a;
+  --mw-shade-desert: #a08a52;
+  --mw-lit-jungle: #357a55;
+  --mw-shade-jungle: #245b3e;
+  --mw-lit-tundra: #8a9aa0;
+  --mw-shade-tundra: #6d7d84;
+  --mw-lit-volcano: #6b3430;
+  --mw-shade-volcano: #4a2422;
+  --mw-lit-cavern: #4c4c58;
+  --mw-shade-cavern: #383842;
+  --mw-lit-underforest: #37604a;
+  --mw-shade-underforest: #274736;
+  --mw-lit-wasteland: #8a7a60;
+  --mw-shade-wasteland: #6a5c46;
+  --mw-lit-other: #6b6b73;
+  --mw-shade-other: #515158;
+
+  --mw-edge: #1c1712;
+  --mw-path: #c2a06a;
+  --mw-wash: #9a958a;
+  /* Board nobody has painted: bare, unlit, and obviously unfinished. */
+  --mw-unpainted: #5c5a54;
+
+  --mw-wall: #d9c9a3;
+  --mw-wall-stone: #b8b8c2;
+  --mw-tile: #a34f35;
+  --mw-outline: #2a2118;
+  --mw-shadow: #00000055;
+
+  --mw-trunk: #3a2c1a;
+  --mw-leaf: #22452c;
+  --mw-rock: #4a4a54;
+  --mw-snow: #e8eef2;
+  --mw-wave: #7fb2d9;
+  --mw-dune: #d9c393;
+
+  --mw-pit: #0d0a06;
+  --mw-ladder: #c2a06a;
+  --mw-cave: #14100a;
+  --mw-eye: #e8c95c;
+  --mw-eye-pale: #f0e2bd;
+  --mw-hull: #8a5c33;
+  --mw-sail: #e8ddc2;
+  --mw-beast: #7d4a8c;
+  --mw-arch: #8bd0f0;
+  --mw-smoke: #00000055;
+  --mw-blades: #e8d9a8;
+
+  --mw-own: #4caf7d;
+  --mw-foreign: #5ec8f0;
+  --mw-monster: #f07070;
+  --mw-name: #f0e2bd;
+  --mw-name-halo: #10141a;
+}
+
+:root[data-theme="light"] {
+  --mw-lit-ocean: #7fb6dd;
+  --mw-shade-ocean: #5b93bb;
+  --mw-lit-plain: #ccc188;
+  --mw-shade-plain: #a89e63;
+  --mw-lit-forest: #87b892;
+  --mw-shade-forest: #66996f;
+  --mw-lit-mountain: #b6b6c0;
+  --mw-shade-mountain: #93939e;
+  --mw-lit-swamp: #a0ab7f;
+  --mw-shade-swamp: #7d8a5e;
+  --mw-lit-desert: #e6d3a2;
+  --mw-shade-desert: #c9b47f;
+  --mw-lit-jungle: #7fbd97;
+  --mw-shade-jungle: #5c9c75;
+  --mw-lit-tundra: #c6d2d6;
+  --mw-shade-tundra: #a4b2b8;
+  --mw-lit-volcano: #bf8a83;
+  --mw-shade-volcano: #9c6660;
+  --mw-lit-cavern: #adadb8;
+  --mw-shade-cavern: #8c8c98;
+  --mw-lit-underforest: #84b39a;
+  --mw-shade-underforest: #61947a;
+  --mw-lit-wasteland: #c9b99b;
+  --mw-shade-wasteland: #a89877;
+  --mw-lit-other: #b2b2ba;
+  --mw-shade-other: #909099;
+
+  --mw-edge: #6b6055;
+  --mw-path: #a8853f;
+  --mw-wash: #8f8a80;
+  --mw-unpainted: #cac6bd;
+
+  --mw-wall: #f3e8cb;
+  --mw-wall-stone: #d6d6de;
+  --mw-tile: #b95c3e;
+  --mw-outline: #4a3c2e;
+  --mw-shadow: #00000033;
+
+  --mw-trunk: #5a4526;
+  --mw-leaf: #3c7049;
+  --mw-rock: #7d7d88;
+  --mw-snow: #ffffff;
+  --mw-wave: #4f92c4;
+  --mw-dune: #b99a63;
+
+  --mw-pit: #2b241a;
+  --mw-ladder: #8a6a34;
+  --mw-cave: #33291d;
+  --mw-eye: #d9a41f;
+  --mw-eye-pale: #6b5a3a;
+  --mw-hull: #9c6a3c;
+  --mw-sail: #fbf4e2;
+  --mw-beast: #6b3d7a;
+  --mw-arch: #2f8fc4;
+  --mw-smoke: #00000033;
+  --mw-blades: #7a6a34;
+
+  --mw-own: #2f8c5c;
+  --mw-foreign: #2d7fa8;
+  --mw-monster: #c25050;
+  --mw-name: #2f2618;
+  --mw-name-halo: #f7f2e4;
+}
+
+/* The lit grounds. */
+.mw-lit-ocean {
+  stop-color: var(--mw-lit-ocean);
+}
+.mw-shade-ocean {
+  stop-color: var(--mw-shade-ocean);
+}
+.mw-lit-plain {
+  stop-color: var(--mw-lit-plain);
+}
+.mw-shade-plain {
+  stop-color: var(--mw-shade-plain);
+}
+.mw-lit-forest {
+  stop-color: var(--mw-lit-forest);
+}
+.mw-shade-forest {
+  stop-color: var(--mw-shade-forest);
+}
+.mw-lit-mountain {
+  stop-color: var(--mw-lit-mountain);
+}
+.mw-shade-mountain {
+  stop-color: var(--mw-shade-mountain);
+}
+.mw-lit-swamp {
+  stop-color: var(--mw-lit-swamp);
+}
+.mw-shade-swamp {
+  stop-color: var(--mw-shade-swamp);
+}
+.mw-lit-desert {
+  stop-color: var(--mw-lit-desert);
+}
+.mw-shade-desert {
+  stop-color: var(--mw-shade-desert);
+}
+.mw-lit-jungle {
+  stop-color: var(--mw-lit-jungle);
+}
+.mw-shade-jungle {
+  stop-color: var(--mw-shade-jungle);
+}
+.mw-lit-tundra {
+  stop-color: var(--mw-lit-tundra);
+}
+.mw-shade-tundra {
+  stop-color: var(--mw-shade-tundra);
+}
+.mw-lit-volcano {
+  stop-color: var(--mw-lit-volcano);
+}
+.mw-shade-volcano {
+  stop-color: var(--mw-shade-volcano);
+}
+.mw-lit-cavern {
+  stop-color: var(--mw-lit-cavern);
+}
+.mw-shade-cavern {
+  stop-color: var(--mw-shade-cavern);
+}
+.mw-lit-underforest {
+  stop-color: var(--mw-lit-underforest);
+}
+.mw-shade-underforest {
+  stop-color: var(--mw-shade-underforest);
+}
+.mw-lit-wasteland {
+  stop-color: var(--mw-lit-wasteland);
+}
+.mw-shade-wasteland {
+  stop-color: var(--mw-shade-wasteland);
+}
+.mw-lit-other {
+  stop-color: var(--mw-lit-other);
+}
+.mw-shade-other {
+  stop-color: var(--mw-shade-other);
+}
+
+.mw-edge {
+  stroke: var(--mw-edge);
+}
+.mw-unpainted {
+  fill: var(--mw-unpainted);
+}
+.mw-wash {
+  fill: var(--mw-wash);
+}
+.mw-path {
+  stroke: var(--mw-path);
+}
+
+/* What is painted on the ground. */
+.mw-peaks {
+  stroke: var(--mw-rock);
+}
+.mw-snow {
+  stroke: var(--mw-snow);
+}
+.mw-trunk {
+  stroke: var(--mw-trunk);
+}
+.mw-leaf {
+  fill: var(--mw-leaf);
+}
+.mw-wave {
+  stroke: var(--mw-wave);
+}
+.mw-dune {
+  stroke: var(--mw-dune);
+}
+
+/* The models standing on it. */
+.mw-building,
+.mw-boat {
+  stroke: var(--mw-outline);
+}
+.mw-wall {
+  fill: var(--mw-wall);
+}
+.mw-wall-stone {
+  fill: var(--mw-wall-stone);
+}
+.mw-tile {
+  fill: var(--mw-tile);
+}
+.mw-shadow {
+  fill: var(--mw-shadow);
+}
+.mw-pit {
+  fill: var(--mw-pit);
+  stroke: var(--mw-outline);
+}
+.mw-ladder {
+  stroke: var(--mw-ladder);
+}
+.mw-cave {
+  fill: var(--mw-cave);
+  stroke: var(--mw-outline);
+}
+.mw-eye {
+  fill: var(--mw-eye);
+}
+.mw-eye-pale {
+  fill: var(--mw-eye-pale);
+}
+.mw-hull {
+  fill: var(--mw-hull);
+}
+.mw-sail {
+  fill: var(--mw-sail);
+}
+.mw-beast {
+  fill: var(--mw-beast);
+  stroke: var(--mw-name-halo);
+}
+.mw-beast-horn {
+  stroke: var(--mw-beast);
+}
+.mw-arch {
+  stroke: var(--mw-arch);
+}
+.mw-arch-glow {
+  fill: var(--mw-arch);
+  opacity: 0.4;
+}
+.mw-smoke {
+  fill: var(--mw-smoke);
+}
+.mw-blades {
+  stroke: var(--mw-blades);
+}
+
+/* The people. */
+.mw-figure-own {
+  fill: var(--mw-own);
+  stroke: var(--mw-name-halo);
+}
+.mw-figure-foreign {
+  fill: var(--mw-foreign);
+  stroke: var(--mw-name-halo);
+}
+.mw-figure-monster {
+  fill: var(--mw-monster);
+  stroke: var(--mw-name-halo);
+}
+
+/*
+ * Type. `font-size` longhand, never the `font` shorthand: a calc() inside the shorthand is valid
+ * CSS that some renderers drop, and the label then falls back to several times the width of a hex.
+ */
+.mw-label {
+  font-family: Verdana, "DejaVu Sans", sans-serif;
+  font-weight: bold;
+  paint-order: stroke fill;
+  stroke: var(--mw-name-halo);
+  stroke-width: calc(2.4px / var(--map-scale, 1));
+  stroke-linejoin: round;
+  fill: var(--mw-name);
+}
+.mw-name {
+  font-size: calc(10px / var(--map-scale, 1));
+}
+.mw-count {
+  font-size: calc(8px / var(--map-scale, 1));
+}
+
+/*
+ * Zoom bands.
+ *
+ * The figures and the painted decorations simplify away band by band; far keeps the lit ground and
+ * the paths, which is what a board looks like from across the table.
+ *
+ * Scoped to this theme, because every theme's stylesheet is loaded whichever one is selected.
+ */
+.map-theme-miniature-world.map-far [data-scene],
+.map-theme-miniature-world.map-far [data-people],
+.map-theme-miniature-world.map-far [data-decoration],
+.map-theme-miniature-world.map-far .mw-label,
+.map-theme-miniature-world.map-mid .mw-label {
+  display: none;
+}
