@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "What the shell needs in order to get unsaved orders onto disk before the window closes, and to hand the releases page to a browser. There was no capability file at all until now, because commands this application defines itself are not gated by the ACL; onCloseRequested and destroy are core-plugin calls and are refused without one. core:default is Tauri's own baseline and carries the event listening; destroy is not in it, being the one call that ends the window, so it is named here. opener:allow-open-url is scoped to this repository rather than granted outright: the update check needs exactly one address, and a webview that can ask the operating system to open anything is a larger thing to own than that.",
+  "description": "What the shell needs in order to get unsaved orders onto disk before the window closes, to hand the releases page to a browser, and to save a map export where the player asks. There was no capability file at all until now, because commands this application defines itself are not gated by the ACL; onCloseRequested and destroy are core-plugin calls and are refused without one. core:default is Tauri's own baseline and carries the event listening; destroy is not in it, being the one call that ends the window, so it is named here. opener:allow-open-url is scoped to this repository rather than granted outright: the update check needs exactly one address, and a webview that can ask the operating system to open anything is a larger thing to own than that. The save dialog and the write beside it are what let the desktop tell the player where an export went; the write permission is the plugin's baseline, which allows only paths the player themselves chose in that dialog, and no read permission is granted at all.",
   "windows": ["main"],
   "permissions": [
     "core:default",
@@ -9,6 +9,8 @@
     {
       "identifier": "opener:allow-open-url",
       "allow": [{ "url": "https://github.com/rmstdope/atlantis-hud/*" }]
-    }
+    },
+    "dialog:allow-save",
+    "fs:allow-write-text-file"
   ]
 }

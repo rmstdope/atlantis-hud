@@ -5,6 +5,7 @@
 //! hard failure, because a player would rather see most of a turn than none of it.
 
 pub mod composition;
+pub mod export;
 pub mod header;
 pub mod merge;
 pub mod model;
@@ -14,6 +15,7 @@ pub mod scan;
 pub mod sighting;
 pub mod unit;
 pub mod unwrap;
+pub mod write;
 
 pub use composition::{classify_units, Classification};
 

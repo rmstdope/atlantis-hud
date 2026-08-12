@@ -28,6 +28,8 @@ function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
       warnOnUnguardedHex: boolean
     ) => ({ diagnostics: [], rawOrders, rulesetJson, rawReport, warnOnUnguardedHex }),
     order_commands_state: () => ["GIVE", "MOVE", "WORK"],
+    export_map_state: (rawReport: string, rememberedJson: string, requestJson: string) =>
+      `; Map export from Atlantis HUD\n; ${rawReport} ${rememberedJson} ${requestJson}\n`,
     plan_route_state: (
       rulesetJson: string,
       rawReport: string,

@@ -241,6 +241,34 @@ export type RouteRisk = { level: RiskLevel; worst: HexRisk | null; hexes: HexRis
 export type RememberedRegion = { region: ReportRegion; lastSeenTurn: number };
 
 /**
+ * What a map export puts in the file, beyond the region economy every export carries.
+ *
+ * Three levers rather than a detail level, because the reasons for holding something back differ:
+ * units say where your army is, structures say what you have built, and advanced resources say
+ * where the mithril is. A player trading a map usually wants to give away only some of that.
+ */
+export type MapExportContent = {
+  structures: boolean;
+  units: boolean;
+  advancedResources: boolean;
+};
+
+/**
+ * One rectangle of one level, and what to write about it.
+ *
+ * The corners are inclusive and may arrive in either order: they come from a drag on the map,
+ * which says nothing about which corner the player started from.
+ */
+export type MapExportRequest = {
+  level: number;
+  fromX: number;
+  fromY: number;
+  toX: number;
+  toY: number;
+  content: MapExportContent;
+};
+
+/**
  * One allied report folded into a faction's map for one turn.
  *
  * Merging writes the ally's regions under the viewer's own faction id and stores no turn of the
@@ -704,6 +732,11 @@ export interface CoreAdapter {
     unitId: string,
     orders: string
   ): Promise<unknown> | unknown;
+  exportMap(
+    rawReport: string,
+    rememberedJson: string,
+    requestJson: string
+  ): Promise<unknown> | unknown;
   previewOrders(
     rulesetJson: string,
     rawReport: string,
@@ -874,6 +907,21 @@ export interface CoreClient {
     orders: string
   ): Promise<MoveOrderTraceResponse>;
   /**
+   * The known map inside one rectangle, written as report-shaped text for an ally to read.
+   *
+   * `rememberedJson` is the accumulated map exactly as the planner takes it; the current report
+   * wins wherever the two describe the same hex. What comes back is the file's whole content -
+   * saving it is the shell's business, because the core touches no filesystem.
+   *
+   * Rejects when the request or the remembered regions cannot be read. A rectangle covering
+   * nothing known resolves with a header and no regions.
+   */
+  exportMap(
+    rawReport: string,
+    rememberedJson: string,
+    request: MapExportRequest
+  ): Promise<string>;
+  /**
    * What the whole orders document makes of the faction's units, region by region.
    *
    * `ordersDocument` is the full document rather than one unit's block, because GIVE crosses
@@ -1010,6 +1058,7 @@ export interface WasmBindings {
     unitId: string,
     orders: string
   ): unknown;
+  export_map_state(rawReport: string, rememberedJson: string, requestJson: string): unknown;
   preview_orders_state(
     rulesetJson: string,
     rawReport: string,
@@ -1686,6 +1735,16 @@ export function createCoreClient(adapter: CoreAdapter): CoreClient {
         orders
       )) as MoveOrderTraceResponse;
     },
+    async exportMap(rawReport: string, rememberedJson: string, request: MapExportRequest) {
+      const text = await adapter.exportMap(rawReport, rememberedJson, JSON.stringify(request));
+      // Checked rather than cast: everything else here comes back as a shape, and a shape that
+      // arrives wrong is visibly wrong. A file is not - an unreadable answer saved as text would
+      // be an empty document the player believes holds their map.
+      if (typeof text !== "string") {
+        throw new Error("map export did not come back as text");
+      }
+      return text;
+    },
     async previewOrders(
       rulesetJson: string,
       rawReport: string,
@@ -1856,6 +1915,9 @@ export function createWasmAdapter(bindings: WasmBindings): CoreAdapter {
       orders: string
     ) {
       return bindings.trace_move_orders_state(rulesetJson, rawReport, rememberedJson, unitId, orders);
+    },
+    exportMap(rawReport: string, rememberedJson: string, requestJson: string) {
+      return bindings.export_map_state(rawReport, rememberedJson, requestJson);
     },
     previewOrders(
       rulesetJson: string,
@@ -2069,6 +2131,13 @@ export function createTauriAdapter(invoke: TauriInvoke): CoreAdapter {
         remembered_json: rememberedJson,
         unit_id: unitId,
         orders
+      });
+    },
+    exportMap(rawReport: string, rememberedJson: string, requestJson: string) {
+      return invoke<string>("export_map", {
+        raw_report: rawReport,
+        remembered_json: rememberedJson,
+        request_json: requestJson
       });
     },
     previewOrders(

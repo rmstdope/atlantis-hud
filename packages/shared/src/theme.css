@@ -36,9 +36,15 @@
   --color-edge: #26303d;
   --color-edge-soft: #1e2733;
 
+  /*
+    Three steps of emphasis, all of them readable. `ink-dim` used to sit at 2.78:1 against a raised
+    panel, which is below the 4.5:1 small text needs and was hard to read on the panels it is used
+    most - the sentence under a checkbox, a field's label. Lightened until every step clears AA on
+    every surface, keeping the gaps between them wide enough to still read as a hierarchy.
+  */
   --color-ink: #dbe3ec;
-  --color-ink-soft: #7d8b9d;
-  --color-ink-dim: #5b6878;
+  --color-ink-soft: #a3b0c0;
+  --color-ink-dim: #8a97a8;
 
   --color-brass: #d9a441;
   --color-brass-bright: #eebe63;
@@ -114,9 +120,10 @@
   --color-edge: #c9c2b0;
   --color-edge-soft: #d8d2c2;
 
+  /* The same three steps, darkened rather than lightened; see the note in the dark palette. */
   --color-ink: #2a3038;
-  --color-ink-soft: #5a6472;
-  --color-ink-dim: #8b93a0;
+  --color-ink-soft: #4f5866;
+  --color-ink-dim: #5e6673;
 
   --color-brass: #9a6f1d;
   --color-brass-bright: #7d5a15;

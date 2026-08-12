@@ -41,6 +41,7 @@ export type CoreWasmModule = {
     unitId: string,
     orders: string
   ): unknown;
+  export_map_state(rawReport: string, rememberedJson: string, requestJson: string): unknown;
   preview_orders_state(
     rulesetJson: string,
     rawReport: string,
@@ -568,6 +569,11 @@ export function createWebCoreAdapter(
     ) {
       // Straight through for the same reason planRoute is: no browser storage stands in.
       return wasm.trace_move_orders_state(rulesetJson, rawReport, rememberedJson, unitId, orders);
+    },
+    exportMap(rawReport: string, rememberedJson: string, requestJson: string) {
+      // Straight through as well: the export is pure computation over the arguments, and the file
+      // it produces is handed back as text for the shell to save.
+      return wasm.export_map_state(rawReport, rememberedJson, requestJson);
     },
     previewOrders(
       rulesetJson: string,
