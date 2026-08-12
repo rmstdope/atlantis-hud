@@ -2,7 +2,11 @@ import { useState } from "react";
 import { useEscapeToDismiss } from "./dismissLayer";
 import { APP_VERSION } from "../appVersion";
 import { snippetBodyProblem, snippetNameProblem } from "../orderSnippets";
-import { useSettingsStore } from "../settingsStore";
+import {
+  UNIT_LIST_LIMIT_MAX,
+  UNIT_LIST_LIMIT_MIN,
+  useSettingsStore
+} from "../settingsStore";
 import type { ThemeName } from "../settingsStore";
 import { mapThemeOptions } from "./mapThemes";
 import type { WorkspaceGame } from "../workspaceStore";
@@ -319,16 +323,16 @@ function GlobalSettings() {
         </span>
         {/*
           How many rows tall the pane stands - a ceiling on the pane, never a cut in the list,
-          which stays scrollable to its end. Bounded at both ends: fewer than three rows stops
-          being a list, and past sixteen the pane is most of the map. Applies as it is dragged,
-          the pane behind the dialog being its own preview.
+          which stays scrollable to its end. Bounded at both ends by the store's own limits, which
+          the pane's + and - obey too: the two controls are one preference. Applies as it is
+          dragged, the pane behind the dialog being its own preview.
         */}
         <input
           type="range"
           data-testid="unit-list-limit"
           aria-label="units in hex list"
-          min={3}
-          max={16}
+          min={UNIT_LIST_LIMIT_MIN}
+          max={UNIT_LIST_LIMIT_MAX}
           step={1}
           value={unitListLimit}
           onChange={(event) => setUnitListLimit(Number(event.target.value))}
