@@ -122,8 +122,16 @@ jobs:
       - name: Run typecheck
         run: pnpm -r run typecheck
 
+      - name: Run tooling typecheck
+        run: pnpm run typecheck:tooling
+
       - name: Run tests
         run: pnpm -r run test
+
+      # The repository's own tooling under scripts/ belongs to no package, so the recursive run above
+      # never reaches it.
+      - name: Run tooling tests
+        run: pnpm run test:tooling
 
   # The Rust half, beside the JavaScript half rather than after it. Everything here compiles for
   # the host, so it shares nothing with the wasm cache and keeps its own. `cargo check` from the
