@@ -57,13 +57,14 @@ const TEXTURE_TINT = 0.38;
 /**
  * How hard a hex outside this turn's report is dimmed.
  *
- * A **stale** hex keeps some of its terrain: the dim is held under the fade so an old reading still
- * shows what it was a reading of. A **named** hex takes the fade whole - nobody has been there, so
- * there is no terrain underneath worth keeping legible, and it should be the darkest thing on the
- * map short of ground nobody has even heard of.
+ * Every faded hex keeps its terrain: the dim is held under the fade so a hex still shows what it is
+ * made of. A named hex used to take the fade whole - nobody had been there, so there was held to be
+ * no terrain worth keeping legible - but a neighbour's exits do say what the terrain is, and the
+ * rim is what marks the state now. Damped alike, unsurveyed ground is also the lightest thing on
+ * the map, which undamped it was not: 0.400 against an ancient sighting's 0.434.
  */
 function dimOpacity(view: HexView): number {
-  return view.knowledge === "named" ? view.fogOpacity : Number((view.fogOpacity * 0.7).toFixed(3));
+  return Number((view.fogOpacity * 0.7).toFixed(3));
 }
 
 const HEX_POINTS_MOCKUP = HEX_POINTS.split(" ")
@@ -107,7 +108,18 @@ function TerrainLayer({ views }: LayerProps) {
               strokeWidth={1.6}
               // A dashed rim says "do not trust the inside of this" for both the states that are
               // not this turn's report, and survives the far band where every label is hidden.
-              strokeDasharray={view.fogOpacity > 0 ? "5 4" : undefined}
+              // Ground nobody surveyed breaks the dash further: the dim is now light enough to
+              // read the terrain through, so it no longer separates the two states by itself.
+              strokeDasharray={
+                view.fogOpacity > 0 ? (view.knowledge === "named" ? "2 4" : "5 4") : undefined
+              }
+              data-rim={
+                view.fogOpacity > 0
+                  ? view.knowledge === "named"
+                    ? "unsurveyed"
+                    : "stale"
+                  : undefined
+              }
               vectorEffect="non-scaling-stroke"
             />
             {view.texture && (

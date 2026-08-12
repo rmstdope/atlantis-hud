@@ -365,3 +365,41 @@ describe("whose banner flies over the hex", () => {
     expect(banner("own")).toContain("ct-fill-own");
   });
 });
+
+/**
+ * Ground a neighbour merely named, and the two things that have to be true of it at once.
+ *
+ * It has to be recognisable - the report says what terrain is there, and a wash heavy enough to
+ * bury that was throwing away the only thing the hex knows. And it still has to read as unsurveyed,
+ * which the fade can no longer say on its own now that it is light: a named hex is *less* faded
+ * than an old sighting. The rim carries it instead, structurally, so it survives the far zoom band
+ * where every label is hidden.
+ */
+describe("unsurveyed ground, drawn light and rimmed", () => {
+  it("rims a hex nobody has surveyed", () => {
+    expect(draw(cartographersTable.TerrainLayer, [NAMED_ONLY])).toContain('data-rim="unsurveyed"');
+  });
+
+  it("gives an old sighting no unsurveyed rim, however far it has faded", () => {
+    const ancient = renderToStaticMarkup(
+      <svg>
+        <cartographersTable.TerrainLayer
+          views={[viewWith({ knowledge: "stale", fogOpacity: 0.62, hatched: true })]}
+        />
+      </svg>
+    );
+
+    expect(ancient).not.toContain('data-rim="unsurveyed"');
+  });
+
+  it("keeps a named hex's terrain readable, with the biome textures off and on", () => {
+    // Both texture modes, because rendering one cannot show the other: the fixture's named hex is
+    // jungle either way, and it is the paint that changes.
+    expect(draw(cartographersTable.TerrainLayer, [NAMED_ONLY], { showTextures: false })).toContain(
+      "ct-terrain-jungle"
+    );
+    expect(draw(cartographersTable.TerrainLayer, [NAMED_ONLY], { showTextures: true })).toContain(
+      "url(#biome-texture-jungle)"
+    );
+  });
+});

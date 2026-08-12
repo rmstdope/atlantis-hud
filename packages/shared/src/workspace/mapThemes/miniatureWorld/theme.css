@@ -43,6 +43,8 @@
   --mw-wash: #9a958a;
   /* Board nobody has painted: bare, unlit, and obviously unfinished. */
   --mw-unpainted: #5c5a54;
+  /* The tape round it. Lighter than the wash it edges, or the rim disappears into its own board. */
+  --mw-tape: #b3ad9e;
 
   --mw-wall: #d9c9a3;
   --mw-wall-stone: #b8b8c2;
@@ -108,6 +110,7 @@
   --mw-path: #a8853f;
   --mw-wash: #8f8a80;
   --mw-unpainted: #cac6bd;
+  --mw-tape: #6f6857;
 
   --mw-wall: #f3e8cb;
   --mw-wall-stone: #d6d6de;
@@ -226,6 +229,14 @@
 }
 .mw-unpainted {
   fill: var(--mw-unpainted);
+}
+/*
+ * The tape round an unfinished hex. Its own tone rather than the board's: strokes at full opacity
+ * over a wash of the same colour at 0.40 is a rim you have to look for, and this one carries the
+ * whole "nobody has been here" message now that the terrain underneath is painted.
+ */
+.mw-unsurveyed-rim {
+  stroke: var(--mw-tape);
 }
 .mw-wash {
   fill: var(--mw-wash);

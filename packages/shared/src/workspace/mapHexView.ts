@@ -59,18 +59,23 @@ const TEXTURED_TERRAINS = new Set([
 /**
  * A hex named by a neighbour's exits is terrain and province only, and is drawn as that much.
  *
- * Deliberately well clear of `FADE_LIMIT`, the darkest an old sighting ever gets. The two states
- * were once close enough that telling them apart meant comparing shades of the same terrain, which
- * made "what have I actually seen?" a question you had to squint at a hex to answer instead of one
- * the whole map answers at a glance. Ground somebody walked, however long ago, is knowledge; ground
- * a neighbour merely named is not, and the gap between them should say so.
+ * Light enough that the terrain still reads. This sat at 0.78 for a while, chosen so the fade alone
+ * would separate "never surveyed" from "seen long ago" - but at that strength a named forest and a
+ * named desert were the same pale smudge, and the map was discarding the one fact the hex actually
+ * carries. A neighbour naming a hex tells you what terrain is there; the map should show it.
+ *
+ * So the fade stopped carrying the distinction and each theme draws an **unsurveyed rim** instead:
+ * structural, and it survives the far zoom band where every label is hidden, which a shade of grey
+ * only ever did by being heavy. The consequence, which is deliberate and looks wrong until you know
+ * it: this is now *below* `FADE_LIMIT`, so unvisited ground reads lighter than an old sighting. The
+ * rim and the staleness hatch are what say which is which.
  */
-const NAMED_FOG_OPACITY = 0.78;
+export const NAMED_FOG_OPACITY = 0.4;
 
 /** How fast a sighting fades, and how faint it is ever allowed to get. */
 const FADE_AT_ONCE = 0.3;
 const FADE_PER_TURN = 0.02;
-const FADE_LIMIT = 0.62;
+export const FADE_LIMIT = 0.62;
 
 /**
  * How much of a hex the player is entitled to trust, as paint.

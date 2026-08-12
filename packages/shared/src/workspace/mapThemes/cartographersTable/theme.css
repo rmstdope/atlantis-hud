@@ -155,6 +155,10 @@
 .ct-hatch {
   stroke: var(--ct-pencil);
 }
+/* Pencilled from a neighbour's word: the same hand as the hatch, drawn as a boundary. */
+.ct-unsurveyed-rim {
+  stroke: var(--ct-pencil);
+}
 
 .ct-road {
   stroke: var(--ct-road);

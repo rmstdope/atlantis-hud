@@ -119,6 +119,7 @@ function TerrainLayer({ views }: LayerProps) {
                 style={view.texture ? { fill: `url(#${view.texture.patternId})` } : undefined}
                 strokeWidth={1}
                 strokeDasharray={view.knowledge === "named" ? "4 3" : undefined}
+                data-rim={view.knowledge === "named" ? "unsurveyed" : undefined}
                 vectorEffect="non-scaling-stroke"
               />
               {view.texture && (
@@ -134,12 +135,11 @@ function TerrainLayer({ views }: LayerProps) {
                   points={HEX_POINTS_MOCKUP}
                   className="hud-tint"
                   data-dim={view.knowledge === "named" ? "unsurveyed" : "stale"}
-                  // Ground nobody has visited is dimmed at full strength. The damping below exists
-                  // so an *aged* reading still shows the terrain it was a reading of; not knowing
-                  // what is there is the whole message here, and there is nothing to keep legible.
-                  opacity={
-                    view.knowledge === "named" ? view.fogOpacity : dimOpacity(view.fogOpacity)
-                  }
+                  // Damped whichever state it is. The damping exists so a reading still shows the
+                  // terrain it was a reading of - and a neighbour's exits are a reading of a sort,
+                  // enough to say what is there. It also keeps unsurveyed ground the lightest
+                  // thing on the display, which the undamped value did not.
+                  opacity={dimOpacity(view.fogOpacity)}
                 />
               )}
             </g>

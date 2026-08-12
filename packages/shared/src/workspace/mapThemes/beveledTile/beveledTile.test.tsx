@@ -250,21 +250,31 @@ describe("how the board shows what it knows", () => {
     );
 
     expect(stale).toContain('data-dim="stale"');
-    expect(stale).toContain("stroke-dasharray");
+    // The sunk rim is the stale side's own, and it must survive the unsurveyed variant existing:
+    // narrowing the rim to named hexes would have quietly taken the sinking off every aged tile.
+    expect(stale).toContain('data-rim="sunk"');
+    expect(stale).toContain('stroke-dasharray="4 3"');
     // The whole point: no bevel at all, because the tile is no longer raised.
     expect(stale).not.toContain('data-bevel="light"');
     expect(stale).not.toContain('data-bevel="shadow"');
   });
 
-  it("sinks unvisited ground too, and states it harder still", () => {
+  /**
+   * This asserted a dim of 0.78 - unvisited ground stated "harder still" than any old sighting -
+   * which was the contract until the dim at that strength was found to bury the terrain it was
+   * dimming. The tile is still sunk and still unbevelled; what says *unsurveyed* is now the rim,
+   * so that is what this pins, along with a dim light enough to read the tile through.
+   */
+  it("sinks unvisited ground too, and rims it as never surveyed", () => {
     const named = draw(beveledTile.TerrainLayer, [NAMED_ONLY]);
 
     expect(named).toContain('data-dim="unsurveyed"');
     expect(named).not.toContain('data-dim="stale"');
     expect(named).not.toContain('data-bevel="light"');
-    expect(Number(/data-dim="unsurveyed"[^>]*opacity="([\d.]+)"/.exec(named)?.[1])).toBeCloseTo(
-      0.78
-    );
+    expect(named).toContain('data-rim="unsurveyed"');
+    expect(
+      Number(/data-dim="unsurveyed"[^>]*opacity="([\d.]+)"/.exec(named)?.[1])
+    ).toBeLessThanOrEqual(0.5);
   });
 
   it("deepens the dim with age", () => {
@@ -320,5 +330,43 @@ describe("terrain and roads", () => {
     expect(
       draw(beveledTile.RoadLayer, [CONGESTED_CENTRE], { badges: allBadges(true, { roads: false }) })
     ).not.toContain("<line");
+  });
+});
+
+/**
+ * Ground a neighbour merely named, and the two things that have to be true of it at once.
+ *
+ * It has to be recognisable - the report says what terrain is there, and a wash heavy enough to
+ * bury that was throwing away the only thing the hex knows. And it still has to read as unsurveyed,
+ * which the fade can no longer say on its own now that it is light: a named hex is *less* faded
+ * than an old sighting. The rim carries it instead, structurally, so it survives the far zoom band
+ * where every label is hidden.
+ */
+describe("unsurveyed ground, drawn light and rimmed", () => {
+  it("rims a hex nobody has surveyed", () => {
+    expect(draw(beveledTile.TerrainLayer, [NAMED_ONLY])).toContain('data-rim="unsurveyed"');
+  });
+
+  it("gives an old sighting no unsurveyed rim, however far it has faded", () => {
+    const ancient = renderToStaticMarkup(
+      <svg>
+        <beveledTile.TerrainLayer
+          views={[viewWith({ knowledge: "stale", fogOpacity: 0.62, hatched: true })]}
+        />
+      </svg>
+    );
+
+    expect(ancient).not.toContain('data-rim="unsurveyed"');
+  });
+
+  it("keeps a named hex's terrain readable, with the biome textures off and on", () => {
+    // Both texture modes, because rendering one cannot show the other: the fixture's named hex is
+    // jungle either way, and it is the paint that changes.
+    expect(draw(beveledTile.TerrainLayer, [NAMED_ONLY], { showTextures: false })).toContain(
+      "bt-terrain-jungle"
+    );
+    expect(draw(beveledTile.TerrainLayer, [NAMED_ONLY], { showTextures: true })).toContain(
+      "url(#biome-texture-jungle)"
+    );
   });
 });

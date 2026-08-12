@@ -1,7 +1,8 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { CONGESTED_HEXES } from "./congestedFixture";
-import { allBadges, buildHexViews } from "./hexView";
+import { FADE_LIMIT, NAMED_FOG_OPACITY } from "../mapHexView";
+import { allBadges, buildHexViews, type HexView } from "./hexView";
 import type { LayerProps, MapTheme } from "./mapTheme";
 import {
   DEFAULT_MAP_THEME_ID,
@@ -149,4 +150,73 @@ describe("every shipped theme", () => {
       expect(typeof theme.MarkLayer).toBe("function");
     }
   });
+});
+
+/**
+ * The one property the unsurveyed treatment rests on, checked across every theme at once.
+ *
+ * The fade stopped carrying the named/stale distinction when it was lightened to keep terrain
+ * legible; the rim carries it now. But a theme that damps the *stale* wash and not the named one
+ * lands them on top of each other again - Cartographer's Table did exactly that, at 0.400 against
+ * an ancient sighting's 0.384, and told the two states apart by sixteen thousandths of an opacity.
+ * Each theme's own suite tests its own wash, so nothing there could have seen it.
+ */
+describe("what every theme owes the three knowledge states", () => {
+  /**
+   * Each theme names its own washes - "unsurveyed" in most, "unpainted" on the board - so the
+   * marks are given as alternatives rather than assumed to be one word.
+   *
+   * The whole tag is matched first and the opacity read out of it afterwards, so attribute order
+   * does not matter. Reading them in one pass would have quietly stopped matching the day somebody
+   * reordered two JSX props, and a registry-wide guard that silently finds nothing is worse than
+   * no guard: `toBeDefined` below is what would fire, naming the wrong thing.
+   */
+  const opacitiesOf = (svg: string, marks: string): number[] =>
+    Array.from(svg.matchAll(/<[a-z]+\s[^>]*>/gu))
+      .map((match) => match[0])
+      .filter((tag) => new RegExp(`data-(?:wash|dim)="(?:${marks})"`, "u").test(tag))
+      .map((tag) => Number(/\sopacity="([\d.]+)"/u.exec(tag)?.[1]))
+      .filter((opacity) => !Number.isNaN(opacity));
+
+  const render = (theme: MapTheme, view: HexView) =>
+    renderToStaticMarkup(
+      <svg>
+        <theme.TerrainLayer views={[view]} />
+      </svg>
+    );
+
+  const [base] = buildHexViews(CONGESTED_HEXES, {
+    showStaleness: true,
+    showTextures: false,
+    badges: allBadges(true)
+  });
+
+  it.each(MAP_THEMES.map((theme) => [theme.label, theme] as const))(
+    "%s draws unsurveyed ground lighter than the oldest sighting, and rims it",
+    (_label, theme) => {
+      const named = render(theme, {
+        ...base,
+        knowledge: "named",
+        fogOpacity: NAMED_FOG_OPACITY,
+        hatched: false
+      });
+      const ancient = render(theme, {
+        ...base,
+        knowledge: "stale",
+        fogOpacity: FADE_LIMIT,
+        hatched: true
+      });
+
+      const [unsurveyed] = opacitiesOf(named, "unsurveyed|unpainted");
+      const [stale] = opacitiesOf(ancient, "stale");
+
+      expect(unsurveyed).toBeDefined();
+      expect(stale).toBeDefined();
+      // Comfortably apart, not merely ordered: two washes a hundredth apart are the same wash.
+      expect(stale - unsurveyed).toBeGreaterThan(0.05);
+      // And the mark that actually names the state, which the fade no longer does.
+      expect(named).toContain('data-rim="unsurveyed"');
+      expect(ancient).not.toContain('data-rim="unsurveyed"');
+    }
+  );
 });

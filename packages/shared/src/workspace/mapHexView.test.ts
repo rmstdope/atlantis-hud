@@ -106,28 +106,40 @@ describe("painting a hex", () => {
     expect(paint.hatched).toBe(false);
   });
 
-  it("shows a hex known only from a neighbour's exits as mostly unexplored", () => {
+  /**
+   * Drained, but never to the point of hiding what the hex is made of.
+   *
+   * The fade used to be heavy enough (0.78) that a named forest and a named desert were the same
+   * pale smudge: the report gives terrain, and the map was throwing it away. It is a fade, not a
+   * lid - what makes the hex read as unsurveyed is the rim each theme draws over it, which is
+   * structural and survives the far zoom band where labels do not.
+   */
+  it("drains a hex known only from a neighbour's exits without hiding its terrain", () => {
     const paint = hexPaint(hex({ knowledge: "named" }), true);
 
-    // Terrain and province is all the report gives, so terrain and province is all it should look
-    // like it gives.
-    expect(paint.fogOpacity).toBeGreaterThan(0.5);
+    // A range, not just "non-zero": a fade of 0.02 would satisfy a lower bound of zero while
+    // leaving unsurveyed ground indistinguishable from ground the player has actually walked.
+    expect(paint.fogOpacity).toBeGreaterThan(0.25);
+    expect(paint.fogOpacity).toBeLessThan(0.5);
+    // Never hatched: hatching is about age, and a hex nobody visited has none.
     expect(paint.hatched).toBe(false);
   });
 
   /**
-   * And it has to be obvious at map scale, not on inspection.
+   * The wash no longer carries the named/stale distinction, and deliberately so.
    *
-   * A named hex used to be fogged only a little harder than a long-stale one, so scanning a map for
-   * "what have I actually seen" meant comparing shades of the same terrain. The gap is what carries
-   * that question: ground somebody walked, however long ago, against ground only ever named by a
-   * neighbour.
+   * A named hex is now *lighter* than a long-stale one, which inverts what the fade used to say.
+   * That is the trade this made: legible terrain everywhere, and the distinction moved onto the
+   * unsurveyed rim and the staleness hatch, which say it in a way a shade of grey never did.
+   * Pinned rather than left implicit, because it reads like a bug to anyone who meets it cold.
    */
-  it("fogs unvisited ground markedly harder than the oldest sighting", () => {
+  it("no longer leans on the fade to tell unvisited ground from an old sighting", () => {
     const named = hexPaint(hex({ knowledge: "named" }), true).fogOpacity;
-    const ancient = staleFadeAmount(1000);
 
-    expect(named).toBeGreaterThan(ancient + 0.1);
+    expect(named).toBeLessThan(staleFadeAmount(1000));
+    // What tells them apart instead, at the view-model level: only one of the two is hatched.
+    expect(hexPaint(hex({ knowledge: "named" }), true).hatched).toBe(false);
+    expect(hexPaint(hex({ knowledge: "stale", ageInTurns: 40 }), true).hatched).toBe(true);
   });
 
   it("fades and hatches a hex held over from an earlier turn", () => {
@@ -148,8 +160,12 @@ describe("painting a hex", () => {
   });
 
   it("keeps a named hex faded even when the staleness layer is off", () => {
-    // Staleness is about age. A named hex has no age: it was never visited at all.
-    expect(hexPaint(hex({ knowledge: "named" }), false).fogOpacity).toBeGreaterThan(0.5);
+    // Staleness is about age. A named hex has no age: it was never visited at all, so the toggle
+    // has nothing to say about it either way.
+    const off = hexPaint(hex({ knowledge: "named" }), false);
+
+    expect(off.fogOpacity).toBeGreaterThan(0.25);
+    expect(off.fogOpacity).toBe(hexPaint(hex({ knowledge: "named" }), true).fogOpacity);
   });
 });
 
