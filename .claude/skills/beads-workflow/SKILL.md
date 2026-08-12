@@ -127,8 +127,11 @@ GitHub automatically; the sync is pull-only and manual.
 ## Storage, and what is committed
 
 - `.beads/embeddeddolt/` — the Dolt database. Local, git-ignored, the source of truth.
-- `.beads/issues.jsonl` — a readable export, **committed**, so the backlog is diffable in the repo.
-  Nothing to refresh by hand: the export gate below does it at push time.
+- `.beads/issues.jsonl` — a readable export, **committed**, so the backlog is browsable in the repo.
+  It is a snapshot taken when somebody happens to push main, not a mirror, and it lags — often by
+  several beads. That is deliberate: see the export gate below for why no branch may carry it, and
+  `bd dolt push` for where bead state actually travels. Refresh it by hand from main
+  (`bd export -o .beads/issues.jsonl`) when a readable diff is wanted; never read it as truth.
 - `.beads/config.yaml`, `.beads/hooks/` — committed configuration and the git hook shims
   (`core.hooksPath` points at them).
 - The Dolt remote is the repo's own GitHub origin, under `refs/dolt/data`. `bd dolt push` backs it
@@ -139,9 +142,10 @@ Never commit a GitHub token to `.beads/config.yaml` — pass it as `GITHUB_TOKEN
 ## The export gate
 
 `scripts/beadsExportGate.ts` runs from `.beads/hooks/pre-push`, below the `BEADS INTEGRATION`
-markers where `bd hooks install` leaves it alone. It exports the database and compares the result
-with the committed `.beads/issues.jsonl`. Equal, and the push goes through silently. Different, and
-it commits the fresh export alone as `chore(beads): refresh the issues export` and stops the push:
+markers where `bd hooks install` leaves it alone. **On main only**: it exports the database and
+compares the result with the committed `.beads/issues.jsonl`. Equal, and the push goes through
+silently. Different, and it commits the fresh export alone as
+`chore(beads): refresh the issues export` and stops the push:
 
 ```
 beads: .beads/issues.jsonl was out of date and has been committed as "chore(beads): refresh the issues export".
@@ -149,11 +153,18 @@ beads: nothing was pushed - run the push again to send it along.
 ```
 
 Push again and it goes. A pre-push hook cannot amend the commits being pushed, so the refresh is a
-commit of its own — nothing is rewritten and `--force` is never needed. Expect this once on a branch
-that touched beads, and never on one that did not.
+commit of its own — nothing is rewritten and `--force` is never needed. Expect this on main, once,
+after beads changed.
+
+**A feature branch never carries the export**, and this is the point rather than an optimisation.
+The file is a snapshot of the whole database — which every agent on this machine shares — not of the
+branch holding it. Two branches pushed minutes apart each carried a complete backlog from a
+different instant, so whichever merged last reverted every close, claim, label and plan recorded in
+between; because each side had rewritten a different subset of the one-line-per-bead file, git
+usually did not even call it a conflict. Bead state travels by `bd dolt push`, not by the export.
 
 The gate stands aside rather than blocking a push when it cannot do its job: no `bd` on `PATH`, no
-`.beads` directory, no installed `node_modules`, or a `bd export` that fails.
+`.beads` directory, no installed `node_modules`, a detached HEAD, or a `bd export` that fails.
 
 ## Traps
 

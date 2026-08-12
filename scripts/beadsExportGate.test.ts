@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -18,7 +18,7 @@ describe("decideGate", () => {
       decideGate({
         bdAvailable: true,
         beadsPresent: true,
-        onBranch: true,
+        branch: "main",
         freshExport: ONE_BEAD,
         committedExport: ONE_BEAD
       })
@@ -30,7 +30,7 @@ describe("decideGate", () => {
       decideGate({
         bdAvailable: true,
         beadsPresent: true,
-        onBranch: true,
+        branch: "main",
         freshExport: TWO_BEADS,
         committedExport: ONE_BEAD
       })
@@ -42,7 +42,7 @@ describe("decideGate", () => {
       decideGate({
         bdAvailable: true,
         beadsPresent: true,
-        onBranch: true,
+        branch: "main",
         freshExport: ONE_BEAD,
         committedExport: null
       })
@@ -56,7 +56,7 @@ describe("decideGate", () => {
       decideGate({
         bdAvailable: false,
         beadsPresent: true,
-        onBranch: true,
+        branch: "main",
         freshExport: null,
         committedExport: ONE_BEAD
       })
@@ -68,7 +68,7 @@ describe("decideGate", () => {
       decideGate({
         bdAvailable: true,
         beadsPresent: false,
-        onBranch: true,
+        branch: "main",
         freshExport: null,
         committedExport: null
       })
@@ -80,11 +80,45 @@ describe("decideGate", () => {
       decideGate({
         bdAvailable: true,
         beadsPresent: true,
-        onBranch: false,
+        branch: null,
         freshExport: TWO_BEADS,
         committedExport: ONE_BEAD
       })
     ).toEqual({ kind: "proceed", reason: "detached-head" });
+  });
+
+  /**
+   * The export is a snapshot of the whole shared database, not of the branch that carries it.
+   *
+   * Every agent works against one database, so two branches pushed minutes apart each hold a
+   * complete backlog taken at a different instant, and whichever merges last silently reverts every
+   * close, claim, label and plan recorded in between - usually without git so much as reporting a
+   * conflict, because each side rewrote a different subset of the lines. The obligation is main's
+   * alone; a feature branch has no business carrying the backlog at all.
+   */
+  it("lets the push through on a feature branch, whose export would overwrite the backlog", () => {
+    expect(
+      decideGate({
+        bdAvailable: true,
+        beadsPresent: true,
+        branch: "ah-6xq.1-export-gate-main-only",
+        freshExport: TWO_BEADS,
+        committedExport: ONE_BEAD
+      })
+    ).toEqual({ kind: "proceed", reason: "off-main" });
+  });
+
+  /** A name main is a prefix of, so a `startsWith` where an equality belongs is caught. */
+  it("lets the push through on a branch merely named after main", () => {
+    expect(
+      decideGate({
+        bdAvailable: true,
+        beadsPresent: true,
+        branch: "mainline-experiment",
+        freshExport: TWO_BEADS,
+        committedExport: ONE_BEAD
+      })
+    ).toEqual({ kind: "proceed", reason: "off-main" });
   });
 
   it("lets the push through when the export itself fails", () => {
@@ -92,7 +126,7 @@ describe("decideGate", () => {
       decideGate({
         bdAvailable: true,
         beadsPresent: true,
-        onBranch: true,
+        branch: "main",
         freshExport: null,
         committedExport: ONE_BEAD
       })
@@ -132,6 +166,30 @@ describe("the gate as a pre-push hook", () => {
     expect(only.status).toBe(0);
     expect(only.output).not.toContain("refresh the issues export");
     expect(git(repo, ["log", "--pretty=%s"])).toBe("seed");
+  });
+
+  /**
+   * The case the gate exists to avoid causing: a feature branch carrying a backlog snapshot.
+   *
+   * The database is one bead ahead of what this branch committed, exactly as it is whenever another
+   * agent has closed or claimed something. Before, the gate would commit that snapshot here and the
+   * merge would impose it on main, undoing whatever landed in between.
+   */
+  it("commits nothing on a feature branch, and lets the push through", () => {
+    const repo = setUpRepository();
+    git(repo, ["checkout", "-b", "ah-1-some-work"]);
+
+    const only = pushBranch(repo, "ah-1-some-work");
+    expect(only.status).toBe(0);
+    expect(only.output).not.toContain("refresh the issues export");
+    expect(git(repo, ["log", "--pretty=%s"])).toBe("seed");
+    // Nothing written, not merely nothing committed: an implementation that put the fresh export in
+    // the working tree before consulting the decision would leave the branch dirty here.
+    expect(git(repo, ["status", "--porcelain"])).toBe("");
+    // And bd was never asked to export at all. Off main there is nothing to compare or write, and
+    // the export is the slowest thing the hook does - on every push of every branch, in worktrees
+    // where `.beads/` is committed but the database beneath it is not.
+    expect(existsSync(join(repo, "..", "bd-was-run"))).toBe(false);
   });
 
   it("commits nothing on a detached HEAD, and lets the push through", () => {
@@ -224,6 +282,8 @@ describe("the gate as a pre-push hook", () => {
       stub,
       [
         "#!/usr/bin/env sh",
+        // A footprint, so a test can assert the gate did not even ask for an export.
+        `: > "${join(root, "bd-was-run")}"`,
         'if [ "$1" = "export" ]; then',
         `  printf '%s' '${TWO_BEADS}' > "$3"`,
         "fi",
@@ -263,7 +323,11 @@ describe("the gate as a pre-push hook", () => {
    * construction.
    */
   function push(work: string): { status: number; output: string } {
-    const run = spawnSync("git", ["push", "origin", "main"], { cwd: work, encoding: "utf8" });
+    return pushBranch(work, "main");
+  }
+
+  function pushBranch(work: string, branch: string): { status: number; output: string } {
+    const run = spawnSync("git", ["push", "origin", branch], { cwd: work, encoding: "utf8" });
 
     return { status: run.status ?? 1, output: `${run.stdout ?? ""}${run.stderr ?? ""}` };
   }
