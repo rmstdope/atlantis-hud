@@ -7,8 +7,7 @@ For the graphical design of the map itself as implemented, see [hex-rendering.md
 Five candidate directions for a future hex design are drawn in
 [hex-design-proposals.html](hex-design-proposals.html), and
 [map-themes.md](map-themes.md) describes the theme engine those designs plug into, including how to
-add or remove a map theme. Classic and Cartographer's Table ship; the other four designs are
-tracked by the sub-issues of #103.
+add or remove a map theme. All six ship: Classic, plus the five designs drawn in the proposals.
 
 ## Files
 
