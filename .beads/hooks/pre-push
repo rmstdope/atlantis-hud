@@ -57,3 +57,12 @@ if command -v bd >/dev/null 2>&1; then
   if [ "$_bd_exit" -ne 0 ]; then exit "$_bd_exit"; fi
 fi
 # --- END BEADS INTEGRATION v1.2.1 ---
+
+# Ours, and deliberately outside the markers above: bd preserves user content across
+# 'bd hooks install' and its own upgrades. See scripts/beadsExportGate.ts for what this does and why
+# it happens at push time rather than on every commit. Inert until the workspace is installed, so a
+# fresh clone can push before it can build.
+_gate_root=$(git rev-parse --show-toplevel 2>/dev/null) || _gate_root=
+if [ -n "$_gate_root" ] && [ -x "$_gate_root/node_modules/.bin/tsx" ]; then
+  "$_gate_root/node_modules/.bin/tsx" "$_gate_root/scripts/beadsExportGate.ts" || exit $?
+fi
