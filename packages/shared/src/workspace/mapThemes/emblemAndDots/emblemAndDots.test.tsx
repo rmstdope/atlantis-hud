@@ -100,8 +100,10 @@ describe("everything else becomes a dot", () => {
     // A fact is stated once. The emblem is the loudest way to state it, so it never repeats below.
     const row = dots({ settlement: { name: "X", tier: "town" }, ships: 1, shafts: 1 });
 
-    expect(row.map((dot) => dot.feature)).not.toContain("settlement");
-    expect(row.map((dot) => dot.feature)).toEqual(expect.arrayContaining(["shaft", "ship"]));
+    // The exact list, in order. `arrayContaining` said nothing about the ordering, which is an
+    // acceptance criterion of its own: a hex that gains a feature must not reshuffle the ones it
+    // already had, or the row would rearrange itself as a turn goes by.
+    expect(row.map((dot) => dot.feature)).toEqual(["shaft", "ship"]);
   });
 
   it("gives every feature its own shape, so colour is never the only difference", () => {
@@ -151,7 +153,7 @@ describe("everything else becomes a dot", () => {
 });
 
 describe("units as one proportional bar", () => {
-  it("splits the bar by group, in proportion to the head-count", () => {
+  it("splits the bar by group, in proportion to the unit count", () => {
     const bar = unitBar({ own: 12, foreign: 8, monster: 5 })!;
 
     expect(bar.total).toBe(20);

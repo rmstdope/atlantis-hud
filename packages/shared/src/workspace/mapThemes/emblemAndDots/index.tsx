@@ -54,7 +54,14 @@ function terrainClass(terrain: string): string {
 /** Moderate, so the emblem keeps its contrast over a photograph. */
 const TEXTURE_TINT = 0.38;
 
-/** An old sighting dims in proportion to its age; unvisited ground is stated at full strength. */
+/**
+ * How hard a hex outside this turn's report is dimmed.
+ *
+ * A **stale** hex keeps some of its terrain: the dim is held under the fade so an old reading still
+ * shows what it was a reading of. A **named** hex takes the fade whole - nobody has been there, so
+ * there is no terrain underneath worth keeping legible, and it should be the darkest thing on the
+ * map short of ground nobody has even heard of.
+ */
 function dimOpacity(view: HexView): number {
   return view.knowledge === "named" ? view.fogOpacity : Number((view.fogOpacity * 0.7).toFixed(3));
 }

@@ -125,7 +125,13 @@ export const DOT_ROW_STEP = DOT_ROW_PITCH;
 export type BarSegment = { group: "own" | "foreign" | "monster"; x: number; width: number };
 
 /**
- * The units, as one bar whose length is the head-count and whose colour split is the grouping.
+ * The units, as one bar whose length is the number of *units* and whose colour split is the
+ * grouping.
+ *
+ * Units, not people: the view model counts units and says so, and a bar scaled by head-count would
+ * need `men` per unit, which it does not carry. The design proposal says "head-count", and that is
+ * the one place this theme knowingly departs from it - a bar that claimed to measure people while
+ * measuring units would be worse than one that measures what it says.
  *
  * One bar rather than one mark per group: this design's whole argument is that congestion should
  * change a quantity, not a layout. The groups partition the hex - the view model's `foreign` still
