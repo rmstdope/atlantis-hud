@@ -631,7 +631,9 @@ export function AppShell({
         },
         {
           id: "shortcuts",
-          label: "Keyboard shortcuts",
+          // Named for what it shows and for what a player would type looking for it: somebody
+          // hunting "shortcuts" finds the same entry as somebody hunting "getting around".
+          label: "Getting around (shortcuts and mouse)",
           binding: helpSpec ? (mac ? helpSpec.mac : helpSpec.other) : undefined,
           run: () => setHelpOpen(true)
         },

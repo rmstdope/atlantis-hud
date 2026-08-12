@@ -274,15 +274,15 @@ function GlobalSettings() {
       */}
       <label className="flex items-center justify-between gap-2 text-ink-soft">
         <span>
-          <span className="block">Show keyboard shortcuts at startup</span>
+          <span className="block">Show the getting-around guide at startup</span>
           <span className="block text-[10px] text-ink-dim">
-            The shortcuts overlay greets you when the application opens.
+            The mouse and keyboard guide greets you when the application opens.
           </span>
         </span>
         <input
           type="checkbox"
           data-testid="settings-shortcuts-at-startup"
-          aria-label="Show keyboard shortcuts at startup"
+          aria-label="Show the getting-around guide at startup"
           checked={showShortcutsAtStartup}
           onChange={(event) => setShowShortcutsAtStartup(event.target.checked)}
           className="accent-brass"

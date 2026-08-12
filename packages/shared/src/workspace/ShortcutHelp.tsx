@@ -1,14 +1,18 @@
 import { useEffect, useRef } from "react";
-import { SHORTCUTS } from "../shortcuts";
+import { navigationGroups } from "../navigationGuide";
 import { useSettingsStore } from "../settingsStore";
 import { useEscapeToDismiss } from "./dismissLayer";
 
 /**
- * The keyboard cheat sheet: every shortcut the global layer answers, straight from the same
- * table the dispatch reads, so this can never describe a key the app does not have.
+ * How to get around: every move worth knowing, with the mouse in one column and the keyboard in
+ * the other, straight from `navigationGuide` - which takes its chords from the same table the
+ * dispatch reads, so this can never describe a key the application does not have.
  *
- * It also shows itself at startup, which is the only reason a player who knows no shortcuts ever
- * sees it. The switch to stop that is here rather than only in settings, because here is where
+ * Both columns rather than only the chords, because this greets a player at startup and a player
+ * meeting a hex map for the first time reaches for the mouse. A cheat sheet that answered only
+ * "which key" left the more likely question unanswered.
+ *
+ * The switch to stop the greeting is here rather than only in settings, because here is where
  * somebody who has seen it enough times is standing when they decide.
  */
 export function ShortcutHelp({ isMac, onDismiss }: { isMac: boolean; onDismiss: () => void }) {
@@ -38,7 +42,7 @@ export function ShortcutHelp({ isMac, onDismiss }: { isMac: boolean; onDismiss: 
     };
   }, []);
 
-  const groups = [...new Set(SHORTCUTS.map((entry) => entry.group))];
+  const sections = navigationGroups();
 
   return (
     <div
@@ -66,20 +70,23 @@ export function ShortcutHelp({ isMac, onDismiss }: { isMac: boolean; onDismiss: 
       <div
         role="dialog"
         aria-modal="true"
-        aria-label="Keyboard shortcuts"
-        className="w-[22rem] rounded border border-edge bg-panel-raised p-3 text-[11.5px] shadow-lg"
+        aria-label="Getting around"
+        // A column with a capped height, so the header and the startup switch stay put and only
+        // the middle scrolls. Capped against the viewport rather than at a fixed height: the two
+        // columns are wide, and on a short window the guide is a good deal taller than the screen.
+        className="flex max-h-[85vh] w-[34rem] max-w-[calc(100vw-2rem)] flex-col rounded border border-edge bg-panel-raised p-3 text-[11.5px] shadow-lg"
       >
         {/*
           A close button as well as Escape and the backdrop, because this is now the first thing a
           new player meets: the two ways out that existed are the two a new player has no reason to
           guess at.
         */}
-        <div className="flex items-center justify-between">
-          <h2 className="text-ink">Keyboard shortcuts</h2>
+        <div className="flex flex-none items-center justify-between">
+          <h2 className="text-ink">Getting around</h2>
           <button
             type="button"
             data-testid="shortcut-help-close"
-            aria-label="close keyboard shortcuts"
+            aria-label="close getting around"
             // Focus starts inside the dialog rather than behind it, as the settings dialog does.
             autoFocus
             onClick={onDismiss}
@@ -88,26 +95,82 @@ export function ShortcutHelp({ isMac, onDismiss }: { isMac: boolean; onDismiss: 
             ×
           </button>
         </div>
-        {groups.map((group) => (
-          <div key={group} className="mt-2">
-            <h3 className="text-[10px] uppercase tracking-[0.08em] text-ink-dim">{group}</h3>
-            <dl className="mt-1 flex flex-col gap-1">
-              {SHORTCUTS.filter((entry) => entry.group === group).map((entry) => (
-                <div key={entry.id} className="flex items-baseline justify-between gap-2">
-                  <dt className="text-ink-soft">{entry.description}</dt>
-                  <dd className="m-0 font-mono text-ink">{isMac ? entry.mac : entry.other}</dd>
-                </div>
-              ))}
-            </dl>
-          </div>
-        ))}
+        {/*
+          A table rather than the description lists this used to be: with two ways of doing the
+          same thing, the columns have to line up down the whole overlay for the eye to read either
+          one on its own. Scrolls in its own right, so the switch below it never leaves the screen.
+        */}
+        <div
+          data-testid="shortcut-help-body"
+          // A tab stop of its own, because a scrolling region that cannot be focused is a region a
+          // keyboard-only reader cannot scroll: the only other focusable things here are the close
+          // button and the switch, and reaching either says nothing about where the list is.
+          //
+          // Named, because a focus stop that announces nothing is a focus stop a screen reader user
+          // arrives at blind - and this one is the whole content of the dialog.
+          tabIndex={0}
+          role="region"
+          aria-label="Ways to get around"
+          className="mt-2 min-h-0 flex-1 overflow-y-auto pr-1"
+        >
+          {/*
+            Separated borders and cell-level stickiness, as the units table does and for the same
+            reasons: a collapsed border belongs to the table rather than the cell, so it does not
+            travel with a sticky header, and a background on the row rather than the cells lets the
+            rows show through as they slide under it.
+          */}
+          <table className="w-full border-separate border-spacing-0 text-left">
+            <thead>
+              {/*
+                Sticky, because a reader who has scrolled to the panels at the bottom is still
+                reading two columns and still needs to know which is which.
+              */}
+              <tr className="text-[10px] uppercase tracking-[0.08em] text-ink-dim">
+                <th className="sticky -top-px z-10 w-[45%] border-b border-edge bg-panel-raised py-1 font-normal">
+                  Move
+                </th>
+                <th className="sticky -top-px z-10 w-[35%] border-b border-edge bg-panel-raised py-1 font-normal">
+                  Mouse
+                </th>
+                <th className="sticky -top-px z-10 border-b border-edge bg-panel-raised py-1 font-normal">
+                  Keyboard
+                </th>
+              </tr>
+            </thead>
+            {sections.map((section) => (
+              <tbody key={section.group}>
+                <tr>
+                  <th
+                    colSpan={3}
+                    className="pt-2.5 pb-0.5 text-[10px] font-normal uppercase tracking-[0.08em] text-brass"
+                  >
+                    {section.group}
+                  </th>
+                </tr>
+                {section.moves.map((move) => (
+                  <tr key={move.id} className="align-baseline">
+                    <td className="py-0.5 pr-2 text-ink-soft">{move.description}</td>
+                    {/*
+                      A dash where there is no such way of doing it: an empty cell reads as an
+                      oversight, where "—" says the move genuinely needs the other hand.
+                    */}
+                    <td className="py-0.5 pr-2 text-ink">{move.mouse ?? <Absent />}</td>
+                    <td className="py-0.5 font-mono text-ink">
+                      {move.keys ? (isMac ? move.keys.mac : move.keys.other) : <Absent />}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            ))}
+          </table>
+        </div>
 
         {/*
           Phrased as what it does rather than as what it stops, so the box being ticked and the
           overlay being on screen say the same thing. Applies at once, like every other setting
           here; there is nothing to confirm.
         */}
-        <label className="mt-3 flex items-center justify-between gap-2 border-t border-edge pt-2 text-ink-soft">
+        <label className="mt-3 flex flex-none items-center justify-between gap-2 border-t border-edge pt-2 text-ink-soft">
           <span>Show this when Atlantis HUD starts</span>
           <input
             type="checkbox"
@@ -121,4 +184,9 @@ export function ShortcutHelp({ isMac, onDismiss }: { isMac: boolean; onDismiss: 
       </div>
     </div>
   );
+}
+
+/** Says "there is no such way of doing this", where an empty cell would say nothing at all. */
+function Absent() {
+  return <span className="text-ink-dim">—</span>;
 }

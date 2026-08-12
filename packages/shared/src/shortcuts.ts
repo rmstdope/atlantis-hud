@@ -36,7 +36,7 @@ export const SHORTCUTS: readonly ShortcutSpec[] = [
   {
     id: "help",
     group: "Navigation",
-    description: "Show keyboard shortcuts",
+    description: "Show how to get around, with the mouse and the keyboard",
     mac: "⌘/",
     other: "Ctrl+/"
   },
