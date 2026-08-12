@@ -33,3 +33,10 @@ packages/browser-core/src/wasm/
 # backstop against a stray relative path putting one here again, as one did before issue #33.
 apps/desktop/src-tauri/atlantis-hud/
 *.sqlite
+
+# Beads / Dolt files (added by bd init)
+.dolt/
+*.db
+.beads-credential-key
+.beads/proxieddb/
+*.gate.lock*
