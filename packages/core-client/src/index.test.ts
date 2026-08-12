@@ -242,6 +242,9 @@ describe("core client adapter contract parity", () => {
       plan_route_state() {
         return planPayload;
       },
+      export_map_state() {
+        return "; Map export from Atlantis HUD\n";
+      },
       trace_move_orders_state() {
         return tracePayload;
       },
@@ -960,5 +963,80 @@ describe("changing a game's ruleset", () => {
     expect(() => createWasmAdapter(bindings).setGameRuleset("g", "magicdeep")).toThrow(
       "game persistence is not linked into this wasm build"
     );
+  });
+});
+
+/**
+ * The map export crosses the wire as three strings and comes back as one, so the things worth
+ * pinning are the argument names Tauri declares and the fact that neither adapter reshapes the
+ * text. A typo in a key deserializes as a missing field on the Rust side, and the error that
+ * follows would name the request rather than the key - which is why the keys are asserted here.
+ */
+describe("map export", () => {
+  const REQUEST = {
+    level: 1,
+    fromX: 4,
+    fromY: 50,
+    toX: 8,
+    toY: 54,
+    content: { structures: true, units: false, advancedResources: false }
+  };
+  const EXPORTED = "; Map export from Atlantis HUD\n";
+
+  it("asks tauri to export with the argument names its command declares", async () => {
+    const calls: Array<{ command: string; args?: Record<string, unknown> }> = [];
+    const invoke: TauriInvoke = <T,>(command: string, args?: Record<string, unknown>) => {
+      calls.push({ command, args });
+      return Promise.resolve(EXPORTED as T);
+    };
+
+    const text = await createCoreClient(createTauriAdapter(invoke)).exportMap(
+      "the turn's report",
+      "[]",
+      REQUEST
+    );
+
+    expect(calls).toEqual([
+      {
+        command: "export_map",
+        args: {
+          raw_report: "the turn's report",
+          remembered_json: "[]",
+          request_json: JSON.stringify(REQUEST)
+        }
+      }
+    ]);
+    expect(text).toBe(EXPORTED);
+  });
+
+  it("asks the wasm binding for the same export", async () => {
+    const calls: string[][] = [];
+    const bindings = {
+      export_map_state: (rawReport: string, rememberedJson: string, requestJson: string) => {
+        calls.push([rawReport, rememberedJson, requestJson]);
+        return EXPORTED;
+      }
+    } as unknown as WasmBindings;
+
+    const text = await createCoreClient(createWasmAdapter(bindings)).exportMap(
+      "the turn's report",
+      "[]",
+      REQUEST
+    );
+
+    expect(calls).toEqual([["the turn's report", "[]", JSON.stringify(REQUEST)]]);
+    expect(text).toBe(EXPORTED);
+  });
+
+  // An export nobody can read is worse than none: a file saved from an unreadable answer would be
+  // an empty document the player believes holds their map.
+  it("refuses an answer that is not text", async () => {
+    const bindings = {
+      export_map_state: () => ({ not: "text" })
+    } as unknown as WasmBindings;
+
+    await expect(
+      createCoreClient(createWasmAdapter(bindings)).exportMap("report", "[]", REQUEST)
+    ).rejects.toThrow("map export did not come back as text");
   });
 });

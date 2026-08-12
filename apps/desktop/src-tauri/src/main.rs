@@ -227,6 +227,19 @@ fn plan_route(
     feature = "desktop-runtime"
 ))]
 #[tauri::command(rename_all = "snake_case")]
+fn export_map(
+    raw_report: String,
+    remembered_json: String,
+    request_json: String,
+) -> Result<String, String> {
+    atlantis_hud_core_tauri::command_export_map(&raw_report, &remembered_json, &request_json)
+}
+
+#[cfg(all(
+    any(target_os = "linux", target_os = "macos", target_os = "windows"),
+    feature = "desktop-runtime"
+))]
+#[tauri::command(rename_all = "snake_case")]
 fn trace_move_orders(
     ruleset_json: String,
     raw_report: String,
@@ -411,6 +424,11 @@ fn main() {
         // check. It has to be their browser rather than a window of ours: this repository is
         // private, so the page needs a GitHub session, and the one they already have is in there.
         .plugin(tauri_plugin_opener::init())
+        // Where a map export goes. The web build can only hand the file to the browser and hope
+        // the player finds it; the desktop can ask them where to put it and then say exactly where
+        // it went, which is what a file meant to be sent on to somebody else needs.
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_fs::init())
         .invoke_handler(tauri::generate_handler![
             get_engine_info,
             create_game,
@@ -431,6 +449,7 @@ fn main() {
             save_order_draft,
             load_order_draft,
             plan_route,
+            export_map,
             trace_move_orders,
             preview_orders,
             load_region_sightings,

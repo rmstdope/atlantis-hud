@@ -1,0 +1,436 @@
+//! Turns everything the faction knows about one rectangle of the map into a report-shaped file.
+//!
+//! The player picks an area and what to put in it; this gathers the regions, newest description of
+//! each winning, and hands them to [`super::write`]. The result is meant to be traded: a human can
+//! read it, and our own import can merge it, because it is written in the game's own syntax.
+
+use std::collections::BTreeMap;
+
+use serde::{Deserialize, Serialize};
+
+use super::header::ReportHeader;
+use super::model::ReportRegion;
+use super::write::{write_region, ExportContent};
+use super::ParsedReport;
+use crate::cache::ReportCache;
+use crate::movement::graph::RememberedRegion;
+
+/// The area, level and content one export covers.
+///
+/// The corners are inclusive and may be given in either order: they come from a drag on the map,
+/// where nothing says which corner the player started at.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MapExportRequest {
+    pub level: u32,
+    pub from_x: i32,
+    pub from_y: i32,
+    pub to_x: i32,
+    pub to_y: i32,
+    pub content: ExportContent,
+}
+
+impl MapExportRequest {
+    /// Whether a region falls inside the requested area.
+    #[must_use]
+    pub fn covers(&self, region: &ReportRegion) -> bool {
+        let coordinate = region.coordinate;
+        coordinate.z == self.level
+            && between(coordinate.x, self.from_x, self.to_x)
+            && between(coordinate.y, self.from_y, self.to_y)
+    }
+}
+
+fn between(value: i32, one_end: i32, other_end: i32) -> bool {
+    value >= one_end.min(other_end) && value <= one_end.max(other_end)
+}
+
+/// Writes the known map inside the request's rectangle.
+#[must_use]
+pub fn export_map(
+    report: &ParsedReport,
+    remembered: &[RememberedRegion],
+    request: &MapExportRequest,
+) -> String {
+    let regions = gather(report, remembered, request);
+    let turn = report.header.turn_number;
+
+    let mut text = preamble(request, regions.len());
+    text.push_str(&write_header(&report.header));
+
+    for shared in &regions {
+        if let Some(note) = staleness_note(shared.last_seen_turn, turn) {
+            text.push_str(&note);
+            text.push('\n');
+        }
+        text.push_str(&write_region(&shared.region, &request.content));
+    }
+
+    text
+}
+
+/// One region as it will be written, with the turn its description came from.
+struct SharedRegion {
+    region: ReportRegion,
+    last_seen_turn: Option<u32>,
+}
+
+/// Everything known inside the rectangle, the freshest account of each hex winning.
+///
+/// Remembered sightings are entered oldest first and this turn's report last, which is the same
+/// precedence the map itself uses: only the current report can be trusted about who is standing in
+/// a hex, and a hex seen in turn seventy beats the same hex seen in turn forty.
+fn gather(
+    report: &ParsedReport,
+    remembered: &[RememberedRegion],
+    request: &MapExportRequest,
+) -> Vec<SharedRegion> {
+    let mut chosen: BTreeMap<String, SharedRegion> = BTreeMap::new();
+
+    let mut ordered: Vec<&RememberedRegion> = remembered
+        .iter()
+        .filter(|entry| request.covers(&entry.region))
+        .collect();
+    ordered.sort_by_key(|entry| entry.last_seen_turn);
+
+    for entry in ordered {
+        chosen.insert(
+            entry.region.region_id.clone(),
+            SharedRegion {
+                region: entry.region.clone(),
+                last_seen_turn: Some(entry.last_seen_turn),
+            },
+        );
+    }
+    for region in report
+        .regions
+        .iter()
+        .filter(|region| request.covers(region))
+    {
+        chosen.insert(
+            region.region_id.clone(),
+            SharedRegion {
+                region: region.clone(),
+                last_seen_turn: report.header.turn_number,
+            },
+        );
+    }
+
+    let mut regions: Vec<SharedRegion> = chosen.into_values().collect();
+    // North to south, west to east, which is the order a report itself prints hexes in.
+    regions.sort_by_key(|shared| (shared.region.coordinate.y, shared.region.coordinate.x));
+    regions
+}
+
+/// The comment lines saying what this file is, before it starts pretending to be a report.
+fn preamble(request: &MapExportRequest, regions: usize) -> String {
+    let yes_or_no = |included: bool| if included { "yes" } else { "no" };
+
+    format!(
+        "; Map export from Atlantis HUD\n\
+         ; level {}, hexes ({},{}) to ({},{}), {} region{}\n\
+         ; structures: {}, units: {}, advanced resources: {}\n\n",
+        request.level,
+        request.from_x.min(request.to_x),
+        request.from_y.min(request.to_y),
+        request.from_x.max(request.to_x),
+        request.from_y.max(request.to_y),
+        regions,
+        if regions == 1 { "" } else { "s" },
+        yes_or_no(request.content.structures),
+        yes_or_no(request.content.units),
+        yes_or_no(request.content.advanced_resources),
+    )
+}
+
+/// The report preamble, so the file identifies its faction and turn the way a real one does.
+fn write_header(header: &ReportHeader) -> String {
+    let mut text = String::from("Atlantis Report For:\n");
+
+    if let (Some(name), Some(id)) = (&header.faction_name, &header.faction_id) {
+        text.push_str(&format!("{name} ({id})"));
+        for faction_type in &header.faction_types {
+            text.push_str(&format!(" ({faction_type})"));
+        }
+        text.push('\n');
+    }
+    if let (Some(month), Some(year)) = (&header.month, header.year) {
+        text.push_str(&format!("{month}, Year {year}\n"));
+    }
+
+    text.push('\n');
+    text
+}
+
+/// How old a remembered description is, written where the reader meets the data it qualifies.
+///
+/// A hex described in the report being exported from gets nothing: it is as fresh as the file
+/// itself. Everything else names its turn, and says how far back that was whenever the arithmetic
+/// means anything - which it does not when the player has loaded an *older* turn than their memory
+/// reaches, a thing the application lets them do. The turn is still named in that case, because a
+/// bare figure the recipient can compare against their own is worth more than a silence.
+fn staleness_note(last_seen_turn: Option<u32>, current_turn: Option<u32>) -> Option<String> {
+    let seen = last_seen_turn?;
+    let Some(age) = current_turn.and_then(|current| current.checked_sub(seen)) else {
+        return Some(format!("; last seen turn {seen}"));
+    };
+
+    if age == 0 {
+        return None;
+    }
+
+    Some(format!(
+        "; last seen turn {seen}, {age} turn{} before this export",
+        if age == 1 { "" } else { "s" }
+    ))
+}
+
+/// The same, over the wire shapes the adapters carry.
+///
+/// # Errors
+///
+/// Returns an error when the remembered regions or the request cannot be read.
+pub fn export_map_text(
+    cache: &mut ReportCache,
+    raw_report: &str,
+    remembered_json: &str,
+    request_json: &str,
+) -> Result<String, String> {
+    let remembered: Vec<RememberedRegion> = serde_json::from_str(remembered_json)
+        .map_err(|error| format!("remembered regions could not be read: {error}"))?;
+    let request: MapExportRequest = serde_json::from_str(request_json)
+        .map_err(|error| format!("export request could not be read: {error}"))?;
+
+    let report = cache.report(raw_report);
+    Ok(export_map(&report, &remembered, &request))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::report::parse_report_full;
+
+    const REPORT: &str = concat!(
+        "Atlantis Report For:\n",
+        "Borg TNG (95) (Magic 5)\n",
+        "December, Year 6\n",
+        "\n",
+        "mountain (7,53) in Inhead, 12051 peasants (hill dwarves), $33983.\n",
+        "------------------------------------------------------------\n",
+        "  Wages: $24.1 (Max: $6796).\n",
+        "  Products: 57 grain [GRAI].\n",
+        "\n",
+        "Exits:\n",
+        "  North : mountain (7,51) in Inhead.\n",
+        "\n",
+        "* Seven of Eight (18642), Borg TNG (95), behind, leader [LEAD].\n",
+    );
+
+    fn remembered_at(x: i32, y: i32, z: u32, turn: u32) -> RememberedRegion {
+        let source = format!("forest ({x},{y}{}) in Elsewhere.\n", level_suffix(z));
+        let region = parse_report_full(&source)
+            .regions
+            .into_iter()
+            .next()
+            .expect("fixture region");
+        RememberedRegion {
+            region,
+            last_seen_turn: turn,
+        }
+    }
+
+    fn level_suffix(z: u32) -> String {
+        if z == 1 {
+            String::new()
+        } else {
+            format!(",{z}")
+        }
+    }
+
+    fn request(from: (i32, i32), to: (i32, i32)) -> MapExportRequest {
+        MapExportRequest {
+            level: 1,
+            from_x: from.0,
+            from_y: from.1,
+            to_x: to.0,
+            to_y: to.1,
+            content: ExportContent::default(),
+        }
+    }
+
+    fn exported(remembered: &[RememberedRegion], request: &MapExportRequest) -> Vec<String> {
+        let text = export_map(&parse_report_full(REPORT), remembered, request);
+        parse_report_full(&text)
+            .regions
+            .into_iter()
+            .map(|region| region.region_id)
+            .collect()
+    }
+
+    #[test]
+    fn keeps_the_regions_inside_the_rectangle_including_its_edges() {
+        let remembered = vec![
+            remembered_at(4, 50, 1, 68),
+            remembered_at(6, 52, 1, 68),
+            remembered_at(8, 54, 1, 68),
+        ];
+
+        let ids = exported(&remembered, &request((4, 50), (8, 54)));
+        assert_eq!(ids, vec!["1:4,50", "1:6,52", "1:7,53", "1:8,54"]);
+    }
+
+    #[test]
+    fn drops_the_regions_outside_it() {
+        let remembered = vec![remembered_at(4, 50, 1, 68), remembered_at(20, 60, 1, 68)];
+
+        let ids = exported(&remembered, &request((4, 50), (8, 54)));
+        assert!(!ids.contains(&"1:20,60".to_string()), "{ids:?}");
+    }
+
+    #[test]
+    fn reads_the_corners_in_either_order() {
+        let remembered = vec![remembered_at(4, 50, 1, 68)];
+
+        assert_eq!(
+            exported(&remembered, &request((8, 54), (4, 50))),
+            exported(&remembered, &request((4, 50), (8, 54)))
+        );
+    }
+
+    #[test]
+    fn covers_only_the_requested_level() {
+        let remembered = vec![remembered_at(6, 52, 2, 68)];
+
+        let ids = exported(&remembered, &request((4, 50), (8, 54)));
+        assert_eq!(ids, vec!["1:7,53"], "the cavern below is a different map");
+    }
+
+    #[test]
+    fn prefers_this_turn_over_a_remembered_sighting_of_the_same_hex() {
+        let stale = parse_report_full(concat!(
+            "mountain (7,53) in Inhead, 3 peasants (hill dwarves), $9.\n",
+            "------------------------------------------------------------\n",
+            "  Products: 1 grain [GRAI].\n",
+        ))
+        .regions
+        .into_iter()
+        .next()
+        .expect("fixture region");
+        let remembered = vec![RememberedRegion {
+            region: stale,
+            last_seen_turn: 52,
+        }];
+
+        let text = export_map(
+            &parse_report_full(REPORT),
+            &remembered,
+            &request((4, 50), (8, 54)),
+        );
+        let region = parse_report_full(&text)
+            .regions
+            .into_iter()
+            .find(|region| region.region_id == "1:7,53")
+            .expect("the hex should be exported once");
+
+        assert_eq!(region.population, Some(12051), "this turn's description");
+        assert!(
+            !text.contains("last seen turn"),
+            "a hex in this turn's report is not stale:\n{text}"
+        );
+    }
+
+    #[test]
+    fn marks_a_remembered_hex_with_the_turn_it_was_seen_in() {
+        let remembered = vec![remembered_at(4, 50, 1, 68)];
+        let text = export_map(
+            &parse_report_full(REPORT),
+            &remembered,
+            &request((4, 50), (8, 54)),
+        );
+
+        assert!(
+            text.contains("; last seen turn 68, 3 turns before this export"),
+            "the age belongs beside the data it qualifies:\n{text}"
+        );
+    }
+
+    /**
+     * Loading an older turn than the memory reaches is something the application offers, so a
+     * remembered hex can be newer than the report being exported from. It still names its turn:
+     * the arithmetic is what stops making sense, not the fact.
+     */
+    #[test]
+    fn names_the_turn_of_a_hex_remembered_after_the_report_being_exported() {
+        let remembered = vec![remembered_at(4, 50, 1, 80)];
+        let text = export_map(
+            &parse_report_full(REPORT),
+            &remembered,
+            &request((4, 50), (8, 54)),
+        );
+
+        assert!(text.contains("; last seen turn 80"), "{text}");
+        assert!(
+            !text.contains("before this export"),
+            "an age counted backwards would be a fiction:\n{text}"
+        );
+    }
+
+    #[test]
+    fn heads_the_file_with_the_faction_and_the_turn() {
+        let text = export_map(&parse_report_full(REPORT), &[], &request((4, 50), (8, 54)));
+
+        assert!(text.contains("Atlantis Report For:"), "{text}");
+        assert!(text.contains("Borg TNG (95)"), "{text}");
+        assert!(text.contains("December, Year 6"), "{text}");
+        assert!(
+            text.contains("; level 1, hexes (4,50) to (8,54), 1 region"),
+            "the comment block says what was exported:\n{text}"
+        );
+    }
+
+    #[test]
+    fn says_in_the_header_what_was_left_out() {
+        let mut request = request((4, 50), (8, 54));
+        request.content = ExportContent {
+            structures: true,
+            units: false,
+            advanced_resources: false,
+        };
+
+        let text = export_map(&parse_report_full(REPORT), &[], &request);
+        assert!(
+            text.contains("; structures: yes, units: no, advanced resources: no"),
+            "{text}"
+        );
+    }
+
+    #[test]
+    fn exports_nothing_but_a_header_when_the_rectangle_is_empty() {
+        let text = export_map(
+            &parse_report_full(REPORT),
+            &[],
+            &request((40, 40), (44, 44)),
+        );
+
+        assert!(parse_report_full(&text).regions.is_empty());
+        assert!(text.contains("0 regions"), "{text}");
+    }
+
+    #[test]
+    fn reads_the_wire_shapes_the_adapters_carry() {
+        let remembered = serde_json::to_string(&vec![remembered_at(4, 50, 1, 68)]).expect("json");
+        let request = serde_json::to_string(&request((4, 50), (8, 54))).expect("json");
+
+        let mut cache = ReportCache::new();
+        let text = export_map_text(&mut cache, REPORT, &remembered, &request).expect("export");
+
+        assert_eq!(parse_report_full(&text).regions.len(), 2);
+    }
+
+    #[test]
+    fn refuses_a_request_it_cannot_read() {
+        let mut cache = ReportCache::new();
+        assert!(export_map_text(&mut cache, REPORT, "[]", "not json").is_err());
+        assert!(export_map_text(&mut cache, REPORT, "not json", "{}").is_err());
+    }
+}

@@ -58,6 +58,28 @@ travels as raw text, which is the key the core's parse cache remembers it under.
 The Tauri commands take snake_case argument names verbatim (`rename_all = "snake_case"`); the
 TypeScript Tauri adapter passes them explicitly rather than translating.
 
+## Map export
+
+One entry point, shaped like the movement calls and for the same reason: the file a player trades
+with an ally has to come out identical whichever shell wrote it.
+
+- `export_map` (Tauri) / `export_map_state` (WASM) / `CoreClient.exportMap`:
+  `(raw_report, remembered_json, request_json)` → the file's whole text.
+  `request_json` is a serialized `MapExportRequest { level, fromX, fromY, toX, toY, content }`,
+  where the corners are inclusive and may be given in either order, and
+  `content { structures, units, advancedResources }` says what to write beyond the region economy,
+  markets and exits every export carries. `CoreClient.exportMap` takes the request as an object and
+  serializes it.
+
+  The output is report-shaped: comment lines naming the rectangle and the content, the report
+  header for the player's own faction and turn, then one region block per visited hex in the
+  rectangle, written in the syntax `crates/core/src/report/region.rs` parses. A hex last seen in an
+  earlier turn is preceded by `; last seen turn N, M turns before this export`. The current report
+  wins wherever it and the remembered map describe the same hex.
+
+  Rejects when the request or the remembered regions cannot be read. A rectangle covering nothing
+  visited resolves with a header and no regions.
+
 ## TypeScript abstraction
 
 - Package: `packages/core-client`

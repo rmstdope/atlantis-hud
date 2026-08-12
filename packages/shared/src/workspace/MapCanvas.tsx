@@ -19,6 +19,7 @@ import {
   type ArrowKey,
   type Viewport
 } from "./mapViewport";
+import { rectFromCorners, rectPixels, type MapRect } from "./mapMarquee";
 import { loadSavedViewport, saveViewportForGame } from "./mapViewportStorage";
 import type { RouteOverlay } from "./routeOverlay";
 import { guardSelection } from "./selectionGuard";
@@ -102,6 +103,11 @@ type MapCanvasProps = {
   route?: RouteOverlay | null;
   /** How dangerous each hex entered is, so one bad step is visible rather than buried. */
   routeRisk?: HexRisk[];
+  /**
+   * Where a Shift+drag finished, as a rectangle of hexes. Absent when nothing on screen wants one,
+   * which is also what stands the gesture down.
+   */
+  onMarquee?: (rect: MapRect) => void;
 };
 
 /**
@@ -136,7 +142,8 @@ export function MapCanvas({
   showUnits,
   showStructures,
   route = null,
-  routeRisk = []
+  routeRisk = [],
+  onMarquee
 }: MapCanvasProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const rootRef = useRef<SVGSVGElement | null>(null);
@@ -144,6 +151,7 @@ export function MapCanvas({
   const fogRef = useRef<SVGPatternElement | null>(null);
   const rulerXRef = useRef<SVGGElement | null>(null);
   const rulerYRef = useRef<SVGGElement | null>(null);
+  const marqueeRef = useRef<SVGRectElement | null>(null);
 
   const viewRef = useRef<Viewport>(ORIGIN);
   const carryRef = useRef(0);
@@ -353,8 +361,64 @@ export function MapCanvas({
     return () => root.removeEventListener("wheel", onWheel);
   }, [commit]);
 
+  /**
+   * Drags out the export rectangle, hung on Shift so the plain drag stays a pan.
+   *
+   * The band is written straight onto its own element for the same reason the view transform is:
+   * a rectangle that re-rendered the map on every pointer move would drag as badly as panning did
+   * before the transform moved into a ref.
+   */
+  const startMarquee = (event: React.PointerEvent<SVGSVGElement>) => {
+    const root = rootRef.current;
+    const band = marqueeRef.current;
+    if (!root || !band || !onMarquee) {
+      return false;
+    }
+
+    // The gesture is a selection of ground, not of a hex: without this the pointerup would fall
+    // through to the hex or the fog underneath and change what is selected.
+    draggedRef.current = true;
+    const bounds = root.getBoundingClientRect();
+    const hexAtPointer = (clientX: number, clientY: number) =>
+      coordinateAt(clientX - bounds.left, clientY - bounds.top, viewRef.current, level);
+
+    const from = hexAtPointer(event.clientX, event.clientY);
+    let rect = rectFromCorners(from, from);
+    const paint = () => {
+      const box = rectPixels(rect);
+      band.setAttribute("x", String(box.x));
+      band.setAttribute("y", String(box.y));
+      band.setAttribute("width", String(box.width));
+      band.setAttribute("height", String(box.height));
+      band.removeAttribute("visibility");
+    };
+    paint();
+
+    const releaseSelection = guardSelection();
+    const move = (moved: PointerEvent) => {
+      rect = rectFromCorners(from, hexAtPointer(moved.clientX, moved.clientY));
+      paint();
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
+      releaseSelection();
+      band.setAttribute("visibility", "hidden");
+      onMarquee(rect);
+    };
+
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
+    return true;
+  };
+
   const onPointerDown = (event: React.PointerEvent<SVGSVGElement>) => {
     if (event.button !== 0) {
+      return;
+    }
+    if (event.shiftKey && startMarquee(event)) {
       return;
     }
     draggedRef.current = false;
@@ -695,6 +759,21 @@ export function MapCanvas({
           )}
 
           <theme.MarkLayer views={allViews} />
+
+          {/*
+            The export rectangle, while it is being dragged. Hidden and moved by hand rather than
+            by props; see startMarquee.
+          */}
+          <rect
+            ref={marqueeRef}
+            visibility="hidden"
+            className="fill-brass-bright/10 stroke-brass-bright"
+            strokeWidth={1.5}
+            strokeDasharray="5 4"
+            vectorEffect="non-scaling-stroke"
+            pointerEvents="none"
+            data-testid="map-marquee"
+          />
 
           {selectedAt && (
             <polygon
