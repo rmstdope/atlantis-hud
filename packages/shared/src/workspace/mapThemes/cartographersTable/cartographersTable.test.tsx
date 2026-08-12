@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { HexNode } from "../../../hexMapModel";
@@ -251,12 +252,88 @@ describe("terrain, in pigment rather than in the app's own colours", () => {
     expect(svg).toContain('data-hatch="pencil"');
   });
 
-  it("washes a hex known only by name, but never hatches it", () => {
-    // Hatching marks data as held and ageing. A hex nobody has visited has no age to show.
+  /**
+   * An old sighting has to read as an aged page, not as the same ground painted paler.
+   *
+   * Both halves of that failed once and neither showed up in any assertion: the wash borrowed the
+   * near-white parchment the buildings are filled with, so over pale terrain it only desaturated
+   * the hue it was covering; and the hatching was three hairlines faint enough to vanish at the
+   * zoom the map actually opens at.
+   */
+  it("washes with a colour of its own, not the paper the buildings are drawn on", () => {
+    const css = readFileSync(new URL("./theme.css", import.meta.url), "utf8");
+    const token = (rule: string) =>
+      new RegExp(`\\.${rule}[^{]*\\{[^}]*fill:\\s*var\\((--[\\w-]+)\\)`).exec(css)?.[1];
+    const value = (name: string) =>
+      new RegExp(`${name}:\\s*(#[0-9a-fA-F]{6})`).exec(css)?.[1]?.toLowerCase();
+
+    const wash = token("ct-wash");
+    const building = token("ct-building");
+
+    expect(wash).toBeDefined();
+    expect(wash).not.toBe(building);
+    // And not merely a second name for the same colour.
+    expect(value(wash!)).not.toBe(value(building!));
+  });
+
+  it("hatches hard enough to be seen at the size a hex is actually drawn", () => {
+    const stale = CONGESTED_HEXES.filter((hex) => hex.knowledge === "stale");
+    const svg = draw(cartographersTable.TerrainLayer, stale);
+    const hatch = /data-hatch="pencil"[^>]*/.exec(svg)?.[0] ?? "";
+    const path = /<path d="([^"]*)"[^>]*data-hatch="pencil"|data-hatch="pencil"[^>]*d="([^"]*)"/.exec(
+      svg
+    );
+    const strokes = (svg.match(/M-?[\d.]+,-?[\d.]+ L-?[\d.]+,-?[\d.]+/g) ?? []).length;
+
+    // A pencil hatch is a texture, not a few stray lines.
+    expect(strokes).toBeGreaterThanOrEqual(6);
+    expect(Number(/stroke-width="([\d.]+)"/.exec(hatch)?.[1])).toBeGreaterThanOrEqual(1);
+    expect(Number(/opacity="([\d.]+)"/.exec(hatch)?.[1])).toBeGreaterThanOrEqual(0.45);
+    expect(path).not.toBeNull();
+  });
+
+  /**
+   * A hex nobody has visited and a hex visited long ago are different states, and the atlas has to
+   * say which is which.
+   *
+   * They were drawn identically once - both got the ageing wash, and a hex known only from a
+   * neighbour's exits came out looking like a page that had yellowed rather than like ground that
+   * was never surveyed. On top of that the wash ran at the view model's full fog opacity, which at
+   * 0.55 buried the terrain completely: a named ocean and a named plain were the same flat tan.
+   */
+  it("leaves unsurveyed ground unsurveyed, rather than ageing a page nobody wrote on", () => {
     const svg = draw(cartographersTable.TerrainLayer, [NAMED_ONLY]);
 
-    expect(svg).toContain('data-wash="stale"');
+    expect(svg).toContain('data-wash="unsurveyed"');
+    expect(svg).not.toContain('data-wash="stale"');
+    // Hatching marks data as held and ageing. A hex nobody has visited has no age to show.
     expect(svg).not.toContain('data-hatch="pencil"');
+  });
+
+  it("keeps the terrain readable under an old sighting, however old", () => {
+    // The point of a wash is that the page has aged, not that the survey is gone: a stale ocean
+    // still has to read as ocean. The oldest sighting the view model produces is 0.62.
+    const ancient = viewWith({ knowledge: "stale", fogOpacity: 0.62, hatched: true });
+    const svg = renderToStaticMarkup(
+      <svg>
+        <cartographersTable.TerrainLayer views={[ancient]} />
+      </svg>
+    );
+    const wash = /data-wash="stale"[^>]*/.exec(svg)?.[0] ?? "";
+
+    expect(Number(/opacity="([\d.]+)"/.exec(wash)?.[1])).toBeLessThanOrEqual(0.45);
+    // ...and still deepens with age, so a recent sighting and an ancient one differ.
+    const recent = viewWith({ knowledge: "stale", fogOpacity: 0.3, hatched: true });
+    const recentSvg = renderToStaticMarkup(
+      <svg>
+        <cartographersTable.TerrainLayer views={[recent]} />
+      </svg>
+    );
+    const recentWash = /data-wash="stale"[^>]*/.exec(recentSvg)?.[0] ?? "";
+
+    expect(Number(/opacity="([\d.]+)"/.exec(recentWash)?.[1])).toBeLessThan(
+      Number(/opacity="([\d.]+)"/.exec(wash)?.[1])
+    );
   });
 
   it("puts a light parchment gauze over the biome image, so the ink stays legible", () => {

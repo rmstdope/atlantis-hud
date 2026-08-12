@@ -19,6 +19,19 @@
   --ct-name: #2a2118;
   --ct-void: #241c12;
 
+  /*
+   * Ageing, which is a colour of its own and not the paper the buildings are drawn on.
+   *
+   * The near-white parchment was tried here first and read as nothing at all: over a pale terrain
+   * it only desaturated the hue it was covering, so an old sighting looked like the same ground
+   * painted weaker rather than like a page that had yellowed. A warm ochre pulls every terrain
+   * towards tobacco instead, which is what age does to paper.
+   */
+  --ct-wash: #b99a5e;
+  --ct-pencil: #4a3a22;
+  /* Sheet the survey never reached: cool and empty, never the warm tone of age. */
+  --ct-unsurveyed: #6d6a63;
+
   --ct-road: #6b4f2a;
   --ct-road-dash: #c9b088;
 
@@ -53,6 +66,10 @@
   --ct-timber: #9c6a3c;
   --ct-name: #3a2f22;
   --ct-void: #3b3020;
+
+  --ct-wash: #c2a468;
+  --ct-pencil: #5c4a2e;
+  --ct-unsurveyed: #b8b4aa;
 
   --ct-road: #7d5f36;
   --ct-road-dash: #e0cba4;
@@ -125,12 +142,18 @@
 }
 
 /* The sheet ageing, and the surveyor's pencil over it. */
-.ct-wash,
+.ct-wash {
+  fill: var(--ct-wash);
+}
+/* The gauze over a photograph is paper, not age: it lifts the biome towards the sheet. */
 .ct-gauze {
   fill: var(--ct-parchment);
 }
+.ct-unsurveyed {
+  fill: var(--ct-unsurveyed);
+}
 .ct-hatch {
-  stroke: var(--ct-ink);
+  stroke: var(--ct-pencil);
 }
 
 .ct-road {

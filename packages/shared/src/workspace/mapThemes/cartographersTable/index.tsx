@@ -49,8 +49,37 @@ function pigment(terrain: string): string {
   return TERRAIN_CLASSES[terrain.toLowerCase()] ?? "ct-terrain-other";
 }
 
-/** The pencil hatching that marks a sighting as held but ageing. Three strokes, as drawn. */
-const HATCH = "M-30,26 L26,-30 M-14,34 L36,-16 M-38,10 L12,-40";
+/**
+ * The pencil hatching that marks a sighting as held but ageing.
+ *
+ * Parallel 45-degree strokes right across the hex, close enough together to read as a texture. The
+ * proposal drew three of them at radius 46; at the radius the map actually uses those were a few
+ * stray hairlines nobody could see, and an old hex just looked like paler ground. Hatching is what
+ * says "held, and possibly out of date", so it has to survive being small.
+ *
+ * Drawn across the whole bounding box and clipped to the hexagon, rather than hand-placed to fit -
+ * which is why `Defs` exists below.
+ */
+const HATCH_STEP = 11;
+const HATCH = Array.from({ length: 13 }, (_, index) => {
+  const offset = -96 + index * HATCH_STEP;
+  return `M${offset},48 L${offset + 96},-48`;
+}).join(" ");
+
+const HEX_CLIP_ID = "ct-hex-clip";
+
+/**
+ * How strong the ageing wash is for a given fade.
+ *
+ * Deliberately weaker than the fade the view model asks for. Fog is meant to hide ground; a wash is
+ * meant to say the *page* has aged, and the survey underneath it must still be readable - a stale
+ * ocean has to keep looking like ocean. Laid at the full 0.62 an old sighting went uniformly tan
+ * and every terrain became the same colour. The hatching carries "this is old"; the wash only has
+ * to tint. Still proportional to age, so a recent sighting and an ancient one differ.
+ */
+function washOpacity(fogOpacity: number): number {
+  return Number((fogOpacity * 0.62).toFixed(3));
+}
 
 function at(point: { x: number; y: number }): string {
   return `translate(${point.x},${point.y})`;
@@ -85,22 +114,36 @@ function TerrainLayer({ views }: LayerProps) {
                 opacity={0.2}
               />
             )}
-            {view.fogOpacity > 0 && (
-              <polygon
-                points={HEX_POINTS_MOCKUP}
-                className="ct-wash"
-                data-wash="stale"
-                opacity={view.fogOpacity}
-              />
-            )}
+            {view.fogOpacity > 0 &&
+              (view.knowledge === "named" ? (
+                /*
+                  Ground nobody has walked. Not an aged page - a part of the sheet the survey never
+                  reached - so it fades towards the unsurveyed grey rather than yellowing, and it
+                  is never hatched: a hex that was never visited has no age to show.
+                */
+                <polygon
+                  points={HEX_POINTS_MOCKUP}
+                  className="ct-unsurveyed"
+                  data-wash="unsurveyed"
+                  opacity={view.fogOpacity}
+                />
+              ) : (
+                <polygon
+                  points={HEX_POINTS_MOCKUP}
+                  className="ct-wash"
+                  data-wash="stale"
+                  opacity={washOpacity(view.fogOpacity)}
+                />
+              ))}
             {view.hatched && (
               <path
                 d={HATCH}
                 className="ct-hatch"
                 data-hatch="pencil"
                 fill="none"
-                strokeWidth={0.8}
-                opacity={0.35}
+                strokeWidth={1.1}
+                opacity={0.5}
+                clipPath={`url(#${HEX_CLIP_ID})`}
                 vectorEffect="non-scaling-stroke"
               />
             )}
@@ -402,9 +445,22 @@ function MarkLayer({ views }: LayerProps) {
   );
 }
 
+/**
+ * The hexagon, so the pencil hatching can be drawn straight across a hex and clipped to it rather
+ * than hand-placed to fit inside one. In the proposal's coordinates, like everything else here.
+ */
+function Defs() {
+  return (
+    <clipPath id={HEX_CLIP_ID}>
+      <polygon points={HEX_POINTS_MOCKUP} />
+    </clipPath>
+  );
+}
+
 export const cartographersTable: MapTheme = {
   id: "cartographers-table",
   label: "Cartographer's Table",
+  Defs,
   TerrainLayer,
   RoadLayer,
   MarkLayer
