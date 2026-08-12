@@ -105,19 +105,36 @@ export function ShortcutHelp({ isMac, onDismiss }: { isMac: boolean; onDismiss: 
           // A tab stop of its own, because a scrolling region that cannot be focused is a region a
           // keyboard-only reader cannot scroll: the only other focusable things here are the close
           // button and the switch, and reaching either says nothing about where the list is.
+          //
+          // Named, because a focus stop that announces nothing is a focus stop a screen reader user
+          // arrives at blind - and this one is the whole content of the dialog.
           tabIndex={0}
+          role="region"
+          aria-label="Ways to get around"
           className="mt-2 min-h-0 flex-1 overflow-y-auto pr-1"
         >
-          <table className="w-full border-collapse text-left">
+          {/*
+            Separated borders and cell-level stickiness, as the units table does and for the same
+            reasons: a collapsed border belongs to the table rather than the cell, so it does not
+            travel with a sticky header, and a background on the row rather than the cells lets the
+            rows show through as they slide under it.
+          */}
+          <table className="w-full border-separate border-spacing-0 text-left">
             <thead>
               {/*
                 Sticky, because a reader who has scrolled to the panels at the bottom is still
                 reading two columns and still needs to know which is which.
               */}
-              <tr className="sticky top-0 bg-panel-raised text-[10px] uppercase tracking-[0.08em] text-ink-dim">
-                <th className="w-[45%] py-1 font-normal">Move</th>
-                <th className="w-[35%] py-1 font-normal">Mouse</th>
-                <th className="py-1 font-normal">Keyboard</th>
+              <tr className="text-[10px] uppercase tracking-[0.08em] text-ink-dim">
+                <th className="sticky -top-px z-10 w-[45%] border-b border-edge bg-panel-raised py-1 font-normal">
+                  Move
+                </th>
+                <th className="sticky -top-px z-10 w-[35%] border-b border-edge bg-panel-raised py-1 font-normal">
+                  Mouse
+                </th>
+                <th className="sticky -top-px z-10 border-b border-edge bg-panel-raised py-1 font-normal">
+                  Keyboard
+                </th>
               </tr>
             </thead>
             {sections.map((section) => (

@@ -42,6 +42,14 @@ describe("ShortcutHelp", () => {
     expect(markup(false)).toMatch(/data-testid="shortcut-help-body"[^>]*overflow-y-auto/);
   });
 
+  it("gives the scrolling region a name, since it is a focus stop", () => {
+    // Focusable so a keyboard-only reader can scroll it, which makes it somewhere a screen reader
+    // arrives - and an unnamed arrival says nothing about what has been reached.
+    const html = markup(false);
+    expect(html).toMatch(/data-testid="shortcut-help-body"[^>]*aria-label="[^"]+"/);
+    expect(html).toMatch(/data-testid="shortcut-help-body"[^>]*tabindex="0"/);
+  });
+
   it("still carries the startup switch and a way out", () => {
     const html = markup(false);
     expect(html).toContain('data-testid="shortcut-help-at-startup"');

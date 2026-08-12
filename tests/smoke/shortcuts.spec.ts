@@ -187,14 +187,19 @@ test("the map really answers the gestures the overlay describes", async ({ page 
   await page.mouse.down();
   await page.mouse.move(open.x + 120, open.y + 70, { steps: 8 });
   await page.mouse.up();
-  await expect.poll(async () => (await hex())?.x).not.toBe(before?.x);
+  // A hex that has gone missing reads back as the value we started from rather than as undefined,
+  // which "is not the old x" would have accepted: a map that emptied itself would have passed for
+  // a map that panned.
+  await expect.poll(async () => (await hex())?.x ?? before?.x).not.toBe(before?.x);
 
   // "Roll the wheel over the map" zooms. Back over the open corner first: the wheel turns wherever
   // the pointer was left, and the pan left it deep in panel country.
   const beforeZoom = await hex();
   await page.mouse.move(open.x, open.y);
   await page.mouse.wheel(0, -400);
-  await expect.poll(async () => (await hex())?.width).not.toBe(beforeZoom?.width);
+  await expect.poll(async () => (await hex())?.width ?? beforeZoom?.width).not.toBe(
+    beforeZoom?.width
+  );
 
   // "Shift+drag" marks out an area to export, rather than panning.
   await page.keyboard.down("Shift");
