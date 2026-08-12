@@ -1,0 +1,235 @@
+/*
+ * Tactical HUD: a modern strategy readout.
+ *
+ * Dark values are the design proposal's own (hex-design-proposals.html, proposal 02). The light
+ * values are the harder half of this theme: a readout is a lit panel, and simply inverting it gives
+ * washed-out pastels. The terrains stay low-chroma and are lifted only far enough to sit under dark
+ * type, while the badge tones darken until they hold their own on paper.
+ */
+
+:root {
+  /* The panel a badge is cut out of, and the lattice between hexes. */
+  --hud-panel: #0d1117;
+  --hud-edge: #5e788c;
+  --hud-ink: #c9d6e2;
+  --hud-lattice: #c9d6e2;
+
+  /* Feature tones, one per station. */
+  --hud-ship: #9fb4c8;
+  --hud-battle: #d9a441;
+  --hud-gate: #b48ce0;
+  --hud-shaft: #e8d9a8;
+  --hud-monster: #f07070;
+  --hud-lair: #d98f5e;
+  --hud-settlement: #e8d9a8;
+
+  /* The unit groups: own, other factions, monsters. */
+  --hud-own: #4caf7d;
+  --hud-foreign: #5ec8f0;
+  --hud-monster-unit: #f07070;
+
+  --hud-terrain-ocean: #1c3247;
+  --hud-terrain-plain: #4a4630;
+  --hud-terrain-forest: #28402c;
+  --hud-terrain-mountain: #3c3c44;
+  --hud-terrain-swamp: #2f3a26;
+  --hud-terrain-desert: #4e422a;
+  --hud-terrain-jungle: #1f3d2d;
+  --hud-terrain-tundra: #39444a;
+  --hud-terrain-volcano: #43221f;
+  --hud-terrain-cavern: #33333c;
+  --hud-terrain-underforest: #23372b;
+  --hud-terrain-wasteland: #453d31;
+  --hud-terrain-other: #3a4048;
+}
+
+:root[data-theme="light"] {
+  --hud-panel: #f7f4ec;
+  --hud-edge: #7b8fa1;
+  --hud-ink: #2a3038;
+  --hud-lattice: #55606b;
+
+  --hud-ship: #4a6076;
+  --hud-battle: #8a6414;
+  --hud-gate: #6b4a99;
+  --hud-shaft: #7a6a34;
+  --hud-monster: #b04a4a;
+  --hud-lair: #9a5a2a;
+  --hud-settlement: #6f5c22;
+
+  --hud-own: #2b7d52;
+  --hud-foreign: #1f6f96;
+  --hud-monster-unit: #b04a4a;
+
+  --hud-terrain-ocean: #b6ccdd;
+  --hud-terrain-plain: #ded6b0;
+  --hud-terrain-forest: #b6cdb6;
+  --hud-terrain-mountain: #c6c6cc;
+  --hud-terrain-swamp: #c2c9a8;
+  --hud-terrain-desert: #e5d6b0;
+  --hud-terrain-jungle: #a9cdb4;
+  --hud-terrain-tundra: #c8d2d8;
+  --hud-terrain-volcano: #d9b3ab;
+  --hud-terrain-cavern: #c8c8d0;
+  --hud-terrain-underforest: #b4ccb8;
+  --hud-terrain-wasteland: #d8ccb6;
+  --hud-terrain-other: #c4cad2;
+}
+
+.hud-terrain-ocean {
+  fill: var(--hud-terrain-ocean);
+}
+.hud-terrain-plain {
+  fill: var(--hud-terrain-plain);
+}
+.hud-terrain-forest {
+  fill: var(--hud-terrain-forest);
+}
+.hud-terrain-mountain {
+  fill: var(--hud-terrain-mountain);
+}
+.hud-terrain-swamp {
+  fill: var(--hud-terrain-swamp);
+}
+.hud-terrain-desert {
+  fill: var(--hud-terrain-desert);
+}
+.hud-terrain-jungle {
+  fill: var(--hud-terrain-jungle);
+}
+.hud-terrain-tundra {
+  fill: var(--hud-terrain-tundra);
+}
+.hud-terrain-volcano {
+  fill: var(--hud-terrain-volcano);
+}
+.hud-terrain-cavern {
+  fill: var(--hud-terrain-cavern);
+}
+.hud-terrain-underforest {
+  fill: var(--hud-terrain-underforest);
+}
+.hud-terrain-wasteland {
+  fill: var(--hud-terrain-wasteland);
+}
+.hud-terrain-other {
+  fill: var(--hud-terrain-other);
+}
+
+.hud-edge {
+  stroke: var(--hud-edge);
+}
+
+/*
+ * Dimming, for the two states that are not this turn's report. Both use the panel colour: this
+ * design says how old a reading is with a number, not with a texture, so the tint only has to take
+ * the hex out of the foreground.
+ */
+.hud-tint {
+  fill: var(--hud-panel);
+}
+
+.hud-road {
+  stroke: var(--hud-lattice);
+}
+
+/* Every badge is a panel cut into the hex, outlined in its feature's tone. */
+.hud-badge {
+  fill: var(--hud-panel);
+}
+.hud-ship {
+  stroke: var(--hud-ship);
+}
+.hud-battle {
+  stroke: var(--hud-battle);
+}
+.hud-gate {
+  stroke: var(--hud-gate);
+}
+.hud-shaft {
+  stroke: var(--hud-shaft);
+}
+.hud-monster {
+  stroke: var(--hud-monster);
+}
+.hud-lair {
+  stroke: var(--hud-lair);
+}
+.hud-settlement {
+  stroke: var(--hud-settlement);
+}
+.hud-settlement-core {
+  fill: var(--hud-settlement);
+}
+
+.hud-guard-own {
+  stroke: var(--hud-own);
+}
+.hud-guard-foreign {
+  stroke: var(--hud-monster-unit);
+}
+.hud-counter-own {
+  stroke: var(--hud-own);
+}
+.hud-counter-foreign {
+  stroke: var(--hud-foreign);
+}
+.hud-counter-monster {
+  stroke: var(--hud-monster-unit);
+}
+.hud-text-own {
+  fill: var(--hud-own);
+}
+.hud-text-foreign {
+  fill: var(--hud-foreign);
+}
+.hud-text-monster {
+  fill: var(--hud-monster-unit);
+}
+
+/*
+ * Type. Monospace, because every label here is a number or a code and a readout's columns should
+ * line up. `font-size` longhand, never the `font` shorthand: a calc() inside the shorthand is valid
+ * CSS that some renderers drop, and the label then falls back to several times the width of a hex.
+ */
+.hud-label {
+  font-family: var(--font-mono);
+  paint-order: stroke fill;
+  stroke: var(--hud-panel);
+  stroke-width: calc(2px / var(--map-scale, 1));
+  stroke-linejoin: round;
+}
+.hud-name {
+  font-size: calc(8.5px / var(--map-scale, 1));
+  letter-spacing: calc(1px / var(--map-scale, 1));
+  fill: var(--hud-ink);
+}
+.hud-count {
+  font-size: calc(8.5px / var(--map-scale, 1));
+  font-weight: bold;
+}
+.hud-meta {
+  font-size: calc(7.5px / var(--map-scale, 1));
+  fill: var(--hud-ink);
+}
+
+/*
+ * Zoom bands.
+ *
+ * Badges and numbers drop band by band; far keeps terrain, the guard ring and the road lattice,
+ * which are the three things still legible when a hex is a few pixels across.
+ *
+ * Scoped to this theme, because every theme's stylesheet is loaded whichever one is selected.
+ */
+.map-theme-tactical-hud.map-far [data-station],
+.map-theme-tactical-hud.map-far [data-counter],
+.map-theme-tactical-hud.map-far .hud-label,
+.map-theme-tactical-hud.map-mid .hud-name,
+.map-theme-tactical-hud.map-mid .hud-meta {
+  display: none;
+}
+
+/* The guard ring survives the far band: who holds a hex reads even at a few pixels. */
+.map-theme-tactical-hud.map-far [data-station="guard"] {
+  display: initial;
+}
