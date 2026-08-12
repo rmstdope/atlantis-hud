@@ -8,10 +8,16 @@
  * auto-export is throttled to once a minute and has committed a snapshot holding a bead that had
  * already been deleted.
  *
- * So the obligation moved here, to the push. Once per branch, and nothing stale can leave the
- * machine. A pre-push hook cannot amend or extend the commits being pushed - git has already worked
- * out the refs - so a stale export is committed on its own and the push is aborted with a message
- * saying to push again. Nothing is ever rewritten and no `--force` is ever needed.
+ * So the obligation moved here, to the push - and then narrowed to main, which is the only branch
+ * that owes it. A pre-push hook cannot amend or extend the commits being pushed - git has already
+ * worked out the refs - so a stale export is committed on its own and the push is aborted with a
+ * message saying to push again. Nothing is ever rewritten and no `--force` is ever needed.
+ *
+ * Why main alone: the export is a snapshot of the whole database, which every agent on this machine
+ * shares, rather than of the branch that happens to carry it. Two feature branches pushed minutes
+ * apart each held a complete backlog from a different instant, so whichever merged last reverted
+ * every close, claim, label and plan recorded in between - and because each side had rewritten a
+ * different subset of the one-line-per-bead file, git usually did not even call it a conflict.
  *
  * The gate is a convenience, and a convenience must never be the reason a push fails. No `bd`, no
  * `.beads`, a detached HEAD, an export that fails, or a git that refuses the commit: each of them
@@ -29,11 +35,23 @@ const EXPORT_PATH = join(".beads", "issues.jsonl");
 
 const REFRESH_MESSAGE = "chore(beads): refresh the issues export";
 
+/**
+ * The one branch that carries the export. See the reasoning in `decideGate`.
+ *
+ * Read from the checked-out branch rather than from the ref list git hands a pre-push hook on
+ * stdin, which is the more precise question — `git push origin HEAD:main` from elsewhere updates
+ * main without this noticing, and pushing a tag while standing on main refreshes for a push that
+ * touches nothing. Both are tolerable because the committed export is a snapshot taken when someone
+ * happens to be on main, not a mirror: bead state travels by `bd dolt push`. Reading stdin would
+ * also risk blocking a push if the bd section above has already drained it.
+ */
+const MAIN_BRANCH = "main";
+
 export type GateInput = {
   bdAvailable: boolean;
   beadsPresent: boolean;
-  /** Whether HEAD is on a branch. A commit made on a detached HEAD belongs to nothing. */
-  onBranch: boolean;
+  /** The branch HEAD is on, or nothing when HEAD is detached - a commit there belongs to nothing. */
+  branch: string | null;
   /** A fresh export of the database, or nothing when one could not be taken. */
   freshExport: string | null;
   /** What the repository currently has, or nothing when the file does not exist. */
@@ -43,7 +61,7 @@ export type GateInput = {
 export type GateDecision =
   | {
       kind: "proceed";
-      reason: "no-bd" | "no-beads" | "detached-head" | "export-failed" | "up-to-date";
+      reason: "no-bd" | "no-beads" | "detached-head" | "off-main" | "export-failed" | "up-to-date";
     }
   | { kind: "refresh"; text: string };
 
@@ -62,8 +80,15 @@ export function decideGate(input: GateInput): GateDecision {
   }
   // A detached HEAD is nobody's branch, so a commit made on it would be reachable from nothing the
   // moment the player checks something else out. Leave the export to the branch that owns it.
-  if (!input.onBranch) {
+  if (input.branch === null) {
     return { kind: "proceed", reason: "detached-head" };
+  }
+  // The export is a snapshot of the whole database, which every agent on this machine shares - not
+  // of the branch carrying it. Two branches pushed minutes apart hold complete backlogs from
+  // different instants, so whichever merges last reverts every close, claim, label and plan made in
+  // between, and git rarely even calls it a conflict. main owes the refresh; nothing else does.
+  if (input.branch !== MAIN_BRANCH) {
+    return { kind: "proceed", reason: "off-main" };
   }
   if (input.freshExport === null) {
     return { kind: "proceed", reason: "export-failed" };
@@ -78,14 +103,21 @@ export function decideGate(input: GateInput): GateDecision {
 /** Everything the decision needs, gathered from the repository the hook is running in. */
 function inspect(root: string): GateInput {
   const beadsPresent = existsSync(join(root, ".beads"));
-  const onBranch = currentBranch(root) !== null;
+  const branch = currentBranch(root);
   const committed = join(root, EXPORT_PATH);
   const committedExport = existsSync(committed) ? readFileSync(committed, "utf8") : null;
-  const nothingToDo = { bdAvailable: true, beadsPresent, onBranch, committedExport };
+  const nothingToDo = { bdAvailable: true, beadsPresent, branch, committedExport };
 
   // Nothing to export from, so bd is not worth starting. Every other case is the decision's to make,
-  // including the detached HEAD - one place decides, or a test can pass against the wrong guard.
+  // including the detached HEAD and the branch - one place decides, or a test can pass against the
+  // wrong guard.
   if (!beadsPresent) {
+    return { ...nothingToDo, freshExport: null };
+  }
+
+  // Off main there is nothing to compare against and nothing to write, so the export is not worth
+  // taking either - it is the slowest thing the hook does, on every push of every feature branch.
+  if (branch !== MAIN_BRANCH) {
     return { ...nothingToDo, freshExport: null };
   }
 
