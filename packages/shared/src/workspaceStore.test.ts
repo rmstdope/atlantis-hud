@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { resetWorkspaceStore, useWorkspaceStore } from "./workspaceStore";
+import { BADGES } from "./workspace/mapThemes/hexView";
+import { badgesFromStorage, resetWorkspaceStore, useWorkspaceStore } from "./workspaceStore";
 
 const store = () => useWorkspaceStore.getState();
 
@@ -109,9 +110,8 @@ describe("workspace selection", () => {
 describe("panels and layers", () => {
   beforeEach(resetWorkspaceStore);
 
-  it("opens every panel and shows units, structures, staleness and movement by default", () => {
+  it("opens every panel and shows staleness, movement and every badge by default", () => {
     expect(Object.values(store().collapsed).every((value) => value === false)).toBe(true);
-    expect(store().layers.units).toBe(true);
     expect(store().layers.staleness).toBe(true);
     // Movement earned its default when #83 gave it something to draw: a selected unit's own
     // orders, not just a planner mid-gesture. Off by default hid the feature entirely.
@@ -119,6 +119,62 @@ describe("panels and layers", () => {
     // Trade routes is gone entirely: it was the last toggle with nothing behind it, and a
     // control that does nothing is worse than no control.
     expect("tradeRoutes" in store().layers).toBe(false);
+    // Units and structures were two blunt chips over nine kinds of mark; each mark now has its
+    // own toggle, and the chip strip keeps only what is not a badge.
+    expect("units" in store().layers).toBe(false);
+    expect("structures" in store().layers).toBe(false);
+    expect(BADGES.map(({ name }) => name).every((name) => store().badges[name])).toBe(true);
+  });
+
+  it("toggles one badge without disturbing the others", () => {
+    store().toggleBadge("ships");
+
+    expect(store().badges.ships).toBe(false);
+    expect(store().badges.buildings).toBe(true);
+    expect(store().badges.roads).toBe(true);
+
+    store().toggleBadge("ships");
+    expect(store().badges.ships).toBe(true);
+  });
+
+  it("clears and restores the whole set in one press", () => {
+    store().setAllBadges(false);
+    expect(Object.values(store().badges).every((on) => on === false)).toBe(true);
+
+    store().setAllBadges(true);
+    expect(Object.values(store().badges).every((on) => on === true)).toBe(true);
+  });
+
+  it("turns a badge it has never heard of on, rather than silently hiding a mark", () => {
+    // Storage is hand-editable and outlives a release. A record persisted before a badge existed
+    // rehydrates with that key missing, and a missing key reads as off - a mark gone from the map
+    // with a checkbox that says it is showing.
+    const restored = badgesFromStorage({ ships: false });
+
+    expect(restored.ships).toBe(false);
+    expect(restored.buildings).toBe(true);
+    expect(Object.keys(restored).sort()).toEqual(BADGES.map(({ name }) => name).sort());
+  });
+
+  it("reads only the preferences back out of storage, never an action", () => {
+    // Zustand replaces the whole state with what `merge` returns, so a hand-edited record must
+    // not be able to put a number where `toggleBadge` should be.
+    const merge = useWorkspaceStore.persist.getOptions().merge;
+    const merged = merge?.(
+      { layers: { staleness: false }, toggleBadge: 1, game: { gameId: "ghost" } },
+      store()
+    ) as typeof store | undefined;
+    const state = merged as unknown as ReturnType<typeof store>;
+
+    expect(typeof state.toggleBadge).toBe("function");
+    expect(state.game).toBeNull();
+    expect(state.layers.staleness).toBe(false);
+  });
+
+  it("ignores a badge name from outside the set", () => {
+    expect(badgesFromStorage({ dragons: true } as Record<string, boolean>)).not.toHaveProperty(
+      "dragons"
+    );
   });
 
   it("folds one panel without disturbing the others", () => {
@@ -136,6 +192,7 @@ describe("panels and layers", () => {
     // hex that no longer exists would put stale headings over empty panels.
     store().togglePanel("region");
     store().toggleLayer("staleness");
+    store().toggleBadge("lairs");
     store().selectRegion("1:7,53");
 
     const options = useWorkspaceStore.persist.getOptions();
@@ -143,7 +200,8 @@ describe("panels and layers", () => {
     const persisted = (raw as { state?: Record<string, unknown> } | null)?.state ?? {};
 
     expect(persisted.collapsed).toMatchObject({ region: true, unit: false });
-    expect(persisted.layers).toMatchObject({ staleness: false, units: true });
+    expect(persisted.layers).toMatchObject({ staleness: false, movement: true });
+    expect(persisted.badges).toMatchObject({ lairs: false, ships: true });
     expect(persisted).not.toHaveProperty("selectedRegionId");
     expect(persisted).not.toHaveProperty("game");
   });

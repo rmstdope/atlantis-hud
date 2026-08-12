@@ -883,9 +883,46 @@ test("layer toggles are operable and none is inert", async ({ page }) => {
   await expect(chips.getByRole("checkbox", { name: "Trade routes" })).toHaveCount(0);
   await expect(chips.getByRole("checkbox", { name: "Staleness" })).toBeChecked();
 
-  await chips.getByRole("checkbox", { name: "Structures" }).uncheck();
-  await expect(chips.getByRole("checkbox", { name: "Structures" })).not.toBeChecked();
+  await chips.getByRole("checkbox", { name: "Staleness" }).uncheck();
+  await expect(chips.getByRole("checkbox", { name: "Staleness" })).not.toBeChecked();
   await expect(page.getByTestId("map-canvas")).toBeVisible();
+});
+
+/**
+ * The badges are what a hex says over its terrain, and a busy level says a great deal at once.
+ * Each kind is switchable on its own - turning off the settlement names used to mean turning off
+ * nothing, because the only controls were "units" and "structures" over nine kinds of mark - and
+ * the set a player settles on is a preference, so it outlives a reload.
+ */
+test("each badge can be turned off on its own, and the set survives a reload", async ({ page }) => {
+  await loadReport(page);
+
+  const map = page.getByTestId("map-canvas");
+  // Classic draws a settlement as its name over a ▣ glyph; the committed turn 71 has towns on it.
+  await expect(map.getByText("▣").first()).toBeVisible();
+
+  await page.getByTestId("layer-chips").getByRole("button", { name: "Badges" }).click();
+  const badges = page.getByTestId("badge-menu");
+  await expect(badges.getByRole("checkbox", { name: "Settlements" })).toBeChecked();
+
+  await badges.getByRole("checkbox", { name: "Settlements" }).uncheck();
+  await expect(map.getByText("▣")).toHaveCount(0);
+  // Only its own: the units standing in those hexes are still drawn.
+  await expect(map.locator(".map-pip").first()).toBeVisible();
+
+  await page.reload();
+  // The pips first: a map that has not finished restoring turn 71 draws no settlement glyph
+  // either, so "no ▣" only means the badge survived once there is something on the map to miss.
+  await expect(page.getByTestId("map-canvas").locator(".map-pip").first()).toBeVisible();
+  await expect(page.getByTestId("map-canvas").getByText("▣")).toHaveCount(0);
+  await page.getByTestId("layer-chips").getByRole("button", { name: "Badges" }).click();
+  await expect(
+    page.getByTestId("badge-menu").getByRole("checkbox", { name: "Settlements" })
+  ).not.toBeChecked();
+
+  // And All brings the whole set back, which is the way out of a map cleared down to its terrain.
+  await page.getByTestId("badge-menu").getByRole("button", { name: "All" }).click();
+  await expect(page.getByTestId("map-canvas").getByText("▣").first()).toBeVisible();
 });
 
 /**

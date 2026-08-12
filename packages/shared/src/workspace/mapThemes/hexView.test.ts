@@ -2,7 +2,16 @@ import { describe, expect, it } from "vitest";
 import type { Coordinate, ReportRegion, ReportUnit, StructureInfo } from "@atlantis/core-client";
 import type { HexKnowledge, HexNode } from "../../hexMapModel";
 import { COLUMN_PITCH, ROW_PITCH } from "../mapViewport";
-import { buildHexViews, MONSTER_FACTION_ID, ROAD_VECTORS, type HexViewOptions } from "./hexView";
+import {
+  allBadges,
+  BADGES,
+  buildHexViews,
+  MONSTER_FACTION_ID,
+  ROAD_VECTORS,
+  type BadgeName,
+  type HexView,
+  type HexViewOptions
+} from "./hexView";
 
 function at(x: number, y: number, z = 1): Coordinate {
   return { x, y, z };
@@ -77,13 +86,18 @@ function hex(overrides: Partial<HexNode> & { knowledge: HexKnowledge }): HexNode
 const ALL_ON: HexViewOptions = {
   showStaleness: true,
   showTextures: true,
-  showUnits: true,
-  showStructures: true
+  badges: allBadges(true)
 };
 
 /** The single view a one-hex model produces, which is what most of these assert against. */
-function viewOf(node: HexNode, options: Partial<HexViewOptions> = {}) {
-  return buildHexViews([node], { ...ALL_ON, ...options })[0];
+function viewOf(
+  node: HexNode,
+  options: Partial<Omit<HexViewOptions, "badges">> & {
+    badges?: Partial<Record<BadgeName, boolean>>;
+  } = {}
+) {
+  const { badges, ...rest } = options;
+  return buildHexViews([node], { ...ALL_ON, ...rest, badges: allBadges(true, badges) })[0];
 }
 
 describe("what a hex shows, prepared for whichever theme draws it", () => {
@@ -123,7 +137,14 @@ describe("what a hex shows, prepared for whichever theme draws it", () => {
   });
 });
 
-describe("the layer chips, applied once so no theme can forget one", () => {
+/** Everything the badges speak about: what a case names is what that badge took away. */
+type Vocabulary = Pick<
+  HexView,
+  "settlement" | "units" | "guard" | "roads" | "buildings" | "ships" | "shafts" | "lairs"
+>;
+
+describe("the badge toggles, applied once so no theme can forget one", () => {
+  /** A hex holding one of everything, so a badge turned off can be seen to take only its own. */
   const busy = hex({
     knowledge: "current",
     ownUnitCount: 3,
@@ -131,34 +152,124 @@ describe("the layer chips, applied once so no theme can forget one", () => {
     settlementName: "Inholm",
     region: region({
       settlement: { name: "Inholm", size: "city" },
-      structures: [structure("road n"), structure("Mine"), structure("Galley")],
-      units: [unit(), unit({ own: false, factionId: "95" })]
+      structures: [
+        structure("road n"),
+        structure("Mine"),
+        structure("Galley"),
+        structure("Shaft"),
+        structure("Lair")
+      ],
+      units: [
+        unit({ onGuard: true }),
+        unit({ own: false, factionId: MONSTER_FACTION_ID }),
+        unit({ own: false, factionId: "95" })
+      ]
     })
   });
 
-  it("empties the unit vocabulary when the units chip is off", () => {
-    const view = viewOf(busy, { showUnits: false });
+  /** What the busy hex looks like with every badge on: the baseline each case departs from. */
+  const whole: Vocabulary = {
+    settlement: { name: "Inholm", tier: "city" },
+    units: { own: 3, foreign: 2, monster: 1 },
+    guard: "own",
+    roads: ["n"],
+    buildings: 1,
+    ships: 1,
+    shafts: 1,
+    lairs: 1
+  };
 
-    expect(view.units).toEqual({ own: 0, foreign: 0, monster: 0 });
-    expect(view.guard).toBeNull();
+  /** Everything the badges speak about, so a case can say what it left standing. */
+  function vocabularyOf(view: ReturnType<typeof viewOf>): Vocabulary {
+    return {
+      settlement: view.settlement,
+      units: view.units,
+      guard: view.guard,
+      roads: view.roads,
+      buildings: view.buildings,
+      ships: view.ships,
+      shafts: view.shafts,
+      lairs: view.lairs
+    };
+  }
+
+  it("takes only its own mark away, badge by badge", () => {
+    // The whole point of the finer toggles: turning off buildings used to take the ships, the
+    // shafts, the lairs and the roads with it.
+    const cases: Array<[BadgeName, Partial<typeof whole>]> = [
+      ["settlements", { settlement: null }],
+      ["ownUnits", { units: { own: 0, foreign: 2, monster: 1 } }],
+      ["guard", { guard: null }],
+      ["roads", { roads: [] }],
+      ["buildings", { buildings: 0 }],
+      ["ships", { ships: 0 }],
+      ["shafts", { shafts: 0 }],
+      ["lairs", { lairs: 0 }],
+      // A monster hidden must leave the foreign tally too. Every theme draws the ordinary foreign
+      // group as `foreign - monster`, so merely zeroing `monster` would redraw the monster as
+      // somebody's soldier and put the Foreign units counter up by one - the mark still on the
+      // map, under another name, and a badge nobody touched changing its number.
+      ["monsters", { units: { own: 3, foreign: 1, monster: 0 } }]
+    ];
+
+    for (const [badge, missing] of cases) {
+      expect(vocabularyOf(viewOf(busy, { badges: { [badge]: false } })), badge).toEqual({
+        ...whole,
+        ...missing
+      });
+    }
   });
 
-  it("empties the structure vocabulary when the structures chip is off", () => {
-    const view = viewOf(busy, { showStructures: false });
+  it("never leaves a monster standing in a tally that no longer counts it", () => {
+    // The two unit badges and the monster badge have to agree about one hex: whatever is hidden
+    // must be gone from `foreign` as well, or a theme draws it as an ordinary foreign unit.
+    const hidden = viewOf(busy, { badges: { monsters: false } });
 
-    expect(view.roads).toEqual([]);
-    expect(view.buildings).toBe(0);
-    expect(view.ships).toBe(0);
-    expect(view.shafts).toBe(0);
-    expect(view.lairs).toBe(0);
+    expect(hidden.units.foreign - hidden.units.monster).toBe(1);
   });
 
-  it("keeps the settlement, which is the land itself rather than a layer", () => {
-    // Neither chip speaks about towns: a settlement is not a unit and not a structure.
-    expect(viewOf(busy, { showUnits: false, showStructures: false }).settlement).toEqual({
-      name: "Inholm",
-      tier: "city"
+  it("takes the monsters with the foreign units, because they are counted among them", () => {
+    // `foreign` is the whole foreign tally and `monster` says how many of those are monsters, so
+    // a monster left standing in a hex whose foreign tally reads zero would be a contradiction.
+    const view = viewOf(busy, { badges: { foreignUnits: false } });
+
+    expect(view.units).toEqual({ own: 3, foreign: 0, monster: 0 });
+  });
+
+  it("leaves the hex bare when every badge is off", () => {
+    const bare = buildHexViews([busy], { ...ALL_ON, badges: allBadges(false) })[0];
+
+    expect(vocabularyOf(bare)).toEqual({
+      settlement: null,
+      units: { own: 0, foreign: 0, monster: 0 },
+      guard: null,
+      roads: [],
+      buildings: 0,
+      ships: 0,
+      shafts: 0,
+      lairs: 0
     });
+    // Still a hex: the badges are what stands on the land, not the land itself.
+    expect(bare.terrain).toBe("mountain");
+    expect(bare.texture).not.toBeNull();
+  });
+
+  it("offers a badge for every mark a theme can draw, and none for one it cannot", () => {
+    // `battle` and `gate` are reserved fields that are always false, and a control that does
+    // nothing is worse than no control.
+    expect(BADGES.map(({ name }) => name)).toEqual([
+      "settlements",
+      "ownUnits",
+      "foreignUnits",
+      "monsters",
+      "guard",
+      "ships",
+      "buildings",
+      "shafts",
+      "lairs",
+      "roads"
+    ]);
+    expect(BADGES.every(({ label }) => label.length > 0)).toBe(true);
   });
 
   it("drops the fade and the hatch when the staleness chip is off", () => {

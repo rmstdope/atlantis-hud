@@ -109,8 +109,17 @@ export const NAVIGATION_MOVES: readonly NavigationMove[] = [
   {
     id: "mapLayers",
     group: MAP,
-    description: "Show or hide units, structures, staleness and movement",
+    description: "Show or hide staleness and movement",
     mouse: "The boxes above the map",
+    keys: null
+  },
+  {
+    id: "mapBadges",
+    group: MAP,
+    // The popover is the only place these ten live, so a guide that did not name it would leave
+    // the player looking for the two boxes that used to speak for all of them.
+    description: "Show or hide each kind of mark a hex carries, from settlements to roads",
+    mouse: "The Badges menu above the map",
     keys: null
   },
   {

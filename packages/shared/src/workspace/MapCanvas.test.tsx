@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { HexMapModel } from "../hexMapModel";
 import { MapCanvas } from "./MapCanvas";
 import { CONGESTED_HEXES } from "./mapThemes/congestedFixture";
+import { allBadges } from "./mapThemes/hexView";
 import type { LayerProps, MapTheme } from "./mapThemes/mapTheme";
 
 /**
@@ -49,8 +50,7 @@ function draw(theme: MapTheme = probe()): string {
       onSelectRegion={() => {}}
       showStaleness
       showTextures={false}
-      showUnits
-      showStructures
+      badges={allBadges(true)}
     />
   );
 }

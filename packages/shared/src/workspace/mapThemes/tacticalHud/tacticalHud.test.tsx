@@ -2,15 +2,14 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { HexNode } from "../../../hexMapModel";
 import { CONGESTED_CENTRE, CONGESTED_HEXES, NAMED_ONLY } from "../congestedFixture";
-import { buildHexViews, type HexView, type HexViewOptions } from "../hexView";
+import { allBadges, buildHexViews, type HexView, type HexViewOptions } from "../hexView";
 import { tacticalHud } from "./index";
 import { ageLabel, buildingLabel, counterRow, settlementBox, STATIONS } from "./paint";
 
 const ALL_ON: HexViewOptions = {
   showStaleness: true,
   showTextures: false,
-  showUnits: true,
-  showStructures: true
+  badges: allBadges(true)
 };
 
 function draw(
@@ -293,8 +292,8 @@ describe("roads, as a luminous lattice", () => {
     expect(svg).toContain("stroke-dasharray");
   });
 
-  it("draws nothing when the structures chip is off", () => {
-    expect(draw(tacticalHud.RoadLayer, [CONGESTED_CENTRE], { showStructures: false })).not.toContain(
+  it("draws nothing when the roads badge is off", () => {
+    expect(draw(tacticalHud.RoadLayer, [CONGESTED_CENTRE], { badges: allBadges(true, { roads: false }) })).not.toContain(
       "<line"
     );
   });

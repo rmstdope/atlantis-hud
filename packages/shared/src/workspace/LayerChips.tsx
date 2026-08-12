@@ -1,4 +1,6 @@
+import { useState } from "react";
 import { useWorkspaceStore, type LayerName } from "../workspaceStore";
+import { BadgeMenu } from "./BadgeMenu";
 
 /**
  * Layer toggles above the map.
@@ -7,12 +9,13 @@ import { useWorkspaceStore, type LayerName } from "../workspaceStore";
  * it, waiting for a feature that never came; a control that does nothing is worse than no
  * control, so it went the way inert controls should.
  *
- * Structures joined the working ones in #58: the map draws a marker on a hex that holds any, so
- * leaving the toggle inert would have made it a control that visibly lies.
+ * Two of them have since gone the other way. "Units" and "structures" each spoke for a whole
+ * family of marks, so hiding the buildings on a crowded level also took the ships, the shafts,
+ * the lairs and the roads; each mark now has a toggle of its own, and they live behind the Badges
+ * chip because ten of them will not fit in a strip that shares the map's top band with the zoom
+ * cluster. What is left here is what is not a badge.
  */
 const LAYERS: Array<{ name: LayerName; label: string }> = [
-  { name: "units", label: "Units" },
-  { name: "structures", label: "Structures" },
   { name: "staleness", label: "Staleness" },
   { name: "movement", label: "Movement" }
 ];
@@ -20,8 +23,12 @@ const LAYERS: Array<{ name: LayerName; label: string }> = [
 export function LayerChips({ levels }: { levels: number[] }) {
   const layers = useWorkspaceStore((state) => state.layers);
   const toggleLayer = useWorkspaceStore((state) => state.toggleLayer);
+  const badges = useWorkspaceStore((state) => state.badges);
+  const toggleBadge = useWorkspaceStore((state) => state.toggleBadge);
+  const setAllBadges = useWorkspaceStore((state) => state.setAllBadges);
   const level = useWorkspaceStore((state) => state.level);
   const setLevel = useWorkspaceStore((state) => state.setLevel);
+  const [badgesOpen, setBadgesOpen] = useState(false);
 
   return (
     <div
@@ -44,6 +51,32 @@ export function LayerChips({ levels }: { levels: number[] }) {
           {label}
         </label>
       ))}
+
+      <div className="relative">
+        <button
+          type="button"
+          aria-haspopup="dialog"
+          aria-expanded={badgesOpen}
+          onClick={() => setBadgesOpen((open) => !open)}
+          className={`flex items-center gap-1 rounded border px-2 py-0.5 text-[11px] ${
+            // Lit while any badge is off, so a hex missing a mark is never a mystery: the strip
+            // says the map is showing less than everything without the panel being open.
+            Object.values(badges).every(Boolean)
+              ? "border-edge text-ink-dim"
+              : "border-select bg-select/15 text-ink"
+          }`}
+        >
+          Badges ▾
+        </button>
+        {badgesOpen && (
+          <BadgeMenu
+            badges={badges}
+            onToggle={toggleBadge}
+            onSetAll={setAllBadges}
+            onDismiss={() => setBadgesOpen(false)}
+          />
+        )}
+      </div>
 
       {levels.length > 1 ? (
         <select

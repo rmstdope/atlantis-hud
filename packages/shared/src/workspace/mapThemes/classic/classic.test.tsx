@@ -4,15 +4,14 @@ import type { HexNode } from "../../../hexMapModel";
 import { staleFadeAmount } from "../../mapHexView";
 import { HEX_RADIUS, worldOf } from "../../mapViewport";
 import { CONGESTED_CENTRE, CONGESTED_HEXES, NAMED_ONLY } from "../congestedFixture";
-import { buildHexViews, type HexViewOptions } from "../hexView";
+import { allBadges, buildHexViews, type HexViewOptions } from "../hexView";
 import { classic } from "./index";
 import { structureGlyphCount } from "./paint";
 
 const ALL_ON: HexViewOptions = {
   showStaleness: true,
   showTextures: false,
-  showUnits: true,
-  showStructures: true
+  badges: allBadges(true)
 };
 
 function draw(
@@ -97,10 +96,10 @@ describe("Classic roads", () => {
     expect(svg).toContain(`y2="${CENTRE.y - HEX_RADIUS * 0.87}"`);
   });
 
-  it("draws nothing at all when the structures chip is off", () => {
-    expect(draw(classic.RoadLayer, [CONGESTED_CENTRE], { showStructures: false })).not.toContain(
-      "<line"
-    );
+  it("draws nothing at all when the roads badge is off", () => {
+    expect(
+      draw(classic.RoadLayer, [CONGESTED_CENTRE], { badges: allBadges(true, { roads: false }) })
+    ).not.toContain("<line");
   });
 });
 
@@ -193,13 +192,18 @@ describe("Classic marks", () => {
     );
   });
 
-  it("draws no units when the units chip is off, and no works when structures are off", () => {
-    expect(draw(classic.MarkLayer, [CONGESTED_CENTRE], { showUnits: false })).not.toContain(
-      "map-pip"
-    );
-    expect(draw(classic.MarkLayer, [CONGESTED_CENTRE], { showStructures: false })).not.toContain(
-      "⌂"
-    );
+  it("draws no units when both unit badges are off, and no works when the roof badges are", () => {
+    expect(
+      draw(classic.MarkLayer, [CONGESTED_CENTRE], {
+        badges: allBadges(true, { ownUnits: false, foreignUnits: false })
+      })
+    ).not.toContain("map-pip");
+    // Classic counts shafts and lairs back in as roofs, so all three badges hold the glyph up.
+    expect(
+      draw(classic.MarkLayer, [CONGESTED_CENTRE], {
+        badges: allBadges(true, { buildings: false, shafts: false, lairs: false })
+      })
+    ).not.toContain("⌂");
   });
 
   it("says nothing about guards, monsters, shafts or lairs, which it has never drawn", () => {
