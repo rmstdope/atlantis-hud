@@ -83,7 +83,7 @@ Beads data lives in `.beads/`. The Dolt database is local and git-ignored; `.bea
 readable export that is committed. ALWAYS run `bd dolt push` before ending a working session so the
 bead database is backed up to the remote.
 
-### Github CLI
+### GitHub CLI
 
 GitHub issues are the inbox for external requests and bug reports. Use the command line command 'gh'
 for interacting with them. Be careful with quoting when using gh. NEVER use backticks in the text
