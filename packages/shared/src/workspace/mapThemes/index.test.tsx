@@ -162,12 +162,21 @@ describe("every shipped theme", () => {
  * Each theme's own suite tests its own wash, so nothing there could have seen it.
  */
 describe("what every theme owes the three knowledge states", () => {
-  // Each theme names its own washes - "unsurveyed" in most, "unpainted" on the board - so the
-  // marks are given as alternatives rather than assumed to be one word.
+  /**
+   * Each theme names its own washes - "unsurveyed" in most, "unpainted" on the board - so the
+   * marks are given as alternatives rather than assumed to be one word.
+   *
+   * The whole tag is matched first and the opacity read out of it afterwards, so attribute order
+   * does not matter. Reading them in one pass would have quietly stopped matching the day somebody
+   * reordered two JSX props, and a registry-wide guard that silently finds nothing is worse than
+   * no guard: `toBeDefined` below is what would fire, naming the wrong thing.
+   */
   const opacitiesOf = (svg: string, marks: string): number[] =>
-    Array.from(
-      svg.matchAll(new RegExp(`data-(?:wash|dim)="(?:${marks})"[^>]*opacity="([\\d.]+)"`, "gu"))
-    ).map((match) => Number(match[1]));
+    Array.from(svg.matchAll(/<[a-z]+\s[^>]*>/gu))
+      .map((match) => match[0])
+      .filter((tag) => new RegExp(`data-(?:wash|dim)="(?:${marks})"`, "u").test(tag))
+      .map((tag) => Number(/\sopacity="([\d.]+)"/u.exec(tag)?.[1]))
+      .filter((opacity) => !Number.isNaN(opacity));
 
   const render = (theme: MapTheme, view: HexView) =>
     renderToStaticMarkup(

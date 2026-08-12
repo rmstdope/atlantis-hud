@@ -268,13 +268,13 @@ describe("roads, as trodden paths", () => {
 });
 
 /**
- * Unpainted board takes the view model's fade as given, where a remembered scene is damped.
+ * Unpainted board is washed by the same damped proportion as a remembered scene.
  *
- * The reason has changed even though the assertion has not. It used to be that board nobody had
- * painted had nothing underneath worth keeping legible, so damping it would have muffled the state
- * that should shout loudest. There is terrain under it now, and the fade it takes is light to begin
- * with - the rim is what shouts. What the undamped value buys today is separation: damped, it would
- * sit under the stale wash and the two states would meet in the middle again.
+ * It used to take the view model's fade whole, on the grounds that board nobody had painted had
+ * nothing underneath worth keeping legible - true while the board was blank, and false now that
+ * the terrain is primed onto it. Damping both alike is also what keeps the two states apart:
+ * undamped, unsurveyed sat at 0.400 against a long-stale 0.496, close enough to be read as the
+ * same wash. The rim is what says which state this is; the wash only has to let the ground show.
  */
 describe("how loudly unpainted board is stated", () => {
   it("washes a named hex proportionally, as it washes a remembered scene", () => {

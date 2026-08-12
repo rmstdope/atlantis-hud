@@ -300,13 +300,6 @@ describe("roads, as a luminous lattice", () => {
 });
 
 /**
- * Unsurveyed ground is dimmed at full strength, never damped.
- *
- * The damping exists so an *aged* reading still shows the terrain it was a reading of. Ground nobody
- * has visited has no such claim to make - not knowing what is there is the whole message - and
- * damping it made the one state that should shout the quietest of the three.
- */
-/**
  * This asserted the *full* fade for a named hex, back when the fade was heavy and was the thing
  * that said "never surveyed". Every dim is damped now, unsurveyed included: the fade is light, the
  * rim carries the state, and damping alike is what keeps unsurveyed ground the lightest thing on
