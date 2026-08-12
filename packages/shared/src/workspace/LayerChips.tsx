@@ -29,6 +29,7 @@ export function LayerChips({ levels }: { levels: number[] }) {
   const level = useWorkspaceStore((state) => state.level);
   const setLevel = useWorkspaceStore((state) => state.setLevel);
   const [badgesOpen, setBadgesOpen] = useState(false);
+  const showingEverything = Object.values(badges).every(Boolean);
 
   return (
     <div
@@ -57,16 +58,21 @@ export function LayerChips({ levels }: { levels: number[] }) {
           type="button"
           aria-haspopup="dialog"
           aria-expanded={badgesOpen}
+          // Lit while any badge is off, so a hex missing a mark is never a mystery: the strip says
+          // the map is showing less than everything without the panel having to be open.
+          data-badges-all={showingEverything}
           onClick={() => setBadgesOpen((open) => !open)}
           className={`flex items-center gap-1 rounded border px-2 py-0.5 text-[11px] ${
-            // Lit while any badge is off, so a hex missing a mark is never a mystery: the strip
-            // says the map is showing less than everything without the panel being open.
-            Object.values(badges).every(Boolean)
-              ? "border-edge text-ink-dim"
-              : "border-select bg-select/15 text-ink"
+            showingEverything ? "border-edge text-ink-dim" : "border-select bg-select/15 text-ink"
           }`}
         >
-          Badges ▾
+          Badges
+          {/* Decoration: read out, the caret becomes part of what a screen reader announces and
+              part of what a role-and-name query has to match. Hidden, as every other popover
+              trigger in this workspace hides its own. */}
+          <span aria-hidden className="text-ink-dim">
+            ▾
+          </span>
         </button>
         {badgesOpen && (
           <BadgeMenu

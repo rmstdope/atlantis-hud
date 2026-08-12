@@ -901,11 +901,16 @@ test("each badge can be turned off on its own, and the set survives a reload", a
   // Classic draws a settlement as its name over a ▣ glyph; the committed turn 71 has towns on it.
   await expect(map.getByText("▣").first()).toBeVisible();
 
-  await page.getByTestId("layer-chips").getByRole("button", { name: "Badges" }).click();
+  const trigger = page.getByTestId("layer-chips").getByRole("button", { name: "Badges" });
+  await expect(trigger).toHaveAttribute("data-badges-all", "true");
+
+  await trigger.click();
   const badges = page.getByTestId("badge-menu");
   await expect(badges.getByRole("checkbox", { name: "Settlements" })).toBeChecked();
 
   await badges.getByRole("checkbox", { name: "Settlements" }).uncheck();
+  // The chip itself says the map is showing less than everything, without the panel being open.
+  await expect(trigger).toHaveAttribute("data-badges-all", "false");
   await expect(map.getByText("▣")).toHaveCount(0);
   // Only its own: the units standing in those hexes are still drawn.
   await expect(map.locator(".map-pip").first()).toBeVisible();
