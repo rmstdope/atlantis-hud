@@ -56,8 +56,16 @@ const TEXTURED_TERRAINS = new Set([
   "wasteland"
 ]);
 
-/** A hex named by a neighbour's exits is terrain and province only, and is drawn as that much. */
-const NAMED_FOG_OPACITY = 0.55;
+/**
+ * A hex named by a neighbour's exits is terrain and province only, and is drawn as that much.
+ *
+ * Deliberately well clear of `FADE_LIMIT`, the darkest an old sighting ever gets. The two states
+ * were once close enough that telling them apart meant comparing shades of the same terrain, which
+ * made "what have I actually seen?" a question you had to squint at a hex to answer instead of one
+ * the whole map answers at a glance. Ground somebody walked, however long ago, is knowledge; ground
+ * a neighbour merely named is not, and the gap between them should say so.
+ */
+const NAMED_FOG_OPACITY = 0.78;
 
 /** How fast a sighting fades, and how faint it is ever allowed to get. */
 const FADE_AT_ONCE = 0.3;

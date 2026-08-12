@@ -349,3 +349,20 @@ describe("terrain, in pigment rather than in the app's own colours", () => {
     );
   });
 });
+
+describe("whose banner flies over the hex", () => {
+  it("flies a foreign guard's banner in its own colour, not the monsters'", () => {
+    // Found reviewing the same mistake in another theme. `guard` says who holds the hex, and
+    // "somebody else's faction" is not "a wandering monster" - painting both red makes a rival's
+    // garrison read as wildlife, and the shields directly below already use the foreign colour.
+    // Scoped to the banner itself. A bare `toContain` passes on the unit shields below, which carry
+    // the same class - the first version of this test did exactly that and proved nothing.
+    const banner = (guard: "own" | "foreign") =>
+      /<g[^>]*data-guard="[^"]*"[\s\S]*?<\/g>/.exec(marks([viewWith({ guard })]))?.[0] ?? "";
+
+    expect(banner("foreign")).toContain('data-guard="foreign"');
+    expect(banner("foreign")).toContain("ct-fill-foreign");
+    expect(banner("foreign")).not.toContain("ct-fill-monster");
+    expect(banner("own")).toContain("ct-fill-own");
+  });
+});

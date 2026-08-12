@@ -73,7 +73,13 @@ Hexes are drawn in three buckets, weakest knowledge first, so a fully-known hex 
 on top: **named → stale → current**.
 
 - **Named** (known only from a neighbour's exits): terrain overlaid with `terrain-unknown` fog
-  at a fixed 55% opacity. Never hatched — a hex that was never visited has no age.
+  at a fixed 78% opacity. Never hatched — a hex that was never visited has no age. The figure sits
+  well clear of the stale cap below, and deliberately: the two states were once close enough that
+  telling them apart meant comparing shades of the same terrain, and "what have I actually seen?"
+  should be a question the whole map answers at a glance rather than one you squint at a hex to
+  settle. A named hex ends up near — but not at — the colour of ground nobody has walked, which is
+  about right, since a name from a neighbour is very nearly no knowledge at all; the fog lattice is
+  what distinguishes never-explored ground structurally.
 - **Current** (in this turn's report): terrain drawn clean, no overlay.
 - **Stale** (visited before, absent from the current report), when the **staleness toggle** is
   on: terrain overlaid with fog whose opacity grows continuously with age —

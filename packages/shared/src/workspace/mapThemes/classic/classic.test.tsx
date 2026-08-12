@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { HexNode } from "../../../hexMapModel";
+import { staleFadeAmount } from "../../mapHexView";
 import { HEX_RADIUS, worldOf } from "../../mapViewport";
 import { CONGESTED_CENTRE, CONGESTED_HEXES, NAMED_ONLY } from "../congestedFixture";
 import { buildHexViews, type HexViewOptions } from "../hexView";
@@ -68,8 +69,12 @@ describe("Classic terrain", () => {
 
   it("fogs a hex known only from a neighbour's exits, but never hatches it", () => {
     const svg = draw(classic.TerrainLayer, [NAMED_ONLY]);
+    const named = Number(/fill-opacity="([\d.]+)"/.exec(svg)?.[1]);
 
-    expect(Number(/fill-opacity="([\d.]+)"/.exec(svg)?.[1])).toBeCloseTo(0.55);
+    // Asserted as a property rather than a number: how heavy the fog is belongs to the shared
+    // knowledge model, and the map is meant to answer "what have I actually seen?" at a glance -
+    // so unvisited ground has to sit well clear of even the oldest sighting.
+    expect(named).toBeGreaterThan(staleFadeAmount(1000) + 0.1);
     expect(svg).not.toContain("url(#stale-hatch)");
   });
 
