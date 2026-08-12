@@ -235,8 +235,13 @@ describe("planning a batch of reports", () => {
 
   /**
    * Both reports of a repeated turn are committed, so whichever the plan puts last is the one the
-   * database keeps and the one put on screen. The order is decided by the comparator rather than
-   * left to the sort being stable, and this is what says so.
+   * database keeps and the one put on screen.
+   *
+   * Pins that behaviour, not the mechanism behind it. Steps are pushed in the order the files were
+   * chosen and `sort` has been stable since ES2019, so the comparator's explicit index tiebreak and
+   * a bare reliance on stability are equivalent for every input this function can build - removing
+   * the tiebreak leaves this green, which was checked rather than assumed. The tiebreak is there so
+   * a reader can see the order being decided; this test is there so the order itself cannot drift.
    */
   it("orders two reports of one turn by the order they were chosen", () => {
     const plan = planReportBatch(viewer("95"), [
