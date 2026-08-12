@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
-import { dirname, isAbsolute, join } from "node:path";
+import { dirname, isAbsolute, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
@@ -23,8 +23,16 @@ import { describe, expect, it } from "vitest";
  * Rust job down and leave the cache pointing at nothing.
  */
 
-const REPO = join(dirname(fileURLToPath(import.meta.url)), "..");
+const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const CONFIG = join(REPO, ".cargo", "config.toml");
+
+/** Where the agents' worktrees live, relative to the repository root. */
+const AGENT_WORKSPACES = ".claude";
+
+/** One separator, so a comparison is about the path rather than about the platform. */
+function normalise(path: string): string {
+  return resolve(path).split(sep).join("/");
+}
 
 /** The value of `build.target-dir`, or nothing when the config does not set one. */
 function targetDir(text: string): string | null {
@@ -41,8 +49,13 @@ describe("the shared cargo build directory", () => {
 
   it("names a relative path, because an absolute one would only work on one machine", () => {
     const configured = targetDir(readFileSync(CONFIG, "utf8"));
-    expect(configured).not.toBeNull();
-    expect(isAbsolute(configured as string)).toBe(false);
+    // Thrown rather than expected: `not.toBeNull()` does not stop the test, so a null would reach
+    // isAbsolute below and fail there instead, with a message about the wrong thing.
+    if (configured === null) {
+      throw new Error("the cargo config sets no build.target-dir at all");
+    }
+
+    expect(isAbsolute(configured)).toBe(false);
     expect(configured).not.toContain("~");
   });
 
@@ -53,8 +66,12 @@ describe("the shared cargo build directory", () => {
       cwd: REPO,
       encoding: "utf8"
     });
-    const paths = [...listed.matchAll(/^worktree (.+)$/gmu)].map((match) => match[1]);
-    const strays = paths.filter((path) => path !== REPO && !path.startsWith(join(REPO, ".claude")));
+    // git reports paths with forward slashes on every platform, including Windows, where the repo
+    // is built for release - so both sides are normalised before they are compared at all.
+    const paths = [...listed.matchAll(/^worktree (.+)$/gmu)].map((match) => normalise(match[1]));
+    const root = normalise(REPO);
+    const inside = `${root}/${AGENT_WORKSPACES}`;
+    const strays = paths.filter((path) => path !== root && !path.startsWith(inside));
 
     expect(strays).toEqual([]);
   });
