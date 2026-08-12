@@ -5,19 +5,20 @@ widget; the implementation lives in `packages/shared/src/workspace/MapCanvas.tsx
 `packages/shared/src/workspace/mapHexView.ts` (shared geometry and terrain decisions), and
 `packages/shared/src/theme.css` (colors).
 
-> **Hex rendering is now pluggable.** The layers described below are split between the map, which
-> owns all of them once, and the selected *map theme*, which owns terrain, knowledge overlays,
-> roads and marks. Everything this document describes as drawn is what the **Classic** theme draws —
-> it is the map as it was before themes existed, and it is deliberately frozen so the designed
-> themes have a stable reference. What a theme receives, and how to add one, is in
-> [`map-themes.md`](map-themes.md); the designed alternatives are in
+> **Hex rendering is pluggable.** The layers described below are split between the map, which owns
+> some of them once for everybody, and the selected *map theme*, which owns terrain, knowledge
+> overlays, roads and marks. This document describes the **contract**: what there is to draw, and
+> what each layer means. Where a concrete treatment helps, it is taken from **Cartographer's
+> Table**, the theme the map opens on — but a theme is free to draw the same meaning differently,
+> and the five that ship all do. What a theme receives, and how to add one, is in
+> [`map-themes.md`](map-themes.md); the designs are drawn in
 > [`hex-design-proposals.html`](hex-design-proposals.html).
 >
-> The shared view model already exposes more vocabulary than Classic draws — settlement tiers,
-> guards, monsters, shafts and lairs are all derived from what reports already provide. The
-> "not yet implemented" list at the foot of this document is therefore about Classic and about the
-> parser, not about the data being unavailable: only **battle** and **gate** genuinely await parser
-> work, and attitude groups await faction attitudes.
+> Settlement tiers, guards, monsters, shafts and lairs are all derived from what reports already
+> provide, and every shipped theme draws them. The "not yet implemented" list at the foot of this
+> document is therefore about the parser and the view model rather than about any one theme:
+> **battle** and **gate** await parser work, attitude groups await faction attitudes, and barren
+> terrain awaits a decision about how to draw it.
 
 ## Foundations
 
@@ -40,7 +41,7 @@ A hex is composited from these layers, bottom to top:
 3. Knowledge overlays (named fog, stale fade, stale hatch)
 4. Road spokes
 5. Route overlay (line + risk tint)
-6. Marks: unit pips, unit count, structure glyphs, ship mark, settlement
+6. Marks: units, unit count, guard, monsters, buildings, ships, shafts, lairs, settlement
 7. Selection ring
 8. Keyboard focus ring
 9. Invisible hit/accessibility polygon
@@ -54,10 +55,15 @@ contributes only its eastern three edges to the pattern motif, so no line is dra
 
 ### 2. Terrain
 
-Every known hex is filled with a solid color keyed by terrain type: ocean, plain, forest,
+Every known hex is painted by terrain type, keyed on twelve terrains: ocean, plain, forest,
 mountain, swamp, desert, jungle, tundra, volcano, cavern, underforest, wasteland. Any terrain
-word the parser meets that is not in this list falls back to `terrain-other` rather than
-vanishing. The hex is outlined with a 1px screen-constant `map-edge` stroke.
+word the parser meets that is not in this list falls back to an "other" treatment rather than
+vanishing.
+
+*How* a terrain is painted is the theme's. The shared palette — one `--color-terrain-<name>` per
+terrain, applied through `terrainFillClass` — is available to a theme that wants it, but every
+theme that ships declares its own: Cartographer's Table paints tinted paper and outlines the hex in
+ink, Miniature World paints a lit/shade gradient pair, Tactical HUD a panel wash.
 
 When the **textures toggle** is on and the terrain has a texture, the flat fill is replaced by
 a biome image (`/biomes/<terrain>_512.png`) clipped to the hex via an SVG pattern
@@ -72,30 +78,41 @@ reads as what it is. *(Not yet implemented.)*
 Hexes are drawn in three buckets, weakest knowledge first, so a fully-known hex always paints
 on top: **named → stale → current**.
 
-- **Named** (known only from a neighbour's exits): terrain overlaid with `terrain-unknown` fog
-  at a fixed 78% opacity. Never hatched — a hex that was never visited has no age. The figure sits
-  well clear of the stale cap below, and deliberately: the two states were once close enough that
-  telling them apart meant comparing shades of the same terrain, and "what have I actually seen?"
-  should be a question the whole map answers at a glance rather than one you squint at a hex to
-  settle. A named hex ends up near — but not at — the colour of ground nobody has walked, which is
-  about right, since a name from a neighbour is very nearly no knowledge at all; the fog lattice is
-  what distinguishes never-explored ground structurally.
+The **fade** each bucket gets is decided once, in `hexPaint`, and handed to the theme as a
+`fogOpacity`; what that fade is painted *in*, and what else marks the state, is the theme's.
+
+- **Named** (known only from a neighbour's exits): faded at a fixed 78%, and never hatched — a hex
+  that was never visited has no age. The figure sits well clear of the stale cap below, and
+  deliberately: the two states were once close enough that telling them apart meant comparing
+  shades of the same terrain, and "what have I actually seen?" should be a question the whole map
+  answers at a glance rather than one you squint at a hex to settle. A name from a neighbour is
+  very nearly no knowledge at all. Themes carry the distinction further in their own vocabulary —
+  Cartographer's Table washes it in a cool unsurveyed grey rather than the warm tone of age,
+  Tactical HUD outlines it as an unconfirmed contact, Miniature World leaves the board unpainted.
 - **Current** (in this turn's report): terrain drawn clean, no overlay.
 - **Stale** (visited before, absent from the current report), when the **staleness toggle** is
-  on: terrain overlaid with fog whose opacity grows continuously with age —
-  `min(0.62, 0.30 + 0.02 × ageInTurns)` — so a hex seen last turn reads nearly current and one
-  seen twenty turns ago reads nearly a rumour. The cap keeps an old sighting distinguishable
-  from ground nobody has walked. The hex is additionally hatched with a 45° diagonal line
-  pattern (`ink-soft` at 22% opacity, 5px pitch) marking the data as held but possibly out of
-  date. With the toggle off, stale hexes draw as current.
+  on: faded continuously with age — `min(0.62, 0.30 + 0.02 × ageInTurns)` — so a hex seen last turn
+  reads nearly current and one seen twenty turns ago reads nearly a rumour. The cap keeps an old
+  sighting distinguishable from ground nobody has walked. A theme marks the data as held but
+  possibly out of date on top of the fade, typically by hatching the hex; each declares its own
+  hatch. With the toggle off, stale hexes draw as current.
+
+Two traps live here, both of which have caught a theme already, and both are stated at length for
+theme authors in [`map-themes.md`](map-themes.md): a theme that branches on `fogOpacity` alone
+draws named and stale identically though they mean opposite things, and whatever tells them apart
+has to survive the far zoom band, where every label is hidden.
 
 ### 4. Roads
 
-Shown when the **structures toggle** is on. A structure whose kind matches `road <direction>`
-draws one **spoke**: a line from the hex centre to the matching edge midpoint, 0.87R along one
-of the six bearings (n, ne, se, s, sw, nw). Spokes are 7px, round-capped, screen-constant, and
-sit in a layer of their own *beneath* the route overlay, so a movement path crosses a road on
-top of it and the wider road always peeks out from under the path's 5px casing.
+Shown when the **roads badge** is on. A structure whose kind matches `road <direction>` draws one
+**spoke**: a line from the hex centre to the matching edge midpoint, 0.87R along one of the six
+bearings (n, ne, se, s, sw, nw). The bearing and the length are shared; the weight and the style
+are the theme's, and they differ by design — Tactical HUD draws the thinnest road, Miniature World
+the heaviest.
+
+Roads sit in a layer of their own *beneath* the route overlay, so a movement path crosses a road
+the way a traveller would, and a road wide enough to peek out from under the path's casing keeps
+"does this route run along the road or miss it" legible.
 
 ### 5. Route overlay
 
@@ -113,57 +130,51 @@ Each hex the route **enters** (never the origin) is tinted with a risk overlay: 
 
 ### 6. Marks
 
-All marks are `pointer-events: none` and gated by zoom band (see below).
+All marks are `pointer-events: none` and gated by zoom band (see below). Each is switchable on its
+own, by the badge named in brackets; the toggles are applied in `buildHexViews` *before* a theme
+sees anything, so a mark the player turned off is not in the view model at all. What each mark
+**means** is below; what it looks like is the theme's, and no two themes draw them alike.
 
-- **Unit pips** (units toggle): up to three circles below centre, one per attitude group,
-  colored by how the faction stands toward the units' owners rather than by mere ownership:
-  own units and allies in green, friendly and neutral factions in blue, unfriendly and
-  hostile factions in red. Radius encodes crowding: 2.6px for a handful (≤5), 4px for more.
-  *(The current implementation still draws two pips, own/foreign — see "Design decisions not
-  yet implemented" below.)*
-- **Monster mark** (units toggle): a hex holding units belonging to faction 2 — the monster
-  faction — carries a distinct monster mark, so wandering monsters are visible at a glance
-  and never blend into the ordinary unit pips. *(Not yet implemented.)*
-- **Battle mark**: a hex where a battle took place last turn is marked with crossing swords
-  (⚔), so the month's fighting can be surveyed on the map without reading through the battle
-  reports. *(Not yet implemented.)*
-- **Shaft mark** (structures toggle): a hex containing a Shaft structure — a passage to
-  another level — carries a distinct mark, the map's equivalent of stairs on a dungeon map.
-  Shafts are the only non-magical way between the surface and the underworld, so they anchor
-  all inter-level route planning. *(Not yet implemented.)*
-- **Gate mark**: a hex known to contain a Gate carries a gate glyph. Gates allow instant
-  travel via Gate Lore, so the set of known gates shapes mage logistics; they deserve to be
-  visible without opening each region. *(Not yet implemented; may need parser support for
-  the report's gate line.)*
-- **Guard mark** (units toggle): a hex where units stand on guard carries a guard mark,
-  colored by the same attitude groups as the unit pips — green when own or allied units hold
-  the guard, red when unfriendly or hostile factions do. Guarding blocks taxation, theft and
-  hostile movement, so "where am I on guard" and "who holds this city" should be answerable
-  from the map alone. *(Not yet implemented.)*
-- **Lair mark** (structures toggle): a hex containing a lair, cave, ruin or other
-  unenterable monster habitat carries a hazard mark. These monsters never wander but can
-  attack units in the hex — a standing danger distinct from the monster mark, which tracks
-  faction 2 units. *(Not yet implemented.)*
-- **Unit count** (units toggle): `own/foreign` text (the `/foreign` part omitted when zero),
-  centred in the hex's upper third — a flat-top hex only reaches 0.87R up, so anything nearer
-  the rim reads as the neighbour's. Pushed one step higher when a settlement name owns the
-  slot above the glyph.
-- **Structure glyphs** (structures toggle): ⌂ roofs in `brass`, cascading right-and-down from
-  mid-right of the hex. Count encodes scale, not identity: 1 glyph for 1–3 buildings, 2 for
-  4–6, 3 for 7 or more. Roads and ships are excluded from the building count.
-- **Ship mark** (structures toggle): a small hull-with-sail path in `brass` at the hex's
-  upper-left — something here can leave. A structure is a ship when its kind is one of the
-  classic hull names (galley, raft, cog, clipper, galleon, corsair, balloon) or contains
+- **Unit marks** (own units / foreign units): how many units stand in the hex and whose they are.
+  Crowding is encoded as well as presence — a hex holding twenty units should not read as a hex
+  holding one. *(The view model splits units own/foreign/monster; the design calls for three
+  **attitude** groups instead — see "not yet implemented" below.)*
+- **Unit count** (own units / foreign units): the tally as text, for the near band where there is
+  room for it. How it is broken up is the theme's — one number per group beside each mark, rather
+  than a single combined figure, in every theme that ships.
+- **Monster mark** (monsters): a hex holding units of faction 2 — the monster faction — carries a
+  mark of its own, so wandering monsters never blend into somebody's army.
+- **Guard mark** (guard): units standing on guard, and whose. Guarding blocks taxation, theft and
+  hostile movement, so "where am I on guard" and "who holds this city" are answerable from the map
+  alone.
+- **Settlement** (settlements): the settlement's name, and a glyph encoding its tier — village,
+  town or city — since the tiers differ hugely in market depth, recruitment and guard strength.
+  The tier is `null` for a hex named only by a neighbour's exits, which gives the name but not the
+  size; that case is drawn as unknown rather than guessed at.
+- **Building marks** (buildings): how much has been built here. Count encodes scale, not identity.
+  Roads, ships, shafts and lairs are each classified out of the building tally and carry their own
+  marks.
+- **Ship mark** (ships): something here can leave. A structure is a ship when its kind is one of
+  the classic hull names (galley, raft, cog, clipper, galleon, corsair, balloon) or contains
   "ship" or "boat".
-- **Settlement**: a glyph at centre with the settlement name tight above it, both in
-  `settlement` color. Drawn last within the hex so name and glyph paint over roofs and hull.
-  The glyph encodes the settlement's tier — village, town, or city — by size or variant, since
-  the tiers differ hugely in market depth, recruitment, and guard strength. *(The current
-  implementation draws a single ▣ for every tier — see "Design decisions not yet implemented"
-  below.)*
+- **Shaft mark** (shafts): a passage to another level — the map's equivalent of stairs on a dungeon
+  map. Shafts are the only non-magical way between the surface and the underworld, so they anchor
+  all inter-level route planning.
+- **Lair mark** (lairs): a lair, cave, ruin or other unenterable monster habitat. These monsters
+  never wander but can attack units in the hex — a standing danger, distinct from the monster mark,
+  which tracks faction 2's roaming units.
+- **Battle mark**: a hex where a battle took place last turn, so the month's fighting can be
+  surveyed without reading through the battle reports. *(Reserved: every theme keeps a slot for it,
+  and the field is always false until the parser reads it.)*
+- **Gate mark**: a hex known to contain a Gate. Gates allow instant travel via Gate Lore, so the
+  set of known gates shapes mage logistics. *(Reserved, as above; may need parser support for the
+  report's gate line.)*
 
-Labels (`map-label`) are 9px screen-constant with a `ground`-colored halo stroke
-(`paint-order: stroke fill`) so they stay legible over any terrain.
+Labels must stay screen-constant, dividing their font size by `--map-scale`, or they grow with the
+hex and the map is back to what it left a canvas to avoid. The shared `map-label` class does that
+at 9px with a `ground`-colored halo stroke (`paint-order: stroke fill`) and is there for the
+taking; every theme that ships sets its own type instead, dividing by `--map-scale` itself — as
+Cartographer's Table does with an italic serif.
 
 ### 7–8. Selection and focus rings
 
@@ -184,60 +195,58 @@ mid-keystroke.
 ## Zoom bands
 
 How much a hex shows depends on the zoom band, expressed as CSS rules keyed on a root class
-(`map-far` / `map-mid` / `map-near`) — changing band costs one class swap and no re-render.
+(`map-far` / `map-mid` / `map-near`) — changing band costs one class swap and no re-render. The
+map stamps the band; each theme writes its own policy, scoped to its own `map-theme-<id>` class.
+
+The shared shape of that policy, which every theme follows in its own vocabulary:
 
 | Element | far (step ≤ −3) | mid | near (step ≥ 3) |
 |---|---|---|---|
 | Terrain, knowledge overlays, roads, route | shown | shown | shown |
-| Unit pips | hidden | shown | shown |
+| Unit marks | hidden | shown | shown |
 | Unit count text | hidden | hidden | shown |
-| Structure glyphs, ship mark | hidden | shown | shown |
+| Building and ship marks | hidden | shown | shown |
 | Settlement glyph | hidden | shown | shown |
 | Settlement name | hidden | hidden | shown |
 | Selection / focus rings | shown | shown | shown |
 
 The rationale: labels are drawn at constant screen size, so as hexes shrink the text does not —
-past a point every label would overlap its neighbours.
+past a point every label would overlap its neighbours. Which is also why anything carrying
+*meaning* has to survive the far band without a label to lean on.
 
 ## Color reference
 
-All map colors, as theme custom properties (dark and light values in `theme.css`):
+Custom properties in `theme.css`, each with a dark and a light value. **What the map itself still
+draws with**, and so what a change here actually repaints:
 
-- `--color-terrain-<name>` — one per terrain, plus `terrain-unknown` (fog) and
-  `terrain-other` (fallback)
-- `--color-map-edge` — hex outline; `--color-fog-edge` — unexplored lattice
-- `--color-unit-own`, `--color-unit-foreign` — unit pips and count (to become three
-  attitude-group colors: green for own+allies, blue for friendly+neutral, red for
-  unfriendly+hostile)
-- `--color-settlement` — settlement glyph and name
+- `--color-terrain-unknown` — the unexplored ground; `--color-fog-edge` — the lattice over it
 - `--color-risk-low`, `--color-risk-medium`, `--color-risk-high` — route risk tints
-- `brass` / `brass-bright` — route line, structure glyphs, selection and focus rings
+- `brass` / `brass-bright` — route line, selection and focus rings
 
-Known exception: the road spoke is currently a literal `stroke="black"`, the one paint that
-bypasses the theme system.
+**Offered, but drawn with by nothing at present**: one `--color-terrain-<name>` per terrain plus
+`terrain-other`, reached through `terrainFillClass`; `--color-map-edge`; `--color-unit-own` and
+`--color-unit-foreign` (to become three attitude-group colors — green for own+allies, blue for
+friendly+neutral, red for unfriendly+hostile); `--color-settlement`. They were the palette of the
+retired Classic theme, and they remain the shared palette a new theme may adopt rather than
+declaring one of its own. Every theme that ships declares its own.
+
+A theme's own properties are namespaced and live in its `theme.css`; `theme.test.ts` requires a
+light counterpart for each and fails the build on a hex literal in `.ts`/`.tsx`.
 
 ## Design decisions not yet implemented
 
-The sections above describe the intended design; the implementation lags it in two places:
+The sections above describe the intended design. What is still missing is missing from the **view
+model or the parser**, not from any one theme — a mark the view model carries, every shipped theme
+draws.
 
-- **Attitude-colored unit pips.** The pips currently split units into own (blue) and foreign
-  (red). The design calls for three groups keyed on the faction's attitude toward the units'
-  owners: **own + allies (green)**, **friendly + neutral (blue)**, **unfriendly + hostile
-  (red)**.
-- **Monster mark.** Units of faction 2 (the monster faction) currently count as ordinary
-  foreign units. The design calls for a distinct per-hex monster mark whenever faction 2 has
-  units in the hex.
-- **Battle mark.** Battles are currently invisible on the map. The design calls for crossing
-  swords (⚔) on every hex where a battle took place last turn.
-- **Shaft mark.** Shafts currently count among the ordinary building roofs. The design calls
-  for a distinct passage-to-another-level mark.
-- **Gate mark.** Gates are not surfaced at all; the report's gate line may need parser
-  support before the mark can be drawn.
-- **Guard mark.** The per-unit `onGuard` flag is parsed but never drawn. The design calls
-  for a guard mark colored by attitude group.
-- **Lair mark.** Lairs, caves and ruins currently count among the ordinary building roofs.
-  The design calls for a distinct hazard mark.
-- **Settlement tiers.** Every settlement currently gets the same ▣ glyph. The design calls
-  for the glyph to encode village, town, or city.
-- **Barren terrain.** Barren regions have no dedicated treatment; whatever terrain word the
-  report uses falls through the ordinary terrain table.
+- **Attitude-colored unit marks.** The view model splits units into own, foreign and monster. The
+  design calls for three groups keyed on the faction's attitude toward the units' owners:
+  **own + allies (green)**, **friendly + neutral (blue)**, **unfriendly + hostile (red)**. This
+  awaits faction attitudes being parsed and carried through.
+- **Battle mark.** `battle` is a reserved field on `HexView` and is always false; the parser does
+  not read last turn's battles yet. Every theme keeps a slot for the mark, so nothing but the data
+  is missing.
+- **Gate mark.** `gate` is reserved the same way. The report's gate line may need parser support
+  before the field can ever be true.
+- **Barren terrain.** A region emptied by annihilation has no dedicated treatment; whatever terrain
+  word the report uses falls through the ordinary terrain table.

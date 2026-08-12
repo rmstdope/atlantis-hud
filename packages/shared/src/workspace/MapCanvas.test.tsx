@@ -12,8 +12,8 @@ import type { LayerProps, MapTheme } from "./mapThemes/mapTheme";
  * Rendered with a probe theme whose every layer does nothing but announce itself, so the assertions
  * are about composition alone: which layers are called, in what order, over which hexes, and what
  * the map stamps on its own root. `docs/ui/map-themes.md` states all of this to theme authors, and
- * nothing else checks it - the smoke suite exercises the map through Classic, which would go on
- * looking right if the contract quietly changed underneath it.
+ * nothing else checks it - the smoke suite exercises the map through whichever theme is the
+ * default, which would go on looking right if the contract quietly changed underneath it.
  */
 function probe(): MapTheme {
   const mark = (layer: string) => (props: LayerProps) => (

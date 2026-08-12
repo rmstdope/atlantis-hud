@@ -468,8 +468,44 @@ describe("the map theme", () => {
   });
   afterEach(removeDocumentStub);
 
-  it("opens on Classic, which is the map as it has always looked", () => {
+  it("opens on the registry's default", () => {
     expect(store().mapTheme).toBe(DEFAULT_MAP_THEME_ID);
+  });
+
+  /**
+   * Classic shipped as the default for as long as it existed, so "classic" is what sits in the
+   * settings blob of every player who never opened the picker. No migration code was written for
+   * it - `knownMapTheme` already answers the default for an id the registry does not know - and
+   * that is precisely why it is pinned here rather than assumed: the whole existing user base
+   * comes back through this path. The map itself would survive without it, since the shell
+   * resolves the id through `getMapTheme` on every render and that falls back too; what the
+   * reconciliation fixes is the id the store holds and the picker shows.
+   *
+   * Driven through storage and the startup call rather than through `setState`, because those are
+   * the two doors a returning player actually comes in by: rehydration merges the blob into state
+   * without ever reaching the setter, and `applyPersistedSettings` is the only thing that then
+   * reconciles it.
+   */
+  it("moves a settings blob that still names Classic onto the default", async () => {
+    const storage = useSettingsStore.persist.getOptions().storage;
+    store().setMapTheme(DEFAULT_MAP_THEME_ID);
+    const persisted = await storage?.getItem("atlantis-hud-settings");
+    if (!storage || !persisted) {
+      throw new Error("settings storage was not available");
+    }
+
+    const retired = JSON.parse(JSON.stringify(persisted)) as typeof persisted;
+    retired.state.mapTheme = "classic";
+    await storage.setItem("atlantis-hud-settings", retired);
+    await useSettingsStore.persist.rehydrate();
+    // The blob really did carry it in: without the reconciliation below, this is what the map
+    // would have been asked to draw with.
+    expect(store().mapTheme).toBe("classic");
+
+    applyPersistedSettings();
+
+    expect(store().mapTheme).toBe(DEFAULT_MAP_THEME_ID);
+    expect(store().mapTheme).not.toBe("classic");
   });
 
   it("changes to any theme the registry ships", () => {

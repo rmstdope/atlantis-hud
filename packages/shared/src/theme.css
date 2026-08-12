@@ -5,7 +5,6 @@
  * Adding a theme adds a line here; removing one deletes the line and the directory. Nothing else
  * in the stylesheet knows a theme by name.
  */
-@import "./workspace/mapThemes/classic/theme.css";
 @import "./workspace/mapThemes/cartographersTable/theme.css";
 @import "./workspace/mapThemes/tacticalHud/theme.css";
 @import "./workspace/mapThemes/miniatureWorld/theme.css";

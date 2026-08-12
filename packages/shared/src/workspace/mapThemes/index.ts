@@ -9,17 +9,22 @@
 
 import type { MapTheme } from "./mapTheme";
 import { cartographersTable } from "./cartographersTable/index";
-import { classic } from "./classic/index";
 import { beveledTile } from "./beveledTile/index";
 import { emblemAndDots } from "./emblemAndDots/index";
 import { miniatureWorld } from "./miniatureWorld/index";
 import { tacticalHud } from "./tacticalHud/index";
 
-/** In the order the settings picker offers them: the map as it was, then the five designs. */
-export const MAP_THEMES: readonly MapTheme[] = [classic, cartographersTable, tacticalHud, miniatureWorld, emblemAndDots, beveledTile];
+/** In the order the settings picker offers them, the atlas first as the one the map opens on. */
+export const MAP_THEMES: readonly MapTheme[] = [
+  cartographersTable,
+  tacticalHud,
+  miniatureWorld,
+  emblemAndDots,
+  beveledTile
+];
 
-/** The map as it has always looked, and what an unrecognised choice falls back to. */
-export const DEFAULT_MAP_THEME_ID = "classic";
+/** The most map-like of the designs, and what an unrecognised choice falls back to. */
+export const DEFAULT_MAP_THEME_ID = "cartographers-table";
 
 export function isMapThemeId(id: string, themes: readonly MapTheme[] = MAP_THEMES): boolean {
   return themes.some((theme) => theme.id === id);
@@ -32,15 +37,15 @@ export function isMapThemeId(id: string, themes: readonly MapTheme[] = MAP_THEME
  * theme it once shipped. A map that renders in the wrong style is a nuisance; one that renders
  * nothing is a broken app.
  *
- * The last resort is Classic itself rather than the registry's first entry, so the signature holds
- * even for a registry that is empty - which the shipped one never is, but a caller passing its own
- * list can be.
+ * The last resort is the default's own module rather than the registry's first entry, so the
+ * signature holds even for a registry that is empty - which the shipped one never is, but a caller
+ * passing its own list can be.
  */
 export function getMapTheme(id: string, themes: readonly MapTheme[] = MAP_THEMES): MapTheme {
   return (
     themes.find((theme) => theme.id === id) ??
     themes.find((theme) => theme.id === DEFAULT_MAP_THEME_ID) ??
-    classic
+    cartographersTable
   );
 }
 

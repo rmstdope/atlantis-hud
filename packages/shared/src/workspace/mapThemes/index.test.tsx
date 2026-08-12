@@ -52,9 +52,18 @@ describe("the map theme registry", () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 
-  it("opens on Classic, which is the map as it has always looked", () => {
-    expect(DEFAULT_MAP_THEME_ID).toBe("classic");
-    expect(getMapTheme(DEFAULT_MAP_THEME_ID).id).toBe("classic");
+  it("opens on Cartographer's Table, the most map-like of the designs", () => {
+    expect(DEFAULT_MAP_THEME_ID).toBe("cartographers-table");
+    expect(getMapTheme(DEFAULT_MAP_THEME_ID).id).toBe("cartographers-table");
+  });
+
+  it("no longer ships Classic, and sends anyone who still names it to the default", () => {
+    // Classic was the map before the designs arrived, and was retired once they had all landed.
+    // Its id lives on in hand-editable storage and in settings blobs written by older builds, so
+    // the registry has to answer for it rather than merely not know it.
+    expect(isMapThemeId("classic")).toBe(false);
+    expect(MAP_THEMES.some((theme) => theme.id === "classic")).toBe(false);
+    expect(getMapTheme("classic").id).toBe(DEFAULT_MAP_THEME_ID);
   });
 
   it("finds a theme by the id that was persisted", () => {
@@ -75,7 +84,7 @@ describe("the map theme registry", () => {
     // The signature promises a MapTheme, and the map crashes on anything else. An empty registry
     // is not reachable from the shipped one, but the promise has to hold for the argument form
     // too - which is what the tests and the picker use.
-    expect(getMapTheme("classic", []).id).toBe(DEFAULT_MAP_THEME_ID);
+    expect(getMapTheme("no-such-theme", []).id).toBe(DEFAULT_MAP_THEME_ID);
     expect(isMapThemeId(DEFAULT_MAP_THEME_ID, [])).toBe(false);
   });
 });

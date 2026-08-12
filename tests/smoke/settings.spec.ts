@@ -120,14 +120,17 @@ test("the map theme picker offers the registered themes and reaches the map", as
 
   // Populated from the registry: an empty picker would mean the registry never reached it.
   expect(await picker.locator("option").count()).toBeGreaterThan(1);
-  await expect(picker).toHaveValue("classic");
+  await expect(picker).toHaveValue("cartographers-table");
+
+  // Classic was retired once the designs had all landed, so the picker must not still offer it.
+  await expect(picker.locator('option[value="classic"]')).toHaveCount(0);
 
   await page.keyboard.press("Escape");
 
   // The chosen theme is stamped on the map's root, which is what its stylesheet hangs off - the
   // proof the setting reached the renderer rather than merely the store.
   const map = page.getByTestId("map-canvas").locator("svg");
-  await expect(map).toHaveClass(/map-theme-classic/);
+  await expect(map).toHaveClass(/map-theme-cartographers-table/);
 });
 
 test("choosing another map theme redraws the open map, and the choice outlives a reload", async ({
@@ -140,31 +143,31 @@ test("choosing another map theme redraws the open map, and the choice outlives a
   await openReport(page);
 
   const map = page.getByTestId("map-canvas").locator("svg");
-  await expect(map).toHaveClass(/map-theme-classic/);
-  // Classic's settlement glyph, which the atlas replaces with a keep.
-  await expect(map.getByText("▣").first()).toBeAttached();
+  await expect(map).toHaveClass(/map-theme-cartographers-table/);
+  // The atlas draws a settlement as a keep, which the HUD replaces with a station readout.
+  await expect(map.locator('[data-mark="settlement"]').first()).toBeAttached();
 
   await page.getByTestId("settings-indicator").click();
-  await page.getByTestId("settings-map-theme").selectOption("cartographers-table");
+  await page.getByTestId("settings-map-theme").selectOption("tactical-hud");
 
   // Redrawn in place: no reload, and the dialog is still open over it.
-  await expect(map).toHaveClass(/map-theme-cartographers-table/);
-  await expect(map).not.toHaveClass(/map-theme-classic/);
-  // Marks only the atlas draws, so this is the theme's own rendering and not just a class swap -
-  // and Classic's own glyph is gone, so the two are not simply layered on top of each other.
-  await expect(map.locator('[data-mark="settlement"]').first()).toBeAttached();
-  await expect(map.getByText("▣")).toHaveCount(0);
+  await expect(map).toHaveClass(/map-theme-tactical-hud/);
+  await expect(map).not.toHaveClass(/map-theme-cartographers-table/);
+  // Marks only the HUD draws, so this is the theme's own rendering and not just a class swap -
+  // and the atlas's own mark is gone, so the two are not simply layered on top of each other.
+  await expect(map.locator('[data-station="settlement"]').first()).toBeAttached();
+  await expect(map.locator('[data-mark="settlement"]')).toHaveCount(0);
 
   await page.keyboard.press("Escape");
   await page.reload();
-  await expect(page.getByTestId("map-canvas").locator("svg")).toHaveClass(
-    /map-theme-cartographers-table/
-  );
+  await expect(page.getByTestId("map-canvas").locator("svg")).toHaveClass(/map-theme-tactical-hud/);
 
   // Back to the default, so later tests inherit the look they expect.
   await page.getByTestId("settings-indicator").click();
-  await page.getByTestId("settings-map-theme").selectOption("classic");
-  await expect(page.getByTestId("map-canvas").locator("svg")).toHaveClass(/map-theme-classic/);
+  await page.getByTestId("settings-map-theme").selectOption("cartographers-table");
+  await expect(page.getByTestId("map-canvas").locator("svg")).toHaveClass(
+    /map-theme-cartographers-table/
+  );
 });
 
 /**
