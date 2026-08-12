@@ -21,7 +21,7 @@
 #   title-length: 255
 
 # Default actor for audit trails (overridden by BEADS_ACTOR or --actor)
-# actor: "rmstdope"
+# actor: ""
 
 # Optional JSONL sidecar for explicit agent/tool interaction audit records.
 # Issue history is always recorded in the database and is visible with
