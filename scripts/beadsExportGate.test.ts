@@ -161,6 +161,22 @@ describe("the gate as a pre-push hook", () => {
   });
 
   /**
+   * The gate itself failing, here because it was run somewhere that is not a repository at all.
+   *
+   * Every case above is one the gate anticipated. This one stands for the ones it did not: an
+   * unreadable export, a temp directory it cannot make, a git that will not answer. The promise is
+   * about all of them, so it is kept at the entry point rather than case by case.
+   */
+  it("lets the push through when the gate itself fails unexpectedly", () => {
+    const outside = mkdtempSync(join(tmpdir(), "beads-gate-nowhere-"));
+
+    const run = spawnSync(TSX, [GATE], { cwd: outside, encoding: "utf8" });
+
+    expect(run.status).toBe(0);
+    expect(run.stderr).toContain("export gate could not run");
+  });
+
+  /**
    * A git that will not commit, here because the index is locked.
    *
    * Standing between the player and their remote is worse than an export that lands a push later, so

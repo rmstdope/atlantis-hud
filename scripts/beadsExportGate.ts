@@ -177,5 +177,19 @@ const invokedDirectly =
   process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 
 if (invokedDirectly) {
-  process.exit(runGate(repositoryRoot()));
+  // The promise that this never blocks a push is only as good as its weakest path, and the paths it
+  // did not anticipate are exactly the ones no case above covers. An unexpected failure is reported
+  // and stood down from, so the worst the gate can do is leave the export for the next push.
+  let code = 0;
+  try {
+    code = runGate(repositoryRoot());
+  } catch (error) {
+    process.stderr.write(`beads: the export gate could not run: ${describe(error)}\n`);
+  }
+
+  process.exit(code);
+}
+
+function describe(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
