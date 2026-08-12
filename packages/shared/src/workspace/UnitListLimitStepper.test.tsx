@@ -87,15 +87,21 @@ describe("UnitListLimitStepper", () => {
     expect(tag(markup(UNIT_LIST_LIMIT_MAX - 1), "unit-list-limit-more")).not.toMatch(SPENT);
   });
 
-  it("keeps a spent button pressable, so the focus on it is not lost", () => {
-    // The store clamps, so the press is a no-op there rather than here. A `disabled` button would
-    // leave the tab order under the user's own finger the moment they reached the end.
+  it("keeps a spent button focusable but asks for nothing when it is pressed", () => {
+    // A `disabled` button would leave the tab order under the user's own finger the moment they
+    // reached the end, so it stays pressable - but a control that announces itself as disabled and
+    // then acts is worse than either. It asks for nothing, rather than asking for a value out of
+    // range and trusting the store to throw it away.
     expect(tag(markup(UNIT_LIST_LIMIT_MIN), "unit-list-limit-less")).not.toMatch(/\sdisabled=""/);
-    expect(press(UNIT_LIST_LIMIT_MIN, "unit-list-limit-less")).toBe(UNIT_LIST_LIMIT_MIN - 1);
+    expect(press(UNIT_LIST_LIMIT_MIN, "unit-list-limit-less")).toBe(null);
+    expect(press(UNIT_LIST_LIMIT_MAX, "unit-list-limit-more")).toBe(null);
   });
 
   it("names both buttons, since a bare + and - say nothing when read aloud", () => {
     const html = markup(12);
+    // The group is named for rows too, for the same reason the buttons are: it sets how tall the
+    // pane stands, not which units are in it.
+    expect(html).toContain('aria-label="Rows of units shown"');
     // Rows, not units: nothing here takes a unit out of the list, and a name that said so would
     // describe the very thing the pane refuses to do.
     expect(tag(html, "unit-list-limit-less")).toContain('aria-label="Show fewer rows"');

@@ -13,9 +13,11 @@ const BUTTON =
  * hex need not reach: a hex holding four units under a maximum of twelve is the ordinary case, and
  * the count would be a lie if it claimed otherwise.
  *
- * At an end the button is marked spent rather than disabled, and still takes the press: the store
- * clamps, so the press is a no-op, and a keyboard user who steps down to the floor keeps the focus
- * they would otherwise have lost to the document as the button vanished from the tab order.
+ * At an end the button is marked spent rather than disabled, so a keyboard user who steps down to
+ * the floor keeps the focus they would otherwise have lost to the document as the button vanished
+ * from the tab order. It answers the press with nothing rather than with a value out of range: the
+ * store would clamp such a value away, but a control that announces itself as disabled and then
+ * acts anyway is a lie, and the next caller may not have a clamp behind it.
  *
  * The names say rows rather than units on purpose. Nothing here removes a unit from the list -
  * every one of them stays scrollable - so "show fewer units" would describe a thing the pane
@@ -28,14 +30,17 @@ export function UnitListLimitStepper({
   value: number;
   onChange: (next: number) => void;
 }) {
+  const atFloor = value <= UNIT_LIST_LIMIT_MIN;
+  const atCeiling = value >= UNIT_LIST_LIMIT_MAX;
+
   return (
-    <div role="group" aria-label="Units shown in the pane" className="flex items-center gap-1">
+    <div role="group" aria-label="Rows of units shown" className="flex items-center gap-1">
       <button
         type="button"
         data-testid="unit-list-limit-less"
         aria-label="Show fewer rows"
-        aria-disabled={value <= UNIT_LIST_LIMIT_MIN}
-        onClick={() => onChange(value - 1)}
+        aria-disabled={atFloor}
+        onClick={() => (atFloor ? undefined : onChange(value - 1))}
         className={BUTTON}
       >
         −
@@ -55,8 +60,8 @@ export function UnitListLimitStepper({
         type="button"
         data-testid="unit-list-limit-more"
         aria-label="Show more rows"
-        aria-disabled={value >= UNIT_LIST_LIMIT_MAX}
-        onClick={() => onChange(value + 1)}
+        aria-disabled={atCeiling}
+        onClick={() => (atCeiling ? undefined : onChange(value + 1))}
         className={BUTTON}
       >
         +
