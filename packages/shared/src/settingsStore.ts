@@ -62,6 +62,14 @@ export type SettingsState = {
    */
   movementPlanner: boolean;
   /**
+   * Whether the keyboard shortcuts overlay shows itself when the application starts.
+   *
+   * On by default, and the only piece of the interface that appears uninvited. It earns that: the
+   * overlay is opened by a key, so the player who most needs it is exactly the one who cannot find
+   * it. Turning it off is offered inside the overlay itself, next to the reason for wanting to.
+   */
+  showShortcutsAtStartup: boolean;
+  /**
    * The player's order snippets, insertable by name from the editor's completion popup.
    * Global on purpose: a patrol block is the same routine whichever game it is typed into.
    */
@@ -74,6 +82,7 @@ export type SettingsState = {
   setUnitListLimit: (count: number) => void;
   setWarnOnUnguardedHex: (enabled: boolean) => void;
   setMovementPlanner: (enabled: boolean) => void;
+  setShowShortcutsAtStartup: (enabled: boolean) => void;
   addSnippet: (snippet: OrderSnippet) => void;
   updateSnippet: (id: string, changes: Pick<OrderSnippet, "name" | "body">) => void;
   removeSnippet: (id: string) => void;
@@ -88,6 +97,7 @@ type Persisted = Pick<
   | "unitListLimit"
   | "warnOnUnguardedHex"
   | "movementPlanner"
+  | "showShortcutsAtStartup"
   | "snippets"
 >;
 
@@ -188,17 +198,30 @@ const STORAGE = createJSONStorage<Persisted>(() => {
   };
 });
 
+/**
+ * What every setting is before anybody chooses otherwise.
+ *
+ * One object rather than a list repeated in the store and again in the reset below. The two had
+ * drifted apart in the only way that matters: the tests reset before each case, so they read the
+ * reset's idea of a default and could not see the store's - a wrong default would have shipped
+ * with a green suite.
+ */
+const DEFAULTS: Persisted = {
+  theme: "dark",
+  mapTheme: DEFAULT_MAP_THEME_ID,
+  biomeTextures: true,
+  paneTransparency: DEFAULT_PANE_TRANSPARENCY,
+  unitListLimit: DEFAULT_UNIT_LIST_LIMIT,
+  warnOnUnguardedHex: false,
+  movementPlanner: false,
+  showShortcutsAtStartup: true,
+  snippets: []
+};
+
 export const useSettingsStore = create<SettingsState>()(
   persist<SettingsState, [], [], Persisted>(
     (set) => ({
-      theme: "dark",
-      mapTheme: DEFAULT_MAP_THEME_ID,
-      biomeTextures: true,
-      paneTransparency: DEFAULT_PANE_TRANSPARENCY,
-      unitListLimit: DEFAULT_UNIT_LIST_LIMIT,
-      warnOnUnguardedHex: false,
-      movementPlanner: false,
-      snippets: [],
+      ...DEFAULTS,
 
       setTheme: (theme) => {
         applyTheme(theme);
@@ -231,6 +254,10 @@ export const useSettingsStore = create<SettingsState>()(
         set({ movementPlanner });
       },
 
+      setShowShortcutsAtStartup: (showShortcutsAtStartup) => {
+        set({ showShortcutsAtStartup });
+      },
+
       addSnippet: (snippet) => {
         set((state) => ({ snippets: [...state.snippets, snippet] }));
       },
@@ -260,6 +287,7 @@ export const useSettingsStore = create<SettingsState>()(
         unitListLimit: state.unitListLimit,
         warnOnUnguardedHex: state.warnOnUnguardedHex,
         movementPlanner: state.movementPlanner,
+        showShortcutsAtStartup: state.showShortcutsAtStartup,
         snippets: state.snippets
       })
     }
@@ -301,16 +329,7 @@ export function applyPersistedSettings() {
 export function resetSettingsStore() {
   MEMORY.clear();
   optionalStorage()?.removeItem("atlantis-hud-settings");
-  useSettingsStore.setState({
-    theme: "dark",
-    mapTheme: DEFAULT_MAP_THEME_ID,
-    biomeTextures: true,
-    paneTransparency: DEFAULT_PANE_TRANSPARENCY,
-    unitListLimit: DEFAULT_UNIT_LIST_LIMIT,
-    warnOnUnguardedHex: false,
-    movementPlanner: false,
-    snippets: []
-  });
-  applyTheme("dark");
-  applyPaneTransparency(DEFAULT_PANE_TRANSPARENCY);
+  useSettingsStore.setState({ ...DEFAULTS });
+  applyTheme(DEFAULTS.theme);
+  applyPaneTransparency(DEFAULTS.paneTransparency);
 }

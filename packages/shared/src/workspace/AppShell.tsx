@@ -265,7 +265,21 @@ export function AppShell({
   const [pickerOpen, setPickerOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
-  const [helpOpen, setHelpOpen] = useState(false);
+  /**
+   * The shortcuts overlay, open from the first frame when the player has not turned that off.
+   *
+   * Read straight into the initial state rather than opened by an effect: the store rehydrates
+   * from storage before React mounts, so the answer is already known, and an effect would show the
+   * overlay a frame late - a flash of the workspace, then a modal over it. That rests on the
+   * rehydration being synchronous, which it is for `localStorage`; a storage backend that answered
+   * asynchronously would leave this reading the default and greeting everybody every time.
+   *
+   * Read once, at mount. Unticking the box inside the overlay must not close the overlay under the
+   * hand that ticked it, and turning the preference back on in settings must not reopen it.
+   */
+  const [helpOpen, setHelpOpen] = useState(
+    () => useSettingsStore.getState().showShortcutsAtStartup
+  );
   // The map export: whether its dialog is open, the rectangle a Shift+drag left behind, and how
   // the last attempt went. The rectangle outlives the dialog so re-opening it offers the same
   // area, and a drag while the dialog is closed is remembered rather than wasted.

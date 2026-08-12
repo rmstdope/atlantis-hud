@@ -379,6 +379,77 @@ describe("settings store", () => {
 
     expect(store().snippets).toEqual([]);
   });
+
+  /**
+   * The shortcuts overlay is the one thing in the application that cannot be found by exploring:
+   * it is opened by a key, and a player who does not know the keys is exactly who needs it. So it
+   * shows itself, until told not to.
+   */
+  it("offers the shortcuts overlay at startup until told otherwise", () => {
+    expect(store().showShortcutsAtStartup).toBe(true);
+  });
+
+  it("remembers being told not to show it", async () => {
+    store().setShowShortcutsAtStartup(false);
+    expect(store().showShortcutsAtStartup).toBe(false);
+
+    const storage = useSettingsStore.persist.getOptions().storage;
+    const persisted = await storage?.getItem("atlantis-hud-settings");
+    if (!storage || !persisted) {
+      throw new Error("settings storage was not available");
+    }
+
+    useSettingsStore.setState({ showShortcutsAtStartup: true });
+    await storage.setItem("atlantis-hud-settings", persisted);
+    await useSettingsStore.persist.rehydrate();
+
+    expect(store().showShortcutsAtStartup).toBe(false);
+  });
+
+  /**
+   * Every settings blob written before this existed has no such key, and rehydration merges
+   * storage over the defaults rather than beside them. Those players are precisely the ones who
+   * have never been shown the overlay, so the absent key has to mean "show it".
+   */
+  it("shows it to a player upgrading from a build that had no such setting", async () => {
+    // A value no default could produce, which also gives storage a blob to edit.
+    store().setPaneTransparency(35);
+
+    const storage = useSettingsStore.persist.getOptions().storage;
+    const persisted = (await storage?.getItem("atlantis-hud-settings")) as
+      | { state: Record<string, unknown>; version?: number }
+      | undefined;
+    if (!storage || !persisted) {
+      throw new Error("settings storage was not available");
+    }
+
+    // The blob an older build wrote: everything else, and no mention of this key at all.
+    const olderState = { ...persisted.state };
+    delete olderState.showShortcutsAtStartup;
+    // Reset first, so the store is at its defaults exactly as it is when the application starts,
+    // and the blob is written after that because resetting also clears storage.
+    resetSettingsStore();
+    // Cast because the point of the blob is that it is *not* the current shape: the key this test
+    // is about is missing from it, which is exactly what an older build wrote.
+    await storage.setItem("atlantis-hud-settings", {
+      ...persisted,
+      state: olderState
+    } as unknown as Parameters<typeof storage.setItem>[1]);
+    await useSettingsStore.persist.rehydrate();
+
+    // The transparency is the control: it proves the older blob was read at all, so the answer
+    // below is the absent key being answered rather than storage being ignored.
+    expect(store().paneTransparency).toBe(35);
+    expect(store().showShortcutsAtStartup).toBe(true);
+  });
+
+  it("resets the startup preference with everything else", () => {
+    store().setShowShortcutsAtStartup(false);
+
+    resetSettingsStore();
+
+    expect(store().showShortcutsAtStartup).toBe(true);
+  });
 });
 
 /**

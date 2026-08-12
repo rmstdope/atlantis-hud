@@ -8,14 +8,29 @@ import { expect, type Page } from "@playwright/test";
  */
 
 /**
- * Clears every game from the browser.
+ * Clears every game from the browser, and stands the startup greeting down.
  *
  * The suite runs serially against one origin, so a game left by an earlier test would still be
  * there for the next one - and the gate, which several of these walks are about, only appears when
  * there are none.
+ *
+ * The greeting is the shortcuts overlay, which shows itself on a first launch and covers the whole
+ * window while it does. Every walk here starts from a fresh context, so every walk is a first
+ * launch, and the very first click of each would land on the overlay's backdrop rather than on the
+ * thing it was aiming at. Turned off here in the one place they all pass through; the walk that is
+ * *about* the greeting clears the preference again with [`forgetSettings`] and gets the first-run
+ * behaviour a player gets.
  */
 export async function clearGames(page: Page) {
   await page.goto("/");
+  await page.evaluate(() => {
+    const stored = localStorage.getItem("atlantis-hud-settings");
+    const blob = stored ? (JSON.parse(stored) as { state?: Record<string, unknown> }) : {};
+    localStorage.setItem(
+      "atlantis-hud-settings",
+      JSON.stringify({ ...blob, state: { ...blob.state, showShortcutsAtStartup: false } })
+    );
+  });
   await page.evaluate(async () => {
     const databases = (await indexedDB.databases?.()) ?? [];
     const named = databases
@@ -38,6 +53,16 @@ export async function clearGames(page: Page) {
     );
   });
   await page.reload();
+}
+
+/**
+ * Forgets every remembered preference, so the next load is a player's first ever.
+ *
+ * Only the walk about the startup greeting wants this: everything else is better off with the
+ * greeting stood down, which is what `clearGames` arranges.
+ */
+export async function forgetSettings(page: Page) {
+  await page.evaluate(() => localStorage.removeItem("atlantis-hud-settings"));
 }
 
 /** Creates a game from whichever form is on screen, and waits for the workspace to follow. */
