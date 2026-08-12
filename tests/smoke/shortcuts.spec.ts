@@ -136,7 +136,7 @@ test("F8 walks to a problem in another unit's orders", async ({ page }) => {
     .toBe("WROK");
 });
 
-test("Mod+/ lists every shortcut", async ({ page }) => {
+test("Mod+/ shows how to get around, with the mouse as well as the keyboard", async ({ page }) => {
   await loadReport(page);
 
   await page.keyboard.press("ControlOrMeta+/");
@@ -146,6 +146,63 @@ test("Mod+/ lists every shortcut", async ({ page }) => {
   await expect(help).toContainText("next unit");
   await expect(help).toContainText("F8");
 
+  // The mouse half: the gestures the map answers to, which nothing else in the application says.
+  await expect(help).toContainText("Drag");
+  await expect(help).toContainText("wheel");
+  await expect(help).toContainText("Shift+drag");
+
+  // It holds more than a screenful now, so the body scrolls - and the switch and the close button
+  // stay put outside it, where a reader who has scrolled to the bottom can still find them.
+  const body = page.getByTestId("shortcut-help-body");
+  await expect(body).toBeVisible();
+  const scrollable = await body.evaluate((el) => el.scrollHeight > el.clientHeight);
+  expect(scrollable).toBe(true);
+  await expect(page.getByTestId("shortcut-help-at-startup")).toBeVisible();
+  await expect(page.getByTestId("shortcut-help-close")).toBeVisible();
+
   await page.keyboard.press("Escape");
   await expect(help).toHaveCount(0);
+});
+
+/**
+ * The gestures the overlay now advertises, done for real. A cheat sheet that describes a gesture
+ * the application does not have is worse than no cheat sheet, and only this can tell.
+ */
+test("the map really answers the gestures the overlay describes", async ({ page }) => {
+  await loadReport(page);
+  const map = page.getByTestId("map-canvas");
+  const box = await map.boundingBox();
+  if (!box) {
+    throw new Error("the map has no box to gesture over");
+  }
+  // The map's top-left corner, which is the one part of the canvas no panel floats over: a press
+  // anywhere else would be delivered to the panel rather than to the map. Where a drag ends does
+  // not matter in the same way - it is followed on the window, so it may finish behind a panel.
+  const open = { x: box.x + 30, y: box.y + 20 };
+  const hex = () => page.getByRole("button", { name: /^hex / }).first().boundingBox();
+
+  // "Drag" pans: the hexes move under a pointer that never lifts.
+  const before = await hex();
+  await page.mouse.move(open.x, open.y);
+  await page.mouse.down();
+  await page.mouse.move(open.x + 120, open.y + 70, { steps: 8 });
+  await page.mouse.up();
+  await expect.poll(async () => (await hex())?.x).not.toBe(before?.x);
+
+  // "Roll the wheel over the map" zooms. Back over the open corner first: the wheel turns wherever
+  // the pointer was left, and the pan left it deep in panel country.
+  const beforeZoom = await hex();
+  await page.mouse.move(open.x, open.y);
+  await page.mouse.wheel(0, -400);
+  await expect.poll(async () => (await hex())?.width).not.toBe(beforeZoom?.width);
+
+  // "Shift+drag" marks out an area to export, rather than panning.
+  await page.keyboard.down("Shift");
+  await page.mouse.move(open.x, open.y);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width - 30, box.y + box.height - 30, { steps: 8 });
+  await expect(page.getByTestId("map-marquee")).toBeVisible();
+  await page.mouse.up();
+  await page.keyboard.up("Shift");
+  await expect(page.getByTestId("map-export-panel")).toBeVisible();
 });
