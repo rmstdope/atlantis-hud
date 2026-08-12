@@ -1,0 +1,106 @@
+---
+name: beads-workflow
+description: How planned work is tracked in this repository with beads (bd) — picking up work, writing a good bead, modelling dependencies, branch/commit conventions, and the GitHub bug-report bridge. Use whenever work is selected, created, updated, or closed in atlantis-hud.
+---
+
+# Beads workflow (atlantis-hud)
+
+Planned work lives in **beads** (`bd`), not in GitHub issues. GitHub issues are the inbox for
+external requests and bug reports only.
+
+Bead IDs look like `ah-t65`. Partial IDs work: `bd show t65` finds `ah-t65`.
+
+## Daily loop
+
+```bash
+bd ready                       # what can be worked on now (no open blockers)
+bd show <id>                   # scope, acceptance criteria, validation, dependencies
+bd update <id> --claim         # assign to me and set in_progress — do this before branching
+git checkout main && git pull origin main
+git checkout -b <id>-short-description
+# ... test-driven-development skill: RED → GREEN → REFACTOR → COMMIT ...
+bd close <id> --reason "Delivered in PR #NN"
+bd dolt push                   # back the bead database up to the remote
+```
+
+`bd blocked` shows what is waiting and on what. `bd list` shows everything.
+
+If `main` is checked out in another git worktree, `git checkout main` fails; use
+`git checkout -b <branch> origin/main` instead.
+
+## Branch, commit and PR conventions
+
+- Branch: `<bead-id>-short-description`, e.g. `ah-t65-load-multiple-reports`
+- Commit subject: `feat(ah-t65): load multiple reports` (`fix(...)`, `docs(...)`, `chore(...)`)
+- PR title: the same subject. PR body names the bead, and the originating GitHub issue if one exists.
+- One bead per branch. Merge it before starting the next bead.
+
+## Writing a good bead
+
+A bead is executable when someone else could pick it up cold. Carry the same five things the
+implementation plan asks of every work package:
+
+| What | Where it goes |
+|---|---|
+| Summary and problem | `--description` (markdown; use `--body-file` for anything long) |
+| Scope and out of scope | `--description` |
+| Acceptance criteria | `--acceptance` |
+| Validation (commands, manual checks) | `--description` |
+| Inputs it depends on | dependency edges, not prose — see below |
+
+```bash
+bd create "Load multiple reports" --type feature -p 2 --body-file scope.md \
+  --acceptance "Selecting several .rep files imports them in header order"
+```
+
+Types used here: `feature`, `bug`, `task`, `epic`. Priorities `P0`–`P4`, default `P2`.
+
+Do not restate a dependency in the description — model it, so `bd ready` stays truthful.
+
+## Dependencies and breakdown
+
+```bash
+bd dep add <blocked-bead> <blocker-bead>            # blocked-bead is blocked by blocker-bead
+bd dep add <a> <b> --type relates-to                # related, but not blocking
+bd create "Sub-task title" --parent <bead-id>       # hierarchical child
+```
+
+Beads has real parent links and dependency edges, so the old `Sub-issue (NN):` title prefix is gone.
+When a bead turns out to be larger than one increment, split it into children and wire the order with
+`bd dep add`; do not grow the parent.
+
+## GitHub bug-report bridge
+
+```bash
+GITHUB_TOKEN=$(gh auth token) bd github pull <issue-number>   # import as a bead, keeps gh-<n> ref
+GITHUB_TOKEN=$(gh auth token) bd github status                # verify configuration
+```
+
+`bd github pull` generates a long legacy-style ID. When the bead is going to be worked on rather than
+just recorded, prefer creating it with a rewritten scope and a back-reference:
+
+```bash
+bd create "Title" --type bug --external-ref gh-<n> --body-file body.md
+```
+
+Then comment on the GitHub issue naming the bead and close it. Nothing is pushed from beads to
+GitHub automatically; the sync is pull-only and manual.
+
+## Storage, and what is committed
+
+- `.beads/embeddeddolt/` — the Dolt database. Local, git-ignored, the source of truth.
+- `.beads/issues.jsonl` — a readable export, **committed**, so the backlog is diffable in the repo.
+  Refresh it with `bd export -o .beads/issues.jsonl` before committing bead changes; auto-export is
+  enabled but throttled to once a minute.
+- `.beads/config.yaml`, `.beads/hooks/` — committed configuration and the git hook shims
+  (`core.hooksPath` points at them).
+- The Dolt remote is the repo's own GitHub origin, under `refs/dolt/data`. `bd dolt push` backs it
+  up; `bd dolt pull` retrieves it on another machine.
+
+Never commit a GitHub token to `.beads/config.yaml` — pass it as `GITHUB_TOKEN` per command.
+
+## Checklist before ending a session
+
+- [ ] Bead claimed or closed to match reality
+- [ ] `bd export -o .beads/issues.jsonl` if beads changed, and the JSONL committed
+- [ ] `bd dolt push`
