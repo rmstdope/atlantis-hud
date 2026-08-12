@@ -51,6 +51,19 @@ type HexView = {
 };
 ```
 
+**There are three knowledge states, not two, and a theme must decide what each looks like.**
+`fogOpacity` is non-zero for *both* a hex known only from a neighbour's exits and a hex visited long
+ago, so a theme that branches on it alone will draw them identically — and they mean opposite things.
+A **named** hex was never visited and has no age: it is ground the survey never reached. A **stale**
+hex is data you hold that may have gone out of date, and it is the one that carries `hatched`.
+Branch on `knowledge`, and give the two different treatments. Cartographer's Table got this wrong
+first time round and painted unvisited ground as an aged page.
+
+While you are there: a fade meant to *hide* ground and a treatment meant to *age* it are not the same
+strength. Laying a theme's own wash at the full `fogOpacity` buries the terrain, and every faded hex
+comes out the same colour whatever it is made of — a stale ocean has to still read as ocean. Scale
+it back and let the theme's own mark (hatching, a dashed rim, a T-minus number) carry the meaning.
+
 Two fields are **reserved**: `battle` and `gate` are always `false`, because no parser reads them
 yet. Every theme's layout keeps a slot for each anyway, so that when the data arrives the mark
 appears without a layout change. `tier` is `null` for a hex known only from a neighbour's exits,
@@ -148,7 +161,19 @@ from a mockup by dividing by 46 and express it as a fraction of the radius — `
 contract, not the absolute pixel sizes.
 
 By the map's convention, glyphs and pips scale with the world while labels stay screen-constant:
-give a label the shared `map-label` class, which divides its font size by `--map-scale`.
+give a label the shared `map-label` class, which divides its font size by `--map-scale`, or divide by
+it yourself if the theme wants its own type.
+
+Two things worth copying from Cartographer's Table:
+
+- **Draw the whole hex in the mockup's coordinates and scale it once.** That theme sets
+  `SCALE = HEX_RADIUS / 46` and wraps each hex's marks in `scale(SCALE)`, so every number in the
+  module can be read straight off the proposal and compared with it. Labels stay *outside* that
+  group, because scaling text with the hex is the thing this map left a canvas to avoid.
+- **Use `font-size` longhand, never the `font` shorthand.** A `calc()` inside the shorthand is valid
+  CSS that some renderers drop, and a label that loses its `calc()` falls back to a default size
+  several times the width of the hex. The desktop shell draws in whatever WebKit the system
+  provides, so the map does not gamble on shorthand parsing.
 
 ### Testing
 
@@ -171,6 +196,12 @@ components actually emit what those decisions decided.
 
 The registry suite renders every shipped theme over the fixture, so a theme that throws is caught
 whether or not anyone wrote a test for it.
+
+**Then look at it in the running app, not only in a fixture.** Every fault found in the first theme
+was a visual one that a green suite said nothing about: a `calc()` dropped inside a `font` shorthand,
+a wash that buried the terrain, unvisited ground drawn as an aged page. The fixture missed the last
+two because it happens to contain one stale hex and no named one. Load a real report, switch to the
+theme, and look at each knowledge state and both app themes before calling it done.
 
 ## Removing a theme
 
