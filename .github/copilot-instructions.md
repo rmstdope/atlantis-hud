@@ -22,8 +22,10 @@ Planned work is tracked in **beads** (`bd`), not in GitHub issues. Each work pac
 dependencies between them are edges in the bead graph, so `bd ready` answers "what can be worked on
 now". GitHub issues remain the inbox for external requests and bug reports only.
 
-Before starting implementation work, run `bd ready` to see what is available and `bd show <id>` for
-the scope, acceptance criteria and validation of the bead you are about to work on. Read
+Before starting implementation work, run `bd dolt pull` and then `bd ready` to see what is available
+and `bd show <id>` for the scope, acceptance criteria and validation of the bead you are about to
+work on — then claim it before doing anything else, since other agents are reading the same list.
+Read
 `docs/implementation-plan.md` for the stack and deployment decisions and for the shape a work
 package is expected to have.
 
@@ -61,8 +63,17 @@ Every piece of planned work is a bead. Follow the `beads-workflow` skill for the
 rules that must always hold are:
 
 - ALWAYS use the test-driven-development skill when working on a bead.
-- ALWAYS claim the bead you are working on with `bd update <id> --claim` so it is assigned and in
-  progress.
+- ALWAYS claim the bead with `bd update <id> --claim` as the **first** action after choosing it —
+  before exploring the code, planning, or asking the navigator anything, not merely before
+  branching — and ALWAYS `bd dolt push` straight afterwards so agents on other machines can see the
+  claim. Several agents share this backlog. If the claim fails, another agent won it: pick a
+  different bead.
+- ALWAYS run `bd heartbeat <id>` at every phase gate and before any long wait (a full smoke run, a
+  CI watch). A claim's lease lasts about five minutes and only a heartbeat renews it, so unattended
+  claims look abandoned for most of the hour a real cycle takes.
+- NEVER take a bead off another agent on your own. `in_progress` with an assignee is authoritative
+  whatever its lease says; `bd reclaim`, `bd update --force` and reassignment all need the
+  navigator's approval first.
 - ALWAYS create a new branch from **the latest main** (unless instructed otherwise) named after the
   bead ID and a short description of the work, e.g., `ah-t65-load-multiple-reports`. Run
   `git checkout main && git pull origin main` before branching.
@@ -80,8 +91,10 @@ If a bead is found to be larger than a small increment, break it down into child
 dependencies natively, so no naming convention is needed to express the relationship.
 
 Beads data lives in `.beads/`. The Dolt database is local and git-ignored; `.beads/issues.jsonl` is a
-readable export that is committed. ALWAYS run `bd dolt push` before ending a working session so the
-bead database is backed up to the remote.
+readable export that is committed. ALWAYS run `bd dolt push` after claiming a bead and again before
+ending a working session, so the claim reaches the other agents and the bead database is backed up
+to the remote. Leave nothing `in_progress` that you are not working on — `bd unclaim <id>` releases
+it.
 
 ### GitHub CLI
 

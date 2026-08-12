@@ -13,17 +13,55 @@ Bead IDs look like `ah-t65`. Partial IDs work: `bd show t65` finds `ah-t65`.
 ## Daily loop
 
 ```bash
+bd dolt pull                   # other machines' claims arrive only here
 bd ready                       # what can be worked on now (no open blockers)
 bd show <id>                   # scope, acceptance criteria, validation, dependencies
-bd update <id> --claim         # assign to me and set in_progress — do this before branching
+bd update <id> --claim         # FIRST action after choosing — see "Claiming" below
+bd dolt push                   # publish the claim now, not at session end
 git checkout main && git pull origin main
 git checkout -b <id>-short-description
 # ... test-driven-development skill: RED → GREEN → REFACTOR → COMMIT ...
+# ... bd heartbeat <id> at every phase gate, and before any long wait ...
 bd close <id> --reason "Delivered in PR #NN"
 bd dolt push                   # back the bead database up to the remote
 ```
 
 `bd blocked` shows what is waiting and on what. `bd list` shows everything.
+
+## Claiming, and not colliding
+
+Several agents work this backlog at once, so a claim is the only thing keeping two of them off the
+same bead. Five rules, and the second is the one that is easy to forget and expensive to skip.
+
+**Claim before you explore, not before you branch.** `bd update <id> --claim` is the first thing you
+do after choosing a bead — ahead of reading code, planning, or asking the navigator anything.
+Planning a bead takes ten minutes or more, and until the claim lands the bead is still on every
+other agent's `bd ready`. The claim is atomic, so a failure means somebody else won the race: pick
+another bead rather than retrying.
+
+**Heartbeat while you work.** A claim carries a lease of about five minutes, and only
+`bd heartbeat <id>` pushes it forward. A cycle here — RED, GREEN, REFACTOR, the local gate, CI —
+runs an hour or more, so a claim that is never heartbeated is stale for almost all of the work it
+covers. Send one at every phase gate and before anything long (a full smoke run, a CI watch).
+Heartbeats write no Dolt commit and no history, so the cadence costs nothing.
+
+**Never take a bead off another agent by yourself.** `in_progress` with an assignee is authoritative
+whatever the lease says. `bd reclaim`, `bd update --force` and reassigning over a live claim all
+need the navigator's approval first — here an expired lease means "nobody heartbeated", which is the
+normal state of live work, not "the worker died". See the Traps section.
+
+**Push the claim immediately.** Leases never leave the machine that granted them; only status and
+assignee commit, and they travel only on `bd dolt push`/`bd dolt pull`. A claim that is not pushed is
+invisible to an agent on another machine for as long as you hold it.
+
+**Check your working directory before any `git` command.** The other agents are in
+`.claude/worktrees/*`, and a shell's directory persists between commands — one `cd` into a worktree
+to check something leaves every later command there. Branching from that shell checks a branch out
+inside somebody else's live worktree, which is a collision the bead graph cannot prevent. This has
+happened: a `cd .claude/worktrees/task` to see whether worktrees share the database was followed,
+several commands later, by a `git checkout -b` that moved that agent off its own branch. Run
+`pwd && git branch --show-current` before branching, or give `git -C /path/to/repo` the path
+outright.
 
 If `main` is checked out in another git worktree, `git checkout main` fails; use
 `git checkout -b <branch> origin/main` instead.
@@ -135,6 +173,23 @@ Confirm the effect, not the acknowledgement. Writing config also rewrites `.bead
 has rewritten a commented-out default and dropped the file's trailing newline — so read the diff
 before committing it.
 
+**A stale lease here does not mean an abandoned worker.** `bd update --force` describes itself as
+being for "abandoned claims — crashed agent, expired lease", and `bd reclaim` is built to clear the
+assignee of any in_progress bead whose lease expired and set it back to open. Both are written for a
+deployment where workers heartbeat; nothing in this repository did until recently, so every live
+claim matched the description of a dead one. This is what had agents starting on each other's work.
+Read a stale lease as "nobody heartbeated", check with the navigator, and heartbeat your own claims
+so nobody has to guess about them.
+
+```
+◐ ah-xde · Remove the Classic map theme   [P2 · IN_PROGRESS]
+Lease: expires in 1 min (heartbeat 3 mins ago)      # an agent actively working, ten minutes in
+```
+
+`claim.ttl` is not part of the documented config surface — `bd config get claim.ttl` answers "not
+set", and per the trap below that is also what an invented key answers — so lengthening the TTL is
+not a lever. Heartbeat instead.
+
 **`owner` comes from `git config user.email`** at creation time and has no override.  `--actor`
 sets `created_by` only, `--assignee` is a separate field, and no config key changes it. The
 committed export therefore carries the repo's committer address; that is the same identity every
@@ -143,6 +198,7 @@ commit already carries here, so it is expected rather than a leak.
 ## Checklist before ending a session
 
 - [ ] Bead claimed or closed to match reality
+- [ ] Nothing left `in_progress` that you are not actually working on — `bd unclaim <id>` releases it
 - [ ] `bd dolt push`
 
 The JSONL export is not on this list on purpose — the export gate takes it at push time.
