@@ -285,12 +285,14 @@ test("the unit list limit sizes the pane while the whole list stays scrollable",
   await page.getByTestId("settings-indicator").click();
   const limit = page.getByTestId("unit-list-limit");
   await expect(limit).toHaveValue("12");
-  // Never fewer than three rows on screen, never more than sixteen.
-  await expect(limit).toHaveAttribute("min", "3");
+  // Never fewer than one row on screen, never more than sixteen.
+  await expect(limit).toHaveAttribute("min", "1");
   await expect(limit).toHaveAttribute("max", "16");
 
-  // Applies as it is dragged - the pane is on screen behind the dialog, its own preview.
-  await limit.fill("3");
+  // Applies as it is dragged - the pane is on screen behind the dialog, its own preview. Taken to
+  // the floor, because one row is where a ceiling on the pane is least like a cut in the list:
+  // ninety-two units, one of them on screen, and the End below still reaches the last of them.
+  await limit.fill("1");
   await expect.poll(() => unitsPaneHeight(page)).toBeLessThan(atTwelve);
 
   // The rest of the hex is a scroll away, not gone: End walks the selection to the last of all
@@ -314,6 +316,43 @@ test("the unit list limit sizes the pane while the whole list stays scrollable",
   await page.getByTestId("settings-indicator").click();
   await page.getByTestId("unit-list-limit").fill("12");
   await expect.poll(() => unitsPaneHeight(page)).toBeGreaterThanOrEqual(atTwelve - 1);
+});
+
+test("the units pane's own + and - set the maximum, and it survives a reload", async ({ page }) => {
+  await clearGames(page);
+  await createGame(page, "Stepper game");
+  await openReport(page);
+  await selectHex(page, "1:7,53");
+
+  const value = page.getByTestId("unit-list-limit-value");
+  await expect(value).toHaveText("max 12");
+  const atTwelve = await unitsPaneHeight(page);
+
+  // A row at a time, and the pane follows immediately - no dialog in the way.
+  await page.getByTestId("unit-list-limit-less").click();
+  await page.getByTestId("unit-list-limit-less").click();
+  await expect(value).toHaveText("max 10");
+  await expect.poll(() => unitsPaneHeight(page)).toBeLessThan(atTwelve);
+
+  await page.getByTestId("unit-list-limit-more").click();
+  await expect(value).toHaveText("max 11");
+
+  // The same preference the dialog's slider drives, not a second one beside it.
+  await page.getByTestId("settings-indicator").click();
+  await expect(page.getByTestId("unit-list-limit")).toHaveValue("11");
+  await page.keyboard.press("Escape");
+
+  // A preference, not a session choice: it holds across a reload.
+  await page.reload();
+  await expect(page.getByTestId("import-status")).toContainText("restored turn 71");
+  await selectHex(page, "1:7,53");
+  await expect(page.getByTestId("unit-list-limit-value")).toHaveText("max 11");
+
+  // Back to the default, so later tests inherit the look they expect.
+  await page.getByTestId("settings-indicator").click();
+  await page.getByTestId("unit-list-limit").fill("12");
+  await page.keyboard.press("Escape");
+  await expect(value).toHaveText("max 12");
 });
 
 test("a snippet is created in settings, refuses duplicates, and survives a reload", async ({
