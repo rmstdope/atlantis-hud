@@ -63,7 +63,7 @@ import {
   rulesetUrlFor
 } from "../gameSession";
 import { rulesetById } from "../rulesets";
-import { useWorkspaceStore } from "../workspaceStore";
+import { DEFAULT_LEVEL, useWorkspaceStore } from "../workspaceStore";
 import { useSettingsStore } from "../settingsStore";
 import { AppHeader, type ImportStatus } from "./AppHeader";
 import { GameGate } from "./GameGate";
@@ -79,6 +79,7 @@ import { LayerChips } from "./LayerChips";
 import { MapCanvas } from "./MapCanvas";
 import { MapExportDialog } from "./MapExportDialog";
 import { type MapRect } from "./mapMarquee";
+import { loadSavedView, saveFocusForGame } from "./mapViewportStorage";
 import { getMapTheme } from "./mapThemes";
 import { OrdersPanel } from "./OrdersPanel";
 import type { OrdersEditorHandle } from "./OrdersEditor";
@@ -411,6 +412,28 @@ export function AppShell({
     () => (parsed ? buildHexMapModel(parsed, storedRegions) : EMPTY),
     [parsed, storedRegions]
   );
+
+  const openGameId = game?.manifest.metadata.gameId ?? null;
+
+  // Remembers which level and which hex the player is on, so reopening the game comes back to them.
+  // The map saves its own pan and zoom as it moves; these two live in the workspace store, which
+  // knows nothing about which game is open, so the shell is where they are written from.
+  useEffect(() => {
+    if (openGameId === null) {
+      return;
+    }
+    saveFocusForGame(openGameId, level, selectedRegionId);
+  }, [openGameId, level, selectedRegionId]);
+
+  // A level restored from storage that this game no longer draws. It can happen: the underworld
+  // may only have been visible in an older report. Nothing on that level would be drawn and there
+  // is nothing there to frame, so the whole saved view is abandoned and the defaults take over.
+  useEffect(() => {
+    if (openGameId === null || model === EMPTY || model.levels.includes(level)) {
+      return;
+    }
+    setLevel(model.levels[0] ?? DEFAULT_LEVEL);
+  }, [openGameId, model, level, setLevel]);
 
   /**
    * Selects a hex together with the first unit standing in it.
@@ -760,11 +783,21 @@ export function AppShell({
 
         // Opening on a hex the player has units in beats opening on whatever came first, and the
         // unit inside it is chosen for the same reason.
-        const opening = buildHexMapModel(report);
-        const openingHex = opening.hexes.find(
-          (candidate) => candidate.regionId === opening.initialSelectedRegionId
-        );
-        selectRegion(opening.initialSelectedRegionId, unitsForHex(openingHex ?? null)[0]?.unitId ?? null);
+        //
+        // Only when nothing is selected, which is the same guard the restore path makes: a turn
+        // landing in a game already being worked in is not a reason to move the player. It used to
+        // move them, and the map travelled to the new selection, so an import threw away whatever
+        // corner of the map they had just navigated to.
+        if (useWorkspaceStore.getState().selectedRegionId === null) {
+          const opening = buildHexMapModel(report);
+          const openingHex = opening.hexes.find(
+            (candidate) => candidate.regionId === opening.initialSelectedRegionId
+          );
+          selectRegion(
+            opening.initialSelectedRegionId,
+            unitsForHex(openingHex ?? null)[0]?.unitId ?? null
+          );
+        }
       } catch (error) {
         setStatus({
           regionCount: 0,
@@ -1278,15 +1311,22 @@ export function AppShell({
         // Opening on a hex the player has units in, exactly as loading a report does — unless a
         // hex is already selected. This effect also re-runs after a ruleset change re-parse, and
         // yanking the player to the opening hex would make the settings dialog feel like a reload.
-        if (useWorkspaceStore.getState().selectedRegionId === null) {
-          const opening = buildHexMapModel(restored.parsed);
-          const openingHex = opening.hexes.find(
-            (candidate) => candidate.regionId === opening.initialSelectedRegionId
-          );
-          selectRegion(
-            opening.initialSelectedRegionId,
-            unitsForHex(openingHex ?? null)[0]?.unitId ?? null
-          );
+        const opening = buildHexMapModel(restored.parsed);
+        const selected = useWorkspaceStore.getState().selectedRegionId;
+        const landing = selected ?? opening.initialSelectedRegionId;
+        const landingHex = opening.hexes.find((candidate) => candidate.regionId === landing);
+        const firstUnit = unitsForHex(landingHex ?? null)[0]?.unitId ?? null;
+
+        if (selected === null) {
+          selectRegion(landing, firstUnit);
+          return;
+        }
+        // A hex restored from storage arrives without a unit, because storage holds no unit: the
+        // hex is a place on the map and outlives a turn, while a unit id may not survive to the
+        // next one. Filling it in here is what stops a reopened game showing a selected hex over
+        // an empty unit panel - and it is only ever filled in, never replaced.
+        if (useWorkspaceStore.getState().selectedUnitId === null && firstUnit !== null) {
+          selectUnit(firstUnit);
         }
       })
       .catch((error: unknown) => {
@@ -1311,7 +1351,7 @@ export function AppShell({
     return () => {
       cancelled = true;
     };
-  }, [client, game, ruleset, selectRegion]);
+  }, [client, game, ruleset, selectRegion, selectUnit]);
 
   /** Re-reads the list of games. Every change to a game changes what the picker should show. */
   const refreshGames = useCallback(async () => {
@@ -1351,8 +1391,25 @@ export function AppShell({
         databasePath: opened.databasePath,
         rulesetId: opened.manifest.metadata.rulesetId
       });
+
+      // Back to the level and the hex this game was left on. Applied here rather than after the
+      // turn is restored so that all three - the game, the level and the selection - reach the map
+      // in one render, and the map's own restore cannot be raced by a level arriving later.
+      //
+      // `setLevel` clears the selection, so the hex has to follow it rather than lead. A saved hex
+      // also stands the opening-hex fallback down, which is what used to pull the restored view
+      // back to wherever the faction's first unit happened to be standing.
+      //
+      // The level is set whether or not one was saved: it is the only part of the view the store
+      // keeps across a game switch, so a game with nothing saved would otherwise open on whichever
+      // level the game before it was left on.
+      const saved = loadSavedView(opened.manifest.metadata.gameId);
+      setLevel(saved?.level ?? DEFAULT_LEVEL);
+      if (saved?.regionId != null) {
+        selectRegion(saved.regionId);
+      }
     },
-    [clearPlan, openGameInStore]
+    [clearPlan, openGameInStore, setLevel, selectRegion]
   );
 
   const openGameById = useCallback(

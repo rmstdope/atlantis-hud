@@ -92,6 +92,106 @@ test("a game reopens on the turn that was loaded in it", async ({ page }) => {
   await expect(page.getByTestId("panel-region")).toContainText("Inholm");
 });
 
+/**
+ * Where the map is standing, as the map itself writes it.
+ *
+ * The transform on the world group and the `--map-scale` custom property are what `applyView`
+ * pushes into the DOM on every view move, so reading them back is reading the viewport without
+ * asking the application to expose it.
+ */
+async function mapView(page: Page): Promise<{ transform: string; scale: string }> {
+  const transform = await page.getByTestId("map-world").getAttribute("transform");
+  const scale = await page
+    .getByTestId("map-canvas")
+    .locator("svg")
+    .evaluate((svg) => svg.style.getPropertyValue("--map-scale"));
+  return { transform: transform ?? "", scale };
+}
+
+/** Zooms in and pans far enough that the selected hex is nowhere near the middle any more. */
+async function moveTheMap(page: Page) {
+  const zoomIn = page.getByRole("button", { name: "Zoom in" });
+  await zoomIn.click();
+  await zoomIn.click();
+  await zoomIn.click();
+  await zoomIn.click();
+
+  const hex = page.getByRole("button", { name: "hex 1:7,53" });
+  await hex.focus();
+  for (let nudge = 0; nudge < 10; nudge += 1) {
+    // Shift+Arrow pans without moving focus, so the selection stays put while the view leaves it.
+    await hex.press("Shift+ArrowRight");
+  }
+}
+
+test("a game reopens on the map view it was left at", async ({ page }) => {
+  await clearGames(page);
+  await createGame(page, "Viewport game");
+  await openReport(page);
+  await selectHex(page, "1:7,53");
+  await moveTheMap(page);
+
+  const left = await mapView(page);
+
+  await page.reload();
+  await expect(page.getByTestId("import-status")).toContainText("restored turn 71");
+
+  // The hex the player was working on comes back selected, and the map does not travel to it: the
+  // player had deliberately panned away, and pulling the view back is the reset this is about.
+  await expect(page.getByRole("button", { name: "hex 1:7,53" })).toHaveAttribute(
+    "aria-pressed",
+    "true"
+  );
+  await expect(page.getByTestId("map-world")).toHaveAttribute("transform", left.transform);
+  expect((await mapView(page)).scale).toBe(left.scale);
+
+  // Storage remembers a hex, never a unit - a unit id may not survive to the next turn. The hex's
+  // first unit is filled in on arrival, so a restored selection does not come back over an empty
+  // detail panel.
+  await expect(page.getByTestId("panel-unit")).not.toContainText("No unit selected");
+});
+
+test("each game keeps its own map view", async ({ page }) => {
+  await clearGames(page);
+  await createGame(page, "First game");
+  await openReport(page);
+  await selectHex(page, "1:7,53");
+  await moveTheMap(page);
+
+  const first = await mapView(page);
+
+  // A second game has a view of its own, and has never been anywhere: it opens framed on its own
+  // map rather than on the corner of the map the other game was left in.
+  await page.getByTestId("game-indicator").click();
+  await page.getByTestId("new-game").click();
+  await createGame(page, "Second game");
+  await openReport(page);
+  expect((await mapView(page)).transform).not.toBe(first.transform);
+
+  await page.getByTestId("game-indicator").click();
+  await page.getByRole("button", { name: "First game", exact: true }).click();
+
+  await expect(page.getByTestId("import-status")).toContainText("restored turn 71");
+  await expect(page.getByTestId("map-world")).toHaveAttribute("transform", first.transform);
+});
+
+test("a turn landing in the open game leaves the map where it is", async ({ page }) => {
+  await clearGames(page);
+  await createGame(page, "Re-framing game");
+  await openReport(page);
+  await selectHex(page, "1:7,53");
+  await moveTheMap(page);
+
+  const before = await mapView(page);
+
+  await openReport(page);
+
+  // A new turn changes what is drawn, not where the player is standing. Framing the whole level
+  // again would throw away a position they had just chosen.
+  await expect(page.getByTestId("map-world")).toHaveAttribute("transform", before.transform);
+  expect((await mapView(page)).scale).toBe(before.scale);
+});
+
 test("orders typed into a game are still there after a reload", async ({ page }) => {
   await clearGames(page);
   await createGame(page, "Typing game");

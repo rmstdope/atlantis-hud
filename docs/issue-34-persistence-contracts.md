@@ -22,8 +22,16 @@ called it.**
 | The orders document | Saved. One row per `(game, faction, turn)`, the whole faction document as text. |
 | The imported turn and the remembered map | Already saved on import. This issue reads them back. |
 | Which panels are folded, which layers are drawn | `localStorage`, since issue #20. Preferences about the workspace, not about a game. |
-| The selected hex, unit and level | **Not** saved, as `workspaceStore.ts` already argued: a reload leaves no report loaded, and restoring a hex that no longer exists shows stale headings over empty panels. |
+| The map view: pan, zoom, level and selected hex | `localStorage`, per game, under `atlantis-hud-viewport-<gameId>`. Written by `mapViewportStorage.ts`; see the note below. |
+| The selected unit | **Not** saved, on the argument `workspaceStore.ts` makes: it is chosen from the hex when the hex is restored, and a unit id that no longer exists would show stale headings over empty panels. |
 | A planned route | Not saved. It is derived from a unit and a destination, and costs milliseconds to ask for again. |
+
+The hex and the level were once in the "not saved" row above, with the same argument as the unit.
+Bead `ah-ppd` moved them: a reload does *not* leave no report loaded — issue #34 is precisely what
+made the turn come back — so the hex is restored over a map that has it, and one this game no longer
+draws is discarded rather than shown. They are stored beside the pan and zoom rather than in the
+workspace store, because unlike the folded panels they are facts about one game and not about the
+workspace.
 
 ## When a draft is written
 
