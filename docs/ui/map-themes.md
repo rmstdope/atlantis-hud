@@ -51,6 +51,19 @@ type HexView = {
 };
 ```
 
+**There are three knowledge states, not two, and a theme must decide what each looks like.**
+`fogOpacity` is non-zero for *both* a hex known only from a neighbour's exits and a hex visited long
+ago, so a theme that branches on it alone will draw them identically — and they mean opposite things.
+A **named** hex was never visited and has no age: it is ground the survey never reached. A **stale**
+hex is data you hold that may have gone out of date, and it is the one that carries `hatched`.
+Branch on `knowledge`, and give the two different treatments. Cartographer's Table got this wrong
+first time round and painted unvisited ground as an aged page.
+
+While you are there: a fade meant to *hide* ground and a treatment meant to *age* it are not the same
+strength. Laying a theme's own wash at the full `fogOpacity` buries the terrain, and every faded hex
+comes out the same colour whatever it is made of — a stale ocean has to still read as ocean. Scale
+it back and let the theme's own mark (hatching, a dashed rim, a T-minus number) carry the meaning.
+
 Two fields are **reserved**: `battle` and `gate` are always `false`, because no parser reads them
 yet. Every theme's layout keeps a slot for each anyway, so that when the data arrives the mark
 appears without a layout change. `tier` is `null` for a hex known only from a neighbour's exits,
@@ -183,6 +196,12 @@ components actually emit what those decisions decided.
 
 The registry suite renders every shipped theme over the fixture, so a theme that throws is caught
 whether or not anyone wrote a test for it.
+
+**Then look at it in the running app, not only in a fixture.** Every fault found in the first theme
+was a visual one that a green suite said nothing about: a `calc()` dropped inside a `font` shorthand,
+a wash that buried the terrain, unvisited ground drawn as an aged page. The fixture missed the last
+two because it happens to contain one stale hex and no named one. Load a real report, switch to the
+theme, and look at each knowledge state and both app themes before calling it done.
 
 ## Removing a theme
 
