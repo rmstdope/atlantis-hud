@@ -1,6 +1,7 @@
 import type { ChangeEvent, DragEvent, ReactNode } from "react";
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { describeTurnMessages } from "../turnMessages";
+import { ExportMenu } from "./ExportMenu";
 
 export type ImportStatus = {
   regionCount: number;
@@ -108,6 +109,14 @@ export function AppHeader({
   settings
 }: AppHeaderProps) {
   const fileRef = useRef<HTMLInputElement | null>(null);
+  /**
+   * Whether the export menu is showing.
+   *
+   * Held here rather than in the shell like the other header popovers, because nothing outside
+   * this header opens it: the command palette runs the exports directly, so a shell that knew
+   * about this state would only be passing it back down again.
+   */
+  const [exportOpen, setExportOpen] = useState(false);
 
   const errorCount = messages?.errors.length ?? 0;
   const chipLabel = describeTurnMessages(errorCount, messages?.events.length ?? 0);
@@ -312,23 +321,31 @@ export function AppHeader({
       >
         {busy ? "Loading…" : "Load report"}
       </button>
-      <button
-        type="button"
-        disabled={!canExport}
-        onClick={onExportOrders}
-        className="rounded border border-edge bg-panel-raised px-2.5 py-1 text-ink disabled:opacity-40"
-      >
-        Export orders
-      </button>
-      <button
-        type="button"
-        data-testid="export-map"
-        disabled={!canExportMap}
-        onClick={onExportMap}
-        className="rounded border border-edge bg-panel-raised px-2.5 py-1 text-ink disabled:opacity-40"
-      >
-        Export map
-      </button>
+      {/* Relative, because the menu hangs off the button rather than off the window's edge. */}
+      <span className="relative">
+        <button
+          type="button"
+          data-testid="export-menu"
+          aria-haspopup="dialog"
+          aria-expanded={exportOpen}
+          onClick={() => setExportOpen((open) => !open)}
+          className="rounded border border-edge bg-panel-raised px-2.5 py-1 text-ink"
+        >
+          Export
+          <span aria-hidden className="ml-1 text-ink-dim">
+            ▾
+          </span>
+        </button>
+        {exportOpen ? (
+          <ExportMenu
+            canExportOrders={canExport}
+            canExportMap={canExportMap}
+            onExportOrders={onExportOrders}
+            onExportMap={onExportMap}
+            onDismiss={() => setExportOpen(false)}
+          />
+        ) : null}
+      </span>
 
       {/* Relative for the same reason the game indicator is: the panel hangs off this button. */}
       <span className="relative">

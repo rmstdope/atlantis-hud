@@ -238,6 +238,60 @@ test("the header keeps quiet about routine state", async ({ page }) => {
   await expect.poll(async () => (await status.boundingBox())?.width ?? 0).toBeGreaterThan(1);
 });
 
+/**
+ * Two exports behind one button.
+ *
+ * They were two header buttons of their own, which spent a permanent quarter of the toolbar on a
+ * pair of things a player does once a turn. One button that expands is the same two exports one
+ * press further away, and the header keeps the room for what is read every minute.
+ */
+test("the export button expands into the orders and map exports", async ({ page }) => {
+  await loadReport(page);
+
+  // Nothing is on the header until it is asked for: the point of the menu.
+  await expect(page.getByRole("button", { name: "Export orders" })).toHaveCount(0);
+  await expect(page.getByTestId("export-map")).toHaveCount(0);
+
+  const trigger = page.getByTestId("export-menu");
+  await expect(trigger).toHaveAttribute("aria-expanded", "false");
+  await trigger.click();
+
+  await expect(trigger).toHaveAttribute("aria-expanded", "true");
+  await expect(page.getByRole("button", { name: "Export orders" })).toBeVisible();
+  await expect(page.getByTestId("export-map")).toBeVisible();
+
+  // Closes the way every other panel hanging off this header closes.
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("export-map")).toHaveCount(0);
+  await expect(trigger).toHaveAttribute("aria-expanded", "false");
+
+  await trigger.click();
+  await page.getByTestId("map-canvas").click({ position: { x: 5, y: 5 } });
+  await expect(page.getByTestId("export-map")).toHaveCount(0);
+});
+
+test("choosing an export from the menu closes it behind the choice", async ({ page }) => {
+  await loadReport(page);
+
+  await page.getByTestId("export-menu").click();
+  await page.getByTestId("export-map").click();
+
+  await expect(page.getByTestId("map-export-panel")).toBeVisible();
+  // A menu left standing over the dialog it opened is a menu covering the thing it asked for.
+  await expect(page.getByTestId("export-map")).toHaveCount(0);
+});
+
+test("the export menu offers nothing to press before a report is loaded", async ({ page }) => {
+  await clearGames(page);
+  await createGame(page, "Empty game");
+
+  await page.getByTestId("export-menu").click();
+
+  // Both exports need a turn: orders are written against one and a map describes one.
+  await expect(page.getByRole("button", { name: "Export orders" })).toBeDisabled();
+  await expect(page.getByTestId("export-map")).toBeDisabled();
+});
+
 /** What merging must leave alone: the turn on screen has not changed, so nothing else may move. */
 test("merging leaves the orders and the selection where they were", async ({ page }) => {
   await loadReport(page);
@@ -390,7 +444,9 @@ test("a unit told to spend silver it has not got is warned about, without blocki
 
   // A warning, never an error: the server would accept this file, the turn would just go badly.
   await expect(page.getByTestId("orders-status")).toContainText("0 errors");
+  await page.getByTestId("export-menu").click();
   await expect(page.getByRole("button", { name: "Export orders" })).toBeEnabled();
+  await page.keyboard.press("Escape");
 
   // And the whole map is counted, so the same problem is reachable from the header.
   const chip = page.getByTestId("problems-chip");
@@ -1417,6 +1473,44 @@ test("zooming in and back out returns the map to the scale it started at", async
 
   // The old renderer multiplied by 1.1 in and 0.9 out, so it never came back to where it started.
   expect(await scale()).toBe(before);
+});
+
+test("fitting the map puts every hex clear of the panes drawn over it", async ({ page }) => {
+  await loadReport(page);
+
+  await page.getByRole("button", { name: "Zoom to fit" }).click();
+
+  // The panes float over the canvas rather than beside it, so fitting to the canvas centred the
+  // world underneath them: the hexes were on screen and behind a panel, which is not "fitted" to
+  // anyone looking at it. Measured in the browser because the strip only exists in a real layout.
+  const overflowing = await page.evaluate(() => {
+    const panes = Array.from(
+      document.querySelectorAll<HTMLElement>("[data-map-overlay]")
+    ).map((pane) => ({ edge: pane.dataset.mapOverlay, box: pane.getBoundingClientRect() }));
+    const host = document.querySelector('[data-testid="map-canvas"]')!.getBoundingClientRect();
+
+    const deepest = (edge: string, of: (box: DOMRect) => number) =>
+      panes.filter((pane) => pane.edge === edge).reduce((most, pane) => Math.max(most, of(pane.box)), 0);
+    const visible = {
+      left: host.left + deepest("left", (box) => box.right - host.left),
+      right: host.right - deepest("right", (box) => host.right - box.left),
+      top: host.top + deepest("top", (box) => box.bottom - host.top),
+      bottom: host.bottom - deepest("bottom", (box) => host.bottom - box.top)
+    };
+
+    // Every known hex on this level, which is exactly the set the fit is computed from.
+    return Array.from(document.querySelectorAll("polygon[data-region-id]"))
+      .map((hex) => hex.getBoundingClientRect())
+      .filter(
+        (box) =>
+          box.left < visible.left ||
+          box.right > visible.right ||
+          box.top < visible.top ||
+          box.bottom > visible.bottom
+      ).length;
+  });
+
+  expect(overflowing).toBe(0);
 });
 
 test("the map carries less detail the further out it is zoomed", async ({ page }) => {

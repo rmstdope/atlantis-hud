@@ -16,10 +16,13 @@ import {
   worldOf,
   zoomAt,
   zoomBand,
+  NO_INSETS,
   type ArrowKey,
+  type Insets,
   type Viewport
 } from "./mapViewport";
 import { rectFromCorners, rectPixels, type MapRect } from "./mapMarquee";
+import { overlayInsets, type Edge, type OverlayBox } from "./mapOverlayInsets";
 import { loadSavedViewport, saveViewportForGame } from "./mapViewportStorage";
 import type { RouteOverlay } from "./routeOverlay";
 import { guardSelection } from "./selectionGuard";
@@ -261,6 +264,28 @@ export function MapCanvas({
     [applyView]
   );
 
+  /**
+   * How much of the map the panes are covering right now.
+   *
+   * Read from the DOM at the moment it is needed rather than held in state: a pane folds, a dock
+   * grows, and a fit that used a remembered measurement would frame into a strip that has since
+   * moved. Nothing here knows which panes exist - a pane says so by marking itself.
+   */
+  const readInsets = useCallback((): Insets => {
+    const host = hostRef.current;
+    const container = host?.parentElement;
+    if (!host || !container) {
+      return NO_INSETS;
+    }
+    const overlays: OverlayBox[] = Array.from(
+      container.querySelectorAll<HTMLElement>("[data-map-overlay]")
+    ).map((element) => ({
+      edge: element.dataset.mapOverlay as Edge,
+      box: element.getBoundingClientRect()
+    }));
+    return overlayInsets(host.getBoundingClientRect(), overlays);
+  }, []);
+
   // The canvas renderer got its size from Pixi's `resizeTo`. Rulers and framing need it too.
   useEffect(() => {
     const host = hostRef.current;
@@ -312,12 +337,13 @@ export function MapCanvas({
     const fitted = fitTo(
       onLevel.map((hex) => hex.coordinate),
       size.width,
-      size.height
+      size.height,
+      readInsets()
     );
     if (fitted) {
       commit(fitted);
     }
-  }, [model, level, onLevel, size, commit]);
+  }, [model, level, onLevel, size, commit, readInsets]);
 
   // Brings the selection into view when it arrives from somewhere other than the map — the units
   // table, or a restored session. A hex clicked on the map is already visible, so nothing moves.
@@ -330,10 +356,11 @@ export function MapCanvas({
     if (!coordinate || coordinate.z !== level || size.width === 0) {
       return;
     }
-    if (isOffScreen(coordinate, viewRef.current, size.width, size.height)) {
-      commit(centreOn(coordinate, viewRef.current, size.width, size.height));
+    const insets = readInsets();
+    if (isOffScreen(coordinate, viewRef.current, size.width, size.height, insets)) {
+      commit(centreOn(coordinate, viewRef.current, size.width, size.height, insets));
     }
-  }, [selectedRegionId, level, size, commit]);
+  }, [selectedRegionId, level, size, commit, readInsets]);
 
   // React attaches `wheel` passively, so `preventDefault` inside an `onWheel` prop does nothing and
   // the page zooms instead of the map. This has to be a manual listener.
@@ -473,12 +500,13 @@ export function MapCanvas({
     const fitted = fitTo(
       onLevel.map((hex) => hex.coordinate),
       size.width,
-      size.height
+      size.height,
+      readInsets()
     );
     if (fitted) {
       commit(fitted);
     }
-  }, [onLevel, size, commit]);
+  }, [onLevel, size, commit, readInsets]);
 
   const onMapKeyDown = (event: React.KeyboardEvent<SVGPolygonElement>, from: Coordinate) => {
     if (event.key === "Enter" || event.key === " ") {

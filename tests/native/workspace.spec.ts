@@ -98,6 +98,8 @@ describe("native desktop workspace", () => {
       };
     });
 
+    // Both exports live behind one header button now, so the menu is opened first.
+    await $("button=Export").click();
     await $("button=Export orders").click();
 
     const exported = await browser.executeAsync<string | null, []>((done) => {
