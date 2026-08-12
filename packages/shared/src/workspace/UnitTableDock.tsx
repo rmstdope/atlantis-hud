@@ -257,7 +257,7 @@ export function UnitTableDock({
       hint={hint}
       asOf={stale && hex.lastSeenTurn !== null ? `as of turn ${hex.lastSeenTurn}` : null}
       actions={
-        <>
+        <div className="flex items-center gap-1.5">
           <input
             type="text"
             value={filter}
@@ -267,9 +267,16 @@ export function UnitTableDock({
             className="w-44 rounded border border-edge bg-ground px-2 py-0.5 text-[11px] text-ink placeholder:text-ink-dim focus:border-select focus:outline-none"
           />
           {/* The settings dialog's slider and this stepper are the same preference, reached from
-              the two places it is wanted from: while configuring, and while reading a hex. */}
+              the two places it is wanted from: while configuring, and while reading a hex.
+
+              The header is left exactly as it was around them. An earlier attempt here truncated
+              the title and hint so the actions could never be pushed past the section's clipped
+              edge; measured, the header has some six hundred pixels of slack at the desktop
+              window's own width, so there was nothing to defend against - and `truncate` cost the
+              native shell's driver the title and the hint entirely, which is the sort of thing
+              only a real WebKit build reports. */}
           <UnitListLimitStepper value={unitListLimit} onChange={setUnitListLimit} />
-        </>
+        </div>
       }
     >
       {units.length === 0 ? (
