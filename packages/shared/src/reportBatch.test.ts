@@ -234,6 +234,25 @@ describe("planning a batch of reports", () => {
   });
 
   /**
+   * Both reports of a repeated turn are committed, so whichever the plan puts last is the one the
+   * database keeps and the one put on screen. The order is decided by the comparator rather than
+   * left to the sort being stable, and this is what says so.
+   */
+  it("orders two reports of one turn by the order they were chosen", () => {
+    const plan = planReportBatch(viewer("95"), [
+      borg(71, "third.rep"),
+      borg(70, "first.rep"),
+      borg(71, "second.rep")
+    ]);
+
+    expect(plan.steps.map((step) => step.fileName)).toEqual([
+      "first.rep",
+      "third.rep",
+      "second.rep"
+    ]);
+  });
+
+  /**
    * Two folders dragged together can hand over two files of one name, and sorting by turn moves
    * them apart. Every step therefore says which of the chosen files it means, not just what it was
    * called - a name is not an identity, and pairing a step with the wrong report's text would

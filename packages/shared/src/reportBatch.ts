@@ -201,13 +201,19 @@ export function planReportBatch(
     });
   }
 
-  // Stable, so two reports of one turn stay in the order they were chosen and the last one chosen
-  // is the one that survives the overwrite.
+  // Ordered by turn, then own report before its allies, then by the order the files were chosen.
+  //
+  // That last clause is spelled out rather than left to the sort being stable. It is - the language
+  // has required it since ES2019 - but the guarantee is invisible at the call site, and what rests
+  // on it is not decorative: two reports of one turn are both committed, so whichever sorts last is
+  // the one the database keeps and the one put on screen. A reader should be able to see that the
+  // order is decided here rather than have to remember a property of `sort`.
   steps.sort((left, right) => {
     if (left.turnNumber !== right.turnNumber) {
       return left.turnNumber - right.turnNumber;
     }
-    return (left.kind === "import" ? 0 : 1) - (right.kind === "import" ? 0 : 1);
+    const kind = (left.kind === "import" ? 0 : 1) - (right.kind === "import" ? 0 : 1);
+    return kind !== 0 ? kind : left.index - right.index;
   });
 
   // Skips are reported in the order the files were chosen, which the newer-than rule above breaks

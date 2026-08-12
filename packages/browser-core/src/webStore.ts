@@ -384,16 +384,18 @@ export function createIndexedDbWebStore(): WebStore {
       // the loop can see: one non-IndexedDB await added later (a fetch, a timer) deactivates the
       // transaction and every remaining `put` throws. It is also a round trip per hex, and a report
       // is thousands of hexes. Read first, decide with no awaits between the writes.
+      // Keyed the way the store is, with a separator neither part can contain: a faction id is
+      // digits and a region id is `level:x,y`.
       const known = new Map<string, StoredRegionSighting>();
       for (const stored of await promisify<StoredRegionSighting[]>(
         store.getAll() as IDBRequest<StoredRegionSighting[]>
       )) {
-        known.set(`${stored.factionId} ${stored.regionId}`, stored);
+        known.set(`${stored.factionId}|${stored.regionId}`, stored);
       }
 
       try {
         for (const sighting of sightings) {
-          if (supersedes(sighting, known.get(`${sighting.factionId} ${sighting.regionId}`))) {
+          if (supersedes(sighting, known.get(`${sighting.factionId}|${sighting.regionId}`))) {
             store.put(sighting);
           }
         }
