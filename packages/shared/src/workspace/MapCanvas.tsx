@@ -23,7 +23,8 @@ import {
 } from "./mapViewport";
 import { rectFromCorners, rectPixels, type MapRect } from "./mapMarquee";
 import { overlayInsets, type OverlayBox } from "./mapOverlayInsets";
-import { loadSavedViewport, saveViewportForGame } from "./mapViewportStorage";
+import { loadSavedView, saveViewportForGame, type SavedMapView } from "./mapViewportStorage";
+import { keepsRestoredHex, mapViewDecision, shouldFollowSelection } from "./mapViewRestore";
 import type { RouteOverlay } from "./routeOverlay";
 import { guardSelection } from "./selectionGuard";
 import {
@@ -159,8 +160,14 @@ export function MapCanvas({
   const carryRef = useRef(0);
   const draggedRef = useRef(false);
   const pendingFocusRef = useRef<string | null>(null);
-  const framedRef = useRef<{ model: HexMapModel | null; level: number | null }>({
-    model: null,
+  // Which level of which game the view was last framed for.
+  //
+  // Keyed on the game rather than on the model, because a new model is not a new place to stand: a
+  // turn imported into the open game used to re-frame the whole level and throw away a position the
+  // player had just chosen. Only ever stamped when a view was actually committed, so a game whose
+  // first frame ran against an empty model still gets framed when its report arrives.
+  const framedRef = useRef<{ gameId: string | null; level: number | null }>({
+    gameId: null,
     level: null
   });
 
@@ -179,9 +186,13 @@ export function MapCanvas({
   const gameIdRef = useRef<string | null>(gameId);
   gameIdRef.current = gameId;
 
-  // Holds a viewport that should be applied the next time the frame effect runs. Set when the game
-  // changes and the player has a saved position for it; cleared once the position is applied.
-  const pendingRestoreRef = useRef<Viewport | null>(null);
+  // Holds the view that should be applied the next time the frame effect runs. Set when the game
+  // changes and the player has a saved one for it; cleared once the position is applied.
+  const pendingRestoreRef = useRef<SavedMapView | null>(null);
+  // The hex a restore put back, for as long as it is still the one selected. The map does not
+  // travel to this one: the saved position is where the player left the map, and a player who
+  // panned away from their own selection before quitting meant to.
+  const restoredRegionRef = useRef<string | null>(null);
 
   const onLevel = useMemo(
     () => model.hexes.filter((hex) => hex.coordinate.z === level),
@@ -306,34 +317,42 @@ export function MapCanvas({
     return () => observer.disconnect();
   }, []);
 
-  // Loads the saved viewport when the game changes so it is ready for the frame effect below.
+  // Loads the saved view when the game changes so it is ready for the frame effect below.
   // This effect runs before the frame effect (effects fire in definition order), which is what
   // makes the restore win over the default fit when both happen in the same render cycle.
   useEffect(() => {
-    if (gameId === null) {
-      pendingRestoreRef.current = null;
-      return;
-    }
-    pendingRestoreRef.current = loadSavedViewport(gameId);
+    const saved = gameId === null ? null : loadSavedView(gameId);
+    pendingRestoreRef.current = saved;
+    // Remembered separately from the pending view, because it has to outlive it: the view is
+    // consumed by the first frame, while the hex it belongs to has to stay exempt from the
+    // selection-follow below for as long as it is the one selected.
+    restoredRegionRef.current = saved?.regionId ?? null;
+    framedRef.current = { gameId: null, level: null };
   }, [gameId]);
 
-  // Frames the world when the report or the level changes. Another level's hexes can sit somewhere
-  // completely different, so keeping the old transform would open on empty fog.
+  // Frames the world when there is a view to put on screen and none already standing. Another
+  // level's hexes can sit somewhere completely different, so arriving on one nobody has framed
+  // opens on empty fog unless it is fitted.
   useEffect(() => {
     if (size.width === 0 || size.height === 0) {
       return;
     }
     const framed = framedRef.current;
-    if (framed.model === model && framed.level === level) {
+    const decision = mapViewDecision({
+      pending: pendingRestoreRef.current,
+      level,
+      framedLevel: framed.gameId === gameId ? framed.level : null,
+      hasHexes: onLevel.length > 0
+    });
+
+    if (decision.kind === "hold") {
       return;
     }
-    framedRef.current = { model, level };
 
-    // If a saved viewport is waiting (game just opened), restore it instead of fitting to the map.
-    if (pendingRestoreRef.current) {
-      const restored = pendingRestoreRef.current;
+    if (decision.kind === "restore") {
       pendingRestoreRef.current = null;
-      commit(restored);
+      framedRef.current = { gameId, level };
+      commit(decision.viewport);
       return;
     }
 
@@ -343,10 +362,13 @@ export function MapCanvas({
       size.height,
       readInsets()
     );
+    // Only a view that actually reached the screen counts as framed. `fitTo` declines an empty
+    // set, and stamping the frame anyway would leave the first report to arrive unframed.
     if (fitted) {
+      framedRef.current = { gameId, level };
       commit(fitted);
     }
-  }, [model, level, onLevel, size, commit, readInsets]);
+  }, [gameId, level, onLevel, size, commit, readInsets]);
 
   // Brings the selection into view when it arrives from somewhere other than the map — the units
   // table, or a restored session. A hex clicked on the map is already visible, so nothing moves.
@@ -355,6 +377,18 @@ export function MapCanvas({
   // view too: it carries the selection ring and the keyboard cursor like any other hex, and one of
   // those off screen is a ring nobody can see and a tab stop nobody can find.
   useEffect(() => {
+    const follow = shouldFollowSelection(selectedRegionId, restoredRegionRef.current);
+    // Past the restored hex the moment the selection is anything else - another hex, or nothing at
+    // all, which is what changing level leaves behind. Forgetting it here is what lets the map
+    // travel to that same hex later, when the player picks it from the units table rather than
+    // being handed it back by a restore.
+    if (!keepsRestoredHex(selectedRegionId, restoredRegionRef.current)) {
+      restoredRegionRef.current = null;
+    }
+    if (!follow) {
+      return;
+    }
+
     const coordinate = selectedRegionId === null ? null : parseRegionId(selectedRegionId);
     if (!coordinate || coordinate.z !== level || size.width === 0) {
       return;
@@ -712,7 +746,7 @@ export function MapCanvas({
         />
 
         {/* Transform is written by hand, never as a prop. See applyView. */}
-        <g ref={worldRef}>
+        <g ref={worldRef} data-testid="map-world">
           {/*
             Weakest knowledge first, so a hex the report describes in full is never painted
             underneath one a neighbour merely mentioned.

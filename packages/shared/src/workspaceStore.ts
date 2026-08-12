@@ -108,6 +108,9 @@ const INITIAL_LAYERS: Record<LayerName, boolean> = {
   movement: true
 };
 
+/** The level the map opens on before a game says otherwise: the surface. */
+export const DEFAULT_LEVEL = 1;
+
 /**
  * A stored record of toggles, reconciled against the set this build knows.
  *
@@ -174,7 +177,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       game: null,
       selectedRegionId: null,
       selectedUnitId: null,
-      level: 1,
+      level: DEFAULT_LEVEL,
       collapsed: INITIAL_COLLAPSED,
       layers: INITIAL_LAYERS,
       badges: allBadges(true),
@@ -276,7 +279,7 @@ export function resetWorkspaceStore() {
     game: null,
     selectedRegionId: null,
     selectedUnitId: null,
-    level: 1,
+    level: DEFAULT_LEVEL,
     collapsed: INITIAL_COLLAPSED,
     layers: INITIAL_LAYERS,
     badges: allBadges(true)
