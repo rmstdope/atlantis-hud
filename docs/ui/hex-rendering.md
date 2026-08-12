@@ -29,8 +29,14 @@ widget; the implementation lives in `packages/shared/src/workspace/MapCanvas.tsx
 - **Every color is a theme class**, never an inline value. Each color is a CSS custom property
   with a dark and a light variant, so the whole map re-themes with one attribute swap. Classes
   are written out in full because Tailwind only generates utilities it has literally seen.
-- **Screen-constant detail**: labels, strokes, pips, and glyphs keep the same on-screen size at
-  every zoom. Fonts divide by `--map-scale`; strokes use `vector-effect: non-scaling-stroke`.
+- **Screen-constant detail**: labels, the fog hairline, and the *stroke weights* of pips, glyphs
+  and the selection and focus rings keep the same on-screen size at every zoom. Fonts divide by
+  `--map-scale`; strokes use `vector-effect: non-scaling-stroke`. Their **positions and sizes**
+  still scale with the world — it is the ink that is held constant, not the mark.
+- **Hex-relative marks**: a mark that belongs to the ground rather than to the reader — a road,
+  the route across it, the risk outline on a hex — takes its width in fractions of `HEX_RADIUS`
+  too, so it shrinks with the hex it belongs to. Roads were screen-constant until ah-ebv, which at
+  minimum zoom made a 5px-wide road out of a 3.9px-long spoke.
 
 ## Layer stack
 
@@ -119,9 +125,16 @@ bearings (n, ne, se, s, sw, nw). The bearing and the length are shared; the weig
 are the theme's, and they differ by design — Tactical HUD draws the thinnest road, Miniature World
 the heaviest.
 
+A road's **width is a fraction of `HEX_RADIUS`**, like its length, so it shrinks with the map. It
+has to be: a width in screen pixels stays put while the hex shrinks under it, and at minimum zoom
+(scale 0.25) a hex is 9px across and a spoke 3.9px long, so a 5px road stops being a line and
+becomes a blob over its own hex — worst
+of all in the far band, which hides the labels and pips and keeps the roads.
+
 Roads sit in a layer of their own *beneath* the route overlay, so a movement path crosses a road
-the way a traveller would, and a road wide enough to peek out from under the path's casing keeps
-"does this route run along the road or miss it" legible.
+the way a traveller would. The route is measured the same way for the same reason, so a road still
+peeks out from under the path's casing at every zoom and "does this route run along the road or
+miss it" stays legible.
 
 ### 5. Route overlay
 
@@ -130,12 +143,14 @@ When a route is being previewed or ordered, a polyline runs through the hex cent
 - **Solid** through the origin and every hex reached in the coming month.
 - **Dotted** (6-6 dash) for the rest, joined seamlessly at the last solid hex. A unit of
   unknown speed gets an entirely dotted line.
-- Both are `brass` at 3px over a 5px `ground` casing, screen-constant, so the line stays
-  readable over any terrain.
+- Both are `brass` over a `ground` casing, so the line stays readable over any terrain. The two
+  weights are fractions of `HEX_RADIUS` — 3 and 5 units, which is 3px over 5px at rest — and they
+  scale with the map like the roads beneath them (ah-ebv).
 
 Each hex the route **enters** (never the origin) is tinted with a risk overlay: hex fill at
-28% opacity plus a 2px outline, in `risk-low` (blue), `risk-medium` (amber), or `risk-high`
-(red).
+28% opacity plus a 2-unit outline, in `risk-low` (blue), `risk-medium` (amber), or `risk-high`
+(red). The outline scales with the hex it is drawn on; the selection and focus rings on that same
+hexagon are chrome rather than ground and stay screen-constant.
 
 ### 6. Marks
 

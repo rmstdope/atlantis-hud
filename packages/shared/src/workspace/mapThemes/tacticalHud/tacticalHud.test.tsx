@@ -292,6 +292,18 @@ describe("roads, as a luminous lattice", () => {
     expect(svg).toContain("stroke-dasharray");
   });
 
+  it("keeps the lattice's width in proportion to the hex, so it shrinks with the map", () => {
+    const svg = draw(tacticalHud.RoadLayer, [CONGESTED_CENTRE]);
+
+    // A stroke pinned to screen pixels keeps its width while the hex shrinks around it, and even
+    // the thinnest road of the five is heavy across a 9px hex. In hex units the lattice stays a
+    // lattice, and its dashes keep their spacing along the spoke at every zoom.
+    // 2 is the weight this theme has always drawn: at rest the map's scale is 1, so the lattice in
+    // hex units is the same lattice it was, and only the zoomed views change.
+    expect(svg).not.toContain("vector-effect");
+    expect(Number(/stroke-width="([\d.]+)"/.exec(svg)?.[1])).toBeCloseTo(2, 1);
+  });
+
   it("draws nothing when the roads badge is off", () => {
     expect(draw(tacticalHud.RoadLayer, [CONGESTED_CENTRE], { badges: allBadges(true, { roads: false }) })).not.toContain(
       "<line"

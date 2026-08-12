@@ -55,6 +55,38 @@ function draw(theme: MapTheme = probe()): string {
   );
 }
 
+/** The same map, with a one-step route drawn across it and the hex entered assessed as risky. */
+function drawWithRoute(): string {
+  return renderToStaticMarkup(
+    <MapCanvas
+      gameId={null}
+      model={model}
+      theme={probe()}
+      level={1}
+      selectedRegionId={null}
+      onSelectRegion={() => {}}
+      showStaleness
+      showTextures={false}
+      badges={allBadges(true)}
+      route={{ origin: { x: 7, y: 53, z: 1 }, hexes: [{ x: 7, y: 51, z: 1 }], solidSteps: 1 }}
+      routeRisk={[
+        {
+          coordinate: { x: 7, y: 51, z: 1 },
+          level: "high",
+          hostileStrength: 6,
+          ownStrength: 1,
+          foreignUnits: 6,
+          monsters: 2,
+          guards: 0,
+          unknown: false,
+          lastSeenTurn: 71,
+          reason: "six foreign units and two monsters"
+        }
+      ]}
+    />
+  );
+}
+
 describe("what the map hands a theme", () => {
   it("draws terrain weakest-knowledge first, so better knowledge is never buried", () => {
     const order = [...draw().matchAll(/data-layer="terrain" data-knowledge="(\w+)"/g)].map(
@@ -106,6 +138,30 @@ describe("what the map hands a theme", () => {
     };
 
     expect(() => draw(bare)).not.toThrow();
+  });
+
+  it("measures the route and its risk in the hex's units, as a theme's roads are", () => {
+    // The route crosses the same hexes the roads run through, and both are drawn under the world
+    // transform. Pinned to screen pixels a 5px casing stops matching the ground as the map zooms
+    // out - at minimum zoom a hex is 9px across - and it buries the road it should be read against.
+    // 5, 3 and 2 are the weights the map has always drawn: at rest the scale is 1, so this is what
+    // it looked like before, and only the zoomed views change.
+    const svg = drawWithRoute();
+    // The route's own polylines only. `stroke-brass` is also the selection ring's class, but that
+    // is a polygon and keeps its screen-constant stroke deliberately.
+    const lines = [...svg.matchAll(/<polyline[^>]*>/g)]
+      .map((match) => match[0])
+      .filter((tag) => /stroke-ground|stroke-brass/.test(tag));
+    const risk = /<polygon[^>]*fill-opacity="0\.28"[^>]*>/.exec(svg)?.[0] ?? "";
+    const widthOf = (tag: string) => Number(/stroke-width="([\d.]+)"/.exec(tag)?.[1]);
+
+    expect(lines).toHaveLength(2); // a casing and the line over it, the route being wholly solid
+    for (const tag of [...lines, risk]) {
+      expect(tag).not.toContain("vector-effect");
+    }
+    expect(widthOf(lines.find((tag) => tag.includes("stroke-ground"))!)).toBeCloseTo(5, 1);
+    expect(widthOf(lines.find((tag) => tag.includes("stroke-brass"))!)).toBeCloseTo(3, 1);
+    expect(widthOf(risk)).toBeCloseTo(2, 1);
   });
 
   it("keeps the hit layer and the rulers whatever the theme draws", () => {

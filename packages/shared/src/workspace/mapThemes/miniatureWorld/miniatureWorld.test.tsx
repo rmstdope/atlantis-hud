@@ -260,6 +260,19 @@ describe("roads, as trodden paths", () => {
     expect((svg.match(/<line /g) ?? []).length).toBe(2);
   });
 
+  it("keeps its width in proportion to the hex, so it shrinks with the map", () => {
+    const svg = draw(miniatureWorld.RoadLayer, [CONGESTED_CENTRE]);
+
+    // A stroke pinned to screen pixels keeps its width while the hex around it shrinks, so at the
+    // furthest zoom the path is wider than the hex it belongs to. Width in user units, like the
+    // spoke's own length, is what makes it fall with the map.
+    // 5 is the weight this theme has always drawn: at rest the map's scale is 1, so a road in hex
+    // units is the same road it was, and only the zoomed views change. Asserted against the number
+    // rather than against `radii(0.278)`, which would only restate the implementation.
+    expect(svg).not.toContain("vector-effect");
+    expect(Number(/stroke-width="([\d.]+)"/.exec(svg)?.[1])).toBeCloseTo(5, 1);
+  });
+
   it("draws nothing when the roads badge is off", () => {
     expect(
       draw(miniatureWorld.RoadLayer, [CONGESTED_CENTRE], { badges: allBadges(true, { roads: false }) })

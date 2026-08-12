@@ -330,6 +330,18 @@ describe("terrain and roads", () => {
       draw(emblemAndDots.RoadLayer, [CONGESTED_CENTRE], { badges: allBadges(true, { roads: false }) })
     ).not.toContain("<line");
   });
+
+  it("keeps the spoke's width in proportion to the hex, so it shrinks with the map", () => {
+    const svg = draw(emblemAndDots.RoadLayer, [CONGESTED_CENTRE]);
+
+    // A stroke pinned to screen pixels keeps its width while the hex shrinks around it, so at the
+    // furthest zoom the spoke is wider than the hex it belongs to - and a road that competes with
+    // the medallion is exactly what this theme's roads are not meant to do.
+    // 3.4 is the weight this theme has always drawn: at rest the map's scale is 1, so a spoke in
+    // hex units is the same spoke it was, and only the zoomed views change.
+    expect(svg).not.toContain("vector-effect");
+    expect(Number(/stroke-width="([\d.]+)"/.exec(svg)?.[1])).toBeCloseTo(3.4, 1);
+  });
 });
 
 /**

@@ -11,7 +11,7 @@
  */
 
 import { HEX_RADIUS } from "../../mapViewport";
-import { HEX_POINTS } from "../geometry";
+import { HEX_POINTS, radii } from "../geometry";
 import { ROAD_VECTORS, type HexView } from "../hexView";
 import type { LayerProps, MapTheme } from "../mapTheme";
 import {
@@ -189,6 +189,16 @@ function TerrainLayer({ views }: LayerProps) {
   );
 }
 
+/**
+ * The inlay's width: this theme's 4 units, as a fraction of the hex so it shrinks with the tile it
+ * is cut into rather than growing wider than the face it is inlaid in. See `docs/ui/map-themes.md`
+ * for which marks are measured this way and which stay screen-constant.
+ *
+ * The spoke's 0.83 below is a separate matter - this tile is inset from the lattice, so the road
+ * stops short of where the other themes' do.
+ */
+const ROAD_WIDTH = radii(0.222);
+
 /** Roads as pale inlays across the tile's face. */
 function RoadLayer({ views }: LayerProps) {
   if (!views.some((view) => view.roads.length > 0)) {
@@ -207,10 +217,9 @@ function RoadLayer({ views }: LayerProps) {
               y1={view.at.y}
               x2={view.at.x + bearing.x * HEX_RADIUS * 0.83}
               y2={view.at.y + bearing.y * HEX_RADIUS * 0.83}
-              strokeWidth={4}
+              strokeWidth={ROAD_WIDTH}
               strokeLinecap="round"
               opacity={0.9}
-              vectorEffect="non-scaling-stroke"
             />
           );
         })

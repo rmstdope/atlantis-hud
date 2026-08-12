@@ -2102,6 +2102,81 @@ test("unsurveyed ground is rimmed as such, and stays rimmed at the furthest zoom
 });
 
 /**
+ * The mirror of the lattice test above, and the point of ah-ebv.
+ *
+ * The lattice is a hairline the map holds at one screen pixel however far it is zoomed. A road is
+ * the opposite kind of mark: it belongs to its hex, its spoke reaches to that hex's edge, and its
+ * width has to fall with the map or it ends up wider than the hex it is drawn in - which at the
+ * furthest zoom is exactly where the zoom band leaves roads as the last thing on screen. So the
+ * invariant is a width constant in *user* units, and a screen width that shrinks with the scale.
+ * The route is drawn over the roads and measured the same way, so a path and the road under it
+ * keep their relationship at every zoom.
+ */
+test("a road and the route over it keep their proportion to the hex at every zoom", async ({
+  page
+}) => {
+  await loadReport(page);
+  await enableMovementPlanner(page);
+  await selectHex(page, "1:7,53");
+  await selectUnit(page, OWN_UNIT);
+  await fillOrders(page, "MOVE N");
+  await expect(page.getByTestId("route-line-solid")).toHaveCount(1);
+
+  const measure = () =>
+    page.evaluate(() => {
+      const svg = document.querySelector('[data-testid="map-canvas"] svg')!;
+      const road = document.querySelector(".ct-road")!;
+      const route = document.querySelector('[data-testid="route-line-solid"]')!;
+      // The width alone cannot tell the two behaviours apart: `non-scaling-stroke` is a paint
+      // effect, so the computed stroke-width reads the same 4 user units either way while the
+      // browser draws 4 screen pixels. What the mark is measured in is the vector-effect.
+      return {
+        scale: Number(getComputedStyle(svg).getPropertyValue("--map-scale")),
+        road: parseFloat(getComputedStyle(road).strokeWidth),
+        roadEffect: getComputedStyle(road).vectorEffect,
+        route: parseFloat(getComputedStyle(route).strokeWidth),
+        routeEffect: getComputedStyle(route).vectorEffect
+      };
+    });
+
+  const atRest = await measure();
+  for (let step = 0; step < 4; step += 1) {
+    await page.getByRole("button", { name: "Zoom in" }).click();
+  }
+  const zoomedIn = await measure();
+  for (let step = 0; step < 8; step += 1) {
+    await page.getByRole("button", { name: "Zoom out" }).click();
+  }
+  const zoomedOut = await measure();
+
+  // The scales really did move, or the rest of this proves nothing.
+  expect(zoomedIn.scale).toBeGreaterThan(atRest.scale);
+  expect(zoomedOut.scale).toBeLessThan(atRest.scale);
+
+  // Measured in the world, not on the screen - at every zoom, since a stroke could in principle be
+  // opted out of the transform only in one band.
+  for (const sample of [atRest, zoomedIn, zoomedOut]) {
+    expect(sample.roadEffect).toBe("none");
+    expect(sample.routeEffect).toBe("none");
+  }
+
+  // Constant in user units: the same fraction of a hex, whatever the map is doing.
+  expect(zoomedIn.road).toBeCloseTo(atRest.road, 3);
+  expect(zoomedOut.road).toBeCloseTo(atRest.road, 3);
+  expect(zoomedIn.route).toBeCloseTo(atRest.route, 3);
+  expect(zoomedOut.route).toBeCloseTo(atRest.route, 3);
+
+  // Which is to say: narrower on screen the further out the map goes.
+  expect(zoomedOut.road * zoomedOut.scale).toBeLessThan(atRest.road * atRest.scale);
+  expect(zoomedOut.route * zoomedOut.scale).toBeLessThan(atRest.route * atRest.scale);
+
+  // A road is a line inside its hex rather than a mark across it - and because both are now in the
+  // same units, holding at one zoom is holding at all of them. The hex is 2 * HEX_RADIUS = 36 units
+  // wide; the bug this pins was a road wider than that once the map had shrunk it.
+  expect(zoomedOut.road).toBeLessThan(36 / 4);
+});
+
+/**
  * Issue #81: the units table and the unit panel show the coming month as the player types orders.
  *
  * A renamed unit's row carries the new name styled as predicted, with the report's name in the

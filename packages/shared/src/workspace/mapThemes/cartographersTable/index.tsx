@@ -12,7 +12,7 @@
  */
 
 import { HEX_RADIUS } from "../../mapViewport";
-import { HEX_POINTS } from "../geometry";
+import { HEX_POINTS, radii } from "../geometry";
 import { ROAD_VECTORS, type HexView } from "../hexView";
 import type { LayerProps, MapTheme } from "../mapTheme";
 import {
@@ -187,6 +187,15 @@ const HEX_POINTS_MOCKUP = HEX_POINTS.split(" ")
   )
   .join(" ");
 
+/**
+ * The surveyor's two strokes - a 4-unit casing under a 1.4-unit dash - as fractions of the hex, so
+ * the convention survives the whole zoom range instead of the casing growing as wide as the hex it
+ * crosses. The dash pattern is in the same units, so the dashes keep their place along the casing.
+ * See `docs/ui/map-themes.md` for which marks are measured this way.
+ */
+const ROAD_CASING = radii(0.222);
+const ROAD_DASH = radii(0.078);
+
 /** Roads as the surveyor's convention: a brown casing with a lighter dashed line over it. */
 function RoadLayer({ views }: LayerProps) {
   if (!views.some((view) => view.roads.length > 0)) {
@@ -207,9 +216,8 @@ function RoadLayer({ views }: LayerProps) {
                 y1={view.at.y}
                 x2={x}
                 y2={y}
-                strokeWidth={4}
+                strokeWidth={ROAD_CASING}
                 strokeLinecap="round"
-                vectorEffect="non-scaling-stroke"
               />
               <line
                 className="ct-road-dash"
@@ -217,9 +225,8 @@ function RoadLayer({ views }: LayerProps) {
                 y1={view.at.y}
                 x2={x}
                 y2={y}
-                strokeWidth={1.4}
+                strokeWidth={ROAD_DASH}
                 strokeDasharray="3 3"
-                vectorEffect="non-scaling-stroke"
               />
             </g>
           );

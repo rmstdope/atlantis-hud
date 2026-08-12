@@ -222,6 +222,22 @@ describe("roads, as an atlas draws them", () => {
     expect(svg).toContain("stroke-dasharray");
   });
 
+  it("keeps both strokes in proportion to the hex, so they shrink with the map", () => {
+    const svg = draw(cartographersTable.RoadLayer, [CONGESTED_CENTRE]);
+
+    // Pinned to screen pixels, the casing keeps its width while the hex shrinks around it and the
+    // road ends up wider than the hex it belongs to. Both strokes go in user units instead, so the
+    // dash keeps its place on the casing at every zoom.
+    // 4 and 1.4 are the weights this theme has always drawn: at rest the map's scale is 1, so the
+    // convention is the one it was, and only the zoomed views change.
+    expect(svg).not.toContain("vector-effect");
+    expect(Number(/class="ct-road"[^>]*stroke-width="([\d.]+)"/.exec(svg)?.[1])).toBeCloseTo(4, 1);
+    expect(Number(/class="ct-road-dash"[^>]*stroke-width="([\d.]+)"/.exec(svg)?.[1])).toBeCloseTo(
+      1.4,
+      1
+    );
+  });
+
   it("draws nothing when the roads badge is off", () => {
     expect(
       draw(cartographersTable.RoadLayer, [CONGESTED_CENTRE], { badges: allBadges(true, { roads: false }) })

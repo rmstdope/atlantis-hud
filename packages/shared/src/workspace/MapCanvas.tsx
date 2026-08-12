@@ -34,6 +34,7 @@ import {
   terrainTexturePatternId,
   terrainTextureUrl
 } from "./mapHexView";
+import { radii } from "./mapThemes/geometry";
 import { buildHexViews, type BadgeName } from "./mapThemes/hexView";
 import type { MapTheme } from "./mapThemes/mapTheme";
 
@@ -82,6 +83,23 @@ const RISK_CLASSES: Record<string, string> = {
   medium: "fill-risk-medium stroke-risk-medium",
   high: "fill-risk-high stroke-risk-high"
 };
+
+/**
+ * The route's own weights, in fractions of the hex - the same rule a theme's roads follow.
+ *
+ * A route is read against the ground it crosses: which hexes it enters, and whether it runs along a
+ * road or misses it. Pinned to screen pixels it stops answering either question as the map is
+ * zoomed out - at minimum zoom a hex is 9px across, and a 5px casing swallows both the hex and the
+ * road under it. Scaling with the world keeps the path, the road beneath it and the hex they share
+ * in the same proportion at every zoom.
+ *
+ * The risk outline follows the route rather than the rings: it is a hex-shaped statement about that
+ * hex's ground, where the selection and focus rings on the same hexagon are chrome telling the
+ * player where they are, and stay screen-constant along with the labels and the fog hairline.
+ */
+const ROUTE_CASING = radii(0.278);
+const ROUTE_LINE = radii(0.167);
+const RISK_OUTLINE = radii(0.111);
 
 type MapCanvasProps = {
   /** The open game's identifier, used to save and restore the map position across sessions. */
@@ -758,17 +776,15 @@ export function MapCanvas({
                     points={routeLine.solid}
                     fill="none"
                     className="stroke-ground"
-                    strokeWidth={5}
+                    strokeWidth={ROUTE_CASING}
                     strokeLinejoin="round"
-                    vectorEffect="non-scaling-stroke"
                   />
                   <polyline
                     points={routeLine.solid}
                     fill="none"
                     className="stroke-brass"
-                    strokeWidth={3}
+                    strokeWidth={ROUTE_LINE}
                     strokeLinejoin="round"
-                    vectorEffect="non-scaling-stroke"
                     data-testid="route-line-solid"
                   />
                 </>
@@ -779,19 +795,17 @@ export function MapCanvas({
                     points={routeLine.dotted}
                     fill="none"
                     className="stroke-ground"
-                    strokeWidth={5}
+                    strokeWidth={ROUTE_CASING}
                     strokeLinejoin="round"
                     strokeDasharray="6 6"
-                    vectorEffect="non-scaling-stroke"
                   />
                   <polyline
                     points={routeLine.dotted}
                     fill="none"
                     className="stroke-brass"
-                    strokeWidth={3}
+                    strokeWidth={ROUTE_LINE}
                     strokeLinejoin="round"
                     strokeDasharray="6 6"
-                    vectorEffect="non-scaling-stroke"
                     data-testid="route-line-dotted"
                   />
                 </>
@@ -806,8 +820,7 @@ export function MapCanvas({
                     transform={`translate(${world.x},${world.y})`}
                     className={RISK_CLASSES[risk]}
                     fillOpacity={0.28}
-                    strokeWidth={2}
-                    vectorEffect="non-scaling-stroke"
+                    strokeWidth={RISK_OUTLINE}
                   />
                 );
               })}

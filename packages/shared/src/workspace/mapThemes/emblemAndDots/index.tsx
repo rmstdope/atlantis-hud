@@ -10,7 +10,7 @@
  */
 
 import { HEX_RADIUS } from "../../mapViewport";
-import { HEX_POINTS } from "../geometry";
+import { HEX_POINTS, radii } from "../geometry";
 import { ROAD_VECTORS, type HexView } from "../hexView";
 import type { LayerProps, MapTheme } from "../mapTheme";
 import {
@@ -145,6 +145,13 @@ function TerrainLayer({ views }: LayerProps) {
   );
 }
 
+/**
+ * The spoke's width: this theme's 3.4 units, as a fraction of the hex. A road that outgrows its own
+ * hex would be competing with the medallion at exactly the zoom where the medallion is all this
+ * theme has left. See `docs/ui/map-themes.md` for which marks are measured this way.
+ */
+const ROAD_WIDTH = radii(0.189);
+
 /** Roads as pale spokes: present, but never competing with the medallion. */
 function RoadLayer({ views }: LayerProps) {
   if (!views.some((view) => view.roads.length > 0)) {
@@ -163,10 +170,9 @@ function RoadLayer({ views }: LayerProps) {
               y1={view.at.y}
               x2={view.at.x + bearing.x * HEX_RADIUS * 0.87}
               y2={view.at.y + bearing.y * HEX_RADIUS * 0.87}
-              strokeWidth={3.4}
+              strokeWidth={ROAD_WIDTH}
               strokeLinecap="round"
               opacity={0.85}
-              vectorEffect="non-scaling-stroke"
             />
           );
         })
