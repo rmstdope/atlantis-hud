@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { CONGESTED_HEXES } from "./congestedFixture";
-import { buildHexViews } from "./hexView";
+import { allBadges, buildHexViews } from "./hexView";
 import type { LayerProps, MapTheme } from "./mapTheme";
 import {
   DEFAULT_MAP_THEME_ID,
@@ -14,8 +14,7 @@ import {
 const views = buildHexViews(CONGESTED_HEXES, {
   showStaleness: true,
   showTextures: false,
-  showUnits: true,
-  showStructures: true
+  badges: allBadges(true)
 });
 
 /**

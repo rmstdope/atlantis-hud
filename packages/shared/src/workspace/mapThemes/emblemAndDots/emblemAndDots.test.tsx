@@ -2,15 +2,14 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { HexNode } from "../../../hexMapModel";
 import { CONGESTED_CENTRE, CONGESTED_HEXES, NAMED_ONLY } from "../congestedFixture";
-import { buildHexViews, type HexView, type HexViewOptions } from "../hexView";
+import { allBadges, buildHexViews, type HexView, type HexViewOptions } from "../hexView";
 import { emblemAndDots } from "./index";
 import { dotRow, EMBLEM_PRIORITY, emblemFor, tierPips, unitBar } from "./paint";
 
 const ALL_ON: HexViewOptions = {
   showStaleness: true,
   showTextures: false,
-  showUnits: true,
-  showStructures: true
+  badges: allBadges(true)
 };
 
 function draw(
@@ -287,12 +286,12 @@ describe("terrain and roads", () => {
     expect(Number(/opacity="([\d.]+)"/.exec(tint)?.[1])).toBeCloseTo(0.38);
   });
 
-  it("runs a pale spoke to each road's own edge, and none when structures are off", () => {
+  it("runs a pale spoke to each road's own edge, and none when the roads badge is off", () => {
     expect((draw(emblemAndDots.RoadLayer, [CONGESTED_CENTRE]).match(/<line /g) ?? []).length).toBe(
       2
     );
     expect(
-      draw(emblemAndDots.RoadLayer, [CONGESTED_CENTRE], { showStructures: false })
+      draw(emblemAndDots.RoadLayer, [CONGESTED_CENTRE], { badges: allBadges(true, { roads: false }) })
     ).not.toContain("<line");
   });
 });

@@ -2,15 +2,14 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { HexNode } from "../../../hexMapModel";
 import { CONGESTED_CENTRE, CONGESTED_HEXES, NAMED_ONLY } from "../congestedFixture";
-import { buildHexViews, type HexView, type HexViewOptions } from "../hexView";
+import { allBadges, buildHexViews, type HexView, type HexViewOptions } from "../hexView";
 import { miniatureWorld } from "./index";
 import { decorationFor, figureCount, GROUNDS, roofCluster, unitStand } from "./paint";
 
 const ALL_ON: HexViewOptions = {
   showStaleness: true,
   showTextures: false,
-  showUnits: true,
-  showStructures: true
+  badges: allBadges(true)
 };
 
 function draw(
@@ -261,9 +260,9 @@ describe("roads, as trodden paths", () => {
     expect((svg.match(/<line /g) ?? []).length).toBe(2);
   });
 
-  it("draws nothing when the structures chip is off", () => {
+  it("draws nothing when the roads badge is off", () => {
     expect(
-      draw(miniatureWorld.RoadLayer, [CONGESTED_CENTRE], { showStructures: false })
+      draw(miniatureWorld.RoadLayer, [CONGESTED_CENTRE], { badges: allBadges(true, { roads: false }) })
     ).not.toContain("<line");
   });
 });

@@ -355,6 +355,7 @@ export function AppShell({
   const level = useWorkspaceStore((state) => state.level);
   const setLevel = useWorkspaceStore((state) => state.setLevel);
   const layers = useWorkspaceStore((state) => state.layers);
+  const badges = useWorkspaceStore((state) => state.badges);
   const showTextures = useSettingsStore((state) => state.biomeTextures);
   const mapThemeId = useSettingsStore((state) => state.mapTheme);
   const warnOnUnguardedHex = useSettingsStore((state) => state.warnOnUnguardedHex);
@@ -2110,8 +2111,7 @@ export function AppShell({
           onSelectRegion={selectHex}
           showStaleness={layers.staleness}
           showTextures={showTextures}
-          showUnits={layers.units}
-          showStructures={layers.structures}
+          badges={badges}
           route={chooseRouteOverlay({
             movementLayerOn: layers.movement,
             plannerArmed: planner.armed,

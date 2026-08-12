@@ -4,8 +4,9 @@
  * This is the whole of the map's shared knowledge about a hex: a theme decides *how* to draw, and
  * this decides *what* there is to draw. Two things follow from that split and are worth naming:
  *
- * - **The layer chips are applied here, once.** A view built with the units chip off has no units
- *   in it at all, so a theme cannot forget to honour a toggle - there is nothing left to forget.
+ * - **The badge toggles are applied here, once.** A view built with the units badge off has no
+ *   units in it at all, so a theme cannot forget to honour a toggle - there is nothing left to
+ *   forget.
  * - **Nothing is left for a theme to compute.** Age is already a fog opacity, a road is already a
  *   bearing, and the structures are already sorted into what each one is drawn as. Six themes
  *   re-deriving any of that would be six chances to derive it differently.
@@ -108,11 +109,64 @@ export type HexView = {
   gate: boolean;
 };
 
+/**
+ * The marks a hex can carry, each switchable on its own.
+ *
+ * One name per thing a theme draws over the terrain. There used to be two - "units" and
+ * "structures" - across all nine, so hiding the buildings on a crowded level also took the ships,
+ * the shafts, the lairs and the roads with them.
+ *
+ * `battle` and `gate` are deliberately absent: they are reserved fields that are always false, and
+ * a control that does nothing is worse than no control. They join this list the day the parser
+ * reads them.
+ */
+export type BadgeName =
+  | "settlements"
+  | "ownUnits"
+  | "foreignUnits"
+  | "monsters"
+  | "guard"
+  | "ships"
+  | "buildings"
+  | "shafts"
+  | "lairs"
+  | "roads";
+
+/** The badges and what they are called, in the order the popover lists them. */
+export const BADGES: ReadonlyArray<{ name: BadgeName; label: string }> = [
+  { name: "settlements", label: "Settlements" },
+  { name: "ownUnits", label: "Own units" },
+  { name: "foreignUnits", label: "Foreign units" },
+  { name: "monsters", label: "Monsters" },
+  { name: "guard", label: "Guard" },
+  { name: "ships", label: "Ships" },
+  { name: "buildings", label: "Buildings" },
+  { name: "shafts", label: "Shafts" },
+  { name: "lairs", label: "Lairs" },
+  { name: "roads", label: "Roads" }
+];
+
+/**
+ * Every badge set the same way, with named exceptions - the shape the store, the popover's All and
+ * None, and every test fixture all need.
+ *
+ * Built fresh each call rather than shared: this is state somebody is about to toggle.
+ */
+export function allBadges(
+  on: boolean,
+  overrides: Partial<Record<BadgeName, boolean>> = {}
+): Record<BadgeName, boolean> {
+  const badges = Object.fromEntries(BADGES.map(({ name }) => [name, on])) as Record<
+    BadgeName,
+    boolean
+  >;
+  return { ...badges, ...overrides };
+}
+
 export type HexViewOptions = {
   showStaleness: boolean;
   showTextures: boolean;
-  showUnits: boolean;
-  showStructures: boolean;
+  badges: Record<BadgeName, boolean>;
 };
 
 /** The bearing a road structure runs along, or null for any other kind of structure. */
@@ -239,10 +293,25 @@ function guardOf(units: ReportUnit[]): "own" | "foreign" | null {
   return units.some((unit) => unit.onGuard) ? "foreign" : null;
 }
 
+/** Whether anything the tally produces is wanted, so an unwanted pass is not made at all. */
+function anyStructureBadge(badges: Record<BadgeName, boolean>): boolean {
+  return badges.roads || badges.ships || badges.buildings || badges.shafts || badges.lairs;
+}
+
 export function buildHexView(hex: HexNode, options: HexViewOptions): HexView {
+  const badges = options.badges;
   const paint = hexPaint(hex, options.showStaleness);
-  const structures = options.showStructures ? tallyStructures(hex.region) : noStructures();
+  const structures = anyStructureBadge(badges) ? tallyStructures(hex.region) : noStructures();
   const units = hex.region?.units ?? [];
+  // Hiding the monsters has to take them out of the foreign tally as well, not merely stop naming
+  // them: every theme draws the ordinary foreign group as `foreign - monster`, so a monster left
+  // in the tally would be redrawn as somebody's soldier and put the foreign count up by one - a
+  // badge nobody touched changing its number, over a mark the player asked to be rid of.
+  // Clamped, because the tally and the scan come from different places and a report need not agree.
+  const monsters = badges.foreignUnits ? countMonsters(units) : 0;
+  const foreign = badges.foreignUnits
+    ? Math.max(0, hex.foreignUnitCount - (badges.monsters ? 0 : monsters))
+    : 0;
 
   return {
     key: hex.regionId,
@@ -253,16 +322,18 @@ export function buildHexView(hex: HexNode, options: HexViewOptions): HexView {
     hatched: paint.hatched,
     knowledge: hex.knowledge,
     ageInTurns: hex.ageInTurns,
-    roads: structures.roads,
-    settlement: settlementOf(hex),
-    units: options.showUnits
-      ? { own: hex.ownUnitCount, foreign: hex.foreignUnitCount, monster: countMonsters(units) }
-      : { own: 0, foreign: 0, monster: 0 },
-    guard: options.showUnits ? guardOf(units) : null,
-    ships: structures.ships,
-    buildings: structures.buildings,
-    shafts: structures.shafts,
-    lairs: structures.lairs,
+    roads: badges.roads ? structures.roads : [],
+    settlement: badges.settlements ? settlementOf(hex) : null,
+    units: {
+      own: badges.ownUnits ? hex.ownUnitCount : 0,
+      foreign,
+      monster: badges.monsters ? monsters : 0
+    },
+    guard: badges.guard ? guardOf(units) : null,
+    ships: badges.ships ? structures.ships : 0,
+    buildings: badges.buildings ? structures.buildings : 0,
+    shafts: badges.shafts ? structures.shafts : 0,
+    lairs: badges.lairs ? structures.lairs : 0,
     battle: false,
     gate: false
   };

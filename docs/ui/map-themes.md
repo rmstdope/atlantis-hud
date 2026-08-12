@@ -28,8 +28,13 @@ Roads are the theme's because every design styles them differently, but they kee
 ## What a theme receives
 
 `buildHexViews` (`mapThemes/hexView.ts`) turns the hexes of one knowledge bucket into `HexView`s.
-It is pure, and it applies the layer chips **before** a theme sees anything — a view built with the
-units chip off has no units in it at all, so a theme cannot forget to honour a toggle.
+It is pure, and it applies the badge toggles **before** a theme sees anything — a view built with
+the own-units badge off has no own units in it at all, so a theme cannot forget to honour a toggle.
+
+There is one toggle per mark, listed in `BADGES` (`mapThemes/hexView.ts`) and stored in the
+workspace store: settlements, own units, foreign units, monsters, guard, ships, buildings, shafts,
+lairs and roads. A theme neither reads them nor needs to know they exist — it draws exactly what the
+view model says, and an unwanted mark simply is not in it.
 
 ```ts
 type HexView = {
@@ -41,7 +46,7 @@ type HexView = {
   hatched: boolean;
   knowledge: HexKnowledge;
   ageInTurns: number | null;
-  roads: RoadDirection[];           // [] when the structures chip is off
+  roads: RoadDirection[];           // [] when the roads badge is off
   settlement: { name: string; tier: "village" | "town" | "city" | null } | null;
   units: { own: number; foreign: number; monster: number };
   guard: "own" | "foreign" | null;
@@ -194,7 +199,7 @@ Vitest runs in plain node with no DOM, so render tests use `renderToStaticMarkup
 
 ```tsx
 const views = buildHexViews(CONGESTED_HEXES, { showStaleness: true, showTextures: false,
-                                               showUnits: true, showStructures: true });
+                                               badges: allBadges(true) });
 const svg = renderToStaticMarkup(<svg><yourTheme.MarkLayer views={views} /></svg>);
 expect(svg).toContain('data-chip="ship"');
 ```

@@ -33,7 +33,7 @@ import {
   terrainTexturePatternId,
   terrainTextureUrl
 } from "./mapHexView";
-import { buildHexViews } from "./mapThemes/hexView";
+import { buildHexViews, type BadgeName } from "./mapThemes/hexView";
 import type { MapTheme } from "./mapThemes/mapTheme";
 
 const HEX_POINTS = hexPointsAttribute(HEX_RADIUS);
@@ -96,8 +96,8 @@ type MapCanvasProps = {
   onSelectRegion: (regionId: string) => void;
   showStaleness: boolean;
   showTextures: boolean;
-  showUnits: boolean;
-  showStructures: boolean;
+  /** Which marks the themes may draw over the terrain, one flag per kind. */
+  badges: Record<BadgeName, boolean>;
   /**
    * The movement line to draw, whatever its source - the planner's preview or a written order.
    * Solid through the hexes the coming month covers, dotted for the rest; a null `solidSteps`
@@ -142,8 +142,7 @@ export function MapCanvas({
   onSelectRegion,
   showStaleness,
   showTextures,
-  showUnits,
-  showStructures,
+  badges,
   route = null,
   routeRisk = [],
   onMarquee
@@ -192,12 +191,14 @@ export function MapCanvas({
   /**
    * What each hex shows, worked out once for whichever theme is drawing.
    *
-   * The layer chips are applied here rather than passed on, so a theme draws exactly what the view
-   * model says and cannot forget to honour a toggle - there is nothing left to forget.
+   * The badge toggles are applied here rather than passed on, so a theme draws exactly what the
+   * view model says and cannot forget to honour a toggle - there is nothing left to forget. This
+   * memo is also the whole of the redraw: turning a badge off rebuilds the views and React does
+   * the rest.
    */
   const viewOptions = useMemo(
-    () => ({ showStaleness, showTextures, showUnits, showStructures }),
-    [showStaleness, showTextures, showUnits, showStructures]
+    () => ({ showStaleness, showTextures, badges }),
+    [showStaleness, showTextures, badges]
   );
   const allViews = useMemo(() => buildHexViews(onLevel, viewOptions), [onLevel, viewOptions]);
   // The knowledge buckets are cut from that one pass rather than built again from `hexLayers`:
