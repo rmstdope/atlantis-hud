@@ -34,9 +34,15 @@ export function hasHeadroom(freeGb: number): boolean {
   return freeGb > FREE_SPACE_FLOOR_GB;
 }
 
-/** What to say about it, in the terms someone would need to act. */
+/**
+ * What to say about it, in the terms someone would need to act.
+ *
+ * Truncated rather than rounded: 4.96 rounds to "5.0 GB free, below the 5 GB floor", which reads as
+ * a contradiction at exactly the moment the message matters. A refusal must never overstate what is
+ * there.
+ */
 export function describeSpace(freeGb: number): string {
-  const free = Number(freeGb.toFixed(1));
+  const free = Math.floor(freeGb * 10) / 10;
 
   return hasHeadroom(freeGb)
     ? `disk: ${free} GB free, above the ${FREE_SPACE_FLOOR_GB} GB floor.`
