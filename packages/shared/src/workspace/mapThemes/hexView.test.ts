@@ -282,8 +282,13 @@ describe("the badge toggles, applied once so no theme can forget one", () => {
   it("keeps a named hex faded whatever the staleness chip says", () => {
     // Staleness is about age, and a hex named by a neighbour's exits has none.
     const view = viewOf(hex({ knowledge: "named" }), { showStaleness: false });
+    const withStaleness = viewOf(hex({ knowledge: "named" }), { showStaleness: true });
 
-    expect(view.fogOpacity).toBeGreaterThan(0.5);
+    // Faded, and by the same amount either way. The figure itself is no longer "more than half":
+    // the fade is light enough to read the terrain through, and the unsurveyed rim each theme
+    // draws is what says the ground was never surveyed.
+    expect(view.fogOpacity).toBeGreaterThan(0.25);
+    expect(view.fogOpacity).toBe(withStaleness.fogOpacity);
     expect(view.hatched).toBe(false);
   });
 });

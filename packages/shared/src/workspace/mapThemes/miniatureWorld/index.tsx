@@ -10,9 +10,9 @@
  * - **With biome textures on, the painted decorations are dropped entirely.** The photograph is
  *   doing that job, and painting mountains over a picture of a mountain is the one thing this
  *   design must not do. No tint either: the miniatures stand directly on the image.
- * - **A hex nobody has visited is not painted at all.** Staleness is a grey wash over a scene that
- *   is still there; unsurveyed ground is a part of the board that was never painted, and that is a
- *   different thing entirely.
+ * - **A hex nobody has visited is primed but unfinished.** Staleness is a grey wash over a scene
+ *   that is still there; unsurveyed ground is a part of the board painted in its ground colour and
+ *   no further, taped at the edge, with none of the scenery a modeller adds having been there.
  */
 
 import { HEX_RADIUS } from "../../mapViewport";
@@ -165,26 +165,27 @@ function TerrainLayer({ views }: LayerProps) {
   return (
     <g pointerEvents="none">
       {views.map((view) => {
-        // Never painted, because nobody has been there to see it. Not a faded memory - an
-        // unfinished part of the board.
+        // Primed but not finished, because nobody has been there to see it. Not a faded memory -
+        // an unfinished part of the board.
         const unpainted = view.knowledge === "named";
+        // The scenery is what a modeller adds having seen the place; the ground colour is not.
         const decoration = unpainted || view.texture ? null : decorationFor(view.terrain);
         return (
           <g key={view.key} transform={at(view.at)}>
             <g transform={`scale(${SCALE})`}>
               <polygon
                 points={HEX_POINTS_MOCKUP}
-                className={unpainted ? "mw-unpainted mw-edge" : "mw-edge"}
+                className="mw-edge"
                 style={{
-                  // `unpainted` wins over the texture, not the other way round. The view model
-                  // offers a biome image for any terrain, and a named hex has a terrain - a
-                  // neighbour said so - but nobody has *been* there, and a photograph of ground
-                  // nobody has seen is the claim the unpainted board exists to avoid making.
-                  fill: unpainted
-                    ? undefined
-                    : view.texture
-                      ? `url(#${view.texture.patternId})`
-                      : `url(#${gradientOf(view.terrain)})`
+                  // Painted like any other hex, unpainted or not. This used to be suppressed for a
+                  // named hex, on the grounds that a photograph of ground nobody has seen is a
+                  // claim the board should not make - right about the photograph, wrong about the
+                  // terrain. A neighbour naming the hex says what is there, and blank board threw
+                  // that away, leaving a named jungle and a named desert the same grey. The wash
+                  // and the rim below carry "nobody has been here"; this carries what it is.
+                  fill: view.texture
+                    ? `url(#${view.texture.patternId})`
+                    : `url(#${gradientOf(view.terrain)})`
                 }}
                 strokeWidth={1.6}
                 vectorEffect="non-scaling-stroke"
@@ -197,11 +198,27 @@ function TerrainLayer({ views }: LayerProps) {
               {view.fogOpacity > 0 && (
                 <polygon
                   points={HEX_POINTS_MOCKUP}
-                  className="mw-wash"
+                  className={unpainted ? "mw-unpainted" : "mw-wash"}
                   data-wash={unpainted ? "unpainted" : "stale"}
-                  // Board nobody has painted is washed at full strength. The damping is for a
-                  // remembered scene, which still has a scene underneath worth keeping legible.
-                  opacity={unpainted ? view.fogOpacity : view.fogOpacity * 0.8}
+                  // The board wash sits over the primer rather than instead of it, so the hex still
+                  // reads as unfinished. Damped either way: there is a scene under both of them
+                  // now, and the damping is also what keeps unpainted board the lightest thing on
+                  // the table rather than landing on top of a long-stale wash.
+                  opacity={Number((view.fogOpacity * 0.8).toFixed(3))}
+                />
+              )}
+              {unpainted && (
+                // Masking tape round a hex still to be painted: the wash is light enough to read
+                // the primer through, so this is what says nobody has been here - and a rim, not
+                // a label, so the far zoom band keeps it.
+                <polygon
+                  points={HEX_POINTS_MOCKUP}
+                  className="mw-unsurveyed-rim"
+                  data-rim="unsurveyed"
+                  fill="none"
+                  strokeWidth={1.6}
+                  strokeDasharray="3 3"
+                  vectorEffect="non-scaling-stroke"
                 />
               )}
             </g>

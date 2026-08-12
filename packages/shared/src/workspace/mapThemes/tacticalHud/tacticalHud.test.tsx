@@ -306,14 +306,65 @@ describe("roads, as a luminous lattice", () => {
  * has visited has no such claim to make - not knowing what is there is the whole message - and
  * damping it made the one state that should shout the quietest of the three.
  */
+/**
+ * This asserted the *full* fade for a named hex, back when the fade was heavy and was the thing
+ * that said "never surveyed". Every dim is damped now, unsurveyed included: the fade is light, the
+ * rim carries the state, and damping alike is what keeps unsurveyed ground the lightest thing on
+ * the display instead of landing on top of a long-stale reading.
+ */
 describe("how loudly unsurveyed ground is stated", () => {
-  it("dims a named hex by the full fade the view model asks for", () => {
-    const svg = renderToStaticMarkup(
+  it("dims a named hex proportionally, as it dims an aged one", () => {
+    const dimOf = (view: Partial<HexView>) => {
+      const svg = renderToStaticMarkup(
+        <svg>
+          <tacticalHud.TerrainLayer views={[viewWith(view)]} />
+        </svg>
+      );
+      return Number(/data-dim="[a-z]+"[^>]*opacity="([\d.]+)"/.exec(svg)?.[1]);
+    };
+
+    expect(dimOf({ knowledge: "named", fogOpacity: 0.75 })).toBeCloseTo(0.6);
+    // Proportional, so a heavier fade still dims harder - the damping is a scale, not a cap.
+    expect(dimOf({ knowledge: "named", fogOpacity: 0.4 })).toBeLessThan(
+      dimOf({ knowledge: "named", fogOpacity: 0.75 })
+    );
+  });
+});
+
+/**
+ * Ground a neighbour merely named, and the two things that have to be true of it at once.
+ *
+ * It has to be recognisable - the report says what terrain is there, and a wash heavy enough to
+ * bury that was throwing away the only thing the hex knows. And it still has to read as unsurveyed,
+ * which the fade can no longer say on its own now that it is light: a named hex is *less* faded
+ * than an old sighting. The rim carries it instead, structurally, so it survives the far zoom band
+ * where every label is hidden.
+ */
+describe("unsurveyed ground, drawn light and rimmed", () => {
+  it("rims a hex nobody has surveyed", () => {
+    expect(draw(tacticalHud.TerrainLayer, [NAMED_ONLY])).toContain('data-rim="unsurveyed"');
+  });
+
+  it("gives an old sighting no unsurveyed rim, however far it has faded", () => {
+    const ancient = renderToStaticMarkup(
       <svg>
-        <tacticalHud.TerrainLayer views={[viewWith({ knowledge: "named", fogOpacity: 0.75 })]} />
+        <tacticalHud.TerrainLayer
+          views={[viewWith({ knowledge: "stale", fogOpacity: 0.62, hatched: true })]}
+        />
       </svg>
     );
 
-    expect(Number(/data-dim="unsurveyed"[^>]*opacity="([\d.]+)"/.exec(svg)?.[1])).toBeCloseTo(0.75);
+    expect(ancient).not.toContain('data-rim="unsurveyed"');
+  });
+
+  it("keeps a named hex's terrain readable, with the biome textures off and on", () => {
+    // Both texture modes, because rendering one cannot show the other: the fixture's named hex is
+    // jungle either way, and it is the paint that changes.
+    expect(draw(tacticalHud.TerrainLayer, [NAMED_ONLY], { showTextures: false })).toContain(
+      "hud-terrain-jungle"
+    );
+    expect(draw(tacticalHud.TerrainLayer, [NAMED_ONLY], { showTextures: true })).toContain(
+      "url(#biome-texture-jungle)"
+    );
   });
 });

@@ -242,12 +242,48 @@ describe("the three knowledge states", () => {
     expect(stale).toContain("stroke-dasharray");
   });
 
-  it("states unvisited ground at full strength, and never as a stale one", () => {
+  /**
+   * The dim used to run at 0.78 here - "full strength" - which is what buried the terrain this
+   * theme was dimming. It is light now, and the rim tells the two faded states apart: this theme
+   * dashed both of them identically before, so the dim was doing all the work and the rim none.
+   */
+  it("keeps the stale rim it has always drawn, alongside the unsurveyed one", () => {
+    const stale = renderToStaticMarkup(
+      <svg>
+        <emblemAndDots.TerrainLayer
+          views={[viewWith({ knowledge: "stale", fogOpacity: 0.5, hatched: true })]}
+        />
+      </svg>
+    );
+
+    // Both faded states are rimmed - the rim says "do not trust the inside of this" either way -
+    // and they are told apart by the dash and the attribute, not by one of them losing its rim.
+    expect(stale).toContain('data-rim="stale"');
+    expect(stale).toContain('stroke-dasharray="5 4"');
+  });
+
+  it("leaves a hex from this turn's report unrimmed", () => {
+    const current = renderToStaticMarkup(
+      <svg>
+        <emblemAndDots.TerrainLayer
+          views={[viewWith({ knowledge: "current", fogOpacity: 0, hatched: false })]}
+        />
+      </svg>
+    );
+
+    // The attribute is omitted, not written as the string "undefined".
+    expect(current).not.toContain("data-rim");
+  });
+
+  it("states unvisited ground lightly, and never as a stale one", () => {
     const svg = draw(emblemAndDots.TerrainLayer, [NAMED_ONLY]);
 
     expect(svg).toContain('data-dim="unsurveyed"');
     expect(svg).not.toContain('data-dim="stale"');
-    expect(Number(/data-dim="unsurveyed"[^>]*opacity="([\d.]+)"/.exec(svg)?.[1])).toBeCloseTo(0.78);
+    expect(svg).toContain('data-rim="unsurveyed"');
+    expect(Number(/data-dim="unsurveyed"[^>]*opacity="([\d.]+)"/.exec(svg)?.[1])).toBeLessThanOrEqual(
+      0.5
+    );
   });
 
   /**
@@ -293,5 +329,43 @@ describe("terrain and roads", () => {
     expect(
       draw(emblemAndDots.RoadLayer, [CONGESTED_CENTRE], { badges: allBadges(true, { roads: false }) })
     ).not.toContain("<line");
+  });
+});
+
+/**
+ * Ground a neighbour merely named, and the two things that have to be true of it at once.
+ *
+ * It has to be recognisable - the report says what terrain is there, and a wash heavy enough to
+ * bury that was throwing away the only thing the hex knows. And it still has to read as unsurveyed,
+ * which the fade can no longer say on its own now that it is light: a named hex is *less* faded
+ * than an old sighting. The rim carries it instead, structurally, so it survives the far zoom band
+ * where every label is hidden.
+ */
+describe("unsurveyed ground, drawn light and rimmed", () => {
+  it("rims a hex nobody has surveyed", () => {
+    expect(draw(emblemAndDots.TerrainLayer, [NAMED_ONLY])).toContain('data-rim="unsurveyed"');
+  });
+
+  it("gives an old sighting no unsurveyed rim, however far it has faded", () => {
+    const ancient = renderToStaticMarkup(
+      <svg>
+        <emblemAndDots.TerrainLayer
+          views={[viewWith({ knowledge: "stale", fogOpacity: 0.62, hatched: true })]}
+        />
+      </svg>
+    );
+
+    expect(ancient).not.toContain('data-rim="unsurveyed"');
+  });
+
+  it("keeps a named hex's terrain readable, with the biome textures off and on", () => {
+    // Both texture modes, because rendering one cannot show the other: the fixture's named hex is
+    // jungle either way, and it is the paint that changes.
+    expect(draw(emblemAndDots.TerrainLayer, [NAMED_ONLY], { showTextures: false })).toContain(
+      "ed-terrain-jungle"
+    );
+    expect(draw(emblemAndDots.TerrainLayer, [NAMED_ONLY], { showTextures: true })).toContain(
+      "url(#biome-texture-jungle)"
+    );
   });
 });

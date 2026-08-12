@@ -69,13 +69,19 @@ const HATCH = Array.from({ length: 13 }, (_, index) => {
 const HEX_CLIP_ID = "ct-hex-clip";
 
 /**
- * How strong the ageing wash is for a given fade.
+ * How strong a wash is for a given fade, whichever state it is saying.
  *
  * Deliberately weaker than the fade the view model asks for. Fog is meant to hide ground; a wash is
- * meant to say the *page* has aged, and the survey underneath it must still be readable - a stale
- * ocean has to keep looking like ocean. Laid at the full 0.62 an old sighting went uniformly tan
- * and every terrain became the same colour. The hatching carries "this is old"; the wash only has
- * to tint. Still proportional to age, so a recent sighting and an ancient one differ.
+ * meant to say something *about* the page, and the survey underneath it must still be readable - a
+ * stale ocean has to keep looking like ocean. Laid at the full 0.62 an old sighting went uniformly
+ * tan and every terrain became the same colour. The hatching carries "this is old"; the wash only
+ * has to tint. Still proportional to age, so a recent sighting and an ancient one differ.
+ *
+ * Applied to unsurveyed ground as well, and that is not a detail. Left undamped, the named wash
+ * came out at 0.400 against an ancient sighting's 0.384 - sixteen thousandths apart, so telling
+ * "never surveyed" from "seen forty turns ago" meant comparing two shades of the same terrain,
+ * which is the fault this whole treatment exists to remove. Damped, unsurveyed ground is the
+ * lightest thing on the sheet, and the pencilled rim over it is what names the state.
  */
 function washOpacity(fogOpacity: number): number {
   return Number((fogOpacity * 0.62).toFixed(3));
@@ -121,12 +127,29 @@ function TerrainLayer({ views }: LayerProps) {
                   reached - so it fades towards the unsurveyed grey rather than yellowing, and it
                   is never hatched: a hex that was never visited has no age to show.
                 */
-                <polygon
-                  points={HEX_POINTS_MOCKUP}
-                  className="ct-unsurveyed"
-                  data-wash="unsurveyed"
-                  opacity={view.fogOpacity}
-                />
+                <>
+                  <polygon
+                    points={HEX_POINTS_MOCKUP}
+                    className="ct-unsurveyed"
+                    data-wash="unsurveyed"
+                    opacity={washOpacity(view.fogOpacity)}
+                  />
+                  {/*
+                    The surveyor's dashed boundary: a sheet edge pencilled in from a neighbour's
+                    word rather than walked. The wash is deliberately light enough to read the
+                    terrain through, so this is what says the ground is unsurveyed - and being a
+                    rim rather than a label, it still says it at the far zoom.
+                  */}
+                  <polygon
+                    points={HEX_POINTS_MOCKUP}
+                    className="ct-unsurveyed-rim"
+                    data-rim="unsurveyed"
+                    fill="none"
+                    strokeWidth={1.2}
+                    strokeDasharray="4 3"
+                    vectorEffect="non-scaling-stroke"
+                  />
+                </>
               ) : (
                 <polygon
                   points={HEX_POINTS_MOCKUP}

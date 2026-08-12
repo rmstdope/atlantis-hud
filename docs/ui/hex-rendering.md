@@ -81,14 +81,23 @@ on top: **named → stale → current**.
 The **fade** each bucket gets is decided once, in `hexPaint`, and handed to the theme as a
 `fogOpacity`; what that fade is painted *in*, and what else marks the state, is the theme's.
 
-- **Named** (known only from a neighbour's exits): faded at a fixed 78%, and never hatched — a hex
-  that was never visited has no age. The figure sits well clear of the stale cap below, and
-  deliberately: the two states were once close enough that telling them apart meant comparing
-  shades of the same terrain, and "what have I actually seen?" should be a question the whole map
-  answers at a glance rather than one you squint at a hex to settle. A name from a neighbour is
-  very nearly no knowledge at all. Themes carry the distinction further in their own vocabulary —
-  Cartographer's Table washes it in a cool unsurveyed grey rather than the warm tone of age,
-  Tactical HUD outlines it as an unconfirmed contact, Miniature World leaves the board unpainted.
+- **Named** (known only from a neighbour's exits): faded at a fixed 40%, never hatched — a hex that
+  was never visited has no age — and **rimmed**. The fade is light on purpose: a neighbour's exits
+  still say what terrain is there, and that is the one fact the hex carries, so burying it under a
+  heavy wash threw away the only thing worth drawing. What says *unsurveyed* is the rim, which every
+  theme draws in its own vocabulary and which the far zoom band keeps. Themes carry it further from
+  there — Cartographer's Table washes a cool unsurveyed grey under a pencilled boundary rather than
+  the warm tone of age, Tactical HUD outlines an unconfirmed contact, Miniature World primes the
+  board in the terrain's colours and tapes its edge, still visibly unfinished.
+
+  **This is below the stale cap, so unvisited ground reads *lighter* than an old sighting.** That
+  inverts what the fade used to say and is deliberate: the fade is legibility now, and the rim and
+  the hatch are what carry meaning. It was the other way round until the heavy wash was found to
+  make a named forest and a named desert the same pale smudge.
+
+  These are the figures the *view model* hands over. Each theme damps them by its own factor before
+  painting — see [`map-themes.md`](map-themes.md) — so the numbers on screen are lower, and it is
+  the damped pair that has to stay clearly apart.
 - **Current** (in this turn's report): terrain drawn clean, no overlay.
 - **Stale** (visited before, absent from the current report), when the **staleness toggle** is
   on: faded continuously with age — `min(0.62, 0.30 + 0.02 × ageInTurns)` — so a hex seen last turn

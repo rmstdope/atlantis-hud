@@ -56,9 +56,16 @@ function terrainClass(terrain: string): string {
 /** Light, because the bevel is doing the work of separating tile from tile. */
 const TEXTURE_TINT = 0.14;
 
-/** A stale tile is held under its fade; unvisited ground takes the fade whole. */
+/**
+ * Every dimmed tile is held under its fade, whichever state it is in.
+ *
+ * Unvisited ground used to take the fade whole, back when the fade was heavy and was what said
+ * "never surveyed". It is light now and the rim says that instead, so damping it costs nothing and
+ * buys the separation: undamped, unsurveyed sat at 0.400 against an ancient sighting's 0.446, and
+ * two dims a twentieth apart are the same dim.
+ */
 function dimOpacity(view: HexView): number {
-  return view.knowledge === "named" ? view.fogOpacity : Number((view.fogOpacity * 0.72).toFixed(3));
+  return Number((view.fogOpacity * 0.72).toFixed(3));
 }
 
 /** The tile's own face, inset from the hex so the seam shows. */
@@ -156,13 +163,20 @@ function TerrainLayer({ views }: LayerProps) {
                     data-dim={view.knowledge === "named" ? "unsurveyed" : "stale"}
                     opacity={dimOpacity(view)}
                   />
-                  {/* Sunk flush, and rimmed so the sinking reads even against a dark neighbour. */}
+                  {/*
+                    Sunk flush, and rimmed so the sinking reads even against a dark neighbour.
+                    Both faded states are sunk, so the rim alone cannot say which one this is: a
+                    tile nobody has surveyed gets the tighter, more broken dash and says so in the
+                    markup, because the dim behind it is now light enough to read the terrain
+                    through and no longer distinguishes them either.
+                  */}
                   <polygon
                     points={TILE_POINTS}
                     className="bt-sunk-rim"
+                    data-rim={view.knowledge === "named" ? "unsurveyed" : "sunk"}
                     fill="none"
                     strokeWidth={1.4}
-                    strokeDasharray="4 3"
+                    strokeDasharray={view.knowledge === "named" ? "2 3" : "4 3"}
                     vectorEffect="non-scaling-stroke"
                   />
                 </>

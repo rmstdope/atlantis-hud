@@ -2073,6 +2073,35 @@ test("the unexplored lattice keeps a constant hairline at every zoom", async ({ 
 });
 
 /**
+ * Ground a neighbour merely named, which the map must say two things about at once.
+ *
+ * The fade over it is deliberately light, so the terrain the report gives is legible; what says
+ * nobody has surveyed it is the rim. That division of labour only works if the rim outlives the
+ * far zoom band - the band that hides every label precisely because labels stop fitting - so this
+ * checks it where it would fail: zoomed all the way out, with nothing else left on the hex.
+ */
+test("unsurveyed ground is rimmed as such, and stays rimmed at the furthest zoom", async ({
+  page
+}) => {
+  await loadReport(page);
+
+  const rims = page.getByTestId("map-canvas").locator('[data-rim="unsurveyed"]');
+  // Turn 71 names hexes it never visited, by way of its neighbours' exits.
+  await expect(rims.first()).toBeAttached();
+  const atRest = await rims.count();
+
+  for (let step = 0; step < 8; step += 1) {
+    await page.getByRole("button", { name: "Zoom out" }).click();
+  }
+
+  // Still *visible*, not merely present. The map draws every hex on the level whatever the zoom
+  // and the bands are pure CSS, so a count would be constant by construction - and a theme rule
+  // hiding the rim in the far band, which is exactly the failure this guards, would slip past it.
+  await expect(rims.first()).toBeVisible();
+  expect(await rims.count()).toBe(atRest);
+});
+
+/**
  * Issue #81: the units table and the unit panel show the coming month as the player types orders.
  *
  * A renamed unit's row carries the new name styled as predicted, with the report's name in the

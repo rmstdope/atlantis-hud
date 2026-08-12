@@ -268,20 +268,28 @@ describe("roads, as trodden paths", () => {
 });
 
 /**
- * Unpainted board is washed at full strength, never damped.
+ * Unpainted board takes the view model's fade as given, where a remembered scene is damped.
  *
- * The damping exists so a remembered scene stays a scene. Board nobody has painted has nothing to
- * keep legible underneath, and damping it made the one state that should shout the quietest.
+ * The reason has changed even though the assertion has not. It used to be that board nobody had
+ * painted had nothing underneath worth keeping legible, so damping it would have muffled the state
+ * that should shout loudest. There is terrain under it now, and the fade it takes is light to begin
+ * with - the rim is what shouts. What the undamped value buys today is separation: damped, it would
+ * sit under the stale wash and the two states would meet in the middle again.
  */
 describe("how loudly unpainted board is stated", () => {
-  it("washes a named hex by the full fade the view model asks for", () => {
-    const svg = renderToStaticMarkup(
-      <svg>
-        <miniatureWorld.TerrainLayer views={[viewWith({ knowledge: "named", fogOpacity: 0.75 })]} />
-      </svg>
-    );
+  it("washes a named hex proportionally, as it washes a remembered scene", () => {
+    const washOf = (fogOpacity: number) => {
+      const svg = renderToStaticMarkup(
+        <svg>
+          <miniatureWorld.TerrainLayer views={[viewWith({ knowledge: "named", fogOpacity })]} />
+        </svg>
+      );
+      return Number(/data-wash="unpainted"[^>]*opacity="([\d.]+)"/.exec(svg)?.[1]);
+    };
 
-    expect(Number(/data-wash="unpainted"[^>]*opacity="([\d.]+)"/.exec(svg)?.[1])).toBeCloseTo(0.75);
+    expect(washOf(0.75)).toBeCloseTo(0.6);
+    // A scale rather than a cap: a heavier fade still washes harder.
+    expect(washOf(0.4)).toBeLessThan(washOf(0.75));
   });
 });
 
@@ -289,18 +297,48 @@ describe("how loudly unpainted board is stated", () => {
  * Two faults found in review, both about states that are easy to test only in their happy case.
  */
 describe("what unvisited ground and a foreign guard look like", () => {
-  it("leaves unpainted board unpainted even with the biome images on", () => {
-    // The view model offers a texture for any terrain, and a named hex has a terrain - a neighbour
-    // said so. But nobody has *been* there, and a photograph of ground nobody has seen is exactly
-    // the claim this theme's unpainted board exists to avoid making.
+  /**
+   * This asserted the opposite: that a named hex wore no biome image, because a photograph of
+   * ground nobody has seen is a claim the board should not make.
+   *
+   * That reasoning survives for the *scenery* - the trees and peaks a modeller adds having been
+   * there - which is still withheld. It did not survive for the ground itself. A neighbour naming
+   * the hex says what terrain is there, and suppressing every kind of paint left a named jungle
+   * and a named desert identically grey, which is the fault this bead exists to fix. The board
+   * still reads as unfinished; the wash and the rim say so over the paint rather than instead
+   * of it.
+   */
+  it("primes unpainted board in its terrain, with the biome images on", () => {
     const svg = draw(
       miniatureWorld.TerrainLayer,
       [{ ...NAMED_ONLY, terrain: "mountain", knowledge: "named" }],
       { showTextures: true }
     );
 
-    expect(svg).not.toContain("url(#biome-texture-mountain)");
+    expect(svg).toContain("url(#biome-texture-mountain)");
     expect(svg).toContain('data-wash="unpainted"');
+    expect(svg).toContain('data-rim="unsurveyed"');
+  });
+
+  /**
+   * Asserted with the textures **off**, which is the only mode where it means anything: a textured
+   * hex has no decoration whatever its knowledge, so the same check with them on would pass
+   * against a theme that had stopped withholding scenery altogether.
+   */
+  it("withholds the scenery a modeller only adds having been there", () => {
+    const named = draw(miniatureWorld.TerrainLayer, [{ ...NAMED_ONLY, terrain: "mountain" }], {
+      showTextures: false
+    });
+    const visited = draw(
+      miniatureWorld.TerrainLayer,
+      [{ ...NAMED_ONLY, terrain: "mountain", knowledge: "current" }],
+      { showTextures: false }
+    );
+
+    expect(named).not.toContain("data-decoration");
+    // The control: the same hex, seen, does get its peaks - so the absence above is the knowledge
+    // state talking and not the terrain simply having no decoration to draw.
+    expect(visited).toContain('data-decoration="peaks"');
   });
 
   it("stands a foreign guard in its own colour, not the monsters'", () => {
@@ -315,5 +353,48 @@ describe("what unvisited ground and a foreign guard look like", () => {
     expect(figure("foreign")).toContain("mw-figure-foreign");
     expect(figure("foreign")).not.toContain("mw-figure-monster");
     expect(figure("own")).toContain("mw-figure-own");
+  });
+});
+
+/**
+ * Board nobody has painted, which this theme took further than any other: a named hex got no
+ * terrain at all - no gradient, no biome image - on the reasoning that a photograph of ground
+ * nobody has seen is a claim the unpainted board exists to avoid making.
+ *
+ * The claim was right about the photograph and wrong about the terrain. The report *does* say what
+ * is there; a neighbour named it. Painting it as bare primer under the unpainted wash says both
+ * things at once - this is jungle, and nobody has been to see it - where blank board said only the
+ * second and threw the first away.
+ */
+describe("unsurveyed board, primed rather than blank", () => {
+  it("rims a hex nobody has surveyed", () => {
+    expect(draw(miniatureWorld.TerrainLayer, [NAMED_ONLY])).toContain('data-rim="unsurveyed"');
+  });
+
+  it("gives an old sighting no unsurveyed rim, however far it has faded", () => {
+    const ancient = renderToStaticMarkup(
+      <svg>
+        <miniatureWorld.TerrainLayer
+          views={[viewWith({ knowledge: "stale", fogOpacity: 0.62, hatched: true })]}
+        />
+      </svg>
+    );
+
+    expect(ancient).not.toContain('data-rim="unsurveyed"');
+  });
+
+  it("paints a named hex in its terrain's own colours rather than leaving bare board", () => {
+    const svg = draw(miniatureWorld.TerrainLayer, [NAMED_ONLY], { showTextures: false });
+
+    expect(svg).toContain("url(#mw-grad-jungle)");
+    // Still obviously unfinished: the board wash stays, and stays named as what it is.
+    expect(svg).toContain('data-wash="unpainted"');
+  });
+
+  it("shows the biome image on a named hex when the textures are on", () => {
+    const svg = draw(miniatureWorld.TerrainLayer, [NAMED_ONLY], { showTextures: true });
+
+    expect(svg).toContain("url(#biome-texture-jungle)");
+    expect(svg).toContain('data-wash="unpainted"');
   });
 });

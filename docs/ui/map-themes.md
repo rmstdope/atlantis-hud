@@ -68,18 +68,36 @@ And whatever tells the three states apart **must survive the far zoom band**, wh
 hidden. Tactical HUD first distinguished "old reading" from "never surveyed" by a printed `T-` number
 and nothing else, which meant it distinguished them only when zoomed in; it also used a fixed dim, so
 a one-turn-old and a forty-turn-old reading were identical once the number went. Carry the
-distinction in something the bands keep — the fade itself, an outline, a rim — and let the label
-confirm it rather than carry it.
+distinction in something the bands keep — an outline, a rim, a hatch — and let the label confirm it
+rather than carry it.
 
-A related trap: if your theme damps the shared fade to keep terrain legible under ageing — most do —
-make sure the damping applies to the **stale** case only. Ground nobody has visited has no terrain
-worth keeping legible, and damping it makes the one state that should shout the quietest of the
-three. Tactical HUD and Miniature World both did that at first.
+**Not in the fade, though.** The fade is legibility, not meaning: `fogOpacity` for a named hex is
+deliberately light (0.40, *below* the stale cap of 0.62), so unvisited ground reads lighter than an
+old sighting. Every theme therefore draws an **unsurveyed rim** on a named hex — `data-rim`, in its
+own colours and dash — and that is what the distinction rests on. This is the reverse of what the
+guidance here said for a while: the named fade used to run at 0.78 so that the wash alone would
+separate the two, and at that strength a named forest and a named desert were the same pale smudge.
+Terrain is the one fact a named hex carries, and the map was throwing it away to make a point the
+rim makes better.
 
-While you are there: a fade meant to *hide* ground and a treatment meant to *age* it are not the same
-strength. Laying a theme's own wash at the full `fogOpacity` buries the terrain, and every faded hex
-comes out the same colour whatever it is made of — a stale ocean has to still read as ocean. Scale
-it back and let the theme's own mark (hatching, a dashed rim, a T-minus number) carry the meaning.
+The same reasoning is why a theme damps the shared fade before painting with it, and it applies to
+**both** faded states: a fade meant to *hide* ground and a treatment meant to *age* or *reserve* it
+are not the same strength. Laying a theme's own wash at the full `fogOpacity` buries the terrain,
+and every faded hex comes out the same colour whatever it is made of — a stale ocean has to still
+read as ocean, and so does a named one. Scale it back and let the theme's own mark (hatching, a
+dashed rim, a T-minus number) carry the meaning.
+
+Damp them by the **same factor**, and check what the two land on. Every theme here damped stale and
+left named whole, from the days when named was the heavy one — which after the fade was lightened
+put unsurveyed ground on top of a long-stale wash instead of clear of it. Cartographer's Table came
+out at 0.400 against 0.384, sixteen thousandths apart, and Emblem & Dots and Beveled Tile were not
+much better. `mapThemes/index.test.tsx` now checks the gap for every registered theme at once,
+because each theme's own suite only ever sees its own numbers and none of them could see this.
+
+And do not withhold the terrain paint itself from a named hex. Miniature World did, leaving bare
+board — defensible about the *scenery* a modeller adds having been there, which it still withholds,
+but not about the ground: a neighbour naming the hex says what terrain is there. Paint it, then say
+"nobody has been here" over the top.
 
 Two fields are **reserved**: `battle` and `gate` are always `false`, because no parser reads them
 yet. Every theme's layout keeps a slot for each anyway, so that when the data arrives the mark
@@ -227,8 +245,9 @@ the trap behind most of the faults in this epic, and staring harder does not hel
 - `congestedFixture.ts` holds no **named** hex, so nothing built on it can show what unsurveyed
   ground looks like. That is how a wash meant for aged pages got applied to unvisited ground.
 - Rendering the knowledge states with textures **off** cannot show what they look like with textures
-  **on**. That is how Miniature World came to paint a biome photograph over the very hex it had just
-  decided was unpainted board.
+  **on**, and the reverse is just as blind: a textured hex draws no scenery whatever its knowledge,
+  so a "withholds the scenery" check written with textures on passes against a theme that withholds
+  nothing. Pick the mode in which the behaviour under test can actually differ, and say why.
 
 So: render the knowledge states in both texture modes, and when a check comes back clean, ask what
 the input could not have expressed rather than what it proved.
