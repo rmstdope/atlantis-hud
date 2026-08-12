@@ -72,15 +72,14 @@ const FADE_AT_ONCE = 0.3;
 const FADE_PER_TURN = 0.02;
 const FADE_LIMIT = 0.62;
 
-/** More than a handful of units in a hex reads differently from one. */
-const CROWD = 5;
-const PIP_RADIUS = 2.6;
-const CROWD_PIP_RADIUS = 4;
-
+/**
+ * How much of a hex the player is entitled to trust, as paint.
+ *
+ * Only the fade and the hatch: the terrain class and the texture are the theme's own business,
+ * reached through `terrainFillClass` and `terrainTextureUrl` by whoever wants them, rather than
+ * computed here for every hex on the level whether or not anybody reads them.
+ */
 export type HexPaint = {
-  terrainClass: string;
-  textureUrl: string | null;
-  texturePatternId: string | null;
   /** How much unexplored ground shows through, which is how age is drawn. */
   fogOpacity: number;
   /** Whether the hex is also hatched, marking the data as held but possibly out of date. */
@@ -114,31 +113,15 @@ export function staleFadeAmount(ageInTurns: number | null): number {
 }
 
 export function hexPaint(hex: HexNode, showStaleness: boolean): HexPaint {
-  const terrainClass = terrainFillClass(hex.terrain);
-  const textureUrl = terrainTextureUrl(hex.terrain);
-  const texturePatternId = terrainTexturePatternId(hex.terrain);
-
   if (hex.knowledge === "named") {
     // Staleness is about age, and a named hex has none: it was never visited at all, so the layer
     // toggle has nothing to say about it.
-    return {
-      terrainClass,
-      textureUrl,
-      texturePatternId,
-      fogOpacity: NAMED_FOG_OPACITY,
-      hatched: false
-    };
+    return { fogOpacity: NAMED_FOG_OPACITY, hatched: false };
   }
   if (hex.knowledge === "current" || !showStaleness) {
-    return { terrainClass, textureUrl, texturePatternId, fogOpacity: 0, hatched: false };
+    return { fogOpacity: 0, hatched: false };
   }
-  return {
-    terrainClass,
-    textureUrl,
-    texturePatternId,
-    fogOpacity: staleFadeAmount(hex.ageInTurns),
-    hatched: true
-  };
+  return { fogOpacity: staleFadeAmount(hex.ageInTurns), hatched: true };
 }
 
 export type Point = { x: number; y: number };
@@ -228,13 +211,6 @@ function touches(edge: Point[], width: number, height: number): boolean {
     Math.max(...ys) >= 0 &&
     Math.min(...ys) <= height
   );
-}
-
-export function unitPipRadius(count: number): number {
-  if (count <= 0) {
-    return 0;
-  }
-  return count > CROWD ? CROWD_PIP_RADIUS : PIP_RADIUS;
 }
 
 export type HexLayers = { named: HexNode[]; stale: HexNode[]; current: HexNode[] };

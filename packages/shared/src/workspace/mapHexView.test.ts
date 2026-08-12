@@ -14,7 +14,6 @@ import {
   terrainTexturePatternId,
   terrainTextureUrl,
   terrainFillClass,
-  unitPipRadius,
   type Point
 } from "./mapHexView";
 
@@ -103,7 +102,6 @@ describe("painting a hex", () => {
   it("paints a hex from this turn's report at full strength", () => {
     const paint = hexPaint(hex({ knowledge: "current" }), true);
 
-    expect(paint.terrainClass).toBe("fill-terrain-mountain");
     expect(paint.fogOpacity).toBe(0);
     expect(paint.hatched).toBe(false);
   });
@@ -255,17 +253,6 @@ describe("the unexplored lattice", () => {
       }
     }
     expect(needed).toBeGreaterThan(0);
-  });
-});
-
-describe("marks on a hex", () => {
-  it("draws a bigger pip for a crowd than for a lone unit", () => {
-    // Twenty-two units in a hex should not read the same as one.
-    expect(unitPipRadius(22)).toBeGreaterThan(unitPipRadius(1));
-  });
-
-  it("draws no pip at all for an empty hex", () => {
-    expect(unitPipRadius(0)).toBe(0);
   });
 });
 

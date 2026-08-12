@@ -898,8 +898,10 @@ test("each badge can be turned off on its own, and the set survives a reload", a
   await loadReport(page);
 
   const map = page.getByTestId("map-canvas");
-  // Classic draws a settlement as its name over a ▣ glyph; the committed turn 71 has towns on it.
-  await expect(map.getByText("▣").first()).toBeVisible();
+  // The atlas draws a settlement as a keep; the committed turn 71 has towns on it.
+  const settlements = map.locator('[data-mark="settlement"]');
+  const units = map.locator('[data-shield="own"]');
+  await expect(settlements.first()).toBeVisible();
 
   const trigger = page.getByTestId("layer-chips").getByRole("button", { name: "Badges" });
   await expect(trigger).toHaveAttribute("data-badges-all", "true");
@@ -911,15 +913,19 @@ test("each badge can be turned off on its own, and the set survives a reload", a
   await badges.getByRole("checkbox", { name: "Settlements" }).uncheck();
   // The chip itself says the map is showing less than everything, without the panel being open.
   await expect(trigger).toHaveAttribute("data-badges-all", "false");
-  await expect(map.getByText("▣")).toHaveCount(0);
-  // Only its own: the units standing in those hexes are still drawn.
-  await expect(map.locator(".map-pip").first()).toBeVisible();
+  await expect(settlements).toHaveCount(0);
+  // Only its own: the player's own units in those hexes are still drawn. The own shield
+  // specifically, rather than any unit mark - a hex whose only remaining mark was a monster's
+  // would otherwise satisfy this.
+  await expect(units.first()).toBeVisible();
 
   await page.reload();
-  // The pips first: a map that has not finished restoring turn 71 draws no settlement glyph
-  // either, so "no ▣" only means the badge survived once there is something on the map to miss.
-  await expect(page.getByTestId("map-canvas").locator(".map-pip").first()).toBeVisible();
-  await expect(page.getByTestId("map-canvas").getByText("▣")).toHaveCount(0);
+  // The unit marks first: a map that has not finished restoring turn 71 draws no settlement mark
+  // either, so "no keeps" only means the badge survived once there is something on the map to miss.
+  await expect(
+    page.getByTestId("map-canvas").locator('[data-shield="own"]').first()
+  ).toBeVisible();
+  await expect(page.getByTestId("map-canvas").locator('[data-mark="settlement"]')).toHaveCount(0);
   await page.getByTestId("layer-chips").getByRole("button", { name: "Badges" }).click();
   await expect(
     page.getByTestId("badge-menu").getByRole("checkbox", { name: "Settlements" })
@@ -927,7 +933,9 @@ test("each badge can be turned off on its own, and the set survives a reload", a
 
   // And All brings the whole set back, which is the way out of a map cleared down to its terrain.
   await page.getByTestId("badge-menu").getByRole("button", { name: "All" }).click();
-  await expect(page.getByTestId("map-canvas").getByText("▣").first()).toBeVisible();
+  await expect(
+    page.getByTestId("map-canvas").locator('[data-mark="settlement"]').first()
+  ).toBeVisible();
 });
 
 /**
@@ -1577,11 +1585,38 @@ test("the turn messages panel closes on Escape", async ({ page }) => {
 test("terrain is drawn as itself rather than as a picture of itself", async ({ page }) => {
   await loadReport(page);
 
-  // Inholm is mountain, and several of the hexes this turn describes are ocean. If the colour
-  // classes were built from a template Tailwind would have tree-shaken them away and every hex
-  // would render unstyled, which is exactly the failure this catches.
-  await expect(page.locator("polygon.fill-terrain-mountain").first()).toBeAttached();
-  await expect(page.locator("polygon.fill-terrain-ocean").first()).toBeAttached();
+  // Inholm is mountain, and several of the hexes this turn describes are ocean. Drawn in the
+  // default theme's own palette: a theme whose stylesheet nobody imported renders every hex
+  // unstyled, which is exactly the failure this catches.
+  const mountain = page.locator("polygon.ct-terrain-mountain").first();
+  const ocean = page.locator("polygon.ct-terrain-ocean").first();
+  await expect(mountain).toBeAttached();
+  await expect(ocean).toBeAttached();
+
+  // The class alone proves nothing - the component writes it whether or not any stylesheet
+  // loaded - so the paint itself is read. With the biome textures on, a hex's fill is an inline
+  // `url(#biome-texture-...)`, which differs by terrain even under no stylesheet at all and would
+  // make this vacuous; turning them off puts the fill back where the theme's rules decide it.
+  await page.getByTestId("settings-indicator").click();
+  await page.getByTestId("settings-biome-textures").uncheck();
+  await page.keyboard.press("Escape");
+
+  const fillOf = (polygon: typeof mountain) =>
+    polygon.evaluate((node) => getComputedStyle(node).fill);
+  const [mountainFill, oceanFill] = await Promise.all([fillOf(mountain), fillOf(ocean)]);
+
+  // Terrain is data, so two terrains must not paint the same - and neither may fall back to the
+  // SVG default, which is what an unstyled map looks like.
+  expect(mountainFill).not.toBe(oceanFill);
+  for (const fill of [mountainFill, oceanFill]) {
+    expect(fill).not.toBe("none");
+    expect(fill).not.toBe("rgb(0, 0, 0)");
+  }
+
+  // Back on, so later tests inherit the map they expect.
+  await page.getByTestId("settings-indicator").click();
+  await page.getByTestId("settings-biome-textures").check();
+  await page.keyboard.press("Escape");
 });
 
 test("coordinate rulers stay pinned to the edges of the view", async ({ page }) => {

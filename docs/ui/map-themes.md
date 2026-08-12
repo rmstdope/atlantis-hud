@@ -3,7 +3,7 @@
 How the world map's hex rendering is made pluggable, and how to add or remove a theme.
 
 The design each theme implements is in [`hex-design-proposals.html`](hex-design-proposals.html);
-the shared layers and the Classic theme's own vocabulary are in
+the shared layers, and the vocabulary every theme draws from, are in
 [`hex-rendering.md`](hex-rendering.md).
 
 ## The split
@@ -149,7 +149,8 @@ properties in the theme's own `theme.css`, and give **every one of them** a ligh
 whose CSS nobody imports renders unstyled, and nothing else would say so.
 
 A theme happy with the app's terrain colours calls `terrainFillClass` from `mapHexView.ts` in its
-own `TerrainLayer`, as Classic does.
+own `TerrainLayer` rather than declaring a palette of its own. Every theme that ships does declare
+one, so this is an offer rather than a description.
 
 ### Zoom bands
 
@@ -241,16 +242,37 @@ mutation-check anything asserting a colour or a class by reverting the fix and w
 ## Removing a theme
 
 Delete the directory, its entry in `MAP_THEMES`, and its `@import` in `theme.css`. Nothing else
-refers to it: anyone whose persisted setting named it falls back to Classic at startup, by
-`knownMapTheme` in `settingsStore.ts`.
+refers to it by name: anyone whose persisted setting named it lands on `DEFAULT_MAP_THEME_ID`
+instead, by `knownMapTheme` in `settingsStore.ts`.
+
+**Removing the *default* is the case that needs care**, because two things name it outside the
+registry list: `DEFAULT_MAP_THEME_ID` itself, and the hard-coded last resort inside `getMapTheme`
+that keeps the signature's promise for a caller passing an empty registry. Move both before
+deleting the directory, or the build fails on an import that no longer resolves.
+
+Check what the theme was the last user of, too — nothing reports this, and removing Classic
+orphaned more than it looked like it would: the shared `#stale-hatch` pattern in `MapCanvas.tsx`,
+`unitPipRadius` in `mapHexView.ts`, and three fields of `HexPaint` that were being computed for
+every hex on every render with no remaining reader. Those were deleted with the theme.
+
+The shared **palette** was left standing on purpose, and it is the distinction worth drawing: the
+twelve `--color-terrain-*` properties, `--color-map-edge`, `--color-unit-*`, `--color-settlement`
+and the `.map-label` class are now used by nothing, but they are the offer this document makes to
+the next theme, not leftovers. Dead code goes; an unused offer stays, and says so.
 
 ## Settings
 
 `mapTheme` (a registry id) and `biomeTextures` live in `settingsStore.ts`, persist through the same
 `localStorage` blob as every other preference, and apply to the open map immediately — the shell
 resolves the id with `getMapTheme` on each render, so there is nothing to reload. An id the build
-does not know falls back to Classic both when set and at startup, because storage is hand-editable
-and a build can be downgraded past a theme it once shipped.
+does not know falls back to `DEFAULT_MAP_THEME_ID`, because storage is hand-editable and a build
+can be downgraded past a theme it once shipped.
+
+That fallback happens at **two** separate doors, and the startup one is easy to miss: `setMapTheme`
+runs the id through `knownMapTheme`, but rehydration merges the stored blob straight into state
+without ever reaching the setter. What reconciles a returning player's blob is
+`applyPersistedSettings`, alongside the same reconciliation every other hand-editable setting gets.
+A test that only calls `persist.rehydrate()` is not testing the app's startup path.
 
 The settings picker reads its options from `mapThemeOptions()`, never from a list of its own, which
 is what makes step 2 above sufficient.

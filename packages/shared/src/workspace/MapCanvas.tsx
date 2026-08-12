@@ -671,15 +671,6 @@ export function MapCanvas({
               style={{ strokeWidth: "calc(1px / var(--map-scale, 1))" }}
             />
           </pattern>
-          <pattern
-            id="stale-hatch"
-            width="5"
-            height="5"
-            patternUnits="userSpaceOnUse"
-            patternTransform="rotate(45)"
-          >
-            <line x1="0" y1="0" x2="0" y2="5" className="stroke-ink-soft" strokeOpacity="0.22" />
-          </pattern>
           {showTextures
             ? TEXTURED_TERRAIN_NAMES.map((terrain) => (
                 <pattern
