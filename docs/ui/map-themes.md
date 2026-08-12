@@ -215,6 +215,24 @@ a wash that buried the terrain, unvisited ground drawn as an aged page. The fixt
 two because it happens to contain one stale hex and no named one. Load a real report, switch to the
 theme, and look at each knowledge state and both app themes before calling it done.
 
+**A fixture that lacks a dimension cannot test that dimension, however hard you look at it.** This is
+the trap behind most of the faults in this epic, and staring harder does not help:
+
+- `congestedFixture.ts` holds no **named** hex, so nothing built on it can show what unsurveyed
+  ground looks like. That is how a wash meant for aged pages got applied to unvisited ground.
+- Rendering the knowledge states with textures **off** cannot show what they look like with textures
+  **on**. That is how Miniature World came to paint a biome photograph over the very hex it had just
+  decided was unpainted board.
+
+So: render the knowledge states in both texture modes, and when a check comes back clean, ask what
+the input could not have expressed rather than what it proved.
+
+**Scope a class assertion to the element under test.** A hex contains unit marks, guard marks and
+settlement marks that share the same group classes, so `expect(svg).toContain("ct-fill-foreign")`
+passes whatever the guard is painted. Two tests written exactly that way passed against the bug they
+were written to catch. Match the element first (`data-scene="guard"`), then assert inside it — and
+mutation-check anything asserting a colour or a class by reverting the fix and watching it fail.
+
 ## Removing a theme
 
 Delete the directory, its entry in `MAP_THEMES`, and its `@import` in `theme.css`. Nothing else
