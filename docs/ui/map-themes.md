@@ -66,6 +66,11 @@ a one-turn-old and a forty-turn-old reading were identical once the number went.
 distinction in something the bands keep — the fade itself, an outline, a rim — and let the label
 confirm it rather than carry it.
 
+A related trap: if your theme damps the shared fade to keep terrain legible under ageing — most do —
+make sure the damping applies to the **stale** case only. Ground nobody has visited has no terrain
+worth keeping legible, and damping it makes the one state that should shout the quietest of the
+three. Tactical HUD and Miniature World both did that at first.
+
 While you are there: a fade meant to *hide* ground and a treatment meant to *age* it are not the same
 strength. Laying a theme's own wash at the full `fogOpacity` buries the terrain, and every faded hex
 comes out the same colour whatever it is made of — a stale ocean has to still read as ocean. Scale

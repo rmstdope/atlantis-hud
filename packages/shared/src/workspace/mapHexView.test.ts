@@ -117,6 +117,21 @@ describe("painting a hex", () => {
     expect(paint.hatched).toBe(false);
   });
 
+  /**
+   * And it has to be obvious at map scale, not on inspection.
+   *
+   * A named hex used to be fogged only a little harder than a long-stale one, so scanning a map for
+   * "what have I actually seen" meant comparing shades of the same terrain. The gap is what carries
+   * that question: ground somebody walked, however long ago, against ground only ever named by a
+   * neighbour.
+   */
+  it("fogs unvisited ground markedly harder than the oldest sighting", () => {
+    const named = hexPaint(hex({ knowledge: "named" }), true).fogOpacity;
+    const ancient = staleFadeAmount(1000);
+
+    expect(named).toBeGreaterThan(ancient + 0.1);
+  });
+
   it("fades and hatches a hex held over from an earlier turn", () => {
     const paint = hexPaint(hex({ knowledge: "stale", ageInTurns: 7 }), true);
 

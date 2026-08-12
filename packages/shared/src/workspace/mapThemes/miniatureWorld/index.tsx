@@ -195,7 +195,9 @@ function TerrainLayer({ views }: LayerProps) {
                   points={HEX_POINTS_MOCKUP}
                   className="mw-wash"
                   data-wash={unpainted ? "unpainted" : "stale"}
-                  opacity={view.fogOpacity * 0.8}
+                  // Board nobody has painted is washed at full strength. The damping is for a
+                  // remembered scene, which still has a scene underneath worth keeping legible.
+                  opacity={unpainted ? view.fogOpacity : view.fogOpacity * 0.8}
                 />
               )}
             </g>

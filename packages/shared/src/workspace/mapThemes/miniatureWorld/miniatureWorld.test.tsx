@@ -267,3 +267,21 @@ describe("roads, as trodden paths", () => {
     ).not.toContain("<line");
   });
 });
+
+/**
+ * Unpainted board is washed at full strength, never damped.
+ *
+ * The damping exists so a remembered scene stays a scene. Board nobody has painted has nothing to
+ * keep legible underneath, and damping it made the one state that should shout the quietest.
+ */
+describe("how loudly unpainted board is stated", () => {
+  it("washes a named hex by the full fade the view model asks for", () => {
+    const svg = renderToStaticMarkup(
+      <svg>
+        <miniatureWorld.TerrainLayer views={[viewWith({ knowledge: "named", fogOpacity: 0.75 })]} />
+      </svg>
+    );
+
+    expect(Number(/data-wash="unpainted"[^>]*opacity="([\d.]+)"/.exec(svg)?.[1])).toBeCloseTo(0.75);
+  });
+});

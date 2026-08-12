@@ -299,3 +299,22 @@ describe("roads, as a luminous lattice", () => {
     );
   });
 });
+
+/**
+ * Unsurveyed ground is dimmed at full strength, never damped.
+ *
+ * The damping exists so an *aged* reading still shows the terrain it was a reading of. Ground nobody
+ * has visited has no such claim to make - not knowing what is there is the whole message - and
+ * damping it made the one state that should shout the quietest of the three.
+ */
+describe("how loudly unsurveyed ground is stated", () => {
+  it("dims a named hex by the full fade the view model asks for", () => {
+    const svg = renderToStaticMarkup(
+      <svg>
+        <tacticalHud.TerrainLayer views={[viewWith({ knowledge: "named", fogOpacity: 0.75 })]} />
+      </svg>
+    );
+
+    expect(Number(/data-dim="unsurveyed"[^>]*opacity="([\d.]+)"/.exec(svg)?.[1])).toBeCloseTo(0.75);
+  });
+});

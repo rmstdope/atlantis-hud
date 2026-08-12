@@ -134,7 +134,12 @@ function TerrainLayer({ views }: LayerProps) {
                   points={HEX_POINTS_MOCKUP}
                   className="hud-tint"
                   data-dim={view.knowledge === "named" ? "unsurveyed" : "stale"}
-                  opacity={dimOpacity(view.fogOpacity)}
+                  // Ground nobody has visited is dimmed at full strength. The damping below exists
+                  // so an *aged* reading still shows the terrain it was a reading of; not knowing
+                  // what is there is the whole message here, and there is nothing to keep legible.
+                  opacity={
+                    view.knowledge === "named" ? view.fogOpacity : dimOpacity(view.fogOpacity)
+                  }
                 />
               )}
             </g>
