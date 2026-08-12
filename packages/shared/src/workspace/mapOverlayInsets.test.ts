@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { overlayInsets, type OverlayBox } from "./mapOverlayInsets";
+import { overlayInsets, type Edge, type OverlayBox } from "./mapOverlayInsets";
 
 const HOST = { left: 0, right: 1000, top: 0, bottom: 800 };
 
@@ -56,5 +56,18 @@ describe("measuring what the panes cover", () => {
 
   it("reports nothing when no pane is over the map", () => {
     expect(overlayInsets(HOST, [])).toEqual({ left: 0, right: 0, top: 0, bottom: 0 });
+  });
+
+  it("ignores a pane that names an edge there is no such thing as", () => {
+    // The edge arrives as an HTML attribute, so it is whatever someone typed. A misspelling that
+    // silently became a NaN inset would take the framing with it, and the map would open nowhere.
+    const insets = overlayInsets(HOST, [
+      { edge: "middle" as Edge, box: box(10, 48, 314, 700) },
+      { edge: undefined as unknown as Edge, box: box(10, 48, 314, 700) },
+      { edge: "left", box: box(10, 48, 200, 700) }
+    ]);
+
+    expect(insets).toEqual({ left: 200, right: 0, top: 0, bottom: 0 });
+    expect(Object.values(insets).every(Number.isFinite)).toBe(true);
   });
 });

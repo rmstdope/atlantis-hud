@@ -98,9 +98,11 @@ describe("native desktop workspace", () => {
       };
     });
 
-    // Both exports live behind one header button now, so the menu is opened first.
-    await $("button=Export").click();
-    await $("button=Export orders").click();
+    // Both exports live behind one header button now, so the menu is opened first. By test id
+    // rather than by text: the trigger's text carries a chevron beside the word, and what a text
+    // selector makes of that is the driver's business rather than something to bet a suite on.
+    await $('[data-testid="export-menu"]').click();
+    await $('[data-testid="export-orders"]').click();
 
     const exported = await browser.executeAsync<string | null, []>((done) => {
       const scope = window as unknown as { __exportCaptures?: Blob[] };

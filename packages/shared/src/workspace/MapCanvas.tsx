@@ -22,7 +22,7 @@ import {
   type Viewport
 } from "./mapViewport";
 import { rectFromCorners, rectPixels, type MapRect } from "./mapMarquee";
-import { overlayInsets, type Edge, type OverlayBox } from "./mapOverlayInsets";
+import { overlayInsets, type OverlayBox } from "./mapOverlayInsets";
 import { loadSavedViewport, saveViewportForGame } from "./mapViewportStorage";
 import type { RouteOverlay } from "./routeOverlay";
 import { guardSelection } from "./selectionGuard";
@@ -280,7 +280,9 @@ export function MapCanvas({
     const overlays: OverlayBox[] = Array.from(
       container.querySelectorAll<HTMLElement>("[data-map-overlay]")
     ).map((element) => ({
-      edge: element.dataset.mapOverlay as Edge,
+      // Handed over as the attribute reads. Whether it names an edge is `overlayInsets`'s
+      // question, and asserting it into the union here would only hide a typo from the answer.
+      edge: element.dataset.mapOverlay,
       box: element.getBoundingClientRect()
     }));
     return overlayInsets(host.getBoundingClientRect(), overlays);
