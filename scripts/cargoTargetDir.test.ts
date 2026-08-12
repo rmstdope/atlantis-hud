@@ -30,7 +30,7 @@ const CONFIG = join(REPO, ".cargo", "config.toml");
 const AGENT_WORKSPACES = ".claude";
 
 /** One separator, so a comparison is about the path rather than about the platform. */
-function normalise(path: string): string {
+function normalize(path: string): string {
   return resolve(path).split(sep).join("/");
 }
 
@@ -67,12 +67,17 @@ describe("the shared cargo build directory", () => {
       encoding: "utf8"
     });
     // git reports paths with forward slashes on every platform, including Windows, where the repo
-    // is built for release - so both sides are normalised before they are compared at all.
-    const paths = [...listed.matchAll(/^worktree (.+)$/gmu)].map((match) => normalise(match[1]));
-    const root = normalise(REPO);
-    const inside = `${root}/${AGENT_WORKSPACES}`;
+    // is built for release - so both sides are normalized before they are compared at all.
+    const paths = [...listed.matchAll(/^worktree (.+)$/gmu)].map((match) => normalize(match[1]));
+    const root = normalize(REPO);
+    // The trailing separator is the whole guard: without it a sibling named `.claude-old` starts
+    // with `.claude` and would pass as though it were inside.
+    const inside = `${root}/${AGENT_WORKSPACES}/`;
     const strays = paths.filter((path) => path !== root && !path.startsWith(inside));
 
     expect(strays).toEqual([]);
+    // The repository itself and the agents' worktrees are what this is about, so a run that saw
+    // neither would pass while asserting nothing.
+    expect(paths).toContain(root);
   });
 });
