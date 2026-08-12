@@ -230,12 +230,19 @@ describe("roads, as an atlas draws them", () => {
     // dash keeps its place on the casing at every zoom.
     // 4 and 1.4 are the weights this theme has always drawn: at rest the map's scale is 1, so the
     // convention is the one it was, and only the zoomed views change.
+    // Each stroke is found as a whole tag and then read, rather than by a regex spanning from the
+    // class to the width: the two attributes' order is React's business, not this test's.
+    const lines = [...svg.matchAll(/<line[^>]*>/g)].map((match) => match[0]);
+    const widthOf = (className: string) =>
+      Number(
+        /stroke-width="([\d.]+)"/.exec(
+          lines.find((tag) => tag.includes(`class="${className}"`)) ?? ""
+        )?.[1]
+      );
+
     expect(svg).not.toContain("vector-effect");
-    expect(Number(/class="ct-road"[^>]*stroke-width="([\d.]+)"/.exec(svg)?.[1])).toBeCloseTo(4, 1);
-    expect(Number(/class="ct-road-dash"[^>]*stroke-width="([\d.]+)"/.exec(svg)?.[1])).toBeCloseTo(
-      1.4,
-      1
-    );
+    expect(widthOf("ct-road")).toBeCloseTo(4, 1);
+    expect(widthOf("ct-road-dash")).toBeCloseTo(1.4, 1);
   });
 
   it("draws nothing when the roads badge is off", () => {

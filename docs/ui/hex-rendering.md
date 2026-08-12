@@ -128,8 +128,8 @@ the heaviest.
 A road's **width is a fraction of `HEX_RADIUS`**, like its length, so it shrinks with the map. It
 has to be: a width in screen pixels stays put while the hex shrinks under it, and at minimum zoom
 (scale 0.25) a hex is 9px across and a spoke 3.9px long, so a 5px road stops being a line and
-becomes a blob over its own hex — worst
-of all in the far band, which hides the labels and pips and keeps the roads.
+becomes a blob over its own hex — worst of all in the far band, which hides the labels and pips
+and keeps the roads.
 
 Roads sit in a layer of their own *beneath* the route overlay, so a movement path crosses a road
 the way a traveller would. The route is measured the same way for the same reason, so a road still
