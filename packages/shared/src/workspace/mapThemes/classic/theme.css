@@ -1,0 +1,30 @@
+/*
+ * Classic's own paint and zoom-band policy.
+ *
+ * Classic draws entirely from the shared `--color-*` palette, so it declares no colours of its
+ * own; a theme with its own palette declares it here, on `:root` with a
+ * `:root[data-theme="light"]` counterpart for every token (theme.test.ts enforces the pair).
+ *
+ * How much a hex shows is expressed as rules rather than as branches in the renderer, so changing
+ * zoom band costs one class swap on the root and no re-render at all. Labels are drawn at a
+ * constant screen size, so as hexes shrink the text does not: past a point every label would
+ * overlap its neighbours.
+ *
+ * Every theme's stylesheet is loaded whichever theme is selected, so each rule is scoped to its own
+ * theme: `map-theme-classic` and the band class sit on the same element, hence the compound
+ * selector. Without it, Classic's policy would go on hiding the shared `map-label` and `map-glyph`
+ * classes under a theme that had never heard of Classic.
+ */
+
+.map-theme-classic.map-far .map-pip,
+.map-theme-classic.map-far .map-glyph,
+.map-theme-classic.map-far .map-label,
+.map-theme-classic.map-far .map-count,
+.map-theme-classic.map-mid .map-count {
+  display: none;
+}
+
+.map-theme-classic.map-far .map-name,
+.map-theme-classic.map-mid .map-name {
+  display: none;
+}

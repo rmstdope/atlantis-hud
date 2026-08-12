@@ -104,6 +104,36 @@ test("the theme choice restyles the app and survives a reload", async ({ page })
 });
 
 /**
+ * Which hex rendering the map draws with.
+ *
+ * A theme *change* is not exercised here, for the same reason a ruleset change is not: only one map
+ * theme ships so far, so there is nothing to change to. What can be asserted is the part that has
+ * to be right before a second theme is worth adding - that the picker is populated from the
+ * registry rather than from a list of its own, and that the choice actually reaches the renderer.
+ * The switching itself is covered by unit tests, and each theme sub-issue under #103 brings the
+ * option this test will then have something to pick.
+ */
+test("the map theme picker offers the registered themes and reaches the map", async ({ page }) => {
+  await clearGames(page);
+  await createGame(page, "Settings game");
+
+  await page.getByTestId("settings-indicator").click();
+  const picker = page.getByTestId("settings-map-theme");
+  await expect(picker).toBeVisible();
+
+  // Populated from the theme registry: an empty picker would mean the registry never reached it.
+  const options = picker.locator("option");
+  expect(await options.count()).toBeGreaterThan(0);
+  await expect(picker).toHaveValue("classic");
+
+  await page.keyboard.press("Escape");
+
+  // The chosen theme is stamped on the map's root, which is what its stylesheet hangs off - the
+  // proof the setting reached the renderer rather than merely the store.
+  await expect(page.getByTestId("map-canvas").locator("svg")).toHaveClass(/map-theme-classic/);
+});
+
+/**
  * How see-through the panes over the map are, as painted. The slider is the mechanism; the
  * computed background alpha of a floating pane is the proof it reached the stylesheet, exactly as
  * the theme test reads a computed colour rather than trusting the attribute.

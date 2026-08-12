@@ -11,6 +11,7 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { normalizeSnippets, type OrderSnippet } from "./orderSnippets";
+import { DEFAULT_MAP_THEME_ID, isMapThemeId } from "./workspace/mapThemes";
 
 export type ThemeName = "dark" | "light";
 
@@ -22,6 +23,14 @@ export const DEFAULT_UNIT_LIST_LIMIT = 12;
 
 export type SettingsState = {
   theme: ThemeName;
+  /**
+   * Which of the map's hex renderings the world map draws with, by registry id.
+   *
+   * Global rather than per game: it says how this player likes to read a map, not anything about
+   * one campaign. Stored as a plain string because the set of themes is the registry's business,
+   * not this store's.
+   */
+  mapTheme: string;
   biomeTextures: boolean;
   /**
    * How see-through the panes floating over the map are, in percent.
@@ -59,6 +68,7 @@ export type SettingsState = {
   snippets: OrderSnippet[];
   /** Applies instantly: the settings dialog has no OK button to wait for. */
   setTheme: (theme: ThemeName) => void;
+  setMapTheme: (id: string) => void;
   setBiomeTextures: (enabled: boolean) => void;
   setPaneTransparency: (percent: number) => void;
   setUnitListLimit: (count: number) => void;
@@ -72,6 +82,7 @@ export type SettingsState = {
 type Persisted = Pick<
   SettingsState,
   | "theme"
+  | "mapTheme"
   | "biomeTextures"
   | "paneTransparency"
   | "unitListLimit"
@@ -97,6 +108,16 @@ function applyTheme(theme: ThemeName) {
  * from outside the range must not paint the panes invisible or leave a long decimal in the CSS.
  * Anything unreadable falls back to the default rather than to an extreme.
  */
+/**
+ * The theme id to keep.
+ *
+ * Storage is hand-editable and a build can be downgraded past a theme it once shipped; a map drawn
+ * in the wrong style is a nuisance, one drawn in no style at all is a broken app.
+ */
+function knownMapTheme(id: string): string {
+  return isMapThemeId(id) ? id : DEFAULT_MAP_THEME_ID;
+}
+
 function clampTransparency(percent: number): number {
   // Coerced before the finite check: storage is hand-editable and other writers exist, so the
   // "number" rehydrated into state can arrive as its string form.
@@ -171,6 +192,7 @@ export const useSettingsStore = create<SettingsState>()(
   persist<SettingsState, [], [], Persisted>(
     (set) => ({
       theme: "dark",
+      mapTheme: DEFAULT_MAP_THEME_ID,
       biomeTextures: true,
       paneTransparency: DEFAULT_PANE_TRANSPARENCY,
       unitListLimit: DEFAULT_UNIT_LIST_LIMIT,
@@ -181,6 +203,10 @@ export const useSettingsStore = create<SettingsState>()(
       setTheme: (theme) => {
         applyTheme(theme);
         set({ theme });
+      },
+
+      setMapTheme: (id) => {
+        set({ mapTheme: knownMapTheme(id) });
       },
 
       setBiomeTextures: (biomeTextures) => {
@@ -228,6 +254,7 @@ export const useSettingsStore = create<SettingsState>()(
       storage: STORAGE,
       partialize: (state) => ({
         theme: state.theme,
+        mapTheme: state.mapTheme,
         biomeTextures: state.biomeTextures,
         paneTransparency: state.paneTransparency,
         unitListLimit: state.unitListLimit,
@@ -258,6 +285,11 @@ export function applyPersistedSettings() {
   useSettingsStore.setState({
     unitListLimit: clampUnitListLimit(useSettingsStore.getState().unitListLimit)
   });
+  // Same door again: a blob naming a theme this build never had would otherwise leave the map
+  // with nothing to draw with.
+  useSettingsStore.setState({
+    mapTheme: knownMapTheme(useSettingsStore.getState().mapTheme)
+  });
   // Same reconciliation for the snippets: rehydration bypasses the setters, storage is
   // hand-editable, and an older blob has no snippets key at all.
   useSettingsStore.setState({
@@ -271,6 +303,7 @@ export function resetSettingsStore() {
   optionalStorage()?.removeItem("atlantis-hud-settings");
   useSettingsStore.setState({
     theme: "dark",
+    mapTheme: DEFAULT_MAP_THEME_ID,
     biomeTextures: true,
     paneTransparency: DEFAULT_PANE_TRANSPARENCY,
     unitListLimit: DEFAULT_UNIT_LIST_LIMIT,
