@@ -313,7 +313,7 @@ fired several conversational turns late and unpredictably, and the tool's own de
 `/loop`'s dynamic-pacing mode — this session is not run under `/loop`, which is likely why. Do not
 use it for this.
 
-**Use a forked timer instead, at a five-minute cadence — not ten.** Confirmed reliable the same day:
+**Use a forked timer instead, at a five-minute cadence (because `sleep 600` is rejected by the Bash tool).** Confirmed reliable the same day:
 an exact `sleep 300` round-trip, no hang. `sleep 600` was tried for the same purpose and rejected
 outright by the Bash tool's own guard against long leading sleeps, before it ever ran — so 600s is a
 known-broken interval, not merely an untested one, and is not to be used here even though it would
