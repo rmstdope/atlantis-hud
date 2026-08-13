@@ -24,7 +24,7 @@ import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { runGate } from "./beadsExportGate";
-import { describeGitFailure, settleStep } from "./releaseSupport";
+import { describeGitFailure, settleExport } from "./releaseSupport";
 
 const BUMPS = ["major", "minor", "maintenance"] as const;
 type Bump = (typeof BUMPS)[number];
@@ -190,8 +190,12 @@ if (dryRun) {
  * Running it first turns that into a no-op: the refresh is committed and pushed before the bump, so
  * the release commit and its tag stay adjacent and the release's own push meets nothing.
  */
-const settle = runGate(repoFile("."));
-if (settleStep(settle) === "push") {
+const settled = settleExport(() => runGate(repoFile(".")));
+if ("problem" in settled) {
+  // Nothing has been written yet, so stopping here costs a rerun. Carrying on would meet the same
+  // gate after the bump, which is the failure this whole step exists to avoid.
+  fail(`${settled.problem}\nNothing was written. Settle .beads/issues.jsonl and release again.`);
+} else if (settled.action === "push") {
   console.log("release: the bead export was stale; pushing the gate's refresh before the bump.");
   git("push", "origin", `HEAD:${branch}`);
 }

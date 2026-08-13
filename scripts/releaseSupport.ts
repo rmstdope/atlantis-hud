@@ -27,6 +27,30 @@ export function settleStep(gateCode: number): "push" | "none" {
   return gateCode === 0 ? "none" : "push";
 }
 
+/** What settling the export produced: something to do, or a reason it could not be done. */
+export type Settlement = { action: "push" | "none" } | { problem: string };
+
+/**
+ * Runs the gate and says what follows, without letting it take the release down.
+ *
+ * The gate guards itself only on its command-line path; called as a function it can throw - a
+ * missing database, a git that will not commit, anything unforeseen. An uncaught throw here would
+ * be the very failure this bead exists to remove, and the only reason it would be less damaging is
+ * that it lands before the bump rather than after it. That is luck, not design.
+ *
+ * A problem is reported rather than swallowed. A stale export that cannot be settled means the push
+ * after the bump would abort anyway, so stopping now - with nothing written - is the kind outcome.
+ */
+export function settleExport(gate: () => number): Settlement {
+  try {
+    return { action: settleStep(gate()) };
+  } catch (error) {
+    const because = error instanceof Error ? error.message : String(error);
+
+    return { problem: `the bead export gate could not run: ${because}` };
+  }
+}
+
 /**
  * What a failed git command should say.
  *
@@ -43,7 +67,17 @@ export function describeGitFailure(args: string[], error: unknown): string {
   // dump, and the reader stops looking for the line that matters.
   const lines = [...new Set(said)];
 
-  return [`git ${args.join(" ")} failed.`, ...lines].join("\n");
+  return [`git ${args.map(quoteIfNeeded).join(" ")} failed.`, ...lines].join("\n");
+}
+
+/**
+ * An argument as somebody would have to type it.
+ *
+ * `git commit -m Release v0.5.2` is a different command from the one that failed, and a reader who
+ * pastes it back finds that out the hard way.
+ */
+function quoteIfNeeded(argument: string): string {
+  return /[\s"']/u.test(argument) ? `"${argument.replace(/"/gu, '\\"')}"` : argument;
 }
 
 function textOf(error: unknown, stream: "stdout" | "stderr"): string {

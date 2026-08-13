@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { describeGitFailure, settleStep } from "./releaseSupport";
+import { describeGitFailure, settleExport, settleStep } from "./releaseSupport";
 
 /**
  * The two things that stranded v0.5.2.
@@ -28,6 +28,35 @@ describe("settleStep", () => {
   });
 });
 
+describe("settleExport", () => {
+  it("asks for a push when the gate committed a refresh", () => {
+    expect(settleExport(() => 1)).toEqual({ action: "push" });
+  });
+
+  it("asks for nothing when the export was already current", () => {
+    expect(settleExport(() => 0)).toEqual({ action: "none" });
+  });
+
+  it("reports a gate that threw, rather than letting it crash the release", () => {
+    // The gate guards itself only on its command-line path; called as a function it can throw. A
+    // stack trace here would be the same failure this bead exists to remove - except now the
+    // release dies before the bump instead of after it, which is luck rather than design.
+    const settled = settleExport(() => {
+      throw new Error("dolt is not answering");
+    });
+
+    expect(settled).toEqual({ problem: expect.stringContaining("dolt is not answering") });
+  });
+
+  it("names the export gate in what it reports, so the cause is not a mystery", () => {
+    const settled = settleExport(() => {
+      throw new Error("boom");
+    });
+
+    expect("problem" in settled && settled.problem).toMatch(/export/iu);
+  });
+});
+
 describe("describeGitFailure", () => {
   it("names the command that failed, not just that something did", () => {
     const said = describeGitFailure(["push", "origin", "HEAD:main"], new Error("boom"));
@@ -50,6 +79,20 @@ describe("describeGitFailure", () => {
   it("survives an error that carries nothing but a message", () => {
     expect(describeGitFailure(["tag", "v1.2.3"], new Error("nope"))).toContain("nope");
     expect(describeGitFailure(["tag", "v1.2.3"], "not an error at all")).toContain("not an error");
+  });
+
+  it("quotes an argument that carries spaces, so the line can be pasted back", () => {
+    // `git commit -m Release v0.5.2` is a different command from the one that failed, and a reader
+    // copying it back finds that out the hard way.
+    const said = describeGitFailure(["commit", "-m", "Release v0.5.2"], new Error("nope"));
+
+    expect(said).toContain('git commit -m "Release v0.5.2"');
+  });
+
+  it("leaves ordinary arguments unquoted, which is how anyone would type them", () => {
+    expect(describeGitFailure(["push", "origin", "main"], new Error("x"))).toContain(
+      "git push origin main"
+    );
   });
 
   it("does not repeat the same text twice when a stream duplicates the message", () => {
