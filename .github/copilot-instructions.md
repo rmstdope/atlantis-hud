@@ -66,6 +66,13 @@ Keep al generic code separate so that it can be easily reused by different demos
 All code changes must be reviewed before being merged into the main codebase. Nothing merges
 unreviewed, and nothing merges red.
 
+**One exception:** a `docs(<bead>): mockup` PR from `plan-bead` that commits a chosen UI mockup to
+`docs/ui/` and touches nothing else. Its content was already reviewed — the navigator chose it,
+iteration by iteration, in the discussion that produced it — so it needs neither a Copilot review nor
+a second look from the navigator; see `plan-bead`'s `SKILL.md` for how it is merged. A PR that touches
+anything outside `docs/`, or content the navigator has not already seen, is not this exception and
+follows the rule above like everything else.
+
 For a bead implemented by an agent, the **Copilot reviewer is the second pair of eyes**, and it
 counts only under all of these:
 
@@ -76,20 +83,36 @@ counts only under all of these:
 - **Every comment is answered**: a change, or a posted reply saying why not, and the thread resolved.
 - **Every check is green**, and the branch is not behind main.
 
-**You cannot request the review, so do not try.** It is requested automatically when the PR opens,
-and it re-reviews by itself after a push — that is how a review comes to sit on the new head at all.
-Both plausible commands fail, and one fails quietly: `gh pr edit <n> --add-reviewer Copilot` errors
-with "Could not resolve user", and `POST /pulls/<n>/requested_reviewers` with `Copilot` answers 200
-while leaving `requested_reviewers` empty. Reviews arrive authored by
-`copilot-pull-request-reviewer`, which is an organization and cannot be requested either — match on
-that login when looking for the review, and wait rather than poke.
+**Request the review yourself, right after the PR opens — it is not automatic, and neither is a
+re-review after a push.** GitHub used to request Copilot on PR open and again on every push, via the
+`Code Quality Copilot review for default branch` ruleset's "Automatically request Copilot code
+review" and "Review new pushes" settings, but reversed both to opt-in on 2026-08-07 ("adding a
+reviewer should be your choice"). A PR now gets no second pair of eyes, on open or on any later push,
+unless something asks for one:
 
-Find it with
-`gh api repos/<owner>/<repo>/pulls/<n>/reviews --jq '[.[] | select(.user.login | startswith("copilot")) | .commit_id] | last'`
-and compare that against the head SHA. A **rebase that only replays your commits onto a newer main does not
-need a fresh review round** — without that exception the two conditions above deadlock, since
-updating from main is itself a push and main moves while you wait. CI still runs on the rebased head,
-which is what catches a conflict the rebase introduced.
+```bash
+gh pr edit <n> --add-reviewer @copilot
+```
+
+The `@` matters: `--add-reviewer Copilot` (no `@`) errors with "Could not resolve user". Once asked,
+`gh pr view --json reviewRequests` and the PR's `requested_reviewers` go back to empty within about a
+minute — that is the request being fulfilled, not dropped, so do not re-request off of it reading
+empty. Reviews land authored by `copilot-pull-request-reviewer[bot]` — match on that login when
+finding the review:
+
+```bash
+gh api repos/<owner>/<repo>/pulls/<n>/reviews --jq '[.[] | select(.user.login | startswith("copilot")) | .commit_id] | last'
+```
+
+and compare that against the head SHA.
+
+**Not every push needs a fresh request.** A rebase that only replays your commits onto a newer main
+does not — CI still runs on the rebased head, which is what catches a conflict the rebase introduced.
+Neither does a small, contained fix that does exactly what a review comment asked for — reply and
+resolve the thread instead. Request again when the push is substantial enough that the reviewer's
+read of the diff no longer describes it: a design change, code no comment touched, or a fix bigger
+than the comment called for. Without either exception the two review conditions above deadlock, since
+addressing comments and updating from main are both pushes and main keeps moving while you wait.
 
 If no review arrives within about twenty minutes, leave the PR open, escalate the bead (see
 `beads-workflow`: remove `planned`, add `human`, `bd unclaim`), and move on. Some PRs get no review

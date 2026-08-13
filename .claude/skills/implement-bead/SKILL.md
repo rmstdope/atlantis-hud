@@ -122,10 +122,15 @@ them here is the failure mode this split exists to prevent.
 
 ## The review
 
-**You cannot request the review, so do not try.** It is requested automatically when the PR opens and
-re-reviews itself after a push. Both plausible commands fail and one fails quietly:
-`gh pr edit <n> --add-reviewer Copilot` errors, and `POST /pulls/<n>/requested_reviewers` answers 200
-while changing nothing.
+**Request it yourself, the moment the PR opens** — see CLAUDE.md's Four Eye Principle for why it is
+not automatic, and note that a push doesn't trigger a re-review automatically either:
+
+```bash
+gh pr edit <n> --add-reviewer @copilot
+```
+
+`requested_reviewers` reading empty a minute later means the request was fulfilled, not dropped — do
+not re-run this off of that.
 
 Wait for a review whose commit matches your head:
 
@@ -156,7 +161,11 @@ millisecond after being taken, a refusal message that rounded itself into a cont
 release step that could strand a version bump — but they also raise things that are wrong or do not
 apply. Judge each one; a reasoned reply is a complete answer.
 
-A rebase that only replays your commits does not need a fresh review; a push that changes code does.
+Not every push needs a fresh request — request again with the same command only when the push is
+substantial enough that the reviewer's earlier read of the diff no longer describes it: a design
+change, code no comment touched, or a fix bigger than the comment called for. A rebase that only
+replays your commits does not; neither does a small, contained fix that does exactly what a comment
+asked for — reply to it and resolve the thread instead.
 
 **No review within about twenty minutes**: leave the PR open, escalate the bead (the hand-back block above, worktree included), say so plainly, and take the next bead. Some PRs never get one. Merging anyway is not the
 answer, and neither is waiting forever.
