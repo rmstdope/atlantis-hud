@@ -19,6 +19,7 @@ was retired once they had all landed.
 | `chosen-layout-turn71.html` | The chosen layout (variant 04) drawn from a real turn 71 report. |
 | `mockups/*.png` | Rendered screenshots of both pages, referenced from issue #17. |
 | `orders-export-descriptions.html` | Where the "keep the unit descriptions" option lives on the orders export (bead ah-52b). Three candidates; A, a second item in the Export menu, was chosen. |
+| `region-problems-toggle.html` | What the control that hides the region panel's Problems section looks like (bead ah-f8u). Three candidates; 1, a chip in the panel header, was chosen. |
 
 The layout pages answered issue #17 and are kept as the record of that decision. Pages added later
 answer one bead each and are named after the question they settle, not after the layout — the table
