@@ -16,7 +16,7 @@
  */
 
 import { HEX_RADIUS } from "../../mapViewport";
-import { HEX_POINTS } from "../geometry";
+import { HEX_POINTS, radii } from "../geometry";
 import { ROAD_VECTORS, type HexView } from "../hexView";
 import type { LayerProps, MapTheme } from "../mapTheme";
 import {
@@ -229,6 +229,13 @@ function TerrainLayer({ views }: LayerProps) {
   );
 }
 
+/**
+ * The heaviest road of the five: this theme's 5 units, as a fraction of the hex so the path stays a
+ * path at every zoom rather than a blob across the hex it is trodden into. See
+ * `docs/ui/map-themes.md` for which marks are measured this way and which stay screen-constant.
+ */
+const PATH_WIDTH = radii(0.278);
+
 /** Roads as tan paths trodden across the board. */
 function RoadLayer({ views }: LayerProps) {
   if (!views.some((view) => view.roads.length > 0)) {
@@ -247,9 +254,8 @@ function RoadLayer({ views }: LayerProps) {
               y1={view.at.y}
               x2={view.at.x + bearing.x * HEX_RADIUS * 0.87}
               y2={view.at.y + bearing.y * HEX_RADIUS * 0.87}
-              strokeWidth={5}
+              strokeWidth={PATH_WIDTH}
               strokeLinecap="round"
-              vectorEffect="non-scaling-stroke"
             />
           );
         })

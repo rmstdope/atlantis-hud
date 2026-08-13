@@ -11,7 +11,7 @@
  */
 
 import { HEX_RADIUS } from "../../mapViewport";
-import { HEX_POINTS } from "../geometry";
+import { HEX_POINTS, radii } from "../geometry";
 import { ROAD_VECTORS, type HexView } from "../hexView";
 import type { LayerProps, MapTheme } from "../mapTheme";
 import {
@@ -155,6 +155,18 @@ function TerrainLayer({ views }: LayerProps) {
   );
 }
 
+/**
+ * The thinnest road of the five: this theme's 2 units, as a fraction of the hex. Thin is a
+ * judgement about the hex rather than about the display, so even two screen pixels read as heavy
+ * once a hex is a few pixels across. In hex units the lattice stays a lattice, and the dashes keep
+ * their spacing along the spoke. See `docs/ui/map-themes.md` for which marks are measured this way.
+ *
+ * The trade this makes: at minimum zoom the stroke is half a screen pixel, so the road is at its
+ * faintest exactly where the far band keeps it. Judged acceptable in ah-ebv against the alternative
+ * of a mark wider than its hex; a floor against the hex is the fallback if it proves too faint.
+ */
+const ROAD_WIDTH = radii(0.111);
+
 /** Roads as a thin luminous lattice, dashed so they read as routing rather than as terrain. */
 function RoadLayer({ views }: LayerProps) {
   if (!views.some((view) => view.roads.length > 0)) {
@@ -173,9 +185,8 @@ function RoadLayer({ views }: LayerProps) {
               y1={view.at.y}
               x2={view.at.x + bearing.x * HEX_RADIUS * 0.87}
               y2={view.at.y + bearing.y * HEX_RADIUS * 0.87}
-              strokeWidth={2}
+              strokeWidth={ROAD_WIDTH}
               strokeDasharray="5 3"
-              vectorEffect="non-scaling-stroke"
             />
           );
         })

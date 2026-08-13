@@ -23,7 +23,9 @@ keyboard focus rings, the hit and accessibility layer, and the rulers. A theme n
 | hit + accessibility layer, rulers, pan/zoom | marks and labels                 |
 
 Roads are the theme's because every design styles them differently, but they keep their own layer
-*beneath* the route overlay, so a movement path crosses a road the way a traveller would.
+*beneath* the route overlay, so a movement path crosses a road the way a traveller would. Give a
+road its width in fractions of `HEX_RADIUS` — `radii(...)`, never `vector-effect` — so it shrinks
+with the hex it belongs to; the route above it is drawn by the same rule.
 
 ## What a theme receives
 
@@ -195,6 +197,14 @@ The design proposals are drawn at hex radius 46; the map runs at `HEX_RADIUS` 18
 from a mockup by dividing by 46 and express it as a fraction of the radius — `radii(0.6)` from
 `mapThemes/geometry.ts` — tuning only where legibility at 18 demands it. The layout *rules* are the
 contract, not the absolute pixel sizes.
+
+A **stroke's width** is the exception that needs deciding rather than copying, because
+`vector-effect: non-scaling-stroke` is the map's habit and most of a theme's strokes keep it. The
+line: a mark that stands for something *on the ground* and spans a hex — a road, and the route
+above it — is measured in the hex's own units both along and across, so it shrinks with the map.
+The outlines of glyphs, pips, chips and rims are ink on a mark rather than the mark itself, and
+stay screen-constant like the labels. Roads were on the wrong side of that line until ah-ebv, and
+grew wider than their own hexes at far zoom.
 
 By the map's convention, glyphs and pips scale with the world while labels stay screen-constant:
 give a label the shared `map-label` class, which divides its font size by `--map-scale`, or divide by
