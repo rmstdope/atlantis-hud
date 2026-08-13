@@ -92,15 +92,21 @@ follows the rule above like everything else.
 For a bead implemented by an agent, the **Copilot reviewer is the second pair of eyes**, and it
 counts only under all of these:
 
-- Its review is against the **current head**. Copilot reviews the commit it was asked about, not the
-  branch, so after a push that changes the code its earlier review describes code that no longer
-  exists. It never returns `APPROVED` — every review observed here is `COMMENTED` — so waiting for
-  an approval waits forever.
+- **One review, requested when the PR opens.** Exactly one per bead, asked for the moment the PR
+  exists and never again — not after the comments are addressed, not after a rebase, not after a fix
+  that grew beyond what a comment asked. It never returns `APPROVED` — every review observed here is
+  `COMMENTED` — so waiting for an approval waits forever.
 - **Every comment is answered**: a change, or a posted reply saying why not, and the thread resolved.
 - **Every check is green**, and the branch is not behind main.
 
-**Request the review yourself, right after the PR opens — it is not automatic, and neither is a
-re-review after a push.** GitHub used to request Copilot on PR open and again on every push, via the
+That review describes the PR as it stood when it opened, and it keeps describing that as fixes and
+rebases move the head. **That is expected and is not a reason to ask again.** An earlier version of
+this document required the review to match the current head, which cannot hold alongside one review
+per PR: addressing comments and updating from main are both pushes, and main keeps moving. What is
+owed to a review is an answer to every comment, not a fresh review of the answers.
+
+**Request the review yourself, right after the PR opens — it is not automatic.** GitHub used to
+request Copilot on PR open and again on every push, via the
 `Code Quality Copilot review for default branch` ruleset's "Automatically request Copilot code
 review" and "Review new pushes" settings, but reversed both to opt-in on 2026-08-07 ("adding a
 reviewer should be your choice"). A PR now gets no second pair of eyes, on open or on any later push,
@@ -120,15 +126,9 @@ finding the review:
 gh api repos/<owner>/<repo>/pulls/<n>/reviews --jq '[.[] | select(.user.login | startswith("copilot")) | .commit_id] | last'
 ```
 
-and compare that against the head SHA.
-
-**Not every push needs a fresh request.** A rebase that only replays your commits onto a newer main
-does not — CI still runs on the rebased head, which is what catches a conflict the rebase introduced.
-Neither does a small, contained fix that does exactly what a review comment asked for — reply and
-resolve the thread instead. Request again when the push is substantial enough that the reviewer's
-read of the diff no longer describes it: a design change, code no comment touched, or a fix bigger
-than the comment called for. Without either exception the two review conditions above deadlock, since
-addressing comments and updating from main are both pushes and main keeps moving while you wait.
+**No push earns a second request** — not a rebase, not a fix, however large. CI still runs on every
+push, which is what catches a conflict a rebase introduced; the reviewer's job was the first read,
+and it is done.
 
 If no review arrives within about twenty minutes, leave the PR open, escalate the bead (see
 `beads-workflow`: remove `planned`, add `human`, `bd unclaim`), and move on. Some PRs get no review

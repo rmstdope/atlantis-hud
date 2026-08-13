@@ -56,9 +56,12 @@ talk to it in whatever words you like:
 ```
 start two implementers
 how are they doing?
-take beta down
-start another one, call it delta
+take Storm down
+start another one
 ```
+
+Implementers are named after X-Men — Cyclops, Storm, Wolverine, Rogue, and on down the roster — so
+that a fleet of them can be talked about without anyone counting session hashes.
 
 Each implementer it spawns takes a planned bead, creates its own git worktree, works through the plan
 test-first, opens a PR, answers the Copilot review, waits for CI, merges, cleans up, and takes the
@@ -135,6 +138,10 @@ Honest numbers from building this repository's own harness:
   exist.
 - **Copilot reviews about four PRs in five**, sometimes minutes late, and never marks one approved.
   When it does not review, the builder leaves the PR open and tells you rather than merging.
+- **One review per bead**, requested when the PR opens and never again. Fixes and rebases move the
+  head past what the reviewer read, and that is accepted rather than chased: what a review is owed is
+  an answer to every comment, not a re-read of the answers. So the review you see on a merged PR
+  describes the PR as it opened, which is worth knowing when you read one later.
 - **Nothing merges unreviewed and nothing merges red.** The `main` ruleset enforces the second on the
   server; the first is the agents following the rule.
 

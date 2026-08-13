@@ -23,15 +23,29 @@ before answering any question about capacity — never estimate from what you re
 
 ## Starting an implementer
 
-The navigator asks for one, or for several, and may or may not name them. Names are yours to assign
-when they do not: `alpha`, `beta`, `gamma`, in that order, skipping any that is already running.
+The navigator asks for one, or for several, and may or may not name them.
+
+**Implementers are named after X-Men.** Take them from this list, in order, skipping any that is
+already running:
+
+```
+Cyclops · Storm · Wolverine · Rogue · Gambit · Nightcrawler · Colossus
+Iceman · Beast · Jubilee · Psylocke · Bishop · Phoenix · Mystique · Magneto
+```
+
+Single-word names, all of them, because the name goes into a file path and a name with a space in it
+would need quoting everywhere it appears. If the navigator asks for a character not on the list, use
+it as long as it is one word; the list is a running order, not a fence.
+
+Run out of names — which needs fifteen implementers at once and will not happen — and say so rather
+than inventing a sixteenth.
 
 Spawn each one with the Agent tool:
 
 - `subagent_type: "implementer"`
 - `model: "sonnet"`
 - a prompt that gives it its name and nothing else it does not need, for example:
-  *"You are implementer `alpha`. Follow your instructions: load the implement-bead skill and work
+  *"You are implementer `Cyclops`. Follow your instructions: load the implement-bead skill and work
   planned beads until your stop flag appears."*
 
 One Agent call per implementer, all in one message when there are several, so they start together.

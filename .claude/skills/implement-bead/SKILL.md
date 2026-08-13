@@ -140,19 +140,24 @@ A detail the plan missed is yours to decide — do it, and record the deviation 
 Anything touching **approach, scope, or what the user sees** goes back, by the same hand-back block as a missing section, worktree included. You were given a plan precisely so those decisions were made elsewhere; making
 them here is the failure mode this split exists to prevent.
 
-## The review
+## The review — you get exactly one
 
-**Request it yourself, the moment the PR opens** — see CLAUDE.md's Four Eye Principle for why it is
-not automatic, and note that a push doesn't trigger a re-review automatically either:
+**One Copilot review per bead. Request it the moment the PR opens, and never again.**
 
 ```bash
 gh pr edit <n> --add-reviewer @copilot
 ```
 
+That command runs once in the life of a PR. Not after you address the comments, not after a rebase,
+not after a fix that changed more than the comment asked for. If you catch yourself weighing whether
+a push is "substantial enough" to deserve another look, the answer is no — that judgement is not
+yours to make any more, and the rule exists so a bead costs one review rather than an unbounded
+number of them.
+
 `requested_reviewers` reading empty a minute later means the request was fulfilled, not dropped — do
 not re-run this off of that.
 
-Wait for a review whose commit matches your head:
+Then wait for it:
 
 ```bash
 gh api repos/<owner>/<repo>/pulls/<n>/reviews \
@@ -161,6 +166,11 @@ gh api repos/<owner>/<repo>/pulls/<n>/reviews \
 
 Every review seen on this repository has been `COMMENTED`, never `APPROVED`, so do not wait for an
 approval.
+
+**Do not require that review to match your head.** It describes the PR as it stood when it opened,
+and it will keep describing that after your fixes and rebases move the head — which is correct and
+expected, not a reason to ask again. What you owe the review is an answer to every comment, not a
+fresh review of your answers.
 
 **Every comment gets a change or a posted reply saying why not**, and the thread resolved:
 
@@ -181,14 +191,9 @@ millisecond after being taken, a refusal message that rounded itself into a cont
 release step that could strand a version bump — but they also raise things that are wrong or do not
 apply. Judge each one; a reasoned reply is a complete answer.
 
-Not every push needs a fresh request — request again with the same command only when the push is
-substantial enough that the reviewer's earlier read of the diff no longer describes it: a design
-change, code no comment touched, or a fix bigger than the comment called for. A rebase that only
-replays your commits does not; neither does a small, contained fix that does exactly what a comment
-asked for — reply to it and resolve the thread instead.
-
 **No review within about twenty minutes**: leave the PR open, escalate the bead (the hand-back block above, worktree included), say so plainly, and take the next bead. Some PRs never get one. Merging anyway is not the
-answer, and neither is waiting forever.
+answer, and neither is waiting forever. Do not re-request in the hope of shaking one loose — your one
+request has been spent, and a second would not arrive faster.
 
 ## Red CI
 
