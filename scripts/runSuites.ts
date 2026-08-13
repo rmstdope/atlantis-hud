@@ -49,6 +49,15 @@ export function summarize(results: readonly SuiteResult[]): { exitCode: number; 
 function runSuite(suite: Suite): SuiteResult {
   const run = spawnSync(suite.command, suite.args, { stdio: "inherit" });
 
+  // spawnSync does not throw on its own failure - a command that could not even start (ENOENT on
+  // its PATH) or one killed by a signal both leave `status` null, which reads identically to a
+  // suite that ran and failed unless the reason is said out loud.
+  if (run.error) {
+    process.stderr.write(`runSuites: ${suite.name} could not start: ${run.error.message}\n`);
+  } else if (run.signal) {
+    process.stderr.write(`runSuites: ${suite.name} was killed by signal ${run.signal}\n`);
+  }
+
   return { name: suite.name, passed: run.status === 0 };
 }
 
