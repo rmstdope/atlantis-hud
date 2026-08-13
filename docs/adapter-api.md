@@ -90,3 +90,5 @@ with an ally has to come out identical whichever shell wrote it.
 - Contract normalization:
   - Accepts adapter wire payloads in either `camelCase` or `snake_case`
   - Returns canonical `EngineInfo` in `camelCase`
+
+<!-- throwaway trial edit for ah-kdu docs-only CI gate validation, will be reverted -->
