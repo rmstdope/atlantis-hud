@@ -25,9 +25,17 @@ now". GitHub issues remain the inbox for external requests and bug reports only.
 Before starting implementation work, run `bd dolt pull` and then `bd ready` to see what is available
 and `bd show <id>` for the scope, acceptance criteria and validation of the bead you are about to
 work on — then claim it before doing anything else, since other agents are reading the same list.
-Read
-`docs/implementation-plan.md` for the stack and deployment decisions and for the shape a work
+Read `docs/implementation-plan.md` for the stack and deployment decisions and for the shape a work
 package is expected to have.
+
+A bead is **planned** before it is implemented, and the two are different sessions. A planning
+session turns an unplanned bead into a specified one, writes the plan into the bead's `design`
+field, and owns every decision the user can see — anything about the interface is discussed with the
+navigator, never decided alone. An implementation session picks up a bead already labelled `planned`
+and builds what the plan says; a detail the plan missed is its call, but approach, scope and
+interface go back to the planning session, which owns those decisions — via the `human` queue, so
+nothing waits on a session that may not be running. The `beads-workflow` skill carries the label
+lifecycle and the commands.
 
 ## Skills Usage
 
@@ -54,8 +62,46 @@ Keep al generic code separate so that it can be easily reused by different demos
 
 ### Four eye Principle
 
-All code changes must be reviewed by at least one other person (the navigator) before being merged into the main codebase. This practice helps to catch potential issues, improve code quality, and ensure adherence to coding standards and best practices. No automatic merging of code changes without review is allowed.
-Always ensure all pre-merge checks pass before merging any code changes to ensure that new changes do not introduce regressions or break existing functionality. NEVER merge code changes that have not passed all tests.
+All code changes must be reviewed before being merged into the main codebase. Nothing merges
+unreviewed, and nothing merges red.
+
+For a bead implemented by an agent, the **Copilot reviewer is the second pair of eyes**, and it
+counts only under all of these:
+
+- Its review is against the **current head**. Copilot reviews the commit it was asked about, not the
+  branch, so after a push that changes the code its earlier review describes code that no longer
+  exists. It never returns `APPROVED` — every review observed here is `COMMENTED` — so waiting for
+  an approval waits forever.
+- **Every comment is answered**: a change, or a posted reply saying why not, and the thread resolved.
+- **Every check is green**, and the branch is not behind main.
+
+**You cannot request the review, so do not try.** It is requested automatically when the PR opens,
+and it re-reviews by itself after a push — that is how a review comes to sit on the new head at all.
+Both plausible commands fail, and one fails quietly: `gh pr edit <n> --add-reviewer Copilot` errors
+with "Could not resolve user", and `POST /pulls/<n>/requested_reviewers` with `Copilot` answers 200
+while leaving `requested_reviewers` empty. Reviews arrive authored by
+`copilot-pull-request-reviewer`, which is an organization and cannot be requested either — match on
+that login when looking for the review, and wait rather than poke.
+
+Find it with
+`gh api repos/<owner>/<repo>/pulls/<n>/reviews --jq '[.[] | select(.user.login | startswith("copilot")) | .commit_id] | last'`
+and compare that against the head SHA. A **rebase that only replays your commits onto a newer main does not
+need a fresh review round** — without that exception the two conditions above deadlock, since
+updating from main is itself a push and main moves while you wait. CI still runs on the rebased head,
+which is what catches a conflict the rebase introduced.
+
+If no review arrives within about twenty minutes, leave the PR open, escalate the bead (see
+`beads-workflow`: remove `planned`, add `human`, `bd unclaim`), and move on. Some PRs get no review
+at all — that case is normal, and merging anyway is not.
+
+Merge with `gh pr merge <n> --squash --delete-branch`. **Never `--auto`**: on this repository the
+`main` ruleset requires status checks but no review, so auto-merge fires on green checks alone — it
+does not wait for the reviewer. PR #142 merged that way four minutes before its review arrived, and
+the fixes that review prompted had to be delivered as a second PR.
+
+Everything else still needs the navigator: anything outside a planned bead, anything the review
+raises that the agent wants to decline on judgement rather than on fact, and any change to this
+document or to the workflow itself.
 
 ### Work packages and branches
 
@@ -63,25 +109,31 @@ Every piece of planned work is a bead. Follow the `beads-workflow` skill for the
 rules that must always hold are:
 
 - ALWAYS use the test-driven-development skill when working on a bead.
-- ALWAYS claim the bead with `bd update <id> --claim` as the **first** action after choosing it —
-  before exploring the code, planning, or asking the navigator anything, not merely before
-  branching — and ALWAYS `bd dolt push` straight afterwards so agents on other machines can see the
-  claim. Several agents share this backlog. If the claim fails, another agent won it: pick a
+- ALWAYS claim the bead **before** exploring the code, planning, or asking the navigator anything —
+  not merely before branching — and ALWAYS `bd dolt push` straight afterwards so agents on other
+  machines can see the claim. `bd update <id> --claim` when you chose the bead yourself;
+  `bd ready --label ... --claim` when taking whatever is next, which claims as it picks. Several
+  agents share this backlog. If the claim fails, another agent won it: pick a
   different bead.
 - ALWAYS run `bd heartbeat <id>` at every phase gate and before any long wait (a full smoke run, a
   CI watch). A claim's lease lasts about five minutes and only a heartbeat renews it, so unattended
   claims look abandoned for most of the hour a real cycle takes.
-- NEVER take a bead off another agent on your own. `in_progress` with an assignee is authoritative
-  whatever its lease says; `bd reclaim`, `bd update --force` and reassignment all need the
-  navigator's approval first.
+- NEVER take a bead off another agent on your own. `in_progress` with an assignee is authoritative,
+  and `bd update --force` and reassignment always need the navigator's approval first. One narrow
+  exception recovers a crashed implementer — `bd reclaim --id <bead> --older-than 10m`, always by
+  id, never as a sweep. The `beads-workflow` skill carries the reasoning and the worktree cleanup
+  that has to go with it.
 - ALWAYS create a new branch from **the latest main** (unless instructed otherwise) named after the
   bead ID and a short description of the work, e.g., `ah-t65-load-multiple-reports`. Run
-  `git checkout main && git pull origin main` before branching.
+  `git fetch origin main` and branch from `origin/main` — with several agents about, `main` is
+  often checked out in somebody else's worktree, and `git checkout main` then fails.
 - ALWAYS put the bead ID in the commit subject, e.g., `feat(ah-t65): load multiple reports`, so work
   stays traceable to the bead.
 - ALWAYS create a pull request for merging the branch back into main.
-- Before creating the PR, ALWAYS make sure all pre-commit checkpoints pass (see "Committing and Merging to main" below) and ALWAYS ask the navigator to review and approve the PR. Even if any issue existed previously, it shall be fixed before merging. Do not merge any code that has known issues, even if they existed before.
-- ALWAYS merge a bead branch back into main before starting to work on another bead. This ensures that the latest changes are always incorporated and reduces the risk of merge conflicts.
+- Before creating the PR, ALWAYS make sure all pre-commit checkpoints pass (see "Committing and Merging to main" below).
+- The PR is then reviewed under the Four Eye Principle above: for a planned bead the Copilot reviewer suffices on the conditions stated there; for anything else, ask the navigator.
+- Fix every known issue before merging, including one that existed beforehand. Do not merge code with known issues.
+- ALWAYS merge a bead branch back into main before starting to work on another bead. This ensures that the latest changes are always incorporated and reduces the risk of merge conflicts. The one exception is a bead escalated to the navigator: its PR stays open by design, since the point is that it must not merge as it stands. Move on to the next bead and leave it for the `human` queue.
 
 When a PR is merged, close the bead with `bd close <id> --reason "..."` and delete the branch to keep
 the repository clean and organized.

@@ -15,26 +15,82 @@ Bead IDs look like `ah-t65`. Partial IDs work: `bd show t65` finds `ah-t65`.
 ```bash
 bd dolt pull                   # other machines' claims arrive only here
 bd ready                       # what can be worked on now (no open blockers)
-bd show <id>                   # scope, acceptance criteria, validation, dependencies
-bd update <id> --claim         # FIRST action after choosing — see "Claiming" below
+bd show <id> --json            # scope, acceptance criteria, validation, the plan in `design`
+bd update <id> --claim         # before any code is read — see "Claiming" below
 bd dolt push                   # publish the claim now, not at session end
-git checkout main && git pull origin main
-git checkout -b <id>-short-description
+git fetch origin main          # bd dolt pull moves beads, not git refs
+git checkout -b <id>-short-description origin/main
 # ... test-driven-development skill: RED → GREEN → REFACTOR → COMMIT ...
 # ... bd heartbeat <id> at every phase gate, and before any long wait ...
+gh pr create ...               # then the review round: see the Four Eye Principle in CLAUDE.md
+gh pr merge <n> --squash --delete-branch    # only once reviewed at head, green, and not behind
 bd close <id> --reason "Delivered in PR #NN"
 bd dolt push                   # back the bead database up to the remote
 ```
 
+Two ways to pick work, and they are different mechanisms rather than two spellings of one. Reading
+`bd ready` and then claiming by id is the one to use when a human or an agent is *choosing* — it
+allows `bd show` first. `bd ready --claim` takes the **first** match itself, which is what the agent
+roles below want, since they take whatever is next rather than choosing:
+
+```bash
+bd ready --exclude-label planned --claim --json    # the planner's pickup
+bd ready --label planned --claim --json            # an implementer's pickup
+```
+
+Either way the claim is atomic, and a failure means somebody else won the race: take the next bead
+rather than retrying.
+
 `bd blocked` shows what is waiting and on what. `bd list` shows everything.
+
+## The lifecycle a bead moves through
+
+Work is split between a **planning** session, which turns an unplanned bead into a specified one and
+owns every decision the user can see, and one or more **implementation** sessions, which build what
+the plan says. One label carries the handover, and `bd ready --claim` is an atomic compare-and-swap,
+so neither role can double-book a bead.
+
+| State | How it looks | Who moves it, and how |
+|---|---|---|
+| unplanned | open, no `planned` | — |
+| being planned | in_progress, planner holds the lease | `bd ready --exclude-label planned --claim` |
+| planned | open, `planned`, unassigned | planner: write the plan, add the label, `bd unclaim` |
+| being implemented | in_progress, implementer holds the lease | `bd ready --label planned --claim` |
+| needs the user | open, unassigned, `human`, **`planned` removed** | either role, on anything it must not decide |
+| parked on a UI answer | open, unassigned, `needs-ui-decision` **and** `human` | planner, when the user is away |
+
+The plan lives in the bead's `design` field (`bd update <id> --design-file plan.md`). Read it with
+`bd show <id> --json`: the pretty renderer reflows Markdown and mangles tables.
+
+**Escalating takes two commands, and both matter:**
+
+```bash
+bd update <id> --remove-label planned --add-label human --append-notes "<what stopped it>"
+bd unclaim <id>          # clears the assignee and returns the status to open
+```
+
+Removing `planned` stops `bd ready --label planned` handing the bead straight back to the next
+implementer, which would hit the same wall and escalate again. `bd unclaim` is the half that is easy
+to forget and worse to skip: `bd update` sets no status, so without it the bead stays `in_progress`
+assigned to an agent that has walked away — invisible to `bd ready`, and stranded until its lease
+runs out. That is the exact condition the reclaim rule below exists to repair, manufactured
+deliberately every time anyone escalates.
+
+A bead parked on a UI answer carries **both** `needs-ui-decision` and `human`, for the same reason:
+`bd human list` lists the `human` label and nothing else, so a bead with only the first sits in
+nobody's queue at all. With both, `bd human list` is the user's one queue across every agent and
+every terminal.
 
 ## Claiming, and not colliding
 
 Several agents work this backlog at once, so a claim is the only thing keeping two of them off the
-same bead. Five rules, and the second is the one that is easy to forget and expensive to skip.
+same bead. The second rule below is the one that is easy to forget and expensive to skip.
 
-**Claim before you explore, not before you branch.** `bd update <id> --claim` is the first thing you
-do after choosing a bead — ahead of reading code, planning, or asking the navigator anything.
+**Claim before you explore, not before you branch.** Claiming — by id when you chose the bead, or as
+part of `bd ready --claim` when you are taking whatever is next — comes ahead of reading code,
+planning, or asking the navigator anything. Reading the bead itself with `bd show` is not exploring:
+it is how you decide whether to take it, and it costs seconds. Everything after that waits for the
+claim.
 Planning a bead takes ten minutes or more, and until the claim lands the bead is still on every
 other agent's `bd ready`. The claim is atomic, so a failure means somebody else won the race: pick
 another bead rather than retrying.
@@ -45,10 +101,34 @@ runs an hour or more, so a claim that is never heartbeated is stale for almost a
 covers. Send one at every phase gate and before anything long (a full smoke run, a CI watch).
 Heartbeats write no Dolt commit and no history, so the cadence costs nothing.
 
-**Never take a bead off another agent by yourself.** `in_progress` with an assignee is authoritative
-whatever the lease says. `bd reclaim`, `bd update --force` and reassigning over a live claim all
-need the navigator's approval first — here an expired lease means "nobody heartbeated", which is the
-normal state of live work, not "the worker died". See the Traps section.
+**Never take a bead off another agent by yourself**, with one exception. `in_progress` with an
+assignee is authoritative; `bd update --force` and reassigning over a live claim need the
+navigator's approval. The exception exists only because agents now heartbeat: a crashed implementer
+leaves its bead in_progress forever, invisible to `bd ready`, so
+
+```bash
+bd reclaim --id <bead> --older-than 10m        # one named bead, never a sweep
+rm -rf .claude/worktrees/<bead> && git worktree prune
+```
+
+**`--id`, always.** Without it `bd reclaim` reaps every stale lease this replica granted, so an agent
+that merely missed a heartbeat during a long CI watch is robbed alongside the genuinely dead one.
+
+**`--older-than` counts from lease expiry, not from the last heartbeat.** With a five-minute lease,
+`10m` fires after about fifteen minutes of silence — a real death when every phase gate renews the
+lease. That safety rests on agents heartbeating, which is an instruction and not something the tool
+enforces.
+
+**Only on the machine the claim was made.** A lease is enforceable only on the node that granted it,
+and `bd reclaim` skips leases granted elsewhere. A crashed agent on another machine is the
+navigator's to sort out.
+
+The `rm -rf` is not decoration: `git worktree prune` clears entries whose directory has already
+gone, so the directory has to be removed first, or the dead agent's branch and build artifacts stay
+behind.
+
+Anything wider — a sweep with no `--id`, a shorter window, a live claim — is the navigator's call.
+See the Traps section for why this rule used to be absolute.
 
 **Push the claim immediately.** Leases never leave the machine that granted them; only status and
 assignee commit, and they travel only on `bd dolt push`/`bd dolt pull`. A claim that is not pushed is
@@ -184,13 +264,16 @@ Confirm the effect, not the acknowledgement. Writing config also rewrites `.bead
 has rewritten a commented-out default and dropped the file's trailing newline — so read the diff
 before committing it.
 
-**A stale lease here does not mean an abandoned worker.** `bd update --force` describes itself as
+**A stale lease used to mean nothing at all, and now means a little.** `bd update --force` describes itself as
 being for "abandoned claims — crashed agent, expired lease", and `bd reclaim` is built to clear the
 assignee of any in_progress bead whose lease expired and set it back to open. Both are written for a
 deployment where workers heartbeat; nothing in this repository did until recently, so every live
 claim matched the description of a dead one. This is what had agents starting on each other's work.
-Read a stale lease as "nobody heartbeated", check with the navigator, and heartbeat your own claims
-so nobody has to guess about them.
+
+Heartbeating is what changed it. Now that every phase gate renews a five-minute lease, silence
+means something again — which is why the one narrow reclaim above is allowed, and why it is worded
+as narrowly as it is. Outside that window, still read a stale lease as "nobody heartbeated" and ask
+the navigator.
 
 ```
 ◐ ah-xde · Remove the Classic map theme   [P2 · IN_PROGRESS]
