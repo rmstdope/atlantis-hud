@@ -78,6 +78,8 @@ export function BattlesDialog({
           <div className="grid min-h-0 grid-cols-[19rem_1fr]">
             <ul
               data-testid="battles-list"
+              role="listbox"
+              aria-label="Battles"
               className="min-h-0 overflow-y-auto border-r border-edge"
             >
               {battles.map((battle, index) => (
@@ -123,12 +125,14 @@ function BattleRow({
 
   return (
     <li
-      data-testid={`battle-row-${index}`}
-      aria-selected={selected}
+      role="presentation"
       className={`border-b border-edge-soft last:border-b-0 ${selected ? "bg-select/15" : ""}`}
     >
       <button
         type="button"
+        role="option"
+        aria-selected={selected}
+        data-testid={`battle-row-${index}`}
         onClick={() => onSelect(index)}
         className="flex w-full flex-col gap-0.5 px-2 py-1.5 text-left"
       >
