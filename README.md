@@ -141,6 +141,10 @@ pnpm run test:smoke
 pnpm run build:web && pnpm run test:pwa
 ```
 
+`pnpm run test` runs the packages, tooling and cargo suites in order and reports every one of them,
+rather than stopping at the first failure — so a broken tooling check can no longer hide whether the
+Rust suite ran.
+
 `test:pwa` runs against a production build and needs one made first — it is the only suite here that
 does. It is also the only place the service worker exists at all, which is why it is separate from
 the smoke suite rather than a third project in it.
