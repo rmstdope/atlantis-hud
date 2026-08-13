@@ -37,3 +37,4 @@ export * from "./workspace/SettingsDialog";
 export * from "./workspace/TurnMessagesPanel";
 export * from "./workspace/UnitPanel";
 export * from "./workspace/UnitTableDock";
+// throwaway trial: a real code change to confirm mixed diffs still run everything
