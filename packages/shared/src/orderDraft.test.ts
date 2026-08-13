@@ -22,7 +22,9 @@ function report(factionId: string | null, turnNumber: number | null): ParsedRepo
       rulesetVersion: null,
       unclaimedSilver: null,
       errors: [],
-      events: []
+      events: [],
+      factionStatus: { entries: [], unparsed: [] },
+      attitudes: { defaultAttitude: null, levels: [] }
     },
     regions: [],
     battles: [],

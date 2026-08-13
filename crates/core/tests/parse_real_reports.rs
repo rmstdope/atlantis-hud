@@ -212,6 +212,97 @@ fn turn_71_reads_its_preamble() {
 }
 
 #[test]
+fn turn_71_reads_its_faction_status_and_declared_attitudes() {
+    let header = parse_regions(TURN_71).header;
+
+    assert_eq!(header.faction_status.entries.len(), 4);
+    assert_eq!(header.faction_status.entries[0].label, "Regions");
+    assert_eq!(header.faction_status.entries[0].used, 0);
+    assert_eq!(header.faction_status.entries[0].maximum, 0);
+    let mages = header
+        .faction_status
+        .entries
+        .iter()
+        .find(|entry| entry.label == "Mages")
+        .expect("a Mages entry");
+    assert_eq!((mages.used, mages.maximum), (6, 6));
+    let apprentices = header
+        .faction_status
+        .entries
+        .iter()
+        .find(|entry| entry.label == "Apprentices")
+        .expect("an Apprentices entry");
+    assert_eq!((apprentices.used, apprentices.maximum), (15, 15));
+
+    assert_eq!(
+        header.attitudes.default_attitude.as_deref(),
+        Some("Unfriendly")
+    );
+    let hostile = header
+        .attitudes
+        .levels
+        .iter()
+        .find(|level| level.attitude == "Hostile")
+        .expect("a Hostile level");
+    // The wrapped Hostile line's last entry, proving the wrap survives real text.
+    assert_eq!(
+        hostile.factions.last().map(|faction| faction.name.as_str()),
+        Some("Heirs of the Sun")
+    );
+    let neutral = header
+        .attitudes
+        .levels
+        .iter()
+        .find(|level| level.attitude == "Neutral")
+        .expect("a Neutral level");
+    assert_eq!(
+        neutral.factions,
+        vec![atlantis_hud_core::report::header::FactionRef {
+            name: "Fon".to_string(),
+            id: "8".to_string()
+        }]
+    );
+}
+
+#[test]
+fn turn_71_of_the_ally_faction_reads_its_faction_status_and_declared_attitudes() {
+    let header = parse_regions(ALLY_TURN_71).header;
+
+    let regions = header
+        .faction_status
+        .entries
+        .iter()
+        .find(|entry| entry.label == "Regions")
+        .expect("a Regions entry");
+    assert_eq!((regions.used, regions.maximum), (3, 10));
+    let apprentices = header
+        .faction_status
+        .entries
+        .iter()
+        .find(|entry| entry.label == "Apprentices")
+        .expect("an Apprentices entry");
+    assert_eq!((apprentices.used, apprentices.maximum), (0, 15));
+
+    assert_eq!(
+        header.attitudes.default_attitude.as_deref(),
+        Some("Neutral")
+    );
+    let ally = header
+        .attitudes
+        .levels
+        .iter()
+        .find(|level| level.attitude == "Ally")
+        .expect("an Ally level");
+    assert_eq!(
+        ally.factions,
+        vec![atlantis_hud_core::report::header::FactionRef {
+            name: "Borg TNG".to_string(),
+            id: "95".to_string()
+        }]
+    );
+}
+
+#[test]
 fn turn_2_reads_its_preamble_and_per_unit_errors() {
     let header = parse_regions(TURN_2).header;
 
@@ -221,6 +312,32 @@ fn turn_2_reads_its_preamble_and_per_unit_errors() {
     assert_eq!(header.errors.len(), 2, "unit 1387 failed a BUY and a STUDY");
     assert!(header.errors.iter().all(|error| error.contains("1387")));
     assert!(!header.events.is_empty());
+}
+
+#[test]
+fn turn_2_reads_its_declared_attitude_of_unfriendly_towards_creatures() {
+    let header = parse_regions(TURN_2).header;
+
+    let unfriendly = header
+        .attitudes
+        .levels
+        .iter()
+        .find(|level| level.attitude == "Unfriendly")
+        .expect("an Unfriendly level");
+    assert_eq!(
+        unfriendly.factions,
+        vec![atlantis_hud_core::report::header::FactionRef {
+            name: "Creatures".to_string(),
+            id: "2".to_string()
+        }]
+    );
+    let hostile = header
+        .attitudes
+        .levels
+        .iter()
+        .find(|level| level.attitude == "Hostile")
+        .expect("a Hostile level");
+    assert!(hostile.factions.is_empty());
 }
 
 #[test]

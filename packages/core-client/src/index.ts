@@ -401,6 +401,41 @@ export type ReportHeaderInfo = {
   unclaimedSilver: number | null;
   errors: string[];
   events: string[];
+  factionStatus: FactionStatus;
+  attitudes: DeclaredAttitudes;
+};
+
+/** The `Faction Status:` block: allowances the faction has used, of its maximum. */
+export type FactionStatus = {
+  entries: FactionStatusEntry[];
+  /** A status line that was not `Label: n (m)` shaped, carried rather than dropped. */
+  unparsed: string[];
+};
+
+/** One line of the `Faction Status:` block, such as `Regions: 3 (10)`. */
+export type FactionStatusEntry = {
+  label: string;
+  used: number;
+  maximum: number;
+};
+
+/** The `Declared Attitudes:` block. */
+export type DeclaredAttitudes = {
+  defaultAttitude: string | null;
+  /** One entry per printed level, in the order the report prints them. */
+  levels: AttitudeLevel[];
+};
+
+/** One attitude level, such as `Hostile`, and the factions declared at it. */
+export type AttitudeLevel = {
+  attitude: string;
+  factions: FactionRef[];
+};
+
+/** A faction named in a `Declared Attitudes:` list, such as `Creatures (2)`. */
+export type FactionRef = {
+  name: string;
+  id: string;
 };
 
 /** One unit's slice of the orders document, comments included so the document round trips. */
