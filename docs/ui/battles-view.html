@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reading the turn's battles</title>
+<style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --warn:#d9a441; --danger:#d97070;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, section.file, footer { max-width:1360px; margin-left:auto; margin-right:auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; }
+  h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:92ch; margin-top:10px; font-size:14px; }
+  header p + p { margin-top:8px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:0.92em; }
+  header code { color:var(--brass-bright); }
+  .verdict { color:var(--ink) !important; border-left:2px solid var(--brass); padding-left:12px; }
+  .verdict b { color:var(--brass); font-weight:normal; }
+
+  .cards { display:grid; grid-template-columns:1fr; gap:26px; margin-top:26px; align-items:start; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:18px 18px 16px; display:flex; flex-direction:column; gap:12px; }
+  .card h2 { font-size:19px; }
+  .card h2 em { color:var(--brass); font-style:normal; font-size:12px; letter-spacing:1.6px; margin-right:8px; }
+  .card.pick { border-color:var(--brass); }
+  .concept { color:var(--ink-soft); font-size:13px; max-width:96ch; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; padding:14px; display:grid; gap:12px; }
+  .stage .cap { font:italic 11.5px Georgia,serif; color:var(--ink-dim); text-align:center; }
+  .twoup { display:grid; grid-template-columns:1fr 1fr; gap:14px; align-items:start; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"− "; color:var(--danger); }
+  .cost { font-size:12px; color:var(--ink-dim); border-top:1px solid var(--edge-soft); padding-top:9px; }
+  .cost b { color:var(--ink-soft); font-weight:normal; }
+
+  /* --- workspace chrome, redrawn --- */
+  .ui { font-family:'Helvetica Neue',Arial,sans-serif; font-size:11.5px; line-height:1.45; }
+  .appbar { position:relative; display:flex; align-items:center; gap:8px; height:30px; padding:0 9px;
+            background:var(--panel); border:1px solid var(--edge); border-radius:6px 6px 0 0; white-space:nowrap; }
+  .appbar .brandy { color:var(--brass); letter-spacing:1.3px; text-transform:uppercase; font-size:10px; }
+  .appbar .grow { flex:1; }
+  .hchip { display:inline-flex; align-items:center; gap:5px; border:1px solid var(--edge); border-radius:4px;
+           padding:1px 7px; color:var(--ink-soft); background:var(--ground); }
+  .hchip.on { border-color:var(--select); background:rgba(74,159,216,.15); color:var(--ink); }
+  .hchip .n { color:var(--brass); font-variant-numeric:tabular-nums; }
+  .hchip .n.bad { color:var(--danger); }
+
+  .canvas { position:relative; height:330px; border:1px solid var(--edge); border-top:0; border-radius:0 0 6px 6px;
+            background:
+              radial-gradient(circle at 22% 32%, #1b2a24 0 60px, transparent 61px),
+              radial-gradient(circle at 63% 62%, #23202c 0 70px, transparent 71px),
+              repeating-linear-gradient(60deg, #141a22 0 13px, #121820 13px 26px),
+              var(--ground);
+            overflow:hidden; }
+  .canvas .mapnote { position:absolute; left:10px; bottom:8px; color:var(--ink-dim); font-style:italic; }
+
+  /* popover, in the TurnMessagesPanel idiom */
+  .pop { position:absolute; z-index:4; border:1px solid var(--edge); border-radius:6px; background:var(--raised);
+         box-shadow:0 8px 22px rgba(0,0,0,.5); overflow:hidden; }
+  .pop > .bar, .modal > .bar { display:flex; align-items:center; gap:8px; height:26px; padding:0 9px; border-bottom:1px solid var(--edge); }
+  .bar .name { font-size:10px; letter-spacing:1.4px; text-transform:uppercase; color:var(--brass); }
+  .bar .hint { color:var(--ink-dim); }
+  .bar .grow { flex:1; }
+  .bar .x { color:var(--ink-dim); }
+
+  .blist { list-style:none; display:grid; }
+  .blist li { padding:7px 9px; border-bottom:1px solid var(--edge-soft); display:grid; gap:3px; cursor:pointer; }
+  .blist li:last-child { border-bottom:0; }
+  .blist li.sel { background:rgba(74,159,216,.13); box-shadow:inset 2px 0 0 var(--select); }
+  .blist .who { color:var(--ink); }
+  .blist .who b { font-weight:500; }
+  .blist .who .mine { color:var(--brass-bright); font-weight:500; }
+  .blist .who .arr { color:var(--ink-dim); margin:0 5px; }
+  .blist .meta { color:var(--ink-dim); display:flex; gap:10px; flex-wrap:wrap; }
+  .blist .meta .loss { color:var(--danger); }
+  .blist .meta .gain { color:var(--ok); }
+  .blist .meta a { color:var(--select); text-decoration:none; border-bottom:1px dotted var(--select); }
+
+  /* the full battle */
+  .modal { border:1px solid var(--edge); border-radius:6px; background:var(--panel); overflow:hidden;
+           box-shadow:0 10px 30px rgba(0,0,0,.55); }
+  .scrim { position:absolute; inset:0; background:rgba(6,9,13,.6); z-index:3; }
+  .battle { display:grid; gap:9px; padding:10px; }
+  .head { display:grid; gap:4px; }
+  .head .line { color:var(--ink); font-size:12.5px; }
+  .head .line .mine { color:var(--brass-bright); }
+  .head .where { color:var(--ink-dim); }
+  .head .where a { color:var(--select); text-decoration:none; border-bottom:1px dotted var(--select); }
+  .sec { color:var(--brass); font-size:10px; letter-spacing:1.2px; text-transform:uppercase; display:flex; gap:6px; align-items:baseline; }
+  .sec .n { color:var(--ink-dim); letter-spacing:0; text-transform:none; }
+  .sec .car { color:var(--ink-dim); letter-spacing:0; }
+  .rosters { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .roster { border:1px solid var(--edge-soft); border-radius:5px; background:var(--ground); padding:6px 7px; display:grid; gap:4px; }
+  .roster .u { display:flex; gap:6px; align-items:baseline; }
+  .roster .u .nm { color:var(--ink); }
+  .roster .u.mine .nm { color:var(--brass-bright); }
+  .roster .u.mine::before { content:"◆"; color:var(--brass); font-size:8px; }
+  .roster .u.unk::before { content:"?"; color:var(--ink-dim); font-size:9px; }
+  .roster .u:not(.mine):not(.unk)::before { content:"·"; color:var(--ink-dim); }
+  .roster .u .fac { color:var(--ink-dim); }
+  .roster .u .bd { color:var(--ink-dim); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; }
+  .roster .more { color:var(--ink-dim); font-style:italic; }
+  .round { border-left:2px solid var(--edge); padding-left:8px; display:grid; gap:2px; }
+  .round .rn { color:var(--brass); font-size:10px; letter-spacing:1.2px; text-transform:uppercase; }
+  .round .l { color:var(--ink-soft); }
+  .round .l.kill { color:var(--ink); }
+  .round .loss { color:var(--danger); }
+  .round .fold { color:var(--ink-dim); border:1px dashed var(--edge); border-radius:4px; padding:2px 6px; justify-self:start; margin-top:3px; }
+  .outcome { display:grid; grid-template-columns:auto 1fr; gap:2px 12px; }
+  .outcome dt { color:var(--ink-soft); }
+  .outcome dd { margin:0; color:var(--ink); }
+  .outcome dd .loss { color:var(--danger); }
+  .outcome dd .spoil { color:var(--ok); }
+  .empty { color:var(--ink-dim); font-style:italic; padding:14px 9px; text-align:center; }
+  .tabs { display:flex; gap:6px; padding:6px 9px 0; }
+  .tab { border:1px solid var(--edge); border-bottom:0; border-radius:4px 4px 0 0; padding:2px 8px; color:var(--ink-dim); background:var(--ground); }
+  .tab.on { color:var(--ink); border-color:var(--select); background:rgba(74,159,216,.12); }
+
+  footer { margin-top:34px; color:var(--ink-dim); font-size:12.5px; font-style:italic; }
+  @media (max-width:1100px) { .twoup, .rosters { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Battles <span>· a view for reading the turn's fighting</span></h1>
+  <p>Bead <code>ah-1is.2</code>. The parser (<code>ah-1is.1</code>) now puts the turn's battles on
+  <code>ParsedReport.battles</code> — headline, both rosters, the rounds with their spells and loss
+  lines, total casualties, damaged units and spoils. Nothing shows them yet.</p>
+  <p>What the real data looks like, from <code>neworigins-3.0.0-g7-f95-t71.rep</code>: two battles,
+  <b>158 units on one attacker roster</b> against a single defender, one round each, and
+  <b>75 KB of the 199 KB report</b> — most of it the round and battle statistics blocks, which the
+  bead already settles as folded away by default. So the question is not what to show. It is
+  <b>where a thing this large lives</b>, given every faction-scoped surface today is a header chip
+  with a popover about 28rem wide.</p>
+  <p class="verdict"><b>Chosen: B, one dialog with the list beside the battle.</b> A 158-unit roster
+  has nowhere to go in a popover, and a two-step popover→dialog (A) makes the player pay a click to
+  find out which battle they wanted. <b>The outcome on a list line is stated neutrally</b> —
+  <span class="mono">attacker −0 · defender −15</span> — rather than as “we” and “they”: in the
+  first battle below the player's units fight inside a 158-unit allied army whose attacker belongs
+  to another faction, so a “we” would be a guess, and a roster line that prints no faction cannot be
+  attributed at all. Whose units were there is answered where it can be answered — in the rosters,
+  which mark the player's own units and count them.</p>
+</header>
+
+<main class="cards">
+
+  <!-- ------------------------------------------------------------------ A -->
+  <section class="card">
+    <h2><em>A</em>Chip → popover list → full-window dialog</h2>
+    <p class="concept">The chip behaves exactly like <code>Turn messages</code> and
+    <code>Problems</code>: it opens a narrow popover anchored under the header. The popover holds
+    only the one-line summaries. Clicking one closes it and opens the battle in a large centred
+    dialog over the workspace. Two surfaces, each doing one job.</p>
+
+    <div class="stage">
+      <div class="ui">
+        <div class="appbar">
+          <span class="brandy">Atlantis HUD</span>
+          <span style="color:var(--ink-soft)">Borg TNG (95)</span>
+          <span style="color:var(--ink-dim)">· Turn 71</span>
+          <span class="grow"></span>
+          <span class="hchip">1 merged</span>
+          <span class="hchip">Problems <span class="n">7</span></span>
+          <span class="hchip">Messages <span class="n bad">3</span></span>
+          <span class="hchip on">Battles <span class="n">2</span></span>
+        </div>
+        <div class="canvas">
+          <div class="pop" style="right:10px; top:6px; width:27rem;">
+            <div class="bar"><span class="name">Battles</span><span class="hint">turn 71</span><span class="grow"></span><span class="x">✕</span></div>
+            <ul class="blist">
+              <li>
+                <span class="who"><b>AA Tomb's Guards (7280)</b><span class="arr">→</span><b>Pirates (14789)</b></span>
+                <span class="meta"><a href="#">ocean (25,55)</a><span>attacker <span class="gain">−0</span></span><span>defender <span class="loss">−15</span></span><span>spoils</span></span>
+              </li>
+              <li>
+                <span class="who"><span class="mine">Sail (16352)</span><span class="arr">→</span><b>Looter (16779)</b></span>
+                <span class="meta"><a href="#">ocean (26,52)</a><span>attacker <span class="gain">−0</span></span><span>defender <span class="loss">−1</span></span><span>spoils</span></span>
+              </li>
+            </ul>
+          </div>
+          <span class="mapnote">the workspace, undisturbed</span>
+        </div>
+      </div>
+      <div class="cap">A1 · the chip's popover — every battle of the turn in one line each</div>
+
+      <div class="ui">
+        <div class="canvas" style="height:400px">
+          <div class="scrim"></div>
+          <div class="modal" style="position:absolute; z-index:4; left:6%; right:6%; top:14px; bottom:14px;">
+            <div class="bar"><span class="name">Battle</span><span class="hint">1 of 2 · turn 71</span><span class="grow"></span><span class="hint">← →</span><span class="x">✕</span></div>
+            <div class="battle">
+              <div class="head">
+                <div class="line"><b>AA Tomb's Guards (7280)</b> attacks <b>Pirates (14789)</b></div>
+                <div class="where">in ocean <a href="#">(25,55)</a> in Atlantis Ocean · 1 round</div>
+              </div>
+              <div class="rosters">
+                <div>
+                  <div class="sec">Attackers <span class="n">158</span></div>
+                  <div class="roster">
+                    <div class="u"><span class="nm">AA Tomb's Guards (7280)</span><span class="fac">Greywolf (33)</span><span class="bd">78 gnolls, 73 mithril armor, combat 5</span></div>
+                    <div class="u mine"><span class="nm">One of Eight (18636)</span><span class="fac">Borg TNG (95)</span><span class="bd">leader, leather armor</span></div>
+                    <div class="u mine"><span class="nm">Two of Eight (18637)</span><span class="fac">Borg TNG (95)</span><span class="bd">leader, leather armor</span></div>
+                    <div class="u unk"><span class="nm">Ailen's Acolyte (2965)</span><span class="fac">faction not shown</span><span class="bd">leader, mithril sword, riding 4</span></div>
+                    <div class="more">+ 154 more</div>
+                  </div>
+                </div>
+                <div>
+                  <div class="sec">Defenders <span class="n">1</span></div>
+                  <div class="roster">
+                    <div class="u"><span class="nm">Pirates (14789)</span><span class="fac">Pirates (0)</span><span class="bd">15 sailors, 15 swords</span></div>
+                  </div>
+                </div>
+              </div>
+              <div class="sec">Rounds <span class="n">1</span></div>
+              <div class="round">
+                <div class="rn">Round 1</div>
+                <div class="l">AA Tomb's Guards (7280) tactics bonus 3.</div>
+                <div class="l">Adonin (1392) casts Energy Shield.</div>
+                <div class="l">Abraxas (907) casts Force Shield.</div>
+                <div class="l kill">Dragon controlled by Four of Seven (12880) breathes Fire, killing 15.</div>
+                <div class="loss">Pirates (14789) loses 15 · AA Tomb's Guards (7280) loses 0</div>
+                <div class="fold">▸ Round 1 statistics (17 lines)</div>
+              </div>
+              <div class="sec">Outcome</div>
+              <dl class="outcome">
+                <dt>Casualties</dt><dd><span class="loss">Pirates (14789) loses 15</span> · AA Tomb's Guards (7280) loses 0</dd>
+                <dt>Damaged</dt><dd>14789</dd>
+                <dt>Spoils</dt><dd class="spoil">3 magic crossbows, 2 battle axes, magic wagon, 11 mithril, 3 gliders, 8 floater hides, 5 mushrooms, yew, 5 healing potions, 2531 silver</dd>
+              </dl>
+              <div class="fold">▸ Battle statistics (44 lines)</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="cap">A2 · the battle in full, over a darkened workspace</div>
+    </div>
+
+    <ul class="notes">
+      <li>The chip and its popover are exactly the idiom the header already has, three times over.</li>
+      <li>The dialog gets the whole window, which is what a 158-unit roster needs.</li>
+      <li class="con">Two clicks and two surfaces to read one battle, and the popover is thrown away the moment you use it.</li>
+      <li class="con">Moving between battles means reopening the popover, or duplicating the list as ← → in the dialog.</li>
+    </ul>
+    <p class="cost"><b>Build:</b> a chip, a popover (a near-copy of <code>TurnMessagesPanel</code>),
+    and a dialog. Two dismissal behaviours to get right instead of one.</p>
+  </section>
+
+  <!-- ------------------------------------------------------------------ B -->
+  <section class="card pick">
+    <h2><em>B</em>Chip → one dialog, list beside the battle<span style="color:var(--ground);background:var(--brass);border-radius:3px;font:11px/1.6 'Helvetica Neue',Arial,sans-serif;letter-spacing:1.2px;text-transform:uppercase;padding:1px 6px;margin-left:8px;vertical-align:2px;">chosen</span></h2>
+    <p class="concept">The chip opens one surface: a dialog with the turn's battles down a narrow
+    left rail and the selected battle filling the rest. The list is never thrown away, so moving
+    from one battle to the next is a single click, and the summaries stay on screen as context for
+    what you are reading. Opening the chip selects the first battle, so the dialog is never empty.</p>
+
+    <div class="stage">
+      <div class="ui">
+        <div class="appbar">
+          <span class="brandy">Atlantis HUD</span>
+          <span style="color:var(--ink-soft)">Borg TNG (95)</span>
+          <span style="color:var(--ink-dim)">· Turn 71</span>
+          <span class="grow"></span>
+          <span class="hchip">1 merged</span>
+          <span class="hchip">Problems <span class="n">7</span></span>
+          <span class="hchip">Messages <span class="n bad">3</span></span>
+          <span class="hchip on">Battles <span class="n">2</span></span>
+        </div>
+        <div class="canvas" style="height:430px">
+          <div class="scrim"></div>
+          <div class="modal" style="position:absolute; z-index:4; left:4%; right:4%; top:12px; bottom:12px; display:grid; grid-template-rows:26px 1fr;">
+            <div class="bar"><span class="name">Battles</span><span class="hint">turn 71 · 2 battles</span><span class="grow"></span><span class="x">✕</span></div>
+            <div style="display:grid; grid-template-columns:19rem 1fr; min-height:0;">
+              <ul class="blist" style="border-right:1px solid var(--edge); align-content:start;">
+                <li class="sel">
+                  <span class="who"><b>AA Tomb's Guards (7280)</b><span class="arr">→</span><b>Pirates (14789)</b></span>
+                  <span class="meta"><span>ocean (25,55)</span></span>
+                  <span class="meta"><span>attacker <span class="gain">−0</span></span><span>defender <span class="loss">−15</span></span><span>spoils</span></span>
+                </li>
+                <li>
+                  <span class="who"><span class="mine">Sail (16352)</span><span class="arr">→</span><b>Looter (16779)</b></span>
+                  <span class="meta"><span>ocean (26,52)</span></span>
+                  <span class="meta"><span>attacker <span class="gain">−0</span></span><span>defender <span class="loss">−1</span></span><span>spoils</span></span>
+                </li>
+              </ul>
+              <div class="battle" style="overflow:hidden;">
+                <div class="head">
+                  <div class="line"><b>AA Tomb's Guards (7280)</b> attacks <b>Pirates (14789)</b></div>
+                  <div class="where">in ocean <a href="#">(25,55)</a> in Atlantis Ocean · 1 round · <a href="#">show on map</a></div>
+                </div>
+                <div class="rosters">
+                  <div>
+                    <div class="sec">Attackers <span class="n">158 · 12 yours</span></div>
+                    <div class="roster">
+                      <div class="u"><span class="nm">AA Tomb's Guards (7280)</span><span class="fac">Greywolf (33)</span><span class="bd">78 gnolls, 73 mithril armor, combat 5</span></div>
+                      <div class="u mine"><span class="nm">One of Eight (18636)</span><span class="fac">Borg TNG (95)</span><span class="bd">leader, leather armor</span></div>
+                      <div class="u mine"><span class="nm">Two of Eight (18637)</span><span class="fac">Borg TNG (95)</span><span class="bd">leader, leather armor</span></div>
+                      <div class="u unk"><span class="nm">Ailen's Acolyte (2965)</span><span class="fac">faction not shown</span><span class="bd">leader, mithril sword, riding 4</span></div>
+                      <div class="more">+ 154 more · scrolls</div>
+                    </div>
+                  </div>
+                  <div>
+                    <div class="sec">Defenders <span class="n">1</span></div>
+                    <div class="roster">
+                      <div class="u"><span class="nm">Pirates (14789)</span><span class="fac">Pirates (0)</span><span class="bd">15 sailors, 15 swords</span></div>
+                    </div>
+                  </div>
+                </div>
+                <div class="sec">Rounds <span class="n">1</span></div>
+                <div class="round">
+                  <div class="rn">Round 1</div>
+                  <div class="l">AA Tomb's Guards (7280) tactics bonus 3.</div>
+                  <div class="l">Adonin (1392) casts Energy Shield.</div>
+                  <div class="l kill">Dragon controlled by Four of Seven (12880) breathes Fire, killing 15.</div>
+                  <div class="loss">Pirates (14789) loses 15 · AA Tomb's Guards (7280) loses 0</div>
+                  <div class="fold">▸ Round 1 statistics (17 lines)</div>
+                </div>
+                <div class="sec">Outcome</div>
+                <dl class="outcome">
+                  <dt>Casualties</dt><dd><span class="loss">Pirates (14789) loses 15</span> · AA Tomb's Guards (7280) loses 0</dd>
+                  <dt>Damaged</dt><dd>14789</dd>
+                  <dt>Spoils</dt><dd class="spoil">3 magic crossbows, 2 battle axes, magic wagon, 11 mithril, … 2531 silver</dd>
+                </dl>
+                <div class="fold">▸ Battle statistics (44 lines)</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="cap">B · one surface — the list stays put, the battle fills the room it needs</div>
+    </div>
+
+    <ul class="notes">
+      <li>One click from the chip to a battle, and one click between battles.</li>
+      <li>The list is context, not a menu: what happened this turn stays readable beside the detail.</li>
+      <li>Scales to a turn with a dozen battles without changing shape.</li>
+      <li>One surface, one dismissal, one place for keyboard handling (↑↓ the list, Esc closes).</li>
+      <li class="con">The only modal in the workspace that is not a question — the map is covered while it is open.</li>
+      <li class="con">Below about 900px the two columns have to stack, so it needs a narrow-window rule.</li>
+    </ul>
+    <p class="cost"><b>Build:</b> one dialog component holding a list and a detail view, the two
+    testable apart. No new popover.</p>
+  </section>
+
+  <!-- ------------------------------------------------------------------ C -->
+  <section class="card">
+    <h2><em>C</em>A sixth collapsible panel, in the inspector</h2>
+    <p class="concept">Battles join the five collapsible panels in the inspector column rather than
+    the header. Unlike the other five it is turn-scoped, not hex-scoped, so it shows every battle of
+    the turn — unless a hex is selected, in which case it narrows to that hex's battles. Nothing is
+    ever covered; the map and the panels stay side by side.</p>
+
+    <div class="stage twoup">
+      <div class="ui">
+        <div class="modal">
+          <div class="bar"><span class="name">Battles</span><span class="hint">2 this turn</span><span class="grow"></span><span class="x">▾</span></div>
+          <ul class="blist">
+            <li class="sel">
+              <span class="who"><b>AA Tomb's Guards (7280)</b><span class="arr">→</span><b>Pirates (14789)</b></span>
+              <span class="meta"><span>ocean (25,55)</span><span>attacker <span class="gain">−0</span></span><span>defender <span class="loss">−15</span></span></span>
+              <div class="battle" style="padding:6px 0 0;">
+                <div class="sec">Attackers <span class="n">158 · 12 yours</span> <span class="car">▸</span></div>
+                <div class="sec">Defenders <span class="n">1</span> <span class="car">▸</span></div>
+                <div class="round">
+                  <div class="rn">Round 1</div>
+                  <div class="l kill">Dragon controlled by Four of Seven (12880) breathes Fire, killing 15.</div>
+                  <div class="loss">Pirates (14789) loses 15</div>
+                </div>
+                <dl class="outcome">
+                  <dt>Spoils</dt><dd class="spoil">3 magic crossbows, … 2531 silver</dd>
+                </dl>
+              </div>
+            </li>
+            <li>
+              <span class="who"><span class="mine">Sail (16352)</span><span class="arr">→</span><b>Looter (16779)</b></span>
+              <span class="meta"><span>ocean (26,52)</span><span>attacker <span class="gain">−0</span></span><span>defender <span class="loss">−1</span></span></span>
+            </li>
+          </ul>
+        </div>
+        <div class="cap" style="margin-top:8px">C · in the inspector, at its real width — about 22rem</div>
+      </div>
+      <div class="ui">
+        <div class="modal">
+          <div class="bar"><span class="name">Battles</span><span class="hint">hex (25,55)</span><span class="grow"></span><span class="x">▾</span></div>
+          <div class="empty">No battle was fought in this hex.</div>
+        </div>
+        <div class="cap" style="margin-top:8px">C · and the empty state, which is most hexes</div>
+      </div>
+    </div>
+
+    <ul class="notes">
+      <li>Nothing is ever covered, and the map stays beside what you are reading.</li>
+      <li>Reuses <code>CollapsiblePanel</code> outright — the cheapest of the three to build.</li>
+      <li class="con">About 22rem wide: the rosters cannot sit side by side, and a 158-unit roster reads as an endless column.</li>
+      <li class="con">Turn-scoped in a column where every other panel is hex-scoped — the odd one out, and the empty state is what most hexes show.</li>
+      <li class="con">Competes for vertical space with the five panels a player actually works in.</li>
+    </ul>
+    <p class="cost"><b>Build:</b> one panel, no new surface at all — but the bead's "shows it in
+    full" is the part that suffers.</p>
+  </section>
+
+</main>
+
+<footer>
+  Drawn from <code>tests/fixtures/reports/neworigins-3.0.0-g7-f95-t71.rep</code> — both battles are
+  real, and so are the roster sizes, the round, the casualties and the spoils. Self-contained: no
+  build step, no network.
+</footer>
+
+</body>
+</html>
