@@ -43,19 +43,54 @@ the queue keeps filling. It will not guess on your behalf.
 
 ## Starting builders
 
-One or more sessions, each in its own terminal:
+Builders are run from an **orchestrator**: one interactive session, in its own terminal, that starts
+and stops them for you.
 
 ```
-claude
-/implement-bead
+claude --agent orchestrator --permission-mode auto
 ```
 
-Each one takes a planned bead, creates its own git worktree, works through the plan test-first, opens
-a PR, answers the Copilot review, waits for CI, merges, cleans up, and takes the next bead.
+It starts nothing on its own. It greets you, tells you what the queue looks like, and waits. Then you
+talk to it in whatever words you like:
+
+```
+start two implementers
+how are they doing?
+take beta down
+start another one, call it delta
+```
+
+Each implementer it spawns takes a planned bead, creates its own git worktree, works through the plan
+test-first, opens a PR, answers the Copilot review, waits for CI, merges, cleans up, and takes the
+next bead. They run on Sonnet, each with its own context, and they keep going until told to stop.
 
 **Two or three is a sensible number on one machine.** More is not faster: the browser test suites
 take a machine-wide lock and run one at a time, and every merge makes every other open PR stale, so
-each of them pays for a rebase and a fresh CI run.
+each of them pays for a rebase and a fresh CI run. The orchestrator will say so if you ask for more,
+once, and then do as it is told.
+
+### What "take one down" means
+
+It means *finish*, not *stop now*. The orchestrator writes a stop flag; the implementer sees it only
+between beads — after the one it is on is merged and closed — and then leaves the loop. So a builder
+that has just claimed something will be a while yet. That is deliberate: killing one mid-bead leaves
+a claimed bead, a worktree and an open PR for you to unpick by hand.
+
+If you genuinely want one gone this second, say so and the orchestrator will stop it — and then you
+have that cleanup to do.
+
+Changed your mind before it noticed? Deleting the flag cancels the instruction:
+
+```bash
+rm .claude/implementers/<name>.stop
+```
+
+### When a builder gets slow or vague
+
+An implementer's context grows with every bead it finishes, and nothing can clear it from the inside.
+It is told to re-read plans rather than recall them, and to tell you when it starts to feel the
+weight. When it does — or when its reports get woolly — take it down and start a fresh one. That is
+the cure, and it is why the fleet is yours to manage rather than automatic.
 
 ## Your queue
 

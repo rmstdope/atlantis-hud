@@ -27,9 +27,12 @@ packages/browser-core/src/wasm/
 .tmp/
 
 # Local agent scratch space; never part of the project, except the project-wide agent
-# configuration: the repository's skills and the shared settings (beads session hook).
+# configuration: the repository's skills, its agent definitions, and the shared settings (beads
+# session hook). `.claude/implementers/` stays ignored - the stop flags in it are live state
+# belonging to one machine's running agents, not to the project.
 .claude/*
 !.claude/skills/
+!.claude/agents/
 !.claude/settings.json
 
 # Games live in the platform application data directory, never in the repository. This is a

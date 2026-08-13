@@ -38,16 +38,21 @@ nothing waits on a session that may not be running. The `beads-workflow` skill c
 lifecycle and the commands; `/plan-bead` and `/implement-bead` carry the two roles, and a session
 running either should load its skill first.
 
-**An implementation session does one bead and stops.** The loop is `scripts/implement-loop.sh <name>`,
-which starts a fresh `claude -p "/implement-bead"` per bead until nothing planned is ready. Looping
-inside one session carries every finished bead's diffs, test output and review threads into the next
-one's context, and no agent can clear its own — a new process is the only clean start. Planning is
-not looped this way: it is interactive by design.
+**Implementers are run by an orchestrator.** An implementation session loops — bead after bead —
+until it is told to stop, and the thing that tells it is the orchestrator:
 
-The loop's `<name>` is required, and every session it starts runs with Remote Control enabled under
-it, so a running implementer can be reached from a phone or another machine and two loops are told
-apart by a name somebody chose. An implementation session started by hand should ask the navigator
-for `/rc`: an agent cannot enable Remote Control itself.
+```bash
+claude --agent orchestrator --permission-mode auto
+```
+
+That session is interactive, runs on Sonnet, and starts nothing until you ask it to. You tell it to
+spin up implementers, which it spawns as subagents on Sonnet, each with its own context; you tell it
+to take one down, and it writes that implementer's stop flag. **Taking one down means telling it to
+finish**: the implementer completes the bead it is on, sees it merged, and only then leaves the
+loop — killing one mid-bead strands a claim, a worktree and an open PR.
+
+Both roles are defined in `.claude/agents/`. Planning is not run this way: `/plan-bead` is
+interactive by design and stays a session of its own.
 
 ## Skills Usage
 
