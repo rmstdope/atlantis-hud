@@ -303,11 +303,15 @@ Tell them which command to run and let them decide. A quiet fleet is often delib
 The navigator will ask how much is getting done. Answer from the beads, in three windows:
 
 ```bash
-bd list --status closed --closed-after "$(date +%Y-%m-%d)"    --exclude-type epic --json   # today
-bd list --status closed --closed-after "$(date -v-7d +%Y-%m-%d)" --exclude-type epic --json   # 7 days
+# A week ago, on either flavour of `date`: BSD/macOS takes -v, GNU/Linux takes -d, and neither
+# understands the other. The repository is developed on macOS and its CI is Linux, so write both.
+WEEK_AGO=$(date -v-7d +%Y-%m-%d 2>/dev/null || date -d '7 days ago' +%Y-%m-%d)
+
+bd list --status closed --closed-after "$(date +%Y-%m-%d)" --exclude-type epic --json   # today
+bd list --status closed --closed-after "$WEEK_AGO"         --exclude-type epic --json   # 7 days
 bd list --status closed \
   --closed-after "$(git log -1 --format=%cI "$(git describe --tags --abbrev=0)")" \
-  --exclude-type epic --json                                                              # since release
+  --exclude-type epic --json                                                            # since release
 ```
 
 Count them, and name the beads for the day's window — a list of ids and titles is what makes the

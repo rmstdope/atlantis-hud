@@ -292,6 +292,15 @@ function runOneBead(
     const log = logPath(repoRoot, name);
     mkdirSync(dirname(log), { recursive: true });
     sink = createWriteStream(log, { flags: "a" });
+
+    // A stream error - a full disk, a bad permission, a path that is not a file - arrives as an
+    // 'error' event, and an unhandled one takes the whole process down. That would kill an
+    // implementer mid-bead over a file that is only ever a convenience, and ENOSPC is exactly the
+    // case `--log` is opt-in to avoid. So say it once, drop the log, and keep the bead running.
+    sink.on("error", (error: Error) => {
+      say(`could not write the log, carrying on without it: ${error.message}`);
+      sink = null;
+    });
   }
 
   return new Promise((done) => {

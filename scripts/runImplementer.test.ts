@@ -375,6 +375,28 @@ describe("the launcher loop", () => {
     }
   }, 30_000);
 
+  it("keeps running when the log cannot be written", async () => {
+    // A write error on the log stream arrives as an 'error' event, and an unhandled one takes the
+    // process down - so a full disk or a bad permission would kill the launcher mid-bead, over a
+    // file that is only ever a convenience. Worse, ENOSPC is precisely the case `--log` was made
+    // opt-in to avoid. Here the log path is a directory, so the stream fails at once.
+    const event = JSON.stringify({
+      type: "assistant",
+      message: { content: [{ type: "text", text: "still going" }] }
+    });
+    const { root, log, flags } = workspace(`printf '%s\\n' ${JSON.stringify(event)}\nexit 0`);
+    mkdirSync(logPath(root, "Cyclops"), { recursive: true });
+    writeFileSync(flags.go, "");
+    const child = start(root, join(root, "bin"), "ignore", ["--log"]);
+
+    try {
+      // The claim is that it goes round again: a crash would leave exactly one invocation.
+      expect(await until(() => invocations(log).length >= 2)).toBe(true);
+    } finally {
+      child.kill();
+    }
+  }, 30_000);
+
   it("prints usage rather than a stack trace when given no name", async () => {
     // It used to look up the repository before checking the arguments, so `run-implementer` with no
     // name died inside spawnSync with a raw ErrnoException - the reader's first thought being that
