@@ -1,3 +1,6 @@
+import { execFileSync } from "node:child_process";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { FREE_SPACE_FLOOR_GB, describeSpace, hasHeadroom } from "./diskPreflight";
 
@@ -50,3 +53,23 @@ describe("describeSpace", () => {
     expect(said).toContain("below");
   });
 });
+
+/**
+ * The script as an agent runs it.
+ *
+ * A skill tells an implementation agent to check for room before taking a bead. Without an entry
+ * point the file was importable and not runnable: `tsx scripts/diskPreflight.ts` printed nothing and
+ * exited 0, which is the worst answer available - a silent success reads as headroom.
+ */
+describe("the preflight as a command", () => {
+  it("says what it found, and succeeds while this disk has room", () => {
+    const said = execFileSync(TSX, [SCRIPT], { encoding: "utf8", timeout: 20_000 });
+
+    expect(said).toMatch(/GB free/u);
+    expect(said).toContain(String(FREE_SPACE_FLOOR_GB));
+  });
+});
+
+const HERE = dirname(fileURLToPath(import.meta.url));
+const SCRIPT = join(HERE, "diskPreflight.ts");
+const TSX = join(HERE, "..", "node_modules", ".bin", "tsx");
