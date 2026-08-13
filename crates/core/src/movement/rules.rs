@@ -616,9 +616,11 @@ mod tests {
         assert_eq!(longship.sailing_skill, Some(4));
     }
 
-    /// Without `#[serde(default)]` a ruleset written before this field existed would fail to
-    /// deserialise the whole file - every route, every cost, everything - rather than merely
-    /// losing one field. This is the contract that protects a running installation from that.
+    /// `serde` already gives an `Option<T>` field a default of `None` when its key is absent, with
+    /// or without `#[serde(default)]` here - kept anyway for consistency with the sibling optional
+    /// fields and to say explicitly, rather than leave it to that implicit rule, that a ruleset
+    /// written before this field existed must still load whole. This test pins that contract: a
+    /// later change that made the field required (dropping the `Option`, say) would fail it.
     #[test]
     fn a_ruleset_written_before_this_field_existed_still_loads() {
         let json = r#"{
