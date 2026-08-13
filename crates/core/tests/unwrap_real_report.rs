@@ -1,6 +1,6 @@
 #[test]
 fn unwrapper_reassembles_the_real_turn_71_report() {
-    let source = include_str!("../../../tests/fixtures/reports/neworigins-3.0.0-f95-t71.rep");
+    let source = include_str!("../../../tests/fixtures/reports/neworigins-3.0.0-g7-f95-t71.rep");
     let lines = atlantis_hud_core::report::unwrap::unwrap_lines(source);
 
     // Region headers sit at indent 0 and name a terrain, a coordinate and a province.

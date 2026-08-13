@@ -1,0 +1,3196 @@
+;Treasury:
+;
+;Item                                      Rank  Max        Total
+;=====================================================================
+;41 leaders [LEAD]                         21    119        2210
+;118 wood elves [WELF]                     28    1555       15914
+;203 high elves [HELF]                     17    888        9633
+;299 ice dwarves [IDWA]                    7     1435       6247
+;61 hill dwarves [HDWA]                    24    1055       8166
+;747 orcs [ORC]                            6     1548       17171
+;185 gnomes [GNOM]                         9     698        5695
+;114 centaurs [CTAU]                       18    371        4819
+;109003 silver [SILV]                      27    464865     7781796
+;756 livestock [LIVE]                      5     2007       17662
+;397 iron [IRON]                           21    2283       24960
+;182 wood [WOOD]                           37    2353       22846
+;155 stone [STON]                          26    1562       16457
+;19 fish [FISH]                            27    897        4618
+;680 horses [HORS]                         17    3464       30255
+;873 swords [SWOR]                         8     2055       20489
+;200 longbows [LBOW]                       13    769        7680
+;144 wagons [WAGO]                         1     144        647
+;19 mithril [MITH]                         27    308        2806
+;117 ironwood [IRWD]                       6     361        2428
+;7 floater hides [FLOA]                    19    680        2862
+;39 rootstone [ROOT]                       23    624        5791
+;73 yew [YEW]                              6     253        1318
+;212 mithril swords [MSWO]                 6     621        4149
+;132 mithril armor [MARM]                  5     270        1880
+;13 picks [PICK]                           35    748        4557
+;14 hammers [HAMM]                         35    243        2657
+;magic crossbow [MXBO]                     17    81         381
+;34 humans [HUMN]                          38    1594       12231
+;6 gnolls [GNOL]                           48    1939       16149
+;25 admantium [ADMT]                       13    168        939
+;4 admantium plate mails [AARM]            5     51         103
+;12 camels [CAME]                          24    2182       9793
+;7 flaming swords [FSWO]                   6     57         130
+;3 mithril shields [MSHD]                  17    278        716
+;2 wooden shields [WSHD]                   18    159        507
+;cornucopia [CORN]                         9     7          35
+;10 giant turtles [TURT]                   20    820        3875
+
+Atlantis Report For:
+The Disinherited Knights (42) (War 1, Trade 1, Magic 3)
+May, Year 4
+
+Atlantis Engine Version: 5.2.4 (beta)
+NewOrigins, Version: 3.0.0 (beta)
+
+Faction Status:
+Tax Regions: 15 (15)
+Trade Regions: 15 (15)
+Quartermasters: 1 (2)
+Mages: 4 (4)
+Apprentices: 1 (7)
+
+Errors during turn:
+Farmers (6111): GIVE: Nonexistant target (3247).
+Builders (12054): MOVE: Unit is overloaded and cannot move.
+Builders (11619): MOVE: Unit is overloaded and cannot move.
+Unit (7226): STUDY: Not enough funds.
+
+Events during turn:
+Times reward of 200 silver.
+WoodsmenY (7667): Gives 2 wood elves [WELF] to WoodsmenY (13797).
+WoodsmenY (7667): Gives 850 silver [SILV] to WoodsmenY (13797).
+Taxers (8047): Gives 50 silver [SILV] to Lookout (12159).
+Taxers (8047): Gives 42 silver [SILV] to Unit (13799).
+Woodsmen (9431): Gives 20 wood [WOOD] to Smiths (11933).
+WoodsmenY (13300): Gives yew [YEW] to Unit (13799).
+Taxers (8909): Gives 50 silver [SILV] to Unit (12160).
+Taxers (3243): Gives 50 silver [SILV] to Unit (12183).
+Farmers (3825): Gives 36 livestock [LIVE] to Transporter (1168).
+MinersM (7227): Gives 5 mithril [MITH] to AmorersM (3828).
+StoneworkersR (7673): Gives 10 stone [STON] to Builders (7675).
+Taxers (11123): Gives 50 silver [SILV] to Lookout (10180).
+Taxers (11123): Gives 30 silver [SILV] to Lumberjacks (9841).
+Taxers (5767): Gives 100 silver [SILV] to WoodsmenY (8443).
+Taxers (5767): Gives 100 silver [SILV] to Carpenters (9433).
+Taxers (5767): Gives 50 silver [SILV] to Lookout (12195).
+Carpenters (9433): Gives 26 wagons [WAGO] to Transporter (11124).
+Woodsmen (10293): Gives 12 wood [WOOD] to Carpenters (9433).
+WoodmenY (6109): Gives 24 yew [YEW] to Transporter (11124).
+Farmers (1165): Gives 36 livestock [LIVE] to Transporter (2418).
+Taxers (10699): Gives 95 silver [SILV] to Builders (12054).
+Taxers (10699): Gives 200 silver [SILV] to Strike Force (7234).
+Taxers (10699): Gives 30 silver [SILV] to Unit (11960).
+StoneWeapon (9432): Gives 18 stone [STON] to Taxers (10699).
+MinersA (5104): Gives 2 hill dwarves [HDWA] to Unit (13803).
+Miners (1795): Gives 24 iron [IRON] to Smiths (2964).
+Stoneworkers (2693): Gives 16 stone [STON] to Builders (12241).
+Smiths (2964): Gives 24 swords [SWOR] to Ivanhoe, son of Cedric (683).
+MinersM (3826): Gives 9 mithril [MITH] to SmithsM (3818).
+SmithsM (3818): Gives 15 mithril swords [MSWO] to Ivanhoe, son of
+  Cedric (683).
+MinersA (7671): Gives 12 admantium [ADMT] to ArmorerA (13610).
+Taxers (13303): Gives 10 silver [SILV] to Robin Hood (1162).
+Taxers (13303): Gives 5370 silver [SILV] to Unit (13805).
+Taxers (13303): Gives 100 silver [SILV] to Hangaround (8446).
+Lone Rider (8910): Gives 6 yew [YEW] to Brian de Bois-Guilbert (1159).
+Lone Rider (8910): Gives 6 yew [YEW] to Ivanhoe, son of Cedric (683).
+Ivanhoe, son of Cedric (683): Gives 2 flaming swords [FSWO] to Seal
+  (8048).
+Brian de Bois-Guilbert (1159): Gives 2000 silver [SILV] to Ivanhoe,
+  son of Cedric (683).
+Maurice de Bracy (1160): Gives 50 silver [SILV] to Rebecca (1163).
+Maurice de Bracy (1160): Gives 30 silver [SILV] to Teachers (3824).
+Maurice de Bracy (1160): Gives 50 silver [SILV] to Cedric (7233).
+Maurice de Bracy (1160): Gives 500 silver [SILV] to Fighters (12222).
+Stoneworkers (12127): Gives 9 stone [STON] to Taxers (11992).
+Taxers (4426): Gives 50 silver [SILV] to Lookout (13304).
+Taxers (4426): Gives 300 silver [SILV] to MinersA (13301).
+Farmers (6585): Gives 80 livestock [LIVE] to Transporter (5480).
+Taxers (11617): Gives 80 silver [SILV] to Unit (12277).
+Taxers (11617): Gives 50 silver [SILV] to Unit (12242).
+Taxers (2420): Gives 50 silver [SILV] to Lookout (10276).
+Taxers (2420): Gives 100 silver [SILV] to Horse Guy (3830).
+City Guard (10702): Gives 50 silver [SILV] to Customs (10277).
+City Guard (7676): Gives 200 silver [SILV] to Warmachine! (10704).
+City Guard (7676): Gives 450 silver [SILV] to Fighters (10705).
+City Guard (7676): Gives 50 silver [SILV] to Manboy (10703).
+City Guard (7676): Gives 40 silver [SILV] to Miners (11127).
+City Guard (7676): Gives 100 silver [SILV] to Druids (11128).
+City Guard (7676): Gives 100 silver [SILV] to Healers (11129).
+City Guard (7676): Gives 450 silver [SILV] to Fighters (11130).
+City Guard (7676): Gives 450 silver [SILV] to Fighters (11620).
+Unit (10278): Gives 290 silver [SILV] to Fighters (10280).
+Unit (10278): Gives 30 silver [SILV] to Smiths (12256).
+Unit (10278): Gives 260 silver [SILV] to Unit (12259).
+Unit (10278): Gives 340 silver [SILV] to Fighters (12592).
+Unit (10278): Gives 450 silver [SILV] to Fighters (13307).
+Unit (10278): Gives 330 silver [SILV] to Fighters (12278).
+Taxers (8047): Collects $750 in taxes in forest (38,0) in Pla'ere.
+Taxers (8909): Collects $850 in taxes in forest (35,1) in Reprau.
+Taxers (10116): Collects $917 in taxes in forest (37,1) in Reprau.
+Taxers (3243): Collects $1433 in taxes in forest (39,1) in Pla'ere.
+Taxers (9844): Collects $600 in taxes in mountain (36,2) in
+  Slounspifra.
+Taxers (5767): Collects $1000 in taxes in forest (40,2) in Pla'ere.
+Taxers (1514): Collects $450 in taxes in mountain (35,3) in
+  Slounspifra.
+Taxers (10699): Collects $650 in taxes in mountain (37,3) in Femont.
+Taxers (13303): Collects $15000 in taxes in mountain (36,4) in
+  Slounspifra.
+Taxers (11992): Collects $600 in taxes in mountain (38,4) in Femont.
+Taxers (4426): Collects $450 in taxes in mountain (35,5) in
+  Slounspifra.
+Taxers (11617): Collects $500 in taxes in mountain (36,6) in Femont.
+Taxers (2420): Collects $2050 in taxes in plain (39,7) in Torburn.
+City Guard (10702): Collects $3150 in taxes in plain (40,8) in
+  Torburn.
+City Guard (7676): Collects $6650 in taxes in tundra (35,9) in Bedba.
+Magi Alpha (5107) uses illusion [ILLU] in mountain (36,4) in
+  Slounspifra, contains Aportheo [city].
+Magi Beta (5108) uses illusion [ILLU] in mountain (36,4) in
+  Slounspifra, contains Aportheo [city].
+Ivanhoe, son of Cedric (683): Creates flaming sword [FSWO].
+Brian de Bois-Guilbert (1159): Casts Phantasmal Entertainment, raising
+  1196 silver.
+Maurice de Bracy (1160): Casts Phantasmal Entertainment, raising 1196
+  silver.
+Reginald Front-de-Boeuf (1161): Casts Phantasmal Entertainment,
+  raising 1196 silver.
+Magi Gamma (5109) uses illusion [ILLU] in mountain (36,4) in
+  Slounspifra, contains Aportheo [city].
+Farmers (3493): Sells 114 livestock [LIVE] at $21 each.
+Farmers (8453): Sells 47 livestock [LIVE] at $22 each.
+Unit (13799): Buys high elf [HELF] at $42 each.
+Taxers (13303): Buys 130 orcs [ORC] at $60 each.
+Unit (13805): Buys 5 leaders [LEAD] at $1064 each.
+Ship [329] sails from plain (47,9) in Swou'a to ocean (47,7) in
+  Fu'ihogh Sea.
+Transporter (1168): Walks on a road from mountain (36,2) in
+  Slounspifra to mountain (36,4) in Slounspifra.
+Transporter (2418): Walks on a road from mountain (35,3) in
+  Slounspifra to mountain (36,4) in Slounspifra.
+StoneWeapon (9432): Walks on a road from mountain (37,3) in Femont to
+  mountain (38,4) in Femont.
+Transporter (2417): Walks on a road from mountain (37,3) in Femont to
+  mountain (36,4) in Slounspifra.
+MinersA (12588): Walks on a road from mountain (36,4) in Slounspifra
+  to mountain (37,3) in Femont.
+Lone Rider (8910): Walks on a road from mountain (36,4) in Slounspifra
+  to mountain (37,3) in Femont.
+Transporter (13306): Rides from plain (39,7) in Torburn to plain
+  (40,8) in Torburn.
+Ship [329] sails from ocean (47,7) in Fu'ihogh Sea to ocean (48,6) in
+  Fu'ihogh Sea.
+WoodsmenY (8443): Rides from forest (40,2) in Pla'ere to tundra (41,3)
+  in Huykash.
+Horse Guy (3830): Rides from plain (39,7) in Torburn to mountain
+  (38,6) in Femont.
+Ship [329] sails from ocean (48,6) in Fu'ihogh Sea to ocean (48,4) in
+  Fu'ihogh Sea.
+WoodsmenY (7667): Walks from forest (36,0) in Reprau to forest (35,1)
+  in Reprau.
+Unit (13799): Walks from forest (38,0) in Pla'ere to forest (38,2) in
+  Reprau.
+WoodsmenY (13609): Walks from forest (37,1) in Reprau to mountain
+  (37,3) in Femont.
+Transporter (11124): Walks from forest (40,2) in Pla'ere to forest
+  (39,1) in Pla'ere.
+MinersA (12588): Walks on a road from mountain (37,3) in Femont to
+  mountain (38,4) in Femont.
+Stoneworkers (12127): Walks from mountain (38,4) in Femont to mountain
+  (38,6) in Femont.
+MinersA (13301): Walks from mountain (35,5) in Slounspifra to mountain
+  (36,6) in Femont.
+Transporter (5480): Walks from mountain (35,5) in Slounspifra to
+  mountain (36,4) in Slounspifra.
+MinersA (5105): Walks from mountain (34,6) in Slounspifra to mountain
+  (35,5) in Slounspifra.
+Ship [329] sails from ocean (48,4) in Fu'ihogh Sea to forest (49,3) in
+  Phallpec.
+WoodsmenY (8443): Rides from tundra (41,3) in Huykash to forest (41,5)
+  in Pla'ere.
+Horse Guy (3830): Rides from mountain (38,6) in Femont to mountain
+  (38,4) in Femont.
+Transporter (11124): MOVE: Unit has insufficient movement points;
+  remaining moves queued.
+Unit (13799): MOVE: Unit has insufficient movement points; remaining
+  moves queued.
+Unit (13803): MOVE: Unit has insufficient movement points; remaining
+  moves queued.
+Lone Rider (8910): MOVE: Unit has insufficient movement points;
+  remaining moves queued.
+WoodsmenY (13609): MOVE: Unit has insufficient movement points;
+  remaining moves queued.
+Sailors (11125): SAIL: Can't sail that far; remaining moves queued.
+StoneWeapon (9432): MOVE: Unit has insufficient movement points;
+  remaining moves queued.
+MinersA (12588): MOVE: Unit has insufficient movement points;
+  remaining moves queued.
+MinersA (5105): MOVE: Unit has insufficient movement points; remaining
+  moves queued.
+Teachers (6583): Teaches combat to Teachers (3824).
+Teachers (6583): Teaches combat to Fighters (12222).
+Teacher (8447): Teaches longbow to Unit (13805).
+WoodsmenY (13797): Produces 7 yew [YEW] in forest (36,0) in Reprau.
+scout (8442): Earns 13 silver working in forest (36,0) in Reprau.
+Lookout (12159): Studies observation.
+Smiths (11933): Produces 20 longbows [LBOW] in forest (38,0) in
+  Pla'ere.
+Woodsmen (9431): Produces 20 wood [WOOD] in forest (38,0) in Pla'ere.
+WoodsmenY (13300): Produces 8 yew [YEW] in forest (38,0) in Pla'ere.
+Unit (7223): Earns 102 silver working in tundra (40,0) in Huykash.
+Seal (4131): Earns 192 silver working in tundra (40,0) in Huykash.
+Scout (1512): Earns 107 silver entertaining in tundra (40,0) in
+  Huykash.
+Unit (5476): Earns 107 silver entertaining in tundra (40,0) in
+  Huykash.
+Unit (12160): Studies observation.
+Lumberjacks (11991): Lumberjacks (11991) shares 20 wood [WOOD] with
+  Smiths (11947).
+Smiths (11947): Produces 20 longbows [LBOW] in forest (35,1) in
+  Reprau.
+Lumberjacks (11991): Produces 20 wood [WOOD] in forest (35,1) in
+  Reprau.
+Buyer (11615): Earns 13 silver working in forest (37,1) in Reprau.
+Unit (12183): Studies observation.
+WoodsmenI (10292): Produces 6 ironwood [IRWD] in forest (39,1) in
+  Pla'ere.
+Scout (1167): Earns 25 silver entertaining in tundra (43,1) in
+  Huykash.
+Unit (5478): Earns 51 silver entertaining in tundra (43,1) in Huykash.
+AmorersM (3828): Produces 5 mithril armor [MARM] in mountain (36,2) in
+  Slounspifra.
+Builders (7675): Completes construction of Building [3]
+Farmers (3825): Produces 18 livestock [LIVE] in mountain (36,2) in
+  Slounspifra.
+StoneworkersR (7673): Produces 10 stone [STON] in mountain (36,2) in
+  Slounspifra.
+MinersM (7227): Produces 5 mithril [MITH] in mountain (36,2) in
+  Slounspifra.
+Herald (3489): Earns 34 silver entertaining in mountain (36,2) in
+  Slounspifra.
+Lumberjacks (9841): Studies weaponsmith.
+Lookout (10180): Studies observation.
+Taxers (11123): Earns 183 silver working in forest (38,2) in Reprau.
+Second Coming (8452): Earns 205 silver working in forest (38,2) in
+  Reprau.
+Lookout (12195): Studies observation.
+Carpenters (9433): Produces 12 wagons [WAGO] in forest (40,2) in
+  Pla'ere.
+Woodsmen (10293): Produces 12 wood [WOOD] in forest (40,2) in Pla'ere.
+WoodmenY (6109): Produces 6 yew [YEW] in forest (40,2) in Pla'ere.
+Smiths (10698): Produces 10 swords [SWOR] in mountain (35,3) in
+  Slounspifra.
+Farmers (1165): Produces 18 livestock [LIVE] in mountain (35,3) in
+  Slounspifra.
+Herald (3490): Earns 30 silver entertaining in mountain (35,3) in
+  Slounspifra.
+Strike Force (7234): Studies longbow.
+Unit (11960): Studies stealth.
+MinersA (5104): Produces 6 admantium [ADMT] in mountain (37,3) in
+  Femont.
+Scout#5 (3247): Earns 19 silver working in forest (49,3) in Phallpec.
+Robin Hood (1162): Studies riding.
+Rebecca (1163): Studies stealth.
+Teachers (3824): Studies combat and was taught for 30 days.
+Cedric (7233): Studies observation.
+Hangaround (8446): Studies manipulation.
+Fighters (12222): Studies combat and was taught for 30 days.
+Unit (13805): Studies longbow and was taught for 30 days.
+Ivanhoe, son of Cedric (683): Studies true seeing.
+Brian de Bois-Guilbert (1159): Studies energy shield.
+Maurice de Bracy (1160): Studies summon imps.
+Reginald Front-de-Boeuf (1161): Studies bird lore.
+Smiths (2964): Produces 24 swords [SWOR] in mountain (36,4) in
+  Slounspifra.
+SmithsM (3818): Produces 12 mithril swords [MSWO] in mountain (36,4)
+  in Slounspifra.
+ArmorerA (13610): Produces 2 admantium plate mails [AARM] in mountain
+  (36,4) in Slounspifra.
+Builders (12241): Performs construction on Building [13]
+Farmers (3493): Produces 34 livestock [LIVE] in mountain (36,4) in
+  Slounspifra.
+Miners (1795): Produces 24 iron [IRON] in mountain (36,4) in
+  Slounspifra.
+Stoneworkers (2693): Produces 16 stone [STON] in mountain (36,4) in
+  Slounspifra.
+MinersM (3826): Produces 9 mithril [MITH] in mountain (36,4) in
+  Slounspifra.
+MinersA (7671): Produces 6 admantium [ADMT] in mountain (36,4) in
+  Slounspifra.
+Seal (8048): Earns 950 silver working in mountain (36,4) in
+  Slounspifra.
+Trader (6857): Earns 19 silver working in mountain (36,4) in
+  Slounspifra.
+Entertainers (1164): Earns 1076 silver entertaining in mountain (36,4)
+  in Slounspifra.
+Unit (8444): Earns 13 silver working in forest (40,4) in Pla'ere.
+Lookout (13304): Studies observation.
+Miners (6586): Produces 20 swords [SWOR] in mountain (35,5) in
+  Slounspifra.
+Farmers (6585): Produces 23 livestock [LIVE] in mountain (35,5) in
+  Slounspifra.
+StoneBuilders (6580): Produces 10 stone [STON] in mountain (35,5) in
+  Slounspifra.
+Herald (3491): Earns 28 silver entertaining in mountain (35,5) in
+  Slounspifra.
+Unit (8451): Earns 41 silver entertaining in forest (41,5) in Pla'ere.
+Unit (7669): Earns 22 silver working in mountain (34,6) in
+  Slounspifra.
+scout (8448): Earns 15 silver entertaining in mountain (34,6) in
+  Slounspifra.
+Unit (12277): Studies mining.
+Unit (12242): Studies observation.
+MinersA (13302): Produces 7 admantium [ADMT] in mountain (36,6) in
+  Femont.
+Scout#5 (3822): Earns 58 silver entertaining in forest (40,6) in
+  Pla'ere.
+Scout#5 (3821): Earns 54 silver entertaining in forest (42,6) in
+  Pla'ere.
+Lookout (10276): Studies observation.
+Farmers (6111): Produces 40 livestock [LIVE] in plain (39,7) in
+  Torburn.
+Trainers (3248): Produces 15 horses [HORS] in plain (39,7) in Torburn.
+Trainers (10295): Produces 10 horses [HORS] in plain (39,7) in
+  Torburn.
+Wanderer (10296): Earns 13 silver working in plain (39,7) in Torburn.
+Unit (8450): Earns 60 silver entertaining in forest (41,7) in Pla'ere.
+Scout (8454): Earns 11 silver working in tundra (34,8) in Bedba.
+StoneworkersR (7672): Produces 3 rootstone [ROOT] in mountain (38,8)
+  in Femont.
+Customs (10277): Studies observation.
+Farmers (8453): Produces 47 livestock [LIVE] in plain (40,8) in
+  Torburn.
+Trainers (5481): Produces 15 horses [HORS] in plain (40,8) in Torburn.
+Trainers (12591): Produces 20 horses [HORS] in plain (40,8) in
+  Torburn.
+Trainers (11993): Earns 26 silver working in plain (40,8) in Torburn.
+Masters (6112): Earns 26 silver working in plain (40,8) in Torburn.
+Entertainers (5482): Earns 120 silver entertaining in plain (40,8) in
+  Torburn.
+Manboy (10703): Studies observation.
+Warmachine! (10704): Studies tactics.
+Fighters (10705): Studies combat.
+Druids (11128): Studies herb lore.
+Healers (11129): Studies healing.
+Fighters (11130): Studies combat.
+Fighters (11620): Studies combat.
+Fighters (12278): Studies combat.
+Fighters (12592): Studies combat.
+Fighters (10280): Studies combat.
+Smiths (12256): Studies weaponsmith.
+Unit (12259): Studies combat.
+Fighters (13307): Studies combat.
+Miners (11127): Produces 7 iron [IRON] in tundra (35,9) in Bedba.
+Scout (8455): Earns 14 silver working in tundra (35,9) in Bedba.
+Unit (10278): Earns 14 silver working in tundra (35,9) in Bedba.
+Scout (1170): Earns 71 silver entertaining in tundra (35,9) in Bedba.
+Entertainers (3831): Earns 72 silver entertaining in tundra (35,9) in
+  Bedba.
+Entertainers (6588): Earns 180 silver entertaining in tundra (35,9) in
+  Bedba.
+Trader (9846): Earns 12 silver working in tundra (35,11) in Bedba.
+Stoneworkers (12127): Claims 100 silver for maintenance.
+
+Skill reports:
+
+manipulation [MANI] 1: A unit with this skill becomes an apprentice.
+  While apprentices cannot cast spells directly, they can use magic
+  items normally only usable by mages. This skill costs 100 silver per
+  month of study.
+
+true seeing [TRUE] 1: A mage with the True Seeing spell can see
+  illusions for what they really are. Whether or not the mage can see
+  through the illusion depends on his True Seeing skill being higher
+  that the Illusion skill of the mage casting the illusion. This spell
+  does not require any order to use; it is used automatically. In
+  addition, a mage with the True Seeing skill receives a bonus to his
+  Observation skill equal to his True Seeing skill. This skill
+  requires illusion [ILLU] 3 to begin to study. This skill costs 100
+  silver per month of study.
+
+summon imps [SUIM] 2: No skill report.
+
+bird lore [BIRD] 3: A mage with Bird Lore 3 can summon eagles to join
+  him, who will aid him in combat, and provide for flying
+  transportation. A mage may summon an average of 200 percent times
+  his skill level minus 2 eagles per month, and may control a number
+  equal to his skill level minus 2, squared, times two. To summon an
+  eagle, issue the order CAST Bird_Lore EAGLE; the eagles will appear
+  in his inventory. A mage with this skill may create their level in
+  eagles [EAGL] via magic. To use this spell, the mage should CAST
+  Bird_Lore.
+
+herb lore [HERB] 4: No skill report.
+
+healing [HEAL] 4: A unit with this skill is able to use herbs [HERB]
+  to heal units hurt in battle. A unit at this level of skill can
+  bring soldiers back from near death, healing up to 5 casualties,
+  with a 55 percent success rate.
+
+Item reports:
+
+eagle [EAGL], weight 10, walking capacity 5, riding capacity 5, flying
+  capacity 5, moves 4 hexes per month. This is a monster. This monster
+  attacks with a combat skill of 4 This monster has a resistance of 4
+  to melee attacks. This monster has a resistance of 0 to energy
+  attacks. This monster has a resistance of 3 to spirit attacks. This
+  monster has a resistance of 4 to weather attacks. This monster has a
+  resistance of 5 to riding attacks. This monster has a resistance of
+  0 to ranged attacks. This monster has 3 melee attacks per round and
+  takes 12 hits to kill and each attack deals 1 damage. This monster
+  has a tactics score of 2, a stealth score of 2, and an observation
+  score of 4. This monster might have silver as treasure. This item
+  cannot be given to other units.
+
+Declared Attitudes (default Neutral):
+Hostile : none.
+Unfriendly : Creatures (2).
+Neutral : none.
+Friendly : Fenris Knights (22).
+Ally : none.
+
+Unclaimed silver: 380.
+
+forest (36,0) in Reprau, 2215 peasants (wood elves), $1550.
+------------------------------------------------------------
+  Wages: $13.5 (Max: $633).
+  Wanted: none.
+  For Sale: 88 wood elves [WELF] at $43, 17 leaders [LEAD] at $756.
+  Entertainment available: $85.
+  Products: 31 grain [GRAI], 35 wood [WOOD], 15 furs [FUR], 7 yew
+    [YEW].
+
+Exits:
+  Southeast : forest (37,1) in Reprau.
+  South : mountain (36,2) in Slounspifra.
+  Southwest : forest (35,1) in Reprau.
+
+* scout (8442), The Disinherited Knights (42), avoiding, behind,
+  revealing faction, receiving no aid, weightless battle spoils, human
+  [HUMN], 42 silver [SILV]. Weight: 10. Capacity: 0/0/15/0. Skills:
+  none.
+* WoodsmenY (13797), The Disinherited Knights (42), avoiding, behind,
+  revealing faction, receiving no aid, 2 wood elves [WELF], 7 yew
+  [YEW], 830 silver [SILV]. Weight: 55. Capacity: 0/0/30/0. Skills:
+  lumberjack [LUMB] 5 (450).
+
+
+forest (38,0) in Pla'ere, 1501 peasants (high elves), $990.
+------------------------------------------------------------
+  Wages: $13.3 (Max: $445).
+  Wanted: none.
+  For Sale: 60 high elves [HELF] at $42, 12 leaders [LEAD] at $744.
+  Entertainment available: $48.
+  Products: 22 grain [GRAI], 35 wood [WOOD], 19 furs [FUR], 8 yew
+    [YEW].
+
+Exits:
+  Southeast : forest (39,1) in Pla'ere.
+  South : forest (38,2) in Reprau.
+  Southwest : forest (37,1) in Reprau.
+
+* Taxers (8047), on guard, The Disinherited Knights (42), behind,
+  revealing faction, receiving no aid, weightless battle spoils, 15
+  wood elves [WELF], 641 silver [SILV]. Weight: 150. Capacity:
+  0/0/225/0. Skills: combat [COMB] 1 (35).
+* Woodsmen (9431), The Disinherited Knights (42), avoiding, behind,
+  revealing faction, receiving no aid, weightless battle spoils, 10
+  high elves [HELF], 20 wood [WOOD]. Weight: 200. Capacity: 0/0/150/0.
+  Skills: lumberjack [LUMB] 2 (90).
+* Smiths (11933), The Disinherited Knights (42), behind, revealing
+  faction, receiving no aid, weightless battle spoils, 10 high elves
+  [HELF], 100 longbows [LBOW], 100 wood [WOOD]. Weight: 700. Capacity:
+  0/0/150/0. Skills: weaponsmith [WEAP] 2 (90).
+* Lookout (12159), The Disinherited Knights (42), behind, revealing
+  faction, receiving no aid, weightless battle spoils, leader [LEAD].
+  Weight: 10. Capacity: 0/0/15/0. Skills: observation [OBSE] 2 (150).
+* WoodsmenY (13300), The Disinherited Knights (42), avoiding, behind,
+  revealing faction, receiving no aid, 2 wood elves [WELF], 23 yew
+  [YEW], 490 silver [SILV]. Weight: 135. Capacity: 0/0/30/0. Skills:
+  lumberjack [LUMB] 5 (450).
+
+
+tundra (40,0) in Huykash, contains Fantan [town], 6117 peasants
+  (gnomes), $3425.
+------------------------------------------------------------
+  Wages: $12.8 (Max: $685).
+  Wanted: 126 grain [GRAI] at $18, 158 livestock [LIVE] at $18, 144
+    fish [FISH] at $54, 13 axes [AXE] at $126, 11 crossbows [XBOW] at
+    $119, 4 spears [SPEA] at $86, 3 perfume [PERF] at $413.
+  For Sale: ivory [IVOR] at $72, 244 gnomes [GNOM] at $30, 48 leaders
+    [LEAD] at $716.
+  Entertainment available: $232.
+  Products: 12 grain [GRAI], 17 furs [FUR], 14 herbs [HERB].
+
+Exits:
+  Southeast : tundra (41,1) in Huykash.
+  South : forest (40,2) in Pla'ere.
+  Southwest : forest (39,1) in Pla'ere.
+
+- City Guard (4), on guard, The Guardsmen (1), 80 leaders [LEAD], 80
+  swords [SWOR].
+* Scout (1512), The Disinherited Knights (42), avoiding, behind,
+  revealing faction, receiving no aid, weightless battle spoils, hill
+  dwarf [HDWA], 2 gnomes [GNOM], 230 silver [SILV]. Weight: 20.
+  Capacity: 0/0/29/0. Skills: combat [COMB] 0 (10), entertainment
+  [ENTE] 2 (90).
+* Unit (5476), The Disinherited Knights (42), avoiding, behind,
+  revealing faction, receiving no aid, weightless battle spoils, 3
+  gnomes [GNOM], 231 silver [SILV]. Weight: 15. Capacity: 0/0/21/0.
+  Skills: entertainment [ENTE] 2 (150).
+* Unit (7223), The Disinherited Knights (42), avoiding, behind,
+  revealing faction, receiving no aid, weightless battle spoils, 8
+  gnomes [GNOM], 66 silver [SILV]. Weight: 40. Capacity: 0/0/56/0.
+  Skills: combat [COMB] 2 (90), crossbow [XBOW] 3 (270).
+- Unit (3534), Fresh Meat (12), avoiding, behind, centaur [CTAU].
+- IHQ Vagabond (11799), Iron Harlequins (76), avoiding, behind, orc
+  [ORC]; Drifter taking to the road by the tales of circus..
+* Seal (4131), The Disinherited Knights (42), revealing faction,
+  riding battle spoils, 15 orcs [ORC], 17 mithril swords [MSWO], 8
+  swords [SWOR], 2 wooden shields [WSHD], 17 horses [HORS], 10 fish
+  [FISH], 126 silver [SILV]. Weight: 1037. Capacity: 0/1190/1415/0.
+  Skills: combat [COMB] 4 (445), riding [RIDI] 2 (90).
+
+
+forest (35,1) in Reprau, 1832 peasants (wood elves), $916.
+------------------------------------------------------------
+  Wages: $12.5 (Max: $389).
+  Wanted: none.
+  For Sale: 73 wood elves [WELF] at $40, 14 leaders [LEAD] at $700.
+  Entertainment available: $51.
+  Products: 39 livestock [LIVE], 39 wood [WOOD], 18 furs [FUR], 7
+    ironwood [IRWD].
+
+Exits:
+  Northeast : forest (36,0) in Reprau.
+  Southeast : mountain (36,2) in Slounspifra.
+  South : mountain (35,3) in Slounspifra.
+  Southwest : ocean (34,2) in Wi'il Sea.
+  Northwest : ocean (34,0) in Wi'il Sea.
+
+* Taxers (8909), The Disinherited Knights (42), avoiding, revealing
+  faction, taxing, receiving no aid, sharing, 5 orcs [ORC], 12 wood
+  elves [WELF], 2802 silver [SILV]. Weight: 170. Capacity: 0/0/255/0.
+  Skills: combat [COMB] 1 (30).
+* Lumberjacks (11991), The Disinherited Knights (42), avoiding,
+  behind, revealing faction, receiving no aid, sharing, 10 wood elves
+  [WELF], 20 wood [WOOD]. Weight: 200. Capacity: 0/0/150/0. Skills:
+  lumberjack [LUMB] 2 (120).
+* Smiths (11947), The Disinherited Knights (42), avoiding, behind,
+  revealing faction, receiving no aid, sharing, 10 wood elves [WELF],
+  100 longbows [LBOW]. Weight: 200. Capacity: 0/0/150/0. Skills:
+  weaponsmith [WEAP] 2 (90).
+- IHQ Vagabond (10855), Iron Harlequins (76), avoiding, behind, gnome
+  [GNOM]; Drifter taking to the road by the tales of circus..
+* Unit (12160), The Disinherited Knights (42), avoiding, behind,
+  revealing faction, receiving no aid, sharing, leader [LEAD]. Weight:
+  10. Capacity: 0/0/15/0. Skills: observation [OBSE] 2 (150).
+- scout57 (9891), Under Pressure (57), avoiding, behind, lizardman
+  [LIZA].
+* WoodsmenY (7667), The Disinherited Knights (42), avoiding, behind,
+  revealing faction, receiving no aid, 3 wood elves [WELF]. Weight:
+  30. Capacity: 0/0/45/0. Skills: lumberjack [LUMB] 5 (450).
+
+
+forest (37,1) in Reprau, 1434 peasants (high elves), $917.
+------------------------------------------------------------
+  Wages: $13.2 (Max: $417).
+  Wanted: none.
+  For Sale: 57 high elves [HELF] at $42, 11 leaders [LEAD] at $739.
+  Entertainment available: $43.
+  Products: 27 grain [GRAI], 25 wood [WOOD], 10 furs [FUR].
+
+Exits:
+  Northeast : forest (38,0) in Pla'ere.
+  Southeast : forest (38,2) in Reprau.
+  South : mountain (37,3) in Femont.
+  Southwest : mountain (36,2) in Slounspifra.
+  Northwest : forest (36,0) in Reprau.
+
+* Buyer (11615), The Disinherited Knights (42), avoiding, behind,
+  revealing faction, receiving no aid, weightless battle spoils, high
+  elf [HELF], 323 silver [SILV]. Weight: 10. Capacity: 0/0/15/0.
+  Skills: entertainment [ENTE] 1 (30).
+* Taxers (10116), The Disinherited Knights (42), avoiding, behind,
+  revealing faction, taxing, receiving no aid, weightless battle
+  spoils, 19 high elves [HELF], 3635 silver [SILV]. Weight: 190.
+  Capacity: 0/0/285/0. Skills: combat [COMB] 1 (30).
+
+
+forest (39,1) in Pla'ere, 2048 peasants (wood elves), $1433.
+------------------------------------------------------------
+  Wages: $13.5 (Max: $595).
+  Wanted: none.
+  For Sale: 81 wood elves [WELF] at $43, 16 leaders [LEAD] at $756.
+  Entertainment available: $77.
+  Products: 25 grain [GRAI], 24 wood [WOOD], 16 furs [FUR], 7 ironwood
+    [IRWD].
+
+Exits:
+  Northeast : tundra (40,0) in Huykash, contains Fantan [town].
+  Southeast : forest (40,2) in Pla'ere.
+  South : forest (39,3) in Reprau.
+  Southwest : forest (38,2) in Reprau.
+  Northwest : forest (38,0) in Pla'ere.
+
+* Taxers (3243), The Disinherited Knights (42), avoiding, revealing
+  faction, taxing, receiving no aid, sharing, weightless battle
+  spoils, 29 wood elves [WELF], 10826 silver [SILV]. Weight: 290.
+  Capacity: 0/0/435/0. Skills: combat [COMB] 1 (30).
+* WoodsmenI (10292), The Disinherited Knights (42), avoiding, behind,
+  revealing faction, receiving no aid, 2 wood elves [WELF], 42
+  ironwood [IRWD]. Weight: 440. Capacity: 0/0/30/0. Skills: lumberjack
+  [LUMB] 3 (245).
+* Unit (12183), The Disinherited Knights (42), avoiding, revealing
+  faction, receiving no aid, sharing, weightless battle spoils, leader
+  [LEAD]. Weight: 10. Capacity: 0/0/15/0. Skills: observation [OBSE] 2
+  (150).
+- Devil (295), Creatures (2), devil [DEVL].
+- IHQ Vagabond (9596), Iron Harlequins (76), avoiding, behind,
+  lizardman [LIZA]; Drifter taking to the road by the tales of circus.
+* Transporter (11124), The Disinherited Knights (42), avoiding,
+  revealing faction, receiving no aid, sharing, high elf [HELF], 26
+  horses [HORS], 26 wagons [WAGO], 24 yew [YEW], 98 silver [SILV].
+  Weight: 2730. Capacity: 0/1820/8335/0. Skills: none.
+
+
+tundra (43,1) in Huykash, contains Foderborough [village], 2703
+  peasants (gnolls), $1081.
+------------------------------------------------------------
+  Wages: $12.0 (Max: $433).
+  Wanted: 147 grain [GRAI] at $18, 147 livestock [LIVE] at $24, 152
+    fish [FISH] at $48.
+  For Sale: 108 gnolls [GNOL] at $38, 21 leaders [LEAD] at $672.
+  Entertainment available: $77.
+  Products: 19 livestock [LIVE], 14 furs [FUR], 10 herbs [HERB].
+
+Exits:
+  Northeast : ocean (44,0) in Fu'ihogh Sea.
+  Southeast : ocean (44,2) in Fu'ihogh Sea.
+  South : ocean (43,3) in Fu'ihogh Sea.
+  Southwest : tundra (42,2) in Huykash.
+  Northwest : tundra (42,0) in Huykash.
+
+- City Guard (6), on guard, The Guardsmen (1), 40 leaders [LEAD], 40
+  swords [SWOR].
+* Scout (1167), The Disinherited Knights (42), avoiding, behind,
+  revealing faction, receiving no aid, weightless battle spoils, orc
+  [ORC]. Weight: 10. Capacity: 0/0/15/0. Skills: combat [COMB] 1 (30),
+  entertainment [ENTE] 2 (90).
+* Unit (5478), The Disinherited Knights (42), avoiding, behind,
+  revealing faction, receiving no aid, weightless battle spoils, 2
+  gnolls [GNOL], 21 silver [SILV]. Weight: 20. Capacity: 0/0/30/0.
+  Skills: entertainment [ENTE] 2 (90).
+* Unit (7226), The Disinherited Knights (42), avoiding, behind,
+  revealing faction, receiving no aid, weightless battle spoils, 4
+  gnolls [GNOL]. Weight: 40. Capacity: 0/0/60/0. Skills: combat [COMB]
+  4 (300).
+- Scout (3714), Fenris Knights (22), avoiding, behind, centaur [CTAU].
+- Scout (8737), Revengers (91), behind, centaur [CTAU].
+
+
+mountain (36,2) in Slounspifra, 1459 peasants (hill dwarves), $641.
+------------------------------------------------------------
+  Wages: $12.2 (Max: $290).
+  Wanted: none.
+  For Sale: 58 hill dwarves [HDWA] at $39, 11 leaders [LEAD] at $683.
+  Entertainment available: $34.
+  Products: 29 livestock [LIVE], 31 iron [IRON], 12 stone [STON], 5
+    mithril [MITH].
+
+Exits:
+  North : forest (36,0) in Reprau.
+  Northeast : forest (37,1) in Reprau.
+  Southeast : mountain (37,3) in Femont.
+  South : mountain (36,4) in Slounspifra, contains Aportheo [city].
+  Southwest : mountain (35,3) in Slounspifra.
+  Northwest : forest (35,1) in Reprau.
+
+* Farmers (3825), The Disinherited Knights (42), avoiding, behind,
+  revealing faction, 9 orcs [ORC], 18 livestock [LIVE]. Weight: 990.
+  Capacity: 0/0/1035/0. Skills: farming [FARM] 2 (90).
+* Herald (3489), The Disinherited Knights (42), avoiding, behind,
+  revealing faction, orc [ORC]. Weight: 10. Capacity: 0/0/15/0.
+  Skills: observation [OBSE] 2 (90), stealth [STEA] 1 (30),
+  entertainment [ENTE] 2 (90).
+* MinersM (7227), The Disinherited Knights (42), avoiding, behind,
+  revealing faction, sharing, weightless battle spoils, 2 hill dwarves
+  [HDWA], 5 mithril [MITH]. Weight: 70. Capacity: 0/0/30/0. Skills:
+  mining [MINI] 3 (280).
+* StoneworkersR (7673), The Disinherited Knights (42), avoiding,
+  behind, revealing faction, weightless battle spoils, 5 hill dwarves
+  [HDWA], 27 rootstone [ROOT], 10 stone [STON]. Weight: 1900.
+  Capacity: 0/0/75/0. Skills: quarrying [QUAR] 2 (123).
+* Taxers (9844), The Disinherited Knights (42), avoiding, behind,
+  revealing faction, taxing, sharing, 12 orcs [ORC], 11 swords [SWOR],
+  5 camels [CAME], 3 giant turtles [TURT], 4 fish [FISH], 2 ironwood
+  [IRWD], 4 floater hides [FLOA], 981 silver [SILV]. Weight: 559.
+  Capacity: 0/560/740/210. Skills: combat [COMB] 1 (32).
+* AmorersM (3828), The Disinherited Knights (42), avoiding, revealing
+  faction, receiving no aid, weightless battle spoils, hill dwarf
+  [HDWA], 50 mithril armor [MARM], 5 mithril [MITH], 192 iron [IRON].
+  Weight: 1070. Capacity: 0/0/15/0. Skills: armorer [ARMO] 5 (450).
+
++ Building [1] : Road S.
+
++ Building [2] : Road SE.
+
++ Building [3] : Road SW.
+  * Builders (7675), The Disinherited Knights (42), avoiding, behind,
+    revealing faction, 6 orcs [ORC]. Weight: 60. Capacity: 0/0/90/0.
+    Skills: building [BUIL] 3 (240), quarrying [QUAR] 1 (35).
+
+
+forest (38,2) in Reprau, 1652 peasants (wood elves), $892.
+------------------------------------------------------------
+  Wages: $12.7 (Max: $385).
+  Wanted: none.
+  For Sale: 66 wood elves [WELF] at $40, 13 leaders [LEAD] at $711.
+  Entertainment available: $47.
+  Products: 37 grain [GRAI], 37 wood [WOOD], 10 furs [FUR].
+
+Exits:
+  North : forest (38,0) in Pla'ere.
+  Northeast : forest (39,1) in Pla'ere.
+  Southeast : forest (39,3) in Reprau.
+  South : mountain (38,4) in Femont.
+  Southwest : mountain (37,3) in Femont.
+  Northwest : forest (37,1) in Reprau.
+
+* Lumberjacks (9841), The Disinherited Knights (42), avoiding, behind,
+  revealing faction, receiving no aid, weightless battle spoils, 3
+  high elves [HELF], 30 wood [WOOD]. Weight: 180. Capacity: 0/0/45/0.
+  Skills: combat [COMB] 1 (35), lumberjack [LUMB] 2 (90), weaponsmith
+  [WEAP] 1 (30).
+* Taxers (11123), The Disinherited Knights (42), avoiding, revealing
+  faction, receiving no aid, sharing, weightless battle spoils, 18
+  wood elves [WELF], 2043 silver [SILV]. Weight: 180. Capacity:
+  0/0/270/0. Skills: combat [COMB] 1 (30).
+* Lookout (10180), The Disinherited Knights (42), avoiding, revealing
+  faction, receiving no aid, sharing, weightless battle spoils, leader
+  [LEAD]. Weight: 10. Capacity: 0/0/15/0. Skills: observation [OBSE] 3
+  (180).
+* Second Coming (8452), The Disinherited Knights (42), revealing
+  faction, receiving no aid, sharing, riding battle spoils, 20 high
+  elves [HELF], 20 mithril swords [MSWO], 20 mithril armor [MARM],
+  mithril shield [MSHD], 20 horses [HORS], 412 silver [SILV]. Weight:
+  1241. Capacity: 0/1400/1700/0. Skills: combat [COMB] 2 (90), riding
+  [RIDI] 2 (90), longbow [LBOW] 1 (60).
+* Unit (13799), The Disinherited Knights (42), behind, revealing
+  faction, receiving no aid, weightless battle spoils, high elf
+  [HELF], yew [YEW]. Weight: 15. Capacity: 0/0/15/0. Skills: none.
+
+
+forest (40,2) in Pla'ere, 1500 peasants (high elves), $1050.
+------------------------------------------------------------
+  Wages: $13.5 (Max: $472).
+  Wanted: none.
+  For Sale: 60 high elves [HELF] at $43, 12 leaders [LEAD] at $756.
+  Entertainment available: $50.
+  Products: 36 grain [GRAI], 36 wood [WOOD], 18 furs [FUR], 6 yew
+    [YEW].
+
+Exits:
+  North : tundra (40,0) in Huykash, contains Fantan [town].
+  Northeast : tundra (41,1) in Huykash.
+  Southeast : tundra (41,3) in Huykash.
+  South : forest (40,4) in Pla'ere.
+  Southwest : forest (39,3) in Reprau.
+  Northwest : forest (39,1) in Pla'ere.
+
+* Taxers (5767), on guard, The Disinherited Knights (42), behind,
+  revealing faction, taxing, receiving no aid, weightless battle
+  spoils, centaur [CTAU], 7 high elves [HELF], 12 wood elves [WELF],
+  7364 silver [SILV]. Weight: 240. Capacity: 0/70/355/0. Skills:
+  combat [COMB] 1 (30).
+* Carpenters (9433), The Disinherited Knights (42), behind, revealing
+  faction, receiving no aid, weightless battle spoils, 10 high elves
+  [HELF], 70 wagons [WAGO]. Weight: 3600. Capacity: 0/0/150/0. Skills:
+  carpenter [CARP] 2 (90).
+* Woodsmen (10293), The Disinherited Knights (42), avoiding, revealing
+  faction, receiving no aid, sharing, weightless battle spoils, 6
+  centaurs [CTAU], 12 wood [WOOD]. Weight: 360. Capacity: 0/420/420/0.
+  Skills: lumberjack [LUMB] 2 (155).
+* WoodmenY (6109), The Disinherited Knights (42), avoiding, behind,
+  revealing faction, receiving no aid, weightless battle spoils, 2
+  centaurs [CTAU], 2 horses [HORS], 6 yew [YEW]. Weight: 230.
+  Capacity: 0/280/280/0. Skills: lumberjack [LUMB] 5 (450).
+* Lookout (12195), The Disinherited Knights (42), behind, revealing
+  faction, receiving no aid, weightless battle spoils, leader [LEAD].
+  Weight: 10. Capacity: 0/0/15/0. Skills: observation [OBSE] 2 (150).
+
+
+mountain (35,3) in Slounspifra, 1249 peasants (orcs), $624.
+------------------------------------------------------------
+  Wages: $12.5 (Max: $293).
+  Wanted: none.
+  For Sale: 49 orcs [ORC] at $40, 9 leaders [LEAD] at $700.
+  Entertainment available: $30.
+  Products: 28 livestock [LIVE], 25 iron [IRON], 15 stone [STON].
+
+Exits:
+  North : forest (35,1) in Reprau.
+  Northeast : mountain (36,2) in Slounspifra.
+  Southeast : mountain (36,4) in Slounspifra, contains Aportheo
+    [city].
+  South : mountain (35,5) in Slounspifra.
+  Southwest : mountain (34,4) in Slounspifra.
+  Northwest : ocean (34,2) in Wi'il Sea.
+
+* Taxers (1514), The Disinherited Knights (42), avoiding, behind,
+  revealing faction, taxing, sharing, 9 orcs [ORC], 30 swords [SWOR],
+  859 silver [SILV]. Weight: 120. Capacity: 0/0/135/0. Skills: combat
+  [COMB] 1 (30).
+* Farmers (1165), The Disinherited Knights (42), avoiding, behind,
+  revealing faction, 9 orcs [ORC], 18 livestock [LIVE]. Weight: 990.
+  Capacity: 0/0/1035/0. Skills: farming [FARM] 2 (90).
+* Herald (3490), The Disinherited Knights (42), avoiding, behind,
+  revealing faction, orc [ORC], 175 silver [SILV]. Weight: 10.
+  Capacity: 0/0/15/0. Skills: observation [OBSE] 2 (90), stealth
+  [STEA] 1 (30), entertainment [ENTE] 2 (90).
+- Scout (7821), Thane's Ring (10), avoiding, behind, orc [ORC].
+* Smiths (10698), The Disinherited Knights (42), avoiding, behind,
+  revealing faction, sharing, 5 orcs [ORC], 40 swords [SWOR], 122 iron
+  [IRON]. Weight: 700. Capacity: 0/0/75/0. Skills: weaponsmith [WEAP]
+  2 (90).
+
++ Building [1] : Road SE.
+
++ Building [2] : Road NE.
+
+
+mountain (37,3) in Femont, 1139 peasants (humans), $660.
+------------------------------------------------------------
+  Wages: $12.9 (Max: $318).
+  Wanted: none.
+  For Sale: 45 humans [HUMN] at $41, 9 leaders [LEAD] at $722.
+  Entertainment available: $30.
+  Products: 27 grain [GRAI], 30 iron [IRON], 18 stone [STON], 5
+    mithril [MITH], 6 admantium [ADMT].
+
+Exits:
+  North : forest (37,1) in Reprau.
+  Northeast : forest (38,2) in Reprau.
+  Southeast : mountain (38,4) in Femont.
+  South : volcano (37,5) in Femont.
+  Southwest : mountain (36,4) in Slounspifra, contains Aportheo
+    [city].
+  Northwest : mountain (36,2) in Slounspifra.
+
+* Taxers (10699), The Disinherited Knights (42), avoiding, behind,
+  revealing faction, taxing, sharing, 13 orcs [ORC], magic crossbow
+  [MXBO], 6 camels [CAME], 5 giant turtles [TURT], 5 fish [FISH], 2
+  ironwood [IRWD], 2 floater hides [FLOA], 18 stone [STON], 433 silver
+  [SILV]. Weight: 1608. Capacity: 0/770/965/350. Skills: combat [COMB]
+  1 (30).
+* Strike Force (7234), The Disinherited Knights (42), revealing
+  faction, sharing, riding battle spoils, 20 high elves [HELF], 20
+  mithril swords [MSWO], 20 mithril armor [MARM], 2 mithril shields
+  [MSHD], 20 horses [HORS]. Weight: 1242. Capacity: 0/1400/1700/0.
+  Skills: combat [COMB] 2 (90), riding [RIDI] 2 (90), longbow [LBOW] 2
+  (150).
+* Unit (11960), The Disinherited Knights (42), behind, revealing
+  faction, sharing, hill dwarf [HDWA], giant turtle [TURT]. Weight:
+  60. Capacity: 0/70/85/70. Skills: tactics [TACT] 2 (90), stealth
+  [STEA] 1 (30).
+* MinersA (5104), The Disinherited Knights (42), avoiding, behind,
+  revealing faction, sharing, weightless battle spoils, 2 hill dwarves
+  [HDWA], 6 admantium [ADMT]. Weight: 80. Capacity: 0/0/30/0. Skills:
+  mining [MINI] 5 (450).
+* Unit (13803), The Disinherited Knights (42), avoiding, behind,
+  revealing faction, sharing, weightless battle spoils, 2 hill dwarves
+  [HDWA]. Weight: 20. Capacity: 0/0/30/0. Skills: mining [MINI] 5
+  (450).
+* Lone Rider (8910), The Disinherited Knights (42), avoiding, behind,
+  revealing faction, receiving no aid, sharing, orc [ORC], cornucopia
+  [CORN], 48 horses [HORS], 48 wagons [WAGO], 36 ironwood [IRWD].
+  Weight: 5170. Capacity: 0/3360/15375/0. Skills: none.
+* WoodsmenY (13609), The Disinherited Knights (42), avoiding, behind,
+  revealing faction, receiving no aid, 3 wood elves [WELF], 349 silver
+  [SILV]. Weight: 30. Capacity: 0/0/45/0. Skills: lumberjack [LUMB] 5
+  (450).
+
++ Building [1] : Road SW.
+
++ Building [2] : Road SE.
+  * Builders (12054), The Disinherited Knights (42), avoiding, behind,
+    revealing faction, sharing, 10 humans [HUMN], 34 stone [STON].
+    Weight: 1800. Capacity: 0/0/150/0. Skills: building [BUIL] 3
+    (185).
+
+
+tundra (41,3) in Huykash, 1197 peasants (gnolls), $550.
+------------------------------------------------------------
+  Wages: $12.3 (Max: $261).
+  Wanted: none.
+  For Sale: 47 gnolls [GNOL] at $39, 9 leaders [LEAD] at $688.
+  Entertainment available: $27.
+  Products: 19 grain [GRAI], 16 furs [FUR], 16 herbs [HERB].
+
+Exits:
+  North : tundra (41,1) in Huykash.
+  Northeast : tundra (42,2) in Huykash.
+  Southeast : ocean (42,4) in Fu'ihogh Sea.
+  South : forest (41,5) in Pla'ere.
+  Southwest : forest (40,4) in Pla'ere.
+  Northwest : forest (40,2) in Pla'ere.
+
+
++ Bog [1] : Bog, closed to player units.
+
+
+forest (49,3) in Phallpec, contains Baibank [city], 12373 peasants
+  (wood elves), $24498.
+------------------------------------------------------------
+  Wages: $19.9 (Max: $4899).
+  Wanted: 174 grain [GRAI] at $24, 196 livestock [LIVE] at $24, 166
+    fish [FISH] at $59, 33 lassoes [LASS] at $86, 49 swords [SWOR] at
+    $119, 42 nets [NET] at $146, 29 battle axes [BAXE] at $171, 74
+    silk [SILK] at $303, 77 gems [GEM] at $593.
+  For Sale: 73 ivory [IVOR] at $81, 85 chocolate [CHOC] at $95, 494
+    wood elves [WELF] at $63, 98 leaders [LEAD] at $1114.
+  Entertainment available: $1348.
+  Products: 25 livestock [LIVE], 37 wood [WOOD], 19 furs [FUR].
+
+Exits:
+  North : forest (49,1) in Phallpec.
+  Northeast : forest (50,2) in Phallpec.
+  Southeast : plain (50,4) in Swou'a.
+  South : ocean (49,5) in Fu'ihogh Sea.
+  Southwest : ocean (48,4) in Fu'ihogh Sea.
+  Northwest : forest (48,2) in Phallpec.
+
+- Sutler (1787), Merchants of Navarra (40), avoiding, behind, gnoll
+  [GNOL], 54 lassoes [LASS], 9 bags [BAG].
+- Scout (984), The Filras (14), avoiding, behind, gnoll [GNOL].
+- Woodcutters (2410), Merchants of Navarra (40), avoiding, behind, 5
+  wood elves [WELF], 5 axes [AXE], 196 wood [WOOD].
+- A simplified drone (2416), The Culture (41), avoiding, behind, wood
+  elf [WELF].
+- Carpenters (2956), Merchants of Navarra (40), avoiding, behind, 2
+  wood elves [WELF], 22 spinning wheels [SPIN].
+- Farmers (1784), Merchants of Navarra (40), avoiding, behind, 5
+  centaurs [CTAU], 5 lassoes [LASS], 20 livestock [LIVE].
+- Axemen (3480), Merchants of Navarra (40), avoiding, behind, 4 wood
+  elves [WELF], 4 axes [AXE], 57 spears [SPEA].
+- A knife missile (1158), The Culture (41), avoiding, behind, centaur
+  [CTAU].
+- Woodmen (3496), The Filras (14), avoiding, behind, 2 wood elves
+  [WELF], 2 axes [AXE].
+- Showmen (4126), Merchants of Navarra (40), avoiding, behind, 15 wood
+  elves [WELF].
+- Unit (4123), The Filras (14), behind, wood elf [WELF], longbow
+  [LBOW].
+- Weaponsmiths (3531), The Filras (14), avoiding, behind, 10 wood
+  elves [WELF].
+- Tailors (5764), Merchants of Navarra (40), avoiding, behind, 4 wood
+  elves [WELF], 200 leather armor [LARM], 4 spinning wheels [SPIN],
+  200 furs [FUR].
+- Blacksmiths (3483), Merchants of Navarra (40), avoiding, behind, 4
+  ice dwarves [IDWA], 4 axes [AXE], 51 crossbows [XBOW], 7 swords
+  [SWOR], 21 longbows [LBOW], 4 iron [IRON].
+- Taxers (5796), The Filras (14), behind, 40 wood elves [WELF], 40
+  spears [SPEA].
+- Hunters (5103), Merchants of Navarra (40), avoiding, behind, 4 ice
+  dwarves [IDWA], 4 spears [SPEA], 12 furs [FUR].
+- Archers (6856), Merchants of Navarra (40), behind, 20 wood elves
+  [WELF], 20 longbows [LBOW], camel [CAME], 10 horses [HORS].
+- Guild's men (8039), Merchants of Navarra (40), 50 wood elves [WELF],
+  22 leather armor [LARM].
+- Fishermen (8040), Merchants of Navarra (40), avoiding, behind, 5
+  wood elves [WELF], 5 spinning wheels [SPIN], 25 nets [NET].
+- Archers (8042), Merchants of Navarra (40), behind, 30 wood elves
+  [WELF], 30 longbows [LBOW], 10 horses [HORS].
+- Taxers (5338), The Filras (14), behind, 20 gnolls [GNOL], 3 swords
+  [SWOR].
+- Scout (3947), The Filras (14), behind, leader [LEAD].
+- Taxers (6699), The Filras (14), behind, 70 gnolls [GNOL], 4 swords
+  [SWOR].
+- Masters (7664), Merchants of Navarra (40), avoiding, behind, 5
+  leaders [LEAD], 5 leather armor [LARM], 5 mithril swords [MSWO], 5
+  horses [HORS].
+- Lumberjack Trainer (7446), The Filras (14), avoiding, behind, leader
+  [LEAD].
+- Captain Theobald (8905), Merchants of Navarra (40), avoiding,
+  behind, leader [LEAD], leather armor [LARM], horse [HORS].
+- Dogs of war (3481), Merchants of Navarra (40), 27 gnolls [GNOL], 26
+  swords [SWOR], 27 leather armor [LARM], 27 horses [HORS].
+- Transporters (6087), The Filras (14), avoiding, behind, gnoll
+  [GNOL], 3 horses [HORS].
+- Army (5348), The Filras (14), behind, 36 gnolls [GNOL], sword
+  [SWOR], 49 horses [HORS].
+- Masters (8906), Merchants of Navarra (40), avoiding, behind, leader
+  [LEAD].
+- Dogs of War (8438), Merchants of Navarra (40), 6 ice dwarves [IDWA].
+- Dogs of War (11985), Merchants of Navarra (40), 20 gnolls [GNOL],
+  sword [SWOR], 34 horses [HORS].
+- Transporters (6705), The Filras (14), avoiding, behind, ice dwarf
+  [IDWA], horse [HORS].
+- Lumberjacks (7254), The Filras (14), avoiding, behind, 2 wood elves
+  [WELF].
+- Explorer (9165), Eternal empire (9), avoiding, behind, wood elf
+  [WELF], giant turtle [TURT].
+- Spearmen (3605), The Filras (14), 9 humans [HUMN], 10 spears [SPEA],
+  10 horses [HORS].
+- Archers (1398), The Filras (14), behind, 10 high elves [HELF], 10
+  longbows [LBOW], 10 horses [HORS].
+- Army (3573), The Filras (14), 10 gnolls [GNOL], 10 swords [SWOR], 10
+  horses [HORS].
+- Army (6717), The Filras (14), avoiding, 70 humans [HUMN], 10 swords
+  [SWOR], 70 horses [HORS].
+- Army (4417), The Filras (14), 30 gnolls [GNOL], 11 axes [AXE], 30
+  horses [HORS].
+- Lord Davros (2896), The Filras (14), behind, leader [LEAD], horse
+  [HORS].
+- m A (9838), Merchants of Navarra (40), 20 gnomes [GNOM], 20
+  crossbows [XBOW], 11 horses [HORS].
+- Riders (9910), Merchants of Navarra (40), avoiding, behind, 4
+  leaders [LEAD], 5 horses [HORS].
+- Master Sailor (12125), Merchants of Navarra (40), avoiding, behind,
+  leader [LEAD].
+- Scout (1685), The Filras (14), avoiding, behind, gnoll [GNOL].
+- Dogs of war (12130), Merchants of Navarra (40), avoiding, behind, 20
+  gnolls [GNOL], 89 horses [HORS].
+- Mercury (11612), Merchants of Navarra (40), avoiding, behind, gnoll
+  [GNOL], 26 horses [HORS], 8 bags [BAG], 24 lassoes [LASS], 35 furs
+  [FUR].
+- Dogs of war (9988), Merchants of Navarra (40), 50 ice dwarves
+  [IDWA].
+- Builders (8045), Merchants of Navarra (40), avoiding, behind, 5
+  humans [HUMN].
+- Tailors (12146), Merchants of Navarra (40), avoiding, behind, 5 ice
+  dwarves [IDWA], 15 leather armor [LARM], 5 spinning wheels [SPIN].
+- Archers (14042), Merchants of Navarra (40), behind, 20 wood elves
+  [WELF], 10 longbows [LBOW].
+- Shipbuilders (6107), Merchants of Navarra (40), avoiding, behind, 5
+  wood elves [WELF].
+- Riders (13607), Merchants of Navarra (40), avoiding, behind, 40
+  centaurs [CTAU], 24 livestock [LIVE], 60 furs [FUR].
+- Mercury (7220), Merchants of Navarra (40), avoiding, behind, gnoll
+  [GNOL], 9 horses [HORS], 26 lassoes [LASS], 33 furs [FUR].
+- Drover (1509), Merchants of Navarra (40), avoiding, behind, ice
+  dwarf [IDWA], 20 livestock [LIVE].
+- Master (14048), Merchants of Navarra (40), avoiding, behind, leader
+  [LEAD].
+- Drover (7222), Merchants of Navarra (40), avoiding, behind, human
+  [HUMN], 48 livestock [LIVE].
+- Unit (8585), The Filras (14), avoiding, behind, human [HUMN], 13
+  winged horses [WING].
+- Mercury (5762), Merchants of Navarra (40), avoiding, behind, centaur
+  [CTAU], 7 horses [HORS], 30 wood [WOOD], 24 livestock [LIVE].
+- Embassy of the Most Righteous Order to Baibank (11952), The Most
+  Righteous Order (34), avoiding, gnoll [GNOL], sword [SWOR], leather
+  armor [LARM], giant turtle [TURT].
+
++ Building [1] : Caravanserai.
+  - Quartermaster (7590), The Filras (14), avoiding, behind, leader
+    [LEAD], spear [SPEA], 4 axes [AXE], 20 crossbows [XBOW], 380 wood
+    [WOOD], 7 grain [GRAI].
+  - Taxers (9257), The Filras (14), avoiding, behind, 50 wood elves
+    [WELF].
+
++ Guild Hall [2] : Stockade.
+  - Guild Master Ramiro (681), Merchants of Navarra (40), behind,
+    leader [LEAD], 56 mithril swords [MSWO], horse [HORS].
+  - Guild workers (2073), Merchants of Navarra (40), 150 wood elves
+    [WELF], 131 spears [SPEA], 10 axes [AXE], 5 swords [SWOR].
+
++ Building [3] : Timber Yard.
+  - Master of the Wood (8904), Merchants of Navarra (40), avoiding,
+    behind, wood elf [WELF], axe [AXE], 16 ironwood [IRWD], 20 wood
+    [WOOD].
+
++ Ship [572] : Cog.
+  - Sailors (14044), Merchants of Navarra (40), avoiding, behind, 3
+    wood elves [WELF].
+
++ Ship [513] : Cog.
+  - Sailors (12126), Merchants of Navarra (40), avoiding, behind, 3
+    wood elves [WELF].
+  - Sailors (14045), Merchants of Navarra (40), avoiding, behind, 4
+    wood elves [WELF], 180 fish [FISH].
+
++ Ship [329] : Longship; Load: 110/150; Sailors: 4/4; MaxSpeed: 4.
+  * Sailors (11125), The Disinherited Knights (42), behind, revealing
+    faction, sharing, centaur [CTAU], 923 silver [SILV]. Weight: 50.
+    Capacity: 0/70/70/0. Skills: sailing [SAIL] 2 (90), combat [COMB]
+    2 (90), stealth [STEA] 1 (30).
+  * Sailors (12590), The Disinherited Knights (42), revealing faction,
+    sharing, centaur [CTAU]. Weight: 50. Capacity: 0/70/70/0. Skills:
+    sailing [SAIL] 2 (90).
+  * Scout#5 (3247), The Disinherited Knights (42), avoiding, behind,
+    receiving no aid, high elf [HELF], 15 silver [SILV]. Weight: 10.
+    Capacity: 0/0/15/0. Skills: observation [OBSE] 2 (90), stealth
+    [STEA] 2 (90), entertainment [ENTE] 1 (30).
+
+
+mountain (36,4) in Slounspifra, contains Aportheo [city], 11993
+  peasants (orcs), $21827.
+------------------------------------------------------------
+  Wages: $19.1 (Max: $4365).
+  Wanted: 112 grain [GRAI] at $21, 114 livestock [LIVE] at $21, 132
+    fish [FISH] at $51, 32 axes [AXE] at $89, 49 nets [NET] at $146,
+    30 spinning wheels [SPIN] at $113, 48 longbows [LBOW] at $117, 98
+    perfume [PERF] at $377, 53 gems [GEM] at $464.
+  For Sale: 88 chocolate [CHOC] at $126, 60 vodka [VODK] at $112, 479
+    orcs [ORC] at $61, 95 leaders [LEAD] at $1069.
+  Entertainment available: $1211.
+  Products: 34 livestock [LIVE], 36 iron [IRON], 16 stone [STON], 9
+    mithril [MITH], 6 admantium [ADMT].
+
+Exits:
+  North : mountain (36,2) in Slounspifra.
+  Northeast : mountain (37,3) in Femont.
+  Southeast : volcano (37,5) in Femont.
+  South : mountain (36,6) in Femont.
+  Southwest : mountain (35,5) in Slounspifra.
+  Northwest : mountain (35,3) in Slounspifra.
+
+* Robin Hood (1162), The Disinherited Knights (42), avoiding, behind,
+  leader [LEAD]. Weight: 10. Capacity: 0/0/15/0. Skills: stealth
+  [STEA] 5 (450), observation [OBSE] 1 (30), combat [COMB] 5 (450),
+  riding [RIDI] 4 (390).
+* Rebecca (1163), The Disinherited Knights (42), avoiding, behind,
+  leader [LEAD]. Weight: 10. Capacity: 0/0/15/0. Skills: observation
+  [OBSE] 5 (450), stealth [STEA] 3 (270), tactics [TACT] 5 (450).
+* Entertainers (1164), The Disinherited Knights (42), avoiding,
+  behind, revealing faction, sharing, 18 orcs [ORC]. Weight: 180.
+  Capacity: 0/0/270/0. Skills: entertainment [ENTE] 2 (90).
+* Miners (1795), The Disinherited Knights (42), avoiding, behind,
+  revealing faction, 8 orcs [ORC], 8 picks [PICK], 24 iron [IRON].
+  Weight: 208. Capacity: 0/0/120/0. Skills: mining [MINI] 2 (175).
+* Stoneworkers (2693), The Disinherited Knights (42), avoiding,
+  behind, revealing faction, 10 orcs [ORC], 16 stone [STON]. Weight:
+  900. Capacity: 0/0/150/0. Skills: quarrying [QUAR] 2 (90).
+* Smiths (2964), The Disinherited Knights (42), avoiding, behind,
+  revealing faction, 14 orcs [ORC], 11 hammers [HAMM], 24 swords
+  [SWOR]. Weight: 175. Capacity: 0/0/210/0. Skills: weaponsmith [WEAP]
+  2 (90).
+* Farmers (3493), The Disinherited Knights (42), avoiding, behind,
+  revealing faction, sharing, 17 orcs [ORC], 298 livestock [LIVE], 889
+  silver [SILV]. Weight: 15070. Capacity: 0/0/15155/0. Skills: farming
+  [FARM] 2 (90).
+* Teachers (3824), The Disinherited Knights (42), avoiding, behind,
+  revealing faction, 3 leaders [LEAD]. Weight: 30. Capacity: 0/0/45/0.
+  Skills: combat [COMB] 4 (410), riding [RIDI] 5 (450).
+* MinersM (3826), The Disinherited Knights (42), avoiding, behind,
+  revealing faction, 2 orcs [ORC], 2 picks [PICK], 9 mithril [MITH].
+  Weight: 112. Capacity: 0/0/30/0. Skills: mining [MINI] 4 (335).
+* SmithsM (3818), The Disinherited Knights (42), avoiding, behind,
+  revealing faction, receiving no aid, weightless battle spoils, 3
+  hill dwarves [HDWA], 3 hammers [HAMM], 12 mithril swords [MSWO].
+  Weight: 45. Capacity: 0/0/45/0. Skills: weaponsmith [WEAP] 4 (315).
+- Anuii (2209), Anuii (6), avoiding, behind, centaur [CTAU].
+- Magi Alpha (5107), Fenris Knights (22), avoiding, behind, leader
+  [LEAD].
+- Magi Beta (5108), Fenris Knights (22), avoiding, behind, leader
+  [LEAD].
+- Podeans Ambassador (5566), Podeans (61), avoiding, behind, orc
+  [ORC].
+* Teachers (6583), The Disinherited Knights (42), avoiding, behind,
+  revealing faction, sharing, 10 leaders [LEAD]. Weight: 100.
+  Capacity: 0/0/150/0. Skills: combat [COMB] 5 (450).
+* Cedric (7233), The Disinherited Knights (42), avoiding, behind,
+  revealing faction, sharing, leader [LEAD], sword [SWOR], camel
+  [CAME], giant turtle [TURT], floater hide [FLOA]. Weight: 112.
+  Capacity: 0/140/155/70. Skills: tactics [TACT] 5 (450), observation
+  [OBSE] 2 (120).
+- Trader (4139), The Trade Guild (48), avoiding, behind, lizardman
+  [LIZA]; Exploring trade opportunities.
+* MinersA (7671), The Disinherited Knights (42), avoiding, behind,
+  revealing faction, sharing, 2 orcs [ORC], 6 admantium [ADMT].
+  Weight: 80. Capacity: 0/0/30/0. Skills: mining [MINI] 5 (450).
+* Hangaround (8446), The Disinherited Knights (42), avoiding, behind,
+  revealing faction, sharing, leader [LEAD]. Weight: 10. Capacity:
+  0/0/15/0. Skills: crossbow [XBOW] 5 (450), manipulation [MANI] 1
+  (30).
+* Teacher (8447), The Disinherited Knights (42), avoiding, behind,
+  revealing faction, sharing, leader [LEAD]. Weight: 10. Capacity:
+  0/0/15/0. Skills: longbow [LBOW] 5 (450).
+* Seal (8048), The Disinherited Knights (42), revealing faction,
+  sharing, riding battle spoils, 50 orcs [ORC], 6 flaming swords
+  [FSWO], 42 mithril armor [MARM], 46 mithril swords [MSWO], 32 horses
+  [HORS], 450 silver [SILV]. Weight: 2194. Capacity: 0/2240/2990/0.
+  Skills: combat [COMB] 5 (450), riding [RIDI] 2 (90).
+- IHQ Vagabond (11800), Iron Harlequins (76), avoiding, behind, gnome
+  [GNOM]; Drifter taking to the road by the tales of circus..
+* Fighters (12222), The Disinherited Knights (42), avoiding, behind,
+  revealing faction, receiving no aid, sharing, 50 orcs [ORC]. Weight:
+  500. Capacity: 0/0/750/0. Skills: combat [COMB] 3 (270).
+* Taxers (13303), on guard, The Disinherited Knights (42), revealing
+  faction, taxing, sharing, riding battle spoils, 430 orcs [ORC], 544
+  swords [SWOR], 14733 silver [SILV]. Weight: 4844. Capacity:
+  0/0/6450/0. Skills: none.
+* ArmorerA (13610), The Disinherited Knights (42), avoiding, revealing
+  faction, receiving no aid, weightless battle spoils, 2 hill dwarves
+  [HDWA], 4 admantium plate mails [AARM], 6 admantium [ADMT]. Weight:
+  84. Capacity: 0/0/30/0. Skills: armorer [ARMO] 5 (450).
+- whizzlebot (2888), Flannae (24), avoiding, gnome [GNOM], glider
+  [GLID].
+* Unit (13805), The Disinherited Knights (42), revealing faction,
+  sharing, riding battle spoils, 5 leaders [LEAD]. Weight: 50.
+  Capacity: 0/0/75/0. Skills: longbow [LBOW] 1 (60).
+* Transporter (1168), The Disinherited Knights (42), avoiding, behind,
+  revealing faction, receiving no aid, weightless battle spoils, orc
+  [ORC], 36 livestock [LIVE]. Weight: 1810. Capacity: 0/0/1815/0.
+  Skills: combat [COMB] 1 (30).
+* Transporter (2418), The Disinherited Knights (42), avoiding, behind,
+  revealing faction, receiving no aid, weightless battle spoils, human
+  [HUMN], 36 livestock [LIVE]. Weight: 1810. Capacity: 0/0/1815/0.
+  Skills: none.
+* Transporter (2417), The Disinherited Knights (42), avoiding, behind,
+  revealing faction, receiving no aid, weightless battle spoils, orc
+  [ORC]. Weight: 10. Capacity: 0/0/15/0. Skills: none.
+* Transporter (5480), The Disinherited Knights (42), avoiding, behind,
+  revealing faction, sharing, human [HUMN], 80 livestock [LIVE].
+  Weight: 4010. Capacity: 0/0/4015/0. Skills: none.
+
++ Building [1] : Fort.
+  * Ivanhoe, son of Cedric (683), The Disinherited Knights (42),
+    avoiding, behind, revealing faction, sharing, leader [LEAD], 97
+    mithril swords [MSWO], 48 swords [SWOR], flaming sword [FSWO], 154
+    horses [HORS], 35 ironwood [IRWD], 6 yew [YEW], 44 silver [SILV].
+    Weight: 8236. Capacity: 0/10780/10795/0. Skills: observation
+    [OBSE] 1 (30), force [FORC] 3 (195), pattern [PATT] 3 (190),
+    spirit [SPIR] 3 (255), gate lore [GATE] 1 (30), fire [FIRE] 3
+    (180), combat [COMB] 3 (180), earth lore [EART] 1 (45), illusion
+    [ILLU] 3 (205), phantasmal entertainment [PHEN] 2 (90), artifact
+    lore [ARTI] 2 (170), create staff of fire [CRSF] 1 (60), create
+    flaming sword [CFSW] 2 (90), true seeing [TRUE] 1 (30). Combat
+    spell: fire [FIRE]. Can Study: earthquake [EQUA], force shield
+    [FSHI], energy shield [ESHI], spirit shield [SSHI], magical
+    healing [MHEA], gate lore [GATE], farsight [FARS], mind reading
+    [MIND], weather lore [WEAT], earth lore [EART], wolf lore [WOLF],
+    bird lore [BIRD], necromancy [NECR], demon lore [DEMO], phantasmal
+    entertainment [PHEN], create phantasmal beasts [PHBE], create
+    phantasmal undead [PHUN], create phantasmal demons [PHDE],
+    invisibility [INVI], true seeing [TRUE], dispel illusions [DISP],
+    artifact lore [ARTI], create staff of fire [CRSF], enchant swords
+    [ESWO], enchant armor [EARM], enchant shields [ESHD],
+    transmutation [TRNS]; A handsome young lad with straight blond
+    hair that blows in the wind..
+
++ Building [2] : Fort.
+  * Brian de Bois-Guilbert (1159), The Disinherited Knights (42),
+    behind, revealing faction, sharing, leader [LEAD], sword [SWOR], 6
+    yew [YEW], 1205 silver [SILV]. Weight: 41. Capacity: 0/0/15/0.
+    Skills: force [FORC] 4 (305), pattern [PATT] 3 (180), earth lore
+    [EART] 1 (60), illusion [ILLU] 2 (110), phantasmal entertainment
+    [PHEN] 2 (90), magical healing [MHEA] 3 (180), spirit [SPIR] 3
+    (180), artifact lore [ARTI] 2 (90), create staff of healing [CRSH]
+    1 (30), energy shield [ESHI] 2 (120). Can Study: fire [FIRE],
+    earthquake [EQUA], force shield [FSHI], energy shield [ESHI],
+    spirit shield [SSHI], gate lore [GATE], farsight [FARS], mind
+    reading [MIND], weather lore [WEAT], earth lore [EART], wolf lore
+    [WOLF], bird lore [BIRD], necromancy [NECR], demon lore [DEMO],
+    illusion [ILLU], create phantasmal beasts [PHBE], create
+    phantasmal undead [PHUN], create phantasmal demons [PHDE], dispel
+    illusions [DISP], artifact lore [ARTI], enchant swords [ESWO],
+    enchant armor [EARM], enchant shields [ESHD], create staff of
+    healing [CRSH], transmutation [TRNS].
+
++ Building [3] : Fort.
+  * Maurice de Bracy (1160), The Disinherited Knights (42), avoiding,
+    behind, revealing faction, leader [LEAD], 2764 silver [SILV].
+    Weight: 10. Capacity: 0/0/15/0. Skills: spirit [SPIR] 3 (210),
+    force [FORC] 3 (225), pattern [PATT] 3 (190), earth lore [EART] 1
+    (60), illusion [ILLU] 2 (115), phantasmal entertainment [PHEN] 2
+    (90), artifact lore [ARTI] 2 (90), demon lore [DEMO] 3 (180),
+    banish demons [BDEM] 3 (180), necromancy [NECR] 2 (90), summon
+    skeletons [SUSK] 1 (30), summon imps [SUIM] 2 (90). Combat spell:
+    banish demons [BDEM]. Can Study: fire [FIRE], earthquake [EQUA],
+    force shield [FSHI], energy shield [ESHI], spirit shield [SSHI],
+    magical healing [MHEA], gate lore [GATE], farsight [FARS], mind
+    reading [MIND], weather lore [WEAT], earth lore [EART], wolf lore
+    [WOLF], bird lore [BIRD], necromancy [NECR], summon skeletons
+    [SUSK], create aura of fear [FEAR], banish undead [BUND], summon
+    imps [SUIM], illusion [ILLU], create phantasmal beasts [PHBE],
+    create phantasmal undead [PHUN], create phantasmal demons [PHDE],
+    dispel illusions [DISP], artifact lore [ARTI], enchant swords
+    [ESWO], enchant armor [EARM], enchant shields [ESHD], create book
+    of exorcism [CRBX], transmutation [TRNS].
+
++ Building [4] : Quarry.
+
++ Building [5] : Fort.
+  * Reginald Front-de-Boeuf (1161), The Disinherited Knights (42),
+    avoiding, behind, revealing faction, sharing, leader [LEAD], 3205
+    silver [SILV]. Weight: 10. Capacity: 0/0/15/0. Skills: pattern
+    [PATT] 3 (215), force [FORC] 3 (210), earth lore [EART] 3 (180),
+    illusion [ILLU] 2 (110), phantasmal entertainment [PHEN] 2 (90),
+    bird lore [BIRD] 3 (180), spirit [SPIR] 3 (180), artifact lore
+    [ARTI] 2 (120), wolf lore [WOLF] 2 (90), force shield [FSHI] 3
+    (180), enchant swords [ESWO] 1 (30). Combat spell: force shield
+    [FSHI]. Can Study: fire [FIRE], earthquake [EQUA], energy shield
+    [ESHI], spirit shield [SSHI], magical healing [MHEA], gate lore
+    [GATE], farsight [FARS], mind reading [MIND], weather lore [WEAT],
+    wolf lore [WOLF], necromancy [NECR], demon lore [DEMO], illusion
+    [ILLU], create phantasmal beasts [PHBE], create phantasmal undead
+    [PHUN], create phantasmal demons [PHDE], dispel illusions [DISP],
+    artifact lore [ARTI], enchant swords [ESWO], enchant armor [EARM],
+    enchant shields [ESHD], create cornucopia [CRCO], create censer of
+    protection [CRCN], transmutation [TRNS].
+
++ Building [6] : Caravanserai.
+  * Trader (6857), The Disinherited Knights (42), avoiding, behind,
+    revealing faction, sharing, leader [LEAD]. Weight: 10. Capacity:
+    0/0/15/0. Skills: quartermaster [QUAM] 5 (450).
+
++ Building [7] : Road NE.
+
++ Building [8] : Road N.
+
++ Building [9] : Fort.
+  - Magi Gamma (5109), Fenris Knights (22), avoiding, behind, leader
+    [LEAD].
+
++ Building [10] : Fort.
+
++ Building [11] : Road NW.
+
++ Building [12] : Road S.
+
++ Building [13] : Road SW, needs 10.
+  * Builders (12241), The Disinherited Knights (42), avoiding, behind,
+    revealing faction, sharing, 10 orcs [ORC], 26 stone [STON].
+    Weight: 1400. Capacity: 0/0/150/0. Skills: building [BUIL] 2
+    (170).
+
+
+mountain (38,4) in Femont, 1369 peasants (hill dwarves), $711.
+------------------------------------------------------------
+  Wages: $12.6 (Max: $327).
+  Wanted: none.
+  For Sale: 54 hill dwarves [HDWA] at $40, 10 leaders [LEAD] at $705.
+  Entertainment available: $35.
+  Products: 38 livestock [LIVE], 25 iron [IRON], 10 stone [STON].
+
+Exits:
+  North : forest (38,2) in Reprau.
+  Northeast : forest (39,3) in Reprau.
+  Southeast : forest (39,5) in Pla'ere.
+  South : mountain (38,6) in Femont.
+  Southwest : volcano (37,5) in Femont.
+  Northwest : mountain (37,3) in Femont.
+
+* Taxers (11992), on guard, The Disinherited Knights (42), revealing
+  faction, taxing, receiving no aid, sharing, 12 hill dwarves [HDWA],
+  9 stone [STON], 3304 silver [SILV]. Weight: 570. Capacity:
+  0/0/180/0. Skills: combat [COMB] 1 (30).
+* StoneWeapon (9432), The Disinherited Knights (42), avoiding, behind,
+  revealing faction, weightless battle spoils, 10 high elves [HELF].
+  Weight: 100. Capacity: 0/0/150/0. Skills: weaponsmith [WEAP] 2 (90),
+  quarrying [QUAR] 2 (90).
+- IHQ Vagabond (9099), Iron Harlequins (76), avoiding, behind, gnome
+  [GNOM]; Drifter taking to the road by the tales of circus..
+* MinersA (12588), The Disinherited Knights (42), avoiding, behind,
+  revealing faction, 3 orcs [ORC], 3 picks [PICK]. Weight: 33.
+  Capacity: 0/0/45/0. Skills: mining [MINI] 5 (450).
+* Horse Guy (3830), The Disinherited Knights (42), avoiding, revealing
+  faction, receiving no aid, high elf [HELF], horse [HORS], 90 silver
+  [SILV]. Weight: 60. Capacity: 0/70/85/0. Skills: none.
+
++ Building [1] : Road NW.
+
++ Building [2] : Road S.
+  * Builders (11619), The Disinherited Knights (42), avoiding,
+    revealing faction, receiving no aid, sharing, 5 hill dwarves
+    [HDWA], 11 stone [STON]. Weight: 600. Capacity: 0/0/75/0. Skills:
+    building [BUIL] 2 (120).
+
+
+forest (40,4) in Pla'ere, 1400 peasants (centaurs), $1036.
+------------------------------------------------------------
+  Wages: $13.7 (Max: $473).
+  Wanted: none.
+  For Sale: 56 centaurs [CTAU] at $76, 11 leaders [LEAD] at $767.
+  Entertainment available: $48.
+  Products: 39 grain [GRAI], 30 wood [WOOD], 18 furs [FUR].
+
+Exits:
+  North : forest (40,2) in Pla'ere.
+  Northeast : tundra (41,3) in Huykash.
+  Southeast : forest (41,5) in Pla'ere.
+  South : forest (40,6) in Pla'ere.
+  Southwest : forest (39,5) in Pla'ere.
+  Northwest : forest (39,3) in Reprau.
+
+* Unit (8444), The Disinherited Knights (42), revealing faction,
+  receiving no aid, sharing, weightless battle spoils, centaur [CTAU],
+  45 silver [SILV]. Weight: 50. Capacity: 0/70/70/0. Skills: none.
+
+
+ocean (48,4) in Fu'ihogh Sea.
+------------------------------------------------------------
+  Wages: $0.
+  Wanted: none.
+  For Sale: none.
+  Products: 28 fish [FISH].
+
+Exits:
+  North : forest (48,2) in Phallpec.
+  Northeast : forest (49,3) in Phallpec, contains Baibank [city].
+  Southeast : ocean (49,5) in Fu'ihogh Sea.
+  South : ocean (48,6) in Fu'ihogh Sea.
+  Southwest : ocean (47,5) in Fu'ihogh Sea.
+  Northwest : ocean (47,3) in Fu'ihogh Sea.
+
+
+
+mountain (35,5) in Slounspifra, 1414 peasants (humans), $509.
+------------------------------------------------------------
+  Wages: $11.8 (Max: $232).
+  Wanted: none.
+  For Sale: 56 humans [HUMN] at $37, 11 leaders [LEAD] at $660.
+  Entertainment available: $28.
+  Products: 23 livestock [LIVE], 35 iron [IRON], 14 stone [STON].
+
+Exits:
+  North : mountain (35,3) in Slounspifra.
+  Northeast : mountain (36,4) in Slounspifra, contains Aportheo
+    [city].
+  Southeast : mountain (36,6) in Femont.
+  South : tundra (35,7) in Bedba.
+  Southwest : mountain (34,6) in Slounspifra.
+  Northwest : mountain (34,4) in Slounspifra.
+
+* Herald (3491), The Disinherited Knights (42), avoiding, behind,
+  revealing faction, orc [ORC]. Weight: 10. Capacity: 0/0/15/0.
+  Skills: observation [OBSE] 2 (90), entertainment [ENTE] 2 (90).
+* Taxers (4426), The Disinherited Knights (42), avoiding, behind,
+  revealing faction, taxing, sharing, 9 orcs [ORC], 9 swords [SWOR],
+  142 silver [SILV]. Weight: 99. Capacity: 0/0/135/0. Skills: combat
+  [COMB] 1 (30).
+* Farmers (6585), The Disinherited Knights (42), avoiding, behind,
+  revealing faction, sharing, 10 humans [HUMN], 10 swords [SWOR], 23
+  livestock [LIVE]. Weight: 1260. Capacity: 0/0/1300/0. Skills:
+  farming [FARM] 3 (185).
+* Miners (6586), The Disinherited Knights (42), avoiding, behind,
+  revealing faction, sharing, 10 humans [HUMN], 121 swords [SWOR], 10
+  iron [IRON]. Weight: 271. Capacity: 0/0/150/0. Skills: mining [MINI]
+  3 (205), weaponsmith [WEAP] 2 (90).
+* Lookout (13304), The Disinherited Knights (42), avoiding, behind,
+  revealing faction, sharing, leader [LEAD]. Weight: 10. Capacity:
+  0/0/15/0. Skills: observation [OBSE] 2 (120).
+* StoneBuilders (6580), The Disinherited Knights (42), avoiding,
+  behind, revealing faction, sharing, 5 orcs [ORC], 30 stone [STON].
+  Weight: 1550. Capacity: 0/0/75/0. Skills: quarrying [QUAR] 2 (90),
+  building [BUIL] 2 (120).
+* MinersA (5105), The Disinherited Knights (42), avoiding, behind,
+  revealing faction, sharing, weightless battle spoils, 8 orcs [ORC].
+  Weight: 80. Capacity: 0/0/120/0. Skills: mining [MINI] 5 (450).
+
+
+forest (41,5) in Pla'ere, 1502 peasants (wood elves), $811.
+------------------------------------------------------------
+  Wages: $12.7 (Max: $364).
+  Wanted: none.
+  For Sale: 60 wood elves [WELF] at $40, 12 leaders [LEAD] at $711.
+  Entertainment available: $41.
+  Products: 22 grain [GRAI], 32 wood [WOOD], 15 furs [FUR].
+
+Exits:
+  North : tundra (41,3) in Huykash.
+  Northeast : ocean (42,4) in Fu'ihogh Sea.
+  Southeast : forest (42,6) in Pla'ere.
+  South : forest (41,7) in Pla'ere.
+  Southwest : forest (40,6) in Pla'ere.
+  Northwest : forest (40,4) in Pla'ere.
+
+* Unit (8451), The Disinherited Knights (42), avoiding, behind,
+  revealing faction, receiving no aid, weightless battle spoils,
+  centaur [CTAU], 389 silver [SILV]. Weight: 50. Capacity: 0/70/70/0.
+  Skills: entertainment [ENTE] 2 (90).
+- Tax Collectors 41-5 (8797), Fenris Knights (22), avoiding, behind,
+  16 wood elves [WELF].
+* WoodsmenY (8443), The Disinherited Knights (42), avoiding, revealing
+  faction, receiving no aid, sharing, weightless battle spoils, 4
+  centaurs [CTAU], 300 silver [SILV]. Weight: 200. Capacity:
+  0/280/280/0. Skills: lumberjack [LUMB] 5 (450).
+
+
+mountain (34,6) in Slounspifra, 1120 peasants (hill dwarves), $246.
+------------------------------------------------------------
+  Wages: $11.1 (Max: $119).
+  Wanted: none.
+  For Sale: 44 hill dwarves [HDWA] at $35, 8 leaders [LEAD] at $621.
+  Entertainment available: $15.
+  Products: 23 grain [GRAI], 37 iron [IRON], 12 stone [STON].
+
+Exits:
+  North : mountain (34,4) in Slounspifra.
+  Northeast : mountain (35,5) in Slounspifra.
+  Southeast : tundra (35,7) in Bedba.
+  South : tundra (34,8) in Bedba.
+  Southwest : ocean (33,7) in Wi'il Sea.
+  Northwest : ocean (33,5) in Wi'il Sea.
+
+* scout (8448), The Disinherited Knights (42), avoiding, behind,
+  revealing faction, weightless battle spoils, human [HUMN], 10 silver
+  [SILV]. Weight: 10. Capacity: 0/0/15/0. Skills: combat [COMB] 1
+  (30), entertainment [ENTE] 1 (50).
+* Unit (7669), The Disinherited Knights (42), revealing faction,
+  receiving no aid, sharing, 2 orcs [ORC], 9 silver [SILV]. Weight:
+  20. Capacity: 0/0/30/0. Skills: combat [COMB] 1 (30), entertainment
+  [ENTE] 1 (30).
+- Scout (7810), Thane's Ring (10), avoiding, behind, orc [ORC].
+
+
+mountain (36,6) in Femont, 1415 peasants (hill dwarves), $594.
+------------------------------------------------------------
+  Wages: $12.1 (Max: $270).
+  Wanted: none.
+  For Sale: 56 hill dwarves [HDWA] at $38, 11 leaders [LEAD] at $677.
+  Entertainment available: $31.
+  Products: 22 grain [GRAI], 26 iron [IRON], 18 stone [STON], 7
+    admantium [ADMT].
+
+Exits:
+  North : mountain (36,4) in Slounspifra, contains Aportheo [city].
+  Northeast : volcano (37,5) in Femont.
+  Southeast : volcano (37,7) in Femont.
+  South : tundra (36,8) in Bedba.
+  Southwest : tundra (35,7) in Bedba.
+  Northwest : mountain (35,5) in Slounspifra.
+
+* Taxers (11617), The Disinherited Knights (42), avoiding, behind,
+  revealing faction, taxing, receiving no aid, sharing, 10 orcs [ORC],
+  2 hill dwarves [HDWA], 10 swords [SWOR], 519 silver [SILV]. Weight:
+  130. Capacity: 0/0/180/0. Skills: combat [COMB] 0 (5).
+* Unit (12277), The Disinherited Knights (42), avoiding, behind,
+  revealing faction, receiving no aid, sharing, 8 hill dwarves [HDWA].
+  Weight: 80. Capacity: 0/0/120/0. Skills: mining [MINI] 3 (240).
+* Unit (12242), The Disinherited Knights (42), avoiding, behind,
+  revealing faction, receiving no aid, sharing, leader [LEAD]. Weight:
+  10. Capacity: 0/0/15/0. Skills: observation [OBSE] 2 (150).
+* MinersA (13302), The Disinherited Knights (42), avoiding, behind,
+  revealing faction, sharing, 8 orcs [ORC], 7 admantium [ADMT].
+  Weight: 150. Capacity: 0/0/120/0. Skills: mining [MINI] 5 (450).
+- Embassy of the Most Righteous Order 34 to Aportheo (10651), The Most
+  Righteous Order (34), avoiding, behind, lizardman [LIZA], leather
+  armor [LARM], sword [SWOR].
+* MinersA (13301), The Disinherited Knights (42), avoiding, behind,
+  revealing faction, sharing, weightless battle spoils, 4 hill dwarves
+  [HDWA], 267 silver [SILV]. Weight: 40. Capacity: 0/0/60/0. Skills:
+  mining [MINI] 5 (450).
+
+
+mountain (38,6) in Femont, 1094 peasants (orcs), $415.
+------------------------------------------------------------
+  Wages: $11.9 (Max: $202).
+  Wanted: none.
+  For Sale: 43 orcs [ORC] at $38, 8 leaders [LEAD] at $666.
+  Entertainment available: $21.
+  Products: 39 livestock [LIVE], 36 iron [IRON], 19 stone [STON].
+
+Exits:
+  North : mountain (38,4) in Femont.
+  Northeast : forest (39,5) in Pla'ere.
+  Southeast : plain (39,7) in Torburn.
+  South : mountain (38,8) in Femont.
+  Southwest : volcano (37,7) in Femont.
+  Northwest : volcano (37,5) in Femont.
+
+- Tax Collectors 38-6 (6399), Fenris Knights (22), avoiding, behind, 8
+  orcs [ORC].
+* Stoneworkers (12127), The Disinherited Knights (42), avoiding,
+  revealing faction, receiving no aid, 10 hill dwarves [HDWA], stone
+  [STON]. Weight: 150. Capacity: 0/0/150/0. Skills: quarrying [QUAR] 1
+  (60).
+
+
+forest (40,6) in Pla'ere, 1651 peasants (centaurs), $1188.
+------------------------------------------------------------
+  Wages: $13.6 (Max: $514).
+  Wanted: none.
+  For Sale: 66 centaurs [CTAU] at $76, 13 leaders [LEAD] at $761.
+  Entertainment available: $58.
+  Products: 21 grain [GRAI], 39 wood [WOOD], 18 furs [FUR].
+
+Exits:
+  North : forest (40,4) in Pla'ere.
+  Northeast : forest (41,5) in Pla'ere.
+  Southeast : forest (41,7) in Pla'ere.
+  South : plain (40,8) in Torburn, contains Fenic [village].
+  Southwest : plain (39,7) in Torburn.
+  Northwest : forest (39,5) in Pla'ere.
+
+* Scout#5 (3822), The Disinherited Knights (42), avoiding, behind,
+  revealing faction, receiving no aid, weightless battle spoils,
+  centaur [CTAU], 276 silver [SILV]. Weight: 50. Capacity: 0/70/70/0.
+  Skills: combat [COMB] 1 (30), entertainment [ENTE] 2 (90),
+  observation [OBSE] 1 (30).
+- Tax Collectors 40-6 (1725), Fenris Knights (22), avoiding, behind,
+  24 centaurs [CTAU].
+
+
+forest (42,6) in Pla'ere, 1592 peasants (centaurs), $1114.
+------------------------------------------------------------
+  Wages: $13.5 (Max: $485).
+  Wanted: none.
+  For Sale: 63 centaurs [CTAU] at $75, 12 leaders [LEAD] at $756.
+  Entertainment available: $54.
+  Products: 20 livestock [LIVE], 35 wood [WOOD], 12 furs [FUR].
+
+Exits:
+  North : ocean (42,4) in Fu'ihogh Sea.
+  Northeast : ocean (43,5) in Fu'ihogh Sea.
+  Southeast : ocean (43,7) in Fu'ihogh Sea.
+  South : ocean (42,8) in Fu'ihogh Sea.
+  Southwest : forest (41,7) in Pla'ere.
+  Northwest : forest (41,5) in Pla'ere.
+
+- Anuii (2208), Anuii (6), avoiding, behind, centaur [CTAU].
+* Scout#5 (3821), The Disinherited Knights (42), avoiding, behind,
+  revealing faction, receiving no aid, weightless battle spoils,
+  centaur [CTAU], 268 silver [SILV]. Weight: 50. Capacity: 0/70/70/0.
+  Skills: combat [COMB] 1 (30), entertainment [ENTE] 2 (90),
+  observation [OBSE] 1 (30).
+- Tax Collectors 42-6 (8798), Fenris Knights (22), avoiding, behind,
+  22 wood elves [WELF].
+
+
+ocean (48,6) in Fu'ihogh Sea.
+------------------------------------------------------------
+  Wages: $0.
+  Wanted: none.
+  For Sale: none.
+  Products: 24 fish [FISH].
+
+Exits:
+  North : ocean (48,4) in Fu'ihogh Sea.
+  Northeast : ocean (49,5) in Fu'ihogh Sea.
+  Southeast : plain (49,7) in Swou'a.
+  South : plain (48,8) in Swou'a.
+  Southwest : ocean (47,7) in Fu'ihogh Sea.
+  Northwest : ocean (47,5) in Fu'ihogh Sea.
+
+
+
+plain (39,7) in Torburn, 3184 peasants (high elves), $2101.
+------------------------------------------------------------
+  Wages: $13.3 (Max: $420).
+  Wanted: none.
+  For Sale: 127 high elves [HELF] at $42, 25 leaders [LEAD] at $744.
+  Entertainment available: $136.
+  Products: 56 livestock [LIVE], 30 horses [HORS].
+
+Exits:
+  North : forest (39,5) in Pla'ere.
+  Northeast : forest (40,6) in Pla'ere.
+  Southeast : plain (40,8) in Torburn, contains Fenic [village].
+  South : plain (39,9) in Torburn.
+  Southwest : mountain (38,8) in Femont.
+  Northwest : mountain (38,6) in Femont.
+
+* Taxers (2420), on guard, The Disinherited Knights (42), revealing
+  faction, taxing, receiving no aid, sharing, 41 high elves [HELF],
+  7753 silver [SILV]. Weight: 410. Capacity: 0/0/615/0. Skills: combat
+  [COMB] 1 (35).
+* Trainers (3248), The Disinherited Knights (42), avoiding, behind,
+  revealing faction, receiving no aid, 5 high elves [HELF], 60 horses
+  [HORS]. Weight: 3050. Capacity: 0/4200/4275/0. Skills: horse
+  training [HORS] 3 (210).
+* Farmers (6111), The Disinherited Knights (42), avoiding, revealing
+  faction, receiving no aid, sharing, 20 high elves [HELF], 200
+  livestock [LIVE]. Weight: 10200. Capacity: 0/0/10300/0. Skills:
+  farming [FARM] 2 (90).
+* Trainers (10295), The Disinherited Knights (42), avoiding, revealing
+  faction, receiving no aid, sharing, 10 high elves [HELF], 40 horses
+  [HORS]. Weight: 2100. Capacity: 0/2800/2950/0. Skills: horse
+  training [HORS] 2 (90).
+* Lookout (10276), The Disinherited Knights (42), revealing faction,
+  receiving no aid, sharing, leader [LEAD]. Weight: 10. Capacity:
+  0/0/15/0. Skills: observation [OBSE] 3 (185).
+* Wanderer (10296), The Disinherited Knights (42), behind, revealing
+  faction, sharing, centaur [CTAU], sword [SWOR], 6 silver [SILV].
+  Weight: 51. Capacity: 0/70/70/0. Skills: tactics [TACT] 2 (90),
+  observation [OBSE] 2 (90).
+
+
+forest (41,7) in Pla'ere, 2242 peasants (wood elves), $1300.
+------------------------------------------------------------
+  Wages: $12.9 (Max: $531).
+  Wanted: none.
+  For Sale: 89 wood elves [WELF] at $41, 17 leaders [LEAD] at $722.
+  Entertainment available: $76.
+  Products: 21 livestock [LIVE], 22 wood [WOOD], 11 furs [FUR].
+
+Exits:
+  North : forest (41,5) in Pla'ere.
+  Northeast : forest (42,6) in Pla'ere.
+  Southeast : ocean (42,8) in Fu'ihogh Sea.
+  South : ocean (41,9) in Fu'ihogh Sea.
+  Southwest : plain (40,8) in Torburn, contains Fenic [village].
+  Northwest : forest (40,6) in Pla'ere.
+
+* Unit (8450), The Disinherited Knights (42), avoiding, behind,
+  revealing faction, receiving no aid, weightless battle spoils,
+  centaur [CTAU], 241 silver [SILV]. Weight: 50. Capacity: 0/70/70/0.
+  Skills: entertainment [ENTE] 2 (90), observation [OBSE] 1 (60).
+- Tax Collectors 41-7 (2627), Fenris Knights (22), avoiding, behind,
+  27 wood elves [WELF].
+- Lumberjacks (4316), Fenris Knights (22), avoiding, behind, 10 wood
+  elves [WELF], 40 longbows [LBOW].
+
+
+ocean (47,7) in Fu'ihogh Sea.
+------------------------------------------------------------
+  Wages: $0.
+  Wanted: none.
+  For Sale: none.
+  Products: 37 fish [FISH].
+
+Exits:
+  North : ocean (47,5) in Fu'ihogh Sea.
+  Northeast : ocean (48,6) in Fu'ihogh Sea.
+  Southeast : plain (48,8) in Swou'a.
+  South : plain (47,9) in Swou'a.
+  Southwest : ocean (46,8) in Fu'ihogh Sea.
+  Northwest : ocean (46,6) in Fu'ihogh Sea.
+
+
++ Whirlpool [1] : Whirlpool, closed to player units.
+
+
+tundra (34,8) in Bedba, 1078 peasants (ice dwarves), $301.
+------------------------------------------------------------
+  Wages: $11.4 (Max: $147).
+  Wanted: none.
+  For Sale: 43 ice dwarves [IDWA] at $36, 8 leaders [LEAD] at $638.
+  Entertainment available: $17.
+  Products: 11 livestock [LIVE], 14 furs [FUR], 16 herbs [HERB].
+
+Exits:
+  North : mountain (34,6) in Slounspifra.
+  Northeast : tundra (35,7) in Bedba.
+  Southeast : tundra (35,9) in Bedba, contains Botbury [town].
+  South : ocean (34,10) in Etde Strait.
+  Southwest : ocean (33,9) in Wi'il Sea.
+  Northwest : ocean (33,7) in Wi'il Sea.
+
+* Scout (8454), The Disinherited Knights (42), avoiding, behind,
+  revealing faction, weightless battle spoils, gnome [GNOM], 15 silver
+  [SILV]. Weight: 5. Capacity: 0/0/7/0. Skills: combat [COMB] 1 (30).
+
+
+mountain (38,8) in Femont, 1306 peasants (orcs), $391.
+------------------------------------------------------------
+  Wages: $11.5 (Max: $182).
+  Wanted: none.
+  For Sale: 52 orcs [ORC] at $36, 10 leaders [LEAD] at $644.
+  Entertainment available: $23.
+  Products: 32 grain [GRAI], 31 iron [IRON], 18 stone [STON], 9
+    rootstone [ROOT].
+
+Exits:
+  North : mountain (38,6) in Femont.
+  Northeast : plain (39,7) in Torburn.
+  Southeast : plain (39,9) in Torburn.
+  South : ocean (38,10) in Fu'ihogh Sea.
+  Southwest : volcano (37,9) in Femont.
+  Northwest : volcano (37,7) in Femont.
+
+- Tax Collectors 38-8 (8746), Fenris Knights (22), avoiding, behind, 8
+  orcs [ORC].
+* StoneworkersR (7672), The Disinherited Knights (42), avoiding,
+  revealing faction, receiving no aid, weightless battle spoils, hill
+  dwarf [HDWA], 12 rootstone [ROOT], 450 silver [SILV]. Weight: 610.
+  Capacity: 0/0/15/0. Skills: quarrying [QUAR] 3 (265).
+
+
+plain (40,8) in Torburn, contains Fenic [village], 5760 peasants
+  (centaurs), $3456.
+------------------------------------------------------------
+  Wages: $13.0 (Max: $691).
+  Wanted: 134 grain [GRAI] at $18, 132 livestock [LIVE] at $22, 166
+    fish [FISH] at $45, spear [SPEA] at $83.
+  For Sale: 230 centaurs [CTAU] at $72, 46 leaders [LEAD] at $728.
+  Entertainment available: $230.
+  Products: 47 livestock [LIVE], 38 horses [HORS].
+
+Exits:
+  North : forest (40,6) in Pla'ere.
+  Northeast : forest (41,7) in Pla'ere.
+  Southeast : ocean (41,9) in Fu'ihogh Sea.
+  South : ocean (40,10) in Fu'ihogh Sea.
+  Southwest : plain (39,9) in Torburn.
+  Northwest : plain (39,7) in Torburn.
+
+- Anuii (2207), Anuii (6), avoiding, behind, centaur [CTAU].
+- Deliar (663), Fenris Knights (22), avoiding, behind, leader [LEAD].
+- Unit (2714), Fresh Meat (12), avoiding, behind, centaur [CTAU].
+* Entertainers (5482), The Disinherited Knights (42), avoiding,
+  behind, revealing faction, receiving no aid, weightless battle
+  spoils, 2 centaurs [CTAU]. Weight: 100. Capacity: 0/140/140/0.
+  Skills: entertainment [ENTE] 2 (90).
+* Farmers (8453), The Disinherited Knights (42), avoiding, behind,
+  revealing faction, receiving no aid, weightless battle spoils, 25
+  centaurs [CTAU], 47 livestock [LIVE], 9862 silver [SILV]. Weight:
+  3600. Capacity: 0/1750/4100/0. Skills: farming [FARM] 2 (105).
+* City Guard (10702), on guard, The Disinherited Knights (42),
+  revealing faction, taxing, sharing, 55 centaurs [CTAU], 8 high elves
+  [HELF], 20837 silver [SILV]. Weight: 2830. Capacity: 0/3850/3970/0.
+  Skills: combat [COMB] 1 (35).
+* Trainers (5481), The Disinherited Knights (42), avoiding, revealing
+  faction, receiving no aid, 3 high elves [HELF], 120 horses [HORS].
+  Weight: 6030. Capacity: 0/8400/8445/0. Skills: horse training [HORS]
+  5 (450).
+* Trainers (12591), The Disinherited Knights (42), revealing faction,
+  sharing, 10 centaurs [CTAU], 80 horses [HORS]. Weight: 4500.
+  Capacity: 0/6300/6300/0. Skills: horse training [HORS] 2 (110).
+- IHQ Vagabond (10854), Iron Harlequins (76), avoiding, behind, orc
+  [ORC]; Drifter taking to the road by the tales of circus..
+* Customs (10277), The Disinherited Knights (42), revealing faction,
+  sharing, leader [LEAD]. Weight: 10. Capacity: 0/0/15/0. Skills:
+  observation [OBSE] 3 (185).
+* Trainers (11993), The Disinherited Knights (42), avoiding, revealing
+  faction, receiving no aid, 2 high elves [HELF], 10 horses [HORS], 12
+  silver [SILV]. Weight: 520. Capacity: 0/700/730/0. Skills: horse
+  training [HORS] 5 (450).
+* Masters (6112), The Disinherited Knights (42), avoiding, revealing
+  faction, receiving no aid, sharing, 2 leaders [LEAD], 50 horses
+  [HORS]. Weight: 2520. Capacity: 0/3500/3530/0. Skills: horse
+  training [HORS] 5 (450).
+- Explorer (9809), Eternal empire (9), avoiding, behind, wood elf
+  [WELF], giant turtle [TURT].
+- Embassy of the Most Righteous Order to Fenic (11568), The Most
+  Righteous Order (34), avoiding, behind, gnoll [GNOL], sword [SWOR],
+  leather armor [LARM], giant turtle [TURT].
+* Transporter (13306), The Disinherited Knights (42), revealing
+  faction, sharing, centaur [CTAU]. Weight: 50. Capacity: 0/70/70/0.
+  Skills: none.
+
+
+tundra (35,9) in Bedba, contains Botbury [town], 8463 peasants
+  (gnomes), $6939.
+------------------------------------------------------------
+  Wages: $14.1 (Max: $1387).
+  Wanted: 188 grain [GRAI] at $20, 182 livestock [LIVE] at $24, 130
+    fish [FISH] at $50, 26 spinning wheels [SPIN] at $119, 24 longbows
+    [LBOW] at $116, 15 crossbows [XBOW] at $104, 24 battle axes [BAXE]
+    at $185, 35 jewelry [JEWE] at $740, 25 cotton [COTT] at $237.
+  For Sale: 26 truffles [TRUF] at $124, 16 silk [SILK] at $85, 338
+    gnomes [GNOM] at $33, 67 leaders [LEAD] at $789.
+  Entertainment available: $431.
+  Products: 16 grain [GRAI], 19 furs [FUR], 13 herbs [HERB], 9
+    mushrooms [MUSH], 7 iron [IRON].
+
+Exits:
+  North : tundra (35,7) in Bedba.
+  Northeast : tundra (36,8) in Bedba.
+  Southeast : tundra (36,10) in Bedba.
+  South : tundra (35,11) in Bedba.
+  Southwest : ocean (34,10) in Etde Strait.
+  Northwest : tundra (34,8) in Bedba.
+
+* Scout (1170), The Disinherited Knights (42), behind, revealing
+  faction, sharing, orc [ORC], gnome [GNOM], sword [SWOR]. Weight: 16.
+  Capacity: 0/0/22/0. Skills: combat [COMB] 0 (25), entertainment
+  [ENTE] 2 (90).
+- scout (2210), Anuii (6), avoiding, behind, centaur [CTAU].
+* Entertainers (3831), The Disinherited Knights (42), behind,
+  revealing faction, sharing, 2 gnomes [GNOM], 2 swords [SWOR].
+  Weight: 12. Capacity: 0/0/14/0. Skills: entertainment [ENTE] 2
+  (137).
+- Greeter (4538), Podeans (61), avoiding, behind, gnome [GNOM].
+* Entertainers (6588), The Disinherited Knights (42), behind,
+  revealing faction, sharing, 5 gnomes [GNOM], 5 swords [SWOR].
+  Weight: 30. Capacity: 0/0/35/0. Skills: entertainment [ENTE] 2
+  (120).
+- Acolyte of Nergal (7526), Flannae (24), avoiding, gnome [GNOM].
+* City Guard (7676), on guard, The Disinherited Knights (42),
+  revealing faction, taxing, riding battle spoils, 133 gnomes [GNOM],
+  7 swords [SWOR], 3088 silver [SILV]. Weight: 672. Capacity:
+  0/0/931/0. Skills: combat [COMB] 1 (31).
+- IHQ Vagabond (9100), Iron Harlequins (76), avoiding, behind, gnome
+  [GNOM]; Drifter taking to the road by the tales of circus.
+* Manboy (10703), The Disinherited Knights (42), behind, revealing
+  faction, riding battle spoils, leader [LEAD]. Weight: 10. Capacity:
+  0/0/15/0. Skills: observation [OBSE] 4 (335).
+* Warmachine! (10704), The Disinherited Knights (42), behind,
+  revealing faction, riding battle spoils, leader [LEAD]. Weight: 10.
+  Capacity: 0/0/15/0. Skills: tactics [TACT] 4 (330).
+* Fighters (10705), The Disinherited Knights (42), behind, revealing
+  faction, riding battle spoils, 45 ice dwarves [IDWA]. Weight: 450.
+  Capacity: 0/0/675/0. Skills: combat [COMB] 4 (300).
+* Miners (11127), The Disinherited Knights (42), revealing faction,
+  riding battle spoils, 4 gnomes [GNOM], 49 iron [IRON]. Weight: 265.
+  Capacity: 0/0/28/0. Skills: mining [MINI] 2 (90).
+* Druids (11128), The Disinherited Knights (42), revealing faction,
+  riding battle spoils, 10 gnomes [GNOM]. Weight: 50. Capacity:
+  0/0/70/0. Skills: herb lore [HERB] 4 (300).
+* Healers (11129), The Disinherited Knights (42), revealing faction,
+  riding battle spoils, 10 gnomes [GNOM]. Weight: 50. Capacity:
+  0/0/70/0. Skills: healing [HEAL] 4 (300).
+* Fighters (11130), The Disinherited Knights (42), behind, revealing
+  faction, riding battle spoils, 45 ice dwarves [IDWA]. Weight: 450.
+  Capacity: 0/0/675/0. Skills: combat [COMB] 3 (270).
+* Fighters (11620), The Disinherited Knights (42), behind, revealing
+  faction, riding battle spoils, 42 ice dwarves [IDWA]. Weight: 420.
+  Capacity: 0/0/630/0. Skills: combat [COMB] 3 (240).
+* Fighters (12278), The Disinherited Knights (42), behind, revealing
+  faction, riding battle spoils, 33 ice dwarves [IDWA]. Weight: 330.
+  Capacity: 0/0/495/0. Skills: combat [COMB] 3 (180).
+* Fighters (12592), The Disinherited Knights (42), behind, revealing
+  faction, riding battle spoils, 34 ice dwarves [IDWA]. Weight: 340.
+  Capacity: 0/0/510/0. Skills: combat [COMB] 2 (150).
+- scout57 (9888), Under Pressure (57), avoiding, behind, lizardman
+  [LIZA]; Greetings from Under Pressure!.
+* Fighters (10280), The Disinherited Knights (42), behind, revealing
+  faction, riding battle spoils, 29 ice dwarves [IDWA]. Weight: 290.
+  Capacity: 0/0/435/0. Skills: combat [COMB] 2 (90).
+* Smiths (12256), The Disinherited Knights (42), revealing faction,
+  riding battle spoils, 3 gnomes [GNOM]. Weight: 15. Capacity:
+  0/0/21/0. Skills: weaponsmith [WEAP] 2 (90).
+* Unit (12259), The Disinherited Knights (42), revealing faction,
+  riding battle spoils, 26 ice dwarves [IDWA]. Weight: 260. Capacity:
+  0/0/390/0. Skills: combat [COMB] 1 (60).
+* Scout (8455), The Disinherited Knights (42), avoiding, behind,
+  revealing faction, weightless battle spoils, gnome [GNOM], 1283
+  silver [SILV]. Weight: 5. Capacity: 0/0/7/0. Skills: combat [COMB] 1
+  (30).
+* Fighters (13307), The Disinherited Knights (42), revealing faction,
+  riding battle spoils, 45 ice dwarves [IDWA]. Weight: 450. Capacity:
+  0/0/675/0. Skills: combat [COMB] 1 (60).
+* Unit (10278), The Disinherited Knights (42), revealing faction,
+  riding battle spoils, gnome [GNOM], 2626 silver [SILV]. Weight: 5.
+  Capacity: 0/0/7/0. Skills: none.
+- Embassy of the Most Righteous Order 34 to Botbury (8002), The Most
+  Righteous Order (34), avoiding, behind, lizardman [LIZA], leather
+  armor [LARM], sword [SWOR].
+- IHQ Peasants (4275), Iron Harlequins (76), avoiding, behind, 3
+  lizardmen [LIZA], 3 nets [NET], 10 fish [FISH].
+
+
+tundra (35,11) in Bedba, 1136 peasants (ice dwarves), $568.
+------------------------------------------------------------
+  Wages: $12.5 (Max: $273).
+  Wanted: none.
+  For Sale: 45 ice dwarves [IDWA] at $40, 9 leaders [LEAD] at $700.
+  Entertainment available: $27.
+  Products: 11 livestock [LIVE], 12 furs [FUR], 14 herbs [HERB].
+
+Exits:
+  North : tundra (35,9) in Bedba, contains Botbury [town].
+  Northeast : tundra (36,10) in Bedba.
+  Southeast : ocean (36,12) in Fu'ihogh Sea.
+  South : ocean (35,13) in Fu'ihogh Sea.
+  Southwest : ocean (34,12) in Fu'ihogh Sea.
+  Northwest : ocean (34,10) in Etde Strait.
+
+* Trader (9846), The Disinherited Knights (42), behind, revealing
+  faction, riding battle spoils, gnome [GNOM], 6 silver [SILV].
+  Weight: 5. Capacity: 0/0/7/0. Skills: observation [OBSE] 2 (90).
+- Fan (6406), Fanhunters (16), avoiding, behind, hill dwarf [HDWA],
+  giant turtle [TURT].
+
+
+
+
+
+Orders Template (Long Format):
+
+#atlantis 42 "<password>"
+
+;*** forest (36,0) in Reprau ***
+
+unit 8442
+;scout (8442), avoiding, behind, revealing faction, receiving no aid,
+;  weightless battle spoils, human [HUMN], 42 silver [SILV]. Weight:
+;  10. Capacity: 0/0/15/0. Skills: none.
+@WORK
+
+unit 13797
+;WoodsmenY (13797), avoiding, behind, revealing faction, receiving no
+;  aid, 2 wood elves [WELF], 7 yew [YEW], 830 silver [SILV]. Weight:
+;  55. Capacity: 0/0/30/0. Skills: lumberjack [LUMB] 5 (450).
+@PRODUCE YEW
+
+;*** forest (38,0) in Pla'ere ***
+
+unit 8047
+;Taxers (8047), on guard, behind, revealing faction, receiving no aid,
+;  weightless battle spoils, 15 wood elves [WELF], 641 silver [SILV].
+;  Weight: 150. Capacity: 0/0/225/0. Skills: combat [COMB] 1 (35).
+@GIVE 12159 50 SILV
+
+unit 9431
+;Woodsmen (9431), avoiding, behind, revealing faction, receiving no
+;  aid, weightless battle spoils, 10 high elves [HELF], 20 wood [WOOD].
+;  Weight: 200. Capacity: 0/0/150/0. Skills: lumberjack [LUMB] 2 (90).
+@PRODUCE WOOD
+@GIVE 11933 ALL WOOD
+
+unit 11933
+;Smiths (11933), behind, revealing faction, receiving no aid,
+;  weightless battle spoils, 10 high elves [HELF], 100 longbows [LBOW],
+;  100 wood [WOOD]. Weight: 700. Capacity: 0/0/150/0. Skills:
+;  weaponsmith [WEAP] 2 (90).
+@PRODUCE LBOW
+
+unit 12159
+;Lookout (12159), behind, revealing faction, receiving no aid,
+;  weightless battle spoils, leader [LEAD]. Weight: 10. Capacity:
+;  0/0/15/0. Skills: observation [OBSE] 2 (150).
+@STUDY OBSE
+
+unit 13300
+;WoodsmenY (13300), avoiding, behind, revealing faction, receiving no
+;  aid, 2 wood elves [WELF], 23 yew [YEW], 490 silver [SILV]. Weight:
+;  135. Capacity: 0/0/30/0. Skills: lumberjack [LUMB] 5 (450).
+@PRODUCE YEW
+
+;*** tundra (40,0) in Huykash, contains Fantan [town] ***
+
+unit 1512
+;Scout (1512), avoiding, behind, revealing faction, receiving no aid,
+;  weightless battle spoils, hill dwarf [HDWA], 2 gnomes [GNOM], 230
+;  silver [SILV]. Weight: 20. Capacity: 0/0/29/0. Skills: combat [COMB]
+;  0 (10), entertainment [ENTE] 2 (90).
+@ENTERTAIN
+
+unit 5476
+;Unit (5476), avoiding, behind, revealing faction, receiving no aid,
+;  weightless battle spoils, 3 gnomes [GNOM], 231 silver [SILV].
+;  Weight: 15. Capacity: 0/0/21/0. Skills: entertainment [ENTE] 2
+;  (150).
+@ENTERTAIN
+
+unit 7223
+;Unit (7223), avoiding, behind, revealing faction, receiving no aid,
+;  weightless battle spoils, 8 gnomes [GNOM], 66 silver [SILV]. Weight:
+;  40. Capacity: 0/0/56/0. Skills: combat [COMB] 2 (90), crossbow
+;  [XBOW] 3 (270).
+
+unit 4131
+;Seal (4131), revealing faction, riding battle spoils, 15 orcs [ORC],
+;  17 mithril swords [MSWO], 8 swords [SWOR], 2 wooden shields [WSHD],
+;  17 horses [HORS], 10 fish [FISH], 126 silver [SILV]. Weight: 1037.
+;  Capacity: 0/1190/1415/0. Skills: combat [COMB] 4 (445), riding
+;  [RIDI] 2 (90).
+
+;*** forest (35,1) in Reprau ***
+
+unit 8909
+;Taxers (8909), avoiding, revealing faction, taxing, receiving no aid,
+;  sharing, 5 orcs [ORC], 12 wood elves [WELF], 2802 silver [SILV].
+;  Weight: 170. Capacity: 0/0/255/0. Skills: combat [COMB] 1 (30).
+@GIVE 12160 50 SILV
+
+unit 11991
+;Lumberjacks (11991), avoiding, behind, revealing faction, receiving no
+;  aid, sharing, 10 wood elves [WELF], 20 wood [WOOD]. Weight: 200.
+;  Capacity: 0/0/150/0. Skills: lumberjack [LUMB] 2 (120).
+@PRODUCE WOOD
+
+unit 11947
+;Smiths (11947), avoiding, behind, revealing faction, receiving no aid,
+;  sharing, 10 wood elves [WELF], 100 longbows [LBOW]. Weight: 200.
+;  Capacity: 0/0/150/0. Skills: weaponsmith [WEAP] 2 (90).
+@PRODUCE LBOW
+
+unit 12160
+;Unit (12160), avoiding, behind, revealing faction, receiving no aid,
+;  sharing, leader [LEAD]. Weight: 10. Capacity: 0/0/15/0. Skills:
+;  observation [OBSE] 2 (150).
+@STUDY OBSE
+
+unit 7667
+;WoodsmenY (7667), avoiding, behind, revealing faction, receiving no
+;  aid, 3 wood elves [WELF]. Weight: 30. Capacity: 0/0/45/0. Skills:
+;  lumberjack [LUMB] 5 (450).
+
+;*** forest (37,1) in Reprau ***
+
+unit 11615
+;Buyer (11615), avoiding, behind, revealing faction, receiving no aid,
+;  weightless battle spoils, high elf [HELF], 323 silver [SILV].
+;  Weight: 10. Capacity: 0/0/15/0. Skills: entertainment [ENTE] 1 (30).
+
+unit 10116
+;Taxers (10116), avoiding, behind, revealing faction, taxing, receiving
+;  no aid, weightless battle spoils, 19 high elves [HELF], 3635 silver
+;  [SILV]. Weight: 190. Capacity: 0/0/285/0. Skills: combat [COMB] 1
+;  (30).
+
+;*** forest (39,1) in Pla'ere ***
+
+unit 3243
+;Taxers (3243), avoiding, revealing faction, taxing, receiving no aid,
+;  sharing, weightless battle spoils, 29 wood elves [WELF], 10826
+;  silver [SILV]. Weight: 290. Capacity: 0/0/435/0. Skills: combat
+;  [COMB] 1 (30).
+@GIVE 12183 50 SILV
+
+unit 10292
+;WoodsmenI (10292), avoiding, behind, revealing faction, receiving no
+;  aid, 2 wood elves [WELF], 42 ironwood [IRWD]. Weight: 440. Capacity:
+;  0/0/30/0. Skills: lumberjack [LUMB] 3 (245).
+@PRODUCE IRWD
+
+unit 12183
+;Unit (12183), avoiding, revealing faction, receiving no aid, sharing,
+;  weightless battle spoils, leader [LEAD]. Weight: 10. Capacity:
+;  0/0/15/0. Skills: observation [OBSE] 2 (150).
+@STUDY OBSE
+
+unit 11124
+;Transporter (11124), avoiding, revealing faction, receiving no aid,
+;  sharing, high elf [HELF], 26 horses [HORS], 26 wagons [WAGO], 24 yew
+;  [YEW], 98 silver [SILV]. Weight: 2730. Capacity: 0/1820/8335/0.
+;  Skills: none.
+MOVE SW SW SW
+
+;*** tundra (43,1) in Huykash, contains Foderborough [village] ***
+
+unit 1167
+;Scout (1167), avoiding, behind, revealing faction, receiving no aid,
+;  weightless battle spoils, orc [ORC]. Weight: 10. Capacity: 0/0/15/0.
+;  Skills: combat [COMB] 1 (30), entertainment [ENTE] 2 (90).
+@ENTERTAIN
+
+unit 5478
+;Unit (5478), avoiding, behind, revealing faction, receiving no aid,
+;  weightless battle spoils, 2 gnolls [GNOL], 21 silver [SILV]. Weight:
+;  20. Capacity: 0/0/30/0. Skills: entertainment [ENTE] 2 (90).
+@ENTERTAIN
+
+unit 7226
+;Unit (7226), avoiding, behind, revealing faction, receiving no aid,
+;  weightless battle spoils, 4 gnolls [GNOL]. Weight: 40. Capacity:
+;  0/0/60/0. Skills: combat [COMB] 4 (300).
+@STUDY COMB
+
+;*** mountain (36,2) in Slounspifra ***
+
+unit 3825
+;Farmers (3825), avoiding, behind, revealing faction, 9 orcs [ORC], 18
+;  livestock [LIVE]. Weight: 990. Capacity: 0/0/1035/0. Skills: farming
+;  [FARM] 2 (90).
+PRODUCE LIVE
+@TURN
+  PRODUCE LIVE
+  GIVE 1168 ALL LIVE
+ENDTURN
+@TURN
+  PRODUCE LIVE
+ENDTURN
+
+unit 3489
+;Herald (3489), avoiding, behind, revealing faction, orc [ORC]. Weight:
+;  10. Capacity: 0/0/15/0. Skills: observation [OBSE] 2 (90), stealth
+;  [STEA] 1 (30), entertainment [ENTE] 2 (90).
+@ENTERTAIN
+@TURN
+  GIVE 1168 ALL SILVER
+ENDTURN
+@TURN
+ENDTURN
+
+unit 7227
+;MinersM (7227), avoiding, behind, revealing faction, sharing,
+;  weightless battle spoils, 2 hill dwarves [HDWA], 5 mithril [MITH].
+;  Weight: 70. Capacity: 0/0/30/0. Skills: mining [MINI] 3 (280).
+@PRODUCE MITH
+@GIVE 3828 ALL MITH
+
+unit 7673
+;StoneworkersR (7673), avoiding, behind, revealing faction, weightless
+;  battle spoils, 5 hill dwarves [HDWA], 27 rootstone [ROOT], 10 stone
+;  [STON]. Weight: 1900. Capacity: 0/0/75/0. Skills: quarrying [QUAR] 2
+;  (123).
+@PRODUCE STON
+@GIVE 7675 ALL STON
+
+unit 9844
+;Taxers (9844), avoiding, behind, revealing faction, taxing, sharing,
+;  12 orcs [ORC], 11 swords [SWOR], 5 camels [CAME], 3 giant turtles
+;  [TURT], 4 fish [FISH], 2 ironwood [IRWD], 4 floater hides [FLOA],
+;  981 silver [SILV]. Weight: 559. Capacity: 0/560/740/210. Skills:
+;  combat [COMB] 1 (32).
+
+unit 3828
+;AmorersM (3828), avoiding, revealing faction, receiving no aid,
+;  weightless battle spoils, hill dwarf [HDWA], 50 mithril armor
+;  [MARM], 5 mithril [MITH], 192 iron [IRON]. Weight: 1070. Capacity:
+;  0/0/15/0. Skills: armorer [ARMO] 5 (450).
+@PRODUCE MARM
+
+unit 7675
+;Builders (7675), avoiding, behind, revealing faction, 6 orcs [ORC].
+;  Weight: 60. Capacity: 0/0/90/0. Skills: building [BUIL] 3 (240),
+;  quarrying [QUAR] 1 (35).
+@BUILD
+
+;*** forest (38,2) in Reprau ***
+
+unit 9841
+;Lumberjacks (9841), avoiding, behind, revealing faction, receiving no
+;  aid, weightless battle spoils, 3 high elves [HELF], 30 wood [WOOD].
+;  Weight: 180. Capacity: 0/0/45/0. Skills: combat [COMB] 1 (35),
+;  lumberjack [LUMB] 2 (90), weaponsmith [WEAP] 1 (30).
+@study weap
+
+unit 11123
+;Taxers (11123), avoiding, revealing faction, receiving no aid,
+;  sharing, weightless battle spoils, 18 wood elves [WELF], 2043 silver
+;  [SILV]. Weight: 180. Capacity: 0/0/270/0. Skills: combat [COMB] 1
+;  (30).
+@GIVE 10180 50 SILV
+@GIVE 9841 30 SILV
+
+unit 10180
+;Lookout (10180), avoiding, revealing faction, receiving no aid,
+;  sharing, weightless battle spoils, leader [LEAD]. Weight: 10.
+;  Capacity: 0/0/15/0. Skills: observation [OBSE] 3 (180).
+@STUDY OBSE
+
+unit 8452
+;Second Coming (8452), revealing faction, receiving no aid, sharing,
+;  riding battle spoils, 20 high elves [HELF], 20 mithril swords
+;  [MSWO], 20 mithril armor [MARM], mithril shield [MSHD], 20 horses
+;  [HORS], 412 silver [SILV]. Weight: 1241. Capacity: 0/1400/1700/0.
+;  Skills: combat [COMB] 2 (90), riding [RIDI] 2 (90), longbow [LBOW] 1
+;  (60).
+
+unit 13799
+;Unit (13799), behind, revealing faction, receiving no aid, weightless
+;  battle spoils, high elf [HELF], yew [YEW]. Weight: 15. Capacity:
+;  0/0/15/0. Skills: none.
+MOVE SW SW
+
+;*** forest (40,2) in Pla'ere ***
+
+unit 5767
+;Taxers (5767), on guard, behind, revealing faction, taxing, receiving
+;  no aid, weightless battle spoils, centaur [CTAU], 7 high elves
+;  [HELF], 12 wood elves [WELF], 7364 silver [SILV]. Weight: 240.
+;  Capacity: 0/70/355/0. Skills: combat [COMB] 1 (30).
+@GIVE 8443 100 SILV
+@GIVE 9433 100 SILV
+@GIVE 12195 50 SILV
+
+unit 9433
+;Carpenters (9433), behind, revealing faction, receiving no aid,
+;  weightless battle spoils, 10 high elves [HELF], 70 wagons [WAGO].
+;  Weight: 3600. Capacity: 0/0/150/0. Skills: carpenter [CARP] 2 (90).
+@PRODUCE WAGO
+
+unit 10293
+;Woodsmen (10293), avoiding, revealing faction, receiving no aid,
+;  sharing, weightless battle spoils, 6 centaurs [CTAU], 12 wood
+;  [WOOD]. Weight: 360. Capacity: 0/420/420/0. Skills: lumberjack
+;  [LUMB] 2 (155).
+@GIVE 9433 ALL WOOD
+@PRODUCE WOOD
+
+unit 6109
+;WoodmenY (6109), avoiding, behind, revealing faction, receiving no
+;  aid, weightless battle spoils, 2 centaurs [CTAU], 2 horses [HORS], 6
+;  yew [YEW]. Weight: 230. Capacity: 0/280/280/0. Skills: lumberjack
+;  [LUMB] 5 (450).
+@PRODUCE YEW
+
+unit 12195
+;Lookout (12195), behind, revealing faction, receiving no aid,
+;  weightless battle spoils, leader [LEAD]. Weight: 10. Capacity:
+;  0/0/15/0. Skills: observation [OBSE] 2 (150).
+@STUDY OBSE
+
+;*** mountain (35,3) in Slounspifra ***
+
+unit 1514
+;Taxers (1514), avoiding, behind, revealing faction, taxing, sharing, 9
+;  orcs [ORC], 30 swords [SWOR], 859 silver [SILV]. Weight: 120.
+;  Capacity: 0/0/135/0. Skills: combat [COMB] 1 (30).
+
+unit 1165
+;Farmers (1165), avoiding, behind, revealing faction, 9 orcs [ORC], 18
+;  livestock [LIVE]. Weight: 990. Capacity: 0/0/1035/0. Skills: farming
+;  [FARM] 2 (90).
+PRODUCE LIVE
+@TURN
+  PRODUCE LIVE
+  GIVE 2418 ALL LIVE
+ENDTURN
+@TURN
+  PRODUCE LIVE
+ENDTURN
+
+unit 3490
+;Herald (3490), avoiding, behind, revealing faction, orc [ORC], 175
+;  silver [SILV]. Weight: 10. Capacity: 0/0/15/0. Skills: observation
+;  [OBSE] 2 (90), stealth [STEA] 1 (30), entertainment [ENTE] 2 (90).
+@ENTERTAIN
+@TURN
+ENDTURN
+@TURN
+  GIVE 2418 ALL SILVER
+ENDTURN
+
+unit 10698
+;Smiths (10698), avoiding, behind, revealing faction, sharing, 5 orcs
+;  [ORC], 40 swords [SWOR], 122 iron [IRON]. Weight: 700. Capacity:
+;  0/0/75/0. Skills: weaponsmith [WEAP] 2 (90).
+@PRODUCE SWOR
+
+;*** mountain (37,3) in Femont ***
+
+unit 10699
+;Taxers (10699), avoiding, behind, revealing faction, taxing, sharing,
+;  13 orcs [ORC], magic crossbow [MXBO], 6 camels [CAME], 5 giant
+;  turtles [TURT], 5 fish [FISH], 2 ironwood [IRWD], 2 floater hides
+;  [FLOA], 18 stone [STON], 433 silver [SILV]. Weight: 1608. Capacity:
+;  0/770/965/350. Skills: combat [COMB] 1 (30).
+@GIVE 12054 95 SILV
+
+unit 7234
+;Strike Force (7234), revealing faction, sharing, riding battle spoils,
+;  20 high elves [HELF], 20 mithril swords [MSWO], 20 mithril armor
+;  [MARM], 2 mithril shields [MSHD], 20 horses [HORS]. Weight: 1242.
+;  Capacity: 0/1400/1700/0. Skills: combat [COMB] 2 (90), riding [RIDI]
+;  2 (90), longbow [LBOW] 2 (150).
+@STUDY LBOW
+
+unit 11960
+;Unit (11960), behind, revealing faction, sharing, hill dwarf [HDWA],
+;  giant turtle [TURT]. Weight: 60. Capacity: 0/70/85/70. Skills:
+;  tactics [TACT] 2 (90), stealth [STEA] 1 (30).
+@study stea
+
+unit 5104
+;MinersA (5104), avoiding, behind, revealing faction, sharing,
+;  weightless battle spoils, 2 hill dwarves [HDWA], 6 admantium [ADMT].
+;  Weight: 80. Capacity: 0/0/30/0. Skills: mining [MINI] 5 (450).
+@PRODUCE ADMT
+
+unit 13803
+;Unit (13803), avoiding, behind, revealing faction, sharing, weightless
+;  battle spoils, 2 hill dwarves [HDWA]. Weight: 20. Capacity:
+;  0/0/30/0. Skills: mining [MINI] 5 (450).
+MOVE S
+
+unit 8910
+;Lone Rider (8910), avoiding, behind, revealing faction, receiving no
+;  aid, sharing, orc [ORC], cornucopia [CORN], 48 horses [HORS], 48
+;  wagons [WAGO], 36 ironwood [IRWD]. Weight: 5170. Capacity:
+;  0/3360/15375/0. Skills: none.
+MOVE NE NE SE
+
+unit 13609
+;WoodsmenY (13609), avoiding, behind, revealing faction, receiving no
+;  aid, 3 wood elves [WELF], 349 silver [SILV]. Weight: 30. Capacity:
+;  0/0/45/0. Skills: lumberjack [LUMB] 5 (450).
+MOVE SE SE
+
+unit 12054
+;Builders (12054), avoiding, behind, revealing faction, sharing, 10
+;  humans [HUMN], 34 stone [STON]. Weight: 1800. Capacity: 0/0/150/0.
+;  Skills: building [BUIL] 3 (185).
+
+;*** forest (49,3) in Phallpec, contains Baibank [city] ***
+
+unit 11125
+;Sailors (11125), behind, revealing faction, sharing, centaur [CTAU],
+;  923 silver [SILV]. Weight: 50. Capacity: 0/70/70/0. Skills: sailing
+;  [SAIL] 2 (90), combat [COMB] 2 (90), stealth [STEA] 1 (30).
+SAIL N NE N NE
+
+unit 12590
+;Sailors (12590), revealing faction, sharing, centaur [CTAU]. Weight:
+;  50. Capacity: 0/70/70/0. Skills: sailing [SAIL] 2 (90).
+@SAIL
+
+unit 3247
+;Scout#5 (3247), avoiding, behind, receiving no aid, high elf [HELF],
+;  15 silver [SILV]. Weight: 10. Capacity: 0/0/15/0. Skills:
+;  observation [OBSE] 2 (90), stealth [STEA] 2 (90), entertainment
+;  [ENTE] 1 (30).
+
+;*** mountain (36,4) in Slounspifra, contains Aportheo [city] ***
+
+unit 1162
+;Robin Hood (1162), avoiding, behind, leader [LEAD]. Weight: 10.
+;  Capacity: 0/0/15/0. Skills: stealth [STEA] 5 (450), observation
+;  [OBSE] 1 (30), combat [COMB] 5 (450), riding [RIDI] 4 (390).
+@STUDY RIDI
+
+unit 1163
+;Rebecca (1163), avoiding, behind, leader [LEAD]. Weight: 10. Capacity:
+;  0/0/15/0. Skills: observation [OBSE] 5 (450), stealth [STEA] 3
+;  (270), tactics [TACT] 5 (450).
+@STUDY STEA
+
+unit 1164
+;Entertainers (1164), avoiding, behind, revealing faction, sharing, 18
+;  orcs [ORC]. Weight: 180. Capacity: 0/0/270/0. Skills: entertainment
+;  [ENTE] 2 (90).
+@ENTERTAIN
+
+unit 1795
+;Miners (1795), avoiding, behind, revealing faction, 8 orcs [ORC], 8
+;  picks [PICK], 24 iron [IRON]. Weight: 208. Capacity: 0/0/120/0.
+;  Skills: mining [MINI] 2 (175).
+@GIVE 2964 ALL IRON
+@PRODUCE IRON
+
+unit 2693
+;Stoneworkers (2693), avoiding, behind, revealing faction, 10 orcs
+;  [ORC], 16 stone [STON]. Weight: 900. Capacity: 0/0/150/0. Skills:
+;  quarrying [QUAR] 2 (90).
+@PRODUCE STON
+@GIVE 12241 ALL STON
+
+unit 2964
+;Smiths (2964), avoiding, behind, revealing faction, 14 orcs [ORC], 11
+;  hammers [HAMM], 24 swords [SWOR]. Weight: 175. Capacity: 0/0/210/0.
+;  Skills: weaponsmith [WEAP] 2 (90).
+@PRODUCE SWOR
+@GIVE 683 ALL SWOR
+
+unit 3493
+;Farmers (3493), avoiding, behind, revealing faction, sharing, 17 orcs
+;  [ORC], 298 livestock [LIVE], 889 silver [SILV]. Weight: 15070.
+;  Capacity: 0/0/15155/0. Skills: farming [FARM] 2 (90).
+@PRODUCE LIVE
+@SELL 114 LIVE
+
+unit 3824
+;Teachers (3824), avoiding, behind, revealing faction, 3 leaders
+;  [LEAD]. Weight: 30. Capacity: 0/0/45/0. Skills: combat [COMB] 4
+;  (410), riding [RIDI] 5 (450).
+@STUDY COMB
+
+unit 3826
+;MinersM (3826), avoiding, behind, revealing faction, 2 orcs [ORC], 2
+;  picks [PICK], 9 mithril [MITH]. Weight: 112. Capacity: 0/0/30/0.
+;  Skills: mining [MINI] 4 (335).
+@PRODUCE MITH
+@GIVE 3818 ALL MITH
+
+unit 3818
+;SmithsM (3818), avoiding, behind, revealing faction, receiving no aid,
+;  weightless battle spoils, 3 hill dwarves [HDWA], 3 hammers [HAMM],
+;  12 mithril swords [MSWO]. Weight: 45. Capacity: 0/0/45/0. Skills:
+;  weaponsmith [WEAP] 4 (315).
+@PRODUCE MSWO
+@GIVE 683 ALL MSWO
+
+unit 6583
+;Teachers (6583), avoiding, behind, revealing faction, sharing, 10
+;  leaders [LEAD]. Weight: 100. Capacity: 0/0/150/0. Skills: combat
+;  [COMB] 5 (450).
+
+unit 7233
+;Cedric (7233), avoiding, behind, revealing faction, sharing, leader
+;  [LEAD], sword [SWOR], camel [CAME], giant turtle [TURT], floater
+;  hide [FLOA]. Weight: 112. Capacity: 0/140/155/70. Skills: tactics
+;  [TACT] 5 (450), observation [OBSE] 2 (120).
+@STUDY OBSE
+
+unit 7671
+;MinersA (7671), avoiding, behind, revealing faction, sharing, 2 orcs
+;  [ORC], 6 admantium [ADMT]. Weight: 80. Capacity: 0/0/30/0. Skills:
+;  mining [MINI] 5 (450).
+@PRODUCE ADMT
+@give 13610 all admt
+
+unit 8446
+;Hangaround (8446), avoiding, behind, revealing faction, sharing,
+;  leader [LEAD]. Weight: 10. Capacity: 0/0/15/0. Skills: crossbow
+;  [XBOW] 5 (450), manipulation [MANI] 1 (30).
+@STUDY mani
+
+unit 8447
+;Teacher (8447), avoiding, behind, revealing faction, sharing, leader
+;  [LEAD]. Weight: 10. Capacity: 0/0/15/0. Skills: longbow [LBOW] 5
+;  (450).
+
+unit 8048
+;Seal (8048), revealing faction, sharing, riding battle spoils, 50 orcs
+;  [ORC], 6 flaming swords [FSWO], 42 mithril armor [MARM], 46 mithril
+;  swords [MSWO], 32 horses [HORS], 450 silver [SILV]. Weight: 2194.
+;  Capacity: 0/2240/2990/0. Skills: combat [COMB] 5 (450), riding
+;  [RIDI] 2 (90).
+@WORK
+
+unit 12222
+;Fighters (12222), avoiding, behind, revealing faction, receiving no
+;  aid, sharing, 50 orcs [ORC]. Weight: 500. Capacity: 0/0/750/0.
+;  Skills: combat [COMB] 3 (270).
+@STUDY COMB
+
+unit 13303
+;Taxers (13303), on guard, revealing faction, taxing, sharing, riding
+;  battle spoils, 430 orcs [ORC], 544 swords [SWOR], 14733 silver
+;  [SILV]. Weight: 4844. Capacity: 0/0/6450/0. Skills: none.
+
+unit 13610
+;ArmorerA (13610), avoiding, revealing faction, receiving no aid,
+;  weightless battle spoils, 2 hill dwarves [HDWA], 4 admantium plate
+;  mails [AARM], 6 admantium [ADMT]. Weight: 84. Capacity: 0/0/30/0.
+;  Skills: armorer [ARMO] 5 (450).
+@PRODUCE AARM
+
+unit 13805
+;Unit (13805), revealing faction, sharing, riding battle spoils, 5
+;  leaders [LEAD]. Weight: 50. Capacity: 0/0/75/0. Skills: longbow
+;  [LBOW] 1 (60).
+@study lbow
+
+unit 1168
+;Transporter (1168), avoiding, behind, revealing faction, receiving no
+;  aid, weightless battle spoils, orc [ORC], 36 livestock [LIVE].
+;  Weight: 1810. Capacity: 0/0/1815/0. Skills: combat [COMB] 1 (30).
+GIVE 3493 ALL LIVE
+MOVE N
+@TURN
+  MOVE S
+ENDTURN
+@TURN
+  GIVE 3493 ALL LIVE
+  MOVE N
+ENDTURN
+
+unit 2418
+;Transporter (2418), avoiding, behind, revealing faction, receiving no
+;  aid, weightless battle spoils, human [HUMN], 36 livestock [LIVE].
+;  Weight: 1810. Capacity: 0/0/1815/0. Skills: none.
+GIVE 3493 ALL LIVE
+MOVE NW
+@TURN
+  MOVE SE
+ENDTURN
+@TURN
+  GIVE 3493 ALL LIVE
+  MOVE NW
+ENDTURN
+
+unit 2417
+;Transporter (2417), avoiding, behind, revealing faction, receiving no
+;  aid, weightless battle spoils, orc [ORC]. Weight: 10. Capacity:
+;  0/0/15/0. Skills: none.
+MOVE NE
+@TURN
+  MOVE SW
+ENDTURN
+@TURN
+  MOVE NE
+ENDTURN
+
+unit 5480
+;Transporter (5480), avoiding, behind, revealing faction, sharing,
+;  human [HUMN], 80 livestock [LIVE]. Weight: 4010. Capacity:
+;  0/0/4015/0. Skills: none.
+GIVE 3493 ALL LIVE
+MOVE SW
+@TURN
+  MOVE NE
+ENDTURN
+@TURN
+  GIVE 3493 ALL LIVE
+  MOVE SW
+ENDTURN
+
+unit 683
+;Ivanhoe, son of Cedric (683), avoiding, behind, revealing faction,
+;  sharing, leader [LEAD], 97 mithril swords [MSWO], 48 swords [SWOR],
+;  flaming sword [FSWO], 154 horses [HORS], 35 ironwood [IRWD], 6 yew
+;  [YEW], 44 silver [SILV]. Weight: 8236. Capacity: 0/10780/10795/0.
+;  Skills: observation [OBSE] 1 (30), force [FORC] 3 (195), pattern
+;  [PATT] 3 (190), spirit [SPIR] 3 (255), gate lore [GATE] 1 (30), fire
+;  [FIRE] 3 (180), combat [COMB] 3 (180), earth lore [EART] 1 (45),
+;  illusion [ILLU] 3 (205), phantasmal entertainment [PHEN] 2 (90),
+;  artifact lore [ARTI] 2 (170), create staff of fire [CRSF] 1 (60),
+;  create flaming sword [CFSW] 2 (90), true seeing [TRUE] 1 (30).
+;  Combat spell: fire [FIRE]. Can Study: earthquake [EQUA], force
+;  shield [FSHI], energy shield [ESHI], spirit shield [SSHI], magical
+;  healing [MHEA], gate lore [GATE], farsight [FARS], mind reading
+;  [MIND], weather lore [WEAT], earth lore [EART], wolf lore [WOLF],
+;  bird lore [BIRD], necromancy [NECR], demon lore [DEMO], phantasmal
+;  entertainment [PHEN], create phantasmal beasts [PHBE], create
+;  phantasmal undead [PHUN], create phantasmal demons [PHDE],
+;  invisibility [INVI], true seeing [TRUE], dispel illusions [DISP],
+;  artifact lore [ARTI], create staff of fire [CRSF], enchant swords
+;  [ESWO], enchant armor [EARM], enchant shields [ESHD], transmutation
+;  [TRNS]; A handsome young lad with straight blond hair that blows in
+;  the wind..
+@CAST CFSW
+@STUDY TRUE
+@give 8048 all fswo
+
+unit 1159
+;Brian de Bois-Guilbert (1159), behind, revealing faction, sharing,
+;  leader [LEAD], sword [SWOR], 6 yew [YEW], 1205 silver [SILV].
+;  Weight: 41. Capacity: 0/0/15/0. Skills: force [FORC] 4 (305),
+;  pattern [PATT] 3 (180), earth lore [EART] 1 (60), illusion [ILLU] 2
+;  (110), phantasmal entertainment [PHEN] 2 (90), magical healing
+;  [MHEA] 3 (180), spirit [SPIR] 3 (180), artifact lore [ARTI] 2 (90),
+;  create staff of healing [CRSH] 1 (30), energy shield [ESHI] 2 (120).
+;  Can Study: fire [FIRE], earthquake [EQUA], force shield [FSHI],
+;  energy shield [ESHI], spirit shield [SSHI], gate lore [GATE],
+;  farsight [FARS], mind reading [MIND], weather lore [WEAT], earth
+;  lore [EART], wolf lore [WOLF], bird lore [BIRD], necromancy [NECR],
+;  demon lore [DEMO], illusion [ILLU], create phantasmal beasts [PHBE],
+;  create phantasmal undead [PHUN], create phantasmal demons [PHDE],
+;  dispel illusions [DISP], artifact lore [ARTI], enchant swords
+;  [ESWO], enchant armor [EARM], enchant shields [ESHD], create staff
+;  of healing [CRSH], transmutation [TRNS].
+@CAST PHEN
+@STUDY ESHI
+
+unit 1160
+;Maurice de Bracy (1160), avoiding, behind, revealing faction, leader
+;  [LEAD], 2764 silver [SILV]. Weight: 10. Capacity: 0/0/15/0. Skills:
+;  spirit [SPIR] 3 (210), force [FORC] 3 (225), pattern [PATT] 3 (190),
+;  earth lore [EART] 1 (60), illusion [ILLU] 2 (115), phantasmal
+;  entertainment [PHEN] 2 (90), artifact lore [ARTI] 2 (90), demon lore
+;  [DEMO] 3 (180), banish demons [BDEM] 3 (180), necromancy [NECR] 2
+;  (90), summon skeletons [SUSK] 1 (30), summon imps [SUIM] 2 (90).
+;  Combat spell: banish demons [BDEM]. Can Study: fire [FIRE],
+;  earthquake [EQUA], force shield [FSHI], energy shield [ESHI], spirit
+;  shield [SSHI], magical healing [MHEA], gate lore [GATE], farsight
+;  [FARS], mind reading [MIND], weather lore [WEAT], earth lore [EART],
+;  wolf lore [WOLF], bird lore [BIRD], necromancy [NECR], summon
+;  skeletons [SUSK], create aura of fear [FEAR], banish undead [BUND],
+;  summon imps [SUIM], illusion [ILLU], create phantasmal beasts
+;  [PHBE], create phantasmal undead [PHUN], create phantasmal demons
+;  [PHDE], dispel illusions [DISP], artifact lore [ARTI], enchant
+;  swords [ESWO], enchant armor [EARM], enchant shields [ESHD], create
+;  book of exorcism [CRBX], transmutation [TRNS].
+@CAST PHEN
+@STUDY SUIM
+
+unit 1161
+;Reginald Front-de-Boeuf (1161), avoiding, behind, revealing faction,
+;  sharing, leader [LEAD], 3205 silver [SILV]. Weight: 10. Capacity:
+;  0/0/15/0. Skills: pattern [PATT] 3 (215), force [FORC] 3 (210),
+;  earth lore [EART] 3 (180), illusion [ILLU] 2 (110), phantasmal
+;  entertainment [PHEN] 2 (90), bird lore [BIRD] 3 (180), spirit [SPIR]
+;  3 (180), artifact lore [ARTI] 2 (120), wolf lore [WOLF] 2 (90),
+;  force shield [FSHI] 3 (180), enchant swords [ESWO] 1 (30). Combat
+;  spell: force shield [FSHI]. Can Study: fire [FIRE], earthquake
+;  [EQUA], energy shield [ESHI], spirit shield [SSHI], magical healing
+;  [MHEA], gate lore [GATE], farsight [FARS], mind reading [MIND],
+;  weather lore [WEAT], wolf lore [WOLF], necromancy [NECR], demon lore
+;  [DEMO], illusion [ILLU], create phantasmal beasts [PHBE], create
+;  phantasmal undead [PHUN], create phantasmal demons [PHDE], dispel
+;  illusions [DISP], artifact lore [ARTI], enchant swords [ESWO],
+;  enchant armor [EARM], enchant shields [ESHD], create cornucopia
+;  [CRCO], create censer of protection [CRCN], transmutation [TRNS].
+@CAST PHEN
+@STUDY BIRD
+
+unit 6857
+;Trader (6857), avoiding, behind, revealing faction, sharing, leader
+;  [LEAD]. Weight: 10. Capacity: 0/0/15/0. Skills: quartermaster [QUAM]
+;  5 (450).
+
+unit 12241
+;Builders (12241), avoiding, behind, revealing faction, sharing, 10
+;  orcs [ORC], 26 stone [STON]. Weight: 1400. Capacity: 0/0/150/0.
+;  Skills: building [BUIL] 2 (170).
+@BUILD
+
+;*** mountain (38,4) in Femont ***
+
+unit 11992
+;Taxers (11992), on guard, revealing faction, taxing, receiving no aid,
+;  sharing, 12 hill dwarves [HDWA], 9 stone [STON], 3304 silver [SILV].
+;  Weight: 570. Capacity: 0/0/180/0. Skills: combat [COMB] 1 (30).
+
+unit 9432
+;StoneWeapon (9432), avoiding, behind, revealing faction, weightless
+;  battle spoils, 10 high elves [HELF]. Weight: 100. Capacity:
+;  0/0/150/0. Skills: weaponsmith [WEAP] 2 (90), quarrying [QUAR] 2
+;  (90).
+MOVE S
+
+unit 12588
+;MinersA (12588), avoiding, behind, revealing faction, 3 orcs [ORC], 3
+;  picks [PICK]. Weight: 33. Capacity: 0/0/45/0. Skills: mining [MINI]
+;  5 (450).
+MOVE S
+
+unit 3830
+;Horse Guy (3830), avoiding, revealing faction, receiving no aid, high
+;  elf [HELF], horse [HORS], 90 silver [SILV]. Weight: 60. Capacity:
+;  0/70/85/0. Skills: none.
+MOVE NW SW
+@TURN
+  GIVE 683 ALL HORS EXCEPT 1
+  GIVE 683 ALL SILV EXCEPT 20
+  MOVE NE SE
+ENDTURN
+@TURN
+  MOVE SE S
+ENDTURN
+@TURN
+  MOVE NW N
+ENDTURN
+@TURN
+  MOVE NW SW
+ENDTURN
+
+unit 11619
+;Builders (11619), avoiding, revealing faction, receiving no aid,
+;  sharing, 5 hill dwarves [HDWA], 11 stone [STON]. Weight: 600.
+;  Capacity: 0/0/75/0. Skills: building [BUIL] 2 (120).
+
+;*** forest (40,4) in Pla'ere ***
+
+unit 8444
+;Unit (8444), revealing faction, receiving no aid, sharing, weightless
+;  battle spoils, centaur [CTAU], 45 silver [SILV]. Weight: 50.
+;  Capacity: 0/70/70/0. Skills: none.
+@WORK
+
+;*** mountain (35,5) in Slounspifra ***
+
+unit 3491
+;Herald (3491), avoiding, behind, revealing faction, orc [ORC]. Weight:
+;  10. Capacity: 0/0/15/0. Skills: observation [OBSE] 2 (90),
+;  entertainment [ENTE] 2 (90).
+@ENTERTAIN
+
+unit 4426
+;Taxers (4426), avoiding, behind, revealing faction, taxing, sharing, 9
+;  orcs [ORC], 9 swords [SWOR], 142 silver [SILV]. Weight: 99.
+;  Capacity: 0/0/135/0. Skills: combat [COMB] 1 (30).
+@GIVE 13304 50 SILV
+
+unit 6585
+;Farmers (6585), avoiding, behind, revealing faction, sharing, 10
+;  humans [HUMN], 10 swords [SWOR], 23 livestock [LIVE]. Weight: 1260.
+;  Capacity: 0/0/1300/0. Skills: farming [FARM] 3 (185).
+PRODUCE LIVE
+@TURN
+  PRODUCE LIVE
+  GIVE 5480 ALL LIVE
+ENDTURN
+@TURN
+  PRODUCE LIVE
+ENDTURN
+
+unit 6586
+;Miners (6586), avoiding, behind, revealing faction, sharing, 10 humans
+;  [HUMN], 121 swords [SWOR], 10 iron [IRON]. Weight: 271. Capacity:
+;  0/0/150/0. Skills: mining [MINI] 3 (205), weaponsmith [WEAP] 2 (90).
+PRODUCE IRON
+@TURN
+  PRODUCE SWOR
+ENDTURN
+@TURN
+  PRODUCE IRON
+ENDTURN
+
+unit 13304
+;Lookout (13304), avoiding, behind, revealing faction, sharing, leader
+;  [LEAD]. Weight: 10. Capacity: 0/0/15/0. Skills: observation [OBSE] 2
+;  (120).
+@STUDY OBSE
+
+unit 6580
+;StoneBuilders (6580), avoiding, behind, revealing faction, sharing, 5
+;  orcs [ORC], 30 stone [STON]. Weight: 1550. Capacity: 0/0/75/0.
+;  Skills: quarrying [QUAR] 2 (90), building [BUIL] 2 (120).
+build road_ne
+TURN
+  @build
+ENDTURN
+
+unit 5105
+;MinersA (5105), avoiding, behind, revealing faction, sharing,
+;  weightless battle spoils, 8 orcs [ORC]. Weight: 80. Capacity:
+;  0/0/120/0. Skills: mining [MINI] 5 (450).
+MOVE SE
+
+;*** forest (41,5) in Pla'ere ***
+
+unit 8451
+;Unit (8451), avoiding, behind, revealing faction, receiving no aid,
+;  weightless battle spoils, centaur [CTAU], 389 silver [SILV]. Weight:
+;  50. Capacity: 0/70/70/0. Skills: entertainment [ENTE] 2 (90).
+@ENTERTAIN
+
+unit 8443
+;WoodsmenY (8443), avoiding, revealing faction, receiving no aid,
+;  sharing, weightless battle spoils, 4 centaurs [CTAU], 300 silver
+;  [SILV]. Weight: 200. Capacity: 0/280/280/0. Skills: lumberjack
+;  [LUMB] 5 (450).
+
+;*** mountain (34,6) in Slounspifra ***
+
+unit 8448
+;scout (8448), avoiding, behind, revealing faction, weightless battle
+;  spoils, human [HUMN], 10 silver [SILV]. Weight: 10. Capacity:
+;  0/0/15/0. Skills: combat [COMB] 1 (30), entertainment [ENTE] 1 (50).
+@ENTERTAIN
+
+unit 7669
+;Unit (7669), revealing faction, receiving no aid, sharing, 2 orcs
+;  [ORC], 9 silver [SILV]. Weight: 20. Capacity: 0/0/30/0. Skills:
+;  combat [COMB] 1 (30), entertainment [ENTE] 1 (30).
+@WORK
+
+;*** mountain (36,6) in Femont ***
+
+unit 11617
+;Taxers (11617), avoiding, behind, revealing faction, taxing, receiving
+;  no aid, sharing, 10 orcs [ORC], 2 hill dwarves [HDWA], 10 swords
+;  [SWOR], 519 silver [SILV]. Weight: 130. Capacity: 0/0/180/0. Skills:
+;  combat [COMB] 0 (5).
+@GIVE 12277 80 SILV
+@GIVE 12242 50 SILV
+
+unit 12277
+;Unit (12277), avoiding, behind, revealing faction, receiving no aid,
+;  sharing, 8 hill dwarves [HDWA]. Weight: 80. Capacity: 0/0/120/0.
+;  Skills: mining [MINI] 3 (240).
+@STUDY MINI
+
+unit 12242
+;Unit (12242), avoiding, behind, revealing faction, receiving no aid,
+;  sharing, leader [LEAD]. Weight: 10. Capacity: 0/0/15/0. Skills:
+;  observation [OBSE] 2 (150).
+@STUDY OBSE
+
+unit 13302
+;MinersA (13302), avoiding, behind, revealing faction, sharing, 8 orcs
+;  [ORC], 7 admantium [ADMT]. Weight: 150. Capacity: 0/0/120/0. Skills:
+;  mining [MINI] 5 (450).
+@produce admt
+
+unit 13301
+;MinersA (13301), avoiding, behind, revealing faction, sharing,
+;  weightless battle spoils, 4 hill dwarves [HDWA], 267 silver [SILV].
+;  Weight: 40. Capacity: 0/0/60/0. Skills: mining [MINI] 5 (450).
+
+;*** mountain (38,6) in Femont ***
+
+unit 12127
+;Stoneworkers (12127), avoiding, revealing faction, receiving no aid,
+;  10 hill dwarves [HDWA], stone [STON]. Weight: 150. Capacity:
+;  0/0/150/0. Skills: quarrying [QUAR] 1 (60).
+
+;*** forest (40,6) in Pla'ere ***
+
+unit 3822
+;Scout#5 (3822), avoiding, behind, revealing faction, receiving no aid,
+;  weightless battle spoils, centaur [CTAU], 276 silver [SILV]. Weight:
+;  50. Capacity: 0/70/70/0. Skills: combat [COMB] 1 (30), entertainment
+;  [ENTE] 2 (90), observation [OBSE] 1 (30).
+@ENTERTAIN
+
+;*** forest (42,6) in Pla'ere ***
+
+unit 3821
+;Scout#5 (3821), avoiding, behind, revealing faction, receiving no aid,
+;  weightless battle spoils, centaur [CTAU], 268 silver [SILV]. Weight:
+;  50. Capacity: 0/70/70/0. Skills: combat [COMB] 1 (30), entertainment
+;  [ENTE] 2 (90), observation [OBSE] 1 (30).
+@ENTERTAIN
+
+;*** plain (39,7) in Torburn ***
+
+unit 2420
+;Taxers (2420), on guard, revealing faction, taxing, receiving no aid,
+;  sharing, 41 high elves [HELF], 7753 silver [SILV]. Weight: 410.
+;  Capacity: 0/0/615/0. Skills: combat [COMB] 1 (35).
+@GIVE 10276 50 SILV
+@TURN
+ENDTURN
+@TURN
+ENDTURN
+@TURN
+  GIVE 3830 100 SILVER
+ENDTURN
+@TURN
+ENDTURN
+
+unit 3248
+;Trainers (3248), avoiding, behind, revealing faction, receiving no
+;  aid, 5 high elves [HELF], 60 horses [HORS]. Weight: 3050. Capacity:
+;  0/4200/4275/0. Skills: horse training [HORS] 3 (210).
+@PRODUCE HORS
+@TURN
+ENDTURN
+@TURN
+ENDTURN
+@TURN
+ENDTURN
+@TURN
+  GIVE 3830 ALL HORS
+ENDTURN
+
+unit 6111
+;Farmers (6111), avoiding, revealing faction, receiving no aid,
+;  sharing, 20 high elves [HELF], 200 livestock [LIVE]. Weight: 10200.
+;  Capacity: 0/0/10300/0. Skills: farming [FARM] 2 (90).
+PRODUCE LIVE
+@TURN
+  PRODUCE LIVE
+  GIVE 3247 ALL LIVE
+ENDTURN
+@TURN
+  PRODUCE LIVE
+ENDTURN
+
+unit 10295
+;Trainers (10295), avoiding, revealing faction, receiving no aid,
+;  sharing, 10 high elves [HELF], 40 horses [HORS]. Weight: 2100.
+;  Capacity: 0/2800/2950/0. Skills: horse training [HORS] 2 (90).
+@PRODUCE HORS
+@TURN
+ENDTURN
+@TURN
+ENDTURN
+@TURN
+ENDTURN
+@TURN
+  GIVE 3830 ALL HORS
+ENDTURN
+
+unit 10276
+;Lookout (10276), revealing faction, receiving no aid, sharing, leader
+;  [LEAD]. Weight: 10. Capacity: 0/0/15/0. Skills: observation [OBSE] 3
+;  (185).
+@STUDY OBSE
+
+unit 10296
+;Wanderer (10296), behind, revealing faction, sharing, centaur [CTAU],
+;  sword [SWOR], 6 silver [SILV]. Weight: 51. Capacity: 0/70/70/0.
+;  Skills: tactics [TACT] 2 (90), observation [OBSE] 2 (90).
+
+;*** forest (41,7) in Pla'ere ***
+
+unit 8450
+;Unit (8450), avoiding, behind, revealing faction, receiving no aid,
+;  weightless battle spoils, centaur [CTAU], 241 silver [SILV]. Weight:
+;  50. Capacity: 0/70/70/0. Skills: entertainment [ENTE] 2 (90),
+;  observation [OBSE] 1 (60).
+@ENTERTAIN
+
+;*** tundra (34,8) in Bedba ***
+
+unit 8454
+;Scout (8454), avoiding, behind, revealing faction, weightless battle
+;  spoils, gnome [GNOM], 15 silver [SILV]. Weight: 5. Capacity:
+;  0/0/7/0. Skills: combat [COMB] 1 (30).
+@WORK
+
+;*** mountain (38,8) in Femont ***
+
+unit 7672
+;StoneworkersR (7672), avoiding, revealing faction, receiving no aid,
+;  weightless battle spoils, hill dwarf [HDWA], 12 rootstone [ROOT],
+;  450 silver [SILV]. Weight: 610. Capacity: 0/0/15/0. Skills:
+;  quarrying [QUAR] 3 (265).
+@PRODUCE ROOT
+
+;*** plain (40,8) in Torburn, contains Fenic [village] ***
+
+unit 5482
+;Entertainers (5482), avoiding, behind, revealing faction, receiving no
+;  aid, weightless battle spoils, 2 centaurs [CTAU]. Weight: 100.
+;  Capacity: 0/140/140/0. Skills: entertainment [ENTE] 2 (90).
+@ENTERTAIN
+
+unit 8453
+;Farmers (8453), avoiding, behind, revealing faction, receiving no aid,
+;  weightless battle spoils, 25 centaurs [CTAU], 47 livestock [LIVE],
+;  9862 silver [SILV]. Weight: 3600. Capacity: 0/1750/4100/0. Skills:
+;  farming [FARM] 2 (105).
+@PRODUCE LIVE
+@SELL all LIVE
+
+unit 10702
+;City Guard (10702), on guard, revealing faction, taxing, sharing, 55
+;  centaurs [CTAU], 8 high elves [HELF], 20837 silver [SILV]. Weight:
+;  2830. Capacity: 0/3850/3970/0. Skills: combat [COMB] 1 (35).
+@GIVE 10277 50 SILV
+
+unit 5481
+;Trainers (5481), avoiding, revealing faction, receiving no aid, 3 high
+;  elves [HELF], 120 horses [HORS]. Weight: 6030. Capacity:
+;  0/8400/8445/0. Skills: horse training [HORS] 5 (450).
+@PRODUCE HORS
+
+unit 12591
+;Trainers (12591), revealing faction, sharing, 10 centaurs [CTAU], 80
+;  horses [HORS]. Weight: 4500. Capacity: 0/6300/6300/0. Skills: horse
+;  training [HORS] 2 (110).
+@PRODUCE HORS
+
+unit 10277
+;Customs (10277), revealing faction, sharing, leader [LEAD]. Weight:
+;  10. Capacity: 0/0/15/0. Skills: observation [OBSE] 3 (185).
+@STUDY OBSE
+
+unit 11993
+;Trainers (11993), avoiding, revealing faction, receiving no aid, 2
+;  high elves [HELF], 10 horses [HORS], 12 silver [SILV]. Weight: 520.
+;  Capacity: 0/700/730/0. Skills: horse training [HORS] 5 (450).
+
+unit 6112
+;Masters (6112), avoiding, revealing faction, receiving no aid,
+;  sharing, 2 leaders [LEAD], 50 horses [HORS]. Weight: 2520. Capacity:
+;  0/3500/3530/0. Skills: horse training [HORS] 5 (450).
+
+unit 13306
+;Transporter (13306), revealing faction, sharing, centaur [CTAU].
+;  Weight: 50. Capacity: 0/70/70/0. Skills: none.
+GIVE 8453 ALL LIVE
+MOVE NW
+@TURN
+  MOVE SE
+ENDTURN
+@TURN
+  GIVE 8453 ALL LIVE
+  MOVE NW
+ENDTURN
+
+;*** tundra (35,9) in Bedba, contains Botbury [town] ***
+
+unit 1170
+;Scout (1170), behind, revealing faction, sharing, orc [ORC], gnome
+;  [GNOM], sword [SWOR]. Weight: 16. Capacity: 0/0/22/0. Skills: combat
+;  [COMB] 0 (25), entertainment [ENTE] 2 (90).
+@ENTERTAIN
+
+unit 3831
+;Entertainers (3831), behind, revealing faction, sharing, 2 gnomes
+;  [GNOM], 2 swords [SWOR]. Weight: 12. Capacity: 0/0/14/0. Skills:
+;  entertainment [ENTE] 2 (137).
+@ENTERTAIN
+
+unit 6588
+;Entertainers (6588), behind, revealing faction, sharing, 5 gnomes
+;  [GNOM], 5 swords [SWOR]. Weight: 30. Capacity: 0/0/35/0. Skills:
+;  entertainment [ENTE] 2 (120).
+@ENTERTAIN
+
+unit 7676
+;City Guard (7676), on guard, revealing faction, taxing, riding battle
+;  spoils, 133 gnomes [GNOM], 7 swords [SWOR], 3088 silver [SILV].
+;  Weight: 672. Capacity: 0/0/931/0. Skills: combat [COMB] 1 (31).
+@GIVE 10704 200 SILV
+@GIVE 10705 450 SILV
+@GIVE 10703 50 SILV
+@GIVE 11127 40 SILV
+@GIVE 11128 100 SILV
+@GIVE 11129 100 SILV
+@GIVE 11130 450 SILV
+@GIVE 11620 450 SILV
+
+unit 10703
+;Manboy (10703), behind, revealing faction, riding battle spoils,
+;  leader [LEAD]. Weight: 10. Capacity: 0/0/15/0. Skills: observation
+;  [OBSE] 4 (335).
+@STUDY OBSE
+
+unit 10704
+;Warmachine! (10704), behind, revealing faction, riding battle spoils,
+;  leader [LEAD]. Weight: 10. Capacity: 0/0/15/0. Skills: tactics
+;  [TACT] 4 (330).
+@STUDY TACT
+
+unit 10705
+;Fighters (10705), behind, revealing faction, riding battle spoils, 45
+;  ice dwarves [IDWA]. Weight: 450. Capacity: 0/0/675/0. Skills: combat
+;  [COMB] 4 (300).
+@STUDY COMB
+
+unit 11127
+;Miners (11127), revealing faction, riding battle spoils, 4 gnomes
+;  [GNOM], 49 iron [IRON]. Weight: 265. Capacity: 0/0/28/0. Skills:
+;  mining [MINI] 2 (90).
+@PRODUCE IRON
+
+unit 11128
+;Druids (11128), revealing faction, riding battle spoils, 10 gnomes
+;  [GNOM]. Weight: 50. Capacity: 0/0/70/0. Skills: herb lore [HERB] 4
+;  (300).
+@STUDY HERB
+
+unit 11129
+;Healers (11129), revealing faction, riding battle spoils, 10 gnomes
+;  [GNOM]. Weight: 50. Capacity: 0/0/70/0. Skills: healing [HEAL] 4
+;  (300).
+@STUDY HEAL
+
+unit 11130
+;Fighters (11130), behind, revealing faction, riding battle spoils, 45
+;  ice dwarves [IDWA]. Weight: 450. Capacity: 0/0/675/0. Skills: combat
+;  [COMB] 3 (270).
+@STUDY COMB
+
+unit 11620
+;Fighters (11620), behind, revealing faction, riding battle spoils, 42
+;  ice dwarves [IDWA]. Weight: 420. Capacity: 0/0/630/0. Skills: combat
+;  [COMB] 3 (240).
+@STUDY COMB
+
+unit 12278
+;Fighters (12278), behind, revealing faction, riding battle spoils, 33
+;  ice dwarves [IDWA]. Weight: 330. Capacity: 0/0/495/0. Skills: combat
+;  [COMB] 3 (180).
+@STUDY COMB
+
+unit 12592
+;Fighters (12592), behind, revealing faction, riding battle spoils, 34
+;  ice dwarves [IDWA]. Weight: 340. Capacity: 0/0/510/0. Skills: combat
+;  [COMB] 2 (150).
+@STUDY COMB
+
+unit 10280
+;Fighters (10280), behind, revealing faction, riding battle spoils, 29
+;  ice dwarves [IDWA]. Weight: 290. Capacity: 0/0/435/0. Skills: combat
+;  [COMB] 2 (90).
+@STUDY COMB
+
+unit 12256
+;Smiths (12256), revealing faction, riding battle spoils, 3 gnomes
+;  [GNOM]. Weight: 15. Capacity: 0/0/21/0. Skills: weaponsmith [WEAP] 2
+;  (90).
+@STUDY WEAP
+
+unit 12259
+;Unit (12259), revealing faction, riding battle spoils, 26 ice dwarves
+;  [IDWA]. Weight: 260. Capacity: 0/0/390/0. Skills: combat [COMB] 1
+;  (60).
+@STUDY COMB
+
+unit 8455
+;Scout (8455), avoiding, behind, revealing faction, weightless battle
+;  spoils, gnome [GNOM], 1283 silver [SILV]. Weight: 5. Capacity:
+;  0/0/7/0. Skills: combat [COMB] 1 (30).
+
+unit 13307
+;Fighters (13307), revealing faction, riding battle spoils, 45 ice
+;  dwarves [IDWA]. Weight: 450. Capacity: 0/0/675/0. Skills: combat
+;  [COMB] 1 (60).
+@study comb
+
+unit 10278
+;Unit (10278), revealing faction, riding battle spoils, gnome [GNOM],
+;  2626 silver [SILV]. Weight: 5. Capacity: 0/0/7/0. Skills: none.
+
+;*** tundra (35,11) in Bedba ***
+
+unit 9846
+;Trader (9846), behind, revealing faction, riding battle spoils, gnome
+;  [GNOM], 6 silver [SILV]. Weight: 5. Capacity: 0/0/7/0. Skills:
+;  observation [OBSE] 2 (90).
+@WORK
+
+#end
+

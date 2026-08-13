@@ -1,0 +1,2822 @@
+;Treasury:
+;
+;Item                                      Rank  Max        Total
+;=====================================================================
+;22 leaders [LEAD]                         17    71         1017
+;4 high elves [HELF]                       52    1155       12343
+;92 hill dwarves [HDWA]                    12    711        3033
+;62 orcs [ORC]                             33    783        8328
+;4 centaurs [CTAU]                         39    735        4570
+;48480 silver [SILV]                       20    449938     2661415
+;311 grain [GRAI]                          8     1061       8240
+;150 livestock [LIVE]                      18    948        7781
+;107 iron [IRON]                           26    761        8360
+;130 wood [WOOD]                           28    1074       10707
+;42 stone [STON]                           28    376        4956
+;40 fish [FISH]                            15    1724       3289
+;212 herbs [HERB]                          13    1418       7835
+;682 horses [HORS]                         11    1866       18861
+;143 swords [SWOR]                         21    621        8473
+;2 chain armor [CARM]                      15    140        595
+;15 plate armor [PARM]                     14    100        665
+;2 wagons [WAGO]                           10    24         98
+;8 mithril [MITH]                          19    148        885
+;40 mithril swords [MSWO]                  13    182        1343
+;pick [PICK]                               43    168        1961
+;2 lassoes [LASS]                          38    335        1983
+;2 leather armor [LARM]                    32    255        1052
+;165 humans [HUMN]                         18    1058       9468
+;71 goblins [GBLN]                         30    979        8450
+;641 gnolls [GNOL]                         8     1137       13169
+;3 camels [CAME]                           24    543        2625
+
+Atlantis Report For:
+Borg (21) (Martial 1, Magic 4)
+December, Year 2
+
+Atlantis Engine Version: 5.2.5 (beta)
+NewOrigins, Version: 3.0.0 (beta)
+
+Faction Status:
+Regions: 10 (10)
+Quartermasters: 1 (2)
+Mages: 5 (5)
+Apprentices: 0 (10)
+
+Errors during turn:
+Drone (8548): STUDY: Not enough funds.
+
+Battles during turn:
+Unit (10651) attacks Undead (663) in swamp (37,49) in Pangmore!
+
+Attackers:
+Unit (10651), Friendly people (27), behind, gnoll [GNOL], horse
+  [HORS], riding 1.
+Unit (6080), Friendly people (27), behind, 10 hill dwarves [HDWA].
+Unit (3619), Friendly people (27), behind, 3 gnomes [GNOM].
+Unit (3947), Friendly people (27), behind, gnome [GNOM].
+Unit (3192), Friendly people (27), behind, leader [LEAD], horse
+  [HORS], sword [SWOR], tactics 4.
+Unit (4881), Friendly people (27), behind, 10 gnomes [GNOM].
+Unit (6072), Friendly people (27), behind, 3 gnomes [GNOM].
+Unit (7954), Friendly people (27), behind, 146 hill dwarves [HDWA], 57
+  leather armor [LARM], 94 swords [SWOR], combat 1.
+Unit (6082), Friendly people (27), behind, 103 hill dwarves [HDWA],
+  103 swords [SWOR].
+Unit (1369), Friendly people (27), behind, leader [LEAD], horse
+  [HORS], sword [SWOR].
+Unit (9977), Friendly people (27), 10 gnolls [GNOL], 10 mithril swords
+  [MSWO], chain armor [CARM], 10 horses [HORS], 5 admantium ring mails
+  [ARNG], combat 2, riding 1.
+Unit (12675), Friendly people (27), 10 chain armor [CARM], 10 gnolls
+  [GNOL], 10 horses [HORS], 10 mithril swords [MSWO], combat 2, riding
+  1.
+Unit (10643), Friendly people (27), 50 gnolls [GNOL], 50 mithril
+  swords [MSWO], 50 chain armor [CARM], combat 2.
+Unit (781), Friendly people (27), behind, leader [LEAD], horse [HORS],
+  sword [SWOR], combat 3.
+Unit (1370), Friendly people (27), behind, leader [LEAD], horse
+  [HORS], sword [SWOR].
+Unit (1358), Friendly people (27), behind, hill dwarf [HDWA], combat
+  2, riding 1.
+Unit (2602), Friendly people (27), behind, leader [LEAD], horse
+  [HORS], sword [SWOR].
+Unit (12678), Friendly people (27), 10 chain armor [CARM], 10 gnolls
+  [GNOL], 10 mithril swords [MSWO], combat 2.
+Unit (2704), Friendly people (27), behind, leader [LEAD], horse
+  [HORS], sword [SWOR].
+
+Defenders:
+Undead (663), Creatures (2), 96 skeletons [SKEL] (Combat 2/2, Attacks
+  2, Hits 2, Tactics 0), 9 undead [UNDE] (Combat 3/3, Attacks 12, Hits
+  12, Tactics 0), lich [LICH] (Combat 4/4, Attacks 50, Hits 50,
+  Tactics 4).
+
+Round 1:
+Unit (2602) casts Banish Undead, banishing 20 undead.
+Unit (781) casts Banish Undead, banishing 20 undead.
+Lich in Undead (663) breathes Ice, killing 5.
+Unit (1369) shoots a Fireball, killing 3.
+Unit (2704) casts Banish Undead, banishing 11 undead.
+Unit (1370) casts Banish Undead, banishing 33 undead.
+
+Skeleton in Undead (663) takes 1 hits bringing it to 1/2.
+Skeleton in Undead (663) takes 1 hits bringing it to 1/2.
+Undead in Undead (663) takes 1 hits bringing it to 11/12.
+Undead in Undead (663) takes 2 hits bringing it to 10/12.
+Skeleton in Undead (663) takes 1 hits bringing it to 1/2.
+Skeleton in Undead (663) takes 1 hits bringing it to 1/2.
+Skeleton in Undead (663) takes 1 hits bringing it to 1/2.
+Skeleton in Undead (663) takes 1 hits bringing it to 1/2.
+Skeleton in Undead (663) takes 1 hits bringing it to 1/2.
+Undead in Undead (663) takes 2 hits bringing it to 10/12.
+Skeleton in Undead (663) takes 1 hits bringing it to 1/2.
+Skeleton in Undead (663) takes 1 hits bringing it to 1/2.
+Undead in Undead (663) takes 2 hits bringing it to 10/12.
+Skeleton in Undead (663) takes 1 hits bringing it to 1/2.
+Skeleton in Undead (663) takes 1 hits bringing it to 1/2.
+Lich in Undead (663) takes 3 hits bringing it to 47/50.
+Undead in Undead (663) takes 1 hits bringing it to 11/12.
+Skeleton in Undead (663) takes 1 hits bringing it to 1/2.
+Skeleton in Undead (663) takes 1 hits bringing it to 1/2.
+Skeleton in Undead (663) takes 1 hits bringing it to 1/2.
+Skeleton in Undead (663) takes 1 hits bringing it to 1/2.
+Skeleton in Undead (663) takes 1 hits bringing it to 1/2.
+Skeleton in Undead (663) takes 1 hits bringing it to 1/2.
+Skeleton in Undead (663) takes 1 hits bringing it to 1/2.
+Skeleton in Undead (663) takes 1 hits bringing it to 1/2.
+Skeleton in Undead (663) takes 1 hits bringing it to 1/2.
+Skeleton in Undead (663) takes 1 hits bringing it to 1/2.
+Skeleton in Undead (663) takes 1 hits bringing it to 1/2.
+Undead in Undead (663) takes 1 hits bringing it to 11/12.
+Skeleton in Undead (663) takes 1 hits bringing it to 1/2.
+Skeleton in Undead (663) takes 1 hits bringing it to 1/2.
+Skeleton in Undead (663) takes 1 hits bringing it to 1/2.
+Skeleton in Undead (663) takes 1 hits bringing it to 1/2.
+Skeleton in Undead (663) takes 1 hits bringing it to 1/2.
+Skeleton in Undead (663) takes 1 hits bringing it to 1/2.
+Skeleton in Undead (663) takes 1 hits bringing it to 1/2.
+Skeleton in Undead (663) takes 1 hits bringing it to 1/2.
+Skeleton in Undead (663) takes 1 hits bringing it to 1/2.
+Skeleton in Undead (663) takes 1 hits bringing it to 1/2.
+Skeleton in Undead (663) takes 1 hits bringing it to 1/2.
+Skeleton in Undead (663) takes 1 hits bringing it to 1/2.
+Undead in Undead (663) takes 2 hits bringing it to 10/12.
+Skeleton in Undead (663) takes 1 hits bringing it to 1/2.
+Unit (10651) loses 7.
+Undead (663) loses 36.
+
+Round 1 statistics:
+
+Unit (10651) army:
+- Unit (781):
+  - banish undead (magic unknown attack), attacked 0 of 0 time, 0
+  successful attack, 0 blocked by armor, 20 hits, 20 total damage, and
+  killed 7 enemies.
+- Unit (1369):
+  - a fireball (magic energy attack), attacked 5 of 5 times, 3
+  successful attacks, 0 blocked by armor, 3 hit, 3 total damage, and
+  killed 1 enemy.
+- Unit (1370):
+  - banish undead (magic unknown attack), attacked 0 of 0 time, 0
+  successful attack, 0 blocked by armor, 33 hits, 33 total damage, and
+  killed 14 enemies.
+- Unit (2602):
+  - banish undead (magic unknown attack), attacked 0 of 0 time, 0
+  successful attack, 0 blocked by armor, 20 hits, 20 total damage, and
+  killed 2 enemies.
+- Unit (2704):
+  - banish undead (magic unknown attack), attacked 0 of 0 time, 0
+  successful attack, 0 blocked by armor, 11 hits, 11 total damage, and
+  killed 2 enemies.
+- Unit (9977):
+  - mithril sword [MSWO] (slashing melee attack), attacked 6 of 10
+  times, 6 successful attacks, 0 blocked by armor, 6 hits, 6 total
+  damage, and killed 2 enemies.
+- Unit (10643):
+  - mithril sword [MSWO] (slashing melee attack), attacked 20 of 47
+  times, 18 successful attacks, 0 blocked by armor, 18 hits, 18 total
+  damage, and killed 4 enemies.
+- Unit (12675):
+  - mithril sword [MSWO] (slashing melee attack), attacked 5 of 10
+  times, 5 successful attacks, 0 blocked by armor, 5 hits, 5 total
+  damage, and killed 3 enemies.
+- Unit (12678):
+  - mithril sword [MSWO] (slashing melee attack), attacked 5 of 9
+  times, 5 successful attacks, 0 blocked by armor, 5 hit, 5 total
+  damage, and killed 1 enemy.
+
+Undead (663) army:
+- Undead (663):
+  - without weapon (slashing melee attack), attacked 187 of 336 times,
+  3 successful attacks, 1 blocked by armor, 2 hits, 2 total damage,
+  and killed 2 enemies.
+  - icy breath (magic spirit attack), attacked 6 of 6 times, 6
+  successful attacks, 1 blocked by armor, 5 hits, 5 total damage, and
+  killed 5 enemies.
+
+Round 2:
+Unit (781) casts Banish Undead, banishing 27 undead.
+Lich in Undead (663) breathes Ice, killing 18.
+Unit (2602) casts Banish Undead, banishing 25 undead.
+Unit (1370) casts Banish Undead, banishing 28 undead.
+Unit (1369) shoots a Fireball, killing 4.
+Unit (2704) casts Banish Undead, banishing 27 undead.
+
+Undead in Undead (663) takes 9 hits bringing it to 3/12.
+Undead in Undead (663) takes 7 hits bringing it to 5/12.
+Undead in Undead (663) takes 5 hits bringing it to 5/12.
+Undead in Undead (663) takes 6 hits bringing it to 4/12.
+Undead in Undead (663) takes 5 hits bringing it to 6/12.
+Skeleton in Undead (663) takes 1 hits bringing it to 1/2.
+Undead in Undead (663) takes 4 hits bringing it to 6/12.
+Undead in Undead (663) takes 2 hits bringing it to 9/12.
+Undead in Undead (663) takes 6 hits bringing it to 5/12.
+Lich in Undead (663) takes 1 hits bringing it to 46/50.
+Undead in Undead (663) takes 4 hits bringing it to 6/12.
+Unit (10651) loses 22.
+Undead (663) loses 59.
+
+Round 2 statistics:
+
+Unit (10651) army:
+- Unit (781):
+  - banish undead (magic unknown attack), attacked 0 of 0 time, 0
+  successful attack, 0 blocked by armor, 27 hits, 27 total damage, and
+  killed 12 enemies.
+- Unit (1369):
+  - a fireball (magic energy attack), attacked 4 of 4 times, 4
+  successful attacks, 0 blocked by armor, 4 hits, 4 total damage, and
+  killed 2 enemies.
+- Unit (1370):
+  - banish undead (magic unknown attack), attacked 0 of 0 time, 0
+  successful attack, 0 blocked by armor, 28 hits, 28 total damage, and
+  killed 13 enemies.
+- Unit (2602):
+  - banish undead (magic unknown attack), attacked 0 of 0 time, 0
+  successful attack, 0 blocked by armor, 25 hits, 25 total damage, and
+  killed 16 enemies.
+- Unit (2704):
+  - banish undead (magic unknown attack), attacked 0 of 0 time, 0
+  successful attack, 0 blocked by armor, 27 hits, 27 total damage, and
+  killed 5 enemies.
+- Unit (9977):
+  - mithril sword [MSWO] (slashing melee attack), attacked 4 of 9
+  times, 4 successful attacks, 0 blocked by armor, 4 hit, 4 total
+  damage, and killed 1 enemy.
+- Unit (10643):
+  - mithril sword [MSWO] (slashing melee attack), attacked 18 of 35
+  times, 15 successful attacks, 0 blocked by armor, 15 hits, 15 total
+  damage, and killed 8 enemies.
+- Unit (12675):
+  - mithril sword [MSWO] (slashing melee attack), attacked 1 of 9
+  times, 1 successful attack, 0 blocked by armor, 1 hit, 1 total
+  damage, and killed 1 enemy.
+- Unit (12678):
+  - mithril sword [MSWO] (slashing melee attack), attacked 2 of 4
+  times, 2 successful attacks, 0 blocked by armor, 2 hit, 2 total
+  damage, and killed 1 enemy.
+
+Undead (663) army:
+- Undead (663):
+  - without weapon (slashing melee attack), attacked 100 of 194 times,
+  5 successful attacks, 1 blocked by armor, 4 hits, 4 total damage,
+  and killed 4 enemies.
+  - icy breath (magic spirit attack), attacked 22 of 22 times, 21
+  successful attacks, 3 blocked by armor, 18 hits, 18 total damage,
+  and killed 18 enemies.
+
+Undead (663) is routed!
+Unit (10651) gets a free round of attacks.
+Unit (1370) casts Banish Undead, banishing 22 undead.
+Unit (781) casts Banish Undead, banishing 28 undead.
+Unit (1369) shoots a Fireball, killing 12.
+Unit (2704) casts Banish Undead, banishing 13 undead.
+Unit (2602) casts Banish Undead, banishing 14 undead.
+
+Undead (663) loses 11.
+
+Free round statistics:
+
+Unit (10651) army:
+- Unit (781):
+  - banish undead (magic unknown attack), attacked 0 of 0 time, 0
+  successful attack, 0 blocked by armor, 28 hits, 28 total damage, and
+  killed 8 enemies.
+- Unit (1369):
+  - a fireball (magic energy attack), attacked 15 of 15 times, 12
+  successful attacks, 0 blocked by armor, 12 hit, 12 total damage, and
+  killed 1 enemy.
+- Unit (1370):
+  - banish undead (magic unknown attack), attacked 0 of 0 time, 0
+  successful attack, 0 blocked by armor, 22 hit, 22 total damage, and
+  killed 0 enemy.
+- Unit (2602):
+  - banish undead (magic unknown attack), attacked 0 of 0 time, 0
+  successful attack, 0 blocked by armor, 14 hit, 14 total damage, and
+  killed 1 enemy.
+- Unit (2704):
+  - banish undead (magic unknown attack), attacked 0 of 0 time, 0
+  successful attack, 0 blocked by armor, 13 hit, 13 total damage, and
+  killed 0 enemy.
+- Unit (9977):
+  - mithril sword [MSWO] (slashing melee attack), attacked 4 of 5
+  times, 3 successful attacks, 0 blocked by armor, 3 hit, 3 total
+  damage, and killed 1 enemy.
+- Unit (10643):
+  - mithril sword [MSWO] (slashing melee attack), attacked 5 of 11
+  times, 2 successful attacks, 0 blocked by armor, 2 hit, 2 total
+  damage, and killed 0 enemy.
+- Unit (12675):
+  - mithril sword [MSWO] (slashing melee attack), attacked 2 of 4
+  times, 1 successful attack, 0 blocked by armor, 1 hit, 1 total
+  damage, and killed 0 enemy.
+- Unit (12678):
+  - mithril sword [MSWO] (slashing melee attack), attacked 1 of 2
+  times, 1 successful attack, 0 blocked by armor, 1 hit, 1 total
+  damage, and killed 0 enemy.
+
+Undead (663) army:
+Army made no attacks.
+
+
+Battle statistics:
+
+Unit (10651) army:
+- Unit (781):
+  - banish undead (magic unknown attack), attacked 0 of 0 time, 0
+  successful attack, 0 blocked by armor, 75 hits, 75 total damage, and
+  killed 27 enemies.
+- Unit (1369):
+  - a fireball (magic energy attack), attacked 24 of 24 times, 19
+  successful attacks, 0 blocked by armor, 19 hits, 19 total damage,
+  and killed 4 enemies.
+- Unit (1370):
+  - banish undead (magic unknown attack), attacked 0 of 0 time, 0
+  successful attack, 0 blocked by armor, 83 hits, 83 total damage, and
+  killed 27 enemies.
+- Unit (2602):
+  - banish undead (magic unknown attack), attacked 0 of 0 time, 0
+  successful attack, 0 blocked by armor, 59 hits, 59 total damage, and
+  killed 19 enemies.
+- Unit (2704):
+  - banish undead (magic unknown attack), attacked 0 of 0 time, 0
+  successful attack, 0 blocked by armor, 51 hits, 51 total damage, and
+  killed 7 enemies.
+- Unit (9977):
+  - mithril sword [MSWO] (slashing melee attack), attacked 14 of 24
+  times, 13 successful attacks, 0 blocked by armor, 13 hits, 13 total
+  damage, and killed 4 enemies.
+- Unit (10643):
+  - mithril sword [MSWO] (slashing melee attack), attacked 43 of 93
+  times, 35 successful attacks, 0 blocked by armor, 35 hits, 35 total
+  damage, and killed 12 enemies.
+- Unit (12675):
+  - mithril sword [MSWO] (slashing melee attack), attacked 8 of 23
+  times, 7 successful attacks, 0 blocked by armor, 7 hits, 7 total
+  damage, and killed 4 enemies.
+- Unit (12678):
+  - mithril sword [MSWO] (slashing melee attack), attacked 8 of 15
+  times, 8 successful attacks, 0 blocked by armor, 8 hits, 8 total
+  damage, and killed 2 enemies.
+
+Undead (663) army:
+- Undead (663):
+  - without weapon (slashing melee attack), attacked 287 of 530 times,
+  8 successful attacks, 2 blocked by armor, 6 hits, 6 total damage,
+  and killed 6 enemies.
+  - icy breath (magic spirit attack), attacked 28 of 28 times, 27
+  successful attacks, 4 blocked by armor, 23 hits, 23 total damage,
+  and killed 23 enemies.
+
+Total Casualties:
+Undead (663) loses 106.
+Damaged units: 663.
+Unit (10643) heals 1 using healing potion with 70% chance.
+Unit (10643) heals 1 using healing potion with 70% chance.
+Unit (9977) heals 1 using healing potion with 70% chance.
+Unit (10643) heals 1 using healing potion with 70% chance.
+Unit (10643) heals 1 using healing potion with 70% chance.
+Unit (10643) heals 1 using healing potion with 70% chance.
+Unit (9977) heals 1 using healing potion with 70% chance.
+Unit (10643) heals 1 using healing potion with 70% chance.
+Unit (9977) heals 0 using healing potion with 70% chance.
+Unit (9977) heals 1 using healing potion with 70% chance.
+Unit (10643) heals 0 using healing potion with 70% chance.
+Unit (9977) heals 1 using healing potion with 70% chance.
+Unit (10643) heals 1 using healing potion with 70% chance.
+Unit (9977) heals 0 using healing potion with 70% chance.
+Unit (10643) heals 1 using healing potion with 70% chance.
+Unit (10643) heals 0 using healing potion with 70% chance.
+Unit (9977) heals 1 using healing potion with 70% chance.
+Unit (9977) heals 1 using healing potion with 70% chance.
+Unit (10643) heals 1 using healing potion with 70% chance.
+Unit (9977) heals 1 using healing potion with 70% chance.
+Unit (10651) loses 13.
+Damaged units: 10643, 12678.
+
+Spoils: holy symbol [HLYS], 5 crossbows [XBOW], 7 axes [AXE], 8 wooden
+  shields [WSHD], 2 longbows [LBOW], 4 picks [PICK], 4 javelins
+  [JAVE], 4 chain armor [CARM], 4 leather armor [LARM], 2 hammers
+  [HAMM], 3 spears [SPEA], 2 swords [SWOR], 4 giant turtles [TURT], 14
+  camels [CAME], 4 horses [HORS], 2 magic wagons [MWAG], 2 rootstone
+  [ROOT], ironwood [IRWD], 4 mushrooms [MUSH], 4 lassoes [LASS], 3
+  healing potions [HPOT], 19 iron [IRON], 5 furs [FUR], 6 fish [FISH],
+  3 livestock [LIVE], 3 spinning wheels [SPIN], 13 grain [GRAI], 11
+  wood [WOOD], 5 bags [BAG], 12 herbs [HERB], 3 stone [STON], 8932
+  silver [SILV].
+
+7 skeletons [SKEL] and 2 undead [UNDE] rise from the grave to seek
+  vengeance.
+
+Events during turn:
+Unit (4329): Gives 10 silver [SILV] to Drone (8536).
+Drone (1288): Gives 10 silver [SILV] to Drone (8537).
+Drones (3303): Gives 84 livestock [LIVE] to TransportDrone (6029).
+Drones (3305): Gives 64 horses [HORS] to TransportDrone (6029).
+Drones (3317): Gives 12 horses [HORS] to TransportDrone (6030).
+Drones (4370): Gives 20 horses [HORS] to TransportDrone (6030).
+Drones (1297): Gives 78 grain [GRAI] to Unit (8333).
+Drones (7879): Gives 30 mithril swords [MSWO] to Drones (5983).
+Unit (9931): Gives 20 swords [SWOR] to Drones (5983).
+TransportDrone (6028): Gives 48 livestock [LIVE] to Unit (8333).
+Drone (1288): Collects $49 in taxes in plain (38,40) in Blarnfashire.
+Drones (2404): Collects $1150 in taxes in plain (36,42) in
+  Blarnfashire.
+Drones (2405): Collects $1150 in taxes in plain (35,43) in
+  Blarnfashire.
+Drones (2406): Collects $731 in taxes in swamp (37,43) in Miepi'an.
+Drone (1291): Collects $31 in taxes in mountain (34,44) in Swebac.
+Drones (3732): Collects $1750 in taxes in plain (36,44) in
+  Blarnfashire.
+Drones (4375): Collects $9650 in taxes in plain (36,44) in
+  Blarnfashire.
+Drones (3154): Collects $500 in taxes in mountain (35,45) in Swebac.
+Unit (3155): Collects $700 in taxes in swamp (36,46) in Pangmore.
+Five of Eight (1294): Casts Phantasmal Entertainment, raising 600
+  silver.
+Five of Three (775): Casts Phantasmal Entertainment, raising 600
+  silver.
+One of Three (1293): Casts Phantasmal Entertainment, raising 699
+  silver.
+Four of Nine (1295): Casts Clear Skies.
+Six of Seven (1296): Casts Earth Lore, raising 68 silver.
+Unit (8333): Sells 196 grain [GRAI] at $24 each.
+Unit (8333): Sells 48 livestock [LIVE] at $27 each.
+TransportDrone (6029): Walks from plain (36,42) in Blarnfashire to
+  plain (36,44) in Blarnfashire.
+TransportDrone (6030): Rides from plain (35,43) in Blarnfashire to
+  plain (36,44) in Blarnfashire.
+Drone (11852): Rides from swamp (36,46) in Pangmore to swamp (35,47)
+  in Pangmore.
+Drone (11853): Rides from swamp (36,46) in Pangmore to swamp (36,48)
+  in Pangmore.
+Drone (11854): Is forbidden entry to swamp (37,47) in Pangmore by Unit
+  (1353).
+Drone (11855): Rides from swamp (36,46) in Pangmore to swamp (35,47)
+  in Pangmore.
+TransportDrone (6028): Walks from plain (36,44) in Blarnfashire to
+  swamp (36,46) in Pangmore.
+Drone (11855): Rides from swamp (35,47) in Pangmore to swamp (34,48)
+  in Pangmore.
+Drone (4330): Earns 12 silver working in desert (32,38) in Plimark.
+Drone (1289): Earns 30 silver entertaining in desert (35,39) in Pe'e.
+Drone (8536): Studies horse training.
+Unit (4329): Earns 40 silver entertaining in plain (36,40) in
+  Blarnfashire.
+Drone (8537): Studies horse training.
+Drone (1290): Earns 27 silver entertaining in plain (35,41) in
+  Blarnfashire.
+Unit (4333): Unit (4333) shares 10 silver [SILV] with Drone (8551).
+Drone (8551): Studies horse training.
+Unit (4333): Earns 41 silver entertaining in plain (37,41) in
+  Blarnfashire.
+Unit (7873): Earns 15 silver working in jungle (32,42) in Phesflen.
+Drones (2404): Drones (2404) shares 50 silver [SILV] with Unit (8237).
+Unit (8237): Studies observation.
+Drones (2404): Drones (2404) shares 100 silver [SILV] with Drones
+  (12624).
+Drones (12624): Studies building.
+Drones (3303): Produces 42 livestock [LIVE] in plain (36,42) in
+  Blarnfashire.
+Drones (3305): Produces 32 horses [HORS] in plain (36,42) in
+  Blarnfashire.
+ReserveDrones (12623): Earns 126 silver working in plain (36,42) in
+  Blarnfashire.
+Drones (12622): Earns 56 silver entertaining in plain (36,42) in
+  Blarnfashire.
+Drones (2405): Drones (2405) shares 50 silver [SILV] with Drone
+  (9469).
+Drone (9469): Studies observation.
+Drones (3323): Produces 74 grain [GRAI] in plain (35,43) in
+  Blarnfashire.
+Drones (3317): Produces 12 horses [HORS] in plain (35,43) in
+  Blarnfashire.
+Drones (4370): Produces 10 horses [HORS] in plain (35,43) in
+  Blarnfashire.
+Drone (8318): Earns 12 silver working in plain (35,43) in
+  Blarnfashire.
+ReserveDrones (12625): Earns 60 silver working in plain (35,43) in
+  Blarnfashire.
+Drones (2406): Drones (2406) shares 100 silver [SILV] with Drones
+  (12626).
+Drones (12626): Studies building.
+Drones (3333): Produces 10 grain [GRAI] in swamp (37,43) in Miepi'an.
+Drones (4371): Produces 14 wood [WOOD] in swamp (37,43) in Miepi'an.
+Drones (4373): Produces 16 herbs [HERB] in swamp (37,43) in Miepi'an.
+Drones (4374): Earns 33 silver working in mountain (34,44) in Swebac.
+Five of Eight (1294): Studies artifact lore.
+Drones (3732): Drones (3732) shares 50 silver [SILV] with Eight of One
+  (1864).
+Eight of One (1864): Studies stealth.
+Drones (3732): Drones (3732) shares 200 silver [SILV] with Ten of
+  Eight (5387).
+Ten of Eight (5387): Studies tactics.
+Drones (3732): Drones (3732) shares 50 silver [SILV] with Nine of
+  Eight (5982).
+Nine of Eight (5982): Studies stealth.
+Drones (3732): Drones (3732) shares 100 silver [SILV] with Drones
+  (7184).
+Drones (7184): Studies combat.
+Drones (3732): Drones (3732) shares 150 silver [SILV] with Drones
+  (7875).
+Drones (7875): Studies armorer.
+Drones (3732): Drones (3732) shares 100 silver [SILV] with Drones
+  (7876).
+Drones (7876): Studies horse training.
+Drones (3732): Drones (3732) shares 600 silver [SILV] with Drones
+  (8573).
+Drones (8573): Studies combat.
+Drones (3732): Drones (3732) shares 500 silver [SILV] with Drones
+  (9498).
+Drones (4375): Drones (4375) shares 500 silver [SILV] with Drones
+  (9498).
+Drones (9498): Studies combat.
+Drones (4375): Drones (4375) shares 50 silver [SILV] with Drones
+  (3364).
+Drones (3364): Studies lumberjack.
+Drones (4375): Drones (4375) shares 100 silver [SILV] with Unit
+  (11850).
+Unit (11850): Studies combat.
+One of Three (1293): Studies artifact lore.
+Unit (8333): Studies quartermaster.
+Drones (4375): Drones (4375) shares 500 silver [SILV] with Drones
+  (5983).
+Drones (5983): Studies combat.
+Drones (4375): Drones (4375) shares 100 silver [SILV] with Four of
+  Nine (1295).
+Four of Nine (1295): Studies force.
+Drones (4375): Drones (4375) shares 14 silver [SILV] with Six of Seven
+  (1296).
+Six of Seven (1296): Studies artifact lore.
+Drones (4375): Drones (4375) shares 100 silver [SILV] with Drones
+  (7880).
+Drones (7880): Studies shipbuilding.
+Unit (8333): Unit (8333) shares 10 mithril [MITH] with Drones (7879).
+Drones (7879): Produces 10 mithril swords [MSWO] in plain (36,44) in
+  Blarnfashire.
+Unit (8333): Unit (8333) shares 20 iron [IRON] with Unit (9931).
+Unit (9931): Produces 20 swords [SWOR] in plain (36,44) in
+  Blarnfashire.
+Unit (8333): Unit (8333) shares 20 wood [WOOD] with Drones (7183).
+Drones (7183): Performs construction on Building [5]
+Unit (8333): Unit (8333) shares 20 stone [STON] with Drones (9497).
+Drones (9497): Performs construction on Building [6]
+Drones (1297): Produces 78 grain [GRAI] in plain (36,44) in
+  Blarnfashire.
+Drones (3371): Produces 10 horses [HORS] in plain (36,44) in
+  Blarnfashire.
+TransportDrone (5386): Earns 17 silver working in plain (36,44) in
+  Blarnfashire.
+TransportDrone (7180): Earns 17 silver working in plain (36,44) in
+  Blarnfashire.
+Scout (3730): Earns 17 silver working in plain (36,44) in
+  Blarnfashire.
+Five of Three (775): Earns 17 silver working in plain (36,44) in
+  Blarnfashire.
+Drones (7182): Earns 171 silver working in plain (36,44) in
+  Blarnfashire.
+Drones (1298): Earns 591 silver entertaining in plain (36,44) in
+  Blarnfashire.
+Drones (9579): Produces 10 fish [FISH] in ocean (38,44) in Atlantis
+  Ocean.
+Drones (3154): Drones (3154) shares 70 silver [SILV] with Unit (6025).
+Unit (6025): Studies mining.
+Drones (3154): Drones (3154) shares 220 silver [SILV] with Unit
+  (9585).
+Unit (9585): Studies weaponsmith.
+Drones (9967): Produces 39 grain [GRAI] in mountain (35,45) in Swebac.
+Drones (3372): Produces 12 iron [IRON] in mountain (35,45) in Swebac.
+Unit (9580): Produces 24 iron [IRON] in mountain (35,45) in Swebac.
+Drones (4376): Produces 12 stone [STON] in mountain (35,45) in Swebac.
+Drones (9932): Produces 8 mithril [MITH] in mountain (35,45) in
+  Swebac.
+ReserveDrones (12627): Earns 60 silver working in mountain (35,45) in
+  Swebac.
+Drones (9557): Produces 10 fish [FISH] in ocean (37,45) in Atlantis
+  Ocean.
+Drone (8572): Earns 11 silver working in mountain (34,46) in Swebac.
+Drones (7878): Earns 46 silver working in mountain (34,46) in Swebac.
+Unit (3155): Unit (3155) shares 50 silver [SILV] with Drone (12628).
+Drone (12628): Studies observation.
+Drones (4401): Produces 12 livestock [LIVE] in swamp (36,46) in
+  Pangmore.
+Unit (3374): Produces 16 wood [WOOD] in swamp (36,46) in Pangmore.
+Unit (9595): Produces 9 herbs [HERB] in swamp (36,46) in Pangmore.
+ReserveDrones (12629): Earns 59 silver working in swamp (36,46) in
+  Pangmore.
+Drone (11851): Earns 11 silver working in swamp (36,46) in Pangmore.
+Drone (9934): Earns 11 silver working in swamp (35,47) in Pangmore.
+Drone (1292): Earns 12 silver working in swamp (34,48) in Pangmore.
+Unit (8604): Earns 76 silver working in swamp (34,48) in Pangmore.
+Drone (8578): Earns 12 silver working in swamp (36,48) in Pangmore.
+Drone (9616): Earns 12 silver working in swamp (36,48) in Pangmore.
+Scout (3744): Earns 12 silver working in swamp (36,48) in Pangmore.
+Drone (9936): Earns 12 silver working in swamp (35,49) in Pangmore.
+Drone (7181): Earns 11 silver working in swamp (37,49) in Pangmore.
+Drones (9933): Earns 22 silver working in swamp (37,49) in Pangmore.
+Drone (9662): Earns 11 silver working in swamp (37,49) in Pangmore.
+Drone (9935): Earns 13 silver working in plain (34,50) in Edicort.
+Drone (9937): Earns 13 silver working in plain (34,50) in Edicort.
+Drones (3323): Transports 74 grain [GRAI] to Unit (8333) for $0.
+Drones (3333): Transports 10 grain [GRAI] to Unit (8333) for $0.
+Drones (4371): Transports 14 wood [WOOD] to Unit (8333) for $0.
+Drones (4373): Transports 16 herbs [HERB] to Unit (8333) for $0.
+Drones (9579): Transports 10 fish [FISH] to Unit (8333) for $0.
+Drones (3372): Transports 12 iron [IRON] to Unit (8333) for $0.
+Drones (4376): Transports 12 stone [STON] to Unit (8333) for $0.
+Drones (9932): Transports 8 mithril [MITH] to Unit (8333) for $0.
+Unit (9580): Transports 24 iron [IRON] to Unit (8333) for $0.
+Drones (9967): Transports 39 grain [GRAI] to Unit (8333) for $0.
+Drones (9557): Transports 10 fish [FISH] to Unit (8333) for $0.
+Unit (3374): Transports 16 wood [WOOD] to Unit (8333) for $0.
+Unit (9595): Transports 9 herbs [HERB] to Unit (8333) for $0.
+
+Skill reports:
+
+pattern [PATT] 3: No skill report.
+
+artifact lore [ARTI] 2: No skill report.
+
+force [FORC] 3: No skill report.
+
+shipbuilding [SHIP] 3: A unit with this skill may BUILD Galleons
+  [GALL] from 75 wood [WOOD] and Galleys [GLLY] from 50 ironwood
+  [IRWD].
+
+Item reports:
+
+Galleon [GALL]. This is a ship with a capacity of 2700 and a speed of
+  4 hexes per month. This ship requires a total of 15 levels of
+  sailing skill to sail. This ship will allow one mage to study above
+  level 2.
+
+Galley [GLLY]. This is a ship with a capacity of 1200 and a speed of 4
+  hexes per month. This ship requires a total of 12 levels of sailing
+  skill to sail. This ship provides defense to the first 120 men
+  inside it, giving a defensive bonus of 2 against melee attacks, 2
+  against energy attacks, 2 against spirit attacks, 2 against weather
+  attacks, 2 against riding attacks and 2 against ranged attacks. This
+  ship will allow up to 2 mages to study above level 2.
+
+Declared Attitudes (default Neutral):
+Hostile : none.
+Unfriendly : Creatures (2).
+Neutral : none.
+Friendly : none.
+Ally : none.
+
+Unclaimed silver: 1254.
+
+desert (32,38) in Plimark, contains Dinca [village], 4630 peasants
+  (goblins), $2315.
+------------------------------------------------------------
+  Wages: $12.5 (Max: $463).
+  Wanted: 138 grain [GRAI] at $20, 102 livestock [LIVE] at $21, 102
+    fish [FISH] at $43, 4 leather armor [LARM] at $52.
+  For Sale: 185 goblins [GBLN] at $30, 37 leaders [LEAD] at $700.
+  Entertainment available: $162.
+  Products: 16 livestock [LIVE], 17 iron [IRON], 18 stone [STON].
+
+Exits:
+  North : desert (32,36) in Plimark.
+  Northeast : desert (33,37) in Plimark.
+  Southeast : desert (33,39) in Plimark.
+  South : desert (32,40) in Plimark.
+  Southwest : ocean (31,39) in Atlantis Ocean.
+  Northwest : ocean (31,37) in Atlantis Ocean.
+
+- Scout (1381), Rainbow Falcons (29), avoiding, behind, gnoll [GNOL].
+- cowgoblins (2528), The Children of the Four Winds (41), behind, 8
+  goblins [GBLN], 16 livestock [LIVE].
+- smiths (2857), The Children of the Four Winds (41), avoiding,
+  behind, 6 goblins [GBLN], 6 hammers [HAMM], 33 swords [SWOR].
+- scout observer (3718), on guard, The Children of the Four Winds
+  (41), goblin [GBLN].
+- shipmaker (4533), The Children of the Four Winds (41), avoiding,
+  behind, goblin [GBLN].
+- scout (5027), The Children of the Four Winds (41), avoiding, behind,
+  human [HUMN], sword [SWOR], camel [CAME].
+- masters (6829), The Children of the Four Winds (41), avoiding,
+  behind, 2 goblins [GBLN].
+- Scout (5804), wood elf [WELF].
+- admiral (8130), The Children of the Four Winds (41), avoiding,
+  behind, leader [LEAD].
+- scout (5034), The Children of the Four Winds (41), avoiding, behind,
+  centaur [CTAU].
+* Drone (4330), Borg (21), avoiding, behind, revealing faction,
+  receiving no aid, centaur [CTAU], 7 silver [SILV]. Weight: 50.
+  Capacity: 0/70/70/0. Skills: none.
+- gnolls (11402), The Children of the Four Winds (41), avoiding,
+  behind, 10 gnolls [GNOL].
+- gnolls (12855), The Children of the Four Winds (41), avoiding,
+  behind, 12 gnolls [GNOL].
+- oasis builder (9819), The Children of the Four Winds (41), avoiding,
+  behind, 4 gnolls [GNOL].
+- hunters (9858), The Children of the Four Winds (41), avoiding,
+  behind, 4 gnolls [GNOL].
+
++ Building [1] : Caravanserai.
+  - corporal (5026), The Children of the Four Winds (41), avoiding,
+    behind, leader [LEAD], 101 swords [SWOR], 55 longbows [LBOW], 3
+    picks [PICK], 12 axes [AXE], 16 hammers [HAMM], javelin [JAVE], 27
+    leather armor [LARM], 55 crossbows [XBOW], 15 camels [CAME], 71
+    stone [STON], 215 furs [FUR], 74 rootstone [ROOT], 22 ironwood
+    [IRWD], 6 wood [WOOD], 106 fish [FISH], 12 admantium [ADMT], 54
+    grain [GRAI], 210 iron [IRON].
+
++ Building [2] : Road S.
+  - shipyard (10829), The Children of the Four Winds (41), avoiding,
+    behind, 10 goblins [GBLN], 25 wood [WOOD].
+  - smiths (10830), The Children of the Four Winds (41), avoiding,
+    behind, 5 goblins [GBLN].
+  - quarrymen (2529), The Children of the Four Winds (41), 9 goblins
+    [GBLN].
+
++ Building [3] : Mine.
+  - miners (2527), The Children of the Four Winds (41), 7 goblins
+    [GBLN], 6 picks [PICK], 17 iron [IRON].
+
++ Building [4] : Fort.
+  - garrison (1510), on guard, The Children of the Four Winds (41), 56
+    goblins [GBLN], 46 swords [SWOR], 14 camels [CAME].
+
++ Building [5] : Mine.
+  - minstrels (2531), The Children of the Four Winds (41), avoiding,
+    behind, 2 goblins [GBLN].
+
++ Building [6] : Road N, needs 10.
+  - brickie (4106), The Children of the Four Winds (41), avoiding,
+    behind, 10 goblins [GBLN], 8 magic wagons [MWAG], 10 stone [STON].
+
+
+desert (35,39) in Pe'e, contains Hoham [city], 10918 peasants
+  (gnolls), $13538.
+------------------------------------------------------------
+  Wages: $16.2 (Max: $2707).
+  Wanted: 124 grain [GRAI] at $26, 132 livestock [LIVE] at $27, 172
+    fish [FISH] at $59, 30 lassoes [LASS] at $126, 41 crossbows [XBOW]
+    at $95, 30 spinning wheels [SPIN] at $122, 31 longbows [LBOW] at
+    $87, 73 spices [SPIC] at $287, 77 chocolate [CHOC] at $353.
+  For Sale: 49 vodka [VODK] at $72, 79 silk [SILK] at $80, 436 gnolls
+    [GNOL] at $51, 87 leaders [LEAD] at $907.
+  Entertainment available: $786.
+  Products: 16 livestock [LIVE], 18 iron [IRON], 17 stone [STON], 14
+    camels [CAME].
+
+Exits:
+  North : ocean (35,37) in Atlantis Ocean.
+  Northeast : ocean (36,38) in Atlantis Ocean.
+  Southeast : plain (36,40) in Blarnfashire.
+  South : plain (35,41) in Blarnfashire.
+  Southwest : desert (34,40) in Pe'e.
+  Northwest : ocean (34,38) in Atlantis Ocean.
+
+- Indigo Knight (1373), leader [LEAD], camel [CAME].
+- Green Knight (1377), leader [LEAD].
+- ambassador (1508), The Children of the Four Winds (41), avoiding,
+  behind, goblin [GBLN].
+- Unit (1361), hill dwarf [HDWA], horse [HORS].
+* Drone (1289), Borg (21), avoiding, behind, revealing faction,
+  taxing, receiving no aid, gnoll [GNOL], 259 silver [SILV]. Weight:
+  10. Capacity: 0/0/15/0. Skills: combat [COMB] 1 (30), entertainment
+  [ENTE] 2 (90).
+- Green Hero (6666), Rainbow Falcons (29), behind, leader [LEAD].
+- Green Hero (7248), Rainbow Falcons (29), avoiding, behind, leader
+  [LEAD].
+- Green Gnolls (7249), 6 gnolls [GNOL].
+- Green Gnolls (7252), 6 gnolls [GNOL].
+- Green Dwarves (7259), Rainbow Falcons (29), avoiding, behind, 14
+  hill dwarves [HDWA].
+- Green Hero (7964), leader [LEAD].
+- Green Hero (7965), leader [LEAD], horse [HORS].
+- Green Hero (7976), Rainbow Falcons (29), avoiding, behind, leader
+  [LEAD].
+- Green Hero (7975), Rainbow Falcons (29), avoiding, behind, leader
+  [LEAD].
+- Green Elves (8638), Rainbow Falcons (29), avoiding, behind, 10 high
+  elves [HELF].
+- Green Elves (8639), Rainbow Falcons (29), avoiding, behind, 10 high
+  elves [HELF].
+- Green Elves (8640), Rainbow Falcons (29), avoiding, behind, 9 high
+  elves [HELF].
+- Green Hero (8642), Rainbow Falcons (29), avoiding, behind, leader
+  [LEAD].
+- Green Hero (8643), Rainbow Falcons (29), avoiding, behind, leader
+  [LEAD].
+- Green Heroes (8647), Rainbow Falcons (29), avoiding, behind, 2
+  leaders [LEAD], camel [CAME].
+- Blue Knight (9277), leader [LEAD].
+- Green Dwarves (9998), Rainbow Falcons (29), avoiding, behind, 8 hill
+  dwarves [HDWA].
+- Green Hero (9997), leader [LEAD].
+- Green Hero (10003), Rainbow Falcons (29), avoiding, behind, leader
+  [LEAD].
+- Green Elves (10006), Rainbow Falcons (29), avoiding, behind, 10 high
+  elves [HELF].
+- Green Orcs (10007), Rainbow Falcons (29), avoiding, behind, 14 orcs
+  [ORC], 3 camels [CAME].
+- Scout (5806), wood elf [WELF].
+- Green Heroes (10671), 3 leaders [LEAD].
+- Green Hero (10434), Rainbow Falcons (29), avoiding, behind, leader
+  [LEAD].
+- Green Miner (6097), Rainbow Falcons (29), avoiding, behind, hill
+  dwarf [HDWA], pick [PICK], 10 camels [CAME].
+- Green Fishermen (11935), Rainbow Falcons (29), avoiding, behind, 3
+  high elves [HELF], 16 horses [HORS].
+- Green Builders (12688), Rainbow Falcons (29), avoiding, behind, 5
+  hill dwarves [HDWA].
+- Green Elves (12689), Rainbow Falcons (29), avoiding, behind, 16 high
+  elves [HELF], 66 horses [HORS].
+- Green Elves (6935), Rainbow Falcons (29), avoiding, behind, 16 high
+  elves [HELF].
+- Hoham Citizens (8635), Rainbow Falcons (29), behind, 164 gnolls
+  [GNOL].
+- reserve (6243), The Children of the Four Winds (41), 4 humans
+  [HUMN], 4 swords [SWOR], crossbow [XBOW], 30 longbows [LBOW], 5
+  camels [CAME].
+- Green Elves (7034), Rainbow Falcons (29), avoiding, behind, 30 high
+  elves [HELF], 22 horses [HORS].
+- Green (7052), Rainbow Falcons (29), avoiding, behind, 15 high elves
+  [HELF], 175 horses [HORS], 46 livestock [LIVE].
+- Scout (7056), Rainbow Falcons (29), avoiding, behind, hill dwarf
+  [HDWA], 6 horses [HORS], 5 camels [CAME], 6 mithril [MITH], 3 iron
+  [IRON].
+- Merchant (11861), The Grey Order (23), avoiding, behind, lizardman
+  [LIZA], 5 horses [HORS], 17 wood [WOOD], chocolate [CHOC].
+
++ North Gate [1] : Fort.
+  - Green Riders (4010), on guard, Rainbow Falcons (29), 7 high elves
+    [HELF], 7 camels [CAME].
+  - Green Guards (4889), on guard, Rainbow Falcons (29), 23 gnolls
+    [GNOL].
+  - Green Guards (7967), Rainbow Falcons (29), 20 gnolls [GNOL], 2
+    mithril swords [MSWO], 20 horses [HORS].
+  - Yellow Knight (1376), leader [LEAD], 5 mithril armor [MARM].
+
++ Trade Camp [2] : Caravanserai.
+  - Green Trader (5486), Rainbow Falcons (29), avoiding, behind, high
+    elf [HELF], 36 iron [IRON], 67 grain [GRAI], 3 mithril [MITH].
+  - Farmers (1378), 9 gnolls [GNOL], 16 livestock [LIVE].
+  - Quarriers (1380), 6 gnolls [GNOL], 6 picks [PICK], 17 stone
+    [STON].
+  - Smith (1933), Rainbow Falcons (29), behind, 8 gnolls [GNOL], 38
+    hammers [HAMM], 26 swords [SWOR], 15 iron [IRON].
+  - Green Circus (4888), Rainbow Falcons (29), behind, 20 gnolls
+    [GNOL].
+  - Scout (3634), Rainbow Falcons (29), avoiding, behind, 2 high elves
+    [HELF], 18 camels [CAME].
+  - Green Gnolls (7251), 6 gnolls [GNOL], 55 camels [CAME].
+  - Green Gnolls (7250), 6 gnolls [GNOL], 6 hammers [HAMM], 14 plate
+    armor [PARM].
+  - Green Smith (7962), Rainbow Falcons (29), avoiding, behind, 10
+    hill dwarves [HDWA], 22 mithril [MITH].
+
++ East Gate [3] : Fort.
+  - Green Guards (7253), 50 gnolls [GNOL].
+  - Blue Knight (4008), leader [LEAD].
+
++ South Gate [4] : Fort.
+  - Green Guards (8636), 8 gnolls [GNOL], 8 mithril swords [MSWO].
+  - Green Guards (7968), Rainbow Falcons (29), 20 gnolls [GNOL], 20
+    mithril swords [MSWO], 5 mithril armor [MARM].
+  - Orange Knight (1375), leader [LEAD].
+  - Green Guards (11933), 10 gnolls [GNOL], 10 mithril swords [MSWO].
+  - Green Guards (6974), 10 gnolls [GNOL], 5 mithril swords [MSWO].
+
++ West Gate [5] : Fort.
+  - Red Knight (1374), leader [LEAD], 5 mithril swords [MSWO].
+  - Green Gnolls (10438), Rainbow Falcons (29), 10 gnolls [GNOL].
+  - Green Guards (7008), Rainbow Falcons (29), 10 gnolls [GNOL].
+
++ Central Gate [6] : Fort.
+  - Green Riders (10448), Rainbow Falcons (29), avoiding, behind, 50
+    humans [HUMN], 50 horses [HORS].
+  - Violet Knight (783), Rainbow Falcons (29), behind, leader [LEAD],
+    10 mithril swords [MSWO].
+
++ Black Hole [7] : Mine.
+  - Green Humans (6665), Rainbow Falcons (29), avoiding, behind, 5
+    humans [HUMN], 3 picks [PICK], 36 iron [IRON].
+
++ Town Hall [8] : Fort.
+  - Hoham Citizens (5484), Rainbow Falcons (29), 184 gnolls [GNOL],
+    183 swords [SWOR].
+
++ Road to Lonthax [9] : Road SE.
+
++ Road to Tantbank [10] : Road SW.
+
+
+plain (36,40) in Blarnfashire, 3363 peasants (high elves), $1345.
+------------------------------------------------------------
+  Wages: $12.0 (Max: $269).
+  Wanted: none.
+  For Sale: 134 high elves [HELF] at $38, 26 leaders [LEAD] at $672.
+  Entertainment available: $100.
+  Products: 56 grain [GRAI], 22 horses [HORS].
+
+Exits:
+  North : ocean (36,38) in Atlantis Ocean.
+  Northeast : ocean (37,39) in Atlantis Ocean.
+  Southeast : plain (37,41) in Blarnfashire.
+  South : plain (36,42) in Blarnfashire.
+  Southwest : plain (35,41) in Blarnfashire.
+  Northwest : desert (35,39) in Pe'e, contains Hoham [city].
+
+- Green Guards (1935), on guard, Rainbow Falcons (29), behind, 26 high
+  elves [HELF], 30 stone [STON].
+- Scout (3200), Rainbow Falcons (29), avoiding, behind, high elf
+  [HELF].
+* Unit (4329), Borg (21), avoiding, behind, revealing faction,
+  receiving no aid, sharing, high elf [HELF], 92 silver [SILV].
+  Weight: 10. Capacity: 0/0/15/0. Skills: entertainment [ENTE] 2 (90).
+- Yellow men (4891), Rainbow Falcons (29), behind, 21 high elves
+  [HELF].
+- Green Farmers (6093), Rainbow Falcons (29), behind, 56 high elves
+  [HELF].
+- Green Horsemans (6668), Rainbow Falcons (29), avoiding, behind, 22
+  high elves [HELF], 22 horses [HORS].
+* Drone (8536), Borg (21), avoiding, behind, revealing faction,
+  receiving no aid, high elf [HELF]. Weight: 10. Capacity: 0/0/15/0.
+  Skills: horse training [HORS] 3 (210).
+- Scout (10667), Rainbow Falcons (29), avoiding, behind, high elf
+  [HELF], horse [HORS].
+- Green Builders (6670), Rainbow Falcons (29), avoiding, behind, 10
+  humans [HUMN].
+
+
+plain (38,40) in Blarnfashire, 3070 peasants (centaurs), $1473.
+------------------------------------------------------------
+  Wages: $12.4 (Max: $294).
+  Wanted: none.
+  For Sale: 122 centaurs [CTAU] at $69, 24 leaders [LEAD] at $694.
+  Entertainment available: $104.
+  Products: 75 livestock [LIVE], 30 horses [HORS].
+
+Exits:
+  North : ocean (38,38) in Atlantis Ocean.
+  Northeast : ocean (39,39) in Atlantis Ocean.
+  Southeast : ocean (39,41) in Atlantis Ocean.
+  South : ocean (38,42) in Atlantis Ocean.
+  Southwest : plain (37,41) in Blarnfashire.
+  Northwest : ocean (37,39) in Atlantis Ocean.
+
+- Scout (1387), on guard, gnoll [GNOL].
+- scout (3727), The Children of the Four Winds (41), avoiding, behind,
+  orc [ORC].
+* Drone (1288), Borg (21), avoiding, behind, revealing faction,
+  taxing, receiving no aid, sharing, gnoll [GNOL], 418 silver [SILV].
+  Weight: 10. Capacity: 0/0/15/0. Skills: combat [COMB] 1 (30).
+- Green Guards (4893), on guard, Rainbow Falcons (29), 23 high elves
+  [HELF].
+- Green Farmers (6669), Rainbow Falcons (29), avoiding, behind, 12
+  centaurs [CTAU], 42 livestock [LIVE].
+- Green Horsemans (7256), Rainbow Falcons (29), avoiding, behind, 30
+  centaurs [CTAU], 60 horses [HORS].
+* Drone (8537), Borg (21), avoiding, behind, revealing faction,
+  receiving no aid, sharing, centaur [CTAU]. Weight: 50. Capacity:
+  0/70/70/0. Skills: horse training [HORS] 3 (210).
+- Green Guards (9278), Rainbow Falcons (29), avoiding, behind, 3
+  centaurs [CTAU].
+- Green Farmers (10002), Rainbow Falcons (29), avoiding, behind, 10
+  centaurs [CTAU], 30 livestock [LIVE].
+- Scout (10669), Rainbow Falcons (29), avoiding, behind, centaur
+  [CTAU].
+- Green Farmers (10670), Rainbow Falcons (29), avoiding, behind, 6
+  centaurs [CTAU], 16 livestock [LIVE].
+- Green Farmers (10445), Rainbow Falcons (29), avoiding, behind, 11
+  centaurs [CTAU], 21 livestock [LIVE].
+- Green Farmers (4007), Rainbow Falcons (29), behind, 6 gnolls [GNOL],
+  4 camels [CAME], 18 livestock [LIVE].
+- Green Guards (11934), Rainbow Falcons (29), 6 centaurs [CTAU].
+- Unit (9253), Friendly people (27), avoiding, behind, goblin [GBLN].
+- Scouts (10457), Rainbow Falcons (29), avoiding, behind, high elf
+  [HELF], 26 horses [HORS].
+
+
+plain (35,41) in Blarnfashire, 2596 peasants (centaurs), $1298.
+------------------------------------------------------------
+  Wages: $12.5 (Max: $522).
+  Wanted: none.
+  For Sale: 103 centaurs [CTAU] at $70, 20 leaders [LEAD] at $700.
+  Entertainment available: $84.
+  Products: 72 livestock [LIVE], 20 horses [HORS].
+
+Exits:
+  North : desert (35,39) in Pe'e, contains Hoham [city].
+  Northeast : plain (36,40) in Blarnfashire.
+  Southeast : plain (36,42) in Blarnfashire.
+  South : plain (35,43) in Blarnfashire.
+  Southwest : ocean (34,42) in Atlantis Ocean.
+  Northwest : desert (34,40) in Pe'e.
+
+- guard (2862), on guard, The Children of the Four Winds (41), behind,
+  6 centaurs [CTAU].
+- Scout (2749), Rainbow Falcons (29), avoiding, behind, high elf
+  [HELF].
+- garrison (2858), on guard, The Children of the Four Winds (41), 17
+  humans [HUMN].
+* Drone (1290), Borg (21), avoiding, behind, revealing faction,
+  taxing, receiving no aid, sharing, gnoll [GNOL], 12 silver [SILV].
+  Weight: 10. Capacity: 0/0/15/0. Skills: combat [COMB] 1 (30),
+  entertainment [ENTE] 1 (60).
+- scout (5035), The Children of the Four Winds (41), avoiding, behind,
+  centaur [CTAU].
+- herders (6832), The Children of the Four Winds (41), avoiding,
+  behind, 2 centaurs [CTAU].
+- scout (7407), The Children of the Four Winds (41), avoiding, behind,
+  leader [LEAD].
+- recruits (8837), The Children of the Four Winds (41), avoiding,
+  behind, 38 gnolls [GNOL], 72 livestock [LIVE].
+* Drone (8548), Borg (21), avoiding, behind, revealing faction,
+  receiving no aid, centaur [CTAU]. Weight: 50. Capacity: 0/70/70/0.
+  Skills: horse training [HORS] 3 (180).
+- dancer (9424), The Children of the Four Winds (41), avoiding,
+  behind, centaur [CTAU].
+- herders (10182), The Children of the Four Winds (41), avoiding,
+  behind, 7 gnolls [GNOL], 28 horses [HORS].
+- scout (3277), Crooked Hooves (20), avoiding, behind, centaur [CTAU].
+- scout (10045), The Children of the Four Winds (41), avoiding,
+  behind, 3 centaurs [CTAU].
+- driver (6831), The Children of the Four Winds (41), avoiding,
+  behind, human [HUMN], 10 camels [CAME].
+
++ Building [1] : Temple.
+
+
+plain (37,41) in Blarnfashire, 3471 peasants (high elves), $1804.
+------------------------------------------------------------
+  Wages: $12.6 (Max: $360).
+  Wanted: none.
+  For Sale: 138 high elves [HELF] at $40, 27 leaders [LEAD] at $705.
+  Entertainment available: $124.
+  Products: 46 livestock [LIVE], 26 horses [HORS].
+
+Exits:
+  North : ocean (37,39) in Atlantis Ocean.
+  Northeast : plain (38,40) in Blarnfashire.
+  Southeast : ocean (38,42) in Atlantis Ocean.
+  South : swamp (37,43) in Miepi'an.
+  Southwest : plain (36,42) in Blarnfashire.
+  Northwest : plain (36,40) in Blarnfashire.
+
+- Green Guards (1936), on guard, Rainbow Falcons (29), 35 high elves
+  [HELF].
+- Scout (3204), Rainbow Falcons (29), avoiding, behind, high elf
+  [HELF], horse [HORS].
+* Unit (4333), Borg (21), avoiding, behind, revealing faction,
+  receiving no aid, sharing, high elf [HELF], 81 silver [SILV].
+  Weight: 10. Capacity: 0/0/15/0. Skills: entertainment [ENTE] 2 (90).
+- Green Farmers (5488), Rainbow Falcons (29), avoiding, behind, 46
+  high elves [HELF], 46 livestock [LIVE].
+- Green Horsemans (6095), Rainbow Falcons (29), avoiding, behind, 26
+  high elves [HELF], 26 horses [HORS].
+* Drone (8551), Borg (21), avoiding, behind, revealing faction,
+  receiving no aid, high elf [HELF]. Weight: 10. Capacity: 0/0/15/0.
+  Skills: horse training [HORS] 3 (210).
+- Green (10005), Rainbow Falcons (29), avoiding, 3 high elves [HELF].
+- Yellow Men (10673), Rainbow Falcons (29), avoiding, behind, 30 high
+  elves [HELF].
+- Scouts (9999), Rainbow Falcons (29), avoiding, behind, gnoll [GNOL],
+  39 horses [HORS].
+
+
+jungle (32,42) in Phesflen, contains Tantbank [town], 5385 peasants
+  (orcs), $5492.
+------------------------------------------------------------
+  Wages: $15.1 (Max: $1098).
+  Wanted: 190 grain [GRAI] at $21, 130 livestock [LIVE] at $18, 188
+    fish [FISH] at $54, 5 plate armor [PARM] at $435, 2 hammers [HAMM]
+    at $93.
+  For Sale: 215 orcs [ORC] at $48, 43 leaders [LEAD] at $845.
+  Entertainment available: $410.
+  Products: 25 livestock [LIVE], 16 wood [WOOD], 36 herbs [HERB], 18
+    furs [FUR].
+
+Exits:
+  North : desert (32,40) in Plimark.
+  Northeast : desert (33,41) in Reendglen.
+  Southeast : ocean (33,43) in Atlantis Ocean.
+  South : ocean (32,44) in Atlantis Ocean.
+  Southwest : ocean (31,43) in Atlantis Ocean.
+  Northwest : jungle (31,41) in Phesflen.
+
+- scout (2016), The Children of the Four Winds (41), avoiding, behind,
+  goblin [GBLN].
+- Scout (1382), Rainbow Falcons (29), avoiding, behind, gnoll [GNOL].
+- coworcs (2863), The Children of the Four Winds (41), avoiding,
+  behind, 3 orcs [ORC], 6 livestock [LIVE].
+- minstrel (4109), The Children of the Four Winds (41), avoiding,
+  behind, goblin [GBLN].
+- minstrel (4541), The Children of the Four Winds (41), avoiding,
+  behind, orc [ORC].
+- scout (5036), The Children of the Four Winds (41), 5 orcs [ORC], 9
+  swords [SWOR].
+- minstrels (4535), The Children of the Four Winds (41), avoiding,
+  behind, 4 goblins [GBLN].
+- scout (3273), The Children of the Four Winds (41), behind, leader
+  [LEAD], camel [CAME].
+- guard (6833), on guard, The Children of the Four Winds (41), 93 orcs
+  [ORC], 3 skeletons [SKEL], 98 swords [SWOR], 11 plate armor [PARM],
+  11 leather armor [LARM], 5 mithril swords [MSWO], 10 rootstone
+  [ROOT].
+- lumberjacks (8135), The Children of the Four Winds (41), avoiding,
+  behind, 6 orcs [ORC], 6 axes [AXE], 26 wood [WOOD].
+- shipmakers (8136), The Children of the Four Winds (41), avoiding,
+  behind, 3 orcs [ORC], 9 wood [WOOD], unfinished Galleon [GALL]
+  (needs 48).
+- coworcs (8137), The Children of the Four Winds (41), avoiding,
+  behind, 8 orcs [ORC], 8 livestock [LIVE].
+- furriers (8840), The Children of the Four Winds (41), avoiding,
+  behind, 9 orcs [ORC].
+- soldiers (8841), The Children of the Four Winds (41), 10 orcs [ORC],
+  5 swords [SWOR], 5 mithril swords [MSWO].
+- scout (5030), The Children of the Four Winds (41), avoiding, behind,
+  wood elf [WELF], orc [ORC], 2 axes [AXE].
+- archers (6242), The Children of the Four Winds (41), behind, 4 wood
+  elves [WELF], 5 swords [SWOR], 4 longbows [LBOW].
+- tutor (10184), The Children of the Four Winds (41), avoiding,
+  behind, leader [LEAD].
+- academy (10185), The Children of the Four Winds (41), avoiding,
+  behind, leader [LEAD], camel [CAME].
+- smith (10833), The Children of the Four Winds (41), avoiding,
+  behind, leader [LEAD].
+- armourer (10834), The Children of the Four Winds (41), avoiding,
+  behind, leader [LEAD].
+- soldiers (10836), on guard, The Children of the Four Winds (41), 10
+  orcs [ORC], 25 swords [SWOR].
+* Unit (7873), Borg (21), avoiding, behind, revealing faction,
+  receiving no aid, centaur [CTAU], 15 silver [SILV]. Weight: 50.
+  Capacity: 0/70/70/0. Skills: none.
+- scout (6235), The Children of the Four Winds (41), avoiding, behind,
+  lizardman [LIZA].
+- wizzard (12857), The Children of the Four Winds (41), avoiding,
+  behind, leader [LEAD].
+- miners (12858), The Children of the Four Winds (41), avoiding,
+  behind, 10 orcs [ORC].
+- scout (10089), The Children of the Four Winds (41), avoiding,
+  behind, 20 orcs [ORC].
+- sergeant (10102), The Children of the Four Winds (41), behind,
+  leader [LEAD].
+- lumberorcs (10106), The Children of the Four Winds (41), avoiding,
+  behind, 5 orcs [ORC], 5 axes [AXE], 8 camels [CAME].
+- Unit (7956), Friendly people (27), avoiding, behind, hill dwarf
+  [HDWA], horse [HORS].
+- scout (9887), The Children of the Four Winds (41), 3 leaders [LEAD].
+- gnoll recruiter (5635), The Children of the Four Winds (41),
+  avoiding, behind, centaur [CTAU], 4 horses [HORS], 98 livestock
+  [LIVE].
+
++ Building [1] : Magical Tower.
+  - Total Unit (795), The Children of the Four Winds (41), behind,
+    leader [LEAD], 5 swords [SWOR], 5 mithril swords [MSWO], camel
+    [CAME].
+  - instructor (2530), The Children of the Four Winds (41), behind,
+    leader [LEAD], sword [SWOR], camel [CAME].
+  - scout (3274), The Children of the Four Winds (41), behind, leader
+    [LEAD], 2 skeletons [SKEL], sword [SWOR], camel [CAME].
+
++ Building [2] : Road N.
+
++ Building [3] : Caravanserai.
+  - storesman (10835), The Children of the Four Winds (41), avoiding,
+    behind, leader [LEAD], 87 swords [SWOR], 109 grain [GRAI], 68 fish
+    [FISH].
+
++ South Wind [171] : Longship.
+  - sailors (6830), The Children of the Four Winds (41), avoiding,
+    behind, 2 wood elves [WELF], 2 swords [SWOR], 6 floater hides
+    [FLOA].
+
++ Building [4] : Timber Yard.
+  - lumberorcs (9425), The Children of the Four Winds (41), avoiding,
+    behind, 4 orcs [ORC], 4 axes [AXE].
+
++ Building [5] : Inn.
+  - builders (3270), The Children of the Four Winds (41), avoiding,
+    behind, 4 humans [HUMN], 27 camels [CAME], 16 horses [HORS].
+
+
+plain (36,42) in Blarnfashire, 2363 peasants (humans), $1228.
+------------------------------------------------------------
+  Wages: $12.6 (Max: $498).
+  Wanted: none.
+  For Sale: 94 humans [HUMN] at $40, 18 leaders [LEAD] at $705.
+  Entertainment available: $75.
+  Products: 44 livestock [LIVE], 32 horses [HORS].
+
+Exits:
+  North : plain (36,40) in Blarnfashire.
+  Northeast : plain (37,41) in Blarnfashire.
+  Southeast : swamp (37,43) in Miepi'an.
+  South : plain (36,44) in Blarnfashire, contains Lonthax [town].
+  Southwest : plain (35,43) in Blarnfashire.
+  Northwest : plain (35,41) in Blarnfashire.
+
+* Drones (2404), on guard, Borg (21), revealing faction, holding,
+  sharing, 23 humans [HUMN], 2780 silver [SILV]. Weight: 230.
+  Capacity: 0/0/345/0. Skills: combat [COMB] 1 (30).
+- Scout (3203), Rainbow Falcons (29), avoiding, behind, high elf
+  [HELF].
+* Drones (3303), Borg (21), avoiding, behind, revealing faction,
+  receiving no aid, 21 humans [HUMN], 42 livestock [LIVE]. Weight:
+  2310. Capacity: 0/0/2415/0. Skills: farming [FARM] 2 (108).
+* Drones (3305), Borg (21), avoiding, behind, revealing faction,
+  receiving no aid, 17 humans [HUMN], 32 horses [HORS]. Weight: 1770.
+  Capacity: 0/2240/2495/0. Skills: horse training [HORS] 2 (90).
+* Unit (8237), Borg (21), revealing faction, holding, sharing, leader
+  [LEAD]. Weight: 10. Capacity: 0/0/15/0. Skills: observation [OBSE] 3
+  (255).
+- Unit (9973), Friendly people (27), avoiding, behind, gnoll [GNOL].
+* Drones (12622), Borg (21), revealing faction, holding, sharing, 3
+  humans [HUMN], 26 silver [SILV]. Weight: 30. Capacity: 0/0/45/0.
+  Skills: entertainment [ENTE] 1 (35).
+* ReserveDrones (12623), Borg (21), revealing faction, holding,
+  sharing, 10 humans [HUMN], 26 silver [SILV]. Weight: 100. Capacity:
+  0/0/150/0. Skills: combat [COMB] 1 (30).
+* Drones (12624), Borg (21), revealing faction, holding, sharing, 10
+  humans [HUMN]. Weight: 100. Capacity: 0/0/150/0. Skills: building
+  [BUIL] 1 (60).
+- Scout (2748), Rainbow Falcons (29), avoiding, behind, high elf
+  [HELF], horse [HORS].
+
+
+plain (35,43) in Blarnfashire, 2981 peasants (humans), $1192.
+------------------------------------------------------------
+  Wages: $12.0 (Max: $476).
+  Wanted: none.
+  For Sale: 119 humans [HUMN] at $38, 23 leaders [LEAD] at $672.
+  Entertainment available: $88.
+  Products: 74 grain [GRAI], 38 horses [HORS].
+
+Exits:
+  North : plain (35,41) in Blarnfashire.
+  Northeast : plain (36,42) in Blarnfashire.
+  Southeast : plain (36,44) in Blarnfashire, contains Lonthax [town].
+  South : mountain (35,45) in Swebac.
+  Southwest : mountain (34,44) in Swebac.
+  Northwest : ocean (34,42) in Atlantis Ocean.
+
+* Drones (2405), on guard, Borg (21), revealing faction, holding,
+  sharing, 23 humans [HUMN], 1344 silver [SILV]. Weight: 230.
+  Capacity: 0/0/345/0. Skills: combat [COMB] 1 (31).
+- Scout (3202), Rainbow Falcons (29), avoiding, behind, high elf
+  [HELF].
+* Drones (3317), Borg (21), avoiding, behind, revealing faction, 6
+  humans [HUMN], 12 horses [HORS]. Weight: 660. Capacity: 0/840/930/0.
+  Skills: horse training [HORS] 2 (90).
+* Drones (3323), Borg (21), avoiding, behind, revealing faction, 37
+  humans [HUMN]. Weight: 370. Capacity: 0/0/555/0. Skills: farming
+  [FARM] 2 (130).
+* Drones (4370), Borg (21), avoiding, behind, revealing faction, 5
+  humans [HUMN], 10 horses [HORS]. Weight: 550. Capacity: 0/700/775/0.
+  Skills: horse training [HORS] 2 (90).
+* Drone (8318), Borg (21), revealing faction, holding, sharing, human
+  [HUMN], 10 silver [SILV]. Weight: 10. Capacity: 0/0/15/0. Skills:
+  observation [OBSE] 2 (90).
+* Drone (9469), Borg (21), avoiding, behind, revealing faction, leader
+  [LEAD]. Weight: 10. Capacity: 0/0/15/0. Skills: observation [OBSE] 2
+  (150).
+- Unit (7944), Friendly people (27), avoiding, behind, gnoll [GNOL].
+- Unit (11914), Friendly people (27), avoiding, behind, human [HUMN].
+* ReserveDrones (12625), Borg (21), revealing faction, holding,
+  sharing, 5 humans [HUMN], 10 silver [SILV]. Weight: 50. Capacity:
+  0/0/75/0. Skills: combat [COMB] 1 (30).
+- Scout (2750), Rainbow Falcons (29), avoiding, behind, high elf
+  [HELF], horse [HORS].
+
+
+swamp (37,43) in Miepi'an, 1930 peasants (orcs), $733.
+------------------------------------------------------------
+  Wages: $11.9 (Max: $306).
+  Wanted: none.
+  For Sale: 77 orcs [ORC] at $38, 15 leaders [LEAD] at $666.
+  Entertainment available: $45.
+  Products: 13 grain [GRAI], 14 wood [WOOD], 16 herbs [HERB].
+
+Exits:
+  North : plain (37,41) in Blarnfashire.
+  Northeast : ocean (38,42) in Atlantis Ocean.
+  Southeast : ocean (38,44) in Atlantis Ocean.
+  South : ocean (37,45) in Atlantis Ocean.
+  Southwest : plain (36,44) in Blarnfashire, contains Lonthax [town].
+  Northwest : plain (36,42) in Blarnfashire.
+
+- Scout (1386), Rainbow Falcons (29), avoiding, behind, gnoll [GNOL].
+* Drones (2406), on guard, Borg (21), revealing faction, holding,
+  sharing, 17 orcs [ORC], 1666 silver [SILV]. Weight: 170. Capacity:
+  0/0/255/0. Skills: combat [COMB] 1 (30).
+* Drones (3333), Borg (21), avoiding, behind, revealing faction, 5
+  orcs [ORC]. Weight: 50. Capacity: 0/0/75/0. Skills: farming [FARM] 2
+  (90).
+* Drones (4371), Borg (21), avoiding, behind, revealing faction, 7
+  orcs [ORC]. Weight: 70. Capacity: 0/0/105/0. Skills: lumberjack
+  [LUMB] 2 (145).
+* Drones (4373), Borg (21), avoiding, behind, revealing faction, 8
+  orcs [ORC]. Weight: 80. Capacity: 0/0/120/0. Skills: herb lore
+  [HERB] 2 (90).
+* Drones (12626), Borg (21), revealing faction, holding, sharing, 10
+  orcs [ORC]. Weight: 100. Capacity: 0/0/150/0. Skills: building
+  [BUIL] 1 (60).
+
+
+mountain (34,44) in Swebac, 1631 peasants (hill dwarves), $358.
+------------------------------------------------------------
+  Wages: $11.1 (Max: $155).
+  Wanted: none.
+  For Sale: 65 hill dwarves [HDWA] at $35, 13 leaders [LEAD] at $621.
+  Entertainment available: $26.
+  Products: 39 grain [GRAI], 36 iron [IRON], 15 stone [STON].
+
+Exits:
+  North : ocean (34,42) in Atlantis Ocean.
+  Northeast : plain (35,43) in Blarnfashire.
+  Southeast : mountain (35,45) in Swebac.
+  South : mountain (34,46) in Swebac.
+  Southwest : ocean (33,45) in Atlantis Ocean.
+  Northwest : ocean (33,43) in Atlantis Ocean.
+
+- Scout (1384), on guard, Rainbow Falcons (29), behind, gnoll [GNOL],
+  horse [HORS].
+* Drone (1291), Borg (21), behind, revealing faction, taxing,
+  receiving no aid, sharing, gnoll [GNOL], 300 silver [SILV]. Weight:
+  10. Capacity: 0/0/15/0. Skills: combat [COMB] 1 (35).
+- scout (4114), The Children of the Four Winds (41), avoiding, behind,
+  human [HUMN].
+* Drones (4374), Borg (21), behind, revealing faction, receiving no
+  aid, 4 hill dwarves [HDWA]. Weight: 40. Capacity: 0/0/60/0. Skills:
+  combat [COMB] 1 (35).
+- Green Guards (5489), Rainbow Falcons (29), avoiding, behind, 6 hill
+  dwarves [HDWA].
+- Scout (6672), Rainbow Falcons (29), avoiding, behind, hill dwarf
+  [HDWA].
+- Green Miner (6673), Rainbow Falcons (29), avoiding, behind, 2 hill
+  dwarves [HDWA], 6 mithril [MITH].
+- Green Farmers (6667), Rainbow Falcons (29), avoiding, behind, 17
+  gnolls [GNOL], 28 grain [GRAI].
+- Green Farmers (8648), Rainbow Falcons (29), avoiding, behind, 12
+  hill dwarves [HDWA], 20 grain [GRAI].
+- Green Quar (8649), Rainbow Falcons (29), avoiding, behind, 7 hill
+  dwarves [HDWA], 7 picks [PICK], 34 stone [STON].
+- Unit (9972), hill dwarf [HDWA].
+- Green Quar (10674), Rainbow Falcons (29), avoiding, behind, 2 hill
+  dwarves [HDWA].
+- Green Miners (10675), Rainbow Falcons (29), avoiding, behind, 12
+  hill dwarves [HDWA], 6 picks [PICK], 17 iron [IRON].
+- Green Guards (10676), Rainbow Falcons (29), avoiding, behind, 10
+  hill dwarves [HDWA].
+- Green Hero (10677), Rainbow Falcons (29), avoiding, behind, leader
+  [LEAD].
+- Green Dwarves (10678), Rainbow Falcons (29), avoiding, behind, 12
+  hill dwarves [HDWA].
+- Green Farmers (10000), Rainbow Falcons (29), avoiding, behind, 5
+  gnolls [GNOL], 18 grain [GRAI].
+- Green Miners (10665), Rainbow Falcons (29), avoiding, behind, 8
+  gnolls [GNOL], 3 picks [PICK], 19 iron [IRON].
+- Scout (4652), The Grey Order (23), avoiding, behind, lizardman
+  [LIZA].
+- Scout (10668), Rainbow Falcons (29), avoiding, behind, 3 high elves
+  [HELF], 43 horses [HORS].
+- Green Quar (12686), Rainbow Falcons (29), avoiding, behind, 3 gnolls
+  [GNOL], 5 camels [CAME].
+- Green Builders (2747), Rainbow Falcons (29), avoiding, behind, 10
+  gnolls [GNOL], 6 picks [PICK], 10 horses [HORS].
+
+
+plain (36,44) in Blarnfashire, contains Lonthax [town], 8768 peasants
+  (gnolls), $12801.
+------------------------------------------------------------
+  Wages: $17.3 (Max: $2560).
+  Wanted: 196 grain [GRAI] at $24, 168 livestock [LIVE] at $27, 114
+    fish [FISH] at $59, 19 bags [BAG] at $104, 15 crossbows [XBOW] at
+    $119, 18 nets [NET] at $140, 11 javelins [JAVE] at $103, 32 pearls
+    [PEAR] at $500.
+  For Sale: 18 ivory [IVOR] at $63, 350 gnolls [GNOL] at $55, 70
+    leaders [LEAD] at $968.
+  Entertainment available: $727.
+  Products: 78 grain [GRAI], 31 horses [HORS].
+
+Exits:
+  North : plain (36,42) in Blarnfashire.
+  Northeast : swamp (37,43) in Miepi'an.
+  Southeast : ocean (37,45) in Atlantis Ocean.
+  South : swamp (36,46) in Pangmore.
+  Southwest : mountain (35,45) in Swebac.
+  Northwest : plain (35,43) in Blarnfashire.
+
+* Five of Eight (1294), Borg (21), behind, revealing faction, walking
+  battle spoils, leader [LEAD], horse [HORS]. Weight: 60. Capacity:
+  0/70/85/0. Skills: force [FORC] 2 (105), pattern [PATT] 2 (140),
+  illusion [ILLU] 2 (90), phantasmal entertainment [PHEN] 1 (70), fire
+  [FIRE] 2 (90), earth lore [EART] 2 (90), wolf lore [WOLF] 2 (90),
+  spirit [SPIR] 2 (120), bird lore [BIRD] 1 (60), artifact lore [ARTI]
+  2 (90). Combat spell: fire [FIRE]. Can Study: earthquake [EQUA],
+  force shield [FSHI], energy shield [ESHI], spirit shield [SSHI],
+  magical healing [MHEA], gate lore [GATE], farsight [FARS], mind
+  reading [MIND], weather lore [WEAT], bird lore [BIRD], necromancy
+  [NECR], demon lore [DEMO], phantasmal entertainment [PHEN], create
+  phantasmal beasts [PHBE], create phantasmal demons [PHDE], dispel
+  illusions [DISP], enchant swords [ESWO], enchant armor [EARM],
+  enchant shields [ESHD], create cornucopia [CRCO], transmutation
+  [TRNS].
+* Drones (1297), Borg (21), avoiding, behind, revealing faction,
+  sharing, 58 gnolls [GNOL], 78 grain [GRAI]. Weight: 970. Capacity:
+  0/0/870/0. Skills: farming [FARM] 2 (90).
+* Drones (1298), Borg (21), avoiding, behind, revealing faction,
+  sharing, 11 gnolls [GNOL]. Weight: 110. Capacity: 0/0/165/0. Skills:
+  entertainment [ENTE] 2 (90).
+* Eight of One (1864), Borg (21), avoiding, behind, leader [LEAD].
+  Weight: 10. Capacity: 0/0/15/0. Skills: observation [OBSE] 5 (450),
+  stealth [STEA] 3 (210).
+- Scout (1385), Rainbow Falcons (29), avoiding, behind, gnoll [GNOL].
+- ambassador (2859), The Children of the Four Winds (41), avoiding,
+  behind, gnoll [GNOL].
+* Drones (3371), Borg (21), avoiding, behind, revealing faction,
+  sharing, 5 gnolls [GNOL], 105 horses [HORS]. Weight: 5300. Capacity:
+  0/7350/7425/0. Skills: horse training [HORS] 2 (155).
+- Unit (3614), Friendly people (27), avoiding, behind, gnoll [GNOL].
+* Drones (3732), on guard, Borg (21), revealing faction, sharing, 35
+  gnolls [GNOL]. Weight: 350. Capacity: 0/0/525/0. Skills: combat
+  [COMB] 1 (60).
+* Drones (4375), Borg (21), revealing faction, sharing, 193 gnolls
+  [GNOL], 10778 silver [SILV]. Weight: 1930. Capacity: 0/0/2895/0.
+  Skills: combat [COMB] 1 (30).
+- scout (5233), Drow (82), avoiding, behind, gnoll [GNOL].
+* Ten of Eight (5387), Borg (21), behind, revealing faction, sharing,
+  leader [LEAD]. Weight: 10. Capacity: 0/0/15/0. Skills: tactics
+  [TACT] 4 (405).
+- I'm a scout (3098), Legacy of Disasters (106), avoiding, behind,
+  lizardman [LIZA].
+* Nine of Eight (5982), Borg (21), avoiding, behind, sharing, leader
+  [LEAD]. Weight: 10. Capacity: 0/0/15/0. Skills: stealth [STEA] 4
+  (330).
+* Drones (7184), Borg (21), revealing faction, sharing, 10 gnolls
+  [GNOL]. Weight: 100. Capacity: 0/0/150/0. Skills: combat [COMB] 4
+  (335).
+* Drones (7875), Borg (21), avoiding, behind, revealing faction,
+  sharing, 15 gnolls [GNOL]. Weight: 150. Capacity: 0/0/225/0. Skills:
+  armorer [ARMO] 3 (245).
+* Drones (7876), Borg (21), avoiding, behind, revealing faction,
+  sharing, 10 gnolls [GNOL]. Weight: 100. Capacity: 0/0/150/0. Skills:
+  horse training [HORS] 3 (270).
+* Drones (7879), Borg (21), revealing faction, holding, sharing, 10
+  goblins [GBLN], 10 mithril swords [MSWO]. Weight: 60. Capacity:
+  0/0/70/0. Skills: weaponsmith [WEAP] 3 (190).
+* Drones (8573), Borg (21), revealing faction, sharing, 60 gnolls
+  [GNOL], 39 swords [SWOR]. Weight: 639. Capacity: 0/0/900/0. Skills:
+  combat [COMB] 3 (210).
+* Unit (9931), Borg (21), revealing faction, sharing, 20 gnolls
+  [GNOL], 20 swords [SWOR]. Weight: 220. Capacity: 0/0/300/0. Skills:
+  weaponsmith [WEAP] 1 (55).
+* TransportDrone (5386), Borg (21), revealing faction, sharing, human
+  [HUMN], 32 silver [SILV]. Weight: 10. Capacity: 0/0/15/0. Skills:
+  none.
+* TransportDrone (7180), Borg (21), revealing faction, holding,
+  sharing, human [HUMN], 32 silver [SILV]. Weight: 10. Capacity:
+  0/0/15/0. Skills: none.
+- scout (3276), Crooked Hooves (20), avoiding, behind, centaur [CTAU].
+* Drones (9498), Borg (21), revealing faction, sharing, 100 gnolls
+  [GNOL]. Weight: 1000. Capacity: 0/0/1500/0. Skills: combat [COMB] 2
+  (150).
+* Drones (3364), Borg (21), avoiding, behind, revealing faction, 5
+  orcs [ORC]. Weight: 50. Capacity: 0/0/75/0. Skills: lumberjack
+  [LUMB] 4 (350).
+- Scout (8634), Rainbow Falcons (29), avoiding, behind, gnoll [GNOL].
+* Scout (3730), Borg (21), avoiding, behind, human [HUMN], horse
+  [HORS], 20 silver [SILV]. Weight: 60. Capacity: 0/70/85/0. Skills:
+  stealth [STEA] 1 (30).
+* Unit (11850), Borg (21), revealing faction, sharing, 10 leaders
+  [LEAD]. Weight: 100. Capacity: 0/0/150/0. Skills: combat [COMB] 2
+  (90).
+* Five of Three (775), Borg (21), behind, revealing faction, walking
+  battle spoils, leader [LEAD], horse [HORS], 1117 silver [SILV].
+  Weight: 60. Capacity: 0/70/85/0. Skills: observation [OBSE] 1 (30),
+  force [FORC] 2 (100), pattern [PATT] 2 (105), spirit [SPIR] 2 (90),
+  gate lore [GATE] 1 (30), fire [FIRE] 1 (45), combat [COMB] 3 (180),
+  farsight [FARS] 1 (30), illusion [ILLU] 2 (90), phantasmal
+  entertainment [PHEN] 1 (45), artifact lore [ARTI] 1 (30), earth lore
+  [EART] 2 (120), magical healing [MHEA] 1 (30), wolf lore [WOLF] 2
+  (120), bird lore [BIRD] 1 (30). Combat spell: fire [FIRE]. Can
+  Study: fire [FIRE], earthquake [EQUA], force shield [FSHI], energy
+  shield [ESHI], spirit shield [SSHI], magical healing [MHEA], gate
+  lore [GATE], farsight [FARS], mind reading [MIND], weather lore
+  [WEAT], bird lore [BIRD], necromancy [NECR], demon lore [DEMO],
+  phantasmal entertainment [PHEN], create phantasmal beasts [PHBE],
+  create phantasmal demons [PHDE], dispel illusions [DISP], artifact
+  lore [ARTI], enchant shields [ESHD], create cornucopia [CRCO],
+  transmutation [TRNS].
+* One of Three (1293), Borg (21), behind, revealing faction, walking
+  battle spoils, leader [LEAD], horse [HORS], 1675 silver [SILV].
+  Weight: 60. Capacity: 0/70/85/0. Skills: force [FORC] 2 (125),
+  pattern [PATT] 2 (105), illusion [ILLU] 2 (100), phantasmal
+  entertainment [PHEN] 2 (90), fire [FIRE] 2 (90), earth lore [EART] 2
+  (120), wolf lore [WOLF] 2 (120), spirit [SPIR] 2 (90), bird lore
+  [BIRD] 1 (60), artifact lore [ARTI] 2 (90). Combat spell: fire
+  [FIRE]. Can Study: earthquake [EQUA], force shield [FSHI], energy
+  shield [ESHI], spirit shield [SSHI], magical healing [MHEA], gate
+  lore [GATE], farsight [FARS], mind reading [MIND], weather lore
+  [WEAT], bird lore [BIRD], necromancy [NECR], demon lore [DEMO],
+  create phantasmal beasts [PHBE], create phantasmal demons [PHDE],
+  dispel illusions [DISP], enchant swords [ESWO], enchant armor
+  [EARM], enchant shields [ESHD], create cornucopia [CRCO],
+  transmutation [TRNS].
+- Scout (1930), The Order of Obsidian Shadow (6), behind, centaur
+  [CTAU].
+* TransportDrone (6029), Borg (21), revealing faction, sharing, goblin
+  [GBLN], 64 horses [HORS], 84 livestock [LIVE]. Weight: 7405.
+  Capacity: 0/4480/8687/0. Skills: none.
+* TransportDrone (6030), Borg (21), revealing faction, sharing, goblin
+  [GBLN], 32 horses [HORS]. Weight: 1605. Capacity: 0/2240/2247/0.
+  Skills: none.
+- cowboys (1922), Friendly people (27), avoiding, behind, gnoll
+  [GNOL], horse [HORS].
+
++ Building [1] : Caravanserai.
+  * Unit (8333), Borg (21), revealing faction, sharing, leader [LEAD],
+    pick [PICK], 2 leather armor [LARM], 2 chain armor [CARM], sword
+    [SWOR], 3 camels [CAME], 414 horses [HORS], 2 wagons [WAGO], 233
+    grain [GRAI], 2 lassoes [LASS], 130 wood [WOOD], 212 herbs [HERB],
+    107 iron [IRON], 42 stone [STON], 40 fish [FISH], 8 mithril
+    [MITH], 22589 silver [SILV]. Weight: 25538. Capacity:
+    0/29190/29705/0. Skills: quartermaster [QUAM] 3 (250).
+
++ Building [2] : Fort.
+  * Drones (5983), Borg (21), revealing faction, sharing, 50 gnolls
+    [GNOL], 80 swords [SWOR], 15 plate armor [PARM], 30 mithril swords
+    [MSWO]. Weight: 655. Capacity: 0/0/750/0. Skills: combat [COMB] 4
+    (335).
+  * Four of Nine (1295), Borg (21), behind, revealing faction, walking
+    battle spoils, leader [LEAD], horse [HORS]. Weight: 60. Capacity:
+    0/70/85/0. Skills: force [FORC] 3 (180), pattern [PATT] 2 (130),
+    illusion [ILLU] 1 (40), phantasmal entertainment [PHEN] 1 (30),
+    weather lore [WEAT] 1 (65), fire [FIRE] 2 (90), earth lore [EART]
+    2 (120), clear skies [CLEA] 1 (30), wolf lore [WOLF] 2 (120),
+    spirit [SPIR] 2 (120), summon storm [SSTO] 1 (30), bird lore
+    [BIRD] 1 (60). Combat spell: summon storm [SSTO]. Can Study: fire
+    [FIRE], earthquake [EQUA], force shield [FSHI], energy shield
+    [ESHI], spirit shield [SSHI], magical healing [MHEA], gate lore
+    [GATE], farsight [FARS], mind reading [MIND], weather lore [WEAT],
+    summon wind [SWIN], bird lore [BIRD], necromancy [NECR], demon
+    lore [DEMO], illusion [ILLU], create phantasmal beasts [PHBE],
+    create phantasmal demons [PHDE], dispel illusions [DISP], artifact
+    lore [ARTI].
+
++ Building [3] : Stockade.
+  * Six of Seven (1296), Borg (21), behind, revealing faction, walking
+    battle spoils, leader [LEAD], horse [HORS]. Weight: 60. Capacity:
+    0/70/85/0. Skills: force [FORC] 2 (110), pattern [PATT] 3 (180),
+    earth lore [EART] 2 (120), illusion [ILLU] 1 (65), wolf lore
+    [WOLF] 2 (120), phantasmal entertainment [PHEN] 1 (60), fire
+    [FIRE] 2 (90), spirit [SPIR] 2 (120), bird lore [BIRD] 1 (60),
+    artifact lore [ARTI] 2 (90). Combat spell: fire [FIRE]. Can Study:
+    earthquake [EQUA], force shield [FSHI], energy shield [ESHI],
+    spirit shield [SSHI], magical healing [MHEA], gate lore [GATE],
+    farsight [FARS], mind reading [MIND], weather lore [WEAT], bird
+    lore [BIRD], necromancy [NECR], demon lore [DEMO], illusion
+    [ILLU], create phantasmal beasts [PHBE], create phantasmal demons
+    [PHDE], dispel illusions [DISP], enchant swords [ESWO], enchant
+    armor [EARM], enchant shields [ESHD], create cornucopia [CRCO],
+    transmutation [TRNS].
+
++ Ship [235] : Raft; Load: 50/450; Sailors: 0/2; MaxSpeed: 0.
+  * Drones (7880), Borg (21), revealing faction, holding, sharing, 10
+    goblins [GBLN]. Weight: 50. Capacity: 0/0/70/0. Skills:
+    shipbuilding [SHIP] 3 (190).
+
++ Ship [236] : Raft.
+
++ Building [4] : Stockade.
+  * Drones (7182), Borg (21), revealing faction, holding, sharing, 10
+    orcs [ORC], 71 silver [SILV]. Weight: 100. Capacity: 0/0/150/0.
+    Skills: building [BUIL] 2 (115).
+
++ Building [5] : Stockade, needs 20.
+  * Drones (7183), Borg (21), avoiding, behind, revealing faction,
+    sharing, 10 gnolls [GNOL]. Weight: 100. Capacity: 0/0/150/0.
+    Skills: building [BUIL] 2 (90).
+
++ Building [6] : Road N, needs 10.
+  * Drones (9497), Borg (21), revealing faction, sharing, 10 gnolls
+    [GNOL]. Weight: 100. Capacity: 0/0/150/0. Skills: building [BUIL]
+    2 (90).
+
+
+ocean (38,44) in Atlantis Ocean.
+------------------------------------------------------------
+  Wages: $0.
+  Wanted: none.
+  For Sale: none.
+  Products: 65 fish [FISH].
+
+Exits:
+  North : ocean (38,42) in Atlantis Ocean.
+  Northeast : ocean (39,43) in Atlantis Ocean.
+  Southeast : ocean (39,45) in Atlantis Ocean.
+  South : ocean (38,46) in Atlantis Ocean.
+  Southwest : ocean (37,45) in Atlantis Ocean.
+  Northwest : swamp (37,43) in Miepi'an.
+
+
++ Ship [218] : Raft; Load: 70/450; Sailors: 2/2; MaxSpeed: 2.
+  * Drones (9508), Borg (21), revealing faction, holding, sharing, 2
+    gnolls [GNOL], 70 silver [SILV]. Weight: 20. Capacity: 0/0/30/0.
+    Skills: sailing [SAIL] 1 (35).
+  * Drones (9579), Borg (21), revealing faction, holding, sharing, 5
+    gnolls [GNOL]. Weight: 50. Capacity: 0/0/75/0. Skills: fishing
+    [FISH] 2 (90).
+
+
+mountain (35,45) in Swebac, 1357 peasants (hill dwarves), $542.
+------------------------------------------------------------
+  Wages: $12.0 (Max: $249).
+  Wanted: none.
+  For Sale: 54 hill dwarves [HDWA] at $38, 10 leaders [LEAD] at $672.
+  Entertainment available: $29.
+  Products: 39 grain [GRAI], 36 iron [IRON], 12 stone [STON], 8
+    mithril [MITH].
+
+Exits:
+  North : plain (35,43) in Blarnfashire.
+  Northeast : plain (36,44) in Blarnfashire, contains Lonthax [town].
+  Southeast : swamp (36,46) in Pangmore.
+  South : swamp (35,47) in Pangmore.
+  Southwest : mountain (34,46) in Swebac.
+  Northwest : mountain (34,44) in Swebac.
+
+* Drones (3154), on guard, Borg (21), revealing faction, holding,
+  sharing, 10 hill dwarves [HDWA], 2682 silver [SILV]. Weight: 100.
+  Capacity: 0/0/150/0. Skills: combat [COMB] 1 (35).
+* Drones (3372), Borg (21), avoiding, behind, revealing faction, 6
+  hill dwarves [HDWA]. Weight: 60. Capacity: 0/0/90/0. Skills: mining
+  [MINI] 2 (130).
+* Drones (4376), Borg (21), avoiding, behind, revealing faction, 6
+  hill dwarves [HDWA]. Weight: 60. Capacity: 0/0/90/0. Skills:
+  quarrying [QUAR] 2 (120).
+* Unit (6025), Borg (21), revealing faction, sharing, 7 hill dwarves
+  [HDWA]. Weight: 70. Capacity: 0/0/105/0. Skills: mining [MINI] 3
+  (285).
+- Unit (7943), Friendly people (27), avoiding, behind, goblin [GBLN].
+* Drones (9932), Borg (21), revealing faction, sharing, 3 hill dwarves
+  [HDWA]. Weight: 30. Capacity: 0/0/45/0. Skills: mining [MINI] 3
+  (210).
+- Scout (10008), Rainbow Falcons (29), avoiding, behind, hill dwarf
+  [HDWA].
+* Unit (9580), Borg (21), avoiding, behind, revealing faction, 24 hill
+  dwarves [HDWA]. Weight: 240. Capacity: 0/0/360/0. Skills: mining
+  [MINI] 1 (50).
+* Unit (9585), Borg (21), avoiding, behind, revealing faction, 22 hill
+  dwarves [HDWA]. Weight: 220. Capacity: 0/0/330/0. Skills:
+  weaponsmith [WEAP] 2 (90).
+* Drones (9967), Borg (21), avoiding, behind, revealing faction,
+  sharing, 20 gnolls [GNOL]. Weight: 200. Capacity: 0/0/300/0. Skills:
+  farming [FARM] 2 (90).
+* ReserveDrones (12627), Borg (21), revealing faction, holding,
+  sharing, 5 hill dwarves [HDWA], 10 silver [SILV]. Weight: 50.
+  Capacity: 0/0/75/0. Skills: combat [COMB] 1 (30).
+
+
+ocean (37,45) in Atlantis Ocean.
+------------------------------------------------------------
+  Wages: $0.
+  Wanted: none.
+  For Sale: none.
+  Products: 65 fish [FISH].
+
+Exits:
+  North : swamp (37,43) in Miepi'an.
+  Northeast : ocean (38,44) in Atlantis Ocean.
+  Southeast : ocean (38,46) in Atlantis Ocean.
+  South : swamp (37,47) in Pangmore.
+  Southwest : swamp (36,46) in Pangmore.
+  Northwest : plain (36,44) in Blarnfashire, contains Lonthax [town].
+
+
++ Ship [217] : Raft; Load: 70/450; Sailors: 2/2; MaxSpeed: 2.
+  * Drones (9506), Borg (21), revealing faction, holding, sharing, 2
+    gnolls [GNOL], 70 silver [SILV]. Weight: 20. Capacity: 0/0/30/0.
+    Skills: sailing [SAIL] 1 (35).
+  * Drones (9557), Borg (21), revealing faction, holding, sharing, 5
+    gnolls [GNOL]. Weight: 50. Capacity: 0/0/75/0. Skills: fishing
+    [FISH] 2 (90).
+
+
+mountain (34,46) in Swebac, 1389 peasants (humans), $444.
+------------------------------------------------------------
+  Wages: $11.6 (Max: $203).
+  Wanted: none.
+  For Sale: 55 humans [HUMN] at $37, 11 leaders [LEAD] at $649.
+  Entertainment available: $26.
+  Products: 30 livestock [LIVE], 39 iron [IRON], 19 stone [STON].
+
+Exits:
+  North : mountain (34,44) in Swebac.
+  Northeast : mountain (35,45) in Swebac.
+  Southeast : swamp (35,47) in Pangmore.
+  South : swamp (34,48) in Pangmore, contains Prempmoss [town].
+  Southwest : ocean (33,47) in Atlantis Ocean.
+  Northwest : ocean (33,45) in Atlantis Ocean.
+
+- guard (4113), on guard, The Children of the Four Winds (41), behind,
+  8 humans [HUMN].
+- minstrel (5038), The Children of the Four Winds (41), avoiding,
+  behind, human [HUMN].
+- farmers (5636), The Children of the Four Winds (41), avoiding,
+  behind, 7 humans [HUMN], 23 livestock [LIVE].
+- farmers (6245), The Children of the Four Winds (41), avoiding,
+  behind, 3 humans [HUMN], 19 livestock [LIVE].
+- reserve (6834), on guard, The Children of the Four Winds (41),
+  behind, 9 humans [HUMN], 9 swords [SWOR].
+- miners (7409), The Children of the Four Winds (41), avoiding,
+  behind, 6 humans [HUMN], 6 picks [PICK], 12 iron [IRON].
+- smiths (8138), The Children of the Four Winds (41), avoiding,
+  behind, 6 humans [HUMN], 6 hammers [HAMM], 51 swords [SWOR], 6 picks
+  [PICK].
+- farmbuilders (9427), The Children of the Four Winds (41), avoiding,
+  behind, 4 humans [HUMN], 12 livestock [LIVE].
+- Scout (10009), Rainbow Falcons (29), avoiding, behind, hill dwarf
+  [HDWA].
+- quarrymen (11403), The Children of the Four Winds (41), avoiding,
+  behind, 5 humans [HUMN], 5 picks [PICK], 15 stone [STON].
+- quarryscout (3269), The Children of the Four Winds (41), avoiding,
+  behind, goblin [GBLN], pick [PICK], 2 horses [HORS], 4 stone [STON].
+* Drone (8572), Borg (21), behind, revealing faction, receiving no
+  aid, hill dwarf [HDWA], silver [SILV]. Weight: 10. Capacity:
+  0/0/15/0. Skills: combat [COMB] 1 (35).
+- Ranger (10191), gnoll [GNOL], horse [HORS].
+* Drones (7878), Borg (21), revealing faction, holding, sharing, 4
+  hill dwarves [HDWA], 6 silver [SILV]. Weight: 40. Capacity:
+  0/0/60/0. Skills: quarrying [QUAR] 3 (180).
+- Unit (9266), Friendly people (27), avoiding, behind, hill dwarf
+  [HDWA], horse [HORS].
+- scout (12859), The Children of the Four Winds (41), avoiding,
+  behind, leader [LEAD].
+
++ Building [1] : Caravanserai, needs 14.
+  - brickies (11404), The Children of the Four Winds (41), avoiding,
+    behind, 5 humans [HUMN].
+
+
+swamp (36,46) in Pangmore, 1969 peasants (goblins), $748.
+------------------------------------------------------------
+  Wages: $11.9 (Max: $312).
+  Wanted: none.
+  For Sale: 78 goblins [GBLN] at $28, 15 leaders [LEAD] at $666.
+  Entertainment available: $46.
+  Products: 12 livestock [LIVE], 16 wood [WOOD], 18 herbs [HERB].
+
+Exits:
+  North : plain (36,44) in Blarnfashire, contains Lonthax [town].
+  Northeast : ocean (37,45) in Atlantis Ocean.
+  Southeast : swamp (37,47) in Pangmore.
+  South : swamp (36,48) in Pangmore.
+  Southwest : swamp (35,47) in Pangmore.
+  Northwest : mountain (35,45) in Swebac.
+
+* Unit (3155), on guard, Borg (21), revealing faction, holding,
+  sharing, 14 goblins [GBLN], 966 silver [SILV]. Weight: 70. Capacity:
+  0/0/98/0. Skills: combat [COMB] 1 (31).
+* Unit (3374), Borg (21), avoiding, behind, revealing faction, 8
+  goblins [GBLN]. Weight: 40. Capacity: 0/0/56/0. Skills: lumberjack
+  [LUMB] 2 (90).
+* Drones (4401), Borg (21), avoiding, behind, revealing faction, 6
+  goblins [GBLN], 24 livestock [LIVE]. Weight: 1230. Capacity:
+  0/0/1242/0. Skills: farming [FARM] 2 (90).
+- Unit (4879), Friendly people (27), avoiding, behind, gnoll [GNOL].
+- Scout (8645), Rainbow Falcons (29), avoiding, behind, hill dwarf
+  [HDWA].
+* Unit (9595), Borg (21), avoiding, behind, revealing faction, 9
+  goblins [GBLN]. Weight: 45. Capacity: 0/0/63/0. Skills: herb lore
+  [HERB] 1 (50).
+* Drone (12628), Borg (21), revealing faction, holding, sharing,
+  leader [LEAD]. Weight: 10. Capacity: 0/0/15/0. Skills: observation
+  [OBSE] 1 (65).
+* ReserveDrones (12629), Borg (21), revealing faction, holding,
+  sharing, 5 goblins [GBLN], 9 silver [SILV]. Weight: 25. Capacity:
+  0/0/35/0. Skills: combat [COMB] 1 (30).
+* Drone (11851), Borg (21), avoiding, behind, revealing faction,
+  sharing, gnoll [GNOL], horse [HORS], 181 silver [SILV]. Weight: 60.
+  Capacity: 0/70/85/0. Skills: hunting [HUNT] 3 (180).
+* Drone (11854), Borg (21), avoiding, behind, revealing faction,
+  sharing, gnoll [GNOL], horse [HORS], 170 silver [SILV]. Weight: 60.
+  Capacity: 0/70/85/0. Skills: hunting [HUNT] 3 (180).
+* TransportDrone (6028), Borg (21), revealing faction, sharing, goblin
+  [GBLN]. Weight: 5. Capacity: 0/0/7/0. Skills: none.
+
+
+swamp (35,47) in Pangmore, 1639 peasants (goblins), $491.
+------------------------------------------------------------
+  Wages: $11.5 (Max: $213).
+  Wanted: none.
+  For Sale: 65 goblins [GBLN] at $27, 13 leaders [LEAD] at $644.
+  Entertainment available: $31.
+  Products: 14 grain [GRAI], 12 wood [WOOD], 8 floater hides [FLOA],
+    14 herbs [HERB].
+
+Exits:
+  North : mountain (35,45) in Swebac.
+  Northeast : swamp (36,46) in Pangmore.
+  Southeast : swamp (36,48) in Pangmore.
+  South : swamp (35,49) in Pangmore.
+  Southwest : swamp (34,48) in Pangmore, contains Prempmoss [town].
+  Northwest : mountain (34,46) in Swebac.
+
+- guard (6246), on guard, The Children of the Four Winds (41), behind,
+  9 goblins [GBLN].
+- minstrel (9428), The Children of the Four Winds (41), avoiding,
+  behind, goblin [GBLN].
+- Unit (9432), goblin [GBLN].
+- farmers (10186), The Children of the Four Winds (41), avoiding,
+  behind, 7 goblins [GBLN], 42 grain [GRAI].
+- Scout (8644), Rainbow Falcons (29), avoiding, behind, hill dwarf
+  [HDWA].
+* Drone (9934), Borg (21), behind, revealing faction, receiving no
+  aid, consuming unit's food, gnoll [GNOL], 5 silver [SILV]. Weight:
+  10. Capacity: 0/0/15/0. Skills: combat [COMB] 1 (30).
+- lumberjacks (11405), The Children of the Four Winds (41), avoiding,
+  behind, 6 goblins [GBLN], 12 wood [WOOD].
+* Drone (11852), Borg (21), avoiding, behind, revealing faction,
+  sharing, gnoll [GNOL], horse [HORS], 170 silver [SILV]. Weight: 60.
+  Capacity: 0/70/85/0. Skills: hunting [HUNT] 3 (180).
+
+
+swamp (34,48) in Pangmore, contains Prempmoss [town], 4775 peasants
+  (gnolls), $2578.
+------------------------------------------------------------
+  Wages: $12.7 (Max: $515).
+  Wanted: 154 grain [GRAI] at $27, 144 livestock [LIVE] at $23, 140
+    fish [FISH] at $60, 3 swords [SWOR] at $106.
+  For Sale: 191 gnolls [GNOL] at $40, 38 leaders [LEAD] at $711.
+  Entertainment available: $176.
+  Products: 11 grain [GRAI], 18 wood [WOOD], 12 floater hides [FLOA],
+    10 herbs [HERB].
+
+Exits:
+  North : mountain (34,46) in Swebac.
+  Northeast : swamp (35,47) in Pangmore.
+  Southeast : swamp (35,49) in Pangmore.
+  South : plain (34,50) in Edicort.
+  Southwest : ocean (33,49) in Atlantis Ocean.
+  Northwest : ocean (33,47) in Atlantis Ocean.
+
+- Unit (1920), gnoll [GNOL].
+- Scout (2751), Rainbow Falcons (29), avoiding, behind, hill dwarf
+  [HDWA].
+- scout (2533), The Children of the Four Winds (41), avoiding, gnoll
+  [GNOL], 3 swords [SWOR].
+- scout (4542), The Children of the Four Winds (41), avoiding, behind,
+  2 gnolls [GNOL].
+* Drone (1292), Borg (21), behind, revealing faction, receiving no
+  aid, consuming unit's food, gnoll [GNOL], 6 silver [SILV]. Weight:
+  10. Capacity: 0/0/15/0. Skills: combat [COMB] 1 (30).
+- Next one (7417), 6 gnolls [GNOL].
+- Guard (7418), on guard, 10 gnolls [GNOL], 10 swords [SWOR], 6 horses
+  [HORS].
+- scout (8140), The Children of the Four Winds (41), avoiding, behind,
+  gnoll [GNOL], 3 floater hides [FLOA].
+- Lookouto (6012), Disencharmed (125), avoiding, behind, high elf
+  [HELF].
+- Scout (4839), Darlocks (107), avoiding, behind, human [HUMN].
+* Unit (8604), Borg (21), behind, revealing faction, receiving no aid,
+  consuming unit's food, 6 gnolls [GNOL], 66 silver [SILV]. Weight:
+  60. Capacity: 0/0/90/0. Skills: combat [COMB] 1 (30).
+- Unit (9254), Friendly people (27), avoiding, behind, gnoll [GNOL].
+- Guard (8145), 10 goblins [GBLN], 10 swords [SWOR].
+- Guard (7242), 17 hill dwarves [HDWA], 25 swords [SWOR], 26 horses
+  [HORS].
+- Herbs (10189), 4 gnolls [GNOL], 4 bags [BAG].
+- Farmers (10190), 4 gnolls [GNOL], 4 bags [BAG], 11 grain [GRAI].
+- Guard (8622), 13 gnolls [GNOL], 13 swords [SWOR], 13 chain armor
+  [CARM].
+- Wood (10839), 10 gnolls [GNOL], 8 axes [AXE], 18 wood [WOOD].
+- Tools from Herbs (10840), 4 gnolls [GNOL], 4 lassoes [LASS], 4 bags
+  [BAG].
+- Weapon (11408), 4 gnolls [GNOL], 4 spears [SPEA], 2 wood [WOOD].
+- Guard (12087), 20 gnolls [GNOL], 20 swords [SWOR].
+- Unit (12861), leader [LEAD].
+- Sailors (10153), 2 gnolls [GNOL].
+- Ship (11406), 10 gnolls [GNOL].
+* Drone (11855), Borg (21), avoiding, behind, revealing faction,
+  sharing, gnoll [GNOL], horse [HORS], 170 silver [SILV]. Weight: 60.
+  Capacity: 0/70/85/0. Skills: hunting [HUNT] 3 (180).
+
++ Building [1] : Caravanserai, needs 10.
+  - Build (10843), 5 gnolls [GNOL].
+
+
+swamp (36,48) in Pangmore, 1298 peasants (orcs), $700.
+------------------------------------------------------------
+  Wages: $12.7 (Max: $326).
+  Wanted: none.
+  For Sale: 51 orcs [ORC] at $40, 10 leaders [LEAD] at $711.
+  Entertainment available: $34.
+  Products: 17 grain [GRAI], 17 wood [WOOD], 15 herbs [HERB].
+
+Exits:
+  North : swamp (36,46) in Pangmore.
+  Northeast : swamp (37,47) in Pangmore.
+  Southeast : swamp (37,49) in Pangmore.
+  South : swamp (36,50) in Pangmore.
+  Southwest : swamp (35,49) in Pangmore.
+  Northwest : swamp (35,47) in Pangmore.
+
+- scout (4115), The Children of the Four Winds (41), avoiding, behind,
+  goblin [GBLN].
+- guard (4543), on guard, The Children of the Four Winds (41), behind,
+  12 orcs [ORC].
+- guard (8141), on guard, The Children of the Four Winds (41), behind,
+  6 orcs [ORC].
+- farmers (8843), The Children of the Four Winds (41), avoiding,
+  behind, 7 orcs [ORC], 37 grain [GRAI], bag [BAG].
+- Unit (9255), Friendly people (27), avoiding, behind, orc [ORC].
+- minstrel (9429), The Children of the Four Winds (41), avoiding,
+  behind, orc [ORC].
+- forager (9430), The Children of the Four Winds (41), avoiding,
+  behind, orc [ORC], bag [BAG].
+- lumberjacks (9431), The Children of the Four Winds (41), avoiding,
+  behind, 3 orcs [ORC], 9 wood [WOOD].
+* Drone (8578), Borg (21), avoiding, holding, receiving no aid,
+  sharing, goblin [GBLN], sword [SWOR], 4 silver [SILV]. Weight: 6.
+  Capacity: 0/0/7/0. Skills: stealth [STEA] 1 (30).
+- Scout (7978), Rainbow Falcons (29), avoiding, behind, hill dwarf
+  [HDWA].
+* Drone (9616), Borg (21), avoiding, holding, receiving no aid,
+  sharing, goblin [GBLN], sword [SWOR], 4 silver [SILV]. Weight: 6.
+  Capacity: 0/0/7/0. Skills: stealth [STEA] 1 (30).
+* Scout (3744), Borg (21), behind, revealing faction, goblin [GBLN],
+  horse [HORS], 162 silver [SILV]. Weight: 55. Capacity: 0/70/77/0.
+  Skills: stealth [STEA] 1 (30).
+* Drone (11853), Borg (21), avoiding, behind, revealing faction,
+  sharing, gnoll [GNOL], horse [HORS], 170 silver [SILV]. Weight: 60.
+  Capacity: 0/70/85/0. Skills: hunting [HUNT] 3 (180).
+- hunter (7411), The Children of the Four Winds (41), avoiding,
+  behind, gnoll [GNOL].
+
+
+swamp (35,49) in Pangmore, 1186 peasants (gnolls), $664.
+------------------------------------------------------------
+  Wages: $12.8 (Max: $316).
+  Wanted: none.
+  For Sale: 47 gnolls [GNOL] at $40, 9 leaders [LEAD] at $716.
+  Entertainment available: $31.
+  Products: 19 grain [GRAI], 11 wood [WOOD], 12 herbs [HERB].
+
+Exits:
+  North : swamp (35,47) in Pangmore.
+  Northeast : swamp (36,48) in Pangmore.
+  Southeast : swamp (36,50) in Pangmore.
+  South : plain (35,51) in Edicort.
+  Southwest : plain (34,50) in Edicort.
+  Northwest : swamp (34,48) in Pangmore, contains Prempmoss [town].
+
+- Guard (8146), on guard, 13 gnolls [GNOL], 13 swords [SWOR], 7 horses
+  [HORS].
+- Unit (9257), gnoll [GNOL].
+* Drone (9936), Borg (21), behind, receiving no aid, consuming unit's
+  food, gnoll [GNOL], 4 silver [SILV]. Weight: 10. Capacity: 0/0/15/0.
+  Skills: combat [COMB] 1 (30), stealth [STEA] 1 (30).
+- Scout (10010), Rainbow Falcons (29), avoiding, behind, gnoll [GNOL].
+- Wood (11409), 4 gnolls [GNOL], 8 wood [WOOD].
+- Hunters (6073), 4 gnolls [GNOL], 3 horses [HORS], 24 floater hides
+  [FLOA], 17 grain [GRAI], 17 stone [STON], 52 iron [IRON].
+- Farmers (12088), 7 gnolls [GNOL], 14 grain [GRAI].
+- Wood (12862), 5 gnolls [GNOL].
+
+
+swamp (37,49) in Pangmore, 1412 peasants (lizardmen), $395.
+------------------------------------------------------------
+  Wages: $11.4 (Max: $180).
+  Wanted: none.
+  For Sale: 56 lizardmen [LIZA] at $36, 11 leaders [LEAD] at $638.
+  Entertainment available: $24.
+  Products: 16 grain [GRAI], 16 wood [WOOD], 11 herbs [HERB].
+
+Exits:
+  North : swamp (37,47) in Pangmore.
+  Northeast : ocean (38,48) in Atlantis Ocean.
+  Southeast : jungle (38,50) in Stenlut.
+  South : mountain (37,51) in Lethitcha, contains Ciespick [city].
+  Southwest : swamp (36,50) in Pangmore.
+  Northwest : swamp (36,48) in Pangmore.
+
+- Unit (10651), gnoll [GNOL], horse [HORS].
+* Drone (7181), Borg (21), holding, receiving no aid, sharing, human
+  [HUMN], horse [HORS], silver [SILV]. Weight: 60. Capacity:
+  0/70/85/0. Skills: stealth [STEA] 1 (30).
+* Drones (9933), Borg (21), avoiding, holding, receiving no aid,
+  sharing, 2 goblins [GBLN], 162 silver [SILV]. Weight: 10. Capacity:
+  0/0/14/0. Skills: stealth [STEA] 1 (30).
+* Drone (9662), Borg (21), avoiding, holding, receiving no aid,
+  sharing, goblin [GBLN], sword [SWOR], silver [SILV]. Weight: 6.
+  Capacity: 0/0/7/0. Skills: stealth [STEA] 1 (30).
+- Unit (12869), hill dwarf [HDWA].
+- Undead (13655), 7 skeletons [SKEL], 2 undead [UNDE].
+- Unit (6658), 12 gnomes [GNOM], 4 horses [HORS], 6 lassoes [LASS].
+- Unit (9259), 11 gnomes [GNOM], 7 axes [AXE], 4 horses [HORS].
+- Unit (10650), gnoll [GNOL], horse [HORS].
+
++ Crypt [1] : Crypt, closed to player units.
+
+
+plain (34,50) in Edicort, 2441 peasants (high elves), $1806.
+------------------------------------------------------------
+  Wages: $13.7 (Max: $730).
+  Wanted: none.
+  For Sale: 97 high elves [HELF] at $43, 19 leaders [LEAD] at $767.
+  Entertainment available: $103.
+  Products: 74 grain [GRAI], 22 horses [HORS].
+
+Exits:
+  North : swamp (34,48) in Pangmore, contains Prempmoss [town].
+  Northeast : swamp (35,49) in Pangmore.
+  Southeast : plain (35,51) in Edicort.
+  South : ocean (34,52) in Atlantis Ocean.
+  Southwest : ocean (33,51) in Atlantis Ocean.
+  Northwest : ocean (33,49) in Atlantis Ocean.
+
+- Scout (7261), Rainbow Falcons (29), avoiding, behind, gnoll [GNOL].
+- Unit (9260), high elf [HELF].
+* Drone (9935), Borg (21), behind, revealing faction, receiving no
+  aid, consuming unit's food, gnoll [GNOL], 15 silver [SILV]. Weight:
+  10. Capacity: 0/0/15/0. Skills: combat [COMB] 1 (30).
+* Drone (9937), Borg (21), behind, revealing faction, receiving no
+  aid, consuming unit's food, gnoll [GNOL], 15 silver [SILV]. Weight:
+  10. Capacity: 0/0/15/0. Skills: combat [COMB] 1 (30).
+- Guard (9437), on guard, 10 gnolls [GNOL].
+- Guard (11410), 12 high elves [HELF].
+- Guard (12864), 13 high elves [HELF].
+- Horses (10842), 10 gnolls [GNOL], 20 horses [HORS].
+- Horse (10202), 4 high elves [HELF].
+
+
+
+
+
+Orders Template (Long Format):
+
+#atlantis 21 "<password>"
+
+;*** desert (32,38) in Plimark, contains Dinca [village] ***
+
+unit 4330
+;Drone (4330), avoiding, behind, revealing faction, receiving no aid,
+;  centaur [CTAU], 7 silver [SILV]. Weight: 50. Capacity: 0/70/70/0.
+;  Skills: none.
+@work
+
+;*** desert (35,39) in Pe'e, contains Hoham [city] ***
+
+unit 1289
+;Drone (1289), avoiding, behind, revealing faction, taxing, receiving
+;  no aid, gnoll [GNOL], 259 silver [SILV]. Weight: 10. Capacity:
+;  0/0/15/0. Skills: combat [COMB] 1 (30), entertainment [ENTE] 2 (90).
+@entertain
+
+;*** plain (36,40) in Blarnfashire ***
+
+unit 4329
+;Unit (4329), avoiding, behind, revealing faction, receiving no aid,
+;  sharing, high elf [HELF], 92 silver [SILV]. Weight: 10. Capacity:
+;  0/0/15/0. Skills: entertainment [ENTE] 2 (90).
+@entertain
+@GIVE 8536 10 SILV
+
+unit 8536
+;Drone (8536), avoiding, behind, revealing faction, receiving no aid,
+;  high elf [HELF]. Weight: 10. Capacity: 0/0/15/0. Skills: horse
+;  training [HORS] 3 (210).
+@study hors
+
+;*** plain (38,40) in Blarnfashire ***
+
+unit 1288
+;Drone (1288), avoiding, behind, revealing faction, taxing, receiving
+;  no aid, sharing, gnoll [GNOL], 418 silver [SILV]. Weight: 10.
+;  Capacity: 0/0/15/0. Skills: combat [COMB] 1 (30).
+@GIVE 8537 10 SILV
+
+unit 8537
+;Drone (8537), avoiding, behind, revealing faction, receiving no aid,
+;  sharing, centaur [CTAU]. Weight: 50. Capacity: 0/70/70/0. Skills:
+;  horse training [HORS] 3 (210).
+@study hors
+
+;*** plain (35,41) in Blarnfashire ***
+
+unit 1290
+;Drone (1290), avoiding, behind, revealing faction, taxing, receiving
+;  no aid, sharing, gnoll [GNOL], 12 silver [SILV]. Weight: 10.
+;  Capacity: 0/0/15/0. Skills: combat [COMB] 1 (30), entertainment
+;  [ENTE] 1 (60).
+@entertain
+
+unit 8548
+;Drone (8548), avoiding, behind, revealing faction, receiving no aid,
+;  centaur [CTAU]. Weight: 50. Capacity: 0/70/70/0. Skills: horse
+;  training [HORS] 3 (180).
+@study hors
+
+;*** plain (37,41) in Blarnfashire ***
+
+unit 4333
+;Unit (4333), avoiding, behind, revealing faction, receiving no aid,
+;  sharing, high elf [HELF], 81 silver [SILV]. Weight: 10. Capacity:
+;  0/0/15/0. Skills: entertainment [ENTE] 2 (90).
+@entertain
+
+unit 8551
+;Drone (8551), avoiding, behind, revealing faction, receiving no aid,
+;  high elf [HELF]. Weight: 10. Capacity: 0/0/15/0. Skills: horse
+;  training [HORS] 3 (210).
+@study hors
+
+;*** jungle (32,42) in Phesflen, contains Tantbank [town] ***
+
+unit 7873
+;Unit (7873), avoiding, behind, revealing faction, receiving no aid,
+;  centaur [CTAU], 15 silver [SILV]. Weight: 50. Capacity: 0/70/70/0.
+;  Skills: none.
+@work
+
+;*** plain (36,42) in Blarnfashire ***
+
+unit 2404
+;Drones (2404), on guard, revealing faction, holding, sharing, 23
+;  humans [HUMN], 2780 silver [SILV]. Weight: 230. Capacity: 0/0/345/0.
+;  Skills: combat [COMB] 1 (30).
+@tax
+
+unit 3303
+;Drones (3303), avoiding, behind, revealing faction, receiving no aid,
+;  21 humans [HUMN], 42 livestock [LIVE]. Weight: 2310. Capacity:
+;  0/0/2415/0. Skills: farming [FARM] 2 (108).
+produce live
+@TURN
+  produce live
+  give 6029 all live
+ENDTURN
+@TURN
+  produce live
+ENDTURN
+
+unit 3305
+;Drones (3305), avoiding, behind, revealing faction, receiving no aid,
+;  17 humans [HUMN], 32 horses [HORS]. Weight: 1770. Capacity:
+;  0/2240/2495/0. Skills: horse training [HORS] 2 (90).
+produce hors
+@TURN
+  produce hors
+  give 6029 all hors
+ENDTURN
+@TURN
+  produce hors
+ENDTURN
+
+unit 8237
+;Unit (8237), revealing faction, holding, sharing, leader [LEAD].
+;  Weight: 10. Capacity: 0/0/15/0. Skills: observation [OBSE] 3 (255).
+@study obse
+
+unit 12622
+;Drones (12622), revealing faction, holding, sharing, 3 humans [HUMN],
+;  26 silver [SILV]. Weight: 30. Capacity: 0/0/45/0. Skills:
+;  entertainment [ENTE] 1 (35).
+@entertain
+
+unit 12623
+;ReserveDrones (12623), revealing faction, holding, sharing, 10 humans
+;  [HUMN], 26 silver [SILV]. Weight: 100. Capacity: 0/0/150/0. Skills:
+;  combat [COMB] 1 (30).
+
+unit 12624
+;Drones (12624), revealing faction, holding, sharing, 10 humans [HUMN].
+;  Weight: 100. Capacity: 0/0/150/0. Skills: building [BUIL] 1 (60).
+@study buil
+
+;*** plain (35,43) in Blarnfashire ***
+
+unit 2405
+;Drones (2405), on guard, revealing faction, holding, sharing, 23
+;  humans [HUMN], 1344 silver [SILV]. Weight: 230. Capacity: 0/0/345/0.
+;  Skills: combat [COMB] 1 (31).
+@tax
+
+unit 3317
+;Drones (3317), avoiding, behind, revealing faction, 6 humans [HUMN],
+;  12 horses [HORS]. Weight: 660. Capacity: 0/840/930/0. Skills: horse
+;  training [HORS] 2 (90).
+produce hors
+@TURN
+  produce hors
+  give 6030 all hors
+ENDTURN
+@TURN
+  produce hors
+ENDTURN
+
+unit 3323
+;Drones (3323), avoiding, behind, revealing faction, 37 humans [HUMN].
+;  Weight: 370. Capacity: 0/0/555/0. Skills: farming [FARM] 2 (130).
+@produce grai
+@transport 8333 all grai
+
+unit 4370
+;Drones (4370), avoiding, behind, revealing faction, 5 humans [HUMN],
+;  10 horses [HORS]. Weight: 550. Capacity: 0/700/775/0. Skills: horse
+;  training [HORS] 2 (90).
+produce hors
+@TURN
+  produce hors
+  give 6030 all hors
+ENDTURN
+@TURN
+  produce hors
+ENDTURN
+
+unit 8318
+;Drone (8318), revealing faction, holding, sharing, human [HUMN], 10
+;  silver [SILV]. Weight: 10. Capacity: 0/0/15/0. Skills: observation
+;  [OBSE] 2 (90).
+@work
+
+unit 9469
+;Drone (9469), avoiding, behind, revealing faction, leader [LEAD].
+;  Weight: 10. Capacity: 0/0/15/0. Skills: observation [OBSE] 2 (150).
+@study obse
+
+unit 12625
+;ReserveDrones (12625), revealing faction, holding, sharing, 5 humans
+;  [HUMN], 10 silver [SILV]. Weight: 50. Capacity: 0/0/75/0. Skills:
+;  combat [COMB] 1 (30).
+
+;*** swamp (37,43) in Miepi'an ***
+
+unit 2406
+;Drones (2406), on guard, revealing faction, holding, sharing, 17 orcs
+;  [ORC], 1666 silver [SILV]. Weight: 170. Capacity: 0/0/255/0. Skills:
+;  combat [COMB] 1 (30).
+@tax
+
+unit 3333
+;Drones (3333), avoiding, behind, revealing faction, 5 orcs [ORC].
+;  Weight: 50. Capacity: 0/0/75/0. Skills: farming [FARM] 2 (90).
+@produce grai
+@transport 8333 all grai
+
+unit 4371
+;Drones (4371), avoiding, behind, revealing faction, 7 orcs [ORC].
+;  Weight: 70. Capacity: 0/0/105/0. Skills: lumberjack [LUMB] 2 (145).
+@produce wood
+@transport 8333 all wood
+
+unit 4373
+;Drones (4373), avoiding, behind, revealing faction, 8 orcs [ORC].
+;  Weight: 80. Capacity: 0/0/120/0. Skills: herb lore [HERB] 2 (90).
+@produce herb
+@transport 8333 all herb
+
+unit 12626
+;Drones (12626), revealing faction, holding, sharing, 10 orcs [ORC].
+;  Weight: 100. Capacity: 0/0/150/0. Skills: building [BUIL] 1 (60).
+@study buil
+
+;*** mountain (34,44) in Swebac ***
+
+unit 1291
+;Drone (1291), behind, revealing faction, taxing, receiving no aid,
+;  sharing, gnoll [GNOL], 300 silver [SILV]. Weight: 10. Capacity:
+;  0/0/15/0. Skills: combat [COMB] 1 (35).
+
+unit 4374
+;Drones (4374), behind, revealing faction, receiving no aid, 4 hill
+;  dwarves [HDWA]. Weight: 40. Capacity: 0/0/60/0. Skills: combat
+;  [COMB] 1 (35).
+@work
+
+;*** plain (36,44) in Blarnfashire, contains Lonthax [town] ***
+
+unit 1294
+;Five of Eight (1294), behind, revealing faction, walking battle
+;  spoils, leader [LEAD], horse [HORS]. Weight: 60. Capacity:
+;  0/70/85/0. Skills: force [FORC] 2 (105), pattern [PATT] 2 (140),
+;  illusion [ILLU] 2 (90), phantasmal entertainment [PHEN] 1 (70), fire
+;  [FIRE] 2 (90), earth lore [EART] 2 (90), wolf lore [WOLF] 2 (90),
+;  spirit [SPIR] 2 (120), bird lore [BIRD] 1 (60), artifact lore [ARTI]
+;  2 (90). Combat spell: fire [FIRE]. Can Study: earthquake [EQUA],
+;  force shield [FSHI], energy shield [ESHI], spirit shield [SSHI],
+;  magical healing [MHEA], gate lore [GATE], farsight [FARS], mind
+;  reading [MIND], weather lore [WEAT], bird lore [BIRD], necromancy
+;  [NECR], demon lore [DEMO], phantasmal entertainment [PHEN], create
+;  phantasmal beasts [PHBE], create phantasmal demons [PHDE], dispel
+;  illusions [DISP], enchant swords [ESWO], enchant armor [EARM],
+;  enchant shields [ESHD], create cornucopia [CRCO], transmutation
+;  [TRNS].
+@cast phen
+@study arti
+
+unit 1297
+;Drones (1297), avoiding, behind, revealing faction, sharing, 58 gnolls
+;  [GNOL], 78 grain [GRAI]. Weight: 970. Capacity: 0/0/870/0. Skills:
+;  farming [FARM] 2 (90).
+@produce grai
+@give 8333 all grai
+
+unit 1298
+;Drones (1298), avoiding, behind, revealing faction, sharing, 11 gnolls
+;  [GNOL]. Weight: 110. Capacity: 0/0/165/0. Skills: entertainment
+;  [ENTE] 2 (90).
+@entertain
+
+unit 1864
+;Eight of One (1864), avoiding, behind, leader [LEAD]. Weight: 10.
+;  Capacity: 0/0/15/0. Skills: observation [OBSE] 5 (450), stealth
+;  [STEA] 3 (210).
+@study stea
+
+unit 3371
+;Drones (3371), avoiding, behind, revealing faction, sharing, 5 gnolls
+;  [GNOL], 105 horses [HORS]. Weight: 5300. Capacity: 0/7350/7425/0.
+;  Skills: horse training [HORS] 2 (155).
+@produce hors
+
+unit 3732
+;Drones (3732), on guard, revealing faction, sharing, 35 gnolls [GNOL].
+;  Weight: 350. Capacity: 0/0/525/0. Skills: combat [COMB] 1 (60).
+@tax
+
+unit 4375
+;Drones (4375), revealing faction, sharing, 193 gnolls [GNOL], 10778
+;  silver [SILV]. Weight: 1930. Capacity: 0/0/2895/0. Skills: combat
+;  [COMB] 1 (30).
+@tax
+
+unit 5387
+;Ten of Eight (5387), behind, revealing faction, sharing, leader
+;  [LEAD]. Weight: 10. Capacity: 0/0/15/0. Skills: tactics [TACT] 4
+;  (405).
+@study tact
+
+unit 5982
+;Nine of Eight (5982), avoiding, behind, sharing, leader [LEAD].
+;  Weight: 10. Capacity: 0/0/15/0. Skills: stealth [STEA] 4 (330).
+@study stea
+
+unit 7184
+;Drones (7184), revealing faction, sharing, 10 gnolls [GNOL]. Weight:
+;  100. Capacity: 0/0/150/0. Skills: combat [COMB] 4 (335).
+@study comb
+
+unit 7875
+;Drones (7875), avoiding, behind, revealing faction, sharing, 15 gnolls
+;  [GNOL]. Weight: 150. Capacity: 0/0/225/0. Skills: armorer [ARMO] 3
+;  (245).
+@study armo
+
+unit 7876
+;Drones (7876), avoiding, behind, revealing faction, sharing, 10 gnolls
+;  [GNOL]. Weight: 100. Capacity: 0/0/150/0. Skills: horse training
+;  [HORS] 3 (270).
+@study hors
+
+unit 7879
+;Drones (7879), revealing faction, holding, sharing, 10 goblins [GBLN],
+;  10 mithril swords [MSWO]. Weight: 60. Capacity: 0/0/70/0. Skills:
+;  weaponsmith [WEAP] 3 (190).
+@produce mswo
+@give 5983 all mswo
+
+unit 8573
+;Drones (8573), revealing faction, sharing, 60 gnolls [GNOL], 39 swords
+;  [SWOR]. Weight: 639. Capacity: 0/0/900/0. Skills: combat [COMB] 3
+;  (210).
+@study comb
+
+unit 9931
+;Unit (9931), revealing faction, sharing, 20 gnolls [GNOL], 20 swords
+;  [SWOR]. Weight: 220. Capacity: 0/0/300/0. Skills: weaponsmith [WEAP]
+;  1 (55).
+@produce swor
+@give 5983 all swor
+
+unit 5386
+;TransportDrone (5386), revealing faction, sharing, human [HUMN], 32
+;  silver [SILV]. Weight: 10. Capacity: 0/0/15/0. Skills: none.
+@work
+
+unit 7180
+;TransportDrone (7180), revealing faction, holding, sharing, human
+;  [HUMN], 32 silver [SILV]. Weight: 10. Capacity: 0/0/15/0. Skills:
+;  none.
+@work
+
+unit 9498
+;Drones (9498), revealing faction, sharing, 100 gnolls [GNOL]. Weight:
+;  1000. Capacity: 0/0/1500/0. Skills: combat [COMB] 2 (150).
+@study comb
+
+unit 3364
+;Drones (3364), avoiding, behind, revealing faction, 5 orcs [ORC].
+;  Weight: 50. Capacity: 0/0/75/0. Skills: lumberjack [LUMB] 4 (350).
+@study lumb
+
+unit 3730
+;Scout (3730), avoiding, behind, human [HUMN], horse [HORS], 20 silver
+;  [SILV]. Weight: 60. Capacity: 0/70/85/0. Skills: stealth [STEA] 1
+;  (30).
+
+unit 11850
+;Unit (11850), revealing faction, sharing, 10 leaders [LEAD]. Weight:
+;  100. Capacity: 0/0/150/0. Skills: combat [COMB] 2 (90).
+@study comb
+
+unit 775
+;Five of Three (775), behind, revealing faction, walking battle spoils,
+;  leader [LEAD], horse [HORS], 1117 silver [SILV]. Weight: 60.
+;  Capacity: 0/70/85/0. Skills: observation [OBSE] 1 (30), force [FORC]
+;  2 (100), pattern [PATT] 2 (105), spirit [SPIR] 2 (90), gate lore
+;  [GATE] 1 (30), fire [FIRE] 1 (45), combat [COMB] 3 (180), farsight
+;  [FARS] 1 (30), illusion [ILLU] 2 (90), phantasmal entertainment
+;  [PHEN] 1 (45), artifact lore [ARTI] 1 (30), earth lore [EART] 2
+;  (120), magical healing [MHEA] 1 (30), wolf lore [WOLF] 2 (120), bird
+;  lore [BIRD] 1 (30). Combat spell: fire [FIRE]. Can Study: fire
+;  [FIRE], earthquake [EQUA], force shield [FSHI], energy shield
+;  [ESHI], spirit shield [SSHI], magical healing [MHEA], gate lore
+;  [GATE], farsight [FARS], mind reading [MIND], weather lore [WEAT],
+;  bird lore [BIRD], necromancy [NECR], demon lore [DEMO], phantasmal
+;  entertainment [PHEN], create phantasmal beasts [PHBE], create
+;  phantasmal demons [PHDE], dispel illusions [DISP], artifact lore
+;  [ARTI], enchant shields [ESHD], create cornucopia [CRCO],
+;  transmutation [TRNS].
+@cast phen
+
+unit 1293
+;One of Three (1293), behind, revealing faction, walking battle spoils,
+;  leader [LEAD], horse [HORS], 1675 silver [SILV]. Weight: 60.
+;  Capacity: 0/70/85/0. Skills: force [FORC] 2 (125), pattern [PATT] 2
+;  (105), illusion [ILLU] 2 (100), phantasmal entertainment [PHEN] 2
+;  (90), fire [FIRE] 2 (90), earth lore [EART] 2 (120), wolf lore
+;  [WOLF] 2 (120), spirit [SPIR] 2 (90), bird lore [BIRD] 1 (60),
+;  artifact lore [ARTI] 2 (90). Combat spell: fire [FIRE]. Can Study:
+;  earthquake [EQUA], force shield [FSHI], energy shield [ESHI], spirit
+;  shield [SSHI], magical healing [MHEA], gate lore [GATE], farsight
+;  [FARS], mind reading [MIND], weather lore [WEAT], bird lore [BIRD],
+;  necromancy [NECR], demon lore [DEMO], create phantasmal beasts
+;  [PHBE], create phantasmal demons [PHDE], dispel illusions [DISP],
+;  enchant swords [ESWO], enchant armor [EARM], enchant shields [ESHD],
+;  create cornucopia [CRCO], transmutation [TRNS].
+@cast phen
+@study arti
+
+unit 6029
+;TransportDrone (6029), revealing faction, sharing, goblin [GBLN], 64
+;  horses [HORS], 84 livestock [LIVE]. Weight: 7405. Capacity:
+;  0/4480/8687/0. Skills: none.
+move n
+give 8333 all live
+give 8333 all hors
+@TURN
+  move s
+ENDTURN
+@TURN
+  move n
+  give 8333 all live
+  give 8333 all hors
+ENDTURN
+
+unit 6030
+;TransportDrone (6030), revealing faction, sharing, goblin [GBLN], 32
+;  horses [HORS]. Weight: 1605. Capacity: 0/2240/2247/0. Skills: none.
+move nw
+give 8333 all hors
+@TURN
+  move se
+ENDTURN
+@TURN
+  move nw
+  give 8333 all hors
+ENDTURN
+
+unit 8333
+;Unit (8333), revealing faction, sharing, leader [LEAD], pick [PICK], 2
+;  leather armor [LARM], 2 chain armor [CARM], sword [SWOR], 3 camels
+;  [CAME], 414 horses [HORS], 2 wagons [WAGO], 233 grain [GRAI], 2
+;  lassoes [LASS], 130 wood [WOOD], 212 herbs [HERB], 107 iron [IRON],
+;  42 stone [STON], 40 fish [FISH], 8 mithril [MITH], 22589 silver
+;  [SILV]. Weight: 25538. Capacity: 0/29190/29705/0. Skills:
+;  quartermaster [QUAM] 3 (250).
+@study quam
+@sell all live
+@sell all grai
+
+unit 5983
+;Drones (5983), revealing faction, sharing, 50 gnolls [GNOL], 80 swords
+;  [SWOR], 15 plate armor [PARM], 30 mithril swords [MSWO]. Weight:
+;  655. Capacity: 0/0/750/0. Skills: combat [COMB] 4 (335).
+@study comb
+
+unit 1295
+;Four of Nine (1295), behind, revealing faction, walking battle spoils,
+;  leader [LEAD], horse [HORS]. Weight: 60. Capacity: 0/70/85/0.
+;  Skills: force [FORC] 3 (180), pattern [PATT] 2 (130), illusion
+;  [ILLU] 1 (40), phantasmal entertainment [PHEN] 1 (30), weather lore
+;  [WEAT] 1 (65), fire [FIRE] 2 (90), earth lore [EART] 2 (120), clear
+;  skies [CLEA] 1 (30), wolf lore [WOLF] 2 (120), spirit [SPIR] 2
+;  (120), summon storm [SSTO] 1 (30), bird lore [BIRD] 1 (60). Combat
+;  spell: summon storm [SSTO]. Can Study: fire [FIRE], earthquake
+;  [EQUA], force shield [FSHI], energy shield [ESHI], spirit shield
+;  [SSHI], magical healing [MHEA], gate lore [GATE], farsight [FARS],
+;  mind reading [MIND], weather lore [WEAT], summon wind [SWIN], bird
+;  lore [BIRD], necromancy [NECR], demon lore [DEMO], illusion [ILLU],
+;  create phantasmal beasts [PHBE], create phantasmal demons [PHDE],
+;  dispel illusions [DISP], artifact lore [ARTI].
+@cast clea
+@study forc
+
+unit 1296
+;Six of Seven (1296), behind, revealing faction, walking battle spoils,
+;  leader [LEAD], horse [HORS]. Weight: 60. Capacity: 0/70/85/0.
+;  Skills: force [FORC] 2 (110), pattern [PATT] 3 (180), earth lore
+;  [EART] 2 (120), illusion [ILLU] 1 (65), wolf lore [WOLF] 2 (120),
+;  phantasmal entertainment [PHEN] 1 (60), fire [FIRE] 2 (90), spirit
+;  [SPIR] 2 (120), bird lore [BIRD] 1 (60), artifact lore [ARTI] 2
+;  (90). Combat spell: fire [FIRE]. Can Study: earthquake [EQUA], force
+;  shield [FSHI], energy shield [ESHI], spirit shield [SSHI], magical
+;  healing [MHEA], gate lore [GATE], farsight [FARS], mind reading
+;  [MIND], weather lore [WEAT], bird lore [BIRD], necromancy [NECR],
+;  demon lore [DEMO], illusion [ILLU], create phantasmal beasts [PHBE],
+;  create phantasmal demons [PHDE], dispel illusions [DISP], enchant
+;  swords [ESWO], enchant armor [EARM], enchant shields [ESHD], create
+;  cornucopia [CRCO], transmutation [TRNS].
+@cast eart
+@study arti
+
+unit 7880
+;Drones (7880), revealing faction, holding, sharing, 10 goblins [GBLN].
+;  Weight: 50. Capacity: 0/0/70/0. Skills: shipbuilding [SHIP] 3 (190).
+@study ship
+
+unit 7182
+;Drones (7182), revealing faction, holding, sharing, 10 orcs [ORC], 71
+;  silver [SILV]. Weight: 100. Capacity: 0/0/150/0. Skills: building
+;  [BUIL] 2 (115).
+
+unit 7183
+;Drones (7183), avoiding, behind, revealing faction, sharing, 10 gnolls
+;  [GNOL]. Weight: 100. Capacity: 0/0/150/0. Skills: building [BUIL] 2
+;  (90).
+
+unit 9497
+;Drones (9497), revealing faction, sharing, 10 gnolls [GNOL]. Weight:
+;  100. Capacity: 0/0/150/0. Skills: building [BUIL] 2 (90).
+
+;*** ocean (38,44) in Atlantis Ocean ***
+
+unit 9508
+;Drones (9508), revealing faction, holding, sharing, 2 gnolls [GNOL],
+;  70 silver [SILV]. Weight: 20. Capacity: 0/0/30/0. Skills: sailing
+;  [SAIL] 1 (35).
+
+unit 9579
+;Drones (9579), revealing faction, holding, sharing, 5 gnolls [GNOL].
+;  Weight: 50. Capacity: 0/0/75/0. Skills: fishing [FISH] 2 (90).
+@produce fish
+@transport 8333 all fish
+
+;*** mountain (35,45) in Swebac ***
+
+unit 3154
+;Drones (3154), on guard, revealing faction, holding, sharing, 10 hill
+;  dwarves [HDWA], 2682 silver [SILV]. Weight: 100. Capacity:
+;  0/0/150/0. Skills: combat [COMB] 1 (35).
+@tax
+
+unit 3372
+;Drones (3372), avoiding, behind, revealing faction, 6 hill dwarves
+;  [HDWA]. Weight: 60. Capacity: 0/0/90/0. Skills: mining [MINI] 2
+;  (130).
+@produce iron
+@transport 8333 all iron
+
+unit 4376
+;Drones (4376), avoiding, behind, revealing faction, 6 hill dwarves
+;  [HDWA]. Weight: 60. Capacity: 0/0/90/0. Skills: quarrying [QUAR] 2
+;  (120).
+@produce ston
+@transport 8333 all ston
+
+unit 6025
+;Unit (6025), revealing faction, sharing, 7 hill dwarves [HDWA].
+;  Weight: 70. Capacity: 0/0/105/0. Skills: mining [MINI] 3 (285).
+@study mini
+
+unit 9932
+;Drones (9932), revealing faction, sharing, 3 hill dwarves [HDWA].
+;  Weight: 30. Capacity: 0/0/45/0. Skills: mining [MINI] 3 (210).
+@produce mith
+@transport 8333 all mith
+
+unit 9580
+;Unit (9580), avoiding, behind, revealing faction, 24 hill dwarves
+;  [HDWA]. Weight: 240. Capacity: 0/0/360/0. Skills: mining [MINI] 1
+;  (50).
+@produce iron
+@transport 8333 all iron
+
+unit 9585
+;Unit (9585), avoiding, behind, revealing faction, 22 hill dwarves
+;  [HDWA]. Weight: 220. Capacity: 0/0/330/0. Skills: weaponsmith [WEAP]
+;  2 (90).
+@study weap
+
+unit 9967
+;Drones (9967), avoiding, behind, revealing faction, sharing, 20 gnolls
+;  [GNOL]. Weight: 200. Capacity: 0/0/300/0. Skills: farming [FARM] 2
+;  (90).
+@produce grai
+@transport 8333 all grai
+
+unit 12627
+;ReserveDrones (12627), revealing faction, holding, sharing, 5 hill
+;  dwarves [HDWA], 10 silver [SILV]. Weight: 50. Capacity: 0/0/75/0.
+;  Skills: combat [COMB] 1 (30).
+
+;*** ocean (37,45) in Atlantis Ocean ***
+
+unit 9506
+;Drones (9506), revealing faction, holding, sharing, 2 gnolls [GNOL],
+;  70 silver [SILV]. Weight: 20. Capacity: 0/0/30/0. Skills: sailing
+;  [SAIL] 1 (35).
+
+unit 9557
+;Drones (9557), revealing faction, holding, sharing, 5 gnolls [GNOL].
+;  Weight: 50. Capacity: 0/0/75/0. Skills: fishing [FISH] 2 (90).
+@produce fish
+@transport 8333 all fish
+
+;*** mountain (34,46) in Swebac ***
+
+unit 8572
+;Drone (8572), behind, revealing faction, receiving no aid, hill dwarf
+;  [HDWA], silver [SILV]. Weight: 10. Capacity: 0/0/15/0. Skills:
+;  combat [COMB] 1 (35).
+
+unit 7878
+;Drones (7878), revealing faction, holding, sharing, 4 hill dwarves
+;  [HDWA], 6 silver [SILV]. Weight: 40. Capacity: 0/0/60/0. Skills:
+;  quarrying [QUAR] 3 (180).
+
+;*** swamp (36,46) in Pangmore ***
+
+unit 3155
+;Unit (3155), on guard, revealing faction, holding, sharing, 14 goblins
+;  [GBLN], 966 silver [SILV]. Weight: 70. Capacity: 0/0/98/0. Skills:
+;  combat [COMB] 1 (31).
+@tax
+
+unit 3374
+;Unit (3374), avoiding, behind, revealing faction, 8 goblins [GBLN].
+;  Weight: 40. Capacity: 0/0/56/0. Skills: lumberjack [LUMB] 2 (90).
+@produce wood
+@transport 8333 all wood
+
+unit 4401
+;Drones (4401), avoiding, behind, revealing faction, 6 goblins [GBLN],
+;  24 livestock [LIVE]. Weight: 1230. Capacity: 0/0/1242/0. Skills:
+;  farming [FARM] 2 (90).
+produce live
+give 6028 all live
+@TURN
+  produce live
+ENDTURN
+@TURN
+  produce live
+  give 6028 all live
+ENDTURN
+
+unit 9595
+;Unit (9595), avoiding, behind, revealing faction, 9 goblins [GBLN].
+;  Weight: 45. Capacity: 0/0/63/0. Skills: herb lore [HERB] 1 (50).
+@produce herb
+@transport 8333 all herb
+
+unit 12628
+;Drone (12628), revealing faction, holding, sharing, leader [LEAD].
+;  Weight: 10. Capacity: 0/0/15/0. Skills: observation [OBSE] 1 (65).
+@study obse
+
+unit 12629
+;ReserveDrones (12629), revealing faction, holding, sharing, 5 goblins
+;  [GBLN], 9 silver [SILV]. Weight: 25. Capacity: 0/0/35/0. Skills:
+;  combat [COMB] 1 (30).
+
+unit 11851
+;Drone (11851), avoiding, behind, revealing faction, sharing, gnoll
+;  [GNOL], horse [HORS], 181 silver [SILV]. Weight: 60. Capacity:
+;  0/70/85/0. Skills: hunting [HUNT] 3 (180).
+
+unit 11854
+;Drone (11854), avoiding, behind, revealing faction, sharing, gnoll
+;  [GNOL], horse [HORS], 170 silver [SILV]. Weight: 60. Capacity:
+;  0/70/85/0. Skills: hunting [HUNT] 3 (180).
+
+unit 6028
+;TransportDrone (6028), revealing faction, sharing, goblin [GBLN].
+;  Weight: 5. Capacity: 0/0/7/0. Skills: none.
+move n
+@TURN
+  move s
+  give 8333 all live
+ENDTURN
+@TURN
+  move n
+ENDTURN
+
+;*** swamp (35,47) in Pangmore ***
+
+unit 9934
+;Drone (9934), behind, revealing faction, receiving no aid, consuming
+;  unit's food, gnoll [GNOL], 5 silver [SILV]. Weight: 10. Capacity:
+;  0/0/15/0. Skills: combat [COMB] 1 (30).
+
+unit 11852
+;Drone (11852), avoiding, behind, revealing faction, sharing, gnoll
+;  [GNOL], horse [HORS], 170 silver [SILV]. Weight: 60. Capacity:
+;  0/70/85/0. Skills: hunting [HUNT] 3 (180).
+
+;*** swamp (34,48) in Pangmore, contains Prempmoss [town] ***
+
+unit 1292
+;Drone (1292), behind, revealing faction, receiving no aid, consuming
+;  unit's food, gnoll [GNOL], 6 silver [SILV]. Weight: 10. Capacity:
+;  0/0/15/0. Skills: combat [COMB] 1 (30).
+
+unit 8604
+;Unit (8604), behind, revealing faction, receiving no aid, consuming
+;  unit's food, 6 gnolls [GNOL], 66 silver [SILV]. Weight: 60.
+;  Capacity: 0/0/90/0. Skills: combat [COMB] 1 (30).
+
+unit 11855
+;Drone (11855), avoiding, behind, revealing faction, sharing, gnoll
+;  [GNOL], horse [HORS], 170 silver [SILV]. Weight: 60. Capacity:
+;  0/70/85/0. Skills: hunting [HUNT] 3 (180).
+
+;*** swamp (36,48) in Pangmore ***
+
+unit 8578
+;Drone (8578), avoiding, holding, receiving no aid, sharing, goblin
+;  [GBLN], sword [SWOR], 4 silver [SILV]. Weight: 6. Capacity: 0/0/7/0.
+;  Skills: stealth [STEA] 1 (30).
+
+unit 9616
+;Drone (9616), avoiding, holding, receiving no aid, sharing, goblin
+;  [GBLN], sword [SWOR], 4 silver [SILV]. Weight: 6. Capacity: 0/0/7/0.
+;  Skills: stealth [STEA] 1 (30).
+
+unit 3744
+;Scout (3744), behind, revealing faction, goblin [GBLN], horse [HORS],
+;  162 silver [SILV]. Weight: 55. Capacity: 0/70/77/0. Skills: stealth
+;  [STEA] 1 (30).
+
+unit 11853
+;Drone (11853), avoiding, behind, revealing faction, sharing, gnoll
+;  [GNOL], horse [HORS], 170 silver [SILV]. Weight: 60. Capacity:
+;  0/70/85/0. Skills: hunting [HUNT] 3 (180).
+
+;*** swamp (35,49) in Pangmore ***
+
+unit 9936
+;Drone (9936), behind, receiving no aid, consuming unit's food, gnoll
+;  [GNOL], 4 silver [SILV]. Weight: 10. Capacity: 0/0/15/0. Skills:
+;  combat [COMB] 1 (30), stealth [STEA] 1 (30).
+
+;*** swamp (37,49) in Pangmore ***
+
+unit 7181
+;Drone (7181), holding, receiving no aid, sharing, human [HUMN], horse
+;  [HORS], silver [SILV]. Weight: 60. Capacity: 0/70/85/0. Skills:
+;  stealth [STEA] 1 (30).
+
+unit 9933
+;Drones (9933), avoiding, holding, receiving no aid, sharing, 2 goblins
+;  [GBLN], 162 silver [SILV]. Weight: 10. Capacity: 0/0/14/0. Skills:
+;  stealth [STEA] 1 (30).
+
+unit 9662
+;Drone (9662), avoiding, holding, receiving no aid, sharing, goblin
+;  [GBLN], sword [SWOR], silver [SILV]. Weight: 6. Capacity: 0/0/7/0.
+;  Skills: stealth [STEA] 1 (30).
+
+;*** plain (34,50) in Edicort ***
+
+unit 9935
+;Drone (9935), behind, revealing faction, receiving no aid, consuming
+;  unit's food, gnoll [GNOL], 15 silver [SILV]. Weight: 10. Capacity:
+;  0/0/15/0. Skills: combat [COMB] 1 (30).
+
+unit 9937
+;Drone (9937), behind, revealing faction, receiving no aid, consuming
+;  unit's food, gnoll [GNOL], 15 silver [SILV]. Weight: 10. Capacity:
+;  0/0/15/0. Skills: combat [COMB] 1 (30).
+
+#end
+

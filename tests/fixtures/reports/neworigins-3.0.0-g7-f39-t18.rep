@@ -1,0 +1,2403 @@
+;Treasury:
+;
+;Item                                      Rank  Max        Total
+;=====================================================================
+;15 leaders [LEAD]                         10    36         491
+;188 high elves [HELF]                     16    1432       7399
+;41 hill dwarves [HDWA]                    11    380        1687
+;123 centaurs [CTAU]                       5     276        1958
+;14560 silver [SILV]                       21    79263      865369
+;39 wood [WOOD]                            31    546        4496
+;16 furs [FUR]                             12    300        1181
+;31 horses [HORS]                          24    588        4912
+;47 swords [SWOR]                          16    232        2182
+;55 humans [HUMN]                          20    826        4930
+;2 lizardmen [LIZA]                        33    451        1649
+
+Atlantis Report For:
+Mantzikert (39) (Martial 1, Magic 4)
+July, Year 2
+
+Atlantis Engine Version: 5.2.5 (beta)
+NewOrigins, Version: 3.0.0 (beta)
+
+Faction Status:
+Regions: 9 (10)
+Quartermasters: 1 (2)
+Mages: 5 (5)
+Apprentices: 0 (10)
+
+Errors during turn:
+a Workers (7721): BUY: Can't buy that.
+Explorer (1439): STUDY: Not enough funds.
+
+Battles during turn:
+Giant Birds (330) attacks a Workers (7313) in mountain (35,83) in
+  Sweron!
+
+Attackers:
+Giant Birds (330), roc [ROC] (Combat 4/4, Attacks 25, Hits 25, Tactics
+  2).
+Family of Ogres (335), 2 ogres [OGRE] (Combat 3/3, Attacks 15, Hits
+  15, Tactics 0).
+
+Defenders:
+a Taxers (5470), Mantzikert (39), behind, hill dwarf [HDWA], combat 1.
+a Taxers (3946), Mantzikert (39), behind, human [HUMN], combat 1.
+a Workers (7313), Mantzikert (39), behind, 5 hill dwarves [HDWA],
+  combat 1.
+
+Round 1:
+Giant Birds (330) tactics bonus 2.
+
+Giant Birds (330) loses 0.
+a Workers (7313) loses 7.
+
+Round 1 statistics:
+
+Giant Birds (330) army:
+- Family of Ogres (335):
+  - without weapon (slashing melee attack), attacked 7 of 12 times, 7
+  successful attacks, 0 blocked by armor, 7 hits, 7 total damage, and
+  killed 7 enemies.
+
+a Workers (7313) army:
+- a Taxers (5470):
+  - without weapon (slashing melee attack), attacked 0 of 1 time, 0
+  successful attacks, 0 blocked by armor, 0 hits, 0 total damage, and
+  killed 0 enemies.
+- a Workers (7313):
+  - without weapon (slashing melee attack), attacked 1 of 2 times, 0
+  successful attacks, 0 blocked by armor, 0 hits, 0 total damage, and
+  killed 0 enemies.
+
+a Workers (7313) is destroyed!
+
+Battle statistics:
+
+Giant Birds (330) army:
+- Family of Ogres (335):
+  - without weapon (slashing melee attack), attacked 7 of 12 times, 7
+  successful attacks, 0 blocked by armor, 7 hits, 7 total damage, and
+  killed 7 enemies.
+
+a Workers (7313) army:
+- a Taxers (5470):
+  - without weapon (slashing melee attack), attacked 0 of 1 time, 0
+  successful attacks, 0 blocked by armor, 0 hits, 0 total damage, and
+  killed 0 enemies.
+- a Workers (7313):
+  - without weapon (slashing melee attack), attacked 1 of 2 times, 0
+  successful attacks, 0 blocked by armor, 0 hits, 0 total damage, and
+  killed 0 enemies.
+
+Total Casualties:
+a Workers (7313) loses 7.
+Damaged units: 7313, 5470, 3946.
+Giant Birds (330) loses 0.
+
+Spoils: none.
+
+L Constantine (4351) is assassinated in forest (42,78) in Meulcos!
+
+Unit (4026) attacks Quogaush Pug (5210) in plain (40,70) in Quogaush!
+
+Attackers:
+Unit (4026), behind, gnoll [GNOL], giant turtle [TURT], riding 1,
+  tactics 2.
+Cat Hunters (4782), 10 gnolls [GNOL], camel [CAME], 9 giant turtles
+  [TURT], 10 mithril swords [MSWO], 10 mithril armor [MARM], combat 3,
+  riding 1.
+Cat Hunters (3752), 10 gnolls [GNOL], camel [CAME], 9 giant turtles
+  [TURT], 10 mithril swords [MSWO], 10 mithril armor [MARM], combat 3,
+  riding 1.
+Mr. Kim A Rich Man (7480), behind, giant turtle [TURT], gnoll [GNOL].
+
+Defenders:
+Quogaush Pug (5210), Kweo Keegii (47), behind, gnoll [GNOL], combat 2.
+WHO Let The Dogs OUT (6001), Kweo Keegii (47), behind, 18 gnolls
+  [GNOL], combat 1.
+Dynamic Duo (6516), Kweo Keegii (47), behind, 2 gnolls [GNOL], combat
+  1.
+The Explorers (6370), Mantzikert (39), behind, human [HUMN].
+striped Hyenas (7472), Kweo Keegii (47), behind, 24 gnolls [GNOL],
+  combat 1.
+Quogaush Racketteers (7908), Kweo Keegii (47), behind, 10 gnolls
+  [GNOL].
+Quogaush Census (7909), Kweo Keegii (47), behind, gnoll [GNOL].
+The Big Dogs (6003), Kweo Keegii (47), behind, 18 gnolls [GNOL],
+  combat 1.
+Off The Porch (6518), Kweo Keegii (47), behind, gnoll [GNOL], combat
+  1.
+Gryphon Brusselieu (4730), Kweo Keegii (47), behind, gnoll [GNOL],
+  combat 1.
+Castor & Pollux (5616), Kweo Keegii (47), behind, human [HUMN], combat
+  1.
+The Dogs Of War (6002), Kweo Keegii (47), behind, 20 gnolls [GNOL],
+  combat 1.
+Off The Leash (6517), Kweo Keegii (47), behind, gnoll [GNOL], combat
+  1.
+Tax Collectors (7471), Kweo Keegii (47), behind, 5 humans [HUMN],
+  combat 1.
+
+Round 1:
+Unit (4026) tactics bonus 2.
+Cat Hunters (4782) strikes fear into enemy mounts, causing 0 mounts to
+  panic.
+Cat Hunters (3752) strikes fear into enemy mounts, causing 0 mounts to
+  panic.
+
+Unit (4026) loses 0.
+Quogaush Pug (5210) loses 16.
+
+Round 1 statistics:
+
+Unit (4026) army:
+- Cat Hunters (3752):
+  - mithril sword [MSWO] (slashing melee attack), attacked 10 of 20
+  times, 10 successful attacks, 0 blocked by armor, 10 hits, 10 total
+  damage, and killed 10 enemies.
+  - terrify horses (magic riding attack), attacked 0 of 0 times, 0
+  successful attacks, 0 blocked by armor, 0 hits, 0 total damage, and
+  killed 0 enemies.
+- Cat Hunters (4782):
+  - mithril sword [MSWO] (slashing melee attack), attacked 6 of 20
+  times, 6 successful attacks, 0 blocked by armor, 6 hits, 6 total
+  damage, and killed 6 enemies.
+  - terrify horses (magic riding attack), attacked 0 of 0 times, 0
+  successful attacks, 0 blocked by armor, 0 hits, 0 total damage, and
+  killed 0 enemies.
+
+Quogaush Pug (5210) army:
+- Gryphon Brusselieu (4730):
+  - without weapon (slashing melee attack), attacked 0 of 1 time, 0
+  successful attacks, 0 blocked by armor, 0 hits, 0 total damage, and
+  killed 0 enemies.
+- Quogaush Pug (5210):
+  - without weapon (slashing melee attack), attacked 1 of 1 time, 0
+  successful attacks, 0 blocked by armor, 0 hits, 0 total damage, and
+  killed 0 enemies.
+- Castor & Pollux (5616):
+  - without weapon (slashing melee attack), attacked 0 of 1 time, 0
+  successful attacks, 0 blocked by armor, 0 hits, 0 total damage, and
+  killed 0 enemies.
+- WHO Let The Dogs OUT (6001):
+  - without weapon (slashing melee attack), attacked 8 of 16 times, 0
+  successful attacks, 0 blocked by armor, 0 hits, 0 total damage, and
+  killed 0 enemies.
+- The Dogs Of War (6002):
+  - without weapon (slashing melee attack), attacked 6 of 20 times, 0
+  successful attacks, 0 blocked by armor, 0 hits, 0 total damage, and
+  killed 0 enemies.
+- The Big Dogs (6003):
+  - without weapon (slashing melee attack), attacked 8 of 17 times, 1
+  successful attack, 1 blocked by armor, 0 hits, 0 total damage, and
+  killed 0 enemies.
+- The Explorers (6370):
+  - without weapon (slashing melee attack), attacked 0 of 1 time, 0
+  successful attacks, 0 blocked by armor, 0 hits, 0 total damage, and
+  killed 0 enemies.
+- Dynamic Duo (6516):
+  - without weapon (slashing melee attack), attacked 1 of 2 times, 0
+  successful attacks, 0 blocked by armor, 0 hits, 0 total damage, and
+  killed 0 enemies.
+- Off The Leash (6517):
+  - without weapon (slashing melee attack), attacked 1 of 1 time, 0
+  successful attacks, 0 blocked by armor, 0 hits, 0 total damage, and
+  killed 0 enemies.
+- Off The Porch (6518):
+  - without weapon (slashing melee attack), attacked 0 of 1 time, 0
+  successful attacks, 0 blocked by armor, 0 hits, 0 total damage, and
+  killed 0 enemies.
+- Tax Collectors (7471):
+  - without weapon (slashing melee attack), attacked 3 of 4 times, 0
+  successful attacks, 0 blocked by armor, 0 hits, 0 total damage, and
+  killed 0 enemies.
+- striped Hyenas (7472):
+  - without weapon (slashing melee attack), attacked 10 of 23 times, 0
+  successful attacks, 0 blocked by armor, 0 hits, 0 total damage, and
+  killed 0 enemies.
+- Quogaush Racketteers (7908):
+  - without weapon (slashing melee attack), attacked 4 of 8 times, 0
+  successful attacks, 0 blocked by armor, 0 hits, 0 total damage, and
+  killed 0 enemies.
+- Quogaush Census (7909):
+  - without weapon (slashing melee attack), attacked 0 of 1 time, 0
+  successful attacks, 0 blocked by armor, 0 hits, 0 total damage, and
+  killed 0 enemies.
+
+Round 2:
+Cat Hunters (3752) strikes fear into enemy mounts, causing 0 mounts to
+  panic.
+Cat Hunters (4782) strikes fear into enemy mounts, causing 0 mounts to
+  panic.
+
+Unit (4026) loses 0.
+Quogaush Pug (5210) loses 18.
+
+Round 2 statistics:
+
+Unit (4026) army:
+- Cat Hunters (3752):
+  - mithril sword [MSWO] (slashing melee attack), attacked 8 of 20
+  times, 8 successful attacks, 0 blocked by armor, 8 hits, 8 total
+  damage, and killed 8 enemies.
+  - terrify horses (magic riding attack), attacked 0 of 0 times, 0
+  successful attacks, 0 blocked by armor, 0 hits, 0 total damage, and
+  killed 0 enemies.
+- Cat Hunters (4782):
+  - mithril sword [MSWO] (slashing melee attack), attacked 10 of 20
+  times, 10 successful attacks, 0 blocked by armor, 10 hits, 10 total
+  damage, and killed 10 enemies.
+  - terrify horses (magic riding attack), attacked 0 of 0 times, 0
+  successful attacks, 0 blocked by armor, 0 hits, 0 total damage, and
+  killed 0 enemies.
+
+Quogaush Pug (5210) army:
+- Gryphon Brusselieu (4730):
+  - without weapon (slashing melee attack), attacked 0 of 1 time, 0
+  successful attacks, 0 blocked by armor, 0 hits, 0 total damage, and
+  killed 0 enemies.
+- Quogaush Pug (5210):
+  - without weapon (slashing melee attack), attacked 0 of 1 time, 0
+  successful attacks, 0 blocked by armor, 0 hits, 0 total damage, and
+  killed 0 enemies.
+- Castor & Pollux (5616):
+  - without weapon (slashing melee attack), attacked 1 of 1 time, 0
+  successful attacks, 0 blocked by armor, 0 hits, 0 total damage, and
+  killed 0 enemies.
+- WHO Let The Dogs OUT (6001):
+  - without weapon (slashing melee attack), attacked 7 of 15 times, 0
+  successful attacks, 0 blocked by armor, 0 hits, 0 total damage, and
+  killed 0 enemies.
+- The Dogs Of War (6002):
+  - without weapon (slashing melee attack), attacked 11 of 16 times, 0
+  successful attacks, 0 blocked by armor, 0 hits, 0 total damage, and
+  killed 0 enemies.
+- The Big Dogs (6003):
+  - without weapon (slashing melee attack), attacked 9 of 14 times, 0
+  successful attacks, 0 blocked by armor, 0 hits, 0 total damage, and
+  killed 0 enemies.
+- Dynamic Duo (6516):
+  - without weapon (slashing melee attack), attacked 1 of 2 times, 0
+  successful attacks, 0 blocked by armor, 0 hits, 0 total damage, and
+  killed 0 enemies.
+- Tax Collectors (7471):
+  - without weapon (slashing melee attack), attacked 1 of 3 times, 0
+  successful attacks, 0 blocked by armor, 0 hits, 0 total damage, and
+  killed 0 enemies.
+- striped Hyenas (7472):
+  - without weapon (slashing melee attack), attacked 6 of 17 times, 0
+  successful attacks, 0 blocked by armor, 0 hits, 0 total damage, and
+  killed 0 enemies.
+- Quogaush Racketteers (7908):
+  - without weapon (slashing melee attack), attacked 3 of 5 times, 0
+  successful attacks, 0 blocked by armor, 0 hits, 0 total damage, and
+  killed 0 enemies.
+- Quogaush Census (7909):
+  - without weapon (slashing melee attack), attacked 0 of 1 time, 0
+  successful attacks, 0 blocked by armor, 0 hits, 0 total damage, and
+  killed 0 enemies.
+
+Round 3:
+Cat Hunters (3752) strikes fear into enemy mounts, causing 0 mounts to
+  panic.
+Cat Hunters (4782) strikes fear into enemy mounts, causing 0 mounts to
+  panic.
+
+Unit (4026) loses 0.
+Quogaush Pug (5210) loses 21.
+
+Round 3 statistics:
+
+Unit (4026) army:
+- Cat Hunters (3752):
+  - mithril sword [MSWO] (slashing melee attack), attacked 11 of 20
+  times, 11 successful attacks, 0 blocked by armor, 11 hits, 11 total
+  damage, and killed 11 enemies.
+  - terrify horses (magic riding attack), attacked 0 of 0 times, 0
+  successful attacks, 0 blocked by armor, 0 hits, 0 total damage, and
+  killed 0 enemies.
+- Cat Hunters (4782):
+  - mithril sword [MSWO] (slashing melee attack), attacked 10 of 20
+  times, 10 successful attacks, 0 blocked by armor, 10 hits, 10 total
+  damage, and killed 10 enemies.
+  - terrify horses (magic riding attack), attacked 0 of 0 times, 0
+  successful attacks, 0 blocked by armor, 0 hits, 0 total damage, and
+  killed 0 enemies.
+
+Quogaush Pug (5210) army:
+- Gryphon Brusselieu (4730):
+  - without weapon (slashing melee attack), attacked 0 of 1 time, 0
+  successful attacks, 0 blocked by armor, 0 hits, 0 total damage, and
+  killed 0 enemies.
+- Castor & Pollux (5616):
+  - without weapon (slashing melee attack), attacked 1 of 1 time, 0
+  successful attacks, 0 blocked by armor, 0 hits, 0 total damage, and
+  killed 0 enemies.
+- WHO Let The Dogs OUT (6001):
+  - without weapon (slashing melee attack), attacked 5 of 12 times, 0
+  successful attacks, 0 blocked by armor, 0 hits, 0 total damage, and
+  killed 0 enemies.
+- The Dogs Of War (6002):
+  - without weapon (slashing melee attack), attacked 8 of 13 times, 0
+  successful attacks, 0 blocked by armor, 0 hits, 0 total damage, and
+  killed 0 enemies.
+- The Big Dogs (6003):
+  - without weapon (slashing melee attack), attacked 5 of 10 times, 0
+  successful attacks, 0 blocked by armor, 0 hits, 0 total damage, and
+  killed 0 enemies.
+- Dynamic Duo (6516):
+  - without weapon (slashing melee attack), attacked 2 of 2 times, 0
+  successful attacks, 0 blocked by armor, 0 hits, 0 total damage, and
+  killed 0 enemies.
+- Tax Collectors (7471):
+  - without weapon (slashing melee attack), attacked 2 of 3 times, 0
+  successful attacks, 0 blocked by armor, 0 hits, 0 total damage, and
+  killed 0 enemies.
+- striped Hyenas (7472):
+  - without weapon (slashing melee attack), attacked 10 of 17 times, 0
+  successful attacks, 0 blocked by armor, 0 hits, 0 total damage, and
+  killed 0 enemies.
+- Quogaush Racketteers (7908):
+  - without weapon (slashing melee attack), attacked 3 of 4 times, 0
+  successful attacks, 0 blocked by armor, 0 hits, 0 total damage, and
+  killed 0 enemies.
+- Quogaush Census (7909):
+  - without weapon (slashing melee attack), attacked 0 of 1 time, 0
+  successful attacks, 0 blocked by armor, 0 hits, 0 total damage, and
+  killed 0 enemies.
+
+Quogaush Pug (5210) is routed!
+Unit (4026) gets a free round of attacks.
+Cat Hunters (3752) strikes fear into enemy mounts, causing 0 mounts to
+  panic.
+Cat Hunters (4782) strikes fear into enemy mounts, causing 0 mounts to
+  panic.
+
+Quogaush Pug (5210) loses 18.
+
+Free round statistics:
+
+Unit (4026) army:
+- Cat Hunters (3752):
+  - mithril sword [MSWO] (slashing melee attack), attacked 7 of 20
+  times, 7 successful attacks, 0 blocked by armor, 7 hits, 7 total
+  damage, and killed 7 enemies.
+  - terrify horses (magic riding attack), attacked 0 of 0 times, 0
+  successful attacks, 0 blocked by armor, 0 hits, 0 total damage, and
+  killed 0 enemies.
+- Cat Hunters (4782):
+  - mithril sword [MSWO] (slashing melee attack), attacked 11 of 20
+  times, 11 successful attacks, 0 blocked by armor, 11 hits, 11 total
+  damage, and killed 11 enemies.
+  - terrify horses (magic riding attack), attacked 0 of 0 times, 0
+  successful attacks, 0 blocked by armor, 0 hits, 0 total damage, and
+  killed 0 enemies.
+
+Quogaush Pug (5210) army:
+Army made no attacks.
+
+
+Battle statistics:
+
+Unit (4026) army:
+- Cat Hunters (3752):
+  - mithril sword [MSWO] (slashing melee attack), attacked 36 of 80
+  times, 36 successful attacks, 0 blocked by armor, 36 hits, 36 total
+  damage, and killed 36 enemies.
+  - terrify horses (magic riding attack), attacked 0 of 0 times, 0
+  successful attacks, 0 blocked by armor, 0 hits, 0 total damage, and
+  killed 0 enemies.
+- Cat Hunters (4782):
+  - mithril sword [MSWO] (slashing melee attack), attacked 37 of 80
+  times, 37 successful attacks, 0 blocked by armor, 37 hits, 37 total
+  damage, and killed 37 enemies.
+  - terrify horses (magic riding attack), attacked 0 of 0 times, 0
+  successful attacks, 0 blocked by armor, 0 hits, 0 total damage, and
+  killed 0 enemies.
+
+Quogaush Pug (5210) army:
+- Gryphon Brusselieu (4730):
+  - without weapon (slashing melee attack), attacked 0 of 3 times, 0
+  successful attacks, 0 blocked by armor, 0 hits, 0 total damage, and
+  killed 0 enemies.
+- Quogaush Pug (5210):
+  - without weapon (slashing melee attack), attacked 1 of 2 times, 0
+  successful attacks, 0 blocked by armor, 0 hits, 0 total damage, and
+  killed 0 enemies.
+- Castor & Pollux (5616):
+  - without weapon (slashing melee attack), attacked 2 of 3 times, 0
+  successful attacks, 0 blocked by armor, 0 hits, 0 total damage, and
+  killed 0 enemies.
+- WHO Let The Dogs OUT (6001):
+  - without weapon (slashing melee attack), attacked 20 of 43 times, 0
+  successful attacks, 0 blocked by armor, 0 hits, 0 total damage, and
+  killed 0 enemies.
+- The Dogs Of War (6002):
+  - without weapon (slashing melee attack), attacked 25 of 49 times, 0
+  successful attacks, 0 blocked by armor, 0 hits, 0 total damage, and
+  killed 0 enemies.
+- The Big Dogs (6003):
+  - without weapon (slashing melee attack), attacked 22 of 41 times, 1
+  successful attack, 1 blocked by armor, 0 hits, 0 total damage, and
+  killed 0 enemies.
+- The Explorers (6370):
+  - without weapon (slashing melee attack), attacked 0 of 1 time, 0
+  successful attacks, 0 blocked by armor, 0 hits, 0 total damage, and
+  killed 0 enemies.
+- Dynamic Duo (6516):
+  - without weapon (slashing melee attack), attacked 4 of 6 times, 0
+  successful attacks, 0 blocked by armor, 0 hits, 0 total damage, and
+  killed 0 enemies.
+- Off The Leash (6517):
+  - without weapon (slashing melee attack), attacked 1 of 1 time, 0
+  successful attacks, 0 blocked by armor, 0 hits, 0 total damage, and
+  killed 0 enemies.
+- Off The Porch (6518):
+  - without weapon (slashing melee attack), attacked 0 of 1 time, 0
+  successful attacks, 0 blocked by armor, 0 hits, 0 total damage, and
+  killed 0 enemies.
+- Tax Collectors (7471):
+  - without weapon (slashing melee attack), attacked 6 of 10 times, 0
+  successful attacks, 0 blocked by armor, 0 hits, 0 total damage, and
+  killed 0 enemies.
+- striped Hyenas (7472):
+  - without weapon (slashing melee attack), attacked 26 of 57 times, 0
+  successful attacks, 0 blocked by armor, 0 hits, 0 total damage, and
+  killed 0 enemies.
+- Quogaush Racketteers (7908):
+  - without weapon (slashing melee attack), attacked 10 of 17 times, 0
+  successful attacks, 0 blocked by armor, 0 hits, 0 total damage, and
+  killed 0 enemies.
+- Quogaush Census (7909):
+  - without weapon (slashing melee attack), attacked 0 of 3 times, 0
+  successful attacks, 0 blocked by armor, 0 hits, 0 total damage, and
+  killed 0 enemies.
+
+Total Casualties:
+Quogaush Pug (5210) loses 73.
+Damaged units: 7908, 6001, 7472, 6002, 6003, 7471, 6516, 5210, 6518,
+  6517, 6370.
+Unit (4026) loses 0.
+
+Spoils: 1186 silver [SILV].
+
+Mr. Kim A Rich Man (7480) attacks a Taxers (2693) in plain (38,68) in
+  Rantvardshal!
+
+Attackers:
+Mr. Kim A Rich Man (7480), behind, giant turtle [TURT], gnoll [GNOL].
+Unit (4026), behind, gnoll [GNOL], giant turtle [TURT], riding 1,
+  tactics 2.
+Cat Hunters (4782), 10 gnolls [GNOL], 10 mithril swords [MSWO], 10
+  mithril armor [MARM], 9 giant turtles [TURT], camel [CAME], combat
+  3, riding 1.
+Cat Hunters (3752), 10 gnolls [GNOL], 10 mithril swords [MSWO], 10
+  mithril armor [MARM], 9 giant turtles [TURT], camel [CAME], combat
+  3, riding 1.
+
+Defenders:
+a Taxers (2693), Mantzikert (39), 32 humans [HUMN], combat 1.
+a Workers (6799), Mantzikert (39), behind, 20 humans [HUMN], combat 1.
+a Workers 2 (7715), Mantzikert (39), 50 humans [HUMN].
+scout (4503), The Lands Kepper (20), behind, 3 humans [HUMN], combat
+  1.
+
+Round 1:
+Mr. Kim A Rich Man (7480) tactics bonus 2.
+Cat Hunters (4782) strikes fear into enemy mounts, causing 0 mounts to
+  panic.
+Cat Hunters (3752) strikes fear into enemy mounts, causing 0 mounts to
+  panic.
+
+Mr. Kim A Rich Man (7480) loses 0.
+a Taxers (2693) loses 15.
+
+Round 1 statistics:
+
+Mr. Kim A Rich Man (7480) army:
+- Cat Hunters (3752):
+  - mithril sword [MSWO] (slashing melee attack), attacked 9 of 20
+  times, 9 successful attacks, 0 blocked by armor, 9 hits, 9 total
+  damage, and killed 9 enemies.
+  - terrify horses (magic riding attack), attacked 0 of 0 times, 0
+  successful attacks, 0 blocked by armor, 0 hits, 0 total damage, and
+  killed 0 enemies.
+- Cat Hunters (4782):
+  - mithril sword [MSWO] (slashing melee attack), attacked 6 of 20
+  times, 6 successful attacks, 0 blocked by armor, 6 hits, 6 total
+  damage, and killed 6 enemies.
+  - terrify horses (magic riding attack), attacked 0 of 0 times, 0
+  successful attacks, 0 blocked by armor, 0 hits, 0 total damage, and
+  killed 0 enemies.
+
+a Taxers (2693) army:
+- a Taxers (2693):
+  - without weapon (slashing melee attack), attacked 12 of 28 times, 0
+  successful attacks, 0 blocked by armor, 0 hits, 0 total damage, and
+  killed 0 enemies.
+- a Workers 2 (7715):
+  - without weapon (slashing melee attack), attacked 36 of 46 times, 0
+  successful attacks, 0 blocked by armor, 0 hits, 0 total damage, and
+  killed 0 enemies.
+
+Round 2:
+Cat Hunters (3752) strikes fear into enemy mounts, causing 0 mounts to
+  panic.
+Cat Hunters (4782) strikes fear into enemy mounts, causing 0 mounts to
+  panic.
+
+Mr. Kim A Rich Man (7480) loses 0.
+a Taxers (2693) loses 20.
+
+Round 2 statistics:
+
+Mr. Kim A Rich Man (7480) army:
+- Cat Hunters (3752):
+  - mithril sword [MSWO] (slashing melee attack), attacked 10 of 20
+  times, 10 successful attacks, 0 blocked by armor, 10 hits, 10 total
+  damage, and killed 10 enemies.
+  - terrify horses (magic riding attack), attacked 0 of 0 times, 0
+  successful attacks, 0 blocked by armor, 0 hits, 0 total damage, and
+  killed 0 enemies.
+- Cat Hunters (4782):
+  - mithril sword [MSWO] (slashing melee attack), attacked 10 of 20
+  times, 10 successful attacks, 0 blocked by armor, 10 hits, 10 total
+  damage, and killed 10 enemies.
+  - terrify horses (magic riding attack), attacked 0 of 0 times, 0
+  successful attacks, 0 blocked by armor, 0 hits, 0 total damage, and
+  killed 0 enemies.
+
+a Taxers (2693) army:
+- a Taxers (2693):
+  - without weapon (slashing melee attack), attacked 6 of 19 times, 0
+  successful attacks, 0 blocked by armor, 0 hits, 0 total damage, and
+  killed 0 enemies.
+- a Workers 2 (7715):
+  - without weapon (slashing melee attack), attacked 20 of 37 times, 1
+  successful attack, 1 blocked by armor, 0 hits, 0 total damage, and
+  killed 0 enemies.
+
+Round 3:
+Cat Hunters (4782) strikes fear into enemy mounts, causing 0 mounts to
+  panic.
+Cat Hunters (3752) strikes fear into enemy mounts, causing 0 mounts to
+  panic.
+
+Mr. Kim A Rich Man (7480) loses 0.
+a Taxers (2693) loses 19.
+
+Round 3 statistics:
+
+Mr. Kim A Rich Man (7480) army:
+- Cat Hunters (3752):
+  - mithril sword [MSWO] (slashing melee attack), attacked 10 of 20
+  times, 10 successful attacks, 0 blocked by armor, 10 hits, 10 total
+  damage, and killed 10 enemies.
+  - terrify horses (magic riding attack), attacked 0 of 0 times, 0
+  successful attacks, 0 blocked by armor, 0 hits, 0 total damage, and
+  killed 0 enemies.
+- Cat Hunters (4782):
+  - mithril sword [MSWO] (slashing melee attack), attacked 9 of 20
+  times, 9 successful attacks, 0 blocked by armor, 9 hits, 9 total
+  damage, and killed 9 enemies.
+  - terrify horses (magic riding attack), attacked 0 of 0 times, 0
+  successful attacks, 0 blocked by armor, 0 hits, 0 total damage, and
+  killed 0 enemies.
+
+a Taxers (2693) army:
+- a Taxers (2693):
+  - without weapon (slashing melee attack), attacked 8 of 15 times, 0
+  successful attacks, 0 blocked by armor, 0 hits, 0 total damage, and
+  killed 0 enemies.
+- a Workers 2 (7715):
+  - without weapon (slashing melee attack), attacked 10 of 21 times, 0
+  successful attacks, 0 blocked by armor, 0 hits, 0 total damage, and
+  killed 0 enemies.
+
+a Taxers (2693) is routed!
+Mr. Kim A Rich Man (7480) gets a free round of attacks.
+Cat Hunters (4782) strikes fear into enemy mounts, causing 0 mounts to
+  panic.
+Cat Hunters (3752) strikes fear into enemy mounts, causing 0 mounts to
+  panic.
+
+a Taxers (2693) loses 14.
+
+Free round statistics:
+
+Mr. Kim A Rich Man (7480) army:
+- Cat Hunters (3752):
+  - mithril sword [MSWO] (slashing melee attack), attacked 8 of 20
+  times, 8 successful attacks, 0 blocked by armor, 8 hits, 8 total
+  damage, and killed 8 enemies.
+  - terrify horses (magic riding attack), attacked 0 of 0 times, 0
+  successful attacks, 0 blocked by armor, 0 hits, 0 total damage, and
+  killed 0 enemies.
+- Cat Hunters (4782):
+  - terrify horses (magic riding attack), attacked 0 of 0 times, 0
+  successful attacks, 0 blocked by armor, 0 hits, 0 total damage, and
+  killed 0 enemies.
+  - mithril sword [MSWO] (slashing melee attack), attacked 6 of 20
+  times, 6 successful attacks, 0 blocked by armor, 6 hits, 6 total
+  damage, and killed 6 enemies.
+
+a Taxers (2693) army:
+Army made no attacks.
+
+
+Battle statistics:
+
+Mr. Kim A Rich Man (7480) army:
+- Cat Hunters (3752):
+  - mithril sword [MSWO] (slashing melee attack), attacked 37 of 80
+  times, 37 successful attacks, 0 blocked by armor, 37 hits, 37 total
+  damage, and killed 37 enemies.
+  - terrify horses (magic riding attack), attacked 0 of 0 times, 0
+  successful attacks, 0 blocked by armor, 0 hits, 0 total damage, and
+  killed 0 enemies.
+- Cat Hunters (4782):
+  - mithril sword [MSWO] (slashing melee attack), attacked 31 of 80
+  times, 31 successful attacks, 0 blocked by armor, 31 hits, 31 total
+  damage, and killed 31 enemies.
+  - terrify horses (magic riding attack), attacked 0 of 0 times, 0
+  successful attacks, 0 blocked by armor, 0 hits, 0 total damage, and
+  killed 0 enemies.
+
+a Taxers (2693) army:
+- a Taxers (2693):
+  - without weapon (slashing melee attack), attacked 26 of 62 times, 0
+  successful attacks, 0 blocked by armor, 0 hits, 0 total damage, and
+  killed 0 enemies.
+- a Workers 2 (7715):
+  - without weapon (slashing melee attack), attacked 66 of 104 times,
+  1 successful attack, 1 blocked by armor, 0 hits, 0 total damage, and
+  killed 0 enemies.
+
+Total Casualties:
+a Taxers (2693) loses 68.
+Damaged units: 7715, 2693.
+Mr. Kim A Rich Man (7480) loses 0.
+
+Spoils: 1268 silver [SILV].
+
+Events during turn:
+Times reward of 200 silver.
+a Taxers (5470): Gets 5 days of practice with combat [COMB].
+a Taxers (3946): Gets 5 days of practice with combat [COMB].
+a Workers (7313): Gets 5 days of practice with combat [COMB].
+Arkady (874) is caught attempting to steal from scout 04 (1304) in
+  Derngill.
+a Workers (5878): Gives high elf [HELF] to a Taxers (1994).
+a Workers (4352): Gives 30 silver [SILV] to a Workers (5879).
+a Workers (5067): Gives 3 centaurs [CTAU] to a Taxers (1996).
+The Diplomat (1445): Gives 100 silver [SILV] to Explorer (7723).
+Movers (3944): Movers (3944) shares 100 silver [SILV] with The
+  Diplomat (1445).
+The Diplomat (1445): Gives 100 silver [SILV] to Explorer (7724).
+Movers (3944): Movers (3944) shares 100 silver [SILV] with The
+  Diplomat (1445).
+Movers (3944): Gives 1506 silver [SILV] to The Diplomat (1445).
+Movers (5881): Movers (5881) shares 200 silver [SILV] with Movers
+  (3944).
+Movers (5881): Gives 3212 silver [SILV] to The Diplomat (1445).
+The Diplomat (1445): The Diplomat (1445) shares 200 silver [SILV] with
+  Movers (5881).
+Movers (5881): Gives centaur [CTAU] to Movers (3944).
+Movers (5881): Gives horse [HORS] to Movers (3944).
+a Workers (7312): Gives 3 hill dwarves [HDWA] to a Taxers (3945).
+a Taxers (2693): Collects $1599 in taxes in plain (38,68) in
+  Rantvardshal.
+a Taxers (1994): Collects $1034 in taxes in forest (42,76) in Meulcos.
+a Workers (4352): Collects $700 in taxes in mountain (37,77) in
+  Sweron.
+a Workers (5068): Collects $78 in taxes in forest (43,77) in Utso.
+a Taxers (1996): Collects $6715 in taxes in forest (42,78) in Meulcos.
+a Taxers (1441): Collects $500 in taxes in forest (43,79) in Utso.
+a Taxers 2 (5066): Collects $500 in taxes in mountain (36,80) in
+  Sweron.
+a Taxers (4353): Collects $200 in taxes in mountain (35,81) in Sweron.
+a Taxers (3945): Collects $318 in taxes in mountain (36,82) in Sweron.
+Seven of One (1658) uses illusion [ILLU] in mountain (43,81) in
+  Derngill, contains Onthead [city].
+Nanny Ogg (888) uses illusion [ILLU] in mountain (43,81) in Derngill,
+  contains Onthead [city].
+Gail (918) uses illusion [ILLU] in mountain (43,81) in Derngill,
+  contains Onthead [city].
+Steven (1662) uses illusion [ILLU] in mountain (43,81) in Derngill,
+  contains Onthead [city].
+Dwight Fry (1663) uses illusion [ILLU] in mountain (43,81) in
+  Derngill, contains Onthead [city].
+Cold Ethyl (1664) uses illusion [ILLU] in mountain (43,81) in
+  Derngill, contains Onthead [city].
+Nine of Eight (1656) uses illusion [ILLU] in mountain (43,81) in
+  Derngill, contains Onthead [city].
+Five of Ten (916) uses illusion [ILLU] in mountain (43,81) in
+  Derngill, contains Onthead [city].
+Three of Five (1657) uses illusion [ILLU] in mountain (43,81) in
+  Derngill, contains Onthead [city].
+a Taxers (2693): a Taxers (2693) shares 2100 silver [SILV] with a
+  Workers 2 (7715).
+a Workers 2 (7715): Buys 50 humans [HUMN] at $42 each.
+a Taxers (1994): a Taxers (1994) shares 320 silver [SILV] with Slaves
+  Armorer (7716).
+Slaves Armorer (7716): Buys 8 high elves [HELF] at $40 each.
+a Taxers (1996): a Taxers (1996) shares 350 silver [SILV] with a
+  Workers (5067).
+a Workers (5067): Buys 5 centaurs [CTAU] at $82 each.
+a Taxers (1996): a Taxers (1996) shares 1646 silver [SILV] with L
+  Kataphraktoii (7717).
+L Kataphraktoii (7717): Buys 2 leaders [LEAD] at $823 each.
+a Taxers (1996): a Taxers (1996) shares 1646 silver [SILV] with L Paul
+  of Aegina (7718).
+L Paul of Aegina (7718): Buys 2 leaders [LEAD] at $823 each.
+a Taxers (1441): a Taxers (1441) shares 240 silver [SILV] with Slaves
+  Fur (7719).
+Slaves Fur (7719): Buys 6 high elves [HELF] at $40 each.
+a Taxers 2 (5066): a Taxers 2 (5066) shares 400 silver [SILV] with a
+  Workers (7720).
+a Workers (7720): Buys 10 humans [HUMN] at $40 each.
+Explorer (7723): Buys human [HUMN] at $48 each.
+Explorer (7724): Buys human [HUMN] at $48 each.
+The Diplomat (1445): The Diplomat (1445) shares 856 silver [SILV] with
+  L Phocas (7722).
+L Phocas (7722): Buys leader [LEAD] at $856 each.
+Movers (3944): Rides from mountain (43,81) in Derngill to forest
+  (43,79) in Utso.
+a Workers (5879): Walks from mountain (37,77) in Sweron to mountain
+  (36,78) in Sweron.
+a Workers (4352): Forbids entry to Unit (6837), Gyperboreya (42).
+Explorer (7723): Walks from mountain (43,81) in Derngill to mountain
+  (42,82) in Derngill.
+Explorer (7724): Walks from mountain (43,81) in Derngill to forest
+  (44,80) in Utso.
+Movers (3944): Rides from forest (43,79) in Utso to forest (42,78) in
+  Meulcos.
+a Taxers (2693): Gets 5 days of practice with combat [COMB].
+a Workers (6799): Gets 5 days of practice with combat [COMB].
+The Explorers (6363): Earns 13 silver working in plain (38,66) in
+  Rantvardshal.
+The Explorers (6366): Earns 13 silver working in plain (40,66) in
+  Quogaush.
+The Explorers (6364): Studies stealth at a cost of 50 silver [SILV].
+The Explorers (6365): Studies stealth at a cost of 50 silver [SILV].
+The Explorers (6367): Studies stealth at a cost of 50 silver [SILV].
+Explorer (1440): Earns 12 silver working in plain (39,67) in
+  Rantvardshal.
+a Taxers (2693): a Taxers (2693) shares 200 silver [SILV] with a
+  Workers (6799).
+a Workers (6799): Studies combat at a cost of 200 silver [SILV].
+a Taxers (2693): a Taxers (2693) shares 80 silver [SILV] with a
+  Workers 2 (7715).
+a Workers 2 (7715): Studies combat at a cost of 80 silver [SILV].
+Explorer (1435): Earns 13 silver working in plain (38,68) in
+  Rantvardshal.
+The Explorers (6368): Earns 13 silver working in plain (39,69) in
+  Quogaush.
+The Explorers (6369): Earns 12 silver working in plain (38,70) in
+  Quogaush.
+The Explorers (6372): Studies stealth at a cost of 50 silver [SILV].
+The Explorers (6371): Earns 11 silver working in swamp (38,72) in
+  Leffquapbe.
+Explorer (1436): Earns 12 silver working in swamp (38,74) in
+  Leffquapbe.
+a Taxers (1994): a Taxers (1994) shares 80 silver [SILV] with Slaves
+  Armorer (7716).
+Slaves Armorer (7716): Studies armorer at a cost of 80 silver [SILV].
+Slaves Farm (5468): Produces 10 livestock [LIVE] in forest (42,76) in
+  Meulcos.
+Slaves Farm (5468): Gets 5 days of practice with farming [FARM].
+Slaves Wood (6373): Produces 13 wood [WOOD] in forest (42,76) in
+  Meulcos.
+Slaves Wood (6373): Gets 5 days of practice with lumberjack [LUMB].
+Slaves Fur (6800): Produces 8 furs [FUR] in forest (42,76) in Meulcos.
+Slaves Fur (6800): Gets 5 days of practice with hunting [HUNT].
+a Workers (5878): Earns 100 silver working in forest (42,76) in
+  Meulcos.
+Movers (2992): Earns 13 silver working in plain (44,76) in Pestflo.
+a Taxers (6374): Earns 62 silver working in forest (43,77) in Utso.
+a Taxers (1996): a Taxers (1996) shares 50 silver [SILV] with a
+  Workers (5067).
+a Workers (5067): Studies combat at a cost of 50 silver [SILV].
+a Taxers (1996): a Taxers (1996) shares 50 silver [SILV] with The
+  Mover (5469).
+The Mover (5469): Studies observation at a cost of 50 silver [SILV].
+a Taxers (1996): a Taxers (1996) shares 350 silver [SILV] with a
+  Workers 2 (5880).
+a Workers 2 (5880): Studies riding at a cost of 350 silver [SILV].
+a Taxers (1996): a Taxers (1996) shares 200 silver [SILV] with L
+  Belisarius (3637).
+L Belisarius (3637): Studies tactics at a cost of 200 silver [SILV].
+a Taxers (1996): a Taxers (1996) shares 10 silver [SILV] with L
+  Heraclivs (6804).
+L Heraclivs (6804): Studies combat at a cost of 10 silver [SILV].
+a Taxers (1996): a Taxers (1996) shares 50 silver [SILV] with L
+  Dvornik (6805).
+L Dvornik (6805): Studies stealth at a cost of 50 silver [SILV].
+a Taxers (1996): a Taxers (1996) shares 10 silver [SILV] with L
+  Diocles (6806).
+L Diocles (6806): Studies riding at a cost of 10 silver [SILV].
+a Taxers (1996): a Taxers (1996) shares 10 silver [SILV] with L
+  Protoierakarios (7304).
+L Protoierakarios (7304): Studies hunting at a cost of 10 silver
+  [SILV].
+a Taxers (1996): a Taxers (1996) shares 10 silver [SILV] with L
+  Kataphraktoi (7305).
+L Kataphraktoi (7305): Studies longbow at a cost of 10 silver [SILV].
+a Taxers (1996): a Taxers (1996) shares 20 silver [SILV] with L
+  Kataphraktoii (7717).
+L Kataphraktoii (7717): Studies longbow at a cost of 20 silver [SILV].
+a Taxers (1996): a Taxers (1996) shares 20 silver [SILV] with L Paul
+  of Aegina (7718).
+L Paul of Aegina (7718): Studies healing at a cost of 20 silver
+  [SILV].
+a Taxers (1441): a Taxers (1441) shares 150 silver [SILV] with Slaves
+  Wood (4354).
+Slaves Wood (4354): Studies lumberjack at a cost of 150 silver [SILV].
+a Taxers (1441): a Taxers (1441) shares 60 silver [SILV] with Slaves
+  Fur (7719).
+Slaves Fur (7719): Studies hunting at a cost of 60 silver [SILV].
+Slaves Grain (7307): Produces 11 grain [GRAI] in forest (43,79) in
+  Utso.
+Slaves Grain (7307): Gets 5 days of practice with farming [FARM].
+The Beetles (4355): Earns 23 silver entertaining in forest (43,79) in
+  Utso.
+a Taxers 2 (5066): a Taxers 2 (5066) shares 100 silver [SILV] with a
+  Workers (7720).
+a Workers (7720): Studies combat at a cost of 100 silver [SILV].
+Explorer (7306): Earns 12 silver working in mountain (42,80) in
+  Sa'endtell.
+The Diplomat (1445): The Diplomat (1445) shares 100 silver [SILV] with
+  L Justinian (7310).
+L Justinian (7310): Studies force and was taught for 30 days at a cost
+  of 100 silver [SILV].
+The Diplomat (1445): The Diplomat (1445) shares 100 silver [SILV] with
+  L Phocas (7722).
+L Phocas (7722): Studies force and was taught for 30 days at a cost of
+  100 silver [SILV].
+The Diplomat (1445): The Diplomat (1445) shares 100 silver [SILV] with
+  L Bey (1447).
+L Bey (1447): Studies necromancy at a cost of 100 silver [SILV].
+The Diplomat (1445): The Diplomat (1445) shares 100 silver [SILV] with
+  L Bryennios (1448).
+L Bryennios (1448): Studies phantasmal entertainment and was taught
+  for 30 days at a cost of 100 silver [SILV].
+The Diplomat (1445): The Diplomat (1445) shares 100 silver [SILV] with
+  L Arslan (7311).
+L Arslan (7311): Studies force and was taught for 30 days at a cost of
+  100 silver [SILV].
+The Diplomat (1445): Earns 15 silver working in mountain (43,81) in
+  Derngill.
+a Workers (7312): Earns 22 silver working in mountain (36,82) in
+  Sweron.
+Explorers (2390): Earns 13 silver working in mountain (34,84) in
+  Sweron.
+Unit (2696): Earns 11 silver working in mountain (35,87) in Sweron.
+Slaves Grain (7307): Consumes 4 grain [GRAI] for maintenance.
+Slaves Farm (5468): Consumes 4 livestock [LIVE] for maintenance.
+a Taxers (1441): Borrows 4 grain [GRAI] from Slaves Grain (7307) for
+  maintenance.
+Slaves Grain (7307): a Taxers (1441) borrows 4 grain [GRAI] for
+  maintenance.
+Slaves Wood (4354): Borrows 3 grain [GRAI] from Slaves Grain (7307)
+  for maintenance.
+Slaves Grain (7307): Slaves Wood (4354) borrows 3 grain [GRAI] for
+  maintenance.
+a Taxers (1994): Borrows 6 livestock [LIVE] from Slaves Farm (5468)
+  for maintenance.
+Slaves Farm (5468): a Taxers (1994) borrows 6 livestock [LIVE] for
+  maintenance.
+The Explorers (6363): Consumes 10 silver [SILV] for maintenance.
+The Explorers (6366): Consumes 10 silver [SILV] for maintenance.
+Explorer (1440): Consumes 10 silver [SILV] for maintenance.
+The Explorers (6364): Consumes 10 silver [SILV] for maintenance.
+The Explorers (6365): Consumes 10 silver [SILV] for maintenance.
+The Explorers (6367): Consumes 10 silver [SILV] for maintenance.
+a Taxers (2693): Consumes 60 silver [SILV] for maintenance.
+Explorer (1435): Consumes 10 silver [SILV] for maintenance.
+The Explorers (6368): Consumes 10 silver [SILV] for maintenance.
+The Explorers (6369): Consumes 10 silver [SILV] for maintenance.
+Explorer (1439): Consumes 10 silver [SILV] for maintenance.
+The Explorers (6372): Consumes 10 silver [SILV] for maintenance.
+The Explorers (6371): Consumes 10 silver [SILV] for maintenance.
+Explorer (1436): Consumes 10 silver [SILV] for maintenance.
+a Taxers (1994): Consumes 30 silver [SILV] for maintenance.
+a Workers (5878): Consumes 80 silver [SILV] for maintenance.
+Movers (2992): Consumes 10 silver [SILV] for maintenance.
+a Workers (4352): Consumes 140 silver [SILV] for maintenance.
+a Workers (5068): Consumes 20 silver [SILV] for maintenance.
+a Taxers (6374): Consumes 100 silver [SILV] for maintenance.
+a Workers (5879): Consumes 40 silver [SILV] for maintenance.
+a Taxers (1996): Consumes 1380 silver [SILV] for maintenance.
+The Beetles (4355): Consumes 10 silver [SILV] for maintenance.
+a Taxers 2 (5066): Consumes 100 silver [SILV] for maintenance.
+Explorer (7306): Consumes 10 silver [SILV] for maintenance.
+Explorer (7724): Consumes 10 silver [SILV] for maintenance.
+a Taxers (4353): Consumes 40 silver [SILV] for maintenance.
+The Diplomat (1445): Consumes 10 silver [SILV] for maintenance.
+a Taxers (3945): Consumes 70 silver [SILV] for maintenance.
+a Workers (7312): Consumes 20 silver [SILV] for maintenance.
+Explorer (7723): Consumes 10 silver [SILV] for maintenance.
+Explorers (2390): Consumes 10 silver [SILV] for maintenance.
+Unit (2696): Consumes 10 silver [SILV] for maintenance.
+a Workers (6799): Borrows 200 silver [SILV] from a Taxers (2693) for
+  maintenance.
+a Taxers (2693): a Workers (6799) borrows 200 silver [SILV] for
+  maintenance.
+a Workers 2 (7715): Borrows 46 silver [SILV] from a Taxers (2693) for
+  maintenance.
+a Taxers (2693): a Workers 2 (7715) borrows 46 silver [SILV] for
+  maintenance.
+a Workers 2 (7715): Borrows 34 silver [SILV] from Explorer (1435) for
+  maintenance.
+Explorer (1435): a Workers 2 (7715) borrows 34 silver [SILV] for
+  maintenance.
+Slaves Wood (6373): Borrows 130 silver [SILV] from a Taxers (1994) for
+  maintenance.
+a Taxers (1994): Slaves Wood (6373) borrows 130 silver [SILV] for
+  maintenance.
+Slaves Fur (6800): Borrows 80 silver [SILV] from a Taxers (1994) for
+  maintenance.
+a Taxers (1994): Slaves Fur (6800) borrows 80 silver [SILV] for
+  maintenance.
+Slaves Armorer (7716): Borrows 80 silver [SILV] from a Taxers (1994)
+  for maintenance.
+a Taxers (1994): Slaves Armorer (7716) borrows 80 silver [SILV] for
+  maintenance.
+a Workers (5067): Borrows 50 silver [SILV] from a Taxers (1996) for
+  maintenance.
+a Taxers (1996): a Workers (5067) borrows 50 silver [SILV] for
+  maintenance.
+The Mover (5469): Borrows 10 silver [SILV] from a Taxers (1996) for
+  maintenance.
+a Taxers (1996): The Mover (5469) borrows 10 silver [SILV] for
+  maintenance.
+a Workers 2 (5880): Borrows 350 silver [SILV] from a Taxers (1996) for
+  maintenance.
+a Taxers (1996): a Workers 2 (5880) borrows 350 silver [SILV] for
+  maintenance.
+L Belisarius (3637): Borrows 50 silver [SILV] from a Taxers (1996) for
+  maintenance.
+a Taxers (1996): L Belisarius (3637) borrows 50 silver [SILV] for
+  maintenance.
+L Heraclivs (6804): Borrows 50 silver [SILV] from a Taxers (1996) for
+  maintenance.
+a Taxers (1996): L Heraclivs (6804) borrows 50 silver [SILV] for
+  maintenance.
+L Dvornik (6805): Borrows 50 silver [SILV] from a Taxers (1996) for
+  maintenance.
+a Taxers (1996): L Dvornik (6805) borrows 50 silver [SILV] for
+  maintenance.
+L Diocles (6806): Borrows 50 silver [SILV] from a Taxers (1996) for
+  maintenance.
+a Taxers (1996): L Diocles (6806) borrows 50 silver [SILV] for
+  maintenance.
+L Protoierakarios (7304): Borrows 50 silver [SILV] from a Taxers
+  (1996) for maintenance.
+a Taxers (1996): L Protoierakarios (7304) borrows 50 silver [SILV] for
+  maintenance.
+L Kataphraktoi (7305): Borrows 50 silver [SILV] from a Taxers (1996)
+  for maintenance.
+a Taxers (1996): L Kataphraktoi (7305) borrows 50 silver [SILV] for
+  maintenance.
+L Kataphraktoii (7717): Borrows 100 silver [SILV] from a Taxers (1996)
+  for maintenance.
+a Taxers (1996): L Kataphraktoii (7717) borrows 100 silver [SILV] for
+  maintenance.
+L Paul of Aegina (7718): Borrows 100 silver [SILV] from a Taxers
+  (1996) for maintenance.
+a Taxers (1996): L Paul of Aegina (7718) borrows 100 silver [SILV] for
+  maintenance.
+Movers (3944): Borrows 20 silver [SILV] from a Taxers (1996) for
+  maintenance.
+a Taxers (1996): Movers (3944) borrows 20 silver [SILV] for
+  maintenance.
+Slaves Wood (4354): Borrows 60 silver [SILV] from a Taxers (1441) for
+  maintenance.
+a Taxers (1441): Slaves Wood (4354) borrows 60 silver [SILV] for
+  maintenance.
+Slaves Fur (7719): Borrows 60 silver [SILV] from a Taxers (1441) for
+  maintenance.
+a Taxers (1441): Slaves Fur (7719) borrows 60 silver [SILV] for
+  maintenance.
+a Workers (7720): Borrows 100 silver [SILV] from a Taxers 2 (5066) for
+  maintenance.
+a Taxers 2 (5066): a Workers (7720) borrows 100 silver [SILV] for
+  maintenance.
+L Justinian (7310): Borrows 50 silver [SILV] from The Diplomat (1445)
+  for maintenance.
+The Diplomat (1445): L Justinian (7310) borrows 50 silver [SILV] for
+  maintenance.
+L Phocas (7722): Borrows 50 silver [SILV] from The Diplomat (1445) for
+  maintenance.
+The Diplomat (1445): L Phocas (7722) borrows 50 silver [SILV] for
+  maintenance.
+L Bey (1447): Borrows 50 silver [SILV] from The Diplomat (1445) for
+  maintenance.
+The Diplomat (1445): L Bey (1447) borrows 50 silver [SILV] for
+  maintenance.
+L Bryennios (1448): Borrows 50 silver [SILV] from The Diplomat (1445)
+  for maintenance.
+The Diplomat (1445): L Bryennios (1448) borrows 50 silver [SILV] for
+  maintenance.
+L Arslan (7311): Borrows 50 silver [SILV] from The Diplomat (1445) for
+  maintenance.
+The Diplomat (1445): L Arslan (7311) borrows 50 silver [SILV] for
+  maintenance.
+
+Skill reports:
+
+armorer [ARMO] 1: This skill deals with all aspects of armor
+  construction and production. A unit with this skill may PRODUCE
+  chain armor [CARM] from iron [IRON] at a rate of 1 per man-month,
+  leather armor [LARM] from fur [FUR] at a rate of 1 per man-month,
+  and wooden shields [WSHD] from wood [WOOD] at a rate of 1 per
+  man-month. This skill costs 10 silver per month of study.
+
+tactics [TACT] 4: No skill report.
+
+riding [RIDI] 2: No skill report.
+
+healing [HEAL] 1: A unit with this skill is able to use herbs [HERB]
+  to heal units hurt in battle. A unit at this level of skill can
+  bring soldiers back from near death, healing up to 5 casualties,
+  with a 40 percent success rate. This skill costs 10 silver per month
+  of study.
+
+lumberjack [LUMB] 2: No skill report.
+
+Item reports:
+
+chain armor [CARM], weight 1, costs 150 silver to withdraw. This is a
+  type of armor. This armor will protect its wearer 33% of the time
+  versus slashing attacks, 33% of the time versus piercing attacks,
+  33% of the time versus crushing attacks, 33% of the time versus
+  cleaving attacks, 16% of the time versus armor-piercing attacks, 16%
+  of the time versus energy attacks, 16% of the time versus spirit
+  attacks, and 16% of the time versus weather attacks.
+
+leather armor [LARM], weight 1, costs 112 silver to withdraw. This is
+  a type of armor. This armor will protect its wearer 30% of the time
+  versus slashing attacks, 30% of the time versus piercing attacks,
+  30% of the time versus crushing attacks, 30% of the time versus
+  cleaving attacks, 13% of the time versus armor-piercing attacks, 13%
+  of the time versus energy attacks, 13% of the time versus spirit
+  attacks, and 13% of the time versus weather attacks. This armor may
+  be worn during assassination attempts.
+
+wooden shield [WSHD], weight 1, costs 100 silver to withdraw. This
+  item is a miscellaneous combat item. This item provides a physical
+  shield in battle at a skill level of 2. This ability provides the
+  wielder with a defence bonus of 2 against all ranged attacks.
+
+Declared Attitudes (default Unfriendly):
+Hostile : none.
+Unfriendly : Creatures (2), Gyperboreya (42).
+Neutral : squirrels (43).
+Friendly : Greywolf (33), Dark League (28).
+Ally : The Lands Kepper (20), Kweo Keegii (47), Queen XOT (34), Borg
+  (62), Lucky Luke (80), Roses on White Lace (64), The Guardsmen (1).
+
+Unclaimed silver: 1122.
+
+plain (38,66) in Rantvardshal, 2606 peasants (centaurs), $1772.
+------------------------------------------------------------
+  Wages: $13.4 (Max: $712).
+  Wanted: none.
+  For Sale: 104 centaurs [CTAU] at $75, 20 leaders [LEAD] at $750.
+  Entertainment available: $106.
+  Products: 66 livestock [LIVE], 29 horses [HORS].
+
+Exits:
+  North : ocean (38,64) in Atlantis Ocean.
+  Northeast : plain (39,65) in Rantvardshal.
+  Southeast : plain (39,67) in Rantvardshal, contains Ledpyc [town].
+  South : plain (38,68) in Rantvardshal.
+  Southwest : ocean (37,67) in Atlantis Ocean.
+  Northwest : ocean (37,65) in Atlantis Ocean.
+
+* The Explorers (6363), Mantzikert (39), behind, holding, sharing,
+  consuming faction's food, human [HUMN], 146 silver [SILV]. Weight:
+  10. Capacity: 0/0/15/0. Skills: stealth [STEA] 1 (30).
+
+
+plain (40,66) in Quogaush, 1817 peasants (humans), $1199.
+------------------------------------------------------------
+  Wages: $13.3 (Max: $510).
+  Wanted: none.
+  For Sale: 72 humans [HUMN] at $42, 14 leaders [LEAD] at $744.
+  Entertainment available: $62.
+  Products: 48 livestock [LIVE], 29 horses [HORS].
+
+Exits:
+  North : ocean (40,64) in Atlantis Ocean.
+  Northeast : ocean (41,65) in Atlantis Ocean.
+  Southeast : ocean (41,67) in Atlantis Ocean.
+  South : plain (40,68) in Quogaush.
+  Southwest : plain (39,67) in Rantvardshal, contains Ledpyc [town].
+  Northwest : plain (39,65) in Rantvardshal.
+
+* The Explorers (6366), Mantzikert (39), behind, holding, receiving no
+  aid, sharing, consuming faction's food, human [HUMN], 146 silver
+  [SILV]. Weight: 10. Capacity: 0/0/15/0. Skills: stealth [STEA] 1
+  (30).
+
++ Ruin [1] : Ruin, closed to player units.
+  - Tribe of Centaurs (1766), 5 centaurs [CENT].
+
+
+plain (39,67) in Rantvardshal, contains Ledpyc [town], 6124 peasants
+  (high elves), $3429.
+------------------------------------------------------------
+  Wages: $12.8 (Max: $685).
+  Wanted: 120 grain [GRAI] at $21, 134 livestock [LIVE] at $29, 180
+    fish [FISH] at $59, 3 nets [NET] at $129.
+  For Sale: 244 high elves [HELF] at $40, 48 leaders [LEAD] at $716.
+  Entertainment available: $232.
+  Products: 63 livestock [LIVE], 38 horses [HORS].
+
+Exits:
+  North : plain (39,65) in Rantvardshal.
+  Northeast : plain (40,66) in Quogaush.
+  Southeast : plain (40,68) in Quogaush.
+  South : plain (39,69) in Quogaush.
+  Southwest : plain (38,68) in Rantvardshal.
+  Northwest : plain (38,66) in Rantvardshal.
+
+- City Guard (50), on guard, The Guardsmen (1), 80 leaders [LEAD], 80
+  swords [SWOR].
+- Unit (3035), Truth Seekers (44), avoiding, behind, human [HUMN], 4
+  high elves [HELF].
+- Herald (1353), Dark League (28), avoiding, behind, orc [ORC];
+  Peaceful embassy.
+* Explorer (1440), Mantzikert (39), avoiding, behind, revealing
+  faction, holding, sharing, consuming faction's food, high elf
+  [HELF], 20 silver [SILV]. Weight: 10. Capacity: 0/0/15/0. Skills:
+  none.
+- scout 08 (1877), The Lands Kepper (20), avoiding, behind, centaur
+  [CTAU].
+- Unit (3046), Stormbringer (46), avoiding, behind, goblin [GBLN].
+- Unit (6494), Truth Seekers (44), avoiding, behind, 6 high elves
+  [HELF].
+* The Explorers (6364), Mantzikert (39), behind, holding, sharing,
+  consuming faction's food, human [HUMN], 20 silver [SILV]. Weight:
+  10. Capacity: 0/0/15/0. Skills: stealth [STEA] 2 (90).
+* The Explorers (6365), Mantzikert (39), behind, holding, sharing,
+  consuming faction's food, human [HUMN], 20 silver [SILV]. Weight:
+  10. Capacity: 0/0/15/0. Skills: stealth [STEA] 2 (90).
+* The Explorers (6367), Mantzikert (39), behind, holding, sharing,
+  consuming faction's food, human [HUMN], 20 silver [SILV]. Weight:
+  10. Capacity: 0/0/15/0. Skills: stealth [STEA] 2 (90).
+- Unit (7521), Surveyors (55), behind, 21 humans [HUMN].
+- Unit (4704), Truth Seekers (44), avoiding, behind, lizardman [LIZA].
+
+
+plain (38,68) in Rantvardshal, 2424 peasants (humans), $1599.
+------------------------------------------------------------
+  Wages: $13.3 (Max: $647).
+  Wanted: none.
+  For Sale: 96 humans [HUMN] at $42, 19 leaders [LEAD] at $744.
+  Entertainment available: $93.
+  Products: 53 livestock [LIVE], 22 horses [HORS].
+
+Exits:
+  North : plain (38,66) in Rantvardshal.
+  Northeast : plain (39,67) in Rantvardshal, contains Ledpyc [town].
+  Southeast : plain (39,69) in Quogaush.
+  South : plain (38,70) in Quogaush.
+  Southwest : ocean (37,69) in Atlantis Ocean.
+  Northwest : ocean (37,67) in Atlantis Ocean.
+
+* a Taxers (2693), Mantzikert (39), revealing faction, sharing,
+  consuming faction's food, 6 humans [HUMN]. Weight: 60. Capacity:
+  0/0/90/0. Skills: combat [COMB] 1 (40).
+* Explorer (1435), Mantzikert (39), avoiding, behind, holding,
+  sharing, consuming faction's food, high elf [HELF], horse [HORS], 35
+  silver [SILV]. Weight: 60. Capacity: 0/70/85/0. Skills: stealth
+  [STEA] 1 (30).
+* a Workers (6799), Mantzikert (39), behind, revealing faction,
+  holding, sharing, consuming faction's food, 20 humans [HUMN].
+  Weight: 200. Capacity: 0/0/300/0. Skills: combat [COMB] 2 (95).
+* a Workers 2 (7715), Mantzikert (39), revealing faction, sharing,
+  consuming faction's food, 8 humans [HUMN]. Weight: 80. Capacity:
+  0/0/120/0. Skills: combat [COMB] 1 (30).
+- scout (4503), The Lands Kepper (20), behind, 3 humans [HUMN].
+- Mr. Kim A Rich Man (7480), gnoll [GNOL], giant turtle [TURT].
+
+
+plain (39,69) in Quogaush, 1968 peasants (humans), $1338.
+------------------------------------------------------------
+  Wages: $13.4 (Max: $558).
+  Wanted: none.
+  For Sale: 78 humans [HUMN] at $42, 15 leaders [LEAD] at $750.
+  Entertainment available: $70.
+  Products: 53 grain [GRAI], 24 horses [HORS].
+
+Exits:
+  North : plain (39,67) in Rantvardshal, contains Ledpyc [town].
+  Northeast : plain (40,68) in Quogaush.
+  Southeast : plain (40,70) in Quogaush.
+  South : swamp (39,71) in Leffquapbe.
+  Southwest : plain (38,70) in Quogaush.
+  Northwest : plain (38,68) in Rantvardshal.
+
+- Gryphon Brusselieu (4730), Kweo Keegii (47), behind, gnoll [GNOL].
+- Castor & Pollux (5616), Kweo Keegii (47), behind, human [HUMN].
+- Unit (5593), Truth Seekers (44), avoiding, behind, orc [ORC].
+- The Dogs Of War (6002), Kweo Keegii (47), behind, 6 gnolls [GNOL].
+* The Explorers (6368), Mantzikert (39), behind, holding, sharing,
+  consuming faction's food, human [HUMN], 146 silver [SILV]. Weight:
+  10. Capacity: 0/0/15/0. Skills: stealth [STEA] 1 (30).
+- Tax Collectors (7471), Kweo Keegii (47), behind, human [HUMN].
+- Unit (4026), gnoll [GNOL], giant turtle [TURT].
+- Cat Hunters (4782), 10 gnolls [GNOL], 10 mithril swords [MSWO], 10
+  mithril armor [MARM], 9 giant turtles [TURT], camel [CAME].
+- Cat Hunters (3752), 10 gnolls [GNOL], 10 mithril swords [MSWO], 10
+  mithril armor [MARM], camel [CAME], 9 giant turtles [TURT].
+
+
+plain (38,70) in Quogaush, 1944 peasants (humans), $1088.
+------------------------------------------------------------
+  Wages: $12.8 (Max: $455).
+  Wanted: none.
+  For Sale: 77 humans [HUMN] at $40, 15 leaders [LEAD] at $716.
+  Entertainment available: $60.
+  Products: 52 livestock [LIVE], 30 horses [HORS].
+
+Exits:
+  North : plain (38,68) in Rantvardshal.
+  Northeast : plain (39,69) in Quogaush.
+  Southeast : swamp (39,71) in Leffquapbe.
+  South : swamp (38,72) in Leffquapbe.
+  Southwest : ocean (37,71) in Atlantis Ocean.
+  Northwest : ocean (37,69) in Atlantis Ocean.
+
+- scout (2895), The Lands Kepper (20), avoiding, behind, orc [ORC].
+- Scout (3734), on guard, lizardman [LIZA].
+* The Explorers (6369), Mantzikert (39), behind, holding, sharing,
+  consuming faction's food, human [HUMN], 144 silver [SILV]. Weight:
+  10. Capacity: 0/0/15/0. Skills: stealth [STEA] 1 (30).
+- Peasants (5698), on guard, Dark League (28), 10 lizardmen [LIZA].
+
+
+swamp (42,70) in Wechargoct, 1280 peasants (orcs), $640.
+------------------------------------------------------------
+  Wages: $12.5 (Max: $299).
+  Wanted: none.
+  For Sale: 51 orcs [ORC] at $40, 10 leaders [LEAD] at $700.
+  Entertainment available: $31.
+  Products: 17 livestock [LIVE], 14 wood [WOOD], 13 herbs [HERB].
+
+Exits:
+  North : ocean (42,68) in Atlantis Ocean.
+  Northeast : swamp (43,69) in Wechargoct.
+  Southeast : plain (43,71) in Pretcong.
+  South : swamp (42,72) in Wechargoct.
+  Southwest : swamp (41,71) in Leffquapbe.
+  Northwest : ocean (41,69) in Atlantis Ocean.
+
+* Explorer (1439), Mantzikert (39), behind, holding, sharing,
+  consuming faction's food, high elf [HELF], horse [HORS], 14 silver
+  [SILV]. Weight: 60. Capacity: 0/70/85/0. Skills: none.
+- Unit (5303), on guard, Surveyors (55), behind, 9 orcs [ORC].
+- Unit (5673), Surveyors (55), behind, 6 orcs [ORC].
+- Informator (6820), goblin [GBLN].
+
+
+swamp (41,71) in Leffquapbe, 1179 peasants (goblins), $235.
+------------------------------------------------------------
+  Wages: $11.0 (Max: $112).
+  Wanted: none.
+  For Sale: 47 goblins [GBLN] at $26, 9 leaders [LEAD] at $616.
+  Entertainment available: $16.
+  Products: 13 grain [GRAI], 17 wood [WOOD], 18 herbs [HERB].
+
+Exits:
+  North : ocean (41,69) in Atlantis Ocean.
+  Northeast : swamp (42,70) in Wechargoct.
+  Southeast : swamp (42,72) in Wechargoct.
+  South : plain (41,73) in Ci'oulger.
+  Southwest : swamp (40,72) in Leffquapbe.
+  Northwest : plain (40,70) in Quogaush.
+
+- Tax unit (3324), on guard, 5 goblins [GBLN].
+- Farmers (5077), 6 goblins [GBLN], 11 grain [GRAI].
+* The Explorers (6372), Mantzikert (39), behind, holding, sharing,
+  consuming faction's food, human [HUMN], 70 silver [SILV]. Weight:
+  10. Capacity: 0/0/15/0. Skills: stealth [STEA] 1 (60).
+
+
+swamp (38,72) in Leffquapbe, 1567 peasants (lizardmen), $344.
+------------------------------------------------------------
+  Wages: $11.1 (Max: $150).
+  Wanted: none.
+  For Sale: 62 lizardmen [LIZA] at $35, 12 leaders [LEAD] at $621.
+  Entertainment available: $24.
+  Products: 15 grain [GRAI], 10 wood [WOOD], 15 herbs [HERB].
+
+Exits:
+  North : plain (38,70) in Quogaush.
+  Northeast : swamp (39,71) in Leffquapbe.
+  Southeast : ocean (39,73) in Atlantis Ocean.
+  South : swamp (38,74) in Leffquapbe, contains Iwick [town].
+  Southwest : swamp (37,73) in Leffquapbe.
+  Northwest : ocean (37,71) in Atlantis Ocean.
+
+- Peasants (2900), on guard, Dark League (28), 7 lizardmen [LIZA].
+- Scout (3298), lizardman [LIZA].
+- Unit (6724), orc [ORC].
+- Peasants (5040), 3 lizardmen [LIZA].
+* The Explorers (6371), Mantzikert (39), behind, holding, sharing,
+  consuming faction's food, human [HUMN], 131 silver [SILV]. Weight:
+  10. Capacity: 0/0/15/0. Skills: stealth [STEA] 1 (30).
+- Peasants (5882), 4 lizardmen [LIZA].
+- Unit (6989), 2 gnolls [GNOL], 2 camels [CAME].
+
+
+swamp (38,74) in Leffquapbe, contains Iwick [town], 6332 peasants
+  (goblins), $2659.
+------------------------------------------------------------
+  Wages: $12.1 (Max: $531).
+  Wanted: 112 grain [GRAI] at $23, 136 livestock [LIVE] at $23, 176
+    fish [FISH] at $50, 9 plate armor [PARM] at $431, 8 swords [SWOR]
+    at $95, 4 chain armor [CARM] at $116, 3 ivory [IVOR] at $257.
+  For Sale: 253 goblins [GBLN] at $29, 50 leaders [LEAD] at $677.
+  Entertainment available: $196.
+  Products: 14 grain [GRAI], 17 wood [WOOD], 18 herbs [HERB].
+
+Exits:
+  North : swamp (38,72) in Leffquapbe.
+  Northeast : ocean (39,73) in Atlantis Ocean.
+  Southeast : ocean (39,75) in Atlantis Ocean.
+  South : ocean (38,76) in Atlantis Ocean.
+  Southwest : ocean (37,75) in Atlantis Ocean.
+  Northwest : swamp (37,73) in Leffquapbe.
+
+- City Guard (64), on guard, The Guardsmen (1), 80 leaders [LEAD], 80
+  swords [SWOR].
+- Unit (2424), Stormbringer (46), avoiding, behind, goblin [GBLN].
+- Herald (2613), Dark League (28), avoiding, behind, orc [ORC];
+  Peaceful embassy.
+* Explorer (1436), Mantzikert (39), avoiding, behind, revealing
+  faction, holding, sharing, consuming faction's food, high elf
+  [HELF], horse [HORS], 26 silver [SILV]. Weight: 60. Capacity:
+  0/70/85/0. Skills: none.
+- Unit (7466), Stormbringer (46), avoiding, behind, 3 goblins [GBLN].
+- Pioner (5892), orc [ORC].
+
+
+forest (42,76) in Meulcos, 2035 peasants (high elves), $1058.
+------------------------------------------------------------
+  Wages: $12.6 (Max: $439).
+  Wanted: none.
+  For Sale: 81 high elves [HELF] at $40, 16 leaders [LEAD] at $705.
+  Entertainment available: $60.
+  Products: 20 livestock [LIVE], 26 wood [WOOD], 16 furs [FUR].
+
+Exits:
+  North : plain (42,74) in Pestflo.
+  Northeast : plain (43,75) in Pestflo.
+  Southeast : forest (43,77) in Utso.
+  South : forest (42,78) in Meulcos, contains Erwhestead [town].
+  Southwest : ocean (41,77) in Atlantis Ocean.
+  Northwest : forest (41,75) in Sparsticre.
+
+* a Taxers (1994), on guard, Mantzikert (39), revealing faction,
+  sharing, consuming faction's food, 21 high elves [HELF], 12 swords
+  [SWOR], 1932 silver [SILV]. Weight: 222. Capacity: 0/0/315/0.
+  Skills: combat [COMB] 1 (39).
+- Delado (5177), high elf [HELF]; Squirrel embassy staff.
+* Slaves Farm (5468), Mantzikert (39), avoiding, behind, revealing
+  faction, holding, receiving no aid, sharing, consuming faction's
+  food, 10 high elves [HELF]. Weight: 100. Capacity: 0/0/150/0.
+  Skills: farming [FARM] 1 (55).
+* a Workers (5878), Mantzikert (39), revealing faction, sharing,
+  consuming faction's food, 8 high elves [HELF], 92 silver [SILV].
+  Weight: 80. Capacity: 0/0/120/0. Skills: combat [COMB] 1 (30).
+* Slaves Wood (6373), Mantzikert (39), revealing faction, sharing,
+  consuming faction's food, 13 high elves [HELF], 39 wood [WOOD].
+  Weight: 325. Capacity: 0/0/195/0. Skills: lumberjack [LUMB] 1 (45).
+- Lukes Scout (6723), Lucky Luke (80), avoiding, behind, centaur
+  [CTAU].
+- Choir (6672), Roses on White Lace (64), avoiding, behind, wood elf
+  [WELF].
+* Slaves Fur (6800), Mantzikert (39), revealing faction, sharing,
+  consuming faction's food, 8 high elves [HELF], 16 furs [FUR].
+  Weight: 96. Capacity: 0/0/120/0. Skills: hunting [HUNT] 1 (40).
+* Slaves Armorer (7716), Mantzikert (39), revealing faction, sharing,
+  consuming faction's food, 8 high elves [HELF]. Weight: 80. Capacity:
+  0/0/120/0. Skills: armorer [ARMO] 1 (30).
+- Choir (8062), wood elf [WELF], horse [HORS].
+- Unit (5674), centaur [CTAU].
+
+
+plain (44,76) in Pestflo, 2497 peasants (high elves), $1648.
+------------------------------------------------------------
+  Wages: $13.3 (Max: $665).
+  Wanted: none.
+  For Sale: 99 high elves [HELF] at $42, 19 leaders [LEAD] at $744.
+  Entertainment available: $97.
+  Products: 53 grain [GRAI], 29 horses [HORS].
+
+Exits:
+  North : plain (44,74) in Pestflo.
+  Northeast : plain (45,75) in Pestflo.
+  Southeast : plain (45,77) in Pestflo.
+  South : ocean (44,78) in Atlantis Ocean.
+  Southwest : forest (43,77) in Utso.
+  Northwest : plain (43,75) in Pestflo.
+
+- scout 10 (1879), The Lands Kepper (20), avoiding, behind, human
+  [HUMN].
+* Movers (2992), Mantzikert (39), avoiding, behind, revealing faction,
+  holding, sharing, consuming faction's food, high elf [HELF], horse
+  [HORS], 15 silver [SILV]. Weight: 60. Capacity: 0/70/85/0. Skills:
+  combat [COMB] 1 (30).
+- Clones (3507), 7 wood elves [WELF], 7 grain [GRAI].
+- Babies (5755), 40 wood elves [WELF].
+- Ride (7127), 5 high elves [HELF], 5 horses [HORS].
+- Ride (7128), 5 high elves [HELF].
+
+
+mountain (37,77) in Sweron, 1400 peasants (hill dwarves), $700.
+------------------------------------------------------------
+  Wages: $12.5 (Max: $320).
+  Wanted: none.
+  For Sale: 56 hill dwarves [HDWA] at $40, 11 leaders [LEAD] at $700.
+  Entertainment available: $35.
+  Products: 30 grain [GRAI], 30 iron [IRON], 13 stone [STON].
+
+Exits:
+  North : ocean (37,75) in Atlantis Ocean.
+  Northeast : ocean (38,76) in Atlantis Ocean.
+  Southeast : ocean (38,78) in Atlantis Ocean.
+  South : mountain (37,79) in Sweron.
+  Southwest : mountain (36,78) in Sweron.
+  Northwest : ocean (36,76) in Atlantis Ocean.
+
+* a Workers (4352), on guard, Mantzikert (39), holding, sharing,
+  consuming faction's food, 14 hill dwarves [HDWA], 1109 silver
+  [SILV]. Weight: 140. Capacity: 0/0/210/0. Skills: combat [COMB] 1
+  (30).
+
+
+forest (43,77) in Utso, 1989 peasants (centaurs), $875.
+------------------------------------------------------------
+  Wages: $12.2 (Max: $364).
+  Wanted: none.
+  For Sale: 79 centaurs [CTAU] at $68, 15 leaders [LEAD] at $683.
+  Entertainment available: $52.
+  Products: 27 livestock [LIVE], 23 wood [WOOD], 18 furs [FUR].
+
+Exits:
+  North : plain (43,75) in Pestflo.
+  Northeast : plain (44,76) in Pestflo.
+  Southeast : ocean (44,78) in Atlantis Ocean.
+  South : forest (43,79) in Utso.
+  Southwest : forest (42,78) in Meulcos, contains Erwhestead [town].
+  Northwest : forest (42,76) in Meulcos.
+
+- Hush (3515), 15 gnolls [GNOL], 15 swords [SWOR], iron shield [ISHD],
+  15 horses [HORS].
+- Babies (3516), 20 gnolls [GNOL], 3 axes [AXE], 12 pikes [PIKE].
+- Choir (1667), Roses on White Lace (64), avoiding, behind, wood elf
+  [WELF].
+- Weaps (3506), 2 ice dwarves [IDWA], 2 axes [AXE], 6 pikes [PIKE].
+- Chops (3141), 6 wood elves [WELF], 3 axes [AXE], 21 wood [WOOD].
+- Chops (2835), 9 wood elves [WELF], 17 wood [WOOD].
+- Bones (4888), 10 wood elves [WELF], 10 longbows [LBOW], 10 horses
+  [HORS].
+* a Workers (5068), Mantzikert (39), avoiding, behind, revealing
+  faction, holding, receiving no aid, sharing, consuming faction's
+  food, 2 high elves [HELF], 218 silver [SILV]. Weight: 20. Capacity:
+  0/0/30/0. Skills: combat [COMB] 1 (30).
+* a Taxers (6374), Mantzikert (39), revealing faction, sharing,
+  consuming faction's food, 10 centaurs [CTAU], 24 silver [SILV].
+  Weight: 500. Capacity: 0/700/700/0. Skills: none.
+- Abbott and Costello (2432), Kweo Keegii (47), avoiding, behind, 2
+  humans [HUMN].
+- Bones (3519), 20 wood elves [WELF], 20 longbows [LBOW], 20 horses
+  [HORS].
+- Clones (4562), 25 gnolls [GNOL], sword [SWOR], 6 axes [AXE], longbow
+  [LBOW], 12 horses [HORS].
+- Weaps (4158), 5 wood elves [WELF], 5 axes [AXE].
+- Hush (7599), 10 gnolls [GNOL], 10 swords [SWOR], 10 camels [CAME].
+- Skins (7600), 6 gnolls [GNOL], 6 spears [SPEA], 12 furs [FUR].
+- Arms (7601), 6 gnolls [GNOL].
+- Troop Pestflo (2433), Kweo Keegii (47), avoiding, behind, 2 humans
+  [HUMN].
+- Unit (8098), Lucky Luke (80), avoiding, behind, centaur [CTAU].
+- Keegii Concierge (4444), Kweo Keegii (47), avoiding, behind, human
+  [HUMN].
+- Unit (8061), 10 high elves [HELF], 5 horses [HORS].
+- Centaur express (5220), Kweo Keegii (47), avoiding, behind, centaur
+  [CTAU].
+
+
+mountain (36,78) in Sweron, 1212 peasants (hill dwarves), $460.
+------------------------------------------------------------
+  Wages: $11.9 (Max: $218).
+  Wanted: none.
+  For Sale: 48 hill dwarves [HDWA] at $38, 9 leaders [LEAD] at $666.
+  Entertainment available: $24.
+  Products: 22 grain [GRAI], 33 iron [IRON], 14 stone [STON].
+
+Exits:
+  North : ocean (36,76) in Atlantis Ocean.
+  Northeast : mountain (37,77) in Sweron.
+  Southeast : mountain (37,79) in Sweron.
+  South : mountain (36,80) in Sweron.
+  Southwest : mountain (35,79) in Sweron.
+  Northwest : ocean (35,77) in Atlantis Ocean.
+
+- Peasants (3401), on guard, Dark League (28), orc [ORC].
+* a Workers (5879), Mantzikert (39), holding, receiving no aid,
+  sharing, consuming faction's food, 4 hill dwarves [HDWA]. Weight:
+  40. Capacity: 0/0/60/0. Skills: combat [COMB] 1 (30).
+
+
+forest (42,78) in Meulcos, contains Erwhestead [town], 7319 peasants
+  (centaurs), $7172.
+------------------------------------------------------------
+  Wages: $14.9 (Max: $1434).
+  Wanted: 138 grain [GRAI] at $23, 182 livestock [LIVE] at $26, 104
+    fish [FISH] at $60, 13 picks [PICK] at $105, 14 plate armor [PARM]
+    at $539, 9 nets [NET] at $168, 3 lassoes [LASS] at $96, 12 wine
+    [WINE] at $401.
+  For Sale: 4 spices [SPIC] at $112, 292 centaurs [CTAU] at $83, 58
+    leaders [LEAD] at $834.
+  Entertainment available: $431.
+  Products: 29 grain [GRAI], 36 wood [WOOD], 10 furs [FUR].
+
+Exits:
+  North : forest (42,76) in Meulcos.
+  Northeast : forest (43,77) in Utso.
+  Southeast : forest (43,79) in Utso.
+  South : mountain (42,80) in Sa'endtell.
+  Southwest : ocean (41,79) in Atlantis Ocean.
+  Northwest : ocean (41,77) in Atlantis Ocean.
+
+- Hunters (1502), Kweo Keegii (47), avoiding, behind, 4 centaurs
+  [CTAU], 5 furs [FUR].
+- Builders (1503), Kweo Keegii (47), avoiding, behind, 10 centaurs
+  [CTAU], 10 wood [WOOD].
+- Farmers (1504), Kweo Keegii (47), avoiding, behind, 10 centaurs
+  [CTAU].
+- Lumber Jacks (1506), Kweo Keegii (47), avoiding, behind, 10 centaurs
+  [CTAU], 40 wood [WOOD].
+- Centauri Bards (1507), Kweo Keegii (47), avoiding, behind, 10
+  centaurs [CTAU].
+- Centaur Laborers (1508), Kweo Keegii (47), avoiding, behind, 5
+  centaurs [CTAU], 4 grain [GRAI].
+- Fishers (1513), Kweo Keegii (47), avoiding, behind, 5 centaurs
+  [CTAU], 10 wagons [WAGO], 35 spinning wheels [SPIN].
+- ambassadeur (1301), The Lands Kepper (20), behind, high elf [HELF].
+- Barflies (3877), Lucky Luke (80), avoiding, behind, 2 high elves
+  [HELF].
+* a Taxers (1996), on guard, Mantzikert (39), revealing faction,
+  sharing, consuming faction's food, 68 high elves [HELF], 70 centaurs
+  [CTAU], 13 horses [HORS], 4657 silver [SILV]. Weight: 4830.
+  Capacity: 0/5810/6830/0. Skills: combat [COMB] 1 (33).
+* a Workers (5067), Mantzikert (39), revealing faction, sharing,
+  consuming faction's food, 5 centaurs [CTAU]. Weight: 250. Capacity:
+  0/350/350/0. Skills: combat [COMB] 1 (30).
+- Lookout (1407), human [HUMN], sword [SWOR].
+* The Mover (5469), Mantzikert (39), avoiding, behind, holding,
+  sharing, consuming faction's food, centaur [CTAU]. Weight: 50.
+  Capacity: 0/70/70/0. Skills: quartermaster [QUAM] 1 (30),
+  observation [OBSE] 1 (70), stealth [STEA] 2 (90).
+* a Workers 2 (5880), Mantzikert (39), revealing faction, sharing,
+  consuming faction's food, 35 centaurs [CTAU], 30 swords [SWOR].
+  Weight: 1780. Capacity: 0/2450/2450/0. Skills: combat [COMB] 2 (90),
+  riding [RIDI] 1 (60).
+* L Belisarius (3637), Mantzikert (39), behind, revealing faction,
+  sharing, consuming faction's food, leader [LEAD]. Weight: 10.
+  Capacity: 0/0/15/0. Skills: tactics [TACT] 4 (310).
+- Choir (6674), Roses on White Lace (64), avoiding, behind, 2 wood
+  elves [WELF].
+* L Heraclivs (6804), Mantzikert (39), avoiding, behind, revealing
+  faction, sharing, consuming faction's food, leader [LEAD]. Weight:
+  10. Capacity: 0/0/15/0. Skills: combat [COMB] 2 (90).
+* L Dvornik (6805), Mantzikert (39), avoiding, behind, sharing,
+  consuming faction's food, leader [LEAD]. Weight: 10. Capacity:
+  0/0/15/0. Skills: stealth [STEA] 2 (90).
+* L Diocles (6806), Mantzikert (39), avoiding, behind, revealing
+  faction, sharing, consuming faction's food, leader [LEAD]. Weight:
+  10. Capacity: 0/0/15/0. Skills: riding [RIDI] 2 (90).
+- Sails (3504), Roses on White Lace (64), avoiding, behind, 2 high
+  elves [HELF], horse [HORS].
+- Ships (4155), Roses on White Lace (64), avoiding, behind, 5 wood
+  elves [WELF], 3 horses [HORS].
+- scout (5769), The Lands Kepper (20), centaur [CTAU].
+* L Protoierakarios (7304), Mantzikert (39), avoiding, behind,
+  revealing faction, sharing, consuming faction's food, leader [LEAD].
+  Weight: 10. Capacity: 0/0/15/0. Skills: hunting [HUNT] 1 (60).
+* L Kataphraktoi (7305), Mantzikert (39), avoiding, behind, revealing
+  faction, sharing, consuming faction's food, leader [LEAD]. Weight:
+  10. Capacity: 0/0/15/0. Skills: longbow [LBOW] 1 (60).
+- Clone (5380), Roses on White Lace (64), avoiding, behind, human
+  [HUMN].
+* L Kataphraktoii (7717), Mantzikert (39), revealing faction, sharing,
+  consuming faction's food, 2 leaders [LEAD]. Weight: 20. Capacity:
+  0/0/30/0. Skills: longbow [LBOW] 1 (30).
+* L Paul of Aegina (7718), Mantzikert (39), revealing faction,
+  sharing, consuming faction's food, 2 leaders [LEAD]. Weight: 20.
+  Capacity: 0/0/30/0. Skills: healing [HEAL] 1 (30).
+- Meulcos Sentinal (4443), Kweo Keegii (47), avoiding, behind, high
+  elf [HELF], skeleton [SKEL], 7 horses [HORS], 5 wagons [WAGO].
+- Keegii Seneschal (4017), Kweo Keegii (47), avoiding, behind, human
+  [HUMN], 2 skeletons [SKEL], horse [HORS].
+* Movers (3944), Mantzikert (39), avoiding, behind, revealing faction,
+  holding, sharing, consuming faction's food, high elf [HELF], centaur
+  [CTAU], 2 horses [HORS]. Weight: 160. Capacity: 0/210/225/0. Skills:
+  combat [COMB] 0 (15).
+- Mountain Delivery (6005), Kweo Keegii (47), avoiding, behind, human
+  [HUMN], horse [HORS].
+
+
+forest (43,79) in Utso, 1894 peasants (high elves), $1060.
+------------------------------------------------------------
+  Wages: $12.8 (Max: $444).
+  Wanted: none.
+  For Sale: 75 high elves [HELF] at $40, 15 leaders [LEAD] at $716.
+  Entertainment available: $58.
+  Products: 22 grain [GRAI], 30 wood [WOOD], 11 furs [FUR].
+
+Exits:
+  North : forest (43,77) in Utso.
+  Northeast : ocean (44,78) in Atlantis Ocean.
+  Southeast : forest (44,80) in Utso.
+  South : mountain (43,81) in Derngill, contains Onthead [city].
+  Southwest : mountain (42,80) in Sa'endtell.
+  Northwest : forest (42,78) in Meulcos, contains Erwhestead [town].
+
+* a Taxers (1441), on guard, Mantzikert (39), revealing faction,
+  sharing, consuming faction's food, 10 high elves [HELF], 10 horses
+  [HORS], 346 silver [SILV]. Weight: 600. Capacity: 0/700/850/0.
+  Skills: combat [COMB] 1 (45).
+- Drone (1652), Borg (62), avoiding, behind, human [HUMN].
+- guard 03 (1303), The Lands Kepper (20), 8 high elves [HELF].
+* Slaves Wood (4354), Mantzikert (39), behind, revealing faction,
+  sharing, consuming faction's food, 15 high elves [HELF], 5 swords
+  [SWOR]. Weight: 155. Capacity: 0/0/225/0. Skills: lumberjack [LUMB]
+  2 (90).
+* The Beetles (4355), Mantzikert (39), behind, revealing faction,
+  sharing, consuming faction's food, high elf [HELF], 51 silver
+  [SILV]. Weight: 10. Capacity: 0/0/15/0. Skills: observation [OBSE] 2
+  (90), entertainment [ENTE] 2 (90).
+- Choir (6673), Roses on White Lace (64), avoiding, behind, wood elf
+  [WELF].
+- Luke Scout (6726), Lucky Luke (80), avoiding, behind, human [HUMN].
+- good looking (6742), Queen XOT (34), behind, human [HUMN].
+* Slaves Grain (7307), Mantzikert (39), revealing faction, sharing,
+  consuming faction's food, 11 high elves [HELF]. Weight: 110.
+  Capacity: 0/0/165/0. Skills: farming [FARM] 1 (35).
+- chaser (7260), Queen XOT (34), avoiding, behind, centaur [CTAU].
+* Slaves Fur (7719), Mantzikert (39), revealing faction, sharing,
+  consuming faction's food, 6 high elves [HELF]. Weight: 60. Capacity:
+  0/0/90/0. Skills: hunting [HUNT] 1 (30).
+- chopper (5011), Queen XOT (34), avoiding, behind, 2 centaurs [CTAU],
+  axe [AXE].
+- thistimeforsure (7258), Queen XOT (34), avoiding, 10 gnolls [GNOL].
+- scout (2947), The Lands Kepper (20), high elf [HELF].
+- Sa'endtell Purser (6519), Kweo Keegii (47), avoiding, behind, human
+  [HUMN].
+- runner (3893), Queen XOT (34), avoiding, centaur [CTAU].
+
+
+mountain (36,80) in Sweron, 1054 peasants (humans), $527.
+------------------------------------------------------------
+  Wages: $12.5 (Max: $259).
+  Wanted: none.
+  For Sale: 42 humans [HUMN] at $40, 8 leaders [LEAD] at $700.
+  Entertainment available: $24.
+  Products: 20 grain [GRAI], 26 iron [IRON], 11 stone [STON].
+
+Exits:
+  North : mountain (36,78) in Sweron.
+  Northeast : mountain (37,79) in Sweron.
+  Southeast : volcano (37,81) in Prodon.
+  South : mountain (36,82) in Sweron.
+  Southwest : mountain (35,81) in Sweron.
+  Northwest : mountain (35,79) in Sweron.
+
+- Scout (3411), Dark League (28), avoiding, behind, orc [ORC].
+* a Taxers 2 (5066), on guard, Mantzikert (39), behind, holding,
+  sharing, consuming faction's food, 10 hill dwarves [HDWA], 1000
+  silver [SILV]. Weight: 100. Capacity: 0/0/150/0. Skills: combat
+  [COMB] 1 (30).
+* a Workers (7720), Mantzikert (39), behind, holding, sharing,
+  consuming faction's food, 10 humans [HUMN]. Weight: 100. Capacity:
+  0/0/150/0. Skills: combat [COMB] 1 (30).
+
+
+mountain (42,80) in Sa'endtell, 1105 peasants (humans), $552.
+------------------------------------------------------------
+  Wages: $12.5 (Max: $268).
+  Wanted: none.
+  For Sale: 44 humans [HUMN] at $40, 8 leaders [LEAD] at $700.
+  Entertainment available: $26.
+  Products: 29 grain [GRAI], 23 iron [IRON], 15 stone [STON].
+
+Exits:
+  North : forest (42,78) in Meulcos, contains Erwhestead [town].
+  Northeast : forest (43,79) in Utso.
+  Southeast : mountain (43,81) in Derngill, contains Onthead [city].
+  South : mountain (42,82) in Derngill.
+  Southwest : volcano (41,81) in Sa'endtell.
+  Northwest : ocean (41,79) in Atlantis Ocean.
+
+- Unit (6727), human [HUMN].
+- Choir (7134), Roses on White Lace (64), behind, wood elf [WELF].
+- Drones (7124), Queen XOT (34), behind, 2 humans [HUMN], ironwood
+  [IRWD].
+- good looking (6743), Queen XOT (34), behind, human [HUMN].
+* Explorer (7306), Mantzikert (39), behind, revealing faction,
+  holding, sharing, consuming faction's food, centaur [CTAU], 110
+  silver [SILV]. Weight: 50. Capacity: 0/70/70/0. Skills: none.
+- explorer (4304), orc [ORC], pick [PICK].
+- Meulcos Procurement (4733), Kweo Keegii (47), avoiding, behind,
+  centaur [CTAU].
+
++ Lair [1] : Lair, closed to player units.
+
+
+forest (44,80) in Utso, 2290 peasants (centaurs), $1557.
+------------------------------------------------------------
+  Wages: $13.4 (Max: $634).
+  Wanted: none.
+  For Sale: 91 centaurs [CTAU] at $75, 18 leaders [LEAD] at $750.
+  Entertainment available: $88.
+  Products: 39 livestock [LIVE], 36 wood [WOOD], 11 furs [FUR].
+
+Exits:
+  North : ocean (44,78) in Atlantis Ocean.
+  Northeast : ocean (45,79) in Atlantis Ocean.
+  Southeast : ocean (45,81) in Atlantis Ocean.
+  South : ocean (44,82) in Atlantis Ocean.
+  Southwest : mountain (43,81) in Derngill, contains Onthead [city].
+  Northwest : forest (43,79) in Utso.
+
+- scout 05 (1299), The Lands Kepper (20), avoiding, behind, high elf
+  [HELF].
+- hunter (1408), human [HUMN], spear [SPEA], 3 furs [FUR].
+- Drone (1653), Borg (62), avoiding, behind, human [HUMN].
+- Taxi please (1406), on guard, Queen XOT (34), 10 humans [HUMN], 10
+  pikes [PIKE].
+- chopper (2667), 12 centaurs [CTAU], 12 axes [AXE], 60 wood [WOOD].
+- Rancher (2668), 10 centaurs [CTAU], 14 livestock [LIVE].
+- Taxi please (3279), on guard, Queen XOT (34), 20 centaurs [CTAU], 20
+  pikes [PIKE].
+- Weapywillow (3597), Queen XOT (34), behind, 5 centaurs [CTAU], 6
+  axes [AXE].
+- hunter (5009), 3 centaurs [CTAU], 3 spears [SPEA].
+- helfies (5008), 15 high elves [HELF], 15 longbows [LBOW].
+- Drones (5376), Borg (62), avoiding, behind, 22 humans [HUMN], 11
+  livestock [LIVE].
+- Byorn (3894), Queen XOT (34), behind, leader [LEAD].
+- chasers (5408), on guard, Queen XOT (34), behind, 3 centaurs [CTAU],
+  3 swords [SWOR].
+- DrFish (6294), Queen XOT (34), behind, leader [LEAD].
+- DrHunt (5014), Queen XOT (34), behind, leader [LEAD].
+- shippychippy (6297), 5 orcs [ORC]; In need of serious training.
+- Unit (6725), Lucky Luke (80), avoiding, behind, human [HUMN].
+- Unit (6739), centaur [CTAU].
+- Dr Elbow (6740), Queen XOT (34), behind, leader [LEAD].
+- Choir (7133), Roses on White Lace (64), avoiding, behind, wood elf
+  [WELF].
+* Explorer (7724), Mantzikert (39), behind, revealing faction,
+  sharing, consuming faction's food, human [HUMN], 42 silver [SILV].
+  Weight: 10. Capacity: 0/0/15/0. Skills: none.
+
++ Ship [206] : Raft.
+  - shipbuilders (3600), 5 orcs [ORC], 5 longbows [LBOW].
+
+
+mountain (35,81) in Sweron, 1049 peasants (humans), $272.
+------------------------------------------------------------
+  Wages: $11.3 (Max: $142).
+  Wanted: none.
+  For Sale: 41 humans [HUMN] at $36, 8 leaders [LEAD] at $632.
+  Entertainment available: $16.
+  Products: 20 grain [GRAI], 31 iron [IRON], 13 stone [STON].
+
+Exits:
+  North : mountain (35,79) in Sweron.
+  Northeast : mountain (36,80) in Sweron.
+  Southeast : mountain (36,82) in Sweron.
+  South : mountain (35,83) in Sweron.
+  Southwest : mountain (34,82) in Sweron.
+  Northwest : mountain (34,80) in Sweron.
+
+- Scout (3412), Dark League (28), avoiding, behind, hill dwarf [HDWA].
+* a Taxers (4353), Mantzikert (39), avoiding, holding, receiving no
+  aid, sharing, consuming faction's food, 4 hill dwarves [HDWA], 807
+  silver [SILV]. Weight: 40. Capacity: 0/0/60/0. Skills: combat [COMB]
+  1 (30).
+
+
+mountain (43,81) in Derngill, contains Onthead [city], 10418 peasants
+  (humans), $11459.
+------------------------------------------------------------
+  Wages: $15.5 (Max: $2291).
+  Wanted: 156 grain [GRAI] at $23, 140 livestock [LIVE] at $24, 130
+    fish [FISH] at $45, 40 spinning wheels [SPIN] at $104, 45 spears
+    [SPEA] at $122, 29 axes [AXE] at $128, 23 lassoes [LASS] at $122,
+    79 perfume [PERF] at $348, 47 silk [SILK] at $284.
+  For Sale: 49 jewelry [JEWE] at $228, 55 cotton [COTT] at $79, 416
+    humans [HUMN] at $49, 83 leaders [LEAD] at $868.
+  Entertainment available: $677.
+  Products: 33 livestock [LIVE], 24 iron [IRON], 11 stone [STON].
+
+Exits:
+  North : forest (43,79) in Utso.
+  Northeast : forest (44,80) in Utso.
+  Southeast : ocean (44,82) in Atlantis Ocean.
+  South : ocean (43,83) in Atlantis Ocean.
+  Southwest : mountain (42,82) in Derngill.
+  Northwest : mountain (42,80) in Sa'endtell.
+
+- Four of Two (1659), Borg (62), behind, leader [LEAD].
+- Drones (1660), Borg (62), avoiding, 32 humans [HUMN].
+- Drones (1661), Borg (62), avoiding, 11 humans [HUMN], 11 stone
+  [STON].
+- scout 04 (1304), The Lands Kepper (20), high elf [HELF], 9 humans
+  [HUMN].
+* The Diplomat (1445), Mantzikert (39), behind, revealing faction,
+  sharing, consuming faction's food, high elf [HELF], 2917 silver
+  [SILV]. Weight: 10. Capacity: 0/0/15/0. Skills: observation [OBSE] 1
+  (30).
+- Two of Seven (2172), Borg (62), behind, leader [LEAD].
+- One of Six (2173), leader [LEAD].
+- Drones (3503), Borg (62), avoiding, behind, 18 humans [HUMN], 18
+  iron [IRON].
+- Lucky Luke (354), leader [LEAD].
+- Drones (4151), Borg (62), avoiding, behind, 22 humans [HUMN], 22
+  swords [SWOR].
+- The Sherriff (4216), Lucky Luke (80), behind, leader [LEAD]; Lukes
+  Posse, bringing order.
+- The Madam (4217), Lucky Luke (80), behind, leader [LEAD]; Lukes
+  Posse, bringing passion.
+- Doc Hammer (4218), Lucky Luke (80), behind, leader [LEAD], ironwood
+  [IRWD]; Lukes Posse, bringing medicine.
+- Reg (4219), Lucky Luke (80), behind, leader [LEAD]; Lukes Posse,
+  Just Reg, nuff said.
+- Clemantine (4220), Lucky Luke (80), behind, leader [LEAD], sword
+  [SWOR]; Lukes Posse, trusty right hand lady of Luke.
+- The Kid (4222), leader [LEAD]; Lukes Last Posse member.
+- Unit (2291), Nekojin Empire (26), behind, lizardman [LIZA].
+- Mason (5811), Lucky Luke (80), avoiding, behind, leader [LEAD].
+- Unit (10), The Elven Garden (85), avoiding, behind, leader [LEAD],
+  sword [SWOR], plate armor [PARM], horse [HORS].
+- DrBlade (5420), Queen XOT (34), behind, leader [LEAD].
+- Taxdrones (5421), on guard, Borg (62), behind, 26 humans [HUMN].
+- lumbtrainee (5422), Queen XOT (34), behind, 5 orcs [ORC].
+- Count Borzoi (6520), Kweo Keegii (47), avoiding, behind, leader
+  [LEAD]; A 6.5' tall humanoid canine reminiscient of a Russian
+  Wolfhound with yellow eyes and creamy white hair with a patch of
+  black fur surrounding his left eye.
+- Nashobah (6521), Kweo Keegii (47), avoiding, behind, leader [LEAD];
+  A comely, copper-skinned human female with long black hair and amber
+  eyes.
+- Lukes Trusty Steed (6729), Lucky Luke (80), avoiding, behind, leader
+  [LEAD].
+- Seven of One (1658), Borg (62), behind, leader [LEAD].
+- Chaser (6296), Queen XOT (34), behind, centaur [CTAU].
+- scout (4519), The Lands Kepper (20), 9 humans [HUMN].
+- Nanny Ogg (888), Queen XOT (34), behind, leader [LEAD]; A little old
+  lady who likes to look after her family members.
+- Mine apprentices (6745), Queen XOT (34), 10 orcs [ORC], 6 picks
+  [PICK].
+- Black Eyes (4156), Roses on White Lace (64), avoiding, behind,
+  leader [LEAD], horse [HORS].
+* L Justinian (7310), Mantzikert (39), behind, revealing faction,
+  sharing, consuming faction's food, leader [LEAD]. Weight: 10.
+  Capacity: 0/0/15/0. Skills: force [FORC] 2 (120). Can Study: fire
+  [FIRE], force shield [FSHI], energy shield [ESHI].
+- Arkady (874), The Lands Kepper (20), behind, leader [LEAD].
+- Endymion (4559), The Lands Kepper (20), behind, leader [LEAD]; Looks
+  like an identical twin to He-Man.
+- SkinnMacDana (2932), The Lands Kepper (20), behind, leader [LEAD],
+  sword [SWOR].
+- goblingoodstuff (5399), Queen XOT (34), avoiding, behind, 10 goblins
+  [GBLN].
+- goblinbadstuff (7259), Queen XOT (34), avoiding, behind, 10 goblins
+  [GBLN], 18 hammers [HAMM], 6 furs [FUR], 12 iron [IRON].
+- Unit (7597), Borg (62), behind, 2 humans [HUMN].
+- Erwhestead Bursar (7475), Kweo Keegii (47), avoiding, behind,
+  centaur [CTAU].
+- scout (4761), The Lands Kepper (20), avoiding, behind, 10 humans
+  [HUMN].
+* L Phocas (7722), Mantzikert (39), behind, revealing faction,
+  sharing, consuming faction's food, leader [LEAD]. Weight: 10.
+  Capacity: 0/0/15/0. Skills: force [FORC] 1 (60). Can Study: fire
+  [FIRE], force shield [FSHI], energy shield [ESHI].
+- Clones (8063), Roses on White Lace (64), avoiding, behind, 20 humans
+  [HUMN].
+- Dusty Tom (8099), Lucky Luke (80), avoiding, behind, leader [LEAD];
+  Hanging out in the local inn.
+- Scarlet (8100), Lucky Luke (80), avoiding, behind, leader [LEAD];
+  One sassy lady in charge of the local inn.
+- Granny Weatherwax (1401), Queen XOT (34), behind, leader [LEAD], 13
+  wolves [WOLF]; A little old lady who can get very grumpy.
+- Tiffany Aching (1404), Queen XOT (34), behind, leader [LEAD], 8
+  wolves [WOLF], sword [SWOR]; She loves to dabble in all sorts of
+  mischief.
+- packrats (7664), Queen XOT (34), 5 centaurs [CTAU], 20 wood [WOOD].
+- scout (2907), The Lands Kepper (20), behind, high elf [HELF].
+- Drone (7123), Borg (62), avoiding, behind, centaur [CTAU].
+- Drover (7663), Queen XOT (34), 2 centaurs [CTAU], 2 swords [SWOR], 6
+  furs [FUR], 14 livestock [LIVE].
+- Drone (7125), Borg (62), avoiding, behind, orc [ORC].
+
++ Building [1] : Caravanserai.
+  - Two of One (4150), Borg (62), avoiding, behind, leader [LEAD], 125
+    wood [WOOD], 45 furs [FUR], 17 iron [IRON], 42 stone [STON], 24
+    mithril [MITH], ironwood [IRWD].
+
++ Building [2] : Fort.
+  - Hardline (4012), Queen XOT (34), 35 humans [HUMN], 35 swords
+    [SWOR].
+  - Foghorn (1409), Queen XOT (34), human [HUMN], sword [SWOR].
+  * L Bey (1447), Mantzikert (39), behind, revealing faction, sharing,
+    consuming faction's food, leader [LEAD], horse [HORS]. Weight: 60.
+    Capacity: 0/70/85/0. Skills: spirit [SPIR] 2 (90), force [FORC] 2
+    (140), fire [FIRE] 2 (90), pattern [PATT] 2 (90), artifact lore
+    [ARTI] 2 (120), necromancy [NECR] 1 (60), illusion [ILLU] 1 (60).
+    Combat spell: fire [FIRE]. Can Study: earthquake [EQUA], force
+    shield [FSHI], energy shield [ESHI], spirit shield [SSHI], magical
+    healing [MHEA], gate lore [GATE], farsight [FARS], mind reading
+    [MIND], weather lore [WEAT], earth lore [EART], necromancy [NECR],
+    summon skeletons [SUSK], create aura of fear [FEAR], banish undead
+    [BUND], demon lore [DEMO], illusion [ILLU], phantasmal
+    entertainment [PHEN], create phantasmal beasts [PHBE], create
+    phantasmal demons [PHDE], dispel illusions [DISP], enchant swords
+    [ESWO], enchant armor [EARM], enchant shields [ESHD],
+    transmutation [TRNS].
+
++ Building [3] : Fort.
+  - Rhydian Kweo (901), Kweo Keegii (47), avoiding, behind, leader
+    [LEAD], 4 wolves [WOLF], skeleton [SKEL].
+  - Micaksica (4560), Kweo Keegii (47), avoiding, behind, leader
+    [LEAD]; A most beautiful human female with red hair and green
+    eyes..
+
++ Building [4] : Fort.
+  - Nine of Eight (1656), Borg (62), behind, leader [LEAD].
+  - Drones (6668), on guard, Borg (62), 86 humans [HUMN], 108 swords
+    [SWOR]; None shall Pass!.
+  - Taxdrones (7598), Borg (62), 66 humans [HUMN].
+
++ Wizzard's Hideout [5] : Hermits hut.
+  - Magrat Garlic (1402), Queen XOT (34), behind, leader [LEAD], 9
+    wolves [WOLF]; A young witch who means the best, but cannot
+    deliver on it.
+  * L Bryennios (1448), Mantzikert (39), behind, revealing faction,
+    sharing, consuming faction's food, leader [LEAD], horse [HORS].
+    Weight: 60. Capacity: 0/70/85/0. Skills: pattern [PATT] 2 (90),
+    force [FORC] 2 (145), fire [FIRE] 2 (90), spirit [SPIR] 2 (90),
+    artifact lore [ARTI] 2 (90), illusion [ILLU] 1 (60), phantasmal
+    entertainment [PHEN] 1 (60). Combat spell: fire [FIRE]. Can Study:
+    earthquake [EQUA], force shield [FSHI], energy shield [ESHI],
+    spirit shield [SSHI], magical healing [MHEA], gate lore [GATE],
+    farsight [FARS], mind reading [MIND], weather lore [WEAT], earth
+    lore [EART], necromancy [NECR], demon lore [DEMO], illusion
+    [ILLU], create phantasmal beasts [PHBE], create phantasmal demons
+    [PHDE], dispel illusions [DISP], enchant swords [ESWO], enchant
+    armor [EARM], enchant shields [ESHD], transmutation [TRNS].
+
++ House of sticks [6] : Stockade.
+  - Agnes Nitt (1403), Queen XOT (34), behind, leader [LEAD], 8 wolves
+    [WOLF]; Almost quiet and shy.
+
++ House of bricks [7] : Fort.
+  - Ballerina (1405), Queen XOT (34), 5 humans [HUMN].
+  - seeker (1971), Queen XOT (34), behind, leader [LEAD].
+  - Arni (3599), Queen XOT (34), behind, leader [LEAD].
+  - Minedoc (3994), Queen XOT (34), behind, leader [LEAD].
+  - rockdoc (3998), Queen XOT (34), behind, leader [LEAD].
+  - ChopDoc (5012), Queen XOT (34), behind, leader [LEAD].
+  - Japetto (5013), Queen XOT (34), behind, leader [LEAD], 2 magic
+    wagons [MWAG].
+  - Humanshield (5015), Queen XOT (34), 16 humans [HUMN], 2 orcs
+    [ORC], 18 swords [SWOR].
+  - Newbies (6741), Queen XOT (34), 12 humans [HUMN], 12 swords
+    [SWOR].
+  - Five of Ten (916), Borg (62), behind, leader [LEAD].
+  * L Arslan (7311), Mantzikert (39), behind, revealing faction,
+    sharing, consuming faction's food, leader [LEAD]. Weight: 10.
+    Capacity: 0/0/15/0. Skills: spirit [SPIR] 1 (60), force [FORC] 1
+    (60). Can Study: fire [FIRE], force shield [FSHI], energy shield
+    [ESHI], spirit shield [SSHI], necromancy [NECR], demon lore
+    [DEMO].
+
++ Building [8] : Hermits hut.
+  - Three of Five (1657), Borg (62), behind, leader [LEAD].
+
++ Building [10] : Fort.
+  - Unit (5374), leader [LEAD], sword [SWOR].
+
++ Building [11] : Stockade.
+  - Drones (3139), Borg (62), avoiding, behind, 10 humans [HUMN].
+  - lonebuilder (7665), Queen XOT (34), behind, human [HUMN].
+  - Unit (7666), Queen XOT (34), behind, leader [LEAD].
+
++ Building [9] : Stockade, needs 20.
+  - Drones (3831), Borg (62), avoiding, behind, 20 humans [HUMN].
+
++ Building [12] : Hermits hut.
+  - HutBuilders (3598), Queen XOT (34), behind, 2 humans [HUMN], 9
+    ironwood [IRWD]; We have completed our apprenticeships and are
+    willing to construct the Huts.
+
++ Building [13] : Hermits hut.
+  - HutBuilders (5417), Queen XOT (34), behind, 2 humans [HUMN]; We
+    will build a hut and go back to school.
+
+
+mountain (36,82) in Sweron, 1139 peasants (hill dwarves), $318.
+------------------------------------------------------------
+  Wages: $11.4 (Max: $153).
+  Wanted: none.
+  For Sale: 45 hill dwarves [HDWA] at $36, 9 leaders [LEAD] at $638.
+  Entertainment available: $18.
+  Products: 20 livestock [LIVE], 28 iron [IRON], 11 stone [STON].
+
+Exits:
+  North : mountain (36,80) in Sweron.
+  Northeast : volcano (37,81) in Prodon.
+  Southeast : mountain (37,83) in Prodon.
+  South : mountain (36,84) in Sweron.
+  Southwest : mountain (35,83) in Sweron.
+  Northwest : mountain (35,81) in Sweron.
+
+* a Taxers (3945), Mantzikert (39), avoiding, behind, holding,
+  receiving no aid, sharing, consuming faction's food, 7 hill dwarves
+  [HDWA], 248 silver [SILV]. Weight: 70. Capacity: 0/0/105/0. Skills:
+  combat [COMB] 1 (30), stealth [STEA] 0 (17).
+* a Workers (7312), Mantzikert (39), avoiding, behind, revealing
+  faction, holding, receiving no aid, sharing, consuming faction's
+  food, 2 hill dwarves [HDWA], 2 silver [SILV]. Weight: 20. Capacity:
+  0/0/30/0. Skills: combat [COMB] 1 (30).
+- Scout (6457), Dark League (28), avoiding, behind, hill dwarf [HDWA].
+
+
+mountain (42,82) in Derngill, 1464 peasants (orcs), $585.
+------------------------------------------------------------
+  Wages: $12.0 (Max: $264).
+  Wanted: none.
+  For Sale: 58 orcs [ORC] at $38, 11 leaders [LEAD] at $672.
+  Entertainment available: $32.
+  Products: 32 livestock [LIVE], 22 iron [IRON], 11 stone [STON].
+
+Exits:
+  North : mountain (42,80) in Sa'endtell.
+  Northeast : mountain (43,81) in Derngill, contains Onthead [city].
+  Southeast : ocean (43,83) in Atlantis Ocean.
+  South : ocean (42,84) in Atlantis Ocean.
+  Southwest : ocean (41,83) in Atlantis Ocean.
+  Northwest : volcano (41,81) in Sa'endtell.
+
+- Drone (1655), Borg (62), avoiding, behind, human [HUMN].
+- miners (1972), 8 orcs [ORC], 8 picks [PICK], 81 iron [IRON].
+- farmers (1973), 10 orcs [ORC], 2 picks [PICK], 9 swords [SWOR], 8
+  livestock [LIVE].
+- GrunterTax (1974), on guard, 12 orcs [ORC], 12 swords [SWOR].
+- scout 09 (1878), The Lands Kepper (20), human [HUMN].
+- crybaby (2956), orc [ORC], 3 hammers [HAMM].
+- crybaby (3280), 3 orcs [ORC], 12 hammers [HAMM].
+- QuarryOrcs (3281), 3 orcs [ORC], 3 picks [PICK].
+- QuarryOrc (4303), orc [ORC], pick [PICK].
+- Drones (5375), Borg (62), avoiding, behind, 22 humans [HUMN], 12
+  livestock [LIVE].
+- minerstoo (4838), 3 orcs [ORC], 3 picks [PICK], 10 wood [WOOD].
+- Unit (6728), Lucky Luke (80), avoiding, behind, human [HUMN].
+- scout (5796), The Lands Kepper (20), orc [ORC].
+- Choir (7132), Roses on White Lace (64), avoiding, behind, wood elf
+  [WELF].
+- packrat (6295), Queen XOT (34), avoiding, behind, 5 centaurs [CTAU].
+* Explorer (7723), Mantzikert (39), behind, revealing faction,
+  sharing, consuming faction's food, human [HUMN], 42 silver [SILV].
+  Weight: 10. Capacity: 0/0/15/0. Skills: none.
+
+
+mountain (34,84) in Sweron, contains Pli'atin [city], 9829 peasants
+  (orcs), $7470.
+------------------------------------------------------------
+  Wages: $13.8 (Max: $1494).
+  Wanted: 112 grain [GRAI] at $21, 190 livestock [LIVE] at $21, 178
+    fish [FISH] at $53, 26 pikes [PIKE] at $216, 25 bags [BAG] at
+    $126, 21 leather armor [LARM] at $80, 22 lassoes [LASS] at $117,
+    53 perfume [PERF] at $438, 41 cotton [COTT] at $230.
+  For Sale: 39 jewelry [JEWE] at $174, 33 vodka [VODK] at $64, 393
+    orcs [ORC] at $44, 78 leaders [LEAD] at $772.
+  Entertainment available: $471.
+  Products: 34 grain [GRAI], 26 iron [IRON], 16 stone [STON].
+
+Exits:
+  North : mountain (34,82) in Sweron.
+  Northeast : mountain (35,83) in Sweron.
+  Southeast : volcano (35,85) in Sweron.
+  South : mountain (34,86) in Sweron.
+  Southwest : mountain (33,85) in Sweron.
+  Northwest : mountain (33,83) in Sweron.
+
+- City Guard (75), on guard, The Guardsmen (1), 120 leaders [LEAD],
+  120 swords [SWOR].
+- Herald (2906), Dark League (28), avoiding, behind, hill dwarf
+  [HDWA]; Peaceful embassy.
+- Unit (3048), Stormbringer (46), avoiding, behind, hill dwarf [HDWA],
+  5 orcs [ORC].
+- Unit (7468), Stormbringer (46), avoiding, behind, 10 hill dwarves
+  [HDWA].
+* Explorers (2390), Mantzikert (39), behind, holding, sharing,
+  consuming faction's food, lizardman [LIZA], 3 silver [SILV]. Weight:
+  10. Capacity: 0/0/15/15. Skills: combat [COMB] 1 (30).
+- Unit (4436), Stormbringer (46), avoiding, behind, 12 hill dwarves
+  [HDWA].
+- Unit (7904), Stormbringer (46), avoiding, behind, 23 hill dwarves
+  [HDWA].
+- Unit (7902), high elf [HELF], 14 horses [HORS], 4 grain [GRAI].
+
+
+mountain (35,87) in Sweron, contains Jioutcratz [village], 3818
+  peasants (hill dwarves), $1221.
+------------------------------------------------------------
+  Wages: $11.6 (Max: $244).
+  Wanted: 142 grain [GRAI] at $27, 111 livestock [LIVE] at $20, 163
+    fish [FISH] at $50.
+  For Sale: 152 hill dwarves [HDWA] at $37, 30 leaders [LEAD] at $649.
+  Entertainment available: $99.
+  Products: 27 livestock [LIVE], 36 iron [IRON], 13 stone [STON].
+
+Exits:
+  North : volcano (35,85) in Sweron.
+  Northeast : mountain (36,86) in Sweron.
+  Southeast : mountain (36,88) in Sweron.
+  South : ocean (35,89) in Atlantis Ocean.
+  Southwest : mountain (34,88) in Sweron.
+  Northwest : mountain (34,86) in Sweron.
+
+- City Guard (76), on guard, The Guardsmen (1), 40 leaders [LEAD], 40
+  swords [SWOR].
+- Unit (1499), Stormbringer (46), avoiding, behind, orc [ORC].
+* Unit (2696), Mantzikert (39), avoiding, behind, revealing faction,
+  holding, sharing, consuming faction's food, lizardman [LIZA], 7
+  silver [SILV]. Weight: 10. Capacity: 0/0/15/15. Skills: none.
+- Herald (4527), Dark League (28), avoiding, behind, hill dwarf
+  [HDWA]; Peaceful embassy.
+
+
+
+
+
+Orders Template (Short Format):
+
+#atlantis 39 "<password>"
+
+;*** plain (38,66) in Rantvardshal ***
+
+unit 6363
+
+;*** plain (40,66) in Quogaush ***
+
+unit 6366
+
+;*** plain (39,67) in Rantvardshal, contains Ledpyc [town] ***
+
+unit 1440
+
+unit 6364
+
+unit 6365
+
+unit 6367
+
+;*** plain (38,68) in Rantvardshal ***
+
+unit 2693
+@Tax
+
+unit 1435
+
+unit 6799
+
+unit 7715
+
+;*** plain (39,69) in Quogaush ***
+
+unit 6368
+
+;*** plain (38,70) in Quogaush ***
+
+unit 6369
+
+;*** swamp (42,70) in Wechargoct ***
+
+unit 1439
+
+;*** swamp (41,71) in Leffquapbe ***
+
+unit 6372
+
+;*** swamp (38,72) in Leffquapbe ***
+
+unit 6371
+
+;*** swamp (38,74) in Leffquapbe, contains Iwick [town] ***
+
+unit 1436
+
+;*** forest (42,76) in Meulcos ***
+
+unit 1994
+@Tax
+
+unit 5468
+@Produce LIVE
+
+unit 5878
+
+unit 6373
+@Produce Wood
+
+unit 6800
+@Produce Fur
+
+unit 7716
+
+;*** plain (44,76) in Pestflo ***
+
+unit 2992
+
+;*** mountain (37,77) in Sweron ***
+
+unit 4352
+@Tax
+
+;*** forest (43,77) in Utso ***
+
+unit 5068
+@Tax
+
+unit 6374
+
+;*** mountain (36,78) in Sweron ***
+
+unit 5879
+
+;*** forest (42,78) in Meulcos, contains Erwhestead [town] ***
+
+unit 1996
+@Tax
+
+unit 5067
+
+unit 5469
+@Study LBOW
+
+unit 5880
+@Study RIDING
+
+unit 3637
+@Study Tactics
+
+unit 6804
+@Study Combat
+
+unit 6805
+@Study STEA
+
+unit 6806
+@Study Riding
+
+unit 7304
+@Study HUNT
+
+unit 7305
+@Study LongBow
+
+unit 7717
+@Study LBOW
+
+unit 7718
+@Study HEAL
+
+unit 3944
+
+;*** forest (43,79) in Utso ***
+
+unit 1441
+@Tax
+
+unit 4354
+@Produce Wood
+@TRANSPORT 4150 ALL WOOD
+
+unit 4355
+@Entertain
+
+unit 7307
+@Produce Grain
+
+unit 7719
+
+;*** mountain (36,80) in Sweron ***
+
+unit 5066
+@Tax
+
+unit 7720
+
+;*** mountain (42,80) in Sa'endtell ***
+
+unit 7306
+
+;*** forest (44,80) in Utso ***
+
+unit 7724
+
+;*** mountain (35,81) in Sweron ***
+
+unit 4353
+@Tax
+
+;*** mountain (43,81) in Derngill, contains Onthead [city] ***
+
+unit 1445
+
+unit 7310
+@Study Spirit
+
+unit 7722
+@Study Force
+
+unit 1447
+
+unit 1448
+
+unit 7311
+@Study Force
+
+;*** mountain (36,82) in Sweron ***
+
+unit 3945
+@Tax
+
+unit 7312
+
+;*** mountain (42,82) in Derngill ***
+
+unit 7723
+
+;*** mountain (34,84) in Sweron, contains Pli'atin [city] ***
+
+unit 2390
+
+;*** mountain (35,87) in Sweron, contains Jioutcratz [village] ***
+
+unit 2696
+
+#end
+

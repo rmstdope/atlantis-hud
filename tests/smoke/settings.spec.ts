@@ -237,7 +237,7 @@ test("the per-game tab shows the open game's ruleset", async ({ page }) => {
 
 /** The turn-71 fixture; Inholm at (7,53) holds 92 units, so every cap the slider offers bites. */
 const REPORT = readFileSync(
-  join(__dirname, "..", "fixtures", "reports", "neworigins-3.0.0-f95-t71.rep"),
+  join(__dirname, "..", "fixtures", "reports", "neworigins-3.0.0-g7-f95-t71.rep"),
   "utf8"
 );
 

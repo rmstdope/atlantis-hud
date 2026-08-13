@@ -5,14 +5,27 @@
 
 use atlantis_hud_core::report::parse_report_full as parse_regions;
 
-const TURN_2: &str = include_str!("../../../tests/fixtures/reports/neworigins-3.0.0-f73-t2.rep");
-const TURN_71: &str = include_str!("../../../tests/fixtures/reports/neworigins-3.0.0-f95-t71.rep");
+const TURN_2: &str = include_str!("../../../tests/fixtures/reports/neworigins-3.0.0-g8-f73-t2.rep");
+const TURN_71: &str =
+    include_str!("../../../tests/fixtures/reports/neworigins-3.0.0-g7-f95-t71.rep");
 /// Faction 73's own turn 71, written for issue #53 so a merge has two reports of one turn to work
 /// with. Hand-written rather than captured, because no second real report of this turn exists.
 const ALLY_TURN_71: &str =
-    include_str!("../../../tests/fixtures/reports/neworigins-3.0.0-f73-t71.rep");
+    include_str!("../../../tests/fixtures/reports/neworigins-3.0.0-g8-f73-t71.rep");
 /// Faction 95's turn 70, so loading an older report of one's *own* faction can still be tested.
-const TURN_70: &str = include_str!("../../../tests/fixtures/reports/neworigins-3.0.0-f95-t70.rep");
+const TURN_70: &str =
+    include_str!("../../../tests/fixtures/reports/neworigins-3.0.0-g7-f95-t70.rep");
+/// A fresh faction's very first turn: no history, nothing to merge into.
+const FIRST_TURN: &str =
+    include_str!("../../../tests/fixtures/reports/neworigins-3.0.0-g2-f42-t0.rep");
+/// A report with no orders template at all - see `tests/fixtures/reports/README.md`.
+const NO_ORDERS: &str =
+    include_str!("../../../tests/fixtures/reports/neworigins-3.0.0-g7-f62-t20.rep");
+/// A late, large turn from an established faction - the stress case, most likely to expose a
+/// quadratic. Not the single largest committed report (that is `g7-f95-t72`, exercised by the
+/// battle tests) but the largest from a faction none of the other fixtures also cover.
+const LARGE_TURN: &str =
+    include_str!("../../../tests/fixtures/reports/neworigins-3.0.0-g3-f42-t82.rep");
 
 #[test]
 fn turn_2_yields_its_single_region() {
@@ -381,4 +394,35 @@ fn reports_without_battles_parse_to_an_empty_list() {
     assert!(parse_regions(TURN_2).battles.is_empty());
     assert!(parse_regions(TURN_70).battles.is_empty());
     assert!(parse_regions(ALLY_TURN_71).battles.is_empty());
+}
+
+/// The three newly interesting shapes ah-dyi imported, so a fixture that is committed and never
+/// read is caught by review rather than sitting there for a year.
+#[test]
+fn a_fresh_factions_first_turn_parses_with_no_history_to_speak_of() {
+    let parsed = parse_regions(FIRST_TURN);
+
+    assert_eq!(parsed.header.faction_id.as_deref(), Some("42"));
+    assert!(parsed.header.turn_number.is_some());
+    assert!(!parsed.regions.is_empty());
+}
+
+#[test]
+fn a_report_with_no_orders_template_parses_with_everything_else_intact() {
+    let parsed = parse_regions(NO_ORDERS);
+
+    assert_eq!(parsed.header.faction_id.as_deref(), Some("62"));
+    assert!(parsed.orders_template.is_none());
+    assert!(!parsed.regions.is_empty(), "the map still parses");
+}
+
+#[test]
+fn the_largest_newly_imported_turn_parses_without_falling_over() {
+    let parsed = parse_regions(LARGE_TURN);
+
+    assert_eq!(parsed.header.faction_id.as_deref(), Some("42"));
+    assert!(
+        parsed.regions.len() > 20,
+        "an established, sprawling faction"
+    );
 }

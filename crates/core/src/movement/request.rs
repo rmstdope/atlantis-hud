@@ -272,7 +272,7 @@ mod tests {
     use super::*;
 
     const TURN_71: &str =
-        include_str!("../../../../tests/fixtures/reports/neworigins-3.0.0-f95-t71.rep");
+        include_str!("../../../../tests/fixtures/reports/neworigins-3.0.0-g7-f95-t71.rep");
     const RULESET: &str = include_str!("../../../../config/public/ruleset.json");
 
     #[test]
@@ -429,7 +429,7 @@ mod remembered_tests {
 
     const RULESET: &str = include_str!("../../../../config/public/ruleset.json");
     const TURN_71: &str =
-        include_str!("../../../../tests/fixtures/reports/neworigins-3.0.0-f95-t71.rep");
+        include_str!("../../../../tests/fixtures/reports/neworigins-3.0.0-g7-f95-t71.rep");
 
     /// The payoff for remembering the map: a route with more than one step in it.
     ///

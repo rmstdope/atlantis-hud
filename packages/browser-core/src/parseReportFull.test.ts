@@ -12,7 +12,7 @@ import { createMemoryWebStore } from "./webStore";
  * model crosses into TypeScript with the shape the types promise.
  */
 const REPORT = readFileSync(
-  new URL("../../../tests/fixtures/reports/neworigins-3.0.0-f95-t71.rep", import.meta.url),
+  new URL("../../../tests/fixtures/reports/neworigins-3.0.0-g7-f95-t71.rep", import.meta.url),
   "utf8"
 );
 

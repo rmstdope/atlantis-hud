@@ -23,7 +23,7 @@ import {
  */
 
 const REPORT = readFileSync(
-  join(__dirname, "..", "fixtures", "reports", "neworigins-3.0.0-f95-t71.rep"),
+  join(__dirname, "..", "fixtures", "reports", "neworigins-3.0.0-g7-f95-t71.rep"),
   "utf8"
 );
 

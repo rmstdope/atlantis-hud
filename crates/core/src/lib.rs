@@ -451,7 +451,7 @@ mod tests {
     use super::*;
 
     const TURN_71: &str =
-        include_str!("../../../tests/fixtures/reports/neworigins-3.0.0-f95-t71.rep");
+        include_str!("../../../tests/fixtures/reports/neworigins-3.0.0-g7-f95-t71.rep");
 
     // --- the widened validation contract ----------------------------------------------------
 
