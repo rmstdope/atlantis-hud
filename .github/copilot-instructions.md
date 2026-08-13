@@ -38,16 +38,26 @@ nothing waits on a session that may not be running. The `beads-workflow` skill c
 lifecycle and the commands; `/plan-bead` and `/implement-bead` carry the two roles, and a session
 running either should load its skill first.
 
-**An implementation session does one bead and stops.** The loop is `scripts/implement-loop.sh <name>`,
-which starts a fresh `claude -p "/implement-bead"` per bead until nothing planned is ready. Looping
-inside one session carries every finished bead's diffs, test output and review threads into the next
-one's context, and no agent can clear its own — a new process is the only clean start. Planning is
-not looped this way: it is interactive by design.
+**Implementers are run by an orchestrator.** An implementation session loops — bead after bead —
+until it is told to stop, and the thing that tells it is the orchestrator:
 
-The loop's `<name>` is required, and every session it starts runs with Remote Control enabled under
-it, so a running implementer can be reached from a phone or another machine and two loops are told
-apart by a name somebody chose. An implementation session started by hand should ask the navigator
-for `/rc`: an agent cannot enable Remote Control itself.
+```bash
+claude --agent orchestrator --name Cerebro --permission-mode auto
+```
+
+That session is called **Cerebro**, is interactive, runs on Sonnet, and starts nothing until you ask
+it to. You tell it to spin up implementers — named after X-Men — which it spawns as subagents on
+Sonnet, each with its own context; you tell it to take one down, and it writes that implementer's
+stop flag. **Taking one down means telling it to finish**: the implementer completes the bead it is
+on, sees it merged, and only then leaves the loop — killing one mid-bead strands a claim, a worktree
+and an open PR.
+
+Cerebro also keeps the worktrees swept, on startup and every ten minutes, with
+`scripts/prune-worktrees.sh`. That removes an agent worktree only when nothing can be lost from it:
+clean tree, work already on main, untouched for half an hour.
+
+Both roles are defined in `.claude/agents/`. Planning is not run this way: `/plan-bead` is
+interactive by design and stays a session of its own.
 
 ## Skills Usage
 
@@ -87,15 +97,21 @@ follows the rule above like everything else.
 For a bead implemented by an agent, the **Copilot reviewer is the second pair of eyes**, and it
 counts only under all of these:
 
-- Its review is against the **current head**. Copilot reviews the commit it was asked about, not the
-  branch, so after a push that changes the code its earlier review describes code that no longer
-  exists. It never returns `APPROVED` — every review observed here is `COMMENTED` — so waiting for
-  an approval waits forever.
+- **One review, requested when the PR opens.** Exactly one per bead, asked for the moment the PR
+  exists and never again — not after the comments are addressed, not after a rebase, not after a fix
+  that grew beyond what a comment asked. It never returns `APPROVED` — every review observed here is
+  `COMMENTED` — so waiting for an approval waits forever.
 - **Every comment is answered**: a change, or a posted reply saying why not, and the thread resolved.
 - **Every check is green**, and the branch is not behind main.
 
-**Request the review yourself, right after the PR opens — it is not automatic, and neither is a
-re-review after a push.** GitHub used to request Copilot on PR open and again on every push, via the
+That review describes the PR as it stood when it opened, and it keeps describing that as fixes and
+rebases move the head. **That is expected and is not a reason to ask again.** An earlier version of
+this document required the review to match the current head, which cannot hold alongside one review
+per PR: addressing comments and updating from main are both pushes, and main keeps moving. What is
+owed to a review is an answer to every comment, not a fresh review of the answers.
+
+**Request the review yourself, right after the PR opens — it is not automatic.** GitHub used to
+request Copilot on PR open and again on every push, via the
 `Code Quality Copilot review for default branch` ruleset's "Automatically request Copilot code
 review" and "Review new pushes" settings, but reversed both to opt-in on 2026-08-07 ("adding a
 reviewer should be your choice"). A PR now gets no second pair of eyes, on open or on any later push,
@@ -115,15 +131,9 @@ finding the review:
 gh api repos/<owner>/<repo>/pulls/<n>/reviews --jq '[.[] | select(.user.login | startswith("copilot")) | .commit_id] | last'
 ```
 
-and compare that against the head SHA.
-
-**Not every push needs a fresh request.** A rebase that only replays your commits onto a newer main
-does not — CI still runs on the rebased head, which is what catches a conflict the rebase introduced.
-Neither does a small, contained fix that does exactly what a review comment asked for — reply and
-resolve the thread instead. Request again when the push is substantial enough that the reviewer's
-read of the diff no longer describes it: a design change, code no comment touched, or a fix bigger
-than the comment called for. Without either exception the two review conditions above deadlock, since
-addressing comments and updating from main are both pushes and main keeps moving while you wait.
+**No push earns a second request** — not a rebase, not a fix, however large. CI still runs on every
+push, which is what catches a conflict a rebase introduced; the reviewer's job was the first read,
+and it is done.
 
 If no review arrives within about twenty minutes, leave the PR open, escalate the bead (see
 `beads-workflow`: remove `planned`, add `human`, `bd unclaim`), and move on. Some PRs get no review

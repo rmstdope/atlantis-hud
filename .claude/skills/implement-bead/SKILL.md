@@ -1,13 +1,12 @@
 ---
 name: implement-bead
-description: The implementation role — take one planned bead, build it under TDD, get it reviewed and merged, and stop. Use when running an implementation session in atlantis-hud; the loop across beads is scripts/implement-loop.sh, one process per bead.
+description: The implementation role — take planned beads one after another, build each under TDD, get it reviewed and merged, and keep going until told to stop. Use when running an implementation session in atlantis-hud.
 ---
 
 # Implementing a planned bead
 
-You take a bead somebody else planned, build exactly what the plan says, and see it onto main. Then
-you stop: one bead is one session, and `scripts/implement-loop.sh` starts a fresh one for the next.
-Several of you may run at once.
+You take beads somebody else planned, build exactly what the plan says, and see them onto main. Then
+you take the next one, and keep going until you are told to stop. Several of you may run at once.
 
 Read `beads-workflow` for the label lifecycle and CLAUDE.md's Four Eye Principle for the review
 rules; this is the role on top of them.
@@ -24,19 +23,25 @@ So: RED → GREEN → REFACTOR → COMMIT without stopping, announcing each tran
 on a genuine design question — see *When the plan is wrong*. Everything outside a planned bead
 follows the TDD skill's gates as written.
 
-## Remote Control is on, or ask for it
+## Being told to stop
 
-An implementation session runs unattended for an hour at a time, so it must be reachable from
-somewhere other than the terminal it started in.
+You loop, so something has to be able to end the loop. That something is a file:
 
-`scripts/implement-loop.sh <name>` starts every session with `--remote-control <name>`, so a looped
-session is already connected and already named — that is what the loop's mandatory argument is for,
-and it is how two loops on one machine are told apart.
+```bash
+test -f "<repo>/.claude/implementers/<your name>.stop"
+```
 
-**If you were started by hand, say so in your first message and ask the navigator to type `/rc`.**
-You cannot enable it yourself: `/rc` is a built-in command, and the Skill tool does not invoke
-built-in commands. Ask once and carry on with the bead either way — an unreachable session is a
-nuisance, not a reason to refuse work.
+The orchestrator creates it when the navigator asks for you to be taken down. **Check it in exactly
+one place** — after a bead is merged and closed, and before you claim the next one. If it is there,
+remove it, say what you finished this run, and stop.
+
+Nowhere else. Not mid-bead, not between phases, not while CI runs or a review is outstanding.
+Stopping in the middle leaves a claimed bead, a worktree and an open PR for a human to unpick, which
+is the whole reason the signal asks you to finish rather than killing you.
+
+You have a name if the orchestrator started you; it is in the prompt that spawned you. Started by
+hand with no name, you have no stop flag — you run until the queue is dry or the navigator
+interrupts you, and that is fine.
 
 ## Picking up
 
@@ -54,10 +59,9 @@ lease is short, about five minutes, and a cycle is an hour; the exact TTL is bd'
 configurable here, so heartbeat on every boundary rather than on a timer.
 
 Nothing planned means the planner has not got there yet, or another implementer took the last one
-between the loop's peek and your claim. Either way: **say so and stop, at once.** Do not wait, do not
-poll, do not look again in a few minutes. Waiting is the loop's job — `scripts/implement-loop.sh`
-peeks before it starts you and stops on its own when the queue is dry — and a session that idles is
-spending a fresh context window on nothing.
+first. Look again every few minutes, saying so once rather than every time. After **half a dozen
+empty checks**, say that the queue is dry and stop — an idle session that looks busy is worse than
+one that has plainly finished, and the orchestrator can start you again in a second.
 
 **Read the plan with `bd show <id> --json`.** The pretty renderer mangles it.
 
@@ -136,19 +140,24 @@ A detail the plan missed is yours to decide — do it, and record the deviation 
 Anything touching **approach, scope, or what the user sees** goes back, by the same hand-back block as a missing section, worktree included. You were given a plan precisely so those decisions were made elsewhere; making
 them here is the failure mode this split exists to prevent.
 
-## The review
+## The review — you get exactly one
 
-**Request it yourself, the moment the PR opens** — see CLAUDE.md's Four Eye Principle for why it is
-not automatic, and note that a push doesn't trigger a re-review automatically either:
+**One Copilot review per bead. Request it the moment the PR opens, and never again.**
 
 ```bash
 gh pr edit <n> --add-reviewer @copilot
 ```
 
+That command runs once in the life of a PR. Not after you address the comments, not after a rebase,
+not after a fix that changed more than the comment asked for. If you catch yourself weighing whether
+a push is "substantial enough" to deserve another look, the answer is no — that judgement is not
+yours to make any more, and the rule exists so a bead costs one review rather than an unbounded
+number of them.
+
 `requested_reviewers` reading empty a minute later means the request was fulfilled, not dropped — do
 not re-run this off of that.
 
-Wait for a review whose commit matches your head:
+Then wait for it:
 
 ```bash
 gh api repos/<owner>/<repo>/pulls/<n>/reviews \
@@ -157,6 +166,11 @@ gh api repos/<owner>/<repo>/pulls/<n>/reviews \
 
 Every review seen on this repository has been `COMMENTED`, never `APPROVED`, so do not wait for an
 approval.
+
+**Do not require that review to match your head.** It describes the PR as it stood when it opened,
+and it will keep describing that after your fixes and rebases move the head — which is correct and
+expected, not a reason to ask again. What you owe the review is an answer to every comment, not a
+fresh review of your answers.
 
 **Every comment gets a change or a posted reply saying why not**, and the thread resolved:
 
@@ -177,14 +191,9 @@ millisecond after being taken, a refusal message that rounded itself into a cont
 release step that could strand a version bump — but they also raise things that are wrong or do not
 apply. Judge each one; a reasoned reply is a complete answer.
 
-Not every push needs a fresh request — request again with the same command only when the push is
-substantial enough that the reviewer's earlier read of the diff no longer describes it: a design
-change, code no comment touched, or a fix bigger than the comment called for. A rebase that only
-replays your commits does not; neither does a small, contained fix that does exactly what a comment
-asked for — reply to it and resolve the thread instead.
-
 **No review within about twenty minutes**: leave the PR open, escalate the bead (the hand-back block above, worktree included), say so plainly, and take the next bead. Some PRs never get one. Merging anyway is not the
-answer, and neither is waiting forever.
+answer, and neither is waiting forever. Do not re-request in the hope of shaking one loose — your one
+request has been spent, and a second would not arrive faster.
 
 ## Red CI
 
@@ -218,7 +227,7 @@ had to ship as a second PR.
 happened by then. Check `git ls-remote --heads origin <branch>` and delete it explicitly if it
 survived.
 
-## Finishing
+## Finishing, then going again
 
 ```bash
 bd close <id> --reason "Delivered in PR #NN"
@@ -235,21 +244,18 @@ skip the second.
 **Do this on every exit, not only this one.** A bead handed back, a review that never came, a CI
 budget spent — each of those leaves a worktree too, and nothing else cleans them up.
 
-Then **stop**. One bead is one session, and the next bead is a new process.
-
 Say what you merged and anything the navigator should know — a deviation, a trap the plan missed, a
-bead you handed back — and end there. Do not take another bead, and do not go back and look for one.
+bead you handed back.
 
-The loop is outside you, in `scripts/implement-loop.sh`, which runs one `claude -p "/implement-bead"`
-per bead until nothing planned is ready. This is not a style preference. A session that went again
-carried every finished bead's diffs, test output, CI watches and review threads into the next one,
-and the window grew until compaction began summarising work that was already merged — so the later
-beads were built against a lossy recollection of the earlier ones. A session cannot clear its own
-context (`/clear` is a command the user types, not one an agent can invoke), so the only way to start
-a bead clean is to start a process.
+**Then check your stop flag** — see *Being told to stop* — and either finish there or pick up the
+next planned bead.
 
-Nothing is lost by stopping. Everything the next bead needs is in bd — the claim, the labels, the
-plan in `design` — or in git. The conversation holds nothing it wants.
+One thing to watch as you go round again: everything from the beads you have already finished is
+still in your context, and it grows. Nothing can clear it from inside a session. So if you find
+yourself unsure what a plan actually said, or half-remembering a test you wrote three beads ago,
+**re-read it rather than recalling it** — `bd show <id> --json` for the plan, the file itself for the
+code. When it gets bad enough to slow you down, say so in your next report: that is the navigator's
+cue to take you down and bring a fresh implementer up, which is the one cure available.
 
 ## Traps this repository has already paid for
 

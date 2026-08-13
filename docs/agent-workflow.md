@@ -43,19 +43,79 @@ the queue keeps filling. It will not guess on your behalf.
 
 ## Starting builders
 
-One or more sessions, each in its own terminal:
+Builders are run from an **orchestrator**: one interactive session, in its own terminal, that starts
+and stops them for you.
 
 ```
-claude
-/implement-bead
+claude --agent orchestrator --name Cerebro --permission-mode auto
 ```
 
-Each one takes a planned bead, creates its own git worktree, works through the plan test-first, opens
-a PR, answers the Copilot review, waits for CI, merges, cleans up, and takes the next bead.
+The orchestrator is always called **Cerebro** — it finds the mutants and points them at the work.
+
+It starts nothing on its own. It sweeps away any worktrees left behind by a previous run, greets you,
+tells you what the queue looks like, and waits. Then you talk to it in whatever words you like:
+
+```
+start two implementers
+how are they doing?
+take Storm down
+start another one
+```
+
+Implementers are named after X-Men — Cyclops, Storm, Wolverine, Rogue, and on down the roster — so
+that a fleet of them can be talked about without anyone counting session hashes.
+
+Each implementer it spawns takes a planned bead, creates its own git worktree, works through the plan
+test-first, opens a PR, answers the Copilot review, waits for CI, merges, cleans up, and takes the
+next bead. They run on Sonnet, each with its own context, and they keep going until told to stop.
 
 **Two or three is a sensible number on one machine.** More is not faster: the browser test suites
 take a machine-wide lock and run one at a time, and every merge makes every other open PR stale, so
-each of them pays for a rebase and a fresh CI run.
+each of them pays for a rebase and a fresh CI run. The orchestrator will say so if you ask for more,
+once, and then do as it is told.
+
+### What "take one down" means
+
+It means *finish*, not *stop now*. The orchestrator writes a stop flag; the implementer sees it only
+between beads — after the one it is on is merged and closed — and then leaves the loop. So a builder
+that has just claimed something will be a while yet. That is deliberate: killing one mid-bead leaves
+a claimed bead, a worktree and an open PR for you to unpick by hand.
+
+If you genuinely want one gone this second, say so and the orchestrator will stop it — and then you
+have that cleanup to do.
+
+Changed your mind before it noticed? Deleting the flag cancels the instruction:
+
+```bash
+rm .claude/implementers/<name>.stop
+```
+
+### Leftover worktrees
+
+Builders work in `.claude/worktrees/<bead>` and remove the tree when they finish. One that crashes,
+or whose bead somebody else merged, leaves it behind — and a stray tree holding `main` makes the next
+agent's `git checkout main` fail for no visible reason.
+
+Cerebro sweeps them: once when it starts, then every ten minutes. You can run the same sweep yourself
+at any time:
+
+```bash
+scripts/prune-worktrees.sh --dry-run   # say what would go
+scripts/prune-worktrees.sh             # actually go
+```
+
+It only removes a worktree when **nothing can be lost from it**: the tree is clean, the work is
+already on main, and nothing has touched it for half an hour. Anything else it keeps and tells you
+why. Note that it asks GitHub whether the branch's PR merged, rather than looking for its commits on
+main — with `--squash` merges the commits are never there, so the naive check would keep every
+worktree for ever.
+
+### When a builder gets slow or vague
+
+An implementer's context grows with every bead it finishes, and nothing can clear it from the inside.
+It is told to re-read plans rather than recall them, and to tell you when it starts to feel the
+weight. When it does — or when its reports get woolly — take it down and start a fresh one. That is
+the cure, and it is why the fleet is yours to manage rather than automatic.
 
 ## Your queue
 
@@ -100,6 +160,10 @@ Honest numbers from building this repository's own harness:
   exist.
 - **Copilot reviews about four PRs in five**, sometimes minutes late, and never marks one approved.
   When it does not review, the builder leaves the PR open and tells you rather than merging.
+- **One review per bead**, requested when the PR opens and never again. Fixes and rebases move the
+  head past what the reviewer read, and that is accepted rather than chased: what a review is owed is
+  an answer to every comment, not a re-read of the answers. So the review you see on a merged PR
+  describes the PR as it opened, which is worth knowing when you read one later.
 - **Nothing merges unreviewed and nothing merges red.** The `main` ruleset enforces the second on the
   server; the first is the agents following the rule.
 
