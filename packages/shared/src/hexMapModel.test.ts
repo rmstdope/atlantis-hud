@@ -4,6 +4,7 @@ import {
   abbreviateDirection,
   buildHexMapModel,
   hexCorners,
+  hexLabelOf,
   hexToPixel,
   isValidCoordinate,
   parseRegionId,
@@ -58,6 +59,38 @@ function region(
     structures: [],
     units: [],
     ...overrides
+  };
+}
+
+/** One entry of a region's `Exits` block, as the report parser hands it over. */
+function exit(
+  coordinate: Coordinate,
+  terrain: string,
+  direction = "North"
+): ReportRegion["exits"][number] {
+  return { direction, terrain, coordinate, province: "Inhead", settlement: null };
+}
+
+/**
+ * A region as persistence hands it back, carrying the whole region and so its exits.
+ *
+ * The fixtures that predate this pass `region: null`, which is a sighting stored before the payload
+ * could be read back. Both shapes have to keep working, so neither is made the only one.
+ */
+function stored(
+  coordinate: Coordinate,
+  lastSeenTurn: number,
+  overrides: Partial<ReportRegion> = {}
+): StoredRegion {
+  const remembered = region(coordinate, overrides);
+  return {
+    regionId: remembered.regionId,
+    coordinate,
+    terrain: remembered.terrain,
+    province: remembered.province,
+    label: hexLabelOf(remembered),
+    lastSeenTurn,
+    region: remembered
   };
 }
 
@@ -253,6 +286,117 @@ describe("map knowledge", () => {
     );
 
     expect(model.hexes.find((hex) => hex.regionId === "1:7,51")?.knowledge).toBe("stale");
+  });
+
+  // Given a hex named by a neighbour's exits in turn 64, when the unit that stood there has moved
+  // away by turn 71, then the hex is still on the map. Without this the map shrinks back to the
+  // fringe of wherever the faction currently stands, which is what ah-ctf reported.
+  it("keeps a hex named by an earlier turn's exits after the unit that saw it moved on", () => {
+    const model = buildHexMapModel(
+      report([region(at(20, 50))]),
+      [stored(at(7, 53), 64, { exits: [exit(at(7, 51), "ocean")] })]
+    );
+
+    const neighbour = model.hexes.find((hex) => hex.regionId === "1:7,51");
+    expect(neighbour?.knowledge).toBe("named");
+    expect(neighbour?.terrain).toBe("ocean");
+    // Still known by name only: nobody has stood in it, so it carries no detail and has no age.
+    expect(neighbour?.region).toBeNull();
+    expect(neighbour?.lastSeenTurn).toBe(64);
+    expect(neighbour?.ageInTurns).toBeNull();
+  });
+
+  it("lets the most recent naming of a hex win", () => {
+    const older = stored(at(7, 53), 64, { exits: [exit(at(7, 51), "forest")] });
+    const newer = stored(at(7, 49), 68, { exits: [exit(at(7, 51), "desert", "South")] });
+
+    // Asserted both ways round: which order the store lists them in is not something to depend on.
+    for (const storedRegions of [[older, newer], [newer, older]]) {
+      const model = buildHexMapModel(report([region(at(20, 50))]), storedRegions);
+
+      const contested = model.hexes.find((hex) => hex.regionId === "1:7,51");
+      expect(contested?.terrain).toBe("desert");
+      expect(contested?.lastSeenTurn).toBe(68);
+    }
+  });
+
+  // Two neighbours of one hex both name it, and a report holds both. Which of them is believed has
+  // to be settled by a rule rather than by the order the regions happen to appear in.
+  it("lets the first naming in a report win when two of its regions name the same hex", () => {
+    const model = buildHexMapModel(
+      report([
+        region(at(7, 53), { exits: [exit(at(7, 51), "forest")] }),
+        region(at(6, 50), { exits: [exit(at(7, 51), "desert", "Southeast")] })
+      ])
+    );
+
+    expect(model.hexes.find((hex) => hex.regionId === "1:7,51")?.terrain).toBe("forest");
+  });
+
+  // The same question, asked of memory: every region of one stored turn shares its `lastSeenTurn`,
+  // so without a rule the winner would be whichever row the store listed last.
+  it("settles two namings from the same turn the way a report does, whatever order they arrive in", () => {
+    const first = stored(at(7, 53), 64, { exits: [exit(at(7, 51), "forest")] });
+    const second = stored(at(6, 50), 64, { exits: [exit(at(7, 51), "desert", "Southeast")] });
+
+    expect(
+      buildHexMapModel(report([region(at(20, 50))]), [first, second]).hexes.find(
+        (hex) => hex.regionId === "1:7,51"
+      )?.terrain
+    ).toBe("forest");
+    expect(
+      buildHexMapModel(report([region(at(20, 50))]), [second, first]).hexes.find(
+        (hex) => hex.regionId === "1:7,51"
+      )?.terrain
+    ).toBe("desert");
+  });
+
+  it("keeps the turn a naming came from when the report itself has none", () => {
+    const model = buildHexMapModel(
+      report([], null),
+      [stored(at(7, 53), 64, { exits: [exit(at(7, 51), "ocean")] })]
+    );
+
+    const neighbour = model.hexes.find((hex) => hex.regionId === "1:7,51");
+    expect(neighbour?.lastSeenTurn).toBe(64);
+    expect(neighbour?.ageInTurns).toBeNull();
+  });
+
+  // The mirror of the test above: having stood somewhere beats having heard of it even when the
+  // hearsay is newer, because a naming carries terrain and province and a visit carries everything.
+  it("keeps a visited hex ahead of a naming made after the visit", () => {
+    const model = buildHexMapModel(
+      report([region(at(20, 50))]),
+      [stored(at(7, 53), 70, { exits: [exit(at(7, 51), "forest")] }), stored(at(7, 51), 60)]
+    );
+
+    const visited = model.hexes.find((hex) => hex.regionId === "1:7,51");
+    expect(visited?.knowledge).toBe("stale");
+    expect(visited?.terrain).toBe("mountain");
+  });
+
+  it("lets this turn's report rename a hex an earlier turn had named", () => {
+    const model = buildHexMapModel(
+      report([region(at(7, 53), { exits: [exit(at(7, 51), "desert")] })]),
+      [stored(at(7, 49), 64, { exits: [exit(at(7, 51), "forest", "South")] })]
+    );
+
+    const contested = model.hexes.find((hex) => hex.regionId === "1:7,51");
+    expect(contested?.terrain).toBe("desert");
+    expect(contested?.lastSeenTurn).toBe(71);
+  });
+
+  // The guard that lets a visited hex beat a named one has to keep holding now that a naming can
+  // come from memory rather than only from the report on screen.
+  it("lets a stored sighting override a hex named by an earlier turn's exits", () => {
+    const model = buildHexMapModel(
+      report([region(at(20, 50))]),
+      [stored(at(7, 53), 64, { exits: [exit(at(7, 51), "forest")] }), stored(at(7, 51), 65)]
+    );
+
+    const visited = model.hexes.find((hex) => hex.regionId === "1:7,51");
+    expect(visited?.knowledge).toBe("stale");
+    expect(visited?.terrain).toBe("mountain");
   });
 
   it("leaves age unknown when the report has no turn number", () => {
