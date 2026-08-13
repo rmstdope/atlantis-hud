@@ -1,4 +1,5 @@
-import { resolve, sep } from "node:path";
+import { execFileSync } from "node:child_process";
+import { dirname, resolve, sep } from "node:path";
 
 /** Where the agents' worktrees live, relative to the repository root. */
 export const AGENT_WORKSPACES = ".claude";
@@ -6,6 +7,23 @@ export const AGENT_WORKSPACES = ".claude";
 /** One separator, so a comparison is about the path rather than about the platform. */
 export function normalize(path: string): string {
   return resolve(path).split(sep).join("/");
+}
+
+/**
+ * The repository root, the same path whether asked from the checkout or from one of its worktrees.
+ *
+ * `--show-toplevel` answers the worktree itself when run from inside one - exactly the bug this
+ * exists to fix - so this goes by `--git-common-dir` instead, which every worktree shares, and
+ * steps up one directory from the `.git` it names.
+ */
+export function repositoryRoot(cwd: string): string {
+  const gitCommonDir = execFileSync(
+    "git",
+    ["rev-parse", "--path-format=absolute", "--git-common-dir"],
+    { cwd, encoding: "utf8" }
+  ).trim();
+
+  return dirname(gitCommonDir);
 }
 
 /** The value of `build.target-dir`, or nothing when the config does not set one. */

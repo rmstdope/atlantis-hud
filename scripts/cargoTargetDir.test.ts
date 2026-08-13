@@ -1,9 +1,10 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
-import { dirname, join, isAbsolute, resolve } from "node:path";
+import { existsSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, isAbsolute } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { normalize, strayWorktrees, targetDir } from "./cargoTargetDir";
+import { normalize, repositoryRoot, strayWorktrees, targetDir } from "./cargoTargetDir";
 
 /**
  * One build directory for every worktree.
@@ -24,7 +25,8 @@ import { normalize, strayWorktrees, targetDir } from "./cargoTargetDir";
  * Rust job down and leave the cache pointing at nothing.
  */
 
-const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const HERE = dirname(fileURLToPath(import.meta.url));
+const REPO = repositoryRoot(HERE);
 const CONFIG = join(REPO, ".cargo", "config.toml");
 
 describe("the shared cargo build directory", () => {
@@ -60,3 +62,28 @@ describe("the shared cargo build directory", () => {
     expect(listed).toContain(`worktree ${normalize(REPO)}`);
   });
 });
+
+describe("repositoryRoot", () => {
+  it("answers the same path from a worktree as from the checkout it belongs to", () => {
+    // realpathSync on both sides: mkdtempSync hands back one spelling of /tmp and git hands back
+    // the other (/private/tmp on macOS), which fails this for reasons that have nothing to do
+    // with the code under test.
+    const root = realpathSync(mkdtempSync(join(tmpdir(), "cargo-target-dir-root-")));
+    execFileSync("git", ["init", "--initial-branch=main", root]);
+    git(root, ["config", "user.email", "root@example.com"]);
+    git(root, ["config", "user.name", "Root Test"]);
+    writeFileSync(join(root, "seed.txt"), "seed");
+    git(root, ["add", "."]);
+    git(root, ["commit", "-m", "seed"]);
+
+    const worktree = join(root, ".claude", "worktrees", "example");
+    git(root, ["worktree", "add", "-b", "example", worktree]);
+
+    expect(repositoryRoot(root)).toBe(root);
+    expect(repositoryRoot(worktree)).toBe(root);
+  });
+});
+
+function git(cwd: string, args: string[]): string {
+  return execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
+}
