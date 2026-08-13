@@ -96,7 +96,7 @@ describe("the gate lock, between processes", () => {
             `const t=Date.now();while(Date.now()-t<300);` +
             `appendFileSync(${JSON.stringify(log)},"${name}-\\n");`
         ],
-        { env: { ...process.env, ATLANTIS_GATE_LOCK: lock }, stdio: "ignore" }
+        { env: { ...withoutCI(), ATLANTIS_GATE_LOCK: lock }, stdio: "ignore" }
       )
     );
 
@@ -144,6 +144,20 @@ describe("the gate lock, between processes", () => {
     expect(output).toContain("ran");
   }, 30_000);
 });
+
+/**
+ * The environment with `CI` removed.
+ *
+ * The runner skips the lock entirely under CI, by design - every job there owns its runner. So a
+ * serialisation test that inherits the environment asserts the locked behaviour while exercising
+ * the unlocked path: green on a developer machine, and red on CI for the right reason, which is how
+ * this was found. The two tests below that *want* the CI path set it themselves.
+ */
+function withoutCI(): NodeJS.ProcessEnv {
+  const { CI: _ignored, ...rest } = process.env;
+
+  return rest;
+}
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const RUNNER = join(HERE, "withGateLock.ts");

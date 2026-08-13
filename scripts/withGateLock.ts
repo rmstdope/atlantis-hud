@@ -11,7 +11,7 @@
  */
 
 import { spawn } from "node:child_process";
-import { closeSync, openSync, readFileSync, rmSync, writeSync } from "node:fs";
+import { closeSync, linkSync, openSync, readFileSync, rmSync, writeSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describeHolder, isRunning, parseHolder, shouldSteal } from "./gateLock";
@@ -98,19 +98,38 @@ async function acquire(): Promise<void> {
   }
 }
 
-/** One attempt at creating the lock file, which is atomic or it is nothing. */
+/**
+ * One attempt at taking the lock, which is atomic or it is nothing.
+ *
+ * Written to a scratch file first and then linked into place, rather than created empty and filled
+ * in. `link` fails if the name exists, so it is exactly as exclusive as an O_EXCL create - but the
+ * lock never exists without its contents. Creating it empty leaves a window in which a rival reads
+ * an unreadable file, concludes the holder is a ghost, and steals a lock that was a millisecond
+ * old. That window is small on an idle laptop and wide on a loaded CI runner, which is where it was
+ * caught.
+ */
 function take(): boolean {
+  const scratch = `${LOCK_PATH}.${process.pid}`;
+
   try {
-    const file = openSync(LOCK_PATH, "wx");
+    const file = openSync(scratch, "wx");
     writeSync(
       file,
       JSON.stringify({ pid: process.pid, since: Date.now(), what: command.join(" ") })
     );
     closeSync(file);
+  } catch {
+    return false;
+  }
+
+  try {
+    linkSync(scratch, LOCK_PATH);
 
     return true;
   } catch {
     return false;
+  } finally {
+    rmSync(scratch, { force: true });
   }
 }
 
