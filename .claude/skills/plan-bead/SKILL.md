@@ -55,8 +55,18 @@ build step, no external assets, inline SVG, opens straight in a browser — iter
 scratchpad, and discuss until the navigator decides.
 
 The chosen mockup is then committed to `docs/ui/` through a small `docs(<bead>): mockup` PR, and the
-plan names its path. That PR is reviewed by the **navigator**, not by the Copilot rule — the
-navigator is present by definition, having just chosen the mockup, so ask them to look and merge it.
+plan names its path. Its content is already reviewed — the navigator chose it, iteration by
+iteration, in the discussion that produced it, and the PR commits exactly that. It needs no Copilot
+review and no second look from the navigator: once CI is green, merge it yourself.
+
+```bash
+gh pr merge <n> --squash --delete-branch
+```
+
+This only holds while the PR is confined to `docs/` and matches what the navigator saw. Check the
+diff before merging — anything outside `docs/`, or content the navigator has not already seen, is not
+this exception and needs a normal reviewed PR instead (see CLAUDE.md's Four Eye Principle).
+
 Branch for it the way everyone else does, and mind the same hazard:
 
 ```bash
