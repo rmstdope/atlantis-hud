@@ -49,9 +49,9 @@ already well covered.
 |---|---|---|---|---|---|
 | `neworigins-3.0.0-g2-f42-t0.rep` | 2 | 42 | 0 | 5.2.4 | a fresh faction's first turn - no history, nothing to a merge |
 | `neworigins-3.0.0-g3-f42-t1.rep` | 3 | 42 | 1 | 5.2.4 | a fresh faction's first turn, smallest committed report |
-| `neworigins-3.0.0-g3-f42-t40.rep` | 3 | 42 | 40 | 5.2.4 | turn-over-turn comparison, 1 of 3 consecutive |
-| `neworigins-3.0.0-g3-f42-t41.rep` | 3 | 42 | 41 | 5.2.4 | turn-over-turn comparison, 2 of 3 consecutive |
-| `neworigins-3.0.0-g3-f42-t42.rep` | 3 | 42 | 42 | 5.2.4 | turn-over-turn comparison, 3 of 3 consecutive |
+| `neworigins-3.0.0-g3-f42-t40.rep` | 3 | 42 | 40 | 5.2.4 | multi-step accumulated route: the remembered turn, 1 of 3 |
+| `neworigins-3.0.0-g3-f42-t41.rep` | 3 | 42 | 41 | 5.2.4 | multi-step accumulated route: the turn that changes nothing, 2 of 3 |
+| `neworigins-3.0.0-g3-f42-t42.rep` | 3 | 42 | 42 | 5.2.4 | multi-step accumulated route: the current turn, 3 of 3 - a route only the accumulated map can find (`movement_plan.rs`, `workspace.spec.ts`) |
 | `neworigins-3.0.0-g3-f42-t82.rep` | 3 | 42 | 82 | 5.2.4 | a late, large turn - the stress case, most likely to expose a quadratic |
 | `neworigins-3.0.0-g4-f17-t0.rep` | 4 | 17 | 0 | 5.2.4 | a fresh faction's first turn |
 | `neworigins-3.0.0-g5-f21-t0.rep` | 5 | 21 | 0 | 5.2.5 | a fresh faction's first turn |
