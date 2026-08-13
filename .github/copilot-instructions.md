@@ -75,11 +75,17 @@ counts only under all of these:
 - **Every comment is answered**: a change, or a posted reply saying why not, and the thread resolved.
 - **Every check is green**, and the branch is not behind main.
 
-Request it with `gh pr edit <n> --add-reviewer Copilot`, and again after every push that changes the
-code. Two different names are involved and only one of them works here: reviews arrive authored by
-`copilot-pull-request-reviewer`, which is an organization and is rejected by `--add-reviewer`, while
-the reviewer you request is `Copilot`. Match on the first when looking for the review; use the
-second when asking for one. A **rebase that only replays your commits onto a newer main does not
+**You cannot request the review, so do not try.** It is requested automatically when the PR opens,
+and it re-reviews by itself after a push — that is how a review comes to sit on the new head at all.
+Both plausible commands fail, and one fails quietly: `gh pr edit <n> --add-reviewer Copilot` errors
+with "Could not resolve user", and `POST /pulls/<n>/requested_reviewers` with `Copilot` answers 200
+while leaving `requested_reviewers` empty. Reviews arrive authored by
+`copilot-pull-request-reviewer`, which is an organization and cannot be requested either — match on
+that login when looking for the review, and wait rather than poke.
+
+Find it with
+`gh api repos/<owner>/<repo>/pulls/<n>/reviews --jq '[.[] | select(.user.login | startswith("copilot")) | .commit_id] | last'`
+and compare that against the head SHA. A **rebase that only replays your commits onto a newer main does not
 need a fresh review round** — without that exception the two conditions above deadlock, since
 updating from main is itself a push and main moves while you wait. CI still runs on the rebased head,
 which is what catches a conflict the rebase introduced.
