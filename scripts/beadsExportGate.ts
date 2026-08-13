@@ -152,12 +152,16 @@ export function decideGate(input: GateInput): GateDecision {
   }
   // Normalized on both sides, not only the fresh one: bd's own serialization and Node's
   // `JSON.stringify` need not agree byte for byte, and normalizing only one side would compare
-  // Node's spelling against bd's and differ permanently from the very first run.
-  if (stableExport(input.freshExport) === stableExport(input.committedExport ?? "")) {
+  // Node's spelling against bd's and differ permanently from the very first run. Computed once each
+  // rather than at every call site - `stableExport` parses and re-stringifies the whole file, and
+  // this runs in a pre-push hook.
+  const stableFresh = stableExport(input.freshExport);
+  const stableCommitted = stableExport(input.committedExport ?? "");
+  if (stableFresh === stableCommitted) {
     return { kind: "proceed", reason: "up-to-date" };
   }
 
-  return { kind: "refresh", text: stableExport(input.freshExport) };
+  return { kind: "refresh", text: stableFresh };
 }
 
 /** Everything the decision needs, gathered from the repository the hook is running in. */
