@@ -313,10 +313,13 @@ fired several conversational turns late and unpredictably, and the tool's own de
 `/loop`'s dynamic-pacing mode — this session is not run under `/loop`, which is likely why. Do not
 use it for this.
 
-**Use a forked timer instead**, confirmed reliable the same day (an exact 300-second round-trip, no
-hang): spawn a subagent with `Agent({subagent_type: "fork", ...})` whose entire job is to block on a
-foreground `sleep <n>` (600s / ten minutes, matching the worktree `--watch` cadence — stay under the
-600000ms Bash timeout ceiling) and then run the sweep itself:
+**Use a forked timer instead, at a five-minute cadence (because `sleep 600` is rejected by the Bash tool).** Confirmed reliable the same day:
+an exact `sleep 300` round-trip, no hang. `sleep 600` was tried for the same purpose and rejected
+outright by the Bash tool's own guard against long leading sleeps, before it ever ran — so 600s is a
+known-broken interval, not merely an untested one, and is not to be used here even though it would
+match the worktree `--watch` cadence more closely. Spawn a subagent with
+`Agent({subagent_type: "fork", ...})` whose entire job is to block on a foreground `sleep 300` and
+then run the sweep itself:
 
 1. `scripts/prune-worktrees.sh`.
 2. For each `bd list --status in_progress` bead, check the lease (`bd show <id>`, the `Lease:` line) —
@@ -335,10 +338,10 @@ immediately, in full, as if no timer were pending. Once that interaction is done
 fork's notification still arrives on its own schedule and gets relayed when it does — there is
 nothing to reschedule, since the fork's clock was never tied to your turn.
 
-**This has a real cost, unlike a harness-managed wakeup**: a timer fork sits blocked for the full ten
-minutes, holding a subagent slot and spending tokens purely to wait. Six of these run per hour for as
-long as the session is open. Weigh that against the alternative — a stale claim or a dead implementer
-going unnoticed until the navigator happens to ask.
+**This has a real cost, unlike a harness-managed wakeup**: a timer fork sits blocked for the full five
+minutes, holding a subagent slot and spending tokens purely to wait. Twelve of these run per hour for
+as long as the session is open. Weigh that against the alternative — a stale claim or a dead
+implementer going unnoticed until the navigator happens to ask.
 
 **Never let the cadence justify doing something a sweep should not.** A timer fork sweeps and
 reports; it does not set a `.go` flag, start an implementer, or unclaim a bead on its own judgement —
