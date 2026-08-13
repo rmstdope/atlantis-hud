@@ -1,4 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
+import { smokePorts } from "./scripts/smokePorts";
+
+const { web, desktop } = smokePorts();
 
 /**
  * One server per shell, keyed by the project that talks to it. Playwright starts every entry in
@@ -8,17 +11,15 @@ import { defineConfig, devices } from "@playwright/test";
  */
 const SERVERS = {
   web: {
-    command:
-      "pnpm --filter @atlantis/web exec vite build && pnpm --filter @atlantis/web exec vite preview --host 127.0.0.1 --port 4173 --strictPort",
+    command: `pnpm --filter @atlantis/web exec vite build && pnpm --filter @atlantis/web exec vite preview --host 127.0.0.1 --port ${web} --strictPort`,
     env: { ATLANTIS_PWA_DISABLE: "1" },
-    url: "http://127.0.0.1:4173",
+    url: `http://127.0.0.1:${web}`,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000
   },
   "desktop-shell": {
-    command:
-      "pnpm --filter @atlantis/desktop exec vite build && pnpm --filter @atlantis/desktop exec vite preview --host 127.0.0.1 --port 4174 --strictPort",
-    url: "http://127.0.0.1:4174",
+    command: `pnpm --filter @atlantis/desktop exec vite build && pnpm --filter @atlantis/desktop exec vite preview --host 127.0.0.1 --port ${desktop} --strictPort`,
+    url: `http://127.0.0.1:${desktop}`,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000
   }
@@ -82,11 +83,11 @@ export default defineConfig({
       // Both projects run the same spec. The shells share their components, so a walk that passes
       // for one and fails for the other is a divergence, which is what this suite exists to catch.
       name: "web",
-      use: { ...devices["Desktop Chrome"], baseURL: "http://127.0.0.1:4173" }
+      use: { ...devices["Desktop Chrome"], baseURL: `http://127.0.0.1:${web}` }
     },
     {
       name: "desktop-shell",
-      use: { ...devices["Desktop Chrome"], baseURL: "http://127.0.0.1:4174" }
+      use: { ...devices["Desktop Chrome"], baseURL: `http://127.0.0.1:${desktop}` }
     }
   ],
   /**
