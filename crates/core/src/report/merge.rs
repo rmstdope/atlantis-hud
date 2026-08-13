@@ -376,6 +376,7 @@ mod tests {
                 ..Default::default()
             },
             regions,
+            battles: Vec::new(),
             orders_template: None,
         }
     }

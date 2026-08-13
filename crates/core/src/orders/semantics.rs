@@ -1054,6 +1054,7 @@ mod tests {
         ParsedReport {
             header: ReportHeader::default(),
             regions,
+            battles: Vec::new(),
             orders_template: None,
         }
     }

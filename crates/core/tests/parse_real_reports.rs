@@ -315,3 +315,70 @@ fn turn_70_is_the_same_faction_one_turn_earlier() {
     assert_eq!(parsed.regions.len(), 1);
     assert!(parsed.orders_template.is_some());
 }
+
+#[test]
+fn turn_71_finds_its_two_battles() {
+    let parsed = parse_regions(TURN_71);
+    assert_eq!(parsed.battles.len(), 2);
+
+    let first = &parsed.battles[0];
+    assert_eq!(
+        first.attacker.as_ref().map(|c| c.name.as_str()),
+        Some("AA Tomb's Guards")
+    );
+    assert_eq!(first.attacker.as_ref().map(|c| c.id.as_str()), Some("7280"));
+    assert_eq!(
+        first.defender.as_ref().map(|c| c.name.as_str()),
+        Some("Pirates")
+    );
+    assert_eq!(
+        first.defender.as_ref().map(|c| c.id.as_str()),
+        Some("14789")
+    );
+    assert_eq!(first.terrain.as_deref(), Some("ocean"));
+    assert_eq!(
+        first.coordinate,
+        Some(atlantis_hud_core::report::model::Coordinate { x: 25, y: 55, z: 1 })
+    );
+    assert_eq!(first.province.as_deref(), Some("Atlantis Ocean"));
+    assert_eq!(first.rounds.len(), 1, "one round of combat");
+    assert_eq!(first.damaged_units, vec!["14789".to_string()]);
+    assert_eq!(first.casualties.len(), 2);
+    assert!(first.casualties.iter().any(|c| c
+        .combatant
+        .as_ref()
+        .map(|combatant| combatant.id.as_str())
+        == Some("14789")
+        && c.lost == Some(15)));
+    assert!(first.casualties.iter().any(|c| c
+        .combatant
+        .as_ref()
+        .map(|combatant| combatant.id.as_str())
+        == Some("7280")
+        && c.lost == Some(0)));
+    assert_eq!(
+        first.spoils.as_deref(),
+        Some(
+            "3 magic crossbows [MXBO], 2 battle axes [BAXE], magic wagon [MWAG], 11 mithril \
+             [MITH], 3 gliders [GLID], 8 floater hides [FLOA], 5 mushrooms [MUSH], yew [YEW], \
+             5 healing potions [HPOT], 2531 silver [SILV]"
+        )
+    );
+
+    let second = &parsed.battles[1];
+    assert_eq!(
+        second.attacker.as_ref().map(|c| c.name.as_str()),
+        Some("Sail")
+    );
+    assert_eq!(
+        second.defender.as_ref().map(|c| c.name.as_str()),
+        Some("Looter")
+    );
+}
+
+#[test]
+fn reports_without_battles_parse_to_an_empty_list() {
+    assert!(parse_regions(TURN_2).battles.is_empty());
+    assert!(parse_regions(TURN_70).battles.is_empty());
+    assert!(parse_regions(ALLY_TURN_71).battles.is_empty());
+}

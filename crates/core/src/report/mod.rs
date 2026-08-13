@@ -4,6 +4,7 @@
 //! input the parser does not recognise produces a structured warning and partial results, never a
 //! hard failure, because a player would rather see most of a turn than none of it.
 
+pub mod battle;
 pub mod composition;
 pub mod export;
 pub mod header;
@@ -17,8 +18,10 @@ pub mod unit;
 pub mod unwrap;
 pub mod write;
 
+pub use battle::Battle;
 pub use composition::{classify_units, Classification};
 
+use battle::parse_battles;
 use header::{parse_header, ReportHeader};
 use model::ReportRegion;
 use orders::{extract_orders_template, OrdersTemplate};
@@ -26,11 +29,18 @@ use region::{parse_region_block, parse_region_header};
 use unwrap::{unwrap_lines, LogicalLine};
 
 /// Everything the parser recovers from one turn report.
+///
+/// `battles` sits here rather than on `ReportHeader`: a battle is an event, not a fact about the
+/// faction, and `ReportHeader` is the type mirrored by hand in TypeScript. It is also deliberately
+/// absent from `ReportParseResult` (`crates/core/src/lib.rs`), which *is* persisted per turn - see
+/// the module doc on `battle.rs` for why keeping the round statistics as text is safe here but
+/// would roughly double a stored turn there.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ParsedReport {
     pub header: ReportHeader,
     pub regions: Vec<ReportRegion>,
+    pub battles: Vec<Battle>,
     /// The orders document for the coming turn, when the report carries one.
     pub orders_template: Option<OrdersTemplate>,
 }
@@ -96,6 +106,8 @@ pub fn parse_report_full(source: &str) -> ParsedReport {
     ParsedReport {
         header: parse_header(&lines[..preamble_end]),
         regions,
+        // A second, independent pass over the same preamble slice - see the note on `ParsedReport`.
+        battles: parse_battles(&lines[..preamble_end]),
         orders_template: extract_orders_template(source),
     }
 }

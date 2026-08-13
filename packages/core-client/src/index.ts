@@ -413,10 +413,72 @@ export type OrdersTemplate = {
   units: UnitOrders[];
 };
 
+/** A named participant, as printed: `Pirates (14789)`. */
+export type Combatant = { name: string; id: string };
+
+/**
+ * One entry in an attacker or defender roster.
+ *
+ * `body` is everything after the name, faction and flags, kept verbatim rather than parsed down to
+ * individual items - a roster line can be a paragraph of repeated item mentions, and nothing here
+ * needs it broken down.
+ */
+export type BattleUnit = {
+  name: string;
+  id: string;
+  faction: Combatant | null;
+  flags: string[];
+  body: string;
+};
+
+/**
+ * A casualty line, on the close of a round or of the whole battle: `Pirates (14789) loses 15.`
+ *
+ * `text` is that line with its trailing full stop removed - `Pirates (14789) loses 15`.
+ */
+export type Casualty = {
+  combatant: Combatant | null;
+  lost: number | null;
+  text: string;
+};
+
+/**
+ * One round of a battle. `statistics` is the `Round N statistics:` block, kept as text - it is not
+ * modelled field by field here.
+ */
+export type BattleRound = {
+  number: number | null;
+  lines: string[];
+  losses: Casualty[];
+  statistics: string[];
+};
+
+/** One battle, headline to spoils. */
+export type Battle = {
+  /** The headline, verbatim, whether or not it was recognised. */
+  headline: string;
+  attacker: Combatant | null;
+  defender: Combatant | null;
+  terrain: string | null;
+  coordinate: Coordinate | null;
+  province: string | null;
+  attackers: BattleUnit[];
+  defenders: BattleUnit[];
+  rounds: BattleRound[];
+  /** The `Battle statistics:` block, kept as text. */
+  statistics: string[];
+  casualties: Casualty[];
+  damagedUnits: string[];
+  spoils: string | null;
+  lineStart: number;
+  lineEnd: number;
+};
+
 /** The full model a report describes, as opposed to the flat summary in `ReportParseResult`. */
 export type ParsedReport = {
   header: ReportHeaderInfo;
   regions: ReportRegion[];
+  battles: Battle[];
   ordersTemplate: OrdersTemplate | null;
 };
 

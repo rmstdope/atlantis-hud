@@ -53,6 +53,7 @@ function report(factionId: string | null): ParsedReport {
       events: []
     },
     regions: [],
+    battles: [],
     ordersTemplate: null
   };
 }
