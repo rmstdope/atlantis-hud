@@ -8,6 +8,7 @@ import {
   GATE_JOB,
   gateCondition,
   isGatedOnChanges,
+  isSafeGateCondition,
   jobBlocks,
   matrixOf,
   onTriggerBlock,
@@ -22,13 +23,17 @@ const WORKFLOW = readFileSync(join(REPO, ".github", "workflows", "ci.yml"), "utf
  * What the gate would decide for a pull request touching exactly these files: `true` when it runs
  * the full suite, `false` when it takes the fast path.
  *
- * The real `grep` from `ci.yml` is run in a real shell, so this asserts the decision CI actually
- * makes rather than a JavaScript restatement of it.
+ * The real condition from `ci.yml` is run in a real shell, so this asserts the decision CI actually
+ * makes rather than a JavaScript restatement of it - but only after `isSafeGateCondition` has found
+ * it to be nothing but greps.
  */
 function runsEverything(files: string[]): boolean {
   const condition = gateCondition(WORKFLOW);
   if (condition === "") {
     throw new Error("the changes job no longer has the `if` this test reads");
+  }
+  if (!isSafeGateCondition(condition)) {
+    throw new Error(`refusing to execute a gate condition outside the allowed shape: ${condition}`);
   }
 
   const script = `FILES=$(cat); if ${condition}; then echo true; else echo false; fi`;
@@ -39,6 +44,37 @@ function runsEverything(files: string[]): boolean {
 
   return decision === "true";
 }
+
+describe("the gate condition's safety check", () => {
+  // The tests below run the gate's own shell, which is the only way to assert what CI will decide
+  // rather than a JavaScript restatement of it. That means `ci.yml` decides what `test:tooling`
+  // executes, so the condition is checked against a shape first: `[ -z "$FILES" ]`, `echo "$FILES"`,
+  // `grep` with flags and a single-quoted pattern, joined by `||`. Anything else is refused unrun.
+  it("accepts the shapes the gate is allowed to have", () => {
+    expect(isSafeGateCondition(`[ -z "$FILES" ] || echo "$FILES" | grep -qv '^docs/'`)).toBe(true);
+    expect(
+      isSafeGateCondition(
+        `[ -z "$FILES" ] || echo "$FILES" | grep -q '^\\.github/workflows/' || echo "$FILES" | grep -qvE '^(docs|\\.claude|\\.github)/'`
+      )
+    ).toBe(true);
+  });
+
+  it("refuses anything that could run more than a grep", () => {
+    for (const hostile of [
+      `[ -z "$FILES" ] || rm -rf /`,
+      `[ -z "$FILES" ] || echo "$FILES" | grep -qv '^docs/'; curl evil.example`,
+      `[ -z "$FILES" ] || echo "$FILES" | grep -qv "$(whoami)"`,
+      "[ -z \"$FILES\" ] || echo \"$FILES\" | grep -qv `id`",
+      `[ -z "$FILES" ] || echo "$FILES" | grep -qv '^docs/' > /tmp/pwned`
+    ]) {
+      expect(isSafeGateCondition(hostile), `must refuse: ${hostile}`).toBe(false);
+    }
+  });
+
+  it("refuses a condition it could not find at all, rather than running the empty string", () => {
+    expect(isSafeGateCondition("")).toBe(false);
+  });
+});
 
 describe("the prose-only fast path", () => {
   it("gates every required job on the gate's output", () => {
