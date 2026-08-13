@@ -11,10 +11,10 @@
     "typecheck:tooling": "tsc --noEmit -p tsconfig.tooling.json",
     "test": "pnpm -r run test && pnpm run test:tooling && cargo test --workspace",
     "test:tooling": "vitest run --config vitest.tooling.config.ts",
-    "test:smoke": "playwright test",
+    "test:smoke": "tsx scripts/withGateLock.ts pnpm exec playwright test",
     "test:native": "wdio run wdio.conf.ts",
     "build:web": "pnpm --filter @atlantis/web build",
-    "test:pwa": "playwright test --config playwright.pwa.config.ts",
+    "test:pwa": "tsx scripts/withGateLock.ts pnpm exec playwright test --config playwright.pwa.config.ts",
     "check": "pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run test:smoke && pnpm run build:web && pnpm run test:pwa && cargo fmt --check && cargo clippy --workspace --all-targets -- -D warnings"
   },
   "devDependencies": {
