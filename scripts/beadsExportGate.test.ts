@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { decideGate } from "./beadsExportGate";
+import { decideGate, stableExport } from "./beadsExportGate";
 
 /**
  * The pre-push gate that keeps the committed bead export honest.
@@ -12,6 +12,43 @@ import { decideGate } from "./beadsExportGate";
  * The decision is a pure function, so the cases can be stated plainly; the shell exercise below is
  * what proves the hook works when git itself calls it, which no unit test can.
  */
+describe("stableExport", () => {
+  it("strips the lease fields and leaves everything else", () => {
+    const record = {
+      _type: "issue",
+      id: "ah-r2e",
+      status: "in_progress",
+      assignee: "Henrik Kurelid",
+      heartbeat_at: "2026-08-13T11:14:48Z",
+      lease_expires_at: "2026-08-13T11:19:48Z",
+      updated_at: "2026-08-13T09:44:11Z"
+    };
+
+    const result = stableExport(`${JSON.stringify(record)}\n`);
+
+    expect(JSON.parse(result.trimEnd())).toEqual({
+      _type: "issue",
+      id: "ah-r2e",
+      status: "in_progress",
+      assignee: "Henrik Kurelid",
+      updated_at: "2026-08-13T09:44:11Z"
+    });
+  });
+
+  it("leaves a line it cannot parse alone", () => {
+    const broken = '{"_type":"issue","id":"ah-1"\n';
+
+    expect(stableExport(broken)).toBe(broken);
+  });
+
+  it("handles an empty export and a file with no trailing newline", () => {
+    expect(stableExport("")).toBe("");
+
+    const noTrailingNewline = '{"_type":"issue","id":"ah-1"}';
+    expect(stableExport(noTrailingNewline)).toBe(noTrailingNewline);
+  });
+});
+
 describe("decideGate", () => {
   it("lets the push through when the committed export already matches a fresh one", () => {
     expect(
@@ -132,6 +169,47 @@ describe("decideGate", () => {
       })
     ).toEqual({ kind: "proceed", reason: "export-failed" });
   });
+
+  /**
+   * The regression this bead is named for: a heartbeat from any other agent holding a claim moves
+   * `heartbeat_at` and `lease_expires_at` every minute, and that alone must not read as staleness.
+   */
+  it("lets a push through when only the lease fields moved", () => {
+    const before =
+      '{"_type":"issue","id":"ah-1","heartbeat_at":"2026-08-13T11:13:42Z","lease_expires_at":"2026-08-13T11:18:42Z"}\n';
+    const after =
+      '{"_type":"issue","id":"ah-1","heartbeat_at":"2026-08-13T11:14:48Z","lease_expires_at":"2026-08-13T11:19:48Z"}\n';
+
+    expect(
+      decideGate({
+        bdAvailable: true,
+        beadsPresent: true,
+        branch: "main",
+        freshExport: after,
+        committedExport: before
+      })
+    ).toEqual({ kind: "proceed", reason: "up-to-date" });
+  });
+
+  /** Without this, "compare nothing" would also satisfy the case above. */
+  it("still refreshes when a bead actually changed alongside the lease fields", () => {
+    const before =
+      '{"_type":"issue","id":"ah-1","status":"open","heartbeat_at":"2026-08-13T11:13:42Z","lease_expires_at":"2026-08-13T11:18:42Z"}\n';
+    const after =
+      '{"_type":"issue","id":"ah-1","status":"in_progress","heartbeat_at":"2026-08-13T11:14:48Z","lease_expires_at":"2026-08-13T11:19:48Z"}\n';
+
+    // What lands in the file is the normalized text - so what the next comparison expects is what
+    // was just written, and the lease fields the refresh itself strips are not part of it.
+    expect(
+      decideGate({
+        bdAvailable: true,
+        beadsPresent: true,
+        branch: "main",
+        freshExport: after,
+        committedExport: before
+      })
+    ).toEqual({ kind: "refresh", text: stableExport(after) });
+  });
 });
 
 /**
@@ -161,6 +239,20 @@ describe("the gate as a pre-push hook", () => {
 
   it("says nothing and passes first time when the committed export is already fresh", () => {
     const repo = setUpRepository(TWO_BEADS);
+
+    const only = push(repo);
+    expect(only.status).toBe(0);
+    expect(only.output).not.toContain("refresh the issues export");
+    expect(git(repo, ["log", "--pretty=%s"])).toBe("seed");
+  });
+
+  /**
+   * The regression itself, proved against git rather than only against `decideGate`: a heartbeat
+   * from another agent moved the two lease fields, and nothing else, since the export was committed.
+   * Before this bead, that alone made every push during another agent's claim meet a refresh.
+   */
+  it("passes first time when only a heartbeat moved", () => {
+    const repo = setUpRepository(WITH_HEARTBEAT_BEFORE, WITH_HEARTBEAT_AFTER);
 
     const only = push(repo);
     expect(only.status).toBe(0);
@@ -250,8 +342,11 @@ describe("the gate as a pre-push hook", () => {
     expect(git(repo, ["log", "--pretty=%s"])).toBe("seed");
   });
 
-  /** A repository whose committed export is what `committed` says, against a two-bead database. */
-  function setUpRepository(committed: string = ONE_BEAD): string {
+  /**
+   * A repository whose committed export is what `committed` says, against a stub `bd` whose export
+   * is `fresh` - two beads ahead of `committed` by default, since that is what most cases here need.
+   */
+  function setUpRepository(committed: string = ONE_BEAD, fresh: string = TWO_BEADS): string {
     const root = mkdtempSync(join(tmpdir(), "beads-gate-"));
     const work = join(root, "work");
     const remote = join(root, "remote.git");
@@ -267,14 +362,14 @@ describe("the gate as a pre-push hook", () => {
     git(work, ["add", "."]);
     git(work, ["commit", "-m", "seed"]);
 
-    installStubBd(root);
+    installStubBd(root, fresh);
     installHook(work, root);
 
     return work;
   }
 
-  /** A `bd` that writes the two-bead export wherever `bd export -o <path>` points it. */
-  function installStubBd(root: string): void {
+  /** A `bd` that writes `fresh` wherever `bd export -o <path>` points it. */
+  function installStubBd(root: string, fresh: string): void {
     const bin = join(root, "bin");
     mkdirSync(bin);
     const stub = join(bin, "bd");
@@ -285,7 +380,7 @@ describe("the gate as a pre-push hook", () => {
         // A footprint, so a test can assert the gate did not even ask for an export.
         `: > "${join(root, "bd-was-run")}"`,
         'if [ "$1" = "export" ]; then',
-        `  printf '%s' '${TWO_BEADS}' > "$3"`,
+        `  printf '%s' '${fresh}' > "$3"`,
         "fi",
         ""
       ].join("\n")
@@ -335,6 +430,11 @@ describe("the gate as a pre-push hook", () => {
 
 const ONE_BEAD = '{"_type":"issue","id":"ah-1"}\n';
 const TWO_BEADS = '{"_type":"issue","id":"ah-1"}\n{"_type":"issue","id":"ah-2"}\n';
+
+const WITH_HEARTBEAT_BEFORE =
+  '{"_type":"issue","id":"ah-1","heartbeat_at":"2026-08-13T11:13:42Z","lease_expires_at":"2026-08-13T11:18:42Z"}\n';
+const WITH_HEARTBEAT_AFTER =
+  '{"_type":"issue","id":"ah-1","heartbeat_at":"2026-08-13T11:14:48Z","lease_expires_at":"2026-08-13T11:19:48Z"}\n';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const GATE = join(HERE, "beadsExportGate.ts");
