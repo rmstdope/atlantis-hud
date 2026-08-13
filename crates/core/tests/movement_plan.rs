@@ -731,10 +731,9 @@ fn a_remembered_hex_keeps_the_turn_it_was_last_seen_in() {
     );
 }
 
-/// "Lookout (12195)" is the same walker over the same two steps as the woodsmen above, but with a
-/// walker's two movement points a month rather than a rider's four: the four-point route now takes
-/// two months, with the odd point of the first spent and none carried, since the mountain-costed
-/// steps split evenly.
+/// "Lookout (12195)" takes the same two tundra steps as the woodsmen above, each costing 2, but
+/// with a walker's two movement points a month rather than a rider's four: each step exactly fills
+/// one month, so the route takes two months with nothing carried over.
 #[test]
 fn a_remembered_route_can_take_more_than_one_month() {
     let t42 = f42_t42();
