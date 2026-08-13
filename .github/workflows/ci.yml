@@ -12,9 +12,17 @@ permissions:
   pull-requests: read
 
 jobs:
-  # Every required job below is gated on this job's `code` output, so a docs-only PR reports all
+  # Every required job below is gated on this job's `code` output, so a prose-only PR reports all
   # ten required checks - most of them skipped - in under a minute instead of waiting on the
-  # ~10-minute suite that nothing under docs/ can affect.
+  # ~10-minute suite that none of it can affect.
+  #
+  # Three exempt trees, none of them read by anything CI runs: docs/ is the project's own
+  # documentation; .claude/ is the fleet's - agent roles, skills and settings, which shape how the
+  # agents work and never reach the application; and .github/ is repository configuration, issue
+  # templates and the like.
+  #
+  # .github/workflows/ is the exception to that exception, and runs everything - see the gate
+  # itself below.
   #
   # The trigger above deliberately carries no `paths`/`paths-ignore`: a workflow skipped by path
   # filtering never reports its checks at all - Pending forever, not skipped - and that blocks the
@@ -23,10 +31,10 @@ jobs:
   changes:
     runs-on: ubuntu-latest
     outputs:
-      code: ${{ steps.docs.outputs.code }}
+      code: ${{ steps.gate.outputs.code }}
     steps:
-      - name: Determine whether this diff touches anything besides docs/
-        id: docs
+      - name: Determine whether this diff touches anything besides prose
+        id: gate
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -41,7 +49,16 @@ jobs:
           # that fails closed turns an API blip into a merged, untested change.
           FILES=$(gh api "repos/${{ github.repository }}/pulls/${{ github.event.number }}/files" --paginate --jq '.[].filename' 2>/dev/null) || FILES=""
 
-          if [ -z "$FILES" ] || echo "$FILES" | grep -qv '^docs/'; then
+          # Two checks rather than one pattern, because POSIX ERE has no negative lookahead and
+          # `.github/` is exempt while `.github/workflows/` is not. The workflows are what the gate
+          # itself lives in, and the tests that guard it run inside the `checks` job below - exempt
+          # those too and a PR editing this file would skip its own examiner.
+          #
+          # Anchored on the directory, and the dots escaped: `^docs` would let `docsite/build.ts`
+          # skip the suite, and an unescaped `.claude` would match `xclaude/`.
+          if [ -z "$FILES" ] \
+            || echo "$FILES" | grep -q '^\.github/workflows/' \
+            || echo "$FILES" | grep -qvE '^(docs|\.claude|\.github)/'; then
             echo "code=true" >> "$GITHUB_OUTPUT"
           else
             echo "code=false" >> "$GITHUB_OUTPUT"
@@ -298,7 +315,7 @@ jobs:
         shardTotal: [2]
     steps:
       - name: Report skipped
-        run: echo "docs-only diff, nothing for smoke (${{ matrix.project }}) to check"
+        run: echo "prose-only diff, nothing for smoke (${{ matrix.project }}) to check"
 
   # The production build, which nothing else in this repository ever makes.
   #

@@ -1,5 +1,5 @@
 /**
- * The docs-only fast path for CI.
+ * The prose-only fast path for CI.
  *
  * GitHub only accepts a required check that *reports* - skipped counts, a workflow that never
  * triggered at all (via `paths-ignore`) leaves its checks Pending forever and blocks the merge.
@@ -19,7 +19,7 @@ export const GATE_JOB = "changes";
  * The twin of `smoke` that reports its four matrix check names when the real job is skipped.
  * A job skipped by a job-level `if:` never expands its matrix, so without this the four
  * `smoke (<project>, <shardIndex>, <shardTotal>)` required contexts would stay Pending forever
- * on a docs-only PR - confirmed on a throwaway trial PR before this was added.
+ * on a prose-only PR - confirmed on a throwaway trial PR before this was added.
  */
 export const SMOKE_SKIP_JOB = "smoke-skip";
 
@@ -53,7 +53,7 @@ export function jobBlocks(yaml: string): Map<string, string> {
 }
 
 /**
- * Whether a job block is conditioned on the docs gate's `code` output, at the job level (4-space
+ * Whether a job block is conditioned on the gate's `code` output, at the job level (4-space
  * indent, alongside `runs-on:` and `needs:`) rather than nested inside a single step - a job-level
  * `if:` skips the whole job; a step-level one would silently skip only that step.
  */
@@ -85,6 +85,51 @@ export function matrixOf(jobBlock: string): string | null {
   }
 
   return body.join("\n").trim();
+}
+
+/**
+ * The shell condition the gate decides on - everything between `if ` and `; then` - which answers
+ * "does this diff touch anything besides the prose trees?".
+ *
+ * Returned as shell text so a test can run the real thing rather than restating the matching in
+ * JavaScript, where it would pin its own translation instead of what CI executes. The whole
+ * condition rather than a single pattern, because the decision is not one match: POSIX ERE has no
+ * negative lookahead, so exempting `.github/` while keeping `.github/workflows/` covered takes a
+ * second `grep` ahead of the first.
+ *
+ * Pass whatever comes back through `isSafeGateCondition` before executing it.
+ */
+export function gateCondition(yaml: string): string {
+  // Joined across the shell's `\` line continuations first, so the condition reads as one line
+  // however it is wrapped in the YAML. The whitespace on both sides of the continuation collapses
+  // to the single space that separates the operands, or the join leaves a double space where the
+  // wrap was and the shape check below rejects its own workflow.
+  const joined = yaml.replace(/[^\S\n]*\\\n\s*/gu, " ");
+  const match = joined.match(/^\s*if (\[ -z "\$FILES" \].*?); then\s*$/mu);
+  return match === null ? "" : match[1].trim();
+}
+
+/**
+ * The only shape a gate condition is allowed to have: the empty-list test, then one or more
+ * `grep`s over the file list, joined by `||`. Flags are letters; the pattern is single-quoted, so
+ * it can hold no expansion and no substitution.
+ */
+const SAFE_CONDITION =
+  /^\[ -z "\$FILES" \](?: \|\| echo "\$FILES" \| grep -[a-zA-Z]+ '[^']*')+$/u;
+
+/**
+ * Whether a condition is one a test may execute.
+ *
+ * A test that runs the gate's own shell is the only way to assert what CI will decide rather than a
+ * JavaScript restatement of it - but it does mean `ci.yml` chooses what `pnpm test:tooling` runs on
+ * a developer's machine. That is a small surface, since CI executes the same file on every push and
+ * a hostile `ci.yml` would have far worse available to it there. It is not nothing, though, and it
+ * costs one regex to close: a condition outside the shape above is refused rather than run, so a
+ * `$(...)`, a backtick, a `;` or a redirection reaching this file fails the suite instead of
+ * executing. Raised by review on PR #172.
+ */
+export function isSafeGateCondition(condition: string): boolean {
+  return SAFE_CONDITION.test(condition);
 }
 
 /** The text of the `on:` trigger block, so it can be checked for a path filter. */
