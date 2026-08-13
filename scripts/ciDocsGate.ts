@@ -16,6 +16,14 @@ export const REQUIRED_JOBS = ["wasm", "checks", "rust", "smoke", "pwa", "desktop
 export const GATE_JOB = "changes";
 
 /**
+ * The twin of `smoke` that reports its four matrix check names when the real job is skipped.
+ * A job skipped by a job-level `if:` never expands its matrix, so without this the four
+ * `smoke (<project>, <shardIndex>, <shardTotal>)` required contexts would stay Pending forever
+ * on a docs-only PR - confirmed on a throwaway trial PR before this was added.
+ */
+export const SMOKE_SKIP_JOB = "smoke-skip";
+
+/**
  * Every top-level job block in the workflow, keyed by job id.
  *
  * Job ids sit at exactly two-space indent (`  wasm:`); everything belonging to a job - its steps,
@@ -57,6 +65,26 @@ export function isGatedOnChanges(jobBlock: string): boolean {
 export function dependsOnChanges(jobBlock: string): boolean {
   const needsLine = jobBlock.match(/^ {4}needs:.*$/mu);
   return needsLine !== null && /\bchanges\b/u.test(needsLine[0]);
+}
+
+/** The `strategy.matrix` body of a job block, so two jobs' matrices can be compared for equality. */
+export function matrixOf(jobBlock: string): string | null {
+  const lines = jobBlock.split("\n");
+  const start = lines.findIndex((line) => /^ {4}matrix:\s*$/u.test(line));
+  if (start === -1) {
+    return null;
+  }
+
+  const body: string[] = [];
+  for (let i = start + 1; i < lines.length; i++) {
+    if (/^\s*$/u.test(lines[i]) || /^ {8,}/u.test(lines[i])) {
+      body.push(lines[i]);
+      continue;
+    }
+    break;
+  }
+
+  return body.join("\n").trim();
 }
 
 /** The text of the `on:` trigger block, so it can be checked for a path filter. */

@@ -7,8 +7,10 @@ import {
   GATE_JOB,
   isGatedOnChanges,
   jobBlocks,
+  matrixOf,
   onTriggerBlock,
-  REQUIRED_JOBS
+  REQUIRED_JOBS,
+  SMOKE_SKIP_JOB
 } from "./ciDocsGate";
 
 const REPO = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -49,6 +51,32 @@ describe("the docs-only fast path", () => {
     const trigger = onTriggerBlock(WORKFLOW);
 
     expect(trigger).not.toMatch(/paths(-ignore)?:/u);
+  });
+
+  it("gives the smoke matrix a skip twin, since a job skipped by if: never expands its matrix", () => {
+    // Confirmed on a throwaway trial PR: a job-level `if: false` skips the whole `smoke` job
+    // before its matrix is expanded, producing one check run named "smoke" - not the four
+    // per-combination contexts (`smoke (web, 1, 2)`, etc.) the ruleset actually requires. Left
+    // alone, those four stay Pending forever on a docs-only PR and block the merge, the opposite
+    // of the goal. The fallback is a second job with the same matrix, gated the other way, that
+    // reports the same check names by explicit `name:` rather than by job id.
+    const blocks = jobBlocks(WORKFLOW);
+    const twin = blocks.get(SMOKE_SKIP_JOB);
+    if (twin === undefined) {
+      throw new Error(`workflow has no "${SMOKE_SKIP_JOB}" job`);
+    }
+
+    expect(dependsOnChanges(twin)).toBe(true);
+    expect(twin).toMatch(/^ {4}if:\s*needs\.changes\.outputs\.code\s*!=\s*'true'\s*$/mu);
+
+    const smoke = blocks.get("smoke");
+    if (smoke === undefined) {
+      throw new Error('workflow has no "smoke" job');
+    }
+    expect(matrixOf(twin)).toEqual(matrixOf(smoke));
+    expect(twin).toContain(
+      "name: smoke (${{ matrix.project }}, ${{ matrix.shardIndex }}, ${{ matrix.shardTotal }})"
+    );
   });
 
   it("falls open to running everything when the event is not a pull request", () => {
