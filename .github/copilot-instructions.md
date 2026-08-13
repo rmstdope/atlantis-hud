@@ -61,7 +61,7 @@ review comments unanswered. A session of its own can simply block until the revi
 scripts/run-orchestrator
 ```
 
-That session is interactive, runs on Sonnet, and does nothing until you ask. It puts an implementer
+That session is interactive, runs on Fable, and does nothing until you ask. It puts an implementer
 to work by touching `.claude/implementers/<name>.go` and takes it down by removing that flag, or by
 touching `<name>.stop` to end the terminal as well. **Taking one down means telling it to finish**:
 flags are read between beads, never during one, so the implementer completes what it is on and sees
