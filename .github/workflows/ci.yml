@@ -5,13 +5,55 @@ on:
   push:
     branches: [main]
 
+# No default GITHUB_TOKEN scope beyond these two: the `changes` job only ever reads a pull
+# request's file list, and every job checks out the repository read-only.
+permissions:
+  contents: read
+  pull-requests: read
+
 jobs:
+  # Every required job below is gated on this job's `code` output, so a docs-only PR reports all
+  # ten required checks - most of them skipped - in under a minute instead of waiting on the
+  # ~10-minute suite that nothing under docs/ can affect.
+  #
+  # The trigger above deliberately carries no `paths`/`paths-ignore`: a workflow skipped by path
+  # filtering never reports its checks at all - Pending forever, not skipped - and that blocks the
+  # merge instead of speeding it up. Only the jobs inside are conditional; the workflow itself
+  # always runs.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.docs.outputs.code }}
+    steps:
+      - name: Determine whether this diff touches anything besides docs/
+        id: docs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # A push (to main) has no pull request file list to read, and nothing has diffed it
+          # against a base - so it always runs everything.
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # A failed or empty listing also runs everything: this must fail open, since a gate
+          # that fails closed turns an API blip into a merged, untested change.
+          FILES=$(gh api "repos/${{ github.repository }}/pulls/${{ github.event.number }}/files" --paginate --jq '.[].filename' 2>/dev/null) || FILES=""
+
+          if [ -z "$FILES" ] || echo "$FILES" | grep -qv '^docs/'; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "code=false" >> "$GITHUB_OUTPUT"
+          fi
   # The web and desktop shells both run the Rust core as WebAssembly, so the module has to exist
   # before typecheck, tests or the smoke run. Built once here and handed to the jobs that need it,
   # which is what lets the smoke jobs skip the Rust toolchain entirely. No system toolchain is
   # needed: the core is pure Rust, and nothing in the wasm build compiles C.
   wasm:
     runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -72,6 +114,8 @@ jobs:
   # one, where clippy subsumes the check.
   checks:
     runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -138,6 +182,8 @@ jobs:
   # root typecheck script is absent deliberately: clippy over the same targets is a superset of it.
   rust:
     runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -171,7 +217,8 @@ jobs:
   # These need no Rust at all: the wasm module arrives as an artifact.
   smoke:
     runs-on: ubuntu-latest
-    needs: wasm
+    needs: [changes, wasm]
+    if: needs.changes.outputs.code == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -233,6 +280,26 @@ jobs:
           path: test-results
           retention-days: 7
 
+  # `smoke`'s skip twin. A job skipped by a job-level `if:` never expands its matrix, so without
+  # this a docs-only PR would report a single "smoke" check and leave the four required
+  # `smoke (<project>, <shardIndex>, <shardTotal>)` contexts Pending forever - confirmed on a
+  # throwaway trial PR. Same matrix, opposite condition, explicit `name:` so its check runs land
+  # under the exact names the ruleset requires.
+  smoke-skip:
+    name: smoke (${{ matrix.project }}, ${{ matrix.shardIndex }}, ${{ matrix.shardTotal }})
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.code != 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        project: [web, desktop-shell]
+        shardIndex: [1, 2]
+        shardTotal: [2]
+    steps:
+      - name: Report skipped
+        run: echo "docs-only diff, nothing for smoke (${{ matrix.project }}) to check"
+
   # The production build, which nothing else in this repository ever makes.
   #
   # Two things only exist in one: the service worker, so installability and offline cannot be tested
@@ -243,7 +310,8 @@ jobs:
   # artifact. It runs beside them rather than after, so it costs a runner and not wall-clock time.
   pwa:
     runs-on: ubuntu-latest
-    needs: wasm
+    needs: [changes, wasm]
+    if: needs.changes.outputs.code == 'true'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -304,6 +372,8 @@ jobs:
   # shell reached a developer's machine before this job existed.
   desktop-shell:
     runs-on: macos-latest
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -329,7 +399,8 @@ jobs:
   # cannot be driven, and an argument that fails to bind fails identically on every platform.
   native:
     runs-on: ubuntu-latest
-    needs: wasm
+    needs: [changes, wasm]
+    if: needs.changes.outputs.code == 'true'
     # The largest hang surface in the workflow - xvfb, a native webview and a fixed port - so
     # unlike its siblings this job carries its own ceiling.
     timeout-minutes: 30
