@@ -14,7 +14,7 @@ import { spawn } from "node:child_process";
 import { closeSync, linkSync, openSync, readFileSync, rmSync, writeSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describeHolder, isRunning, parseHolder, shouldSteal } from "./gateLock";
+import { describeHolder, heldBy, isRunning, parseHolder, shouldSteal } from "./gateLock";
 
 /** One lock for the machine. Overridable so the tests can have one of their own. */
 const LOCK_PATH = process.env.ATLANTIS_GATE_LOCK ?? join(tmpdir(), "atlantis-hud-gate.lock");
@@ -46,17 +46,9 @@ if (process.env.CI) {
 }
 
 async function main(): Promise<number> {
-  await acquire();
-
-  // Released whatever happens, including a signal: a lock that outlives its holder is the failure
-  // this must not have. The stale check in `gateLock` is the backstop, not the plan.
-  const release = () => {
-    try {
-      rmSync(LOCK_PATH, { force: true });
-    } catch {
-      // Already gone, or somebody stole it believing us dead. Either way there is nothing to undo.
-    }
-  };
+  // Registered before the lock is taken, not after. A signal in the window between acquiring and
+  // arming these would leave the lock behind for everybody else to wait out - and the window is
+  // exactly where a Ctrl-C lands, since that is when a person is watching and losing patience.
   for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
     process.on(signal, () => {
       release();
@@ -64,10 +56,30 @@ async function main(): Promise<number> {
     });
   }
 
+  await acquire();
+
   try {
     return await run();
   } finally {
     release();
+  }
+}
+
+/**
+ * Gives up the lock, if it is ours to give up.
+ *
+ * Ownership is checked rather than assumed. Clearing it unconditionally would be wrong twice: a
+ * runner interrupted while still queued would delete the lock of the agent it was waiting for, and
+ * one whose lock had already been stolen would delete its successor's. Both end with the whole
+ * queue running at once.
+ */
+function release(): void {
+  try {
+    if (heldBy(readQuietly(LOCK_PATH), process.pid)) {
+      rmSync(LOCK_PATH, { force: true });
+    }
+  } catch {
+    // Already gone. There is nothing to undo.
   }
 }
 

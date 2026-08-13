@@ -63,6 +63,18 @@ export function shouldSteal(
   return now - holder.since > LOCK_TTL_MS;
 }
 
+/**
+ * Whether the lock file describes this process.
+ *
+ * Asked on the way out, because clearing it unconditionally would be wrong twice over: a runner
+ * killed while it was still queued would delete the lock of the agent it was waiting for, and one
+ * whose lock had already been stolen - believed dead, then not - would delete its successor's.
+ * Either way the queue behind it runs all at once, which is the thing being prevented.
+ */
+export function heldBy(text: string, pid: number): boolean {
+  return parseHolder(text)?.pid === pid;
+}
+
 /** What to say while waiting, so a queued run is never a mystery. */
 export function describeHolder(holder: Holder, waitedMs: number): string {
   const seconds = Math.round(waitedMs / 1000);

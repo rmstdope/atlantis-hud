@@ -1,10 +1,10 @@
 import { execFileSync, spawn } from "node:child_process";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { LOCK_TTL_MS, describeHolder, parseHolder, shouldSteal } from "./gateLock";
+import { LOCK_TTL_MS, describeHolder, heldBy, parseHolder, shouldSteal } from "./gateLock";
 
 /**
  * One gate at a time, across every agent on this machine.
@@ -63,6 +63,24 @@ describe("parseHolder", () => {
   });
 });
 
+describe("heldBy", () => {
+  it("recognises its own lock", () => {
+    expect(heldBy(JSON.stringify({ pid: 7, since: 1, what: "smoke" }), 7)).toBe(true);
+  });
+
+  it("does not claim a lock somebody else is holding", () => {
+    // The case that matters on the way out: a runner killed while it was still queued must not
+    // delete the lock of the agent it was waiting for. Nor must one whose lock was stolen after it
+    // was believed dead, and which is now somebody else's.
+    expect(heldBy(JSON.stringify({ pid: 8, since: 1, what: "smoke" }), 7)).toBe(false);
+  });
+
+  it("claims nothing when the file says nothing readable", () => {
+    expect(heldBy("", 7)).toBe(false);
+    expect(heldBy("{oops", 7)).toBe(false);
+  });
+});
+
 describe("describeHolder", () => {
   it("says who is holding it and for how long, so a wait is never a mystery", () => {
     const said = describeHolder({ pid: 4242, since: 0, what: "pnpm run test:smoke" }, 65_000);
@@ -116,6 +134,39 @@ describe("the gate lock, between processes", () => {
     });
   }, 30_000);
 
+  it("leaves the holder's lock alone when a queued runner is interrupted", async () => {
+    // A signal can arrive at any moment, including while queued and including in the instant after
+    // the lock is taken. A runner that clears the lock on the way out regardless would delete the
+    // lock of the agent it was waiting for, and the queue behind it would then all run at once.
+    const scratch = mkdtempSync(join(tmpdir(), "gate-lock-signal-"));
+    const lock = join(scratch, "gate.lock");
+    const env = { ...withoutCI(), ATLANTIS_GATE_LOCK: lock };
+
+    const holder = spawn(TSX, [RUNNER, "node", "-e", "setTimeout(()=>{}, 10000)"], {
+      env,
+      stdio: "ignore"
+    });
+    await until(() => existsSync(lock));
+    const held = readFileSync(lock, "utf8");
+
+    const queued = spawn(TSX, [RUNNER, "node", "-e", "console.log('never')"], {
+      env,
+      stdio: "ignore"
+    });
+    // Long enough that it has certainly tried, failed, and settled into waiting.
+    await new Promise((wake) => setTimeout(wake, 1_500));
+    queued.kill("SIGTERM");
+    await new Promise<void>((done) => queued.on("exit", () => done()));
+
+    expect(existsSync(lock)).toBe(true);
+    expect(readFileSync(lock, "utf8")).toBe(held);
+
+    holder.kill("SIGTERM");
+    await new Promise<void>((done) => holder.on("exit", () => done()));
+    // And the holder, which does own it, takes it with them.
+    expect(existsSync(lock)).toBe(false);
+  }, 30_000);
+
   it("drops the separator pnpm forwards, which downstream reads as a filter", () => {
     // `pnpm run test:smoke -- --project=web` forwards the `--` itself. Playwright takes a bare `--`
     // as a positional test filter, matches nothing, and sits there having already built and served
@@ -153,6 +204,17 @@ describe("the gate lock, between processes", () => {
  * the unlocked path: green on a developer machine, and red on CI for the right reason, which is how
  * this was found. The two tests below that *want* the CI path set it themselves.
  */
+/** Waits for something to become true, so a test never races a process it just started. */
+async function until(ready: () => boolean, within = 10_000): Promise<void> {
+  const deadline = Date.now() + within;
+  while (!ready()) {
+    if (Date.now() > deadline) {
+      throw new Error("waited too long for the lock to appear");
+    }
+    await new Promise((wake) => setTimeout(wake, 25));
+  }
+}
+
 function withoutCI(): NodeJS.ProcessEnv {
   const { CI: _ignored, ...rest } = process.env;
 
