@@ -78,6 +78,7 @@ import { MergedFactionsPanel } from "./MergedFactionsPanel";
 import { LayerChips } from "./LayerChips";
 import { MapCanvas } from "./MapCanvas";
 import { MapExportDialog } from "./MapExportDialog";
+import { BattlesDialog } from "./BattlesDialog";
 import { type MapRect } from "./mapMarquee";
 import { loadSavedView, saveFocusForGame } from "./mapViewportStorage";
 import { getMapTheme } from "./mapThemes";
@@ -330,6 +331,8 @@ export function AppShell({
   // store, exactly as the game picker is: it is a panel that is open for a moment, not a preference.
   const [messagesOpen, setMessagesOpen] = useState(false);
   const [problemsOpen, setProblemsOpen] = useState(false);
+  const [battlesOpen, setBattlesOpen] = useState(false);
+  const [selectedBattleIndex, setSelectedBattleIndex] = useState(0);
   const [messagesTab, setMessagesTab] = useState<TurnMessagesTab>("errors");
   // A report from another faction, parsed and waiting for the player to say what to do with it,
   // and whose reports have already been folded into the turn on screen.
@@ -705,7 +708,21 @@ export function AppShell({
         },
         // Only with a report on screen: an export needs a turn to name itself after and a map to
         // describe, and neither exists before one is imported.
-        ...(parsed ? [{ id: "export-map", label: "Export map", run: () => openExport() }] : [])
+        ...(parsed ? [{ id: "export-map", label: "Export map", run: () => openExport() }] : []),
+        // Only when the turn actually had a battle - as with the chip, a command that opens onto
+        // nothing is worse than no command at all.
+        ...(parsed && parsed.battles.length > 0
+          ? [
+              {
+                id: "open-battles",
+                label: "Open battles",
+                run: () => {
+                  setSelectedBattleIndex(0);
+                  setBattlesOpen(true);
+                }
+              }
+            ]
+          : [])
       ],
       orderCommands,
       insertOrder: (command) => ordersEditor.current?.insertOrder(command)
@@ -2097,6 +2114,18 @@ export function AppShell({
             onDismiss={() => setProblemsOpen(false)}
           />
         }
+        battleCount={parsed?.battles.length ?? 0}
+        battlesOpen={battlesOpen}
+        onToggleBattles={() =>
+          setBattlesOpen((open) => {
+            // Opening the chip selects the first battle, so the dialog is never empty - candidate
+            // B of docs/ui/battles-view.html, chosen with the navigator.
+            if (!open) {
+              setSelectedBattleIndex(0);
+            }
+            return !open;
+          })
+        }
         busy={busy}
         onImportReports={(files) => void importReports(files)}
         progress={importProgress}
@@ -2272,6 +2301,20 @@ export function AppShell({
           error={exportError}
           onExport={(rect, content) => void exportMap(rect, content)}
           onDismiss={() => setExportOpen(false)}
+        />
+      ) : null}
+      {battlesOpen && parsed && parsed.battles.length > 0 ? (
+        <BattlesDialog
+          battles={parsed.battles}
+          selectedIndex={selectedBattleIndex}
+          onSelect={setSelectedBattleIndex}
+          hexLabel={hexLabel}
+          viewerFactionId={parsed.header.factionId}
+          onShowOnMap={(regionId) => {
+            selectHex(regionId);
+            setBattlesOpen(false);
+          }}
+          onDismiss={() => setBattlesOpen(false)}
         />
       ) : null}
       {keyboardPanels}
