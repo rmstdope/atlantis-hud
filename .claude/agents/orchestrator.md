@@ -157,8 +157,16 @@ by implementer names are yours to sweep.
 **Close a claim only when all three hold:**
 
 - its work is on main, by the test above;
-- the merge is more than ten minutes old (`git log -1 --format=%cr`). An implementer closes within
-  seconds of merging, so anything fresher is an agent mid-cleanup, not a dead one;
+- **that bead's** commit is more than ten minutes old. Ask for its date specifically — a bare
+  `git log -1` answers for whatever HEAD happens to be, which is not the commit you are judging:
+
+  ```bash
+  git -C <repo> log -1 --grep "(<id>):" --format='%h %cr %s' origin/main
+  ```
+
+  An implementer closes within seconds of merging, so anything fresher is an agent mid-cleanup, not
+  a dead one. The subject is in the output so you can see which commit you got: if `-1` handed you
+  the `docs(<id>): mockup` commit, that is not the delivery and you are not judging its age;
 - no live implementer is on it — `ListAgents` for who is alive, and the bead's `assignee` for who
   claimed it. A name that is still running keeps its bead, however old the merge looks.
 
@@ -176,12 +184,16 @@ A bead closing itself is the visible end of an implementer that died, and the na
 that happened — including which agent's name was on it.
 
 A claim whose work is *not* on main is a different case and not yours to close. If the assignee is
-gone from `ListAgents` and the lease has been stale a good fifteen minutes, that is the narrow
-recovery in `beads-workflow`:
+gone from `ListAgents`, that is the narrow recovery in `beads-workflow`:
 
 ```bash
 bd reclaim --id <bead> --older-than 10m     # one named bead, by ID, never a sweep
 ```
+
+**Do not add a waiting period of your own on top of that `10m`.** It counts from lease expiry, not
+from the last heartbeat, so with a five-minute lease it already declines to touch anything that was
+alive within about the last fifteen minutes. The command enforces the window; your job is only to be
+sure the agent is gone. Sitting on it for a further quarter of an hour is silence nobody needs.
 
 Never without `--id`, and never for a name that is still running — a long CI watch looks identical to
 a death from out here. It also only works on the machine that granted the lease, so a claim from
