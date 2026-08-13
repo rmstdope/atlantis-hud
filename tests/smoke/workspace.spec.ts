@@ -43,6 +43,25 @@ const OWN_OLDER_REPORT = readFileSync(
   "utf8"
 );
 
+/**
+ * Three real, consecutive turns of one faction (game 3, faction 42), used to prove a route can
+ * cross ground only an earlier turn described. Faction 95's fixtures cannot show this: its land
+ * holdings are ocean-separated islands, so every route over them stays one step regardless of what
+ * is remembered - see `crates/core/tests/movement_plan.rs` for the reading that ruled it out.
+ */
+const F42_T40 = readFileSync(
+  join(__dirname, "..", "fixtures", "reports", "neworigins-3.0.0-g3-f42-t40.rep"),
+  "utf8"
+);
+const F42_T41 = readFileSync(
+  join(__dirname, "..", "fixtures", "reports", "neworigins-3.0.0-g3-f42-t41.rep"),
+  "utf8"
+);
+const F42_T42 = readFileSync(
+  join(__dirname, "..", "fixtures", "reports", "neworigins-3.0.0-g3-f42-t42.rep"),
+  "utf8"
+);
+
 /** Inholm: a city with 24 structures and 92 units, one of them the player's. */
 const OWN_UNIT = "18642";
 const FOREIGN_UNIT = "12538";
@@ -1139,13 +1158,13 @@ test("the interface is not blocked while the core reads a report", async ({ page
 
 /**
  * The turn is committed to the faction's project and read back, in a real browser, against real
- * IndexedDB. That path is what lets the map remember earlier turns; without it the map stops at
- * the fringe of the current report and no route can be longer than one step.
+ * IndexedDB. That path is what lets the map remember earlier turns; without it a small report
+ * stops at its own fringe and a hex named only in passing brings none of its exits back.
  *
- * What this cannot show is accumulation itself: the repository holds one report per faction, and
- * fabricating a second turn to demonstrate it would be inventing game data. The merging is covered
- * by unit tests in the core instead. What it does show is that committing and reading back works
- * where it actually has to - through the browser's storage rather than a fake.
+ * The walk further down this file ("a route crosses ground only an earlier turn described")
+ * covers accumulation itself, on real turns of faction 42 (game 3). This test stays about the
+ * storage round trip - importing the same turn twice and getting the same map back - which is
+ * orthogonal to whether an earlier turn is remembered alongside the current one.
  */
 test("a loaded turn is remembered rather than only displayed", async ({ page }) => {
   await loadReport(page);
@@ -1214,6 +1233,50 @@ test("a planned route can be written into the unit's orders", async ({ page }) =
 
   await page.getByTestId("planner-apply").click();
   await expectOrders(page, /MOVE N/);
+});
+
+/**
+ * The multi-step, real-data case ah-5jm exists for: three real turns imported in one batch, a
+ * route planned across a hex only the oldest of them describes, and the stale banner on that hex.
+ *
+ * `tundra (41,3)` is a region t40 visited and neither t41 nor t42 describes; t42 knows it only as
+ * an exit of `forest (40,2)`, which has no exits of its own until t40 is remembered alongside it.
+ * `Woodsmen (10293)` rides two tundra steps to `(42,2)` at four movement points, all in one month -
+ * see `crates/core/tests/movement_plan.rs` for the same route pinned against the core directly.
+ */
+test("a route crosses ground only an earlier turn described", async ({ page }) => {
+  await clearGames(page);
+  await createGame(page, "Multi-step game");
+  await expect(page.getByTestId("app-header")).toBeVisible();
+
+  await page.setInputFiles('input[type="file"]', [
+    { name: "f42-t42.rep", mimeType: "text/plain", buffer: Buffer.from(F42_T42, "utf8") },
+    { name: "f42-t40.rep", mimeType: "text/plain", buffer: Buffer.from(F42_T40, "utf8") },
+    { name: "f42-t41.rep", mimeType: "text/plain", buffer: Buffer.from(F42_T41, "utf8") }
+  ]);
+
+  const dialog = page.getByTestId("import-summary");
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText("Imported 3 turns for The Disinherited Knights (42)");
+  await dialog.getByRole("button", { name: "Close" }).click();
+  await expect(dialog).toHaveCount(0);
+
+  await enableMovementPlanner(page);
+  await selectHex(page, "1:40,2");
+  await selectUnit(page, "10293");
+
+  await page.getByTestId("planner-arm").click();
+  await selectHex(page, "1:42,2");
+
+  await expect(page.getByTestId("planner-route")).toBeVisible();
+  await expect(page.getByTestId("planner-route")).toContainText("4 movement points");
+  await expect(page.getByTestId("planner-order")).toHaveText("MOVE SE NE");
+
+  // (41,3) is the remembered hex the route crosses: last stood in at t40, two turns before the t42
+  // now on screen.
+  await selectHex(page, "1:41,3");
+  await expect(page.getByTestId("panel-region")).toContainText("Last seen turn 40");
+  await expect(page.getByTestId("panel-region")).toContainText("2 turns ago");
 });
 
 test("only your own units can be planned for", async ({ page }) => {
