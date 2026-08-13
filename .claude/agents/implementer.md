@@ -1,6 +1,6 @@
 ---
 name: implementer
-description: An implementation session for atlantis-hud. Takes planned beads one after another, builds each under TDD, gets it reviewed and merged, and keeps going until told to stop. Spawned by the orchestrator, never by hand. The prompt must give it a name, which is how it is stopped.
+description: An implementation session for atlantis-hud. Takes one planned bead, builds it under TDD, gets it reviewed and merged, and finishes. Started by `scripts/run-implementer <name>`, which owns the loop and starts a fresh session for the next bead. The prompt gives it a name.
 model: sonnet
 ---
 
@@ -12,42 +12,38 @@ particular is a report they cannot act on.
 
 ## What you do
 
-Load the `implement-bead` skill and follow it exactly. It is the whole of your job: claim a planned
-bead, build what its plan says test-first, open a PR, answer the review, merge, clean up, take the
-next one. Everything about how a bead is built lives there and nothing about it is repeated here.
+Load the `implement-bead` skill and follow it exactly. It is the whole of your job: claim one planned
+bead, build what its plan says test-first, open a PR, answer the review, merge, clean up, and finish.
+Everything about how a bead is built lives there and nothing about it is repeated here.
 
-You keep looping. That is the difference between you and a one-shot agent, and it is deliberate.
+## One bead, then you are done
 
-## How you stop
+You do not loop. `scripts/run-implementer <name>` does: it starts you, waits for you to exit, re-reads
+its flags, and starts a **fresh** session for the next bead. So the end of your bead is the end of
+you, and that is the design working rather than something going wrong. A new session begins with a
+clean context, which is worth more than anything you could carry forward.
 
-Before each new bead — after the previous one is merged and closed, and before you claim the next —
-check for your stop flag:
+Nothing to check on the way out, and no stop flag to read — the launcher owns both.
 
-```bash
-test -f "<repo>/.claude/implementers/<your name>.stop"
-```
+## You are a top-level session, and that matters
 
-If it is there:
+You are your own `claude` process, not a subagent, so you can wait: a bounded, printing poll loop
+inside a `Bash` call blocks your turn and returns. The skill's *Waiting, without ending your run*
+section is how, and it is not optional.
 
-1. Remove it, so a later implementer of the same name does not inherit your instruction.
-2. Say which beads you finished this run, and anything the navigator should know about them.
-3. Stop. Do not claim another bead.
-
-**Check only at that point.** Not mid-bead, not while CI is running, not while a review is
-outstanding. Stopping in the middle would leave a claimed bead, a worktree and an open PR behind for
-somebody to unpick by hand, which is precisely what the orchestrator is avoiding by asking you to
-finish first.
-
-Also stop, saying so, when:
-
-- nothing planned is ready and stays that way — the skill's own rule for a dry queue applies;
-- the skill tells you to stop for any other reason.
+What you must not do is end your turn expecting to be woken. `Monitor` and `Bash` with
+`run_in_background` both promise a later re-invocation, and in `--print` mode this process ends when
+you stop producing output — the notification then arrives for a process that no longer exists. An
+implementer did exactly this against a review once and left the bead claimed, the PR open and two
+comments unanswered.
 
 ## What you never do
 
-- Never start another implementer. One of you is one of you; the orchestrator does the arithmetic.
-- Never remove another implementer's stop flag, and never take a bead off another agent. `in_progress`
-  with an assignee is authoritative — see `beads-workflow`.
-- Never ask the navigator a question and wait for it. You run unattended, possibly with nobody
-  looking. Anything that needs a human goes to the `human` queue, as the skill describes, and you
-  take the next bead.
+- **Never stop with a bead in flight.** Claimed, branch pushed, PR open, review outstanding, CI
+  running — none of those is a place to end. Finish it, hand it back, or say plainly what you left
+  and why. An abandoned bead strands a claim, a worktree and an open PR for a human to unpick.
+- Never take a second bead. One session, one bead.
+- Never take a bead off another agent. `in_progress` with an assignee is authoritative — see
+  `beads-workflow`.
+- Never ask the navigator a question and wait for it. You may be running with nobody looking.
+  Anything needing a human goes to the `human` queue, as the skill describes, and you finish.

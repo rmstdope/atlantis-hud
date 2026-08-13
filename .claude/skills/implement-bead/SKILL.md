@@ -1,12 +1,17 @@
 ---
 name: implement-bead
-description: The implementation role — take planned beads one after another, build each under TDD, get it reviewed and merged, and keep going until told to stop. Use when running an implementation session in atlantis-hud.
+description: The implementation role — take one planned bead, build it under TDD, get it reviewed and merged, and finish. Use when running an implementation session in atlantis-hud.
 ---
 
 # Implementing a planned bead
 
-You take beads somebody else planned, build exactly what the plan says, and see them onto main. Then
-you take the next one, and keep going until you are told to stop. Several of you may run at once.
+You take a bead somebody else planned, build exactly what the plan says, see it onto main, and
+**finish**. One bead, then you are done. Several of you may run at once.
+
+You do not loop. Your launcher does — `scripts/run-implementer <name>` starts a fresh session for
+the next bead once you exit — so there is nothing to keep alive at the end and no second bead to
+claim. Everything you learned building this one goes with you, which is the point: a new session
+starts with a clean context instead of five beads of residue.
 
 Read `beads-workflow` for the label lifecycle and CLAUDE.md's Four Eye Principle for the review
 rules; this is the role on top of them.
@@ -23,25 +28,44 @@ So: RED → GREEN → REFACTOR → COMMIT without stopping, announcing each tran
 on a genuine design question — see *When the plan is wrong*. Everything outside a planned bead
 follows the TDD skill's gates as written.
 
-## Being told to stop
+## Waiting, without ending your run
 
-You loop, so something has to be able to end the loop. That something is a file:
+A bead has two long waits in it — the Copilot review, and CI — and how you wait is the difference
+between finishing a bead and abandoning one. An implementer once armed a `Monitor` against a
+review, said "I'll wait now for the monitor's event", and ended its turn. The review landed two
+minutes later: two comments unanswered, the bead claimed, the PR open, and nothing to wake it.
+
+**Wait by blocking inside a tool call. Never by ending your turn.**
 
 ```bash
-test -f "<repo>/.claude/implementers/<your name>.stop"
+until <the condition>; do bd heartbeat <id>; sleep 30; done
 ```
 
-The orchestrator creates it when the navigator asks for you to be taken down. **Check it in exactly
-one place** — after a bead is merged and closed, and before you claim the next one. If it is there,
-remove it, say what you finished this run, and stop.
+Three things about that line, each of which has cost something here:
 
-Nowhere else. Not mid-bead, not between phases, not while CI runs or a review is outstanding.
-Stopping in the middle leaves a claimed bead, a worktree and an open PR for a human to unpick, which
-is the whole reason the signal asks you to finish rather than killing you.
+- **The heartbeat is inside the loop, not around it.** A lease is about five minutes and a CI run is
+  ten, so a heartbeat before and after leaves the middle uncovered and the claim reads as abandoned.
+- **It must print as it goes.** The harness kills a run whose stream has stalled for 600 seconds,
+  and it has done so here. A silent loop is indistinguishable from a hang.
+- **Keep each call well under ten minutes.** A `Bash` call times out — 600000ms at the most,
+  120000ms by default — so pass an explicit `timeout` and, for a longer wait, call again. A
+  twenty-minute review wait is three calls, not one.
 
-You have a name if the orchestrator started you; it is in the prompt that spawned you. Started by
-hand with no name, you have no stop flag — you run until the queue is dry or the navigator
-interrupts you, and that is fine.
+`Monitor` and `Bash` with `run_in_background` both promise to re-invoke you later. Do not rely on
+that here: in `--print` mode this process ends when you stop producing output, and a notification
+delivered to a process that has exited helps nobody.
+
+## Finishing means finishing
+
+There is no next bead to take, and no flag for **you** to check. The `.go` and `.stop` flags still
+exist and still mean what `orchestrator.md` says they mean — your launcher reads them, between runs,
+and decides whether to start another session. That is not your business: when your bead is merged,
+closed and cleaned up, say what you did and end the run. **Never stop before that point.** A bead abandoned in flight strands a claim, a
+worktree and an open PR for somebody to unpick by hand, which is exactly what one-bead-per-process
+is arranged to avoid.
+
+The one exception is a bead you hand back — a missing plan section, a question only the navigator can
+answer. That is a complete run too: hand it back with the block below, clean up, and finish.
 
 ## Picking up
 
@@ -51,6 +75,8 @@ bd ready --label planned --exclude-label human --exclude-type epic --claim --jso
 bd dolt push                               # so other machines see the claim
 ```
 
+One bead. `--claim` takes the first ready one; take that and no other.
+
 `human` is work already waiting on the navigator; `epic` is a split parent, which has children
 rather than a plan. Claiming either means refusing it a minute later.
 
@@ -59,9 +85,9 @@ lease is short, about five minutes, and a cycle is an hour; the exact TTL is bd'
 configurable here, so heartbeat on every boundary rather than on a timer.
 
 Nothing planned means the planner has not got there yet, or another implementer took the last one
-first. Look again every few minutes, saying so once rather than every time. After **half a dozen
-empty checks**, say that the queue is dry and stop — an idle session that looks busy is worse than
-one that has plainly finished, and the orchestrator can start you again in a second.
+first. **Say so and finish, straight away** — do not wait around for work to appear. Idling is the
+launcher's job and it does it for free; a session idling on an empty queue is burning context to
+wait, and the launcher will start you again the moment there is something to take.
 
 **Read the plan with `bd show <id> --json`.** The pretty renderer mangles it.
 
@@ -157,12 +183,19 @@ number of them.
 `requested_reviewers` reading empty a minute later means the request was fulfilled, not dropped — do
 not re-run this off of that.
 
-Then wait for it:
+Then wait for it — blocking, printing, heartbeating, per *Waiting, without ending your run*:
 
 ```bash
-gh api repos/<owner>/<repo>/pulls/<n>/reviews \
-  --jq '[.[] | select(.user.login | startswith("copilot")) | .commit_id] | last'
+until gh api repos/<owner>/<repo>/pulls/<n>/reviews \
+        --jq '[.[] | select(.user.login | startswith("copilot"))] | length' | grep -qv '^0$'; do
+  bd heartbeat <id>
+  echo "waiting for the review on #<n>"
+  sleep 30
+done
 ```
+
+Run that with an explicit `timeout` under the ten-minute ceiling and call it again if it returns
+empty-handed. The twenty-minute policy below is three of these calls, not one long one.
 
 Every review seen on this repository has been `COMMENTED`, never `APPROVED`, so do not wait for an
 approval.
@@ -247,15 +280,10 @@ budget spent — each of those leaves a worktree too, and nothing else cleans th
 Say what you merged and anything the navigator should know — a deviation, a trap the plan missed, a
 bead you handed back.
 
-**Then check your stop flag** — see *Being told to stop* — and either finish there or pick up the
-next planned bead.
-
-One thing to watch as you go round again: everything from the beads you have already finished is
-still in your context, and it grows. Nothing can clear it from inside a session. So if you find
-yourself unsure what a plan actually said, or half-remembering a test you wrote three beads ago,
-**re-read it rather than recalling it** — `bd show <id> --json` for the plan, the file itself for the
-code. When it gets bad enough to slow you down, say so in your next report: that is the navigator's
-cue to take you down and bring a fresh implementer up, which is the one cure available.
+**Then finish.** Do not look for another bead, and do not stay alive in case one appears. Your
+launcher re-reads its flags the moment you exit and starts a fresh session if there is more to do;
+that session begins with a clean context, which is worth more than anything you could have carried
+into it.
 
 ## Traps this repository has already paid for
 

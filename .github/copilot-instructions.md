@@ -38,19 +38,36 @@ nothing waits on a session that may not be running. The `beads-workflow` skill c
 lifecycle and the commands; `/plan-bead` and `/implement-bead` carry the two roles, and a session
 running either should load its skill first.
 
-**Implementers are run by an orchestrator.** An implementation session loops — bead after bead —
-until it is told to stop, and the thing that tells it is the orchestrator:
+**An implementer is one session, one bead.** You start each one in a terminal of its own, named after
+an X-Man:
+
+```bash
+scripts/run-implementer Cyclops
+```
+
+That script owns the loop, not the agent. It starts a fresh `claude` session, waits for it to take a
+single bead through to merged and exit, re-reads its flags, and starts another. So one bead per
+process is a property of how implementers run rather than a rule an agent has to keep, and no
+context grows across beads.
+
+They are top-level sessions rather than subagents because **a subagent cannot wait**: it has no next
+turn, so `Monitor` and background `Bash` promise a re-invocation that never comes. One armed a
+monitor against a Copilot review, ended its turn, and left the bead claimed, the PR open and two
+review comments unanswered. A session of its own can simply block until the review lands.
+
+**Cerebro orchestrates them without starting them:**
 
 ```bash
 claude --agent orchestrator --name Cerebro --permission-mode auto
 ```
 
-That session is called **Cerebro**, is interactive, runs on Sonnet, and starts nothing until you ask
-it to. You tell it to spin up implementers — named after X-Men — which it spawns as subagents on
-Sonnet, each with its own context; you tell it to take one down, and it writes that implementer's
-stop flag. **Taking one down means telling it to finish**: the implementer completes the bead it is
-on, sees it merged, and only then leaves the loop — killing one mid-bead strands a claim, a worktree
-and an open PR.
+That session is interactive, runs on Sonnet, and does nothing until you ask. It puts an implementer
+to work by touching `.claude/implementers/<name>.go` and takes it down by removing that flag, or by
+touching `<name>.stop` to end the terminal as well. **Taking one down means telling it to finish**:
+flags are read between beads, never during one, so the implementer completes what it is on and sees
+it merged — interrupting one mid-bead strands a claim, a worktree and an open PR. Because these are
+peer sessions, Cerebro can also reach one directly with `SendMessage`; a `--bg` session cannot be
+reached that way, which is why the fleet is not started like that.
 
 Cerebro also sweeps up after implementers that did not get to the end of their own cleanup, on
 startup and every ten minutes. `scripts/prune-worktrees.sh` removes an agent worktree only when
