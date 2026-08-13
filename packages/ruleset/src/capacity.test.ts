@@ -47,7 +47,7 @@ function weightOf(items: ItemReference, contents: [string, number][]): number {
  * evidence that the catalogue was read correctly - a classification or number that came out wrong
  * would not add up to what the game printed.
  *
- * The three units below are quoted from tests/fixtures/reports/neworigins-3.0.0-f95-t71.rep.
+ * The three units below are quoted from tests/fixtures/reports/neworigins-3.0.0-g7-f95-t71.rep.
  */
 describe("the item table reproduces the server's own capacity arithmetic", () => {
   const items = parseItemReference(DATA_HTML);

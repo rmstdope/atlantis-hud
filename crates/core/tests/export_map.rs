@@ -10,7 +10,7 @@ use atlantis_hud_core::report::model::ReportRegion;
 use atlantis_hud_core::report::parse_report_full;
 use atlantis_hud_core::report::write::ExportContent;
 
-const TURN_71: &str = include_str!("../../../tests/fixtures/reports/neworigins-3.0.0-f95-t71.rep");
+const TURN_71: &str = include_str!("../../../tests/fixtures/reports/neworigins-3.0.0-g7-f95-t71.rep");
 
 /// A rectangle wide enough to hold anything in the fixture.
 fn whole_map(content: ExportContent) -> MapExportRequest {

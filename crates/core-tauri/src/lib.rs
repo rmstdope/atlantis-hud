@@ -1267,7 +1267,7 @@ mod sightings_tests {
     use tempfile::tempdir;
 
     const TURN_71: &str =
-        include_str!("../../../tests/fixtures/reports/neworigins-3.0.0-f95-t71.rep");
+        include_str!("../../../tests/fixtures/reports/neworigins-3.0.0-g7-f95-t71.rep");
     /// The catalogue the shell serves, which recognises everything these fixtures carry.
     const RULESET: &str = include_str!("../../../config/public/ruleset.json");
 
@@ -1426,11 +1426,11 @@ mod merge_tests {
     use tempfile::tempdir;
 
     const TURN_71: &str =
-        include_str!("../../../tests/fixtures/reports/neworigins-3.0.0-f95-t71.rep");
+        include_str!("../../../tests/fixtures/reports/neworigins-3.0.0-g7-f95-t71.rep");
     const ALLY_TURN_71: &str =
-        include_str!("../../../tests/fixtures/reports/neworigins-3.0.0-f73-t71.rep");
+        include_str!("../../../tests/fixtures/reports/neworigins-3.0.0-g8-f73-t71.rep");
     const TURN_2: &str =
-        include_str!("../../../tests/fixtures/reports/neworigins-3.0.0-f73-t2.rep");
+        include_str!("../../../tests/fixtures/reports/neworigins-3.0.0-g8-f73-t2.rep");
     const RULESET: &str = include_str!("../../../config/public/ruleset.json");
     const MERGED_AT: &str = "2026-08-10T18:30:00Z";
 

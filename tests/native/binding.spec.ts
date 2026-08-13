@@ -18,12 +18,12 @@ import { invokeNative } from "./helpers";
 const ROOT = join(__dirname, "..", "..");
 
 const REPORT = readFileSync(
-  join(ROOT, "tests", "fixtures", "reports", "neworigins-3.0.0-f95-t71.rep"),
+  join(ROOT, "tests", "fixtures", "reports", "neworigins-3.0.0-g7-f95-t71.rep"),
   "utf8"
 );
 /** Another faction, same turn: the one shape `merge_report` accepts. */
 const ALLY_REPORT = readFileSync(
-  join(ROOT, "tests", "fixtures", "reports", "neworigins-3.0.0-f73-t71.rep"),
+  join(ROOT, "tests", "fixtures", "reports", "neworigins-3.0.0-g8-f73-t71.rep"),
   "utf8"
 );
 const RULESET = readFileSync(join(ROOT, "config", "public", "ruleset.json"), "utf8");

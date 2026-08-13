@@ -63,7 +63,7 @@ mod tests {
     use crate::report::parse_report_full;
 
     const TURN_71: &str =
-        include_str!("../../../../tests/fixtures/reports/neworigins-3.0.0-f95-t71.rep");
+        include_str!("../../../../tests/fixtures/reports/neworigins-3.0.0-g7-f95-t71.rep");
 
     #[test]
     fn every_region_in_the_report_is_a_sighting_in_the_turn_it_was_seen() {

@@ -5,14 +5,14 @@
 
 use atlantis_hud_core::report::parse_report_full as parse_regions;
 
-const TURN_2: &str = include_str!("../../../tests/fixtures/reports/neworigins-3.0.0-f73-t2.rep");
-const TURN_71: &str = include_str!("../../../tests/fixtures/reports/neworigins-3.0.0-f95-t71.rep");
+const TURN_2: &str = include_str!("../../../tests/fixtures/reports/neworigins-3.0.0-g8-f73-t2.rep");
+const TURN_71: &str = include_str!("../../../tests/fixtures/reports/neworigins-3.0.0-g7-f95-t71.rep");
 /// Faction 73's own turn 71, written for issue #53 so a merge has two reports of one turn to work
 /// with. Hand-written rather than captured, because no second real report of this turn exists.
 const ALLY_TURN_71: &str =
-    include_str!("../../../tests/fixtures/reports/neworigins-3.0.0-f73-t71.rep");
+    include_str!("../../../tests/fixtures/reports/neworigins-3.0.0-g8-f73-t71.rep");
 /// Faction 95's turn 70, so loading an older report of one's *own* faction can still be tested.
-const TURN_70: &str = include_str!("../../../tests/fixtures/reports/neworigins-3.0.0-f95-t70.rep");
+const TURN_70: &str = include_str!("../../../tests/fixtures/reports/neworigins-3.0.0-g7-f95-t70.rep");
 
 #[test]
 fn turn_2_yields_its_single_region() {

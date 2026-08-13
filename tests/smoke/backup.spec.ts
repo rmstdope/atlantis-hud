@@ -4,11 +4,11 @@ import { join } from "node:path";
 import { clearGames, createGame, expectOrders, fillOrders } from "./gameSetup";
 
 const TURN_70 = readFileSync(
-  join(__dirname, "..", "fixtures", "reports", "neworigins-3.0.0-f95-t70.rep"),
+  join(__dirname, "..", "fixtures", "reports", "neworigins-3.0.0-g7-f95-t70.rep"),
   "utf8"
 );
 const TURN_71 = readFileSync(
-  join(__dirname, "..", "fixtures", "reports", "neworigins-3.0.0-f95-t71.rep"),
+  join(__dirname, "..", "fixtures", "reports", "neworigins-3.0.0-g7-f95-t71.rep"),
   "utf8"
 );
 const OWN_UNIT = "18642";

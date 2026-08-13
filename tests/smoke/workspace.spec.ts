@@ -24,22 +24,22 @@ import { HOVER_DELAY_MS } from "../../packages/shared/src/unitTooltip";
  * this suite exists to catch.
  */
 const REPORT = readFileSync(
-  join(__dirname, "..", "fixtures", "reports", "neworigins-3.0.0-f95-t71.rep"),
+  join(__dirname, "..", "fixtures", "reports", "neworigins-3.0.0-g7-f95-t71.rep"),
   "utf8"
 );
 /** Another faction, and another turn: it can be switched to, but never merged. */
 const OTHER_FACTION_OLDER = readFileSync(
-  join(__dirname, "..", "fixtures", "reports", "neworigins-3.0.0-f73-t2.rep"),
+  join(__dirname, "..", "fixtures", "reports", "neworigins-3.0.0-g8-f73-t2.rep"),
   "utf8"
 );
 /** Another faction, same turn: the one case a merge is offered for. */
 const ALLY_REPORT = readFileSync(
-  join(__dirname, "..", "fixtures", "reports", "neworigins-3.0.0-f73-t71.rep"),
+  join(__dirname, "..", "fixtures", "reports", "neworigins-3.0.0-g8-f73-t71.rep"),
   "utf8"
 );
 /** The player's own faction, one turn back, which is what the plain older-turn warning guards. */
 const OWN_OLDER_REPORT = readFileSync(
-  join(__dirname, "..", "fixtures", "reports", "neworigins-3.0.0-f95-t70.rep"),
+  join(__dirname, "..", "fixtures", "reports", "neworigins-3.0.0-g7-f95-t70.rep"),
   "utf8"
 );
 
