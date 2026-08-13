@@ -234,6 +234,27 @@ And read the assignee before anything else: a bead the navigator is holding — 
 mid-thought — is `in_progress` under a human name, and none of this applies to it. Only claims held
 by implementer names are yours to sweep.
 
+**But the assignee name is not proof of who holds a claim, and cannot be read alone.** Every claim
+made from this machine is stamped with the local git identity, whether a human or an agent claimed
+it — `bd unclaim` and `bd update --claim` do not distinguish. `assignee: Henrik Kurelid` can mean the
+navigator is genuinely holding the bead, or it can mean an implementer claimed it, ran for a while,
+and died hours ago, leaving the claim stamped with the same name it would have had either way. Two
+of the navigator's own beads were found this way on 2026-08-14 — `ah-r2e` and `ah-52b`, both
+`in_progress` under a human name, both with leases expired and last heartbeat ten hours gone, neither
+held by any process in `ListAgents` or `pgrep`.
+
+So a human-looking assignee is not license to skip a bead in the sweep — check the lease before
+deciding it is off-limits:
+
+```bash
+bd show <id>     # look for "Lease: expires expired (heartbeat <age>)"
+```
+
+An expired lease with no live agent behind it (`ListAgents`, and `pgrep` for implementer launchers)
+is a stale claim regardless of what name is on it. It is still not yours to unclaim on your own
+judgement — surface it to the navigator (as with any claim, human-named or not) and unclaim only once
+asked, the same as any other claim recovery in this document.
+
 **Close a claim only when all three hold:**
 
 - its work is on main, by the test above;
@@ -280,6 +301,49 @@ a death from out here. It also only works on the machine that granted the lease,
 another machine will simply be skipped; that is not a failure to retry, it is the navigator's to
 sort out. Anything less clear-cut than "the agent is gone and the work is not there" is
 the navigator's call: say what you found and leave it alone.
+
+## Staying alive between questions
+
+You are not purely reactive. Between navigator questions, keep a background timer running so the
+sweeps this file already describes — worktrees, claims, and fleet health — happen without the
+navigator having to ask or to trigger one as a side effect of a status question.
+
+**`ScheduleWakeup` does not do this reliably from here.** Tested 2026-08-14: a 90-second wakeup
+fired several conversational turns late and unpredictably, and the tool's own description ties it to
+`/loop`'s dynamic-pacing mode — this session is not run under `/loop`, which is likely why. Do not
+use it for this.
+
+**Use a forked timer instead**, confirmed reliable the same day (an exact 300-second round-trip, no
+hang): spawn a subagent with `Agent({subagent_type: "fork", ...})` whose entire job is to block on a
+foreground `sleep <n>` (600s / ten minutes, matching the worktree `--watch` cadence — stay under the
+600000ms Bash timeout ceiling) and then run the sweep itself:
+
+1. `scripts/prune-worktrees.sh`.
+2. For each `bd list --status in_progress` bead, check the lease (`bd show <id>`, the `Lease:` line) —
+   not the assignee name; see the correction under *Beads that finished without being closed*.
+3. `pgrep -fl "runImplementer.ts"` for who is actually running, and `bd ready --label planned
+   --exclude-label human --exclude-type epic` for the queue.
+
+Have the fork report back only what it found — `noop`-equivalent silence in the prompt itself
+("report only if something changed") so a clean sweep doesn't generate a message. When its
+notification lands, relay anything it found exactly as you would a sweep you ran yourself, then spawn
+the next one at the same cadence.
+
+**A navigator message arriving while a timer fork is running is not blocked by it.** The fork runs as
+a background task; your own turn is free the whole time, so an incoming message is handled
+immediately, in full, as if no timer were pending. Once that interaction is done, the outstanding
+fork's notification still arrives on its own schedule and gets relayed when it does — there is
+nothing to reschedule, since the fork's clock was never tied to your turn.
+
+**This has a real cost, unlike a harness-managed wakeup**: a timer fork sits blocked for the full ten
+minutes, holding a subagent slot and spending tokens purely to wait. Six of these run per hour for as
+long as the session is open. Weigh that against the alternative — a stale claim or a dead implementer
+going unnoticed until the navigator happens to ask.
+
+**Never let the cadence justify doing something a sweep should not.** A timer fork sweeps and
+reports; it does not set a `.go` flag, start an implementer, or unclaim a bead on its own judgement —
+those still need the navigator to ask, exactly as the rest of this file requires. The only thing that
+changes is who initiates the sweep.
 
 ## Who is actually running
 
@@ -371,7 +435,11 @@ Answer from the tools:
   those list interactive and background sessions, and an implementer is neither.
 - `ls .claude/implementers/` for which flags are set — a `.go` with no session behind it means a
   terminal the navigator has not started, and is worth saying out loud.
-- `bd list --status in_progress` for what is claimed, and by whom.
+- `bd list --status in_progress` for what is claimed, and by whom — but the assignee name alone does
+  not tell you whether the claim is live. Check each one's lease (`bd show <id>`, look for "Lease:
+  expires expired"); an expired lease with nobody live behind it in `ListAgents`/`pgrep` is a stale
+  claim worth surfacing even when the assignee reads as the navigator's own name — see *Beads that
+  finished without being closed*.
 - `bd ready --label planned ...` for how much work is left to pick up, **and** `bd list --status
   open --label planned ...` for how much is planned but blocked behind something in flight — see
   *Where the work is*. One number without the other misreports the queue.
