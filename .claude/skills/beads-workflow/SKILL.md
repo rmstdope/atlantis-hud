@@ -34,12 +34,16 @@ allows `bd show` first. `bd ready --claim` takes the **first** match itself, whi
 roles below want, since they take whatever is next rather than choosing:
 
 ```bash
-bd ready --exclude-label planned --exclude-label human --exclude-type epic --claim --json  # planner
 bd ready --label planned --exclude-label human --exclude-type epic --claim --json          # builder
 ```
 
 `human` is already waiting on the navigator, and re-claiming it just re-asks a question nobody is
 there to answer. `epic` is a split parent: it has children rather than a plan.
+
+**The planner does not use `bd ready`.** It may plan a bead whose dependencies are still unbuilt —
+often those are the ones most worth having planned — and `bd ready` hides exactly those. It picks
+from `bd list ... --sort priority` and claims by id instead; `plan-bead` carries the reasoning and
+the care that has to come with it.
 
 Either way the claim is atomic, and a failure means somebody else won the race: take the next bead
 rather than retrying.

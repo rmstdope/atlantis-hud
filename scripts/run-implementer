@@ -3,6 +3,11 @@
 # Runs one implementer, in a terminal of its own.
 #
 #     scripts/run-implementer Cyclops
+#     scripts/run-implementer Cyclops --log     # keep every event in .claude/implementers/<name>.log
+#
+# The name must be an X-Man from the roster in `runImplementer.ts`, spelt exactly as it appears
+# there. Anything else exits 2 and prints the list. The roster is closed because Cerebro works from
+# it: an implementer it never looks for would hold a bead and open PRs unaccounted for.
 #
 # This is a wrapper and nothing more. **The loop is in `scripts/runImplementer.ts`** — go there to
 # read or debug it; all this file does is run it with the workspace's own tsx.
@@ -18,6 +23,10 @@
 #
 # Neither is read mid-bead. Taking an implementer down means telling it to finish: a bead abandoned
 # in flight strands a claim, a worktree and an open PR for somebody to unpick by hand.
+#
+# The work streams past this terminal as it happens. `--log` also keeps it, which is what Cerebro
+# reads when it needs to know what an implementer is doing - but one bead is about a megabyte and the
+# file is appended across runs, so it is off unless asked for.
 #
 # Leave the terminal open when it idles. Idle costs nothing, and it means putting this implementer
 # back to work is one `touch` rather than another launch.
