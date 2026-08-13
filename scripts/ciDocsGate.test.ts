@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -5,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import {
   dependsOnChanges,
   GATE_JOB,
+  gateGrepCommand,
   isGatedOnChanges,
   jobBlocks,
   matrixOf,
@@ -16,8 +18,30 @@ import {
 const REPO = dirname(dirname(fileURLToPath(import.meta.url)));
 const WORKFLOW = readFileSync(join(REPO, ".github", "workflows", "ci.yml"), "utf8");
 
-describe("the docs-only fast path", () => {
-  it("gates every required job on the docs gate's output", () => {
+/**
+ * What the gate would decide for a pull request touching exactly these files: `true` when it runs
+ * the full suite, `false` when it takes the fast path.
+ *
+ * The real `grep` from `ci.yml` is run in a real shell, so this asserts the decision CI actually
+ * makes rather than a JavaScript restatement of it.
+ */
+function runsEverything(files: string[]): boolean {
+  const command = gateGrepCommand(WORKFLOW);
+  if (command === "") {
+    throw new Error("the changes job no longer has the grep this test reads");
+  }
+
+  const script = `FILES=$(cat); if [ -z "$FILES" ] || echo "$FILES" | ${command}; then echo true; else echo false; fi`;
+  const decision = execFileSync("bash", ["-c", script], {
+    input: files.join("\n"),
+    encoding: "utf8"
+  }).trim();
+
+  return decision === "true";
+}
+
+describe("the prose-only fast path", () => {
+  it("gates every required job on the gate's output", () => {
     const blocks = jobBlocks(WORKFLOW);
 
     for (const job of REQUIRED_JOBS) {
@@ -57,7 +81,7 @@ describe("the docs-only fast path", () => {
     // Confirmed on a throwaway trial PR: a job-level `if: false` skips the whole `smoke` job
     // before its matrix is expanded, producing one check run named "smoke" - not the four
     // per-combination contexts (`smoke (web, 1, 2)`, etc.) the ruleset actually requires. Left
-    // alone, those four stay Pending forever on a docs-only PR and block the merge, the opposite
+    // alone, those four stay Pending forever on a prose-only PR and block the merge, the opposite
     // of the goal. The fallback is a second job with the same matrix, gated the other way, that
     // reports the same check names by explicit `name:` rather than by job id.
     const blocks = jobBlocks(WORKFLOW);
@@ -77,6 +101,34 @@ describe("the docs-only fast path", () => {
     expect(twin).toContain(
       "name: smoke (${{ matrix.project }}, ${{ matrix.shardIndex }}, ${{ matrix.shardTotal }})"
     );
+  });
+
+  it("takes the fast path for a diff that is only prose", () => {
+    // `.claude/` is the fleet's own documentation - agent roles, skills, settings. Nothing in CI
+    // reads it, so a change there cannot affect a single check, and running the ten-minute suite
+    // over one is ten minutes of nothing.
+    expect(runsEverything(["docs/ui/ah-vp3.2.html"])).toBe(false);
+    expect(runsEverything([".claude/agents/orchestrator.md"])).toBe(false);
+    expect(runsEverything([".claude/skills/plan-bead/SKILL.md", "docs/implementation-plan.md"])).toBe(
+      false
+    );
+  });
+
+  it("runs everything for a diff that touches code, however much prose comes with it", () => {
+    expect(runsEverything(["packages/browser-core/src/index.ts"])).toBe(true);
+    expect(runsEverything([".claude/agents/orchestrator.md", "scripts/runImplementer.ts"])).toBe(
+      true
+    );
+    // The gate is what decides whether the suite runs, so a change to the gate itself has to run it.
+    expect(runsEverything([".github/workflows/ci.yml"])).toBe(true);
+  });
+
+  it("anchors on the directory, so a path that merely starts with those letters is not prose", () => {
+    // `^docs/` must not be `^docs`, or `docsomething.ts` skips the suite. Same for `.claude`, where
+    // the leading dot must be escaped or it matches any first character - `xclaude/`, `1claude/`.
+    expect(runsEverything(["docsite/build.ts"])).toBe(true);
+    expect(runsEverything(["xclaude/thing.ts"])).toBe(true);
+    expect(runsEverything(["packages/docs/src/index.ts"])).toBe(true);
   });
 
   it("falls open to running everything when the event is not a pull request", () => {

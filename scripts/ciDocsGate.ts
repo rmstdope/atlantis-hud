@@ -1,5 +1,5 @@
 /**
- * The docs-only fast path for CI.
+ * The prose-only fast path for CI.
  *
  * GitHub only accepts a required check that *reports* - skipped counts, a workflow that never
  * triggered at all (via `paths-ignore`) leaves its checks Pending forever and blocks the merge.
@@ -19,7 +19,7 @@ export const GATE_JOB = "changes";
  * The twin of `smoke` that reports its four matrix check names when the real job is skipped.
  * A job skipped by a job-level `if:` never expands its matrix, so without this the four
  * `smoke (<project>, <shardIndex>, <shardTotal>)` required contexts would stay Pending forever
- * on a docs-only PR - confirmed on a throwaway trial PR before this was added.
+ * on a prose-only PR - confirmed on a throwaway trial PR before this was added.
  */
 export const SMOKE_SKIP_JOB = "smoke-skip";
 
@@ -53,7 +53,7 @@ export function jobBlocks(yaml: string): Map<string, string> {
 }
 
 /**
- * Whether a job block is conditioned on the docs gate's `code` output, at the job level (4-space
+ * Whether a job block is conditioned on the gate's `code` output, at the job level (4-space
  * indent, alongside `runs-on:` and `needs:`) rather than nested inside a single step - a job-level
  * `if:` skips the whole job; a step-level one would silently skip only that step.
  */
@@ -85,6 +85,20 @@ export function matrixOf(jobBlock: string): string | null {
   }
 
   return body.join("\n").trim();
+}
+
+/**
+ * The `grep` the gate decides on: the invocation that answers "does this diff touch anything
+ * besides the prose trees?".
+ *
+ * Returned as the command line rather than as a bare pattern so a test can run the real thing in a
+ * shell — the gate's answer depends on the flags as much as the pattern (`-E` or not, `-v`, the
+ * anchor), and a test that re-implemented the matching in JavaScript would be pinning its own
+ * translation instead of what CI executes.
+ */
+export function gateGrepCommand(yaml: string): string {
+  const match = yaml.match(/^\s*if \[ -z "\$FILES" \] \|\| echo "\$FILES" \| (grep .*?); then\s*$/mu);
+  return match === null ? "" : match[1].trim();
 }
 
 /** The text of the `on:` trigger block, so it can be checked for a path filter. */

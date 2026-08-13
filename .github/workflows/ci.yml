@@ -12,9 +12,13 @@ permissions:
   pull-requests: read
 
 jobs:
-  # Every required job below is gated on this job's `code` output, so a docs-only PR reports all
+  # Every required job below is gated on this job's `code` output, so a prose-only PR reports all
   # ten required checks - most of them skipped - in under a minute instead of waiting on the
-  # ~10-minute suite that nothing under docs/ can affect.
+  # ~10-minute suite that nothing under docs/ or .claude/ can affect.
+  #
+  # Both trees are prose and neither is read by anything CI runs: docs/ is the project's own
+  # documentation, and .claude/ is the fleet's - agent roles, skills and settings, which shape how
+  # the agents work and never reach the application.
   #
   # The trigger above deliberately carries no `paths`/`paths-ignore`: a workflow skipped by path
   # filtering never reports its checks at all - Pending forever, not skipped - and that blocks the
@@ -25,7 +29,7 @@ jobs:
     outputs:
       code: ${{ steps.docs.outputs.code }}
     steps:
-      - name: Determine whether this diff touches anything besides docs/
+      - name: Determine whether this diff touches anything besides docs/ and .claude/
         id: docs
         env:
           GH_TOKEN: ${{ github.token }}
@@ -41,7 +45,9 @@ jobs:
           # that fails closed turns an API blip into a merged, untested change.
           FILES=$(gh api "repos/${{ github.repository }}/pulls/${{ github.event.number }}/files" --paginate --jq '.[].filename' 2>/dev/null) || FILES=""
 
-          if [ -z "$FILES" ] || echo "$FILES" | grep -qv '^docs/'; then
+          # Anchored on the directory, and the dot escaped: `^docs` would let `docsite/build.ts`
+          # skip the suite, and an unescaped `.claude` would match `xclaude/`.
+          if [ -z "$FILES" ] || echo "$FILES" | grep -qvE '^(docs|\.claude)/'; then
             echo "code=true" >> "$GITHUB_OUTPUT"
           else
             echo "code=false" >> "$GITHUB_OUTPUT"
@@ -298,7 +304,7 @@ jobs:
         shardTotal: [2]
     steps:
       - name: Report skipped
-        run: echo "docs-only diff, nothing for smoke (${{ matrix.project }}) to check"
+        run: echo "prose-only diff, nothing for smoke (${{ matrix.project }}) to check"
 
   # The production build, which nothing else in this repository ever makes.
   #
