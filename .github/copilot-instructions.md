@@ -52,9 +52,12 @@ stop flag. **Taking one down means telling it to finish**: the implementer compl
 on, sees it merged, and only then leaves the loop — killing one mid-bead strands a claim, a worktree
 and an open PR.
 
-Cerebro also keeps the worktrees swept, on startup and every ten minutes, with
-`scripts/prune-worktrees.sh`. That removes an agent worktree only when nothing can be lost from it:
-clean tree, work already on main, untouched for half an hour.
+Cerebro also sweeps up after implementers that did not get to the end of their own cleanup, on
+startup and every ten minutes. `scripts/prune-worktrees.sh` removes an agent worktree only when
+nothing can be lost from it: clean tree, work already on main, untouched for half an hour. Alongside
+it Cerebro checks the claims — a bead left `in_progress` whose work is already on main is a delivered
+bead whose implementer died before closing it, so Cerebro closes it and reports that it had to. Both
+sweeps are described in `.claude/agents/orchestrator.md`.
 
 Both roles are defined in `.claude/agents/`. Planning is not run this way: `/plan-bead` is
 interactive by design and stays a session of its own.
