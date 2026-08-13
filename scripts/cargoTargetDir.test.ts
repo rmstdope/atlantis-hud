@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, isAbsolute } from "node:path";
+import { dirname, join, isAbsolute, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { normalize, repositoryRoot, strayWorktrees, targetDir } from "./cargoTargetDir";
@@ -65,17 +65,7 @@ describe("the shared cargo build directory", () => {
 
 describe("repositoryRoot", () => {
   it("answers the same path from a worktree as from the checkout it belongs to", () => {
-    // realpathSync on both sides: mkdtempSync hands back one spelling of /tmp and git hands back
-    // the other (/private/tmp on macOS), which fails this for reasons that have nothing to do
-    // with the code under test.
-    const root = realpathSync(mkdtempSync(join(tmpdir(), "cargo-target-dir-root-")));
-    execFileSync("git", ["init", "--initial-branch=main", root]);
-    git(root, ["config", "user.email", "root@example.com"]);
-    git(root, ["config", "user.name", "Root Test"]);
-    writeFileSync(join(root, "seed.txt"), "seed");
-    git(root, ["add", "."]);
-    git(root, ["commit", "-m", "seed"]);
-
+    const root = createRepo();
     const worktree = join(root, ".claude", "worktrees", "example");
     git(root, ["worktree", "add", "-b", "example", worktree]);
 
@@ -83,6 +73,77 @@ describe("repositoryRoot", () => {
     expect(repositoryRoot(worktree)).toBe(root);
   });
 });
+
+describe("strayWorktrees", () => {
+  const root = "/repo";
+
+  it("does not flag the root itself", () => {
+    expect(strayWorktrees(`worktree ${root}\n`, root)).toEqual([]);
+  });
+
+  it("does not flag a worktree under the agents' directory", () => {
+    const inside = `${root}/.claude/worktrees/x`;
+    expect(strayWorktrees(`worktree ${root}\nworktree ${inside}\n`, root)).toEqual([]);
+  });
+
+  it("flags a sibling directory merely named after the agents' directory", () => {
+    // The trailing separator is the whole guard: without it `.claude-old` starts with `.claude`
+    // and would pass as though it were inside.
+    const lookalike = `${root}/.claude-old/x`;
+    expect(strayWorktrees(`worktree ${root}\nworktree ${lookalike}\n`, root)).toEqual([lookalike]);
+  });
+
+  it("flags a worktree outside the repository entirely", () => {
+    const outside = "/elsewhere/x";
+    expect(strayWorktrees(`worktree ${root}\nworktree ${outside}\n`, root)).toEqual([outside]);
+  });
+
+  it("normalizes a path built with the platform separator, so the comparison is about the path rather than the platform", () => {
+    // `normalize` exists so a path `resolve` assembled with the platform's own separator (`\` on
+    // Windows) compares equal to one git reported directly, since git always reports forward
+    // slashes, on Windows too. `sep` is already "/" on this platform, so this pins normalize's
+    // idempotence rather than exercising a real backslash - the cross-platform conversion itself
+    // needs a Windows machine to observe.
+    const built = ["", "repo", ".claude", "worktrees", "x"].join(sep);
+    const inside = normalize(built);
+    expect(strayWorktrees(`worktree ${root}\nworktree ${inside}\n`, root)).toEqual([]);
+  });
+});
+
+describe("the stray check, end to end", () => {
+  it("reports a worktree outside the repository as a stray", () => {
+    const root = createRepo();
+    const inside = join(root, ".claude", "worktrees", "example");
+    git(root, ["worktree", "add", "-b", "example", inside]);
+
+    const outsideParent = realpathSync(mkdtempSync(join(tmpdir(), "cargo-target-dir-outside-")));
+    const outside = join(outsideParent, "example");
+    git(root, ["worktree", "add", "-b", "example-outside", outside]);
+
+    const listed = execFileSync("git", ["worktree", "list", "--porcelain"], {
+      cwd: root,
+      encoding: "utf8"
+    });
+
+    expect(strayWorktrees(listed, root)).toEqual([normalize(outside)]);
+  });
+});
+
+/** A throwaway repository with a seed commit, so `git worktree add` has something to branch from. */
+function createRepo(): string {
+  // realpathSync: mkdtempSync hands back one spelling of /tmp and git hands back the other
+  // (/private/tmp on macOS), which fails a comparison between them for reasons that have nothing
+  // to do with the code under test.
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "cargo-target-dir-root-")));
+  execFileSync("git", ["init", "--initial-branch=main", root]);
+  git(root, ["config", "user.email", "root@example.com"]);
+  git(root, ["config", "user.name", "Root Test"]);
+  writeFileSync(join(root, "seed.txt"), "seed");
+  git(root, ["add", "."]);
+  git(root, ["commit", "-m", "seed"]);
+
+  return root;
+}
 
 function git(cwd: string, args: string[]): string {
   return execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
