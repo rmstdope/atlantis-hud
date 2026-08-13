@@ -195,7 +195,7 @@ function RegionProblemsToggle({ count }: { count: number }) {
         type="checkbox"
         checked={shown}
         onChange={toggle}
-        aria-label="Problems"
+        aria-label={`Problems ${count}`}
         data-testid="region-problems-toggle"
         className="h-3 w-3 accent-select"
       />

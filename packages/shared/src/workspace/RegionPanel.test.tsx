@@ -91,8 +91,10 @@ describe("the region panel's problems toggle", () => {
     const markup = draw(PROBLEMS);
 
     expect(markup).toContain("region-problems-toggle");
-    expect(markup).toContain("Problems");
-    expect(markup).toContain("3");
+    // Tied to the count specifically, not to "3" appearing anywhere in the markup - the panel
+    // body also carries digits of its own, in the hex's coordinates.
+    expect(markup).toMatch(/aria-label="Problems 3"/);
+    expect(markup).toMatch(/Problems.*3/);
     expect(markup).toMatch(/<input[^>]*type="checkbox"[^>]*data-testid="region-problems-toggle"/);
   });
 
