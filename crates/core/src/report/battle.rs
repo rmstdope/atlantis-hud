@@ -79,8 +79,10 @@ pub struct BattleUnit {
     pub body: String,
 }
 
-/// A casualty line, as printed on the close of a round or of the whole battle:
-/// `Pirates (14789) loses 15.`
+/// A casualty line, on the close of a round or of the whole battle: `Pirates (14789) loses 15.`
+///
+/// `text` is that line trimmed and with its trailing full stop removed - `Pirates (14789) loses
+/// 15` - matching the convention `parse_casualty_line` uses for every other verbatim field here.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Casualty {

@@ -431,7 +431,11 @@ export type BattleUnit = {
   body: string;
 };
 
-/** A casualty line, as printed: `Pirates (14789) loses 15.` */
+/**
+ * A casualty line, on the close of a round or of the whole battle: `Pirates (14789) loses 15.`
+ *
+ * `text` is that line with its trailing full stop removed - `Pirates (14789) loses 15`.
+ */
 export type Casualty = {
   combatant: Combatant | null;
   lost: number | null;
