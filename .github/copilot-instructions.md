@@ -42,14 +42,19 @@ running either should load its skill first.
 until it is told to stop, and the thing that tells it is the orchestrator:
 
 ```bash
-claude --agent orchestrator --permission-mode auto
+claude --agent orchestrator --name Cerebro --permission-mode auto
 ```
 
-That session is interactive, runs on Sonnet, and starts nothing until you ask it to. You tell it to
-spin up implementers, which it spawns as subagents on Sonnet, each with its own context; you tell it
-to take one down, and it writes that implementer's stop flag. **Taking one down means telling it to
-finish**: the implementer completes the bead it is on, sees it merged, and only then leaves the
-loop — killing one mid-bead strands a claim, a worktree and an open PR.
+That session is called **Cerebro**, is interactive, runs on Sonnet, and starts nothing until you ask
+it to. You tell it to spin up implementers — named after X-Men — which it spawns as subagents on
+Sonnet, each with its own context; you tell it to take one down, and it writes that implementer's
+stop flag. **Taking one down means telling it to finish**: the implementer completes the bead it is
+on, sees it merged, and only then leaves the loop — killing one mid-bead strands a claim, a worktree
+and an open PR.
+
+Cerebro also keeps the worktrees swept, on startup and every ten minutes, with
+`scripts/prune-worktrees.sh`. That removes an agent worktree only when nothing can be lost from it:
+clean tree, work already on main, untouched for half an hour.
 
 Both roles are defined in `.claude/agents/`. Planning is not run this way: `/plan-bead` is
 interactive by design and stays a session of its own.

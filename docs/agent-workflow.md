@@ -47,11 +47,13 @@ Builders are run from an **orchestrator**: one interactive session, in its own t
 and stops them for you.
 
 ```
-claude --agent orchestrator --permission-mode auto
+claude --agent orchestrator --name Cerebro --permission-mode auto
 ```
 
-It starts nothing on its own. It greets you, tells you what the queue looks like, and waits. Then you
-talk to it in whatever words you like:
+The orchestrator is always called **Cerebro** — it finds the mutants and points them at the work.
+
+It starts nothing on its own. It sweeps away any worktrees left behind by a previous run, greets you,
+tells you what the queue looks like, and waits. Then you talk to it in whatever words you like:
 
 ```
 start two implementers
@@ -87,6 +89,26 @@ Changed your mind before it noticed? Deleting the flag cancels the instruction:
 ```bash
 rm .claude/implementers/<name>.stop
 ```
+
+### Leftover worktrees
+
+Builders work in `.claude/worktrees/<bead>` and remove the tree when they finish. One that crashes,
+or whose bead somebody else merged, leaves it behind — and a stray tree holding `main` makes the next
+agent's `git checkout main` fail for no visible reason.
+
+Cerebro sweeps them: once when it starts, then every ten minutes. You can run the same sweep yourself
+at any time:
+
+```bash
+scripts/prune-worktrees.sh --dry-run   # say what would go
+scripts/prune-worktrees.sh             # actually go
+```
+
+It only removes a worktree when **nothing can be lost from it**: the tree is clean, the work is
+already on main, and nothing has touched it for half an hour. Anything else it keeps and tells you
+why. Note that it asks GitHub whether the branch's PR merged, rather than looking for its commits on
+main — with `--squash` merges the commits are never there, so the naive check would keep every
+worktree for ever.
 
 ### When a builder gets slow or vague
 
