@@ -95,7 +95,8 @@ fn split_sections(body: &str) -> (String, Vec<(String, String)>) {
     (head, sections)
 }
 
-fn matching_flag(field: &str) -> Option<&'static str> {
+/// Reused by `battle.rs` for battle rosters, which are flagged the same way a region's units are.
+pub(crate) fn matching_flag(field: &str) -> Option<&'static str> {
     let normalised = field.trim().trim_end_matches('.');
     KNOWN_FLAGS
         .iter()

@@ -49,6 +49,18 @@ describe("the full model across the WebAssembly boundary", () => {
 
     expect(parsed.ordersTemplate?.units).toHaveLength(27);
     expect(parsed.ordersTemplate?.text.startsWith("#atlantis 95 ")).toBe(true);
+
+    // Battles are the one part of this model with a nested struct of its own, which does not
+    // inherit the outer `#[serde(rename_all = "camelCase")]` - so this is the only place a naming
+    // mismatch (e.g. `line_start` crossing over unrenamed) could be caught.
+    expect(parsed.battles).toHaveLength(2);
+    const first = parsed.battles[0];
+    expect(first?.defender?.name).toBe("Pirates");
+    expect(first?.terrain).toBe("ocean");
+    expect(first?.coordinate).toEqual({ x: 25, y: 55, z: 1 });
+    expect(first?.damagedUnits).toEqual(["14789"]);
+    expect(first?.lineStart).toBeGreaterThan(0);
+    expect(first?.lineEnd).toBeGreaterThan(first?.lineStart ?? 0);
   });
 
   it("renders optional fields as null rather than undefined", async () => {

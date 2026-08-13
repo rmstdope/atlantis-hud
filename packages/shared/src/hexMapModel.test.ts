@@ -111,6 +111,7 @@ function report(regions: ReportRegion[], turnNumber: number | null = 71): Parsed
       events: []
     },
     regions,
+    battles: [],
     ordersTemplate: null
   };
 }

@@ -25,6 +25,7 @@ function report(factionId: string | null, turnNumber: number | null): ParsedRepo
       events: []
     },
     regions: [],
+    battles: [],
     ordersTemplate: null
   };
 }
