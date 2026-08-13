@@ -48,6 +48,15 @@ describe("portsFrom", () => {
     expect(() => portsFrom("4200.5")).toThrow(/SMOKE_PORT_BASE/u);
   });
 
+  it("refuses anything that is not plain decimal digits, however numeric it may be", () => {
+    // `Number` is happy to read "1e3" as 1000 and "0x10" as 16, both of which are whole numbers and
+    // neither of which is a port somebody typed on purpose. A base is digits or it is a mistake.
+    expect(() => portsFrom("1e3")).toThrow(/SMOKE_PORT_BASE/u);
+    expect(() => portsFrom("0x1075")).toThrow(/SMOKE_PORT_BASE/u);
+    expect(() => portsFrom("0b1000001001101")).toThrow(/SMOKE_PORT_BASE/u);
+    expect(() => portsFrom("+4173")).toThrow(/SMOKE_PORT_BASE/u);
+  });
+
   it("refuses a base that would run past the end of the port range", () => {
     expect(() => portsFrom("70000")).toThrow(/SMOKE_PORT_BASE/u);
     expect(() => portsFrom("80")).toThrow(/SMOKE_PORT_BASE/u);

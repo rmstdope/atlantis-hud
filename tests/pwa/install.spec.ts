@@ -80,7 +80,11 @@ test("the service worker registers and activates", async ({ page, baseURL }) => 
   // Scoped to the origin root, so every path the application can reach is behind the cache. Taken
   // from the config's own baseURL rather than written out: the port is this agent's, not a
   // constant, and a literal here would fail for every agent but the first.
-  expect(scope).toBe(new URL("/", baseURL).toString());
+  //
+  // Asserted before it is used: the fixture is typed as optional, and `new URL("/", undefined)`
+  // throws "Invalid URL", which says nothing about the config not having been applied.
+  expect(baseURL, "the PWA config supplies baseURL").toBeTruthy();
+  expect(scope).toBe(new URL("/", baseURL as string).toString());
 });
 
 test("the workspace still opens with the network cut", async ({ page, context }) => {

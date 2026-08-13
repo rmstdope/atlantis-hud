@@ -47,10 +47,14 @@ export type SmokePorts = {
  * collision the variable exists to avoid.
  */
 export function portsFrom(base: string | undefined): SmokePorts {
-  const wanted = base?.trim() ? Number(base) : DEFAULT_PORT_BASE;
+  const given = base?.trim() ?? "";
+  // Digits, not "whatever Number will read". `Number` takes "1e3" as 1000 and "0x10" as 16 - both
+  // whole numbers, neither a port anybody typed on purpose.
+  const looksLikeAPort = /^\d+$/u.test(given);
+  const wanted = given === "" ? DEFAULT_PORT_BASE : looksLikeAPort ? parseInt(given, 10) : Number.NaN;
 
   if (!Number.isInteger(wanted)) {
-    throw new Error(`${PORT_BASE_VARIABLE} is "${base}", which is not a whole number.`);
+    throw new Error(`${PORT_BASE_VARIABLE} is "${base}", which is not a port number.`);
   }
   if (wanted < LOWEST_BASE || wanted + PORTS_PER_AGENT > 65_535) {
     throw new Error(
