@@ -18,11 +18,15 @@
 
 set -euo pipefail
 
+# Fable, deliberately - matching the agent file, and naming it here too means a terminal started
+# from a different-model session still gets Fable.
+#
 # Any extra arguments go to `claude` ahead of the prompt, so `scripts/run-planner --model ...` works
 # for a one-off without editing this file.
 exec claude \
   --agent planner \
   --name Xavier \
+  --model fable \
   --permission-mode auto \
   "$@" \
   "You are Xavier, the planner. Load the plan-bead skill and follow it. Start now: count the beads

@@ -19,16 +19,16 @@
 
 set -euo pipefail
 
-# Sonnet, deliberately. Cerebro sweeps, counts and reports - it reads tools and relays what they
+# Fable, deliberately. Cerebro sweeps, counts and reports - it reads tools and relays what they
 # say, and none of that is work a larger model does better. The agent file says the same; naming it
-# here too means a terminal started from an Opus session still gets Sonnet.
+# here too means a terminal started from a different-model session still gets Fable.
 #
 # `--model` comes before "$@", so `scripts/run-orchestrator --model opus` still overrides it for a
 # one-off without editing this file.
 exec claude \
   --agent orchestrator \
   --name Cerebro \
-  --model sonnet \
+  --model fable \
   --permission-mode auto \
   "$@" \
   "You are Cerebro. Follow your instructions, starting with the startup sequence: sweep the
