@@ -6,7 +6,8 @@
  *
  * - `current`  — in this turn's report. Trustworthy.
  * - `stale`    — visited before, absent from this report. The data is real but may have moved on.
- * - `named`    — named in another region's `Exits` block. Terrain and province only, never visited.
+ * - `named`    — named in another region's `Exits` block, in this report or a remembered one.
+ *                Terrain and province only, never visited.
  * - unexplored — not represented here at all; the renderer draws the empty lattice.
  */
 
@@ -193,6 +194,51 @@ function nodeFromRegion(
   };
 }
 
+/** One entry of a region's `Exits` block: the only account there is of a hex nobody has entered. */
+type Exit = ReportRegion["exits"][number];
+
+/**
+ * A hex as somebody's exits describe it, and the turn they described it in.
+ *
+ * `lastSeenTurn` is the turn whose exits named it, which is not the same claim the field makes for
+ * a visited hex - nobody has stood here. It is carried because a naming has a vintage and the map
+ * would otherwise throw it away; `ageInTurns` stays null, because a hex never visited has no age
+ * for the fade to run.
+ */
+function namedFromExit(exit: Exit, namedInTurn: number | null): HexNode {
+  return {
+    regionId: regionIdOf(exit.coordinate),
+    coordinate: exit.coordinate,
+    terrain: exit.terrain,
+    province: exit.province,
+    label: hexLabelOf(exit),
+    knowledge: "named",
+    lastSeenTurn: namedInTurn,
+    ageInTurns: null,
+    settlementName: exit.settlement?.name ?? null,
+    region: null,
+    ownUnitCount: 0,
+    foreignUnitCount: 0
+  };
+}
+
+/**
+ * The remembered regions, oldest sighting first.
+ *
+ * Copied before it is sorted: `sort` works in place, and reordering the caller's own array under it
+ * is not this function's to do. A sighting carrying no payload carries no exits either and simply
+ * contributes nothing, which is why nothing filters them out first.
+ *
+ * Sightings of the same turn come back in the order the store listed them, which is what `sort` has
+ * guaranteed since ES2019 - stability is part of the language here rather than a habit of one
+ * engine, and this package compiles to ES2022. The caller turns that order into "the first naming
+ * of a turn wins", and `settles two namings from the same turn the way a report does` fails if
+ * either half of that stops holding.
+ */
+function namingsOldestFirst(storedRegions: StoredRegion[]): StoredRegion[] {
+  return [...storedRegions].sort((left, right) => left.lastSeenTurn - right.lastSeenTurn);
+}
+
 /**
  * Builds the map from this turn's report and whatever earlier turns left behind.
  *
@@ -209,26 +255,37 @@ export function buildHexMapModel(
   const storedByKey = new Map(storedRegions.map((stored) => [regionIdOf(stored.coordinate), stored]));
 
   // Weakest first, so stronger knowledge overwrites it.
+  //
+  // Namings oldest first, so a later account of the same ground overwrites an earlier one. A
+  // remembered region's exits are as old as the sighting that carried them, and within any single
+  // turn the first naming wins - the rule the report below has always used, applied to memory too.
+  // Without it the winner would be whichever row the store happened to list last, so a hex could
+  // change terrain from one turn to the next with no new information having arrived.
+  const namedInTurn = new Map<string, number>();
+  for (const stored of namingsOldestFirst(storedRegions)) {
+    for (const exit of stored.region?.exits ?? []) {
+      const key = regionIdOf(exit.coordinate);
+      if (namedInTurn.get(key) === stored.lastSeenTurn) {
+        continue;
+      }
+      namedInTurn.set(key, stored.lastSeenTurn);
+      byKey.set(key, namedFromExit(exit, stored.lastSeenTurn));
+    }
+  }
+
+  // The report on screen names last and so wins, whatever turn it carries: it is the account the
+  // player is reading, which is the same reason its regions beat a stored sighting below. Within it
+  // the first naming of a hex wins, as it always has - `byKey` can no longer answer that question
+  // on its own now that remembered namings are already in it.
+  const namedNow = new Set<string>();
   for (const region of parsed.regions) {
     for (const exit of region.exits) {
       const key = regionIdOf(exit.coordinate);
-      if (byKey.has(key)) {
+      if (namedNow.has(key)) {
         continue;
       }
-      byKey.set(key, {
-        regionId: key,
-        coordinate: exit.coordinate,
-        terrain: exit.terrain,
-        province: exit.province,
-        label: hexLabelOf(exit),
-        knowledge: "named",
-        lastSeenTurn: null,
-        ageInTurns: null,
-        settlementName: exit.settlement?.name ?? null,
-        region: null,
-        ownUnitCount: 0,
-        foreignUnitCount: 0
-      });
+      namedNow.add(key);
+      byKey.set(key, namedFromExit(exit, currentTurn));
     }
   }
 
