@@ -23,6 +23,8 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { runGate } from "./beadsExportGate";
+import { describeGitFailure, settleStep } from "./releaseSupport";
 
 const BUMPS = ["major", "minor", "maintenance"] as const;
 type Bump = (typeof BUMPS)[number];
@@ -41,8 +43,20 @@ const fail = (message: string): never => {
   process.exit(1);
 };
 
-const git = (...args: string[]): string =>
-  execFileSync("git", args, { cwd: repoFile("."), encoding: "utf8" }).trim();
+/**
+ * git, with a failure that says what happened.
+ *
+ * `execFileSync` throws an error whose message is "Command failed" and whose streams are buffers
+ * nobody reads - which is how the export gate's "run the push again" explanation was lost, and why
+ * a stranded release looked like an unexplained crash.
+ */
+const git = (...args: string[]): string => {
+  try {
+    return execFileSync("git", args, { cwd: repoFile("."), encoding: "utf8" }).trim();
+  } catch (error) {
+    return fail(describeGitFailure(args, error));
+  }
+};
 
 // --- Arguments ---------------------------------------------------------------------------------
 
@@ -160,6 +174,26 @@ console.log("release: every local check passed.");
 if (dryRun) {
   console.log("release: --dry-run, so nothing was written, committed, tagged or pushed.");
   process.exit(0);
+}
+
+// --- Settling the bead export -------------------------------------------------------------------
+
+/**
+ * The export gate, run here on purpose, while nothing is at stake.
+ *
+ * On main the gate commits a refreshed `.beads/issues.jsonl` and aborts the push that triggered it,
+ * asking for another. That is deliberate and it is not the gate's fault: a pre-push hook cannot
+ * amend refs git has already computed. But a release runs straight after bead work, so the export
+ * is stale on essentially every release - and meeting that abort *after* the version commit is what
+ * stranded v0.5.2 at a bumped manifest with no tag.
+ *
+ * Running it first turns that into a no-op: the refresh is committed and pushed before the bump, so
+ * the release commit and its tag stay adjacent and the release's own push meets nothing.
+ */
+const settle = runGate(repoFile("."));
+if (settleStep(settle) === "push") {
+  console.log("release: the bead export was stale; pushing the gate's refresh before the bump.");
+  git("push", "origin", `HEAD:${branch}`);
 }
 
 // --- The bump ----------------------------------------------------------------------------------
