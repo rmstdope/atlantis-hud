@@ -1,8 +1,9 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
-import { dirname, isAbsolute, join, resolve, sep } from "node:path";
+import { dirname, join, isAbsolute, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { normalize, strayWorktrees, targetDir } from "./cargoTargetDir";
 
 /**
  * One build directory for every worktree.
@@ -25,21 +26,6 @@ import { describe, expect, it } from "vitest";
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const CONFIG = join(REPO, ".cargo", "config.toml");
-
-/** Where the agents' worktrees live, relative to the repository root. */
-const AGENT_WORKSPACES = ".claude";
-
-/** One separator, so a comparison is about the path rather than about the platform. */
-function normalize(path: string): string {
-  return resolve(path).split(sep).join("/");
-}
-
-/** The value of `build.target-dir`, or nothing when the config does not set one. */
-function targetDir(text: string): string | null {
-  const match = text.match(/^\s*target-dir\s*=\s*"([^"]*)"/mu);
-
-  return match ? match[1] : null;
-}
 
 describe("the shared cargo build directory", () => {
   it("is configured at the repository root, where every worktree's search reaches it", () => {
@@ -66,18 +52,11 @@ describe("the shared cargo build directory", () => {
       cwd: REPO,
       encoding: "utf8"
     });
-    // git reports paths with forward slashes on every platform, including Windows, where the repo
-    // is built for release - so both sides are normalized before they are compared at all.
-    const paths = [...listed.matchAll(/^worktree (.+)$/gmu)].map((match) => normalize(match[1]));
-    const root = normalize(REPO);
-    // The trailing separator is the whole guard: without it a sibling named `.claude-old` starts
-    // with `.claude` and would pass as though it were inside.
-    const inside = `${root}/${AGENT_WORKSPACES}/`;
-    const strays = paths.filter((path) => path !== root && !path.startsWith(inside));
+    const strays = strayWorktrees(listed, REPO);
 
     expect(strays).toEqual([]);
     // The repository itself and the agents' worktrees are what this is about, so a run that saw
     // neither would pass while asserting nothing.
-    expect(paths).toContain(root);
+    expect(listed).toContain(`worktree ${normalize(REPO)}`);
   });
 });
