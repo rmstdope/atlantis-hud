@@ -70,6 +70,15 @@ export type ItemEntry = {
    * would be exactly the sort of plausible-but-wrong number this package exists to avoid.
    */
   capacityCondition?: string;
+  /**
+   * Levels of sailing skill a ship's crew must hold between them to sail it, as the page states:
+   * "This ship requires a total of 4 levels of sailing skill to sail." Present only for ships.
+   *
+   * Not to be confused with Summon Wind or the windchime, which each add movement points "to ships
+   * requiring up to N sailing skill points" - close wording, but neither states a ship's own
+   * requirement, and the ship-only guard below keeps them from being mistaken for one.
+   */
+  sailingSkill?: number;
 };
 
 export type ItemReference = Record<string, ItemEntry>;
@@ -190,6 +199,22 @@ function cargoOf(kind: ItemKind, text: string): { cargoCapacity?: number } {
   return capacity === null ? {} : { cargoCapacity: capacity };
 }
 
+/**
+ * The sailing skill a ship's crew needs between them, which the page states as `requires a total
+ * of 4 levels of sailing skill to sail`.
+ *
+ * Ship-only, like `cargoOf`: Summon Wind and the windchime use close wording - "ships requiring up
+ * to N sailing skill points" - for a bonus they grant, not a requirement of their own, and neither
+ * is a ship to begin with.
+ */
+function sailingOf(kind: ItemKind, text: string): { sailingSkill?: number } {
+  if (kind !== "ship") {
+    return {};
+  }
+  const skill = readNumber(text, /requires a total of (\d+) levels? of sailing skill/i);
+  return skill === null ? {} : { sailingSkill: skill };
+}
+
 export function parseItemReference(html: string): ItemReference {
   const items: ItemReference = {};
 
@@ -235,6 +260,7 @@ export function parseItemReference(html: string): ItemReference {
       selfMobile,
       ...conditionOf(paragraph),
       ...cargoOf(kind, paragraph),
+      ...sailingOf(kind, paragraph),
       moves:
         readNumber(paragraph, /moves (\d+) hexes? per month/i) ??
         readNumber(paragraph, /speed of (\d+) hexes? per month/i) ??
