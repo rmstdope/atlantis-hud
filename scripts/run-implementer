@@ -4,10 +4,12 @@
 #
 #     scripts/run-implementer Cyclops
 #
-# The loop lives here rather than inside the agent. Each bead gets a fresh `claude` process, which
-# exits when the bead is merged; this script then re-reads the flags and starts another. That makes
-# "one bead per process" a property of how an implementer is run instead of a rule it has to keep,
-# so context cannot grow across beads.
+# This is a wrapper and nothing more. **The loop is in `scripts/runImplementer.ts`** — go there to
+# read or debug it; all this file does is run it with the workspace's own tsx.
+#
+# What that loop does: each bead gets a fresh `claude` process, which exits when the bead is merged;
+# the loop then re-reads the flags and starts another. So "one bead per process" is a property of
+# how an implementer is run instead of a rule it has to keep, and context cannot grow across beads.
 #
 # Cerebro drives it with two files:
 #
@@ -22,4 +24,7 @@
 
 set -euo pipefail
 
-exec npx tsx "$(dirname "${BASH_SOURCE[0]}")/runImplementer.ts" "$@"
+# `pnpm exec`, not `npx`: it runs the tsx this workspace already depends on, where npx will happily
+# fetch a version from the registry when node_modules is not installed yet - a network fetch nobody
+# asked for, and a different tsx from the one every other script here runs under.
+exec pnpm exec tsx "$(dirname "${BASH_SOURCE[0]}")/runImplementer.ts" "$@"

@@ -176,7 +176,10 @@ export function runLoop(repoRoot: string, name: string): number {
     if (run.error) {
       say(`could not be started: ${run.error.message}`);
     } else if (run.status !== 0) {
-      say(`${name} exited with ${run.status ?? "a signal"}`);
+      // Name the signal. A run killed by SIGINT is the navigator pressing Ctrl-C and a SIGKILL is
+      // something else entirely, and "a signal" makes the two indistinguishable in the terminal
+      // where this is read.
+      say(`${name} exited with ${run.status ?? `signal ${run.signal ?? "unknown"}`}`);
     } else if (elapsedMs < SHORT_RUN_MS) {
       // Successful and far too quick to have merged anything: an empty queue, most likely.
       say(`${name} finished in ${Math.round(elapsedMs / 1000)}s without taking a bead`);

@@ -57,9 +57,10 @@ delivered to a process that has exited helps nobody.
 
 ## Finishing means finishing
 
-There is no stop flag to check any more and no next bead to take. When your bead is merged, closed
-and cleaned up, say what you did and end the run — the launcher reads the flags and decides whether
-there is another. **Never stop before that point.** A bead abandoned in flight strands a claim, a
+There is no next bead to take, and no flag for **you** to check. The `.go` and `.stop` flags still
+exist and still mean what `orchestrator.md` says they mean — your launcher reads them, between runs,
+and decides whether to start another session. That is not your business: when your bead is merged,
+closed and cleaned up, say what you did and end the run. **Never stop before that point.** A bead abandoned in flight strands a claim, a
 worktree and an open PR for somebody to unpick by hand, which is exactly what one-bead-per-process
 is arranged to avoid.
 

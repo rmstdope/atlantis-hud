@@ -12,9 +12,10 @@ import { flagPaths, launchCommand, nextAction } from "./runImplementer";
  * An implementer used to be a subagent, and a subagent has no next turn: when it emits its final
  * text the `Agent` call returns and the session is gone. Cyclops armed a Monitor against PR #161's
  * review and ended its turn; the review landed with nobody left to receive it. So an implementer is
- * now its own top-level session - which can wait - and the loop moves out here, into a shell script
- * the navigator runs in a terminal. One `claude` process per bead, started fresh, exiting when the
- * bead is merged, relaunched for as long as the go flag is set.
+ * now its own top-level session - which can wait - and the loop moves out of the agent and into this
+ * module, which the navigator runs in a terminal through the `scripts/run-implementer` wrapper. One
+ * `claude` process per bead, started fresh, exiting when the bead is merged, relaunched for as long
+ * as the go flag is set.
  *
  * These are the decisions that loop makes. They are pure functions taking their inputs as arguments,
  * following `gateLock.ts`, because a loop that reads the filesystem itself cannot be tested at all.
