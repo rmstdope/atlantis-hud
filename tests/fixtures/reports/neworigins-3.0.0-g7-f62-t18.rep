@@ -1,0 +1,885 @@
+;Treasury:
+;
+;Item                                      Rank  Max        Total
+;=====================================================================
+;9 leaders [LEAD]                          19    36         491
+;2 orcs [ORC]                              36    337        3207
+;2 centaurs [CTAU]                         34    276        1958
+;12086 silver [SILV]                       23    79263      865369
+;23 livestock [LIVE]                       21    701        2551
+;35 iron [IRON]                            20    329        2936
+;125 wood [WOOD]                           11    546        4496
+;53 stone [STON]                           13    407        2165
+;45 furs [FUR]                             7     300        1181
+;2 horses [HORS]                           37    588        4912
+;131 swords [SWOR]                         5     232        2182
+;24 mithril [MITH]                         6     164        425
+;ironwood [IRWD]                           15    47         299
+;344 humans [HUMN]                         4     826        4930
+
+Atlantis Report For:
+Borg (62) (Martial 1, Magic 4)
+July, Year 2
+
+Atlantis Engine Version: 5.2.5 (beta)
+NewOrigins, Version: 3.0.0 (beta)
+
+Faction Status:
+Regions: 4 (10)
+Quartermasters: 1 (2)
+Mages: 5 (5)
+Apprentices: 0 (10)
+
+Errors during turn:
+Seven of One (1658): TEACH: Micaksica (4560) is not studying a skill
+  you can teach.
+
+Events during turn:
+Arkady (874) is caught attempting to steal from scout 04 (1304) in
+  Derngill.
+Drones (7124): Gives unit to Queen XOT (34).
+Drones (5376): Gives 21 livestock [LIVE] to Drone (7123).
+Drones (1661): Gives 11 stone [STON] to Two of One (4150).
+Drones (3503): Gives 18 iron [IRON] to Two of One (4150).
+Drones (4151): Gives 22 swords [SWOR] to Drones (6668).
+Taxdrones (5421): Gives 2 ironwood [IRWD] to HutBuilders (3598).
+Seven of One (1658): Gives 2 ironwood [IRWD] to HutBuilders (3598).
+Five of Ten (916): Gives 100 silver [SILV] to Three of Five (1657).
+Five of Ten (916): Gives 100 silver [SILV] to Four of Two (1659).
+Five of Ten (916): Gives 50 silver [SILV] to One of Six (2173).
+Five of Ten (916): Gives 100 silver [SILV] to Two of One (4150).
+Five of Ten (916): Gives 50 silver [SILV] to Unit (5374).
+Drone (1655): Gives 14 silver [SILV] to Beacon (3832).
+Drones (5375): Gives 21 livestock [LIVE] to Drone (7125).
+Drone (1653): Collects $47 in taxes in forest (44,80) in Utso.
+Taxdrones (5421): Collects $1149 in taxes in mountain (43,81) in
+  Derngill.
+Drones (6668): Collects $3199 in taxes in mountain (43,81) in
+  Derngill.
+Taxdrones (7598): Collects $3300 in taxes in mountain (43,81) in
+  Derngill.
+Drone (1655): Collects $41 in taxes in mountain (42,82) in Derngill.
+Four of Two (1659): Casts Earth Lore, raising 30 silver.
+Four of Two (1659): Gets 5 days of practice with earth lore [EART].
+Seven of One (1658): Casts Phantasmal Entertainment, raising 600
+  silver.
+Seven of One (1658): Gets 5 days of practice with illusion [ILLU].
+Nanny Ogg (888) uses illusion [ILLU] in mountain (43,81) in Derngill,
+  contains Onthead [city].
+Gail (918) uses illusion [ILLU] in mountain (43,81) in Derngill,
+  contains Onthead [city].
+Steven (1662) uses illusion [ILLU] in mountain (43,81) in Derngill,
+  contains Onthead [city].
+Dwight Fry (1663) uses illusion [ILLU] in mountain (43,81) in
+  Derngill, contains Onthead [city].
+Cold Ethyl (1664) uses illusion [ILLU] in mountain (43,81) in
+  Derngill, contains Onthead [city].
+Arkady (874) uses earth lore [EART] in mountain (43,81) in Derngill,
+  contains Onthead [city].
+Granny Weatherwax (1401) uses earth lore [EART] in mountain (43,81) in
+  Derngill, contains Onthead [city].
+Tiffany Aching (1404) uses earth lore [EART] in mountain (43,81) in
+  Derngill, contains Onthead [city].
+Nine of Eight (1656): Casts Phantasmal Entertainment, raising 600
+  silver.
+Nine of Eight (1656): Gets 5 days of practice with illusion [ILLU].
+Magrat Garlic (1402) uses earth lore [EART] in mountain (43,81) in
+  Derngill, contains Onthead [city].
+Agnes Nitt (1403) uses earth lore [EART] in mountain (43,81) in
+  Derngill, contains Onthead [city].
+Five of Ten (916): Casts Phantasmal Entertainment, raising 600 silver.
+Five of Ten (916): Gets 5 days of practice with illusion [ILLU].
+Three of Five (1657): Casts Phantasmal Entertainment, raising 600
+  silver.
+Three of Five (1657): Gets 5 days of practice with illusion [ILLU].
+Taxdrones (5421): Buys 3 humans [HUMN] at $48 each.
+Drones (6668): Buys 22 humans [HUMN] at $48 each.
+Drone (7123): Walks from forest (44,80) in Utso to mountain (43,81) in
+  Derngill.
+Drone (7125): Walks from mountain (42,82) in Derngill to mountain
+  (43,81) in Derngill.
+Seven of One (1658): Teaches pattern to Endymion (4559).
+Seven of One (1658): Teaches pattern to Count Borzoi (6520).
+Seven of One (1658): Teaches pattern to Five of Ten (916).
+Seven of One (1658): Teaches pattern to Nine of Eight (1656).
+Seven of One (1658): Teaches pattern to Three of Five (1657).
+Drone (1652): Earns 12 silver working in forest (43,79) in Utso.
+Drone (1653): Drone (1653) shares 10 silver [SILV] with Beacon (3830).
+Beacon (3830): Studies stealth at a cost of 50 silver [SILV].
+Drones (5376): Produces 21 livestock [LIVE] in forest (44,80) in Utso.
+Drones (5376): Gets 5 days of practice with farming [FARM].
+Drones (3502): Produces 12 mithril [MITH] in volcano (41,81) in
+  Sa'endtell.
+Drones (3502): Gets 5 days of practice with mining [MINI].
+Four of Two (1659): Studies earth lore and was taught for 30 days at a
+  cost of 100 silver [SILV].
+Four of Two (1659): Four of Two (1659) shares 30 silver [SILV] with
+  Two of Seven (2172).
+One of Six (2173): One of Six (2173) shares 20 silver [SILV] with Two
+  of Seven (2172).
+Two of Seven (2172): Studies observation at a cost of 50 silver
+  [SILV].
+Taxdrones (5421): Taxdrones (5421) shares 20 silver [SILV] with One of
+  Six (2173).
+One of Six (2173): Studies stealth at a cost of 50 silver [SILV].
+Taxdrones (5421): Taxdrones (5421) shares 20 silver [SILV] with Unit
+  (7597).
+Unit (7597): Studies weaponsmith at a cost of 20 silver [SILV].
+Two of One (4150): Studies quartermaster at a cost of 100 silver
+  [SILV].
+Nine of Eight (1656): Studies pattern and was taught for 30 days at a
+  cost of 100 silver [SILV].
+Five of Ten (916): Studies pattern and was taught for 30 days at a
+  cost of 100 silver [SILV].
+Three of Five (1657): Studies pattern and was taught for 30 days at a
+  cost of 100 silver [SILV].
+Unit (5374): Studies stealth at a cost of 50 silver [SILV].
+Two of One (4150): Two of One (4150) shares 22 iron [IRON] with Drones
+  (4151).
+Drones (4151): Produces 22 swords [SWOR] in mountain (43,81) in
+  Derngill.
+Drones (4151): Gets 5 days of practice with weaponsmith [WEAP].
+Two of One (4150): Two of One (4150) shares 20 wood [WOOD] with Drones
+  (3139).
+Drones (3139): Completes construction of Building [11]
+Drones (3139): Gets 5 days of practice with building [BUIL].
+Two of One (4150): Two of One (4150) shares 40 wood [WOOD] with Drones
+  (3831).
+Drones (3831): Performs construction on Building [9]
+Drones (3831): Gets 5 days of practice with building [BUIL].
+Drones (1660): Produces 32 livestock [LIVE] in mountain (43,81) in
+  Derngill.
+Drones (1660): Gets 5 days of practice with farming [FARM].
+Drones (3503): Produces 18 iron [IRON] in mountain (43,81) in
+  Derngill.
+Drones (3503): Gets 5 days of practice with mining [MINI].
+Drones (1661): Produces 11 stone [STON] in mountain (43,81) in
+  Derngill.
+Beacon (3832): Studies stealth at a cost of 50 silver [SILV].
+Drones (5375): Produces 22 livestock [LIVE] in mountain (42,82) in
+  Derngill.
+Drones (5375): Gets 5 days of practice with farming [FARM].
+Two of One (4150): Receives 20 wood [WOOD] from Chops (2835).
+Two of One (4150): Receives ironwood [IRWD] from Choir (7134).
+Two of One (4150): Receives 3 mithril [MITH] from Drones (7124).
+Two of One (4150): Receives 3 mithril [MITH] from explorer (4304).
+Two of One (4150): Receives 100 silver [SILV] from scout 05 (1299).
+Two of One (4150): Receives 10 wood [WOOD] from chopper (2667).
+Two of One (4150): Receives 6 furs [FUR] from hunter (5009).
+Drones (3502): Transports 12 mithril [MITH] to Two of One (4150) for
+  $0.
+Two of One (4150): Receives 9 stone [STON] from QuarryOrcs (3281).
+Two of One (4150): Receives 2 stone [STON] from QuarryOrc (4303).
+Two of One (4150): Transports 10 wood [WOOD] to minerstoo (4838) for
+  $0.
+Two of One (4150): Gets 5 days of practice with quartermaster [QUAM].
+Drones (5376): Consumes 8 livestock [LIVE] for maintenance.
+Drones (1660): Consumes 11 livestock [LIVE] for maintenance.
+Drone (7123): Consumes livestock [LIVE] for maintenance.
+Drone (7125): Consumes livestock [LIVE] for maintenance.
+Drones (5375): Consumes 8 livestock [LIVE] for maintenance.
+Drone (1653): Borrows livestock [LIVE] from Drones (5376) for
+  maintenance.
+Drones (5376): Drone (1653) borrows livestock [LIVE] for maintenance.
+Beacon (3830): Borrows livestock [LIVE] from Drones (5376) for
+  maintenance.
+Drones (5376): Beacon (3830) borrows livestock [LIVE] for maintenance.
+Four of Two (1659): Borrows 2 livestock [LIVE] from Drones (1660) for
+  maintenance.
+Drones (1660): Four of Two (1659) borrows 2 livestock [LIVE] for
+  maintenance.
+Drones (1661): Borrows 4 livestock [LIVE] from Drones (1660) for
+  maintenance.
+Drones (1660): Drones (1661) borrows 4 livestock [LIVE] for
+  maintenance.
+Two of Seven (2172): Borrows 2 livestock [LIVE] from Drones (1660) for
+  maintenance.
+Drones (1660): Two of Seven (2172) borrows 2 livestock [LIVE] for
+  maintenance.
+One of Six (2173): Borrows 2 livestock [LIVE] from Drones (1660) for
+  maintenance.
+Drones (1660): One of Six (2173) borrows 2 livestock [LIVE] for
+  maintenance.
+Drones (3503): Borrows 6 livestock [LIVE] from Drones (1660) for
+  maintenance.
+Drones (1660): Drones (3503) borrows 6 livestock [LIVE] for
+  maintenance.
+Drones (4151): Borrows 5 livestock [LIVE] from Drones (1660) for
+  maintenance.
+Drones (1660): Drones (4151) borrows 5 livestock [LIVE] for
+  maintenance.
+Drones (4151): Borrows 3 livestock [LIVE] from Drone (7123) for
+  maintenance.
+Drone (7123): Drones (4151) borrows 3 livestock [LIVE] for
+  maintenance.
+Taxdrones (5421): Borrows 9 livestock [LIVE] from Drone (7123) for
+  maintenance.
+Drone (7123): Taxdrones (5421) borrows 9 livestock [LIVE] for
+  maintenance.
+Seven of One (1658): Borrows 2 livestock [LIVE] from Drone (7123) for
+  maintenance.
+Drone (7123): Seven of One (1658) borrows 2 livestock [LIVE] for
+  maintenance.
+Unit (7597): Borrows livestock [LIVE] from Drone (7123) for
+  maintenance.
+Drone (7123): Unit (7597) borrows livestock [LIVE] for maintenance.
+Two of One (4150): Borrows 2 livestock [LIVE] from Drone (7123) for
+  maintenance.
+Drone (7123): Two of One (4150) borrows 2 livestock [LIVE] for
+  maintenance.
+Nine of Eight (1656): Borrows 2 livestock [LIVE] from Drone (7123) for
+  maintenance.
+Drone (7123): Nine of Eight (1656) borrows 2 livestock [LIVE] for
+  maintenance.
+Drones (6668): Borrows livestock [LIVE] from Drone (7123) for
+  maintenance.
+Drone (7123): Drones (6668) borrows livestock [LIVE] for maintenance.
+Drones (6668): Borrows 20 livestock [LIVE] from Drone (7125) for
+  maintenance.
+Drone (7125): Drones (6668) borrows 20 livestock [LIVE] for
+  maintenance.
+Drone (1655): Borrows livestock [LIVE] from Drones (5375) for
+  maintenance.
+Drones (5375): Drone (1655) borrows livestock [LIVE] for maintenance.
+Beacon (3832): Borrows livestock [LIVE] from Drones (5375) for
+  maintenance.
+Drones (5375): Beacon (3832) borrows livestock [LIVE] for maintenance.
+Drone (1652): Consumes 10 silver [SILV] for maintenance.
+Drones (6668): Consumes 230 silver [SILV] for maintenance.
+Taxdrones (7598): Consumes 660 silver [SILV] for maintenance.
+Five of Ten (916): Consumes 50 silver [SILV] for maintenance.
+Three of Five (1657): Consumes 50 silver [SILV] for maintenance.
+Unit (5374): Borrows 50 silver [SILV] from Taxdrones (5421) for
+  maintenance.
+Taxdrones (5421): Unit (5374) borrows 50 silver [SILV] for
+  maintenance.
+Drones (3139): Borrows 100 silver [SILV] from Taxdrones (5421) for
+  maintenance.
+Taxdrones (5421): Drones (3139) borrows 100 silver [SILV] for
+  maintenance.
+Drones (3831): Borrows 200 silver [SILV] from Taxdrones (5421) for
+  maintenance.
+Taxdrones (5421): Drones (3831) borrows 200 silver [SILV] for
+  maintenance.
+Drones (3502): Claims 40 silver for maintenance.
+
+Skill reports:
+
+quartermaster [QUAM] 4: No skill report.
+
+Declared Attitudes (default Neutral):
+Hostile : none.
+Unfriendly : Creatures (2).
+Neutral : none.
+Friendly : none.
+Ally : Queen XOT (34), Mantzikert (39), Kweo Keegii (47), The Lands
+  Kepper (20), Roses on White Lace (64), Lucky Luke (80).
+
+Unclaimed silver: 2044.
+
+forest (43,79) in Utso, 1894 peasants (high elves), $1060.
+------------------------------------------------------------
+  Wages: $12.8 (Max: $444).
+  Wanted: none.
+  For Sale: 75 high elves [HELF] at $40, 15 leaders [LEAD] at $716.
+  Entertainment available: $58.
+  Products: 22 grain [GRAI], 30 wood [WOOD], 11 furs [FUR].
+
+Exits:
+  North : forest (43,77) in Utso.
+  Northeast : ocean (44,78) in Atlantis Ocean.
+  Southeast : forest (44,80) in Utso.
+  South : mountain (43,81) in Derngill, contains Onthead [city].
+  Southwest : mountain (42,80) in Sa'endtell.
+  Northwest : forest (42,78) in Meulcos, contains Erwhestead [town].
+
+- a Taxers (1441), on guard, Mantzikert (39), 10 high elves [HELF], 10
+  horses [HORS].
+* Drone (1652), Borg (62), avoiding, behind, revealing faction,
+  receiving no aid, consuming faction's food, weightless battle
+  spoils, human [HUMN], 33 silver [SILV]. Weight: 10. Capacity:
+  0/0/15/0. Skills: none.
+- guard 03 (1303), The Lands Kepper (20), 8 high elves [HELF].
+- Slaves Wood (4354), Mantzikert (39), behind, 15 high elves [HELF], 5
+  swords [SWOR].
+- The Beetles (4355), Mantzikert (39), behind, high elf [HELF].
+- Choir (6673), Roses on White Lace (64), avoiding, behind, wood elf
+  [WELF].
+- Luke Scout (6726), Lucky Luke (80), avoiding, behind, human [HUMN].
+- good looking (6742), Queen XOT (34), behind, human [HUMN].
+- Slaves Grain (7307), Mantzikert (39), 11 high elves [HELF].
+- chaser (7260), Queen XOT (34), avoiding, behind, centaur [CTAU].
+- Slaves Fur (7719), Mantzikert (39), 6 high elves [HELF].
+- chopper (5011), 2 centaurs [CTAU], axe [AXE].
+- thistimeforsure (7258), 10 gnolls [GNOL].
+- scout (2947), The Lands Kepper (20), high elf [HELF].
+- Sa'endtell Purser (6519), Kweo Keegii (47), avoiding, behind, human
+  [HUMN].
+
+
+forest (44,80) in Utso, 2290 peasants (centaurs), $1557.
+------------------------------------------------------------
+  Wages: $13.4 (Max: $634).
+  Wanted: none.
+  For Sale: 91 centaurs [CTAU] at $75, 18 leaders [LEAD] at $750.
+  Entertainment available: $88.
+  Products: 39 livestock [LIVE], 36 wood [WOOD], 11 furs [FUR].
+
+Exits:
+  North : ocean (44,78) in Atlantis Ocean.
+  Northeast : ocean (45,79) in Atlantis Ocean.
+  Southeast : ocean (45,81) in Atlantis Ocean.
+  South : ocean (44,82) in Atlantis Ocean.
+  Southwest : mountain (43,81) in Derngill, contains Onthead [city].
+  Northwest : forest (43,79) in Utso.
+
+- scout 05 (1299), The Lands Kepper (20), avoiding, behind, high elf
+  [HELF].
+- hunter (1408), Queen XOT (34), avoiding, behind, human [HUMN], spear
+  [SPEA], 3 furs [FUR].
+* Drone (1653), Borg (62), avoiding, behind, revealing faction,
+  receiving no aid, sharing, consuming faction's food, weightless
+  battle spoils, human [HUMN], 195 silver [SILV]. Weight: 10.
+  Capacity: 0/0/15/0. Skills: combat [COMB] 1 (30).
+- Taxi please (1406), on guard, Queen XOT (34), 10 humans [HUMN], 10
+  pikes [PIKE].
+- chopper (2667), Queen XOT (34), behind, 12 centaurs [CTAU], 12 axes
+  [AXE], 60 wood [WOOD].
+- Rancher (2668), Queen XOT (34), behind, 10 centaurs [CTAU], 14
+  livestock [LIVE].
+- Taxi please (3279), on guard, Queen XOT (34), 20 centaurs [CTAU], 20
+  pikes [PIKE].
+- Weapywillow (3597), Queen XOT (34), behind, 5 centaurs [CTAU], 6
+  axes [AXE].
+* Beacon (3830), Borg (62), avoiding, behind, receiving no aid,
+  consuming faction's food, weightless battle spoils, centaur [CTAU].
+  Weight: 50. Capacity: 0/70/70/0. Skills: observation [OBSE] 2 (90),
+  entertainment [ENTE] 1 (45), stealth [STEA] 1 (60).
+- hunter (5009), Queen XOT (34), behind, 3 centaurs [CTAU], 3 spears
+  [SPEA].
+- helfies (5008), Queen XOT (34), behind, 15 high elves [HELF], 15
+  longbows [LBOW].
+* Drones (5376), Borg (62), avoiding, behind, revealing faction,
+  holding, receiving no aid, sharing, consuming faction's food, 22
+  humans [HUMN], 11 livestock [LIVE]. Weight: 770. Capacity:
+  0/0/880/0. Skills: farming [FARM] 1 (64).
+- Byorn (3894), Queen XOT (34), behind, leader [LEAD].
+- chasers (5408), on guard, Queen XOT (34), behind, 3 centaurs [CTAU],
+  3 swords [SWOR].
+- DrFish (6294), Queen XOT (34), behind, leader [LEAD].
+- DrHunt (5014), Queen XOT (34), behind, leader [LEAD].
+- shippychippy (6297), Queen XOT (34), behind, 5 orcs [ORC]; In need
+  of serious training.
+- Unit (6725), Lucky Luke (80), avoiding, behind, human [HUMN].
+- Unit (6739), Queen XOT (34), behind, centaur [CTAU].
+- Dr Elbow (6740), Queen XOT (34), behind, leader [LEAD].
+- Choir (7133), Roses on White Lace (64), avoiding, behind, wood elf
+  [WELF].
+- Explorer (7724), Mantzikert (39), behind, human [HUMN].
+
++ Ship [206] : Raft.
+  - shipbuilders (3600), Queen XOT (34), behind, 5 orcs [ORC], 5
+    longbows [LBOW].
+
+
+volcano (41,81) in Sa'endtell.
+------------------------------------------------------------
+  Wages: $0.
+  Wanted: none.
+  For Sale: none.
+  Products: 27 stone [STON], 15 mithril [MITH], 20 iron [IRON].
+
+Exits:
+  North : ocean (41,79) in Atlantis Ocean.
+  Northeast : mountain (42,80) in Sa'endtell.
+  Southeast : mountain (42,82) in Derngill.
+  South : ocean (41,83) in Atlantis Ocean.
+  Southwest : ocean (40,82) in Atlantis Ocean.
+  Northwest : ocean (40,80) in Atlantis Ocean.
+
+* Drones (3502), Borg (62), avoiding, behind, revealing faction,
+  holding, receiving no aid, sharing, consuming faction's food, 4
+  humans [HUMN], 2 horses [HORS]. Weight: 140. Capacity: 0/140/200/0.
+  Skills: mining [MINI] 3 (200).
+- Choir (7131), Roses on White Lace (64), avoiding, behind, wood elf
+  [WELF].
+
+
+mountain (43,81) in Derngill, contains Onthead [city], 10418 peasants
+  (humans), $11459.
+------------------------------------------------------------
+  Wages: $15.5 (Max: $2291).
+  Wanted: 156 grain [GRAI] at $23, 140 livestock [LIVE] at $24, 130
+    fish [FISH] at $45, 40 spinning wheels [SPIN] at $104, 45 spears
+    [SPEA] at $122, 29 axes [AXE] at $128, 23 lassoes [LASS] at $122,
+    79 perfume [PERF] at $348, 47 silk [SILK] at $284.
+  For Sale: 49 jewelry [JEWE] at $228, 55 cotton [COTT] at $79, 416
+    humans [HUMN] at $49, 83 leaders [LEAD] at $868.
+  Entertainment available: $677.
+  Products: 33 livestock [LIVE], 24 iron [IRON], 11 stone [STON].
+
+Exits:
+  North : forest (43,79) in Utso.
+  Northeast : forest (44,80) in Utso.
+  Southeast : ocean (44,82) in Atlantis Ocean.
+  South : ocean (43,83) in Atlantis Ocean.
+  Southwest : mountain (42,82) in Derngill.
+  Northwest : mountain (42,80) in Sa'endtell.
+
+* Four of Two (1659), Borg (62), behind, revealing faction, sharing,
+  consuming faction's food, leader [LEAD]. Weight: 10. Capacity:
+  0/0/15/0. Skills: force [FORC] 3 (190), pattern [PATT] 3 (190),
+  illusion [ILLU] 1 (60), phantasmal entertainment [PHEN] 1 (30), fire
+  [FIRE] 2 (90), earth lore [EART] 2 (135), wolf lore [WOLF] 1 (30),
+  bird lore [BIRD] 1 (60). Combat spell: fire [FIRE]. Can Study: fire
+  [FIRE], earthquake [EQUA], force shield [FSHI], energy shield
+  [ESHI], magical healing [MHEA], mind reading [MIND], weather lore
+  [WEAT], earth lore [EART], wolf lore [WOLF], bird lore [BIRD],
+  illusion [ILLU], create phantasmal beasts [PHBE], create phantasmal
+  demons [PHDE], dispel illusions [DISP].
+* Drones (1660), Borg (62), avoiding, revealing faction, holding,
+  sharing, consuming faction's food, 32 humans [HUMN]. Weight: 320.
+  Capacity: 0/0/480/0. Skills: farming [FARM] 1 (65).
+* Drones (1661), Borg (62), avoiding, revealing faction, holding,
+  sharing, consuming faction's food, 11 humans [HUMN], 11 stone
+  [STON]. Weight: 660. Capacity: 0/0/165/0. Skills: quarrying [QUAR] 2
+  (90).
+- scout 04 (1304), The Lands Kepper (20), high elf [HELF], 9 humans
+  [HUMN].
+- The Diplomat (1445), Mantzikert (39), behind, high elf [HELF].
+* Two of Seven (2172), Borg (62), behind, revealing faction, sharing,
+  consuming faction's food, leader [LEAD]. Weight: 10. Capacity:
+  0/0/15/0. Skills: tactics [TACT] 5 (450), observation [OBSE] 1 (30).
+* One of Six (2173), Borg (62), avoiding, behind, holding, sharing,
+  consuming faction's food, leader [LEAD]. Weight: 10. Capacity:
+  0/0/15/0. Skills: observation [OBSE] 5 (450), stealth [STEA] 1 (60).
+* Drones (3503), Borg (62), avoiding, behind, revealing faction,
+  holding, sharing, consuming faction's food, 18 humans [HUMN], 18
+  iron [IRON]. Weight: 270. Capacity: 0/0/270/0. Skills: mining [MINI]
+  1 (60).
+- Lucky Luke (354), Lucky Luke (80), behind, leader [LEAD].
+* Drones (4151), Borg (62), avoiding, behind, revealing faction,
+  holding, sharing, consuming faction's food, 22 humans [HUMN], 22
+  swords [SWOR]. Weight: 242. Capacity: 0/0/330/0. Skills: weaponsmith
+  [WEAP] 1 (45).
+- The Sherriff (4216), Lucky Luke (80), behind, leader [LEAD]; Lukes
+  Posse, bringing order.
+- The Madam (4217), Lucky Luke (80), behind, leader [LEAD]; Lukes
+  Posse, bringing passion.
+- Doc Hammer (4218), Lucky Luke (80), behind, leader [LEAD], ironwood
+  [IRWD]; Lukes Posse, bringing medicine.
+- Reg (4219), Lucky Luke (80), behind, leader [LEAD]; Lukes Posse,
+  Just Reg, nuff said.
+- Clemantine (4220), Lucky Luke (80), behind, leader [LEAD], sword
+  [SWOR]; Lukes Posse, trusty right hand lady of Luke.
+- Foul ol Ron (4221), Lucky Luke (80), avoiding, behind, leader
+  [LEAD], sword [SWOR]; Buggerit buggerit, millenium hand and a
+  shrimp.
+- The Kid (4222), Lucky Luke (80), avoiding, behind, leader [LEAD];
+  Lukes Last Posse member.
+- Unit (2291), Nekojin Empire (26), behind, lizardman [LIZA].
+- Mason (5811), Lucky Luke (80), avoiding, behind, leader [LEAD].
+- Unit (10), The Elven Garden (85), avoiding, behind, leader [LEAD],
+  sword [SWOR], plate armor [PARM], horse [HORS].
+- DrBlade (5420), Queen XOT (34), behind, leader [LEAD].
+* Taxdrones (5421), on guard, Borg (62), behind, revealing faction,
+  sharing, consuming faction's food, 26 humans [HUMN], 1798 silver
+  [SILV]. Weight: 260. Capacity: 0/0/390/0. Skills: combat [COMB] 1
+  (31).
+- lumbtrainee (5422), Queen XOT (34), behind, 5 orcs [ORC].
+- Count Borzoi (6520), Kweo Keegii (47), avoiding, behind, leader
+  [LEAD]; A 6.5' tall humanoid canine reminiscient of a Russian
+  Wolfhound with yellow eyes and creamy white hair with a patch of
+  black fur surrounding his left eye.
+- Nashobah (6521), Kweo Keegii (47), avoiding, behind, leader [LEAD];
+  A comely, copper-skinned human female with long black hair and amber
+  eyes.
+- Lukes Trusty Steed (6729), Lucky Luke (80), avoiding, behind, leader
+  [LEAD].
+* Seven of One (1658), Borg (62), behind, revealing faction, sharing,
+  consuming faction's food, leader [LEAD], 1165 silver [SILV]. Weight:
+  10. Capacity: 0/0/15/0. Skills: force [FORC] 3 (190), pattern [PATT]
+  3 (195), illusion [ILLU] 1 (85), phantasmal entertainment [PHEN] 1
+  (30), fire [FIRE] 2 (90), earth lore [EART] 1 (60), wolf lore [WOLF]
+  1 (30), bird lore [BIRD] 1 (60). Combat spell: fire [FIRE]. Can
+  Study: fire [FIRE], earthquake [EQUA], force shield [FSHI], energy
+  shield [ESHI], magical healing [MHEA], mind reading [MIND], weather
+  lore [WEAT], earth lore [EART], illusion [ILLU], create phantasmal
+  beasts [PHBE], create phantasmal demons [PHDE], dispel illusions
+  [DISP].
+- Chaser (6296), Queen XOT (34), behind, centaur [CTAU].
+- scout (4519), The Lands Kepper (20), 9 humans [HUMN].
+- Nanny Ogg (888), Queen XOT (34), behind, leader [LEAD]; A little old
+  lady who likes to look after her family members.
+- Mine apprentices (6745), Queen XOT (34), 10 orcs [ORC], 6 picks
+  [PICK].
+- Gail (918), Roses on White Lace (64), behind, leader [LEAD], sword
+  [SWOR], horse [HORS].
+- Steven (1662), Roses on White Lace (64), behind, leader [LEAD],
+  sword [SWOR], horse [HORS].
+- Dwight Fry (1663), Roses on White Lace (64), behind, leader [LEAD],
+  sword [SWOR], horse [HORS].
+- Cold Ethyl (1664), Roses on White Lace (64), behind, leader [LEAD],
+  sword [SWOR], mithril shield [MSHD], horse [HORS].
+- Sister Sara (1665), Roses on White Lace (64), behind, leader [LEAD],
+  sword [SWOR], horse [HORS].
+- Black Eyes (4156), Roses on White Lace (64), avoiding, behind,
+  leader [LEAD], horse [HORS].
+- L Justinian (7310), Mantzikert (39), behind, leader [LEAD].
+- Arkady (874), The Lands Kepper (20), behind, leader [LEAD].
+- Endymion (4559), The Lands Kepper (20), behind, leader [LEAD]; Looks
+  like an identical twin to He-Man.
+- SkinnMacDana (2932), The Lands Kepper (20), behind, leader [LEAD],
+  sword [SWOR].
+- goblingoodstuff (5399), Queen XOT (34), avoiding, behind, 10 goblins
+  [GBLN].
+- goblinbadstuff (7259), Queen XOT (34), avoiding, behind, 10 goblins
+  [GBLN], 18 hammers [HAMM], 6 furs [FUR], 12 iron [IRON].
+* Unit (7597), Borg (62), behind, revealing faction, holding, sharing,
+  consuming faction's food, 2 humans [HUMN]. Weight: 20. Capacity:
+  0/0/30/0. Skills: mining [MINI] 3 (195), weaponsmith [WEAP] 1 (30).
+- Black Eyes (2176), Roses on White Lace (64), avoiding, behind,
+  leader [LEAD], horse [HORS].
+- Erwhestead Bursar (7475), Kweo Keegii (47), avoiding, behind,
+  centaur [CTAU].
+- scout (4761), The Lands Kepper (20), avoiding, behind, 10 humans
+  [HUMN].
+- L Phocas (7722), Mantzikert (39), behind, leader [LEAD].
+- Clones (8063), Roses on White Lace (64), avoiding, behind, 20 humans
+  [HUMN].
+- Dusty Tom (8099), Lucky Luke (80), avoiding, behind, leader [LEAD];
+  Hanging out in the local inn.
+- Scarlet (8100), Lucky Luke (80), avoiding, behind, leader [LEAD];
+  One sassy lady in charge of the local inn.
+- Granny Weatherwax (1401), Queen XOT (34), behind, leader [LEAD], 13
+  wolves [WOLF]; A little old lady who can get very grumpy.
+- Tiffany Aching (1404), Queen XOT (34), behind, leader [LEAD], 8
+  wolves [WOLF], sword [SWOR]; She loves to dabble in all sorts of
+  mischief.
+- packrats (7664), Queen XOT (34), 5 centaurs [CTAU], 20 wood [WOOD].
+- scout (2907), The Lands Kepper (20), behind, high elf [HELF].
+* Drone (7123), Borg (62), avoiding, behind, revealing faction,
+  holding, receiving no aid, sharing, consuming faction's food,
+  centaur [CTAU]. Weight: 50. Capacity: 0/70/70/0. Skills: none.
+- Drover (7663), Queen XOT (34), 2 centaurs [CTAU], 2 swords [SWOR], 6
+  furs [FUR], 14 livestock [LIVE].
+* Drone (7125), Borg (62), avoiding, behind, revealing faction,
+  holding, sharing, consuming faction's food, orc [ORC]. Weight: 10.
+  Capacity: 0/0/15/0. Skills: none.
+
++ Building [1] : Caravanserai.
+  * Two of One (4150), Borg (62), avoiding, behind, revealing faction,
+    holding, sharing, consuming faction's food, leader [LEAD], 125
+    wood [WOOD], 45 furs [FUR], 17 iron [IRON], 42 stone [STON], 24
+    mithril [MITH], ironwood [IRWD], 100 silver [SILV]. Weight: 3115.
+    Capacity: 0/0/15/0. Skills: quartermaster [QUAM] 4 (305).
+
++ Building [2] : Fort.
+  - Hardline (4012), Queen XOT (34), 35 humans [HUMN], 35 swords
+    [SWOR].
+  - Foghorn (1409), Queen XOT (34), human [HUMN], sword [SWOR].
+  - L Bey (1447), Mantzikert (39), behind, leader [LEAD], horse
+    [HORS].
+
++ Building [3] : Fort.
+  - Rhydian Kweo (901), Kweo Keegii (47), avoiding, behind, leader
+    [LEAD], 4 wolves [WOLF], skeleton [SKEL].
+  - Micaksica (4560), Kweo Keegii (47), avoiding, behind, leader
+    [LEAD]; A most beautiful human female with red hair and green
+    eyes..
+
++ Building [4] : Fort.
+  * Nine of Eight (1656), Borg (62), behind, revealing faction,
+    sharing, consuming faction's food, leader [LEAD], 1066 silver
+    [SILV]. Weight: 10. Capacity: 0/0/15/0. Skills: force [FORC] 3
+    (205), pattern [PATT] 3 (195), illusion [ILLU] 1 (85), phantasmal
+    entertainment [PHEN] 1 (30), fire [FIRE] 2 (90), earth lore [EART]
+    2 (90), wolf lore [WOLF] 2 (120), bird lore [BIRD] 1 (60). Combat
+    spell: fire [FIRE]. Can Study: fire [FIRE], earthquake [EQUA],
+    force shield [FSHI], energy shield [ESHI], magical healing [MHEA],
+    mind reading [MIND], weather lore [WEAT], earth lore [EART], bird
+    lore [BIRD], illusion [ILLU], create phantasmal beasts [PHBE],
+    create phantasmal demons [PHDE], dispel illusions [DISP].
+  * Drones (6668), on guard, Borg (62), revealing faction, holding,
+    sharing, consuming faction's food, 86 humans [HUMN], 108 swords
+    [SWOR], 3724 silver [SILV]. Weight: 968. Capacity: 0/0/1290/0.
+    Skills: none; None shall Pass!.
+  * Taxdrones (7598), Borg (62), revealing faction, holding, sharing,
+    consuming faction's food, 66 humans [HUMN], 2640 silver [SILV].
+    Weight: 660. Capacity: 0/0/990/0. Skills: combat [COMB] 1 (30).
+
++ Wizzard's Hideout [5] : Hermits hut.
+  - Magrat Garlic (1402), Queen XOT (34), behind, leader [LEAD], 9
+    wolves [WOLF]; A young witch who means the best, but cannot
+    deliver on it.
+  - L Bryennios (1448), Mantzikert (39), behind, leader [LEAD], horse
+    [HORS].
+
++ House of sticks [6] : Stockade.
+  - Agnes Nitt (1403), Queen XOT (34), behind, leader [LEAD], 8 wolves
+    [WOLF]; Almost quiet and shy.
+
++ House of bricks [7] : Fort.
+  - Ballerina (1405), Queen XOT (34), 5 humans [HUMN].
+  - seeker (1971), Queen XOT (34), behind, leader [LEAD].
+  - Arni (3599), Queen XOT (34), behind, leader [LEAD].
+  - Minedoc (3994), Queen XOT (34), behind, leader [LEAD].
+  - rockdoc (3998), Queen XOT (34), behind, leader [LEAD].
+  - ChopDoc (5012), Queen XOT (34), behind, leader [LEAD].
+  - Japetto (5013), Queen XOT (34), behind, leader [LEAD], 2 magic
+    wagons [MWAG].
+  - Humanshield (5015), Queen XOT (34), 16 humans [HUMN], 2 orcs
+    [ORC], 18 swords [SWOR].
+  - Newbies (6741), Queen XOT (34), 12 humans [HUMN], 12 swords
+    [SWOR].
+  * Five of Ten (916), Borg (62), behind, revealing faction, sharing,
+    consuming faction's food, leader [LEAD], 618 silver [SILV].
+    Weight: 10. Capacity: 0/0/15/0. Skills: observation [OBSE] 1 (35),
+    force [FORC] 2 (140), pattern [PATT] 2 (170), spirit [SPIR] 1
+    (30), gate lore [GATE] 1 (30), fire [FIRE] 1 (70), combat [COMB] 3
+    (180), illusion [ILLU] 1 (85), phantasmal entertainment [PHEN] 1
+    (30), earth lore [EART] 2 (120), wolf lore [WOLF] 2 (90), bird
+    lore [BIRD] 1 (60), energy shield [ESHI] 1 (30). Combat spell:
+    fire [FIRE]. Can Study: fire [FIRE], earthquake [EQUA], force
+    shield [FSHI], energy shield [ESHI], spirit shield [SSHI], magical
+    healing [MHEA], farsight [FARS], mind reading [MIND], weather lore
+    [WEAT], bird lore [BIRD], necromancy [NECR], demon lore [DEMO],
+    illusion [ILLU], create phantasmal beasts [PHBE], create
+    phantasmal demons [PHDE], dispel illusions [DISP], artifact lore
+    [ARTI].
+  - L Arslan (7311), Mantzikert (39), behind, leader [LEAD].
+
++ Building [8] : Hermits hut.
+  * Three of Five (1657), Borg (62), behind, revealing faction,
+    sharing, consuming faction's food, leader [LEAD], 550 silver
+    [SILV]. Weight: 10. Capacity: 0/0/15/0. Skills: force [FORC] 3
+    (190), pattern [PATT] 3 (225), illusion [ILLU] 1 (85), phantasmal
+    entertainment [PHEN] 1 (30), fire [FIRE] 2 (90), earth lore [EART]
+    2 (120), bird lore [BIRD] 1 (30), wolf lore [WOLF] 1 (60). Combat
+    spell: fire [FIRE]. Can Study: fire [FIRE], earthquake [EQUA],
+    force shield [FSHI], energy shield [ESHI], magical healing [MHEA],
+    mind reading [MIND], weather lore [WEAT], earth lore [EART], wolf
+    lore [WOLF], bird lore [BIRD], illusion [ILLU], create phantasmal
+    beasts [PHBE], create phantasmal demons [PHDE], dispel illusions
+    [DISP].
+
++ Building [10] : Fort.
+  * Unit (5374), Borg (62), avoiding, behind, holding, sharing,
+    consuming faction's food, leader [LEAD], sword [SWOR]. Weight: 11.
+    Capacity: 0/0/15/0. Skills: stealth [STEA] 2 (150).
+
++ Building [11] : Stockade.
+  * Drones (3139), Borg (62), avoiding, behind, revealing faction,
+    holding, sharing, consuming faction's food, 10 humans [HUMN].
+    Weight: 100. Capacity: 0/0/150/0. Skills: building [BUIL] 2 (160).
+  - lonebuilder (7665), Queen XOT (34), behind, human [HUMN].
+  - Unit (7666), Queen XOT (34), behind, leader [LEAD].
+
++ Building [9] : Stockade, needs 20.
+  * Drones (3831), Borg (62), avoiding, behind, revealing faction,
+    holding, sharing, consuming faction's food, 20 humans [HUMN].
+    Weight: 200. Capacity: 0/0/300/0. Skills: building [BUIL] 2 (130).
+
++ Building [12] : Hermits hut.
+  - HutBuilders (3598), Queen XOT (34), behind, 2 humans [HUMN], 9
+    ironwood [IRWD]; We have completed our apprenticeships and are
+    willing to construct the Huts.
+
++ Building [13] : Hermits hut.
+  - HutBuilders (5417), Queen XOT (34), behind, 2 humans [HUMN]; We
+    will build a hut and go back to school.
+
+
+mountain (42,82) in Derngill, 1464 peasants (orcs), $585.
+------------------------------------------------------------
+  Wages: $12.0 (Max: $264).
+  Wanted: none.
+  For Sale: 58 orcs [ORC] at $38, 11 leaders [LEAD] at $672.
+  Entertainment available: $32.
+  Products: 32 livestock [LIVE], 22 iron [IRON], 11 stone [STON].
+
+Exits:
+  North : mountain (42,80) in Sa'endtell.
+  Northeast : mountain (43,81) in Derngill, contains Onthead [city].
+  Southeast : ocean (43,83) in Atlantis Ocean.
+  South : ocean (42,84) in Atlantis Ocean.
+  Southwest : ocean (41,83) in Atlantis Ocean.
+  Northwest : volcano (41,81) in Sa'endtell.
+
+* Drone (1655), Borg (62), avoiding, behind, revealing faction,
+  receiving no aid, sharing, consuming faction's food, weightless
+  battle spoils, human [HUMN], 197 silver [SILV]. Weight: 10.
+  Capacity: 0/0/15/0. Skills: combat [COMB] 1 (30).
+- miners (1972), Queen XOT (34), avoiding, behind, 8 orcs [ORC], 8
+  picks [PICK], 81 iron [IRON].
+- farmers (1973), Queen XOT (34), avoiding, behind, 10 orcs [ORC], 2
+  picks [PICK], 9 swords [SWOR], 8 livestock [LIVE].
+- GrunterTax (1974), on guard, Queen XOT (34), 12 orcs [ORC], 12
+  swords [SWOR].
+- scout 09 (1878), The Lands Kepper (20), human [HUMN].
+- crybaby (2956), Queen XOT (34), avoiding, behind, orc [ORC], 3
+  hammers [HAMM].
+- crybaby (3280), Queen XOT (34), avoiding, behind, 3 orcs [ORC], 12
+  hammers [HAMM].
+- QuarryOrcs (3281), Queen XOT (34), avoiding, behind, 3 orcs [ORC], 3
+  picks [PICK].
+* Beacon (3832), Borg (62), avoiding, behind, consuming faction's
+  food, weightless battle spoils, orc [ORC]. Weight: 10. Capacity:
+  0/0/15/0. Skills: observation [OBSE] 2 (90), entertainment [ENTE] 1
+  (45), stealth [STEA] 1 (60).
+- QuarryOrc (4303), Queen XOT (34), avoiding, behind, orc [ORC], pick
+  [PICK].
+* Drones (5375), Borg (62), avoiding, behind, revealing faction,
+  holding, sharing, consuming faction's food, 22 humans [HUMN], 12
+  livestock [LIVE]. Weight: 820. Capacity: 0/0/930/0. Skills: farming
+  [FARM] 1 (60).
+- minerstoo (4838), Queen XOT (34), avoiding, behind, 3 orcs [ORC], 3
+  picks [PICK], 10 wood [WOOD].
+- Unit (6728), Lucky Luke (80), avoiding, behind, human [HUMN].
+- Demon (972), 8 demons [DEMO].
+- scout (5796), The Lands Kepper (20), orc [ORC].
+- Choir (7132), Roses on White Lace (64), avoiding, behind, wood elf
+  [WELF].
+- packrat (6295), Queen XOT (34), avoiding, behind, 5 centaurs [CTAU].
+- Explorer (7723), Mantzikert (39), behind, human [HUMN].
+
+
+
+
+
+Orders Template (Short Format):
+
+#atlantis 62 "<password>"
+
+;*** forest (43,79) in Utso ***
+
+unit 1652
+@work
+
+;*** forest (44,80) in Utso ***
+
+unit 1653
+@tax
+
+unit 3830
+@study stea
+
+unit 5376
+produce live
+@TURN
+  produce live
+  give 7123 all live
+ENDTURN
+@TURN
+  produce live
+ENDTURN
+
+;*** volcano (41,81) in Sa'endtell ***
+
+unit 3502
+@produce mith
+@transport 4150 all mith
+
+;*** mountain (43,81) in Derngill, contains Onthead [city] ***
+
+unit 1659
+@cast eart
+
+unit 1660
+@produce live
+
+unit 1661
+@produce ston
+@give 4150 all ston
+
+unit 2172
+@study obse
+
+unit 2173
+@study stea
+
+unit 3503
+@produce iron
+@give 4150 all iron
+
+unit 4151
+@produce swor
+@give 6668 all swor
+
+unit 5421
+@tax
+
+unit 1658
+@cast phen
+
+unit 7597
+@study weap
+
+unit 7123
+give 4150 all live
+move ne
+@TURN
+  move sw
+ENDTURN
+@TURN
+  give 4150 all live
+  move ne
+ENDTURN
+
+unit 7125
+give 4150 all live
+move sw
+@TURN
+  move ne
+ENDTURN
+@TURN
+  give 4150 all live
+  move sw
+ENDTURN
+
+unit 4150
+@study quam
+
+unit 1656
+@cast phen
+
+unit 6668
+@tax
+
+unit 7598
+@tax
+
+unit 916
+@cast phen
+
+unit 1657
+@cast phen
+
+unit 5374
+@study stea
+
+unit 3139
+study buil
+
+unit 3831
+
+;*** mountain (42,82) in Derngill ***
+
+unit 1655
+@tax
+
+unit 3832
+@study stea
+
+unit 5375
+produce live
+@TURN
+  produce live
+  give 7125 all live
+ENDTURN
+@TURN
+  produce live
+ENDTURN
+
+#end
+

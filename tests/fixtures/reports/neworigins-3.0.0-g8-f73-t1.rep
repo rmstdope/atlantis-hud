@@ -1,0 +1,94 @@
+;Treasury:
+;
+;Item                                      Rank  Max        Total
+;=====================================================================
+;leader [LEAD]                             1     1          113
+
+Atlantis Report For:
+Borg (73) (Martial 1, Magic 1)
+February, Year 1
+
+Atlantis Engine Version: 5.2.5 (beta)
+NewOrigins, Version: 3.0.0 (beta)
+
+Faction Status:
+Regions: 0 (10)
+Quartermasters: 0 (2)
+Mages: 1 (2)
+Apprentices: 0 (3)
+
+Events during turn:
+Times reward of 200 silver.
+Elise (758) is caught attempting to steal from Elise (758) in The
+  Void.
+Martin (768) is caught attempting to steal from Unit (825) in The
+  Void.
+Three of Five (793): Enters Gateway to mountain [3].
+Three of Five (793): Walks from nexus (0,0,nexus) in The Void to
+  mountain (13,63) in Liou'ecpu.
+Three of Five (793): Claims 50 silver for maintenance.
+
+Declared Attitudes (default Neutral):
+Hostile : none.
+Unfriendly : Creatures (2).
+Neutral : none.
+Friendly : none.
+Ally : none.
+
+Unclaimed silver: 10400.
+
+mountain (13,63) in Liou'ecpu, contains Rihead [town], 7935 peasants
+  (hill dwarves), $4761.
+------------------------------------------------------------
+  Wages: $13.0 (Max: $952).
+  Wanted: 188 grain [GRAI] at $18, 172 livestock [LIVE] at $17, 130
+    fish [FISH] at $35, 17 bags [BAG] at $98, 15 longbows [LBOW] at
+    $80, 15 leather armor [LARM] at $71, 8 spears [SPEA] at $85, 33
+    truffles [TRUF] at $259, 2 cotton [COTT] at $231.
+  For Sale: 26 pearls [PEAR] at $111, 317 hill dwarves [HDWA] at $41,
+    63 leaders [LEAD] at $728.
+  Entertainment available: $317.
+  Products: 34 grain [GRAI], 20 iron [IRON], 14 stone [STON].
+
+Exits:
+  North : ocean (13,61) in Atlantis Ocean.
+  Northeast : ocean (14,62) in Atlantis Ocean.
+  Southeast : ocean (14,64) in Atlantis Ocean.
+  South : ocean (13,65) in Atlantis Ocean.
+  Southwest : ocean (12,64) in Atlantis Ocean.
+  Northwest : ocean (12,62) in Atlantis Ocean.
+
+- City Guard (89), on guard, The Guardsmen (1), 80 leaders [LEAD], 80
+  swords [SWOR].
+* Three of Five (793), Borg (73), behind, revealing faction, leader
+  [LEAD]. Weight: 10. Capacity: 0/0/15/0. Skills: observation [OBSE] 1
+  (35), force [FORC] 1 (30), pattern [PATT] 1 (30), spirit [SPIR] 1
+  (30), gate lore [GATE] 1 (30), fire [FIRE] 1 (30), combat [COMB] 3
+  (180). Can Study: earthquake [EQUA], force shield [FSHI], energy
+  shield [ESHI], spirit shield [SSHI], magical healing [MHEA],
+  farsight [FARS], mind reading [MIND], weather lore [WEAT], earth
+  lore [EART], necromancy [NECR], demon lore [DEMO], illusion [ILLU],
+  artifact lore [ARTI].
+
+
+
+
+
+Orders Template (Long Format):
+
+#atlantis 73 "<password>"
+
+;*** mountain (13,63) in Liou'ecpu, contains Rihead [town] ***
+
+unit 793
+;Three of Five (793), behind, revealing faction, leader [LEAD]. Weight:
+;  10. Capacity: 0/0/15/0. Skills: observation [OBSE] 1 (35), force
+;  [FORC] 1 (30), pattern [PATT] 1 (30), spirit [SPIR] 1 (30), gate
+;  lore [GATE] 1 (30), fire [FIRE] 1 (30), combat [COMB] 3 (180). Can
+;  Study: earthquake [EQUA], force shield [FSHI], energy shield [ESHI],
+;  spirit shield [SSHI], magical healing [MHEA], farsight [FARS], mind
+;  reading [MIND], weather lore [WEAT], earth lore [EART], necromancy
+;  [NECR], demon lore [DEMO], illusion [ILLU], artifact lore [ARTI].
+
+#end
+

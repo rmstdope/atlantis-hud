@@ -1,0 +1,87 @@
+Atlantis Report For:
+The Disinherited Knights (42) (War 1, Trade 1, Magic 3)
+February, Year 1
+
+Atlantis Engine Version: 5.2.4 (beta)
+NewOrigins, Version: 3.0.0 (beta)
+
+Faction Status:
+Tax Regions: 0 (15)
+Trade Regions: 0 (15)
+Quartermasters: 0 (2)
+Mages: 1 (4)
+Apprentices: 0 (7)
+
+Events during turn:
+Times reward of 200 silver.
+The Lost One (683): Walks from nexus (0,0,nexus) in The Void to
+  mountain (36,4) in Slounspifra.
+The Lost One (683): Claims 50 silver for maintenance.
+
+Declared Attitudes (default Neutral):
+Hostile : none.
+Unfriendly : Creatures (2).
+Neutral : none.
+Friendly : none.
+Ally : none.
+
+Unclaimed silver: 10400.
+
+mountain (36,4) in Slounspifra, contains Aportheo [city], 9743
+  peasants (orcs), $8963.
+------------------------------------------------------------
+  Wages: $14.6 (Max: $1792).
+  Wanted: 112 grain [GRAI] at $19, 114 livestock [LIVE] at $19, 132
+    fish [FISH] at $43, 25 axes [AXE] at $73, 37 nets [NET] at $118,
+    21 spinning wheels [SPIN] at $91, 32 longbows [LBOW] at $95, 68
+    perfume [PERF] at $299, 29 gems [GEM] at $368.
+  For Sale: 60 chocolate [CHOC] at $126, 31 vodka [VODK] at $112, 389
+    orcs [ORC] at $46, 77 leaders [LEAD] at $817.
+  Entertainment available: $545.
+  Products: 34 livestock [LIVE], 36 iron [IRON], 13 stone [STON].
+
+Exits:
+  North : mountain (36,2) in Slounspifra.
+  Northeast : mountain (37,3) in Femont.
+  Southeast : volcano (37,5) in Femont.
+  South : mountain (36,6) in Femont.
+  Southwest : mountain (35,5) in Slounspifra.
+  Northwest : mountain (35,3) in Slounspifra.
+
+- City Guard (14), on guard, The Guardsmen (1), 120 leaders [LEAD],
+  120 swords [SWOR].
+* The Lost One (683), The Disinherited Knights (42), avoiding, behind,
+  revealing faction, leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.
+  Skills: observation [OBSE] 1 (30), force [FORC] 1 (30), pattern
+  [PATT] 1 (30), spirit [SPIR] 1 (30), gate lore [GATE] 1 (30), fire
+  [FIRE] 1 (30), combat [COMB] 3 (180). Can Study: earthquake [EQUA],
+  force shield [FSHI], energy shield [ESHI], spirit shield [SSHI],
+  magical healing [MHEA], farsight [FARS], mind reading [MIND],
+  weather lore [WEAT], earth lore [EART], necromancy [NECR], demon
+  lore [DEMO], illusion [ILLU], artifact lore [ARTI]; A handsome young
+  lad with straight blond hair that blows in the wind..
+
+
+
+
+
+Orders Template (Long Format):
+
+#atlantis 42 "<password>"
+
+;*** mountain (36,4) in Slounspifra, contains Aportheo [city] ***
+
+unit 683
+;The Lost One (683), avoiding, behind, revealing faction, leader
+;  [LEAD]. Weight: 10. Capacity: 0/0/15/0. Skills: observation [OBSE] 1
+;  (30), force [FORC] 1 (30), pattern [PATT] 1 (30), spirit [SPIR] 1
+;  (30), gate lore [GATE] 1 (30), fire [FIRE] 1 (30), combat [COMB] 3
+;  (180). Can Study: earthquake [EQUA], force shield [FSHI], energy
+;  shield [ESHI], spirit shield [SSHI], magical healing [MHEA],
+;  farsight [FARS], mind reading [MIND], weather lore [WEAT], earth
+;  lore [EART], necromancy [NECR], demon lore [DEMO], illusion [ILLU],
+;  artifact lore [ARTI]; A handsome young lad with straight blond hair
+;  that blows in the wind..
+
+#end
+

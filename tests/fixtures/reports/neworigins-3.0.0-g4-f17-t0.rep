@@ -1,0 +1,217 @@
+;Treasury:
+;
+;Item                                      Rank  Max        Total
+;=====================================================================
+;leader [LEAD]                             1     1          56
+
+Atlantis Report For:
+Borg (17) (Martial 1, Magic 1)
+January, Year 1
+
+Atlantis Engine Version: 5.2.4 (beta)
+NewOrigins, Version: 3.0.0 (beta)
+
+Faction Status:
+Regions: 0 (10)
+Quartermasters: 0 (2)
+Mages: 1 (2)
+Apprentices: 0 (3)
+
+Events during turn:
+Unit (666): Claims 50 silver for maintenance.
+
+Skill reports:
+
+observation [OBSE] 1: A unit with this skill can see stealthy units or
+  monsters whose stealth rating is less than or equal to the observing
+  unit's Observation level. The unit can also determine the faction
+  owning a unit, provided its Observation level is higher than the
+  other unit's Stealth level. This skill costs 50 silver per month of
+  study.
+
+force [FORC] 1: The Force skill is not directly useful to a mage, but
+  is rather one of the Foundation skills on which other magical skills
+  are based. The Force skill determines the power of the magical
+  energy that a mage is able to use. Note that a Force skill level of
+  0 does not indicate that a mage cannot use magical energy, but
+  rather can only perform magical acts that do not require great
+  amounts of power. This skill costs 100 silver per month of study.
+
+pattern [PATT] 1: The Pattern skill is not directly useful to a mage,
+  but is rather one of the Foundation skills on which other magical
+  skills are based. A mage's Pattern skill indicates the ability to
+  handle complex magical patterns, and is important for complicated
+  tasks such as healing and controlling nature. This skill costs 100
+  silver per month of study.
+
+spirit [SPIR] 1: The Spirit skill is not directly useful to a mage,
+  but is rather one of the Foundation skills on which other magical
+  skills are based. Spirit skill indicates the mage's ability to
+  control and affect magic and other powers beyond the material world.
+  This skill costs 100 silver per month of study.
+
+gate lore [GATE] 1: Gate Lore is the art of detecting and using
+  magical Gates, which are spread through the world. The Gates are
+  spread out randomly, so there is no correlation between the Gate
+  number and the Gate's location. A mage with skill 1 in Gate Lore can
+  see a Gate if one exists in the same region as the mage. This
+  detection is automatic; the Gate will appear in the region report. A
+  mage with skill 1 in Gate Lore may also jump through a Gate into
+  another region on the same level containing a gate, selected at
+  random. To use Gate Lore in this manner, use the syntax CAST
+  Gate_Lore RANDOM UNITS <unit> ... UNITS is followed by a list of
+  units to follow the mage through the Gate (the mage always jumps
+  through the Gate). At level 1, the mage may carry 15 weight units
+  through the Gate (including the weight of the mage). This skill
+  requires pattern [PATT] 1 and spirit [SPIR] 1 to begin to study.
+  This skill costs 100 silver per month of study.
+
+fire [FIRE] 1:  A mage with this skill can cast a fireball in battle.
+  This ability does between 2 and 10 times the skill level of the mage
+  energy attacks and each attack deals 1 damage. In order to use this
+  spell in combat, the mage should use the COMBAT order to set it as
+  his combat spell. This skill requires force [FORC] 1 to begin to
+  study. This skill costs 100 silver per month of study.
+
+combat [COMB] 1: This skill gives the unit a bonus in hand to hand
+  combat. Also, a unit with this skill may TAX or PILLAGE. This skill
+  costs 10 silver per month of study.
+
+combat [COMB] 2: No skill report.
+
+combat [COMB] 3: No skill report.
+
+Item reports:
+
+leader [LEAD], weight 10, walking capacity 5, moves 2 hexes per month.
+  This race may study all skills to level 5.
+
+Declared Attitudes (default Neutral):
+Hostile : none.
+Unfriendly : Creatures (2).
+Neutral : none.
+Friendly : none.
+Ally : none.
+
+Unclaimed silver: 10250.
+
+nexus (0,0,nexus) in The Void.
+------------------------------------------------------------
+  
+  Atlantis Nexus is a magical place: the entryway to the world of
+    Atlantis. Enjoy your stay; the city guards should keep you safe as
+    long as you should choose to stay. However, rumor has it that once
+    you have left the Nexus, you can never return.
+  
+  Wages: $0.
+  Wanted: none.
+  For Sale: none.
+  Products: none.
+
+Exits:
+  none
+
+- City Guard (1), on guard, The Guardsmen (1), 500 leaders [LEAD], 500
+  swords [SWOR], 500 plate armor [PARM].
+- City Mage (2), The Guardsmen (1), behind, leader [LEAD].
+- Unit (652), Rurikids (3), behind, leader [LEAD].
+- Unit (653), Semargl (4), behind, leader [LEAD].
+- Unit (654), Sunset Senoritas (5), behind, leader [LEAD].
+- Unit (655), Titans (6), behind, leader [LEAD].
+- Unit (656), Crimson Grime (7), behind, leader [LEAD].
+- Unit (657), Lilliput (8), behind, leader [LEAD].
+- Unit (658), Nekojin Empire (9), behind, leader [LEAD].
+- Unit (659), The Lost Tribe (10), behind, leader [LEAD].
+- Unit (660), Sonus Silentii (11), behind, leader [LEAD].
+- Unit (661), Ancient Tribe (12), behind, leader [LEAD].
+- Unit (662), Warriors of Light (13), behind, leader [LEAD].
+- Unit (663), Avalon Empire (14), behind, leader [LEAD].
+- Unit (664), Wandering Monsters (15), behind, leader [LEAD].
+- Unit (665), Sultans of Sling (16), behind, leader [LEAD].
+* Unit (666), Borg (17), behind, revealing faction, leader [LEAD].
+  Weight: 10. Capacity: 0/0/15/0. Skills: observation [OBSE] 1 (30),
+  force [FORC] 1 (30), pattern [PATT] 1 (30), spirit [SPIR] 1 (30),
+  gate lore [GATE] 1 (30), fire [FIRE] 1 (30), combat [COMB] 3 (180).
+  Can Study: earthquake [EQUA], force shield [FSHI], energy shield
+  [ESHI], spirit shield [SSHI], magical healing [MHEA], farsight
+  [FARS], mind reading [MIND], weather lore [WEAT], earth lore [EART],
+  necromancy [NECR], demon lore [DEMO], illusion [ILLU], artifact lore
+  [ARTI].
+- Unit (667), The Filras (18), behind, leader [LEAD].
+- Unit (668), Grey Order (19), behind, leader [LEAD].
+- Unit (669), Children of the Four Winds (20), behind, leader [LEAD].
+- Unit (670), Elven Kingdom of the North (21), behind, leader [LEAD].
+- Unit (671), Peacekeepers (22), behind, leader [LEAD].
+- Unit (672), The Big Bad (23), behind, leader [LEAD].
+- Unit (673), Thane's Ring (24), behind, leader [LEAD].
+- Unit (674), Fanhunters (25), behind, leader [LEAD].
+- Unit (675), The Mystic Nine (26), behind, leader [LEAD].
+- Unit (676), Silver Hand (27), behind, leader [LEAD].
+- Unit (677), Kubert (28), behind, leader [LEAD].
+- Unit (678), RavenCats (29), behind, leader [LEAD].
+- Unit (679), Dark League (30), behind, leader [LEAD].
+- Unit (680), The Tribe (31), behind, leader [LEAD].
+- Unit (681), Red Skulls (32), behind, leader [LEAD].
+- Unit (682), The Family Business (33), behind, leader [LEAD].
+- Unit (683), kojisi (34), behind, leader [LEAD].
+- Unit (684), SoE (35), behind, leader [LEAD].
+- Unit (685), Moria Mining Company (36), behind, leader [LEAD].
+- Unit (686), Upright ones (37), behind, leader [LEAD].
+- Unit (687), Martiniks Trade Guild (38), behind, leader [LEAD].
+- Unit (688), Lwa Law (39), behind, leader [LEAD].
+- Unit (689), MalibuWest (40), behind, leader [LEAD].
+- Unit (690), Heyy (41), behind, leader [LEAD].
+- Unit (691), Shadowmasters (42), behind, leader [LEAD].
+- Unit (692), The Unity (43), behind, leader [LEAD].
+- Unit (693), orcs (44), behind, leader [LEAD].
+- Unit (694), Kingdoms of Leonia (45), behind, leader [LEAD].
+- Unit (695), Gyperboreya (46), behind, leader [LEAD].
+- Unit (696), Truth seekers (47), behind, leader [LEAD].
+- Unit (697), Lullabye (48), behind, leader [LEAD].
+- Unit (698), Autarchy of Green Sun (49), behind, leader [LEAD].
+- Unit (699), StarFire (50), behind, leader [LEAD].
+- Unit (700), The Order of Hyperion (51), behind, leader [LEAD].
+- Unit (701), Lost Den (52), behind, leader [LEAD].
+- Unit (702), The Hermetic Order (53), behind, leader [LEAD].
+- Unit (703), Merchants of Death (54), behind, leader [LEAD].
+- Unit (704), Wonderland (55), behind, leader [LEAD].
+- Unit (705), Gamesters of Trisaklion (56), behind, leader [LEAD].
+- Unit (706), Those Who Hunt Elves (57), behind, leader [LEAD].
+- Unit (707), WindMasters (58), behind, leader [LEAD].
+
++ Gateway to plain [1] : Gateway, contains an inner location.
+
++ Gateway to forest [2] : Gateway, contains an inner location.
+
++ Gateway to mountain [3] : Gateway, contains an inner location.
+
++ Gateway to swamp [4] : Gateway, contains an inner location.
+
++ Gateway to jungle [5] : Gateway, contains an inner location.
+
++ Gateway to desert [6] : Gateway, contains an inner location.
+
++ Gateway to tundra [7] : Gateway, contains an inner location.
+
+
+
+
+
+Orders Template (Long Format):
+
+#atlantis 17 "<password>"
+
+;*** nexus (0,0,nexus) in The Void ***
+
+unit 666
+;Unit (666), behind, revealing faction, leader [LEAD]. Weight: 10.
+;  Capacity: 0/0/15/0. Skills: observation [OBSE] 1 (30), force [FORC]
+;  1 (30), pattern [PATT] 1 (30), spirit [SPIR] 1 (30), gate lore
+;  [GATE] 1 (30), fire [FIRE] 1 (30), combat [COMB] 3 (180). Can Study:
+;  earthquake [EQUA], force shield [FSHI], energy shield [ESHI], spirit
+;  shield [SSHI], magical healing [MHEA], farsight [FARS], mind reading
+;  [MIND], weather lore [WEAT], earth lore [EART], necromancy [NECR],
+;  demon lore [DEMO], illusion [ILLU], artifact lore [ARTI].
+
+#end
+
