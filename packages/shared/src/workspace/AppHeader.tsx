@@ -66,6 +66,22 @@ type AppHeaderProps = {
   problemsOpen: boolean;
   onToggleProblems: () => void;
   problemsPanel: ReactNode;
+  /**
+   * How many battles the loaded turn describes. Zero hides the chip entirely, as with the other
+   * counted chips.
+   */
+  battleCount: number;
+  /**
+   * Whether the battles dialog is showing.
+   *
+   * Unlike the other chips, this one has no panel prop: the dialog it opens is centred over the
+   * whole workspace rather than hung under the chip, for the reason `TurnMessagesPanel` documents
+   * about the header being the one element that accepts a dropped report - a floating child of it
+   * would become an invisible drop target over the map. The shell renders the dialog itself,
+   * beside `MapExportDialog`, and only reads this flag back to decide the chip's pressed state.
+   */
+  battlesOpen: boolean;
+  onToggleBattles: () => void;
   busy: boolean;
   /**
    * Every report the player chose, in the order the file dialog handed them over.
@@ -122,6 +138,9 @@ export function AppHeader({
   problemsOpen,
   onToggleProblems,
   problemsPanel,
+  battleCount,
+  battlesOpen,
+  onToggleBattles,
   busy,
   onImportReports,
   progress,
@@ -332,6 +351,23 @@ export function AppHeader({
           </button>
           {problemsOpen ? problemsPanel : null}
         </span>
+      ) : null}
+
+      {/*
+        The turn's battles, if it had any. Hidden entirely otherwise, for the same reason the
+        problems chip is: a chip reading "0 battles" earns none of the room it takes.
+      */}
+      {battleCount > 0 ? (
+        <button
+          type="button"
+          data-testid="battles-chip"
+          aria-haspopup="dialog"
+          aria-expanded={battlesOpen}
+          onClick={onToggleBattles}
+          className="rounded border border-edge bg-panel-raised px-2 py-0.5 text-ink-soft hover:border-brass"
+        >
+          {battleCount} battle{battleCount === 1 ? "" : "s"}
+        </button>
       ) : null}
 
       <span className="flex-1" />

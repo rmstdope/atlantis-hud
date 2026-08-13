@@ -181,6 +181,13 @@ export const NAVIGATION_MOVES: readonly NavigationMove[] = [
     keys: null
   },
   {
+    id: "battlesView",
+    group: ORDERS,
+    description: "Read every battle the turn describes, in full",
+    mouse: "The battles chip in the bar at the top",
+    keys: null
+  },
+  {
     id: "nextDiagnostic",
     group: ORDERS,
     description: "Jump to the next problem in the orders, in whichever unit it is",

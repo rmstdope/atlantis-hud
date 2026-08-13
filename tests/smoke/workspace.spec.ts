@@ -1703,6 +1703,58 @@ test("the turn messages panel closes on Escape", async ({ page }) => {
   await expect(page.getByTestId("turn-messages")).toHaveCount(0);
 });
 
+/**
+ * The turn's battles, in full - opened from the header chip rather than a hex, since a battle's
+ * location is not necessarily one the player has ever selected.
+ */
+test("the battles chip opens the turn's fighting, battle by battle", async ({ page }) => {
+  await loadReport(page);
+
+  const chip = page.getByTestId("battles-chip");
+  await expect(chip).toContainText("2 battles");
+  await chip.click();
+
+  const dialog = page.getByTestId("battles-dialog");
+  await expect(dialog).toBeVisible();
+
+  // Opening the chip selects the first battle, so the detail is never empty.
+  const detail = page.getByTestId("battle-detail");
+  await expect(detail).toContainText("Pirates (14789)");
+  await expect(detail).toContainText("Attackers");
+  await expect(detail).toContainText("Defenders");
+  await expect(detail).toContainText("Spoils");
+  await expect(detail).toContainText("2531 silver");
+
+  // The second battle, by clicking its row in the list rail.
+  await page.getByTestId("battle-row-1").click();
+  await expect(detail).toContainText("Sail (16352)");
+  await expect(detail).toContainText("Looter (16779)");
+  await expect(detail).toContainText("271 silver");
+
+  // The battle statistics are folded away until asked for, and say how much they hold.
+  const battleStatistics = page.getByTestId("battle-statistics");
+  await expect(battleStatistics.locator("summary")).toContainText(/statistics \(\d+ lines?\)/);
+  await expect(battleStatistics.getByText("successful attacks").first()).not.toBeVisible();
+  await battleStatistics.locator("summary").click();
+  await expect(battleStatistics.getByText("successful attacks").first()).toBeVisible();
+
+  // The location links back to the map.
+  await page.getByTestId("battles-show-on-map").click();
+  await expect(page.getByTestId("battles-dialog")).toHaveCount(0);
+  await expect(page.getByTestId("panel-region")).toContainText("(26,52)");
+});
+
+test("the battles dialog closes on Escape", async ({ page }) => {
+  await loadReport(page);
+
+  await page.getByTestId("battles-chip").click();
+  await expect(page.getByTestId("battles-dialog")).toBeVisible();
+
+  await page.keyboard.press("Escape");
+
+  await expect(page.getByTestId("battles-dialog")).toHaveCount(0);
+});
+
 /*
  * The map itself.
  *
