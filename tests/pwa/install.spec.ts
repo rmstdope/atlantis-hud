@@ -66,7 +66,7 @@ test("the manifest describes something a browser will install", async ({ page, r
   expect(manifest.icons?.some((icon) => icon.purpose === "maskable")).toBe(true);
 });
 
-test("the service worker registers and activates", async ({ page }) => {
+test("the service worker registers and activates", async ({ page, baseURL }) => {
   await page.goto("/");
   await waitUntilReady(page);
 
@@ -77,8 +77,10 @@ test("the service worker registers and activates", async ({ page }) => {
 
   expect(state).toBe("activated");
 
-  // Scoped to the origin root, so every path the application can reach is behind the cache.
-  expect(scope).toBe("http://127.0.0.1:4175/");
+  // Scoped to the origin root, so every path the application can reach is behind the cache. Taken
+  // from the config's own baseURL rather than written out: the port is this agent's, not a
+  // constant, and a literal here would fail for every agent but the first.
+  expect(scope).toBe(new URL("/", baseURL).toString());
 });
 
 test("the workspace still opens with the network cut", async ({ page, context }) => {
