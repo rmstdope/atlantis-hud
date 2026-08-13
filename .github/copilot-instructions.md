@@ -38,6 +38,17 @@ nothing waits on a session that may not be running. The `beads-workflow` skill c
 lifecycle and the commands; `/plan-bead` and `/implement-bead` carry the two roles, and a session
 running either should load its skill first.
 
+**An implementation session does one bead and stops.** The loop is `scripts/implement-loop.sh <name>`,
+which starts a fresh `claude -p "/implement-bead"` per bead until nothing planned is ready. Looping
+inside one session carries every finished bead's diffs, test output and review threads into the next
+one's context, and no agent can clear its own — a new process is the only clean start. Planning is
+not looped this way: it is interactive by design.
+
+The loop's `<name>` is required, and every session it starts runs with Remote Control enabled under
+it, so a running implementer can be reached from a phone or another machine and two loops are told
+apart by a name somebody chose. An implementation session started by hand should ask the navigator
+for `/rc`: an agent cannot enable Remote Control itself.
+
 ## Skills Usage
 
 Always select the appropriate skill for a specific task. Be sure to ALWAYS explicitly write in the chat what skills that are currently being used. Always follow the instructions in the skills to the letter.

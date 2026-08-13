@@ -1,12 +1,13 @@
 ---
 name: implement-bead
-description: The implementation role — take the next planned bead, build it under TDD, get it reviewed and merged, and loop. Use when running an implementation session in atlantis-hud.
+description: The implementation role — take one planned bead, build it under TDD, get it reviewed and merged, and stop. Use when running an implementation session in atlantis-hud; the loop across beads is scripts/implement-loop.sh, one process per bead.
 ---
 
 # Implementing a planned bead
 
-You take beads somebody else planned, build exactly what the plan says, and see them onto main. Then
-you take the next one. Several of you may run at once.
+You take a bead somebody else planned, build exactly what the plan says, and see it onto main. Then
+you stop: one bead is one session, and `scripts/implement-loop.sh` starts a fresh one for the next.
+Several of you may run at once.
 
 Read `beads-workflow` for the label lifecycle and CLAUDE.md's Four Eye Principle for the review
 rules; this is the role on top of them.
@@ -23,6 +24,20 @@ So: RED → GREEN → REFACTOR → COMMIT without stopping, announcing each tran
 on a genuine design question — see *When the plan is wrong*. Everything outside a planned bead
 follows the TDD skill's gates as written.
 
+## Remote Control is on, or ask for it
+
+An implementation session runs unattended for an hour at a time, so it must be reachable from
+somewhere other than the terminal it started in.
+
+`scripts/implement-loop.sh <name>` starts every session with `--remote-control <name>`, so a looped
+session is already connected and already named — that is what the loop's mandatory argument is for,
+and it is how two loops on one machine are told apart.
+
+**If you were started by hand, say so in your first message and ask the navigator to type `/rc`.**
+You cannot enable it yourself: `/rc` is a built-in command, and the Skill tool does not invoke
+built-in commands. Ask once and carry on with the bead either way — an unreachable session is a
+nuisance, not a reason to refuse work.
+
 ## Picking up
 
 ```bash
@@ -38,10 +53,11 @@ rather than a plan. Claiming either means refusing it a minute later.
 lease is short, about five minutes, and a cycle is an hour; the exact TTL is bd's and not
 configurable here, so heartbeat on every boundary rather than on a timer.
 
-Nothing planned means the planner has not got there yet. Look again every few minutes, saying so
-once rather than every time. After **half a dozen empty checks**, say that the queue is dry and stop
-— an idle session that looks busy is worse than one that has plainly finished, and the navigator can
-start you again in a second.
+Nothing planned means the planner has not got there yet, or another implementer took the last one
+between the loop's peek and your claim. Either way: **say so and stop, at once.** Do not wait, do not
+poll, do not look again in a few minutes. Waiting is the loop's job — `scripts/implement-loop.sh`
+peeks before it starts you and stops on its own when the queue is dry — and a session that idles is
+spending a fresh context window on nothing.
 
 **Read the plan with `bd show <id> --json`.** The pretty renderer mangles it.
 
@@ -202,7 +218,7 @@ had to ship as a second PR.
 happened by then. Check `git ls-remote --heads origin <branch>` and delete it explicitly if it
 survived.
 
-## Finishing, then going again
+## Finishing
 
 ```bash
 bd close <id> --reason "Delivered in PR #NN"
@@ -219,8 +235,21 @@ skip the second.
 **Do this on every exit, not only this one.** A bead handed back, a review that never came, a CI
 budget spent — each of those leaves a worktree too, and nothing else cleans them up.
 
-Then pick up the next planned bead. Say what you merged and anything the navigator should know —
-a deviation, a trap the plan missed, a bead you handed back.
+Then **stop**. One bead is one session, and the next bead is a new process.
+
+Say what you merged and anything the navigator should know — a deviation, a trap the plan missed, a
+bead you handed back — and end there. Do not take another bead, and do not go back and look for one.
+
+The loop is outside you, in `scripts/implement-loop.sh`, which runs one `claude -p "/implement-bead"`
+per bead until nothing planned is ready. This is not a style preference. A session that went again
+carried every finished bead's diffs, test output, CI watches and review threads into the next one,
+and the window grew until compaction began summarising work that was already merged — so the later
+beads were built against a lossy recollection of the earlier ones. A session cannot clear its own
+context (`/clear` is a command the user types, not one an agent can invoke), so the only way to start
+a bead clean is to start a process.
+
+Nothing is lost by stopping. Everything the next bead needs is in bd — the claim, the labels, the
+plan in `design` — or in git. The conversation holds nothing it wants.
 
 ## Traps this repository has already paid for
 
