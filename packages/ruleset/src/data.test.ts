@@ -128,6 +128,44 @@ describe("parseItemReference", () => {
   });
 
   /**
+   * "Longship [LONG]. This is a ship with a capacity of 150 and a speed of 4 hexes per month.
+   *  This ship requires a total of 4 levels of sailing skill to sail."
+   *
+   * "Raft [RAFT]. ... This ship requires a total of 2 levels of sailing skill to sail." - the
+   * sentence wraps across physical lines in the fixture, the same shape `cargoOf` already handles.
+   */
+  it("reads the sailing skill a ship requires", () => {
+    const items = parseItemReference(DATA_HTML);
+
+    expect(items.LONG.sailingSkill).toBe(4);
+    expect(items.RAFT.sailingSkill).toBe(2);
+  });
+
+  /** Every ship on the data page states this; a missing one means the read stopped working. */
+  it("every ship states the sailing skill it needs", () => {
+    const items = parseItemReference(DATA_HTML);
+    const ships = Object.values(items).filter((entry) => entry.kind === "ship");
+
+    for (const ship of ships) {
+      expect(ship.sailingSkill, `${ship.tag} has no sailing skill requirement`).toBeGreaterThan(0);
+    }
+  });
+
+  /**
+   * Summon Wind and the windchime talk about "ships requiring up to 12/24 sailing skill points" -
+   * close enough wording to trip a careless regex, and neither is itself a ship's own requirement.
+   * Summon Wind is a skill (`summon wind [SWIN] 1: ...`), so it is never read as an item at all;
+   * windchime is equipment, which the ship-only guard on `cargoOf`'s sibling must also exclude.
+   */
+  it("does not read a sailing requirement onto something that is not a ship", () => {
+    const items = parseItemReference(DATA_HTML);
+
+    expect(items.SWIN).toBeUndefined();
+    expect(items.WCHM.kind).not.toBe("ship");
+    expect(items.WCHM.sailingSkill).toBeUndefined();
+  });
+
+  /**
    * A structure entry mentions an item tag in passing:
    *
    *   "Dormant Monolith: This is a building. This structure requires a sacrifice of 50 leaders

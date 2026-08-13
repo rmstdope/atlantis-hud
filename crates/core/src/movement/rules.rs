@@ -165,6 +165,8 @@ pub struct ItemEntry {
     pub cargo_capacity: Option<i64>,
     #[serde(default)]
     pub capacity_condition: Option<String>,
+    #[serde(default)]
+    pub sailing_skill: Option<i64>,
 }
 
 /// Thresholds for the risk heuristic. Ours, not the game's, which is why they carry `scraped`.
@@ -601,6 +603,38 @@ mod tests {
         let ruleset = ruleset();
         assert!(ruleset.find_item("swordz").is_none());
         assert!(ruleset.find_item("").is_none());
+    }
+
+    /// A longship needs 4 levels of sailing skill between its crew, per the data page. Sail
+    /// planning (ah-2vy.2) cannot refuse "the crew cannot sail this ship" without this.
+    #[test]
+    fn reads_the_sailing_skill_from_the_committed_ruleset() {
+        let ruleset = ruleset();
+        let longship = ruleset
+            .find_item("LONG")
+            .expect("the committed ruleset has a longship");
+        assert_eq!(longship.sailing_skill, Some(4));
+    }
+
+    /// `serde` already gives an `Option<T>` field a default of `None` when its key is absent, with
+    /// or without `#[serde(default)]` here - kept anyway for consistency with the sibling optional
+    /// fields and to say explicitly, rather than leave it to that implicit rule, that a ruleset
+    /// written before this field existed must still load whole. This test pins that contract: a
+    /// later change that made the field required (dropping the `Option`, say) would fail it.
+    #[test]
+    fn a_ruleset_written_before_this_field_existed_still_loads() {
+        let json = r#"{
+            "tag": "LONG",
+            "name": "Longship",
+            "kind": "ship",
+            "weight": 0,
+            "capacity": { "walk": 0, "ride": 0, "fly": 0, "swim": 0 },
+            "selfMobile": { "walk": false, "ride": false, "fly": false, "swim": false },
+            "moves": 4
+        }"#;
+        let entry: ItemEntry =
+            serde_json::from_str(json).expect("an entry missing sailingSkill should still parse");
+        assert_eq!(entry.sailing_skill, None);
     }
 
     /// The spellings come back in the order they must be tried, and an empty text names nothing.
