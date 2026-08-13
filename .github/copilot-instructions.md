@@ -76,8 +76,10 @@ counts only under all of these:
 - **Every check is green**, and the branch is not behind main.
 
 Request it with `gh pr edit <n> --add-reviewer Copilot`, and again after every push that changes the
-code. The reviewer is requested as `Copilot`; `copilot-pull-request-reviewer` is the login its
-*reviews* are authored by, and is an organization that `--add-reviewer` cannot resolve. A **rebase that only replays your commits onto a newer main does not
+code. Two different names are involved and only one of them works here: reviews arrive authored by
+`copilot-pull-request-reviewer`, which is an organization and is rejected by `--add-reviewer`, while
+the reviewer you request is `Copilot`. Match on the first when looking for the review; use the
+second when asking for one. A **rebase that only replays your commits onto a newer main does not
 need a fresh review round** — without that exception the two conditions above deadlock, since
 updating from main is itself a push and main moves while you wait. CI still runs on the rebased head,
 which is what catches a conflict the rebase introduced.

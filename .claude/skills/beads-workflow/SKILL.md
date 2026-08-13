@@ -16,7 +16,7 @@ Bead IDs look like `ah-t65`. Partial IDs work: `bd show t65` finds `ah-t65`.
 bd dolt pull                   # other machines' claims arrive only here
 bd ready                       # what can be worked on now (no open blockers)
 bd show <id> --json            # scope, acceptance criteria, validation, the plan in `design`
-bd update <id> --claim         # FIRST action after choosing — see "Claiming" below
+bd update <id> --claim         # before any code is read — see "Claiming" below
 bd dolt push                   # publish the claim now, not at session end
 git fetch origin main          # bd dolt pull moves beads, not git refs
 git checkout -b <id>-short-description origin/main
@@ -88,7 +88,9 @@ same bead. The second rule below is the one that is easy to forget and expensive
 
 **Claim before you explore, not before you branch.** Claiming — by id when you chose the bead, or as
 part of `bd ready --claim` when you are taking whatever is next — comes ahead of reading code,
-planning, or asking the navigator anything.
+planning, or asking the navigator anything. Reading the bead itself with `bd show` is not exploring:
+it is how you decide whether to take it, and it costs seconds. Everything after that waits for the
+claim.
 Planning a bead takes ten minutes or more, and until the claim lands the bead is still on every
 other agent's `bd ready`. The claim is atomic, so a failure means somebody else won the race: pick
 another bead rather than retrying.
