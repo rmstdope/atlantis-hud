@@ -228,6 +228,12 @@ function namedFromExit(exit: Exit, namedInTurn: number | null): HexNode {
  * Copied before it is sorted: `sort` works in place, and reordering the caller's own array under it
  * is not this function's to do. A sighting carrying no payload carries no exits either and simply
  * contributes nothing, which is why nothing filters them out first.
+ *
+ * Sightings of the same turn come back in the order the store listed them, which is what `sort` has
+ * guaranteed since ES2019 - stability is part of the language here rather than a habit of one
+ * engine, and this package compiles to ES2022. The caller turns that order into "the first naming
+ * of a turn wins", and `settles two namings from the same turn the way a report does` fails if
+ * either half of that stops holding.
  */
 function namingsOldestFirst(storedRegions: StoredRegion[]): StoredRegion[] {
   return [...storedRegions].sort((left, right) => left.lastSeenTurn - right.lastSeenTurn);
