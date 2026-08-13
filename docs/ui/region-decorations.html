@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Region decorations on the map</title>
+<style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --warn:#d9a441; --danger:#d97070;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, section, footer { max-width:1320px; margin-left:auto; margin-right:auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; }
+  h1 span { color:var(--brass); }
+  h2.rule { font-size:17px; letter-spacing:0.3px; margin:38px 0 4px; border-top:1px solid var(--edge); padding-top:20px; }
+  h2.rule em { color:var(--brass); font-style:normal; font-size:11px; letter-spacing:1.8px; text-transform:uppercase; margin-right:10px; }
+  header p, section > p { color:var(--ink-soft); max-width:92ch; margin-top:10px; font-size:14px; }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:0.9em; color:var(--brass-bright); }
+
+  .cards { display:grid; grid-template-columns:repeat(3,1fr); gap:20px; margin-top:22px; align-items:start; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; display:flex; flex-direction:column; gap:11px; }
+  .card h3 { font-size:17px; }
+  .card h3 em { color:var(--brass); font-style:normal; font-size:12px; letter-spacing:1.6px; margin-right:8px; }
+  .card h3 .chosen { color:var(--ground); background:var(--brass); border-radius:3px; font:11px/1.6 'Helvetica Neue',Arial,sans-serif; letter-spacing:1.2px; text-transform:uppercase; padding:1px 6px; margin-left:8px; vertical-align:2px; }
+  .card.pick { border-color:var(--brass); }
+  .verdict { color:var(--ink) !important; border-left:2px solid var(--brass); padding-left:12px; margin-top:14px; }
+  .verdict b { color:var(--brass); font-weight:normal; }
+  .concept { color:var(--ink-soft); font-size:13px; min-height:4.2em; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; padding:8px; }
+  .stage svg { display:block; width:100%; height:auto; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"− "; color:var(--danger); }
+
+  .trio { display:grid; grid-template-columns:repeat(3,1fr); gap:20px; margin-top:20px; }
+  .trio .card h3 { font-size:15px; }
+  .trio .concept { min-height:3.4em; }
+
+  /* the layer chip strip, redrawn */
+  .chipstrip { font-family:'Helvetica Neue',Arial,sans-serif; display:flex; gap:6px; align-items:center;
+               background:var(--panel); border:1px solid var(--edge); border-radius:6px; padding:6px 8px; }
+  .chip { display:inline-flex; align-items:center; gap:5px; font-size:11px; border:1px solid var(--edge);
+          border-radius:999px; padding:2px 9px; color:var(--ink-dim); }
+  .chip.on { border-color:var(--select); background:rgba(74,159,216,.15); color:var(--ink); }
+  .chip .box { width:9px; height:9px; border:1px solid currentColor; border-radius:2px; }
+  .chip.on .box { background:var(--select); border-color:var(--select); }
+  .chip.new { border-color:var(--brass); background:rgba(217,164,65,.16); color:var(--brass-bright); }
+  .chip.new .box { background:var(--brass); border-color:var(--brass); }
+  .caret { color:var(--ink-dim); font-size:10px; }
+  .menu { font-family:'Helvetica Neue',Arial,sans-serif; font-size:11.5px; background:var(--raised);
+          border:1px solid var(--edge); border-radius:6px; padding:6px 0; width:170px; }
+  .menu .row { display:flex; gap:7px; align-items:center; padding:3px 11px; color:var(--ink-soft); }
+  .menu .row.hl { color:var(--brass-bright); background:rgba(217,164,65,.1); }
+  .menu .row .box { width:9px; height:9px; border:1px solid currentColor; border-radius:2px; background:currentColor; }
+  .menu .sep { height:1px; background:var(--edge); margin:5px 0; }
+
+  footer { margin-top:44px; border-top:1px solid var(--edge); padding-top:16px; color:var(--ink-dim); font-size:13px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Region decorations <span>— what a province looks like on the map</span></h1>
+  <p>Bead <code>ah-6zv</code>. Every hex carries a province name; nothing on the map yet shows where a
+  province <em>is</em>. This page draws the same sample world three ways so the treatment can be chosen
+  before anything is built. All three satisfy the bead: an outline around the union of the hexes known to
+  belong to a province, and that province's name inside it.</p>
+  <p>Three separate questions are asked here — <b>the treatment</b>, <b>what happens when a province's
+  known hexes are in two pieces</b>, and <b>where the toggle lives</b>.</p>
+  <p class="verdict"><b>Chosen.</b> Treatment <b>C, the atlas label</b> — a soft dashed boundary and the
+  name set widely letterspaced across the blob. Every connected piece is outlined <b>and named</b>, so a
+  province found twice is written twice and no name ever floats over ground it does not own. The switch is
+  an entry in the <b>Badges</b> menu called <b>Regions</b>, defaulting to <b>on</b> like every other badge.</p>
+  <p class="verdict"><b>And the label is fitted to the piece it names.</b> A paper atlas sets a name to
+  the size of the thing it names, so the label scales to the piece's width, clamped to a legible floor of
+  about 42% of full size. A piece too small to hold its own name at that floor keeps the name anyway and
+  lets it spill past the outline — which is what an atlas does with a small island, and what "name every
+  piece" requires.</p>
+</header>
+
+<main>
+  <h2 class="rule"><em>Question 1</em>The treatment</h2>
+  <p>Same data in all three: six provinces, one of them (<b>Skeldar Reach</b>, lower right) discovered as
+  two separate blobs, and a scatter of hexes still unexplored.</p>
+
+  <div class="cards">
+    <div class="card">
+      <h3><em>A</em>Ink boundary</h3>
+      <p class="concept">A thin brass line traces the union perimeter; the name sits at the centre in
+      letterspaced small capitals with a dark halo. No fill at all — terrain, roads and badges read
+      exactly as they do now.</p>
+      <div class="stage"><svg id="mapA" viewBox="0 0 420 300"></svg></div>
+      <ul class="notes">
+        <li>Nothing is tinted, so terrain colour keeps its meaning</li>
+        <li>Cheapest to draw: one path plus one text per province</li>
+        <li class="con">Boundaries between two adjacent provinces are a single shared line</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h3><em>B</em>Tinted march</h3>
+      <p class="concept">The same boundary, plus a very faint wash of a per-province hue inside it, so
+      neighbouring provinces are told apart at a glance without reading a name. The name sits in a small
+      panel pill.</p>
+      <div class="stage"><svg id="mapB" viewBox="0 0 420 300"></svg></div>
+      <ul class="notes">
+        <li>Extent is legible even where the map is dense</li>
+        <li>Adjacent provinces are obviously distinct</li>
+        <li class="con">A second colour system on top of terrain and staleness</li>
+      </ul>
+    </div>
+
+    <div class="card pick">
+      <h3><em>C</em>Atlas label<span class="chosen">chosen</span></h3>
+      <p class="concept">A soft dashed boundary, and the name set large and widely letterspaced across
+      the blob in the manner of a printed atlas — the province reads as a place rather than as a
+      selection.</p>
+      <div class="stage"><svg id="mapC" viewBox="0 0 420 300"></svg></div>
+      <ul class="notes">
+        <li>Most legible name; suits a map read at low zoom</li>
+        <li>Dashes say “approximately, as far as is known”</li>
+        <li class="con">A big label crosses hexes and can hide unit badges</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2 class="rule"><em>Question 2</em>A province known in two pieces</h2>
+  <p>Skeldar Reach has been found in two places with unexplored ground between them. The bead forbids one
+  name floating in empty space between two unrelated blobs; these are the three ways out. Treatment A is
+  used for the drawing.</p>
+
+  <div class="trio">
+    <div class="card pick">
+      <h3><em>1</em>Name every piece<span class="chosen">chosen</span></h3>
+      <p class="concept">Each connected blob is outlined and labelled independently. The name appears
+      twice.</p>
+      <div class="stage"><svg id="disj1" viewBox="0 0 300 200"></svg></div>
+      <ul class="notes">
+        <li>Never lies about extent; nothing is unlabelled</li>
+        <li class="con">Repeats the name, and a one-hex sighting gets a full label</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3><em>2</em>Name the largest piece</h3>
+      <p class="concept">Every blob is outlined, but only the biggest carries the name. Small outlying
+      sightings are drawn silently.</p>
+      <div class="stage"><svg id="disj2" viewBox="0 0 300 200"></svg></div>
+      <ul class="notes">
+        <li>One name per province, always</li>
+        <li class="con">An outlined blob with no name is a small puzzle</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3><em>3</em>Name pieces above a threshold</h3>
+      <p class="concept">Every blob is outlined; a blob of three hexes or more is named, a smaller one is
+      not — so a stray sighting stays quiet but a real second front is named.</p>
+      <div class="stage"><svg id="disj3" viewBox="0 0 300 200"></svg></div>
+      <ul class="notes">
+        <li>Middle course; scales as more of a province is found</li>
+        <li class="con">A magic number the player cannot see or change</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2 class="rule"><em>Question 3</em>Where the toggle lives</h2>
+  <p>Two existing homes, and the bead says to use one rather than invent a third.</p>
+
+  <div class="trio">
+    <div class="card">
+      <h3><em>i</em>A layer chip</h3>
+      <p class="concept">A third chip beside Staleness and Movement. Regions are a map-wide overlay, which
+      is what the other two chips are.</p>
+      <div class="stage" style="padding:18px 12px">
+        <div class="chipstrip">
+          <span class="chip on"><span class="box"></span>Staleness</span>
+          <span class="chip on"><span class="box"></span>Movement</span>
+          <span class="chip new"><span class="box"></span>Regions</span>
+          <span class="chip">Badges <span class="caret">▾</span></span>
+        </div>
+      </div>
+      <ul class="notes">
+        <li>One click, always visible, no menu to open</li>
+        <li class="con">The chip strip grows; four chips plus a level select</li>
+      </ul>
+    </div>
+    <div class="card pick">
+      <h3><em>ii</em>An entry in the Badges menu<span class="chosen">chosen</span></h3>
+      <p class="concept">An eleventh entry in the popover that already holds settlements, ships, roads and
+      the rest.</p>
+      <div class="stage" style="padding:14px 12px; display:flex; justify-content:center">
+        <div class="menu">
+          <div class="row"><span class="box"></span>Settlements</div>
+          <div class="row"><span class="box"></span>Own units</div>
+          <div class="row"><span class="box"></span>Foreign units</div>
+          <div class="row" style="color:var(--ink-dim)">…</div>
+          <div class="row"><span class="box"></span>Roads</div>
+          <div class="sep"></div>
+          <div class="row hl"><span class="box"></span>Regions</div>
+        </div>
+      </div>
+      <ul class="notes">
+        <li>The chip strip stays as it is</li>
+        <li class="con">Badges are per-hex glyphs; this is not one</li>
+        <li class="con">Hidden behind a click, and off-screen by default</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3><em>iii</em>A chip, off by default</h3>
+      <p class="concept">Same as (i), but the decorations start hidden and the player turns them on. The
+      other two chips both default to on.</p>
+      <div class="stage" style="padding:18px 12px">
+        <div class="chipstrip">
+          <span class="chip on"><span class="box"></span>Staleness</span>
+          <span class="chip on"><span class="box"></span>Movement</span>
+          <span class="chip"><span class="box"></span>Regions</span>
+          <span class="chip">Badges <span class="caret">▾</span></span>
+        </div>
+      </div>
+      <ul class="notes">
+        <li>Nobody's map changes under them on upgrade</li>
+        <li class="con">A feature nobody sees until they find the chip</li>
+      </ul>
+    </div>
+  </div>
+</main>
+
+<footer>
+  Self-contained: inline SVG generated by the script below, no build step and no network. Flat-top hexes,
+  <code>px = x·1.5R</code>, <code>py = y·(√3R/2)</code>, only coordinates where <code>x+y</code> is even —
+  the same lattice the real renderer uses.
+</footer>
+
+<script>
+const R = 13, CP = R * 1.5, RP = R * Math.sqrt(3) / 2;
+const corner = k => { const a = Math.PI/180*60*k; return [R*Math.cos(a), R*Math.sin(a)]; };
+// edge k runs corner k -> corner k+1; the neighbour across it:
+const NEIGH = [[1,1],[0,2],[-1,1],[-1,-1],[0,-2],[1,-1]];
+const key = (x,y) => x + "," + y;
+
+const PROVINCES = [
+  { name:"Aracadia",      seed:[3,3],   hue:"#7fa8d9" },
+  { name:"Kalfar Woods",  seed:[9,3],   hue:"#7fb98a" },
+  { name:"Nadiraan",      seed:[3,11],  hue:"#c99a6a" },
+  { name:"Elmwood",       seed:[10,10], hue:"#b58ccb" },
+  { name:"Vanthys",       seed:[16,6],  hue:"#d0b06a" },
+  { name:"Skeldar Reach", seed:[17,14], hue:"#cf8686" }
+];
+const TERRAIN = ["#2a3a2c","#333b2a","#3a352c","#2c3540","#39332e"];
+
+// --- build the sample world -------------------------------------------------
+function world() {
+  const hexes = [];
+  for (let x = 0; x <= 21; x++) for (let y = 0; y <= 17; y++) {
+    if ((x + y) % 2 !== 0) continue;
+    // unexplored pockets
+    const hole = (x >= 12 && x <= 15 && y >= 8 && y <= 13) || (x === 6 && y >= 6 && y <= 10) || (x >= 19 && y <= 3);
+    if (hole) continue;
+    let best = null, bd = Infinity;
+    for (const p of PROVINCES) {
+      const dx = (x - p.seed[0]) * CP, dy = (y - p.seed[1]) * RP;
+      const d = dx*dx + dy*dy;
+      if (d < bd) { bd = d; best = p; }
+    }
+    hexes.push({ x, y, province: best.name, hue: best.hue,
+                 terrain: TERRAIN[(x*7 + y*3) % TERRAIN.length] });
+  }
+  // a detached second sighting of Skeldar Reach, to the west of its main blob
+  for (const [x,y] of [[10,16],[11,15],[9,15]]) {
+    const h = hexes.find(h => h.x === x && h.y === y);
+    if (h) { h.province = "Skeldar Reach"; h.hue = "#cf8686"; }
+  }
+  return hexes;
+}
+
+// --- connected blobs per province ------------------------------------------
+function blobs(hexes) {
+  const at = new Map(hexes.map(h => [key(h.x,h.y), h]));
+  const seen = new Set(), out = [];
+  for (const h of hexes) {
+    if (seen.has(key(h.x,h.y))) continue;
+    const stack = [h], group = [];
+    seen.add(key(h.x,h.y));
+    while (stack.length) {
+      const c = stack.pop(); group.push(c);
+      for (const [dx,dy] of NEIGH) {
+        const n = at.get(key(c.x+dx, c.y+dy));
+        if (n && n.province === h.province && !seen.has(key(n.x,n.y))) {
+          seen.add(key(n.x,n.y)); stack.push(n);
+        }
+      }
+    }
+    out.push({ province: h.province, hue: h.hue, hexes: group });
+  }
+  return out;
+}
+
+// perimeter of a blob: every edge with no same-province neighbour across it
+function perimeter(group) {
+  const inside = new Set(group.map(h => key(h.x,h.y)));
+  let d = "";
+  for (const h of group) {
+    const cx = h.x * CP, cy = h.y * RP;
+    for (let k = 0; k < 6; k++) {
+      const [dx,dy] = NEIGH[k];
+      if (inside.has(key(h.x+dx, h.y+dy))) continue;
+      const a = corner(k), b = corner((k+1) % 6);
+      d += `M${(cx+a[0]).toFixed(2)} ${(cy+a[1]).toFixed(2)}L${(cx+b[0]).toFixed(2)} ${(cy+b[1]).toFixed(2)}`;
+    }
+  }
+  return d;
+}
+
+const centroid = g => [g.reduce((s,h)=>s+h.x*CP,0)/g.length, g.reduce((s,h)=>s+h.y*RP,0)/g.length];
+const hexPath = () => Array.from({length:6}, (_,k) => corner(k).map(v=>v.toFixed(2)).join(",")).join(" ");
+
+// --- rendering --------------------------------------------------------------
+function draw(svg, opts) {
+  const hexes = opts.hexes || world();
+  const groups = blobs(hexes);
+  const xs = hexes.map(h => h.x*CP), ys = hexes.map(h => h.y*RP);
+  const pad = R * 1.6;
+  const minX = Math.min(...xs)-pad, minY = Math.min(...ys)-pad;
+  const w = Math.max(...xs)-minX+pad, h = Math.max(...ys)-minY+pad;
+  svg.setAttribute("viewBox", `${minX.toFixed(1)} ${minY.toFixed(1)} ${w.toFixed(1)} ${h.toFixed(1)}`);
+
+  let s = "";
+  // terrain
+  for (const hx of hexes)
+    s += `<polygon points="${hexPath()}" transform="translate(${(hx.x*CP).toFixed(2)},${(hx.y*RP).toFixed(2)})"
+           fill="${hx.terrain}" stroke="#1b222b" stroke-width="0.8"/>`;
+
+  // the decorations
+  const named = new Set();
+  const sorted = [...groups].sort((a,b) => b.hexes.length - a.hexes.length);
+  for (const g of sorted) {
+    const d = perimeter(g.hexes);
+    if (opts.style === "B")
+      s += `<path d="${d}" fill="none" stroke="none"/>` +
+           g.hexes.map(hx => `<polygon points="${hexPath()}" transform="translate(${(hx.x*CP).toFixed(2)},${(hx.y*RP).toFixed(2)})" fill="${g.hue}" fill-opacity="0.16"/>`).join("");
+    const stroke = opts.style === "C" ? "#c8b48a" : (opts.style === "B" ? g.hue : "#d9a441");
+    const dash = opts.style === "C" ? ' stroke-dasharray="4 3"' : "";
+    const wdt = opts.style === "C" ? 1.3 : 1.6;
+    s += `<path d="${d}" fill="none" stroke="${stroke}" stroke-width="${wdt}" stroke-opacity="${opts.style==="C"?0.75:0.9}" stroke-linecap="round"${dash}/>`;
+
+    // naming rule
+    let name = true;
+    if (opts.naming === "largest") { name = !named.has(g.province); }
+    else if (opts.naming === "threshold") { name = g.hexes.length >= 3; }
+    if (!name) continue;
+    named.add(g.province);
+
+    const [cx, cy] = centroid(g.hexes);
+    if (opts.style === "C") {
+      // Fit the label to the piece: an atlas sets a name to the size of the thing it names.
+      // width ≈ chars * (0.62·fontSize + letterSpacing); solve for the scale, clamp to a legible floor.
+      const txt = g.province.toUpperCase();
+      const xsB = g.hexes.map(hx => hx.x*CP);
+      const span = (Math.max(...xsB) - Math.min(...xsB) + R*2) * 0.94;
+      const BASE_FS = 11, BASE_LS = 3.4;
+      const natural = txt.length * (0.62*BASE_FS + BASE_LS);
+      const k = Math.max(0.42, Math.min(1, span / natural));
+      const fs = (BASE_FS * k).toFixed(2), ls = (BASE_LS * k).toFixed(2);
+      s += `<text x="${cx.toFixed(1)}" y="${cy.toFixed(1)}" text-anchor="middle" dominant-baseline="central"
+             font-family="Georgia,serif" font-size="${fs}" letter-spacing="${ls}" fill="#e6dcc4" fill-opacity="0.82"
+             stroke="#10151c" stroke-width="${(2.6*k).toFixed(2)}" paint-order="stroke">${txt}</text>`;
+    } else if (opts.style === "B") {
+      const wpx = g.province.length * 4.2 + 12;
+      s += `<rect x="${(cx-wpx/2).toFixed(1)}" y="${(cy-6.5).toFixed(1)}" width="${wpx.toFixed(1)}" height="13" rx="6.5"
+             fill="#171d26" fill-opacity="0.88" stroke="${g.hue}" stroke-width="0.8"/>` +
+           `<text x="${cx.toFixed(1)}" y="${cy.toFixed(1)}" text-anchor="middle" dominant-baseline="central"
+             font-family="'Helvetica Neue',Arial,sans-serif" font-size="7" letter-spacing="0.9"
+             fill="#dbe3ec">${g.province.toUpperCase()}</text>`;
+    } else {
+      s += `<text x="${cx.toFixed(1)}" y="${cy.toFixed(1)}" text-anchor="middle" dominant-baseline="central"
+             font-family="'Helvetica Neue',Arial,sans-serif" font-size="7.5" letter-spacing="2.1"
+             fill="#eebe63" stroke="#10151c" stroke-width="2.2" paint-order="stroke">${g.province.toUpperCase()}</text>`;
+    }
+  }
+  svg.innerHTML = s;
+}
+
+draw(document.getElementById("mapA"), { style:"A", naming:"all" });
+draw(document.getElementById("mapB"), { style:"B", naming:"all" });
+draw(document.getElementById("mapC"), { style:"C", naming:"all" });
+
+// the disjoint close-up: Skeldar Reach and its neighbours only
+function closeUp() {
+  return world().filter(h => h.x >= 8 && h.y >= 10);
+}
+draw(document.getElementById("disj1"), { style:"C", naming:"all",       hexes: closeUp() });
+draw(document.getElementById("disj2"), { style:"A", naming:"largest",   hexes: closeUp() });
+draw(document.getElementById("disj3"), { style:"A", naming:"threshold", hexes: closeUp() });
+</script>
+</body>
+</html>
