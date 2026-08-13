@@ -1,8 +1,10 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
-import { dirname, isAbsolute, join, resolve, sep } from "node:path";
+import { existsSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, isAbsolute, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { normalize, repositoryRoot, strayWorktrees, targetDir } from "./cargoTargetDir";
 
 /**
  * One build directory for every worktree.
@@ -23,23 +25,9 @@ import { describe, expect, it } from "vitest";
  * Rust job down and leave the cache pointing at nothing.
  */
 
-const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const HERE = dirname(fileURLToPath(import.meta.url));
+const REPO = repositoryRoot(HERE);
 const CONFIG = join(REPO, ".cargo", "config.toml");
-
-/** Where the agents' worktrees live, relative to the repository root. */
-const AGENT_WORKSPACES = ".claude";
-
-/** One separator, so a comparison is about the path rather than about the platform. */
-function normalize(path: string): string {
-  return resolve(path).split(sep).join("/");
-}
-
-/** The value of `build.target-dir`, or nothing when the config does not set one. */
-function targetDir(text: string): string | null {
-  const match = text.match(/^\s*target-dir\s*=\s*"([^"]*)"/mu);
-
-  return match ? match[1] : null;
-}
 
 describe("the shared cargo build directory", () => {
   it("is configured at the repository root, where every worktree's search reaches it", () => {
@@ -66,18 +54,97 @@ describe("the shared cargo build directory", () => {
       cwd: REPO,
       encoding: "utf8"
     });
-    // git reports paths with forward slashes on every platform, including Windows, where the repo
-    // is built for release - so both sides are normalized before they are compared at all.
-    const paths = [...listed.matchAll(/^worktree (.+)$/gmu)].map((match) => normalize(match[1]));
-    const root = normalize(REPO);
-    // The trailing separator is the whole guard: without it a sibling named `.claude-old` starts
-    // with `.claude` and would pass as though it were inside.
-    const inside = `${root}/${AGENT_WORKSPACES}/`;
-    const strays = paths.filter((path) => path !== root && !path.startsWith(inside));
+    const strays = strayWorktrees(listed, REPO);
 
     expect(strays).toEqual([]);
     // The repository itself and the agents' worktrees are what this is about, so a run that saw
     // neither would pass while asserting nothing.
-    expect(paths).toContain(root);
+    expect(listed).toContain(`worktree ${normalize(REPO)}`);
   });
 });
+
+describe("repositoryRoot", () => {
+  it("answers the same path from a worktree as from the checkout it belongs to", () => {
+    const root = createRepo();
+    const worktree = join(root, ".claude", "worktrees", "example");
+    git(root, ["worktree", "add", "-b", "example", worktree]);
+
+    expect(repositoryRoot(root)).toBe(root);
+    expect(repositoryRoot(worktree)).toBe(root);
+  });
+});
+
+describe("strayWorktrees", () => {
+  const root = "/repo";
+
+  it("does not flag the root itself", () => {
+    expect(strayWorktrees(`worktree ${root}\n`, root)).toEqual([]);
+  });
+
+  it("does not flag a worktree under the agents' directory", () => {
+    const inside = `${root}/.claude/worktrees/x`;
+    expect(strayWorktrees(`worktree ${root}\nworktree ${inside}\n`, root)).toEqual([]);
+  });
+
+  it("flags a sibling directory merely named after the agents' directory", () => {
+    // The trailing separator is the whole guard: without it `.claude-old` starts with `.claude`
+    // and would pass as though it were inside.
+    const lookalike = `${root}/.claude-old/x`;
+    expect(strayWorktrees(`worktree ${root}\nworktree ${lookalike}\n`, root)).toEqual([lookalike]);
+  });
+
+  it("flags a worktree outside the repository entirely", () => {
+    const outside = "/elsewhere/x";
+    expect(strayWorktrees(`worktree ${root}\nworktree ${outside}\n`, root)).toEqual([outside]);
+  });
+
+  it("normalizes a path built with the platform separator, so the comparison is about the path rather than the platform", () => {
+    // `normalize` exists so a path `resolve` assembled with the platform's own separator (`\` on
+    // Windows) compares equal to one git reported directly, since git always reports forward
+    // slashes, on Windows too. `sep` is already "/" on this platform, so this pins normalize's
+    // idempotence rather than exercising a real backslash - the cross-platform conversion itself
+    // needs a Windows machine to observe.
+    const built = ["", "repo", ".claude", "worktrees", "x"].join(sep);
+    const inside = normalize(built);
+    expect(strayWorktrees(`worktree ${root}\nworktree ${inside}\n`, root)).toEqual([]);
+  });
+});
+
+describe("the stray check, end to end", () => {
+  it("reports a worktree outside the repository as a stray", () => {
+    const root = createRepo();
+    const inside = join(root, ".claude", "worktrees", "example");
+    git(root, ["worktree", "add", "-b", "example", inside]);
+
+    const outsideParent = realpathSync(mkdtempSync(join(tmpdir(), "cargo-target-dir-outside-")));
+    const outside = join(outsideParent, "example");
+    git(root, ["worktree", "add", "-b", "example-outside", outside]);
+
+    const listed = execFileSync("git", ["worktree", "list", "--porcelain"], {
+      cwd: root,
+      encoding: "utf8"
+    });
+
+    expect(strayWorktrees(listed, root)).toEqual([normalize(outside)]);
+  });
+});
+
+/** A throwaway repository with a seed commit, so `git worktree add` has something to branch from. */
+function createRepo(): string {
+  // realpathSync: mkdtempSync hands back one spelling of /tmp and git hands back the other
+  // (/private/tmp on macOS), which fails a comparison between them for reasons that have nothing
+  // to do with the code under test.
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "cargo-target-dir-root-")));
+  execFileSync("git", ["init", "--initial-branch=main", root]);
+  git(root, ["config", "user.email", "root@example.com"]);
+  git(root, ["config", "user.name", "Root Test"]);
+  writeFileSync(join(root, "seed.txt"), "seed");
+  git(root, ["add", "."]);
+  git(root, ["commit", "-m", "seed"]);
+
+  return root;
+}
+
+function git(cwd: string, args: string[]): string {
+  return execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
+}

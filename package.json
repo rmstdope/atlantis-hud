@@ -9,7 +9,7 @@
     "generate:biomes": "tsx scripts/genBiomes.ts",
     "typecheck": "pnpm -r run typecheck && pnpm run typecheck:tooling && cargo check --workspace",
     "typecheck:tooling": "tsc --noEmit -p tsconfig.tooling.json",
-    "test": "pnpm -r run test && pnpm run test:tooling && cargo test --workspace",
+    "test": "tsx scripts/runSuites.ts",
     "test:tooling": "vitest run --config vitest.tooling.config.ts",
     "test:smoke": "tsx scripts/withGateLock.ts pnpm exec playwright test",
     "test:native": "wdio run wdio.conf.ts",
