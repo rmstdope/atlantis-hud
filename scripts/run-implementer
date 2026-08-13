@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+#
+# Runs one implementer, in a terminal of its own.
+#
+#     scripts/run-implementer Cyclops
+#
+# The loop lives here rather than inside the agent. Each bead gets a fresh `claude` process, which
+# exits when the bead is merged; this script then re-reads the flags and starts another. That makes
+# "one bead per process" a property of how an implementer is run instead of a rule it has to keep,
+# so context cannot grow across beads.
+#
+# Cerebro drives it with two files:
+#
+#     .claude/implementers/<name>.go      present: keep taking beads
+#     .claude/implementers/<name>.stop    present: finish the current bead, then leave
+#
+# Neither is read mid-bead. Taking an implementer down means telling it to finish: a bead abandoned
+# in flight strands a claim, a worktree and an open PR for somebody to unpick by hand.
+#
+# Leave the terminal open when it idles. Idle costs nothing, and it means putting this implementer
+# back to work is one `touch` rather than another launch.
+
+set -euo pipefail
+
+exec npx tsx "$(dirname "${BASH_SOURCE[0]}")/runImplementer.ts" "$@"
