@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
-import { flagPaths, launchCommand, nextAction } from "./runImplementer";
+import { flagPaths, formatEvent, launchCommand, logPath, nextAction } from "./runImplementer";
 
 /**
  * The launcher that owns an implementer's loop.
@@ -88,10 +88,72 @@ describe("launchCommand", () => {
     expect(argv.join(" ")).toContain("--name Cyclops");
   });
 
+  it("asks for the streaming format, because text mode shows nothing until the run ends", () => {
+    // Measured, not assumed: a 45-second run under `--print` with text output printed exactly one
+    // line - the final message. An hour-long bead would show nothing at all while it worked, and
+    // `--verbose` does not change that. `stream-json` emits each tool call as it happens.
+    expect(launchCommand("Cyclops").join(" ")).toContain("--output-format stream-json");
+  });
+
   it("tells the implementer to take exactly one bead", () => {
     // The loop belongs to the launcher now. An agent that took a second bead would rebuild the very
     // context growth that one-process-per-bead exists to prevent.
     expect(launchCommand("Cyclops").at(-1)).toMatch(/exactly one/iu);
+  });
+});
+
+describe("formatEvent", () => {
+  const assistant = (content: unknown[]) =>
+    JSON.stringify({ type: "assistant", message: { content } });
+
+  it("shows what the implementer said", () => {
+    expect(formatEvent(assistant([{ type: "text", text: "Claiming ah-t65" }]))).toBe(
+      "Claiming ah-t65"
+    );
+  });
+
+  it("names the tool being used, so a long run reads as progress", () => {
+    const line = formatEvent(
+      assistant([{ type: "tool_use", name: "Bash", input: { command: "pnpm run test" } }])
+    );
+    expect(line).toContain("Bash");
+    expect(line).toContain("pnpm run test");
+  });
+
+  it("keeps a long tool input to one line", () => {
+    // The terminal is the navigator's window onto an hour of work. A tool call pasting forty lines
+    // of a file into it buries the next thing that matters.
+    const line = formatEvent(
+      assistant([{ type: "tool_use", name: "Write", input: { content: "a\nb\nc".repeat(200) } }])
+    );
+    expect(line?.split("\n")).toHaveLength(1);
+    expect(line!.length).toBeLessThan(200);
+  });
+
+  it("says nothing about events with nothing to show", () => {
+    // Eight `system` events arrived before the first useful line in the probe. Printing them would
+    // bury the run's actual first step.
+    expect(formatEvent(JSON.stringify({ type: "system", subtype: "init" }))).toBeNull();
+  });
+
+  it("survives a line that is not JSON at all", () => {
+    // stdout is not a contract. A warning, a partial line at a chunk boundary, or anything else the
+    // CLI decides to print must not take the launcher down mid-bead.
+    expect(() => formatEvent("Warning: something happened")).not.toThrow();
+    expect(formatEvent("Warning: something happened")).toBeNull();
+  });
+
+  it("survives JSON that is not shaped like an event", () => {
+    expect(formatEvent(JSON.stringify({ type: "assistant" }))).toBeNull();
+    expect(formatEvent("null")).toBeNull();
+  });
+});
+
+describe("logPath", () => {
+  it("puts an implementer's transcript beside its flags", () => {
+    // Cerebro cannot reach a print-mode session with SendMessage - it does not even appear in
+    // `claude agents`. This file is what it reads instead.
+    expect(logPath("/repo", "Cyclops")).toBe("/repo/.claude/implementers/Cyclops.log");
   });
 });
 
@@ -215,6 +277,25 @@ describe("the launcher loop", () => {
       await until(() => invocations(log).length >= 1);
       await new Promise((resolve) => setTimeout(resolve, 1_000));
       expect(invocations(log).length).toBeLessThan(5);
+    } finally {
+      child.kill();
+    }
+  }, 30_000);
+
+  it("writes the raw stream to the implementer's log for the orchestrator to read", async () => {
+    const event = JSON.stringify({
+      type: "assistant",
+      message: { content: [{ type: "text", text: "taking ah-t65" }] }
+    });
+    const { root, flags } = workspace(`printf '%s\\n' ${JSON.stringify(event)}\nexit 0`);
+    writeFileSync(flags.go, "");
+    const child = start(root, join(root, "bin"));
+
+    try {
+      const log = logPath(root, "Cyclops");
+      expect(await until(() => existsSync(log) && readFileSync(log, "utf8").includes("ah-t65"))).toBe(
+        true
+      );
     } finally {
       child.kill();
     }

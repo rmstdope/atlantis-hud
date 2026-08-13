@@ -20,8 +20,8 @@
  *     .claude/implementers/<name>.stop       # present: finish this bead, then leave
  */
 
-import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, rmSync } from "node:fs";
+import { execFileSync, spawn } from "node:child_process";
+import { createWriteStream, existsSync, mkdirSync, rmSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -73,9 +73,9 @@ export function readFlags(paths: { go: string; stop: string }): { go: boolean; s
 /**
  * The command that runs one bead.
  *
- * `--print --verbose` streams the work to the terminal the navigator is watching and exits when the
- * run is done, which is what lets this loop own the cadence. Interactive mode would sit at a prompt
- * for ever and never come back.
+ * `--print` is what makes the run end, which is what lets this loop own the cadence - an interactive
+ * session would sit at a prompt for ever and never come back. `stream-json` is what makes it
+ * watchable; see the flag comment below for why the obvious `--verbose` is not enough.
  */
 export function launchCommand(name: string): string[] {
   return [
@@ -87,9 +87,81 @@ export function launchCommand(name: string): string[] {
     "auto",
     "--print",
     "--verbose",
+    // Measured, not assumed: `--print` with the default text format prints only the final message,
+    // so an hour-long bead shows nothing at all while it runs and `--verbose` does not change that.
+    // `stream-json` emits every tool call as it happens, which `formatEvent` turns back into lines a
+    // human can follow.
+    "--output-format",
+    "stream-json",
     `You are implementer ${name}. Load the implement-bead skill and take exactly one planned bead ` +
       `through to merged, then finish. Your launcher starts the next one.`
   ];
+}
+
+/**
+ * Where an implementer's raw event stream is kept.
+ *
+ * Cerebro cannot reach a `--print` session: it appears in neither `claude agents --json` nor
+ * `ListAgents`, so `SendMessage` has nothing to address. This file is what it reads instead, and it
+ * is the only record of a run besides the terminal it scrolled past on.
+ */
+export function logPath(repoRoot: string, name: string): string {
+  return `${flagPaths(repoRoot, name).go.replace(/\.go$/u, "")}.log`;
+}
+
+/** One line of a tool input, short enough to sit in a terminal beside everything else. */
+function summarise(input: unknown): string {
+  const values = typeof input === "object" && input !== null ? Object.values(input) : [];
+  const first = values.find((value) => typeof value === "string") as string | undefined;
+  const line = (first ?? "").split("\n")[0]?.trim() ?? "";
+  return line.length > 100 ? `${line.slice(0, 100)}…` : line;
+}
+
+/**
+ * One line of `stream-json` turned into something worth putting in front of a human, or null.
+ *
+ * Null is the common answer and that is deliberate: the probe emitted eight `system` events before
+ * the first useful one, and printing everything buries the run's actual progress. Anything
+ * unparseable is also null - stdout is not a contract, and a warning or a line split at a chunk
+ * boundary must not take the launcher down in the middle of a bead.
+ */
+export function formatEvent(line: string): string | null {
+  let event: unknown;
+  try {
+    event = JSON.parse(line);
+  } catch {
+    return null;
+  }
+
+  if (typeof event !== "object" || event === null) {
+    return null;
+  }
+
+  const { type, message } = event as { type?: unknown; message?: unknown };
+  if (type !== "assistant" || typeof message !== "object" || message === null) {
+    return null;
+  }
+
+  const content = (message as { content?: unknown }).content;
+  if (!Array.isArray(content)) {
+    return null;
+  }
+
+  const lines: string[] = [];
+  for (const block of content) {
+    if (typeof block !== "object" || block === null) {
+      continue;
+    }
+    const { type: blockType, text, name, input } = block as Record<string, unknown>;
+
+    if (blockType === "text" && typeof text === "string" && text.trim() !== "") {
+      lines.push(text.trim().split("\n")[0] ?? "");
+    } else if (blockType === "tool_use" && typeof name === "string") {
+      lines.push(`→ ${name}: ${summarise(input)}`.trimEnd());
+    }
+  }
+
+  return lines.length === 0 ? null : lines.join(" ");
 }
 
 /** Clears a stop flag as the loop leaves, so the next session does not inherit the instruction. */
@@ -125,10 +197,8 @@ function backoffMs(): number {
  */
 const SHORT_RUN_MS = 120_000;
 
-function sleep(ms: number): void {
-  // Synchronous on purpose: this loop has nothing else to do, and an async wait would need the
-  // whole script restructured around a promise chain for no gain.
-  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+function sleep(ms: number): Promise<void> {
+  return new Promise((done) => setTimeout(done, ms));
 }
 
 /**
@@ -145,8 +215,60 @@ function repositoryRoot(): string {
   return dirname(commonDir);
 }
 
+/**
+ * Runs one bead, streaming as it goes: the raw events to the log, the readable ones to the terminal.
+ *
+ * Still synchronous. `spawnSync` cannot pipe a live stream, so the child writes its stdout to the
+ * log file directly - the launcher then reads what has been appended and prints the parts worth
+ * seeing. That keeps the loop a plain sequence of statements rather than a promise chain, and the
+ * log ends up complete even for the part of a run that scrolled past.
+ */
+function runOneBead(
+  repoRoot: string,
+  name: string,
+  say: (line: string) => void
+): Promise<{ status: number | null; signal: NodeJS.Signals | null; error?: Error }> {
+  const log = logPath(repoRoot, name);
+  mkdirSync(dirname(log), { recursive: true });
+
+  return new Promise((done) => {
+    // stdout is piped so it can be split two ways; stderr is inherited, because a stack trace from
+    // the agent belongs in front of the navigator unedited.
+    const child = spawn("claude", launchCommand(name), { stdio: ["ignore", "pipe", "inherit"] });
+    const sink = createWriteStream(log, { flags: "a" });
+
+    let pending = "";
+    child.stdout?.on("data", (chunk: Buffer) => {
+      sink.write(chunk);
+
+      // A chunk is not a line: the last one is usually a fragment, and parsing it would throw away
+      // an event or - before `formatEvent` learned to shrug - crash the launcher.
+      pending += chunk.toString("utf8");
+      const lines = pending.split("\n");
+      pending = lines.pop() ?? "";
+
+      for (const line of lines) {
+        const rendered = formatEvent(line);
+        if (rendered !== null) {
+          say(rendered);
+        }
+      }
+    });
+
+    child.on("error", (error) => {
+      sink.end();
+      done({ status: null, signal: null, error });
+    });
+
+    child.on("close", (status, signal) => {
+      sink.end();
+      done({ status, signal });
+    });
+  });
+}
+
 /** The loop itself: read the flags, run one bead, read them again. Exported so it can be tested. */
-export function runLoop(repoRoot: string, name: string): number {
+export async function runLoop(repoRoot: string, name: string): Promise<number> {
   const paths = flagPaths(repoRoot, name);
   const say = (line: string) => process.stdout.write(`run-implementer: ${line}\n`);
 
@@ -162,13 +284,13 @@ export function runLoop(repoRoot: string, name: string): number {
     }
 
     if (action === "idle") {
-      sleep(pollMs());
+      await sleep(pollMs());
       continue;
     }
 
     say(`starting ${name} on one bead`);
     const startedAt = Date.now();
-    const run = spawnSync("claude", launchCommand(name), { stdio: "inherit" });
+    const run = await runOneBead(repoRoot, name, say);
     const elapsedMs = Date.now() - startedAt;
 
     // `error` rather than a status is `claude` never having started - not installed, not on PATH.
@@ -188,7 +310,7 @@ export function runLoop(repoRoot: string, name: string): number {
     }
 
     say(`waiting ${Math.round(backoffMs() / 1000)}s before looking again`);
-    sleep(backoffMs());
+    await sleep(backoffMs());
   }
 }
 
@@ -218,5 +340,13 @@ if (invokedDirectly) {
     }
   }
 
-  process.exit(runLoop(repoRoot, name));
+  // `.then` rather than a top-level `await`: tsx transforms these scripts as CJS, where top-level
+  // await is a build error rather than a runtime one - the launcher would not start at all.
+  runLoop(repoRoot, name).then(
+    (code) => process.exit(code),
+    (error: unknown) => {
+      process.stderr.write(`run-implementer: ${error instanceof Error ? error.message : error}\n`);
+      process.exit(1);
+    }
+  );
 }

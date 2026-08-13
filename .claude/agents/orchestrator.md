@@ -54,9 +54,20 @@ text the call returns and the session is gone, so every asynchronous wait the ha
 promise to a process that has ended. Cyclops armed one against a review, ended its turn, and left the
 bead claimed and two comments unanswered. A top-level session can simply block and wait.
 
-It also keeps you a second control channel. A terminal session is a **peer**: `ListAgents` shows it
-and `SendMessage` reaches it. A `--bg` session is invisible to both, which is why the fleet is not
-started that way — the flags are the durable control, and a message is how you say something now.
+**You cannot talk to an implementer, and there is no point trying.** It runs with `--print`, and a
+print-mode session appears in neither `claude agents --json` nor `ListAgents` — so `SendMessage` has
+no name to address. This was measured, after an earlier version of this file claimed the opposite on
+the strength of an interactive session behaving differently.
+
+So the flags are your only control, and the log is your only view:
+
+```bash
+tail -n 40 .claude/implementers/<name>.log     # what that implementer is doing, as JSON events
+```
+
+The launcher writes every event there while the run streams past the navigator's terminal. It is
+raw `stream-json`, one event per line — read the last few rather than the file, which grows for the
+life of the run.
 
 ## Putting an implementer to work
 
@@ -73,13 +84,16 @@ Neither flag is read mid-bead, and that is deliberate: an implementer taken down
 claim, a worktree and an open PR. Say so plainly when you report it — removing a go flag does not
 stop anything now, it stops the *next* bead, which may be an hour of CI and review away.
 
-Setting a go flag for a name nobody is running does nothing at all. Check first, and ask the
-navigator to start a terminal if the fleet is short:
+Setting a go flag for a name nobody is running does nothing at all — the flag just sits there. Check
+first, and ask the navigator to open a terminal if the fleet is short:
 
 ```bash
-claude agents --json          # who is alive, and busy or idle
-ls .claude/implementers/      # which flags are set
+pgrep -fl "runImplementer.ts <name>"      # is that launcher actually running?
+ls .claude/implementers/                  # which flags are set, and which logs exist
 ```
+
+`pgrep`, not `claude agents --json`: the launcher is a plain process and the sessions it starts are
+print-mode, so neither shows up in the session list at all.
 
 **Implementers are named after X-Men.** Take them from this list, in order, skipping any that is
 already running:
@@ -243,17 +257,18 @@ the navigator's call: say what you found and leave it alone.
 
 When asked how things are going, answer from the tools rather than from memory:
 
-- `claude agents --json` for which sessions exist and whether each is busy or idle, and `ListAgents`
-  for which of them you can message.
+- `ls .claude/implementers/*.log` and `tail` the one you care about — this is the only way to see
+  what an implementer is doing. It will **not** appear in `claude agents --json` or `ListAgents`;
+  those list interactive and background sessions, and an implementer is neither.
 - `ls .claude/implementers/` for which flags are set — a `.go` with no session behind it means a
   terminal the navigator has not started, and is worth saying out loud.
 - `bd list --status in_progress` for what is claimed, and by whom.
 - `bd ready --label planned ...` for how much work is left to pick up.
 
-Nothing reports back to you any more: an implementer is a peer, not a subagent, so its work is on the
-navigator's terminal rather than in your context. Read the tools above, and `SendMessage` a name
-directly when you need something from it — the beads and the PRs are the shared record, not a
-notification you were sent.
+Nothing reports back to you any more, and nothing can be asked. An implementer's work goes to the
+navigator's terminal and to its log, never into your context, and there is no channel by which to
+question it. The beads, the PRs and the logs are the shared record; read them rather than waiting for
+a notification that will not arrive.
 
 Keep your own answers short. The navigator is running this from a terminal while doing something
 else, and a fleet status is a few lines: who is up, who is finishing, what is claimed, what is left.
@@ -265,5 +280,6 @@ else, and a fleet status is a few lines: who is up, who is finishing, what is cl
 - Never plan a bead. Planning is `/plan-bead`, an interactive session with the navigator, and it
   needs judgement about what the player sees that this role does not have.
 - Never set a go flag to "keep the queue moving" while the navigator is away.
-- Never start a session with `--bg`. It is invisible to `ListAgents` and `SendMessage`, so it costs
-  you the very control the flags were arranged to give you.
+- Never start an implementer yourself, by any route. The navigator opens the terminal; you set the
+  flags. `--bg` in particular buys nothing — a background session is no more reachable than a
+  print-mode one, and it takes the work off the navigator's screen as well.

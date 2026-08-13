@@ -65,9 +65,13 @@ That session is interactive, runs on Sonnet, and does nothing until you ask. It 
 to work by touching `.claude/implementers/<name>.go` and takes it down by removing that flag, or by
 touching `<name>.stop` to end the terminal as well. **Taking one down means telling it to finish**:
 flags are read between beads, never during one, so the implementer completes what it is on and sees
-it merged — interrupting one mid-bead strands a claim, a worktree and an open PR. Because these are
-peer sessions, Cerebro can also reach one directly with `SendMessage`; a `--bg` session cannot be
-reached that way, which is why the fleet is not started like that.
+it merged — interrupting one mid-bead strands a claim, a worktree and an open PR.
+
+**An implementer cannot be talked to.** It runs with `--print`, and a print-mode session appears in
+neither `claude agents` nor `ListAgents`, so there is no name for `SendMessage` to address. You watch
+it in its terminal, where the launcher renders each tool call as it happens; Cerebro reads
+`.claude/implementers/<name>.log`, where the same events are written as raw JSON. Those two views and
+the flags are the whole interface.
 
 Cerebro also sweeps up after implementers that did not get to the end of their own cleanup, on
 startup and every ten minutes. `scripts/prune-worktrees.sh` removes an agent worktree only when
