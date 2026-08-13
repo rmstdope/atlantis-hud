@@ -34,9 +34,12 @@ allows `bd show` first. `bd ready --claim` takes the **first** match itself, whi
 roles below want, since they take whatever is next rather than choosing:
 
 ```bash
-bd ready --exclude-label planned --claim --json    # the planner's pickup
-bd ready --label planned --claim --json            # an implementer's pickup
+bd ready --exclude-label planned --exclude-label human --exclude-type epic --claim --json  # planner
+bd ready --label planned --exclude-label human --exclude-type epic --claim --json          # builder
 ```
+
+`human` is already waiting on the navigator, and re-claiming it just re-asks a question nobody is
+there to answer. `epic` is a split parent: it has children rather than a plan.
 
 Either way the claim is atomic, and a failure means somebody else won the race: take the next bead
 rather than retrying.
@@ -53,20 +56,21 @@ so neither role can double-book a bead.
 | State | How it looks | Who moves it, and how |
 |---|---|---|
 | unplanned | open, no `planned` | — |
-| being planned | in_progress, planner holds the lease | `bd ready --exclude-label planned --claim` |
+| being planned | in_progress, planner holds the lease | the planner pickup above |
 | planned | open, `planned`, unassigned | planner: write the plan, add the label, `bd unclaim` |
-| being implemented | in_progress, implementer holds the lease | `bd ready --label planned --claim` |
+| being implemented | in_progress, implementer holds the lease | the builder pickup above |
 | needs the user | open, unassigned, `human`, **`planned` removed** | either role, on anything it must not decide |
 | parked on a UI answer | open, unassigned, `needs-ui-decision` **and** `human` | planner, when the user is away |
 
 The plan lives in the bead's `design` field (`bd update <id> --design-file plan.md`). Read it with
 `bd show <id> --json`: the pretty renderer reflows Markdown and mangles tables.
 
-**Escalating takes two commands, and both matter:**
+**Escalating takes three commands, and all of them matter:**
 
 ```bash
 bd update <id> --remove-label planned --add-label human --append-notes "<what stopped it>"
 bd unclaim <id>          # clears the assignee and returns the status to open
+bd dolt push             # or no other machine learns it was released
 ```
 
 Removing `planned` stops `bd ready --label planned` handing the bead straight back to the next
@@ -108,7 +112,8 @@ leaves its bead in_progress forever, invisible to `bd ready`, so
 
 ```bash
 bd reclaim --id <bead> --older-than 10m        # one named bead, never a sweep
-rm -rf .claude/worktrees/<bead> && git worktree prune
+git worktree remove --force .claude/worktrees/<bead>
+git worktree prune                             # separately: it must run even if the remove failed
 ```
 
 **`--id`, always.** Without it `bd reclaim` reaps every stale lease this replica granted, so an agent
@@ -123,9 +128,13 @@ enforces.
 and `bd reclaim` skips leases granted elsewhere. A crashed agent on another machine is the
 navigator's to sort out.
 
-The `rm -rf` is not decoration: `git worktree prune` clears entries whose directory has already
-gone, so the directory has to be removed first, or the dead agent's branch and build artifacts stay
-behind.
+The removal is not decoration, and `--force` is not either: `worktree remove` refuses a tree holding
+untracked files, and `git worktree prune` only clears entries whose directory has already gone. Skip
+either and the dead agent's branch and build artifacts stay behind.
+
+They are separate lines rather than chained with `&&` on purpose. `worktree remove` fails whenever
+the path is already gone or is not a worktree it recognises — exactly the half-cleaned states worth
+pruning — and chaining would skip the prune in precisely those cases.
 
 Anything wider — a sweep with no `--id`, a shorter window, a live claim — is the navigator's call.
 See the Traps section for why this rule used to be absolute.
@@ -151,7 +160,8 @@ If `main` is checked out in another git worktree, `git checkout main` fails; use
 - Branch: `<bead-id>-short-description`, e.g. `ah-t65-load-multiple-reports`
 - Commit subject: `feat(ah-t65): load multiple reports` (`fix(...)`, `docs(...)`, `chore(...)`)
 - PR title: the same subject. PR body names the bead, and the originating GitHub issue if one exists.
-- One bead per branch. Merge it before starting the next bead.
+- One bead per branch. Merge it before starting the next bead - except a bead escalated to the
+  navigator, whose PR stays open by design, since the point is that it must not merge as it stands.
 
 ## Writing a good bead
 

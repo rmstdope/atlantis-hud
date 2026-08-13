@@ -12,6 +12,8 @@
  */
 
 import { statfsSync } from "node:fs";
+import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 /**
  * The least free space worth starting a bead with, in gigabytes.
@@ -59,4 +61,20 @@ export function freeGbAt(path: string): number {
   const { bavail, bsize } = statfsSync(path);
 
   return (bavail * bsize) / 1024 ** 3;
+}
+
+/**
+ * Run directly, this answers the question an agent actually asks: is there room to start?
+ *
+ * It says what it found either way and exits non-zero when there is not, so a caller can put it in
+ * front of the work. Without this the file was importable but not runnable - `tsx diskPreflight.ts`
+ * printed nothing and exited 0, and a silent success reads as headroom.
+ */
+const invokedDirectly =
+  process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+
+if (invokedDirectly) {
+  const free = freeGbAt(process.cwd());
+  process.stdout.write(`${describeSpace(free)}\n`);
+  process.exit(hasHeadroom(free) ? 0 : 1);
 }

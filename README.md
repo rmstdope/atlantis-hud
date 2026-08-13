@@ -244,3 +244,12 @@ pnpm --filter @atlantis/ruleset scrape -- \
 
 See `docs/ruleset-contract.md` for what is scraped, what is deliberately not modelled, and why
 there is no worker.
+
+## Working on it with agents
+
+Development here is split between a planning session, which turns rough beads into plans and asks
+you about anything a player will see, and one or more implementation sessions, which build them
+test-first and see them onto main.
+
+See `docs/agent-workflow.md` for how to start each of them, where to find what is waiting on you,
+and what the whole thing costs in practice.

@@ -35,7 +35,8 @@ navigator, never decided alone. An implementation session picks up a bead alread
 and builds what the plan says; a detail the plan missed is its call, but approach, scope and
 interface go back to the planning session, which owns those decisions — via the `human` queue, so
 nothing waits on a session that may not be running. The `beads-workflow` skill carries the label
-lifecycle and the commands.
+lifecycle and the commands; `/plan-bead` and `/implement-bead` carry the two roles, and a session
+running either should load its skill first.
 
 ## Skills Usage
 
