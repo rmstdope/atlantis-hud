@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import {
   dependsOnChanges,
   GATE_JOB,
-  gateGrepCommand,
+  gateCondition,
   isGatedOnChanges,
   jobBlocks,
   matrixOf,
@@ -26,12 +26,12 @@ const WORKFLOW = readFileSync(join(REPO, ".github", "workflows", "ci.yml"), "utf
  * makes rather than a JavaScript restatement of it.
  */
 function runsEverything(files: string[]): boolean {
-  const command = gateGrepCommand(WORKFLOW);
-  if (command === "") {
-    throw new Error("the changes job no longer has the grep this test reads");
+  const condition = gateCondition(WORKFLOW);
+  if (condition === "") {
+    throw new Error("the changes job no longer has the `if` this test reads");
   }
 
-  const script = `FILES=$(cat); if [ -z "$FILES" ] || echo "$FILES" | ${command}; then echo true; else echo false; fi`;
+  const script = `FILES=$(cat); if ${condition}; then echo true; else echo false; fi`;
   const decision = execFileSync("bash", ["-c", script], {
     input: files.join("\n"),
     encoding: "utf8"
@@ -109,8 +109,22 @@ describe("the prose-only fast path", () => {
     // over one is ten minutes of nothing.
     expect(runsEverything(["docs/ui/ah-vp3.2.html"])).toBe(false);
     expect(runsEverything([".claude/agents/orchestrator.md"])).toBe(false);
+    expect(runsEverything([".github/ISSUE_TEMPLATE/bug.md"])).toBe(false);
+    expect(runsEverything([".github/dependabot.yml"])).toBe(false);
     expect(runsEverything([".claude/skills/plan-bead/SKILL.md", "docs/implementation-plan.md"])).toBe(
       false
+    );
+  });
+
+  it("runs everything for a workflow change, so the gate cannot exempt itself", () => {
+    // `.github/` is exempt but `.github/workflows/` is not, and this is why: the tests in this file
+    // are what stop a broken gate reaching main, and they run inside the `checks` job. Exempt the
+    // workflows too and a PR editing the gate would skip the only thing that checks the gate -
+    // green by virtue of having disabled its own examiner.
+    expect(runsEverything([".github/workflows/ci.yml"])).toBe(true);
+    expect(runsEverything([".github/workflows/release.yml"])).toBe(true);
+    expect(runsEverything([".github/ISSUE_TEMPLATE/bug.md", ".github/workflows/deploy.yml"])).toBe(
+      true
     );
   });
 
@@ -119,8 +133,6 @@ describe("the prose-only fast path", () => {
     expect(runsEverything([".claude/agents/orchestrator.md", "scripts/runImplementer.ts"])).toBe(
       true
     );
-    // The gate is what decides whether the suite runs, so a change to the gate itself has to run it.
-    expect(runsEverything([".github/workflows/ci.yml"])).toBe(true);
   });
 
   it("anchors on the directory, so a path that merely starts with those letters is not prose", () => {
@@ -128,6 +140,7 @@ describe("the prose-only fast path", () => {
     // the leading dot must be escaped or it matches any first character - `xclaude/`, `1claude/`.
     expect(runsEverything(["docsite/build.ts"])).toBe(true);
     expect(runsEverything(["xclaude/thing.ts"])).toBe(true);
+    expect(runsEverything(["xgithub/thing.ts"])).toBe(true);
     expect(runsEverything(["packages/docs/src/index.ts"])).toBe(true);
   });
 

@@ -88,16 +88,20 @@ export function matrixOf(jobBlock: string): string | null {
 }
 
 /**
- * The `grep` the gate decides on: the invocation that answers "does this diff touch anything
- * besides the prose trees?".
+ * The shell condition the gate decides on - everything between `if ` and `; then` - which answers
+ * "does this diff touch anything besides the prose trees?".
  *
- * Returned as the command line rather than as a bare pattern so a test can run the real thing in a
- * shell — the gate's answer depends on the flags as much as the pattern (`-E` or not, `-v`, the
- * anchor), and a test that re-implemented the matching in JavaScript would be pinning its own
- * translation instead of what CI executes.
+ * Returned as shell text so a test can run the real thing rather than restating the matching in
+ * JavaScript, where it would pin its own translation instead of what CI executes. The whole
+ * condition rather than a single pattern, because the decision is not one match: POSIX ERE has no
+ * negative lookahead, so exempting `.github/` while keeping `.github/workflows/` covered takes a
+ * second `grep` ahead of the first.
  */
-export function gateGrepCommand(yaml: string): string {
-  const match = yaml.match(/^\s*if \[ -z "\$FILES" \] \|\| echo "\$FILES" \| (grep .*?); then\s*$/mu);
+export function gateCondition(yaml: string): string {
+  // Joined across the shell's `\` line continuations first, so the condition reads as one line
+  // however it is wrapped in the YAML.
+  const joined = yaml.replace(/\\\n\s*/gu, " ");
+  const match = joined.match(/^\s*if (\[ -z "\$FILES" \].*?); then\s*$/mu);
   return match === null ? "" : match[1].trim();
 }
 
