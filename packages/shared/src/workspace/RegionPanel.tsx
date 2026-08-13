@@ -1,5 +1,6 @@
 import type { Coordinate, OrderDiagnostic } from "@atlantis/core-client";
 import { abbreviateDirection, SURFACE, type HexNode } from "../hexMapModel";
+import { useWorkspaceStore } from "../workspaceStore";
 import { CollapsiblePanel } from "./CollapsiblePanel";
 import { Absent, Field, Row, Section, StaleBanner } from "./primitives";
 
@@ -63,6 +64,7 @@ export function RegionPanel({
       title="Region"
       hint={`— ${hex.terrain} (${hex.coordinate.x},${hex.coordinate.y})`}
       asOf={asOf}
+      actions={problems.length > 0 ? <RegionProblemsToggle count={problems.length} /> : null}
     >
       {stale && hex.lastSeenTurn !== null ? (
         <StaleBanner lastSeenTurn={hex.lastSeenTurn} ageInTurns={hex.ageInTurns ?? 0} />
@@ -173,6 +175,36 @@ export function RegionPanel({
 }
 
 /**
+ * The header chip that hides the Problems section without losing track of what it hides.
+ *
+ * Modelled on `LayerChips`: a real checkbox under styled `label` text, lit while the section is
+ * shown. Absent entirely when there is nothing to hide - the caller only renders this when
+ * `problems.length > 0`.
+ */
+function RegionProblemsToggle({ count }: { count: number }) {
+  const shown = useWorkspaceStore((state) => state.regionProblemsShown);
+  const toggle = useWorkspaceStore((state) => state.toggleRegionProblems);
+
+  return (
+    <label
+      className={`flex cursor-pointer items-center gap-1.5 rounded border px-2 py-0.5 text-[10px] normal-case tracking-normal ${
+        shown ? "border-select bg-select/15 text-ink" : "border-edge text-ink-dim"
+      }`}
+    >
+      <input
+        type="checkbox"
+        checked={shown}
+        onChange={toggle}
+        aria-label="Problems"
+        data-testid="region-problems-toggle"
+        className="h-3 w-3 accent-select"
+      />
+      Problems {count}
+    </label>
+  );
+}
+
+/**
  * What order validation found in this hex.
  *
  * Absent entirely when there is nothing to say. A section reading "none reported" every turn is a
@@ -180,9 +212,14 @@ export function RegionPanel({
  * absence of a problem is not a fact anyone came here to check.
  *
  * A finding that names a unit says which; one that does not is the hex's own.
+ *
+ * Hidden while `regionProblemsShown` is off - the header chip stays put and keeps the count, so
+ * the diagnostics are put away rather than lost.
  */
 function Problems({ problems }: { problems: OrderDiagnostic[] }) {
-  if (problems.length === 0) {
+  const shown = useWorkspaceStore((state) => state.regionProblemsShown);
+
+  if (problems.length === 0 || !shown) {
     return null;
   }
 

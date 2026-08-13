@@ -107,6 +107,50 @@ describe("workspace selection", () => {
   });
 });
 
+describe("the region panel's problems toggle", () => {
+  beforeEach(resetWorkspaceStore);
+
+  it("the region panel shows its problems until told otherwise", () => {
+    expect(store().regionProblemsShown).toBe(true);
+  });
+
+  it("toggling the problems section is remembered", async () => {
+    store().toggleRegionProblems();
+    expect(store().regionProblemsShown).toBe(false);
+
+    const options = useWorkspaceStore.persist.getOptions();
+    const raw = await options.storage?.getItem(options.name ?? "atlantis-hud-workspace");
+    const persisted = (raw as { state?: Record<string, unknown> } | null)?.state ?? {};
+
+    expect(persisted.regionProblemsShown).toBe(false);
+  });
+
+  it("a stored layout written before this flag existed still shows the problems", () => {
+    // The upgrade case: a record persisted before this flag existed rehydrates with the key
+    // absent, and a missing key must read as shown - the dangerous direction is hiding every
+    // player's diagnostics on upgrade with nothing on screen to say why.
+    const merge = useWorkspaceStore.persist.getOptions().merge;
+    const merged = merge?.({ collapsed: {}, layers: {}, badges: {} }, store()) as
+      | ReturnType<typeof store>
+      | undefined;
+
+    expect(merged?.regionProblemsShown).toBe(true);
+  });
+
+  it("a stored value that is not a boolean is ignored", () => {
+    const merge = useWorkspaceStore.persist.getOptions().merge;
+
+    for (const bogus of ["yes", 0, null]) {
+      const merged = merge?.(
+        { collapsed: {}, layers: {}, badges: {}, regionProblemsShown: bogus },
+        store()
+      ) as ReturnType<typeof store> | undefined;
+
+      expect(merged?.regionProblemsShown).toBe(true);
+    }
+  });
+});
+
 describe("panels and layers", () => {
   beforeEach(resetWorkspaceStore);
 

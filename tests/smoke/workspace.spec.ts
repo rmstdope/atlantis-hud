@@ -560,6 +560,71 @@ test("a unit told to spend silver it has not got is warned about, without blocki
   await expect(page.getByTestId("problems-chip")).toHaveCount(0);
 });
 
+/**
+ * The toggle from issue ah-f8u: a hex carrying several diagnostics pushes the region facts down
+ * out of view, so a chip in the panel header hides the Problems section without losing track of
+ * how many are put away.
+ *
+ * Two distinct hex-level findings on the same hex, so "several diagnostics" is genuine rather
+ * than one message repeated: the shared-purse overspend from the test above, plus "nobody is
+ * guarding this hex" - off by default, turned on here through Settings, and true of every hex the
+ * faction stands in on the committed turn-71 report.
+ */
+async function warnAboutUnguardedHexes(page: Page) {
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByTestId("settings-warn-unguarded").check();
+  await page.keyboard.press("Escape");
+}
+
+test("hiding the problems brings the region facts to the top", async ({ page }) => {
+  await loadReport(page);
+  await warnAboutUnguardedHexes(page);
+  await selectHex(page, "1:7,53");
+  await selectUnit(page, OWN_UNIT);
+  await fillOrders(page, "GIVE 13401 999999999 SILV");
+
+  const chip = page.getByTestId("region-problems-toggle");
+  // The label the checkbox sits in, not the whole panel - other numbers live in the region facts.
+  const chipLabel = page.locator("label", { has: chip });
+  await expect(chip).toBeChecked();
+  await expect(chipLabel).toContainText("2");
+  await expect(page.getByTestId("region-problems")).toBeVisible();
+
+  await chip.uncheck();
+
+  await expect(page.getByTestId("region-problems")).toHaveCount(0);
+  // Still there, and still saying how many are put away.
+  await expect(chip).not.toBeChecked();
+  await expect(chipLabel).toContainText("2");
+
+  // The region facts moved up to the top of the body: "in Inhead" (the province Inholm sits in)
+  // is the first line the Problems section used to sit above. Scoped to the body div rather than
+  // the whole panel, whose header carries the chip and title above it.
+  const bodyText = await page
+    .getByTestId("panel-region")
+    .locator("> div")
+    .innerText();
+  expect(bodyText.trimStart().startsWith("in Inhead")).toBe(true);
+});
+
+test("the hidden problems stay hidden across a reload", async ({ page }) => {
+  await loadReport(page);
+  await warnAboutUnguardedHexes(page);
+  await selectHex(page, "1:7,53");
+  await selectUnit(page, OWN_UNIT);
+  await fillOrders(page, "GIVE 13401 999999999 SILV");
+
+  await page.getByTestId("region-problems-toggle").uncheck();
+  await expect(page.getByTestId("region-problems")).toHaveCount(0);
+
+  await page.reload();
+  await expect(page.getByTestId("import-status")).toContainText("restored turn 71");
+  await selectHex(page, "1:7,53");
+
+  await expect(page.getByTestId("region-problems-toggle")).not.toBeChecked();
+  await expect(page.getByTestId("region-problems")).toHaveCount(0);
+});
+
 test("an order with the wrong argument is caught, and the offending word quoted", async ({
   page
 }) => {

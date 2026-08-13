@@ -59,6 +59,8 @@ export type WorkspaceState = {
   layers: Record<LayerName, boolean>;
   /** Which marks the map draws over its terrain. */
   badges: Record<BadgeName, boolean>;
+  /** Whether the region panel's Problems section is shown. On by default. */
+  regionProblemsShown: boolean;
 
   /** Opens a game, abandoning any selection made in the one before it. */
   openGame: (game: WorkspaceGame) => void;
@@ -83,6 +85,8 @@ export type WorkspaceState = {
   togglePanel: (panel: PanelName) => void;
   toggleLayer: (layer: LayerName) => void;
   toggleBadge: (badge: BadgeName) => void;
+  /** Shows or hides the region panel's Problems section. */
+  toggleRegionProblems: () => void;
   /** Shows or hides the whole set at once, which is what a nine-box panel owes the player. */
   setAllBadges: (on: boolean) => void;
   /** Arms destination picking for exactly one click. */
@@ -169,7 +173,10 @@ const STORAGE = createJSONStorage<Persisted>(() => {
 });
 
 /** Only the layout preferences are remembered; see the note on `partialize`. */
-type Persisted = Pick<WorkspaceState, "collapsed" | "layers" | "badges">;
+type Persisted = Pick<
+  WorkspaceState,
+  "collapsed" | "layers" | "badges" | "regionProblemsShown"
+>;
 
 export const useWorkspaceStore = create<WorkspaceState>()(
   persist(
@@ -181,6 +188,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       collapsed: INITIAL_COLLAPSED,
       layers: INITIAL_LAYERS,
       badges: allBadges(true),
+      regionProblemsShown: true,
       planner: { armed: false, destinationId: null },
 
       openGame: (game) =>
@@ -234,6 +242,9 @@ export const useWorkspaceStore = create<WorkspaceState>()(
 
       setAllBadges: (on) => set(() => ({ badges: allBadges(on) })),
 
+      toggleRegionProblems: () =>
+        set((state) => ({ regionProblemsShown: !state.regionProblemsShown })),
+
       armPlanner: () => set((state) => ({ planner: { ...state.planner, armed: true } })),
       planTo: (destinationId) => set(() => ({ planner: { armed: false, destinationId } })),
       clearPlan: () => set(() => ({ planner: { armed: false, destinationId: null } }))
@@ -248,7 +259,8 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       partialize: (state) => ({
         collapsed: state.collapsed,
         layers: state.layers,
-        badges: state.badges
+        badges: state.badges,
+        regionProblemsShown: state.regionProblemsShown
       }),
       /**
        * What comes back out of storage, taken key by key rather than spread.
@@ -264,7 +276,11 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           ...current,
           collapsed: reconcile(INITIAL_COLLAPSED, stored.collapsed ?? {}),
           layers: reconcile(INITIAL_LAYERS, stored.layers ?? {}),
-          badges: badgesFromStorage(stored.badges ?? {})
+          badges: badgesFromStorage(stored.badges ?? {}),
+          // Not a record, so `reconcile` does not apply: a missing or malformed key must read
+          // as shown, or an upgrade silently hides every player's diagnostics.
+          regionProblemsShown:
+            typeof stored.regionProblemsShown === "boolean" ? stored.regionProblemsShown : true
         };
       }
     }
@@ -282,6 +298,7 @@ export function resetWorkspaceStore() {
     level: DEFAULT_LEVEL,
     collapsed: INITIAL_COLLAPSED,
     layers: INITIAL_LAYERS,
-    badges: allBadges(true)
+    badges: allBadges(true),
+    regionProblemsShown: true
   });
 }
