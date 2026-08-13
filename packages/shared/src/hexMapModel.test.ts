@@ -108,7 +108,9 @@ function report(regions: ReportRegion[], turnNumber: number | null = 71): Parsed
       rulesetVersion: null,
       unclaimedSilver: null,
       errors: [],
-      events: []
+      events: [],
+      factionStatus: { entries: [], unparsed: [] },
+      attitudes: { defaultAttitude: null, levels: [] }
     },
     regions,
     battles: [],

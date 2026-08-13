@@ -50,7 +50,9 @@ function report(factionId: string | null): ParsedReport {
       rulesetVersion: null,
       unclaimedSilver: null,
       errors: [],
-      events: []
+      events: [],
+      factionStatus: { entries: [], unparsed: [] },
+      attitudes: { defaultAttitude: null, levels: [] }
     },
     regions: [],
     battles: [],

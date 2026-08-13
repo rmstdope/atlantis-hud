@@ -36,6 +36,14 @@ describe("the full model across the WebAssembly boundary", () => {
     expect(parsed.header.turnNumber).toBe(71);
     expect(parsed.regions).toHaveLength(11);
 
+    // Proves the serde rename survives the boundary: a naming mismatch would leave these undefined.
+    expect(parsed.header.factionStatus.entries.length).toBe(4);
+    const mages = parsed.header.factionStatus.entries.find((entry) => entry.label === "Mages");
+    expect(mages).toEqual({ label: "Mages", used: 6, maximum: 6 });
+    expect(parsed.header.attitudes.defaultAttitude).toBe("Unfriendly");
+    const neutral = parsed.header.attitudes.levels.find((level) => level.attitude === "Neutral");
+    expect(neutral?.factions).toEqual([{ name: "Fon", id: "8" }]);
+
     const inholm = parsed.regions.find((region) => region.regionId === "1:7,53");
     expect(inholm?.settlement?.name).toBe("Inholm");
     expect(inholm?.coordinate).toEqual({ x: 7, y: 53, z: 1 });
