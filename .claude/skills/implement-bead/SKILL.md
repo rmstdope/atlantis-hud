@@ -24,6 +24,20 @@ So: RED → GREEN → REFACTOR → COMMIT without stopping, announcing each tran
 on a genuine design question — see *When the plan is wrong*. Everything outside a planned bead
 follows the TDD skill's gates as written.
 
+## Remote Control is on, or ask for it
+
+An implementation session runs unattended for an hour at a time, so it must be reachable from
+somewhere other than the terminal it started in.
+
+`scripts/implement-loop.sh <name>` starts every session with `--remote-control <name>`, so a looped
+session is already connected and already named — that is what the loop's mandatory argument is for,
+and it is how two loops on one machine are told apart.
+
+**If you were started by hand, say so in your first message and ask the navigator to type `/rc`.**
+You cannot enable it yourself: `/rc` is a built-in command, and the Skill tool does not invoke
+built-in commands. Ask once and carry on with the bead either way — an unreachable session is a
+nuisance, not a reason to refuse work.
+
 ## Picking up
 
 ```bash
