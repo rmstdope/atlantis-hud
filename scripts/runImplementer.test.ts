@@ -4,7 +4,15 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
-import { flagPaths, formatEvent, launchCommand, logPath, nextAction } from "./runImplementer";
+import {
+  IMPLEMENTER_NAMES,
+  canonicalName,
+  flagPaths,
+  formatEvent,
+  launchCommand,
+  logPath,
+  nextAction
+} from "./runImplementer";
 
 /**
  * The launcher that owns an implementer's loop.
@@ -73,6 +81,50 @@ describe("flagPaths", () => {
     expect(flagPaths("/repo", "Nightcrawler").go).toBe(
       "/repo/.claude/implementers/Nightcrawler.go"
     );
+  });
+});
+
+describe("canonicalName", () => {
+  it("accepts a name from the roster", () => {
+    expect(canonicalName("Cyclops")).toBe("Cyclops");
+    expect(canonicalName("Nightcrawler")).toBe("Nightcrawler");
+  });
+
+  it("refuses a name that is not an X-Man", () => {
+    // The roster is the whole set of implementers there can be. An off-roster name would start a
+    // real agent that Cerebro never looks for, since it works from that list.
+    expect(() => canonicalName("Wolverin")).toThrow(/Wolverin/u);
+  });
+
+  it("names the roster in the error, so the fix is in front of you", () => {
+    expect(() => canonicalName("Batman")).toThrow(/Cyclops/u);
+  });
+
+  it("insists on the roster's own spelling, and says what it should have been", () => {
+    // Folding the case would fix the flag files and nothing else: the process keeps the argument it
+    // was given, so `pgrep` answers `storm` while the flags say `Storm.go` - and Cerebro, which
+    // discovers implementers with pgrep, sees one it has no flags for. Measured, not assumed:
+    // `run-implementer storm` really does show as `storm` in the process list.
+    expect(() => canonicalName("storm")).toThrow(/spelt "Storm"/u);
+    expect(() => canonicalName("MAGNETO")).toThrow(/case-sensitive/u);
+  });
+
+  it("ignores surrounding whitespace, which a shell can leave behind", () => {
+    expect(canonicalName("  Rogue  ")).toBe("Rogue");
+  });
+
+  it("refuses an empty name and a path that would escape the flag directory", () => {
+    expect(() => canonicalName("")).toThrow();
+    expect(() => canonicalName("../escape")).toThrow();
+  });
+
+  it("offers fifteen names, all single words", () => {
+    // Single words because the name goes into a file path and into a pgrep pattern; a space would
+    // need quoting in every place either appears.
+    expect(IMPLEMENTER_NAMES).toHaveLength(15);
+    for (const name of IMPLEMENTER_NAMES) {
+      expect(name).toMatch(/^[A-Za-z]+$/u);
+    }
   });
 });
 
@@ -196,10 +248,16 @@ describe("the launcher loop", () => {
     return { root, log, flags: flagPaths(root, "Cyclops") };
   }
 
-  function start(root: string, bin: string, stdio: "ignore" | "pipe" = "ignore") {
+  function start(
+    root: string,
+    bin: string,
+    stdio: "ignore" | "pipe" = "ignore",
+    extra: string[] = []
+  ) {
     // `process.execPath` with the tsx loader rather than `npx`: an absolute node path needs no PATH
     // at all, which is what lets the missing-`claude` case below run with an empty one.
-    return spawn(process.execPath, ["--import", "tsx", launcher, "Cyclops", "--repo", root], {
+    const argv = ["--import", "tsx", launcher, "Cyclops", "--repo", root, ...extra];
+    return spawn(process.execPath, argv, {
       cwd: dirname(launcher),
       env: { PATH: bin, IMPLEMENTER_POLL_MS: "50", HOME: process.env.HOME ?? "" },
       stdio
@@ -282,20 +340,58 @@ describe("the launcher loop", () => {
     }
   }, 30_000);
 
-  it("writes the raw stream to the implementer's log for the orchestrator to read", async () => {
+  it("writes no log unless asked, so a long-running implementer does not fill the disk", async () => {
+    // One bead produced a megabyte, and the launcher appends across runs - an implementer left going
+    // overnight would write hundreds of them. The events are on the navigator's terminal either way,
+    // so keeping the file is the exception rather than the rule.
+    const { root, flags } = workspace("exit 0");
+    writeFileSync(flags.go, "");
+    const child = start(root, join(root, "bin"));
+
+    try {
+      await until(() => existsSync(logPath(root, "Cyclops")), 3_000);
+      expect(existsSync(logPath(root, "Cyclops"))).toBe(false);
+    } finally {
+      child.kill();
+    }
+  }, 30_000);
+
+  it("writes the raw stream to the implementer's log when --log is given", async () => {
     const event = JSON.stringify({
       type: "assistant",
       message: { content: [{ type: "text", text: "taking ah-t65" }] }
     });
     const { root, flags } = workspace(`printf '%s\\n' ${JSON.stringify(event)}\nexit 0`);
     writeFileSync(flags.go, "");
-    const child = start(root, join(root, "bin"));
+    const child = start(root, join(root, "bin"), "ignore", ["--log"]);
 
     try {
       const log = logPath(root, "Cyclops");
       expect(await until(() => existsSync(log) && readFileSync(log, "utf8").includes("ah-t65"))).toBe(
         true
       );
+    } finally {
+      child.kill();
+    }
+  }, 30_000);
+
+  it("keeps running when the log cannot be written", async () => {
+    // A write error on the log stream arrives as an 'error' event, and an unhandled one takes the
+    // process down - so a full disk or a bad permission would kill the launcher mid-bead, over a
+    // file that is only ever a convenience. Worse, ENOSPC is precisely the case `--log` was made
+    // opt-in to avoid. Here the log path is a directory, so the stream fails at once.
+    const event = JSON.stringify({
+      type: "assistant",
+      message: { content: [{ type: "text", text: "still going" }] }
+    });
+    const { root, log, flags } = workspace(`printf '%s\\n' ${JSON.stringify(event)}\nexit 0`);
+    mkdirSync(logPath(root, "Cyclops"), { recursive: true });
+    writeFileSync(flags.go, "");
+    const child = start(root, join(root, "bin"), "ignore", ["--log"]);
+
+    try {
+      // The claim is that it goes round again: a crash would leave exactly one invocation.
+      expect(await until(() => invocations(log).length >= 2)).toBe(true);
     } finally {
       child.kill();
     }

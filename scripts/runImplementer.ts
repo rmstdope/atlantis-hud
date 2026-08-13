@@ -48,6 +48,64 @@ export function nextAction(flags: { go: boolean; stop: boolean }): Action {
 }
 
 /**
+ * Every name an implementer may have.
+ *
+ * A closed set, not a suggestion. Cerebro works from this list — it picks the next unused name from
+ * it and looks for running implementers by it — so an off-roster name starts a real agent that the
+ * orchestrator never accounts for: it would hold a bead, open PRs and be invisible to every question
+ * the navigator asks about the fleet.
+ *
+ * Single words, all of them, because the name goes into a file path and into a `pgrep` pattern, and
+ * a space would need quoting in both.
+ */
+export const IMPLEMENTER_NAMES = [
+  "Cyclops",
+  "Storm",
+  "Wolverine",
+  "Rogue",
+  "Gambit",
+  "Nightcrawler",
+  "Colossus",
+  "Iceman",
+  "Beast",
+  "Jubilee",
+  "Psylocke",
+  "Bishop",
+  "Phoenix",
+  "Mystique",
+  "Magneto"
+] as const;
+
+/**
+ * The name exactly as the roster spells it, or an error naming the alternatives.
+ *
+ * **Exact, including case**, which looks unfriendly and is not. Folding `storm` to `Storm` would fix
+ * the flag files and nothing else: the process keeps the argument it was given, so `pgrep` - which is
+ * how Cerebro discovers who is running - answers `storm` while the flags say `Storm.go`, and the
+ * orchestrator sees an implementer it has no flags for. Meanwhile the macOS filesystem is
+ * case-insensitive, so `storm` and `Storm` really would share one set of flags, each consuming the
+ * other's `.go`. Demanding the canonical spelling keeps the process, the flags and the roster saying
+ * one thing; a wrong case is a typo, and typos are cheapest at the prompt.
+ */
+export function canonicalName(input: string): string {
+  const given = input.trim();
+
+  if (IMPLEMENTER_NAMES.includes(given as (typeof IMPLEMENTER_NAMES)[number])) {
+    return given;
+  }
+
+  const misspelt = IMPLEMENTER_NAMES.find((name) => name.toLowerCase() === given.toLowerCase());
+  if (misspelt !== undefined) {
+    throw new Error(`"${given}" is spelt "${misspelt}" - names are case-sensitive here`);
+  }
+
+  throw new Error(
+    `"${given}" is not an implementer. Names are X-Men, and the roster is closed:\n  ` +
+      IMPLEMENTER_NAMES.join(", ")
+  );
+}
+
+/**
  * Where a named implementer's flags live.
  *
  * The name comes from a human typing it in a terminal and it reaches the filesystem, so it is
@@ -226,20 +284,33 @@ function repositoryRoot(): string {
 function runOneBead(
   repoRoot: string,
   name: string,
-  say: (line: string) => void
+  say: (line: string) => void,
+  keepLog: boolean
 ): Promise<{ status: number | null; signal: NodeJS.Signals | null; error?: Error }> {
-  const log = logPath(repoRoot, name);
-  mkdirSync(dirname(log), { recursive: true });
+  let sink: ReturnType<typeof createWriteStream> | null = null;
+  if (keepLog) {
+    const log = logPath(repoRoot, name);
+    mkdirSync(dirname(log), { recursive: true });
+    sink = createWriteStream(log, { flags: "a" });
+
+    // A stream error - a full disk, a bad permission, a path that is not a file - arrives as an
+    // 'error' event, and an unhandled one takes the whole process down. That would kill an
+    // implementer mid-bead over a file that is only ever a convenience, and ENOSPC is exactly the
+    // case `--log` is opt-in to avoid. So say it once, drop the log, and keep the bead running.
+    sink.on("error", (error: Error) => {
+      say(`could not write the log, carrying on without it: ${error.message}`);
+      sink = null;
+    });
+  }
 
   return new Promise((done) => {
     // stdout is piped so it can be split two ways; stderr is inherited, because a stack trace from
     // the agent belongs in front of the navigator unedited.
     const child = spawn("claude", launchCommand(name), { stdio: ["ignore", "pipe", "inherit"] });
-    const sink = createWriteStream(log, { flags: "a" });
 
     let pending = "";
     child.stdout?.on("data", (chunk: Buffer) => {
-      sink.write(chunk);
+      sink?.write(chunk);
 
       // A chunk is not a line: the last one is usually a fragment, and parsing it would throw away
       // an event or - before `formatEvent` learned to shrug - crash the launcher.
@@ -256,23 +327,31 @@ function runOneBead(
     });
 
     child.on("error", (error) => {
-      sink.end();
+      sink?.end();
       done({ status: null, signal: null, error });
     });
 
     child.on("close", (status, signal) => {
-      sink.end();
+      sink?.end();
       done({ status, signal });
     });
   });
 }
 
 /** The loop itself: read the flags, run one bead, read them again. Exported so it can be tested. */
-export async function runLoop(repoRoot: string, name: string): Promise<number> {
+export async function runLoop(
+  repoRoot: string,
+  name: string,
+  options: { keepLog?: boolean } = {}
+): Promise<number> {
   const paths = flagPaths(repoRoot, name);
+  const keepLog = options.keepLog ?? false;
   const say = (line: string) => process.stdout.write(`run-implementer: ${line}\n`);
 
   say(`${name} watching ${paths.go}`);
+  if (keepLog) {
+    say(`keeping every event in ${logPath(repoRoot, name)}`);
+  }
 
   for (;;) {
     const action = nextAction(readFlags(paths));
@@ -290,7 +369,7 @@ export async function runLoop(repoRoot: string, name: string): Promise<number> {
 
     say(`starting ${name} on one bead`);
     const startedAt = Date.now();
-    const run = await runOneBead(repoRoot, name, say);
+    const run = await runOneBead(repoRoot, name, say, keepLog);
     const elapsedMs = Date.now() - startedAt;
 
     // `error` rather than a status is `claude` never having started - not installed, not on PATH.
@@ -326,7 +405,17 @@ if (invokedDirectly) {
   // is not: running this with no name at all died inside `spawnSync` with a stack trace, because
   // the repository lookup happened first and git was not reachable.
   if (name === undefined || (repoIndex !== -1 && given === undefined)) {
-    process.stderr.write("usage: scripts/run-implementer <name> [--repo <path>]\n");
+    process.stderr.write("usage: scripts/run-implementer <name> [--log] [--repo <path>]\n");
+    process.exit(2);
+  }
+
+  // The roster is enforced here rather than deeper down, so a mistyped name costs a message at the
+  // prompt instead of a running agent nobody is looking for.
+  let implementer: string;
+  try {
+    implementer = canonicalName(name);
+  } catch (error) {
+    process.stderr.write(`run-implementer: ${error instanceof Error ? error.message : error}\n`);
     process.exit(2);
   }
 
@@ -342,7 +431,7 @@ if (invokedDirectly) {
 
   // `.then` rather than a top-level `await`: tsx transforms these scripts as CJS, where top-level
   // await is a build error rather than a runtime one - the launcher would not start at all.
-  runLoop(repoRoot, name).then(
+  runLoop(repoRoot, implementer, { keepLog: rest.includes("--log") }).then(
     (code) => process.exit(code),
     (error: unknown) => {
       process.stderr.write(`run-implementer: ${error instanceof Error ? error.message : error}\n`);

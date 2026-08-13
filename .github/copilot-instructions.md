@@ -58,7 +58,7 @@ review comments unanswered. A session of its own can simply block until the revi
 **Cerebro orchestrates them without starting them:**
 
 ```bash
-claude --agent orchestrator --name Cerebro --permission-mode auto
+scripts/run-orchestrator
 ```
 
 That session is interactive, runs on Sonnet, and does nothing until you ask. It puts an implementer
@@ -69,9 +69,11 @@ it merged — interrupting one mid-bead strands a claim, a worktree and an open 
 
 **An implementer cannot be talked to.** It runs with `--print`, and a print-mode session appears in
 neither `claude agents` nor `ListAgents`, so there is no name for `SendMessage` to address. You watch
-it in its terminal, where the launcher renders each tool call as it happens; Cerebro reads
-`.claude/implementers/<name>.log`, where the same events are written as raw JSON. Those two views and
-the flags are the whole interface.
+it in its terminal, where the launcher renders each tool call as it happens. Start it with
+`scripts/run-implementer <name> --log` and the same events are also kept in
+`.claude/implementers/<name>.log`, which is what Cerebro reads — off by default, because one bead
+writes about a megabyte and the file is appended across runs. The terminal, the optional log and the
+flags are the whole interface.
 
 Cerebro also sweeps up after implementers that did not get to the end of their own cleanup, on
 startup and every ten minutes. `scripts/prune-worktrees.sh` removes an agent worktree only when
@@ -80,8 +82,19 @@ it Cerebro checks the claims — a bead left `in_progress` whose work is already
 bead whose implementer died before closing it, so Cerebro closes it and reports that it had to. Both
 sweeps are described in `.claude/agents/orchestrator.md`.
 
-Both roles are defined in `.claude/agents/`. Planning is not run this way: `/plan-bead` is
-interactive by design and stays a session of its own.
+**The planner is a session too, and it is Xavier:**
+
+```bash
+scripts/run-planner
+```
+
+Interactive, unlike an implementer, and deliberately so: it must be able to put a question and an
+HTML mockup in front of you and wait for an answer, which print mode cannot do. It keeps a buffer of
+**four planned, open, unclaimed beads** ahead of the fleet — planning the highest-priority candidate
+whose blockers are already planned, sleeping ten minutes, and refilling when the buffer drops below
+two. There is no go flag and no loop around it; the session runs until you end it.
+
+All three roles are defined in `.claude/agents/`.
 
 ## Skills Usage
 
