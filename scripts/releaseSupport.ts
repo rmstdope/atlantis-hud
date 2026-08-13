@@ -1,3 +1,5 @@
+import { PUSH_AGAIN_MESSAGE } from "./beadsExportGate";
+
 /**
  * The two things that stranded v0.5.2, kept apart from the script that does them.
  *
@@ -93,4 +95,80 @@ function messageOf(error: unknown): string {
   }
 
   return String(error);
+}
+
+/**
+ * The retry v0.5.3 was missing.
+ *
+ * `settleExport` narrows the window between the export going stale and the release's own push, but
+ * does not close it: the gate runs again on that push, minutes later, and with other agents claiming
+ * and heartbeating beads the export can have gone stale again by then. v0.5.3 ended with the version
+ * committed, nothing pushed and no tag - recovered by hand with one retried `git push`.
+ *
+ * Whether a failed push is the gate asking for another push, rather than a genuine refusal - a
+ * rejected ref, a credential failure - which must never be retried into a loop.
+ */
+export function isGateAbort(output: string): boolean {
+  return output.includes(PUSH_AGAIN_MESSAGE);
+}
+
+export type PushResult = { ok: true } | { ok: false; output: string };
+
+/**
+ * Retries a push while, and only while, it fails on the gate's own abort.
+ *
+ * The push is injected so this is testable without git or a remote. Bounded, because the export can
+ * go stale again between two attempts and an unbounded loop against a genuinely refusing remote is
+ * worse than a clear failure - the manual recoveries this bead is named for both needed exactly one
+ * retry.
+ */
+export function pushWithRetry(
+  push: () => { ok: boolean; output: string },
+  attempts: number
+): PushResult {
+  let last: { ok: boolean; output: string } = { ok: false, output: "" };
+
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    last = push();
+    if (last.ok) {
+      return { ok: true };
+    }
+    if (!isGateAbort(last.output)) {
+      return { ok: false, output: last.output };
+    }
+  }
+
+  return {
+    ok: false,
+    output: `the export gate kept refreshing after ${attempts} attempts:\n${last.output}`
+  };
+}
+
+/** What a release did and did not manage, enough to say what finishing it by hand takes. */
+export type ReleaseState = {
+  tag: string;
+  branch: string;
+  versionCommitPushed: boolean;
+  tagCreated: boolean;
+  tagPushed: boolean;
+};
+
+/**
+ * The exact commands a human needs to finish a release that could not finish itself, naming the
+ * actual tag and branch so the lines can be pasted rather than adapted.
+ */
+export function recoveryAdvice(state: ReleaseState): string[] {
+  const lines: string[] = [];
+
+  if (!state.versionCommitPushed) {
+    lines.push(`git push origin HEAD:${state.branch}`);
+  }
+  if (!state.tagCreated) {
+    lines.push(`git tag ${state.tag}`);
+  }
+  if (!state.tagPushed) {
+    lines.push(`git push origin ${state.tag}`);
+  }
+
+  return lines;
 }

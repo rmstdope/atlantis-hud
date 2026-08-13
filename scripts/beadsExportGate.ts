@@ -36,6 +36,63 @@ const EXPORT_PATH = join(".beads", "issues.jsonl");
 const REFRESH_MESSAGE = "chore(beads): refresh the issues export";
 
 /**
+ * The gate's own words for "I committed a refresh and stopped this push, ask again."
+ *
+ * Exported so a caller retrying the push can recognise the abort without hand-typing a copy of this
+ * sentence - a copy that would silently fall out of step the next time this message is reworded.
+ */
+export const PUSH_AGAIN_MESSAGE = "beads: nothing was pushed - run the push again to send it along.";
+
+/**
+ * Fields that describe who holds a claim this minute, not what the backlog is.
+ *
+ * A claim's lease is renewed by a heartbeat roughly once a minute, so with any other agent holding a
+ * bead the export churns purely from liveness data - which made every push to main during someone
+ * else's claim meet a refresh. `bd export` is explicitly not a backup (`bd backup` is), and claim
+ * state travels between agents by `bd dolt push` rather than through this file, so nothing reads
+ * these fields from the committed export.
+ */
+const VOLATILE_FIELDS = ["heartbeat_at", "lease_expires_at"] as const;
+
+/**
+ * The export with the volatile lease fields removed from every record, so two exports that differ
+ * only in who is holding a claim this minute compare equal.
+ *
+ * Must never throw - the file's whole promise is that the gate is a convenience that never blocks a
+ * push. A line that will not parse is passed through untouched rather than dropped, so a corrupt
+ * export is never silently rewritten into a shorter one.
+ */
+export function stableExport(text: string): string {
+  const hadTrailingNewline = text.endsWith("\n");
+  const lines = text.length === 0 ? [] : text.split("\n").filter((_, index, all) => {
+    // Drop the empty segment `split` produces after a trailing newline; every other line, including
+    // a genuinely empty one in the middle of the file, is kept.
+    return !(hadTrailingNewline && index === all.length - 1);
+  });
+
+  const normalized = lines.map((line) => {
+    if (line === "") {
+      return line;
+    }
+    try {
+      const record = JSON.parse(line) as Record<string, unknown>;
+      for (const field of VOLATILE_FIELDS) {
+        delete record[field];
+      }
+      return JSON.stringify(record);
+    } catch {
+      return line;
+    }
+  });
+
+  if (normalized.length === 0) {
+    return "";
+  }
+
+  return normalized.join("\n") + (hadTrailingNewline ? "\n" : "");
+}
+
+/**
  * The one branch that carries the export. See the reasoning in `decideGate`.
  *
  * Read from the checked-out branch rather than from the ref list git hands a pre-push hook on
@@ -93,11 +150,14 @@ export function decideGate(input: GateInput): GateDecision {
   if (input.freshExport === null) {
     return { kind: "proceed", reason: "export-failed" };
   }
-  if (input.freshExport === input.committedExport) {
+  // Normalized on both sides, not only the fresh one: bd's own serialization and Node's
+  // `JSON.stringify` need not agree byte for byte, and normalizing only one side would compare
+  // Node's spelling against bd's and differ permanently from the very first run.
+  if (stableExport(input.freshExport) === stableExport(input.committedExport ?? "")) {
     return { kind: "proceed", reason: "up-to-date" };
   }
 
-  return { kind: "refresh", text: input.freshExport };
+  return { kind: "refresh", text: stableExport(input.freshExport) };
 }
 
 /** Everything the decision needs, gathered from the repository the hook is running in. */
@@ -192,7 +252,7 @@ export function runGate(root: string): number {
   process.stderr.write(
     [
       `beads: ${EXPORT_PATH} was out of date and has been committed as "${REFRESH_MESSAGE}".`,
-      "beads: nothing was pushed - run the push again to send it along.",
+      PUSH_AGAIN_MESSAGE,
       ""
     ].join("\n")
   );

@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { describeGitFailure, settleExport, settleStep } from "./releaseSupport";
+import { PUSH_AGAIN_MESSAGE } from "./beadsExportGate";
+import {
+  describeGitFailure,
+  isGateAbort,
+  pushWithRetry,
+  recoveryAdvice,
+  settleExport,
+  settleStep
+} from "./releaseSupport";
 
 /**
  * The two things that stranded v0.5.2.
@@ -100,5 +108,107 @@ describe("describeGitFailure", () => {
     const said = describeGitFailure(["push"], failure);
 
     expect(said.split("rejected")).toHaveLength(2);
+  });
+});
+
+/**
+ * The retry that was missing: the gate's own abort is worth another attempt, everything else is a
+ * genuine refusal that must be reported once and never looped on.
+ */
+describe("isGateAbort", () => {
+  it("recognises the gate's own words", () => {
+    expect(isGateAbort(PUSH_AGAIN_MESSAGE)).toBe(true);
+    expect(isGateAbort(`beads: .beads/issues.jsonl was out of date.\n${PUSH_AGAIN_MESSAGE}\n`)).toBe(
+      true
+    );
+  });
+
+  it("does not claim a rejected ref", () => {
+    expect(isGateAbort("! [rejected]        main -> main (fetch first)")).toBe(false);
+  });
+});
+
+describe("pushWithRetry", () => {
+  it("retries a gate abort and succeeds on the second attempt", () => {
+    let calls = 0;
+    const push = () => {
+      calls += 1;
+      return calls === 1 ? { ok: false, output: PUSH_AGAIN_MESSAGE } : { ok: true, output: "" };
+    };
+
+    const result = pushWithRetry(push, 3);
+
+    expect(calls).toBe(2);
+    expect(result).toEqual({ ok: true });
+  });
+
+  it("reports a rejected ref once, without retrying", () => {
+    let calls = 0;
+    const rejected = "! [rejected]        main -> main (fetch first)";
+    const push = () => {
+      calls += 1;
+      return { ok: false, output: rejected };
+    };
+
+    const result = pushWithRetry(push, 3);
+
+    expect(calls).toBe(1);
+    expect(result).toEqual({ ok: false, output: rejected });
+  });
+
+  it("gives up after the bound and says so", () => {
+    let calls = 0;
+    const push = () => {
+      calls += 1;
+      return { ok: false, output: PUSH_AGAIN_MESSAGE };
+    };
+
+    const result = pushWithRetry(push, 3);
+
+    expect(calls).toBe(3);
+    expect(result.ok).toBe(false);
+    expect("output" in result && result.output).toContain("kept refreshing");
+  });
+});
+
+describe("recoveryAdvice", () => {
+  it("names the commands to run when nothing was pushed", () => {
+    const lines = recoveryAdvice({
+      tag: "v0.5.4",
+      branch: "main",
+      versionCommitPushed: false,
+      tagCreated: false,
+      tagPushed: false
+    });
+
+    expect(lines.join("\n")).toContain("git push origin HEAD:main");
+    expect(lines.join("\n")).toContain("git tag v0.5.4");
+    expect(lines.join("\n")).toContain("git push origin v0.5.4");
+  });
+
+  it("names only the tag steps when the version commit already reached the remote", () => {
+    const lines = recoveryAdvice({
+      tag: "v0.5.4",
+      branch: "main",
+      versionCommitPushed: true,
+      tagCreated: false,
+      tagPushed: false
+    });
+
+    expect(lines.join("\n")).not.toContain("git push origin HEAD:main");
+    expect(lines.join("\n")).toContain("git tag v0.5.4");
+  });
+
+  it("names only the tag push when the tag was made but not pushed", () => {
+    const lines = recoveryAdvice({
+      tag: "v0.5.4",
+      branch: "main",
+      versionCommitPushed: true,
+      tagCreated: true,
+      tagPushed: false
+    });
+
+    expect(lines.join("\n")).not.toContain("git tag v0.5.4");
+    expect(lines.join("\n")).toContain("git push origin v0.5.4");
   });
 });

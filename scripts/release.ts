@@ -24,7 +24,7 @@ import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { runGate } from "./beadsExportGate";
-import { describeGitFailure, settleExport } from "./releaseSupport";
+import { describeGitFailure, pushWithRetry, recoveryAdvice, settleExport } from "./releaseSupport";
 
 const BUMPS = ["major", "minor", "maintenance"] as const;
 type Bump = (typeof BUMPS)[number];
@@ -55,6 +55,34 @@ const git = (...args: string[]): string => {
     return execFileSync("git", args, { cwd: repoFile("."), encoding: "utf8" }).trim();
   } catch (error) {
     return fail(describeGitFailure(args, error));
+  }
+};
+
+/**
+ * git, without dying on a failure - what a retry needs, since `git` above exits the process on the
+ * first refusal and a retry wrapped around that could never run a second attempt.
+ */
+const tryGit = (...args: string[]): { ok: boolean; output: string } => {
+  try {
+    execFileSync("git", args, { cwd: repoFile("."), encoding: "utf8" });
+    return { ok: true, output: "" };
+  } catch (error) {
+    return { ok: false, output: describeGitFailure(args, error) };
+  }
+};
+
+/**
+ * How many pushes to attempt before giving up. One retry is what both v0.5.2 and v0.5.3 needed by
+ * hand; the export can go stale again between two attempts, so the bound stays low rather than
+ * looping forever against a genuinely refusing remote.
+ */
+const PUSH_ATTEMPTS = 3;
+
+/** A push, retried on the export gate's own abort and reported plainly when the attempts run out. */
+const pushBranchOrTag = (...args: string[]): void => {
+  const result = pushWithRetry(() => tryGit("push", ...args), PUSH_ATTEMPTS);
+  if (!result.ok) {
+    fail(result.output);
   }
 };
 
@@ -197,7 +225,7 @@ if ("problem" in settled) {
   fail(`${settled.problem}\nNothing was written. Settle .beads/issues.jsonl and release again.`);
 } else if (settled.action === "push") {
   console.log("release: the bead export was stale; pushing the gate's refresh before the bump.");
-  git("push", "origin", `HEAD:${branch}`);
+  pushBranchOrTag("origin", `HEAD:${branch}`);
 }
 
 // --- The bump ----------------------------------------------------------------------------------
@@ -217,11 +245,41 @@ for (const relative of MANIFESTS) {
 
 git("add", ...MANIFESTS);
 git("commit", "-m", `Release ${tag}`);
-git("push", "origin", `HEAD:${branch}`);
+
+const versionPush = pushWithRetry(() => tryGit("push", "origin", `HEAD:${branch}`), PUSH_ATTEMPTS);
+if (!versionPush.ok) {
+  const advice = recoveryAdvice({
+    tag,
+    branch,
+    versionCommitPushed: false,
+    tagCreated: false,
+    tagPushed: false
+  });
+  fail(
+    `${versionPush.output}\n\n` +
+      `The version commit for ${tag} was made locally but never reached the remote. Finish it by ` +
+      `hand:\n${advice.map((line) => `  ${line}`).join("\n")}`
+  );
+}
 console.log(`release: pushed the version commit to ${branch}`);
 
 // Last, and separately. The workflow triggers on the tag and checks it out, so the commit it names
 // has to be on the remote before the tag that points at it arrives.
 git("tag", tag);
-git("push", "origin", tag);
+
+const tagPush = pushWithRetry(() => tryGit("push", "origin", tag), PUSH_ATTEMPTS);
+if (!tagPush.ok) {
+  const advice = recoveryAdvice({
+    tag,
+    branch,
+    versionCommitPushed: true,
+    tagCreated: true,
+    tagPushed: false
+  });
+  fail(
+    `${tagPush.output}\n\n` +
+      `The version commit reached ${branch}, but the tag ${tag} was made locally and never ` +
+      `pushed. Finish it by hand:\n${advice.map((line) => `  ${line}`).join("\n")}`
+  );
+}
 console.log(`release: pushed ${tag}. The Release workflow builds it from here.`);
