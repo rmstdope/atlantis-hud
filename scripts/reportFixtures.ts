@@ -39,6 +39,10 @@ export function fixtureFiles(directory: string): string[] {
  *
  * Only the value is returned, never the surrounding line: a caller that logged the line on failure
  * would put a real password into CI output, which is the accident this exists to prevent.
+ *
+ * Checks only the first such line. Every fixture committed so far has at most one - a report is one
+ * faction's own turn - so this is not a gap yet; a fixture built by concatenating more than one
+ * faction's report would need this widened to check every occurrence.
  */
 export function passwordValue(text: string): string | null {
   const match = /^#atlantis\s+\S+\s+"([^"]*)"/m.exec(text);

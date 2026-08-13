@@ -8,7 +8,8 @@ use atlantis_hud_core::movement::orders::{follow_move, parse_move, render_move, 
 use atlantis_hud_core::report::model::Coordinate;
 use atlantis_hud_core::report::{parse_report_full, ParsedReport};
 
-const TURN_71: &str = include_str!("../../../tests/fixtures/reports/neworigins-3.0.0-g7-f95-t71.rep");
+const TURN_71: &str =
+    include_str!("../../../tests/fixtures/reports/neworigins-3.0.0-g7-f95-t71.rep");
 
 fn at(x: i32, y: i32) -> Coordinate {
     Coordinate { x, y, z: 1 }
