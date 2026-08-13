@@ -20,6 +20,7 @@ was retired once they had all landed.
 | `mockups/*.png` | Rendered screenshots of both pages, referenced from issue #17. |
 | `orders-export-descriptions.html` | Where the "keep the unit descriptions" option lives on the orders export (bead ah-52b). Three candidates; A, a second item in the Export menu, was chosen. |
 | `region-problems-toggle.html` | What the control that hides the region panel's Problems section looks like (bead ah-f8u). Three candidates; 1, a chip in the panel header, was chosen. |
+| `faction-view.html` | Where the faction's attitudes, allowances and unclaimed silver are read (bead ah-vp3.2). Three placements and three ways of setting out 32 declared factions; A, a popover anchored off the faction name in the header, was chosen, with a line per attitude level. |
 | `region-decorations.html` | How a province is drawn on the map (bead ah-6zv). Three treatments, three rules for a province found in two pieces, and three homes for the switch; C, the atlas label, was chosen, every connected piece is outlined and named, and the switch is a `Regions` entry in the Badges menu. |
 | `battles-view.html` | Where the turn's battles are read (bead ah-1is.2). Three candidates; B, one dialog with the battle list beside the battle, was chosen, and a list line states its outcome neutrally as attacker and defender losses. |
 
