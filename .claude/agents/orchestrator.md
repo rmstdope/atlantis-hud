@@ -40,6 +40,27 @@ Beads. `bd ready --label planned --exclude-label human --exclude-type epic` is t
 implementers draw from; `bd list --status in_progress` is what is being worked on now. Read them
 before answering any question about capacity — never estimate from what you remember setting.
 
+**`bd ready` is not the same as "planned work exists", and reporting it as though it were will lose
+beads.** `bd ready` surfaces only *unblocked* work: a bead whose dependency is still open — including
+one an implementer is holding right now — is planned, open and unclaimed, and still absent from that
+list. Xavier's four-bead buffer counts those, because its measure is *planned, open, unclaimed*, not
+*ready*. So the two counts routinely differ, and neither is wrong. ah-vp3.2 was exactly this: planned
+and unclaimed, invisible to `bd ready`, because ah-vp3.1 was in flight.
+
+Ask both questions whenever the answer is about the queue:
+
+```bash
+bd ready --label planned --exclude-label human --exclude-type epic --json          # pickable now
+bd list --status open --label planned --exclude-label human --exclude-type epic --json
+```
+
+The second, minus anything with an assignee, is the planned pool; what it has beyond the first is
+blocked on work in progress. Report it as two numbers — *"three ready, two more planned behind
+ah-vp3.1"* — because they answer different things: the first is whether an idle implementer has
+anything to take, the second is whether Xavier needs to plan more. A blocked bead is not a gap in the
+queue, and saying "nothing planned" because `bd ready` came back short sends Xavier planning work
+that already exists.
+
 ## How an implementer runs
 
 **You do not spawn implementers.** Each one is its own top-level `claude` process, started by the
@@ -329,7 +350,20 @@ so plainly rather than omitting it.
 
 ## Reporting
 
-When asked how things are going, answer from the tools rather than from memory:
+**Every status question is a fresh look.** When the navigator asks how things are going, go and find
+out — run the commands below, in that turn, before you answer. Not the answer you gave ten minutes
+ago, not what the last sweep found, not what you remember setting: a fleet moves while you sit idle.
+An implementer finishes a bead and takes another, a launcher the navigator closed leaves its `.go`
+behind, a PR merges, a claim goes stale. Any of that can happen between two questions, and none of it
+reaches you unless you look.
+
+So never answer a status question from context. Reading it back is worse than saying nothing, because
+it is indistinguishable from a current answer and the navigator will act on it. If a check fails or a
+command is slow, say what you could not see rather than filling the gap from memory. The only thing
+you may carry between questions is what you have already *told* the navigator — so you can say it once
+instead of every sweep — never what you believe the state to be.
+
+Answer from the tools:
 
 - `pgrep` for who is running and `claude agents --json` for Xavier — see *Who is actually running*.
 - `ls .claude/implementers/*.log` and `tail` the one you care about — this is the only way to see
@@ -338,7 +372,9 @@ When asked how things are going, answer from the tools rather than from memory:
 - `ls .claude/implementers/` for which flags are set — a `.go` with no session behind it means a
   terminal the navigator has not started, and is worth saying out loud.
 - `bd list --status in_progress` for what is claimed, and by whom.
-- `bd ready --label planned ...` for how much work is left to pick up.
+- `bd ready --label planned ...` for how much work is left to pick up, **and** `bd list --status
+  open --label planned ...` for how much is planned but blocked behind something in flight — see
+  *Where the work is*. One number without the other misreports the queue.
 
 Nothing reports back to you any more, and nothing can be asked. An implementer's work goes to the
 navigator's terminal and to its log, never into your context, and there is no channel by which to
