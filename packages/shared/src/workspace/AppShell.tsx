@@ -84,6 +84,18 @@ import { LayerChips } from "./LayerChips";
 import { MapCanvas } from "./MapCanvas";
 import { MapExportDialog } from "./MapExportDialog";
 import { BattlesDialog } from "./BattlesDialog";
+import { ChangesDialog } from "./ChangesDialog";
+import {
+  changesTabs,
+  orderRows,
+  ordersEmptyText,
+  regionRows,
+  regionsEmptyText,
+  unitRows,
+  unitsEmptyText,
+  type ChangesTabKey
+} from "./changesView";
+import { diffOrders, diffTurns } from "../turnDiff";
 import { type MapRect } from "./mapMarquee";
 import { loadSavedView, saveFocusForGame } from "./mapViewportStorage";
 import { getMapTheme } from "./mapThemes";
@@ -349,6 +361,17 @@ export function AppShell({
   // it. Plain `useState`, as the panel-open flags above are: a comparison is transient, never
   // persisted, and is cleared the moment the working turn changes underneath it.
   const [comparison, setComparison] = useState<ComparisonTurn | null>(null);
+  // The diff dialog (ah-jg6.4), and the tab it is showing. Transient like `battlesOpen`; closed
+  // by the effect below whenever the comparison it reads dies out from under it.
+  const [changesOpen, setChangesOpen] = useState(false);
+  const [changesTab, setChangesTab] = useState<ChangesTabKey>("units");
+  // The compared side's orders text, loaded lazily on the dialog's first open for a given
+  // compared turn - never eagerly, and never by pointing `parsed`/`ordersDocument` at it (see
+  // `comparison`'s own doc comment). `turnNumber` guards against serving a stale load after the
+  // comparison has moved on to a different turn.
+  const [comparedOrders, setComparedOrders] = useState<{ turnNumber: number; text: string | null } | null>(
+    null
+  );
   const [turnPickerOpen, setTurnPickerOpen] = useState(false);
   const [turnSummaries, setTurnSummaries] = useState<ImportedTurnSummary[]>([]);
   // What a batch of reports did, waiting to be read, and how far it has got while it is running.
@@ -2085,6 +2108,146 @@ export function AppShell({
     comparison?.key.turnNumber ?? null
   );
 
+  // An open dialog reading a comparison that just vanished - game switch, a new working turn, or
+  // the Turn chip's own ✕ - would show a blank or crash. One effect, keyed on the comparison
+  // itself, closes it and forgets the orders it had loaded for the pair that is gone.
+  useEffect(() => {
+    if (!comparison) {
+      setChangesOpen(false);
+      setComparedOrders(null);
+    }
+  }, [comparison]);
+
+  // A tab read for one compared pair is not necessarily one the next pair should open on -
+  // switching to a different compared turn starts the dialog back on Units, the default.
+  useEffect(() => {
+    setChangesTab("units");
+  }, [comparison?.key.turnNumber]);
+
+  // Loaded on the dialog's first open for a given compared turn, not eagerly: nobody asked to see
+  // it and a stored draft read is a database hit this workspace does not need to make on every
+  // comparison pick.
+  useEffect(() => {
+    if (!changesOpen || !comparison || !game) {
+      return;
+    }
+    if (comparedOrders?.turnNumber === comparison.key.turnNumber) {
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      // A failed read falls back to the template, exactly as `documentFor` (`orderDraft.ts`)
+      // does for the working turn's own draft - a database that will not open is not a reason
+      // to tell the player their compared turn never had orders.
+      let orderText: string | null = null;
+      try {
+        const draft = await client.loadOrderDraft(
+          game.databasePath,
+          game.manifest.metadata.gameId,
+          comparison.key.factionId,
+          comparison.key.turnNumber
+        );
+        orderText = draft?.orderText ?? null;
+      } catch {
+        orderText = null;
+      }
+      if (cancelled) {
+        return;
+      }
+      const text = orderText ?? comparison.parsed.ordersTemplate?.text ?? null;
+      setComparedOrders({ turnNumber: comparison.key.turnNumber, text });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [changesOpen, comparison, game, client, comparedOrders]);
+
+  /**
+   * What changed between the working turn and the compared one, oriented lower turn number ->
+   * higher regardless of which side is the working one - `diffTurns`/`diffOrders` are symmetric
+   * in neither direction, so the orientation is this shell's call, made once, here.
+   */
+  const turnDiff = useMemo(() => {
+    const workingTurn = parsed?.header.turnNumber ?? null;
+    if (!parsed || !comparison || workingTurn === null) {
+      return null;
+    }
+    const comparedTurn = comparison.key.turnNumber;
+    const [[olderTurn, older], [newerTurn, newer]]: [[number, ParsedReport], [number, ParsedReport]] =
+      workingTurn <= comparedTurn
+        ? [[workingTurn, parsed], [comparedTurn, comparison.parsed]]
+        : [[comparedTurn, comparison.parsed], [workingTurn, parsed]];
+    return { diff: diffTurns(older, newer), older, newer, olderTurn, newerTurn };
+  }, [parsed, comparison]);
+
+  const ordersDiff = useMemo(() => {
+    const workingTurn = parsed?.header.turnNumber ?? null;
+    if (!turnDiff || !comparison || workingTurn === null) {
+      return null;
+    }
+    if (comparedOrders?.turnNumber !== comparison.key.turnNumber || comparedOrders.text === null) {
+      return null;
+    }
+    const comparedTurn = comparison.key.turnNumber;
+    return workingTurn <= comparedTurn
+      ? diffOrders(ordersDocument, comparedOrders.text)
+      : diffOrders(comparedOrders.text, ordersDocument);
+  }, [turnDiff, comparison, comparedOrders, parsed, ordersDocument]);
+
+  // A null `ordersDiff` means two different things - "nothing to compare" and "the compared
+  // draft has not loaded yet" - and `ordersEmptyText` alone cannot tell them apart. This does,
+  // so the dialog says "loading" rather than the more confident, and here wrong, "not known".
+  const comparedOrdersLoading =
+    changesOpen && comparison !== null && comparedOrders?.turnNumber !== comparison.key.turnNumber;
+
+  const changesTabsList = useMemo(
+    () => (turnDiff ? changesTabs(turnDiff.diff, ordersDiff) : []),
+    [turnDiff, ordersDiff]
+  );
+  const changesUnitRows = useMemo(
+    () => (turnDiff ? unitRows(turnDiff.diff.units, turnDiff.older, turnDiff.newer) : []),
+    [turnDiff]
+  );
+  const changesRegionRows = useMemo(
+    () => (turnDiff ? regionRows(turnDiff.diff.regions, turnDiff.older, turnDiff.newer) : []),
+    [turnDiff]
+  );
+  const changesOrderRows = useMemo(
+    () => (ordersDiff && turnDiff ? orderRows(ordersDiff, turnDiff.older, turnDiff.newer) : []),
+    [ordersDiff, turnDiff]
+  );
+
+  /**
+   * Selecting a changed unit or region is the way back to it: select on the map, close the
+   * dialog. The dialog computes nothing else, following `BattlesDialog`'s `onShowOnMap`.
+   *
+   * The map only ever renders the *working* turn, whichever side of the comparison that is - a
+   * row naming a unit or region that exists only on the *other* side (added-only, removed-only,
+   * or seen on only one side) carries an id the working map has never heard of. `goToUnit`
+   * already answers "is this unit on the map I am showing" via `unitRegions`, so it is tried
+   * first and only falls back to the row's own `regionId` - still worth selecting, since a
+   * region can exist on the map even when the unit that once stood in it does not - when the
+   * unit is not one of the working turn's own.
+   */
+  const handleSelectChangedUnit = useCallback(
+    (unitId: string, regionId: string) => {
+      if (unitRegions.has(unitId)) {
+        goToUnit(unitId);
+      } else {
+        selectHex(regionId);
+      }
+      setChangesOpen(false);
+    },
+    [unitRegions, goToUnit, selectHex]
+  );
+  const handleSelectChangedRegion = useCallback(
+    (regionId: string) => {
+      selectHex(regionId);
+      setChangesOpen(false);
+    },
+    [selectHex]
+  );
+
   // Nothing until the games are known: rendering the gate first and the workspace a moment later
   // would flash "no game yet" at a player who has several.
   if (!gamesLoaded) {
@@ -2262,6 +2425,8 @@ export function AppShell({
             return !open;
           })
         }
+        changesOpen={changesOpen}
+        onToggleChanges={() => setChangesOpen((open) => !open)}
         busy={busy}
         onImportReports={(files) => void importReports(files)}
         progress={importProgress}
@@ -2453,6 +2618,27 @@ export function AppShell({
             setBattlesOpen(false);
           }}
           onDismiss={() => setBattlesOpen(false)}
+        />
+      ) : null}
+      {changesOpen && turnDiff ? (
+        <ChangesDialog
+          pairLabel={`turn ${turnDiff.olderTurn} → ${turnDiff.newerTurn}`}
+          tab={changesTab}
+          onTab={setChangesTab}
+          tabs={changesTabsList}
+          unitRows={changesUnitRows}
+          unitsEmptyText={unitsEmptyText()}
+          regionRows={changesRegionRows}
+          regionsEmptyText={regionsEmptyText()}
+          orderRows={changesOrderRows}
+          ordersEmptyText={
+            comparedOrdersLoading
+              ? "Loading orders…"
+              : ordersEmptyText(ordersDiff, comparison?.key.turnNumber ?? turnDiff.newerTurn)
+          }
+          onSelectUnit={handleSelectChangedUnit}
+          onSelectRegion={handleSelectChangedRegion}
+          onDismiss={() => setChangesOpen(false)}
         />
       ) : null}
       {keyboardPanels}

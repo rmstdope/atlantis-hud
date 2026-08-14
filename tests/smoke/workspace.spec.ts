@@ -418,6 +418,59 @@ test("a second turn can be compared and dismissed", async ({ page }) => {
   await expect(page.getByTestId("app-header")).toContainText(/Turn\s*71\b/);
 });
 
+/**
+ * ah-jg6.4's surface: what changed between the working turn and a compared one, from the
+ * Changes chip that appears only once a comparison is on.
+ */
+test("the changes dialog reads a real pair", async ({ page }) => {
+  await loadTwoTurns(page);
+
+  await expect(page.getByTestId("changes-chip")).toHaveCount(0);
+
+  await page.getByTestId("turn-chip").click();
+  await page.getByTestId("turn-row-70").click();
+  await expect(page.getByTestId("changes-chip")).toBeVisible();
+
+  await page.getByTestId("changes-chip").click();
+  const dialog = page.getByTestId("changes-dialog");
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText("70");
+  await expect(dialog).toContainText("71");
+
+  // The two fixtures genuinely differ, so the Units tab carries a non-zero count.
+  const unitsTab = page.getByTestId("changes-tab-units");
+  await expect(unitsTab).not.toContainText("· 0");
+});
+
+test("the changes dialog closes on Escape", async ({ page }) => {
+  await loadTwoTurns(page);
+
+  await page.getByTestId("turn-chip").click();
+  await page.getByTestId("turn-row-70").click();
+  await page.getByTestId("changes-chip").click();
+  await expect(page.getByTestId("changes-dialog")).toBeVisible();
+
+  await page.keyboard.press("Escape");
+
+  await expect(page.getByTestId("changes-dialog")).toHaveCount(0);
+});
+
+test("clicking a changed unit selects it and closes the dialog", async ({ page }) => {
+  await loadTwoTurns(page);
+
+  await page.getByTestId("turn-chip").click();
+  await page.getByTestId("turn-row-70").click();
+  await page.getByTestId("changes-chip").click();
+  await expect(page.getByTestId("changes-dialog")).toBeVisible();
+
+  const firstUnitRow = page.locator('[data-testid^="changes-unit-"]').first();
+  await expect(firstUnitRow).toBeVisible();
+  await firstUnitRow.click();
+
+  await expect(page.getByTestId("changes-dialog")).toHaveCount(0);
+  await expect(page.getByTestId("panel-region")).toBeVisible();
+});
+
 test("comparing does not disturb the working turn's orders", async ({ page }) => {
   await loadTwoTurns(page);
 

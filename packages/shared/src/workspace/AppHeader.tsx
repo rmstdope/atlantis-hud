@@ -101,6 +101,14 @@ type AppHeaderProps = {
    */
   battlesOpen: boolean;
   onToggleBattles: () => void;
+  /**
+   * Opens or closes the diff dialog (ah-jg6.4). The chip's *presence* is decided by
+   * `comparedTurnLabel` alone - the prop the Turn chip already reuses for "a comparison is on" -
+   * so this carries no parallel notion of that; `changesOpen` here is only the same
+   * open/closed flag `battlesOpen` is, for the chip's pressed state and its toggle behaviour.
+   */
+  changesOpen: boolean;
+  onToggleChanges: () => void;
   busy: boolean;
   /**
    * Every report the player chose, in the order the file dialog handed them over.
@@ -173,6 +181,8 @@ export function AppHeader({
   battleCount,
   battlesOpen,
   onToggleBattles,
+  changesOpen,
+  onToggleChanges,
   busy,
   onImportReports,
   progress,
@@ -470,6 +480,25 @@ export function AppHeader({
           className="rounded border border-edge bg-panel-raised px-2 py-0.5 text-ink-soft hover:border-brass"
         >
           {battleCount} battle{battleCount === 1 ? "" : "s"}
+        </button>
+      ) : null}
+
+      {/*
+        Opens the diff dialog (ah-jg6.4). No `relative` wrapper, like the battles chip: its
+        surface is a centred dialog, not something hung under this button. Present only while a
+        comparison is on - the same `comparedTurnLabel` the Turn chip already reads, not a
+        parallel flag.
+      */}
+      {comparedTurnLabel ? (
+        <button
+          type="button"
+          data-testid="changes-chip"
+          aria-haspopup="dialog"
+          aria-expanded={changesOpen}
+          onClick={onToggleChanges}
+          className="rounded border border-edge bg-panel-raised px-2 py-0.5 text-ink-soft hover:border-brass"
+        >
+          Changes
         </button>
       ) : null}
       </div>
