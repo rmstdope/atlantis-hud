@@ -357,7 +357,10 @@ test("cancel and a wrong faction change nothing, and a plain report still import
   await expectOrders(page, /@study obse/);
 
   // The sniff must not eat a report: a foreign report still reaches the foreign-report prompt.
-  await choose(page, "turn-2.rep", OTHER_FACTION_OLDER);
+  // Same turn as what is loaded (gh-208 / ah-kc7 store an *older* one for history instead of
+  // asking at all, which OTHER_FACTION_OLDER now would) - ALLY_REPORT is the fixture other tests
+  // in this file already use for the plain foreign-report ask.
+  await choose(page, "turn-71-f73.rep", ALLY_REPORT);
   await expect(page.getByTestId("foreign-report-prompt")).toBeVisible();
   await expect(page.getByTestId("orders-import-prompt")).toHaveCount(0);
 });
