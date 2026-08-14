@@ -6,7 +6,13 @@ description: The planning role — plan every P0 immediately, keep four planned,
 # Planning a bead
 
 You turn unplanned beads into specified ones. You do not implement them: a separate session does
-that, from what you write and nothing else. Assume its author cannot ask you anything.
+that, from what you write and nothing else.
+
+**Write for a Sonnet agent that cannot ask you anything.** That is the bar the whole role is set
+against — not "a competent reader could work it out", but *this specific reader, on a smaller model,
+alone, at two in the morning, with no way to reach you or the navigator*. It has your plan and the
+repository. Anything you leave open, it either guesses or hands back. See *Before you mark it
+planned, read it as the implementer*.
 
 Read `beads-workflow` for the label lifecycle and the commands; this is the role on top of it.
 
@@ -312,6 +318,37 @@ For a user-facing question, build **self-contained HTML mockups** in the `docs/u
 build step, no external assets, inline SVG, opens straight in a browser — iterate them in the
 scratchpad, and discuss until the navigator decides.
 
+### Interview, don't ask
+
+A single question with a single mockup is not a discussion, and a first "yes" is where this starts
+rather than where it stops. The navigator is sitting there; the implementer will not be, and neither
+will you when it builds. Every detail you do not settle now is either a decision Sonnet takes alone
+or a bead's worth of rework — so **be relentless, and expect several rounds.**
+
+- **Never present one option.** At least two variants that differ in something a person can see, and
+  say in one line what the difference costs. One option is not a choice, it is you deciding with
+  extra steps.
+- **A chosen variant opens the interview.** Once they have picked, walk the surface deliberately and
+  ask about each part of it that is still undecided:
+  - the states the happy path hides — **empty, loading, error, too many, too few, too long**;
+  - **cancel and Escape**: what closes it, what that leaves behind, whether anything was written;
+  - **keyboard and focus**: what is reachable, where focus lands when it opens and where it returns
+    when it closes, and whether it earns a shortcut;
+  - **the words**, exactly as they will ship — every label, button, heading, empty-state line and
+    error message, quoted, not paraphrased;
+  - **a narrow window**, since the header already wraps as one unit and a new control joins that;
+  - **what persists** across a reload, a game switch and a new turn.
+- **Mock the states, not the happy path.** A mockup showing only the populated, successful case
+  invites agreement about the case nobody argues over. Put the empty and error states on the page —
+  side by side, or as labelled sections — because that is where the disagreements actually are.
+- **Stop when the next question would be one the implementer could answer from the plan**, not when
+  the navigator sounds satisfied. If you cannot yet write the *User-facing decisions* section without
+  a "the implementer chooses" anywhere in it, you have another question to ask.
+
+Batch questions with the question tool — up to four at a time — rather than trickling them one per
+message. A navigator answering four related questions in one pass is thinking about the whole
+surface; the same four spread over four messages is an interrogation.
+
 **Every time you write a mockup to the scratchpad, say where it is and ask them to open it before
 answering.** The navigator cannot see your scratchpad, and a mockup they have not looked at draws
 feedback on your description of it rather than on the thing itself — which is the one failure this
@@ -401,6 +438,52 @@ this the parent stays in `bd ready` for both roles: you would split it again nex
 implementer would claim a bead that has children instead of a plan, refuse it for missing sections,
 and push it into the navigator's queue. Both pickups exclude `epic`.
 
+## The title is part of the plan, and it is yours to fix
+
+**Rewrite the title of every bead you plan, unless it already passes the test below.** You are the
+first person to have read the bead properly, and often the only one who ever will before it is built
+— whoever filed it wrote a title from what they had in mind, which is not the same as a title that
+carries meaning to somebody who has none.
+
+The test: **a reader who sees only this one line, in a list, with no bead id and no description,
+knows what changed and whether it affects them.** That reader is the navigator scanning a triage
+list, and it is also whoever reads the release notes six months from now.
+
+```bash
+bd update <id> --title "…"
+```
+
+What that means in practice:
+
+- **Name the effect, not the area.** "Turn comparison shows no changes dialog on the desktop" says
+  what is wrong; "Diff view issues" says where somebody was standing when they noticed.
+- **No vague verbs.** *fix*, *improve*, *update*, *handle*, *support*, *rework* carry no information
+  — every bead fixes or improves something. Say what becomes true.
+- **No internal names** unless the module *is* the subject. A title is read by someone who does not
+  know the file layout; `hexMapModel` in a title spends the reader's attention on nothing.
+- **For a bug, the symptom.** What the player sees, not the suspected cause — the cause is a guess
+  until it is investigated, and a title claiming the wrong one misdirects everyone who reads it.
+- **About seventy characters**, and a whole thought. If it needs a colon and a clause to be
+  understood, the part before the colon is usually the whole title.
+- **Distinct from its siblings.** Two beads called nearly the same thing are two beads somebody will
+  merge, duplicate or work twice. Check the neighbours before settling on one.
+
+This repository's own backlog, which is where the rule comes from:
+
+| Reads cold | Does not |
+|---|---|
+| Roads do not shrink with the map when zooming out | One gate at a time, machine-wide |
+| Remember map zoom level and focus hex across reloads | Export gate stands aside off main |
+| Max number of units settable from the units-in-hex pane | Instructions for the two agent roles |
+| Option to keep the long order format when exporting orders | Load multiple reports / Import lots of reports |
+
+The last pair is two different beads. Neither title distinguishes itself from the other, and that is
+the cost being described.
+
+**Say what you renamed and why, in the message where you report the bead as planned.** A title is
+the one part of your work the navigator sees without opening anything, so a silent rewrite of one
+they wrote themselves is worth a sentence.
+
 ## The plan
 
 Written to the bead's `design` field with `--design-file`. Read back with `bd show <id> --json`: the
@@ -424,11 +507,26 @@ round trip through the navigator's queue.
 
 1. **Context** — why this work exists and what changes when it lands.
 2. **Files to change, and what to reuse** — concrete paths, and the existing functions, patterns and
-   helpers to build on rather than reinvent. This is what stops a second copy of something.
+   helpers to build on rather than reinvent. This is what stops a second copy of something. It also
+   carries **the design of the code**, because there is no other section that does:
+   - **The public surface of anything new**, written out as TypeScript or Rust — exported types,
+     signatures, and what each returns. `ah-jg6.2`'s plan is the shape to copy: a dozen lines of
+     `export type` and `export function`, then the decisions bound into them. A named signature is
+     the difference between an implementer building your design and building its own.
+   - **Where state lives** — which component or module owns it, what derives from it, and what
+     invalidates it. Most of the arguments this repository has had were about that and not about
+     algorithms.
+   - **Which layer each piece belongs in**, when the work crosses the Rust core, `core-client`,
+     `shared` and a shell. Say why, once — a module put in the wrong package is discovered at the
+     import that cannot be written, halfway through the second increment.
 3. **Increments** — small, ordered, each naming **the failing test that opens it**. This is what
    makes an unattended RED → GREEN possible at all.
 4. **The test plan** — unit and browser, with names and what each pins. Say which suites must run.
-5. **User-facing decisions** — what was asked, what the navigator chose, and the mockup path.
+5. **User-facing decisions** — **the whole interview, not just the outcome**: every question you
+   put, the answer, the options that were rejected and why, and the mockup path. The rejections
+   matter as much as the choice — without them an implementer meeting the same fork re-opens a
+   question the navigator has already answered, and the navigator gets asked twice. Quote the agreed
+   wording of labels and messages here verbatim, so nobody has to invent a string.
    "None." for a bead with no user-facing surface, which is most of them.
 6. **Out of scope** — what a reader might reasonably assume is included and is not.
 7. **Validation** — the exact commands, and any check that only a human can make.
@@ -446,10 +544,55 @@ look like a broken worker; a persisted setting's old default must be migrated ra
 
 If the bead touches one of those, say so and say what to do about it.
 
+### Everything you cite must exist
+
+**Open every file you name and check every symbol you quote before the plan claims it.** A path that
+moved, a helper that was renamed, a signature you remembered rather than read — each sends an
+implementer hunting, and when the hunt fails it guesses, which is the exact outcome a plan exists to
+prevent. A wrong citation is worse than no citation: an absent one is looked up, a confident one is
+believed.
+
+So quote from the file in front of you. `file.ts:120` for anything an implementer has to find, and
+the real name of the real export — not a plausible one.
+
+**The one exception is a seam a blocker is about to create, and it is labelled as such.** When you
+are planning against work that has not landed, say so in the same breath: "`turnDiff.ts` does not
+exist yet — `ah-jg6.2` creates it with this surface (see its plan)". An implementer can build
+against a promise it has been told is a promise; what it cannot do is tell one from a fact.
+
+### Before you mark it planned, read it as the implementer
+
+The implementer is a **Sonnet session with no memory of this conversation, no access to you, and no
+navigator to ask.** It has your plan and the repository, and its only alternatives to a plan that
+underspecifies are to guess or to hand the bead back into the navigator's queue. Both are failures
+of this step, not of that one.
+
+So before `--add-label planned`, read the plan through once as that agent, and write down every
+point where you would have to decide something yourself. Then **resolve each one** — decide it and
+say so if it is yours (architecture, layout of the code, test shape, scope), ask the navigator if it
+is theirs. What must not survive this pass:
+
+- a sentence containing "the implementer decides", "as appropriate", "something like", "or similar",
+  or a choice offered without one of the options being chosen;
+- an increment whose failing test you could not sit down and write from the plan alone — the name,
+  the file it goes in, and what it asserts;
+- a user-visible string that is described rather than quoted;
+- a named file, function or type you have not verified;
+- an acceptance criterion that cannot be checked by running something or by looking at something
+  specific.
+
+**A plan that reads well and specifies nothing is the failure mode**, and it is a comfortable one to
+produce because it is much shorter. If this pass finds nothing at all, you have almost certainly
+skipped it — the first honest read of a fresh plan usually surfaces two or three open decisions.
+
+Length is not the measure and padding is not the goal: `ah-jg6.2`'s plan is long because the work
+had that many decisions in it, and a genuinely small bead gets a genuinely short plan. The measure is
+whether Sonnet could finish without asking.
+
 ## Finishing one, and the session
 
-Add `planned`, remove `planning`, `bd dolt push`, and say which bead you planned and what the
-navigator decided. A bead left carrying `planning` is one no later session will consider, so check
+Add `planned`, remove `planning`, `bd dolt push`, and say which bead you planned, what the navigator
+decided, and — if you rewrote it — what the title now says and why. A bead left carrying `planning` is one no later session will consider, so check
 that nothing behind you still has it:
 
 ```bash

@@ -203,6 +203,14 @@ bd create "Load multiple reports" --type feature -p 4 --body-file scope.md \
 
 Types used here: `feature`, `bug`, `task`, `epic`.
 
+**The title has to stand on its own.** It is what everyone sees in `bd list`, in a triage question
+and in the release notes, usually without the description. So name the effect rather than the area,
+say a bug's symptom rather than its suspected cause, keep internal module names out of it, and avoid
+verbs that carry no information — *fix*, *improve*, *update*, *handle*. "Roads do not shrink with the
+map when zooming out" needs nothing else; "One gate at a time, machine-wide" is from this backlog too.
+The planner rewrites titles that do not meet this as part of planning (see `plan-bead`), so a title
+here is a starting point rather than a last word — but a good one saves a triage question.
+
 **Every bead is created at P4**, whoever creates it and however urgent it looks. `-p 4` is explicit
 because bd's own default is P2, and a bead that arrives at P2 has been given a rank by whoever
 happened to file it. The one exception is a child of a split parent, which takes the parent's
