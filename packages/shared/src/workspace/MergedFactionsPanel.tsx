@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import type { MergedReportRecord } from "@atlantis/core-client";
+import { POPOVER_BODY_MAX_H } from "./primitives";
 
 /**
  * Whose eyes the map is showing.
@@ -77,7 +78,7 @@ export function MergedFactionsPanel({
         </button>
       </div>
 
-      <ul className="max-h-[40vh] overflow-y-auto p-2">
+      <ul className={`${POPOVER_BODY_MAX_H} overflow-y-auto p-2`}>
         {merged.map((record) => (
           <li
             key={record.mergedFactionId}

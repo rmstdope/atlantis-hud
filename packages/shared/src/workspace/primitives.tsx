@@ -1,5 +1,17 @@
 import type { ReactNode } from "react";
 
+/**
+ * The ceiling for a header popover's scrollable body.
+ *
+ * A fixed-percentage cap (40vh, 50vh, 60vh) scrolls a popover even when the window below it is
+ * mostly empty. `6rem` covers up to two 36px header rows, the `mt-1` anchor gap, and a little
+ * breathing room at the window's bottom edge - a pure-CSS clamp, no JS measurement. Tailwind scans
+ * source text for class literals: interpolating this whole constant into a larger `className`
+ * string (as every call site does) is fine, but the `max-h-[calc(...)]` token itself must never be
+ * assembled from pieces - that is what would go unscanned.
+ */
+export const POPOVER_BODY_MAX_H = "max-h-[calc(100vh-6rem)]";
+
 /** A labelled group inside a panel, with an optional total for a list longer than the view. */
 export function Section({
   title,
