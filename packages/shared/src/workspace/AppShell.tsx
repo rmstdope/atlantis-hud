@@ -920,10 +920,27 @@ export function AppShell({
    */
   const storeReportOnly = useCallback(
     async (report: ParsedReport, text: string, currentTurn: number) => {
-      const warning = game
-        ? (await commitTurn(client, game, report, text, rulesetText, new Date().toISOString()))
-            .warning
-        : "there is no open game to store it in";
+      if (!game) {
+        // Should not be reachable - a report cannot be imported at all without an open game - but
+        // claiming success here would tell the player a turn is stored when nothing was written.
+        setStatus({
+          regionCount: 0,
+          unitCount: 0,
+          message: "there is no open game to store it in",
+          failed: true,
+          warning: false
+        });
+        return;
+      }
+
+      const { warning } = await commitTurn(
+        client,
+        game,
+        report,
+        text,
+        rulesetText,
+        new Date().toISOString()
+      );
       setStatus({
         regionCount: 0,
         unitCount: 0,
@@ -931,8 +948,9 @@ export function AppShell({
           warning ??
           `turn ${report.header.turnNumber} stored for history; still showing turn ${currentTurn}.`,
         failed: false,
-        // A message here is always a warning unless it is the store-only outcome itself.
-        warning: warning !== null
+        // A message here is always a warning: it is what earns the status line its room back from
+        // AppHeader, which hides a message-less status - see applyReport's identical comment.
+        warning: true
       });
     },
     [client, game, rulesetText]

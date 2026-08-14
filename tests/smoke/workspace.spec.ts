@@ -164,7 +164,11 @@ test("an older own report is stored for history, not shown", async ({ page }) =>
 
   await choose(page, "turn-70.rep", OWN_OLDER_REPORT);
 
-  await expect(page.getByTestId("import-status")).toContainText("stored for history");
+  const status = page.getByTestId("import-status");
+  await expect(status).toContainText("stored for history");
+  // The status line earns its room back for a message worth reading - see "the header keeps quiet
+  // about routine state" - and this one is worth reading precisely because nothing moved on screen.
+  await expect.poll(async () => (await status.boundingBox())?.width ?? 0).toBeGreaterThan(1);
   expect(dialogSeen).toBe(false);
   await expect(page.getByTestId("foreign-report-prompt")).toHaveCount(0);
   await expect(page.getByTestId("app-header")).toContainText(/Turn\s*71\b/);
