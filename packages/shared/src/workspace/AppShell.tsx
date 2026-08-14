@@ -32,7 +32,7 @@ import {
   toStoredRegions,
   type MemoryOutcome
 } from "../gameMemory";
-import { decideReportLoad, shouldConfirmOlderTurnLoad } from "../reportLoadDecision";
+import { decideReportLoad, isOlderTurn } from "../reportLoadDecision";
 import {
   chooseViewerFaction,
   planReportBatch,
@@ -143,7 +143,7 @@ function describeError(error: unknown): string {
  * It is now one branch of a larger decision, and it sits beside the others in a plain module that
  * can be tested without rendering anything.
  */
-export { shouldConfirmOlderTurnLoad };
+export { isOlderTurn };
 
 /**
  * Builds and delivers an orders export - the part of `exportOrders`/`exportOrdersLong` that has no
@@ -191,16 +191,6 @@ export async function deliverGameBackupExport(
 ): Promise<string | null> {
   const fileName = `${gameId}.atlantis-hud-game.json`;
   return deliver(saveTextFile, fileName, backup, "application/json");
-}
-
-export function confirmOlderTurnLoad(currentTurn: number, loadedTurn: number): boolean {
-  if (typeof globalThis.confirm !== "function") {
-    return true;
-  }
-  return globalThis.confirm(
-    `Turn ${loadedTurn} is older than the currently loaded turn ${currentTurn}. ` +
-      "Load it anyway? It may not be the latest report."
-  );
 }
 
 /**
@@ -916,6 +906,38 @@ export function AppShell({
     [client, selectRegion, clearPlan, game, rulesetText]
   );
 
+  /**
+   * Commits an older report to the game's stored turn history, and leaves the screen untouched.
+   *
+   * gh-208: an older report - own or foreign - must never become the working turn, but it is still
+   * committed so the turn-comparison feature (ah-jg6.3/4) can read it later. Deliberately calls none
+   * of `setParsed`, `setRawReport`, `setOrdersDocument`, `setSave`, `clearPlan`, `setRoute`,
+   * `setComparison`, `setTurnPickerOpen` or `selectRegion` - see `applyReport`'s own note on the same
+   * point, and the same reasoning applies here: the turn on screen has not changed.
+   *
+   * Reuses `commitTurn` rather than `rememberTurn`, because nothing here reads the map back - the
+   * working turn's map is exactly what this must not disturb.
+   */
+  const storeReportOnly = useCallback(
+    async (report: ParsedReport, text: string, currentTurn: number) => {
+      const warning = game
+        ? (await commitTurn(client, game, report, text, rulesetText, new Date().toISOString()))
+            .warning
+        : "there is no open game to store it in";
+      setStatus({
+        regionCount: 0,
+        unitCount: 0,
+        message:
+          warning ??
+          `turn ${report.header.turnNumber} stored for history; still showing turn ${currentTurn}.`,
+        failed: false,
+        // A message here is always a warning unless it is the store-only outcome itself.
+        warning: warning !== null
+      });
+    },
+    [client, game, rulesetText]
+  );
+
   const loadReport = useCallback(
     async (text: string, fileName: string) => {
       setBusy(true);
@@ -960,10 +982,8 @@ export function AppShell({
           return;
         }
 
-        if (
-          decision.kind === "confirmOlder" &&
-          !confirmOlderTurnLoad(decision.currentTurn, decision.incomingTurn)
-        ) {
+        if (decision.kind === "storeOnly") {
+          await storeReportOnly(report, text, decision.currentTurn);
           return;
         }
 
@@ -983,7 +1003,7 @@ export function AppShell({
     // `ruleset` belongs here: without it the callback closes over the value at first render, which
     // is null, and every report is parsed unclassified however long the ruleset took to arrive.
     // `parsed` because the decision above is made against whatever is on screen.
-    [client, ruleset, parsed, applyReport]
+    [client, ruleset, parsed, applyReport, storeReportOnly]
   );
 
   /** Opens the pending report as its own faction: today's behaviour, chosen rather than assumed. */
@@ -1057,10 +1077,10 @@ export function AppShell({
    * Imports everything the player chose, in the order the turns say rather than the order they came.
    *
    * One file is still one file: it goes to `loadReport`, keeps the question that guards a change of
-   * faction and the warning that guards an older turn, and reports itself through the status line.
-   * A selection of two or more is a different act, and gets none of those questions - twenty modals
-   * is not a workflow. `reportBatch` decides what happens to each file instead, and the summary
-   * dialog is where the player finds out what that was.
+   * faction and the store-only rule that keeps an older turn off the screen, and reports itself
+   * through the status line. A selection of two or more is a different act, and gets none of those
+   * questions - twenty modals is not a workflow. `reportBatch` decides what happens to each file
+   * instead, and the summary dialog is where the player finds out what that was.
    *
    * The map is read back once, at the end. Reading it after every commit is what makes a run of
    * turns slow, and twenty-nine of those reads are of a map nobody ever sees.

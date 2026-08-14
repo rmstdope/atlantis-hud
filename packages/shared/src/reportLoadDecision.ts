@@ -2,10 +2,12 @@
  * What to do about a report the player has just chosen.
  *
  * Most of the time the answer is "load it", and for a long time that was the only answer there was.
- * Two things changed it. Issue #47 asked for a warning before an older report replaces a newer one,
- * because a stray file-open should not quietly roll the workspace back. Issue #53 asked for a
- * question before a report from another faction takes over, because that report may be an ally's,
- * and what the player wants is usually to add what it saw rather than to become its faction.
+ * Two things changed it. Issue #47 first asked for a warning before an older report replaced a newer
+ * one; gh-208 replaced that warning with something stronger, because a stray file-open should not
+ * even offer to roll the workspace back - an older report, own or foreign, is stored for history and
+ * never shown. Issue #53 asked for a question before a report from another faction takes over,
+ * because that report may be an ally's, and what the player wants is usually to add what it saw
+ * rather than to become its faction - still asked, but only once age has been ruled out.
  *
  * The rules live here rather than in `AppShell` because there is no DOM renderer in this project's
  * test setup: a component cannot be unit-tested, and a decision that cannot be tested is a decision
@@ -25,54 +27,62 @@ export type LoadedReportIdentity = {
 export type ReportLoadDecision =
   /** Nothing to ask about. */
   | { kind: "load" }
-  /** The player's own faction, but an older turn. Issue #47's warning. */
-  | { kind: "confirmOlder"; currentTurn: number; incomingTurn: number }
-  /** Another faction's report. Issue #53's question; `canMerge` is false unless the turns match. */
+  /**
+   * Older than what is on screen, own or foreign faction alike. Committed to the game's stored
+   * turn history so the comparison feature can read it, but never becomes the working turn - see
+   * gh-208, which superseded issue #47's confirm-and-switch dialog with this.
+   */
+  | { kind: "storeOnly"; currentTurn: number; incomingTurn: number }
+  /** Another faction's report, no older than what is on screen. Issue #53's question; `canMerge`
+   * is false unless the turns match. */
   | { kind: "ask"; canMerge: boolean };
 
 /**
- * Whether loading this turn would replace a newer one.
+ * Whether the incoming turn is older than what is on screen.
  *
- * A turn nobody can read is not older than anything, so an unnumbered report on either side passes
- * without a warning: refusing to say which of two unknowns came first is more honest than guessing.
+ * A turn nobody can read is not older than anything, so an unnumbered report on either side answers
+ * false: refusing to say which of two unknowns came first is more honest than guessing.
  */
-export function shouldConfirmOlderTurnLoad(
+export function isOlderTurn(
   currentTurn: number | null | undefined,
-  loadedTurn: number | null | undefined
+  incomingTurn: number | null | undefined
 ): boolean {
   return (
-    typeof currentTurn === "number" && typeof loadedTurn === "number" && loadedTurn < currentTurn
+    typeof currentTurn === "number" &&
+    typeof incomingTurn === "number" &&
+    incomingTurn < currentTurn
   );
 }
 
 /**
  * What loading `incoming` should do, given whatever is on screen.
  *
- * A report whose faction cannot be read falls through to the older-turn rule rather than raising
- * the question. The question is "is this somebody else's?", and an unnamed faction is not an
- * answer of yes.
+ * Age is checked before ownership: a report older than what is on screen is stored for history and
+ * never becomes the working turn, whichever faction it names - gh-208. Only once a report is no
+ * older does the faction question (issue #53) get asked at all.
  */
 export function decideReportLoad(
   current: LoadedReportIdentity | null,
   incoming: LoadedReportIdentity
 ): ReportLoadDecision {
-  const olderTurn = (): ReportLoadDecision =>
-    shouldConfirmOlderTurnLoad(current?.turnNumber, incoming.turnNumber)
-      ? {
-          kind: "confirmOlder",
-          currentTurn: current?.turnNumber as number,
-          incomingTurn: incoming.turnNumber as number
-        }
-      : { kind: "load" };
-
   if (!current) {
     return { kind: "load" };
   }
+
+  if (isOlderTurn(current.turnNumber, incoming.turnNumber)) {
+    return {
+      kind: "storeOnly",
+      currentTurn: current.turnNumber as number,
+      incomingTurn: incoming.turnNumber as number
+    };
+  }
+
+  // A report whose faction cannot be read is not evidence of another faction: it just loads.
   if (current.factionId === null || incoming.factionId === null) {
-    return olderTurn();
+    return { kind: "load" };
   }
   if (current.factionId === incoming.factionId) {
-    return olderTurn();
+    return { kind: "load" };
   }
 
   // Merging is only ever offered between reports of one turn. Two reports for one turn describe the
