@@ -1,5 +1,12 @@
 import type { KeyboardEvent, PointerEvent, RefObject } from "react";
-import { dragOrdersHeight, ORDERS_DEFAULT_REM, ORDERS_MIN_REM, SPLIT_STEP_REM } from "./panelLayout";
+import {
+  dragOrdersHeight,
+  ORDERS_DEFAULT_REM,
+  ORDERS_MAX_REM,
+  ORDERS_MIN_REM,
+  SPLIT_STEP_REM
+} from "./panelLayout";
+import { isTopDismissLayer, pushDismissLayer } from "../dismissStack";
 import { guardSelection } from "./selectionGuard";
 
 export type PanelSplitterProps = {
@@ -71,10 +78,16 @@ export function PanelSplitter({ ordersSlot, ordersHeightRem, onCommit }: PanelSp
     // A pan is not what this gesture means, but WebKit anchors a text selection on whatever the
     // pointer crosses regardless - see `selectionGuard.ts`.
     const releaseSelection = guardSelection();
+    // Escape must mean "cancel this drag" even under an open dialog's own capture-phase listener
+    // (`useEscapeToDismiss`); the dismiss stack is how every such listener already arbitrates who
+    // Escape belongs to, and a drag in progress is exactly the kind of surface it exists for.
+    const layer = pushDismissLayer();
     let committed = startRem;
+    let moved = false;
 
-    const move = (moved: globalThis.PointerEvent) => {
-      const result = dragOrdersHeight(startRem, (startY - moved.clientY) / remPx(), rail);
+    const move = (moveEvent: globalThis.PointerEvent) => {
+      moved = true;
+      const result = dragOrdersHeight(startRem, (startY - moveEvent.clientY) / remPx(), rail);
       committed = result.rem;
       slot.style.height = `${result.rem}rem`;
       if (grip) {
@@ -86,16 +99,21 @@ export function PanelSplitter({ ordersSlot, ordersHeightRem, onCommit }: PanelSp
       slot.style.height = startHeight;
     };
 
+    // `commit` is false for `pointercancel` (a gesture the browser took over, e.g. a touch turning
+    // into a scroll) and for Escape; it is also false for a `pointerup` the pointer never moved for,
+    // so a plain click on the grip cannot quietly turn the default pin into a stored preference of
+    // the same height.
     const end = (commit: boolean) => {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
-      window.removeEventListener("pointercancel", up);
-      window.removeEventListener("keydown", onEscape);
+      window.removeEventListener("pointercancel", cancelDrag);
+      document.removeEventListener("keydown", onEscape, true);
       releaseSelection();
+      layer();
       if (grip) {
         grip.className = gripClassName(false, false);
       }
-      if (commit) {
+      if (commit && moved) {
         onCommit(committed);
       } else {
         cancel();
@@ -103,18 +121,20 @@ export function PanelSplitter({ ordersSlot, ordersHeightRem, onCommit }: PanelSp
     };
 
     const up = () => end(true);
-    // `pointercancel` alongside `pointerup`: a gesture the browser takes over (e.g. a touch turning
-    // into a scroll) would otherwise leave selection off document-wide for good - see MapCanvas.
+    const cancelDrag = () => end(false);
+    // Capture phase, and stopped: `useEscapeToDismiss` listens the same way, so without this an
+    // older dialog's listener could consume the keypress before it ever reached the drag.
     const onEscape = (keyEvent: globalThis.KeyboardEvent) => {
-      if (keyEvent.key === "Escape") {
+      if (keyEvent.key === "Escape" && isTopDismissLayer(layer)) {
+        keyEvent.stopPropagation();
         end(false);
       }
     };
 
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
-    window.addEventListener("pointercancel", up);
-    window.addEventListener("keydown", onEscape);
+    window.addEventListener("pointercancel", cancelDrag);
+    document.addEventListener("keydown", onEscape, true);
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -137,6 +157,7 @@ export function PanelSplitter({ ordersSlot, ordersHeightRem, onCommit }: PanelSp
       tabIndex={0}
       data-testid="panel-splitter"
       aria-valuemin={ORDERS_MIN_REM}
+      aria-valuemax={ORDERS_MAX_REM}
       aria-valuenow={ordersHeightRem ?? ORDERS_DEFAULT_REM}
       className="group relative z-10 -my-2.5 flex h-2.5 flex-none touch-none cursor-row-resize items-center justify-center pointer-events-auto focus-visible:outline focus-visible:outline-1 focus-visible:outline-brass"
       onPointerDown={onPointerDown}
