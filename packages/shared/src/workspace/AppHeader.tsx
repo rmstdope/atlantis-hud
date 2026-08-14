@@ -216,7 +216,7 @@ export function AppHeader({
         Game state, grouped so it can wrap internally on a very narrow window without disturbing
         the actions group's own wrap onto a second row.
       */}
-      <div className="flex h-9 flex-wrap items-center gap-3.5 min-w-0">
+      <div className="flex min-h-9 flex-wrap items-center gap-3.5 min-w-0">
       {/* Just the title: which build this is belongs to the About tab, not the title bar. */}
       <span className="tracking-[0.06em] text-brass">ATLANTIS HUD</span>
 

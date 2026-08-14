@@ -2557,8 +2557,9 @@ test("a narrow window wraps the header instead of clipping it", async ({ page })
 
   const exportBox = (await exportMenu.boundingBox())!;
   const settingsBox = (await settings.boundingBox())!;
-  expect(exportBox.x + exportBox.width).toBeLessThanOrEqual(520);
-  expect(settingsBox.x + settingsBox.width).toBeLessThanOrEqual(520);
+  const view = page.viewportSize()!;
+  expect(exportBox.x + exportBox.width).toBeLessThanOrEqual(view.width);
+  expect(settingsBox.x + settingsBox.width).toBeLessThanOrEqual(view.width);
 
   // Taller than one row proves the actions group wrapped rather than merely shrinking in place.
   const headerBox = (await page.getByTestId("app-header").boundingBox())!;
