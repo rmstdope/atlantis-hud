@@ -423,6 +423,38 @@ describe("map knowledge", () => {
     );
     expect(model.levels).toEqual([1, 2]);
   });
+
+  // A unit seen three turns ago may have moved, disbanded or died; showing it on a hex the faction
+  // cannot currently see would tell the player something the report does not say (ah-o86).
+  it("a hex held over from an earlier turn carries none of its remembered units", () => {
+    const model = buildHexMapModel(report([region(at(20, 50))]), [
+      stored(at(7, 53), 64, {
+        units: [unit("1", true, "Alpha"), unit("2", true, "Beta"), unit("3", false, "Elder")]
+      })
+    ]);
+
+    const old = model.hexes.find((hex) => hex.regionId === "1:7,53");
+    expect(old?.knowledge).toBe("stale");
+    expect(old?.region?.units).toEqual([]);
+    expect(old?.ownUnitCount).toBe(0);
+    expect(old?.foreignUnitCount).toBe(0);
+    expect(unitsForHex(old ?? null)).toEqual([]);
+  });
+
+  // A hex only an ally reported this same turn (no sighting of my own at all) is a merge product,
+  // not a memory of an earlier turn — its units are as fresh as anything in the current report and
+  // must not be dropped the way a genuinely stale hex's are (ah-o86, issue #53's merge territory).
+  it("a hex only an ally saw this turn is current, not stale, and keeps its units", () => {
+    const model = buildHexMapModel(report([region(at(20, 50))]), [
+      stored(at(7, 53), 71, { units: [unit("1", false, "Elder")] })
+    ]);
+
+    const merged = model.hexes.find((hex) => hex.regionId === "1:7,53");
+    expect(merged?.knowledge).toBe("current");
+    expect(merged?.ageInTurns).toBe(0);
+    expect(merged?.foreignUnitCount).toBe(1);
+    expect(unitsForHex(merged ?? null).map((entry) => entry.name)).toEqual(["Elder"]);
+  });
 });
 
 describe("opening selection", () => {
@@ -444,6 +476,29 @@ describe("opening selection", () => {
 
   it("selects nothing when the world is empty", () => {
     expect(buildHexMapModel(report([])).initialSelectedRegionId).toBeNull();
+  });
+
+  // A remembered own unit must not win the opening hex over a current one: it may no longer be
+  // there, and opening on it would plan the player against a unit that has moved on (ah-o86).
+  it("remembered units do not choose the opening hex", () => {
+    const model = buildHexMapModel(report([region(at(20, 50))]), [
+      stored(at(7, 53), 64, { units: [unit("1", true, "Alpha")] })
+    ]);
+
+    expect(model.initialSelectedRegionId).toBe("1:20,50");
+  });
+
+  // A hex only an ally saw this turn reads "current" for display - the sighting is as fresh as
+  // anything else on screen - but the player was never there, so it must not win the opening hex
+  // over ground the player actually stands on this turn (ah-o86).
+  it("a hex only an ally saw this turn does not choose the opening hex over the player's own", () => {
+    // Sorted ahead of the player's own hex (lower y), so the old "any current hex" rule would have
+    // picked it first were the fix not in place.
+    const model = buildHexMapModel(report([region(at(20, 50))]), [
+      stored(at(1, 40), 71, { units: [unit("1", false, "Elder")] })
+    ]);
+
+    expect(model.initialSelectedRegionId).toBe("1:20,50");
   });
 });
 

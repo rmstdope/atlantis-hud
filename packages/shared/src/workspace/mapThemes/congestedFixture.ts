@@ -169,15 +169,15 @@ export const CONGESTED_HEXES: HexNode[] = [
     structures: ["Mine", "Shaft"],
     units: units({ own: 4, guard: true })
   }),
-  // Seen eight turns ago and not since: the one hex whose knowledge has aged.
+  // Seen eight turns ago and not since: the one hex whose knowledge has aged. A stale hex carries
+  // no units - a unit standing here eight turns ago may have moved, disbanded or died (ah-o86).
   hex({
     coordinate: at(6, 52),
     terrain: "tundra",
     knowledge: "stale",
     ageInTurns: 8,
     settlement: { name: "Hut", size: "village" },
-    structures: ["Hut"],
-    units: units({ own: 1 })
+    structures: ["Hut"]
   })
 ];
 

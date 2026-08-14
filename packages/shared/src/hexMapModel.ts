@@ -295,18 +295,28 @@ export function buildHexMapModel(
     if (existing && existing.knowledge !== "named") {
       continue;
     }
+    // A sighting from this same turn - a hex only an ally reported, with none of my own - is as
+    // fresh as anything in the current report and is not what "stale" means; only a sighting from
+    // an earlier turn is memory, and a unit standing there when it was last seen may have moved,
+    // disbanded or died since, so only that case drops its units (ah-o86, issue #53's territory).
+    const isCurrentTurn = currentTurn !== null && stored.lastSeenTurn === currentTurn;
+    const remembered = stored.region
+      ? isCurrentTurn
+        ? stored.region
+        : { ...stored.region, units: [] }
+      : null;
     byKey.set(key, {
       regionId: stored.regionId,
       coordinate: stored.coordinate,
       terrain: stored.terrain,
       province: stored.province,
       label: stored.label,
-      knowledge: "stale",
+      knowledge: isCurrentTurn ? "current" : "stale",
       lastSeenTurn: stored.lastSeenTurn,
       ageInTurns: currentTurn === null ? null : Math.max(0, currentTurn - stored.lastSeenTurn),
       settlementName: stored.region?.settlement?.name ?? null,
-      region: stored.region,
-      ...countUnits(stored.region)
+      region: remembered,
+      ...countUnits(remembered)
     });
   }
 
@@ -336,9 +346,13 @@ export function buildHexMapModel(
   const levels = [...new Set(hexes.map((hex) => hex.coordinate.z))].sort((a, b) => a - b);
 
   // Open on a hex the player has units in, falling back to any visited hex. Opening on a hex they
-  // have never been to would be a strange place to start.
+  // have never been to would be a strange place to start - which now includes a hex only an ally
+  // reported this turn: it reads "current" for display, since the sighting is as fresh as anything
+  // else on screen, but the player was never there, so `ownRegionIds` (built from the player's own
+  // report, not from `knowledge`) is what "visited" means here (ah-o86).
+  const ownRegionIds = new Set(parsed.regions.map((region) => region.regionId));
   const withOwnUnits = hexes.find((hex) => hex.ownUnitCount > 0);
-  const visited = hexes.find((hex) => hex.knowledge === "current");
+  const visited = hexes.find((hex) => ownRegionIds.has(hex.regionId));
 
   return {
     hexes,

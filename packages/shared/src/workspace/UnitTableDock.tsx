@@ -246,8 +246,13 @@ export function UnitTableDock({
   };
 
   const stale = hex?.knowledge === "stale";
+  // A stale hex's count would be a lie the moment it left the model: a hex nobody sees carries no
+  // units at all now, so the header names the ground and stops there rather than claiming "0 units"
+  // (ah-o86). The amber "as of turn N" chip already says the account is dated.
   const hint = hex
-    ? `— ${hex.terrain} (${hex.coordinate.x},${hex.coordinate.y}), ${stale ? "last known " : ""}${units.length} unit${units.length === 1 ? "" : "s"}${visible.length === units.length ? "" : `, ${visible.length} shown`}`
+    ? stale
+      ? `— ${hex.terrain} (${hex.coordinate.x},${hex.coordinate.y})`
+      : `— ${hex.terrain} (${hex.coordinate.x},${hex.coordinate.y}), ${units.length} unit${units.length === 1 ? "" : "s"}${visible.length === units.length ? "" : `, ${visible.length} shown`}`
     : undefined;
 
   return (
@@ -280,7 +285,13 @@ export function UnitTableDock({
       }
     >
       {units.length === 0 ? (
-        <Absent>{hex ? "No units reported in this hex." : "No hex selected."}</Absent>
+        <Absent>
+          {hex
+            ? stale
+              ? `Not seen since turn ${hex.lastSeenTurn} — no current unit information.`
+              : "No units reported in this hex."
+            : "No hex selected."}
+        </Absent>
       ) : visible.length === 0 ? (
         <Absent>No unit matches that filter.</Absent>
       ) : (
