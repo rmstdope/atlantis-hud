@@ -129,9 +129,12 @@ describe("what the map hands a theme", () => {
     expect(svg).toContain("Inhead");
 
     // The name's size lives in CSS now, not as an inline style per piece.
-    const nameTag = /<text[^>]*class="region-name"[^>]*>/.exec(svg)?.[0] ?? "";
+    const nameTagMatch = /<text[^>]*class="region-name"[^>]*>/.exec(svg);
+    expect(nameTagMatch).not.toBeNull();
+    const nameTag = nameTagMatch?.[0] ?? "";
     expect(nameTag).not.toContain("font-size");
     expect(nameTag).not.toContain("letter-spacing");
+    expect(nameTag).not.toContain("stroke-width");
   });
 
   it("keeps the province border screen-constant, dashes included", () => {

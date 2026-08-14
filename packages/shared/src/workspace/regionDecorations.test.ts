@@ -150,10 +150,14 @@ describe("label placement", () => {
 
 describe("fitting the label to the piece", () => {
   it("emits the same plain label for every piece, whatever its size", () => {
+    // (0, y+2) is a genuine neighbour offset, so this chain of nine hexes is one connected,
+    // roomy piece rather than nine single-hex ones.
     const roomyHexes = Array.from({ length: 9 }, (_, i) =>
-      hex({ coordinate: at(i * 2, 0), province: "Oz" })
+      hex({ coordinate: at(0, i * 2), province: "Oz" })
     );
     const roomyPieces = regionDecorations(roomyHexes, 1);
+    expect(roomyPieces).toHaveLength(1);
+    expect(roomyPieces[0].hexCount).toBe(9);
     expect(Object.keys(roomyPieces[0].label).sort()).toEqual(["text", "x", "y"]);
     expect(roomyPieces[0].label.text).toBe("Oz");
 
