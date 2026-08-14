@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { PUSH_AGAIN_MESSAGE } from "./beadsExportGate";
 import {
   describeGitFailure,
+  finishRelease,
   isGateAbort,
   pushWithRetry,
   recoveryAdvice,
@@ -176,13 +177,14 @@ describe("recoveryAdvice", () => {
     const lines = recoveryAdvice({
       tag: "v0.5.4",
       branch: "main",
+      releaseCommit: "c24a8ba",
       versionCommitPushed: false,
       tagCreated: false,
       tagPushed: false
     });
 
     expect(lines.join("\n")).toContain("git push origin HEAD:main");
-    expect(lines.join("\n")).toContain("git tag v0.5.4");
+    expect(lines.join("\n")).toContain("git tag v0.5.4 c24a8ba");
     expect(lines.join("\n")).toContain("git push origin v0.5.4");
   });
 
@@ -190,19 +192,21 @@ describe("recoveryAdvice", () => {
     const lines = recoveryAdvice({
       tag: "v0.5.4",
       branch: "main",
+      releaseCommit: "c24a8ba",
       versionCommitPushed: true,
       tagCreated: false,
       tagPushed: false
     });
 
     expect(lines.join("\n")).not.toContain("git push origin HEAD:main");
-    expect(lines.join("\n")).toContain("git tag v0.5.4");
+    expect(lines.join("\n")).toContain("git tag v0.5.4 c24a8ba");
   });
 
   it("names only the tag push when the tag was made but not pushed", () => {
     const lines = recoveryAdvice({
       tag: "v0.5.4",
       branch: "main",
+      releaseCommit: "c24a8ba",
       versionCommitPushed: true,
       tagCreated: true,
       tagPushed: false
@@ -210,5 +214,158 @@ describe("recoveryAdvice", () => {
 
     expect(lines.join("\n")).not.toContain("git tag v0.5.4");
     expect(lines.join("\n")).toContain("git push origin v0.5.4");
+  });
+
+  it("tags the release commit, not HEAD, so a pasted recovery cannot land on a refresh commit", () => {
+    // The bug this bead fixes: `git tag <name>` with no second argument tags HEAD, which by the
+    // time a human runs it may already be a bead-export refresh commit the gate made afterwards.
+    const lines = recoveryAdvice({
+      tag: "v0.5.4",
+      branch: "main",
+      releaseCommit: "c24a8ba",
+      versionCommitPushed: true,
+      tagCreated: false,
+      tagPushed: false
+    });
+
+    expect(lines).toContain("git tag v0.5.4 c24a8ba");
+  });
+});
+
+/**
+ * The invariant this bead is named for: the tag is created on the commit recorded before any push
+ * ran, never on whatever HEAD happens to be by the time the pushes are done - because the export
+ * gate can commit a refresh on top of HEAD during a push, and `git tag <name>` tags HEAD.
+ */
+describe("finishRelease", () => {
+  const attempts = 3;
+
+  it("creates the tag on the commit recorded before the pushes, even if HEAD moved", () => {
+    let head = "c24a8ba";
+    const calls: string[] = [];
+
+    const pushBranch = () => {
+      calls.push("pushBranch");
+      // Simulates the export gate committing a refresh on top of HEAD during the branch push.
+      head = "b757b1d";
+      return { ok: true, output: "" };
+    };
+    const pushTag = () => {
+      calls.push("pushTag");
+      return { ok: true, output: "" };
+    };
+    let createdTag: { tag: string; commit: string } | undefined;
+
+    const result = finishRelease(
+      {
+        headCommit: () => head,
+        pushBranch,
+        pushTag,
+        createTag: (tag, commit) => {
+          calls.push("createTag");
+          createdTag = { tag, commit };
+          return { ok: true, output: "" };
+        }
+      },
+      { tag: "v0.5.4", branch: "main", attempts }
+    );
+
+    expect(result).toEqual({ ok: true });
+    expect(createdTag).toEqual({ tag: "v0.5.4", commit: "c24a8ba" });
+    // The branch push must land before the tag is created, and the tag before its own push - the
+    // workflow triggers on the tag arriving and checks out the commit it names.
+    expect(calls).toEqual(["pushBranch", "createTag", "pushTag"]);
+  });
+
+  it("reports advice for nothing pushed when the branch push exhausts its retries", () => {
+    let pushBranchCalls = 0;
+    let createTagCalls = 0;
+
+    const result = finishRelease(
+      {
+        headCommit: () => "c24a8ba",
+        pushBranch: () => {
+          pushBranchCalls += 1;
+          return { ok: false, output: PUSH_AGAIN_MESSAGE };
+        },
+        pushTag: () => ({ ok: true, output: "" }),
+        createTag: () => {
+          createTagCalls += 1;
+          return { ok: true, output: "" };
+        }
+      },
+      { tag: "v0.5.4", branch: "main", attempts }
+    );
+
+    expect(pushBranchCalls).toBe(attempts);
+    expect(createTagCalls).toBe(0);
+    expect(result.ok).toBe(false);
+    expect(!result.ok && result.advice).toEqual([
+      "git push origin HEAD:main",
+      "git tag v0.5.4 c24a8ba",
+      "git push origin v0.5.4"
+    ]);
+  });
+
+  it("reports advice for an unpushed tag when the tag push exhausts its retries", () => {
+    const result = finishRelease(
+      {
+        headCommit: () => "c24a8ba",
+        pushBranch: () => ({ ok: true, output: "" }),
+        pushTag: () => ({ ok: false, output: PUSH_AGAIN_MESSAGE }),
+        createTag: () => ({ ok: true, output: "" })
+      },
+      { tag: "v0.5.4", branch: "main", attempts }
+    );
+
+    expect(result.ok).toBe(false);
+    expect(!result.ok && result.advice).toEqual(["git push origin v0.5.4"]);
+  });
+
+  it("does not retry a genuine refusal into a loop", () => {
+    let pushBranchCalls = 0;
+    const rejected = "! [rejected]        main -> main (fetch first)";
+
+    const result = finishRelease(
+      {
+        headCommit: () => "c24a8ba",
+        pushBranch: () => {
+          pushBranchCalls += 1;
+          return { ok: false, output: rejected };
+        },
+        pushTag: () => ({ ok: true, output: "" }),
+        createTag: () => ({ ok: true, output: "" })
+      },
+      { tag: "v0.5.4", branch: "main", attempts }
+    );
+
+    expect(pushBranchCalls).toBe(1);
+    expect(result.ok).toBe(false);
+    expect(!result.ok && result.output).toBe(rejected);
+  });
+
+  it("reports advice for a created-but-unverified tag when the tag itself fails to be created", () => {
+    // A Copilot review comment: `createTag` can fail too (a race, permissions), and swallowing
+    // that would exit the process from inside `git()` with no FinishReleaseResult at all - the
+    // very "manual recovery" this helper exists to produce. Reported like a push failure: no
+    // retry, since re-running `git tag` against a tag that already exists is a different failure.
+    const output = "git tag failed: fatal: tag 'v0.5.4' already exists";
+
+    const result = finishRelease(
+      {
+        headCommit: () => "c24a8ba",
+        pushBranch: () => ({ ok: true, output: "" }),
+        pushTag: () => ({ ok: true, output: "" }),
+        createTag: () => ({ ok: false, output })
+      },
+      { tag: "v0.5.4", branch: "main", attempts }
+    );
+
+    expect(result.ok).toBe(false);
+    expect(!result.ok && result.output).toBe(output);
+    expect(!result.ok && result.advice).toEqual([
+      "git tag v0.5.4 c24a8ba",
+      "git push origin v0.5.4"
+    ]);
   });
 });

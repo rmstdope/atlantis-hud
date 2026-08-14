@@ -148,6 +148,13 @@ export function pushWithRetry(
 export type ReleaseState = {
   tag: string;
   branch: string;
+  /**
+   * The SHA of the `Release vX.Y.Z` commit, recorded before any push ran. `git tag <name>` with no
+   * second argument tags HEAD, and HEAD can have moved on by the time a human pastes this - the
+   * export gate commits a refresh on top of it during a push. Naming the commit here is what keeps
+   * a pasted recovery from reproducing the exact bug this bead exists to fix.
+   */
+  releaseCommit: string;
   versionCommitPushed: boolean;
   tagCreated: boolean;
   tagPushed: boolean;
@@ -155,7 +162,7 @@ export type ReleaseState = {
 
 /**
  * The exact commands a human needs to finish a release that could not finish itself, naming the
- * actual tag and branch so the lines can be pasted rather than adapted.
+ * actual tag, branch and release commit so the lines can be pasted rather than adapted.
  */
 export function recoveryAdvice(state: ReleaseState): string[] {
   const lines: string[] = [];
@@ -164,11 +171,89 @@ export function recoveryAdvice(state: ReleaseState): string[] {
     lines.push(`git push origin HEAD:${state.branch}`);
   }
   if (!state.tagCreated) {
-    lines.push(`git tag ${state.tag}`);
+    lines.push(`git tag ${state.tag} ${state.releaseCommit}`);
   }
   if (!state.tagPushed) {
     lines.push(`git push origin ${state.tag}`);
   }
 
   return lines;
+}
+
+/** The git effects `finishRelease` needs, injected so the ordering and anchoring are provable. */
+export type ReleaseEffects = {
+  /** The current HEAD SHA. Called once, before any push, to pin the commit the tag will name. */
+  headCommit: () => string;
+  pushBranch: () => { ok: boolean; output: string };
+  pushTag: () => { ok: boolean; output: string };
+  createTag: (tag: string, commit: string) => { ok: boolean; output: string };
+};
+
+export type FinishReleaseResult = { ok: true } | { ok: false; output: string; advice: string[] };
+
+/**
+ * The release tail: push the version commit, tag the commit it was made at, push the tag.
+ *
+ * The SHA is read once, before `pushBranch` runs, because the export gate can commit a refresh on
+ * top of HEAD while settling a push - so HEAD by the time `createTag` would run is not necessarily
+ * the release commit any more. `createTag` always receives the SHA recorded here, never a fresh
+ * read of HEAD.
+ */
+export function finishRelease(
+  effects: ReleaseEffects,
+  release: { tag: string; branch: string; attempts: number }
+): FinishReleaseResult {
+  const releaseCommit = effects.headCommit();
+
+  const branchPush = pushWithRetry(effects.pushBranch, release.attempts);
+  if (!branchPush.ok) {
+    return {
+      ok: false,
+      output: branchPush.output,
+      advice: recoveryAdvice({
+        tag: release.tag,
+        branch: release.branch,
+        releaseCommit,
+        versionCommitPushed: false,
+        tagCreated: false,
+        tagPushed: false
+      })
+    };
+  }
+
+  // Not retried: `createTag` failing once means the tag was not made, so a second `git tag` attempt
+  // would meet a fresh state - unlike a push, where a retry is meeting the export gate's own abort.
+  const created = effects.createTag(release.tag, releaseCommit);
+  if (!created.ok) {
+    return {
+      ok: false,
+      output: created.output,
+      advice: recoveryAdvice({
+        tag: release.tag,
+        branch: release.branch,
+        releaseCommit,
+        versionCommitPushed: true,
+        tagCreated: false,
+        tagPushed: false
+      })
+    };
+  }
+
+  const tagPush = pushWithRetry(effects.pushTag, release.attempts);
+  if (!tagPush.ok) {
+    return {
+      ok: false,
+      output: tagPush.output,
+      advice: recoveryAdvice({
+        tag: release.tag,
+        branch: release.branch,
+        releaseCommit,
+        versionCommitPushed: true,
+        tagCreated: true,
+        tagPushed: false
+      })
+    };
+  }
+
+  return { ok: true };
 }
