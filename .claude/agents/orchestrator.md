@@ -244,16 +244,22 @@ happened here:
   were still `planned` and unbuilt. Discount them —
   `... --oneline | grep -v "docs(<id>): mockup"` — and if nothing else is left, the bead is not done.
 
-And read the assignee before anything else: a bead the navigator is holding — planning it, or parked
-mid-thought — is `in_progress` under a human name, and none of this applies to it. Only claims held
-by implementer names are yours to sweep.
+And read the assignee before anything else: a bead the navigator is holding — parked mid-thought, or
+being worked by hand — is `in_progress` under a human name, and none of this applies to it. Only
+claims held by implementer names are yours to sweep.
+
+**A claim can only ever be an implementer's or a human's.** Claiming belongs to the implementer role
+alone (see `beads-workflow`): Xavier marks what it is planning with the `planning` label and holds no
+lease, Moira claims nothing at all, and you claim nothing either. So `in_progress` narrows to two
+possibilities rather than four — which is what makes the lease check below decisive.
 
 **But the assignee name is not proof of who holds a claim, and cannot be read alone.** Every claim
 made from this machine is stamped with the local git identity, whether a human or an agent claimed
 it — `bd unclaim` and `bd update --claim` do not distinguish. `assignee: Henrik Kurelid` can mean the
 navigator is genuinely holding the bead, or it can mean an implementer claimed it, ran for a while,
-and died hours ago, leaving the claim stamped with the same name it would have had either way. Two
-of the navigator's own beads were found this way on 2026-08-14 — `ah-r2e` and `ah-52b`, both
+and died hours ago, leaving the claim stamped with the same name it would have had either way. A
+claim by a session that should not have claimed at all reads exactly the same, which is the other
+reason claiming is now the implementer's alone. Two of the navigator's own beads were found this way on 2026-08-14 — `ah-r2e` and `ah-52b`, both
 `in_progress` under a human name, both with leases expired and last heartbeat ten hours gone, neither
 held by any process in `ListAgents` or `pgrep`.
 

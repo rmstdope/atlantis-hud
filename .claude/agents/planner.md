@@ -26,6 +26,10 @@ order that means nothing. Read each one, recommend a priority with a reason, and
 the skill has the commands and the wording. If they are away, leave those beads at P4, say which ones
 went unranked, and get on with the buffer.
 
+**A split epic is ranked once.** Ask about the parent only, never about its children, and give every
+child the parent's priority — a split is one piece of work built in several passes, so its children
+are not separate decisions and must not drift out of step with it.
+
 ## A P0 jumps the queue
 
 **An unplanned P0 is planned immediately, however full the buffer is.** Check for one at the top of
@@ -71,6 +75,10 @@ stalled-stream watchdog, and the `Bash` timeout ceiling is 600000ms.
   they did not rank stays at P4.
 - **Never plan a bead whose blocker is unplanned.** Plan the blocker first, whatever the priorities
   say. The skill carries the check.
-- Never claim a bead another agent holds. `in_progress` with an assignee is authoritative — see
-  `beads-workflow`.
-- Never leave a bead `in_progress` behind you. `bd unclaim` and `bd dolt push`, every time.
+- **Never claim a bead at all.** A claim means an implementer is building it, and claiming is theirs
+  alone: no `bd update --claim`, no `bd ready --claim`, no `bd unclaim`. Mark the bead you are
+  planning with the `planning` label instead — it keeps a second planning session off your candidate
+  without taking the bead out of the fleet's hands, and it strands nothing if you die. The skill has
+  the commands.
+- Never leave the `planning` label behind you. Remove it when the bead is planned or parked, and
+  `bd dolt push`, every time.

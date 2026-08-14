@@ -23,16 +23,30 @@ than no plan because somebody will build from it.
 **Before you plan anything, agree the priorities.** P4 is the backlog floor, and a bead sitting there
 is one nobody has ranked yet — planning by `--sort priority` against an untriaged tail plans whatever
 happens to be at the top of a list that means nothing. So the first thing a session does, before it
-counts the buffer or claims a candidate, is walk the P4 beads with the navigator.
+counts the buffer or picks a candidate, is walk the P4 beads with the navigator.
 
 ```bash
 bd dolt pull
+# The beads to ask about: P4, unplanned, and not somebody's child.
 bd list --status open --exclude-label planned --json \
-  | jq -r '.[] | select(.priority==4) | "\(.id)\t\(.title)"'
+  | jq -r '[.[] | . as $b | ($b.dependencies // [])[]
+            | select(.type=="parent-child") | $b.id] as $children
+           | .[] | select(.priority==4)
+           | select(.id as $id | $children | index($id) | not)
+           | "\(.id)\t\(.title)"'
 ```
+
+A bead's parent is a `parent-child` edge in its own `dependencies`, pointing at the parent — there is
+no `parent` field to read.
 
 Already-`planned` beads are excluded: their priority no longer decides what you plan next, and
 re-ranking work that is already specified is not what this step is for.
+
+**A child is never asked about — it takes its parent's priority.** A split epic is one piece of work
+that happens to be built in several passes, so ranking its children separately invites an ordering
+the navigator never meant: a P1 epic with a P4 third child stalls halfway through, and asking about
+five children of one epic spends five questions on a decision that was one decision. Ask about the
+epic; the children follow it.
 
 For each one, **read the description and recommend a priority** — do not simply ask. `bd show <id>`,
 then say which of P0–P4 you think it is and why in a sentence: a navigator-reported defect in shipped
@@ -47,6 +61,33 @@ each answer as it comes (use numeric priorities `0`–`4` for `bd update`, i.e. 
 ```bash
 bd update <id> --priority=<n>
 ```
+
+**If the bead has children, set them to the same priority in the same breath** — `bd update` takes
+several ids at once:
+
+```bash
+bd list --status open --json \
+  | jq -r --arg parent <id> '.[] | select((.dependencies // [])[]
+           | select(.type=="parent-child") | .depends_on_id == $parent) | .id'
+bd update <child> <child> ... --priority=<n>
+```
+
+Then reconcile the rest of the tree, so no epic ranked in an earlier session is left with children
+that disagree with it. Run this after the pass and **repeat it until it prints nothing** — one run
+moves a priority down one level, and a subtask under a task under an epic is two levels:
+
+```bash
+bd list --status open --json > /tmp/bd-open.json
+jq -r '(INDEX(.id)) as $by | .[] | . as $c | ($c.dependencies // [])[]
+       | select(.type=="parent-child") | $by[.depends_on_id]
+       | select(. != null and .priority != $c.priority)
+       | "\($c.id)\t\(.priority)"' /tmp/bd-open.json
+# then, per priority: bd update <child> <child> ... --priority=<n>
+```
+
+The parent wins every time, including when the child is ranked higher: the epic is where the
+navigator made the decision, and a child that outranks its own parent jumps the queue ahead of work
+the navigator put first.
 
 Then `bd dolt push` once the pass is done, so the ranking reaches the other agents before you start
 planning against it.
@@ -72,7 +113,8 @@ after — and check it **before you count the buffer**, because the buffer's ans
 here:
 
 ```bash
-bd list --status open --exclude-label planned --exclude-label human --exclude-type epic --json \
+bd list --status open --exclude-label planned --exclude-label planning --exclude-label human \
+        --exclude-type epic --json \
   | jq -r '.[] | select(.priority==0) | "\(.id)\t\(.title)"'
 ```
 
@@ -149,14 +191,22 @@ on nothing but the clock, and a foreground loop is the one wait that certainly w
 
 ```bash
 bd dolt pull
-bd list --exclude-label planned --exclude-label human --exclude-type epic --sort priority --json
-bd update <id> --claim
-bd dolt push                                       # publish the claim at once
+bd list --exclude-label planned --exclude-label planning --exclude-label human \
+        --exclude-type epic --sort priority --json
+bd update <id> --add-label planning
+bd dolt push                                       # publish it at once
 # ... research, decide, discuss, write ...
-bd update <id> --design-file plan.md --add-label planned
-bd unclaim <id>
+bd update <id> --design-file plan.md --add-label planned --remove-label planning
 bd dolt push                                       # or the release is invisible elsewhere
 ```
+
+**You never claim a bead.** A claim means *an implementer is building this*, and it is theirs alone —
+`bd update --claim`, `bd ready --claim` and `bd unclaim` are not yours to run. What you take instead
+is the `planning` label, which says the same thing about planning without taking the bead out of the
+fleet's hands: it marks the candidate so a second planning session picks a different one, it leaves
+the bead `open` and unassigned, and it costs nothing if this session dies — no stranded claim, no
+lease for anyone to reclaim, nothing for Cerebro's sweep to puzzle over. Exclude it when choosing a
+candidate, above, or you will pick the bead you are already planning.
 
 **Highest priority first**, which is what `--sort priority` gives you: P0 before P1, and so on down.
 P0 goes further than being first in this list — it pre-empts the buffer entirely, so an unplanned one
@@ -174,7 +224,7 @@ five.
 **But never plan a bead whose blocker is unplanned.** Unbuilt is fine; unplanned is not. If B is
 blocked by A and A has no plan, then **A is planned first, whatever the priorities say** — a P3
 blocker outranks the P0 it blocks, because B's plan has to describe how it meets A, and that is
-guesswork until A has been specified. So before claiming a candidate, ask what it is standing on:
+guesswork until A has been specified. So before taking a candidate, ask what it is standing on:
 
 ```bash
 bd show <id> --json | jq -r '(if type=="array" then .[0] else . end)
@@ -186,7 +236,7 @@ bd show <id> --json | jq -r '(if type=="array" then .[0] else . end)
 ```
 
 Nothing — plan the candidate. Otherwise plan what it names instead, and check *that* one the same
-way before claiming it: a blocker can have a blocker. Walk down to the deepest unplanned one, plan
+way before taking it: a blocker can have a blocker. Walk down to the deepest unplanned one, plan
 that, and let the next pass come back up. Each of those still counts toward the buffer, so nothing is
 wasted.
 
@@ -218,8 +268,8 @@ This is exactly why the blocker is planned first, and it is worth using rather t
 it will touch, the seam it will leave and the traps it already found. A plan written against that is
 describing an interface somebody has committed to, instead of guessing at one.
 
-`bd heartbeat <id>` at every step boundary and before anything long. The lease is five minutes and
-planning is not.
+No heartbeats. A lease is a thing a claim has, and you hold a label instead — so a long discussion
+with the navigator, or an hour spent reading code, expires nothing and strands nothing.
 
 ## What you decide, and what you must not
 
@@ -260,15 +310,15 @@ worktree leaves every later git command there.
 park the bead and move on:
 
 ```bash
-bd update <id> --add-label needs-ui-decision --add-label human --append-notes "<the question>"
-bd unclaim <id>
+bd update <id> --add-label needs-ui-decision --add-label human --remove-label planning \
+  --append-notes "<the question>"
 bd dolt push
 ```
 
-All three. Both labels, because `bd human list` matches `human` and nothing else, so
-`needs-ui-decision` alone would sit in nobody's queue. `bd unclaim`, because `bd update` sets no
-status and the bead would otherwise stay `in_progress` under a session that has moved on. And the
-push, or no other machine learns it was released.
+Both labels, because `bd human list` matches `human` and nothing else, so `needs-ui-decision` alone
+would sit in nobody's queue. `--remove-label planning`, because you are no longer planning it and a
+later session must be free to pick it up once the navigator has answered. And the push, or no other
+machine learns it was parked.
 
 Then take the next bead. A parked one still counts against nothing — it is excluded from the buffer
 precisely because an implementer cannot pick it up — so parking one means the buffer is short by one
@@ -280,6 +330,11 @@ otherwise puts the decision in the wrong hands.
 ## Too big for one increment
 
 Split it. `bd create --parent <id>` for the children, and `bd dep add` for the order.
+
+**Create every child at the parent's priority**, not at P4 — the rule that a bead is created unranked
+is about work nobody has weighed yet, and a split epic has already been ranked by the navigator. So
+`bd create --parent <id> -p <the parent's priority>`, and if the parent is itself still P4 the
+children are P4 with it, and the whole family gets ranked in one question at the next triage.
 
 The children then queue like anything else, by priority, and a later one may be planned before its
 sibling has been **built** — but never before that sibling has been **planned**, which the `bd dep`
@@ -347,8 +402,13 @@ If the bead touches one of those, say so and say what to do about it.
 
 ## Finishing one, and the session
 
-Label `planned`, `bd unclaim`, `bd dolt push`, and say which bead you planned and what the navigator
-decided.
+Add `planned`, remove `planning`, `bd dolt push`, and say which bead you planned and what the
+navigator decided. A bead left carrying `planning` is one no later session will consider, so check
+that nothing behind you still has it:
+
+```bash
+bd list --label planning --status open --json | jq -r '.[] | "\(.id)\t\(.title)"'
+```
 
 Then count the buffer again and act on it: below four, plan the next one; at four, say so and sleep.
 The session does not end when a bead is planned — it ends when the navigator says so. See *You keep
