@@ -37,6 +37,8 @@ const draw = (overrides: Partial<Parameters<typeof AppHeader>[0]> = {}) =>
       battleCount={0}
       battlesOpen={false}
       onToggleBattles={() => {}}
+      changesOpen={false}
+      onToggleChanges={() => {}}
       busy={false}
       onImportReports={() => {}}
       progress={null}
@@ -115,6 +117,27 @@ describe("AppHeader turn chip", () => {
     expect(closed).toContain('aria-expanded="false"');
 
     const open = draw({ turnPickerOpen: true });
+    expect(open).toContain('aria-expanded="true"');
+  });
+});
+
+describe("AppHeader changes chip", () => {
+  beforeEach(resetWorkspaceStore);
+
+  it("the changes chip appears with a comparison and not without", () => {
+    const comparing = draw({ comparedTurnLabel: "70" });
+    expect(comparing).toContain('data-testid="changes-chip"');
+
+    const notComparing = draw({ comparedTurnLabel: null });
+    expect(notComparing).not.toContain('data-testid="changes-chip"');
+  });
+
+  it("the changes chip says whether the dialog is open", () => {
+    const closed = draw({ comparedTurnLabel: "70", changesOpen: false });
+    expect(closed).toContain('data-testid="changes-chip"');
+    expect(closed).toContain('aria-expanded="false"');
+
+    const open = draw({ comparedTurnLabel: "70", changesOpen: true });
     expect(open).toContain('aria-expanded="true"');
   });
 });
