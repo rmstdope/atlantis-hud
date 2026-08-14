@@ -6,12 +6,15 @@ import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   IMPLEMENTER_NAMES,
+  beadFromEvent,
   canonicalName,
   flagPaths,
   formatEvent,
   launchCommand,
   logPath,
-  nextAction
+  nextAction,
+  statePath,
+  writeState
 } from "./runImplementer";
 
 /**
@@ -206,6 +209,57 @@ describe("logPath", () => {
     // Cerebro cannot reach a print-mode session with SendMessage - it does not even appear in
     // `claude agents`. This file is what it reads instead.
     expect(logPath("/repo", "Cyclops")).toBe("/repo/.claude/implementers/Cyclops.log");
+  });
+});
+
+describe("beadFromEvent", () => {
+  const bashEvent = (command: string) =>
+    JSON.stringify({
+      type: "assistant",
+      message: { content: [{ type: "tool_use", name: "Bash", input: { command } }] }
+    });
+
+  it("names the bead a claim command claims", () => {
+    expect(beadFromEvent(bashEvent("bd update ah-f9c --claim && bd dolt push"))).toBe("ah-f9c");
+  });
+
+  it("names the bead a heartbeat renews", () => {
+    expect(beadFromEvent(bashEvent("bd heartbeat ah-vcf.1"))).toBe("ah-vcf.1");
+  });
+
+  it("reads the bead off a worktree branch", () => {
+    expect(
+      beadFromEvent(
+        bashEvent(
+          "git worktree add -b ah-t65-load-reports .claude/worktrees/ah-t65 origin/main"
+        )
+      )
+    ).toBe("ah-t65");
+  });
+
+  it("says nothing about a command with no bead in it", () => {
+    expect(beadFromEvent(bashEvent("pnpm run test"))).toBeNull();
+  });
+
+  it("survives a line that is not JSON at all", () => {
+    expect(() => beadFromEvent("Warning: something happened")).not.toThrow();
+    expect(beadFromEvent("Warning: something happened")).toBeNull();
+  });
+});
+
+describe("statePath", () => {
+  it("puts an implementer's status beside its flags", () => {
+    expect(statePath("/repo", "Cyclops")).toBe("/repo/.claude/implementers/Cyclops.state.json");
+  });
+});
+
+describe("writeState", () => {
+  it("swallows a write into a directory that does not exist", () => {
+    const path = join(mkdtempSync(join(tmpdir(), "run-implementer-state-")), "missing", "x.json");
+    expect(() =>
+      writeState(path, { state: "idle", bead: null, since: "2026-08-14T00:00:00.000Z", pid: 1 })
+    ).not.toThrow();
+    expect(existsSync(path)).toBe(false);
   });
 });
 
@@ -458,5 +512,78 @@ describe("the launcher loop", () => {
     } finally {
       child.kill();
     }
+  }, 30_000);
+
+  function readState(root: string): { state: string; bead: string | null } | null {
+    const path = statePath(root, "Cyclops");
+    if (!existsSync(path)) {
+      return null;
+    }
+    return JSON.parse(readFileSync(path, "utf8"));
+  }
+
+  it("records working, then the bead, then idle across one run", async () => {
+    const event = JSON.stringify({
+      type: "assistant",
+      message: { content: [{ type: "tool_use", name: "Bash", input: { command: "bd update ah-f9c --claim" } }] }
+    });
+    // A short sleep between the event and exit gives the test time to observe the "working, no bead
+    // yet" state before the run ends and the file goes back to idle.
+    const { root, flags } = workspace(
+      `printf '%s\\n' ${JSON.stringify(event)}\nsleep 0.3\nexit 0`
+    );
+    writeFileSync(flags.go, "");
+    const child = start(root, join(root, "bin"));
+
+    try {
+      expect(await until(() => readState(root)?.state === "working")).toBe(true);
+      expect(await until(() => readState(root)?.bead === "ah-f9c")).toBe(true);
+      expect(await until(() => readState(root)?.state === "idle")).toBe(true);
+    } finally {
+      child.kill();
+    }
+  }, 30_000);
+
+  it("removes the status file when told to finish", async () => {
+    const { root, flags } = workspace("exit 0");
+    writeFileSync(flags.go, "");
+    const child = start(root, join(root, "bin"));
+
+    try {
+      expect(await until(() => existsSync(statePath(root, "Cyclops")))).toBe(true);
+      writeFileSync(flags.stop, "");
+      const code = await new Promise<number | null>((resolve) => child.on("exit", resolve));
+      expect(code).toBe(0);
+      expect(existsSync(statePath(root, "Cyclops"))).toBe(false);
+    } finally {
+      child.kill();
+    }
+  }, 30_000);
+
+  it("prints the roster and exits without starting anything", async () => {
+    const root = mkdtempSync(join(tmpdir(), "run-implementer-"));
+    workspaces.push(root);
+    const bin = join(root, "bin");
+    mkdirSync(bin, { recursive: true });
+    const log = join(root, "invocations.log");
+    writeFileSync(
+      join(bin, "claude"),
+      `#!/bin/bash\nprintf '%s\\n' "$*" >> ${JSON.stringify(log)}\nexit 0\n`,
+      { mode: 0o755 }
+    );
+
+    const child = spawn(process.execPath, ["--import", "tsx", launcher, "--roster"], {
+      cwd: dirname(launcher),
+      env: { PATH: bin, HOME: process.env.HOME ?? "" },
+      stdio: ["ignore", "pipe", "pipe"]
+    });
+
+    let output = "";
+    child.stdout.on("data", (chunk) => (output += String(chunk)));
+    const code = await new Promise<number | null>((resolve) => child.on("exit", resolve));
+
+    expect(code).toBe(0);
+    expect(output.trim()).toBe(IMPLEMENTER_NAMES.join("\n"));
+    expect(invocations(log)).toHaveLength(0);
   }, 30_000);
 });
