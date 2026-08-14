@@ -358,17 +358,18 @@ test("a single ally report still asks before it changes anything", async ({ page
 });
 
 /**
- * Two exports behind one button.
+ * Three exports behind one button.
  *
  * They were two header buttons of their own, which spent a permanent quarter of the toolbar on a
- * pair of things a player does once a turn. One button that expands is the same two exports one
- * press further away, and the header keeps the room for what is read every minute.
+ * pair of things a player does once a turn. One button that expands is the same exports one press
+ * further away, and the header keeps the room for what is read every minute.
  */
 test("the export button expands into the orders and map exports", async ({ page }) => {
   await loadReport(page);
 
   // Nothing is on the header until it is asked for: the point of the menu.
-  await expect(page.getByRole("button", { name: "Export orders" })).toHaveCount(0);
+  await expect(page.getByTestId("export-orders")).toHaveCount(0);
+  await expect(page.getByTestId("export-orders-long")).toHaveCount(0);
   await expect(page.getByTestId("export-map")).toHaveCount(0);
 
   const trigger = page.getByTestId("export-menu");
@@ -376,7 +377,8 @@ test("the export button expands into the orders and map exports", async ({ page 
   await trigger.click();
 
   await expect(trigger).toHaveAttribute("aria-expanded", "true");
-  await expect(page.getByRole("button", { name: "Export orders" })).toBeVisible();
+  await expect(page.getByTestId("export-orders")).toBeVisible();
+  await expect(page.getByTestId("export-orders-long")).toBeVisible();
   await expect(page.getByTestId("export-map")).toBeVisible();
 
   // Closes the way every other panel hanging off this header closes.
@@ -406,9 +408,47 @@ test("the export menu offers nothing to press before a report is loaded", async 
 
   await page.getByTestId("export-menu").click();
 
-  // Both exports need a turn: orders are written against one and a map describes one.
-  await expect(page.getByRole("button", { name: "Export orders" })).toBeDisabled();
+  // All three exports need a turn: orders are written against one and a map describes one.
+  await expect(page.getByTestId("export-orders")).toBeDisabled();
+  await expect(page.getByTestId("export-orders-long")).toBeDisabled();
   await expect(page.getByTestId("export-map")).toBeDisabled();
+});
+
+/**
+ * The unit descriptions the server wrote into the template, put back into the exported file.
+ *
+ * The plain export stays exactly what it always was - that is issue #37's whole point - so the
+ * one thing worth proving end to end is that the second button adds them and the first still
+ * does not.
+ */
+test("exports the orders with the unit descriptions", async ({ page }, testInfo) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+  await selectUnit(page, OWN_UNIT);
+  await fillOrders(page, "@study obse");
+  await expectOrders(page, /^@study obse\n?$/u);
+
+  await page.getByTestId("export-menu").click();
+  const downloadingLong = page.waitForEvent("download");
+  await page.getByTestId("export-orders-long").click();
+  const long = await downloadingLong;
+  const longPath = testInfo.outputPath("orders-long.txt");
+  await long.saveAs(longPath);
+  const longText = readFileSync(longPath, "utf8");
+
+  // The one description line that matters, not the whole file - the export also carries the
+  // faction password and this must never print or assert against it.
+  expect(longText).toContain("Seven of Eight (18642)");
+
+  await page.getByTestId("export-menu").click();
+  const downloadingPlain = page.waitForEvent("download");
+  await page.getByTestId("export-orders").click();
+  const plain = await downloadingPlain;
+  const plainPath = testInfo.outputPath("orders-plain.txt");
+  await plain.saveAs(plainPath);
+  const plainText = readFileSync(plainPath, "utf8");
+
+  expect(plainText).not.toContain("Seven of Eight (18642)");
 });
 
 /** What merging must leave alone: the turn on screen has not changed, so nothing else may move. */
@@ -564,7 +604,7 @@ test("a unit told to spend silver it has not got is warned about, without blocki
   // A warning, never an error: the server would accept this file, the turn would just go badly.
   await expect(page.getByTestId("orders-status")).toContainText("0 errors");
   await page.getByTestId("export-menu").click();
-  await expect(page.getByRole("button", { name: "Export orders" })).toBeEnabled();
+  await expect(page.getByTestId("export-orders")).toBeEnabled();
   await page.keyboard.press("Escape");
 
   // And the whole map is counted, so the same problem is reachable from the header.

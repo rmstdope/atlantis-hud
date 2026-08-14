@@ -23,14 +23,19 @@ import { useEffect, useRef } from "react";
  */
 export function ExportMenu({
   canExportOrders,
+  canExportOrdersLong,
   canExportMap,
   onExportOrders,
+  onExportOrdersLong,
   onExportMap,
   onDismiss
 }: {
   canExportOrders: boolean;
+  /** Off when the report carries no long-format template - there is then nothing to restore. */
+  canExportOrdersLong: boolean;
   canExportMap: boolean;
   onExportOrders: () => void;
+  onExportOrdersLong: () => void;
   onExportMap: () => void;
   onDismiss: () => void;
 }) {
@@ -85,6 +90,18 @@ export function ExportMenu({
         className={itemClass}
       >
         Export orders
+      </button>
+      <button
+        type="button"
+        data-testid="export-orders-long"
+        disabled={!canExportOrdersLong}
+        onClick={() => {
+          onDismiss();
+          onExportOrdersLong();
+        }}
+        className={itemClass}
+      >
+        Export orders with descriptions
       </button>
       <button
         type="button"

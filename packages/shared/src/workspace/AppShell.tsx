@@ -21,6 +21,7 @@ import {
 import { downloadTextFile, type TextFileSaver } from "../downloadFile";
 import { exportFileName, exportRequestOf } from "../mapExport";
 import { readUnitOrders, writeUnitOrders } from "../ordersDocument";
+import { ordersExportText } from "./ordersExport";
 import {
   commitTurn,
   mergeTurn,
@@ -1903,13 +1904,29 @@ export function AppShell({
    */
   useEffect(() => registerBeforeQuit?.(flush), [registerBeforeQuit, flush]);
 
+  /** The report's own long-format template, or null when it carries none to restore from. */
+  const ordersTemplateText = parsed?.ordersTemplate?.text ?? null;
+
   const exportOrders = useCallback(() => {
     downloadTextFile(
       `orders-turn-${parsed?.header.turnNumber ?? "unknown"}.txt`,
-      ordersDocument,
+      ordersExportText(ordersDocument, ordersTemplateText, false),
       "text/plain"
     );
-  }, [ordersDocument, parsed]);
+  }, [ordersDocument, ordersTemplateText, parsed]);
+
+  /**
+   * The same file, with the server's long-format unit descriptions put back in - see issue #52.
+   * Same name as the plain export: it is the same orders file, and a second name would suggest a
+   * second kind of file.
+   */
+  const exportOrdersLong = useCallback(() => {
+    downloadTextFile(
+      `orders-turn-${parsed?.header.turnNumber ?? "unknown"}.txt`,
+      ordersExportText(ordersDocument, ordersTemplateText, true),
+      "text/plain"
+    );
+  }, [ordersDocument, ordersTemplateText, parsed]);
 
   /**
    * Opens the export dialog on a clean slate.
@@ -2131,6 +2148,8 @@ export function AppShell({
         progress={importProgress}
         onExportOrders={exportOrders}
         canExport={ordersDocument.length > 0}
+        onExportOrdersLong={exportOrdersLong}
+        canExportLong={ordersDocument.length > 0 && ordersTemplateText !== null}
         onExportMap={() => openExport()}
         canExportMap={parsed !== null}
         settingsOpen={settingsOpen}
