@@ -26,6 +26,12 @@ describe("the badge popover", () => {
     expect((svg.match(/type="checkbox"/g) ?? []).length).toBe(BADGES.length);
   });
 
+  it("lists Regions among the badges, for the province outlines on the map", () => {
+    const svg = draw();
+
+    expect(svg).toContain("Regions");
+  });
+
   it("shows each box as the record has it, so the panel cannot disagree with the map", () => {
     const markup = draw(allBadges(true, { ships: false }));
     const boxes = new Map(

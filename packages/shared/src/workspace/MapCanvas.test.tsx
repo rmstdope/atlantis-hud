@@ -115,6 +115,47 @@ describe("what the map hands a theme", () => {
     expect(svg.indexOf('data-layer="roads"')).toBeLessThan(svg.indexOf('data-layer="marks"'));
   });
 
+  it("draws an outline and a name for every piece when the regions badge is on", () => {
+    // The whole congested neighbourhood is one connected piece of "Inhead".
+    const svg = draw();
+
+    expect(svg).toContain('data-testid="region-decorations"');
+    expect((svg.match(/class="region-outline"/g) ?? []).length).toBe(1);
+    expect(svg).toContain("Inhead");
+  });
+
+  it("draws nothing when the regions badge is off", () => {
+    const svg = draw();
+    const withoutRegions = renderToStaticMarkup(
+      <MapCanvas
+        gameId={null}
+        model={model}
+        theme={probe()}
+        level={1}
+        selectedRegionId={null}
+        onSelectRegion={() => {}}
+        showStaleness
+        showTextures={false}
+        badges={allBadges(true, { regions: false })}
+      />
+    );
+
+    expect(svg).toContain('data-testid="region-decorations"');
+    expect(withoutRegions).not.toContain('data-testid="region-decorations"');
+    expect(withoutRegions).not.toContain("region-outline");
+  });
+
+  it("sits the region decorations after the roads layer and before the route overlay and marks", () => {
+    const svg = draw();
+
+    expect(svg.indexOf('data-layer="roads"')).toBeLessThan(
+      svg.indexOf('data-testid="region-decorations"')
+    );
+    expect(svg.indexOf('data-testid="region-decorations"')).toBeLessThan(
+      svg.indexOf('data-layer="marks"')
+    );
+  });
+
   it("renders the theme's own defs among the map's", () => {
     const svg = draw();
 

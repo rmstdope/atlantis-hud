@@ -130,7 +130,8 @@ export type BadgeName =
   | "buildings"
   | "shafts"
   | "lairs"
-  | "roads";
+  | "roads"
+  | "regions";
 
 /** The badges and what they are called, in the order the popover lists them. */
 export const BADGES: ReadonlyArray<{ name: BadgeName; label: string }> = [
@@ -143,7 +144,8 @@ export const BADGES: ReadonlyArray<{ name: BadgeName; label: string }> = [
   { name: "buildings", label: "Buildings" },
   { name: "shafts", label: "Shafts" },
   { name: "lairs", label: "Lairs" },
-  { name: "roads", label: "Roads" }
+  { name: "roads", label: "Roads" },
+  { name: "regions", label: "Regions" }
 ];
 
 /**
