@@ -11,7 +11,7 @@
  */
 
 import type { HexNode } from "../hexMapModel";
-import { COLUMN_PITCH, ROW_PITCH } from "./mapViewport";
+import { COLUMN_PITCH, HEX_RADIUS, ROW_PITCH } from "./mapViewport";
 import { corners } from "./mapHexView";
 
 export type RegionPiece = {
@@ -46,7 +46,6 @@ const NEIGHBOR_OFFSETS: ReadonlyArray<{ dx: number; dy: number }> = [
   { dx: 1, dy: -1 }
 ];
 
-const HEX_RADIUS = 18;
 const BASE_FONT_SIZE = 11;
 const BASE_LETTER_SPACING = 3.4;
 const BASE_HALO_WIDTH = 3;
