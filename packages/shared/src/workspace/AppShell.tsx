@@ -19,7 +19,7 @@ import {
   unitsForHex,
   type HexMapModel
 } from "../hexMapModel";
-import { deliverTextFile, downloadTextFile, type TextFileSaver } from "../downloadFile";
+import { deliverTextFile, type TextFileSaver } from "../downloadFile";
 import { exportFileName, exportRequestOf } from "../mapExport";
 import { readUnitOrders, writeUnitOrders } from "../ordersDocument";
 import { ordersExportText } from "./ordersExport";
@@ -171,6 +171,26 @@ export async function deliverOrdersExport(
   } catch (error: unknown) {
     console.error("Failed to export orders:", error);
   }
+}
+
+/**
+ * Builds and delivers a game backup - the part of `exportGameBackup` that has no dependency on
+ * React state or hooks, pulled out the same way `deliverOrdersExport` was so it can be tested
+ * without rendering the shell.
+ *
+ * Resolves with the path written, `""` for a browser download, or `null` when the player cancelled
+ * the save - the caller uses that to decide whether the picker may claim the export happened.
+ *
+ * `deliver` exists for the tests and defaults to the real `deliverTextFile`; callers never pass it.
+ */
+export async function deliverGameBackupExport(
+  saveTextFile: TextFileSaver | undefined,
+  gameId: string,
+  backup: string,
+  deliver: typeof deliverTextFile = deliverTextFile
+): Promise<string | null> {
+  const fileName = `${gameId}.atlantis-hud-game.json`;
+  return deliver(saveTextFile, fileName, backup, "application/json");
 }
 
 export function confirmOlderTurnLoad(currentTurn: number, loadedTurn: number): boolean {
@@ -1660,7 +1680,12 @@ export function AppShell({
       try {
         await flush();
         const backup = await client.exportGame(gameId, new Date().toISOString());
-        downloadTextFile(`${gameId}.atlantis-hud-game.json`, backup, "application/json");
+        const path = await deliverGameBackupExport(saveTextFile, gameId, backup);
+        if (path === null) {
+          // The player cancelled the native save. Nothing was written, so the picker stays open
+          // rather than claiming an export that never happened.
+          return;
+        }
         setPickerOpen(false);
       } catch (error: unknown) {
         setGameError(describeError(error));
@@ -1668,7 +1693,7 @@ export function AppShell({
         setBusy(false);
       }
     },
-    [client, flush]
+    [client, flush, saveTextFile]
   );
 
   const importGameBackup = useCallback(
