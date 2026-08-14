@@ -157,6 +157,13 @@ export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(fu
               color: "var(--color-ink-dim)",
               border: "none"
             },
+            // Stock lintGutter() reserves 1.4em for a 1em marker (gh-205) - width enough for the
+            // marker plus a sliver of breathing room, not CodeMirror's default padding, so the
+            // order text keeps the room the indicator does not need.
+            ".cm-gutter-lint": {
+              width: "1.1em",
+              "& .cm-gutterElement": { padding: "0 1px" }
+            },
             ".cm-tooltip": {
               backgroundColor: "var(--color-panel-raised)",
               color: "var(--color-ink)",
