@@ -260,6 +260,109 @@ test("an ally's report for the same turn can be merged into the map", async ({ p
 });
 
 /**
+ * gh-204 / ah-470: an orders file, recognised by its `#atlantis` header, imports through the same
+ * Import target a report does - confirmed first, applied as a full overwrite, with a summary
+ * dialog when the file leaves diagnostics behind.
+ *
+ * Faction 95's own template presets real orders on several units (`13401`'s `@prepare staf` among
+ * them), so an import naming only `18642` always has something of substance to overwrite - the
+ * confirm prompt's overwrite sentence is asserted for its presence, not for an exact count that
+ * would make this test fragile to the fixture's own contents.
+ */
+const ORDERS_IMPORT_WITH_ERROR = [
+  '#atlantis 95 "smoke"',
+  "",
+  "unit 18642",
+  "@study obse",
+  "WROK",
+  "",
+  "#end"
+].join("\n");
+
+const ORDERS_IMPORT_CLEAN = [
+  '#atlantis 95 "smoke"',
+  "",
+  "unit 18642",
+  "@study obse",
+  "",
+  "#end"
+].join("\n");
+
+/** Well-formed, but for a faction that is not the one loaded. */
+const ORDERS_IMPORT_WRONG_FACTION = [
+  '#atlantis 73 "smoke"',
+  "",
+  "unit 99999",
+  "@work",
+  "",
+  "#end"
+].join("\n");
+
+test("an orders file imports through the confirm prompt", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+  await selectUnit(page, OWN_UNIT);
+
+  await choose(page, "orders-turn-71.txt", ORDERS_IMPORT_WITH_ERROR);
+
+  const prompt = page.getByTestId("orders-import-prompt");
+  await expect(prompt).toBeVisible();
+  await expect(prompt).toContainText("orders-turn-71.txt");
+  await expect(prompt).toContainText("Orders for 1 unit of Borg TNG (95), turn 71.");
+  await expect(prompt).toContainText("This replaces all current orders for this turn");
+
+  await page.getByTestId("orders-import-replace").click();
+  await expect(prompt).toHaveCount(0);
+
+  // The deliberately broken line raises the summary dialog rather than the status line - closed
+  // before touching anything else, since it sits over the whole workspace while it is up.
+  const summary = page.getByTestId("orders-import-summary");
+  await expect(summary).toBeVisible();
+  await expect(summary).toContainText("1 unit replaced");
+  await expect(summary).toContainText("1 error");
+  await expect(summary).toContainText("unit 18642: unknown order command: WROK");
+  await page.getByTestId("orders-import-summary-close").click();
+  await expect(summary).toHaveCount(0);
+
+  // The editor shows what the file specified for the unit, through the same document the typing
+  // path writes.
+  await selectHex(page, "1:7,53");
+  await selectUnit(page, OWN_UNIT);
+  await expectOrders(page, /@study obse/);
+  await expectOrders(page, /WROK/);
+});
+
+test("cancel and a wrong faction change nothing, and a plain report still imports", async ({
+  page
+}) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+  await selectUnit(page, OWN_UNIT);
+  await fillOrders(page, "@study obse");
+
+  // A file naming another faction is refused, both factions named, and nothing about the editor
+  // moves.
+  await choose(page, "orders-turn-71-wrong-faction.txt", ORDERS_IMPORT_WRONG_FACTION);
+  await expect(page.getByTestId("orders-import-prompt")).toHaveCount(0);
+  await expect(page.getByTestId("import-status")).toContainText("faction 73");
+  await expect(page.getByTestId("import-status")).toContainText("Borg TNG (95)");
+  await expectOrders(page, /@study obse/);
+
+  // A well-formed file for the right faction asks first, and Cancel leaves the editor untouched.
+  await choose(page, "orders-turn-71.txt", ORDERS_IMPORT_CLEAN);
+  const prompt = page.getByTestId("orders-import-prompt");
+  await expect(prompt).toBeVisible();
+  await page.getByTestId("orders-import-cancel").click();
+  await expect(prompt).toHaveCount(0);
+  await expectOrders(page, /@study obse/);
+
+  // The sniff must not eat a report: a foreign report still reaches the foreign-report prompt.
+  await choose(page, "turn-2.rep", OTHER_FACTION_OLDER);
+  await expect(page.getByTestId("foreign-report-prompt")).toBeVisible();
+  await expect(page.getByTestId("orders-import-prompt")).toHaveCount(0);
+});
+
+/**
  * ah-vp3.2: everything the report says about the faction as a whole, read from the header.
  */
 test("the faction chip opens the faction view", async ({ page }) => {

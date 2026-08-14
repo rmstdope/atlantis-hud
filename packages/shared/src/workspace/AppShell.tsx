@@ -22,6 +22,7 @@ import {
 import { deliverTextFile, type TextFileSaver } from "../downloadFile";
 import { exportFileName, exportRequestOf } from "../mapExport";
 import { readUnitOrders, stripMovementOrderLines, writeUnitOrders } from "../ordersDocument";
+import { describeOrdersImport, isOrdersFile, ordersFileFaction } from "../ordersImport";
 import { ordersExportText } from "./ordersExport";
 import {
   commitTurn,
@@ -76,6 +77,8 @@ import type { AppUpdateControl } from "./appUpdate";
 import { UNSUPPORTED_UPDATES } from "./appUpdate";
 import { ForeignReportPrompt } from "./ForeignReportPrompt";
 import { ImportSummaryDialog } from "./ImportSummaryDialog";
+import { OrdersImportPrompt } from "./OrdersImportPrompt";
+import { OrdersImportSummaryDialog, type OrdersImportSummary } from "./OrdersImportSummaryDialog";
 import { ViewerFactionPrompt, type ViewerFactionOption } from "./ViewerFactionPrompt";
 import { GamePicker } from "./GamePicker";
 import { FactionPanel } from "./FactionPanel";
@@ -208,6 +211,25 @@ type PendingReportLoad = {
   canMerge: boolean;
   viewer: { factionId: string; factionLabel: string; turnNumber: number | null };
   incoming: { factionLabel: string; turnNumber: number | null };
+};
+
+/**
+ * An orders file, recognised and waiting for the player to confirm the overwrite before it is
+ * applied.
+ *
+ * The counts are worked out once, when the file is recognised, from the document on screen at that
+ * moment - the same snapshot discipline `PendingReportLoad` keeps, and for the same reason: the
+ * document being overwritten must be the one the numbers describe, not whatever it happens to be
+ * when Replace is finally pressed.
+ */
+type PendingOrdersImport = {
+  text: string;
+  fileName: string;
+  /** How the current faction names itself, as `Borg TNG (95)` - the file's faction too, by then. */
+  factionLabel: string;
+  turnNumber: number;
+  unitCount: number;
+  emptiedCount: number;
 };
 
 /**
@@ -392,6 +414,11 @@ export function AppShell({
   // A report from another faction, parsed and waiting for the player to say what to do with it,
   // and whose reports have already been folded into the turn on screen.
   const [pendingLoad, setPendingLoad] = useState<PendingReportLoad | null>(null);
+  // An orders file, recognised and waiting for the player to confirm the overwrite it names -
+  // `pendingLoad`'s sibling for the other kind of file the Import target takes. The two clear each
+  // other on arrival: only one question is ever on screen at a time.
+  const [pendingOrdersImport, setPendingOrdersImport] = useState<PendingOrdersImport | null>(null);
+  const [ordersImportSummary, setOrdersImportSummary] = useState<OrdersImportSummary | null>(null);
   const [mergedReports, setMergedReports] = useState<MergedReportRecord[]>([]);
   const [mergedOpen, setMergedOpen] = useState(false);
   const [factionOpen, setFactionOpen] = useState(false);
@@ -982,6 +1009,7 @@ export function AppShell({
           // because it disables the button that opened this file and a prompt the player cannot
           // answer would be worse than no prompt. A second file dropped while this is up simply
           // replaces the question rather than queueing behind it.
+          setPendingOrdersImport(null);
           setPendingLoad({
             report,
             text,
@@ -1090,6 +1118,57 @@ export function AppShell({
       }
     })();
   }, [pendingLoad, client, game, rulesetText]);
+
+  /**
+   * Decides what an orders file dropped on the Import target should do: refuse it outright, or hold
+   * it for the player to confirm.
+   *
+   * Called before any report parse - `importReports` sniffs the file's first line and routes here
+   * instead of `loadReport` the moment it recognises `#atlantis`, so an orders file never reaches
+   * `client.parseReportClassified` at all.
+   */
+  const chooseOrdersImport = useCallback(
+    (text: string, fileName: string) => {
+      if (!game || !parsed || parsed.header.turnNumber === null) {
+        setStatus({
+          regionCount: 0,
+          unitCount: 0,
+          message: "no turn to apply orders to",
+          failed: true,
+          warning: false
+        });
+        return;
+      }
+
+      const fileFactionId = ordersFileFaction(text);
+      if (fileFactionId !== parsed.header.factionId) {
+        setStatus({
+          regionCount: 0,
+          unitCount: 0,
+          message:
+            `${fileName} is orders for faction ${fileFactionId ?? "unknown"}, not ` +
+            `${factionLabelOf(parsed) ?? "your faction"}`,
+          failed: true,
+          warning: false
+        });
+        return;
+      }
+
+      const description = describeOrdersImport(text, ordersDocument);
+      // The one question a file drop can raise, whichever kind of file it turns out to be - this
+      // one replaces a foreign-report question left open exactly as a second report replaces it.
+      setPendingLoad(null);
+      setPendingOrdersImport({
+        text,
+        fileName,
+        factionLabel: factionLabelOf(parsed) ?? "your faction",
+        turnNumber: parsed.header.turnNumber,
+        unitCount: description.fileUnitIds.length,
+        emptiedCount: description.emptiedUnitIds.length
+      });
+    },
+    [game, parsed, ordersDocument]
+  );
 
   /**
    * Imports everything the player chose, in the order the turns say rather than the order they came.
@@ -1239,7 +1318,15 @@ export function AppShell({
       const only = files[0];
       if (files.length === 1 && only) {
         try {
-          await loadReport(await only.text(), only.name);
+          const text = await only.text();
+          // Sniffed before any report parse: an orders file fed to `parseReportClassified` fails in
+          // a way that reads nothing like what actually went wrong. Only on the single-file path -
+          // a batch is a run of turns, and an orders file among them is not a case this bead covers.
+          if (isOrdersFile(text)) {
+            chooseOrdersImport(text, only.name);
+          } else {
+            await loadReport(text, only.name);
+          }
         } catch (error) {
           // `loadReport` answers for everything it does; this is the read that happens before it,
           // for a file that has gone away between being chosen and being opened.
@@ -1332,7 +1419,7 @@ export function AppShell({
 
       await runBatch(batch, choice.factionId);
     },
-    [client, ruleset, parsed, loadReport, flush, runBatch]
+    [client, ruleset, parsed, loadReport, flush, runBatch, chooseOrdersImport]
   );
 
   // The ruleset is a served file rather than something compiled in, so a movement value can be
@@ -1942,6 +2029,60 @@ export function AppShell({
     [game, draftKey, writer]
   );
 
+  /**
+   * Applies the confirmed orders import: the file text becomes the document, through the same
+   * writer path typing takes, then the whole thing is validated so a dirty import can say what is
+   * wrong with it.
+   *
+   * `setOrdersDocument` and `writer.markDirty` are called together, exactly as `onOrdersChange`
+   * calls them - never `setOrdersDocument` alone, which would leave the autosave writing whatever
+   * it was last told rather than what is now on screen.
+   */
+  const replaceOrdersImport = useCallback(() => {
+    const pending = pendingOrdersImport;
+    if (!pending) {
+      return;
+    }
+    setPendingOrdersImport(null);
+    void (async () => {
+      setBusy(true);
+      try {
+        setOrdersDocument(pending.text);
+        writer.markDirty(game, draftKey, pending.text);
+
+        const result = await client.validateOrders(pending.text, rulesetText, rawReport || null, {
+          warnOnUnguardedHex
+        });
+
+        if (result.diagnostics.length > 0) {
+          setOrdersImportSummary({
+            unitCount: pending.unitCount,
+            diagnostics: result.diagnostics,
+            document: pending.text
+          });
+        } else {
+          setStatus({
+            regionCount: 0,
+            unitCount: pending.unitCount,
+            message: `orders imported: ${pending.unitCount} unit${pending.unitCount === 1 ? "" : "s"}`,
+            failed: false,
+            warning: false
+          });
+        }
+      } catch (error) {
+        setStatus({
+          regionCount: 0,
+          unitCount: 0,
+          message: `could not import ${pending.fileName}: ${describeError(error)}`,
+          failed: true,
+          warning: false
+        });
+      } finally {
+        setBusy(false);
+      }
+    })();
+  }, [pendingOrdersImport, client, game, draftKey, writer, rulesetText, rawReport, warnOnUnguardedHex]);
+
   /** Writes a planned route into the selected unit's block, replacing any MOVE already there. */
   const applyRoute = useCallback(
     (order: string) => {
@@ -2537,6 +2678,23 @@ export function AppShell({
       ) : null}
 
       {/*
+        The orders-import twin of the prompt above: nothing changes until Replace is pressed, and
+        Cancel touches nothing at all.
+      */}
+      {pendingOrdersImport ? (
+        <OrdersImportPrompt
+          fileName={pendingOrdersImport.fileName}
+          factionLabel={pendingOrdersImport.factionLabel}
+          turnNumber={pendingOrdersImport.turnNumber}
+          unitCount={pendingOrdersImport.unitCount}
+          emptiedCount={pendingOrdersImport.emptiedCount}
+          busy={busy}
+          onReplace={replaceOrdersImport}
+          onCancel={() => setPendingOrdersImport(null)}
+        />
+      ) : null}
+
+      {/*
         What a batch did, which nothing else on screen can say. A turn that failed to import leaves
         a map indistinguishable from one where the file was never chosen, so this is the only place
         the player finds out - hence a modal rather than the status line the header keeps for the
@@ -2546,6 +2704,17 @@ export function AppShell({
         <ImportSummaryDialog
           summary={importSummary}
           onDismiss={() => setImportSummary(null)}
+        />
+      ) : null}
+
+      {/*
+        A dirty orders import's diagnostics, listed at once rather than left for the problems chip
+        to be opened - the navigator's choice for ah-470, drawn in docs/ui/orders-import.html.
+      */}
+      {ordersImportSummary ? (
+        <OrdersImportSummaryDialog
+          summary={ordersImportSummary}
+          onDismiss={() => setOrdersImportSummary(null)}
         />
       ) : null}
 
