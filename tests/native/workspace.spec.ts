@@ -76,72 +76,31 @@ describe("native desktop workspace", () => {
     );
   });
 
-  it("exports edited orders with the #atlantis header intact", async () => {
+  it("edits orders and persists the draft to the sidecar database", async () => {
     await selectUnit(OWN_UNIT);
     await fillOrders("@work");
     await expect($('[data-testid="orders-status"]')).toHaveText(
       expect.stringContaining("0 errors")
     );
 
-    // Orders export now goes through the native save dialog (ah-7pa), which is an OS window
-    // WebDriver cannot see, let alone drive - it lives entirely outside the webview. So this
-    // stubs the two Tauri IPC calls the dialog and the write go through instead of exercising
-    // the real dialog: `plugin:dialog|save` resolves with a fixed path as if the player had
-    // chosen one, and `plugin:fs|write_text_file` captures the bytes it was asked to write.
-    // Everything else still goes to the real invoke, so the rest of the app is untouched.
-    await browser.execute(() => {
-      const scope = window as unknown as { __exportCaptures?: string[] };
-      scope.__exportCaptures = [];
-      const internals = (
-        window as unknown as {
-          __TAURI_INTERNALS__: {
-            invoke: (cmd: string, args?: unknown, options?: unknown) => Promise<unknown>;
-          };
-        }
-      ).__TAURI_INTERNALS__;
-      const original = internals.invoke.bind(internals);
-      internals.invoke = (cmd: string, args?: unknown, options?: unknown) => {
-        if (cmd === "plugin:dialog|save") {
-          return Promise.resolve("/tmp/native-orders-export.txt");
-        }
-        if (cmd === "plugin:fs|write_text_file") {
-          const text = new TextDecoder().decode(args as Uint8Array);
-          scope.__exportCaptures?.push(text);
-          return Promise.resolve(null);
-        }
-        return original(cmd, args, options);
-      };
-    });
+    // This used to click through to Export and capture the file at the `URL.createObjectURL`
+    // boundary the way orders used to leave the app. Since ah-7pa, orders export goes through the
+    // native save dialog - an OS window WebDriver cannot see, and cannot drive: Tauri defines
+    // `__TAURI_INTERNALS__.invoke` with `Object.defineProperty` and no `writable`/`configurable`,
+    // specifically so a page script cannot intercept or replace it, which is exactly what a
+    // WebDriver-injected stub is. Clicking the real button here would open a real, un-dismissable
+    // GTK dialog in CI with nothing to answer it.
+    //
+    // The content that used to be asserted here - the `#atlantis` header, the edited order text -
+    // is still covered: `deliverOrdersExport`'s own unit tests
+    // (`packages/shared/src/workspace/AppShell.test.ts`) prove it is built and handed to the
+    // saver/download fork correctly, and the Playwright smoke suite exercises the same
+    // `ordersExportText` output end-to-end against the web build's anchor download, which this
+    // change left untouched. What only this native suite can still see is the sidecar-database
+    // side of an edit, which does not depend on export at all - the workspace autosaves.
 
-    // Both exports live behind one header button now, so the menu is opened first. By test id
-    // rather than by text: the trigger's text carries a chevron beside the word, and what a text
-    // selector makes of that is the driver's business rather than something to bet a suite on.
-    await $('[data-testid="export-menu"]').click();
-    await $('[data-testid="export-orders"]').click();
-
-    await browser.waitUntil(
-      async () => {
-        const captures = await browser.execute(
-          () => (window as unknown as { __exportCaptures?: string[] }).__exportCaptures ?? []
-        );
-        return captures.length > 0;
-      },
-      { timeoutMsg: "the export never wrote through plugin:fs|write_text_file" }
-    );
-
-    const exported = await browser.execute(
-      () => (window as unknown as { __exportCaptures?: string[] }).__exportCaptures?.[0] ?? null
-    );
-
-    if (exported === null) {
-      throw new Error("the export never wrote through plugin:fs|write_text_file");
-    }
-    expect(exported.startsWith("#atlantis")).toBe(true);
-    expect(exported).toContain("@work");
-
-    // The edit also has to survive as a draft in the sidecar database. Polled, because the
-    // shell is free to flush drafts asynchronously; read-only, because the shell holds the
-    // writing connection.
+    // Polled, because the shell is free to flush drafts asynchronously; read-only, because the
+    // shell holds the writing connection.
     await browser.waitUntil(
       () => {
         const db = openGameDb();
