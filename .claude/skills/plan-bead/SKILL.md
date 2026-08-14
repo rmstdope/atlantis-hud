@@ -422,9 +422,11 @@ children are P4 with it, and the whole family gets ranked in one question at the
 The children then queue like anything else, by priority, and a later one may be planned before its
 sibling has been **built** — but never before that sibling has been **planned**, which the `bd dep`
 edges you just wired enforce for you. Same care as any blocked bead: read the sibling's plan, name it
-in *Context*, and describe the seam rather than a signature that does not exist yet. Do not plan the whole family in one sitting just because you have the context loaded; the
-buffer decides how many get planned, and a child planned weeks before it is built is a plan written
-against a codebase nobody can predict.
+in *Context*, and describe the seam rather than a signature that does not exist yet.
+
+Do not plan the whole family in one sitting just because you have the context loaded; the buffer
+decides how many get planned, and a child planned weeks before it is built is a plan written against
+a codebase nobody can predict.
 
 Then **retype the parent as an epic**:
 
@@ -592,8 +594,8 @@ whether Sonnet could finish without asking.
 ## Finishing one, and the session
 
 Add `planned`, remove `planning`, `bd dolt push`, and say which bead you planned, what the navigator
-decided, and — if you rewrote it — what the title now says and why. A bead left carrying `planning` is one no later session will consider, so check
-that nothing behind you still has it:
+decided, and — if you rewrote it — what the title now says and why. A bead left carrying `planning`
+is one no later session will consider, so check that nothing behind you still has it:
 
 ```bash
 bd list --label planning --status open --json | jq -r '.[] | "\(.id)\t\(.title)"'
