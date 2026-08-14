@@ -1667,6 +1667,11 @@ test("a route crosses ground only an earlier turn described", async ({ page }) =
   await selectHex(page, "1:41,3");
   await expect(page.getByTestId("panel-region")).toContainText("Last seen turn 40");
   await expect(page.getByTestId("panel-region")).toContainText("2 turns ago");
+
+  // Whatever stood here at t40 may have moved, disbanded or died since - the units pane must not
+  // show it as though it were still there (ah-o86).
+  await expect(page.getByTestId("panel-units")).toContainText("Not seen since turn 40");
+  await expect(page.getByTestId("panel-units").locator('[data-testid^="unit-row-"]')).toHaveCount(0);
 });
 
 test("only your own units can be planned for", async ({ page }) => {
