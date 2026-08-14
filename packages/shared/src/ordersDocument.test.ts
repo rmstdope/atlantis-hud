@@ -249,9 +249,12 @@ const TURN_71_REPORT = readFileSync(
   "utf8"
 );
 const TEMPLATE_MARKER = "Orders Template (Long Format):\n\n";
-const TURN_71_TEMPLATE = TURN_71_REPORT.slice(
-  TURN_71_REPORT.indexOf(TEMPLATE_MARKER) + TEMPLATE_MARKER.length
-).trimEnd();
+const TEMPLATE_START = TURN_71_REPORT.indexOf(TEMPLATE_MARKER);
+// Fail loudly rather than slicing from a bogus offset if the fixture ever loses the marker.
+if (TEMPLATE_START === -1) {
+  throw new Error(`fixture is missing "${TEMPLATE_MARKER.trim()}"`);
+}
+const TURN_71_TEMPLATE = TURN_71_REPORT.slice(TEMPLATE_START + TEMPLATE_MARKER.length).trimEnd();
 
 describe("restoring the server's unit descriptions", () => {
   it("puts the server's description back under the unit line", () => {

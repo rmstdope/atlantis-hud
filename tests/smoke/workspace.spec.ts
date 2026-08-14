@@ -361,8 +361,8 @@ test("a single ally report still asks before it changes anything", async ({ page
  * Three exports behind one button.
  *
  * They were two header buttons of their own, which spent a permanent quarter of the toolbar on a
- * pair of things a player does once a turn. One button that expands is the same exports one press
- * further away, and the header keeps the room for what is read every minute.
+ * pair of things a player does once a turn. One button that expands is the same three exports one
+ * press further away, and the header keeps the room for what is read every minute.
  */
 test("the export button expands into the orders and map exports", async ({ page }) => {
   await loadReport(page);
