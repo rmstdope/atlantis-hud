@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ah-13o — Resizable split between the unit and orders panels</title>
+<style>
+  :root { --page:#10151c; --panel:#171e28; --edge:#2a3442; --ink:#d7dee8; --dim:#8a94a3;
+          --map:#0d222b; --grip:#4a5a6e; --grip-hot:#7fa3c8; --warn:#d9a441; }
+  body { background: var(--page); color: var(--ink); font: 14px/1.5 system-ui, sans-serif;
+         margin: 0; padding: 24px 32px 64px; }
+  h1 { font-size: 20px; }
+  h2 { font-size: 15px; margin: 0 0 8px; }
+  p.note { color: var(--dim); max-width: 76ch; }
+  .row { display: flex; gap: 40px; flex-wrap: wrap; margin: 20px 0 32px; }
+  .variant { width: 336px; }
+  .cost { color: var(--dim); font-size: 13px; margin: 8px 0 0; }
+
+  /* The simulated right rail, floating over "map" */
+  .rail-bg { background:
+      repeating-linear-gradient(60deg, var(--map) 0 22px, #0f2833 22px 44px);
+      border: 1px solid var(--edge); border-radius: 10px; padding: 10px;
+      height: 540px; box-sizing: border-box; }
+  .rail { display: flex; flex-direction: column; gap: 10px; height: 100%; }
+  .pane { background: var(--panel); border: 1px solid var(--edge); border-radius: 8px;
+          overflow: hidden; display: flex; flex-direction: column; min-height: 0; }
+  .pane header { display: flex; align-items: center; gap: 8px; padding: 6px 10px;
+                 border-bottom: 1px solid var(--edge); font-size: 12px; flex: none; }
+  .pane header .title { font-weight: 600; }
+  .pane header .spacer { flex: 1; }
+  .pane header .caret { color: var(--dim); }
+  .pane .body { padding: 8px 10px; font-size: 11.5px; overflow: hidden; color: var(--dim); }
+  .unit-slot { flex: 1; min-height: 96px; }
+  .orders-slot { flex: none; height: 220px; min-height: 144px; }
+  .orders-slot .body { font-family: ui-monospace, monospace; color: var(--ink); }
+
+  /* Splitter, variant A: invisible until hover */
+  .split { flex: none; height: 10px; margin: -10px 0; position: relative; z-index: 2;
+           cursor: row-resize; touch-action: none; }
+  .split-a::after { content: ""; position: absolute; left: 0; right: 0; top: 4px; height: 2px;
+                    border-radius: 1px; background: transparent; transition: background .12s; }
+  .split-a:hover::after, .split-a.dragging::after { background: var(--grip-hot); }
+
+  /* Splitter, variant B (CHOSEN): always-visible grip dots */
+  .split-b::after { content: ""; position: absolute; left: 50%; top: 3px; width: 34px; height: 4px;
+                    margin-left: -17px; border-radius: 2px; background: var(--grip);
+                    transition: background .12s, width .12s, margin-left .12s; }
+  .split-b:hover::after, .split-b.dragging::after { background: var(--grip-hot); width: 48px;
+                    margin-left: -24px; }
+
+  .limit-flash::after { background: var(--warn) !important; }
+
+  .statics { display: flex; gap: 40px; flex-wrap: wrap; }
+  .static-fig { width: 336px; }
+  .static-fig .rail-bg { height: 300px; }
+  .strip { flex: none; }
+  .strip .body { display: none; }
+</style>
+</head>
+<body>
+<h1>ah-13o — Resizable split between the unit and orders panels</h1>
+<p class="note"><strong>Chosen: Option B — the always-visible grip</strong>, for discoverability
+over minimal chrome. With it: the drag is clamped by panel minimums only (the 55% ceiling governs
+just the default), the split persists across reloads globally like panel collapse, Escape cancels a
+drag in flight, double-click resets to the default, and the handle is keyboard-focusable (arrow
+keys nudge by 1rem, accessible name "Resize orders panel", no tooltip). A window too short for the
+stored split clamps to fit without touching the stored preference. The full interview is recorded
+in bead ah-13o's design field.</p>
+<p class="note">The right rail today: the unit panel takes whatever the orders editor leaves, and
+the editor is pinned at a fixed height. This adds a drag handle on the boundary between them.
+<strong>Both variants below are live — drag them.</strong> The difference is only how the handle
+announces itself; the drag behaviour is identical. Minimums are enforced while dragging (editor
+9rem, unit panel 6rem) — the handle flashes amber when you hit one. Double-click a handle to reset
+to the default split.</p>
+
+<div class="row">
+  <div class="variant">
+    <h2>Option A — invisible until hover (rejected)</h2>
+    <div class="rail-bg"><div class="rail">
+      <div class="pane unit-slot">
+        <header><span class="title">Unit</span><span class="spacer"></span><span class="caret">▾</span></header>
+        <div class="body">Emissary (341) — leader, avoiding<br>Skills: combat 2, riding 1<br>Items: 1 leader, 12 silver, horse<br>… unit description continues …</div>
+      </div>
+      <div class="split split-a" data-split></div>
+      <div class="pane orders-slot" data-orders>
+        <header><span class="title">Orders</span><span class="spacer"></span><span class="caret">▾</span></header>
+        <div class="body">move n n nw<br>study combat<br>@work<br>turn<br>&nbsp;&nbsp;deliver 341 100 silv<br>endturn</div>
+      </div>
+    </div></div>
+    <p class="cost">No chrome over the map, but nothing says "this can be dragged" until you happen
+    to hover it. Rejected for first-time discoverability.</p>
+  </div>
+
+  <div class="variant">
+    <h2>Option B — always-visible grip (chosen)</h2>
+    <div class="rail-bg"><div class="rail">
+      <div class="pane unit-slot">
+        <header><span class="title">Unit</span><span class="spacer"></span><span class="caret">▾</span></header>
+        <div class="body">Emissary (341) — leader, avoiding<br>Skills: combat 2, riding 1<br>Items: 1 leader, 12 silver, horse<br>… unit description continues …</div>
+      </div>
+      <div class="split split-b" data-split></div>
+      <div class="pane orders-slot" data-orders>
+        <header><span class="title">Orders</span><span class="spacer"></span><span class="caret">▾</span></header>
+        <div class="body">move n n nw<br>study combat<br>@work<br>turn<br>&nbsp;&nbsp;deliver 341 100 silv<br>endturn</div>
+      </div>
+    </div></div>
+    <p class="cost">A small grip pill sits centred in the existing gap, brightening and widening on
+    hover. Discoverable at a glance; costs one permanent 34px sliver of chrome over the map. No
+    extra vertical space either way — both live in today's 10px gap.</p>
+  </div>
+</div>
+
+<h2>States the drag has to answer for (static)</h2>
+<div class="statics">
+  <div class="static-fig">
+    <h2 style="font-size:13px">Unit panel folded — handle gone</h2>
+    <div class="rail-bg"><div class="rail">
+      <div class="pane strip">
+        <header><span class="title">Unit</span><span class="spacer"></span><span class="caret">▸</span></header>
+      </div>
+      <div class="pane" style="flex:1">
+        <header><span class="title">Orders</span><span class="spacer"></span><span class="caret">▾</span></header>
+        <div class="body" style="font-family:ui-monospace,monospace;color:var(--ink)">move n n nw<br>study combat<br>@work</div>
+      </div>
+    </div></div>
+    <p class="cost">With the unit panel folded the editor takes the whole column (today's behaviour,
+    kept). The handle disappears with it; unfolding restores the split you had chosen.</p>
+  </div>
+  <div class="static-fig">
+    <h2 style="font-size:13px">Minimum reached — amber flash</h2>
+    <div class="rail-bg"><div class="rail">
+      <div class="pane" style="flex:none;height:96px">
+        <header><span class="title">Unit</span><span class="spacer"></span><span class="caret">▾</span></header>
+        <div class="body">Emissary (341) — leader…</div>
+      </div>
+      <div class="split split-b limit-flash"></div>
+      <div class="pane" style="flex:1">
+        <header><span class="title">Orders</span><span class="spacer"></span><span class="caret">▾</span></header>
+        <div class="body" style="font-family:ui-monospace,monospace;color:var(--ink)">move n n nw<br>study combat<br>@work<br>turn<br>&nbsp;&nbsp;deliver 341 100 silv<br>endturn<br>…</div>
+      </div>
+    </div></div>
+    <p class="cost">Dragging past a minimum stops the panel there and tints the handle amber for the
+    rest of the drag, so a stuck drag reads as "limit" rather than "broken".</p>
+  </div>
+</div>
+
+<script>
+  for (const split of document.querySelectorAll("[data-split]")) {
+    const orders = split.nextElementSibling;
+    const DEFAULT_H = 220, MIN_ORDERS = 144, MIN_UNIT = 96;
+    let startY = 0, startH = 0;
+    split.addEventListener("pointerdown", e => {
+      e.preventDefault();
+      startY = e.clientY; startH = orders.getBoundingClientRect().height;
+      split.classList.add("dragging");
+      const rail = split.parentElement.getBoundingClientRect();
+      const move = ev => {
+        const max = rail.height - MIN_UNIT - 40;
+        let h = startH - (ev.clientY - startY);
+        const clamped = Math.min(Math.max(h, MIN_ORDERS), max);
+        split.classList.toggle("limit-flash", clamped !== h);
+        orders.style.height = clamped + "px";
+      };
+      const up = () => {
+        split.classList.remove("dragging", "limit-flash");
+        window.removeEventListener("pointermove", move);
+        window.removeEventListener("pointerup", up);
+        window.removeEventListener("pointercancel", up);
+      };
+      window.addEventListener("pointermove", move);
+      window.addEventListener("pointerup", up);
+      window.addEventListener("pointercancel", up);
+    });
+    split.addEventListener("dblclick", () => { orders.style.height = DEFAULT_H + "px"; });
+  }
+</script>
+</body>
+</html>
