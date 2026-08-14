@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import type { DeclaredAttitudes, FactionStatus } from "@atlantis/core-client";
 import { allowanceRows, attitudeLines } from "./factionView";
+import { POPOVER_BODY_MAX_H } from "./primitives";
 
 /**
  * Everything the report says about the faction as a whole: allowances, unclaimed silver and the
@@ -89,7 +90,7 @@ export function FactionPanel({
         </button>
       </div>
 
-      <div className="max-h-[40vh] overflow-y-auto p-2">
+      <div className={`${POPOVER_BODY_MAX_H} overflow-y-auto p-2`}>
         {factionTypes.length > 0 ? (
           <p className="text-ink-soft">{factionTypes.join(", ")}</p>
         ) : null}

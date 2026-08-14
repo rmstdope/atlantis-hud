@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import type { HexFindings } from "../orderEditor";
+import { POPOVER_BODY_MAX_H } from "./primitives";
 
 /**
  * Everything order validation found, across the whole map, grouped by hex.
@@ -83,7 +84,7 @@ export function ProblemsPanel({
         </button>
       </div>
 
-      <ul className="max-h-[50vh] list-none overflow-y-auto p-2">
+      <ul className={`${POPOVER_BODY_MAX_H} list-none overflow-y-auto p-2`}>
         {hexes.map((hex) => (
           <li
             key={hex.regionId}

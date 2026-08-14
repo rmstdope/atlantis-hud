@@ -47,6 +47,28 @@ const draw = (overrides: Partial<Parameters<typeof AppHeader>[0]> = {}) =>
     />
   );
 
+describe("AppHeader wrapping", () => {
+  beforeEach(resetWorkspaceStore);
+
+  it("the header wraps and keeps the actions grouped right", () => {
+    const markup = draw();
+    const rootMatch = markup.match(/<header[^>]*class="([^"]*)"/);
+    expect(rootMatch).not.toBeNull();
+    const rootClass = rootMatch![1];
+    expect(rootClass).toContain("flex-wrap");
+    expect(rootClass).toContain("min-h-9");
+    expect(rootClass.split(/\s+/)).not.toContain("h-9");
+
+    const actionsMatch = markup.match(/<[^>]*data-testid="header-actions"[^>]*class="([^"]*)"/);
+    expect(actionsMatch).not.toBeNull();
+    expect(actionsMatch![1]).toContain("ml-auto");
+
+    const actionsIndex = markup.indexOf('data-testid="header-actions"');
+    const exportIndex = markup.indexOf('data-testid="export-menu"');
+    expect(exportIndex).toBeGreaterThan(actionsIndex);
+  });
+});
+
 describe("AppHeader faction chip", () => {
   beforeEach(resetWorkspaceStore);
 

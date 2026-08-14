@@ -43,7 +43,7 @@ export function GameGate({
 
   return (
     <div className="flex h-full flex-col bg-ground text-ink">
-      <header className="flex h-9 flex-none items-center gap-3.5 border-b border-edge bg-panel px-3 text-[11.5px] whitespace-nowrap">
+      <header className="flex flex-wrap min-h-9 flex-none items-center gap-3.5 border-b border-edge bg-panel px-3 text-[11.5px] whitespace-nowrap">
         {/* Just the title, as in the workspace header: the build tag lives in the About tab. */}
         <span className="tracking-[0.06em] text-brass">ATLANTIS HUD</span>
         <span className="flex-1" />

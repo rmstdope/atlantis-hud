@@ -72,6 +72,12 @@ describe("FactionPanel", () => {
     expect(markup).toContain("default Unfriendly");
   });
 
+  it("the body is clamped to the window, not to 40vh", () => {
+    const markup = draw();
+    expect(markup).toContain("max-h-[calc(100vh-6rem)]");
+    expect(markup).not.toContain("max-h-[40vh]");
+  });
+
   describe("degrading", () => {
     it("a report with neither block still renders the name and the silver", () => {
       const markup = draw({ status: null, attitudes: null });

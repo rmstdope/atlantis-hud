@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef } from "react";
 import { splitTurnMessages, type TurnMessage } from "../turnMessages";
+import { POPOVER_BODY_MAX_H } from "./primitives";
 
 /** Which of the report's two lists is being read. */
 export type TurnMessagesTab = "errors" | "events";
@@ -114,7 +115,7 @@ export function TurnMessagesPanel({
         <Tab name="events" count={events.length} active={tab} onTab={onTab} />
       </div>
 
-      <ul className="max-h-[60vh] overflow-y-auto p-2">
+      <ul className={`${POPOVER_BODY_MAX_H} overflow-y-auto p-2`}>
         {shown.map((message, index) => (
           <li
             key={`${tab}-${index}`}

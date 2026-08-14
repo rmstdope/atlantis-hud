@@ -210,8 +210,13 @@ export function AppHeader({
       data-testid="app-header"
       onDragOver={(event) => event.preventDefault()}
       onDrop={onDrop}
-      className="flex h-9 flex-none items-center gap-3.5 border-b border-edge bg-panel px-3 text-[11.5px] whitespace-nowrap"
+      className="flex flex-wrap min-h-9 flex-none items-center gap-x-3.5 border-b border-edge bg-panel px-3 text-[11.5px] whitespace-nowrap"
     >
+      {/*
+        Game state, grouped so it can wrap internally on a very narrow window without disturbing
+        the actions group's own wrap onto a second row.
+      */}
+      <div className="flex h-9 flex-wrap items-center gap-3.5 min-w-0">
       {/* Just the title: which build this is belongs to the About tab, not the title bar. */}
       <span className="tracking-[0.06em] text-brass">ATLANTIS HUD</span>
 
@@ -405,9 +410,14 @@ export function AppHeader({
           {battleCount} battle{battleCount === 1 ? "" : "s"}
         </button>
       ) : null}
+      </div>
 
-      <span className="flex-1" />
-
+      {/*
+        Import, Export and settings. `ml-auto` right-aligns this group on a shared row and, once it
+        wraps, on its own row too - so it drops as one unit rather than trailing off wherever the
+        game-state group happened to end.
+      */}
+      <div data-testid="header-actions" className="ml-auto flex h-9 items-center gap-3.5">
       <input
         ref={fileRef}
         type="file"
@@ -467,6 +477,7 @@ export function AppHeader({
         </button>
         {settingsOpen ? settings : null}
       </span>
+      </div>
     </header>
   );
 }

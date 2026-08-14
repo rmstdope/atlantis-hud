@@ -2540,3 +2540,47 @@ test("orders change the units table to show the coming month", async ({ page }) 
   await expect(row).toContainText("Seven of Eight");
   await expect(row).not.toHaveAttribute("data-preview-status", /.+/);
 });
+
+/**
+ * ah-cp8: a narrow window used to clip the right-hand end of the header (Export, the settings
+ * gear) instead of adapting. The header now wraps into two groups, with the actions group
+ * dropping to its own right-aligned row when the game-state group has already taken the width.
+ */
+test("a narrow window wraps the header instead of clipping it", async ({ page }) => {
+  await loadReport(page);
+  await page.setViewportSize({ width: 520, height: 720 });
+
+  const exportMenu = page.getByTestId("export-menu");
+  const settings = page.getByTestId("settings-indicator");
+  await expect(exportMenu).toBeVisible();
+  await expect(settings).toBeVisible();
+
+  const exportBox = (await exportMenu.boundingBox())!;
+  const settingsBox = (await settings.boundingBox())!;
+  expect(exportBox.x + exportBox.width).toBeLessThanOrEqual(520);
+  expect(settingsBox.x + settingsBox.width).toBeLessThanOrEqual(520);
+
+  // Taller than one row proves the actions group wrapped rather than merely shrinking in place.
+  const headerBox = (await page.getByTestId("app-header").boundingBox())!;
+  expect(headerBox.height).toBeGreaterThan(40);
+});
+
+/**
+ * ah-cp8: the faction view's body was capped at 40vh regardless of how much room the window had,
+ * so a faction with many declared attitudes always scrolled even with space to spare below it.
+ * The clamp now follows the viewport, so at the default 720px-tall window the last attitude row
+ * is on screen without scrolling.
+ */
+test("the faction view uses the window before it scrolls", async ({ page }) => {
+  await loadReport(page);
+  await page.getByTestId("faction-chip").click();
+
+  const panel = page.getByTestId("faction-panel");
+  await expect(panel).toBeVisible();
+
+  const lastAttitudeRow = panel.locator('[data-testid^="faction-attitude-"]').last();
+  await expect(lastAttitudeRow).toBeInViewport();
+
+  const panelBox = (await panel.boundingBox())!;
+  expect(panelBox.y + panelBox.height).toBeLessThanOrEqual(720);
+});
