@@ -46,3 +46,6 @@ apps/desktop/src-tauri/atlantis-hud/
 .beads-credential-key
 .beads/proxieddb/
 *.gate.lock*
+
+# MacOS
+.DS_Store
