@@ -36,6 +36,8 @@ const draw = (overrides: Partial<Parameters<typeof AppHeader>[0]> = {}) =>
       progress={null}
       onExportOrders={() => {}}
       canExport={false}
+      onExportOrdersLong={() => {}}
+      canExportLong={false}
       onExportMap={() => {}}
       canExportMap={false}
       settingsOpen={false}
