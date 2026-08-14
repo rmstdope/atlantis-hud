@@ -1,0 +1,3 @@
+[submodule ".claude/cerebro"]
+	path = .claude/cerebro
+	url = https://github.com/rmstdope/cerebro.git

@@ -255,5 +255,7 @@ Development here is split between a planning session, which turns rough beads in
 you about anything a player will see, and one or more implementation sessions, which build them
 test-first and see them onto main.
 
-See `docs/agent-workflow.md` for how to start each of them, where to find what is waiting on you,
-and what the whole thing costs in practice.
+See `.claude/cerebro/docs/agent-workflow.md` for how to start each of them, where to find what is
+waiting on you, and what the whole thing costs in practice. The agents, their skills and their
+launchers all live in the [cerebro](https://github.com/rmstdope/cerebro) submodule at
+`.claude/cerebro`; nothing about the fleet is maintained in this repository any more.
