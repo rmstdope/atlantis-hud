@@ -94,6 +94,11 @@ HTML mockup in front of you and wait for an answer, which print mode cannot do. 
 whose blockers are already planned, sleeping ten minutes, and refilling when the buffer drops below
 two. There is no go flag and no loop around it; the session runs until you end it.
 
+**A P0 pre-empts all of that.** An unplanned P0 is planned immediately, on the pass it appears and
+however full the buffer already is — a missing plan is the only thing keeping an implementer off the
+most urgent bead there is, and a buffer of five or six is a price worth paying for that. The buffer
+is a floor under the fleet, not a ceiling on urgent work.
+
 **Customer service is Moira, and she owns the inbox:**
 
 ```bash

@@ -1,6 +1,6 @@
 ---
 name: plan-bead
-description: The planning role — keep four planned, unclaimed beads ahead of the implementers, turning each into something an agent can build unattended, deciding architecture yourself and every user-facing question with the navigator. Use when running a planning session in atlantis-hud.
+description: The planning role — plan every P0 immediately, keep four planned, unclaimed beads ahead of the implementers, turning each into something an agent can build unattended, deciding architecture yourself and every user-facing question with the navigator. Use when running a planning session in atlantis-hud.
 ---
 
 # Planning a bead
@@ -60,6 +60,44 @@ Triage runs **once per session, at the start**. On later wake-ups, only beads th
 since the last pass need asking about — a bead the navigator already ranked is settled, and a bead
 they declined to rank is not worth asking about twice.
 
+## P0 pre-empts the buffer
+
+**An unplanned P0 is planned now.** Not next, not when the buffer drains — now, and however full the
+queue already is. A P0 is a bead the navigator has said is the most urgent thing there is, and a plan
+is the only thing standing between it and an implementer picking it up; a P0 sitting unplanned behind
+a healthy buffer is the fleet working on the wrong thing while the right thing waits.
+
+Check at the top of every pass — after triage on the first one, immediately on waking on every one
+after — and check it **before you count the buffer**, because the buffer's answer does not matter
+here:
+
+```bash
+bd list --status open --exclude-label planned --exclude-label human --exclude-type epic --json \
+  | jq -r '.[] | select(.priority==0) | "\(.id)\t\(.title)"'
+```
+
+Anything it returns, plan. All of it, one at a time, before you look at the buffer at all — and if
+that leaves five or six planned beads instead of four, the buffer is over its number and that is
+simply what it costs. The buffer is a floor under the fleet, not a ceiling on urgent work.
+
+Then go on to the buffer as usual. A P0 you just planned counts toward it like anything else, so the
+top-up that follows is usually short.
+
+Everything else about planning holds unchanged, and two parts of it matter more here rather than
+less:
+
+- **A P0's unplanned blocker is still planned first.** Urgency does not make a plan writable against
+  an interface nobody has specified. Walk down to the deepest unplanned blocker exactly as always —
+  it is now the most urgent bead in the repository, since the P0 cannot be built until it exists.
+- **A user-facing question on a P0 is still the navigator's.** But say plainly that it is a P0 you
+  are blocked on, and if it goes unanswered, park it with `needs-ui-decision` and `human` like any
+  other and **lead your next report with it**. A P0 in the `human` queue is the most important thing
+  the navigator needs to hear from you, and it must not arrive as the last line of a status summary.
+
+**Say so when a P0 appears.** The navigator may have filed it minutes ago in another terminal and be
+waiting to see it picked up; a line saying which P0 you are planning and that you have jumped the
+queue for it is how they learn the urgency landed.
+
 ## You keep a buffer of four
 
 You are not here to plan one bead and leave. You keep the implementers fed, and the measure of that
@@ -76,13 +114,19 @@ has children rather than a plan.
 
 The cycle:
 
-1. **Fill to four.** Plan beads one at a time until the count reaches four.
-2. **Sleep ten minutes.** Say that you are doing so, then wait.
-3. **Look again.** Two or more still there — sleep another ten minutes and look again. **Fewer than
-   two — fill back to four** and start over.
+1. **Plan every unplanned P0**, whatever the buffer says. See *P0 pre-empts the buffer*.
+2. **Fill to four.** Plan beads one at a time until the count reaches four.
+3. **Sleep ten minutes.** Say that you are doing so, then wait.
+4. **Look again.** A new P0 — plan it, always, and then continue. Otherwise: two or more in the
+   buffer, sleep another ten minutes and look again; **fewer than two, fill back to four** and start
+   over.
 
 The gap between four and two is deliberate: topping up on every single claim would have you planning
 constantly against a queue that barely moved. Let it drain by half, then refill it in one go.
+
+**The P0 check has no such gap, and that is the point.** It runs on every wake-up and acts on every
+hit — a P0 filed while you slept is planned on the next wake-up even if the buffer is untouched at
+four and step 4 would otherwise have sent you straight back to sleep.
 
 **If you cannot reach four, that is fine.** Plan every candidate there is, say how far you got and
 why, and sleep as usual — new beads arrive, and the next wake-up will find them. Never invent work to
@@ -115,6 +159,8 @@ bd dolt push                                       # or the release is invisible
 ```
 
 **Highest priority first**, which is what `--sort priority` gives you: P0 before P1, and so on down.
+P0 goes further than being first in this list — it pre-empts the buffer entirely, so an unplanned one
+is planned whether or not the queue needs topping up. See *P0 pre-empts the buffer*.
 Several at the same priority is not a decision — take any of them and move on rather than weighing
 them against each other. Priority orders the *candidates*; it never overrides the dependency rule
 below.
