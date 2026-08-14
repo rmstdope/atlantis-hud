@@ -191,6 +191,8 @@ function GlobalSettings() {
   const setPaneTransparency = useSettingsStore((state) => state.setPaneTransparency);
   const unitListLimit = useSettingsStore((state) => state.unitListLimit);
   const setUnitListLimit = useSettingsStore((state) => state.setUnitListLimit);
+  const unitListFixedSize = useSettingsStore((state) => state.unitListFixedSize);
+  const setUnitListFixedSize = useSettingsStore((state) => state.setUnitListFixedSize);
   const warnOnUnguardedHex = useSettingsStore((state) => state.warnOnUnguardedHex);
   const setWarnOnUnguardedHex = useSettingsStore((state) => state.setWarnOnUnguardedHex);
   const showShortcutsAtStartup = useSettingsStore((state) => state.showShortcutsAtStartup);
@@ -336,6 +338,28 @@ function GlobalSettings() {
           step={1}
           value={unitListLimit}
           onChange={(event) => setUnitListLimit(Number(event.target.value))}
+          className="accent-brass"
+        />
+      </label>
+
+      {/*
+        Off by default: the ceiling above is the ordinary behaviour, and this flips it to a floor
+        too - the pane always reserves this many rows, even on an empty or stale hex, so moving
+        between hexes never resizes it.
+      */}
+      <label className="flex items-center justify-between gap-2 text-ink-soft">
+        <span>
+          <span className="block">Fixed pane size</span>
+          <span className="block text-[10px] text-ink-dim">
+            Always reserve this many rows, even when the hex holds fewer units.
+          </span>
+        </span>
+        <input
+          type="checkbox"
+          data-testid="settings-unit-list-fixed"
+          aria-label="Fixed pane size"
+          checked={unitListFixedSize}
+          onChange={(event) => setUnitListFixedSize(event.target.checked)}
           className="accent-brass"
         />
       </label>

@@ -282,6 +282,65 @@ describe("settings store", () => {
     expect(store().unitListLimit).toBe(14);
   });
 
+  /**
+   * The rows setting is a ceiling by default - a hex with fewer units gets a shorter pane. This
+   * flips that: the pane always reserves the configured number of rows. Off by default, so
+   * nobody's pane changes shape until they ask for it.
+   */
+  it("defaults fixed pane size to off", () => {
+    expect(store().unitListFixedSize).toBe(false);
+  });
+
+  it("persists fixed pane size", async () => {
+    store().setUnitListFixedSize(true);
+    expect(store().unitListFixedSize).toBe(true);
+
+    const storage = useSettingsStore.persist.getOptions().storage;
+    const persisted = await storage?.getItem("atlantis-hud-settings");
+    if (!storage || !persisted) {
+      throw new Error("settings storage was not available");
+    }
+
+    useSettingsStore.setState({ unitListFixedSize: false });
+    await storage.setItem("atlantis-hud-settings", persisted);
+    await useSettingsStore.persist.rehydrate();
+
+    expect(store().unitListFixedSize).toBe(true);
+  });
+
+  /**
+   * Every settings blob written before this existed has no such key, and rehydration merges
+   * storage over the defaults rather than beside them - so the absent key has to mean the same
+   * thing the default does: off.
+   */
+  it("shows fixed pane size as off to a player upgrading from a build that had no such setting", async () => {
+    // A value no default could produce, which also gives storage a blob to edit.
+    store().setPaneTransparency(35);
+
+    const storage = useSettingsStore.persist.getOptions().storage;
+    const persisted = (await storage?.getItem("atlantis-hud-settings")) as
+      | { state: Record<string, unknown>; version?: number }
+      | undefined;
+    if (!storage || !persisted) {
+      throw new Error("settings storage was not available");
+    }
+
+    // The blob an older build wrote: everything else, and no mention of this key at all.
+    const olderState = { ...persisted.state };
+    delete olderState.unitListFixedSize;
+    resetSettingsStore();
+    await storage.setItem("atlantis-hud-settings", {
+      ...persisted,
+      state: olderState
+    } as unknown as Parameters<typeof storage.setItem>[1]);
+    await useSettingsStore.persist.rehydrate();
+
+    // The transparency is the control: it proves the older blob was read at all, so the answer
+    // below is the absent key being answered rather than storage being ignored.
+    expect(store().paneTransparency).toBe(35);
+    expect(store().unitListFixedSize).toBe(false);
+  });
+
   it("keeps the movement planner behind its flag, off by default", () => {
     expect(store().movementPlanner).toBe(false);
   });

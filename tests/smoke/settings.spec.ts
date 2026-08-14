@@ -358,6 +358,47 @@ test("the units pane's own + and - set the maximum, and it survives a reload", a
   await expect(value).toHaveText("max 12");
 });
 
+test("fixed pane size holds the pane's height on hexes with few units, and survives a reload", async ({
+  page
+}) => {
+  await clearGames(page);
+  await createGame(page, "Fixed pane game");
+  await openReport(page);
+
+  // A hex with 92 units, capped at the default 12 rows: the tallest the pane ever stands at that
+  // limit, whether the option is on or off.
+  await selectHex(page, "1:7,53");
+  const atCeiling = await unitsPaneHeight(page);
+
+  // A hex known only from a neighbour's exits, carrying no units at all - the shortest the pane
+  // ever stands with the option off.
+  await selectHex(page, "1:7,51");
+  const atEmpty = await unitsPaneHeight(page);
+  expect(atEmpty).toBeLessThan(atCeiling);
+
+  await page.getByTestId("settings-indicator").click();
+  await page.getByTestId("settings-unit-list-fixed").click();
+  await page.keyboard.press("Escape");
+
+  // The empty hex now reserves the full twelve rows, the same height a full one is capped at.
+  await expect.poll(() => unitsPaneHeight(page)).toBeGreaterThanOrEqual(atCeiling - 1);
+  await expect(page.getByTestId("unit-list-limit-value")).toHaveText("12");
+
+  // A preference, not a session choice: it holds across a reload, on the same empty hex.
+  await page.reload();
+  await expect(page.getByTestId("import-status")).toContainText("restored turn 71");
+  await selectHex(page, "1:7,51");
+  await expect.poll(() => unitsPaneHeight(page)).toBeGreaterThanOrEqual(atCeiling - 1);
+  await expect(page.getByTestId("unit-list-limit-value")).toHaveText("12");
+
+  // Turned off again, the pane hugs the empty hex's short list as it always did.
+  await page.getByTestId("settings-indicator").click();
+  await page.getByTestId("settings-unit-list-fixed").click();
+  await page.keyboard.press("Escape");
+  await expect.poll(() => unitsPaneHeight(page)).toBeLessThan(atCeiling);
+  await expect(page.getByTestId("unit-list-limit-value")).toHaveText("max 12");
+});
+
 test("a snippet is created in settings, refuses duplicates, and survives a reload", async ({
   page
 }) => {
