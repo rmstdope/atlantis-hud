@@ -156,6 +156,25 @@ test("a bad order is marked in the editor's own margin", async ({ page }) => {
   await expect(page.getByTestId("orders-diagnostics")).toContainText("WROK");
 });
 
+test("the lint gutter hugs its marker (gh-205)", async ({ page }) => {
+  await loadReport(page);
+
+  // A broken line first, so the same walk pins both "the gutter is narrow" and "the marker it
+  // exists for still shows" - a shrink that quietly hid the indicator would fail here too.
+  await fillOrders(page, "WROK");
+  const marker = page.getByTestId("orders-input").locator(".cm-lint-marker");
+  await expect(marker).toBeVisible();
+
+  const gutter = page.getByTestId("orders-input").locator(".cm-gutter-lint");
+  const box = await gutter.boundingBox();
+  expect(box).not.toBeNull();
+  // CodeMirror's stock lint gutter reserves 1.4em, which measured just over 16px at this panel's
+  // font size before the fix - room for a marker that is only 1em wide. A ceiling rather than an
+  // exact width: font rendering differs between engines, but both should now sit comfortably
+  // under what the unstyled gutter used to take.
+  expect(box!.width).toBeLessThan(14);
+});
+
 test("an accepted snippet expands with a tab-through placeholder", async ({ page }) => {
   await loadReport(page);
 
