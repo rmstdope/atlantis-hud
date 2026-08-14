@@ -229,3 +229,4 @@ private repository needs a paid plan and publishes a site that is public anyway.
 Milestone 1 was executed in this order: #2, then #3 and #4 in parallel, then #5, then #6 and #7, then
 #8 and #9, then #10. For current work, the equivalent order is computed from the dependency graph by
 `bd ready`.
+
