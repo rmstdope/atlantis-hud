@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   commandsOnly,
@@ -6,6 +7,7 @@ import {
   readUnitOrders,
   stripUnitComments,
   withoutTrailingBlankLines,
+  withUnitComments,
   writeUnitOrders
 } from "./ordersDocument";
 
@@ -238,6 +240,111 @@ describe("dropping the server's unit descriptions", () => {
   it("leaves a document that carries no descriptions exactly as it was", () => {
     const plain = ["#atlantis 73 \"secret\"", "unit 793", "@study obse", "#end"].join("\n");
     expect(stripUnitComments(plain)).toBe(plain);
+  });
+});
+
+/** The real report the export test pins against, and the long-format template it carries. */
+const TURN_71_REPORT = readFileSync(
+  new URL("../../../tests/fixtures/reports/neworigins-3.0.0-g7-f95-t71.rep", import.meta.url),
+  "utf8"
+);
+const TEMPLATE_MARKER = "Orders Template (Long Format):\n\n";
+const TEMPLATE_START = TURN_71_REPORT.indexOf(TEMPLATE_MARKER);
+// Fail loudly rather than slicing from a bogus offset if the fixture ever loses the marker.
+if (TEMPLATE_START === -1) {
+  throw new Error(`fixture is missing "${TEMPLATE_MARKER.trim()}"`);
+}
+const TURN_71_TEMPLATE = TURN_71_REPORT.slice(TEMPLATE_START + TEMPLATE_MARKER.length).trimEnd();
+
+describe("restoring the server's unit descriptions", () => {
+  it("puts the server's description back under the unit line", () => {
+    const stripped = stripUnitComments(WRAPPED);
+
+    expect(withUnitComments(stripped, WRAPPED)).toBe(WRAPPED);
+  });
+
+  it("leaves a unit the template does not know", () => {
+    const document = ["unit 793", "@study obse", "", "unit 9999", "@work", "", "#end"].join("\n");
+
+    const restored = withUnitComments(document, WRAPPED);
+
+    expect(readUnitOrders(restored, "9999")).toBe("@work");
+  });
+
+  it("keeps the player's own note, once, below the restored description", () => {
+    const document = ["unit 793", ";remember to check this", "@study obse"].join("\n");
+
+    const restored = withUnitComments(document, WRAPPED);
+
+    expect(restored).toBe(
+      [
+        "unit 793",
+        ";Three of Five (793), behind, revealing faction, leader [LEAD]. Weight:",
+        ";  10. Capacity: 0/0/15/0. Skills: observation [OBSE] 1 (35), force",
+        ";  [FORC] 1 (35), pattern [PATT] 1 (30), spirit [SPIR] 1 (30).",
+        ";remember to check this",
+        "@study obse"
+      ].join("\n")
+    );
+  });
+
+  it("does not touch an @; repeating comment", () => {
+    const document = ["unit 793", "@;remember to tax here", "@study obse"].join("\n");
+
+    const restored = withUnitComments(document, WRAPPED);
+
+    expect(restored).toBe(
+      [
+        "unit 793",
+        ";Three of Five (793), behind, revealing faction, leader [LEAD]. Weight:",
+        ";  10. Capacity: 0/0/15/0. Skills: observation [OBSE] 1 (35), force",
+        ";  [FORC] 1 (35), pattern [PATT] 1 (30), spirit [SPIR] 1 (30).",
+        "@;remember to tax here",
+        "@study obse"
+      ].join("\n")
+    );
+  });
+
+  it("returns the document unchanged when the template is empty", () => {
+    const document = ["unit 793", "@study obse"].join("\n");
+
+    expect(withUnitComments(document, "")).toBe(document);
+  });
+
+  it("is the exact inverse of stripUnitComments, over a real report's template", () => {
+    const stripped = stripUnitComments(TURN_71_TEMPLATE);
+
+    expect(stripUnitComments(withUnitComments(stripped, TURN_71_TEMPLATE))).toBe(stripped);
+  });
+
+  it("gives every unit with a description in the template exactly those lines", () => {
+    const stripped = stripUnitComments(TURN_71_TEMPLATE);
+    const restored = withUnitComments(stripped, TURN_71_TEMPLATE);
+    const restoredLines = restored.split("\n");
+    const restoredBlocks = findUnitBlocks(restored);
+    const templateLines = TURN_71_TEMPLATE.split("\n");
+
+    let checked = 0;
+    for (const templateBlock of findUnitBlocks(TURN_71_TEMPLATE)) {
+      const description = templateLines
+        .slice(templateBlock.firstLine, templateBlock.lastLine + 1)
+        .filter((line) => line.trim().startsWith(";"));
+      if (description.length === 0) {
+        continue;
+      }
+
+      const restoredBlock = restoredBlocks.find((block) => block.unitId === templateBlock.unitId);
+      expect(restoredBlock).toBeDefined();
+      const restoredDescription = restoredLines.slice(
+        (restoredBlock?.headerLine ?? 0) + 1,
+        (restoredBlock?.headerLine ?? 0) + 1 + description.length
+      );
+      expect(restoredDescription).toEqual(description);
+      checked += 1;
+    }
+
+    // A fixture that discriminated nothing would let every assertion above pass vacuously.
+    expect(checked).toBeGreaterThan(0);
   });
 });
 
