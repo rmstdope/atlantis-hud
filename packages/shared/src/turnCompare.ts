@@ -17,10 +17,12 @@ export type ComparisonTurn = {
 /**
  * What clicking a turn in the picker does to the current comparison.
  *
- * The working turn is always one side of the pair, so clicking it does nothing (returning `null`
- * is a no-op close, not an error - there is nothing sensible to compare a turn against itself).
- * Clicking the turn already being compared turns the comparison off; clicking any other turn starts
- * or switches to it. One click, one meaning, whatever the current state.
+ * The working turn is always one side of the pair, so clicking it changes nothing - it returns
+ * `current` unchanged, whatever that is. There is nothing sensible to compare a turn against
+ * itself, and if a comparison is already active, clicking the working row must not be a back-door
+ * way to clear it; that is what clicking the *compared* turn again is for; it turns the comparison
+ * off (`null`). Clicking any other turn starts or switches to it. Three distinct clicks, three
+ * distinct meanings, whatever the current state.
  */
 export function toggleComparison(
   current: number | null,
@@ -28,7 +30,7 @@ export function toggleComparison(
   working: number
 ): number | null {
   if (clicked === working) {
-    return null;
+    return current;
   }
   if (clicked === current) {
     return null;

@@ -2020,20 +2020,21 @@ export function AppShell({
       : `${parsed.header.turnNumber} · ${parsed.header.month}, Year ${parsed.header.year}`;
 
   /**
-   * Opens the turn picker, fetching the turns it lists at the moment it opens rather than
-   * eagerly - a list nobody asked to see is a database read this workspace does not need to make
-   * on every report load.
+   * Opens or closes the turn picker, fetching the turns it lists only on the way open - a list
+   * nobody asked to see is a database read this workspace does not need to make on every report
+   * load, and closing the picker is not a reason to make it either.
    */
   const handleOpenTurnPicker = useCallback(async () => {
-    setTurnPickerOpen((open) => !open);
-    if (!game || !parsed?.header.factionId) {
+    const opening = !turnPickerOpen;
+    setTurnPickerOpen(opening);
+    if (!opening || !game || !parsed?.header.factionId) {
       return;
     }
     const gameId = game.manifest.metadata.gameId;
     const factionId = parsed.header.factionId;
     const summaries = await client.listImportedTurns(game.databasePath, gameId);
     setTurnSummaries(summaries.filter((summary) => summary.key.factionId === factionId));
-  }, [client, game, parsed]);
+  }, [client, game, parsed, turnPickerOpen]);
 
   /**
    * Starts, switches or stops comparing against the clicked turn.
@@ -2049,7 +2050,14 @@ export function AppShell({
       if (workingTurn === null || !game || !parsed?.header.factionId) {
         return;
       }
-      const next = toggleComparison(comparison?.key.turnNumber ?? null, clickedTurn, workingTurn);
+      const currentTurn = comparison?.key.turnNumber ?? null;
+      const next = toggleComparison(currentTurn, clickedTurn, workingTurn);
+      // Clicking the working turn: changes nothing, including an active comparison. Only the
+      // picker closes.
+      if (next === currentTurn) {
+        setTurnPickerOpen(false);
+        return;
+      }
       if (next === null) {
         setComparison(null);
         setTurnPickerOpen(false);

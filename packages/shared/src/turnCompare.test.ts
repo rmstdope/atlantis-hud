@@ -10,9 +10,10 @@ describe("toggleComparison", () => {
     expect(toggleComparison(70, 70, 71)).toBe(null);
   });
 
-  it("clicking the working turn is a no-op close", () => {
-    expect(toggleComparison(70, 71, 71)).toBe(null);
+  it("clicking the working turn changes nothing, active comparison or not", () => {
     expect(toggleComparison(null, 71, 71)).toBe(null);
+    // The bug a reviewer caught: this used to clear an active comparison instead of leaving it.
+    expect(toggleComparison(70, 71, 71)).toBe(70);
   });
 
   it("clicking a third turn switches the comparison to it", () => {
