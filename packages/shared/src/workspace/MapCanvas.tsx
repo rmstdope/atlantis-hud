@@ -26,6 +26,7 @@ import { overlayInsets, type OverlayBox } from "./mapOverlayInsets";
 import { loadSavedView, saveViewportForGame, type SavedMapView } from "./mapViewportStorage";
 import { keepsRestoredHex, mapViewDecision, shouldFollowSelection } from "./mapViewRestore";
 import type { RouteOverlay } from "./routeOverlay";
+import { regionDecorations } from "./regionDecorations";
 import { guardSelection } from "./selectionGuard";
 import {
   fogPatternTile,
@@ -240,6 +241,15 @@ export function MapCanvas({
       current: allViews.filter((view) => view.knowledge === "current")
     }),
     [allViews]
+  );
+
+  // Computed only when the badge is on: a piece nobody can see is not worth building on every
+  // hex load. `onLevel` is already filtered to this level; `regionDecorations` filters again by
+  // `level` itself, defensively, since it is the only thing standing between an underground
+  // province and the surface one drawn over it.
+  const regionPieces = useMemo(
+    () => (badges.regions ? regionDecorations(onLevel, level) : []),
+    [onLevel, level, badges.regions]
   );
 
   /**
@@ -766,6 +776,34 @@ export function MapCanvas({
 
           {/* Beneath the route overlay, so a movement path crosses a road the way a traveller would. */}
           <theme.RoadLayer views={allViews} />
+
+          {/*
+            Province outlines and names, above the roads and beneath everything a player can
+            select or move - a decoration, not a mark to click.
+          */}
+          {badges.regions && (
+            <g data-testid="region-decorations" pointerEvents="none">
+              {regionPieces.map((piece) => (
+                <g key={`${piece.province}-${piece.label.x}-${piece.label.y}`}>
+                  <path d={piece.outline} className="region-outline" fill="none" />
+                  <text
+                    x={piece.label.x}
+                    y={piece.label.y}
+                    textAnchor="middle"
+                    dominantBaseline="middle"
+                    className="region-name"
+                    style={{
+                      fontSize: piece.label.fontSize,
+                      letterSpacing: piece.label.letterSpacing,
+                      strokeWidth: piece.label.haloWidth
+                    }}
+                  >
+                    {piece.label.text}
+                  </text>
+                </g>
+              ))}
+            </g>
+          )}
 
           {(routeLine.solid || routeLine.dotted) && (
             <g pointerEvents="none">

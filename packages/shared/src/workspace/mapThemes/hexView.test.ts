@@ -256,7 +256,9 @@ describe("the badge toggles, applied once so no theme can forget one", () => {
 
   it("offers a badge for every mark a theme can draw, and none for one it cannot", () => {
     // `battle` and `gate` are reserved fields that are always false, and a control that does
-    // nothing is worse than no control.
+    // nothing is worse than no control. `regions` is the one badge here a theme never draws -
+    // MapCanvas reads it directly, the way it already reads every other badge, to decorate the
+    // map with province outlines rather than a per-hex mark.
     expect(BADGES.map(({ name }) => name)).toEqual([
       "settlements",
       "ownUnits",
@@ -267,7 +269,8 @@ describe("the badge toggles, applied once so no theme can forget one", () => {
       "buildings",
       "shafts",
       "lairs",
-      "roads"
+      "roads",
+      "regions"
     ]);
     expect(BADGES.every(({ label }) => label.length > 0)).toBe(true);
   });

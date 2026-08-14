@@ -177,6 +177,34 @@
 }
 
 /*
+ * A province's outline and name.
+ *
+ * Unlike `.map-label`, the name is deliberately NOT divided back out by `--map-scale`: it is
+ * already fitted to the width of the piece it names, in world units, so it must scale *with* the
+ * world the way the outline itself does. Dividing it out here would make it overflow its own
+ * outline as the map zooms out. `font-size` and `letter-spacing` are set inline per piece, from
+ * that fit; only what does not vary per piece lives here.
+ */
+.region-outline {
+  stroke: var(--color-ink-soft);
+  stroke-width: 1.2;
+  stroke-dasharray: 4 3;
+  opacity: 0.7;
+}
+
+.region-name {
+  fill: var(--color-ink-soft, #6b6558);
+  paint-order: stroke fill;
+  stroke: var(--color-ground);
+  stroke-linejoin: round;
+  text-transform: uppercase;
+}
+
+.map-far .region-name {
+  display: none;
+}
+
+/*
  * The floating panes' ground.
  *
  * How see-through the panes over the map are is a preference, not a design constant: the settings

@@ -215,6 +215,13 @@ describe("panels and layers", () => {
     expect(state.layers.staleness).toBe(false);
   });
 
+  it("shows region names by default, and yields them on for a badge set saved before they existed", () => {
+    // Every player sees the map decorated with province names after this update; opting out is
+    // the badge menu's job from then on, not a migration one.
+    expect(store().badges.regions).toBe(true);
+    expect(badgesFromStorage({ settlements: false }).regions).toBe(true);
+  });
+
   it("ignores a badge name from outside the set", () => {
     expect(badgesFromStorage({ dragons: true } as Record<string, boolean>)).not.toHaveProperty(
       "dragons"

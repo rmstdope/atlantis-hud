@@ -1130,6 +1130,34 @@ test("each badge can be turned off on its own, and the set survives a reload", a
 });
 
 /**
+ * Region decorations are on by default, like every other badge, so a player who has never opened
+ * the Badges menu already sees province names on the map. Turning the badge off is the one
+ * documented way to lose them, and the choice is a preference like the rest of the set.
+ */
+test("region decorations can be turned off from the Badges menu, and the choice survives a reload", async ({
+  page
+}) => {
+  await loadReport(page);
+
+  const decorations = page.getByTestId("map-canvas").getByTestId("region-decorations");
+  await expect(decorations).toBeVisible();
+
+  await page.getByTestId("layer-chips").getByRole("button", { name: "Badges" }).click();
+  const badges = page.getByTestId("badge-menu");
+  await expect(badges.getByRole("checkbox", { name: "Regions" })).toBeChecked();
+
+  await badges.getByRole("checkbox", { name: "Regions" }).uncheck();
+  await expect(decorations).toHaveCount(0);
+
+  await page.reload();
+  await expect(page.getByTestId("map-canvas").getByTestId("region-decorations")).toHaveCount(0);
+  await page.getByTestId("layer-chips").getByRole("button", { name: "Badges" }).click();
+  await expect(
+    page.getByTestId("badge-menu").getByRole("checkbox", { name: "Regions" })
+  ).not.toBeChecked();
+});
+
+/**
  * The movement planner is behind a feature flag, and the flag starts off: the pane is the one
  * piece of the workspace still finding its shape, and a player who has not asked for it should
  * not have to scroll past it. The flag is a preference, so turning it on holds across a reload.

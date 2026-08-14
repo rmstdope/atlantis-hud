@@ -131,7 +131,13 @@ export function hexPaint(hex: HexNode, showStaleness: boolean): HexPaint {
 
 export type Point = { x: number; y: number };
 
-function corners(radius: number): Point[] {
+/**
+ * Corners of a flat-top hex, vertex due east, in drawing order.
+ *
+ * Exported so `regionDecorations.ts` can trace a boundary along the same vertices a hex is
+ * actually drawn with, rather than a second copy of this maths.
+ */
+export function corners(radius: number): Point[] {
   return Array.from({ length: 6 }, (_, corner) => {
     const angle = (Math.PI / 180) * (60 * corner);
     return { x: radius * Math.cos(angle), y: radius * Math.sin(angle) };
