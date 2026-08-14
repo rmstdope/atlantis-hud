@@ -85,8 +85,14 @@ requires.
 ## Install
 
 ```bash
+git submodule update --init --recursive    # the agent harness lives in a submodule
 pnpm install
 ```
+
+The submodule step is only needed once per clone (or after `git clone --recurse-submodules`, which
+does it for you). Without it `.claude/cerebro/` is an empty directory: the agents, skills and their
+launchers are all in there, so `s` in the fleet view and every `.claude/cerebro/scripts/…` command
+fail with "No such file or directory".
 
 Biome textures are committed under `config/public/biomes/`. Regenerate them after changing the
 generator with:
@@ -256,6 +262,7 @@ you about anything a player will see, and one or more implementation sessions, w
 test-first and see them onto main.
 
 See `.claude/cerebro/docs/agent-workflow.md` for how to start each of them, where to find what is
-waiting on you, and what the whole thing costs in practice. The agents, their skills and their
+waiting on you, and what the whole thing costs in practice — run `git submodule update --init
+--recursive` first if that path does not exist yet. The agents, their skills and their
 launchers all live in the [cerebro](https://github.com/rmstdope/cerebro) submodule at
 `.claude/cerebro`; nothing about the fleet is maintained in this repository any more.

@@ -42,8 +42,13 @@ running either should load its skill first.
 an X-Man:
 
 ```bash
+git submodule update --init --recursive    # once per clone: the launchers live in the submodule
 .claude/cerebro/scripts/run-implementer Cyclops
 ```
+
+Every `.claude/cerebro/…` path below comes from that submodule. On a clone made without
+`--recurse-submodules` the directory is empty, and each of these commands fails with "No such file
+or directory" rather than anything that names the real cause.
 
 That script starts one interactive session and nothing else. The session takes a single bead through
 to merged, writes `done` to `.claude/implementers/<name>.state.json`, and stops; the Emacs fleet view
