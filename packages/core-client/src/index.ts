@@ -597,6 +597,14 @@ export type ImportedTurnRecord = {
   parseResult: ReportParseResult;
 };
 
+/** Enough to label an imported turn without loading its full report. */
+export type ImportedTurnSummary = {
+  key: OrderDraftKey;
+  season: string | null;
+  importedAt: string;
+  updatedAt: string;
+};
+
 type EngineInfoWireShape = {
   id: string;
   name: string;
@@ -787,6 +795,15 @@ type ImportedTurnRecordWireShape = {
   parse_result?: ReportParseResultWireShape;
 };
 
+type ImportedTurnSummaryWireShape = {
+  key?: OrderDraftKeyWireShape;
+  season?: string | null;
+  importedAt?: string;
+  imported_at?: string;
+  updatedAt?: string;
+  updated_at?: string;
+};
+
 export interface CoreAdapter {
   getEngineInfo(): Promise<unknown> | unknown;
   listGames(): Promise<unknown> | unknown;
@@ -873,6 +890,7 @@ export interface CoreAdapter {
     turnNumber: number
   ): Promise<unknown> | unknown;
   loadLatestImportedTurn(databasePath: string, gameId: string): Promise<unknown> | unknown;
+  listImportedTurns(databasePath: string, gameId: string): Promise<unknown> | unknown;
   loadOrderDraft(
     databasePath: string,
     gameId: string,
@@ -1098,6 +1116,13 @@ export interface CoreClient {
    * comes back to the first. `null` is the ordinary state of a game just created.
    */
   loadLatestImportedTurn(databasePath: string, gameId: string): Promise<ImportedTurnRecord | null>;
+  /**
+   * Every turn imported for a game, across every faction, in turn order.
+   *
+   * A game with no imports returns an empty array, not an error — the ordinary state of a game
+   * just created.
+   */
+  listImportedTurns(databasePath: string, gameId: string): Promise<ImportedTurnSummary[]>;
   loadOrderDraft(
     databasePath: string,
     gameId: string,
@@ -1200,6 +1225,7 @@ export interface WasmBindings {
     turnNumber: number
   ): unknown;
   load_latest_imported_turn_state(databasePath: string, gameId: string): unknown;
+  list_imported_turns_state(databasePath: string, gameId: string): unknown;
   load_order_draft_state(
     databasePath: string,
     gameId: string,
@@ -1650,6 +1676,31 @@ function normalizeImportedTurnRecord(value: unknown): ImportedTurnRecord {
   };
 }
 
+function normalizeImportedTurnSummary(value: unknown): ImportedTurnSummary {
+  if (typeof value !== "object" || value === null) {
+    throw new Error("invalid imported turn summary payload");
+  }
+
+  const payload = value as ImportedTurnSummaryWireShape;
+  const importedAt = payload.importedAt ?? payload.imported_at;
+  const updatedAt = payload.updatedAt ?? payload.updated_at;
+  const season = payload.season ?? null;
+
+  if (payload.key === undefined || typeof importedAt !== "string" || typeof updatedAt !== "string") {
+    throw new Error("incomplete imported turn summary payload");
+  }
+  if (season !== null && typeof season !== "string") {
+    throw new Error("incomplete imported turn summary payload");
+  }
+
+  return {
+    key: normalizeOrderDraftKey(payload.key),
+    season,
+    importedAt,
+    updatedAt
+  };
+}
+
 function normalizeReportImportPreview(value: unknown): ReportImportPreview {
   if (typeof value !== "object" || value === null) {
     throw new Error("invalid report import preview payload");
@@ -1778,6 +1829,18 @@ export function createCoreClient(adapter: CoreAdapter): CoreClient {
         return null;
       }
       return normalizeImportedTurnRecord(value);
+    },
+    async listImportedTurns(databasePath: string, gameId: string) {
+      const value = await adapter.listImportedTurns(databasePath, gameId);
+      // Undefined as well as an empty array: serde_wasm_bindgen can emit either for an empty Rust
+      // Vec, and a game with no imports must not read as a payload that failed to normalize.
+      if (value === undefined || value === null) {
+        return [];
+      }
+      if (!Array.isArray(value)) {
+        throw new Error("invalid imported turn summary list payload");
+      }
+      return value.map(normalizeImportedTurnSummary);
     },
     async loadOrderDraft(databasePath: string, gameId: string, factionId: string, turnNumber: number) {
       const value = await adapter.loadOrderDraft(databasePath, gameId, factionId, turnNumber);
@@ -1981,6 +2044,9 @@ export function createWasmAdapter(bindings: WasmBindings): CoreAdapter {
     loadLatestImportedTurn(databasePath: string, gameId: string) {
       return bindings.load_latest_imported_turn_state(databasePath, gameId);
     },
+    listImportedTurns(databasePath: string, gameId: string) {
+      return bindings.list_imported_turns_state(databasePath, gameId);
+    },
     loadOrderDraft(databasePath: string, gameId: string, factionId: string, turnNumber: number) {
       return bindings.load_order_draft_state(databasePath, gameId, factionId, turnNumber);
     },
@@ -2175,6 +2241,12 @@ export function createTauriAdapter(invoke: TauriInvoke): CoreAdapter {
     },
     loadLatestImportedTurn(databasePath: string, gameId: string) {
       return invoke<ImportedTurnRecordWireShape | null>("load_latest_imported_turn", {
+        database_path: databasePath,
+        game_id: gameId
+      });
+    },
+    listImportedTurns(databasePath: string, gameId: string) {
+      return invoke<ImportedTurnSummaryWireShape[]>("list_imported_turns", {
         database_path: databasePath,
         game_id: gameId
       });

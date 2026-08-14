@@ -10,8 +10,8 @@ use atlantis_hud_core::{
 };
 use atlantis_hud_core_persistence::{
     create_game, delete_game, export_game, import_game, insert_imported_turn, list_games,
-    load_imported_turn, load_latest_imported_turn, load_merged_reports, load_order_draft,
-    load_region_sightings, open_game, preview_imported_turn, set_game_ruleset,
+    list_imported_turns, load_imported_turn, load_latest_imported_turn, load_merged_reports,
+    load_order_draft, load_region_sightings, open_game, preview_imported_turn, set_game_ruleset,
     upsert_imported_turn, upsert_merged_report, upsert_order_draft, upsert_region_sightings,
     GameManifest, GameMetadata, ImportedTurnKey, ImportedTurnPreview, ImportedTurnRecord,
     MergedReportRecord, OpenedGame, OrderDraftKey, OrderDraftRecord, PersistenceError,
@@ -155,6 +155,15 @@ pub struct ImportedTurnRecordDto {
     pub key: OrderDraftKeyDto,
     pub raw_report: String,
     pub parse_result: ReportParseResultDto,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportedTurnSummaryDto {
+    pub key: OrderDraftKeyDto,
+    pub season: Option<String>,
+    pub imported_at: String,
+    pub updated_at: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -754,6 +763,33 @@ pub fn command_load_latest_imported_turn(
         .map_err(|error| error.to_string())?
         .map(imported_turn_dto)
         .transpose()
+}
+
+/// Lists every turn imported for a game, across every faction, for the Tauri command surface.
+///
+/// # Errors
+///
+/// Returns an error when the database cannot be read.
+pub fn command_list_imported_turns(
+    database_path: &str,
+    game_id: &str,
+) -> Result<Vec<ImportedTurnSummaryDto>, String> {
+    let listed = list_imported_turns(Path::new(database_path), game_id)
+        .map_err(|error| error.to_string())?;
+
+    Ok(listed
+        .into_iter()
+        .map(|summary| ImportedTurnSummaryDto {
+            key: OrderDraftKeyDto {
+                game_id: summary.key.game_id,
+                faction_id: summary.key.faction_id,
+                turn_number: summary.key.turn_number,
+            },
+            season: summary.season,
+            imported_at: summary.imported_at,
+            updated_at: summary.updated_at,
+        })
+        .collect())
 }
 
 fn imported_turn_dto(record: ImportedTurnRecord) -> Result<ImportedTurnRecordDto, String> {
@@ -1865,5 +1901,75 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
         assert_eq!(loaded.key.turn_number, 2);
         assert_eq!(loaded.parse_result.regions[0].region_id, "1:12,34");
         assert_eq!(loaded.parse_result.units[0].region_id, "1:12,34");
+    }
+
+    #[test]
+    fn command_list_imported_turns_reports_every_committed_turn() {
+        let dir = tempdir().expect("tempdir");
+        let created = command_create_game(
+            dir.path().to_str().expect("a path"),
+            manifest_dto("faction-12", "Faction 12"),
+        )
+        .expect("create game");
+        let march = "\
+Atlantis Report For:
+Crimson Tide (17) (Magic 5)
+March, Year 1
+
+Atlantis Engine Version: 5.2.5 (beta)
+NewOrigins, Version: 3.0.0 (beta)
+
+plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans), $500.
+------------------------------------------------------------
+  Wages: $12.0 (Max: $300).
+
+* Guard Patrol (100), Crimson Tide (17), behind, 10 humans [HUMN].
+";
+        let april = "\
+Atlantis Report For:
+Crimson Tide (17) (Magic 5)
+April, Year 1
+
+Atlantis Engine Version: 5.2.5 (beta)
+NewOrigins, Version: 3.0.0 (beta)
+
+plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans), $500.
+------------------------------------------------------------
+  Wages: $12.0 (Max: $300).
+
+* Guard Patrol (100), Crimson Tide (17), behind, 10 humans [HUMN].
+";
+
+        command_commit_report_import(
+            &created.database_path,
+            "faction-12",
+            "17",
+            march,
+            None,
+            false,
+            IMPORTED_AT,
+        )
+        .expect("march should commit");
+        command_commit_report_import(
+            &created.database_path,
+            "faction-12",
+            "17",
+            april,
+            None,
+            false,
+            IMPORTED_AT,
+        )
+        .expect("april should commit");
+
+        let listed = command_list_imported_turns(&created.database_path, "faction-12")
+            .expect("listing should succeed");
+
+        let turn_numbers: Vec<u32> = listed
+            .iter()
+            .map(|summary| summary.key.turn_number)
+            .collect();
+        assert_eq!(turn_numbers, vec![2, 3]);
+        assert_eq!(listed[0].season.as_deref(), Some("March"));
+        assert_eq!(listed[1].season.as_deref(), Some("April"));
     }
 }

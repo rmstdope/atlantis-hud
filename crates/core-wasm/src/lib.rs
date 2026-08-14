@@ -15,11 +15,11 @@ use atlantis_hud_core::{
 };
 #[cfg(not(target_arch = "wasm32"))]
 use atlantis_hud_core_persistence::{
-    create_game, delete_game, insert_imported_turn, list_games, load_imported_turn,
-    load_latest_imported_turn, load_order_draft, open_game, preview_imported_turn,
-    set_game_ruleset, upsert_imported_turn, upsert_order_draft, GameManifest, GameMetadata,
-    ImportedTurnKey, ImportedTurnPreview, ImportedTurnRecord, OpenedGame, OrderDraftKey,
-    OrderDraftRecord, PersistenceError, ReportSourceRef,
+    create_game, delete_game, insert_imported_turn, list_games, list_imported_turns,
+    load_imported_turn, load_latest_imported_turn, load_order_draft, open_game,
+    preview_imported_turn, set_game_ruleset, upsert_imported_turn, upsert_order_draft,
+    GameManifest, GameMetadata, ImportedTurnKey, ImportedTurnPreview, ImportedTurnRecord,
+    OpenedGame, OrderDraftKey, OrderDraftRecord, PersistenceError, ReportSourceRef,
 };
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
@@ -265,6 +265,16 @@ struct ImportedTurnRecordDto {
     key: ImportedTurnKeyDto,
     raw_report: String,
     parse_result: ReportParseResultDto,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg(not(target_arch = "wasm32"))]
+struct ImportedTurnSummaryDto {
+    key: ImportedTurnKeyDto,
+    season: Option<String>,
+    imported_at: String,
+    updated_at: String,
 }
 
 impl From<atlantis_hud_core::EngineInfo> for EngineInfoDto {
@@ -919,6 +929,33 @@ pub fn load_latest_imported_turn_state(
     to_js(&loaded.map(imported_turn_dto).transpose()?)
 }
 
+/// Lists every turn imported for a game, across every faction, in turn order.
+#[wasm_bindgen]
+#[cfg(not(target_arch = "wasm32"))]
+pub fn list_imported_turns_state(
+    database_path: String,
+    game_id: String,
+) -> Result<JsValue, JsValue> {
+    let listed = list_imported_turns(Path::new(&database_path), &game_id)
+        .map_err(|error| JsValue::from_str(&error.to_string()))?;
+
+    let dtos: Vec<ImportedTurnSummaryDto> = listed
+        .into_iter()
+        .map(|summary| ImportedTurnSummaryDto {
+            key: ImportedTurnKeyDto {
+                game_id: summary.key.game_id,
+                faction_id: summary.key.faction_id,
+                turn_number: summary.key.turn_number,
+            },
+            season: summary.season,
+            imported_at: summary.imported_at,
+            updated_at: summary.updated_at,
+        })
+        .collect();
+
+    to_js(&dtos)
+}
+
 #[cfg(not(target_arch = "wasm32"))]
 fn imported_turn_dto(record: ImportedTurnRecord) -> Result<ImportedTurnRecordDto, JsValue> {
     let parse_result = serde_json::from_str::<ReportParseResult>(&record.parsed_payload_json)
@@ -1086,6 +1123,18 @@ pub fn load_imported_turn_state(
 #[wasm_bindgen]
 #[cfg(target_arch = "wasm32")]
 pub fn load_latest_imported_turn_state(
+    _database_path: String,
+    _game_id: String,
+) -> Result<JsValue, JsValue> {
+    Err(JsValue::from_str(
+        "game persistence is not linked in this wasm32 build",
+    ))
+}
+
+/// Lists every turn imported for a game, across every faction, in turn order.
+#[wasm_bindgen]
+#[cfg(target_arch = "wasm32")]
+pub fn list_imported_turns_state(
     _database_path: String,
     _game_id: String,
 ) -> Result<JsValue, JsValue> {

@@ -955,6 +955,49 @@ export function createWebCoreAdapter(
       };
     },
 
+    /**
+     * Every turn imported for a game, across every faction, in turn order.
+     *
+     * No storage of its own is needed: `getImportedTurns` already carries everything but the
+     * season, which is read the way `loadImportedTurn` above reads a full parse result — through
+     * the wasm hydrator, so the browser reaches the same verdict as the desktop's stored-JSON peek
+     * without a second copy of the parsing rules.
+     */
+    async listImportedTurns(databasePath: string, gameId: string) {
+      const turns = await store.getImportedTurns(databasePath, gameId);
+
+      // A row whose payload the hydrator cannot parse must not take the rest of the list down
+      // with it. `hydrate_parse_result_state` returns a Rust `Result`, so a bad payload crosses
+      // the wasm boundary as a thrown exception rather than an error value — unlike the
+      // desktop/persistence peek, which the Rust side already treats as `season: None` on a bad
+      // row rather than failing the whole list. This keeps the two paths agreeing.
+      const seasonOf = (parsedPayloadJson: string): string | null => {
+        try {
+          const parseResult = wasm.hydrate_parse_result_state(parsedPayloadJson) as {
+            turnHeader?: { season?: string } | null;
+          };
+          return parseResult.turnHeader?.season ?? null;
+        } catch {
+          return null;
+        }
+      };
+
+      return turns
+        .slice()
+        .sort((a, b) => {
+          if (a.turnNumber !== b.turnNumber) {
+            return a.turnNumber - b.turnNumber;
+          }
+          return a.factionId < b.factionId ? -1 : a.factionId > b.factionId ? 1 : 0;
+        })
+        .map((turn) => ({
+          key: { gameId, factionId: turn.factionId, turnNumber: turn.turnNumber },
+          season: seasonOf(turn.parsedPayloadJson),
+          importedAt: turn.importedAt ?? "",
+          updatedAt: turn.updatedAt ?? ""
+        }));
+    },
+
     async saveOrderDraft(
       databasePath: string,
       gameId: string,
