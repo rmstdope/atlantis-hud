@@ -33,11 +33,14 @@ bd list --status open --exclude-label planned --json \
             | select(.type=="parent-child") | $b.id] as $children
            | .[] | select(.priority==4)
            | select(.id as $id | $children | index($id) | not)
-           | "\(.id)\t\(.title)"'
+           | "\(.id)\t\(.external_ref // "-")\t\(.title)"'
 ```
 
 A bead's parent is a `parent-child` edge in its own `dependencies`, pointing at the parent — there is
 no `parent` field to read.
+
+The `external_ref` column is there because it changes the recommendation: a `gh-<n>` in it means the
+bead came from a real person filing a real GitHub issue. See "A bead from a GitHub issue" below.
 
 Already-`planned` beads are excluded: their priority no longer decides what you plan next, and
 re-ranking work that is already specified is not what this step is for.
@@ -53,6 +56,32 @@ then say which of P0–P4 you think it is and why in a sentence: a navigator-rep
 behaviour is a P0 or P1; work that unblocks a queued epic outranks work that stands alone; a tidy-up
 with no user-visible effect stays low. The navigator is deciding, but they are deciding against your
 reading of the bead, not against a bare id.
+
+### A bead from a GitHub issue outranks one you thought of yourself
+
+**A bead with a `gh-<n>` external ref is user feedback, and you say so out loud.** GitHub issues are
+the inbox for external requests and bug reports, so that ref means somebody outside this fleet hit
+the thing, cared enough to write it up, and is now waiting to hear what happened. Every other P4 bead
+was filed by an agent or by the navigator from inside the project. That is a real difference in
+evidence — a reported defect is one that demonstrably reaches a player, where an agent's tidy-up is a
+guess about what might matter — and it is a difference the ranking should reflect.
+
+So, for any candidate with an `external_ref`:
+
+- **Recommend it a step higher than you otherwise would**, and say in the reason that it is user
+  feedback. A reported defect in shipped behaviour is a P0 or P1; a reported enhancement is a P2
+  rather than the P3 the same idea would get from an agent. This is a lean, not a floor: a genuinely
+  cosmetic report is still cosmetic, and inflating everything with a ref destroys the signal.
+- **Name the issue in the question**, not just the bead: `ah-2vy (gh-31, user-reported)`. The
+  navigator may recognise the reporter or the thread, and that recognition is often the whole
+  decision.
+- **Read the issue before recommending**, not only the bead. `gh issue view <n> --comments` — the
+  thread carries how badly it bit and whether anyone else chimed in, and a triage bead written from
+  it may have flattened all of that into one line. Moira brought it to the navigator once already;
+  what she recorded is a summary, not the evidence.
+
+Say how many of the beads in the pass came from issues before you ask, in one line — a triage where
+four of six are user-reported is a different conversation from one where none are.
 
 Ask with the question tool, batching up to four beads per call, options `P0`–`P4` with your
 recommendation first and marked `(Recommended)`, and the reason in each option's description. Apply
@@ -282,6 +311,23 @@ called, what happens on a click, which of two behaviours is right. Propose, do n
 For a user-facing question, build **self-contained HTML mockups** in the `docs/ui/` house style — no
 build step, no external assets, inline SVG, opens straight in a browser — iterate them in the
 scratchpad, and discuss until the navigator decides.
+
+**Every time you write a mockup to the scratchpad, say where it is and ask them to open it before
+answering.** The navigator cannot see your scratchpad, and a mockup they have not looked at draws
+feedback on your description of it rather than on the thing itself — which is the one failure this
+whole step exists to prevent. So, in the same message as the question, never in an earlier one:
+
+- **Give the absolute path, one per variant**, and label each with the name you use in the options
+  (`Option A — file:///…/scratchpad/ah-t65-sidebar-a.html`). A `file://` URL is clickable in most
+  terminals; a bare relative path is not, and `./mockup.html` is meaningless from their shell.
+- **Say plainly that it should be viewed first** — one sentence, e.g. "Open both before choosing;
+  the difference is in the spacing and does not survive being described." Then put the question.
+- **Re-state the paths on every iteration.** A revised mockup at the same path still needs saying,
+  because a browser tab left open from the last round shows the old one until it is reloaded.
+
+If they answer without having opened it — a reply that engages only with your prose, or comes back
+faster than a look would take — ask once whether they saw it, rather than banking the choice. A
+mockup approved unseen becomes a plan, then an implementation, then a bead's worth of rework.
 
 The chosen mockup is then committed to `docs/ui/` through a small `docs(<bead>): mockup` PR, and the
 plan names its path. Its content is already reviewed — the navigator chose it, iteration by
