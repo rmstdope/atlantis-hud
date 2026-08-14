@@ -43,7 +43,7 @@ there to answer. `epic` is a split parent: it has children rather than a plan.
 **Claiming belongs to the implementer, and to nobody else.** A claim says *this is being built
 right now*, which is why it takes the bead off `bd ready` and holds a lease that has to be
 heartbeated. No other role runs `bd update --claim`, `bd ready --claim` or `bd unclaim` — not the
-planner, not customer service, not the orchestrator, not a session the navigator is driving by hand.
+planner, not user feedback, not the orchestrator, not a session the navigator is driving by hand.
 A claim from any of them is indistinguishable from a build in flight: it hides a ready bead from the
 fleet, and when that session ends it strands a lease nobody can account for.
 

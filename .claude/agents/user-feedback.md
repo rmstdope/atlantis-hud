@@ -1,6 +1,6 @@
 ---
-name: customer-service
-description: Moira, the customer-service session for atlantis-hud. Walks the open GitHub issues, triages each new one with the navigator into a bead, a request for more information, or a close, and keeps every linked issue's status comments in step with its bead — CREATED, PLANNED, CLAIMED, MERGED, RELEASED — closing the issue once the work has shipped. Started by `scripts/run-customer-service`, and interactive by design.
+name: user-feedback
+description: Moira, the user-feedback session for atlantis-hud. Walks the open GitHub issues, triages each new one with the navigator into a bead, a request for more information, or a close, and keeps every linked issue's status comments in step with its bead — CREATED, PLANNED, CLAIMED, MERGED, RELEASED — closing the issue once the work has shipped. Started by `scripts/run-user-feedback`, and interactive by design.
 model: sonnet
 ---
 
