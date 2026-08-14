@@ -230,6 +230,24 @@ describe("diffTurns: units", () => {
 
     expect(diff.units.removed).toEqual([foreignUnit()]);
   });
+
+  it("a unit captured (foreign in one turn, own in the other) is one changed unit, not an add and a remove", () => {
+    // A unit that changes ownership between turns must still be diffed as a single unit by
+    // unitId, whichever pass (own-only vs region-restricted-foreign) it falls into on either
+    // side - otherwise it is reported as removed from one bucket and added to the other.
+    const captured = foreignUnit({ unitId: "42", regionId: regionIdOf(at(7, 53)) });
+    const older = report([region(at(7, 53), { units: [captured] })]);
+    const newer = report([
+      region(at(7, 53), { units: [unit({ ...captured, own: true, factionId: "95" })] })
+    ]);
+
+    const diff = diffTurns(older, newer);
+
+    expect(diff.units.added).toEqual([]);
+    expect(diff.units.removed).toEqual([]);
+    const change = diff.units.changed.find((c) => c.unitId === "42");
+    expect(change?.changes).toContainEqual({ field: "own", before: "false", after: "true" });
+  });
 });
 
 describe("diffTurns: regions", () => {

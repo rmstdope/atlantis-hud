@@ -206,6 +206,32 @@ function diffUnitSet(older: ReportUnit[], newer: ReportUnit[]): UnitsDiff {
   return { added, removed, changed };
 }
 
+/**
+ * Splits every unit on both sides into two disjoint sets by unitId: the ones eligible for the
+ * always-visible ("own") comparison, and the rest, eligible only inside a region seen on both
+ * sides ("foreign").
+ *
+ * A unit that is own on one side and foreign on the other - captured, or given away - must land
+ * in exactly one set on *both* sides, or it is diffed once per pass and reported as both removed
+ * and added. So membership is decided globally, by unitId, from whichever side(s) call it own,
+ * not independently per side.
+ */
+function splitByOwnership(
+  older: ReportUnit[],
+  newer: ReportUnit[]
+): { olderOwn: ReportUnit[]; newerOwn: ReportUnit[]; olderForeign: ReportUnit[]; newerForeign: ReportUnit[] } {
+  const ownIds = new Set(
+    [...older, ...newer].filter((unit) => unit.own).map((unit) => unit.unitId)
+  );
+
+  return {
+    olderOwn: older.filter((unit) => ownIds.has(unit.unitId)),
+    newerOwn: newer.filter((unit) => ownIds.has(unit.unitId)),
+    olderForeign: older.filter((unit) => !ownIds.has(unit.unitId)),
+    newerForeign: newer.filter((unit) => !ownIds.has(unit.unitId))
+  };
+}
+
 function diffUnits(older: ParsedReport, newer: ParsedReport): UnitsDiff {
   const olderUnits = older.regions.flatMap((region) => region.units);
   const newerUnits = newer.regions.flatMap((region) => region.units);
@@ -214,13 +240,13 @@ function diffUnits(older: ParsedReport, newer: ParsedReport): UnitsDiff {
   const newerRegionIds = new Set(newer.regions.map((region) => region.regionId));
   const seenInBoth = new Set([...olderRegionIds].filter((regionId) => newerRegionIds.has(regionId)));
 
-  const olderOwn = olderUnits.filter((unit) => unit.own);
-  const newerOwn = newerUnits.filter((unit) => unit.own);
-  const olderForeign = olderUnits.filter((unit) => !unit.own && seenInBoth.has(unit.regionId));
-  const newerForeign = newerUnits.filter((unit) => !unit.own && seenInBoth.has(unit.regionId));
+  const { olderOwn, newerOwn, olderForeign, newerForeign } = splitByOwnership(olderUnits, newerUnits);
 
   const own = diffUnitSet(olderOwn, newerOwn);
-  const foreign = diffUnitSet(olderForeign, newerForeign);
+  const foreign = diffUnitSet(
+    olderForeign.filter((unit) => seenInBoth.has(unit.regionId)),
+    newerForeign.filter((unit) => seenInBoth.has(unit.regionId))
+  );
 
   return {
     added: [...own.added, ...foreign.added],
