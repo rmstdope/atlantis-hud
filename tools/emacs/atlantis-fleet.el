@@ -142,6 +142,67 @@ fails to parse, renders as the empty string."
     (list (atlantis-fleet-agent-name agent)
           (vector agent-col role-col state-col bead-col for-col))))
 
+;;; ah-vcf.3: the pure start/kill/launch decisions
+
+(defconst atlantis-fleet--role-launch-commands
+  '(("planner" . "scripts/run-planner")
+    ("orchestrator" . "scripts/run-orchestrator")
+    ("feedback" . "scripts/run-user-feedback"))
+  "Launch command for each interactive role.")
+
+(defun atlantis-fleet--launch-command (agent)
+  "The command that launches AGENT.
+
+A string for an interactive agent; a (COMMAND NAME) list for an
+implementer, since its name is an argument rather than part of the
+command name."
+  (if (eq (atlantis-fleet-agent-kind agent) 'implementer)
+      (list "scripts/run-implementer" (atlantis-fleet-agent-name agent))
+    (or (cdr (assoc (atlantis-fleet-agent-role agent) atlantis-fleet--role-launch-commands))
+        (error "atlantis-fleet: no launch command for role %s"
+               (atlantis-fleet-agent-role agent)))))
+
+(defun atlantis-fleet--session-buffer-name (agent)
+  "The vterm buffer name that holds AGENT's live session."
+  (format "*fleet: %s*" (atlantis-fleet-agent-name agent)))
+
+(defun atlantis-fleet--alive-p (agent)
+  "Non-nil if AGENT's state means a session is up (interactive or implementer)."
+  (memq (atlantis-fleet-agent-state agent) '(up working idle)))
+
+(defun atlantis-fleet--start-action (agent owned)
+  "What `s' should do for AGENT, given OWNED session names.
+
+One of `launch' (start a dead agent), `already-up' (an owned session is
+already running) or `external' (a live session exists outside Emacs -
+refuse rather than launch a second one)."
+  (cond
+   ((not (atlantis-fleet--alive-p agent)) 'launch)
+   ((member (atlantis-fleet-agent-name agent) owned) 'already-up)
+   (t 'external)))
+
+(defun atlantis-fleet--kill-action (agent owned)
+  "What `k' should do for AGENT, given OWNED session names.
+
+One of `kill' (plain confirm), `kill-working' (an implementer mid-bead -
+harder confirm), `external' (refuse - not ours to stop) or `dead'
+(refuse - nothing to kill)."
+  (cond
+   ((not (atlantis-fleet--alive-p agent)) 'dead)
+   ((not (member (atlantis-fleet-agent-name agent) owned)) 'external)
+   ((and (eq (atlantis-fleet-agent-kind agent) 'implementer)
+         (eq (atlantis-fleet-agent-state agent) 'working))
+    'kill-working)
+   (t 'kill)))
+
+(defun atlantis-fleet--placeholder (agent)
+  "The detail-window text for AGENT when it has no live view."
+  (let ((name (atlantis-fleet-agent-name agent)))
+    (if (atlantis-fleet-agent-external agent)
+        (format "%s is running outside Emacs - no live view. Use the terminal that started it."
+                name)
+      (format "%s is not running. Press s to start it." name))))
+
 ;;; Impure readers - each trivially small so everything above stays pure
 
 (defun atlantis-fleet--repo-root ()
@@ -198,11 +259,94 @@ fails to parse, renders as the empty string."
         (mapcar (lambda (pid) (alist-get 'args (process-attributes pid)))
                 (list-system-processes))))
 
+(defun atlantis-fleet--owned-buffer-agent-name (buffer-name)
+  "The agent name BUFFER-NAME names as a live session, or nil.
+
+Matches only the plain session-buffer scheme (`--session-buffer-name'),
+never the placeholder scheme (`*fleet: NAME (no view)*') - a placeholder
+buffer names an agent with no live view, the opposite of owned."
+  (and (string-match "\\`\\*fleet: \\([^()]+\\)\\*\\'" buffer-name)
+       (match-string 1 buffer-name)))
+
 (defun atlantis-fleet--owned ()
   "Agent names whose sessions this Emacs itself started.
 
-Always empty until ah-vcf.3, which is what actually starts and tracks them."
-  nil)
+Derived fresh from live buffers matching the session-buffer naming
+scheme with a live process - no registry to go stale."
+  (delq nil
+        (mapcar (lambda (buffer)
+                  (and (get-buffer-process buffer)
+                       (atlantis-fleet--owned-buffer-agent-name (buffer-name buffer))))
+                (buffer-list))))
+
+;;; The detail window (ah-vcf.3)
+
+(defvar-local atlantis-fleet--list-window nil
+  "The list window of this fleet buffer's layout.")
+(defvar-local atlantis-fleet--detail-window nil
+  "The detail window of this fleet buffer's layout.")
+(defvar-local atlantis-fleet--agents nil
+  "The agents shown by the last revert, for lookup by name.")
+(defvar-local atlantis-fleet--last-shown nil
+  "The name of the agent last shown in the detail window.")
+
+(defun atlantis-fleet--placeholder-buffer-name (agent)
+  "The read-only placeholder buffer name for AGENT."
+  (format "*fleet: %s (no view)*" (atlantis-fleet-agent-name agent)))
+
+(defun atlantis-fleet--placeholder-buffer (agent)
+  "A read-only buffer holding AGENT's placeholder text, reused across shows."
+  (let ((buffer (get-buffer-create (atlantis-fleet--placeholder-buffer-name agent))))
+    (with-current-buffer buffer
+      (let ((inhibit-read-only t))
+        (erase-buffer)
+        (insert (atlantis-fleet--placeholder agent)))
+      (setq buffer-read-only t))
+    buffer))
+
+(defun atlantis-fleet--show-detail (agent)
+  "Put AGENT's live session, or a placeholder, in the detail window.
+
+Returns the buffer chosen.  AGENT's session buffer is used only when
+its name is in `atlantis-fleet--owned' - an owned buffer that has not
+actually been created yet (should not happen; `--owned' derives from
+live buffers) falls back to the placeholder rather than erroring."
+  (let ((buffer (if (member (atlantis-fleet-agent-name agent) (atlantis-fleet--owned))
+                     (or (get-buffer (atlantis-fleet--session-buffer-name agent))
+                         (atlantis-fleet--placeholder-buffer agent))
+                   (atlantis-fleet--placeholder-buffer agent))))
+    (when (and atlantis-fleet--detail-window (window-live-p atlantis-fleet--detail-window))
+      (set-window-buffer atlantis-fleet--detail-window buffer))
+    buffer))
+
+;;; Launching and killing (ah-vcf.3)
+
+;; vterm is a soft dependency (see `atlantis-fleet--launch'); these keep the
+;; byte-compiler quiet about the symbols it only knows about once vterm is
+;; actually loaded.
+(defvar vterm-shell)
+(declare-function vterm "vterm" (&optional buffer-name))
+
+(defun atlantis-fleet--launch (agent)
+  "Create AGENT's vterm session and return its buffer.
+
+`vterm-shell' is let-bound rather than set globally, so the navigator's
+ordinary vterm shells are unaffected."
+  (unless (require 'vterm nil t)
+    (user-error "atlantis-fleet needs vterm for live sessions - install emacs-libvterm"))
+  (let* ((default-directory (atlantis-fleet--repo-root))
+         (cmd (atlantis-fleet--launch-command agent))
+         (vterm-shell (if (stringp cmd) cmd (mapconcat #'shell-quote-argument cmd " ")))
+         (buffer (vterm (atlantis-fleet--session-buffer-name agent))))
+    ;; The navigator's quit guard: confirm before Emacs or a buffer kill
+    ;; takes a live agent down.  vterm's own kill behaviour is tuned for
+    ;; disposable shells and does not set this on its own.
+    (let ((proc (get-buffer-process buffer)))
+      (when proc (set-process-query-on-exit-flag proc t)))
+    (when (eq (atlantis-fleet-agent-kind agent) 'implementer)
+      (message "%s started - it will idle until its go flag is set"
+               (atlantis-fleet-agent-name agent)))
+    buffer))
 
 ;;; The buffer
 
@@ -211,6 +355,15 @@ Always empty until ah-vcf.3, which is what actually starts and tracks them."
 (defvar atlantis-fleet--timer nil
   "The buffer-local auto-refresh timer, or nil.")
 (make-variable-buffer-local 'atlantis-fleet--timer)
+
+(defun atlantis-fleet--find-agent (name)
+  "The `atlantis-fleet-agent' called NAME among `atlantis-fleet--agents'."
+  (cl-find name atlantis-fleet--agents :key #'atlantis-fleet-agent-name :test #'equal))
+
+(defun atlantis-fleet--agent-at-point ()
+  "The agent on the current list line, or nil."
+  (let ((id (tabulated-list-get-id)))
+    (and id (atlantis-fleet--find-agent id))))
 
 (defun atlantis-fleet--revert (&rest _)
   "Recompute `tabulated-list-entries' for the fleet buffer."
@@ -222,6 +375,7 @@ Always empty until ah-vcf.3, which is what actually starts and tracks them."
          (now (current-time))
          (agents (atlantis-fleet--derive roster atlantis-fleet-interactive-agents states
                                           #'atlantis-fleet--pid-alive-p args owned)))
+    (setq atlantis-fleet--agents agents)
     (setq tabulated-list-entries (mapcar (lambda (a) (atlantis-fleet--entry a now)) agents))))
 
 (defun atlantis-fleet--cancel-timer ()
@@ -236,6 +390,83 @@ Always empty until ah-vcf.3, which is what actually starts and tracks them."
     (with-current-buffer buffer
       (revert-buffer))))
 
+(defun atlantis-fleet--follow ()
+  "Show the selected agent's detail whenever the list selection changes.
+
+Buffer-local on `post-command-hook', so it must stay cheap - compare
+ids and return - since it runs after every command in the list buffer."
+  (when (derived-mode-p 'atlantis-fleet-mode)
+    (let ((id (tabulated-list-get-id)))
+      (when (and id (not (equal id atlantis-fleet--last-shown)))
+        (setq atlantis-fleet--last-shown id)
+        (let ((agent (atlantis-fleet--find-agent id)))
+          (when agent (atlantis-fleet--show-detail agent)))))))
+
+(defun atlantis-fleet--setup-layout ()
+  "Ensure the list/detail window layout exists for the current buffer."
+  (unless (and atlantis-fleet--list-window (window-live-p atlantis-fleet--list-window))
+    (delete-other-windows)
+    (setq atlantis-fleet--list-window (selected-window))
+    (setq atlantis-fleet--detail-window
+          (split-window atlantis-fleet--list-window nil 'right))
+    (let ((width (- 45 (window-width atlantis-fleet--list-window))))
+      ;; A narrow frame/terminal can make 45 columns unsatisfiable;
+      ;; `window-resize' signals in that case, and the list/detail split
+      ;; above must still stand rather than leaving the buffer
+      ;; half-initialized.
+      (when (/= width 0)
+        (ignore-errors (window-resize atlantis-fleet--list-window width t))))))
+
+(defun atlantis-fleet-start ()
+  "Start the agent at point (`s')."
+  (interactive)
+  (let ((agent (atlantis-fleet--agent-at-point)))
+    (when agent
+      (pcase (atlantis-fleet--start-action agent (atlantis-fleet--owned))
+        ('launch
+         (atlantis-fleet--launch agent)
+         (revert-buffer)
+         (atlantis-fleet--show-detail agent))
+        ('already-up (message "%s is already up" (atlantis-fleet-agent-name agent)))
+        ('external (message "%s is running outside Emacs" (atlantis-fleet-agent-name agent)))))))
+
+(defun atlantis-fleet--kill-session-buffer (agent)
+  "Kill AGENT's session buffer if it still exists, then refresh the view.
+
+The buffer can have died between `--kill-action' deciding it was
+killable (from a `--owned' snapshot) and this running - a real race,
+not a hypothetical one - so a missing buffer is not an error here."
+  (let ((buffer (get-buffer (atlantis-fleet--session-buffer-name agent))))
+    (when buffer (kill-buffer buffer)))
+  (revert-buffer)
+  (atlantis-fleet--show-detail agent))
+
+(defun atlantis-fleet-kill ()
+  "Kill the agent at point (`k'), confirming first."
+  (interactive)
+  (let ((agent (atlantis-fleet--agent-at-point)))
+    (when agent
+      (pcase (atlantis-fleet--kill-action agent (atlantis-fleet--owned))
+        ('kill
+         (when (y-or-n-p (format "Kill %s? " (atlantis-fleet-agent-name agent)))
+           (atlantis-fleet--kill-session-buffer agent)))
+        ('kill-working
+         (when (y-or-n-p
+                (format (concat "%s is working on %s - killing mid-bead strands a claim, "
+                                 "a worktree and an open PR. Kill anyway? ")
+                        (atlantis-fleet-agent-name agent) (atlantis-fleet-agent-bead agent)))
+           (atlantis-fleet--kill-session-buffer agent)))
+        ('external
+         (message "%s is running outside Emacs - stop it from its own terminal"
+                  (atlantis-fleet-agent-name agent)))
+        ('dead (message "%s is not running" (atlantis-fleet-agent-name agent)))))))
+
+(defun atlantis-fleet-focus-detail ()
+  "Select the detail window (`RET'), to type to the agent shown there."
+  (interactive)
+  (when (window-live-p atlantis-fleet--detail-window)
+    (select-window atlantis-fleet--detail-window)))
+
 (defvar atlantis-fleet-mode-map
   (let ((map (make-sparse-keymap)))
     (set-keymap-parent map tabulated-list-mode-map)
@@ -243,6 +474,9 @@ Always empty until ah-vcf.3, which is what actually starts and tracks them."
     ;; adds none either, so these are explicit.
     (define-key map "n" #'next-line)
     (define-key map "p" #'previous-line)
+    (define-key map (kbd "RET") #'atlantis-fleet-focus-detail)
+    (define-key map "s" #'atlantis-fleet-start)
+    (define-key map "k" #'atlantis-fleet-kill)
     map)
   "Keymap for `atlantis-fleet-mode'.")
 
@@ -256,6 +490,7 @@ Always empty until ah-vcf.3, which is what actually starts and tracks them."
   (setq tabulated-list-sort-key nil)
   (add-hook 'tabulated-list-revert-hook #'atlantis-fleet--revert nil t)
   (add-hook 'kill-buffer-hook #'atlantis-fleet--cancel-timer nil t)
+  (add-hook 'post-command-hook #'atlantis-fleet--follow nil t)
   (tabulated-list-init-header))
 
 ;;;###autoload
@@ -271,7 +506,14 @@ Always empty until ah-vcf.3, which is what actually starts and tracks them."
       (atlantis-fleet--cancel-timer)
       (setq atlantis-fleet--timer
             (run-with-timer 5 5 #'atlantis-fleet--tick buffer)))
-    (pop-to-buffer buffer)))
+    ;; `pop-to-buffer' must run before `--setup-layout': layout claims
+    ;; `selected-window' as the list window, which is only correct once that
+    ;; window is actually showing this buffer.
+    (pop-to-buffer buffer)
+    (with-current-buffer buffer
+      (atlantis-fleet--setup-layout)
+      (setq atlantis-fleet--last-shown nil)
+      (atlantis-fleet--follow))))
 
 (provide 'atlantis-fleet)
 ;;; atlantis-fleet.el ends here

@@ -173,5 +173,120 @@
   (should (equal (atlantis-fleet--parse-roster "Cyclops\n\nStorm\n\n")
                   '("Cyclops" "Storm"))))
 
+;; ---------------------------------------------------------------------------
+;; ah-vcf.3 increment 1: the pure decisions
+
+(defun atlantis-fleet-test--agent (name role kind state &optional external bead)
+  (make-atlantis-fleet-agent :name name :role role :kind kind :state state
+                              :bead bead :since nil :external external))
+
+(ert-deftest atlantis-fleet-test/launch-command-each-interactive-launcher ()
+  (should (equal (atlantis-fleet--launch-command
+                   (atlantis-fleet-test--agent "Xavier" "planner" 'interactive 'dead))
+                  "scripts/run-planner"))
+  (should (equal (atlantis-fleet--launch-command
+                   (atlantis-fleet-test--agent "Cerebro" "orchestrator" 'interactive 'dead))
+                  "scripts/run-orchestrator"))
+  (should (equal (atlantis-fleet--launch-command
+                   (atlantis-fleet-test--agent "Moira" "feedback" 'interactive 'dead))
+                  "scripts/run-user-feedback")))
+
+(ert-deftest atlantis-fleet-test/launch-command-implementer-takes-its-name ()
+  (should (equal (atlantis-fleet--launch-command
+                   (atlantis-fleet-test--agent "Cyclops" "implementer" 'implementer 'dead))
+                  '("scripts/run-implementer" "Cyclops"))))
+
+(ert-deftest atlantis-fleet-test/session-buffer-name-shape ()
+  (should (equal (atlantis-fleet--session-buffer-name
+                   (atlantis-fleet-test--agent "Cyclops" "implementer" 'implementer 'dead))
+                  "*fleet: Cyclops*")))
+
+(ert-deftest atlantis-fleet-test/start-action-launches-dead ()
+  (should (eq (atlantis-fleet--start-action
+                (atlantis-fleet-test--agent "Cyclops" "implementer" 'implementer 'dead) nil)
+              'launch)))
+
+(ert-deftest atlantis-fleet-test/start-action-refuses-external ()
+  (should (eq (atlantis-fleet--start-action
+                (atlantis-fleet-test--agent "Xavier" "planner" 'interactive 'up t) nil)
+              'external)))
+
+(ert-deftest atlantis-fleet-test/start-action-already-up ()
+  (should (eq (atlantis-fleet--start-action
+                (atlantis-fleet-test--agent "Xavier" "planner" 'interactive 'up nil)
+                '("Xavier"))
+              'already-up)))
+
+(ert-deftest atlantis-fleet-test/kill-action-plain-kill-for-idle ()
+  (should (eq (atlantis-fleet--kill-action
+                (atlantis-fleet-test--agent "Wolverine" "implementer" 'implementer 'idle nil)
+                '("Wolverine"))
+              'kill)))
+
+(ert-deftest atlantis-fleet-test/kill-action-harder-for-working ()
+  (should (eq (atlantis-fleet--kill-action
+                (atlantis-fleet-test--agent "Cyclops" "implementer" 'implementer 'working nil "ah-f9c")
+                '("Cyclops"))
+              'kill-working)))
+
+(ert-deftest atlantis-fleet-test/kill-action-external-and-dead-refused ()
+  (should (eq (atlantis-fleet--kill-action
+                (atlantis-fleet-test--agent "Xavier" "planner" 'interactive 'up t) nil)
+              'external))
+  (should (eq (atlantis-fleet--kill-action
+                (atlantis-fleet-test--agent "Rogue" "implementer" 'implementer 'dead nil) nil)
+              'dead)))
+
+(ert-deftest atlantis-fleet-test/placeholder-external-vs-dead-wording ()
+  (should (equal (atlantis-fleet--placeholder
+                   (atlantis-fleet-test--agent "Cyclops" "implementer" 'implementer 'dead))
+                  "Cyclops is not running. Press s to start it."))
+  (should (equal (atlantis-fleet--placeholder
+                   (atlantis-fleet-test--agent "Xavier" "planner" 'interactive 'up t))
+                  (concat "Xavier is running outside Emacs - no live view. "
+                          "Use the terminal that started it."))))
+
+;; ---------------------------------------------------------------------------
+;; ah-vcf.3 increment 2: owned sessions feed the list
+
+;; The seam this bead fills: a non-empty OWNED turns an interactive agent
+;; `up' and un-externals it.  Already true of ah-vcf.2's --derive; pinned
+;; here so a later change to the derivation cannot silently break the seam.
+(ert-deftest atlantis-fleet-test/derive-owned-interactive-is-up-not-external ()
+  (let* ((agents (atlantis-fleet--derive nil atlantis-fleet-test--interactive nil
+                                          #'atlantis-fleet-test--never-alive nil '("Xavier")))
+         (xavier (car agents)))
+    (should (eq (atlantis-fleet-agent-state xavier) 'up))
+    (should-not (atlantis-fleet-agent-external xavier))))
+
+(ert-deftest atlantis-fleet-test/owned-buffer-agent-name-matches-session-scheme ()
+  (should (equal (atlantis-fleet--owned-buffer-agent-name "*fleet: Cyclops*") "Cyclops"))
+  (should (equal (atlantis-fleet--owned-buffer-agent-name "*fleet: Xavier*") "Xavier")))
+
+(ert-deftest atlantis-fleet-test/owned-buffer-agent-name-no-match ()
+  (should (null (atlantis-fleet--owned-buffer-agent-name "*scratch*")))
+  (should (null (atlantis-fleet--owned-buffer-agent-name "*fleet: Cyclops (no view)*"))))
+
+;; ---------------------------------------------------------------------------
+;; ah-vcf.3 increment 3: windows and keys
+
+(ert-deftest atlantis-fleet-test/show-detail-picks-session-when-owned-else-placeholder ()
+  (let* ((owned-agent (atlantis-fleet-test--agent "Cyclops" "implementer" 'implementer 'working
+                                                    nil "ah-f9c"))
+         (dead-agent (atlantis-fleet-test--agent "Rogue" "implementer" 'implementer 'dead))
+         (session-name (atlantis-fleet--session-buffer-name owned-agent))
+         (placeholder-name "*fleet: Rogue (no view)*"))
+    (unwind-protect
+        (progn
+          (get-buffer-create session-name)
+          (cl-letf (((symbol-function 'atlantis-fleet--owned) (lambda () '("Cyclops"))))
+            (should (eq (atlantis-fleet--show-detail owned-agent) (get-buffer session-name)))
+            (let ((placeholder (atlantis-fleet--show-detail dead-agent)))
+              (should (equal (buffer-name placeholder) placeholder-name))
+              (should (equal (with-current-buffer placeholder (buffer-string))
+                              (atlantis-fleet--placeholder dead-agent))))))
+      (dolist (name (list session-name placeholder-name))
+        (when (get-buffer name) (kill-buffer name))))))
+
 (provide 'atlantis-fleet-test)
 ;;; atlantis-fleet-test.el ends here
