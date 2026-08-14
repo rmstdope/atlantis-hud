@@ -220,8 +220,9 @@ navigator should learn it at the same time.
 - **Never plan or implement.** You do not add a `planned` label, you do not write a `design`, you do
   not touch `packages/` or `crates/`. If you are editing application code you have taken the wrong
   job.
-- **Never claim a bead.** You have no reason to — you create them and read them, and both work
-  unclaimed. A bead you claim is one an implementer cannot take.
+- **Never claim a bead.** Claiming is the implementer's alone, repo-wide (`beads-workflow`), and you
+  have no reason to want it — you create beads and read them, and both work unclaimed. A bead you
+  claim is one an implementer cannot take, and it reads to everyone else as a build in flight.
 - **Never set a priority the navigator did not choose.** New beads land at P4 and Xavier's triage
   ranks them with the navigator.
 - **Never trust a comment as the link.** `external_ref` is the record; a comment is a courtesy to the

@@ -40,13 +40,21 @@ bd ready --label planned --exclude-label human --exclude-type epic --claim --jso
 `human` is already waiting on the navigator, and re-claiming it just re-asks a question nobody is
 there to answer. `epic` is a split parent: it has children rather than a plan.
 
-**The planner does not use `bd ready`.** It may plan a bead whose dependencies are still unbuilt —
-often those are the ones most worth having planned — and `bd ready` hides exactly those. It picks
-from `bd list ... --sort priority` and claims by id instead; `plan-bead` carries the reasoning and
-the care that has to come with it.
+**Claiming belongs to the implementer, and to nobody else.** A claim says *this is being built
+right now*, which is why it takes the bead off `bd ready` and holds a lease that has to be
+heartbeated. No other role runs `bd update --claim`, `bd ready --claim` or `bd unclaim` — not the
+planner, not customer service, not the orchestrator, not a session the navigator is driving by hand.
+A claim from any of them is indistinguishable from a build in flight: it hides a ready bead from the
+fleet, and when that session ends it strands a lease nobody can account for.
 
-Either way the claim is atomic, and a failure means somebody else won the race: take the next bead
-rather than retrying.
+**The planner does not use `bd ready` either.** It may plan a bead whose dependencies are still
+unbuilt — often those are the ones most worth having planned — and `bd ready` hides exactly those. It
+picks from `bd list ... --sort priority`, and marks its candidate with the **`planning`** label
+rather than claiming it: enough to keep a second planning session off the same bead, while leaving it
+`open`, unassigned and free of any lease. `plan-bead` carries the commands.
+
+The claim is atomic, and a failure means somebody else won the race: take the next bead rather than
+retrying.
 
 `bd blocked` shows what is waiting and on what. `bd list` shows everything.
 
@@ -55,13 +63,14 @@ rather than retrying.
 Work is split between a **planning** session, which turns an unplanned bead into a specified one and
 owns every decision the user can see, and one or more **implementation** sessions, which build what
 the plan says. One label carries the handover, and `bd ready --claim` is an atomic compare-and-swap,
-so neither role can double-book a bead.
+so neither role can double-book a bead. Only the implementation session ever claims: the planner
+holds nothing but a label.
 
 | State | How it looks | Who moves it, and how |
 |---|---|---|
 | unplanned | open, no `planned` | — |
-| being planned | in_progress, planner holds the lease | the planner pickup above |
-| planned | open, `planned`, unassigned | planner: write the plan, add the label, `bd unclaim` |
+| being planned | open, `planning`, unassigned | planner: add the label, then plan it |
+| planned | open, `planned`, unassigned | planner: write the plan, swap `planning` for `planned` |
 | being implemented | in_progress, implementer holds the lease | the builder pickup above |
 | needs the user | open, unassigned, `human`, **`planned` removed** | either role, on anything it must not decide |
 | parked on a UI answer | open, unassigned, `needs-ui-decision` **and** `human` | planner, when the user is away |
@@ -82,7 +91,11 @@ implementer, which would hit the same wall and escalate again. `bd unclaim` is t
 to forget and worse to skip: `bd update` sets no status, so without it the bead stays `in_progress`
 assigned to an agent that has walked away — invisible to `bd ready`, and stranded until its lease
 runs out. That is the exact condition the reclaim rule below exists to repair, manufactured
-deliberately every time anyone escalates.
+deliberately every time an implementer escalates.
+
+**A planner escalating has no claim to release**, so it runs the first and third commands and
+`--remove-label planning` in place of the second. `bd unclaim` on a bead you never claimed is not
+harmless bookkeeping — it is a claim you should not have had in the first place.
 
 A bead parked on a UI answer carries **both** `needs-ui-decision` and `human`, for the same reason:
 `bd human list` lists the `human` label and nothing else, so a bead with only the first sits in
@@ -94,14 +107,16 @@ every terminal.
 Several agents work this backlog at once, so a claim is the only thing keeping two of them off the
 same bead. The second rule below is the one that is easy to forget and expensive to skip.
 
-**Claim before you explore, not before you branch.** Claiming — by id when you chose the bead, or as
-part of `bd ready --claim` when you are taking whatever is next — comes ahead of reading code,
-planning, or asking the navigator anything. Reading the bead itself with `bd show` is not exploring:
-it is how you decide whether to take it, and it costs seconds. Everything after that waits for the
-claim.
-Planning a bead takes ten minutes or more, and until the claim lands the bead is still on every
-other agent's `bd ready`. The claim is atomic, so a failure means somebody else won the race: pick
-another bead rather than retrying.
+**If you are implementing: claim before you explore, not before you branch.** Claiming — by id when
+you chose the bead, or as part of `bd ready --claim` when you are taking whatever is next — comes
+ahead of reading code or asking the navigator anything. Reading the bead itself with `bd show` is not
+exploring: it is how you decide whether to take it, and it costs seconds. Everything after that waits
+for the claim, because until it lands the bead is still on every other agent's `bd ready`. The claim
+is atomic, so a failure means somebody else won the race: pick another bead rather than retrying.
+
+**If you are not implementing, do not claim, and do not need to.** Creating, reading, ranking,
+labelling, commenting and planning all work on an unclaimed bead. If you find yourself wanting a
+claim to stop another session touching your bead, you want a label.
 
 **Heartbeat while you work.** A claim carries a lease of about five minutes, and only
 `bd heartbeat <id>` pushes it forward. A cycle here — RED, GREEN, REFACTOR, the local gate, CI —
@@ -189,7 +204,8 @@ Types used here: `feature`, `bug`, `task`, `epic`.
 
 **Every bead is created at P4**, whoever creates it and however urgent it looks. `-p 4` is explicit
 because bd's own default is P2, and a bead that arrives at P2 has been given a rank by whoever
-happened to file it.
+happened to file it. The one exception is a child of a split parent, which takes the parent's
+priority — see "Dependencies and breakdown" below.
 
 P4 is not "unimportant" here — it is **unranked**, the floor a bead waits on until it is prioritised
 deliberately. That prioritisation is a step of its own: the planner walks the P4 beads with the
@@ -211,11 +227,19 @@ Do not restate a dependency in the description — model it, so `bd ready` stays
 ```bash
 bd dep add <blocked-bead> <blocker-bead>            # blocked-bead is blocked by blocker-bead
 bd dep add <a> <b> --type relates-to                # related, but not blocking
-bd create "Sub-task title" --parent <bead-id> -p 4  # hierarchical child
+bd create "Sub-task title" --parent <bead-id> -p <parent's priority>  # hierarchical child
 ```
 
-A child is a new bead, so it starts at P4 like any other — it does not inherit the parent's priority,
-and a split is not the moment to rank the pieces.
+**A child carries its parent's priority, and keeps it.** It is the one bead that is not created at P4,
+because a split parent has usually been ranked already and an epic is one piece of work built in
+several passes — ranked once, as a family. bd does not copy the priority for you, so pass it
+explicitly; if the parent is itself still P4 the children are P4 with it, and the whole family is
+ranked in one question at the next triage.
+
+The navigator is asked about the parent only. A child whose priority has drifted out of step with its
+parent — higher or lower — is put back to the parent's: `plan-bead` reconciles the tree on every
+triage pass, and a child that outranks its own parent jumps the queue ahead of work the navigator put
+first.
 
 Beads has real parent links and dependency edges, so the old `Sub-issue (NN):` title prefix is gone.
 When a bead turns out to be larger than one increment, split it into children and wire the order with

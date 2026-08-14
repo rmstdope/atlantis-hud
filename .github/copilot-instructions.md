@@ -220,9 +220,21 @@ rules that must always hold are:
   explicitly, because bd's own default is P2. P4 here means *unranked*, not unimportant: priority is
   the navigator's to set, and the planner walks the P4 beads with them and recommends one for each.
   Argue the urgency in the description, where it can be read weeks later; never in the number.
-- ALWAYS claim the bead **before** exploring the code, planning, or asking the navigator anything —
-  not merely before branching — and ALWAYS `bd dolt push` straight afterwards so agents on other
-  machines can see the claim. `bd update <id> --claim` when you chose the bead yourself;
+  **The one exception is a child of a split parent**, which is created at its parent's priority
+  (`bd create --parent <id> -p <the parent's priority>`) and keeps it: an epic is one piece of work
+  built in several passes, so it is ranked once, as a family. The navigator is asked about the parent
+  only, and a child that drifts out of step with it — higher or lower — is put back.
+- **ONLY an implementer claims.** A claim means *this bead is being built right now*: it takes the
+  bead off `bd ready` and holds a lease that must be heartbeated, so a claim from any other session
+  is indistinguishable from a build in flight and strands a lease when that session ends. Xavier
+  marks the bead it is planning with the `planning` label instead — same protection against a second
+  planner, no lease, nothing to strand. Moira and Cerebro claim nothing, and neither does a session
+  the navigator is driving by hand unless it is doing an implementer's job. `bd update --claim`,
+  `bd ready --claim` and `bd unclaim` belong to the implementer alone. If you want a claim only to
+  stop another session touching your bead, you want a label.
+- ALWAYS, as an implementer, claim the bead **before** exploring the code or asking the navigator
+  anything — not merely before branching — and ALWAYS `bd dolt push` straight afterwards so agents on
+  other machines can see the claim. `bd update <id> --claim` when you chose the bead yourself;
   `bd ready --label ... --claim` when taking whatever is next, which claims as it picks. Several
   agents share this backlog. If the claim fails, another agent won it: pick a
   different bead.
