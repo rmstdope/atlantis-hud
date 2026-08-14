@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Status bar wrap &amp; faction panel height</title>
+<style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --warn:#d9a441; --danger:#d97070;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, section, footer { max-width:1340px; margin-left:auto; margin-right:auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; }
+  h1 span { color:var(--brass); }
+  h2.rule { font-size:17px; letter-spacing:0.3px; margin:38px 0 4px; border-top:1px solid var(--edge); padding-top:20px; }
+  h2.rule em { color:var(--brass); font-style:normal; font-size:11px; letter-spacing:1.8px; text-transform:uppercase; margin-right:10px; }
+  header p, section > p, main > p { color:var(--ink-soft); max-width:94ch; margin-top:10px; font-size:14px; }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:0.9em; color:var(--brass-bright); }
+
+  .cards { display:grid; grid-template-columns:repeat(2,1fr); gap:20px; margin-top:22px; align-items:start; }
+  .cards.three { grid-template-columns:repeat(3,1fr); }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; display:flex; flex-direction:column; gap:11px; }
+  .card h3 { font-size:17px; }
+  .card h3 em { color:var(--brass); font-style:normal; font-size:12px; letter-spacing:1.6px; margin-right:8px; }
+  .card.rec { border-color:var(--brass); }
+  .card h3 .recd { color:var(--ground); background:var(--brass); border-radius:3px; font:11px/1.6 'Helvetica Neue',Arial,sans-serif; letter-spacing:1.2px; text-transform:uppercase; padding:1px 6px; margin-left:8px; vertical-align:2px; }
+  .concept { color:var(--ink-soft); font-size:13px; min-height:3.2em; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; padding:10px; overflow:hidden; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; padding:0; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"− "; color:var(--danger); }
+
+  /* ---- the app, redrawn at a deliberately narrow window ---- */
+  .app { font-family:'Helvetica Neue',Arial,sans-serif; font-size:11px; line-height:1.45; width:460px; margin:0 auto; }
+  .win { border:1px solid var(--edge); border-radius:5px; overflow:hidden; }
+  .apphdr { display:flex; align-items:center; gap:10px; padding:0 8px; height:26px;
+            background:var(--panel); border-bottom:1px solid var(--edge); white-space:nowrap; }
+  .apphdr.wrap { flex-wrap:wrap; height:auto; min-height:26px; row-gap:0; }
+  .apphdr .line { display:flex; align-items:center; gap:10px; height:26px; }
+  .apphdr .mark { color:var(--brass); font-size:9px; letter-spacing:1.4px; }
+  .apphdr .soft { color:var(--ink-soft); }
+  .apphdr .val { color:var(--ink); }
+  .apphdr .grow { flex:1; }
+  .apphdr .push { margin-left:auto; }
+  .apphdr .chip { border:1px solid var(--edge); background:var(--raised); border-radius:3px; padding:0 6px; color:var(--ink-soft); font-size:10px; }
+  .apphdr .chip.hot { border-color:var(--brass); color:var(--brass-bright); }
+  .facthot { color:var(--ink); border-bottom:1px dotted var(--brass); cursor:pointer; }
+  .clipped { position:relative; }
+  .clipped::after { content:""; position:absolute; right:0; top:0; bottom:0; width:34px;
+                    background:linear-gradient(90deg, transparent, #2a1416 88%); }
+  .cliplabel { position:absolute; right:4px; top:50%; transform:translateY(-50%); color:var(--danger); font-size:9px; letter-spacing:1px; z-index:2; }
+
+  .mapbg { position:relative; height:300px; background:
+      repeating-linear-gradient(60deg, #141b23 0 9px, #151d25 9px 18px), var(--ground); overflow:hidden; }
+  .mapbg.short { height:180px; }
+
+  .pop { position:absolute; z-index:5; background:var(--raised); border:1px solid var(--edge);
+         border-radius:5px; box-shadow:0 10px 26px rgba(0,0,0,.5); white-space:normal; width:280px; left:80px; top:2px; }
+  .pop > .head { display:flex; align-items:center; gap:6px; border-bottom:1px solid var(--edge); padding:5px 8px; }
+  .pop > .head .t { color:var(--brass); font-size:9px; letter-spacing:1.3px; text-transform:uppercase; }
+  .pop > .head .x { color:var(--ink-dim); margin-left:auto; }
+  .pop > .body { padding:7px 8px 8px; display:grid; gap:7px; }
+  .pop > .body.scroll40 { max-height:120px; overflow-y:scroll; }
+  .pop > .body.full { max-height:262px; overflow-y:auto; }
+
+  .idline b { color:var(--brass-bright); font-weight:500; }
+  .idline .ty { color:var(--ink-dim); }
+  .sec { color:var(--brass); font-size:8.5px; letter-spacing:1.2px; text-transform:uppercase; }
+  .facts { display:grid; grid-template-columns:auto 1fr; gap:1px 10px; }
+  .facts dt { color:var(--ink-soft); }
+  .facts dd { color:var(--ink); margin:0; font-variant-numeric:tabular-nums; }
+  .allow { display:grid; grid-template-columns:auto 1fr auto; gap:2px 8px; align-items:center; }
+  .allow .k { color:var(--ink-soft); }
+  .allow .n { color:var(--ink); font-variant-numeric:tabular-nums; text-align:right; }
+  .allow .n.full { color:var(--brass-bright); }
+  .allow .n.zero { color:var(--ink-dim); }
+  .bar { height:4px; background:var(--edge-soft); border-radius:2px; overflow:hidden; }
+  .bar i { display:block; height:100%; background:var(--select); }
+  .bar i.full { background:var(--brass); }
+  .att { display:grid; gap:3px; }
+  .att .lvl { display:grid; grid-template-columns:66px 1fr; gap:8px; align-items:baseline; }
+  .att .ln { font-size:9px; letter-spacing:1px; text-transform:uppercase; text-align:right; }
+  .att .ln .c { color:var(--ink-dim); letter-spacing:0; text-transform:none; margin-left:4px; }
+  .att .ls { color:var(--ink-soft); }
+  .att .none { color:var(--ink-dim); font-style:italic; }
+  .a-host { color:var(--danger); } .a-unfr { color:#c8906f; } .a-neut { color:var(--ink-soft); }
+  .a-frnd { color:#8fc4a0; } .a-ally { color:var(--ok); }
+  .fx { color:var(--ink); }
+  .foot { border-top:1px solid var(--edge); padding-top:5px; color:var(--ink-dim); font-size:10px; }
+  footer { margin-top:44px; border-top:1px solid var(--edge); padding-top:16px; color:var(--ink-dim); font-size:13px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>UI tweaks <span>— the status bar wraps, the faction view grows</span></h1>
+  <p>Bead <code>ah-cp8</code>, from GitHub issue #188. Two defects: the top status bar overflows and
+  clips when the window is narrower than its content, and the faction view's body stops at 40% of the
+  window height, forcing a scroll long before the window is actually out of room. Every stage below is
+  drawn at a deliberately narrow <b>460px window</b>, with the header's real contents: wordmark, game,
+  turn, faction, the status chips, then Import · Export · ⚙ on the right.</p>
+  <p><b>Two questions:</b> how the bar wraps, and how tall the faction view gets.</p>
+  <p class="verdict" style="color:var(--ink); border-left:2px solid var(--brass); padding-left:12px; margin-top:14px;"><b style="color:var(--brass); font-weight:normal">Chosen.</b>
+  <b>B</b>, the grouped wrap: game state on the left, the Import · Export · ⚙ actions grouped on the
+  right, dropping to a second row as one right-aligned unit when the window is too narrow. The faction
+  view <b>grows to the window</b> — its body's ceiling becomes the viewport minus a small margin, and it
+  scrolls only when genuinely out of room. The same window-clamped ceiling is applied to <b>all four
+  header popovers</b> (faction, merged factions, problems, turn messages), so the header's surfaces stay
+  consistent.</p>
+</header>
+
+<main>
+  <h2 class="rule"><em>Today</em>What the defect looks like</h2>
+  <div class="cards" style="grid-template-columns:1fr; max-width:560px">
+    <div class="card">
+      <h3><em>—</em>Current: one row, clipped</h3>
+      <p class="concept" style="min-height:0">One fixed-height flex row, <code>whitespace-nowrap</code>, nothing shrinks:
+      whatever does not fit is simply cut off at the window edge — here the Export button and the settings gear are gone.</p>
+      <div class="stage"><div class="app"><div class="win">
+        <div class="apphdr clipped">
+          <span class="cliplabel">CLIPPED ▸</span>
+          <span class="mark">ATLANTIS HUD</span>
+          <span class="soft">NewOrigins</span>
+          <span class="soft">Turn <span class="val">71</span></span>
+          <span class="soft">Faction <span class="facthot">Borg TNG (95) ▾</span></span>
+          <span class="chip">2 merged</span>
+          <span class="chip hot">3 problems</span>
+          <span class="chip">Battles</span>
+          <span class="grow"></span>
+          <span class="chip">Import</span>
+          <span class="chip">Expo</span>
+        </div>
+        <div class="mapbg short"></div>
+      </div></div></div>
+    </div>
+  </div>
+
+  <h2 class="rule"><em>Question 1</em>How the status bar wraps</h2>
+  <p>Both drop to two rows when the window is too narrow, and stay one row when it is not. They differ in
+  <b>where the break happens</b> and where the right-hand actions land.</p>
+
+  <div class="cards">
+    <!-- A: free wrap -->
+    <div class="card">
+      <h3><em>A</em>Free wrap</h3>
+      <p class="concept">One <code>flex-wrap</code> on the existing row: each item flows to the next line
+      when it runs out of room. The break lands wherever the width says — here between the problems chip
+      and the battles chip — and the overflowed items sit left-aligned.</p>
+      <div class="stage"><div class="app"><div class="win">
+        <div class="apphdr wrap">
+          <span class="line">
+            <span class="mark">ATLANTIS HUD</span>
+            <span class="soft">NewOrigins</span>
+            <span class="soft">Turn <span class="val">71</span></span>
+            <span class="soft">Faction <span class="facthot">Borg TNG (95) ▾</span></span>
+            <span class="chip">2 merged</span>
+            <span class="chip hot">3 problems</span>
+          </span>
+          <span class="line" style="width:100%">
+            <span class="chip">Battles</span>
+            <span class="chip">Import</span>
+            <span class="chip">Export</span>
+            <span class="chip">⚙</span>
+          </span>
+        </div>
+        <div class="mapbg short"></div>
+      </div></div></div>
+      <ul class="notes">
+        <li>Smallest possible change; nothing about the bar's structure moves</li>
+        <li class="con">The break point is arbitrary — status chips and action buttons mix on row two</li>
+        <li class="con">Import/Export/⚙ lose their right-edge home and drift left</li>
+      </ul>
+    </div>
+
+    <!-- B: grouped wrap -->
+    <div class="card rec">
+      <h3><em>B</em>Grouped wrap<span class="recd">chosen</span></h3>
+      <p class="concept">The bar becomes two groups — game state on the left, the Import · Export · ⚙
+      actions on the right. Too narrow, and the <b>actions drop to a second row as one unit, staying
+      right-aligned</b>. The game-state group can still wrap internally on very narrow windows.</p>
+      <div class="stage"><div class="app"><div class="win">
+        <div class="apphdr wrap">
+          <span class="line">
+            <span class="mark">ATLANTIS HUD</span>
+            <span class="soft">NewOrigins</span>
+            <span class="soft">Turn <span class="val">71</span></span>
+            <span class="soft">Faction <span class="facthot">Borg TNG (95) ▾</span></span>
+            <span class="chip">2 merged</span>
+            <span class="chip hot">3 problems</span>
+            <span class="chip">Battles</span>
+          </span>
+          <span class="line push">
+            <span class="chip">Import</span>
+            <span class="chip">Export</span>
+            <span class="chip">⚙</span>
+          </span>
+        </div>
+        <div class="mapbg short"></div>
+      </div></div></div>
+      <ul class="notes">
+        <li>Predictable: row one is what the game says, row two is what you can do</li>
+        <li>Actions keep their right-edge home on both one row and two</li>
+        <li class="con">A small restructure of the header markup, not a one-line change</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2 class="rule"><em>Question 2</em>How tall the faction view gets</h2>
+  <p>Today the body scrolls at <code>40vh</code> — the panel gives up while the window below it is still
+  empty. Both options keep the pinned title row and scroll only when truly out of room.</p>
+
+  <div class="cards">
+    <!-- current -->
+    <div class="card">
+      <h3><em>—</em>Current: scroll at 40% of the window</h3>
+      <p class="concept">With 32 declared factions the list always scrolls, even on a tall window with
+      room to spare beneath the panel.</p>
+      <div class="stage"><div class="app"><div class="win">
+        <div class="apphdr">
+          <span class="mark">ATLANTIS HUD</span>
+          <span class="soft">Faction <span class="facthot">Borg TNG (95) ▾</span></span>
+          <span class="grow"></span><span class="chip">Import</span>
+        </div>
+        <div class="mapbg">
+          <div class="pop">
+            <div class="head"><span class="t">Faction</span><span class="x">✕</span></div>
+            <div class="body scroll40" id="attCur"></div>
+          </div>
+        </div>
+      </div></div></div>
+      <ul class="notes">
+        <li class="con">Scrollbar appears with half the window still empty below</li>
+      </ul>
+    </div>
+
+    <!-- clamped to viewport -->
+    <div class="card rec">
+      <h3><em>B</em>Grow to the window<span class="recd">chosen</span></h3>
+      <p class="concept">The body's ceiling becomes the window itself: it may grow until a small margin
+      above the bottom edge, and only then scrolls. On any reasonable window all five attitude levels are
+      visible at once; a genuinely short window still scrolls instead of clipping.</p>
+      <div class="stage"><div class="app"><div class="win">
+        <div class="apphdr">
+          <span class="mark">ATLANTIS HUD</span>
+          <span class="soft">Faction <span class="facthot">Borg TNG (95) ▾</span></span>
+          <span class="grow"></span><span class="chip">Import</span>
+        </div>
+        <div class="mapbg">
+          <div class="pop">
+            <div class="head"><span class="t">Faction</span><span class="x">✕</span></div>
+            <div class="body full" id="attFull"></div>
+          </div>
+        </div>
+      </div></div></div>
+      <ul class="notes">
+        <li>Scroll only when the window is actually out of room</li>
+        <li>The pinned title row and dismissal behaviour are untouched</li>
+      </ul>
+    </div>
+  </div>
+</main>
+
+<footer>
+  Self-contained — no build step, no network. Faction data verbatim from
+  <code>neworigins-3.0.0-g7-f95-t71.rep</code>: Borg TNG (95), 6,038 unclaimed silver, 32 declared
+  factions across five levels — the population that decides whether the panel scrolls.
+</footer>
+
+<script>
+const LEVELS = [
+  { name:"Hostile",    cls:"a-host", factions:[["Creatures",2],["The Guardsmen",1],["Dark League",28],["Gyperboreya",42],["Truth Seekers",44],["Thousand Masks",49],["Ennead",52],["Surveyors",55],["Restless Nomads",58],["MMF",79],["Heirs of the Sun",90]] },
+  { name:"Unfriendly", cls:"a-unfr", factions:[] },
+  { name:"Neutral",    cls:"a-neut", factions:[["Fon",8]] },
+  { name:"Friendly",   cls:"a-frnd", factions:[["The Gaggle",22],["Kiiran",3],["Distant Drummer",15],["Nekojin Empire",26],["squirrels",43],["Trader Enclave",30],["Children of the Four Winds",4]] },
+  { name:"Ally",       cls:"a-ally", factions:[["Wistful Thinking",27],["La Orden de la Sangre",9],["Elder Tree Forests",32],["Archon Dominion",53],["Mantzikert",103],["Frozen Sails",35],["Stormbringer",46],["Cartographers",69],["Wanderers",83],["Red Skulls",10],["Greywolf",33],["Under Mirk Wood",18],["Cone's Magicians",73]] }
+];
+const nm = ([n,id]) => `<span class="fx">${n} (${id})</span>`;
+function body(el) {
+  el.innerHTML = `
+    <div class="idline"><b>Borg TNG</b> (95) <span class="ty">· Magic 5</span></div>
+    <dl class="facts"><dt>Unclaimed silver</dt><dd>6,038</dd></dl>
+    <div class="sec">Allowances</div>
+    <div class="allow">
+      <span class="k">Regions</span><span class="bar"><i style="width:0"></i></span><span class="n zero">0 / 0</span>
+      <span class="k">Mages</span><span class="bar"><i class="full" style="width:100%"></i></span><span class="n full">6 / 6</span>
+      <span class="k">Apprentices</span><span class="bar"><i class="full" style="width:100%"></i></span><span class="n full">15 / 15</span>
+    </div>
+    <div class="sec">Declared attitudes <span style="color:var(--ink-dim);letter-spacing:0;text-transform:none">· default Unfriendly</span></div>
+    <div class="att">` + LEVELS.map(l => `<div class="lvl">
+      <div class="ln ${l.cls}">${l.name}<span class="c">${l.factions.length || ""}</span></div>
+      <div class="ls">${l.factions.length ? l.factions.map(nm).join(", ") : '<span class="none">none declared</span>'}</div>
+    </div>`).join("") + `</div>
+    <div class="foot">⌂ marks a faction whose report has been merged in.</div>`;
+}
+body(document.getElementById("attCur"));
+body(document.getElementById("attFull"));
+</script>
+</body>
+</html>
