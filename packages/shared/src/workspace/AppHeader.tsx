@@ -40,6 +40,20 @@ type AppHeaderProps = {
   picker: ReactNode;
   factionLabel: string | null;
   turnLabel: string | null;
+  /** The working turn's bare number, e.g. "71" - what the chip collapses to while comparing. */
+  workingTurnNumber: string | null;
+  /** Whether the turn picker is showing. Same split as the game picker: the shell owns the panel. */
+  turnPickerOpen: boolean;
+  onToggleTurnPicker: () => void;
+  /** The picker itself, rendered under the chip when it is open. */
+  turnPicker: ReactNode;
+  /**
+   * The compared turn's number, or null when nothing is being compared. Set, it replaces the
+   * chip's plain label with `<workingTurnNumber> ⇄ <compared>` - the compared half in brass - and
+   * an inline way to stop.
+   */
+  comparedTurnLabel: string | null;
+  onStopComparing: () => void;
   /** How many allied reports have been folded into this turn. Zero hides the chip entirely. */
   mergedCount: number;
   /** Whether the merged-factions panel is showing. Same split as the picker. */
@@ -134,6 +148,12 @@ export function AppHeader({
   picker,
   factionLabel,
   turnLabel,
+  workingTurnNumber,
+  turnPickerOpen,
+  onToggleTurnPicker,
+  turnPicker,
+  comparedTurnLabel,
+  onStopComparing,
   mergedCount,
   mergedOpen,
   onToggleMerged,
@@ -242,7 +262,49 @@ export function AppHeader({
       </span>
       {turnLabel ? (
         <span className="text-ink-soft">
-          Turn <span className="rounded border border-edge bg-panel-raised px-2 py-0.5 text-ink">{turnLabel}</span>
+          Turn{" "}
+          {/*
+            Its own `relative` wrapper, sibling to the game indicator's rather than sharing one -
+            the same reason the faction and merged chips each get their own (see below).
+          */}
+          <span className="relative">
+            <button
+              type="button"
+              data-testid="turn-chip"
+              aria-haspopup="dialog"
+              aria-expanded={turnPickerOpen}
+              onClick={onToggleTurnPicker}
+              className="rounded border border-edge bg-panel-raised px-2 py-0.5 text-ink hover:border-brass"
+            >
+              {comparedTurnLabel ? (
+                <>
+                  {workingTurnNumber ?? turnLabel}
+                  <span className="text-brass-bright"> ⇄ {comparedTurnLabel}</span>
+                </>
+              ) : (
+                <>
+                  {turnLabel}
+                  <span aria-hidden className="ml-1 text-ink-dim">
+                    ▾
+                  </span>
+                </>
+              )}
+            </button>
+            {comparedTurnLabel ? (
+              <button
+                type="button"
+                aria-label="stop comparing"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onStopComparing();
+                }}
+                className="ml-1 rounded px-1 text-ink-dim hover:text-ink"
+              >
+                ✕
+              </button>
+            ) : null}
+            {turnPickerOpen ? turnPicker : null}
+          </span>
         </span>
       ) : null}
       {/*
