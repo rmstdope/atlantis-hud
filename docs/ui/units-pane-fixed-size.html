@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ah-3cs — Fixed size for the “Units in hex” pane</title>
+<style>
+  :root { --page:#10151c; --panel:#171e28; --edge:#2a3442; --ink:#d7dee8; --dim:#8a94a3;
+          --brass:#c9a24b; --ghost:#1c2430; }
+  body { background: var(--page); color: var(--ink); font: 14px/1.5 system-ui, sans-serif;
+         margin: 0; padding: 24px 32px 64px; }
+  h1 { font-size: 20px; }
+  h2.sec { font-size: 16px; margin: 36px 0 4px; border-top: 1px solid var(--edge); padding-top: 20px; }
+  p.note { color: var(--dim); max-width: 78ch; }
+  .variant { margin: 20px 0; }
+  .variant h3 { font-size: 15px; margin: 0 0 8px; }
+  .row-flex { display: flex; gap: 28px; flex-wrap: wrap; align-items: flex-start; }
+  .pane { width: 480px; background: var(--panel); border: 1px solid var(--edge);
+          border-radius: 8px; overflow: hidden; }
+  .pane header { display: flex; align-items: center; gap: 8px; padding: 6px 10px;
+                 border-bottom: 1px solid var(--edge); font-size: 12px; }
+  .pane header .title { font-weight: 600; }
+  .pane header .hint { color: var(--dim); }
+  .pane header .spacer { flex: 1; }
+  .pane header .step { color: var(--dim); display: flex; gap: 6px; align-items: center; }
+  .pane header .step b { color: var(--ink); font-weight: 500; }
+  .pane header .caret { color: var(--dim); }
+  table.units { width: 100%; border-collapse: collapse; font-size: 11.5px; }
+  table.units th { text-align: left; color: var(--dim); font-weight: 500; padding: 2px 10px;
+                   height: 22px; border-bottom: 1px solid var(--edge); }
+  table.units td { padding: 0 10px; height: 22px; white-space: nowrap; }
+  table.units tr.unit:nth-child(odd) td { background: #131a24; }
+  tr.ghost td { height: 22px; }
+  tr.ghost-striped td { background: var(--ghost); height: 22px; }
+  tr.ghost-striped:nth-child(odd) td { background: transparent; }
+  .blank-space { height: 154px; }
+  .cost { color: var(--dim); font-size: 13px; margin: 6px 0 0; max-width: 70ch; }
+  .absent { font-style: italic; color: var(--dim); margin: 0; padding: 10px 12px; font-size: 11.5px; }
+  /* settings dialog mock */
+  .settings { width: 380px; background: var(--panel); border: 1px solid var(--edge);
+              border-radius: 8px; padding: 14px 16px; font-size: 12.5px; }
+  .settings .slider-row { margin-bottom: 4px; }
+  .settings .slider-row .lbl { display: flex; justify-content: space-between; }
+  .settings input[type=range] { width: 100%; accent-color: var(--brass); }
+  .settings label.chk { display: flex; align-items: center; justify-content: space-between;
+                        gap: 12px; margin-top: 12px; cursor: default; }
+  .settings label.chk .txt { display: flex; flex-direction: column; }
+  .settings label.chk .txt .d { font-size: 10px; color: var(--dim); max-width: 260px; }
+  .settings input[type=checkbox] { accent-color: var(--brass); width: 15px; height: 15px; }
+  .chip { display: inline-block; background: var(--panel); border: 1px solid var(--edge);
+          border-radius: 6px; padding: 4px 12px; margin-right: 10px; font-size: 12px; }
+  .chip b { color: var(--ink); font-weight: 500; }
+</style>
+</head>
+<body>
+<h1>ah-3cs — A fixed size for the “Units in hex” pane</h1>
+<p class="note"><strong>Chosen: 1A blank remainder · 2 Option 1 bare “12” · 3A “Fixed pane size” ·
+4R reserve everywhere.</strong> Ghost rows were rejected as busier than they earn; “max” disappears
+from the stepper while fixed mode is on because it stops being true; collapsing on an empty hex was
+rejected because it reintroduces the exact layout jump the option removes. The full interview is
+recorded in bead ah-3cs's design field.</p>
+<p class="note">
+Today the rows setting is a <em>ceiling</em>: a hex with 5 units gets a 5-row pane, a hex with 40
+gets the full 12 and scrolls. The new option makes the pane always reserve the configured rows, so
+it stops changing height as you move from hex to hex (and the map stops re-fitting under it).
+Every pane below is set to <b>12 rows</b> and shows a hex with <b>5 units</b>. The outer 45%-of-window
+ceiling still applies in every variant — on a very short window a large fixed size is capped, same
+as today.
+</p>
+
+<h2 class="sec">1 — What the reserved space looks like</h2>
+
+<div class="row-flex">
+<div class="variant">
+  <h3>Variant A — blank remainder</h3>
+  <div class="pane">
+    <header>
+      <span class="title">Units in hex</span>
+      <span class="hint">— plain (10,44), 5 units</span>
+      <span class="spacer"></span>
+      <span class="step">− <b>12</b> +</span>
+      <span class="caret">▾</span>
+    </header>
+    <table class="units">
+      <tr><th>Unit</th><th>Faction</th><th>Men</th><th>Orders</th></tr>
+      <tr class="unit"><td>Scouts (1034)</td><td>Ravens</td><td>1</td><td>move N</td></tr>
+      <tr class="unit"><td>Miners (1122)</td><td>Ravens</td><td>10</td><td>work</td></tr>
+      <tr class="unit"><td>Guards (1408)</td><td>Ravens</td><td>20</td><td>guard</td></tr>
+      <tr class="unit"><td>Caravan (2011)</td><td>Ravens</td><td>4</td><td>—</td></tr>
+      <tr class="unit"><td>Settlers (2210)</td><td>Ravens</td><td>8</td><td>—</td></tr>
+    </table>
+    <div class="blank-space"></div>
+  </div>
+  <p class="cost">The list ends where it ends; the rest is plain panel background. Quietest, but at
+  a glance the empty space can read as “the pane failed to load the rest”.</p>
+</div>
+
+<div class="variant">
+  <h3>Variant B — ghost rows</h3>
+  <div class="pane">
+    <header>
+      <span class="title">Units in hex</span>
+      <span class="hint">— plain (10,44), 5 units</span>
+      <span class="spacer"></span>
+      <span class="step">− <b>12</b> +</span>
+      <span class="caret">▾</span>
+    </header>
+    <table class="units">
+      <tr><th>Unit</th><th>Faction</th><th>Men</th><th>Orders</th></tr>
+      <tr class="unit"><td>Scouts (1034)</td><td>Ravens</td><td>1</td><td>move N</td></tr>
+      <tr class="unit"><td>Miners (1122)</td><td>Ravens</td><td>10</td><td>work</td></tr>
+      <tr class="unit"><td>Guards (1408)</td><td>Ravens</td><td>20</td><td>guard</td></tr>
+      <tr class="unit"><td>Caravan (2011)</td><td>Ravens</td><td>4</td><td>—</td></tr>
+      <tr class="unit"><td>Settlers (2210)</td><td>Ravens</td><td>8</td><td>—</td></tr>
+      <tr class="ghost-striped"><td colspan="4"></td></tr>
+      <tr class="ghost-striped"><td colspan="4"></td></tr>
+      <tr class="ghost-striped"><td colspan="4"></td></tr>
+      <tr class="ghost-striped"><td colspan="4"></td></tr>
+      <tr class="ghost-striped"><td colspan="4"></td></tr>
+      <tr class="ghost-striped"><td colspan="4"></td></tr>
+      <tr class="ghost-striped"><td colspan="4"></td></tr>
+    </table>
+  </div>
+  <p class="cost">The zebra striping continues into the empty rows, so the reservation reads as
+  “12 rows, 5 filled”. Slightly busier; the stripes are deliberately fainter than real rows.</p>
+</div>
+</div>
+
+<h2 class="sec">2 — The in-pane stepper's label</h2>
+<p class="note">Today the stepper between − and + says <b>“max 12”</b>. With fixed size on, “max”
+is no longer true — the pane is exactly 12. Options for what it says <em>while fixed mode is on</em>
+(when the option is off it keeps saying “max 12”):</p>
+<p>
+  <span class="chip">Option 1 — <b>“12”</b> (bare number)</span>
+  <span class="chip">Option 2 — <b>“rows 12”</b></span>
+  <span class="chip">Option 3 — keep <b>“max 12”</b> everywhere, accept the small lie</span>
+</p>
+
+<h2 class="sec">3 — Where the toggle lives, and its words</h2>
+<p class="note">Both variants sit in the Settings dialog directly under the existing
+“Units in hex list” slider, in the house checkbox style. Only the wording differs.</p>
+
+<div class="row-flex">
+<div class="variant">
+  <h3>Wording A — “Fixed pane size”</h3>
+  <div class="settings">
+    <div class="slider-row">
+      <div class="lbl"><span>Units in hex list</span><span>12</span></div>
+      <input type="range" min="1" max="16" value="12">
+    </div>
+    <label class="chk">
+      <span class="txt"><span>Fixed pane size</span>
+        <span class="d">Always reserve this many rows, even when the hex holds fewer units.</span></span>
+      <input type="checkbox" checked>
+    </label>
+  </div>
+</div>
+
+<div class="variant">
+  <h3>Wording B — “Keep the pane's height steady”</h3>
+  <div class="settings">
+    <div class="slider-row">
+      <div class="lbl"><span>Units in hex list</span><span>12</span></div>
+      <input type="range" min="1" max="16" value="12">
+    </div>
+    <label class="chk">
+      <span class="txt"><span>Keep the pane's height steady</span>
+        <span class="d">The pane stays this many rows tall from hex to hex instead of shrinking to fit.</span></span>
+      <input type="checkbox" checked>
+    </label>
+  </div>
+</div>
+</div>
+
+<h2 class="sec">4 — An empty or stale hex, with fixed size on</h2>
+<p class="note">The empty-state line today makes the pane one message tall. With fixed size on, does
+the reservation hold there too?</p>
+
+<div class="row-flex">
+<div class="variant">
+  <h3>Variant R — reserve everywhere (recommended)</h3>
+  <div class="pane">
+    <header>
+      <span class="title">Units in hex</span>
+      <span class="hint">— plain (10,44), 0 units</span>
+      <span class="spacer"></span>
+      <span class="step">− <b>12</b> +</span>
+      <span class="caret">▾</span>
+    </header>
+    <p class="absent">No units reported in this hex.</p>
+    <div style="height:210px"></div>
+  </div>
+  <p class="cost">The pane never changes height, which is the whole point of the option — moving
+  from a full hex to an empty one no longer re-fits the map.</p>
+</div>
+
+<div class="variant">
+  <h3>Variant C — collapse when empty</h3>
+  <div class="pane">
+    <header>
+      <span class="title">Units in hex</span>
+      <span class="hint">— plain (10,44), 0 units</span>
+      <span class="spacer"></span>
+      <span class="step">− <b>12</b> +</span>
+      <span class="caret">▾</span>
+    </header>
+    <p class="absent">No units reported in this hex.</p>
+  </div>
+  <p class="cost">Less dead space on empty hexes, but the layout jump the option exists to remove
+  comes back exactly there.</p>
+</div>
+</div>
+</body>
+</html>
