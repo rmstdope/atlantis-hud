@@ -111,7 +111,8 @@ import { diagnosticTargets, stepDiagnostic } from "../diagnosticNav";
 import { hasOpenDismissLayers } from "../dismissStack";
 import { firesInContext, isMacPlatform, matchShortcut, SHORTCUTS } from "../shortcuts";
 import { nextOwnUnit } from "../unitCycle";
-import { ordersSlotClass, unitSlotClass } from "./panelLayout";
+import { ordersSlotClass, ordersSlotStyle, unitSlotClass } from "./panelLayout";
+import { PanelSplitter } from "./PanelSplitter";
 import { PlannerPanel } from "./PlannerPanel";
 import { chooseRouteOverlay } from "./routeOverlay";
 import { RegionPanel } from "./RegionPanel";
@@ -436,6 +437,7 @@ export function AppShell({
     ReturnType<typeof diagnosticTargets>[number] | null
   >(null);
   const ordersEditor = useRef<OrdersEditorHandle | null>(null);
+  const ordersSlotRef = useRef<HTMLDivElement | null>(null);
   const [gameError, setGameError] = useState<string | null>(null);
   // Which of the turn's two lists is being read, and whether either is. Local rather than in the
   // store, exactly as the game picker is: it is a panel that is open for a moment, not a preference.
@@ -503,6 +505,10 @@ export function AppShell({
   // Which panels are folded is a layout question as well as a panel one: a folded panel hands the
   // space it gives up to the panel beside it, and only the shell knows what is beside what.
   const collapsed = useWorkspaceStore((state) => state.collapsed);
+  // The player's own split between the unit panel and the orders editor, dragged at the grip
+  // between them; null means the default pin from `panelLayout.ts` still applies.
+  const ordersHeightRem = useWorkspaceStore((state) => state.ordersHeightRem);
+  const setOrdersHeight = useWorkspaceStore((state) => state.setOrdersHeight);
   const planner = useWorkspaceStore((state) => state.planner);
   const armPlanner = useWorkspaceStore((state) => state.armPlanner);
   const planTo = useWorkspaceStore((state) => state.planTo);
@@ -2904,7 +2910,18 @@ export function AppShell({
                   />
                 </div>
               ) : null}
-              <div className={ordersSlotClass(collapsed)}>
+              {!collapsed.unit && !collapsed.orders ? (
+                <PanelSplitter
+                  ordersSlot={ordersSlotRef}
+                  ordersHeightRem={ordersHeightRem}
+                  onCommit={setOrdersHeight}
+                />
+              ) : null}
+              <div
+                ref={ordersSlotRef}
+                className={ordersSlotClass(collapsed, ordersHeightRem != null)}
+                style={ordersSlotStyle(collapsed, ordersHeightRem) ?? undefined}
+              >
                 <OrdersPanel
                   unit={unit}
                   hex={hex}

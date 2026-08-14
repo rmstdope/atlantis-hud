@@ -265,6 +265,49 @@ describe("panels and layers", () => {
   });
 });
 
+describe("the orders panel's stored height", () => {
+  beforeEach(resetWorkspaceStore);
+
+  it("remembers the orders height across a reload", async () => {
+    store().setOrdersHeight(24);
+    expect(store().ordersHeightRem).toBe(24);
+
+    const options = useWorkspaceStore.persist.getOptions();
+    const raw = await options.storage?.getItem(options.name ?? "atlantis-hud-workspace");
+    const persisted = (raw as { state?: Record<string, unknown> } | null)?.state ?? {};
+    expect(persisted.ordersHeightRem).toBe(24);
+
+    const merge = options.merge;
+    const merged = merge?.(persisted, store()) as ReturnType<typeof store> | undefined;
+    expect(merged?.ordersHeightRem).toBe(24);
+  });
+
+  it("starts out null, meaning the default pin applies", () => {
+    expect(store().ordersHeightRem).toBeNull();
+  });
+
+  it("reconciles garbage in storage to null rather than trusting it", () => {
+    const merge = useWorkspaceStore.persist.getOptions().merge;
+    const merged = merge?.({ ordersHeightRem: "not a number" }, store()) as
+      | ReturnType<typeof store>
+      | undefined;
+
+    expect(merged?.ordersHeightRem).toBeNull();
+  });
+
+  it("resets to the default pin", () => {
+    store().setOrdersHeight(30);
+    store().setOrdersHeight(null);
+    expect(store().ordersHeightRem).toBeNull();
+  });
+
+  it("is cleared by resetWorkspaceStore", () => {
+    store().setOrdersHeight(30);
+    resetWorkspaceStore();
+    expect(store().ordersHeightRem).toBeNull();
+  });
+});
+
 describe("the planner's own state", () => {
   /**
    * Arming is a one-shot, not a mode. The map means one thing at a time, and a mode you can forget
