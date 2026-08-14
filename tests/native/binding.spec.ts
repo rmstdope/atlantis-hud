@@ -177,6 +177,10 @@ const SWEEP: SweepEntry[] = [
     args: () => ({ database_path: context.databasePath, game_id: GAME_ID })
   },
   {
+    command: "list_imported_turns",
+    args: () => ({ database_path: context.databasePath, game_id: GAME_ID })
+  },
+  {
     command: "save_order_draft",
     args: () => ({
       database_path: context.databasePath,

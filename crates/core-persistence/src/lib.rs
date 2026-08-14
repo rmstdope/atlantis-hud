@@ -119,6 +119,15 @@ pub struct ImportedTurnKey {
     pub turn_number: u32,
 }
 
+/// Summary of one imported turn, enough to label it without loading the full report.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ImportedTurnSummary {
+    pub key: ImportedTurnKey,
+    pub season: Option<String>,
+    pub imported_at: String,
+    pub updated_at: String,
+}
+
 /// Persisted imported turn payload.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ImportedTurnRecord {
@@ -1017,6 +1026,82 @@ pub fn load_latest_imported_turn(
         .optional()?;
 
     Ok(record)
+}
+
+/// Lists every turn imported for a game, across every faction, in turn order.
+///
+/// Keyed by game only, like [`load_latest_imported_turn`] and `export_game`: every faction's turns
+/// come back, each row carrying its own `faction_id`, and the caller filters. A game with merged
+/// reports legitimately holds turns for more than one faction.
+///
+/// A game with no imports returns an empty vector, not an error; a missing database is still an
+/// error, as every other read here treats it.
+pub fn list_imported_turns(
+    database_path: &Path,
+    game_id: &str,
+) -> Result<Vec<ImportedTurnSummary>, PersistenceError> {
+    if !database_path.exists() {
+        return Err(PersistenceError::DatabaseFileMissing(
+            database_path.to_string_lossy().to_string(),
+        ));
+    }
+
+    let mut connection = open_database(database_path)?;
+    apply_migrations(&mut connection)?;
+
+    let mut statement = connection.prepare(
+        "SELECT faction_id, turn_number, parsed_payload_json, imported_at, updated_at
+           FROM imported_turns
+          WHERE game_id = ?1
+          ORDER BY turn_number ASC, faction_id ASC",
+    )?;
+    let game_id_owned = game_id.to_string();
+    let summaries = statement
+        .query_map(params![game_id], |row| {
+            let faction_id: String = row.get(0)?;
+            let turn_number: u32 = row.get(1)?;
+            let parsed_payload_json: String = row.get(2)?;
+            let imported_at: String = row.get(3)?;
+            let updated_at: String = row.get(4)?;
+            Ok(ImportedTurnSummary {
+                key: ImportedTurnKey {
+                    game_id: game_id_owned.clone(),
+                    faction_id,
+                    turn_number,
+                },
+                season: season_from_parsed_payload(&parsed_payload_json),
+                imported_at,
+                updated_at,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+
+    Ok(summaries)
+}
+
+/// Peeks the season out of a turn's parsed payload without depending on its full shape.
+///
+/// `parsed_payload_json` holds `ReportParseResult`, not `ReportHeaderInfo` — month and year live
+/// only in the latter, which is never stored. `turn_header.season` is what survives, and reading it
+/// through a tiny local struct means this has no dependency on `atlantis-core`'s types and keeps
+/// working if that struct's other fields change shape. A row whose payload cannot be read this way
+/// — malformed JSON, a missing `turn_header` — contributes `None` rather than failing the whole
+/// list. `ReportParseResult` carries no `rename_all`, so the stored JSON is snake_case, not
+/// camelCase — this peek matches the wire format `commit_report_import` actually writes.
+fn season_from_parsed_payload(parsed_payload_json: &str) -> Option<String> {
+    #[derive(Deserialize)]
+    struct Peek {
+        turn_header: Option<PeekTurnHeader>,
+    }
+    #[derive(Deserialize)]
+    struct PeekTurnHeader {
+        season: Option<String>,
+    }
+
+    serde_json::from_str::<Peek>(parsed_payload_json)
+        .ok()
+        .and_then(|peek| peek.turn_header)
+        .and_then(|header| header.season)
 }
 
 fn ensure_supported_manifest_version(version: u32) -> Result<(), PersistenceError> {
@@ -2125,6 +2210,184 @@ mod tests {
             load_latest_imported_turn(&beta.database_path, "beta")
                 .expect("the query should succeed"),
             None
+        );
+    }
+
+    fn turn_at(
+        game: &OpenedGame,
+        faction_id: &str,
+        turn_number: u32,
+        raw: &str,
+    ) -> ImportedTurnRecord {
+        ImportedTurnRecord {
+            key: ImportedTurnKey {
+                game_id: game.manifest.metadata.game_id.clone(),
+                faction_id: faction_id.to_string(),
+                turn_number,
+            },
+            raw_report: raw.to_string(),
+            parsed_payload_json: "{}".to_string(),
+            warnings_payload_json: "[]".to_string(),
+        }
+    }
+
+    #[test]
+    fn imported_turns_can_be_listed_for_a_game() {
+        let dir = tempdir().expect("tempdir");
+        let created = create_game(dir.path(), &fixture_manifest()).expect("game should create");
+
+        upsert_imported_turn(
+            &created.database_path,
+            &turn_at(&created, "17", 14, "t14"),
+            IMPORTED_AT,
+        )
+        .expect("seed turn 14");
+        upsert_imported_turn(
+            &created.database_path,
+            &turn_at(&created, "17", 12, "t12"),
+            IMPORTED_AT,
+        )
+        .expect("seed turn 12");
+        upsert_imported_turn(
+            &created.database_path,
+            &turn_at(&created, "17", 13, "t13"),
+            IMPORTED_AT,
+        )
+        .expect("seed turn 13");
+
+        let listed =
+            list_imported_turns(&created.database_path, GAME_ID).expect("listing should succeed");
+
+        let turn_numbers: Vec<u32> = listed
+            .iter()
+            .map(|summary| summary.key.turn_number)
+            .collect();
+        assert_eq!(turn_numbers, vec![12, 13, 14]);
+        assert!(listed.iter().all(|summary| summary.key.faction_id == "17"));
+    }
+
+    #[test]
+    fn a_game_with_no_imports_lists_no_turns() {
+        let dir = tempdir().expect("tempdir");
+        let created = create_game(dir.path(), &fixture_manifest()).expect("game should create");
+
+        let listed =
+            list_imported_turns(&created.database_path, GAME_ID).expect("listing should succeed");
+
+        assert!(listed.is_empty());
+    }
+
+    /// The point of a database per game, asked of the listing too.
+    #[test]
+    fn one_games_turns_are_invisible_to_another() {
+        let dir = tempdir().expect("tempdir");
+        let alpha = create_game(dir.path(), &manifest_named("alpha", "Alpha")).expect("alpha");
+        let beta = create_game(dir.path(), &manifest_named("beta", "Beta")).expect("beta");
+
+        upsert_imported_turn(
+            &alpha.database_path,
+            &turn_in(&alpha, "17", "alpha turn"),
+            IMPORTED_AT,
+        )
+        .expect("seed alpha");
+
+        let listed =
+            list_imported_turns(&beta.database_path, "alpha").expect("listing should succeed");
+
+        assert!(listed.is_empty());
+    }
+
+    #[test]
+    fn a_missing_database_is_an_error_not_an_empty_list() {
+        let dir = tempdir().expect("tempdir");
+
+        let result = list_imported_turns(&dir.path().join("never-created.sqlite"), GAME_ID);
+
+        assert!(matches!(
+            result,
+            Err(PersistenceError::DatabaseFileMissing(_))
+        ));
+    }
+
+    #[test]
+    fn a_listed_turn_carries_its_season() {
+        let dir = tempdir().expect("tempdir");
+        let created = create_game(dir.path(), &fixture_manifest()).expect("game should create");
+        let turn = ImportedTurnRecord {
+            // Snake case, matching the wire format `ReportParseResult` actually serializes to —
+            // it carries no `rename_all`.
+            parsed_payload_json: r#"{"turn_header":{"turn_number":12,"season":"Spring"}}"#
+                .to_string(),
+            ..turn_in(&created, "17", "t12")
+        };
+        upsert_imported_turn(&created.database_path, &turn, IMPORTED_AT).expect("seed turn");
+
+        let listed =
+            list_imported_turns(&created.database_path, GAME_ID).expect("listing should succeed");
+
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].season.as_deref(), Some("Spring"));
+    }
+
+    /// A list that dies on one bad row makes the whole feature unavailable, which matters more
+    /// than any one turn's season.
+    #[test]
+    fn a_turn_whose_payload_cannot_be_read_is_still_listed() {
+        let dir = tempdir().expect("tempdir");
+        let created = create_game(dir.path(), &fixture_manifest()).expect("game should create");
+        let turn = ImportedTurnRecord {
+            parsed_payload_json: "not json at all".to_string(),
+            ..turn_in(&created, "17", "t12")
+        };
+        upsert_imported_turn(&created.database_path, &turn, IMPORTED_AT).expect("seed turn");
+
+        let listed =
+            list_imported_turns(&created.database_path, GAME_ID).expect("listing should succeed");
+
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].season, None);
+    }
+
+    #[test]
+    fn turns_of_two_factions_interleave_in_turn_order() {
+        let dir = tempdir().expect("tempdir");
+        let created = create_game(dir.path(), &fixture_manifest()).expect("game should create");
+
+        upsert_imported_turn(
+            &created.database_path,
+            &turn_at(&created, "17", 12, "a"),
+            IMPORTED_AT,
+        )
+        .expect("seed 17@12");
+        upsert_imported_turn(
+            &created.database_path,
+            &turn_at(&created, "5", 12, "b"),
+            IMPORTED_AT,
+        )
+        .expect("seed 5@12");
+        upsert_imported_turn(
+            &created.database_path,
+            &turn_at(&created, "17", 13, "c"),
+            IMPORTED_AT,
+        )
+        .expect("seed 17@13");
+
+        let listed =
+            list_imported_turns(&created.database_path, GAME_ID).expect("listing should succeed");
+
+        let ordering: Vec<(u32, String)> = listed
+            .iter()
+            .map(|summary| (summary.key.turn_number, summary.key.faction_id.clone()))
+            .collect();
+        assert_eq!(
+            // faction_id is a TEXT column, so the tiebreak within a turn is lexical, not numeric:
+            // "17" sorts before "5". This test pins that ordering decision.
+            ordering,
+            vec![
+                (12, "17".to_string()),
+                (12, "5".to_string()),
+                (13, "17".to_string()),
+            ]
         );
     }
 

@@ -79,6 +79,18 @@ describe("core client adapter contract parity", () => {
       raw_report: "TURN: 12 Spring\nFACTION: 17 | Crimson Tide\nREGION: A1 | Coast of Dawn",
       parse_result: parsePayload
     };
+    const importedTurnSummaryPayload = [
+      {
+        key: {
+          game_id: "faction-12",
+          faction_id: "17",
+          turn_number: 12
+        },
+        season: "Spring",
+        imported_at: "2026-08-01T10:00:00Z",
+        updated_at: "2026-08-01T10:00:00Z"
+      }
+    ];
     const openedGamePayload = {
       game_file_path: "/tmp/campaign.atlantis-game.json",
       database_path: "/tmp/campaign.atlantis-game.sqlite",
@@ -232,6 +244,9 @@ describe("core client adapter contract parity", () => {
       },
       load_latest_imported_turn_state() {
         return importedTurnPayload;
+      },
+      list_imported_turns_state() {
+        return importedTurnSummaryPayload;
       },
       load_order_draft_state() {
         return orderDraftPayload;
@@ -420,6 +435,20 @@ describe("core client adapter contract parity", () => {
           }
         } as T);
       }
+      if (command === "list_imported_turns") {
+        return Promise.resolve([
+          {
+            key: {
+              gameId: "faction-12",
+              factionId: "17",
+              turnNumber: 12
+            },
+            season: "Spring",
+            importedAt: "2026-08-01T10:00:00Z",
+            updatedAt: "2026-08-01T10:00:00Z"
+          }
+        ] as T);
+      }
       return Promise.resolve({
         gameFilePath: "/tmp/campaign.atlantis-game.json",
         databasePath: "/tmp/campaign.atlantis-game.sqlite",
@@ -567,6 +596,11 @@ describe("core client adapter contract parity", () => {
       await tauriClient.loadLatestImportedTurn("/tmp/campaign.atlantis-game.sqlite", "faction-12")
     );
     expect(wasmLatest?.key).toEqual({ gameId: "faction-12", factionId: "17", turnNumber: 12 });
+    await expect(
+      wasmClient.listImportedTurns("/tmp/campaign.atlantis-game.sqlite", "faction-12")
+    ).resolves.toEqual(
+      await tauriClient.listImportedTurns("/tmp/campaign.atlantis-game.sqlite", "faction-12")
+    );
   });
 });
 
@@ -893,6 +927,45 @@ describe("merging an allied report", () => {
     );
     await expect(
       createCoreClient(createWasmAdapter(bindings)).loadMergedReports(DB, "g", "95", 71)
+    ).resolves.toEqual([]);
+  });
+});
+
+/**
+ * Listing every turn imported for a game, across the same boundary as everything else.
+ *
+ * Same literal argument-name assertion as the suites above, and for the same reason: a camelCase
+ * key does not fail loudly under `rename_all = "snake_case"`, it just arrives missing.
+ */
+describe("listing imported turns", () => {
+  const DB = "/tmp/campaign.atlantis-game.sqlite";
+
+  it("asks tauri to list with the argument names its command declares", async () => {
+    const calls: Array<{ command: string; args?: Record<string, unknown> }> = [];
+    const invoke: TauriInvoke = <T,>(command: string, args?: Record<string, unknown>) => {
+      calls.push({ command, args });
+      return Promise.resolve([] as T);
+    };
+
+    await createCoreClient(createTauriAdapter(invoke)).listImportedTurns(DB, "faction-95");
+
+    expect(calls).toEqual([
+      {
+        command: "list_imported_turns",
+        args: {
+          database_path: DB,
+          game_id: "faction-95"
+        }
+      }
+    ]);
+  });
+
+  // A game with no imports is the ordinary state of a game just created, not a failure.
+  it("treats an unreadable list of turns as no turns", async () => {
+    const invoke: TauriInvoke = <T,>() => Promise.resolve(null as T);
+
+    await expect(
+      createCoreClient(createTauriAdapter(invoke)).listImportedTurns(DB, "g")
     ).resolves.toEqual([]);
   });
 });

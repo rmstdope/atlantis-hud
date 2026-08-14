@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createWebCoreAdapter, type CoreWasmModule } from "./webCoreAdapter";
-import type { GameManifest } from "@atlantis/core-client";
+import type { GameManifest, ImportedTurnSummary } from "@atlantis/core-client";
 import { createMemoryWebStore, type StoredTurnSnapshot } from "./webStore";
 
 /**
@@ -423,6 +423,75 @@ describe("web core adapter", () => {
     await adapter.commitReportImport("idb://campaign-a", "p", "17", REPORT, null, false, IMPORTED_AT);
 
     expect(await adapter.loadLatestImportedTurn("idb://campaign-b", "p")).toBeNull();
+  });
+
+  it("lists no turns for a game that holds none", async () => {
+    const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
+
+    expect(await adapter.listImportedTurns(DB, "p")).toEqual([]);
+  });
+
+  /**
+   * Same wasm hydrator as `loadImportedTurn` and `loadLatestImportedTurn`, so the season comes
+   * from wherever their parse results carry it, without a second copy of the parsing rules.
+   *
+   * The real hydrator flattens `ReportParseResult` into its DTO with `#[serde(flatten)]`, which
+   * does not inherit the DTO's own `rename_all = "camelCase"` - so the flattened fields, including
+   * `turn_header`, stay snake_case even though `meetsMinimumImportThreshold` beside them is camel.
+   * This fixture pins that real, inconsistent shape rather than the tidier one it would be easy to
+   * assume.
+   */
+  it("lists every imported turn of a game", async () => {
+    const wasm = fakeWasm({
+      hydrate_parse_result_state: (json: string) => ({
+        hydratedFrom: json,
+        turn_header: { turn_number: 12, season: "Spring" }
+      })
+    });
+    const adapter = createWebCoreAdapter(wasm, createMemoryWebStore());
+    const OTHER = "TURN: 12 Spring\nFACTION: 18 | Azure Wake";
+
+    await adapter.commitReportImport(DB, "p", "17", REPORT, null, false, IMPORTED_AT);
+    await adapter.commitReportImport(DB, "p", "18", OTHER, null, false, IMPORTED_AT);
+
+    const listed = (await adapter.listImportedTurns(DB, "p")) as ImportedTurnSummary[];
+
+    expect(listed).toHaveLength(2);
+    expect(listed.map((summary) => summary.key.factionId).sort()).toEqual(["17", "18"]);
+    expect(listed.every((summary) => summary.key.turnNumber === 12)).toBe(true);
+    expect(listed.every((summary) => summary.season === "Spring")).toBe(true);
+  });
+
+  /**
+   * The wasm hydrator throws on a payload it cannot parse - `hydrate_parse_result_state` returns
+   * a Rust `Result`, and an `Err` crosses the boundary as a thrown JS exception. A list that let
+   * one bad row's throw escape would lose every turn in the game to it, not just that one.
+   */
+  it("still lists a turn whose payload cannot be hydrated", async () => {
+    const wasm = fakeWasm({
+      hydrate_parse_result_state: () => {
+        throw new Error("payload did not parse");
+      }
+    });
+    const store = createMemoryWebStore();
+    const adapter = createWebCoreAdapter(wasm, store);
+
+    await store.putImportedTurn({
+      databasePath: DB,
+      gameId: "p",
+      factionId: "17",
+      turnNumber: 12,
+      rawReport: REPORT,
+      parsedPayloadJson: "not json at all",
+      warningsPayloadJson: "[]",
+      importedAt: IMPORTED_AT,
+      updatedAt: IMPORTED_AT
+    });
+
+    const listed = (await adapter.listImportedTurns(DB, "p")) as ImportedTurnSummary[];
+
+    expect(listed).toHaveLength(1);
+    expect(listed[0].season).toBeNull();
   });
 
   it("round trips an order draft", async () => {
