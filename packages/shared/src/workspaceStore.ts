@@ -10,6 +10,9 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { allBadges, type BadgeName } from "./workspace/mapThemes/hexView";
+// This is a runtime import, but `panelLayout.ts`'s import back (`import type { PanelName }`) is
+// type-only and erased at compile time - so the two modules do not form a runtime cycle.
+import { clampOrdersHeight } from "./workspace/panelLayout";
 
 /** The four panels that can be folded away to open up the map. */
 export type PanelName = "region" | "unit" | "orders" | "units" | "planner";
@@ -56,6 +59,13 @@ export type WorkspaceState = {
   /** Level being viewed. A report can describe more than one. */
   level: number;
   collapsed: Record<PanelName, boolean>;
+  /**
+   * The orders editor's dragged height, in rem, or null while the default pin applies.
+   *
+   * A layout preference about the workspace, exactly like `collapsed` - it lives here rather than
+   * in `settingsStore` for the same reason every other panel preference does.
+   */
+  ordersHeightRem: number | null;
   layers: Record<LayerName, boolean>;
   /** Which marks the map draws over its terrain. */
   badges: Record<BadgeName, boolean>;
@@ -83,6 +93,8 @@ export type WorkspaceState = {
   selectUnit: (unitId: string | null) => void;
   setLevel: (level: number) => void;
   togglePanel: (panel: PanelName) => void;
+  /** Sets (or, with null, resets) the orders editor's dragged height. Clamped on the way in. */
+  setOrdersHeight: (rem: number | null) => void;
   toggleLayer: (layer: LayerName) => void;
   toggleBadge: (badge: BadgeName) => void;
   /** Shows or hides the region panel's Problems section. */
@@ -175,7 +187,7 @@ const STORAGE = createJSONStorage<Persisted>(() => {
 /** Only the layout preferences are remembered; see the note on `partialize`. */
 type Persisted = Pick<
   WorkspaceState,
-  "collapsed" | "layers" | "badges" | "regionProblemsShown"
+  "collapsed" | "ordersHeightRem" | "layers" | "badges" | "regionProblemsShown"
 >;
 
 export const useWorkspaceStore = create<WorkspaceState>()(
@@ -186,6 +198,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       selectedUnitId: null,
       level: DEFAULT_LEVEL,
       collapsed: INITIAL_COLLAPSED,
+      ordersHeightRem: null,
       layers: INITIAL_LAYERS,
       badges: allBadges(true),
       regionProblemsShown: true,
@@ -230,6 +243,8 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           collapsed: { ...state.collapsed, [panel]: !state.collapsed[panel] }
         })),
 
+      setOrdersHeight: (rem) => set(() => ({ ordersHeightRem: clampOrdersHeight(rem) })),
+
       toggleLayer: (layer) =>
         set((state) => ({
           layers: { ...state.layers, [layer]: !state.layers[layer] }
@@ -258,6 +273,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       // show stale headings over empty panels.
       partialize: (state) => ({
         collapsed: state.collapsed,
+        ordersHeightRem: state.ordersHeightRem,
         layers: state.layers,
         badges: state.badges,
         regionProblemsShown: state.regionProblemsShown
@@ -275,6 +291,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         return {
           ...current,
           collapsed: reconcile(INITIAL_COLLAPSED, stored.collapsed ?? {}),
+          ordersHeightRem: clampOrdersHeight(stored.ordersHeightRem),
           layers: reconcile(INITIAL_LAYERS, stored.layers ?? {}),
           badges: badgesFromStorage(stored.badges ?? {}),
           // Not a record, so `reconcile` does not apply: a missing or malformed key must read
@@ -297,6 +314,7 @@ export function resetWorkspaceStore() {
     selectedUnitId: null,
     level: DEFAULT_LEVEL,
     collapsed: INITIAL_COLLAPSED,
+    ordersHeightRem: null,
     layers: INITIAL_LAYERS,
     badges: allBadges(true),
     regionProblemsShown: true

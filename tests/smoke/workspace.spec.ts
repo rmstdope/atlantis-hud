@@ -1238,6 +1238,75 @@ test("a folded panel shrinks to its title bar", async ({ page }) => {
   expect(strip.y).toBeCloseTo(open.y, 0);
 });
 
+/** Restores the default split, so later tests inherit the look they expect. */
+async function resetSplit(page: Page) {
+  await page.getByTestId("panel-splitter").dblclick();
+}
+
+test("the unit/orders split drags at the grip and survives a reload", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+
+  const before = await boxOf(page, "orders");
+  const grip = page.getByTestId("panel-splitter");
+  const gripBox = (await grip.boundingBox())!;
+  const start = { x: gripBox.x + gripBox.width / 2, y: gripBox.y + gripBox.height / 2 };
+
+  await page.mouse.move(start.x, start.y);
+  await page.mouse.down();
+  await page.mouse.move(start.x, start.y - 120, { steps: 5 });
+  await page.mouse.up();
+
+  await expect.poll(async () => (await boxOf(page, "orders")).height).toBeGreaterThan(
+    before.height + 20
+  );
+
+  await page.reload();
+  await expect(page.getByTestId("import-status")).toContainText("restored turn 71");
+  await selectHex(page, "1:7,53");
+  await expect.poll(async () => (await boxOf(page, "orders")).height).toBeGreaterThan(
+    before.height + 20
+  );
+
+  await resetSplit(page);
+  await expect.poll(async () => (await boxOf(page, "orders")).height).toBeCloseTo(
+    before.height,
+    0
+  );
+});
+
+test("folding the unit panel hides the grip and hands the column to the editor", async ({
+  page
+}) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+
+  const before = await boxOf(page, "orders");
+  const grip = page.getByTestId("panel-splitter");
+  const gripBox = (await grip.boundingBox())!;
+  const start = { x: gripBox.x + gripBox.width / 2, y: gripBox.y + gripBox.height / 2 };
+
+  await page.mouse.move(start.x, start.y);
+  await page.mouse.down();
+  await page.mouse.move(start.x, start.y - 60, { steps: 5 });
+  await page.mouse.up();
+  const dragged = await boxOf(page, "orders");
+  expect(dragged.height).toBeGreaterThan(before.height);
+
+  await foldPanel(page, "unit");
+  await expect(grip).not.toBeVisible();
+  expect((await boxOf(page, "orders")).height).toBeGreaterThan(dragged.height);
+
+  await unfoldPanel(page, "unit");
+  await expect(grip).toBeVisible();
+  await expect.poll(async () => (await boxOf(page, "orders")).height).toBeCloseTo(
+    dragged.height,
+    0
+  );
+
+  await resetSplit(page);
+});
+
 test("the orders editor takes the space a folded unit panel leaves", async ({ page }) => {
   await loadReport(page);
   await selectHex(page, "1:7,53");

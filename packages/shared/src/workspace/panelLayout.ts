@@ -28,16 +28,85 @@ const FLEXIBLE = "min-h-0 flex-1";
  */
 const PINNED_EDITOR = "h-[19rem] max-h-[55%] min-h-[9rem] flex-none";
 
+/** The editor's height once the player has dragged it: the floor holds, the pin does not. */
+const CUSTOM_EDITOR = "min-h-[9rem] flex-none";
+
+/** The editor's default pin, and the bounds the drag and the stored value respect. */
+export const ORDERS_DEFAULT_REM = 19;
+export const ORDERS_MIN_REM = 9; // today's min-h-[9rem], kept
+export const UNIT_MIN_REM = 6; // the unit panel may not be dragged below this
+export const ORDERS_MAX_REM = 60; // sanity ceiling for stored values only
+export const SPLIT_STEP_REM = 1; // one arrow-key press
+export const RAIL_GAP_REM = 0.625; // the column's gap-2.5
+
 export function unitSlotClass(collapsed: Collapsed): string {
   return collapsed.unit ? STRIP : FLEXIBLE;
 }
 
-export function ordersSlotClass(collapsed: Collapsed): string {
+export function ordersSlotClass(collapsed: Collapsed, hasCustomHeight: boolean): string {
   if (collapsed.orders) {
     return STRIP;
   }
   // With the unit panel folded there is nothing else in the column that can grow, so the editor
-  // becomes the flexible one and the pinning has to go - otherwise it would stop at 19rem and
+  // becomes the flexible one regardless of a stored height - otherwise it would stop short and
   // leave the column half empty.
-  return collapsed.unit ? FLEXIBLE : PINNED_EDITOR;
+  if (collapsed.unit) {
+    return FLEXIBLE;
+  }
+  return hasCustomHeight ? CUSTOM_EDITOR : PINNED_EDITOR;
+}
+
+/** null unless the value is a finite number; otherwise clamped into [ORDERS_MIN_REM, ORDERS_MAX_REM]. */
+export function clampOrdersHeight(value: unknown): number | null {
+  if (typeof value !== "number" && typeof value !== "string") {
+    return null;
+  }
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return null;
+  }
+  return Math.min(ORDERS_MAX_REM, Math.max(ORDERS_MIN_REM, numeric));
+}
+
+/** One drag or key step resolved against the rail: clamped, and flagged when the raw value overshot. */
+export type DragResult = { rem: number; atLimit: boolean };
+
+/**
+ * Resolves a drag (or one keyboard step) into a committed height.
+ *
+ * `startRem` is where the editor stood when the gesture began, `deltaRem` is how far the pointer
+ * moved converted to rem (positive means the editor grows), and `railRem` is the whole column's
+ * height. The ceiling follows the rail, not a fixed number, so a short window still leaves the
+ * unit panel `UNIT_MIN_REM` plus one gap of its own; if the rail is too short to hold both floors
+ * at once, the orders floor wins outright.
+ */
+export function dragOrdersHeight(startRem: number, deltaRem: number, railRem: number): DragResult {
+  const raw = startRem + deltaRem;
+  const ceiling = railRem - UNIT_MIN_REM - RAIL_GAP_REM;
+  if (ceiling < ORDERS_MIN_REM) {
+    return { rem: ORDERS_MIN_REM, atLimit: true };
+  }
+  const max = Math.min(ORDERS_MAX_REM, ceiling);
+  const rem = Math.min(max, Math.max(ORDERS_MIN_REM, raw));
+  return { rem, atLimit: rem !== raw };
+}
+
+/**
+ * Inline style for the orders slot, or null while the default pin applies.
+ *
+ * The `maxHeight` is the clamp-to-fit on a short window: the unit panel keeps `UNIT_MIN_REM` plus
+ * one gap of the rail's `gap-2.5` above the editor and below the region column's own padding, and
+ * the stored preference is untouched underneath it - it comes back once the window grows again.
+ */
+export function ordersSlotStyle(
+  collapsed: Collapsed,
+  ordersHeightRem: number | null
+): { height: string; maxHeight: string } | null {
+  if (ordersHeightRem == null || collapsed.unit || collapsed.orders) {
+    return null;
+  }
+  return {
+    height: `${ordersHeightRem}rem`,
+    maxHeight: `calc(100% - ${UNIT_MIN_REM + RAIL_GAP_REM}rem)`
+  };
 }
