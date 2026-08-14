@@ -83,18 +83,33 @@ describe("native desktop workspace", () => {
       expect.stringContaining("0 errors")
     );
 
-    // The export hands a Blob to `URL.createObjectURL` on its way to the anchor download, and
-    // the download itself is browser chrome WebKitGTK gives WebDriver no view of. Capturing the
-    // Blob at the URL boundary exercises the whole export path the application owns.
+    // Orders export now goes through the native save dialog (ah-7pa), which is an OS window
+    // WebDriver cannot see, let alone drive - it lives entirely outside the webview. So this
+    // stubs the two Tauri IPC calls the dialog and the write go through instead of exercising
+    // the real dialog: `plugin:dialog|save` resolves with a fixed path as if the player had
+    // chosen one, and `plugin:fs|write_text_file` captures the bytes it was asked to write.
+    // Everything else still goes to the real invoke, so the rest of the app is untouched.
     await browser.execute(() => {
-      const scope = window as unknown as { __exportCaptures?: Blob[] };
+      const scope = window as unknown as { __exportCaptures?: string[] };
       scope.__exportCaptures = [];
-      const original = URL.createObjectURL.bind(URL);
-      URL.createObjectURL = (source: Blob | MediaSource) => {
-        if (source instanceof Blob) {
-          scope.__exportCaptures?.push(source);
+      const internals = (
+        window as unknown as {
+          __TAURI_INTERNALS__: {
+            invoke: (cmd: string, args?: unknown, options?: unknown) => Promise<unknown>;
+          };
         }
-        return original(source);
+      ).__TAURI_INTERNALS__;
+      const original = internals.invoke.bind(internals);
+      internals.invoke = (cmd: string, args?: unknown, options?: unknown) => {
+        if (cmd === "plugin:dialog|save") {
+          return Promise.resolve("/tmp/native-orders-export.txt");
+        }
+        if (cmd === "plugin:fs|write_text_file") {
+          const text = new TextDecoder().decode(args as Uint8Array);
+          scope.__exportCaptures?.push(text);
+          return Promise.resolve(null);
+        }
+        return original(cmd, args, options);
       };
     });
 
@@ -104,18 +119,22 @@ describe("native desktop workspace", () => {
     await $('[data-testid="export-menu"]').click();
     await $('[data-testid="export-orders"]').click();
 
-    const exported = await browser.executeAsync<string | null, []>((done) => {
-      const scope = window as unknown as { __exportCaptures?: Blob[] };
-      const blob = scope.__exportCaptures?.[0];
-      if (!blob) {
-        done(null);
-        return;
-      }
-      blob.text().then(done);
-    });
+    await browser.waitUntil(
+      async () => {
+        const captures = await browser.execute(
+          () => (window as unknown as { __exportCaptures?: string[] }).__exportCaptures ?? []
+        );
+        return captures.length > 0;
+      },
+      { timeoutMsg: "the export never wrote through plugin:fs|write_text_file" }
+    );
+
+    const exported = await browser.execute(
+      () => (window as unknown as { __exportCaptures?: string[] }).__exportCaptures?.[0] ?? null
+    );
 
     if (exported === null) {
-      throw new Error("the export never handed a Blob to URL.createObjectURL");
+      throw new Error("the export never wrote through plugin:fs|write_text_file");
     }
     expect(exported.startsWith("#atlantis")).toBe(true);
     expect(exported).toContain("@work");
