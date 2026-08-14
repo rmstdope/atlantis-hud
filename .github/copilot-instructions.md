@@ -145,7 +145,31 @@ those want opposite things done about them. She brings it to you with who closed
 the bead is parked with `human` rather than the question being asked again ten minutes later. Then
 she sleeps ten minutes and goes round again.
 
-All four roles are defined in `.claude/agents/`.
+**Verification is Psylocke, and closed stops being terminal:**
+
+```bash
+.claude/cerebro/scripts/run-psylocke
+```
+
+Interactive, for the same reason the planner and Moira are — she has to put a running application in
+front of you and wait for your verdict. Every other step from plan to merge is an agent judging its
+own work; she is the one point where a person actually looks at the thing. Each pass she walks beads
+merged since the last one, decides on her own which ones touched the application at all (anything
+under `.claude/`, `docs/` or CI is marked and skipped without asking), and for the rest prepares
+everything before she ever asks for your time — what the bead claimed, which shell to launch, which
+fixture report to load. On yes she briefs you, launches the app, and takes one of three verdicts:
+**passed**; **passed with a follow-up** (files a new, unranked bead for the niggle and still marks
+the original passed); or **failed**, which reopens the bead **at P0** and sends it back to the fleet
+— straight back to the implementers if the build was wrong, or to Xavier to amend the existing plan
+if the plan was wrong. An unverified bead never blocks a release; Cerebro names what has not been
+checked when cutting one and you decide.
+
+Every other role has something to say about a bead Psylocke reopens: Xavier amends its plan in place
+rather than rewriting it, an implementer picks it up like any other P0, Cerebro never sweep-closes
+one still marked `verification:failed`, and Moira posts `VERIFIED` and `REOPENED` alongside her usual
+status comments.
+
+All five roles are defined in `.claude/agents/`.
 
 ## Skills Usage
 
