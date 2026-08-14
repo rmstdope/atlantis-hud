@@ -191,7 +191,7 @@ export type MonthLeg = { month: number; steps: number; endsAt: Coordinate };
 export type RoutePlan = {
   from: Coordinate;
   to: Coordinate;
-  mode: "fly" | "ride" | "walk";
+  mode: "fly" | "ride" | "sail" | "walk";
   steps: RouteStep[];
   totalCost: number;
   months: MonthLeg[];
@@ -211,7 +211,8 @@ export type RouteProblem =
   | { kind: "noKnownRoute" }
   | { kind: "originUnknown" }
   | { kind: "oceanNeedsShip"; coordinate: Coordinate }
-  | { kind: "flightWouldEndOverOcean"; coordinate: Coordinate };
+  | { kind: "flightWouldEndOverOcean"; coordinate: Coordinate }
+  | { kind: "crewCannotSail"; required: number; available: number };
 
 export type RiskLevel = "low" | "medium" | "high";
 
@@ -307,7 +308,7 @@ export type TracedPath = {
   /** Empty when `mode` is null - the timing cannot be split without knowing the unit's speed. */
   months: MonthLeg[];
   /** How the unit travels, or null when it is overloaded or the report never said. */
-  mode: "fly" | "ride" | "walk" | null;
+  mode: "fly" | "ride" | "sail" | "walk" | null;
   /**
    * Index of the first step the game would refuse - a walker entering the sea - or null when the
    * whole path is passable or there is no mode to rule with. Everything from this step onward is

@@ -54,17 +54,38 @@ export type OceanRule = {
   terrain: string;
 };
 
+export type SailingRule = {
+  /**
+   * Movement points a fleet spends entering any region, whatever the terrain.
+   *
+   * "For a fleet to enter any region only costs one movement point; the cost of two movement
+   * points for entering, say, a forest coastal region, does not apply." A fleet's own rule, not
+   * another entry on the terrain premium.
+   */
+  flatCost: number;
+  /**
+   * Whether a fleet may only enter a land region through a coastal one.
+   *
+   * "A coastal region is defined as a non-ocean region with at least one adjacent ocean region."
+   */
+  landNeedsCoast: boolean;
+  /** The terrain a fleet sails freely across, lower-cased. Mirrors {@link OceanRule.terrain}. */
+  terrain: string;
+};
+
 export type MovementRules = {
   movementPoints: MovementPoints;
   terrainCosts: TerrainCosts;
   road: RoadRule;
   ocean: OceanRule;
+  sailing: SailingRule;
   /** The sentence each value was read from, so a reader can check our work against the page. */
   provenance: {
     movementPoints: string;
     terrainCosts: string;
     road: string;
     ocean: string;
+    sailing: string;
   };
 };
 
@@ -178,12 +199,31 @@ export function parseMovementRules(html: string): MovementRules {
     /Units may not move through (\w+) regions without using the\s*SAIL\s*order unless they are capable of flight, and even then, flying units must end their movement on land or else drown/i
   );
 
+  // "For a fleet to enter any region only costs one movement point; the cost of two movement
+  //  points for entering, say, a forest coastal region, does not apply."
+  const sailingCost = requireMatch(
+    text,
+    "sailing",
+    new RegExp(
+      `For a fleet to enter any region only costs ${NUMBER_PATTERN} movement point`,
+      "i"
+    )
+  );
+
+  // "A coastal region is defined as a non-ocean region with at least one adjacent ocean region."
+  const coastal = requireMatch(
+    text,
+    "sailing",
+    /A coastal region is defined as a non-ocean region with at least one adjacent ocean region/i
+  );
+
   const walk = toNumber(points[1]);
   const ride = toNumber(points[2]);
   const fly = toNumber(points[3]);
   const normal = toNumber(terrain[1]);
   const doubledCost = toNumber(terrain[2]);
   const minimumCost = toNumber(road[2]);
+  const flatCost = toNumber(sailingCost[1]);
 
   if (
     walk === null ||
@@ -191,7 +231,8 @@ export function parseMovementRules(html: string): MovementRules {
     fly === null ||
     normal === null ||
     doubledCost === null ||
-    minimumCost === null
+    minimumCost === null ||
+    flatCost === null
   ) {
     throw new RulesetScrapeError(
       "the rules page used a number word the scraper does not know; extend NUMBER_WORDS"
@@ -235,11 +276,17 @@ export function parseMovementRules(html: string): MovementRules {
       flyingMustEndOnLand: true,
       terrain: ocean[1].toLowerCase()
     },
+    sailing: {
+      flatCost,
+      landNeedsCoast: true,
+      terrain: ocean[1].toLowerCase()
+    },
     provenance: {
       movementPoints: sentence(points),
       terrainCosts: sentence(terrain),
       road: sentence(road),
-      ocean: sentence(ocean)
+      ocean: sentence(ocean),
+      sailing: `${sentence(sailingCost)} ${sentence(coastal)}`
     }
   };
 }

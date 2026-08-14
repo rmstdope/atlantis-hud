@@ -14,7 +14,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::movement::graph::MapKnowledge;
-use crate::movement::rules::{ItemKind, Ruleset};
+use crate::movement::rules::{ItemKind, MovementMode, Ruleset};
 use crate::report::model::{Coordinate, ReportUnit};
 
 /// How worried to be.
@@ -105,6 +105,23 @@ pub fn assess_hex(
     coordinate: Coordinate,
     mover: &ReportUnit,
 ) -> HexRisk {
+    assess_hex_for_mode(map, ruleset, coordinate, mover, None)
+}
+
+/// The same question, worded for how the unit is travelling.
+///
+/// A guard forbids passage outright to a walker, but a fleet is already moving under sail when it
+/// reaches one: "guards are unfriendly or worse to the moving unit" still applies, but the rules
+/// page's guard section describes a fleet as stopped only after it has entered the region, not
+/// barred from entering it - the sentence this changes for [`MovementMode::Sail`].
+#[must_use]
+pub fn assess_hex_for_mode(
+    map: &MapKnowledge,
+    ruleset: &Ruleset,
+    coordinate: Coordinate,
+    mover: &ReportUnit,
+    mode: Option<MovementMode>,
+) -> HexRisk {
     let own_strength = strength_of(ruleset, mover);
 
     let Some(hex) = map.hex(coordinate).filter(|hex| hex.visited) else {
@@ -138,6 +155,7 @@ pub fn assess_hex(
         foreign.len(),
         monsters,
         guards,
+        mode,
     );
 
     HexRisk {
@@ -178,7 +196,14 @@ fn band(ruleset: &Ruleset, hostile: i64, own: i64) -> RiskLevel {
     }
 }
 
-fn describe(hostile: i64, own: i64, units: usize, monsters: i64, guards: usize) -> String {
+fn describe(
+    hostile: i64,
+    own: i64,
+    units: usize,
+    monsters: i64,
+    guards: usize,
+    mode: Option<MovementMode>,
+) -> String {
     if units == 0 {
         return "Nobody else is here.".to_string();
     }
@@ -194,9 +219,15 @@ fn describe(hostile: i64, own: i64, units: usize, monsters: i64, guards: usize) 
         }
     }
     if guards > 0 {
-        reason.push_str(&format!(
-            "; {guards} on guard, which can forbid passage outright"
-        ));
+        if mode == Some(MovementMode::Sail) {
+            reason.push_str(&format!(
+                "; {guards} on guard, who can stop the fleet only after it has entered"
+            ));
+        } else {
+            reason.push_str(&format!(
+                "; {guards} on guard, which can forbid passage outright"
+            ));
+        }
     }
     reason.push('.');
     reason
@@ -213,9 +244,21 @@ pub fn assess_route(
     hexes: &[Coordinate],
     mover: &ReportUnit,
 ) -> RouteRisk {
+    assess_route_for_mode(map, ruleset, hexes, mover, None)
+}
+
+/// The same question, worded for how the unit is travelling. See [`assess_hex_for_mode`].
+#[must_use]
+pub fn assess_route_for_mode(
+    map: &MapKnowledge,
+    ruleset: &Ruleset,
+    hexes: &[Coordinate],
+    mover: &ReportUnit,
+    mode: Option<MovementMode>,
+) -> RouteRisk {
     let assessed: Vec<HexRisk> = hexes
         .iter()
-        .map(|coordinate| assess_hex(map, ruleset, *coordinate, mover))
+        .map(|coordinate| assess_hex_for_mode(map, ruleset, *coordinate, mover, mode))
         .collect();
 
     let worst = assessed

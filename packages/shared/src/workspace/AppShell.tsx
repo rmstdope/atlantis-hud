@@ -21,7 +21,7 @@ import {
 } from "../hexMapModel";
 import { deliverTextFile, type TextFileSaver } from "../downloadFile";
 import { exportFileName, exportRequestOf } from "../mapExport";
-import { readUnitOrders, writeUnitOrders } from "../ordersDocument";
+import { readUnitOrders, stripMovementOrderLines, writeUnitOrders } from "../ordersDocument";
 import { ordersExportText } from "./ordersExport";
 import {
   commitTurn,
@@ -1912,11 +1912,7 @@ export function AppShell({
       }
       setOrdersDocument((document) => {
         const existing = readUnitOrders(document, unit.unitId) ?? "";
-        const withoutMove = existing
-          .split("\n")
-          .filter((line) => !/^\s*@?\s*(move|advance)\b/i.test(line))
-          .join("\n")
-          .trim();
+        const withoutMove = stripMovementOrderLines(existing);
         const next = withoutMove ? `${withoutMove}\n${order}` : order;
         const written = writeUnitOrders(document, unit.unitId, next);
         writer.markDirty(game, draftKey, written);

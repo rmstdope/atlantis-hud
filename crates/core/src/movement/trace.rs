@@ -13,9 +13,11 @@
 use serde::{Deserialize, Serialize};
 
 use crate::movement::graph::{geometric_neighbour, MapKnowledge};
-use crate::movement::mode::{mobility, Mobility};
+use crate::movement::mode::{fleet_of, fleet_sailing, mobility, Mobility};
 use crate::movement::orders::MoveStep;
-use crate::movement::plan::{blocks, split_into_months, step_cost, MonthLeg, RouteStep};
+use crate::movement::plan::{
+    base_terrain_cost, blocks, split_into_months, step_cost, MonthLeg, RouteStep,
+};
 use crate::movement::rules::{MovementMode, Ruleset};
 use crate::report::model::ReportUnit;
 
@@ -52,10 +54,19 @@ pub fn trace_move(
 ) -> Option<TracedPath> {
     let origin = map.hex_of_unit(unit)?;
     let from = origin.coordinate;
-    let mode = match mobility(unit) {
-        Mobility::Moves(mode) => Some(mode),
-        Mobility::Overloaded | Mobility::Unstated => None,
+
+    // The trace draws intent, not legality, so a fleet's crew shortfall never stops it here - only
+    // whether the fleet's numbers can be priced at all decides whether Sail is drawn. Exactly the
+    // planner's own inference otherwise: aboard a priceable fleet, the mode is Sail.
+    let sailing = fleet_of(unit, origin).and_then(|fleet| fleet_sailing(ruleset, origin, fleet));
+    let mode_and_points = match sailing {
+        Some((_, _, speed)) => Some((MovementMode::Sail, speed)),
+        None => match mobility(unit) {
+            Mobility::Moves(mode) => Some((mode, ruleset.movement_points(mode))),
+            Mobility::Overloaded | Mobility::Unstated => None,
+        },
     };
+    let mode = mode_and_points.map(|(mode, _)| mode);
 
     let mut position = from;
     let mut terrain = origin.terrain.clone();
@@ -86,12 +97,14 @@ pub fn trace_move(
         // value instead, because the order is drawn as written, not as permitted.
         let (cost, road) = mode.map_or((0, false), |mode| {
             step_cost(map, ruleset, mode, position, *direction, next)
-                .unwrap_or_else(|| (ruleset.terrain_cost(&next_terrain, mode), false))
+                .unwrap_or_else(|| (base_terrain_cost(ruleset, mode, &next_terrain), false))
         });
 
         // The first step the game would refuse marks everything after it as doubt. Judged by the
         // planner's own rule, so the two never disagree about what the sea stops.
-        if blocked_from.is_none() && mode.is_some_and(|mode| blocks(ruleset, mode, &next_terrain)) {
+        if blocked_from.is_none()
+            && mode.is_some_and(|mode| blocks(ruleset, map, mode, next, &next_terrain))
+        {
             blocked_from = Some(route.len());
         }
 
@@ -108,8 +121,8 @@ pub fn trace_move(
         terrain = next_terrain;
     }
 
-    let months = mode.map_or_else(Vec::new, |mode| {
-        split_into_months(ruleset, mode, from, &route)
+    let months = mode_and_points.map_or_else(Vec::new, |(_, points_per_month)| {
+        split_into_months(points_per_month, from, &route)
     });
 
     Some(TracedPath {

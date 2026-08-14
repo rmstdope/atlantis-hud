@@ -602,6 +602,76 @@ describe("core client adapter contract parity", () => {
       await tauriClient.listImportedTurns("/tmp/campaign.atlantis-game.sqlite", "faction-12")
     );
   });
+
+  /**
+   * A sea route rides the same wire shape as a land one, and the refusal it can carry - a crew
+   * short of the sailing skill a fleet needs - is a new `RouteProblem` kind, not a new shape.
+   * Pinned separately from the giant parity test above so a change to that test's many payloads
+   * cannot hide a regression here.
+   */
+  it("carries a sail plan and a crew refusal identically on both transports", async () => {
+    const sailPlanPayload = {
+      plan: {
+        from: { x: 49, y: 3, z: 1 },
+        to: { x: 49, y: 5, z: 1 },
+        mode: "sail",
+        steps: [
+          {
+            direction: "south",
+            to: { x: 49, y: 5, z: 1 },
+            terrain: "ocean",
+            cost: 1,
+            road: false
+          }
+        ],
+        totalCost: 1,
+        months: [{ month: 1, steps: 1, endsAt: { x: 49, y: 5, z: 1 } }]
+      },
+      problem: null,
+      risk: { level: "low", worst: null, hexes: [] },
+      fullyModelled: false
+    };
+    const crewRefusalPayload = {
+      plan: null,
+      problem: { kind: "crewCannotSail", required: 4, available: 1 },
+      risk: null,
+      fullyModelled: false
+    };
+
+    const bindings = {
+      plan_route_state(
+        _rulesetJson: string,
+        _rawReport: string,
+        _rememberedJson: string,
+        unitId: string
+      ) {
+        return unitId === "crewed" ? sailPlanPayload : crewRefusalPayload;
+      }
+    } as unknown as WasmBindings;
+    const invoke: TauriInvoke = async <T,>(command: string, args?: Record<string, unknown>) => {
+      if (command === "plan_route") {
+        return Promise.resolve(
+          (args?.unit_id === "crewed" ? sailPlanPayload : crewRefusalPayload) as T
+        );
+      }
+      throw new Error(`unexpected command ${command}`);
+    };
+
+    const wasmClient = createCoreClient(createWasmAdapter(bindings));
+    const tauriClient = createCoreClient(createTauriAdapter(invoke));
+
+    const wasmSail = await wasmClient.planRoute("{}", "report", "[]", "crewed", "1:49,5");
+    const tauriSail = await tauriClient.planRoute("{}", "report", "[]", "crewed", "1:49,5");
+    expect(wasmSail).toEqual(tauriSail);
+    expect(wasmSail.plan?.mode).toBe("sail");
+    expect(wasmSail.problem).toBeNull();
+
+    const wasmRefusal = await wasmClient.planRoute("{}", "report", "[]", "undercrewed", "1:49,5");
+    const tauriRefusal = await tauriClient.planRoute("{}", "report", "[]", "undercrewed", "1:49,5");
+    expect(wasmRefusal).toEqual(tauriRefusal);
+    expect(wasmRefusal.plan).toBeNull();
+    expect(wasmRefusal.problem).toEqual({ kind: "crewCannotSail", required: 4, available: 1 });
+  });
 });
 
 /**

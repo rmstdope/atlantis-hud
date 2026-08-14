@@ -40,6 +40,19 @@ describe("explaining why there is no route", () => {
     expect(sentence).toContain("MOVE order");
     expect(sentence).toContain("drowns");
   });
+
+  /** Navigator-approved wording (ah-2vy.2): names both figures so the shortfall is legible. */
+  it("names the sailing levels a fleet's crew is short of", () => {
+    const sentence = describeProblem({
+      kind: "crewCannotSail",
+      required: 4,
+      available: 1
+    });
+
+    expect(sentence).toBe(
+      "The crew cannot sail this fleet: it needs 4 levels of sailing, and the units aboard have 1."
+    );
+  });
 });
 
 describe("writing a route as an order", () => {
@@ -67,6 +80,13 @@ describe("writing a route as an order", () => {
   it("writes the abbreviations the game uses", () => {
     expect(routeAsOrder(answer(["southeast", "southeast"]))).toBe("MOVE SE SE");
     expect(routeAsOrder(answer(["north", "northwest", "south"]))).toBe("MOVE N NW S");
+  });
+
+  it("writes SAIL rather than MOVE for a fleet's route", () => {
+    const sailPlan = answer(["north"]);
+    sailPlan.plan = { ...sailPlan.plan!, mode: "sail" };
+
+    expect(routeAsOrder(sailPlan)).toBe("SAIL N");
   });
 });
 

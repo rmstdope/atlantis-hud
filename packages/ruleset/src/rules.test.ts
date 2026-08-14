@@ -144,4 +144,59 @@ describe("parseMovementRules", () => {
 
     expect(() => parseMovementRules(reworded)).toThrowError(/road/);
   });
+
+  /**
+   * "For a fleet to enter any region only costs one movement point; the cost of two movement
+   * points for entering, say, a forest coastal region, does not apply." A fleet ignores the
+   * terrain premium entirely, which is why the flat cost is its own rule rather than another entry
+   * doubled for a mode.
+   */
+  it("reads the flat cost a fleet pays to enter any region", () => {
+    const rules = parseMovementRules(RULES_HTML);
+
+    expect(rules.sailing.flatCost).toBe(1);
+  });
+
+  /**
+   * "A coastal region is defined as a non-ocean region with at least one adjacent ocean region."
+   * Read from the page rather than assumed, the same way the ocean terrain name is.
+   */
+  it("reads that a fleet may only enter land through a coastal region", () => {
+    const rules = parseMovementRules(RULES_HTML);
+
+    expect(rules.sailing.landNeedsCoast).toBe(true);
+  });
+
+  it("reads which terrain the sailing rule is about, from the ocean rule's own sentence", () => {
+    const rules = parseMovementRules(RULES_HTML);
+
+    expect(rules.sailing.terrain).toBe("ocean");
+  });
+
+  it("records the sentences the sailing rule came from", () => {
+    const rules = parseMovementRules(RULES_HTML);
+
+    expect(rules.provenance.sailing).toContain("For a fleet to enter any region");
+    expect(rules.provenance.sailing).toContain("coastal region is defined");
+  });
+
+  it("fails loudly when the fleet entry-cost sentence is reworded", () => {
+    const reworded = RULES_HTML.replace(
+      "For a fleet to enter any region\n            only costs one movement point",
+      "Fleets pay whatever the region normally costs"
+    );
+    expect(reworded).not.toBe(RULES_HTML);
+
+    expect(() => parseMovementRules(reworded)).toThrowError(/sailing/);
+  });
+
+  it("fails loudly when the coastal-region sentence is reworded", () => {
+    const reworded = RULES_HTML.replace(
+      "A coastal region is defined\n            as a non-ocean region with at least one adjacent ocean region.",
+      "Coastal regions are wherever the map maker felt like putting them."
+    );
+    expect(reworded).not.toBe(RULES_HTML);
+
+    expect(() => parseMovementRules(reworded)).toThrowError(/sailing/);
+  });
 });
