@@ -99,10 +99,10 @@ however full the buffer already is — a missing plan is the only thing keeping 
 most urgent bead there is, and a buffer of five or six is a price worth paying for that. The buffer
 is a floor under the fleet, not a ceiling on urgent work.
 
-**Customer service is Moira, and she owns the inbox:**
+**User feedback is Moira, and she owns the inbox:**
 
 ```bash
-scripts/run-customer-service
+scripts/run-user-feedback
 ```
 
 Interactive for the same reason the planner is — she has to put an issue in front of you and wait.
