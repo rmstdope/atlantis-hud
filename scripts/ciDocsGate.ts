@@ -16,14 +16,6 @@ export const REQUIRED_JOBS = ["wasm", "checks", "rust", "smoke", "pwa", "desktop
 export const GATE_JOB = "changes";
 
 /**
- * The twin of `smoke` that reports its four matrix check names when the real job is skipped.
- * A job skipped by a job-level `if:` never expands its matrix, so without this the four
- * `smoke (<project>, <shardIndex>, <shardTotal>)` required contexts would stay Pending forever
- * on a prose-only PR - confirmed on a throwaway trial PR before this was added.
- */
-export const SMOKE_SKIP_JOB = "smoke-skip";
-
-/**
  * Every top-level job block in the workflow, keyed by job id.
  *
  * Job ids sit at exactly two-space indent (`  wasm:`); everything belonging to a job - its steps,
@@ -65,6 +57,32 @@ export function isGatedOnChanges(jobBlock: string): boolean {
 export function dependsOnChanges(jobBlock: string): boolean {
   const needsLine = jobBlock.match(/^ {4}needs:.*$/mu);
   return needsLine !== null && /\bchanges\b/u.test(needsLine[0]);
+}
+
+/**
+ * Every step block within a job's `steps:` list, keyed by its `name:`.
+ *
+ * Steps sit at six-space indent (`      - name: Checkout`); everything belonging to a step is
+ * indented further, and a line back at six spaces starting with `- name:` starts the next one.
+ */
+export function stepBlocks(jobBlock: string): Map<string, string> {
+  const lines = jobBlock.split("\n");
+  const blocks = new Map<string, string[]>();
+  let current: string | null = null;
+
+  for (const line of lines) {
+    const match = line.match(/^ {6}- name:\s*(.+)\s*$/u);
+    if (match) {
+      current = match[1].trim();
+      blocks.set(current, [line]);
+      continue;
+    }
+    if (current) {
+      blocks.get(current)!.push(line);
+    }
+  }
+
+  return new Map([...blocks].map(([id, body]) => [id, body.join("\n")]));
 }
 
 /** The `strategy.matrix` body of a job block, so two jobs' matrices can be compared for equality. */
