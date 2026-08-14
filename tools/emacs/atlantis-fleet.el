@@ -28,6 +28,8 @@
 (require 'json)
 (require 'iso8601)
 (require 'tabulated-list)
+(require 'seq)
+(require 'subr-x)
 
 ;;; The interactive roster
 
