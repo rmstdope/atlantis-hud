@@ -10,10 +10,9 @@ import {
   isGatedOnChanges,
   isSafeGateCondition,
   jobBlocks,
-  matrixOf,
   onTriggerBlock,
   REQUIRED_JOBS,
-  SMOKE_SKIP_JOB
+  stepBlocks
 } from "./ciDocsGate";
 
 const REPO = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -77,7 +76,7 @@ describe("the gate condition's safety check", () => {
 });
 
 describe("the prose-only fast path", () => {
-  it("gates every required job on the gate's output", () => {
+  it("gates every required job on the gate's output, except smoke - gated on its steps instead", () => {
     const blocks = jobBlocks(WORKFLOW);
 
     for (const job of REQUIRED_JOBS) {
@@ -87,6 +86,17 @@ describe("the prose-only fast path", () => {
       }
 
       expect(dependsOnChanges(block), `${job} must depend on ${GATE_JOB}`).toBe(true);
+
+      if (job === "smoke") {
+        // smoke always runs and always expands its matrix - a job skipped by a job-level `if:`
+        // never expands its matrix, which is what forced the raw-named skip twin this bead
+        // removes. Gating happens per-step instead; see the dedicated smoke tests below.
+        expect(isGatedOnChanges(block), "smoke must not be job-level gated on changes").toBe(
+          false
+        );
+        continue;
+      }
+
       expect(isGatedOnChanges(block), `${job} must be conditioned on ${GATE_JOB}'s output`).toBe(
         true
       );
@@ -113,30 +123,71 @@ describe("the prose-only fast path", () => {
     expect(trigger).not.toMatch(/paths(-ignore)?:/u);
   });
 
-  it("gives the smoke matrix a skip twin, since a job skipped by if: never expands its matrix", () => {
-    // Confirmed on a throwaway trial PR: a job-level `if: false` skips the whole `smoke` job
-    // before its matrix is expanded, producing one check run named "smoke" - not the four
-    // per-combination contexts (`smoke (web, 1, 2)`, etc.) the ruleset actually requires. Left
-    // alone, those four stay Pending forever on a prose-only PR and block the merge, the opposite
-    // of the goal. The fallback is a second job with the same matrix, gated the other way, that
-    // reports the same check names by explicit `name:` rather than by job id.
+  it("has no smoke-skip twin, and no job block name: carries a raw matrix expression", () => {
+    // A job skipped by a job-level `if:` never expands its matrix - confirmed on a throwaway
+    // trial PR - which is why `smoke-skip` used to exist: a second job, same matrix, opposite
+    // condition, reporting the four required contexts by an explicit `name:` when the real job
+    // was skipped. On a CODE pr the twin is what's skipped instead, so it never expands either,
+    // and its `${{ matrix.* }}` `name:` posted uninterpolated - the bug this bead fixes. The twin
+    // is gone; `smoke` itself always runs and always expands, on every PR.
     const blocks = jobBlocks(WORKFLOW);
-    const twin = blocks.get(SMOKE_SKIP_JOB);
-    if (twin === undefined) {
-      throw new Error(`workflow has no "${SMOKE_SKIP_JOB}" job`);
+    expect(blocks.has("smoke-skip")).toBe(false);
+
+    for (const [id, block] of blocks) {
+      const nameLine = block.match(/^ {4}name:.*$/mu);
+      if (nameLine !== null) {
+        expect(nameLine[0], `job "${id}" name: must not carry a raw matrix expression`).not.toMatch(
+          /\$\{\{/u
+        );
+      }
     }
+  });
 
-    expect(dependsOnChanges(twin)).toBe(true);
-    expect(twin).toMatch(/^ {4}if:\s*needs\.changes\.outputs\.code\s*!=\s*'true'\s*$/mu);
-
+  it("keeps smoke running, and its matrix expanding, whether or not wasm ran", () => {
+    // Default needs-semantics would skip `smoke` when its `wasm` dependency was skipped on a
+    // prose-only PR - which is exactly the four-Pending-forever failure mode the old twin
+    // existed to avoid. `!cancelled()` is what keeps the job (and therefore its matrix) running
+    // in that case, while still dying on an actual cancellation.
+    const blocks = jobBlocks(WORKFLOW);
     const smoke = blocks.get("smoke");
     if (smoke === undefined) {
       throw new Error('workflow has no "smoke" job');
     }
-    expect(matrixOf(twin)).toEqual(matrixOf(smoke));
-    expect(twin).toContain(
-      "name: smoke (${{ matrix.project }}, ${{ matrix.shardIndex }}, ${{ matrix.shardTotal }})"
-    );
+
+    expect(dependsOnChanges(smoke)).toBe(true);
+    expect(smoke).toMatch(/^ {4}needs:\s*\[changes,\s*wasm\]\s*$/mu);
+    expect(smoke).toMatch(/^ {4}if:\s*\$\{\{\s*!cancelled\(\)\s*\}\}\s*$/mu);
+  });
+
+  it("gates every smoke step on the changes output, except the failure() upload", () => {
+    // The job itself always runs now, so each step is what stands in for the old job-level gate.
+    // `Download the WebAssembly core` additionally needs wasm to have actually succeeded - on a
+    // code PR whose wasm build failed, smoke must not try to download an artifact that was never
+    // produced. `Upload the report of a failed run` keeps its own failure() condition unchanged:
+    // nothing fails when every other step was skipped.
+    const blocks = jobBlocks(WORKFLOW);
+    const smoke = blocks.get("smoke");
+    if (smoke === undefined) {
+      throw new Error('workflow has no "smoke" job');
+    }
+
+    const steps = stepBlocks(smoke);
+    expect(steps.size).toBeGreaterThan(0);
+
+    for (const [name, step] of steps) {
+      if (name === "Upload the report of a failed run") {
+        expect(step).toMatch(/^ {8}if:\s*failure\(\)\s*$/mu);
+        continue;
+      }
+
+      const ifLine = step.match(/^ {8}if:.*$/mu);
+      expect(ifLine, `step "${name}" must carry an if: gating it on changes`).not.toBeNull();
+      expect(ifLine![0]).toContain("needs.changes.outputs.code == 'true'");
+
+      if (name === "Download the WebAssembly core") {
+        expect(ifLine![0]).toContain("needs.wasm.result == 'success'");
+      }
+    }
   });
 
   it("takes the fast path for a diff that is only prose", () => {

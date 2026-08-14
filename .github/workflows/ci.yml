@@ -232,10 +232,21 @@ jobs:
   # roughly halves the test time; at three the setup starts to dominate what it saves.
   #
   # These need no Rust at all: the wasm module arrives as an artifact.
+  #
+  # This job always runs and always expands its matrix - a job skipped by a job-level `if:` never
+  # expands its matrix, which used to mean a docs-only PR needed a second job (`smoke-skip`), same
+  # matrix, opposite condition, reporting the four required `smoke (<project>, <shardIndex>,
+  # <shardTotal>)` contexts under an explicit `name:`. On a CODE PR the twin was the one skipped
+  # instead, so IT never expanded either, and its `${{ matrix.* }}` `name:` posted uninterpolated -
+  # a permanently-"skipping" check with a raw expression in its name, on every code PR (ah-2m2).
+  # Gating every step instead keeps the four contexts reporting on every PR by construction, with
+  # no job anywhere carrying a matrix expression in a `name:`. `!cancelled()` is what lets the job
+  # (and therefore its matrix) still run when `wasm` was skipped on a prose-only PR, while still
+  # dying on an actual cancellation.
   smoke:
     runs-on: ubuntu-latest
     needs: [changes, wasm]
-    if: needs.changes.outputs.code == 'true'
+    if: ${{ !cancelled() }}
     strategy:
       fail-fast: false
       matrix:
@@ -244,22 +255,27 @@ jobs:
         shardTotal: [2]
     steps:
       - name: Checkout
+        if: needs.changes.outputs.code == 'true'
         uses: actions/checkout@v4
 
       - name: Setup Node
+        if: needs.changes.outputs.code == 'true'
         uses: actions/setup-node@v4
         with:
           node-version-file: ".nvmrc"
 
       - name: Setup pnpm
+        if: needs.changes.outputs.code == 'true'
         uses: pnpm/action-setup@v4
         with:
           version: 9.12.0
 
       - name: Install dependencies
+        if: needs.changes.outputs.code == 'true'
         run: pnpm install --frozen-lockfile
 
       - name: Download the WebAssembly core
+        if: needs.changes.outputs.code == 'true' && needs.wasm.result == 'success'
         uses: actions/download-artifact@v4
         with:
           name: wasm-core
@@ -267,6 +283,7 @@ jobs:
 
       - name: Cache the Playwright browser
         id: playwright-cache
+        if: needs.changes.outputs.code == 'true'
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
@@ -275,16 +292,17 @@ jobs:
       # The browser itself caches; the system libraries it links against do not, so those are
       # installed either way.
       - name: Install Playwright Chromium
-        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        if: needs.changes.outputs.code == 'true' && steps.playwright-cache.outputs.cache-hit != 'true'
         run: pnpm exec playwright install --with-deps chromium
 
       - name: Install Playwright system dependencies
-        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        if: needs.changes.outputs.code == 'true' && steps.playwright-cache.outputs.cache-hit == 'true'
         run: pnpm exec playwright install-deps chromium
 
       # SMOKE_PROJECT keeps the config from also building and serving the shell this job is not
       # walking: Playwright starts every `webServer` entry no matter which project runs.
       - name: Run smoke tests
+        if: needs.changes.outputs.code == 'true'
         run: pnpm exec playwright test --project=${{ matrix.project }} --shard=${{ matrix.shardIndex }}/${{ matrix.shardTotal }}
         env:
           SMOKE_PROJECT: ${{ matrix.project }}
@@ -296,26 +314,6 @@ jobs:
           name: playwright-report-${{ matrix.project }}-${{ matrix.shardIndex }}
           path: test-results
           retention-days: 7
-
-  # `smoke`'s skip twin. A job skipped by a job-level `if:` never expands its matrix, so without
-  # this a docs-only PR would report a single "smoke" check and leave the four required
-  # `smoke (<project>, <shardIndex>, <shardTotal>)` contexts Pending forever - confirmed on a
-  # throwaway trial PR. Same matrix, opposite condition, explicit `name:` so its check runs land
-  # under the exact names the ruleset requires.
-  smoke-skip:
-    name: smoke (${{ matrix.project }}, ${{ matrix.shardIndex }}, ${{ matrix.shardTotal }})
-    runs-on: ubuntu-latest
-    needs: changes
-    if: needs.changes.outputs.code != 'true'
-    strategy:
-      fail-fast: false
-      matrix:
-        project: [web, desktop-shell]
-        shardIndex: [1, 2]
-        shardTotal: [2]
-    steps:
-      - name: Report skipped
-        run: echo "prose-only diff, nothing for smoke (${{ matrix.project }}) to check"
 
   # The production build, which nothing else in this repository ever makes.
   #
