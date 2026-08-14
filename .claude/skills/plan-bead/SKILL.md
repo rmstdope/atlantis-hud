@@ -42,7 +42,7 @@ reading of the bead, not against a bare id.
 
 Ask with the question tool, batching up to four beads per call, options `P0`–`P4` with your
 recommendation first and marked `(Recommended)`, and the reason in each option's description. Apply
-each answer as it comes:
+each answer as it comes (use numeric priorities `0`–`4` for `bd update`, i.e. `P0`→`0` … `P4`→`4`):
 
 ```bash
 bd update <id> --priority=<n>
