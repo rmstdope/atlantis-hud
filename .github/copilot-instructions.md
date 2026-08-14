@@ -211,6 +211,10 @@ Every piece of planned work is a bead. Follow the `beads-workflow` skill for the
 rules that must always hold are:
 
 - ALWAYS use the test-driven-development skill when working on a bead.
+- ALWAYS create a bead at **P4**, whoever creates it and however urgent it looks — `bd create ... -p 4`,
+  explicitly, because bd's own default is P2. P4 here means *unranked*, not unimportant: priority is
+  the navigator's to set, and the planner walks the P4 beads with them and recommends one for each.
+  Argue the urgency in the description, where it can be read weeks later; never in the number.
 - ALWAYS claim the bead **before** exploring the code, planning, or asking the navigator anything —
   not merely before branching — and ALWAYS `bd dolt push` straight afterwards so agents on other
   machines can see the claim. `bd update <id> --claim` when you chose the bead yourself;

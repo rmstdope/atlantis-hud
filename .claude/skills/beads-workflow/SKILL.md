@@ -181,11 +181,28 @@ implementation plan asks of every work package:
 | Inputs it depends on | dependency edges, not prose — see below |
 
 ```bash
-bd create "Load multiple reports" --type feature -p 2 --body-file scope.md \
+bd create "Load multiple reports" --type feature -p 4 --body-file scope.md \
   --acceptance "Selecting several .rep files imports them in header order"
 ```
 
-Types used here: `feature`, `bug`, `task`, `epic`. Priorities `P0`–`P4`, default `P2`.
+Types used here: `feature`, `bug`, `task`, `epic`.
+
+**Every bead is created at P4**, whoever creates it and however urgent it looks. `-p 4` is explicit
+because bd's own default is P2, and a bead that arrives at P2 has been given a rank by whoever
+happened to file it.
+
+P4 is not "unimportant" here — it is **unranked**, the floor a bead waits on until it is prioritised
+deliberately. That prioritisation is a step of its own: the planner walks the P4 beads with the
+navigator, recommends a priority for each from what the bead says, and applies what the navigator
+chooses (see `plan-bead`). Ranking is the navigator's call, and a bead filed at P1 by its author has
+taken that call from them.
+
+So set the priority you think it deserves nowhere but in the bead's text — say in the description why
+it matters and what it is holding up. That is the argument the ranking is made from, and it survives
+being read weeks later, which a number does not.
+
+A priority already agreed with the navigator is theirs and stays: `bd update <id> --priority=<n>`
+after they have said so, never before.
 
 Do not restate a dependency in the description — model it, so `bd ready` stays truthful.
 
@@ -194,8 +211,11 @@ Do not restate a dependency in the description — model it, so `bd ready` stays
 ```bash
 bd dep add <blocked-bead> <blocker-bead>            # blocked-bead is blocked by blocker-bead
 bd dep add <a> <b> --type relates-to                # related, but not blocking
-bd create "Sub-task title" --parent <bead-id>       # hierarchical child
+bd create "Sub-task title" --parent <bead-id> -p 4  # hierarchical child
 ```
+
+A child is a new bead, so it starts at P4 like any other — it does not inherit the parent's priority,
+and a split is not the moment to rank the pieces.
 
 Beads has real parent links and dependency edges, so the old `Sub-issue (NN):` title prefix is gone.
 When a bead turns out to be larger than one increment, split it into children and wire the order with
@@ -212,8 +232,14 @@ GITHUB_TOKEN=$(gh auth token) bd github status                # verify configura
 just recorded, prefer creating it with a rewritten scope and a back-reference:
 
 ```bash
-bd create "Title" --type bug --external-ref gh-<n> --body-file body.md
+bd create "Title" --type bug --external-ref gh-<n> -p 4 --body-file body.md
 ```
+
+P4 here too, however urgent the report reads. A reporter's sense of urgency is evidence for the
+ranking, not the ranking itself — put it in the description and let the navigator weigh it.
+
+`bd github pull` sets its own priority from the issue, so a bead imported that way is worth checking
+and correcting to P4 unless the navigator has already ranked it.
 
 Then comment on the GitHub issue naming the bead and close it. Nothing is pushed from beads to
 GitHub automatically; the sync is pull-only and manual.
