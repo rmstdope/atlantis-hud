@@ -25,6 +25,7 @@ git checkout -b <id>-short-description origin/main
 gh pr create ...               # then the review round: see the Four Eye Principle in CLAUDE.md
 gh pr merge <n> --squash --delete-branch    # only once reviewed at head, green, and not behind
 bd close <id> --reason "Delivered in PR #NN"
+# ... then close the parent if that was its last open child - see "Dependencies and breakdown" ...
 bd dolt push                   # back the bead database up to the remote
 ```
 
@@ -244,6 +245,20 @@ first.
 Beads has real parent links and dependency edges, so the old `Sub-issue (NN):` title prefix is gone.
 When a bead turns out to be larger than one increment, split it into children and wire the order with
 `bd dep add`; do not grow the parent.
+
+**Whoever closes the last child closes the parent.** A parent is nothing but its children, and
+nothing closes it on its own — two epics sat open here at 2/2 children closed. So every `bd close`
+is followed by a walk upwards, one level at a time until there is no parent left:
+
+```bash
+bd show <id> --json | jq -r '.[0].parent // empty'      # empty: nothing above, stop
+bd children <parent> --json | jq -r '.[].status'        # closed children are included by default
+bd close <parent> --reason "All children closed; last was <id>"
+```
+
+Every child `closed` is the whole test, and it is not `bd epic close-eligible`: that sweeps every
+eligible epic in the database, including families this session never touched, in the same way
+`bd reclaim` without `--id` reaps leases that were never yours. Walk up from your own bead.
 
 ## GitHub bug-report bridge
 

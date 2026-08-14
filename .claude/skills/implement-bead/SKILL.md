@@ -277,6 +277,31 @@ skip the second.
 **Do this on every exit, not only this one.** A bead handed back, a review that never came, a CI
 budget spent — each of those leaves a worktree too, and nothing else cleans them up.
 
+### Close the parent too, when you were the last child
+
+A bead you closed may be a child of an epic, and the epic is nothing but its children: once the last
+one is closed there is no work left under it, but nothing closes it on its own. Two epics sat open
+here with 2/2 children closed for exactly that reason. So after `bd close`, look up:
+
+```bash
+bd show <id> --json | jq -r '.[0].parent // empty'          # empty: nothing to do, you are done
+bd children <parent> --json | jq -r '.[].status'            # includes closed children by default
+bd close <parent> --reason "All children closed; last was <id>, delivered in PR #NN"
+```
+
+Close the parent only when **every** child reads `closed`, and then repeat the lookup on *its*
+parent — a child of a child leaves two levels to settle, and each is the same three commands.
+
+Two things this is not:
+
+- **Not `bd epic close-eligible`.** That sweeps every eligible epic in the database, including
+  families no session of yours ever touched. Walk up from your own bead, the way `bd reclaim --id`
+  names one bead rather than reaping every stale lease.
+- **Not a judgement about whether the epic is finished.** All children closed is the whole test. An
+  epic that still has work left in it has that work as an open child, or it has a scope the navigator
+  changed — and a scope change is theirs, not yours. If the children are all closed but the parent
+  plainly is not done, leave it open, `--append-notes` why, and say so on the way out.
+
 Say what you merged and anything the navigator should know — a deviation, a trap the plan missed, a
 bead you handed back.
 
