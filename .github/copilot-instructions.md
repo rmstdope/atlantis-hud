@@ -42,12 +42,19 @@ running either should load its skill first.
 an X-Man:
 
 ```bash
-scripts/run-implementer Cyclops
+git submodule update --init --recursive    # once per clone: the launchers live in the submodule
+.claude/cerebro/scripts/run-implementer Cyclops
 ```
 
-That script owns the loop, not the agent. It starts a fresh `claude` session, waits for it to take a
-single bead through to merged and exit, re-reads its flags, and starts another. So one bead per
-process is a property of how implementers run rather than a rule an agent has to keep, and no
+Every `.claude/cerebro/…` path below comes from that submodule. On a clone made without
+`--recurse-submodules` the directory is empty, and each of these commands fails with "No such file
+or directory" rather than anything that names the real cause.
+
+That script starts one interactive session and nothing else. The session takes a single bead through
+to merged, writes `done` to `.claude/implementers/<name>.state.json`, and stops; the Emacs fleet view
+sees that, ends it, and starts a fresh session for the next bead — unless
+`.claude/implementers/<name>.stop` says otherwise. So one bead per session is a property of how
+implementers run rather than a rule an agent has to keep, and no
 context grows across beads.
 
 They are top-level sessions rather than subagents because **a subagent cannot wait**: it has no next
@@ -58,25 +65,30 @@ review comments unanswered. A session of its own can simply block until the revi
 **Cerebro orchestrates them without starting them:**
 
 ```bash
-scripts/run-orchestrator
+.claude/cerebro/scripts/run-orchestrator
 ```
 
-That session is interactive, runs on Fable, and does nothing until you ask. It puts an implementer
-to work by touching `.claude/implementers/<name>.go` and takes it down by removing that flag, or by
-touching `<name>.stop` to end the terminal as well. **Taking one down means telling it to finish**:
-flags are read between beads, never during one, so the implementer completes what it is on and sees
-it merged — interrupting one mid-bead strands a claim, a worktree and an open PR.
+That session is interactive, runs on Fable, and does nothing until you ask. It cannot start an
+implementer — starting one means starting a session, and only you can do that (`s` in the Emacs fleet
+view, or the launcher in a terminal). It takes one down by touching
+`.claude/implementers/<name>.stop`. **Taking one down means telling it to finish**: the flag is read
+when an implementer reports `done`, never mid-bead, so it completes what it is on and sees it merged
+— interrupting one mid-bead strands a claim, a worktree and an open PR.
 
-**An implementer cannot be talked to.** It runs with `--print`, and a print-mode session appears in
-neither `claude agents` nor `ListAgents`, so there is no name for `SendMessage` to address. You watch
-it in its terminal, where the launcher renders each tool call as it happens. Start it with
-`scripts/run-implementer <name> --log` and the same events are also kept in
-`.claude/implementers/<name>.log`, which is what Cerebro reads — off by default, because one bead
-writes about a megabyte and the file is appended across runs. The terminal, the optional log and the
-flags are the whole interface.
+There is no `.go` flag any more. A running implementer is a working one: it claims the next planned
+bead as soon as it comes up.
+
+**An implementer is interactive, like every other agent here.** It appears in `claude agents` and
+`ListAgents`, so `SendMessage` reaches it — sparingly, since a message costs it a turn of context
+mid-bead. You watch it in its terminal, or in the fleet view's detail window, and you can answer it:
+a question only you can settle shows as `asking`, and hands the bead to the `human` queue if nobody
+answers within fifteen minutes.
+
+There are no `.log` files any more; they belonged to the `--print` launcher that could tee a
+`stream-json` stream. `.claude/implementers/<name>.state.json` is what Cerebro reads instead.
 
 Cerebro also sweeps up after implementers that did not get to the end of their own cleanup, on
-startup and every ten minutes. `scripts/prune-worktrees.sh` removes an agent worktree only when
+startup and every ten minutes. `.claude/cerebro/scripts/prune-worktrees.sh` removes an agent worktree only when
 nothing can be lost from it: clean tree, work already on main, untouched for half an hour. Alongside
 it Cerebro checks the claims — a bead left `in_progress` whose work is already on main is a delivered
 bead whose implementer died before closing it, so Cerebro closes it and reports that it had to — and
@@ -88,14 +100,14 @@ sweeps are described in `.claude/agents/orchestrator.md`.
 **The planner is a session too, and it is Xavier:**
 
 ```bash
-scripts/run-planner
+.claude/cerebro/scripts/run-planner
 ```
 
-Interactive, unlike an implementer, and deliberately so: it must be able to put a question and an
-HTML mockup in front of you and wait for an answer, which print mode cannot do. It keeps a buffer of
-**four planned, open, unclaimed beads** ahead of the fleet — planning the highest-priority candidate
-whose blockers are already planned, sleeping ten minutes, and refilling when the buffer drops below
-two. There is no go flag and no loop around it; the session runs until you end it.
+Interactive, and it has to be: it must put a question and an HTML mockup in front of you and wait
+for an answer. It keeps a buffer of **four planned, open, unclaimed beads** ahead of the fleet —
+planning the highest-priority candidate whose blockers are already planned, sleeping ten minutes,
+and refilling when the buffer drops below two. Nothing loops around it; the session runs until you
+end it, and unlike an implementer it is not replaced between beads.
 
 **A P0 pre-empts all of that.** An unplanned P0 is planned immediately, on the pass it appears and
 however full the buffer already is — a missing plan is the only thing keeping an implementer off the
@@ -105,7 +117,7 @@ is a floor under the fleet, not a ceiling on urgent work.
 **User feedback is Moira, and she owns the inbox:**
 
 ```bash
-scripts/run-user-feedback
+.claude/cerebro/scripts/run-user-feedback
 ```
 
 Interactive for the same reason the planner is — she has to put an issue in front of you and wait.

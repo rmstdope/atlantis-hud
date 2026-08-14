@@ -229,7 +229,7 @@ describe("the prose-only fast path", () => {
 
   it("runs everything for a diff that touches code, however much prose comes with it", () => {
     expect(runsEverything(["packages/browser-core/src/index.ts"])).toBe(true);
-    expect(runsEverything([".claude/agents/orchestrator.md", "scripts/runImplementer.ts"])).toBe(
+    expect(runsEverything([".claude/agents/orchestrator.md", "scripts/releaseSupport.ts"])).toBe(
       true
     );
   });
