@@ -13,8 +13,10 @@ import { UnitListLimitStepper } from "./UnitListLimitStepper";
  * the smoke suite's business.
  */
 
-function markup(value: number): string {
-  return renderToStaticMarkup(<UnitListLimitStepper value={value} onChange={() => {}} />);
+function markup(value: number, fixed = false): string {
+  return renderToStaticMarkup(
+    <UnitListLimitStepper value={value} onChange={() => {}} fixed={fixed} />
+  );
 }
 
 /** The markup of one testid's tag, so an assertion about it cannot match a sibling's attribute. */
@@ -54,9 +56,9 @@ function find(node: ReactNode, testid: string): ReactElement<Record<string, unkn
 }
 
 /** Presses a button in a rendered stepper and answers with what it asked the limit to become. */
-function press(value: number, testid: string): number | null {
+function press(value: number, testid: string, fixed = false): number | null {
   let asked: number | null = null;
-  const tree = UnitListLimitStepper({ value, onChange: (next) => (asked = next) });
+  const tree = UnitListLimitStepper({ value, onChange: (next) => (asked = next), fixed });
   const click = find(tree, testid).props.onClick as () => void;
   click();
   return asked;
@@ -64,8 +66,14 @@ function press(value: number, testid: string): number | null {
 
 describe("UnitListLimitStepper", () => {
   it("says what the current maximum is", () => {
-    expect(markup(12)).toContain("max 12");
-    expect(markup(4)).toContain("max 4");
+    expect(markup(12, false)).toContain("max 12");
+    expect(markup(4, false)).toContain("max 4");
+  });
+
+  it("says the exact size when the pane is fixed", () => {
+    const html = markup(12, true);
+    expect(tag(html, "unit-list-limit-value")).not.toContain("max");
+    expect(html).toContain(">12<");
   });
 
   it("steps a single row, in the direction the button is marked with", () => {

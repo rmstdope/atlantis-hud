@@ -61,6 +61,14 @@ export type SettingsState = {
    */
   unitListLimit: number;
   /**
+   * Whether the "Units in hex" pane's row count is a fixed size rather than a ceiling.
+   *
+   * Off by default, matching today's behaviour: the pane hugs whatever the hex holds, up to
+   * `unitListLimit`. On, it always reserves that many rows - including on an empty, stale,
+   * unselected or filtered-to-nothing hex - so moving between hexes never resizes the pane.
+   */
+  unitListFixedSize: boolean;
+  /**
    * Whether order validation warns about a hex holding your units and no guard at all.
    *
    * Off by default. Most hexes are deliberately unguarded, so this speaks about hex after hex -
@@ -94,6 +102,7 @@ export type SettingsState = {
   setBiomeTextures: (enabled: boolean) => void;
   setPaneTransparency: (percent: number) => void;
   setUnitListLimit: (count: number) => void;
+  setUnitListFixedSize: (enabled: boolean) => void;
   setWarnOnUnguardedHex: (enabled: boolean) => void;
   setMovementPlanner: (enabled: boolean) => void;
   setShowShortcutsAtStartup: (enabled: boolean) => void;
@@ -109,6 +118,7 @@ type Persisted = Pick<
   | "biomeTextures"
   | "paneTransparency"
   | "unitListLimit"
+  | "unitListFixedSize"
   | "warnOnUnguardedHex"
   | "movementPlanner"
   | "showShortcutsAtStartup"
@@ -226,6 +236,7 @@ const DEFAULTS: Persisted = {
   biomeTextures: true,
   paneTransparency: DEFAULT_PANE_TRANSPARENCY,
   unitListLimit: DEFAULT_UNIT_LIST_LIMIT,
+  unitListFixedSize: false,
   warnOnUnguardedHex: false,
   movementPlanner: false,
   showShortcutsAtStartup: true,
@@ -258,6 +269,10 @@ export const useSettingsStore = create<SettingsState>()(
 
       setUnitListLimit: (count) => {
         set({ unitListLimit: clampUnitListLimit(count) });
+      },
+
+      setUnitListFixedSize: (unitListFixedSize) => {
+        set({ unitListFixedSize });
       },
 
       setWarnOnUnguardedHex: (warnOnUnguardedHex) => {
@@ -299,6 +314,7 @@ export const useSettingsStore = create<SettingsState>()(
         biomeTextures: state.biomeTextures,
         paneTransparency: state.paneTransparency,
         unitListLimit: state.unitListLimit,
+        unitListFixedSize: state.unitListFixedSize,
         warnOnUnguardedHex: state.warnOnUnguardedHex,
         movementPlanner: state.movementPlanner,
         showShortcutsAtStartup: state.showShortcutsAtStartup,

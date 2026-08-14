@@ -67,6 +67,11 @@ export function UnitTableDock({
   const [scrollTop, setScrollTop] = useState(0);
   const [viewportHeight, setViewportHeight] = useState(0);
   const refocusWanted = useRef(false);
+  // The Absent branches (no hex, stale, empty, filtered-to-nothing) have no <thead> to measure,
+  // so a fixed-size pane opened cold on one of them has never seen a real header height. This
+  // remembers the last one that was, and ROW_HEIGHT - close to one row tall - is the fallback
+  // before any header has ever been measured at all.
+  const lastHeadHeight = useRef(ROW_HEIGHT);
 
   // unitsForHex rather than hex.region.units: sorting it again is a no-op because Array.sort is
   // stable, and it guarantees the table cannot drift from the order AppShell picks defaults from.
@@ -79,6 +84,7 @@ export function UnitTableDock({
   // beyond the cap were not merely out of view, they were gone.
   const unitListLimit = useSettingsStore((state) => state.unitListLimit);
   const setUnitListLimit = useSettingsStore((state) => state.setUnitListLimit);
+  const unitListFixedSize = useSettingsStore((state) => state.unitListFixedSize);
   const visible = useMemo(() => sortUnits(filterUnits(units, filter), sort), [units, filter, sort]);
   const selectedIndex = useMemo(
     () => visible.findIndex((unit) => unit.unitId === selectedUnitId),
@@ -101,7 +107,12 @@ export function UnitTableDock({
     if (!scroller) {
       return;
     }
-    const update = () => setViewportHeight(measure(scroller, head));
+    const update = () => {
+      if (head) {
+        lastHeadHeight.current = head.offsetHeight;
+      }
+      setViewportHeight(measure(scroller, head));
+    };
     update();
     const observer = new ResizeObserver(update);
     observer.observe(scroller);
@@ -245,6 +256,17 @@ export function UnitTableDock({
     }
   };
 
+  // The fixed-size reservation: one header's worth of height plus the configured row count,
+  // whatever the hex holds. `head` is null on first paint and on every Absent branch, which is
+  // why the fallback is the last real header height ever measured rather than a bare 0. Read only
+  // when the option is on: `head?.offsetHeight` forces a layout read, and the default mode has no
+  // use for this figure at all - it keeps its own `maxHeight` read below, unchanged.
+  const reservedHeight = unitListFixedSize
+    ? (head?.offsetHeight ?? lastHeadHeight.current) + unitListLimit * ROW_HEIGHT
+    : 0;
+  // Shared by both Absent branches below, so the reservation cannot drift between them.
+  const reservedStyle = unitListFixedSize ? { height: reservedHeight } : undefined;
+
   const stale = hex?.knowledge === "stale";
   // A stale hex's count would be a lie the moment it left the model: a hex nobody sees carries no
   // units at all now, so the header names the ground and stops there rather than claiming "0 units"
@@ -280,20 +302,28 @@ export function UnitTableDock({
               window's own width, so there was nothing to defend against - and `truncate` cost the
               native shell's driver the title and the hint entirely, which is the sort of thing
               only a real WebKit build reports. */}
-          <UnitListLimitStepper value={unitListLimit} onChange={setUnitListLimit} />
+          <UnitListLimitStepper
+            value={unitListLimit}
+            onChange={setUnitListLimit}
+            fixed={unitListFixedSize}
+          />
         </div>
       }
     >
       {units.length === 0 ? (
-        <Absent>
-          {hex
-            ? stale
-              ? `Not seen since turn ${hex.lastSeenTurn} — no current unit information.`
-              : "No units reported in this hex."
-            : "No hex selected."}
-        </Absent>
+        <div style={reservedStyle}>
+          <Absent>
+            {hex
+              ? stale
+                ? `Not seen since turn ${hex.lastSeenTurn} — no current unit information.`
+                : "No units reported in this hex."
+              : "No hex selected."}
+          </Absent>
+        </div>
       ) : visible.length === 0 ? (
-        <Absent>No unit matches that filter.</Absent>
+        <div style={reservedStyle}>
+          <Absent>No unit matches that filter.</Absent>
+        </div>
       ) : (
         <div
           ref={setScroller}
@@ -308,10 +338,16 @@ export function UnitTableDock({
           // would resize the table, which would remeasure the viewport, which would change the
           // window again.
           className="h-full overflow-y-scroll overflow-x-hidden"
-          // The unit list limit, applied as the scroller's ceiling: the header plus this many
-          // rows. The pane hugs a shorter list and scrolls a longer one; the surrounding layout's
-          // own ceiling still applies whichever is smaller.
-          style={{ maxHeight: (head?.offsetHeight ?? 0) + unitListLimit * ROW_HEIGHT }}
+          // The unit list limit, applied as the scroller's ceiling by default: the header plus
+          // this many rows. The pane hugs a shorter list and scrolls a longer one; the
+          // surrounding layout's own ceiling still applies whichever is smaller. In fixed-size
+          // mode the ceiling becomes a floor too - an inline height wins over the max-height it
+          // replaces - so the pane never shrinks below its reserved size either.
+          style={
+            unitListFixedSize
+              ? { height: reservedHeight }
+              : { maxHeight: (head?.offsetHeight ?? 0) + unitListLimit * ROW_HEIGHT }
+          }
         >
           <table
             // A grid rather than a plain table: rows here are selectable, and a screen reader only

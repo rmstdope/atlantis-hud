@@ -11,7 +11,9 @@ const BUTTON =
  * The same preference the settings dialog's slider drives - it is one value, not one per hex, and
  * it sizes the pane rather than trimming the list. It is spelled "max" because it is a ceiling the
  * hex need not reach: a hex holding four units under a maximum of twelve is the ordinary case, and
- * the count would be a lie if it claimed otherwise.
+ * the count would be a lie if it claimed otherwise. In fixed-size mode the pane always reserves
+ * exactly this many rows, so "max" would itself be the lie - the label drops it and reads the bare
+ * number.
  *
  * At an end the button is marked spent rather than disabled, so a keyboard user who steps down to
  * the floor keeps the focus they would otherwise have lost to the document as the button vanished
@@ -25,10 +27,13 @@ const BUTTON =
  */
 export function UnitListLimitStepper({
   value,
-  onChange
+  onChange,
+  fixed
 }: {
   value: number;
   onChange: (next: number) => void;
+  /** Fixed-size mode: the pane is exactly this many rows, so "max" would be a lie. */
+  fixed: boolean;
 }) {
   const atFloor = value <= UNIT_LIST_LIMIT_MIN;
   const atCeiling = value >= UNIT_LIST_LIMIT_MAX;
@@ -51,10 +56,13 @@ export function UnitListLimitStepper({
         // count crosses from 9 to 10 and the label grows a character.
         className="min-w-[3.5ch] text-center text-[11px] tabular-nums text-ink-dim"
         // Announced as it changes, since the thing it describes - the height of the pane behind
-        // the button - is not something a screen reader can see move.
+        // the button - is not something a screen reader can see move. In fixed mode the visible
+        // text is a bare number, which a screen reader would otherwise announce with no context
+        // at all - the explicit label restores it without changing what sighted users read.
+        aria-label={fixed ? `${value} rows, fixed` : undefined}
         aria-live="polite"
       >
-        max {value}
+        {fixed ? value : `max ${value}`}
       </span>
       <button
         type="button"
