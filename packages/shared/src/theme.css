@@ -181,15 +181,29 @@
  *
  * Unlike `.map-label`, the name is deliberately NOT divided back out by `--map-scale`: it is
  * already fitted to the width of the piece it names, in world units, so it must scale *with* the
- * world the way the outline itself does. Dividing it out here would make it overflow its own
+ * world the way the outline's path does. Dividing it out here would make it overflow its own
  * outline as the map zooms out. `font-size` and `letter-spacing` are set inline per piece, from
  * that fit; only what does not vary per piece lives here.
+ *
+ * The outline's *stroke* is the opposite: screen-constant chrome, like the selection and focus
+ * rings, via `vector-effect="non-scaling-stroke"` on the `<path>` in `MapCanvas.tsx`. The path
+ * itself still traces the province in world units - it is only the ink and dash length that hold
+ * in screen pixels, so the border stays legible against the hex lattice at every zoom.
  */
 .region-outline {
   stroke: var(--color-ink-soft);
-  stroke-width: 1.2;
-  stroke-dasharray: 4 3;
-  opacity: 0.7;
+  stroke-width: 3;
+  stroke-dasharray: 9 5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.region-outline-halo {
+  stroke: var(--color-ground);
+  stroke-width: 5.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.8;
 }
 
 .region-name {

@@ -261,3 +261,12 @@
 .map-theme-beveled-tile.map-mid .bt-label {
   display: none;
 }
+
+/* The province border, in this theme's own ink over its own ground - see theme.css. */
+.map-theme-beveled-tile .region-outline {
+  stroke: var(--bt-ink);
+}
+
+.map-theme-beveled-tile .region-outline-halo {
+  stroke: var(--bt-halo);
+}

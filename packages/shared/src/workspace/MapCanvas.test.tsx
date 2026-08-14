@@ -121,7 +121,21 @@ describe("what the map hands a theme", () => {
 
     expect(svg).toContain('data-testid="region-decorations"');
     expect((svg.match(/class="region-outline"/g) ?? []).length).toBe(1);
+    expect((svg.match(/class="region-outline-halo"/g) ?? []).length).toBe(1);
+    // The halo pass draws first, so it never buries an ink path along a shared province boundary.
+    expect(svg.indexOf('class="region-outline-halo"')).toBeLessThan(
+      svg.indexOf('class="region-outline"')
+    );
     expect(svg).toContain("Inhead");
+  });
+
+  it("keeps the province border screen-constant, dashes included", () => {
+    const svg = draw();
+    const inkTag = /<path[^>]*class="region-outline"[^>]*\/?>/.exec(svg)?.[0] ?? "";
+    const haloTag = /<path[^>]*class="region-outline-halo"[^>]*\/?>/.exec(svg)?.[0] ?? "";
+
+    expect(inkTag).toContain('vector-effect="non-scaling-stroke"');
+    expect(haloTag).toContain('vector-effect="non-scaling-stroke"');
   });
 
   it("draws nothing when the regions badge is off", () => {
@@ -143,6 +157,7 @@ describe("what the map hands a theme", () => {
     expect(svg).toContain('data-testid="region-decorations"');
     expect(withoutRegions).not.toContain('data-testid="region-decorations"');
     expect(withoutRegions).not.toContain("region-outline");
+    expect(withoutRegions).not.toContain("region-outline-halo");
   });
 
   it("sits the region decorations after the roads layer and before the route overlay and marks", () => {

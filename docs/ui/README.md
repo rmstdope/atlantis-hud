@@ -23,6 +23,7 @@ was retired once they had all landed.
 | `faction-view.html` | Where the faction's attitudes, allowances and unclaimed silver are read (bead ah-vp3.2). Three placements and three ways of setting out 32 declared factions; A, a popover anchored off the faction name in the header, was chosen, with a line per attitude level. |
 | `region-decorations.html` | How a province is drawn on the map (bead ah-6zv). Three treatments, three rules for a province found in two pieces, and three homes for the switch; C, the atlas label, was chosen, every connected piece is outlined and named, and the switch is a `Regions` entry in the Badges menu. |
 | `battles-view.html` | Where the turn's battles are read (bead ah-1is.2). Three candidates; B, one dialog with the battle list beside the battle, was chosen, and a list line states its outcome neutrally as attacker and defender losses. |
+| `region-borders.html` | How bold a province outline needs to be to read against the hex lattice at every zoom (bead ah-f9c). Treatments over three simulated theme grounds and a far-zoom strip; Option B1 — a 3px screen-constant dashed line over a 5.5px screen-constant halo, in each theme's own ink — was chosen. |
 
 The layout pages answered issue #17 and are kept as the record of that decision. Pages added later
 answer one bead each and are named after the question they settle, not after the layout — the table

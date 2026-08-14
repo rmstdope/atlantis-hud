@@ -250,3 +250,12 @@
 .map-theme-cartographers-table.map-mid .ct-label {
   display: none;
 }
+
+/* The province border, in this theme's own ink over its own ground - see theme.css. */
+.map-theme-cartographers-table .region-outline {
+  stroke: var(--ct-ink);
+}
+
+.map-theme-cartographers-table .region-outline-halo {
+  stroke: var(--ct-parchment);
+}

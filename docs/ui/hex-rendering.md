@@ -32,7 +32,10 @@ widget; the implementation lives in `packages/shared/src/workspace/MapCanvas.tsx
 - **Screen-constant detail**: labels, the fog hairline, and the *stroke weights* of pips, glyphs
   and the selection and focus rings keep the same on-screen size at every zoom. Fonts divide by
   `--map-scale`; strokes use `vector-effect: non-scaling-stroke`. Their **positions and sizes**
-  still scale with the world — it is the ink that is held constant, not the mark.
+  still scale with the world — it is the ink that is held constant, not the mark. The province
+  outline is chrome of the same kind, like the selection and focus rings: its stroke and dash
+  length hold in screen pixels, while the outline's own path still traces the province's hexes in
+  world units.
 - **Hex-relative marks**: a mark that belongs to the ground rather than to the reader — a road,
   the route across it, the risk outline on a hex — takes its width in fractions of `HEX_RADIUS`
   too, so it shrinks with the hex it belongs to. Roads were screen-constant until ah-ebv, which at
