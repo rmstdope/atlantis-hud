@@ -79,7 +79,10 @@ Cerebro also sweeps up after implementers that did not get to the end of their o
 startup and every ten minutes. `scripts/prune-worktrees.sh` removes an agent worktree only when
 nothing can be lost from it: clean tree, work already on main, untouched for half an hour. Alongside
 it Cerebro checks the claims — a bead left `in_progress` whose work is already on main is a delivered
-bead whose implementer died before closing it, so Cerebro closes it and reports that it had to. Both
+bead whose implementer died before closing it, so Cerebro closes it and reports that it had to — and
+the epics, since an epic is nothing but its children and one left open under a full set of closed
+children is another piece of tidying an implementer did not finish. The implementer closes the parent
+as it closes the last child (see `implement-bead`); Cerebro's pass is the net under that. All three
 sweeps are described in `.claude/agents/orchestrator.md`.
 
 **The planner is a session too, and it is Xavier:**
