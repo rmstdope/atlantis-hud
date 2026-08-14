@@ -21,7 +21,7 @@
  */
 
 import { execFileSync, spawn } from "node:child_process";
-import { createWriteStream, existsSync, mkdirSync, rmSync } from "node:fs";
+import { createWriteStream, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -227,6 +227,109 @@ export function clearStop(paths: { stop: string }): void {
   rmSync(paths.stop, { force: true });
 }
 
+/**
+ * Where a named implementer's machine-readable status lives, beside its flags.
+ *
+ * The bead database cannot answer "which implementer is on which bead" - every claim carries the
+ * same git-config assignee - and terminal scrollback is not a contract. This is the launcher writing
+ * down what it alone knows: exactly when a run starts, ends, and which bead it is on.
+ */
+export function statePath(repoRoot: string, name: string): string {
+  return `${flagPaths(repoRoot, name).go.replace(/\.go$/u, "")}.state.json`;
+}
+
+/** What the status file holds. `bead` is null until the stream names one. */
+export type ImplementerState = {
+  state: "idle" | "working";
+  bead: string | null;
+  /** ISO-8601, the moment this state was entered (not last write). */
+  since: string;
+  /** The launcher's own pid: a reader treats a file whose pid is gone as dead. */
+  pid: number;
+};
+
+/**
+ * The bead id a stream-json event names, or null.
+ *
+ * Recognises a claim or a heartbeat command - `bd update <id> --claim` and `bd heartbeat <id>`, the
+ * two the implement-bead role runs - and, as a fallback, a bead-named worktree branch from `bd ready
+ * --claim`, whose command line names no bead directly. Reuses the same parse-and-shrug shape as
+ * `formatEvent`: unparseable lines and events without a match answer null rather than throw, because
+ * stdout is not a contract and a malformed line must never take the launcher down mid-bead.
+ */
+export function beadFromEvent(line: string): string | null {
+  let event: unknown;
+  try {
+    event = JSON.parse(line);
+  } catch {
+    return null;
+  }
+
+  if (typeof event !== "object" || event === null) {
+    return null;
+  }
+
+  const { type, message } = event as { type?: unknown; message?: unknown };
+  if (type !== "assistant" || typeof message !== "object" || message === null) {
+    return null;
+  }
+
+  const content = (message as { content?: unknown }).content;
+  if (!Array.isArray(content)) {
+    return null;
+  }
+
+  const beadPattern = /ah-[a-z0-9]+(?:\.\d+)*/u;
+  // `bd update <id>` alone is not a claim - the implement-bead role also runs `bd update <id>
+  // --append-notes ...` on a hand-back, which must not be read as this run taking that bead. The
+  // lookahead requires `--claim` to appear later in the same command without consuming it, so the
+  // captured id is still the one right after `update`.
+  const claimPattern = new RegExp(
+    `\\bbd\\s+update\\s+(${beadPattern.source})\\b(?=.*--claim)`,
+    "u"
+  );
+  const heartbeatPattern = new RegExp(`\\bbd\\s+heartbeat\\s+(${beadPattern.source})`, "u");
+  const branchPattern = new RegExp(
+    `\\b(?:worktree add|checkout|switch)\\b[^\\n]*\\b(${beadPattern.source})-`,
+    "u"
+  );
+
+  for (const block of content) {
+    if (typeof block !== "object" || block === null) {
+      continue;
+    }
+    const { type: blockType, name, input } = block as Record<string, unknown>;
+    if (blockType !== "tool_use" || name !== "Bash") {
+      continue;
+    }
+    const command = (input as { command?: unknown } | undefined)?.command;
+    if (typeof command !== "string") {
+      continue;
+    }
+
+    const claimed = claimPattern.exec(command) ?? heartbeatPattern.exec(command);
+    if (claimed) {
+      return claimed[1] ?? null;
+    }
+    const branched = branchPattern.exec(command);
+    if (branched) {
+      return branched[1] ?? null;
+    }
+  }
+
+  return null;
+}
+
+/** Writes the state file, swallowing fs errors: a status file must never take down a bead. */
+export function writeState(path: string, state: ImplementerState): void {
+  try {
+    writeFileSync(path, JSON.stringify(state));
+  } catch {
+    // A status file is a convenience for other tools, never load-bearing for the bead itself - the
+    // same reasoning `runOneBead`'s log sink already follows.
+  }
+}
+
 /** How long to idle between reads of the flags. Overridable so the tests are not slow. */
 function pollMs(): number {
   const configured = Number(process.env.IMPLEMENTER_POLL_MS);
@@ -285,7 +388,8 @@ function runOneBead(
   repoRoot: string,
   name: string,
   say: (line: string) => void,
-  keepLog: boolean
+  keepLog: boolean,
+  onBead: (id: string) => void
 ): Promise<{ status: number | null; signal: NodeJS.Signals | null; error?: Error }> {
   let sink: ReturnType<typeof createWriteStream> | null = null;
   if (keepLog) {
@@ -309,11 +413,14 @@ function runOneBead(
     const child = spawn("claude", launchCommand(name), { stdio: ["ignore", "pipe", "inherit"] });
 
     let pending = "";
+    let beadSeen = false;
     child.stdout?.on("data", (chunk: Buffer) => {
       sink?.write(chunk);
 
       // A chunk is not a line: the last one is usually a fragment, and parsing it would throw away
-      // an event or - before `formatEvent` learned to shrug - crash the launcher.
+      // an event or - before `formatEvent` learned to shrug - crash the launcher. `beadFromEvent`
+      // gets the same split lines, never the raw chunk, or an id split across a chunk boundary is
+      // lost.
       pending += chunk.toString("utf8");
       const lines = pending.split("\n");
       pending = lines.pop() ?? "";
@@ -322,6 +429,16 @@ function runOneBead(
         const rendered = formatEvent(line);
         if (rendered !== null) {
           say(rendered);
+        }
+
+        // Only the first match is taken, and only here - never inside a per-poll write - because
+        // this handler runs hundreds of times a minute and the bead does not change mid-run.
+        if (!beadSeen) {
+          const bead = beadFromEvent(line);
+          if (bead !== null) {
+            beadSeen = true;
+            onBead(bead);
+          }
         }
       }
     });
@@ -345,6 +462,7 @@ export async function runLoop(
   options: { keepLog?: boolean } = {}
 ): Promise<number> {
   const paths = flagPaths(repoRoot, name);
+  const state = statePath(repoRoot, name);
   const keepLog = options.keepLog ?? false;
   const say = (line: string) => process.stdout.write(`run-implementer: ${line}\n`);
 
@@ -353,11 +471,18 @@ export async function runLoop(
     say(`keeping every event in ${logPath(repoRoot, name)}`);
   }
 
+  // `writeState` swallows fs errors, by design - a status file must never take down a bead - but
+  // that also means a missing directory would silently drop every write. A fresh checkout has no
+  // `.claude/implementers` yet, so it is created once here rather than left to chance.
+  mkdirSync(dirname(state), { recursive: true });
+  writeState(state, { state: "idle", bead: null, since: new Date().toISOString(), pid: process.pid });
+
   for (;;) {
     const action = nextAction(readFlags(paths));
 
     if (action === "exit") {
       clearStop(paths);
+      rmSync(state, { force: true });
       say(`${name} told to finish - leaving`);
       return 0;
     }
@@ -368,9 +493,16 @@ export async function runLoop(
     }
 
     say(`starting ${name} on one bead`);
-    const startedAt = Date.now();
-    const run = await runOneBead(repoRoot, name, say, keepLog);
-    const elapsedMs = Date.now() - startedAt;
+    const startedAt = new Date().toISOString();
+    writeState(state, { state: "working", bead: null, since: startedAt, pid: process.pid });
+    const run = await runOneBead(repoRoot, name, say, keepLog, (id) => {
+      writeState(state, { state: "working", bead: id, since: startedAt, pid: process.pid });
+    });
+    const elapsedMs = Date.now() - Date.parse(startedAt);
+
+    // Idle again the moment the run ends, whatever its exit - a fresh `since`, because naming the
+    // bead earlier was not a new state and this is.
+    writeState(state, { state: "idle", bead: null, since: new Date().toISOString(), pid: process.pid });
 
     // `error` rather than a status is `claude` never having started - not installed, not on PATH.
     // Reporting that as an exit code would send the reader looking for a fault in the agent.
@@ -398,6 +530,14 @@ const invokedDirectly =
 
 if (invokedDirectly) {
   const [name, ...rest] = process.argv.slice(2);
+
+  // Checked before anything else needs a name: `--roster` prints the fifteen implementers and exits,
+  // for a tool that would otherwise have to hard-code a second copy of the list.
+  if (name === "--roster") {
+    process.stdout.write(`${IMPLEMENTER_NAMES.join("\n")}\n`);
+    process.exit(0);
+  }
+
   const repoIndex = rest.indexOf("--repo");
   const given = repoIndex === -1 ? undefined : rest[repoIndex + 1];
 
@@ -405,7 +545,9 @@ if (invokedDirectly) {
   // is not: running this with no name at all died inside `spawnSync` with a stack trace, because
   // the repository lookup happened first and git was not reachable.
   if (name === undefined || (repoIndex !== -1 && given === undefined)) {
-    process.stderr.write("usage: scripts/run-implementer <name> [--log] [--repo <path>]\n");
+    process.stderr.write(
+      "usage: scripts/run-implementer <name> [--log] [--repo <path>] | --roster\n"
+    );
     process.exit(2);
   }
 

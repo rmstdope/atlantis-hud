@@ -6,12 +6,15 @@ import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   IMPLEMENTER_NAMES,
+  beadFromEvent,
   canonicalName,
   flagPaths,
   formatEvent,
   launchCommand,
   logPath,
-  nextAction
+  nextAction,
+  statePath,
+  writeState
 } from "./runImplementer";
 
 /**
@@ -209,6 +212,65 @@ describe("logPath", () => {
   });
 });
 
+describe("beadFromEvent", () => {
+  const bashEvent = (command: string) =>
+    JSON.stringify({
+      type: "assistant",
+      message: { content: [{ type: "tool_use", name: "Bash", input: { command } }] }
+    });
+
+  it("names the bead a claim command claims", () => {
+    expect(beadFromEvent(bashEvent("bd update ah-f9c --claim && bd dolt push"))).toBe("ah-f9c");
+  });
+
+  it("says nothing about an update with no --claim, so a hand-back is not read as a claim", () => {
+    // `bd update <id> --append-notes ...` is exactly what the hand-back block runs, on a bead this
+    // run is about to release rather than take.
+    expect(
+      beadFromEvent(bashEvent('bd update ah-f9c --append-notes "missing a test plan"'))
+    ).toBeNull();
+  });
+
+  it("names the bead a heartbeat renews", () => {
+    expect(beadFromEvent(bashEvent("bd heartbeat ah-vcf.1"))).toBe("ah-vcf.1");
+  });
+
+  it("reads the bead off a worktree branch", () => {
+    expect(
+      beadFromEvent(
+        bashEvent(
+          "git worktree add -b ah-t65-load-reports .claude/worktrees/ah-t65 origin/main"
+        )
+      )
+    ).toBe("ah-t65");
+  });
+
+  it("says nothing about a command with no bead in it", () => {
+    expect(beadFromEvent(bashEvent("pnpm run test"))).toBeNull();
+  });
+
+  it("survives a line that is not JSON at all", () => {
+    expect(() => beadFromEvent("Warning: something happened")).not.toThrow();
+    expect(beadFromEvent("Warning: something happened")).toBeNull();
+  });
+});
+
+describe("statePath", () => {
+  it("puts an implementer's status beside its flags", () => {
+    expect(statePath("/repo", "Cyclops")).toBe("/repo/.claude/implementers/Cyclops.state.json");
+  });
+});
+
+describe("writeState", () => {
+  it("swallows a write into a directory that does not exist", () => {
+    const path = join(mkdtempSync(join(tmpdir(), "run-implementer-state-")), "missing", "x.json");
+    expect(() =>
+      writeState(path, { state: "idle", bead: null, since: "2026-08-14T00:00:00.000Z", pid: 1 })
+    ).not.toThrow();
+    expect(existsSync(path)).toBe(false);
+  });
+});
+
 /**
  * The loop, as a process.
  *
@@ -252,14 +314,15 @@ describe("the launcher loop", () => {
     root: string,
     bin: string,
     stdio: "ignore" | "pipe" = "ignore",
-    extra: string[] = []
+    extra: string[] = [],
+    env: Record<string, string> = {}
   ) {
     // `process.execPath` with the tsx loader rather than `npx`: an absolute node path needs no PATH
     // at all, which is what lets the missing-`claude` case below run with an empty one.
     const argv = ["--import", "tsx", launcher, "Cyclops", "--repo", root, ...extra];
     return spawn(process.execPath, argv, {
       cwd: dirname(launcher),
-      env: { PATH: bin, IMPLEMENTER_POLL_MS: "50", HOME: process.env.HOME ?? "" },
+      env: { PATH: bin, IMPLEMENTER_POLL_MS: "50", HOME: process.env.HOME ?? "", ...env },
       stdio
     });
   }
@@ -458,5 +521,86 @@ describe("the launcher loop", () => {
     } finally {
       child.kill();
     }
+  }, 30_000);
+
+  function readState(root: string): { state: string; bead: string | null } | null {
+    const path = statePath(root, "Cyclops");
+    if (!existsSync(path)) {
+      return null;
+    }
+    return JSON.parse(readFileSync(path, "utf8"));
+  }
+
+  it("records working, then the bead, then idle across one run", async () => {
+    const event = JSON.stringify({
+      type: "assistant",
+      message: { content: [{ type: "tool_use", name: "Bash", input: { command: "bd update ah-f9c --claim" } }] }
+    });
+    // The fake `claude` holds itself open on a marker file rather than `sleep`ing a fixed duration:
+    // `bin` is this test's whole PATH (see `workspace`), so `sleep` is not on it and silently fails
+    // without stopping the script, closing the observation window before it could be polled - proven
+    // by a repro that logged "sleep: command not found" on stderr. `[`/`test`/`:` are bash builtins,
+    // so the wait needs no external binary and blocks for exactly as long as this test needs it to,
+    // which a fixed sleep could never guarantee under load.
+    const { root, flags } = workspace(
+      `printf '%s\\n' ${JSON.stringify(event)}\n` +
+        `until [ -f "$CONTINUE_MARKER" ]; do :; done\n` +
+        `exit 0`
+    );
+    const continueFile = join(root, "continue");
+    writeFileSync(flags.go, "");
+    const child = start(root, join(root, "bin"), "ignore", [], { CONTINUE_MARKER: continueFile });
+
+    try {
+      expect(await until(() => readState(root)?.state === "working")).toBe(true);
+      expect(await until(() => readState(root)?.bead === "ah-f9c")).toBe(true);
+      writeFileSync(continueFile, "");
+      expect(await until(() => readState(root)?.state === "idle")).toBe(true);
+    } finally {
+      child.kill();
+    }
+  }, 30_000);
+
+  it("removes the status file when told to finish", async () => {
+    const { root, flags } = workspace("exit 0");
+    writeFileSync(flags.go, "");
+    const child = start(root, join(root, "bin"));
+
+    try {
+      expect(await until(() => existsSync(statePath(root, "Cyclops")))).toBe(true);
+      writeFileSync(flags.stop, "");
+      const code = await new Promise<number | null>((resolve) => child.on("exit", resolve));
+      expect(code).toBe(0);
+      expect(existsSync(statePath(root, "Cyclops"))).toBe(false);
+    } finally {
+      child.kill();
+    }
+  }, 30_000);
+
+  it("prints the roster and exits without starting anything", async () => {
+    const root = mkdtempSync(join(tmpdir(), "run-implementer-"));
+    workspaces.push(root);
+    const bin = join(root, "bin");
+    mkdirSync(bin, { recursive: true });
+    const log = join(root, "invocations.log");
+    writeFileSync(
+      join(bin, "claude"),
+      `#!/bin/bash\nprintf '%s\\n' "$*" >> ${JSON.stringify(log)}\nexit 0\n`,
+      { mode: 0o755 }
+    );
+
+    const child = spawn(process.execPath, ["--import", "tsx", launcher, "--roster"], {
+      cwd: dirname(launcher),
+      env: { PATH: bin, HOME: process.env.HOME ?? "" },
+      stdio: ["ignore", "pipe", "pipe"]
+    });
+
+    let output = "";
+    child.stdout.on("data", (chunk) => (output += String(chunk)));
+    const code = await new Promise<number | null>((resolve) => child.on("exit", resolve));
+
+    expect(code).toBe(0);
+    expect(output.trim()).toBe(IMPLEMENTER_NAMES.join("\n"));
+    expect(invocations(log)).toHaveLength(0);
   }, 30_000);
 });
