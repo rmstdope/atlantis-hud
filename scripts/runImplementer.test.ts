@@ -223,6 +223,14 @@ describe("beadFromEvent", () => {
     expect(beadFromEvent(bashEvent("bd update ah-f9c --claim && bd dolt push"))).toBe("ah-f9c");
   });
 
+  it("says nothing about an update with no --claim, so a hand-back is not read as a claim", () => {
+    // `bd update <id> --append-notes ...` is exactly what the hand-back block runs, on a bead this
+    // run is about to release rather than take.
+    expect(
+      beadFromEvent(bashEvent('bd update ah-f9c --append-notes "missing a test plan"'))
+    ).toBeNull();
+  });
+
   it("names the bead a heartbeat renews", () => {
     expect(beadFromEvent(bashEvent("bd heartbeat ah-vcf.1"))).toBe("ah-vcf.1");
   });
@@ -306,14 +314,15 @@ describe("the launcher loop", () => {
     root: string,
     bin: string,
     stdio: "ignore" | "pipe" = "ignore",
-    extra: string[] = []
+    extra: string[] = [],
+    env: Record<string, string> = {}
   ) {
     // `process.execPath` with the tsx loader rather than `npx`: an absolute node path needs no PATH
     // at all, which is what lets the missing-`claude` case below run with an empty one.
     const argv = ["--import", "tsx", launcher, "Cyclops", "--repo", root, ...extra];
     return spawn(process.execPath, argv, {
       cwd: dirname(launcher),
-      env: { PATH: bin, IMPLEMENTER_POLL_MS: "50", HOME: process.env.HOME ?? "" },
+      env: { PATH: bin, IMPLEMENTER_POLL_MS: "50", HOME: process.env.HOME ?? "", ...env },
       stdio
     });
   }
@@ -527,17 +536,25 @@ describe("the launcher loop", () => {
       type: "assistant",
       message: { content: [{ type: "tool_use", name: "Bash", input: { command: "bd update ah-f9c --claim" } }] }
     });
-    // A short sleep between the event and exit gives the test time to observe the "working, no bead
-    // yet" state before the run ends and the file goes back to idle.
+    // The fake `claude` holds itself open on a marker file rather than `sleep`ing a fixed duration:
+    // `bin` is this test's whole PATH (see `workspace`), so `sleep` is not on it and silently fails
+    // without stopping the script, closing the observation window before it could be polled - proven
+    // by a repro that logged "sleep: command not found" on stderr. `[`/`test`/`:` are bash builtins,
+    // so the wait needs no external binary and blocks for exactly as long as this test needs it to,
+    // which a fixed sleep could never guarantee under load.
     const { root, flags } = workspace(
-      `printf '%s\\n' ${JSON.stringify(event)}\nsleep 0.3\nexit 0`
+      `printf '%s\\n' ${JSON.stringify(event)}\n` +
+        `until [ -f "$CONTINUE_MARKER" ]; do :; done\n` +
+        `exit 0`
     );
+    const continueFile = join(root, "continue");
     writeFileSync(flags.go, "");
-    const child = start(root, join(root, "bin"));
+    const child = start(root, join(root, "bin"), "ignore", [], { CONTINUE_MARKER: continueFile });
 
     try {
       expect(await until(() => readState(root)?.state === "working")).toBe(true);
       expect(await until(() => readState(root)?.bead === "ah-f9c")).toBe(true);
+      writeFileSync(continueFile, "");
       expect(await until(() => readState(root)?.state === "idle")).toBe(true);
     } finally {
       child.kill();

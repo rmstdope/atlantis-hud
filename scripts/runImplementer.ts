@@ -280,7 +280,15 @@ export function beadFromEvent(line: string): string | null {
   }
 
   const beadPattern = /ah-[a-z0-9]+(?:\.\d+)*/u;
-  const claimPattern = new RegExp(`\\bbd\\s+(?:update|heartbeat)\\s+(${beadPattern.source})`, "u");
+  // `bd update <id>` alone is not a claim - the implement-bead role also runs `bd update <id>
+  // --append-notes ...` on a hand-back, which must not be read as this run taking that bead. The
+  // lookahead requires `--claim` to appear later in the same command without consuming it, so the
+  // captured id is still the one right after `update`.
+  const claimPattern = new RegExp(
+    `\\bbd\\s+update\\s+(${beadPattern.source})\\b(?=.*--claim)`,
+    "u"
+  );
+  const heartbeatPattern = new RegExp(`\\bbd\\s+heartbeat\\s+(${beadPattern.source})`, "u");
   const branchPattern = new RegExp(
     `\\b(?:worktree add|checkout|switch)\\b[^\\n]*\\b(${beadPattern.source})-`,
     "u"
@@ -299,7 +307,7 @@ export function beadFromEvent(line: string): string | null {
       continue;
     }
 
-    const claimed = claimPattern.exec(command);
+    const claimed = claimPattern.exec(command) ?? heartbeatPattern.exec(command);
     if (claimed) {
       return claimed[1] ?? null;
     }
@@ -463,6 +471,10 @@ export async function runLoop(
     say(`keeping every event in ${logPath(repoRoot, name)}`);
   }
 
+  // `writeState` swallows fs errors, by design - a status file must never take down a bead - but
+  // that also means a missing directory would silently drop every write. A fresh checkout has no
+  // `.claude/implementers` yet, so it is created once here rather than left to chance.
+  mkdirSync(dirname(state), { recursive: true });
   writeState(state, { state: "idle", bead: null, since: new Date().toISOString(), pid: process.pid });
 
   for (;;) {
