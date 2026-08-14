@@ -1832,8 +1832,9 @@ export function createCoreClient(adapter: CoreAdapter): CoreClient {
     },
     async listImportedTurns(databasePath: string, gameId: string) {
       const value = await adapter.listImportedTurns(databasePath, gameId);
-      // Undefined as well as an empty array: serde_wasm_bindgen can emit either for an empty Rust
-      // Vec, and a game with no imports must not read as a payload that failed to normalize.
+      // A game with no imports is the ordinary state of a game just created, not a failure — so an
+      // adapter answering with nothing (null or undefined, whichever the transport prefers) reads
+      // as an empty list rather than as a payload that failed to normalize.
       if (value === undefined || value === null) {
         return [];
       }

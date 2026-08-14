@@ -434,12 +434,18 @@ describe("web core adapter", () => {
   /**
    * Same wasm hydrator as `loadImportedTurn` and `loadLatestImportedTurn`, so the season comes
    * from wherever their parse results carry it, without a second copy of the parsing rules.
+   *
+   * The real hydrator flattens `ReportParseResult` into its DTO with `#[serde(flatten)]`, which
+   * does not inherit the DTO's own `rename_all = "camelCase"` - so the flattened fields, including
+   * `turn_header`, stay snake_case even though `meetsMinimumImportThreshold` beside them is camel.
+   * This fixture pins that real, inconsistent shape rather than the tidier one it would be easy to
+   * assume.
    */
   it("lists every imported turn of a game", async () => {
     const wasm = fakeWasm({
       hydrate_parse_result_state: (json: string) => ({
         hydratedFrom: json,
-        turnHeader: { turnNumber: 12, season: "Spring" }
+        turn_header: { turn_number: 12, season: "Spring" }
       })
     });
     const adapter = createWebCoreAdapter(wasm, createMemoryWebStore());

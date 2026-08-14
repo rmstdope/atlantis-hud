@@ -971,12 +971,18 @@ export function createWebCoreAdapter(
       // the wasm boundary as a thrown exception rather than an error value — unlike the
       // desktop/persistence peek, which the Rust side already treats as `season: None` on a bad
       // row rather than failing the whole list. This keeps the two paths agreeing.
+      //
+      // Both casings on the header, because the hydrator's DTO wraps `ReportParseResult` with
+      // `#[serde(flatten)]`, and flatten does not inherit the wrapper's `rename_all = "camelCase"`
+      // — the flattened fields, `turn_header` among them, keep the inner struct's own snake_case.
       const seasonOf = (parsedPayloadJson: string): string | null => {
         try {
           const parseResult = wasm.hydrate_parse_result_state(parsedPayloadJson) as {
             turnHeader?: { season?: string } | null;
+            turn_header?: { season?: string } | null;
           };
-          return parseResult.turnHeader?.season ?? null;
+          const turnHeader = parseResult.turnHeader ?? parseResult.turn_header;
+          return turnHeader?.season ?? null;
         } catch {
           return null;
         }
