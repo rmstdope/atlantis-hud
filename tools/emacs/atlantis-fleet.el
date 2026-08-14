@@ -435,9 +435,17 @@ ids and return - since it runs after every command in the list buffer."
 
 The buffer can have died between `--kill-action' deciding it was
 killable (from a `--owned' snapshot) and this running - a real race,
-not a hypothetical one - so a missing buffer is not an error here."
+not a hypothetical one - so a missing buffer is not an error here.
+
+`atlantis-fleet-kill' has already confirmed this exact kill via
+`y-or-n-p'; the process's query-on-exit flag exists to guard against an
+*accidental* buffer/Emacs kill, not this intentional one, so it is
+cleared first rather than prompting a second time for the same kill."
   (let ((buffer (get-buffer (atlantis-fleet--session-buffer-name agent))))
-    (when buffer (kill-buffer buffer)))
+    (when buffer
+      (let ((proc (get-buffer-process buffer)))
+        (when proc (set-process-query-on-exit-flag proc nil)))
+      (kill-buffer buffer)))
   (revert-buffer)
   (atlantis-fleet--show-detail agent))
 
