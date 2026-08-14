@@ -134,19 +134,76 @@ export function writeUnitOrders(document: string, unitId: string, orders: string
  * Meant for a template as it arrives, not for a document already in play: a `;` line in a saved
  * draft was typed by the player and is theirs to keep.
  */
+/**
+ * Whether a line is the server's own descriptive comment rather than an order.
+ *
+ * First non-blank character `;`, but not `@;` - a repeating comment is an order the server acts
+ * on, not something it wrote. Shared between {@link stripUnitComments} and {@link withUnitComments}
+ * so the two can never disagree about what a description line looks like.
+ */
+function isServerCommentLine(line: string): boolean {
+  return line.trim().startsWith(";");
+}
+
 export function stripUnitComments(document: string): string {
   const lines = document.split("\n");
   const descriptions = new Set<number>();
 
   for (const block of findUnitBlocks(document)) {
     for (let index = block.firstLine; index <= block.lastLine; index += 1) {
-      if ((lines[index] ?? "").trim().startsWith(";")) {
+      if (isServerCommentLine(lines[index] ?? "")) {
         descriptions.add(index);
       }
     }
   }
 
   return lines.filter((_, index) => !descriptions.has(index)).join("\n");
+}
+
+/**
+ * The inverse of {@link stripUnitComments}: puts the server's own description back under each
+ * unit's `unit` line, exactly as the template carried it.
+ *
+ * `template` is the report's own long-format orders template - the same text `stripUnitComments`
+ * strips from, not the document in play. `document` is matched against it by unit id, using
+ * {@link findUnitBlocks} on both so the two can never disagree about where a block starts and
+ * ends. A unit the template does not know (formed this turn, say) is left exactly as it was: no
+ * error, no invented description.
+ *
+ * The player's own lines are never touched - they simply end up below the restored description,
+ * in the order they were already in.
+ */
+export function withUnitComments(document: string, template: string): string {
+  const templateLines = template.split("\n");
+  const descriptionsByUnit = new Map<string, string[]>();
+
+  for (const block of findUnitBlocks(template)) {
+    const description = templateLines
+      .slice(block.firstLine, block.lastLine + 1)
+      .filter((line) => isServerCommentLine(line));
+    if (description.length > 0) {
+      descriptionsByUnit.set(block.unitId, description);
+    }
+  }
+
+  if (descriptionsByUnit.size === 0) {
+    return document;
+  }
+
+  const lines = document.split("\n");
+  const blocks = findUnitBlocks(document);
+
+  // Inserted from the bottom up, so an earlier insertion never shifts the header line index a
+  // later one was computed against.
+  for (let index = blocks.length - 1; index >= 0; index -= 1) {
+    const block = blocks[index];
+    const description = descriptionsByUnit.get(block.unitId);
+    if (description) {
+      lines.splice(block.headerLine + 1, 0, ...description);
+    }
+  }
+
+  return lines.join("\n");
 }
 
 /**

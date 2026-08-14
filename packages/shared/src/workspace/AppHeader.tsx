@@ -100,6 +100,10 @@ type AppHeaderProps = {
   progress: { done: number; total: number } | null;
   onExportOrders: () => void;
   canExport: boolean;
+  /** The same export, with the server's long-format unit descriptions put back in. */
+  onExportOrdersLong: () => void;
+  /** Off when the loaded report carries no long-format template to restore descriptions from. */
+  canExportLong: boolean;
   /** Opens the map export dialog. Off until a report is on screen to export a map of. */
   onExportMap: () => void;
   canExportMap: boolean;
@@ -146,6 +150,8 @@ export function AppHeader({
   progress,
   onExportOrders,
   canExport,
+  onExportOrdersLong,
+  canExportLong,
   onExportMap,
   canExportMap,
   settingsOpen,
@@ -406,8 +412,10 @@ export function AppHeader({
         {exportOpen ? (
           <ExportMenu
             canExportOrders={canExport}
+            canExportOrdersLong={canExportLong}
             canExportMap={canExportMap}
             onExportOrders={onExportOrders}
+            onExportOrdersLong={onExportOrdersLong}
             onExportMap={onExportMap}
             onDismiss={() => setExportOpen(false)}
           />
