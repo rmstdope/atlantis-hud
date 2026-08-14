@@ -227,6 +227,14 @@ type PendingOrdersImport = {
   fileName: string;
   /** How the current faction names itself, as `Borg TNG (95)` - the file's faction too, by then. */
   factionLabel: string;
+  /**
+   * The game, faction and turn the counts above describe - taken when the file was recognised, and
+   * checked again before Replace applies anything. The player can switch game, faction or turn
+   * while this prompt sits on screen (a report that loads without asking, a different game picked),
+   * and Replace must then refuse rather than write a stale file into whatever is open by then.
+   */
+  gameId: string;
+  factionId: string;
   turnNumber: number;
   unitCount: number;
   emptiedCount: number;
@@ -1129,7 +1137,7 @@ export function AppShell({
    */
   const chooseOrdersImport = useCallback(
     (text: string, fileName: string) => {
-      if (!game || !parsed || parsed.header.turnNumber === null) {
+      if (!game || !parsed || parsed.header.turnNumber === null || parsed.header.factionId === null) {
         setStatus({
           regionCount: 0,
           unitCount: 0,
@@ -1162,6 +1170,8 @@ export function AppShell({
         text,
         fileName,
         factionLabel: factionLabelOf(parsed) ?? "your faction",
+        gameId: game.manifest.metadata.gameId,
+        factionId: parsed.header.factionId,
         turnNumber: parsed.header.turnNumber,
         unitCount: description.fileUnitIds.length,
         emptiedCount: description.emptiedUnitIds.length
@@ -2044,6 +2054,26 @@ export function AppShell({
       return;
     }
     setPendingOrdersImport(null);
+
+    // The game, faction or turn on screen can have moved since the prompt was raised - a report
+    // that loaded without asking, a different game or turn picked while this sat open. The counts
+    // the player just confirmed described that earlier turn, not necessarily this one, so a
+    // mismatch refuses rather than writing the file into whatever draft happens to be open now.
+    const stillCurrent =
+      game?.manifest.metadata.gameId === pending.gameId &&
+      parsed?.header.factionId === pending.factionId &&
+      parsed?.header.turnNumber === pending.turnNumber;
+    if (!stillCurrent) {
+      setStatus({
+        regionCount: 0,
+        unitCount: 0,
+        message: `could not import ${pending.fileName}: the open turn changed before Replace was pressed`,
+        failed: true,
+        warning: false
+      });
+      return;
+    }
+
     void (async () => {
       setBusy(true);
       try {
@@ -2081,7 +2111,17 @@ export function AppShell({
         setBusy(false);
       }
     })();
-  }, [pendingOrdersImport, client, game, draftKey, writer, rulesetText, rawReport, warnOnUnguardedHex]);
+  }, [
+    pendingOrdersImport,
+    client,
+    game,
+    parsed,
+    draftKey,
+    writer,
+    rulesetText,
+    rawReport,
+    warnOnUnguardedHex
+  ]);
 
   /** Writes a planned route into the selected unit's block, replacing any MOVE already there. */
   const applyRoute = useCallback(

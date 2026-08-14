@@ -23,9 +23,12 @@ function firstNonBlankLine(text: string): string {
  * Whether `text` is an orders file rather than a turn report.
  *
  * The one thing every orders file carries and no report does: the `#atlantis` line the server reads
- * the faction and password from. Checked only on the first non-blank line, exactly as
- * {@link hasFactionHeader} in `./ordersDocument` checks it anywhere in the document - the two must
- * never disagree about what marks a document as one of these, which is why this looks nowhere else.
+ * the faction and password from. Checked only on the first non-blank line - deliberately stricter
+ * than {@link hasFactionHeader} in `./ordersDocument`, which scans the whole document to answer a
+ * different question ("has this in-play document lost its header edit"). Sniffing a file dropped on
+ * the Import target is a different question again: only a document that *opens* with `#atlantis` is
+ * an orders file, so a report that happens to quote the line in a comment further down is never
+ * misread as one.
  */
 export function isOrdersFile(text: string): boolean {
   return ATLANTIS_HEADER.test(firstNonBlankLine(text));
