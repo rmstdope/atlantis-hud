@@ -251,10 +251,16 @@ nothing closes it on its own — two epics sat open here at 2/2 children closed.
 is followed by a walk upwards, one level at a time until there is no parent left:
 
 ```bash
-bd show <id> --json | jq -r '.[0].parent // empty'      # empty: nothing above, stop
+bd show <id> --json | jq -r '(if type=="array" then .[0] else . end) | .parent // empty'
 bd children <parent> --json | jq -r '.[].status'        # closed children are included by default
 bd close <parent> --reason "All children closed; last was <id>"
+bd dolt push                                            # the parent's close travels like any other
 ```
+
+An empty first line means there is no parent above and the walk stops. The `if type=="array"` guard
+is the same one `plan-bead` documents: `bd show --json` returns an array, and indexing the wrong
+shape fails with `Cannot index array with string "parent"` — which reads like a bead with no parent
+rather than a broken command, and would quietly stop every walk.
 
 Every child `closed` is the whole test, and it is not `bd epic close-eligible`: that sweeps every
 eligible epic in the database, including families this session never touched, in the same way

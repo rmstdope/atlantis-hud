@@ -281,16 +281,25 @@ budget spent — each of those leaves a worktree too, and nothing else cleans th
 
 A bead you closed may be a child of an epic, and the epic is nothing but its children: once the last
 one is closed there is no work left under it, but nothing closes it on its own. Two epics sat open
-here with 2/2 children closed for exactly that reason. So after `bd close`, look up:
+here with 2/2 children closed for exactly that reason. So this belongs with the `bd close` above and
+**before** the `bd dolt push` that ends the block — a parent closed after the push is a close no
+other machine sees:
 
 ```bash
-bd show <id> --json | jq -r '.[0].parent // empty'          # empty: nothing to do, you are done
+bd show <id> --json | jq -r '(if type=="array" then .[0] else . end) | .parent // empty'
 bd children <parent> --json | jq -r '.[].status'            # includes closed children by default
 bd close <parent> --reason "All children closed; last was <id>, delivered in PR #NN"
 ```
 
+An empty first line means there is no parent and you are done. `bd show --json` returns an array, so
+index it as one — but guard the shape as `plan-bead` and `user-feedback` already do, because
+indexing the wrong one fails with `Cannot index array with string "parent"` and reads like a missing
+parent rather than a broken command.
+
 Close the parent only when **every** child reads `closed`, and then repeat the lookup on *its*
-parent — a child of a child leaves two levels to settle, and each is the same three commands.
+parent — a child of a child leaves two levels to settle, and each is the same three commands. If the
+walk runs after you have already pushed, push again; it costs nothing and the alternative is a
+family that looks half-closed everywhere but here.
 
 Two things this is not:
 
