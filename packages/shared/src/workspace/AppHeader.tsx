@@ -47,6 +47,11 @@ type AppHeaderProps = {
   onToggleMerged: () => void;
   /** The panel itself, rendered under the chip when it is open. */
   mergedPanel: ReactNode;
+  /** Whether the faction view is showing. Same split as the picker: the shell owns the panel. */
+  factionOpen: boolean;
+  onFactionToggle: () => void;
+  /** The panel itself, rendered under the faction name when it is open. */
+  factionPanel: ReactNode;
   status: ImportStatus | null;
   /** The loaded turn's errors and events, or null when no turn is loaded. */
   messages: TurnMessages | null;
@@ -133,6 +138,9 @@ export function AppHeader({
   mergedOpen,
   onToggleMerged,
   mergedPanel,
+  factionOpen,
+  onFactionToggle,
+  factionPanel,
   status,
   messages,
   messagesOpen,
@@ -241,10 +249,32 @@ export function AppHeader({
         the status line that reported the merge is gone.
       */}
       {factionLabel ? (
-        <span className="relative text-ink-soft">
-          Faction <span className="text-ink">{factionLabel}</span>
+        <span className="text-ink-soft">
+          Faction{" "}
+          {/*
+            Its own `relative` wrapper, sibling to the merged chip's rather than sharing one. Both
+            popovers dismiss on a pointerdown outside `panelRef.current.parentElement` - sharing a
+            parent would make pressing one chip count as *inside* the other's panel and fail to
+            dismiss it.
+          */}
+          <span className="relative">
+            <button
+              type="button"
+              data-testid="faction-chip"
+              aria-haspopup="dialog"
+              aria-expanded={factionOpen}
+              onClick={onFactionToggle}
+              className="text-ink hover:text-brass"
+            >
+              {factionLabel}
+              <span aria-hidden className="ml-1 text-ink-dim">
+                ▾
+              </span>
+            </button>
+            {factionOpen ? factionPanel : null}
+          </span>
           {mergedCount > 0 ? (
-            <>
+            <span className="relative">
               <button
                 type="button"
                 data-testid="merged-factions-chip"
@@ -259,7 +289,7 @@ export function AppHeader({
                 </span>
               </button>
               {mergedOpen ? mergedPanel : null}
-            </>
+            </span>
           ) : null}
         </span>
       ) : null}
