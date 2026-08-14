@@ -378,6 +378,67 @@ test("imports a run of turns and an ally's report in one action", async ({ page 
   await expect(page.getByTestId("panel-units")).toContainText("Tower Guard");
 });
 
+/** Two of your own turns stored, 71 left on screen as the working turn - ah-jg6.3's setup. */
+async function loadTwoTurns(page: Page) {
+  await clearGames(page);
+  await createGame(page, "Compare game");
+  await expect(page.getByTestId("app-header")).toBeVisible();
+
+  await page.setInputFiles('input[type="file"]', [
+    { name: "f95-t71.rep", mimeType: "text/plain", buffer: Buffer.from(REPORT, "utf8") },
+    { name: "f95-t70.rep", mimeType: "text/plain", buffer: Buffer.from(OWN_OLDER_REPORT, "utf8") }
+  ]);
+
+  const dialog = page.getByTestId("import-summary");
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("button", { name: "Close" }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByTestId("app-header")).toContainText(/Turn\s*71\b/);
+}
+
+test("a second turn can be compared and dismissed", async ({ page }) => {
+  await loadTwoTurns(page);
+
+  await page.getByTestId("turn-chip").click();
+  await expect(page.getByTestId("turn-picker")).toBeVisible();
+  await expect(page.getByTestId("turn-row-71")).toContainText("playing");
+  await expect(page.getByTestId("turn-row-70")).toBeVisible();
+
+  await page.getByTestId("turn-row-70").click();
+
+  await expect(page.getByTestId("app-header")).toContainText("⇄ 70");
+  // The working turn is still 71, undisturbed: the faction and selection surfaces answer for it.
+  await expect(page.getByTestId("app-header")).toContainText("Borg TNG (95)");
+  await selectHex(page, "1:7,53");
+  await selectUnit(page, OWN_UNIT);
+  await expect(page.getByTestId("panel-unit")).toContainText("Seven of Eight");
+
+  await page.getByRole("button", { name: "stop comparing" }).click();
+  await expect(page.getByTestId("app-header")).not.toContainText("⇄");
+  await expect(page.getByTestId("app-header")).toContainText(/Turn\s*71\b/);
+});
+
+test("comparing does not disturb the working turn's orders", async ({ page }) => {
+  await loadTwoTurns(page);
+
+  await selectHex(page, "1:7,53");
+  await selectUnit(page, OWN_UNIT);
+  await fillOrders(page, "@work");
+  await expectOrders(page, /^@work\n?$/u);
+  await expect(page.getByTestId("orders-status")).toContainText(/saved \d/u, { timeout: 20_000 });
+
+  await page.getByTestId("turn-chip").click();
+  await page.getByTestId("turn-row-70").click();
+  await expect(page.getByTestId("app-header")).toContainText("⇄ 70");
+  await page.getByRole("button", { name: "stop comparing" }).click();
+
+  await page.reload();
+  await expect(page.getByTestId("app-header")).toContainText(/Turn\s*71\b/);
+  await selectHex(page, "1:7,53");
+  await selectUnit(page, OWN_UNIT);
+  await expectOrders(page, /^@work\n?$/u);
+});
+
 /**
  * Two of your turns and two of an ally's, with nothing on screen: the headers tie on every measure
  * there is, and guessing wrong would import the ally's turns as yours.

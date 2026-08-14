@@ -12,6 +12,12 @@ const draw = (overrides: Partial<Parameters<typeof AppHeader>[0]> = {}) =>
       picker={null}
       factionLabel="Borg TNG (95)"
       turnLabel="71"
+      workingTurnNumber="71"
+      turnPickerOpen={false}
+      onToggleTurnPicker={() => {}}
+      turnPicker={null}
+      comparedTurnLabel={null}
+      onStopComparing={() => {}}
       mergedCount={0}
       mergedOpen={false}
       onToggleMerged={() => {}}
@@ -84,5 +90,31 @@ describe("AppHeader faction chip", () => {
   it("there is no faction chip when no report is loaded", () => {
     const markup = draw({ factionLabel: null });
     expect(markup).not.toContain('data-testid="faction-chip"');
+  });
+});
+
+describe("AppHeader turn chip", () => {
+  beforeEach(resetWorkspaceStore);
+
+  it("the turn chip shows the comparison and offers the way out", () => {
+    const comparing = draw({ comparedTurnLabel: "70" });
+    expect(comparing).toContain('data-testid="turn-chip"');
+    expect(comparing).toContain("⇄");
+    expect(comparing).toContain("70");
+    expect(comparing).toContain('aria-label="stop comparing"');
+
+    const notComparing = draw({ comparedTurnLabel: null });
+    expect(notComparing).not.toContain("⇄");
+    expect(notComparing).not.toContain('aria-label="stop comparing"');
+    expect(notComparing).toContain("▾");
+  });
+
+  it("the turn chip is a button that says whether the picker is open", () => {
+    const closed = draw({ turnPickerOpen: false });
+    expect(closed).toContain('data-testid="turn-chip"');
+    expect(closed).toContain('aria-expanded="false"');
+
+    const open = draw({ turnPickerOpen: true });
+    expect(open).toContain('aria-expanded="true"');
   });
 });

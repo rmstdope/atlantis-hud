@@ -1,6 +1,7 @@
 import type {
   CoreClient,
   GameManifest,
+  ImportedTurnSummary,
   MapExportContent,
   MergedReportRecord,
   OpenedGame,
@@ -67,6 +68,8 @@ import { rulesetById } from "../rulesets";
 import { DEFAULT_LEVEL, useWorkspaceStore } from "../workspaceStore";
 import { useSettingsStore } from "../settingsStore";
 import { AppHeader, type ImportStatus } from "./AppHeader";
+import { TurnPicker } from "./TurnPicker";
+import { comparisonChipLabel, toggleComparison, type ComparisonTurn } from "../turnCompare";
 import { GameGate } from "./GameGate";
 import { SettingsDialog } from "./SettingsDialog";
 import type { AppUpdateControl } from "./appUpdate";
@@ -342,6 +345,12 @@ export function AppShell({
   const [mergedReports, setMergedReports] = useState<MergedReportRecord[]>([]);
   const [mergedOpen, setMergedOpen] = useState(false);
   const [factionOpen, setFactionOpen] = useState(false);
+  // A second, read-only turn held beside the working one (ah-jg6.3), and the picker that chooses
+  // it. Plain `useState`, as the panel-open flags above are: a comparison is transient, never
+  // persisted, and is cleared the moment the working turn changes underneath it.
+  const [comparison, setComparison] = useState<ComparisonTurn | null>(null);
+  const [turnPickerOpen, setTurnPickerOpen] = useState(false);
+  const [turnSummaries, setTurnSummaries] = useState<ImportedTurnSummary[]>([]);
   // What a batch of reports did, waiting to be read, and how far it has got while it is running.
   // Both null for a single report: that one still answers for itself through the status line.
   const [importSummary, setImportSummary] = useState<ImportSummary | null>(null);
@@ -761,6 +770,10 @@ export function AppShell({
         setRawReport(text);
         clearPlan();
         setRoute(null);
+        // A new working turn redefines the pair: a comparison held against the turn just replaced
+        // would go on claiming a relationship to a turn no longer on screen.
+        setComparison(null);
+        setTurnPickerOpen(false);
 
         // Commit the turn to the faction's game and read back every region it has ever seen.
         // A report on its own describes the hexes the faction stood in and names their neighbours,
@@ -1406,6 +1419,11 @@ export function AppShell({
       setImportSummary(null);
       setMergedReports([]);
       setMergedOpen(false);
+      // A new game redefines what there is to compare, and the comparison held so far names a
+      // turn in the database being left.
+      setComparison(null);
+      setTurnPickerOpen(false);
+      setTurnSummaries([]);
       openGameInStore({
         gameId: opened.manifest.metadata.gameId,
         gameName: opened.manifest.metadata.gameName,
@@ -2001,6 +2019,64 @@ export function AppShell({
       ? null
       : `${parsed.header.turnNumber} · ${parsed.header.month}, Year ${parsed.header.year}`;
 
+  /**
+   * Opens the turn picker, fetching the turns it lists at the moment it opens rather than
+   * eagerly - a list nobody asked to see is a database read this workspace does not need to make
+   * on every report load.
+   */
+  const handleOpenTurnPicker = useCallback(async () => {
+    setTurnPickerOpen((open) => !open);
+    if (!game || !parsed?.header.factionId) {
+      return;
+    }
+    const gameId = game.manifest.metadata.gameId;
+    const factionId = parsed.header.factionId;
+    const summaries = await client.listImportedTurns(game.databasePath, gameId);
+    setTurnSummaries(summaries.filter((summary) => summary.key.factionId === factionId));
+  }, [client, game, parsed]);
+
+  /**
+   * Starts, switches or stops comparing against the clicked turn.
+   *
+   * Loads a turn only via `client.loadImportedTurn` and holds it in `comparison` - never
+   * `setParsed`. The working turn's draft is keyed off `parsed`, and every keystroke autosaves
+   * under that key; pointing `parsed` at the compared turn would make the next autosave silently
+   * overwrite *that* turn's stored draft, in an app with no undo.
+   */
+  const handleSelectComparisonTurn = useCallback(
+    async (clickedTurn: number) => {
+      const workingTurn = parsed?.header.turnNumber ?? null;
+      if (workingTurn === null || !game || !parsed?.header.factionId) {
+        return;
+      }
+      const next = toggleComparison(comparison?.key.turnNumber ?? null, clickedTurn, workingTurn);
+      if (next === null) {
+        setComparison(null);
+        setTurnPickerOpen(false);
+        return;
+      }
+      const gameId = game.manifest.metadata.gameId;
+      const factionId = parsed.header.factionId;
+      const record = await client.loadImportedTurn(game.databasePath, gameId, factionId, next);
+      if (record === null) {
+        return;
+      }
+      const parse = (text: string) =>
+        ruleset.status === "ready"
+          ? client.parseReportClassified(text, ruleset.text)
+          : client.parseReportFull(text);
+      const parsedComparison = await parse(record.rawReport);
+      setComparison({ key: { factionId: record.key.factionId, turnNumber: next }, parsed: parsedComparison });
+      setTurnPickerOpen(false);
+    },
+    [client, comparison, game, parsed, ruleset]
+  );
+
+  const comparedTurnChip = comparisonChipLabel(
+    parsed?.header.turnNumber ?? 0,
+    comparison?.key.turnNumber ?? null
+  );
+
   // Nothing until the games are known: rendering the gate first and the workspace a moment later
   // would flash "no game yet" at a player who has several.
   if (!gamesLoaded) {
@@ -2085,6 +2161,25 @@ export function AppShell({
         }
         factionLabel={factionLabel}
         turnLabel={turnLabel}
+        workingTurnNumber={parsed?.header.turnNumber != null ? comparedTurnChip.working : null}
+        turnPickerOpen={turnPickerOpen}
+        onToggleTurnPicker={() => void handleOpenTurnPicker()}
+        turnPicker={
+          parsed?.header.turnNumber != null ? (
+            <TurnPicker
+              turns={turnSummaries}
+              workingTurn={parsed.header.turnNumber}
+              comparedTurn={comparison?.key.turnNumber ?? null}
+              onSelect={(turnNumber) => void handleSelectComparisonTurn(turnNumber)}
+              onDismiss={() => setTurnPickerOpen(false)}
+            />
+          ) : null
+        }
+        comparedTurnLabel={comparedTurnChip.compared}
+        onStopComparing={() => {
+          setComparison(null);
+          setTurnPickerOpen(false);
+        }}
         mergedCount={mergedReports.length}
         mergedOpen={mergedOpen}
         onToggleMerged={() => setMergedOpen((open) => !open)}
