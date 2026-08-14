@@ -24,7 +24,7 @@ import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { runGate } from "./beadsExportGate";
-import { describeGitFailure, pushWithRetry, recoveryAdvice, settleExport } from "./releaseSupport";
+import { describeGitFailure, finishRelease, pushWithRetry, settleExport } from "./releaseSupport";
 
 const BUMPS = ["major", "minor", "maintenance"] as const;
 type Bump = (typeof BUMPS)[number];
@@ -246,40 +246,20 @@ for (const relative of MANIFESTS) {
 git("add", ...MANIFESTS);
 git("commit", "-m", `Release ${tag}`);
 
-const versionPush = pushWithRetry(() => tryGit("push", "origin", `HEAD:${branch}`), PUSH_ATTEMPTS);
-if (!versionPush.ok) {
-  const advice = recoveryAdvice({
-    tag,
-    branch,
-    versionCommitPushed: false,
-    tagCreated: false,
-    tagPushed: false
-  });
-  fail(
-    `${versionPush.output}\n\n` +
-      `The version commit for ${tag} was made locally but never reached the remote. Finish it by ` +
-      `hand:\n${advice.map((line) => `  ${line}`).join("\n")}`
-  );
-}
-console.log(`release: pushed the version commit to ${branch}`);
+// The SHA is pinned before either push runs, inside `finishRelease`: the export gate can commit a
+// refresh on top of HEAD while settling the branch push, and `git tag <name>` with no second
+// argument tags HEAD - which is how v0.5.3's tag ended up three commits above the release it names.
+const finished = finishRelease(
+  {
+    headCommit: () => git("rev-parse", "HEAD"),
+    pushBranch: () => tryGit("push", "origin", `HEAD:${branch}`),
+    pushTag: () => tryGit("push", "origin", tag),
+    createTag: (name, commit) => git("tag", name, commit)
+  },
+  { tag, branch, attempts: PUSH_ATTEMPTS }
+);
 
-// Last, and separately. The workflow triggers on the tag and checks it out, so the commit it names
-// has to be on the remote before the tag that points at it arrives.
-git("tag", tag);
-
-const tagPush = pushWithRetry(() => tryGit("push", "origin", tag), PUSH_ATTEMPTS);
-if (!tagPush.ok) {
-  const advice = recoveryAdvice({
-    tag,
-    branch,
-    versionCommitPushed: true,
-    tagCreated: true,
-    tagPushed: false
-  });
-  fail(
-    `${tagPush.output}\n\n` +
-      `The version commit reached ${branch}, but the tag ${tag} was made locally and never ` +
-      `pushed. Finish it by hand:\n${advice.map((line) => `  ${line}`).join("\n")}`
-  );
+if (!finished.ok) {
+  fail(`${finished.output}\n\nFinish it by hand:\n${finished.advice.map((line) => `  ${line}`).join("\n")}`);
 }
-console.log(`release: pushed ${tag}. The Release workflow builds it from here.`);
+console.log(`release: pushed the version commit and ${tag}. The Release workflow builds it from here.`);
