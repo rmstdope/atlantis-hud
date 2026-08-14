@@ -4,6 +4,7 @@ import { regionIdOf } from "../hexMapModel";
 import { diffOrders, diffTurns } from "../turnDiff";
 import {
   changesTabs,
+  nextChangesTab,
   orderRows,
   ordersEmptyText,
   regionRows,
@@ -217,6 +218,24 @@ describe("regionRows", () => {
         detail: "population: 100 → 150"
       }
     ]);
+  });
+});
+
+describe("nextChangesTab", () => {
+  const order = ["units", "regions", "orders"] as const;
+
+  it("moves right and wraps at the end, per the ARIA tabs pattern", () => {
+    expect(nextChangesTab("units", "ArrowRight", [...order])).toBe("regions");
+    expect(nextChangesTab("orders", "ArrowRight", [...order])).toBe("units");
+  });
+
+  it("moves left and wraps at the start", () => {
+    expect(nextChangesTab("units", "ArrowLeft", [...order])).toBe("orders");
+    expect(nextChangesTab("regions", "ArrowLeft", [...order])).toBe("units");
+  });
+
+  it("any other key moves nothing", () => {
+    expect(nextChangesTab("units", "Enter", [...order])).toBeNull();
   });
 });
 

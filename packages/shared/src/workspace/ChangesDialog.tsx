@@ -1,5 +1,5 @@
 import { useEscapeToDismiss } from "./dismissLayer";
-import type { ChangesTab, ChangesTabKey, OrderRow, RegionRow, UnitRow } from "./changesView";
+import { nextChangesTab, type ChangesTab, type ChangesTabKey, type OrderRow, type RegionRow, type UnitRow } from "./changesView";
 
 /**
  * The surface of ah-jg6: what changed between two turns, read-only.
@@ -74,24 +74,49 @@ export function ChangesDialog({
           </button>
         </div>
 
-        <div role="tablist" aria-label="Changes tabs" className="flex gap-1 border-b border-edge px-2 py-1.5">
-          {tabs.map((tabDescriptor) => (
-            <button
-              key={tabDescriptor.key}
-              type="button"
-              role="tab"
-              aria-selected={tab === tabDescriptor.key}
-              data-testid={`changes-tab-${tabDescriptor.key}`}
-              onClick={() => onTab(tabDescriptor.key)}
-              className={`rounded border px-2 py-0.5 ${
-                tab === tabDescriptor.key
-                  ? "border-brass bg-panel text-brass"
-                  : "border-edge bg-panel-raised text-ink-soft hover:border-brass"
-              }`}
-            >
-              {tabDescriptor.label}
-            </button>
-          ))}
+        <div
+          role="tablist"
+          aria-label="Changes tabs"
+          // One tab stop, not three: only the selected tab is tabbable and the arrows move
+          // within the list, selection following focus - the ARIA tabs pattern, the same one
+          // `SettingsDialog`'s tablist implements.
+          onKeyDown={(event) => {
+            const target = nextChangesTab(
+              tab,
+              event.key,
+              tabs.map((tabDescriptor) => tabDescriptor.key)
+            );
+            if (target) {
+              event.preventDefault();
+              onTab(target);
+              event.currentTarget
+                .querySelector<HTMLButtonElement>(`[data-testid="changes-tab-${target}"]`)
+                ?.focus();
+            }
+          }}
+          className="flex gap-1 border-b border-edge px-2 py-1.5"
+        >
+          {tabs.map((tabDescriptor) => {
+            const selected = tab === tabDescriptor.key;
+            return (
+              <button
+                key={tabDescriptor.key}
+                type="button"
+                role="tab"
+                aria-selected={selected}
+                tabIndex={selected ? 0 : -1}
+                data-testid={`changes-tab-${tabDescriptor.key}`}
+                onClick={() => onTab(tabDescriptor.key)}
+                className={`rounded border px-2 py-0.5 ${
+                  selected
+                    ? "border-brass bg-panel text-brass"
+                    : "border-edge bg-panel-raised text-ink-soft hover:border-brass"
+                }`}
+              >
+                {tabDescriptor.label}
+              </button>
+            );
+          })}
         </div>
 
         <div className="min-h-0 overflow-y-auto p-2">

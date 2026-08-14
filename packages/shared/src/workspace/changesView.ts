@@ -68,6 +68,24 @@ export function changesTabs(diff: TurnDiff, orders: OrdersDiff | null): ChangesT
   ];
 }
 
+/**
+ * Where an arrow key moves the active tab, wrapping at the ends, or `null` for any other key -
+ * the same rule `settingsTabs.ts`'s `nextTab` applies to the settings dialog, generalised over
+ * `ChangesTab`'s own ordering rather than a fixed list, since that order is data here (it comes
+ * from `changesTabs`), not a constant.
+ */
+export function nextChangesTab(
+  current: ChangesTabKey,
+  key: string,
+  order: ChangesTabKey[]
+): ChangesTabKey | null {
+  const step = key === "ArrowRight" ? 1 : key === "ArrowLeft" ? -1 : 0;
+  if (step === 0) {
+    return null;
+  }
+  return order[(order.indexOf(current) + step + order.length) % order.length];
+}
+
 export function unitsEmptyText(): string {
   return "No unit changed between these turns.";
 }

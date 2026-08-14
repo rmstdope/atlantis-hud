@@ -69,4 +69,11 @@ describe("ChangesDialog", () => {
 
     expect(markup).toContain('data-testid="changes-close"');
   });
+
+  it("only the selected tab is a tab stop, per the ARIA tabs pattern", () => {
+    const unitsSelected = draw({ tab: "units" });
+    expect(unitsSelected).toMatch(/tabindex="0"[^>]*data-testid="changes-tab-units"/);
+    expect(unitsSelected).toMatch(/tabindex="-1"[^>]*data-testid="changes-tab-regions"/);
+    expect(unitsSelected).toMatch(/tabindex="-1"[^>]*data-testid="changes-tab-orders"/);
+  });
 });
