@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ah-o86 — Units pane on a stale hex</title>
+<style>
+  :root { --page:#10151c; --panel:#171e28; --edge:#2a3442; --ink:#d7dee8; --dim:#8a94a3;
+          --warn:#d9a441; }
+  body { background: var(--page); color: var(--ink); font: 14px/1.5 system-ui, sans-serif;
+         margin: 0; padding: 24px 32px 64px; }
+  h1 { font-size: 20px; }
+  p.note { color: var(--dim); max-width: 76ch; }
+  .variant { margin: 20px 0; }
+  .variant h2 { font-size: 15px; margin: 0 0 8px; }
+  .pane { width: 560px; background: var(--panel); border: 1px solid var(--edge);
+          border-radius: 8px; overflow: hidden; }
+  .pane header { display: flex; align-items: center; gap: 8px; padding: 6px 10px;
+                 border-bottom: 1px solid var(--edge); font-size: 12px; }
+  .pane header .title { font-weight: 600; }
+  .pane header .hint { color: var(--dim); }
+  .pane header .spacer { flex: 1; }
+  .pane header .asof { color: var(--warn); }
+  .pane header .caret { color: var(--dim); }
+  .pane .body { padding: 10px 12px; font-size: 11.5px; min-height: 44px; }
+  .absent { font-style: italic; color: var(--dim); margin: 0; }
+  .cost { color: var(--dim); font-size: 13px; margin: 6px 0 0; max-width: 70ch; }
+</style>
+</head>
+<body>
+<h1>ah-o86 — What the “Units in hex” pane says on a stale hex</h1>
+<p class="note"><strong>Chosen: Variant B</strong> — “Not seen since turn 21 — no current unit
+information.”, with the stale header naming the ground but counting nothing. Variant A was rejected
+as indistinguishable from a genuinely empty current hex. The interview is recorded in bead ah-o86’s
+design field.</p>
+<p class="note">
+After the fix, a hex last seen in an earlier turn lists no units anywhere. The question is what its
+units pane says. Today’s empty-state line is “No units reported in this hex.” — which, on a stale
+hex, would be indistinguishable from a genuinely empty hex the faction is looking at right now.
+The header keeps its amber “as of turn 21” chip in every variant.
+</p>
+
+<div class="variant">
+  <h2>Variant A — reuse today’s empty line</h2>
+  <div class="pane">
+    <header>
+      <span class="title">Units in hex</span>
+      <span class="hint">— tundra (6,52)</span>
+      <span class="spacer"></span>
+      <span class="asof">as of turn 21</span>
+      <span class="caret">▾</span>
+    </header>
+    <div class="body"><p class="absent">No units reported in this hex.</p></div>
+  </div>
+  <p class="cost">Simplest, but “reported” is now untrue twice over: the hex is not in the report at
+  all, and an empty stale hex reads exactly like an empty current one — a smaller version of the
+  same bug.</p>
+</div>
+
+<div class="variant">
+  <h2>Variant B — say why the list is empty</h2>
+  <div class="pane">
+    <header>
+      <span class="title">Units in hex</span>
+      <span class="hint">— tundra (6,52)</span>
+      <span class="spacer"></span>
+      <span class="asof">as of turn 21</span>
+      <span class="caret">▾</span>
+    </header>
+    <div class="body"><p class="absent">Not seen since turn 21 — no current unit information.</p></div>
+  </div>
+  <p class="cost">One line, same italic style, and the stale case stops masquerading as an empty
+  hex. The wording is a proposal — edit freely.</p>
+</div>
+
+<div class="variant">
+  <h2>For reference — a genuinely empty <em>current</em> hex (unchanged in both variants)</h2>
+  <div class="pane">
+    <header>
+      <span class="title">Units in hex</span>
+      <span class="hint">— plain (10,44), 0 units</span>
+      <span class="spacer"></span>
+      <span class="caret">▾</span>
+    </header>
+    <div class="body"><p class="absent">No units reported in this hex.</p></div>
+  </div>
+</div>
+</body>
+</html>
