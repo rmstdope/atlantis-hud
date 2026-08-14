@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ah-don — Region name badge sizing proposals</title>
+<style>
+  :root { --page: #10151c; --ink: #d7dee8; --dim: #8a94a3; --card: #171e28; --line: #2a3442; }
+  body { background: var(--page); color: var(--ink); font: 14px/1.5 system-ui, sans-serif;
+         margin: 0; padding: 24px 32px 64px; }
+  h1 { font-size: 20px; }
+  p.note { color: var(--dim); max-width: 78ch; }
+  .variant { background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+             padding: 16px 20px; margin: 18px 0; }
+  .variant h2 { margin: 0 0 4px; font-size: 16px; }
+  .cost { color: var(--dim); font-size: 13px; margin: 0 0 12px; }
+  .row { display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-start; }
+  .tile { border-radius: 6px; overflow: hidden; }
+  figure { margin: 0; }
+  figcaption { font-size: 11px; color: var(--dim); padding: 3px 2px 0; }
+</style>
+</head>
+<body>
+<h1>ah-don — Region name badges: one size for every province</h1>
+<p class="note"><strong>Chosen: Option C</strong> — every name at a uniform 8 world units
+(letter-spacing 2.5, halo 2.2), scaling with the map, overflowing its province when wider than it,
+hidden at far zoom as today. Options A (the 4.62 floor) and B (6.5) were rejected as too small; the
+interview is recorded in bead ah-don’s design field.</p>
+<p class="note">
+Today each province name is fitted to its province: 11 world-units for a short name on a roomy
+province, shrinking as far as 4.62 (the floor) for a long name on a small one — so names range from
+small to large across the same map. Each variant below shows the same three provinces — INHEAD
+(large), CERAN (medium), MAPICLIR (a long name on a two-hex province) — at rest zoom and zoomed out
+one and a half steps. The border shown is the new B1 style from ah-f9c. The name still scales with
+the map as you zoom (it is fitted to ground it labels) and still hides at far zoom; what changes is
+that every province now uses the <em>same</em> size.
+</p>
+
+<div class="variant">
+  <h2>Current — fitted per province (for reference)</h2>
+  <p class="cost">INHEAD renders at 11, CERAN at ~9, MAPICLIR at the 4.62 floor — the size variance the report is about.</p>
+  <div class="row" data-variant="current"></div>
+</div>
+
+<div class="variant">
+  <h2>Option A — everything at the current floor (4.62 world units)</h2>
+  <p class="cost">Literally "the smallest size currently used". Uniform, and never overflows more than today's
+  worst case — but small: at rest zoom it is ~4.6px on screen, comfortably readable only once you zoom in.</p>
+  <div class="row" data-variant="floor"></div>
+</div>
+
+<div class="variant">
+  <h2>Option B — everything at a uniform 6.5 world units</h2>
+  <p class="cost">One size, chosen for legibility at rest zoom rather than inherited from the old floor.
+  A long name on a small province now overflows its outline a little (see MAPICLIR) — the price of any
+  uniform size above the floor.</p>
+  <div class="row" data-variant="mid"></div>
+</div>
+
+<div class="variant">
+  <h2>Option C — everything at a uniform 8 world units</h2>
+  <p class="cost">Clearly readable at rest zoom; the overflow on small provinces grows accordingly.</p>
+  <div class="row" data-variant="large"></div>
+</div>
+
+<script>
+const R = 28, SQ3 = Math.sqrt(3), COLS = 8, ROWS = 5;
+const F = 28 / 18; // mockup hexes are drawn larger than the app's HEX_RADIUS 18
+const APP_R = 18;
+const BASE = 11, SPACING = 3.4, HALO = 3, FLOOR = 0.42, SPAN = 0.94, CHAR = 0.62;
+
+function provinceOf(q, r) {
+  if (q <= 3) return "INHEAD";
+  if (q >= 6 && r <= 1) return "MAPICLIR";
+  return "CERAN";
+}
+function center(q, r) { return { x: R * 1.5 * q + R, y: R * SQ3 * (r + (q % 2) / 2) + R }; }
+function cornersOf(c) {
+  const pts = [];
+  for (let i = 0; i < 6; i++) {
+    const a = Math.PI / 3 * i;
+    pts.push({ x: c.x + R * Math.cos(a), y: c.y + R * Math.sin(a) });
+  }
+  return pts;
+}
+const hexes = [];
+for (let q = 0; q < COLS; q++) for (let r = 0; r < ROWS; r++) hexes.push({ q, r, c: center(q, r), prov: provinceOf(q, r) });
+function hexAt(x, y) { return hexes.find(h => Math.hypot(h.c.x - x, h.c.y - y) < 1); }
+
+function segsFor() {
+  const segs = [];
+  for (const h of hexes) {
+    const pts = cornersOf(h.c);
+    for (let i = 0; i < 6; i++) {
+      const p1 = pts[i], p2 = pts[(i + 1) % 6];
+      const mx = (p1.x + p2.x) / 2, my = (p1.y + p2.y) / 2;
+      const nb = hexAt(h.c.x + 2 * (mx - h.c.x), h.c.y + 2 * (my - h.c.y));
+      if (!nb || nb.prov !== h.prov) segs.push([p1, p2]);
+    }
+  }
+  return segs;
+}
+const SEGS = segsFor();
+
+// Per-province label geometry + the app's fitting formula, computed in app world units.
+function pieces() {
+  const out = [];
+  for (const prov of ["INHEAD", "CERAN", "MAPICLIR"]) {
+    const hs = hexes.filter(h => h.prov === prov);
+    const xs = hs.map(h => h.c.x), ys = hs.map(h => h.c.y);
+    const cx = xs.reduce((a, b) => a + b) / hs.length, cy = ys.reduce((a, b) => a + b) / hs.length;
+    // widths in app units: mockup world / F
+    const spanApp = ((Math.max(...xs) - Math.min(...xs)) / F + 2 * APP_R) * SPAN;
+    const natural = prov.length * (CHAR * BASE + SPACING);
+    const fit = Math.min(1, Math.max(FLOOR, spanApp / natural));
+    out.push({ prov, cx, cy, fit });
+  }
+  return out;
+}
+const PIECES = pieces();
+
+const FILLS = ["#e7d8b2", "#dccfa5", "#cfd3a8"];
+function el(n, a) { const e = document.createElementNS("http://www.w3.org/2000/svg", n); for (const k in a) e.setAttribute(k, a[k]); return e; }
+
+function tile(variant, zoom) {
+  const w = (R * 1.5 * (COLS - 1) + 2 * R + 4) * zoom, h = (R * SQ3 * ROWS + R) * zoom;
+  const svg = el("svg", { width: w, height: h, viewBox: `0 0 ${w} ${h}` });
+  svg.style.background = "#efe3c2";
+  const g = el("g", { transform: `scale(${zoom})` });
+  svg.appendChild(g);
+  for (const hx of hexes) {
+    const pts = cornersOf(hx.c).map(p => `${p.x},${p.y}`).join(" ");
+    g.appendChild(el("polygon", { points: pts, fill: FILLS[(hx.q * 7 + hx.r * 3) % 3] }));
+  }
+  const eg = el("g", {});
+  svg.appendChild(eg);
+  for (const hx of hexes) {
+    const pts = cornersOf(hx.c).map(p => `${p.x * zoom},${p.y * zoom}`).join(" ");
+    eg.appendChild(el("polygon", { points: pts, fill: "none", stroke: "#4a3a22", "stroke-width": 1.4 }));
+  }
+  // ah-f9c B1 border, screen-constant
+  const path = SEGS.map(([p1, p2]) => `M${(p1.x * zoom).toFixed(1)},${(p1.y * zoom).toFixed(1)}L${(p2.x * zoom).toFixed(1)},${(p2.y * zoom).toFixed(1)}`).join("");
+  svg.appendChild(el("path", { d: path, fill: "none", stroke: "#efe3c2", "stroke-width": 5.5, opacity: 0.8, "stroke-linecap": "round" }));
+  svg.appendChild(el("path", { d: path, fill: "none", stroke: "#4a3a22", "stroke-width": 3, "stroke-dasharray": "9 5", "stroke-linecap": "round" }));
+  // names: world-unit sizes, so they scale with zoom (drawn inside g? use scaled coords directly)
+  for (const p of PIECES) {
+    let scale;
+    if (variant === "current") scale = p.fit;
+    else if (variant === "floor") scale = FLOOR;
+    else if (variant === "mid") scale = 6.5 / BASE;
+    else scale = 8 / BASE;
+    const fs = BASE * scale * F * zoom;
+    const ls = SPACING * scale * F * zoom;
+    const halo = HALO * scale * F * zoom;
+    const t = el("text", { x: p.cx * zoom, y: p.cy * zoom, "text-anchor": "middle",
+      "dominant-baseline": "middle", fill: "#4f5866",
+      stroke: "#efe3c2", "stroke-width": halo, "paint-order": "stroke fill",
+      "letter-spacing": ls });
+    t.style.fontSize = fs + "px";
+    t.style.fontFamily = "system-ui, sans-serif";
+    t.textContent = p.prov;
+    svg.appendChild(t);
+  }
+  const fig = document.createElement("figure");
+  const d = document.createElement("div"); d.className = "tile"; d.appendChild(svg); fig.appendChild(d);
+  const cap = document.createElement("figcaption");
+  cap.textContent = zoom === 1 ? "rest zoom" : "zoomed out (×" + zoom + ")";
+  fig.appendChild(cap);
+  return fig;
+}
+
+for (const row of document.querySelectorAll(".row[data-variant]")) {
+  const v = row.dataset.variant;
+  row.appendChild(tile(v, 1));
+  row.appendChild(tile(v, 0.6));
+}
+</script>
+</body>
+</html>
