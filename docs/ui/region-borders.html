@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ah-f9c — Province border emphasis proposals</title>
+<style>
+  :root {
+    --page: #10151c; --ink: #d7dee8; --dim: #8a94a3; --card: #171e28; --line: #2a3442;
+  }
+  body { background: var(--page); color: var(--ink); font: 14px/1.5 system-ui, sans-serif;
+         margin: 0; padding: 24px 32px 64px; }
+  h1 { font-size: 20px; } h2 { font-size: 16px; margin-top: 40px; }
+  p.note { color: var(--dim); max-width: 72ch; }
+  .variant { background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+             padding: 16px 20px; margin: 18px 0; }
+  .variant h2 { margin: 0 0 4px; }
+  .cost { color: var(--dim); font-size: 13px; margin: 0 0 12px; }
+  .row { display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-start; }
+  .tile { border-radius: 6px; overflow: hidden; }
+  .tile figcaption { font-size: 11px; color: var(--dim); padding: 3px 2px 0; }
+  figure { margin: 0; }
+  .zoomrow { margin-top: 10px; }
+  .zoomlabel { font-size: 12px; color: var(--dim); margin: 10px 0 4px; }
+  code { color: #9fc3dd; }
+</style>
+</head>
+<body>
+<h1>ah-f9c — Emphasize province borders (the “Regions” badge outline)</h1>
+<p class="note"><strong>Chosen: Option B1</strong> — dashed 3px screen-constant line in each theme’s own ink
+over a solid 5.5px ground-coloured halo, dashes 9&nbsp;5, visible at every zoom, no new setting.
+Options A, B2, C and “current but stronger” were considered and rejected; the interview is recorded
+in bead ah-f9c’s design field.</p>
+<p class="note">
+Today the province outline is one shared rule: <code>1.2</code> world-units wide, dashed, 70% opacity,
+app-grey — the only stroke on the map that <em>thins as you zoom out</em> (0.3px on screen at minimum
+zoom), while every theme’s hex edges stay a constant 1.0–1.6px. Each variant below is shown over
+three theme backgrounds (Cartographer’s Table parchment, Tactical HUD panel, Miniature World board)
+at rest zoom, and then the far-zoom strip shows how each behaves zoomed all the way out — which is
+where the current border disappears. Beveled Tile is not simulated but follows the same rule.
+</p>
+
+<div class="variant" id="current">
+  <h2>Current — for reference</h2>
+  <p class="cost">Thin, dashed, grey, translucent, and scales with zoom: faint at rest, gone when zoomed out.</p>
+  <div class="row" data-variant="current" data-zoom="1"></div>
+</div>
+
+<div class="variant" id="a">
+  <h2>Option A — “Ink line”: solid, screen-constant, in each theme’s own ink</h2>
+  <p class="cost">Solid 2px line that never thins, with a soft halo of the theme’s ground colour so it separates
+  from the hex lattice. Cost: loses the dashed “overlay” look — reads as a firm cartographic border rather than an annotation.</p>
+  <div class="row" data-variant="a" data-zoom="1"></div>
+</div>
+
+<div class="variant" id="b1">
+  <h2>Option B1 — Heavy dash at 3px</h2>
+  <p class="cost">Dashed, screen-constant, theme ink, full opacity, 3px over a 5.5px ground halo. Dashes 9 5,
+  so the pattern no longer matches the keyboard focus ring.</p>
+  <div class="row" data-variant="b1" data-zoom="1"></div>
+</div>
+
+<div class="variant" id="b2">
+  <h2>Option B2 — Heavy dash at 3.75px</h2>
+  <p class="cost">Same as B1 but 3.75px over a 6.5px halo — unmistakable at any zoom, at the cost of some
+  weight over small provinces.</p>
+  <div class="row" data-variant="b2" data-zoom="1"></div>
+</div>
+
+<div class="variant" id="c">
+  <h2>Option C — “Bold ground line”: solid and 3× wider, but still scales with the map</h2>
+  <p class="cost">Strong at rest and near zoom, and it shrinks with the terrain like a road does — but it
+  still thins when zoomed out (≈0.9px at minimum zoom), which is where the complaint bites hardest.</p>
+  <div class="row" data-variant="c" data-zoom="1"></div>
+</div>
+
+<h2>Far zoom (minimum zoom, scale 0.25) — the case that motivated the bead</h2>
+<p class="note">Hex edges hold their width on screen (as in the app). Watch which variants survive.</p>
+<div class="row" id="farrow"></div>
+
+<script>
+const R = 28, SQ3 = Math.sqrt(3);
+const COLS = 7, ROWS = 5;
+
+const THEMES = {
+  parchment: { name: "Cartographer's Table", bg: "#efe3c2",
+    fills: ["#e7d8b2", "#dccfa5", "#cfd3a8"], water: "#b9c8c0",
+    edge: "#4a3a22", edgeW: 1.4, ink: "#4a3a22", halo: "#efe3c2", grey: "#a3b0c0" },
+  hud: { name: "Tactical HUD", bg: "#0d141c",
+    fills: ["#16222e", "#1a2a1f", "#1d2633"], water: "#0e2733",
+    edge: "#5e788c", edgeW: 1.0, ink: "#9fc3dd", halo: "#0b1118", grey: "#a3b0c0" },
+  board: { name: "Miniature World", bg: "#2a241c",
+    fills: ["#7a9a4f", "#b89a5e", "#8a8a56"], water: "#4f7a9a",
+    edge: "#1c1712", edgeW: 1.6, ink: "#14100b", halo: "#e8dcc0", grey: "#a3b0c0" }
+};
+
+// Two provinces with a jagged boundary.
+function provinceOf(q, r) { return (q + (r % 2 === 0 ? 0 : 0.5) < 3) ? "A" : "B"; }
+
+function center(q, r) { return { x: R * 1.5 * q + R, y: R * SQ3 * (r + (q % 2) / 2) + R }; }
+function cornersOf(c) {
+  const pts = [];
+  for (let i = 0; i < 6; i++) {
+    const a = Math.PI / 3 * i;
+    pts.push({ x: c.x + R * Math.cos(a), y: c.y + R * Math.sin(a) });
+  }
+  return pts;
+}
+const hexes = [];
+for (let q = 0; q < COLS; q++) for (let r = 0; r < ROWS; r++) hexes.push({ q, r, c: center(q, r), prov: provinceOf(q, r) });
+function hexAt(x, y) { return hexes.find(h => Math.hypot(h.c.x - x, h.c.y - y) < 1); }
+
+// Boundary segments: every edge whose neighbour is absent or in the other province.
+function boundarySegments() {
+  const segs = [];
+  for (const h of hexes) {
+    const pts = cornersOf(h.c);
+    for (let i = 0; i < 6; i++) {
+      const p1 = pts[i], p2 = pts[(i + 1) % 6];
+      const mx = (p1.x + p2.x) / 2, my = (p1.y + p2.y) / 2;
+      const nx = h.c.x + 2 * (mx - h.c.x), ny = h.c.y + 2 * (my - h.c.y);
+      const nb = hexAt(nx, ny);
+      if (!nb || nb.prov !== h.prov) segs.push([p1, p2]);
+    }
+  }
+  return segs;
+}
+const SEGS = boundarySegments();
+
+function el(name, attrs) {
+  const e = document.createElementNS("http://www.w3.org/2000/svg", name);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  return e;
+}
+
+// zoom simulates the map scale: world coords are multiplied by it; hex edge strokes are
+// screen-constant (like vector-effect: non-scaling-stroke in the app).
+function tile(themeKey, variant, zoom) {
+  const t = THEMES[themeKey];
+  const w = (R * 1.5 * (COLS - 1) + 2 * R + 4) * zoom, h = (R * SQ3 * ROWS + R) * zoom;
+  const svg = el("svg", { width: w, height: h, viewBox: `0 0 ${w} ${h}` });
+  svg.style.background = t.bg;
+  const g = el("g", { transform: `scale(${zoom})` });
+  svg.appendChild(g);
+  for (const hx of hexes) {
+    const pts = cornersOf(hx.c).map(p => `${p.x},${p.y}`).join(" ");
+    const fill = hx.q === 5 && hx.r >= 2 ? t.water : t.fills[(hx.q * 7 + hx.r * 3) % 3];
+    g.appendChild(el("polygon", { points: pts, fill, stroke: "none" }));
+  }
+  // Hex edges, screen-constant: drawn unscaled over the top.
+  const eg = el("g", {});
+  svg.appendChild(eg);
+  for (const hx of hexes) {
+    const pts = cornersOf(hx.c).map(p => `${p.x * zoom},${p.y * zoom}`).join(" ");
+    eg.appendChild(el("polygon", { points: pts, fill: "none", stroke: t.edge, "stroke-width": t.edgeW }));
+  }
+  // The province border, per variant. Screen-constant variants draw unscaled.
+  const path = SEGS.map(([p1, p2]) => `M${(p1.x * zoom).toFixed(1)},${(p1.y * zoom).toFixed(1)}L${(p2.x * zoom).toFixed(1)},${(p2.y * zoom).toFixed(1)}`).join("");
+  const wpath = SEGS.map(([p1, p2]) => `M${p1.x.toFixed(1)},${p1.y.toFixed(1)}L${p2.x.toFixed(1)},${p2.y.toFixed(1)}`).join("");
+  function add(attrs, world) {
+    const p = el("path", Object.assign({ d: world ? wpath : path, fill: "none",
+      "stroke-linecap": "round" }, attrs));
+    if (world) g.appendChild(p); else svg.appendChild(p);
+  }
+  if (variant === "current") {
+    add({ stroke: t.grey, "stroke-width": 1.2, "stroke-dasharray": "4 3", opacity: 0.7 }, true);
+  } else if (variant === "a") {
+    add({ stroke: t.halo, "stroke-width": 4.5, opacity: 0.85 });
+    add({ stroke: t.ink, "stroke-width": 2 });
+  } else if (variant === "b1") {
+    add({ stroke: t.halo, "stroke-width": 5.5, opacity: 0.8 });
+    add({ stroke: t.ink, "stroke-width": 3, "stroke-dasharray": "9 5" });
+  } else if (variant === "b2") {
+    add({ stroke: t.halo, "stroke-width": 6.5, opacity: 0.8 });
+    add({ stroke: t.ink, "stroke-width": 3.75, "stroke-dasharray": "9 5" });
+  } else if (variant === "c") {
+    add({ stroke: t.halo, "stroke-width": 5.6, opacity: 0.7 }, true);
+    add({ stroke: t.ink, "stroke-width": 3.6 }, true);
+  }
+  const fig = document.createElement("figure");
+  const d = document.createElement("div");
+  d.className = "tile"; d.appendChild(svg); fig.appendChild(d);
+  const cap = document.createElement("figcaption");
+  cap.textContent = t.name; fig.appendChild(cap);
+  return fig;
+}
+
+for (const row of document.querySelectorAll(".row[data-variant]")) {
+  const v = row.dataset.variant;
+  for (const k of ["parchment", "hud", "board"]) row.appendChild(tile(k, v, 1));
+}
+const far = document.getElementById("farrow");
+for (const v of ["current", "a", "b1", "b2", "c"]) {
+  const wrap = document.createElement("figure");
+  const label = document.createElement("figcaption");
+  label.textContent = { current: "Current", a: "Option A", b1: "Option B1", b2: "Option B2", c: "Option C" }[v];
+  label.style.cssText = "font-size:12px;color:#d7dee8;padding-bottom:4px";
+  wrap.appendChild(label);
+  const inner = document.createElement("div"); inner.className = "row";
+  for (const k of ["parchment", "hud"]) inner.appendChild(tile(k, v, 0.25));
+  wrap.appendChild(inner);
+  far.appendChild(wrap);
+}
+</script>
+</body>
+</html>
