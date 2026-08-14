@@ -19,7 +19,7 @@ import {
   unitsForHex,
   type HexMapModel
 } from "../hexMapModel";
-import { downloadTextFile, type TextFileSaver } from "../downloadFile";
+import { deliverTextFile, downloadTextFile, type TextFileSaver } from "../downloadFile";
 import { exportFileName, exportRequestOf } from "../mapExport";
 import { readUnitOrders, writeUnitOrders } from "../ordersDocument";
 import { ordersExportText } from "./ordersExport";
@@ -144,6 +144,34 @@ function describeError(error: unknown): string {
  * can be tested without rendering anything.
  */
 export { shouldConfirmOlderTurnLoad };
+
+/**
+ * Builds and delivers an orders export - the part of `exportOrders`/`exportOrdersLong` that has no
+ * dependency on React state or hooks, pulled out so it can be tested without rendering the shell.
+ *
+ * Plain and long share the same file name deliberately (see `ordersExportText`'s callers) - it is
+ * the same orders file either way. A failed write is logged and swallowed rather than thrown, since
+ * these callbacks are fire-and-forget from the export menu and an unhandled rejection is worse than
+ * a console line; a cancelled save (`deliver` resolving `null`) takes the same quiet path.
+ *
+ * `deliver` exists for the tests and defaults to the real `deliverTextFile`; callers never pass it.
+ */
+export async function deliverOrdersExport(
+  saveTextFile: TextFileSaver | undefined,
+  turnNumber: number | null | undefined,
+  ordersDocument: string,
+  ordersTemplateText: string | null,
+  withDescriptions: boolean,
+  deliver: typeof deliverTextFile = deliverTextFile
+): Promise<void> {
+  const fileName = `orders-turn-${turnNumber ?? "unknown"}.txt`;
+  const text = ordersExportText(ordersDocument, ordersTemplateText, withDescriptions);
+  try {
+    await deliver(saveTextFile, fileName, text, "text/plain");
+  } catch (error: unknown) {
+    console.error("Failed to export orders:", error);
+  }
+}
 
 export function confirmOlderTurnLoad(currentTurn: number, loadedTurn: number): boolean {
   if (typeof globalThis.confirm !== "function") {
@@ -1951,12 +1979,8 @@ export function AppShell({
   const ordersTemplateText = parsed?.ordersTemplate?.text ?? null;
 
   const exportOrders = useCallback(() => {
-    downloadTextFile(
-      `orders-turn-${parsed?.header.turnNumber ?? "unknown"}.txt`,
-      ordersExportText(ordersDocument, ordersTemplateText, false),
-      "text/plain"
-    );
-  }, [ordersDocument, ordersTemplateText, parsed]);
+    void deliverOrdersExport(saveTextFile, parsed?.header.turnNumber, ordersDocument, ordersTemplateText, false);
+  }, [ordersDocument, ordersTemplateText, parsed, saveTextFile]);
 
   /**
    * The same file, with the server's long-format unit descriptions put back in - see issue #52.
@@ -1964,12 +1988,8 @@ export function AppShell({
    * second kind of file.
    */
   const exportOrdersLong = useCallback(() => {
-    downloadTextFile(
-      `orders-turn-${parsed?.header.turnNumber ?? "unknown"}.txt`,
-      ordersExportText(ordersDocument, ordersTemplateText, true),
-      "text/plain"
-    );
-  }, [ordersDocument, ordersTemplateText, parsed]);
+    void deliverOrdersExport(saveTextFile, parsed?.header.turnNumber, ordersDocument, ordersTemplateText, true);
+  }, [ordersDocument, ordersTemplateText, parsed, saveTextFile]);
 
   /**
    * Opens the export dialog on a clean slate.
@@ -2018,13 +2038,9 @@ export function AppShell({
         // place, so nothing needs to tell them afterwards where it went. The browser gets the
         // download it is capable of. A cancelled save dialog leaves the export dialog standing:
         // nothing was written, and closing it would look as though something had been.
-        if (saveTextFile) {
-          const path = await saveTextFile(fileName, text);
-          if (path === null) {
-            return;
-          }
-        } else {
-          downloadTextFile(fileName, text, "text/plain");
+        const path = await deliverTextFile(saveTextFile, fileName, text, "text/plain");
+        if (path === null) {
+          return;
         }
         setExportOpen(false);
       } catch (error: unknown) {

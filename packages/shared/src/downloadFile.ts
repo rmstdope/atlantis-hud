@@ -20,6 +20,33 @@
  */
 export type TextFileSaver = (fileName: string, text: string) => Promise<string | null>;
 
+/**
+ * Saves through the shell's saver when there is one, else the browser download.
+ *
+ * The fork every exporter needs, pulled out once so a fourth caller cannot get it wrong: a shell
+ * that can name a path takes it, and a shell that cannot gets the anchor download instead.
+ *
+ * Resolves with the path written, `""` for a browser download (which reports none), or `null` when
+ * the player cancelled the save - in which case the download is never called.
+ *
+ * `download` exists for the tests: vitest here runs without a DOM, and `downloadTextFile` touches
+ * `document`. It defaults to the real one; callers never pass it.
+ */
+export async function deliverTextFile(
+  saver: TextFileSaver | undefined,
+  fileName: string,
+  text: string,
+  mimeType: string,
+  download: typeof downloadTextFile = downloadTextFile
+): Promise<string | null> {
+  if (saver) {
+    const path = await saver(fileName, text);
+    return path;
+  }
+  download(fileName, text, mimeType);
+  return "";
+}
+
 export function downloadTextFile(fileName: string, text: string, mimeType: string): void {
   const url = URL.createObjectURL(new Blob([text], { type: mimeType }));
   const anchor = document.createElement("a");
