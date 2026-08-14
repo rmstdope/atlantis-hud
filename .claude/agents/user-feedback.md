@@ -83,28 +83,34 @@ nothing. It says three things:
 Once, ever, guarded by its own marker rather than by your memory of the last pass:
 
 ```bash
-gh issue view <number> --json comments --jq '[.comments[].body] | join("\n")' | grep -c 'moira-ack'
+gh issue view <number> --json comments --jq '[.comments[].body] | join("\n")' \
+  | grep -cF '<!-- moira-ack -->'
 ```
+
+**The whole marker, and `-F`.** A bare `moira-ack` also matches somebody discussing the marker in the
+thread — this very paragraph would match it — and a matched substring here means a reporter is never
+thanked at all. `-F` because the marker contains `-` and `!`, which no regex should be asked to
+interpret.
 
 Non-zero means it has been acknowledged; say nothing and move on. Otherwise:
 
 ```bash
 gh issue comment <number> --body "$(cat <<'EOF'
-Thank you for taking the time to write this up — feedback from people actually playing with Atlantis
-HUD is genuinely the most useful thing we get, and a report like this one is worth a great deal more
-to us than a dozen guesses from the inside.
+Thank you for taking the time to write this up — feedback from people actually playing with Atlantis HUD is genuinely the most useful thing we get, and a report like this one is worth a great deal more to us than a dozen guesses from the inside.
 
-Someone has read it. From here on, this issue is where the news lands: we post an update as a comment
-each time the work moves on — when it is turned into a tracked work item, when it has been designed,
-when somebody starts on it, when it is merged, and when it goes out in a release. So there is nothing
-you need to chase, and nowhere else you have to watch.
+Someone has read it. From here on, this issue is where the news lands: we post an update as a comment each time the work moves on — when it is turned into a tracked work item, when it has been designed, when somebody starts on it, when it is merged, and when it goes out in a release. So there is nothing you need to chase, and nowhere else you have to watch.
 
-If anything else about it comes to mind in the meantime — a clearer way to reproduce it, a screenshot,
-what you were expecting to happen instead — please do add it to this thread. It genuinely helps.
+If anything else about it comes to mind in the meantime — a clearer way to reproduce it, a screenshot, what you were expecting to happen instead — please do add it to this thread. It genuinely helps.
 <!-- moira-ack -->
 EOF
 )"
 ```
+
+**One line per paragraph, however long, and blank lines between them.** GitHub renders a single
+newline inside a paragraph as a line break rather than a space, so a comment hard-wrapped the way
+this file's prose is arrives at the reporter ragged — and a wrap that lands mid-name gives them
+"Atlantis" on one line and "HUD" on the next. The long lines in these heredocs are deliberate; do not
+reflow them to match the surrounding text.
 
 Adapt the wording to the issue in front of you — a detailed bug report and a one-line feature idea do
 not deserve the same paragraph, and a comment that is obviously a form letter reads worse than a
@@ -260,13 +266,9 @@ scope came out narrower than the report, say so plainly and say what was left ou
 gh issue comment <number> --body "$(cat <<'EOF'
 **Now designed and queued up.**
 
-We have worked out what to do about this. The export will open a proper save dialog, so you pick the
-folder and the file name yourself and the file lands where you put it — rather than going somewhere
-the app never tells you about. The browser version keeps its ordinary download, since a web page
-cannot ask for a folder.
+We have worked out what to do about this. The export will open a proper save dialog, so you pick the folder and the file name yourself and the file lands where you put it — rather than going somewhere the app never tells you about. The browser version keeps its ordinary download, since a web page cannot ask for a folder.
 
-Nothing needed from you. The next update here will be when somebody starts on it, and the one after
-that when it has been merged.
+Nothing needed from you. The next update here will be when somebody starts on it, and the one after that when it has been merged.
 
 Tracked as ah-7pa.
 <!-- beads-state:PLANNED -->
