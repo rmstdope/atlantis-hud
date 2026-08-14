@@ -94,7 +94,27 @@ HTML mockup in front of you and wait for an answer, which print mode cannot do. 
 whose blockers are already planned, sleeping ten minutes, and refilling when the buffer drops below
 two. There is no go flag and no loop around it; the session runs until you end it.
 
-All three roles are defined in `.claude/agents/`.
+**Customer service is Moira, and she owns the inbox:**
+
+```bash
+scripts/run-customer-service
+```
+
+Interactive for the same reason the planner is — she has to put an issue in front of you and wait.
+She walks the open GitHub issues oldest first. One with no bead is brought to you with a
+recommendation, and **you** decide between three answers: make it a bead, ask the reporter for more,
+or close it as invalid — she writes up whichever you choose and never decides one herself. A bead
+created this way links back with `--external-ref gh-<n>`, which is what makes an issue and its bead
+findable from either end.
+
+One that already has a bead gets a status comment when its bead moves: `CREATED`, `PLANNED`,
+`CLAIMED`, `MERGED`, `RELEASED`, one comment each and never repeated — a `<!-- beads-state:X -->`
+marker in the comment is how she knows what the issue has already been told. `RELEASED` means the
+commit naming the bead is contained in a release tag, and it is the one state that also closes the
+issue: the version is either out or it is not, so no decision is being taken. Then she sleeps ten
+minutes and goes round again.
+
+All four roles are defined in `.claude/agents/`.
 
 ## Skills Usage
 
