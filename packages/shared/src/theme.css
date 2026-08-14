@@ -184,12 +184,25 @@
  * world the way the outline itself does. Dividing it out here would make it overflow its own
  * outline as the map zooms out. `font-size` and `letter-spacing` are set inline per piece, from
  * that fit; only what does not vary per piece lives here.
+ *
+ * The outline itself is the opposite: screen-constant chrome, like the selection and focus rings,
+ * via `vector-effect="non-scaling-stroke"` on the `<path>` in `MapCanvas.tsx`. It has to stay
+ * legible against the hex lattice at every zoom, so its width and dash length hold in screen
+ * pixels rather than shrinking with the world the way the name does.
  */
 .region-outline {
   stroke: var(--color-ink-soft);
-  stroke-width: 1.2;
-  stroke-dasharray: 4 3;
-  opacity: 0.7;
+  stroke-width: 3;
+  stroke-dasharray: 9 5;
+  stroke-linecap: round;
+}
+
+.region-outline-halo {
+  stroke: var(--color-ground);
+  stroke-width: 5.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.8;
 }
 
 .region-name {

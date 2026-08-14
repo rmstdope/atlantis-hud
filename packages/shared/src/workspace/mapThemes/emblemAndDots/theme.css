@@ -250,3 +250,12 @@
 .map-theme-emblem-and-dots.map-mid .ed-label {
   display: none;
 }
+
+/* The province border, in this theme's own ink over its own ground - see theme.css. */
+.map-theme-emblem-and-dots .region-outline {
+  stroke: var(--ed-ink);
+}
+
+.map-theme-emblem-and-dots .region-outline-halo {
+  stroke: var(--ed-halo);
+}

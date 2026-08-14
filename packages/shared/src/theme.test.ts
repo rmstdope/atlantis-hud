@@ -193,4 +193,20 @@ describe("map theme stylesheets", () => {
       expect(imported).toContain(`mapThemes/${sheet.theme}/theme.css`);
     }
   });
+
+  it("colours the province border in every theme's own ink", async () => {
+    // A theme's directory is its id in camelCase (cartographers-table -> cartographersTable), the
+    // same transform `docs/ui/map-themes.md` describes for the folder-to-id relationship.
+    const { MAP_THEMES } = await import("./workspace/mapThemes/index");
+    const folderNameOf = (id: string) => id.replace(/-([a-z])/g, (_match, letter) => letter.toUpperCase());
+    const sheets = await themeSheets();
+
+    for (const theme of MAP_THEMES) {
+      const sheet = sheets.find((candidate) => candidate.theme === folderNameOf(theme.id));
+
+      expect(sheet, `no stylesheet directory for theme "${theme.id}"`).toBeDefined();
+      expect(sheet!.source).toContain(`.map-theme-${theme.id} .region-outline`);
+      expect(sheet!.source).toContain(`.map-theme-${theme.id} .region-outline-halo`);
+    }
+  });
 });

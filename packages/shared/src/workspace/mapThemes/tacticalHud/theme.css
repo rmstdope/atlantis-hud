@@ -233,3 +233,12 @@
 .map-theme-tactical-hud.map-far [data-station="guard"] {
   display: initial;
 }
+
+/* The province border, in this theme's own ink over its own ground - see theme.css. */
+.map-theme-tactical-hud .region-outline {
+  stroke: var(--hud-ink);
+}
+
+.map-theme-tactical-hud .region-outline-halo {
+  stroke: var(--hud-panel);
+}

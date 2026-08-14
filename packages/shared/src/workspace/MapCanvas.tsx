@@ -783,9 +783,28 @@ export function MapCanvas({
           */}
           {badges.regions && (
             <g data-testid="region-decorations" pointerEvents="none">
+              {/*
+                Two passes, not two siblings per piece: a shared province boundary is in both
+                neighbours' outlines, so every halo has to be painted before any ink or one
+                piece's halo buries the piece next to it along their common edge.
+              */}
+              {regionPieces.map((piece) => (
+                <path
+                  key={`halo-${piece.province}-${piece.label.x}-${piece.label.y}`}
+                  d={piece.outline}
+                  className="region-outline-halo"
+                  fill="none"
+                  vectorEffect="non-scaling-stroke"
+                />
+              ))}
               {regionPieces.map((piece) => (
                 <g key={`${piece.province}-${piece.label.x}-${piece.label.y}`}>
-                  <path d={piece.outline} className="region-outline" fill="none" />
+                  <path
+                    d={piece.outline}
+                    className="region-outline"
+                    fill="none"
+                    vectorEffect="non-scaling-stroke"
+                  />
                   <text
                     x={piece.label.x}
                     y={piece.label.y}

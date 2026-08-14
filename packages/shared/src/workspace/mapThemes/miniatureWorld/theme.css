@@ -375,3 +375,12 @@
 .map-theme-miniature-world.map-mid .mw-label {
   display: none;
 }
+
+/* The province border, in this theme's own ink over its own ground - see theme.css. */
+.map-theme-miniature-world .region-outline {
+  stroke: var(--mw-edge);
+}
+
+.map-theme-miniature-world .region-outline-halo {
+  stroke: var(--mw-tape);
+}
