@@ -258,8 +258,12 @@ export function UnitTableDock({
 
   // The fixed-size reservation: one header's worth of height plus the configured row count,
   // whatever the hex holds. `head` is null on first paint and on every Absent branch, which is
-  // why the fallback is the last real header height ever measured rather than a bare 0.
-  const reservedHeight = (head?.offsetHeight ?? lastHeadHeight.current) + unitListLimit * ROW_HEIGHT;
+  // why the fallback is the last real header height ever measured rather than a bare 0. Read only
+  // when the option is on: `head?.offsetHeight` forces a layout read, and the default mode has no
+  // use for this figure at all - it keeps its own `maxHeight` read below, unchanged.
+  const reservedHeight = unitListFixedSize
+    ? (head?.offsetHeight ?? lastHeadHeight.current) + unitListLimit * ROW_HEIGHT
+    : 0;
   // Shared by both Absent branches below, so the reservation cannot drift between them.
   const reservedStyle = unitListFixedSize ? { height: reservedHeight } : undefined;
 

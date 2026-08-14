@@ -56,7 +56,10 @@ export function UnitListLimitStepper({
         // count crosses from 9 to 10 and the label grows a character.
         className="min-w-[3.5ch] text-center text-[11px] tabular-nums text-ink-dim"
         // Announced as it changes, since the thing it describes - the height of the pane behind
-        // the button - is not something a screen reader can see move.
+        // the button - is not something a screen reader can see move. In fixed mode the visible
+        // text is a bare number, which a screen reader would otherwise announce with no context
+        // at all - the explicit label restores it without changing what sighted users read.
+        aria-label={fixed ? `${value} rows, fixed` : undefined}
         aria-live="polite"
       >
         {fixed ? value : `max ${value}`}
