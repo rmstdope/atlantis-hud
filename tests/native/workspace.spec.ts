@@ -76,53 +76,31 @@ describe("native desktop workspace", () => {
     );
   });
 
-  it("exports edited orders with the #atlantis header intact", async () => {
+  it("edits orders and persists the draft to the sidecar database", async () => {
     await selectUnit(OWN_UNIT);
     await fillOrders("@work");
     await expect($('[data-testid="orders-status"]')).toHaveText(
       expect.stringContaining("0 errors")
     );
 
-    // The export hands a Blob to `URL.createObjectURL` on its way to the anchor download, and
-    // the download itself is browser chrome WebKitGTK gives WebDriver no view of. Capturing the
-    // Blob at the URL boundary exercises the whole export path the application owns.
-    await browser.execute(() => {
-      const scope = window as unknown as { __exportCaptures?: Blob[] };
-      scope.__exportCaptures = [];
-      const original = URL.createObjectURL.bind(URL);
-      URL.createObjectURL = (source: Blob | MediaSource) => {
-        if (source instanceof Blob) {
-          scope.__exportCaptures?.push(source);
-        }
-        return original(source);
-      };
-    });
+    // This used to click through to Export and capture the file at the `URL.createObjectURL`
+    // boundary the way orders used to leave the app. Since ah-7pa, orders export goes through the
+    // native save dialog - an OS window WebDriver cannot see, and cannot drive: Tauri defines
+    // `__TAURI_INTERNALS__.invoke` with `Object.defineProperty` and no `writable`/`configurable`,
+    // specifically so a page script cannot intercept or replace it, which is exactly what a
+    // WebDriver-injected stub is. Clicking the real button here would open a real, un-dismissable
+    // GTK dialog in CI with nothing to answer it.
+    //
+    // The content that used to be asserted here - the `#atlantis` header, the edited order text -
+    // is still covered: `deliverOrdersExport`'s own unit tests
+    // (`packages/shared/src/workspace/AppShell.test.ts`) prove it is built and handed to the
+    // saver/download fork correctly, and the Playwright smoke suite exercises the same
+    // `ordersExportText` output end-to-end against the web build's anchor download, which this
+    // change left untouched. What only this native suite can still see is the sidecar-database
+    // side of an edit, which does not depend on export at all - the workspace autosaves.
 
-    // Both exports live behind one header button now, so the menu is opened first. By test id
-    // rather than by text: the trigger's text carries a chevron beside the word, and what a text
-    // selector makes of that is the driver's business rather than something to bet a suite on.
-    await $('[data-testid="export-menu"]').click();
-    await $('[data-testid="export-orders"]').click();
-
-    const exported = await browser.executeAsync<string | null, []>((done) => {
-      const scope = window as unknown as { __exportCaptures?: Blob[] };
-      const blob = scope.__exportCaptures?.[0];
-      if (!blob) {
-        done(null);
-        return;
-      }
-      blob.text().then(done);
-    });
-
-    if (exported === null) {
-      throw new Error("the export never handed a Blob to URL.createObjectURL");
-    }
-    expect(exported.startsWith("#atlantis")).toBe(true);
-    expect(exported).toContain("@work");
-
-    // The edit also has to survive as a draft in the sidecar database. Polled, because the
-    // shell is free to flush drafts asynchronously; read-only, because the shell holds the
-    // writing connection.
+    // Polled, because the shell is free to flush drafts asynchronously; read-only, because the
+    // shell holds the writing connection.
     await browser.waitUntil(
       () => {
         const db = openGameDb();
