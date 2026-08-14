@@ -3,8 +3,8 @@
  *
  * A province is never stored as a group anywhere in the model - only as a name on each hex - so
  * this module builds the grouping itself: flood-fill same-province neighbours into connected
- * pieces, trace each piece's boundary as one SVG path, and place a name that is sized to the piece
- * it names, the way a printed atlas sets a province's name to the size of the province.
+ * pieces, trace each piece's boundary as one SVG path, and place a name for it. Every name renders
+ * at the same fixed size (MapCanvas/theme.css), whatever the size of the piece it names.
  *
  * Pure, no React, following `routeOverlay.ts` as the precedent for "overlay as a function,
  * MapCanvas renders it".
@@ -19,14 +19,7 @@ export type RegionPiece = {
   hexCount: number;
   /** One SVG path `d`, world units, unordered M/L segment pairs - one per boundary edge. */
   outline: string;
-  label: {
-    x: number;
-    y: number;
-    text: string;
-    fontSize: number;
-    letterSpacing: number;
-    haloWidth: number;
-  };
+  label: { x: number; y: number; text: string };
 };
 
 /**
@@ -45,13 +38,6 @@ const NEIGHBOR_OFFSETS: ReadonlyArray<{ dx: number; dy: number }> = [
   { dx: 0, dy: -2 },
   { dx: 1, dy: -1 }
 ];
-
-const BASE_FONT_SIZE = 11;
-const BASE_LETTER_SPACING = 3.4;
-const BASE_HALO_WIDTH = 3;
-const FIT_FLOOR = 0.42;
-const SPAN_FACTOR = 0.94;
-const CHAR_FACTOR = 0.62;
 
 function keyOf(x: number, y: number): string {
   return `${x},${y}`;
@@ -180,23 +166,6 @@ function labelAnchor(piece: HexNode[]): { x: number; y: number } {
 }
 
 /**
- * Sets the name's size to the piece it names, the way an atlas does: the natural width of the
- * text at full size against the width the piece's outline actually offers, floored so a name too
- * small to hold at readable size still names its piece rather than vanishing.
- */
-function fitScale(piece: HexNode[], text: string): number {
-  const centers = piece.map(worldCenter);
-  const minX = Math.min(...centers.map((c) => c.x));
-  const maxX = Math.max(...centers.map((c) => c.x));
-  const span = (maxX - minX + 2 * HEX_RADIUS) * SPAN_FACTOR;
-  const natural = text.length * (CHAR_FACTOR * BASE_FONT_SIZE + BASE_LETTER_SPACING);
-  if (natural === 0) {
-    return 1;
-  }
-  return Math.min(1, Math.max(FIT_FLOOR, span / natural));
-}
-
-/**
  * Every known province, outlined and named: one piece per connected group of same-province hexes
  * on the given level. A province discovered in two places is outlined and named twice, once per
  * piece - see the acceptance criteria on disjoint pieces.
@@ -207,19 +176,11 @@ export function regionDecorations(hexes: HexNode[], level: number): RegionPiece[
 
   return pieces.map((piece) => {
     const anchor = labelAnchor(piece);
-    const scale = fitScale(piece, piece[0].province);
     return {
       province: piece[0].province,
       hexCount: piece.length,
       outline: outlineOf(piece),
-      label: {
-        x: anchor.x,
-        y: anchor.y,
-        text: piece[0].province,
-        fontSize: BASE_FONT_SIZE * scale,
-        letterSpacing: BASE_LETTER_SPACING * scale,
-        haloWidth: BASE_HALO_WIDTH * scale
-      }
+      label: { x: anchor.x, y: anchor.y, text: piece[0].province }
     };
   });
 }
