@@ -19,7 +19,8 @@ jobs:
   # Three exempt trees, none of them read by anything CI runs: docs/ is the project's own
   # documentation; .claude/ is the fleet's - agent roles, skills and settings, which shape how the
   # agents work and never reach the application; and .github/ is repository configuration, issue
-  # templates and the like.
+  # templates and the like. Two root files join them, exact-matched: README.md and the CLAUDE.md
+  # symlink path.
   #
   # .github/workflows/ is the exception to that exception, and runs everything - see the gate
   # itself below.
@@ -54,11 +55,17 @@ jobs:
           # itself lives in, and the tests that guard it run inside the `checks` job below - exempt
           # those too and a PR editing this file would skip its own examiner.
           #
-          # Anchored on the directory, and the dots escaped: `^docs` would let `docsite/build.ts`
-          # skip the suite, and an unescaped `.claude` would match `xclaude/`.
+          # The three trees are exempt wholesale - nothing CI builds, tests or runs reads anything
+          # under docs/, .claude/ or .github/ (workflows carved back out above). Two root files are
+          # exempt too, exact-matched rather than as a prefix: README.md and the CLAUDE.md symlink
+          # path (a PR that only retargets the symlink lists "CLAUDE.md" itself, not its target).
+          #
+          # Anchored on the directory or the whole filename, and the dots escaped: `^docs` would let
+          # `docsite/build.ts` skip the suite, an unescaped `.claude` would match `xclaude/`, and an
+          # unanchored `README\.md` would let `README.md.ts` skip it too.
           if [ -z "$FILES" ] \
             || echo "$FILES" | grep -q '^\.github/workflows/' \
-            || echo "$FILES" | grep -qvE '^(docs|\.claude|\.github)/'; then
+            || echo "$FILES" | grep -qvE '^((docs|\.claude|\.github)/|README\.md$|CLAUDE\.md$)'; then
             echo "code=true" >> "$GITHUB_OUTPUT"
           else
             echo "code=false" >> "$GITHUB_OUTPUT"

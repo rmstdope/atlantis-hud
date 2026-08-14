@@ -203,6 +203,18 @@ describe("the prose-only fast path", () => {
     );
   });
 
+  it("takes the fast path for root prose files, exact-matched", () => {
+    // README.md and the CLAUDE.md symlink path are prose, but they live at the repo root rather
+    // than under an exempt tree - PR #160's whole-suite-twice cost also applies here, since a PR
+    // that only retargets the CLAUDE.md symlink lists "CLAUDE.md" itself, not its target.
+    expect(runsEverything(["README.md"])).toBe(false);
+    expect(runsEverything(["CLAUDE.md"])).toBe(false);
+  });
+
+  it("runs everything for a diff mixing root prose with a source file", () => {
+    expect(runsEverything(["README.md", "scripts/release.ts"])).toBe(true);
+  });
+
   it("runs everything for a workflow change, so the gate cannot exempt itself", () => {
     // `.github/` is exempt but `.github/workflows/` is not, and this is why: the tests in this file
     // are what stop a broken gate reaching main, and they run inside the `checks` job. Exempt the
@@ -229,6 +241,19 @@ describe("the prose-only fast path", () => {
     expect(runsEverything(["xclaude/thing.ts"])).toBe(true);
     expect(runsEverything(["xgithub/thing.ts"])).toBe(true);
     expect(runsEverything(["packages/docs/src/index.ts"])).toBe(true);
+
+    // The root-file entries are exact matches, not prefixes: README.mdx and README.md.ts are not
+    // README.md, and must not skip the suite either.
+    expect(runsEverything(["README.mdx"])).toBe(true);
+    expect(runsEverything(["README.md.ts"])).toBe(true);
+  });
+
+  it("takes the fast path for a .claude/settings.json-only diff, per PR #172's decision", () => {
+    // PR #172 deliberately exempted `.claude/` wholesale rather than only `.claude/**/*.md`: the
+    // gate's criterion is reachability by CI, not "is it prose", and nothing CI builds, tests or
+    // runs reads anything under `.claude/`. Pinned here so a later "tidy-up" cannot narrow it
+    // silently.
+    expect(runsEverything([".claude/settings.json"])).toBe(false);
   });
 
   it("falls open to running everything when the event is not a pull request", () => {
