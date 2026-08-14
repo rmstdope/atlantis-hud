@@ -20,16 +20,17 @@ describe("shouldConfirmOlderTurnLoad", () => {
 });
 
 describe("deliverOrdersExport", () => {
-  it("calls the injected saver when the shell provides one", async () => {
+  it("forwards the shell's saver into deliverTextFile, which is what actually calls it", async () => {
     const saver = vi.fn().mockResolvedValue("/chosen/orders-turn-71.txt");
     const deliver = vi.fn().mockResolvedValue("/chosen/orders-turn-71.txt");
 
     await deliverOrdersExport(saver, 71, "unit 1 : work", null, false, deliver);
 
     expect(deliver).toHaveBeenCalledWith(saver, "orders-turn-71.txt", "unit 1 : work", "text/plain");
+    expect(saver).not.toHaveBeenCalled();
   });
 
-  it("downloads in a browser shell, with no saver injected", async () => {
+  it("forwards an undefined saver into deliverTextFile, which is what falls back to downloading", async () => {
     const deliver = vi.fn().mockResolvedValue("");
 
     await deliverOrdersExport(undefined, 71, "unit 1 : work", null, false, deliver);
