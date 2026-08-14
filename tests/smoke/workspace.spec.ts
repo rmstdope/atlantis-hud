@@ -27,17 +27,23 @@ const REPORT = readFileSync(
   join(__dirname, "..", "fixtures", "reports", "neworigins-3.0.0-g7-f95-t71.rep"),
   "utf8"
 );
-/** Another faction, and another turn: it can be switched to, but never merged. */
+/**
+ * Another faction, and an older turn - gh-208: age outranks ownership, so this is now stored for
+ * history rather than offered as a switch or a merge.
+ */
 const OTHER_FACTION_OLDER = readFileSync(
   join(__dirname, "..", "fixtures", "reports", "neworigins-3.0.0-g8-f73-t2.rep"),
   "utf8"
 );
-/** Another faction, same turn: the one case a merge is offered for. */
+/**
+ * Another faction, same turn: the one case a merge is offered for, and (since it is not older) also
+ * the fixture used to prove switching and cancelling still work on the foreign-report prompt.
+ */
 const ALLY_REPORT = readFileSync(
   join(__dirname, "..", "fixtures", "reports", "neworigins-3.0.0-g8-f73-t71.rep"),
   "utf8"
 );
-/** The player's own faction, one turn back, which is what the plain older-turn warning guards. */
+/** The player's own faction, one turn back - gh-208's plain case: stored for history, not shown. */
 const OWN_OLDER_REPORT = readFileSync(
   join(__dirname, "..", "fixtures", "reports", "neworigins-3.0.0-g7-f95-t70.rep"),
   "utf8"
@@ -139,39 +145,68 @@ async function choose(page: Page, name: string, contents: string) {
 }
 
 /**
- * An older report of the player's *own* faction still gets the plain warning from issue #47.
+ * gh-208: an older report of the player's *own* faction is stored for history and never shown -
+ * issue #47's confirm-and-switch dialog is gone.
  *
  * Kept on its own fixture rather than reusing faction 73's turn 2, which is also another faction
- * and so now goes to the prompt below instead. Without this the native confirmation would have no
- * end-to-end coverage at all and could be deleted by a refactor without anything failing.
+ * and proves the same rule applies there too, in the test below.
  */
-test("an older report from your own faction still asks first", async ({ page }) => {
+test("an older own report is stored for history, not shown", async ({ page }) => {
   await loadReport(page);
   await expect(page.getByTestId("app-header")).toContainText(/Turn\s*71\b/);
 
-  const dialog = page.waitForEvent("dialog");
-  await choose(page, "turn-70.rep", OWN_OLDER_REPORT);
-  const confirmation = await dialog;
-  expect(confirmation.type()).toBe("confirm");
-  expect(confirmation.message()).toContain("older than the currently loaded turn");
-  await confirmation.dismiss();
+  // No native dialog and no foreign-report prompt - either would mean the old behaviour survived.
+  let dialogSeen = false;
+  page.on("dialog", (dialog) => {
+    dialogSeen = true;
+    void dialog.dismiss();
+  });
 
+  await choose(page, "turn-70.rep", OWN_OLDER_REPORT);
+
+  const status = page.getByTestId("import-status");
+  await expect(status).toContainText("stored for history");
+  // The status line earns its room back for a message worth reading - see "the header keeps quiet
+  // about routine state" - and this one is worth reading precisely because nothing moved on screen.
+  await expect.poll(async () => (await status.boundingBox())?.width ?? 0).toBeGreaterThan(1);
+  expect(dialogSeen).toBe(false);
+  await expect(page.getByTestId("foreign-report-prompt")).toHaveCount(0);
   await expect(page.getByTestId("app-header")).toContainText(/Turn\s*71\b/);
+  await expect(page.getByTestId("app-header")).toContainText("Borg TNG (95)");
+
+  // The one observable proof the commit really landed: turn 70 now shows up in the turn picker,
+  // even though it never touched the screen.
+  await page.getByTestId("turn-chip").click();
+  await expect(page.getByTestId("turn-picker")).toBeVisible();
+  await expect(page.getByTestId("turn-row-71")).toContainText("playing");
+  await expect(page.getByTestId("turn-row-70")).toBeVisible();
+});
+
+/**
+ * gh-208: age outranks ownership - an older report from *another* faction is stored the same way,
+ * and never reaches the foreign-report prompt at all.
+ */
+test("an older foreign report is stored for history too, not shown", async ({ page }) => {
+  await loadReport(page);
+  await expect(page.getByTestId("app-header")).toContainText(/Turn\s*71\b/);
+
+  await choose(page, "turn-2.rep", OTHER_FACTION_OLDER);
+
+  await expect(page.getByTestId("import-status")).toContainText("stored for history");
+  await expect(page.getByTestId("foreign-report-prompt")).toHaveCount(0);
+  await expect(page.getByTestId("app-header")).toContainText(/Turn\s*71\b/);
+  await expect(page.getByTestId("app-header")).toContainText("Borg TNG (95)");
 });
 
 test("a report from another faction can be turned away", async ({ page }) => {
   await loadReport(page);
   await expect(page.getByTestId("app-header")).toContainText(/Turn\s*71\b/);
 
-  await choose(page, "turn-2.rep", OTHER_FACTION_OLDER);
+  await choose(page, "turn-71-f73.rep", ALLY_REPORT);
 
   const prompt = page.getByTestId("foreign-report-prompt");
   await expect(prompt).toBeVisible();
-  // Another turn, so merging is not on offer at all, and the box says why as well as warning that
-  // the report is older than the one loaded.
-  await expect(page.getByTestId("foreign-report-merge")).toHaveCount(0);
-  await expect(prompt).toContainText("Merging needs a report from turn 71");
-  await expect(prompt).toContainText("older than the turn you have loaded");
+  await expect(page.getByTestId("foreign-report-merge")).toBeVisible();
 
   await page.getByTestId("foreign-report-cancel").click();
 
@@ -184,10 +219,10 @@ test("a report from another faction can take over the workspace", async ({ page 
   await loadReport(page);
   await expect(page.getByTestId("app-header")).toContainText(/Turn\s*71\b/);
 
-  await choose(page, "turn-2.rep", OTHER_FACTION_OLDER);
+  await choose(page, "turn-71-f73.rep", ALLY_REPORT);
   await page.getByTestId("foreign-report-switch").click();
 
-  await expect(page.getByTestId("app-header")).toContainText(/Turn\s*2\b/);
+  await expect(page.getByTestId("app-header")).toContainText(/Turn\s*71\b/);
   await expect(page.getByTestId("app-header")).toContainText("Borg (73)");
 });
 
