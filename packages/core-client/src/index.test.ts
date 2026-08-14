@@ -1041,6 +1041,40 @@ describe("listing imported turns", () => {
 });
 
 /**
+ * Loading one imported turn to compare against the working one (ah-jg6.3/ah-6l2).
+ *
+ * `loadLatestImportedTurn` right above this in the source already guards against both `null` and
+ * `undefined` for Rust's `None`, with a comment explaining why: serde_wasm_bindgen can emit either.
+ * `loadImportedTurn` only checked `null` - so an adapter answering `undefined` for "no such turn"
+ * threw out of `normalizeImportedTurnRecord` instead of resolving to `null` like its sibling, and
+ * that throw had nowhere caught to land (ah-6l2).
+ */
+describe("loading one imported turn", () => {
+  const DB = "/tmp/campaign.atlantis-game.sqlite";
+
+  it("treats undefined the same as null for Rust's None, like loadLatestImportedTurn does", async () => {
+    const invoke: TauriInvoke = <T,>() => Promise.resolve(undefined as T);
+
+    await expect(
+      createCoreClient(createTauriAdapter(invoke)).loadImportedTurn(DB, "g", "faction-95", 70)
+    ).resolves.toBeNull();
+  });
+});
+
+/** Same "nothing stored yet" shape as loading an imported turn, and the same gap it had (ah-6l2). */
+describe("loading an order draft", () => {
+  const DB = "/tmp/campaign.atlantis-game.sqlite";
+
+  it("treats undefined the same as null for Rust's None", async () => {
+    const invoke: TauriInvoke = <T,>() => Promise.resolve(undefined as T);
+
+    await expect(
+      createCoreClient(createTauriAdapter(invoke)).loadOrderDraft(DB, "g", "faction-95", 70)
+    ).resolves.toBeNull();
+  });
+});
+
+/**
  * Changing a game's ruleset after creation, across the same boundary as everything else.
  *
  * Same literal argument-name assertions as the merge suite above, and for the same reason: a

@@ -1817,7 +1817,10 @@ export function createCoreClient(adapter: CoreAdapter): CoreClient {
     },
     async loadImportedTurn(databasePath: string, gameId: string, factionId: string, turnNumber: number) {
       const value = await adapter.loadImportedTurn(databasePath, gameId, factionId, turnNumber);
-      if (value === null) {
+      // Undefined as well as null, for the same reason loadLatestImportedTurn below treats them
+      // alike: serde_wasm_bindgen can emit either for Rust's None, and a turn that genuinely is
+      // not there must not read as a payload that failed to normalize (ah-6l2).
+      if (value === null || value === undefined) {
         return null;
       }
       return normalizeImportedTurnRecord(value);
@@ -1846,7 +1849,9 @@ export function createCoreClient(adapter: CoreAdapter): CoreClient {
     },
     async loadOrderDraft(databasePath: string, gameId: string, factionId: string, turnNumber: number) {
       const value = await adapter.loadOrderDraft(databasePath, gameId, factionId, turnNumber);
-      if (value === null) {
+      // Undefined as well as null, for the same reason loadImportedTurn does above (ah-6l2): a
+      // sibling load with the identical "nothing stored yet" shape had the identical gap.
+      if (value === null || value === undefined) {
         return null;
       }
 
