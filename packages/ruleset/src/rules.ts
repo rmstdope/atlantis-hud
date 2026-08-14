@@ -205,7 +205,7 @@ export function parseMovementRules(html: string): MovementRules {
     text,
     "sailing",
     new RegExp(
-      `For a fleet to enter any region only costs ${NUMBER_PATTERN} movement point`,
+      `For a fleet to enter any region only costs ${NUMBER_PATTERN} movement points?`,
       "i"
     )
   );
