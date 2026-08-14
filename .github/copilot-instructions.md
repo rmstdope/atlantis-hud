@@ -123,8 +123,15 @@ One that already has a bead gets a status comment when its bead moves: `CREATED`
 `CLAIMED`, `MERGED`, `RELEASED`, one comment each and never repeated — a `<!-- beads-state:X -->`
 marker in the comment is how she knows what the issue has already been told. `RELEASED` means the
 commit naming the bead is contained in a release tag, and it is the one state that also closes the
-issue: the version is either out or it is not, so no decision is being taken. Then she sleeps ten
-minutes and goes round again.
+issue: the version is either out or it is not, so no decision is being taken.
+
+Last in each pass she sweeps for the one contradiction her open-issue list cannot show her: **an
+issue somebody closed by hand while its bead is still open.** Her own closes only ever follow a
+RELEASED bead, so anything she finds here was closed by a reporter, a duplicate merge or a slip — and
+those want opposite things done about them. She brings it to you with who closed it and when, and
+**you** choose between reopening the issue, closing the bead, or unlinking the two; if you are away
+the bead is parked with `human` rather than the question being asked again ten minutes later. Then
+she sleeps ten minutes and goes round again.
 
 All four roles are defined in `.claude/agents/`.
 

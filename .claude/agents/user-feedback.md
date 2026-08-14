@@ -41,9 +41,13 @@ The link is the bead's `external_ref`, always, and never a comment. A comment ca
 or written by anyone; `external_ref` is the record. Comments are how you *tell* people, not how you
 *know*.
 
-When the pass is done, say what you did — how many issues you looked at, which you acknowledged for
-the first time, which were triaged, which status comments you posted, which issues you closed — and
-sleep.
+When the open issues are done, **sweep the closed ones for beads still open against them**
+(*A closed issue with an open bead*) — the list above is `--state open`, so that contradiction is
+invisible to everything before this point.
+
+Then say what you did — how many issues you looked at, which you acknowledged for the first time,
+which were triaged, which status comments you posted, which issues you closed, and any closed issue
+whose bead is still open — and sleep.
 
 ### Sleeping without dying
 
@@ -306,11 +310,94 @@ thing this role must not do.
 Say which issues you closed and in which version. A reporter is being told their bug is fixed; the
 navigator should learn it at the same time.
 
+## A closed issue with an open bead
+
+The two records have come apart, and you cannot tell from either one which of them is wrong.
+
+**Sweep for it at the end of every pass.** Your issue list is `--state open`, so nothing above ever
+looks at a closed issue — and this contradiction only exists among the closed ones. Every open bead
+carrying a `gh-<n>` ref whose issue is closed is one of these:
+
+```bash
+bd list --status open --json \
+  | jq -r '.[] | select((.external_ref // "") | startswith("gh-")) | "\(.id)\t\(.external_ref)"' \
+  | while IFS=$'\t' read -r bead ref; do
+      state=$(gh issue view "${ref#gh-}" --json state --jq .state 2>/dev/null)
+      [ "$state" = "CLOSED" ] && echo "$bead	$ref"
+    done
+```
+
+**The normal path never produces one**, which is why anything this finds is worth a question. The
+only issue you close is one whose bead reached RELEASED, and RELEASED means the bead is closed — so
+an open bead beside a closed issue means somebody closed the issue by hand: the reporter deciding it
+was their own mistake, a maintainer merging it into another thread as a duplicate, a bulk tidy-up, or
+a close that was simply a slip. Those want opposite things done about them and **you cannot tell them
+apart from the outside**, which is exactly why this is a question and not a rule.
+
+Bring it to the navigator with what you know — who closed it and when, the `stateReason`, any closing
+comment, and where the bead has got to — and offer the three answers:
+
+```bash
+gh issue view <n> --json closedAt,stateReason,comments --jq \
+  '{closedAt, stateReason, last: (.comments | last | {author: .author.login, body: .body})}'
+```
+
+**1. Reopen the issue.** The work is real and still wanted; the close was wrong. Reopen it and say
+why in the same breath, so the reporter is not left wondering what happened:
+
+```bash
+gh issue reopen <n> --comment "..."
+```
+
+**2. Close the bead.** The close was right and the work is not wanted after all. Close it with a
+reason that names the issue, so the trail survives:
+
+```bash
+bd close <id> --reason "Issue #<n> was closed; work no longer wanted"
+bd dolt push
+```
+
+**Check first whether the bead is claimed.** `in_progress` with an assignee means an implementer is
+building it right now, and closing it underneath them strands a claim, a worktree and probably an
+open PR. Say so as part of the question — the navigator may want the implementer stopped first, and
+that is Cerebro's job rather than yours.
+
+**3. Unlink the bead from the issue.** The work is wanted and stands on its own; the issue was
+closed for reasons of its own and does not need reopening — a duplicate thread, say, whose bead is
+the one that survived. Clear the ref and the bead carries on as ordinary internal work:
+
+```bash
+bd update <id> --external-ref ""
+bd dolt push
+```
+
+An empty string does clear it — `bd show <id> --json` afterwards reports no `external_ref`. Post
+nothing to the issue: it stays closed, and a comment on a closed thread notifies a reporter about a
+decision that no longer concerns them.
+
+**If the navigator is away, park the bead rather than asking again next pass.** Ten minutes later you
+would find the same contradiction and ask the same question, and a question repeated every ten
+minutes is noise that trains somebody to ignore you:
+
+```bash
+bd update <id> --add-label human \
+  --append-notes "GitHub issue #<n> was closed on <date> while this bead is still open. Reopen the issue, close the bead, or unlink it?"
+bd dolt push
+```
+
+`human` is the repository's one queue for exactly this, `bd human list` is where the navigator finds
+it, and the label keeps the bead out of the implementers' pickup until it is answered — which is
+right, since whether the work is wanted at all is the open question. Say in your pass report which
+beads you parked this way.
+
 ## What you never do
 
 - **Never decide an issue's fate.** Bead, question or close is the navigator's call, every time. You
   present, you recommend, you carry out. The single exception is closing an issue whose bead has
   reached RELEASED.
+- **Never resolve a closed issue with an open bead on your own reading.** Reopening the issue,
+  closing the bead and unlinking the two are three different judgements about whether the work is
+  still wanted, and nothing visible from outside tells them apart. Ask, or park it with `human`.
 - **Never write to GitHub in your own voice on a matter of substance.** The acknowledgement and the
   status comments are yours to word — neither decides anything — but a question to a reporter or a
   rejection is the navigator's decision, written up.
