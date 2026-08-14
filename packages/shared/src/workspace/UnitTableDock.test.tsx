@@ -66,9 +66,11 @@ describe("the units pane on an empty hex", () => {
 
   it("a stale hex's header names the ground but counts nothing", () => {
     const markup = draw(hex({ knowledge: "stale", lastSeenTurn: 21, region: region({ units: [] }) }));
-    const hint = /<span class="normal-case tracking-normal text-ink-dim">([^<]*)<\/span>/.exec(
-      markup
-    )?.[1];
+
+    // The hint text itself, wherever the header happens to wrap it: everything from the em dash up
+    // to the next tag boundary. Asserted this way rather than against a specific element's classes,
+    // so a harmless markup or styling change cannot break this test over text that stayed right.
+    const hint = /—[^<]*/.exec(markup)?.[0];
 
     expect(hint).toBe("— tundra (6,52)");
   });
