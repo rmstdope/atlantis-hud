@@ -186,7 +186,7 @@ export type ReleaseEffects = {
   headCommit: () => string;
   pushBranch: () => { ok: boolean; output: string };
   pushTag: () => { ok: boolean; output: string };
-  createTag: (tag: string, commit: string) => void;
+  createTag: (tag: string, commit: string) => { ok: boolean; output: string };
 };
 
 export type FinishReleaseResult = { ok: true } | { ok: false; output: string; advice: string[] };
@@ -221,7 +221,23 @@ export function finishRelease(
     };
   }
 
-  effects.createTag(release.tag, releaseCommit);
+  // Not retried: `createTag` failing once means the tag was not made, so a second `git tag` attempt
+  // would meet a fresh state - unlike a push, where a retry is meeting the export gate's own abort.
+  const created = effects.createTag(release.tag, releaseCommit);
+  if (!created.ok) {
+    return {
+      ok: false,
+      output: created.output,
+      advice: recoveryAdvice({
+        tag: release.tag,
+        branch: release.branch,
+        releaseCommit,
+        versionCommitPushed: true,
+        tagCreated: false,
+        tagPushed: false
+      })
+    };
+  }
 
   const tagPush = pushWithRetry(effects.pushTag, release.attempts);
   if (!tagPush.ok) {

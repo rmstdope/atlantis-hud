@@ -254,7 +254,7 @@ const finished = finishRelease(
     headCommit: () => git("rev-parse", "HEAD"),
     pushBranch: () => tryGit("push", "origin", `HEAD:${branch}`),
     pushTag: () => tryGit("push", "origin", tag),
-    createTag: (name, commit) => git("tag", name, commit)
+    createTag: (name, commit) => tryGit("tag", name, commit)
   },
   { tag, branch, attempts: PUSH_ATTEMPTS }
 );

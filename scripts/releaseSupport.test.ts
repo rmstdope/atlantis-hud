@@ -264,6 +264,7 @@ describe("finishRelease", () => {
         createTag: (tag, commit) => {
           calls.push("createTag");
           createdTag = { tag, commit };
+          return { ok: true, output: "" };
         }
       },
       { tag: "v0.5.4", branch: "main", attempts }
@@ -290,6 +291,7 @@ describe("finishRelease", () => {
         pushTag: () => ({ ok: true, output: "" }),
         createTag: () => {
           createTagCalls += 1;
+          return { ok: true, output: "" };
         }
       },
       { tag: "v0.5.4", branch: "main", attempts }
@@ -311,7 +313,7 @@ describe("finishRelease", () => {
         headCommit: () => "c24a8ba",
         pushBranch: () => ({ ok: true, output: "" }),
         pushTag: () => ({ ok: false, output: PUSH_AGAIN_MESSAGE }),
-        createTag: () => {}
+        createTag: () => ({ ok: true, output: "" })
       },
       { tag: "v0.5.4", branch: "main", attempts }
     );
@@ -332,7 +334,7 @@ describe("finishRelease", () => {
           return { ok: false, output: rejected };
         },
         pushTag: () => ({ ok: true, output: "" }),
-        createTag: () => {}
+        createTag: () => ({ ok: true, output: "" })
       },
       { tag: "v0.5.4", branch: "main", attempts }
     );
@@ -340,5 +342,30 @@ describe("finishRelease", () => {
     expect(pushBranchCalls).toBe(1);
     expect(result.ok).toBe(false);
     expect(!result.ok && result.output).toBe(rejected);
+  });
+
+  it("reports advice for a created-but-unverified tag when the tag itself fails to be created", () => {
+    // A Copilot review comment: `createTag` can fail too (a race, permissions), and swallowing
+    // that would exit the process from inside `git()` with no FinishReleaseResult at all - the
+    // very "manual recovery" this helper exists to produce. Reported like a push failure: no
+    // retry, since re-running `git tag` against a tag that already exists is a different failure.
+    const output = "git tag failed: fatal: tag 'v0.5.4' already exists";
+
+    const result = finishRelease(
+      {
+        headCommit: () => "c24a8ba",
+        pushBranch: () => ({ ok: true, output: "" }),
+        pushTag: () => ({ ok: true, output: "" }),
+        createTag: () => ({ ok: false, output })
+      },
+      { tag: "v0.5.4", branch: "main", attempts }
+    );
+
+    expect(result.ok).toBe(false);
+    expect(!result.ok && result.output).toBe(output);
+    expect(!result.ok && result.advice).toEqual([
+      "git tag v0.5.4 c24a8ba",
+      "git push origin v0.5.4"
+    ]);
   });
 });
