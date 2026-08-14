@@ -259,8 +259,7 @@ it — `bd unclaim` and `bd update --claim` do not distinguish. `assignee: Henri
 navigator is genuinely holding the bead, or it can mean an implementer claimed it, ran for a while,
 and died hours ago, leaving the claim stamped with the same name it would have had either way. A
 claim by a session that should not have claimed at all reads exactly the same, which is the other
-reason claiming is now the implementer's alone. Two
-of the navigator's own beads were found this way on 2026-08-14 — `ah-r2e` and `ah-52b`, both
+reason claiming is now the implementer's alone. Two of the navigator's own beads were found this way on 2026-08-14 — `ah-r2e` and `ah-52b`, both
 `in_progress` under a human name, both with leases expired and last heartbeat ten hours gone, neither
 held by any process in `ListAgents` or `pgrep`.
 
