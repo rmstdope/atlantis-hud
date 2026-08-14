@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The turn diff view</title>
+<style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --warn:#d9a441; --danger:#d97070;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1340px; margin-left:auto; margin-right:auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; }
+  h1 span { color:var(--brass); }
+  h2.rule { font-size:17px; letter-spacing:0.3px; margin:38px 0 4px; border-top:1px solid var(--edge); padding-top:20px; }
+  h2.rule em { color:var(--brass); font-style:normal; font-size:11px; letter-spacing:1.8px; text-transform:uppercase; margin-right:10px; }
+  header p, main > p { color:var(--ink-soft); max-width:94ch; margin-top:10px; font-size:14px; }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:0.9em; color:var(--brass-bright); }
+
+  .cards { display:grid; grid-template-columns:repeat(2,1fr); gap:20px; margin-top:22px; align-items:start; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; display:flex; flex-direction:column; gap:11px; }
+  .card h3 { font-size:17px; }
+  .card h3 em { color:var(--brass); font-style:normal; font-size:12px; letter-spacing:1.6px; margin-right:8px; }
+  .card.rec { border-color:var(--brass); }
+  .card h3 .recd { color:var(--ground); background:var(--brass); border-radius:3px; font:11px/1.6 'Helvetica Neue',Arial,sans-serif; letter-spacing:1.2px; text-transform:uppercase; padding:1px 6px; margin-left:8px; vertical-align:2px; }
+  .concept { color:var(--ink-soft); font-size:13px; min-height:3.2em; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; padding:10px; overflow:hidden; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; padding:0; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"− "; color:var(--danger); }
+
+  /* ---- app miniature ---- */
+  .app { font-family:'Helvetica Neue',Arial,sans-serif; font-size:11px; line-height:1.45; width:520px; margin:0 auto; }
+  .win { border:1px solid var(--edge); border-radius:5px; overflow:hidden; }
+  .apphdr { display:flex; align-items:center; gap:10px; padding:0 8px; height:26px;
+            background:var(--panel); border-bottom:1px solid var(--edge); white-space:nowrap; }
+  .apphdr .mark { color:var(--brass); font-size:9px; letter-spacing:1.4px; }
+  .apphdr .soft { color:var(--ink-soft); }
+  .apphdr .grow { flex:1; }
+  .apphdr .chip { border:1px solid var(--edge); background:var(--raised); border-radius:3px; padding:0 6px; color:var(--ink); font-size:10px; }
+  .apphdr .chip.hot { border-color:var(--brass); cursor:pointer; }
+  .apphdr .chip .cmp { color:var(--brass-bright); }
+  .mapbg { position:relative; height:330px; background:
+      repeating-linear-gradient(60deg, #141b23 0 9px, #151d25 9px 18px), var(--ground); overflow:hidden; }
+  .scrim { position:absolute; inset:0; background:rgba(8,11,15,.55); }
+  .dlg { position:absolute; inset:12px 26px; background:var(--panel); border:1px solid var(--edge);
+         border-radius:6px; box-shadow:0 14px 40px rgba(0,0,0,.6); display:flex; flex-direction:column; overflow:hidden; }
+  .dlg > .head { display:flex; align-items:center; gap:8px; border-bottom:1px solid var(--edge); padding:5px 10px; }
+  .dlg > .head .t { color:var(--brass); font-size:9px; letter-spacing:1.3px; text-transform:uppercase; }
+  .dlg > .head .x { margin-left:auto; color:var(--ink-dim); }
+  .dlg > .body { padding:8px 10px; overflow-y:auto; display:grid; gap:9px; align-content:start; }
+
+  .sec { color:var(--brass); font-size:9px; letter-spacing:1.2px; text-transform:uppercase; }
+  .sec .c { color:var(--ink-dim); letter-spacing:0; text-transform:none; margin-left:5px; }
+  .tabs { display:flex; gap:2px; border-bottom:1px solid var(--edge); padding:0 10px; }
+  .tabs span { padding:3px 8px; color:var(--ink-dim); border-bottom:2px solid transparent; font-size:10px; }
+  .tabs span.on { color:var(--brass); border-color:var(--brass); }
+
+  .drow { display:grid; grid-template-columns:14px 1fr; gap:6px; align-items:baseline; font-size:10.5px; }
+  .drow .g { text-align:center; }
+  .add .g { color:var(--ok); } .del .g { color:var(--danger); } .chg .g { color:var(--warn); }
+  .drow .who { color:var(--ink); }
+  .drow .who u { text-decoration:underline dotted; text-underline-offset:2px; cursor:pointer; }
+  .drow .what { color:var(--ink-soft); }
+  .drow .b { color:var(--danger); text-decoration:line-through; }
+  .drow .a { color:var(--ok); }
+  .none { color:var(--ink-dim); font-style:italic; font-size:10.5px; }
+  .ord { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:9.5px; background:var(--ground);
+         border:1px solid var(--edge-soft); border-radius:4px; padding:4px 6px; display:grid; gap:1px; }
+  .ord .del { color:var(--danger); } .ord .add { color:var(--ok); } .ord .ctx { color:var(--ink-dim); }
+
+  .dockpanel { background:var(--panel); border:1px solid var(--edge); border-radius:4px; overflow:hidden; }
+  .dockpanel > .bar { height:20px; display:flex; align-items:center; padding:0 8px;
+       color:var(--brass); font-size:9px; letter-spacing:1.3px; text-transform:uppercase; border-bottom:1px solid var(--edge); }
+  .dockpanel > .body { padding:6px 8px 8px; display:grid; gap:6px; }
+  footer { margin-top:44px; border-top:1px solid var(--edge); padding-top:16px; color:var(--ink-dim); font-size:13px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>The turn diff view <span>— reading what changed between 70 and 71</span></h1>
+  <p>Bead <code>ah-jg6.4</code>, the surface of the diff epic. A comparison is already held and
+  signalled in the Turn chip (<code>ah-jg6.3</code>, chosen: <code>71 ⇄ 70</code>); the differences
+  are already computed (<code>ah-jg6.2</code>: units added/removed/moved/changed with fields named,
+  region changes with "not seen" kept apart from "changed", orders diffs that ignore reflow). This
+  bead is where the player reads them. Two drawn questions — <b>where the view lives</b> and <b>how
+  the three categories are laid out</b> — plus two behavioural ones asked alongside.</p>
+  <p style="color:var(--ink); border-left:2px solid var(--brass); padding-left:12px; margin-top:14px;"><b style="color:var(--brass); font-weight:normal">Chosen.</b>
+  A <b>dialog</b> in the battles-view frame, its categories behind <b>Units / Regions / Orders tabs</b>
+  with counts in the tab labels (the navigator preferred tabs over the recommended stacked sections).
+  It opens from a <b>Changes chip</b> that appears in the header only while a comparison is on, and
+  clicking a unit or region named in the diff <b>selects it on the map and closes the dialog</b>.</p>
+</header>
+
+<main>
+  <h2 class="rule"><em>Question 1</em>Where the view lives</h2>
+  <p>Opened from a <b>Changes</b> chip that appears in the header while a comparison is on (drawn in
+  both stages). The battles view already chose a centred dialog for "a lot of narrative to read";
+  the dock column is the other established home.</p>
+
+  <div class="cards">
+    <div class="card rec">
+      <h3><em>A</em>A dialog, like the battles view<span class="recd">chosen</span></h3>
+      <p class="concept">A centred dialog over the workspace, the frame <code>ah-1is.2</code>
+      established for the battles view: room for all three categories, scrolling as one page,
+      dismissed by Escape, ✕ or the scrim.</p>
+      <div class="stage"><div class="app"><div class="win">
+        <div class="apphdr">
+          <span class="mark">ATLANTIS HUD</span>
+          <span class="soft">Turn</span><span class="chip hot">71 <span class="cmp">⇄ 70</span> ✕</span>
+          <span class="chip hot">Changes</span>
+          <span class="grow"></span><span class="chip">Import</span>
+        </div>
+        <div class="mapbg">
+          <div class="scrim"></div>
+          <div class="dlg">
+            <div class="head"><span class="t">Changes</span><span style="color:var(--ink)">turn 70 → 71</span><span class="x">✕</span></div>
+            <div class="body">
+              <div class="sec">Units<span class="c">2 added · 1 removed · 2 changed</span></div>
+              <div class="drow add"><span class="g">+</span><span><span class="who"><u>War Dogs (2214)</u></span> <span class="what">appeared in mountain (7,53)</span></span></div>
+              <div class="drow add"><span class="g">+</span><span><span class="who"><u>Recruits (2215)</u></span> <span class="what">appeared in forest (8,52)</span></span></div>
+              <div class="drow del"><span class="g">−</span><span><span class="who"><u>Scout (1907)</u></span> <span class="what">gone from plain (6,54)</span></span></div>
+              <div class="drow chg"><span class="g">±</span><span><span class="who"><u>Miners (1815)</u></span> <span class="what">men <span class="b">10</span> <span class="a">12</span> · items <span class="b">10 picks</span> <span class="a">12 picks</span></span></span></div>
+              <div class="drow chg"><span class="g">→</span><span><span class="who"><u>Longboat crew (1922)</u></span> <span class="what">moved mountain (7,53) → swamp (9,53)</span></span></div>
+              <div class="sec">Regions<span class="c">1 changed · 2 newly seen</span></div>
+              <div class="drow chg"><span class="g">±</span><span><span class="who"><u>mountain (7,53)</u></span> <span class="what">population <span class="b">1364</span> <span class="a">1402</span> · for sale <span class="b">11 swords @ 72</span> <span class="a">9 swords @ 78</span></span></span></div>
+              <div class="drow add"><span class="g">+</span><span><span class="what">seen in 71 only: <span class="who"><u>swamp (9,53)</u>, <u>desert (10,54)</u></span></span></span></div>
+              <div class="sec">Orders<span class="c">1 unit differs</span></div>
+              <div class="ord"><span class="ctx">unit 1815 — Miners</span><span class="del">− produce iron</span><span class="add">+ move n</span><span class="add">+ @work</span></div>
+            </div>
+          </div>
+        </div>
+      </div></div></div>
+      <ul class="notes">
+        <li>Room for everything; one scroll, three headings</li>
+        <li>Same reading frame as battles — the app's other “read a lot” surface</li>
+        <li class="con">Covers the map, so tracing a change means leaving the dialog</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h3><em>B</em>A dock panel beside the map</h3>
+      <p class="concept">A Changes panel in the left dock column while a comparison is held: the map
+      stays visible, and clicking a change can point at it immediately.</p>
+      <div class="stage"><div class="app"><div class="win">
+        <div class="apphdr">
+          <span class="mark">ATLANTIS HUD</span>
+          <span class="soft">Turn</span><span class="chip hot">71 <span class="cmp">⇄ 70</span> ✕</span>
+          <span class="chip hot">Changes</span>
+          <span class="grow"></span><span class="chip">Import</span>
+        </div>
+        <div class="mapbg">
+          <div style="position:absolute; left:8px; top:8px; width:212px; display:grid; gap:6px">
+            <div class="dockpanel"><div class="bar">Changes · 70 → 71</div>
+              <div class="body">
+                <div class="sec">Units<span class="c">5</span></div>
+                <div class="drow add"><span class="g">+</span><span class="who"><u>War Dogs (2214)</u></span></div>
+                <div class="drow del"><span class="g">−</span><span class="who"><u>Scout (1907)</u></span></div>
+                <div class="drow chg"><span class="g">±</span><span><span class="who"><u>Miners (1815)</u></span> <span class="what">men 10→12</span></span></div>
+                <div class="sec">Regions<span class="c">3</span></div>
+                <div class="drow chg"><span class="g">±</span><span class="who"><u>mountain (7,53)</u></span></div>
+                <div class="sec">Orders<span class="c">1</span></div>
+                <div class="drow chg"><span class="g">±</span><span class="who"><u>unit 1815</u></span></div>
+              </div></div>
+          </div>
+        </div>
+      </div></div></div>
+      <ul class="notes">
+        <li>The map stays visible while reading</li>
+        <li class="con">A 19rem column truncates everything — fields, market lines, order diffs</li>
+        <li class="con">Every other dock panel is hex- or unit-scoped; this one is not</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2 class="rule"><em>Question 2</em>How the three categories are laid out</h2>
+  <p>Inside whichever container: everything on one page, or one category at a time.</p>
+
+  <div class="cards">
+    <div class="card">
+      <h3><em>1</em>Stacked sections</h3>
+      <p class="concept">Units, Regions, Orders as headed sections on one scrolling page, each heading
+      carrying its counts, an empty category saying so in a line. The whole diff reads top to bottom.</p>
+      <div class="stage"><div class="app" style="width:340px">
+        <div class="dlg" style="position:static; inset:auto; height:210px">
+          <div class="head"><span class="t">Changes</span><span style="color:var(--ink)">turn 70 → 71</span><span class="x">✕</span></div>
+          <div class="body">
+            <div class="sec">Units<span class="c">2 added · 1 removed · 2 changed</span></div>
+            <div class="drow add"><span class="g">+</span><span class="who"><u>War Dogs (2214)</u></span></div>
+            <div class="drow chg"><span class="g">±</span><span><span class="who"><u>Miners (1815)</u></span> <span class="what">men <span class="b">10</span> <span class="a">12</span></span></span></div>
+            <div class="sec">Regions<span class="c">nothing changed</span></div>
+            <div class="none">No region seen in both turns changed.</div>
+            <div class="sec">Orders<span class="c">1 unit differs</span></div>
+            <div class="ord"><span class="ctx">unit 1815 — Miners</span><span class="del">− produce iron</span><span class="add">+ move n</span></div>
+          </div>
+        </div>
+      </div></div>
+      <ul class="notes">
+        <li>One glance answers “did anything change?” for all three</li>
+        <li>“Nothing changed” is a line, not a hidden empty tab</li>
+        <li class="con">A big diff is a long page</li>
+      </ul>
+    </div>
+
+    <div class="card rec">
+      <h3><em>2</em>Tabs<span class="recd">chosen</span></h3>
+      <p class="concept">One category at a time behind Units / Regions / Orders tabs, counts in the
+      tab labels, the way the game picker splits Games and Settings.</p>
+      <div class="stage"><div class="app" style="width:340px">
+        <div class="dlg" style="position:static; inset:auto; height:210px">
+          <div class="head"><span class="t">Changes</span><span style="color:var(--ink)">turn 70 → 71</span><span class="x">✕</span></div>
+          <div class="tabs"><span class="on">Units · 5</span><span>Regions · 0</span><span>Orders · 1</span></div>
+          <div class="body">
+            <div class="drow add"><span class="g">+</span><span class="who"><u>War Dogs (2214)</u></span></div>
+            <div class="drow add"><span class="g">+</span><span class="who"><u>Recruits (2215)</u></span></div>
+            <div class="drow del"><span class="g">−</span><span class="who"><u>Scout (1907)</u></span></div>
+            <div class="drow chg"><span class="g">±</span><span><span class="who"><u>Miners (1815)</u></span> <span class="what">men <span class="b">10</span> <span class="a">12</span></span></span></div>
+            <div class="drow chg"><span class="g">→</span><span><span class="who"><u>Longboat crew (1922)</u></span> <span class="what">moved (7,53) → (9,53)</span></span></div>
+          </div>
+        </div>
+      </div></div>
+      <ul class="notes">
+        <li>Short pages, one concern at a time</li>
+        <li class="con">Three clicks to answer “did anything change?”</li>
+        <li class="con">An empty tab must still be visited to be believed</li>
+      </ul>
+    </div>
+  </div>
+</main>
+
+<footer>
+  Self-contained — no build step, no network. Unit names, numbers and changes are plausible
+  inventions in the fixture game's idiom (<code>g7-f95</code>, turns 70 → 71); the real view draws
+  from <code>diffTurns</code> and <code>diffOrders</code> (ah-jg6.2).
+</footer>
+</body>
+</html>
