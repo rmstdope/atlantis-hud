@@ -26,6 +26,12 @@ order that means nothing. Read each one, recommend a priority with a reason, and
 the skill has the commands and the wording. If they are away, leave those beads at P4, say which ones
 went unranked, and get on with the buffer.
 
+**A bead that came from a GitHub issue is user feedback — flag it and lean higher.** A `gh-<n>` in
+its `external_ref` means someone outside the fleet hit the thing and wrote it up, which is evidence
+no agent-filed bead has. Name the issue in the question, read the thread before you recommend, and
+recommend a step higher than you otherwise would. It is a lean, not a floor — the navigator still
+decides, as they do for every other bead.
+
 **A split epic is ranked once.** Ask about the parent only, never about its children, and give every
 child the parent's priority — a split is one piece of work built in several passes, so its children
 are not separate decisions and must not drift out of step with it.
@@ -50,6 +56,11 @@ they choose.
 
 So ask. A question put to a navigator who is sitting there costs a minute; a UI decision you took
 alone reaches the player and costs a bead.
+
+**When you mock something up, tell them where it is.** They cannot see your scratchpad. Give the
+absolute `file://` path for each variant in the same message as the question, say it should be opened
+before answering, and repeat the paths on every iteration — a tab left open from the last round shows
+the old mockup. Feedback on your description of a mockup is not feedback on the mockup.
 
 If they are away and a question goes unanswered, do not stall the queue: park that bead with
 `needs-ui-decision` and `human`, say what you asked, and take the next candidate. The skill has the
