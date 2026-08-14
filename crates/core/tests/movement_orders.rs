@@ -4,7 +4,9 @@
 //! order the player wrote by hand so the same cost and risk checks can be run against it.
 
 use atlantis_hud_core::movement::graph::{Direction, MapKnowledge};
-use atlantis_hud_core::movement::orders::{follow_move, parse_move, render_move, MoveStep};
+use atlantis_hud_core::movement::orders::{
+    follow_move, parse_move, render_move, render_sail, MoveStep,
+};
 use atlantis_hud_core::report::model::Coordinate;
 use atlantis_hud_core::report::{parse_report_full, ParsedReport};
 
@@ -101,6 +103,29 @@ fn advance_is_read_as_the_move_it_is() {
         parse_move("ADVANCE N").expect("an ADVANCE order"),
         vec![MoveStep::Go(Direction::North)]
     );
+}
+
+/// SAIL is a fleet's word for the same steps a MOVE order reads. "the owner of a fleet must issue
+/// the SAIL order, and other units wishing to help sail the fleet must also issue the SAIL order."
+#[test]
+fn sail_is_read_as_the_move_it_is() {
+    assert_eq!(
+        parse_move("SAIL N NE").expect("a SAIL order"),
+        vec![
+            MoveStep::Go(Direction::North),
+            MoveStep::Go(Direction::Northeast)
+        ]
+    );
+}
+
+#[test]
+fn writes_a_sail_order_the_game_would_accept() {
+    let steps = vec![
+        MoveStep::Go(Direction::North),
+        MoveStep::Go(Direction::Northeast),
+    ];
+
+    assert_eq!(render_sail(&steps), "SAIL N NE");
 }
 
 /// A direction the game has no such thing as makes the whole order unreadable rather than a

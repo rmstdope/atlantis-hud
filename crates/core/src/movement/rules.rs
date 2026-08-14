@@ -9,19 +9,23 @@ use serde::{Deserialize, Serialize};
 
 /// How a unit is getting about, in the order the game prefers.
 ///
-/// There is deliberately no `Swim`. The rules page names exactly three modes of travel - "There
-/// are three modes of travel: walking, riding and flying" - and never gives swimming an allowance,
-/// so a `movement_points(Swim)` could only ever return an invented number. A unit's swim capacity
-/// still matters, but as a legality question rather than a speed one, and this ruleset's water rule
-/// exempts only flight from needing a ship.
+/// There is deliberately no `Swim`. The rules page names exactly three modes of travel on foot or
+/// mount - "There are three modes of travel: walking, riding and flying" - and never gives
+/// swimming an allowance, so a `movement_points(Swim)` could only ever return an invented number.
+/// A unit's swim capacity still matters, but as a legality question rather than a speed one, and
+/// this ruleset's water rule exempts only flight from needing a ship.
 ///
-/// There is no `Sail` either: fleet movement is out of scope for #8, and it has its own speed and
-/// its own flat terrain cost.
+/// `Sail` is the exception to "no invented number": a fleet's speed comes from the fleet itself -
+/// the server's stated `MaxSpeed`, or the slowest hull's `moves` - never from this ruleset's
+/// per-mode table, which is why [`Ruleset::movement_points`] refuses to answer for it. Its terrain
+/// cost is likewise its own rule (see [`SailingRule`]) rather than another entry doubled for a
+/// mode.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum MovementMode {
     Fly,
     Ride,
+    Sail,
     Walk,
 }
 
@@ -68,6 +72,23 @@ pub struct OceanRule {
     pub terrain: String,
 }
 
+/// What a fleet pays to enter a region, and where it may go.
+///
+/// A fleet's own rule rather than another entry on the terrain premium: "For a fleet to enter any
+/// region only costs one movement point; the cost of two movement points for entering, say, a
+/// forest coastal region, does not apply."
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SailingRule {
+    /// Movement points a fleet spends entering any region, whatever the terrain.
+    pub flat_cost: u32,
+    /// Whether a fleet may only enter a land region through a coastal one - "a non-ocean region
+    /// with at least one adjacent ocean region."
+    pub land_needs_coast: bool,
+    /// The terrain a fleet sails freely across, lower-cased. Mirrors [`OceanRule::terrain`].
+    pub terrain: String,
+}
+
 /// The sentence each scraped value came from, kept so a reader can check the scraper's work.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -76,6 +97,7 @@ pub struct Provenance {
     pub terrain_costs: String,
     pub road: String,
     pub ocean: String,
+    pub sailing: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -85,6 +107,7 @@ pub struct MovementRules {
     pub terrain_costs: TerrainCosts,
     pub road: RoadRule,
     pub ocean: OceanRule,
+    pub sailing: SailingRule,
     pub provenance: Provenance,
 }
 
@@ -382,6 +405,12 @@ impl Ruleset {
             )));
         }
 
+        if self.movement.sailing.flat_cost == 0 {
+            return Err(RulesetError::Unusable(
+                "the fleet entry cost is zero, which would make a sea route free".to_string(),
+            ));
+        }
+
         if self.risk.medium_ratio < 0.0 || self.risk.high_ratio < 0.0 {
             return Err(RulesetError::Unusable(
                 "a risk threshold is negative, which would make every hex dangerous".to_string(),
@@ -439,7 +468,26 @@ impl Ruleset {
         self.movement.ocean.flying_must_end_on_land
     }
 
+    /// What a fleet pays to enter any region, whatever the terrain.
+    #[must_use]
+    pub fn sailing_flat_cost(&self) -> u32 {
+        self.movement.sailing.flat_cost
+    }
+
+    /// Whether a fleet may only enter a land region through a coastal one.
+    #[must_use]
+    pub fn sailing_land_needs_coast(&self) -> bool {
+        self.movement.sailing.land_needs_coast
+    }
+
     /// Movement points per month for a mode.
+    ///
+    /// # Panics
+    ///
+    /// Panics for [`MovementMode::Sail`]: a fleet's speed comes from the fleet itself - the
+    /// server's stated `MaxSpeed`, or the slowest hull's `moves` - never from this per-mode table,
+    /// so answering here would be inventing a number. Callers resolve a fleet's speed via
+    /// [`crate::movement::mode::fleet_speed`] before reaching this far.
     #[must_use]
     pub fn movement_points(&self, mode: MovementMode) -> u32 {
         let points = &self.movement.movement_points;
@@ -447,6 +495,10 @@ impl Ruleset {
             MovementMode::Fly => points.fly,
             MovementMode::Ride => points.ride,
             MovementMode::Walk => points.walk,
+            MovementMode::Sail => unreachable!(
+                "a fleet's speed is not in the ruleset's per-mode table; resolve it via \
+                 fleet_speed before calling movement_points"
+            ),
         }
     }
 
@@ -603,6 +655,31 @@ mod tests {
         let ruleset = ruleset();
         assert!(ruleset.find_item("swordz").is_none());
         assert!(ruleset.find_item("").is_none());
+    }
+
+    /// "For a fleet to enter any region only costs one movement point" and "A coastal region is
+    /// defined as a non-ocean region with at least one adjacent ocean region." Sail planning
+    /// (ah-2vy.2) needs both to cost and to legalise a sea route.
+    #[test]
+    fn reads_the_fleet_movement_rule_from_the_committed_ruleset() {
+        let ruleset = ruleset();
+        assert_eq!(ruleset.sailing_flat_cost(), 1);
+        assert!(ruleset.sailing_land_needs_coast());
+        assert_eq!(ruleset.movement.sailing.terrain, "ocean");
+    }
+
+    /// A zero flat cost would make every sea region free to enter, so it is refused like every
+    /// other free-step case `validate` already guards.
+    #[test]
+    fn a_zero_fleet_entry_cost_is_refused() {
+        let mut json: serde_json::Value = serde_json::from_str(RULESET).unwrap();
+        json["movement"]["sailing"]["flatCost"] = serde_json::json!(0);
+        let text = serde_json::to_string(&json).unwrap();
+
+        assert!(matches!(
+            Ruleset::from_json(&text),
+            Err(RulesetError::Unusable(_))
+        ));
     }
 
     /// A longship needs 4 levels of sailing skill between its crew, per the data page. Sail

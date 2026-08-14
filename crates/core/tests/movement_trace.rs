@@ -13,6 +13,8 @@ use atlantis_hud_core::report::model::Coordinate;
 
 const TURN_71: &str =
     include_str!("../../../tests/fixtures/reports/neworigins-3.0.0-g7-f95-t71.rep");
+const G3_F42_T40: &str =
+    include_str!("../../../tests/fixtures/reports/neworigins-3.0.0-g3-f42-t40.rep");
 const RULESET: &str = include_str!("../../../config/public/ruleset.json");
 
 fn at(x: i32, y: i32) -> Coordinate {
@@ -43,6 +45,34 @@ fn a_written_move_is_traced_across_the_map() {
     assert_eq!(path.steps[0].terrain, "mountain");
     assert_eq!(path.steps[0].cost, 2);
     assert_eq!(path.months.len(), 1, "two points buy exactly one mountain");
+}
+
+/// "+ Ship [329] : Longship; Load: 110/150; Sailors: 4/4; MaxSpeed: 4." docked in the forest at
+/// (49,3); "South : ocean (49,5) in Fu'ihogh Sea." A written SAIL order traces over water exactly
+/// like a MOVE traces over land.
+#[test]
+fn a_written_sail_order_traces_over_water() {
+    let response = trace_orders_for_remembered_report(
+        &mut ReportCache::new(),
+        RULESET,
+        G3_F42_T40,
+        "[]",
+        "11125",
+        "SAIL S",
+    )
+    .expect("the ruleset loads");
+    let path = response.path.expect("a traced path");
+
+    assert_eq!(path.from, at(49, 3));
+    assert_eq!(path.steps.len(), 1);
+    assert_eq!(path.steps[0].to, at(49, 5));
+    assert_eq!(path.steps[0].terrain, "ocean");
+    assert_eq!(path.steps[0].cost, 1, "a fleet's flat cost");
+    assert_eq!(path.blocked_from, None, "water never blocks a fleet");
+    assert_eq!(
+        path.mode,
+        Some(atlantis_hud_core::movement::rules::MovementMode::Sail)
+    );
 }
 
 #[test]

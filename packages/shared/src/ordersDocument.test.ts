@@ -5,6 +5,7 @@ import {
   findUnitBlocks,
   hasFactionHeader,
   readUnitOrders,
+  stripMovementOrderLines,
   stripUnitComments,
   withoutTrailingBlankLines,
   withUnitComments,
@@ -416,5 +417,32 @@ describe("reading orders without the commentary", () => {
 
   it("reports no commands for a unit that only carries a comment", () => {
     expect(commandsOnly(readUnitOrders(DOCUMENT, "13401") ?? "")).toEqual([]);
+  });
+});
+
+describe("stripping a unit's existing movement order", () => {
+  it("drops a MOVE line so a newly planned route replaces it", () => {
+    expect(stripMovementOrderLines("@claim 50\nMOVE SE SE\n@study obse")).toBe(
+      "@claim 50\n@study obse"
+    );
+  });
+
+  it("drops an ADVANCE line the same way", () => {
+    expect(stripMovementOrderLines("ADVANCE N\n@study obse")).toBe("@study obse");
+  });
+
+  /** A planned sea route replaces an existing SAIL just as a land route replaces a MOVE. */
+  it("drops a SAIL line so a newly planned sea route replaces it", () => {
+    expect(stripMovementOrderLines("@claim 50\nSAIL N NE\n@study obse")).toBe(
+      "@claim 50\n@study obse"
+    );
+  });
+
+  it("drops a repeating @MOVE line too", () => {
+    expect(stripMovementOrderLines("@MOVE SE\n@study obse")).toBe("@study obse");
+  });
+
+  it("leaves orders with no movement line untouched", () => {
+    expect(stripMovementOrderLines("@claim 50\n@study obse")).toBe("@claim 50\n@study obse");
   });
 });

@@ -240,3 +240,21 @@ export function commandsOnly(orders: string): string[] {
 export function hasFactionHeader(document: string): boolean {
   return document.split("\n").some((line) => line.trim().startsWith("#atlantis"));
 }
+
+const MOVEMENT_ORDER_LINE = /^\s*@?\s*(move|advance|sail)\b/iu;
+
+/**
+ * A unit's orders with any existing movement order removed, so a newly planned route replaces
+ * whichever one was there before rather than sitting alongside it.
+ *
+ * MOVE, ADVANCE and SAIL are all movement orders in this sense: a planned land route always
+ * replaces a land order, and a planned sea route always replaces a written SAIL, whichever kind was
+ * there originally - the planner only ever writes the one that matches the mode it found.
+ */
+export function stripMovementOrderLines(orders: string): string {
+  return orders
+    .split("\n")
+    .filter((line) => !MOVEMENT_ORDER_LINE.test(line))
+    .join("\n")
+    .trim();
+}

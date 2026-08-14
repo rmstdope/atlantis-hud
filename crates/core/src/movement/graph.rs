@@ -13,7 +13,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::report::model::{Coordinate, ReportRegion, ReportUnit};
+use crate::report::model::{Coordinate, ReportRegion, ReportUnit, Structure};
 use crate::report::ParsedReport;
 
 /// One of the six ways out of a hex.
@@ -145,6 +145,9 @@ pub struct KnownHex {
     /// Roads leading out of this hex. Empty for a hex we only know by name, which is not the same
     /// as knowing it has none.
     pub roads: Vec<Direction>,
+    /// Every structure standing here, fleets included. Empty unless visited, for the same reason
+    /// roads are: a report only lists structures for a hex the faction stood in.
+    pub structures: Vec<Structure>,
     /// Units standing here, which is what the risk heuristic weighs. Empty unless visited.
     pub units: Vec<ReportUnit>,
     /// The turn this hex was last seen in, once sightings are carried across turns.
@@ -203,6 +206,7 @@ impl MapKnowledge {
                         .filter_map(|structure| structure.kind.strip_prefix("Road "))
                         .filter_map(Direction::parse)
                         .collect(),
+                    structures: region.structures.clone(),
                     units: region.units.clone(),
                     last_seen_turn: report.header.turn_number,
                 },
@@ -228,6 +232,7 @@ impl MapKnowledge {
                         province: exit.province.clone(),
                         visited: false,
                         roads: Vec::new(),
+                        structures: Vec::new(),
                         units: Vec::new(),
                         last_seen_turn: None,
                     });
@@ -281,6 +286,13 @@ impl MapKnowledge {
                     .filter_map(|structure| structure.kind.strip_prefix("Road "))
                     .filter_map(Direction::parse)
                     .collect(),
+                // A fleet can sail away, so only the current report may claim one is still here -
+                // exactly the reasoning that already governs units, a turn below.
+                structures: if current {
+                    region.structures.clone()
+                } else {
+                    Vec::new()
+                },
                 units: if current {
                     region.units.clone()
                 } else {
@@ -313,6 +325,7 @@ impl MapKnowledge {
                         province: exit.province.clone(),
                         visited: false,
                         roads: Vec::new(),
+                        structures: Vec::new(),
                         units: Vec::new(),
                         last_seen_turn: None,
                     });

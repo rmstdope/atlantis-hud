@@ -38,7 +38,7 @@ pub struct FollowedMove {
     pub left_the_map: bool,
 }
 
-/// Reads a MOVE or ADVANCE order.
+/// Reads a MOVE, ADVANCE or SAIL order.
 ///
 /// Returns nothing for any other line, and also for an order carrying a direction the game has no
 /// such thing as - dropping the unreadable part would plan a journey to somewhere the player never
@@ -52,8 +52,14 @@ pub fn parse_move(line: &str) -> Option<Vec<MoveStep>> {
 
     let mut tokens = without_repeat.split_whitespace();
     let command = tokens.next()?;
-    // ADVANCE is MOVE that attacks whatever bars the way, so it takes the same route.
-    if !command.eq_ignore_ascii_case("move") && !command.eq_ignore_ascii_case("advance") {
+    // ADVANCE is MOVE that attacks whatever bars the way, so it takes the same route. SAIL is the
+    // fleet's word for the same thing - both read to the same steps, because a step is a step
+    // whichever order names it; only the mode a unit sails or walks under decides which word a
+    // written route is rendered with, in `render_move`/`render_sail`.
+    if !command.eq_ignore_ascii_case("move")
+        && !command.eq_ignore_ascii_case("advance")
+        && !command.eq_ignore_ascii_case("sail")
+    {
         return None;
     }
 
@@ -91,10 +97,20 @@ pub fn parse_move(line: &str) -> Option<Vec<MoveStep>> {
     }
 }
 
-/// Writes an order the game will accept.
+/// Writes a MOVE order the game will accept.
 #[must_use]
 pub fn render_move(steps: &[MoveStep]) -> String {
-    let mut order = String::from("MOVE");
+    render_order("MOVE", steps)
+}
+
+/// Writes the SAIL twin of [`render_move`] - the same steps, under the word a fleet uses.
+#[must_use]
+pub fn render_sail(steps: &[MoveStep]) -> String {
+    render_order("SAIL", steps)
+}
+
+fn render_order(command: &str, steps: &[MoveStep]) -> String {
+    let mut order = String::from(command);
 
     for step in steps {
         match step {

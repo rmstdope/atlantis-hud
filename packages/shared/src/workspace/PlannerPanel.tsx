@@ -101,6 +101,8 @@ export function describeProblem(problem: RouteProblem): string {
       return `The sea at (${problem.coordinate.x},${problem.coordinate.y}) is in the way, and crossing it needs a ship.`;
     case "flightWouldEndOverOcean":
       return `A single MOVE order would leave the unit over water at (${problem.coordinate.x},${problem.coordinate.y}) when the month ran out, and a unit that ends a turn over water drowns.`;
+    case "crewCannotSail":
+      return `The crew cannot sail this fleet: it needs ${problem.required} levels of sailing, and the units aboard have ${problem.available}.`;
   }
 }
 
@@ -129,10 +131,11 @@ export function describeEstimate(steps: RouteStep[]): string | null {
   return `${guessed} of these hexes ${guessed === 1 ? "is" : "are"} unexplored: the terrain, the cost and whatever stands there are guesses, and one of them may be sea.`;
 }
 
-/** The order a route becomes, as the game writes it. */
+/** The order a route becomes, as the game writes it - SAIL for a fleet, MOVE for everyone else. */
 export function routeAsOrder(answer: RoutePlanResponse): string {
   const steps = answer.plan?.steps ?? [];
-  return `MOVE ${steps.map((step) => abbreviateDirection(step.direction)).join(" ")}`;
+  const command = answer.plan?.mode === "sail" ? "SAIL" : "MOVE";
+  return `${command} ${steps.map((step) => abbreviateDirection(step.direction)).join(" ")}`;
 }
 
 function Route({

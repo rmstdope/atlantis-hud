@@ -75,7 +75,7 @@ pub fn plan_for_remembered_report(
 ) -> Result<RoutePlanResponse, String> {
     use crate::movement::graph::MapKnowledge;
     use crate::movement::plan::{plan_route, RouteProblem};
-    use crate::movement::risk::assess_route;
+    use crate::movement::risk::assess_route_for_mode;
 
     let ruleset = cache
         .ruleset(ruleset_json)
@@ -104,7 +104,7 @@ pub fn plan_for_remembered_report(
     Ok(match plan_route(&map, &ruleset, &unit, destination) {
         Ok(plan) => {
             let hexes: Vec<_> = plan.steps.iter().map(|step| step.to).collect();
-            let risk = assess_route(&map, &ruleset, &hexes, &unit);
+            let risk = assess_route_for_mode(&map, &ruleset, &hexes, &unit, Some(plan.mode));
             RoutePlanResponse {
                 plan: Some(plan),
                 problem: None,

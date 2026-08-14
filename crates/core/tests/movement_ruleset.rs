@@ -112,6 +112,17 @@ fn knows_which_terrain_is_water() {
     assert!(!ruleset.is_water("swamp"), "a swamp is difficult, not wet");
 }
 
+/// "For a fleet to enter any region only costs one movement point" and "A coastal region is
+/// defined as a non-ocean region with at least one adjacent ocean region." Sail planning
+/// (ah-2vy.2) needs both to cost and to legalise a sea route.
+#[test]
+fn reads_the_fleet_movement_rule_from_the_committed_ruleset() {
+    let ruleset = ruleset();
+
+    assert_eq!(ruleset.sailing_flat_cost(), 1);
+    assert!(ruleset.sailing_land_needs_coast());
+}
+
 #[test]
 fn tells_men_from_equipment() {
     let ruleset = ruleset();

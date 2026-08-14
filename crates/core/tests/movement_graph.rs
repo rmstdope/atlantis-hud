@@ -4,13 +4,15 @@
 //! with the report rather than with an earlier run.
 
 use atlantis_hud_core::movement::graph::{Direction, MapKnowledge};
-use atlantis_hud_core::movement::mode::{can_swim, mobility, Mobility};
+use atlantis_hud_core::movement::mode::{mobility, Mobility};
 use atlantis_hud_core::movement::rules::MovementMode;
 use atlantis_hud_core::report::model::Coordinate;
 use atlantis_hud_core::report::parse_report_full;
 
 const TURN_71: &str =
     include_str!("../../../tests/fixtures/reports/neworigins-3.0.0-g7-f95-t71.rep");
+const G3_F42_T40: &str =
+    include_str!("../../../tests/fixtures/reports/neworigins-3.0.0-g3-f42-t40.rep");
 
 fn at(x: i32, y: i32) -> Coordinate {
     Coordinate { x, y, z: 1 }
@@ -231,31 +233,39 @@ fn a_foreign_unit_has_no_stated_mobility() {
     assert_eq!(mobility(foreign), Mobility::Unstated);
 }
 
-/// Swimming is a separate question from speed: it decides whether a coastline stops the unit, not
-/// how fast it goes. This ruleset's water rule exempts only flight from needing a ship, so a
-/// swimmer is not thereby allowed across ocean - but the capacity is read and kept regardless.
+// ---------------------------------------------------------------- the fleet
+
+/// "+ Ship [329] : Longship; Load: 110/150; Sailors: 4/4; MaxSpeed: 4." - the planner cannot see a
+/// fleet at all until `KnownHex` carries the structures a report describes, the way it already
+/// carries roads.
 #[test]
-fn swimming_is_read_from_the_swim_capacity_alone() {
-    let report = parse_report_full(TURN_71);
-    let unit_by = |id: &str| {
-        report
-            .units()
-            .find(|unit| unit.unit_id == id)
-            .expect("the report should carry that unit")
-    };
+fn a_known_hex_carries_the_structures_the_report_describes() {
+    let report = parse_report_full(G3_F42_T40);
+    let region = report
+        .regions
+        .iter()
+        .find(|region| {
+            region
+                .structures
+                .iter()
+                .any(|structure| structure.structure_id == "329")
+        })
+        .expect("the report has the hex the longship sits in")
+        .clone();
 
-    // "Drones (14451) ... 50 lizardmen. Weight: 500. Capacity: 0/0/750/750." - lizardmen swim.
-    assert!(can_swim(unit_by("14451")));
+    let map = MapKnowledge::from_report(&report);
+    let hex = map.hex(region.coordinate).expect("visited");
+    let longship = hex
+        .structures
+        .iter()
+        .find(|structure| structure.structure_id == "329")
+        .expect("the longship structure should be carried onto the known hex");
 
-    // "Drone (13432) ... hill dwarf, horse. Weight: 60. Capacity: 0/70/85/0." - it rides, and sinks.
-    assert!(!can_swim(unit_by("13432")));
-
-    // A unit whose mobility the report never stated cannot be assumed to swim either.
-    let foreign = report
-        .units()
-        .find(|unit| !unit.own && unit.weight.is_none())
-        .expect("the report is full of foreign units");
-    assert!(!can_swim(foreign));
+    assert_eq!(longship.kind, "Longship");
+    assert_eq!(
+        longship.description.as_deref(),
+        Some("Load: 110/150; Sailors: 4/4; MaxSpeed: 4.")
+    );
 }
 
 /// A map remembered across turns is what makes a route longer than one step possible.

@@ -147,16 +147,29 @@ the way the risk thresholds are, or showing the total as a lower bound.
 
 ### Sailing
 
-Fleet movement is a second rule system — fleets have their own speed and pay a flat one point for
-any region, coastal forest included — and #8 plans land movement only. `MovementMode` therefore has
-no `Sail`.
+Fleet movement is a second rule system — a fleet pays a flat cost to enter any region, coastal
+forest included, rather than the terrain premium a walker or a rider pays — and `MovementMode`
+carries a `Sail` variant for it (ah-2vy.2). Its cost model is `SailingRule`
+(`crates/core/src/movement/rules.rs`), scraped from the SAIL section of the rules page: *"For a
+fleet to enter any region only costs one movement point"* gives `flatCost`, and *"A coastal region
+is defined as a non-ocean region with at least one adjacent ocean region"* gives
+`landNeedsCoast` — a fleet may cross open water freely but may only come ashore through a hex the
+map itself shows a water neighbour for.
+
+A fleet's own speed and crew requirement are never read from the movement-rules table:
+`Ruleset::movement_points(Sail)` panics rather than invent one, because a fleet's `MaxSpeed` and the
+sailing skill its crew needs vary hull by hull. `crates/core/src/movement/mode.rs` resolves both,
+preferring a structure's own stated `"Sailors: 4/4"` / `"MaxSpeed: 4"` over the ruleset's per-item
+`sailingSkill` and `moves` fields, and refusing to guess at all for a hull neither source names — a
+unit aboard such a fleet is planned as though it were not aboard anything.
 
 ### Swimming speed
 
-`MovementMode` has no `Swim` either. The page names exactly three modes of travel — *"walking,
-riding and flying"* — and gives swimming no allowance, so any swim speed would be invented. A
-unit's swim capacity still matters, but as a legality question rather than a speed one, and this
-ruleset's water rule exempts only flight from needing a ship.
+`MovementMode` has no `Swim`. The page names exactly three modes of travel on foot or mount —
+*"walking, riding and flying"* — and gives swimming no allowance, so any swim speed would be
+invented. A unit's swim capacity still matters, but as a legality question rather than a speed one,
+and this ruleset's water rule exempts only flight (and, since ah-2vy.2, a sailing fleet) from
+needing a ship.
 
 ## Evidence that the catalogue is read correctly
 

@@ -34,8 +34,8 @@ use std::collections::{BTreeMap, BinaryHeap};
 
 use serde::{Deserialize, Serialize};
 
-use crate::movement::graph::{geometric_neighbour, Direction, MapKnowledge};
-use crate::movement::mode::{mobility, Mobility};
+use crate::movement::graph::{geometric_neighbour, Direction, KnownHex, MapKnowledge};
+use crate::movement::mode::{fleet_of, fleet_sailing, mobility, Mobility};
 use crate::movement::rules::{MovementMode, Ruleset};
 use crate::report::model::{Coordinate, ReportUnit};
 
@@ -66,6 +66,10 @@ pub enum RouteProblem {
     /// stop on an island part-way. Reaching the far side may still be possible by ordering the
     /// crossing a month at a time, which this planner does not do.
     FlightWouldEndOverOcean { coordinate: Coordinate },
+    /// The unit is aboard a fleet whose crew does not hold enough sailing skill between them to
+    /// sail it - "there must be enough sailors aboard ... to sail the fleet, or it will not go
+    /// anywhere."
+    CrewCannotSail { required: i64, available: i64 },
 }
 
 /// One hex entered.
@@ -123,16 +127,24 @@ pub fn plan_route(
         return Err(RouteProblem::NotYourUnit);
     }
 
-    let mode = match mobility(unit) {
-        Mobility::Moves(mode) => mode,
-        Mobility::Overloaded => return Err(RouteProblem::Overloaded),
-        Mobility::Unstated => return Err(RouteProblem::MobilityUnstated),
+    let origin_hex = map.hex_of_unit(unit).ok_or(RouteProblem::OriginUnknown)?;
+    let origin = origin_hex.coordinate;
+
+    // Aboard a sailable fleet, the mode is Sail and there is nothing else to ask: the fleet's
+    // numbers decide, not the rider's own walking capacity. Asking `mobility()` first is the trap -
+    // a sailor aboard ship still states a personal Weight/Capacity line, so the ordinary land
+    // question would happily answer Walk for someone standing at sea. An unknown hull (no ruleset
+    // entry and no server-stated numbers) falls back to the land question as if the unit were not
+    // aboard at all, rather than guessing a ship's speed.
+    let (mode, points_per_month) = match sail_mode(ruleset, unit, origin_hex)? {
+        Some(resolved) => resolved,
+        None => match mobility(unit) {
+            Mobility::Moves(mode) => (mode, ruleset.movement_points(mode)),
+            Mobility::Overloaded => return Err(RouteProblem::Overloaded),
+            Mobility::Unstated => return Err(RouteProblem::MobilityUnstated),
+        },
     };
 
-    let origin = map
-        .hex_of_unit(unit)
-        .ok_or(RouteProblem::OriginUnknown)?
-        .coordinate;
     if origin == destination {
         return Err(RouteProblem::AlreadyThere);
     }
@@ -142,7 +154,7 @@ pub fn plan_route(
     // neither: nothing says it is water, so the route goes and the estimate says what it is worth.
     if map
         .hex(destination)
-        .is_some_and(|target| blocks(ruleset, mode, &target.terrain))
+        .is_some_and(|target| blocks(ruleset, map, mode, destination, &target.terrain))
     {
         return Err(RouteProblem::OceanNeedsShip {
             coordinate: destination,
@@ -150,7 +162,7 @@ pub fn plan_route(
     }
     if map
         .hex(origin)
-        .is_some_and(|here| blocks(ruleset, mode, &here.terrain))
+        .is_some_and(|here| blocks(ruleset, map, mode, origin, &here.terrain))
     {
         return Err(RouteProblem::OceanNeedsShip { coordinate: origin });
     }
@@ -167,7 +179,7 @@ pub fn plan_route(
         Err(other) => return Err(other),
     };
     let total_cost = steps.iter().map(|step| step.cost).sum();
-    let months = split_into_months(ruleset, mode, origin, &steps);
+    let months = split_into_months(points_per_month, origin, &steps);
 
     // A flying unit that ends a turn over water drowns, so a month may not run out mid-sea. The
     // months are cut greedily on purpose: that is how the engine executes a single MOVE order, so
@@ -199,14 +211,76 @@ fn flies(mode: MovementMode) -> bool {
     matches!(mode, MovementMode::Fly)
 }
 
+/// Whether the unit standing in `origin_hex` is aboard a fleet whose numbers can be priced, and if
+/// so, what it costs to refuse or to sail.
+///
+/// `Ok(None)` when the unit is not aboard a fleet at all, or is aboard one no source can price -
+/// both cases fall through to the ordinary land `mobility` question, because neither is a reason to
+/// invent a number. `Err` only for a fleet that *can* be priced but whose crew falls short.
+fn sail_mode(
+    ruleset: &Ruleset,
+    unit: &ReportUnit,
+    origin_hex: &KnownHex,
+) -> Result<Option<(MovementMode, u32)>, RouteProblem> {
+    let Some(fleet) = fleet_of(unit, origin_hex) else {
+        return Ok(None);
+    };
+    let Some((required, available, speed)) = fleet_sailing(ruleset, origin_hex, fleet) else {
+        return Ok(None);
+    };
+    if available < required {
+        return Err(RouteProblem::CrewCannotSail {
+            required,
+            available,
+        });
+    }
+    Ok(Some((MovementMode::Sail, speed)))
+}
+
 /// Whether this terrain stops this unit.
 ///
 /// Reads the ruleset's own water rule rather than assuming it: a game that let anyone cross water
-/// would otherwise be quietly overruled by a hardcoded belief.
+/// would otherwise be quietly overruled by a hardcoded belief. A fleet is the water rule turned
+/// round: water never blocks it, and land blocks it unless the hex is coastal - "a non-ocean region
+/// with at least one adjacent ocean region" - which is asked of the map itself, an estimated
+/// neighbour (one the search only reached by geometric guess) never counting as confirming it.
 ///
 /// Shared with the order tracer, which draws the blocked step anyway and marks it as doubt.
-pub(crate) fn blocks(ruleset: &Ruleset, mode: MovementMode, terrain: &str) -> bool {
+pub(crate) fn blocks(
+    ruleset: &Ruleset,
+    map: &MapKnowledge,
+    mode: MovementMode,
+    coordinate: Coordinate,
+    terrain: &str,
+) -> bool {
+    if mode == MovementMode::Sail {
+        if ruleset.is_water(terrain) {
+            return false;
+        }
+        return ruleset.sailing_land_needs_coast() && !is_coastal(ruleset, map, coordinate);
+    }
     ruleset.is_water(terrain) && ruleset.water_needs_a_ship() && !flies(mode)
+}
+
+/// Whether a hex has at least one neighbour the map itself describes as water.
+fn is_coastal(ruleset: &Ruleset, map: &MapKnowledge, coordinate: Coordinate) -> bool {
+    map.neighbours(coordinate).any(|(_, neighbour)| {
+        map.hex(neighbour)
+            .is_some_and(|hex| ruleset.is_water(&hex.terrain))
+    })
+}
+
+/// What entering this terrain costs, absent a road - the number [`step_cost`] uses wherever it does
+/// not refuse. A fleet's is the flat cost the sailing rule states, never the terrain premium.
+///
+/// Shared with the order tracer, whose fallback needs the same figure for a step it draws but
+/// cannot legally cost.
+pub(crate) fn base_terrain_cost(ruleset: &Ruleset, mode: MovementMode, terrain: &str) -> u32 {
+    if mode == MovementMode::Sail {
+        ruleset.sailing_flat_cost()
+    } else {
+        ruleset.terrain_cost(terrain, mode)
+    }
 }
 
 /// Whether water is the only thing standing between the unit and its destination.
@@ -221,7 +295,9 @@ fn blocked_by_water(
     origin: Coordinate,
     destination: Coordinate,
 ) -> Option<RouteProblem> {
-    if flies(mode) {
+    // A fleet already crosses water freely, so the "what if it could swim" probe answers a
+    // question Sail does not have.
+    if flies(mode) || mode == MovementMode::Sail {
         return None;
     }
 
@@ -250,8 +326,14 @@ pub(crate) fn step_cost(
     // An undescribed hex has no terrain, so a step into it would cost whatever we invented.
     let hex = map.hex(into)?;
 
-    if blocks(ruleset, mode, &hex.terrain) {
+    if blocks(ruleset, map, mode, into, &hex.terrain) {
         return None;
+    }
+
+    // A fleet's flat cost is the sailing rule itself, not the terrain premium, and no road ever
+    // applies to it - roads help feet and hooves, not hulls.
+    if mode == MovementMode::Sail {
+        return Some((ruleset.sailing_flat_cost(), false));
     }
 
     let base = ruleset.terrain_cost(&hex.terrain, mode);
@@ -461,12 +543,14 @@ fn step_into(
     }
 
     // A route that is already at sea - a unit aboard a fleet - would be guessing itself further out
-    // to sea, and the sea is exactly what a walker may not cross.
-    if blocks(ruleset, mode, carried) {
+    // to sea, and the sea is exactly what a walker may not cross. For a fleet the same guard asks
+    // the opposite question: fog beyond the described map cannot be confirmed coastal, so a land
+    // guess blocks it rather than assuming a way in.
+    if blocks(ruleset, map, mode, into, carried) {
         return None;
     }
     Some(Step {
-        cost: ruleset.terrain_cost(carried, mode),
+        cost: base_terrain_cost(ruleset, mode, carried),
         road: false,
         terrain: carried.to_string(),
         estimated: true,
@@ -498,14 +582,18 @@ fn rebuild(
 /// The rules page is explicit that points carry over, which is why this accumulates rather than
 /// giving each month a fresh budget: costs of one, two and one take a two-point walker two months,
 /// not three.
+///
+/// Takes the resolved points a month buys rather than a mode, because a fleet's speed is not in the
+/// ruleset's per-mode table at all - it comes from the fleet itself, resolved once by the caller
+/// before this ever runs.
+///
 /// Shared with the order tracer, so a drawn order and a planned route split identically.
 pub(crate) fn split_into_months(
-    ruleset: &Ruleset,
-    mode: MovementMode,
+    points_per_month: u32,
     origin: Coordinate,
     steps: &[RouteStep],
 ) -> Vec<MonthLeg> {
-    let allowance = ruleset.movement_points(mode);
+    let allowance = points_per_month;
     let mut months = Vec::new();
 
     // `Ruleset::from_json` refuses a zero allowance, but a `Ruleset` deserialized by any other
