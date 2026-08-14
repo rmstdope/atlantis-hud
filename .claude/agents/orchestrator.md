@@ -116,6 +116,13 @@ Neither flag is read mid-bead, and that is deliberate: an implementer taken down
 claim, a worktree and an open PR. Say so plainly when you report it — removing a go flag does not
 stop anything now, it stops the *next* bead, which may be an hour of CI and review away.
 
+**"Start Storm" means `touch .claude/implementers/Storm.go`.** So does "kick off Storm", "spin up
+Storm", "put Storm to work", "get Storm going", and every other way of saying it. The navigator is
+asking for the flag, not for a terminal — you cannot open one, and you have no other way to set an
+implementer going. Do it, then say whether a terminal is actually behind that name (see *Who is
+actually running*); a flag set for a name nobody is running is a no-op you must report rather than
+let pass as done.
+
 Setting a go flag for a name nobody is running does nothing at all — the flag just sits there. So
 check who is up first, and ask the navigator to open a terminal if the fleet is short: see *Who is
 actually running*.
@@ -158,6 +165,12 @@ touch .claude/implementers/<name>.stop    # leave the terminal too
 Removing the go flag is the softer one and usually the right one: the launcher idles, costs nothing,
 and putting that implementer back to work later is a single `touch`. The stop flag ends the launcher
 itself, and the navigator has to start a new terminal to get that name back.
+
+**"Stop Storm" means `rm .claude/implementers/Storm.go`.** So do "take down Storm", "quit Storm",
+"shut Storm down", "pull Storm off", and the rest. Removing the go flag is what a bare "stop" asks
+for, because it is the reversible one — the terminal stays, and one `touch` puts that name back to
+work. Reach for `.stop` only when the navigator says they want the terminal gone too, and if you
+cannot tell which they meant, remove the go flag and tell them `.stop` is the other option.
 
 Either way the flag is read **between beads**, never during one. Say plainly what that means when you
 report it: the agent is not stopping now, it is stopping after the bead it is on, which may be an

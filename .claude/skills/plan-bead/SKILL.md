@@ -18,6 +18,48 @@ the navigator, and ask whether to continue rather than halting the queue on a se
 check. Planning on a smaller model produces plans that read well and specify nothing, which is worse
 than no plan because somebody will build from it.
 
+## Then: triage the P4 backlog
+
+**Before you plan anything, agree the priorities.** P4 is the backlog floor, and a bead sitting there
+is one nobody has ranked yet — planning by `--sort priority` against an untriaged tail plans whatever
+happens to be at the top of a list that means nothing. So the first thing a session does, before it
+counts the buffer or claims a candidate, is walk the P4 beads with the navigator.
+
+```bash
+bd dolt pull
+bd list --status open --exclude-label planned --json \
+  | jq -r '.[] | select(.priority==4) | "\(.id)\t\(.title)"'
+```
+
+Already-`planned` beads are excluded: their priority no longer decides what you plan next, and
+re-ranking work that is already specified is not what this step is for.
+
+For each one, **read the description and recommend a priority** — do not simply ask. `bd show <id>`,
+then say which of P0–P4 you think it is and why in a sentence: a navigator-reported defect in shipped
+behaviour is a P0 or P1; work that unblocks a queued epic outranks work that stands alone; a tidy-up
+with no user-visible effect stays low. The navigator is deciding, but they are deciding against your
+reading of the bead, not against a bare id.
+
+Ask with the question tool, batching up to four beads per call, options `P0`–`P4` with your
+recommendation first and marked `(Recommended)`, and the reason in each option's description. Apply
+each answer as it comes (use numeric priorities `0`–`4` for `bd update`, i.e. `P0`→`0` … `P4`→`4`):
+
+```bash
+bd update <id> --priority=<n>
+```
+
+Then `bd dolt push` once the pass is done, so the ranking reaches the other agents before you start
+planning against it.
+
+**If the navigator is away, do not stall.** Say which beads you could not get a ranking for, leave
+them at P4, and go on to the buffer — an unanswered triage costs you ordering, not the queue. Do not
+apply your own recommendation unasked: priority is what the navigator uses to steer the fleet, and
+taking that silently is the one thing this step exists to prevent.
+
+Triage runs **once per session, at the start**. On later wake-ups, only beads that have arrived at P4
+since the last pass need asking about — a bead the navigator already ranked is settled, and a bead
+they declined to rank is not worth asking about twice.
+
 ## You keep a buffer of four
 
 You are not here to plan one bead and leave. You keep the implementers fed, and the measure of that
