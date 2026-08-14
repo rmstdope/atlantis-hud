@@ -183,4 +183,71 @@ describe("the battles dialog", () => {
     expect(markup).toContain("no battles");
     expect(markup).not.toContain('data-testid="battle-row-0"');
   });
+
+  it("puts the outcome before the round-by-round detail", () => {
+    const markup = draw({ battles: [FIRST], selectedIndex: 0 });
+
+    const outcomeIndex = markup.indexOf("Outcome");
+    const roundsIndex = markup.indexOf("Rounds");
+    expect(outcomeIndex).toBeGreaterThan(-1);
+    expect(roundsIndex).toBeGreaterThan(-1);
+    expect(outcomeIndex).toBeLessThan(roundsIndex);
+  });
+
+  it("shows an assassination with an unknown attacker, the victim as defender and real casualties", () => {
+    const assassination: Battle = {
+      ...FIRST,
+      headline: "L Arslan (1446) is assassinated in forest (43,79) in Utso!",
+      attacker: null,
+      defender: { name: "L Arslan", id: "1446" },
+      terrain: "forest",
+      coordinate: { x: 43, y: 79, z: 1 },
+      province: "Utso",
+      attackers: [],
+      defenders: [],
+      rounds: [],
+      statistics: [],
+      casualties: [],
+      damagedUnits: [],
+      spoils: null,
+      assassination: true
+    };
+
+    const markup = draw({ battles: [assassination], selectedIndex: 0 });
+
+    expect(markup).toContain("?");
+    expect(markup).toContain("L Arslan (1446)");
+    expect(markup).toContain("L Arslan (1446) is assassinated");
+  });
+
+  it("labels a free round without inventing a number", () => {
+    const routed: Battle = {
+      ...FIRST,
+      rounds: [
+        {
+          number: null,
+          lines: ["Pirates (14789) is routed!"],
+          losses: [],
+          statistics: ["stat line"]
+        }
+      ]
+    };
+
+    const markup = draw({ battles: [routed], selectedIndex: 0 });
+
+    expect(markup).toContain("Free round");
+    expect(markup).toContain("Free round statistics (1 line)");
+  });
+
+  it("keeps roster rows from shrinking to fit, so a long roster scrolls instead of compressing", () => {
+    const markup = draw({ battles: [FIRST, SECOND], selectedIndex: 0 });
+
+    const rows = [...markup.matchAll(/<li[^>]*>/g)].filter((match) =>
+      match[0].includes("overflow-hidden")
+    );
+    expect(rows.length).toBeGreaterThan(0);
+    for (const row of rows) {
+      expect(row[0]).toContain("shrink-0");
+    }
+  });
 });

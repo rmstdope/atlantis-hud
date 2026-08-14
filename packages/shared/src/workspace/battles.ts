@@ -7,7 +7,7 @@
  * belongs in a pure function like this one so it can be tested directly.
  */
 
-import type { Battle, BattleUnit } from "@atlantis/core-client";
+import type { Battle, BattleRound, BattleUnit } from "@atlantis/core-client";
 import { regionIdOf } from "../hexMapModel";
 
 /** How a roster entry relates to the viewer, in the three states the data actually supports. */
@@ -56,6 +56,39 @@ export function summarise(battle: Battle, hexLabel: (regionId: string) => string
     attackerLosses: lossesOf(battle, battle.attacker?.id),
     defenderLosses: lossesOf(battle, battle.defender?.id),
     hasSpoils: battle.spoils !== null
+  };
+}
+
+/**
+ * The heading a round reads as. `number` is null only for the free round a rout opens - the
+ * report itself has no number for it, so "Free round" is what it says rather than a made-up
+ * ordinal.
+ */
+export function roundLabel(round: BattleRound): string {
+  return round.number === null ? "Free round" : `Round ${round.number}`;
+}
+
+/** What an assassination's roster and outcome read as: no view for a battle that was not one. */
+export type AssassinationView = {
+  attackers: string[];
+  defenders: string[];
+  casualtyText: string;
+};
+
+/**
+ * An assassination prints no attackers - the assassin is never named for the victim's faction -
+ * and its casualty line is a bare "Casualties" heading with nothing after it in the report's own
+ * structured fields, so this reads the fact from `battle.defender` (the victim) instead.
+ */
+export function assassinationView(battle: Battle): AssassinationView | null {
+  if (!battle.assassination) {
+    return null;
+  }
+  const victim = combatantLabel(battle.defender) ?? battle.headline;
+  return {
+    attackers: ["?"],
+    defenders: [victim],
+    casualtyText: `${victim} is assassinated`
   };
 }
 

@@ -125,6 +125,11 @@ pub struct Battle {
     pub spoils: Option<String>,
     pub line_start: usize,
     pub line_end: usize,
+    /// Whether the headline was an assassination (`<victim> is assassinated in ...!`) rather than
+    /// an `attacks` battle. `#[serde(default)]` because a payload stored before this field existed
+    /// carries no key for it.
+    #[serde(default)]
+    pub assassination: bool,
 }
 
 /// Whether `label` (a line's body with any trailing colon already stripped) opens one of the other
@@ -136,16 +141,18 @@ fn ends_the_section(label: &str) -> bool {
 /// Whether `line` opens a new battle.
 ///
 /// A headline ends in `!`, but so does `<unit> (<id>) is destroyed!`, printed inside a round's
-/// statistics block - the only other `!`-ending line either real fixture contains. Excluding that
-/// one shape is enough to tell the two apart without requiring the recognised `attacks` wording,
-/// which is what lets an unrecognised headline (an assassination, say) still open its own battle
-/// rather than being read as part of the one before it.
+/// statistics block, and `<unit> (<id>) is routed!`, which starts a free round of attacks within
+/// the battle it came from rather than a battle of its own (`parse_one_battle` folds it in).
+/// Excluding those two shapes is enough to tell headlines apart from in-battle narration without
+/// requiring the recognised `attacks` wording, which is what lets an unrecognised headline (an
+/// assassination, say) still open its own battle rather than being read as part of the one before
+/// it.
 fn opens_a_battle(line: &LogicalLine) -> bool {
     if line.indent != 0 {
         return false;
     }
     let body = line.body();
-    body.ends_with('!') && !body.ends_with("is destroyed!")
+    body.ends_with('!') && !body.ends_with("is destroyed!") && !body.ends_with("is routed!")
 }
 
 /// Parses the `Battles during turn:` section out of the preamble slice.
@@ -222,6 +229,7 @@ fn parse_one_battle(lines: &[LogicalLine]) -> Battle {
         line_end: lines
             .last()
             .map_or(headline_line.line_end, |line| line.line_end),
+        assassination: parsed_headline.assassination,
     };
 
     let mut phase = Phase::None;
@@ -230,6 +238,20 @@ fn parse_one_battle(lines: &[LogicalLine]) -> Battle {
     for line in &lines[1..] {
         let body = line.body();
         let label = body.trim_end_matches(':');
+
+        if body.ends_with("is routed!") {
+            // The rout belongs to the battle it came from: close whatever round was open (a
+            // round's statistics, typically) and start a new, unnumbered round with the rout line
+            // as its first entry - the free round of attacks that follows is this round's body.
+            close_round(&mut battle, &mut current_round);
+            current_round = Some(BattleRound {
+                number: None,
+                lines: vec![body.to_string()],
+                ..BattleRound::default()
+            });
+            phase = Phase::Round;
+            continue;
+        }
 
         match label {
             "Attackers" => {
@@ -253,14 +275,14 @@ fn parse_one_battle(lines: &[LogicalLine]) -> Battle {
             _ => {}
         }
 
-        if let Some(number) = label
-            .strip_suffix(" statistics")
-            .and_then(parse_round_number)
-        {
-            // The block belongs to the round already open; it is not itself a new round.
-            let _ = number;
-            phase = Phase::RoundStatistics;
-            continue;
+        if let Some(prefix) = label.strip_suffix(" statistics") {
+            if prefix == "Free round" || parse_round_number(prefix).is_some() {
+                // The block belongs to the round already open; it is not itself a new round. A
+                // free round (the round a rout opens) is labelled "Free round statistics" rather
+                // than "Round N statistics", but it closes the same way.
+                phase = Phase::RoundStatistics;
+                continue;
+            }
         }
 
         if let Some(number) = parse_round_number(label) {
@@ -353,15 +375,26 @@ struct ParsedHeadline {
     terrain: Option<String>,
     coordinate: Option<super::model::Coordinate>,
     province: Option<String>,
+    assassination: bool,
 }
 
-/// Reads `<attacker> (<id>) attacks <defender> (<id>) in <terrain> (<x>,<y>) in <province>!`
+/// Reads `<attacker> (<id>) attacks <defender> (<id>) in <terrain> (<x>,<y>) in <province>!` or
+/// `<victim> (<id>) is assassinated in <terrain> (<x>,<y>) in <province>!`
 ///
-/// Every field is independently optional: a headline this does not recognise - an assassination,
-/// say - yields every field `None`, and the battle it opens still carries the headline verbatim.
+/// Every field is independently optional: a headline this does not recognise yields every field
+/// `None`, and the battle it opens still carries the headline verbatim. The assassin is never
+/// named for the victim's faction, so an assassination has no `attacker` - only `defender` (the
+/// victim), `assassination: true`, and the same location tail as an `attacks` headline.
 fn parse_headline(headline: &str) -> ParsedHeadline {
     let mut result = ParsedHeadline::default();
     let text = headline.trim().trim_end_matches('!');
+
+    if let Some((victim_text, location)) = text.split_once(" is assassinated in ") {
+        result.assassination = true;
+        result.defender = split_trailing_id(victim_text).map(|(name, id)| Combatant { name, id });
+        apply_location_tail(location.trim(), &mut result);
+        return result;
+    }
 
     let Some((attacker_text, rest)) = text.split_once(" attacks ") else {
         return result;
@@ -375,14 +408,21 @@ fn parse_headline(headline: &str) -> ParsedHeadline {
     result.defender = split_trailing_id(defender_text).map(|(name, id)| Combatant { name, id });
 
     let location = rest[defender_close + ") in ".len()..].trim();
+    apply_location_tail(location, &mut result);
+    result
+}
+
+/// Reads the `<terrain> (<x>,<y>) in <province>` tail shared by every headline shape this parser
+/// recognises, and fills in whichever `ParsedHeadline` fields it can.
+fn apply_location_tail(location: &str, result: &mut ParsedHeadline) {
     let Some(open) = location.find('(') else {
-        return result;
+        return;
     };
     let Some(close) = location.find(')') else {
-        return result;
+        return;
     };
     if close < open {
-        return result;
+        return;
     }
 
     let terrain = location[..open].trim();
@@ -393,8 +433,6 @@ fn parse_headline(headline: &str) -> ParsedHeadline {
     if let Some(province) = location[close + 1..].trim().strip_prefix("in ") {
         result.province = Some(province.trim().to_string());
     }
-
-    result
 }
 
 /// Like [`split_top_level`], but also returns the byte offset in `input` immediately after each
@@ -789,5 +827,96 @@ mod tests {
     #[test]
     fn a_report_with_no_battles_section_parses_to_an_empty_list() {
         assert!(battles("Errors during turn:\nSomething went wrong.\n").is_empty());
+    }
+
+    #[test]
+    fn folds_a_rout_into_the_battle_it_came_from() {
+        let parsed = battles(concat!(
+            "Battles during turn:\n",
+            "A (1) attacks B (2) in ocean (1,1) in Sea!\n",
+            "\n",
+            "Round 1:\n",
+            "\n",
+            "A (1) loses 0.\n",
+            "B (2) loses 4.\n",
+            "\n",
+            "Round 1 statistics:\n",
+            "\n",
+            "A (1) army:\n",
+            "stuff.\n",
+            "\n",
+            "B (2) is routed!\n",
+            "A (1) gets a free round of attacks.\n",
+            "\n",
+            "B (2) loses 3.\n",
+            "\n",
+            "Free round statistics:\n",
+            "\n",
+            "A (1) army:\n",
+            "more stuff.\n",
+            "\n",
+            "Total Casualties:\n",
+            "B (2) loses 7.\n",
+        ));
+
+        // The rout must not have opened a second battle.
+        assert_eq!(parsed.len(), 1);
+
+        let battle = &parsed[0];
+        assert_eq!(battle.rounds.len(), 2);
+
+        let free_round = &battle.rounds[1];
+        assert_eq!(free_round.number, None);
+        assert_eq!(
+            free_round.lines,
+            vec![
+                "B (2) is routed!".to_string(),
+                "A (1) gets a free round of attacks.".to_string()
+            ]
+        );
+        assert_eq!(free_round.losses.len(), 1);
+        assert_eq!(free_round.losses[0].lost, Some(3));
+        assert_eq!(
+            free_round.statistics,
+            vec!["A (1) army:".to_string(), "more stuff.".to_string()]
+        );
+
+        assert_eq!(battle.casualties.len(), 1);
+        assert_eq!(battle.casualties[0].lost, Some(7));
+    }
+
+    #[test]
+    fn reads_the_assassination_headline() {
+        let parsed = battles(concat!(
+            "Battles during turn:\n",
+            "L Arslan (1446) is assassinated in forest (43,79) in Utso!\n",
+        ));
+
+        let battle = &parsed[0];
+        assert!(battle.assassination);
+        assert_eq!(battle.attacker, None);
+        assert_eq!(
+            battle.defender,
+            Some(Combatant {
+                name: "L Arslan".to_string(),
+                id: "1446".to_string()
+            })
+        );
+        assert_eq!(battle.terrain.as_deref(), Some("forest"));
+        assert_eq!(
+            battle.coordinate,
+            Some(super::super::model::Coordinate { x: 43, y: 79, z: 1 })
+        );
+        assert_eq!(battle.province.as_deref(), Some("Utso"));
+    }
+
+    #[test]
+    fn a_normal_battle_is_not_an_assassination() {
+        let parsed = battles(concat!(
+            "Battles during turn:\n",
+            "A (1) attacks B (2) in ocean (1,1) in Sea!\n",
+        ));
+
+        assert!(!parsed[0].assassination);
     }
 }

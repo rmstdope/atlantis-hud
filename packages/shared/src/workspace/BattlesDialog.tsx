@@ -1,7 +1,7 @@
 import type { Battle, BattleUnit } from "@atlantis/core-client";
 import { regionIdOf } from "../hexMapModel";
 import { useEscapeToDismiss } from "./dismissLayer";
-import { allegianceOf, rosterCounts, summarise } from "./battles";
+import { allegianceOf, assassinationView, rosterCounts, roundLabel, summarise } from "./battles";
 
 /**
  * The turn's battles, headline to spoils.
@@ -95,6 +95,7 @@ export function BattlesDialog({
             </ul>
             {selected ? (
               <BattleDetail
+                key={selectedIndex}
                 battle={selected}
                 hexLabel={hexLabel}
                 viewerFactionId={viewerFactionId}
@@ -179,6 +180,7 @@ function BattleDetail({
 }) {
   const summary = summarise(battle, hexLabel);
   const regionId = battle.coordinate ? regionIdOf(battle.coordinate) : null;
+  const assassination = assassinationView(battle);
 
   return (
     <div data-testid="battle-detail" className="flex min-h-0 flex-col gap-2 overflow-y-auto p-3">
@@ -213,39 +215,29 @@ function BattleDetail({
       </div>
 
       <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-        <Roster label="Attackers" units={battle.attackers} viewerFactionId={viewerFactionId} />
-        <Roster label="Defenders" units={battle.defenders} viewerFactionId={viewerFactionId} />
+        <Roster
+          label="Attackers"
+          units={battle.attackers}
+          viewerFactionId={viewerFactionId}
+          fallbackNames={assassination?.attackers ?? null}
+        />
+        <Roster
+          label="Defenders"
+          units={battle.defenders}
+          viewerFactionId={viewerFactionId}
+          fallbackNames={assassination?.defenders ?? null}
+        />
       </div>
-
-      {battle.rounds.length > 0 ? (
-        <div className="flex flex-col gap-2">
-          <h3 className="text-[10px] uppercase tracking-wide text-brass">Rounds</h3>
-          {battle.rounds.map((round, index) => (
-            <div key={index} className="flex flex-col gap-0.5 border-l-2 border-edge pl-2">
-              <span className="text-[10px] uppercase tracking-wide text-brass">
-                Round {round.number ?? index + 1}
-              </span>
-              {round.lines.map((line, lineIndex) => (
-                <p key={lineIndex} className="text-ink-soft">
-                  {line}
-                </p>
-              ))}
-              {round.losses.length > 0 ? (
-                <p className="text-danger">
-                  {round.losses.map((loss) => loss.text).join(" · ")}
-                </p>
-              ) : null}
-              <StatisticsDisclosure label="Round" number={round.number ?? index + 1} lines={round.statistics} />
-            </div>
-          ))}
-        </div>
-      ) : null}
 
       <div className="flex flex-col gap-1">
         <h3 className="text-[10px] uppercase tracking-wide text-brass">Outcome</h3>
         <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
           <dt className="text-ink-soft">Casualties</dt>
-          <dd className="text-ink">{battle.casualties.map((entry) => entry.text).join(" · ")}</dd>
+          <dd className="text-ink">
+            {assassination
+              ? assassination.casualtyText
+              : battle.casualties.map((entry) => entry.text).join(" · ")}
+          </dd>
           {battle.damagedUnits.length > 0 ? (
             <>
               <dt className="text-ink-soft">Damaged</dt>
@@ -261,7 +253,35 @@ function BattleDetail({
         </dl>
       </div>
 
-      <StatisticsDisclosure label="Battle" lines={battle.statistics} />
+      {battle.rounds.length > 0 ? (
+        <div className="flex flex-col gap-2">
+          <h3 className="text-[10px] uppercase tracking-wide text-brass">Rounds</h3>
+          {battle.rounds.map((round, index) => (
+            <div key={index} className="flex flex-col gap-0.5 border-l-2 border-edge pl-2">
+              <span className="text-[10px] uppercase tracking-wide text-brass">
+                {roundLabel(round)}
+              </span>
+              {round.lines.map((line, lineIndex) => (
+                <p key={lineIndex} className="text-ink-soft">
+                  {line}
+                </p>
+              ))}
+              {round.losses.length > 0 ? (
+                <p className="text-danger">
+                  {round.losses.map((loss) => loss.text).join(" · ")}
+                </p>
+              ) : null}
+              <StatisticsDisclosure
+                heading={`${roundLabel(round)} statistics`}
+                testId={round.number === null ? "round-statistics-free" : `round-statistics-${round.number}`}
+                lines={round.statistics}
+              />
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      <StatisticsDisclosure heading="Battle statistics" testId="battle-statistics" lines={battle.statistics} />
     </div>
   );
 }
@@ -269,13 +289,22 @@ function BattleDetail({
 function Roster({
   label,
   units,
-  viewerFactionId
+  viewerFactionId,
+  fallbackNames
 }: {
   label: string;
   units: BattleUnit[];
   viewerFactionId: string | null;
+  /**
+   * An assassination's roster: no `BattleUnit`s to draw from - the report names no attackers at
+   * all, and the only defender is the victim - so these plain strings render as the roster's rows
+   * instead.
+   */
+  fallbackNames: string[] | null;
 }) {
-  const counts = rosterCounts(units, viewerFactionId);
+  const counts = fallbackNames
+    ? { total: fallbackNames.length, own: 0 }
+    : rosterCounts(units, viewerFactionId);
 
   return (
     <div className="flex min-h-0 flex-col gap-1">
@@ -284,29 +313,35 @@ function Roster({
         {counts.own > 0 ? <span className="text-ink-dim"> · {counts.own} yours</span> : null}
       </h3>
       <ul className="flex max-h-48 flex-col gap-0.5 overflow-y-auto rounded border border-edge-soft bg-panel p-1.5">
-        {units.map((unit) => {
-          const allegiance = allegianceOf(unit, viewerFactionId);
-          return (
-            <li
-              key={unit.id}
-              className="flex items-baseline gap-1.5 overflow-hidden text-ellipsis whitespace-nowrap"
-            >
-              <span
-                className={
-                  allegiance === "own" ? "text-brass-bright" : "text-ink"
-                }
-              >
-                {unit.name} ({unit.id})
-              </span>
-              <span className="text-ink-dim">
-                {unit.faction ? `${unit.faction.name} (${unit.faction.id})` : "faction not shown"}
-              </span>
-              <span className="overflow-hidden text-ellipsis whitespace-nowrap text-ink-dim">
-                {unit.body}
-              </span>
-            </li>
-          );
-        })}
+        {fallbackNames
+          ? fallbackNames.map((name, index) => (
+              <li key={index} className="flex shrink-0 items-baseline gap-1.5 overflow-hidden text-ellipsis whitespace-nowrap">
+                <span className="text-ink">{name}</span>
+              </li>
+            ))
+          : units.map((unit) => {
+              const allegiance = allegianceOf(unit, viewerFactionId);
+              return (
+                <li
+                  key={unit.id}
+                  className="flex shrink-0 items-baseline gap-1.5 overflow-hidden text-ellipsis whitespace-nowrap"
+                >
+                  <span
+                    className={
+                      allegiance === "own" ? "text-brass-bright" : "text-ink"
+                    }
+                  >
+                    {unit.name} ({unit.id})
+                  </span>
+                  <span className="text-ink-dim">
+                    {unit.faction ? `${unit.faction.name} (${unit.faction.id})` : "faction not shown"}
+                  </span>
+                  <span className="overflow-hidden text-ellipsis whitespace-nowrap text-ink-dim">
+                    {unit.body}
+                  </span>
+                </li>
+              );
+            })}
       </ul>
     </div>
   );
@@ -314,23 +349,19 @@ function Roster({
 
 /** The round or battle statistics block: folded away by default, saying how much it holds. */
 function StatisticsDisclosure({
-  label,
-  number,
+  heading,
+  testId,
   lines
 }: {
-  label: "Round" | "Battle";
-  number?: number;
+  heading: string;
+  testId: string;
   lines: string[];
 }) {
   if (lines.length === 0) {
     return null;
   }
-  const heading = label === "Round" ? `Round ${number} statistics` : "Battle statistics";
   return (
-    <details
-      className="text-ink-dim"
-      data-testid={label === "Round" ? `round-statistics-${number}` : "battle-statistics"}
-    >
+    <details className="text-ink-dim" data-testid={testId}>
       <summary className="cursor-pointer">
         {heading} ({lines.length} line{lines.length === 1 ? "" : "s"})
       </summary>

@@ -507,6 +507,12 @@ export type Battle = {
   spoils: string | null;
   lineStart: number;
   lineEnd: number;
+  /**
+   * Whether the headline was an assassination rather than an `attacks` battle. Optional because a
+   * `parsedPayloadJson` stored before this field existed carries no key for it - treat a missing
+   * key as `false`.
+   */
+  assassination?: boolean;
 };
 
 /** The full model a report describes, as opposed to the flat summary in `ReportParseResult`. */

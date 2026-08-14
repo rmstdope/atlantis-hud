@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Battle, BattleUnit } from "@atlantis/core-client";
-import { allegianceOf, rosterCounts, summarise } from "./battles";
+import { allegianceOf, assassinationView, roundLabel, rosterCounts, summarise } from "./battles";
 
 const hexLabel = (regionId: string) => `hex ${regionId}`;
 
@@ -122,5 +122,47 @@ describe("whose unit is whose", () => {
 
     expect(counts.total).toBe(4);
     expect(counts.own).toBe(2);
+  });
+});
+
+describe("the round heading", () => {
+  it("names a numbered round", () => {
+    expect(roundLabel({ number: 3, lines: [], losses: [], statistics: [] })).toBe("Round 3");
+  });
+
+  it("names a free round, opened by a rout, without inventing a number", () => {
+    expect(roundLabel({ number: null, lines: [], losses: [], statistics: [] })).toBe("Free round");
+  });
+});
+
+describe("an assassination battle", () => {
+  const assassination = battle({
+    headline: "L Arslan (1446) is assassinated in forest (43,79) in Utso!",
+    attacker: null,
+    defender: { name: "L Arslan", id: "1446" },
+    terrain: "forest",
+    coordinate: { x: 43, y: 79, z: 1 },
+    province: "Utso",
+    assassination: true,
+    casualties: []
+  });
+
+  it("shows an unknown attacker, the victim as defender, and the plain casualty text", () => {
+    const view = assassinationView(assassination);
+
+    expect(view).not.toBeNull();
+    expect(view?.attackers).toEqual(["?"]);
+    expect(view?.defenders).toEqual(["L Arslan (1446)"]);
+    expect(view?.casualtyText).toBe("L Arslan (1446) is assassinated");
+  });
+
+  it("is null for a battle that was not an assassination", () => {
+    expect(assassinationView(battle())).toBeNull();
+  });
+
+  it("summarises with a hex, since the coordinate was parsed from the headline", () => {
+    const summary = summarise(assassination, hexLabel);
+
+    expect(summary.hex).toBe("hex 1:43,79");
   });
 });
