@@ -108,7 +108,7 @@ export function FactionPanel({
               {rows.map((row) => (
                 <div key={row.label} className="contents">
                   <span className="text-ink-soft">{row.label}</span>
-                  <span className="h-1 rounded bg-edge-soft">
+                  <span className="block h-1 rounded bg-edge-soft">
                     <span
                       className={`block h-full rounded ${row.atCeiling ? "bg-brass" : "bg-select"}`}
                       style={{ width: `${Math.min(row.fraction, 1) * 100}%` }}
