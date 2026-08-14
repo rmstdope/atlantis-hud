@@ -149,42 +149,27 @@ describe("label placement", () => {
 });
 
 describe("fitting the label to the piece", () => {
-  it("keeps a short name at full size on a roomy piece", () => {
-    const hexes = Array.from({ length: 9 }, (_, i) =>
-      hex({ coordinate: at(i * 2, 0), province: "Oz" })
+  it("emits the same plain label for every piece, whatever its size", () => {
+    // (0, y+2) is a genuine neighbour offset, so this chain of nine hexes is one connected,
+    // roomy piece rather than nine single-hex ones.
+    const roomyHexes = Array.from({ length: 9 }, (_, i) =>
+      hex({ coordinate: at(0, i * 2), province: "Oz" })
     );
+    const roomyPieces = regionDecorations(roomyHexes, 1);
+    expect(roomyPieces).toHaveLength(1);
+    expect(roomyPieces[0].hexCount).toBe(9);
+    expect(Object.keys(roomyPieces[0].label).sort()).toEqual(["text", "x", "y"]);
+    expect(roomyPieces[0].label.text).toBe("Oz");
 
-    const pieces = regionDecorations(hexes, 1);
-
-    expect(pieces[0].label.fontSize).toBeCloseTo(11, 5);
-    expect(pieces[0].label.letterSpacing).toBeCloseTo(3.4, 5);
-  });
-
-  it("scales a long name down on a three-hex piece", () => {
-    const hexes = [
-      hex({ coordinate: at(0, 0), province: "Long Province" }),
-      hex({ coordinate: at(1, 1), province: "Long Province" }),
-      hex({ coordinate: at(2, 2), province: "Long Province" })
-    ];
-
-    const pieces = regionDecorations(hexes, 1);
-
-    expect(pieces[0].label.fontSize).toBeLessThan(11);
-    expect(pieces[0].label.fontSize).toBeGreaterThan(11 * 0.42);
-  });
-
-  it("never scales below the floor, and still emits the name", () => {
-    const hexes = [
+    const crampedHexes = [
       hex({
         coordinate: at(0, 0),
         province: "An Extraordinarily Long Provincial Name That Cannot Possibly Fit"
       })
     ];
-
-    const pieces = regionDecorations(hexes, 1);
-
-    expect(pieces[0].label.fontSize).toBeCloseTo(11 * 0.42, 5);
-    expect(pieces[0].label.text).toBe(
+    const crampedPieces = regionDecorations(crampedHexes, 1);
+    expect(Object.keys(crampedPieces[0].label).sort()).toEqual(["text", "x", "y"]);
+    expect(crampedPieces[0].label.text).toBe(
       "An Extraordinarily Long Provincial Name That Cannot Possibly Fit"
     );
   });

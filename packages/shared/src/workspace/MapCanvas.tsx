@@ -811,11 +811,6 @@ export function MapCanvas({
                     textAnchor="middle"
                     dominantBaseline="middle"
                     className="region-name"
-                    style={{
-                      fontSize: piece.label.fontSize,
-                      letterSpacing: piece.label.letterSpacing,
-                      strokeWidth: piece.label.haloWidth
-                    }}
                   >
                     {piece.label.text}
                   </text>
