@@ -354,9 +354,22 @@ answering.** The navigator cannot see your scratchpad, and a mockup they have no
 feedback on your description of it rather than on the thing itself — which is the one failure this
 whole step exists to prevent. So, in the same message as the question, never in an earlier one:
 
-- **Give the absolute path, one per variant**, and label each with the name you use in the options
-  (`Option A — file:///…/scratchpad/ah-t65-sidebar-a.html`). A `file://` URL is clickable in most
-  terminals; a bare relative path is not, and `./mockup.html` is meaningless from their shell.
+- **Always a `file://` URL, one per variant, and never a bare path.** Not "in the scratchpad", not
+  `./mockup.html`, not `/Users/…/mockup.html` — a full `file:///absolute/path/to/mockup.html`, every
+  time you mention a mockup. That is the only form the navigator's terminal makes clickable, and one
+  click is the difference between a mockup that gets looked at and one that gets answered from your
+  description of it. A bare path costs them a copy, a paste and a moment's thought about where it
+  is, and that is enough friction to skip.
+
+  Label each with the name you use in the options, so the answer and the file cannot be mismatched:
+
+  ```
+  Option A — file:///Users/…/scratchpad/ah-t65-sidebar-a.html
+  Option B — file:///Users/…/scratchpad/ah-t65-sidebar-b.html
+  ```
+
+  The same holds anywhere else a mockup comes up — a follow-up question, a summary, a report that a
+  bead is planned. If you are naming a mockup, you are giving a `file://` link to it.
 - **Say plainly that it should be viewed first** — one sentence, e.g. "Open both before choosing;
   the difference is in the spacing and does not survive being described." Then put the question.
 - **Re-state the paths on every iteration.** A revised mockup at the same path still needs saying,

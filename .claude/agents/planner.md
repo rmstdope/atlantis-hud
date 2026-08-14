@@ -75,10 +75,12 @@ happy path hides, the words as they will ship, the keyboard, the narrow window a
 cancel. The skill lists what to walk through. Stop when the next question is one the implementer
 could answer from the plan, not when the navigator sounds satisfied.
 
-**When you mock something up, tell them where it is.** They cannot see your scratchpad. Give the
-absolute `file://` path for each variant in the same message as the question, say it should be opened
-before answering, and repeat the paths on every iteration — a tab left open from the last round shows
-the old mockup. Feedback on your description of a mockup is not feedback on the mockup.
+**When you mock something up, tell them where it is — always as a `file://` link.** They cannot see
+your scratchpad, and a bare path is not clickable in their terminal. So a full
+`file:///absolute/path/…` for every variant, never `./mockup.html` and never "in the scratchpad", in
+the same message as the question and every other time you mention that mockup. Say it should be
+opened before answering, and repeat the links on every iteration — a tab left open from the last
+round shows the old mockup. Feedback on your description of a mockup is not feedback on the mockup.
 
 If they are away and a question goes unanswered, do not stall the queue: park that bead with
 `needs-ui-decision` and `human`, say what you asked, and take the next candidate. The skill has the
