@@ -379,15 +379,47 @@ This only holds while the PR is confined to `docs/` and matches what the navigat
 diff before merging — anything outside `docs/`, or content the navigator has not already seen, is not
 this exception and needs a normal reviewed PR instead (see CLAUDE.md's Four Eye Principle).
 
-Branch for it the way everyone else does, and mind the same hazard:
+### Anything you commit, you commit from a worktree of your own
+
+**Never branch in the main checkout.** Not for a mockup, not for a documentation change, not for a
+one-line fix to a file under `docs/`. That checkout is shared — the navigator works in it, and so
+does any session that did not start a worktree — so a branch created there moves somebody else's HEAD
+out from under them mid-edit. Implementers already work this way; the reason applies to you
+identically, and a docs commit is not small enough to be an exception.
 
 ```bash
 git -C <repo> fetch origin main
-git -C <repo> checkout -b <id>-mockup origin/main    # never `checkout main`: another agent holds it
+git -C <repo> worktree add -b <id>-mockup <repo>/.claude/worktrees/<id>-mockup origin/main
+cd <repo>/.claude/worktrees/<id>-mockup
 ```
 
-Check `pwd` first. A shell keeps its directory between commands, so one `cd` into another agent's
-worktree leaves every later git command there.
+`.claude/worktrees/` and nowhere else: `bd` and cargo both find their configuration by walking up, so
+a worktree outside the repository quietly gets its own empty bead database and its own
+multi-gigabyte build directory. The `-mockup` suffix keeps it distinct from the worktree an
+implementer will later add for the same bead — two worktrees cannot share a path, and the
+implementer's is the one that must not fail.
+
+No `pnpm install` here, unlike an implementer's. You are committing files under `docs/` and running
+no suite, and an install into a worktree that lives for two minutes is two minutes you are not
+planning in.
+
+Then commit, push, open the PR and merge it as above. **Remove the worktree as soon as it is
+merged**, running from the main checkout rather than from inside the tree you are deleting:
+
+```bash
+cd <repo>
+git -C <repo> worktree remove --force .claude/worktrees/<id>-mockup
+git -C <repo> worktree prune
+```
+
+`--force`, because `worktree remove` refuses a tree holding untracked files, and a stray saved copy
+of a mockup is enough to trigger that. The two commands are separate rather than chained so a failure
+in the first does not skip the second. Cerebro's `scripts/prune-worktrees.sh` sweep is the net under
+this, not a substitute for it — it waits half an hour and only removes what is provably safe.
+
+**Check `pwd` before every git command.** A shell keeps its directory between commands, so one `cd`
+into a worktree leaves every later git command there — including the one you meant to run somewhere
+else.
 
 **Never stall the pipeline on an absent navigator.** If a user-facing question goes unanswered,
 park the bead and move on:
