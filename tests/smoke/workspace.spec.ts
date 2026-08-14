@@ -225,6 +225,73 @@ test("an ally's report for the same turn can be merged into the map", async ({ p
 });
 
 /**
+ * ah-vp3.2: everything the report says about the faction as a whole, read from the header.
+ */
+test("the faction chip opens the faction view", async ({ page }) => {
+  await loadReport(page);
+
+  const chip = page.getByTestId("faction-chip");
+  await expect(chip).toContainText("Borg TNG (95)");
+  await chip.click();
+
+  const panel = page.getByTestId("faction-panel");
+  await expect(panel).toBeVisible();
+  await expect(panel).toContainText("Magic 5");
+  await expect(panel).toContainText("6038");
+  await expect(panel).toContainText(/Regions.*0.*\/.*0/u);
+  await expect(panel).toContainText(/Mages.*6.*\/.*6/u);
+  await expect(panel).toContainText(/Apprentices.*15.*\/.*15/u);
+  await expect(panel).toContainText("default Unfriendly");
+  await expect(panel).toContainText("Fon (8)");
+});
+
+test("the faction view closes on Escape", async ({ page }) => {
+  await loadReport(page);
+
+  await page.getByTestId("faction-chip").click();
+  await expect(page.getByTestId("faction-panel")).toBeVisible();
+
+  await page.keyboard.press("Escape");
+
+  await expect(page.getByTestId("faction-panel")).toHaveCount(0);
+});
+
+test("the faction view closes on an outside press", async ({ page }) => {
+  await loadReport(page);
+
+  await page.getByTestId("faction-chip").click();
+  await expect(page.getByTestId("faction-panel")).toBeVisible();
+
+  await page.mouse.click(10, 10);
+
+  await expect(page.getByTestId("faction-panel")).toHaveCount(0);
+});
+
+test("a merged ally is marked in the attitude list", async ({ page }) => {
+  await loadReport(page);
+  await choose(page, "turn-71-f73.rep", ALLY_REPORT);
+  await page.getByTestId("foreign-report-merge").click();
+  await expect(page.getByTestId("merged-factions-chip")).toContainText("+1 merged");
+
+  await page.getByTestId("faction-chip").click();
+  const panel = page.getByTestId("faction-panel");
+  await expect(panel).toBeVisible();
+  await expect(panel.getByTestId("faction-attitude-name-73")).toContainText("⌂");
+});
+
+test("the faction view survives a reload", async ({ page }) => {
+  await loadReport(page);
+
+  await page.reload();
+  await expect(page.getByTestId("import-status")).toContainText("restored turn 71");
+
+  await page.getByTestId("faction-chip").click();
+  const panel = page.getByTestId("faction-panel");
+  await expect(panel).toBeVisible();
+  await expect(panel).toContainText("6038");
+});
+
+/**
  * The header says things once. The platform tag repeated what the About tab says, the routine
  * import status repeated what the Turn chip says, and the load button carried an ellipsis. The
  * status line stays in the page - tests and screen readers key on its text - but it only takes up

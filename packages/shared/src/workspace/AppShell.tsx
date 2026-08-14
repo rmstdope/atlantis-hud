@@ -75,6 +75,7 @@ import { ForeignReportPrompt } from "./ForeignReportPrompt";
 import { ImportSummaryDialog } from "./ImportSummaryDialog";
 import { ViewerFactionPrompt, type ViewerFactionOption } from "./ViewerFactionPrompt";
 import { GamePicker } from "./GamePicker";
+import { FactionPanel } from "./FactionPanel";
 import { MergedFactionsPanel } from "./MergedFactionsPanel";
 import { LayerChips } from "./LayerChips";
 import { MapCanvas } from "./MapCanvas";
@@ -340,6 +341,7 @@ export function AppShell({
   const [pendingLoad, setPendingLoad] = useState<PendingReportLoad | null>(null);
   const [mergedReports, setMergedReports] = useState<MergedReportRecord[]>([]);
   const [mergedOpen, setMergedOpen] = useState(false);
+  const [factionOpen, setFactionOpen] = useState(false);
   // What a batch of reports did, waiting to be read, and how far it has got while it is running.
   // Both null for a single report: that one still answers for itself through the status line.
   const [importSummary, setImportSummary] = useState<ImportSummary | null>(null);
@@ -2091,6 +2093,20 @@ export function AppShell({
             turnLabel={turnLabel}
             merged={mergedReports}
             onDismiss={() => setMergedOpen(false)}
+          />
+        }
+        factionOpen={factionOpen}
+        onFactionToggle={() => setFactionOpen((open) => !open)}
+        factionPanel={
+          <FactionPanel
+            factionName={parsed?.header.factionName ?? null}
+            factionId={parsed?.header.factionId ?? null}
+            factionTypes={parsed?.header.factionTypes ?? []}
+            unclaimedSilver={parsed?.header.unclaimedSilver ?? null}
+            status={parsed?.header.factionStatus ?? null}
+            attitudes={parsed?.header.attitudes ?? null}
+            mergedFactionIds={new Set(mergedReports.map((record) => record.mergedFactionId))}
+            onDismiss={() => setFactionOpen(false)}
           />
         }
         status={status}
