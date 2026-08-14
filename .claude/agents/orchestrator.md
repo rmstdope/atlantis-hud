@@ -460,12 +460,13 @@ worktree sends every later git command there, where a release would be cut from 
 branch.
 
 ```bash
-cd /Users/henrikku/repos/atlantis-hud            # or wherever the primary checkout is
+# The primary checkout is the first entry of `git worktree list`, whichever worktree you are in.
+cd "$(git worktree list --porcelain | head -1 | cut -d' ' -f2)"
 pwd                                              # confirm it, and that it is not a worktree
 git rev-parse --abbrev-ref HEAD                  # must be main
 git status --porcelain                           # must be empty
 git fetch origin main
-git rev-list --count main..origin/main           # behind: must be 0
+git rev-list --count main..origin/main           # behind: 0, or pull below
 git rev-list --count origin/main..main           # ahead: must be 0
 ```
 
