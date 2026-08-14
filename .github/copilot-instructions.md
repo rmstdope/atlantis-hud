@@ -109,18 +109,29 @@ scripts/run-user-feedback
 ```
 
 Interactive for the same reason the planner is — she has to put an issue in front of you and wait.
-She walks the open GitHub issues oldest first. One with no bead is brought to you with a
-recommendation, and **you** decide between three answers: make it a bead, ask the reporter for more,
-or close it as invalid — she writes up whichever you choose and never decides one herself. A bead
-created this way links back with `--external-ref gh-<n>`, which is what makes an issue and its bead
-findable from either end.
+She walks the open GitHub issues oldest first. **Every issue is thanked before anything else happens
+to it**: a first-sight comment thanking the reporter, telling them a person has read it, and
+promising that this thread is where the news will appear. It decides nothing, so it needs no approval
+from you, and it means a reporter is not left in silence while their issue waits for a triage
+question you have not got to. A `<!-- moira-ack -->` marker keeps it to once, ever. One with no bead
+is then brought to you with a recommendation, and **you** decide between three answers: make it a
+bead, ask the reporter for more, or close it as invalid — she writes up whichever you choose and
+never decides one herself. A bead created this way links back with `--external-ref gh-<n>`, which is
+what makes an issue and its bead findable from either end.
 
 One that already has a bead gets a status comment when its bead moves: `CREATED`, `PLANNED`,
 `CLAIMED`, `MERGED`, `RELEASED`, one comment each and never repeated — a `<!-- beads-state:X -->`
 marker in the comment is how she knows what the issue has already been told. `RELEASED` means the
 commit naming the bead is contained in a release tag, and it is the one state that also closes the
-issue: the version is either out or it is not, so no decision is being taken. Then she sleeps ten
-minutes and goes round again.
+issue: the version is either out or it is not, so no decision is being taken.
+
+Last in each pass she sweeps for the one contradiction her open-issue list cannot show her: **an
+issue somebody closed by hand while its bead is still open.** Her own closes only ever follow a
+RELEASED bead, so anything she finds here was closed by a reporter, a duplicate merge or a slip — and
+those want opposite things done about them. She brings it to you with who closed it and when, and
+**you** choose between reopening the issue, closing the bead, or unlinking the two; if you are away
+the bead is parked with `human` rather than the question being asked again ten minutes later. Then
+she sleeps ten minutes and goes round again.
 
 All four roles are defined in `.claude/agents/`.
 
@@ -253,6 +264,12 @@ rules that must always hold are:
   bead ID and a short description of the work, e.g., `ah-t65-load-multiple-reports`. Run
   `git fetch origin main` and branch from `origin/main` — with several agents about, `main` is
   often checked out in somebody else's worktree, and `git checkout main` then fails.
+- ALWAYS branch in **a worktree of your own** under `.claude/worktrees/`, and never in the main
+  checkout. This holds for every session that commits anything, not only implementers: the planner
+  committing a chosen mockup or a documentation change does it from a worktree too. The main checkout
+  is shared with the navigator, so a branch created there moves their HEAD out from under them
+  mid-edit. Remove the worktree once the PR is merged — `git worktree remove --force`, then
+  `git worktree prune`.
 - ALWAYS put the bead ID in the commit subject, e.g., `feat(ah-t65): load multiple reports`, so work
   stays traceable to the bead.
 - ALWAYS create a pull request for merging the branch back into main.
