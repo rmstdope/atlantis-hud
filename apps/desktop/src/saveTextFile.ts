@@ -16,6 +16,25 @@ import { writeTextFile } from "@tauri-apps/plugin-fs";
 import { hasTauriRuntime } from "./desktopCore";
 
 /**
+ * The native dialog's filter for a file name, derived from its extension.
+ *
+ * The dialog needs to be told what kind of file it is offering to save; leaving it hard-coded to
+ * Text (as it was before ah-jfx) fought a `.json` name - either mangling it or appending `.txt`.
+ * An extension this does not recognise gets no filter at all rather than a guess.
+ */
+export function filterFor(fileName: string): { name: string; extensions: string[] }[] | undefined {
+  const extension = fileName.split(".").pop()?.toLowerCase();
+  switch (extension) {
+    case "json":
+      return [{ name: "JSON", extensions: ["json"] }];
+    case "txt":
+      return [{ name: "Text", extensions: ["txt"] }];
+    default:
+      return undefined;
+  }
+}
+
+/**
  * The saver to hand the workspace, or nothing when this build is running in a plain browser.
  *
  * The desktop bundle is also served as a web page during development and by the preview server the
@@ -30,7 +49,7 @@ export function desktopTextFileSaver(): TextFileSaver | undefined {
   return async (fileName: string, text: string) => {
     const path = await save({
       defaultPath: fileName,
-      filters: [{ name: "Text", extensions: ["txt"] }]
+      filters: filterFor(fileName)
     });
     // The player pressed Cancel. Nothing is written, and nothing is claimed to have been.
     if (path === null) {

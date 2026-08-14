@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
-import { confirmOlderTurnLoad, deliverOrdersExport, shouldConfirmOlderTurnLoad } from "./AppShell";
+import {
+  confirmOlderTurnLoad,
+  deliverGameBackupExport,
+  deliverOrdersExport,
+  shouldConfirmOlderTurnLoad
+} from "./AppShell";
 
 describe("shouldConfirmOlderTurnLoad", () => {
   it("requires confirmation when loading an older turn", () => {
@@ -71,6 +76,44 @@ describe("deliverOrdersExport", () => {
       expect.any(String),
       "text/plain"
     );
+  });
+});
+
+describe("deliverGameBackupExport", () => {
+  it("forwards the shell's saver into deliverTextFile, which is what actually calls it", async () => {
+    const saver = vi.fn().mockResolvedValue("/chosen/game-1.atlantis-hud-game.json");
+    const deliver = vi.fn().mockResolvedValue("/chosen/game-1.atlantis-hud-game.json");
+
+    const path = await deliverGameBackupExport(saver, "game-1", "{}", deliver);
+
+    expect(deliver).toHaveBeenCalledWith(
+      saver,
+      "game-1.atlantis-hud-game.json",
+      "{}",
+      "application/json"
+    );
+    expect(saver).not.toHaveBeenCalled();
+    expect(path).toBe("/chosen/game-1.atlantis-hud-game.json");
+  });
+
+  it("forwards an undefined saver into deliverTextFile, which is what falls back to downloading", async () => {
+    const deliver = vi.fn().mockResolvedValue("");
+
+    const path = await deliverGameBackupExport(undefined, "game-1", "{}", deliver);
+
+    expect(deliver).toHaveBeenCalledWith(
+      undefined,
+      "game-1.atlantis-hud-game.json",
+      "{}",
+      "application/json"
+    );
+    expect(path).toBe("");
+  });
+
+  it("resolves null on a cancelled save, without throwing", async () => {
+    const deliver = vi.fn().mockResolvedValue(null);
+
+    await expect(deliverGameBackupExport(vi.fn(), "game-1", "{}", deliver)).resolves.toBeNull();
   });
 });
 
