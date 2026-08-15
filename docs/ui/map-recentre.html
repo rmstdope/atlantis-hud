@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ah-t2i — Right-click centres the map</title>
+<style>
+  :root { --page:#10151c; --panel:#171e28; --edge:#2a3442; --ink:#d7dee8; --dim:#8a94a3; }
+  body { background: var(--page); color: var(--ink); font: 14px/1.5 system-ui, sans-serif;
+         margin: 0; padding: 24px 32px 64px; }
+  h1 { font-size: 20px; }
+  h2 { font-size: 15px; margin: 26px 0 6px; }
+  p.note { color: var(--dim); max-width: 82ch; }
+  .row { display: flex; gap: 36px; flex-wrap: wrap; margin: 14px 0 8px; align-items: flex-start; }
+  .variant { width: 440px; }
+  .cost { color: var(--dim); font-size: 13px; margin: 8px 0 0; }
+  .cost b { color: var(--ink); }
+  .frame { border: 1px solid var(--edge); border-radius: 10px; overflow: hidden;
+           background: #0d222b; }
+  svg { display: block; }
+  label.opt { display: inline-flex; align-items: center; gap: 8px; margin: 10px 0;
+              color: var(--ink); font-size: 13.5px; }
+</style>
+</head>
+<body>
+<h1>ah-t2i — Right-click centres the map on a hex</h1>
+<p class="note">
+  Both figures are <b>live</b>. <b>Right-click any hex</b> to centre the map on it (the browser
+  menu is suppressed inside the figures, as it would be over the real map). <b>Left-click</b>
+  selects — the white double ring — exactly as in the app. Today right-click does nothing at all
+  in the app, so this gesture replaces nothing.
+</p>
+<label class="opt"><input type="checkbox" id="alsoSelect">
+  Right-click <b>also selects</b> the hex (moves the white ring as well as the view) —
+  <b>declined; centre-only was chosen</b></label>
+<p class="note">
+  <b>Decisions (recorded from the planning discussion):</b> instant jump (variant 1);
+  right-click centres only, the selection stays put; Ctrl+click on macOS is treated as
+  right-click and centres; a right-click always centres — known hexes and unexplored ground
+  alike, even when the hex is already visible; the native context menu is suppressed over the
+  map; help-overlay row — description "Bring a hex to the middle of the view", mouse
+  "Right-click it", no keyboard chord.
+</p>
+
+<h2>Variant 1 — instant jump — CHOSEN</h2>
+<div class="row">
+  <div class="variant">
+    <div class="frame"><svg id="map-jump" width="440" height="260"></svg></div>
+    <p class="cost"><b>The view snaps to the new centre</b>, like every map movement today (pan
+    release, selection-follow, zoom-to-fit are all instant). No new machinery.</p>
+  </div>
+</div>
+
+<h2>Variant 2 — short glide</h2>
+<div class="row">
+  <div class="variant">
+    <div class="frame"><svg id="map-glide" width="440" height="260"></svg></div>
+    <p class="cost"><b>The view glides to the new centre over ~250ms</b> — the eye keeps its
+    bearings on a long jump. New animation machinery on the map transform, disabled under
+    reduced-motion; every other map movement stays instant, so the map gains two speeds.</p>
+  </div>
+</div>
+
+<script>
+const R = 24, DX = 1.5 * R, DY = Math.sqrt(3) * R;
+const PTS = [[R,0],[R/2,DY/2],[-R/2,DY/2],[-R,0],[-R/2,-DY/2],[R/2,-DY/2]]
+  .map(p => p.join(",")).join(" ");
+const TERR = ["#7fa0b8","#b3a565","#6e8a5c","#8d8a83","#c2ab74","#7d8a5e"];
+const COLS = 14, ROWS = 9, W = 440, H = 260;
+function pos(c, r) { return [c * DX, r * DY + (c % 2 ? DY / 2 : 0)]; }
+function el(n, at) { const e = document.createElementNS("http://www.w3.org/2000/svg", n);
+  for (const k in at) e.setAttribute(k, at[k]); return e; }
+
+function build(id, glide) {
+  const svg = document.getElementById(id);
+  const world = el("g", {});
+  let sel = [4, 3];
+  const ring = el("g", {});
+  ring.appendChild(el("polygon",{points:PTS,fill:"none",stroke:"#0a0e13","stroke-width":7,
+    "stroke-linejoin":"round"}));
+  ring.appendChild(el("polygon",{points:PTS,fill:"none",stroke:"#f5f8fc","stroke-width":3,
+    "stroke-linejoin":"round"}));
+  const place = () => { const [x,y]=pos(...sel); ring.setAttribute("transform",`translate(${x} ${y})`); };
+  for (let c = 0; c < COLS; c++) for (let r = 0; r < ROWS; r++) {
+    const [x,y] = pos(c,r);
+    const hex = el("polygon",{points:PTS,transform:`translate(${x} ${y})`,
+      fill:TERR[(c*7+r*3)%6],stroke:"#4a3a22","stroke-width":1.4,cursor:"pointer"});
+    hex.addEventListener("click", () => { sel=[c,r]; place(); });
+    hex.addEventListener("contextmenu", (ev) => { ev.preventDefault();
+      if (document.getElementById("alsoSelect").checked) { sel=[c,r]; place(); }
+      centre(c,r); });
+    world.appendChild(hex);
+  }
+  place(); world.appendChild(ring); svg.appendChild(world);
+  if (glide) world.style.transition = "transform .25s ease-out";
+  let tx = 0, ty = 0;
+  const apply = () => { world.style.transform = `translate(${tx}px, ${ty}px)`; };
+  const centre = (c,r) => { const [x,y]=pos(c,r); tx = W/2 - x; ty = H/2 - y; apply(); };
+  centre(4,3);
+}
+build("map-jump", false);
+build("map-glide", true);
+</script>
+</body>
+</html>
