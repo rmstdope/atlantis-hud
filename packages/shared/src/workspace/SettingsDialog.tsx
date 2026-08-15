@@ -1,4 +1,5 @@
 import { useState } from "react";
+import type { AdvisoryCheckCode } from "@atlantis/core-client";
 import { useEscapeToDismiss } from "./dismissLayer";
 import { APP_VERSION } from "../appVersion";
 import { snippetBodyProblem, snippetNameProblem } from "../orderSnippets";
@@ -9,6 +10,7 @@ import {
 } from "../settingsStore";
 import type { ThemeName } from "../settingsStore";
 import { mapThemeOptions } from "./mapThemes";
+import { SettingToggle } from "./SettingToggle";
 import type { WorkspaceGame } from "../workspaceStore";
 import type { AppUpdateControl } from "./appUpdate";
 import { updatePresentationFor } from "./appUpdate";
@@ -138,6 +140,7 @@ export function SettingsDialog({
               onChangeRuleset={onChangeRuleset}
             />
           ) : null}
+          {tab === "warnings" ? <WarningSettings /> : null}
           {tab === "snippets" ? <SnippetSettings /> : null}
           {tab === "about" ? <About platformLabel={platformLabel} appUpdate={appUpdate} /> : null}
         </div>
@@ -193,8 +196,6 @@ function GlobalSettings() {
   const setUnitListLimit = useSettingsStore((state) => state.setUnitListLimit);
   const unitListFixedSize = useSettingsStore((state) => state.unitListFixedSize);
   const setUnitListFixedSize = useSettingsStore((state) => state.setUnitListFixedSize);
-  const warnOnUnguardedHex = useSettingsStore((state) => state.warnOnUnguardedHex);
-  const setWarnOnUnguardedHex = useSettingsStore((state) => state.setWarnOnUnguardedHex);
   const showShortcutsAtStartup = useSettingsStore((state) => state.showShortcutsAtStartup);
   const setShowShortcutsAtStartup = useSettingsStore((state) => state.setShowShortcutsAtStartup);
   const movementPlanner = useSettingsStore((state) => state.movementPlanner);
@@ -234,66 +235,26 @@ function GlobalSettings() {
         </select>
       </label>
 
-      <label className="flex items-center justify-between gap-2 text-ink-soft">
-        <span>
-          <span className="block">Biome textures</span>
-          <span className="block text-[10px] text-ink-dim">Uses image tiles for known biomes.</span>
-        </span>
-        <input
-          type="checkbox"
-          data-testid="settings-biome-textures"
-          aria-label="Biome textures"
-          checked={biomeTextures}
-          onChange={(event) => setBiomeTextures(event.target.checked)}
-          className="accent-brass"
-        />
-      </label>
-
-      {/*
-        Off by default, and deliberately. Most hexes are left unguarded on purpose - against the
-        committed turn 71 this warns about every hex the faction stands in - and a panel that
-        always has something to say is one nobody reads. Losing a guard you had is reported
-        whatever this says, because that is a change the player may not have meant.
-      */}
-      <label className="flex items-center justify-between gap-2 text-ink-soft">
-        <span>
-          <span className="block">Warn about unguarded hexes</span>
-          <span className="block text-[10px] text-ink-dim">
-            Every hex holding your units with nobody guarding it. Losing a guard is always warned
-            about.
-          </span>
-        </span>
-        <input
-          type="checkbox"
-          data-testid="settings-warn-unguarded"
-          aria-label="Warn about unguarded hexes"
-          checked={warnOnUnguardedHex}
-          onChange={(event) => setWarnOnUnguardedHex(event.target.checked)}
-          className="accent-brass"
-        />
-      </label>
+      <SettingToggle
+        title="Biome textures"
+        description="Uses image tiles for known biomes."
+        testId="settings-biome-textures"
+        checked={biomeTextures}
+        onChange={setBiomeTextures}
+      />
 
       {/*
         The same switch the overlay itself carries. Here as well because the overlay is the one
         screen a player can turn off from inside and then be unable to find again: the key that
         opens it is written on the thing they just dismissed.
       */}
-      <label className="flex items-center justify-between gap-2 text-ink-soft">
-        <span>
-          <span className="block">Show the getting-around guide at startup</span>
-          <span className="block text-[10px] text-ink-dim">
-            The mouse and keyboard guide greets you when the application opens.
-          </span>
-        </span>
-        <input
-          type="checkbox"
-          data-testid="settings-shortcuts-at-startup"
-          aria-label="Show the getting-around guide at startup"
-          checked={showShortcutsAtStartup}
-          onChange={(event) => setShowShortcutsAtStartup(event.target.checked)}
-          className="accent-brass"
-        />
-      </label>
+      <SettingToggle
+        title="Show the getting-around guide at startup"
+        description="The mouse and keyboard guide greets you when the application opens."
+        testId="settings-shortcuts-at-startup"
+        checked={showShortcutsAtStartup}
+        onChange={setShowShortcutsAtStartup}
+      />
 
       <label className="flex flex-col gap-1">
         <span className="flex items-baseline justify-between gap-2">
@@ -347,39 +308,125 @@ function GlobalSettings() {
         too - the pane always reserves this many rows, even on an empty or stale hex, so moving
         between hexes never resizes it.
       */}
-      <label className="flex items-center justify-between gap-2 text-ink-soft">
-        <span>
-          <span className="block">Fixed pane size</span>
-          <span className="block text-[10px] text-ink-dim">
-            Always reserve this many rows, even when the hex holds fewer units.
-          </span>
-        </span>
-        <input
-          type="checkbox"
-          data-testid="settings-unit-list-fixed"
-          aria-label="Fixed pane size"
-          checked={unitListFixedSize}
-          onChange={(event) => setUnitListFixedSize(event.target.checked)}
-          className="accent-brass"
-        />
-      </label>
+      <SettingToggle
+        title="Fixed pane size"
+        description="Always reserve this many rows, even when the hex holds fewer units."
+        testId="settings-unit-list-fixed"
+        checked={unitListFixedSize}
+        onChange={setUnitListFixedSize}
+      />
 
-      <label className="flex items-center justify-between gap-2 text-ink-soft">
-        <span>
-          <span className="block">Movement planner</span>
-          <span className="block text-[10px] text-ink-dim">
-            Shows the experimental Movement pane for planning MOVE routes on the map.
-          </span>
-        </span>
-        <input
-          type="checkbox"
-          data-testid="settings-movement-planner"
-          aria-label="Movement planner"
-          checked={movementPlanner}
-          onChange={(event) => setMovementPlanner(event.target.checked)}
-          className="accent-brass"
-        />
-      </label>
+      <SettingToggle
+        title="Movement planner"
+        description="Shows the experimental Movement pane for planning MOVE routes on the map."
+        testId="settings-movement-planner"
+        checked={movementPlanner}
+        onChange={setMovementPlanner}
+      />
+    </div>
+  );
+}
+
+/**
+ * Which advisory order-check codes should not run at all: the Warnings tab's on/off toggles,
+ * grouped Teaching / Resources / Guarding. Off means the core never produces the finding - counts,
+ * chip, panels and editor underlines all agree, nothing anywhere says "hidden".
+ */
+const WARNING_GROUPS: readonly {
+  heading: string;
+  entries: readonly { code: AdvisoryCheckCode; title: string; description: string }[];
+}[] = [
+  {
+    heading: "Teaching",
+    entries: [
+      {
+        code: "teacher-has-free-slots",
+        title: "Teachers with free slots",
+        description: "A unit that could teach somebody this month and is not."
+      },
+      {
+        code: "teaching-oversubscribed",
+        title: "Oversubscribed teachers",
+        description: "More students than the teacher can take."
+      },
+      {
+        code: "teacher-cannot-teach",
+        title: "Teachers lacking the skill",
+        description: "The teacher cannot teach what the student is studying."
+      },
+      {
+        code: "taught-not-studying",
+        title: "Students not studying",
+        description: "A unit named as a student that is not studying anything."
+      },
+      {
+        code: "taught-not-here",
+        title: "Students elsewhere",
+        description: "Teacher and student are not in the same hex."
+      }
+    ]
+  },
+  {
+    heading: "Resources",
+    entries: [
+      {
+        code: "not-enough-silver",
+        title: "Overspent silver",
+        description: "Orders spend more silver than the unit or the hex holds."
+      },
+      {
+        code: "not-enough-items",
+        title: "Overdrawn items",
+        description: "Orders give away more of an item than the unit holds."
+      }
+    ]
+  },
+  {
+    heading: "Guarding",
+    entries: [
+      {
+        code: "guard-dropped",
+        title: "Dropped guards",
+        description: "A hex you were guarding no longer is."
+      },
+      {
+        code: "hex-unguarded",
+        title: "Unguarded hexes",
+        description: "Every hex holding your units with nobody guarding it."
+      }
+    ]
+  }
+];
+
+/**
+ * Every advisory check's on/off toggle, grouped as `WARNING_GROUPS` lays out. Global in scope -
+ * "per game" is not a settings scope today - and off by default only for `hex-unguarded`, matching
+ * the behaviour this tab absorbed from the Global tab's own checkbox.
+ */
+/** Exported for `SettingsDialog.test.tsx`, which renders this panel in isolation. */
+export function WarningSettings() {
+  const advisoryChecks = useSettingsStore((state) => state.advisoryChecks);
+  const setAdvisoryCheck = useSettingsStore((state) => state.setAdvisoryCheck);
+
+  return (
+    <div className="flex flex-col gap-3">
+      {WARNING_GROUPS.map((group) => (
+        <div key={group.heading} className="flex flex-col gap-2">
+          <div className="mt-2 text-[10px] uppercase tracking-wider text-ink-dim border-b border-edge/60 pb-0.5">
+            {group.heading}
+          </div>
+          {group.entries.map((entry) => (
+            <SettingToggle
+              key={entry.code}
+              title={entry.title}
+              description={entry.description}
+              testId={`settings-warning-${entry.code}`}
+              checked={advisoryChecks[entry.code]}
+              onChange={(checked) => setAdvisoryCheck(entry.code, checked)}
+            />
+          ))}
+        </div>
+      ))}
     </div>
   );
 }

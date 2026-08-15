@@ -953,7 +953,8 @@ test("a unit told to spend silver it has not got is warned about, without blocki
  */
 async function warnAboutUnguardedHexes(page: Page) {
   await page.getByRole("button", { name: "Settings" }).click();
-  await page.getByTestId("settings-warn-unguarded").check();
+  await page.getByTestId("settings-tab-warnings").click();
+  await page.getByTestId("settings-warning-hex-unguarded").check();
   await page.keyboard.press("Escape");
 }
 
@@ -1004,6 +1005,38 @@ test("the hidden problems stay hidden across a reload", async ({ page }) => {
 
   await expect(page.getByTestId("region-problems-toggle")).not.toBeChecked();
   await expect(page.getByTestId("region-problems")).toHaveCount(0);
+});
+
+/**
+ * The Warnings settings tab (ah-m9q.2): off means the core does not produce the finding at all, so
+ * the chip and every panel agree the moment the toggle is flipped - not merely hidden client-side.
+ * Reuses the shared-purse silver shortfall from above, which is exactly the kind of hex-level
+ * finding a client-side filter could not be trusted to catch consistently.
+ */
+test("a silenced advisory check disappears everywhere at once", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+  await selectUnit(page, OWN_UNIT);
+  await fillOrders(page, "GIVE 13401 999999999 SILV");
+
+  await expect(page.getByTestId("region-problems")).toContainText("short");
+  await expect(page.getByTestId("problems-chip")).toContainText("1 problem");
+
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByTestId("settings-tab-warnings").click();
+  await page.getByTestId("settings-warning-not-enough-silver").uncheck();
+  await page.keyboard.press("Escape");
+
+  await expect(page.getByTestId("region-problems")).toHaveCount(0);
+  await expect(page.getByTestId("problems-chip")).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByTestId("settings-tab-warnings").click();
+  await page.getByTestId("settings-warning-not-enough-silver").check();
+  await page.keyboard.press("Escape");
+
+  await expect(page.getByTestId("region-problems")).toContainText("short");
+  await expect(page.getByTestId("problems-chip")).toContainText("1 problem");
 });
 
 test("an order with the wrong argument is caught, and the offending word quoted", async ({

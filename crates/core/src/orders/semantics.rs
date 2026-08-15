@@ -47,7 +47,8 @@ pub mod codes {
     pub const TAUGHT_NOT_STUDYING: &str = "taught-not-studying";
     pub const TEACHER_CANNOT_TEACH: &str = "teacher-cannot-teach";
     pub const TEACHING_OVERSUBSCRIBED: &str = "teaching-oversubscribed";
-    pub const ALL: [&str; 8] = [
+    pub const TEACHER_HAS_FREE_SLOTS: &str = "teacher-has-free-slots";
+    pub const ALL: [&str; 9] = [
         NOT_ENOUGH_SILVER,
         NOT_ENOUGH_ITEMS,
         GUARD_DROPPED,
@@ -56,6 +57,7 @@ pub mod codes {
         TAUGHT_NOT_STUDYING,
         TEACHER_CANNOT_TEACH,
         TEACHING_OVERSUBSCRIBED,
+        TEACHER_HAS_FREE_SLOTS,
     ];
 }
 
@@ -126,9 +128,9 @@ pub fn check_turn(
         }
 
         let start = findings.len();
-        check_resources(&hex, ruleset, &mut findings);
+        check_resources(&hex, ruleset, &options, &mut findings);
         check_guard(&hex, &options, &mut findings);
-        check_teaching(&hex, ruleset, &mut findings);
+        check_teaching(&hex, ruleset, &options, &mut findings);
 
         // Within a hex, what sits on a line comes first and in line order; what belongs to the hex
         // itself comes last. `sort_by_key` is stable, so checks that produce several findings for
@@ -333,7 +335,12 @@ struct Ledger<'a> {
     charged_at: BTreeMap<(String, String), PlacedIntent>,
 }
 
-fn check_resources(hex: &Hex<'_>, ruleset: Option<&Ruleset>, findings: &mut Vec<Finding>) {
+fn check_resources(
+    hex: &Hex<'_>,
+    ruleset: Option<&Ruleset>,
+    options: &CheckOptions,
+    findings: &mut Vec<Finding>,
+) {
     let mut ledger = Ledger {
         ruleset,
         balance: BTreeMap::new(),
@@ -356,7 +363,7 @@ fn check_resources(hex: &Hex<'_>, ruleset: Option<&Ruleset>, findings: &mut Vec<
         }
     }
 
-    report_shortfalls(&ledger, hex, ruleset, findings);
+    report_shortfalls(&ledger, hex, ruleset, options, findings);
 }
 
 /// Applies one order to the ledger.
@@ -673,9 +680,10 @@ fn report_shortfalls(
     ledger: &Ledger<'_>,
     hex: &Hex<'_>,
     ruleset: Option<&Ruleset>,
+    options: &CheckOptions,
     findings: &mut Vec<Finding>,
 ) {
-    report_shared_purse(ledger, hex, findings);
+    report_shared_purse(ledger, hex, options, findings);
 
     for ordered in &hex.units {
         let who = &ordered.unit.unit_id;
@@ -698,6 +706,14 @@ fn report_shortfalls(
             // A sharing unit's silver is not its own to be short of; the purse is answered for
             // above, once for the hex.
             if tag == SILVER && ordered.shares() {
+                continue;
+            }
+            let code = if tag == SILVER {
+                codes::NOT_ENOUGH_SILVER
+            } else {
+                codes::NOT_ENOUGH_ITEMS
+            };
+            if !options.emits(code) {
                 continue;
             }
 
@@ -737,7 +753,15 @@ fn report_shortfalls(
 /// Reported against the hex rather than against a unit. Sixteen units of turn 71 sail together
 /// with their money held by one of them; blaming each of the fifteen for being penniless would be
 /// fifteen wrong answers, and blaming the sixteenth for being the treasurer would be another.
-fn report_shared_purse(ledger: &Ledger<'_>, hex: &Hex<'_>, findings: &mut Vec<Finding>) {
+fn report_shared_purse(
+    ledger: &Ledger<'_>,
+    hex: &Hex<'_>,
+    options: &CheckOptions,
+    findings: &mut Vec<Finding>,
+) {
+    if !options.emits(codes::NOT_ENOUGH_SILVER) {
+        return;
+    }
     let sharers: Vec<&Ordered<'_>> = hex.units.iter().filter(|o| o.shares()).collect();
     if sharers.is_empty() {
         return;
@@ -796,10 +820,12 @@ fn check_guard(hex: &Hex<'_>, options: &CheckOptions, findings: &mut Vec<Finding
     }
 
     if guarded_now {
-        findings.push(hex.finding(
-            codes::GUARD_DROPPED,
-            "this hex is guarded now and will be guarded by nobody next turn".to_string(),
-        ));
+        if options.emits(codes::GUARD_DROPPED) {
+            findings.push(hex.finding(
+                codes::GUARD_DROPPED,
+                "this hex is guarded now and will be guarded by nobody next turn".to_string(),
+            ));
+        }
     } else if options.emits(codes::HEX_UNGUARDED) {
         findings.push(hex.finding(
             codes::HEX_UNGUARDED,
@@ -810,7 +836,12 @@ fn check_guard(hex: &Hex<'_>, options: &CheckOptions, findings: &mut Vec<Finding
 
 // --- who is teaching whom ------------------------------------------------------------------------
 
-fn check_teaching(hex: &Hex<'_>, ruleset: Option<&Ruleset>, findings: &mut Vec<Finding>) {
+fn check_teaching(
+    hex: &Hex<'_>,
+    ruleset: Option<&Ruleset>,
+    options: &CheckOptions,
+    findings: &mut Vec<Finding>,
+) {
     let mut taught: BTreeSet<&str> = BTreeSet::new();
     for ordered in &hex.units {
         for intent in ordered.intents() {
@@ -824,8 +855,8 @@ fn check_teaching(hex: &Hex<'_>, ruleset: Option<&Ruleset>, findings: &mut Vec<F
     }
 
     for ordered in &hex.units {
-        check_one_teacher(hex, ordered, ruleset, findings);
-        offer_free_slots(hex, ordered, &taught, ruleset, findings);
+        check_one_teacher(hex, ordered, ruleset, options, findings);
+        offer_free_slots(hex, ordered, &taught, ruleset, options, findings);
     }
 }
 
@@ -834,6 +865,7 @@ fn check_one_teacher(
     hex: &Hex<'_>,
     teacher: &Ordered<'_>,
     ruleset: Option<&Ruleset>,
+    options: &CheckOptions,
     findings: &mut Vec<Finding>,
 ) {
     let Some(placed) = teacher
@@ -854,22 +886,26 @@ fn check_one_teacher(
         let Party::Unit(id) = student else { continue };
 
         let Some(pupil) = hex.find(id).filter(|pupil| !pupil.leaves_the_hex()) else {
-            findings.push(teacher.finding(
-                hex,
-                codes::TAUGHT_NOT_HERE,
-                format!("unit {id} is not in this hex to be taught"),
-                Some(placed),
-            ));
+            if options.emits(codes::TAUGHT_NOT_HERE) {
+                findings.push(teacher.finding(
+                    hex,
+                    codes::TAUGHT_NOT_HERE,
+                    format!("unit {id} is not in this hex to be taught"),
+                    Some(placed),
+                ));
+            }
             continue;
         };
 
         let Some(studying) = pupil.studies() else {
-            findings.push(teacher.finding(
-                hex,
-                codes::TAUGHT_NOT_STUDYING,
-                format!("unit {id} is being taught but has no STUDY order"),
-                Some(placed),
-            ));
+            if options.emits(codes::TAUGHT_NOT_STUDYING) {
+                findings.push(teacher.finding(
+                    hex,
+                    codes::TAUGHT_NOT_STUDYING,
+                    format!("unit {id} is being taught but has no STUDY order"),
+                    Some(placed),
+                ));
+            }
             continue;
         };
 
@@ -882,7 +918,7 @@ fn check_one_teacher(
             continue;
         };
         let theirs = pupil.skill_level(&tag.tag);
-        if teacher.skill_level(&tag.tag) <= theirs {
+        if teacher.skill_level(&tag.tag) <= theirs && options.emits(codes::TEACHER_CANNOT_TEACH) {
             findings.push(teacher.finding(
                 hex,
                 codes::TEACHER_CANNOT_TEACH,
@@ -897,7 +933,7 @@ fn check_one_teacher(
     }
 
     let slots = teacher.unit.men.saturating_mul(STUDENTS_PER_TEACHER);
-    if taught_men > slots {
+    if taught_men > slots && options.emits(codes::TEACHING_OVERSUBSCRIBED) {
         findings.push(teacher.finding(
             hex,
             codes::TEACHING_OVERSUBSCRIBED,
@@ -925,8 +961,12 @@ fn offer_free_slots(
     teacher: &Ordered<'_>,
     taught: &BTreeSet<&str>,
     ruleset: Option<&Ruleset>,
+    options: &CheckOptions,
     findings: &mut Vec<Finding>,
 ) {
+    if !options.emits(codes::TEACHER_HAS_FREE_SLOTS) {
+        return;
+    }
     let Some(ruleset) = ruleset else { return };
     // Teaching takes the whole month, so a unit spending its month otherwise is not free to teach.
     if teacher.is_busy() {
@@ -970,7 +1010,7 @@ fn offer_free_slots(
     findings.push(
         teacher.finding(
             hex,
-            "teacher-has-free-slots",
+            codes::TEACHER_HAS_FREE_SLOTS,
             format!(
                 "this unit has {free} teaching slots free and could teach unit {}{and_others}",
                 first.unit.unit_id,
@@ -1948,6 +1988,175 @@ mod tests {
                 CheckOptions::default(),
             ),
             vec![]
+        );
+    }
+
+    // --- disabling advisory checks -------------------------------------------------------------
+
+    /// The runtime default (`hex-unguarded` off, everything else on) plus one more code disabled.
+    fn disabling(code: &str) -> CheckOptions {
+        let mut options = CheckOptions::default();
+        options.disabled.insert(code.to_string());
+        options
+    }
+
+    /// Every advisory code has a fixture that emits it, and disabling that code by name silences
+    /// it - proven both ways: present when nothing is disabled, absent when it is. The settings
+    /// UI's nine toggles are only as real as this.
+    #[test]
+    fn every_advisory_code_can_be_silenced() {
+        let mut guard_dropping = unit("5");
+        guard_dropping.on_guard = true;
+        let teacher_below_student = vec![
+            with_skill(with_men(with_silver(unit("500"), 1000), 3), "COMB", 2),
+            with_skill(with_men(with_silver(unit("700"), 1000), 2), "COMB", 2),
+        ];
+        let oversubscribed = vec![
+            with_skill(with_silver(unit("500"), 1000), "COMB", 3),
+            with_men(with_silver(unit("700"), 1000), 20),
+        ];
+
+        let cases: Vec<(&str, Vec<ReportRegion>, &str)> = vec![
+            (
+                codes::NOT_ENOUGH_SILVER,
+                vec![region(vec![with_silver(unit("5"), 40)])],
+                "unit 5\nGIVE 7 100 SILV\n",
+            ),
+            (
+                codes::NOT_ENOUGH_ITEMS,
+                vec![region(vec![with_item(unit("5"), 3, "sword", "SWOR")])],
+                "unit 5\nGIVE 7 10 swords\n",
+            ),
+            (
+                codes::GUARD_DROPPED,
+                vec![region(vec![guard_dropping])],
+                "unit 5\nMOVE N\n",
+            ),
+            (
+                codes::HEX_UNGUARDED,
+                vec![region(vec![unit("5")])],
+                "unit 5\nWORK\n",
+            ),
+            (
+                codes::TAUGHT_NOT_HERE,
+                vec![region(teaching_hex())],
+                "unit 500\nTEACH 999\n",
+            ),
+            (
+                codes::TAUGHT_NOT_STUDYING,
+                vec![region(teaching_hex())],
+                "unit 500\nTEACH 700\nunit 700\nWORK\n",
+            ),
+            (
+                codes::TEACHER_CANNOT_TEACH,
+                vec![region(teacher_below_student)],
+                "unit 500\nTEACH 700\nunit 700\nSTUDY combat\n",
+            ),
+            (
+                codes::TEACHING_OVERSUBSCRIBED,
+                vec![region(oversubscribed)],
+                "unit 500\nTEACH 700\nunit 700\nSTUDY combat\n",
+            ),
+            (
+                codes::TEACHER_HAS_FREE_SLOTS,
+                vec![region(teaching_hex())],
+                "unit 700\nSTUDY combat\n",
+            ),
+        ];
+
+        assert_eq!(
+            cases.len(),
+            codes::ALL.len(),
+            "every code in codes::ALL needs a fixture here, or a silenced one would go unnoticed"
+        );
+
+        for (code, regions, orders) in &cases {
+            // Fully enabled (rather than the runtime default) so `hex-unguarded`'s own case, which
+            // the default itself disables, still gets to prove its fixture fires at all.
+            let enabled = check_turn(
+                &report(regions.clone()),
+                orders,
+                Some(&ruleset()),
+                CheckOptions {
+                    disabled: BTreeSet::new(),
+                },
+            );
+            assert!(
+                codes(&enabled).contains(code),
+                "{code}'s own fixture should emit it when nothing is disabled: {enabled:?}"
+            );
+
+            let silenced = check_turn(
+                &report(regions.clone()),
+                orders,
+                Some(&ruleset()),
+                disabling(code),
+            );
+            assert!(
+                !codes(&silenced).contains(code),
+                "{code} should be silenced once disabled: {silenced:?}"
+            );
+        }
+    }
+
+    /// `not-enough-silver` comes from two different places - a single unit's balance and the
+    /// shared purse - and disabling the code has to close both, not just the one a simpler test
+    /// would happen to hit.
+    #[test]
+    fn a_disabled_code_silences_both_its_emission_sites() {
+        let regions = vec![region(vec![
+            sharing(with_men(with_silver(unit("5"), 0), 10)),
+            sharing(with_silver(unit("7"), 30)),
+            with_silver(unit("9"), 40),
+        ])];
+        let orders = "unit 5\nSTUDY combat\nunit 9\nGIVE 11 100 SILV\n";
+
+        let enabled = check_turn(
+            &report(regions.clone()),
+            orders,
+            Some(&ruleset()),
+            CheckOptions {
+                disabled: BTreeSet::new(),
+            },
+        );
+        assert_eq!(
+            codes(&enabled)
+                .into_iter()
+                .filter(|code| *code == "not-enough-silver")
+                .count(),
+            2,
+            "the shared purse and unit 9's own balance should both be short: {enabled:?}"
+        );
+
+        assert_eq!(
+            check_turn(
+                &report(regions),
+                orders,
+                Some(&ruleset()),
+                disabling(codes::NOT_ENOUGH_SILVER),
+            ),
+            vec![],
+            "disabling the code should close both sites, not just one"
+        );
+    }
+
+    /// Disabling one code must not touch any other: a hex that is both short of silver and losing
+    /// its guard still reports the guard when only the silver check is turned off.
+    #[test]
+    fn a_disabled_code_leaves_every_other_advisory_untouched() {
+        let mut guarding = unit("9");
+        guarding.on_guard = true;
+        let regions = vec![region(vec![with_silver(unit("5"), 40), guarding])];
+        let orders = "unit 5\nGIVE 7 100 SILV\nunit 9\nMOVE N\n";
+
+        assert_eq!(
+            codes(&check_turn(
+                &report(regions),
+                orders,
+                Some(&ruleset()),
+                disabling(codes::NOT_ENOUGH_SILVER),
+            )),
+            ["guard-dropped"]
         );
     }
 

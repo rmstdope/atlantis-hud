@@ -10,6 +10,7 @@
 
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
+import { ADVISORY_CHECK_CODES, type AdvisoryCheckCode } from "@atlantis/core-client";
 import { normalizeSnippets, type OrderSnippet } from "./orderSnippets";
 import { DEFAULT_MAP_THEME_ID, isMapThemeId } from "./workspace/mapThemes";
 
@@ -33,6 +34,36 @@ export const DEFAULT_UNIT_LIST_LIMIT = 12;
  */
 export const UNIT_LIST_LIMIT_MIN = 1;
 export const UNIT_LIST_LIMIT_MAX = 16;
+
+/** Whether each advisory order-check code is allowed to run at all, by code. */
+export type AdvisoryChecks = Record<AdvisoryCheckCode, boolean>;
+
+/**
+ * Every advisory check on, except `hex-unguarded` - the one precedent this whole tab generalizes.
+ * Most hexes are deliberately unguarded, so it would speak about hex after hex; every other check
+ * is narrow enough to start out useful.
+ */
+export const DEFAULT_ADVISORY_CHECKS: AdvisoryChecks = Object.fromEntries(
+  ADVISORY_CHECK_CODES.map((code) => [code, code !== "hex-unguarded"])
+) as AdvisoryChecks;
+
+/**
+ * Starts from the defaults and copies over only what a stored blob actually is: a boolean, under a
+ * code this build still knows. Storage is hand-editable and a build can be downgraded past a code
+ * it once shipped, so anything else is left at the default rather than trusted.
+ */
+export function reconcileAdvisoryChecks(stored: unknown): AdvisoryChecks {
+  const checks = { ...DEFAULT_ADVISORY_CHECKS };
+  if (stored && typeof stored === "object") {
+    for (const code of ADVISORY_CHECK_CODES) {
+      const value = (stored as Record<string, unknown>)[code];
+      if (typeof value === "boolean") {
+        checks[code] = value;
+      }
+    }
+  }
+  return checks;
+}
 
 export type SettingsState = {
   theme: ThemeName;
@@ -69,14 +100,13 @@ export type SettingsState = {
    */
   unitListFixedSize: boolean;
   /**
-   * Whether order validation warns about a hex holding your units and no guard at all.
+   * Whether each advisory order-check code is allowed to run at all - the Warnings settings tab.
    *
-   * Off by default. Most hexes are deliberately unguarded, so this speaks about hex after hex -
-   * against the committed turn 71 it is one warning per hex the faction stands in - and a panel
-   * that always has something to say is a panel nobody reads. Dropping a guard you *had* is
-   * reported whatever this says, because that is a change you may not have meant.
+   * Off means the core does not produce that finding, at all: counts, chip, panels and editor
+   * underlines all agree, and nothing anywhere says "hidden". `hex-unguarded` starts off, for the
+   * reason `DEFAULT_ADVISORY_CHECKS` documents; every other code starts on.
    */
-  warnOnUnguardedHex: boolean;
+  advisoryChecks: AdvisoryChecks;
   /**
    * Whether the Movement pane shows at all. A feature flag rather than a preference: the planner
    * is the one piece of the workspace still finding its shape, so it starts off and stays off
@@ -103,7 +133,7 @@ export type SettingsState = {
   setPaneTransparency: (percent: number) => void;
   setUnitListLimit: (count: number) => void;
   setUnitListFixedSize: (enabled: boolean) => void;
-  setWarnOnUnguardedHex: (enabled: boolean) => void;
+  setAdvisoryCheck: (code: AdvisoryCheckCode, enabled: boolean) => void;
   setMovementPlanner: (enabled: boolean) => void;
   setShowShortcutsAtStartup: (enabled: boolean) => void;
   addSnippet: (snippet: OrderSnippet) => void;
@@ -119,7 +149,7 @@ type Persisted = Pick<
   | "paneTransparency"
   | "unitListLimit"
   | "unitListFixedSize"
-  | "warnOnUnguardedHex"
+  | "advisoryChecks"
   | "movementPlanner"
   | "showShortcutsAtStartup"
   | "snippets"
@@ -237,7 +267,7 @@ const DEFAULTS: Persisted = {
   paneTransparency: DEFAULT_PANE_TRANSPARENCY,
   unitListLimit: DEFAULT_UNIT_LIST_LIMIT,
   unitListFixedSize: false,
-  warnOnUnguardedHex: false,
+  advisoryChecks: DEFAULT_ADVISORY_CHECKS,
   movementPlanner: false,
   showShortcutsAtStartup: true,
   snippets: []
@@ -275,8 +305,8 @@ export const useSettingsStore = create<SettingsState>()(
         set({ unitListFixedSize });
       },
 
-      setWarnOnUnguardedHex: (warnOnUnguardedHex) => {
-        set({ warnOnUnguardedHex });
+      setAdvisoryCheck: (code, enabled) => {
+        set((state) => ({ advisoryChecks: { ...state.advisoryChecks, [code]: enabled } }));
       },
 
       setMovementPlanner: (movementPlanner) => {
@@ -315,7 +345,7 @@ export const useSettingsStore = create<SettingsState>()(
         paneTransparency: state.paneTransparency,
         unitListLimit: state.unitListLimit,
         unitListFixedSize: state.unitListFixedSize,
-        warnOnUnguardedHex: state.warnOnUnguardedHex,
+        advisoryChecks: state.advisoryChecks,
         movementPlanner: state.movementPlanner,
         showShortcutsAtStartup: state.showShortcutsAtStartup,
         snippets: state.snippets
@@ -353,6 +383,27 @@ export function applyPersistedSettings() {
   useSettingsStore.setState({
     snippets: normalizeSnippets(useSettingsStore.getState().snippets)
   });
+  // Migration, not clamping: a player who ticked the old "warn about unguarded hexes" checkbox has
+  // `warnOnUnguardedHex: true` sitting in storage under a key this build no longer declares.
+  // Rehydration merges unknown keys into state anyway (zustand's default merge does not filter by
+  // the store's type), so it is still readable here - and only when `advisoryChecks` itself is
+  // untouched from its initial default does that mean the blob never had one, which is the one
+  // case the migration is for. Applying the new default instead would silently flip a preference
+  // the player chose.
+  const state = useSettingsStore.getState();
+  const legacyWarnOnUnguardedHex = (state as unknown as { warnOnUnguardedHex?: unknown })
+    .warnOnUnguardedHex;
+  if (state.advisoryChecks === DEFAULT_ADVISORY_CHECKS && typeof legacyWarnOnUnguardedHex === "boolean") {
+    useSettingsStore.setState({
+      advisoryChecks: { ...DEFAULT_ADVISORY_CHECKS, "hex-unguarded": legacyWarnOnUnguardedHex }
+    });
+  } else {
+    // Same door every other persisted setting guards at startup: storage is hand-editable, and a
+    // garbage or out-of-date value must fall back to the default rather than break the toggles.
+    useSettingsStore.setState({
+      advisoryChecks: reconcileAdvisoryChecks(useSettingsStore.getState().advisoryChecks)
+    });
+  }
 }
 
 /** Resets the store, remembered preferences included. Tests would otherwise leak state. */

@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { ADVISORY_CHECK_CODES } from "@atlantis/core-client";
 import {
   applyPersistedSettings,
+  DEFAULT_ADVISORY_CHECKS,
   resetSettingsStore,
   useSettingsStore
 } from "./settingsStore";
@@ -63,18 +65,24 @@ describe("settings store", () => {
   /**
    * Off by default, and that is the whole point of it being a setting. Most hexes are deliberately
    * left unguarded, so this check speaks about hex after hex - measured against the committed turn
-   * 71, one warning for every hex the faction stands in. Losing a guard you had is reported either
-   * way, because that is a change the player may not have meant.
+   * 71, one warning for every hex the faction stands in. Every other advisory check starts on: it
+   * is narrow enough to be useful from the first turn.
    */
-  it("leaves the unguarded-hex warning off until it is asked for", () => {
-    expect(store().warnOnUnguardedHex).toBe(false);
-
-    store().setWarnOnUnguardedHex(true);
-    expect(store().warnOnUnguardedHex).toBe(true);
+  it("advisory checks default to on, except the unguarded-hex one", () => {
+    expect(store().advisoryChecks["hex-unguarded"]).toBe(false);
+    for (const code of ADVISORY_CHECK_CODES) {
+      if (code === "hex-unguarded") {
+        continue;
+      }
+      expect(store().advisoryChecks[code]).toBe(true);
+    }
   });
 
-  it("persists the unguarded-hex preference", async () => {
-    store().setWarnOnUnguardedHex(true);
+  it("persists a toggled advisory check", async () => {
+    store().setAdvisoryCheck("hex-unguarded", true);
+    store().setAdvisoryCheck("not-enough-silver", false);
+    expect(store().advisoryChecks["hex-unguarded"]).toBe(true);
+    expect(store().advisoryChecks["not-enough-silver"]).toBe(false);
 
     const storage = useSettingsStore.persist.getOptions().storage;
     const persisted = await storage?.getItem("atlantis-hud-settings");
@@ -82,11 +90,60 @@ describe("settings store", () => {
       throw new Error("settings storage was not available");
     }
 
-    useSettingsStore.setState({ warnOnUnguardedHex: false });
+    useSettingsStore.setState({ advisoryChecks: DEFAULT_ADVISORY_CHECKS });
     await storage.setItem("atlantis-hud-settings", persisted);
     await useSettingsStore.persist.rehydrate();
 
-    expect(store().warnOnUnguardedHex).toBe(true);
+    expect(store().advisoryChecks["hex-unguarded"]).toBe(true);
+    expect(store().advisoryChecks["not-enough-silver"]).toBe(false);
+  });
+
+  it("reconciles garbage advisory values to the defaults", () => {
+    useSettingsStore.setState({
+      advisoryChecks: {
+        "hex-unguarded": "yes",
+        "guard-dropped": false
+      } as unknown as typeof DEFAULT_ADVISORY_CHECKS
+    });
+
+    applyPersistedSettings();
+
+    expect(store().advisoryChecks).toEqual({
+      ...DEFAULT_ADVISORY_CHECKS,
+      // A real boolean, differing from the default, survives reconciliation untouched.
+      "guard-dropped": false
+    });
+  });
+
+  /**
+   * The earlier build had one checkbox, "Warn about unguarded hexes", persisted under its own key.
+   * A player who ticked it upgrading into the Warnings tab must keep seeing that warning - applying
+   * the new default instead would silently flip a preference they chose.
+   */
+  it("migrates the old unguarded-hex preference into the record", async () => {
+    const storage = useSettingsStore.persist.getOptions().storage;
+    const persisted = (await storage?.getItem("atlantis-hud-settings")) as
+      | { state: Record<string, unknown>; version?: number }
+      | undefined;
+    if (!storage || !persisted) {
+      throw new Error("settings storage was not available");
+    }
+
+    // The blob an older build wrote: the old key, and no mention of advisoryChecks at all.
+    const olderState = { ...persisted.state };
+    delete olderState.advisoryChecks;
+    olderState.warnOnUnguardedHex = true;
+    resetSettingsStore();
+    await storage.setItem("atlantis-hud-settings", {
+      ...persisted,
+      state: olderState
+    } as unknown as Parameters<typeof storage.setItem>[1]);
+    await useSettingsStore.persist.rehydrate();
+    applyPersistedSettings();
+
+    expect(store().advisoryChecks["hex-unguarded"]).toBe(true);
+    // Nothing else in the record should have moved.
+    expect(store().advisoryChecks["not-enough-silver"]).toBe(true);
   });
 
   it("switches the theme instantly when set", () => {
