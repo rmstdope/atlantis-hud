@@ -165,7 +165,13 @@ export function PanelSplitter({
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key === "ArrowUp" || event.key === "ArrowDown") {
       event.preventDefault();
-      const startRem = heightRem ?? defaultRem;
+      // The rendered slot can stand shorter than `heightRem`/`defaultRem` alone would suggest - a
+      // CSS clamp (the units pane's max-h-[70%], the orders editor's max-h on a short window) can
+      // be pinching it. Starting the step from what is actually on screen, when it can be
+      // measured, is what keeps a press from appearing to do nothing (or jump) while the stored
+      // height sits on the far side of a clamp the drag arithmetic does not otherwise see.
+      const rendered = slotRef.current?.getBoundingClientRect().height;
+      const startRem = rendered ? rendered / remPx() : (heightRem ?? defaultRem);
       const deltaRem = event.key === "ArrowUp" ? SPLIT_STEP_REM : -SPLIT_STEP_REM;
       const result = drag(startRem, deltaRem, hostRem(slotRef));
       onCommit(result.rem);

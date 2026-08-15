@@ -116,11 +116,13 @@ describe("the dock stops sizing itself", () => {
     );
 
     // The scroller's own class carries no style attribute at all now - the slot around it owns
-    // the height. Rows still carry their own fixed "height:22px", which is unrelated.
-    const scroller = /<div[^>]*class="h-full overflow-y-scroll overflow-x-hidden"[^>]*>/.exec(
-      markup
-    )?.[0];
+    // the height. Rows still carry their own fixed "height:22px", which is unrelated. Matched by
+    // the classes it must carry rather than the whole attribute value, so a harmless class added
+    // later cannot break this over behaviour that still holds.
+    const scroller = /<div[^>]*class="[^"]*overflow-y-scroll[^"]*"[^>]*>/.exec(markup)?.[0];
     expect(scroller).toBeDefined();
+    expect(scroller).toContain("h-full");
+    expect(scroller).toContain("overflow-x-hidden");
     expect(scroller).not.toContain("style=");
   });
 
