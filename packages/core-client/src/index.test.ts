@@ -2,10 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   createCoreClient,
   createTauriAdapter,
-  createWasmAdapter,
   type HexNoteRecord,
-  type TauriInvoke,
-  type WasmBindings
+  type TauriInvoke
 } from "./index";
 
 // The browser transport is createWebCoreAdapter in @atlantis/browser-core, over IndexedDB, with
@@ -899,16 +897,6 @@ describe("merging an allied report", () => {
     ).resolves.toEqual([]);
   });
 
-  it("refuses to merge through a wasm build with no persistence linked in", async () => {
-    const bindings = {} as WasmBindings;
-
-    expect(() => createWasmAdapter(bindings).mergeReport(DB, "g", "95", 71, "r", null, "now")).toThrow(
-      "game persistence is not linked into this wasm build"
-    );
-    await expect(
-      createCoreClient(createWasmAdapter(bindings)).loadMergedReports(DB, "g", "95", 71)
-    ).resolves.toEqual([]);
-  });
 });
 
 /**
@@ -1025,32 +1013,6 @@ describe("changing a game's ruleset", () => {
     expect(manifest.lastOpenedAt).toBe("2026-08-09T18:00:00Z");
   });
 
-  it("normalizes the wasm answer to the same manifest", async () => {
-    const bindings = {
-      set_game_ruleset_state: (gameId: string, rulesetId: string) => ({
-        ...wireManifest,
-        metadata: { ...wireManifest.metadata, game_id: gameId, ruleset_id: rulesetId }
-      })
-    } as unknown as WasmBindings;
-
-    const manifest = await createCoreClient(createWasmAdapter(bindings)).setGameRuleset(
-      "faction-12",
-      "magicdeep"
-    );
-
-    expect(manifest.metadata.gameId).toBe("faction-12");
-    expect(manifest.metadata.rulesetId).toBe("magicdeep");
-  });
-
-  // A write, so it refuses rather than answering emptily: a change that quietly went nowhere
-  // would leave the dialog claiming a ruleset the manifest does not hold.
-  it("refuses through a wasm build with no persistence linked in", () => {
-    const bindings = {} as WasmBindings;
-
-    expect(() => createWasmAdapter(bindings).setGameRuleset("g", "magicdeep")).toThrow(
-      "game persistence is not linked into this wasm build"
-    );
-  });
 });
 
 /**
@@ -1096,34 +1058,13 @@ describe("map export", () => {
     expect(text).toBe(EXPORTED);
   });
 
-  it("asks the wasm binding for the same export", async () => {
-    const calls: string[][] = [];
-    const bindings = {
-      export_map_state: (rawReport: string, rememberedJson: string, requestJson: string) => {
-        calls.push([rawReport, rememberedJson, requestJson]);
-        return EXPORTED;
-      }
-    } as unknown as WasmBindings;
-
-    const text = await createCoreClient(createWasmAdapter(bindings)).exportMap(
-      "the turn's report",
-      "[]",
-      REQUEST
-    );
-
-    expect(calls).toEqual([["the turn's report", "[]", JSON.stringify(REQUEST)]]);
-    expect(text).toBe(EXPORTED);
-  });
-
   // An export nobody can read is worse than none: a file saved from an unreadable answer would be
   // an empty document the player believes holds their map.
   it("refuses an answer that is not text", async () => {
-    const bindings = {
-      export_map_state: () => ({ not: "text" })
-    } as unknown as WasmBindings;
+    const invoke: TauriInvoke = <T,>() => Promise.resolve({ not: "text" } as T);
 
     await expect(
-      createCoreClient(createWasmAdapter(bindings)).exportMap("report", "[]", REQUEST)
+      createCoreClient(createTauriAdapter(invoke)).exportMap("report", "[]", REQUEST)
     ).rejects.toThrow("map export did not come back as text");
   });
 });
@@ -1141,60 +1082,40 @@ describe("hex notes", () => {
   };
 
   it("treats undefined the same as null for listing", async () => {
-    const bindings = {
-      list_hex_notes_state: () => undefined
-    } as unknown as WasmBindings;
+    const invoke: TauriInvoke = <T,>() => Promise.resolve(undefined as T);
 
     await expect(
-      createCoreClient(createWasmAdapter(bindings)).listHexNotes("/db", "faction-12")
+      createCoreClient(createTauriAdapter(invoke)).listHexNotes("/db", "faction-12")
     ).resolves.toEqual([]);
   });
 
   it("accepts on_map as 0/1 and as a boolean", async () => {
-    const zeroBindings = {
-      list_hex_notes_state: () => [
-        {
-          id: "note-1",
-          game_id: "faction-12",
-          region_id: "1:7,53",
-          text: "text",
-          on_map: 0,
-          turn: 12,
-          created_at: "2026-08-07T12:00:00Z",
-          updated_at: "2026-08-07T12:00:00Z"
-        }
-      ]
-    } as unknown as WasmBindings;
-    const oneBindings = {
-      list_hex_notes_state: () => [
-        {
-          id: "note-1",
-          game_id: "faction-12",
-          region_id: "1:7,53",
-          text: "text",
-          on_map: 1,
-          turn: 12,
-          created_at: "2026-08-07T12:00:00Z",
-          updated_at: "2026-08-07T12:00:00Z"
-        }
-      ]
-    } as unknown as WasmBindings;
-    const boolBindings = {
-      list_hex_notes_state: () => [{ ...NOTE }]
-    } as unknown as WasmBindings;
+    const invokeWith = (onMap: number | boolean): TauriInvoke =>
+      <T,>() =>
+        Promise.resolve([
+          {
+            id: "note-1",
+            game_id: "faction-12",
+            region_id: "1:7,53",
+            text: "text",
+            on_map: onMap,
+            turn: 12,
+            created_at: "2026-08-07T12:00:00Z",
+            updated_at: "2026-08-07T12:00:00Z"
+          }
+        ] as T);
 
-    const zeroNotes = await createCoreClient(createWasmAdapter(zeroBindings)).listHexNotes(
+    const zeroNotes = await createCoreClient(createTauriAdapter(invokeWith(0))).listHexNotes(
       "/db",
       "faction-12"
     );
-    const oneNotes = await createCoreClient(createWasmAdapter(oneBindings)).listHexNotes(
+    const oneNotes = await createCoreClient(createTauriAdapter(invokeWith(1))).listHexNotes(
       "/db",
       "faction-12"
     );
-    const boolNotes = await createCoreClient(createWasmAdapter(boolBindings)).listHexNotes(
-      "/db",
-      "faction-12"
-    );
+    const boolNotes = await createCoreClient(
+      createTauriAdapter(<T,>() => Promise.resolve([{ ...NOTE }] as T))
+    ).listHexNotes("/db", "faction-12");
 
     expect(zeroNotes[0].onMap).toBe(false);
     expect(oneNotes[0].onMap).toBe(true);
@@ -1202,8 +1123,8 @@ describe("hex notes", () => {
   });
 
   it("rejects a note without an id", async () => {
-    const bindings = {
-      list_hex_notes_state: () => [
+    const invoke: TauriInvoke = <T,>() =>
+      Promise.resolve([
         {
           game_id: "faction-12",
           region_id: "1:7,53",
@@ -1213,17 +1134,16 @@ describe("hex notes", () => {
           created_at: "2026-08-07T12:00:00Z",
           updated_at: "2026-08-07T12:00:00Z"
         }
-      ]
-    } as unknown as WasmBindings;
+      ] as T);
 
     await expect(
-      createCoreClient(createWasmAdapter(bindings)).listHexNotes("/db", "faction-12")
+      createCoreClient(createTauriAdapter(invoke)).listHexNotes("/db", "faction-12")
     ).rejects.toThrow("incomplete hex note payload");
   });
 
   it("rejects an on_map value that is neither 0, 1 nor a boolean", async () => {
-    const bindings = {
-      list_hex_notes_state: () => [
+    const invoke: TauriInvoke = <T,>() =>
+      Promise.resolve([
         {
           id: "note-1",
           game_id: "faction-12",
@@ -1234,11 +1154,10 @@ describe("hex notes", () => {
           created_at: "2026-08-07T12:00:00Z",
           updated_at: "2026-08-07T12:00:00Z"
         }
-      ]
-    } as unknown as WasmBindings;
+      ] as T);
 
     await expect(
-      createCoreClient(createWasmAdapter(bindings)).listHexNotes("/db", "faction-12")
+      createCoreClient(createTauriAdapter(invoke)).listHexNotes("/db", "faction-12")
     ).rejects.toThrow("incomplete hex note payload");
   });
 });

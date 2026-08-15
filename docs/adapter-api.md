@@ -84,9 +84,10 @@ with an ally has to come out identical whichever shell wrote it.
 
 - Package: `packages/core-client`
 - API:
-  - `createWasmAdapter(bindings)`
-  - `createTauriAdapter(invoke)`
+  - `createTauriAdapter(invoke)` — the desktop transport, speaking to `core-tauri`
   - `createCoreClient(adapter)`
+- The browser transport is `createWebCoreAdapter` in `@atlantis/browser-core`, over IndexedDB — it
+  does not go through `core-client`'s adapter contract.
 - Contract normalization:
   - Accepts adapter wire payloads in either `camelCase` or `snake_case`
   - Returns canonical `EngineInfo` in `camelCase`
