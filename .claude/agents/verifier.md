@@ -1,1 +1,1 @@
-/Users/henrikku/repos/atlantis-hud/.claude/cerebro/agents/verifier.md
+../cerebro/agents/verifier.md

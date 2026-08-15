@@ -1,1 +1,1 @@
-/Users/henrikku/repos/atlantis-hud/.claude/cerebro/agents/orchestrator.md
+../cerebro/agents/orchestrator.md

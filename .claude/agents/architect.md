@@ -1,1 +1,1 @@
-/Users/henrikku/repos/atlantis-hud/.claude/cerebro/agents/architect.md
+../cerebro/agents/architect.md
