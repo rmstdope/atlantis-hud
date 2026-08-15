@@ -39,18 +39,22 @@ export type RunReportedOptions = {
 };
 
 /**
- * Runs an async shell action so that it cannot fail silently: a rejection is described and handed
- * to `report` (with `prefix` in front when given), `busy` is released whatever happened, and the
- * returned promise never rejects. Resolves with the work's value, or `undefined` when it threw.
- * The shell fires it as `void runReported(...)` from a JSX handler - the `void` is then safe.
+ * Runs an async shell action so that `work` throwing cannot fail silently: the rejection is
+ * described and handed to `report` (with `prefix` in front when given), `busy` is released
+ * whatever `work` did, and the returned promise resolves rather than rejects. Resolves with the
+ * work's value, or `undefined` when it threw. The shell fires it as `void runReported(...)` from a
+ * JSX handler - the `void` is then safe against a `work` failure.
+ *
+ * `report` itself throwing is a programming error, not a `work` failure, and is allowed to
+ * propagate rather than being swallowed here.
  */
 export async function runReported<T>(
   work: () => Promise<T>,
   report: FailureReporter,
   options?: RunReportedOptions
 ): Promise<T | undefined> {
-  options?.busy?.(true);
   try {
+    options?.busy?.(true);
     return await work();
   } catch (error) {
     const message = describeError(error);
