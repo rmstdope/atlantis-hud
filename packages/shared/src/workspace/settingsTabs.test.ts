@@ -2,10 +2,17 @@ import { describe, expect, it } from "vitest";
 import { SETTINGS_TABS, gameSettingsPresentation, nextTab, rulesetOptions } from "./settingsTabs";
 
 describe("settings dialog tabs", () => {
-  it("offers global, per-game, snippets and about, in that order", () => {
+  it("offers global, per-game, warnings, snippets and about, in that order", () => {
     // The order is the reading order of the dialog: what applies everywhere, what applies to the
-    // open game, and what this build is. Global first is also the default tab on open.
-    expect(SETTINGS_TABS.map((tab) => tab.id)).toEqual(["global", "game", "snippets", "about"]);
+    // open game, which advisory checks run at all, the player's own snippets, and what this build
+    // is. Global first is also the default tab on open.
+    expect(SETTINGS_TABS.map((tab) => tab.id)).toEqual([
+      "global",
+      "game",
+      "warnings",
+      "snippets",
+      "about"
+    ]);
     for (const tab of SETTINGS_TABS) {
       expect(tab.label.length).toBeGreaterThan(0);
     }
@@ -15,7 +22,8 @@ describe("settings dialog tabs", () => {
 describe("arrow-key tab navigation", () => {
   it("moves right with wrap-around", () => {
     expect(nextTab("global", "ArrowRight")).toBe("game");
-    expect(nextTab("game", "ArrowRight")).toBe("snippets");
+    expect(nextTab("game", "ArrowRight")).toBe("warnings");
+    expect(nextTab("warnings", "ArrowRight")).toBe("snippets");
     expect(nextTab("snippets", "ArrowRight")).toBe("about");
     expect(nextTab("about", "ArrowRight")).toBe("global");
   });
@@ -23,7 +31,8 @@ describe("arrow-key tab navigation", () => {
   it("moves left with wrap-around", () => {
     expect(nextTab("global", "ArrowLeft")).toBe("about");
     expect(nextTab("about", "ArrowLeft")).toBe("snippets");
-    expect(nextTab("snippets", "ArrowLeft")).toBe("game");
+    expect(nextTab("snippets", "ArrowLeft")).toBe("warnings");
+    expect(nextTab("warnings", "ArrowLeft")).toBe("game");
   });
 
   it("ignores keys that are not arrow navigation", () => {

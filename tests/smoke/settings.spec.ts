@@ -7,7 +7,7 @@ import { clearGames, createGame } from "./gameSetup";
  * The settings dialog, in both shells.
  *
  * What is asserted here is deliberately the part the two builds share: the cogwheel opens a
- * centered modal with three tabs, the theme choice restyles the app and survives a reload, and the
+ * centered modal with several tabs, the theme choice restyles the app and survives a reload, and the
  * dialog goes away the way a modal should — close button, Escape, or a press on the backdrop. The
  * update control itself cannot be asserted in common, because it is the one thing that legitimately
  * differs - the web build has a service worker to ask and the desktop build has a releases page to

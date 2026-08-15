@@ -573,7 +573,8 @@ export const ADVISORY_CHECK_CODES = [
   "taught-not-here",
   "taught-not-studying",
   "teacher-cannot-teach",
-  "teaching-oversubscribed"
+  "teaching-oversubscribed",
+  "teacher-has-free-slots"
 ] as const;
 
 export type AdvisoryCheckCode = (typeof ADVISORY_CHECK_CODES)[number];

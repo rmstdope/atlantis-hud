@@ -12,6 +12,7 @@ import type {
   RememberedRegion,
   RoutePlanResponse
 } from "@atlantis/core-client";
+import { ADVISORY_CHECK_CODES } from "@atlantis/core-client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   buildHexMapModel,
@@ -509,7 +510,7 @@ export function AppShell({
   const badges = useWorkspaceStore((state) => state.badges);
   const showTextures = useSettingsStore((state) => state.biomeTextures);
   const mapThemeId = useSettingsStore((state) => state.mapTheme);
-  const warnOnUnguardedHex = useSettingsStore((state) => state.warnOnUnguardedHex);
+  const advisoryChecks = useSettingsStore((state) => state.advisoryChecks);
   const movementPlanner = useSettingsStore((state) => state.movementPlanner);
   const snippets = useSettingsStore((state) => state.snippets);
   const theme = useSettingsStore((state) => state.theme);
@@ -2000,7 +2001,7 @@ export function AppShell({
         // It goes across as text, which is what the core keys its cached parse on, so the
         // whole-map pass this runs costs one walk of the orders and no re-parse of the turn.
         .validateOrders(ordersDocument, rulesetText, rawReport || null, {
-          disabledCodes: warnOnUnguardedHex ? [] : ["hex-unguarded"]
+          disabledCodes: ADVISORY_CHECK_CODES.filter((code) => !advisoryChecks[code])
         })
         .then((result) => {
           if (!cancelled) {
@@ -2019,7 +2020,7 @@ export function AppShell({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [client, ordersDocument, rulesetText, rawReport, warnOnUnguardedHex]);
+  }, [client, ordersDocument, rulesetText, rawReport, advisoryChecks]);
 
   /**
    * What the checks found, hex by hex, for the header chip and the list it opens.
@@ -2130,7 +2131,7 @@ export function AppShell({
         writer.markDirty(game, draftKey, pending.text);
 
         const result = await client.validateOrders(pending.text, rulesetText, rawReport || null, {
-          disabledCodes: warnOnUnguardedHex ? [] : ["hex-unguarded"]
+          disabledCodes: ADVISORY_CHECK_CODES.filter((code) => !advisoryChecks[code])
         });
 
         if (result.diagnostics.length > 0) {
@@ -2169,7 +2170,7 @@ export function AppShell({
     writer,
     rulesetText,
     rawReport,
-    warnOnUnguardedHex
+    advisoryChecks
   ]);
 
   /** Writes a planned route into the selected unit's block, replacing any MOVE already there. */
