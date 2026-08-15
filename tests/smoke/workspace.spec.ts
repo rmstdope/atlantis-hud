@@ -2579,9 +2579,9 @@ test("the selected hex is marked by the double ring", async ({ page }) => {
   // assert directly.
   const ring = page.getByTestId("map-selection-ring");
   await expect(ring).toBeAttached();
-  const hexTransform = await page
-    .getByRole("button", { name: "hex 1:7,53" })
-    .getAttribute("transform");
+  const hexButton = page.getByRole("button", { name: "hex 1:7,53" });
+  await expect(hexButton).toHaveAttribute("transform", /.+/);
+  const hexTransform = await hexButton.getAttribute("transform");
   await expect(ring).toHaveAttribute("transform", hexTransform ?? "");
 
   // The ring is theme-independent: it stays attached with the same placement in the light theme.
