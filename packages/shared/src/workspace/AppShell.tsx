@@ -71,7 +71,8 @@ import { useHexNotesStore } from "../hexNotesStore";
 import { useSettingsStore } from "../settingsStore";
 import { AppHeader, type ImportStatus } from "./AppHeader";
 import { TurnPicker } from "./TurnPicker";
-import { comparisonChipLabel, toggleComparison, type ComparisonTurn } from "../turnCompare";
+import { comparisonChipLabel, type ComparisonTurn } from "../turnCompare";
+import { listComparableTurns, pickComparisonTurn } from "../comparisonActions";
 import { GameGate } from "./GameGate";
 import { SettingsDialog } from "./SettingsDialog";
 import type { AppUpdateControl } from "./appUpdate";
@@ -149,31 +150,6 @@ import { failedStatus, warningStatus } from "./shellStatus";
  * can be tested without rendering anything.
  */
 export { isOlderTurn };
-
-/**
- * Loads and parses the turn a comparison click asked for - the part of
- * `handleSelectComparisonTurn` that has no dependency on React state or hooks, pulled out the same
- * way `deliverOrdersExport` was so it can be tested without rendering the shell.
- *
- * Unlike the inline code it replaces, this never resolves to "nothing happened": a missing turn or
- * a failed load/parse rejects with an `Error`, so the caller has something to put on the status
- * line instead of a click that silently does nothing (ah-6l2).
- */
-export async function loadComparisonTurn(
-  client: { loadImportedTurn: CoreClient["loadImportedTurn"] },
-  databasePath: string,
-  gameId: string,
-  factionId: string,
-  turnNumber: number,
-  parse: (rawReport: string) => Promise<ParsedReport>
-): Promise<ComparisonTurn> {
-  const record = await client.loadImportedTurn(databasePath, gameId, factionId, turnNumber);
-  if (record === null) {
-    throw new Error(`turn ${turnNumber} is no longer available to compare against`);
-  }
-  const parsed = await parse(record.rawReport);
-  return { key: { factionId: record.key.factionId, turnNumber }, parsed };
-}
 
 /**
  * A parsed report from another faction, held while the player decides what to do with it.
@@ -2247,7 +2223,7 @@ export function AppShell({
     const gameId = game.manifest.metadata.gameId;
     const factionId = parsed.header.factionId;
     const summaries = await runReported(
-      () => client.listImportedTurns(game.databasePath, gameId),
+      () => listComparableTurns(client, game.databasePath, gameId, factionId),
       (message) => {
         // Nothing to pick from, so nothing to show: same exit as a comparison that would not load.
         setStatus(warningStatus(message));
@@ -2256,7 +2232,7 @@ export function AppShell({
       { prefix: "could not list the turns to compare" }
     );
     if (summaries !== undefined) {
-      setTurnSummaries(summaries.filter((summary) => summary.key.factionId === factionId));
+      setTurnSummaries(summaries);
     }
   }, [client, game, parsed, turnPickerOpen]);
 
@@ -2279,48 +2255,42 @@ export function AppShell({
    */
   const handleSelectComparisonTurn = useCallback(
     async (clickedTurn: number) => {
-      const reportComparisonFailure = (message: string) => setStatus(warningStatus(message));
-
       const workingTurn = parsed?.header.turnNumber ?? null;
-      if (workingTurn === null || !game || !parsed?.header.factionId) {
+      const reportComparisonFailure = (message: string) => {
+        setStatus(warningStatus(message));
+        setTurnPickerOpen(false);
+      };
+      const factionId = parsed?.header.factionId;
+      if (workingTurn === null || !game || !factionId) {
         reportComparisonFailure(`could not load turn ${clickedTurn} for comparison`);
-        setTurnPickerOpen(false);
         return;
       }
-      const currentTurn = comparison?.key.turnNumber ?? null;
-      const next = toggleComparison(currentTurn, clickedTurn, workingTurn);
-      // Clicking the working turn: changes nothing, including an active comparison. Only the
-      // picker closes.
-      if (next === currentTurn) {
-        setTurnPickerOpen(false);
-        return;
-      }
-      if (next === null) {
-        setComparison(null);
-        setTurnPickerOpen(false);
-        return;
-      }
-      const gameId = game.manifest.metadata.gameId;
-      const factionId = parsed.header.factionId;
       const parse = (text: string) =>
         ruleset.status === "ready"
           ? client.parseReportClassified(text, ruleset.text)
           : client.parseReportFull(text);
-      try {
-        const comparisonTurn = await loadComparisonTurn(
-          client,
-          game.databasePath,
-          gameId,
-          factionId,
-          next,
-          parse
-        );
-        setComparison(comparisonTurn);
-        setTurnPickerOpen(false);
-      } catch (error: unknown) {
-        reportComparisonFailure(`could not load turn ${next} for comparison: ${describeError(error)}`);
-        setTurnPickerOpen(false);
-      }
+      await runReported(
+        async () => {
+          const pick = await pickComparisonTurn(
+            client,
+            {
+              databasePath: game.databasePath,
+              gameId: game.manifest.metadata.gameId,
+              factionId,
+              workingTurn,
+              currentTurn: comparison?.key.turnNumber ?? null,
+              parse
+            },
+            clickedTurn
+          );
+          if (pick.changed) {
+            setComparison(pick.comparison);
+          }
+          setTurnPickerOpen(false);
+        },
+        reportComparisonFailure,
+        { prefix: `could not load turn ${clickedTurn} for comparison` }
+      );
     },
     [client, comparison, game, parsed, ruleset]
   );
