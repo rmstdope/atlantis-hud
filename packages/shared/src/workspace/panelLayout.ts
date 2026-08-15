@@ -110,3 +110,50 @@ export function ordersSlotStyle(
     maxHeight: `calc(100% - ${UNIT_MIN_REM + RAIL_GAP_REM}rem)`
   };
 }
+
+/**
+ * The left and right rails' default widths (today's `w-[19rem]` and `w-[21rem]`) and the bounds a
+ * drag, a keyboard step or a stored value must respect. Chosen with the navigator in
+ * `docs/ui/rail-resize.html`: 12rem floor, 45rem ceiling, never more than half the window.
+ */
+export const RAIL_LEFT_DEFAULT_REM = 19;
+export const RAIL_RIGHT_DEFAULT_REM = 21;
+export const RAIL_MIN_REM = 12;
+export const RAIL_MAX_REM = 45;
+
+export type RailSide = "left" | "right";
+
+/** null unless the value is a finite number; otherwise clamped into [RAIL_MIN_REM, RAIL_MAX_REM]. */
+export function clampRailWidth(value: unknown): number | null {
+  if (typeof value !== "number" && typeof value !== "string") {
+    return null;
+  }
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return null;
+  }
+  return Math.min(RAIL_MAX_REM, Math.max(RAIL_MIN_REM, numeric));
+}
+
+/**
+ * Resolves a drag (or one keyboard step) for a rail's width.
+ *
+ * `deltaRem` is positive when the rail grows - the component maps pointer direction per side, so
+ * the arithmetic here does not need to know which one it is. The ceiling is `min(RAIL_MAX_REM,
+ * hostRem / 2)`: a rail may never take more than half the window. `hostRem` may be `Infinity` (an
+ * unmeasurable host, e.g. a DOM-free test), in which case `RAIL_MAX_REM` alone rules.
+ */
+export function dragRailWidth(startRem: number, deltaRem: number, hostRem: number): DragResult {
+  const raw = startRem + deltaRem;
+  const ceiling = Math.min(RAIL_MAX_REM, hostRem / 2);
+  const rem = Math.min(ceiling, Math.max(RAIL_MIN_REM, raw));
+  return { rem, atLimit: rem !== raw };
+}
+
+/** Inline style for a rail's width, or null while the default class width applies. */
+export function railWidthStyle(widthRem: number | null): { width: string } | null {
+  if (widthRem == null) {
+    return null;
+  }
+  return { width: `${widthRem}rem` };
+}

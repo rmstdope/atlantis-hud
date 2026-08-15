@@ -111,8 +111,16 @@ import { diagnosticTargets, stepDiagnostic } from "../diagnosticNav";
 import { hasOpenDismissLayers } from "../dismissStack";
 import { firesInContext, isMacPlatform, matchShortcut, SHORTCUTS } from "../shortcuts";
 import { nextOwnUnit } from "../unitCycle";
-import { ordersSlotClass, ordersSlotStyle, unitSlotClass } from "./panelLayout";
+import {
+  ordersSlotClass,
+  ordersSlotStyle,
+  RAIL_LEFT_DEFAULT_REM,
+  RAIL_RIGHT_DEFAULT_REM,
+  railWidthStyle,
+  unitSlotClass
+} from "./panelLayout";
 import { PanelSplitter } from "./PanelSplitter";
+import { RailSplitter } from "./RailSplitter";
 import { PlannerPanel } from "./PlannerPanel";
 import { chooseRouteOverlay } from "./routeOverlay";
 import { RegionPanel } from "./RegionPanel";
@@ -438,6 +446,8 @@ export function AppShell({
   >(null);
   const ordersEditor = useRef<OrdersEditorHandle | null>(null);
   const ordersSlotRef = useRef<HTMLDivElement | null>(null);
+  const leftRailRef = useRef<HTMLDivElement | null>(null);
+  const rightRailRef = useRef<HTMLDivElement | null>(null);
   const [gameError, setGameError] = useState<string | null>(null);
   // Which of the turn's two lists is being read, and whether either is. Local rather than in the
   // store, exactly as the game picker is: it is a panel that is open for a moment, not a preference.
@@ -511,6 +521,11 @@ export function AppShell({
   // between them; null means the default pin from `panelLayout.ts` still applies.
   const ordersHeightRem = useWorkspaceStore((state) => state.ordersHeightRem);
   const setOrdersHeight = useWorkspaceStore((state) => state.setOrdersHeight);
+  // The player's own widths for the two rails floating over the map, dragged at the grip on each
+  // one's inner edge; null means the default width from `panelLayout.ts` still applies.
+  const leftRailWidthRem = useWorkspaceStore((state) => state.leftRailWidthRem);
+  const rightRailWidthRem = useWorkspaceStore((state) => state.rightRailWidthRem);
+  const setRailWidth = useWorkspaceStore((state) => state.setRailWidth);
   const planner = useWorkspaceStore((state) => state.planner);
   const armPlanner = useWorkspaceStore((state) => state.armPlanner);
   const planTo = useWorkspaceStore((state) => state.planTo);
@@ -2885,15 +2900,33 @@ export function AppShell({
         */}
         <div className="pointer-events-none absolute inset-0 flex flex-col gap-2.5 p-2.5 pt-12">
           <div className="flex min-h-0 flex-1 justify-between gap-2.5">
-            <div className="flex w-[19rem] min-h-0 flex-col" data-map-overlay="left">
+            <div
+              ref={leftRailRef}
+              className="relative flex min-h-0 flex-col"
+              style={railWidthStyle(leftRailWidthRem ?? RAIL_LEFT_DEFAULT_REM) ?? undefined}
+              data-map-overlay="left"
+            >
               <RegionPanel
                 hex={hex}
                 unknown={unknownHex}
                 problems={findingsForHex(validated.diagnostics, hex?.regionId ?? null)}
               />
+              <RailSplitter
+                side="left"
+                rail={leftRailRef}
+                widthRem={leftRailWidthRem}
+                defaultRem={RAIL_LEFT_DEFAULT_REM}
+                label="Resize region panel"
+                onCommit={(rem) => setRailWidth("left", rem)}
+              />
             </div>
 
-            <div className="flex w-[21rem] min-h-0 flex-col gap-2.5" data-map-overlay="right">
+            <div
+              ref={rightRailRef}
+              className="relative flex min-h-0 flex-col gap-2.5"
+              style={railWidthStyle(rightRailWidthRem ?? RAIL_RIGHT_DEFAULT_REM) ?? undefined}
+              data-map-overlay="right"
+            >
               <div className={unitSlotClass(collapsed)}>
                 <UnitPanel unit={unit} hex={hex} preview={unitPreview} />
               </div>
@@ -2939,6 +2972,14 @@ export function AppShell({
                   editorRef={ordersEditor}
                 />
               </div>
+              <RailSplitter
+                side="right"
+                rail={rightRailRef}
+                widthRem={rightRailWidthRem}
+                defaultRem={RAIL_RIGHT_DEFAULT_REM}
+                label="Resize unit and orders panels"
+                onCommit={(rem) => setRailWidth("right", rem)}
+              />
             </div>
           </div>
 

@@ -2,9 +2,14 @@ import { describe, expect, it } from "vitest";
 import type { PanelName } from "../workspaceStore";
 import {
   clampOrdersHeight,
+  clampRailWidth,
   dragOrdersHeight,
+  dragRailWidth,
   ordersSlotClass,
   ordersSlotStyle,
+  railWidthStyle,
+  RAIL_MAX_REM,
+  RAIL_MIN_REM,
   unitSlotClass
 } from "./panelLayout";
 
@@ -144,5 +149,68 @@ describe("ordersSlotStyle", () => {
   it("is null once either panel folds, even with a stored height", () => {
     expect(ordersSlotStyle(folded("unit"), 24)).toBeNull();
     expect(ordersSlotStyle(folded("orders"), 24)).toBeNull();
+  });
+});
+
+describe("clampRailWidth", () => {
+  it("treats non-finite input as no preference", () => {
+    expect(clampRailWidth(undefined)).toBeNull();
+    expect(clampRailWidth(null)).toBeNull();
+    expect(clampRailWidth("nope")).toBeNull();
+    expect(clampRailWidth(NaN)).toBeNull();
+  });
+
+  it("clamps a finite value into the stored range", () => {
+    expect(clampRailWidth(2)).toBe(RAIL_MIN_REM);
+    expect(clampRailWidth(500)).toBe(RAIL_MAX_REM);
+    expect(clampRailWidth(20)).toBe(20);
+  });
+});
+
+describe("dragRailWidth", () => {
+  it("resolves a plain move", () => {
+    const result = dragRailWidth(19, 2, 100);
+    expect(result).toEqual({ rem: 21, atLimit: false });
+  });
+
+  it("clamps at the rail minimum", () => {
+    const result = dragRailWidth(RAIL_MIN_REM, -5, 100);
+    expect(result.rem).toBe(RAIL_MIN_REM);
+    expect(result.atLimit).toBe(true);
+  });
+
+  it("caps at half the host", () => {
+    // hostRem 60 -> ceiling 30, below RAIL_MAX_REM.
+    const result = dragRailWidth(19, 20, 60);
+    expect(result.rem).toBe(30);
+    expect(result.atLimit).toBe(true);
+  });
+
+  it("caps at the rail maximum on a wide host", () => {
+    // hostRem 200 -> half is 100, well above RAIL_MAX_REM, so the fixed ceiling rules.
+    const result = dragRailWidth(19, 100, 200);
+    expect(result.rem).toBe(RAIL_MAX_REM);
+    expect(result.atLimit).toBe(true);
+  });
+
+  it("flags atLimit only when the raw value overshot", () => {
+    const result = dragRailWidth(19, 1, 100);
+    expect(result.atLimit).toBe(false);
+  });
+
+  it("lets the fixed maximum rule when the host is unmeasurable", () => {
+    const result = dragRailWidth(19, 1000, Infinity);
+    expect(result.rem).toBe(RAIL_MAX_REM);
+    expect(result.atLimit).toBe(true);
+  });
+});
+
+describe("railWidthStyle", () => {
+  it("is null while no width is stored", () => {
+    expect(railWidthStyle(null)).toBeNull();
+  });
+
+  it("carries the stored width", () => {
+    expect(railWidthStyle(24)).toEqual({ width: "24rem" });
   });
 });
