@@ -12,7 +12,6 @@ import {
 import type { HexNode } from "../hexMapModel";
 import { unitsForHex } from "../hexMapModel";
 import { describeMenBriefly, whyEstimated } from "../unitComposition";
-import { useSettingsStore } from "../settingsStore";
 import {
   DEFAULT_SORT,
   ROW_HEIGHT,
@@ -27,7 +26,6 @@ import { HOVER_DELAY_MS, type Point } from "../unitTooltip";
 import { useWorkspaceStore } from "../workspaceStore";
 import { CollapsiblePanel } from "./CollapsiblePanel";
 import { Absent } from "./primitives";
-import { UnitListLimitStepper } from "./UnitListLimitStepper";
 import { UnitTooltip } from "./UnitTooltip";
 
 /** Rows built beyond each edge of the viewport, so a flick of the wheel does not show a gap. */
@@ -67,24 +65,12 @@ export function UnitTableDock({
   const [scrollTop, setScrollTop] = useState(0);
   const [viewportHeight, setViewportHeight] = useState(0);
   const refocusWanted = useRef(false);
-  // The Absent branches (no hex, stale, empty, filtered-to-nothing) have no <thead> to measure,
-  // so a fixed-size pane opened cold on one of them has never seen a real header height. This
-  // remembers the last one that was, and ROW_HEIGHT - close to one row tall - is the fallback
-  // before any header has ever been measured at all.
-  const lastHeadHeight = useRef(ROW_HEIGHT);
 
   // unitsForHex rather than hex.region.units: sorting it again is a no-op because Array.sort is
   // stable, and it guarantees the table cannot drift from the order AppShell picks defaults from.
   // The orders preview folds in on top, so everything below it - filter and sort - already
   // works over the coming month's rows, arrivals and formed units included.
   const units = useMemo(() => mergePreview(unitsForHex(hex), preview), [hex, preview]);
-  // The global limit sizes the pane, never the list: every unit stays in the table to scroll and
-  // arrow through, and the scroller below is simply never taller than this many rows. An earlier
-  // version truncated the list instead, which read as the pane refusing to scroll - the rows
-  // beyond the cap were not merely out of view, they were gone.
-  const unitListLimit = useSettingsStore((state) => state.unitListLimit);
-  const setUnitListLimit = useSettingsStore((state) => state.setUnitListLimit);
-  const unitListFixedSize = useSettingsStore((state) => state.unitListFixedSize);
   const visible = useMemo(() => sortUnits(filterUnits(units, filter), sort), [units, filter, sort]);
   const selectedIndex = useMemo(
     () => visible.findIndex((unit) => unit.unitId === selectedUnitId),
@@ -108,9 +94,6 @@ export function UnitTableDock({
       return;
     }
     const update = () => {
-      if (head) {
-        lastHeadHeight.current = head.offsetHeight;
-      }
       setViewportHeight(measure(scroller, head));
     };
     update();
@@ -256,17 +239,6 @@ export function UnitTableDock({
     }
   };
 
-  // The fixed-size reservation: one header's worth of height plus the configured row count,
-  // whatever the hex holds. `head` is null on first paint and on every Absent branch, which is
-  // why the fallback is the last real header height ever measured rather than a bare 0. Read only
-  // when the option is on: `head?.offsetHeight` forces a layout read, and the default mode has no
-  // use for this figure at all - it keeps its own `maxHeight` read below, unchanged.
-  const reservedHeight = unitListFixedSize
-    ? (head?.offsetHeight ?? lastHeadHeight.current) + unitListLimit * ROW_HEIGHT
-    : 0;
-  // Shared by both Absent branches below, so the reservation cannot drift between them.
-  const reservedStyle = unitListFixedSize ? { height: reservedHeight } : undefined;
-
   const stale = hex?.knowledge === "stale";
   // A stale hex's count would be a lie the moment it left the model: a hex nobody sees carries no
   // units at all now, so the header names the ground and stops there rather than claiming "0 units"
@@ -293,37 +265,19 @@ export function UnitTableDock({
             aria-label="Filter units"
             className="w-44 rounded border border-edge bg-ground px-2 py-0.5 text-[11px] text-ink placeholder:text-ink-dim focus:border-select focus:outline-none"
           />
-          {/* The settings dialog's slider and this stepper are the same preference, reached from
-              the two places it is wanted from: while configuring, and while reading a hex.
-
-              The header is left exactly as it was around them. An earlier attempt here truncated
-              the title and hint so the actions could never be pushed past the section's clipped
-              edge; measured, the header has some six hundred pixels of slack at the desktop
-              window's own width, so there was nothing to defend against - and `truncate` cost the
-              native shell's driver the title and the hint entirely, which is the sort of thing
-              only a real WebKit build reports. */}
-          <UnitListLimitStepper
-            value={unitListLimit}
-            onChange={setUnitListLimit}
-            fixed={unitListFixedSize}
-          />
         </div>
       }
     >
       {units.length === 0 ? (
-        <div style={reservedStyle}>
-          <Absent>
-            {hex
-              ? stale
-                ? `Not seen since turn ${hex.lastSeenTurn} — no current unit information.`
-                : "No units reported in this hex."
-              : "No hex selected."}
-          </Absent>
-        </div>
+        <Absent>
+          {hex
+            ? stale
+              ? `Not seen since turn ${hex.lastSeenTurn} — no current unit information.`
+              : "No units reported in this hex."
+            : "No hex selected."}
+        </Absent>
       ) : visible.length === 0 ? (
-        <div style={reservedStyle}>
-          <Absent>No unit matches that filter.</Absent>
-        </div>
+        <Absent>No unit matches that filter.</Absent>
       ) : (
         <div
           ref={setScroller}
@@ -336,18 +290,9 @@ export function UnitTableDock({
           onPointerLeave={forgetHover}
           // The vertical bar is always reserved: letting it come and go as the window changes
           // would resize the table, which would remeasure the viewport, which would change the
-          // window again.
+          // window again. The scroller carries no height of its own now - it fills the slot the
+          // shell gives the panel (ah-2r3), which is what the panel itself fills too.
           className="h-full overflow-y-scroll overflow-x-hidden"
-          // The unit list limit, applied as the scroller's ceiling by default: the header plus
-          // this many rows. The pane hugs a shorter list and scrolls a longer one; the
-          // surrounding layout's own ceiling still applies whichever is smaller. In fixed-size
-          // mode the ceiling becomes a floor too - an inline height wins over the max-height it
-          // replaces - so the pane never shrinks below its reserved size either.
-          style={
-            unitListFixedSize
-              ? { height: reservedHeight }
-              : { maxHeight: (head?.offsetHeight ?? 0) + unitListLimit * ROW_HEIGHT }
-          }
         >
           <table
             // A grid rather than a plain table: rows here are selectable, and a screen reader only

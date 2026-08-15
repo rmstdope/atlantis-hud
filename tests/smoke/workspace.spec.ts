@@ -1341,6 +1341,77 @@ test("a rail drags at its edge pill and survives a reload", async ({ page }) => 
   await expect.poll(async () => overlayWidth(page, "left")).toBeCloseTo(before, 0);
 });
 
+/** The units pane's outer height, as the player sees it. */
+async function unitsPaneHeight(page: Page): Promise<number> {
+  return (await boxOf(page, "units")).height;
+}
+
+test("the units pane drags at its grip and survives a reload", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+
+  const before = await unitsPaneHeight(page);
+  const grip = page.getByTestId("units-splitter");
+  const gripBox = (await grip.boundingBox())!;
+  const start = { x: gripBox.x + gripBox.width / 2, y: gripBox.y + gripBox.height / 2 };
+
+  await page.mouse.move(start.x, start.y);
+  await page.mouse.down();
+  await page.mouse.move(start.x, start.y - 120, { steps: 5 });
+  await page.mouse.up();
+
+  await expect.poll(async () => unitsPaneHeight(page)).toBeGreaterThan(before + 80);
+
+  await page.reload();
+  await expect(page.getByTestId("import-status")).toContainText("restored turn 71");
+  await selectHex(page, "1:7,53");
+  await expect.poll(async () => unitsPaneHeight(page)).toBeGreaterThan(before + 80);
+
+  await grip.dblclick();
+  await expect.poll(async () => unitsPaneHeight(page)).toBeCloseTo(before, 0);
+});
+
+test("a dragged units pane keeps its height on a hex with fewer units and on an empty one", async ({
+  page
+}) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+
+  const grip = page.getByTestId("units-splitter");
+  const gripBox = (await grip.boundingBox())!;
+  const start = { x: gripBox.x + gripBox.width / 2, y: gripBox.y + gripBox.height / 2 };
+  await page.mouse.move(start.x, start.y);
+  await page.mouse.down();
+  await page.mouse.move(start.x, start.y - 120, { steps: 5 });
+  await page.mouse.up();
+  const dragged = await unitsPaneHeight(page);
+
+  // (1:7,51) is known only from a neighbour's exits and carries no units at all - the dragged
+  // height must not shrink to fit it, which is the whole point of a dragged height being the
+  // height rather than a ceiling (ah-2r3).
+  await selectHex(page, "1:7,51");
+  await expect(page.getByTestId("panel-units")).toContainText("No units reported in this hex.");
+  expect(await unitsPaneHeight(page)).toBeCloseTo(dragged, 0);
+
+  await selectHex(page, "1:7,53");
+  expect(await unitsPaneHeight(page)).toBeCloseTo(dragged, 0);
+
+  await grip.dblclick();
+});
+
+test("folding the units pane hides its grip", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+
+  await expect(page.getByTestId("units-splitter")).toBeVisible();
+
+  await foldPanel(page, "units");
+  await expect(page.getByTestId("units-splitter")).toHaveCount(0);
+
+  await unfoldPanel(page, "units");
+  await expect(page.getByTestId("units-splitter")).toBeVisible();
+});
+
 test("folding the unit panel hides the grip and hands the column to the editor", async ({
   page
 }) => {
@@ -1391,6 +1462,27 @@ test("the orders editor takes the space a folded unit panel leaves", async ({ pa
   expect(grown.y).toBeLessThan(pinned.y);
 });
 
+/** Any hex, not the pressed one, whose middle falls inside `rect` - or null if none does. */
+async function hexUnder(
+  page: Page,
+  rect: { left: number; right: number; top: number; bottom: number }
+) {
+  return page.evaluate((r) => {
+    for (const hex of document.querySelectorAll<SVGPolygonElement>("polygon[data-region-id]")) {
+      if (hex.getAttribute("aria-pressed") === "true") {
+        continue;
+      }
+      const box = hex.getBoundingClientRect();
+      const x = box.x + box.width / 2;
+      const y = box.y + box.height / 2;
+      if (x > r.left && x < r.right && y > r.top && y < r.bottom) {
+        return { regionId: hex.getAttribute("data-region-id") ?? "", x, y };
+      }
+    }
+    return null;
+  }, rect);
+}
+
 test("the map under a folded panel can be clicked", async ({ page }) => {
   await loadReport(page);
   await enableMovementPlanner(page);
@@ -1413,23 +1505,35 @@ test("the map under a folded panel can be clicked", async ({ page }) => {
   };
 
   // Which hex is under there depends on where the map framed itself, so it is asked for rather
-  // than assumed. Any hex whose middle falls inside the freed rectangle will do, so long as it is
-  // not the one already selected - that click would prove nothing.
-  const target = await page.evaluate((rect) => {
-    for (const hex of document.querySelectorAll<SVGPolygonElement>("polygon[data-region-id]")) {
-      if (hex.getAttribute("aria-pressed") === "true") {
-        continue;
+  // than assumed. The units pane's own default height (ah-2r3) leaves less of the window for the
+  // map than the old row-hugging pane did, so the fit taken before anything was selected now
+  // sits further in and no hex reaches this corner unaided - so any hex is dragged there instead
+  // of hoping one already sits under it. A pan moves the whole world by exactly the pointer's own
+  // travel, so aiming at any hex's own centre and asking for the freed rectangle's centre lands it
+  // there regardless of where the fit happened to leave it.
+  let target = await hexUnder(page, freed);
+  if (!target) {
+    const anyHex = await page.evaluate(() => {
+      for (const hex of document.querySelectorAll<SVGPolygonElement>("polygon[data-region-id]")) {
+        if (hex.getAttribute("aria-pressed") === "true") {
+          continue;
+        }
+        const box = hex.getBoundingClientRect();
+        return { regionId: hex.getAttribute("data-region-id") ?? "", x: box.x + box.width / 2, y: box.y + box.height / 2 };
       }
-      const box = hex.getBoundingClientRect();
-      const x = box.x + box.width / 2;
-      const y = box.y + box.height / 2;
-      if (x > rect.left && x < rect.right && y > rect.top && y < rect.bottom) {
-        return { regionId: hex.getAttribute("data-region-id") ?? "", x, y };
-      }
+      return null;
+    });
+    if (anyHex) {
+      const destX = (freed.left + freed.right) / 2;
+      const destY = (freed.top + freed.bottom) / 2;
+      await page.mouse.move(anyHex.x, anyHex.y);
+      await page.mouse.down();
+      await page.mouse.move(destX, destY, { steps: 10 });
+      await page.mouse.up();
+      target = await hexUnder(page, freed);
     }
-    return null;
-  }, freed);
-  expect(target, "no hex sits under the folded panels").not.toBeNull();
+  }
+  expect(target, "no hex sits under the folded panels, even panned").not.toBeNull();
 
   // `page.mouse` rather than `locator.click()`: before this was fixed the overlay swallowed the
   // click, and Playwright reports that as "element intercepts pointer events" - a murkier failure
@@ -1479,6 +1583,14 @@ test("each badge can be turned off on its own, and the set survives a reload", a
   await loadReport(page);
 
   const map = page.getByTestId("map-canvas");
+  // The units pane's own default height (ah-2r3) leaves less of the window for the map than the
+  // old row-hugging pane did, so the initial fit now lands a touch further out than the tier
+  // that draws building glyphs at all - a couple of zoom-in steps is what every other test that
+  // cares about mark detail already does (see "the map carries less detail the further out it is
+  // zoomed").
+  for (let step = 0; step < 3; step += 1) {
+    await page.getByRole("button", { name: "Zoom in" }).click();
+  }
   // The atlas draws a settlement as a keep; the committed turn 71 has towns on it.
   const settlements = map.locator('[data-mark="settlement"]');
   const units = map.locator('[data-shield="own"]');

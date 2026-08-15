@@ -12,7 +12,12 @@ import { createJSONStorage, persist } from "zustand/middleware";
 import { allBadges, type BadgeName } from "./workspace/mapThemes/hexView";
 // This is a runtime import, but `panelLayout.ts`'s import back (`import type { PanelName }`) is
 // type-only and erased at compile time - so the two modules do not form a runtime cycle.
-import { clampOrdersHeight, clampRailWidth, type RailSide } from "./workspace/panelLayout";
+import {
+  clampOrdersHeight,
+  clampRailWidth,
+  clampUnitsHeight,
+  type RailSide
+} from "./workspace/panelLayout";
 
 /** The four panels that can be folded away to open up the map. */
 export type PanelName = "region" | "unit" | "orders" | "units" | "planner";
@@ -73,6 +78,10 @@ export type WorkspaceState = {
    */
   ordersHeightRem: number | null;
   /**
+   * The units-in-hex pane's dragged height, in rem, or null while the default applies - ah-2r3.
+   */
+  unitsHeightRem: number | null;
+  /**
    * The left and right rails' dragged widths, in rem, or null while the default width applies.
    *
    * Layout preferences about the workspace, exactly like `ordersHeightRem` - they outlive the game,
@@ -115,6 +124,8 @@ export type WorkspaceState = {
   togglePanel: (panel: PanelName) => void;
   /** Sets (or, with null, resets) the orders editor's dragged height. Clamped on the way in. */
   setOrdersHeight: (rem: number | null) => void;
+  /** Sets (or, with null, resets) the units pane's dragged height. Clamped on the way in. */
+  setUnitsHeight: (rem: number | null) => void;
   /** Sets (or, with null, resets) one rail's dragged width. Clamped on the way in. */
   setRailWidth: (side: RailSide, rem: number | null) => void;
   toggleLayer: (layer: LayerName) => void;
@@ -211,6 +222,7 @@ type Persisted = Pick<
   WorkspaceState,
   | "collapsed"
   | "ordersHeightRem"
+  | "unitsHeightRem"
   | "leftRailWidthRem"
   | "rightRailWidthRem"
   | "layers"
@@ -228,6 +240,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       level: DEFAULT_LEVEL,
       collapsed: INITIAL_COLLAPSED,
       ordersHeightRem: null,
+      unitsHeightRem: null,
       leftRailWidthRem: null,
       rightRailWidthRem: null,
       layers: INITIAL_LAYERS,
@@ -287,6 +300,8 @@ export const useWorkspaceStore = create<WorkspaceState>()(
 
       setOrdersHeight: (rem) => set(() => ({ ordersHeightRem: clampOrdersHeight(rem) })),
 
+      setUnitsHeight: (rem) => set(() => ({ unitsHeightRem: clampUnitsHeight(rem) })),
+
       setRailWidth: (side, rem) =>
         set(() =>
           side === "left"
@@ -323,6 +338,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       partialize: (state) => ({
         collapsed: state.collapsed,
         ordersHeightRem: state.ordersHeightRem,
+        unitsHeightRem: state.unitsHeightRem,
         leftRailWidthRem: state.leftRailWidthRem,
         rightRailWidthRem: state.rightRailWidthRem,
         layers: state.layers,
@@ -343,6 +359,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           ...current,
           collapsed: reconcile(INITIAL_COLLAPSED, stored.collapsed ?? {}),
           ordersHeightRem: clampOrdersHeight(stored.ordersHeightRem),
+          unitsHeightRem: clampUnitsHeight(stored.unitsHeightRem),
           leftRailWidthRem: clampRailWidth(stored.leftRailWidthRem),
           rightRailWidthRem: clampRailWidth(stored.rightRailWidthRem),
           layers: reconcile(INITIAL_LAYERS, stored.layers ?? {}),
@@ -369,6 +386,7 @@ export function resetWorkspaceStore() {
     level: DEFAULT_LEVEL,
     collapsed: INITIAL_COLLAPSED,
     ordersHeightRem: null,
+    unitsHeightRem: null,
     leftRailWidthRem: null,
     rightRailWidthRem: null,
     layers: INITIAL_LAYERS,

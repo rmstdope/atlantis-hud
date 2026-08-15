@@ -157,3 +157,66 @@ export function railWidthStyle(widthRem: number | null): { width: string } | nul
   }
   return { width: `${widthRem}rem` };
 }
+
+/**
+ * The units-in-hex pane's default height and bounds, in rem. Chosen with the navigator in
+ * `docs/ui/units-pane-drag-resize.html`: twelve rows by default (what the old row count gave),
+ * one row as the floor, never more than seven tenths of the map column.
+ *
+ * 20.625rem = 330px: title bar 28 + body padding 16 + column header 22 + 12 rows × 22 (ROW_HEIGHT).
+ * 5.5rem = 88px: the same with one row.
+ */
+export const UNITS_DEFAULT_REM = 20.625;
+export const UNITS_MIN_REM = 5.5;
+export const UNITS_MAX_REM = 60; // sanity ceiling for stored values only
+export const UNITS_CEILING_FRACTION = 0.7;
+
+const PINNED_UNITS = "h-[20.625rem] max-h-[70%] min-h-[5.5rem] flex-none";
+const CUSTOM_UNITS = "min-h-[5.5rem] flex-none";
+
+/** null unless a finite number; otherwise clamped into [UNITS_MIN_REM, UNITS_MAX_REM]. */
+export function clampUnitsHeight(value: unknown): number | null {
+  if (typeof value !== "number" && typeof value !== "string") {
+    return null;
+  }
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return null;
+  }
+  return Math.min(UNITS_MAX_REM, Math.max(UNITS_MIN_REM, numeric));
+}
+
+/**
+ * One drag or key step on the units pane, resolved against the map column: `hostRem` is the
+ * overlay column's content height (Infinity when unmeasurable, leaving UNITS_MAX_REM). Ceiling is
+ * min(UNITS_MAX_REM, hostRem * UNITS_CEILING_FRACTION); if that falls under UNITS_MIN_REM the
+ * floor wins outright with atLimit true.
+ */
+export function dragUnitsHeight(startRem: number, deltaRem: number, hostRem: number): DragResult {
+  const raw = startRem + deltaRem;
+  const ceiling = Math.min(UNITS_MAX_REM, hostRem * UNITS_CEILING_FRACTION);
+  if (ceiling < UNITS_MIN_REM) {
+    return { rem: UNITS_MIN_REM, atLimit: true };
+  }
+  const rem = Math.min(ceiling, Math.max(UNITS_MIN_REM, raw));
+  return { rem, atLimit: rem !== raw };
+}
+
+/** The bottom slot's classes: STRIP when the pane is folded, otherwise pinned or custom. */
+export function unitsSlotClass(collapsed: Collapsed, hasCustomHeight: boolean): string {
+  if (collapsed.units) {
+    return STRIP;
+  }
+  return hasCustomHeight ? CUSTOM_UNITS : PINNED_UNITS;
+}
+
+/** Inline style once a height is stored: the height, and the 70% clamp-to-fit for a short window. */
+export function unitsSlotStyle(
+  collapsed: Collapsed,
+  unitsHeightRem: number | null
+): { height: string; maxHeight: string } | null {
+  if (unitsHeightRem == null || collapsed.units) {
+    return null;
+  }
+  return { height: `${unitsHeightRem}rem`, maxHeight: "70%" };
+}

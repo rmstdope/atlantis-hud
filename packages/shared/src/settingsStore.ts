@@ -19,22 +19,6 @@ export type ThemeName = "dark" | "light";
 /** How see-through the floating panes start out: enough map underneath to navigate by. */
 export const DEFAULT_PANE_TRANSPARENCY = 90;
 
-/** How many rows the units-in-hex table starts out showing: a readable screenful. */
-export const DEFAULT_UNIT_LIST_LIMIT = 12;
-
-/**
- * The ends of what the units-in-hex row count may be set to, by the pane's own + and - as much as
- * by the settings slider. Both controls and the clamp read these, so the three cannot drift apart
- * and leave a button that offers a value the store then refuses.
- *
- * One row rather than three: shrunk to a single row the pane is nearly out of the way of the map
- * while still being a list you can scroll, which is a reasonable thing to want. Sixteen is the
- * ceiling because the pane is already bounded to a fraction of the window height, so rows past it
- * would mostly change nothing a player can see.
- */
-export const UNIT_LIST_LIMIT_MIN = 1;
-export const UNIT_LIST_LIMIT_MAX = 16;
-
 /** Whether each advisory order-check code is allowed to run at all, by code. */
 export type AdvisoryChecks = Record<AdvisoryCheckCode, boolean>;
 
@@ -84,22 +68,6 @@ export type SettingsState = {
    */
   paneTransparency: number;
   /**
-   * How many rows tall the "Units in hex" pane stands, between UNIT_LIST_LIMIT_MIN and
-   * UNIT_LIST_LIMIT_MAX.
-   *
-   * A ceiling on the pane, never a cut in the list: every unit stays reachable by scrolling and
-   * by the arrow keys, this many of them on screen at a time.
-   */
-  unitListLimit: number;
-  /**
-   * Whether the "Units in hex" pane's row count is a fixed size rather than a ceiling.
-   *
-   * Off by default, matching today's behaviour: the pane hugs whatever the hex holds, up to
-   * `unitListLimit`. On, it always reserves that many rows - including on an empty, stale,
-   * unselected or filtered-to-nothing hex - so moving between hexes never resizes the pane.
-   */
-  unitListFixedSize: boolean;
-  /**
    * Whether each advisory order-check code is allowed to run at all - the Warnings settings tab.
    *
    * Off means the core does not produce that finding, at all: counts, chip, panels and editor
@@ -131,8 +99,6 @@ export type SettingsState = {
   setMapTheme: (id: string) => void;
   setBiomeTextures: (enabled: boolean) => void;
   setPaneTransparency: (percent: number) => void;
-  setUnitListLimit: (count: number) => void;
-  setUnitListFixedSize: (enabled: boolean) => void;
   setAdvisoryCheck: (code: AdvisoryCheckCode, enabled: boolean) => void;
   setMovementPlanner: (enabled: boolean) => void;
   setShowShortcutsAtStartup: (enabled: boolean) => void;
@@ -147,8 +113,6 @@ type Persisted = Pick<
   | "mapTheme"
   | "biomeTextures"
   | "paneTransparency"
-  | "unitListLimit"
-  | "unitListFixedSize"
   | "advisoryChecks"
   | "movementPlanner"
   | "showShortcutsAtStartup"
@@ -190,25 +154,6 @@ function clampTransparency(percent: number): number {
     return DEFAULT_PANE_TRANSPARENCY;
   }
   return Math.min(95, Math.max(0, Math.round(numeric)));
-}
-
-/**
- * What the controls offer is also what the store accepts: whole rows between the two bounds above,
- * garbage falling back to the default rather than to either extreme. Same reasoning as the
- * transparency clamp: storage is hand-editable and other writers exist.
- */
-function clampUnitListLimit(count: number): number {
-  const numeric = Number(count);
-  if (!Number.isFinite(numeric)) {
-    return DEFAULT_UNIT_LIST_LIMIT;
-  }
-  // The earlier build persisted 0 as "show all", and as its default - so it is what every
-  // untouched settings blob from that build holds. It means "no preference", not "as few as
-  // possible", and clamping it to the floor would greet everyone upgrading with the tightest cap.
-  if (numeric === 0) {
-    return DEFAULT_UNIT_LIST_LIMIT;
-  }
-  return Math.min(UNIT_LIST_LIMIT_MAX, Math.max(UNIT_LIST_LIMIT_MIN, Math.round(numeric)));
 }
 
 /**
@@ -265,8 +210,6 @@ const DEFAULTS: Persisted = {
   mapTheme: DEFAULT_MAP_THEME_ID,
   biomeTextures: true,
   paneTransparency: DEFAULT_PANE_TRANSPARENCY,
-  unitListLimit: DEFAULT_UNIT_LIST_LIMIT,
-  unitListFixedSize: false,
   advisoryChecks: DEFAULT_ADVISORY_CHECKS,
   movementPlanner: false,
   showShortcutsAtStartup: true,
@@ -295,14 +238,6 @@ export const useSettingsStore = create<SettingsState>()(
         const clamped = clampTransparency(percent);
         applyPaneTransparency(clamped);
         set({ paneTransparency: clamped });
-      },
-
-      setUnitListLimit: (count) => {
-        set({ unitListLimit: clampUnitListLimit(count) });
-      },
-
-      setUnitListFixedSize: (unitListFixedSize) => {
-        set({ unitListFixedSize });
       },
 
       setAdvisoryCheck: (code, enabled) => {
@@ -343,8 +278,6 @@ export const useSettingsStore = create<SettingsState>()(
         mapTheme: state.mapTheme,
         biomeTextures: state.biomeTextures,
         paneTransparency: state.paneTransparency,
-        unitListLimit: state.unitListLimit,
-        unitListFixedSize: state.unitListFixedSize,
         advisoryChecks: state.advisoryChecks,
         movementPlanner: state.movementPlanner,
         showShortcutsAtStartup: state.showShortcutsAtStartup,
@@ -367,12 +300,6 @@ export function applyPersistedSettings() {
   const transparency = clampTransparency(useSettingsStore.getState().paneTransparency);
   useSettingsStore.setState({ paneTransparency: transparency });
   applyPaneTransparency(transparency);
-  // The limit reaches no stylesheet, but the same reconciliation applies: rehydration bypasses
-  // the setter, and a hand-edited value must not leave the table cutting by a figure the dialog
-  // would refuse.
-  useSettingsStore.setState({
-    unitListLimit: clampUnitListLimit(useSettingsStore.getState().unitListLimit)
-  });
   // Same door again: a blob naming a theme this build never had would otherwise leave the map
   // with nothing to draw with.
   useSettingsStore.setState({

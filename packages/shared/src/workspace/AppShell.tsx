@@ -113,12 +113,22 @@ import { hasOpenDismissLayers } from "../dismissStack";
 import { firesInContext, isMacPlatform, matchShortcut, SHORTCUTS } from "../shortcuts";
 import { nextOwnUnit } from "../unitCycle";
 import {
+  dragOrdersHeight,
+  dragUnitsHeight,
   ordersSlotClass,
   ordersSlotStyle,
+  ORDERS_DEFAULT_REM,
+  ORDERS_MAX_REM,
+  ORDERS_MIN_REM,
   RAIL_LEFT_DEFAULT_REM,
   RAIL_RIGHT_DEFAULT_REM,
   railWidthStyle,
-  unitSlotClass
+  unitSlotClass,
+  unitsSlotClass,
+  unitsSlotStyle,
+  UNITS_DEFAULT_REM,
+  UNITS_MAX_REM,
+  UNITS_MIN_REM
 } from "./panelLayout";
 import { PanelSplitter } from "./PanelSplitter";
 import { RailSplitter } from "./RailSplitter";
@@ -447,6 +457,7 @@ export function AppShell({
   >(null);
   const ordersEditor = useRef<OrdersEditorHandle | null>(null);
   const ordersSlotRef = useRef<HTMLDivElement | null>(null);
+  const unitsSlotRef = useRef<HTMLDivElement | null>(null);
   const leftRailRef = useRef<HTMLDivElement | null>(null);
   const rightRailRef = useRef<HTMLDivElement | null>(null);
   const [gameError, setGameError] = useState<string | null>(null);
@@ -522,6 +533,9 @@ export function AppShell({
   // between them; null means the default pin from `panelLayout.ts` still applies.
   const ordersHeightRem = useWorkspaceStore((state) => state.ordersHeightRem);
   const setOrdersHeight = useWorkspaceStore((state) => state.setOrdersHeight);
+  // The units-in-hex pane's own dragged height, exactly the same preference shape - ah-2r3.
+  const unitsHeightRem = useWorkspaceStore((state) => state.unitsHeightRem);
+  const setUnitsHeight = useWorkspaceStore((state) => state.setUnitsHeight);
   // The player's own widths for the two rails floating over the map, dragged at the grip on each
   // one's inner edge; null means the default width from `panelLayout.ts` still applies.
   const leftRailWidthRem = useWorkspaceStore((state) => state.leftRailWidthRem);
@@ -2886,10 +2900,9 @@ export function AppShell({
         {/*
           Region left, unit and orders right, units along the bottom.
 
-          Laid out as a column rather than by absolute offsets: the unit dock sits on the floor and
-          grows upward as a hex holds more units, and the row above yields the space. Pinning the
-          dock's height instead would either waste the screen on an empty hex or bury ninety units
-          in a scroller.
+          Laid out as a column rather than by absolute offsets. The units pane stands at its own
+          dragged height (default twelve rows), exactly like the orders editor - ah-2r3 - so moving
+          between hexes never resizes it; a short list simply leaves blank pane below.
 
           Nothing here takes clicks. Each panel claims its own (see `CollapsiblePanel`), so the
           gaps between them, and everything a folded panel gives up, stays live map rather than a
@@ -2950,8 +2963,14 @@ export function AppShell({
               ) : null}
               {!collapsed.unit && !collapsed.orders ? (
                 <PanelSplitter
-                  ordersSlot={ordersSlotRef}
-                  ordersHeightRem={ordersHeightRem}
+                  slot={ordersSlotRef}
+                  heightRem={ordersHeightRem}
+                  defaultRem={ORDERS_DEFAULT_REM}
+                  minRem={ORDERS_MIN_REM}
+                  maxRem={ORDERS_MAX_REM}
+                  drag={dragOrdersHeight}
+                  label="Resize orders panel"
+                  testId="panel-splitter"
                   onCommit={setOrdersHeight}
                 />
               ) : null}
@@ -2984,7 +3003,25 @@ export function AppShell({
             </div>
           </div>
 
-          <div className="max-h-[45vh] flex-none" data-map-overlay="bottom">
+          {!collapsed.units ? (
+            <PanelSplitter
+              slot={unitsSlotRef}
+              heightRem={unitsHeightRem}
+              defaultRem={UNITS_DEFAULT_REM}
+              minRem={UNITS_MIN_REM}
+              maxRem={UNITS_MAX_REM}
+              drag={dragUnitsHeight}
+              label="Resize units pane"
+              testId="units-splitter"
+              onCommit={setUnitsHeight}
+            />
+          ) : null}
+          <div
+            ref={unitsSlotRef}
+            className={unitsSlotClass(collapsed, unitsHeightRem != null)}
+            style={unitsSlotStyle(collapsed, unitsHeightRem) ?? undefined}
+            data-map-overlay="bottom"
+          >
             <UnitTableDock hex={hex} preview={hexPreview} />
           </div>
         </div>
