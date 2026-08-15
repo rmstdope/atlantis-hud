@@ -8,8 +8,9 @@
  * and the shell's routing decision can both be tested without a DOM or a core.
  */
 
-import type { OrderDiagnostic } from "@atlantis/core-client";
+import type { OpenedGame, OrderDiagnostic, ParsedReport } from "@atlantis/core-client";
 import { commandsOnly, findUnitBlocks, readUnitOrders } from "./ordersDocument";
+import { factionLabelOf } from "./reportLoad";
 
 const ATLANTIS_HEADER = /^#atlantis\b/iu;
 const FACTION_ID = /^#atlantis\s+(\S+)/iu;
@@ -43,6 +44,80 @@ export function isOrdersFile(text: string): boolean {
  */
 export function ordersFileFaction(text: string): string | null {
   return FACTION_ID.exec(firstNonBlankLine(text))?.[1] ?? null;
+}
+
+/**
+ * An orders file, recognised and waiting for the player to confirm the overwrite before it is
+ * applied.
+ *
+ * The counts are worked out once, when the file is recognised, from the document on screen at that
+ * moment - the same snapshot discipline `PendingReportLoad` keeps, and for the same reason: the
+ * document being overwritten must be the one the numbers describe, not whatever it happens to be
+ * when Replace is finally pressed.
+ */
+export type PendingOrdersImport = {
+  text: string;
+  fileName: string;
+  /** How the current faction names itself, as `Borg TNG (95)` - the file's faction too, by then. */
+  factionLabel: string;
+  /**
+   * The game, faction and turn the counts above describe - taken when the file was recognised, and
+   * checked again before Replace applies anything. The player can switch game, faction or turn
+   * while this prompt sits on screen (a report that loads without asking, a different game picked),
+   * and Replace must then refuse rather than write a stale file into whatever is open by then.
+   */
+  gameId: string;
+  factionId: string;
+  turnNumber: number;
+  unitCount: number;
+  emptiedCount: number;
+};
+
+export type OrdersImportRoute =
+  | { kind: "refuse"; message: string }
+  | { kind: "ask"; pending: PendingOrdersImport };
+
+/**
+ * What an orders file dropped on the Import target does: refused with `no turn to apply orders to`
+ * when no turn is on screen; refused with
+ * `<file> is orders for faction <id|unknown>, not <viewer label|your faction>` when the factions
+ * differ; otherwise held, with the counts worked out now from the document on screen.
+ */
+export function routeOrdersImport(
+  viewer: { game: OpenedGame | null; parsed: ParsedReport | null },
+  text: string,
+  fileName: string,
+  ordersDocument: string
+): OrdersImportRoute {
+  const { game, parsed } = viewer;
+  if (!game || !parsed || parsed.header.turnNumber === null || parsed.header.factionId === null) {
+    return { kind: "refuse", message: "no turn to apply orders to" };
+  }
+
+  const fileFactionId = ordersFileFaction(text);
+  if (fileFactionId !== parsed.header.factionId) {
+    return {
+      kind: "refuse",
+      message:
+        `${fileName} is orders for faction ${fileFactionId ?? "unknown"}, not ` +
+        `${factionLabelOf(parsed) ?? "your faction"}`
+    };
+  }
+
+  const description = describeOrdersImport(text, ordersDocument);
+  return {
+    kind: "ask",
+    pending: {
+      text,
+      fileName,
+      factionLabel: factionLabelOf(parsed) ?? "your faction",
+      gameId: game.manifest.metadata.gameId,
+      factionId: parsed.header.factionId,
+      turnNumber: parsed.header.turnNumber,
+      unitCount: description.fileUnitIds.length,
+      emptiedCount: description.emptiedUnitIds.length
+    }
+  };
 }
 
 export type OrdersImportDescription = {
