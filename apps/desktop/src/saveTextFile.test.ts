@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { desktopTextFileSaverFor, filterFor } from "./saveTextFile";
+import { browserTextFileSaver } from "@atlantis/shared";
+import { desktopTextFileSaver, filterFor } from "./saveTextFile";
 import type { DesktopPlugins } from "./desktopPlugins";
 
 describe("filterFor", () => {
@@ -18,9 +19,9 @@ describe("filterFor", () => {
   });
 });
 
-describe("desktopTextFileSaverFor", () => {
-  it("is undefined with no plugins", () => {
-    expect(desktopTextFileSaverFor(undefined)).toBeUndefined();
+describe("desktopTextFileSaver", () => {
+  it("is the browser saver when there are no plugins", () => {
+    expect(desktopTextFileSaver(undefined)).toBe(browserTextFileSaver);
   });
 
   it("asks the dialog, then writes what it answered, through the given plugins", async () => {
@@ -28,9 +29,8 @@ describe("desktopTextFileSaverFor", () => {
     const writeTextFile = vi.fn().mockResolvedValue(undefined);
     const plugins: DesktopPlugins = { save, writeTextFile };
 
-    const saver = desktopTextFileSaverFor(plugins);
-    expect(saver).toBeDefined();
-    const path = await saver!("orders-turn-71.txt", "unit 1 : work");
+    const saver = desktopTextFileSaver(plugins);
+    const path = await saver("orders-turn-71.txt", "unit 1 : work", "text/plain");
 
     expect(save).toHaveBeenCalledWith({
       defaultPath: "orders-turn-71.txt",
@@ -45,8 +45,8 @@ describe("desktopTextFileSaverFor", () => {
     const writeTextFile = vi.fn().mockResolvedValue(undefined);
     const plugins: DesktopPlugins = { save, writeTextFile };
 
-    const saver = desktopTextFileSaverFor(plugins);
-    const path = await saver!("orders-turn-71.txt", "unit 1 : work");
+    const saver = desktopTextFileSaver(plugins);
+    const path = await saver("orders-turn-71.txt", "unit 1 : work", "text/plain");
 
     expect(path).toBeNull();
     expect(writeTextFile).not.toHaveBeenCalled();

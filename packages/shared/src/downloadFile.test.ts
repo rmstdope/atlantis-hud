@@ -1,44 +1,52 @@
-import { describe, expect, it, vi } from "vitest";
-import { deliverTextFile } from "./downloadFile";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { browserTextFileSaver } from "./downloadFile";
 
-describe("deliverTextFile", () => {
-  it("delivers through the saver when there is one", async () => {
-    const saver = vi.fn().mockResolvedValue("/chosen/orders-turn-71.txt");
-    const download = vi.fn();
+/**
+ * These tests run under Node, where no `document` or `URL.createObjectURL` exists - the same
+ * approach `selectionGuard.test.ts` takes: a stub carrying only what the code under test touches.
+ */
+type AnchorStub = { href: string; download: string; click: ReturnType<typeof vi.fn> };
 
-    const result = await deliverTextFile(saver, "orders-turn-71.txt", "unit 1 work", "text/plain", download);
+function installDomStubs(): { anchor: AnchorStub; createObjectURL: ReturnType<typeof vi.fn>; revokeObjectURL: ReturnType<typeof vi.fn> } {
+  const anchor: AnchorStub = { href: "", download: "", click: vi.fn() };
+  const createObjectURL = vi.fn((blob: { type: string }) => `blob:${blob.type}`);
+  const revokeObjectURL = vi.fn();
+  (globalThis as { document?: unknown }).document = {
+    createElement: vi.fn(() => anchor)
+  };
+  (globalThis as { URL: unknown }).URL = { createObjectURL, revokeObjectURL };
+  return { anchor, createObjectURL, revokeObjectURL };
+}
 
-    expect(saver).toHaveBeenCalledWith("orders-turn-71.txt", "unit 1 work");
-    expect(download).not.toHaveBeenCalled();
-    expect(result).toBe("/chosen/orders-turn-71.txt");
-  });
+afterEach(() => {
+  delete (globalThis as { document?: unknown }).document;
+  vi.unstubAllGlobals();
+});
 
-  it("falls back to the download without a saver", async () => {
-    const download = vi.fn();
+describe("browserTextFileSaver", () => {
+  it("clicks an anchor download and resolves with an empty path", async () => {
+    const { anchor, createObjectURL, revokeObjectURL } = installDomStubs();
 
-    const result = await deliverTextFile(undefined, "orders-turn-71.txt", "unit 1 work", "text/plain", download);
+    const result = await browserTextFileSaver("orders-turn-71.txt", "unit 1 work", "text/plain");
 
-    expect(download).toHaveBeenCalledWith("orders-turn-71.txt", "unit 1 work", "text/plain");
+    expect(createObjectURL).toHaveBeenCalled();
+    expect(anchor.href).toBe("blob:text/plain");
+    expect(anchor.download).toBe("orders-turn-71.txt");
+    expect(anchor.click).toHaveBeenCalled();
     expect(result).toBe("");
+
+    // The revoke happens on a later task, not synchronously - see the implementation's comment.
+    expect(revokeObjectURL).not.toHaveBeenCalled();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:text/plain");
   });
 
-  it("a cancelled save downloads nothing", async () => {
-    const saver = vi.fn().mockResolvedValue(null);
-    const download = vi.fn();
+  it("passes the mime type through to the blob it downloads", async () => {
+    const { anchor } = installDomStubs();
 
-    const result = await deliverTextFile(saver, "orders-turn-71.txt", "unit 1 work", "text/plain", download);
+    const result = await browserTextFileSaver("game-1.atlantis-hud-game.json", "{}", "application/json");
 
-    expect(download).not.toHaveBeenCalled();
-    expect(result).toBeNull();
-  });
-
-  it("a saver that throws rejects into the caller's catch", async () => {
-    const saver = vi.fn().mockRejectedValue(new Error("disk full"));
-    const download = vi.fn();
-
-    await expect(
-      deliverTextFile(saver, "orders-turn-71.txt", "unit 1 work", "text/plain", download)
-    ).rejects.toThrow("disk full");
-    expect(download).not.toHaveBeenCalled();
+    expect(result).toBe("");
+    expect(anchor.href).toBe("blob:application/json");
   });
 });
