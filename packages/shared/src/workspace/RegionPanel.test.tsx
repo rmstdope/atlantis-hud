@@ -1,9 +1,25 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it } from "vitest";
-import type { OrderDiagnostic } from "@atlantis/core-client";
+import type { CoreClient, OpenedGame, OrderDiagnostic } from "@atlantis/core-client";
 import { SURFACE, type HexNode } from "../hexMapModel";
+import { resetHexNotesStore } from "../hexNotesStore";
 import { RegionPanel } from "./RegionPanel";
 import { resetWorkspaceStore } from "../workspaceStore";
+
+const CLIENT = {} as unknown as CoreClient;
+
+const GAME = {
+  gameFilePath: "g.json",
+  databasePath: "g.sqlite",
+  schemaVersion: 8,
+  manifest: {
+    manifestVersion: 1,
+    metadata: { gameId: "aug-2026", gameName: "Borg TNG", rulesetId: "neworigins" },
+    reportSources: [],
+    createdAt: "2026-08-01T09:00:00Z",
+    lastOpenedAt: "2026-08-09T18:00:00Z"
+  }
+} as OpenedGame;
 
 /** A minimal but visited hex, enough to reach the region facts below the Problems section. */
 const HEX: HexNode = {
@@ -76,10 +92,15 @@ const PROBLEMS: OrderDiagnostic[] = [
 ];
 
 const draw = (problems: OrderDiagnostic[] = []) =>
-  renderToStaticMarkup(<RegionPanel hex={HEX} problems={problems} />);
+  renderToStaticMarkup(
+    <RegionPanel hex={HEX} problems={problems} client={CLIENT} game={GAME} turn={71} />
+  );
 
 describe("the region panel's problems toggle", () => {
-  beforeEach(resetWorkspaceStore);
+  beforeEach(() => {
+    resetWorkspaceStore();
+    resetHexNotesStore();
+  });
 
   it("offers no problems toggle on a hex with nothing wrong", () => {
     const markup = draw([]);
@@ -102,5 +123,33 @@ describe("the region panel's problems toggle", () => {
     const markup = draw(PROBLEMS);
 
     expect(markup).toContain("region-problems");
+  });
+});
+
+describe("the region panel's Notes section (ah-o1t)", () => {
+  beforeEach(() => {
+    resetWorkspaceStore();
+    resetHexNotesStore();
+  });
+
+  it("renders the Notes section after Structures, on a known hex", () => {
+    const markup = draw([]);
+
+    expect(markup).toContain('data-testid="region-notes"');
+    expect(markup.indexOf("Structures")).toBeLessThan(markup.indexOf('data-testid="region-notes"'));
+  });
+
+  it("renders the Notes section on an unexplored hex too, keyed by the coordinate's regionId", () => {
+    const markup = renderToStaticMarkup(
+      <RegionPanel
+        hex={null}
+        unknown={{ x: 3, y: 4, z: SURFACE }}
+        client={CLIENT}
+        game={GAME}
+        turn={71}
+      />
+    );
+
+    expect(markup).toContain('data-testid="region-notes"');
   });
 });
