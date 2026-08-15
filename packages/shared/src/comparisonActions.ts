@@ -42,7 +42,12 @@ export async function loadComparisonTurn(
   return { key: { factionId: record.key.factionId, turnNumber }, parsed };
 }
 
-/** Where the working turn stands when a turn is clicked; `working` null means no report is on screen. */
+/**
+ * Where the working turn stands when a turn is clicked.
+ *
+ * `workingTurn` is required: the caller only builds this once it knows a report is on screen,
+ * which is what makes `pickComparisonTurn` a comparison against something rather than nothing.
+ */
 export type ComparisonContext = {
   databasePath: string;
   gameId: string;
