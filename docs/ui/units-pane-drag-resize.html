@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ah-2r3 — Drag to resize the “Units in hex” pane</title>
+<style>
+  :root { --page:#10151c; --panel:#171e28; --edge:#2a3442; --ink:#d7dee8; --dim:#8a94a3;
+          --map:#0d222b; --grip:#4a5a6e; --grip-hot:#c9a24b; --warn:#d9a441; --brass:#c9a24b;
+          --focus:#c9a24b; }
+  body { background: var(--page); color: var(--ink); font: 14px/1.5 system-ui, sans-serif;
+         margin: 0; padding: 24px 32px 64px; }
+  h1 { font-size: 20px; }
+  h2 { font-size: 16px; margin: 40px 0 6px; border-top: 1px solid var(--edge); padding-top: 20px; }
+  h3 { font-size: 14px; margin: 0 0 8px; }
+  p.note { color: var(--dim); max-width: 80ch; }
+  .row { display: flex; gap: 36px; flex-wrap: wrap; margin: 16px 0 8px; align-items: flex-start; }
+  .variant { width: 400px; }
+  .cost { color: var(--dim); font-size: 13px; margin: 8px 0 0; }
+  .ctl { display: flex; gap: 6px; margin: 8px 0 0; }
+  .ctl button { background: var(--panel); color: var(--ink); border: 1px solid var(--edge);
+                border-radius: 5px; padding: 3px 9px; font-size: 12px; cursor: pointer; }
+  .ctl button.on { border-color: var(--brass); color: var(--brass); }
+
+  /* The simulated map with the overlay column: rails above, units pane at the bottom */
+  .map { position: relative; height: 520px; border: 1px solid var(--edge); border-radius: 10px;
+         background: repeating-linear-gradient(60deg, var(--map) 0 22px, #0f2833 22px 44px);
+         overflow: hidden; }
+  .overlay { position: absolute; inset: 0; display: flex; flex-direction: column; gap: 10px;
+             padding: 10px; padding-top: 34px; box-sizing: border-box; }
+  .rails { flex: 1; min-height: 0; display: flex; justify-content: space-between; gap: 10px; }
+  .rail { width: 90px; background: var(--panel); opacity: .55; border: 1px solid var(--edge);
+          border-radius: 8px; }
+  .slot { flex: none; position: relative; }
+  .pane { background: var(--panel); border: 1px solid var(--edge); border-radius: 8px;
+          overflow: hidden; display: flex; flex-direction: column; height: 100%; box-sizing: border-box; }
+  .pane header { display: flex; align-items: center; gap: 8px; padding: 0 10px; height: 28px; white-space: nowrap; overflow: hidden;
+                 border-bottom: 1px solid var(--edge); font-size: 10px; letter-spacing: .12em;
+                 text-transform: uppercase; color: var(--brass); flex: none; }
+  .pane header .hint { color: var(--dim); text-transform: none; letter-spacing: 0; font-size: 11px; }
+  .pane header .spacer { flex: 1; }
+  .pane header .filter { border: 1px solid var(--edge); background: var(--page); color: var(--dim);
+                         border-radius: 4px; padding: 1px 6px; font-size: 11px; text-transform: none;
+                         letter-spacing: 0; width: 120px; }
+  .pane header .caret { color: var(--dim); }
+  .body { min-height: 0; flex: 1; overflow: hidden; padding: 8px 10px; box-sizing: border-box; }
+  .scroller { height: 100%; overflow-y: scroll; overflow-x: hidden; }
+  table.units { width: 100%; border-collapse: collapse; font-size: 11.5px; }
+  table.units th { text-align: left; color: var(--dim); font-weight: 500; padding: 0 8px;
+                   height: 22px; border-bottom: 1px solid var(--edge); position: sticky; top: 0;
+                   background: var(--panel); }
+  table.units td { padding: 0 8px; height: 22px; white-space: nowrap; }
+  table.units tr.unit:nth-child(odd) td { background: #131a24; }
+  .absent { font-style: italic; color: var(--dim); font-size: 11.5px; }
+
+  /* The grip: the ah-13o pill, on the pane's TOP edge */
+  .split { position: absolute; left: 0; right: 0; top: -5px; height: 10px; z-index: 2;
+           cursor: row-resize; touch-action: none; display: flex; justify-content: center;
+           align-items: center; outline: none; }
+  .split .pill { width: 32px; height: 4px; border-radius: 2px; background: var(--grip);
+                 transition: background .12s, width .12s; }
+  .split:hover .pill, .split.dragging .pill { background: var(--grip-hot); width: 48px; }
+  .split.limit .pill { background: var(--warn); width: 48px; }
+  .split.focused { outline: 1px solid var(--focus); outline-offset: -1px; }
+
+  .badge { display: inline-block; font-size: 11px; color: var(--dim); background: var(--page);
+           border: 1px solid var(--edge); border-radius: 4px; padding: 1px 6px; margin-left: 6px; }
+  .statics { display: flex; gap: 28px; flex-wrap: wrap; }
+  .fig { width: 300px; }
+  .fig .map { height: 260px; }
+  .fig p { margin: 6px 0 0; font-size: 12.5px; color: var(--dim); }
+  .crop { width: 300px; border: 1px solid var(--edge); border-radius: 8px; overflow: hidden;
+          background: var(--panel); }
+  .crop .strip { height: 66px; overflow: hidden; }
+  .cut { border-top: 2px solid var(--warn); }
+  kbd { background: var(--panel); border: 1px solid var(--edge); border-radius: 4px; padding: 0 5px;
+        font-size: 12px; }
+</style>
+</head>
+<body>
+<h1>ah-2r3 — Drag to resize the “Units in hex” pane</h1>
+<p class="note"><strong>Chosen: Q1 Option A — the dragged height is the height · Q2 free pixels ·
+Q3 minimum one row (5.5rem), ceiling 70% of the map column · migration: start at the default of
+twelve rows, the old row-count and “Fixed pane size” settings are forgotten · handle named
+“Resize units pane”.</strong> Rejected: the dragged height as a ceiling (the map would jump between
+hexes again — the very thing gh-212 asked to stop); snapping to rows (22px jumps under the pointer,
+unlike every other pane); a three-row floor; keeping the 45% ceiling; converting the saved row count
+into a height once. The full interview is recorded in bead ah-2r3's design field.</p>
+<p class="note">The pane at the bottom of the map gets the same grip pill the unit/orders split
+has (ah-13o), on its <strong>top edge</strong>; the row-count stepper leaves the pane's header and
+the “Units in hex list” slider and “Fixed pane size” checkbox leave Settings. The header keeps its
+title, hint and filter. <strong>Every pane below is live — drag the pill.</strong> The handle
+flashes amber at a limit; double-click resets to the default height; when the pane is folded to
+its title bar the handle is hidden, as the orders one is.</p>
+
+<h2>Question 1 — what happens on a hex with fewer units than fit?</h2>
+<p class="note">Drag each pane tall, then switch the buttons under it between a full hex, a hex with
+three units and an empty hex. This is the ah-3cs fixed-vs-ceiling question again, now with a
+dragged height instead of a row count.</p>
+<div class="row">
+  <div class="variant">
+    <h3>Option A — the dragged height is the height <span class="badge">chosen</span></h3>
+    <div class="map" id="mapA"><div class="overlay">
+      <div class="rails"><div class="rail"></div><div class="rail"></div></div>
+      <div class="slot" id="slotA"><div class="split" tabindex="0" id="gripA"><div class="pill"></div></div>
+        <div class="pane"><header><span>Units in hex</span><span class="hint" id="hintA">— plain (7,53), 40 units</span>
+          <span class="spacer"></span><span class="filter">filter units…</span><span class="caret">▾</span></header>
+          <div class="body" id="bodyA"></div></div></div>
+    </div></div>
+    <div class="ctl" data-for="A"><button data-n="40" class="on">40 units</button><button data-n="3">3 units</button><button data-n="0">empty hex</button></div>
+    <p class="cost">Like every other pane: what you dragged is what you get. A short list leaves
+    blank pane below it; the map behind never jumps when you click between hexes. This is what
+    “Fixed pane size” did, now the only behaviour.</p>
+  </div>
+  <div class="variant">
+    <h3>Option B — the dragged height is a ceiling</h3>
+    <div class="map" id="mapB"><div class="overlay">
+      <div class="rails"><div class="rail"></div><div class="rail"></div></div>
+      <div class="slot" id="slotB"><div class="split" tabindex="0" id="gripB"><div class="pill"></div></div>
+        <div class="pane"><header><span>Units in hex</span><span class="hint" id="hintB">— plain (7,53), 40 units</span>
+          <span class="spacer"></span><span class="filter">filter units…</span><span class="caret">▾</span></header>
+          <div class="body" id="bodyB"></div></div></div>
+    </div></div>
+    <div class="ctl" data-for="B"><button data-n="40" class="on">40 units</button><button data-n="3">3 units</button><button data-n="0">empty hex</button></div>
+    <p class="cost">Today's default: the pane hugs a short list and grows back to your height on a
+    full one, so the map behind shifts as you move between hexes. The height you dragged is a
+    maximum, and dragging on a three-unit hex shows nothing until you visit a fuller one.</p>
+  </div>
+</div>
+
+<h2>Question 2 — snap to whole rows, or free pixels?</h2>
+<p class="note">Rows are 22px. Free pixels can leave a partial row at the bottom edge — normal for
+a scrolling list, and what the region and unit panes do. Snapping keeps the edge on a row boundary
+but the handle moves in 22px jumps under the pointer.</p>
+<div class="statics">
+  <div class="fig"><h3>Free pixels <span class="badge">chosen</span></h3>
+    <div class="crop"><div class="strip" style="height:74px"><table class="units"><tbody>
+      <tr class="unit"><td>7</td><td>Scouts</td><td>4</td></tr><tr class="unit"><td>8</td><td>Miners</td><td>12</td></tr>
+      <tr class="unit"><td>9</td><td>Guards</td><td>20</td></tr><tr class="unit"><td>10</td><td>Caravan</td><td>6</td></tr></tbody></table></div></div>
+    <p>The bottom row is cut where the drag stopped; scrolling brings it in. Same as the unit
+    panel today. Toggle <kbd>free</kbd> on the live panes above to feel it.</p></div>
+  <div class="fig"><h3>Snap to rows</h3>
+    <div class="crop"><div class="strip" style="height:66px"><table class="units"><tbody>
+      <tr class="unit"><td>7</td><td>Scouts</td><td>4</td></tr><tr class="unit"><td>8</td><td>Miners</td><td>12</td></tr>
+      <tr class="unit"><td>9</td><td>Guards</td><td>20</td></tr></tbody></table></div></div>
+    <p>The edge always lands on a row boundary; the pane resizes in 22px steps while you drag, and
+    the number of rows is again the real unit. Toggle <kbd>snap</kbd> above.</p></div>
+</div>
+<div class="ctl" id="snapCtl"><button data-snap="0" class="on">free</button><button data-snap="1">snap</button></div>
+
+<h2>Question 3 — how small, how tall?</h2>
+<p class="note">Below the minimum the handle flashes amber and stops; likewise at the ceiling.
+Today's ceiling is 45% of the window height; the chosen ceiling is 70% of the map's overlay column. The minimum is the title
+bar plus the column header plus this many rows.</p>
+<div class="statics">
+  <div class="fig"><h3>Minimum: one row <span class="badge">chosen</span></h3>
+    <div class="map"><div class="overlay"><div class="rails"><div class="rail"></div><div class="rail"></div></div>
+      <div class="slot" style="height:88px"><div class="split"><div class="pill"></div></div>
+        <div class="pane"><header><span>Units in hex</span><span class="hint">— plain (7,53), 40 units</span><span class="spacer"></span><span class="caret">▾</span></header>
+        <div class="body"><table class="units"><thead><tr><th>#</th><th>Name</th><th>Men</th></tr></thead><tbody><tr class="unit"><td>7</td><td>Scouts</td><td>4</td></tr></tbody></table></div></div></div></div></div>
+    <p>≈ 5.5rem. Still a table, and one row is enough to see the selected unit; the fold button
+    exists for “I want it gone”.</p></div>
+  <div class="fig"><h3>Minimum: three rows</h3>
+    <div class="map"><div class="overlay"><div class="rails"><div class="rail"></div><div class="rail"></div></div>
+      <div class="slot" style="height:132px"><div class="split"><div class="pill"></div></div>
+        <div class="pane"><header><span>Units in hex</span><span class="hint">— plain (7,53), 40 units</span><span class="spacer"></span><span class="caret">▾</span></header>
+        <div class="body"><table class="units"><thead><tr><th>#</th><th>Name</th><th>Men</th></tr></thead><tbody><tr class="unit"><td>7</td><td>Scouts</td><td>4</td></tr><tr class="unit"><td>8</td><td>Miners</td><td>12</td></tr><tr class="unit"><td>9</td><td>Guards</td><td>20</td></tr></tbody></table></div></div></div></div></div>
+    <p>≈ 8.25rem. Never a one-line sliver, at the cost of a floor the player cannot go under.</p></div>
+  <div class="fig"><h3>Ceiling: 45% of the window (rejected)</h3>
+    <div class="map"><div class="overlay"><div class="rails"><div class="rail"></div><div class="rail"></div></div>
+      <div class="slot" style="height:45%"><div class="split limit"><div class="pill"></div></div>
+        <div class="pane"><header><span>Units in hex</span><span class="hint">— plain (7,53), 40 units</span><span class="spacer"></span><span class="caret">▾</span></header>
+        <div class="body"><table class="units"><thead><tr><th>#</th><th>Name</th><th>Men</th></tr></thead><tbody><tr class="unit"><td>7</td><td>Scouts</td><td>4</td></tr><tr class="unit"><td>8</td><td>Miners</td><td>12</td></tr><tr class="unit"><td>9</td><td>Guards</td><td>20</td></tr></tbody></table></div></div></div></div></div>
+    <p>Today's cap, kept. The rails above always keep more than half the window.</p></div>
+  <div class="fig"><h3>Ceiling: 70% of the window <span class="badge">chosen</span></h3>
+    <div class="map"><div class="overlay"><div class="rails"><div class="rail"></div><div class="rail"></div></div>
+      <div class="slot" style="height:70%"><div class="split limit"><div class="pill"></div></div>
+        <div class="pane"><header><span>Units in hex</span><span class="hint">— plain (7,53), 40 units</span><span class="spacer"></span><span class="caret">▾</span></header>
+        <div class="body"><table class="units"><thead><tr><th>#</th><th>Name</th><th>Men</th></tr></thead><tbody><tr class="unit"><td>7</td><td>Scouts</td><td>4</td></tr><tr class="unit"><td>8</td><td>Miners</td><td>12</td></tr><tr class="unit"><td>9</td><td>Guards</td><td>20</td></tr></tbody></table></div></div></div></div></div>
+    <p>A hex with 90 units gets more of the screen; the rails and the map behind get squeezed to
+    less than a third of the window.</p></div>
+</div>
+
+<h2>States the happy path hides</h2>
+<div class="statics">
+  <div class="fig"><h3>Folded</h3>
+    <div class="map"><div class="overlay"><div class="rails"><div class="rail"></div><div class="rail"></div></div>
+      <div class="slot" style="height:30px"><div class="pane"><header><span>Units in hex</span><span class="hint">— plain (7,53), 40 units</span><span class="spacer"></span><span class="caret">▸</span></header></div></div></div></div>
+    <p>No handle while folded; unfolding brings the pane back at its remembered height.</p></div>
+  <div class="fig"><h3>Keyboard</h3>
+    <div class="map"><div class="overlay"><div class="rails"><div class="rail"></div><div class="rail"></div></div>
+      <div class="slot" style="height:132px"><div class="split focused"><div class="pill"></div></div>
+        <div class="pane"><header><span>Units in hex</span><span class="hint">— plain (7,53), 40 units</span><span class="spacer"></span><span class="caret">▾</span></header>
+        <div class="body"><table class="units"><thead><tr><th>#</th><th>Name</th><th>Men</th></tr></thead><tbody><tr class="unit"><td>7</td><td>Scouts</td><td>4</td></tr><tr class="unit"><td>8</td><td>Miners</td><td>12</td></tr><tr class="unit"><td>9</td><td>Guards</td><td>20</td></tr></tbody></table></div></div></div></div></div>
+    <p><kbd>Tab</kbd> reaches the handle (brass outline); <kbd>↑</kbd>/<kbd>↓</kbd> nudge by 1rem,
+    <kbd>Enter</kbd> resets, <kbd>Esc</kbd> cancels a drag in flight. Accessible name
+    “Resize units pane”. Same as the orders handle.</p></div>
+  <div class="fig"><h3>Empty hex (Option A)</h3>
+    <div class="map"><div class="overlay"><div class="rails"><div class="rail"></div><div class="rail"></div></div>
+      <div class="slot" style="height:132px"><div class="split"><div class="pill"></div></div>
+        <div class="pane"><header><span>Units in hex</span><span class="hint">— plain (8,54)</span><span class="spacer"></span><span class="caret">▾</span></header>
+        <div class="body"><div class="absent">No units reported in this hex.</div></div></div></div></div></div>
+    <p>The message sits at the top of the pane's dragged height; the rest is pane background — as
+    ah-3cs's fixed mode did.</p></div>
+  <div class="fig"><h3>Window too short</h3>
+    <div class="map" style="height:200px"><div class="overlay"><div class="rails"><div class="rail"></div><div class="rail"></div></div>
+      <div class="slot" style="height:45%"><div class="split"><div class="pill"></div></div>
+        <div class="pane"><header><span>Units in hex</span><span class="hint">— plain (7,53), 40 units</span><span class="spacer"></span><span class="caret">▾</span></header>
+        <div class="body"><table class="units"><thead><tr><th>#</th><th>Name</th><th>Men</th></tr></thead><tbody><tr class="unit"><td>7</td><td>Scouts</td><td>4</td></tr></tbody></table></div></div></div></div></div>
+    <p>A remembered height taller than the ceiling is clamped on screen without touching the stored
+    preference; a taller window gets it back. Same rule as the orders split.</p></div>
+</div>
+
+<script>
+(function () {
+  const ROW = 22, HEAD = 28, THEAD = 22, PAD = 16, MIN = HEAD + PAD + THEAD + ROW, DEFAULT_ROWS = 12;
+  const DEFAULT = HEAD + PAD + THEAD + DEFAULT_ROWS * ROW;
+  let snap = false;
+  const names = ["Scouts","Miners","Guards","Caravan","Sappers","Archers","Lancers","Clerks","Wardens","Herders"];
+  function rows(n) {
+    let s = '<table class="units"><thead><tr><th>#</th><th>Name</th><th>Faction</th><th>Men</th></tr></thead><tbody>';
+    for (let i = 0; i < n; i++) s += `<tr class="unit"><td>${i+7}</td><td>${names[i%names.length]}</td><td>Ourfaction</td><td>${(i*7)%31+1}</td></tr>`;
+    return s + '</tbody></table>';
+  }
+  function setup(id, fixed) {
+    const slot = document.getElementById('slot'+id), grip = document.getElementById('grip'+id),
+          body = document.getElementById('body'+id), hint = document.getElementById('hint'+id),
+          map = document.getElementById('map'+id);
+    let dragged = DEFAULT, n = 40;
+    function ceiling() { return Math.round(map.clientHeight * 0.7); }
+    function contentHeight() { return n === 0 ? HEAD + PAD + 20 : HEAD + PAD + THEAD + n * ROW; }
+    function apply() {
+      let h = Math.min(dragged, ceiling());
+      if (!fixed) h = Math.min(h, contentHeight());
+      slot.style.height = h + 'px';
+      body.innerHTML = n === 0 ? '<div class="absent">No units reported in this hex.</div>' : '<div class="scroller">' + rows(n) + '</div>';
+      hint.textContent = n === 0 ? '— plain (8,54)' : `— plain (7,53), ${n} units`;
+    }
+    grip.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return; e.preventDefault();
+      const startY = e.clientY, start = slot.getBoundingClientRect().height; let moved = false;
+      grip.classList.add('dragging');
+      const move = (ev) => {
+        moved = true;
+        let h = start + (startY - ev.clientY);
+        if (snap) h = HEAD + PAD + THEAD + Math.max(1, Math.round((h - HEAD - PAD - THEAD) / ROW)) * ROW;
+        const lo = MIN, hi = ceiling();
+        grip.classList.toggle('limit', h <= lo || h >= hi);
+        dragged = Math.max(lo, Math.min(hi, h));
+        apply();
+      };
+      const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up);
+        grip.classList.remove('dragging'); grip.classList.remove('limit'); };
+      window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
+    });
+    grip.addEventListener('dblclick', () => { dragged = DEFAULT; apply(); });
+    grip.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowUp' || e.key === 'ArrowDown') { e.preventDefault(); dragged = Math.max(MIN, Math.min(ceiling(), dragged + (e.key === 'ArrowUp' ? 16 : -16))); apply(); }
+      if (e.key === 'Enter') { dragged = DEFAULT; apply(); }
+    });
+    document.querySelector(`.ctl[data-for="${id}"]`).addEventListener('click', (e) => {
+      const b = e.target.closest('button'); if (!b) return;
+      n = Number(b.dataset.n); b.parentElement.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); apply();
+    });
+    apply();
+    return apply;
+  }
+  const applies = [setup('A', true), setup('B', false)];
+  document.getElementById('snapCtl').addEventListener('click', (e) => {
+    const b = e.target.closest('button'); if (!b) return;
+    snap = b.dataset.snap === '1'; b.parentElement.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
+  });
+})();
+</script>
+</body>
+</html>
