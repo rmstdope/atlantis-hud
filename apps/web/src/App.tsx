@@ -1,5 +1,5 @@
 import type { CoreClient } from "@atlantis/core-client";
-import { AppShell } from "@atlantis/shared";
+import { AppShell, browserTextFileSaver } from "@atlantis/shared";
 import { useWebAppUpdate } from "./useWebAppUpdate";
 
 /**
@@ -11,5 +11,12 @@ import { useWebAppUpdate } from "./useWebAppUpdate";
  * on a server that can be newer than the copy that is running.
  */
 export default function App({ client }: { client: CoreClient }) {
-  return <AppShell client={client} platformLabel="web" appUpdate={useWebAppUpdate()} />;
+  return (
+    <AppShell
+      client={client}
+      platformLabel="web"
+      appUpdate={useWebAppUpdate()}
+      saveTextFile={browserTextFileSaver}
+    />
+  );
 }

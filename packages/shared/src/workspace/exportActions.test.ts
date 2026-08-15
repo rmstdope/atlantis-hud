@@ -3,39 +3,27 @@ import { deliverGameBackupExport, deliverMapExport, deliverOrdersExport } from "
 import { exportFileName } from "../mapExport";
 
 describe("deliverOrdersExport", () => {
-  it("forwards the shell's saver into deliverTextFile, which is what actually calls it", async () => {
-    const saver = vi.fn().mockResolvedValue("/chosen/orders-turn-71.txt");
-    const deliver = vi.fn().mockResolvedValue("/chosen/orders-turn-71.txt");
+  it("saves through the shell's saver, with the plain-text mime type", async () => {
+    const saveTextFile = vi.fn().mockResolvedValue("/chosen/orders-turn-71.txt");
 
-    await deliverOrdersExport(saver, 71, "unit 1 : work", null, false, deliver);
+    await deliverOrdersExport(saveTextFile, 71, "unit 1 : work", null, false);
 
-    expect(deliver).toHaveBeenCalledWith(saver, "orders-turn-71.txt", "unit 1 : work", "text/plain");
-    expect(saver).not.toHaveBeenCalled();
-  });
-
-  it("forwards an undefined saver into deliverTextFile, which is what falls back to downloading", async () => {
-    const deliver = vi.fn().mockResolvedValue("");
-
-    await deliverOrdersExport(undefined, 71, "unit 1 : work", null, false, deliver);
-
-    expect(deliver).toHaveBeenCalledWith(undefined, "orders-turn-71.txt", "unit 1 : work", "text/plain");
+    expect(saveTextFile).toHaveBeenCalledWith("orders-turn-71.txt", "unit 1 : work", "text/plain");
   });
 
   it("a cancelled save (null) writes nothing further and does not throw", async () => {
-    const deliver = vi.fn().mockResolvedValue(null);
+    const saveTextFile = vi.fn().mockResolvedValue(null);
 
-    await expect(
-      deliverOrdersExport(vi.fn(), 71, "unit 1 : work", null, false, deliver)
-    ).resolves.toBeUndefined();
+    await expect(deliverOrdersExport(saveTextFile, 71, "unit 1 : work", null, false)).resolves.toBeUndefined();
   });
 
   it("logs and swallows a failed delivery instead of rejecting", async () => {
-    const deliver = vi.fn().mockRejectedValue(new Error("disk full"));
+    const saveTextFile = vi.fn().mockRejectedValue(new Error("disk full"));
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
     try {
       await expect(
-        deliverOrdersExport(vi.fn(), 71, "unit 1 : work", null, false, deliver)
+        deliverOrdersExport(saveTextFile, 71, "unit 1 : work", null, false)
       ).resolves.toBeUndefined();
       expect(errorSpy).toHaveBeenCalled();
     } finally {
@@ -44,54 +32,32 @@ describe("deliverOrdersExport", () => {
   });
 
   it("falls back to 'unknown' when the turn number is unavailable", async () => {
-    const deliver = vi.fn().mockResolvedValue("");
+    const saveTextFile = vi.fn().mockResolvedValue("");
 
-    await deliverOrdersExport(undefined, null, "unit 1 : work", null, true, deliver);
+    await deliverOrdersExport(saveTextFile, null, "unit 1 : work", null, true);
 
-    expect(deliver).toHaveBeenCalledWith(
-      undefined,
-      "orders-turn-unknown.txt",
-      expect.any(String),
-      "text/plain"
-    );
+    expect(saveTextFile).toHaveBeenCalledWith("orders-turn-unknown.txt", expect.any(String), "text/plain");
   });
 });
 
 describe("deliverGameBackupExport", () => {
-  it("forwards the shell's saver into deliverTextFile, which is what actually calls it", async () => {
-    const saver = vi.fn().mockResolvedValue("/chosen/game-1.atlantis-hud-game.json");
-    const deliver = vi.fn().mockResolvedValue("/chosen/game-1.atlantis-hud-game.json");
+  it("saves through the shell's saver, with the JSON mime type", async () => {
+    const saveTextFile = vi.fn().mockResolvedValue("/chosen/game-1.atlantis-hud-game.json");
 
-    const path = await deliverGameBackupExport(saver, "game-1", "{}", deliver);
+    const path = await deliverGameBackupExport(saveTextFile, "game-1", "{}");
 
-    expect(deliver).toHaveBeenCalledWith(
-      saver,
+    expect(saveTextFile).toHaveBeenCalledWith(
       "game-1.atlantis-hud-game.json",
       "{}",
       "application/json"
     );
-    expect(saver).not.toHaveBeenCalled();
     expect(path).toBe("/chosen/game-1.atlantis-hud-game.json");
   });
 
-  it("forwards an undefined saver into deliverTextFile, which is what falls back to downloading", async () => {
-    const deliver = vi.fn().mockResolvedValue("");
-
-    const path = await deliverGameBackupExport(undefined, "game-1", "{}", deliver);
-
-    expect(deliver).toHaveBeenCalledWith(
-      undefined,
-      "game-1.atlantis-hud-game.json",
-      "{}",
-      "application/json"
-    );
-    expect(path).toBe("");
-  });
-
   it("resolves null on a cancelled save, without throwing", async () => {
-    const deliver = vi.fn().mockResolvedValue(null);
+    const saveTextFile = vi.fn().mockResolvedValue(null);
 
-    await expect(deliverGameBackupExport(vi.fn(), "game-1", "{}", deliver)).resolves.toBeNull();
+    await expect(deliverGameBackupExport(saveTextFile, "game-1", "{}")).resolves.toBeNull();
   });
 });
 
@@ -106,46 +72,31 @@ describe("deliverMapExport", () => {
 
   it("renders through the client and delivers the result under the map's file name", async () => {
     const client = { exportMap: vi.fn().mockResolvedValue("svg…") };
-    const deliver = vi.fn().mockResolvedValue("/chosen/map-turn-71-level-1.txt");
+    const saveTextFile = vi.fn().mockResolvedValue("/chosen/map-turn-71-level-1.txt");
 
-    const path = await deliverMapExport(
-      client,
-      vi.fn(),
-      "raw report",
-      "[]",
-      1,
-      71,
-      rect,
-      content,
-      deliver
-    );
+    const path = await deliverMapExport(client, saveTextFile, "raw report", "[]", 1, 71, rect, content);
 
     expect(client.exportMap).toHaveBeenCalledWith("raw report", "[]", { level: 1, ...rect, content });
-    expect(deliver).toHaveBeenCalledWith(
-      expect.any(Function),
-      exportFileName(71, 1),
-      "svg…",
-      "text/plain"
-    );
+    expect(saveTextFile).toHaveBeenCalledWith(exportFileName(71, 1), "svg…", "text/plain");
     expect(path).toBe("/chosen/map-turn-71-level-1.txt");
   });
 
   it("a cancelled save (null) resolves null and writes nothing further", async () => {
     const client = { exportMap: vi.fn().mockResolvedValue("svg…") };
-    const deliver = vi.fn().mockResolvedValue(null);
+    const saveTextFile = vi.fn().mockResolvedValue(null);
 
     await expect(
-      deliverMapExport(client, vi.fn(), "raw report", "[]", 1, 71, rect, content, deliver)
+      deliverMapExport(client, saveTextFile, "raw report", "[]", 1, 71, rect, content)
     ).resolves.toBeNull();
   });
 
   it("a failed render rejects rather than being swallowed - the caller reports it in the dialog", async () => {
     const client = { exportMap: vi.fn().mockRejectedValue(new Error("core is unavailable")) };
-    const deliver = vi.fn();
+    const saveTextFile = vi.fn();
 
     await expect(
-      deliverMapExport(client, vi.fn(), "raw report", "[]", 1, 71, rect, content, deliver)
+      deliverMapExport(client, saveTextFile, "raw report", "[]", 1, 71, rect, content)
     ).rejects.toThrow("core is unavailable");
-    expect(deliver).not.toHaveBeenCalled();
+    expect(saveTextFile).not.toHaveBeenCalled();
   });
 });

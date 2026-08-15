@@ -212,13 +212,16 @@ export function AppShell({
   platformLabel: string;
   registerBeforeQuit?: RegisterBeforeQuit;
   /**
-   * How this shell puts a file where the player asks, when it can.
+   * How this shell puts a file where the player asks.
    *
-   * Injected for the same reason `registerBeforeQuit` is. Absent in a browser, which can only hand
-   * the file to the download machinery and cannot learn where it went; present on the desktop,
-   * which asks and can then say.
+   * Injected for the same reason `registerBeforeQuit` is, and required (ah-150): the fork between
+   * "ask with a dialog" and "hand it to the browser" used to be an optional prop each exporter had
+   * to remember to route through, and the same defect - a desktop export landing wherever the
+   * webview put it, no dialog, no path - was fixed three times before this port stopped being
+   * optional. The web shell passes `browserTextFileSaver`; the desktop shell asks and can say where
+   * the file went.
    */
-  saveTextFile?: TextFileSaver;
+  saveTextFile: TextFileSaver;
   /**
    * How this shell answers "is there a newer version". Injected for the same reason
    * `registerBeforeQuit` is: the web answer is a service worker and the desktop answer is Tauri,

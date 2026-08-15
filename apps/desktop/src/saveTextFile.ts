@@ -13,7 +13,7 @@
  * them directly, so a test can install a stand-in for the one native call an export makes.
  */
 
-import type { TextFileSaver } from "@atlantis/shared";
+import { browserTextFileSaver, type TextFileSaver } from "@atlantis/shared";
 import { desktopPlugins, type DesktopPlugins } from "./desktopPlugins";
 
 /**
@@ -36,21 +36,18 @@ export function filterFor(fileName: string): { name: string; extensions: string[
 }
 
 /**
- * The saver built over given plugins, or nothing when there are none - a plain browser, or a test
- * that never installed a stand-in.
+ * The saver to hand the workspace: a native save dialog over the given plugins, or the browser
+ * download when there are none - a plain browser, the preview server, or a web-style smoke run.
  *
- * A plain function rather than a default parameter on `desktopTextFileSaver`, so `undefined` here
- * unambiguously means "no plugins" instead of triggering a default that reaches for the real ones -
- * a default parameter only fires when the argument is exactly `undefined`, which is indistinguishable
- * from a caller meaning "none" the moment this ever runs where `desktopPlugins()` is not itself
- * `undefined`. Exported so a test can call it directly with a fake, without needing `desktopPlugins()`
- * to cooperate.
+ * Required now (ah-150): the fork used to be an optional prop the workspace forwarded as-is, and
+ * the same defect - a desktop export landing wherever the webview put it, no dialog, no path - was
+ * fixed three times before the fork moved in here, where there is exactly one place left to get it
+ * wrong. `plugins` defaults to `desktopPlugins()` so `App.tsx` can call this with no arguments; a
+ * test passes a fake (or `undefined`) directly.
  */
-export function desktopTextFileSaverFor(
-  plugins: DesktopPlugins | undefined
-): TextFileSaver | undefined {
+export function desktopTextFileSaver(plugins: DesktopPlugins | undefined = desktopPlugins()): TextFileSaver {
   if (!plugins) {
-    return undefined;
+    return browserTextFileSaver;
   }
 
   return async (fileName: string, text: string) => {
@@ -66,9 +63,4 @@ export function desktopTextFileSaverFor(
     await plugins.writeTextFile(path, text);
     return path;
   };
-}
-
-/** The saver to hand the workspace: the real plugins, whatever this build can reach. */
-export function desktopTextFileSaver(): TextFileSaver | undefined {
-  return desktopTextFileSaverFor(desktopPlugins());
 }
