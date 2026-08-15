@@ -20,11 +20,10 @@ import {
   unitsForHex,
   type HexMapModel
 } from "../hexMapModel";
-import { deliverTextFile, type TextFileSaver } from "../downloadFile";
-import { exportFileName, exportRequestOf } from "../mapExport";
+import { type TextFileSaver } from "../downloadFile";
 import { readUnitOrders, stripMovementOrderLines, writeUnitOrders } from "../ordersDocument";
 import { describeOrdersImport, isOrdersFile, ordersFileFaction } from "../ordersImport";
-import { ordersExportText } from "./ordersExport";
+import { deliverGameBackupExport, deliverMapExport, deliverOrdersExport } from "./exportActions";
 import {
   commitTurn,
   mergeTurn,
@@ -150,54 +149,6 @@ import { failedStatus, warningStatus } from "./shellStatus";
  * can be tested without rendering anything.
  */
 export { isOlderTurn };
-
-/**
- * Builds and delivers an orders export - the part of `exportOrders`/`exportOrdersLong` that has no
- * dependency on React state or hooks, pulled out so it can be tested without rendering the shell.
- *
- * Plain and long share the same file name deliberately (see `ordersExportText`'s callers) - it is
- * the same orders file either way. A failed write is logged and swallowed rather than thrown, since
- * these callbacks are fire-and-forget from the export menu and an unhandled rejection is worse than
- * a console line; a cancelled save (`deliver` resolving `null`) takes the same quiet path.
- *
- * `deliver` exists for the tests and defaults to the real `deliverTextFile`; callers never pass it.
- */
-export async function deliverOrdersExport(
-  saveTextFile: TextFileSaver | undefined,
-  turnNumber: number | null | undefined,
-  ordersDocument: string,
-  ordersTemplateText: string | null,
-  withDescriptions: boolean,
-  deliver: typeof deliverTextFile = deliverTextFile
-): Promise<void> {
-  const fileName = `orders-turn-${turnNumber ?? "unknown"}.txt`;
-  const text = ordersExportText(ordersDocument, ordersTemplateText, withDescriptions);
-  try {
-    await deliver(saveTextFile, fileName, text, "text/plain");
-  } catch (error: unknown) {
-    console.error("Failed to export orders:", error);
-  }
-}
-
-/**
- * Builds and delivers a game backup - the part of `exportGameBackup` that has no dependency on
- * React state or hooks, pulled out the same way `deliverOrdersExport` was so it can be tested
- * without rendering the shell.
- *
- * Resolves with the path written, `""` for a browser download, or `null` when the player cancelled
- * the save - the caller uses that to decide whether the picker may claim the export happened.
- *
- * `deliver` exists for the tests and defaults to the real `deliverTextFile`; callers never pass it.
- */
-export async function deliverGameBackupExport(
-  saveTextFile: TextFileSaver | undefined,
-  gameId: string,
-  backup: string,
-  deliver: typeof deliverTextFile = deliverTextFile
-): Promise<string | null> {
-  const fileName = `${gameId}.atlantis-hud-game.json`;
-  return deliver(saveTextFile, fileName, backup, "application/json");
-}
 
 /**
  * Loads and parses the turn a comparison click asked for - the part of
@@ -2244,30 +2195,31 @@ export function AppShell({
       if (!rawReport) {
         return;
       }
-      setExportBusy(true);
       setExportError(null);
-      try {
-        const text = await client.exportMap(
-          rawReport,
-          rememberedJson,
-          exportRequestOf(rect, level, content)
-        );
-        const fileName = exportFileName(parsed?.header.turnNumber ?? null, level);
-
-        // A shell that can put the file where the player asks does, and the player picked the
-        // place, so nothing needs to tell them afterwards where it went. The browser gets the
-        // download it is capable of. A cancelled save dialog leaves the export dialog standing:
-        // nothing was written, and closing it would look as though something had been.
-        const path = await deliverTextFile(saveTextFile, fileName, text, "text/plain");
-        if (path === null) {
-          return;
-        }
-        setExportOpen(false);
-      } catch (error: unknown) {
-        setExportError(describeError(error));
-      } finally {
-        setExportBusy(false);
-      }
+      await runReported(
+        async () => {
+          // A shell that can put the file where the player asks does, and the player picked the
+          // place, so nothing needs to tell them afterwards where it went. The browser gets the
+          // download it is capable of. A cancelled save dialog leaves the export dialog standing:
+          // nothing was written, and closing it would look as though something had been.
+          const path = await deliverMapExport(
+            client,
+            saveTextFile,
+            rawReport,
+            rememberedJson,
+            level,
+            parsed?.header.turnNumber ?? null,
+            rect,
+            content
+          );
+          if (path === null) {
+            return;
+          }
+          setExportOpen(false);
+        },
+        setExportError,
+        { busy: setExportBusy }
+      );
     },
     [client, level, parsed, rawReport, rememberedJson, saveTextFile]
   );
