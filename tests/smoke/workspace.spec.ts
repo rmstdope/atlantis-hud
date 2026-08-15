@@ -1275,6 +1275,40 @@ test("the unit/orders split drags at the grip and survives a reload", async ({ p
   );
 });
 
+/** The left or right overlay pane's current width, in CSS pixels. */
+async function overlayWidth(page: Page, edge: "left" | "right") {
+  return page.evaluate(
+    (e) => document.querySelector(`[data-map-overlay="${e}"]`)!.getBoundingClientRect().width,
+    edge
+  );
+}
+
+test("a rail drags at its edge pill and survives a reload", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+
+  const before = await overlayWidth(page, "left");
+  const grip = page.getByTestId("rail-splitter-left");
+  const gripBox = (await grip.boundingBox())!;
+  const start = { x: gripBox.x + gripBox.width / 2, y: gripBox.y + gripBox.height / 2 };
+
+  // The left rail grows when the pointer moves toward the map, i.e. to the right.
+  await page.mouse.move(start.x, start.y);
+  await page.mouse.down();
+  await page.mouse.move(start.x + 100, start.y, { steps: 5 });
+  await page.mouse.up();
+
+  await expect.poll(async () => overlayWidth(page, "left")).toBeGreaterThan(before + 80);
+
+  await page.reload();
+  await expect(page.getByTestId("import-status")).toContainText("restored turn 71");
+  await selectHex(page, "1:7,53");
+  await expect.poll(async () => overlayWidth(page, "left")).toBeGreaterThan(before + 80);
+
+  await grip.dblclick();
+  await expect.poll(async () => overlayWidth(page, "left")).toBeCloseTo(before, 0);
+});
+
 test("folding the unit panel hides the grip and hands the column to the editor", async ({
   page
 }) => {

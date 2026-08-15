@@ -209,6 +209,13 @@ export const NAVIGATION_MOVES: readonly NavigationMove[] = [
     keys: null
   },
   {
+    id: "railResize",
+    group: PANELS,
+    description: "Resize a side pane",
+    mouse: "Drag the pill on its inner edge",
+    keys: { mac: "Tab to the pill, then ← / →", other: "Tab to the pill, then ← / →" }
+  },
+  {
     id: "settings",
     group: PANELS,
     description: "Open settings: theme, map style, snippets and this greeting",

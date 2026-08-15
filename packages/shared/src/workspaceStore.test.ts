@@ -364,6 +364,86 @@ describe("the orders panel's stored height", () => {
   });
 });
 
+describe("the rails' stored widths", () => {
+  beforeEach(resetWorkspaceStore);
+
+  it("remembers a rail's width across a reload", async () => {
+    store().setRailWidth("left", 24);
+    expect(store().leftRailWidthRem).toBe(24);
+
+    const options = useWorkspaceStore.persist.getOptions();
+    const raw = await options.storage?.getItem(options.name ?? "atlantis-hud-workspace");
+    const persisted = (raw as { state?: Record<string, unknown> } | null)?.state ?? {};
+    expect(persisted.leftRailWidthRem).toBe(24);
+
+    const merge = options.merge;
+    const merged = merge?.(persisted, store()) as ReturnType<typeof store> | undefined;
+    expect(merged?.leftRailWidthRem).toBe(24);
+  });
+
+  it("starts out null for both rails, meaning the default width applies", () => {
+    expect(store().leftRailWidthRem).toBeNull();
+    expect(store().rightRailWidthRem).toBeNull();
+  });
+
+  it("resizes each rail independently", () => {
+    store().setRailWidth("left", 24);
+    store().setRailWidth("right", 30);
+    expect(store().leftRailWidthRem).toBe(24);
+    expect(store().rightRailWidthRem).toBe(30);
+  });
+
+  it("reconciles garbage in storage to null rather than trusting it", () => {
+    const merge = useWorkspaceStore.persist.getOptions().merge;
+    const merged = merge?.(
+      { leftRailWidthRem: "not a number", rightRailWidthRem: "also not" },
+      store()
+    ) as ReturnType<typeof store> | undefined;
+
+    expect(merged?.leftRailWidthRem).toBeNull();
+    expect(merged?.rightRailWidthRem).toBeNull();
+  });
+
+  it("clamps a stored value into the rail's range", () => {
+    const merge = useWorkspaceStore.persist.getOptions().merge;
+    const merged = merge?.({ leftRailWidthRem: 500, rightRailWidthRem: 1 }, store()) as
+      | ReturnType<typeof store>
+      | undefined;
+
+    expect(merged?.leftRailWidthRem).toBe(45);
+    expect(merged?.rightRailWidthRem).toBe(12);
+  });
+
+  it("resets to the default width", () => {
+    store().setRailWidth("left", 30);
+    store().setRailWidth("left", null);
+    expect(store().leftRailWidthRem).toBeNull();
+  });
+
+  it("is cleared by resetWorkspaceStore", () => {
+    store().setRailWidth("left", 30);
+    store().setRailWidth("right", 30);
+    resetWorkspaceStore();
+    expect(store().leftRailWidthRem).toBeNull();
+    expect(store().rightRailWidthRem).toBeNull();
+  });
+
+  it("survives opening a game and changing level - a layout preference outlives the game", () => {
+    store().setRailWidth("left", 24);
+    store().openGame({
+      gameId: "g1",
+      gameName: "Spring campaign",
+      databasePath: "idb://g1",
+      rulesetId: "neworigins"
+    });
+    expect(store().leftRailWidthRem).toBe(24);
+    store().setLevel(1);
+    expect(store().leftRailWidthRem).toBe(24);
+    store().closeGame();
+    expect(store().leftRailWidthRem).toBe(24);
+  });
+});
+
 describe("the planner's own state", () => {
   /**
    * Arming is a one-shot, not a mode. The map means one thing at a time, and a mode you can forget
