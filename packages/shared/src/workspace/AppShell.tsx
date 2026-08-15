@@ -140,26 +140,8 @@ import { ProblemsPanel } from "./ProblemsPanel";
 import { TurnMessagesPanel, type TurnMessagesTab } from "./TurnMessagesPanel";
 import { UnitPanel } from "./UnitPanel";
 import { UnitTableDock } from "./UnitTableDock";
-
-/**
- * Turns whatever was thrown into something a user can act on.
- *
- * Tauri rejects with a plain string rather than an Error, so checking `instanceof Error` alone
- * discards the only useful detail and leaves "unknown error" on screen.
- */
-function describeError(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message;
-  }
-  if (typeof error === "string" && error.trim() !== "") {
-    return error;
-  }
-  try {
-    return JSON.stringify(error) ?? "unknown error";
-  } catch {
-    return "unknown error";
-  }
-}
+import { describeError, runReported } from "./shellAction";
+import { failedStatus, warningStatus } from "./shellStatus";
 
 /**
  * Re-exported rather than defined here since issue #53 moved the rule into `reportLoadDecision`.
@@ -1021,13 +1003,7 @@ export function AppShell({
           );
         }
       } catch (error) {
-        setStatus({
-          regionCount: 0,
-          unitCount: 0,
-          message: `could not read ${fileName}: ${describeError(error)}`,
-          failed: true,
-          warning: false
-        });
+        setStatus(failedStatus(`could not read ${fileName}: ${describeError(error)}`));
       }
     },
     [client, selectRegion, clearPlan, game, rulesetText]
@@ -1050,13 +1026,7 @@ export function AppShell({
       if (!game) {
         // Should not be reachable - a report cannot be imported at all without an open game - but
         // claiming success here would tell the player a turn is stored when nothing was written.
-        setStatus({
-          regionCount: 0,
-          unitCount: 0,
-          message: "there is no open game to store it in",
-          failed: true,
-          warning: false
-        });
+        setStatus(failedStatus("there is no open game to store it in"));
         return;
       }
 
@@ -1068,17 +1038,12 @@ export function AppShell({
         rulesetText,
         new Date().toISOString()
       );
-      setStatus({
-        regionCount: 0,
-        unitCount: 0,
-        message:
+      setStatus(
+        warningStatus(
           warning ??
-          `turn ${report.header.turnNumber} stored for history; still showing turn ${currentTurn}.`,
-        failed: false,
-        // A message here is always a warning: it is what earns the status line its room back from
-        // AppHeader, which hides a message-less status - see applyReport's identical comment.
-        warning: true
-      });
+            `turn ${report.header.turnNumber} stored for history; still showing turn ${currentTurn}.`
+        )
+      );
     },
     [client, game, rulesetText]
   );
@@ -1135,13 +1100,7 @@ export function AppShell({
 
         await applyReport(report, text, fileName);
       } catch (error) {
-        setStatus({
-          regionCount: 0,
-          unitCount: 0,
-          message: `could not read ${fileName}: ${describeError(error)}`,
-          failed: true,
-          warning: false
-        });
+        setStatus(failedStatus(`could not read ${fileName}: ${describeError(error)}`));
       } finally {
         setBusy(false);
       }
@@ -1206,13 +1165,7 @@ export function AppShell({
           warning: false
         });
       } catch (error) {
-        setStatus({
-          regionCount: 0,
-          unitCount: 0,
-          message: `could not merge ${pending.fileName}: ${describeError(error)}`,
-          failed: true,
-          warning: false
-        });
+        setStatus(failedStatus(`could not merge ${pending.fileName}: ${describeError(error)}`));
       } finally {
         setBusy(false);
       }
@@ -1230,27 +1183,18 @@ export function AppShell({
   const chooseOrdersImport = useCallback(
     (text: string, fileName: string) => {
       if (!game || !parsed || parsed.header.turnNumber === null || parsed.header.factionId === null) {
-        setStatus({
-          regionCount: 0,
-          unitCount: 0,
-          message: "no turn to apply orders to",
-          failed: true,
-          warning: false
-        });
+        setStatus(failedStatus("no turn to apply orders to"));
         return;
       }
 
       const fileFactionId = ordersFileFaction(text);
       if (fileFactionId !== parsed.header.factionId) {
-        setStatus({
-          regionCount: 0,
-          unitCount: 0,
-          message:
+        setStatus(
+          failedStatus(
             `${fileName} is orders for faction ${fileFactionId ?? "unknown"}, not ` +
-            `${factionLabelOf(parsed) ?? "your faction"}`,
-          failed: true,
-          warning: false
-        });
+              `${factionLabelOf(parsed) ?? "your faction"}`
+          )
+        );
         return;
       }
 
@@ -1432,13 +1376,7 @@ export function AppShell({
         } catch (error) {
           // `loadReport` answers for everything it does; this is the read that happens before it,
           // for a file that has gone away between being chosen and being opened.
-          setStatus({
-            regionCount: 0,
-            unitCount: 0,
-            message: `could not read ${only.name}: ${describeError(error)}`,
-            failed: true,
-            warning: false
-          });
+          setStatus(failedStatus(`could not read ${only.name}: ${describeError(error)}`));
         }
         return;
       }
@@ -1485,13 +1423,7 @@ export function AppShell({
         // Reaching here means the draft could not be saved, not that a report would not parse -
         // an unreadable file is caught per file above. Nothing has been written, and the batch is
         // abandoned rather than run: whatever the player was writing is still only in the editor.
-        setStatus({
-          regionCount: 0,
-          unitCount: 0,
-          message: `could not start the import: ${describeError(error)}`,
-          failed: true,
-          warning: false
-        });
+        setStatus(failedStatus(`could not start the import: ${describeError(error)}`));
       } finally {
         setBusy(false);
         setImportProgress(null);
@@ -1678,13 +1610,7 @@ export function AppShell({
         // A game whose stored turn will not come back must say so. Silence here is exactly the
         // empty workspace this issue is about, only now with a reason nobody can see.
         if (!cancelled) {
-          setStatus({
-            regionCount: 0,
-            unitCount: 0,
-            message: `the last turn could not be restored: ${describeError(error)}`,
-            failed: true,
-            warning: false
-          });
+          setStatus(failedStatus(`the last turn could not be restored: ${describeError(error)}`));
         }
       })
       .finally(() => {
@@ -1976,13 +1902,7 @@ export function AppShell({
       })
       .catch((error: unknown) => {
         if (!cancelled) {
-          setStatus({
-            regionCount: 0,
-            unitCount: 0,
-            message: `could not plan a route: ${describeError(error)}`,
-            failed: true,
-            warning: false
-          });
+          setStatus(failedStatus(`could not plan a route: ${describeError(error)}`));
         }
       })
       .finally(() => {
@@ -2170,13 +2090,11 @@ export function AppShell({
       parsed?.header.factionId === pending.factionId &&
       parsed?.header.turnNumber === pending.turnNumber;
     if (!stillCurrent) {
-      setStatus({
-        regionCount: 0,
-        unitCount: 0,
-        message: `could not import ${pending.fileName}: the open turn changed before Replace was pressed`,
-        failed: true,
-        warning: false
-      });
+      setStatus(
+        failedStatus(
+          `could not import ${pending.fileName}: the open turn changed before Replace was pressed`
+        )
+      );
       return;
     }
 
@@ -2206,13 +2124,7 @@ export function AppShell({
           });
         }
       } catch (error) {
-        setStatus({
-          regionCount: 0,
-          unitCount: 0,
-          message: `could not import ${pending.fileName}: ${describeError(error)}`,
-          failed: true,
-          warning: false
-        });
+        setStatus(failedStatus(`could not import ${pending.fileName}: ${describeError(error)}`));
       } finally {
         setBusy(false);
       }
@@ -2408,6 +2320,9 @@ export function AppShell({
    * Opens or closes the turn picker, fetching the turns it lists only on the way open - a list
    * nobody asked to see is a database read this workspace does not need to make on every report
    * load, and closing the picker is not a reason to make it either.
+   *
+   * A listing that fails closes the picker and warns, because an open picker over a stale list
+   * would claim turns that may be gone (ah-k6i.1).
    */
   const handleOpenTurnPicker = useCallback(async () => {
     const opening = !turnPickerOpen;
@@ -2417,8 +2332,18 @@ export function AppShell({
     }
     const gameId = game.manifest.metadata.gameId;
     const factionId = parsed.header.factionId;
-    const summaries = await client.listImportedTurns(game.databasePath, gameId);
-    setTurnSummaries(summaries.filter((summary) => summary.key.factionId === factionId));
+    const summaries = await runReported(
+      () => client.listImportedTurns(game.databasePath, gameId),
+      (message) => {
+        // Nothing to pick from, so nothing to show: same exit as a comparison that would not load.
+        setStatus(warningStatus(message));
+        setTurnPickerOpen(false);
+      },
+      { prefix: "could not list the turns to compare" }
+    );
+    if (summaries !== undefined) {
+      setTurnSummaries(summaries.filter((summary) => summary.key.factionId === factionId));
+    }
   }, [client, game, parsed, turnPickerOpen]);
 
   /**
@@ -2440,8 +2365,7 @@ export function AppShell({
    */
   const handleSelectComparisonTurn = useCallback(
     async (clickedTurn: number) => {
-      const reportComparisonFailure = (message: string) =>
-        setStatus({ regionCount: 0, unitCount: 0, message, failed: false, warning: true });
+      const reportComparisonFailure = (message: string) => setStatus(warningStatus(message));
 
       const workingTurn = parsed?.header.turnNumber ?? null;
       if (workingTurn === null || !game || !parsed?.header.factionId) {
