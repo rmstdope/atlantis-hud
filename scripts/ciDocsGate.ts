@@ -58,8 +58,8 @@ export function isGatedOnChanges(jobBlock: string): boolean {
 
 /**
  * Whether a job block is conditioned on both the gate's `code` output and its `native` one - the
- * shape only `NATIVE_JOB` uses, since the native (Linux Tauri) job also needs nothing native-shaped
- * to have changed.
+ * shape only `NATIVE_JOB` uses, since the native (Linux Tauri) job also needs the diff to be
+ * native-shaped, not merely non-prose.
  */
 export function isGatedOnCodeAndNative(jobBlock: string): boolean {
   return /^ {4}if:\s*needs\.changes\.outputs\.code\s*==\s*'true'\s*&&\s*needs\.changes\.outputs\.native\s*==\s*'true'\s*$/mu.test(
