@@ -1277,10 +1277,9 @@ test("the unit/orders split drags at the grip and survives a reload", async ({ p
 
 /** The left or right overlay pane's current width, in CSS pixels. */
 async function overlayWidth(page: Page, edge: "left" | "right") {
-  return page.evaluate(
-    (e) => document.querySelector(`[data-map-overlay="${e}"]`)!.getBoundingClientRect().width,
-    edge
-  );
+  const box = await page.locator(`[data-map-overlay="${edge}"]`).boundingBox();
+  expect(box).not.toBeNull();
+  return box!.width;
 }
 
 test("a rail drags at its edge pill and survives a reload", async ({ page }) => {

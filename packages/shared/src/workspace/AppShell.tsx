@@ -2902,8 +2902,8 @@ export function AppShell({
           <div className="flex min-h-0 flex-1 justify-between gap-2.5">
             <div
               ref={leftRailRef}
-              className="relative flex w-[19rem] min-h-0 flex-col"
-              style={railWidthStyle(leftRailWidthRem) ?? undefined}
+              className="relative flex min-h-0 flex-col"
+              style={railWidthStyle(leftRailWidthRem ?? RAIL_LEFT_DEFAULT_REM) ?? undefined}
               data-map-overlay="left"
             >
               <RegionPanel
@@ -2923,8 +2923,8 @@ export function AppShell({
 
             <div
               ref={rightRailRef}
-              className="relative flex w-[21rem] min-h-0 flex-col gap-2.5"
-              style={railWidthStyle(rightRailWidthRem) ?? undefined}
+              className="relative flex min-h-0 flex-col gap-2.5"
+              style={railWidthStyle(rightRailWidthRem ?? RAIL_RIGHT_DEFAULT_REM) ?? undefined}
               data-map-overlay="right"
             >
               <div className={unitSlotClass(collapsed)}>
