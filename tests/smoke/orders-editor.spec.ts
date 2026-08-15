@@ -22,6 +22,20 @@ const OWN_UNIT = "18642";
 /** Another of the player's units, in the mountain at (26,52) - a different editor entirely. */
 const OTHER_OWN_UNIT = "13401";
 
+/**
+ * Where the first character actually starts: `.cm-line`'s own bounding box is its border edge,
+ * not its text - the line's `padding-left` (2px, per gh-205) sits between the two. Measuring the
+ * box alone would let the budget pass while the text itself sat further right than agreed.
+ */
+async function textStartX(line: ReturnType<Page["locator"]>) {
+  const box = await line.boundingBox();
+  expect(box).not.toBeNull();
+  const paddingLeft = await line.evaluate((element) =>
+    parseFloat(getComputedStyle(element).paddingLeft)
+  );
+  return box!.x + paddingLeft;
+}
+
 async function selectHex(page: Page, regionId: string) {
   const hex = page.getByRole("button", { name: `hex ${regionId}` });
   await hex.focus();
@@ -156,23 +170,87 @@ test("a bad order is marked in the editor's own margin", async ({ page }) => {
   await expect(page.getByTestId("orders-diagnostics")).toContainText("WROK");
 });
 
-test("the lint gutter hugs its marker (gh-205)", async ({ page }) => {
+test("the order text starts within 6px of the editor's edge, marker still showing (gh-205)", async ({
+  page
+}) => {
   await loadReport(page);
 
-  // A broken line first, so the same walk pins both "the gutter is narrow" and "the marker it
-  // exists for still shows" - a shrink that quietly hid the indicator would fail here too.
+  const input = page.getByTestId("orders-input");
+  const gutter = input.locator(".cm-gutter-lint");
+  const marker = input.locator(".cm-lint-marker");
+
+  // No-error state first: this is what the player looks at almost all the time, and it is
+  // where the permanent margin is actually felt - the earlier version of this test never
+  // pinned it at all.
+  await fillOrders(page, "@work");
+  await expect(marker).toHaveCount(0);
+
+  const containerBoxClean = await input.boundingBox();
+  expect(containerBoxClean).not.toBeNull();
+  const textStartClean = await textStartX(input.locator(".cm-line").first());
+  // Agreed budget from the mockup interview (2026-08-15, docs/ui/orders-editor-left-edge.html):
+  // 6px from the container's edge to the first character, plus 0.5px of subpixel slack.
+  expect(textStartClean - containerBoxClean!.x).toBeLessThanOrEqual(6.5);
+
+  const gutterBoxClean = await gutter.boundingBox();
+  expect(gutterBoxClean).not.toBeNull();
+  expect(gutterBoxClean!.width).toBeLessThan(4);
+
+  // Error state: the gutter is reserved space either way, so the budget must hold identically,
+  // and the marker - now a 3px full-height bar in the danger token, not the stock dot - must
+  // still be visible. A shrink that quietly hid the indicator would fail here.
   await fillOrders(page, "WROK");
+  await expect(marker).toBeVisible();
+  // `background-color` alone would still read the danger token even if the stock icon crept
+  // back (a `content` replaced element paints over its own background) - pin the suppression
+  // itself so a future CodeMirror remount cannot bring the hardcoded dot back unnoticed. This
+  // browser reports the computed value of an overridden `content: none` as "normal" (its own
+  // initial value, not the literal keyword) rather than "url(...)" - which is what CodeMirror's
+  // stock rule would compute to if it were still winning the cascade.
+  await expect(marker).toHaveCSS("content", "normal");
+
+  const containerBoxError = await input.boundingBox();
+  expect(containerBoxError).not.toBeNull();
+  const textStartError = await textStartX(input.locator(".cm-line").first());
+  expect(textStartError - containerBoxError!.x).toBeLessThanOrEqual(6.5);
+
+  const gutterBoxError = await gutter.boundingBox();
+  expect(gutterBoxError).not.toBeNull();
+  expect(gutterBoxError!.width).toBeLessThan(4);
+});
+
+test("the marker paints in the warning colour for a warning-severity diagnostic (gh-205)", async ({
+  page
+}) => {
+  await loadReport(page);
+
+  // GIVE of an item outside the catalogue is a warning, not an error (it does not block
+  // export) - one of the two severities the bar's colour must distinguish.
+  await fillOrders(page, "GIVE 45 10 swordz");
+
   const marker = page.getByTestId("orders-input").locator(".cm-lint-marker");
   await expect(marker).toBeVisible();
-
-  const gutter = page.getByTestId("orders-input").locator(".cm-gutter-lint");
-  const box = await gutter.boundingBox();
-  expect(box).not.toBeNull();
-  // CodeMirror's stock lint gutter reserves 1.4em, which measured just over 16px at this panel's
-  // font size before the fix - room for a marker that is only 1em wide. A ceiling rather than an
-  // exact width: font rendering differs between engines, but both should now sit comfortably
-  // under what the unstyled gutter used to take.
-  expect(box!.width).toBeLessThan(14);
+  // See the error-state test above for why "normal" is the right expectation here.
+  await expect(marker).toHaveCSS("content", "normal");
+  const color = await marker.evaluate((element) => getComputedStyle(element).backgroundColor);
+  const warnToken = await page.evaluate(() =>
+    getComputedStyle(document.documentElement).getPropertyValue("--color-warn").trim()
+  );
+  // An empty token (the variable missing) would make the probe below resolve to the browser's
+  // default colour, which could accidentally match `color` and pass for the wrong reason -
+  // guard the token is actually defined before trusting the comparison.
+  expect(warnToken).not.toBe("");
+  // Both read through getComputedStyle so token vs. literal formatting differences (hex vs
+  // rgb()) do not cause a false mismatch - compare what the browser resolved both to.
+  const warnColor = await page.evaluate((token) => {
+    const probe = document.createElement("div");
+    probe.style.color = token;
+    document.body.appendChild(probe);
+    const resolved = getComputedStyle(probe).color;
+    probe.remove();
+    return resolved;
+  }, warnToken);
+  expect(color).toBe(warnColor);
 });
 
 test("an accepted snippet expands with a tab-through placeholder", async ({ page }) => {
