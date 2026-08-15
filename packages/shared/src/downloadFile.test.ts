@@ -11,15 +11,12 @@ function installDomStubs(): { anchor: AnchorStub; createObjectURL: ReturnType<ty
   const anchor: AnchorStub = { href: "", download: "", click: vi.fn() };
   const createObjectURL = vi.fn((blob: { type: string }) => `blob:${blob.type}`);
   const revokeObjectURL = vi.fn();
-  (globalThis as { document?: unknown }).document = {
-    createElement: vi.fn(() => anchor)
-  };
-  (globalThis as { URL: unknown }).URL = { createObjectURL, revokeObjectURL };
+  vi.stubGlobal("document", { createElement: vi.fn(() => anchor) });
+  vi.stubGlobal("URL", { createObjectURL, revokeObjectURL });
   return { anchor, createObjectURL, revokeObjectURL };
 }
 
 afterEach(() => {
-  delete (globalThis as { document?: unknown }).document;
   vi.unstubAllGlobals();
 });
 
