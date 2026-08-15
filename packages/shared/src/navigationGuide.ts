@@ -72,6 +72,13 @@ export const NAVIGATION_MOVES: readonly NavigationMove[] = [
     keys: { mac: "⇧ and the arrows", other: "Shift and the arrows" }
   },
   {
+    id: "mapCentre",
+    group: MAP,
+    description: "Bring a hex to the middle of the view",
+    mouse: "Right-click it",
+    keys: null
+  },
+  {
     id: "mapZoom",
     group: MAP,
     description: "Zoom in and out",

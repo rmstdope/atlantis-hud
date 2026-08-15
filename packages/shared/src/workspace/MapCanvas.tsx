@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Coordinate, HexRisk } from "@atlantis/core-client";
 import { parseRegionId, regionIdOf, type HexMapModel, type HexNode } from "../hexMapModel";
+import { isMacPlatform } from "../shortcuts";
 import {
   accumulateWheel,
   centreOn,
@@ -22,6 +23,7 @@ import {
   type Viewport
 } from "./mapViewport";
 import { rectFromCorners, rectPixels, type MapRect } from "./mapMarquee";
+import { isRecentreGesture } from "./mapRecentre";
 import { overlayInsets, type OverlayBox } from "./mapOverlayInsets";
 import { loadSavedView, saveViewportForGame, type SavedMapView } from "./mapViewportStorage";
 import { keepsRestoredHex, mapViewDecision, shouldFollowSelection } from "./mapViewRestore";
@@ -512,6 +514,24 @@ export function MapCanvas({
     return true;
   };
 
+  /**
+   * Right-click (or Ctrl+click on macOS) brings the hex under the pointer to the middle of the
+   * view, without selecting it - see `mapRecentre.ts`. Lives on the svg root rather than on each
+   * hex because `click` never fires for the secondary button; the hex is worked out from the
+   * pixel exactly as the fog rect's click handler does.
+   */
+  const onContextMenu = (event: React.MouseEvent<SVGSVGElement>) => {
+    event.preventDefault();
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const coordinate = coordinateAt(
+      event.clientX - bounds.left,
+      event.clientY - bounds.top,
+      viewRef.current,
+      level
+    );
+    commit(centreOn(coordinate, viewRef.current, size.width, size.height, readInsets()));
+  };
+
   const onPointerDown = (event: React.PointerEvent<SVGSVGElement>) => {
     if (event.button !== 0) {
       return;
@@ -686,6 +706,7 @@ export function MapCanvas({
         ref={rootRef}
         className={`h-full w-full touch-none map-${band} map-theme-${theme.id}`}
         onPointerDown={onPointerDown}
+        onContextMenu={onContextMenu}
       >
         <defs>
           <pattern
@@ -755,6 +776,13 @@ export function MapCanvas({
               viewRef.current,
               level
             );
+            // Ctrl+click is the recentre gesture on macOS - most webviews already deliver it as
+            // `contextmenu` instead, but this is the belt to that suspender. Centres, never
+            // selects, same as a right-click.
+            if (isRecentreGesture({ button: event.button, ctrlKey: event.ctrlKey }, isMacPlatform())) {
+              commit(centreOn(coordinate, viewRef.current, size.width, size.height, readInsets()));
+              return;
+            }
             // Focus follows the click, as it does on a hex, so the arrow keys carry on from here.
             setCursor(coordinate);
             pendingFocusRef.current = cursorKeyOf(coordinate);
@@ -994,6 +1022,15 @@ export function MapCanvas({
                 onKeyDown={(event) => onMapKeyDown(event, hex.coordinate)}
                 onClick={(event) => {
                   if (draggedRef.current) {
+                    return;
+                  }
+                  // Ctrl+click is the recentre gesture on macOS - see the fog rect's handler.
+                  if (
+                    isRecentreGesture({ button: event.button, ctrlKey: event.ctrlKey }, isMacPlatform())
+                  ) {
+                    commit(
+                      centreOn(hex.coordinate, viewRef.current, size.width, size.height, readInsets())
+                    );
                     return;
                   }
                   // Focused as well as selected, so the arrow keys carry on from the hex just

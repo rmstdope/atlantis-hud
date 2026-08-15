@@ -150,6 +150,8 @@ test("Mod+/ shows how to get around, with the mouse as well as the keyboard", as
   await expect(help).toContainText("Drag");
   await expect(help).toContainText("wheel");
   await expect(help).toContainText("Shift+drag");
+  await expect(help).toContainText("Bring a hex to the middle of the view");
+  await expect(help).toContainText("Right-click it");
 
   // It holds more than a screenful now, so the body scrolls - and the switch and the close button
   // stay put outside it, where a reader who has scrolled to the bottom can still find them.
@@ -210,4 +212,99 @@ test("the map really answers the gestures the overlay describes", async ({ page 
   await page.mouse.up();
   await page.keyboard.up("Shift");
   await expect(page.getByTestId("map-export-panel")).toBeVisible();
+});
+
+/** Where the map is standing, read the same way `persistence.spec.ts` does. */
+async function mapTransform(page: Page): Promise<string> {
+  return (await page.getByTestId("map-world").getAttribute("transform")) ?? "";
+}
+
+/**
+ * The middle of the strip the panes leave visible - the same rectangle `mapOverlayInsets.ts`
+ * computes from `[data-map-overlay]` boxes, and what `centreOn` actually centres against. The
+ * geometric middle of the whole canvas is not it: the side rails alone leave the true middle far
+ * from the canvas's own centre, and a point there lands on a pane rather than the map.
+ */
+async function visibleCentre(page: Page, map: { x: number; y: number; width: number; height: number }) {
+  const overlays = await page.locator("[data-map-overlay]").all();
+  let left = 0;
+  let right = 0;
+  let top = 0;
+  let bottom = 0;
+  for (const overlay of overlays) {
+    const edge = await overlay.getAttribute("data-map-overlay");
+    const box = await overlay.boundingBox();
+    if (!box || box.width <= 0 || box.height <= 0) {
+      continue;
+    }
+    if (edge === "left") {
+      left = Math.max(left, box.x + box.width - map.x);
+    } else if (edge === "right") {
+      right = Math.max(right, map.x + map.width - box.x);
+    } else if (edge === "top") {
+      top = Math.max(top, box.y + box.height - map.y);
+    } else if (edge === "bottom") {
+      bottom = Math.max(bottom, map.y + map.height - box.y);
+    }
+  }
+  return {
+    x: map.x + left + (map.width - left - right) / 2,
+    y: map.y + top + (map.height - top - bottom) / 2
+  };
+}
+
+test("right-click centres the view on a hex, without selecting it", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+  await expect(page.getByRole("button", { name: "hex 1:7,53" })).toHaveAttribute(
+    "aria-pressed",
+    "true"
+  );
+
+  const map = page.getByTestId("map-canvas");
+  const box = await map.boundingBox();
+  if (!box) {
+    throw new Error("the map has no box to gesture over");
+  }
+  // The same open corner the other gestures use - the only part of the canvas no panel floats
+  // over.
+  const open = { x: box.x + 30, y: box.y + 20 };
+
+  // A witness independent of the handler under test: if `onContextMenu` ever forgot its
+  // `preventDefault()`, the browser's own menu would still be asked for even though the map also
+  // recentred, and this is what would catch that. Registered on `window` in the bubble phase
+  // (the default), which is what makes it see the event *after* React's own handling has had its
+  // chance to call `preventDefault()` - a capture-phase listener would run first and always read
+  // `defaultPrevented: false`, telling this nothing.
+  await page.evaluate(() => {
+    (window as unknown as { __contextMenuPrevented?: boolean }).__contextMenuPrevented = false;
+    window.addEventListener("contextmenu", (event) => {
+      (window as unknown as { __contextMenuPrevented?: boolean }).__contextMenuPrevented =
+        event.defaultPrevented;
+    });
+  });
+
+  const before = await mapTransform(page);
+  await page.mouse.click(open.x, open.y, { button: "right" });
+  await expect.poll(() => mapTransform(page)).not.toBe(before);
+  expect(
+    await page.evaluate(
+      () => (window as unknown as { __contextMenuPrevented?: boolean }).__contextMenuPrevented
+    )
+  ).toBe(true);
+
+  // Centring, not selecting: the hex chosen earlier keeps the ring.
+  await expect(page.getByRole("button", { name: "hex 1:7,53" })).toHaveAttribute(
+    "aria-pressed",
+    "true"
+  );
+
+  // Right-clicking the middle of the visible strip a second time is now a no-op: whatever hex is
+  // already there is already centred, so asking again changes nothing.
+  const centred = await mapTransform(page);
+  const centre = await visibleCentre(page, box);
+  await page.mouse.click(centre.x, centre.y, { button: "right" });
+  await expect.poll(() => mapTransform(page)).toBe(centred);
+  await page.mouse.click(centre.x, centre.y, { button: "right" });
+  await expect.poll(() => mapTransform(page)).toBe(centred);
 });
