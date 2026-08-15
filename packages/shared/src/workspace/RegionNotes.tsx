@@ -45,18 +45,18 @@ export function RegionNotes({
   // point of view only if the caller keys it; here the parent simply re-renders with new props,
   // so an explicit reset keeps the "discard silently" promise the plan makes).
   //
-  // `live` guards the async handlers below: a save/edit/remove/toggle started before this hex
-  // change resolves after it, and without the guard its result would land on whichever hex the
-  // player has since moved to - an error banner or a mode change that belongs to a request nobody
-  // made here.
-  const live = useRef(true);
+  // `currentRegionRef` guards the async handlers below: a save/edit/remove/toggle started on one
+  // hex can resolve after the player has navigated elsewhere, and without the guard its result
+  // would land on whichever hex is now selected - an error banner or a mode change nobody asked
+  // for there. A boolean "am I still mounted" flag is not quite this: it forgets which hex asked,
+  // so leaving and returning to the *same* hex before a stale call resolves would wrongly drop its
+  // result. Comparing against the hex the call actually started on is precise regardless of what
+  // the player did in between.
+  const currentRegionRef = useRef(regionId);
   useEffect(() => {
-    live.current = true;
+    currentRegionRef.current = regionId;
     setMode({ kind: "idle" });
     setError(null);
-    return () => {
-      live.current = false;
-    };
   }, [regionId]);
 
   useEffect(() => {
@@ -83,6 +83,7 @@ export function RegionNotes({
   };
 
   const save = async () => {
+    const targetRegionId = regionId;
     const value = mode.kind === "adding" ? mode.draft : mode.kind === "editing" ? mode.draft : null;
     if (value === null || !canSave(value)) {
       return;
@@ -97,12 +98,12 @@ export function RegionNotes({
           .getState()
           .edit(client, game, mode.noteId, { text: value }, new Date().toISOString());
       }
-      if (live.current) {
+      if (currentRegionRef.current === targetRegionId) {
         setMode(reduce(mode, { type: "saved" }));
         setError(null);
       }
     } catch {
-      if (live.current) {
+      if (currentRegionRef.current === targetRegionId) {
         setError("Could not save this note.");
       }
     }
@@ -114,25 +115,31 @@ export function RegionNotes({
   };
 
   const toggleOnMap = async (note: HexNoteRecord) => {
+    const targetRegionId = regionId;
     try {
       await useHexNotesStore
         .getState()
         .edit(client, game, note.id, { onMap: !note.onMap }, new Date().toISOString());
+      if (currentRegionRef.current === targetRegionId) {
+        setError(null);
+      }
     } catch {
-      if (live.current) {
+      if (currentRegionRef.current === targetRegionId) {
         setError("Could not save this note.");
       }
     }
   };
 
   const remove = async (noteId: string) => {
+    const targetRegionId = regionId;
     try {
       await useHexNotesStore.getState().remove(client, game, noteId);
-      if (live.current) {
+      if (currentRegionRef.current === targetRegionId) {
         setMode(reduce(mode, { type: "removed" }));
+        setError(null);
       }
     } catch {
-      if (live.current) {
+      if (currentRegionRef.current === targetRegionId) {
         setError("Could not remove this note.");
       }
     }
@@ -285,13 +292,15 @@ function NoteRow({
 }) {
   return (
     <div data-testid="region-note" data-note-id={note.id} className="mb-1.5">
-      <p
-        className={`m-0 cursor-pointer whitespace-pre-wrap ${removing ? "text-ink-dim" : ""}`}
+      <button
+        type="button"
+        disabled={removing}
+        className={`m-0 block w-full whitespace-pre-wrap text-left ${removing ? "text-ink-dim" : "cursor-pointer"}`}
         onClick={removing ? undefined : onEdit}
       >
         {note.onMap ? <span aria-label="shown on the map">◆ </span> : null}
         {note.text}
-      </p>
+      </button>
       {removing ? (
         <div className="flex items-center justify-between gap-2 text-[10px]">
           <span>Remove this note?</span>
