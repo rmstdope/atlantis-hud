@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ah-sup — Emphasising the selected hex</title>
+<style>
+  :root { --page:#10151c; --panel:#171e28; --edge:#2a3442; --ink:#d7dee8; --dim:#8a94a3; }
+  body { background: var(--page); color: var(--ink); font: 14px/1.5 system-ui, sans-serif;
+         margin: 0; padding: 24px 32px 64px; }
+  h1 { font-size: 20px; }
+  h2 { font-size: 15px; margin: 28px 0 4px; }
+  p.note { color: var(--dim); max-width: 82ch; }
+  .row { display: flex; gap: 28px; flex-wrap: wrap; margin: 12px 0 8px; align-items: flex-start; }
+  .fig { background: var(--panel); border: 1px solid var(--edge); border-radius: 10px;
+         padding: 10px 12px; }
+  .fig .cap { font-size: 12px; color: var(--dim); margin: 6px 0 0; max-width: 34ch; }
+  .cost { color: var(--dim); font-size: 13px; margin: 4px 0 0; max-width: 82ch; }
+  .cost b { color: var(--ink); }
+  svg { display: block; }
+  .light-fig { background: #f2efe8; border-color: #cfcabd; }
+  .light-fig .cap { color: #4f5866; }
+  code { background: #0d1218; border: 1px solid var(--edge); border-radius: 4px;
+         padding: 0 4px; font-size: 12.5px; }
+  .light-fig code { background:#e3dfd3; border-color:#cfcabd; color:#1c2530; }
+</style>
+</head>
+<body>
+<h1>ah-sup — Emphasising the selected hex</h1>
+<p class="note">
+  Every figure is the same busy neighbourhood: mixed terrain, a brass route line, a red
+  high-risk tint, own (green) and foreign (blue) unit shields, a settlement — and the dashed
+  keyboard-focus ring on the hex <em>next to</em> the selection, because that is the pairing the
+  treatment must stay distinct from. The selected hex is always the one in the middle.
+  The small figure beside each variant is the selection on unexplored ground, which the current
+  code deliberately supports. The strip at the bottom is the light theme.
+</p>
+
+<h2>Baseline — what ships today</h2>
+<div class="row">
+  <div class="fig"><svg id="fig-base" width="340" height="240"></svg>
+    <p class="cap">Brass 2.5px ring. Brass is also the route line, the marquee and the battle
+    chip — the ring drowns in its own colour family.</p></div>
+</div>
+
+<h2>Option A — white-hot double ring (CHOSEN)</h2>
+<div class="row">
+  <div class="fig"><svg id="fig-a" width="340" height="240"></svg></div>
+  <div class="fig"><svg id="fig-a-fog" width="180" height="150"></svg>
+    <p class="cap">On unexplored ground.</p></div>
+</div>
+<p class="cost"><b>Near-white 3px ring over a 7px dark casing</b>, screen-constant. The map's only
+achromatic double outline, so it collides with no faction, risk or route colour, and the
+light-on-dark pairing survives a colour-blind reading. Cost: quieter than red; it says
+"you are here" rather than shouting it.</p>
+
+<h2>Option B — red ring (your suggestion)</h2>
+<div class="row">
+  <div class="fig"><svg id="fig-b" width="340" height="240"></svg></div>
+  <div class="fig"><svg id="fig-b-fog" width="180" height="150"></svg>
+    <p class="cap">On unexplored ground.</p></div>
+</div>
+<p class="cost"><b>Crimson 3.5px ring over a dark casing.</b> Unmissable — but red already means
+monster units, high route risk and battle in every theme (<code>#f07070</code> family), so a
+selected empty hex reads as flagged dangerous, and next to a real risk tint (top row) the two
+red meanings sit side by side. The mock uses a deeper crimson to soften that; the collision
+remains.</p>
+
+<h2>Option C — selection wash + bright ring</h2>
+<div class="row">
+  <div class="fig"><svg id="fig-c" width="340" height="240"></svg></div>
+  <div class="fig"><svg id="fig-c-fog" width="180" height="150"></svg>
+    <p class="cap">On unexplored ground.</p></div>
+</div>
+<p class="cost"><b>The existing <code>--color-select</code> blue as a 20% fill wash, plus a
+brass-bright 3px ring.</b> The whole hex pops, not just its rim. Cost: the wash tints the terrain
+colour underneath, stacks confusingly with the blue low-risk route tint, and blue is already
+foreign units and ships.</p>
+
+<h2>Option D — corner reticle</h2>
+<div class="row">
+  <div class="fig"><svg id="fig-d" width="340" height="240"></svg></div>
+  <div class="fig"><svg id="fig-d-fog" width="180" height="150"></svg>
+    <p class="cap">On unexplored ground.</p></div>
+</div>
+<p class="cost"><b>Thick brass-bright ticks at all six corners</b>, screen-constant — a targeting
+reticle. Distinct by <em>shape</em> rather than colour, so nothing collides. Cost: a new visual
+language on a map that has none, and less total ink than a full ring, so at far zoom on busy
+terrain it can still hide.</p>
+
+<h2>Follow-up: keyboard focus landing on the selected hex (Option A)</h2>
+<p class="note">Arrow the keyboard cursor onto the already-selected hex and both marks want to
+draw. Left: both drawn, dashed focus ring on top of the white ring (today's layering). Right:
+the focus ring suppressed while it coincides with the selection.</p>
+<div class="row">
+  <div class="fig"><svg id="fig-co-both" width="250" height="180"></svg>
+    <p class="cap">Both drawn. (CHOSEN)</p></div>
+  <div class="fig"><svg id="fig-co-hide" width="250" height="180"></svg>
+    <p class="cap">Focus ring hidden while on the selection.</p></div>
+</div>
+
+<h2>Follow-up: the pulse (Option A, animated — click a figure to replay)</h2>
+<p class="note">Both fire once when the selection changes, then rest as the static double ring.
+Left: <b>lock-on</b> — the ring starts ~1.6× the hex and contracts to fit, ~300ms. Right:
+<b>blink</b> — the ring flashes twice in place, ~360ms. With reduced motion set, neither plays.</p>
+<div class="row">
+  <div class="fig"><svg id="fig-p-lock" width="250" height="180" style="cursor:pointer"></svg>
+    <p class="cap">Lock-on: contracts onto the hex. (CHOSEN — fires on click and keyboard
+    selection, not on the restore at app load; suppressed under prefers-reduced-motion.)</p></div>
+  <div class="fig"><svg id="fig-p-blink" width="250" height="180" style="cursor:pointer"></svg>
+    <p class="cap">Blink: two quick flashes in place.</p></div>
+</div>
+
+<h2>Light theme</h2>
+<p class="note">Same treatments over the light palette. A wants its ring dark and casing pale in
+light mode (shown — CHOSEN over keeping the white ring in both themes); B–D keep their colour and
+rely on the casing.</p>
+<div class="row">
+  <div class="fig light-fig"><svg id="fig-la" width="250" height="180"></svg><p class="cap">A</p></div>
+  <div class="fig light-fig"><svg id="fig-lb" width="250" height="180"></svg><p class="cap">B</p></div>
+  <div class="fig light-fig"><svg id="fig-lc" width="250" height="180"></svg><p class="cap">C</p></div>
+  <div class="fig light-fig"><svg id="fig-ld" width="250" height="180"></svg><p class="cap">D</p></div>
+</div>
+
+<script>
+const R = 26, DX = 1.5 * R, DY = Math.sqrt(3) * R;
+const PTS = [[R,0],[R/2,DY/2],[-R/2,DY/2],[-R,0],[-R/2,-DY/2],[R/2,-DY/2]]
+  .map(p => p.join(",")).join(" ");
+const DARK = { ocean:"#7fa0b8", plain:"#b3a565", forest:"#6e8a5c", mountain:"#8d8a83",
+               desert:"#c2ab74", swamp:"#7d8a5e", edge:"#4a3a22", ground:"#10151c",
+               fog:"#161c24", fogEdge:"#2a3442", brass:"#d9a441", brassBright:"#eebe63",
+               riskHigh:"#f07070", own:"#4caf7d", foreign:"#5ec8f0", settlement:"#f0e2bd" };
+const LIGHT = { ocean:"#a8c4d6", plain:"#d4c99a", forest:"#a3bf93", mountain:"#bdbab2",
+               desert:"#e0d0a4", swamp:"#b3bf95", edge:"#8a7a55", ground:"#f2efe8",
+               fog:"#e3dfd3", fogEdge:"#cfcabd", brass:"#9a6f1d", brassBright:"#7d5a15",
+               riskHigh:"#c05252", own:"#2e8a5c", foreign:"#1c7fae", settlement:"#8a6f2d" };
+const TERR = ["ocean","plain","forest","plain","mountain",
+              "forest","plain","desert","swamp","plain",
+              "plain","forest","mountain","plain","ocean"];
+
+function hexAt(c, r) { return [30 + c * DX, 32 + r * DY + (c % 2 ? DY / 2 : 0)]; }
+function el(n, at) { const e = document.createElementNS("http://www.w3.org/2000/svg", n);
+  for (const k in at) e.setAttribute(k, at[k]); return e; }
+function poly(svg, x, y, at) {
+  svg.appendChild(el("polygon", Object.assign({ points: PTS,
+    transform: `translate(${x} ${y})` }, at))); }
+
+// The selection treatments. sel(svg, x, y, palette)
+const SEL = {
+  base(s,x,y,p){ poly(s,x,y,{fill:"none",stroke:p.brass,"stroke-width":2.5}); },
+  a(s,x,y,p,light){ const ring = light ? "#1c2530" : "#f5f8fc";
+    const casing = light ? "#f5f8fc" : "#0a0e13";
+    poly(s,x,y,{fill:"none",stroke:casing,"stroke-width":7,"stroke-linejoin":"round"});
+    poly(s,x,y,{fill:"none",stroke:ring,"stroke-width":3,"stroke-linejoin":"round"}); },
+  b(s,x,y,p){ poly(s,x,y,{fill:"none",stroke:"#0a0e13","stroke-width":7,"stroke-linejoin":"round"});
+    poly(s,x,y,{fill:"none",stroke:"#e0483e","stroke-width":3.5,"stroke-linejoin":"round"}); },
+  c(s,x,y,p){ poly(s,x,y,{fill:"#4a9fd8","fill-opacity":0.2});
+    poly(s,x,y,{fill:"none",stroke:p.brassBright,"stroke-width":3}); },
+  d(s,x,y,p){ const g = el("g",{transform:`translate(${x} ${y})`,stroke:p.brassBright,
+      "stroke-width":4,"stroke-linecap":"round",fill:"none"});
+    const corners=[[R,0],[R/2,DY/2],[-R/2,DY/2],[-R,0],[-R/2,-DY/2],[R/2,-DY/2]];
+    for(let i=0;i<6;i++){const c=corners[i],prev=corners[(i+5)%6],next=corners[(i+1)%6];
+      const t=0.32,
+        p1=[c[0]+(prev[0]-c[0])*t, c[1]+(prev[1]-c[1])*t],
+        p2=[c[0]+(next[0]-c[0])*t, c[1]+(next[1]-c[1])*t];
+      g.appendChild(el("path",{d:`M ${p1[0]} ${p1[1]} L ${c[0]} ${c[1]} L ${p2[0]} ${p2[1]}`}));}
+    s.appendChild(g); }
+};
+
+function shield(svg, x, y, fill, p) {
+  svg.appendChild(el("path",{d:`M ${x-6} ${y-7} h12 v8 q0 6 -6 8 q-6 -2 -6 -8 z`,
+    fill:fill, stroke:p.edge,"stroke-width":1.2})); }
+
+function scene(id, variant, palette, opts) {
+  const svg = document.getElementById(id); if (!svg) return;
+  const p = palette, light = !!(opts && opts.light);
+  svg.appendChild(el("rect",{x:0,y:0,width:"100%",height:"100%",fill:p.ground}));
+  // terrain
+  for (let i = 0; i < 15; i++) { const c = i % 5, r = Math.floor(i / 5);
+    const [x,y] = hexAt(c,r);
+    poly(svg,x,y,{fill:p[TERR[i]],stroke:p.edge,"stroke-width":1.4}); }
+  // route line across the top row, brass with dark casing (as shipped)
+  const rp = [hexAt(0,0),hexAt(1,0),hexAt(2,0),hexAt(3,0)].map(q=>q.join(",")).join(" ");
+  svg.appendChild(el("polyline",{points:rp,fill:"none",stroke:p.ground,"stroke-width":5}));
+  svg.appendChild(el("polyline",{points:rp,fill:"none",stroke:p.brass,"stroke-width":3}));
+  // high-risk tint on the route's last hex
+  { const [x,y]=hexAt(3,0);
+    poly(svg,x,y,{fill:p.riskHigh,"fill-opacity":0.28,stroke:p.riskHigh,"stroke-width":2}); }
+  // units + settlement
+  { const [x,y]=hexAt(1,1); shield(svg,x,y,p.own,p); }
+  { const [x,y]=hexAt(3,2); shield(svg,x,y,p.foreign,p); }
+  { const [x,y]=hexAt(1,2);
+    svg.appendChild(el("circle",{cx:x,cy:y,r:4,fill:p.settlement,stroke:p.edge,"stroke-width":1.2})); }
+  // the selection, centre hex (2,1)
+  { const [x,y]=hexAt(2,1); SEL[variant](svg,x,y,p,light); }
+  // keyboard focus ring on the neighbour (3,1) — dashed brass-bright, as shipped
+  { const [x,y]=hexAt(3,1);
+    poly(svg,x,y,{fill:"none",stroke:p.brassBright,"stroke-width":2,"stroke-dasharray":"4 3"}); }
+}
+
+function fogScene(id, variant, p) {
+  const svg = document.getElementById(id); if (!svg) return;
+  svg.appendChild(el("rect",{x:0,y:0,width:"100%",height:"100%",fill:p.fog}));
+  for (let c=0;c<3;c++) for (let r=0;r<2;r++) { const [x,y]=hexAt(c,r);
+    poly(svg,x,y,{fill:"none",stroke:p.fogEdge,"stroke-width":1}); }
+  const [x,y]=hexAt(1,0); SEL[variant](svg,x,y,p,false);
+}
+
+function coincideScene(id, hideFocus) {
+  const svg = document.getElementById(id); if (!svg) return; const p = DARK;
+  svg.appendChild(el("rect",{x:0,y:0,width:"100%",height:"100%",fill:p.ground}));
+  for (let c=0;c<4;c++) for (let r=0;r<2;r++) { const [x,y]=hexAt(c,r);
+    poly(svg,x,y,{fill:p[TERR[c+r*5]],stroke:p.edge,"stroke-width":1.4}); }
+  const [x,y]=hexAt(1,1); SEL.a(svg,x,y,p,false);
+  if (!hideFocus) poly(svg,x,y,{fill:"none",stroke:p.brassBright,"stroke-width":2,
+    "stroke-dasharray":"4 3"});
+}
+coincideScene("fig-co-both",false); coincideScene("fig-co-hide",true);
+
+function pulseScene(id, kind) {
+  const svg = document.getElementById(id); if (!svg) return; const p = DARK;
+  svg.appendChild(el("rect",{x:0,y:0,width:"100%",height:"100%",fill:p.ground}));
+  for (let c=0;c<4;c++) for (let r=0;r<2;r++) { const [x,y]=hexAt(c,r);
+    poly(svg,x,y,{fill:p[TERR[c+r*5]],stroke:p.edge,"stroke-width":1.4}); }
+  const [x,y]=hexAt(1,1);
+  const g = el("g",{transform:`translate(${x} ${y})`});
+  g.appendChild(el("polygon",{points:PTS,fill:"none",stroke:"#0a0e13","stroke-width":7,
+    "stroke-linejoin":"round"}));
+  g.appendChild(el("polygon",{points:PTS,fill:"none",stroke:"#f5f8fc","stroke-width":3,
+    "stroke-linejoin":"round"}));
+  svg.appendChild(g);
+  const play = () => {
+    if (kind === "lock") {
+      g.style.transition = "none"; g.style.transformOrigin = `${x}px ${y}px`;
+      g.style.transform = `translate(${x}px ${y}px) scale(1.6)`; g.style.opacity = "0.35";
+      // translate must repeat in the style transform because style overrides the attribute
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        g.style.transition = "transform .3s ease-out, opacity .3s ease-out";
+        g.style.transform = `translate(${x}px ${y}px) scale(1)`; g.style.opacity = "1";
+      }));
+    } else {
+      let n = 0; g.style.transition = "none";
+      const tick = () => { g.style.opacity = (n % 2 === 0) ? "0.15" : "1";
+        if (++n <= 4) setTimeout(tick, 90); };
+      tick();
+    }
+  };
+  svg.addEventListener("click", play); setTimeout(play, 600);
+}
+pulseScene("fig-p-lock","lock"); pulseScene("fig-p-blink","blink");
+
+scene("fig-base","base",DARK);
+for (const v of ["a","b","c","d"]) { scene("fig-"+v,v,DARK); fogScene("fig-"+v+"-fog",v,DARK); }
+for (const v of ["a","b","c","d"]) scene("fig-l"+v,v,LIGHT,{light:v==="a"});
+</script>
+</body>
+</html>
