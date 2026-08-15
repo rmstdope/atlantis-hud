@@ -23,6 +23,10 @@ import { normalize, repositoryRoot, strayWorktrees, targetDir } from "./cargoTar
  * would work on the machine it was written on and fail on CI, which builds on Linux and caches
  * `target/` by its default location - so a well-meant `/Users/someone/.cache/...` would take the
  * Rust job down and leave the cache pointing at nothing.
+ *
+ * The "inside the repository" check below is asked of this worktree only, on purpose: it used to
+ * ask about every worktree on the machine, which let one session's scratch worktree redden every
+ * other session's gate (ah-efj).
  */
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -47,19 +51,16 @@ describe("the shared cargo build directory", () => {
     expect(configured).not.toContain("~");
   });
 
-  it("keeps the worktrees inside the repository, which is what puts them under the config", () => {
-    // A worktree moved elsewhere would silently get its own build directory again - and, worse,
-    // its own empty bead database, since bd finds that by walking up too.
-    const listed = execFileSync("git", ["worktree", "list", "--porcelain"], {
-      cwd: REPO,
+  it("runs from a worktree inside the repository, where the config and the bead database are shared", () => {
+    // Asked of THIS worktree only. The machine's other worktrees are other sessions' business - a
+    // scratch tree elsewhere used to redden every session's gate (ah-efj). What matters for the
+    // branch under test is that its own tree finds the repository's cargo config and bead database.
+    const here = execFileSync("git", ["rev-parse", "--show-toplevel"], {
+      cwd: HERE,
       encoding: "utf8"
-    });
-    const strays = strayWorktrees(listed, REPO);
+    }).trim();
 
-    expect(strays).toEqual([]);
-    // The repository itself and the agents' worktrees are what this is about, so a run that saw
-    // neither would pass while asserting nothing.
-    expect(listed).toContain(`worktree ${normalize(REPO)}`);
+    expect(strayWorktrees(`worktree ${here}\n`, REPO)).toEqual([]);
   });
 });
 
