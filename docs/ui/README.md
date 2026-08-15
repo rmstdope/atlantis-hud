@@ -25,6 +25,7 @@ was retired once they had all landed.
 | `battles-view.html` | Where the turn's battles are read (bead ah-1is.2). Three candidates; B, one dialog with the battle list beside the battle, was chosen, and a list line states its outcome neutrally as attacker and defender losses. |
 | `region-borders.html` | How bold a province outline needs to be to read against the hex lattice at every zoom (bead ah-f9c). Treatments over three simulated theme grounds and a far-zoom strip; Option B1 — a 3px screen-constant dashed line over a 5.5px screen-constant halo, in each theme's own ink — was chosen. |
 | `panel-split-resize.html` | How the drag handle between the unit panel and the orders editor announces itself (bead ah-13o). Two live, draggable candidates plus the folded and limit-reached states; B, the always-visible grip pill in the existing gap, was chosen. |
+| `units-pane-drag-resize.html` | Dragging the "Units in hex" pane to size it, replacing the row-count setting (bead ah-2r3). Two live candidates for what a dragged height means on a short list, snap vs free pixels, the bounds, and the folded, keyboard, empty and short-window states; A — the dragged height is the height — with free pixels, a one-row floor and a 70% ceiling was chosen. |
 
 The layout pages answered issue #17 and are kept as the record of that decision. Pages added later
 answer one bead each and are named after the question they settle, not after the layout — the table
