@@ -156,23 +156,85 @@ test("a bad order is marked in the editor's own margin", async ({ page }) => {
   await expect(page.getByTestId("orders-diagnostics")).toContainText("WROK");
 });
 
-test("the lint gutter hugs its marker (gh-205)", async ({ page }) => {
+test("the order text starts within 6px of the editor's edge, marker still showing (gh-205)", async ({
+  page
+}) => {
   await loadReport(page);
 
-  // A broken line first, so the same walk pins both "the gutter is narrow" and "the marker it
-  // exists for still shows" - a shrink that quietly hid the indicator would fail here too.
+  const input = page.getByTestId("orders-input");
+  const gutter = input.locator(".cm-gutter-lint");
+  const marker = input.locator(".cm-lint-marker");
+
+  // No-error state first: this is what the player looks at almost all the time, and it is
+  // where the permanent margin is actually felt - the earlier version of this test never
+  // pinned it at all.
+  await fillOrders(page, "@work");
+  await expect(marker).toHaveCount(0);
+
+  const containerBoxClean = await input.boundingBox();
+  const lineBoxClean = await input.locator(".cm-line").first().boundingBox();
+  expect(containerBoxClean).not.toBeNull();
+  expect(lineBoxClean).not.toBeNull();
+  // Agreed budget from the mockup interview (2026-08-15, docs/ui/orders-editor-left-edge.html):
+  // 6px from the container's edge to the first character, plus 0.5px of subpixel slack.
+  expect(lineBoxClean!.x - containerBoxClean!.x).toBeLessThanOrEqual(6.5);
+
+  const gutterBoxClean = await gutter.boundingBox();
+  expect(gutterBoxClean).not.toBeNull();
+  expect(gutterBoxClean!.width).toBeLessThan(4);
+
+  // Error state: the gutter is reserved space either way, so the budget must hold identically,
+  // and the marker - now a 3px full-height bar in the danger token, not the stock dot - must
+  // still be visible. A shrink that quietly hid the indicator would fail here.
   await fillOrders(page, "WROK");
+  await expect(marker).toBeVisible();
+  // `background-color` alone would still read the danger token even if the stock icon crept
+  // back (a `content` replaced element paints over its own background) - pin the suppression
+  // itself so a future CodeMirror remount cannot bring the hardcoded dot back unnoticed. This
+  // browser reports the computed value of an overridden `content: none` as "normal" (its own
+  // initial value, not the literal keyword) rather than "url(...)" - which is what CodeMirror's
+  // stock rule would compute to if it were still winning the cascade.
+  await expect(marker).toHaveCSS("content", "normal");
+
+  const containerBoxError = await input.boundingBox();
+  const lineBoxError = await input.locator(".cm-line").first().boundingBox();
+  expect(containerBoxError).not.toBeNull();
+  expect(lineBoxError).not.toBeNull();
+  expect(lineBoxError!.x - containerBoxError!.x).toBeLessThanOrEqual(6.5);
+
+  const gutterBoxError = await gutter.boundingBox();
+  expect(gutterBoxError).not.toBeNull();
+  expect(gutterBoxError!.width).toBeLessThan(4);
+});
+
+test("the marker paints in the warning colour for a warning-severity diagnostic (gh-205)", async ({
+  page
+}) => {
+  await loadReport(page);
+
+  // GIVE of an item outside the catalogue is a warning, not an error (it does not block
+  // export) - one of the two severities the bar's colour must distinguish.
+  await fillOrders(page, "GIVE 45 10 swordz");
+
   const marker = page.getByTestId("orders-input").locator(".cm-lint-marker");
   await expect(marker).toBeVisible();
-
-  const gutter = page.getByTestId("orders-input").locator(".cm-gutter-lint");
-  const box = await gutter.boundingBox();
-  expect(box).not.toBeNull();
-  // CodeMirror's stock lint gutter reserves 1.4em, which measured just over 16px at this panel's
-  // font size before the fix - room for a marker that is only 1em wide. A ceiling rather than an
-  // exact width: font rendering differs between engines, but both should now sit comfortably
-  // under what the unstyled gutter used to take.
-  expect(box!.width).toBeLessThan(14);
+  // See the error-state test above for why "normal" is the right expectation here.
+  await expect(marker).toHaveCSS("content", "normal");
+  const color = await marker.evaluate((element) => getComputedStyle(element).backgroundColor);
+  const warnToken = await page.evaluate(() =>
+    getComputedStyle(document.documentElement).getPropertyValue("--color-warn").trim()
+  );
+  // Both read through getComputedStyle so token vs. literal formatting differences (hex vs
+  // rgb()) do not cause a false mismatch - compare what the browser resolved both to.
+  const warnColor = await page.evaluate((token) => {
+    const probe = document.createElement("div");
+    probe.style.color = token;
+    document.body.appendChild(probe);
+    const resolved = getComputedStyle(probe).color;
+    probe.remove();
+    return resolved;
+  }, warnToken);
+  expect(color).toBe(warnColor);
 });
 
 test("an accepted snippet expands with a tab-through placeholder", async ({ page }) => {

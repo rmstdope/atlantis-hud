@@ -157,13 +157,33 @@ export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(fu
               color: "var(--color-ink-dim)",
               border: "none"
             },
-            // Stock lintGutter() reserves 1.4em for a 1em marker (gh-205) - width enough for the
-            // marker plus a sliver of breathing room, not CodeMirror's default padding, so the
-            // order text keeps the room the indicator does not need.
+            // Second pass at gh-205: the mockup session (2026-08-15,
+            // docs/ui/orders-editor-left-edge.html) chose variant 2b - a 3px full-height bar,
+            // gutter shrunk to hug it, whole left edge budgeted at 6px. Px, not em: the budget
+            // is exact and em rendering at this 11.5px font differs across engines.
             ".cm-gutter-lint": {
-              width: "1.1em",
-              "& .cm-gutterElement": { padding: "0 1px" }
+              width: "3px",
+              "& .cm-gutterElement": { padding: "0" }
             },
+            // The stock marker is a data: SVG dot, which cannot see CSS variables - the last
+            // hardcoded colour in the editor's chrome. Paint a bar instead: full line height,
+            // themed, no image.
+            ".cm-lint-marker": {
+              content: "none",
+              width: "3px",
+              height: "100%",
+              borderRadius: "1px"
+            },
+            // Named explicitly rather than relying on source order beating the stock
+            // `-error`/`-warning` icon rules (both compile to equal-specificity selectors, and
+            // `.cm-lint-marker` above only wins because EditorView.baseTheme mounts at
+            // Prec.lowest) - a future CodeMirror version could remount that precedence and
+            // silently bring the hardcoded dot back.
+            ".cm-lint-marker-error": { content: "none", backgroundColor: "var(--color-danger)" },
+            ".cm-lint-marker-warning": { content: "none", backgroundColor: "var(--color-warn)" },
+            // CodeMirror's base theme reserves 6px here; the mockup's budget only holds with
+            // this trimmed too, alongside the gutter and marker above.
+            ".cm-line": { paddingLeft: "2px" },
             ".cm-tooltip": {
               backgroundColor: "var(--color-panel-raised)",
               color: "var(--color-ink)",
