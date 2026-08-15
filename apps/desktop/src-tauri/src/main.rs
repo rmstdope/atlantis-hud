@@ -371,13 +371,21 @@ fn validate_orders(
     raw_orders: String,
     ruleset_json: Option<String>,
     raw_report: Option<String>,
-    warn_on_unguarded_hex: Option<bool>,
+    disabled_codes: Option<Vec<String>>,
 ) -> OrderValidationResultDto {
     command_validate_orders(
         &raw_orders,
         ruleset_json.as_deref(),
         raw_report.as_deref(),
-        warn_on_unguarded_hex.unwrap_or(false),
+        // Absent means the conservative default: `hex-unguarded` off, same as the bool this
+        // replaced defaulted to `false` (do not warn). Reuses `OrderCheckOptions::default()`
+        // rather than a hard-coded literal, so a renamed code cannot drift the two out of step.
+        disabled_codes.unwrap_or_else(|| {
+            atlantis_hud_core::OrderCheckOptions::default()
+                .disabled
+                .into_iter()
+                .collect()
+        }),
     )
 }
 

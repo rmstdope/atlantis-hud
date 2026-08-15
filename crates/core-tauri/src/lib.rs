@@ -623,10 +623,10 @@ pub fn command_validate_orders(
     raw_orders: &str,
     ruleset_json: Option<&str>,
     raw_report: Option<&str>,
-    warn_on_unguarded_hex: bool,
+    disabled_codes: Vec<String>,
 ) -> OrderValidationResultDto {
     let options = OrderCheckOptions {
-        warn_on_unguarded_hex,
+        disabled: disabled_codes.into_iter().collect(),
     };
     let (ruleset, report) = atlantis_hud_core::cache::with_global(|cache| {
         let ruleset = ruleset_json.and_then(|json| cache.ruleset(json).ok());
@@ -1781,7 +1781,7 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
         )
         .expect("create game");
 
-        let validation = command_validate_orders("FLY 1 2", None, None, false);
+        let validation = command_validate_orders("FLY 1 2", None, None, Vec::new());
         assert_eq!(
             validation.diagnostics,
             vec![OrderDiagnosticDto {

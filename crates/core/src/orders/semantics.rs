@@ -35,15 +35,57 @@ const TAX_PER_MAN: i64 = 50;
 /// training."
 const STUDENTS_PER_TEACHER: i64 = 10;
 
+/// Every advisory code the semantic checks can emit, in one place.
+///
+/// The settings UI and the client mirror this list; a new check adds its code here first.
+pub mod codes {
+    pub const NOT_ENOUGH_SILVER: &str = "not-enough-silver";
+    pub const NOT_ENOUGH_ITEMS: &str = "not-enough-items";
+    pub const GUARD_DROPPED: &str = "guard-dropped";
+    pub const HEX_UNGUARDED: &str = "hex-unguarded";
+    pub const TAUGHT_NOT_HERE: &str = "taught-not-here";
+    pub const TAUGHT_NOT_STUDYING: &str = "taught-not-studying";
+    pub const TEACHER_CANNOT_TEACH: &str = "teacher-cannot-teach";
+    pub const TEACHING_OVERSUBSCRIBED: &str = "teaching-oversubscribed";
+    pub const ALL: [&str; 8] = [
+        NOT_ENOUGH_SILVER,
+        NOT_ENOUGH_ITEMS,
+        GUARD_DROPPED,
+        HEX_UNGUARDED,
+        TAUGHT_NOT_HERE,
+        TAUGHT_NOT_STUDYING,
+        TEACHER_CANNOT_TEACH,
+        TEACHING_OVERSUBSCRIBED,
+    ];
+}
+
 /// Which checks to run.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CheckOptions {
-    /// Whether to warn about a hex that has your units in it and no guard at all.
+    /// Advisory codes not to emit. Unknown codes are ignored.
+    pub disabled: BTreeSet<String>,
+}
+
+impl CheckOptions {
+    /// Whether a check with this code should run.
+    #[must_use]
+    pub fn emits(&self, code: &str) -> bool {
+        !self.disabled.contains(code)
+    }
+}
+
+impl Default for CheckOptions {
+    /// `hex-unguarded` starts disabled: most hexes are deliberately unguarded, and the
+    /// wasm/tauri entry points fall back to this default when no options arrive.
     ///
     /// Off by default, and deliberately: most hexes are left unguarded on purpose, so this fires
     /// across the map and trains the player to ignore the panel. Dropping a guard you *had* is a
     /// change you probably did not mean, and that is reported either way.
-    pub warn_on_unguarded_hex: bool,
+    fn default() -> Self {
+        Self {
+            disabled: std::iter::once(codes::HEX_UNGUARDED.to_string()).collect(),
+        }
+    }
 }
 
 /// One thing that looks wrong about a turn.
@@ -85,7 +127,7 @@ pub fn check_turn(
 
         let start = findings.len();
         check_resources(&hex, ruleset, &mut findings);
-        check_guard(&hex, options, &mut findings);
+        check_guard(&hex, &options, &mut findings);
         check_teaching(&hex, ruleset, &mut findings);
 
         // Within a hex, what sits on a line comes first and in line order; what belongs to the hex
@@ -664,7 +706,7 @@ fn report_shortfalls(
             let finding = if tag == SILVER {
                 ordered.finding(
                     hex,
-                    "not-enough-silver",
+                    codes::NOT_ENOUGH_SILVER,
                     format!(
                         "short ${short}: this unit can have ${} and its orders spend ${}",
                         ordered.holding(SILVER),
@@ -676,7 +718,7 @@ fn report_shortfalls(
                 let name = item_name(tag, hex, ordered, ruleset);
                 ordered.finding(
                     hex,
-                    "not-enough-items",
+                    codes::NOT_ENOUGH_ITEMS,
                     format!(
                         "short {short} {name}: this unit can have {} and its orders give away {}",
                         ordered.holding(tag),
@@ -718,7 +760,7 @@ fn report_shared_purse(ledger: &Ledger<'_>, hex: &Hex<'_>, findings: &mut Vec<Fi
 
     let held: i64 = sharers.iter().map(|o| o.holding(SILVER)).sum();
     findings.push(hex.finding(
-        "not-enough-silver",
+        codes::NOT_ENOUGH_SILVER,
         format!(
             "the {} units sharing in this hex are short ${} between them: they can have ${held} \
              and their orders spend ${}",
@@ -745,7 +787,7 @@ fn item_name(tag: &str, hex: &Hex<'_>, ordered: &Ordered<'_>, ruleset: Option<&R
 
 // --- who is left guarding ----------------------------------------------------------------------
 
-fn check_guard(hex: &Hex<'_>, options: CheckOptions, findings: &mut Vec<Finding>) {
+fn check_guard(hex: &Hex<'_>, options: &CheckOptions, findings: &mut Vec<Finding>) {
     let guarded_now = hex.units.iter().any(|ordered| ordered.unit.on_guard);
     let guarded_next = hex.units.iter().any(Ordered::will_guard);
 
@@ -755,12 +797,12 @@ fn check_guard(hex: &Hex<'_>, options: CheckOptions, findings: &mut Vec<Finding>
 
     if guarded_now {
         findings.push(hex.finding(
-            "guard-dropped",
+            codes::GUARD_DROPPED,
             "this hex is guarded now and will be guarded by nobody next turn".to_string(),
         ));
-    } else if options.warn_on_unguarded_hex {
+    } else if options.emits(codes::HEX_UNGUARDED) {
         findings.push(hex.finding(
-            "hex-unguarded",
+            codes::HEX_UNGUARDED,
             "you have units here and none of them is guarding this hex".to_string(),
         ));
     }
@@ -814,7 +856,7 @@ fn check_one_teacher(
         let Some(pupil) = hex.find(id).filter(|pupil| !pupil.leaves_the_hex()) else {
             findings.push(teacher.finding(
                 hex,
-                "taught-not-here",
+                codes::TAUGHT_NOT_HERE,
                 format!("unit {id} is not in this hex to be taught"),
                 Some(placed),
             ));
@@ -824,7 +866,7 @@ fn check_one_teacher(
         let Some(studying) = pupil.studies() else {
             findings.push(teacher.finding(
                 hex,
-                "taught-not-studying",
+                codes::TAUGHT_NOT_STUDYING,
                 format!("unit {id} is being taught but has no STUDY order"),
                 Some(placed),
             ));
@@ -843,7 +885,7 @@ fn check_one_teacher(
         if teacher.skill_level(&tag.tag) <= theirs {
             findings.push(teacher.finding(
                 hex,
-                "teacher-cannot-teach",
+                codes::TEACHER_CANNOT_TEACH,
                 format!(
                     "this unit is {} in {} and unit {id} is level {theirs}, so it cannot teach it",
                     describe_level(teacher.skill_level(&tag.tag)),
@@ -858,7 +900,7 @@ fn check_one_teacher(
     if taught_men > slots {
         findings.push(teacher.finding(
             hex,
-            "teaching-oversubscribed",
+            codes::TEACHING_OVERSUBSCRIBED,
             format!("{taught_men} students on {slots} slots, so each gets less than a full month",),
             Some(placed),
         ));
@@ -1618,6 +1660,25 @@ mod tests {
         );
     }
 
+    /// The one code disabled by default is `hex-unguarded`; every other advisory code still fires.
+    #[test]
+    fn default_options_disable_only_the_broad_guard_check() {
+        let options = CheckOptions::default();
+        assert!(
+            !options.emits(codes::HEX_UNGUARDED),
+            "hex-unguarded should start disabled"
+        );
+        for code in codes::ALL {
+            if code == codes::HEX_UNGUARDED {
+                continue;
+            }
+            assert!(
+                options.emits(code),
+                "{code} should not be disabled by default"
+            );
+        }
+    }
+
     /// Most hexes are deliberately unguarded, so this stays silent unless it is asked for.
     #[test]
     fn a_hex_that_was_never_guarded_is_silent_by_default() {
@@ -1631,7 +1692,7 @@ mod tests {
     fn the_broad_guard_check_reports_an_unguarded_hex_when_it_is_asked_to() {
         let regions = vec![region(vec![unit("5")])];
         let options = CheckOptions {
-            warn_on_unguarded_hex: true,
+            disabled: BTreeSet::new(),
         };
 
         let finding = only(check_turn(
@@ -1649,7 +1710,7 @@ mod tests {
         let mut guarding = unit("5");
         guarding.on_guard = true;
         let options = CheckOptions {
-            warn_on_unguarded_hex: true,
+            disabled: BTreeSet::new(),
         };
 
         assert_eq!(

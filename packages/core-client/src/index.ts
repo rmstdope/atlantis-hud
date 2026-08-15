@@ -564,16 +564,30 @@ export type OrderDiagnostic = {
   severity: OrderDiagnosticSeverity;
 };
 
+/** Advisory order-check codes, mirrored from crates/core semantics::codes::ALL. */
+export const ADVISORY_CHECK_CODES = [
+  "not-enough-silver",
+  "not-enough-items",
+  "guard-dropped",
+  "hex-unguarded",
+  "taught-not-here",
+  "taught-not-studying",
+  "teacher-cannot-teach",
+  "teaching-oversubscribed"
+] as const;
+
+export type AdvisoryCheckCode = (typeof ADVISORY_CHECK_CODES)[number];
+
 /** Which of the checks that read the report to run. */
 export type OrderCheckOptions = {
   /**
-   * Whether to warn about a hex holding your units and no guard at all.
+   * Advisory codes not to produce. Omitted = the default: everything except `hex-unguarded`.
    *
-   * Off unless asked for. Most hexes are deliberately unguarded, so this speaks about hex after
-   * hex; dropping a guard you had is reported either way, because that is a change you may not
-   * have meant.
+   * Most hexes are deliberately unguarded, so warning about every one of them speaks about hex
+   * after hex; dropping a guard you had is reported either way, because that is a change you may
+   * not have meant.
    */
-  warnOnUnguardedHex?: boolean;
+  disabledCodes?: readonly AdvisoryCheckCode[];
 };
 
 export type OrderValidationResult = {
@@ -836,7 +850,7 @@ export interface CoreAdapter {
     rawOrders: string,
     rulesetJson: string | null,
     rawReport: string | null,
-    warnOnUnguardedHex: boolean
+    disabledCodes: readonly string[]
   ): Promise<unknown> | unknown;
   orderCommands(): Promise<unknown> | unknown;
   planRoute(
@@ -1170,7 +1184,7 @@ export interface WasmBindings {
     rawOrders: string,
     rulesetJson: string | null,
     rawReport: string | null,
-    warnOnUnguardedHex: boolean
+    disabledCodes: readonly string[]
   ): unknown;
   order_commands_state(): unknown;
   plan_route_state(
@@ -1804,7 +1818,7 @@ export function createCoreClient(adapter: CoreAdapter): CoreClient {
         rawOrders,
         rulesetJson,
         rawReport,
-        options.warnOnUnguardedHex ?? false
+        options.disabledCodes ?? ["hex-unguarded"]
       );
       return normalizeOrderValidationResult(value);
     },
@@ -2038,9 +2052,9 @@ export function createWasmAdapter(bindings: WasmBindings): CoreAdapter {
       rawOrders: string,
       rulesetJson: string | null,
       rawReport: string | null,
-      warnOnUnguardedHex: boolean
+      disabledCodes: readonly string[]
     ) {
-      return bindings.validate_orders_state(rawOrders, rulesetJson, rawReport, warnOnUnguardedHex);
+      return bindings.validate_orders_state(rawOrders, rulesetJson, rawReport, disabledCodes);
     },
     orderCommands() {
       return bindings.order_commands_state();
@@ -2226,13 +2240,13 @@ export function createTauriAdapter(invoke: TauriInvoke): CoreAdapter {
       rawOrders: string,
       rulesetJson: string | null,
       rawReport: string | null,
-      warnOnUnguardedHex: boolean
+      disabledCodes: readonly string[]
     ) {
       return invoke<OrderValidationResultWireShape>("validate_orders", {
         raw_orders: rawOrders,
         ruleset_json: rulesetJson,
         raw_report: rawReport,
-        warn_on_unguarded_hex: warnOnUnguardedHex
+        disabled_codes: disabledCodes
       });
     },
     orderCommands() {

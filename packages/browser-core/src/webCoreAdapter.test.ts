@@ -25,8 +25,8 @@ function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
       rawOrders: string,
       rulesetJson: string | null,
       rawReport: string | null,
-      warnOnUnguardedHex: boolean
-    ) => ({ diagnostics: [], rawOrders, rulesetJson, rawReport, warnOnUnguardedHex }),
+      disabledCodes: readonly string[]
+    ) => ({ diagnostics: [], rawOrders, rulesetJson, rawReport, disabledCodes }),
     order_commands_state: () => ["GIVE", "MOVE", "WORK"],
     export_map_state: (rawReport: string, rememberedJson: string, requestJson: string) =>
       `; Map export from Atlantis HUD\n; ${rawReport} ${rememberedJson} ${requestJson}\n`,
@@ -198,12 +198,14 @@ describe("web core adapter", () => {
     // Every argument is asserted, not just the orders: the report and the option are what the
     // checks that read the turn depend on, and an adapter that dropped them would still return a
     // perfectly well-shaped answer with half the checks silently not run.
-    expect(await adapter.validateOrders("MOVE R1 R2", null, "the report", true)).toEqual({
+    expect(
+      await adapter.validateOrders("MOVE R1 R2", null, "the report", ["hex-unguarded"])
+    ).toEqual({
       diagnostics: [],
       rawOrders: "MOVE R1 R2",
       rulesetJson: null,
       rawReport: "the report",
-      warnOnUnguardedHex: true
+      disabledCodes: ["hex-unguarded"]
     });
     expect(await adapter.orderCommands()).toEqual(["GIVE", "MOVE", "WORK"]);
   });

@@ -24,7 +24,7 @@ export type CoreWasmModule = {
     rawOrders: string,
     rulesetJson: string | null,
     rawReport: string | null,
-    warnOnUnguardedHex: boolean
+    disabledCodes: readonly string[]
   ): unknown;
   order_commands_state(): unknown;
   plan_route_state(
@@ -588,11 +588,11 @@ export function createWebCoreAdapter(
       rawOrders: string,
       rulesetJson: string | null,
       rawReport: string | null,
-      warnOnUnguardedHex: boolean
+      disabledCodes: readonly string[]
     ) {
       // As with planning, the report goes across as text: the core keys its last parse on it, so
       // validating against the turn already on screen re-parses nothing.
-      return wasm.validate_orders_state(rawOrders, rulesetJson, rawReport, warnOnUnguardedHex);
+      return wasm.validate_orders_state(rawOrders, rulesetJson, rawReport, disabledCodes);
     },
     orderCommands() {
       return wasm.order_commands_state();

@@ -675,10 +675,12 @@ pub fn validate_orders_state(
     raw_orders: String,
     ruleset_json: Option<String>,
     raw_report: Option<String>,
-    warn_on_unguarded_hex: Option<bool>,
+    disabled_codes: Option<Vec<String>>,
 ) -> Result<JsValue, JsValue> {
     let options = OrderCheckOptions {
-        warn_on_unguarded_hex: warn_on_unguarded_hex.unwrap_or(false),
+        disabled: disabled_codes
+            .map(|codes| codes.into_iter().collect())
+            .unwrap_or_else(|| OrderCheckOptions::default().disabled),
     };
 
     // Both the ruleset and the report come from the cache. This runs every time the player stops

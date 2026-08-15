@@ -198,7 +198,7 @@ fn the_broad_guard_check_is_the_noisy_one_the_setting_holds_back() {
         &template(),
         Some(&ruleset()),
         CheckOptions {
-            warn_on_unguarded_hex: true,
+            disabled: std::collections::BTreeSet::new(),
         },
     );
 

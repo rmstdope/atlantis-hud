@@ -708,7 +708,7 @@ describe("merging an allied report", () => {
       "@work",
       "the ruleset its items are checked against",
       "the report the orders were written for",
-      { warnOnUnguardedHex: true }
+      { disabledCodes: [] }
     );
 
     expect(calls).toEqual([
@@ -718,7 +718,7 @@ describe("merging an allied report", () => {
           raw_orders: "@work",
           ruleset_json: "the ruleset its items are checked against",
           raw_report: "the report the orders were written for",
-          warn_on_unguarded_hex: true
+          disabled_codes: []
         }
       }
     ]);
@@ -743,7 +743,7 @@ describe("merging an allied report", () => {
         raw_orders: "@work",
         ruleset_json: null,
         raw_report: null,
-        warn_on_unguarded_hex: false
+        disabled_codes: ["hex-unguarded"]
       }
     ]);
   });
