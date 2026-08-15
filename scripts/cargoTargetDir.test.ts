@@ -55,10 +55,10 @@ describe("the shared cargo build directory", () => {
     // Asked of THIS worktree only. The machine's other worktrees are other sessions' business - a
     // scratch tree elsewhere used to redden every session's gate (ah-efj). What matters for the
     // branch under test is that its own tree finds the repository's cargo config and bead database.
-    const here = execFileSync("git", ["rev-parse", "--show-toplevel"], {
+    const here = execFileSync("git", ["rev-parse", "--path-format=absolute", "--show-toplevel"], {
       cwd: HERE,
       encoding: "utf8"
-    }).trim();
+    }).trimEnd();
 
     expect(strayWorktrees(`worktree ${here}\n`, REPO)).toEqual([]);
   });
