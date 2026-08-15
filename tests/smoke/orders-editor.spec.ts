@@ -22,6 +22,20 @@ const OWN_UNIT = "18642";
 /** Another of the player's units, in the mountain at (26,52) - a different editor entirely. */
 const OTHER_OWN_UNIT = "13401";
 
+/**
+ * Where the first character actually starts: `.cm-line`'s own bounding box is its border edge,
+ * not its text - the line's `padding-left` (2px, per gh-205) sits between the two. Measuring the
+ * box alone would let the budget pass while the text itself sat further right than agreed.
+ */
+async function textStartX(line: ReturnType<Page["locator"]>) {
+  const box = await line.boundingBox();
+  expect(box).not.toBeNull();
+  const paddingLeft = await line.evaluate((element) =>
+    parseFloat(getComputedStyle(element).paddingLeft)
+  );
+  return box!.x + paddingLeft;
+}
+
 async function selectHex(page: Page, regionId: string) {
   const hex = page.getByRole("button", { name: `hex ${regionId}` });
   await hex.focus();
@@ -172,12 +186,11 @@ test("the order text starts within 6px of the editor's edge, marker still showin
   await expect(marker).toHaveCount(0);
 
   const containerBoxClean = await input.boundingBox();
-  const lineBoxClean = await input.locator(".cm-line").first().boundingBox();
   expect(containerBoxClean).not.toBeNull();
-  expect(lineBoxClean).not.toBeNull();
+  const textStartClean = await textStartX(input.locator(".cm-line").first());
   // Agreed budget from the mockup interview (2026-08-15, docs/ui/orders-editor-left-edge.html):
   // 6px from the container's edge to the first character, plus 0.5px of subpixel slack.
-  expect(lineBoxClean!.x - containerBoxClean!.x).toBeLessThanOrEqual(6.5);
+  expect(textStartClean - containerBoxClean!.x).toBeLessThanOrEqual(6.5);
 
   const gutterBoxClean = await gutter.boundingBox();
   expect(gutterBoxClean).not.toBeNull();
@@ -197,10 +210,9 @@ test("the order text starts within 6px of the editor's edge, marker still showin
   await expect(marker).toHaveCSS("content", "normal");
 
   const containerBoxError = await input.boundingBox();
-  const lineBoxError = await input.locator(".cm-line").first().boundingBox();
   expect(containerBoxError).not.toBeNull();
-  expect(lineBoxError).not.toBeNull();
-  expect(lineBoxError!.x - containerBoxError!.x).toBeLessThanOrEqual(6.5);
+  const textStartError = await textStartX(input.locator(".cm-line").first());
+  expect(textStartError - containerBoxError!.x).toBeLessThanOrEqual(6.5);
 
   const gutterBoxError = await gutter.boundingBox();
   expect(gutterBoxError).not.toBeNull();
@@ -224,6 +236,10 @@ test("the marker paints in the warning colour for a warning-severity diagnostic 
   const warnToken = await page.evaluate(() =>
     getComputedStyle(document.documentElement).getPropertyValue("--color-warn").trim()
   );
+  // An empty token (the variable missing) would make the probe below resolve to the browser's
+  // default colour, which could accidentally match `color` and pass for the wrong reason -
+  // guard the token is actually defined before trusting the comparison.
+  expect(warnToken).not.toBe("");
   // Both read through getComputedStyle so token vs. literal formatting differences (hex vs
   // rgb()) do not cause a false mismatch - compare what the browser resolved both to.
   const warnColor = await page.evaluate((token) => {
