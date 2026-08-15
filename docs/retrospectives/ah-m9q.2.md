@@ -2,7 +2,7 @@
 
 - **Implementer:** Storm
 - **Date:** 2026-08-15
-- **PR:** #255 (original build); this file merges without a new PR of its own, see below
+- **PR:** #263 (this retrospective; the original build merged in #255)
 
 ## Verification failed against a build that predated the merge it was checking
 
