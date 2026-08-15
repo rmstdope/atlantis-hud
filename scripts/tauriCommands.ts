@@ -32,13 +32,14 @@ export function registeredCommands(mainRs: string): string[] {
 
 /**
  * The commands `createTauriAdapter` invokes: every string literal passed as `invoke`'s first
- * argument, deduplicated in the order first seen. A command name reached through a variable
- * (`invoke(command, …)`) is invisible to this — there is none in `core-client` today; see
- * `scripts/tauriCommands.test.ts` for how that is checked.
+ * argument, deduplicated in the order first seen. The type parameter is optional, so both
+ * `invoke<T>("cmd", …)` and the untyped `invoke("cmd", …)` are found. A command name reached
+ * through a variable (`invoke(command, …)`) is invisible to this — there is none in `core-client`
+ * today; see `scripts/tauriCommands.test.ts` for how that is checked.
  */
 export function invokedCommands(coreClientIndex: string): string[] {
   const seen = new Set<string>();
-  for (const match of coreClientIndex.matchAll(/invoke<[^>]*>\(\s*"([a-z_]+)"/gu)) {
+  for (const match of coreClientIndex.matchAll(/invoke(?:<[^>]*>)?\(\s*"([a-z_]+)"/gu)) {
     seen.add(match[1]);
   }
   return [...seen];

@@ -49,6 +49,12 @@ describe("invokedCommands", () => {
     expect(invokedCommands(source)).toEqual(["get_engine_info", "delete_game"]);
   });
 
+  it("finds an untyped invoke call too, since the type parameter is optional", () => {
+    const source = `invoke("get_engine_info");`;
+
+    expect(invokedCommands(source)).toEqual(["get_engine_info"]);
+  });
+
   it("deduplicates a command invoked more than once", () => {
     const source = `
       invoke<A>("create_game");
