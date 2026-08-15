@@ -15,7 +15,8 @@
     "test:native": "wdio run wdio.conf.ts",
     "build:web": "pnpm --filter @atlantis/web build",
     "test:pwa": "tsx scripts/withGateLock.ts pnpm exec playwright test --config playwright.pwa.config.ts",
-    "check": "pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run test:smoke && pnpm run build:web && pnpm run test:pwa && cargo fmt --check && cargo clippy --workspace --all-targets -- -D warnings"
+    "check": "pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run test:smoke && pnpm run build:web && pnpm run test:pwa && cargo fmt --check && cargo clippy --workspace --all-targets -- -D warnings",
+    "check:fast": "pnpm run lint && pnpm run typecheck && pnpm run test && cargo fmt --check && cargo clippy --workspace --all-targets -- -D warnings"
   },
   "devDependencies": {
     "@playwright/test": "^1.55.0",

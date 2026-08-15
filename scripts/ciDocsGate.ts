@@ -15,6 +15,9 @@ export const REQUIRED_JOBS = ["wasm", "checks", "rust", "smoke", "pwa", "desktop
 /** The gate job whose output every required job above must be conditioned on. */
 export const GATE_JOB = "changes";
 
+/** The one job scoped on a second gate output, beyond the shared `code` one. */
+export const NATIVE_JOB = "native";
+
 /**
  * Every top-level job block in the workflow, keyed by job id.
  *
@@ -51,6 +54,17 @@ export function jobBlocks(yaml: string): Map<string, string> {
  */
 export function isGatedOnChanges(jobBlock: string): boolean {
   return /^ {4}if:\s*needs\.changes\.outputs\.code\s*==\s*'true'\s*$/mu.test(jobBlock);
+}
+
+/**
+ * Whether a job block is conditioned on both the gate's `code` output and its `native` one - the
+ * shape only `NATIVE_JOB` uses, since the native (Linux Tauri) job also needs the diff to be
+ * native-shaped, not merely non-prose.
+ */
+export function isGatedOnCodeAndNative(jobBlock: string): boolean {
+  return /^ {4}if:\s*needs\.changes\.outputs\.code\s*==\s*'true'\s*&&\s*needs\.changes\.outputs\.native\s*==\s*'true'\s*$/mu.test(
+    jobBlock
+  );
 }
 
 /** Whether a job block declares the gate job as a dependency, which `needs.changes.*` requires. */
@@ -118,13 +132,32 @@ export function matrixOf(jobBlock: string): string | null {
  * Pass whatever comes back through `isSafeGateCondition` before executing it.
  */
 export function gateCondition(yaml: string): string {
-  // Joined across the shell's `\` line continuations first, so the condition reads as one line
+  return gateConditions(yaml)[0] ?? "";
+}
+
+/**
+ * The `native` twin of {@link gateCondition}: the second `if [ -z "$FILES" ] ...; then` block in
+ * the gate step, which answers "does this diff touch anything native-shaped?" (the Rust core, its
+ * Tauri wrappers, the desktop shell, the native suite, or a manifest/lockfile/workflow that changes
+ * what the native job installs or runs).
+ */
+export function nativeGateCondition(yaml: string): string {
+  return gateConditions(yaml)[1] ?? "";
+}
+
+/**
+ * Every `if [ -z "$FILES" ] ...; then` block in the gate step, in source order - `code` first,
+ * `native` second. Returned as shell text so a test can run the real thing rather than restating
+ * the matching in JavaScript; see {@link isSafeGateCondition} before executing any of them.
+ */
+function gateConditions(yaml: string): string[] {
+  // Joined across the shell's `\` line continuations first, so each condition reads as one line
   // however it is wrapped in the YAML. The whitespace on both sides of the continuation collapses
   // to the single space that separates the operands, or the join leaves a double space where the
   // wrap was and the shape check below rejects its own workflow.
   const joined = yaml.replace(/[^\S\n]*\\\n\s*/gu, " ");
-  const match = joined.match(/^\s*if (\[ -z "\$FILES" \].*?); then\s*$/mu);
-  return match === null ? "" : match[1].trim();
+  const matches = [...joined.matchAll(/^\s*if (\[ -z "\$FILES" \].*?); then\s*$/gmu)];
+  return matches.map((match) => match[1].trim());
 }
 
 /**
