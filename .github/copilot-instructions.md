@@ -104,10 +104,11 @@ sweeps are described in `.claude/agents/orchestrator.md`.
 ```
 
 Interactive, and it has to be: it must put a question and an HTML mockup in front of you and wait
-for an answer. It keeps a buffer of **four planned, open, unclaimed beads** ahead of the fleet —
-planning the highest-priority candidate whose blockers are already planned, sleeping ten minutes,
-and refilling when the buffer drops below two. Nothing loops around it; the session runs until you
-end it, and unlike an implementer it is not replaced between beads.
+for an answer. It keeps a buffer of **planned, open, unclaimed beads** ahead of the fleet, sized from
+the number of running implementers — twice that number, never fewer than four — planning the
+highest-priority candidate whose blockers are already planned, sleeping ten minutes, and refilling
+when the buffer drops below half its target. Nothing loops around it; the session runs until you end
+it, and unlike an implementer it is not replaced between beads.
 
 **A P0 pre-empts all of that.** An unplanned P0 is planned immediately, on the pass it appears and
 however full the buffer already is — a missing plan is the only thing keeping an implementer off the
