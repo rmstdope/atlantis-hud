@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ah-gth — The order editor's left edge</title>
+<style>
+  :root { --page:#10151c; --panel:#171e28; --edge:#2a3442; --ink:#d7dee8; --dim:#8a94a3;
+          --danger:#e0564a; --select:#3d6ea5; }
+  body { background: var(--page); color: var(--ink); font: 14px/1.5 system-ui, sans-serif;
+         margin: 0; padding: 24px 32px 64px; }
+  h1 { font-size: 20px; }
+  h2.sec { font-size: 16px; margin: 34px 0 4px; border-top: 1px solid var(--edge); padding-top: 18px; }
+  p.note { color: var(--dim); max-width: 80ch; }
+  .row-flex { display: flex; gap: 26px; flex-wrap: wrap; align-items: flex-start; }
+  .variant { margin: 14px 0; }
+  .variant h3 { font-size: 15px; margin: 0 0 6px; }
+  .pair { display: flex; gap: 14px; }
+  .ed-wrap { }
+  .ed-cap { font-size: 11px; color: var(--dim); margin: 0 0 3px; }
+  .ed { width: 240px; background: var(--panel); border: 1px solid var(--edge); border-radius: 4px;
+        font: 11.5px/1.5 ui-monospace, Menlo, monospace; padding: 4px 0; overflow: hidden; }
+  .ln { display: flex; height: 17px; align-items: center; white-space: pre; }
+  .gut { flex: none; display: flex; align-items: center; justify-content: center; }
+  .gut-current { width: 12.7px; }
+  .gut-slim { width: 5px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: #f87; border: 1px solid #f43; }
+  .dot-token { width: 8px; height: 8px; border-radius: 50%; background: var(--danger); }
+  .bar { width: 3px; height: 15px; background: var(--danger); border-radius: 1px; }
+  .tri { width: 0; height: 0; border-left: 4px solid var(--danger);
+         border-top: 4px solid transparent; border-bottom: 4px solid transparent; }
+  .txt { }
+  .pad6 { padding-left: 6px; }
+  .pad2 { padding-left: 2px; }
+  .err { text-decoration: underline wavy var(--danger); text-decoration-skip-ink: none;
+         text-underline-offset: 3px; }
+  .gut-right { margin-left: auto; width: 12.7px; flex: none; display: flex;
+               align-items: center; justify-content: center; }
+  .diag { border-top: 1px solid var(--edge); color: var(--danger); font-size: 10.5px;
+          padding: 2px 6px; }
+  .cost { color: var(--dim); font-size: 13px; margin: 6px 0 0; max-width: 74ch; }
+  .save { color: var(--ink); background: var(--edge); border-radius: 4px; padding: 0 6px;
+          font-size: 11px; }
+  table.m { border-collapse: collapse; font-size: 12.5px; color: var(--dim); margin: 8px 0; }
+  table.m td, table.m th { border: 1px solid var(--edge); padding: 3px 10px; text-align: left; }
+  table.m th { color: var(--ink); font-weight: 500; }
+  .chip { display: inline-flex; align-items: center; gap: 8px; background: var(--panel);
+          border: 1px solid var(--edge); border-radius: 6px; padding: 5px 12px; margin-right: 10px;
+          font-size: 12px; }
+</style>
+</head>
+<body>
+<h1>ah-gth — Winning back the order editor's left margin</h1>
+<p class="note"><strong>Chosen: Variant 2b</strong> — a 3px full-height bar in the theme's danger
+token, filling a 3px gutter, with 2px line padding and the 1px border: exactly 6px before the first
+character, pinned by the smoke suite at ≤6px. Rejected: trimming only (variant 1, too little); no
+gutter (variant 3, an error scrolled off-screen loses its marker); marker on the right (variant 4,
+zero net width for a full gutter rebuild); the dot and triangle shapes; the 8px bar with breathing
+room, after a direct comparison; and the ≤10px/≤14px budgets. The full interview is in bead
+ah-gth's design field.</p>
+<p class="note">
+Today ~19.7px sit before the first character: a 12.7px lint gutter (always there, dot or no dot),
+CodeMirror's 6px line padding (never overridden), and a 1px border. The no-error state is what you
+look at almost all of the time — every variant below shows it first. In every variant the error also
+still appears in the diagnostics strip under the editor and keeps its wavy underline and its hover
+tooltip on the text itself.
+</p>
+<table class="m">
+<tr><th>Variant</th><th>Left edge</th><th>Reclaimed</th><th>What it costs</th></tr>
+<tr><td>Baseline (today)</td><td>≈19.7px</td><td>—</td><td>—</td></tr>
+<tr><td>1 — trim the padding</td><td>≈15.7px</td><td><span class="save">4px</span></td><td>nothing visible changes but the gap</td></tr>
+<tr><td>2 — slim bar marker</td><td>≈8px</td><td><span class="save">~12px</span></td><td>the dot becomes a bar; gutter stays</td></tr>
+<tr><td>3 — no gutter at all</td><td>≈3px</td><td><span class="save">~17px</span></td><td>underline + diagnostics strip carry the error alone</td></tr>
+<tr><td>4 — marker on the right</td><td>≈3px left</td><td>0 overall</td><td>same width spent on the right; rebuild of the gutter+tooltip code</td></tr>
+</table>
+
+<h2 class="sec">Baseline — today</h2>
+<div class="pair">
+  <div class="ed-wrap"><p class="ed-cap">no errors (the usual view)</p>
+    <div class="ed">
+      <div class="ln"><span class="gut gut-current"></span><span class="txt pad6">MOVE N</span></div>
+      <div class="ln"><span class="gut gut-current"></span><span class="txt pad6">WORK</span></div>
+      <div class="ln"><span class="gut gut-current"></span><span class="txt pad6">GUARD 1</span></div>
+    </div>
+  </div>
+  <div class="ed-wrap"><p class="ed-cap">one error</p>
+    <div class="ed">
+      <div class="ln"><span class="gut gut-current"></span><span class="txt pad6">MOVE N</span></div>
+      <div class="ln"><span class="gut gut-current"><span class="dot"></span></span><span class="txt pad6 err">WROK</span></div>
+      <div class="ln"><span class="gut gut-current"></span><span class="txt pad6">GUARD 1</span></div>
+      <div class="diag">line 2: unknown order WROK</div>
+    </div>
+  </div>
+</div>
+<p class="cost">The gutter is reserved whether or not anything is wrong, and the dot is the last
+hardcoded colour in the editor's chrome (#f87/#f43, ignoring the theme).</p>
+
+<h2 class="sec">Variant 1 — trim the line padding, keep everything else</h2>
+<div class="pair">
+  <div class="ed-wrap"><p class="ed-cap">no errors</p>
+    <div class="ed">
+      <div class="ln"><span class="gut gut-current"></span><span class="txt pad2">MOVE N</span></div>
+      <div class="ln"><span class="gut gut-current"></span><span class="txt pad2">WORK</span></div>
+      <div class="ln"><span class="gut gut-current"></span><span class="txt pad2">GUARD 1</span></div>
+    </div>
+  </div>
+  <div class="ed-wrap"><p class="ed-cap">one error</p>
+    <div class="ed">
+      <div class="ln"><span class="gut gut-current"></span><span class="txt pad2">MOVE N</span></div>
+      <div class="ln"><span class="gut gut-current"><span class="dot-token"></span></span><span class="txt pad2 err">WROK</span></div>
+      <div class="ln"><span class="gut gut-current"></span><span class="txt pad2">GUARD 1</span></div>
+      <div class="diag">line 2: unknown order WROK</div>
+    </div>
+  </div>
+</div>
+<p class="cost">Smallest change, smallest win: 4px. The dot here (and below) is redrawn in the
+theme's danger token instead of the hardcoded red — that lands whichever variant is chosen.</p>
+
+<h2 class="sec">Variant 2 — a slim bar instead of the dot, gutter shrinks with it</h2>
+<div class="pair">
+  <div class="ed-wrap"><p class="ed-cap">no errors</p>
+    <div class="ed">
+      <div class="ln"><span class="gut gut-slim"></span><span class="txt pad2">MOVE N</span></div>
+      <div class="ln"><span class="gut gut-slim"></span><span class="txt pad2">WORK</span></div>
+      <div class="ln"><span class="gut gut-slim"></span><span class="txt pad2">GUARD 1</span></div>
+    </div>
+  </div>
+  <div class="ed-wrap"><p class="ed-cap">one error</p>
+    <div class="ed">
+      <div class="ln"><span class="gut gut-slim"></span><span class="txt pad2">MOVE N</span></div>
+      <div class="ln"><span class="gut gut-slim"><span class="bar"></span></span><span class="txt pad2 err">WROK</span></div>
+      <div class="ln"><span class="gut gut-slim"></span><span class="txt pad2">GUARD 1</span></div>
+      <div class="diag">line 2: unknown order WROK</div>
+    </div>
+  </div>
+</div>
+<p class="cost">The bar reads as "this line", not "this word", and a 5px gutter is a quarter of
+today's margin. The gutter's hover tooltip and click behaviour survive because the gutter itself
+does.</p>
+
+<h2 class="sec">Variant 3 — no gutter at all</h2>
+<div class="pair">
+  <div class="ed-wrap"><p class="ed-cap">no errors — text starts at the frame</p>
+    <div class="ed">
+      <div class="ln"><span class="txt pad2">MOVE N</span></div>
+      <div class="ln"><span class="txt pad2">WORK</span></div>
+      <div class="ln"><span class="txt pad2">GUARD 1</span></div>
+    </div>
+  </div>
+  <div class="ed-wrap"><p class="ed-cap">one error — underline and strip only</p>
+    <div class="ed">
+      <div class="ln"><span class="txt pad2">MOVE N</span></div>
+      <div class="ln"><span class="txt pad2 err">WROK</span></div>
+      <div class="ln"><span class="txt pad2">GUARD 1</span></div>
+      <div class="diag">line 2: unknown order WROK</div>
+    </div>
+  </div>
+</div>
+<p class="cost">All ~17px come back and the no-error state is perfectly clean. The question it
+must answer: is a wavy underline plus the diagnostics strip enough of an announcement when you are
+skimming a long order block? (Scrolled off-screen errors lose their at-a-glance marker entirely.)</p>
+
+<h2 class="sec">Variant 4 — marker moved to the right edge</h2>
+<div class="pair">
+  <div class="ed-wrap"><p class="ed-cap">no errors</p>
+    <div class="ed">
+      <div class="ln"><span class="txt pad2">MOVE N</span><span class="gut-right"></span></div>
+      <div class="ln"><span class="txt pad2">WORK</span><span class="gut-right"></span></div>
+      <div class="ln"><span class="txt pad2">GUARD 1</span><span class="gut-right"></span></div>
+    </div>
+  </div>
+  <div class="ed-wrap"><p class="ed-cap">one error</p>
+    <div class="ed">
+      <div class="ln"><span class="txt pad2">MOVE N</span><span class="gut-right"></span></div>
+      <div class="ln"><span class="txt pad2 err">WROK</span><span class="gut-right"><span class="dot-token"></span></span></div>
+      <div class="ln"><span class="txt pad2">GUARD 1</span><span class="gut-right"></span></div>
+      <div class="diag">line 2: unknown order WROK</div>
+    </div>
+  </div>
+</div>
+<p class="cost">A clean left edge but zero net width — the same 12.7px is spent on the right. And it
+is the expensive one to build: CodeMirror's lintGutter() cannot move sides, so the gutter, its
+tooltip and its filters are all rebuilt by hand.</p>
+
+<h2 class="sec">Variant 2b — the chosen bar, squeezed to the ≤6px budget</h2>
+<p class="note">Route 2 with the bar's gutter at 3px (the bar fills it), 2px line padding, 1px
+border: exactly 6px before the first character. The bar stands one hair off the frame.</p>
+<div class="pair">
+  <div class="ed-wrap"><p class="ed-cap">no errors</p>
+    <div class="ed">
+      <div class="ln"><span class="gut" style="width:3px"></span><span class="txt pad2">MOVE N</span></div>
+      <div class="ln"><span class="gut" style="width:3px"></span><span class="txt pad2">WORK</span></div>
+      <div class="ln"><span class="gut" style="width:3px"></span><span class="txt pad2">GUARD 1</span></div>
+    </div>
+  </div>
+  <div class="ed-wrap"><p class="ed-cap">one error</p>
+    <div class="ed">
+      <div class="ln"><span class="gut" style="width:3px"></span><span class="txt pad2">MOVE N</span></div>
+      <div class="ln"><span class="gut" style="width:3px"><span class="bar"></span></span><span class="txt pad2 err">WROK</span></div>
+      <div class="ln"><span class="gut" style="width:3px"></span><span class="txt pad2">GUARD 1</span></div>
+      <div class="diag">line 2: unknown order WROK</div>
+    </div>
+  </div>
+</div>
+<p class="cost">Versus the 8px version above: 2px narrower, and the bar loses its sliver of
+breathing room from the frame. Versus today: ~13.7px reclaimed.</p>
+
+<h2 class="sec">If a marker survives — its shape</h2>
+<p class="note">All drawn in the theme's danger token (both themes follow automatically):</p>
+<p>
+  <span class="chip"><span class="dot-token"></span> dot — today's shape, themed</span>
+  <span class="chip"><span class="bar"></span> bar — marks the whole line</span>
+  <span class="chip"><span class="tri"></span> triangle — points at the line</span>
+</p>
+</body>
+</html>
