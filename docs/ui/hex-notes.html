@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hex notes — where they are written, how they are drawn</title>
+<style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --warn:#d9a441; --danger:#d97070;
+    --note:#f2d27a; --note-ink:#2b2410;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, section, footer { max-width:1320px; margin-left:auto; margin-right:auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; }
+  h1 span { color:var(--brass); }
+  h2.rule { font-size:17px; letter-spacing:0.3px; margin:38px 0 4px; border-top:1px solid var(--edge); padding-top:20px; }
+  h2.rule em { color:var(--brass); font-style:normal; font-size:11px; letter-spacing:1.8px; text-transform:uppercase; margin-right:10px; }
+  header p, section > p { color:var(--ink-soft); max-width:92ch; margin-top:10px; font-size:14px; }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:0.9em; color:var(--brass-bright); }
+  .cards { display:grid; grid-template-columns:repeat(2,1fr); gap:20px; margin-top:22px; align-items:start; }
+  .cards.three { grid-template-columns:repeat(3,1fr); }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; display:flex; flex-direction:column; gap:11px; }
+  .card h3 { font-size:17px; }
+  .card h3 em { color:var(--brass); font-style:normal; font-size:12px; letter-spacing:1.6px; margin-right:8px; }
+  .card h3 .chosen { color:var(--ground); background:var(--brass); border-radius:3px; font:11px/1.6 'Helvetica Neue',Arial,sans-serif; letter-spacing:1.2px; text-transform:uppercase; padding:1px 6px; margin-left:8px; vertical-align:2px; }
+  .card.pick { border-color:var(--brass); }
+  .verdict { color:var(--ink) !important; border-left:2px solid var(--brass); padding-left:12px; margin-top:14px; }
+  .verdict b { color:var(--brass); font-weight:normal; }
+  .concept { color:var(--ink-soft); font-size:13px; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; padding:10px; display:flex; flex-direction:column; gap:10px; }
+  .stage svg { display:block; width:100%; height:auto; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"− "; color:var(--danger); }
+  .cap { color:var(--ink-dim); font-size:12px; font-style:italic; }
+
+  /* the region panel, redrawn */
+  .pane { font-family:'Helvetica Neue',Arial,sans-serif; background:var(--panel); border:1px solid var(--edge); border-radius:6px; width:100%; max-width:330px; font-size:12px; }
+  .pane .bar { display:flex; align-items:center; gap:6px; padding:6px 10px; border-bottom:1px solid var(--edge); }
+  .pane .name { font-weight:600; letter-spacing:.3px; }
+  .pane .hint { color:var(--ink-dim); }
+  .grow { flex:1; }
+  .caret { color:var(--ink-dim); font-size:10px; }
+  .body { padding:8px 10px 10px; display:grid; gap:6px; }
+  .lede { color:var(--ink-soft); }
+  .lede b { color:var(--ink); font-weight:600; }
+  .facts { display:grid; grid-template-columns:auto 1fr; gap:2px 12px; color:var(--ink-soft); }
+  .facts dt { color:var(--ink-dim); }
+  .sec { font-size:10.5px; letter-spacing:1.4px; text-transform:uppercase; color:var(--brass); margin-top:6px; display:flex; align-items:center; gap:8px; }
+  .sec .n { color:var(--ink-dim); letter-spacing:0; }
+  .sec .grow { flex:1; }
+  .absent { color:var(--ink-dim); font-style:italic; }
+  .chip { display:inline-flex; align-items:center; gap:5px; border:1px solid var(--edge); border-radius:4px; padding:1px 7px; color:var(--ink-dim); font-size:11px; }
+  .chip.on { border-color:var(--select); background:rgba(74,159,216,.15); color:var(--ink); }
+  .tick { width:11px; height:11px; border:1px solid var(--ink-dim); border-radius:2px; position:relative; flex:none; }
+  .chip.on .tick { background:var(--select); border-color:var(--select); }
+  .chip.on .tick::after { content:""; position:absolute; left:2.9px; top:0.4px; width:3.2px; height:6.4px; border:solid var(--ground); border-width:0 1.6px 1.6px 0; transform:rotate(42deg); }
+  .btn { display:inline-flex; align-items:center; gap:4px; border:1px solid var(--edge); background:var(--ground); border-radius:4px; padding:2px 8px; color:var(--ink); font-size:11px; }
+  .btn.primary { border-color:var(--brass); color:var(--brass-bright); }
+  .btn.quiet { border-color:transparent; color:var(--ink-dim); }
+  .note-row { display:grid; grid-template-columns:1fr auto; gap:6px 8px; align-items:start; padding:6px 8px; background:var(--raised); border:1px solid var(--edge-soft); border-radius:5px; }
+  .note-row .txt { color:var(--ink); white-space:pre-wrap; }
+  .note-row .meta { grid-column:1 / -1; display:flex; gap:8px; align-items:center; color:var(--ink-dim); font-size:10.5px; }
+  .note-row .meta .grow { flex:1; }
+  .note-row .pin { color:var(--note); font-size:12px; }
+  textarea.ta { width:100%; min-height:54px; background:var(--ground); border:1px solid var(--select); border-radius:4px; color:var(--ink); font:12px/1.4 'Helvetica Neue',Arial,sans-serif; padding:6px; resize:vertical; }
+  .row { display:flex; gap:6px; align-items:center; }
+  .kbd { border:1px solid var(--edge); border-bottom-width:2px; border-radius:3px; padding:0 4px; font-size:10px; color:var(--ink-dim); }
+
+  /* popover on the map */
+  .mapwrap { position:relative; }
+  .pop { position:absolute; left:52%; top:26%; width:220px; font-family:'Helvetica Neue',Arial,sans-serif; font-size:12px; background:var(--raised); border:1px solid var(--edge); border-radius:6px; padding:8px; box-shadow:0 8px 24px rgba(0,0,0,.45); display:grid; gap:6px; }
+  .pop::before { content:""; position:absolute; left:-7px; top:14px; border:7px solid transparent; border-right-color:var(--edge); border-left:0; }
+  .pop .ttl { font-size:10.5px; letter-spacing:1.2px; text-transform:uppercase; color:var(--brass); }
+
+  /* chip strip + badges menu */
+  .chipstrip { font-family:'Helvetica Neue',Arial,sans-serif; display:flex; gap:6px; align-items:center;
+               background:var(--panel); border:1px solid var(--edge); border-radius:6px; padding:6px 8px; width:max-content; }
+  .lchip { display:inline-flex; align-items:center; gap:5px; font-size:11px; border:1px solid var(--edge);
+          border-radius:999px; padding:2px 9px; color:var(--ink-dim); }
+  .lchip.on { border-color:var(--select); background:rgba(74,159,216,.15); color:var(--ink); }
+  .lchip .box { width:9px; height:9px; border:1px solid currentColor; border-radius:2px; }
+  .lchip.on .box { background:var(--select); border-color:var(--select); }
+  .lchip.new { border-color:var(--brass); background:rgba(217,164,65,.16); color:var(--brass-bright); }
+  .lchip.new .box { background:var(--brass); border-color:var(--brass); }
+  .menu { font-family:'Helvetica Neue',Arial,sans-serif; font-size:11.5px; background:var(--raised);
+          border:1px solid var(--edge); border-radius:6px; padding:6px 0; width:170px; }
+  .menu .mrow { display:flex; gap:7px; align-items:center; padding:3px 11px; color:var(--ink-soft); }
+  .menu .mrow.hl { color:var(--brass-bright); background:rgba(217,164,65,.1); }
+  .menu .mrow .box { width:9px; height:9px; border:1px solid currentColor; border-radius:2px; background:currentColor; }
+  .menu .sep { height:1px; background:var(--edge); margin:5px 0; }
+
+  .strip { display:grid; grid-template-columns:repeat(3,1fr); gap:20px; margin-top:20px; }
+  .narrow { width:210px; }
+  footer { margin-top:44px; border-top:1px solid var(--edge); padding-top:16px; color:var(--ink-dim); font-size:13px; }
+  @media (max-width:1000px) { .cards, .cards.three, .strip { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Hex notes <span>· where they are written, how they are drawn</span></h1>
+  <p>Issue #261 asks for free-text notes on a hex — “Build a castle here” — each with a choice of
+  whether it shows on the map or only in the region panel. The map is SVG; unit and building marks
+  are painted by the five themes, but chrome that belongs to the reader — the selection ring, the
+  province outline and its atlas label — is drawn once by the map for every theme. A note is the
+  reader's, so it is drawn that way: one layer, one look in every theme, hidden with the rest of the
+  reader's chrome by a badge. Three questions below, then the states the happy path hides.</p>
+  <p class="verdict"><b>Chosen (2026-08-15):</b> A — the Notes section in the region panel is the only
+  editor. On the map, a <b>pin</b> (from 1/2), which when clicked <b>selects the hex and opens a stack of
+  tags</b> (round 2, a) showing every map-visible note on that hex; one open at a time, closed by a click
+  elsewhere, Escape, or the pin again; keyboard users read the panel. The map-wide switch is a
+  <b>Badges menu entry, “Notes”</b>. Many notes per hex, a new note starts on the map, stamped with the
+  turn it was written on, multi-line up to 500 characters. Stored in the game's own store, like order
+  drafts, so notes travel with a backup. All the words are as drawn.</p>
+</header>
+
+<!-- ============================================================ Q1 -->
+<h2 class="rule"><em>Question 1</em>Where a note is written and edited</h2>
+<p>Right-click on the map already means “centre here without selecting” (ah-t2i), so a context menu
+is not on offer. Both candidates put the editor in the region panel, which is where the selected hex is
+already described and which is keyboard-reachable; they differ in whether the map itself is also a
+way in.</p>
+
+<main class="cards">
+  <section class="card pick">
+    <h3><em>A</em>A Notes section in the region panel, and only there</h3><span class="chosen">chosen</span>
+    <p class="concept">A <code>Notes</code> section at the foot of the region panel — after Structures — lists
+    the hex's notes. Each row is the text, a <code>Map</code> chip that says whether it is drawn on the map,
+    and a remove button. <code>Add note</code> opens a textarea in place. Pins on the map are paint only:
+    clicking one selects the hex, exactly as clicking the hex does, and the panel shows the notes.</p>
+    <div class="stage">
+      <div class="pane">
+        <div class="bar"><span class="name">Region</span><span class="hint">— plain (7,53)</span><span class="grow"></span><span class="caret">▾</span></div>
+        <div class="body">
+          <p class="lede">in Tarmalyon · contains <b>Cythera</b> [city]</p>
+          <dl class="facts"><dt>Population</dt><dd>7,340 humans</dd><dt>Tax base</dt><dd>$1,468</dd></dl>
+          <div class="sec">Exits <span class="n">4</span></div>
+          <div class="lede">N plain (7,51) · SE forest (8,54) · …</div>
+          <div class="sec">Notes <span class="n">2</span><span class="grow"></span><span class="btn">+ Add note</span></div>
+          <div class="note-row"><div class="txt">Build a castle here — best tax base on the coast</div>
+            <span class="pin" title="shown on the map">◆</span>
+            <div class="meta"><span>turn 71</span><span class="grow"></span><span class="chip on"><span class="tick"></span>Map</span><span class="btn quiet">Remove</span></div></div>
+          <div class="note-row"><div class="txt">Merchant said the road N is bandit country</div>
+            <span></span>
+            <div class="meta"><span>turn 68</span><span class="grow"></span><span class="chip"><span class="tick"></span>Map</span><span class="btn quiet">Remove</span></div></div>
+        </div>
+      </div>
+      <p class="cap">two notes; the first is on the map (lit chip, ◆), the second is panel-only</p>
+    </div>
+    <ul class="notes">
+      <li>One place to learn; the panel already owns the hex's facts</li>
+      <li>Nothing new to hit-test on the map — marks stay <code>pointer-events: none</code></li>
+      <li>Works for an unexplored hex, which has a panel but no report</li>
+      <li class="con">Reading a note means glancing at the panel, not the map</li>
+    </ul>
+  </section>
+
+  <section class="card">
+    <h3><em>B</em>The same section, plus the pin opens a popover on the map</h3>
+    <p class="concept">Everything in A, and a map-visible note's pin is clickable: it opens a small
+    popover anchored to the hex with the note's text, its <code>Map</code> chip and an edit field.
+    Escape or a click elsewhere closes it (a dismiss layer, like the Badges menu).</p>
+    <div class="stage">
+      <div class="mapwrap">
+        <svg id="mapB" viewBox="0 0 420 220"></svg>
+        <div class="pop">
+          <div class="ttl">Note · plain (7,53)</div>
+          <div class="txt">Build a castle here — best tax base on the coast</div>
+          <div class="row"><span class="chip on"><span class="tick"></span>Map</span><span class="grow"></span><span class="btn">Edit</span><span class="btn quiet">Remove</span></div>
+        </div>
+      </div>
+      <p class="cap">the popover, opened from the pin on (7,53)</p>
+    </div>
+    <ul class="notes">
+      <li>A note is read where it was pinned</li>
+      <li class="con">The one clickable mark on a map where every other mark is not — pins need their own hit layer above the hex polygons</li>
+      <li class="con">A second editor to keep in step with the panel's; a popover on a small screen covers the hex it describes</li>
+      <li class="con">Panel-only notes still need the panel, so the panel section is built either way</li>
+    </ul>
+  </section>
+</main>
+
+<!-- ============================================================ Q2 -->
+<h2 class="rule"><em>Question 2</em>How a map-visible note is drawn</h2>
+<p>Drawn by the map, once for every theme, screen-constant like a label, in the note colour
+(<code>--note</code>, a warm paper yellow that no theme uses for terrain or marks). All three keep the mark
+off the hex centre, where units and settlements sit. Shown at mid and near zoom; the far band hides
+every label and would make a 9px hex mostly pin, so far hides pins too — the same rule as unit marks.
+Each is drawn at mid zoom (left) and near zoom (right); the third hex on each has three notes. <b>Outcome:</b> none of the three as drawn — the pin from 1, opening into the tag from 3 on click; see round 2 below.</p>
+
+<main class="cards three">
+  <section class="card">
+    <h3><em>1</em>Pin only</h3>
+    <p class="concept">A small paper-note glyph in the hex's upper-right, with the count when a hex has
+    more than one map-visible note. Hover shows the text (SVG <code>&lt;title&gt;</code>). The text is
+    read in the panel.</p>
+    <div class="stage"><svg id="q2a-mid" viewBox="0 0 300 150"></svg><svg id="q2a-near" viewBox="0 0 300 150"></svg></div>
+    <ul class="notes">
+      <li>Never overlaps a neighbour, at any zoom</li>
+      <li>Same mark at mid and near — nothing to learn twice</li>
+      <li class="con">The note itself is one hover or one click away</li>
+    </ul>
+  </section>
+  <section class="card">
+    <h3><em>2</em>Pin at mid, pin and text at near</h3>
+    <p class="concept">The same pin; at near zoom the first line of the note is set beneath the hex in the
+    label style the settlement name uses, truncated to about 22 characters with an ellipsis. Several notes
+    on a hex: the newest map-visible one is the label, the pin carries the count.</p>
+    <div class="stage"><svg id="q2b-mid" viewBox="0 0 300 150"></svg><svg id="q2b-near" viewBox="0 0 300 150"></svg></div>
+    <ul class="notes">
+      <li>The note is read on the map when there is room to read it</li>
+      <li>Follows the settlement-name rule the player already knows: text only when near</li>
+      <li class="con">A label under a hex that also has a settlement name — two labels stack (shown on the middle hex)</li>
+    </ul>
+  </section>
+  <section class="card">
+    <h3><em>3</em>Sticky tag</h3>
+    <p class="concept">A small yellow tag with the note's first words, hung off the hex's north-east
+    edge like a tab on an atlas, at mid and near alike; several notes fan as stacked tags.</p>
+    <div class="stage"><svg id="q2c-mid" viewBox="0 0 300 150"></svg><svg id="q2c-near" viewBox="0 0 300 150"></svg></div>
+    <ul class="notes">
+      <li>The most legible from across the room; reads as a note, not a badge</li>
+      <li class="con">At mid zoom the tag is wider than the hex and hides the neighbour to its NE</li>
+      <li class="con">A second colour system on top of terrain and marks, in a solid block</li>
+    </ul>
+  </section>
+</main>
+
+
+<!-- ============================================================ Q2 as chosen -->
+<h2 class="rule"><em>Question 2, round 2</em>A pin that expands into a tag when clicked</h2>
+<p>Chosen in round 1: the pin from 1/2, and clicking it opens the tag from 3. So a pin is the one
+clickable mark on the map (it gets its own hit target above the hex polygons; every other mark stays
+<code>pointer-events: none</code>). Below, the pin on (3,3) is open and the pin on (12,6) — three notes — is
+open too, in each of two ways of opening. Both maps at mid zoom; the tag is screen-constant, wraps at
+about 28 characters, and holds at most four lines before an ellipsis.</p>
+<main class="cards">
+  <section class="card pick">
+    <h3><em>a</em>The tag shows every map-visible note on the hex, stacked</h3><span class="chosen">chosen</span>
+    <p class="concept">One tag per note, newest on top, each with its full text (wrapped). Three notes
+    are three tags. The hex's whole story at one click; a hex with many notes grows a tall stack.</p>
+    <div class="stage"><svg id="q2r-a" viewBox="0 0 300 150"></svg></div>
+    <ul class="notes"><li>Everything on the map at once</li><li class="con">A stack of tags covers the hexes to the NE</li></ul>
+  </section>
+  <section class="card">
+    <h3><em>b</em>The tag shows the newest note, and says how many more</h3>
+    <p class="concept">One tag: the newest map-visible note, full text, and a last line
+    “<code>+2 more in the panel</code>” when there are others. The stack never grows; the panel is where
+    the rest is read.</p>
+    <div class="stage"><svg id="q2r-b" viewBox="0 0 300 150"></svg></div>
+    <ul class="notes"><li>Bounded: one tag, four lines, whatever the hex holds</li><li class="con">The second and third notes are one glance away, in the panel</li></ul>
+  </section>
+</main>
+<p>What is not drawn and is asked with the question: whether clicking the pin also selects the hex
+(so the panel shows the notes at the same time); what closes the tag — a click anywhere else and
+Escape, or only a second click on the pin; whether more than one tag can be open at once; and whether
+keyboard users get a way to open a tag or read notes in the panel instead.</p>
+
+<!-- ============================================================ Q3 -->
+<h2 class="rule"><em>Question 3</em>Where the map-wide switch lives</h2>
+<p>Every note has its own <code>Map</code> chip; this is the one switch that hides all pins at once, the way
+<code>Regions</code> hides the province outlines. Precedent (region-decorations.html) chose the Badges menu
+for Regions, over a chip.</p>
+<div class="strip">
+  <section class="card pick">
+    <h3><em>i</em>An entry in the Badges menu</h3><span class="chosen">chosen</span>
+    <p class="concept">A twelfth entry, <code>Notes</code>, after Regions, on by default like the others.</p>
+    <div class="stage" style="padding:18px 12px">
+      <div class="chipstrip">
+        <span class="lchip on"><span class="box"></span>Staleness</span>
+        <span class="lchip on"><span class="box"></span>Movement</span>
+        <span class="lchip">Badges <span class="caret">▾</span></span>
+      </div>
+      <div class="menu">
+        <div class="mrow"><span class="box"></span>Shafts</div>
+        <div class="mrow"><span class="box"></span>Lairs</div>
+        <div class="mrow"><span class="box"></span>Roads</div>
+        <div class="mrow"><span class="box"></span>Regions</div>
+        <div class="mrow hl"><span class="box"></span>Notes</div>
+        <div class="sep"></div>
+        <div class="mrow">All on · All off</div>
+      </div>
+    </div>
+    <ul class="notes"><li>Where the last map-wide switch went; nothing new on the strip</li><li class="con">Two clicks, and a note is not a badge from the report</li></ul>
+  </section>
+  <section class="card">
+    <h3><em>ii</em>A layer chip</h3>
+    <p class="concept">A third chip, <code>Notes</code>, beside Staleness and Movement.</p>
+    <div class="stage" style="padding:18px 12px">
+      <div class="chipstrip">
+        <span class="lchip on"><span class="box"></span>Staleness</span>
+        <span class="lchip on"><span class="box"></span>Movement</span>
+        <span class="lchip new"><span class="box"></span>Notes</span>
+        <span class="lchip">Badges <span class="caret">▾</span></span>
+      </div>
+    </div>
+    <ul class="notes"><li>One click, always visible</li><li class="con">The strip grows again; Regions was refused this seat for the same reason</li></ul>
+  </section>
+  <section class="card">
+    <h3><em>—</em>Per-note default</h3>
+    <p class="concept">Separately: when a note is created, is its <code>Map</code> chip on or off? The
+    reporter's wording (“a checkbox indicating if it is to be visible on the map”) does not say. This
+    is asked in the question, not drawn. <b>Chosen: on.</b></p>
+  </section>
+</div>
+
+<!-- ============================================================ states -->
+<h2 class="rule"><em>The states</em>What the happy path hides</h2>
+<p>All drawn for candidate A's panel; B's panel is identical.</p>
+<div class="strip">
+  <section class="card">
+    <h3>Empty, and unexplored</h3>
+    <div class="stage">
+      <div class="pane">
+        <div class="bar"><span class="name">Region</span><span class="hint">— plain (7,53)</span><span class="grow"></span><span class="caret">▾</span></div>
+        <div class="body">
+          <div class="sec">Structures <span class="n">1</span></div>
+          <div class="lede">Cythera [city]</div>
+          <div class="sec">Notes<span class="grow"></span><span class="btn">+ Add note</span></div>
+          <div class="absent">No notes on this hex.</div>
+        </div>
+      </div>
+      <p class="cap">no notes: the section is still there, so the button is</p>
+      <div class="pane">
+        <div class="bar"><span class="name">Region</span><span class="hint">— unexplored (9,55)</span><span class="grow"></span><span class="caret">▾</span></div>
+        <div class="body">
+          <div class="absent">Nothing is known about this hex. No report has described it, and no neighbour has named it.</div>
+          <div class="sec">Notes <span class="n">1</span><span class="grow"></span><span class="btn">+ Add note</span></div>
+          <div class="note-row"><div class="txt">Ally says: dragon lair, do not enter</div><span class="pin">◆</span>
+            <div class="meta"><span>turn 71</span><span class="grow"></span><span class="chip on"><span class="tick"></span>Map</span><span class="btn quiet">Remove</span></div></div>
+        </div>
+      </div>
+      <p class="cap">an unexplored hex can carry a note — that is the “ally named this hex” case</p>
+    </div>
+  </section>
+  <section class="card">
+    <h3>Editing, and a long note</h3>
+    <div class="stage">
+      <div class="pane">
+        <div class="bar"><span class="name">Region</span><span class="hint">— plain (7,53)</span><span class="grow"></span><span class="caret">▾</span></div>
+        <div class="body">
+          <div class="sec">Notes <span class="n">1</span></div>
+          <textarea class="ta">Build a castle here — best tax base on the coast</textarea>
+          <div class="row"><span class="chip on"><span class="tick"></span>Map</span><span class="grow"></span><span class="btn quiet">Cancel</span><span class="btn primary">Save</span></div>
+          <div class="cap"><span class="kbd">⌘↩</span> saves · <span class="kbd">Esc</span> cancels · 500 characters at most</div>
+        </div>
+      </div>
+      <p class="cap">the editor, in place of the row; a new note opens the same editor empty, focus in the field</p>
+      <div class="pane">
+        <div class="body">
+          <div class="note-row"><div class="txt">Scouted 3 turns running: 40 goblins in the lair to the SW, they raid the road on odd months. Do not tax here with fewer than 30 men, and keep a guard on the bridge.</div><span></span>
+            <div class="meta"><span>turn 66</span><span class="grow"></span><span class="chip"><span class="tick"></span>Map</span><span class="btn quiet">Remove</span></div></div>
+        </div>
+      </div>
+      <p class="cap">a long note wraps in the panel; on the map (candidate 2) it is “Scouted 3 turns runni…”</p>
+    </div>
+  </section>
+  <section class="card">
+    <h3>Many, removing, and narrow</h3>
+    <div class="stage">
+      <div class="pane">
+        <div class="body">
+          <div class="sec">Notes <span class="n">4</span><span class="grow"></span><span class="btn">+ Add note</span></div>
+          <div class="note-row"><div class="txt">Build a castle here</div><span class="pin">◆</span><div class="meta"><span>turn 71</span><span class="grow"></span><span class="chip on"><span class="tick"></span>Map</span><span class="btn quiet">Remove</span></div></div>
+          <div class="note-row"><div class="txt">Merchant said the road N is bandit country</div><span></span><div class="meta"><span>turn 68</span><span class="grow"></span><span class="chip"><span class="tick"></span>Map</span><span class="btn quiet">Remove</span></div></div>
+          <div class="note-row" style="border-color:var(--danger)"><div class="txt" style="color:var(--ink-dim)">Wages good until turn 60</div><span></span><div class="meta"><span style="color:var(--danger)">Remove this note?</span><span class="grow"></span><span class="btn quiet">Keep</span><span class="btn" style="border-color:var(--danger);color:var(--danger)">Remove</span></div></div>
+          <div class="note-row"><div class="txt">Ask Bael about the shaft</div><span class="pin">◆</span><div class="meta"><span>turn 52</span><span class="grow"></span><span class="chip on"><span class="tick"></span>Map</span><span class="btn quiet">Remove</span></div></div>
+        </div>
+      </div>
+      <p class="cap">newest first; Remove asks once, in the row, and never opens a dialog</p>
+      <div class="pane narrow">
+        <div class="bar"><span class="name">Region</span><span class="hint">— (7,53)</span><span class="grow"></span><span class="caret">▾</span></div>
+        <div class="body">
+          <div class="sec">Notes <span class="n">1</span></div>
+          <div class="btn" style="width:max-content">+ Add note</div>
+          <div class="note-row"><div class="txt">Build a castle here</div><span class="pin">◆</span><div class="meta"><span>t71</span><span class="grow"></span><span class="chip on"><span class="tick"></span>Map</span><span class="btn quiet">✕</span></div></div>
+        </div>
+      </div>
+      <p class="cap">at the panel's narrowest the button drops under the heading and Remove becomes ✕</p>
+    </div>
+  </section>
+</div>
+
+<footer>Mockup for bead ah-o1t (issue #261). Self-contained; the maps are inline SVG from a short script.</footer>
+
+<script>
+const NEIGH = [[1,1],[0,2],[-1,1],[-1,-1],[0,-2],[1,-1]];
+const TERRAIN = ["#2a3a2c","#333b2a","#3a352c","#2c3540","#39332e"];
+function hexPath(R){ return Array.from({length:6},(_,k)=>{const a=Math.PI/180*60*k;return (R*Math.cos(a)).toFixed(2)+","+(R*Math.sin(a)).toFixed(2);}).join(" "); }
+function grid(svg, R, cols, rows, opts){
+  const CP=R*1.5, RP=R*Math.sqrt(3)/2, pad=R*1.4;
+  const W=(cols-1)*CP+2*pad, H=(rows-1)*RP+2*pad;
+  svg.setAttribute("viewBox", `${(-pad).toFixed(1)} ${(-pad).toFixed(1)} ${W.toFixed(1)} ${H.toFixed(1)}`);
+  let s="";
+  for(let x=0;x<cols;x++)for(let y=0;y<rows;y++){ if((x+y)%2)continue;
+    s+=`<polygon points="${hexPath(R)}" transform="translate(${(x*CP).toFixed(1)},${(y*RP).toFixed(1)})" fill="${TERRAIN[(x*7+y*3)%5]}" stroke="#1a2129" stroke-width="0.8"/>`; }
+  // a settlement on the middle noted hex, and a unit mark
+  const sc = opts.settle; if(sc){ const cx=sc[0]*CP, cy=sc[1]*RP;
+    s+=`<circle cx="${cx}" cy="${cy}" r="${(R*0.22).toFixed(1)}" fill="#dbe3ec"/>`;
+    if(opts.near) s+=`<text x="${cx}" y="${(cy+R*0.62).toFixed(1)}" text-anchor="middle" font-size="${opts.near?7*2.3:0}" font-style="italic" font-family="Georgia,serif" fill="#dbe3ec" stroke="#10151c" stroke-width="4.6" paint-order="stroke fill">Cythera</text>`; }
+  for(const [ux,uy] of (opts.units||[])){ s+=`<rect x="${(ux*CP-R*0.18).toFixed(1)}" y="${(uy*RP-R*0.18).toFixed(1)}" width="${(R*0.36).toFixed(1)}" height="${(R*0.36).toFixed(1)}" fill="#7fa8d9"/>`; }
+  // selection ring on the first noted hex
+  if(opts.sel){ const [sx,sy]=opts.sel; s+=`<polygon points="${hexPath(R)}" transform="translate(${(sx*CP).toFixed(1)},${(sy*RP).toFixed(1)})" fill="none" stroke="#10151c" stroke-width="3.5"/><polygon points="${hexPath(R)}" transform="translate(${(sx*CP).toFixed(1)},${(sy*RP).toFixed(1)})" fill="none" stroke="#f4f7fa" stroke-width="1.6"/>`; }
+  s += notesLayer(opts.notes||[], CP, RP, R, opts);
+  svg.innerHTML=s;
+}
+// glyph: a little paper note, screen-constant (drawn here at a fixed 9px "screen" size)
+function pin(cx,cy,count,k){
+  k=k||1; const w=9*k,h=10*k, x=cx-w/2, y=cy-h/2;
+  let s=`<g>`;
+  s+=`<path d="M${x} ${y}h${w-3*k}l${3*k} ${3*k}v${h-3*k}h-${w}z" fill="#f2d27a" stroke="#2b2410" stroke-width="${0.9*k}"/>`;
+  s+=`<path d="M${x+w-3*k} ${y}v${3*k}h${3*k}" fill="none" stroke="#2b2410" stroke-width="${0.9*k}"/>`;
+  s+=`<path d="M${x+2*k} ${y+5*k}h${4*k}M${x+2*k} ${y+7.2*k}h${3*k}" stroke="#2b2410" stroke-width="${0.8*k}"/>`;
+  if(count>1) s+=`<circle cx="${x+w}" cy="${y}" r="${3.6*k}" fill="#2b2410"/><text x="${x+w}" y="${y+1.9*k}" text-anchor="middle" font-size="${5*k}" font-family="Helvetica Neue,Arial" fill="#f2d27a">${count}</text>`;
+  return s+`</g>`;
+}
+function tag(cx,cy,text,i,k){
+  k=k||1; const x=cx+2*k, y=cy-9*k+i*7*k; const w=(Math.min(text.length,14)*3.6+8)*k;
+  return `<g><path d="M${x} ${y}h${w}v${9*k}h-${w}l${-3*k} ${-4.5*k}z" fill="#f2d27a" stroke="#2b2410" stroke-width="${0.8*k}"/><text x="${x+4*k}" y="${y+6.6*k}" font-size="${6*k}" font-family="Helvetica Neue,Arial" fill="#2b2410">${text.length>14?text.slice(0,13)+"…":text}</text></g>`;
+}
+function wrap(t,n){ const w=t.split(" "),L=[],c=[]; for(const x of w){ if((c.join(" ")+" "+x).trim().length>n){L.push(c.join(" ")); c.length=0;} c.push(x);} if(c.length)L.push(c.join(" ")); return L; }
+function openTag(cx,cy,lines,k){
+  k=k||1; const x=cx+3*k, y=cy-6*k; const lw=6*k, w=Math.max(...lines.map(l=>l.length))*3.5*k+8*k, h=lines.length*8*k+5*k;
+  let s=`<g><path d="M${x} ${y}h${w}v${h}h-${w}l${-3*k} ${-4*k}z" fill="#f2d27a" stroke="#2b2410" stroke-width="${0.8*k}"/>`;
+  lines.forEach((l,i)=>{ s+=`<text x="${x+4*k}" y="${y+7*k+i*8*k}" font-size="${6*k}" font-family="Helvetica Neue,Arial" fill="#2b2410">${l}</text>`; });
+  return s+`</g>`;
+}
+function notesLayer(notes, CP, RP, R, opts){
+  let s=""; const k=opts.near?2.3:1;   // screen-constant ink: the near map's viewBox is 2.3x wider
+  for(const n of notes){ const cx=n.at[0]*CP, cy=n.at[1]*RP;
+    if(opts.style==="tag"){ n.texts.forEach((t,i)=>{ s+=tag(cx+R*0.5, cy-R*0.4, t, i, k); }); continue; }
+    s+=`<title>${n.texts.join(" · ")}</title>`;
+    s+=pin(cx+R*0.55, cy-R*0.55, n.texts.length, k);
+    if(opts.open){ // the tag opened from the pin
+      let lines=[];
+      if(opts.open==="all"){ n.texts.forEach((t,i)=>{ const L=wrap(t,28).slice(0,4); if(wrap(t,28).length>4) L[3]=L[3].slice(0,26)+"…"; lines.push(...L); if(i<n.texts.length-1) lines.push("— — —"); }); }
+      else { lines=wrap(n.texts[0],28).slice(0,3); if(wrap(n.texts[0],28).length>3) lines[2]=lines[2].slice(0,26)+"…"; if(n.texts.length>1) lines.push(`+${n.texts.length-1} more in the panel`); }
+      s+=openTag(cx+R*0.55+5*k, cy-R*0.55, lines, k);
+    }
+    if(opts.style==="label" && opts.near){ const first=n.texts[0]; const t=first.length>22?first.slice(0,21)+"…":first;
+      const dy = (opts.settle && opts.settle[0]===n.at[0] && opts.settle[1]===n.at[1]) ? R*0.62+9*k : R*0.62;
+      s+=`<text x="${cx}" y="${(cy+dy).toFixed(1)}" text-anchor="middle" font-size="${6.5*k}" font-family="Helvetica Neue,Arial" fill="#f2d27a" stroke="#10151c" stroke-width="${2*k}" paint-order="stroke fill">${t}</text>`; }
+  }
+  return s;
+}
+const NOTES=[{at:[3,3],texts:["Build a castle here — best tax base on the coast"]},
+             {at:[8,4],texts:["Merchant said the road N is bandit country"]},
+             {at:[12,6],texts:["Scouted 3 turns running: 40 goblins…","Ask Bael about the shaft","Wages good"]}];
+const common={notes:NOTES, settle:[8,4], units:[[5,5],[9,7],[3,3]], sel:[3,3]};
+grid(document.getElementById("mapB"), 13, 21, 11, {...common, style:"pin"});
+grid(document.getElementById("q2a-mid"), 13, 16, 9, {...common, style:"pin"});
+grid(document.getElementById("q2a-near"), 30, 16, 9, {...common, style:"pin", near:true});
+grid(document.getElementById("q2b-mid"), 13, 16, 9, {...common, style:"label"});
+grid(document.getElementById("q2b-near"), 30, 16, 9, {...common, style:"label", near:true});
+grid(document.getElementById("q2c-mid"), 13, 16, 9, {...common, style:"tag"});
+grid(document.getElementById("q2c-near"), 30, 16, 9, {...common, style:"tag", near:true});
+const OPENNOTES=[{at:[3,3],texts:["Build a castle here — best tax base on the coast"]},
+                 {at:[12,6],texts:["Scouted 3 turns running: 40 goblins in the lair to the SW, they raid the road on odd months. Do not tax here with fewer than 30 men.","Ask Bael about the shaft","Wages good until turn 60"]}];
+grid(document.getElementById("q2r-a"), 13, 16, 9, {...common, notes:OPENNOTES, style:"pin", open:"all"});
+grid(document.getElementById("q2r-b"), 13, 16, 9, {...common, notes:OPENNOTES, style:"pin", open:"one"});
+</script>
+</body>
+</html>
