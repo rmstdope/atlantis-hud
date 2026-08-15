@@ -1,5 +1,6 @@
+import type { OpenedGame, ParsedReport } from "@atlantis/core-client";
 import { describe, expect, it } from "vitest";
-import { describeOrdersImport, isOrdersFile, ordersFileFaction } from "./ordersImport";
+import { describeOrdersImport, isOrdersFile, ordersFileFaction, routeOrdersImport } from "./ordersImport";
 
 /** Shaped exactly like the template a real report carries. */
 const ORDERS_FILE = [
@@ -86,5 +87,112 @@ describe("describing an import before it happens", () => {
 
     // 13401 now has a real order and is absent from the file - that one should be counted.
     expect(describeOrdersImport(ORDERS_FILE, withOrders).emptiedUnitIds).toEqual(["13401"]);
+  });
+});
+
+function report(overrides: Partial<ParsedReport["header"]> = {}): ParsedReport {
+  return {
+    header: {
+      factionId: "95",
+      factionName: "Borg TNG",
+      factionTypes: [],
+      month: "January",
+      year: 6,
+      turnNumber: 71,
+      engineVersion: null,
+      ruleset: null,
+      rulesetVersion: null,
+      unclaimedSilver: null,
+      errors: [],
+      events: [],
+      factionStatus: { entries: [], unparsed: [] },
+      attitudes: { defaultAttitude: null, levels: [] },
+      ...overrides
+    },
+    regions: [],
+    battles: [],
+    ordersTemplate: null
+  } as unknown as ParsedReport;
+}
+
+const OPEN_GAME = {
+  gameFilePath: "p.json",
+  databasePath: "p.sqlite",
+  schemaVersion: 5,
+  manifest: {
+    manifestVersion: 1,
+    metadata: { gameId: "aug-2026", gameName: "Borg TNG", rulesetId: "neworigins" },
+    reportSources: [],
+    createdAt: "2026-08-01T09:00:00Z",
+    lastOpenedAt: "2026-08-09T18:00:00Z"
+  }
+} as OpenedGame;
+
+describe("routing a dropped orders file", () => {
+  it("refuses when there is no turn to apply orders to", () => {
+    expect(routeOrdersImport({ game: null, parsed: null }, ORDERS_FILE, "orders.txt", "")).toEqual({
+      kind: "refuse",
+      message: "no turn to apply orders to"
+    });
+    expect(
+      routeOrdersImport(
+        { game: OPEN_GAME, parsed: report({ turnNumber: null }) },
+        ORDERS_FILE,
+        "orders.txt",
+        ""
+      )
+    ).toEqual({ kind: "refuse", message: "no turn to apply orders to" });
+  });
+
+  it("refuses a file for a different faction, naming both", () => {
+    const route = routeOrdersImport(
+      { game: OPEN_GAME, parsed: report({ factionId: "17", factionName: "Borg TNG" }) },
+      ORDERS_FILE,
+      "orders.txt",
+      ""
+    );
+
+    expect(route).toEqual({
+      kind: "refuse",
+      message: "orders.txt is orders for faction 95, not Borg TNG (17)"
+    });
+  });
+
+  it("falls back to unknown and your faction when either side names none", () => {
+    const noHeader = '#atlantis\n\nunit 1\n@work\n\n#end';
+    const route = routeOrdersImport(
+      { game: OPEN_GAME, parsed: report({ factionId: "17", factionName: null }) },
+      noHeader,
+      "orders.txt",
+      ""
+    );
+
+    expect(route).toEqual({
+      kind: "refuse",
+      message: "orders.txt is orders for faction unknown, not 17"
+    });
+  });
+
+  it("holds the file to ask, with the snapshot taken now", () => {
+    const route = routeOrdersImport(
+      { game: OPEN_GAME, parsed: report() },
+      ORDERS_FILE,
+      "orders.txt",
+      ""
+    );
+
+    expect(route).toEqual({
+      kind: "ask",
+      pending: {
+        text: ORDERS_FILE,
+        fileName: "orders.txt",
+        factionLabel: "Borg TNG (95)",
+        gameId: "aug-2026",
+        factionId: "95",
+        turnNumber: 71,
+        unitCount: 2,
+        emptiedCount: 0
+      }
+    });
   });
 });

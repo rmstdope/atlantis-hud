@@ -22,10 +22,9 @@ import {
 } from "../hexMapModel";
 import { type TextFileSaver } from "../downloadFile";
 import { readUnitOrders, stripMovementOrderLines, writeUnitOrders } from "../ordersDocument";
-import { describeOrdersImport, isOrdersFile, ordersFileFaction } from "../ordersImport";
+import { isOrdersFile, routeOrdersImport, type PendingOrdersImport } from "../ordersImport";
 import { deliverGameBackupExport, deliverMapExport, deliverOrdersExport } from "./exportActions";
 import {
-  commitTurn,
   mergeTurn,
   readMemory,
   restoreLatestTurn,
@@ -43,12 +42,14 @@ import {
   type LoadedTurn,
   type PendingReportLoad
 } from "../reportLoad";
+import { chooseViewerFaction } from "../reportBatch";
 import {
-  chooseViewerFaction,
-  planReportBatch,
-  type BatchCandidate,
-  type BatchSkip
-} from "../reportBatch";
+  batchSummary,
+  prepareBatch,
+  viewerFactionOptions,
+  walkBatch,
+  type PreparedBatch
+} from "../batchImport";
 import type { ImportSummary } from "../importSummary";
 import { describeMerge } from "../foreignReport";
 import {
@@ -158,46 +159,6 @@ import { failedStatus, warningStatus } from "./shellStatus";
  * can be tested without rendering anything.
  */
 export { isOlderTurn };
-
-/**
- * An orders file, recognised and waiting for the player to confirm the overwrite before it is
- * applied.
- *
- * The counts are worked out once, when the file is recognised, from the document on screen at that
- * moment - the same snapshot discipline `PendingReportLoad` keeps, and for the same reason: the
- * document being overwritten must be the one the numbers describe, not whatever it happens to be
- * when Replace is finally pressed.
- */
-type PendingOrdersImport = {
-  text: string;
-  fileName: string;
-  /** How the current faction names itself, as `Borg TNG (95)` - the file's faction too, by then. */
-  factionLabel: string;
-  /**
-   * The game, faction and turn the counts above describe - taken when the file was recognised, and
-   * checked again before Replace applies anything. The player can switch game, faction or turn
-   * while this prompt sits on screen (a report that loads without asking, a different game picked),
-   * and Replace must then refuse rather than write a stale file into whatever is open by then.
-   */
-  gameId: string;
-  factionId: string;
-  turnNumber: number;
-  unitCount: number;
-  emptiedCount: number;
-};
-
-/**
- * Every file of a batch, read and parsed, before a word of it has been written.
- *
- * The three lists are parallel and indexed by the chosen file, which is what lets a step name the
- * file it means by position rather than by name - two folders dragged at once can hand over two
- * files called `turn.rep`. `read` holds `null` exactly where `unreadable` holds a reason.
- */
-type PreparedBatch = {
-  read: ({ text: string; report: ParsedReport } | null)[];
-  candidates: BatchCandidate[];
-  unreadable: BatchSkip[];
-};
 
 const EMPTY: HexMapModel = {
   hexes: [],
@@ -1022,36 +983,15 @@ export function AppShell({
    */
   const chooseOrdersImport = useCallback(
     (text: string, fileName: string) => {
-      if (!game || !parsed || parsed.header.turnNumber === null || parsed.header.factionId === null) {
-        setStatus(failedStatus("no turn to apply orders to"));
+      const route = routeOrdersImport({ game, parsed }, text, fileName, ordersDocument);
+      if (route.kind === "refuse") {
+        setStatus(failedStatus(route.message));
         return;
       }
-
-      const fileFactionId = ordersFileFaction(text);
-      if (fileFactionId !== parsed.header.factionId) {
-        setStatus(
-          failedStatus(
-            `${fileName} is orders for faction ${fileFactionId ?? "unknown"}, not ` +
-              `${factionLabelOf(parsed) ?? "your faction"}`
-          )
-        );
-        return;
-      }
-
-      const description = describeOrdersImport(text, ordersDocument);
       // The one question a file drop can raise, whichever kind of file it turns out to be - this
       // one replaces a foreign-report question left open exactly as a second report replaces it.
       setPendingLoad(null);
-      setPendingOrdersImport({
-        text,
-        fileName,
-        factionLabel: factionLabelOf(parsed) ?? "your faction",
-        gameId: game.manifest.metadata.gameId,
-        factionId: parsed.header.factionId,
-        turnNumber: parsed.header.turnNumber,
-        unitCount: description.fileUnitIds.length,
-        emptiedCount: description.emptiedUnitIds.length
-      });
+      setPendingOrdersImport(route.pending);
     },
     [game, parsed, ordersDocument]
   );
@@ -1069,126 +1009,65 @@ export function AppShell({
    * turns slow, and twenty-nine of those reads are of a map nobody ever sees.
    */
   const runBatch = useCallback(
-    async (batch: PreparedBatch, viewerFactionId: string | null) => {
-      const { read, candidates, unreadable } = batch;
-      setBusy(true);
-      try {
-        const plan = planReportBatch(
-          { factionId: viewerFactionId, turnNumber: parsed?.header.turnNumber ?? null },
-          candidates
-        );
-        // The real reason beats the plan's guess for a file that never parsed at all.
-        const skipped = plan.skipped.map(
-          (skip) => unreadable.find((entry) => entry.index === skip.index) ?? skip
-        );
-
-        // Counted over the steps rather than the chosen files: a batch of ten with four skipped
-        // would otherwise stop at "6/10" and read like a run that gave up.
-        setImportProgress({ done: 0, total: plan.steps.length });
-
-        const failures: BatchSkip[] = [];
-        let done = 0;
-        for (const step of plan.steps) {
-          const source = read[step.index];
-          if (!game || !source) {
-            // Neither should be reachable - the header only exists inside a game, and a file that
-            // would not parse never becomes a step. Recorded rather than skipped silently anyway:
-            // a summary that counted this as imported would be claiming a turn nobody has.
-            failures.push({
-              index: step.index,
-              fileName: step.fileName,
-              reason: "there was no open game to import it into"
-            });
-            continue;
+    (batch: PreparedBatch, viewerFactionId: string | null) =>
+      runReported(
+        async () => {
+          if (!game) {
+            // Unreachable - a batch cannot be prepared without an open game.
+            return;
           }
-          try {
-            if (step.kind === "import") {
-              const committed = await commitTurn(
-                client,
-                game,
-                source.report,
-                source.text,
-                rulesetText,
-                new Date().toISOString()
-              );
-              if (committed.warning !== null) {
-                throw new Error(committed.warning);
-              }
-            } else {
-              // Under the viewer's faction and the ally's own turn: that turn is the only one an
-              // ally's account of a moment can be merged into.
-              await mergeTurn(
-                client,
-                game,
-                viewerFactionId as string,
-                step.turnNumber,
-                source.text,
-                rulesetText,
-                new Date().toISOString()
-              );
-            }
-          } catch (error) {
-            // One report that will not land costs the batch that report. Demoted to a skip so the
-            // summary accounts for it, and the walk carries on with the turns that do land.
-            failures.push({
-              index: step.index,
-              fileName: step.fileName,
-              reason: describeError(error)
-            });
-          } finally {
-            done += 1;
-            setImportProgress({ done, total: plan.steps.length });
-          }
-        }
 
-        const landed = plan.steps.filter(
-          (step) => !failures.some((failure) => failure.index === step.index)
-        );
-
-        // What ends up on screen: the batch's newest own turn, applied the way a single report is
-        // so that the orders, the selection and the map all land identically.
-        //
-        // The *last* report of that turn, not the first. Two files can describe one turn - the same
-        // report saved twice, or a corrected re-send - and committing overwrites, so the one the
-        // database ends up holding is the one chosen last. Showing the first would put a report on
-        // screen that disagrees with the map underneath it.
-        // (Written as a reverse scan rather than `findLast`, which this project's ES2022 target
-        // does not carry.)
-        const finish = [...landed]
-          .reverse()
-          .find((step) => step.kind === "import" && step.turnNumber === plan.finalTurn);
-        const source = finish ? read[finish.index] : null;
-        if (source && finish && game && viewerFactionId) {
-          // Read back rather than committed again: the walk has already written this turn and the
-          // allies of it, and a second commit would rewrite the turn's sightings from this report
-          // alone, dropping every ally contribution to a hex the viewer also stood in.
-          const memory = await readMemory(client, game, viewerFactionId, finish.turnNumber);
-          await applyReport(source.report, source.text, finish.fileName, memory);
-        } else if (game && viewerFactionId) {
-          // Nothing of the viewer's own landed, so the turn on screen has not changed - only the
-          // map under it, which the merges have grown.
-          const memory = await readMemory(
+          const walk = await walkBatch(
             client,
             game,
+            batch,
             viewerFactionId,
-            parsed?.header.turnNumber ?? null
+            parsed?.header.turnNumber ?? null,
+            rulesetText,
+            () => new Date().toISOString(),
+            (done, total) => setImportProgress({ done, total })
           );
-          setRemembered(memory.remembered);
-          setMergedReports(memory.merged);
-        }
 
-        setImportSummary({
-          steps: landed,
-          skipped: [...skipped, ...failures].sort((left, right) => left.index - right.index),
-          finalTurn: finish ? plan.finalTurn : null,
-          viewerFactionLabel:
-            factionLabelOf(source?.report ?? parsed) ?? "an unnamed faction"
-        });
-      } finally {
-        setBusy(false);
-        setImportProgress(null);
-      }
-    },
+          if (walk.finish) {
+            // What ends up on screen: the batch's newest own turn, applied the way a single report
+            // is so that the orders, the selection and the map all land identically. Read back
+            // rather than committed again - the walk has already written this turn and the allies
+            // of it, and a second commit would rewrite the turn's sightings from this report alone,
+            // dropping every ally contribution to a hex the viewer also stood in. A landed import
+            // step is proof `viewerFactionId` was not null (`walkBatch`'s note on why).
+            const memory = await readMemory(
+              client,
+              game,
+              viewerFactionId as string,
+              walk.finish.step.turnNumber
+            );
+            await applyReport(
+              walk.finish.source.report,
+              walk.finish.source.text,
+              walk.finish.step.fileName,
+              memory
+            );
+          } else if (viewerFactionId) {
+            // Nothing of the viewer's own landed, so the turn on screen has not changed - only the
+            // map under it, which the merges have grown. Nothing to read back at all when the batch
+            // never had a faction to act under - every file is already accounted for in the summary.
+            const memory = await readMemory(client, game, viewerFactionId, parsed?.header.turnNumber ?? null);
+            setRemembered(memory.remembered);
+            setMergedReports(memory.merged);
+          }
+
+          setImportSummary(batchSummary(walk, walk.finish?.source.report ?? parsed));
+        },
+        (message) => setStatus(failedStatus(message)),
+        {
+          busy: (busy) => {
+            setBusy(busy);
+            if (!busy) {
+              setImportProgress(null);
+            }
+          }
+        }
+      ),
     [client, rulesetText, parsed, game, applyReport]
   );
 
@@ -1221,54 +1100,28 @@ export function AppShell({
         return;
       }
 
-      setBusy(true);
       setImportProgress({ done: 0, total: files.length });
-      let batch: PreparedBatch | null = null;
-      try {
-        // Whatever was being written belongs to the turn that is about to be replaced. Saved first,
-        // exactly as a single report saves it.
-        await flush();
-
-        const read: ({ text: string; report: ParsedReport } | null)[] = [];
-        const candidates: BatchCandidate[] = [];
-        const unreadable: BatchSkip[] = [];
-        for (const [index, chosen] of files.entries()) {
-          try {
-            const text = await chosen.text();
-            const report =
-              ruleset.status === "ready"
-                ? await client.parseReportClassified(text, ruleset.text)
-                : await client.parseReportFull(text);
-            read.push({ text, report });
-            candidates.push({
-              fileName: chosen.name,
-              factionId: report.header.factionId,
-              turnNumber: report.header.turnNumber
-            });
-          } catch (error) {
-            read.push(null);
-            // Still a candidate, so the plan's indices stay the indices of the chosen files. Its
-            // faction is unreadable, so the plan skips it - but with this reason rather than the
-            // plan's, because "could not be read: ..." says what actually went wrong.
-            candidates.push({ fileName: chosen.name, factionId: null, turnNumber: null });
-            unreadable.push({
-              index,
-              fileName: chosen.name,
-              reason: `could not be read: ${describeError(error)}`
-            });
-          }
+      // Whatever was being written belongs to the turn that is about to be replaced. Saved first,
+      // exactly as a single report saves it. Reaching the `catch` below means the draft could not
+      // be saved, not that a report would not parse - an unreadable file is caught per file inside
+      // `prepareBatch`. Nothing has been written then, and the batch is abandoned rather than run:
+      // whatever the player was writing is still only in the editor.
+      const batch = await runReported(
+        async () => {
+          await flush();
+          return prepareBatch(files, reportParser(client, ruleset));
+        },
+        (message) => setStatus(failedStatus(message)),
+        {
+          busy: (busy) => {
+            setBusy(busy);
+            if (!busy) {
+              setImportProgress(null);
+            }
+          },
+          prefix: "could not start the import"
         }
-        batch = { read, candidates, unreadable };
-      } catch (error) {
-        // Reaching here means the draft could not be saved, not that a report would not parse -
-        // an unreadable file is caught per file above. Nothing has been written, and the batch is
-        // abandoned rather than run: whatever the player was writing is still only in the editor.
-        setStatus(failedStatus(`could not start the import: ${describeError(error)}`));
-      } finally {
-        setBusy(false);
-        setImportProgress(null);
-      }
-
+      );
       if (!batch) {
         return;
       }
@@ -1277,17 +1130,7 @@ export function AppShell({
       if (choice.kind === "ask") {
         // Held rather than run. Nothing has been written yet, so cancelling costs the player only
         // the reading - and the files are kept parsed so answering does not re-read them.
-        setPendingBatch({
-          batch,
-          options: choice.factionIds.map((factionId) => ({
-            factionId,
-            label:
-              factionLabelOf(
-                batch.read.find((entry) => entry?.report.header.factionId === factionId)?.report ??
-                  null
-              ) ?? `faction ${factionId}`
-          }))
-        });
+        setPendingBatch({ batch, options: viewerFactionOptions(batch, choice.factionIds) });
         return;
       }
 
@@ -1896,9 +1739,8 @@ export function AppShell({
       return;
     }
 
-    void (async () => {
-      setBusy(true);
-      try {
+    void runReported(
+      async () => {
         setOrdersDocument(pending.text);
         writer.markDirty(game, draftKey, pending.text);
 
@@ -1921,12 +1763,10 @@ export function AppShell({
             warning: false
           });
         }
-      } catch (error) {
-        setStatus(failedStatus(`could not import ${pending.fileName}: ${describeError(error)}`));
-      } finally {
-        setBusy(false);
-      }
-    })();
+      },
+      (message) => setStatus(failedStatus(message)),
+      { busy: setBusy, prefix: `could not import ${pending.fileName}` }
+    );
   }, [
     pendingOrdersImport,
     client,
