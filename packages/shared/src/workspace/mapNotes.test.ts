@@ -2,7 +2,17 @@ import { describe, expect, it } from "vitest";
 import type { HexNoteRecord } from "@atlantis/core-client";
 import { hexToPixel } from "../hexMapModel";
 import { HEX_RADIUS } from "./mapViewport";
-import { drawsNotes, noteTagLayout, notePins, wrapNoteLines } from "./mapNotes";
+import {
+  BADGE,
+  drawsNotes,
+  noteTagLayout,
+  notePins,
+  PIN_H,
+  PIN_SCALE,
+  PIN_W,
+  TAG,
+  wrapNoteLines
+} from "./mapNotes";
 
 function note(overrides: Partial<HexNoteRecord> = {}): HexNoteRecord {
   return {
@@ -62,7 +72,7 @@ describe("wrapNoteLines", () => {
     expect(wrapNoteLines("a short note")).toEqual(["a short note"]);
   });
 
-  it("wraps a long text at word boundaries, at most 28 characters a line", () => {
+  it("wraps a long text at word boundaries, at most 24 characters a line", () => {
     const text =
       "the allies have been massing troops just north of this hex for several turns now";
 
@@ -70,7 +80,7 @@ describe("wrapNoteLines", () => {
 
     expect(lines.length).toBeGreaterThan(1);
     for (const line of lines) {
-      expect(line.length).toBeLessThanOrEqual(28);
+      expect(line.length).toBeLessThanOrEqual(TAG.maxChars);
     }
     expect(lines.join(" ").replace("…", "")).not.toBe("");
   });
@@ -106,6 +116,27 @@ describe("noteTagLayout", () => {
     expect(tags[1].y).toBe(tags[0].y + tags[0].height + 3);
     expect(tags[0].stamp).toBe("turn 71");
     expect(tags[1].stamp).toBeNull();
+  });
+
+  it("pins the geometry to the chosen sizes", () => {
+    const tags = noteTagLayout([note({ text: "hi", turn: 71 })]);
+
+    expect(tags[0].width).toBeCloseTo(TAG.charWidth * 2 + TAG.pad);
+    expect(tags[0].height).toBeCloseTo(TAG.lineHeight + (TAG.stampFontSize + 2) + 5);
+    expect(tags[0].x).toBeCloseTo(PIN_W / 2 + 5);
+    expect(tags[0].y).toBeCloseTo(-PIN_H / 2);
+  });
+});
+
+describe("the chosen sizes", () => {
+  it("exports the sizes the navigator chose", () => {
+    expect(PIN_SCALE).toBe(1.3);
+    expect(BADGE.r).toBe(5.2);
+    expect(BADGE.fontSize).toBe(7.5);
+    expect(TAG.fontSize).toBe(11);
+    expect(TAG.lineHeight).toBe(14.5);
+    expect(TAG.maxChars).toBe(24);
+    expect(TAG.stampFontSize).toBe(8);
   });
 });
 
