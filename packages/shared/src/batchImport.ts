@@ -124,6 +124,13 @@ export type BatchWalk = {
  * skip with `describeError`'s reason, and calls `onProgress(done, total)` after every step (total is
  * the step count, not the file count).
  *
+ * `viewerFactionId` is nullable because `chooseViewerFaction` can resolve to `null` - nothing on
+ * screen and nothing in the batch worth calling the player's own (every file unreadable or headerless,
+ * say). `planReportBatch` then skips every candidate rather than raising any steps, so the loop below
+ * never runs and never needs a faction to act under; the caller still gets a `BatchWalk` back with
+ * every file accounted for in `skipped`, which is what lets it show a summary instead of doing
+ * nothing (ah-k6i.6 review: an early return on a null faction silently dropped that summary).
+ *
  * Rejects only for something outside a step - reading the map back and applying the finishing turn
  * is the caller's job, deliberately: a batch that has already written its turns must not be undone
  * by a re-commit here (see `loadTurn`'s note on the same trap), so this walks and stops.
@@ -132,7 +139,7 @@ export async function walkBatch(
   client: CoreClient,
   game: OpenedGame,
   batch: PreparedBatch,
-  viewerFactionId: string,
+  viewerFactionId: string | null,
   workingTurn: number | null,
   rulesetText: string | null,
   now: () => string,
@@ -181,8 +188,18 @@ export async function walkBatch(
         }
       } else {
         // Under the viewer's faction and the ally's own turn: that turn is the only one an ally's
-        // account of a moment can be merged into.
-        await mergeTurn(client, game, viewerFactionId, step.turnNumber, source.text, rulesetText, now());
+        // account of a moment can be merged into. `viewerFactionId` is non-null here even though the
+        // parameter type is not: `planReportBatch` never raises a step, own or ally, unless
+        // `viewer.factionId` is non-null, so a "merge" step is proof of it.
+        await mergeTurn(
+          client,
+          game,
+          viewerFactionId as string,
+          step.turnNumber,
+          source.text,
+          rulesetText,
+          now()
+        );
       }
     } catch (error) {
       // One report that will not land costs the batch that report. Demoted to a skip so the summary

@@ -241,6 +241,25 @@ describe("walkBatch", () => {
 
     expect(walk.finish).toBeNull();
   });
+
+  it("still returns every file as skipped, rather than doing nothing, when the batch cannot say whose it is", async () => {
+    const core = client();
+    const batch = {
+      read: [{ text: "mystery", report: report({ factionId: null, turnNumber: null }) }],
+      candidates: [{ fileName: "mystery.rep", factionId: null, turnNumber: null }],
+      unreadable: []
+    };
+
+    const walk = await walkBatch(core, OPEN_GAME, batch, null, null, RULESET, NOW, () => {});
+
+    expect(core.commitReportImport).not.toHaveBeenCalled();
+    expect(core.mergeReport).not.toHaveBeenCalled();
+    expect(walk.landed).toEqual([]);
+    expect(walk.skipped).toEqual([
+      { index: 0, fileName: "mystery.rep", reason: "the report does not name its faction" }
+    ]);
+    expect(walk.finish).toBeNull();
+  });
 });
 
 describe("batchSummary", () => {

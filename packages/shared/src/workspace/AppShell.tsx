@@ -1012,9 +1012,8 @@ export function AppShell({
     (batch: PreparedBatch, viewerFactionId: string | null) =>
       runReported(
         async () => {
-          if (!game || !viewerFactionId) {
-            // Neither should be reachable - a batch cannot be prepared without an open game, and
-            // `chooseViewerFaction`/the picker always resolve to a faction before this is called.
+          if (!game) {
+            // Unreachable - a batch cannot be prepared without an open game.
             return;
           }
 
@@ -1034,17 +1033,24 @@ export function AppShell({
             // is so that the orders, the selection and the map all land identically. Read back
             // rather than committed again - the walk has already written this turn and the allies
             // of it, and a second commit would rewrite the turn's sightings from this report alone,
-            // dropping every ally contribution to a hex the viewer also stood in.
-            const memory = await readMemory(client, game, viewerFactionId, walk.finish.step.turnNumber);
+            // dropping every ally contribution to a hex the viewer also stood in. A landed import
+            // step is proof `viewerFactionId` was not null (`walkBatch`'s note on why).
+            const memory = await readMemory(
+              client,
+              game,
+              viewerFactionId as string,
+              walk.finish.step.turnNumber
+            );
             await applyReport(
               walk.finish.source.report,
               walk.finish.source.text,
               walk.finish.step.fileName,
               memory
             );
-          } else {
+          } else if (viewerFactionId) {
             // Nothing of the viewer's own landed, so the turn on screen has not changed - only the
-            // map under it, which the merges have grown.
+            // map under it, which the merges have grown. Nothing to read back at all when the batch
+            // never had a faction to act under - every file is already accounted for in the summary.
             const memory = await readMemory(client, game, viewerFactionId, parsed?.header.turnNumber ?? null);
             setRemembered(memory.remembered);
             setMergedReports(memory.merged);
