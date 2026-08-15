@@ -59,14 +59,14 @@ import {
   shouldTriggerAutosave,
   type ValidatedOrders
 } from "../orderEditor";
+import { openNewestGame, rulesetUrlFor } from "../gameSession";
 import {
-  gameAfterDelete,
-  newGameId,
-  newGameManifest,
-  openNewestGame,
-  rulesetUrlFor
-} from "../gameSession";
-import { rulesetById } from "../rulesets";
+  changeRuleset as changeRulesetAction,
+  createGame as createGameAction,
+  deleteGame as deleteGameAction,
+  importGameBackup as importGameBackupAction,
+  openGame as openGameAction
+} from "../gameActions";
 import { DEFAULT_LEVEL, useWorkspaceStore } from "../workspaceStore";
 import { useHexNotesStore } from "../hexNotesStore";
 import { useSettingsStore } from "../settingsStore";
@@ -1624,11 +1624,6 @@ export function AppShell({
     };
   }, [client, game, ruleset, selectRegion, selectUnit]);
 
-  /** Re-reads the list of games. Every change to a game changes what the picker should show. */
-  const refreshGames = useCallback(async () => {
-    setGames(await client.listGames());
-  }, [client]);
-
   /**
    * Moves the workspace into a game.
    *
@@ -1689,24 +1684,27 @@ export function AppShell({
     [clearPlan, openGameInStore, setLevel, restoreSelection]
   );
 
-  const openGameById = useCallback(
-    async (gameId: string) => {
-      setBusy(true);
+  /** Every game action runs through here: clears the last error, holds `busy`, reports a failure. */
+  const runGameAction = useCallback(
+    (work: () => Promise<void>, prefix?: string) => {
       setGameError(null);
-      try {
+      return runReported(work, setGameError, { busy: setBusy, prefix });
+    },
+    []
+  );
+
+  const openGameById = useCallback(
+    (gameId: string) =>
+      runGameAction(async () => {
         // Before the workspace lets go of the old game. `enterGame` wipes the document, and
         // whatever was in it belongs to a game the player is walking away from.
         await flush();
-        enterGame(await client.openGame(gameId, new Date().toISOString()));
-        await refreshGames();
+        const outcome = await openGameAction(client, gameId, new Date().toISOString());
+        enterGame(outcome.opened);
+        setGames(outcome.games);
         setPickerOpen(false);
-      } catch (error: unknown) {
-        setGameError(describeError(error));
-      } finally {
-        setBusy(false);
-      }
-    },
-    [client, enterGame, refreshGames, flush]
+      }),
+    [client, enterGame, flush, runGameAction]
   );
 
   /**
@@ -1718,51 +1716,36 @@ export function AppShell({
    * keep the old ruleset's reading until the next manual reload.
    */
   const changeRuleset = useCallback(
-    async (rulesetId: string) => {
-      if (!game || game.manifest.metadata.rulesetId === rulesetId) {
+    (rulesetId: string) => {
+      if (!game) {
         return;
       }
-      // This build has to be able to fetch what it is about to store; the backend deliberately
-      // stores ids as opaque strings, so this is the only gate.
-      if (!rulesetById(rulesetId)) {
-        setGameError(`unknown ruleset: ${rulesetId}`);
-        return;
-      }
-      setBusy(true);
-      setGameError(null);
-      try {
+      return runGameAction(async () => {
         // The re-restore below re-reads orders from the database, so the draft must be there first.
         await flush();
-        const manifest = await client.setGameRuleset(game.manifest.metadata.gameId, rulesetId);
-        setGame({ ...game, manifest });
+        const result = await changeRulesetAction(client, game, rulesetId);
+        if (!result) {
+          return;
+        }
+        setGame({ ...game, manifest: result.manifest });
         updateGameRulesetInStore(rulesetId);
-        await refreshGames();
-      } catch (error: unknown) {
-        setGameError(describeError(error));
-      } finally {
-        setBusy(false);
-      }
+        setGames(result.games);
+      });
     },
-    [client, game, flush, refreshGames, updateGameRulesetInStore]
+    [client, game, flush, runGameAction, updateGameRulesetInStore]
   );
 
   const createGame = useCallback(
-    async (name: string, rulesetId: string) => {
-      setBusy(true);
-      setGameError(null);
-      try {
+    (name: string, rulesetId: string) =>
+      runGameAction(async () => {
         await flush();
         const now = new Date().toISOString();
-        enterGame(await client.createGame(newGameManifest(name, rulesetId, now, newGameId())));
-        await refreshGames();
+        const outcome = await createGameAction(client, name, rulesetId, now);
+        enterGame(outcome.opened);
+        setGames(outcome.games);
         setPickerOpen(false);
-      } catch (error: unknown) {
-        setGameError(describeError(error));
-      } finally {
-        setBusy(false);
-      }
-    },
-    [client, enterGame, refreshGames, flush]
+      }),
+    [client, enterGame, flush, runGameAction]
   );
 
 
@@ -1810,41 +1793,32 @@ export function AppShell({
    * to the next game. Deleting some other game leaves the open document exactly where it was.
    */
   const deleteGame = useCallback(
-    async (gameId: string) => {
-      setBusy(true);
-      setGameError(null);
-      try {
-        if (game?.manifest.metadata.gameId === gameId) {
-          writer.discard();
-        }
-        await client.deleteGame(gameId);
-        const remaining = await client.listGames();
-        setGames(remaining);
-
-        if (game?.manifest.metadata.gameId === gameId) {
-          const next = gameAfterDelete(remaining, gameId);
-          if (next) {
-            enterGame(await client.openGame(next.metadata.gameId, new Date().toISOString()));
+    (gameId: string) =>
+      runGameAction(async () => {
+        const result = await deleteGameAction(
+          client,
+          gameId,
+          game?.manifest.metadata.gameId ?? null,
+          new Date().toISOString(),
+          () => writer.discard()
+        );
+        setGames(result.games);
+        if (result.closedOpenGame) {
+          if (result.opened) {
+            enterGame(result.opened);
           } else {
             setGame(null);
             closeGameInStore();
           }
         }
         setPickerOpen(false);
-      } catch (error: unknown) {
-        setGameError(describeError(error));
-      } finally {
-        setBusy(false);
-      }
-    },
-    [client, enterGame, game, closeGameInStore, writer]
+      }),
+    [client, closeGameInStore, enterGame, game, runGameAction, writer]
   );
 
   const exportGameBackup = useCallback(
-    async (gameId: string) => {
-      setBusy(true);
-      setGameError(null);
-      try {
+    (gameId: string) =>
+      runGameAction(async () => {
         await flush();
         const backup = await client.exportGame(gameId, new Date().toISOString());
         const path = await deliverGameBackupExport(saveTextFile, gameId, backup);
@@ -1854,33 +1828,21 @@ export function AppShell({
           return;
         }
         setPickerOpen(false);
-      } catch (error: unknown) {
-        setGameError(describeError(error));
-      } finally {
-        setBusy(false);
-      }
-    },
-    [client, flush, saveTextFile]
+      }),
+    [client, flush, runGameAction, saveTextFile]
   );
 
   const importGameBackup = useCallback(
-    async (file: File) => {
-      setBusy(true);
-      setGameError(null);
-      try {
+    (file: File) =>
+      runGameAction(async () => {
         await flush();
-        const backupJson = await file.text();
-        enterGame(await client.importGame(backupJson, new Date().toISOString()));
-        await refreshGames();
+        const outcome = await importGameBackupAction(client, await file.text(), new Date().toISOString());
+        enterGame(outcome.opened);
+        setGames(outcome.games);
         setPickerOpen(false);
         setSettingsOpen(false);
-      } catch (error: unknown) {
-        setGameError(`could not import ${file.name}: ${describeError(error)}`);
-      } finally {
-        setBusy(false);
-      }
-    },
-    [client, enterGame, refreshGames, flush]
+      }, `could not import ${file.name}`),
+    [client, enterGame, flush, runGameAction]
   );
 
   // A destination and a unit are all the planner needs; the answer carries either a route or the
