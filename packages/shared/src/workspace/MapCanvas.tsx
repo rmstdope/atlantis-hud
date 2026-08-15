@@ -113,6 +113,11 @@ type MapCanvasProps = {
   theme: MapTheme;
   level: number;
   selectedRegionId: string | null;
+  /**
+   * Counts user-initiated selection changes; the map replays its lock-on pulse when this changes,
+   * and stays silent when it doesn't - see `selectionEpoch` on `workspaceStore.ts`.
+   */
+  selectionEpoch: number;
   onSelectRegion: (regionId: string) => void;
   showStaleness: boolean;
   showTextures: boolean;
@@ -159,6 +164,7 @@ export function MapCanvas({
   theme,
   level,
   selectedRegionId,
+  selectionEpoch,
   onSelectRegion,
   showStaleness,
   showTextures,
@@ -897,15 +903,40 @@ export function MapCanvas({
           />
 
           {selectedAt && (
-            <polygon
-              points={HEX_POINTS}
+            <g
               transform={translateAt(selectedAt)}
-              fill="none"
-              className="stroke-brass"
-              strokeWidth={2.5}
-              vectorEffect="non-scaling-stroke"
               pointerEvents="none"
-            />
+              data-testid="map-selection-ring"
+            >
+              {/*
+                `key={selectionEpoch}` remounts this inner group on every user-initiated selection,
+                which is what replays the CSS animation - epoch 0 (nothing user-selected yet this
+                game, or a restored selection) omits the class so a restore renders the static ring
+                only. The outer group above carries the world-space translate; putting the pulse
+                class there instead would let the CSS `transform` clobber the SVG placement.
+              */}
+              <g
+                key={selectionEpoch}
+                className={selectionEpoch > 0 ? "map-selection-pulse" : undefined}
+              >
+                <polygon
+                  points={HEX_POINTS}
+                  fill="none"
+                  className="stroke-selection-casing"
+                  strokeWidth={7}
+                  strokeLinejoin="round"
+                  vectorEffect="non-scaling-stroke"
+                />
+                <polygon
+                  points={HEX_POINTS}
+                  fill="none"
+                  className="stroke-selection-ring"
+                  strokeWidth={3}
+                  strokeLinejoin="round"
+                  vectorEffect="non-scaling-stroke"
+                />
+              </g>
+            </g>
           )}
 
           {/*

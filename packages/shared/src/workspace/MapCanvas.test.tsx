@@ -47,6 +47,25 @@ function draw(theme: MapTheme = probe()): string {
       theme={theme}
       level={1}
       selectedRegionId={null}
+      selectionEpoch={0}
+      onSelectRegion={() => {}}
+      showStaleness
+      showTextures={false}
+      badges={allBadges(true)}
+    />
+  );
+}
+
+/** The same map, with a hex selected - and an epoch, so the pulse-class test can vary it. */
+function drawSelected(selectedRegionId: string, selectionEpoch = 0): string {
+  return renderToStaticMarkup(
+    <MapCanvas
+      gameId={null}
+      model={model}
+      theme={probe()}
+      level={1}
+      selectedRegionId={selectedRegionId}
+      selectionEpoch={selectionEpoch}
       onSelectRegion={() => {}}
       showStaleness
       showTextures={false}
@@ -64,6 +83,7 @@ function drawWithRoute(): string {
       theme={probe()}
       level={1}
       selectedRegionId={null}
+      selectionEpoch={0}
       onSelectRegion={() => {}}
       showStaleness
       showTextures={false}
@@ -155,6 +175,7 @@ describe("what the map hands a theme", () => {
         theme={probe()}
         level={1}
         selectedRegionId={null}
+        selectionEpoch={0}
         onSelectRegion={() => {}}
         showStaleness
         showTextures={false}
@@ -211,8 +232,8 @@ describe("what the map hands a theme", () => {
     // 5, 3 and 2 are the weights the map has always drawn: at rest the scale is 1, so this is what
     // it looked like before, and only the zoomed views change.
     const svg = drawWithRoute();
-    // The route's own polylines only. `stroke-brass` is also the selection ring's class, but that
-    // is a polygon and keeps its screen-constant stroke deliberately.
+    // The route's own polylines only; the selected hex now carries `stroke-selection-*` classes on
+    // polygons, so no polyline shares a class with it.
     const lines = [...svg.matchAll(/<polyline[^>]*>/g)]
       .map((match) => match[0])
       .filter((tag) => /stroke-ground|stroke-brass/.test(tag));
@@ -235,5 +256,42 @@ describe("what the map hands a theme", () => {
 
     expect(svg).toContain('aria-label="hex 1:7,53"');
     expect(svg).toContain('data-testid="map-ruler-x"');
+  });
+});
+
+describe("the selected hex's double ring", () => {
+  it("marks the selected hex with a casing and ring pair", () => {
+    const svg = drawSelected("1:7,53");
+    const ringGroupMatch = /<g[^>]*data-testid="map-selection-ring"[^>]*>[\s\S]*?<\/g>\s*<\/g>/.exec(
+      svg
+    );
+    expect(ringGroupMatch).not.toBeNull();
+    const ringGroup = ringGroupMatch?.[0] ?? "";
+
+    const polygons = [...ringGroup.matchAll(/<polygon[^>]*>/g)].map((match) => match[0]);
+    expect(polygons).toHaveLength(2);
+
+    const casing = polygons.find((tag) => tag.includes("stroke-selection-casing"));
+    const ring = polygons.find((tag) => tag.includes("stroke-selection-ring"));
+    expect(casing).toBeDefined();
+    expect(ring).toBeDefined();
+    expect(casing).toContain('stroke-width="7"');
+    expect(ring).toContain('stroke-width="3"');
+    expect(casing).toContain('vector-effect="non-scaling-stroke"');
+    expect(ring).toContain('vector-effect="non-scaling-stroke"');
+  });
+
+  it("draws nothing when no hex is selected", () => {
+    const svg = draw();
+
+    expect(svg).not.toContain('data-testid="map-selection-ring"');
+  });
+
+  it("pulses on user selection but not on a restored one", () => {
+    const restored = drawSelected("1:7,53", 0);
+    expect(restored).not.toContain("map-selection-pulse");
+
+    const selected = drawSelected("1:7,53", 1);
+    expect(selected).toContain("map-selection-pulse");
   });
 });

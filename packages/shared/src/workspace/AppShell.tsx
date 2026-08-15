@@ -489,7 +489,9 @@ export function AppShell({
 
   const selectedRegionId = useWorkspaceStore((state) => state.selectedRegionId);
   const selectedUnitId = useWorkspaceStore((state) => state.selectedUnitId);
+  const selectionEpoch = useWorkspaceStore((state) => state.selectionEpoch);
   const selectRegion = useWorkspaceStore((state) => state.selectRegion);
+  const restoreSelection = useWorkspaceStore((state) => state.restoreSelection);
   const selectUnit = useWorkspaceStore((state) => state.selectUnit);
   const level = useWorkspaceStore((state) => state.level);
   const setLevel = useWorkspaceStore((state) => state.setLevel);
@@ -1682,10 +1684,11 @@ export function AppShell({
       const saved = loadSavedView(opened.manifest.metadata.gameId);
       setLevel(saved?.level ?? DEFAULT_LEVEL);
       if (saved?.regionId != null) {
-        selectRegion(saved.regionId);
+        // A silent restore, not a user-initiated change - it must not replay the lock-on pulse.
+        restoreSelection(saved.regionId);
       }
     },
-    [clearPlan, openGameInStore, setLevel, selectRegion]
+    [clearPlan, openGameInStore, setLevel, restoreSelection]
   );
 
   const openGameById = useCallback(
@@ -2834,6 +2837,7 @@ export function AppShell({
           theme={getMapTheme(mapThemeId)}
           level={level}
           selectedRegionId={selectedRegionId}
+          selectionEpoch={selectionEpoch}
           onSelectRegion={selectHex}
           showStaleness={layers.staleness}
           showTextures={showTextures}

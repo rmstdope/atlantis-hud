@@ -2571,6 +2571,31 @@ test("the focus ring does not appear after a drag", async ({ page }) => {
   await expect(page.getByTestId("map-focus-ring")).not.toBeAttached();
 });
 
+test("the selected hex is marked by the double ring", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+
+  // Presence and placement only - not the pulse animation, which WebKit timing makes flaky to
+  // assert directly.
+  const ring = page.getByTestId("map-selection-ring");
+  await expect(ring).toBeAttached();
+  const hexButton = page.getByRole("button", { name: "hex 1:7,53" });
+  await expect(hexButton).toHaveAttribute("transform", /.+/);
+  const hexTransform = await hexButton.getAttribute("transform");
+  await expect(ring).toHaveAttribute("transform", hexTransform ?? "");
+
+  // The ring is theme-independent: it stays attached with the same placement in the light theme.
+  await page.getByTestId("settings-indicator").click();
+  await page.getByTestId("theme-light").click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+
+  await expect(ring).toBeAttached();
+  await expect(ring).toHaveAttribute("transform", hexTransform ?? "");
+
+  // Back to dark, so later tests inherit the default look. The dialog is still open from above.
+  await page.getByTestId("theme-dark").click();
+});
+
 test("the focused hex is visibly marked, so arrowing about is not invisible", async ({ page }) => {
   await loadReport(page);
 
