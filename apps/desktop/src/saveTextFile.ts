@@ -8,12 +8,13 @@
  *
  * Lives here rather than in `packages/shared` for the reason `updateCheck.ts` gives: importing
  * `@tauri-apps/api` from shared code would put half a desktop shell in the web bundle.
+ *
+ * Reaches the dialog and the file write through `desktopPlugins.ts` (ah-9lv) rather than importing
+ * them directly, so a test can install a stand-in for the one native call an export makes.
  */
 
 import type { TextFileSaver } from "@atlantis/shared";
-import { save } from "@tauri-apps/plugin-dialog";
-import { writeTextFile } from "@tauri-apps/plugin-fs";
-import { hasTauriRuntime } from "./desktopCore";
+import { desktopPlugins, type DesktopPlugins } from "./desktopPlugins";
 
 /**
  * The native dialog's filter for a file name, derived from its extension.
@@ -35,19 +36,25 @@ export function filterFor(fileName: string): { name: string; extensions: string[
 }
 
 /**
- * The saver to hand the workspace, or nothing when this build is running in a plain browser.
+ * The saver built over given plugins, or nothing when there are none - a plain browser, or a test
+ * that never installed a stand-in.
  *
- * The desktop bundle is also served as a web page during development and by the preview server the
- * smoke tests run against, so the runtime check is what keeps it from offering a native dialog
- * that is not there.
+ * A plain function rather than a default parameter on `desktopTextFileSaver`, so `undefined` here
+ * unambiguously means "no plugins" instead of triggering a default that reaches for the real ones -
+ * a default parameter only fires when the argument is exactly `undefined`, which is indistinguishable
+ * from a caller meaning "none" the moment this ever runs where `desktopPlugins()` is not itself
+ * `undefined`. Exported so a test can call it directly with a fake, without needing `desktopPlugins()`
+ * to cooperate.
  */
-export function desktopTextFileSaver(): TextFileSaver | undefined {
-  if (!hasTauriRuntime()) {
+export function desktopTextFileSaverFor(
+  plugins: DesktopPlugins | undefined
+): TextFileSaver | undefined {
+  if (!plugins) {
     return undefined;
   }
 
   return async (fileName: string, text: string) => {
-    const path = await save({
+    const path = await plugins.save({
       defaultPath: fileName,
       filters: filterFor(fileName)
     });
@@ -56,7 +63,12 @@ export function desktopTextFileSaver(): TextFileSaver | undefined {
       return null;
     }
 
-    await writeTextFile(path, text);
+    await plugins.writeTextFile(path, text);
     return path;
   };
+}
+
+/** The saver to hand the workspace: the real plugins, whatever this build can reach. */
+export function desktopTextFileSaver(): TextFileSaver | undefined {
+  return desktopTextFileSaverFor(desktopPlugins());
 }
