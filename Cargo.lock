@@ -222,11 +222,9 @@ name = "atlantis-hud-core-wasm"
 version = "0.1.0"
 dependencies = [
  "atlantis-hud-core",
- "atlantis-hud-core-persistence",
  "serde",
  "serde-wasm-bindgen",
  "serde_json",
- "tempfile",
  "wasm-bindgen",
 ]
 

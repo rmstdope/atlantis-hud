@@ -2,127 +2,16 @@ import { describe, expect, it } from "vitest";
 import {
   createCoreClient,
   createTauriAdapter,
-  createWasmAdapter,
   type HexNoteRecord,
-  type TauriInvoke,
-  type WasmBindings
+  type TauriInvoke
 } from "./index";
 
-describe("core client adapter contract parity", () => {
-  it("normalizes tauri and wasm responses into the same contracts", async () => {
-    const parsePayload = {
-      turn_header: {
-        turn_number: 12,
-        season: "Spring"
-      },
-      detected_factions: [
-        {
-          faction_id: "17",
-          name: "Crimson Tide"
-        }
-      ],
-      regions: [{ region_id: "R1", name: "Coast of Dawn" }],
-      units: [{ unit_id: "U100", name: "Guard Patrol", region_id: "R1" }],
-      inventories: [{ unit_id: "U100", item: "silver", quantity: 12 }],
-      message_summaries: [{ kind: "order", source: "U100", text: "MOVE R2" }],
-      warnings: [],
-      meets_minimum_import_threshold: true
-    };
-    const reportPreviewPayload = {
-      parse_result: parsePayload,
-      duplicate_preview: {
-        exists: false,
-        raw_changed: false,
-        parsed_changed: false,
-        warnings_changed: false
-      },
-      turn_number: 12
-    };
-    const orderValidationPayload = {
-      diagnostics: [
-        {
-          code: "unknown-command",
-          message: "unknown order command",
-          line_start: 1,
-          line_end: 1,
-          column_start: 0,
-          column_end: 3,
-          severity: "error"
-        },
-        {
-          code: "extra-arguments",
-          message: "extra arguments ignored for MOVE",
-          line_start: 2,
-          line_end: 2,
-          column_start: 5,
-          column_end: 9,
-          severity: "warning"
-        }
-      ]
-    };
-    // Both transports hand back the core's own list, so parity here is the two agreeing about it.
+// The browser transport is createWebCoreAdapter in @atlantis/browser-core, over IndexedDB, with
+// its own tests there; this file pins only the tauri adapter's contract, which is what desktop
+// speaks to core-tauri.
+describe("core client tauri adapter contract", () => {
+  it("normalizes tauri responses into the client's contracts", async () => {
     const orderVocabulary = ["GIVE", "MOVE", "WORK"];
-    const orderDraftPayload = {
-      key: {
-        game_id: "faction-12",
-        faction_id: "17",
-        turn_number: 12
-      },
-      order_text: "MOVE U100 R2",
-      updated_at: "2026-08-07T12:00:00Z"
-    };
-    const hexNotePayload = {
-      id: "note-1",
-      game_id: "faction-12",
-      region_id: "1:7,53",
-      text: "Mustn't forget the mountain pass",
-      on_map: 1,
-      turn: 12,
-      created_at: "2026-08-07T12:00:00Z",
-      updated_at: "2026-08-07T12:00:00Z"
-    };
-    const importedTurnPayload = {
-      key: {
-        game_id: "faction-12",
-        faction_id: "17",
-        turn_number: 12
-      },
-      raw_report: "TURN: 12 Spring\nFACTION: 17 | Crimson Tide\nREGION: A1 | Coast of Dawn",
-      parse_result: parsePayload
-    };
-    const importedTurnSummaryPayload = [
-      {
-        key: {
-          game_id: "faction-12",
-          faction_id: "17",
-          turn_number: 12
-        },
-        season: "Spring",
-        imported_at: "2026-08-01T10:00:00Z",
-        updated_at: "2026-08-01T10:00:00Z"
-      }
-    ];
-    const openedGamePayload = {
-      game_file_path: "/tmp/campaign.atlantis-game.json",
-      database_path: "/tmp/campaign.atlantis-game.sqlite",
-      schema_version: 2,
-      manifest: {
-        manifest_version: 1,
-        metadata: {
-          game_id: "faction-12",
-          game_name: "Faction 12",
-          ruleset_id: "neworigins"
-        },
-        report_sources: [
-          {
-            source_id: "turn-12-report",
-            label: "Turn 12 report"
-          }
-        ],
-        created_at: "2026-08-01T09:00:00Z",
-        last_opened_at: "2026-08-09T18:00:00Z"
-      }
-    };
 
     // The planner's answer is the same object shape on both transports: the core serializes it
     // once and neither adapter reshapes it. Pinning it here is what stops one of them drifting.
@@ -204,91 +93,6 @@ describe("core client adapter contract parity", () => {
           ]
         }
       ]
-    };
-
-    const wasmBindings: WasmBindings = {
-      get_engine_info() {
-        return {
-          id: "atlantis",
-          name: "Atlantis PBEM",
-          ruleset_version: "4.0",
-          max_faction_count: 128
-        };
-      },
-      create_game_state() {
-        return openedGamePayload;
-      },
-      list_games_state() {
-        return [openedGamePayload.manifest];
-      },
-      delete_game_state() {
-        return null;
-      },
-      open_game_state() {
-        return openedGamePayload;
-      },
-      parse_report_full_state() {
-      return { header: {}, regions: [], ordersTemplate: null };
-    },
-    parse_report_state() {
-        return parsePayload;
-      },
-      preview_report_import_state() {
-        return reportPreviewPayload;
-      },
-      commit_report_import_state() {
-        return {
-          exists: true,
-          raw_changed: false,
-          parsed_changed: false,
-          warnings_changed: false
-        };
-      },
-      validate_orders_state() {
-        return orderValidationPayload;
-      },
-      order_commands_state() {
-        return orderVocabulary;
-      },
-      load_imported_turn_state() {
-        return importedTurnPayload;
-      },
-      load_latest_imported_turn_state() {
-        return importedTurnPayload;
-      },
-      list_imported_turns_state() {
-        return importedTurnSummaryPayload;
-      },
-      load_order_draft_state() {
-        return orderDraftPayload;
-      },
-      parse_report_classified_state() {
-        return { header: {}, regions: [], ordersTemplate: null };
-      },
-      plan_route_state() {
-        return planPayload;
-      },
-      export_map_state() {
-        return "; Map export from Atlantis HUD\n";
-      },
-      trace_move_orders_state() {
-        return tracePayload;
-      },
-      preview_orders_state() {
-        return previewPayload;
-      },
-      save_order_draft_state() {
-        return orderDraftPayload;
-      },
-      list_hex_notes_state() {
-        return [hexNotePayload];
-      },
-      save_hex_note_state() {
-        return hexNotePayload;
-      },
-      delete_hex_note_state() {
-        return true;
-      }
     };
 
     const invoke: TauriInvoke = async <T>(command: string) => {
@@ -425,8 +229,7 @@ describe("core client adapter contract parity", () => {
           updatedAt: "2026-08-07T12:00:00Z"
         } as T);
       }
-      // Both turn loads answer with the same record; only the question differs. The wasm side
-      // returns the snake_case payload above, so this is where the casing must be bridged.
+      // Both turn loads answer with the same record; only the question differs.
       if (command === "load_imported_turn" || command === "load_latest_imported_turn") {
         return Promise.resolve({
           key: {
@@ -511,68 +314,100 @@ describe("core client adapter contract parity", () => {
       } as T);
     };
 
-    const wasmClient = createCoreClient(createWasmAdapter(wasmBindings));
     const tauriClient = createCoreClient(createTauriAdapter(invoke));
 
-    await expect(wasmClient.getEngineInfo()).resolves.toEqual(await tauriClient.getEngineInfo());
+    await expect(tauriClient.getEngineInfo()).resolves.toEqual({
+      id: "atlantis",
+      name: "Atlantis PBEM",
+      rulesetVersion: "4.0",
+      maxFactionCount: 128
+    });
 
-    // Game management crosses the same boundary as everything else, so it gets the same
-    // treatment: one payload per transport, in that transport's own casing, normalized to one
-    // answer. A game that lists differently on desktop and on web is two applications.
-    const wasmGames = await wasmClient.listGames();
-    expect(wasmGames).toEqual(await tauriClient.listGames());
-    expect(wasmGames[0].metadata.rulesetId).toBe("neworigins");
-    expect(wasmGames[0].lastOpenedAt).toBe("2026-08-09T18:00:00Z");
+    // Game management crosses the same boundary as everything else: one payload per command,
+    // normalized to the client's own contract.
+    const games = await tauriClient.listGames();
+    expect(games[0].metadata.rulesetId).toBe("neworigins");
+    expect(games[0].lastOpenedAt).toBe("2026-08-09T18:00:00Z");
 
-    await expect(wasmClient.createGame(wasmGames[0])).resolves.toEqual(
-      await tauriClient.createGame(wasmGames[0])
+    const openedGame = {
+      gameFilePath: "/tmp/campaign.atlantis-game.json",
+      databasePath: "/tmp/campaign.atlantis-game.sqlite",
+      schemaVersion: 2,
+      manifest: {
+        manifestVersion: 1,
+        metadata: {
+          gameId: "faction-12",
+          gameName: "Faction 12",
+          rulesetId: "neworigins"
+        },
+        reportSources: [{ sourceId: "turn-12-report", label: "Turn 12 report" }],
+        createdAt: "2026-08-01T09:00:00Z",
+        lastOpenedAt: "2026-08-09T18:00:00Z"
+      }
+    };
+    await expect(tauriClient.createGame(games[0])).resolves.toEqual(openedGame);
+    await expect(tauriClient.openGame("faction-12", "2026-08-09T18:00:00Z")).resolves.toEqual(
+      openedGame
     );
-    await expect(wasmClient.openGame("faction-12", "2026-08-09T18:00:00Z")).resolves.toEqual(
-      await tauriClient.openGame("faction-12", "2026-08-09T18:00:00Z")
-    );
-    await expect(wasmClient.deleteGame("faction-12")).resolves.toBeUndefined();
     await expect(tauriClient.deleteGame("faction-12")).resolves.toBeUndefined();
 
-    // The planner's answer must be identical on both transports, down to the nested route and its
-    // risk: the desktop and the browser plan the same move or one of them is lying.
-    const wasmPlan = await wasmClient.planRoute("{}", "report", "[]", "18642", "1:7,51");
+    // The planner's answer is returned as-is: the core already serializes it to this shape.
     const tauriPlan = await tauriClient.planRoute("{}", "report", "[]", "18642", "1:7,51");
-    expect(wasmPlan).toEqual(tauriPlan);
-    expect(wasmPlan.plan?.totalCost).toBe(2);
-    expect(wasmPlan.plan?.steps[0].terrain).toBe("mountain");
-    expect(wasmPlan.problem).toBeNull();
-    expect(wasmPlan.fullyModelled).toBe(false);
+    expect(tauriPlan.plan?.totalCost).toBe(2);
+    expect(tauriPlan.plan?.steps[0].terrain).toBe("mountain");
+    expect(tauriPlan.problem).toBeNull();
+    expect(tauriPlan.fullyModelled).toBe(false);
 
-    // A traced order must come back identically on both transports too, for the same reason.
-    const wasmTrace = await wasmClient.traceMoveOrders("{}", "report", "[]", "18642", "MOVE N");
+    // A traced order comes back the same way.
     const tauriTrace = await tauriClient.traceMoveOrders("{}", "report", "[]", "18642", "MOVE N");
-    expect(wasmTrace).toEqual(tauriTrace);
-    expect(wasmTrace.path?.steps[0].terrain).toBe("mountain");
-    expect(wasmTrace.path?.months[0].endsAt).toEqual({ x: 7, y: 51, z: 1 });
-    expect(wasmTrace.path?.mode).toBe("walk");
+    expect(tauriTrace.path?.steps[0].terrain).toBe("mountain");
+    expect(tauriTrace.path?.months[0].endsAt).toEqual({ x: 7, y: 51, z: 1 });
+    expect(tauriTrace.path?.mode).toBe("walk");
 
-    // The orders preview must come back identically on both transports as well: the table shows
-    // the coming month, and the desktop and the browser must show the same one.
-    const wasmPreview = await wasmClient.previewOrders("{}", "report", "[]", "orders");
+    // The orders preview, likewise: the table shows the coming month.
     const tauriPreview = await tauriClient.previewOrders("{}", "report", "[]", "orders");
-    expect(wasmPreview).toEqual(tauriPreview);
-    expect(wasmPreview.regions[0].units[0].status).toBe("departing");
-    expect(wasmPreview.regions[0].units[0].unit.name).toBe("Nine of Eight");
-    expect(wasmPreview.regions[0].units[0].changes[0]).toEqual({
+    expect(tauriPreview.regions[0].units[0].status).toBe("departing");
+    expect(tauriPreview.regions[0].units[0].unit.name).toBe("Nine of Eight");
+    expect(tauriPreview.regions[0].units[0].changes[0]).toEqual({
       field: "name",
       original: "Seven of Eight"
     });
-    expect(wasmPreview.regions[0].units[0].departingTo).toBe("1:7,51");
+    expect(tauriPreview.regions[0].units[0].departingTo).toBe("1:7,51");
     await expect(
-      wasmClient.parseReport("TURN: 12 Spring\nFACTION: 17 | Crimson Tide\nREGION: R1 | Coast of Dawn")
-    ).resolves.toEqual(await tauriClient.parseReport("same"));
+      tauriClient.parseReport("TURN: 12 Spring\nFACTION: 17 | Crimson Tide\nREGION: R1 | Coast of Dawn")
+    ).resolves.toEqual({
+      turnHeader: { turnNumber: 12, season: "Spring" },
+      detectedFactions: [{ factionId: "17", name: "Crimson Tide" }],
+      regions: [{ regionId: "R1", name: "Coast of Dawn" }],
+      units: [{ unitId: "U100", name: "Guard Patrol", regionId: "R1" }],
+      inventories: [{ unitId: "U100", item: "silver", quantity: 12 }],
+      messageSummaries: [{ kind: "order", source: "U100", text: "MOVE R2" }],
+      warnings: [],
+      meetsMinimumImportThreshold: true
+    });
     await expect(
-      wasmClient.previewReportImport("/tmp/campaign.atlantis-game.sqlite", "faction-12", "17", "same")
-    ).resolves.toEqual(
-      await tauriClient.previewReportImport("/tmp/campaign.atlantis-game.sqlite", "faction-12", "17", "same")
-    );
+      tauriClient.previewReportImport("/tmp/campaign.atlantis-game.sqlite", "faction-12", "17", "same")
+    ).resolves.toEqual({
+      parseResult: {
+        turnHeader: { turnNumber: 12, season: "Spring" },
+        detectedFactions: [{ factionId: "17", name: "Crimson Tide" }],
+        regions: [{ regionId: "R1", name: "Coast of Dawn" }],
+        units: [{ unitId: "U100", name: "Guard Patrol", regionId: "R1" }],
+        inventories: [{ unitId: "U100", item: "silver", quantity: 12 }],
+        messageSummaries: [{ kind: "order", source: "U100", text: "MOVE R2" }],
+        warnings: [],
+        meetsMinimumImportThreshold: true
+      },
+      duplicatePreview: {
+        exists: false,
+        rawChanged: false,
+        parsedChanged: false,
+        warningsChanged: false
+      },
+      turnNumber: 12
+    });
     await expect(
-      wasmClient.commitReportImport(
+      tauriClient.commitReportImport(
         "/tmp/campaign.atlantis-game.sqlite",
         "faction-12",
         "17",
@@ -581,28 +416,49 @@ describe("core client adapter contract parity", () => {
         true,
         "2026-08-09T18:00:00Z"
       )
-    ).resolves.toEqual(
-      await tauriClient.commitReportImport(
-        "/tmp/campaign.atlantis-game.sqlite",
-        "faction-12",
-        "17",
-        "same",
-        null,
-        true,
-        "2026-08-09T18:00:00Z"
-      )
-    );
-    await expect(wasmClient.validateOrders("bad input", null)).resolves.toEqual(
-      await tauriClient.validateOrders("bad input", null)
-    );
-    await expect(wasmClient.orderCommands()).resolves.toEqual(await tauriClient.orderCommands());
+    ).resolves.toEqual({
+      exists: true,
+      rawChanged: false,
+      parsedChanged: false,
+      warningsChanged: false
+    });
+    await expect(tauriClient.validateOrders("bad input", null)).resolves.toEqual({
+      diagnostics: [
+        {
+          code: "unknown-command",
+          message: "unknown order command",
+          lineStart: 1,
+          lineEnd: 1,
+          columnStart: 0,
+          columnEnd: 3,
+          severity: "error",
+          regionId: null,
+          unitId: null
+        },
+        {
+          code: "extra-arguments",
+          message: "extra arguments ignored for MOVE",
+          lineStart: 2,
+          lineEnd: 2,
+          columnStart: 5,
+          columnEnd: 9,
+          severity: "warning",
+          regionId: null,
+          unitId: null
+        }
+      ]
+    });
+    await expect(tauriClient.orderCommands()).resolves.toEqual(orderVocabulary);
+    const orderDraft = {
+      key: { gameId: "faction-12", factionId: "17", turnNumber: 12 },
+      orderText: "MOVE U100 R2",
+      updatedAt: "2026-08-07T12:00:00Z"
+    };
     await expect(
-      wasmClient.loadOrderDraft("/tmp/campaign.atlantis-game.sqlite", "faction-12", "17", 12)
-    ).resolves.toEqual(
-      await tauriClient.loadOrderDraft("/tmp/campaign.atlantis-game.sqlite", "faction-12", "17", 12)
-    );
+      tauriClient.loadOrderDraft("/tmp/campaign.atlantis-game.sqlite", "faction-12", "17", 12)
+    ).resolves.toEqual(orderDraft);
     await expect(
-      wasmClient.saveOrderDraft(
+      tauriClient.saveOrderDraft(
         "/tmp/campaign.atlantis-game.sqlite",
         "faction-12",
         "17",
@@ -610,44 +466,46 @@ describe("core client adapter contract parity", () => {
         "MOVE U100 R2",
         "2026-08-07T12:00:00Z"
       )
-    ).resolves.toEqual(
-      await tauriClient.saveOrderDraft(
-        "/tmp/campaign.atlantis-game.sqlite",
-        "faction-12",
-        "17",
-        12,
-        "MOVE U100 R2",
-        "2026-08-07T12:00:00Z"
-      )
-    );
+    ).resolves.toEqual(orderDraft);
+    const importedTurn = {
+      key: { gameId: "faction-12", factionId: "17", turnNumber: 12 },
+      rawReport: "TURN: 12 Spring\nFACTION: 17 | Crimson Tide\nREGION: A1 | Coast of Dawn",
+      parseResult: {
+        turnHeader: { turnNumber: 12, season: "Spring" },
+        detectedFactions: [{ factionId: "17", name: "Crimson Tide" }],
+        regions: [{ regionId: "R1", name: "Coast of Dawn" }],
+        units: [{ unitId: "U100", name: "Guard Patrol", regionId: "R1" }],
+        inventories: [{ unitId: "U100", item: "silver", quantity: 12 }],
+        messageSummaries: [{ kind: "order", source: "U100", text: "MOVE R2" }],
+        warnings: [],
+        meetsMinimumImportThreshold: true
+      }
+    };
     await expect(
-      wasmClient.loadImportedTurn("/tmp/campaign.atlantis-game.sqlite", "faction-12", "17", 12)
-    ).resolves.toEqual(
-      await tauriClient.loadImportedTurn("/tmp/campaign.atlantis-game.sqlite", "faction-12", "17", 12)
-    );
-    // The turn a game reopens on must be the same record on both transports. It decides what the
-    // player sees on launch, so a divergence here is two applications rather than one.
-    const wasmLatest = await wasmClient.loadLatestImportedTurn(
+      tauriClient.loadImportedTurn("/tmp/campaign.atlantis-game.sqlite", "faction-12", "17", 12)
+    ).resolves.toEqual(importedTurn);
+    // The turn a game reopens on decides what the player sees on launch.
+    const tauriLatest = await tauriClient.loadLatestImportedTurn(
       "/tmp/campaign.atlantis-game.sqlite",
       "faction-12"
     );
-    expect(wasmLatest).toEqual(
-      await tauriClient.loadLatestImportedTurn("/tmp/campaign.atlantis-game.sqlite", "faction-12")
-    );
-    expect(wasmLatest?.key).toEqual({ gameId: "faction-12", factionId: "17", turnNumber: 12 });
+    expect(tauriLatest).toEqual(importedTurn);
+    expect(tauriLatest?.key).toEqual({ gameId: "faction-12", factionId: "17", turnNumber: 12 });
     await expect(
-      wasmClient.listImportedTurns("/tmp/campaign.atlantis-game.sqlite", "faction-12")
-    ).resolves.toEqual(
-      await tauriClient.listImportedTurns("/tmp/campaign.atlantis-game.sqlite", "faction-12")
-    );
-    const wasmNotes = await wasmClient.listHexNotes(
+      tauriClient.listImportedTurns("/tmp/campaign.atlantis-game.sqlite", "faction-12")
+    ).resolves.toEqual([
+      {
+        key: { gameId: "faction-12", factionId: "17", turnNumber: 12 },
+        season: "Spring",
+        importedAt: "2026-08-01T10:00:00Z",
+        updatedAt: "2026-08-01T10:00:00Z"
+      }
+    ]);
+    const tauriNotes = await tauriClient.listHexNotes(
       "/tmp/campaign.atlantis-game.sqlite",
       "faction-12"
     );
-    expect(wasmNotes).toEqual(
-      await tauriClient.listHexNotes("/tmp/campaign.atlantis-game.sqlite", "faction-12")
-    );
-    expect(wasmNotes[0]).toEqual({
+    expect(tauriNotes[0]).toEqual({
       id: "note-1",
       gameId: "faction-12",
       regionId: "1:7,53",
@@ -657,15 +515,10 @@ describe("core client adapter contract parity", () => {
       createdAt: "2026-08-07T12:00:00Z",
       updatedAt: "2026-08-07T12:00:00Z"
     });
-    const noteToSave: HexNoteRecord = wasmNotes[0];
+    const noteToSave: HexNoteRecord = tauriNotes[0];
     await expect(
-      wasmClient.saveHexNote("/tmp/campaign.atlantis-game.sqlite", noteToSave)
-    ).resolves.toEqual(
-      await tauriClient.saveHexNote("/tmp/campaign.atlantis-game.sqlite", noteToSave)
-    );
-    await expect(
-      wasmClient.deleteHexNote("/tmp/campaign.atlantis-game.sqlite", "faction-12", "note-1")
-    ).resolves.toBeUndefined();
+      tauriClient.saveHexNote("/tmp/campaign.atlantis-game.sqlite", noteToSave)
+    ).resolves.toEqual(noteToSave);
     await expect(
       tauriClient.deleteHexNote("/tmp/campaign.atlantis-game.sqlite", "faction-12", "note-1")
     ).resolves.toBeUndefined();
@@ -677,7 +530,7 @@ describe("core client adapter contract parity", () => {
    * Pinned separately from the giant parity test above so a change to that test's many payloads
    * cannot hide a regression here.
    */
-  it("carries a sail plan and a crew refusal identically on both transports", async () => {
+  it("carries a sail plan and a crew refusal", async () => {
     const sailPlanPayload = {
       plan: {
         from: { x: 49, y: 3, z: 1 },
@@ -706,16 +559,6 @@ describe("core client adapter contract parity", () => {
       fullyModelled: false
     };
 
-    const bindings = {
-      plan_route_state(
-        _rulesetJson: string,
-        _rawReport: string,
-        _rememberedJson: string,
-        unitId: string
-      ) {
-        return unitId === "crewed" ? sailPlanPayload : crewRefusalPayload;
-      }
-    } as unknown as WasmBindings;
     const invoke: TauriInvoke = async <T,>(command: string, args?: Record<string, unknown>) => {
       if (command === "plan_route") {
         return Promise.resolve(
@@ -725,20 +568,17 @@ describe("core client adapter contract parity", () => {
       throw new Error(`unexpected command ${command}`);
     };
 
-    const wasmClient = createCoreClient(createWasmAdapter(bindings));
     const tauriClient = createCoreClient(createTauriAdapter(invoke));
 
-    const wasmSail = await wasmClient.planRoute("{}", "report", "[]", "crewed", "1:49,5");
     const tauriSail = await tauriClient.planRoute("{}", "report", "[]", "crewed", "1:49,5");
-    expect(wasmSail).toEqual(tauriSail);
-    expect(wasmSail.plan?.mode).toBe("sail");
-    expect(wasmSail.problem).toBeNull();
+    expect(tauriSail).toEqual(sailPlanPayload);
+    expect(tauriSail.plan?.mode).toBe("sail");
+    expect(tauriSail.problem).toBeNull();
 
-    const wasmRefusal = await wasmClient.planRoute("{}", "report", "[]", "undercrewed", "1:49,5");
     const tauriRefusal = await tauriClient.planRoute("{}", "report", "[]", "undercrewed", "1:49,5");
-    expect(wasmRefusal).toEqual(tauriRefusal);
-    expect(wasmRefusal.plan).toBeNull();
-    expect(wasmRefusal.problem).toEqual({ kind: "crewCannotSail", required: 4, available: 1 });
+    expect(tauriRefusal).toEqual(crewRefusalPayload);
+    expect(tauriRefusal.plan).toBeNull();
+    expect(tauriRefusal.problem).toEqual({ kind: "crewCannotSail", required: 4, available: 1 });
   });
 });
 
@@ -1057,16 +897,6 @@ describe("merging an allied report", () => {
     ).resolves.toEqual([]);
   });
 
-  it("refuses to merge through a wasm build with no persistence linked in", async () => {
-    const bindings = {} as WasmBindings;
-
-    expect(() => createWasmAdapter(bindings).mergeReport(DB, "g", "95", 71, "r", null, "now")).toThrow(
-      "game persistence is not linked into this wasm build"
-    );
-    await expect(
-      createCoreClient(createWasmAdapter(bindings)).loadMergedReports(DB, "g", "95", 71)
-    ).resolves.toEqual([]);
-  });
 });
 
 /**
@@ -1183,32 +1013,6 @@ describe("changing a game's ruleset", () => {
     expect(manifest.lastOpenedAt).toBe("2026-08-09T18:00:00Z");
   });
 
-  it("normalizes the wasm answer to the same manifest", async () => {
-    const bindings = {
-      set_game_ruleset_state: (gameId: string, rulesetId: string) => ({
-        ...wireManifest,
-        metadata: { ...wireManifest.metadata, game_id: gameId, ruleset_id: rulesetId }
-      })
-    } as unknown as WasmBindings;
-
-    const manifest = await createCoreClient(createWasmAdapter(bindings)).setGameRuleset(
-      "faction-12",
-      "magicdeep"
-    );
-
-    expect(manifest.metadata.gameId).toBe("faction-12");
-    expect(manifest.metadata.rulesetId).toBe("magicdeep");
-  });
-
-  // A write, so it refuses rather than answering emptily: a change that quietly went nowhere
-  // would leave the dialog claiming a ruleset the manifest does not hold.
-  it("refuses through a wasm build with no persistence linked in", () => {
-    const bindings = {} as WasmBindings;
-
-    expect(() => createWasmAdapter(bindings).setGameRuleset("g", "magicdeep")).toThrow(
-      "game persistence is not linked into this wasm build"
-    );
-  });
 });
 
 /**
@@ -1254,34 +1058,13 @@ describe("map export", () => {
     expect(text).toBe(EXPORTED);
   });
 
-  it("asks the wasm binding for the same export", async () => {
-    const calls: string[][] = [];
-    const bindings = {
-      export_map_state: (rawReport: string, rememberedJson: string, requestJson: string) => {
-        calls.push([rawReport, rememberedJson, requestJson]);
-        return EXPORTED;
-      }
-    } as unknown as WasmBindings;
-
-    const text = await createCoreClient(createWasmAdapter(bindings)).exportMap(
-      "the turn's report",
-      "[]",
-      REQUEST
-    );
-
-    expect(calls).toEqual([["the turn's report", "[]", JSON.stringify(REQUEST)]]);
-    expect(text).toBe(EXPORTED);
-  });
-
   // An export nobody can read is worse than none: a file saved from an unreadable answer would be
   // an empty document the player believes holds their map.
   it("refuses an answer that is not text", async () => {
-    const bindings = {
-      export_map_state: () => ({ not: "text" })
-    } as unknown as WasmBindings;
+    const invoke: TauriInvoke = <T,>() => Promise.resolve({ not: "text" } as T);
 
     await expect(
-      createCoreClient(createWasmAdapter(bindings)).exportMap("report", "[]", REQUEST)
+      createCoreClient(createTauriAdapter(invoke)).exportMap("report", "[]", REQUEST)
     ).rejects.toThrow("map export did not come back as text");
   });
 });
@@ -1299,60 +1082,40 @@ describe("hex notes", () => {
   };
 
   it("treats undefined the same as null for listing", async () => {
-    const bindings = {
-      list_hex_notes_state: () => undefined
-    } as unknown as WasmBindings;
+    const invoke: TauriInvoke = <T,>() => Promise.resolve(undefined as T);
 
     await expect(
-      createCoreClient(createWasmAdapter(bindings)).listHexNotes("/db", "faction-12")
+      createCoreClient(createTauriAdapter(invoke)).listHexNotes("/db", "faction-12")
     ).resolves.toEqual([]);
   });
 
   it("accepts on_map as 0/1 and as a boolean", async () => {
-    const zeroBindings = {
-      list_hex_notes_state: () => [
-        {
-          id: "note-1",
-          game_id: "faction-12",
-          region_id: "1:7,53",
-          text: "text",
-          on_map: 0,
-          turn: 12,
-          created_at: "2026-08-07T12:00:00Z",
-          updated_at: "2026-08-07T12:00:00Z"
-        }
-      ]
-    } as unknown as WasmBindings;
-    const oneBindings = {
-      list_hex_notes_state: () => [
-        {
-          id: "note-1",
-          game_id: "faction-12",
-          region_id: "1:7,53",
-          text: "text",
-          on_map: 1,
-          turn: 12,
-          created_at: "2026-08-07T12:00:00Z",
-          updated_at: "2026-08-07T12:00:00Z"
-        }
-      ]
-    } as unknown as WasmBindings;
-    const boolBindings = {
-      list_hex_notes_state: () => [{ ...NOTE }]
-    } as unknown as WasmBindings;
+    const invokeWith = (onMap: number | boolean): TauriInvoke =>
+      <T,>() =>
+        Promise.resolve([
+          {
+            id: "note-1",
+            game_id: "faction-12",
+            region_id: "1:7,53",
+            text: "text",
+            on_map: onMap,
+            turn: 12,
+            created_at: "2026-08-07T12:00:00Z",
+            updated_at: "2026-08-07T12:00:00Z"
+          }
+        ] as T);
 
-    const zeroNotes = await createCoreClient(createWasmAdapter(zeroBindings)).listHexNotes(
+    const zeroNotes = await createCoreClient(createTauriAdapter(invokeWith(0))).listHexNotes(
       "/db",
       "faction-12"
     );
-    const oneNotes = await createCoreClient(createWasmAdapter(oneBindings)).listHexNotes(
+    const oneNotes = await createCoreClient(createTauriAdapter(invokeWith(1))).listHexNotes(
       "/db",
       "faction-12"
     );
-    const boolNotes = await createCoreClient(createWasmAdapter(boolBindings)).listHexNotes(
-      "/db",
-      "faction-12"
-    );
+    const boolNotes = await createCoreClient(
+      createTauriAdapter(<T,>() => Promise.resolve([{ ...NOTE }] as T))
+    ).listHexNotes("/db", "faction-12");
 
     expect(zeroNotes[0].onMap).toBe(false);
     expect(oneNotes[0].onMap).toBe(true);
@@ -1360,8 +1123,8 @@ describe("hex notes", () => {
   });
 
   it("rejects a note without an id", async () => {
-    const bindings = {
-      list_hex_notes_state: () => [
+    const invoke: TauriInvoke = <T,>() =>
+      Promise.resolve([
         {
           game_id: "faction-12",
           region_id: "1:7,53",
@@ -1371,17 +1134,16 @@ describe("hex notes", () => {
           created_at: "2026-08-07T12:00:00Z",
           updated_at: "2026-08-07T12:00:00Z"
         }
-      ]
-    } as unknown as WasmBindings;
+      ] as T);
 
     await expect(
-      createCoreClient(createWasmAdapter(bindings)).listHexNotes("/db", "faction-12")
+      createCoreClient(createTauriAdapter(invoke)).listHexNotes("/db", "faction-12")
     ).rejects.toThrow("incomplete hex note payload");
   });
 
   it("rejects an on_map value that is neither 0, 1 nor a boolean", async () => {
-    const bindings = {
-      list_hex_notes_state: () => [
+    const invoke: TauriInvoke = <T,>() =>
+      Promise.resolve([
         {
           id: "note-1",
           game_id: "faction-12",
@@ -1392,11 +1154,10 @@ describe("hex notes", () => {
           created_at: "2026-08-07T12:00:00Z",
           updated_at: "2026-08-07T12:00:00Z"
         }
-      ]
-    } as unknown as WasmBindings;
+      ] as T);
 
     await expect(
-      createCoreClient(createWasmAdapter(bindings)).listHexNotes("/db", "faction-12")
+      createCoreClient(createTauriAdapter(invoke)).listHexNotes("/db", "faction-12")
     ).rejects.toThrow("incomplete hex note payload");
   });
 });

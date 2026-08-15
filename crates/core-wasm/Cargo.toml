@@ -12,9 +12,3 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde-wasm-bindgen = "0.6"
 wasm-bindgen = "0.2"
-
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-atlantis-hud-core-persistence = { path = "../core-persistence" }
-
-[dev-dependencies]
-tempfile = "3.12"
