@@ -1,12 +1,13 @@
-import type { Coordinate, OrderDiagnostic } from "@atlantis/core-client";
-import { abbreviateDirection, SURFACE, type HexNode } from "../hexMapModel";
+import type { Coordinate, CoreClient, OpenedGame, OrderDiagnostic } from "@atlantis/core-client";
+import { abbreviateDirection, regionIdOf, SURFACE, type HexNode } from "../hexMapModel";
 import { useWorkspaceStore } from "../workspaceStore";
 import { CollapsiblePanel } from "./CollapsiblePanel";
 import { Absent, Field, Row, Section, StaleBanner } from "./primitives";
+import { RegionNotes } from "./RegionNotes";
 
 /**
- * Everything the report says about the selected hex. Purely informational, as the issue requires:
- * nothing here is interactive.
+ * Everything the report says about the selected hex, plus the one interactive exception: the
+ * Notes section (ah-o1t) lets the player write, edit and remove notes pinned to the hex.
  *
  * Every line is written out, however many a city carries: the pane scrolls, and a "+ N more"
  * that nothing could expand left the raw report as the only way to the full list. Scrolling is
@@ -15,7 +16,10 @@ import { Absent, Field, Row, Section, StaleBanner } from "./primitives";
 export function RegionPanel({
   hex,
   unknown = null,
-  problems = []
+  problems = [],
+  client,
+  game,
+  turn
 }: {
   hex: HexNode | null;
   /**
@@ -33,6 +37,9 @@ export function RegionPanel({
    * stretch. The orders panel keeps showing what belongs to the selected unit.
    */
   problems?: OrderDiagnostic[];
+  client: CoreClient;
+  game: OpenedGame | null;
+  turn: number | null;
 }) {
   const stale = hex?.knowledge === "stale";
   const asOf = stale && hex.lastSeenTurn !== null ? `as of turn ${hex.lastSeenTurn}` : null;
@@ -52,6 +59,9 @@ export function RegionPanel({
         ) : (
           <Absent>No hex selected.</Absent>
         )}
+        {unknown ? (
+          <RegionNotes regionId={regionIdOf(unknown)} client={client} game={game} turn={turn} />
+        ) : null}
       </CollapsiblePanel>
     );
   }
@@ -170,6 +180,8 @@ export function RegionPanel({
           </Section>
         </>
       )}
+
+      <RegionNotes regionId={hex.regionId} client={client} game={game} turn={turn} />
     </CollapsiblePanel>
   );
 }

@@ -68,6 +68,7 @@ import {
 } from "../gameSession";
 import { rulesetById } from "../rulesets";
 import { DEFAULT_LEVEL, useWorkspaceStore } from "../workspaceStore";
+import { useHexNotesStore } from "../hexNotesStore";
 import { useSettingsStore } from "../settingsStore";
 import { AppHeader, type ImportStatus } from "./AppHeader";
 import { TurnPicker } from "./TurnPicker";
@@ -893,12 +894,38 @@ export function AppShell({
                 }
               }
             ]
+          : []),
+        // Only with a game open and a hex selected: a note needs both to be saved anywhere - ah-o1t.
+        ...(game && selectedRegionId
+          ? [
+              {
+                id: "add-hex-note",
+                label: "Add note to this hex",
+                run: () => {
+                  if (useWorkspaceStore.getState().collapsed.region) {
+                    useWorkspaceStore.getState().togglePanel("region");
+                  }
+                  useHexNotesStore.getState().requestAddFor(selectedRegionId);
+                }
+              }
+            ]
           : [])
       ],
       orderCommands,
       insertOrder: (command) => ordersEditor.current?.insertOrder(command)
     });
-  }, [orderedOwnUnitIds, parsed, model, goToUnit, selectHex, setTheme, theme, orderCommands, game]);
+  }, [
+    orderedOwnUnitIds,
+    parsed,
+    model,
+    goToUnit,
+    selectHex,
+    setTheme,
+    theme,
+    orderCommands,
+    game,
+    selectedRegionId
+  ]);
 
   /**
    * Puts a parsed report on screen and files it in the game.
@@ -1546,6 +1573,19 @@ export function AppShell({
       cancelled = true;
     };
   }, [client]);
+
+  /**
+   * Keeps the hex notes store in step with the open game (ah-o1t): loads its notes when a game
+   * opens, clears them when it closes. Its own effect rather than folded into the restore effect
+   * below - notes do not depend on the ruleset.
+   */
+  useEffect(() => {
+    if (game) {
+      void useHexNotesStore.getState().load(client, game);
+    } else {
+      useHexNotesStore.getState().clear();
+    }
+  }, [client, game]);
 
   /**
    * Puts back the turn the player was last working on.
@@ -2924,6 +2964,9 @@ export function AppShell({
                 hex={hex}
                 unknown={unknownHex}
                 problems={findingsForHex(validated.diagnostics, hex?.regionId ?? null)}
+                client={client}
+                game={game}
+                turn={parsed?.header.turnNumber ?? null}
               />
               <RailSplitter
                 side="left"

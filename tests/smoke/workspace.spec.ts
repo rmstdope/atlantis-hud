@@ -3117,3 +3117,47 @@ test("the faction view uses the window before it scrolls", async ({ page }) => {
   const panelBox = (await panel.boundingBox())!;
   expect(panelBox.y + panelBox.height).toBeLessThanOrEqual(720);
 });
+
+/**
+ * ah-o1t.2: manual hex notes, written from the region panel's Notes section. A note survives a
+ * reload and can be removed through the in-row confirmation.
+ */
+test("a note written on a hex is still there after a reload", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+
+  await page.getByTestId("region-note-add").click();
+  await page.getByTestId("region-note-editor").locator("textarea").fill("Build a castle here");
+  await page.keyboard.press("ControlOrMeta+Enter");
+
+  const note = page.getByTestId("region-note").filter({ hasText: "Build a castle here" });
+  await expect(note).toContainText("turn 71");
+  // The row above appears optimistically, before the store's `add()` has awaited the actual
+  // storage write; the editor closing is what proves that write landed. Reloading before this
+  // is a real race - the note is durable in memory a tick before it is durable on disk.
+  await expect(page.getByTestId("region-note-editor")).toHaveCount(0);
+
+  await page.reload();
+  await expect(page.getByTestId("import-status")).toContainText("restored turn 71");
+  await selectHex(page, "1:7,53");
+  await expect(page.getByTestId("region-note").filter({ hasText: "Build a castle here" })).toBeVisible();
+
+  await note.getByTestId("region-note-remove").click();
+  await expect(note).toContainText("Remove this note?");
+  await note.getByTestId("region-note-remove").click();
+  await expect(page.getByText("No notes on this hex.")).toBeVisible();
+});
+
+/** ah-o1t.2: the palette's "Add note to this hex" opens the editor, focused, for the selected hex. */
+test("the palette can open the note editor for the selected hex", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+
+  await page.keyboard.press("ControlOrMeta+k");
+  await page.getByTestId("palette-input").fill("Add note");
+  await expect(page.getByTestId("palette-item").first()).toContainText("Add note to this hex");
+  await page.keyboard.press("Enter");
+
+  const editor = page.getByTestId("region-note-editor").locator("textarea");
+  await expect(editor).toBeFocused();
+});
