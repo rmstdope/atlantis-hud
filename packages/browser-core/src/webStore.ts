@@ -13,16 +13,19 @@
  * something to list without opening any game.
  */
 
+import type { HexNoteRecord } from "@atlantis/core-client";
+
 const REGISTRY_DATABASE_NAME = "atlantis-hud";
 const REGISTRY_DATABASE_VERSION = 4;
-/** 2 since issue #53 added the merged-report store. See `openGameDatabase` for what a bump costs. */
-const GAME_DATABASE_VERSION = 2;
+/** 3 since ah-o1t.1 added the hex-note store. See `openGameDatabase` for what a bump costs. */
+const GAME_DATABASE_VERSION = 3;
 
 const GAME_STORE = "games";
 const IMPORTED_TURN_STORE = "importedTurns";
 const ORDER_DRAFT_STORE = "orderDrafts";
 const REGION_SIGHTING_STORE = "regionSightings";
 const MERGED_REPORT_STORE = "mergedReports";
+const HEX_NOTE_STORE = "hexNotes";
 
 /** Opaque payload of one stored turn import. Mirrors `ImportedTurnSnapshot` in the Rust core. */
 export type StoredTurnSnapshot = {
@@ -90,6 +93,8 @@ export type StoredOrderDraft = {
   updatedAt: string;
 };
 
+export type StoredHexNote = { databasePath: string } & HexNoteRecord;
+
 export type StoredGame = {
   gameId: string;
   databasePath: string;
@@ -140,6 +145,11 @@ export interface WebStore {
     factionId: string,
     turnNumber: number
   ): Promise<StoredOrderDraft | null>;
+  /** A game's hex notes, newest first (createdAt desc, id asc), matching SQLite's ORDER BY. */
+  getHexNotes(databasePath: string, gameId: string): Promise<StoredHexNote[]>;
+  putHexNote(note: StoredHexNote): Promise<void>;
+  /** Resolves to whether a row existed. */
+  deleteHexNote(databasePath: string, gameId: string, noteId: string): Promise<boolean>;
 }
 
 /**
@@ -240,6 +250,7 @@ function openGameDatabase(databasePath: string): Promise<IDBDatabase> {
       create(ORDER_DRAFT_STORE, ["factionId", "turnNumber"]);
       create(REGION_SIGHTING_STORE, ["factionId", "regionId"]);
       create(MERGED_REPORT_STORE, ["factionId", "turnNumber", "mergedFactionId"]);
+      create(HEX_NOTE_STORE, ["id"]);
     };
 
     // An upgrade waits for every other connection to the database to close, and a second tab
@@ -293,6 +304,21 @@ export function createIndexedDbWebStore(): WebStore {
     const transaction = database.transaction(storeName, "readwrite");
     transaction.objectStore(storeName).put(value);
     await settle(transaction);
+  };
+
+  /** Deletes one row by key. Resolves to whether it existed. */
+  const remove = async (
+    databasePath: string,
+    storeName: string,
+    key: IDBValidKey
+  ): Promise<boolean> => {
+    const database = await gameDatabase(databasePath);
+    const transaction = database.transaction(storeName, "readwrite");
+    const store = transaction.objectStore(storeName);
+    const existed = (await promisify(store.get(key))) !== undefined;
+    store.delete(key);
+    await settle(transaction);
+    return existed;
   };
 
   /** Everything in one store matching a prefix of its key. */
@@ -419,8 +445,24 @@ export function createIndexedDbWebStore(): WebStore {
       readStore<StoredMergedReport>(databasePath, MERGED_REPORT_STORE),
     putOrderDraft: (draft) => write(draft.databasePath, ORDER_DRAFT_STORE, draft),
     getOrderDraft: (databasePath, _gameId, factionId, turnNumber) =>
-      read<StoredOrderDraft>(databasePath, ORDER_DRAFT_STORE, [factionId, turnNumber])
+      read<StoredOrderDraft>(databasePath, ORDER_DRAFT_STORE, [factionId, turnNumber]),
+    async getHexNotes(databasePath, _gameId) {
+      const notes = await readStore<StoredHexNote>(databasePath, HEX_NOTE_STORE);
+      return sortHexNotes(notes);
+    },
+    putHexNote: (note) => write(note.databasePath, HEX_NOTE_STORE, note),
+    deleteHexNote: (databasePath, _gameId, noteId) => remove(databasePath, HEX_NOTE_STORE, noteId)
   };
+}
+
+/** Newest first (createdAt desc), id asc for stability — matching SQLite's ORDER BY. */
+function sortHexNotes<T extends { createdAt: string; id: string }>(notes: readonly T[]): T[] {
+  return [...notes].sort((a, b) => {
+    if (a.createdAt !== b.createdAt) {
+      return a.createdAt < b.createdAt ? 1 : -1;
+    }
+    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+  });
 }
 
 /**
@@ -435,11 +477,13 @@ export function createMemoryWebStore(): WebStore {
   const drafts = new Map<string, StoredOrderDraft>();
   const sightings = new Map<string, StoredRegionSighting>();
   const merges = new Map<string, StoredMergedReport>();
+  const hexNotes = new Map<string, StoredHexNote>();
 
   // The database handle leads the key here for the same reason it selects the database in the
   // IndexedDB store: it is what keeps one game's records out of another's.
   const composite = (databasePath: string, factionId: string, turnNumber: number) =>
     JSON.stringify([databasePath, factionId, turnNumber]);
+  const notesComposite = (databasePath: string, id: string) => JSON.stringify([databasePath, id]);
 
   const dropDatabase = (map: Map<string, { databasePath: string }>, databasePath: string) => {
     for (const [key, value] of map) {
@@ -469,6 +513,7 @@ export function createMemoryWebStore(): WebStore {
       dropDatabase(drafts, stored.databasePath);
       dropDatabase(sightings, stored.databasePath);
       dropDatabase(merges, stored.databasePath);
+      dropDatabase(hexNotes, stored.databasePath);
     },
     async putImportedTurn(turn) {
       turns.set(composite(turn.databasePath, turn.factionId, turn.turnNumber), turn);
@@ -530,6 +575,19 @@ export function createMemoryWebStore(): WebStore {
     },
     async getOrderDraft(databasePath, _gameId, factionId, turnNumber) {
       return drafts.get(composite(databasePath, factionId, turnNumber)) ?? null;
+    },
+    async getHexNotes(databasePath, _gameId) {
+      const notes = [...hexNotes.values()].filter((note) => note.databasePath === databasePath);
+      return sortHexNotes(notes);
+    },
+    async putHexNote(note) {
+      hexNotes.set(notesComposite(note.databasePath, note.id), note);
+    },
+    async deleteHexNote(databasePath, _gameId, noteId) {
+      const key = notesComposite(databasePath, noteId);
+      const existed = hexNotes.has(key);
+      hexNotes.delete(key);
+      return existed;
     }
   };
 }

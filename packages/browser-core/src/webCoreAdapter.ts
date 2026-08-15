@@ -7,7 +7,7 @@
  * different verdicts. Only the read and the write are the browser's own, and those carry no rules.
  */
 
-import type { CoreAdapter, GameManifest } from "@atlantis/core-client";
+import type { CoreAdapter, GameManifest, HexNoteRecord } from "@atlantis/core-client";
 import type { StoredTurn, StoredTurnSnapshot, WebStore } from "./webStore";
 import { createWebStore } from "./webStore";
 
@@ -134,6 +134,16 @@ type GameBackupMergedReport = {
   mergedAt: string;
 };
 
+type GameBackupHexNote = {
+  id: string;
+  regionId: string;
+  text: string;
+  onMap: boolean;
+  turn: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
 type GameBackupPayload = {
   format: string;
   version: number;
@@ -143,6 +153,7 @@ type GameBackupPayload = {
   orderDrafts: GameBackupOrderDraft[];
   regionSightings: GameBackupRegionSighting[];
   mergedReports: GameBackupMergedReport[];
+  hexNotes: GameBackupHexNote[];
 };
 
 /**
@@ -177,6 +188,13 @@ function readOptionalString(value: unknown, message: string): string | undefined
 
 function readNumber(value: unknown, message: string): number {
   if (typeof value !== "number") {
+    throw new Error(message);
+  }
+  return value;
+}
+
+function readBoolean(value: unknown, message: string): boolean {
+  if (typeof value !== "boolean") {
     throw new Error(message);
   }
   return value;
@@ -341,7 +359,35 @@ function parseBackupJson(backupJson: string): GameBackupPayload {
           `backup file merged report ${index + 1} is missing its merge time`
         )
       };
-    })
+    }),
+    // Absent, unlike every other array here, means empty: a backup written before this field
+    // existed has no such key and must still import (ah-o1t.1).
+    hexNotes: readArray(payload.hexNotes ?? [], "backup file's hex notes are invalid").map(
+      (entry, index) => {
+        const record = asRecord(entry, `backup file hex note ${index + 1} is invalid`);
+        return {
+          id: readString(record.id, `backup file hex note ${index + 1} is missing its id`),
+          regionId: readString(
+            record.regionId,
+            `backup file hex note ${index + 1} is missing its region id`
+          ),
+          text: readString(record.text, `backup file hex note ${index + 1} is missing its text`),
+          onMap: readBoolean(
+            record.onMap,
+            `backup file hex note ${index + 1} is missing its on-map flag`
+          ),
+          turn: readNumber(record.turn, `backup file hex note ${index + 1} is missing its turn`),
+          createdAt: readString(
+            record.createdAt,
+            `backup file hex note ${index + 1} is missing its created time`
+          ),
+          updatedAt: readString(
+            record.updatedAt,
+            `backup file hex note ${index + 1} is missing its updated time`
+          )
+        };
+      }
+    )
   };
 }
 
@@ -652,12 +698,14 @@ export function createWebCoreAdapter(
         throw new Error(`no game with id ${gameId}`);
       }
 
-      const [importedTurns, orderDrafts, regionSightings, mergedReports] = await Promise.all([
-        store.getImportedTurns(game.databasePath, gameId),
-        store.getOrderDrafts(game.databasePath, gameId),
-        store.getAllRegionSightings(game.databasePath, gameId),
-        store.getAllMergedReports(game.databasePath, gameId)
-      ]);
+      const [importedTurns, orderDrafts, regionSightings, mergedReports, hexNotes] =
+        await Promise.all([
+          store.getImportedTurns(game.databasePath, gameId),
+          store.getOrderDrafts(game.databasePath, gameId),
+          store.getAllRegionSightings(game.databasePath, gameId),
+          store.getAllMergedReports(game.databasePath, gameId),
+          store.getHexNotes(game.databasePath, gameId)
+        ]);
 
       return JSON.stringify(
         {
@@ -692,6 +740,15 @@ export function createWebCoreAdapter(
             mergedFactionId: record.mergedFactionId,
             mergedFactionName: record.mergedFactionName,
             mergedAt: record.mergedAt
+          })),
+          hexNotes: hexNotes.map((note) => ({
+            id: note.id,
+            regionId: note.regionId,
+            text: note.text,
+            onMap: note.onMap,
+            turn: note.turn,
+            createdAt: note.createdAt,
+            updatedAt: note.updatedAt
           }))
         },
         null,
@@ -780,6 +837,21 @@ export function createWebCoreAdapter(
               mergedFactionId: record.mergedFactionId,
               mergedFactionName: record.mergedFactionName,
               mergedAt: record.mergedAt
+            })
+          )
+        );
+        await Promise.all(
+          backup.hexNotes.map((note) =>
+            store.putHexNote({
+              databasePath,
+              gameId,
+              id: note.id,
+              regionId: note.regionId,
+              text: note.text,
+              onMap: note.onMap,
+              turn: note.turn,
+              createdAt: note.createdAt,
+              updatedAt: note.updatedAt
             })
           )
         );
@@ -1037,6 +1109,20 @@ export function createWebCoreAdapter(
         orderText: stored.orderText,
         updatedAt: stored.updatedAt
       };
+    },
+
+    async listHexNotes(databasePath: string, gameId: string) {
+      const notes = await store.getHexNotes(databasePath, gameId);
+      return notes.map(({ databasePath: _databasePath, ...note }) => note);
+    },
+
+    async saveHexNote(databasePath: string, note: HexNoteRecord) {
+      await store.putHexNote({ databasePath, ...note });
+      return note;
+    },
+
+    async deleteHexNote(databasePath: string, gameId: string, noteId: string) {
+      return store.deleteHexNote(databasePath, gameId, noteId);
     }
   };
 }

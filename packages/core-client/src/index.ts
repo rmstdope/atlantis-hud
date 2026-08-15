@@ -607,6 +607,18 @@ export type OrderDraftRecord = {
   updatedAt: string;
 };
 
+/** One player-written note on a hex. Keyed by id; `regionId` is `hexMapModel`'s `"z:x,y"`. */
+export type HexNoteRecord = {
+  id: string;
+  gameId: string;
+  regionId: string;
+  text: string;
+  onMap: boolean;
+  turn: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type ImportedTurnRecord = {
   key: OrderDraftKey;
   rawReport: string;
@@ -790,6 +802,22 @@ type OrderDraftRecordWireShape = {
   updated_at?: string;
 };
 
+type HexNoteRecordWireShape = {
+  id?: string;
+  gameId?: string;
+  game_id?: string;
+  regionId?: string;
+  region_id?: string;
+  text?: string;
+  onMap?: boolean | number;
+  on_map?: boolean | number;
+  turn?: number;
+  createdAt?: string;
+  created_at?: string;
+  updatedAt?: string;
+  updated_at?: string;
+};
+
 type ReportMergeResultWireShape = {
   turnNumber?: number;
   turn_number?: number;
@@ -921,6 +949,9 @@ export interface CoreAdapter {
     orderText: string,
     updatedAt: string
   ): Promise<unknown> | unknown;
+  listHexNotes(databasePath: string, gameId: string): Promise<unknown> | unknown;
+  saveHexNote(databasePath: string, note: HexNoteRecord): Promise<unknown> | unknown;
+  deleteHexNote(databasePath: string, gameId: string, noteId: string): Promise<unknown> | unknown;
 }
 
 export interface CoreClient {
@@ -1153,6 +1184,12 @@ export interface CoreClient {
     orderText: string,
     updatedAt: string
   ): Promise<OrderDraftRecord>;
+  /** A game's hex notes, newest first. Empty for a game with none, not an error. */
+  listHexNotes(databasePath: string, gameId: string): Promise<HexNoteRecord[]>;
+  /** Inserts or updates one hex note; an edit is an upsert on `note.id`. */
+  saveHexNote(databasePath: string, note: HexNoteRecord): Promise<HexNoteRecord>;
+  /** Deletes one hex note. */
+  deleteHexNote(databasePath: string, gameId: string, noteId: string): Promise<void>;
 }
 
 export interface WasmBindings {
@@ -1256,6 +1293,9 @@ export interface WasmBindings {
     orderText: string,
     updatedAt: string
   ): unknown;
+  list_hex_notes_state(databasePath: string, gameId: string): unknown;
+  save_hex_note_state(databasePath: string, note: HexNoteRecord): unknown;
+  delete_hex_note_state(databasePath: string, gameId: string, noteId: string): unknown;
 }
 
 export type TauriInvoke = <T>(command: string, args?: Record<string, unknown>) => Promise<T>;
@@ -1672,6 +1712,43 @@ function normalizeOrderDraftRecord(value: unknown): OrderDraftRecord {
   };
 }
 
+function normalizeHexNoteRecord(value: unknown): HexNoteRecord {
+  if (typeof value !== "object" || value === null) {
+    throw new Error("invalid hex note payload");
+  }
+
+  const payload = value as HexNoteRecordWireShape;
+  const gameId = payload.gameId ?? payload.game_id;
+  const regionId = payload.regionId ?? payload.region_id;
+  const onMapRaw = payload.onMap ?? payload.on_map;
+  const createdAt = payload.createdAt ?? payload.created_at;
+  const updatedAt = payload.updatedAt ?? payload.updated_at;
+
+  if (
+    typeof payload.id !== "string" ||
+    typeof gameId !== "string" ||
+    typeof regionId !== "string" ||
+    typeof payload.text !== "string" ||
+    (typeof onMapRaw !== "boolean" && typeof onMapRaw !== "number") ||
+    typeof payload.turn !== "number" ||
+    typeof createdAt !== "string" ||
+    typeof updatedAt !== "string"
+  ) {
+    throw new Error("incomplete hex note payload");
+  }
+
+  return {
+    id: payload.id,
+    gameId,
+    regionId,
+    text: payload.text,
+    onMap: typeof onMapRaw === "boolean" ? onMapRaw : onMapRaw !== 0,
+    turn: payload.turn,
+    createdAt,
+    updatedAt
+  };
+}
+
 function normalizeImportedTurnRecord(value: unknown): ImportedTurnRecord {
   if (typeof value !== "object" || value === null) {
     throw new Error("invalid imported turn payload");
@@ -1890,6 +1967,25 @@ export function createCoreClient(adapter: CoreAdapter): CoreClient {
       );
       return normalizeOrderDraftRecord(value);
     },
+    async listHexNotes(databasePath: string, gameId: string) {
+      const value = await adapter.listHexNotes(databasePath, gameId);
+      // A game with no notes is the ordinary state, not a failure — same "undefined and null both
+      // mean empty" shape as listImportedTurns above.
+      if (value === undefined || value === null) {
+        return [];
+      }
+      if (!Array.isArray(value)) {
+        throw new Error("invalid hex note list payload");
+      }
+      return value.map(normalizeHexNoteRecord);
+    },
+    async saveHexNote(databasePath: string, note: HexNoteRecord) {
+      const value = await adapter.saveHexNote(databasePath, note);
+      return normalizeHexNoteRecord(value);
+    },
+    async deleteHexNote(databasePath: string, gameId: string, noteId: string) {
+      await adapter.deleteHexNote(databasePath, gameId, noteId);
+    },
     async planRoute(
       rulesetJson: string,
       rawReport: string,
@@ -2088,6 +2184,15 @@ export function createWasmAdapter(bindings: WasmBindings): CoreAdapter {
         orderText,
         updatedAt
       );
+    },
+    listHexNotes(databasePath: string, gameId: string) {
+      return bindings.list_hex_notes_state(databasePath, gameId);
+    },
+    saveHexNote(databasePath: string, note: HexNoteRecord) {
+      return bindings.save_hex_note_state(databasePath, note);
+    },
+    deleteHexNote(databasePath: string, gameId: string, noteId: string) {
+      return bindings.delete_hex_note_state(databasePath, gameId, noteId);
     },
     planRoute(
       rulesetJson: string,
@@ -2296,6 +2401,27 @@ export function createTauriAdapter(invoke: TauriInvoke): CoreAdapter {
         turn_number: turnNumber,
         order_text: orderText,
         updated_at: updatedAt
+      });
+    },
+    listHexNotes(databasePath: string, gameId: string) {
+      return invoke<HexNoteRecordWireShape[]>("list_hex_notes", {
+        database_path: databasePath,
+        game_id: gameId
+      });
+    },
+    saveHexNote(databasePath: string, note: HexNoteRecord) {
+      // The note goes through as one object, camelCase fields — the Tauri DTO's own
+      // rename_all = "camelCase" reads them; only the invoke argument itself is snake_case.
+      return invoke<HexNoteRecordWireShape>("save_hex_note", {
+        database_path: databasePath,
+        note
+      });
+    },
+    deleteHexNote(databasePath: string, gameId: string, noteId: string) {
+      return invoke<void>("delete_hex_note", {
+        database_path: databasePath,
+        game_id: gameId,
+        note_id: noteId
       });
     },
     planRoute(

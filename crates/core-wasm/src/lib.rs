@@ -15,11 +15,12 @@ use atlantis_hud_core::{
 };
 #[cfg(not(target_arch = "wasm32"))]
 use atlantis_hud_core_persistence::{
-    create_game, delete_game, insert_imported_turn, list_games, list_imported_turns,
-    load_imported_turn, load_latest_imported_turn, load_order_draft, open_game,
-    preview_imported_turn, set_game_ruleset, upsert_imported_turn, upsert_order_draft,
-    GameManifest, GameMetadata, ImportedTurnKey, ImportedTurnPreview, ImportedTurnRecord,
-    OpenedGame, OrderDraftKey, OrderDraftRecord, PersistenceError, ReportSourceRef,
+    create_game, delete_game, delete_hex_note, insert_imported_turn, list_games, list_hex_notes,
+    list_imported_turns, load_imported_turn, load_latest_imported_turn, load_order_draft,
+    open_game, preview_imported_turn, set_game_ruleset, upsert_hex_note, upsert_imported_turn,
+    upsert_order_draft, GameManifest, GameMetadata, HexNote, ImportedTurnKey, ImportedTurnPreview,
+    ImportedTurnRecord, OpenedGame, OrderDraftKey, OrderDraftRecord, PersistenceError,
+    ReportSourceRef,
 };
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
@@ -156,6 +157,52 @@ impl From<OrderDraftRecord> for OrderDraftRecordDto {
                 turn_number: value.key.turn_number,
             },
             order_text: value.order_text,
+            updated_at: value.updated_at,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg(not(target_arch = "wasm32"))]
+struct HexNoteDto {
+    id: String,
+    game_id: String,
+    region_id: String,
+    text: String,
+    on_map: bool,
+    turn: u32,
+    created_at: String,
+    updated_at: String,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl From<HexNote> for HexNoteDto {
+    fn from(value: HexNote) -> Self {
+        Self {
+            id: value.id,
+            game_id: value.game_id,
+            region_id: value.region_id,
+            text: value.text,
+            on_map: value.on_map,
+            turn: value.turn,
+            created_at: value.created_at,
+            updated_at: value.updated_at,
+        }
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl From<HexNoteDto> for HexNote {
+    fn from(value: HexNoteDto) -> Self {
+        Self {
+            id: value.id,
+            game_id: value.game_id,
+            region_id: value.region_id,
+            text: value.text,
+            on_map: value.on_map,
+            turn: value.turn,
+            created_at: value.created_at,
             updated_at: value.updated_at,
         }
     }
@@ -1023,6 +1070,44 @@ pub fn load_order_draft_state(
     to_js(&dto)
 }
 
+/// Lists a game's hex notes, newest first.
+#[wasm_bindgen]
+#[cfg(not(target_arch = "wasm32"))]
+pub fn list_hex_notes_state(database_path: String, game_id: String) -> Result<JsValue, JsValue> {
+    let notes = list_hex_notes(Path::new(&database_path), &game_id)
+        .map_err(|error| JsValue::from_str(&error.to_string()))?;
+
+    to_js(&notes.into_iter().map(HexNoteDto::from).collect::<Vec<_>>())
+}
+
+/// Saves one hex note.
+#[wasm_bindgen]
+#[cfg(not(target_arch = "wasm32"))]
+pub fn save_hex_note_state(database_path: String, note: JsValue) -> Result<JsValue, JsValue> {
+    let note = serde_wasm_bindgen::from_value::<HexNoteDto>(note)
+        .map_err(|error| JsValue::from_str(&error.to_string()))?;
+    let note: HexNote = note.into();
+
+    upsert_hex_note(Path::new(&database_path), &note)
+        .map_err(|error| JsValue::from_str(&error.to_string()))?;
+
+    to_js(&HexNoteDto::from(note))
+}
+
+/// Deletes one hex note; resolves to whether a row existed.
+#[wasm_bindgen]
+#[cfg(not(target_arch = "wasm32"))]
+pub fn delete_hex_note_state(
+    database_path: String,
+    game_id: String,
+    note_id: String,
+) -> Result<JsValue, JsValue> {
+    let existed = delete_hex_note(Path::new(&database_path), &game_id, &note_id)
+        .map_err(|error| JsValue::from_str(&error.to_string()))?;
+
+    to_js(&existed)
+}
+
 /// Creates a game manifest and sidecar SQLite database.
 #[wasm_bindgen]
 #[cfg(target_arch = "wasm32")]
@@ -1175,6 +1260,37 @@ pub fn load_order_draft_state(
     ))
 }
 
+/// Lists a game's hex notes.
+#[wasm_bindgen]
+#[cfg(target_arch = "wasm32")]
+pub fn list_hex_notes_state(_database_path: String, _game_id: String) -> Result<JsValue, JsValue> {
+    Err(JsValue::from_str(
+        "game persistence is not linked in this wasm32 build",
+    ))
+}
+
+/// Saves one hex note.
+#[wasm_bindgen]
+#[cfg(target_arch = "wasm32")]
+pub fn save_hex_note_state(_database_path: String, _note: JsValue) -> Result<JsValue, JsValue> {
+    Err(JsValue::from_str(
+        "game persistence is not linked in this wasm32 build",
+    ))
+}
+
+/// Deletes one hex note.
+#[wasm_bindgen]
+#[cfg(target_arch = "wasm32")]
+pub fn delete_hex_note_state(
+    _database_path: String,
+    _game_id: String,
+    _note_id: String,
+) -> Result<JsValue, JsValue> {
+    Err(JsValue::from_str(
+        "game persistence is not linked in this wasm32 build",
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1233,6 +1349,34 @@ mod tests {
         assert_eq!(dto.key.turn_number, 71);
         assert_eq!(dto.order_text, "@study obse");
         assert_eq!(dto.updated_at, "2026-08-08T12:00:00Z");
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn hex_note_dto_maps_both_ways() {
+        let note = HexNote {
+            id: "note-1".to_string(),
+            game_id: "faction-95".to_string(),
+            region_id: "1:7,53".to_string(),
+            text: "Mustn't forget the mountain pass".to_string(),
+            on_map: true,
+            turn: 71,
+            created_at: "2026-08-08T12:00:00Z".to_string(),
+            updated_at: "2026-08-08T12:00:00Z".to_string(),
+        };
+
+        let dto = HexNoteDto::from(note.clone());
+        assert_eq!(dto.id, "note-1");
+        assert_eq!(dto.game_id, "faction-95");
+        assert_eq!(dto.region_id, "1:7,53");
+        assert_eq!(dto.text, "Mustn't forget the mountain pass");
+        assert!(dto.on_map);
+        assert_eq!(dto.turn, 71);
+        assert_eq!(dto.created_at, "2026-08-08T12:00:00Z");
+        assert_eq!(dto.updated_at, "2026-08-08T12:00:00Z");
+
+        let round_tripped = HexNote::from(dto);
+        assert_eq!(round_tripped, note);
     }
 
     #[cfg(not(target_arch = "wasm32"))]

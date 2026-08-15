@@ -3,6 +3,7 @@ import {
   createCoreClient,
   createTauriAdapter,
   createWasmAdapter,
+  type HexNoteRecord,
   type TauriInvoke,
   type WasmBindings
 } from "./index";
@@ -68,6 +69,16 @@ describe("core client adapter contract parity", () => {
         turn_number: 12
       },
       order_text: "MOVE U100 R2",
+      updated_at: "2026-08-07T12:00:00Z"
+    };
+    const hexNotePayload = {
+      id: "note-1",
+      game_id: "faction-12",
+      region_id: "1:7,53",
+      text: "Mustn't forget the mountain pass",
+      on_map: 1,
+      turn: 12,
+      created_at: "2026-08-07T12:00:00Z",
       updated_at: "2026-08-07T12:00:00Z"
     };
     const importedTurnPayload = {
@@ -268,6 +279,15 @@ describe("core client adapter contract parity", () => {
       },
       save_order_draft_state() {
         return orderDraftPayload;
+      },
+      list_hex_notes_state() {
+        return [hexNotePayload];
+      },
+      save_hex_note_state() {
+        return hexNotePayload;
+      },
+      delete_hex_note_state() {
+        return true;
       }
     };
 
@@ -435,6 +455,25 @@ describe("core client adapter contract parity", () => {
           }
         } as T);
       }
+      const tauriHexNote = {
+        id: "note-1",
+        gameId: "faction-12",
+        regionId: "1:7,53",
+        text: "Mustn't forget the mountain pass",
+        onMap: true,
+        turn: 12,
+        createdAt: "2026-08-07T12:00:00Z",
+        updatedAt: "2026-08-07T12:00:00Z"
+      };
+      if (command === "list_hex_notes") {
+        return Promise.resolve([tauriHexNote] as T);
+      }
+      if (command === "save_hex_note") {
+        return Promise.resolve(tauriHexNote as T);
+      }
+      if (command === "delete_hex_note") {
+        return Promise.resolve(true as T);
+      }
       if (command === "list_imported_turns") {
         return Promise.resolve([
           {
@@ -601,6 +640,35 @@ describe("core client adapter contract parity", () => {
     ).resolves.toEqual(
       await tauriClient.listImportedTurns("/tmp/campaign.atlantis-game.sqlite", "faction-12")
     );
+    const wasmNotes = await wasmClient.listHexNotes(
+      "/tmp/campaign.atlantis-game.sqlite",
+      "faction-12"
+    );
+    expect(wasmNotes).toEqual(
+      await tauriClient.listHexNotes("/tmp/campaign.atlantis-game.sqlite", "faction-12")
+    );
+    expect(wasmNotes[0]).toEqual({
+      id: "note-1",
+      gameId: "faction-12",
+      regionId: "1:7,53",
+      text: "Mustn't forget the mountain pass",
+      onMap: true,
+      turn: 12,
+      createdAt: "2026-08-07T12:00:00Z",
+      updatedAt: "2026-08-07T12:00:00Z"
+    });
+    const noteToSave: HexNoteRecord = wasmNotes[0];
+    await expect(
+      wasmClient.saveHexNote("/tmp/campaign.atlantis-game.sqlite", noteToSave)
+    ).resolves.toEqual(
+      await tauriClient.saveHexNote("/tmp/campaign.atlantis-game.sqlite", noteToSave)
+    );
+    await expect(
+      wasmClient.deleteHexNote("/tmp/campaign.atlantis-game.sqlite", "faction-12", "note-1")
+    ).resolves.toBeUndefined();
+    await expect(
+      tauriClient.deleteHexNote("/tmp/campaign.atlantis-game.sqlite", "faction-12", "note-1")
+    ).resolves.toBeUndefined();
   });
 
   /**
@@ -1215,5 +1283,99 @@ describe("map export", () => {
     await expect(
       createCoreClient(createWasmAdapter(bindings)).exportMap("report", "[]", REQUEST)
     ).rejects.toThrow("map export did not come back as text");
+  });
+});
+
+describe("hex notes", () => {
+  const NOTE: HexNoteRecord = {
+    id: "note-1",
+    gameId: "faction-12",
+    regionId: "1:7,53",
+    text: "Mustn't forget the mountain pass",
+    onMap: true,
+    turn: 12,
+    createdAt: "2026-08-07T12:00:00Z",
+    updatedAt: "2026-08-07T12:00:00Z"
+  };
+
+  it("treats undefined the same as null for listing", async () => {
+    const bindings = {
+      list_hex_notes_state: () => undefined
+    } as unknown as WasmBindings;
+
+    await expect(
+      createCoreClient(createWasmAdapter(bindings)).listHexNotes("/db", "faction-12")
+    ).resolves.toEqual([]);
+  });
+
+  it("accepts on_map as 0/1 and as a boolean", async () => {
+    const zeroBindings = {
+      list_hex_notes_state: () => [
+        {
+          id: "note-1",
+          game_id: "faction-12",
+          region_id: "1:7,53",
+          text: "text",
+          on_map: 0,
+          turn: 12,
+          created_at: "2026-08-07T12:00:00Z",
+          updated_at: "2026-08-07T12:00:00Z"
+        }
+      ]
+    } as unknown as WasmBindings;
+    const oneBindings = {
+      list_hex_notes_state: () => [
+        {
+          id: "note-1",
+          game_id: "faction-12",
+          region_id: "1:7,53",
+          text: "text",
+          on_map: 1,
+          turn: 12,
+          created_at: "2026-08-07T12:00:00Z",
+          updated_at: "2026-08-07T12:00:00Z"
+        }
+      ]
+    } as unknown as WasmBindings;
+    const boolBindings = {
+      list_hex_notes_state: () => [{ ...NOTE }]
+    } as unknown as WasmBindings;
+
+    const zeroNotes = await createCoreClient(createWasmAdapter(zeroBindings)).listHexNotes(
+      "/db",
+      "faction-12"
+    );
+    const oneNotes = await createCoreClient(createWasmAdapter(oneBindings)).listHexNotes(
+      "/db",
+      "faction-12"
+    );
+    const boolNotes = await createCoreClient(createWasmAdapter(boolBindings)).listHexNotes(
+      "/db",
+      "faction-12"
+    );
+
+    expect(zeroNotes[0].onMap).toBe(false);
+    expect(oneNotes[0].onMap).toBe(true);
+    expect(boolNotes[0].onMap).toBe(true);
+  });
+
+  it("rejects a note without an id", async () => {
+    const bindings = {
+      list_hex_notes_state: () => [
+        {
+          game_id: "faction-12",
+          region_id: "1:7,53",
+          text: "text",
+          on_map: true,
+          turn: 12,
+          created_at: "2026-08-07T12:00:00Z",
+          updated_at: "2026-08-07T12:00:00Z"
+        }
+      ]
+    } as unknown as WasmBindings;
+
+    await expect(
+      createCoreClient(createWasmAdapter(bindings)).listHexNotes("/db", "faction-12")
+    ).rejects.toThrow("incomplete hex note payload");
   });
 });
