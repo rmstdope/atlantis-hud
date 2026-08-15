@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ah-m9q — Advisory warning toggles</title>
+<style>
+  :root { --page:#10151c; --panel:#171e28; --edge:#2a3442; --ink:#d7dee8; --dim:#8a94a3;
+          --brass:#d9a441; --soft:#a3b0c0; }
+  body { background: var(--page); color: var(--ink); font: 14px/1.5 system-ui, sans-serif;
+         margin: 0; padding: 24px 32px 64px; }
+  h1 { font-size: 20px; }
+  h2 { font-size: 15px; margin: 26px 0 6px; }
+  p.note { color: var(--dim); max-width: 82ch; }
+  .row { display: flex; gap: 36px; flex-wrap: wrap; margin: 14px 0 8px; align-items: flex-start; }
+  .cost { color: var(--dim); font-size: 13px; margin: 8px 0 0; max-width: 52ch; }
+  .cost b { color: var(--ink); }
+
+  /* the settings dialog, at its real 26rem width */
+  .dialog { width: 26rem; background: var(--panel); border: 1px solid var(--edge);
+            border-radius: 10px; padding: 14px 16px; }
+  .dialog h3 { margin: 0 0 10px; font-size: 15px; }
+  .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--edge); margin-bottom: 12px; }
+  .tab { padding: 4px 10px; font-size: 12.5px; color: var(--dim); border: 1px solid transparent;
+         border-bottom: none; border-radius: 6px 6px 0 0; }
+  .tab.active { color: var(--ink); background: #1d2532; border-color: var(--edge); }
+  .toggle { display: flex; align-items: center; justify-content: space-between; gap: 8px;
+            color: var(--soft); padding: 4px 0; }
+  .toggle .t { display: block; font-size: 13px; }
+  .toggle .d { display: block; font-size: 10px; color: var(--dim); }
+  .box { width: 13px; height: 13px; accent-color: var(--brass); flex: none; }
+  .group { margin: 10px 0 2px; font-size: 11px; letter-spacing: 1px; text-transform: uppercase;
+           color: var(--dim); border-bottom: 1px dashed var(--edge); padding-bottom: 2px; }
+</style>
+</head>
+<body>
+<h1>ah-m9q — Each advisory order warning on and off from its own settings tab</h1>
+<p class="note">
+  Both variants show the same new <b>Warnings</b> tab in the settings dialog at its real width,
+  with proposed wording for all nine toggles — read the words as they would ship. The existing
+  "Warn about unguarded hexes" checkbox <b>moves here from the Global tab</b> (one mechanism, its
+  off-by-default kept). Checkbox states shown are the proposed defaults: everything on except
+  Unguarded hexes — exactly today's behaviour.
+</p>
+
+<p class="note">
+  <b>Decisions (recorded from the planning discussion):</b> variant A (grouped); the toggles are
+  global, not per game; off means the check is not produced by the core (the hex-unguarded
+  precedent), so counts, chip and panels always agree and nothing says "hidden"; tab labelled
+  "Warnings", placed between Per game and Snippets; the Global tab's unguarded-hex checkbox moves
+  into the tab with its off-by-default kept; defaults are everything on except Unguarded hexes;
+  all nine label/description texts ship exactly as written here. Split for delivery:
+  ah-m9q.1 (options wire refactor) then ah-m9q.2 (this tab).
+</p>
+
+<h2>Variant A — grouped by what the check is about — CHOSEN</h2>
+<div class="row">
+  <div class="dialog">
+    <h3>Settings</h3>
+    <div class="tabs"><span class="tab">Global</span><span class="tab">Per game</span>
+      <span class="tab active">Warnings</span><span class="tab">Snippets</span>
+      <span class="tab">About</span></div>
+    <div class="group">Teaching</div>
+    <label class="toggle"><span><span class="t">Teachers with free slots</span>
+      <span class="d">A unit that could teach somebody this month and is not.</span></span>
+      <input class="box" type="checkbox" checked></label>
+    <label class="toggle"><span><span class="t">Oversubscribed teachers</span>
+      <span class="d">More students than the teacher can take.</span></span>
+      <input class="box" type="checkbox" checked></label>
+    <label class="toggle"><span><span class="t">Teachers lacking the skill</span>
+      <span class="d">The teacher cannot teach what the student is studying.</span></span>
+      <input class="box" type="checkbox" checked></label>
+    <label class="toggle"><span><span class="t">Students not studying</span>
+      <span class="d">A unit named as a student that is not studying anything.</span></span>
+      <input class="box" type="checkbox" checked></label>
+    <label class="toggle"><span><span class="t">Students elsewhere</span>
+      <span class="d">Teacher and student are not in the same hex.</span></span>
+      <input class="box" type="checkbox" checked></label>
+    <div class="group">Resources</div>
+    <label class="toggle"><span><span class="t">Overspent silver</span>
+      <span class="d">Orders spend more silver than the unit or the hex holds.</span></span>
+      <input class="box" type="checkbox" checked></label>
+    <label class="toggle"><span><span class="t">Overdrawn items</span>
+      <span class="d">Orders give away more of an item than the unit holds.</span></span>
+      <input class="box" type="checkbox" checked></label>
+    <div class="group">Guarding</div>
+    <label class="toggle"><span><span class="t">Dropped guards</span>
+      <span class="d">A hex you were guarding no longer is.</span></span>
+      <input class="box" type="checkbox" checked></label>
+    <label class="toggle"><span><span class="t">Unguarded hexes</span>
+      <span class="d">Every hex holding your units with nobody guarding it.</span></span>
+      <input class="box" type="checkbox"></label>
+  </div>
+  <p class="cost"><b>Three headings carry the shape</b> — the teaching family reads as one thing
+  you can sweep off in five clicks. Slightly taller panel.</p>
+</div>
+
+<h2>Variant B — flat list</h2>
+<div class="row">
+  <div class="dialog">
+    <h3>Settings</h3>
+    <div class="tabs"><span class="tab">Global</span><span class="tab">Per game</span>
+      <span class="tab active">Warnings</span><span class="tab">Snippets</span>
+      <span class="tab">About</span></div>
+    <label class="toggle"><span><span class="t">Teachers with free slots</span>
+      <span class="d">A unit that could teach somebody this month and is not.</span></span>
+      <input class="box" type="checkbox" checked></label>
+    <label class="toggle"><span><span class="t">Oversubscribed teachers</span>
+      <span class="d">More students than the teacher can take.</span></span>
+      <input class="box" type="checkbox" checked></label>
+    <label class="toggle"><span><span class="t">Teachers lacking the skill</span>
+      <span class="d">The teacher cannot teach what the student is studying.</span></span>
+      <input class="box" type="checkbox" checked></label>
+    <label class="toggle"><span><span class="t">Students not studying</span>
+      <span class="d">A unit named as a student that is not studying anything.</span></span>
+      <input class="box" type="checkbox" checked></label>
+    <label class="toggle"><span><span class="t">Students elsewhere</span>
+      <span class="d">Teacher and student are not in the same hex.</span></span>
+      <input class="box" type="checkbox" checked></label>
+    <label class="toggle"><span><span class="t">Overspent silver</span>
+      <span class="d">Orders spend more silver than the unit or the hex holds.</span></span>
+      <input class="box" type="checkbox" checked></label>
+    <label class="toggle"><span><span class="t">Overdrawn items</span>
+      <span class="d">Orders give away more of an item than the unit holds.</span></span>
+      <input class="box" type="checkbox" checked></label>
+    <label class="toggle"><span><span class="t">Dropped guards</span>
+      <span class="d">A hex you were guarding no longer is.</span></span>
+      <input class="box" type="checkbox" checked></label>
+    <label class="toggle"><span><span class="t">Unguarded hexes</span>
+      <span class="d">Every hex holding your units with nobody guarding it.</span></span>
+      <input class="box" type="checkbox"></label>
+  </div>
+  <p class="cost"><b>No headings, nine rows</b> — shorter and plainer, but the teaching five read
+  as noise to scan past, and the one off-by-default row gives no hint why it differs.</p>
+</div>
+</body>
+</html>
