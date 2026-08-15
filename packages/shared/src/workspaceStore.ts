@@ -56,6 +56,12 @@ export type WorkspaceState = {
   planner: PlannerState;
   selectedRegionId: string | null;
   selectedUnitId: string | null;
+  /**
+   * Counts user-initiated selection changes, so the map can replay its lock-on pulse exactly once
+   * per change. A restored selection (app load) does not bump it - see `restoreSelection` - which
+   * is what keeps the pulse from firing on every launch.
+   */
+  selectionEpoch: number;
   /** Level being viewed. A report can describe more than one. */
   level: number;
   collapsed: Record<PanelName, boolean>;
@@ -90,6 +96,12 @@ export type WorkspaceState = {
    * unit is chosen straight away — the caller sorts its own faction first.
    */
   selectRegion: (regionId: string | null, defaultUnitId?: string | null) => void;
+  /**
+   * Restores a selection without bumping `selectionEpoch` - the silent app-load restore is not a
+   * user-initiated change, so it must not replay the lock-on pulse. Clears the selected unit the
+   * same way `selectRegion` does with no default, since a restored hex carries no unit of its own.
+   */
+  restoreSelection: (regionId: string | null) => void;
   selectUnit: (unitId: string | null) => void;
   setLevel: (level: number) => void;
   togglePanel: (panel: PanelName) => void;
@@ -196,6 +208,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       game: null,
       selectedRegionId: null,
       selectedUnitId: null,
+      selectionEpoch: 0,
       level: DEFAULT_LEVEL,
       collapsed: INITIAL_COLLAPSED,
       ordersHeightRem: null,
@@ -208,14 +221,16 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         set({
           game,
           selectedRegionId: null,
-          selectedUnitId: null
+          selectedUnitId: null,
+          selectionEpoch: 0
         }),
 
       closeGame: () =>
         set({
           game: null,
           selectedRegionId: null,
-          selectedUnitId: null
+          selectedUnitId: null,
+          selectionEpoch: 0
         }),
 
       updateGameRuleset: (rulesetId) =>
@@ -227,15 +242,24 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         set((state) =>
           state.selectedRegionId === regionId
             ? state
-            : { selectedRegionId: regionId, selectedUnitId: defaultUnitId }
+            : {
+                selectedRegionId: regionId,
+                selectedUnitId: defaultUnitId,
+                selectionEpoch: state.selectionEpoch + 1
+              }
         ),
+
+      restoreSelection: (regionId) =>
+        set({ selectedRegionId: regionId, selectedUnitId: null }),
 
       selectUnit: (unitId) => set({ selectedUnitId: unitId }),
 
       // Levels are separate maps, so a selection from one does not carry to another.
       setLevel: (level) =>
         set((state) =>
-          state.level === level ? state : { level, selectedRegionId: null, selectedUnitId: null }
+          state.level === level
+            ? state
+            : { level, selectedRegionId: null, selectedUnitId: null, selectionEpoch: 0 }
         ),
 
       togglePanel: (panel) =>
@@ -312,6 +336,7 @@ export function resetWorkspaceStore() {
     game: null,
     selectedRegionId: null,
     selectedUnitId: null,
+    selectionEpoch: 0,
     level: DEFAULT_LEVEL,
     collapsed: INITIAL_COLLAPSED,
     ordersHeightRem: null,

@@ -205,12 +205,21 @@ Cartographer's Table does with an italic serif.
 
 ### 7–8. Selection and focus rings
 
-- **Selection ring**: the selected hex is outlined in `brass`, 2.5px screen-constant, solid,
-  no fill.
+- **Selection ring**: the selected hex carries a high-contrast, achromatic **double ring** — a
+  3px bright ring over a 7px dark casing, both screen-constant, solid, no fill — using the
+  `selection-ring`/`selection-casing` tokens rather than `brass`, which is the map's busiest
+  colour family (route line, export marquee, battle chip) and was easy to lose on a busy map.
+  Inverted in the light theme (near-black ring over a pale casing), so it never washes out
+  against parchment. On a user-initiated change (click or keyboard, not a silent app-load
+  restore) the ring plays a one-shot **lock-on pulse**: it starts at ~1.6× scale and 0.35 opacity
+  and contracts to fit over ~300ms, suppressed entirely under `prefers-reduced-motion: reduce`.
+  Re-selecting the already-selected hex does not pulse, and neither does the map's own restore of
+  a remembered hex at launch — see `selectionEpoch` on `workspaceStore.ts`.
 - **Keyboard focus ring**: where the map cursor stands, outlined in `brass-bright`, 2px,
   **dashed** (4-3) so the two rings are never confused. Shown only while the map actually
   holds focus. The cursor may stand on unexplored ground, where the ring is the only thing
-  drawn.
+  drawn. Both marks are drawn together when the cursor lands on the selection — the focus ring on
+  top, so the cursor never disappears exactly when it reaches the selected hex.
 
 ### 9. Hit and accessibility layer
 

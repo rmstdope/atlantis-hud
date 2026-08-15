@@ -54,6 +54,14 @@
   --color-brass-bright: #eebe63;
   --color-select: #4a9fd8;
 
+  /*
+   * The selected hex's double ring (ah-sup): a bright ring over a dark casing, achromatic so it
+   * never collides with a colour already carrying a meaning elsewhere on the map (brass, select,
+   * risk, foreign units). Inverted in the light theme below - see the note there.
+   */
+  --color-selection-ring: #f5f8fc;
+  --color-selection-casing: #0a0e13;
+
   --color-ok: #4fb783;
   --color-warn: #d9a441;
   --color-danger: #d97070;
@@ -133,6 +141,11 @@
   --color-brass-bright: #7d5a15;
   --color-select: #2470a8;
 
+  /* Inverted pairing (navigator's choice): on light parchment a white ring washes out, so light
+     mode gets a near-black ring over a pale casing instead. */
+  --color-selection-ring: #1c2530;
+  --color-selection-casing: #f5f8fc;
+
   --color-ok: #2e7d54;
   --color-warn: #9a6f1d;
   --color-danger: #b04a4a;
@@ -174,6 +187,36 @@
   stroke: var(--color-ground);
   stroke-width: calc(2.5px / var(--map-scale, 1));
   stroke-linejoin: round;
+}
+
+/*
+ * The selected hex's one-shot lock-on pulse (ah-sup) - the map's first animation. Replayed by
+ * remounting the group it sits on (`key={selectionEpoch}` in MapCanvas.tsx) rather than by a timer,
+ * so there is nothing here to start or stop from script. `transform-box: fill-box` is required for
+ * `scale()` to act about the hex's own centre; without it SVG scales about the viewport origin and
+ * the ring flies in from a corner.
+ */
+@keyframes map-selection-lockon {
+  from {
+    transform: scale(1.6);
+    opacity: 0.35;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.map-selection-pulse {
+  animation: map-selection-lockon 0.3s ease-out;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .map-selection-pulse {
+    animation: none;
+  }
 }
 
 /*

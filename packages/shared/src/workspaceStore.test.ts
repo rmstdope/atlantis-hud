@@ -107,6 +107,62 @@ describe("workspace selection", () => {
   });
 });
 
+describe("the selection epoch that drives the lock-on pulse", () => {
+  beforeEach(resetWorkspaceStore);
+
+  it("bumps selectionEpoch, restore and re-selection do not", () => {
+    expect(store().selectionEpoch).toBe(0);
+
+    store().selectRegion("1:7,53");
+    expect(store().selectionEpoch).toBe(1);
+
+    // Re-selecting the same hex is the store's existing no-op branch; it must not pulse either.
+    store().selectRegion("1:7,53");
+    expect(store().selectionEpoch).toBe(1);
+
+    // A restored selection (app load) is not a user-initiated change, so it must not pulse.
+    store().restoreSelection("1:26,52");
+    expect(store().selectedRegionId).toBe("1:26,52");
+    expect(store().selectionEpoch).toBe(1);
+
+    // A genuine further selection still bumps.
+    store().selectRegion("1:7,51");
+    expect(store().selectionEpoch).toBe(2);
+
+    // setLevel resets the epoch along with the selection.
+    store().setLevel(2);
+    expect(store().selectionEpoch).toBe(0);
+  });
+
+  it("resets on openGame and closeGame", () => {
+    store().selectRegion("1:7,53");
+    expect(store().selectionEpoch).toBe(1);
+
+    store().openGame({
+      gameId: "g1",
+      gameName: "Spring campaign",
+      databasePath: "idb://g1",
+      rulesetId: "neworigins"
+    });
+    expect(store().selectionEpoch).toBe(0);
+
+    store().selectRegion("1:7,53");
+    expect(store().selectionEpoch).toBe(1);
+
+    store().closeGame();
+    expect(store().selectionEpoch).toBe(0);
+  });
+
+  it("clears the selected unit on restore, like selectRegion does with no default", () => {
+    store().selectRegion("1:7,53", "18642");
+    expect(store().selectedUnitId).toBe("18642");
+
+    store().restoreSelection("1:26,52");
+
+    expect(store().selectedUnitId).toBeNull();
+  });
+});
+
 describe("the region panel's problems toggle", () => {
   beforeEach(resetWorkspaceStore);
 
