@@ -8,8 +8,11 @@ import {
   GATE_JOB,
   gateCondition,
   isGatedOnChanges,
+  isGatedOnCodeAndNative,
   isSafeGateCondition,
   jobBlocks,
+  NATIVE_JOB,
+  nativeGateCondition,
   onTriggerBlock,
   REQUIRED_JOBS,
   stepBlocks
@@ -27,9 +30,24 @@ const WORKFLOW = readFileSync(join(REPO, ".github", "workflows", "ci.yml"), "utf
  * it to be nothing but greps.
  */
 function runsEverything(files: string[]): boolean {
-  const condition = gateCondition(WORKFLOW);
+  return decide(gateCondition(WORKFLOW), files, "the changes job no longer has the `if` this test reads");
+}
+
+/**
+ * What the gate would decide the `native` output to be for a pull request touching exactly these
+ * files: `true` when the native (Linux Tauri) job runs, `false` when it is scoped out.
+ */
+function runsNative(files: string[]): boolean {
+  return decide(
+    nativeGateCondition(WORKFLOW),
+    files,
+    "the changes job no longer has the second (native) `if` this test reads"
+  );
+}
+
+function decide(condition: string, files: string[], missingMessage: string): boolean {
   if (condition === "") {
-    throw new Error("the changes job no longer has the `if` this test reads");
+    throw new Error(missingMessage);
   }
   if (!isSafeGateCondition(condition)) {
     throw new Error(`refusing to execute a gate condition outside the allowed shape: ${condition}`);
@@ -94,6 +112,16 @@ describe("the prose-only fast path", () => {
         expect(isGatedOnChanges(block), "smoke must not be job-level gated on changes").toBe(
           false
         );
+        continue;
+      }
+
+      if (job === NATIVE_JOB) {
+        // native is scoped on a second output too - see "the native job's path scope" below - so
+        // its `if:` is not the single-output shape every other required job carries.
+        expect(
+          isGatedOnCodeAndNative(block),
+          `${job} must be conditioned on both ${GATE_JOB}'s code and native outputs`
+        ).toBe(true);
         continue;
       }
 
@@ -268,5 +296,45 @@ describe("the prose-only fast path", () => {
     // reaching main.
     expect(gate).toMatch(/github\.event_name.*!=.*pull_request/u);
     expect(gate).toMatch(/code=true/u);
+  });
+});
+
+describe("the native job's path scope", () => {
+  // native (the Linux Tauri job) is the largest hang surface in the workflow and the slowest to
+  // run, and most diffs touch nothing it exercises: the native suite tests the IPC binding
+  // (tests/native/binding.spec.ts), not the shared UI. Scoped separately from `code` so a
+  // shared-UI-only PR still runs everything else but skips this one job.
+  it("runs for a diff touching the Rust core, its Tauri wrappers, or the desktop shell", () => {
+    expect(runsNative(["crates/atlantis-core/src/lib.rs"])).toBe(true);
+    expect(runsNative(["apps/desktop/src-tauri/src/main.rs"])).toBe(true);
+    expect(runsNative(["packages/core-client/src/index.ts"])).toBe(true);
+  });
+
+  it("runs for a diff touching the native suite itself, or what configures it", () => {
+    expect(runsNative(["tests/native/binding.spec.ts"])).toBe(true);
+    expect(runsNative(["wdio.conf.ts"])).toBe(true);
+  });
+
+  it("runs for a diff touching a workflow, or a manifest/lockfile that changes what native installs", () => {
+    expect(runsNative([".github/workflows/ci.yml"])).toBe(true);
+    expect(runsNative(["package.json"])).toBe(true);
+    expect(runsNative(["pnpm-lock.yaml"])).toBe(true);
+    expect(runsNative(["Cargo.toml"])).toBe(true);
+    expect(runsNative(["Cargo.lock"])).toBe(true);
+  });
+
+  it("skips for a diff confined to shared UI code", () => {
+    expect(runsNative(["packages/shared/src/workspace/MapCanvas.tsx"])).toBe(false);
+    expect(runsNative(["apps/web/src/main.tsx"])).toBe(false);
+  });
+
+  it("anchors on the directory or the whole filename, not merely a prefix", () => {
+    expect(runsNative(["crateswithsomethingelse/foo.rs"])).toBe(false);
+    expect(runsNative(["apps/desktopish/foo.ts"])).toBe(false);
+    expect(runsNative(["not-wdio.conf.ts"])).toBe(false);
+  });
+
+  it("fails open: an empty file list runs the native job too", () => {
+    expect(runsNative([])).toBe(true);
   });
 });

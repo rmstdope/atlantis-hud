@@ -328,7 +328,12 @@ rules that must always hold are:
 - ALWAYS put the bead ID in the commit subject, e.g., `feat(ah-t65): load multiple reports`, so work
   stays traceable to the bead.
 - ALWAYS create a pull request for merging the branch back into main.
-- Before creating the PR, ALWAYS make sure all pre-commit checkpoints pass (see "Committing and Merging to main" below).
+- Before creating the PR, ALWAYS run `pnpm run check:fast` (lint, typecheck, unit/tooling suites,
+  `cargo fmt --check`, `cargo clippy`) and make sure it passes. The browser suites (`test:smoke`,
+  `build:web`, `test:pwa`) and the native suite are not run locally by default — CI's parallel jobs
+  are what actually gate the merge; run the full `pnpm run check` by choice when a smoke/pwa
+  regression is suspected. A PR that is `BEHIND` is caught up on GitHub (the `update-branch`
+  endpoint), not by a local rebase and re-gate — see `implement-bead`'s *Merging* section.
 - The PR is then reviewed under the Four Eye Principle above: for a planned bead the Copilot reviewer suffices on the conditions stated there; for anything else, ask the navigator.
 - Fix every known issue before merging, including one that existed beforehand. Do not merge code with known issues.
 - ALWAYS merge a bead branch back into main before starting to work on another bead. This ensures that the latest changes are always incorporated and reduces the risk of merge conflicts. The one exception is a bead escalated to the navigator: its PR stays open by design, since the point is that it must not merge as it stands. Move on to the next bead and leave it for the `human` queue.

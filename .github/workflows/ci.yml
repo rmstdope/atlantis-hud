@@ -33,8 +33,13 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       code: ${{ steps.gate.outputs.code }}
+      # Whether this diff touches anything native-shaped - see the second condition below. Scoped
+      # separately from `code` because `native` (the Linux Tauri job, the largest hang surface and
+      # slowest job in this workflow) tests the IPC binding, not the shared UI: most diffs that need
+      # the full suite still don't need this one job.
+      native: ${{ steps.gate.outputs.native }}
     steps:
-      - name: Determine whether this diff touches anything besides prose
+      - name: Determine whether this diff touches anything besides prose, and whether it is native-shaped
         id: gate
         env:
           GH_TOKEN: ${{ github.token }}
@@ -43,6 +48,7 @@ jobs:
           # against a base - so it always runs everything.
           if [ "${{ github.event_name }}" != "pull_request" ]; then
             echo "code=true" >> "$GITHUB_OUTPUT"
+            echo "native=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -69,6 +75,19 @@ jobs:
             echo "code=true" >> "$GITHUB_OUTPUT"
           else
             echo "code=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          # native-shaped: the Rust core and its Tauri wrappers, the desktop shell, the IPC adapter
+          # package, the native suite and what configures it, the workflow itself, and the two
+          # manifest/lockfiles that change what the native job installs. A shared-UI change is
+          # deliberately not in this list - the native suite tests the IPC binding
+          # (tests/native/binding.spec.ts), not the UI - so it fails to match and the job is
+          # scoped out. Fails open on an empty listing, same as `code` above.
+          if [ -z "$FILES" ] \
+            || echo "$FILES" | grep -qE '^(crates/|apps/desktop/|packages/core-client/|tests/native/|wdio\.conf\.ts$|\.github/workflows/|package\.json$|pnpm-lock\.yaml$|Cargo\.(toml|lock)$)'; then
+            echo "native=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "native=false" >> "$GITHUB_OUTPUT"
           fi
   # The web and desktop shells both run the Rust core as WebAssembly, so the module has to exist
   # before typecheck, tests or the smoke run. Built once here and handed to the jobs that need it,
@@ -422,7 +441,7 @@ jobs:
   native:
     runs-on: ubuntu-latest
     needs: [changes, wasm]
-    if: needs.changes.outputs.code == 'true'
+    if: needs.changes.outputs.code == 'true' && needs.changes.outputs.native == 'true'
     # The largest hang surface in the workflow - xvfb, a native webview and a fixed port - so
     # unlike its siblings this job carries its own ceiling.
     timeout-minutes: 30
