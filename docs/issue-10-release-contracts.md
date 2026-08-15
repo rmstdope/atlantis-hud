@@ -119,7 +119,7 @@ against, and it is the widest reach the webview supports.
 | --- | --- | --- |
 | Every push and pull request | `ci.yml` | Nothing. Gates only, now including a production build. |
 | `workflow_dispatch` on `main` | `deploy.yml` | The web application at `https://atlantis-hud.kurelid.se` |
-| A `v*` tag | `release.yml` | A GitHub Release with a universal macOS `.dmg`, a Linux `.AppImage` and a Windows installer, **and then** the web application |
+| A `v*` tag | `release.yml` | A GitHub Release with a universal macOS `.dmg`, a Linux `.AppImage`, a Windows installer and a self-hosting web tarball, **and then** the web application |
 
 ### Tagging publishes both (issue #46)
 
@@ -127,6 +127,16 @@ against, and it is the widest reach the webview supports.
 rather than repeating its steps is the point: the tagged publish is the *same* publish as the manual
 one — same guards, same PWA suite against the same bytes, same check that the live site changed — so
 there is no second copy to drift.
+
+### The release tarball (ah-4sh)
+
+`release.yml`'s `web-tarball` job builds `apps/web/dist/` the same way `deploy.yml` does, packs it
+with a deployment README and nginx/Apache samples into
+`atlantis-hud-web-v<version>.tar.gz`, and the `publish` job attaches it to the release alongside
+the three desktop bundles. It is a separate build from the one that republishes
+`atlantis-hud.kurelid.se` — `deploy.yml` is untouched — so a release ships four downloads: the
+three installers and one tarball anyone can unpack onto their own HTTPS server. See
+`docs/self-hosting/README.md` for what a self-hoster is told.
 
 `needs: publish`, so a release is all or nothing. If either desktop bundle does not build, the site
 is not republished and the tag can be deleted and redone with nothing having escaped. The cost is
