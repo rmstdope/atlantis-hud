@@ -170,7 +170,25 @@ rather than rewriting it, an implementer picks it up like any other P0, Cerebro 
 one still marked `verification:failed`, and Moira posts `VERIFIED` and `REOPENED` alongside her usual
 status comments.
 
-All five roles are defined in `.claude/agents/`.
+**Technical debt is Bishop, and it files rather than fixes:**
+
+```bash
+.claude/cerebro/scripts/run-bishop
+```
+
+Unlike the other five, Bishop is not part of the build-review-merge-verify cycle at all — it is the
+one reader who looks at the shape of the codebase rather than at one bead at a time. Once per
+session it sweeps what merged since its last sweep (daily), or the whole codebase (weekly), and
+files a `Refactoring: …` bead for each smell that names a **cost already being paid today** — a
+defect fixed twice in the same place, a change that had to touch several files, a retrospective that
+names a structural reason something cost time — never a bare principle or "could be cleaner". Every
+finding lands at **P4**, unranked, for Xavier to triage with you like anything else in the backlog;
+Bishop never edits code and never sets a priority itself. It keeps no state file and holds no claim,
+lease or PR, so unlike every other role here it ends its own turn once the sweep is reported rather
+than looping — start it again with `.claude/cerebro/scripts/run-bishop` whenever you want another
+read.
+
+All six roles are defined in `.claude/agents/`.
 
 ## Skills Usage
 
