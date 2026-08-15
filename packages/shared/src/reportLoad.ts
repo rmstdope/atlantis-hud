@@ -8,10 +8,15 @@
  * a plain function that returns what changed, for the shell to apply in one place.
  *
  * The navigator settled one player-visible change while this bead moved the logic here (2026-08-15):
- * a report is shown only once its map and orders have come with it. A commit or draft read that
- * fails now leaves the *previous* turn on screen, under the same red
- * `could not read <file>: <error>` status - nothing half-applied. `loadTurn` reads everything before
- * returning, and rejects rather than partially updating, which is what makes that guarantee true.
+ * a report is shown only once its map and orders have come with it - nothing half-applied. That is
+ * an atomicity guarantee, not a change to what counts as a failure: `rememberTurn` and `documentFor`
+ * still turn a commit or draft-read problem into a warning, exactly as they always have, because the
+ * report in front of the player parsed perfectly well. What changed is *when* the screen updates -
+ * `loadTurn` builds the whole `LoadedTurn` first, and the shell applies it in one step only once
+ * that has resolved, so a genuine failure (something neither of those two already catches) now
+ * leaves every piece of on-screen state exactly as it was, under the same red
+ * `could not read <file>: <error>` status, rather than a new report shown over stale supporting
+ * state.
  */
 
 import type {
@@ -61,8 +66,15 @@ export type LoadedTurn = {
  * Reads everything a report needs to become the working turn: commits it (unless `committed` says a
  * batch already has - see the note below on why committing twice loses an ally's account of shared
  * hexes), reads back the map, and chooses saved orders over the report's template. No game: nothing
- * is remembered and the template is the document. Rejects when the commit or the draft read does;
- * the caller applies nothing and the previous turn stays on screen.
+ * is remembered and the template is the document.
+ *
+ * A commit or draft-read failure is a warning here, exactly as `rememberTurn` and `documentFor`
+ * already make it - the report in front of the player parsed perfectly well, and withholding it over
+ * a database that would not open is not this bead's business (out of scope; see the module doc). The
+ * "nothing half-applied" guarantee comes from where this sits in the caller, not from turning those
+ * warnings into rejections: nothing reaches the screen until this whole function has resolved, so a
+ * genuine rejection - something neither of those two already catches - leaves every piece of state
+ * (`parsed`, `remembered`, `orders`, ...) exactly as it was, never a new report shown over an old map.
  */
 export async function loadTurn(
   client: CoreClient,
