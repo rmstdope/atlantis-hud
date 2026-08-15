@@ -28,12 +28,21 @@ import {
   commitTurn,
   mergeTurn,
   readMemory,
-  rememberTurn,
   restoreLatestTurn,
   toStoredRegions,
   type MemoryOutcome
 } from "../gameMemory";
-import { decideReportLoad, isOlderTurn } from "../reportLoadDecision";
+import { isOlderTurn } from "../reportLoadDecision";
+import {
+  factionLabelOf,
+  loadTurn,
+  openingSelection,
+  reportParser,
+  routeReport,
+  storeOlderTurn,
+  type LoadedTurn,
+  type PendingReportLoad
+} from "../reportLoad";
 import {
   chooseViewerFaction,
   planReportBatch,
@@ -46,7 +55,6 @@ import {
   AUTOSAVE_CEILING_MS,
   AUTOSAVE_IDLE_MS,
   createDraftWriter,
-  documentFor,
   draftKeyFor,
   savedStateFor,
   type DraftWriter,
@@ -152,23 +160,6 @@ import { failedStatus, warningStatus } from "./shellStatus";
 export { isOlderTurn };
 
 /**
- * A parsed report from another faction, held while the player decides what to do with it.
- *
- * The viewer's identity is a snapshot taken when the question was raised, not read again when it is
- * answered. The report on screen can change underneath an open prompt - a game finishing its
- * restore is enough - and merging into whoever happens to be showing by then is not what was asked.
- */
-type PendingReportLoad = {
-  report: ParsedReport;
-  text: string;
-  fileName: string;
-  /** False when the turns do not match, in which case only switching is on offer. */
-  canMerge: boolean;
-  viewer: { factionId: string; factionLabel: string; turnNumber: number | null };
-  incoming: { factionLabel: string; turnNumber: number | null };
-};
-
-/**
  * An orders file, recognised and waiting for the player to confirm the overwrite before it is
  * applied.
  *
@@ -207,23 +198,6 @@ type PreparedBatch = {
   candidates: BatchCandidate[];
   unreadable: BatchSkip[];
 };
-
-/**
- * How a report names its own faction, as `Borg TNG (95)`, or `null` when it names none.
- *
- * The header has always shown this; the foreign-report prompt needs it too, and for two reports at
- * once. A report with an id and no name still has something to say, so it says that rather than
- * nothing - but a header with no report loaded shows no faction at all, which is why this stays
- * nullable rather than inventing a placeholder here.
- */
-function factionLabelOf(report: ParsedReport | null): string | null {
-  const name = report?.header.factionName;
-  const id = report?.header.factionId;
-  if (name && id) {
-    return `${name} (${id})`;
-  }
-  return name ?? id ?? null;
-}
 
 const EMPTY: HexMapModel = {
   hexes: [],
@@ -839,16 +813,62 @@ export function AppShell({
   ]);
 
   /**
+   * Puts a loaded turn on screen - the only place a turn is applied, whichever way it arrived.
+   *
+   * The restore effect below is the one other place a turn reaches the screen, and it is not routed
+   * through this: it applies a `RestoredTurn`, which has no `status` counts of its own, and it is an
+   * effect with cancellation this function has no business being wired into.
+   */
+  const applyLoadedTurn = useCallback(
+    (loaded: LoadedTurn) => {
+      setParsed(loaded.parsed);
+      setRawReport(loaded.rawReport);
+      clearPlan();
+      setRoute(null);
+      // A new working turn redefines the pair: a comparison held against the turn just replaced
+      // would go on claiming a relationship to a turn no longer on screen.
+      setComparison(null);
+      setTurnPickerOpen(false);
+      setRemembered(loaded.remembered);
+      // Reset from the turn just loaded, never merely added to: a merge belongs to the turn it
+      // was made in, so turn 71's allies must not still be claimed on turn 72's map.
+      setMergedReports(loaded.merged);
+      setOrdersDocument(loaded.orders);
+      setSave(savedStateFor(loaded.ordersSavedAt));
+      setStatus(loaded.status);
+
+      // Opening on a hex the player has units in beats opening on whatever came first, and the unit
+      // inside it is chosen for the same reason.
+      //
+      // Only when nothing is selected, which is the same guard the restore path makes: a turn
+      // landing in a game already being worked in is not a reason to move the player. It used to
+      // move them, and the map travelled to the new selection, so an import threw away whatever
+      // corner of the map they had just navigated to.
+      if (useWorkspaceStore.getState().selectedRegionId === null) {
+        const opening = openingSelection(loaded.parsed);
+        if (opening) {
+          selectRegion(opening.regionId, opening.unitId);
+        }
+      }
+    },
+    [clearPlan, selectRegion]
+  );
+
+  /**
    * Puts a parsed report on screen and files it in the game.
    *
    * Split out of `loadReport` so that the direct path and the path through the foreign-report
    * prompt run identical code: a report the player reached by pressing "Switch faction" must land
-   * exactly as one they simply opened. Deliberately does not depend on `parsed` - only the decision
+   * exactly as one they simply opened. Deliberately does not depend on `parsed` - only the routing
    * above needs to know what is already loaded, and putting it here would rebuild this callback
    * every time a report is opened.
+   *
+   * Nothing is shown until `loadTurn` has read everything - the commit, the remembered map, the
+   * saved orders - so a failure here leaves the *previous* turn on screen instead of a report set
+   * over an empty map (2026-08-15, ah-k6i.5).
    */
   const applyReport = useCallback(
-    async (
+    (
       report: ParsedReport,
       text: string,
       fileName: string,
@@ -861,92 +881,27 @@ export function AppShell({
        * would lose the ally's account of it, while the "+1 merged" chip went on claiming it.
        */
       committed?: MemoryOutcome
-    ) => {
-      try {
-        setParsed(report);
-        setRawReport(text);
-        clearPlan();
-        setRoute(null);
-        // A new working turn redefines the pair: a comparison held against the turn just replaced
-        // would go on claiming a relationship to a turn no longer on screen.
-        setComparison(null);
-        setTurnPickerOpen(false);
-
-        // Commit the turn to the faction's game and read back every region it has ever seen.
-        // A report on its own describes the hexes the faction stood in and names their neighbours,
-        // but not *their* neighbours - so without this the map stops at the fringe and no route can
-        // be longer than one step. Failing to remember is a warning, never a reason to withhold a
-        // report that parsed perfectly well.
-        // The same ruleset the report was parsed with, so what is remembered is classified the
-        // way what is shown is. `null` when none could be fetched, which stores the estimates.
-        const memory =
-          committed ??
-          (game
-            ? await rememberTurn(client, game, report, text, rulesetText, new Date().toISOString())
-            : { remembered: [], merged: [], warning: null });
-        setRemembered(memory.remembered);
-        // Reset from the turn just loaded, never merely added to: a merge belongs to the turn it
-        // was made in, so turn 71's allies must not still be claimed on turn 72's map.
-        setMergedReports(memory.merged);
-
-        // Saved orders beat the report's own template, including on opening the same file again.
-        // There is no undo anywhere in this application, and a stray file-open must not silently
-        // erase an evening's work; a new turn's report brings a clean template with it.
-        const template = report.ordersTemplate?.text ?? "";
-        const chosen = game
-          ? await documentFor(client, game, draftKeyFor(report), template)
-          : { text: template, restored: false, savedAt: null, warning: null };
-        setOrdersDocument(chosen.text);
-        setSave(savedStateFor(chosen.savedAt));
-
-        // The banner keeps the import summary. That saved orders were preferred to the template is
-        // the orders panel's business, and it says so there with the time they were written -
-        // putting it here would cost the region and unit counts the player just asked for.
-        const unitCount = report.regions.reduce((total, region) => total + region.units.length, 0);
-        setStatus({
-          regionCount: report.regions.length,
-          unitCount,
-          message: memory.warning ?? chosen.warning,
-          failed: false,
-          // A message here is always a warning: the routine case is the counts, message-less.
-          warning: (memory.warning ?? chosen.warning) !== null
-        });
-
-        // Opening on a hex the player has units in beats opening on whatever came first, and the
-        // unit inside it is chosen for the same reason.
-        //
-        // Only when nothing is selected, which is the same guard the restore path makes: a turn
-        // landing in a game already being worked in is not a reason to move the player. It used to
-        // move them, and the map travelled to the new selection, so an import threw away whatever
-        // corner of the map they had just navigated to.
-        if (useWorkspaceStore.getState().selectedRegionId === null) {
-          const opening = buildHexMapModel(report);
-          const openingHex = opening.hexes.find(
-            (candidate) => candidate.regionId === opening.initialSelectedRegionId
-          );
-          selectRegion(
-            opening.initialSelectedRegionId,
-            unitsForHex(openingHex ?? null)[0]?.unitId ?? null
-          );
+    ) =>
+      runReported(
+        () => loadTurn(client, game, report, text, rulesetText, new Date().toISOString(), committed),
+        (message) => setStatus(failedStatus(message)),
+        { prefix: `could not read ${fileName}` }
+      ).then((loaded) => {
+        if (loaded) {
+          applyLoadedTurn(loaded);
         }
-      } catch (error) {
-        setStatus(failedStatus(`could not read ${fileName}: ${describeError(error)}`));
-      }
-    },
-    [client, selectRegion, clearPlan, game, rulesetText]
+      }),
+    [client, game, rulesetText, applyLoadedTurn]
   );
 
   /**
    * Commits an older report to the game's stored turn history, and leaves the screen untouched.
    *
    * gh-208: an older report - own or foreign - must never become the working turn, but it is still
-   * committed so the turn-comparison feature (ah-jg6.3/4) can read it later. Deliberately calls none
-   * of `setParsed`, `setRawReport`, `setOrdersDocument`, `setSave`, `clearPlan`, `setRoute`,
-   * `setComparison`, `setTurnPickerOpen` or `selectRegion` - see `applyReport`'s own note on the same
-   * point, and the same reasoning applies here: the turn on screen has not changed.
-   *
-   * Reuses `commitTurn` rather than `rememberTurn`, because nothing here reads the map back - the
-   * working turn's map is exactly what this must not disturb.
+   * committed so the turn-comparison feature (ah-jg6.3/4) can read it later. Never touches
+   * `setParsed`, `setRawReport`, `setOrdersDocument`, `setSave`, `clearPlan`, `setRoute`,
+   * `setComparison`, `setTurnPickerOpen` or `selectRegion` - the turn on screen has not changed.
+   * Its own rejection is reported by the enclosing `loadReport`, with the file name.
    */
   const storeReportOnly = useCallback(
     async (report: ParsedReport, text: string, currentTurn: number) => {
@@ -956,85 +911,49 @@ export function AppShell({
         setStatus(failedStatus("there is no open game to store it in"));
         return;
       }
-
-      const { warning } = await commitTurn(
-        client,
-        game,
-        report,
-        text,
-        rulesetText,
-        new Date().toISOString()
-      );
-      setStatus(
-        warningStatus(
-          warning ??
-            `turn ${report.header.turnNumber} stored for history; still showing turn ${currentTurn}.`
-        )
-      );
+      setStatus(await storeOlderTurn(client, game, report, text, rulesetText, new Date().toISOString(), currentTurn));
     },
     [client, game, rulesetText]
   );
 
   const loadReport = useCallback(
-    async (text: string, fileName: string) => {
-      setBusy(true);
-      try {
-        // Whatever was being written belongs to the turn that is about to be replaced. Saved before
-        // anything else, because the state below is what tells the flush which draft it is.
-        await flush();
+    (text: string, fileName: string) =>
+      runReported(
+        async () => {
+          // Whatever was being written belongs to the turn that is about to be replaced. Saved
+          // before anything else, because the state below is what tells the flush which draft it is.
+          await flush();
 
-        // Classified when the ruleset is to hand, so a unit's men are counted rather than guessed.
-        // Without it every unit reads as an estimate, including the single-race majority where the
-        // leading-group figure is exactly right.
-        const report =
-          ruleset.status === "ready"
-            ? await client.parseReportClassified(text, ruleset.text)
-            : await client.parseReportFull(text);
+          // Classified when the ruleset is to hand, so a unit's men are counted rather than guessed.
+          // Without it every unit reads as an estimate, including the single-race majority where the
+          // leading-group figure is exactly right.
+          const report = await reportParser(client, ruleset)(text);
 
-        const decision = decideReportLoad(
-          parsed ? { factionId: parsed.header.factionId, turnNumber: parsed.header.turnNumber } : null,
-          { factionId: report.header.factionId, turnNumber: report.header.turnNumber }
-        );
+          const route = routeReport(parsed, report, text, fileName);
 
-        if (decision.kind === "ask") {
-          // The question is asked and the load stops here. `busy` is released by the `finally`,
-          // because it disables the button that opened this file and a prompt the player cannot
-          // answer would be worse than no prompt. A second file dropped while this is up simply
-          // replaces the question rather than queueing behind it.
-          setPendingOrdersImport(null);
-          setPendingLoad({
-            report,
-            text,
-            fileName,
-            canMerge: decision.canMerge,
-            viewer: {
-              factionId: parsed?.header.factionId as string,
-              factionLabel: factionLabelOf(parsed) ?? "an unnamed faction",
-              turnNumber: parsed?.header.turnNumber ?? null
-            },
-            incoming: {
-              factionLabel: factionLabelOf(report) ?? "an unnamed faction",
-              turnNumber: report.header.turnNumber
-            }
-          });
-          return;
-        }
+          if (route.kind === "ask") {
+            // The question is asked and the load stops here. `busy` is released by `runReported`'s
+            // `finally`, because it disables the button that opened this file and a prompt the
+            // player cannot answer would be worse than no prompt. A second file dropped while this
+            // is up simply replaces the question rather than queueing behind it.
+            setPendingOrdersImport(null);
+            setPendingLoad(route.pending);
+            return;
+          }
 
-        if (decision.kind === "storeOnly") {
-          await storeReportOnly(report, text, decision.currentTurn);
-          return;
-        }
+          if (route.kind === "storeOnly") {
+            await storeReportOnly(report, text, route.currentTurn);
+            return;
+          }
 
-        await applyReport(report, text, fileName);
-      } catch (error) {
-        setStatus(failedStatus(`could not read ${fileName}: ${describeError(error)}`));
-      } finally {
-        setBusy(false);
-      }
-    },
+          await applyReport(report, text, fileName);
+        },
+        (message) => setStatus(failedStatus(message)),
+        { busy: setBusy, prefix: `could not read ${fileName}` }
+      ),
     // `ruleset` belongs here: without it the callback closes over the value at first render, which
     // is null, and every report is parsed unclassified however long the ruleset took to arrive.
-    // `parsed` because the decision above is made against whatever is on screen.
+    // `parsed` because the routing above is decided against whatever is on screen.
     [client, ruleset, parsed, applyReport, storeReportOnly]
   );
 
@@ -1045,14 +964,11 @@ export function AppShell({
       return;
     }
     setPendingLoad(null);
-    void (async () => {
-      setBusy(true);
-      try {
-        await applyReport(pending.report, pending.text, pending.fileName);
-      } finally {
-        setBusy(false);
-      }
-    })();
+    void runReported(
+      () => applyReport(pending.report, pending.text, pending.fileName),
+      (message) => setStatus(failedStatus(message)),
+      { busy: setBusy }
+    );
   }, [pendingLoad, applyReport]);
 
   /**
@@ -1070,9 +986,8 @@ export function AppShell({
       return;
     }
     setPendingLoad(null);
-    void (async () => {
-      setBusy(true);
-      try {
+    void runReported(
+      async () => {
         const outcome = await mergeTurn(
           client,
           game,
@@ -1091,12 +1006,10 @@ export function AppShell({
           failed: false,
           warning: false
         });
-      } catch (error) {
-        setStatus(failedStatus(`could not merge ${pending.fileName}: ${describeError(error)}`));
-      } finally {
-        setBusy(false);
-      }
-    })();
+      },
+      (message) => setStatus(failedStatus(message)),
+      { busy: setBusy, prefix: `could not merge ${pending.fileName}` }
+    );
   }, [pendingLoad, client, game, rulesetText]);
 
   /**
@@ -1471,12 +1384,8 @@ export function AppShell({
 
     let cancelled = false;
     setBusy(true);
-    const parse = (text: string) =>
-      ruleset.status === "ready"
-        ? client.parseReportClassified(text, ruleset.text)
-        : client.parseReportFull(text);
 
-    void restoreLatestTurn(client, game, parse)
+    void restoreLatestTurn(client, game, reportParser(client, ruleset))
       .then((restored) => {
         if (cancelled || !restored) {
           return;
