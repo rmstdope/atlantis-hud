@@ -183,10 +183,10 @@ files a `Refactoring: …` bead for each smell that names a **cost already being
 defect fixed twice in the same place, a change that had to touch several files, a retrospective that
 names a structural reason something cost time — never a bare principle or "could be cleaner". Every
 finding lands at **P4**, unranked, for Xavier to triage with you like anything else in the backlog;
-Bishop never edits code and never sets a priority itself. It keeps no state file and holds no claim,
-lease or PR, so unlike every other role here it ends its own turn once the sweep is reported rather
-than looping — start it again with `.claude/cerebro/scripts/run-bishop` whenever you want another
-read.
+Bishop never edits code and never sets a priority itself. It writes the same
+`.claude/agents-state/<name>.state.json` file every other agent does, but holds no claim, lease or
+PR, so unlike every other role here it ends its own turn once the sweep is reported rather than
+looping — start it again with `.claude/cerebro/scripts/run-bishop` whenever you want another read.
 
 All six roles are defined in `.claude/agents/`.
 
