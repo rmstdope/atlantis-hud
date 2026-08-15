@@ -9,13 +9,13 @@ use atlantis_hud_core::{
     OrderDiagnosticSeverity, ReportParseResult, WarningSeverity,
 };
 use atlantis_hud_core_persistence::{
-    create_game, delete_game, export_game, import_game, insert_imported_turn, list_games,
-    list_imported_turns, load_imported_turn, load_latest_imported_turn, load_merged_reports,
-    load_order_draft, load_region_sightings, open_game, preview_imported_turn, set_game_ruleset,
-    upsert_imported_turn, upsert_merged_report, upsert_order_draft, upsert_region_sightings,
-    GameManifest, GameMetadata, ImportedTurnKey, ImportedTurnPreview, ImportedTurnRecord,
-    MergedReportRecord, OpenedGame, OrderDraftKey, OrderDraftRecord, PersistenceError,
-    ReportSourceRef,
+    create_game, delete_game, delete_hex_note, export_game, import_game, insert_imported_turn,
+    list_games, list_hex_notes, list_imported_turns, load_imported_turn, load_latest_imported_turn,
+    load_merged_reports, load_order_draft, load_region_sightings, open_game, preview_imported_turn,
+    set_game_ruleset, upsert_hex_note, upsert_imported_turn, upsert_merged_report,
+    upsert_order_draft, upsert_region_sightings, GameManifest, GameMetadata, HexNote,
+    ImportedTurnKey, ImportedTurnPreview, ImportedTurnRecord, MergedReportRecord, OpenedGame,
+    OrderDraftKey, OrderDraftRecord, PersistenceError, ReportSourceRef,
 };
 use serde::{Deserialize, Serialize};
 
@@ -200,6 +200,49 @@ pub struct OrderDraftRecordDto {
     pub key: OrderDraftKeyDto,
     pub order_text: String,
     pub updated_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HexNoteDto {
+    pub id: String,
+    pub game_id: String,
+    pub region_id: String,
+    pub text: String,
+    pub on_map: bool,
+    pub turn: u32,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+impl From<HexNote> for HexNoteDto {
+    fn from(value: HexNote) -> Self {
+        Self {
+            id: value.id,
+            game_id: value.game_id,
+            region_id: value.region_id,
+            text: value.text,
+            on_map: value.on_map,
+            turn: value.turn,
+            created_at: value.created_at,
+            updated_at: value.updated_at,
+        }
+    }
+}
+
+impl From<HexNoteDto> for HexNote {
+    fn from(value: HexNoteDto) -> Self {
+        Self {
+            id: value.id,
+            game_id: value.game_id,
+            region_id: value.region_id,
+            text: value.text,
+            on_map: value.on_map,
+            turn: value.turn,
+            created_at: value.created_at,
+            updated_at: value.updated_at,
+        }
+    }
 }
 
 impl From<atlantis_hud_core::EngineInfo> for EngineInfoDto {
@@ -726,6 +769,44 @@ pub fn command_load_order_draft(
         order_text: record.order_text,
         updated_at: record.updated_at,
     }))
+}
+
+/// Lists a game's hex notes for the Tauri command surface.
+///
+/// # Errors
+///
+/// Returns an error when the game's database cannot be read.
+pub fn command_list_hex_notes(
+    database_path: &str,
+    game_id: &str,
+) -> Result<Vec<HexNoteDto>, String> {
+    list_hex_notes(Path::new(database_path), game_id)
+        .map(|notes| notes.into_iter().map(Into::into).collect())
+        .map_err(|error| error.to_string())
+}
+
+/// Saves one hex note for the Tauri command surface.
+///
+/// # Errors
+///
+/// Returns an error when the game's database cannot be written.
+pub fn command_save_hex_note(database_path: &str, note: HexNoteDto) -> Result<HexNoteDto, String> {
+    let note: HexNote = note.into();
+    upsert_hex_note(Path::new(database_path), &note).map_err(|error| error.to_string())?;
+    Ok(note.into())
+}
+
+/// Deletes one hex note for the Tauri command surface.
+///
+/// # Errors
+///
+/// Returns an error when the game's database cannot be written.
+pub fn command_delete_hex_note(
+    database_path: &str,
+    game_id: &str,
+    note_id: &str,
+) -> Result<bool, String> {
+    delete_hex_note(Path::new(database_path), game_id, note_id).map_err(|error| error.to_string())
 }
 
 /// Loads one imported turn payload for the Tauri command surface.
@@ -1811,6 +1892,44 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
             .expect("load draft");
 
         assert_eq!(loaded, Some(saved));
+    }
+
+    #[test]
+    fn tauri_adapter_saves_lists_and_deletes_hex_notes() {
+        let dir = tempdir().expect("tempdir");
+        let created = command_create_game(
+            dir.path().to_str().expect("a path"),
+            manifest_dto("faction-12", "Faction 12"),
+        )
+        .expect("create game");
+
+        let note = HexNoteDto {
+            id: "note-1".to_string(),
+            game_id: "faction-12".to_string(),
+            region_id: "1:7,53".to_string(),
+            text: "Mustn't forget the mountain pass".to_string(),
+            on_map: true,
+            turn: 12,
+            created_at: "2026-08-07T12:00:00Z".to_string(),
+            updated_at: "2026-08-07T12:00:00Z".to_string(),
+        };
+        let saved = command_save_hex_note(&created.database_path, note.clone()).expect("save note");
+        assert_eq!(saved, note);
+
+        let listed =
+            command_list_hex_notes(&created.database_path, "faction-12").expect("list notes");
+        assert_eq!(listed, vec![note]);
+
+        assert!(
+            command_delete_hex_note(&created.database_path, "faction-12", "note-1")
+                .expect("delete note"),
+            "deleting an existing note reports true"
+        );
+        assert!(
+            !command_delete_hex_note(&created.database_path, "faction-12", "note-1")
+                .expect("delete note"),
+            "deleting an already-deleted note reports false"
+        );
     }
 
     #[test]

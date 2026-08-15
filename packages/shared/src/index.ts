@@ -11,6 +11,7 @@ export * from "./ordersDocument";
 export * from "./foreignReport";
 export * from "./gameMemory";
 export * from "./gameSession";
+export * from "./hexNotes";
 export * from "./orderDraft";
 export * from "./reportLoadDecision";
 export * from "./rulesets";

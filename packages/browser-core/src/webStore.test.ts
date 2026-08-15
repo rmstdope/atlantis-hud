@@ -11,6 +11,7 @@
 import { describe, expect, it } from "vitest";
 import {
   createMemoryWebStore,
+  type StoredHexNote,
   type StoredMergedReport,
   type StoredRegionSighting
 } from "./webStore";
@@ -26,6 +27,21 @@ function merge(overrides: Partial<StoredMergedReport> = {}): StoredMergedReport 
     mergedFactionId: "73",
     mergedFactionName: "Borg",
     mergedAt: "2026-08-10T18:30:00Z",
+    ...overrides
+  };
+}
+
+function note(overrides: Partial<StoredHexNote> = {}): StoredHexNote {
+  return {
+    databasePath: DB,
+    id: "note-1",
+    gameId: "faction-95",
+    regionId: "1:7,53",
+    text: "Mustn't forget the mountain pass",
+    onMap: true,
+    turn: 71,
+    createdAt: "2026-08-10T18:30:00Z",
+    updatedAt: "2026-08-10T18:30:00Z",
     ...overrides
   };
 }
@@ -153,5 +169,41 @@ describe("remembering where a faction has been", () => {
 
     const stored = await store.getRegionSightings(DB, "faction-95", "95");
     expect(stored.map((entry) => entry.regionId).sort()).toEqual(["1:9,51", "1:9,53"]);
+  });
+});
+
+describe("storing manual hex notes", () => {
+  it("reads back what was written, newest first", async () => {
+    const store = createMemoryWebStore();
+
+    await store.putHexNote(note({ id: "note-older", createdAt: "2026-08-01T09:00:00Z" }));
+    await store.putHexNote(note({ id: "note-newer", createdAt: "2026-08-02T09:00:00Z" }));
+
+    const stored = await store.getHexNotes(DB, "faction-95");
+    expect(stored.map((entry) => entry.id)).toEqual(["note-newer", "note-older"]);
+  });
+
+  it("deletes a note and reports whether it existed", async () => {
+    const store = createMemoryWebStore();
+    await store.putHexNote(note());
+
+    await expect(store.deleteHexNote(DB, "faction-95", "note-1")).resolves.toBe(true);
+    await expect(store.deleteHexNote(DB, "faction-95", "note-1")).resolves.toBe(false);
+    await expect(store.getHexNotes(DB, "faction-95")).resolves.toEqual([]);
+  });
+
+  it("keeps one game's notes out of another, and deletes them with the game", async () => {
+    const store = createMemoryWebStore();
+    await store.putGame({
+      gameId: "faction-95",
+      databasePath: DB,
+      schemaVersion: 1,
+      manifest: {}
+    });
+    await store.putHexNote(note());
+
+    await store.deleteGame("faction-95");
+
+    await expect(store.getHexNotes(DB, "faction-95")).resolves.toEqual([]);
   });
 });

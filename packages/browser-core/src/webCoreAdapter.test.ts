@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createWebCoreAdapter, type CoreWasmModule } from "./webCoreAdapter";
-import type { GameManifest, ImportedTurnSummary } from "@atlantis/core-client";
+import type { GameManifest, HexNoteRecord, ImportedTurnSummary } from "@atlantis/core-client";
 import { createMemoryWebStore, type StoredTurnSnapshot } from "./webStore";
 
 /**
@@ -513,6 +513,84 @@ describe("web core adapter", () => {
     expect(await adapter.loadOrderDraft(DB, "p", "17", 12)).toBeNull();
   });
 
+  it("round trips hex notes newest first", async () => {
+    const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
+
+    await adapter.saveHexNote(DB, {
+      id: "note-older",
+      gameId: "p",
+      regionId: "1:7,53",
+      text: "First note",
+      onMap: true,
+      turn: 12,
+      createdAt: "2026-08-01T09:00:00Z",
+      updatedAt: "2026-08-01T09:00:00Z"
+    });
+    await adapter.saveHexNote(DB, {
+      id: "note-newer",
+      gameId: "p",
+      regionId: "1:7,53",
+      text: "Second note",
+      onMap: false,
+      turn: 13,
+      createdAt: "2026-08-02T09:00:00Z",
+      updatedAt: "2026-08-02T09:00:00Z"
+    });
+
+    const listed = (await adapter.listHexNotes(DB, "p")) as HexNoteRecord[];
+    expect(listed.map((note) => note.id)).toEqual(["note-newer", "note-older"]);
+  });
+
+  it("deletes a hex note and reports whether it existed", async () => {
+    const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
+    await adapter.saveHexNote(DB, {
+      id: "note-1",
+      gameId: "p",
+      regionId: "1:7,53",
+      text: "text",
+      onMap: true,
+      turn: 12,
+      createdAt: "2026-08-01T09:00:00Z",
+      updatedAt: "2026-08-01T09:00:00Z"
+    });
+
+    expect(await adapter.deleteHexNote(DB, "p", "note-1")).toBe(true);
+    expect(await adapter.deleteHexNote(DB, "p", "note-1")).toBe(false);
+    expect(await adapter.listHexNotes(DB, "p")).toEqual([]);
+  });
+
+  it("keeps hex notes apart per database", async () => {
+    const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
+
+    await adapter.saveHexNote("idb://campaign-a", {
+      id: "note-1",
+      gameId: "p",
+      regionId: "1:7,53",
+      text: "in a",
+      onMap: true,
+      turn: 12,
+      createdAt: "2026-08-01T09:00:00Z",
+      updatedAt: "2026-08-01T09:00:00Z"
+    });
+    await adapter.saveHexNote("idb://campaign-b", {
+      id: "note-1",
+      gameId: "p",
+      regionId: "1:7,53",
+      text: "in b",
+      onMap: true,
+      turn: 12,
+      createdAt: "2026-08-01T09:00:00Z",
+      updatedAt: "2026-08-01T09:00:00Z"
+    });
+
+    expect(((await adapter.listHexNotes("idb://campaign-a", "p")) as HexNoteRecord[])[0]).toMatchObject({
+      text: "in a"
+    });
+    expect(((await adapter.listHexNotes("idb://campaign-b", "p")) as HexNoteRecord[])[0]).toMatchObject({
+      text: "in b"
+    });
+  });
+
   it("refuses to create a game over an existing one", async () => {
     const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
 
@@ -623,6 +701,16 @@ describe("exporting and importing games", () => {
       mergedFactionName: "Faction 73",
       mergedAt: "2026-08-08T00:05:00Z"
     });
+    await adapter.saveHexNote(opened.databasePath, {
+      id: "note-1",
+      gameId: "alpha",
+      regionId: "1:7,53",
+      text: "Mustn't forget the mountain pass",
+      onMap: true,
+      turn: 12,
+      createdAt: "2026-08-08T00:00:00Z",
+      updatedAt: "2026-08-08T00:00:00Z"
+    });
 
     const backupJson = (await adapter.exportGame("alpha", NOW)) as string;
     expect(JSON.parse(backupJson)).toMatchObject({
@@ -633,7 +721,8 @@ describe("exporting and importing games", () => {
       importedTurns: [{ factionId: "17", turnNumber: 12, rawReport: REPORT }],
       orderDrafts: [{ factionId: "17", turnNumber: 12, orderText: "@work\n@study combat" }],
       regionSightings: [{ factionId: "17", regionId: "1:7,53", lastSeenTurn: 12 }],
-      mergedReports: [{ factionId: "17", turnNumber: 12, mergedFactionId: "73" }]
+      mergedReports: [{ factionId: "17", turnNumber: 12, mergedFactionId: "73" }],
+      hexNotes: [{ id: "note-1", regionId: "1:7,53", text: "Mustn't forget the mountain pass" }]
     });
 
     const imported = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
@@ -669,6 +758,37 @@ describe("exporting and importing games", () => {
         mergedAt: "2026-08-08T00:05:00Z"
       }
     ]);
+    expect(await imported.listHexNotes(restored.databasePath, "alpha")).toEqual([
+      {
+        id: "note-1",
+        gameId: "alpha",
+        regionId: "1:7,53",
+        text: "Mustn't forget the mountain pass",
+        onMap: true,
+        turn: 12,
+        createdAt: "2026-08-08T00:00:00Z",
+        updatedAt: "2026-08-08T00:00:00Z"
+      }
+    ]);
+  });
+
+  it("imports a backup written before hex notes existed", async () => {
+    const backup = JSON.stringify({
+      format: "atlantis-hud-game-backup",
+      version: 1,
+      exportedAt: NOW,
+      manifest: manifest("pre-hex-notes", "Pre Hex Notes"),
+      importedTurns: [],
+      orderDrafts: [],
+      regionSightings: [],
+      mergedReports: []
+      // No hexNotes key at all — the field did not exist yet.
+    });
+
+    const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
+    const restored = (await adapter.importGame(backup, NOW)) as { databasePath: string };
+
+    expect(await adapter.listHexNotes(restored.databasePath, "pre-hex-notes")).toEqual([]);
   });
 
   it("refuses a backup file from a newer format version", async () => {

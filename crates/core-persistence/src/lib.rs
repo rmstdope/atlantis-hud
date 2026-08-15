@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 /// Current schema version expected by the persistence layer.
-pub const CURRENT_SCHEMA_VERSION: u32 = 7;
+pub const CURRENT_SCHEMA_VERSION: u32 = 8;
 const CURRENT_MANIFEST_VERSION: u32 = 1;
 const CURRENT_GAME_BACKUP_VERSION: u32 = 1;
 const GAME_BACKUP_FORMAT: &str = "atlantis-hud-game-backup";
@@ -26,13 +26,14 @@ const MIGRATION_0005_RENAME_PROJECT_TO_GAME: &str =
 const MIGRATION_0006_ISO_IMPORT_TIMESTAMPS: &str =
     include_str!("../migrations/0006_iso_import_timestamps.sql");
 const MIGRATION_0007_MERGED_REPORTS: &str = include_str!("../migrations/0007_merged_reports.sql");
+const MIGRATION_0008_HEX_NOTES: &str = include_str!("../migrations/0008_hex_notes.sql");
 
 struct Migration {
     version: u32,
     sql: &'static str,
 }
 
-const MIGRATIONS: [Migration; 7] = [
+const MIGRATIONS: [Migration; 8] = [
     Migration {
         version: 1,
         sql: MIGRATION_0001_INITIAL,
@@ -60,6 +61,10 @@ const MIGRATIONS: [Migration; 7] = [
     Migration {
         version: 7,
         sql: MIGRATION_0007_MERGED_REPORTS,
+    },
+    Migration {
+        version: 8,
+        sql: MIGRATION_0008_HEX_NOTES,
     },
 ];
 
@@ -173,6 +178,19 @@ pub struct OrderDraftRecord {
     pub updated_at: String,
 }
 
+/// One player-written note on a hex, keyed by id.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HexNote {
+    pub id: String,
+    pub game_id: String,
+    pub region_id: String,
+    pub text: String,
+    pub on_map: bool,
+    pub turn: u32,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
 /// One allied report folded into a faction's map for one turn.
 ///
 /// A merge writes the ally's regions under the viewer's own faction and stores no turn of the
@@ -201,6 +219,9 @@ pub struct GameBackup {
     pub order_drafts: Vec<GameBackupOrderDraft>,
     pub region_sightings: Vec<GameBackupRegionSighting>,
     pub merged_reports: Vec<GameBackupMergedReport>,
+    /// Absent in a backup written before hex notes existed; such a backup still imports.
+    #[serde(default)]
+    pub hex_notes: Vec<GameBackupHexNote>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -241,6 +262,18 @@ pub struct GameBackupMergedReport {
     pub merged_faction_id: String,
     pub merged_faction_name: String,
     pub merged_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GameBackupHexNote {
+    pub id: String,
+    pub region_id: String,
+    pub text: String,
+    pub on_map: bool,
+    pub turn: u32,
+    pub created_at: String,
+    pub updated_at: String,
 }
 
 #[derive(Debug, Error)]
@@ -577,6 +610,26 @@ pub fn export_game(
         })?
         .collect::<Result<Vec<_>, _>>()?;
 
+    let mut notes = connection.prepare(
+        "SELECT id, region_id, text, on_map, turn, created_at, updated_at
+           FROM hex_notes
+          WHERE game_id = ?1
+          ORDER BY created_at ASC, id ASC",
+    )?;
+    let hex_notes = notes
+        .query_map(params![game_id], |row| {
+            Ok(GameBackupHexNote {
+                id: row.get(0)?,
+                region_id: row.get(1)?,
+                text: row.get(2)?,
+                on_map: row.get::<_, i64>(3)? != 0,
+                turn: row.get(4)?,
+                created_at: row.get(5)?,
+                updated_at: row.get(6)?,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+
     serde_json::to_string_pretty(&GameBackup {
         format: GAME_BACKUP_FORMAT.to_string(),
         version: CURRENT_GAME_BACKUP_VERSION,
@@ -586,6 +639,7 @@ pub fn export_game(
         order_drafts,
         region_sightings,
         merged_reports,
+        hex_notes,
     })
     .map_err(PersistenceError::from)
 }
@@ -788,6 +842,31 @@ pub fn import_game(
                     record.merged_faction_id.as_str(),
                     record.merged_faction_name.as_str(),
                     record.merged_at.as_str(),
+                ],
+            )?;
+        }
+
+        for note in &backup.hex_notes {
+            transaction.execute(
+                "INSERT INTO hex_notes (
+                    id,
+                    game_id,
+                    region_id,
+                    text,
+                    on_map,
+                    turn,
+                    created_at,
+                    updated_at
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                params![
+                    note.id.as_str(),
+                    game_id.as_str(),
+                    note.region_id.as_str(),
+                    note.text.as_str(),
+                    i64::from(note.on_map),
+                    note.turn,
+                    note.created_at.as_str(),
+                    note.updated_at.as_str(),
                 ],
             )?;
         }
@@ -1552,6 +1631,104 @@ pub fn load_order_draft(
         .map_err(PersistenceError::from)
 }
 
+/// Inserts or updates one persisted hex note. An edit keeps its original `created_at`.
+pub fn upsert_hex_note(database_path: &Path, note: &HexNote) -> Result<(), PersistenceError> {
+    if !database_path.exists() {
+        return Err(PersistenceError::DatabaseFileMissing(
+            database_path.to_string_lossy().to_string(),
+        ));
+    }
+
+    let mut connection = open_database(database_path)?;
+    apply_migrations(&mut connection)?;
+    connection.execute(
+        "INSERT INTO hex_notes (
+            id,
+            game_id,
+            region_id,
+            text,
+            on_map,
+            turn,
+            created_at,
+            updated_at
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+         ON CONFLICT(id) DO UPDATE SET
+            region_id = excluded.region_id,
+            text = excluded.text,
+            on_map = excluded.on_map,
+            turn = excluded.turn,
+            updated_at = excluded.updated_at",
+        params![
+            note.id.as_str(),
+            note.game_id.as_str(),
+            note.region_id.as_str(),
+            note.text.as_str(),
+            i64::from(note.on_map),
+            note.turn,
+            note.created_at.as_str(),
+            note.updated_at.as_str(),
+        ],
+    )?;
+    Ok(())
+}
+
+/// Lists a game's hex notes, newest first with `id` as a stable tiebreak.
+pub fn list_hex_notes(
+    database_path: &Path,
+    game_id: &str,
+) -> Result<Vec<HexNote>, PersistenceError> {
+    if !database_path.exists() {
+        return Err(PersistenceError::DatabaseFileMissing(
+            database_path.to_string_lossy().to_string(),
+        ));
+    }
+
+    let mut connection = open_database(database_path)?;
+    apply_migrations(&mut connection)?;
+    let mut statement = connection.prepare(
+        "SELECT id, game_id, region_id, text, on_map, turn, created_at, updated_at
+           FROM hex_notes
+          WHERE game_id = ?1
+          ORDER BY created_at DESC, id ASC",
+    )?;
+    let rows = statement.query_map(params![game_id], |row| {
+        Ok(HexNote {
+            id: row.get(0)?,
+            game_id: row.get(1)?,
+            region_id: row.get(2)?,
+            text: row.get(3)?,
+            on_map: row.get::<_, i64>(4)? != 0,
+            turn: row.get(5)?,
+            created_at: row.get(6)?,
+            updated_at: row.get(7)?,
+        })
+    })?;
+
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(PersistenceError::from)
+}
+
+/// Deletes one hex note; `Ok(true)` when a row existed, `Ok(false)` otherwise.
+pub fn delete_hex_note(
+    database_path: &Path,
+    game_id: &str,
+    note_id: &str,
+) -> Result<bool, PersistenceError> {
+    if !database_path.exists() {
+        return Err(PersistenceError::DatabaseFileMissing(
+            database_path.to_string_lossy().to_string(),
+        ));
+    }
+
+    let mut connection = open_database(database_path)?;
+    apply_migrations(&mut connection)?;
+    let rows_affected = connection.execute(
+        "DELETE FROM hex_notes WHERE game_id = ?1 AND id = ?2",
+        params![game_id, note_id],
+    )?;
+    Ok(rows_affected > 0)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2052,9 +2229,70 @@ mod tests {
 
         assert_eq!(created.schema_version, CURRENT_SCHEMA_VERSION);
         assert_eq!(
-            created.schema_version, 7,
-            "remembering which allied reports were merged added migration 7"
+            created.schema_version, 8,
+            "storing manual hex notes added migration 8"
         );
+    }
+
+    #[test]
+    fn hex_note_round_trips_and_lists_newest_first() {
+        let dir = tempdir().expect("tempdir");
+        let manifest = fixture_manifest();
+        let created = create_game(dir.path(), &manifest).expect("game creation should succeed");
+
+        let older = HexNote {
+            id: "note-older".to_string(),
+            game_id: GAME_ID.to_string(),
+            region_id: "1:7,53".to_string(),
+            text: "First note".to_string(),
+            on_map: true,
+            turn: 12,
+            created_at: "2026-08-01T09:00:00Z".to_string(),
+            updated_at: "2026-08-01T09:00:00Z".to_string(),
+        };
+        let newer = HexNote {
+            id: "note-newer".to_string(),
+            game_id: GAME_ID.to_string(),
+            region_id: "1:7,53".to_string(),
+            text: "Second note".to_string(),
+            on_map: false,
+            turn: 13,
+            created_at: "2026-08-02T09:00:00Z".to_string(),
+            updated_at: "2026-08-02T09:00:00Z".to_string(),
+        };
+        upsert_hex_note(&created.database_path, &older).expect("older note should persist");
+        upsert_hex_note(&created.database_path, &newer).expect("newer note should persist");
+
+        let listed = list_hex_notes(&created.database_path, GAME_ID).expect("list should succeed");
+        assert_eq!(listed, vec![newer.clone(), older.clone()], "newest first");
+
+        let edited = HexNote {
+            text: "First note, edited".to_string(),
+            updated_at: "2026-08-03T09:00:00Z".to_string(),
+            ..older.clone()
+        };
+        upsert_hex_note(&created.database_path, &edited).expect("edit should persist");
+        let listed_after_edit =
+            list_hex_notes(&created.database_path, GAME_ID).expect("list should succeed");
+        assert_eq!(
+            listed_after_edit[1].created_at, older.created_at,
+            "an edit must not move created_at, or ordering reshuffles"
+        );
+        assert_eq!(listed_after_edit[1].text, "First note, edited");
+
+        assert!(
+            delete_hex_note(&created.database_path, GAME_ID, "note-older")
+                .expect("delete should succeed"),
+            "deleting an existing note reports true"
+        );
+        assert!(
+            !delete_hex_note(&created.database_path, GAME_ID, "note-older")
+                .expect("delete should succeed"),
+            "deleting an already-deleted note reports false"
+        );
+        let listed_after_delete =
+            list_hex_notes(&created.database_path, GAME_ID).expect("list should succeed");
+        assert_eq!(listed_after_delete.len(), 1);
     }
 
     /// The time an import happened is the caller's to state, not SQLite's to invent.
@@ -2624,6 +2862,20 @@ mod region_sighting_tests {
             }],
         )
         .expect("sighting should save");
+        upsert_hex_note(
+            &opened.database_path,
+            &HexNote {
+                id: "note-1".to_string(),
+                game_id: "alpha".to_string(),
+                region_id: "1:7,53".to_string(),
+                text: "Mustn't forget the mountain pass".to_string(),
+                on_map: true,
+                turn: 12,
+                created_at: "2026-08-08T00:00:00Z".to_string(),
+                updated_at: "2026-08-08T00:00:00Z".to_string(),
+            },
+        )
+        .expect("note should save");
 
         let mut backup = serde_json::from_str::<serde_json::Value>(
             &export_game(dir.path(), "alpha", "2026-08-09T19:00:00Z")
@@ -2671,6 +2923,54 @@ mod region_sighting_tests {
                 .len(),
             1
         );
+        let restored_notes =
+            list_hex_notes(&restored.database_path, "beta").expect("load hex notes");
+        assert_eq!(restored_notes.len(), 1);
+        assert_eq!(restored_notes[0].id, "note-1");
+        assert_eq!(restored_notes[0].game_id, "beta");
+        assert_eq!(restored_notes[0].text, "Mustn't forget the mountain pass");
+    }
+
+    #[test]
+    fn hex_note_backup_field_is_optional_on_import() {
+        let dir = tempdir().expect("tempdir");
+        let manifest = GameManifest {
+            manifest_version: 1,
+            metadata: GameMetadata {
+                game_id: "pre-hex-notes".to_string(),
+                game_name: "Pre Hex Notes".to_string(),
+                ruleset_id: "neworigins".to_string(),
+            },
+            report_sources: Vec::new(),
+            created_at: "2026-08-01T09:00:00Z".to_string(),
+            last_opened_at: "2026-08-01T09:00:00Z".to_string(),
+        };
+        let mut backup_json = serde_json::to_value(GameBackup {
+            format: GAME_BACKUP_FORMAT.to_string(),
+            version: CURRENT_GAME_BACKUP_VERSION,
+            exported_at: "2026-08-01T09:00:00Z".to_string(),
+            manifest,
+            imported_turns: Vec::new(),
+            order_drafts: Vec::new(),
+            region_sightings: Vec::new(),
+            merged_reports: Vec::new(),
+            hex_notes: Vec::new(),
+        })
+        .expect("serialize backup");
+        backup_json
+            .as_object_mut()
+            .expect("backup is an object")
+            .remove("hexNotes");
+
+        let restored = import_game(dir.path(), &backup_json.to_string(), "2026-08-01T09:00:00Z")
+            .expect("a backup written before hex notes existed should still import");
+
+        assert_eq!(
+            list_hex_notes(&restored.database_path, "pre-hex-notes")
+                .expect("list should succeed")
+                .len(),
+            0
+        );
     }
 
     #[test]
@@ -2694,6 +2994,7 @@ mod region_sighting_tests {
             order_drafts: Vec::new(),
             region_sightings: Vec::new(),
             merged_reports: Vec::new(),
+            hex_notes: Vec::new(),
         })
         .expect("serialize backup");
 

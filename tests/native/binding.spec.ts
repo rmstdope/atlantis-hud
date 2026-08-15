@@ -224,6 +224,34 @@ const SWEEP: SweepEntry[] = [
       turn_number: 71
     })
   },
+  {
+    command: "list_hex_notes",
+    args: () => ({ database_path: context.databasePath, game_id: GAME_ID })
+  },
+  {
+    command: "save_hex_note",
+    args: () => ({
+      database_path: context.databasePath,
+      note: {
+        id: "binding-sweep-note",
+        gameId: GAME_ID,
+        regionId: "1:7,53",
+        text: "binding sweep",
+        onMap: true,
+        turn: 71,
+        createdAt: ISO,
+        updatedAt: ISO
+      }
+    })
+  },
+  {
+    command: "delete_hex_note",
+    args: () => ({
+      database_path: context.databasePath,
+      game_id: GAME_ID,
+      note_id: "binding-sweep-note"
+    })
+  },
   { command: "delete_game", args: () => ({ game_id: GAME_ID }) }
 ];
 

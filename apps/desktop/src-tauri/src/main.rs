@@ -3,14 +3,15 @@
     feature = "desktop-runtime"
 ))]
 use atlantis_hud_core_tauri::{
-    command_commit_report_import, command_create_game, command_delete_game, command_export_game,
-    command_import_game, command_list_games, command_list_imported_turns,
-    command_load_imported_turn, command_load_order_draft, command_open_game,
-    command_order_commands, command_parse_report, command_parse_report_full,
-    command_preview_report_import, command_save_order_draft, command_set_game_ruleset,
-    command_validate_orders, GameManifestDto, ImportedTurnPreviewDto, ImportedTurnRecordDto,
-    ImportedTurnSummaryDto, OpenedGameDto, OrderDraftRecordDto, OrderValidationResultDto,
-    ParsedReport, ReportImportPreviewDto, ReportParseResultDto,
+    command_commit_report_import, command_create_game, command_delete_game,
+    command_delete_hex_note, command_export_game, command_import_game, command_list_games,
+    command_list_hex_notes, command_list_imported_turns, command_load_imported_turn,
+    command_load_order_draft, command_open_game, command_order_commands, command_parse_report,
+    command_parse_report_full, command_preview_report_import, command_save_hex_note,
+    command_save_order_draft, command_set_game_ruleset, command_validate_orders, GameManifestDto,
+    HexNoteDto, ImportedTurnPreviewDto, ImportedTurnRecordDto, ImportedTurnSummaryDto,
+    OpenedGameDto, OrderDraftRecordDto, OrderValidationResultDto, ParsedReport,
+    ReportImportPreviewDto, ReportParseResultDto,
 };
 #[cfg(all(
     any(target_os = "linux", target_os = "macos", target_os = "windows"),
@@ -439,6 +440,37 @@ fn load_order_draft(
     any(target_os = "linux", target_os = "macos", target_os = "windows"),
     feature = "desktop-runtime"
 ))]
+#[tauri::command(rename_all = "snake_case")]
+fn list_hex_notes(database_path: String, game_id: String) -> Result<Vec<HexNoteDto>, String> {
+    command_list_hex_notes(&database_path, &game_id)
+}
+
+#[cfg(all(
+    any(target_os = "linux", target_os = "macos", target_os = "windows"),
+    feature = "desktop-runtime"
+))]
+#[tauri::command(rename_all = "snake_case")]
+fn save_hex_note(database_path: String, note: HexNoteDto) -> Result<HexNoteDto, String> {
+    command_save_hex_note(&database_path, note)
+}
+
+#[cfg(all(
+    any(target_os = "linux", target_os = "macos", target_os = "windows"),
+    feature = "desktop-runtime"
+))]
+#[tauri::command(rename_all = "snake_case")]
+fn delete_hex_note(
+    database_path: String,
+    game_id: String,
+    note_id: String,
+) -> Result<bool, String> {
+    command_delete_hex_note(&database_path, &game_id, &note_id)
+}
+
+#[cfg(all(
+    any(target_os = "linux", target_os = "macos", target_os = "windows"),
+    feature = "desktop-runtime"
+))]
 fn main() {
     tauri::Builder::default()
         // Opening the releases page in the player's own browser is the whole of the desktop update
@@ -470,6 +502,9 @@ fn main() {
             order_commands,
             save_order_draft,
             load_order_draft,
+            list_hex_notes,
+            save_hex_note,
+            delete_hex_note,
             plan_route,
             export_map,
             trace_move_orders,
