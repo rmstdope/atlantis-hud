@@ -93,6 +93,14 @@
   --color-unit-foreign: #f07070;
   --color-settlement: #f0e2bd;
 
+  /*
+    A manual hex note's pin and tag (ah-o1t.3): warm paper yellow, distinct from every terrain and
+    mark colour above so a note never reads as game state. Reads on the dark ground and on
+    parchment alike, so both themes carry the same value.
+  */
+  --color-note: #f2d27a;
+  --color-note-ink: #2b2410;
+
   /* Route risk. Low is not green: a quiet hex is not a safe promise. */
   --color-risk-low: #5ec8f0;
   --color-risk-medium: #d9a441;
@@ -170,6 +178,10 @@
   --color-unit-own: #1c7fae;
   --color-unit-foreign: #c05252;
   --color-settlement: #8a6d3b;
+
+  /* Same paper yellow as the dark theme: it reads on parchment as well as on the dark ground. */
+  --color-note: #f2d27a;
+  --color-note-ink: #2b2410;
 
   --color-risk-low: #1c7fae;
   --color-risk-medium: #9a6f1d;

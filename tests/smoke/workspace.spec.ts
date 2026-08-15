@@ -3161,3 +3161,62 @@ test("the palette can open the note editor for the selected hex", async ({ page 
   const editor = page.getByTestId("region-note-editor").locator("textarea");
   await expect(editor).toBeFocused();
 });
+
+/**
+ * ah-o1t.3: the map-owned pin for a map-visible note, and its tag stack - opening, closing, and
+ * the Badges menu's `Notes` entry that hides the whole layer.
+ */
+test("a note pinned on the map opens its tags and selects the hex", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+
+  // The pin is hidden at the far band, and a freshly imported report frames every explored hex -
+  // usually far. Right-click recentres on the selected hex (the map's own gesture), then zoom in
+  // about the viewport centre keeps it in view while the band changes.
+  await page.getByRole("button", { name: "hex 1:7,53" }).click({ button: "right" });
+  const map = page.locator("[data-testid='map-canvas'] svg");
+  for (let step = 0; step < 12; step += 1) {
+    await page.getByRole("button", { name: "Zoom in" }).click();
+  }
+  await expect(map).not.toHaveClass(/map-far/);
+
+  await page.getByTestId("region-note-add").click();
+  await page.getByTestId("region-note-editor").locator("textarea").fill("Allies mass here");
+  await page.keyboard.press("ControlOrMeta+Enter");
+  await expect(page.getByTestId("region-note-editor")).toHaveCount(0);
+
+  // Select another hex first, so the pin's own click is what selects 1:7,53 back.
+  await selectHex(page, "1:8,54");
+
+  const pin = page.getByTestId("map-note-pin");
+  await expect(pin).toHaveAttribute("aria-label", "notes on hex 1:7,53");
+
+  await pin.click();
+  const tags = page.getByTestId("map-note-tags");
+  await expect(tags).toBeVisible();
+  await expect(tags).toContainText("Allies mass here");
+  await expect(tags).toContainText("turn 71");
+  await expect(
+    page.getByRole("button", { name: "hex 1:7,53", exact: true })
+  ).toHaveAttribute("aria-pressed", "true");
+
+  await page.keyboard.press("Escape");
+  await expect(tags).toHaveCount(0);
+
+  await pin.click();
+  await expect(page.getByTestId("map-note-tags")).toBeVisible();
+
+  // A press on empty page background - nothing to do with the pin or the tags - closes it too.
+  await page.mouse.click(10, 10);
+  await expect(page.getByTestId("map-note-tags")).toHaveCount(0);
+
+  await page.getByTestId("layer-chips").getByRole("button", { name: "Badges" }).click();
+  const badges = page.getByTestId("badge-menu");
+  await expect(badges.getByRole("checkbox", { name: "Notes" })).toBeChecked();
+  await badges.getByRole("checkbox", { name: "Notes" }).uncheck();
+  await expect(page.getByTestId("map-note-pin")).toHaveCount(0);
+
+  // The menu stays open across a toggle - unchecking it does not dismiss the popover.
+  await badges.getByRole("checkbox", { name: "Notes" }).check();
+  await expect(page.getByTestId("map-note-pin")).toBeVisible();
+});

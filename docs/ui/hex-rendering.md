@@ -54,6 +54,7 @@ A hex is composited from these layers, bottom to top:
 7. Selection ring
 8. Keyboard focus ring
 9. Invisible hit/accessibility polygon
+10. Manual hex note pins and tag stack
 
 ### 1. Unexplored ground
 
@@ -228,6 +229,18 @@ Topmost, flat, and invisible: one polygon per hex acting as a button (roving tab
 buckets means a hex whose knowledge changes is not remounted, so it cannot lose focus
 mid-keystroke.
 
+### 10. Manual hex notes
+
+Map-owned, not a theme's — drawn once in `MapCanvas.tsx` (see `mapNotes.ts`) for every theme, so
+adding a theme never means drawing a reader's own note a sixth time. Screen-constant, like the
+selection ring: each pin's group is scaled by `1 / scaleOf(view.step)`. It is the one mark on the
+map, besides the hex itself, carrying its own hit target — placed after the hit/accessibility
+layer so a click always lands on the pin rather than the hex beneath it. A paper-yellow pin sits
+upper-right of every hex holding at least one map-visible note, with a count badge past one; a
+click selects the hex and opens a stack of tags, one per map-visible note, newest on top, closed
+by a click elsewhere, Escape, or the pin again. Gated by the twelfth Badges entry, `Notes`, on by
+default.
+
 ## Zoom bands
 
 How much a hex shows depends on the zoom band, expressed as CSS rules keyed on a root class
@@ -245,6 +258,7 @@ The shared shape of that policy, which every theme follows in its own vocabulary
 | Settlement glyph | hidden | shown | shown |
 | Settlement name | hidden | hidden | shown |
 | Selection / focus rings | shown | shown | shown |
+| Note pins | hidden | shown | shown |
 
 The rationale: labels are drawn at constant screen size, so as hexes shrink the text does not —
 past a point every label would overlap its neighbours. Which is also why anything carrying

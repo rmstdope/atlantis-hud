@@ -425,6 +425,8 @@ export function AppShell({
   const [game, setGame] = useState<OpenedGame | null>(null);
   const [games, setGames] = useState<GameManifest[]>([]);
   const [gamesLoaded, setGamesLoaded] = useState(false);
+  // The map's note pins (ah-o1t.3); the panel reads the same store directly.
+  const hexNotes = useHexNotesStore((state) => state.notes);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -2904,6 +2906,7 @@ export function AppShell({
         <MapCanvas
           gameId={game?.manifest.metadata.gameId ?? null}
           model={model}
+          notes={hexNotes}
           theme={getMapTheme(mapThemeId)}
           level={level}
           selectedRegionId={selectedRegionId}
