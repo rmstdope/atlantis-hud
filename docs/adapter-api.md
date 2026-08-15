@@ -86,8 +86,10 @@ with an ally has to come out identical whichever shell wrote it.
 - API:
   - `createTauriAdapter(invoke)` — the desktop transport, speaking to `core-tauri`
   - `createCoreClient(adapter)`
-- The browser transport is `createWebCoreAdapter` in `@atlantis/browser-core`, over IndexedDB — it
-  does not go through `core-client`'s adapter contract.
+- The browser transport is `createWebCoreAdapter` in `@atlantis/browser-core`: it implements this
+  same `CoreAdapter` contract, over IndexedDB, and is passed to `createCoreClient` exactly like the
+  tauri adapter (see `apps/web/src/main.tsx`). It has its own tests in `browser-core`, so this
+  package's own tests pin only the tauri adapter's contract.
 - Contract normalization:
   - Accepts adapter wire payloads in either `camelCase` or `snake_case`
   - Returns canonical `EngineInfo` in `camelCase`
