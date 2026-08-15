@@ -1152,6 +1152,14 @@ export function MapCanvas({
                         }
                         selectRef.current(pin.regionId);
                         setOpenNotesId((open) => (open === pin.regionId ? null : pin.regionId));
+                        // Mirrors the hex polygon's own click handler: focused as well as
+                        // selected, so the arrow keys carry on from the hex the pin just picked
+                        // rather than staying wherever focus was before.
+                        worldRef.current
+                          ?.querySelector<SVGPolygonElement>(
+                            `polygon[data-region-id="${pin.regionId}"]`
+                          )
+                          ?.focus();
                       }}
                     >
                       <title>
@@ -1310,17 +1318,24 @@ function translateOf(hex: HexNode): string {
 function NoteTagsDismiss({ onDismiss }: { onDismiss: () => void }) {
   useEscapeToDismiss(onDismiss);
 
+  // `onDismiss` is a fresh closure every render (it captures `pin.regionId` via the caller's
+  // inline arrow), and a map pan or zoom re-renders often while a stack is open - kept in a ref,
+  // like `useEscapeToDismiss` does, so the listener is registered once for the mount rather than
+  // torn down and re-added on every one of those renders.
+  const latest = useRef(onDismiss);
+  latest.current = onDismiss;
+
   useEffect(() => {
     const onPointerDown = (event: PointerEvent) => {
       const target = event.target as Element | null;
       if (target?.closest('[data-testid="map-note-pin"], [data-testid="map-note-tags"]')) {
         return;
       }
-      onDismiss();
+      latest.current();
     };
     document.addEventListener("pointerdown", onPointerDown, true);
     return () => document.removeEventListener("pointerdown", onPointerDown, true);
-  }, [onDismiss]);
+  }, []);
 
   return null;
 }

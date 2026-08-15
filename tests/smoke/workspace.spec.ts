@@ -3199,6 +3199,9 @@ test("a note pinned on the map opens its tags and selects the hex", async ({ pag
   await expect(
     page.getByRole("button", { name: "hex 1:7,53", exact: true })
   ).toHaveAttribute("aria-pressed", "true");
+  // The pin also moves keyboard focus to the hex it selected, like a hex's own click handler
+  // does - otherwise the arrow keys would carry on from wherever focus was before the pin click.
+  await expect(page.locator("polygon:focus")).toHaveAttribute("aria-label", "hex 1:7,53");
 
   await page.keyboard.press("Escape");
   await expect(tags).toHaveCount(0);
