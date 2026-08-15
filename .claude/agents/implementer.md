@@ -1,1 +1,1 @@
-/Users/henrikku/repos/atlantis-hud/.claude/cerebro/agents/implementer.md
+../cerebro/agents/implementer.md

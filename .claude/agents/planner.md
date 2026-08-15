@@ -1,1 +1,1 @@
-/Users/henrikku/repos/atlantis-hud/.claude/cerebro/agents/planner.md
+../cerebro/agents/planner.md
