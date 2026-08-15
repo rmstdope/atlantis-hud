@@ -2,7 +2,7 @@
 
 - **Implementer:** Wolverine
 - **Date:** 2026-08-15
-- **PR:** rmstdope/cerebro#9 (submodule), consumer bump PR follows this one
+- **PR:** rmstdope/cerebro#9 (submodule change), atlantis-hud#238 (this PR - the consumer bump)
 
 ## A guard the plan's own function spec left out was found only by running the code against the live repo
 
