@@ -3,14 +3,20 @@ import type { PanelName } from "../workspaceStore";
 import {
   clampOrdersHeight,
   clampRailWidth,
+  clampUnitsHeight,
   dragOrdersHeight,
   dragRailWidth,
+  dragUnitsHeight,
   ordersSlotClass,
   ordersSlotStyle,
   railWidthStyle,
   RAIL_MAX_REM,
   RAIL_MIN_REM,
-  unitSlotClass
+  unitSlotClass,
+  unitsSlotClass,
+  unitsSlotStyle,
+  UNITS_MAX_REM,
+  UNITS_MIN_REM
 } from "./panelLayout";
 
 /** Everything open, which is where a fresh workspace starts. */
@@ -212,5 +218,92 @@ describe("railWidthStyle", () => {
 
   it("carries the stored width", () => {
     expect(railWidthStyle(24)).toEqual({ width: "24rem" });
+  });
+});
+
+describe("clampUnitsHeight", () => {
+  it("treats non-finite input as no preference", () => {
+    expect(clampUnitsHeight(undefined)).toBeNull();
+    expect(clampUnitsHeight(null)).toBeNull();
+    expect(clampUnitsHeight("nope")).toBeNull();
+    expect(clampUnitsHeight(NaN)).toBeNull();
+  });
+
+  it("clamps a finite value into the stored range", () => {
+    expect(clampUnitsHeight(2)).toBe(UNITS_MIN_REM);
+    expect(clampUnitsHeight(500)).toBe(UNITS_MAX_REM);
+    expect(clampUnitsHeight(20)).toBe(20);
+  });
+});
+
+describe("dragUnitsHeight", () => {
+  it("caps at seven tenths of the host", () => {
+    // host 40 -> ceiling 28, below UNITS_MAX_REM.
+    const result = dragUnitsHeight(20, 20, 40);
+    expect(result.rem).toBe(28);
+    expect(result.atLimit).toBe(true);
+  });
+
+  it("floors at one row", () => {
+    const result = dragUnitsHeight(6, -5, 40);
+    expect(result.rem).toBe(UNITS_MIN_REM);
+    expect(result.atLimit).toBe(true);
+  });
+
+  it("lets the sanity ceiling rule when the host is unmeasurable", () => {
+    const result = dragUnitsHeight(20, 1000, Infinity);
+    expect(result.rem).toBe(UNITS_MAX_REM);
+    expect(result.atLimit).toBe(true);
+  });
+
+  it("floors outright when the host cannot hold the floor", () => {
+    // host 5 -> 70% ceiling is 3.5, under UNITS_MIN_REM, so the floor wins outright.
+    const result = dragUnitsHeight(6, 0, 5);
+    expect(result.rem).toBe(UNITS_MIN_REM);
+    expect(result.atLimit).toBe(true);
+  });
+
+  it("flags atLimit only when the raw value overshot", () => {
+    const result = dragUnitsHeight(20, 1, 40);
+    expect(result.atLimit).toBe(false);
+  });
+});
+
+describe("unitsSlotClass", () => {
+  it("shrinks to the title bar once folded", () => {
+    expect(unitsSlotClass(folded("units"), false)).toBe("flex-none");
+  });
+
+  it("carries the pinned default while no height is stored", () => {
+    const className = unitsSlotClass(OPEN, false);
+    expect(className).toContain("h-[20.625rem]");
+    expect(className).toContain("max-h-[70%]");
+    expect(className).toContain("min-h-[5.5rem]");
+  });
+
+  it("drops the pin classes for a custom height, keeping the floor", () => {
+    const className = unitsSlotClass(OPEN, true);
+    expect(className).not.toContain("h-[20.625rem]");
+    expect(className).not.toContain("max-h-");
+    expect(className).toContain("min-h-[5.5rem]");
+    expect(className).toContain("flex-none");
+  });
+
+  it("stays a title bar once folded even with a custom height", () => {
+    expect(unitsSlotClass(folded("units"), true)).toBe("flex-none");
+  });
+});
+
+describe("unitsSlotStyle", () => {
+  it("is null while no height is stored", () => {
+    expect(unitsSlotStyle(OPEN, null)).toBeNull();
+  });
+
+  it("is null once folded, even with a stored height", () => {
+    expect(unitsSlotStyle(folded("units"), 22)).toBeNull();
+  });
+
+  it("carries the stored height and the 70% clamp-to-fit", () => {
+    expect(unitsSlotStyle(OPEN, 22)).toEqual({ height: "22rem", maxHeight: "70%" });
   });
 });

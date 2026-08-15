@@ -1,19 +1,23 @@
 import type { KeyboardEvent, PointerEvent, RefObject } from "react";
-import {
-  dragOrdersHeight,
-  ORDERS_DEFAULT_REM,
-  ORDERS_MAX_REM,
-  ORDERS_MIN_REM,
-  SPLIT_STEP_REM
-} from "./panelLayout";
+import { SPLIT_STEP_REM, type DragResult } from "./panelLayout";
 import { isTopDismissLayer, pushDismissLayer } from "../dismissStack";
 import { guardSelection } from "./selectionGuard";
 
 export type PanelSplitterProps = {
-  /** The orders slot div; measured at gesture start, written to directly during a drag. */
-  ordersSlot: RefObject<HTMLElement | null>;
-  /** The committed height, or null while the default pin applies. */
-  ordersHeightRem: number | null;
+  /** The slot div below the handle; measured at gesture start, written to directly during a drag. */
+  slot: RefObject<HTMLElement | null>;
+  /** The committed height, or null while the default applies. */
+  heightRem: number | null;
+  /** What null means, for aria-valuenow and for the first keyboard step. */
+  defaultRem: number;
+  /** aria-valuemin / aria-valuemax. */
+  minRem: number;
+  maxRem: number;
+  /** The clamp: dragOrdersHeight or dragUnitsHeight. */
+  drag: (startRem: number, deltaRem: number, hostRem: number) => DragResult;
+  /** Accessible name and test id: "Resize orders panel" / "panel-splitter", "Resize units pane" / "units-splitter". */
+  label: string;
+  testId: string;
   /** Called once per finished gesture: pointerup, one arrow press, or a reset (null). */
   onCommit: (rem: number | null) => void;
 };
@@ -27,14 +31,25 @@ function remPx(): number {
 }
 
 /**
- * The rail the drag and every keyboard step is resolved against: the orders slot's own parent, the
- * flex column holding both panels. `Infinity` when it cannot be measured - a component test calling
+ * The host the drag and every keyboard step is resolved against: the slot's own parent's
+ * **content-box** height, in rem. `Infinity` when it cannot be measured - a component test calling
  * this without a mounted DOM, for instance - which leaves the sanity ceiling in `panelLayout.ts` as
- * the only bound; the real rail is always measurable once this actually renders in a browser.
+ * the only bound; the real host is always measurable once this actually renders in a browser.
+ *
+ * Content-box rather than border-box: the units slot's parent carries its own padding
+ * (`AppShell.tsx`'s overlay column, `p-2.5 pt-12`), and `max-h-[70%]` resolves against that same
+ * content box, so the drag ceiling has to match it or the pill can flash amber where CSS has
+ * already stopped the pane.
  */
-function railRem(ordersSlot: RefObject<HTMLElement | null>): number {
-  const rail = ordersSlot.current?.parentElement?.getBoundingClientRect().height;
-  return rail == null ? Infinity : rail / remPx();
+function hostRem(slot: RefObject<HTMLElement | null>): number {
+  const parent = slot.current?.parentElement;
+  if (!parent) {
+    return Infinity;
+  }
+  const style = getComputedStyle(parent);
+  const paddingTop = parseFloat(style.paddingTop) || 0;
+  const paddingBottom = parseFloat(style.paddingBottom) || 0;
+  return (parent.clientHeight - paddingTop - paddingBottom) / remPx();
 }
 
 /** The grip pill's classes for its current state. Applied directly to the DOM node during a drag. */
@@ -50,7 +65,7 @@ function gripClassName(dragging: boolean, atLimit: boolean): string {
 }
 
 /**
- * The drag handle between the unit panel and the orders editor.
+ * The drag handle above a slot in a column - the orders editor's, and the units-in-hex pane's.
  *
  * A thin shell over the pure arithmetic in `panelLayout.ts`: this component owns the pointer and
  * keyboard choreography, and touches nothing else. It carries no state of its own - the height
@@ -59,20 +74,30 @@ function gripClassName(dragging: boolean, atLimit: boolean): string {
  * shared package's other browser-free component tests call theirs) without React's hook machinery
  * getting in the way.
  */
-export function PanelSplitter({ ordersSlot, ordersHeightRem, onCommit }: PanelSplitterProps) {
+export function PanelSplitter({
+  slot: slotRef,
+  heightRem,
+  defaultRem,
+  minRem,
+  maxRem,
+  drag,
+  label,
+  testId,
+  onCommit
+}: PanelSplitterProps) {
   const onPointerDown = (event: PointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) {
       return;
     }
     event.preventDefault();
-    const slot = ordersSlot.current;
+    const slot = slotRef.current;
     if (!slot) {
       return;
     }
     const grip = event.currentTarget.firstElementChild as HTMLElement | null;
     const startY = event.clientY;
     const startRem = slot.getBoundingClientRect().height / remPx();
-    const rail = railRem(ordersSlot);
+    const host = hostRem(slotRef);
     const startHeight = slot.style.height;
 
     // A pan is not what this gesture means, but WebKit anchors a text selection on whatever the
@@ -87,7 +112,7 @@ export function PanelSplitter({ ordersSlot, ordersHeightRem, onCommit }: PanelSp
 
     const move = (moveEvent: globalThis.PointerEvent) => {
       moved = true;
-      const result = dragOrdersHeight(startRem, (startY - moveEvent.clientY) / remPx(), rail);
+      const result = drag(startRem, (startY - moveEvent.clientY) / remPx(), host);
       committed = result.rem;
       slot.style.height = `${result.rem}rem`;
       if (grip) {
@@ -140,9 +165,9 @@ export function PanelSplitter({ ordersSlot, ordersHeightRem, onCommit }: PanelSp
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key === "ArrowUp" || event.key === "ArrowDown") {
       event.preventDefault();
-      const startRem = ordersHeightRem ?? ORDERS_DEFAULT_REM;
+      const startRem = heightRem ?? defaultRem;
       const deltaRem = event.key === "ArrowUp" ? SPLIT_STEP_REM : -SPLIT_STEP_REM;
-      const result = dragOrdersHeight(startRem, deltaRem, railRem(ordersSlot));
+      const result = drag(startRem, deltaRem, hostRem(slotRef));
       onCommit(result.rem);
     } else if (event.key === "Enter") {
       onCommit(null);
@@ -153,12 +178,12 @@ export function PanelSplitter({ ordersSlot, ordersHeightRem, onCommit }: PanelSp
     <div
       role="separator"
       aria-orientation="horizontal"
-      aria-label="Resize orders panel"
+      aria-label={label}
       tabIndex={0}
-      data-testid="panel-splitter"
-      aria-valuemin={ORDERS_MIN_REM}
-      aria-valuemax={ORDERS_MAX_REM}
-      aria-valuenow={ordersHeightRem ?? ORDERS_DEFAULT_REM}
+      data-testid={testId}
+      aria-valuemin={minRem}
+      aria-valuemax={maxRem}
+      aria-valuenow={heightRem ?? defaultRem}
       className="group relative z-10 -my-2.5 flex h-2.5 flex-none touch-none cursor-row-resize items-center justify-center pointer-events-auto focus-visible:outline focus-visible:outline-1 focus-visible:outline-brass"
       onPointerDown={onPointerDown}
       onKeyDown={onKeyDown}

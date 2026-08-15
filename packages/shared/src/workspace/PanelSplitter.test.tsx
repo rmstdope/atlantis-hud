@@ -1,23 +1,40 @@
 import { isValidElement, type ReactElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { ORDERS_DEFAULT_REM } from "./panelLayout";
+import {
+  dragOrdersHeight,
+  dragUnitsHeight,
+  ORDERS_DEFAULT_REM,
+  ORDERS_MAX_REM,
+  ORDERS_MIN_REM,
+  UNITS_DEFAULT_REM
+} from "./panelLayout";
 import { PanelSplitter, type PanelSplitterProps } from "./PanelSplitter";
 
 /**
- * The drag handle between the unit panel and the orders editor.
+ * The drag handle above a slot in a column - the orders editor's, and the units-in-hex pane's.
  *
- * `PanelSplitter` carries no hook state of its own - see its header comment - so, like
- * `UnitListLimitStepper`, it can be called directly to reach the handlers its elements were built
- * with. Its pointer choreography is not exercised here: without jsdom there is no real DOM to drag
- * across, and that path is the smoke suite's business (`tests/smoke/workspace.spec.ts`).
+ * `PanelSplitter` carries no hook state of its own - see its header comment - so it can be called
+ * directly to reach the handlers its elements were built with. Its pointer choreography is not
+ * exercised here: without jsdom there is no real DOM to drag across, and that path is the smoke
+ * suite's business (`tests/smoke/workspace.spec.ts`).
  */
 
-const NO_SLOT: PanelSplitterProps["ordersSlot"] = { current: null };
+const NO_SLOT: PanelSplitterProps["slot"] = { current: null };
 
-function markup(ordersHeightRem: number | null = null): string {
+const ORDERS_PROPS = {
+  slot: NO_SLOT,
+  defaultRem: ORDERS_DEFAULT_REM,
+  minRem: ORDERS_MIN_REM,
+  maxRem: ORDERS_MAX_REM,
+  drag: dragOrdersHeight,
+  label: "Resize orders panel",
+  testId: "panel-splitter"
+} as const;
+
+function markup(heightRem: number | null = null): string {
   return renderToStaticMarkup(
-    <PanelSplitter ordersSlot={NO_SLOT} ordersHeightRem={ordersHeightRem} onCommit={() => {}} />
+    <PanelSplitter {...ORDERS_PROPS} heightRem={heightRem} onCommit={() => {}} />
   );
 }
 
@@ -52,11 +69,11 @@ function find(node: ReactNode, testid: string): ReactElement<Record<string, unkn
 }
 
 /** Presses a key on the rendered separator and answers with what it asked the height to become. */
-function press(ordersHeightRem: number | null, key: string): number | null | "unasked" {
+function press(heightRem: number | null, key: string): number | null | "unasked" {
   let asked: number | null | "unasked" = "unasked";
   const tree = PanelSplitter({
-    ordersSlot: NO_SLOT,
-    ordersHeightRem,
+    ...ORDERS_PROPS,
+    heightRem,
     onCommit: (next) => (asked = next)
   });
   const onKeyDown = find(tree, "panel-splitter").props.onKeyDown as (event: unknown) => void;
@@ -104,12 +121,49 @@ describe("PanelSplitter double-click", () => {
   it("resets to the default pin", () => {
     let asked: number | null | "unasked" = "unasked";
     const tree = PanelSplitter({
-      ordersSlot: NO_SLOT,
-      ordersHeightRem: 30,
+      ...ORDERS_PROPS,
+      heightRem: 30,
       onCommit: (next) => (asked = next)
     });
     const onDoubleClick = find(tree, "panel-splitter").props.onDoubleClick as () => void;
     onDoubleClick();
     expect(asked).toBeNull();
+  });
+});
+
+describe("a units splitter, named for the units pane", () => {
+  it("carries the units label, testid and steps from its own default", () => {
+    const html = renderToStaticMarkup(
+      <PanelSplitter
+        slot={NO_SLOT}
+        heightRem={null}
+        defaultRem={UNITS_DEFAULT_REM}
+        minRem={5.5}
+        maxRem={60}
+        drag={dragUnitsHeight}
+        label="Resize units pane"
+        testId="units-splitter"
+        onCommit={() => {}}
+      />
+    );
+    const el = tag(html, "units-splitter");
+    expect(el).toContain('aria-label="Resize units pane"');
+    expect(el).toContain(`aria-valuenow="${UNITS_DEFAULT_REM}"`);
+
+    let asked: number | null | "unasked" = "unasked";
+    const tree = PanelSplitter({
+      slot: NO_SLOT,
+      heightRem: null,
+      defaultRem: UNITS_DEFAULT_REM,
+      minRem: 5.5,
+      maxRem: 60,
+      drag: dragUnitsHeight,
+      label: "Resize units pane",
+      testId: "units-splitter",
+      onCommit: (next) => (asked = next)
+    });
+    const onKeyDown = find(tree, "units-splitter").props.onKeyDown as (event: unknown) => void;
+    onKeyDown({ key: "ArrowUp", preventDefault: () => {} });
+    expect(asked).toBe(UNITS_DEFAULT_REM + 1);
   });
 });

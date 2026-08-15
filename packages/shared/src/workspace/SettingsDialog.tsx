@@ -3,11 +3,7 @@ import type { AdvisoryCheckCode } from "@atlantis/core-client";
 import { useEscapeToDismiss } from "./dismissLayer";
 import { APP_VERSION } from "../appVersion";
 import { snippetBodyProblem, snippetNameProblem } from "../orderSnippets";
-import {
-  UNIT_LIST_LIMIT_MAX,
-  UNIT_LIST_LIMIT_MIN,
-  useSettingsStore
-} from "../settingsStore";
+import { useSettingsStore } from "../settingsStore";
 import type { ThemeName } from "../settingsStore";
 import { mapThemeOptions } from "./mapThemes";
 import { SettingToggle } from "./SettingToggle";
@@ -192,10 +188,6 @@ function GlobalSettings() {
   const setBiomeTextures = useSettingsStore((state) => state.setBiomeTextures);
   const paneTransparency = useSettingsStore((state) => state.paneTransparency);
   const setPaneTransparency = useSettingsStore((state) => state.setPaneTransparency);
-  const unitListLimit = useSettingsStore((state) => state.unitListLimit);
-  const setUnitListLimit = useSettingsStore((state) => state.setUnitListLimit);
-  const unitListFixedSize = useSettingsStore((state) => state.unitListFixedSize);
-  const setUnitListFixedSize = useSettingsStore((state) => state.setUnitListFixedSize);
   const showShortcutsAtStartup = useSettingsStore((state) => state.showShortcutsAtStartup);
   const setShowShortcutsAtStartup = useSettingsStore((state) => state.setShowShortcutsAtStartup);
   const movementPlanner = useSettingsStore((state) => state.movementPlanner);
@@ -278,43 +270,6 @@ function GlobalSettings() {
           className="accent-brass"
         />
       </label>
-
-      <label className="flex flex-col gap-1">
-        <span className="flex items-baseline justify-between gap-2">
-          <span className="text-ink-soft">Units in hex list</span>
-          <span className="text-ink">{unitListLimit}</span>
-        </span>
-        {/*
-          How many rows tall the pane stands - a ceiling on the pane, never a cut in the list,
-          which stays scrollable to its end. Bounded at both ends by the store's own limits, which
-          the pane's + and - obey too: the two controls are one preference. Applies as it is
-          dragged, the pane behind the dialog being its own preview.
-        */}
-        <input
-          type="range"
-          data-testid="unit-list-limit"
-          aria-label="units in hex list"
-          min={UNIT_LIST_LIMIT_MIN}
-          max={UNIT_LIST_LIMIT_MAX}
-          step={1}
-          value={unitListLimit}
-          onChange={(event) => setUnitListLimit(Number(event.target.value))}
-          className="accent-brass"
-        />
-      </label>
-
-      {/*
-        Off by default: the ceiling above is the ordinary behaviour, and this flips it to a floor
-        too - the pane always reserves this many rows, even on an empty or stale hex, so moving
-        between hexes never resizes it.
-      */}
-      <SettingToggle
-        title="Fixed pane size"
-        description="Always reserve this many rows, even when the hex holds fewer units."
-        testId="settings-unit-list-fixed"
-        checked={unitListFixedSize}
-        onChange={setUnitListFixedSize}
-      />
 
       <SettingToggle
         title="Movement planner"

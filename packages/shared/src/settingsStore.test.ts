@@ -272,130 +272,34 @@ describe("settings store", () => {
     expect(stub.documentElement.style.properties["--pane-transparency"]).toBe("40");
   });
 
-  it("defaults the unit list limit to twelve rows", () => {
-    expect(store().unitListLimit).toBe(12);
-  });
-
-  it("clamps the unit list limit to what the controls offer, 1 to 16", () => {
-    store().setUnitListLimit(150);
-    expect(store().unitListLimit).toBe(16);
-
-    // A single row is a legitimate choice: the pane still scrolls, and shrunk to one row it is
-    // nearly out of the way of the map without being folded shut.
-    store().setUnitListLimit(1);
-    expect(store().unitListLimit).toBe(1);
-
-    store().setUnitListLimit(-5);
-    expect(store().unitListLimit).toBe(1);
-
-    // A fraction rounds rather than leaving a decimal no row count can honour.
-    store().setUnitListLimit(12.6);
-    expect(store().unitListLimit).toBe(13);
-  });
-
-  it("persists the unit list limit", async () => {
-    store().setUnitListLimit(15);
-    expect(store().unitListLimit).toBe(15);
-
+  /**
+   * The retired units-pane keys (`unitListLimit`, `unitListFixedSize` - ah-2r3, removed with the
+   * pane's row-count setting) must not survive a settings blob written before this build. Storage
+   * is hand-editable and other writers exist, and `partialize` no longer lists them, so the very
+   * next save drops them - proving neither key is read nor re-written by anything left standing.
+   */
+  it("drops the retired units-pane keys from storage on the next save", async () => {
     const storage = useSettingsStore.persist.getOptions().storage;
-    const persisted = await storage?.getItem("atlantis-hud-settings");
-    if (!storage || !persisted) {
+    if (!storage) {
       throw new Error("settings storage was not available");
     }
-
-    useSettingsStore.setState({ unitListLimit: 12 });
-    await storage.setItem("atlantis-hud-settings", persisted);
-    await useSettingsStore.persist.rehydrate();
-
-    expect(store().unitListLimit).toBe(15);
-  });
-
-  /**
-   * The earlier build persisted 0 as "show all", and it was the default - so it is what every
-   * untouched settings blob holds. Clamping it to the floor would greet the whole existing user
-   * base with the tightest cap; it means "no preference" and becomes the default instead.
-   */
-  it("migrates the earlier build's show-all zero to the default rather than the floor", () => {
-    useSettingsStore.setState({ unitListLimit: 0 });
-
-    applyPersistedSettings();
-
-    expect(store().unitListLimit).toBe(12);
-  });
-
-  it("sanitizes a persisted unit list limit, garbage falling back to the default", () => {
-    useSettingsStore.setState({ unitListLimit: "not a number" as unknown as number });
-
-    applyPersistedSettings();
-
-    expect(store().unitListLimit).toBe(12);
-  });
-
-  it("reads a persisted unit list limit that storage kept as a string", () => {
-    useSettingsStore.setState({ unitListLimit: "14" as unknown as number });
-
-    applyPersistedSettings();
-
-    expect(store().unitListLimit).toBe(14);
-  });
-
-  /**
-   * The rows setting is a ceiling by default - a hex with fewer units gets a shorter pane. This
-   * flips that: the pane always reserves the configured number of rows. Off by default, so
-   * nobody's pane changes shape until they ask for it.
-   */
-  it("defaults fixed pane size to off", () => {
-    expect(store().unitListFixedSize).toBe(false);
-  });
-
-  it("persists fixed pane size", async () => {
-    store().setUnitListFixedSize(true);
-    expect(store().unitListFixedSize).toBe(true);
-
-    const storage = useSettingsStore.persist.getOptions().storage;
-    const persisted = await storage?.getItem("atlantis-hud-settings");
-    if (!storage || !persisted) {
-      throw new Error("settings storage was not available");
-    }
-
-    useSettingsStore.setState({ unitListFixedSize: false });
-    await storage.setItem("atlantis-hud-settings", persisted);
-    await useSettingsStore.persist.rehydrate();
-
-    expect(store().unitListFixedSize).toBe(true);
-  });
-
-  /**
-   * Every settings blob written before this existed has no such key, and rehydration merges
-   * storage over the defaults rather than beside them - so the absent key has to mean the same
-   * thing the default does: off.
-   */
-  it("shows fixed pane size as off to a player upgrading from a build that had no such setting", async () => {
-    // A value no default could produce, which also gives storage a blob to edit.
-    store().setPaneTransparency(35);
-
-    const storage = useSettingsStore.persist.getOptions().storage;
-    const persisted = (await storage?.getItem("atlantis-hud-settings")) as
-      | { state: Record<string, unknown>; version?: number }
-      | undefined;
-    if (!storage || !persisted) {
-      throw new Error("settings storage was not available");
-    }
-
-    // The blob an older build wrote: everything else, and no mention of this key at all.
-    const olderState = { ...persisted.state };
-    delete olderState.unitListFixedSize;
-    resetSettingsStore();
     await storage.setItem("atlantis-hud-settings", {
-      ...persisted,
-      state: olderState
+      state: { unitListLimit: 6, unitListFixedSize: true, paneTransparency: 35 },
+      version: 0
     } as unknown as Parameters<typeof storage.setItem>[1]);
     await useSettingsStore.persist.rehydrate();
 
-    // The transparency is the control: it proves the older blob was read at all, so the answer
-    // below is the absent key being answered rather than storage being ignored.
+    // The control: it proves the seeded blob was actually read, so the assertion below is about
+    // the retired keys being dropped rather than storage being ignored altogether.
     expect(store().paneTransparency).toBe(35);
-    expect(store().unitListFixedSize).toBe(false);
+
+    store().setPaneTransparency(40);
+
+    const persisted = (await storage.getItem("atlantis-hud-settings")) as
+      | { state: Record<string, unknown> }
+      | undefined;
+    expect(persisted?.state).not.toHaveProperty("unitListLimit");
+    expect(persisted?.state).not.toHaveProperty("unitListFixedSize");
   });
 
   it("keeps the movement planner behind its flag, off by default", () => {
@@ -425,14 +329,6 @@ describe("settings store", () => {
     resetSettingsStore();
 
     expect(store().movementPlanner).toBe(false);
-  });
-
-  it("resets the unit list limit to its default", () => {
-    store().setUnitListLimit(16);
-
-    resetSettingsStore();
-
-    expect(store().unitListLimit).toBe(12);
   });
 
   it("resets the pane transparency to its default", () => {

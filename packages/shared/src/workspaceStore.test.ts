@@ -364,6 +364,41 @@ describe("the orders panel's stored height", () => {
   });
 });
 
+describe("the units pane's stored height", () => {
+  beforeEach(resetWorkspaceStore);
+
+  it("remembers the units pane's height, clamped", () => {
+    store().setUnitsHeight(30);
+    expect(store().unitsHeightRem).toBe(30);
+
+    store().setUnitsHeight(2);
+    expect(store().unitsHeightRem).toBe(5.5);
+
+    store().setUnitsHeight(null);
+    expect(store().unitsHeightRem).toBeNull();
+  });
+
+  it("restores a stored units height and clamps a wild one", async () => {
+    store().setUnitsHeight(30);
+    const options = useWorkspaceStore.persist.getOptions();
+    const raw = await options.storage?.getItem(options.name ?? "atlantis-hud-workspace");
+    const persisted = (raw as { state?: Record<string, unknown> } | null)?.state ?? {};
+    expect(persisted.unitsHeightRem).toBe(30);
+
+    const merge = options.merge;
+    const merged = merge?.({ unitsHeightRem: 400 }, store()) as
+      | ReturnType<typeof store>
+      | undefined;
+    expect(merged?.unitsHeightRem).toBe(60);
+  });
+
+  it("is cleared by resetWorkspaceStore", () => {
+    store().setUnitsHeight(30);
+    resetWorkspaceStore();
+    expect(store().unitsHeightRem).toBeNull();
+  });
+});
+
 describe("the rails' stored widths", () => {
   beforeEach(resetWorkspaceStore);
 
