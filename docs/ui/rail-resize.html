@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ah-h8z — Resizable left and right map panes</title>
+<style>
+  :root { --page:#10151c; --panel:#171e28; --edge:#2a3442; --ink:#d7dee8; --dim:#8a94a3;
+          --map:#0d222b; --grip:#4a5a6e; --grip-hot:#7fa3c8; --brass:#d9a441; --warn:#f0b840; }
+  body { background: var(--page); color: var(--ink); font: 14px/1.5 system-ui, sans-serif;
+         margin: 0; padding: 24px 32px 64px; }
+  h1 { font-size: 20px; }
+  h2 { font-size: 15px; margin: 26px 0 6px; }
+  p.note { color: var(--dim); max-width: 82ch; }
+  .row { display: flex; gap: 36px; flex-wrap: wrap; margin: 14px 0 8px; align-items: flex-start; }
+  .variant { width: 460px; }
+  .cost { color: var(--dim); font-size: 13px; margin: 8px 0 0; }
+  .cost b { color: var(--ink); }
+
+  /* the simulated workspace: map behind, two rails overlaid */
+  .ws { position: relative; height: 320px; border: 1px solid var(--edge); border-radius: 10px;
+        overflow: hidden;
+        background: repeating-linear-gradient(60deg, var(--map) 0 26px, #0f2833 26px 52px); }
+  .rails { position: absolute; inset: 0; display: flex; justify-content: space-between;
+           gap: 10px; padding: 10px; }
+  .rail { display: flex; flex-direction: column; gap: 10px; position: relative; }
+  .rail-l { width: 152px; } .rail-r { width: 168px; }
+  .pane { background: var(--panel); border: 1px solid var(--edge); border-radius: 8px;
+          flex: 1; padding: 6px 8px; font-size: 11px; color: var(--dim); }
+  .pane b { color: var(--ink); font-size: 11px; }
+  .narrow .rail-l { width: 110px; } .narrow .rail-r { width: 120px; }
+
+  /* Variant A: hover-reveal full-height edge */
+  .edge-a { position: absolute; top: 0; bottom: 0; width: 10px; cursor: col-resize; }
+  .rail-l .edge-a { right: -10px; } .rail-r .edge-a { left: -10px; }
+  .edge-a::after { content:""; position:absolute; top:0; bottom:0; left:4px; width:2px;
+                   border-radius:1px; background:transparent; transition: background .12s; }
+  .edge-a:hover::after { background: var(--grip-hot); }
+
+  /* Variant B: always-visible grip pill, vertical twin of the ah-13o splitter */
+  .edge-b { position: absolute; top: 0; bottom: 0; width: 10px; cursor: col-resize;
+            display: flex; align-items: center; justify-content: center; }
+  .rail-l .edge-b { right: -10px; } .rail-r .edge-b { left: -10px; }
+  .edge-b::after { content:""; width:4px; height:32px; border-radius:2px; background:var(--grip);
+                   transition: background .12s, height .12s; }
+  .edge-b:hover::after { background: var(--grip-hot); height: 48px; }
+  .edge-b.limit::after { background: var(--warn); height: 48px; }
+  .lbl { position:absolute; bottom:6px; left:50%; transform:translateX(-50%);
+         font-size:10px; color:var(--dim); white-space:nowrap; }
+</style>
+</head>
+<body>
+<h1>ah-h8z — Resizable left and right map panes</h1>
+<p class="note">
+  The two rails float over the map with live map between them, so the resize handle hangs on each
+  rail's <em>inner</em> edge (the side facing the map). Each rail resizes independently, with the
+  same gestures as the unit/orders splitter you chose in ah-13o: drag; arrow keys when the handle
+  has keyboard focus; double-click or Enter to reset to the default width; Escape cancels a drag.
+  Hover the handles below — they are live.
+</p>
+<p class="note">
+  <b>Decisions (recorded from the planning discussion):</b> variant B; the rails resize
+  independently; the map view is left alone on release (no re-fit); widths persist with the
+  workspace layout and reset by double-click or Enter; limits 12–45rem and never more than half
+  the window; arrow keys move the <em>edge</em> in screen direction (ArrowRight grows the left
+  rail, shrinks the right); handle labels "Resize region panel" and
+  "Resize unit and orders panels"; help-overlay entry under Panels and windows — description
+  "Resize a side pane", mouse "Drag the pill on its inner edge", keys "Tab to the pill, then ←/→".
+</p>
+
+<h2>Variant A — invisible until hover</h2>
+<div class="row">
+  <div class="variant">
+    <div class="ws"><div class="rails">
+      <div class="rail rail-l"><div class="pane"><b>Region</b><br>the left pane</div>
+        <div class="edge-a"></div></div>
+      <div class="rail rail-r"><div class="pane"><b>Unit</b></div><div class="pane"><b>Orders</b></div>
+        <div class="edge-a"></div></div>
+    </div></div>
+    <p class="cost"><b>Nothing drawn until the pointer nears the edge</b>, then a thin highlight
+    line. Cleanest look; the affordance is undiscoverable until stumbled on — the same trade you
+    declined for ah-13o.</p>
+  </div>
+</div>
+
+<h2>Variant B — always-visible grip pill (vertical twin of the ah-13o splitter) — CHOSEN</h2>
+<div class="row">
+  <div class="variant">
+    <div class="ws"><div class="rails">
+      <div class="rail rail-l"><div class="pane"><b>Region</b><br>the left pane</div>
+        <div class="edge-b"></div></div>
+      <div class="rail rail-r"><div class="pane"><b>Unit</b></div><div class="pane"><b>Orders</b></div>
+        <div class="edge-b"></div></div>
+    </div></div>
+    <p class="cost"><b>A small vertical pill sits on the inner edge at all times</b>, brightening
+    and growing on hover, exactly like the horizontal grip you chose for the unit/orders split.
+    Slightly more chrome over the map; discoverable at a glance, and the two splitters read as one
+    family.</p>
+  </div>
+</div>
+
+<h2>States the happy path hides</h2>
+<div class="row">
+  <div class="variant">
+    <div class="ws"><div class="rails">
+      <div class="rail rail-l"><div class="pane"><b>Region</b></div>
+        <div class="edge-b limit"></div><span class="lbl">at the minimum — pill turns amber</span></div>
+      <div class="rail rail-r"><div class="pane"><b>Unit</b></div><div class="pane"><b>Orders</b></div>
+        <div class="edge-b"></div></div>
+    </div></div>
+    <p class="cost"><b>At a limit</b> the pill turns amber, as the ah-13o grip does. CHOSEN
+    limits: minimum <b>12rem</b>, maximum <b>45rem</b> per rail, and never more than half the
+    window width.</p>
+  </div>
+  <div class="variant">
+    <div class="ws narrow" style="width:300px"><div class="rails">
+      <div class="rail rail-l"><div class="pane"><b>Region</b></div><div class="edge-b"></div></div>
+      <div class="rail rail-r"><div class="pane"><b>Unit</b></div><div class="edge-b"></div></div>
+    </div></div>
+    <p class="cost"><b>Narrow window:</b> the rails already compress below their set widths when
+    the window cannot hold them (today's behaviour, kept) — a stored width is a preference, not a
+    demand. The handles stay.</p>
+  </div>
+</div>
+</body>
+</html>
