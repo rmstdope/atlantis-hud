@@ -1378,4 +1378,25 @@ describe("hex notes", () => {
       createCoreClient(createWasmAdapter(bindings)).listHexNotes("/db", "faction-12")
     ).rejects.toThrow("incomplete hex note payload");
   });
+
+  it("rejects an on_map value that is neither 0, 1 nor a boolean", async () => {
+    const bindings = {
+      list_hex_notes_state: () => [
+        {
+          id: "note-1",
+          game_id: "faction-12",
+          region_id: "1:7,53",
+          text: "text",
+          on_map: 2,
+          turn: 12,
+          created_at: "2026-08-07T12:00:00Z",
+          updated_at: "2026-08-07T12:00:00Z"
+        }
+      ]
+    } as unknown as WasmBindings;
+
+    await expect(
+      createCoreClient(createWasmAdapter(bindings)).listHexNotes("/db", "faction-12")
+    ).rejects.toThrow("incomplete hex note payload");
+  });
 });

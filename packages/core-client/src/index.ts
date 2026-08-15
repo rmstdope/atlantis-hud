@@ -1729,7 +1729,7 @@ function normalizeHexNoteRecord(value: unknown): HexNoteRecord {
     typeof gameId !== "string" ||
     typeof regionId !== "string" ||
     typeof payload.text !== "string" ||
-    (typeof onMapRaw !== "boolean" && typeof onMapRaw !== "number") ||
+    (typeof onMapRaw !== "boolean" && onMapRaw !== 0 && onMapRaw !== 1) ||
     typeof payload.turn !== "number" ||
     typeof createdAt !== "string" ||
     typeof updatedAt !== "string"
