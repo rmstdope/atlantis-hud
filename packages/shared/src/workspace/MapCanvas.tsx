@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import type { Coordinate, HexRisk } from "@atlantis/core-client";
+import type { Coordinate, HexNoteRecord, HexRisk } from "@atlantis/core-client";
 import { parseRegionId, regionIdOf, type HexMapModel, type HexNode } from "../hexMapModel";
 import { isMacPlatform } from "../shortcuts";
 import {
@@ -40,6 +40,8 @@ import {
 import { radii } from "./mapThemes/geometry";
 import { buildHexViews, type BadgeName } from "./mapThemes/hexView";
 import type { MapTheme } from "./mapThemes/mapTheme";
+import { drawsNotes, noteTagLayout, notePins, wrapNoteLines, PIN_OFFSET } from "./mapNotes";
+import { useEscapeToDismiss } from "./dismissLayer";
 
 const HEX_POINTS = hexPointsAttribute(HEX_RADIUS);
 const FOG_TILE = fogPatternTile(HEX_RADIUS);
@@ -108,6 +110,8 @@ type MapCanvasProps = {
   /** The open game's identifier, used to save and restore the map position across sessions. */
   gameId: string | null;
   model: HexMapModel;
+  /** Every manual hex note of the open game; the layer filters to map-visible ones on this level. */
+  notes?: HexNoteRecord[];
   /**
    * How to draw a hex. Everything theme-specific lives behind this: the map itself knows about
    * geometry, interaction and the route overlay, and nothing about parchment or bevels.
@@ -163,6 +167,7 @@ type MapCanvasProps = {
 export function MapCanvas({
   gameId,
   model,
+  notes = [],
   theme,
   level,
   selectedRegionId,
@@ -204,6 +209,9 @@ export function MapCanvas({
   // ground nobody has visited, which is what makes crossing between known islands possible.
   const [cursor, setCursor] = useState<Coordinate | null>(null);
   const [mapFocused, setMapFocused] = useState(false);
+  // Which hex's note stack is open, if any. Local and never persisted - reloading the app never
+  // reopens a stack the player had open.
+  const [openNotesId, setOpenNotesId] = useState<string | null>(null);
 
   const selectRef = useRef(onSelectRegion);
   selectRef.current = onSelectRegion;
@@ -650,6 +658,37 @@ export function MapCanvas({
 
   const band = zoomBand(view.step);
 
+  // Recomputed only when the note list, the level or the badge changes, exactly like `allViews`
+  // above - a badge toggle rebuilds this and React does the rest.
+  const notePinsOnLevel = useMemo(
+    () => (badges.notes ? notePins(notes, level) : []),
+    [notes, level, badges.notes]
+  );
+
+  // The open stack closes itself whenever what it was showing stops being true, rather than the
+  // caller having to remember to clear it.
+  useEffect(() => {
+    if (openNotesId === null) {
+      return;
+    }
+    if (selectedRegionId !== openNotesId) {
+      setOpenNotesId(null);
+      return;
+    }
+    if (band === "far" || !badges.notes) {
+      setOpenNotesId(null);
+      return;
+    }
+    if (!notePinsOnLevel.some((pin) => pin.regionId === openNotesId)) {
+      setOpenNotesId(null);
+    }
+  }, [openNotesId, selectedRegionId, band, badges.notes, notePinsOnLevel]);
+
+  // A game switch leaves nothing open behind it, same as the selection itself resets.
+  useEffect(() => {
+    setOpenNotesId(null);
+  }, [gameId]);
+
   // Padded by a viewport on each side so an ordinary drag never outruns the tick list, which is
   // only rebuilt when the view is committed.
   const ticksX = useMemo(
@@ -1071,6 +1110,138 @@ export function MapCanvas({
               />
             )}
           </g>
+
+          {/*
+            Manual hex notes (ah-o1t.3): map-owned rather than a theme's, so it draws once for
+            every theme and a theme can never redraw the reader's own note. Screen-constant, like
+            the selection ring - each pin group is scaled by `1 / scaleOf(view.step)` so the ink
+            holds its size while its position scales with the world. Placed after the hit layer
+            above so a click always lands on the pin and never on the hex or fog beneath it - it is
+            the one mark on the map with a hit target of its own.
+          */}
+          {drawsNotes(band, badges.notes) && notePinsOnLevel.length > 0 && (
+            <g data-testid="map-notes">
+              {notePinsOnLevel.map((pin) => {
+                const scale = 1 / scaleOf(view.step);
+                const at = `translate(${pin.x + PIN_OFFSET.x * HEX_RADIUS},${
+                  pin.y + PIN_OFFSET.y * HEX_RADIUS
+                }) scale(${scale})`;
+                const isOpen = openNotesId === pin.regionId;
+                return (
+                  <g key={pin.regionId} transform={at}>
+                    <g
+                      role="button"
+                      tabIndex={-1}
+                      aria-label={`notes on hex ${pin.regionId}`}
+                      aria-expanded={isOpen}
+                      data-testid="map-note-pin"
+                      data-region-id={pin.regionId}
+                      pointerEvents="all"
+                      className="cursor-pointer"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        // Mirrors the hex polygon's own check: Ctrl+click on macOS recentres
+                        // rather than opening the stack, exactly as it would on the hex under it.
+                        if (
+                          isRecentreGesture(
+                            { button: event.button, ctrlKey: event.ctrlKey },
+                            isMacPlatform()
+                          )
+                        ) {
+                          return;
+                        }
+                        selectRef.current(pin.regionId);
+                        setOpenNotesId((open) => (open === pin.regionId ? null : pin.regionId));
+                        // Mirrors the hex polygon's own click handler: focused as well as
+                        // selected, so the arrow keys carry on from the hex the pin just picked
+                        // rather than staying wherever focus was before.
+                        worldRef.current
+                          ?.querySelector<SVGPolygonElement>(
+                            `polygon[data-region-id="${pin.regionId}"]`
+                          )
+                          ?.focus();
+                      }}
+                    >
+                      <title>
+                        {pin.notes.length === 1
+                          ? wrapNoteLines(pin.notes[0].text, 40, 1)[0]
+                          : `${pin.notes.length} notes`}
+                      </title>
+                      <path
+                        d="M-4.5 -5h6l3 3v7h-9z"
+                        className="fill-note stroke-note-ink"
+                        strokeWidth={0.9}
+                      />
+                      <path
+                        d="M1.5 -5v3h3"
+                        fill="none"
+                        className="stroke-note-ink"
+                        strokeWidth={0.9}
+                      />
+                      <path
+                        d="M-2.5 0h4M-2.5 2.2h3"
+                        className="stroke-note-ink"
+                        strokeWidth={0.8}
+                      />
+                      {pin.notes.length > 1 && (
+                        <>
+                          <circle cx={4.5} cy={-5} r={3.6} className="fill-note-ink" />
+                          <text
+                            x={4.5}
+                            y={-3.1}
+                            textAnchor="middle"
+                            fontSize={5}
+                            className="fill-note"
+                          >
+                            {pin.notes.length}
+                          </text>
+                        </>
+                      )}
+                    </g>
+                    {isOpen && (
+                      <g
+                        data-testid="map-note-tags"
+                        pointerEvents="all"
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        {noteTagLayout(pin.notes).map((tag) => (
+                          <g key={tag.noteId} data-testid="map-note-tag">
+                            <path
+                              d={`M${tag.x} ${tag.y}h${tag.width}v${tag.height}h-${tag.width}l-3 -4z`}
+                              className="fill-note stroke-note-ink"
+                              strokeWidth={0.8}
+                            />
+                            {tag.lines.map((line, i) => (
+                              <text
+                                key={i}
+                                x={tag.x + 4}
+                                y={tag.y + 7 + i * 8}
+                                fontSize={6}
+                                className="fill-note-ink"
+                              >
+                                {line}
+                              </text>
+                            ))}
+                            {tag.stamp && (
+                              <text
+                                x={tag.x + 4}
+                                y={tag.y + 7 + tag.lines.length * 8}
+                                fontSize={5}
+                                className="fill-note-ink"
+                                opacity={0.7}
+                              >
+                                {tag.stamp}
+                              </text>
+                            )}
+                          </g>
+                        ))}
+                      </g>
+                    )}
+                  </g>
+                );
+              })}
+            </g>
+          )}
         </g>
 
         {/* Rulers, pinned to the viewport so they never scroll away. */}
@@ -1122,6 +1293,10 @@ export function MapCanvas({
           ⤢
         </ZoomButton>
       </div>
+
+      {openNotesId !== null && (
+        <NoteTagsDismiss onDismiss={() => setOpenNotesId(null)} />
+      )}
     </div>
   );
 }
@@ -1133,6 +1308,36 @@ function translateAt(coordinate: Coordinate): string {
 
 function translateOf(hex: HexNode): string {
   return translateAt(hex.coordinate);
+}
+
+/**
+ * Closes an open note-tag stack: Escape, or a pointerdown anywhere outside the pin and the tags
+ * themselves. Mounted only while a stack is open, so it registers a dismiss layer only then -
+ * `useEscapeToDismiss` mounted unconditionally would swallow Escape for every dialog under the map.
+ */
+function NoteTagsDismiss({ onDismiss }: { onDismiss: () => void }) {
+  useEscapeToDismiss(onDismiss);
+
+  // `onDismiss` is a fresh closure every render (it captures `pin.regionId` via the caller's
+  // inline arrow), and a map pan or zoom re-renders often while a stack is open - kept in a ref,
+  // like `useEscapeToDismiss` does, so the listener is registered once for the mount rather than
+  // torn down and re-added on every one of those renders.
+  const latest = useRef(onDismiss);
+  latest.current = onDismiss;
+
+  useEffect(() => {
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as Element | null;
+      if (target?.closest('[data-testid="map-note-pin"], [data-testid="map-note-tags"]')) {
+        return;
+      }
+      latest.current();
+    };
+    document.addEventListener("pointerdown", onPointerDown, true);
+    return () => document.removeEventListener("pointerdown", onPointerDown, true);
+  }, []);
+
+  return null;
 }
 
 function ZoomButton({

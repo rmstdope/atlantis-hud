@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { HexMapModel } from "../hexMapModel";
+import type { HexNoteRecord } from "@atlantis/core-client";
 import { MapCanvas } from "./MapCanvas";
 import { CONGESTED_HEXES } from "./mapThemes/congestedFixture";
 import { allBadges } from "./mapThemes/hexView";
@@ -39,7 +40,11 @@ const model: HexMapModel = {
   initialSelectedRegionId: null
 };
 
-function draw(theme: MapTheme = probe()): string {
+function draw(
+  theme: MapTheme = probe(),
+  notes: HexNoteRecord[] = [],
+  badges = allBadges(true)
+): string {
   return renderToStaticMarkup(
     <MapCanvas
       gameId={null}
@@ -51,9 +56,24 @@ function draw(theme: MapTheme = probe()): string {
       onSelectRegion={() => {}}
       showStaleness
       showTextures={false}
-      badges={allBadges(true)}
+      badges={badges}
+      notes={notes}
     />
   );
+}
+
+function note(overrides: Partial<HexNoteRecord> = {}): HexNoteRecord {
+  return {
+    id: "note-1",
+    gameId: "game-1",
+    regionId: "1:7,53",
+    text: "an ally named this hex",
+    onMap: true,
+    turn: 71,
+    createdAt: "2026-08-15T00:00:00Z",
+    updatedAt: "2026-08-15T00:00:00Z",
+    ...overrides
+  };
 }
 
 /** The same map, with a hex selected - and an epoch, so the pulse-class test can vary it. */
@@ -293,5 +313,43 @@ describe("the selected hex's double ring", () => {
 
     const selected = drawSelected("1:7,53", 1);
     expect(selected).toContain("map-selection-pulse");
+  });
+});
+
+describe("the notes layer", () => {
+  it("pins a hex holding a map-visible note", () => {
+    const svg = draw(probe(), [note()]);
+
+    expect(svg).toContain('data-testid="map-notes"');
+    const pins = [...svg.matchAll(/data-testid="map-note-pin"/g)];
+    expect(pins).toHaveLength(1);
+    expect(svg).toContain('aria-label="notes on hex 1:7,53"');
+    // A single note draws no count badge - just the glyph.
+    expect(svg).not.toContain("<circle");
+  });
+
+  it("shows a count badge when a hex holds several map-visible notes", () => {
+    const svg = draw(probe(), [note({ id: "newest" }), note({ id: "older" })]);
+
+    expect([...svg.matchAll(/data-testid="map-note-pin"/g)]).toHaveLength(1);
+    expect(svg).toContain(">2</text>");
+  });
+
+  it("draws nothing for a note that is not shown on the map", () => {
+    const svg = draw(probe(), [note({ onMap: false })]);
+
+    expect(svg).not.toContain('data-testid="map-notes"');
+  });
+
+  it("draws nothing when the Notes badge is off", () => {
+    const svg = draw(probe(), [note()], allBadges(true, { notes: false }));
+
+    expect(svg).not.toContain('data-testid="map-notes"');
+  });
+
+  it("opens no tag stack on a static render - nothing is open at mount", () => {
+    const svg = draw(probe(), [note()]);
+
+    expect(svg).not.toContain('data-testid="map-note-tags"');
   });
 });

@@ -131,7 +131,8 @@ export type BadgeName =
   | "shafts"
   | "lairs"
   | "roads"
-  | "regions";
+  | "regions"
+  | "notes";
 
 /** The badges and what they are called, in the order the popover lists them. */
 export const BADGES: ReadonlyArray<{ name: BadgeName; label: string }> = [
@@ -145,7 +146,10 @@ export const BADGES: ReadonlyArray<{ name: BadgeName; label: string }> = [
   { name: "shafts", label: "Shafts" },
   { name: "lairs", label: "Lairs" },
   { name: "roads", label: "Roads" },
-  { name: "regions", label: "Regions" }
+  { name: "regions", label: "Regions" },
+  // The one entry `MapCanvas` reads to gate a mark it draws itself rather than one a theme does —
+  // see `buildHexViews` below, and `mapNotes.ts` for the layer.
+  { name: "notes", label: "Notes" }
 ];
 
 /**

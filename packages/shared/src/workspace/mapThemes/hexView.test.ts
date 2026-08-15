@@ -270,7 +270,8 @@ describe("the badge toggles, applied once so no theme can forget one", () => {
       "shafts",
       "lairs",
       "roads",
-      "regions"
+      "regions",
+      "notes"
     ]);
     expect(BADGES.every(({ label }) => label.length > 0)).toBe(true);
   });
