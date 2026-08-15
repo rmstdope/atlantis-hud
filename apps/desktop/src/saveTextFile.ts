@@ -36,13 +36,18 @@ export function filterFor(fileName: string): { name: string; extensions: string[
 }
 
 /**
- * The saver to hand the workspace, or nothing when this build has no plugins to reach - a plain
- * browser, or a test that never installed a stand-in.
+ * The saver built over given plugins, or nothing when there are none - a plain browser, or a test
+ * that never installed a stand-in.
  *
- * `plugins` defaults to `desktopPlugins()`; a caller only ever passes it in a test.
+ * A plain function rather than a default parameter on `desktopTextFileSaver`, so `undefined` here
+ * unambiguously means "no plugins" instead of triggering a default that reaches for the real ones -
+ * a default parameter only fires when the argument is exactly `undefined`, which is indistinguishable
+ * from a caller meaning "none" the moment this ever runs where `desktopPlugins()` is not itself
+ * `undefined`. Exported so a test can call it directly with a fake, without needing `desktopPlugins()`
+ * to cooperate.
  */
-export function desktopTextFileSaver(
-  plugins: DesktopPlugins | undefined = desktopPlugins()
+export function desktopTextFileSaverFor(
+  plugins: DesktopPlugins | undefined
 ): TextFileSaver | undefined {
   if (!plugins) {
     return undefined;
@@ -61,4 +66,9 @@ export function desktopTextFileSaver(
     await plugins.writeTextFile(path, text);
     return path;
   };
+}
+
+/** The saver to hand the workspace: the real plugins, whatever this build can reach. */
+export function desktopTextFileSaver(): TextFileSaver | undefined {
+  return desktopTextFileSaverFor(desktopPlugins());
 }

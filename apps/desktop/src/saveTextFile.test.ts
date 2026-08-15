@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { desktopTextFileSaver, filterFor } from "./saveTextFile";
+import { desktopTextFileSaverFor, filterFor } from "./saveTextFile";
 import type { DesktopPlugins } from "./desktopPlugins";
 
 describe("filterFor", () => {
@@ -18,9 +18,9 @@ describe("filterFor", () => {
   });
 });
 
-describe("desktopTextFileSaver", () => {
+describe("desktopTextFileSaverFor", () => {
   it("is undefined with no plugins", () => {
-    expect(desktopTextFileSaver(undefined)).toBeUndefined();
+    expect(desktopTextFileSaverFor(undefined)).toBeUndefined();
   });
 
   it("asks the dialog, then writes what it answered, through the given plugins", async () => {
@@ -28,7 +28,7 @@ describe("desktopTextFileSaver", () => {
     const writeTextFile = vi.fn().mockResolvedValue(undefined);
     const plugins: DesktopPlugins = { save, writeTextFile };
 
-    const saver = desktopTextFileSaver(plugins);
+    const saver = desktopTextFileSaverFor(plugins);
     expect(saver).toBeDefined();
     const path = await saver!("orders-turn-71.txt", "unit 1 : work");
 
@@ -45,7 +45,7 @@ describe("desktopTextFileSaver", () => {
     const writeTextFile = vi.fn().mockResolvedValue(undefined);
     const plugins: DesktopPlugins = { save, writeTextFile };
 
-    const saver = desktopTextFileSaver(plugins);
+    const saver = desktopTextFileSaverFor(plugins);
     const path = await saver!("orders-turn-71.txt", "unit 1 : work");
 
     expect(path).toBeNull();
