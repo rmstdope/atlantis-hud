@@ -40,7 +40,16 @@ import {
 import { radii } from "./mapThemes/geometry";
 import { buildHexViews, type BadgeName } from "./mapThemes/hexView";
 import type { MapTheme } from "./mapThemes/mapTheme";
-import { drawsNotes, noteTagLayout, notePins, wrapNoteLines, PIN_OFFSET } from "./mapNotes";
+import {
+  BADGE,
+  drawsNotes,
+  noteTagLayout,
+  notePins,
+  wrapNoteLines,
+  PIN_OFFSET,
+  PIN_SCALE,
+  TAG
+} from "./mapNotes";
 import { useEscapeToDismiss } from "./dismissLayer";
 
 const HEX_POINTS = hexPointsAttribute(HEX_RADIUS);
@@ -1167,30 +1176,37 @@ export function MapCanvas({
                           ? wrapNoteLines(pin.notes[0].text, 40, 1)[0]
                           : `${pin.notes.length} notes`}
                       </title>
-                      <path
-                        d="M-4.5 -5h6l3 3v7h-9z"
-                        className="fill-note stroke-note-ink"
-                        strokeWidth={0.9}
-                      />
-                      <path
-                        d="M1.5 -5v3h3"
-                        fill="none"
-                        className="stroke-note-ink"
-                        strokeWidth={0.9}
-                      />
-                      <path
-                        d="M-2.5 0h4M-2.5 2.2h3"
-                        className="stroke-note-ink"
-                        strokeWidth={0.8}
-                      />
+                      <g transform={`scale(${PIN_SCALE})`}>
+                        <path
+                          d="M-4.5 -5h6l3 3v7h-9z"
+                          className="fill-note stroke-note-ink"
+                          strokeWidth={0.9}
+                        />
+                        <path
+                          d="M1.5 -5v3h3"
+                          fill="none"
+                          className="stroke-note-ink"
+                          strokeWidth={0.9}
+                        />
+                        <path
+                          d="M-2.5 0h4M-2.5 2.2h3"
+                          className="stroke-note-ink"
+                          strokeWidth={0.8}
+                        />
+                      </g>
                       {pin.notes.length > 1 && (
                         <>
-                          <circle cx={4.5} cy={-5} r={3.6} className="fill-note-ink" />
+                          <circle
+                            cx={BADGE.cx}
+                            cy={BADGE.cy}
+                            r={BADGE.r}
+                            className="fill-note-ink"
+                          />
                           <text
-                            x={4.5}
-                            y={-3.1}
+                            x={BADGE.cx}
+                            y={BADGE.cy + BADGE.baseline}
                             textAnchor="middle"
-                            fontSize={5}
+                            fontSize={BADGE.fontSize}
                             className="fill-note"
                           >
                             {pin.notes.length}
@@ -1214,9 +1230,9 @@ export function MapCanvas({
                             {tag.lines.map((line, i) => (
                               <text
                                 key={i}
-                                x={tag.x + 4}
-                                y={tag.y + 7 + i * 8}
-                                fontSize={6}
+                                x={tag.x + TAG.pad / 2}
+                                y={tag.y + TAG.lineHeight * 0.85 + i * TAG.lineHeight}
+                                fontSize={TAG.fontSize}
                                 className="fill-note-ink"
                               >
                                 {line}
@@ -1224,9 +1240,9 @@ export function MapCanvas({
                             ))}
                             {tag.stamp && (
                               <text
-                                x={tag.x + 4}
-                                y={tag.y + 7 + tag.lines.length * 8}
-                                fontSize={5}
+                                x={tag.x + TAG.pad / 2}
+                                y={tag.y + TAG.lineHeight * 0.85 + tag.lines.length * TAG.lineHeight}
+                                fontSize={TAG.stampFontSize}
                                 className="fill-note-ink"
                                 opacity={0.7}
                               >

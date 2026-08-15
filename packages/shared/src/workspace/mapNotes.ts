@@ -46,9 +46,22 @@ export function notePins(notes: readonly HexNoteRecord[], level: number): NotePi
   });
 }
 
+/** The pin glyph is drawn at ×PIN_SCALE of its 9×10 path units; badge and tags are in screen px. */
+export const PIN_SCALE = 1.3;
 /** Pin geometry in screen pixels, relative to the pin origin (0,0 = the glyph centre). */
-export const PIN_W = 9;
-export const PIN_H = 10;
+export const PIN_W = 9 * PIN_SCALE;
+export const PIN_H = 10 * PIN_SCALE;
+/** The count badge, in screen px: centred on the glyph's top-right corner (4.5, -5 path units). */
+export const BADGE = { cx: 4.5 * PIN_SCALE, cy: -5 * PIN_SCALE, r: 5.2, fontSize: 7.5, baseline: 2.7 };
+/** The expanded tags, in screen px (docs/ui/hex-notes-sizes.html, Option B). */
+export const TAG = {
+  fontSize: 11,
+  lineHeight: 14.5,
+  maxChars: 24,
+  charWidth: 6.3,
+  pad: 12,
+  stampFontSize: 8
+};
 
 /** The pin origin, as fractions of `HEX_RADIUS` from the hex centre: upper-right, off the marks. */
 export const PIN_OFFSET = { x: 0.55, y: -0.55 };
@@ -59,7 +72,7 @@ export const PIN_OFFSET = { x: 0.55, y: -0.55 };
  * paragraph is then wrapped at word boundaries, with a single word longer than `maxChars` broken
  * mid-word rather than left overflowing.
  */
-export function wrapNoteLines(text: string, maxChars = 28, maxLines = 4): string[] {
+export function wrapNoteLines(text: string, maxChars = TAG.maxChars, maxLines = 4): string[] {
   const lines: string[] = [];
 
   for (const paragraph of text.split("\n")) {
@@ -118,8 +131,8 @@ export function noteTagLayout(notes: readonly HexNoteRecord[]): NoteTag[] {
     const lines = wrapNoteLines(note.text);
     const widestLine = Math.max(1, ...lines.map((line) => line.length));
     const stamp = note.turn > 0 ? `turn ${note.turn}` : null;
-    const width = 3.5 * widestLine + 8;
-    const height = 8 * lines.length + (stamp ? 7 : 0) + 5;
+    const width = TAG.charWidth * widestLine + TAG.pad;
+    const height = TAG.lineHeight * lines.length + (stamp ? TAG.stampFontSize + 2 : 0) + 5;
 
     tags.push({ noteId: note.id, x: PIN_W / 2 + 5, y, width, height, lines, stamp });
     y += height + 3;
