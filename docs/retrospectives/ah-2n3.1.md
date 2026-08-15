@@ -31,10 +31,12 @@ occurrence alone was.
 submodule pointer for PR 2, I ran `.claude/cerebro/scripts/implementer-state Wolverine working
 --bead ah-2n3.1 --phase gate --pid $PPID` from inside that worktree (cwd was the worktree root, not
 the shared atlantis-hud checkout). It exited 0 and printed only the expected shim deprecation line —
-but the fleet-visible file at `<repo>/.claude/implementers/Wolverine.state.json` was untouched; the
-write instead landed at `.claude/worktrees/ah-2n3.1/.claude/agents-state/Wolverine.state.json`,
-inside the worktree itself, invisible to the real fleet view and gitignored there too. I only caught
-it by `cat`-ing the real file afterwards and noticing the phase hadn't advanced.
+but the fleet-visible file at `<repo>/.claude/agents-state/Wolverine.state.json` (still
+`.claude/implementers/` in the shared checkout at that point - this PR had not yet merged) was
+untouched; the write instead landed at
+`.claude/worktrees/ah-2n3.1/.claude/agents-state/Wolverine.state.json`, inside the worktree itself,
+invisible to the real fleet view and gitignored there too. I only caught it by `cat`-ing the real
+file afterwards and noticing the phase hadn't advanced.
 **Why.** `agent-state`/`implementer-state` derive the consumer root as `$script_dir/../../..` from
 its own location. Called via `.claude/cerebro/scripts/...` (a path relative to cwd), that resolves
 inside *whatever* `.claude/cerebro` the shell's cwd happens to be under — the shared checkout when
