@@ -6,11 +6,11 @@ edition = "2021"
 [lib]
 path = "src/lib.rs"
 
-# This crate is native-only by design. It is excluded from wasm32 builds by the
-# target gate in core-wasm's manifest, because bundling SQLite for wasm32 would
-# require an LLVM clang carrying the wasm32 target on every machine that builds
-# the web bundle. The web app stores through its own adapter instead; all game
-# logic stays in `core`, which is pure Rust and compiles to wasm32 unaided.
+# This crate is native-only by design: bundling SQLite for wasm32 would require an LLVM clang
+# carrying the wasm32 target on every machine that builds the web bundle. Only core-tauri (the
+# desktop) depends on it; the web stores through its own adapter in `@atlantis/browser-core`
+# instead, over IndexedDB. All game logic stays in `core`, which is pure Rust and compiles to
+# wasm32 unaided.
 [dependencies]
 atlantis-hud-core = { path = "../core" }
 rusqlite = { version = "0.40", features = ["bundled"] }
