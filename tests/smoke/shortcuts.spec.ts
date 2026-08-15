@@ -270,9 +270,28 @@ test("right-click centres the view on a hex, without selecting it", async ({ pag
   // over.
   const open = { x: box.x + 30, y: box.y + 20 };
 
+  // A witness independent of the handler under test: if `onContextMenu` ever forgot its
+  // `preventDefault()`, the browser's own menu would still be asked for even though the map also
+  // recentred, and this is what would catch that. Registered on `window` in the bubble phase
+  // (the default), which is what makes it see the event *after* React's own handling has had its
+  // chance to call `preventDefault()` - a capture-phase listener would run first and always read
+  // `defaultPrevented: false`, telling this nothing.
+  await page.evaluate(() => {
+    (window as unknown as { __contextMenuPrevented?: boolean }).__contextMenuPrevented = false;
+    window.addEventListener("contextmenu", (event) => {
+      (window as unknown as { __contextMenuPrevented?: boolean }).__contextMenuPrevented =
+        event.defaultPrevented;
+    });
+  });
+
   const before = await mapTransform(page);
   await page.mouse.click(open.x, open.y, { button: "right" });
   await expect.poll(() => mapTransform(page)).not.toBe(before);
+  expect(
+    await page.evaluate(
+      () => (window as unknown as { __contextMenuPrevented?: boolean }).__contextMenuPrevented
+    )
+  ).toBe(true);
 
   // Centring, not selecting: the hex chosen earlier keeps the ring.
   await expect(page.getByRole("button", { name: "hex 1:7,53" })).toHaveAttribute(
@@ -288,8 +307,4 @@ test("right-click centres the view on a hex, without selecting it", async ({ pag
   await expect.poll(() => mapTransform(page)).toBe(centred);
   await page.mouse.click(centre.x, centre.y, { button: "right" });
   await expect.poll(() => mapTransform(page)).toBe(centred);
-
-  // The browser's own context menu never appears over the map - Playwright cannot observe native
-  // chrome directly, but a page that never got a chance to preventDefault would fail the very
-  // first assertion above just the same, since nothing would have moved the view.
 });
