@@ -2000,7 +2000,7 @@ export function AppShell({
         // It goes across as text, which is what the core keys its cached parse on, so the
         // whole-map pass this runs costs one walk of the orders and no re-parse of the turn.
         .validateOrders(ordersDocument, rulesetText, rawReport || null, {
-          warnOnUnguardedHex
+          disabledCodes: warnOnUnguardedHex ? [] : ["hex-unguarded"]
         })
         .then((result) => {
           if (!cancelled) {
@@ -2130,7 +2130,7 @@ export function AppShell({
         writer.markDirty(game, draftKey, pending.text);
 
         const result = await client.validateOrders(pending.text, rulesetText, rawReport || null, {
-          warnOnUnguardedHex
+          disabledCodes: warnOnUnguardedHex ? [] : ["hex-unguarded"]
         });
 
         if (result.diagnostics.length > 0) {
