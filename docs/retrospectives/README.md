@@ -1,8 +1,11 @@
 # Retrospectives
 
-One file per bead, `<bead id>.md`, written by the implementer that built it — but only when
-something went unexpectedly. A bead that went to plan leaves no file, so everything in here is
-something that cost somebody time.
+One file per bead, written by whichever role hit the problem — usually the implementer that built
+it, as `<bead id>.md`; sometimes another role after the fact, most often Psylocke after a
+verification, as `<bead id>-<role>.md` (`ah-p31-verifier.md`) so it never collides with the
+implementer's own file for the same bead. Either way, a file is written only when something went
+unexpectedly. A bead that went to plan leaves no file, so everything in here is something that cost
+somebody time.
 
 Each file is one retrospective and is never edited afterwards: it is the record of a run that is
 over. A later bead that hits the same thing writes its own file and names this one under
@@ -24,5 +27,8 @@ over. A later bead that hits the same thing writes its own file and names this o
     **Prevent by.** The specific change that would stop it — a file and section, a step to add, a
     check to run earlier. "Be careful" is not a prevention.
     **Seen before.** Other bead ids whose file describes the same thing, or "none found".
+
+`- **Implementer:** <name>` is for an implementer's own file; a non-implementer's file uses
+`- **Role:** <role>` in its place instead.
 
 Two findings in one run are two `##` sections in that bead's one file.
