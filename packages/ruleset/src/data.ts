@@ -95,8 +95,8 @@ export type CastInput = { tag: string; amount: number };
 
 /**
  * What CASTing the skill consumes, as the data page states it: `costs`, each taken once per cast
- * (an input with no number is one), and for transmutation the output tag -> source tag it turns
- * into. `null` when the page states no cost - most spells.
+ * (an input with no number is one), and for transmutation the output tag -> the source tag it is
+ * made from. `null` when the page states no cost - most spells.
  */
 export type CastCost = { costs: CastInput[]; transmute: Record<string, string> };
 
