@@ -1251,7 +1251,11 @@ fn weight_at_sailing(
 /// server runs before anything moves. Each of them is weighed at what this month's orders leave it
 /// holding (`weight_at_sailing`), not at what the report printed, because the server runs every
 /// transfer and every market order before it moves a fleet. Skills are still the report's own.
-/// Anything the report or the ruleset cannot price silences the fleet - never a guess.
+/// Two different kinds of "cannot price" behave differently, deliberately: a MOVE touching the
+/// fleet, a foreign unit aboard, or a report that never states a unit's weight silences the whole
+/// fleet - never a guess. A single transfer the ledger or the ruleset cannot price (a WITHDRAW, an
+/// item with no catalogue weight) instead falls back to that unit's report weight for its own
+/// contribution (`weight_at_sailing`'s doc comment), rather than silencing the fleet outright.
 fn check_sailing(
     hex: &Hex<'_>,
     ledger: &Ledger<'_>,
