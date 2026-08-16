@@ -80,7 +80,10 @@ export type HexView = {
   terrain: string;
   /** The biome image to paint under the theme's own treatment, or null when textures are off. */
   texture: { url: string; patternId: string } | null;
-  /** How much unexplored ground shows through, which is how age is drawn. */
+  /**
+   * How far this hex has faded, already scaled by the theme's `fogDamping`: paint it as it
+   * arrives, for a named hex and a stale one alike.
+   */
   fogOpacity: number;
   /** Whether the hex is also hatched, marking the data as held but possibly out of date. */
   hatched: boolean;
@@ -173,7 +176,15 @@ export type HexViewOptions = {
   showStaleness: boolean;
   showTextures: boolean;
   badges: Record<BadgeName, boolean>;
+  /** The theme's `MapTheme.fogDamping`; 1 when absent, so a caller not drawing through a theme
+   * (tests, tools) gets the shared fade whole. */
+  fogDamping?: number;
 };
+
+/** The shared fade scaled by a theme's damping, to three decimals - the one place this arithmetic lives. */
+export function dampFog(fogOpacity: number, damping: number): number {
+  return Number((fogOpacity * damping).toFixed(3));
+}
 
 /** The bearing a road structure runs along, or null for any other kind of structure. */
 function roadDirection(kind: string): RoadDirection | null {
@@ -324,7 +335,7 @@ export function buildHexView(hex: HexNode, options: HexViewOptions): HexView {
     at: worldOf(hex.coordinate),
     terrain: hex.terrain,
     texture: options.showTextures ? textureOf(hex.terrain) : null,
-    fogOpacity: paint.fogOpacity,
+    fogOpacity: dampFog(paint.fogOpacity, options.fogDamping ?? 1),
     hatched: paint.hatched,
     knowledge: hex.knowledge,
     ageInTurns: hex.ageInTurns,

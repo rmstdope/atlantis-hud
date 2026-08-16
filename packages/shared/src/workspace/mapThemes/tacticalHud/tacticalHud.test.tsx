@@ -313,9 +313,9 @@ describe("roads, as a luminous lattice", () => {
 
 /**
  * This asserted the *full* fade for a named hex, back when the fade was heavy and was the thing
- * that said "never surveyed". Every dim is damped now, unsurveyed included: the fade is light, the
- * rim carries the state, and damping alike is what keeps unsurveyed ground the lightest thing on
- * the display instead of landing on top of a long-stale reading.
+ * that said "never surveyed". The theme declares its damping now, on `fogDamping`; it is
+ * `buildHexViews` that applies it, unsurveyed included, and that is what keeps unsurveyed ground
+ * the lightest thing on the display instead of landing on top of a long-stale reading.
  */
 describe("how loudly unsurveyed ground is stated", () => {
   it("dims a named hex proportionally, as it dims an aged one", () => {
@@ -328,7 +328,7 @@ describe("how loudly unsurveyed ground is stated", () => {
       return Number(/data-dim="[a-z]+"[^>]*opacity="([\d.]+)"/.exec(svg)?.[1]);
     };
 
-    expect(dimOf({ knowledge: "named", fogOpacity: 0.75 })).toBeCloseTo(0.6);
+    expect(tacticalHud.fogDamping).toBe(0.8);
     // Proportional, so a heavier fade still dims harder - the damping is a scale, not a cap.
     expect(dimOf({ knowledge: "named", fogOpacity: 0.4 })).toBeLessThan(
       dimOf({ knowledge: "named", fogOpacity: 0.75 })

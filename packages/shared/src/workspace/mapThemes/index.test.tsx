@@ -2,7 +2,8 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { CONGESTED_HEXES } from "./congestedFixture";
 import { FADE_LIMIT, NAMED_FOG_OPACITY } from "../mapHexView";
-import { allBadges, buildHexViews, type HexView } from "./hexView";
+import { HEX_RADIUS } from "../mapViewport";
+import { allBadges, buildHexViews, dampFog, type HexView } from "./hexView";
 import type { LayerProps, MapTheme } from "./mapTheme";
 import {
   DEFAULT_MAP_THEME_ID,
@@ -28,6 +29,7 @@ const views = buildHexViews(CONGESTED_HEXES, {
 const dummy: MapTheme = {
   id: "dummy",
   label: "Dummy",
+  fogDamping: 1,
   TerrainLayer: ({ views }: LayerProps) => (
     <g>
       {views.map((view) => (
@@ -150,6 +152,33 @@ describe("every shipped theme", () => {
       expect(typeof theme.MarkLayer).toBe("function");
     }
   });
+
+  it.each(MAP_THEMES.map((theme) => [theme.label, theme] as const))(
+    "%s draws its roads through the shared road layer",
+    (_label, theme) => {
+      const svg = renderToStaticMarkup(
+        <svg>
+          <theme.RoadLayer views={views} />
+        </svg>
+      );
+
+      expect(svg).toContain('data-layer="roads"');
+      expect(svg).not.toContain("vector-effect");
+      const widths = [...svg.matchAll(/stroke-width="([\d.]+)"/g)].map((match) => Number(match[1]));
+      expect(widths.length).toBeGreaterThan(0);
+      for (const width of widths) {
+        expect(width).toBeLessThan(HEX_RADIUS);
+      }
+    }
+  );
+
+  it.each(MAP_THEMES.map((theme) => [theme.label, theme] as const))(
+    "%s declares a fog damping in (0, 1]",
+    (_label, theme) => {
+      expect(theme.fogDamping).toBeGreaterThan(0);
+      expect(theme.fogDamping).toBeLessThanOrEqual(1);
+    }
+  );
 });
 
 /**
@@ -160,6 +189,10 @@ describe("every shipped theme", () => {
  * lands them on top of each other again - Cartographer's Table did exactly that, at 0.400 against
  * an ancient sighting's 0.384, and told the two states apart by sixteen thousandths of an opacity.
  * Each theme's own suite tests its own wash, so nothing there could have seen it.
+ *
+ * The fade is damped once now, in `buildHexViews`, from the theme's own `fogDamping` - so a theme
+ * can no longer damp one faded state and not the other, because a theme no longer damps at all.
+ * This describe's job is now to see that no theme quietly reintroduces a private damping.
  */
 describe("what every theme owes the three knowledge states", () => {
   /**
@@ -192,28 +225,39 @@ describe("what every theme owes the three knowledge states", () => {
   });
 
   it.each(MAP_THEMES.map((theme) => [theme.label, theme] as const))(
-    "%s draws unsurveyed ground lighter than the oldest sighting, and rims it",
+    "%s paints the fade it is handed, unchanged, for named and stale alike",
     (_label, theme) => {
+      const named = render(theme, { ...base, knowledge: "named", fogOpacity: 0.5, hatched: false });
+      const stale = render(theme, { ...base, knowledge: "stale", fogOpacity: 0.5, hatched: true });
+
+      const [namedOpacity] = opacitiesOf(named, "unsurveyed|unpainted");
+      const [staleOpacity] = opacitiesOf(stale, "stale");
+
+      expect(namedOpacity).toBeCloseTo(0.5, 3);
+      expect(staleOpacity).toBeCloseTo(0.5, 3);
+    }
+  );
+
+  it.each(MAP_THEMES.map((theme) => [theme.label, theme] as const))(
+    "%s keeps unsurveyed ground comfortably lighter than the oldest sighting",
+    (_label, theme) => {
+      const namedOpacity = dampFog(NAMED_FOG_OPACITY, theme.fogDamping);
+      const staleOpacity = dampFog(FADE_LIMIT, theme.fogDamping);
       const named = render(theme, {
         ...base,
         knowledge: "named",
-        fogOpacity: NAMED_FOG_OPACITY,
+        fogOpacity: namedOpacity,
         hatched: false
       });
       const ancient = render(theme, {
         ...base,
         knowledge: "stale",
-        fogOpacity: FADE_LIMIT,
+        fogOpacity: staleOpacity,
         hatched: true
       });
 
-      const [unsurveyed] = opacitiesOf(named, "unsurveyed|unpainted");
-      const [stale] = opacitiesOf(ancient, "stale");
-
-      expect(unsurveyed).toBeDefined();
-      expect(stale).toBeDefined();
       // Comfortably apart, not merely ordered: two washes a hundredth apart are the same wash.
-      expect(stale - unsurveyed).toBeGreaterThan(0.05);
+      expect(staleOpacity - namedOpacity).toBeGreaterThan(0.05);
       // And the mark that actually names the state, which the fade no longer does.
       expect(named).toContain('data-rim="unsurveyed"');
       expect(ancient).not.toContain('data-rim="unsurveyed"');
