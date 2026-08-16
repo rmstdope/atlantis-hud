@@ -708,7 +708,8 @@ fn charge(ledger: &mut Ledger<'_>, unit_id: &str, tag: &str, amount: i64, placed
 /// The engine's `Unit::GetSharedNum` counts a unit's own holdings plus every same-faction unit in
 /// the region carrying `FLAG_SHARING` - the borrower's own flag is never consulted, and every tag
 /// but men (`IT_MAN`) is eligible. `DoGiveOrder`/`DoSell` draw on it for items,
-/// `DoBuy`/`Do1StudyOrder` through `GetSharedMoney` for silver.
+/// `DoBuy`/`Do1StudyOrder` through `GetSharedMoney` for silver. Without a ruleset there is no
+/// catalogue to tell men from anything else, so every tag pools - see `pooled` below.
 ///
 /// A hex with no sharing unit judges each unit on its own, as before. A hex with one or more
 /// judges every pooled tag once, against the hex: the engine drains sharers in whatever order it
