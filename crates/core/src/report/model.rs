@@ -253,14 +253,7 @@ mod tests {
     fn a_default_region_has_the_nexus_origin() {
         let region = ReportRegion::default();
 
-        assert_eq!(
-            region.coordinate,
-            Coordinate {
-                x: 0,
-                y: 0,
-                z: 0
-            }
-        );
+        assert_eq!(region.coordinate, Coordinate { x: 0, y: 0, z: 0 });
         assert!(region.units.is_empty());
     }
 }

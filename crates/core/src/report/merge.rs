@@ -283,19 +283,7 @@ mod tests {
             coordinate: coordinate(),
             terrain: "swamp".to_owned(),
             province: "Cebo".to_owned(),
-            settlement: None,
-            population: None,
-            race: None,
-            tax_base: None,
-            wages: None,
-            max_wages: None,
-            entertainment: None,
-            products: Vec::new(),
-            wanted: Vec::new(),
-            for_sale: Vec::new(),
-            exits: Vec::new(),
-            structures: Vec::new(),
-            units: Vec::new(),
+            ..Default::default()
         }
     }
 
@@ -304,19 +292,9 @@ mod tests {
             unit_id: unit_id.to_owned(),
             name: format!("Unit ({unit_id})"),
             region_id: coordinate().id(),
-            faction_id: None,
-            faction_name: None,
             own,
-            on_guard: false,
-            flags: Vec::new(),
-            items: Vec::new(),
-            skills: Vec::new(),
             men: 1,
-            men_estimated: true,
-            men_by_race: Vec::new(),
-            weight: None,
-            capacity: None,
-            structure_id: None,
+            ..Default::default()
         }
     }
 
