@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ah-bai — completing the words after the order name</title>
+<style>
+  :root { --page:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --ink:#dbe3ec;
+          --soft:#a3b0c0; --dim:#8a97a8; --select:#4a9fd8; --ground:#10151c;
+          --warn:#d9a441; --danger:#d97070; --good:#7fb069; }
+  body { background: var(--page); color: var(--ink); font: 14px/1.55 system-ui, sans-serif;
+         margin: 0; padding: 24px 32px 80px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  h2.sec { font-size: 16px; margin: 34px 0 6px; border-top: 1px solid var(--edge); padding-top: 18px; }
+  p.note { color: var(--dim); max-width: 88ch; }
+  p.lead { color: var(--soft); max-width: 88ch; }
+  .row { display: flex; gap: 22px; flex-wrap: wrap; align-items: flex-start; margin: 10px 0 4px; }
+  .cap { font-size: 11px; color: var(--dim); margin: 0 0 4px; }
+  .cap b { color: var(--ink); font-weight: 600; }
+
+  .ed { width: 252px; background: var(--panel); border: 1px solid var(--edge); border-radius: 4px;
+        font: 11.5px/1.5 ui-monospace, Menlo, monospace; padding: 4px 0; position: relative; }
+  .ln { display: flex; height: 17px; align-items: center; white-space: pre; }
+  .gut { flex: none; width: 3px; }
+  .txt { padding-left: 2px; }
+  .caret { display: inline-block; width: 0; border-left: 1px solid var(--ink); height: 12px;
+           vertical-align: -2px; }
+  .sp { background: #4a9fd833; border-bottom: 1px solid var(--select); }
+
+  .pop { position: absolute; background: var(--raised); border: 1px solid var(--edge);
+         font: 11.5px/1.5 ui-monospace, Menlo, monospace; color: var(--ink); z-index: 3;
+         min-width: 108px; box-shadow: 0 4px 14px #0009; }
+  .pop ul { list-style: none; margin: 0; padding: 0; }
+  .pop li { display: flex; align-items: baseline; gap: 6px; padding: 1px 6px 1px 4px; white-space: pre; }
+  .pop li.on { background: var(--select); color: var(--ground); }
+  .pop li .ic { color: var(--dim); width: 9px; flex: none; text-align: center; font-size: 10px; }
+  .pop li.on .ic { color: var(--ground); }
+  .pop li b { font-weight: 700; }
+  .pop li .det { margin-left: auto; padding-left: 14px; color: var(--dim); font-style: italic; }
+  .pop .more { color: var(--dim); padding: 1px 6px; border-top: 1px solid var(--edge); font-size: 10.5px; }
+
+  kbd { font: 11px ui-monospace, Menlo, monospace; border: 1px solid var(--edge); border-bottom-width: 2px;
+        border-radius: 3px; padding: 0 4px; background: var(--raised); color: var(--ink); }
+  code { font-family: ui-monospace, Menlo, monospace; color: var(--ink); background: var(--raised);
+         padding: 0 4px; border-radius: 3px; }
+  table.m { border-collapse: collapse; font-size: 12.5px; color: var(--soft); margin: 10px 0 4px; }
+  table.m td, table.m th { border: 1px solid var(--edge); padding: 4px 10px; text-align: left;
+                           vertical-align: top; }
+  table.m th { color: var(--ink); font-weight: 600; }
+  .chosen { background: var(--raised); border: 1px solid var(--edge); border-left: 3px solid var(--good);
+            padding: 10px 14px; border-radius: 4px; max-width: 94ch; margin: 14px 0; color: var(--soft); }
+  .no { color: var(--danger); } .yes { color: var(--good); }
+</style>
+</head>
+<body>
+
+<h1>ah-bai — completing the words after the order name</h1>
+<p class="lead">The completion popup speaks only in the command position — the first word of a line.
+Everything after it is on the player to remember and spell, including the words the ruleset fixes to
+a short closed list. This is the interview that decided what changes, held with the navigator on
+2026-08-16. The full record, including what was rejected, is in bead <code>ah-bai.1</code>'s design
+field.</p>
+
+<div class="chosen"><strong>Chosen.</strong> The popup gains a second source that answers argument
+positions from the ruleset's own grammar: the closed keyword lists, the six directions with
+<code>IN</code>/<code>OUT</code>, and the 22 item classes (<code>ah-bai.1</code>), then the game
+catalogue's 171 items and 96 skills (<code>ah-bai.2</code>). It stays quiet until a letter is typed,
+says nothing when what is typed matches nothing, accepts on <kbd>Enter</kbd> or <kbd>Tab</kbd> as
+today, and leaves a trailing space behind — in every position, the command position included.
+Entries are bare words with the icon a command gets, in the ruleset's own order; the 22 item classes
+alphabetically, as the one exception.</div>
+
+<h2 class="sec">The reported case</h2>
+<div class="row">
+  <div>
+    <p class="cap"><b>before</b> — <code>NAME U</code> offers nothing</p>
+    <div class="ed">
+      <div class="ln"><span class="gut"></span><span class="txt">MOVE N</span></div>
+      <div class="ln"><span class="gut"></span><span class="txt">NAME U<span class="caret"></span></span></div>
+      <div class="ln"><span class="gut"></span><span class="txt">WORK</span></div>
+    </div>
+  </div>
+  <div>
+    <p class="cap"><b>after</b> — the four things <code>NAME</code> can rename, filtered to what is typed</p>
+    <div class="ed">
+      <div class="ln"><span class="gut"></span><span class="txt">MOVE N</span></div>
+      <div class="ln"><span class="gut"></span><span class="txt">NAME U<span class="caret"></span></span></div>
+      <div class="ln"><span class="gut"></span><span class="txt">WORK</span></div>
+      <div class="pop" style="left:44px; top:38px;">
+        <ul><li class="on"><span class="ic">k</span><span><b>U</b>NIT</span></li></ul>
+      </div>
+    </div>
+  </div>
+  <div>
+    <p class="cap"><b>accepted</b> — and a space, ready for the name</p>
+    <div class="ed">
+      <div class="ln"><span class="gut"></span><span class="txt">MOVE N</span></div>
+      <div class="ln"><span class="gut"></span><span class="txt">NAME UNIT<span class="sp"> </span><span class="caret"></span></span></div>
+      <div class="ln"><span class="gut"></span><span class="txt">WORK</span></div>
+    </div>
+  </div>
+</div>
+<p class="note">The vocabulary is the ruleset's own — it already sits in
+<code>crates/core/src/orders/grammar.rs</code>, which is what the syntax checker validates against —
+so the popup cannot offer a word the checker would then reject.</p>
+
+<h2 class="sec">What is offered, and where</h2>
+<div class="row">
+  <div>
+    <p class="cap">the closed keyword lists — here <code>DECLARE</code></p>
+    <div class="ed">
+      <div class="ln"><span class="gut"></span><span class="txt">DECLARE 15 <span class="caret"></span></span></div>
+      <div class="ln"><span class="gut"></span><span class="txt"> </span></div>
+      <div class="ln"><span class="gut"></span><span class="txt"> </span></div>
+      <div class="ln"><span class="gut"></span><span class="txt"> </span></div>
+      <div class="ln"><span class="gut"></span><span class="txt"> </span></div>
+      <div class="pop" style="left:82px; top:21px;">
+        <ul>
+          <li class="on"><span class="ic">k</span><span>ALLY</span></li>
+          <li><span class="ic">k</span><span>FRIENDLY</span></li>
+          <li><span class="ic">k</span><span>NEUTRAL</span></li>
+          <li><span class="ic">k</span><span>UNFRIENDLY</span></li>
+          <li><span class="ic">k</span><span>HOSTILE</span></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+  <div>
+    <p class="cap">directions, clockwise from north — and again after each step</p>
+    <div class="ed">
+      <div class="ln"><span class="gut"></span><span class="txt">MOVE <span class="caret"></span></span></div>
+      <div class="ln"><span class="gut"></span><span class="txt"> </span></div>
+      <div class="ln"><span class="gut"></span><span class="txt"> </span></div>
+      <div class="ln"><span class="gut"></span><span class="txt"> </span></div>
+      <div class="ln"><span class="gut"></span><span class="txt"> </span></div>
+      <div class="pop" style="left:40px; top:21px;">
+        <ul>
+          <li class="on"><span class="ic">k</span><span>N</span></li>
+          <li><span class="ic">k</span><span>NE</span></li>
+          <li><span class="ic">k</span><span>SE</span></li>
+          <li><span class="ic">k</span><span>S</span></li>
+          <li><span class="ic">k</span><span>SW</span></li>
+          <li><span class="ic">k</span><span>NW</span></li>
+          <li><span class="ic">k</span><span>IN</span></li>
+          <li><span class="ic">k</span><span>OUT</span></li>
+        </ul>
+      </div>
+    </div>
+    <p class="note">Compass order, not alphabetical: the order a report writes its exits in.
+    <kbd>Ctrl</kbd>+<kbd>Space</kbd> is what opens this on an empty position.</p>
+  </div>
+  <div>
+    <p class="cap">two forms, two ways on — <code>GIVE</code></p>
+    <div class="ed">
+      <div class="ln"><span class="gut"></span><span class="txt">GIVE 4573 <span class="caret"></span></span></div>
+      <div class="ln"><span class="gut"></span><span class="txt"> </span></div>
+      <div class="ln"><span class="gut"></span><span class="txt"> </span></div>
+      <div class="pop" style="left:75px; top:21px;">
+        <ul>
+          <li class="on"><span class="ic">k</span><span>UNIT</span></li>
+          <li><span class="ic">k</span><span>ALL</span></li>
+        </ul>
+      </div>
+    </div>
+    <p class="note">A quantity is the third way and is open-ended, so it is not listed and typing one
+    dismisses the popup. <code>GIVE NEW 2 </code> and <code>GIVE FACTION 15 NEW 2 </code> offer the
+    same two: the core counts the unit reference, whatever its length.</p>
+  </div>
+  <div>
+    <p class="cap">the 22 item classes — alphabetical, the one exception</p>
+    <div class="ed">
+      <div class="ln"><span class="gut"></span><span class="txt">GIVE 4573 ALL <span class="caret"></span></span></div>
+      <div class="ln"><span class="gut"></span><span class="txt"> </span></div>
+      <div class="ln"><span class="gut"></span><span class="txt"> </span></div>
+      <div class="ln"><span class="gut"></span><span class="txt"> </span></div>
+      <div class="ln"><span class="gut"></span><span class="txt"> </span></div>
+      <div class="pop" style="left:100px; top:21px; min-width:130px">
+        <ul>
+          <li class="on"><span class="ic">k</span><span>ADVANCED</span></li>
+          <li><span class="ic">k</span><span>ARMOR</span></li>
+          <li><span class="ic">k</span><span>BATTLE</span></li>
+          <li><span class="ic">k</span><span>FOOD</span></li>
+          <li><span class="ic">k</span><span>ITEM</span></li>
+          <li><span class="ic">k</span><span>ITEMS</span></li>
+        </ul>
+        <div class="more">…16 more</div>
+      </div>
+    </div>
+    <p class="note">Twenty-two words is past the point where an unfamiliar list can be scanned.
+    Once <code>ah-bai.2</code> lands, the catalogue's items follow them in the same flat list.</p>
+  </div>
+</div>
+
+<h2 class="sec">What stays quiet</h2>
+<table class="m">
+<tr><th>Position</th><th>Example</th><th>Why not</th></tr>
+<tr><td>Unit numbers</td><td><code>GIVE 4573 …</code></td><td>the report has them; the grammar does not</td></tr>
+<tr><td>Quantities, levels, aliases</td><td><code>PRODUCE 5 …</code>, <code>FORM 2</code></td><td>a number is whatever the player means</td></tr>
+<tr><td>Flags</td><td><code>GUARD 1</code>, <code>AVOID 0</code></td><td>closed, but two digits nobody needs help spelling</td></tr>
+<tr><td>Free text</td><td><code>NAME UNIT "Seven of Eight"</code></td><td>the rules leave it open, and so does the checker</td></tr>
+<tr><td>Anything after <code>CAST</code></td><td><code>CAST FARSIGHT …</code></td><td>the arguments depend on the spell; the grammar says <em>anything</em></td></tr>
+<tr><td>Inside a comment or an open quote</td><td><code>MOVE N ; go h</code></td><td>past the semicolon nothing is an order</td></tr>
+<tr><td>An unknown order</td><td><code>WROK N</code></td><td>no grammar entry, so no argument vocabulary</td></tr>
+<tr><td>An empty position, unasked</td><td><code>NAME </code></td><td>quiet until a letter — <kbd>Ctrl</kbd>+<kbd>Space</kbd> summons it</td></tr>
+<tr><td>Nothing matches what is typed</td><td><code>NAME XY</code></td><td>the checker underlines it a moment later; the popup adds nothing</td></tr>
+</table>
+
+<h2 class="sec">The decisions, and what was rejected</h2>
+<table class="m">
+<tr><th>Question</th><th>Chosen</th><th>Rejected</th></tr>
+<tr><td>Which positions get a popup</td><td>closed keywords, directions and item classes now; the ruleset's items and skills as a second bead</td><td>keywords only (leaves <code>MOVE</code>, the most typed order, unhelped); stopping short of the catalogue</td></tr>
+<tr><td>When it opens</td><td>once a letter is typed; <kbd>Ctrl</kbd>+<kbd>Space</kbd> on an empty position</td><td>opening on the space — a panel over the line at every space, in a rail often 150px wide</td></tr>
+<tr><td>Nothing matches</td><td>silence</td><td>listing the alternatives anyway — a popup hanging over a line being typed rather than fixed</td></tr>
+<tr><td>Accept key</td><td><kbd>Enter</kbd> or <kbd>Tab</kbd>, unchanged</td><td><kbd>Tab</kbd>-only after the order name (two accept keys in one editor); <kbd>Tab</kbd>-only everywhere</td></tr>
+<tr><td>What accepting leaves</td><td>the word and a space, <em>everywhere</em> — accepting <code>STUDY</code> now leaves <code>STUDY </code> too</td><td>the bare word; a space in argument positions only</td></tr>
+<tr><td>Order of entries</td><td>the ruleset's own order, kept with a hidden sort key</td><td>alphabetical — <code>IN, N, NE, NW, OUT, S, SE, SW</code> puts the compass out of order</td></tr>
+<tr><td>Item classes' order</td><td>alphabetical, the single exception</td><td>rules-page order — 22 unfamiliar words in no scannable order</td></tr>
+<tr><td>Entry appearance</td><td>the bare word, with the icon a command gets</td><td>a hint naming the form it belongs to: a hand-written line per keyword, and a wider popup</td></tr>
+<tr><td>Class and item in one position</td><td>one flat list, classes first</td><td>two labelled sections (chrome in an already tall popup); holding the catalogue back until two letters (a rule to discover)</td></tr>
+</table>
+<p class="note">The trailing space can leave two spaces where a word is completed in the middle of a
+line. That is accepted: the lexer skips runs of blanks, so the orders file means exactly the same
+thing.</p>
+
+</body>
+</html>
