@@ -144,6 +144,8 @@ export async function commitTurn(
 ): Promise<CommitOutcome> {
   const factionId = parsed.header.factionId;
   if (!factionId) {
+    // Unreachable from `loadTurn` since ah-brd - `routeReport` refuses such a report first. Kept
+    // as defence for any future caller.
     return { warning: "the report does not name its faction, so it cannot be remembered" };
   }
 

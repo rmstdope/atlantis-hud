@@ -297,6 +297,20 @@ describe("routeReport", () => {
     expect(routeReport(null, report(), "text", "turn.rep")).toEqual({ kind: "load" });
   });
 
+  it("rejects a report with no faction and says why", () => {
+    const viewer = report({ turnNumber: 71 });
+    const incoming = report({ factionId: null, factionName: null, turnNumber: null });
+
+    expect(routeReport(viewer, incoming, "junk", "junk.rep")).toEqual({
+      kind: "reject",
+      reason: "the report does not name its faction"
+    });
+    expect(routeReport(null, incoming, "junk", "junk.rep")).toEqual({
+      kind: "reject",
+      reason: "the report does not name its faction"
+    });
+  });
+
   it("loads a newer turn of the same faction", () => {
     const viewer = report({ turnNumber: 70 });
     const incoming = report({ turnNumber: 71 });

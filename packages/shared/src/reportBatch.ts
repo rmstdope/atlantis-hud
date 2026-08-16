@@ -11,6 +11,8 @@
  * is left with the doing - reading the files, walking the steps, and saying what happened.
  */
 
+import { REPORT_NAMES_NO_FACTION } from "./reportLoadDecision";
+
 /** As much of a report as planning a batch needs, plus the name the summary will use for it. */
 export type BatchCandidate = {
   fileName: string;
@@ -140,7 +142,7 @@ export function planReportBatch(
       skipped.push({
         index,
         fileName: candidate.fileName,
-        reason: "the report does not name its faction"
+        reason: REPORT_NAMES_NO_FACTION
       });
       continue;
     }
