@@ -7,6 +7,7 @@ use atlantis_hud_core::backup::{
     encode_game_backup, GameBackupContent, GameBackupHexNote, GameBackupImportedTurn,
     GameBackupMergedReport, GameBackupOrderDraft, GameBackupRegionSighting,
 };
+use atlantis_hud_core::reopen::{latest_turn, TurnTouch};
 use atlantis_hud_core::{diff_imported_turn_fields, ImportedTurnSnapshotRef};
 use rusqlite::{params, Connection, ErrorCode, OptionalExtension};
 use serde::{Deserialize, Serialize};
@@ -937,7 +938,9 @@ pub fn load_imported_turn_stamps(
 /// orders is the strongest signal of attention there is.
 ///
 /// `None` means the game holds no imports, which is the ordinary state of a game just created
-/// rather than a failure. Ties break on the turn number so the answer is the same every time.
+/// rather than a failure. Which turn wins, and every tie-break, is
+/// `atlantis_hud_core::reopen::latest_turn`'s rule; this function only hands over what the store
+/// holds and loads the turn that rule names.
 pub fn load_latest_imported_turn(
     database_path: &Path,
     game_id: &str,
@@ -951,44 +954,47 @@ pub fn load_latest_imported_turn(
     let mut connection = open_database(database_path)?;
     apply_migrations(&mut connection)?;
 
-    // MAX with two arguments is SQLite's scalar maximum, not the aggregate. Both sides are ISO-8601
-    // since migration 6, which is what makes comparing them mean anything.
-    let record = connection
-        .query_row(
-            "SELECT t.game_id,
-                    t.faction_id,
-                    t.turn_number,
-                    t.raw_report,
-                    t.parsed_payload_json,
-                    t.warnings_payload_json
-               FROM imported_turns AS t
-               LEFT JOIN order_drafts AS d
-                 ON  d.game_id = t.game_id
-                 AND d.faction_id = t.faction_id
-                 AND d.turn_number = t.turn_number
-              WHERE t.game_id = ?1
-              ORDER BY MAX(t.updated_at, COALESCE(d.updated_at, '')) DESC, t.turn_number DESC
-              LIMIT 1",
-            params![game_id],
-            |row| {
-                Ok(ImportedTurnRecord {
-                    key: ImportedTurnKey {
-                        game_id: row.get(0)?,
-                        faction_id: row.get(1)?,
-                        turn_number: row.get(2)?,
-                    },
-                    raw_report: row.get(3)?,
-                    parsed_payload_json: row.get(4)?,
-                    warnings_payload_json: row.get(5)?,
-                })
-            },
-        )
-        .optional()?;
+    let turns = touches(&connection, "imported_turns", game_id)?;
+    let drafts = touches(&connection, "order_drafts", game_id)?;
+    let Some(latest) = latest_turn(&turns, &drafts) else {
+        return Ok(None);
+    };
 
-    Ok(record)
+    load_imported_turn_from_connection(
+        &connection,
+        &ImportedTurnKey {
+            game_id: game_id.to_string(),
+            faction_id: latest.faction_id,
+            turn_number: latest.turn_number,
+        },
+    )
 }
 
-/// Lists every turn imported for a game, across every faction, in turn order.
+/// Every `(faction, turn, updated_at)` this game's `imported_turns` or `order_drafts` table
+/// holds, for `latest_turn` to rank. `table` is always one of those two literals, chosen inside
+/// this function's two call sites - never from a caller - so the `format!` below builds no SQL an
+/// outside value could reach.
+fn touches(
+    connection: &Connection,
+    table: &str,
+    game_id: &str,
+) -> Result<Vec<TurnTouch>, PersistenceError> {
+    let mut statement = connection.prepare(&format!(
+        "SELECT faction_id, turn_number, updated_at FROM {table} WHERE game_id = ?1"
+    ))?;
+    let rows = statement.query_map(params![game_id], |row| {
+        Ok(TurnTouch {
+            faction_id: row.get(0)?,
+            turn_number: row.get(1)?,
+            updated_at: Some(row.get(2)?),
+        })
+    })?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(PersistenceError::from)
+}
+
+/// Lists every turn imported for a game, across every faction, in no particular order —
+/// `@atlantis/core-client` orders the list, once for both platforms.
 ///
 /// Keyed by game only, like [`load_latest_imported_turn`] and `export_game`: every faction's turns
 /// come back, each row carrying its own `faction_id`, and the caller filters. A game with merged
@@ -1012,8 +1018,7 @@ pub fn list_imported_turns(
     let mut statement = connection.prepare(
         "SELECT faction_id, turn_number, parsed_payload_json, imported_at, updated_at
            FROM imported_turns
-          WHERE game_id = ?1
-          ORDER BY turn_number ASC, faction_id ASC",
+          WHERE game_id = ?1",
     )?;
     let game_id_owned = game_id.to_string();
     let summaries = statement
@@ -1537,7 +1542,7 @@ pub fn upsert_hex_note(database_path: &Path, note: &HexNote) -> Result<(), Persi
     Ok(())
 }
 
-/// Lists a game's hex notes, newest first with `id` as a stable tiebreak.
+/// Lists a game's hex notes, in no particular order — the client orders them.
 pub fn list_hex_notes(
     database_path: &Path,
     game_id: &str,
@@ -1553,8 +1558,7 @@ pub fn list_hex_notes(
     let mut statement = connection.prepare(
         "SELECT id, game_id, region_id, text, on_map, turn, created_at, updated_at
            FROM hex_notes
-          WHERE game_id = ?1
-          ORDER BY created_at DESC, id ASC",
+          WHERE game_id = ?1",
     )?;
     let rows = statement.query_map(params![game_id], |row| {
         Ok(HexNote {
@@ -2137,7 +2141,7 @@ mod tests {
     }
 
     #[test]
-    fn hex_note_round_trips_and_lists_newest_first() {
+    fn hex_note_round_trips_and_lists_every_note() {
         let dir = tempdir().expect("tempdir");
         let manifest = fixture_manifest();
         let created = create_game(dir.path(), &manifest).expect("game creation should succeed");
@@ -2165,8 +2169,15 @@ mod tests {
         upsert_hex_note(&created.database_path, &older).expect("older note should persist");
         upsert_hex_note(&created.database_path, &newer).expect("newer note should persist");
 
-        let listed = list_hex_notes(&created.database_path, GAME_ID).expect("list should succeed");
-        assert_eq!(listed, vec![newer.clone(), older.clone()], "newest first");
+        let mut listed =
+            list_hex_notes(&created.database_path, GAME_ID).expect("list should succeed");
+        listed.sort_by(|a, b| a.id.cmp(&b.id));
+        let mut expected = vec![newer.clone(), older.clone()];
+        expected.sort_by(|a, b| a.id.cmp(&b.id));
+        assert_eq!(
+            listed, expected,
+            "every note is listed; order is the client's concern"
+        );
 
         let edited = HexNote {
             text: "First note, edited".to_string(),
@@ -2176,11 +2187,15 @@ mod tests {
         upsert_hex_note(&created.database_path, &edited).expect("edit should persist");
         let listed_after_edit =
             list_hex_notes(&created.database_path, GAME_ID).expect("list should succeed");
+        let edited_note = listed_after_edit
+            .iter()
+            .find(|note| note.id == older.id)
+            .expect("the edited note is listed");
         assert_eq!(
-            listed_after_edit[1].created_at, older.created_at,
-            "an edit must not move created_at, or ordering reshuffles"
+            edited_note.created_at, older.created_at,
+            "an edit must not move created_at"
         );
-        assert_eq!(listed_after_edit[1].text, "First note, edited");
+        assert_eq!(edited_note.text, "First note, edited");
 
         assert!(
             delete_hex_note(&created.database_path, GAME_ID, "note-older")
@@ -2435,10 +2450,11 @@ mod tests {
         let listed =
             list_imported_turns(&created.database_path, GAME_ID).expect("listing should succeed");
 
-        let turn_numbers: Vec<u32> = listed
+        let mut turn_numbers: Vec<u32> = listed
             .iter()
             .map(|summary| summary.key.turn_number)
             .collect();
+        turn_numbers.sort_unstable();
         assert_eq!(turn_numbers, vec![12, 13, 14]);
         assert!(listed.iter().all(|summary| summary.key.faction_id == "17"));
     }
@@ -2527,8 +2543,9 @@ mod tests {
         )
         .expect("seed new-format turn");
 
-        let listed =
+        let mut listed =
             list_imported_turns(&created.database_path, GAME_ID).expect("listing should succeed");
+        listed.sort_by_key(|summary| summary.key.turn_number);
 
         assert_eq!(listed.len(), 2);
         let seasons: Vec<Option<&str>> = listed.iter().map(|t| t.season.as_deref()).collect();
@@ -2555,8 +2572,10 @@ mod tests {
         assert_eq!(listed[0].season, None);
     }
 
+    /// The store returns rows in no particular order; `@atlantis/core-client` orders them, once
+    /// for both platforms. This pins the store's content, not its order.
     #[test]
-    fn turns_of_two_factions_interleave_in_turn_order() {
+    fn turns_of_two_factions_are_all_listed() {
         let dir = tempdir().expect("tempdir");
         let created = create_game(dir.path(), &fixture_manifest()).expect("game should create");
 
@@ -2585,14 +2604,13 @@ mod tests {
         let listed =
             list_imported_turns(&created.database_path, GAME_ID).expect("listing should succeed");
 
-        let ordering: Vec<(u32, String)> = listed
+        let mut pairs: Vec<(u32, String)> = listed
             .iter()
             .map(|summary| (summary.key.turn_number, summary.key.faction_id.clone()))
             .collect();
+        pairs.sort();
         assert_eq!(
-            // faction_id is a TEXT column, so the tiebreak within a turn is lexical, not numeric:
-            // "17" sorts before "5". This test pins that ordering decision.
-            ordering,
+            pairs,
             vec![
                 (12, "17".to_string()),
                 (12, "5".to_string()),

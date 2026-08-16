@@ -5,6 +5,7 @@ pub mod cache;
 pub mod known_map;
 pub mod movement;
 pub mod orders;
+pub mod reopen;
 pub mod report;
 
 use serde::{Deserialize, Serialize};

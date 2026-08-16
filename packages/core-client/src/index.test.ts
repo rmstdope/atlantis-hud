@@ -7,6 +7,7 @@ import {
   type GameManifest,
   type HexNoteRecord,
   type ImportedTurnRecord,
+  type ImportedTurnSummary,
   type MapExportRequest,
   type RememberedRegion,
   type TauriInvoke
@@ -422,5 +423,47 @@ describe("createCoreClient", () => {
 
     await expect(client.listGames()).resolves.toBe(games);
     await expect(client.loadImportedTurn("db", "g", "f", 1)).resolves.toBe(turn);
+  });
+
+  it("orders the turns it lists - turn ascending, then faction id as text - whatever order the adapter answered in", async () => {
+    const unordered: ImportedTurnSummary[] = [
+      { key: { gameId: "g", factionId: "9", turnNumber: 13 }, season: null, importedAt: "t", updatedAt: "t" },
+      { key: { gameId: "g", factionId: "9", turnNumber: 12 }, season: null, importedAt: "t", updatedAt: "t" },
+      { key: { gameId: "g", factionId: "10", turnNumber: 12 }, season: null, importedAt: "t", updatedAt: "t" }
+    ];
+    const fake = fakeAdapter({ listImportedTurns: vi.fn().mockResolvedValue(unordered) });
+    const client = createCoreClient(fake);
+
+    const listed = await client.listImportedTurns("db", "g");
+
+    expect(listed.map((summary) => [summary.key.turnNumber, summary.key.factionId])).toEqual([
+      [12, "10"],
+      [12, "9"],
+      [13, "9"]
+    ]);
+  });
+
+  it("orders hex notes newest first, id ascending on a tie, whatever order the adapter answered in", async () => {
+    const note = (id: string, createdAt: string): HexNoteRecord => ({
+      id,
+      gameId: "g",
+      regionId: "1:7,53",
+      text: "note",
+      onMap: true,
+      turn: 12,
+      createdAt,
+      updatedAt: createdAt
+    });
+    const unordered: HexNoteRecord[] = [
+      note("b", "2026-08-01T09:00:00Z"),
+      note("z", "2026-08-02T09:00:00Z"),
+      note("a", "2026-08-01T09:00:00Z")
+    ];
+    const fake = fakeAdapter({ listHexNotes: vi.fn().mockResolvedValue(unordered) });
+    const client = createCoreClient(fake);
+
+    const listed = await client.listHexNotes("db", "g");
+
+    expect(listed.map((n) => n.id)).toEqual(["z", "a", "b"]);
   });
 });
