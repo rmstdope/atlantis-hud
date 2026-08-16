@@ -909,7 +909,7 @@ test("a unit told to spend silver it has not got is warned about, without blocki
   // unit's - and the region panel is where a finding with no unit and no line belongs.
   const problems = page.getByTestId("region-problems");
   await expect(problems).toContainText("short");
-  await expect(problems).toContainText("sharing");
+  await expect(problems).toContainText("the units in this hex");
 
   // A warning, never an error: the server would accept this file, the turn would just go badly.
   await expect(page.getByTestId("orders-status")).toContainText("0 errors");
@@ -1050,14 +1050,18 @@ test("an order with the wrong argument is caught, and the offending word quoted"
 
   // What is left is a different objection, and a true one (#82): Seven of Eight carries a leader
   // and nothing else, so there are no ten swords to give. Reading the arguments cannot find that -
-  // it takes the report. A warning, so the export is not blocked over it.
-  await expect(page.getByTestId("orders-diagnostics")).toContainText("sword");
-  await expect(page.getByTestId("orders-status")).toContainText("1 warning");
+  // it takes the report. Seven of Eight shares (ah-j2w), so the shortfall is judged against the
+  // hex rather than counted against this unit's own orders - it shows in the region panel, not
+  // here, and does not add to this unit's warning count.
+  await expect(page.getByTestId("region-problems")).toContainText("sword");
+  await expect(page.getByTestId("orders-diagnostic")).toHaveCount(0);
+  await expect(page.getByTestId("orders-status")).toContainText("0 warnings");
 
-  // An order the unit can actually carry out leaves nothing to say at all.
+  // An order the unit can actually carry out leaves nothing to say at all, region panel included.
   await fillOrders(page, "@work");
   await expect(page.getByTestId("orders-diagnostic")).toHaveCount(0);
   await expect(page.getByTestId("orders-status")).toContainText("0 warnings");
+  await expect(page.getByTestId("region-problems")).not.toBeVisible();
 });
 
 test("a TURN block left open is reported against the unit that wrote it", async ({ page }) => {
