@@ -3,6 +3,7 @@ import type { MapLevel } from "../hexMapModel";
 import { SURFACE_LEVEL } from "../hexMapModel";
 import { useWorkspaceStore, type LayerName } from "../workspaceStore";
 import { BadgeMenu } from "./BadgeMenu";
+import { ChipPopover } from "./popover";
 
 /**
  * Layer toggles above the map.
@@ -55,7 +56,11 @@ export function LayerChips({ levels }: { levels: MapLevel[] }) {
         </label>
       ))}
 
-      <div className="relative">
+      <ChipPopover
+        open={badgesOpen}
+        onDismiss={() => setBadgesOpen(false)}
+        panel={<BadgeMenu badges={badges} onToggle={toggleBadge} onSetAll={setAllBadges} />}
+      >
         <button
           type="button"
           aria-haspopup="dialog"
@@ -76,15 +81,7 @@ export function LayerChips({ levels }: { levels: MapLevel[] }) {
             ▾
           </span>
         </button>
-        {badgesOpen && (
-          <BadgeMenu
-            badges={badges}
-            onToggle={toggleBadge}
-            onSetAll={setAllBadges}
-            onDismiss={() => setBadgesOpen(false)}
-          />
-        )}
-      </div>
+      </ChipPopover>
 
       {levels.length > 1 ? (
         <select

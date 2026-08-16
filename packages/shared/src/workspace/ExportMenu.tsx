@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { PopoverFrame } from "./popover";
 
 /**
  * The two exports, behind one header button.
@@ -39,46 +39,11 @@ export function ExportMenu({
   onExportMap: () => void;
   onDismiss: () => void;
 }) {
-  const panelRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        onDismiss();
-      }
-    };
-    // Pointer rather than click, and the wrapper rather than the panel, for the reasons the game
-    // picker gives: a drag out of the panel is not a dismissal, and testing the panel alone
-    // dismisses on the trigger's own press, whose toggle then reopens it.
-    const onPointerDown = (event: PointerEvent) => {
-      const trigger = panelRef.current?.parentElement ?? panelRef.current;
-      if (!trigger?.contains(event.target as Node)) {
-        onDismiss();
-      }
-    };
-
-    document.addEventListener("keydown", onKeyDown);
-    document.addEventListener("pointerdown", onPointerDown);
-    return () => {
-      document.removeEventListener("keydown", onKeyDown);
-      document.removeEventListener("pointerdown", onPointerDown);
-    };
-  }, [onDismiss]);
-
   const itemClass =
     "w-full rounded px-2 py-1 text-left text-ink hover:bg-panel disabled:opacity-40 disabled:hover:bg-transparent";
 
   return (
-    <div
-      ref={panelRef}
-      data-testid="export-menu-panel"
-      role="dialog"
-      aria-label="Export"
-      // The header is the drop target for report files, so a panel hanging off it must not swallow
-      // a drag meant for the header underneath.
-      onDragOver={(event) => event.stopPropagation()}
-      className="absolute right-0 top-full z-20 mt-1 w-44 rounded border border-edge bg-panel-raised p-1 text-[11.5px] whitespace-normal shadow-lg"
-    >
+    <PopoverFrame testId="export-menu-panel" label="Export" align="right" width="w-44" padding="p-1">
       <button
         type="button"
         data-testid="export-orders"
@@ -115,6 +80,6 @@ export function ExportMenu({
       >
         Export map
       </button>
-    </div>
+    </PopoverFrame>
   );
 }

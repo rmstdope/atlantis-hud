@@ -17,7 +17,6 @@ describe("TurnPicker", () => {
         workingTurn={71}
         comparedTurn={70}
         onSelect={() => {}}
-        onDismiss={() => {}}
       />
     );
 
@@ -45,7 +44,6 @@ describe("TurnPicker", () => {
         workingTurn={71}
         comparedTurn={null}
         onSelect={() => {}}
-        onDismiss={() => {}}
       />
     );
 

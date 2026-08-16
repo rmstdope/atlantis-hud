@@ -2387,7 +2387,6 @@ export function AppShell({
             onExport={(gameId) => void exportGameBackup(gameId)}
             onImport={(file, mode) => void importGameBackup(file, mode)}
             onRename={renameGame}
-            onDismiss={() => closePopover("games")}
           />
         }
         factionLabel={factionLabel}
@@ -2400,7 +2399,6 @@ export function AppShell({
               workingTurn={parsed.header.turnNumber}
               comparedTurn={comparison?.key.turnNumber ?? null}
               onSelect={(turnNumber) => void handleSelectComparisonTurn(turnNumber)}
-              onDismiss={() => closePopover("turns")}
             />
           ) : null
         }

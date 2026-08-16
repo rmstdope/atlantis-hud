@@ -1,7 +1,7 @@
-import { useEffect, useRef } from "react";
 import type { DeclaredAttitudes, FactionStatus } from "@atlantis/core-client";
 import { allowanceRows, attitudeLines } from "./factionView";
 import { POPOVER_BODY_MAX_H } from "./primitives";
+import { PopoverFrame } from "./popover";
 
 /**
  * Everything the report says about the faction as a whole: allowances, unclaimed silver and the
@@ -30,50 +30,12 @@ export function FactionPanel({
   mergedFactionIds: ReadonlySet<string>;
   onDismiss: () => void;
 }) {
-  const panelRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        onDismiss();
-      }
-    };
-    // The wrapper rather than the panel, for the reason `MergedFactionsPanel` gives: the chip that
-    // opened this sits beside it in that wrapper, and testing the panel alone would dismiss on the
-    // chip's own press and let its toggle reopen immediately.
-    const onPointerDown = (event: PointerEvent) => {
-      const trigger = panelRef.current?.parentElement ?? panelRef.current;
-      if (!trigger?.contains(event.target as Node)) {
-        onDismiss();
-      }
-    };
-
-    document.addEventListener("keydown", onKeyDown);
-    document.addEventListener("pointerdown", onPointerDown);
-    return () => {
-      document.removeEventListener("keydown", onKeyDown);
-      document.removeEventListener("pointerdown", onPointerDown);
-    };
-  }, [onDismiss]);
-
   const rows = status ? allowanceRows(status) : [];
   const lines = attitudes ? attitudeLines(attitudes, mergedFactionIds) : [];
   const unparsed = status?.unparsed ?? [];
 
   return (
-    <div
-      ref={panelRef}
-      data-testid="faction-panel"
-      role="dialog"
-      aria-label="Faction"
-      // The header is the drop target for report files; without this the panel becomes a second,
-      // invisible one that exists only while it happens to be open. `MergedFactionsPanel` and
-      // `TurnMessagesPanel` do the same.
-      onDragOver={(event) => event.stopPropagation()}
-      // `whitespace-normal` undoes the header's `whitespace-nowrap`, which a child inherits - the
-      // longest attitude line here is thirteen names long.
-      className="absolute left-0 top-full z-20 mt-1 w-80 rounded border border-edge bg-panel-raised text-[11.5px] whitespace-normal shadow-lg"
-    >
+    <PopoverFrame testId="faction-panel" label="Faction" align="left" width="w-80">
       <div className="flex items-center gap-2 border-b border-edge px-2 py-1.5">
         <span className="text-ink">
           {factionName ?? "Unnamed faction"}
@@ -164,6 +126,6 @@ export function FactionPanel({
           <p className="mt-2 border-t border-edge pt-1.5 text-ink-dim">{unparsed.join(" · ")}</p>
         ) : null}
       </div>
-    </div>
+    </PopoverFrame>
   );
 }

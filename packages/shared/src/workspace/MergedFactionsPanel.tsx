@@ -1,6 +1,6 @@
-import { useEffect, useRef } from "react";
 import type { MergedReportRecord } from "@atlantis/core-client";
 import { POPOVER_BODY_MAX_H } from "./primitives";
+import { PopoverFrame } from "./popover";
 
 /**
  * Whose eyes the map is showing.
@@ -23,46 +23,8 @@ export function MergedFactionsPanel({
   merged: MergedReportRecord[];
   onDismiss: () => void;
 }) {
-  const panelRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        onDismiss();
-      }
-    };
-    // The wrapper rather than the panel, for the reason `TurnMessagesPanel` gives: the chip that
-    // opened this sits beside it in that wrapper, and testing the panel alone would dismiss on the
-    // chip's own press and let its toggle reopen immediately.
-    const onPointerDown = (event: PointerEvent) => {
-      const trigger = panelRef.current?.parentElement ?? panelRef.current;
-      if (!trigger?.contains(event.target as Node)) {
-        onDismiss();
-      }
-    };
-
-    document.addEventListener("keydown", onKeyDown);
-    document.addEventListener("pointerdown", onPointerDown);
-    return () => {
-      document.removeEventListener("keydown", onKeyDown);
-      document.removeEventListener("pointerdown", onPointerDown);
-    };
-  }, [onDismiss]);
-
   return (
-    <div
-      ref={panelRef}
-      data-testid="merged-factions"
-      role="dialog"
-      aria-label="Merged reports"
-      // Not a drop target: this floats over the map but is a child of the header, which is what
-      // accepts a dropped report. Left alone it would become a second, invisible drop zone that
-      // exists only while this happens to be open. The other header panels do the same.
-      onDragOver={(event) => event.stopPropagation()}
-      // `whitespace-normal` undoes the header's `whitespace-nowrap`, which inherits into anything
-      // rendered inside it.
-      className="absolute left-0 top-full z-20 mt-1 w-72 rounded border border-edge bg-panel-raised text-[11.5px] whitespace-normal shadow-lg"
-    >
+    <PopoverFrame testId="merged-factions" label="Merged reports" align="left" width="w-72">
       <div className="flex items-center gap-2 border-b border-edge px-2 py-1.5">
         <span className="text-ink-soft">
           {turnLabel ? `Merged into turn ${turnLabel}` : "Merged into this turn"}
@@ -94,6 +56,6 @@ export function MergedFactionsPanel({
       <p className="border-t border-edge px-2 py-1.5 text-ink-dim">
         What these factions saw is on your map. Their units are shown, and cannot be ordered.
       </p>
-    </div>
+    </PopoverFrame>
   );
 }
