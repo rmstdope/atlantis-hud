@@ -1,26 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { RegionPreview, ReportUnit } from "@atlantis/core-client";
+import { aReportUnit } from "@atlantis/core-client";
 import { changeFor, mergePreview, originalTooltip } from "./unitPreview";
 
-const unit = (overrides: Partial<ReportUnit>): ReportUnit => ({
-  unitId: "900",
-  name: "Walker",
-  regionId: "1:1,1",
-  factionId: "1",
-  factionName: "Foo",
-  own: true,
-  onGuard: false,
-  flags: [],
-  items: [],
-  skills: [],
-  men: 1,
-  menEstimated: false,
-  menByRace: [],
-  weight: 10,
-  capacity: "0/0/15/0",
-  structureId: null,
-  ...overrides
-});
+const unit = (overrides: Partial<ReportUnit>): ReportUnit =>
+  aReportUnit({ unitId: "900", name: "Walker", weight: 10, capacity: "0/0/15/0", ...overrides });
 
 const preview = (units: RegionPreview["units"]): RegionPreview => ({
   regionId: "1:1,1",

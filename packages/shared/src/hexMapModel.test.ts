@@ -1,4 +1,5 @@
 import type { Coordinate, KnownMap, KnownMapHex, MapLevel, ReportRegion, ReportUnit } from "@atlantis/core-client";
+import { aReportRegion, aReportUnit } from "@atlantis/core-client";
 import { describe, expect, it } from "vitest";
 import {
   abbreviateDirection,
@@ -18,52 +19,10 @@ import {
 
 const at = (x: number, y: number, z = 1): Coordinate => ({ x, y, z });
 
-function unit(unitId: string, own: boolean, name = unitId): ReportUnit {
-  return {
-    unitId,
-    name,
-    regionId: "1:7,53",
-    factionId: own ? "95" : "32",
-    factionName: own ? "Borg TNG" : "Elder Tree Forests",
-    own,
-    onGuard: false,
-    flags: [],
-    items: [],
-    skills: [],
-    men: 1,
-    menEstimated: false,
-    menByRace: [],
-    weight: null,
-    capacity: null,
-    structureId: null
-  };
-}
+const unit = (unitId: string, own: boolean, name = unitId): ReportUnit => aReportUnit({ unitId, own, name });
 
-function region(
-  coordinate: Coordinate,
-  overrides: Partial<ReportRegion> = {}
-): ReportRegion {
-  return {
-    regionId: `${coordinate.z}:${coordinate.x},${coordinate.y}`,
-    coordinate,
-    terrain: "mountain",
-    province: "Inhead",
-    settlement: null,
-    population: null,
-    race: null,
-    taxBase: null,
-    wages: null,
-    maxWages: null,
-    entertainment: null,
-    products: [],
-    wanted: [],
-    forSale: [],
-    exits: [],
-    structures: [],
-    units: [],
-    ...overrides
-  };
-}
+const region = (coordinate: Coordinate, overrides: Partial<ReportRegion> = {}): ReportRegion =>
+  aReportRegion({ coordinate, ...overrides });
 
 /** One resolved hex, as the core hands it over. */
 function knownHex(overrides: Partial<KnownMapHex> = {}): KnownMapHex {
