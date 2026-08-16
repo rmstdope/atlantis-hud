@@ -30,7 +30,8 @@ describe("core client tauri adapter contract", () => {
           }
         ],
         totalCost: 2,
-        months: [{ month: 1, steps: 1, endsAt: { x: 7, y: 51, z: 1 } }]
+        months: [{ month: 1, steps: 1, endsAt: { x: 7, y: 51, z: 1 } }],
+        order: "MOVE N"
       },
       problem: null,
       risk: {
@@ -546,7 +547,8 @@ describe("core client tauri adapter contract", () => {
           }
         ],
         totalCost: 1,
-        months: [{ month: 1, steps: 1, endsAt: { x: 49, y: 5, z: 1 } }]
+        months: [{ month: 1, steps: 1, endsAt: { x: 49, y: 5, z: 1 } }],
+        order: "SAIL S"
       },
       problem: null,
       risk: { level: "low", worst: null, hexes: [] },

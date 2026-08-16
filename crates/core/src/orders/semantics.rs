@@ -35,20 +35,47 @@ const TAX_PER_MAN: i64 = 50;
 /// training."
 const STUDENTS_PER_TEACHER: i64 = 10;
 
+/// An advisory check's code, as the shell, the settings and the diagnostics know it.
+///
+/// Constructible only through the constants in [`codes`]: the field is private and `codes` is the
+/// one child module, so a finding cannot be emitted under a code that is not in `codes::ALL`. That
+/// is the guarantee `ah-m9q.2` had to add by hand when `teacher-has-free-slots` shipped as a bare
+/// literal missing from both this list and the shell's copy.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Code(&'static str);
+
+impl Code {
+    /// The kebab-case string that crosses the wire and is stored in the settings.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        self.0
+    }
+}
+
+impl std::fmt::Display for Code {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.0)
+    }
+}
+
 /// Every advisory code the semantic checks can emit, in one place.
 ///
 /// The settings UI and the client mirror this list; a new check adds its code here first.
 pub mod codes {
-    pub const NOT_ENOUGH_SILVER: &str = "not-enough-silver";
-    pub const NOT_ENOUGH_ITEMS: &str = "not-enough-items";
-    pub const GUARD_DROPPED: &str = "guard-dropped";
-    pub const HEX_UNGUARDED: &str = "hex-unguarded";
-    pub const TAUGHT_NOT_HERE: &str = "taught-not-here";
-    pub const TAUGHT_NOT_STUDYING: &str = "taught-not-studying";
-    pub const TEACHER_CANNOT_TEACH: &str = "teacher-cannot-teach";
-    pub const TEACHING_OVERSUBSCRIBED: &str = "teaching-oversubscribed";
-    pub const TEACHER_HAS_FREE_SLOTS: &str = "teacher-has-free-slots";
-    pub const ALL: [&str; 9] = [
+    use super::Code;
+
+    pub const NOT_ENOUGH_SILVER: Code = Code("not-enough-silver");
+    pub const NOT_ENOUGH_ITEMS: Code = Code("not-enough-items");
+    pub const GUARD_DROPPED: Code = Code("guard-dropped");
+    pub const HEX_UNGUARDED: Code = Code("hex-unguarded");
+    pub const TAUGHT_NOT_HERE: Code = Code("taught-not-here");
+    pub const TAUGHT_NOT_STUDYING: Code = Code("taught-not-studying");
+    pub const TEACHER_CANNOT_TEACH: Code = Code("teacher-cannot-teach");
+    pub const TEACHING_OVERSUBSCRIBED: Code = Code("teaching-oversubscribed");
+    pub const TEACHER_HAS_FREE_SLOTS: Code = Code("teacher-has-free-slots");
+    /// Every code, in the order the settings tab lists them. The generated TypeScript copies this
+    /// order.
+    pub const ALL: [Code; 9] = [
         NOT_ENOUGH_SILVER,
         NOT_ENOUGH_ITEMS,
         GUARD_DROPPED,
@@ -71,8 +98,8 @@ pub struct CheckOptions {
 impl CheckOptions {
     /// Whether a check with this code should run.
     #[must_use]
-    pub fn emits(&self, code: &str) -> bool {
-        !self.disabled.contains(code)
+    pub fn emits(&self, code: Code) -> bool {
+        !self.disabled.contains(code.as_str())
     }
 }
 
@@ -85,7 +112,7 @@ impl Default for CheckOptions {
     /// change you probably did not mean, and that is reported either way.
     fn default() -> Self {
         Self {
-            disabled: std::iter::once(codes::HEX_UNGUARDED.to_string()).collect(),
+            disabled: std::iter::once(codes::HEX_UNGUARDED.as_str().to_string()).collect(),
         }
     }
 }
@@ -93,7 +120,7 @@ impl Default for CheckOptions {
 /// One thing that looks wrong about a turn.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Finding {
-    pub code: &'static str,
+    pub code: Code,
     pub message: String,
     /// The hex it belongs to. Every finding has one; that is what makes them filterable by hex.
     pub region_id: String,
@@ -198,7 +225,7 @@ impl<'a> Hex<'a> {
             .find(|ordered| ordered.unit.unit_id == unit_id)
     }
 
-    fn finding(&self, code: &'static str, message: String) -> Finding {
+    fn finding(&self, code: Code, message: String) -> Finding {
         Finding {
             code,
             message,
@@ -297,7 +324,7 @@ impl Ordered<'_> {
     fn finding(
         &self,
         hex: &Hex<'_>,
-        code: &'static str,
+        code: Code,
         message: String,
         at: Option<&PlacedIntent>,
     ) -> Finding {
@@ -1152,7 +1179,20 @@ mod tests {
     }
 
     fn codes(findings: &[Finding]) -> Vec<&str> {
-        findings.iter().map(|finding| finding.code).collect()
+        findings
+            .iter()
+            .map(|finding| finding.code.as_str())
+            .collect()
+    }
+
+    /// The `Code` newtype is the string the shell, the settings and the diagnostics all know -
+    /// constructible only through `codes::*`, so a finding can no longer be emitted under a bare
+    /// literal missing from `codes::ALL` (ah-m9q.2's `teacher-has-free-slots` gap).
+    #[test]
+    fn a_code_is_the_string_the_shell_and_the_settings_know() {
+        let code: Code = codes::HEX_UNGUARDED;
+        assert_eq!(code.as_str(), "hex-unguarded");
+        assert_eq!(code.to_string(), "hex-unguarded");
     }
 
     fn only(findings: Vec<Finding>) -> Finding {
@@ -1203,7 +1243,7 @@ mod tests {
             "unit 5\nGIVE 7 100 SILV\n",
         ));
 
-        assert_eq!(finding.code, "not-enough-silver");
+        assert_eq!(finding.code.as_str(), "not-enough-silver");
         assert_eq!(finding.unit_id.as_deref(), Some("5"));
         assert_eq!(finding.region_id, "1:7,53");
         assert!(
@@ -1253,7 +1293,7 @@ mod tests {
             regions,
             "unit 5\nGIVE 7 100 SILV\nunit 7\nSTUDY combat\n",
         ));
-        assert_eq!(finding.code, "not-enough-silver");
+        assert_eq!(finding.code.as_str(), "not-enough-silver");
         assert_eq!(
             finding.unit_id.as_deref(),
             Some("7"),
@@ -1298,7 +1338,7 @@ mod tests {
             "unit 5\nTAKE FROM 999 10 SILV\nGIVE 8 100 SILV\n",
         ));
 
-        assert_eq!(finding.code, "not-enough-silver");
+        assert_eq!(finding.code.as_str(), "not-enough-silver");
         assert!(
             finding.message.contains("90"),
             "$10 taken against $100 given leaves it $90 short: {}",
@@ -1381,7 +1421,7 @@ mod tests {
         ])];
 
         let finding = only(check(regions, "unit 5\nSTUDY combat\n"));
-        assert_eq!(finding.code, "not-enough-silver");
+        assert_eq!(finding.code.as_str(), "not-enough-silver");
         assert_eq!(
             finding.unit_id, None,
             "the purse is shared, so the shortfall is too"
@@ -1427,7 +1467,7 @@ mod tests {
         let regions = vec![region(vec![with_men(with_silver(unit("5"), 50), 10)])];
 
         let finding = only(check(regions, "unit 5\nSTUDY combat\n"));
-        assert_eq!(finding.code, "not-enough-silver");
+        assert_eq!(finding.code.as_str(), "not-enough-silver");
         assert!(
             finding.message.contains("100"),
             "ten men at $10 is $100: {}",
@@ -1457,7 +1497,7 @@ mod tests {
         });
 
         let finding = only(check(vec![hex], "unit 5\nBUY 2 horses\n"));
-        assert_eq!(finding.code, "not-enough-silver");
+        assert_eq!(finding.code.as_str(), "not-enough-silver");
         assert!(finding.message.contains("140"), "{}", finding.message);
     }
 
@@ -1617,7 +1657,7 @@ mod tests {
         let regions = vec![region(vec![with_item(unit("5"), 3, "sword", "SWOR")])];
 
         let finding = only(check(regions, "unit 5\nGIVE 7 10 swords\n"));
-        assert_eq!(finding.code, "not-enough-items");
+        assert_eq!(finding.code.as_str(), "not-enough-items");
         assert!(finding.message.contains("sword"), "{}", finding.message);
     }
 
@@ -1655,13 +1695,24 @@ mod tests {
         guarding.on_guard = true;
 
         let finding = only(check(vec![region(vec![guarding])], "unit 5\nMOVE N\n"));
-        assert_eq!(finding.code, "guard-dropped");
+        assert_eq!(finding.code.as_str(), "guard-dropped");
         assert_eq!(finding.region_id, "1:7,53");
         assert_eq!(finding.line, None, "the hex is nobody's line");
         assert_eq!(
             finding.unit_id, None,
             "it is the hex's problem, not one unit's"
         );
+    }
+
+    /// A guard that sails away drops the guard exactly as one that marches - SAIL with a route is
+    /// a move to the intents reader, so `leaves_the_hex` agrees with the order tracer.
+    #[test]
+    fn a_guard_that_sails_away_drops_the_guard_like_one_that_marches() {
+        let mut guarding = unit("5");
+        guarding.on_guard = true;
+
+        let finding = only(check(vec![region(vec![guarding])], "unit 5\nSAIL N\n"));
+        assert_eq!(finding.code.as_str(), "guard-dropped");
     }
 
     #[test]
@@ -1741,7 +1792,7 @@ mod tests {
             Some(&ruleset()),
             options,
         ));
-        assert_eq!(finding.code, "hex-unguarded");
+        assert_eq!(finding.code.as_str(), "hex-unguarded");
     }
 
     /// One hex, one guard problem. Reported as the change it is, not also as the state it leaves.
@@ -1793,7 +1844,7 @@ mod tests {
             "unit 500\nTEACH 700\nunit 700\nWORK\n",
         ));
 
-        assert_eq!(finding.code, "taught-not-studying");
+        assert_eq!(finding.code.as_str(), "taught-not-studying");
         assert_eq!(
             finding.unit_id.as_deref(),
             Some("500"),
@@ -1848,7 +1899,7 @@ mod tests {
             vec![region(units)],
             "unit 500\nTEACH 700\nunit 700\nSTUDY combat\n",
         ));
-        assert_eq!(finding.code, "teacher-cannot-teach");
+        assert_eq!(finding.code.as_str(), "teacher-cannot-teach");
         assert!(finding.message.contains("level"), "{}", finding.message);
     }
 
@@ -1879,7 +1930,7 @@ mod tests {
 
         // Unit 500 has been given nothing to do, so its month is free to teach in.
         let finding = only(check(vec![region(units)], "unit 700\nSTUDY combat\n"));
-        assert_eq!(finding.code, "teacher-has-free-slots");
+        assert_eq!(finding.code.as_str(), "teacher-has-free-slots");
         assert_eq!(finding.unit_id.as_deref(), Some("500"));
         assert!(
             finding.message.contains("700") && finding.message.contains("30"),
@@ -1924,7 +1975,7 @@ mod tests {
             vec![region(units)],
             "unit 700\nSTUDY combat\nunit 800\nSTUDY combat\nunit 900\nSTUDY combat\n",
         ));
-        assert_eq!(finding.code, "teacher-has-free-slots");
+        assert_eq!(finding.code.as_str(), "teacher-has-free-slots");
         assert!(
             finding.message.contains("2 others"),
             "the rest are counted rather than listed: {}",
@@ -1962,7 +2013,7 @@ mod tests {
             vec![region(units)],
             "unit 500\nTEACH 700\nunit 700\nSTUDY combat\n",
         ));
-        assert_eq!(finding.code, "teaching-oversubscribed");
+        assert_eq!(finding.code.as_str(), "teaching-oversubscribed");
         assert!(
             finding.message.contains("20") && finding.message.contains("10"),
             "it names the students and the slots: {}",
@@ -1994,9 +2045,9 @@ mod tests {
     // --- disabling advisory checks -------------------------------------------------------------
 
     /// The runtime default (`hex-unguarded` off, everything else on) plus one more code disabled.
-    fn disabling(code: &str) -> CheckOptions {
+    fn disabling(code: Code) -> CheckOptions {
         let mut options = CheckOptions::default();
-        options.disabled.insert(code.to_string());
+        options.disabled.insert(code.as_str().to_string());
         options
     }
 
@@ -2016,7 +2067,7 @@ mod tests {
             with_men(with_silver(unit("700"), 1000), 20),
         ];
 
-        let cases: Vec<(&str, Vec<ReportRegion>, &str)> = vec![
+        let cases: Vec<(Code, Vec<ReportRegion>, &str)> = vec![
             (
                 codes::NOT_ENOUGH_SILVER,
                 vec![region(vec![with_silver(unit("5"), 40)])],
@@ -2082,7 +2133,7 @@ mod tests {
                 },
             );
             assert!(
-                codes(&enabled).contains(code),
+                codes(&enabled).contains(&code.as_str()),
                 "{code}'s own fixture should emit it when nothing is disabled: {enabled:?}"
             );
 
@@ -2090,10 +2141,10 @@ mod tests {
                 &report(regions.clone()),
                 orders,
                 Some(&ruleset()),
-                disabling(code),
+                disabling(*code),
             );
             assert!(
-                !codes(&silenced).contains(code),
+                !codes(&silenced).contains(&code.as_str()),
                 "{code} should be silenced once disabled: {silenced:?}"
             );
         }

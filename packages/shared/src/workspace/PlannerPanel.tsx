@@ -131,13 +131,6 @@ export function describeEstimate(steps: RouteStep[]): string | null {
   return `${guessed} of these hexes ${guessed === 1 ? "is" : "are"} unexplored: the terrain, the cost and whatever stands there are guesses, and one of them may be sea.`;
 }
 
-/** The order a route becomes, as the game writes it - SAIL for a fleet, MOVE for everyone else. */
-export function routeAsOrder(answer: RoutePlanResponse): string {
-  const steps = answer.plan?.steps ?? [];
-  const command = answer.plan?.mode === "sail" ? "SAIL" : "MOVE";
-  return `${command} ${steps.map((step) => abbreviateDirection(step.direction)).join(" ")}`;
-}
-
 function Route({
   answer,
   onApply
@@ -151,7 +144,7 @@ function Route({
   }
 
   const months = plan.months.length;
-  const order = routeAsOrder(answer);
+  const order = plan.order;
   const estimate = describeEstimate(plan.steps);
 
   return (

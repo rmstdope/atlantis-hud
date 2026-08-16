@@ -207,11 +207,13 @@ fn read_order(command: &Token, arguments: &[Token]) -> Option<Intent> {
         // unit's month is spoken for.
         "BUILD" => Some(Intent::MonthLong("BUILD")),
         "PRODUCE" => Some(Intent::MonthLong("PRODUCE")),
-        "SAIL" => Some(Intent::MonthLong("SAIL")),
+        // A bare SAIL - the form the turn 71 template uses - spends the month but names no step
+        // this reader can follow. With a route it is a move like any other, and is read below.
+        "SAIL" if arguments.is_empty() => Some(Intent::MonthLong("SAIL")),
         // Not every spell takes a month, but the rules make no promise about which, and a mage
         // offered as somebody's spare teacher is worse than one left alone.
         "CAST" => Some(Intent::MonthLong("CAST")),
-        "MOVE" | "ADVANCE" => Some(Intent::Move {
+        word if crate::movement::orders::is_movement_command(word) => Some(Intent::Move {
             steps: forms::read_move_line(command, arguments)?,
         }),
         _ => None,
@@ -545,6 +547,26 @@ mod tests {
                     .expect("the planner reads this")
             }]
         );
+    }
+
+    /// SAIL with a route is a move like any other - the tracer already draws it leaving, and the
+    /// advisory checks (`semantics::leaves_the_hex`) now agree.
+    #[test]
+    fn a_sail_with_a_route_moves_the_unit_as_a_move_does() {
+        assert_eq!(
+            intents("unit 5\nSAIL N\n"),
+            vec![Intent::Move {
+                steps: crate::movement::orders::parse_move("SAIL N")
+                    .expect("the planner reads this")
+            }]
+        );
+    }
+
+    /// A bare SAIL - the form the turn 71 template uses - names no step this reader can follow, and
+    /// still spends the whole month.
+    #[test]
+    fn a_bare_sail_still_spends_the_month() {
+        assert_eq!(intents("unit 5\nSAIL\n"), vec![Intent::MonthLong("SAIL")]);
     }
 
     /// A TURN block's contents are next month's orders, not this month's. Reading them as though
