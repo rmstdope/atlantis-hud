@@ -1,7 +1,15 @@
 import type { GameManifest, OpenedGame } from "@atlantis/core-client";
 import { describe, expect, it, vi } from "vitest";
 import type { GameClient } from "./gameActions";
-import { changeRuleset, createGame, deleteGame, importGameBackup, openGame } from "./gameActions";
+import {
+  changeRuleset,
+  createGame,
+  deleteGame,
+  importGameBackup,
+  importGameBackupAsCopy,
+  openGame,
+  replaceGameWithBackup
+} from "./gameActions";
 
 // A second ruleset this build "ships" only for this test, so `changeRuleset`'s actual move can be
 // exercised - `rulesets.ts` ships exactly one ruleset otherwise, which cannot tell "known and
@@ -104,6 +112,160 @@ describe("importing a game backup", () => {
     expect(client.importGame).toHaveBeenCalledWith("{\"backup\":true}", NOW);
     expect(result.opened.manifest.metadata.gameId).toBe("imported");
     expect(result.games).toEqual([manifest("imported", NOW)]);
+  });
+});
+
+function alphaBackupJson(): string {
+  return JSON.stringify({
+    format: "atlantis-hud-game-backup",
+    version: 1,
+    manifest: {
+      manifestVersion: 1,
+      metadata: { gameId: "alpha", gameName: "Alpha game", rulesetId: "neworigins" },
+      reportSources: [],
+      createdAt: "2026-08-01T09:00:00Z",
+      lastOpenedAt: NOW
+    },
+    exportedAt: NOW,
+    importedTurns: [],
+    orderDrafts: [],
+    regionSightings: [],
+    mergedReports: [],
+    hexNotes: []
+  });
+}
+
+describe("importing a game backup as a copy", () => {
+  it("imports under a fresh id with the imported suffix, and returns the opened game and the refreshed list", async () => {
+    const client = fakeClient({
+      importGame: vi.fn().mockResolvedValue(opened("copy-id")),
+      listGames: vi.fn().mockResolvedValue([manifest("copy-id", NOW)])
+    });
+
+    const result = await importGameBackupAsCopy(client, alphaBackupJson(), NOW);
+
+    expect(client.importGame).toHaveBeenCalledTimes(1);
+    const [passedJson, passedNow] = vi.mocked(client.importGame).mock.calls[0];
+    const passed = JSON.parse(passedJson as string);
+    expect(passed.manifest.metadata.gameId).not.toBe("alpha");
+    expect(passed.manifest.metadata.gameName).toBe("Alpha game (imported)");
+    expect(passedNow).toBe(NOW);
+    expect(result.opened.manifest.metadata.gameId).toBe("copy-id");
+    expect(result.games).toEqual([manifest("copy-id", NOW)]);
+  });
+});
+
+describe("replacing a game with its backup", () => {
+  it("when the game named in the backup is the open one: discards the draft, snapshots, deletes, imports, in that order", async () => {
+    const calls: string[] = [];
+    const client = fakeClient({
+      exportGame: vi.fn().mockImplementation(async (gameId: string) => {
+        calls.push(`exportGame(${gameId})`);
+        return "snapshot-json";
+      }),
+      deleteGame: vi.fn().mockImplementation(async (gameId: string) => {
+        calls.push(`deleteGame(${gameId})`);
+      }),
+      importGame: vi.fn().mockImplementation(async (json: string) => {
+        calls.push(`importGame(${json})`);
+        return opened("alpha");
+      }),
+      listGames: vi.fn().mockImplementation(async () => {
+        calls.push("listGames");
+        return [manifest("alpha", NOW)];
+      })
+    });
+    const flush = vi.fn(async () => {
+      calls.push("flush");
+    });
+    const discardOpenDraft = vi.fn(() => {
+      calls.push("discardOpenDraft");
+    });
+
+    const result = await replaceGameWithBackup(client, alphaBackupJson(), "alpha", NOW, {
+      flush,
+      discardOpenDraft
+    });
+
+    expect(discardOpenDraft).toHaveBeenCalledTimes(1);
+    expect(flush).not.toHaveBeenCalled();
+    expect(calls).toEqual([
+      "discardOpenDraft",
+      "exportGame(alpha)",
+      "deleteGame(alpha)",
+      `importGame(${alphaBackupJson()})`,
+      "listGames"
+    ]);
+    expect(result.opened.manifest.metadata.gameId).toBe("alpha");
+    expect(result.games).toEqual([manifest("alpha", NOW)]);
+  });
+
+  it("when the game named in the backup is some other game: flushes rather than discarding", async () => {
+    const client = fakeClient({
+      exportGame: vi.fn().mockResolvedValue("snapshot-json"),
+      deleteGame: vi.fn().mockResolvedValue(undefined),
+      importGame: vi.fn().mockResolvedValue(opened("alpha")),
+      listGames: vi.fn().mockResolvedValue([manifest("alpha", NOW)])
+    });
+    const flush = vi.fn(async () => {});
+    const discardOpenDraft = vi.fn();
+
+    await replaceGameWithBackup(client, alphaBackupJson(), "beta", NOW, { flush, discardOpenDraft });
+
+    expect(flush).toHaveBeenCalledTimes(1);
+    expect(discardOpenDraft).not.toHaveBeenCalled();
+    expect(client.exportGame).toHaveBeenCalledWith("alpha", NOW);
+    expect(client.deleteGame).toHaveBeenCalledWith("alpha");
+  });
+
+  it("restores the snapshot and rethrows when the import of the backup itself fails", async () => {
+    const calls: string[] = [];
+    const client = fakeClient({
+      exportGame: vi.fn().mockImplementation(async () => {
+        calls.push("exportGame");
+        return "snapshot-json";
+      }),
+      deleteGame: vi.fn().mockImplementation(async () => {
+        calls.push("deleteGame");
+      }),
+      importGame: vi
+        .fn()
+        .mockImplementationOnce(async () => {
+          calls.push("importGame(backup)");
+          throw new Error("core refused the backup");
+        })
+        .mockImplementationOnce(async (json: string) => {
+          calls.push(`importGame(${json})`);
+          return opened("alpha");
+        })
+    });
+    const flush = vi.fn(async () => {});
+    const discardOpenDraft = vi.fn();
+
+    await expect(
+      replaceGameWithBackup(client, alphaBackupJson(), "beta", NOW, { flush, discardOpenDraft })
+    ).rejects.toThrow("core refused the backup");
+
+    expect(calls).toEqual(["exportGame", "deleteGame", "importGame(backup)", "importGame(snapshot-json)"]);
+  });
+
+  it("when the backup does not name a known game (backupGameIdentity is null): imports as-is without exporting or deleting anything", async () => {
+    const client = fakeClient({
+      importGame: vi.fn().mockResolvedValue(opened("whatever")),
+      listGames: vi.fn().mockResolvedValue([manifest("whatever", NOW)])
+    });
+    const flush = vi.fn(async () => {});
+    const discardOpenDraft = vi.fn();
+
+    const result = await replaceGameWithBackup(client, "not json", "beta", NOW, {
+      flush,
+      discardOpenDraft
+    });
+
+    expect(client.exportGame).not.toHaveBeenCalled();
+    expect(client.deleteGame).not.toHaveBeenCalled();
+    expect(client.importGame).toHaveBeenCalledWith("not json", NOW);
+    expect(result.opened.manifest.metadata.gameId).toBe("whatever");
   });
 });
 

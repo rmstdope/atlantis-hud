@@ -9,6 +9,7 @@
 
 import type { CoreClient, MapExportContent } from "@atlantis/core-client";
 import type { TextFileSaver } from "../downloadFile";
+import { backupFileName } from "../gameBackup";
 import { exportFileName, exportRequestOf } from "../mapExport";
 import { ordersExportText } from "./ordersExport";
 import type { MapRect } from "./mapMarquee";
@@ -43,16 +44,18 @@ export async function deliverOrdersExport(
  * React state or hooks, pulled out the same way `deliverOrdersExport` was so it can be tested
  * without rendering the shell.
  *
+ * The file is named after the game (`backupFileName`, ah-c0m) rather than its id, so a player
+ * looking at their downloads can tell backups apart without opening one.
+ *
  * Resolves with the path written, `""` for a browser download, or `null` when the player cancelled
  * the save - the caller uses that to decide whether the picker may claim the export happened.
  */
 export async function deliverGameBackupExport(
   saveTextFile: TextFileSaver,
-  gameId: string,
+  gameName: string,
   backup: string
 ): Promise<string | null> {
-  const fileName = `${gameId}.atlantis-hud-game.json`;
-  return saveTextFile(fileName, backup, "application/json");
+  return saveTextFile(backupFileName(gameName), backup, "application/json");
 }
 
 /**
