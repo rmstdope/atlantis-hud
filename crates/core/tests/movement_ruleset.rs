@@ -4,7 +4,9 @@
 //! disagreement means either the core stopped understanding the file or the file stopped saying
 //! what the game says. Both are worth a failing test.
 
-use atlantis_hud_core::movement::rules::{ItemKind, MovementMode, Ruleset, RulesetError};
+use atlantis_hud_core::movement::rules::{
+    CastInput, ItemKind, MovementMode, Ruleset, RulesetError,
+};
 
 const RULESET: &str = atlantis_hud_fixtures::RULESET_JSON;
 
@@ -337,6 +339,104 @@ fn cost_of(ruleset: &Ruleset, text: &str) -> Option<i64> {
     ruleset.find_skill(text).and_then(|skill| skill.cost)
 }
 
+/// What CASTing a skill consumes, as ah-dbb.2 will charge it against. Most spells state no cost at
+/// all, which is why `cast` is `Option` rather than an always-present, possibly-empty list.
+#[test]
+fn reads_what_a_cast_consumes() {
+    let ruleset = ruleset();
+
+    let crri = ruleset
+        .find_skill("CRRI")
+        .expect("CRRI is in the catalogue");
+    let cast = crri.cast.as_ref().expect("CRRI has a casting cost");
+    assert_eq!(
+        cast.costs,
+        vec![CastInput {
+            tag: "SILV".into(),
+            amount: 600
+        }]
+    );
+    assert!(cast.transmute.is_empty());
+
+    let eswo = ruleset
+        .find_skill("ESWO")
+        .expect("ESWO is in the catalogue");
+    assert_eq!(
+        eswo.cast.as_ref().expect("ESWO has a casting cost").costs,
+        vec![CastInput {
+            tag: "SWOR".into(),
+            amount: 1
+        }]
+    );
+
+    let swin = ruleset
+        .find_skill("SWIN")
+        .expect("SWIN is in the catalogue");
+    assert_eq!(
+        swin.cast.as_ref().expect("SWIN has a casting cost").costs,
+        vec![
+            CastInput {
+                tag: "FLOA".into(),
+                amount: 75
+            },
+            CastInput {
+                tag: "IRWD".into(),
+                amount: 75
+            }
+        ]
+    );
+
+    let cgat = ruleset
+        .find_skill("CGAT")
+        .expect("CGAT is in the catalogue");
+    assert_eq!(
+        cgat.cast.as_ref().expect("CGAT has a casting cost").costs,
+        vec![CastInput {
+            tag: "SILV".into(),
+            amount: 1000
+        }]
+    );
+
+    let trns = ruleset
+        .find_skill("TRNS")
+        .expect("TRNS is in the catalogue");
+    let trns_cast = trns.cast.as_ref().expect("TRNS has a casting cost");
+    assert_eq!(
+        trns_cast.transmute.get("ROOT").map(String::as_str),
+        Some("STON")
+    );
+    assert_eq!(
+        trns_cast.transmute.get("MITH").map(String::as_str),
+        Some("IRON")
+    );
+
+    let fire = ruleset
+        .find_skill("FIRE")
+        .expect("FIRE is in the catalogue");
+    assert!(fire.cast.is_none());
+}
+
+/// A ruleset from before casting costs were scraped must still load: the shell serves whatever
+/// file is deployed, and a skill entry that predates the field is not malformed for lacking it.
+#[test]
+fn a_skill_entry_without_a_cast_block_still_loads() {
+    let mut value: serde_json::Value = serde_json::from_str(RULESET).expect("the ruleset is JSON");
+    value["skills"]["MINI"]
+        .as_object_mut()
+        .expect("MINI is a skill entry")
+        .remove("cast")
+        .expect("the committed entry has a cast field");
+    let stripped = serde_json::to_string(&value).expect("it serialises back");
+
+    let ruleset = Ruleset::from_json(&stripped).expect("a skill entry without cast should load");
+    assert_eq!(
+        ruleset
+            .find_skill("MINI")
+            .and_then(|skill| skill.cast.as_ref()),
+        None
+    );
+}
+
 /// A player writes a skill the way they like: `STUDY obse`, `STUDY COMBAT`, `STUDY herb_lore`. The
 /// abbreviation is the tag, and a name with a space in it comes quoted or underscored.
 #[test]
@@ -412,13 +512,14 @@ fn a_ruleset_without_a_skill_catalogue_still_loads() {
 fn an_unknown_key_anywhere_in_the_file_is_refused() {
     let json: serde_json::Value =
         serde_json::from_str(RULESET).expect("the committed file is JSON");
-    let probes: [&[&str]; 6] = [
+    let probes: [&[&str]; 7] = [
         &["source"],
         &["movement", "provenance"],
         &["risk"],
         &["gaps", "weather"],
         &["items", "HORS"],
         &["skills", "COMB"],
+        &["skills", "CRRI", "cast"],
     ];
     for path in probes {
         let mut value = json.clone();

@@ -433,4 +433,75 @@ describe("parseSkillReference", () => {
       RulesetScrapeError
     );
   });
+
+  /**
+   * What CASTing the skill consumes, read from the same "via magic at a cost of ..." / "the
+   * attempt costs ..." / "may transmute ... into ..." sentences ah-dbb.2 will charge against. Most
+   * skills a mage can CAST state no cost at all, which is why `cast` is nullable rather than a
+   * bare array.
+   */
+  it("reads a silver casting cost", () => {
+    const skills = parseSkillReference(DATA_HTML);
+
+    // "create ring of invisibility [CRRI] 1: ... via magic at a cost of 600 silver [SILV]."
+    expect(skills.CRRI.cast).toEqual({ costs: [{ tag: "SILV", amount: 600 }], transmute: {} });
+  });
+
+  it("reads an item cost with no number as one", () => {
+    const skills = parseSkillReference(DATA_HTML);
+
+    // "enchant swords [ESWO] 1: ... via magic at a cost of sword [SWOR]."
+    expect(skills.ESWO.cast).toEqual({ costs: [{ tag: "SWOR", amount: 1 }], transmute: {} });
+  });
+
+  it("reads several inputs joined by and, stated on a later level", () => {
+    const skills = parseSkillReference(DATA_HTML);
+
+    // "summon wind [SWIN] 3: ... via magic at a cost of 75 floater hides [FLOA] and 75 ironwood
+    //  [IRWD]." - the cost is on level 3, not level 1, and the fold has to keep it.
+    expect(skills.SWIN.cast).toEqual({
+      costs: [
+        { tag: "FLOA", amount: 75 },
+        { tag: "IRWD", amount: 75 }
+      ],
+      transmute: {}
+    });
+  });
+
+  it("reads the attempt cost of construct gate", () => {
+    const skills = parseSkillReference(DATA_HTML);
+
+    // "construct gate [CGAT] 1: ... the attempt costs 1000 silver."
+    expect(skills.CGAT.cast).toEqual({ costs: [{ tag: "SILV", amount: 1000 }], transmute: {} });
+  });
+
+  it("reads what transmutation turns into what, across levels", () => {
+    const skills = parseSkillReference(DATA_HTML);
+
+    // Level 1: stone -> rootstone, iron -> mithril. Level 2: wood -> ironwood. Level 3: furs ->
+    // floater hide. The fold has to union across levels, not keep only the first.
+    expect(skills.TRNS.cast?.transmute).toMatchObject({
+      ROOT: "STON",
+      MITH: "IRON",
+      IRWD: "WOOD",
+      FLOA: "FUR"
+    });
+    expect(skills.TRNS.cast?.costs).toEqual([]);
+  });
+
+  it("records no casting cost for a spell the page prices nowhere", () => {
+    const skills = parseSkillReference(DATA_HTML);
+
+    // "fire [FIRE] 1: A mage with this skill can cast a fireball in battle." - no cost sentence.
+    expect(skills.FIRE.cast).toBeNull();
+  });
+
+  it("fails loudly on a cost it cannot read", () => {
+    const html =
+      "<html><body><pre>broken [BROK] 1: A mage with this skill has a chance to create " +
+      "something via magic at a cost of some things. To use this spell, the mage should CAST " +
+      "Broken.</pre></body></html>";
+
+    expect(() => parseSkillReference(html)).toThrowError(RulesetScrapeError);
+  });
 });

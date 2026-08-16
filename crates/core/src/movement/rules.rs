@@ -263,6 +263,23 @@ pub fn item_spellings(written: &str) -> [Option<&str>; 3] {
     ]
 }
 
+/// One thing a cast consumes: an item tag (`SILV` for silver) and how many.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CastInput {
+    pub tag: String,
+    pub amount: i64,
+}
+
+/// What CASTing a skill consumes, as the data page states it and as ah-dbb.2 charges it: `costs`
+/// once per cast, and for transmutation the output tag -> the source tag it is made from.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CastCost {
+    pub costs: Vec<CastInput>,
+    pub transmute: BTreeMap<String, String>,
+}
+
 /// A skill, and what a month of studying it costs.
 ///
 /// Separate from the item catalogue rather than merged into it, because ten tags mean one thing as
@@ -277,6 +294,10 @@ pub struct SkillEntry {
     pub cost: Option<i64>,
     /// How far the page says the skill goes.
     pub max_level: u32,
+    /// What CASTing this skill consumes. Absent for a ruleset generated before casting costs were
+    /// scraped, and for the (large majority of) skills the page states no cost for.
+    #[serde(default)]
+    pub cast: Option<CastCost>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

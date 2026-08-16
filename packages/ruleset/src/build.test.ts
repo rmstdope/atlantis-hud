@@ -48,6 +48,16 @@ describe("buildRuleset", () => {
   });
 
   /**
+   * What ah-dbb.2 will charge against: what CASTing a skill consumes, as the data page states it.
+   */
+  it("carries what casting a skill costs", () => {
+    const ruleset = built();
+
+    expect(ruleset.skills.CRRI.cast).toEqual({ costs: [{ tag: "SILV", amount: 600 }], transmute: {} });
+    expect(ruleset.skills.FIRE.cast).toBeNull();
+  });
+
+  /**
    * The risk thresholds are ours, not the game's. Mixing them into a file whose whole point is
    * that it mirrors the server would be dishonest unless they say so on their face.
    */
