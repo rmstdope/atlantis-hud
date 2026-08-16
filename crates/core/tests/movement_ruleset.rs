@@ -403,3 +403,39 @@ fn a_ruleset_without_a_skill_catalogue_still_loads() {
     assert_eq!(ruleset.movement_points(MovementMode::Walk), 2);
     assert!(ruleset.find_skill("MINI").is_none());
 }
+
+/// Every struct in the file refuses a key it does not know, so a field the scraper starts writing
+/// cannot be silently dropped on the way into the core - the file that carries it fails to load
+/// until the core has a home for it. Probed at each depth the file has, since `deny_unknown_fields`
+/// is per struct and one forgotten struct is a hole.
+#[test]
+fn an_unknown_key_anywhere_in_the_file_is_refused() {
+    let json: serde_json::Value =
+        serde_json::from_str(RULESET).expect("the committed file is JSON");
+    let probes: [&[&str]; 6] = [
+        &["source"],
+        &["movement", "provenance"],
+        &["risk"],
+        &["gaps", "weather"],
+        &["items", "HORS"],
+        &["skills", "COMB"],
+    ];
+    for path in probes {
+        let mut value = json.clone();
+        let mut node = &mut value;
+        for key in path {
+            node = node
+                .get_mut(*key)
+                .unwrap_or_else(|| panic!("{path:?} exists in the file"));
+        }
+        node["notAField"] = serde_json::json!(1);
+        let error = Ruleset::from_json(&value.to_string())
+            .expect_err(&format!("{path:?} must refuse an unknown key"));
+        assert!(
+            matches!(error, RulesetError::Malformed(ref detail) if detail.contains("notAField")),
+            "{error}"
+        );
+    }
+    // And the file as committed still loads - the probes above must not have been the reason.
+    Ruleset::from_json(RULESET).expect("the committed file loads");
+}
