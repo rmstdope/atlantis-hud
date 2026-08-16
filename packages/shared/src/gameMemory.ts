@@ -190,11 +190,15 @@ export async function readMemory(
     return { remembered, knownMap: map.knownMap, merged, warning: map.warning };
   } catch (error: unknown) {
     const map = await knownMapFor(client, rawReport, rulesetJson, []);
+    const memoryWarning = `the turn could not be remembered: ${detail(error)}`;
     return {
       remembered: [],
       knownMap: map.knownMap,
       merged: [],
-      warning: `the turn could not be remembered: ${detail(error)}`
+      // Both can fail independently - the memory read and the map resolved from what little (or
+      // nothing) is left of it - and a message naming only one would hide the other, especially
+      // when the map ends up empty too.
+      warning: map.warning !== null ? `${memoryWarning}; ${map.warning}` : memoryWarning
     };
   }
 }

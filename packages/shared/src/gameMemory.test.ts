@@ -285,6 +285,24 @@ describe("reading a faction's memory back", () => {
     expect(memory.remembered).toEqual([]);
   });
 
+  /**
+   * The memory read and the map resolved from what is left of it can fail independently. A message
+   * naming only the first would hide the second, especially when the map ends up empty too (review
+   * of PR #313).
+   */
+  it("names both failures when the map also will not resolve after the memory read failed", async () => {
+    const core = client({
+      loadRegionSightings: vi.fn().mockRejectedValue(new Error("database is locked")),
+      knownMap: vi.fn().mockRejectedValue(new Error("the report will not parse"))
+    });
+
+    const memory = await readMemory(core, OPEN_GAME, "95", 71, "raw text", RULESET);
+
+    expect(memory.warning).toContain("database is locked");
+    expect(memory.warning).toContain("the report will not parse");
+    expect(memory.knownMap).toBeNull();
+  });
+
   /** Nothing on screen to hang a merge chip off, so there is no turn to ask about. */
   it("asks for nobody's merges when the turn is unknown", async () => {
     const core = client();

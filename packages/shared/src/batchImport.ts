@@ -13,7 +13,7 @@
  */
 
 import type { CoreClient, OpenedGame, ParsedReport } from "@atlantis/core-client";
-import { commitTurn, mergeTurn } from "./gameMemory";
+import { commitTurn } from "./gameMemory";
 import {
   planReportBatch,
   type BatchCandidate,
@@ -191,18 +191,20 @@ export async function walkBatch(
         // account of a moment can be merged into. `viewerFactionId` is non-null here even though the
         // parameter type is not: `planReportBatch` never raises a step, own or ally, unless
         // `viewer.factionId` is non-null, so a "merge" step is proof of it.
-        // The known map this resolves is discarded here - the walk reads it back once at the end
-        // (`runBatch`'s `readMemory` call), not after every merged step - so there is no report on
-        // screen yet worth resolving against.
-        await mergeTurn(
-          client,
-          game,
+        //
+        // Calls `client.mergeReport` directly rather than `mergeTurn`: the walk reads the map back
+        // once at the end (`runBatch`'s `readMemory` call), not after every merged step, so
+        // `mergeTurn`'s sightings readback and known-map resolution here would be wasted work - and
+        // worse, a readback failure after a merge that itself succeeded would mark a landed step as
+        // failed (review of ah-u4e.3, PR #313).
+        await client.mergeReport(
+          game.databasePath,
+          game.manifest.metadata.gameId,
           viewerFactionId as string,
           step.turnNumber,
           source.text,
           rulesetText,
-          now(),
-          ""
+          now()
         );
       }
     } catch (error) {
