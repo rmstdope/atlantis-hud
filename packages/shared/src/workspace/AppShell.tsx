@@ -2081,7 +2081,8 @@ export function AppShell({
     const summaries = await runReported(
       () => listComparableTurns(client, game.databasePath, gameId, factionId),
       (message) => {
-        // Nothing to pick from, so nothing to show: same exit as a comparison that would not load.
+        // Nothing to pick from: closes the picker and reports the failure on the status line,
+        // same exit as a comparison that would not load.
         setStatus(failedStatus(message));
         setTurnPickerOpen(false);
       },
