@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ah-1uj — warning when a skill is already at its maximum</title>
+<style>
+  :root { --page:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --ink:#dbe3ec;
+          --soft:#a3b0c0; --dim:#8a97a8; --select:#4a9fd8; --ground:#10151c;
+          --warn:#d9a441; --danger:#d97070; --good:#7fb069; }
+  body { background: var(--page); color: var(--ink); font: 14px/1.55 system-ui, sans-serif;
+         margin: 0; padding: 24px 32px 80px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  h2.sec { font-size: 16px; margin: 30px 0 6px; border-top: 1px solid var(--edge); padding-top: 16px; }
+  p.note { color: var(--dim); max-width: 88ch; }
+  p.lead { color: var(--soft); max-width: 88ch; }
+  .row { display: flex; gap: 22px; flex-wrap: wrap; align-items: flex-start; margin: 10px 0 4px; }
+  .cap { font-size: 11px; color: var(--dim); margin: 0 0 4px; }
+  .cap b { color: var(--ink); font-weight: 600; }
+  .ed { width: 340px; background: var(--panel); border: 1px solid var(--edge); border-radius: 4px;
+        font: 11.5px/1.5 ui-monospace, Menlo, monospace; padding: 4px 0; }
+  .ln { display: flex; height: 17px; align-items: center; white-space: pre; }
+  .gut { flex: none; width: 3px; }
+  .gut.warn { background: var(--warn); height: 15px; border-radius: 1px; }
+  .txt { padding-left: 2px; }
+  .wavy { text-decoration: underline wavy var(--warn); text-decoration-skip-ink: none;
+          text-underline-offset: 3px; }
+  .diag { border-top: 1px solid var(--edge); color: var(--warn); font-size: 10.5px; padding: 3px 6px;
+          white-space: normal; line-height: 1.45; }
+  .set { width: 380px; background: var(--panel); border: 1px solid var(--edge); border-radius: 6px; }
+  .set-head { padding: 6px 10px; border-bottom: 1px solid var(--edge); font-size: 11px;
+              text-transform: uppercase; letter-spacing: .06em; color: var(--dim); }
+  .set-row { display: flex; gap: 9px; padding: 7px 10px; align-items: flex-start; }
+  .box { width: 13px; height: 13px; border: 1px solid var(--select); border-radius: 3px;
+         background: var(--select); flex: none; margin-top: 2px; position: relative; }
+  .box::after { content: "✓"; position: absolute; inset: 0; color: var(--ground); font-size: 10px;
+                text-align: center; line-height: 13px; }
+  .set-title { font-size: 12.5px; font-weight: 600; }
+  .set-desc { font-size: 11.5px; color: var(--dim); }
+  code { font-family: ui-monospace, Menlo, monospace; color: var(--ink); background: var(--raised);
+         padding: 0 4px; border-radius: 3px; }
+  .banner { background: var(--raised); border: 1px solid var(--edge); border-left: 3px solid var(--warn);
+            padding: 10px 14px; border-radius: 4px; max-width: 92ch; margin: 14px 0; color: var(--soft); }
+</style>
+</head>
+<body>
+
+<h1>ah-1uj — a STUDY order for a skill already at its maximum</h1>
+<p class="lead">The engine says <code>STUDY: Maximum level for skill reached.</code> — eleven times
+across three turns of three games in the fixture corpus. The month's silver is spent and nothing is
+learned. Everything the check needs is already parsed: the skill's <code>maxLevel</code> from the
+ruleset, the unit's current level from the report, and the STUDY order itself.</p>
+<div class="banner" style="border-left-color:#7fb069"><strong>Chosen.</strong> The message reads
+<em>“this unit is already at observation 5, the highest the ruleset has”</em> — naming the skill by
+the ruleset's own name and saying whose maximum it is. Its toggle joins the Warnings tab's existing
+Teaching group, <strong>renamed <em>Studying/Teaching</em></strong>, as <em>Study with nothing to
+learn</em> · “A unit ordered to study a skill it has already taken to the ruleset's maximum.”
+Rejected: the two shorter wordings below, a new <em>Studying</em> group of its own, and filing it
+under the catch-all <em>Orders</em> group. The full interview is in bead ah-1uj's design field.</div>
+
+<div class="banner">This is a <strong>warning</strong>, never blocking, and it stays silent whenever
+it cannot be sure — a skill the ruleset does not know, or a unit whose skill list the report never
+showed. That is the house rule for every semantic check.</div>
+
+<h2 class="sec">Where it appears — the same two places every other warning does</h2>
+<div class="row">
+  <div>
+    <p class="cap"><b>in the orders editor</b>, on the line</p>
+    <div class="ed">
+      <div class="ln"><span class="gut"></span><span class="txt">unit 18642</span></div>
+      <div class="ln"><span class="gut warn"></span><span class="txt">@<span class="wavy">STUDY OBSE</span></span></div>
+      <div class="ln"><span class="gut"></span><span class="txt">WORK</span></div>
+      <div class="diag" id="msg">line 2: this unit is already at observation 5, the highest the ruleset has</div>
+    </div>
+  </div>
+  <div>
+    <p class="cap"><b>in the Warnings tab</b>, where it can be switched off</p>
+    <div class="set">
+      <div class="set-head">Studying</div>
+      <div class="set-row">
+        <span class="box"></span>
+        <span><span class="set-title">Study with nothing to learn</span><br>
+        <span class="set-desc">A unit ordered to study a skill it has already taken to the ruleset's maximum.</span></span>
+      </div>
+    </div>
+    <p class="note">The tab groups by concern — today Teaching, Resources, Guarding, Orders,
+    Sailing. This is the question of whether studying earns a group of its own.</p>
+  </div>
+</div>
+
+<h2 class="sec">Q1 — the message, word for word</h2>
+<p class="lead">The house voice is lowercase, addressed to the player, and names the numbers:
+<em>"this hex is guarded now and will be guarded by nobody next turn"</em>,
+<em>"unit 5 is being taught but has no STUDY order"</em>.</p>
+<div class="row">
+  <div>
+    <p class="cap"><b>A</b> — states the fact, names the ceiling</p>
+    <div class="ed" style="width:360px">
+      <div class="ln"><span class="gut warn"></span><span class="txt">@<span class="wavy">STUDY OBSE</span></span></div>
+      <div class="diag">this unit is already at observation 5, the highest the ruleset has</div>
+    </div>
+  </div>
+  <div>
+    <p class="cap"><b>B</b> — leads with the skill's ceiling</p>
+    <div class="ed" style="width:360px">
+      <div class="ln"><span class="gut warn"></span><span class="txt">@<span class="wavy">STUDY OBSE</span></span></div>
+      <div class="diag">observation stops at level 5 and this unit is already there</div>
+    </div>
+  </div>
+  <div>
+    <p class="cap"><b>C</b> — says what it costs</p>
+    <div class="ed" style="width:360px">
+      <div class="ln"><span class="gut warn"></span><span class="txt">@<span class="wavy">STUDY OBSE</span></span></div>
+      <div class="diag">already at observation 5, the ruleset's maximum: this month buys nothing</div>
+    </div>
+  </div>
+</div>
+<p class="note">All three name the skill by the ruleset's name (<code>observation</code>) rather than
+by the tag the order was written with (<code>OBSE</code>), which is what the other checks do with
+item names.</p>
+
+<h2 class="sec">Q2 — where it sits in the Warnings tab</h2>
+<div class="row">
+  <div>
+    <p class="cap"><b>A</b> — a new <em>Studying</em> group</p>
+    <div class="set" style="width:340px">
+      <div class="set-head">Teaching</div>
+      <div class="set-row"><span class="box"></span><span><span class="set-title">Taught but not studying</span></span></div>
+      <div class="set-head">Studying</div>
+      <div class="set-row"><span class="box"></span><span><span class="set-title">Study with nothing to learn</span><br><span class="set-desc">A unit ordered to study a skill it has already taken to the ruleset's maximum.</span></span></div>
+      <div class="set-head">Resources</div>
+      <div class="set-row"><span class="box"></span><span><span class="set-title">Overdrawn silver</span></span></div>
+    </div>
+    <p class="note">A group of one, next to Teaching where it belongs by subject. Room for the other
+    study checks already in the backlog — the quartermaster allowance, magic outside a building.</p>
+  </div>
+  <div>
+    <p class="cap"><b>B</b> — inside the existing <em>Teaching</em> group</p>
+    <div class="set" style="width:340px">
+      <div class="set-head">Teaching</div>
+      <div class="set-row"><span class="box"></span><span><span class="set-title">Taught but not studying</span></span></div>
+      <div class="set-row"><span class="box"></span><span><span class="set-title">Study with nothing to learn</span><br><span class="set-desc">A unit ordered to study a skill it has already taken to the ruleset's maximum.</span></span></div>
+    </div>
+    <p class="note">No new group. "Teaching" then covers a warning with no teacher in it.</p>
+  </div>
+  <div>
+    <p class="cap"><b>C</b> — the existing <em>Orders</em> group</p>
+    <div class="set" style="width:340px">
+      <div class="set-head">Orders</div>
+      <div class="set-row"><span class="box"></span><span><span class="set-title">Reused FORM numbers</span></span></div>
+      <div class="set-row"><span class="box"></span><span><span class="set-title">Study with nothing to learn</span><br><span class="set-desc">A unit ordered to study a skill it has already taken to the ruleset's maximum.</span></span></div>
+    </div>
+    <p class="note">Where the catch-all already lives. "Orders" says nothing about what the check
+    is, and every warning here is about an order.</p>
+  </div>
+</div>
+
+</body>
+</html>
