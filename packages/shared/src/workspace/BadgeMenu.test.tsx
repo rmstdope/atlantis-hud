@@ -12,7 +12,7 @@ import { allBadges, BADGES } from "./mapThemes/hexView";
  */
 function draw(badges = allBadges(true)): string {
   return renderToStaticMarkup(
-    <BadgeMenu badges={badges} onToggle={() => {}} onSetAll={() => {}} onDismiss={() => {}} />
+    <BadgeMenu badges={badges} onToggle={() => {}} onSetAll={() => {}} />
   );
 }
 

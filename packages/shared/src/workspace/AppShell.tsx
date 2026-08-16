@@ -86,7 +86,7 @@ import type { BackupImportMode } from "../gameBackup";
 import { DEFAULT_LEVEL, useWorkspaceStore } from "../workspaceStore";
 import { useHexNotesStore } from "../hexNotesStore";
 import { useSettingsStore } from "../settingsStore";
-import { AppHeader } from "./AppHeader";
+import { AppHeader, type HeaderPopoverId } from "./AppHeader";
 import { TurnPicker } from "./TurnPicker";
 import { comparisonChipLabel, type ComparisonTurn } from "../turnCompare";
 import { listComparableTurns, pickComparisonTurn } from "../comparisonActions";
@@ -309,7 +309,13 @@ export function AppShell({
   const [gamesLoaded, setGamesLoaded] = useState(false);
   // The map's note pins (ah-o1t.3); the panel reads the same store directly.
   const hexNotes = useHexNotesStore((state) => state.notes);
-  const [pickerOpen, setPickerOpen] = useState(false);
+  /** Which header popover is open - one at a time, by construction. Dialogs keep their own flags. */
+  const [openPopover, setOpenPopover] = useState<HeaderPopoverId | null>(null);
+  /** Closes the named popover if it is the open one, and touches nothing otherwise. */
+  const closePopover = useCallback(
+    (id: HeaderPopoverId) => setOpenPopover((open) => (open === id ? null : open)),
+    []
+  );
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   /**
@@ -346,10 +352,8 @@ export function AppShell({
   const leftRailRef = useRef<HTMLDivElement | null>(null);
   const rightRailRef = useRef<HTMLDivElement | null>(null);
   const [gameError, setGameError] = useState<string | null>(null);
-  // Which of the turn's two lists is being read, and whether either is. Local rather than in the
-  // store, exactly as the game picker is: it is a panel that is open for a moment, not a preference.
-  const [messagesOpen, setMessagesOpen] = useState(false);
-  const [problemsOpen, setProblemsOpen] = useState(false);
+  // Which of the turn's two lists is being read. Local rather than in the store, exactly as the
+  // game picker is: it is a panel that is open for a moment, not a preference.
   const [battlesOpen, setBattlesOpen] = useState(false);
   const [selectedBattleIndex, setSelectedBattleIndex] = useState(0);
   const [messagesTab, setMessagesTab] = useState<TurnMessagesTab>("errors");
@@ -362,8 +366,6 @@ export function AppShell({
   const [pendingOrdersImport, setPendingOrdersImport] = useState<PendingOrdersImport | null>(null);
   const [ordersImportSummary, setOrdersImportSummary] = useState<OrdersImportSummary | null>(null);
   const [mergedReports, setMergedReports] = useState<MergedReportRecord[]>([]);
-  const [mergedOpen, setMergedOpen] = useState(false);
-  const [factionOpen, setFactionOpen] = useState(false);
   // A second, read-only turn held beside the working one (ah-jg6.3), and the picker that chooses
   // it. Plain `useState`, as the panel-open flags above are: a comparison is transient, never
   // persisted, and is cleared the moment the working turn changes underneath it.
@@ -379,7 +381,6 @@ export function AppShell({
   const [comparedOrders, setComparedOrders] = useState<{ turnNumber: number; text: string | null } | null>(
     null
   );
-  const [turnPickerOpen, setTurnPickerOpen] = useState(false);
   const [turnSummaries, setTurnSummaries] = useState<ImportedTurnSummary[]>([]);
   // What a batch of reports did, waiting to be read, and how far it has got while it is running.
   // Both null for a single report: that one still answers for itself through the status line.
@@ -621,9 +622,9 @@ export function AppShell({
       // already the one on screen - which is exactly the case where a second message names a
       // different unit standing beside the first.
       selectUnit(unitId);
-      setMessagesOpen(false);
+      closePopover("messages");
     },
-    [unitRegions, level, setLevel, selectRegion, selectUnit]
+    [unitRegions, level, setLevel, selectRegion, selectUnit, closePopover]
   );
 
   // The player's own units in the report's own order - region by region, units within each -
@@ -764,9 +765,9 @@ export function AppShell({
       actions: [
         { id: "settings", label: "Open settings", run: () => setSettingsOpen(true) },
         // Only where the picker can actually open: on the gate screen it renders nowhere, and
-        // a pickerOpen left true would pop the picker uninvited into the next game.
+        // an openPopover left set would pop the picker uninvited into the next game.
         ...(game
-          ? [{ id: "switch-game", label: "Switch game", run: () => setPickerOpen(true) }]
+          ? [{ id: "switch-game", label: "Switch game", run: () => setOpenPopover("games") }]
           : []),
         {
           id: "toggle-theme",
@@ -846,7 +847,7 @@ export function AppShell({
       // A new working turn redefines the pair: a comparison held against the turn just replaced
       // would go on claiming a relationship to a turn no longer on screen.
       setComparison(null);
-      setTurnPickerOpen(false);
+      closePopover("turns");
       setMemory({ remembered: loaded.remembered, knownMap: loaded.knownMap });
       // Reset from the turn just loaded, never merely added to: a merge belongs to the turn it
       // was made in, so turn 71's allies must not still be claimed on turn 72's map.
@@ -869,7 +870,7 @@ export function AppShell({
         }
       }
     },
-    [clearPlan, selectRegion]
+    [clearPlan, selectRegion, closePopover]
   );
 
   /**
@@ -918,7 +919,7 @@ export function AppShell({
    * gh-208: an older report - own or foreign - must never become the working turn, but it is still
    * committed so the turn-comparison feature (ah-jg6.3/4) can read it later. Never touches
    * `setParsed`, `setRawReport`, `setOrdersDocument`, `setSave`, `clearPlan`, `setRoute`,
-   * `setComparison`, `setTurnPickerOpen` or `selectRegion` - the turn on screen has not changed.
+   * `setComparison`, `closePopover` or `selectRegion` - the turn on screen has not changed.
    * Its own rejection is reported by the enclosing `loadReport`, with the file name.
    */
   const storeReportOnly = useCallback(
@@ -1404,11 +1405,13 @@ export function AppShell({
       setPendingBatch(null);
       setImportSummary(null);
       setMergedReports([]);
-      setMergedOpen(false);
+      // A game switch closes whatever header popover is open: today the faction/messages/problems
+      // flags survived a switch and could pop back uninvited on the next load; closing all is the
+      // rule the merged/turn-picker closes above were reaching for.
+      setOpenPopover(null);
       // A new game redefines what there is to compare, and the comparison held so far names a
       // turn in the database being left.
       setComparison(null);
-      setTurnPickerOpen(false);
       setTurnSummaries([]);
       // The game, the level, the selected hex and the pending viewport all land in one `set` -
       // `openGame` reads the saved record itself, so no render sees a new game over an old view or
@@ -1450,7 +1453,7 @@ export function AppShell({
         const outcome = await openGameAction(client, gameId, new Date().toISOString());
         enterGame(outcome.opened);
         setGames(outcome.games);
-        setPickerOpen(false);
+        closePopover("games");
       }),
     [client, enterGame, flush, runGameAction]
   );
@@ -1517,7 +1520,7 @@ export function AppShell({
         const outcome = await createGameAction(client, name, rulesetId, now);
         enterGame(outcome.opened);
         setGames(outcome.games);
-        setPickerOpen(false);
+        closePopover("games");
       }),
     [client, enterGame, flush, runGameAction]
   );
@@ -1585,7 +1588,7 @@ export function AppShell({
             closeGameInStore();
           }
         }
-        setPickerOpen(false);
+        closePopover("games");
       }),
     [client, closeGameInStore, enterGame, game, runGameAction, writer]
   );
@@ -1602,7 +1605,7 @@ export function AppShell({
           // rather than claiming an export that never happened.
           return;
         }
-        setPickerOpen(false);
+        closePopover("games");
       }),
     [client, flush, games, runGameAction, saveTextFile]
   );
@@ -1628,7 +1631,7 @@ export function AppShell({
         }
         enterGame(outcome.opened);
         setGames(outcome.games);
-        setPickerOpen(false);
+        closePopover("games");
         setSettingsOpen(false);
       }, `could not import ${file.name}`),
     [client, enterGame, flush, game, runGameAction, writer]
@@ -2063,35 +2066,45 @@ export function AppShell({
       : `${parsed.header.turnNumber} · ${parsed.header.month}, Year ${parsed.header.year}`;
 
   /**
-   * Opens or closes the turn picker, fetching the turns it lists only on the way open - a list
-   * nobody asked to see is a database read this workspace does not need to make on every report
-   * load, and closing the picker is not a reason to make it either.
+   * Opens (or closes) a header popover - closing whichever else was open, since only one is ever
+   * shown at a time.
    *
-   * A listing that fails closes the picker and warns, because an open picker over a stale list
-   * would claim turns that may be gone (ah-k6i.1).
+   * Two popovers need more than the plain open/close every other one gets: opening the messages
+   * panel lands on whichever list has something in it, and opening the turn picker fetches the
+   * turns it lists - a list nobody asked to see is a database read this workspace does not need to
+   * make on every report load, and closing the picker is not a reason to make it either. A listing
+   * that fails closes the picker and warns, because an open picker over a stale list would claim
+   * turns that may be gone (ah-k6i.1).
    */
-  const handleOpenTurnPicker = useCallback(async () => {
-    const opening = !turnPickerOpen;
-    setTurnPickerOpen(opening);
-    if (!opening || !game || !parsed?.header.factionId) {
-      return;
-    }
-    const gameId = game.manifest.metadata.gameId;
-    const factionId = parsed.header.factionId;
-    const summaries = await runReported(
-      () => listComparableTurns(client, game.databasePath, gameId, factionId),
-      (message) => {
-        // Nothing to pick from: closes the picker and reports the failure on the status line,
-        // same exit as a comparison that would not load.
-        setStatus(failedStatus(message));
-        setTurnPickerOpen(false);
-      },
-      { prefix: "could not list the turns to compare" }
-    );
-    if (summaries !== undefined) {
-      setTurnSummaries(summaries);
-    }
-  }, [client, game, parsed, turnPickerOpen]);
+  const handleOpenPopover = useCallback(
+    async (id: HeaderPopoverId | null) => {
+      if (id === "messages") {
+        // Opening lands on the list that has something in it (unchanged rule, was inline in the
+        // toggle).
+        setMessagesTab(messages && messages.errors.length > 0 ? "errors" : "events");
+      }
+      setOpenPopover(id);
+      if (id !== "turns" || !game || !parsed?.header.factionId) {
+        return;
+      }
+      const gameId = game.manifest.metadata.gameId;
+      const factionId = parsed.header.factionId;
+      const summaries = await runReported(
+        () => listComparableTurns(client, game.databasePath, gameId, factionId),
+        (message) => {
+          // Nothing to pick from: closes the picker and reports the failure on the status line,
+          // same exit as a comparison that would not load.
+          setStatus(failedStatus(message));
+          closePopover("turns");
+        },
+        { prefix: "could not list the turns to compare" }
+      );
+      if (summaries !== undefined) {
+        setTurnSummaries(summaries);
+      }
+    },
+    [client, game, parsed, messages, closePopover]
+  );
 
   /**
    * Starts, switches or stops comparing against the clicked turn.
@@ -2110,7 +2123,7 @@ export function AppShell({
       const workingTurn = parsed?.header.turnNumber ?? null;
       const reportComparisonFailure = (message: string) => {
         setStatus(failedStatus(message));
-        setTurnPickerOpen(false);
+        closePopover("turns");
       };
       const factionId = parsed?.header.factionId;
       if (workingTurn === null || !game || !factionId) {
@@ -2138,13 +2151,13 @@ export function AppShell({
           if (pick.changed) {
             setComparison(pick.comparison);
           }
-          setTurnPickerOpen(false);
+          closePopover("turns");
         },
         reportComparisonFailure,
         { prefix: `could not load turn ${clickedTurn} for comparison` }
       );
     },
-    [client, comparison, game, parsed, ruleset]
+    [client, comparison, game, parsed, ruleset, closePopover]
   );
 
   const comparedTurnChip = comparisonChipLabel(
@@ -2355,10 +2368,12 @@ export function AppShell({
     <div className="flex h-full flex-col bg-ground text-ink">
       <AppHeader
         gameName={game.manifest.metadata.gameName}
-        pickerOpen={pickerOpen}
-        onTogglePicker={() => {
-          setGameError(null);
-          setPickerOpen((open) => !open);
+        openPopover={openPopover}
+        onOpenPopover={(id) => {
+          if (id === "games") {
+            setGameError(null);
+          }
+          void handleOpenPopover(id);
         }}
         picker={
           <GamePicker
@@ -2372,14 +2387,11 @@ export function AppShell({
             onExport={(gameId) => void exportGameBackup(gameId)}
             onImport={(file, mode) => void importGameBackup(file, mode)}
             onRename={renameGame}
-            onDismiss={() => setPickerOpen(false)}
           />
         }
         factionLabel={factionLabel}
         turnLabel={turnLabel}
         workingTurnNumber={parsed?.header.turnNumber != null ? comparedTurnChip.working : null}
-        turnPickerOpen={turnPickerOpen}
-        onToggleTurnPicker={() => void handleOpenTurnPicker()}
         turnPicker={
           parsed?.header.turnNumber != null ? (
             <TurnPicker
@@ -2387,27 +2399,22 @@ export function AppShell({
               workingTurn={parsed.header.turnNumber}
               comparedTurn={comparison?.key.turnNumber ?? null}
               onSelect={(turnNumber) => void handleSelectComparisonTurn(turnNumber)}
-              onDismiss={() => setTurnPickerOpen(false)}
             />
           ) : null
         }
         comparedTurnLabel={comparedTurnChip.compared}
         onStopComparing={() => {
           setComparison(null);
-          setTurnPickerOpen(false);
+          closePopover("turns");
         }}
         mergedCount={mergedReports.length}
-        mergedOpen={mergedOpen}
-        onToggleMerged={() => setMergedOpen((open) => !open)}
         mergedPanel={
           <MergedFactionsPanel
             turnLabel={turnLabel}
             merged={mergedReports}
-            onDismiss={() => setMergedOpen(false)}
+            onDismiss={() => closePopover("merged")}
           />
         }
-        factionOpen={factionOpen}
-        onFactionToggle={() => setFactionOpen((open) => !open)}
         factionPanel={
           <FactionPanel
             factionName={parsed?.header.factionName ?? null}
@@ -2417,22 +2424,11 @@ export function AppShell({
             status={parsed?.header.factionStatus ?? null}
             attitudes={parsed?.header.attitudes ?? null}
             mergedFactionIds={new Set(mergedReports.map((record) => record.mergedFactionId))}
-            onDismiss={() => setFactionOpen(false)}
+            onDismiss={() => closePopover("faction")}
           />
         }
         status={status}
         messages={messages}
-        messagesOpen={messagesOpen}
-        onToggleMessages={() =>
-          setMessagesOpen((open) => {
-            // Opening lands on the list that has something in it. A turn with no errors would
-            // otherwise open onto an empty Errors tab and hide the events behind a second click.
-            if (!open) {
-              setMessagesTab(messages && messages.errors.length > 0 ? "errors" : "events");
-            }
-            return !open;
-          })
-        }
         messagesPanel={
           messages ? (
             <TurnMessagesPanel
@@ -2443,19 +2439,17 @@ export function AppShell({
               onTab={setMessagesTab}
               knownUnitIds={knownUnitIds}
               onSelectUnit={goToUnit}
-              onDismiss={() => setMessagesOpen(false)}
+              onDismiss={() => closePopover("messages")}
             />
           ) : null
         }
         problemCount={problemsByHex.reduce((count, hex) => count + hex.findings.length, 0)}
-        problemsOpen={problemsOpen}
-        onToggleProblems={() => setProblemsOpen((open) => !open)}
         problemsPanel={
           <ProblemsPanel
             hexes={problemsByHex}
             labelFor={hexLabel}
             onSelectHex={selectHex}
-            onDismiss={() => setProblemsOpen(false)}
+            onDismiss={() => closePopover("problems")}
           />
         }
         battleCount={parsed?.battles.length ?? 0}

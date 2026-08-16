@@ -1,6 +1,6 @@
-import { useEffect, useRef } from "react";
 import type { HexFindings } from "../orderEditor";
 import { POPOVER_BODY_MAX_H } from "./primitives";
+import { PopoverFrame } from "./popover";
 
 /**
  * Everything order validation found, across the whole map, grouped by hex.
@@ -26,48 +26,10 @@ export function ProblemsPanel({
   onSelectHex: (regionId: string) => void;
   onDismiss: () => void;
 }) {
-  const panelRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        onDismiss();
-      }
-    };
-    // The wrapper rather than the panel, as the sibling panels do: the chip that opened this sits
-    // beside it in that wrapper, and testing the panel alone would dismiss on the chip's own press
-    // and let its toggle reopen immediately.
-    const onPointerDown = (event: PointerEvent) => {
-      const trigger = panelRef.current?.parentElement ?? panelRef.current;
-      if (!trigger?.contains(event.target as Node)) {
-        onDismiss();
-      }
-    };
-
-    document.addEventListener("keydown", onKeyDown);
-    document.addEventListener("pointerdown", onPointerDown);
-    return () => {
-      document.removeEventListener("keydown", onKeyDown);
-      document.removeEventListener("pointerdown", onPointerDown);
-    };
-  }, [onDismiss]);
-
   const total = hexes.reduce((count, hex) => count + hex.findings.length, 0);
 
   return (
-    <div
-      ref={panelRef}
-      data-testid="problems-panel"
-      role="dialog"
-      aria-label="Order problems"
-      // Not a drop target: this floats over the map but is a child of the header, which is what
-      // accepts a dropped report. Left alone it would become a second, invisible drop zone that
-      // exists only while this happens to be open. The other header panels do the same.
-      onDragOver={(event) => event.stopPropagation()}
-      // `whitespace-normal` undoes the header's `whitespace-nowrap`, which inherits into anything
-      // rendered inside it.
-      className="absolute left-0 top-full z-20 mt-1 w-80 rounded border border-edge bg-panel-raised text-[11.5px] whitespace-normal shadow-lg"
-    >
+    <PopoverFrame testId="problems-panel" label="Order problems" align="left" width="w-80">
       <div className="flex items-center gap-2 border-b border-edge px-2 py-1.5">
         <span className="text-ink-soft">
           {total} problem{total === 1 ? "" : "s"} in {hexes.length} hex
@@ -132,6 +94,6 @@ export function ProblemsPanel({
         These never block an export. They are what the report says will go wrong, not what the
         server will refuse.
       </p>
-    </div>
+    </PopoverFrame>
   );
 }
