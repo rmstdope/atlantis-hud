@@ -86,7 +86,7 @@ import type { BackupImportMode } from "../gameBackup";
 import { DEFAULT_LEVEL, useWorkspaceStore } from "../workspaceStore";
 import { useHexNotesStore } from "../hexNotesStore";
 import { useSettingsStore } from "../settingsStore";
-import { AppHeader, type ImportStatus } from "./AppHeader";
+import { AppHeader } from "./AppHeader";
 import { TurnPicker } from "./TurnPicker";
 import { comparisonChipLabel, type ComparisonTurn } from "../turnCompare";
 import { listComparableTurns, pickComparisonTurn } from "../comparisonActions";
@@ -159,7 +159,7 @@ import { TurnMessagesPanel, type TurnMessagesTab } from "./TurnMessagesPanel";
 import { UnitPanel } from "./UnitPanel";
 import { UnitTableDock } from "./UnitTableDock";
 import { describeError, runReported } from "./shellAction";
-import { failedStatus, warningStatus } from "./shellStatus";
+import { failedStatus, noticeStatus, routineStatus, warningStatus, type StatusLine } from "./shellStatus";
 
 /**
  * Re-exported rather than defined here since issue #53 moved the rule into `reportLoadDecision`.
@@ -270,7 +270,7 @@ export function AppShell({
     },
     []
   );
-  const [status, setStatus] = useState<ImportStatus | null>(null);
+  const [status, setStatus] = useState<StatusLine | null>(null);
   const [busy, setBusy] = useState(false);
   const [validated, setValidated] = useState<ValidatedOrders>({ text: "", diagnostics: [] });
   const [save, setSave] = useState<SaveState>({ kind: "clean" });
@@ -1018,13 +1018,9 @@ export function AppShell({
         );
         setMemory({ remembered: outcome.remembered, knownMap: outcome.knownMap });
         setMergedReports(outcome.merged);
-        setStatus({
-          regionCount: outcome.result.mergedRegionCount,
-          unitCount: 0,
-          message: outcome.warning ?? describeMerge(outcome.result),
-          failed: false,
-          warning: outcome.warning !== null
-        });
+        setStatus(
+          outcome.warning !== null ? warningStatus(outcome.warning) : noticeStatus(describeMerge(outcome.result))
+        );
       },
       (message) => setStatus(failedStatus(message)),
       { busy: setBusy, prefix: `could not merge ${pending.fileName}` }
@@ -1335,17 +1331,11 @@ export function AppShell({
           setSave(savedStateFor(restored.ordersSavedAt));
         }
 
-        const unitCount = restored.parsed.regions.reduce(
-          (total, region) => total + region.units.length,
-          0
+        setStatus(
+          restored.warning !== null
+            ? warningStatus(restored.warning)
+            : routineStatus(`restored turn ${restored.turnNumber}`)
         );
-        setStatus({
-          regionCount: restored.parsed.regions.length,
-          unitCount,
-          message: restored.warning ?? `restored turn ${restored.turnNumber}`,
-          failed: false,
-          warning: restored.warning !== null
-        });
 
         // Opening on a hex the player has units in, exactly as loading a report does — unless a
         // hex is already selected. This effect also re-runs after a ruleset change re-parse, and
@@ -1875,13 +1865,9 @@ export function AppShell({
             document: pending.text
           });
         } else {
-          setStatus({
-            regionCount: 0,
-            unitCount: pending.unitCount,
-            message: `orders imported: ${pending.unitCount} unit${pending.unitCount === 1 ? "" : "s"}`,
-            failed: false,
-            warning: false
-          });
+          setStatus(
+            noticeStatus(`orders imported: ${pending.unitCount} unit${pending.unitCount === 1 ? "" : "s"}`)
+          );
         }
       },
       (message) => setStatus(failedStatus(message)),
@@ -2095,8 +2081,9 @@ export function AppShell({
     const summaries = await runReported(
       () => listComparableTurns(client, game.databasePath, gameId, factionId),
       (message) => {
-        // Nothing to pick from, so nothing to show: same exit as a comparison that would not load.
-        setStatus(warningStatus(message));
+        // Nothing to pick from: closes the picker and reports the failure on the status line,
+        // same exit as a comparison that would not load.
+        setStatus(failedStatus(message));
         setTurnPickerOpen(false);
       },
       { prefix: "could not list the turns to compare" }
@@ -2117,17 +2104,12 @@ export function AppShell({
    * Every exit here either starts/changes/clears the comparison or puts something on the status
    * line - a click that resolved neither used to fail silently on desktop with no dialog and no
    * explanation (ah-6l2).
-   *
-   * A comparison failure is reported as a `warning`, not `failed`: `failed` is the working turn's
-   * own "this report did not load" state, and AppHeader withholds the turn-messages chip while it
-   * is set (see its comment) - a compared turn that could not be loaded says nothing about the
-   * working turn already on screen, so it must not hide that chip or read as a red, not amber, dot.
    */
   const handleSelectComparisonTurn = useCallback(
     async (clickedTurn: number) => {
       const workingTurn = parsed?.header.turnNumber ?? null;
       const reportComparisonFailure = (message: string) => {
-        setStatus(warningStatus(message));
+        setStatus(failedStatus(message));
         setTurnPickerOpen(false);
       };
       const factionId = parsed?.header.factionId;

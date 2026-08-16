@@ -224,6 +224,10 @@ test("an ally's report for the same turn can be merged into the map", async ({ p
 
   await expect(page.getByTestId("import-status")).toContainText("merged 3 regions from Borg (73)");
   await expect(page.getByTestId("import-status")).toContainText("2 new to your map");
+  // a merge is worth a glance: the line takes room, as stored-for-history does at :150
+  await expect
+    .poll(async () => (await page.getByTestId("import-status").boundingBox())?.width ?? 0)
+    .toBeGreaterThan(1);
 
   // Still faction 95's turn 71. That is the difference between merging and switching.
   await expect(page.getByTestId("app-header")).toContainText(/Turn\s*71\b/);

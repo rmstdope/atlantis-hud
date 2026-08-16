@@ -152,13 +152,7 @@ describe("loadTurn", () => {
 
     const loaded = await loadTurn(core, OPEN_GAME, withRegions, "raw text", RULESET, NOW);
 
-    expect(loaded.status).toEqual({
-      regionCount: 2,
-      unitCount: 2,
-      message: null,
-      failed: false,
-      warning: false
-    });
+    expect(loaded.status).toEqual({ text: "2 regions · 2 units", tone: "routine" });
   });
 
   it("prefers the remember warning over the draft warning as the status message", async () => {
@@ -169,8 +163,8 @@ describe("loadTurn", () => {
 
     const loaded = await loadTurn(core, OPEN_GAME, report(), "raw text", RULESET, NOW);
 
-    expect(loaded.status.message).toContain("disk is full");
-    expect(loaded.status.warning).toBe(true);
+    expect(loaded.status.text).toContain("disk is full");
+    expect(loaded.status.tone).toBe("warning");
   });
 
   it("falls back to the draft warning when only the draft failed", async () => {
@@ -180,7 +174,7 @@ describe("loadTurn", () => {
 
     const loaded = await loadTurn(core, OPEN_GAME, report(), "raw text", RULESET, NOW);
 
-    expect(loaded.status.message).toContain("draft is locked");
+    expect(loaded.status.text).toContain("draft is locked");
   });
 
   it("uses the report's own template when there is no saved draft", async () => {
@@ -220,7 +214,7 @@ describe("loadTurn", () => {
     expect(loaded.remembered).toEqual([]);
     expect(loaded.merged).toEqual([]);
     expect(loaded.orders).toBe("");
-    expect(loaded.status.warning).toBe(false);
+    expect(loaded.status.tone).toBe("routine");
     expect(core.commitReportImport).not.toHaveBeenCalled();
   });
 
@@ -281,11 +275,8 @@ describe("storeOlderTurn", () => {
     const status = await storeOlderTurn(core, OPEN_GAME, report(), "raw text", RULESET, NOW, 71);
 
     expect(status).toEqual({
-      regionCount: 0,
-      unitCount: 0,
-      message: "turn 71 stored for history; still showing turn 71.",
-      failed: false,
-      warning: true
+      text: "turn 71 stored for history; still showing turn 71.",
+      tone: "notice"
     });
   });
 
@@ -296,7 +287,8 @@ describe("storeOlderTurn", () => {
 
     const status = await storeOlderTurn(core, OPEN_GAME, report(), "raw text", RULESET, NOW, 71);
 
-    expect(status.message).toContain("disk is full");
+    expect(status.text).toContain("disk is full");
+    expect(status.tone).toBe("warning");
   });
 });
 

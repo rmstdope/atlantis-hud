@@ -2,18 +2,19 @@ import type { ChangeEvent, DragEvent, ReactNode } from "react";
 import { useRef, useState } from "react";
 import { describeTurnMessages } from "../turnMessages";
 import { ExportMenu } from "./ExportMenu";
+import type { StatusLine, StatusTone } from "./shellStatus";
 
-export type ImportStatus = {
-  regionCount: number;
-  unitCount: number;
-  message: string | null;
-  failed: boolean;
-  /**
-   * The import worked but something along the way did not - a turn that could not be remembered,
-   * a draft that could not be read. Worth room in the header where a routine success is not.
-   */
-  warning: boolean;
-};
+/** The status line's dot colour by tone; `routine` has no dot (see the render site). */
+function dotClass(tone: Exclude<StatusTone, "routine">): string {
+  switch (tone) {
+    case "notice":
+      return "bg-ink-dim";
+    case "warning":
+      return "bg-warn";
+    case "failure":
+      return "bg-danger";
+  }
+}
 
 /** What the engine said about the loaded turn, as the report printed it. */
 export type TurnMessages = {
@@ -66,7 +67,7 @@ type AppHeaderProps = {
   onFactionToggle: () => void;
   /** The panel itself, rendered under the faction name when it is open. */
   factionPanel: ReactNode;
-  status: ImportStatus | null;
+  status: StatusLine | null;
   /** The loaded turn's errors and events, or null when no turn is loaded. */
   messages: TurnMessages | null;
   /** Whether the messages panel is showing. As with the picker, the shell owns the panel. */
@@ -372,32 +373,29 @@ export function AppHeader({
       ) : null}
 
       {/*
-        The import status, taking up room only when it has something to say: an import that
-        failed, or one that worked with a warning. A loaded turn already announces itself through
-        the Turn chip and the map, so the routine "restored turn 39" was the header saying the
-        same thing twice. The line itself stays in the page - screen readers and the test suite
-        key on its text - via `sr-only` rather than `hidden`, for exactly those two readers.
+        The status line, taking up room only when its tone is worth a glance: a notice, a
+        warning or a failure. A loaded turn already announces itself through the Turn chip and
+        the map, so the routine "11 regions · 42 units" or "restored turn 39" would be the header
+        saying the same thing twice - it stays written for screen readers and the test suite via
+        `sr-only` rather than `hidden`, for exactly those two readers.
       */}
       <span
         data-testid="import-status"
         className={
-          status?.failed || status?.warning
+          status !== null && status.tone !== "routine"
             ? "flex items-center gap-1.5 text-ink-soft"
             : "sr-only"
         }
       >
         {status ? (
           <>
-            {status.failed || status.warning ? (
+            {status.tone !== "routine" ? (
               <span
                 aria-hidden
-                className={`inline-block h-1.5 w-1.5 rounded-full ${
-                  status.failed ? "bg-danger" : "bg-warn"
-                }`}
+                className={`inline-block h-1.5 w-1.5 rounded-full ${dotClass(status.tone)}`}
               />
             ) : null}
-            {status.message ??
-              `${status.regionCount} region${status.regionCount === 1 ? "" : "s"} · ${status.unitCount} unit${status.unitCount === 1 ? "" : "s"}`}
+            {status.text}
           </>
         ) : (
           <span className="text-ink-dim">no report loaded</span>
@@ -411,10 +409,10 @@ export function AppHeader({
         message *instead of* its counts whenever there is one - so on a restored turn the errors
         would have had nowhere to appear at all. Relative, because the panel hangs off it.
 
-        Withheld while an import is failed: that status describes a report that did not load, and a
-        chip beside it would be counting the turn still on screen, which is a different turn.
+        Always shown when there is something to say: the chip counts the turn on screen, and
+        stays whatever the status line says about it.
       */}
-      {chipLabel && status && !status.failed ? (
+      {chipLabel ? (
         <span className="relative">
           <button
             type="button"

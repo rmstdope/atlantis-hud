@@ -2,6 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it } from "vitest";
 import { AppHeader } from "./AppHeader";
 import { resetWorkspaceStore } from "../workspaceStore";
+import { failedStatus, noticeStatus, routineStatus, warningStatus } from "./shellStatus";
 
 const draw = (overrides: Partial<Parameters<typeof AppHeader>[0]> = {}) =>
   renderToStaticMarkup(
@@ -139,5 +140,47 @@ describe("AppHeader changes chip", () => {
 
     const open = draw({ comparedTurnLabel: "70", changesOpen: true });
     expect(open).toContain('aria-expanded="true"');
+  });
+});
+
+describe("AppHeader status line", () => {
+  beforeEach(resetWorkspaceStore);
+
+  it("a routine status is written but takes no room", () => {
+    const markup = draw({ status: routineStatus("11 regions · 42 units") });
+    const statusMatch = markup.match(/<span[^>]*data-testid="import-status"[^>]*>.*?<\/span>/s);
+    expect(statusMatch).not.toBeNull();
+    const statusMarkup = statusMatch![0];
+    expect(statusMarkup).toContain("sr-only");
+    expect(statusMarkup).toContain("11 regions · 42 units");
+    expect(statusMarkup).not.toContain("rounded-full");
+  });
+
+  it("a notice is visible with a dim dot", () => {
+    const markup = draw({ status: noticeStatus("orders imported: 3 units") });
+    const statusMatch = markup.match(/<span[^>]*data-testid="import-status"[^>]*class="([^"]*)"/);
+    expect(statusMatch).not.toBeNull();
+    expect(statusMatch![1]).not.toContain("sr-only");
+    expect(markup).toContain("bg-ink-dim");
+  });
+
+  it("a warning is visible with an amber dot", () => {
+    const markup = draw({ status: warningStatus("the turn could not be remembered: disk is full") });
+    expect(markup).toContain("bg-warn");
+  });
+
+  it("a failure is visible with a red dot and leaves the messages chip in place", () => {
+    const markup = draw({
+      status: failedStatus("could not read x.rep: no faction header"),
+      messages: { errors: ["e"], events: [] }
+    });
+    expect(markup).toContain("bg-danger");
+    expect(markup).toContain('data-testid="turn-messages-chip"');
+  });
+
+  it("no status says no report loaded", () => {
+    const markup = draw();
+    expect(markup).toContain("no report loaded");
+    expect(markup).toContain("sr-only");
   });
 });
