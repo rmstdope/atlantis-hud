@@ -245,6 +245,10 @@ function namingsOldestFirst(storedRegions: StoredRegion[]): StoredRegion[] {
  * Precedence matters and is deliberate: a hex in the current report always wins over a stored
  * sighting, and a visited hex always wins over one merely named by a neighbour's exit. Otherwise a
  * hex would lose detail it already has, or be marked less certain than it deserves.
+ *
+ * These rules were ported to core's `known_map::resolve_known_map` by ah-u4e.1, which is now the
+ * single source of truth for them; this file's own copy is deleted by ah-u4e.3, once the screen
+ * consumes that resolution instead of re-deriving it here.
  */
 export function buildHexMapModel(
   parsed: ParsedReport,

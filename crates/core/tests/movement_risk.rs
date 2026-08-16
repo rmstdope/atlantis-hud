@@ -205,3 +205,44 @@ fn the_worst_hex_sets_the_route_even_when_it_is_not_the_last() {
         at(7, 53)
     );
 }
+
+/// A same-turn ally sighting names the units it saw instead of reading as empty - the mirror of
+/// `an_empty_hex_is_as_safe_as_it_gets`, and the disagreement ah-u4e.1 fixes: the map already shows
+/// an ally-seen hex's units, and the risk heuristic now reads the same account.
+#[test]
+fn a_same_turn_ally_seen_hex_names_the_units_instead_of_nobody_else_is_here() {
+    use atlantis_hud_core::movement::graph::RememberedRegion;
+
+    let report = classified();
+
+    let ally_sighting = parse_report_full(
+        "Atlantis Report For:\nFoo (1)\nFebruary, Year 1\n\n\
+         plain (30,30) in Nowhere, 10 peasants (orcs), $5.\n\n\
+         Exits:\n  North : plain (30,28) in Nowhere.\n\n\
+         - Someone (500), Bar (2), 3 orcs [ORC].\n",
+    )
+    .regions[0]
+        .clone();
+
+    // The current (turn 71) report never visits (30,30) - the ally is the only account of it.
+    let map = MapKnowledge::from_remembered(
+        &report,
+        &[RememberedRegion {
+            region: ally_sighting,
+            last_seen_turn: 71,
+        }],
+    );
+
+    let risk = assess_hex(&map, &ruleset(), at(30, 30), unit_of(&report, "18642"));
+
+    assert!(
+        !risk.unknown,
+        "a same-turn sighting is as current as a visit"
+    );
+    assert_eq!(risk.foreign_units, 1, "the ally's unit should be counted");
+    assert!(
+        !risk.reason.contains("Nobody else is here"),
+        "the ally's unit should be named instead: {}",
+        risk.reason
+    );
+}

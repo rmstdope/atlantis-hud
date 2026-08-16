@@ -1,0 +1,348 @@
+//! Acceptance tests for `resolve_known_map`: the one place the precedence rules for the
+//! accumulated map are written, pinned rule by rule.
+
+use atlantis_hud_core::known_map::{resolve_known_map, HexKnowledge};
+use atlantis_hud_core::movement::graph::RememberedRegion;
+use atlantis_hud_core::report::model::Coordinate;
+use atlantis_hud_core::report::parse_report_full;
+
+fn at(x: i32, y: i32) -> Coordinate {
+    Coordinate { x, y, z: 1 }
+}
+
+/// A single-region report at the given turn, with an exit to keep a neighbour company.
+fn report_at_turn(
+    terrain: &str,
+    month: &str,
+    year: u32,
+    units: &str,
+) -> atlantis_hud_core::report::ParsedReport {
+    parse_report_full(&format!(
+        "Atlantis Report For:\nFoo (1)\n{month}, Year {year}\n\n\
+         {terrain} (1,1) in Nowhere, 10 peasants (orcs), $5.\n\n\
+         Exits:\n  Southeast : plain (2,2) in Nowhere.\n\n\
+         {units}",
+    ))
+}
+
+fn empty_report(month: &str, year: u32) -> atlantis_hud_core::report::ParsedReport {
+    parse_report_full(&format!(
+        "Atlantis Report For:\nFoo (1)\n{month}, Year {year}\n"
+    ))
+}
+
+/// The current report always wins wherever it disagrees with a stored sighting, and only the
+/// current description can be trusted about who is standing there.
+#[test]
+fn a_current_report_hex_beats_a_stored_sighting_of_it() {
+    let remembered_region = report_at_turn(
+        "plain",
+        "February",
+        1,
+        "- Someone (500), Bar (2), 3 orcs [ORC].\n",
+    )
+    .regions[0]
+        .clone();
+
+    let current = report_at_turn("mountain", "March", 1, "");
+
+    let known = resolve_known_map(
+        &current,
+        &[RememberedRegion {
+            region: remembered_region,
+            last_seen_turn: 1,
+        }],
+    );
+
+    let hex = known
+        .hexes
+        .iter()
+        .find(|hex| hex.coordinate == at(1, 1))
+        .expect("known");
+    assert_eq!(hex.knowledge, HexKnowledge::Current);
+    assert_eq!(hex.terrain, "mountain", "the current report's terrain wins");
+    assert_eq!(hex.last_seen_turn, Some(2), "March, Year 1 is turn 2");
+    assert!(
+        hex.region.as_ref().unwrap().units.is_empty(),
+        "a remembered garrison is not evidence of a present one"
+    );
+}
+
+/// A sighting from an earlier turn is stale, and only stale sightings drop their units - a unit
+/// standing there when last seen may have moved, disbanded or died since.
+#[test]
+fn an_older_sighting_is_stale_and_keeps_no_units() {
+    let older = report_at_turn(
+        "swamp",
+        "February",
+        1,
+        "- Someone (500), Bar (2), 3 orcs [ORC].\n",
+    )
+    .regions[0]
+        .clone();
+
+    let current = empty_report("December", 6);
+
+    let known = resolve_known_map(
+        &current,
+        &[RememberedRegion {
+            region: older,
+            last_seen_turn: 1,
+        }],
+    );
+
+    let hex = known
+        .hexes
+        .iter()
+        .find(|hex| hex.coordinate == at(1, 1))
+        .expect("known");
+    assert_eq!(hex.knowledge, HexKnowledge::Stale);
+    assert_eq!(hex.terrain, "swamp");
+    assert!(hex.region.as_ref().unwrap().units.is_empty());
+}
+
+/// Storage is expected to hand back one sighting per coordinate, but nothing enforces it - two
+/// direct sightings of the same hex must still settle on an answer rather than an unspecified one,
+/// and it should be the more recent sighting, exactly as the naming rules already prefer.
+#[test]
+fn two_direct_sightings_of_the_same_hex_settle_on_the_more_recent_one() {
+    let older = report_at_turn("swamp", "February", 1, "").regions[0].clone();
+    let newer = report_at_turn("forest", "March", 1, "").regions[0].clone();
+
+    let current = empty_report("December", 6);
+
+    let known = resolve_known_map(
+        &current,
+        &[
+            RememberedRegion {
+                region: newer,
+                last_seen_turn: 2,
+            },
+            RememberedRegion {
+                region: older,
+                last_seen_turn: 1,
+            },
+        ],
+    );
+
+    let hex = known
+        .hexes
+        .iter()
+        .find(|hex| hex.coordinate == at(1, 1))
+        .expect("known");
+    assert_eq!(hex.terrain, "forest", "the more recent sighting wins");
+    assert_eq!(hex.last_seen_turn, Some(2));
+}
+
+/// A sighting from this same turn - a hex only an ally reported, with none of our own units in it
+/// - is as fresh as anything in the current report, so it is `Current` and keeps its units.
+#[test]
+fn a_same_turn_ally_sighting_is_current_and_keeps_its_units() {
+    let ally_sighting = report_at_turn(
+        "plain",
+        "February",
+        1,
+        "- Someone (500), Bar (2), 3 orcs [ORC].\n",
+    )
+    .regions[0]
+        .clone();
+
+    // The current report says nothing about (1,1) at all - the ally sighting is the only account.
+    let current = empty_report("February", 1);
+
+    let known = resolve_known_map(
+        &current,
+        &[RememberedRegion {
+            region: ally_sighting,
+            last_seen_turn: 1,
+        }],
+    );
+
+    let hex = known
+        .hexes
+        .iter()
+        .find(|hex| hex.coordinate == at(1, 1))
+        .expect("known");
+    assert_eq!(hex.knowledge, HexKnowledge::Current);
+    assert_eq!(
+        hex.region.as_ref().unwrap().units.len(),
+        1,
+        "the ally's unit should still be here"
+    );
+}
+
+/// A same-turn stored sighting's extra units join the current report's own account of the hex,
+/// appended and marked foreign - additive only, and never replacing what the report already names.
+#[test]
+fn an_allys_units_join_the_current_hex_marked_foreign() {
+    let ally_sighting = report_at_turn(
+        "plain",
+        "February",
+        1,
+        "- Someone (500), Bar (2), 3 orcs [ORC].\n",
+    )
+    .regions[0]
+        .clone();
+
+    // The current report describes the same hex, with a unit of our own, but knows nothing of the
+    // ally's stranger.
+    let current = report_at_turn("plain", "February", 1, "* Us (100), 1 man [MAN].\n");
+
+    let known = resolve_known_map(
+        &current,
+        &[RememberedRegion {
+            region: ally_sighting,
+            last_seen_turn: 1,
+        }],
+    );
+
+    let hex = known
+        .hexes
+        .iter()
+        .find(|hex| hex.coordinate == at(1, 1))
+        .expect("known");
+    let units = &hex.region.as_ref().unwrap().units;
+    assert_eq!(units.len(), 2, "our own unit plus the ally's stranger");
+    assert_eq!(units[0].unit_id, "100", "the report's own unit comes first");
+    let extra = &units[1];
+    assert_eq!(extra.unit_id, "500");
+    assert!(!extra.own, "a unit contributed this way is never ours");
+}
+
+/// Namings from memory: a later turn's naming overwrites an earlier one, and within one turn the
+/// first naming wins.
+#[test]
+fn an_older_naming_is_overwritten_by_a_newer_one_and_the_first_in_a_turn_wins() {
+    let older = report_at_turn("swamp", "February", 1, "").regions[0].clone();
+    let newer = report_at_turn("forest", "March", 1, "").regions[0].clone();
+
+    // Neither report actually visits (2,2); each merely names it through its own exit.
+    let current = empty_report("December", 6);
+
+    let known = resolve_known_map(
+        &current,
+        &[
+            RememberedRegion {
+                region: older,
+                last_seen_turn: 1,
+            },
+            RememberedRegion {
+                region: newer,
+                last_seen_turn: 2,
+            },
+        ],
+    );
+
+    let hex = known
+        .hexes
+        .iter()
+        .find(|hex| hex.coordinate == at(2, 2))
+        .expect("named");
+    assert_eq!(hex.knowledge, HexKnowledge::Named);
+    assert_eq!(hex.terrain, "plain", "both exits name it the same way");
+    assert_eq!(
+        hex.last_seen_turn,
+        Some(2),
+        "the newer sighting's naming wins"
+    );
+}
+
+/// The current report's own naming always wins over anything remembered, whatever turn it carries.
+#[test]
+fn the_current_reports_naming_wins_over_memorys() {
+    // A memory that named (2,2) as swamp at turn 1.
+    let remembered_naming = parse_report_full(
+        "Atlantis Report For:\nFoo (1)\nFebruary, Year 1\n\n\
+         plain (1,1) in Nowhere, 10 peasants (orcs), $5.\n\n\
+         Exits:\n  Southeast : swamp (2,2) in Nowhere.\n",
+    )
+    .regions[0]
+        .clone();
+
+    // The current report, at turn 71, names the same hex as plain through its own exit - not
+    // through a remembered region at all, so this exercises rule 2 rather than rule 4.
+    let current = parse_report_full(
+        "Atlantis Report For:\nFoo (1)\nDecember, Year 6\n\n\
+         plain (5,5) in Nowhere, 10 peasants (orcs), $5.\n\n\
+         Exits:\n  Southeast : plain (2,2) in Nowhere.\n",
+    );
+
+    let known = resolve_known_map(
+        &current,
+        &[RememberedRegion {
+            region: remembered_naming,
+            last_seen_turn: 1,
+        }],
+    );
+
+    let hex = known
+        .hexes
+        .iter()
+        .find(|hex| hex.coordinate == at(2, 2))
+        .expect("named");
+    assert_eq!(hex.knowledge, HexKnowledge::Named);
+    assert_eq!(hex.terrain, "plain", "the current report's own naming wins");
+    assert_eq!(hex.last_seen_turn, Some(71), "December, Year 6 is turn 71");
+}
+
+/// A visited hex - current or stale - always beats one merely named by an exit.
+#[test]
+fn a_visited_hex_beats_one_merely_named() {
+    // (2,2) is both stood in by an older sighting and merely named by the current report's exit.
+    let older = report_at_turn("swamp", "February", 1, "").regions[0].clone();
+    let mut moved = older.clone();
+    moved.coordinate = at(2, 2);
+    moved.region_id = "1:2,2".to_string();
+
+    let current = parse_report_full(
+        "Atlantis Report For:\nFoo (1)\nDecember, Year 6\n\n\
+         plain (1,1) in Nowhere, 10 peasants (orcs), $5.\n\n\
+         Exits:\n  Southeast : forest (2,2) in Nowhere.\n",
+    );
+
+    let known = resolve_known_map(
+        &current,
+        &[RememberedRegion {
+            region: moved,
+            last_seen_turn: 1,
+        }],
+    );
+
+    let hex = known
+        .hexes
+        .iter()
+        .find(|hex| hex.coordinate == at(2, 2))
+        .expect("known");
+    assert_eq!(
+        hex.knowledge,
+        HexKnowledge::Stale,
+        "the stored visit wins over the naming"
+    );
+    assert_eq!(hex.terrain, "swamp");
+}
+
+/// The resolved hexes come out sorted by level, then row, then column - the order the screen has
+/// always drawn in.
+#[test]
+fn hexes_come_out_sorted_by_level_then_row_then_column() {
+    let current = parse_report_full(
+        "Atlantis Report For:\nFoo (1)\nDecember, Year 6\n\n\
+         plain (5,5) in Nowhere, 10 peasants (orcs), $5.\n\n\
+         Exits:\n  North : plain (5,3) in Nowhere.\n  South : plain (5,7) in Nowhere.\n\
+         Southwest : plain (4,6) in Nowhere.\n",
+    );
+
+    let known = resolve_known_map(&current, &[]);
+
+    let coordinates: Vec<(i32, i32)> = known
+        .hexes
+        .iter()
+        .map(|hex| (hex.coordinate.y, hex.coordinate.x))
+        .collect();
+    let mut sorted = coordinates.clone();
+    sorted.sort_unstable();
+    assert_eq!(
+        coordinates, sorted,
+        "already sorted by y then x within one level"
+    );
+}
