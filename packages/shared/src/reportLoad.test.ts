@@ -6,6 +6,7 @@ import type {
   RememberedRegion
 } from "@atlantis/core-client";
 import { describe, expect, it, vi } from "vitest";
+import { REPORT_NAMES_NO_FACTION } from "./reportLoadDecision";
 import {
   factionLabelOf,
   firstUnitIn,
@@ -303,11 +304,11 @@ describe("routeReport", () => {
 
     expect(routeReport(viewer, incoming, "junk", "junk.rep")).toEqual({
       kind: "reject",
-      reason: "the report does not name its faction"
+      reason: REPORT_NAMES_NO_FACTION
     });
     expect(routeReport(null, incoming, "junk", "junk.rep")).toEqual({
       kind: "reject",
-      reason: "the report does not name its faction"
+      reason: REPORT_NAMES_NO_FACTION
     });
   });
 
