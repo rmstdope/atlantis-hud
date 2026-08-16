@@ -1,11 +1,52 @@
 import type { AdvisoryCheckCode } from "./coreVocabulary.generated";
 
-export type EngineInfo = {
-  id: string;
-  name: string;
-  rulesetVersion: string;
-  maxFactionCount: number;
-};
+// The report model and the parse family are generated from the Rust core by ts-rs
+// (crates/core, `cargo test`); see docs/implementation-plan.md §Generated bindings.
+export type { EngineInfo } from "./generated/EngineInfo";
+export type { WarningSeverity } from "./generated/WarningSeverity";
+export type { ParseWarning } from "./generated/ParseWarning";
+export type { TurnHeader } from "./generated/TurnHeader";
+export type { FactionInfo } from "./generated/FactionInfo";
+export type { RegionSummary } from "./generated/RegionSummary";
+export type { UnitSummary } from "./generated/UnitSummary";
+export type { InventoryItem } from "./generated/InventoryItem";
+export type { MessageSummary } from "./generated/MessageSummary";
+export type { ReportParseResult } from "./generated/ReportParseResult";
+export type { Coordinate } from "./generated/Coordinate";
+export type { ItemAmount } from "./generated/ItemAmount";
+export type { MarketItem } from "./generated/MarketItem";
+export type { SettlementInfo } from "./generated/SettlementInfo";
+export type { RegionExit } from "./generated/RegionExit";
+export type { StructureInfo } from "./generated/StructureInfo";
+export type { SkillInfo } from "./generated/SkillInfo";
+export type { ReportUnit } from "./generated/ReportUnit";
+export type { ReportRegion } from "./generated/ReportRegion";
+export type { ReportHeaderInfo } from "./generated/ReportHeaderInfo";
+export type { FactionStatus } from "./generated/FactionStatus";
+export type { FactionStatusEntry } from "./generated/FactionStatusEntry";
+export type { DeclaredAttitudes } from "./generated/DeclaredAttitudes";
+export type { AttitudeLevel } from "./generated/AttitudeLevel";
+export type { FactionRef } from "./generated/FactionRef";
+export type { UnitOrders } from "./generated/UnitOrders";
+export type { OrdersTemplate } from "./generated/OrdersTemplate";
+export type { Combatant } from "./generated/Combatant";
+export type { BattleUnit } from "./generated/BattleUnit";
+export type { Casualty } from "./generated/Casualty";
+export type { BattleRound } from "./generated/BattleRound";
+export type { Battle } from "./generated/Battle";
+export type { ParsedReport } from "./generated/ParsedReport";
+export type { OrderDiagnosticSeverity } from "./generated/OrderDiagnosticSeverity";
+export type { OrderDiagnostic } from "./generated/OrderDiagnostic";
+export type { OrderValidationResult } from "./generated/OrderValidationResult";
+
+import type { Coordinate } from "./generated/Coordinate";
+import type { ReportRegion } from "./generated/ReportRegion";
+import type { ReportUnit } from "./generated/ReportUnit";
+import type { SettlementInfo } from "./generated/SettlementInfo";
+import type { ReportParseResult } from "./generated/ReportParseResult";
+import type { OrderValidationResult } from "./generated/OrderValidationResult";
+import type { EngineInfo } from "./generated/EngineInfo";
+import type { ParsedReport } from "./generated/ParsedReport";
 
 export type GameMetadata = {
   gameId: string;
@@ -46,120 +87,7 @@ export type OpenedGame = {
   manifest: GameManifest;
 };
 
-export type WarningSeverity = "warning" | "error";
 
-export type ParseWarning = {
-  code: string;
-  section: string;
-  message: string;
-  lineStart: number;
-  lineEnd: number;
-  severity: WarningSeverity;
-};
-
-export type TurnHeader = {
-  turnNumber: number;
-  season: string;
-};
-
-export type FactionInfo = {
-  factionId: string;
-  name: string;
-};
-
-export type RegionSummary = {
-  regionId: string;
-  name: string;
-};
-
-export type UnitSummary = {
-  unitId: string;
-  name: string;
-  regionId: string;
-};
-
-export type InventoryItem = {
-  unitId: string;
-  item: string;
-  quantity: number;
-};
-
-export type MessageSummary = {
-  kind: string;
-  source: string;
-  text: string;
-};
-
-export type ReportParseResult = {
-  turnHeader: TurnHeader | null;
-  detectedFactions: FactionInfo[];
-  regions: RegionSummary[];
-  units: UnitSummary[];
-  inventories: InventoryItem[];
-  messageSummaries: MessageSummary[];
-  warnings: ParseWarning[];
-  meetsMinimumImportThreshold: boolean;
-};
-
-
-/**
- * Coordinates in the game's own space. Levels start at 1 for the surface.
- *
- * Only coordinates where `x + y` is even exist, which is why the map is drawn with flat-top hexes:
- * north and south are direct neighbours.
- */
-export type Coordinate = { x: number; y: number; z: number };
-
-export type ItemAmount = { amount: number; name: string; tag: string };
-export type MarketItem = ItemAmount & { price: number };
-export type SettlementInfo = { name: string; size: string };
-
-export type RegionExit = {
-  direction: string;
-  terrain: string;
-  coordinate: Coordinate;
-  province: string;
-  settlement: SettlementInfo | null;
-};
-
-export type StructureInfo = {
-  structureId: string;
-  name: string;
-  kind: string;
-  description: string | null;
-  needs: number | null;
-};
-
-export type SkillInfo = { name: string; tag: string; level: number; points: number };
-
-/** A unit as the report describes it. `own` comes from the report's marker, never from inference. */
-export type ReportUnit = {
-  unitId: string;
-  name: string;
-  regionId: string;
-  factionId: string | null;
-  factionName: string | null;
-  own: boolean;
-  onGuard: boolean;
-  flags: string[];
-  items: ItemAmount[];
-  skills: SkillInfo[];
-  /**
-   * How many people the unit contains.
-   *
-   * Exact once the report has been classified against the scraped item catalogue; until then it is
-   * the size of the leading item group, which is right for the common case and wrong for a unit
-   * holding two races. `menEstimated` says which it is.
-   */
-  men: number;
-  /** Whether `men` is a guess rather than a count. */
-  menEstimated: boolean;
-  /** The unit's people, by race, once classified. Empty while estimated. */
-  menByRace: ItemAmount[];
-  weight: number | null;
-  capacity: string | null;
-  structureId: string | null;
-};
 
 /** One of the six ways out of a hex, as the core names them. */
 export type Direction =
@@ -407,161 +335,6 @@ export type RoutePlanResponse = {
   fullyModelled: boolean;
 };
 
-export type ReportRegion = {
-  regionId: string;
-  coordinate: Coordinate;
-  terrain: string;
-  province: string;
-  settlement: SettlementInfo | null;
-  population: number | null;
-  race: string | null;
-  taxBase: number | null;
-  wages: string | null;
-  maxWages: number | null;
-  entertainment: number | null;
-  products: ItemAmount[];
-  wanted: MarketItem[];
-  forSale: MarketItem[];
-  exits: RegionExit[];
-  structures: StructureInfo[];
-  units: ReportUnit[];
-};
-
-export type ReportHeaderInfo = {
-  factionId: string | null;
-  factionName: string | null;
-  factionTypes: string[];
-  month: string | null;
-  year: number | null;
-  turnNumber: number | null;
-  engineVersion: string | null;
-  ruleset: string | null;
-  rulesetVersion: string | null;
-  unclaimedSilver: number | null;
-  errors: string[];
-  events: string[];
-  factionStatus: FactionStatus;
-  attitudes: DeclaredAttitudes;
-};
-
-/** The `Faction Status:` block: allowances the faction has used, of its maximum. */
-export type FactionStatus = {
-  entries: FactionStatusEntry[];
-  /** A status line that was not `Label: n (m)` shaped, carried rather than dropped. */
-  unparsed: string[];
-};
-
-/** One line of the `Faction Status:` block, such as `Regions: 3 (10)`. */
-export type FactionStatusEntry = {
-  label: string;
-  used: number;
-  maximum: number;
-};
-
-/** The `Declared Attitudes:` block. */
-export type DeclaredAttitudes = {
-  defaultAttitude: string | null;
-  /** One entry per printed level, in the order the report prints them. */
-  levels: AttitudeLevel[];
-};
-
-/** One attitude level, such as `Hostile`, and the factions declared at it. */
-export type AttitudeLevel = {
-  attitude: string;
-  factions: FactionRef[];
-};
-
-/** A faction named in a `Declared Attitudes:` list, such as `Creatures (2)`. */
-export type FactionRef = {
-  name: string;
-  id: string;
-};
-
-/** One unit's slice of the orders document, comments included so the document round trips. */
-export type UnitOrders = { unitId: string; lines: string[]; lineStart: number };
-
-export type OrdersTemplate = {
-  /** The document verbatim, from `#atlantis` through `#end`. Carries the faction password. */
-  text: string;
-  factionId: string | null;
-  units: UnitOrders[];
-};
-
-/** A named participant, as printed: `Pirates (14789)`. */
-export type Combatant = { name: string; id: string };
-
-/**
- * One entry in an attacker or defender roster.
- *
- * `body` is everything after the name, faction and flags, kept verbatim rather than parsed down to
- * individual items - a roster line can be a paragraph of repeated item mentions, and nothing here
- * needs it broken down.
- */
-export type BattleUnit = {
-  name: string;
-  id: string;
-  faction: Combatant | null;
-  flags: string[];
-  body: string;
-};
-
-/**
- * A casualty line, on the close of a round or of the whole battle: `Pirates (14789) loses 15.`
- *
- * `text` is that line with its trailing full stop removed - `Pirates (14789) loses 15`.
- */
-export type Casualty = {
-  combatant: Combatant | null;
-  lost: number | null;
-  text: string;
-};
-
-/**
- * One round of a battle. `statistics` is the `Round N statistics:` block, kept as text - it is not
- * modelled field by field here.
- */
-export type BattleRound = {
-  number: number | null;
-  lines: string[];
-  losses: Casualty[];
-  statistics: string[];
-};
-
-/** One battle, headline to spoils. */
-export type Battle = {
-  /** The headline, verbatim, whether or not it was recognised. */
-  headline: string;
-  attacker: Combatant | null;
-  defender: Combatant | null;
-  terrain: string | null;
-  coordinate: Coordinate | null;
-  province: string | null;
-  attackers: BattleUnit[];
-  defenders: BattleUnit[];
-  rounds: BattleRound[];
-  /** The `Battle statistics:` block, kept as text. */
-  statistics: string[];
-  casualties: Casualty[];
-  damagedUnits: string[];
-  spoils: string | null;
-  lineStart: number;
-  lineEnd: number;
-  /**
-   * Whether the headline was an assassination rather than an `attacks` battle. Optional because a
-   * `parsedPayloadJson` stored before this field existed carries no key for it - treat a missing
-   * key as `false`.
-   */
-  assassination?: boolean;
-};
-
-/** The full model a report describes, as opposed to the flat summary in `ReportParseResult`. */
-export type ParsedReport = {
-  header: ReportHeaderInfo;
-  regions: ReportRegion[];
-  battles: Battle[];
-  ordersTemplate: OrdersTemplate | null;
-};
-
 export type ImportedTurnPreview = {
   exists: boolean;
   rawChanged: boolean;
@@ -573,33 +346,6 @@ export type ReportImportPreview = {
   parseResult: ReportParseResult;
   duplicatePreview: ImportedTurnPreview;
   turnNumber: number | null;
-};
-
-export type OrderDiagnosticSeverity = "warning" | "error";
-
-export type OrderDiagnostic = {
-  code: string;
-  message: string;
-  /**
-   * The line it sits on, or null when it belongs to a hex rather than to any one order.
-   *
-   * "Nobody is guarding this hex" is nobody's line. Filling one in - line 0, or the first unit in
-   * the region - would send the player somewhere nothing is wrong.
-   */
-  lineStart: number | null;
-  lineEnd: number | null;
-  /**
-   * Where the offending text starts within its line, counted from 0 in UTF-16 code units - which
-   * is what JavaScript string indices already are, so `line.slice(...)` below is correct as written.
-   */
-  columnStart: number | null;
-  /** One past the end of it, so `line.slice(columnStart, columnEnd)` is what is wrong. */
-  columnEnd: number | null;
-  /** The hex it concerns. Null for a syntax diagnostic, which knows nothing of the map. */
-  regionId: string | null;
-  /** The unit at fault, where one unit is at fault. */
-  unitId: string | null;
-  severity: OrderDiagnosticSeverity;
 };
 
 export {
@@ -619,10 +365,6 @@ export type OrderCheckOptions = {
    * not have meant.
    */
   disabledCodes?: readonly AdvisoryCheckCode[];
-};
-
-export type OrderValidationResult = {
-  diagnostics: OrderDiagnostic[];
 };
 
 export type OrderDraftKey = {
@@ -663,13 +405,6 @@ export type ImportedTurnSummary = {
   updatedAt: string;
 };
 
-type EngineInfoWireShape = {
-  id: string;
-  name: string;
-  rulesetVersion?: string;
-  maxFactionCount?: number;
-};
-
 type GameMetadataWireShape = {
   gameId?: string;
   game_id?: string;
@@ -707,59 +442,6 @@ type OpenedGameWireShape = {
   manifest?: GameManifestWireShape;
 };
 
-type TurnHeaderWireShape = {
-  turnNumber?: number;
-  season?: string;
-};
-
-type FactionInfoWireShape = {
-  factionId?: string;
-  name?: string;
-};
-
-type RegionSummaryWireShape = {
-  regionId?: string;
-  name?: string;
-};
-
-type UnitSummaryWireShape = {
-  unitId?: string;
-  name?: string;
-  regionId?: string;
-};
-
-type InventoryItemWireShape = {
-  unitId?: string;
-  item?: string;
-  quantity?: number;
-};
-
-type MessageSummaryWireShape = {
-  kind?: string;
-  source?: string;
-  text?: string;
-};
-
-type ParseWarningWireShape = {
-  code?: string;
-  section?: string;
-  message?: string;
-  lineStart?: number;
-  lineEnd?: number;
-  severity?: string;
-};
-
-type ReportParseResultWireShape = {
-  turnHeader?: TurnHeaderWireShape | null;
-  detectedFactions?: FactionInfoWireShape[];
-  regions?: RegionSummaryWireShape[];
-  units?: UnitSummaryWireShape[];
-  inventories?: InventoryItemWireShape[];
-  messageSummaries?: MessageSummaryWireShape[];
-  warnings?: ParseWarningWireShape[];
-  meetsMinimumImportThreshold?: boolean;
-};
-
 type ImportedTurnPreviewWireShape = {
   exists?: boolean;
   rawChanged?: boolean;
@@ -771,28 +453,12 @@ type ImportedTurnPreviewWireShape = {
 };
 
 type ReportImportPreviewWireShape = {
-  parseResult?: ReportParseResultWireShape;
-  parse_result?: ReportParseResultWireShape;
+  parseResult?: unknown;
+  parse_result?: unknown;
   duplicatePreview?: ImportedTurnPreviewWireShape;
   duplicate_preview?: ImportedTurnPreviewWireShape;
   turnNumber?: number | null;
   turn_number?: number | null;
-};
-
-type OrderDiagnosticWireShape = {
-  code?: string;
-  message?: string;
-  lineStart?: number | null;
-  lineEnd?: number | null;
-  columnStart?: number | null;
-  columnEnd?: number | null;
-  regionId?: string | null;
-  unitId?: string | null;
-  severity?: string;
-};
-
-type OrderValidationResultWireShape = {
-  diagnostics?: OrderDiagnosticWireShape[];
 };
 
 type OrderDraftKeyWireShape = {
@@ -845,8 +511,8 @@ type ImportedTurnRecordWireShape = {
   key?: OrderDraftKeyWireShape;
   rawReport?: string;
   raw_report?: string;
-  parseResult?: ReportParseResultWireShape;
-  parse_result?: ReportParseResultWireShape;
+  parseResult?: unknown;
+  parse_result?: unknown;
 };
 
 type ImportedTurnSummaryWireShape = {
@@ -1230,32 +896,6 @@ export interface CoreClient {
 
 export type TauriInvoke = <T>(command: string, args?: Record<string, unknown>) => Promise<T>;
 
-function normalizeEngineInfo(value: unknown): EngineInfo {
-  if (typeof value !== "object" || value === null) {
-    throw new Error("invalid engine info payload");
-  }
-
-  const payload = value as EngineInfoWireShape;
-  const rulesetVersion = payload.rulesetVersion;
-  const maxFactionCount = payload.maxFactionCount;
-
-  if (
-    typeof payload.id !== "string" ||
-    typeof payload.name !== "string" ||
-    typeof rulesetVersion !== "string" ||
-    typeof maxFactionCount !== "number"
-  ) {
-    throw new Error("incomplete engine info payload");
-  }
-
-  return {
-    id: payload.id,
-    name: payload.name,
-    rulesetVersion,
-    maxFactionCount
-  };
-}
-
 function normalizeGameMetadata(value: unknown): GameMetadata {
   if (typeof value !== "object" || value === null) {
     throw new Error("invalid game metadata payload");
@@ -1360,137 +1000,6 @@ function normalizeOpenedGame(value: unknown): OpenedGame {
   };
 }
 
-function normalizeTurnHeader(value: unknown): TurnHeader {
-  if (typeof value !== "object" || value === null) {
-    throw new Error("invalid turn header payload");
-  }
-  const payload = value as TurnHeaderWireShape;
-  const turnNumber = payload.turnNumber;
-  if (typeof turnNumber !== "number" || typeof payload.season !== "string") {
-    throw new Error("incomplete turn header payload");
-  }
-  return { turnNumber, season: payload.season };
-}
-
-function normalizeFaction(value: unknown): FactionInfo {
-  if (typeof value !== "object" || value === null) {
-    throw new Error("invalid faction payload");
-  }
-  const payload = value as FactionInfoWireShape;
-  const factionId = payload.factionId;
-  if (typeof factionId !== "string" || typeof payload.name !== "string") {
-    throw new Error("incomplete faction payload");
-  }
-  return { factionId, name: payload.name };
-}
-
-function normalizeRegion(value: unknown): RegionSummary {
-  if (typeof value !== "object" || value === null) {
-    throw new Error("invalid region payload");
-  }
-  const payload = value as RegionSummaryWireShape;
-  const regionId = payload.regionId;
-  if (typeof regionId !== "string" || typeof payload.name !== "string") {
-    throw new Error("incomplete region payload");
-  }
-  return { regionId, name: payload.name };
-}
-
-function normalizeUnit(value: unknown): UnitSummary {
-  if (typeof value !== "object" || value === null) {
-    throw new Error("invalid unit payload");
-  }
-  const payload = value as UnitSummaryWireShape;
-  const unitId = payload.unitId;
-  const regionId = payload.regionId;
-  if (typeof unitId !== "string" || typeof payload.name !== "string" || typeof regionId !== "string") {
-    throw new Error("incomplete unit payload");
-  }
-  return { unitId, name: payload.name, regionId };
-}
-
-function normalizeItem(value: unknown): InventoryItem {
-  if (typeof value !== "object" || value === null) {
-    throw new Error("invalid inventory item payload");
-  }
-  const payload = value as InventoryItemWireShape;
-  const unitId = payload.unitId;
-  if (typeof unitId !== "string" || typeof payload.item !== "string" || typeof payload.quantity !== "number") {
-    throw new Error("incomplete inventory item payload");
-  }
-  return { unitId, item: payload.item, quantity: payload.quantity };
-}
-
-function normalizeMessage(value: unknown): MessageSummary {
-  if (typeof value !== "object" || value === null) {
-    throw new Error("invalid message summary payload");
-  }
-  const payload = value as MessageSummaryWireShape;
-  if (typeof payload.kind !== "string" || typeof payload.source !== "string" || typeof payload.text !== "string") {
-    throw new Error("incomplete message summary payload");
-  }
-  return { kind: payload.kind, source: payload.source, text: payload.text };
-}
-
-function normalizeWarning(value: unknown): ParseWarning {
-  if (typeof value !== "object" || value === null) {
-    throw new Error("invalid warning payload");
-  }
-  const payload = value as ParseWarningWireShape;
-  const lineStart = payload.lineStart;
-  const lineEnd = payload.lineEnd;
-  if (
-    typeof payload.code !== "string" ||
-    typeof payload.section !== "string" ||
-    typeof payload.message !== "string" ||
-    typeof lineStart !== "number" ||
-    typeof lineEnd !== "number" ||
-    (payload.severity !== "warning" && payload.severity !== "error")
-  ) {
-    throw new Error("incomplete warning payload");
-  }
-  return {
-    code: payload.code,
-    section: payload.section,
-    message: payload.message,
-    lineStart,
-    lineEnd,
-    severity: payload.severity
-  };
-}
-
-function normalizeParseResult(value: unknown): ReportParseResult {
-  if (typeof value !== "object" || value === null) {
-    throw new Error("invalid parse result payload");
-  }
-  const payload = value as ReportParseResultWireShape;
-  const turnHeaderPayload = payload.turnHeader;
-  const detectedFactions = payload.detectedFactions;
-  const messageSummaries = payload.messageSummaries;
-  const meetsMinimumImportThreshold = payload.meetsMinimumImportThreshold;
-  if (
-    !Array.isArray(detectedFactions) ||
-    !Array.isArray(payload.regions) ||
-    !Array.isArray(payload.units) ||
-    !Array.isArray(payload.inventories) ||
-    !Array.isArray(messageSummaries) ||
-    !Array.isArray(payload.warnings) ||
-    typeof meetsMinimumImportThreshold !== "boolean"
-  ) {
-    throw new Error("incomplete parse result payload");
-  }
-
-  return {
-    turnHeader: turnHeaderPayload === null || turnHeaderPayload === undefined ? null : normalizeTurnHeader(turnHeaderPayload),
-    detectedFactions: detectedFactions.map((faction) => normalizeFaction(faction)),
-    regions: payload.regions.map((region) => normalizeRegion(region)),
-    units: payload.units.map((unit) => normalizeUnit(unit)),
-    inventories: payload.inventories.map((item) => normalizeItem(item)),
-    messageSummaries: messageSummaries.map((summary) => normalizeMessage(summary)),
-    warnings: payload.warnings.map((warning) => normalizeWarning(warning)),
-    meetsMinimumImportThreshold
-  };
-}
 
 function normalizeImportedTurnPreview(value: unknown): ImportedTurnPreview {
   if (typeof value !== "object" || value === null) {
@@ -1543,61 +1052,6 @@ function normalizeReportMergeResult(value: unknown): ReportMergeResult {
     throw new Error("incomplete report merge payload");
   }
   return { turnNumber, mergedFactionId, mergedFactionName, mergedRegionCount, newRegionCount };
-}
-
-/** A wire field that may be absent, null, or the wrong type entirely. */
-function optionalNumber(value: unknown): number | null {
-  return typeof value === "number" ? value : null;
-}
-
-function optionalText(value: unknown): string | null {
-  return typeof value === "string" ? value : null;
-}
-
-function normalizeOrderValidationResult(value: unknown): OrderValidationResult {
-  if (typeof value !== "object" || value === null) {
-    throw new Error("invalid order validation payload");
-  }
-
-  const payload = value as OrderValidationResultWireShape;
-  const diagnostics = payload.diagnostics;
-
-  if (!Array.isArray(diagnostics)) {
-    throw new Error("incomplete order validation payload");
-  }
-
-  return {
-    diagnostics: diagnostics.map((diagnostic) => {
-      if (typeof diagnostic !== "object" || diagnostic === null) {
-        throw new Error("invalid order validation payload");
-      }
-
-      const entry = diagnostic as OrderDiagnosticWireShape;
-
-      if (
-        typeof entry.code !== "string" ||
-        typeof entry.message !== "string" ||
-        (entry.severity !== "warning" && entry.severity !== "error")
-      ) {
-        throw new Error("incomplete order validation payload");
-      }
-
-      return {
-        code: entry.code,
-        message: entry.message,
-        // Every anchor is optional now, and a missing one is a fact rather than a defect: a
-        // finding about a hex sits on no line, and a syntax error belongs to no hex. Demanding
-        // them all would throw away the whole payload over the one diagnostic that has none.
-        lineStart: optionalNumber(entry.lineStart),
-        lineEnd: optionalNumber(entry.lineEnd),
-        columnStart: optionalNumber(entry.columnStart),
-        columnEnd: optionalNumber(entry.columnEnd),
-        regionId: optionalText(entry.regionId),
-        unitId: optionalText(entry.unitId),
-        severity: entry.severity
-      };
-    })
-  };
 }
 
 function normalizeOrderDraftKey(value: unknown): OrderDraftKey {
@@ -1687,14 +1141,21 @@ function normalizeImportedTurnRecord(value: unknown): ImportedTurnRecord {
   const rawReport = payload.rawReport ?? payload.raw_report;
   const parseResult = payload.parseResult ?? payload.parse_result;
 
-  if (payload.key === undefined || typeof rawReport !== "string" || parseResult === undefined) {
+  if (
+    payload.key === undefined ||
+    typeof rawReport !== "string" ||
+    typeof parseResult !== "object" ||
+    parseResult === null
+  ) {
     throw new Error("incomplete imported turn payload");
   }
 
   return {
     key: normalizeOrderDraftKey(payload.key),
     rawReport,
-    parseResult: normalizeParseResult(parseResult)
+    // Returned as-is: it is the wire shape the core already serializes, not a contract to
+    // normalize (ah-164.2).
+    parseResult: parseResult as ReportParseResult
   };
 }
 
@@ -1731,14 +1192,19 @@ function normalizeReportImportPreview(value: unknown): ReportImportPreview {
   const parseResult = payload.parseResult ?? payload.parse_result;
   const duplicatePreview = payload.duplicatePreview ?? payload.duplicate_preview;
   const turnNumber = payload.turnNumber ?? payload.turn_number ?? null;
-  if (parseResult === undefined || duplicatePreview === undefined) {
+  if (
+    typeof parseResult !== "object" ||
+    parseResult === null ||
+    duplicatePreview === undefined
+  ) {
     throw new Error("incomplete report import preview payload");
   }
   if (turnNumber !== null && typeof turnNumber !== "number") {
     throw new Error("incomplete report import preview payload");
   }
   return {
-    parseResult: normalizeParseResult(parseResult),
+    // Returned as-is, for the same reason normalizeImportedTurnRecord above does (ah-164.2).
+    parseResult: parseResult as ReportParseResult,
     duplicatePreview: normalizeImportedTurnPreview(duplicatePreview),
     turnNumber
   };
@@ -1747,8 +1213,9 @@ function normalizeReportImportPreview(value: unknown): ReportImportPreview {
 export function createCoreClient(adapter: CoreAdapter): CoreClient {
   return {
     async getEngineInfo() {
-      const value = await adapter.getEngineInfo();
-      return normalizeEngineInfo(value);
+      // Returned as-is: it is the wire shape the core already serializes, not a contract to
+      // normalize (ah-164.2).
+      return (await adapter.getEngineInfo()) as EngineInfo;
     },
     async listGames() {
       const value = await adapter.listGames();
@@ -1786,8 +1253,9 @@ export function createCoreClient(adapter: CoreAdapter): CoreClient {
       return normalizeGameManifest(value);
     },
     async parseReport(rawReport: string) {
-      const value = await adapter.parseReport(rawReport);
-      return normalizeParseResult(value);
+      // Returned as-is: it is the wire shape the core already serializes, not a contract to
+      // normalize (ah-164.2).
+      return (await adapter.parseReport(rawReport)) as ReportParseResult;
     },
     async parseReportClassified(rawReport: string, rulesetJson: string) {
       return (await adapter.parseReportClassified(rawReport, rulesetJson)) as ParsedReport;
@@ -1825,13 +1293,14 @@ export function createCoreClient(adapter: CoreAdapter): CoreClient {
       rawReport: string | null = null,
       options: OrderCheckOptions = {}
     ) {
-      const value = await adapter.validateOrders(
+      // Returned as-is: it is the wire shape the core already serializes, not a contract to
+      // normalize (ah-164.2).
+      return (await adapter.validateOrders(
         rawOrders,
         rulesetJson,
         rawReport,
         options.disabledCodes ?? ["hex-unguarded"]
-      );
-      return normalizeOrderValidationResult(value);
+      )) as OrderValidationResult;
     },
     async orderCommands() {
       const value = await adapter.orderCommands();
@@ -2026,7 +1495,7 @@ export function createCoreClient(adapter: CoreAdapter): CoreClient {
 export function createTauriAdapter(invoke: TauriInvoke): CoreAdapter {
   return {
     getEngineInfo() {
-      return invoke<EngineInfoWireShape>("get_engine_info");
+      return invoke<EngineInfo>("get_engine_info");
     },
     listGames() {
       return invoke<GameManifestWireShape[]>("list_games");
@@ -2065,7 +1534,7 @@ export function createTauriAdapter(invoke: TauriInvoke): CoreAdapter {
       });
     },
     parseReport(rawReport: string) {
-      return invoke<ReportParseResultWireShape>("parse_report", {
+      return invoke<ReportParseResult>("parse_report", {
         raw_report: rawReport
       });
     },
@@ -2113,7 +1582,7 @@ export function createTauriAdapter(invoke: TauriInvoke): CoreAdapter {
       rawReport: string | null,
       disabledCodes: readonly string[]
     ) {
-      return invoke<OrderValidationResultWireShape>("validate_orders", {
+      return invoke<OrderValidationResult>("validate_orders", {
         raw_orders: rawOrders,
         ruleset_json: rulesetJson,
         raw_report: rawReport,

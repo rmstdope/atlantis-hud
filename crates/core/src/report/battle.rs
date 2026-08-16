@@ -58,6 +58,7 @@ const OTHER_PREAMBLE_HEADERS: &[&str] = &[
 
 /// A named participant, as printed: `Pirates (14789)`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct Combatant {
     pub name: String,
@@ -70,6 +71,7 @@ pub struct Combatant {
 /// individual items: a roster line can be a paragraph of `#a hero/dwarf` repeats, and nothing
 /// downstream has asked for it broken down.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct BattleUnit {
     pub name: String,
@@ -84,6 +86,7 @@ pub struct BattleUnit {
 /// `text` is that line trimmed and with its trailing full stop removed - `Pirates (14789) loses
 /// 15` - matching the convention `parse_casualty_line` uses for every other verbatim field here.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct Casualty {
     pub combatant: Option<Combatant>,
@@ -96,6 +99,7 @@ pub struct Casualty {
 /// `statistics` is the `Round N statistics:` block, kept as text; modelling it field by field is
 /// out of scope here.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct BattleRound {
     pub number: Option<u32>,
@@ -106,6 +110,7 @@ pub struct BattleRound {
 
 /// One battle, headline to spoils.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct Battle {
     /// The headline, verbatim, whether or not it was recognised.

@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 /// 1, the underworld 2. Only coordinates where `x + y` is even exist, which is why the map is drawn
 /// with flat-top hexes: north and south are direct neighbours.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct Coordinate {
     pub x: i32,
@@ -29,6 +30,7 @@ impl Coordinate {
 
 /// A quantity of one item, as in `57 grain [GRAI]`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct ItemAmount {
     pub amount: i64,
@@ -38,6 +40,7 @@ pub struct ItemAmount {
 
 /// An item offered or sought in a market, as in `138 grain [GRAI] at $24`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct MarketItem {
     pub amount: i64,
@@ -48,6 +51,11 @@ pub struct MarketItem {
 
 /// A settlement inside a region, as in `contains Inholm [city]`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, rename = "SettlementInfo", export_to = "SettlementInfo.ts")
+)]
 #[serde(rename_all = "camelCase")]
 pub struct Settlement {
     pub name: String,
@@ -60,6 +68,11 @@ pub struct Settlement {
 /// An exit names a region the faction may never have visited, which is what makes a third map
 /// state necessary: known by name, with terrain and province but nothing else.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, rename = "RegionExit", export_to = "RegionExit.ts")
+)]
 #[serde(rename_all = "camelCase")]
 pub struct Exit {
     pub direction: String,
@@ -71,6 +84,11 @@ pub struct Exit {
 
 /// A building, ship or road, as introduced by a `+` line.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, rename = "StructureInfo", export_to = "StructureInfo.ts")
+)]
 #[serde(rename_all = "camelCase")]
 pub struct Structure {
     pub structure_id: String,
@@ -84,6 +102,11 @@ pub struct Structure {
 
 /// A skill with its level and accumulated study points, as in `stealth [STEA] 5 (450)`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, rename = "SkillInfo", export_to = "SkillInfo.ts")
+)]
 #[serde(rename_all = "camelCase")]
 pub struct Skill {
     pub name: String,
@@ -97,6 +120,7 @@ pub struct Skill {
 /// Ownership comes from the report's own marker: `*` for your units, `-` for everyone else's. It is
 /// never inferred, which is what makes the read-only rule for foreign units exact.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct ReportUnit {
     pub unit_id: String,
@@ -143,6 +167,7 @@ fn estimated_until_classified() -> bool {
 
 /// A region as the report describes it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct ReportRegion {
     pub region_id: String,

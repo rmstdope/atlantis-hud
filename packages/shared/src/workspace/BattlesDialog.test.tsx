@@ -71,7 +71,8 @@ const FIRST: Battle = {
   damagedUnits: ["14789"],
   spoils: "3 magic crossbows [MXBO], 2531 silver [SILV]",
   lineStart: 10,
-  lineEnd: 200
+  lineEnd: 200,
+  assassination: false
 };
 
 const SECOND: Battle = {
