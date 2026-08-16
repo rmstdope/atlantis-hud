@@ -16,14 +16,14 @@ successfully. Later, a `git push --force-with-lease` after a rebase triggered th
 `pull_request` run within about twenty seconds, with no manual intervention.
 **Why.** Not established. A plausible cause is a race between the branch push and the PR-open
 event on a *brand new* branch pushed and turned into a PR in the same breath, which some
-GitHub Actions accounts describe as missing the initial `pull_request` check-suite association -
+GitHub Actions accounts describe as missing the initial `pull_request` check-suite association —
 but I did not confirm this against GitHub's status or docs, and the same repo's ah-mi7 PR (created
 the same way, minutes earlier) *did* get its CI run on the first push, so it is not consistent.
 **Cost.** About ten minutes of investigation plus one `workflow_dispatch` to unblock the wait for
 CI; no bead impact since the manual run substituted cleanly and the later force-push confirmed the
 normal path still works.
 **Prevent by.** After requesting the Copilot review on a PR against the cerebro repo, also check
-`gh pr view <n> --json statusCheckRollup` once early (not just late) - if it is empty after a
+`gh pr view <n> --json statusCheckRollup` once early (not just late) — if it is empty after a
 couple of minutes while the Copilot review has already landed, `gh workflow run ci.yml --ref
 <branch>` rather than waiting on a run that never queued.
 **Seen before.** None found.
