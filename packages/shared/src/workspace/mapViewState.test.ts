@@ -1,12 +1,34 @@
 import { describe, expect, it } from "vitest";
-import { keepsRestoredHex, mapViewDecision, shouldFollowSelection } from "./mapViewRestore";
+import {
+  keepsRestoredHex,
+  mapViewCommitted,
+  mapViewDecision,
+  mapViewOpened,
+  mapViewSelectionChanged,
+  NO_MAP_VIEW,
+  shouldFollowSelection,
+  type MapViewState
+} from "./mapViewState";
 import type { SavedMapView } from "./mapViewportStorage";
+
+const GAME = "g1";
 
 const SAVED: SavedMapView = {
   viewport: { tx: 120, ty: -40, step: 3 },
   level: 1,
   regionId: "1:7,53"
 };
+
+/** A view for `GAME`, with a viewport pending and a given framed level. */
+function viewWith(pendingViewport: MapViewState["viewport"], framedLevel: number | null): MapViewState {
+  return {
+    gameId: GAME,
+    viewport: null,
+    pendingViewport,
+    framedLevel,
+    restoredRegionId: null
+  };
+}
 
 /**
  * What the map does with the view it is handed.
@@ -18,18 +40,10 @@ const SAVED: SavedMapView = {
 describe("mapViewDecision", () => {
   it("restores a saved view on the level it was saved for", () => {
     expect(
-      mapViewDecision({ pending: SAVED, level: 1, framedLevel: null, hasHexes: true })
-    ).toEqual({ kind: "restore", viewport: SAVED.viewport });
-  });
-
-  // Blobs written before the level was stored still hold a good pan and zoom, and the level they
-  // belong to is whichever one the map opens on.
-  it("restores a saved view that names no level", () => {
-    expect(
       mapViewDecision({
-        pending: { ...SAVED, level: null },
+        view: viewWith(SAVED.viewport, null),
+        gameId: GAME,
         level: 1,
-        framedLevel: null,
         hasHexes: true
       })
     ).toEqual({ kind: "restore", viewport: SAVED.viewport });
@@ -41,37 +55,31 @@ describe("mapViewDecision", () => {
   // map at the origin, because that match would never come.
   it("restores a saved view rather than waiting for the level to agree", () => {
     expect(
-      mapViewDecision({ pending: SAVED, level: 2, framedLevel: null, hasHexes: true })
+      mapViewDecision({
+        view: viewWith(SAVED.viewport, null),
+        gameId: GAME,
+        level: 2,
+        hasHexes: true
+      })
     ).toEqual({ kind: "restore", viewport: SAVED.viewport });
   });
 
   it("fits over a restored view once the level is corrected", () => {
     // The restore has been consumed by then, and the corrected level has never been framed.
     expect(
-      mapViewDecision({ pending: null, level: 1, framedLevel: 2, hasHexes: true })
+      mapViewDecision({ view: viewWith(null, 2), gameId: GAME, level: 1, hasHexes: true })
     ).toEqual({ kind: "fit" });
   });
 
   it("fits when there is no saved view and this level has not been framed", () => {
     expect(
-      mapViewDecision({ pending: null, level: 1, framedLevel: null, hasHexes: true })
-    ).toEqual({ kind: "fit" });
-  });
-
-  it("fits when a saved record holds a focus but no viewport", () => {
-    expect(
-      mapViewDecision({
-        pending: { viewport: null, level: 1, regionId: "1:7,53" },
-        level: 1,
-        framedLevel: null,
-        hasHexes: true
-      })
+      mapViewDecision({ view: viewWith(null, null), gameId: GAME, level: 1, hasHexes: true })
     ).toEqual({ kind: "fit" });
   });
 
   it("fits when the level changes to one that has not been framed", () => {
     expect(
-      mapViewDecision({ pending: null, level: 2, framedLevel: 1, hasHexes: true })
+      mapViewDecision({ view: viewWith(null, 1), gameId: GAME, level: 2, hasHexes: true })
     ).toEqual({ kind: "fit" });
   });
 
@@ -79,7 +87,7 @@ describe("mapViewDecision", () => {
   // player is still looking at the same level they framed. Re-fitting would throw their view away.
   it("holds the view when this level has already been framed", () => {
     expect(
-      mapViewDecision({ pending: null, level: 1, framedLevel: 1, hasHexes: true })
+      mapViewDecision({ view: viewWith(null, 1), gameId: GAME, level: 1, hasHexes: true })
     ).toEqual({ kind: "hold" });
   });
 
@@ -87,8 +95,87 @@ describe("mapViewDecision", () => {
   // count as framed, so the first report to arrive would never be framed at all.
   it("holds when there is nothing on this level to frame", () => {
     expect(
-      mapViewDecision({ pending: null, level: 1, framedLevel: null, hasHexes: false })
+      mapViewDecision({ view: viewWith(null, null), gameId: GAME, level: 1, hasHexes: false })
     ).toEqual({ kind: "hold" });
+  });
+
+  // A view left over from another game is not this game's view: its framed level says nothing
+  // about whether this game's current level has been framed.
+  it("fits when the view belongs to a different game", () => {
+    expect(
+      mapViewDecision({
+        view: viewWith(null, 1),
+        gameId: "g2",
+        level: 1,
+        hasHexes: true
+      })
+    ).toEqual({ kind: "fit" });
+  });
+});
+
+/**
+ * The map view's transitions.
+ *
+ * Each is a pure function from one state to the next, so the decisions above can be tested against
+ * plain data rather than against refs and effect order.
+ */
+describe("the map view's transitions", () => {
+  it("opens on a saved view: pending viewport and restored hex, nothing framed yet", () => {
+    expect(mapViewOpened(GAME, SAVED)).toEqual({
+      gameId: GAME,
+      viewport: null,
+      pendingViewport: SAVED.viewport,
+      framedLevel: null,
+      restoredRegionId: SAVED.regionId
+    });
+  });
+
+  it("opens with nothing saved: every field but the game id is null", () => {
+    expect(mapViewOpened(GAME, null)).toEqual({ ...NO_MAP_VIEW, gameId: GAME });
+  });
+
+  it("a saved record with a focus but no viewport opens with nothing pending", () => {
+    const saved: SavedMapView = { viewport: null, level: 1, regionId: "1:7,53" };
+    expect(mapViewOpened(GAME, saved)).toEqual({
+      gameId: GAME,
+      viewport: null,
+      pendingViewport: null,
+      framedLevel: null,
+      restoredRegionId: "1:7,53"
+    });
+  });
+
+  it("commits a viewport: sets it, spends the pending one, frames the level", () => {
+    const opened = mapViewOpened(GAME, SAVED);
+    const committed = mapViewCommitted(opened, { tx: 1, ty: 2, step: 0 }, 1);
+
+    expect(committed).toEqual({
+      gameId: GAME,
+      viewport: { tx: 1, ty: 2, step: 0 },
+      pendingViewport: null,
+      framedLevel: 1,
+      restoredRegionId: SAVED.regionId
+    });
+  });
+
+  it("a selection on the restored hex keeps the exemption, and the same object", () => {
+    const opened = mapViewOpened(GAME, SAVED);
+    expect(mapViewSelectionChanged(opened, SAVED.regionId)).toBe(opened);
+  });
+
+  it("a selection elsewhere ends the exemption", () => {
+    const opened = mapViewOpened(GAME, SAVED);
+    expect(mapViewSelectionChanged(opened, "1:9,41").restoredRegionId).toBeNull();
+  });
+
+  it("clearing the selection ends the exemption too, as changing level does", () => {
+    const opened = mapViewOpened(GAME, SAVED);
+    expect(mapViewSelectionChanged(opened, null).restoredRegionId).toBeNull();
+  });
+
+  it("has no exemption to end when nothing was restored", () => {
+    const opened = mapViewOpened(GAME, null);
+    expect(mapViewSelectionChanged(opened, "1:9,41")).toBe(opened);
   });
 });
 
