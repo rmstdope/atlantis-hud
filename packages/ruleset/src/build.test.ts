@@ -58,6 +58,21 @@ describe("buildRuleset", () => {
   });
 
   /**
+   * What ah-bai.2 will use to narrow the PRODUCE completion popup to what the unit standing in
+   * the hex can actually make.
+   */
+  it("carries what a skill may produce", () => {
+    const ruleset = built();
+
+    expect(ruleset.skills.MINI.produces).toEqual([
+      { tag: "IRON", level: 1 },
+      { tag: "MITH", level: 3 },
+      { tag: "ADMT", level: 5 }
+    ]);
+    expect(ruleset.skills.OBSE.produces).toEqual([]);
+  });
+
+  /**
    * The risk thresholds are ours, not the game's. Mixing them into a file whose whole point is
    * that it mirrors the server would be dishonest unless they say so on their face.
    */

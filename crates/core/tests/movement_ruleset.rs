@@ -5,7 +5,7 @@
 //! what the game says. Both are worth a failing test.
 
 use atlantis_hud_core::movement::rules::{
-    CastInput, ItemKind, MovementMode, Ruleset, RulesetError,
+    CastInput, ItemKind, MovementMode, Production, Ruleset, RulesetError,
 };
 
 const RULESET: &str = atlantis_hud_fixtures::RULESET_JSON;
@@ -434,6 +434,96 @@ fn a_skill_entry_without_a_cast_block_still_loads() {
             .find_skill("MINI")
             .and_then(|skill| skill.cast.as_ref()),
         None
+    );
+}
+
+/// What a skill may PRODUCE, and the level at which each becomes available - what ah-bai.2 will use
+/// to narrow the PRODUCE completion popup to what the unit standing in the hex can actually make.
+#[test]
+fn reads_what_a_skill_can_produce() {
+    let ruleset = ruleset();
+
+    let mini = ruleset
+        .find_skill("MINI")
+        .expect("MINI is in the catalogue");
+    assert_eq!(
+        mini.produces,
+        vec![
+            Production {
+                tag: "IRON".into(),
+                level: 1
+            },
+            Production {
+                tag: "MITH".into(),
+                level: 3
+            },
+            Production {
+                tag: "ADMT".into(),
+                level: 5
+            }
+        ]
+    );
+
+    let weap = ruleset
+        .find_skill("WEAP")
+        .expect("WEAP is in the catalogue");
+    assert!(weap.produces.contains(&Production {
+        tag: "SWOR".into(),
+        level: 1
+    }));
+    assert!(weap.produces.contains(&Production {
+        tag: "ASWR".into(),
+        level: 5
+    }));
+}
+
+/// A material a product is made from must never be recorded as a product itself: WEAP produces
+/// swords from iron and crossbows from wood, and it is not a miner or a lumberjack.
+#[test]
+fn a_product_is_not_confused_with_its_materials() {
+    let ruleset = ruleset();
+
+    let weap = ruleset
+        .find_skill("WEAP")
+        .expect("WEAP is in the catalogue");
+    assert!(!weap.produces.iter().any(|p| p.tag == "IRON"));
+    assert!(!weap.produces.iter().any(|p| p.tag == "WOOD"));
+}
+
+/// A count, deliberately: when the fixture page is next updated these numbers move, and that is
+/// worth a failing test rather than a silent change.
+#[test]
+fn the_committed_ruleset_names_every_producing_skill() {
+    let ruleset = ruleset();
+
+    let producing: Vec<_> = ruleset
+        .skills
+        .values()
+        .filter(|skill| !skill.produces.is_empty())
+        .collect();
+    assert_eq!(producing.len(), 13, "expected 13 producing skills");
+
+    let pairs: usize = producing.iter().map(|skill| skill.produces.len()).sum();
+    assert_eq!(pairs, 53, "expected 53 skill-item production pairs");
+}
+
+/// A ruleset from before production was scraped must still load: the shell serves whatever file is
+/// deployed, and a skill entry that predates the field is not malformed for lacking it.
+#[test]
+fn a_skill_entry_without_a_produces_block_still_loads() {
+    let mut value: serde_json::Value = serde_json::from_str(RULESET).expect("the ruleset is JSON");
+    value["skills"]["MINI"]
+        .as_object_mut()
+        .expect("MINI is a skill entry")
+        .remove("produces")
+        .expect("the committed entry has a produces field");
+    let stripped = serde_json::to_string(&value).expect("it serialises back");
+
+    let ruleset =
+        Ruleset::from_json(&stripped).expect("a skill entry without produces should load");
+    assert_eq!(
+        ruleset.find_skill("MINI").map(|skill| &skill.produces),
+        Some(&Vec::new())
     );
 }
 
