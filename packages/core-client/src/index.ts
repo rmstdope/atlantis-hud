@@ -3,6 +3,8 @@ import type { AdvisoryCheckCode } from "./coreVocabulary.generated";
 // The report model and the parse family are generated from the Rust core by ts-rs
 // (crates/core, `cargo test`); see docs/implementation-plan.md §Generated bindings.
 export type { EngineInfo } from "./generated/EngineInfo";
+export type { TurnRef } from "./generated/TurnRef";
+export type { TurnTouch } from "./generated/TurnTouch";
 export type { WarningSeverity } from "./generated/WarningSeverity";
 export type { ParseWarning } from "./generated/ParseWarning";
 export type { TurnHeader } from "./generated/TurnHeader";
@@ -520,6 +522,35 @@ export interface CoreAdapter {
 }
 
 /**
+ * A game's imported turns in the order every list shows them: turn ascending, then faction id
+ * ascending as text ("10" before "9" - the collation both stores always used). The one place this
+ * order is written; both adapters return their rows in no particular order.
+ */
+export function sortImportedTurnSummaries(
+  summaries: readonly ImportedTurnSummary[]
+): ImportedTurnSummary[] {
+  return [...summaries].sort((a, b) =>
+    a.key.turnNumber !== b.key.turnNumber
+      ? a.key.turnNumber - b.key.turnNumber
+      : a.key.factionId < b.key.factionId
+        ? -1
+        : a.key.factionId > b.key.factionId
+          ? 1
+          : 0
+  );
+}
+
+/** A game's hex notes, newest first (`createdAt` desc), `id` asc for stability. The one place this order is written. */
+export function sortHexNotes(notes: readonly HexNoteRecord[]): HexNoteRecord[] {
+  return [...notes].sort((a, b) => {
+    if (a.createdAt !== b.createdAt) {
+      return a.createdAt < b.createdAt ? 1 : -1;
+    }
+    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+  });
+}
+
+/**
  * `CoreAdapter` with three ergonomic signatures: an object where the wire takes JSON text, and
  * options where the wire takes a list of disabled codes. Everything else is the adapter as it is —
  * `createCoreClient` is the whole of the difference.
@@ -589,6 +620,12 @@ export function createCoreClient(adapter: CoreAdapter): CoreClient {
     },
     knownMap(rawReport, rulesetJson, remembered) {
       return adapter.knownMap(rawReport, rulesetJson, JSON.stringify(remembered));
+    },
+    async listImportedTurns(databasePath, gameId) {
+      return sortImportedTurnSummaries(await adapter.listImportedTurns(databasePath, gameId));
+    },
+    async listHexNotes(databasePath, gameId) {
+      return sortHexNotes(await adapter.listHexNotes(databasePath, gameId));
     }
   };
 }

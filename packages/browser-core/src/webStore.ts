@@ -148,7 +148,7 @@ export interface WebStore {
     factionId: string,
     turnNumber: number
   ): Promise<StoredOrderDraft | null>;
-  /** A game's hex notes, newest first (createdAt desc, id asc), matching SQLite's ORDER BY. */
+  /** A game's hex notes, in no particular order; the client orders them. */
   getHexNotes(databasePath: string, gameId: string): Promise<StoredHexNote[]>;
   putHexNote(note: StoredHexNote): Promise<void>;
   /** Resolves to whether a row existed. */
@@ -412,23 +412,10 @@ export function createIndexedDbWebStore(): WebStore {
     putOrderDraft: (draft) => write(draft.databasePath, ORDER_DRAFT_STORE, draft),
     getOrderDraft: (databasePath, _gameId, factionId, turnNumber) =>
       read<StoredOrderDraft>(databasePath, ORDER_DRAFT_STORE, [factionId, turnNumber]),
-    async getHexNotes(databasePath, _gameId) {
-      const notes = await readStore<StoredHexNote>(databasePath, HEX_NOTE_STORE);
-      return sortHexNotes(notes);
-    },
+    getHexNotes: (databasePath, _gameId) => readStore<StoredHexNote>(databasePath, HEX_NOTE_STORE),
     putHexNote: (note) => write(note.databasePath, HEX_NOTE_STORE, note),
     deleteHexNote: (databasePath, _gameId, noteId) => remove(databasePath, HEX_NOTE_STORE, noteId)
   };
-}
-
-/** Newest first (createdAt desc), id asc for stability — matching SQLite's ORDER BY. */
-function sortHexNotes<T extends { createdAt: string; id: string }>(notes: readonly T[]): T[] {
-  return [...notes].sort((a, b) => {
-    if (a.createdAt !== b.createdAt) {
-      return a.createdAt < b.createdAt ? 1 : -1;
-    }
-    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
-  });
 }
 
 /**
@@ -541,8 +528,7 @@ export function createMemoryWebStore(): WebStore {
       return drafts.get(composite(databasePath, factionId, turnNumber)) ?? null;
     },
     async getHexNotes(databasePath, _gameId) {
-      const notes = [...hexNotes.values()].filter((note) => note.databasePath === databasePath);
-      return sortHexNotes(notes);
+      return [...hexNotes.values()].filter((note) => note.databasePath === databasePath);
     },
     async putHexNote(note) {
       hexNotes.set(notesComposite(note.databasePath, note.id), note);

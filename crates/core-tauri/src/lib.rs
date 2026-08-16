@@ -2225,8 +2225,9 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
         )
         .expect("april should commit");
 
-        let listed = command_list_imported_turns(&created.database_path, "faction-12")
+        let mut listed = command_list_imported_turns(&created.database_path, "faction-12")
             .expect("listing should succeed");
+        listed.sort_by_key(|summary| summary.key.turn_number);
 
         let turn_numbers: Vec<u32> = listed
             .iter()
