@@ -102,10 +102,9 @@ describe("remembering which allied reports were merged", () => {
 });
 
 /**
- * The rule SQLite has always enforced in `upsert_region_sightings`, which this store did not:
- * a sighting only replaces one from an earlier turn. Importing a run of old reports - which is
- * exactly what a batch import is for - would otherwise walk the browser's map backwards, quietly,
- * because nothing about writing an older account of a hex over a newer one fails.
+ * The store keeps whatever it is told; whether an older report may overwrite a newer sighting is
+ * the core's call (`import_writes`), not this store's - see `writes an earlier turn's account
+ * when told to` below.
  */
 describe("remembering where a faction has been", () => {
   const sighting = (overrides: Partial<StoredRegionSighting> = {}): StoredRegionSighting => ({
@@ -137,7 +136,7 @@ describe("remembering where a faction has been", () => {
     expect(stored[0].payloadJson).toBe('{"turn":71}');
   });
 
-  it("refuses to let an earlier turn's account overwrite a later one", async () => {
+  it("writes an earlier turn's account when told to - which one survives is the core's call", async () => {
     const store = createMemoryWebStore();
 
     await store.putRegionSightings([sighting({ lastSeenTurn: 71, payloadJson: '{"turn":71}' })]);
@@ -145,8 +144,8 @@ describe("remembering where a faction has been", () => {
 
     const stored = await store.getRegionSightings(DB, "faction-95", "95");
     expect(stored).toHaveLength(1);
-    expect(stored[0].lastSeenTurn).toBe(71);
-    expect(stored[0].payloadJson).toBe('{"turn":71}');
+    expect(stored[0].lastSeenTurn).toBe(70);
+    expect(stored[0].payloadJson).toBe('{"turn":70}');
   });
 
   /** Re-importing the same turn refreshes it, exactly as committing that turn again does. */

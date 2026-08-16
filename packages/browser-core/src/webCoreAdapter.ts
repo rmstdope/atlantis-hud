@@ -72,6 +72,13 @@ export type CoreWasmModule = {
     confirmedFactionId: string,
     rulesetJson: string | null
   ): PreparedImport;
+  report_import_writes_state(
+    rawReport: string,
+    rulesetJson: string | null,
+    existingImportedAt: string | null,
+    seenJson: string,
+    at: string
+  ): ImportWrites;
   prepare_report_merge_state(
     rawReport: string,
     viewerTurnNumber: number,
@@ -97,25 +104,21 @@ type PreparedRegionSighting = {
 type PreparedImport = {
   turnNumber: number | null;
   candidate: StoredTurnSnapshot;
-  /**
-   * Every region the report described, already serialized.
-   *
-   * The core builds these from the parse it has just made. Asking for the whole model back and
-   * serializing each region here instead meant a third parse of the same report and a JSON round
-   * trip of eleven regions, which together cost more than the parsing did.
-   */
-  /**
-   * Optional because `prepare` below tolerates its absence: `serde_wasm_bindgen` can omit a
-   * `None`-valued field entirely rather than serializing it as `null`, depending on serializer
-   * settings, and this one has always been read with `??` for exactly that reason.
-   */
-  regionSightings?: PreparedRegionSighting[];
   parseResult: ReportParseResult;
   /**
-   * `null` when the report may be imported; otherwise the core's reason to refuse it. Optional for
-   * the same reason `regionSightings` is - `prepare` below normalizes an absent field to `null`.
+   * `null` when the report may be imported; otherwise the core's reason to refuse it. Optional
+   * because `prepare` below tolerates its absence: `serde_wasm_bindgen` can omit a `None`-valued
+   * field entirely rather than serializing it as `null`, depending on serializer settings, and
+   * this one has always been read with `??` for exactly that reason.
    */
   rejection?: string | null;
+};
+
+/** What the core says one import writes: the turn's two stamps and the hexes to remember. */
+type ImportWrites = {
+  importedAt: string;
+  updatedAt: string;
+  regionSightings: PreparedRegionSighting[];
 };
 
 type PreparedMerge = {
@@ -664,11 +667,6 @@ export function createWebCoreAdapter(
       // Preview deliberately tolerates an inadmissible report: the panel shows the parse result
       // and its warnings so the user can see why it would be refused.
       //
-      // It shares `prepare` with the commit, so it also receives region rows it has no use for.
-      // Left as it is rather than split into two core calls: the parse behind them is a cache hit,
-      // what is left is serializing eleven regions, and nothing on the report-loading path calls
-      // this. Worth splitting the moment something does.
-      //
       // No ruleset: a preview stores nothing, and the summary it compares carries no men counts.
       const prepared = prepare(rawReport, confirmedFactionId, null);
       const duplicatePreview =
@@ -719,29 +717,39 @@ export function createWebCoreAdapter(
         );
       }
 
-      // `importedAt` lands on the record for the same reason the desktop writes it into SQLite:
-      // ranking a game's turns against its order drafts needs one clock and one format, and the
-      // browser has no more business inventing either than the Rust core does.
+      // What the store already holds is handed to the core, and what comes back is written as it
+      // is: whether an older report may overwrite a hex, and which stamp a re-import keeps, are
+      // the core's rules, decided once for both platforms (`import_writes` in the Rust core).
+      const seen = await store.getRegionSightings(databasePath, gameId, confirmedFactionId);
+      const writes = wasm.report_import_writes_state(
+        rawReport,
+        rulesetJson,
+        existing?.importedAt ?? null,
+        JSON.stringify(seen.map((s) => ({ regionId: s.regionId, lastSeenTurn: s.lastSeenTurn }))),
+        importedAt
+      );
+
+      // `importedAt`/`updatedAt` land on the record for the same reason the desktop writes them
+      // into SQLite: ranking a game's turns against its order drafts needs one clock and one
+      // format, and the browser has no more business inventing either than the Rust core does.
       await store.putImportedTurn({
         databasePath,
         gameId,
         factionId: confirmedFactionId,
         turnNumber,
-        // Re-importing moves `updatedAt` and leaves `importedAt`: when a turn first arrived does
-        // not change because it arrived again. The desktop's UPSERT says the same thing in SQL.
-        importedAt: existing?.importedAt ?? importedAt,
-        updatedAt: importedAt,
+        importedAt: writes.importedAt,
+        updatedAt: writes.updatedAt,
         ...prepared.candidate
       });
 
       // Regions also get remembered one by one, each carrying the turn it was seen in. Without
       // this the map only ever knows the latest report, and no route can be longer than one step.
-      // The desktop does the same thing into SQLite; this is the browser's half of it, and both
-      // build the rows with the same core function so a remembered hex cannot come out different.
-      const sightings = prepared.regionSightings ?? [];
-      if (sightings.length > 0) {
+      // The desktop does the same thing into SQLite; this is the browser's half of it, and the
+      // rows to write were already decided above by the core, so a remembered hex cannot come out
+      // different between platforms.
+      if (writes.regionSightings.length > 0) {
         await store.putRegionSightings(
-          sightings.map((sighting) => ({
+          writes.regionSightings.map((sighting) => ({
             databasePath,
             gameId,
             factionId: confirmedFactionId,
