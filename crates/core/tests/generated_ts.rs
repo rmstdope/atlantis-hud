@@ -55,7 +55,14 @@ fn core_client_vocabulary_matches_the_core() {
         std::fs::write(&path, &expected).expect("writes the generated vocabulary");
         return;
     }
-    let actual = std::fs::read_to_string(&path).unwrap_or_default();
+    // A missing file reads as "stale" (the ordinary case before the first regenerate); any other
+    // I/O error - a permissions problem, a wrong relative path - is a real failure and should say
+    // so rather than being silently swallowed into an empty-string diff.
+    let actual = match std::fs::read_to_string(&path) {
+        Ok(contents) => contents,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(error) => panic!("could not read {}: {error}", path.display()),
+    };
     assert_eq!(
         actual, expected,
         "packages/core-client/src/coreVocabulary.generated.ts is stale; regenerate it with:\n  {REGENERATE}"
