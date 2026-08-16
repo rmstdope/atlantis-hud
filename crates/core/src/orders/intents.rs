@@ -69,6 +69,17 @@ pub enum Intent {
     Form {
         alias: String,
     },
+    /// `SAIL`, with or without a route: the fleet this unit stands in is being told to move. Bare
+    /// SAIL - the turn 71 template's form - has no steps.
+    Sail {
+        steps: Vec<MoveStep>,
+    },
+    /// `ENTER n`: the unit boards structure `n` this month, before anything moves.
+    Enter {
+        structure: String,
+    },
+    /// `LEAVE`: the unit steps out of whatever it is in, before anything moves.
+    Leave,
 }
 
 /// One intent, and where on the page it was written.
@@ -236,8 +247,15 @@ fn read_order(command: &Token, arguments: &[Token]) -> Option<Intent> {
         "BUILD" => Some(Intent::MonthLong("BUILD")),
         "PRODUCE" => Some(Intent::MonthLong("PRODUCE")),
         // A bare SAIL - the form the turn 71 template uses - spends the month but names no step
-        // this reader can follow. With a route it is a move like any other, and is read below.
-        "SAIL" if arguments.is_empty() => Some(Intent::MonthLong("SAIL")),
+        // this reader can follow. With a route it is read below.
+        "SAIL" if arguments.is_empty() => Some(Intent::Sail { steps: Vec::new() }),
+        "SAIL" => Some(Intent::Sail {
+            steps: forms::read_move_line(command, arguments)?,
+        }),
+        "ENTER" => Some(Intent::Enter {
+            structure: forms::read_only_number(arguments)?.to_string(),
+        }),
+        "LEAVE" if arguments.is_empty() => Some(Intent::Leave),
         // Not every spell takes a month, but the rules make no promise about which, and a mage
         // offered as somebody's spare teacher is worse than one left alone.
         "CAST" => Some(Intent::MonthLong("CAST")),
@@ -577,13 +595,13 @@ mod tests {
         );
     }
 
-    /// SAIL with a route is a move like any other - the tracer already draws it leaving, and the
-    /// advisory checks (`semantics::leaves_the_hex`) now agree.
+    /// SAIL with a route is its own intent, not a plain Move - the sailing check
+    /// (`semantics::check_sailing`) needs to tell a fleet order from a unit walking off.
     #[test]
-    fn a_sail_with_a_route_moves_the_unit_as_a_move_does() {
+    fn a_sail_with_a_route_is_its_own_intent() {
         assert_eq!(
             intents("unit 5\nSAIL N\n"),
-            vec![Intent::Move {
+            vec![Intent::Sail {
                 steps: crate::movement::orders::parse_move("SAIL N")
                     .expect("the planner reads this")
             }]
@@ -594,7 +612,27 @@ mod tests {
     /// still spends the whole month.
     #[test]
     fn a_bare_sail_still_spends_the_month() {
-        assert_eq!(intents("unit 5\nSAIL\n"), vec![Intent::MonthLong("SAIL")]);
+        assert_eq!(
+            intents("unit 5\nSAIL\n"),
+            vec![Intent::Sail { steps: Vec::new() }]
+        );
+    }
+
+    /// `ENTER n` records which structure the unit boards this month, before anything moves.
+    #[test]
+    fn an_enter_names_its_structure() {
+        assert_eq!(
+            intents("unit 5\nENTER 329\n"),
+            vec![Intent::Enter {
+                structure: "329".to_string()
+            }]
+        );
+    }
+
+    /// `LEAVE` records that the unit steps out of whatever it is in this month.
+    #[test]
+    fn a_leave_is_recorded() {
+        assert_eq!(intents("unit 5\nLEAVE\n"), vec![Intent::Leave]);
     }
 
     /// A TURN block's contents are next month's orders, not this month's. Reading them as though

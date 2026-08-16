@@ -12,7 +12,9 @@ export const ADVISORY_CHECK_CODES = [
   "teacher-cannot-teach",
   "teaching-oversubscribed",
   "teacher-has-free-slots",
-  "form-alias-reused"
+  "form-alias-reused",
+  "fleet-overloaded",
+  "fleet-undercrewed"
 ] as const;
 
 export type AdvisoryCheckCode = (typeof ADVISORY_CHECK_CODES)[number];

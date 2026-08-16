@@ -20,6 +20,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use super::forms::{Amount, Party, Selector};
 use super::intents::{read_intents, Intent, PlacedIntent, UnitIntents};
+use crate::movement::mode::{cargo_capacity, fleet_label, parse_fleet_kind, sailing_requirement};
 use crate::movement::orders::MoveStep;
 use crate::movement::rules::{item_spellings, Ruleset};
 use crate::report::model::{ItemAmount, MarketItem, ReportRegion, ReportUnit};
@@ -74,11 +75,13 @@ pub mod codes {
     pub const TEACHING_OVERSUBSCRIBED: Code = Code("teaching-oversubscribed");
     pub const TEACHER_HAS_FREE_SLOTS: Code = Code("teacher-has-free-slots");
     pub const FORM_ALIAS_REUSED: Code = Code("form-alias-reused");
+    pub const FLEET_OVERLOADED: Code = Code("fleet-overloaded");
+    pub const FLEET_UNDERCREWED: Code = Code("fleet-undercrewed");
     /// Every code. This array's own order is not the settings tab's grouping (that groups by
-    /// concern - Teaching / Resources / Guarding / Orders - not by this list), but a new entry
-    /// still goes last: the generated TypeScript copies this order, and every entry added since
-    /// `hex-unguarded` has kept new-last / grouped-last in step with each other.
-    pub const ALL: [Code; 10] = [
+    /// concern - Teaching / Resources / Guarding / Orders / Sailing - not by this list), but a new
+    /// entry still goes last: the generated TypeScript copies this order, and every entry added
+    /// since `hex-unguarded` has kept new-last / grouped-last in step with each other.
+    pub const ALL: [Code; 12] = [
         NOT_ENOUGH_SILVER,
         NOT_ENOUGH_ITEMS,
         GUARD_DROPPED,
@@ -89,6 +92,8 @@ pub mod codes {
         TEACHING_OVERSUBSCRIBED,
         TEACHER_HAS_FREE_SLOTS,
         FORM_ALIAS_REUSED,
+        FLEET_OVERLOADED,
+        FLEET_UNDERCREWED,
     ];
 }
 
@@ -163,6 +168,7 @@ pub fn check_turn(
         check_guard(&hex, &options, &mut findings);
         check_teaching(&hex, ruleset, &options, &mut findings);
         check_forms(&hex, &options, &mut findings);
+        check_sailing(&hex, ruleset, &options, &mut findings);
 
         // Within a hex, what sits on a line comes first and in line order; what belongs to the hex
         // itself comes last. `sort_by_key` is stable, so checks that produce several findings for
@@ -252,7 +258,9 @@ impl Ordered<'_> {
     /// within the hex, so those steps leave it standing where it was.
     fn leaves_the_hex(&self) -> bool {
         self.intents().any(|intent| match intent {
-            Intent::Move { steps } => steps.iter().any(|step| matches!(step, MoveStep::Go(_))),
+            Intent::Move { steps } | Intent::Sail { steps } => {
+                steps.iter().any(|step| matches!(step, MoveStep::Go(_)))
+            }
             _ => false,
         })
     }
@@ -287,6 +295,7 @@ impl Ordered<'_> {
                     | Intent::Tax
                     | Intent::Pillage
                     | Intent::Move { .. }
+                    | Intent::Sail { .. }
                     | Intent::MonthLong(_)
             )
         })
@@ -477,6 +486,7 @@ fn apply(
         | Intent::Move { .. }
         | Intent::MonthLong(_)
         | Intent::Form { .. } => {}
+        Intent::Sail { .. } | Intent::Enter { .. } | Intent::Leave => {}
     }
 }
 
@@ -1126,10 +1136,143 @@ fn check_forms(hex: &Hex<'_>, options: &CheckOptions, findings: &mut Vec<Finding
     }
 }
 
+/// Whether the unit is aboard `fleet_id` once this month's ENTER/LEAVE orders have run: the
+/// report's own structure first, then the last of this unit's ENTER/LEAVE intents in document
+/// order - which is the order the server itself would apply them in.
+fn is_aboard(ordered: &Ordered<'_>, fleet_id: &str) -> bool {
+    let mut aboard = ordered.unit.structure_id.as_deref() == Some(fleet_id);
+    for placed in ordered.intents {
+        match &placed.intent {
+            Intent::Enter { structure } => aboard = structure == fleet_id,
+            Intent::Leave => aboard = false,
+            _ => {}
+        }
+    }
+    aboard
+}
+
+/// Whether the unit could be giving the SAIL order for `fleet_id`: standing in it per the report,
+/// or boarding it this month. A unit that also LEAVEs is not excluded here - the server would
+/// still read its SAIL line before running the LEAVE.
+fn could_captain(ordered: &Ordered<'_>, fleet_id: &str) -> bool {
+    ordered.unit.structure_id.as_deref() == Some(fleet_id)
+        || ordered.intents.iter().any(
+            |placed| matches!(&placed.intent, Intent::Enter { structure } if structure == fleet_id),
+        )
+}
+
+/// Every fleet in the hex that one of our units orders to SAIL: is what is aboard within what the
+/// hull carries, and is enough sailing skill aboard to sail it? Aboard means the report's units in
+/// the fleet, plus those that ENTER it this month, minus those that LEAVE - the instant orders the
+/// server runs before anything moves. Weights and skills are the report's own (`ah-eet` prices
+/// this month's GIVEs). Anything the report or the ruleset cannot price silences the fleet -
+/// never a guess.
+fn check_sailing(
+    hex: &Hex<'_>,
+    ruleset: Option<&Ruleset>,
+    options: &CheckOptions,
+    findings: &mut Vec<Finding>,
+) {
+    for fleet in &hex.region.structures {
+        if parse_fleet_kind(&fleet.kind).is_none() {
+            continue;
+        }
+
+        let captain = hex
+            .units
+            .iter()
+            .filter(|ordered| could_captain(ordered, &fleet.structure_id))
+            .filter_map(|ordered| {
+                ordered
+                    .intents
+                    .iter()
+                    .find(|placed| matches!(placed.intent, Intent::Sail { .. }))
+                    .map(|placed| (ordered, placed))
+            })
+            .min_by_key(|(_, placed)| placed.line);
+        let Some((captain, sail_placement)) = captain else {
+            continue;
+        };
+
+        let aboard: Vec<&Ordered<'_>> = hex
+            .units
+            .iter()
+            .filter(|ordered| is_aboard(ordered, &fleet.structure_id))
+            .collect();
+
+        // A MOVE by anyone aboard, or a MOVE that steps into this fleet, leaves the server's
+        // ordering against the SAIL unpromised - doubt, not a guess.
+        let move_touches_fleet = hex.units.iter().any(|ordered| {
+            ordered.intents.iter().any(|placed| match &placed.intent {
+                Intent::Move { steps } => steps.iter().any(
+                    |step| matches!(step, MoveStep::In(Some(id)) if id == &fleet.structure_id),
+                ),
+                _ => false,
+            })
+        });
+        let aboard_unit_moves = aboard.iter().any(|ordered| {
+            ordered
+                .intents
+                .iter()
+                .any(|placed| matches!(placed.intent, Intent::Move { .. }))
+        });
+        // A unit of another faction standing in the same hull is not ours to weigh or to train.
+        let foreign_aboard = hex.region.units.iter().any(|unit| {
+            !unit.own && unit.structure_id.as_deref() == Some(fleet.structure_id.as_str())
+        });
+
+        if move_touches_fleet || aboard_unit_moves || foreign_aboard {
+            continue;
+        }
+
+        let label = fleet_label(fleet);
+
+        if aboard.iter().all(|ordered| ordered.unit.weight.is_some()) {
+            let load: i64 = aboard
+                .iter()
+                .map(|ordered| ordered.unit.weight.expect("just checked"))
+                .sum();
+            if let Some(capacity) = cargo_capacity(fleet, ruleset) {
+                if load > capacity && options.emits(codes::FLEET_OVERLOADED) {
+                    findings.push(captain.finding(
+                        hex,
+                        codes::FLEET_OVERLOADED,
+                        format!(
+                            "{label} is overloaded: {load} aboard on a capacity of {capacity}, \
+                             so it will not sail"
+                        ),
+                        Some(sail_placement),
+                    ));
+                }
+            }
+        }
+
+        let levels: i64 = aboard
+            .iter()
+            .flat_map(|ordered| ordered.unit.skills.iter())
+            .filter(|skill| skill.tag.eq_ignore_ascii_case("SAIL"))
+            .map(|skill| i64::from(skill.level))
+            .sum();
+        if let Some(required) = sailing_requirement(fleet, ruleset) {
+            if levels < required && options.emits(codes::FLEET_UNDERCREWED) {
+                findings.push(captain.finding(
+                    hex,
+                    codes::FLEET_UNDERCREWED,
+                    format!(
+                        "{label} is short of sailors: {levels} sailing levels aboard, it needs \
+                         {required}, so it will not sail"
+                    ),
+                    Some(sail_placement),
+                ));
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::report::model::{Coordinate, Skill};
+    use crate::report::model::{Coordinate, Skill, Structure};
 
     const RULESET: &str = atlantis_hud_fixtures::RULESET_JSON;
 
@@ -1199,6 +1342,27 @@ mod tests {
             points: 0,
         });
         unit
+    }
+
+    /// A longship, stated exactly as the fixture reports write one: `Load: 110/150; Sailors:
+    /// 4/4; MaxSpeed: 4.`
+    fn longship(structure_id: &str) -> Structure {
+        Structure {
+            structure_id: structure_id.to_string(),
+            name: "Ship".to_string(),
+            kind: "Longship".to_string(),
+            description: Some("Load: 110/150; Sailors: 4/4; MaxSpeed: 4.".to_string()),
+            needs: None,
+        }
+    }
+
+    fn sail(level: u32) -> Skill {
+        Skill {
+            name: "sailing".to_string(),
+            tag: "SAIL".to_string(),
+            level,
+            points: 0,
+        }
     }
 
     fn report(regions: Vec<ReportRegion>) -> ParsedReport {
@@ -2259,6 +2423,31 @@ mod tests {
                 vec![region(vec![unit("5")])],
                 "unit 5\nFORM 1\nEND\nFORM 1\nEND\n",
             ),
+            (
+                codes::FLEET_OVERLOADED,
+                vec![ReportRegion {
+                    structures: vec![longship("329")],
+                    ..region(vec![ReportUnit {
+                        structure_id: Some("329".to_string()),
+                        weight: Some(200),
+                        skills: vec![sail(4)],
+                        ..unit("11125")
+                    }])
+                }],
+                "unit 11125\nSAIL N\n",
+            ),
+            (
+                codes::FLEET_UNDERCREWED,
+                vec![ReportRegion {
+                    structures: vec![longship("329")],
+                    ..region(vec![ReportUnit {
+                        structure_id: Some("329".to_string()),
+                        weight: Some(10),
+                        ..unit("11125")
+                    }])
+                }],
+                "unit 11125\nSAIL N\n",
+            ),
         ];
 
         assert_eq!(
@@ -2354,6 +2543,276 @@ mod tests {
                 disabling(codes::NOT_ENOUGH_SILVER),
             )),
             ["guard-dropped"]
+        );
+    }
+
+    // --- sailing ------------------------------------------------------------------------------
+
+    /// A unit aboard `fleet_id`, at the given weight and sailing skill.
+    fn aboard(id: &str, fleet_id: &str, weight: i64, sail_level: u32) -> ReportUnit {
+        let mut aboard = ReportUnit {
+            structure_id: Some(fleet_id.to_string()),
+            weight: Some(weight),
+            ..unit(id)
+        };
+        if sail_level > 0 {
+            aboard.skills.push(sail(sail_level));
+        }
+        aboard
+    }
+
+    #[test]
+    fn a_fleet_within_its_numbers_sails_in_silence() {
+        let region = ReportRegion {
+            structures: vec![longship("329")],
+            ..region(vec![
+                aboard("11125", "329", 50, 2),
+                aboard("12590", "329", 60, 2),
+            ])
+        };
+
+        assert_eq!(
+            codes(&check(vec![region], "unit 11125\nSAIL N\n")),
+            Vec::<&str>::new()
+        );
+    }
+
+    #[test]
+    fn a_fleet_over_capacity_is_warned_on_the_captains_sail_line() {
+        let region = ReportRegion {
+            structures: vec![longship("329")],
+            ..region(vec![
+                aboard("11125", "329", 100, 2),
+                aboard("12590", "329", 90, 2),
+            ])
+        };
+
+        let finding = only(check(vec![region], "unit 11125\nSAIL N\n"));
+        assert_eq!(finding.code.as_str(), "fleet-overloaded");
+        assert_eq!(finding.unit_id, Some("11125".to_string()));
+        assert_eq!(finding.line, Some(2));
+        assert_eq!(
+            finding.message,
+            "Longship [329] is overloaded: 190 aboard on a capacity of 150, so it will not sail"
+        );
+    }
+
+    #[test]
+    fn a_fleet_short_of_sailors_is_warned() {
+        let region = ReportRegion {
+            structures: vec![longship("329")],
+            ..region(vec![
+                aboard("11125", "329", 50, 2),
+                aboard("12590", "329", 50, 0),
+            ])
+        };
+
+        let finding = only(check(vec![region], "unit 11125\nSAIL N\n"));
+        assert_eq!(finding.code.as_str(), "fleet-undercrewed");
+        assert_eq!(
+            finding.message,
+            "Longship [329] is short of sailors: 2 sailing levels aboard, it needs 4, so it will not sail"
+        );
+    }
+
+    #[test]
+    fn both_problems_are_two_findings_on_the_same_line() {
+        let region = ReportRegion {
+            structures: vec![longship("329")],
+            ..region(vec![aboard("11125", "329", 200, 0)])
+        };
+
+        let findings = check(vec![region], "unit 11125\nSAIL N\n");
+        assert_eq!(
+            codes(&findings),
+            vec!["fleet-overloaded", "fleet-undercrewed"]
+        );
+        assert!(findings.iter().all(|f| f.line == Some(2)));
+    }
+
+    #[test]
+    fn a_unit_entering_this_month_counts_aboard() {
+        let region = ReportRegion {
+            structures: vec![longship("329")],
+            ..region(vec![
+                aboard("11125", "329", 50, 4),
+                ReportUnit {
+                    weight: Some(200),
+                    ..unit("999")
+                },
+            ])
+        };
+
+        let finding = only(check(
+            vec![region],
+            "unit 11125\nSAIL N\nunit 999\nENTER 329\n",
+        ));
+        assert_eq!(finding.code.as_str(), "fleet-overloaded");
+    }
+
+    #[test]
+    fn a_unit_leaving_this_month_does_not_count() {
+        let region = ReportRegion {
+            structures: vec![longship("329")],
+            ..region(vec![
+                aboard("11125", "329", 50, 4),
+                aboard("12590", "329", 100, 0),
+            ])
+        };
+
+        assert_eq!(
+            codes(&check(
+                vec![region],
+                "unit 11125\nSAIL N\nunit 12590\nLEAVE\n",
+            )),
+            Vec::<&str>::new()
+        );
+    }
+
+    #[test]
+    fn exactly_at_capacity_and_exactly_enough_crew_sail() {
+        let region = ReportRegion {
+            structures: vec![longship("329")],
+            ..region(vec![aboard("11125", "329", 150, 4)])
+        };
+
+        assert_eq!(
+            codes(&check(vec![region], "unit 11125\nSAIL N\n")),
+            Vec::<&str>::new()
+        );
+    }
+
+    #[test]
+    fn a_bare_sail_is_a_sail() {
+        let region = ReportRegion {
+            structures: vec![longship("329")],
+            ..region(vec![aboard("11125", "329", 200, 4)])
+        };
+
+        let finding = only(check(vec![region], "unit 11125\nSAIL\n"));
+        assert_eq!(finding.code.as_str(), "fleet-overloaded");
+    }
+
+    #[test]
+    fn a_move_touching_the_fleet_silences_it() {
+        let region = ReportRegion {
+            structures: vec![longship("329")],
+            ..region(vec![
+                aboard("11125", "329", 200, 0),
+                ReportUnit {
+                    weight: Some(0),
+                    ..unit("999")
+                },
+            ])
+        };
+
+        assert_eq!(
+            codes(&check(
+                vec![region.clone()],
+                "unit 11125\nSAIL N\nunit 999\nMOVE IN 329\n",
+            )),
+            Vec::<&str>::new()
+        );
+
+        // The captain itself gives MOVE rather than SAIL: no SAIL, so the fleet is not checked.
+        assert_eq!(
+            codes(&check(vec![region], "unit 11125\nMOVE N\n")),
+            Vec::<&str>::new()
+        );
+    }
+
+    #[test]
+    fn an_unstated_weight_silences_the_load_but_not_the_crew() {
+        let region = ReportRegion {
+            structures: vec![longship("329")],
+            ..region(vec![ReportUnit {
+                structure_id: Some("329".to_string()),
+                weight: None,
+                ..unit("11125")
+            }])
+        };
+
+        let finding = only(check(vec![region], "unit 11125\nSAIL N\n"));
+        assert_eq!(finding.code.as_str(), "fleet-undercrewed");
+    }
+
+    #[test]
+    fn stated_numbers_beat_the_ruleset() {
+        let region = ReportRegion {
+            structures: vec![Structure {
+                structure_id: "1121".to_string(),
+                name: "Ship".to_string(),
+                kind: "Fleet, 2 Galleons".to_string(),
+                description: None,
+                needs: None,
+            }],
+            ..region(vec![aboard("11125", "1121", 5401, 30)])
+        };
+
+        let finding = only(check(vec![region], "unit 11125\nSAIL N\n"));
+        assert_eq!(finding.code.as_str(), "fleet-overloaded");
+        assert!(finding.message.contains("capacity of 5400"));
+    }
+
+    #[test]
+    fn the_ruleset_prices_a_fleet_the_report_does_not() {
+        let region = ReportRegion {
+            structures: vec![Structure {
+                structure_id: "1".to_string(),
+                name: "Ship".to_string(),
+                kind: "Longship".to_string(),
+                description: None,
+                needs: None,
+            }],
+            ..region(vec![aboard("11125", "1", 200, 0)])
+        };
+
+        let findings = check_turn(
+            &report(vec![region]),
+            "unit 11125\nSAIL N\n",
+            None,
+            CheckOptions::default(),
+        );
+        assert_eq!(codes(&findings), Vec::<&str>::new());
+    }
+
+    #[test]
+    fn a_foreign_unit_aboard_silences_the_fleet() {
+        let region = ReportRegion {
+            structures: vec![longship("329")],
+            ..region(vec![
+                aboard("11125", "329", 200, 0),
+                ReportUnit {
+                    own: false,
+                    structure_id: Some("329".to_string()),
+                    weight: Some(0),
+                    ..unit("13")
+                },
+            ])
+        };
+
+        assert_eq!(
+            codes(&check(vec![region], "unit 11125\nSAIL N\n")),
+            Vec::<&str>::new()
+        );
+    }
+
+    #[test]
+    fn a_unit_that_only_stands_in_the_hex_is_not_aboard() {
+        let region = ReportRegion {
+            structures: vec![longship("329")],
+            ..region(vec![
+                aboard("11125", "329", 50, 4),
+                ReportUnit {
+                    weight: Some(1000),
+                    ..unit("999")
+                },
+            ])
+        };
+
+        assert_eq!(
+            codes(&check(vec![region], "unit 11125\nSAIL N\n")),
+            Vec::<&str>::new()
         );
     }
 
