@@ -30,6 +30,11 @@ function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
     order_commands_state: () => ["GIVE", "MOVE", "WORK"],
     export_map_state: (rawReport: string, rememberedJson: string, requestJson: string) =>
       `; Map export from Atlantis HUD\n; ${rawReport} ${rememberedJson} ${requestJson}\n`,
+    known_map_state: (rawReport: string, rulesetJson: string | null, rememberedJson: string) => ({
+      hexes: [],
+      currentTurn: null,
+      echoed: { rawReport, rulesetJson, rememberedJson }
+    }),
     plan_route_state: (
       rulesetJson: string,
       rawReport: string,
@@ -868,6 +873,36 @@ describe("planning a route", () => {
       unitId: "18642",
       destination: "1:7,51"
     });
+  });
+});
+
+describe("resolving the known map", () => {
+  /**
+   * Resolution is pure, so the adapter has nothing to do but pass the three arguments through in
+   * the right order.
+   */
+  it("passes the request straight to the core, unshuffled", async () => {
+    const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
+
+    const answer = (await adapter.knownMap("{report}", "{ruleset}", "[remembered]")) as {
+      echoed: Record<string, string | null>;
+    };
+
+    expect(answer.echoed).toEqual({
+      rawReport: "{report}",
+      rulesetJson: "{ruleset}",
+      rememberedJson: "[remembered]"
+    });
+  });
+
+  it("passes a null ruleset through unchanged", async () => {
+    const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
+
+    const answer = (await adapter.knownMap("{report}", null, "[]")) as {
+      echoed: Record<string, string | null>;
+    };
+
+    expect(answer.echoed.rulesetJson).toBeNull();
   });
 });
 

@@ -28,6 +28,7 @@ use std::collections::{BTreeMap, HashSet};
 
 use serde::{Deserialize, Serialize};
 
+use crate::cache::ReportCache;
 use crate::movement::graph::RememberedRegion;
 use crate::report::model::{Coordinate, ReportRegion};
 use crate::report::ParsedReport;
@@ -249,4 +250,24 @@ pub fn resolve_known_map(current: &ParsedReport, remembered: &[RememberedRegion]
         hexes,
         current_turn,
     }
+}
+
+/// The boundary's entry: parses the raw report - classified when a ruleset is to hand, so units
+/// carry exact men counts the same way `command_merge_report` and `validate_orders` already parse
+/// classified - reads the remembered regions from their JSON, and resolves.
+///
+/// # Errors
+///
+/// Returns an error when the remembered regions cannot be read.
+pub fn known_map_json(
+    cache: &mut ReportCache,
+    raw_report: &str,
+    ruleset_json: Option<&str>,
+    remembered_json: &str,
+) -> Result<KnownMap, String> {
+    let remembered: Vec<RememberedRegion> = serde_json::from_str(remembered_json)
+        .map_err(|error| format!("remembered regions could not be read: {error}"))?;
+
+    let report = cache.classified_when_possible(raw_report, ruleset_json);
+    Ok(resolve_known_map(&report, &remembered))
 }

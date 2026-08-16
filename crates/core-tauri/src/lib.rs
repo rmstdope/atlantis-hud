@@ -1146,6 +1146,29 @@ pub fn command_export_map(
     })
 }
 
+/// Resolves everything the faction knows about the map, once, for a caller on either shell.
+///
+/// The desktop twin of the wasm binding, delegating to the same core entry so the two shells
+/// cannot drift about who is in a hex.
+///
+/// # Errors
+///
+/// Returns an error when the remembered regions cannot be read.
+pub fn command_known_map(
+    raw_report: &str,
+    ruleset_json: Option<&str>,
+    remembered_json: &str,
+) -> Result<atlantis_hud_core::known_map::KnownMap, String> {
+    atlantis_hud_core::cache::with_global(|cache| {
+        atlantis_hud_core::known_map::known_map_json(
+            cache,
+            raw_report,
+            ruleset_json,
+            remembered_json,
+        )
+    })
+}
+
 /// Traces the MOVE or ADVANCE order in a unit's written orders across the remembered map.
 ///
 /// The desktop twin of the wasm binding, delegating to the same core entry so the two shells

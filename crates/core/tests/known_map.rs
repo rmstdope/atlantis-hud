@@ -1,7 +1,8 @@
 //! Acceptance tests for `resolve_known_map`: the one place the precedence rules for the
 //! accumulated map are written, pinned rule by rule.
 
-use atlantis_hud_core::known_map::{resolve_known_map, HexKnowledge};
+use atlantis_hud_core::cache::ReportCache;
+use atlantis_hud_core::known_map::{known_map_json, resolve_known_map, HexKnowledge};
 use atlantis_hud_core::movement::graph::RememberedRegion;
 use atlantis_hud_core::report::model::Coordinate;
 use atlantis_hud_core::report::parse_report_full;
@@ -403,5 +404,50 @@ fn hexes_come_out_sorted_by_level_then_row_then_column() {
     assert_eq!(
         coordinates, sorted,
         "already sorted by y then x within one level"
+    );
+}
+
+const REPORT: &str = concat!(
+    "Atlantis Report For:\n",
+    "Foo (1)\n",
+    "December, Year 6\n",
+    "\n",
+    "plain (1,1) in Nowhere, 10 peasants (orcs), $5.\n",
+    "\n",
+    "Exits:\n",
+    "  Southeast : plain (2,2) in Nowhere.\n",
+);
+
+/// The boundary entry parses the raw report and the remembered regions itself, and resolves them
+/// exactly as `resolve_known_map` would given the same arguments.
+#[test]
+fn known_map_json_reads_its_arguments() {
+    let mut cache = ReportCache::default();
+
+    let known = known_map_json(&mut cache, REPORT, None, "[]").expect("resolves");
+
+    assert!(
+        known.current_turn.is_some(),
+        "the current report's own date is read"
+    );
+    let hex = known
+        .hexes
+        .iter()
+        .find(|hex| hex.coordinate == at(1, 1))
+        .expect("the current report's own region is known");
+    assert_eq!(hex.knowledge, HexKnowledge::Current);
+}
+
+/// Unreadable remembered JSON is refused with a message naming what could not be read, the same
+/// wording `export_map_text` and `plan_for_remembered_report` already use.
+#[test]
+fn rejects_unreadable_remembered_json() {
+    let mut cache = ReportCache::default();
+
+    let error = known_map_json(&mut cache, REPORT, None, "not json").expect_err("refused");
+
+    assert!(
+        error.starts_with("remembered regions could not be read:"),
+        "unexpected message: {error}"
     );
 }

@@ -270,6 +270,30 @@ export type MapExportRequest = {
 };
 
 /**
+ * How much can be trusted about a hex on the accumulated map - the same three words the core's
+ * resolver uses.
+ */
+export type HexKnowledge = "current" | "stale" | "named";
+
+/** One hex, resolved by the core: what is known about it, and since when. */
+export type KnownMapHex = {
+  coordinate: Coordinate;
+  terrain: string;
+  province: string;
+  knowledge: HexKnowledge;
+  lastSeenTurn: number | null;
+  /** `null` for a hex merely named by an exit, never visited. */
+  region: ReportRegion | null;
+};
+
+/** Everything the faction knows about the map, resolved once by the core. */
+export type KnownMap = {
+  /** Sorted by level, then row, then column. */
+  hexes: KnownMapHex[];
+  currentTurn: number | null;
+};
+
+/**
  * One allied report folded into a faction's map for one turn.
  *
  * Merging writes the ally's regions under the viewer's own faction id and stores no turn of the
@@ -902,6 +926,11 @@ export interface CoreAdapter {
     rememberedJson: string,
     requestJson: string
   ): Promise<unknown> | unknown;
+  knownMap(
+    rawReport: string,
+    rulesetJson: string | null,
+    rememberedJson: string
+  ): Promise<unknown> | unknown;
   previewOrders(
     rulesetJson: string,
     rawReport: string,
@@ -1095,6 +1124,21 @@ export interface CoreClient {
     rememberedJson: string,
     request: MapExportRequest
   ): Promise<string>;
+  /**
+   * Everything the faction knows about the map, resolved once by the core - the same rules the
+   * planner and the risk heuristic already use, so a caller building a display over this cannot
+   * disagree with either of them about who is in a hex.
+   *
+   * `rulesetJson` is optional: pass it when it is to hand so units carry exact men counts (a
+   * classified parse), and `null` to fall back to the unclassified parse.
+   *
+   * Rejects only when the remembered regions cannot be read.
+   */
+  knownMap(
+    rawReport: string,
+    rulesetJson: string | null,
+    remembered: RememberedRegion[]
+  ): Promise<KnownMap>;
   /**
    * What the whole orders document makes of the faction's units, region by region.
    *
@@ -1933,6 +1977,14 @@ export function createCoreClient(adapter: CoreAdapter): CoreClient {
       }
       return text;
     },
+    async knownMap(rawReport: string, rulesetJson: string | null, remembered: RememberedRegion[]) {
+      // Returned as-is for the same reason planRoute is: the core already serializes this shape.
+      return (await adapter.knownMap(
+        rawReport,
+        rulesetJson,
+        JSON.stringify(remembered)
+      )) as KnownMap;
+    },
     async previewOrders(
       rulesetJson: string,
       rawReport: string,
@@ -2189,6 +2241,13 @@ export function createTauriAdapter(invoke: TauriInvoke): CoreAdapter {
         raw_report: rawReport,
         remembered_json: rememberedJson,
         request_json: requestJson
+      });
+    },
+    knownMap(rawReport: string, rulesetJson: string | null, rememberedJson: string) {
+      return invoke<KnownMap>("known_map", {
+        raw_report: rawReport,
+        ruleset_json: rulesetJson,
+        remembered_json: rememberedJson
       });
     },
     previewOrders(

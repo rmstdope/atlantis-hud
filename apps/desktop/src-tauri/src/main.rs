@@ -255,6 +255,23 @@ fn export_map(
     feature = "desktop-runtime"
 ))]
 #[tauri::command(rename_all = "snake_case")]
+fn known_map(
+    raw_report: String,
+    ruleset_json: Option<String>,
+    remembered_json: String,
+) -> Result<atlantis_hud_core::known_map::KnownMap, String> {
+    atlantis_hud_core_tauri::command_known_map(
+        &raw_report,
+        ruleset_json.as_deref(),
+        &remembered_json,
+    )
+}
+
+#[cfg(all(
+    any(target_os = "linux", target_os = "macos", target_os = "windows"),
+    feature = "desktop-runtime"
+))]
+#[tauri::command(rename_all = "snake_case")]
 fn trace_move_orders(
     ruleset_json: String,
     raw_report: String,
@@ -521,6 +538,7 @@ fn main() {
             delete_hex_note,
             plan_route,
             export_map,
+            known_map,
             trace_move_orders,
             preview_orders,
             load_region_sightings,

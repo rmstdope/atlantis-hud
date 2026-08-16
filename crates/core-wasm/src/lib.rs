@@ -372,6 +372,28 @@ pub fn export_map_state(
     to_js(&text)
 }
 
+/// Resolves everything the faction knows about the map, once, for a caller on either shell.
+///
+/// The browser twin of the desktop command, calling the same core entry so the two shells cannot
+/// drift about who is in a hex.
+#[wasm_bindgen]
+pub fn known_map_state(
+    raw_report: String,
+    ruleset_json: Option<String>,
+    remembered_json: String,
+) -> Result<JsValue, JsValue> {
+    let known_map = atlantis_hud_core::cache::with_global(|cache| {
+        atlantis_hud_core::known_map::known_map_json(
+            cache,
+            &raw_report,
+            ruleset_json.as_deref(),
+            &remembered_json,
+        )
+    })
+    .map_err(|error| JsValue::from_str(&error))?;
+    to_js(&known_map)
+}
+
 /// Traces the MOVE or ADVANCE order in a unit's written orders across the remembered map.
 ///
 /// The browser twin of the desktop command, calling the same core entry so the two shells cannot
