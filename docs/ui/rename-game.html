@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ah-lkw — Renaming a game from the This game panel</title>
+<style>
+  :root { --page:#10151c; --panel:#171e28; --raised:#1c2531; --edge:#2a3442; --ink:#d7dee8; --soft:#aab3c0; --dim:#8a94a3;
+          --brass:#c9a24b; --danger:#d9534f; }
+  body { background: var(--page); color: var(--ink); font: 14px/1.5 system-ui, sans-serif; margin: 0; padding: 24px 32px 64px; }
+  h1 { font-size: 20px; }
+  h2 { font-size: 16px; margin: 40px 0 6px; border-top: 1px solid var(--edge); padding-top: 20px; }
+  h3 { font-size: 14px; margin: 0 0 8px; }
+  p.note { color: var(--dim); max-width: 80ch; }
+  .row { display: flex; gap: 36px; flex-wrap: wrap; margin: 16px 0 8px; align-items: flex-start; }
+  .variant { width: 330px; }
+  .cost { color: var(--dim); font-size: 13px; margin: 8px 0 0; }
+  .hdr { position: relative; height: 30px; background: var(--panel); border: 1px solid var(--edge); border-radius: 8px 8px 0 0;
+         display: flex; align-items: center; padding: 0 10px; font-size: 12px; gap: 12px; white-space: nowrap; }
+  .hdr .chip { color: var(--brass); border: 1px solid var(--brass); border-radius: 4px; padding: 0 6px; }
+  .hdr .dimtxt { color: var(--dim); }
+  .stage { position: relative; height: 300px; border: 1px solid var(--edge); border-top: 0; border-radius: 0 0 8px 8px;
+           background: repeating-linear-gradient(60deg, #0d222b 0 22px, #0f2833 22px 44px); }
+  .picker { position: absolute; left: 8px; top: 4px; width: 288px; box-sizing: border-box; background: var(--raised);
+            border: 1px solid var(--edge); border-radius: 4px; padding: 8px; font-size: 11.5px; box-shadow: 0 8px 24px #0008; }
+  .tabs { display: flex; gap: 4px; margin-bottom: 6px; }
+  .tab { border: 1px solid var(--edge); border-radius: 4px; padding: 1px 8px; color: var(--dim); background: var(--raised); }
+  .tab.on { border-color: var(--brass); color: var(--brass); background: var(--panel); }
+  dl { margin: 0; display: flex; flex-direction: column; gap: 4px; }
+  dl div { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  dt { color: var(--soft); } dd { margin: 0; }
+  .link { color: var(--brass); font-size: 11px; }
+  .sep { border-top: 1px solid var(--edge); margin-top: 8px; padding-top: 8px; }
+  .btn { display: block; width: 100%; box-sizing: border-box; text-align: left; border: 1px solid var(--edge); background: var(--panel);
+         color: var(--brass); border-radius: 4px; padding: 4px 8px; margin-top: 6px; }
+  .btn:first-child { margin-top: 0; }
+  .btn.dis { opacity: .5; }
+  .small { color: var(--soft); margin: 6px 0 0; }
+  .field { display: flex; flex-direction: column; gap: 4px; }
+  .field .lbl { color: var(--soft); }
+  .input { border: 1px solid var(--edge); background: var(--panel); color: var(--ink); border-radius: 4px; padding: 4px 8px; }
+  .input.focus { border-color: var(--brass); }
+  .input.err { border-color: var(--danger); }
+  .acts { display: flex; justify-content: flex-end; gap: 6px; margin-top: 6px; }
+  .acts span { border: 1px solid var(--edge); border-radius: 4px; padding: 2px 8px; color: var(--ink); }
+  .acts span.brass { border-color: var(--brass); color: var(--brass); }
+  .acts span.dis { opacity: .5; }
+  .err { color: var(--danger); margin: 4px 0 0; }
+  .warn { color: #d9a441; margin: 4px 0 0; }
+  .box { margin-top: 6px; border: 1px solid var(--edge); border-radius: 4px; padding: 6px; }
+  ul.games { list-style: none; margin: 0; padding: 0; }
+  ul.games li { padding: 4px 6px; }
+  ul.games li.cur { color: var(--brass); }
+  kbd { background: var(--panel); border: 1px solid var(--edge); border-radius: 4px; padding: 0 5px; font-size: 12px; }
+</style>
+</head>
+<body>
+<h1>ah-lkw — Renaming a game from the <em>This game</em> panel</h1>
+<p class="note">Today the <em>This game</em> tab shows <em>Name</em> and <em>Ruleset</em> as read-only rows, then <em>Export game backup…</em> and
+<em>Import game backup…</em>. The name is chosen once, at creation, and can never be changed. Three places the edit could live; open each,
+the difference is in what the tab looks like before and during a rename.</p>
+
+<div class="row">
+
+<div class="variant">
+<h3>A — In place: a “Rename” link on the Name row <span style="color:var(--brass)">(chosen)</span></h3>
+<div class="hdr"><span class="chip">Backup gmae ▾</span><span class="dimtxt">Faction 12 · Turn 71</span></div>
+<div class="stage">
+  <div class="picker">
+    <div class="tabs"><span class="tab">Games</span><span class="tab on">This game</span></div>
+    <dl>
+      <div><dt>Name</dt><dd>Backup gmae <span class="link">Rename</span></dd></div>
+      <div><dt>Ruleset</dt><dd>atlantis-v5</dd></div>
+    </dl>
+    <div class="sep">
+      <span class="btn">Export game backup…</span>
+      <span class="btn">Import game backup…</span>
+      <p class="small">Import creates a new game; if it is already here you are asked whether to replace it.</p>
+    </div>
+  </div>
+</div>
+<p class="cost">At rest: the row as today, plus a small brass <em>Rename</em> after the name. Clicking it swaps the row for the field in A′ (right).
+Cost: the affordance is small and easy to miss; the row's <code>dd</code> already truncates long names and now shares its width with a link.</p>
+</div>
+
+<div class="variant">
+<h3>A′ — A, while renaming</h3>
+<div class="hdr"><span class="chip">Backup gmae ▾</span><span class="dimtxt">Faction 12 · Turn 71</span></div>
+<div class="stage">
+  <div class="picker">
+    <div class="tabs"><span class="tab">Games</span><span class="tab on">This game</span></div>
+    <dl>
+      <div style="flex-direction:column;align-items:stretch">
+        <dt>Name</dt>
+        <div class="field" style="margin-top:4px"><span class="input focus">Backup gmae</span></div>
+        <div class="acts"><span class="brass">Save</span><span>Cancel</span></div>
+      </div>
+      <div><dt>Ruleset</dt><dd>atlantis-v5</dd></div>
+    </dl>
+    <div class="sep">
+      <span class="btn dis">Export game backup…</span>
+      <span class="btn dis">Import game backup…</span>
+    </div>
+  </div>
+</div>
+<p class="cost">The Name row becomes a field prefilled with the current name, text selected, focus in it; <em>Save</em> / <em>Cancel</em> under it.
+<kbd>Enter</kbd> saves, <kbd>Esc</kbd> cancels the edit (and does not close the picker while a field is open). The export/import buttons are
+disabled while an edit is open, as they are while busy.</p>
+</div>
+
+<div class="variant">
+<h3>B — A “Rename game…” button in the stack</h3>
+<div class="hdr"><span class="chip">Backup gmae ▾</span><span class="dimtxt">Faction 12 · Turn 71</span></div>
+<div class="stage">
+  <div class="picker">
+    <div class="tabs"><span class="tab">Games</span><span class="tab on">This game</span></div>
+    <dl>
+      <div><dt>Name</dt><dd>Backup gmae</dd></div>
+      <div><dt>Ruleset</dt><dd>atlantis-v5</dd></div>
+    </dl>
+    <div class="sep">
+      <span class="btn">Rename game…</span>
+      <div class="box">
+        <div class="field"><span class="lbl">New name</span><span class="input focus">Backup gmae</span></div>
+        <div class="acts"><span class="brass">Rename</span><span>Cancel</span></div>
+      </div>
+      <span class="btn dis">Export game backup…</span>
+      <span class="btn dis">Import game backup…</span>
+    </div>
+  </div>
+</div>
+<p class="cost">A third button at the top of the stack, in the same style as export/import; pressing it opens an inline form under it (drawn open
+here), the shape of <em>+ New game…</em> on the Games tab. Rows stay read-only. Cost: one more line in the stack for something used rarely;
+the name is shown twice while renaming.</p>
+</div>
+
+<div class="variant">
+<h3>C — The Name row is always a field</h3>
+<div class="hdr"><span class="chip">Backup gmae ▾</span><span class="dimtxt">Faction 12 · Turn 71</span></div>
+<div class="stage">
+  <div class="picker">
+    <div class="tabs"><span class="tab">Games</span><span class="tab on">This game</span></div>
+    <dl>
+      <div><dt>Name</dt><dd><span class="input" style="display:inline-block;min-width:150px">Backup gmae</span></dd></div>
+      <div><dt>Ruleset</dt><dd>atlantis-v5</dd></div>
+    </dl>
+    <div class="sep">
+      <span class="btn">Export game backup…</span>
+      <span class="btn">Import game backup…</span>
+      <p class="small">Import creates a new game; if it is already here you are asked whether to replace it.</p>
+    </div>
+  </div>
+</div>
+<p class="cost">No mode: the name is an input at all times, saved on <kbd>Enter</kbd> or when focus leaves it, reverted on <kbd>Esc</kbd>. Fewest
+clicks; the cost is that a click meant to select text saves nothing and a stray edit is committed on blur, with no Cancel to press — and an
+empty name has to be reverted silently rather than refused, since there is no Save to refuse.</p>
+</div>
+
+</div>
+
+<h2>What was decided (2026-08-16)</h2>
+<p class="note">A was chosen over B (a button in the stack) and C (an always-editable field). The words: the link “<em>Rename</em>”, buttons
+“<em>Save</em>” / “<em>Cancel</em>” (“<em>Saving…</em>” and disabled while the core writes), the empty-name line “<em>a game needs a name</em>”
+(the same words creation uses; refused, field stays open), the duplicate line “<em>Another game is already called “&lt;name&gt;”.</em>” as
+an amber warning while typing that never blocks Save. <kbd>Enter</kbd> saves, <kbd>Esc</kbd> cancels the edit only (a second Esc closes the
+picker); focus lands in the field with the text selected and returns to <em>Rename</em> after Save or Cancel. A name unchanged after trimming
+just closes the field. A refusal from the core shows in the picker's existing error line at the bottom, with the field left open. The name
+is trimmed and saved into the game's manifest, so the header chip, the Games row, the Settings dialog and later backup file names follow;
+files already written keep the old name.</p>
+<h2>The states (drawn on A′)</h2>
+<div class="row">
+
+<div class="variant">
+<h3>S1 — Empty or whitespace name on Save</h3>
+<div class="hdr"><span class="chip">Backup gmae ▾</span><span class="dimtxt">Faction 12 · Turn 71</span></div>
+<div class="stage">
+  <div class="picker">
+    <div class="tabs"><span class="tab">Games</span><span class="tab on">This game</span></div>
+    <dl>
+      <div style="flex-direction:column;align-items:stretch">
+        <dt>Name</dt>
+        <div class="field" style="margin-top:4px"><span class="input err">&nbsp;</span></div>
+        <p class="err">a game needs a name</p>
+        <div class="acts"><span class="brass">Save</span><span>Cancel</span></div>
+      </div>
+      <div><dt>Ruleset</dt><dd>atlantis-v5</dd></div>
+    </dl>
+  </div>
+</div>
+<p class="cost">Refused, with the same words creation uses (“a game needs a name”, from <code>newGameManifest</code>); the field stays open with
+the bad value so it can be fixed. The alternative is reverting silently to the old name.</p>
+</div>
+
+<div class="variant">
+<h3>S2 — Another game already has that name</h3>
+<div class="hdr"><span class="chip">Backup gmae ▾</span><span class="dimtxt">Faction 12 · Turn 71</span></div>
+<div class="stage">
+  <div class="picker">
+    <div class="tabs"><span class="tab">Games</span><span class="tab on">This game</span></div>
+    <dl>
+      <div style="flex-direction:column;align-items:stretch">
+        <dt>Name</dt>
+        <div class="field" style="margin-top:4px"><span class="input focus">Northmarch</span></div>
+        <p class="warn">Another game is already called “Northmarch”.</p>
+        <div class="acts"><span class="brass">Save</span><span>Cancel</span></div>
+      </div>
+      <div><dt>Ruleset</dt><dd>atlantis-v5</dd></div>
+    </dl>
+  </div>
+</div>
+<p class="cost">A warning as you type, never a refusal — creation allows duplicates today, and the id is the identity. Save still works. The
+alternative is no warning at all.</p>
+</div>
+
+<div class="variant">
+<h3>S3 — Saved: everywhere the name shows</h3>
+<div class="hdr"><span class="chip">Backup game ▾</span><span class="dimtxt">Faction 12 · Turn 71</span></div>
+<div class="stage">
+  <div class="picker">
+    <div class="tabs"><span class="tab">Games</span><span class="tab on">This game</span></div>
+    <dl>
+      <div><dt>Name</dt><dd>Backup game <span class="link">Rename</span></dd></div>
+      <div><dt>Ruleset</dt><dd>atlantis-v5</dd></div>
+    </dl>
+    <div class="sep">
+      <span class="btn">Export game backup…</span>
+      <span class="btn">Import game backup…</span>
+    </div>
+  </div>
+</div>
+<p class="cost">After Save the row is read-only again with the new name, the header chip reads it, the Games tab row reads it, the Settings dialog reads
+it, and a backup exported afterwards is named after it. The picker stays open on <em>This game</em>. Files already written keep the old name.</p>
+</div>
+
+</div>
+</body>
+</html>
