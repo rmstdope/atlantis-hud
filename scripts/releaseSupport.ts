@@ -66,7 +66,11 @@ export function recoveryAdvice(state: ReleaseState): string[] {
   const lines: string[] = [];
 
   if (!state.versionCommitPushed) {
-    lines.push(`git push origin HEAD:${state.branch}`);
+    // Named by the pinned SHA, not HEAD - a human pasting this later may have moved HEAD on with
+    // other work in the meantime, and `HEAD:branch` would then push the wrong commit. A Copilot
+    // review comment on this PR caught the branch-push line still saying HEAD while the tag advice
+    // below already pinned the commit.
+    lines.push(`git push origin ${state.releaseCommit}:${state.branch}`);
   }
   if (!state.tagCreated) {
     lines.push(`git tag ${state.tag} ${state.releaseCommit}`);

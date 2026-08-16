@@ -56,7 +56,8 @@ describe("recoveryAdvice", () => {
       tagPushed: false
     });
 
-    expect(lines.join("\n")).toContain("git push origin HEAD:main");
+    // Pinned to the release commit, not HEAD - a human pasting this later may have moved HEAD on.
+    expect(lines.join("\n")).toContain("git push origin c24a8ba:main");
     expect(lines.join("\n")).toContain("git tag v0.5.4 c24a8ba");
     expect(lines.join("\n")).toContain("git push origin v0.5.4");
   });
@@ -71,7 +72,7 @@ describe("recoveryAdvice", () => {
       tagPushed: false
     });
 
-    expect(lines.join("\n")).not.toContain("git push origin HEAD:main");
+    expect(lines.join("\n")).not.toContain("git push origin c24a8ba:main");
     expect(lines.join("\n")).toContain("git tag v0.5.4 c24a8ba");
   });
 
@@ -174,7 +175,7 @@ describe("finishRelease", () => {
     expect(result.ok).toBe(false);
     expect(!result.ok && result.output).toBe(rejected);
     expect(!result.ok && result.advice).toEqual([
-      "git push origin HEAD:main",
+      "git push origin c24a8ba:main",
       "git tag v0.5.4 c24a8ba",
       "git push origin v0.5.4"
     ]);
