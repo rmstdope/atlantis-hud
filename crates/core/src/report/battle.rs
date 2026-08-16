@@ -57,7 +57,7 @@ const OTHER_PREAMBLE_HEADERS: &[&str] = &[
 ];
 
 /// A named participant, as printed: `Pirates (14789)`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct Combatant {
@@ -70,7 +70,7 @@ pub struct Combatant {
 /// `body` is everything after the name, faction and flags, kept verbatim rather than parsed down to
 /// individual items: a roster line can be a paragraph of `#a hero/dwarf` repeats, and nothing
 /// downstream has asked for it broken down.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct BattleUnit {
@@ -85,7 +85,7 @@ pub struct BattleUnit {
 ///
 /// `text` is that line trimmed and with its trailing full stop removed - `Pirates (14789) loses
 /// 15` - matching the convention `parse_casualty_line` uses for every other verbatim field here.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct Casualty {
@@ -109,7 +109,7 @@ pub struct BattleRound {
 }
 
 /// One battle, headline to spoils.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct Battle {

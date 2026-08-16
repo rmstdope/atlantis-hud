@@ -417,16 +417,11 @@ mod tests {
             faction_id: Some("42".to_string()),
             faction_name: Some("The Disinherited Knights".to_string()),
             own: true,
-            on_guard: false,
-            flags: Vec::new(),
-            items: Vec::new(),
-            skills: Vec::new(),
             men: 1,
-            men_estimated: true,
-            men_by_race: Vec::new(),
             weight: Some(50),
             capacity: Some("0/70/70/0".to_string()),
             structure_id: structure_id.map(str::to_string),
+            ..Default::default()
         }
     }
 

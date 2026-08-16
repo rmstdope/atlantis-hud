@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { aReportRegion, aReportUnit } from "./builders";
 import {
   createCoreClient,
   createTauriAdapter,
@@ -68,24 +69,15 @@ describe("core client tauri adapter contract", () => {
           regionId: "1:7,53",
           units: [
             {
-              unit: {
+              unit: aReportUnit({
                 unitId: "18642",
                 name: "Nine of Eight",
-                regionId: "1:7,53",
-                factionId: "95",
                 factionName: "Foo",
-                own: true,
                 onGuard: true,
                 flags: ["guarding"],
-                items: [],
-                skills: [],
-                men: 1,
-                menEstimated: false,
-                menByRace: [],
                 weight: 10,
-                capacity: "0/0/15/0",
-                structureId: null
-              },
+                capacity: "0/0/15/0"
+              }),
               status: "departing",
               changes: [{ field: "name", original: "Seven of Eight" }],
               arrivingFrom: null,
@@ -1115,26 +1107,7 @@ describe("map export", () => {
 describe("known map", () => {
   const REMEMBERED = [
     {
-      region: {
-        regionId: "1:2,2",
-        coordinate: { x: 2, y: 2, z: 1 },
-        terrain: "plain",
-        province: "Nowhere",
-        settlement: null,
-        population: null,
-        race: null,
-        tax: null,
-        taxBase: null,
-        wages: null,
-        maxWages: null,
-        entertainment: null,
-        exits: [],
-        structures: [],
-        units: [],
-        products: [],
-        forSale: [],
-        wanted: []
-      },
+      region: aReportRegion({ coordinate: { x: 2, y: 2, z: 1 }, terrain: "plain", province: "Nowhere" }),
       lastSeenTurn: 5
     }
   ];

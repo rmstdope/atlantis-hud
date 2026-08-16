@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Battle, BattleUnit } from "@atlantis/core-client";
+import { aBattle, aBattleUnit } from "@atlantis/core-client";
 import { allegianceOf, assassinationView, roundLabel, rosterCounts, summarise } from "./battles";
 
 const hexLabel = (regionId: string) => `hex ${regionId}`;
@@ -10,17 +11,7 @@ const hexLabel = (regionId: string) => `hex ${regionId}`;
  * against the real fixture by the smoke walk instead of typed out here.
  */
 function battle(overrides: Partial<Battle> = {}): Battle {
-  return {
-    headline: "AA Tomb's Guards (7280) attacks Pirates (14789) in ocean (25,55) in Atlantis Ocean!",
-    attacker: { name: "AA Tomb's Guards", id: "7280" },
-    defender: { name: "Pirates", id: "14789" },
-    terrain: "ocean",
-    coordinate: { x: 25, y: 55, z: 1 },
-    province: "Atlantis Ocean",
-    attackers: [],
-    defenders: [],
-    rounds: [],
-    statistics: [],
+  return aBattle({
     casualties: [
       { combatant: { name: "Pirates", id: "14789" }, lost: 15, text: "Pirates (14789) loses 15" },
       {
@@ -31,22 +22,12 @@ function battle(overrides: Partial<Battle> = {}): Battle {
     ],
     damagedUnits: ["14789"],
     spoils: "3 magic crossbows [MXBO], 2 battle axes [BAXE]",
-    lineStart: 10,
-    lineEnd: 200,
-    assassination: false,
     ...overrides
-  };
+  });
 }
 
 function unit(overrides: Partial<BattleUnit> = {}): BattleUnit {
-  return {
-    name: "Some Unit",
-    id: "1",
-    faction: { name: "Some Faction", id: "1" },
-    flags: [],
-    body: "",
-    ...overrides
-  };
+  return aBattleUnit({ name: "Some Unit", id: "1", faction: { name: "Some Faction", id: "1" }, body: "", ...overrides });
 }
 
 describe("the one-line summary of a battle", () => {

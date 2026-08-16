@@ -71,7 +71,7 @@ pub struct FactionStatus {
 }
 
 /// One line of the `Faction Status:` block, such as `Regions: 3 (10)`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct FactionStatusEntry {
@@ -91,7 +91,7 @@ pub struct DeclaredAttitudes {
 }
 
 /// One attitude level, such as `Hostile`, and the factions declared at it.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct AttitudeLevel {
@@ -100,7 +100,7 @@ pub struct AttitudeLevel {
 }
 
 /// A faction named in a `Declared Attitudes:` list, such as `Creatures (2)`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct FactionRef {
