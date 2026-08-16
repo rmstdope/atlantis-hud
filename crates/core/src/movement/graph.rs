@@ -188,81 +188,74 @@ impl MapKnowledge {
     ///
     /// Visited regions are entered first and exits second, so a hex that is both - named by a
     /// neighbour and stood in - keeps the fuller of the two descriptions.
+    ///
+    /// This is the no-memory path, and resolving with an empty `remembered` slice describes exactly
+    /// the same map (`from_report_agrees_with_from_remembered_given_nothing_remembered`,
+    /// `movement_graph.rs`) - so it delegates rather than carrying its own copy of the same rules.
     #[must_use]
     pub fn from_report(report: &ParsedReport) -> Self {
-        let mut map = Self::default();
-
-        for region in &report.regions {
-            map.hexes.insert(
-                key(region.coordinate),
-                KnownHex {
-                    coordinate: region.coordinate,
-                    terrain: region.terrain.clone(),
-                    province: region.province.clone(),
-                    visited: true,
-                    roads: region
-                        .structures
-                        .iter()
-                        .filter_map(|structure| structure.kind.strip_prefix("Road "))
-                        .filter_map(Direction::parse)
-                        .collect(),
-                    structures: region.structures.clone(),
-                    units: region.units.clone(),
-                    last_seen_turn: report.header.turn_number,
-                },
-            );
-        }
-
-        for region in &report.regions {
-            let mut exits = Vec::new();
-            for exit in &region.exits {
-                let Some(direction) = Direction::parse(&exit.direction) else {
-                    continue;
-                };
-                exits.push((direction, exit.coordinate));
-
-                // An exit names a hex the faction may never have visited. That is the third map
-                // state: terrain and province are known, which is enough to cost a step into it,
-                // and nothing else is.
-                map.hexes
-                    .entry(key(exit.coordinate))
-                    .or_insert_with(|| KnownHex {
-                        coordinate: exit.coordinate,
-                        terrain: exit.terrain.clone(),
-                        province: exit.province.clone(),
-                        visited: false,
-                        roads: Vec::new(),
-                        structures: Vec::new(),
-                        units: Vec::new(),
-                        last_seen_turn: None,
-                    });
-            }
-            map.exits.insert(key(region.coordinate), exits);
-        }
-
-        map
+        Self::from_remembered(report, &[])
     }
 
     /// Builds the map from everything the faction has ever seen.
     ///
-    /// The current report wins wherever the two disagree: a hex described this turn is worth more
-    /// than the same hex remembered from turn forty, and only the current description can be
-    /// trusted about who is standing in it. Remembered regions fill in everywhere the report is
-    /// silent, and bring their own exits, which is what makes the graph span more than one step.
+    /// The precedence rules - current beats remembered, visited beats merely named, a same-turn
+    /// ally sighting is as current as anything else on screen - are decided once, in
+    /// [`resolve_known_map`](crate::known_map::resolve_known_map). This is that resolution, turned
+    /// into the shape the planner and the risk heuristic read.
     #[must_use]
     pub fn from_remembered(current: &ParsedReport, remembered: &[RememberedRegion]) -> Self {
+        let known = crate::known_map::resolve_known_map(current, remembered);
+        Self::from_known_map(&known)
+    }
+
+    /// Turns a resolution into the graph the planner and the risk heuristic read.
+    ///
+    /// Adjacency and one planning-only rule live here rather than in the resolution itself: a
+    /// fleet can sail away, so only a `Current` hex may contribute the structures planning counts
+    /// on being there. The resolver decides *who is there*; this decides *what planning may count*.
+    #[must_use]
+    pub fn from_known_map(known: &crate::known_map::KnownMap) -> Self {
+        use crate::known_map::HexKnowledge;
+
         let mut map = Self::default();
 
-        // Oldest first, so a more recent sighting overwrites an older one, and the current report
-        // overwrites both.
-        let mut ordered: Vec<&RememberedRegion> = remembered.iter().collect();
-        ordered.sort_by_key(|entry| entry.last_seen_turn);
+        for hex in &known.hexes {
+            let (roads, structures, units) = match &hex.region {
+                Some(region) => {
+                    let roads = region
+                        .structures
+                        .iter()
+                        .filter_map(|structure| structure.kind.strip_prefix("Road "))
+                        .filter_map(Direction::parse)
+                        .collect();
+                    let structures = if hex.knowledge == HexKnowledge::Current {
+                        region.structures.clone()
+                    } else {
+                        Vec::new()
+                    };
+                    (roads, structures, region.units.clone())
+                }
+                None => (Vec::new(), Vec::new(), Vec::new()),
+            };
 
-        for entry in ordered {
-            map.remember(&entry.region, Some(entry.last_seen_turn), false);
-        }
-        for region in &current.regions {
-            map.remember(region, current.header.turn_number, true);
+            map.hexes.insert(
+                key(hex.coordinate),
+                KnownHex {
+                    coordinate: hex.coordinate,
+                    terrain: hex.terrain.clone(),
+                    province: hex.province.clone(),
+                    visited: hex.knowledge != HexKnowledge::Named,
+                    roads,
+                    structures,
+                    units,
+                    last_seen_turn: hex.last_seen_turn,
+                },
+            );
+            if let Some(region) = &hex.region {
+                map.pending_exits
+                    .insert(key(hex.coordinate), region.exits.clone());
+            }
         }
 
         // Exits are gathered after every hex is in place, so a remembered region can point at one
@@ -271,41 +264,11 @@ impl MapKnowledge {
         map
     }
 
-    /// Enters one region, replacing whatever was there.
-    fn remember(&mut self, region: &ReportRegion, turn: Option<u32>, current: bool) {
-        self.hexes.insert(
-            key(region.coordinate),
-            KnownHex {
-                coordinate: region.coordinate,
-                terrain: region.terrain.clone(),
-                province: region.province.clone(),
-                visited: true,
-                roads: region
-                    .structures
-                    .iter()
-                    .filter_map(|structure| structure.kind.strip_prefix("Road "))
-                    .filter_map(Direction::parse)
-                    .collect(),
-                // A fleet can sail away, so only the current report may claim one is still here -
-                // exactly the reasoning that already governs units, a turn below.
-                structures: if current {
-                    region.structures.clone()
-                } else {
-                    Vec::new()
-                },
-                units: if current {
-                    region.units.clone()
-                } else {
-                    Vec::new()
-                },
-                last_seen_turn: turn,
-            },
-        );
-        self.pending_exits
-            .insert(key(region.coordinate), region.exits.clone());
-    }
-
     /// Turns every region's exits into adjacency, and enters the hexes they name.
+    ///
+    /// This is also a defence for a hex the resolution has not already placed: it should not
+    /// happen, since every named hex is entered by `from_known_map` above, but `or_insert_with`
+    /// costs nothing and a silently-dropped exit target would be worse.
     fn rebuild_exits(&mut self) {
         let pending = std::mem::take(&mut self.pending_exits);
 
