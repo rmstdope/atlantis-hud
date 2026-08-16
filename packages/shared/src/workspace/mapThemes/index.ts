@@ -11,6 +11,7 @@ import type { MapTheme } from "./mapTheme";
 import { cartographersTable } from "./cartographersTable/index";
 import { beveledTile } from "./beveledTile/index";
 import { emblemAndDots } from "./emblemAndDots/index";
+import { fieldMarks } from "./fieldMarks/index";
 import { miniatureWorld } from "./miniatureWorld/index";
 import { tacticalHud } from "./tacticalHud/index";
 
@@ -20,7 +21,8 @@ export const MAP_THEMES: readonly MapTheme[] = [
   tacticalHud,
   miniatureWorld,
   emblemAndDots,
-  beveledTile
+  beveledTile,
+  fieldMarks
 ];
 
 /** The most map-like of the designs, and what an unrecognised choice falls back to. */

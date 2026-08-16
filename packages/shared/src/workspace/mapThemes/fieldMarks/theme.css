@@ -1,0 +1,170 @@
+/*
+ * Field Marks: the atlas's own ground, with every icon on it an external file instead of a
+ * hand-drawn glyph.
+ *
+ * The palette and the wash/hatch treatment below are the same values Cartographer's Table uses -
+ * copied rather than shared, since a theme may not import another one (see `mapTheme.ts`), and
+ * Jean's complaint was about the mark icons specifically, not this terrain. A player who likes
+ * this theme's terrain and dislikes the icons already has a home for that: Cartographer's Table.
+ */
+
+:root {
+  --fm-ink: #4a3a22;
+  --fm-ink-strong: #3a2f1d;
+  --fm-parchment: #efe3c2;
+  --fm-name: #2a2118;
+
+  --fm-wash: #b99a5e;
+  --fm-pencil: #4a3a22;
+  --fm-unsurveyed: #6d6a63;
+
+  --fm-road: #6b4f2a;
+  --fm-road-dash: #c9b088;
+
+  --fm-terrain-ocean: #7fa0b8;
+  --fm-terrain-plain: #b3a565;
+  --fm-terrain-forest: #6e8a5c;
+  --fm-terrain-mountain: #8d8a83;
+  --fm-terrain-swamp: #7d8a5e;
+  --fm-terrain-desert: #c2ab74;
+  --fm-terrain-jungle: #5f8a63;
+  --fm-terrain-tundra: #a9b3ae;
+  --fm-terrain-volcano: #9c7a6a;
+  --fm-terrain-cavern: #8f8a86;
+  --fm-terrain-underforest: #6b8a72;
+  --fm-terrain-wasteland: #b0a288;
+  --fm-terrain-other: #9a9a90;
+}
+
+:root[data-theme="light"] {
+  --fm-ink: #5c4a2e;
+  --fm-ink-strong: #4a3c25;
+  --fm-parchment: #fbf4e2;
+  --fm-name: #3a2f22;
+
+  --fm-wash: #c2a468;
+  --fm-pencil: #5c4a2e;
+  --fm-unsurveyed: #b8b4aa;
+
+  --fm-road: #7d5f36;
+  --fm-road-dash: #e0cba4;
+
+  --fm-terrain-ocean: #a8c4d8;
+  --fm-terrain-plain: #d8cb92;
+  --fm-terrain-forest: #9dba8c;
+  --fm-terrain-mountain: #bcb9b2;
+  --fm-terrain-swamp: #adb88b;
+  --fm-terrain-desert: #e6d5a8;
+  --fm-terrain-jungle: #93bd94;
+  --fm-terrain-tundra: #d0d8d4;
+  --fm-terrain-volcano: #c9a89a;
+  --fm-terrain-cavern: #c0bab4;
+  --fm-terrain-underforest: #9fbfa6;
+  --fm-terrain-wasteland: #d8cbb2;
+  --fm-terrain-other: #c4c4ba;
+}
+
+.fm-terrain-ocean {
+  fill: var(--fm-terrain-ocean);
+}
+.fm-terrain-plain {
+  fill: var(--fm-terrain-plain);
+}
+.fm-terrain-forest {
+  fill: var(--fm-terrain-forest);
+}
+.fm-terrain-mountain {
+  fill: var(--fm-terrain-mountain);
+}
+.fm-terrain-swamp {
+  fill: var(--fm-terrain-swamp);
+}
+.fm-terrain-desert {
+  fill: var(--fm-terrain-desert);
+}
+.fm-terrain-jungle {
+  fill: var(--fm-terrain-jungle);
+}
+.fm-terrain-tundra {
+  fill: var(--fm-terrain-tundra);
+}
+.fm-terrain-volcano {
+  fill: var(--fm-terrain-volcano);
+}
+.fm-terrain-cavern {
+  fill: var(--fm-terrain-cavern);
+}
+.fm-terrain-underforest {
+  fill: var(--fm-terrain-underforest);
+}
+.fm-terrain-wasteland {
+  fill: var(--fm-terrain-wasteland);
+}
+.fm-terrain-other {
+  fill: var(--fm-terrain-other);
+}
+
+.fm-edge {
+  stroke: var(--fm-ink);
+}
+
+.fm-wash {
+  fill: var(--fm-wash);
+}
+.fm-gauze {
+  fill: var(--fm-parchment);
+}
+.fm-unsurveyed {
+  fill: var(--fm-unsurveyed);
+}
+.fm-hatch {
+  stroke: var(--fm-pencil);
+}
+.fm-unsurveyed-rim {
+  stroke: var(--fm-pencil);
+}
+
+.fm-road {
+  stroke: var(--fm-road);
+}
+.fm-road-dash {
+  stroke: var(--fm-road-dash);
+}
+
+/* Labels: same mechanism as every other theme's - constant size on screen, divided back out by
+   the map's own zoom. */
+.fm-label {
+  paint-order: stroke fill;
+  stroke: var(--fm-parchment);
+  stroke-width: calc(2px / var(--map-scale, 1));
+  stroke-linejoin: round;
+}
+.fm-name {
+  font-family: Georgia, "Times New Roman", serif;
+  font-style: italic;
+  font-size: calc(10px / var(--map-scale, 1));
+  fill: var(--fm-name);
+}
+.fm-count {
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-weight: 600;
+  font-size: calc(9px / var(--map-scale, 1));
+  fill: var(--fm-ink-strong);
+}
+
+/* Icons and names are dropped past the point they can be read, the same way every other theme
+   thins itself out at distance - see cartographersTable/theme.css for the same rule. */
+.map-theme-field-marks.map-far .fm-badge,
+.map-theme-field-marks.map-far .fm-label,
+.map-theme-field-marks.map-mid .fm-label {
+  display: none;
+}
+
+/* The province border, in this theme's own ink over its own ground. */
+.map-theme-field-marks .region-outline {
+  stroke: var(--fm-ink);
+}
+
+.map-theme-field-marks .region-outline-halo {
+  stroke: var(--fm-parchment);
+}

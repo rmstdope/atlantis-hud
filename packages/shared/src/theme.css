@@ -10,6 +10,7 @@
 @import "./workspace/mapThemes/miniatureWorld/theme.css";
 @import "./workspace/mapThemes/emblemAndDots/theme.css";
 @import "./workspace/mapThemes/beveledTile/theme.css";
+@import "./workspace/mapThemes/fieldMarks/theme.css";
 
 /*
  * Where the class names live.
