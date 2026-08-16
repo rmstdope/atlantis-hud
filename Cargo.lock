@@ -217,6 +217,7 @@ dependencies = [
  "atlantis-hud-fixtures",
  "serde",
  "serde_json",
+ "tauri",
  "tempfile",
 ]
 
