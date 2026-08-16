@@ -1,4 +1,5 @@
 import type { CoreClient, OpenedGame, ParsedReport } from "@atlantis/core-client";
+import { aParsedReport, aReportHeaderInfo } from "@atlantis/core-client";
 import { describe, expect, it, vi } from "vitest";
 import {
   createDraftWriter,
@@ -9,27 +10,7 @@ import {
 } from "./orderDraft";
 
 function report(factionId: string | null, turnNumber: number | null): ParsedReport {
-  return {
-    header: {
-      factionId,
-      factionName: "Borg TNG",
-      factionTypes: [],
-      month: "February",
-      year: 1,
-      turnNumber,
-      engineVersion: null,
-      ruleset: null,
-      rulesetVersion: null,
-      unclaimedSilver: null,
-      errors: [],
-      events: [],
-      factionStatus: { entries: [], unparsed: [] },
-      attitudes: { defaultAttitude: null, levels: [] }
-    },
-    regions: [],
-    battles: [],
-    ordersTemplate: null
-  };
+  return aParsedReport({ header: aReportHeaderInfo({ factionId, turnNumber, month: "February", year: 1 }) });
 }
 
 const OPEN_GAME = {

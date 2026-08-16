@@ -1,30 +1,10 @@
-import type { CoreClient, OpenedGame, ParsedReport } from "@atlantis/core-client";
+import type { CoreClient, OpenedGame, ParsedReport, ReportHeaderInfo } from "@atlantis/core-client";
+import { aParsedReport, aReportHeaderInfo } from "@atlantis/core-client";
 import { describe, expect, it, vi } from "vitest";
 import { batchSummary, prepareBatch, viewerFactionOptions, walkBatch, type ChosenFile } from "./batchImport";
 
-function report(overrides: Partial<ParsedReport["header"]> = {}): ParsedReport {
-  return {
-    header: {
-      factionId: "95",
-      factionName: "Borg TNG",
-      factionTypes: [],
-      month: "January",
-      year: 6,
-      turnNumber: 71,
-      engineVersion: null,
-      ruleset: null,
-      rulesetVersion: null,
-      unclaimedSilver: null,
-      errors: [],
-      events: [],
-      factionStatus: { entries: [], unparsed: [] },
-      attitudes: { defaultAttitude: null, levels: [] },
-      ...overrides
-    },
-    regions: [],
-    battles: [],
-    ordersTemplate: null
-  } as unknown as ParsedReport;
+function report(overrides: Partial<ReportHeaderInfo> = {}): ParsedReport {
+  return aParsedReport({ header: aReportHeaderInfo({ month: "January", ...overrides }) });
 }
 
 function client(overrides: Partial<CoreClient> = {}): CoreClient {

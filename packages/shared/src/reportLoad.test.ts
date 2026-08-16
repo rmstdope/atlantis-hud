@@ -1,10 +1,5 @@
-import type {
-  CoreClient,
-  KnownMap,
-  OpenedGame,
-  ParsedReport,
-  RememberedRegion
-} from "@atlantis/core-client";
+import type { CoreClient, KnownMap, OpenedGame, ParsedReport, ReportHeaderInfo, ReportRegion } from "@atlantis/core-client";
+import { aParsedReport, aReportHeaderInfo, aReportRegion, aReportUnit } from "@atlantis/core-client";
 import { describe, expect, it, vi } from "vitest";
 import { REPORT_NAMES_NO_FACTION } from "./reportLoadDecision";
 import {
@@ -17,77 +12,28 @@ import {
   storeOlderTurn
 } from "./reportLoad";
 
-function region(regionId: string, x: number, y: number, own: boolean, unitId = `${regionId}-u`) {
-  return {
+function region(regionId: string, x: number, y: number, own: boolean, unitId = `${regionId}-u`): ReportRegion {
+  return aReportRegion({
     ...regionNoUnits(regionId, x, y),
     units: [
-      {
+      aReportUnit({
         unitId,
         name: "Scout",
         regionId,
         factionId: own ? "95" : null,
         factionName: own ? "Borg TNG" : null,
-        own,
-        onGuard: false,
-        flags: [],
-        items: [],
-        skills: [],
-        men: 1,
-        menEstimated: false,
-        menByRace: [],
-        weight: null,
-        capacity: null,
-        structureId: null
-      }
+        own
+      })
     ]
-  };
+  });
 }
 
-function regionNoUnits(regionId: string, x: number, y: number) {
-  return {
-    regionId,
-    coordinate: { x, y, z: 1 },
-    terrain: "plain",
-    province: "Nowhere",
-    settlement: null,
-    population: null,
-    race: null,
-    taxBase: null,
-    wages: null,
-    maxWages: null,
-    entertainment: null,
-    products: [],
-    wanted: [],
-    forSale: [],
-    exits: [],
-    structures: [],
-    units: []
-  };
+function regionNoUnits(regionId: string, x: number, y: number): ReportRegion {
+  return aReportRegion({ regionId, coordinate: { x, y, z: 1 }, terrain: "plain", province: "Nowhere" });
 }
 
-function report(overrides: Partial<ParsedReport["header"]> = {}, regions: unknown[] = []): ParsedReport {
-  return {
-    header: {
-      factionId: "95",
-      factionName: "Borg TNG",
-      factionTypes: [],
-      month: "January",
-      year: 6,
-      turnNumber: 71,
-      engineVersion: null,
-      ruleset: null,
-      rulesetVersion: null,
-      unclaimedSilver: null,
-      errors: [],
-      events: [],
-      factionStatus: { entries: [], unparsed: [] },
-      attitudes: { defaultAttitude: null, levels: [] },
-      ...overrides
-    },
-    regions,
-    battles: [],
-    ordersTemplate: null
-  } as unknown as ParsedReport;
+function report(overrides: Partial<ReportHeaderInfo> = {}, regions: ReportRegion[] = []): ParsedReport {
+  return aParsedReport({ header: aReportHeaderInfo({ month: "January", ...overrides }), regions });
 }
 
 const KNOWN_MAP: KnownMap = { hexes: [], levels: [], currentTurn: 71 };
