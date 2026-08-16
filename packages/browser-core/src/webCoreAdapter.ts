@@ -11,9 +11,6 @@ import type { CoreAdapter, GameManifest, HexNoteRecord } from "@atlantis/core-cl
 import type { StoredTurn, StoredTurnSnapshot, WebStore } from "./webStore";
 import { createWebStore } from "./webStore";
 
-const GAME_BACKUP_FORMAT = "atlantis-hud-game-backup";
-const CURRENT_GAME_BACKUP_VERSION = 1;
-
 /** The subset of the generated wasm module this adapter needs. */
 export type CoreWasmModule = {
   get_engine_info(): unknown;
@@ -66,6 +63,8 @@ export type CoreWasmModule = {
   ): unknown;
   diff_imported_turn_state(existing: unknown, candidate: unknown): unknown;
   hydrate_parse_result_state(parsedPayloadJson: string): unknown;
+  encode_game_backup_state(contentJson: string, exportedAt: string): string;
+  decode_game_backup_state(backupJson: string, openedAt: string): unknown;
 };
 
 /** One region as the core serialized it, ready to be written as a row. */
@@ -110,55 +109,41 @@ type ImportedTurnDiff = {
   warningsChanged: boolean;
 };
 
-type GameBackupImportedTurn = StoredTurnSnapshot & {
-  factionId: string;
-  turnNumber: number;
-  importedAt?: string;
-  updatedAt?: string;
-};
-
-type GameBackupOrderDraft = {
-  factionId: string;
-  turnNumber: number;
-  orderText: string;
-  updatedAt: string;
-};
-
-type GameBackupRegionSighting = {
-  factionId: string;
-  regionId: string;
-  lastSeenTurn: number;
-  payloadJson: string;
-};
-
-type GameBackupMergedReport = {
-  factionId: string;
-  turnNumber: number;
-  mergedFactionId: string;
-  mergedFactionName: string;
-  mergedAt: string;
-};
-
-type GameBackupHexNote = {
-  id: string;
-  regionId: string;
-  text: string;
-  onMap: boolean;
-  turn: number;
-  createdAt: string;
-  updatedAt: string;
-};
-
-type GameBackupPayload = {
-  format: string;
-  version: number;
-  exportedAt: string;
+/**
+ * What `decode_game_backup_state` hands back: rows ready to write, and a manifest already stamped
+ * with the opening time. Mirrors the core's `DecodedGameBackup`, camelCase.
+ */
+type DecodedGameBackup = {
   manifest: GameManifest;
-  importedTurns: GameBackupImportedTurn[];
-  orderDrafts: GameBackupOrderDraft[];
-  regionSightings: GameBackupRegionSighting[];
-  mergedReports: GameBackupMergedReport[];
-  hexNotes: GameBackupHexNote[];
+  importedTurns: Array<
+    StoredTurnSnapshot & {
+      factionId: string;
+      turnNumber: number;
+      importedAt: string;
+      updatedAt: string;
+    }
+  >;
+  orderDrafts: Array<{
+    factionId: string;
+    turnNumber: number;
+    orderText: string;
+    updatedAt: string;
+  }>;
+  regionSightings: Array<{
+    factionId: string;
+    regionId: string;
+    lastSeenTurn: number;
+    payloadJson: string;
+  }>;
+  mergedReports: Array<{
+    factionId: string;
+    turnNumber: number;
+    mergedFactionId: string;
+    mergedFactionName: string;
+    mergedAt: string;
+  }>;
+  // A decoded note carries no gameId - the file never carries one, the store adds it.
+  hexNotes: Array<Omit<HexNoteRecord, "gameId">>;
 };
 
 /**
@@ -168,232 +153,6 @@ type GameBackupPayload = {
  */
 function databaseHandleFor(gameId: string): string {
   return `idb://game-${gameId}`;
-}
-
-function asRecord(value: unknown, message: string): Record<string, unknown> {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error(message);
-  }
-  return value as Record<string, unknown>;
-}
-
-function readString(value: unknown, message: string): string {
-  if (typeof value !== "string") {
-    throw new Error(message);
-  }
-  return value;
-}
-
-function readOptionalString(value: unknown, message: string): string | undefined {
-  if (value === undefined) {
-    return undefined;
-  }
-  return readString(value, message);
-}
-
-function readNumber(value: unknown, message: string): number {
-  if (typeof value !== "number") {
-    throw new Error(message);
-  }
-  return value;
-}
-
-function readBoolean(value: unknown, message: string): boolean {
-  if (typeof value !== "boolean") {
-    throw new Error(message);
-  }
-  return value;
-}
-
-function readArray(value: unknown, message: string): unknown[] {
-  if (!Array.isArray(value)) {
-    throw new Error(message);
-  }
-  return value;
-}
-
-function parseBackupJson(backupJson: string): GameBackupPayload {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(backupJson);
-  } catch {
-    throw new Error("backup file is not valid JSON");
-  }
-
-  const payload = asRecord(parsed, "backup file is not an object");
-  const format = readString(payload.format, "backup file does not declare its format");
-  if (format !== GAME_BACKUP_FORMAT) {
-    throw new Error("backup file is not an Atlantis HUD game export");
-  }
-
-  const version = readNumber(payload.version, "backup file does not say which version it is");
-  if (version > CURRENT_GAME_BACKUP_VERSION) {
-    throw new Error(
-      `backup file format version ${version} is newer than this build supports (${CURRENT_GAME_BACKUP_VERSION})`
-    );
-  }
-  if (version < 1) {
-    throw new Error(`backup file format version ${version} is not supported`);
-  }
-
-  const manifest = asRecord(payload.manifest, "backup file is missing its game manifest") as
-    | GameManifest
-    | Record<string, unknown>;
-  const metadata = asRecord(manifest.metadata, "backup file manifest is missing its game metadata");
-  readString(metadata.gameId, "backup file manifest is missing its game id");
-  readString(metadata.gameName, "backup file manifest is missing its game name");
-  readString(metadata.rulesetId, "backup file manifest is missing its ruleset id");
-  readNumber(manifest.manifestVersion, "backup file manifest is missing its manifest version");
-  readString(manifest.createdAt, "backup file manifest is missing its creation time");
-  readString(manifest.lastOpenedAt, "backup file manifest is missing its last-opened time");
-  readArray(manifest.reportSources, "backup file manifest is missing its report sources");
-
-  return {
-    format,
-    version,
-    exportedAt:
-      typeof payload.exportedAt === "string" ? payload.exportedAt : new Date(0).toISOString(),
-    manifest: manifest as GameManifest,
-    importedTurns: readArray(
-      payload.importedTurns,
-      "backup file is missing its imported turns"
-    ).map((entry, index) => {
-      const record = asRecord(entry, `backup file imported turn ${index + 1} is invalid`);
-      return {
-        factionId: readString(
-          record.factionId,
-          `backup file imported turn ${index + 1} is missing its faction id`
-        ),
-        turnNumber: readNumber(
-          record.turnNumber,
-          `backup file imported turn ${index + 1} is missing its turn number`
-        ),
-        rawReport: readString(
-          record.rawReport,
-          `backup file imported turn ${index + 1} is missing its raw report`
-        ),
-        parsedPayloadJson: readString(
-          record.parsedPayloadJson,
-          `backup file imported turn ${index + 1} is missing its parsed payload`
-        ),
-        warningsPayloadJson: readString(
-          record.warningsPayloadJson,
-          `backup file imported turn ${index + 1} is missing its warning payload`
-        ),
-        importedAt: readOptionalString(
-          record.importedAt,
-          `backup file imported turn ${index + 1} has an invalid imported time`
-        ),
-        updatedAt: readOptionalString(
-          record.updatedAt,
-          `backup file imported turn ${index + 1} has an invalid updated time`
-        )
-      };
-    }),
-    orderDrafts: readArray(payload.orderDrafts, "backup file is missing its order drafts").map(
-      (entry, index) => {
-        const record = asRecord(entry, `backup file order draft ${index + 1} is invalid`);
-        return {
-          factionId: readString(
-            record.factionId,
-            `backup file order draft ${index + 1} is missing its faction id`
-          ),
-          turnNumber: readNumber(
-            record.turnNumber,
-            `backup file order draft ${index + 1} is missing its turn number`
-          ),
-          orderText: readString(
-            record.orderText,
-            `backup file order draft ${index + 1} is missing its order text`
-          ),
-          updatedAt: readString(
-            record.updatedAt,
-            `backup file order draft ${index + 1} is missing its update time`
-          )
-        };
-      }
-    ),
-    regionSightings: readArray(
-      payload.regionSightings,
-      "backup file is missing its remembered map"
-    ).map((entry, index) => {
-      const record = asRecord(entry, `backup file remembered region ${index + 1} is invalid`);
-      return {
-        factionId: readString(
-          record.factionId,
-          `backup file remembered region ${index + 1} is missing its faction id`
-        ),
-        regionId: readString(
-          record.regionId,
-          `backup file remembered region ${index + 1} is missing its region id`
-        ),
-        lastSeenTurn: readNumber(
-          record.lastSeenTurn,
-          `backup file remembered region ${index + 1} is missing its turn`
-        ),
-        payloadJson: readString(
-          record.payloadJson,
-          `backup file remembered region ${index + 1} is missing its payload`
-        )
-      };
-    }),
-    mergedReports: readArray(
-      payload.mergedReports,
-      "backup file is missing its merged reports"
-    ).map((entry, index) => {
-      const record = asRecord(entry, `backup file merged report ${index + 1} is invalid`);
-      return {
-        factionId: readString(
-          record.factionId,
-          `backup file merged report ${index + 1} is missing its faction id`
-        ),
-        turnNumber: readNumber(
-          record.turnNumber,
-          `backup file merged report ${index + 1} is missing its turn number`
-        ),
-        mergedFactionId: readString(
-          record.mergedFactionId,
-          `backup file merged report ${index + 1} is missing its merged faction id`
-        ),
-        mergedFactionName: readString(
-          record.mergedFactionName,
-          `backup file merged report ${index + 1} is missing its merged faction name`
-        ),
-        mergedAt: readString(
-          record.mergedAt,
-          `backup file merged report ${index + 1} is missing its merge time`
-        )
-      };
-    }),
-    // Absent, unlike every other array here, means empty: a backup written before this field
-    // existed has no such key and must still import (ah-o1t.1).
-    hexNotes: readArray(payload.hexNotes ?? [], "backup file's hex notes are invalid").map(
-      (entry, index) => {
-        const record = asRecord(entry, `backup file hex note ${index + 1} is invalid`);
-        return {
-          id: readString(record.id, `backup file hex note ${index + 1} is missing its id`),
-          regionId: readString(
-            record.regionId,
-            `backup file hex note ${index + 1} is missing its region id`
-          ),
-          text: readString(record.text, `backup file hex note ${index + 1} is missing its text`),
-          onMap: readBoolean(
-            record.onMap,
-            `backup file hex note ${index + 1} is missing its on-map flag`
-          ),
-          turn: readNumber(record.turn, `backup file hex note ${index + 1} is missing its turn`),
-          createdAt: readString(
-            record.createdAt,
-            `backup file hex note ${index + 1} is missing its created time`
-          ),
-          updatedAt: readString(
-            record.updatedAt,
-            `backup file hex note ${index + 1} is missing its updated time`
-          )
-        };
-      }
-    )
-  };
 }
 
 /**
@@ -716,52 +475,19 @@ export function createWebCoreAdapter(
           store.getHexNotes(game.databasePath, gameId)
         ]);
 
-      return JSON.stringify(
-        {
-          format: GAME_BACKUP_FORMAT,
-          version: CURRENT_GAME_BACKUP_VERSION,
-          exportedAt,
+      // The store's own records go over as they are (`databasePath`, `gameId` and all); the codec
+      // ignores what it does not know. `JSON.stringify` drops an `undefined` `importedAt`, which
+      // the codec reads as absent - the one place this leniency is relied on.
+      return wasm.encode_game_backup_state(
+        JSON.stringify({
           manifest: game.manifest,
-          importedTurns: importedTurns.map((turn) => ({
-            factionId: turn.factionId,
-            turnNumber: turn.turnNumber,
-            rawReport: turn.rawReport,
-            parsedPayloadJson: turn.parsedPayloadJson,
-            warningsPayloadJson: turn.warningsPayloadJson,
-            importedAt: turn.importedAt,
-            updatedAt: turn.updatedAt
-          })),
-          orderDrafts: orderDrafts.map((draft) => ({
-            factionId: draft.factionId,
-            turnNumber: draft.turnNumber,
-            orderText: draft.orderText,
-            updatedAt: draft.updatedAt
-          })),
-          regionSightings: regionSightings.map((sighting) => ({
-            factionId: sighting.factionId,
-            regionId: sighting.regionId,
-            lastSeenTurn: sighting.lastSeenTurn,
-            payloadJson: sighting.payloadJson
-          })),
-          mergedReports: mergedReports.map((record) => ({
-            factionId: record.factionId,
-            turnNumber: record.turnNumber,
-            mergedFactionId: record.mergedFactionId,
-            mergedFactionName: record.mergedFactionName,
-            mergedAt: record.mergedAt
-          })),
-          hexNotes: hexNotes.map((note) => ({
-            id: note.id,
-            regionId: note.regionId,
-            text: note.text,
-            onMap: note.onMap,
-            turn: note.turn,
-            createdAt: note.createdAt,
-            updatedAt: note.updatedAt
-          }))
-        },
-        null,
-        2
+          importedTurns,
+          orderDrafts,
+          regionSightings,
+          mergedReports,
+          hexNotes
+        }),
+        exportedAt
       );
     },
 
@@ -798,13 +524,22 @@ export function createWebCoreAdapter(
     },
 
     async importGame(backupJson: string, openedAt: string) {
-      const backup = parseBackupJson(backupJson);
-      const gameId = backup.manifest.metadata.gameId;
+      let decoded: DecodedGameBackup;
+      try {
+        decoded = wasm.decode_game_backup_state(backupJson, openedAt) as DecodedGameBackup;
+      } catch (error) {
+        // wasm-bindgen throws the Rust error's text as a bare string; the shell's describeError
+        // would show it either way, but `rejects.toThrow` and every caller expecting an Error
+        // would not.
+        throw error instanceof Error ? error : new Error(String(error));
+      }
+
+      const gameId = decoded.manifest.metadata.gameId;
       if (await store.getGame(gameId)) {
         throw new Error(`game already exists: ${gameId}`);
       }
 
-      const manifest = { ...backup.manifest, lastOpenedAt: openedAt };
+      const manifest = decoded.manifest;
       const databasePath = databaseHandleFor(gameId);
       const game = {
         gameId,
@@ -816,7 +551,7 @@ export function createWebCoreAdapter(
       try {
         await store.putGame(game);
         await Promise.all(
-          backup.importedTurns.map((turn) =>
+          decoded.importedTurns.map((turn) =>
             store.putImportedTurn({
               databasePath,
               gameId,
@@ -826,12 +561,12 @@ export function createWebCoreAdapter(
               parsedPayloadJson: turn.parsedPayloadJson,
               warningsPayloadJson: turn.warningsPayloadJson,
               importedAt: turn.importedAt,
-              updatedAt: turn.updatedAt ?? turn.importedAt ?? manifest.createdAt
+              updatedAt: turn.updatedAt
             })
           )
         );
         await Promise.all(
-          backup.orderDrafts.map((draft) =>
+          decoded.orderDrafts.map((draft) =>
             store.putOrderDraft({
               databasePath,
               gameId,
@@ -843,7 +578,7 @@ export function createWebCoreAdapter(
           )
         );
         await store.putRegionSightings(
-          backup.regionSightings.map((sighting) => ({
+          decoded.regionSightings.map((sighting) => ({
             databasePath,
             gameId,
             factionId: sighting.factionId,
@@ -853,7 +588,7 @@ export function createWebCoreAdapter(
           }))
         );
         await Promise.all(
-          backup.mergedReports.map((record) =>
+          decoded.mergedReports.map((record) =>
             store.putMergedReport({
               databasePath,
               gameId,
@@ -866,7 +601,7 @@ export function createWebCoreAdapter(
           )
         );
         await Promise.all(
-          backup.hexNotes.map((note) =>
+          decoded.hexNotes.map((note) =>
             store.putHexNote({
               databasePath,
               gameId,

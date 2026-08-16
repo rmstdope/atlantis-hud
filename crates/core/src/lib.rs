@@ -1,5 +1,6 @@
 //! Shared domain core for Atlantis HUD.
 
+pub mod backup;
 pub mod cache;
 pub mod known_map;
 pub mod movement;
