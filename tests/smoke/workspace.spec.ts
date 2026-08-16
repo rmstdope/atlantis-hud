@@ -7,7 +7,8 @@ import {
   expectOrdersNot,
   fillOrders,
   ordersInput,
-  ordersText
+  ordersText,
+  visibleStrip
 } from "./gameSetup";
 import { join } from "node:path";
 // The real constant, not a copy of it: this test exists to catch the rendered height and the
@@ -1253,6 +1254,11 @@ async function boxOf(page: Page, panel: string) {
   return box!;
 }
 
+/** Where the map is standing, read the same way `shortcuts.spec.ts` does. */
+async function mapTransform(page: Page): Promise<string> {
+  return (await page.getByTestId("map-world").getAttribute("transform")) ?? "";
+}
+
 test("a folded panel shrinks to its title bar", async ({ page }) => {
   await loadReport(page);
   await selectHex(page, "1:7,53");
@@ -2481,35 +2487,58 @@ test("fitting the map puts every hex clear of the panes drawn over it", async ({
 
   // The panes float over the canvas rather than beside it, so fitting to the canvas centred the
   // world underneath them: the hexes were on screen and behind a panel, which is not "fitted" to
-  // anyone looking at it. Measured in the browser because the strip only exists in a real layout.
-  const overflowing = await page.evaluate(() => {
-    const panes = Array.from(
-      document.querySelectorAll<HTMLElement>("[data-map-overlay]")
-    ).map((pane) => ({ edge: pane.dataset.mapOverlay, box: pane.getBoundingClientRect() }));
-    const host = document.querySelector('[data-testid="map-canvas"]')!.getBoundingClientRect();
-
-    const deepest = (edge: string, of: (box: DOMRect) => number) =>
-      panes.filter((pane) => pane.edge === edge).reduce((most, pane) => Math.max(most, of(pane.box)), 0);
-    const visible = {
-      left: host.left + deepest("left", (box) => box.right - host.left),
-      right: host.right - deepest("right", (box) => host.right - box.left),
-      top: host.top + deepest("top", (box) => box.bottom - host.top),
-      bottom: host.bottom - deepest("bottom", (box) => host.bottom - box.top)
-    };
-
+  // anyone looking at it. `visibleStrip` is the same value the map itself measured and fitted
+  // against - not a second copy of the arithmetic re-derived from the pane boxes.
+  const strip = await visibleStrip(page);
+  const overflowing = await page.evaluate((visible) => {
     // Every known hex on this level, which is exactly the set the fit is computed from.
     return Array.from(document.querySelectorAll("polygon[data-region-id]"))
       .map((hex) => hex.getBoundingClientRect())
       .filter(
         (box) =>
-          box.left < visible.left ||
-          box.right > visible.right ||
-          box.top < visible.top ||
-          box.bottom > visible.bottom
+          box.left < visible.x ||
+          box.right > visible.x + visible.width ||
+          box.top < visible.y ||
+          box.bottom > visible.y + visible.height
       ).length;
-  });
+  }, strip);
 
   expect(overflowing).toBe(0);
+});
+
+/**
+ * The strip the fit is computed against is exposed, and the fit stays one-shot per level once a
+ * pane's footprint changes underneath it (ah-lfo). Two facts pinned in one walk: `data-map-insets`
+ * reads true against the layout the panes actually leave, and a pane folding after the first fit
+ * moves nothing - the whole point of measuring the strip rather than re-fitting continuously.
+ */
+test("the first fit is against the strip the panes leave, and a later fold moves nothing", async ({
+  page
+}) => {
+  await loadReport(page);
+
+  // Every pane is open on a first load, so every inset is non-zero.
+  const strip = await visibleStrip(page);
+  expect(strip.width).toBeGreaterThan(0);
+  expect(strip.height).toBeGreaterThan(0);
+
+  const map = page.getByTestId("map-canvas");
+  const before = await map.getAttribute("data-map-insets");
+  const beforeInsets = JSON.parse(before as string) as { bottom: number };
+  const transformBefore = await mapTransform(page);
+
+  await foldPanel(page, "units");
+
+  // The measured strip changes - the bottom inset shrinks once the units pane's footprint does -
+  // but the map itself does not re-fit: the fit is one-shot per level (ah-ppd/ah-ian), and this
+  // bead only makes the strip it used a measured, exposed value rather than a continuous one.
+  await expect
+    .poll(async () => {
+      const raw = await map.getAttribute("data-map-insets");
+      return raw ? (JSON.parse(raw) as { bottom: number }).bottom : null;
+    })
+    .toBeLessThan(beforeInsets.bottom);
+  expect(await mapTransform(page)).toBe(transformBefore);
 });
 
 test("the map carries less detail the further out it is zoomed", async ({ page }) => {

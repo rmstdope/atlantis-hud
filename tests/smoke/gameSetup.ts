@@ -73,6 +73,47 @@ export async function createGame(page: Page, name: string) {
 }
 
 /**
+ * The strip of the map the player can actually see: the map's own host, shrunk by the insets
+ * `MapCanvas` fits and recentres against - not the geometric middle of the canvas, which the side
+ * rails alone push well away from where a point actually lands on the map.
+ *
+ * Read from `data-map-insets`, the value the map itself measured and fitted against (see
+ * `useOverlayInsets.ts`), rather than re-derived from the `[data-map-overlay]` boxes: two smoke
+ * specs used to carry their own copy of that arithmetic, and a bug in the real one could pass here
+ * by agreeing with itself. Polls for the attribute because it is absent until the first measurement
+ * lands.
+ */
+export async function visibleStrip(
+  page: Page
+): Promise<{ x: number; y: number; width: number; height: number }> {
+  const map = page.getByTestId("map-canvas");
+  await expect.poll(() => map.getAttribute("data-map-insets")).not.toBeNull();
+  const raw = await map.getAttribute("data-map-insets");
+  const insets = JSON.parse(raw as string) as {
+    left: number;
+    right: number;
+    top: number;
+    bottom: number;
+  };
+  const box = await map.boundingBox();
+  if (!box) {
+    throw new Error("the map has no box to measure the visible strip against");
+  }
+  return {
+    x: box.x + insets.left,
+    y: box.y + insets.top,
+    width: box.width - insets.left - insets.right,
+    height: box.height - insets.top - insets.bottom
+  };
+}
+
+/** The middle of the strip the panes leave visible - see `visibleStrip`. */
+export async function visibleCentre(page: Page): Promise<{ x: number; y: number }> {
+  const strip = await visibleStrip(page);
+  return { x: strip.x + strip.width / 2, y: strip.y + strip.height / 2 };
+}
+
+/**
  * The orders editor's editable surface.
  *
  * The editor is CodeMirror, so `data-testid="orders-input"` sits on its root and the text lives in

@@ -1,7 +1,14 @@
 import { expect, test, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { clearGames, createGame, expectOrders, fillOrders, ordersInput } from "./gameSetup";
+import {
+  clearGames,
+  createGame,
+  expectOrders,
+  fillOrders,
+  ordersInput,
+  visibleCentre
+} from "./gameSetup";
 
 /**
  * The global keyboard layer (#91): the command palette, faction-wide unit cycling, the
@@ -219,40 +226,6 @@ async function mapTransform(page: Page): Promise<string> {
   return (await page.getByTestId("map-world").getAttribute("transform")) ?? "";
 }
 
-/**
- * The middle of the strip the panes leave visible - the same rectangle `mapOverlayInsets.ts`
- * computes from `[data-map-overlay]` boxes, and what `centreOn` actually centres against. The
- * geometric middle of the whole canvas is not it: the side rails alone leave the true middle far
- * from the canvas's own centre, and a point there lands on a pane rather than the map.
- */
-async function visibleCentre(page: Page, map: { x: number; y: number; width: number; height: number }) {
-  const overlays = await page.locator("[data-map-overlay]").all();
-  let left = 0;
-  let right = 0;
-  let top = 0;
-  let bottom = 0;
-  for (const overlay of overlays) {
-    const edge = await overlay.getAttribute("data-map-overlay");
-    const box = await overlay.boundingBox();
-    if (!box || box.width <= 0 || box.height <= 0) {
-      continue;
-    }
-    if (edge === "left") {
-      left = Math.max(left, box.x + box.width - map.x);
-    } else if (edge === "right") {
-      right = Math.max(right, map.x + map.width - box.x);
-    } else if (edge === "top") {
-      top = Math.max(top, box.y + box.height - map.y);
-    } else if (edge === "bottom") {
-      bottom = Math.max(bottom, map.y + map.height - box.y);
-    }
-  }
-  return {
-    x: map.x + left + (map.width - left - right) / 2,
-    y: map.y + top + (map.height - top - bottom) / 2
-  };
-}
-
 test("right-click centres the view on a hex, without selecting it", async ({ page }) => {
   await loadReport(page);
   await selectHex(page, "1:7,53");
@@ -302,7 +275,7 @@ test("right-click centres the view on a hex, without selecting it", async ({ pag
   // Right-clicking the middle of the visible strip a second time is now a no-op: whatever hex is
   // already there is already centred, so asking again changes nothing.
   const centred = await mapTransform(page);
-  const centre = await visibleCentre(page, box);
+  const centre = await visibleCentre(page);
   await page.mouse.click(centre.x, centre.y, { button: "right" });
   await expect.poll(() => mapTransform(page)).toBe(centred);
   await page.mouse.click(centre.x, centre.y, { button: "right" });
