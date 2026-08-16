@@ -14,6 +14,7 @@ use serde::{Deserialize, Serialize};
 /// were both called `GameInfo` until games became a first-class thing the player names and picks
 /// between, at which point one name for two unrelated ideas stopped being tolerable.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct EngineInfo {
     /// Stable identifier used by platform adapters and clients.
     pub id: String,
@@ -38,8 +39,11 @@ pub fn engine_info() -> EngineInfo {
 
 /// Severity for order validation diagnostics.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum OrderDiagnosticSeverity {
+    #[serde(alias = "Warning")]
     Warning,
+    #[serde(alias = "Error")]
     Error,
 }
 
@@ -121,54 +125,71 @@ pub use orders::{order_commands, validate_orders, validate_turn};
 
 /// Severity level emitted by the tolerant report parser.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum WarningSeverity {
+    #[serde(alias = "Warning")]
     Warning,
+    #[serde(alias = "Error")]
     Error,
 }
 
 /// Structured warning emitted while parsing a report.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ParseWarning {
     pub code: String,
     pub section: String,
     pub message: String,
+    #[serde(alias = "line_start")]
     pub line_start: usize,
+    #[serde(alias = "line_end")]
     pub line_end: usize,
     pub severity: WarningSeverity,
 }
 
 /// Canonical turn header extracted from a report.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TurnHeader {
+    #[serde(alias = "turn_number")]
     pub turn_number: u32,
     pub season: String,
 }
 
 /// Faction identity candidate extracted from a report.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct FactionInfo {
+    #[serde(alias = "faction_id")]
     pub faction_id: String,
     pub name: String,
 }
 
 /// Region summary extracted from a report.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RegionSummary {
+    #[serde(alias = "region_id")]
     pub region_id: String,
     pub name: String,
 }
 
 /// Unit summary extracted from a report.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct UnitSummary {
+    #[serde(alias = "unit_id")]
     pub unit_id: String,
     pub name: String,
+    #[serde(alias = "region_id")]
     pub region_id: String,
 }
 
 /// Inventory item extracted from a report.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct InventoryItem {
+    #[serde(alias = "unit_id")]
     pub unit_id: String,
     pub item: String,
     pub quantity: i32,
@@ -176,6 +197,7 @@ pub struct InventoryItem {
 
 /// Parsed order or message summary from a report.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct MessageSummary {
     pub kind: String,
     pub source: String,
@@ -184,12 +206,16 @@ pub struct MessageSummary {
 
 /// Tolerant parser output for one report.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ReportParseResult {
+    #[serde(alias = "turn_header")]
     pub turn_header: Option<TurnHeader>,
+    #[serde(alias = "detected_factions")]
     pub detected_factions: Vec<FactionInfo>,
     pub regions: Vec<RegionSummary>,
     pub units: Vec<UnitSummary>,
     pub inventories: Vec<InventoryItem>,
+    #[serde(alias = "message_summaries")]
     pub message_summaries: Vec<MessageSummary>,
     pub warnings: Vec<ParseWarning>,
 }
@@ -201,6 +227,28 @@ impl ReportParseResult {
         self.turn_header.is_some()
             && !self.detected_factions.is_empty()
             && (!self.regions.is_empty() || !self.units.is_empty())
+    }
+}
+
+/// `ReportParseResult` as it crosses to a shell: the result itself, flattened, plus the one flag
+/// both shells used to compute in a DTO of their own. This is the single wire shape for
+/// core-tauri and core-wasm — the two used to disagree on casing (ah-164.1). Deserializable so a
+/// shell can hydrate a stored `ReportParseResult` blob and hand it back in this shape.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReportParseResultWire {
+    #[serde(flatten)]
+    pub result: ReportParseResult,
+    pub meets_minimum_import_threshold: bool,
+}
+
+impl From<ReportParseResult> for ReportParseResultWire {
+    fn from(result: ReportParseResult) -> Self {
+        let meets_minimum_import_threshold = result.meets_minimum_import_threshold();
+        Self {
+            result,
+            meets_minimum_import_threshold,
+        }
     }
 }
 
@@ -848,6 +896,61 @@ mod tests {
                 max_faction_count: 128,
             }
         );
+    }
+
+    /// `EngineInfo` crosses to a shell like every other wire type does: camelCase (ah-164.1).
+    #[test]
+    fn engine_info_serializes_camel_case() {
+        let value = serde_json::to_value(engine_info()).expect("engine info should serialize");
+        assert_eq!(value["rulesetVersion"], "4.0");
+        assert_eq!(value["maxFactionCount"], 128);
+        assert!(value.get("ruleset_version").is_none());
+        assert!(value.get("max_faction_count").is_none());
+    }
+
+    /// The tolerant-parse family used to be the one corner of the wire contract that stayed
+    /// snake_case while every shell-facing DTO camelCased it by hand (ah-164.1). This pins the
+    /// new contract: the type itself serializes camel, and a stored snake_case blob (every row
+    /// written before this bead) still deserializes through the alias.
+    #[test]
+    fn the_parse_result_serializes_camel_case_and_still_reads_snake_case() {
+        let parsed = parse_report("garbage\n");
+
+        let value = serde_json::to_value(&parsed).expect("parse result should serialize");
+        assert!(value.get("turnHeader").is_some());
+        assert!(value.get("detectedFactions").is_some());
+        assert!(value.get("messageSummaries").is_some());
+        assert!(value.get("turn_header").is_none());
+
+        let warning = &value["warnings"][0];
+        assert!(warning.get("lineStart").is_some());
+        assert!(warning.get("line_start").is_none());
+        assert_eq!(warning["severity"], "warning");
+
+        let legacy = r#"{"turn_header":{"turn_number":12,"season":"Spring"},"detected_factions":[],"regions":[],"units":[],"inventories":[],"message_summaries":[],"warnings":[{"code":"c","section":"s","message":"m","line_start":1,"line_end":1,"severity":"Warning"}]}"#;
+        let restored: ReportParseResult =
+            serde_json::from_str(legacy).expect("legacy snake_case blob should still deserialize");
+        assert_eq!(restored.turn_header.unwrap().turn_number, 12);
+        assert_eq!(restored.warnings[0].severity, WarningSeverity::Warning);
+    }
+
+    /// The wire wrapper is the one shape both shells now hand to their consumer: the parse result
+    /// flattened alongside the threshold flag both DTOs used to compute separately (ah-164.1).
+    #[test]
+    fn the_wire_shape_is_flat_camel_case_with_the_threshold_flag() {
+        let wire = ReportParseResultWire::from(parse_report("garbage\n"));
+
+        let value = serde_json::to_value(&wire).expect("wire shape should serialize");
+        assert!(value.get("turnHeader").is_some());
+        assert_eq!(value["meetsMinimumImportThreshold"], false);
+        assert!(
+            value.get("result").is_none(),
+            "the wrapper must be flat, not nested under `result`"
+        );
+
+        let round_tripped: ReportParseResultWire =
+            serde_json::from_value(value).expect("wire shape should round-trip");
+        assert!(!round_tripped.meets_minimum_import_threshold);
     }
 
     #[test]

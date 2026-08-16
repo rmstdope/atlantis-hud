@@ -667,9 +667,7 @@ type EngineInfoWireShape = {
   id: string;
   name: string;
   rulesetVersion?: string;
-  ruleset_version?: string;
   maxFactionCount?: number;
-  max_faction_count?: number;
 };
 
 type GameMetadataWireShape = {
@@ -711,33 +709,27 @@ type OpenedGameWireShape = {
 
 type TurnHeaderWireShape = {
   turnNumber?: number;
-  turn_number?: number;
   season?: string;
 };
 
 type FactionInfoWireShape = {
   factionId?: string;
-  faction_id?: string;
   name?: string;
 };
 
 type RegionSummaryWireShape = {
   regionId?: string;
-  region_id?: string;
   name?: string;
 };
 
 type UnitSummaryWireShape = {
   unitId?: string;
-  unit_id?: string;
   name?: string;
   regionId?: string;
-  region_id?: string;
 };
 
 type InventoryItemWireShape = {
   unitId?: string;
-  unit_id?: string;
   item?: string;
   quantity?: number;
 };
@@ -753,25 +745,19 @@ type ParseWarningWireShape = {
   section?: string;
   message?: string;
   lineStart?: number;
-  line_start?: number;
   lineEnd?: number;
-  line_end?: number;
   severity?: string;
 };
 
 type ReportParseResultWireShape = {
   turnHeader?: TurnHeaderWireShape | null;
-  turn_header?: TurnHeaderWireShape | null;
   detectedFactions?: FactionInfoWireShape[];
-  detected_factions?: FactionInfoWireShape[];
   regions?: RegionSummaryWireShape[];
   units?: UnitSummaryWireShape[];
   inventories?: InventoryItemWireShape[];
   messageSummaries?: MessageSummaryWireShape[];
-  message_summaries?: MessageSummaryWireShape[];
   warnings?: ParseWarningWireShape[];
   meetsMinimumImportThreshold?: boolean;
-  meets_minimum_import_threshold?: boolean;
 };
 
 type ImportedTurnPreviewWireShape = {
@@ -796,18 +782,12 @@ type ReportImportPreviewWireShape = {
 type OrderDiagnosticWireShape = {
   code?: string;
   message?: string;
-  lineStart?: number;
-  line_start?: number | null;
+  lineStart?: number | null;
   lineEnd?: number | null;
-  line_end?: number | null;
   columnStart?: number | null;
-  column_start?: number | null;
   columnEnd?: number | null;
-  column_end?: number | null;
   regionId?: string | null;
-  region_id?: string | null;
   unitId?: string | null;
-  unit_id?: string | null;
   severity?: string;
 };
 
@@ -1256,8 +1236,8 @@ function normalizeEngineInfo(value: unknown): EngineInfo {
   }
 
   const payload = value as EngineInfoWireShape;
-  const rulesetVersion = payload.rulesetVersion ?? payload.ruleset_version;
-  const maxFactionCount = payload.maxFactionCount ?? payload.max_faction_count;
+  const rulesetVersion = payload.rulesetVersion;
+  const maxFactionCount = payload.maxFactionCount;
 
   if (
     typeof payload.id !== "string" ||
@@ -1385,7 +1365,7 @@ function normalizeTurnHeader(value: unknown): TurnHeader {
     throw new Error("invalid turn header payload");
   }
   const payload = value as TurnHeaderWireShape;
-  const turnNumber = payload.turnNumber ?? payload.turn_number;
+  const turnNumber = payload.turnNumber;
   if (typeof turnNumber !== "number" || typeof payload.season !== "string") {
     throw new Error("incomplete turn header payload");
   }
@@ -1397,7 +1377,7 @@ function normalizeFaction(value: unknown): FactionInfo {
     throw new Error("invalid faction payload");
   }
   const payload = value as FactionInfoWireShape;
-  const factionId = payload.factionId ?? payload.faction_id;
+  const factionId = payload.factionId;
   if (typeof factionId !== "string" || typeof payload.name !== "string") {
     throw new Error("incomplete faction payload");
   }
@@ -1409,7 +1389,7 @@ function normalizeRegion(value: unknown): RegionSummary {
     throw new Error("invalid region payload");
   }
   const payload = value as RegionSummaryWireShape;
-  const regionId = payload.regionId ?? payload.region_id;
+  const regionId = payload.regionId;
   if (typeof regionId !== "string" || typeof payload.name !== "string") {
     throw new Error("incomplete region payload");
   }
@@ -1421,8 +1401,8 @@ function normalizeUnit(value: unknown): UnitSummary {
     throw new Error("invalid unit payload");
   }
   const payload = value as UnitSummaryWireShape;
-  const unitId = payload.unitId ?? payload.unit_id;
-  const regionId = payload.regionId ?? payload.region_id;
+  const unitId = payload.unitId;
+  const regionId = payload.regionId;
   if (typeof unitId !== "string" || typeof payload.name !== "string" || typeof regionId !== "string") {
     throw new Error("incomplete unit payload");
   }
@@ -1434,7 +1414,7 @@ function normalizeItem(value: unknown): InventoryItem {
     throw new Error("invalid inventory item payload");
   }
   const payload = value as InventoryItemWireShape;
-  const unitId = payload.unitId ?? payload.unit_id;
+  const unitId = payload.unitId;
   if (typeof unitId !== "string" || typeof payload.item !== "string" || typeof payload.quantity !== "number") {
     throw new Error("incomplete inventory item payload");
   }
@@ -1457,8 +1437,8 @@ function normalizeWarning(value: unknown): ParseWarning {
     throw new Error("invalid warning payload");
   }
   const payload = value as ParseWarningWireShape;
-  const lineStart = payload.lineStart ?? payload.line_start;
-  const lineEnd = payload.lineEnd ?? payload.line_end;
+  const lineStart = payload.lineStart;
+  const lineEnd = payload.lineEnd;
   if (
     typeof payload.code !== "string" ||
     typeof payload.section !== "string" ||
@@ -1484,11 +1464,10 @@ function normalizeParseResult(value: unknown): ReportParseResult {
     throw new Error("invalid parse result payload");
   }
   const payload = value as ReportParseResultWireShape;
-  const turnHeaderPayload = payload.turnHeader ?? payload.turn_header;
-  const detectedFactions = payload.detectedFactions ?? payload.detected_factions;
-  const messageSummaries = payload.messageSummaries ?? payload.message_summaries;
-  const meetsMinimumImportThreshold =
-    payload.meetsMinimumImportThreshold ?? payload.meets_minimum_import_threshold;
+  const turnHeaderPayload = payload.turnHeader;
+  const detectedFactions = payload.detectedFactions;
+  const messageSummaries = payload.messageSummaries;
+  const meetsMinimumImportThreshold = payload.meetsMinimumImportThreshold;
   if (
     !Array.isArray(detectedFactions) ||
     !Array.isArray(payload.regions) ||
@@ -1609,12 +1588,12 @@ function normalizeOrderValidationResult(value: unknown): OrderValidationResult {
         // Every anchor is optional now, and a missing one is a fact rather than a defect: a
         // finding about a hex sits on no line, and a syntax error belongs to no hex. Demanding
         // them all would throw away the whole payload over the one diagnostic that has none.
-        lineStart: optionalNumber(entry.lineStart ?? entry.line_start),
-        lineEnd: optionalNumber(entry.lineEnd ?? entry.line_end),
-        columnStart: optionalNumber(entry.columnStart ?? entry.column_start),
-        columnEnd: optionalNumber(entry.columnEnd ?? entry.column_end),
-        regionId: optionalText(entry.regionId ?? entry.region_id),
-        unitId: optionalText(entry.unitId ?? entry.unit_id),
+        lineStart: optionalNumber(entry.lineStart),
+        lineEnd: optionalNumber(entry.lineEnd),
+        columnStart: optionalNumber(entry.columnStart),
+        columnEnd: optionalNumber(entry.columnEnd),
+        regionId: optionalText(entry.regionId),
+        unitId: optionalText(entry.unitId),
         severity: entry.severity
       };
     })

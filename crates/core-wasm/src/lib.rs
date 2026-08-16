@@ -7,7 +7,7 @@ use atlantis_hud_core::report::merge::{merge_report_into_sightings, StoredSighti
 use atlantis_hud_core::report::sighting::{region_sightings, RegionSighting};
 use atlantis_hud_core::{
     diff_imported_turn, engine_info, reject_import, reject_merge, ImportedTurnSnapshot,
-    OrderCheckOptions, OrderDiagnosticSeverity, OrderValidationResult, ReportParseResult,
+    OrderCheckOptions, ReportParseResult, ReportParseResultWire,
 };
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
@@ -29,15 +29,6 @@ fn to_js<T: Serialize + ?Sized>(value: &T) -> Result<JsValue, JsValue> {
         .map_err(|error| JsValue::from_str(&error.to_string()))
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct EngineInfoDto {
-    id: String,
-    name: String,
-    ruleset_version: String,
-    max_faction_count: u16,
-}
-
 /// Everything the browser storage adapter needs to persist one import.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -51,7 +42,7 @@ struct PreparedImportDto {
     /// and some four hundred and fifty units into JavaScript objects only to turn them straight
     /// back into text. These are already text, so only the text crosses.
     region_sightings: Vec<RegionSighting>,
-    parse_result: ReportParseResultDto,
+    parse_result: ReportParseResultWire,
     /// `None` when the report may be imported; otherwise why it may not be.
     rejection: Option<String>,
 }
@@ -71,92 +62,17 @@ struct PreparedMergeDto {
     rejection: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct OrderDiagnosticDto {
-    code: String,
-    message: String,
-    line_start: Option<usize>,
-    line_end: Option<usize>,
-    column_start: Option<usize>,
-    column_end: Option<usize>,
-    region_id: Option<String>,
-    unit_id: Option<String>,
-    severity: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct OrderValidationResultDto {
-    diagnostics: Vec<OrderDiagnosticDto>,
-}
-
-impl From<OrderValidationResult> for OrderValidationResultDto {
-    fn from(value: OrderValidationResult) -> Self {
-        Self {
-            diagnostics: value
-                .diagnostics
-                .into_iter()
-                .map(|diagnostic| OrderDiagnosticDto {
-                    code: diagnostic.code,
-                    message: diagnostic.message,
-                    line_start: diagnostic.line_start,
-                    line_end: diagnostic.line_end,
-                    column_start: diagnostic.column_start,
-                    column_end: diagnostic.column_end,
-                    region_id: diagnostic.region_id,
-                    unit_id: diagnostic.unit_id,
-                    severity: match diagnostic.severity {
-                        OrderDiagnosticSeverity::Warning => "warning".to_string(),
-                        OrderDiagnosticSeverity::Error => "error".to_string(),
-                    },
-                })
-                .collect(),
-        }
-    }
-}
-
-/// Wrapper over `ReportParseResult` that includes the computed threshold boolean.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct ReportParseResultDto {
-    #[serde(flatten)]
-    inner: ReportParseResult,
-    meets_minimum_import_threshold: bool,
-}
-
-impl From<ReportParseResult> for ReportParseResultDto {
-    fn from(value: ReportParseResult) -> Self {
-        let threshold = value.meets_minimum_import_threshold();
-        Self {
-            inner: value,
-            meets_minimum_import_threshold: threshold,
-        }
-    }
-}
-
-impl From<atlantis_hud_core::EngineInfo> for EngineInfoDto {
-    fn from(value: atlantis_hud_core::EngineInfo) -> Self {
-        Self {
-            id: value.id,
-            name: value.name,
-            ruleset_version: value.ruleset_version,
-            max_faction_count: value.max_faction_count,
-        }
-    }
-}
-
 /// Returns engine metadata serialized as a JS object.
 #[wasm_bindgen]
 pub fn get_engine_info() -> Result<JsValue, JsValue> {
-    to_js(&EngineInfoDto::from(engine_info()))
+    to_js(&engine_info())
 }
 
 /// Parses one report and returns tolerant parser output including the viability threshold flag.
 #[wasm_bindgen]
 pub fn parse_report_state(raw_report: String) -> Result<JsValue, JsValue> {
     let report = atlantis_hud_core::cache::with_global(|cache| cache.report(&raw_report));
-    let parsed = ReportParseResultDto::from(atlantis_hud_core::summarize(&report));
+    let parsed = ReportParseResultWire::from(atlantis_hud_core::summarize(&report));
     to_js(&parsed)
 }
 
@@ -199,7 +115,7 @@ pub fn prepare_report_import_state(
         region_sightings: turn_number
             .map(|turn| region_sightings(&full, turn))
             .unwrap_or_default(),
-        parse_result: ReportParseResultDto::from(parsed),
+        parse_result: ReportParseResultWire::from(parsed),
         rejection,
     };
 
@@ -277,7 +193,7 @@ pub fn hydrate_parse_result_state(parsed_payload_json: String) -> Result<JsValue
     let parsed = serde_json::from_str::<ReportParseResult>(&parsed_payload_json)
         .map_err(|error| JsValue::from_str(&error.to_string()))?;
 
-    to_js(&ReportParseResultDto::from(parsed))
+    to_js(&ReportParseResultWire::from(parsed))
 }
 
 /// Compares a prepared import candidate against the stored snapshot, if any.
@@ -500,12 +416,12 @@ pub fn validate_orders_state(
         (ruleset, report)
     });
 
-    let result = OrderValidationResultDto::from(atlantis_hud_core::validate_turn(
+    let result = atlantis_hud_core::validate_turn(
         &raw_orders,
         ruleset.as_deref(),
         report.as_deref(),
         options,
-    ));
+    );
     to_js(&result)
 }
 
@@ -517,39 +433,30 @@ pub fn order_commands_state() -> Result<JsValue, JsValue> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     // The syntax-only entry point, which the binding above no longer calls: it goes through
     // `validate_turn` so the checks that read the report come with it. These DTO tests want the
     // narrow one, since what they are about is the severity mapping and not the checking.
     use atlantis_hud_core::validate_orders;
 
+    /// `OrderValidationResult` serializes its severity as lowercase strings on its own now — the
+    /// DTO that used to hand-map it is gone (ah-164.1). `EngineInfo`'s own camelCase serialization
+    /// is pinned in core, so nothing here duplicates that.
     #[test]
-    fn dto_maps_core_fields() {
-        let dto = EngineInfoDto::from(engine_info());
-        assert_eq!(dto.id, "atlantis");
-        assert_eq!(dto.name, "Atlantis PBEM");
-        assert_eq!(dto.ruleset_version, "4.0");
-        assert_eq!(dto.max_faction_count, 128);
+    fn order_validation_serializes_severity_lowercase() {
+        let value = serde_json::to_value(validate_orders("FLY 1 2\nMOVE", None))
+            .expect("validation result should serialize");
+        let diagnostics = value["diagnostics"].as_array().expect("diagnostics array");
+
+        assert_eq!(diagnostics.len(), 2);
+        assert_eq!(diagnostics[0]["severity"], "error");
+        assert_eq!(diagnostics[0]["code"], "unknown-command");
+        assert_eq!(diagnostics[1]["severity"], "error");
+        assert_eq!(diagnostics[1]["code"], "missing-arguments");
     }
 
     #[test]
-    fn order_validation_dto_flattens_severity_to_strings() {
-        let dto = OrderValidationResultDto::from(validate_orders("FLY 1 2\nMOVE", None));
-
-        let severities: Vec<&str> = dto
-            .diagnostics
-            .iter()
-            .map(|diagnostic| diagnostic.severity.as_str())
-            .collect();
-
-        assert_eq!(severities, vec!["error", "error"]);
-        assert_eq!(dto.diagnostics[0].code, "unknown-command");
-        assert_eq!(dto.diagnostics[1].code, "missing-arguments");
-    }
-
-    #[test]
-    fn order_validation_dto_is_empty_for_valid_orders() {
-        let dto = OrderValidationResultDto::from(validate_orders("MOVE n n\nwork", None));
-        assert!(dto.diagnostics.is_empty());
+    fn order_validation_is_empty_for_valid_orders() {
+        let result = validate_orders("MOVE n n\nwork", None);
+        assert!(result.diagnostics.is_empty());
     }
 }

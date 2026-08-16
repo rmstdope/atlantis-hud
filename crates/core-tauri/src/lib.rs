@@ -5,8 +5,8 @@ use std::path::Path;
 use atlantis_hud_core::report::merge::{merge_report_into_sightings, StoredSighting};
 pub use atlantis_hud_core::report::ParsedReport;
 use atlantis_hud_core::{
-    engine_info, order_commands, parse_report, reject_import, reject_merge, OrderCheckOptions,
-    OrderDiagnosticSeverity, ReportParseResult, WarningSeverity,
+    engine_info, order_commands, parse_report, reject_import, reject_merge, EngineInfo,
+    OrderCheckOptions, OrderValidationResult, ReportParseResult, ReportParseResultWire,
 };
 use atlantis_hud_core_persistence::{
     create_game, delete_game, delete_hex_note, export_game, import_game, insert_imported_turn,
@@ -18,16 +18,6 @@ use atlantis_hud_core_persistence::{
     OrderDraftKey, OrderDraftRecord, PersistenceError, ReportSourceRef,
 };
 use serde::{Deserialize, Serialize};
-
-/// JSON contract returned by Tauri for engine metadata.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct EngineInfoDto {
-    pub id: String,
-    pub name: String,
-    pub ruleset_version: String,
-    pub max_faction_count: u16,
-}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -65,75 +55,6 @@ pub struct OpenedGameDto {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ParseWarningDto {
-    pub code: String,
-    pub section: String,
-    pub message: String,
-    pub line_start: usize,
-    pub line_end: usize,
-    pub severity: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct TurnHeaderDto {
-    pub turn_number: u32,
-    pub season: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct FactionInfoDto {
-    pub faction_id: String,
-    pub name: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RegionSummaryDto {
-    pub region_id: String,
-    pub name: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct UnitSummaryDto {
-    pub unit_id: String,
-    pub name: String,
-    pub region_id: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct InventoryItemDto {
-    pub unit_id: String,
-    pub item: String,
-    pub quantity: i32,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct MessageSummaryDto {
-    pub kind: String,
-    pub source: String,
-    pub text: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ReportParseResultDto {
-    pub turn_header: Option<TurnHeaderDto>,
-    pub detected_factions: Vec<FactionInfoDto>,
-    pub regions: Vec<RegionSummaryDto>,
-    pub units: Vec<UnitSummaryDto>,
-    pub inventories: Vec<InventoryItemDto>,
-    pub message_summaries: Vec<MessageSummaryDto>,
-    pub warnings: Vec<ParseWarningDto>,
-    pub meets_minimum_import_threshold: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct ImportedTurnPreviewDto {
     pub exists: bool,
     pub raw_changed: bool,
@@ -144,7 +65,7 @@ pub struct ImportedTurnPreviewDto {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ReportImportPreviewDto {
-    pub parse_result: ReportParseResultDto,
+    pub parse_result: ReportParseResultWire,
     pub duplicate_preview: ImportedTurnPreviewDto,
     pub turn_number: Option<u32>,
 }
@@ -154,7 +75,7 @@ pub struct ReportImportPreviewDto {
 pub struct ImportedTurnRecordDto {
     pub key: OrderDraftKeyDto,
     pub raw_report: String,
-    pub parse_result: ReportParseResultDto,
+    pub parse_result: ReportParseResultWire,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -164,26 +85,6 @@ pub struct ImportedTurnSummaryDto {
     pub season: Option<String>,
     pub imported_at: String,
     pub updated_at: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct OrderDiagnosticDto {
-    pub code: String,
-    pub message: String,
-    pub line_start: Option<usize>,
-    pub line_end: Option<usize>,
-    pub column_start: Option<usize>,
-    pub column_end: Option<usize>,
-    pub region_id: Option<String>,
-    pub unit_id: Option<String>,
-    pub severity: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct OrderValidationResultDto {
-    pub diagnostics: Vec<OrderDiagnosticDto>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -241,17 +142,6 @@ impl From<HexNoteDto> for HexNote {
             turn: value.turn,
             created_at: value.created_at,
             updated_at: value.updated_at,
-        }
-    }
-}
-
-impl From<atlantis_hud_core::EngineInfo> for EngineInfoDto {
-    fn from(value: atlantis_hud_core::EngineInfo) -> Self {
-        Self {
-            id: value.id,
-            name: value.name,
-            ruleset_version: value.ruleset_version,
-            max_faction_count: value.max_faction_count,
         }
     }
 }
@@ -340,81 +230,10 @@ impl From<ImportedTurnPreview> for ImportedTurnPreviewDto {
     }
 }
 
-impl From<ReportParseResult> for ReportParseResultDto {
-    fn from(value: ReportParseResult) -> Self {
-        let meets_minimum_import_threshold = value.meets_minimum_import_threshold();
-        Self {
-            turn_header: value.turn_header.map(|header| TurnHeaderDto {
-                turn_number: header.turn_number,
-                season: header.season,
-            }),
-            detected_factions: value
-                .detected_factions
-                .into_iter()
-                .map(|faction| FactionInfoDto {
-                    faction_id: faction.faction_id,
-                    name: faction.name,
-                })
-                .collect(),
-            regions: value
-                .regions
-                .into_iter()
-                .map(|region| RegionSummaryDto {
-                    region_id: region.region_id,
-                    name: region.name,
-                })
-                .collect(),
-            units: value
-                .units
-                .into_iter()
-                .map(|unit| UnitSummaryDto {
-                    unit_id: unit.unit_id,
-                    name: unit.name,
-                    region_id: unit.region_id,
-                })
-                .collect(),
-            inventories: value
-                .inventories
-                .into_iter()
-                .map(|item| InventoryItemDto {
-                    unit_id: item.unit_id,
-                    item: item.item,
-                    quantity: item.quantity,
-                })
-                .collect(),
-            message_summaries: value
-                .message_summaries
-                .into_iter()
-                .map(|summary| MessageSummaryDto {
-                    kind: summary.kind,
-                    source: summary.source,
-                    text: summary.text,
-                })
-                .collect(),
-            warnings: value
-                .warnings
-                .into_iter()
-                .map(|warning| ParseWarningDto {
-                    code: warning.code,
-                    section: warning.section,
-                    message: warning.message,
-                    line_start: warning.line_start,
-                    line_end: warning.line_end,
-                    severity: match warning.severity {
-                        WarningSeverity::Warning => "warning".to_string(),
-                        WarningSeverity::Error => "error".to_string(),
-                    },
-                })
-                .collect(),
-            meets_minimum_import_threshold,
-        }
-    }
-}
-
 /// Returns canonical engine metadata for a Tauri command wrapper.
 #[must_use]
-pub fn command_get_engine_info() -> EngineInfoDto {
-    EngineInfoDto::from(engine_info())
+pub fn command_get_engine_info() -> EngineInfo {
+    engine_info()
 }
 
 /// Creates a game under the application's games directory and applies migrations.
@@ -528,8 +347,8 @@ pub fn command_parse_report_full(raw_report: &str) -> ParsedReport {
 
 /// Parses one report and returns tolerant parser output.
 #[must_use]
-pub fn command_parse_report(raw_report: &str) -> ReportParseResultDto {
-    ReportParseResultDto::from(parse_report(raw_report))
+pub fn command_parse_report(raw_report: &str) -> ReportParseResultWire {
+    ReportParseResultWire::from(parse_report(raw_report))
 }
 
 /// Parses one report and previews duplicate conflict for a confirmed faction.
@@ -573,7 +392,7 @@ pub fn command_preview_report_import(
     };
 
     Ok(ReportImportPreviewDto {
-        parse_result: ReportParseResultDto::from(parse_result),
+        parse_result: ReportParseResultWire::from(parse_result),
         duplicate_preview: preview,
         turn_number,
     })
@@ -682,7 +501,7 @@ pub fn command_validate_orders(
     ruleset_json: Option<&str>,
     raw_report: Option<&str>,
     disabled_codes: Vec<String>,
-) -> OrderValidationResultDto {
+) -> OrderValidationResult {
     let options = OrderCheckOptions {
         disabled: disabled_codes.into_iter().collect(),
     };
@@ -692,32 +511,7 @@ pub fn command_validate_orders(
         (ruleset, report)
     });
 
-    let result = atlantis_hud_core::validate_turn(
-        raw_orders,
-        ruleset.as_deref(),
-        report.as_deref(),
-        options,
-    );
-    OrderValidationResultDto {
-        diagnostics: result
-            .diagnostics
-            .into_iter()
-            .map(|diagnostic| OrderDiagnosticDto {
-                code: diagnostic.code,
-                message: diagnostic.message,
-                line_start: diagnostic.line_start,
-                line_end: diagnostic.line_end,
-                column_start: diagnostic.column_start,
-                column_end: diagnostic.column_end,
-                region_id: diagnostic.region_id,
-                unit_id: diagnostic.unit_id,
-                severity: match diagnostic.severity {
-                    OrderDiagnosticSeverity::Warning => "warning".to_string(),
-                    OrderDiagnosticSeverity::Error => "error".to_string(),
-                },
-            })
-            .collect(),
-    }
+    atlantis_hud_core::validate_turn(raw_orders, ruleset.as_deref(), report.as_deref(), options)
 }
 
 /// Persists one order draft for the Tauri command surface.
@@ -898,7 +692,7 @@ fn imported_turn_dto(record: ImportedTurnRecord) -> Result<ImportedTurnRecordDto
             turn_number: record.key.turn_number,
         },
         raw_report: record.raw_report,
-        parse_result: ReportParseResultDto::from(parse_result),
+        parse_result: ReportParseResultWire::from(parse_result),
     })
 }
 
@@ -1831,13 +1625,25 @@ mod tests {
 
         assert_eq!(
             response,
-            EngineInfoDto {
+            EngineInfo {
                 id: "atlantis".to_string(),
                 name: "Atlantis PBEM".to_string(),
                 ruleset_version: "4.0".to_string(),
                 max_faction_count: 128,
             }
         );
+    }
+
+    /// The command hands back the core's own wire wrapper, camelCase throughout with the
+    /// threshold flag flattened alongside it (ah-164.1).
+    #[test]
+    fn parse_report_command_returns_the_core_wire_shape() {
+        let value = serde_json::to_value(command_parse_report("garbage\n"))
+            .expect("parse result should serialize");
+
+        assert!(value.get("turnHeader").is_some());
+        assert_eq!(value["warnings"][0]["severity"], "warning");
+        assert_eq!(value["meetsMinimumImportThreshold"], false);
     }
 
     #[test]
@@ -1934,7 +1740,7 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
         let validation = command_validate_orders("FLY 1 2", None, None, Vec::new());
         assert_eq!(
             validation.diagnostics,
-            vec![OrderDiagnosticDto {
+            vec![atlantis_hud_core::OrderDiagnostic {
                 code: "unknown-command".to_string(),
                 message: "unknown order command: FLY".to_string(),
                 line_start: Some(1),
@@ -1944,7 +1750,7 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
                 // A misspelled keyword belongs to no hex and to no unit.
                 region_id: None,
                 unit_id: None,
-                severity: "error".to_string(),
+                severity: atlantis_hud_core::OrderDiagnosticSeverity::Error,
             }]
         );
 
@@ -2087,8 +1893,8 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
         assert_eq!(loaded.key.game_id, "faction-12");
         assert_eq!(loaded.key.faction_id, "17");
         assert_eq!(loaded.key.turn_number, 2);
-        assert_eq!(loaded.parse_result.regions[0].region_id, "1:12,34");
-        assert_eq!(loaded.parse_result.units[0].region_id, "1:12,34");
+        assert_eq!(loaded.parse_result.result.regions[0].region_id, "1:12,34");
+        assert_eq!(loaded.parse_result.result.units[0].region_id, "1:12,34");
     }
 
     #[test]
