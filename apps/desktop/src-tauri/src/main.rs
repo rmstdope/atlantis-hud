@@ -2,6 +2,16 @@
     any(target_os = "linux", target_os = "macos", target_os = "windows"),
     feature = "desktop-runtime"
 ))]
+use atlantis_hud_core::{EngineInfo, OrderValidationResult, ReportParseResultWire};
+#[cfg(all(
+    any(target_os = "linux", target_os = "macos", target_os = "windows"),
+    feature = "desktop-runtime"
+))]
+use atlantis_hud_core_tauri::command_get_engine_info;
+#[cfg(all(
+    any(target_os = "linux", target_os = "macos", target_os = "windows"),
+    feature = "desktop-runtime"
+))]
 use atlantis_hud_core_tauri::{
     command_commit_report_import, command_create_game, command_delete_game,
     command_delete_hex_note, command_export_game, command_import_game, command_list_games,
@@ -11,20 +21,15 @@ use atlantis_hud_core_tauri::{
     command_save_order_draft, command_set_game_name, command_set_game_ruleset,
     command_validate_orders, GameManifestDto, HexNoteDto, ImportedTurnPreviewDto,
     ImportedTurnRecordDto, ImportedTurnSummaryDto, OpenedGameDto, OrderDraftRecordDto,
-    OrderValidationResultDto, ParsedReport, ReportImportPreviewDto, ReportParseResultDto,
+    ParsedReport, ReportImportPreviewDto,
 };
-#[cfg(all(
-    any(target_os = "linux", target_os = "macos", target_os = "windows"),
-    feature = "desktop-runtime"
-))]
-use atlantis_hud_core_tauri::{command_get_engine_info, EngineInfoDto};
 
 #[cfg(all(
     any(target_os = "linux", target_os = "macos", target_os = "windows"),
     feature = "desktop-runtime"
 ))]
 #[tauri::command(rename_all = "snake_case")]
-fn get_engine_info() -> EngineInfoDto {
+fn get_engine_info() -> EngineInfo {
     command_get_engine_info()
 }
 
@@ -146,7 +151,7 @@ fn set_game_name(
     feature = "desktop-runtime"
 ))]
 #[tauri::command(rename_all = "snake_case")]
-fn parse_report(raw_report: String) -> ReportParseResultDto {
+fn parse_report(raw_report: String) -> ReportParseResultWire {
     command_parse_report(&raw_report)
 }
 
@@ -403,7 +408,7 @@ fn validate_orders(
     ruleset_json: Option<String>,
     raw_report: Option<String>,
     disabled_codes: Option<Vec<String>>,
-) -> OrderValidationResultDto {
+) -> OrderValidationResult {
     command_validate_orders(
         &raw_orders,
         ruleset_json.as_deref(),

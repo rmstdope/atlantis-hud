@@ -1199,11 +1199,12 @@ pub fn list_imported_turns(
 /// through a tiny local struct means this has no dependency on `atlantis-core`'s types and keeps
 /// working if that struct's other fields change shape. A row whose payload cannot be read this way
 /// — malformed JSON, a missing `turn_header` — contributes `None` rather than failing the whole
-/// list. `ReportParseResult` carries no `rename_all`, so the stored JSON is snake_case, not
-/// camelCase — this peek matches the wire format `commit_report_import` actually writes.
+/// list. Blobs written before ah-164.1 are snake_case (`turn_header`), later ones camelCase
+/// (`turnHeader`); the peek reads both, as `ReportParseResult` itself does.
 fn season_from_parsed_payload(parsed_payload_json: &str) -> Option<String> {
     #[derive(Deserialize)]
     struct Peek {
+        #[serde(rename = "turnHeader", alias = "turn_header")]
         turn_header: Option<PeekTurnHeader>,
     }
     #[derive(Deserialize)]
@@ -2617,20 +2618,38 @@ mod tests {
     fn a_listed_turn_carries_its_season() {
         let dir = tempdir().expect("tempdir");
         let created = create_game(dir.path(), &fixture_manifest()).expect("game should create");
-        let turn = ImportedTurnRecord {
-            // Snake case, matching the wire format `ReportParseResult` actually serializes to —
-            // it carries no `rename_all`.
+        let old_format = ImportedTurnRecord {
+            key: ImportedTurnKey {
+                turn_number: 12,
+                ..turn_in(&created, "17", "t12").key
+            },
+            // Snake case — the old format, written before ah-164.1, still readable.
             parsed_payload_json: r#"{"turn_header":{"turn_number":12,"season":"Spring"}}"#
                 .to_string(),
             ..turn_in(&created, "17", "t12")
         };
-        upsert_imported_turn(&created.database_path, &turn, IMPORTED_AT).expect("seed turn");
+        upsert_imported_turn(&created.database_path, &old_format, IMPORTED_AT)
+            .expect("seed old-format turn");
+        let new_format = ImportedTurnRecord {
+            key: ImportedTurnKey {
+                turn_number: 13,
+                ..turn_in(&created, "17", "t13").key
+            },
+            // camelCase — the current format, matching what `ReportParseResult` serializes to
+            // since ah-164.1.
+            parsed_payload_json: r#"{"turnHeader":{"turnNumber":13,"season":"Summer"}}"#
+                .to_string(),
+            ..turn_in(&created, "17", "t13")
+        };
+        upsert_imported_turn(&created.database_path, &new_format, IMPORTED_AT)
+            .expect("seed new-format turn");
 
         let listed =
             list_imported_turns(&created.database_path, GAME_ID).expect("listing should succeed");
 
-        assert_eq!(listed.len(), 1);
-        assert_eq!(listed[0].season.as_deref(), Some("Spring"));
+        assert_eq!(listed.len(), 2);
+        let seasons: Vec<Option<&str>> = listed.iter().map(|t| t.season.as_deref()).collect();
+        assert_eq!(seasons, vec![Some("Spring"), Some("Summer")]);
     }
 
     /// A list that dies on one bad row makes the whole feature unavailable, which matters more
