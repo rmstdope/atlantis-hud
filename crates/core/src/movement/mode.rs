@@ -145,6 +145,13 @@ fn stated_sailing_requirement(description: &str) -> Option<i64> {
     need.trim().parse().ok()
 }
 
+/// `"Load: 110/150"` states current and capacity; this reads the second number, the weight the
+/// fleet can carry.
+fn stated_cargo_capacity(description: &str) -> Option<i64> {
+    let (_have, need) = stated_field(description, "Load:")?.split_once('/')?;
+    need.trim().parse().ok()
+}
+
 /// `"MaxSpeed: 4"` states the fleet's speed directly.
 fn stated_max_speed(description: &str) -> Option<u32> {
     stated_field(description, "MaxSpeed:")?.trim().parse().ok()
@@ -155,10 +162,10 @@ fn stated_max_speed(description: &str) -> Option<u32> {
 /// Prefers the server's own words - a structure's description states them directly, as `"Sailors:
 /// 4/4"` (have/need) - over ruleset arithmetic, because the report is exact for this particular
 /// fleet where the ruleset only knows the ordinary requirement for a hull. `None` when neither
-/// source can say - an unknown hull, or a stated field that will not parse - which callers must
-/// treat as "cannot be priced" rather than a guess.
+/// source can say - an unknown hull, a stated field that will not parse, or no ruleset and nothing
+/// stated - which callers must treat as "cannot be priced" rather than a guess.
 #[must_use]
-pub fn sailing_requirement(fleet: &Structure, ruleset: &Ruleset) -> Option<i64> {
+pub fn sailing_requirement(fleet: &Structure, ruleset: Option<&Ruleset>) -> Option<i64> {
     if let Some(needed) = fleet
         .description
         .as_deref()
@@ -167,6 +174,7 @@ pub fn sailing_requirement(fleet: &Structure, ruleset: &Ruleset) -> Option<i64> 
         return Some(needed);
     }
 
+    let ruleset = ruleset?;
     let hulls = parse_fleet_kind(&fleet.kind)?;
     let mut total = 0_i64;
     for (name, count) in &hulls {
@@ -174,6 +182,40 @@ pub fn sailing_requirement(fleet: &Structure, ruleset: &Ruleset) -> Option<i64> 
         total += item.sailing_skill? * i64::from(*count);
     }
     Some(total)
+}
+
+/// How much weight a fleet can carry. Stated `Load: H/N` first; else the ruleset's `cargoCapacity`
+/// per hull, times the count; `None` when neither can say - an unknown hull, no ruleset - which
+/// callers treat as "cannot be priced" rather than a guess.
+#[must_use]
+pub fn cargo_capacity(fleet: &Structure, ruleset: Option<&Ruleset>) -> Option<i64> {
+    if let Some(capacity) = fleet.description.as_deref().and_then(stated_cargo_capacity) {
+        return Some(capacity);
+    }
+
+    let ruleset = ruleset?;
+    let hulls = parse_fleet_kind(&fleet.kind)?;
+    let mut total = 0_i64;
+    for (name, count) in &hulls {
+        let item = ruleset.find_item(name)?;
+        total += item.cargo_capacity? * i64::from(*count);
+    }
+    Some(total)
+}
+
+/// How a fleet is named to the player: `Longship [329]` for one hull, `Fleet [988] (8 Corsairs)`
+/// for several - the kind after `Fleet, `, verbatim.
+#[must_use]
+pub fn fleet_label(fleet: &Structure) -> String {
+    match fleet
+        .kind
+        .trim()
+        .trim_end_matches('.')
+        .strip_prefix("Fleet,")
+    {
+        Some(rest) => format!("Fleet [{}] ({})", fleet.structure_id, rest.trim()),
+        None => format!("{} [{}]", fleet.kind.trim(), fleet.structure_id),
+    }
 }
 
 /// How many hexes a fleet sails in a month.
@@ -209,7 +251,7 @@ pub fn fleet_sailing(
     origin_hex: &KnownHex,
     fleet: &Structure,
 ) -> Option<(i64, i64, u32)> {
-    let required = sailing_requirement(fleet, ruleset)?;
+    let required = sailing_requirement(fleet, Some(ruleset))?;
     let speed = fleet_speed(fleet, ruleset)?;
     let available = crew_sailing_levels(&origin_hex.units, &fleet.structure_id);
     Some((required, available, speed))
@@ -328,7 +370,7 @@ mod tests {
             needs: None,
         };
 
-        assert_eq!(sailing_requirement(&fleet, &ruleset()), Some(4));
+        assert_eq!(sailing_requirement(&fleet, Some(&ruleset())), Some(4));
         assert_eq!(fleet_speed(&fleet, &ruleset()), Some(4));
     }
 
@@ -344,7 +386,7 @@ mod tests {
             needs: None,
         };
 
-        assert_eq!(sailing_requirement(&fleet, &ruleset()), Some(4));
+        assert_eq!(sailing_requirement(&fleet, Some(&ruleset())), Some(4));
         assert_eq!(fleet_speed(&fleet, &ruleset()), Some(4));
     }
 
@@ -359,7 +401,7 @@ mod tests {
             needs: None,
         };
 
-        assert_eq!(sailing_requirement(&fleet, &ruleset()), Some(30));
+        assert_eq!(sailing_requirement(&fleet, Some(&ruleset())), Some(30));
         assert_eq!(fleet_speed(&fleet, &ruleset()), Some(4));
     }
 
@@ -375,8 +417,119 @@ mod tests {
             needs: None,
         };
 
-        assert_eq!(sailing_requirement(&fleet, &ruleset()), None);
+        assert_eq!(sailing_requirement(&fleet, Some(&ruleset())), None);
         assert_eq!(fleet_speed(&fleet, &ruleset()), None);
+    }
+
+    /// Without a ruleset, a stated number still counts - only ruleset arithmetic needs one.
+    #[test]
+    fn sailing_requirement_reads_the_stated_number_without_a_ruleset() {
+        let fleet = Structure {
+            structure_id: "329".to_string(),
+            name: "Ship".to_string(),
+            kind: "Longship".to_string(),
+            description: Some("Load: 110/150; Sailors: 4/4; MaxSpeed: 4.".to_string()),
+            needs: None,
+        };
+
+        assert_eq!(sailing_requirement(&fleet, None), Some(4));
+    }
+
+    /// Without a ruleset and without a stated number, neither source can say.
+    #[test]
+    fn sailing_requirement_is_none_without_a_ruleset_or_a_stated_number() {
+        let fleet = Structure {
+            structure_id: "1".to_string(),
+            name: "Ship".to_string(),
+            kind: "Longship".to_string(),
+            description: None,
+            needs: None,
+        };
+
+        assert_eq!(sailing_requirement(&fleet, None), None);
+    }
+
+    /// "Load: 110/150" states have and need; the second number is what the hull can carry.
+    #[test]
+    fn cargo_capacity_reads_the_stated_load() {
+        let fleet = Structure {
+            structure_id: "329".to_string(),
+            name: "Ship".to_string(),
+            kind: "Longship".to_string(),
+            description: Some("Load: 110/150; Sailors: 4/4; MaxSpeed: 4.".to_string()),
+            needs: None,
+        };
+
+        assert_eq!(cargo_capacity(&fleet, Some(&ruleset())), Some(150));
+    }
+
+    /// No stated Load falls back to the ruleset's cargoCapacity per hull, summed across the fleet.
+    #[test]
+    fn cargo_capacity_falls_back_to_the_ruleset() {
+        let fleet = Structure {
+            structure_id: "1121".to_string(),
+            name: "Ship".to_string(),
+            kind: "Fleet, 2 Galleons".to_string(),
+            description: None,
+            needs: None,
+        };
+
+        assert_eq!(cargo_capacity(&fleet, Some(&ruleset())), Some(5400));
+    }
+
+    /// A hull neither the report nor the ruleset can price is `None`, never a guess.
+    #[test]
+    fn cargo_capacity_is_none_for_an_unpriceable_fleet() {
+        let fleet = Structure {
+            structure_id: "1".to_string(),
+            name: "Ship".to_string(),
+            kind: "Fleet, 2 Barges".to_string(),
+            description: None,
+            needs: None,
+        };
+
+        assert_eq!(cargo_capacity(&fleet, Some(&ruleset())), None);
+        assert_eq!(
+            cargo_capacity(
+                &Structure {
+                    structure_id: "1".to_string(),
+                    name: "Ship".to_string(),
+                    kind: "Longship".to_string(),
+                    description: None,
+                    needs: None,
+                },
+                None
+            ),
+            None
+        );
+    }
+
+    /// A single hull is named `Hull [id]`.
+    #[test]
+    fn fleet_label_names_a_bare_hull() {
+        let fleet = Structure {
+            structure_id: "329".to_string(),
+            name: "Ship".to_string(),
+            kind: "Longship".to_string(),
+            description: None,
+            needs: None,
+        };
+
+        assert_eq!(fleet_label(&fleet), "Longship [329]");
+    }
+
+    /// Several hulls are named `Fleet [id] (kind after "Fleet, ")`, verbatim.
+    #[test]
+    fn fleet_label_names_a_fleet_of_several_hulls() {
+        let fleet = Structure {
+            structure_id: "988".to_string(),
+            name: "Fleet".to_string(),
+            kind: "Fleet, 8 Corsairs".to_string(),
+            description: None,
+            needs: None,
+        };
+
+        assert_eq!(fleet_label(&fleet), "Fleet [988] (8 Corsairs)");
     }
 
     /// Two crew each holding sailing 2, exactly the fixture's boundary case for a longship needing

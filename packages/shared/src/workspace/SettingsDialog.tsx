@@ -360,6 +360,21 @@ const WARNING_GROUPS: readonly {
         description: "Two units formed in the same hex this month with the same NEW number."
       }
     ]
+  },
+  {
+    heading: "Sailing",
+    entries: [
+      {
+        code: "fleet-overloaded",
+        title: "Overloaded fleets",
+        description: "A fleet ordered to sail with more weight aboard than it can carry."
+      },
+      {
+        code: "fleet-undercrewed",
+        title: "Undercrewed fleets",
+        description: "A fleet ordered to sail without enough sailing skill aboard."
+      }
+    ]
   }
 ];
 

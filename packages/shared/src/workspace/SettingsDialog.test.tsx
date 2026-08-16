@@ -36,7 +36,7 @@ describe("the Warnings settings tab", () => {
     resetSettingsStore();
   });
 
-  it("renders one toggle per advisory code, grouped Teaching / Resources / Guarding / Orders", () => {
+  it("renders one toggle per advisory code, grouped Teaching / Resources / Guarding / Orders / Sailing", () => {
     resetSettingsStore();
     const html = renderToStaticMarkup(<WarningSettings />);
 
@@ -44,6 +44,7 @@ describe("the Warnings settings tab", () => {
     expect(html).toContain("Resources");
     expect(html).toContain("Guarding");
     expect(html).toContain("Orders");
+    expect(html).toContain("Sailing");
 
     const titles = [
       "Teachers with free slots",
@@ -55,7 +56,9 @@ describe("the Warnings settings tab", () => {
       "Overdrawn items",
       "Dropped guards",
       "Unguarded hexes",
-      "Reused FORM numbers"
+      "Reused FORM numbers",
+      "Overloaded fleets",
+      "Undercrewed fleets"
     ];
     for (const title of titles) {
       expect(html).toContain(title);
