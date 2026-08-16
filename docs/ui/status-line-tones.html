@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Status line tones (ah-9gk) — chosen: A, tone table as proposed, chip never hidden</title>
+<style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --warn:#d9a441; --danger:#d97070;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, section { max-width:1180px; margin-left:auto; margin-right:auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; }
+  h1 span { color:var(--brass); }
+  h2.rule { font-size:17px; letter-spacing:0.3px; margin:38px 0 4px; border-top:1px solid var(--edge); padding-top:20px; }
+  h2.rule em { color:var(--brass); font-style:normal; font-size:11px; letter-spacing:1.8px; text-transform:uppercase; margin-right:10px; }
+  header p, section > p { color:var(--ink-soft); max-width:94ch; margin-top:10px; font-size:14px; }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:0.9em; color:var(--brass-bright); }
+  .cards { display:grid; grid-template-columns:repeat(3,1fr); gap:20px; margin-top:22px; align-items:start; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; display:flex; flex-direction:column; gap:11px; }
+  .card h3 { font-size:17px; }
+  .card h3 em { color:var(--brass); font-style:normal; font-size:12px; letter-spacing:1.6px; margin-right:8px; }
+  .card.rec { border-color:var(--brass); }
+  .card h3 .recd { color:var(--ground); background:var(--brass); border-radius:3px; font:11px/1.6 'Helvetica Neue',Arial,sans-serif; letter-spacing:1.2px; text-transform:uppercase; padding:1px 6px; margin-left:8px; vertical-align:2px; }
+  .concept { color:var(--ink-soft); font-size:13px; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; padding:0; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"− "; color:var(--danger); }
+  .stack { display:grid; gap:8px; }
+  .lab { color:var(--ink-dim); font:11px/1.4 'Helvetica Neue',Arial,sans-serif; letter-spacing:.6px; text-transform:uppercase; margin-top:6px; }
+
+  /* ---- the app header, redrawn ---- */
+  .app { font-family:'Helvetica Neue',Arial,sans-serif; font-size:12px; line-height:1.45; }
+  .win { border:1px solid var(--edge); border-radius:5px; overflow:hidden; }
+  .apphdr { display:flex; align-items:center; gap:12px; padding:0 10px; min-height:30px; flex-wrap:wrap;
+            background:var(--panel); border-bottom:1px solid var(--edge); white-space:nowrap; }
+  .apphdr .soft { color:var(--ink-soft); }
+  .apphdr .val { color:var(--ink); }
+  .apphdr .push { margin-left:auto; display:flex; gap:12px; align-items:center; }
+  .chip { border:1px solid var(--edge); background:var(--raised); border-radius:3px; padding:0 7px; color:var(--ink-soft); font-size:11px; display:inline-block; }
+  .chip .caret { color:var(--ink-dim); margin-left:4px; }
+  .chip.warnc { border-color:var(--warn); color:var(--warn); }
+  .status { display:flex; align-items:center; gap:6px; color:var(--ink-soft); }
+  .status .dot { width:6px; height:6px; border-radius:50%; display:inline-block; }
+  .dot.warn { background:var(--warn); } .dot.danger { background:var(--danger); }
+  .dot.dim { background:var(--ink-dim); } .dot.ok { background:var(--ok); }
+  .status.sr { color:transparent; position:relative; }
+  .status.sr::after { content:"(sr-only: “" attr(data-text) "”)"; position:absolute; left:0; color:var(--ink-dim); font-size:10.5px; font-style:italic; }
+  .ghost { color:var(--ink-dim); opacity:.35; text-decoration:line-through; }
+  .mapbg { height:38px; background: repeating-linear-gradient(60deg, #141b23 0 9px, #151d25 9px 18px), var(--ground); }
+  table.msgs { border-collapse:collapse; font-size:13px; margin-top:14px; width:100%; }
+  table.msgs th, table.msgs td { text-align:left; padding:6px 10px; border-bottom:1px solid var(--edge-soft); vertical-align:top; }
+  table.msgs th { color:var(--brass); font-size:11px; letter-spacing:1.2px; text-transform:uppercase; }
+  table.msgs td.q { color:var(--ink-dim); font-style:italic; }
+  .t-warn { color:var(--warn); } .t-danger { color:var(--danger); } .t-dim { color:var(--ink-dim); } .t-ok { color:var(--ok); }
+</style>
+</head>
+<body>
+<header>
+  <h1><span>ah-9gk</span> — the header status line as one message channel</h1>
+  <p><strong>Decision (2026-08-16):</strong> Q1 → <strong>A</strong>, a visible notice tone with a dim grey dot; Q2 → the tone table as proposed (comparison failures become failures, “stored for history” becomes a notice); Q3 → <strong>3-i</strong>, a failure never hides the turn-messages chip.</p>
+  <p>Today the header's status line is an <code>ImportStatus</code> — the counts of the last import plus two flags — and it is
+  the shell's <em>only</em> way to say anything to you. A message is visible only when it is flagged <code>failed</code> or
+  <code>warning</code>; anything else is written but hidden (screen readers and the test suite still read it). So every unrelated
+  message has had to pose as an import warning to be seen, and two — “orders imported: 3 units”, “merged 3 regions from …” — ship
+  invisible today. The refactoring gives the line a small message type with a <strong>tone</strong>, and the header decides
+  visibility from the tone alone. Nothing about the header's layout moves; the only thing you can see change is <em>which lines
+  appear and in what colour</em>. Three questions below.</p>
+</header>
+
+<main>
+<section>
+  <h2 class="rule"><em>Question 1</em> Should there be a visible “notice” tone, and how does it look?</h2>
+  <p>Warning (amber dot) and failure (red dot) are as today. The open question is the middle tier: a line worth a glance
+  that is neither — “orders imported: 3 units”, “merged 3 regions from Borg (73), turn 71 — 2 new to your map”,
+  “turn 70 stored for history; still showing turn 71.” The routine counts (“11 regions · 42 units”, “restored turn 71”)
+  stay hidden in every variant — that was decided on 2026-08-11 (“drop routine chatter from the title bar”) and is not re-opened.</p>
+
+  <div class="cards">
+    <div class="card rec">
+      <h3><em>A</em> Notice, dim dot<span class="recd">Recommended</span></h3>
+      <div class="concept">A visible line with a neutral grey dot, same weight as a warning. Reads as “something happened”, not “something is wrong”.</div>
+      <div class="app"><div class="win">
+        <div class="apphdr"><span class="soft">Game <span class="chip">Borg <span class="caret">▾</span></span></span><span class="soft">Turn <span class="chip val">71<span class="caret">▾</span></span></span>
+          <span class="status"><span class="dot dim"></span>orders imported: 3 units</span>
+          <span class="chip">2 events<span class="caret">▾</span></span><span class="push"><span class="chip">Import</span><span class="chip">Export ▾</span></span></div>
+        <div class="apphdr"><span class="soft">Game <span class="chip">Borg <span class="caret">▾</span></span></span><span class="soft">Turn <span class="chip val">71<span class="caret">▾</span></span></span>
+          <span class="status"><span class="dot dim"></span>merged 3 regions from Borg (73), turn 71 — 2 new to your map</span>
+          <span class="chip">2 events<span class="caret">▾</span></span></div>
+        <div class="mapbg"></div>
+      </div></div>
+      <ul class="notes">
+        <li>“orders imported” and “merged …” become visible, as ah-470 and the merge flow intended</li>
+        <li>three tones, three dots — one rule to learn</li>
+        <li class="con">a third colour of dot in a header that already has two</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h3><em>B</em> Notice, green dot</h3>
+      <div class="concept">Same line, but the dot is the success green already used elsewhere. Reads as “done”.</div>
+      <div class="app"><div class="win">
+        <div class="apphdr"><span class="soft">Game <span class="chip">Borg <span class="caret">▾</span></span></span><span class="soft">Turn <span class="chip val">71<span class="caret">▾</span></span></span>
+          <span class="status"><span class="dot ok"></span>orders imported: 3 units</span>
+          <span class="chip">2 events<span class="caret">▾</span></span><span class="push"><span class="chip">Import</span><span class="chip">Export ▾</span></span></div>
+        <div class="apphdr"><span class="soft">Game <span class="chip">Borg <span class="caret">▾</span></span></span><span class="soft">Turn <span class="chip val">71<span class="caret">▾</span></span></span>
+          <span class="status"><span class="dot ok"></span>merged 3 regions from Borg (73), turn 71 — 2 new to your map</span>
+          <span class="chip">2 events<span class="caret">▾</span></span></div>
+        <div class="mapbg"></div>
+      </div></div>
+      <ul class="notes">
+        <li>green / amber / red is a scale everyone already knows</li>
+        <li class="con">“stored for history; still showing turn 71” is not a success — green would say the wrong thing about it</li>
+        <li class="con">a green dot invites the eye to a line that mostly does not need it</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h3><em>C</em> No notice tier — quiet stays quiet</h3>
+      <div class="concept">Only warning and failure are ever visible; notices are written for screen readers only, exactly like the counts. Today's rule, kept honestly.</div>
+      <div class="app"><div class="win">
+        <div class="apphdr"><span class="soft">Game <span class="chip">Borg <span class="caret">▾</span></span></span><span class="soft">Turn <span class="chip val">71<span class="caret">▾</span></span></span>
+          <span class="status sr" data-text="orders imported: 3 units">orders imported: 3 units</span>
+          <span class="chip">2 events<span class="caret">▾</span></span><span class="push"><span class="chip">Import</span><span class="chip">Export ▾</span></span></div>
+        <div class="apphdr"><span class="soft">Game <span class="chip">Borg <span class="caret">▾</span></span></span><span class="soft">Turn <span class="chip val">71<span class="caret">▾</span></span></span>
+          <span class="status sr" data-text="merged 3 regions from Borg (73), turn 71 — 2 new to your map">merged …</span>
+          <span class="chip">2 events<span class="caret">▾</span></span></div>
+        <div class="mapbg"></div>
+      </div></div>
+      <ul class="notes">
+        <li>the header stays as quiet as it is today</li>
+        <li class="con">“orders imported: 3 units” — the one confirmation an orders import gives — stays invisible</li>
+        <li class="con">“stored for history” must then stay a <span class="t-warn">warning</span> to be seen at all, which is the lie the bead is about</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2 class="rule"><em>Question 2</em> Which tone does each existing message get?</h2>
+  <p>Every line the shell writes today, with its tone <em>today</em> and the tone I would give it. Warning and failure keep
+  their meaning: a warning is a turn that is fine but something around it was not; a failure is something that did not happen.</p>
+  <table class="msgs">
+    <tr><th>Message (as it ships)</th><th>Today</th><th>Proposed</th></tr>
+    <tr><td>11 regions · 42 units</td><td class="t-dim">hidden (sr-only)</td><td class="t-dim">routine — hidden, unchanged</td></tr>
+    <tr><td>restored turn 71</td><td class="t-dim">hidden</td><td class="t-dim">routine — hidden, unchanged</td></tr>
+    <tr><td>orders imported: 3 units</td><td class="t-dim">hidden (by accident)</td><td><span class="t-dim">notice</span> — visible under A/B</td></tr>
+    <tr><td>merged 3 regions from Borg (73), turn 71 — 2 new to your map</td><td class="t-dim">hidden (by accident)</td><td><span class="t-dim">notice</span> — visible under A/B</td></tr>
+    <tr><td>turn 70 stored for history; still showing turn 71.</td><td class="t-warn">warning (to be seen)</td><td><span class="t-dim">notice</span> — nothing went wrong</td></tr>
+    <tr><td>the turn could not be remembered: … / the remembered map could not be read: …</td><td class="t-warn">warning</td><td class="t-warn">warning — unchanged</td></tr>
+    <tr><td>could not list the turns to compare: … / could not load turn 70 for comparison: …</td><td class="t-warn">warning (to keep the chip)</td><td class="t-danger">failure — it did not happen (chip question below decides what that costs)</td></tr>
+    <tr><td>could not read report.txt: … / could not merge … / could not import orders.txt: … / could not plan a route: … / the last turn could not be restored: …</td><td class="t-danger">failure</td><td class="t-danger">failure — unchanged</td></tr>
+  </table>
+</section>
+
+<section>
+  <h2 class="rule"><em>Question 3</em> Does a failure still hide the turn-messages chip?</h2>
+  <p>Today a <code>failed</code> status also hides the “2 events / 1 error” chip beside it, on the reasoning that a failed
+  report load leaves the previous turn on screen and a chip counting <em>that</em> turn's messages next to a line about a
+  <em>different</em> file could mislead. The same rule fires for “could not plan a route”, which is why the comparison
+  failures were filed as warnings — to keep the chip. Three ways to settle it:</p>
+  <div class="cards">
+    <div class="card rec">
+      <h3><em>3-i</em> Never hide it<span class="recd">Recommended</span></h3>
+      <div class="concept">The chip always counts the turn on screen, which is exactly the turn on screen. A failure line beside it says what failed.</div>
+      <div class="app"><div class="win">
+        <div class="apphdr"><span class="soft">Game <span class="chip">Borg <span class="caret">▾</span></span></span><span class="soft">Turn <span class="chip val">71<span class="caret">▾</span></span></span>
+          <span class="status"><span class="dot danger"></span>could not read turn72.txt: no faction header</span>
+          <span class="chip warnc">⚠ 1 error, 2 events<span class="caret">▾</span></span></div>
+        <div class="mapbg"></div>
+      </div></div>
+      <ul class="notes"><li>one rule: tone decides the line, nothing else moves</li><li>comparison failures can be honest failures</li><li class="con">the chip's numbers sit next to a line about a file that never loaded</li></ul>
+    </div>
+    <div class="card">
+      <h3><em>3-ii</em> Hide it only when a <u>report</u> failed to load</h3>
+      <div class="concept">As today for “could not read …” and a failed restore; every other failure (route, orders import, comparison) leaves the chip alone.</div>
+      <div class="app"><div class="win">
+        <div class="apphdr"><span class="soft">Game <span class="chip">Borg <span class="caret">▾</span></span></span><span class="soft">Turn <span class="chip val">71<span class="caret">▾</span></span></span>
+          <span class="status"><span class="dot danger"></span>could not read turn72.txt: no faction header</span>
+          <span class="chip ghost">⚠ 1 error, 2 events ▾</span></div>
+        <div class="apphdr"><span class="soft">Game <span class="chip">Borg <span class="caret">▾</span></span></span><span class="soft">Turn <span class="chip val">71<span class="caret">▾</span></span></span>
+          <span class="status"><span class="dot danger"></span>could not plan a route: no path</span>
+          <span class="chip warnc">⚠ 1 error, 2 events<span class="caret">▾</span></span></div>
+        <div class="mapbg"></div>
+      </div></div>
+      <ul class="notes"><li>keeps the original worry covered</li><li class="con">a second flag on the message (“this was the report”) — the thing the bead calls a hidden rule</li></ul>
+    </div>
+    <div class="card">
+      <h3><em>3-iii</em> Any failure hides it (today)</h3>
+      <div class="concept">Unchanged behaviour: red line, no chip, whatever failed.</div>
+      <div class="app"><div class="win">
+        <div class="apphdr"><span class="soft">Game <span class="chip">Borg <span class="caret">▾</span></span></span><span class="soft">Turn <span class="chip val">71<span class="caret">▾</span></span></span>
+          <span class="status"><span class="dot danger"></span>could not plan a route: no path</span>
+          <span class="chip ghost">⚠ 1 error, 2 events ▾</span></div>
+        <div class="mapbg"></div>
+      </div></div>
+      <ul class="notes"><li>nothing a player has seen changes</li><li class="con">the comparison failures stay filed as warnings, or start hiding the chip — the exact cost the bead names</li></ul>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2 class="rule"><em>Unchanged</em> What is not being asked</h2>
+  <p>The line's place in the header, its wrapping on a narrow window (it is one flex item and wraps with the rest, as it does now),
+  that a message stays until the next one replaces it (no timers), that “no report loaded” is written when there is no turn, and that
+  the routine counts stay screen-reader-only. All as today.</p>
+</section>
+</main>
+</body>
+</html>
