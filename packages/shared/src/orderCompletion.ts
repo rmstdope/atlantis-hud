@@ -35,8 +35,62 @@ export function orderCommandCompletions(commands: readonly string[]): Completion
 
     return {
       from: line.from + match[1].length,
-      options: options.map((command) => ({ label: command, type: "keyword" })),
+      options: options.map((command) => ({ label: command, type: "keyword", apply: `${command} ` })),
       // Keep filtering on further keystrokes instead of asking again from scratch.
+      validFor: /^[A-Za-z]*$/
+    };
+  };
+}
+
+/** How the source reaches the core: one order line up to the caret, answered with what may stand there. */
+export type ArgumentLookup = (linePrefix: string) => Promise<readonly string[]>;
+
+/**
+ * Completion for an argument position: any word after the command, where the ruleset closes what
+ * may stand there.
+ *
+ * The vocabulary is the core's own - `grammar.rs` answers per position, so this side never learns
+ * how an order is shaped and cannot drift from the checker. Quiet in the command position, which
+ * the core answers empty and `orderCommandCompletions` owns.
+ */
+export function orderArgumentCompletions(lookUp: ArgumentLookup): CompletionSource {
+  return async (context) => {
+    const line = context.state.doc.lineAt(context.pos);
+    const before = context.state.sliceDoc(line.from, context.pos);
+
+    // The word being typed, anchored to a whitespace boundary.
+    const match = /(?:^|\s)([A-Za-z]*)$/.exec(before);
+    if (!match) {
+      return null;
+    }
+
+    // Still in the command position - indentation, an optional repeat prefix, and the word itself
+    // is all there is. `orderCommandCompletions` owns that position, and asking the core about it
+    // means a round trip per keystroke to be told so.
+    const word = match[1];
+    const head = before.slice(0, before.length - word.length);
+    if (!/\S/.test(head.replace(/^\s*@?\s*/, ""))) {
+      return null;
+    }
+
+    if (word === "" && !context.explicit) {
+      return null;
+    }
+
+    const offered = await lookUp(before).catch(() => []);
+    const options = suggestOrderCommands(word, offered);
+    if (options.length === 0) {
+      return null;
+    }
+
+    return {
+      from: context.pos - word.length,
+      options: options.map((keyword, index) => ({
+        label: keyword,
+        type: "keyword",
+        apply: `${keyword} `,
+        sortText: String(index).padStart(2, "0")
+      })),
       validFor: /^[A-Za-z]*$/
     };
   };

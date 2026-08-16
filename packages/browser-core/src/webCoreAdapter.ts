@@ -43,6 +43,7 @@ export type CoreWasmModule = {
     disabledCodes: readonly string[] | null
   ): OrderValidationResult;
   order_commands_state(): string[];
+  order_argument_completions_state(linePrefix: string): string[];
   plan_route_state(
     rulesetJson: string,
     rawReport: string,
@@ -445,6 +446,9 @@ export function createWebCoreAdapter(
     },
     async orderCommands() {
       return wasm.order_commands_state();
+    },
+    async orderArgumentCompletions(linePrefix: string) {
+      return wasm.order_argument_completions_state(linePrefix);
     },
 
     async listGames() {

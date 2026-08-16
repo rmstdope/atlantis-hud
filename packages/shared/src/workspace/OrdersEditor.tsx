@@ -7,7 +7,7 @@ import { EditorView, keymap } from "@codemirror/view";
 import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef } from "react";
 import { minimalChange } from "../editorReconcile";
 import { draftAfterSave } from "../orderEditor";
-import { orderCommandCompletions } from "../orderCompletion";
+import { orderArgumentCompletions, orderCommandCompletions, type ArgumentLookup } from "../orderCompletion";
 import { toEditorDiagnostics } from "../orderLint";
 import { snippetCompletionSource, type OrderSnippet } from "../orderSnippets";
 
@@ -48,6 +48,8 @@ type OrdersEditorProps = {
   commands: readonly string[];
   /** The player's snippet library, offered in the same popup and expanded with tab-through fields. */
   snippets: readonly OrderSnippet[];
+  /** What may stand at an argument position, asked of the core once per half-typed word. */
+  argumentCompletions: ArgumentLookup;
   onChange: (text: string) => void;
 };
 
@@ -83,15 +85,26 @@ const editingKeymap = defaultKeymap.filter(
  * one unit's editor can never rewind into another unit's text.
  */
 export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(function OrdersEditor(
-  { unitId, text, externalRevision, savedAt, ariaLabel, problems, commands, snippets, onChange },
+  {
+    unitId,
+    text,
+    externalRevision,
+    savedAt,
+    ariaLabel,
+    problems,
+    commands,
+    snippets,
+    argumentCompletions,
+    onChange
+  },
   ref
 ) {
   const container = useRef<HTMLDivElement | null>(null);
   const view = useRef<EditorView | null>(null);
 
   // Read through refs by the editor's callbacks, so a fresh render never means a rebuilt editor.
-  const latest = useRef({ text, ariaLabel, commands, snippets, onChange });
-  latest.current = { text, ariaLabel, commands, snippets, onChange };
+  const latest = useRef({ text, ariaLabel, commands, snippets, argumentCompletions, onChange });
+  latest.current = { text, ariaLabel, commands, snippets, argumentCompletions, onChange };
 
   useLayoutEffect(() => {
     const parent = container.current;
@@ -119,7 +132,8 @@ export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(fu
           autocompletion({
             override: [
               (context) => orderCommandCompletions(latest.current.commands)(context),
-              (context) => snippetCompletionSource(latest.current.snippets)(context)
+              (context) => snippetCompletionSource(latest.current.snippets)(context),
+              (context) => orderArgumentCompletions(latest.current.argumentCompletions)(context)
             ]
           }),
           lintGutter(),

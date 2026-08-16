@@ -56,6 +56,7 @@ function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
       disabledCodes: readonly string[]
     ) => ({ diagnostics: [], rawOrders, rulesetJson, rawReport, disabledCodes }),
     order_commands_state: () => ["GIVE", "MOVE", "WORK"],
+    order_argument_completions_state: () => [],
     export_map_state: (rawReport: string, rememberedJson: string, requestJson: string) =>
       `; Map export from Atlantis HUD\n; ${rawReport} ${rememberedJson} ${requestJson}\n`,
     known_map_state: (rawReport: string, rulesetJson: string | null, rememberedJson: string) => ({
@@ -339,6 +340,23 @@ describe("web core adapter", () => {
       disabledCodes: ["hex-unguarded"]
     });
     expect(await adapter.orderCommands()).toEqual(["GIVE", "MOVE", "WORK"]);
+  });
+
+  it("routes an argument-completion call to the core, line prefix included", async () => {
+    const adapter = createWebCoreAdapter(
+      fakeWasm({
+        order_argument_completions_state: (linePrefix: string) =>
+          linePrefix === "NAME U" ? ["UNIT", "FACTION", "OBJECT", "CITY"] : []
+      }),
+      createMemoryWebStore()
+    );
+
+    expect(await adapter.orderArgumentCompletions("NAME U")).toEqual([
+      "UNIT",
+      "FACTION",
+      "OBJECT",
+      "CITY"
+    ]);
   });
 
   /**
