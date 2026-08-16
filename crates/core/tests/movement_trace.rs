@@ -9,17 +9,12 @@ use atlantis_hud_core::cache::ReportCache;
 use atlantis_hud_core::movement::request::{
     trace_orders_for_remembered_report, MoveOrderTraceResponse,
 };
-use atlantis_hud_core::report::model::Coordinate;
+const TURN_71: &str = atlantis_hud_fixtures::G7_F95_T71.text;
+const G3_F42_T40: &str = atlantis_hud_fixtures::G3_F42_T40.text;
+const RULESET: &str = atlantis_hud_fixtures::RULESET_JSON;
 
-const TURN_71: &str =
-    include_str!("../../../tests/fixtures/reports/neworigins-3.0.0-g7-f95-t71.rep");
-const G3_F42_T40: &str =
-    include_str!("../../../tests/fixtures/reports/neworigins-3.0.0-g3-f42-t40.rep");
-const RULESET: &str = include_str!("../../../config/public/ruleset.json");
-
-fn at(x: i32, y: i32) -> Coordinate {
-    Coordinate { x, y, z: 1 }
-}
+mod common;
+use common::at;
 
 /// Traces one unit's orders over the current report alone.
 fn trace(unit_id: &str, orders: &str) -> MoveOrderTraceResponse {

@@ -1,16 +1,9 @@
 import { expect, test, type Page } from "@playwright/test";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { readReport } from "@atlantis/fixtures";
 import { clearGames, createGame, expectOrders, fillOrders } from "./gameSetup";
 
-const TURN_70 = readFileSync(
-  join(__dirname, "..", "fixtures", "reports", "neworigins-3.0.0-g7-f95-t70.rep"),
-  "utf8"
-);
-const TURN_71 = readFileSync(
-  join(__dirname, "..", "fixtures", "reports", "neworigins-3.0.0-g7-f95-t71.rep"),
-  "utf8"
-);
+const TURN_70 = readReport("g7f95t70");
+const TURN_71 = readReport("g7f95t71");
 const OWN_UNIT = "18642";
 
 async function importReport(page: Page, name: string, report: string) {

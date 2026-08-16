@@ -1046,7 +1046,7 @@ mod tests {
     use crate::report::header::ReportHeader;
     use crate::report::model::{Coordinate, Skill};
 
-    const RULESET: &str = include_str!("../../../../config/public/ruleset.json");
+    const RULESET: &str = atlantis_hud_fixtures::RULESET_JSON;
 
     fn ruleset() -> Ruleset {
         Ruleset::from_json(RULESET).expect("the committed ruleset should be usable")

@@ -1,6 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { readReport } from "@atlantis/fixtures";
 import { clearGames, createGame } from "./gameSetup";
 
 /**
@@ -18,14 +17,8 @@ import { clearGames, createGame } from "./gameSetup";
  * installed by `page.addInitScript`, before the bundle's own scripts run, so `desktopPlugins()`
  * finds it the first time an export calls it.
  */
-const TURN_70 = readFileSync(
-  join(__dirname, "..", "fixtures", "reports", "neworigins-3.0.0-g7-f95-t70.rep"),
-  "utf8"
-);
-const TURN_71 = readFileSync(
-  join(__dirname, "..", "fixtures", "reports", "neworigins-3.0.0-g7-f95-t71.rep"),
-  "utf8"
-);
+const TURN_70 = readReport("g7f95t70");
+const TURN_71 = readReport("g7f95t71");
 
 type DesktopCall = ["save", { defaultPath?: string; filters?: unknown }] | ["write", string, number];
 

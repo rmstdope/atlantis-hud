@@ -1,6 +1,5 @@
 import { expect, type Page, test } from "@playwright/test";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { readReport } from "@atlantis/fixtures";
 import { clearGames, createGame } from "./gameSetup";
 
 /** Opens the picker and switches to the This game tab, where a rename happens. */
@@ -16,10 +15,7 @@ async function openThisGameTab(page: Page) {
  * switch, create and delete; with no game the only thing possible is creating one; and creating one
  * asks which ruleset it is played under.
  */
-const REPORT = readFileSync(
-  join(__dirname, "..", "fixtures", "reports", "neworigins-3.0.0-g7-f95-t71.rep"),
-  "utf8"
-);
+const REPORT = readReport("g7f95t71");
 
 test("with no game, creating one is the only thing on offer", async ({ page }) => {
   await clearGames(page);

@@ -6,8 +6,8 @@
 //!
 //! The governing policy is **accept on doubt**. A false error costs the player their confidence in
 //! every other diagnostic on the screen, so where the rules leave an argument open the parser leaves
-//! it alone. The regression bar for that is a real report: the orders template committed at
-//! `tests/fixtures/reports/neworigins-3.0.0-g7-f95-t71.rep` must validate with nothing to say.
+//! it alone. The regression bar for that is a real report: the orders template committed as
+//! `atlantis_hud_fixtures::G7_F95_T71` must validate with nothing to say.
 
 pub mod effects;
 pub mod forms;

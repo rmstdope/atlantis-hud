@@ -623,7 +623,7 @@ fn add_item(items: &mut Vec<crate::report::model::ItemAmount>, name: &str, tag: 
 mod tests {
     use super::*;
 
-    const RULESET: &str = include_str!("../../../../config/public/ruleset.json");
+    const RULESET: &str = atlantis_hud_fixtures::RULESET_JSON;
 
     /// A one-region report with two own units, the second there to prove untouched units stay
     /// out of the answer.

@@ -1,6 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { readReport } from "@atlantis/fixtures";
 import {
   clearGames,
   createGame,
@@ -16,10 +15,7 @@ import {
  * because the layer under test is precisely the one that turns keydowns into actions.
  */
 
-const REPORT = readFileSync(
-  join(__dirname, "..", "fixtures", "reports", "neworigins-3.0.0-g7-f95-t71.rep"),
-  "utf8"
-);
+const REPORT = readReport("g7f95t71");
 
 /** "Seven of Eight", the player's unit in Inholm at (7,53). */
 const OWN_UNIT = "18642";

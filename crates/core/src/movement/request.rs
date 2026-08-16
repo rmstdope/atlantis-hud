@@ -246,9 +246,8 @@ fn parse_hex_id(text: &str) -> Option<crate::report::model::Coordinate> {
 mod tests {
     use super::*;
 
-    const TURN_71: &str =
-        include_str!("../../../../tests/fixtures/reports/neworigins-3.0.0-g7-f95-t71.rep");
-    const RULESET: &str = include_str!("../../../../config/public/ruleset.json");
+    const TURN_71: &str = atlantis_hud_fixtures::G7_F95_T71.text;
+    const RULESET: &str = atlantis_hud_fixtures::RULESET_JSON;
 
     #[test]
     fn plans_a_route_and_assesses_what_stands_along_it() {
@@ -402,9 +401,8 @@ mod tests {
 mod remembered_tests {
     use super::*;
 
-    const RULESET: &str = include_str!("../../../../config/public/ruleset.json");
-    const TURN_71: &str =
-        include_str!("../../../../tests/fixtures/reports/neworigins-3.0.0-g7-f95-t71.rep");
+    const RULESET: &str = atlantis_hud_fixtures::RULESET_JSON;
+    const TURN_71: &str = atlantis_hud_fixtures::G7_F95_T71.text;
 
     /// The payoff for remembering the map: a route with more than one step in it.
     ///
@@ -514,7 +512,7 @@ mod remembered_tests {
 mod reaches_the_planner_tests {
     use super::*;
 
-    const RULESET: &str = include_str!("../../../../config/public/ruleset.json");
+    const RULESET: &str = atlantis_hud_fixtures::RULESET_JSON;
 
     /// The defect this pins: the command that the interface calls must plan over the remembered map,
     /// not over the current report alone.

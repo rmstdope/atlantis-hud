@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { readReport } from "@atlantis/fixtures";
 import { createCoreClient } from "@atlantis/core-client";
 import { diffTurns } from "@atlantis/shared";
 import { createWebCoreAdapter } from "./webCoreAdapter";
@@ -16,10 +17,6 @@ import { createMemoryWebStore } from "./webStore";
  * otherwise produce phantom changes.
  */
 
-function loadFixture(name: string): string {
-  return readFileSync(new URL(`../../../tests/fixtures/reports/${name}`, import.meta.url), "utf8");
-}
-
 async function realCore() {
   const wasm = await import("./wasm/atlantis_core.js");
   // The `--target web` glue fetches the payload relative to its own URL, which Node cannot do, so
@@ -32,8 +29,8 @@ async function realCore() {
 describe("diffTurns against real consecutive-turn reports", () => {
   it("names the differences between t23 and t24 of g5-f21", async () => {
     const client = createCoreClient(createWebCoreAdapter(await realCore(), createMemoryWebStore()));
-    const older = await client.parseReportFull(loadFixture("neworigins-3.0.0-g5-f21-t23.rep"));
-    const newer = await client.parseReportFull(loadFixture("neworigins-3.0.0-g5-f21-t24.rep"));
+    const older = await client.parseReportFull(readReport("g5f21t23"));
+    const newer = await client.parseReportFull(readReport("g5f21t24"));
 
     const diff = diffTurns(older, newer);
 
@@ -80,7 +77,7 @@ describe("diffTurns against real consecutive-turn reports", () => {
 
   it("reports nothing when a report is diffed against itself", async () => {
     const client = createCoreClient(createWebCoreAdapter(await realCore(), createMemoryWebStore()));
-    const t24 = await client.parseReportFull(loadFixture("neworigins-3.0.0-g5-f21-t24.rep"));
+    const t24 = await client.parseReportFull(readReport("g5f21t24"));
 
     const diff = diffTurns(t24, t24);
 
@@ -92,7 +89,7 @@ describe("diffTurns against real consecutive-turn reports", () => {
 
   it("reports nothing when a larger report is diffed against itself, at scale", async () => {
     const client = createCoreClient(createWebCoreAdapter(await realCore(), createMemoryWebStore()));
-    const t71 = await client.parseReportFull(loadFixture("neworigins-3.0.0-g7-f95-t71.rep"));
+    const t71 = await client.parseReportFull(readReport("g7f95t71"));
 
     const diff = diffTurns(t71, t71);
 

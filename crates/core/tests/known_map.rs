@@ -4,12 +4,10 @@
 use atlantis_hud_core::cache::ReportCache;
 use atlantis_hud_core::known_map::{known_map_json, resolve_known_map, HexKnowledge};
 use atlantis_hud_core::movement::graph::RememberedRegion;
-use atlantis_hud_core::report::model::Coordinate;
 use atlantis_hud_core::report::parse_report_full;
 
-fn at(x: i32, y: i32) -> Coordinate {
-    Coordinate { x, y, z: 1 }
-}
+mod common;
+use common::at;
 
 /// A single-region report at the given turn, with an exit to keep a neighbour company.
 fn report_at_turn(

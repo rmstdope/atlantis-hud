@@ -1,5 +1,4 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { readReport } from "@atlantis/fixtures";
 import { browser, $, expect } from "@wdio/globals";
 import {
   clearGamesNative,
@@ -22,10 +21,7 @@ import {
  * browser-hosted test has ever reached.
  */
 
-const REPORT = readFileSync(
-  join(__dirname, "..", "fixtures", "reports", "neworigins-3.0.0-g7-f95-t71.rep"),
-  "utf8"
-);
+const REPORT = readReport("g7f95t71");
 
 /** Inholm's own unit, the same one the smoke suite edits. */
 const OWN_UNIT = "18642";

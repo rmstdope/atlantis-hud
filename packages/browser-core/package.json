@@ -15,6 +15,7 @@
     "@atlantis/core-client": "workspace:*"
   },
   "devDependencies": {
+    "@atlantis/fixtures": "workspace:*",
     "@atlantis/shared": "workspace:*",
     "@types/node": "^22.10.2"
   }

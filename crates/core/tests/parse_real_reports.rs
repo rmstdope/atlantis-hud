@@ -5,27 +5,21 @@
 
 use atlantis_hud_core::report::parse_report_full as parse_regions;
 
-const TURN_2: &str = include_str!("../../../tests/fixtures/reports/neworigins-3.0.0-g8-f73-t2.rep");
-const TURN_71: &str =
-    include_str!("../../../tests/fixtures/reports/neworigins-3.0.0-g7-f95-t71.rep");
+const TURN_2: &str = atlantis_hud_fixtures::G8_F73_T2.text;
+const TURN_71: &str = atlantis_hud_fixtures::G7_F95_T71.text;
 /// Faction 73's own turn 71, written for issue #53 so a merge has two reports of one turn to work
 /// with. Hand-written rather than captured, because no second real report of this turn exists.
-const ALLY_TURN_71: &str =
-    include_str!("../../../tests/fixtures/reports/neworigins-3.0.0-g8-f73-t71.rep");
+const ALLY_TURN_71: &str = atlantis_hud_fixtures::G8_F73_T71.text;
 /// Faction 95's turn 70, so loading an older report of one's *own* faction can still be tested.
-const TURN_70: &str =
-    include_str!("../../../tests/fixtures/reports/neworigins-3.0.0-g7-f95-t70.rep");
+const TURN_70: &str = atlantis_hud_fixtures::G7_F95_T70.text;
 /// A fresh faction's very first turn: no history, nothing to merge into.
-const FIRST_TURN: &str =
-    include_str!("../../../tests/fixtures/reports/neworigins-3.0.0-g2-f42-t0.rep");
+const FIRST_TURN: &str = atlantis_hud_fixtures::G2_F42_T0.text;
 /// A report with no orders template at all - see `tests/fixtures/reports/README.md`.
-const NO_ORDERS: &str =
-    include_str!("../../../tests/fixtures/reports/neworigins-3.0.0-g7-f62-t20.rep");
+const NO_ORDERS: &str = atlantis_hud_fixtures::G7_F62_T20.text;
 /// A late, large turn from an established faction - the stress case, most likely to expose a
 /// quadratic. Not the single largest committed report (that is `g7-f95-t72`, exercised by the
 /// battle tests) but the largest from a faction none of the other fixtures also cover.
-const LARGE_TURN: &str =
-    include_str!("../../../tests/fixtures/reports/neworigins-3.0.0-g3-f42-t82.rep");
+const LARGE_TURN: &str = atlantis_hud_fixtures::G3_F42_T82.text;
 
 #[test]
 fn turn_2_yields_its_single_region() {

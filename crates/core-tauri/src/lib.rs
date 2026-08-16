@@ -1222,7 +1222,7 @@ pub fn command_preview_orders(
 mod preview_orders_command_tests {
     use super::*;
 
-    const RULESET: &str = include_str!("../../../config/public/ruleset.json");
+    const RULESET: &str = atlantis_hud_fixtures::RULESET_JSON;
 
     #[test]
     fn previews_the_orders_it_is_handed() {
@@ -1241,7 +1241,7 @@ mod preview_orders_command_tests {
 mod trace_move_orders_command_tests {
     use super::*;
 
-    const RULESET: &str = include_str!("../../../config/public/ruleset.json");
+    const RULESET: &str = atlantis_hud_fixtures::RULESET_JSON;
 
     fn corridor(terrain: &str, x: i32, y: i32, exits: &str) -> String {
         format!("{terrain} ({x},{y}) in Nowhere, 10 peasants (orcs), $5.\n\nExits:\n{exits}\n")
@@ -1297,7 +1297,7 @@ mod trace_move_orders_command_tests {
 mod plan_route_command_tests {
     use super::*;
 
-    const RULESET: &str = include_str!("../../../config/public/ruleset.json");
+    const RULESET: &str = atlantis_hud_fixtures::RULESET_JSON;
 
     fn corridor(terrain: &str, x: i32, y: i32, exits: &str) -> String {
         format!("{terrain} ({x},{y}) in Nowhere, 10 peasants (orcs), $5.\n\nExits:\n{exits}\n")
@@ -1456,10 +1456,9 @@ mod sightings_tests {
     use super::*;
     use tempfile::tempdir;
 
-    const TURN_71: &str =
-        include_str!("../../../tests/fixtures/reports/neworigins-3.0.0-g7-f95-t71.rep");
+    const TURN_71: &str = atlantis_hud_fixtures::G7_F95_T71.text;
     /// The catalogue the shell serves, which recognises everything these fixtures carry.
-    const RULESET: &str = include_str!("../../../config/public/ruleset.json");
+    const RULESET: &str = atlantis_hud_fixtures::RULESET_JSON;
 
     fn game(directory: &std::path::Path) -> OpenedGameDto {
         command_create_game(
@@ -1615,13 +1614,10 @@ mod merge_tests {
     use super::*;
     use tempfile::tempdir;
 
-    const TURN_71: &str =
-        include_str!("../../../tests/fixtures/reports/neworigins-3.0.0-g7-f95-t71.rep");
-    const ALLY_TURN_71: &str =
-        include_str!("../../../tests/fixtures/reports/neworigins-3.0.0-g8-f73-t71.rep");
-    const TURN_2: &str =
-        include_str!("../../../tests/fixtures/reports/neworigins-3.0.0-g8-f73-t2.rep");
-    const RULESET: &str = include_str!("../../../config/public/ruleset.json");
+    const TURN_71: &str = atlantis_hud_fixtures::G7_F95_T71.text;
+    const ALLY_TURN_71: &str = atlantis_hud_fixtures::G8_F73_T71.text;
+    const TURN_2: &str = atlantis_hud_fixtures::G8_F73_T2.text;
+    const RULESET: &str = atlantis_hud_fixtures::RULESET_JSON;
     const MERGED_AT: &str = "2026-08-10T18:30:00Z";
 
     /// A game with faction 95's turn 71 already imported, which is the state a merge starts from.

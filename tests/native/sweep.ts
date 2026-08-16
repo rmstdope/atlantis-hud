@@ -1,5 +1,5 @@
-import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { readReport, readRuleset } from "@atlantis/fixtures";
 
 /**
  * One table, two readers: `tests/native/binding.spec.ts` drives every entry over real Tauri IPC
@@ -8,25 +8,17 @@ import { join } from "node:path";
  * that runs on every machine, not only in the native CI job (ah-ga6).
  *
  * Deliberately plain: no `@wdio/globals`, no `./helpers`, nothing that needs the native runtime —
- * only `node:fs`/`node:path` for the fixtures. Keep it that way, or the tooling suite that imports
- * this file stops being able to.
+ * only `@atlantis/fixtures`, itself only `node:fs`/`node:path`. Keep it that way, or the tooling
+ * suite that imports this file stops being able to.
  *
  * The ordering rule the sweep itself relies on: `create_game` first, to mint the database every
  * scoped command needs; `delete_game` last, to leave nothing behind.
  */
 
-const ROOT = join(__dirname, "..", "..");
-
-const REPORT = readFileSync(
-  join(ROOT, "tests", "fixtures", "reports", "neworigins-3.0.0-g7-f95-t71.rep"),
-  "utf8"
-);
+const REPORT = readReport("g7f95t71");
 /** Another faction, same turn: the one shape `merge_report` accepts. */
-const ALLY_REPORT = readFileSync(
-  join(ROOT, "tests", "fixtures", "reports", "neworigins-3.0.0-g8-f73-t71.rep"),
-  "utf8"
-);
-const RULESET = readFileSync(join(ROOT, "config", "public", "ruleset.json"), "utf8");
+const ALLY_REPORT = readReport("g8f73t71");
+const RULESET = readRuleset();
 
 /** The shell owns no clock; every timestamp crosses IPC from the frontend. */
 export const ISO = "2026-08-10T12:00:00Z";

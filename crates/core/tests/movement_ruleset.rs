@@ -6,11 +6,10 @@
 
 use atlantis_hud_core::movement::rules::{ItemKind, MovementMode, Ruleset, RulesetError};
 
-const RULESET: &str = include_str!("../../../config/public/ruleset.json");
+const RULESET: &str = atlantis_hud_fixtures::RULESET_JSON;
 
-fn ruleset() -> Ruleset {
-    Ruleset::from_json(RULESET).expect("the committed ruleset should load")
-}
+mod common;
+use common::ruleset;
 
 #[test]
 fn loads_the_committed_ruleset() {

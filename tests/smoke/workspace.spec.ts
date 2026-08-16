@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
+import { readReport } from "@atlantis/fixtures";
 import {
   clearGames,
   createGame,
@@ -10,7 +11,6 @@ import {
   ordersText,
   visibleStrip
 } from "./gameSetup";
-import { join } from "node:path";
 // The real constant, not a copy of it: this test exists to catch the rendered height and the
 // windowing arithmetic drifting apart, which a hard-coded 22 here would hide.
 import { ROW_HEIGHT } from "../../packages/shared/src/unitTable";
@@ -24,31 +24,19 @@ import { HOVER_DELAY_MS } from "../../packages/shared/src/unitTooltip";
  * passes here for the web and fails for the desktop is a divergence, which is exactly the failure
  * this suite exists to catch.
  */
-const REPORT = readFileSync(
-  join(__dirname, "..", "fixtures", "reports", "neworigins-3.0.0-g7-f95-t71.rep"),
-  "utf8"
-);
+const REPORT = readReport("g7f95t71");
 /**
  * Another faction, and an older turn - gh-208: age outranks ownership, so this is now stored for
  * history rather than offered as a switch or a merge.
  */
-const OTHER_FACTION_OLDER = readFileSync(
-  join(__dirname, "..", "fixtures", "reports", "neworigins-3.0.0-g8-f73-t2.rep"),
-  "utf8"
-);
+const OTHER_FACTION_OLDER = readReport("g8f73t2");
 /**
  * Another faction, same turn: the one case a merge is offered for, and (since it is not older) also
  * the fixture used to prove switching and cancelling still work on the foreign-report prompt.
  */
-const ALLY_REPORT = readFileSync(
-  join(__dirname, "..", "fixtures", "reports", "neworigins-3.0.0-g8-f73-t71.rep"),
-  "utf8"
-);
+const ALLY_REPORT = readReport("g8f73t71");
 /** The player's own faction, one turn back - gh-208's plain case: stored for history, not shown. */
-const OWN_OLDER_REPORT = readFileSync(
-  join(__dirname, "..", "fixtures", "reports", "neworigins-3.0.0-g7-f95-t70.rep"),
-  "utf8"
-);
+const OWN_OLDER_REPORT = readReport("g7f95t70");
 
 /**
  * Three real, consecutive turns of one faction (game 3, faction 42), used to prove a route can
@@ -56,18 +44,9 @@ const OWN_OLDER_REPORT = readFileSync(
  * holdings are ocean-separated islands, so every route over them stays one step regardless of what
  * is remembered - see `crates/core/tests/movement_plan.rs` for the reading that ruled it out.
  */
-const F42_T40 = readFileSync(
-  join(__dirname, "..", "fixtures", "reports", "neworigins-3.0.0-g3-f42-t40.rep"),
-  "utf8"
-);
-const F42_T41 = readFileSync(
-  join(__dirname, "..", "fixtures", "reports", "neworigins-3.0.0-g3-f42-t41.rep"),
-  "utf8"
-);
-const F42_T42 = readFileSync(
-  join(__dirname, "..", "fixtures", "reports", "neworigins-3.0.0-g3-f42-t42.rep"),
-  "utf8"
-);
+const F42_T40 = readReport("g3f42t40");
+const F42_T41 = readReport("g3f42t41");
+const F42_T42 = readReport("g3f42t42");
 
 /** Inholm: a city with 24 structures and 92 units, one of them the player's. */
 const OWN_UNIT = "18642";

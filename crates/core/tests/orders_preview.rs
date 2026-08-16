@@ -9,9 +9,8 @@ use atlantis_hud_core::cache::ReportCache;
 use atlantis_hud_core::orders::effects::{preview_orders_for_remembered_report, UnitPreviewStatus};
 use atlantis_hud_core::report::orders::extract_orders_template;
 
-const TURN_71: &str =
-    include_str!("../../../tests/fixtures/reports/neworigins-3.0.0-g7-f95-t71.rep");
-const RULESET: &str = include_str!("../../../config/public/ruleset.json");
+const TURN_71: &str = atlantis_hud_fixtures::G7_F95_T71.text;
+const RULESET: &str = atlantis_hud_fixtures::RULESET_JSON;
 
 #[test]
 fn the_committed_template_previews_exactly_its_one_real_effect() {

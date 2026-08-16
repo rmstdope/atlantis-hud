@@ -8,6 +8,9 @@ importers:
 
   .:
     devDependencies:
+      '@atlantis/fixtures':
+        specifier: workspace:*
+        version: link:packages/fixtures
       '@playwright/test':
         specifier: ^1.55.0
         version: 1.62.1
@@ -149,6 +152,9 @@ importers:
         specifier: workspace:*
         version: link:../core-client
     devDependencies:
+      '@atlantis/fixtures':
+        specifier: workspace:*
+        version: link:../fixtures
       '@atlantis/shared':
         specifier: workspace:*
         version: link:../shared
@@ -157,6 +163,12 @@ importers:
         version: 22.20.1
 
   packages/core-client: {}
+
+  packages/fixtures:
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.2
+        version: 22.20.1
 
   packages/ruleset: {}
 
@@ -189,6 +201,10 @@ importers:
       zustand:
         specifier: ^5.0.14
         version: 5.0.14(@types/react@19.2.18)(react@19.2.8)
+    devDependencies:
+      '@atlantis/fixtures':
+        specifier: workspace:*
+        version: link:../fixtures
 
 packages:
 

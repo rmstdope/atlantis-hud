@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { readReport } from "@atlantis/fixtures";
 import { clearGames, createGame } from "./gameSetup";
 
 /**
@@ -12,10 +12,7 @@ import { clearGames, createGame } from "./gameSetup";
  * the feature no unit test in this repository can reach.
  */
 
-const TURN_71 = readFileSync(
-  join(__dirname, "..", "fixtures", "reports", "neworigins-3.0.0-g7-f95-t71.rep"),
-  "utf8"
-);
+const TURN_71 = readReport("g7f95t71");
 
 async function importReport(page: Page, report: string) {
   await page.setInputFiles('input[type="file"]', {
