@@ -1,16 +1,37 @@
-import type { ImportStatus } from "./AppHeader";
+/**
+ * A line the header says to the player, and how loudly.
+ *
+ * `routine` is written for screen readers and the suites and takes no visible room - the counts of
+ * a loaded turn, "restored turn 71". `notice` is worth a glance and nothing went wrong. `warning` is
+ * a turn that is fine but something around it was not. `failure` is something that did not happen.
+ * The header decides visibility and colour from the tone and from nothing else - see AppHeader.
+ */
+export type StatusTone = "routine" | "notice" | "warning" | "failure";
 
-/** A status line for something that did not happen: red, and it hides the turn-messages chip. */
-export function failedStatus(message: string): ImportStatus {
-  return { regionCount: 0, unitCount: 0, message, failed: true, warning: false };
+export type StatusLine = {
+  text: string;
+  tone: StatusTone;
+};
+
+export function routineStatus(text: string): StatusLine {
+  return { text, tone: "routine" };
 }
 
-/**
- * A status line for something worth saying about a turn that is fine: amber, chip stays.
- *
- * A message here is always a warning: it is what earns the status line its room back from
- * `AppHeader`, which hides a message-less, un-flagged status (see its comment).
- */
-export function warningStatus(message: string): ImportStatus {
-  return { regionCount: 0, unitCount: 0, message, failed: false, warning: true };
+export function noticeStatus(text: string): StatusLine {
+  return { text, tone: "notice" };
+}
+
+export function warningStatus(text: string): StatusLine {
+  return { text, tone: "warning" };
+}
+
+export function failedStatus(text: string): StatusLine {
+  return { text, tone: "failure" };
+}
+
+/** The routine line for a loaded turn: "11 regions · 42 units", singular when 1. */
+export function countsStatus(regionCount: number, unitCount: number): StatusLine {
+  return routineStatus(
+    `${regionCount} region${regionCount === 1 ? "" : "s"} · ${unitCount} unit${unitCount === 1 ? "" : "s"}`
+  );
 }
