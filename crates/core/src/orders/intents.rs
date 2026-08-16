@@ -10,7 +10,8 @@
 //! feed a wrong premise into every check downstream. Orders that no check reads are not modelled.
 
 use super::forms::{self, Amount, Party, Selector};
-use super::lexer::{lex_line, Token, TokenKind};
+use super::lexer::{Token, TokenKind};
+use super::walk::{self, Depth, Event};
 use crate::movement::orders::MoveStep;
 
 /// One thing a unit's orders would do.
@@ -106,64 +107,39 @@ impl UnitIntents {
 #[must_use]
 pub fn read_intents(source: &str) -> Vec<UnitIntents> {
     let mut units: Vec<UnitIntents> = Vec::new();
-    // The keyword each open TURN or FORM block is waiting for, innermost last. Nothing is collected
-    // while any of them is open.
-    let mut blocks: Vec<&str> = Vec::new();
 
-    for (index, line) in source.lines().enumerate() {
-        let number = index + 1;
-        let lexed = lex_line(line);
-        let Some((command, arguments)) = lexed.tokens.split_first() else {
-            continue;
-        };
-
-        if command.is("unit") {
-            // A unit line ends the previous block, nesting and all: an unclosed TURN cannot swallow
-            // the next unit's orders, which the syntax checker reports separately.
-            blocks.clear();
-            if let Some(id) = arguments.first().filter(|id| id.kind == TokenKind::Number) {
+    walk::walk(source, |event| match event {
+        // A unit line ends the previous block, nesting and all: the walk abandons whatever was
+        // still open before this event, so an unclosed TURN cannot swallow the next unit's orders.
+        Event::Unit(line) => {
+            if let Some(id) = line
+                .arguments
+                .first()
+                .filter(|id| id.kind == TokenKind::Number)
+            {
                 units.push(UnitIntents {
                     unit_id: id.text.clone(),
-                    line: number,
+                    line: line.number,
                     intents: Vec::new(),
                 });
             }
-            continue;
         }
-
-        if command.is("TURN") {
-            blocks.push("ENDTURN");
-            continue;
-        }
-        if command.is("FORM") {
-            blocks.push("END");
-            continue;
-        }
-        if command.is("ENDTURN") || command.is("END") {
-            // Only the closer the innermost block is waiting for closes it: `END` closes a FORM
-            // and `ENDTURN` a TURN. Counting depth alone let a stray `END` close a TURN, and
-            // everything after it - next month's orders - was then recorded as this month's.
-            if blocks.last().is_some_and(|expected| command.is(expected)) {
-                blocks.pop();
+        // A TURN block holds next month's orders and a FORM block a unit that does not exist yet
+        // (see `read_intents`'s own doc); an order inside either is not this reading's business.
+        Event::Order { line, depth } if depth == Depth::default() => {
+            if let Some(unit) = units.last_mut() {
+                if let Some(intent) = read_order(line.command, line.arguments) {
+                    unit.intents.push(PlacedIntent {
+                        intent,
+                        line: line.number,
+                        column_start: line.command.column_start,
+                        column_end: line.command.column_end,
+                    });
+                }
             }
-            continue;
         }
-        if !blocks.is_empty() {
-            continue;
-        }
-
-        let Some(unit) = units.last_mut() else {
-            continue;
-        };
-        if let Some(intent) = read_order(command, arguments) {
-            unit.intents.push(PlacedIntent {
-                intent,
-                line: number,
-                column_start: command.column_start,
-                column_end: command.column_end,
-            });
-        }
-    }
+        _ => {}
+    });
 
     units
 }

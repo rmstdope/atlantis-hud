@@ -16,6 +16,7 @@ pub mod intents;
 pub mod lexer;
 pub mod parser;
 pub mod semantics;
+pub mod walk;
 
 pub use grammar::order_commands;
 
