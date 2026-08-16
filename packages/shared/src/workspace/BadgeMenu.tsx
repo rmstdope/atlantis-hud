@@ -1,6 +1,5 @@
-import { useEffect, useRef } from "react";
-import { useEscapeToDismiss } from "./dismissLayer";
 import { BADGES, type BadgeName } from "./mapThemes/hexView";
+import { PopoverFrame } from "./popover";
 
 /**
  * Which marks the map draws, behind one chip.
@@ -24,39 +23,20 @@ import { BADGES, type BadgeName } from "./mapThemes/hexView";
 export function BadgeMenu({
   badges,
   onToggle,
-  onSetAll,
-  onDismiss
+  onSetAll
 }: {
   badges: Record<BadgeName, boolean>;
   onToggle: (badge: BadgeName) => void;
   onSetAll: (on: boolean) => void;
-  onDismiss: () => void;
 }) {
-  const panelRef = useRef<HTMLDivElement | null>(null);
-
-  useEscapeToDismiss(onDismiss);
-
-  useEffect(() => {
-    // Pointer rather than click, and the wrapper rather than the panel, for the reason the export
-    // menu gives: a drag out of the panel is not a dismissal, and testing the panel alone
-    // dismisses on the trigger's own press, whose toggle then reopens it.
-    const onPointerDown = (event: PointerEvent) => {
-      const trigger = panelRef.current?.parentElement ?? panelRef.current;
-      if (!trigger?.contains(event.target as Node)) {
-        onDismiss();
-      }
-    };
-    document.addEventListener("pointerdown", onPointerDown);
-    return () => document.removeEventListener("pointerdown", onPointerDown);
-  }, [onDismiss]);
-
   return (
-    <div
-      ref={panelRef}
-      data-testid="badge-menu"
-      role="dialog"
-      aria-label="Badges"
-      className="absolute left-0 top-full z-20 mt-1 w-40 rounded border border-edge bg-panel-raised p-1 text-[11px] shadow-lg"
+    <PopoverFrame
+      testId="badge-menu"
+      label="Badges"
+      align="left"
+      width="w-40"
+      padding="p-1"
+      textSize="text-[11px]"
     >
       <div className="flex items-center justify-between px-1 pb-1 text-ink-dim">
         <span>Badges</span>
@@ -92,6 +72,6 @@ export function BadgeMenu({
           {label}
         </label>
       ))}
-    </div>
+    </PopoverFrame>
   );
 }

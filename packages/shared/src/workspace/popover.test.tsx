@@ -1,0 +1,89 @@
+import { renderToStaticMarkup } from "react-dom/server";
+import { describe, expect, it } from "vitest";
+import { ChipPopover, PopoverFrame } from "./popover";
+
+describe("PopoverFrame", () => {
+  it("carries the popover chrome, anchored left", () => {
+    const markup = renderToStaticMarkup(
+      <PopoverFrame testId="x" label="X" align="left" width="w-72">
+        body
+      </PopoverFrame>
+    );
+
+    expect(markup).toContain('data-testid="x"');
+    expect(markup).toContain('role="dialog"');
+    expect(markup).toContain('aria-label="X"');
+    const classMatch = markup.match(/class="([^"]*)"/);
+    expect(classMatch).not.toBeNull();
+    const classes = classMatch![1];
+    for (const token of [
+      "absolute",
+      "left-0",
+      "top-full",
+      "z-20",
+      "mt-1",
+      "w-72",
+      "bg-panel-raised",
+      "shadow-lg",
+      "whitespace-normal"
+    ]) {
+      expect(classes, token).toContain(token);
+    }
+  });
+
+  it("anchored right", () => {
+    const markup = renderToStaticMarkup(
+      <PopoverFrame testId="x" label="X" align="right" width="w-44">
+        body
+      </PopoverFrame>
+    );
+
+    expect(markup).toContain("right-0");
+    expect(markup).not.toContain("left-0");
+  });
+
+  it("padding and text size are optional", () => {
+    const withBoth = renderToStaticMarkup(
+      <PopoverFrame testId="x" label="X" align="left" width="w-40" padding="p-1" textSize="text-[11px]">
+        body
+      </PopoverFrame>
+    );
+    expect(withBoth).toContain("p-1");
+    expect(withBoth).toContain("text-[11px]");
+
+    const withNeither = renderToStaticMarkup(
+      <PopoverFrame testId="x" label="X" align="left" width="w-40">
+        body
+      </PopoverFrame>
+    );
+    expect(withNeither).toContain("text-[11.5px]");
+    expect(withNeither).not.toMatch(/\bp-\d/);
+  });
+});
+
+describe("ChipPopover", () => {
+  it("renders the chip and, only when open, the panel", () => {
+    const chip = <button data-testid="the-chip">chip</button>;
+    const panel = <div data-testid="the-panel">panel</div>;
+
+    const closed = renderToStaticMarkup(
+      <ChipPopover open={false} onDismiss={() => {}} panel={panel}>
+        {chip}
+      </ChipPopover>
+    );
+    expect(closed).toContain("the-chip");
+    expect(closed).not.toContain("the-panel");
+
+    const open = renderToStaticMarkup(
+      <ChipPopover open={true} onDismiss={() => {}} panel={panel}>
+        {chip}
+      </ChipPopover>
+    );
+    expect(open).toContain("the-chip");
+    expect(open).toContain("the-panel");
+
+    const wrapperMatch = open.match(/<span class="([^"]*)"/);
+    expect(wrapperMatch).not.toBeNull();
+    expect(wrapperMatch![1]).toContain("relative");
+  });
+});

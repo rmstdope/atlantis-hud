@@ -1,5 +1,5 @@
-import { useEffect, useRef } from "react";
 import { POPOVER_BODY_MAX_H } from "./primitives";
+import { PopoverFrame } from "./popover";
 
 /** Enough of a stored turn to list it - no report content, just what identifies and labels it. */
 export type TurnPickerEntry = {
@@ -20,49 +20,17 @@ export function TurnPicker({
   turns,
   workingTurn,
   comparedTurn,
-  onSelect,
-  onDismiss
+  onSelect
 }: {
   turns: TurnPickerEntry[];
   workingTurn: number;
   comparedTurn: number | null;
   onSelect: (turnNumber: number) => void;
-  onDismiss: () => void;
 }) {
-  const panelRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        onDismiss();
-      }
-    };
-    const onPointerDown = (event: PointerEvent) => {
-      const trigger = panelRef.current?.parentElement ?? panelRef.current;
-      if (!trigger?.contains(event.target as Node)) {
-        onDismiss();
-      }
-    };
-
-    document.addEventListener("keydown", onKeyDown);
-    document.addEventListener("pointerdown", onPointerDown);
-    return () => {
-      document.removeEventListener("keydown", onKeyDown);
-      document.removeEventListener("pointerdown", onPointerDown);
-    };
-  }, [onDismiss]);
-
   const ordered = [...turns].sort((a, b) => a.key.turnNumber - b.key.turnNumber);
 
   return (
-    <div
-      ref={panelRef}
-      data-testid="turn-picker"
-      role="dialog"
-      aria-label="Turns of this game"
-      onDragOver={(event) => event.stopPropagation()}
-      className="absolute left-0 top-full z-20 mt-1 w-72 rounded border border-edge bg-panel-raised p-2 text-[11.5px] whitespace-normal shadow-lg"
-    >
+    <PopoverFrame testId="turn-picker" label="Turns of this game" align="left" width="w-72" padding="p-2">
       <div className="px-1 pb-1.5 text-[10px] tracking-[0.12em] text-brass uppercase">
         Turns of this game
       </div>
@@ -94,6 +62,6 @@ export function TurnPicker({
       <p className="border-t border-edge px-1 pt-1.5 text-ink-dim">
         {`click a turn to compare it with ${workingTurn} · click again to stop`}
       </p>
-    </div>
+    </PopoverFrame>
   );
 }

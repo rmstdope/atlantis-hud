@@ -1,7 +1,8 @@
 import type { ChangeEvent, DragEvent, ReactNode } from "react";
-import { useRef, useState } from "react";
+import { useRef } from "react";
 import { describeTurnMessages } from "../turnMessages";
 import { ExportMenu } from "./ExportMenu";
+import { ChipPopover } from "./popover";
 import type { StatusLine, StatusTone } from "./shellStatus";
 
 /** The status line's dot colour by tone; `routine` has no dot (see the render site). */
@@ -22,6 +23,16 @@ export type TurnMessages = {
   events: string[];
 };
 
+/** The header's popovers, at most one of which is open. Dialogs (settings, battles, changes) are not popovers and keep their own flags. */
+export type HeaderPopoverId =
+  | "games"
+  | "turns"
+  | "merged"
+  | "faction"
+  | "messages"
+  | "problems"
+  | "export";
+
 /**
  * What the import button says while it is working.
  *
@@ -34,18 +45,16 @@ function importingLabel(progress: { done: number; total: number } | null): strin
 
 type AppHeaderProps = {
   gameName: string;
-  /** Whether the picker is showing. The header owns the button; the shell owns the panel. */
-  pickerOpen: boolean;
-  onTogglePicker: () => void;
+  /** Which header popover is open, if any - one at a time, owned by the shell. */
+  openPopover: HeaderPopoverId | null;
+  /** Opens the named popover (closing whichever was open), or closes all with null. */
+  onOpenPopover: (id: HeaderPopoverId | null) => void;
   /** The picker itself, rendered under the indicator when it is open. */
   picker: ReactNode;
   factionLabel: string | null;
   turnLabel: string | null;
   /** The working turn's bare number, e.g. "71" - what the chip collapses to while comparing. */
   workingTurnNumber: string | null;
-  /** Whether the turn picker is showing. Same split as the game picker: the shell owns the panel. */
-  turnPickerOpen: boolean;
-  onToggleTurnPicker: () => void;
   /** The picker itself, rendered under the chip when it is open. */
   turnPicker: ReactNode;
   /**
@@ -57,22 +66,13 @@ type AppHeaderProps = {
   onStopComparing: () => void;
   /** How many allied reports have been folded into this turn. Zero hides the chip entirely. */
   mergedCount: number;
-  /** Whether the merged-factions panel is showing. Same split as the picker. */
-  mergedOpen: boolean;
-  onToggleMerged: () => void;
   /** The panel itself, rendered under the chip when it is open. */
   mergedPanel: ReactNode;
-  /** Whether the faction view is showing. Same split as the picker: the shell owns the panel. */
-  factionOpen: boolean;
-  onFactionToggle: () => void;
   /** The panel itself, rendered under the faction name when it is open. */
   factionPanel: ReactNode;
   status: StatusLine | null;
   /** The loaded turn's errors and events, or null when no turn is loaded. */
   messages: TurnMessages | null;
-  /** Whether the messages panel is showing. As with the picker, the shell owns the panel. */
-  messagesOpen: boolean;
-  onToggleMessages: () => void;
   /** The panel itself, rendered under the chip when it is open. */
   messagesPanel: ReactNode;
   /**
@@ -82,9 +82,6 @@ type AppHeaderProps = {
    * is the one in the hex nobody clicked on.
    */
   problemCount: number;
-  /** Whether the problems panel is showing. Same split as the picker: the shell owns the panel. */
-  problemsOpen: boolean;
-  onToggleProblems: () => void;
   problemsPanel: ReactNode;
   /**
    * How many battles the loaded turn describes. Zero hides the chip entirely, as with the other
@@ -152,32 +149,22 @@ type AppHeaderProps = {
  */
 export function AppHeader({
   gameName,
-  pickerOpen,
-  onTogglePicker,
+  openPopover,
+  onOpenPopover,
   picker,
   factionLabel,
   turnLabel,
   workingTurnNumber,
-  turnPickerOpen,
-  onToggleTurnPicker,
   turnPicker,
   comparedTurnLabel,
   onStopComparing,
   mergedCount,
-  mergedOpen,
-  onToggleMerged,
   mergedPanel,
-  factionOpen,
-  onFactionToggle,
   factionPanel,
   status,
   messages,
-  messagesOpen,
-  onToggleMessages,
   messagesPanel,
   problemCount,
-  problemsOpen,
-  onToggleProblems,
   problemsPanel,
   battleCount,
   battlesOpen,
@@ -198,14 +185,8 @@ export function AppHeader({
   settings
 }: AppHeaderProps) {
   const fileRef = useRef<HTMLInputElement | null>(null);
-  /**
-   * Whether the export menu is showing.
-   *
-   * Held here rather than in the shell like the other header popovers, because nothing outside
-   * this header opens it: the command palette runs the exports directly, so a shell that knew
-   * about this state would only be passing it back down again.
-   */
-  const [exportOpen, setExportOpen] = useState(false);
+  const toggle = (id: HeaderPopoverId) => onOpenPopover(openPopover === id ? null : id);
+  const close = () => onOpenPopover(null);
 
   const errorCount = messages?.errors.length ?? 0;
   const chipLabel = describeTurnMessages(errorCount, messages?.events.length ?? 0);
@@ -255,13 +236,13 @@ export function AppHeader({
         The game indicator. Relative, because the picker hangs off it and should open under the
         name it belongs to rather than at the edge of the window.
       */}
-      <span className="relative">
+      <ChipPopover open={openPopover === "games"} onDismiss={close} panel={picker}>
         <button
           type="button"
           data-testid="game-indicator"
           aria-haspopup="dialog"
-          aria-expanded={pickerOpen}
-          onClick={onTogglePicker}
+          aria-expanded={openPopover === "games"}
+          onClick={() => toggle("games")}
           className="rounded border border-edge bg-panel-raised px-2 py-0.5 text-ink hover:border-brass"
         >
           {gameName}
@@ -269,22 +250,21 @@ export function AppHeader({
             ▾
           </span>
         </button>
-        {pickerOpen ? picker : null}
-      </span>
+      </ChipPopover>
       {turnLabel ? (
         <span className="text-ink-soft">
           Turn{" "}
           {/*
-            Its own `relative` wrapper, sibling to the game indicator's rather than sharing one -
-            the same reason the faction and merged chips each get their own (see below).
+            Its own `ChipPopover`, sibling to the game indicator's rather than sharing one - the
+            same reason the faction and merged chips each get their own (see below).
           */}
-          <span className="relative">
+          <ChipPopover open={openPopover === "turns"} onDismiss={close} panel={turnPicker}>
             <button
               type="button"
               data-testid="turn-chip"
               aria-haspopup="dialog"
-              aria-expanded={turnPickerOpen}
-              onClick={onToggleTurnPicker}
+              aria-expanded={openPopover === "turns"}
+              onClick={() => toggle("turns")}
               className="rounded border border-edge bg-panel-raised px-2 py-0.5 text-ink hover:border-brass"
             >
               {comparedTurnLabel ? (
@@ -314,8 +294,7 @@ export function AppHeader({
                 ✕
               </button>
             ) : null}
-            {turnPickerOpen ? turnPicker : null}
-          </span>
+          </ChipPopover>
         </span>
       ) : null}
       {/*
@@ -330,18 +309,17 @@ export function AppHeader({
         <span className="text-ink-soft">
           Faction{" "}
           {/*
-            Its own `relative` wrapper, sibling to the merged chip's rather than sharing one. Both
-            popovers dismiss on a pointerdown outside `panelRef.current.parentElement` - sharing a
-            parent would make pressing one chip count as *inside* the other's panel and fail to
-            dismiss it.
+            Its own `ChipPopover`, sibling to the merged chip's rather than sharing one - never one
+            inside the other's wrapper, or a press on one chip would count as *inside* the other's
+            popover and fail to dismiss it (ah-vp3.2's trap).
           */}
-          <span className="relative">
+          <ChipPopover open={openPopover === "faction"} onDismiss={close} panel={factionPanel}>
             <button
               type="button"
               data-testid="faction-chip"
               aria-haspopup="dialog"
-              aria-expanded={factionOpen}
-              onClick={onFactionToggle}
+              aria-expanded={openPopover === "faction"}
+              onClick={() => toggle("faction")}
               className="text-ink hover:text-brass"
             >
               {factionLabel}
@@ -349,25 +327,28 @@ export function AppHeader({
                 ▾
               </span>
             </button>
-            {factionOpen ? factionPanel : null}
-          </span>
+          </ChipPopover>
           {mergedCount > 0 ? (
-            <span className="relative">
+            <ChipPopover
+              open={openPopover === "merged"}
+              onDismiss={close}
+              panel={mergedPanel}
+              className="ml-1.5"
+            >
               <button
                 type="button"
                 data-testid="merged-factions-chip"
                 aria-haspopup="dialog"
-                aria-expanded={mergedOpen}
-                onClick={onToggleMerged}
-                className="ml-1.5 rounded border border-edge bg-panel-raised px-2 py-0.5 text-ink-soft hover:border-brass"
+                aria-expanded={openPopover === "merged"}
+                onClick={() => toggle("merged")}
+                className="rounded border border-edge bg-panel-raised px-2 py-0.5 text-ink-soft hover:border-brass"
               >
                 +{mergedCount} merged
                 <span aria-hidden className="ml-1 text-ink-dim">
                   ▾
                 </span>
               </button>
-              {mergedOpen ? mergedPanel : null}
-            </span>
+            </ChipPopover>
           ) : null}
         </span>
       ) : null}
@@ -413,13 +394,13 @@ export function AppHeader({
         stays whatever the status line says about it.
       */}
       {chipLabel ? (
-        <span className="relative">
+        <ChipPopover open={openPopover === "messages"} onDismiss={close} panel={messagesPanel}>
           <button
             type="button"
             data-testid="turn-messages-chip"
             aria-haspopup="dialog"
-            aria-expanded={messagesOpen}
-            onClick={onToggleMessages}
+            aria-expanded={openPopover === "messages"}
+            onClick={() => toggle("messages")}
             className={`rounded border px-2 py-0.5 ${
               errorCount > 0
                 ? "border-warn text-warn"
@@ -432,8 +413,7 @@ export function AppHeader({
               ▾
             </span>
           </button>
-          {messagesOpen ? messagesPanel : null}
-        </span>
+        </ChipPopover>
       ) : null}
 
       {/*
@@ -445,13 +425,13 @@ export function AppHeader({
         earns none of the room it takes.
       */}
       {problemCount > 0 ? (
-        <span className="relative">
+        <ChipPopover open={openPopover === "problems"} onDismiss={close} panel={problemsPanel}>
           <button
             type="button"
             data-testid="problems-chip"
             aria-haspopup="dialog"
-            aria-expanded={problemsOpen}
-            onClick={onToggleProblems}
+            aria-expanded={openPopover === "problems"}
+            onClick={() => toggle("problems")}
             className="rounded border border-warn px-2 py-0.5 text-warn"
           >
             <span aria-hidden>⚠ </span>
@@ -460,8 +440,7 @@ export function AppHeader({
               ▾
             </span>
           </button>
-          {problemsOpen ? problemsPanel : null}
-        </span>
+        </ChipPopover>
       ) : null}
 
       {/*
@@ -523,22 +502,11 @@ export function AppHeader({
       >
         {busy ? importingLabel(progress) : "Import"}
       </button>
-      {/* Relative, because the menu hangs off the button rather than off the window's edge. */}
-      <span className="relative">
-        <button
-          type="button"
-          data-testid="export-menu"
-          aria-haspopup="dialog"
-          aria-expanded={exportOpen}
-          onClick={() => setExportOpen((open) => !open)}
-          className="rounded border border-edge bg-panel-raised px-2.5 py-1 text-ink"
-        >
-          Export
-          <span aria-hidden className="ml-1 text-ink-dim">
-            ▾
-          </span>
-        </button>
-        {exportOpen ? (
+      {/* The menu hangs off the button rather than off the window's edge. */}
+      <ChipPopover
+        open={openPopover === "export"}
+        onDismiss={close}
+        panel={
           <ExportMenu
             canExportOrders={canExport}
             canExportOrdersLong={canExportLong}
@@ -546,10 +514,24 @@ export function AppHeader({
             onExportOrders={onExportOrders}
             onExportOrdersLong={onExportOrdersLong}
             onExportMap={onExportMap}
-            onDismiss={() => setExportOpen(false)}
+            onDismiss={close}
           />
-        ) : null}
-      </span>
+        }
+      >
+        <button
+          type="button"
+          data-testid="export-menu"
+          aria-haspopup="dialog"
+          aria-expanded={openPopover === "export"}
+          onClick={() => toggle("export")}
+          className="rounded border border-edge bg-panel-raised px-2.5 py-1 text-ink"
+        >
+          Export
+          <span aria-hidden className="ml-1 text-ink-dim">
+            ▾
+          </span>
+        </button>
+      </ChipPopover>
 
       {/* Relative for the same reason the game indicator is: the panel hangs off this button. */}
       <span className="relative">
