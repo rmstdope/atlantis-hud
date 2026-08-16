@@ -38,6 +38,27 @@ should land in - without it the file keeps the type's Rust name and the re-expor
 points at nothing. A type reached only through `#[serde(flatten)]` carries no `export` of its own,
 or two types claim the same generated file.
 
+## Report builders in tests
+
+Six typed builders in `@atlantis/core-client` (`packages/core-client/src/builders.ts`) build the
+report model for tests: `aReportUnit`, `aReportRegion`, `aReportHeaderInfo`, `aParsedReport`,
+`aBattle`, `aBattleUnit`. Each is `(overrides: Partial<T> = {}) => T`, typed against the ts-rs–
+generated shape and returning a complete, self-consistent value; a test names only the fields it is
+about. The naming rule for a future one: `a` + the exact type name.
+
+No test file spells a complete literal of those six types - a field a Rust report type gains is set
+once in `builders.ts` and in no test file. A local wrapper that lists only the fields a file cares
+about, built over a builder, is fine and is the normal shape of a migrated test's fixture helper.
+
+On the Rust side the report family (`crates/core/src/report/`) derives `Default`, so a test can use
+`..Default::default()` in a literal instead of spelling every field. `ReportUnit::default()` is
+hand-written rather than derived: `men_estimated` defaults to `true`, matching its doc comment and
+its `#[serde(default)]`, where a derived `Default` would give `false`. A test literal drops a field
+only when the value it sets is exactly what `Default` now yields.
+
+The payoff: a field added to a Rust report type is a Rust edit, a `git add` of the regenerated
+binding, and one line in `builders.ts` - never a test file.
+
 ## Operating rules for all work packages
 
 Each work package is independently executable by following this contract:
