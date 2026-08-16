@@ -37,9 +37,15 @@ fn every_movement_command_is_read_by_parse_move() {
         );
     }
 
-    assert!(is_movement_command("Advance"), "any case is a movement command");
+    assert!(
+        is_movement_command("Advance"),
+        "any case is a movement command"
+    );
     assert!(!is_movement_command("STUDY"), "a non-movement word is not");
-    assert!(!is_movement_command("@move"), "a bare command token carries no @");
+    assert!(
+        !is_movement_command("@move"),
+        "a bare command token carries no @"
+    );
 }
 
 /// The turn 71 orders template carries exactly one real MOVE: "MOVE SE SE", for unit 15571.

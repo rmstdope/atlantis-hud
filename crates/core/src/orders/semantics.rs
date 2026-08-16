@@ -1179,7 +1179,10 @@ mod tests {
     }
 
     fn codes(findings: &[Finding]) -> Vec<&str> {
-        findings.iter().map(|finding| finding.code.as_str()).collect()
+        findings
+            .iter()
+            .map(|finding| finding.code.as_str())
+            .collect()
     }
 
     /// The `Code` newtype is the string the shell, the settings and the diagnostics all know -

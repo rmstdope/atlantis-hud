@@ -205,7 +205,10 @@ fn the_broad_guard_check_is_the_noisy_one_the_setting_holds_back() {
         .filter(|region| region.units.iter().any(|unit| unit.own))
         .count();
     assert_eq!(
-        noisy.iter().filter(|f| f.code.as_str() == "hex-unguarded").count(),
+        noisy
+            .iter()
+            .filter(|f| f.code.as_str() == "hex-unguarded")
+            .count(),
         hexes_with_our_units,
         "one per hex we stand in, and nothing guards any of them"
     );
