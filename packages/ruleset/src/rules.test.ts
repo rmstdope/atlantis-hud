@@ -178,6 +178,7 @@ describe("parseMovementRules", () => {
 
     expect(rules.provenance.sailing).toContain("For a fleet to enter any region");
     expect(rules.provenance.sailing).toContain("coastal region is defined");
+    expect(rules.provenance.sailing).toContain("one movement point. A coastal region");
   });
 
   it("fails loudly when the fleet entry-cost sentence is reworded", () => {

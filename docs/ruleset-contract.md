@@ -10,8 +10,8 @@ Two engine-generated pages, complementary and both required:
 
 | Page | Provides | Does **not** provide |
 | --- | --- | --- |
-| rules (e.g. `https://atlantis-pbem.com/rules`) | movement points per mode, terrain costs, the road rule, the ocean rule | item stats, monster stats |
-| data (e.g. `https://atlantis-pbem.com/data`) | item weights, capacities, `moves N hexes per month`, monster combat stats | terrain costs, any Road entry |
+| rules (e.g. `https://atlantis-pbem.com/rules`) | movement points per mode, terrain costs, the road rule, the ocean rule, the sailing rule | item stats, monster stats |
+| data (e.g. `https://atlantis-pbem.com/data`) | item weights, capacities, `moves N hexes per month`, monster combat stats, the sailing skill a ship requires | terrain costs, any Road entry |
 
 Both are prose. The scraper anchors on the engine's own sentences and records, for every movement
 value, the sentence it was read from.
@@ -25,7 +25,9 @@ pnpm --filter @atlantis/ruleset scrape -- \
 ```
 
 Writes `config/public/ruleset.json`. Either argument may be a local file instead of a URL; a relative path
-resolves against the repository root. The script is run deliberately, never as part of a build, and
+resolves against the repository root. The committed file is built from the fixture pages under
+`tests/fixtures/ruleset/`, and `packages/ruleset/src/committed.test.ts` fails if it is not —
+regenerate rather than edit. The script is run deliberately, never as part of a build, and
 never in CI — `config/public/ruleset.json` is committed so that a fresh clone and CI need no network.
 
 The script is named `scrape` rather than `fetch` because `pnpm fetch` is a builtin command that
@@ -44,27 +46,34 @@ phrasing its attacks unusually should not cost us the other hundred and seventy.
 
 ## Shape of `config/public/ruleset.json`
 
-- `source` — both URLs, the fetch timestamp, and how to regenerate.
-- `movement` — `movementPoints`, `terrainCosts`, `road`, `ocean`, plus `provenance` giving the
-  sentence behind each value. `ocean.terrain` is the name of the water terrain itself, read out of
-  the rule's own sentence rather than assumed to be `ocean`, so the core never hardcodes a name
-  that belongs to the game. This ruleset enumerates its terrain as *Ocean, Plain, Forest, Mountain,
-  Swamp, Jungle, Desert, Tundra* and has no other water type.
-- `risk` — **not scraped**, and says so on its face (`scraped: false`). These thresholds are ours
-  to tune; nothing about them claims to mirror the server.
-- `items` — keyed by tag, each with `kind` (`man` / `mount` / `monster` / `ship` / `equipment`),
-  `weight`, four `capacity` values, `selfMobile` and `moves`; monsters additionally carry `combat`,
-  ships a `cargoCapacity`, and a conditional capacity its `capacityCondition`.
-- `skills` — keyed by tag, each with `name`, `maxLevel`, and `cost`: what one man pays for one
-  month of study. Read from the level 1 entry, which is the only one that states it
-  (`This skill costs 10 silver per month of study`). `cost` is **null** for a skill the page prices
-  nowhere, which in this ruleset is annihilation alone — "This skill cannot be studied via normal
-  means". Null rather than zero, deliberately: zero would say studying it is free, and order
-  validation stays silent about a skill it cannot price rather than inventing a figure.
+The shape is declared twice, once on each side of the file, and two tests hold the three together:
 
-  Kept as its own block rather than merged into `items`, because ten tags mean one thing as a
-  skill and another as an item — `FISH` is fishing and also fish, `HERB` is herb lore and also
-  herbs — so one map would have each pair overwrite the other.
+- **Writing side:** `packages/ruleset/src/build.ts` (`Ruleset`), `rules.ts` (`MovementRules`) and
+  `data.ts` (`ItemEntry`, `SkillEntry`). The scraper can only write what these types have.
+- **Reading side:** `crates/core/src/movement/rules.rs` (`Ruleset` and its structs). Every struct
+  is `deny_unknown_fields`, so the core refuses a file carrying a key it has no home for, and a
+  field the core requires that the file lacks fails the same parse.
+- **The file itself** is proven equal to the scraper's output from the committed fixture pages by
+  `packages/ruleset/src/committed.test.ts`, and proven readable by
+  `crates/core/tests/movement_ruleset.rs`. Both run in `pnpm test`.
+
+Two things the field lists do not say for themselves: `ocean.terrain` is the water terrain's name
+read out of the rule's own sentence rather than assumed to be `ocean`; and `skills.*.cost` is
+**null** for a skill the page prices nowhere (annihilation), never zero — zero would say studying it
+is free. `skills` is its own block rather than merged into `items` because ten tags mean one thing
+as a skill and another as an item (`FISH`, `HERB`).
+
+**Adding a field** touches exactly: the scraper (`rules.ts` or `data.ts`, and its test), the core
+(`rules.rs`, and `tests/movement_ruleset.rs`), and the file — regenerated, never edited:
+
+```
+pnpm --filter @atlantis/ruleset scrape -- \
+  --rules tests/fixtures/ruleset/neworigins-rules.html \
+  --data  tests/fixtures/ruleset/neworigins-data.html
+```
+
+All in one change: the two tests above fail until every side agrees, so there is no order to get
+wrong.
 
 ### Two things that are easy to get wrong
 
