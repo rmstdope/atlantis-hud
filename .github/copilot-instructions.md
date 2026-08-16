@@ -346,7 +346,8 @@ If a bead is found to be larger than a small increment, break it down into child
 dependencies natively, so no naming convention is needed to express the relationship.
 
 Beads data lives in `.beads/`. The Dolt database is local and git-ignored; `.beads/issues.jsonl` is a
-readable export that is committed. ALWAYS run `bd dolt push` after claiming a bead and again before
+readable export, refreshed by the release script (or by hand with `pnpm run beads:export`) rather
+than by a pre-push hook. ALWAYS run `bd dolt push` after claiming a bead and again before
 ending a working session, so the claim reaches the other agents and the bead database is backed up
 to the remote. Leave nothing `in_progress` that you are not working on — `bd unclaim <id>` releases
 it.

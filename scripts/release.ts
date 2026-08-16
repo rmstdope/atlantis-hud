@@ -15,16 +15,17 @@
  * Nothing is written before every check has passed - the state checks on the tree, and then the
  * same local quality gate CI runs: lint, typecheck, the unit tests, and the Rust suite. A release
  * that would fail those checks eight minutes into the workflow fails here instead, with the
- * manifests untouched. The commit, the tag and the two pushes are the last four things it does,
- * in that order, and `--dry-run` stops short of all of them while still doing the reading, the
- * arithmetic and the checks - a dry run is a rehearsal, and the checks are most of the show.
+ * manifests untouched. The bead export is refreshed next (ah-cgk), then the commit, the tag and the
+ * two pushes - the last four things it does, in that order. `--dry-run` stops short of all of them
+ * while still doing the reading, the arithmetic and the checks - a dry run is a rehearsal, and the
+ * checks are most of the show.
  */
 
 import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { runGate } from "./beadsExportGate";
-import { describeGitFailure, finishRelease, pushWithRetry, settleExport } from "./releaseSupport";
+import { refreshBeadsExport } from "./beadsExport";
+import { describeGitFailure, finishRelease } from "./releaseSupport";
 
 const BUMPS = ["major", "minor", "maintenance"] as const;
 type Bump = (typeof BUMPS)[number];
@@ -59,8 +60,9 @@ const git = (...args: string[]): string => {
 };
 
 /**
- * git, without dying on a failure - what a retry needs, since `git` above exits the process on the
- * first refusal and a retry wrapped around that could never run a second attempt.
+ * git, without dying on a failure - what `finishRelease` needs, since `git` above exits the process
+ * on the first refusal and `finishRelease` has to be able to report a failed push with recovery
+ * advice instead.
  */
 const tryGit = (...args: string[]): { ok: boolean; output: string } => {
   try {
@@ -68,21 +70,6 @@ const tryGit = (...args: string[]): { ok: boolean; output: string } => {
     return { ok: true, output: "" };
   } catch (error) {
     return { ok: false, output: describeGitFailure(args, error) };
-  }
-};
-
-/**
- * How many pushes to attempt before giving up. One retry is what both v0.5.2 and v0.5.3 needed by
- * hand; the export can go stale again between two attempts, so the bound stays low rather than
- * looping forever against a genuinely refusing remote.
- */
-const PUSH_ATTEMPTS = 3;
-
-/** A push, retried on the export gate's own abort and reported plainly when the attempts run out. */
-const pushBranchOrTag = (...args: string[]): void => {
-  const result = pushWithRetry(() => tryGit("push", ...args), PUSH_ATTEMPTS);
-  if (!result.ok) {
-    fail(result.output);
   }
 };
 
@@ -204,28 +191,40 @@ if (dryRun) {
   process.exit(0);
 }
 
-// --- Settling the bead export -------------------------------------------------------------------
+// --- Refreshing the bead export ------------------------------------------------------------------
 
 /**
- * The export gate, run here on purpose, while nothing is at stake.
+ * The bead export, refreshed here on purpose, while nothing is at stake (ah-cgk).
  *
- * On main the gate commits a refreshed `.beads/issues.jsonl` and aborts the push that triggered it,
- * asking for another. That is deliberate and it is not the gate's fault: a pre-push hook cannot
- * amend refs git has already computed. But a release runs straight after bead work, so the export
- * is stale on essentially every release - and meeting that abort *after* the version commit is what
- * stranded v0.5.2 at a bumped manifest with no tag.
- *
- * Running it first turns that into a no-op: the refresh is committed and pushed before the bump, so
- * the release commit and its tag stay adjacent and the release's own push meets nothing.
+ * A release runs straight after bead work, so the export is stale on essentially every release.
+ * Refreshing and pushing it before the bump keeps the release commit and its tag adjacent to each
+ * other rather than to a `chore(beads)` commit made afterwards - and it means the release's own push
+ * below meets nothing unexpected, since nothing else pushes main between here and there.
  */
-const settled = settleExport(() => runGate(repoFile(".")));
-if ("problem" in settled) {
-  // Nothing has been written yet, so stopping here costs a rerun. Carrying on would meet the same
-  // gate after the bump, which is the failure this whole step exists to avoid.
-  fail(`${settled.problem}\nNothing was written. Settle .beads/issues.jsonl and release again.`);
-} else if (settled.action === "push") {
-  console.log("release: the bead export was stale; pushing the gate's refresh before the bump.");
-  pushBranchOrTag("origin", `HEAD:${branch}`);
+const exported = ((): ReturnType<typeof refreshBeadsExport> => {
+  try {
+    return refreshBeadsExport(repoFile("."));
+  } catch (error) {
+    return fail(
+      `the bead export could not be refreshed: ${error instanceof Error ? error.message : String(error)}\n` +
+        "Nothing was written. Settle .beads/issues.jsonl and release again."
+    );
+  }
+})();
+if (exported.kind === "refreshed") {
+  if (!exported.committed) {
+    fail(
+      "the bead export changed but could not be committed - a locked index or a rebase in progress.\n" +
+        "Nothing else was written. Resolve that and release again."
+    );
+  }
+  console.log("release: refreshed the bead export; pushing it before the bump.");
+  const pushed = tryGit("push", "origin", `HEAD:${branch}`);
+  if (!pushed.ok) {
+    fail(pushed.output);
+  }
+} else if (exported.kind === "skipped") {
+  console.log(`release: bead export skipped: ${exported.reason}.`);
 }
 
 // --- The bump ----------------------------------------------------------------------------------
@@ -246,9 +245,9 @@ for (const relative of MANIFESTS) {
 git("add", ...MANIFESTS);
 git("commit", "-m", `Release ${tag}`);
 
-// The SHA is pinned before either push runs, inside `finishRelease`: the export gate can commit a
-// refresh on top of HEAD while settling the branch push, and `git tag <name>` with no second
-// argument tags HEAD - which is how v0.5.3's tag ended up three commits above the release it names.
+// The SHA is pinned before either push runs, inside `finishRelease`: `git tag <name>` with no second
+// argument tags HEAD, and HEAD is not guaranteed to still be the release commit by the time the tag
+// is made.
 const finished = finishRelease(
   {
     headCommit: () => git("rev-parse", "HEAD"),
@@ -256,7 +255,7 @@ const finished = finishRelease(
     pushTag: () => tryGit("push", "origin", tag),
     createTag: (name, commit) => tryGit("tag", name, commit)
   },
-  { tag, branch, attempts: PUSH_ATTEMPTS }
+  { tag, branch }
 );
 
 if (!finished.ok) {
