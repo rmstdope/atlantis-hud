@@ -188,54 +188,12 @@ describe("core client tauri adapter contract", () => {
 });
 
 /**
- * Merging an ally's report, across the same boundary as everything else.
- *
- * The argument names are asserted literally rather than through a helper. Tauri's commands are
- * declared `rename_all = "snake_case"`, so a camelCase key does not fail loudly - it arrives as a
- * missing argument, and the command answers as though the caller meant nothing by it.
+ * Merging an ally's report, across the same boundary as everything else. The argument names
+ * themselves are pinned once, generically, in `tauriCommands.test.ts` — these tests are about the
+ * behaviour on top of that: absent values, and how a diagnostic's fields carry through.
  */
 describe("merging an allied report", () => {
   const DB = "/tmp/campaign.atlantis-game.sqlite";
-
-  const mergePayload = {
-    turn_number: 71,
-    merged_faction_id: "73",
-    merged_faction_name: "Borg",
-    merged_region_count: 3,
-    new_region_count: 2
-  };
-
-  /**
-   * The ruleset is what turns an unrecognised item name into a warning, so a mistyped key would
-   * deserialize as `None` on the Rust side without an error and quietly stop every item from being
-   * checked. Only the key names catch that.
-   */
-  it("asks tauri to validate with the argument names its command declares", async () => {
-    const calls: Array<{ command: string; args?: Record<string, unknown> }> = [];
-    const invoke: TauriInvoke = <T,>(command: string, args?: Record<string, unknown>) => {
-      calls.push({ command, args });
-      return Promise.resolve({ diagnostics: [] } as T);
-    };
-
-    await createCoreClient(createTauriAdapter(invoke)).validateOrders(
-      "@work",
-      "the ruleset its items are checked against",
-      "the report the orders were written for",
-      { disabledCodes: [] }
-    );
-
-    expect(calls).toEqual([
-      {
-        command: "validate_orders",
-        args: {
-          raw_orders: "@work",
-          ruleset_json: "the ruleset its items are checked against",
-          raw_report: "the report the orders were written for",
-          disabled_codes: []
-        }
-      }
-    ]);
-  });
 
   /**
    * Before a report is imported there is nothing to check the orders against, and the pane still
@@ -355,82 +313,6 @@ describe("merging an allied report", () => {
     expect(calls).toEqual(["order_commands"]);
   });
 
-  it("asks tauri to merge with the argument names its commands declare", async () => {
-    const calls: Array<{ command: string; args?: Record<string, unknown> }> = [];
-    const invoke: TauriInvoke = <T,>(command: string, args?: Record<string, unknown>) => {
-      calls.push({ command, args });
-      return Promise.resolve(mergePayload as T);
-    };
-
-    await createCoreClient(createTauriAdapter(invoke)).mergeReport(
-      DB,
-      "faction-95",
-      "95",
-      71,
-      "the ally's report",
-      "the ruleset it is classified against",
-      "2026-08-10T18:30:00Z"
-    );
-
-    expect(calls).toEqual([
-      {
-        command: "merge_report",
-        args: {
-          database_path: DB,
-          game_id: "faction-95",
-          viewer_faction_id: "95",
-          viewer_turn_number: 71,
-          raw_report: "the ally's report",
-          ruleset_json: "the ruleset it is classified against",
-          merged_at: "2026-08-10T18:30:00Z"
-        }
-      }
-    ]);
-  });
-
-  /**
-   * The same pinning for the import: a typo in the `ruleset_json` key would deserialize as `None`
-   * on the Rust side without an error, and every remembered unit would quietly go back to being an
-   * estimate. Only the key names catch that, so the key names are what this asserts.
-   */
-  it("asks tauri to commit an import with the argument names its commands declare", async () => {
-    const calls: Array<{ command: string; args?: Record<string, unknown> }> = [];
-    const invoke: TauriInvoke = <T,>(command: string, args?: Record<string, unknown>) => {
-      calls.push({ command, args });
-      return Promise.resolve({
-        exists: false,
-        raw_changed: false,
-        parsed_changed: false,
-        warnings_changed: false
-      } as T);
-    };
-
-    await createCoreClient(createTauriAdapter(invoke)).commitReportImport(
-      DB,
-      "faction-95",
-      "95",
-      "the turn's report",
-      "the ruleset it is classified against",
-      true,
-      "2026-08-10T18:30:00Z"
-    );
-
-    expect(calls).toEqual([
-      {
-        command: "commit_report_import",
-        args: {
-          database_path: DB,
-          game_id: "faction-95",
-          confirmed_faction_id: "95",
-          raw_report: "the turn's report",
-          ruleset_json: "the ruleset it is classified against",
-          allow_overwrite: true,
-          imported_at: "2026-08-10T18:30:00Z"
-        }
-      }
-    ]);
-  });
-
   it("asks tauri for merged reports by faction and turn", async () => {
     const calls: Array<{ command: string; args?: Record<string, unknown> }> = [];
     const invoke: TauriInvoke = <T,>(command: string, args?: Record<string, unknown>) => {
@@ -456,166 +338,13 @@ describe("merging an allied report", () => {
 });
 
 /**
- * Listing every turn imported for a game, across the same boundary as everything else.
- *
- * Same literal argument-name assertion as the suites above, and for the same reason: a camelCase
- * key does not fail loudly under `rename_all = "snake_case"`, it just arrives missing.
- */
-describe("listing imported turns", () => {
-  const DB = "/tmp/campaign.atlantis-game.sqlite";
-
-  it("asks tauri to list with the argument names its command declares", async () => {
-    const calls: Array<{ command: string; args?: Record<string, unknown> }> = [];
-    const invoke: TauriInvoke = <T,>(command: string, args?: Record<string, unknown>) => {
-      calls.push({ command, args });
-      return Promise.resolve([] as T);
-    };
-
-    await createCoreClient(createTauriAdapter(invoke)).listImportedTurns(DB, "faction-95");
-
-    expect(calls).toEqual([
-      {
-        command: "list_imported_turns",
-        args: {
-          database_path: DB,
-          game_id: "faction-95"
-        }
-      }
-    ]);
-  });
-});
-
-/**
- * Changing a game's ruleset after creation, across the same boundary as everything else.
- *
- * Same literal argument-name assertions as the merge suite above, and for the same reason: a
- * camelCase key does not fail loudly under `rename_all = "snake_case"`, it just arrives missing.
- */
-describe("changing a game's ruleset", () => {
-  it("asks tauri with the argument names its command declares", async () => {
-    const calls: Array<{ command: string; args?: Record<string, unknown> }> = [];
-    const invoke: TauriInvoke = <T,>(command: string, args?: Record<string, unknown>) => {
-      calls.push({ command, args });
-      return Promise.resolve({} as T);
-    };
-
-    await createCoreClient(createTauriAdapter(invoke)).setGameRuleset("faction-12", "magicdeep");
-
-    expect(calls).toEqual([
-      {
-        command: "set_game_ruleset",
-        args: { game_id: "faction-12", ruleset_id: "magicdeep" }
-      }
-    ]);
-  });
-});
-
-/** Renaming follows the same shape as changing the ruleset: one round trip. */
-describe("renaming a game", () => {
-  it("asks tauri with the argument names its command declares", async () => {
-    const calls: Array<{ command: string; args?: Record<string, unknown> }> = [];
-    const invoke: TauriInvoke = <T,>(command: string, args?: Record<string, unknown>) => {
-      calls.push({ command, args });
-      return Promise.resolve({} as T);
-    };
-
-    await createCoreClient(createTauriAdapter(invoke)).setGameName(
-      "faction-12",
-      "Binding of the North"
-    );
-
-    expect(calls).toEqual([
-      {
-        command: "set_game_name",
-        args: { game_id: "faction-12", game_name: "Binding of the North" }
-      }
-    ]);
-  });
-});
-
-/**
- * The map export crosses the wire as three strings and comes back as one, so the things worth
- * pinning are the argument names Tauri declares and the fact that neither adapter reshapes the
- * text. A typo in a key deserializes as a missing field on the Rust side, and the error that
- * follows would name the request rather than the key - which is why the keys are asserted here.
- */
-describe("map export", () => {
-  const REQUEST = {
-    level: 1,
-    fromX: 4,
-    fromY: 50,
-    toX: 8,
-    toY: 54,
-    content: { structures: true, units: false, advancedResources: false }
-  };
-  const EXPORTED = "; Map export from Atlantis HUD\n";
-
-  it("asks tauri to export with the argument names its command declares", async () => {
-    const calls: Array<{ command: string; args?: Record<string, unknown> }> = [];
-    const invoke: TauriInvoke = <T,>(command: string, args?: Record<string, unknown>) => {
-      calls.push({ command, args });
-      return Promise.resolve(EXPORTED as T);
-    };
-
-    const text = await createCoreClient(createTauriAdapter(invoke)).exportMap(
-      "the turn's report",
-      "[]",
-      REQUEST
-    );
-
-    expect(calls).toEqual([
-      {
-        command: "export_map",
-        args: {
-          raw_report: "the turn's report",
-          remembered_json: "[]",
-          request_json: JSON.stringify(REQUEST)
-        }
-      }
-    ]);
-    expect(text).toBe(EXPORTED);
-  });
-});
-
-/**
- * The known map crosses the wire as three strings, the same shape `export_map` does, so the thing
- * worth pinning is the argument names Tauri declares and that `null` passes through unchanged - a
- * `""` there would be a real ruleset to the Rust side, not "none given".
+ * The known map crosses the wire as three strings, the same shape `export_map` does. The argument
+ * names are pinned generically in `tauriCommands.test.ts`; what is worth pinning here is that
+ * `null` passes through unchanged - a `""` there would be a real ruleset to the Rust side, not
+ * "none given".
  */
 describe("known map", () => {
-  const REMEMBERED = [
-    {
-      region: aReportRegion({ coordinate: { x: 2, y: 2, z: 1 }, terrain: "plain", province: "Nowhere" }),
-      lastSeenTurn: 5
-    }
-  ];
   const ANSWER = { hexes: [], currentTurn: 6 };
-
-  it("asks tauri to resolve with the argument names its command declares", async () => {
-    const calls: Array<{ command: string; args?: Record<string, unknown> }> = [];
-    const invoke: TauriInvoke = <T,>(command: string, args?: Record<string, unknown>) => {
-      calls.push({ command, args });
-      return Promise.resolve(ANSWER as T);
-    };
-
-    const known = await createCoreClient(createTauriAdapter(invoke)).knownMap(
-      "the turn's report",
-      "{ruleset}",
-      REMEMBERED
-    );
-
-    expect(calls).toEqual([
-      {
-        command: "known_map",
-        args: {
-          raw_report: "the turn's report",
-          ruleset_json: "{ruleset}",
-          remembered_json: JSON.stringify(REMEMBERED)
-        }
-      }
-    ]);
-    expect(known).toEqual(ANSWER);
-  });
 
   it("passes a null ruleset through unchanged, never as an empty string", async () => {
     const calls: Array<{ command: string; args?: Record<string, unknown> }> = [];
