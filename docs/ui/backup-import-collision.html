@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ah-c0m — Importing a backup of a game that is already here</title>
+<style>
+  :root { --page:#10151c; --panel:#171e28; --raised:#1c2531; --edge:#2a3442; --ink:#d7dee8; --soft:#aab3c0; --dim:#8a94a3;
+          --brass:#c9a24b; --danger:#d9534f; }
+  body { background: var(--page); color: var(--ink); font: 14px/1.5 system-ui, sans-serif; margin: 0; padding: 24px 32px 64px; }
+  h1 { font-size: 20px; }
+  h2 { font-size: 16px; margin: 40px 0 6px; border-top: 1px solid var(--edge); padding-top: 20px; }
+  h3 { font-size: 14px; margin: 0 0 8px; }
+  p.note { color: var(--dim); max-width: 80ch; }
+  .row { display: flex; gap: 36px; flex-wrap: wrap; margin: 16px 0 8px; align-items: flex-start; }
+  .variant { width: 330px; }
+  .cost { color: var(--dim); font-size: 13px; margin: 8px 0 0; }
+  /* the header strip with the game chip, and the picker hanging off it */
+  .hdr { position: relative; height: 30px; background: var(--panel); border: 1px solid var(--edge); border-radius: 8px 8px 0 0;
+         display: flex; align-items: center; padding: 0 10px; font-size: 12px; gap: 12px; white-space: nowrap; }
+  .hdr .chip { color: var(--brass); border: 1px solid var(--brass); border-radius: 4px; padding: 0 6px; }
+  .hdr .dimtxt { color: var(--dim); }
+  .stage { position: relative; height: 330px; border: 1px solid var(--edge); border-top: 0; border-radius: 0 0 8px 8px;
+           background: repeating-linear-gradient(60deg, #0d222b 0 22px, #0f2833 22px 44px); }
+  .picker { position: absolute; left: 8px; top: 4px; width: 288px; box-sizing: border-box; background: var(--raised);
+            border: 1px solid var(--edge); border-radius: 4px; padding: 8px; font-size: 11.5px; box-shadow: 0 8px 24px #0008; }
+  .tabs { display: flex; gap: 4px; margin-bottom: 6px; }
+  .tab { border: 1px solid var(--edge); border-radius: 4px; padding: 1px 8px; color: var(--dim); background: var(--raised); }
+  .tab.on { border-color: var(--brass); color: var(--brass); background: var(--panel); }
+  dl { margin: 0; display: flex; flex-direction: column; gap: 4px; }
+  dl div { display: flex; justify-content: space-between; }
+  dt { color: var(--soft); } dd { margin: 0; }
+  .sep { border-top: 1px solid var(--edge); margin-top: 8px; padding-top: 8px; }
+  .btn { display: block; width: 100%; box-sizing: border-box; text-align: left; border: 1px solid var(--edge); background: var(--panel);
+         color: var(--brass); border-radius: 4px; padding: 4px 8px; margin-top: 6px; }
+  .btn:first-child { margin-top: 0; }
+  .btn.dis { opacity: .5; }
+  .small { color: var(--soft); margin: 6px 0 0; }
+  .confirm { margin-top: 6px; border: 1px solid rgba(217,83,79,.4); border-radius: 4px; padding: 6px; }
+  .confirm.neutral { border-color: var(--edge); }
+  .confirm p { margin: 0; color: var(--soft); }
+  .acts { display: flex; justify-content: flex-end; gap: 6px; margin-top: 6px; }
+  .acts span { border: 1px solid var(--edge); border-radius: 4px; padding: 2px 8px; color: var(--ink); }
+  .acts span.danger { border-color: var(--danger); color: var(--danger); }
+  .acts span.brass { border-color: var(--brass); color: var(--brass); }
+  .err { color: var(--danger); margin: 6px 0 0; }
+  ul.games { list-style: none; margin: 0; padding: 0; }
+  ul.games li { padding: 4px 6px; border-radius: 3px; }
+  ul.games li.cur { color: var(--brass); }
+  .toast { position: absolute; left: 8px; bottom: 8px; background: var(--raised); border: 1px solid var(--edge); border-radius: 4px;
+           padding: 4px 8px; font-size: 11.5px; color: var(--soft); }
+  kbd { background: var(--panel); border: 1px solid var(--edge); border-radius: 4px; padding: 0 5px; font-size: 12px; }
+</style>
+</head>
+<body>
+<h1>ah-c0m — Importing a backup of a game that is already here</h1>
+<p class="note">Today: <em>Import game backup…</em> reads the file, and if a game with the backup's id already exists the core refuses and the picker shows
+<span style="color:var(--danger)">could not import Backup game.atlantis-hud-game.json: game already exists: 3f1c…</span>. That is what
+verification hit. The question is what import should do instead when the game is already here. Everything below is the picker's
+<em>This game</em> tab, opened from the header chip, after the player has picked the file. Nothing changes when the id is <em>not</em> already
+here — the game is imported and opened, as today.</p>
+
+<div class="row">
+
+<div class="variant">
+<h3>A — Always import as a new game; no question</h3>
+<div class="hdr"><span class="chip">Backup game ▾</span><span class="dimtxt">Faction 12 · Turn 71</span></div>
+<div class="stage">
+  <div class="picker">
+    <div class="tabs"><span class="tab">Games</span><span class="tab on">This game</span></div>
+    <ul class="games">
+      <li class="cur">● Backup game (imported)</li>
+      <li>○ Backup game</li>
+      <li>○ Northmarch</li>
+    </ul>
+    <p class="small" style="margin-top:8px">The <em>Games</em> tab a moment after import: the file has become a second game and been opened.</p>
+  </div>
+</div>
+<p class="cost">Import never fails on a collision. The backup becomes a new game with a fresh id, named “<em>&lt;name&gt; (imported)</em>” only when a
+game of that name already exists, and it opens. Cost: nothing is ever replaced — restoring an earlier state means importing, then deleting the old
+one by hand; and the player is not told anything happened besides the picker closing.</p>
+</div>
+
+<div class="variant">
+<h3>B — Ask: replace it, or keep both <span style="color:var(--brass)">(chosen)</span></h3>
+<div class="hdr"><span class="chip">Backup game ▾</span><span class="dimtxt">Faction 12 · Turn 71</span></div>
+<div class="stage">
+  <div class="picker">
+    <div class="tabs"><span class="tab">Games</span><span class="tab on">This game</span></div>
+    <dl><div><dt>Name</dt><dd>Backup game</dd></div><div><dt>Ruleset</dt><dd>atlantis-v5</dd></div></dl>
+    <div class="sep">
+      <span class="btn dis">Export game backup…</span>
+      <span class="btn dis">Import game backup…</span>
+      <div class="confirm">
+        <p>“Backup game” is already here. Replace it with the backup, or import the backup as a second game?</p>
+        <p style="margin-top:4px">Replacing erases its current turns, orders and remembered map.</p>
+        <div class="acts"><span class="danger">Replace</span><span class="brass">Keep both</span><span>Cancel</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+<p class="cost">The collision becomes a question, inline, in the same shape as the delete confirmation. <em>Replace</em> deletes the existing game and
+imports (the open game closes and the imported one opens in its place); <em>Keep both</em> is variant A's copy; <em>Cancel</em> writes nothing.
+Cost: one more inline dialog to build and test, and three buttons of wording to get right.</p>
+</div>
+
+<div class="variant">
+<h3>C — Replace, after a confirmation</h3>
+<div class="hdr"><span class="chip">Backup game ▾</span><span class="dimtxt">Faction 12 · Turn 71</span></div>
+<div class="stage">
+  <div class="picker">
+    <div class="tabs"><span class="tab">Games</span><span class="tab on">This game</span></div>
+    <dl><div><dt>Name</dt><dd>Backup game</dd></div><div><dt>Ruleset</dt><dd>atlantis-v5</dd></div></dl>
+    <div class="sep">
+      <span class="btn dis">Export game backup…</span>
+      <span class="btn dis">Import game backup…</span>
+      <div class="confirm">
+        <p>Replace “Backup game” with this backup? Its current turns, orders and remembered map are erased.</p>
+        <div class="acts"><span class="danger">Replace</span><span>Cancel</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+<p class="cost">A backup of a game you still have is treated as a restore point: the only offer is to roll the game back to it. Cost: no way to keep
+both — comparing the backup with the live game means restoring it somewhere else first.</p>
+</div>
+
+</div>
+
+<h2>What was decided (2026-08-16)</h2>
+<p class="note">B was chosen over A (never asks) and C (replace only). The confirmation ships with exactly the words drawn: line 1
+“<em>“&lt;name&gt;” is already here. Replace it with the backup, or import the backup as a second game?</em>”, line 2
+“<em>Replacing erases its current turns, orders and remembered map.</em>”, buttons <em>Replace</em> / <em>Keep both</em> / <em>Cancel</em>.
+<em>Keep both</em> imports under a fresh id and is always named “<em>&lt;name&gt; (imported)</em>”. Replacing the open game closes the picker and
+opens the imported game in its place, discarding unsaved order text (as delete does); replacing another game likewise opens the imported one.
+Cancel drops the file and leaves the picker on <em>This game</em> with focus back on <em>Import game backup…</em>; Esc closes the picker; focus
+lands on <em>Cancel</em> when the confirmation appears. Small print under the buttons becomes “<em>Import creates a new game; if it is already
+here you are asked whether to replace it.</em>”. Separately, the exported file is now named “<em>&lt;game name&gt;.atlantis-hud-game.json</em>”
+instead of by the game's UUID.</p>
+<h2>The states around B</h2>
+<div class="row">
+
+<div class="variant">
+<h3>S1 — Replacing the game that is open</h3>
+<div class="hdr"><span class="chip">Backup game ▾</span><span class="dimtxt">Faction 12 · Turn 68</span></div>
+<div class="stage">
+  <div class="toast">After <em>Replace</em>: the picker closes and the workspace shows the imported game — here turn 68, the backup's newest turn. Any
+  unsaved order text in the game that was replaced is discarded, not written into the new one (same rule as delete).</div>
+</div>
+<p class="cost">The open game is the common case: the picker's <em>This game</em> tab is where the button lives. Replacing some <em>other</em> game (a
+backup of Northmarch while Backup game is open) closes the picker and opens the imported Northmarch, like any import.</p>
+</div>
+
+<div class="variant">
+<h3>S2 — The file is not a backup at all</h3>
+<div class="hdr"><span class="chip">Backup game ▾</span><span class="dimtxt">Faction 12 · Turn 71</span></div>
+<div class="stage">
+  <div class="picker">
+    <div class="tabs"><span class="tab">Games</span><span class="tab on">This game</span></div>
+    <dl><div><dt>Name</dt><dd>Backup game</dd></div><div><dt>Ruleset</dt><dd>atlantis-v5</dd></div></dl>
+    <div class="sep">
+      <span class="btn">Export game backup…</span>
+      <span class="btn">Import game backup…</span>
+      <p class="small">Import creates a new game; if it is already here you are asked whether to replace it.</p>
+    </div>
+    <p class="err">could not import report-71.json: backup file is not an Atlantis HUD game export</p>
+  </div>
+</div>
+<p class="cost">Unchanged from today: the core's own message, prefixed with the file name, in the picker's error line. Only the small print under the
+buttons changes, to say what now happens on a collision. Escape or clicking outside still closes the picker.</p>
+</div>
+
+<div class="variant">
+<h3>S3 — Escape / Cancel on the confirmation</h3>
+<div class="hdr"><span class="chip">Backup game ▾</span><span class="dimtxt">Faction 12 · Turn 71</span></div>
+<div class="stage">
+  <div class="picker">
+    <div class="tabs"><span class="tab">Games</span><span class="tab on">This game</span></div>
+    <dl><div><dt>Name</dt><dd>Backup game</dd></div><div><dt>Ruleset</dt><dd>atlantis-v5</dd></div></dl>
+    <div class="sep">
+      <span class="btn">Export game backup…</span>
+      <span class="btn">Import game backup…</span>
+      <p class="small">Import creates a new game; if it is already here you are asked whether to replace it.</p>
+    </div>
+  </div>
+</div>
+<p class="cost"><em>Cancel</em> drops the confirmation and the file, and leaves the picker open on the same tab; <kbd>Esc</kbd> closes the whole picker
+as it does today, which also drops the file. Nothing was read into any game. Focus: on <em>Cancel</em> when the confirmation appears (so a
+stray <kbd>Enter</kbd> does not replace), back on <em>Import game backup…</em> after Cancel.</p>
+</div>
+
+</div>
+</body>
+</html>
