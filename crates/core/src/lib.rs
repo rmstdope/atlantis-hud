@@ -15,6 +15,7 @@ use serde::{Deserialize, Serialize};
 /// were both called `GameInfo` until games became a first-class thing the player names and picks
 /// between, at which point one name for two unrelated ideas stopped being tolerable.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct EngineInfo {
     /// Stable identifier used by platform adapters and clients.
@@ -40,6 +41,7 @@ pub fn engine_info() -> EngineInfo {
 
 /// Severity for order validation diagnostics.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "lowercase")]
 pub enum OrderDiagnosticSeverity {
     #[serde(alias = "Warning")]
@@ -56,6 +58,7 @@ pub enum OrderDiagnosticSeverity {
 /// with a plausible value - line 0, or the first unit in the region - would send the player to a
 /// place where nothing is wrong.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct OrderDiagnostic {
     pub code: String,
@@ -87,6 +90,7 @@ pub struct OrderDiagnostic {
 
 /// Validation result for one draft of Atlantis orders.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub struct OrderValidationResult {
     pub diagnostics: Vec<OrderDiagnostic>,
 }
@@ -126,6 +130,7 @@ pub use orders::{order_commands, validate_orders, validate_turn};
 
 /// Severity level emitted by the tolerant report parser.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "lowercase")]
 pub enum WarningSeverity {
     #[serde(alias = "Warning")]
@@ -136,6 +141,7 @@ pub enum WarningSeverity {
 
 /// Structured warning emitted while parsing a report.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct ParseWarning {
     pub code: String,
@@ -150,6 +156,7 @@ pub struct ParseWarning {
 
 /// Canonical turn header extracted from a report.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct TurnHeader {
     #[serde(alias = "turn_number")]
@@ -159,6 +166,7 @@ pub struct TurnHeader {
 
 /// Faction identity candidate extracted from a report.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct FactionInfo {
     #[serde(alias = "faction_id")]
@@ -168,6 +176,7 @@ pub struct FactionInfo {
 
 /// Region summary extracted from a report.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct RegionSummary {
     #[serde(alias = "region_id")]
@@ -177,6 +186,7 @@ pub struct RegionSummary {
 
 /// Unit summary extracted from a report.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct UnitSummary {
     #[serde(alias = "unit_id")]
@@ -188,6 +198,7 @@ pub struct UnitSummary {
 
 /// Inventory item extracted from a report.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct InventoryItem {
     #[serde(alias = "unit_id")]
@@ -198,6 +209,7 @@ pub struct InventoryItem {
 
 /// Parsed order or message summary from a report.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct MessageSummary {
     pub kind: String,
@@ -207,6 +219,7 @@ pub struct MessageSummary {
 
 /// Tolerant parser output for one report.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct ReportParseResult {
     #[serde(alias = "turn_header")]
@@ -236,6 +249,15 @@ impl ReportParseResult {
 /// core-tauri and core-wasm — the two used to disagree on casing (ah-164.1). Deserializable so a
 /// shell can hydrate a stored `ReportParseResult` blob and hand it back in this shape.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(
+        export,
+        rename = "ReportParseResult",
+        export_to = "ReportParseResult.ts"
+    )
+)]
 #[serde(rename_all = "camelCase")]
 pub struct ReportParseResultWire {
     #[serde(flatten)]

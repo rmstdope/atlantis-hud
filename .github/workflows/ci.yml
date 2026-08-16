@@ -250,6 +250,14 @@ jobs:
       - name: Rust tests
         run: cargo test --workspace
 
+      - name: Generated TypeScript bindings are committed
+        run: |
+          if [ -n "$(git status --porcelain -- packages/core-client/src/generated)" ]; then
+            git status --porcelain -- packages/core-client/src/generated
+            echo "::error::cargo test rewrote packages/core-client/src/generated; commit the result"
+            exit 1
+          fi
+
   # One job per Playwright project and shard, because the suite is deliberately single-worker. Two
   # of its tests measure how long the main thread is blocked, and anything running beside them
   # turns that into a measurement of contention - so parallelism is bought here, where each runner

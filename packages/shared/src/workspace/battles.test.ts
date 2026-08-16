@@ -33,6 +33,7 @@ function battle(overrides: Partial<Battle> = {}): Battle {
     spoils: "3 magic crossbows [MXBO], 2 battle axes [BAXE]",
     lineStart: 10,
     lineEnd: 200,
+    assassination: false,
     ...overrides
   };
 }

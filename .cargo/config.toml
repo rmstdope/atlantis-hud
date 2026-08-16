@@ -18,3 +18,11 @@
 # CI and a plain clone are unaffected.
 [build]
 target-dir = "target"
+
+# ts-rs (crates/core, ah-164.2) writes the TypeScript bindings during `cargo test`. `relative = true`
+# makes cargo resolve the path against the directory holding this file — the repository root, or a
+# worktree's own root, since the file is tracked and cargo takes the nearest one. Large integers cross
+# as JSON numbers, so they are `number` in TypeScript, not `bigint`.
+[env]
+TS_RS_EXPORT_DIR = { value = "packages/core-client/src/generated", relative = true }
+TS_RS_LARGE_INT = "number"
