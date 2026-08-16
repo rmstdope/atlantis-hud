@@ -90,6 +90,16 @@ export type ItemReference = Record<string, ItemEntry>;
  * skill and another as an item - FISH is fishing and also fish, HERB is herb lore and also herbs -
  * so one map would have each pair overwrite the other.
  */
+/** One thing a cast consumes: an item tag and how many, silver being `SILV`. */
+export type CastInput = { tag: string; amount: number };
+
+/**
+ * What CASTing the skill consumes, as the data page states it: `costs`, each taken once per cast
+ * (an input with no number is one), and for transmutation the output tag -> source tag it turns
+ * into. `null` when the page states no cost - most spells.
+ */
+export type CastCost = { costs: CastInput[]; transmute: Record<string, string> };
+
 export type SkillEntry = {
   tag: string;
   name: string;
@@ -102,6 +112,8 @@ export type SkillEntry = {
   cost: number | null;
   /** The highest level the page gives the skill an entry for. */
   maxLevel: number;
+  /** What CASTing this skill consumes, or null for the (large majority) that state no cost. */
+  cast: CastCost | null;
 };
 
 export type SkillReference = Record<string, SkillEntry>;
@@ -298,11 +310,81 @@ const SKILL_OPENING = /^([^.:[\]]{1,40}) \[([A-Z0-9]{2,6})\] (\d+): /;
 const STUDY_COST = /This skill costs (\d+) silver per month of study/i;
 
 /**
+ * "via magic at a cost of 600 silver [SILV]." / "... of sword [SWOR]." / "... of 75 floater
+ * hides [FLOA] and 75 ironwood [IRWD]." Stops at the first period: the sentence continues "To use
+ * this spell ...", and no input name in the fixture carries a dot of its own.
+ */
+const CAST_COST = /via magic at a cost of ([^.]+)\./i;
+/** One input inside the list `CAST_COST` captures: an optional number, a name, the tag. */
+const CAST_INPUT = /^(?:(\d+) )?[a-z][a-z ]* \[([A-Z0-9]{2,6})\]$/i;
+/** "the attempt costs 1000 silver." (Construct Gate) */
+const ATTEMPT_COST = /the attempt costs (\d+) silver/i;
+/** "2 stone [STON] times the skill level into rootstone [ROOT]" - the source and what it becomes. */
+const TRANSMUTE = /\d+ [a-z ]+ \[([A-Z0-9]{2,6})\] times the skill level into [a-z ]+ \[([A-Z0-9]{2,6})\]/gi;
+
+/**
+ * Reads what a single level's paragraph says CASTing the skill consumes, or `null` when it says
+ * nothing - true of most spells (summons, lores, combat effects state no cost at all).
+ *
+ * An input inside the `CAST_COST` list that does not match `CAST_INPUT` throws rather than being
+ * silently dropped: the page has changed shape, and a cost quietly missing is exactly the failure
+ * this catalogue exists to prevent - see `RulesetScrapeError`.
+ */
+function readCastCost(tag: string, paragraph: string): CastCost | null {
+  const costs: CastInput[] = [];
+
+  const costMatch = paragraph.match(CAST_COST);
+  if (costMatch) {
+    for (const part of costMatch[1].split(" and ")) {
+      const inputMatch = part.trim().match(CAST_INPUT);
+      if (!inputMatch) {
+        throw new RulesetScrapeError(
+          `could not read the casting cost of skill ${tag}: "${part.trim()}" in "${costMatch[0]}"`
+        );
+      }
+      const [, amount, inputTag] = inputMatch;
+      costs.push({ tag: inputTag, amount: amount === undefined ? 1 : Number.parseInt(amount, 10) });
+    }
+  }
+
+  const attemptCost = readNumber(paragraph, ATTEMPT_COST);
+  if (attemptCost !== null) {
+    costs.push({ tag: "SILV", amount: attemptCost });
+  }
+
+  const transmute: Record<string, string> = {};
+  for (const match of paragraph.matchAll(TRANSMUTE)) {
+    const [, source, output] = match;
+    transmute[output] = source;
+  }
+
+  if (costs.length === 0 && Object.keys(transmute).length === 0) {
+    return null;
+  }
+  return { costs, transmute };
+}
+
+/** Unions two `CastCost`s across levels: `costs` from whichever level states them, `transmute` merged. */
+function mergeCast(existing: CastCost | null | undefined, found: CastCost | null): CastCost | null {
+  if (!existing) {
+    return found;
+  }
+  if (!found) {
+    return existing;
+  }
+  return {
+    costs: existing.costs.length > 0 ? existing.costs : found.costs,
+    transmute: { ...existing.transmute, ...found.transmute }
+  };
+}
+
+/**
  * Reads the skill catalogue out of the same data page the items come from.
  *
- * A skill has five entries, one per level, and only the first states the cost - so the entries are
- * folded together by tag: the cost from whichever level states it, the name from the lowest, and
- * the level from the highest.
+ * A skill has five entries, one per level, and only the first states the study cost - so the
+ * entries are folded together by tag: the cost from whichever level states it, the name from the
+ * lowest, the level from the highest, and the casting cost unioned across every level that states
+ * one (Summon Wind's is on level 3, Transmutation adds outputs on levels 2 and 3).
  */
 export function parseSkillReference(html: string): SkillReference {
   const skills: SkillReference = {};
@@ -323,7 +405,8 @@ export function parseSkillReference(html: string): SkillReference {
       // Kept once found. Levels above the first say nothing about cost, and letting a later entry
       // write null over a figure the page did give would lose every cost in the catalogue.
       cost: existing?.cost ?? stated,
-      maxLevel: Math.max(existing?.maxLevel ?? 0, Number.parseInt(level, 10))
+      maxLevel: Math.max(existing?.maxLevel ?? 0, Number.parseInt(level, 10)),
+      cast: mergeCast(existing?.cast, readCastCost(tag, paragraph))
     };
   }
 
