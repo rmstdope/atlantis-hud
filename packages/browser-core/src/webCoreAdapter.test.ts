@@ -106,7 +106,6 @@ function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
           parsedPayloadJson: `parsed:${raw}`,
           warningsPayloadJson: "[]"
         },
-        regionSightings: [],
         parseResult: { ...EMPTY_PARSE_RESULT, raw },
         rejection: !hasTurn
           ? "parsed report did not meet minimum import threshold"
@@ -115,6 +114,16 @@ function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
             : "confirmed faction does not exist in parsed report candidates"
       };
     },
+    // Echoes rather than decides: the adapter must hand the stored stamp and the seen hexes
+    // across and write back what returns. The rules themselves are the core's, tested in Rust and
+    // against the real module in reportImport.wasm.test.ts.
+    report_import_writes_state: (
+      _raw: string,
+      _rulesetJson: string | null,
+      existingImportedAt: string | null,
+      _seenJson: string,
+      at: string
+    ) => ({ importedAt: existingImportedAt ?? at, updatedAt: at, regionSightings: [] }),
     diff_imported_turn_state: (existing: unknown, candidate: unknown) => {
       const stored = existing as StoredTurnSnapshot | null;
       const next = candidate as StoredTurnSnapshot;
@@ -312,6 +321,22 @@ describe("web core adapter", () => {
           seen.push(rulesetJson);
           return fakeWasm().prepare_report_import_state(raw, "17", rulesetJson);
         },
+        report_import_writes_state: (
+          raw: string,
+          rulesetJson: string | null,
+          existingImportedAt: string | null,
+          seenJson: string,
+          at: string
+        ) => {
+          seen.push(rulesetJson);
+          return fakeWasm().report_import_writes_state(
+            raw,
+            rulesetJson,
+            existingImportedAt,
+            seenJson,
+            at
+          );
+        },
         prepare_report_merge_state: (
           raw: string,
           viewerTurnNumber: number,
@@ -333,7 +358,43 @@ describe("web core adapter", () => {
     await adapter.commitReportImport(DB, "p", "17", REPORT, '{"items":{}}', false, IMPORTED_AT);
     await adapter.mergeReport(DB, "p", "95", 12, "MERGE: 73 12 1:1,1", '{"items":{}}', NOW);
 
-    expect(seen).toEqual(['{"items":{}}', '{"items":{}}']);
+    expect(seen).toEqual(['{"items":{}}', '{"items":{}}', '{"items":{}}']);
+  });
+
+  it("hands the stored stamp and the seen hexes to the core, and writes back what it returns", async () => {
+    const seenArgs: Array<{ existingImportedAt: string | null; seenJson: string }> = [];
+    const adapter = createWebCoreAdapter(
+      fakeWasm({
+        report_import_writes_state: (
+          _raw: string,
+          _rulesetJson: string | null,
+          existingImportedAt: string | null,
+          seenJson: string,
+          _at: string
+        ) => {
+          seenArgs.push({ existingImportedAt, seenJson });
+          return {
+            importedAt: "core-says-imported",
+            updatedAt: "core-says-updated",
+            regionSightings: [{ regionId: "1:1,1", lastSeenTurn: 12, payloadJson: "{}" }]
+          };
+        }
+      }),
+      createMemoryWebStore()
+    );
+
+    await adapter.commitReportImport(DB, "p", "17", REPORT, null, false, IMPORTED_AT);
+
+    const listed = (await adapter.listImportedTurns(DB, "p")) as ImportedTurnSummary[];
+    expect(listed[0]?.importedAt).toBe("core-says-imported");
+    expect(listed[0]?.updatedAt).toBe("core-says-updated");
+
+    await adapter.commitReportImport(DB, "p", "17", REPORT, null, true, NOW);
+
+    expect(seenArgs[1]?.existingImportedAt).toBe("core-says-imported");
+    expect(JSON.parse(seenArgs[1]?.seenJson ?? "[]")).toEqual([
+      { regionId: "1:1,1", lastSeenTurn: 12 }
+    ]);
   });
 
   it("reports no conflict when the turn has never been imported", async () => {
@@ -963,13 +1024,23 @@ describe("remembering the map across turns", () => {
         parsedPayloadJson: `parsed:${raw}`,
         warningsPayloadJson: "[]"
       },
+      parseResult: { ...EMPTY_PARSE_RESULT, raw },
+      rejection: null
+    }),
+    report_import_writes_state: (
+      _raw: string,
+      _rulesetJson: string | null,
+      existingImportedAt: string | null,
+      _seenJson: string,
+      at: string
+    ) => ({
+      importedAt: existingImportedAt ?? at,
+      updatedAt: at,
       regionSightings: regions.map((region) => ({
         regionId: region.regionId,
         lastSeenTurn: 12,
         payloadJson: JSON.stringify({ ...region, exits: [] })
-      })),
-      parseResult: { ...EMPTY_PARSE_RESULT, raw },
-      rejection: null
+      }))
     })
   });
 
@@ -1035,15 +1106,25 @@ describe("remembering the map across turns", () => {
             parsedPayloadJson: `parsed:${raw}`,
             warningsPayloadJson: "[]"
           },
+          parseResult: { ...EMPTY_PARSE_RESULT, raw },
+          rejection: null
+        }),
+        report_import_writes_state: (
+          _raw: string,
+          _rulesetJson: string | null,
+          existingImportedAt: string | null,
+          _seenJson: string,
+          at: string
+        ) => ({
+          importedAt: existingImportedAt ?? at,
+          updatedAt: at,
           regionSightings: [
             {
               regionId: "1:1,1",
               lastSeenTurn: 12,
               payloadJson: JSON.stringify({ regionId: "1:1,1", terrain, exits: [] })
             }
-          ],
-          parseResult: { ...EMPTY_PARSE_RESULT, raw },
-          rejection: null
+          ]
         })
       }),
       store

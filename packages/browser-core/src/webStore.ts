@@ -67,6 +67,9 @@ export type StoredRegionSighting = {
   payloadJson: string;
 };
 
+// The store keeps the latest row it was given per hex; which row that should be is the core's
+// call (`import_writes` for an import, `merge_report_into_sightings` for a merge).
+
 /**
  * One allied report folded into a faction's map for one turn.
  *
@@ -167,25 +170,6 @@ function promisify<T>(request: IDBRequest<T>): Promise<T> {
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error ?? new Error("indexeddb request failed"));
   });
-}
-
-/**
- * Whether an incoming account of a hex may replace the one already stored.
- *
- * The rule SQLite has always enforced in `upsert_region_sightings`, spelled the same way here:
- * `WHERE excluded.last_seen_turn >= region_sightings.last_seen_turn`. Without it the browser's map
- * walks backwards - importing an older report writes its older account of a hex over a newer one,
- * silently, because there is nothing about that write that can fail. Importing a run of old
- * reports is exactly what a batch import is for, so the two stores have to agree.
- *
- * The same turn replaces itself, which is what makes re-importing a turn refresh it rather than
- * refuse. A hex nothing is stored for is always new ground.
- */
-function supersedes(
-  incoming: StoredRegionSighting,
-  existing: StoredRegionSighting | undefined
-): boolean {
-  return existing === undefined || incoming.lastSeenTurn >= existing.lastSeenTurn;
 }
 
 function settle(transaction: IDBTransaction): Promise<void> {
@@ -403,27 +387,9 @@ export function createIndexedDbWebStore(): WebStore {
       const transaction = database.transaction(REGION_SIGHTING_STORE, "readwrite");
       const store = transaction.objectStore(REGION_SIGHTING_STORE);
 
-      // What is already known, read once rather than per hex.
-      //
-      // A `get` inside the write loop would be legal - the await resumes inside the request's own
-      // success event, so the transaction is still live - but it is legal by a rule nobody reading
-      // the loop can see: one non-IndexedDB await added later (a fetch, a timer) deactivates the
-      // transaction and every remaining `put` throws. It is also a round trip per hex, and a report
-      // is thousands of hexes. Read first, decide with no awaits between the writes.
-      // Keyed the way the store is, with a separator neither part can contain: a faction id is
-      // digits and a region id is `level:x,y`.
-      const known = new Map<string, StoredRegionSighting>();
-      for (const stored of await promisify<StoredRegionSighting[]>(
-        store.getAll() as IDBRequest<StoredRegionSighting[]>
-      )) {
-        known.set(`${stored.factionId}|${stored.regionId}`, stored);
-      }
-
       try {
         for (const sighting of sightings) {
-          if (supersedes(sighting, known.get(`${sighting.factionId}|${sighting.regionId}`))) {
-            store.put(sighting);
-          }
+          store.put(sighting);
         }
       } catch (error) {
         // Abandoned whole rather than left half written, which is what the one-transaction comment
@@ -534,9 +500,7 @@ export function createMemoryWebStore(): WebStore {
           sighting.factionId,
           sighting.regionId
         ]);
-        if (supersedes(sighting, sightings.get(key))) {
-          sightings.set(key, sighting);
-        }
+        sightings.set(key, sighting);
       }
     },
     async getRegionSightings(databasePath, _gameId, factionId) {

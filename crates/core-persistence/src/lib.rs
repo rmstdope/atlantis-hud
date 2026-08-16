@@ -99,6 +99,13 @@ pub struct ImportedTurnSummary {
     pub updated_at: String,
 }
 
+/// The stamps of one imported turn, or `None` when it was never imported.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ImportedTurnStamps {
+    pub imported_at: String,
+    pub updated_at: String,
+}
+
 /// Persisted imported turn payload.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ImportedTurnRecord {
@@ -768,14 +775,15 @@ fn borrow_snapshot(record: &ImportedTurnRecord) -> ImportedTurnSnapshotRef<'_> {
 
 /// Inserts or updates one imported turn payload.
 ///
-/// `at` is the caller's clock, in the same ISO-8601 form `OrderDraftRecord.updated_at` carries.
-/// This crate reads no clock of its own: both platforms then agree on the format, which is what
-/// lets a game's turns be ranked against its drafts at all. Re-importing moves `updated_at` and
-/// leaves `imported_at` where it was, because when a turn first arrived does not change.
+/// `imported_at` and `updated_at` are the caller's clock readings, in the same ISO-8601 form
+/// `OrderDraftRecord.updated_at` carries. This crate reads no clock of its own and keeps neither
+/// stamp back: which one a re-import keeps is decided once, in the core's `import_writes`, not
+/// here - the store writes exactly the two stamps it is given.
 pub fn upsert_imported_turn(
     database_path: &Path,
     record: &ImportedTurnRecord,
-    at: &str,
+    imported_at: &str,
+    updated_at: &str,
 ) -> Result<(), PersistenceError> {
     if !database_path.exists() {
         return Err(PersistenceError::DatabaseFileMissing(
@@ -795,11 +803,12 @@ pub fn upsert_imported_turn(
             warnings_payload_json,
             imported_at,
             updated_at
-         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
          ON CONFLICT(game_id, faction_id, turn_number) DO UPDATE SET
             raw_report = excluded.raw_report,
             parsed_payload_json = excluded.parsed_payload_json,
             warnings_payload_json = excluded.warnings_payload_json,
+            imported_at = excluded.imported_at,
             updated_at = excluded.updated_at",
         params![
             record.key.game_id.as_str(),
@@ -808,7 +817,8 @@ pub fn upsert_imported_turn(
             record.raw_report.as_str(),
             record.parsed_payload_json.as_str(),
             record.warnings_payload_json.as_str(),
-            at,
+            imported_at,
+            updated_at,
         ],
     )?;
     Ok(())
@@ -816,11 +826,13 @@ pub fn upsert_imported_turn(
 
 /// Inserts one imported turn payload and fails if the key already exists.
 ///
-/// `at` is the caller's clock, for the reason given on [`upsert_imported_turn`].
+/// `imported_at` and `updated_at` are the caller's clock readings, for the reason given on
+/// [`upsert_imported_turn`].
 pub fn insert_imported_turn(
     database_path: &Path,
     record: &ImportedTurnRecord,
-    at: &str,
+    imported_at: &str,
+    updated_at: &str,
 ) -> Result<(), PersistenceError> {
     if !database_path.exists() {
         return Err(PersistenceError::DatabaseFileMissing(
@@ -840,7 +852,7 @@ pub fn insert_imported_turn(
             warnings_payload_json,
             imported_at,
             updated_at
-         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)",
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
         params![
             record.key.game_id.as_str(),
             record.key.faction_id.as_str(),
@@ -848,7 +860,8 @@ pub fn insert_imported_turn(
             record.raw_report.as_str(),
             record.parsed_payload_json.as_str(),
             record.warnings_payload_json.as_str(),
-            at,
+            imported_at,
+            updated_at,
         ],
     );
     match insert_result {
@@ -880,6 +893,40 @@ pub fn load_imported_turn(
     let mut connection = open_database(database_path)?;
     apply_migrations(&mut connection)?;
     load_imported_turn_from_connection(&connection, key)
+}
+
+/// The stamps of one imported turn, or `None` when it was never imported.
+pub fn load_imported_turn_stamps(
+    database_path: &Path,
+    key: &ImportedTurnKey,
+) -> Result<Option<ImportedTurnStamps>, PersistenceError> {
+    if !database_path.exists() {
+        return Err(PersistenceError::DatabaseFileMissing(
+            database_path.to_string_lossy().to_string(),
+        ));
+    }
+
+    let mut connection = open_database(database_path)?;
+    apply_migrations(&mut connection)?;
+    connection
+        .query_row(
+            "SELECT imported_at, updated_at
+                FROM imported_turns
+                WHERE game_id = ?1 AND faction_id = ?2 AND turn_number = ?3",
+            params![
+                key.game_id.as_str(),
+                key.faction_id.as_str(),
+                key.turn_number
+            ],
+            |row| {
+                Ok(ImportedTurnStamps {
+                    imported_at: row.get::<_, String>(0)?,
+                    updated_at: row.get::<_, String>(1)?,
+                })
+            },
+        )
+        .optional()
+        .map_err(PersistenceError::from)
 }
 
 /// The turn in this game the player worked on most recently, if there is one.
@@ -1198,8 +1245,9 @@ fn load_imported_turn_from_connection(
 
 /// Records regions seen in one turn, keeping the most recent sighting of each.
 ///
-/// A region already stored from a later turn is left alone, so importing an older report cannot
-/// make the map go backwards.
+/// Writes every row it is given, replacing what is stored for the same `(game, faction, region)`.
+/// Which sightings survive an older report is decided in the core - `import_writes` for an
+/// import, `merge_report_into_sightings` for a merge - not here.
 pub fn upsert_region_sightings(
     database_path: &Path,
     game_id: &str,
@@ -1230,8 +1278,7 @@ pub fn upsert_region_sightings(
                 province = excluded.province,
                 label = excluded.label,
                 last_seen_turn = excluded.last_seen_turn,
-                payload_json = excluded.payload_json
-             WHERE excluded.last_seen_turn >= region_sightings.last_seen_turn",
+                payload_json = excluded.payload_json",
             params![
                 game_id,
                 faction_id,
@@ -1774,11 +1821,13 @@ mod tests {
             &doomed.database_path,
             &turn_in(&doomed, "17", "doomed turn"),
             IMPORTED_AT,
+            IMPORTED_AT,
         )
         .expect("seed doomed");
         upsert_imported_turn(
             &kept.database_path,
             &turn_in(&kept, "17", "kept turn"),
+            IMPORTED_AT,
             IMPORTED_AT,
         )
         .expect("seed kept");
@@ -1814,6 +1863,7 @@ mod tests {
         upsert_imported_turn(
             &alpha.database_path,
             &turn_in(&alpha, "17", "alpha turn"),
+            IMPORTED_AT,
             IMPORTED_AT,
         )
         .expect("seed alpha");
@@ -1973,7 +2023,7 @@ mod tests {
             warnings_payload_json: "[]".to_string(),
         };
 
-        upsert_imported_turn(&created.database_path, &record, IMPORTED_AT)
+        upsert_imported_turn(&created.database_path, &record, IMPORTED_AT, IMPORTED_AT)
             .expect("import should persist");
         let loaded =
             load_imported_turn(&created.database_path, &record.key).expect("load should succeed");
@@ -1998,7 +2048,8 @@ mod tests {
             parsed_payload_json: "{\"turn\":12,\"regions\":1}".to_string(),
             warnings_payload_json: "[]".to_string(),
         };
-        upsert_imported_turn(&created.database_path, &original, IMPORTED_AT).expect("seed import");
+        upsert_imported_turn(&created.database_path, &original, IMPORTED_AT, IMPORTED_AT)
+            .expect("seed import");
 
         let candidate = ImportedTurnRecord {
             key,
@@ -2037,10 +2088,11 @@ mod tests {
             warnings_payload_json: "[]".to_string(),
         };
 
-        insert_imported_turn(&created.database_path, &record, IMPORTED_AT)
+        insert_imported_turn(&created.database_path, &record, IMPORTED_AT, IMPORTED_AT)
             .expect("first insert should succeed");
-        let duplicate_error = insert_imported_turn(&created.database_path, &record, IMPORTED_AT)
-            .expect_err("duplicate insert should fail");
+        let duplicate_error =
+            insert_imported_turn(&created.database_path, &record, IMPORTED_AT, IMPORTED_AT)
+                .expect_err("duplicate insert should fail");
         assert!(matches!(
             duplicate_error,
             PersistenceError::DuplicateImportedTurn { .. }
@@ -2145,35 +2197,60 @@ mod tests {
         assert_eq!(listed_after_delete.len(), 1);
     }
 
-    /// The time an import happened is the caller's to state, not SQLite's to invent.
-    ///
-    /// Both stamps come from the same argument on the way in, and re-importing moves only
-    /// `updated_at`: when a turn first arrived does not change because it arrived again.
+    /// The store writes whatever two stamps it is given, on both the first import and a
+    /// re-import - it keeps nothing back. Keeping `imported_at` across a re-import is the core's
+    /// rule (`import_writes`), not this store's.
     #[test]
-    fn an_import_records_the_time_the_caller_gave_it() {
+    fn the_store_writes_both_stamps_it_is_given_and_keeps_neither_back() {
         let dir = tempdir().expect("tempdir");
         let manifest = fixture_manifest();
         let created = create_game(dir.path(), &manifest).expect("game creation should succeed");
         let record = turn_in(&created, "17", "TURN: 12 Spring");
 
-        upsert_imported_turn(&created.database_path, &record, IMPORTED_AT).expect("seed import");
+        upsert_imported_turn(&created.database_path, &record, IMPORTED_AT, IMPORTED_AT)
+            .expect("seed import");
         assert_eq!(
-            import_stamps(&created.database_path, &record.key),
-            (IMPORTED_AT.to_string(), IMPORTED_AT.to_string())
+            load_imported_turn_stamps(&created.database_path, &record.key)
+                .expect("load should succeed")
+                .expect("stamps should exist"),
+            ImportedTurnStamps {
+                imported_at: IMPORTED_AT.to_string(),
+                updated_at: IMPORTED_AT.to_string(),
+            }
         );
 
-        let later = "2026-08-02T11:30:00Z";
+        let corrected_imported_at = "2026-08-02T11:30:00Z";
+        let corrected_updated_at = "2026-08-02T12:00:00Z";
         upsert_imported_turn(
             &created.database_path,
             &turn_in(&created, "17", "TURN: 12 Spring -- corrected"),
-            later,
+            corrected_imported_at,
+            corrected_updated_at,
         )
         .expect("re-import");
 
         assert_eq!(
-            import_stamps(&created.database_path, &record.key),
-            (IMPORTED_AT.to_string(), later.to_string())
+            load_imported_turn_stamps(&created.database_path, &record.key)
+                .expect("load should succeed")
+                .expect("stamps should exist"),
+            ImportedTurnStamps {
+                imported_at: corrected_imported_at.to_string(),
+                updated_at: corrected_updated_at.to_string(),
+            }
         );
+    }
+
+    #[test]
+    fn stamps_of_a_turn_never_imported_are_none() {
+        let dir = tempdir().expect("tempdir");
+        let manifest = fixture_manifest();
+        let created = create_game(dir.path(), &manifest).expect("game creation should succeed");
+        let record = turn_in(&created, "17", "TURN: 12 Spring");
+
+        let stamps = load_imported_turn_stamps(&created.database_path, &record.key)
+            .expect("load should succeed");
+
+        assert_eq!(stamps, None);
     }
 
     /// A database written before migration 6 has SQLite's own format in it, and comparing that
@@ -2184,7 +2261,8 @@ mod tests {
         let manifest = fixture_manifest();
         let created = create_game(dir.path(), &manifest).expect("game creation should succeed");
         let record = turn_in(&created, "17", "TURN: 12 Spring");
-        upsert_imported_turn(&created.database_path, &record, IMPORTED_AT).expect("seed import");
+        upsert_imported_turn(&created.database_path, &record, IMPORTED_AT, IMPORTED_AT)
+            .expect("seed import");
 
         // Put the database back the way an earlier build left it, migration rows included, so the
         // rewrite has to run rather than being skipped as already applied. Everything from 6 up
@@ -2204,8 +2282,13 @@ mod tests {
         open_game(dir.path(), &manifest.metadata.game_id, CREATED_AT).expect("reopen migrates");
 
         assert_eq!(
-            import_stamps(&created.database_path, &record.key),
-            (IMPORTED_AT.to_string(), IMPORTED_AT.to_string())
+            load_imported_turn_stamps(&created.database_path, &record.key)
+                .expect("load should succeed")
+                .expect("stamps should exist"),
+            ImportedTurnStamps {
+                imported_at: IMPORTED_AT.to_string(),
+                updated_at: IMPORTED_AT.to_string(),
+            }
         );
     }
 
@@ -2236,11 +2319,13 @@ mod tests {
             &created.database_path,
             &turn_in(&created, "17", "worked on"),
             "2026-08-09T18:00:00Z",
+            "2026-08-09T18:00:00Z",
         )
         .expect("seed the first faction");
         upsert_imported_turn(
             &created.database_path,
             &turn_in(&created, "18", "only glanced at"),
+            "2026-08-09T19:00:00Z",
             "2026-08-09T19:00:00Z",
         )
         .expect("seed the second faction");
@@ -2286,6 +2371,7 @@ mod tests {
             &alpha.database_path,
             &turn_in(&alpha, "17", "alpha turn"),
             IMPORTED_AT,
+            IMPORTED_AT,
         )
         .expect("seed alpha");
 
@@ -2328,17 +2414,20 @@ mod tests {
             &created.database_path,
             &turn_at(&created, "17", 14, "t14"),
             IMPORTED_AT,
+            IMPORTED_AT,
         )
         .expect("seed turn 14");
         upsert_imported_turn(
             &created.database_path,
             &turn_at(&created, "17", 12, "t12"),
             IMPORTED_AT,
+            IMPORTED_AT,
         )
         .expect("seed turn 12");
         upsert_imported_turn(
             &created.database_path,
             &turn_at(&created, "17", 13, "t13"),
+            IMPORTED_AT,
             IMPORTED_AT,
         )
         .expect("seed turn 13");
@@ -2376,6 +2465,7 @@ mod tests {
             &alpha.database_path,
             &turn_in(&alpha, "17", "alpha turn"),
             IMPORTED_AT,
+            IMPORTED_AT,
         )
         .expect("seed alpha");
 
@@ -2411,8 +2501,13 @@ mod tests {
                 .to_string(),
             ..turn_in(&created, "17", "t12")
         };
-        upsert_imported_turn(&created.database_path, &old_format, IMPORTED_AT)
-            .expect("seed old-format turn");
+        upsert_imported_turn(
+            &created.database_path,
+            &old_format,
+            IMPORTED_AT,
+            IMPORTED_AT,
+        )
+        .expect("seed old-format turn");
         let new_format = ImportedTurnRecord {
             key: ImportedTurnKey {
                 turn_number: 13,
@@ -2424,8 +2519,13 @@ mod tests {
                 .to_string(),
             ..turn_in(&created, "17", "t13")
         };
-        upsert_imported_turn(&created.database_path, &new_format, IMPORTED_AT)
-            .expect("seed new-format turn");
+        upsert_imported_turn(
+            &created.database_path,
+            &new_format,
+            IMPORTED_AT,
+            IMPORTED_AT,
+        )
+        .expect("seed new-format turn");
 
         let listed =
             list_imported_turns(&created.database_path, GAME_ID).expect("listing should succeed");
@@ -2445,7 +2545,8 @@ mod tests {
             parsed_payload_json: "not json at all".to_string(),
             ..turn_in(&created, "17", "t12")
         };
-        upsert_imported_turn(&created.database_path, &turn, IMPORTED_AT).expect("seed turn");
+        upsert_imported_turn(&created.database_path, &turn, IMPORTED_AT, IMPORTED_AT)
+            .expect("seed turn");
 
         let listed =
             list_imported_turns(&created.database_path, GAME_ID).expect("listing should succeed");
@@ -2463,17 +2564,20 @@ mod tests {
             &created.database_path,
             &turn_at(&created, "17", 12, "a"),
             IMPORTED_AT,
+            IMPORTED_AT,
         )
         .expect("seed 17@12");
         upsert_imported_turn(
             &created.database_path,
             &turn_at(&created, "5", 12, "b"),
             IMPORTED_AT,
+            IMPORTED_AT,
         )
         .expect("seed 5@12");
         upsert_imported_turn(
             &created.database_path,
             &turn_at(&created, "17", 13, "c"),
+            IMPORTED_AT,
             IMPORTED_AT,
         )
         .expect("seed 17@13");
@@ -2495,22 +2599,6 @@ mod tests {
                 (13, "17".to_string()),
             ]
         );
-    }
-
-    fn import_stamps(database_path: &Path, key: &ImportedTurnKey) -> (String, String) {
-        Connection::open(database_path)
-            .expect("open")
-            .query_row(
-                "SELECT imported_at, updated_at FROM imported_turns
-                  WHERE game_id = ?1 AND faction_id = ?2 AND turn_number = ?3",
-                params![
-                    key.game_id.as_str(),
-                    key.faction_id.as_str(),
-                    key.turn_number
-                ],
-                |row| Ok((row.get(0)?, row.get(1)?)),
-            )
-            .expect("stamps should be readable")
     }
 }
 
@@ -2623,8 +2711,10 @@ mod region_sighting_tests {
         assert!(loaded[0].label.ends_with("turn 71"));
     }
 
+    /// Pins that the guard against a hex going backwards is *not* here: it lives in
+    /// `import_writes` (the core), so a reader who misses it in SQL does not put it back.
     #[test]
-    fn importing_an_older_report_does_not_make_the_map_go_backwards() {
+    fn upsert_region_sightings_writes_whatever_turn_it_is_given() {
         let dir = tempdir().expect("tempdir");
         let opened = game(dir.path());
 
@@ -2645,7 +2735,10 @@ mod region_sighting_tests {
 
         let loaded =
             load_region_sightings(&opened.database_path, "faction-95", "95").expect("load");
-        assert_eq!(loaded[0].last_seen_turn, 71, "the later sighting survives");
+        assert_eq!(
+            loaded[0].last_seen_turn, 60,
+            "the store keeps whatever it was told last"
+        );
     }
 
     #[test]
@@ -2699,8 +2792,13 @@ mod region_sighting_tests {
                 .to_string(),
             warnings_payload_json: "[]".to_string(),
         };
-        upsert_imported_turn(&opened.database_path, &turn, "2026-08-01T10:00:00Z")
-            .expect("turn should save");
+        upsert_imported_turn(
+            &opened.database_path,
+            &turn,
+            "2026-08-01T10:00:00Z",
+            "2026-08-01T10:00:00Z",
+        )
+        .expect("turn should save");
         upsert_order_draft(
             &opened.database_path,
             &OrderDraftRecord {

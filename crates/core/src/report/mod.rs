@@ -8,6 +8,7 @@ pub mod battle;
 pub mod composition;
 pub mod export;
 pub mod header;
+pub mod import;
 pub mod level;
 pub mod merge;
 pub mod model;

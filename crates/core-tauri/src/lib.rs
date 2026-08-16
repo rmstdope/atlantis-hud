@@ -10,6 +10,7 @@
 
 use std::path::Path;
 
+use atlantis_hud_core::report::import::{import_writes, SeenRegion};
 use atlantis_hud_core::report::merge::{merge_report_into_sightings, StoredSighting};
 pub use atlantis_hud_core::report::ParsedReport;
 use atlantis_hud_core::{
@@ -18,12 +19,13 @@ use atlantis_hud_core::{
 };
 use atlantis_hud_core_persistence::{
     create_game, delete_game, delete_hex_note, export_game, import_game, insert_imported_turn,
-    list_games, list_hex_notes, list_imported_turns, load_imported_turn, load_latest_imported_turn,
-    load_merged_reports, load_order_draft, load_region_sightings, open_game, preview_imported_turn,
-    set_game_name, set_game_ruleset, upsert_hex_note, upsert_imported_turn, upsert_merged_report,
-    upsert_order_draft, upsert_region_sightings, GameManifest, GameMetadata, HexNote,
-    ImportedTurnKey, ImportedTurnPreview, ImportedTurnRecord, MergedReportRecord, OpenedGame,
-    OrderDraftKey, OrderDraftRecord, PersistenceError, ReportSourceRef,
+    list_games, list_hex_notes, list_imported_turns, load_imported_turn, load_imported_turn_stamps,
+    load_latest_imported_turn, load_merged_reports, load_order_draft, load_region_sightings,
+    open_game, preview_imported_turn, set_game_name, set_game_ruleset, upsert_hex_note,
+    upsert_imported_turn, upsert_merged_report, upsert_order_draft, upsert_region_sightings,
+    GameManifest, GameMetadata, HexNote, ImportedTurnKey, ImportedTurnPreview, ImportedTurnRecord,
+    MergedReportRecord, OpenedGame, OrderDraftKey, OrderDraftRecord, PersistenceError,
+    ReportSourceRef,
 };
 use serde::{Deserialize, Serialize};
 
@@ -378,31 +380,59 @@ pub mod commands {
         };
         let preview = preview_imported_turn(Path::new(database_path), &record)
             .map_err(|error| error.to_string())?;
+
+        // What the store already holds is handed to the core, and what comes back is written as
+        // it is: whether an older report may overwrite a hex, and which stamp a re-import keeps,
+        // are the core's rules, decided once for both platforms (`import_writes`).
+        let existing = load_imported_turn_stamps(Path::new(database_path), &record.key)
+            .map_err(|error| error.to_string())?;
+        let seen: Vec<SeenRegion> =
+            load_region_sightings(Path::new(database_path), game_id, confirmed_faction_id)
+                .map_err(|error| error.to_string())?
+                .iter()
+                .map(SeenRegion::from)
+                .collect();
+        let writes = import_writes(
+            &report,
+            turn_number,
+            existing.as_ref().map(|stamps| stamps.imported_at.as_str()),
+            &seen,
+            imported_at,
+        );
+
         if allow_overwrite {
-            upsert_imported_turn(Path::new(database_path), &record, imported_at)
-                .map_err(|error| error.to_string())?;
+            upsert_imported_turn(
+                Path::new(database_path),
+                &record,
+                &writes.imported_at,
+                &writes.updated_at,
+            )
+            .map_err(|error| error.to_string())?;
         } else {
-            insert_imported_turn(Path::new(database_path), &record, imported_at).map_err(
-                |error| match error {
-                    PersistenceError::DuplicateImportedTurn { .. } => {
-                        "duplicate import exists and requires explicit overwrite confirmation"
-                            .to_string()
-                    }
-                    _ => error.to_string(),
-                },
-            )?;
+            insert_imported_turn(
+                Path::new(database_path),
+                &record,
+                &writes.imported_at,
+                &writes.updated_at,
+            )
+            .map_err(|error| match error {
+                PersistenceError::DuplicateImportedTurn { .. } => {
+                    "duplicate import exists and requires explicit overwrite confirmation"
+                        .to_string()
+                }
+                _ => error.to_string(),
+            })?;
         }
 
         // Regions get their own rows as well as living inside the turn payload, each carrying the turn
         // it was seen in. Without this the map cannot tell a region in the current report from one held
-        // over from an earlier turn, which is the difference between two of its four states.
-        let sightings = atlantis_hud_core::report::sighting::region_sightings(&report, turn_number);
-
+        // over from an earlier turn, which is the difference between two of its four states. Which
+        // rows to write was already decided above, by `import_writes`.
         upsert_region_sightings(
             Path::new(database_path),
             game_id,
             confirmed_faction_id,
-            &sightings,
+            &writes.region_sightings,
         )
         .map_err(|error| error.to_string())?;
 
@@ -1383,6 +1413,7 @@ mod sightings_tests {
     use tempfile::tempdir;
 
     const TURN_71: &str = atlantis_hud_fixtures::G7_F95_T71.text;
+    const TURN_70: &str = atlantis_hud_fixtures::G7_F95_T70.text;
     /// The catalogue the shell serves, which recognises everything these fixtures carry.
     const RULESET: &str = atlantis_hud_fixtures::RULESET_JSON;
 
@@ -1499,6 +1530,95 @@ mod sightings_tests {
             !units_still_estimated(&remembered).is_empty(),
             "with no catalogue to count against, the stored figures are estimates and say so"
         );
+    }
+
+    /// The whole desktop path, end to end: an older turn imported after a newer one leaves the
+    /// newer account of a shared hex in place. `TURN_70` names exactly one region, a swamp at
+    /// (10,50) in Cebo, which `TURN_71` also names.
+    #[test]
+    fn importing_an_older_report_leaves_the_newer_memory_of_a_hex() {
+        let directory = tempdir().expect("a temporary directory");
+        let created = game(directory.path());
+
+        command_commit_report_import(
+            &created.database_path,
+            "faction-95",
+            "95",
+            TURN_71,
+            None,
+            false,
+            IMPORTED_AT,
+        )
+        .expect("the newer import commits");
+        command_commit_report_import(
+            &created.database_path,
+            "faction-95",
+            "95",
+            TURN_70,
+            None,
+            false,
+            IMPORTED_AT,
+        )
+        .expect("the older import commits");
+
+        let remembered = command_load_region_sightings(&created.database_path, "faction-95", "95")
+            .expect("the sightings load");
+
+        assert_eq!(remembered.len(), 11);
+        let shared = remembered
+            .iter()
+            .find(|entry| {
+                entry
+                    .region
+                    .get("regionId")
+                    .and_then(serde_json::Value::as_str)
+                    == Some("1:10,50")
+            })
+            .expect("the shared hex is remembered");
+        assert_eq!(shared.last_seen_turn, 71);
+    }
+
+    /// Re-importing the same turn moves `updatedAt` but leaves `importedAt` where it was: when a
+    /// turn first arrived does not change because it arrived again.
+    #[test]
+    fn re_importing_a_turn_keeps_when_it_first_arrived() {
+        let directory = tempdir().expect("a temporary directory");
+        let created = game(directory.path());
+
+        command_commit_report_import(
+            &created.database_path,
+            "faction-95",
+            "95",
+            TURN_71,
+            None,
+            true,
+            IMPORTED_AT,
+        )
+        .expect("the first import commits");
+        command_commit_report_import(
+            &created.database_path,
+            "faction-95",
+            "95",
+            TURN_71,
+            None,
+            true,
+            "2026-08-10T10:00:00Z",
+        )
+        .expect("the re-import commits");
+
+        let stamps = load_imported_turn_stamps(
+            std::path::Path::new(&created.database_path),
+            &ImportedTurnKey {
+                game_id: "faction-95".to_string(),
+                faction_id: "95".to_string(),
+                turn_number: 71,
+            },
+        )
+        .expect("load should succeed")
+        .expect("the turn was imported");
+
+        assert_eq!(stamps.imported_at, IMPORTED_AT);
+        assert_eq!(stamps.updated_at, "2026-08-10T10:00:00Z");
     }
 }
 

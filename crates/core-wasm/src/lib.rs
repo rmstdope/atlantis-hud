@@ -1,12 +1,14 @@
 //! The core's pure functions (parsing, planning, validation, map export), bound for the browser
 //! bundle. Persistence is not part of this crate: the desktop reads and writes through
 //! `core-tauri`'s Tauri commands, and the web has its own store in `@atlantis/browser-core`, over
-//! IndexedDB. The one exception is the game backup codec (`encode_game_backup_state`,
-//! `decode_game_backup_state`): the rules about what a backup file contains live in the core, and
-//! the web's store calls through here so it never encodes or decodes one itself.
+//! IndexedDB. The exceptions are the game backup codec (`encode_game_backup_state`,
+//! `decode_game_backup_state`) and what one report import writes (`report_import_writes_state`):
+//! the rules live in the core, and the web's store calls through here rather than deciding them
+//! itself.
 
+use atlantis_hud_core::report::import::{import_writes, SeenRegion};
 use atlantis_hud_core::report::merge::{merge_report_into_sightings, StoredSighting};
-use atlantis_hud_core::report::sighting::{region_sightings, RegionSighting};
+use atlantis_hud_core::report::sighting::RegionSighting;
 use atlantis_hud_core::{
     diff_imported_turn, engine_info, reject_import, reject_merge, ImportedTurnSnapshot,
     OrderCheckOptions, ReportParseResult, ReportParseResultWire,
@@ -37,13 +39,6 @@ fn to_js<T: Serialize + ?Sized>(value: &T) -> Result<JsValue, JsValue> {
 struct PreparedImportDto {
     turn_number: Option<u32>,
     candidate: ImportedTurnSnapshot,
-    /// Every region the report described, ready to be written one row at a time.
-    ///
-    /// Serialized here rather than in the browser. The storage adapter used to ask for the whole
-    /// parsed model back and stringify each region itself, which meant converting eleven regions
-    /// and some four hundred and fifty units into JavaScript objects only to turn them straight
-    /// back into text. These are already text, so only the text crosses.
-    region_sightings: Vec<RegionSighting>,
     parse_result: ReportParseResultWire,
     /// `None` when the report may be imported; otherwise why it may not be.
     rejection: Option<String>,
@@ -81,7 +76,8 @@ pub fn parse_report_state(raw_report: String) -> Result<JsValue, JsValue> {
 /// Parses a report and returns everything needed to store it, alongside the parse result.
 ///
 /// The browser has no SQLite, so its storage adapter supplies the read and the write while every
-/// rule about what gets stored stays here.
+/// rule about what gets stored stays here. The stamps and sightings a commit actually writes come
+/// from [`report_import_writes_state`], a second call on the same cached parse.
 #[wasm_bindgen]
 pub fn prepare_report_import_state(
     raw_report: String,
@@ -89,12 +85,12 @@ pub fn prepare_report_import_state(
     ruleset_json: Option<String>,
 ) -> Result<JsValue, JsValue> {
     // The report the shell already showed is the report being imported, so this is a cache hit and
-    // no parsing happens here at all. Both shapes come off the one model: the flat summary the
-    // import rules are decided against, and the regions that get remembered one by one.
+    // no parsing happens here at all.
     //
-    // Classified when the shell has a ruleset, exactly as the turn on screen is. The sightings are
-    // the only account of a hex the map ever reads back, so an estimate stored here would put a
-    // tilde on every remembered unit forever, however complete the catalogue.
+    // Classified when the shell has a ruleset, exactly as the turn on screen is - the same parse
+    // `report_import_writes_state` reuses for the sightings, which are the only account of a hex
+    // the map ever reads back, so an estimate stored there would put a tilde on every remembered
+    // unit forever, however complete the catalogue.
     let full = atlantis_hud_core::cache::with_global(|cache| {
         cache.classified_when_possible(&raw_report, ruleset_json.as_deref())
     });
@@ -113,15 +109,53 @@ pub fn prepare_report_import_state(
     let prepared = PreparedImportDto {
         turn_number,
         candidate,
-        // An unimportable report has no turn to file its regions under, so it contributes none.
-        region_sightings: turn_number
-            .map(|turn| region_sightings(&full, turn))
-            .unwrap_or_default(),
         parse_result: ReportParseResultWire::from(parsed),
         rejection,
     };
 
     to_js(&prepared)
+}
+
+/// The stamps and sightings one import writes, given what the browser store already holds.
+///
+/// The counterpart of [`prepare_report_merge_state`]: the store hands over the earlier import's
+/// stamp (if any) and `[{ regionId, lastSeenTurn }]` for every hex it remembers for the faction,
+/// and writes back exactly what comes out. Same parse as [`prepare_report_import_state`] - a cache
+/// hit - and classified for the same reason: the sightings are the only account of a hex the map
+/// ever reads back, so an estimate stored here would put a tilde on every remembered unit forever.
+///
+/// # Errors
+///
+/// Returns an error when `seen_json` cannot be read as JSON, the report has no turn header, or the
+/// outcome cannot be handed back to JavaScript.
+#[wasm_bindgen]
+pub fn report_import_writes_state(
+    raw_report: String,
+    ruleset_json: Option<String>,
+    existing_imported_at: Option<String>,
+    seen_json: String,
+    at: String,
+) -> Result<JsValue, JsValue> {
+    let seen: Vec<SeenRegion> =
+        serde_json::from_str(&seen_json).map_err(|error| JsValue::from_str(&error.to_string()))?;
+
+    let full = atlantis_hud_core::cache::with_global(|cache| {
+        cache.classified_when_possible(&raw_report, ruleset_json.as_deref())
+    });
+    let turn_number = atlantis_hud_core::summarize(&full)
+        .turn_header
+        .map(|header| header.turn_number)
+        .ok_or_else(|| JsValue::from_str("turn header missing from parsed report"))?;
+
+    let writes = import_writes(
+        &full,
+        turn_number,
+        existing_imported_at.as_deref(),
+        &seen,
+        &at,
+    );
+
+    to_js(&writes)
 }
 
 /// Folds an allied report into a stored map and returns the rows to write.

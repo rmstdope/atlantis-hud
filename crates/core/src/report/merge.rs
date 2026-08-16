@@ -153,9 +153,10 @@ pub fn merge_report_into_sightings(
         let contribution = as_foreign_sighting(region);
         let previous = stored.get(region.region_id.as_str()).copied();
 
-        // A hex the viewer already knows from a later turn is left alone. SQLite refuses this in
-        // the upsert itself, but IndexedDB has no such clause, so the rule has to be here or the
-        // two platforms would disagree about whether a map can walk backwards.
+        // A hex the viewer already knows from a later turn is left alone. Neither store refuses
+        // this any more (see `import_writes`, which decides the same thing for an import) - the
+        // rule lives here so a hex merged on the desktop and the same hex merged in the browser
+        // cannot come out different.
         if previous.is_some_and(|sighting| sighting.last_seen_turn > turn_number) {
             outcome.skipped_region_count += 1;
             continue;
