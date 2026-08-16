@@ -8,10 +8,10 @@ use atlantis_hud_core_tauri::{
     command_list_hex_notes, command_list_imported_turns, command_load_imported_turn,
     command_load_order_draft, command_open_game, command_order_commands, command_parse_report,
     command_parse_report_full, command_preview_report_import, command_save_hex_note,
-    command_save_order_draft, command_set_game_ruleset, command_validate_orders, GameManifestDto,
-    HexNoteDto, ImportedTurnPreviewDto, ImportedTurnRecordDto, ImportedTurnSummaryDto,
-    OpenedGameDto, OrderDraftRecordDto, OrderValidationResultDto, ParsedReport,
-    ReportImportPreviewDto, ReportParseResultDto,
+    command_save_order_draft, command_set_game_name, command_set_game_ruleset,
+    command_validate_orders, GameManifestDto, HexNoteDto, ImportedTurnPreviewDto,
+    ImportedTurnRecordDto, ImportedTurnSummaryDto, OpenedGameDto, OrderDraftRecordDto,
+    OrderValidationResultDto, ParsedReport, ReportImportPreviewDto, ReportParseResultDto,
 };
 #[cfg(all(
     any(target_os = "linux", target_os = "macos", target_os = "windows"),
@@ -126,6 +126,19 @@ fn set_game_ruleset(
     ruleset_id: String,
 ) -> Result<GameManifestDto, String> {
     command_set_game_ruleset(&games_root(&app)?, &game_id, &ruleset_id)
+}
+
+#[cfg(all(
+    any(target_os = "linux", target_os = "macos", target_os = "windows"),
+    feature = "desktop-runtime"
+))]
+#[tauri::command(rename_all = "snake_case")]
+fn set_game_name(
+    app: tauri::AppHandle,
+    game_id: String,
+    game_name: String,
+) -> Result<GameManifestDto, String> {
+    command_set_game_name(&games_root(&app)?, &game_id, &game_name)
 }
 
 #[cfg(all(
@@ -491,6 +504,7 @@ fn main() {
             export_game,
             import_game,
             set_game_ruleset,
+            set_game_name,
             parse_report,
             parse_report_full,
             preview_report_import,

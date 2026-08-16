@@ -2,6 +2,7 @@ import type { GameManifest } from "@atlantis/core-client";
 import { describe, expect, it, vi } from "vitest";
 import {
   gameAfterDelete,
+  gameNameOf,
   newGameManifest,
   newestGame,
   openNewestGame,
@@ -65,6 +66,20 @@ describe("creating a game", () => {
 
   it("refuses a ruleset the app does not ship, rather than falling back to one that is wrong", () => {
     expect(() => newGameManifest("A game", "atlantis-classic", NOW, "abc")).toThrow(/ruleset/u);
+  });
+});
+
+describe("the rule a game's name must obey", () => {
+  it("trims accidental whitespace around a valid name", () => {
+    expect(gameNameOf("  Binding of the North  ")).toBe("Binding of the North");
+  });
+
+  it("refuses a name that is only whitespace, with the words creation uses", () => {
+    expect(() => gameNameOf("   ")).toThrow("a game needs a name");
+  });
+
+  it("refuses an empty name", () => {
+    expect(() => gameNameOf("")).toThrow("a game needs a name");
   });
 });
 

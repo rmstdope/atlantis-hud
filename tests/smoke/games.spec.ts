@@ -1,7 +1,13 @@
-import { expect, test } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { clearGames, createGame } from "./gameSetup";
+
+/** Opens the picker and switches to the This game tab, where a rename happens. */
+async function openThisGameTab(page: Page) {
+  await page.getByTestId("game-indicator").click();
+  await page.getByTestId("game-picker-tab-settings").click();
+}
 
 /**
  * The acceptance vectors of issue #33, end to end, in both shells.
@@ -186,4 +192,86 @@ test("the game a player was last in reopens on the next launch", async ({ page }
   await page.reload();
 
   await expect(page.getByTestId("game-indicator")).toContainText("Second game");
+});
+
+test("a game can be renamed in place from the This game tab", async ({ page }) => {
+  await clearGames(page);
+  await createGame(page, "Backup gmae");
+  await openThisGameTab(page);
+
+  await page.getByTestId("rename-game").click();
+  const input = page.getByTestId("game-rename-input");
+  await expect(input).toBeFocused();
+  await expect(input).toHaveValue("Backup gmae");
+  await input.fill("Backup game");
+  await input.press("Enter");
+
+  await expect(page.getByTestId("game-rename-input")).toHaveCount(0);
+  await expect(page.getByTestId("game-settings-panel")).toContainText("Backup game");
+  await expect(page.getByTestId("game-indicator")).toContainText("Backup game");
+  await expect(page.getByTestId("rename-game")).toBeFocused();
+
+  await page.reload();
+  await expect(page.getByTestId("game-indicator")).toContainText("Backup game");
+});
+
+test("an empty name is refused, with the words creation uses", async ({ page }) => {
+  await clearGames(page);
+  await createGame(page, "Refuses empty");
+  await openThisGameTab(page);
+
+  await page.getByTestId("rename-game").click();
+  const input = page.getByTestId("game-rename-input");
+  await input.fill("   ");
+  await input.press("Enter");
+
+  await expect(page.getByTestId("game-rename-error")).toContainText("a game needs a name");
+  await expect(input).toBeVisible();
+  await expect(input).toHaveValue("   ");
+  await expect(page.getByTestId("game-indicator")).toContainText("Refuses empty");
+
+  await page.getByTestId("game-rename-cancel").click();
+  await expect(page.getByTestId("game-rename-input")).toHaveCount(0);
+  await expect(page.getByTestId("rename-game")).toBeFocused();
+});
+
+test("Escape cancels the rename and leaves the picker open", async ({ page }) => {
+  await clearGames(page);
+  await createGame(page, "Escape game");
+  await openThisGameTab(page);
+
+  await page.getByTestId("rename-game").click();
+  await page.getByTestId("game-rename-input").fill("Something else");
+  await page.keyboard.press("Escape");
+
+  await expect(page.getByTestId("game-rename-input")).toHaveCount(0);
+  await expect(page.getByTestId("game-picker")).toBeVisible();
+  await expect(page.getByTestId("game-settings-panel")).toContainText("Escape game");
+
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("game-picker")).toHaveCount(0);
+});
+
+test("renaming to another game's name only warns", async ({ page }) => {
+  await clearGames(page);
+  await createGame(page, "Alpha");
+  await page.getByTestId("game-indicator").click();
+  await page.getByTestId("new-game").click();
+  await createGame(page, "Beta");
+  await openThisGameTab(page);
+
+  await page.getByTestId("rename-game").click();
+  const input = page.getByTestId("game-rename-input");
+  await input.fill("Alpha");
+  await expect(page.getByTestId("game-rename-warning")).toContainText(
+    "Another game is already called “Alpha”."
+  );
+  await input.press("Enter");
+
+  await expect(page.getByTestId("game-indicator")).toContainText("Alpha");
+  await page.getByTestId("game-picker-tab-games").click();
+  const rows = page.locator('[data-testid^="game-row-"]');
+  await expect(rows).toHaveCount(2);
+  await expect(rows.nth(0)).toContainText("Alpha");
+  await expect(rows.nth(1)).toContainText("Alpha");
 });

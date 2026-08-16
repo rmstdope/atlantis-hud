@@ -33,6 +33,18 @@ export function gameAfterDelete(
 }
 
 /**
+ * The name a game may be given: trimmed, and never empty. The one rule for a name, at creation and
+ * on a rename alike — two copies would drift and one path would accept what the other refuses.
+ */
+export function gameNameOf(raw: string): string {
+  const trimmed = raw.trim();
+  if (trimmed === "") {
+    throw new Error("a game needs a name");
+  }
+  return trimmed;
+}
+
+/**
  * The manifest for a game the player has just described.
  *
  * Both refusals are deliberate. An empty name would leave a game nothing can refer to in the
@@ -46,10 +58,7 @@ export function newGameManifest(
   now: string,
   gameId: string
 ): GameManifest {
-  const trimmed = gameName.trim();
-  if (trimmed === "") {
-    throw new Error("a game needs a name");
-  }
+  const trimmed = gameNameOf(gameName);
   if (rulesetById(rulesetId) === null) {
     throw new Error(`unknown ruleset: ${rulesetId}`);
   }

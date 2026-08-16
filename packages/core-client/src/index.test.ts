@@ -1016,6 +1016,46 @@ describe("changing a game's ruleset", () => {
 });
 
 /**
+ * Renaming follows the same shape as changing the ruleset: one round trip, the updated manifest
+ * comes back normalized.
+ */
+describe("renaming a game", () => {
+  const wireManifest = {
+    manifest_version: 1,
+    metadata: {
+      game_id: "faction-12",
+      game_name: "Binding of the North",
+      ruleset_id: "magicdeep"
+    },
+    report_sources: [],
+    created_at: "2026-08-01T09:00:00Z",
+    last_opened_at: "2026-08-09T18:00:00Z"
+  };
+
+  it("asks tauri with the argument names its command declares, and normalizes the answer", async () => {
+    const calls: Array<{ command: string; args?: Record<string, unknown> }> = [];
+    const invoke: TauriInvoke = <T,>(command: string, args?: Record<string, unknown>) => {
+      calls.push({ command, args });
+      return Promise.resolve(wireManifest as T);
+    };
+
+    const manifest = await createCoreClient(createTauriAdapter(invoke)).setGameName(
+      "faction-12",
+      "Binding of the North"
+    );
+
+    expect(calls).toEqual([
+      {
+        command: "set_game_name",
+        args: { game_id: "faction-12", game_name: "Binding of the North" }
+      }
+    ]);
+    expect(manifest.metadata.gameName).toBe("Binding of the North");
+    expect(manifest.lastOpenedAt).toBe("2026-08-09T18:00:00Z");
+  });
+});
+
+/**
  * The map export crosses the wire as three strings and comes back as one, so the things worth
  * pinning are the argument names Tauri declares and the fact that neither adapter reshapes the
  * text. A typo in a key deserializes as a missing field on the Rust side, and the error that

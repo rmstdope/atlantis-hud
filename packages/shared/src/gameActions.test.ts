@@ -8,6 +8,7 @@ import {
   importGameBackup,
   importGameBackupAsCopy,
   openGame,
+  renameGame,
   replaceGameWithBackup
 } from "./gameActions";
 
@@ -50,6 +51,7 @@ function fakeClient(overrides: Partial<GameClient> = {}): GameClient {
     exportGame: vi.fn(),
     importGame: vi.fn(),
     setGameRuleset: vi.fn(),
+    setGameName: vi.fn(),
     ...overrides
   };
 }
@@ -356,5 +358,30 @@ describe("changing a game's ruleset", () => {
     expect(client.setGameRuleset).toHaveBeenCalledWith("g1", "otherworld");
     expect(result?.manifest).toEqual(movedManifest);
     expect(result?.games).toEqual([movedManifest]);
+  });
+});
+
+describe("renaming a game", () => {
+  it("calls setGameName with the game's id and the trimmed name, and refreshes the list", async () => {
+    const renamedManifest = { ...manifest("g1", NOW), metadata: { gameId: "g1", gameName: "Binding of the North", rulesetId: "neworigins" } };
+    const client = fakeClient({
+      setGameName: vi.fn().mockResolvedValue(renamedManifest),
+      listGames: vi.fn().mockResolvedValue([renamedManifest])
+    });
+    const game = opened("g1");
+
+    const result = await renameGame(client, game, "  Binding of the North  ");
+
+    expect(client.setGameName).toHaveBeenCalledWith("g1", "Binding of the North");
+    expect(result.manifest).toEqual(renamedManifest);
+    expect(result.games).toEqual([renamedManifest]);
+  });
+
+  it("rejects an empty name and calls nothing", async () => {
+    const client = fakeClient();
+    const game = opened("g1");
+
+    await expect(renameGame(client, game, "   ")).rejects.toThrow("a game needs a name");
+    expect(client.setGameName).not.toHaveBeenCalled();
   });
 });

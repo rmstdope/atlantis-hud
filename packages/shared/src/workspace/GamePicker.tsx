@@ -3,6 +3,8 @@ import type { ChangeEvent } from "react";
 import { useEffect, useRef, useState } from "react";
 import type { BackupImportMode } from "../gameBackup";
 import { backupGameIdentity } from "../gameBackup";
+import { gameNameOf } from "../gameSession";
+import { describeError } from "./shellAction";
 import { GameForm } from "./GameForm";
 
 /**
@@ -18,6 +20,9 @@ import { GameForm } from "./GameForm";
  *
  * Importing a backup of a game that is already here asks the same way (ah-c0m) - Replace, Keep
  * both, or Cancel - and says what replacing erases.
+ *
+ * The name can be changed in place from the This game tab (ah-lkw); the same rule that decides
+ * what a name may be at creation decides it here too.
  */
 export function GamePicker({
   games,
@@ -29,6 +34,7 @@ export function GamePicker({
   onDelete,
   onExport,
   onImport,
+  onRename,
   onDismiss
 }: {
   games: GameManifest[];
@@ -40,15 +46,21 @@ export function GamePicker({
   onDelete: (gameId: string) => void;
   onExport: (gameId: string) => void;
   onImport: (file: File, mode: BackupImportMode) => void;
+  onRename: (name: string) => Promise<boolean>;
   onDismiss: () => void;
 }) {
   const [creating, setCreating] = useState(games.length === 0);
   const [confirmingDeleteOf, setConfirmingDeleteOf] = useState<string | null>(null);
   const [tab, setTab] = useState<"games" | "settings">("games");
   const [pendingImport, setPendingImport] = useState<{ file: File; gameName: string } | null>(null);
+  // `null` = at rest; a string = the draft currently in the field.
+  const [renaming, setRenaming] = useState<string | null>(null);
+  const [renameError, setRenameError] = useState<string | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
   const importRef = useRef<HTMLInputElement | null>(null);
   const importButtonRef = useRef<HTMLButtonElement | null>(null);
+  const renameLinkRef = useRef<HTMLButtonElement | null>(null);
+  const renameInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -88,6 +100,63 @@ export function GamePicker({
       setTab("games");
     }
   }, [currentGame]);
+
+  const isRenaming = renaming !== null;
+  const trimmedDraft = renaming?.trim() ?? "";
+  const duplicate =
+    isRenaming &&
+    trimmedDraft !== "" &&
+    trimmedDraft !== currentGame?.metadata.gameName &&
+    games.some(
+      (candidate) =>
+        candidate.metadata.gameId !== currentGameId && candidate.metadata.gameName === trimmedDraft
+    )
+      ? trimmedDraft
+      : null;
+
+  // Select-all on open, so typing replaces the whole name (as drawn in the mockup) - keyed on
+  // `isRenaming` rather than `renaming` so it runs once per open, not on every keystroke. And the
+  // Rename link gets focus back once it re-mounts on close: at the moment `cancel`/`save` call
+  // `setRenaming(null)` the link is not in the DOM yet (React has not re-rendered), so the focus
+  // has to happen from an effect. `wasRenaming` guards against focusing the link on every render
+  // where editing merely was not entered (e.g. switching to this tab, or the initial mount).
+  const wasRenamingRef = useRef(false);
+  useEffect(() => {
+    if (isRenaming) {
+      renameInputRef.current?.select();
+    } else if (wasRenamingRef.current) {
+      renameLinkRef.current?.focus();
+    }
+    wasRenamingRef.current = isRenaming;
+  }, [isRenaming]);
+
+  const cancelRename = () => {
+    setRenaming(null);
+    setRenameError(null);
+  };
+
+  const saveRename = async () => {
+    if (renaming === null || !currentGame) {
+      return;
+    }
+    let name: string;
+    try {
+      name = gameNameOf(renaming);
+    } catch (error) {
+      setRenameError(describeError(error));
+      return;
+    }
+    if (name === currentGame.metadata.gameName) {
+      // Nothing to write.
+      cancelRename();
+      return;
+    }
+    if (await onRename(name)) {
+      cancelRename();
+    }
+    // Else: the field stays open with the typed name; the picker's own error line (below) says
+    // why, and Save can be retried.
+  };
 
   const onPickImport = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -166,10 +235,90 @@ export function GamePicker({
       {tab === "settings" && currentGame ? (
         <div data-testid="game-settings-panel">
           <dl className="flex flex-col gap-1">
-            <div className="flex items-baseline justify-between gap-2">
-              <dt className="text-ink-soft">Name</dt>
-              <dd className="truncate text-ink">{currentGame.metadata.gameName}</dd>
-            </div>
+            {isRenaming ? (
+              <div className="flex flex-col gap-1">
+                <dt className="text-ink-soft">Name</dt>
+                <dd className="flex flex-col gap-1">
+                  <input
+                    ref={renameInputRef}
+                    data-testid="game-rename-input"
+                    aria-label="game name"
+                    value={renaming ?? ""}
+                    disabled={busy}
+                    autoFocus
+                    onChange={(event) => {
+                      setRenaming(event.target.value);
+                      setRenameError(null);
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        void saveRename();
+                      }
+                      if (event.key === "Escape") {
+                        // Stop the *React* event here, before it reaches the picker's own
+                        // `document` Escape listener (React dispatches from the root container,
+                        // below `document` in the bubble path) - otherwise cancelling the edit
+                        // also closes the whole picker.
+                        event.stopPropagation();
+                        cancelRename();
+                      }
+                    }}
+                    className="rounded border border-edge bg-panel px-2 py-1 text-ink disabled:opacity-50"
+                  />
+                  {renameError ? (
+                    <p data-testid="game-rename-error" role="alert" className="text-danger">
+                      {renameError}
+                    </p>
+                  ) : null}
+                  {duplicate ? (
+                    <p data-testid="game-rename-warning" className="text-warn">
+                      Another game is already called “{duplicate}”.
+                    </p>
+                  ) : null}
+                  <div className="flex justify-end gap-1.5">
+                    <button
+                      type="button"
+                      data-testid="game-rename-save"
+                      disabled={busy}
+                      onClick={() => void saveRename()}
+                      className="rounded border border-brass px-2 py-0.5 text-brass disabled:opacity-50"
+                    >
+                      {busy ? "Saving…" : "Save"}
+                    </button>
+                    <button
+                      type="button"
+                      data-testid="game-rename-cancel"
+                      disabled={busy}
+                      onClick={cancelRename}
+                      className="rounded border border-edge px-2 py-0.5 text-ink disabled:opacity-50"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </dd>
+              </div>
+            ) : (
+              <div className="flex items-baseline justify-between gap-2">
+                <dt className="text-ink-soft">Name</dt>
+                <dd className="flex min-w-0 items-baseline gap-1.5">
+                  <span className="truncate text-ink">{currentGame.metadata.gameName}</span>
+                  <button
+                    type="button"
+                    ref={renameLinkRef}
+                    data-testid="rename-game"
+                    disabled={busy}
+                    onClick={() => {
+                      setRenaming(currentGame.metadata.gameName);
+                      setRenameError(null);
+                    }}
+                    className="text-brass hover:underline disabled:opacity-50"
+                  >
+                    Rename
+                  </button>
+                </dd>
+              </div>
+            )}
             <div className="flex items-baseline justify-between gap-2">
               <dt className="text-ink-soft">Ruleset</dt>
               <dd className="text-ink">{currentGame.metadata.rulesetId}</dd>
@@ -180,7 +329,7 @@ export function GamePicker({
             <button
               type="button"
               data-testid="export-game"
-              disabled={busy}
+              disabled={busy || isRenaming}
               onClick={() => onExport(currentGame.metadata.gameId)}
               className="w-full rounded border border-edge bg-panel px-2 py-1 text-left text-brass hover:border-brass disabled:opacity-50"
             >
@@ -190,7 +339,7 @@ export function GamePicker({
               ref={importButtonRef}
               type="button"
               data-testid="import-game"
-              disabled={busy}
+              disabled={busy || isRenaming}
               onClick={() => importRef.current?.click()}
               className="mt-1.5 w-full rounded border border-edge bg-panel px-2 py-1 text-left text-brass hover:border-brass disabled:opacity-50"
             >
