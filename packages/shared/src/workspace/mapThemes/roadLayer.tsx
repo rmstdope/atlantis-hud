@@ -52,9 +52,9 @@ export function roadLayer(style: RoadStyle): ComponentType<LayerProps> {
             const y2 = view.at.y + bearing.y * HEX_RADIUS * style.reach;
             return (
               <g key={`${view.key}-${direction}`}>
-                {style.strokes.map((stroke) => (
+                {style.strokes.map((stroke, index) => (
                   <line
-                    key={stroke.className}
+                    key={index}
                     className={stroke.className}
                     x1={view.at.x}
                     y1={view.at.y}
