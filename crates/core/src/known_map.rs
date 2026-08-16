@@ -212,10 +212,15 @@ pub fn resolve_known_map(current: &ParsedReport, remembered: &[RememberedRegion]
         );
     }
 
-    // Rule 4: the current report's own regions always win.
+    // Rule 4: the current report's own regions always win. `stored_by_key` is what
+    // `with_allies_units` reads to find a same-turn ally sighting of the same hex - built from
+    // `ordered` (oldest first, the same list Rule 3 walks) rather than `remembered` in whatever
+    // order it arrived, so a duplicate direct sighting of one coordinate resolves to the most
+    // recent one here too, deterministically, rather than to whichever the input happened to list
+    // last.
     let mut stored_by_key: BTreeMap<String, &RememberedRegion> = BTreeMap::new();
-    for entry in remembered {
-        stored_by_key.insert(key(entry.region.coordinate), entry);
+    for entry in &ordered {
+        stored_by_key.insert(key(entry.region.coordinate), *entry);
     }
     for region in &current.regions {
         let region_key = key(region.coordinate);

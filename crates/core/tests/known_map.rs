@@ -101,6 +101,65 @@ fn an_older_sighting_is_stale_and_keeps_no_units() {
     assert!(hex.region.as_ref().unwrap().units.is_empty());
 }
 
+/// The ally-units merge (rule 4) looks up a same-turn stored sighting by coordinate, and that
+/// lookup must be as deterministic as the direct-sighting resolution (rule 3) it sits beside: two
+/// remembered entries for the same hex - one a same-turn ally sighting, one an older, stale one -
+/// must resolve to the same winner regardless of which the input lists last, or the ally's units
+/// can be silently dropped depending on storage's iteration order (found in review of ah-u4e.1).
+#[test]
+fn the_allys_units_merge_ignores_a_stale_duplicate_of_the_same_hex() {
+    let stale = report_at_turn(
+        "swamp",
+        "February",
+        1,
+        "- Nobody (999), Bar (2), 1 orc [ORC].\n",
+    )
+    .regions[0]
+        .clone();
+    let same_turn = report_at_turn(
+        "swamp",
+        "December",
+        6,
+        "- Someone (500), Bar (2), 3 orcs [ORC].\n",
+    )
+    .regions[0]
+        .clone();
+
+    // The current report, at turn 71, visits the hex itself, with a unit of its own.
+    let current = report_at_turn("swamp", "December", 6, "* Us (100), 1 man [MAN].\n");
+
+    // Listed most-recent-first, which is what would fool an unsorted "last in the slice wins"
+    // lookup into picking the stale entry instead.
+    let known = resolve_known_map(
+        &current,
+        &[
+            RememberedRegion {
+                region: same_turn,
+                last_seen_turn: 71,
+            },
+            RememberedRegion {
+                region: stale,
+                last_seen_turn: 1,
+            },
+        ],
+    );
+
+    let hex = known
+        .hexes
+        .iter()
+        .find(|hex| hex.coordinate == at(1, 1))
+        .expect("known");
+    let units = &hex.region.as_ref().unwrap().units;
+    assert_eq!(
+        units
+            .iter()
+            .map(|unit| unit.unit_id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["100", "500"],
+        "the same-turn ally's unit should merge in, not the stale sighting's"
+    );
+}
+
 /// Storage is expected to hand back one sighting per coordinate, but nothing enforces it - two
 /// direct sightings of the same hex must still settle on an answer rather than an unspecified one,
 /// and it should be the more recent sighting, exactly as the naming rules already prefer.
