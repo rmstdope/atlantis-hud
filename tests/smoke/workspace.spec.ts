@@ -917,16 +917,19 @@ test("a unit told to spend silver it has not got is warned about, without blocki
   await expect(page.getByTestId("export-orders")).toBeEnabled();
   await page.keyboard.press("Escape");
 
-  // And the whole map is counted, so the same problem is reachable from the header.
+  // And the whole map is counted, so the same problem is reachable from the header - alongside
+  // the turn's own (ah-dbb.2): four mages in a different hex CAST an enchant with no plate armor
+  // on hand, which the server accepted but which still spends the whole month on nothing.
   const chip = page.getByTestId("problems-chip");
-  await expect(chip).toContainText("1 problem");
+  await expect(chip).toContainText("2 problems");
   await chip.click();
   await expect(page.getByTestId("problems-panel")).toContainText("mountain (7,53)");
 
-  // Corrected, it goes away entirely.
+  // Corrected, this hex's own problem goes away entirely - the turn's other one, in a hex this
+  // test never touches, is still there.
   await fillOrders(page, "@work");
   await expect(page.getByTestId("region-problems")).toHaveCount(0);
-  await expect(page.getByTestId("problems-chip")).toHaveCount(0);
+  await expect(page.getByTestId("problems-chip")).toContainText("1 problem");
 });
 
 /**
@@ -1008,7 +1011,9 @@ test("a silenced advisory check disappears everywhere at once", async ({ page })
   await fillOrders(page, "GIVE 13401 999999999 SILV");
 
   await expect(page.getByTestId("region-problems")).toContainText("short");
-  await expect(page.getByTestId("problems-chip")).toContainText("1 problem");
+  // Alongside the turn's own not-enough-items finding (ah-dbb.2), in a different hex - a
+  // not-enough-silver toggle silences only this one, so it is what the assertions below track.
+  await expect(page.getByTestId("problems-chip")).toContainText("2 problems");
 
   await page.getByRole("button", { name: "Settings" }).click();
   await page.getByTestId("settings-tab-warnings").click();
@@ -1016,7 +1021,7 @@ test("a silenced advisory check disappears everywhere at once", async ({ page })
   await page.keyboard.press("Escape");
 
   await expect(page.getByTestId("region-problems")).toHaveCount(0);
-  await expect(page.getByTestId("problems-chip")).toHaveCount(0);
+  await expect(page.getByTestId("problems-chip")).toContainText("1 problem");
 
   await page.getByRole("button", { name: "Settings" }).click();
   await page.getByTestId("settings-tab-warnings").click();
@@ -1024,7 +1029,7 @@ test("a silenced advisory check disappears everywhere at once", async ({ page })
   await page.keyboard.press("Escape");
 
   await expect(page.getByTestId("region-problems")).toContainText("short");
-  await expect(page.getByTestId("problems-chip")).toContainText("1 problem");
+  await expect(page.getByTestId("problems-chip")).toContainText("2 problems");
 });
 
 test("an order with the wrong argument is caught, and the offending word quoted", async ({
