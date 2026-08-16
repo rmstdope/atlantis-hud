@@ -23,9 +23,14 @@ keyboard focus rings, the hit and accessibility layer, and the rulers. A theme n
 | hit + accessibility layer, rulers, pan/zoom | marks and labels                 |
 
 Roads are the theme's because every design styles them differently, but they keep their own layer
-*beneath* the route overlay, so a movement path crosses a road the way a traveller would. Give a
-road its width in fractions of `HEX_RADIUS` — `radii(...)`, never `vector-effect` — so it shrinks
-with the hex it belongs to; the route above it is drawn by the same rule.
+*beneath* the route overlay, so a movement path crosses a road the way a traveller would. What is
+not paint — the spoke geometry, the width rule, the badge-off short-circuit — is drawn through
+`roadLayer(style)` (`mapThemes/roadLayer.tsx`): a theme gives it a `RoadStyle` (how far along the
+spoke to reach, and an ordered list of strokes: class, width, dash, linecap, opacity) and gets a
+`RoadLayer` back. It applies the width rule for every theme — fractions of `HEX_RADIUS` through
+`radii(...)`, never `vector-effect` — so a road shrinks with the hex it belongs to; the route above
+it is drawn by the same rule. A theme may still hand-roll its own `RoadLayer`, but the shared one is
+what every shipped theme now uses.
 
 ## What a theme receives
 
@@ -82,19 +87,24 @@ separate the two, and at that strength a named forest and a named desert were th
 Terrain is the one fact a named hex carries, and the map was throwing it away to make a point the
 rim makes better.
 
-The same reasoning is why a theme damps the shared fade before painting with it, and it applies to
+The same reasoning is why the shared fade is damped before a theme paints with it, and it applies to
 **both** faded states: a fade meant to *hide* ground and a treatment meant to *age* or *reserve* it
-are not the same strength. Laying a theme's own wash at the full `fogOpacity` buries the terrain,
+are not the same strength. Painting a theme's own wash at the full `fogOpacity` buries the terrain,
 and every faded hex comes out the same colour whatever it is made of — a stale ocean has to still
-read as ocean, and so does a named one. Scale it back and let the theme's own mark (hatching, a
-dashed rim, a T-minus number) carry the meaning.
+read as ocean, and so does a named one. A theme declares how much it damps, on `MapTheme.fogDamping`
+(0 < n <= 1); `buildHexViews` scales `fogOpacity` by it before a theme ever sees the hex, so
+`view.fogOpacity` arrives already damped and a theme paints it as it is — never computing its own
+opacity from the raw fade. Let the theme's own mark (hatching, a dashed rim, a T-minus number) carry
+the meaning the lightened fade no longer can.
 
-Damp them by the **same factor**, and check what the two land on. Every theme here damped stale and
+Damping is applied to the **same factor** for both states, structurally, because a theme no longer
+touches the arithmetic at all. It used to be a theme's own job, and every theme here damped stale and
 left named whole, from the days when named was the heavy one — which after the fade was lightened
 put unsurveyed ground on top of a long-stale wash instead of clear of it. Cartographer's Table came
 out at 0.400 against 0.384, sixteen thousandths apart, and Emblem & Dots and Beveled Tile were not
-much better. `mapThemes/index.test.tsx` now checks the gap for every registered theme at once,
-because each theme's own suite only ever sees its own numbers and none of them could see this.
+much better. `mapThemes/index.test.tsx` no longer checks that arithmetic each theme might get wrong;
+it checks that no theme reintroduces a private damping, since each theme's own suite only ever sees
+its own numbers and none of them could see this.
 
 And do not withhold the terrain paint itself from a named hex. Miniature World did, leaving bare
 board — defensible about the *scenery* a modeller adds having been there, which it still withholds,
@@ -115,9 +125,10 @@ monster faction, so a theme that does not draw monsters separately still shows e
 type MapTheme = {
   id: string;                       // stable: it is what gets persisted
   label: string;                    // what the settings picker shows
+  fogDamping: number;                // 0 < n <= 1; applied to the fade before a theme sees it
   Defs?: ComponentType;             // gradients, hatches, filters — optional
   TerrainLayer: ComponentType<LayerProps>;
-  RoadLayer: ComponentType<LayerProps>;
+  RoadLayer: ComponentType<LayerProps>;  // usually `roadLayer(style)`
   MarkLayer: ComponentType<LayerProps>;
 };
 
@@ -137,7 +148,8 @@ setting closes that loop into an import cycle.
 Four steps, and none of them touch `MapCanvas.tsx` or any other theme.
 
 1. **Create the directory** `packages/shared/src/workspace/mapThemes/<yourTheme>/` holding:
-   - `index.tsx` — the `MapTheme` object and its layer components
+   - `index.tsx` — the `MapTheme` object and its layer components, including a `ROAD_STYLE` (fed to
+     `roadLayer(style)` for `RoadLayer`) and a `fogDamping` factor
    - `paint.ts` — every layout and priority decision, as pure functions
    - `theme.css` — the theme's own colours and its zoom-band policy
    - `<yourTheme>.test.tsx` — pure tests over `paint.ts`, plus a render test
