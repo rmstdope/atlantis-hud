@@ -10,7 +10,7 @@
  * preserve half of it, because there is nothing left that owns only half.
  */
 
-import { parseRegionId, SURFACE } from "../hexMapModel";
+import { NEXUS, parseRegionId } from "../hexMapModel";
 import { MAX_STEP, MIN_STEP, type Viewport } from "./mapViewport";
 
 /** The minimal interface this module needs from any storage backend. */
@@ -80,15 +80,15 @@ function viewportIn(stored: StoredView): Viewport | null {
 /**
  * The level in a stored record, or `null` when it holds none worth using.
  *
- * A level is a z coordinate: a whole number, and no shallower than the surface. Rejected rather
- * than rounded, because a record that has been edited by hand into something impossible is not a
- * record whose intent can be guessed - and the caller's fallback is the surface, which is where a
- * game with no saved level opens anyway. A fraction would be the worst of the three to let
+ * A level is a z coordinate: a whole number, and no shallower than the nexus, level 0. Rejected
+ * rather than rounded, because a record that has been edited by hand into something impossible is
+ * not a record whose intent can be guessed - and the caller's fallback is the surface, which is
+ * where a game with no saved level opens anyway. A fraction would be the worst of the three to let
  * through: it matches no hex on any level, so the map would draw nothing at all.
  */
 function levelIn(stored: StoredView): number | null {
   const { level } = stored;
-  if (typeof level !== "number" || !Number.isInteger(level) || level < SURFACE) {
+  if (typeof level !== "number" || !Number.isInteger(level) || level < NEXUS) {
     return null;
   }
   return level;

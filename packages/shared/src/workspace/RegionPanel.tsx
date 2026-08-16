@@ -1,5 +1,5 @@
-import type { Coordinate, CoreClient, OpenedGame, OrderDiagnostic } from "@atlantis/core-client";
-import { abbreviateDirection, regionIdOf, SURFACE, type HexNode } from "../hexMapModel";
+import type { Coordinate, CoreClient, MapLevel, OpenedGame, OrderDiagnostic } from "@atlantis/core-client";
+import { abbreviateDirection, levelClause, regionIdOf, type HexNode } from "../hexMapModel";
 import { useWorkspaceStore } from "../workspaceStore";
 import { CollapsiblePanel } from "./CollapsiblePanel";
 import { Absent, Field, Row, Section, StaleBanner } from "./primitives";
@@ -16,6 +16,7 @@ import { RegionNotes } from "./RegionNotes";
 export function RegionPanel({
   hex,
   unknown = null,
+  levels = [],
   problems = [],
   client,
   game,
@@ -29,6 +30,8 @@ export function RegionPanel({
    * panel has to answer with the coordinates and with the honest nothing that goes with them.
    */
   unknown?: Coordinate | null;
+  /** The known map's levels, so an unexplored hex off the surface can be named in its sentence. */
+  levels?: MapLevel[];
   /**
    * What order validation found in this hex, unit-level and hex-level alike.
    *
@@ -54,7 +57,7 @@ export function RegionPanel({
         {unknown ? (
           <Absent>
             Nothing is known about this hex. No report has described it, and no neighbour has named
-            it{unknown.z === SURFACE ? "" : `, on level ${unknown.z}`}.
+            it{levelClause(levels, unknown.z)}.
           </Absent>
         ) : (
           <Absent>No hex selected.</Absent>
