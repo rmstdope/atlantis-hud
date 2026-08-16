@@ -58,16 +58,20 @@ export function orderArgumentCompletions(lookUp: ArgumentLookup): CompletionSour
     const line = context.state.doc.lineAt(context.pos);
     const before = context.state.sliceDoc(line.from, context.pos);
 
-    // The word being typed, anchored to a whitespace boundary.
+    // The word being typed, anchored to a whitespace boundary. Falls back to an empty word when
+    // the caret sits right after something that is neither a letter nor whitespace - a closing
+    // quote, say (`BUILD "Big Boat"` should still offer COMPLETE) - which only an explicit
+    // invocation (Ctrl+Space) asks for; a keystroke that lands here on its own stays quiet, same
+    // as any other empty position.
     const match = /(?:^|\s)([A-Za-z]*)$/.exec(before);
-    if (!match) {
+    if (!match && !context.explicit) {
       return null;
     }
+    const word = match ? match[1] : "";
 
     // Still in the command position - indentation, an optional repeat prefix, and the word itself
     // is all there is. `orderCommandCompletions` owns that position, and asking the core about it
     // means a round trip per keystroke to be told so.
-    const word = match[1];
     const head = before.slice(0, before.length - word.length);
     if (!/\S/.test(head.replace(/^\s*@?\s*/, ""))) {
       return null;

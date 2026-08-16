@@ -131,6 +131,25 @@ describe("orderArgumentCompletions", () => {
     expect(result?.options.map((option) => option.apply)).toEqual(["UNIT "]);
   });
 
+  it("answers an explicit summons right after a closing quote, where there is no whitespace boundary", async () => {
+    // BUILD "Big Boat" is a complete Name argument; COMPLETE is the keyword that may follow it.
+    // The word-boundary regex alone would never match here - there is no whitespace between the
+    // closing quote and the caret - so only the explicit-invocation fallback reaches the core.
+    const lookUp = vi.fn<ArgumentLookup>(async () => ["COMPLETE"]);
+    const text = 'BUILD "Big Boat"';
+    const result = await completeArgument(lookUp, text, text.length, true);
+    expect(labels(result)).toEqual(["COMPLETE"]);
+    expect(lookUp).toHaveBeenCalledWith(text);
+    // Nothing has been typed of the next word, so the insertion point is the caret itself.
+    expect(result?.from).toBe(text.length);
+  });
+
+  it("stays quiet right after a closing quote unless asked explicitly", async () => {
+    const lookUp: ArgumentLookup = async () => ["COMPLETE"];
+    const text = 'BUILD "Big Boat"';
+    expect(await completeArgument(lookUp, text)).toBeNull();
+  });
+
   it("offers the core's own order, preserved by sortText rather than alphabetically", async () => {
     const lookUp: ArgumentLookup = async () => ["N", "NE", "SE"];
     const result = await completeArgument(lookUp, "MOVE ", "MOVE ".length, true);
