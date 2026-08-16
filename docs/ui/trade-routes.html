@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ah-1j5 — finding trade routes</title>
+<style>
+  :root { --page:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --ink:#dbe3ec;
+          --soft:#a3b0c0; --dim:#8a97a8; --select:#4a9fd8; --ground:#10151c;
+          --warn:#d9a441; --danger:#d97070; --good:#7fb069; }
+  body { background: var(--page); color: var(--ink); font: 14px/1.55 system-ui, sans-serif;
+         margin: 0; padding: 24px 32px 80px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  h2.sec { font-size: 16px; margin: 34px 0 6px; border-top: 1px solid var(--edge); padding-top: 18px; }
+  p.note { color: var(--dim); max-width: 90ch; }
+  p.lead { color: var(--soft); max-width: 90ch; }
+  .row { display: flex; gap: 22px; flex-wrap: wrap; align-items: flex-start; margin: 10px 0 4px; }
+  .cap { font-size: 11px; color: var(--dim); margin: 0 0 4px; }
+  .cap b { color: var(--ink); font-weight: 600; }
+
+  /* a rail panel, as the workspace draws them */
+  .pane { width: 340px; background: var(--panel); border: 1px solid var(--edge); border-radius: 6px;
+          overflow: hidden; }
+  .pane-head { display: flex; align-items: center; gap: 8px; padding: 7px 10px;
+               border-bottom: 1px solid var(--edge); font-size: 12.5px; font-weight: 600; }
+  .pane-head .count { margin-left: auto; color: var(--dim); font-weight: 400; font-size: 11.5px; }
+  .pane-body { padding: 4px 0; }
+  .route { padding: 6px 10px; border-bottom: 1px solid var(--edge-soft, #1e2733); }
+  .route:last-child { border-bottom: none; }
+  .route.on { background: #4a9fd81a; box-shadow: inset 2px 0 0 var(--select); }
+  .r-top { display: flex; align-items: baseline; gap: 8px; font-size: 12.5px; }
+  .r-good { font-weight: 600; }
+  .r-tag { font: 11px ui-monospace, Menlo, monospace; color: var(--dim); }
+  .r-margin { margin-left: auto; color: var(--good); font-variant-numeric: tabular-nums; font-weight: 600; }
+  .r-legs { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--soft);
+            margin-top: 2px; font-variant-numeric: tabular-nums; }
+  .hex { font: 11px ui-monospace, Menlo, monospace; color: var(--ink); background: var(--raised);
+         border: 1px solid var(--edge); border-radius: 3px; padding: 0 4px; }
+  .arrow { color: var(--dim); }
+  .stale { color: var(--warn); font-size: 11px; }
+  .r-sub { font-size: 11px; color: var(--dim); margin-top: 2px; }
+
+  table.m { border-collapse: collapse; font-size: 12.5px; color: var(--soft); margin: 10px 0 4px; }
+  table.m td, table.m th { border: 1px solid var(--edge); padding: 4px 10px; text-align: left;
+                           vertical-align: top; }
+  table.m th { color: var(--ink); font-weight: 600; }
+  table.m td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  code { font-family: ui-monospace, Menlo, monospace; color: var(--ink); background: var(--raised);
+         padding: 0 4px; border-radius: 3px; }
+  .banner { background: var(--raised); border: 1px solid var(--edge); border-left: 3px solid var(--select);
+            padding: 10px 14px; border-radius: 4px; max-width: 94ch; margin: 14px 0; color: var(--soft); }
+  .banner.warn { border-left-color: var(--warn); }
+</style>
+</head>
+<body>
+
+<h1>ah-1j5 — finding trade routes</h1>
+<p class="lead">A hex sells a good; another hex will pay more for it. The report carries both halves
+with prices, so the arithmetic is free — what has to be decided is how much of it is worth doing,
+and where the answer appears.</p>
+
+<div class="banner" style="border-left-color:#7fb069"><strong>Chosen</strong>, across three rounds.
+The answer is a <strong>hex pair</strong> carrying every good tradeable between those two hexes,
+ranked by what the trade is worth (quantity × margin), computed over the <strong>known map</strong>
+with each half dated, with distances as <strong>three</strong> numbers — <code>14/7/4 turns on
+foot/riding/flying</code>, an em dash where a mode cannot make it, <em>no known way</em> where none
+can. Both directions fold into one <strong>circuit</strong> where each way pays. It lives behind a
+counted <strong>Trade</strong> chip in the header opening a list, as the Problems chip already does;
+a row click flies the map to the buying hex and selects it. Carrying capacity is not modelled — the
+quantity is shown and the player judges. Rejected: margin-only ranking, this-turn-only data, a
+staleness cutoff, a rail panel, a map layer (a later bead), one row per direction, and capacity in
+the first version. The full interview is in bead ah-1j5's children.</div>
+
+<div class="banner warn"><strong>First, a fact that changes the shape of this bead.</strong> I ran
+the join over every committed fixture report. <strong>In a single turn's report there is almost never
+a route at all</strong> — the turn 71 report the smoke tests use has seven goods for sale and
+thirteen wanted, and <em>no</em> overlap between them. Across the whole fixture corpus, one report
+yields four routes at best and most yield none. A faction only sees the markets of hexes it has
+units in, and that is a handful per turn.</p>
+<p>Across a game's <em>remembered</em> hexes it is a different picture: game 3, faction 42, over its
+five stored turns, yields <strong>seven routes</strong> — and the two best pair a price seen in turn
+42 with one seen in turn 82.</p></div>
+
+<h2 class="sec">What the answer actually looks like</h2>
+<p class="lead">Every route below is real, computed from the committed fixtures. This is the whole
+answer for that game, not a sample.</p>
+<table class="m">
+<tr><th>Good</th><th>Buy at</th><th class="num">Price</th><th class="num">Stock</th><th>Sell at</th><th class="num">Price</th><th class="num">Wanted</th><th class="num">Margin</th><th>Seen</th></tr>
+<tr><td>chocolate <code>CHOC</code></td><td><code>49,3</code></td><td class="num">$95</td><td class="num">—</td><td><code>0,48</code></td><td class="num">$344</td><td class="num">41</td><td class="num">$249</td><td>t42 → t82</td></tr>
+<tr><td>silk <code>SILK</code></td><td><code>25,9</code></td><td class="num">$60</td><td class="num">—</td><td><code>49,3</code></td><td class="num">$303</td><td class="num">74</td><td class="num">$243</td><td>t82 → t42</td></tr>
+<tr><td>perfume <code>PERF</code></td><td><code>0,48</code></td><td class="num">$192</td><td class="num">36</td><td><code>40,0</code></td><td class="num">$413</td><td class="num">5</td><td class="num">$221</td><td>t82 → t82</td></tr>
+<tr><td>chocolate <code>CHOC</code></td><td><code>36,4</code></td><td class="num">$126</td><td class="num">88</td><td><code>0,48</code></td><td class="num">$344</td><td class="num">41</td><td class="num">$218</td><td>t82 → t82</td></tr>
+<tr><td>silk <code>SILK</code></td><td><code>35,9</code></td><td class="num">$89</td><td class="num">16</td><td><code>49,3</code></td><td class="num">$303</td><td class="num">74</td><td class="num">$214</td><td>t82 → t42</td></tr>
+</table>
+<p class="note">Two more sit below these. Note the third row: perfume bought at 0,48 for $192 and
+sold at 40,0 for $413 — but the buyer only wants <strong>5</strong>. The margin is $221 and the
+whole trade is worth $1,105, which is less than the fourth row's chocolate at 41 × $218. <strong>Margin
+alone ranks these wrongly.</strong></p>
+
+<h2 class="sec">Q1 — how much of the arithmetic is in the first version?</h2>
+<div class="row">
+  <div>
+    <p class="cap"><b>A — margin only</b></p>
+    <div class="pane" style="width:300px">
+      <div class="pane-head">Trade routes <span class="count">7</span></div>
+      <div class="pane-body">
+        <div class="route on">
+          <div class="r-top"><span class="r-good">chocolate</span><span class="r-tag">CHOC</span><span class="r-margin">+$249</span></div>
+          <div class="r-legs"><span class="hex">49,3</span><span class="arrow">→</span><span class="hex">0,48</span><span>$95 → $344</span></div>
+        </div>
+        <div class="route">
+          <div class="r-top"><span class="r-good">silk</span><span class="r-tag">SILK</span><span class="r-margin">+$243</span></div>
+          <div class="r-legs"><span class="hex">25,9</span><span class="arrow">→</span><span class="hex">49,3</span><span>$60 → $303</span></div>
+        </div>
+        <div class="route">
+          <div class="r-top"><span class="r-good">perfume</span><span class="r-tag">PERF</span><span class="r-margin">+$221</span></div>
+          <div class="r-legs"><span class="hex">0,48</span><span class="arrow">→</span><span class="hex">40,0</span><span>$192 → $413</span></div>
+        </div>
+      </div>
+    </div>
+    <p class="note">The smallest thing that could work. Ranks perfume above a chocolate trade worth
+    eight times as much.</p>
+  </div>
+  <div>
+    <p class="cap"><b>B — margin and quantity</b> · what the trade is actually worth</p>
+    <div class="pane" style="width:330px">
+      <div class="pane-head">Trade routes <span class="count">7</span></div>
+      <div class="pane-body">
+        <div class="route on">
+          <div class="r-top"><span class="r-good">chocolate</span><span class="r-tag">CHOC</span><span class="r-margin">$8,938</span></div>
+          <div class="r-legs"><span class="hex">36,4</span><span class="arrow">→</span><span class="hex">0,48</span><span>$126 → $344</span></div>
+          <div class="r-sub">41 of 88 · +$218 each</div>
+        </div>
+        <div class="route">
+          <div class="r-top"><span class="r-good">silk</span><span class="r-tag">SILK</span><span class="r-margin">$3,424</span></div>
+          <div class="r-legs"><span class="hex">35,9</span><span class="arrow">→</span><span class="hex">49,3</span><span>$89 → $303</span></div>
+          <div class="r-sub">16 of 74 · +$214 each</div>
+        </div>
+        <div class="route">
+          <div class="r-top"><span class="r-good">perfume</span><span class="r-tag">PERF</span><span class="r-margin">$1,105</span></div>
+          <div class="r-legs"><span class="hex">0,48</span><span class="arrow">→</span><span class="hex">40,0</span><span>$192 → $413</span></div>
+          <div class="r-sub">5 of 36 · +$221 each</div>
+        </div>
+      </div>
+    </div>
+    <p class="note">The same seven routes, ranked by what they are worth: the smaller of what the
+    seller has and what the buyer will take, times the margin. Perfume drops to third. Costs one
+    more line of arithmetic and one more line per row.</p>
+  </div>
+  <div>
+    <p class="cap"><b>C — and how far it is</b></p>
+    <div class="pane" style="width:330px">
+      <div class="pane-head">Trade routes <span class="count">7</span></div>
+      <div class="pane-body">
+        <div class="route on">
+          <div class="r-top"><span class="r-good">chocolate</span><span class="r-tag">CHOC</span><span class="r-margin">$8,938</span></div>
+          <div class="r-legs"><span class="hex">36,4</span><span class="arrow">→</span><span class="hex">0,48</span><span>$126 → $344</span></div>
+          <div class="r-sub">41 of 88 · +$218 each · 9 turns on foot</div>
+        </div>
+        <div class="route">
+          <div class="r-top"><span class="r-good">silk</span><span class="r-tag">SILK</span><span class="r-margin">$3,424</span></div>
+          <div class="r-legs"><span class="hex">35,9</span><span class="arrow">→</span><span class="hex">49,3</span><span>$89 → $303</span></div>
+          <div class="r-sub">16 of 74 · +$214 each · 14 turns on foot</div>
+        </div>
+      </div>
+    </div>
+    <p class="note"><strong>The catch:</strong> the route planner costs a journey <em>for a unit</em>
+    — its movement mode, its load, what it may cross. "How far is 36,4 from 0,48" has no answer
+    without one, so this column means either picking a unit or quietly assuming a walker. It is also
+    a route search per pair, where the other two columns are arithmetic.</p>
+  </div>
+</div>
+
+<h2 class="sec">Q2 — which hexes count, and how old is too old?</h2>
+<p class="lead">The seven routes above exist only because remembered hexes are included. Restricted
+to this turn's report, that game has four and the fixture the smoke tests use has none at all.</p>
+<div class="row">
+  <div>
+    <p class="cap"><b>A — everything remembered, each half dated</b></p>
+    <div class="pane" style="width:340px">
+      <div class="pane-body">
+        <div class="route on">
+          <div class="r-top"><span class="r-good">chocolate</span><span class="r-tag">CHOC</span><span class="r-margin">$249</span></div>
+          <div class="r-legs"><span class="hex">49,3</span><span class="stale">seen turn 42</span><span class="arrow">→</span><span class="hex">0,48</span><span>this turn</span></div>
+          <div class="r-sub">the buying price is 40 turns old</div>
+        </div>
+        <div class="route">
+          <div class="r-top"><span class="r-good">perfume</span><span class="r-tag">PERF</span><span class="r-margin">$221</span></div>
+          <div class="r-legs"><span class="hex">0,48</span><span>this turn</span><span class="arrow">→</span><span class="hex">40,0</span><span>this turn</span></div>
+        </div>
+      </div>
+    </div>
+    <p class="note">Nothing hidden; the age is stated and the player judges. The best-looking route
+    in the whole game rests on a forty-turn-old price.</p>
+  </div>
+  <div>
+    <p class="cap"><b>B — this turn's report only</b></p>
+    <div class="pane" style="width:340px">
+      <div class="pane-head">Trade routes <span class="count">0</span></div>
+      <div class="pane-body">
+        <div class="route" style="color:var(--dim); font-size:12px">
+          No route in this turn's report. The markets you can see this turn have nothing in common.
+        </div>
+      </div>
+    </div>
+    <p class="note">Never wrong, and in the fixture the smoke tests use it says exactly this,
+    always.</p>
+  </div>
+  <div>
+    <p class="cap"><b>C — remembered, but nothing older than N turns</b></p>
+    <div class="pane" style="width:340px">
+      <div class="pane-head">Trade routes <span class="count">4</span> <span style="color:var(--dim);font-weight:400">· within 10 turns</span></div>
+      <div class="pane-body">
+        <div class="route on">
+          <div class="r-top"><span class="r-good">perfume</span><span class="r-tag">PERF</span><span class="r-margin">$221</span></div>
+          <div class="r-legs"><span class="hex">0,48</span><span class="arrow">→</span><span class="hex">40,0</span><span>$192 → $413</span></div>
+        </div>
+        <div class="route">
+          <div class="r-top"><span class="r-good">chocolate</span><span class="r-tag">CHOC</span><span class="r-margin">$218</span></div>
+          <div class="r-legs"><span class="hex">36,4</span><span class="arrow">→</span><span class="hex">0,48</span><span>$126 → $344</span></div>
+        </div>
+      </div>
+    </div>
+    <p class="note">A cutoff hides the rumours and the two best routes with them. It also needs a
+    number nobody can defend, and a control to change it.</p>
+  </div>
+</div>
+
+<h2 class="sec">Round two — settled, and what is left</h2>
+<div class="banner"><strong>Settled:</strong> margin, quantity <em>and</em> distance; the answer is a
+<strong>hex pair</strong> carrying every good tradeable between those two hexes, not one row per
+good; and the known map counts, with each half dated.</div>
+<p class="note">Against the real data, all seven pairs happen to carry exactly one good — so the
+multi-good row below is hand-made to show the shape. It is worth having anyway: the corpus is four
+factions' worth of sightings, and a player who has walked further will see pairs with several.</p>
+
+<div class="row">
+  <div>
+    <p class="cap"><b>a pair, with everything tradeable between the two</b></p>
+    <div class="pane" style="width:360px">
+      <div class="pane-head">Trade routes <span class="count">7 pairs</span></div>
+      <div class="pane-body">
+        <div class="route on">
+          <div class="r-top"><span class="r-good"><span class="hex">49,3</span> → <span class="hex">0,48</span></span><span class="r-margin">$10,209</span></div>
+          <div class="r-sub">chocolate <span class="r-tag">CHOC</span> · 41 × +$249 · $95 → $344</div>
+          <div class="r-legs"><span class="stale">buy price seen turn 42</span></div>
+        </div>
+        <div class="route">
+          <div class="r-top"><span class="r-good"><span class="hex">36,4</span> → <span class="hex">0,48</span></span><span class="r-margin">$8,938</span></div>
+          <div class="r-sub">chocolate <span class="r-tag">CHOC</span> · 41 × +$218 · $126 → $344</div>
+        </div>
+        <div class="route">
+          <div class="r-top"><span class="r-good"><span class="hex">0,48</span> → <span class="hex">36,4</span></span><span class="r-margin">$6,660</span></div>
+          <div class="r-sub">perfume <span class="r-tag">PERF</span> · 36 × +$185 · $192 → $377</div>
+        </div>
+        <div class="route">
+          <div class="r-top"><span class="r-good"><span class="hex">12,8</span> → <span class="hex">14,12</span></span><span class="r-margin">$4,410</span></div>
+          <div class="r-sub">silk <span class="r-tag">SILK</span> · 15 × +$180 · $60 → $240</div>
+          <div class="r-sub">spices <span class="r-tag">SPIC</span> · 12 × +$140 · $108 → $248</div>
+          <div class="r-sub" style="color:var(--dim)">two goods, one journey · <em>shape only, not real data</em></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div>
+    <p class="cap"><b>the round trip that is really in the data</b></p>
+    <div class="pane" style="width:360px">
+      <div class="pane-body">
+        <div class="route on">
+          <div class="r-top"><span class="r-good"><span class="hex">0,48</span> ⇄ <span class="hex">36,4</span></span><span class="r-margin">$15,598</span></div>
+          <div class="r-sub">out: perfume <span class="r-tag">PERF</span> · 36 × +$185 = $6,660</div>
+          <div class="r-sub">back: chocolate <span class="r-tag">CHOC</span> · 41 × +$218 = $8,938</div>
+        </div>
+      </div>
+    </div>
+    <p class="note">Both directions of this pair are in the answer already, as two separate rows
+    worth $6,660 and $8,938. Folding them into one circuit is a display decision, not new
+    arithmetic — the journey is walked twice either way, and a laden unit going both ways earns
+    both margins.</p>
+  </div>
+</div>
+
+<h2 class="sec">Q3 — where does this live?</h2>
+<div class="row">
+  <div>
+    <p class="cap"><b>A — a counted chip in the header, opening a list</b></p>
+    <div class="pane" style="width:330px">
+      <div class="pane-head" style="background:var(--raised)">
+        <span style="border:1px solid var(--edge); border-radius:4px; padding:1px 7px; font-size:11.5px">Problems <span style="color:var(--danger)">3</span></span>
+        <span style="border:1px solid var(--select); border-radius:4px; padding:1px 7px; font-size:11.5px; color:var(--select)">Trade 7</span>
+      </div>
+      <div class="pane-body">
+        <div class="route on">
+          <div class="r-top"><span class="r-good"><span class="hex">49,3</span> → <span class="hex">0,48</span></span><span class="r-margin">$10,209</span></div>
+          <div class="r-sub">chocolate · 41 × +$249</div>
+        </div>
+        <div class="route">
+          <div class="r-top"><span class="r-good"><span class="hex">36,4</span> → <span class="hex">0,48</span></span><span class="r-margin">$8,938</span></div>
+          <div class="r-sub">chocolate · 41 × +$218</div>
+        </div>
+      </div>
+    </div>
+    <p class="note">Exactly how <strong>Problems</strong> already works: a counted chip whose popover
+    lists hexes as buttons that fly the map there. Costs no permanent map area, appears only when
+    asked, and the count itself is useful ("7 routes worth having"). Clicking a row selects the
+    buying hex.</p>
+  </div>
+  <div>
+    <p class="cap"><b>B — a panel in the right rail</b></p>
+    <div class="pane" style="width:300px">
+      <div class="pane-head">Trade routes <span class="count">7</span></div>
+      <div class="pane-body">
+        <div class="route on">
+          <div class="r-top"><span class="r-good"><span class="hex">49,3</span> → <span class="hex">0,48</span></span><span class="r-margin">$10,209</span></div>
+          <div class="r-sub">chocolate · 41 × +$249</div>
+        </div>
+      </div>
+    </div>
+    <p class="note">Like the movement planner: a collapsible panel that folds to its title bar.
+    Always to hand, always taking rail height from the unit and orders panes — and this is a thing
+    you consult now and then, not every turn.</p>
+  </div>
+  <div>
+    <p class="cap"><b>C — drawn on the map, behind a layer chip</b></p>
+    <div class="pane" style="width:300px">
+      <div class="pane-head" style="gap:6px">
+        <span style="border:1px solid var(--edge); border-radius:999px; padding:1px 8px; font-size:11px">Staleness</span>
+        <span style="border:1px solid var(--edge); border-radius:999px; padding:1px 8px; font-size:11px">Movement</span>
+        <span style="border:1px solid var(--select); color:var(--select); border-radius:999px; padding:1px 8px; font-size:11px">Trade</span>
+      </div>
+      <div class="pane-body" style="padding:14px 10px; color:var(--dim); font-size:12px">
+        Lines drawn between each buying and selling hex, thickest where the trade is worth most.
+      </div>
+    </div>
+    <p class="note">The map already knows how to draw a route overlay. Note the history:
+    <code>LayerChips.tsx</code> records that a <strong>Trade routes chip once sat there with nothing
+    behind it</strong>, and was removed because "a control that does nothing is worse than no
+    control". This is the chip coming back with something behind it.</p>
+  </div>
+</div>
+
+<h2 class="sec">Round three — the words, exactly as they will ship</h2>
+<p class="lead">Settled: a header chip like Problems; pairs folded into circuits where both directions
+pay; quantity shown but capacity not modelled; and the distance given for all three modes.</p>
+
+<div class="row">
+  <div>
+    <p class="cap"><b>the row, in full</b> — every string below is a proposal to accept or change</p>
+    <div class="pane" style="width:390px">
+      <div class="pane-head">Trade routes <span class="count">7 routes</span></div>
+      <div class="pane-body">
+        <div class="route on">
+          <div class="r-top"><span class="r-good"><span class="hex">0,48</span> ⇄ <span class="hex">36,4</span></span><span class="r-margin">$15,598</span></div>
+          <div class="r-sub">out: perfume <span class="r-tag">PERF</span> · 36 × +$185</div>
+          <div class="r-sub">back: chocolate <span class="r-tag">CHOC</span> · 41 × +$218</div>
+          <div class="r-sub">14/7/4 turns on foot/riding/flying</div>
+        </div>
+        <div class="route">
+          <div class="r-top"><span class="r-good"><span class="hex">49,3</span> → <span class="hex">0,48</span></span><span class="r-margin">$10,209</span></div>
+          <div class="r-sub">chocolate <span class="r-tag">CHOC</span> · 41 × +$249</div>
+          <div class="r-sub">—/—/9 turns on foot/riding/flying <span class="stale">· buy price seen turn 42</span></div>
+        </div>
+        <div class="route">
+          <div class="r-top"><span class="r-good"><span class="hex">25,9</span> → <span class="hex">49,3</span></span><span class="r-margin">$5,103</span></div>
+          <div class="r-sub">silk <span class="r-tag">SILK</span> · 21 × +$243</div>
+          <div class="r-sub">no known way <span class="stale">· sell price seen turn 42</span></div>
+        </div>
+      </div>
+    </div>
+    <p class="note">The second row shows a pair no walker or rider can reach — water in between —
+    but a flier can, in nine turns. The third shows a pair the known map does not join at all: the
+    trade is real, the journey is not plannable from what has been seen.</p>
+  </div>
+  <div>
+    <p class="cap"><b>the empty state</b> — which the smoke fixture shows always</p>
+    <div class="pane" style="width:330px">
+      <div class="pane-head">Trade routes <span class="count">none</span></div>
+      <div class="pane-body">
+        <div class="route" style="color:var(--dim); font-size:12px; padding:12px 10px">
+          Nothing to trade yet. No hex you have seen sells a good that another will pay more for.
+        </div>
+      </div>
+    </div>
+    <p class="note">Not an error, and common: the turn-71 fixture has seven goods for sale and
+    thirteen wanted with no overlap at all. A player early in a game will see this for many turns.</p>
+  </div>
+</div>
+
+<h2 class="sec">Q4 — "9 turns away" — for whom?</h2>
+<p class="lead">The route planner costs a journey for a <em>specific unit</em>: its movement mode, its
+load, what it may cross. A trade route has no unit yet, so the distance column has to say what it is
+assuming.</p>
+<div class="row">
+  <div>
+    <p class="cap"><b>A — hexes apart, no journey at all</b></p>
+    <div class="pane" style="width:290px"><div class="pane-body">
+      <div class="route on">
+        <div class="r-top"><span class="r-good"><span class="hex">49,3</span> → <span class="hex">0,48</span></span><span class="r-margin">$10,209</span></div>
+        <div class="r-sub">chocolate · 41 × +$249 · <strong>63 hexes apart</strong></div>
+      </div>
+    </div></div>
+    <p class="note">Straight-line distance across the lattice. Free, needs no ruleset, no unit and
+    no map knowledge — and says nothing about the ocean in between.</p>
+  </div>
+  <div>
+    <p class="cap"><b>B — turns for a unit on foot</b></p>
+    <div class="pane" style="width:290px"><div class="pane-body">
+      <div class="route on">
+        <div class="r-top"><span class="r-good"><span class="hex">49,3</span> → <span class="hex">0,48</span></span><span class="r-margin">$10,209</span></div>
+        <div class="r-sub">chocolate · 41 × +$249 · <strong>21 turns on foot</strong></div>
+      </div>
+    </div></div>
+    <p class="note">A real route through known hexes, costed for a walker — the assumption stated in
+    the row. Reuses the movement graph, needs the ruleset, and is a route search per pair. Says
+    "no known way" where the map does not join up, which is itself worth knowing.</p>
+  </div>
+  <div>
+    <p class="cap"><b>C — turns for the selected unit</b></p>
+    <div class="pane" style="width:290px"><div class="pane-body">
+      <div class="route on">
+        <div class="r-top"><span class="r-good"><span class="hex">49,3</span> → <span class="hex">0,48</span></span><span class="r-margin">$10,209</span></div>
+        <div class="r-sub">chocolate · 41 × +$249 · <strong>7 turns for Trader (4821)</strong></div>
+      </div>
+    </div></div>
+    <p class="note">Exact, for the unit that would actually go — a rider or a fleet changes the
+    answer completely. The list then changes every time you click a different unit, and says
+    nothing at all when none is selected.</p>
+  </div>
+</div>
+
+</body>
+</html>
