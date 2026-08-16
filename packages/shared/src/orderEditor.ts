@@ -9,11 +9,13 @@ export type OrderValidationSummary = {
 };
 
 /**
- * Completions for a half-typed command.
+ * Filters a candidate list to the ones starting with a half-typed prefix, case-insensitively.
  *
- * `commands` is the core's own vocabulary, fetched through `CoreClient.orderCommands`. It used to be
- * a list kept here and hand-copied from the Rust one, and the two had drifted: this side carried
- * four orders the ruleset has no such thing as and was missing END.
+ * Despite the name, this now serves both completion positions: the command vocabulary fetched
+ * through `CoreClient.orderCommands`, and the per-position argument vocabulary
+ * `orderArgumentCompletions` fetches through `CoreClient.orderArgumentCompletions`. It used to be
+ * a hand-copied list kept here and drifted from the Rust one - four orders the ruleset has no such
+ * thing as, missing END - which is why both now read the core's own answer instead.
  */
 export function suggestOrderCommands(prefix: string, commands: readonly string[]): string[] {
   const normalizedPrefix = prefix.trim().toUpperCase();

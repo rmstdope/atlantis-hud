@@ -246,7 +246,7 @@ describe("the live Tauri command lockstep", () => {
       expect(wire, `${fn} renames to`).toBe(fn.slice("command_".length));
       expect(registered, `${fn} is registered`).toContain(wire);
     }
-    expect(renames.size).toBe(24);
+    expect(renames.size).toBe(25);
 
     // Keys: every row's keys are the Rust parameter names, in order.
     for (const [command, keys] of Object.entries(table)) {

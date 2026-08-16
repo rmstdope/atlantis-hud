@@ -155,6 +155,7 @@ fn main() {
             atlantis_hud_core_tauri::command_list_imported_turns,
             atlantis_hud_core_tauri::command_validate_orders,
             atlantis_hud_core_tauri::command_order_commands,
+            atlantis_hud_core_tauri::command_order_argument_completions,
             atlantis_hud_core_tauri::command_save_order_draft,
             atlantis_hud_core_tauri::command_load_order_draft,
             atlantis_hud_core_tauri::command_list_hex_notes,

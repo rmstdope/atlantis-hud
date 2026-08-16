@@ -11,7 +11,7 @@
 //! say", and it accepts anything, including nothing. That is the accept-on-doubt policy made
 //! concrete: a `CAST` whose arguments depend on the spell must not be guessed at.
 
-use super::lexer::{Token, TokenKind};
+use super::lexer::{lex_line, Token, TokenKind};
 use crate::movement::graph::Direction;
 use crate::movement::rules::Ruleset;
 
@@ -430,6 +430,127 @@ pub fn find_order(command: &str) -> Option<&'static Order> {
         .find(|order| order.name.eq_ignore_ascii_case(command))
 }
 
+/// What the ruleset allows where the caret is, for the completion popup.
+///
+/// `line_prefix` is one order line from its first character up to the caret, the caret's own
+/// half-typed word included: the position is worked out from the complete words before it, and the
+/// half-typed word is what the shell filters the answer by.
+///
+/// Returns the words in the order they should be offered, and an empty list wherever the rules
+/// leave the position open - a unit number, a quantity, a name, anything after CAST - which is most
+/// positions and is not a failure. The command position answers empty too: `order_commands` speaks
+/// there.
+#[must_use]
+pub fn order_argument_completions(line_prefix: &str) -> Vec<String> {
+    let lexed = lex_line(line_prefix);
+    if lexed.comment.is_some() || lexed.unterminated_quote.is_some() {
+        return Vec::new();
+    }
+
+    let mut tokens = lexed.tokens;
+    if !line_prefix.ends_with(char::is_whitespace) && !line_prefix.ends_with('"') {
+        // The last token is still being typed. A half-typed word says nothing about which position
+        // the caret is in, so it is dropped before counting the position. A closing quote is not
+        // this case: unlike a bare word, `"` is unambiguous - the token it ends is complete, so
+        // the caret sitting right after it is already in the *next* position.
+        tokens.pop();
+    }
+
+    let Some((command, arguments)) = tokens.split_first() else {
+        // Nothing typed yet: the caret is in the command position, which `order_commands` answers.
+        return Vec::new();
+    };
+
+    let Some(order) = find_order(&command.text) else {
+        return Vec::new();
+    };
+
+    let mut offered: Vec<&'static str> = Vec::new();
+    for form in order.forms {
+        if let Some(argument) = next_argument(form, arguments) {
+            for keyword in keywords(argument) {
+                if !offered.contains(&keyword) {
+                    offered.push(keyword);
+                }
+            }
+        }
+    }
+
+    offered.into_iter().map(str::to_string).collect()
+}
+
+/// The argument that may stand where the caret is, for one form; `None` when the typed words do not
+/// match this form, or when the form is already finished.
+fn next_argument(form: &'static [Arg], arguments: &[Token]) -> Option<&'static Arg> {
+    // `match_arg` collects unrecognised item names for the checker's warnings; nothing here wants
+    // them, and with no ruleset it never fills this.
+    let mut unknown = Vec::new();
+    let mut at = 0;
+
+    for (index, argument) in form.iter().enumerate() {
+        match argument {
+            // Consumes the whole rest of the line, whatever it is. There is no position after it,
+            // and nothing to say about the one it swallows.
+            Arg::Tail => return None,
+            // `inner` binds as `&&'static Arg` - the field is already a reference and the match is
+            // through one - so both uses below dereference it. `Arg` is `Copy`, so that is free.
+            Arg::Rest(inner) => {
+                debug_assert_eq!(index, form.len() - 1, "Rest is a form's last argument");
+                loop {
+                    if at == arguments.len() {
+                        return Some(*inner);
+                    }
+                    at = match_arg(inner, arguments, at, None, &mut unknown).ok()?;
+                }
+            }
+            _ => {
+                if at == arguments.len() {
+                    return Some(argument);
+                }
+                at = match_arg(argument, arguments, at, None, &mut unknown).ok()?;
+            }
+        }
+    }
+
+    // Every argument matched and the form has no more positions: `TAX` takes nothing, and
+    // `DECLARE 15 ALLY` is finished.
+    None
+}
+
+/// The words one argument allows, in the order they should be offered; empty for an open one.
+fn keywords(argument: &Arg) -> Vec<&'static str> {
+    match argument {
+        Arg::Kw(keyword) => vec![*keyword],
+        Arg::OneOf(list) => list.to_vec(),
+        Arg::ItemClass => {
+            // The one ordering exception (Q9): 22 unfamiliar words is past the point where a list
+            // in the rules page's own order can be scanned.
+            let mut classes = ITEM_CLASSES.to_vec();
+            classes.sort_unstable();
+            classes
+        }
+        Arg::MoveStep => {
+            let mut steps: Vec<&'static str> = Direction::ALL
+                .iter()
+                .map(|direction| direction.abbreviation())
+                .collect();
+            steps.push("IN");
+            steps.push("OUT");
+            steps
+        }
+        Arg::Unit
+        | Arg::Faction
+        | Arg::Object
+        | Arg::Number
+        | Arg::Flag
+        | Arg::Item
+        | Arg::Skill
+        | Arg::Name
+        | Arg::Tail
+        | Arg::Rest(_) => Vec::new(),
+    }
+}
+
 /// An item argument the catalogue did not recognise.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UnknownItem {
@@ -697,5 +818,133 @@ mod tests {
         assert_eq!(find_order("give").map(|order| order.name), Some("GIVE"));
         assert_eq!(find_order("Give").map(|order| order.name), Some("GIVE"));
         assert!(find_order("fly").is_none());
+    }
+
+    #[test]
+    fn name_offers_everything_it_may_rename() {
+        assert_eq!(
+            order_argument_completions("NAME U"),
+            vec!["UNIT", "FACTION", "OBJECT", "CITY"]
+        );
+    }
+
+    #[test]
+    fn the_command_position_belongs_to_order_commands() {
+        for prefix in ["", "NAM", "  "] {
+            assert_eq!(order_argument_completions(prefix), Vec::<String>::new());
+        }
+    }
+
+    #[test]
+    fn an_unknown_order_offers_nothing() {
+        assert_eq!(order_argument_completions("WROK "), Vec::<String>::new());
+    }
+
+    #[test]
+    fn a_finished_form_offers_nothing() {
+        for prefix in ["DECLARE 15 ALLY ", "TAX "] {
+            assert_eq!(order_argument_completions(prefix), Vec::<String>::new());
+        }
+    }
+
+    #[test]
+    fn an_open_position_offers_nothing() {
+        for prefix in ["PRODUCE 5 ", "STUDY ", "GUARD ", "FORM "] {
+            assert_eq!(order_argument_completions(prefix), Vec::<String>::new());
+        }
+    }
+
+    #[test]
+    fn a_unit_reference_is_stepped_over_however_long_it_is() {
+        for prefix in ["GIVE 17 ", "GIVE NEW 2 ", "GIVE FACTION 15 NEW 2 "] {
+            assert_eq!(order_argument_completions(prefix), vec!["UNIT", "ALL"]);
+        }
+    }
+
+    #[test]
+    fn a_move_offers_its_steps_again_after_each_one() {
+        let expected = vec!["N", "NE", "SE", "S", "SW", "NW", "IN", "OUT"];
+        for prefix in ["MOVE ", "MOVE N ", "MOVE N S", "SAIL ", "ADVANCE IN "] {
+            assert_eq!(order_argument_completions(prefix), expected);
+        }
+    }
+
+    #[test]
+    fn item_classes_come_alphabetically() {
+        let offered = order_argument_completions("GIVE 4573 ALL ");
+        assert_eq!(offered.len(), ITEM_CLASSES.len());
+        assert_eq!(&offered[..3], &["ADVANCED", "ARMOR", "BATTLE"]);
+        let mut sorted = offered.clone();
+        sorted.sort_unstable();
+        assert_eq!(offered, sorted);
+    }
+
+    #[test]
+    fn a_second_keyword_position_is_reached_through_the_first() {
+        assert_eq!(
+            order_argument_completions("OPTION TEMPLATE "),
+            vec!["OFF", "SHORT", "LONG", "MAP"]
+        );
+        assert_eq!(order_argument_completions("TAKE "), vec!["FROM"]);
+    }
+
+    #[test]
+    fn a_comment_is_not_an_order() {
+        assert_eq!(
+            order_argument_completions("MOVE N ; go h"),
+            Vec::<String>::new()
+        );
+    }
+
+    #[test]
+    fn an_unclosed_quote_swallows_the_position() {
+        assert_eq!(
+            order_argument_completions("NAME UNIT \"Big "),
+            Vec::<String>::new()
+        );
+    }
+
+    #[test]
+    fn a_closed_quote_is_not_still_being_typed() {
+        // Unlike a bare word, a closing quote is unambiguous: the token it ends is complete, so
+        // the caret sitting right after it (no space typed yet) is already in the *next*
+        // position - here, BUILD's Name-then-COMPLETE form.
+        assert_eq!(
+            order_argument_completions("BUILD \"Big Boat\""),
+            vec!["COMPLETE"]
+        );
+    }
+
+    #[test]
+    fn the_repeat_prefix_and_indentation_are_ignored() {
+        let expected = vec!["UNIT", "FACTION", "OBJECT", "CITY"];
+        assert_eq!(order_argument_completions("@NAME U"), expected);
+        assert_eq!(order_argument_completions("   NAME U"), expected);
+    }
+
+    #[test]
+    fn the_half_typed_word_does_not_move_the_position() {
+        assert_eq!(
+            order_argument_completions("NAME U"),
+            order_argument_completions("NAME ")
+        );
+    }
+
+    #[test]
+    fn every_form_keeps_its_rest_last() {
+        for order in GRAMMAR {
+            for form in order.forms {
+                for (index, argument) in form.iter().enumerate() {
+                    if matches!(argument, Arg::Rest(_)) {
+                        assert_eq!(
+                            index,
+                            form.len() - 1,
+                            "{}: Rest is not this form's last argument",
+                            order.name
+                        );
+                    }
+                }
+            }
+        }
     }
 }

@@ -505,6 +505,12 @@ pub fn order_commands_state() -> Result<JsValue, JsValue> {
     to_js(&atlantis_hud_core::order_commands())
 }
 
+/// What may stand where the caret is, so the editor's popup can answer an argument position.
+#[wasm_bindgen]
+pub fn order_argument_completions_state(line_prefix: String) -> Result<JsValue, JsValue> {
+    to_js(&atlantis_hud_core::order_argument_completions(&line_prefix))
+}
+
 #[cfg(test)]
 mod tests {
     // The syntax-only entry point, which the binding above no longer calls: it goes through

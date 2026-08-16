@@ -452,6 +452,12 @@ export interface CoreAdapter {
     disabledCodes: readonly string[] | null
   ): Promise<OrderValidationResult>;
   orderCommands(): Promise<string[]>;
+  /**
+   * What may stand where the caret is, for the orders editor's completion popup: one order line
+   * from its first character to the caret, answered with the words the ruleset allows there.
+   * Empty wherever the rules leave the position open, which is most of them.
+   */
+  orderArgumentCompletions(linePrefix: string): Promise<string[]>;
   planRoute(
     rulesetJson: string,
     rawReport: string,
