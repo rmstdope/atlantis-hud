@@ -92,6 +92,8 @@ with an ally has to come out identical whichever shell wrote it.
   same `CoreAdapter` contract, over IndexedDB, and is passed to `createCoreClient` exactly like the
   tauri adapter (see `apps/web/src/main.tsx`). It has its own tests in `browser-core`, so this
   package's own tests pin only the tauri adapter's contract.
-- Contract normalization:
-  - Accepts adapter wire payloads in either `camelCase` or `snake_case`
-  - Returns canonical `EngineInfo` in `camelCase`
+- `CoreAdapter` is the one typed declaration of the boundary — every method returns `Promise<T>` of
+  the real type the core serializes, and nothing re-validates it at runtime: the Tauri wire is
+  Rust's own serde output, and the web adapter is our own code. `createCoreClient` adds three
+  ergonomic conversions over it (`validateOrders`'s options object, `exportMap`/`knownMap`'s JSON
+  stringification) and nothing else (ah-wxk.2).
