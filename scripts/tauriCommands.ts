@@ -47,8 +47,9 @@ export function registeredCommands(mainRs: string): string[] {
 /**
  * Every `#[tauri::command(… rename = "x")]` in core-tauri, mapped from the function it sits on
  * (`command_x`) to the wire name it declares (`x`). The attribute must sit within 200 characters
- * of its `pub fn` (only `#[must_use]` may come between it and the function), or it is not seen —
- * and the live test then fails on the missing entry, which is the right failure.
+ * of its `pub fn` — anything up to that many characters between them is allowed (typically just
+ * `#[must_use]`, sometimes formatted across several lines) — or it is not seen, and the live test
+ * then fails on the missing entry, which is the right failure.
  */
 export function commandRenames(coreTauriLibRs: string): Map<string, string> {
   const renames = new Map<string, string>();

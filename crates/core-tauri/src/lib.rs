@@ -241,7 +241,7 @@ impl From<ImportedTurnPreview> for ImportedTurnPreviewDto {
 pub mod commands {
     use super::*;
 
-    /// Returns canonical engine metadata for a Tauri command wrapper.
+    /// Returns canonical engine metadata for the Tauri command surface.
     #[must_use]
     #[cfg_attr(
         feature = "tauri",
