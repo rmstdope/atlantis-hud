@@ -284,8 +284,8 @@ function GlobalSettings() {
 
 /**
  * Which advisory order-check codes should not run at all: the Warnings tab's on/off toggles,
- * grouped Teaching / Resources / Guarding. Off means the core never produces the finding - counts,
- * chip, panels and editor underlines all agree, nothing anywhere says "hidden".
+ * grouped Teaching / Resources / Guarding / Orders. Off means the core never produces the finding -
+ * counts, chip, panels and editor underlines all agree, nothing anywhere says "hidden".
  */
 const WARNING_GROUPS: readonly {
   heading: string;
@@ -348,6 +348,16 @@ const WARNING_GROUPS: readonly {
         code: "hex-unguarded",
         title: "Unguarded hexes",
         description: "Every hex holding your units with nobody guarding it."
+      }
+    ]
+  },
+  {
+    heading: "Orders",
+    entries: [
+      {
+        code: "form-alias-reused",
+        title: "Reused FORM numbers",
+        description: "Two units formed in the same hex this month with the same NEW number."
       }
     ]
   }

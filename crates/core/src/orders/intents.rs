@@ -62,6 +62,13 @@ pub enum Intent {
     Move {
         steps: Vec<MoveStep>,
     },
+    /// `FORM n` at this month's depth: the unit is asking for a new unit under alias `n`. Recorded
+    /// on the forming unit (the enclosing `unit` block), nested FORMs included, so a check can see
+    /// every alias a hex hands out this month. A FORM inside a TURN block is next month's and is
+    /// not recorded.
+    Form {
+        alias: String,
+    },
 }
 
 /// One intent, and where on the page it was written.
@@ -136,6 +143,27 @@ pub fn read_intents(source: &str) -> Vec<UnitIntents> {
                         column_end: line.command.column_end,
                     });
                 }
+            }
+        }
+        Event::Open {
+            line,
+            kind: walk::BlockKind::Form,
+            depth,
+        } if depth.turn == 0 => {
+            if let (Some(unit), Some(alias)) = (
+                units.last_mut(),
+                line.arguments
+                    .first()
+                    .filter(|alias| alias.kind == TokenKind::Number),
+            ) {
+                unit.intents.push(PlacedIntent {
+                    intent: Intent::Form {
+                        alias: alias.text.clone(),
+                    },
+                    line: line.number,
+                    column_start: line.command.column_start,
+                    column_end: line.command.column_end,
+                });
             }
         }
         _ => {}
@@ -616,8 +644,51 @@ mod tests {
                 "WORK\n",
                 "END\n",
             )),
-            vec![],
-            "everything here belongs to the unit being formed"
+            vec![Intent::Form {
+                alias: "1".to_string()
+            }],
+            "the FORM itself belongs to the forming unit; everything else here belongs to the unit being formed"
+        );
+    }
+
+    /// `FORM n` at this month's depth is recorded on the forming unit, so a check can see every
+    /// alias a hex hands out this month - the BUY inside the block is still not the unit's own,
+    /// which `orders_inside_a_form_block_belong_to_the_unit_being_formed` already pins.
+    #[test]
+    fn a_form_at_this_months_depth_is_recorded_on_the_forming_unit() {
+        let unit = only_unit("unit 5\nFORM 1\nBUY 5 Plainsmen\nEND\n");
+
+        assert_eq!(
+            unit.intents
+                .iter()
+                .map(|placed| placed.intent.clone())
+                .collect::<Vec<_>>(),
+            vec![Intent::Form {
+                alias: "1".to_string()
+            }]
+        );
+        assert_eq!(unit.intents[0].line, 2);
+    }
+
+    /// A FORM inside a TURN block is next month's, like everything else in a TURN block.
+    #[test]
+    fn a_form_inside_a_turn_block_is_not_recorded() {
+        assert_eq!(intents("unit 5\nTURN\nFORM 1\nEND\nENDTURN\n"), vec![]);
+    }
+
+    /// FORMs nest, and each one hands out its own alias this month.
+    #[test]
+    fn a_nested_form_is_recorded_too() {
+        assert_eq!(
+            intents("unit 5\nFORM 1\nFORM 2\nEND\nEND\n"),
+            vec![
+                Intent::Form {
+                    alias: "1".to_string()
+                },
+                Intent::Form {
+                    alias: "2".to_string()
+                },
+            ]
         );
     }
 
@@ -645,7 +716,14 @@ mod tests {
                 .iter()
                 .map(|placed| placed.intent.clone())
                 .collect::<Vec<_>>(),
-            vec![Intent::Work, Intent::Tax]
+            vec![
+                Intent::Work,
+                Intent::Form {
+                    alias: "1".to_string()
+                },
+                Intent::Tax
+            ],
+            "the FORM itself belongs to the forming unit; the BUY inside it does not"
         );
     }
 }
