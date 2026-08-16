@@ -1,5 +1,5 @@
 import type { OrderDiagnostic, OrderValidationResult } from "@atlantis/core-client";
-import { findUnitBlocks, withoutTrailingBlankLines } from "./ordersDocument";
+import { findUnitBlocks } from "./ordersDocument";
 
 export type OrderValidationSummary = {
   errorCount: number;
@@ -75,23 +75,6 @@ export function shouldSaveOnBlur(hasUnsavedChanges: boolean): boolean {
 }
 
 /**
- * Which text the editor should show once the document has changed underneath it.
- *
- * Every keystroke is written into the faction document and the document comes straight back, so the
- * editor is forever being handed its own text a moment later. Usually that text is identical and
- * nothing happens. It is not identical when the player has just opened a line at the end: the block
- * boundary cannot hold a trailing blank line, so what returns is one newline shorter than what was
- * sent, and taking it made pressing Enter do nothing at all.
- *
- * So the draft stands whenever the document agrees with it about everything a block can express,
- * and gives way when it does not - which is how a planned route written in from the planner, or a
- * different unit's orders, still reaches the editor.
- */
-export function draftAfterDocumentChange(current: string, stored: string): string {
-  return withoutTrailingBlankLines(current) === stored ? current : stored;
-}
-
-/**
  * The draft as it should read once a save has landed: ended with the newline an orders file ends
  * with.
  *
@@ -103,6 +86,18 @@ export function draftAfterDocumentChange(current: string, stored: string): strin
 export function draftAfterSave(draft: string): string {
   return draft === "" || draft.endsWith("\n") ? draft : `${draft}\n`;
 }
+
+/**
+ * Who wrote the orders document.
+ *
+ * The editor owns the selected unit's text while it is on screen: it writes the document and is
+ * never handed its own text back - a round trip through React lags the editor by however many
+ * commits it is behind, and applying a lagging copy rewound the text under the player (#89). What
+ * the editor must be handed is a write from anywhere else - an import, a restore, a route from the
+ * planner - and `AppShell` counts those in `externalRevision`, which is the one signal the editor
+ * reloads on. An editor write leaves that number alone.
+ */
+export type OrdersOrigin = "editor" | "external";
 
 /**
  * A document as it was validated, together with what the core said about it.
