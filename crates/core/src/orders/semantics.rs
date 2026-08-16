@@ -1701,6 +1701,17 @@ mod tests {
         );
     }
 
+    /// A guard that sails away drops the guard exactly as one that marches - SAIL with a route is
+    /// a move to the intents reader, so `leaves_the_hex` agrees with the order tracer.
+    #[test]
+    fn a_guard_that_sails_away_drops_the_guard_like_one_that_marches() {
+        let mut guarding = unit("5");
+        guarding.on_guard = true;
+
+        let finding = only(check(vec![region(vec![guarding])], "unit 5\nSAIL N\n"));
+        assert_eq!(finding.code.as_str(), "guard-dropped");
+    }
+
     #[test]
     fn ordering_guard_off_drops_it_just_as_surely() {
         let mut guarding = unit("5");
