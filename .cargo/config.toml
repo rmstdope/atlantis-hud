@@ -1,6 +1,6 @@
 # One build directory for the repository and every worktree under it.
 #
-# Agents work in git worktrees below `.claude/worktrees/`, and each of them used to compile into its
+# Agents work in git worktrees below `.cerebro/worktrees/`, and each of them used to compile into its
 # own `target/`: three worktrees held 16.4 GB between them, on a disk that reached 100% capacity. A
 # build that runs out of space there fails with a linker error that reads like a code problem, so
 # the cost is not only the space.
@@ -8,7 +8,7 @@
 # Cargo searches for this file upward from the working directory, and resolves `target-dir` against
 # the directory holding it. The worktrees sit inside the repository, so their search arrives here
 # and they all build into the one tree at the root. Measured with the control: without this file a
-# worktree answered `.claude/worktrees/task/target`; with it, `<repo>/target`.
+# worktree answered `.cerebro/worktrees/task/target`; with it, `<repo>/target`.
 #
 # The path stays relative on purpose. An absolute one would work on the machine it was written on
 # and break CI, which builds on Linux and caches `target/` at its default location. There is a test
