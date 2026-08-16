@@ -73,9 +73,12 @@ pub mod codes {
     pub const TEACHER_CANNOT_TEACH: Code = Code("teacher-cannot-teach");
     pub const TEACHING_OVERSUBSCRIBED: Code = Code("teaching-oversubscribed");
     pub const TEACHER_HAS_FREE_SLOTS: Code = Code("teacher-has-free-slots");
-    /// Every code, in the order the settings tab lists them. The generated TypeScript copies this
-    /// order.
-    pub const ALL: [Code; 9] = [
+    pub const FORM_ALIAS_REUSED: Code = Code("form-alias-reused");
+    /// Every code. This array's own order is not the settings tab's grouping (that groups by
+    /// concern - Teaching / Resources / Guarding / Orders - not by this list), but a new entry
+    /// still goes last: the generated TypeScript copies this order, and every entry added since
+    /// `hex-unguarded` has kept new-last / grouped-last in step with each other.
+    pub const ALL: [Code; 10] = [
         NOT_ENOUGH_SILVER,
         NOT_ENOUGH_ITEMS,
         GUARD_DROPPED,
@@ -85,6 +88,7 @@ pub mod codes {
         TEACHER_CANNOT_TEACH,
         TEACHING_OVERSUBSCRIBED,
         TEACHER_HAS_FREE_SLOTS,
+        FORM_ALIAS_REUSED,
     ];
 }
 
@@ -158,6 +162,7 @@ pub fn check_turn(
         check_resources(&hex, ruleset, &options, &mut findings);
         check_guard(&hex, &options, &mut findings);
         check_teaching(&hex, ruleset, &options, &mut findings);
+        check_forms(&hex, &options, &mut findings);
 
         // Within a hex, what sits on a line comes first and in line order; what belongs to the hex
         // itself comes last. `sort_by_key` is stable, so checks that produce several findings for
@@ -467,7 +472,11 @@ fn apply(
         // Wages and takings from entertaining are paid in the last phase of the turn, after study
         // has been paid for, so they can fund nothing this month.
         Intent::Work | Intent::Entertain => {}
-        Intent::Guard(_) | Intent::Teach { .. } | Intent::Move { .. } | Intent::MonthLong(_) => {}
+        Intent::Guard(_)
+        | Intent::Teach { .. }
+        | Intent::Move { .. }
+        | Intent::MonthLong(_)
+        | Intent::Form { .. } => {}
     }
 }
 
@@ -1065,6 +1074,56 @@ fn taught_by(teacher: &Ordered<'_>, hex: &Hex<'_>) -> i64 {
         })
         .map(|pupil| pupil.unit.men)
         .sum()
+}
+
+// --- FORM aliases --------------------------------------------------------------------------------
+
+/// Every FORM in the hex, in document order; each alias after its first use is a block the server
+/// will refuse (the alias is per region for the month — see the rules on FORM), and says so on
+/// its own line, naming the first use. The first FORM is the one that will exist and is left alone.
+fn check_forms(hex: &Hex<'_>, options: &CheckOptions, findings: &mut Vec<Finding>) {
+    if !options.emits(codes::FORM_ALIAS_REUSED) {
+        return;
+    }
+    // (alias, forming unit, the FORM's placement), every FORM in the hex, by line.
+    let mut forms: Vec<(&str, &Ordered<'_>, &PlacedIntent)> = hex
+        .units
+        .iter()
+        .flat_map(|ordered| {
+            ordered
+                .intents
+                .iter()
+                .filter_map(move |placed| match &placed.intent {
+                    Intent::Form { alias } => Some((alias.as_str(), ordered, placed)),
+                    _ => None,
+                })
+        })
+        .collect();
+    forms.sort_by_key(|(_, _, placed)| placed.line);
+
+    let mut first_use: BTreeMap<&str, (&Ordered<'_>, &PlacedIntent)> = BTreeMap::new();
+    for (alias, ordered, placed) in forms {
+        match first_use.get(alias) {
+            None => {
+                first_use.insert(alias, (ordered, placed));
+            }
+            Some((first_unit, first)) => {
+                let where_ = if first_unit.unit.unit_id == ordered.unit.unit_id {
+                    format!("line {}", first.line)
+                } else {
+                    format!("unit {} (line {})", first_unit.unit.unit_id, first.line)
+                };
+                findings.push(ordered.finding(
+                    hex,
+                    codes::FORM_ALIAS_REUSED,
+                    format!(
+                        "FORM {alias} again: {where_} already forms NEW {alias} in this hex, so this block is refused"
+                    ),
+                    Some(placed),
+                ));
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -2023,6 +2082,107 @@ mod tests {
         );
     }
 
+    // --- FORM aliases -------------------------------------------------------------------------
+
+    #[test]
+    fn a_form_number_used_twice_by_one_unit_warns_on_the_second() {
+        let finding = only(check(
+            vec![region(vec![unit("5")])],
+            "unit 5\nFORM 1\nSTUDY FORC\nEND\nFORM 1\nSTUDY FORC\nEND\n",
+        ));
+
+        assert_eq!(finding.code, codes::FORM_ALIAS_REUSED);
+        assert_eq!(finding.unit_id, Some("5".to_string()));
+        assert_eq!(finding.line, Some(5));
+        assert_eq!(
+            finding.message,
+            "FORM 1 again: line 2 already forms NEW 1 in this hex, so this block is refused"
+        );
+    }
+
+    #[test]
+    fn three_copies_give_two_warnings_each_naming_the_first() {
+        let findings = check(
+            vec![region(vec![unit("5")])],
+            "unit 5\nFORM 1\nEND\nFORM 1\nEND\nFORM 1\nEND\n",
+        );
+
+        assert_eq!(
+            findings.iter().map(|f| f.line).collect::<Vec<_>>(),
+            vec![Some(4), Some(6)]
+        );
+        for finding in &findings {
+            assert!(
+                finding.message.contains("line 2 already forms NEW 1"),
+                "both should name the first use: {}",
+                finding.message
+            );
+        }
+    }
+
+    #[test]
+    fn two_units_in_one_hex_forming_the_same_number_warn_on_the_second_and_name_the_first_unit() {
+        let finding = only(check(
+            vec![region(vec![unit("5"), unit("7")])],
+            "unit 5\nFORM 1\nEND\nunit 7\nFORM 1\nEND\n",
+        ));
+
+        assert_eq!(finding.unit_id, Some("7".to_string()));
+        assert_eq!(finding.line, Some(5));
+        assert_eq!(
+            finding.message,
+            "FORM 1 again: unit 5 (line 2) already forms NEW 1 in this hex, so this block is refused"
+        );
+    }
+
+    #[test]
+    fn the_same_number_in_two_hexes_is_fine() {
+        let mut second = region(vec![unit("7")]);
+        second.region_id = "1:8,53".to_string();
+        second.coordinate = Coordinate { x: 8, y: 53, z: 1 };
+
+        assert_eq!(
+            codes(&check(
+                vec![region(vec![unit("5")]), second],
+                "unit 5\nFORM 1\nEND\nunit 7\nFORM 1\nEND\n",
+            )),
+            Vec::<&str>::new()
+        );
+    }
+
+    #[test]
+    fn a_form_inside_a_turn_block_is_next_months_and_not_counted() {
+        assert_eq!(
+            codes(&check(
+                vec![region(vec![unit("5")])],
+                "unit 5\nFORM 1\nEND\nTURN\nFORM 1\nEND\nENDTURN\n",
+            )),
+            Vec::<&str>::new()
+        );
+    }
+
+    #[test]
+    fn distinct_numbers_are_silent() {
+        assert_eq!(
+            codes(&check(
+                vec![region(vec![unit("5")])],
+                "unit 5\nFORM 1\nEND\nFORM 2\nEND\n",
+            )),
+            Vec::<&str>::new()
+        );
+    }
+
+    #[test]
+    fn a_nested_form_that_repeats_the_outer_alias_is_a_repeat() {
+        let finding = only(check(
+            vec![region(vec![unit("5")])],
+            "unit 5\nFORM 1\nFORM 1\nEND\nEND\n",
+        ));
+
+        assert_eq!(finding.line, Some(3));
+        assert!(finding.message.contains("line 2 already forms NEW 1"));
+    }
+
     // --- disabling advisory checks -------------------------------------------------------------
 
     /// The runtime default (`hex-unguarded` off, everything else on) plus one more code disabled.
@@ -2093,6 +2253,11 @@ mod tests {
                 codes::TEACHER_HAS_FREE_SLOTS,
                 vec![region(teaching_hex())],
                 "unit 700\nSTUDY combat\n",
+            ),
+            (
+                codes::FORM_ALIAS_REUSED,
+                vec![region(vec![unit("5")])],
+                "unit 5\nFORM 1\nEND\nFORM 1\nEND\n",
             ),
         ];
 

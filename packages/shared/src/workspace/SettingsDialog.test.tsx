@@ -36,13 +36,14 @@ describe("the Warnings settings tab", () => {
     resetSettingsStore();
   });
 
-  it("renders one toggle per advisory code, grouped Teaching / Resources / Guarding", () => {
+  it("renders one toggle per advisory code, grouped Teaching / Resources / Guarding / Orders", () => {
     resetSettingsStore();
     const html = renderToStaticMarkup(<WarningSettings />);
 
     expect(html).toContain("Teaching");
     expect(html).toContain("Resources");
     expect(html).toContain("Guarding");
+    expect(html).toContain("Orders");
 
     const titles = [
       "Teachers with free slots",
@@ -53,7 +54,8 @@ describe("the Warnings settings tab", () => {
       "Overspent silver",
       "Overdrawn items",
       "Dropped guards",
-      "Unguarded hexes"
+      "Unguarded hexes",
+      "Reused FORM numbers"
     ];
     for (const title of titles) {
       expect(html).toContain(title);
