@@ -1,6 +1,18 @@
-# Adapter API: shared core contract
+# Adapter API: the boundary between the core and the shells
 
-Issue #3 defines one canonical metadata contract served by both platform adapters.
+The Rust core is one crate; two shells cross it, and one TypeScript boundary describes both.
+
+- **Desktop**: `#[tauri::command]` — on core-tauri's own `command_*` functions for 24 of the 32
+  commands, and on eight thin wrappers in `apps/desktop/src-tauri/src/main.rs` for the games-root
+  commands that need the app handle (to resolve where this installation keeps its games).
+- **Web**: the 17 `#[wasm_bindgen]` exports of `crates/core-wasm`, plus an IndexedDB store for what
+  the core itself holds no opinion about (`packages/browser-core`).
+- **TypeScript**: one typed `CoreAdapter` interface (`packages/core-client/src/index.ts`);
+  `TAURI_COMMANDS` and `createTauriAdapter` (`packages/core-client/src/tauriCommands.ts`) build the
+  desktop transport from a single table; `createWebCoreAdapter`
+  (`packages/browser-core/src/webCoreAdapter.ts`) is the web transport; `createCoreClient` adds the
+  three ergonomic signatures (`validateOrders`'s options object, `exportMap`/`knownMap`'s JSON
+  stringification) that `CoreClient` carries over `CoreAdapter`, and nothing else.
 
 ## Core contract (`EngineInfo`)
 
@@ -14,26 +26,6 @@ Issue #3 defines one canonical metadata contract served by both platform adapter
 ```
 
 Map topology is intentionally omitted from this payload because it is a fixed game invariant (always hex).
-
-## WASM adapter surface
-
-- Rust crate: `crates/core-wasm`
-- Exported function: `get_engine_info() -> Result<JsValue, JsValue>`
-- Wire shape returned to JS (camelCase):
-  - `id`
-  - `name`
-  - `rulesetVersion`
-  - `maxFactionCount`
-
-## Tauri adapter surface
-
-- Rust crate: `crates/core-tauri`
-- Exported command: `get_engine_info`
-- Response shape (camelCase):
-  - `id`
-  - `name`
-  - `rulesetVersion`
-  - `maxFactionCount`
 
 ## Movement calls
 
@@ -56,9 +48,9 @@ travels as raw text, which is the key the core's parse cache remembers it under.
   on the same two grounds as `plan_route`.
 
 The Tauri commands take snake_case argument names verbatim (`rename_all = "snake_case"`); the
-TypeScript Tauri adapter passes them explicitly rather than translating. Since `ah-wxk.1` the
-commands are core-tauri's `command_*` functions under the `tauri` feature, renamed to their bare
-names, except the eight games-root ones the shell wraps.
+TypeScript Tauri adapter (`TAURI_COMMANDS`) passes them explicitly rather than translating. Since
+`ah-wxk.1` the commands are core-tauri's `command_*` functions under the `tauri` feature, renamed
+to their bare names, except the eight games-root ones the shell wraps.
 
 ## Map export
 
@@ -82,18 +74,33 @@ with an ally has to come out identical whichever shell wrote it.
   Rejects when the request or the remembered regions cannot be read. A rectangle covering nothing
   visited resolves with a header and no regions.
 
-## TypeScript abstraction
+## Adding a command
 
-- Package: `packages/core-client`
-- API:
-  - `createTauriAdapter(invoke)` — the desktop transport, speaking to `core-tauri`
-  - `createCoreClient(adapter)`
-- The browser transport is `createWebCoreAdapter` in `@atlantis/browser-core`: it implements this
-  same `CoreAdapter` contract, over IndexedDB, and is passed to `createCoreClient` exactly like the
-  tauri adapter (see `apps/web/src/main.tsx`). It has its own tests in `browser-core`, so this
-  package's own tests pin only the tauri adapter's contract.
-- `CoreAdapter` is the one typed declaration of the boundary — every method returns `Promise<T>` of
-  the real type the core serializes, and nothing re-validates it at runtime: the Tauri wire is
-  Rust's own serde output, and the web adapter is our own code. `createCoreClient` adds three
-  ergonomic conversions over it (`validateOrders`'s options object, `exportMap`/`knownMap`'s JSON
-  stringification) and nothing else (ah-wxk.2).
+1. The Rust function: a `#[tauri::command(rename_all = "snake_case", rename = "…")]` method in
+   core-tauri (or, if it needs the app handle, a wrapper in `main.rs`), plus a
+   `#[wasm_bindgen]` export in `crates/core-wasm` if the web needs it too.
+2. The `CoreAdapter` method, in `packages/core-client/src/index.ts`.
+3. The `TAURI_COMMANDS` row, in `packages/core-client/src/tauriCommands.ts` — the command name and
+   its argument keys, in parameter order.
+4. The `createWebCoreAdapter` method (and the `CoreWasmModule` member it calls through), in
+   `packages/browser-core/src/webCoreAdapter.ts`, if step 1 added a wasm export.
+5. The `SWEEP` row, in `tests/native/sweep.ts`.
+
+What catches a missing step, so a slip is a failure on the machine that made it rather than a
+surprise later:
+
+- **Step 2, 3 or 4 missing or of the wrong arity** — `pnpm run typecheck`: `TAURI_COMMANDS` is
+  typed as a mapped tuple over `CoreAdapter`, so a missing method, an extra one, or a row of the
+  wrong arity is a compile error.
+- **A wrong argument key, an unregistered command, a `SWEEP` row naming a key the command does not
+  have, or a wasm export the browser type does not name (or vice versa)** — `pnpm test`
+  (`scripts/tauriCommands.test.ts`'s live lockstep), on every machine.
+- **The wire itself** — CI's `native` job, the one place a real IPC round trip runs.
+
+## Trust
+
+Neither adapter re-validates what the core sends back: the Tauri wire is Rust's own serde output,
+and the wasm wire is our own code, so both are typed at compile time instead of re-checked per
+call. `invoke<T>` (desktop) and the `coreWasm.ts` cast (web) are the two points where that trust is
+declared; `CoreAdapter`'s own types are ts-rs-generated from the Rust core where such types exist
+(`ah-164.2`), so the two sides cannot describe the payload differently by accident.

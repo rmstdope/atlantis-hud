@@ -1,8 +1,17 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { commandRenames, invokedCommands, lockstep, registeredCommands } from "./tauriCommands";
+import {
+  commandParameters,
+  commandRenames,
+  lockstep,
+  registeredCommands,
+  splitTopLevel,
+  wasmExports,
+  wasmModuleMembers
+} from "./tauriCommands";
 import { SWEEP } from "../tests/native/sweep";
+import { TAURI_COMMANDS } from "../packages/core-client/src/tauriCommands";
 
 const ROOT = join(__dirname, "..");
 
@@ -81,38 +90,91 @@ describe("commandRenames", () => {
   });
 });
 
-describe("invokedCommands", () => {
-  it("finds every command name invoke's first argument names, typed or not", () => {
-    const source = `
-      function a() { return invoke<EngineInfo>("get_engine_info"); }
-      function b() { return invoke<void>("delete_game", { game_id: id }); }
-    `;
-
-    expect(invokedCommands(source)).toEqual(["get_engine_info", "delete_game"]);
+describe("splitTopLevel", () => {
+  it("splits on commas at nesting depth zero, ignoring commas inside <> () [] {}", () => {
+    expect(splitTopLevel("a: Option<&str>, b: HashMap<K, V>, c")).toEqual([
+      "a: Option<&str>",
+      "b: HashMap<K, V>",
+      "c"
+    ]);
   });
 
-  it("finds an untyped invoke call too, since the type parameter is optional", () => {
-    const source = `invoke("get_engine_info");`;
-
-    expect(invokedCommands(source)).toEqual(["get_engine_info"]);
+  it("drops empty entries, so a trailing comma or an empty string yields none", () => {
+    expect(splitTopLevel("")).toEqual([]);
+    expect(splitTopLevel("a,")).toEqual(["a"]);
   });
+});
 
-  it("deduplicates a command invoked more than once", () => {
-    const source = `
-      invoke<A>("create_game");
-      invoke<B>("create_game", { manifest });
+describe("commandParameters", () => {
+  it("reads a main.rs wrapper's parameters, dropping the app handle", () => {
+    const mainRs = `
+      #[tauri::command(rename_all = "snake_case")]
+      fn open_game(
+          app: tauri::AppHandle,
+          game_id: String,
+          opened_at: String,
+      ) -> Result<OpenedGameDto, String> {
     `;
 
-    expect(invokedCommands(source)).toEqual(["create_game"]);
+    expect(commandParameters(mainRs, "")).toEqual({
+      open_game: ["game_id", "opened_at"]
+    });
   });
 
-  it("ignores a string that is not invoke's first argument", () => {
-    const source = `
-      logger.warn("create_game", err);
-      invoke<A>("open_game", { game_id: "create_game" });
+  it("reads a renamed core-tauri command's parameters under its wire name", () => {
+    const coreTauriLibRs = `
+      #[cfg_attr(
+        feature = "tauri",
+        tauri::command(rename_all = "snake_case", rename = "parse_report_classified")
+      )]
+      pub fn command_parse_report_classified(raw_report: &str, ruleset_json: &str) -> ParsedReport {
     `;
 
-    expect(invokedCommands(source)).toEqual(["open_game"]);
+    expect(commandParameters("", coreTauriLibRs)).toEqual({
+      parse_report_classified: ["raw_report", "ruleset_json"]
+    });
+  });
+
+  it("throws when a wire name is declared by both main.rs and core-tauri", () => {
+    const mainRs = `
+      #[tauri::command(rename_all = "snake_case")]
+      fn open_game(app: tauri::AppHandle, game_id: String) -> Result<OpenedGameDto, String> {
+    `;
+    const coreTauriLibRs = `
+      #[cfg_attr(feature = "tauri", tauri::command(rename_all = "snake_case", rename = "open_game"))]
+      pub fn command_open_game(game_id: &str) -> Result<OpenedGameDto, String> {
+    `;
+
+    expect(() => commandParameters(mainRs, coreTauriLibRs)).toThrow();
+  });
+});
+
+describe("wasmExports", () => {
+  it("counts a two-parameter export", () => {
+    const coreWasmLibRs = `
+      #[wasm_bindgen]
+      pub fn diff_imported_turn_state(existing: JsValue, candidate: JsValue) -> Result<JsValue, JsValue> {
+    `;
+
+    expect(wasmExports(coreWasmLibRs)).toEqual({ diff_imported_turn_state: 2 });
+  });
+});
+
+describe("wasmModuleMembers", () => {
+  it("counts a member whose parameters span lines", () => {
+    const webCoreAdapterTs = `
+      export type CoreWasmModule = {
+        plan_route_state(
+          rulesetJson: string,
+          rawReport: string,
+          rememberedJson: string,
+          unitId: string,
+          destination: string
+        ): RoutePlanResponse;
+};
+    `;
+
+    expect(wasmModuleMembers(webCoreAdapterTs)).toEqual({ plan_route_state: 5 });
   });
 });
 
@@ -142,7 +204,9 @@ describe("lockstep", () => {
 /**
  * The two-way check against `main.rs`, plus the one-way check that everything the adapter
  * invokes is registered (the class of bug this repository has separately paid for: a command
- * that exists in core-tauri but is never registered in the handler).
+ * that exists in core-tauri but is never registered in the handler) — and, since ah-wxk.3, that
+ * `TAURI_COMMANDS`'s keys are the Rust parameter names in order, that every `SWEEP` payload names
+ * only a real parameter, and that the wasm boundary agrees on exports and arity both ways.
  */
 describe("the live Tauri command lockstep", () => {
   it("agrees main.rs, the sweep table and core-client's adapter all name the same commands", () => {
@@ -150,25 +214,30 @@ describe("the live Tauri command lockstep", () => {
       join(ROOT, "apps", "desktop", "src-tauri", "src", "main.rs"),
       "utf8"
     );
-    const coreClientIndex = readFileSync(
-      join(ROOT, "packages", "core-client", "src", "index.ts"),
-      "utf8"
-    );
     const coreTauriLibRs = readFileSync(
       join(ROOT, "crates", "core-tauri", "src", "lib.rs"),
+      "utf8"
+    );
+    const coreWasmLibRs = readFileSync(join(ROOT, "crates", "core-wasm", "src", "lib.rs"), "utf8");
+    const webCoreAdapterTs = readFileSync(
+      join(ROOT, "packages", "browser-core", "src", "webCoreAdapter.ts"),
       "utf8"
     );
 
     const registered = registeredCommands(mainRs);
     const swept = SWEEP.map((entry) => entry.command);
-    const invoked = invokedCommands(coreClientIndex);
+    const table = Object.fromEntries(
+      Object.values(TAURI_COMMANDS).map(([command, ...keys]) => [command, keys])
+    );
     const renames = commandRenames(coreTauriLibRs);
+    const parameters = commandParameters(mainRs, coreTauriLibRs);
 
     expect(lockstep(registered, swept)).toEqual({
       registeredButNotSwept: [],
       sweptButNotRegistered: []
     });
-    expect(invoked.filter((command) => !registered.includes(command))).toEqual([]);
+    // Names: what main.rs registers, what the sweep drives and what the adapter invokes are one list.
+    expect(Object.keys(table).sort()).toEqual([...registered].sort());
 
     // Every rename says what the function name says, and every renamed command is registered.
     // A 25th command that forgets the attribute, or one that forgets to be registered, is what
@@ -178,5 +247,20 @@ describe("the live Tauri command lockstep", () => {
       expect(registered, `${fn} is registered`).toContain(wire);
     }
     expect(renames.size).toBe(24);
+
+    // Keys: every row's keys are the Rust parameter names, in order.
+    for (const [command, keys] of Object.entries(table)) {
+      expect(keys, command).toEqual(parameters[command]);
+    }
+
+    // The sweep names only real parameters (it may omit an Option; it may not invent one).
+    for (const entry of SWEEP) {
+      for (const key of Object.keys(entry.args())) {
+        expect(parameters[entry.command], `${entry.command}.${key}`).toContain(key);
+      }
+    }
+
+    // The wasm boundary: same exports, same arity, both ways.
+    expect(wasmModuleMembers(webCoreAdapterTs)).toEqual(wasmExports(coreWasmLibRs));
   });
 });
