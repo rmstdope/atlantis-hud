@@ -2,10 +2,11 @@
 //! bundle. Persistence is not part of this crate: the desktop reads and writes through
 //! `core-tauri`'s Tauri commands, and the web has its own store in `@atlantis/browser-core`, over
 //! IndexedDB. The exceptions are the game backup codec (`encode_game_backup_state`,
-//! `decode_game_backup_state`) and what one report import writes (`report_import_writes_state`):
-//! the rules live in the core, and the web's store calls through here rather than deciding them
-//! itself.
+//! `decode_game_backup_state`), what one report import writes (`report_import_writes_state`), and
+//! which turn a game reopens on (`latest_turn_state`): the rules live in the core, and the web's
+//! store calls through here rather than deciding them itself.
 
+use atlantis_hud_core::reopen::{latest_turn, TurnTouch};
 use atlantis_hud_core::report::import::{import_writes, SeenRegion};
 use atlantis_hud_core::report::merge::{merge_report_into_sightings, StoredSighting};
 use atlantis_hud_core::report::sighting::RegionSighting;
@@ -250,6 +251,21 @@ pub fn diff_imported_turn_state(existing: JsValue, candidate: JsValue) -> Result
 
     let diff = diff_imported_turn(existing.as_ref(), &candidate);
     to_js(&diff)
+}
+
+/// Which turn a game reopens on, from what the browser store holds.
+///
+/// `turns_json` and `drafts_json` are `[{ factionId, turnNumber, updatedAt? }]` - the store's
+/// imported turns and order drafts, three fields each; the payloads stay behind. Returns
+/// `{ factionId, turnNumber }` or `null`.
+#[wasm_bindgen]
+pub fn latest_turn_state(turns_json: String, drafts_json: String) -> Result<JsValue, JsValue> {
+    let turns: Vec<TurnTouch> =
+        serde_json::from_str(&turns_json).map_err(|error| JsValue::from_str(&error.to_string()))?;
+    let drafts: Vec<TurnTouch> = serde_json::from_str(&drafts_json)
+        .map_err(|error| JsValue::from_str(&error.to_string()))?;
+
+    to_js(&latest_turn(&turns, &drafts))
 }
 
 /// Encodes one game's rows as one backup document. `content_json` is the browser store's own

@@ -138,6 +138,39 @@ function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
       };
     },
     hydrate_parse_result_state: (json: string) => ({ ...EMPTY_PARSE_RESULT, hydratedFrom: json }),
+    // Self-consistent, not correct: the real rule (and every tie-break) is the core's, pinned in
+    // `reopen.rs` and against the real module in `reopen.wasm.test.ts`. This stand-in only has to
+    // agree with itself so the routing tests below - which check the adapter hands over every
+    // turn and draft rather than deciding the ranking here - read true.
+    latest_turn_state: (turnsJson: string, draftsJson: string) => {
+      const turns = JSON.parse(turnsJson) as Array<{
+        factionId: string;
+        turnNumber: number;
+        updatedAt?: string;
+      }>;
+      const drafts = JSON.parse(draftsJson) as Array<{
+        factionId: string;
+        turnNumber: number;
+        updatedAt?: string;
+      }>;
+      const edited = new Map(drafts.map((d) => [`${d.factionId}:${d.turnNumber}`, d.updatedAt ?? ""]));
+      const touched = (t: { factionId: string; turnNumber: number; updatedAt?: string }) => {
+        const own = t.updatedAt ?? "";
+        const draft = edited.get(`${t.factionId}:${t.turnNumber}`) ?? "";
+        return own > draft ? own : draft;
+      };
+      const latest = turns.reduce<(typeof turns)[number] | null>((best, turn) => {
+        if (best === null) {
+          return turn;
+        }
+        const [a, b] = [touched(turn), touched(best)];
+        if (a !== b) {
+          return a > b ? turn : best;
+        }
+        return turn.turnNumber > best.turnNumber ? turn : best;
+      }, null);
+      return latest ? { factionId: latest.factionId, turnNumber: latest.turnNumber } : null;
+    },
     /**
      * Self-consistent, not correct: it reads `MERGE: <factionId> <turn> <regionId,…>` out of the
      * text and folds those regions into whatever the adapter handed it. Which account of a hex wins
@@ -545,8 +578,8 @@ describe("web core adapter", () => {
   /**
    * The browser answers "which turn was I last in" the same way the desktop does.
    *
-   * SQLite gets there with a LEFT JOIN; IndexedDB has none, so the adapter matches the two stores
-   * itself. What must not differ is the rule: attention, not arrival.
+   * Both stores hand every turn and draft to the core, and it names the turn - the same rule
+   * (attention, not arrival) on both platforms, pinned once in `reopen.rs`.
    */
   it("reopens on the turn last edited rather than the one last imported", async () => {
     const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
@@ -575,6 +608,51 @@ describe("web core adapter", () => {
     await adapter.commitReportImport("idb://campaign-a", "p", "17", REPORT, null, false, IMPORTED_AT);
 
     expect(await adapter.loadLatestImportedTurn("idb://campaign-b", "p")).toBeNull();
+  });
+
+  it("hands every turn and draft to the core, three fields each, and returns the turn it names", async () => {
+    let seenTurnsJson = "";
+    let seenDraftsJson = "";
+    const wasm = fakeWasm({
+      latest_turn_state: (turnsJson: string, draftsJson: string) => {
+        seenTurnsJson = turnsJson;
+        seenDraftsJson = draftsJson;
+        return { factionId: "17", turnNumber: 12 };
+      }
+    });
+    const adapter = createWebCoreAdapter(wasm, createMemoryWebStore());
+    const OTHER = "TURN: 12 Spring\nFACTION: 18 | Azure Wake";
+
+    await adapter.commitReportImport(DB, "p", "17", REPORT, null, false, "2026-08-09T18:00:00Z");
+    await adapter.commitReportImport(DB, "p", "18", OTHER, null, false, "2026-08-09T19:00:00Z");
+    await adapter.saveOrderDraft(DB, "p", "18", 12, "@work", "2026-08-09T20:00:00Z");
+
+    const result = await adapter.loadLatestImportedTurn(DB, "p");
+
+    const seenTurns = JSON.parse(seenTurnsJson) as unknown[];
+    const seenDrafts = JSON.parse(seenDraftsJson) as unknown[];
+    expect(seenTurns).toEqual(
+      expect.arrayContaining([
+        { factionId: "17", turnNumber: 12, updatedAt: "2026-08-09T18:00:00Z" },
+        { factionId: "18", turnNumber: 12, updatedAt: "2026-08-09T19:00:00Z" }
+      ])
+    );
+    expect(seenTurns).toHaveLength(2);
+    expect(seenDrafts).toEqual([{ factionId: "18", turnNumber: 12, updatedAt: "2026-08-09T20:00:00Z" }]);
+    expect(result?.rawReport).toBe(REPORT);
+  });
+
+  it("refuses to answer with a turn the store does not hold, rather than silently returning nothing", async () => {
+    const wasm = fakeWasm({
+      latest_turn_state: () => ({ factionId: "never-imported", turnNumber: 999 })
+    });
+    const adapter = createWebCoreAdapter(wasm, createMemoryWebStore());
+
+    await adapter.commitReportImport(DB, "p", "17", REPORT, null, false, IMPORTED_AT);
+
+    await expect(adapter.loadLatestImportedTurn(DB, "p")).rejects.toThrow(
+      "the core named a turn the store does not hold"
+    );
   });
 
   it("lists no turns for a game that holds none", async () => {
@@ -662,7 +740,7 @@ describe("web core adapter", () => {
     expect(await adapter.loadOrderDraft(DB, "p", "17", 12)).toBeNull();
   });
 
-  it("round trips hex notes newest first", async () => {
+  it("round trips hex notes", async () => {
     const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
 
     await adapter.saveHexNote(DB, {
@@ -687,7 +765,7 @@ describe("web core adapter", () => {
     });
 
     const listed = (await adapter.listHexNotes(DB, "p")) as HexNoteRecord[];
-    expect(listed.map((note) => note.id)).toEqual(["note-newer", "note-older"]);
+    expect(listed.map((note) => note.id).sort()).toEqual(["note-newer", "note-older"]);
   });
 
   // The adapter's contract is void (ah-wxk.2, matching the desktop side, which discards the same

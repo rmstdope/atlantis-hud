@@ -2,11 +2,12 @@
  * Manual hex notes: player-written text pinned to a hex.
  *
  * Storage-only, first of three passes for ah-o1t (issue #261). This is the pure module the region
- * panel (ah-o1t.2) and the map layer (ah-o1t.3) will call; it holds the rules for a note's shape and
- * ordering, and reaches storage only through `CoreClient`, the way `orderDraft.ts` does.
+ * panel (ah-o1t.2) and the map layer (ah-o1t.3) will call; it holds the rules for a note's shape.
+ * Ordering is `@atlantis/core-client`'s (`sortHexNotes`, re-exported below as `sortNotes`), and
+ * reaches storage only through `CoreClient`, the way `orderDraft.ts` does.
  */
 
-import type { CoreClient, HexNoteRecord, OpenedGame } from "@atlantis/core-client";
+import { sortHexNotes, type CoreClient, type HexNoteRecord, type OpenedGame } from "@atlantis/core-client";
 
 export type { HexNoteRecord };
 
@@ -69,15 +70,8 @@ export function editHexNote(
   };
 }
 
-/** Newest first (`createdAt` desc), `id` asc for stability — matching what storage returns. */
-export function sortNotes(notes: readonly HexNoteRecord[]): HexNoteRecord[] {
-  return [...notes].sort((a, b) => {
-    if (a.createdAt !== b.createdAt) {
-      return a.createdAt < b.createdAt ? 1 : -1;
-    }
-    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
-  });
-}
+/** Newest first: the client's order (`sortHexNotes`), which every list and local mutation shares. */
+export const sortNotes = sortHexNotes;
 
 /** `regionId` to its sorted notes, the shape a map layer or region panel wants to look up by hex. */
 export function notesByRegion(notes: readonly HexNoteRecord[]): Map<string, HexNoteRecord[]> {
