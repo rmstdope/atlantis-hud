@@ -111,6 +111,32 @@ describe("mapViewDecision", () => {
       })
     ).toEqual({ kind: "fit" });
   });
+
+  // The strip a fit is computed against is measured, not assumed: fitting before it is known is
+  // exactly the one-shot-against-a-too-small-strip mistake ah-2r3 paid two hours for. Defaults to
+  // `true` in the fixture above (via `viewWith`'s callers), so every other case in this describe
+  // block is unaffected.
+  it("waits for the strip before the first fit, but restores without it", () => {
+    expect(
+      mapViewDecision({
+        view: viewWith(null, null),
+        gameId: GAME,
+        level: 1,
+        hasHexes: true,
+        stripKnown: false
+      })
+    ).toEqual({ kind: "hold" });
+
+    expect(
+      mapViewDecision({
+        view: viewWith(SAVED.viewport, null),
+        gameId: GAME,
+        level: 1,
+        hasHexes: true,
+        stripKnown: false
+      })
+    ).toEqual({ kind: "restore", viewport: SAVED.viewport });
+  });
 });
 
 /**
