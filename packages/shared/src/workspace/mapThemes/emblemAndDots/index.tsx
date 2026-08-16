@@ -10,8 +10,8 @@
  */
 
 import { HEX_RADIUS } from "../../mapViewport";
-import { HEX_POINTS, radii } from "../geometry";
-import { ROAD_VECTORS, type HexView } from "../hexView";
+import { HEX_POINTS } from "../geometry";
+import { roadLayer, type RoadStyle } from "../roadLayer";
 import type { LayerProps, MapTheme } from "../mapTheme";
 import {
   BAR,
@@ -53,19 +53,6 @@ function terrainClass(terrain: string): string {
 
 /** Moderate, so the emblem keeps its contrast over a photograph. */
 const TEXTURE_TINT = 0.38;
-
-/**
- * How hard a hex outside this turn's report is dimmed.
- *
- * Every faded hex keeps its terrain: the dim is held under the fade so a hex still shows what it is
- * made of. A named hex used to take the fade whole - nobody had been there, so there was held to be
- * no terrain worth keeping legible - but a neighbour's exits do say what the terrain is, and the
- * rim is what marks the state now. Damped alike, unsurveyed ground is also the lightest thing on
- * the map, which undamped it was not: 0.400 against an ancient sighting's 0.434.
- */
-function dimOpacity(view: HexView): number {
-  return Number((view.fogOpacity * 0.7).toFixed(3));
-}
 
 const HEX_POINTS_MOCKUP = HEX_POINTS.split(" ")
   .map((pair) =>
@@ -135,7 +122,7 @@ function TerrainLayer({ views }: LayerProps) {
                 points={HEX_POINTS_MOCKUP}
                 className="ed-tint"
                 data-dim={view.knowledge === "named" ? "unsurveyed" : "stale"}
-                opacity={dimOpacity(view)}
+                opacity={view.fogOpacity}
               />
             )}
           </g>
@@ -146,40 +133,16 @@ function TerrainLayer({ views }: LayerProps) {
 }
 
 /**
- * The spoke's width: this theme's 3.4 units, as a fraction of the hex. A road that outgrows its own
- * hex would be competing with the medallion at exactly the zoom where the medallion is all this
- * theme has left. See `docs/ui/map-themes.md` for which marks are measured this way.
+ * Roads as pale spokes: present, but never competing with the medallion.
+ *
+ * The spoke's width is this theme's 3.4 units, as a fraction of the hex. A road that outgrows its
+ * own hex would be competing with the medallion at exactly the zoom where the medallion is all this
+ * theme has left.
  */
-const ROAD_WIDTH = radii(0.189);
-
-/** Roads as pale spokes: present, but never competing with the medallion. */
-function RoadLayer({ views }: LayerProps) {
-  if (!views.some((view) => view.roads.length > 0)) {
-    return null;
-  }
-  return (
-    <g pointerEvents="none">
-      {views.flatMap((view) =>
-        view.roads.map((direction) => {
-          const bearing = ROAD_VECTORS[direction];
-          return (
-            <line
-              key={`${view.key}-${direction}`}
-              className="ed-road"
-              x1={view.at.x}
-              y1={view.at.y}
-              x2={view.at.x + bearing.x * HEX_RADIUS * 0.87}
-              y2={view.at.y + bearing.y * HEX_RADIUS * 0.87}
-              strokeWidth={ROAD_WIDTH}
-              strokeLinecap="round"
-              opacity={0.85}
-            />
-          );
-        })
-      )}
-    </g>
-  );
-}
+const ROAD_STYLE: RoadStyle = {
+  reach: 0.87,
+  strokes: [{ className: "ed-road", width: 0.189, linecap: "round", opacity: 0.85 }]
+};
 
 /** What each emblem is drawn as, inside the medallion. */
 function EmblemGlyph({ feature }: { feature: Feature }) {
@@ -355,7 +318,8 @@ function MarkLayer({ views }: LayerProps) {
 export const emblemAndDots: MapTheme = {
   id: "emblem-and-dots",
   label: "Emblem & Dots",
+  fogDamping: 0.7,
   TerrainLayer,
-  RoadLayer,
+  RoadLayer: roadLayer(ROAD_STYLE),
   MarkLayer
 };

@@ -285,12 +285,13 @@ describe("roads, as trodden paths", () => {
  *
  * It used to take the view model's fade whole, on the grounds that board nobody had painted had
  * nothing underneath worth keeping legible - true while the board was blank, and false now that
- * the terrain is primed onto it. Damping both alike is also what keeps the two states apart:
+ * the terrain is primed onto it. The theme declares the damping now, on `fogDamping`; it is
+ * `buildHexViews` that applies it to both faded states alike, which is what keeps them apart:
  * undamped, unsurveyed sat at 0.400 against a long-stale 0.496, close enough to be read as the
  * same wash. The rim is what says which state this is; the wash only has to let the ground show.
  */
 describe("how loudly unpainted board is stated", () => {
-  it("washes a named hex proportionally, as it washes a remembered scene", () => {
+  it("declares its damping, and paints the fade it is handed", () => {
     const washOf = (fogOpacity: number) => {
       const svg = renderToStaticMarkup(
         <svg>
@@ -300,7 +301,7 @@ describe("how loudly unpainted board is stated", () => {
       return Number(/data-wash="unpainted"[^>]*opacity="([\d.]+)"/.exec(svg)?.[1]);
     };
 
-    expect(washOf(0.75)).toBeCloseTo(0.6);
+    expect(miniatureWorld.fogDamping).toBe(0.8);
     // A scale rather than a cap: a heavier fade still washes harder.
     expect(washOf(0.4)).toBeLessThan(washOf(0.75));
   });
