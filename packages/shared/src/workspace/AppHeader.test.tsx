@@ -8,32 +8,22 @@ const draw = (overrides: Partial<Parameters<typeof AppHeader>[0]> = {}) =>
   renderToStaticMarkup(
     <AppHeader
       gameName="Game one"
-      pickerOpen={false}
-      onTogglePicker={() => {}}
+      openPopover={null}
+      onOpenPopover={() => {}}
       picker={null}
       factionLabel="Borg TNG (95)"
       turnLabel="71"
       workingTurnNumber="71"
-      turnPickerOpen={false}
-      onToggleTurnPicker={() => {}}
       turnPicker={null}
       comparedTurnLabel={null}
       onStopComparing={() => {}}
       mergedCount={0}
-      mergedOpen={false}
-      onToggleMerged={() => {}}
       mergedPanel={null}
-      factionOpen={false}
-      onFactionToggle={() => {}}
       factionPanel={null}
       status={null}
       messages={null}
-      messagesOpen={false}
-      onToggleMessages={() => {}}
       messagesPanel={null}
       problemCount={0}
-      problemsOpen={false}
-      onToggleProblems={() => {}}
       problemsPanel={null}
       battleCount={0}
       battlesOpen={false}
@@ -82,11 +72,11 @@ describe("AppHeader faction chip", () => {
   beforeEach(resetWorkspaceStore);
 
   it("the faction name is a button that says whether the panel is open", () => {
-    const closed = draw({ factionOpen: false });
+    const closed = draw();
     expect(closed).toContain('data-testid="faction-chip"');
     expect(closed).toContain('aria-expanded="false"');
 
-    const open = draw({ factionOpen: true });
+    const open = draw({ openPopover: "faction" });
     expect(open).toContain('aria-expanded="true"');
   });
 
@@ -113,12 +103,36 @@ describe("AppHeader turn chip", () => {
   });
 
   it("the turn chip is a button that says whether the picker is open", () => {
-    const closed = draw({ turnPickerOpen: false });
+    const closed = draw();
     expect(closed).toContain('data-testid="turn-chip"');
     expect(closed).toContain('aria-expanded="false"');
 
-    const open = draw({ turnPickerOpen: true });
+    const open = draw({ openPopover: "turns" });
     expect(open).toContain('aria-expanded="true"');
+  });
+});
+
+describe("AppHeader popovers", () => {
+  beforeEach(resetWorkspaceStore);
+
+  it("at most one popover renders, the open one", () => {
+    const markup = draw({
+      openPopover: "faction",
+      factionPanel: <div data-testid="p-faction" />,
+      mergedCount: 1,
+      mergedPanel: <div data-testid="p-merged" />
+    });
+
+    expect(markup).toContain("p-faction");
+    expect(markup).not.toContain("p-merged");
+  });
+
+  it("the export menu is a header popover too", () => {
+    const open = draw({ openPopover: "export" });
+    expect(open).toContain('data-testid="export-menu-panel"');
+
+    const closed = draw();
+    expect(closed).not.toContain('data-testid="export-menu-panel"');
   });
 });
 

@@ -6,6 +6,7 @@ import { backupGameIdentity } from "../gameBackup";
 import { gameNameOf } from "../gameSession";
 import { describeError } from "./shellAction";
 import { GameForm } from "./GameForm";
+import { PopoverFrame } from "./popover";
 
 /**
  * The games the player has, and what can be done with them.
@@ -34,8 +35,7 @@ export function GamePicker({
   onDelete,
   onExport,
   onImport,
-  onRename,
-  onDismiss
+  onRename
 }: {
   games: GameManifest[];
   currentGameId: string | null;
@@ -47,7 +47,6 @@ export function GamePicker({
   onExport: (gameId: string) => void;
   onImport: (file: File, mode: BackupImportMode) => void;
   onRename: (name: string) => Promise<boolean>;
-  onDismiss: () => void;
 }) {
   const [creating, setCreating] = useState(games.length === 0);
   const [confirmingDeleteOf, setConfirmingDeleteOf] = useState<string | null>(null);
@@ -56,38 +55,10 @@ export function GamePicker({
   // `null` = at rest; a string = the draft currently in the field.
   const [renaming, setRenaming] = useState<string | null>(null);
   const [renameError, setRenameError] = useState<string | null>(null);
-  const panelRef = useRef<HTMLDivElement | null>(null);
   const importRef = useRef<HTMLInputElement | null>(null);
   const importButtonRef = useRef<HTMLButtonElement | null>(null);
   const renameLinkRef = useRef<HTMLButtonElement | null>(null);
   const renameInputRef = useRef<HTMLInputElement | null>(null);
-
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        onDismiss();
-      }
-    };
-    // Pointer rather than click: a click that started inside and ended outside is still a drag
-    // within the panel, not a dismissal.
-    //
-    // The wrapper rather than the panel, because the indicator that opened this sits beside it
-    // inside that wrapper. Testing the panel alone dismisses on the indicator's own press, and the
-    // button's toggle then reopens it - leaving a control that can only ever open the picker.
-    const onPointerDown = (event: PointerEvent) => {
-      const trigger = panelRef.current?.parentElement ?? panelRef.current;
-      if (!trigger?.contains(event.target as Node)) {
-        onDismiss();
-      }
-    };
-
-    document.addEventListener("keydown", onKeyDown);
-    document.addEventListener("pointerdown", onPointerDown);
-    return () => {
-      document.removeEventListener("keydown", onKeyDown);
-      document.removeEventListener("pointerdown", onPointerDown);
-    };
-  }, [onDismiss]);
 
   const sorted = [...games].sort((left, right) =>
     right.lastOpenedAt.localeCompare(left.lastOpenedAt)
@@ -186,19 +157,7 @@ export function GamePicker({
   };
 
   return (
-    <div
-      ref={panelRef}
-      data-testid="game-picker"
-      role="dialog"
-      aria-label="Games"
-      // The header is the drop target for report files, so a panel hanging off it must not swallow
-      // a drag that was meant for the header underneath.
-      onDragOver={(event) => event.stopPropagation()}
-      // `whitespace-normal` undoes the header's `whitespace-nowrap`, which keeps the turn and
-      // faction labels on one line up there and inherits into anything rendered inside it. The
-      // delete confirmation is prose and has to wrap, or it runs off the side of this panel.
-      className="absolute left-0 top-full z-20 mt-1 w-72 rounded border border-edge bg-panel-raised p-2 text-[11.5px] whitespace-normal shadow-lg"
-    >
+    <PopoverFrame testId="game-picker" label="Games" align="left" width="w-72" padding="p-2">
       {currentGame ? (
         <div role="tablist" aria-label="Game picker tabs" className="mb-1.5 flex gap-1">
           <button
@@ -494,6 +453,6 @@ export function GamePicker({
           {error}
         </p>
       ) : null}
-    </div>
+    </PopoverFrame>
   );
 }
