@@ -61,6 +61,7 @@ import {
   findingsByHex,
   findingsForHex,
   shouldTriggerAutosave,
+  type OrdersOrigin,
   type ValidatedOrders
 } from "../orderEditor";
 import { openNewestGame, rulesetUrlFor } from "../gameSession";
@@ -247,6 +248,22 @@ export function AppShell({
   // new report over an old map or the reverse.
   const [memory, setMemory] = useState<KnownMemory>(EMPTY_MEMORY);
   const [ordersDocument, setOrdersDocument] = useState("");
+  /** How many writes to the document did not come from the editor. See `OrdersOrigin`. */
+  const [externalOrdersRevision, setExternalOrdersRevision] = useState(0);
+  /**
+   * Every write to the orders document says who made it. An external write also moves
+   * `externalOrdersRevision`, which is what tells the editor to take the block again; the editor's
+   * own writes do not, so it is never handed its own text back.
+   */
+  const writeOrdersDocument = useCallback(
+    (origin: OrdersOrigin, update: string | ((document: string) => string)) => {
+      setOrdersDocument(update);
+      if (origin === "external") {
+        setExternalOrdersRevision((revision) => revision + 1);
+      }
+    },
+    []
+  );
   const [status, setStatus] = useState<ImportStatus | null>(null);
   const [busy, setBusy] = useState(false);
   const [validated, setValidated] = useState<ValidatedOrders>({ text: "", diagnostics: [] });
@@ -828,7 +845,7 @@ export function AppShell({
       // Reset from the turn just loaded, never merely added to: a merge belongs to the turn it
       // was made in, so turn 71's allies must not still be claimed on turn 72's map.
       setMergedReports(loaded.merged);
-      setOrdersDocument(loaded.orders);
+      writeOrdersDocument("external", loaded.orders);
       setSave(savedStateFor(loaded.ordersSavedAt));
       setStatus(loaded.status);
 
@@ -1308,7 +1325,7 @@ export function AppShell({
         // hexes with nothing to say where they came from, which is the question the chip answers.
         setMergedReports(restored.merged);
         if (!turnAlreadyShowing) {
-          setOrdersDocument(restored.orders);
+          writeOrdersDocument("external", restored.orders);
           setSave(savedStateFor(restored.ordersSavedAt));
         }
 
@@ -1378,7 +1395,7 @@ export function AppShell({
       setParsed(null);
       setMemory(EMPTY_MEMORY);
       setRawReport("");
-      setOrdersDocument("");
+      writeOrdersDocument("external", "");
       setStatus(null);
       setSave({ kind: "clean" });
       setRoute(null);
@@ -1794,13 +1811,13 @@ export function AppShell({
 
   const onOrdersChange = useCallback(
     (unitId: string, orders: string) => {
-      setOrdersDocument((document) => {
+      writeOrdersDocument("editor", (document) => {
         const next = writeUnitOrders(document, unitId, orders);
         writer.markDirty(game, draftKey, next);
         return next;
       });
     },
-    [game, draftKey, writer]
+    [game, draftKey, writer, writeOrdersDocument]
   );
 
   /**
@@ -1838,7 +1855,7 @@ export function AppShell({
 
     void runReported(
       async () => {
-        setOrdersDocument(pending.text);
+        writeOrdersDocument("external", pending.text);
         writer.markDirty(game, draftKey, pending.text);
 
         const result = await client.validateOrders(pending.text, rulesetText, rawReport || null, {
@@ -1873,7 +1890,8 @@ export function AppShell({
     writer,
     rulesetText,
     rawReport,
-    advisoryChecks
+    advisoryChecks,
+    writeOrdersDocument
   ]);
 
   /** Writes a planned route into the selected unit's block, replacing any MOVE already there. */
@@ -1882,7 +1900,7 @@ export function AppShell({
       if (!unit) {
         return;
       }
-      setOrdersDocument((document) => {
+      writeOrdersDocument("external", (document) => {
         const existing = readUnitOrders(document, unit.unitId) ?? "";
         const withoutMove = stripMovementOrderLines(existing);
         const next = withoutMove ? `${withoutMove}\n${order}` : order;
@@ -1891,7 +1909,7 @@ export function AppShell({
         return written;
       });
     },
-    [unit, game, draftKey, writer]
+    [unit, game, draftKey, writer, writeOrdersDocument]
   );
 
   /**
@@ -2684,6 +2702,7 @@ export function AppShell({
                   unit={unit}
                   hex={hex}
                   document={ordersDocument}
+                  externalRevision={externalOrdersRevision}
                   ownFactionName={factionLabel ?? "your faction"}
                   onChange={onOrdersChange}
                   validated={validated}
