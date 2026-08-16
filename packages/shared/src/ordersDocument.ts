@@ -1,3 +1,5 @@
+import { MOVEMENT_ORDER_COMMANDS } from "@atlantis/core-client";
+
 /**
  * Projects one unit's orders out of the faction's orders document, and splices edits back.
  *
@@ -241,7 +243,8 @@ export function hasFactionHeader(document: string): boolean {
   return document.split("\n").some((line) => line.trim().startsWith("#atlantis"));
 }
 
-const MOVEMENT_ORDER_LINE = /^\s*@?\s*(move|advance|sail)\b/iu;
+/** A line that is one of the core's movement orders, `@`-repeated or not. */
+const MOVEMENT_ORDER_LINE = new RegExp(`^\\s*@?\\s*(${MOVEMENT_ORDER_COMMANDS.join("|")})\\b`, "iu");
 
 /**
  * A unit's orders with any existing movement order removed, so a newly planned route replaces

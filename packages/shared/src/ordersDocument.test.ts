@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { readReport } from "@atlantis/fixtures";
+import { MOVEMENT_ORDER_COMMANDS } from "@atlantis/core-client";
 import {
   commandsOnly,
   findUnitBlocks,
@@ -441,5 +442,11 @@ describe("stripping a unit's existing movement order", () => {
 
   it("leaves orders with no movement line untouched", () => {
     expect(stripMovementOrderLines("@claim 50\n@study obse")).toBe("@claim 50\n@study obse");
+  });
+
+  it("drops every movement order the core knows", () => {
+    for (const command of MOVEMENT_ORDER_COMMANDS) {
+      expect(stripMovementOrderLines(`${command} N\n@study obse`)).toBe("@study obse");
+    }
   });
 });
