@@ -1,7 +1,10 @@
 import { execFileSync } from "node:child_process";
 import { dirname, resolve, sep } from "node:path";
 
-/** Where the agents' worktrees live, relative to the repository root. */
+/**
+ * Cerebro's own directory, relative to the repository root - agent worktrees live under
+ * `.cerebro/worktrees/`, alongside the state files and stop flags this constant does not name.
+ */
 export const AGENT_WORKSPACES = ".cerebro";
 
 /** One separator, so a comparison is about the path rather than about the platform. */
