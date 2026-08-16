@@ -8,7 +8,7 @@ import { readReport, readRuleset } from "@atlantis/fixtures";
  * that runs on every machine, not only in the native CI job (ah-ga6).
  *
  * Deliberately plain: no `@wdio/globals`, no `./helpers`, nothing that needs the native runtime —
- * only `@atlantis/fixtures`, itself only `node:fs`/`node:url`. Keep it that way, or the tooling
+ * only `@atlantis/fixtures`, itself only `node:fs`/`node:path`. Keep it that way, or the tooling
  * suite that imports this file stops being able to.
  *
  * The ordering rule the sweep itself relies on: `create_game` first, to mint the database every
