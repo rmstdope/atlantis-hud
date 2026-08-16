@@ -19,7 +19,14 @@ import {
 
 const at = (x: number, y: number, z = 1): Coordinate => ({ x, y, z });
 
-const unit = (unitId: string, own: boolean, name = unitId): ReportUnit => aReportUnit({ unitId, own, name });
+const unit = (unitId: string, own: boolean, name = unitId): ReportUnit =>
+  aReportUnit({
+    unitId,
+    own,
+    name,
+    factionId: own ? "95" : "32",
+    factionName: own ? "Borg TNG" : "Elder Tree Forests"
+  });
 
 const region = (coordinate: Coordinate, overrides: Partial<ReportRegion> = {}): ReportRegion =>
   aReportRegion({ coordinate, ...overrides });

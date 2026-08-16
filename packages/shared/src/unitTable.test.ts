@@ -15,7 +15,14 @@ import {
  * apostrophe or mixed case could order differently under CI than on a developer's machine.
  */
 const unit = (unitId: string, own: boolean, overrides: Partial<ReportUnit> = {}): ReportUnit =>
-  aReportUnit({ unitId, name: unitId, own, ...overrides });
+  aReportUnit({
+    unitId,
+    name: unitId,
+    own,
+    factionId: own ? "95" : "32",
+    factionName: own ? "Borg TNG" : "Elder Tree Forests",
+    ...overrides
+  });
 
 const ids = (units: ReportUnit[]) => units.map((entry) => entry.unitId);
 const sortBy = (units: ReportUnit[], overrides: Partial<SortState>) =>
