@@ -1141,7 +1141,12 @@ function normalizeImportedTurnRecord(value: unknown): ImportedTurnRecord {
   const rawReport = payload.rawReport ?? payload.raw_report;
   const parseResult = payload.parseResult ?? payload.parse_result;
 
-  if (payload.key === undefined || typeof rawReport !== "string" || parseResult === undefined) {
+  if (
+    payload.key === undefined ||
+    typeof rawReport !== "string" ||
+    typeof parseResult !== "object" ||
+    parseResult === null
+  ) {
     throw new Error("incomplete imported turn payload");
   }
 
@@ -1187,7 +1192,11 @@ function normalizeReportImportPreview(value: unknown): ReportImportPreview {
   const parseResult = payload.parseResult ?? payload.parse_result;
   const duplicatePreview = payload.duplicatePreview ?? payload.duplicate_preview;
   const turnNumber = payload.turnNumber ?? payload.turn_number ?? null;
-  if (parseResult === undefined || duplicatePreview === undefined) {
+  if (
+    typeof parseResult !== "object" ||
+    parseResult === null ||
+    duplicatePreview === undefined
+  ) {
     throw new Error("incomplete report import preview payload");
   }
   if (turnNumber !== null && typeof turnNumber !== "number") {
