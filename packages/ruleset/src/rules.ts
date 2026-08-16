@@ -286,7 +286,7 @@ export function parseMovementRules(html: string): MovementRules {
       terrainCosts: sentence(terrain),
       road: sentence(road),
       ocean: sentence(ocean),
-      sailing: `${sentence(sailingCost)} ${sentence(coastal)}`
+      sailing: `${sentence(sailingCost)}. ${sentence(coastal)}`
     }
   };
 }

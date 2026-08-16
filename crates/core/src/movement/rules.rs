@@ -1,7 +1,8 @@
 //! The movement ruleset, as scraped from a game's own rules and data pages.
 //!
-//! Mirrors `config/ruleset.json`, which `packages/ruleset` writes. The shell loads that file and
-//! hands the text in; nothing here reads a file, so this still compiles to wasm.
+//! Reads `config/public/ruleset.json`, which `packages/ruleset` writes; every struct here refuses a
+//! key it does not know, so a field the scraper adds without a home here fails
+//! `tests/movement_ruleset.rs`.
 
 use std::collections::BTreeMap;
 
@@ -91,7 +92,7 @@ pub struct SailingRule {
 
 /// The sentence each scraped value came from, kept so a reader can check the scraper's work.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Provenance {
     pub movement_points: String,
     pub terrain_costs: String,
@@ -144,7 +145,7 @@ impl<'de> Deserialize<'de> for ItemKind {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ItemCapacity {
     pub walk: i64,
     pub ride: i64,
@@ -154,7 +155,7 @@ pub struct ItemCapacity {
 
 /// Which modes an item can carry itself in, whether or not it has spare capacity to carry more.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SelfMobility {
     pub walk: bool,
     pub ride: bool,
@@ -164,7 +165,7 @@ pub struct SelfMobility {
 
 /// A monster's fighting numbers, which is all the risk heuristic weighs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct MonsterCombat {
     pub skill: i64,
     pub attacks_per_round: i64,
@@ -173,7 +174,7 @@ pub struct MonsterCombat {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ItemEntry {
     pub tag: String,
     pub name: String,
@@ -194,7 +195,7 @@ pub struct ItemEntry {
 
 /// Thresholds for the risk heuristic. Ours, not the game's, which is why they carry `scraped`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RiskThresholds {
     pub scraped: bool,
     pub note: String,
@@ -204,7 +205,7 @@ pub struct RiskThresholds {
 
 /// Where the ruleset came from.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RulesetSource {
     pub rules_url: String,
     pub data_url: String,
@@ -217,7 +218,7 @@ pub struct RulesetSource {
 /// Carried rather than dropped so the planner can say so. A gap that is known and stated is a
 /// caveat; the same gap unstated is a wrong answer presented as a right one.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Gap {
     pub modelled: bool,
     pub note: String,
@@ -267,7 +268,7 @@ pub fn item_spellings(written: &str) -> [Option<&str>; 3] {
 /// Separate from the item catalogue rather than merged into it, because ten tags mean one thing as
 /// a skill and another as an item: FISH is fishing and also fish, HERB is herb lore and also herbs.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SkillEntry {
     pub tag: String,
     pub name: String,
