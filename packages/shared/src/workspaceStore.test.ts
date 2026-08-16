@@ -15,7 +15,7 @@ describe("changing the open game's ruleset", () => {
       gameName: "Spring campaign",
       databasePath: "idb://g1",
       rulesetId: "neworigins"
-    });
+    }, null);
     store().selectRegion("1:7,53", "18642");
 
     store().updateGameRuleset("magicdeep");
@@ -42,7 +42,7 @@ describe("renaming the open game", () => {
       gameName: "Spring campaign",
       databasePath: "idb://g1",
       rulesetId: "neworigins"
-    });
+    }, null);
     store().selectRegion("1:7,53", "18642");
 
     store().updateGameName("Binding of the North");
@@ -126,7 +126,7 @@ describe("workspace selection", () => {
       gameName: "NewOrigins Aug 2026",
       databasePath: "/p.sqlite",
       rulesetId: "neworigins"
-    });
+    }, null);
 
     expect(store().game?.gameName).toBe("NewOrigins Aug 2026");
     expect(store().selectedRegionId).toBeNull();
@@ -170,7 +170,7 @@ describe("the selection epoch that drives the lock-on pulse", () => {
       gameName: "Spring campaign",
       databasePath: "idb://g1",
       rulesetId: "neworigins"
-    });
+    }, null);
     expect(store().selectionEpoch).toBe(0);
 
     store().selectRegion("1:7,53");
@@ -187,6 +187,99 @@ describe("the selection epoch that drives the lock-on pulse", () => {
     store().restoreSelection("1:26,52");
 
     expect(store().selectedUnitId).toBeNull();
+  });
+});
+
+describe("the map view (ah-ian)", () => {
+  beforeEach(resetWorkspaceStore);
+
+  const GAME = {
+    gameId: "g1",
+    gameName: "Spring campaign",
+    databasePath: "idb://g1",
+    rulesetId: "neworigins"
+  };
+  const SAVED = { viewport: { tx: 5, ty: 6, step: 1 }, level: 2, regionId: "1:7,53" };
+
+  it("has no view before any game is open", () => {
+    expect(store().mapView).toEqual({
+      gameId: null,
+      viewport: null,
+      pendingViewport: null,
+      framedLevel: null,
+      restoredRegionId: null
+    });
+  });
+
+  it("opening a game on a saved view sets the level, the hex and the pending viewport together", () => {
+    store().openGame(GAME, SAVED);
+
+    expect(store().level).toBe(2);
+    expect(store().selectedRegionId).toBe("1:7,53");
+    expect(store().mapView).toEqual({
+      gameId: "g1",
+      viewport: null,
+      pendingViewport: SAVED.viewport,
+      framedLevel: null,
+      restoredRegionId: "1:7,53"
+    });
+  });
+
+  it("opening a game with nothing saved uses the default level and no selection", () => {
+    store().openGame(GAME, null);
+
+    expect(store().level).toBe(1);
+    expect(store().selectedRegionId).toBeNull();
+    expect(store().mapView.gameId).toBe("g1");
+    expect(store().mapView.pendingViewport).toBeNull();
+  });
+
+  it("commitMapView records the viewport and frames the level", () => {
+    store().openGame(GAME, SAVED);
+
+    store().commitMapView({ tx: 1, ty: 1, step: 2 }, 2);
+
+    expect(store().mapView.viewport).toEqual({ tx: 1, ty: 1, step: 2 });
+    expect(store().mapView.pendingViewport).toBeNull();
+    expect(store().mapView.framedLevel).toBe(2);
+  });
+
+  it("selecting another hex ends the restored hex's exemption", () => {
+    store().openGame(GAME, SAVED);
+
+    store().selectRegion("1:9,41");
+
+    expect(store().mapView.restoredRegionId).toBeNull();
+  });
+
+  it("re-selecting the restored hex itself keeps the exemption", () => {
+    store().openGame(GAME, SAVED);
+
+    store().restoreSelection("1:7,53");
+
+    expect(store().mapView.restoredRegionId).toBe("1:7,53");
+  });
+
+  it("setLevel ends the exemption, same as clearing the selection", () => {
+    store().openGame(GAME, SAVED);
+
+    store().setLevel(3);
+
+    expect(store().mapView.restoredRegionId).toBeNull();
+  });
+
+  it("closeGame drops the view along with the selection", () => {
+    store().openGame(GAME, SAVED);
+
+    store().closeGame();
+
+    expect(store().mapView).toEqual({
+      gameId: null,
+      viewport: null,
+      pendingViewport: null,
+      framedLevel: null,
+      restoredRegionId: null
+    });
   });
 });
 
@@ -497,7 +590,7 @@ describe("the rails' stored widths", () => {
       gameName: "Spring campaign",
       databasePath: "idb://g1",
       rulesetId: "neworigins"
-    });
+    }, null);
     expect(store().leftRailWidthRem).toBe(24);
     store().setLevel(1);
     expect(store().leftRailWidthRem).toBe(24);

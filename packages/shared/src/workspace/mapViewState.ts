@@ -12,36 +12,102 @@
 import type { Viewport } from "./mapViewport";
 import type { SavedMapView } from "./mapViewportStorage";
 
+/**
+ * The map view as the workspace store holds it: everything about "where the map is" that is not
+ * the level or the selected hex (those are the store's own fields), owned in one place so the
+ * decisions below are made from state, not from refs and effect order.
+ */
+export type MapViewState = {
+  /** The game this view belongs to; `null` between games. */
+  gameId: string | null;
+  /** The pan and zoom last committed by the map, or `null` before the first frame or restore. */
+  viewport: Viewport | null;
+  /** A saved viewport still waiting for the map to apply it. */
+  pendingViewport: Viewport | null;
+  /** The level last framed for `gameId`, or `null` when none has been. */
+  framedLevel: number | null;
+  /** The hex a restore put back, for as long as it is still the one selected. */
+  restoredRegionId: string | null;
+};
+
+/** The view before any game has been opened. */
+export const NO_MAP_VIEW: MapViewState = {
+  gameId: null,
+  viewport: null,
+  pendingViewport: null,
+  framedLevel: null,
+  restoredRegionId: null
+};
+
+/** The view for a game just opened, from its saved record (or none). */
+export function mapViewOpened(gameId: string, saved: SavedMapView | null): MapViewState {
+  return {
+    gameId,
+    viewport: null,
+    pendingViewport: saved?.viewport ?? null,
+    framedLevel: null,
+    restoredRegionId: saved?.regionId ?? null
+  };
+}
+
+/** After the map commits a viewport on a level: the pending restore is spent and the level is framed. */
+export function mapViewCommitted(
+  state: MapViewState,
+  viewport: Viewport,
+  level: number
+): MapViewState {
+  return { ...state, viewport, pendingViewport: null, framedLevel: level };
+}
+
+/**
+ * After the selection changes: the restored hex's exemption ends unless it is still the one
+ * selected (`keepsRestoredHex`). A no-op returns the same object, so callers that read `mapView`
+ * for referential equality (a memo, an effect dependency) see nothing change.
+ */
+export function mapViewSelectionChanged(
+  state: MapViewState,
+  selectedRegionId: string | null
+): MapViewState {
+  if (state.restoredRegionId === null) {
+    return state;
+  }
+  return keepsRestoredHex(selectedRegionId, state.restoredRegionId)
+    ? state
+    : { ...state, restoredRegionId: null };
+}
+
 /** Restore the saved position, frame the level from scratch, or leave the view alone. */
 export type MapViewDecision =
   | { kind: "restore"; viewport: Viewport }
   | { kind: "fit" }
   | { kind: "hold" };
 
-export type MapViewInput = {
-  /** The saved view for this game, while it is still waiting to be applied. */
-  pending: SavedMapView | null;
+export type MapViewDecisionInput = {
+  /** The map view, as the store holds it. */
+  view: MapViewState;
+  /** The game being drawn. */
+  gameId: string | null;
   /** The level being drawn. */
   level: number;
-  /** The level last framed for this game, or `null` when none has been. */
-  framedLevel: number | null;
   /** Whether this level has anything on it to frame. */
   hasHexes: boolean;
 };
 
 export function mapViewDecision({
-  pending,
+  view,
+  gameId,
   level,
-  framedLevel,
   hasHexes
-}: MapViewInput): MapViewDecision {
+}: MapViewDecisionInput): MapViewDecision {
+  const pending = view.pendingViewport;
+  const framedLevel = view.gameId === gameId ? view.framedLevel : null;
   // Whichever level is on screen. The saved level is applied to the store as the game is entered,
   // in the same render as the game itself, so by the time this runs the level already agrees with
   // the record - and on the one path where it cannot (a saved level this game no longer draws) the
   // shell moves the level afterwards, which fits the new one over the top. Making the restore wait
   // for a level to match instead would strand the map at the origin in exactly that case.
-  if (pending?.viewport) {
-    return { kind: "restore", viewport: pending.viewport };
+  if (pending) {
+    return { kind: "restore", viewport: pending };
   }
 
   // Nothing on this level to frame is a game with no report in it yet. Fitting would frame nowhere
