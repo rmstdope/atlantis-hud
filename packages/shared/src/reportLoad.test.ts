@@ -1,4 +1,12 @@
-import type { CoreClient, KnownMap, OpenedGame, ParsedReport, ReportHeaderInfo, ReportRegion } from "@atlantis/core-client";
+import type {
+  CoreClient,
+  KnownMap,
+  OpenedGame,
+  ParsedReport,
+  RememberedRegion,
+  ReportHeaderInfo,
+  ReportRegion
+} from "@atlantis/core-client";
 import { aParsedReport, aReportHeaderInfo, aReportRegion, aReportUnit } from "@atlantis/core-client";
 import { describe, expect, it, vi } from "vitest";
 import { REPORT_NAMES_NO_FACTION } from "./reportLoadDecision";
