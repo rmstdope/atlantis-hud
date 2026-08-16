@@ -32,6 +32,11 @@ const MONTHS: &[&str] = &[
 
 /// The preamble of a turn report.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(
+    test,
+    derive(ts_rs::TS),
+    ts(export, rename = "ReportHeaderInfo", export_to = "ReportHeaderInfo.ts")
+)]
 #[serde(rename_all = "camelCase")]
 pub struct ReportHeader {
     pub faction_id: Option<String>,
@@ -57,6 +62,7 @@ pub struct ReportHeader {
 /// Key-agnostic: NewOrigins prints `Regions`, standard Atlantis prints `Tax Regions` and
 /// `Trade Regions`. The label is whatever the ruleset printed.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct FactionStatus {
     pub entries: Vec<FactionStatusEntry>,
@@ -66,6 +72,7 @@ pub struct FactionStatus {
 
 /// One line of the `Faction Status:` block, such as `Regions: 3 (10)`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct FactionStatusEntry {
     pub label: String,
@@ -75,6 +82,7 @@ pub struct FactionStatusEntry {
 
 /// The `Declared Attitudes:` block.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct DeclaredAttitudes {
     pub default_attitude: Option<String>,
@@ -84,6 +92,7 @@ pub struct DeclaredAttitudes {
 
 /// One attitude level, such as `Hostile`, and the factions declared at it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct AttitudeLevel {
     pub attitude: String,
@@ -92,6 +101,7 @@ pub struct AttitudeLevel {
 
 /// A faction named in a `Declared Attitudes:` list, such as `Creatures (2)`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct FactionRef {
     pub name: String,

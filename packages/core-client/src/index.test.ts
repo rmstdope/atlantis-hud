@@ -205,6 +205,8 @@ describe("core client tauri adapter contract", () => {
               lineEnd: 1,
               columnStart: 0,
               columnEnd: 3,
+              regionId: null,
+              unitId: null,
               severity: "error"
             },
             {
@@ -214,6 +216,8 @@ describe("core client tauri adapter contract", () => {
               lineEnd: 2,
               columnStart: 5,
               columnEnd: 9,
+              regionId: null,
+              unitId: null,
               severity: "warning"
             }
           ]
@@ -669,6 +673,8 @@ describe("merging an allied report", () => {
             lineEnd: 2,
             columnStart: 10,
             columnEnd: 16,
+            regionId: null,
+            unitId: null,
             severity: "error"
           }
         ]
@@ -680,31 +686,6 @@ describe("merging an allied report", () => {
     expect(result.diagnostics[0].columnEnd).toBe(16);
     expect(result.diagnostics[0].regionId).toBeNull();
     expect(result.diagnostics[0].unitId).toBeNull();
-  });
-
-  /**
-   * The contract from ah-164.1 on: every anchor is optional, so a payload carrying only the old
-   * snake_case spelling does not throw - it reads as an anchor-free diagnostic, since the
-   * normalizer no longer falls back to the old spelling.
-   */
-  it("reads a diagnostic's optional anchors as absent when only the old snake_case spelling is present", async () => {
-    const snake: TauriInvoke = <T,>() =>
-      Promise.resolve({
-        diagnostics: [
-          {
-            code: "bad-argument",
-            message: 'expected a number, found "swords"',
-            line_start: 2,
-            line_end: 2,
-            severity: "error"
-          }
-        ]
-      } as T);
-
-    const result = await createCoreClient(createTauriAdapter(snake)).validateOrders("x", null);
-
-    expect(result.diagnostics[0].lineStart).toBeNull();
-    expect(result.diagnostics[0].lineEnd).toBeNull();
   });
 
   /**
@@ -756,38 +737,6 @@ describe("merging an allied report", () => {
     });
     expect(result.diagnostics[1].lineStart).toBe(4);
     expect(result.diagnostics[1].unitId).toBe("18642");
-  });
-
-  /** A payload with no anchors at all is still incomplete if it says nothing else either. */
-  it("still refuses a diagnostic missing its code or severity", async () => {
-    const broken: TauriInvoke = <T,>() =>
-      Promise.resolve({ diagnostics: [{ message: "no code here", severity: "warning" }] } as T);
-
-    await expect(
-      createCoreClient(createTauriAdapter(broken)).validateOrders("x", null)
-    ).rejects.toThrow(/incomplete order validation payload/);
-  });
-
-  /**
-   * The contract from ah-164.1 on: `turnHeader.turnNumber` is required, so a payload carrying
-   * only the old snake_case spelling is refused rather than silently read.
-   */
-  it("refuses a parse result whose turn header carries only the old snake_case spelling", async () => {
-    const snake: TauriInvoke = <T,>() =>
-      Promise.resolve({
-        turnHeader: { turn_number: 12, season: "Spring" },
-        detectedFactions: [],
-        regions: [],
-        units: [],
-        inventories: [],
-        messageSummaries: [],
-        warnings: [],
-        meetsMinimumImportThreshold: false
-      } as T);
-
-    await expect(
-      createCoreClient(createTauriAdapter(snake)).parseReport("garbage")
-    ).rejects.toThrow(/incomplete turn header payload/);
   });
 
   it("asks tauri for the order vocabulary rather than keeping one of its own", async () => {

@@ -4,6 +4,9 @@
 
 - Desktop-first with web parity
 - Shared Rust core with platform adapters (WASM and Tauri)
+- TypeScript types for the report model are generated from the Rust core by ts-rs into
+  `packages/core-client/src/generated/` during `cargo test`; `pnpm run check:generated` and CI
+  refuse a stale copy. A new field on a Rust report type is a Rust edit plus a `git add`.
 - React + TypeScript SPA frontend
 - Tauri desktop shell
 - SVG map renderer (PixiJS until #58; a canvas cannot keep text sharp under zoom)
@@ -14,6 +17,26 @@
 - Zustand + TanStack Query
 - CodeMirror 6 for orders editor
 - CI gates required before merge: Rust tests, Vitest, Playwright smoke, lint, typecheck
+
+## Generated bindings
+
+The report model and the parse family - `ParsedReport`, `ReportParseResultWire` (as
+`ReportParseResult`), `EngineInfo`, `OrderValidationResult`, and everything reachable from them - are
+generated as TypeScript from the Rust types in `crates/core`, rather than mirrored by hand.
+
+They are generated with `#[cfg_attr(test, derive(ts_rs::TS), ts(export))]` on the Rust type, a
+dev-only dependency so nothing about it reaches the wasm or desktop build, and a `[env]` table in
+`.cargo/config.toml` that points ts-rs at `packages/core-client/src/generated/`. `cargo test -p
+atlantis-hud-core` is the generator: it is what runs the `#[test]` functions ts-rs writes for each
+`#[ts(export)]` type.
+
+Never edit a file under `packages/core-client/src/generated/` by hand - it is overwritten on the
+next `cargo test`. Regenerate with `cargo test -p atlantis-hud-core` after changing a Rust report
+type, and commit the result; `pnpm run check:generated` and CI both fail on a stale copy. A renamed
+export (`ts(rename = "...")`) always carries `export_to` alongside it, naming the file the rename
+should land in - without it the file keeps the type's Rust name and the re-export in `index.ts`
+points at nothing. A type reached only through `#[serde(flatten)]` carries no `export` of its own,
+or two types claim the same generated file.
 
 ## Operating rules for all work packages
 
