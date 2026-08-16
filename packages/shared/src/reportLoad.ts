@@ -28,12 +28,12 @@ import type {
   RememberedRegion,
   ReportRegion
 } from "@atlantis/core-client";
-import type { ImportStatus } from "./workspace/AppHeader";
+import type { StatusLine } from "./workspace/shellStatus";
 import { commitTurn, rememberTurn, type MemoryOutcome } from "./gameMemory";
 import { documentFor, draftKeyFor } from "./orderDraft";
 import { decideReportLoad } from "./reportLoadDecision";
 import { sortUnitsForDisplay } from "./hexMapModel";
-import { warningStatus } from "./workspace/shellStatus";
+import { countsStatus, noticeStatus, warningStatus } from "./workspace/shellStatus";
 
 /**
  * How a report names its own faction, as `Borg TNG (95)`, or `null` when it names none.
@@ -61,8 +61,8 @@ export type LoadedTurn = {
   merged: MergedReportRecord[];
   orders: string;
   ordersSavedAt: string | null;
-  /** The counts, and the remember/draft warning if there was one - `applyReport`'s old status. */
-  status: ImportStatus;
+  /** The routine counts, or the remember/draft warning if there was one. */
+  status: StatusLine;
 };
 
 /**
@@ -117,14 +117,7 @@ export async function loadTurn(
     merged: memory.merged,
     orders: chosen.text,
     ordersSavedAt: chosen.savedAt,
-    status: {
-      regionCount: report.regions.length,
-      unitCount,
-      message,
-      failed: false,
-      // A message here is always a warning: the routine case is the counts, message-less.
-      warning: message !== null
-    }
+    status: message !== null ? warningStatus(message) : countsStatus(report.regions.length, unitCount)
   };
 }
 
@@ -195,11 +188,13 @@ export async function storeOlderTurn(
   rulesetText: string | null,
   now: string,
   currentTurn: number
-): Promise<ImportStatus> {
+): Promise<StatusLine> {
   const { warning } = await commitTurn(client, game, report, text, rulesetText, now);
-  return warningStatus(
-    warning ?? `turn ${report.header.turnNumber} stored for history; still showing turn ${currentTurn}.`
-  );
+  return warning !== null
+    ? warningStatus(warning)
+    : noticeStatus(
+        `turn ${report.header.turnNumber} stored for history; still showing turn ${currentTurn}.`
+      );
 }
 
 /**
