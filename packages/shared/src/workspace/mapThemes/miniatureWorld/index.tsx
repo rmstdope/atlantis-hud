@@ -16,8 +16,9 @@
  */
 
 import { HEX_RADIUS } from "../../mapViewport";
-import { HEX_POINTS, radii } from "../geometry";
-import { ROAD_VECTORS, type HexView } from "../hexView";
+import { HEX_POINTS } from "../geometry";
+import type { HexView } from "../hexView";
+import { roadLayer, type RoadStyle } from "../roadLayer";
 import type { LayerProps, MapTheme } from "../mapTheme";
 import {
   decorationFor,
@@ -201,10 +202,10 @@ function TerrainLayer({ views }: LayerProps) {
                   className={unpainted ? "mw-unpainted" : "mw-wash"}
                   data-wash={unpainted ? "unpainted" : "stale"}
                   // The board wash sits over the primer rather than instead of it, so the hex still
-                  // reads as unfinished. Damped either way: there is a scene under both of them
-                  // now, and the damping is also what keeps unpainted board the lightest thing on
-                  // the table rather than landing on top of a long-stale wash.
-                  opacity={Number((view.fogOpacity * 0.8).toFixed(3))}
+                  // reads as unfinished. Arrives already damped, whichever state it is in, which is
+                  // also what keeps unpainted board the lightest thing on the table rather than
+                  // landing on top of a long-stale wash.
+                  opacity={view.fogOpacity}
                 />
               )}
               {unpainted && (
@@ -230,39 +231,15 @@ function TerrainLayer({ views }: LayerProps) {
 }
 
 /**
+ * Roads as tan paths trodden across the board.
+ *
  * The heaviest road of the five: this theme's 5 units, as a fraction of the hex so the path stays a
- * path at every zoom rather than a blob across the hex it is trodden into. See
- * `docs/ui/map-themes.md` for which marks are measured this way and which stay screen-constant.
+ * path at every zoom rather than a blob across the hex it is trodden into.
  */
-const PATH_WIDTH = radii(0.278);
-
-/** Roads as tan paths trodden across the board. */
-function RoadLayer({ views }: LayerProps) {
-  if (!views.some((view) => view.roads.length > 0)) {
-    return null;
-  }
-  return (
-    <g pointerEvents="none">
-      {views.flatMap((view) =>
-        view.roads.map((direction) => {
-          const bearing = ROAD_VECTORS[direction];
-          return (
-            <line
-              key={`${view.key}-${direction}`}
-              className="mw-path"
-              x1={view.at.x}
-              y1={view.at.y}
-              x2={view.at.x + bearing.x * HEX_RADIUS * 0.87}
-              y2={view.at.y + bearing.y * HEX_RADIUS * 0.87}
-              strokeWidth={PATH_WIDTH}
-              strokeLinecap="round"
-            />
-          );
-        })
-      )}
-    </g>
-  );
-}
+const ROAD_STYLE: RoadStyle = {
+  reach: 0.87,
+  strokes: [{ className: "mw-path", width: 0.278, linecap: "round" }]
+};
 
 /** One little house: a wall and a roof, as a model of a building rather than a symbol for one. */
 function Roof({ wall }: { wall?: string }) {
@@ -473,8 +450,9 @@ function MarkLayer({ views }: LayerProps) {
 export const miniatureWorld: MapTheme = {
   id: "miniature-world",
   label: "Miniature World",
+  fogDamping: 0.8,
   Defs,
   TerrainLayer,
-  RoadLayer,
+  RoadLayer: roadLayer(ROAD_STYLE),
   MarkLayer
 };

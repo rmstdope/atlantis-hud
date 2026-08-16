@@ -11,8 +11,8 @@
  */
 
 import { HEX_RADIUS } from "../../mapViewport";
-import { HEX_POINTS, radii } from "../geometry";
-import { ROAD_VECTORS, type HexView } from "../hexView";
+import { HEX_POINTS } from "../geometry";
+import { roadLayer, type RoadStyle } from "../roadLayer";
 import type { LayerProps, MapTheme } from "../mapTheme";
 import {
   battleChip,
@@ -55,18 +55,6 @@ function terrainClass(terrain: string): string {
 
 /** Light, because the bevel is doing the work of separating tile from tile. */
 const TEXTURE_TINT = 0.14;
-
-/**
- * Every dimmed tile is held under its fade, whichever state it is in.
- *
- * Unvisited ground used to take the fade whole, back when the fade was heavy and was what said
- * "never surveyed". It is light now and the rim says that instead, so damping it costs nothing and
- * buys the separation: undamped, unsurveyed sat at 0.400 against an ancient sighting's 0.446, and
- * two dims a twentieth apart are the same dim.
- */
-function dimOpacity(view: HexView): number {
-  return Number((view.fogOpacity * 0.72).toFixed(3));
-}
 
 /** The tile's own face, inset from the hex so the seam shows. */
 function polygonAt(radius: number): string {
@@ -157,11 +145,12 @@ function TerrainLayer({ views }: LayerProps) {
               )}
               {view.fogOpacity > 0 && (
                 <>
+                  {/* Damped by fogDamping before it arrives, whichever state it is in. */}
                   <polygon
                     points={TILE_POINTS}
                     className="bt-tint"
                     data-dim={view.knowledge === "named" ? "unsurveyed" : "stale"}
-                    opacity={dimOpacity(view)}
+                    opacity={view.fogOpacity}
                   />
                   {/*
                     Sunk flush, and rimmed so the sinking reads even against a dark neighbour.
@@ -190,43 +179,15 @@ function TerrainLayer({ views }: LayerProps) {
 }
 
 /**
- * The inlay's width: this theme's 4 units, as a fraction of the hex so it shrinks with the tile it
- * is cut into rather than growing wider than the face it is inlaid in. See `docs/ui/map-themes.md`
- * for which marks are measured this way and which stay screen-constant.
+ * Roads as pale inlays across the tile's face.
  *
- * The spoke's 0.83 below is a separate matter - this tile is inset from the lattice, so the road
- * stops short of where the other themes' do.
+ * The reach is 0.83, not the usual 0.87 - this tile is inset from the lattice, so the road stops
+ * short of where the other themes' do.
  */
-const ROAD_WIDTH = radii(0.222);
-
-/** Roads as pale inlays across the tile's face. */
-function RoadLayer({ views }: LayerProps) {
-  if (!views.some((view) => view.roads.length > 0)) {
-    return null;
-  }
-  return (
-    <g pointerEvents="none">
-      {views.flatMap((view) =>
-        view.roads.map((direction) => {
-          const bearing = ROAD_VECTORS[direction];
-          return (
-            <line
-              key={`${view.key}-${direction}`}
-              className="bt-road"
-              x1={view.at.x}
-              y1={view.at.y}
-              x2={view.at.x + bearing.x * HEX_RADIUS * 0.83}
-              y2={view.at.y + bearing.y * HEX_RADIUS * 0.83}
-              strokeWidth={ROAD_WIDTH}
-              strokeLinecap="round"
-              opacity={0.9}
-            />
-          );
-        })
-      )}
-    </g>
-  );
-}
+const ROAD_STYLE: RoadStyle = {
+  reach: 0.83,
+  strokes: [{ className: "bt-road", width: 0.222, linecap: "round", opacity: 0.9 }]
+};
 
 /** The glyph on a feature chip. One chip shape for everything; only the face differs. */
 function ChipGlyph({ feature }: { feature: string }) {
@@ -403,7 +364,8 @@ function MarkLayer({ views }: LayerProps) {
 export const beveledTile: MapTheme = {
   id: "beveled-tile",
   label: "Beveled Tile",
+  fogDamping: 0.72,
   TerrainLayer,
-  RoadLayer,
+  RoadLayer: roadLayer(ROAD_STYLE),
   MarkLayer
 };

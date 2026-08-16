@@ -105,9 +105,9 @@ The **fade** each bucket gets is decided once, in `hexPaint`, and handed to the 
   the hatch are what carry meaning. It was the other way round until the heavy wash was found to
   make a named forest and a named desert the same pale smudge.
 
-  These are the figures the *view model* hands over. Each theme damps them by its own factor before
-  painting — see [`map-themes.md`](map-themes.md) — so the numbers on screen are lower, and it is
-  the damped pair that has to stay clearly apart.
+  These are the figures the *view model* hands over. Each theme declares a damping factor and
+  `buildHexViews` applies it before any theme paints — see [`map-themes.md`](map-themes.md) — so
+  the numbers on screen are lower, and it is the damped pair that has to stay clearly apart.
 - **Current** (in this turn's report): terrain drawn clean, no overlay.
 - **Stale** (visited before, absent from the current report), when the **staleness toggle** is
   on: faded continuously with age — `min(0.62, 0.30 + 0.02 × ageInTurns)` — so a hex seen last turn
@@ -139,6 +139,11 @@ Roads sit in a layer of their own *beneath* the route overlay, so a movement pat
 the way a traveller would. The route is measured the same way for the same reason, so a road still
 peeks out from under the path's casing at every zoom and "does this route run along the road or
 miss it" stays legible.
+
+The spoke itself is drawn by the shared `roadLayer` (`mapThemes/roadLayer.tsx`); a theme supplies
+only its style — see [`map-themes.md`](map-themes.md). Beveled Tile's reach is 0.83R rather than
+the usual 0.87R, because its tile is inset from the lattice and the road has to stop short of the
+seam.
 
 ### 5. Route overlay
 
