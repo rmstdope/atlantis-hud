@@ -74,8 +74,10 @@ pub mod codes {
     pub const TEACHING_OVERSUBSCRIBED: Code = Code("teaching-oversubscribed");
     pub const TEACHER_HAS_FREE_SLOTS: Code = Code("teacher-has-free-slots");
     pub const FORM_ALIAS_REUSED: Code = Code("form-alias-reused");
-    /// Every code, in the order the settings tab lists them. The generated TypeScript copies this
-    /// order.
+    /// Every code. This array's own order is not the settings tab's grouping (that groups by
+    /// concern - Teaching / Resources / Guarding / Orders - not by this list), but a new entry
+    /// still goes last: the generated TypeScript copies this order, and every entry added since
+    /// `hex-unguarded` has kept new-last / grouped-last in step with each other.
     pub const ALL: [Code; 10] = [
         NOT_ENOUGH_SILVER,
         NOT_ENOUGH_ITEMS,
