@@ -453,6 +453,40 @@ pub fn set_game_ruleset(
     Ok(manifest)
 }
 
+/// Renames a game, after creation.
+///
+/// The name is stored as given: trimming and the refusal of an empty name are the shell's
+/// (`gameSession.ts`'s `gameNameOf`), the same rule applied at creation.
+///
+/// # Errors
+///
+/// Returns an error when no game exists under this id, when its manifest cannot be read, or when
+/// the database cannot be opened or migrated.
+pub fn set_game_name(
+    games_root: &Path,
+    game_id: &str,
+    game_name: &str,
+) -> Result<GameManifest, PersistenceError> {
+    let game_file_path = game_home(games_root, game_id).join(GAME_MANIFEST_FILE_NAME);
+    if !game_file_path.exists() {
+        return Err(PersistenceError::GameNotFound(game_id.to_string()));
+    }
+
+    let mut manifest = load_game_manifest(&game_file_path)?;
+    ensure_supported_manifest_version(manifest.manifest_version)?;
+    manifest.metadata.game_name = game_name.to_string();
+
+    // Database first, manifest second — the order `open_game` writes in, so a failure between the
+    // two leaves the manifest (which the frontends read) still agreeing with itself.
+    let database_path = sidecar_database_path(&game_file_path);
+    let mut connection = open_database(&database_path)?;
+    apply_migrations(&mut connection)?;
+    persist_game_snapshot(&mut connection, &manifest)?;
+    save_game_manifest(&game_file_path, &manifest)?;
+
+    Ok(manifest)
+}
+
 /// Every game under `games_root`, read from the games themselves.
 ///
 /// There is no index to consult: the games on disk are the list. That costs one small read per
@@ -1900,6 +1934,38 @@ mod tests {
 
         let error = set_game_ruleset(dir.path(), "no-such-game", "magicdeep")
             .expect_err("changing a missing game should fail");
+
+        assert!(matches!(error, PersistenceError::GameNotFound(ref id) if id == "no-such-game"));
+    }
+
+    /// The This game panel lets a player rename their game after creation, so the change must land
+    /// in both places the name lives: the manifest the frontends read, and the row the database
+    /// mirrors it into.
+    #[test]
+    fn renaming_a_game_updates_manifest_and_database() {
+        let dir = tempdir().expect("tempdir");
+        create_game(dir.path(), &fixture_manifest()).expect("creation should succeed");
+
+        let updated = set_game_name(dir.path(), GAME_ID, "Binding of the North")
+            .expect("the rename should succeed");
+        assert_eq!(updated.metadata.game_name, "Binding of the North");
+
+        let reopened = open_game(dir.path(), GAME_ID, CREATED_AT).expect("reopen should succeed");
+        assert_eq!(reopened.manifest.metadata.game_name, "Binding of the North");
+
+        let stored: String = Connection::open(&reopened.database_path)
+            .expect("db should open")
+            .query_row("SELECT game_name FROM game_metadata", [], |row| row.get(0))
+            .expect("the name should be mirrored into the database");
+        assert_eq!(stored, "Binding of the North");
+    }
+
+    #[test]
+    fn renaming_a_missing_game_names_it() {
+        let dir = tempdir().expect("tempdir");
+
+        let error = set_game_name(dir.path(), "no-such-game", "Binding of the North")
+            .expect_err("renaming a missing game should fail");
 
         assert!(matches!(error, PersistenceError::GameNotFound(ref id) if id == "no-such-game"));
     }

@@ -857,6 +857,7 @@ export interface CoreAdapter {
   exportGame(gameId: string, exportedAt: string): Promise<unknown> | unknown;
   importGame(backupJson: string, openedAt: string): Promise<unknown> | unknown;
   setGameRuleset(gameId: string, rulesetId: string): Promise<unknown> | unknown;
+  setGameName(gameId: string, gameName: string): Promise<unknown> | unknown;
   parseReport(rawReport: string): Promise<unknown> | unknown;
   parseReportFull(rawReport: string): Promise<unknown> | unknown;
   parseReportClassified(rawReport: string, rulesetJson: string): Promise<unknown> | unknown;
@@ -979,6 +980,11 @@ export interface CoreClient {
    * and re-fetch the ruleset itself, because everything parsed under the old one is now suspect.
    */
   setGameRuleset(gameId: string, rulesetId: string): Promise<GameManifest>;
+  /**
+   * Renames a game, returning the updated manifest. The manifest comes back so the shell can
+   * refresh what it holds without a second round trip, the same as `setGameRuleset`.
+   */
+  setGameName(gameId: string, gameName: string): Promise<GameManifest>;
   parseReport(rawReport: string): Promise<ReportParseResult>;
   /** The full domain model. Returned as-is: it is descriptive data, not a contract to normalize. */
   parseReportFull(rawReport: string): Promise<ParsedReport>;
@@ -1746,6 +1752,10 @@ export function createCoreClient(adapter: CoreAdapter): CoreClient {
       const value = await adapter.setGameRuleset(gameId, rulesetId);
       return normalizeGameManifest(value);
     },
+    async setGameName(gameId: string, gameName: string) {
+      const value = await adapter.setGameName(gameId, gameName);
+      return normalizeGameManifest(value);
+    },
     async parseReport(rawReport: string) {
       const value = await adapter.parseReport(rawReport);
       return normalizeParseResult(value);
@@ -2009,6 +2019,12 @@ export function createTauriAdapter(invoke: TauriInvoke): CoreAdapter {
       return invoke<GameManifestWireShape>("set_game_ruleset", {
         game_id: gameId,
         ruleset_id: rulesetId
+      });
+    },
+    setGameName(gameId: string, gameName: string) {
+      return invoke<GameManifestWireShape>("set_game_name", {
+        game_id: gameId,
+        game_name: gameName
       });
     },
     parseReport(rawReport: string) {

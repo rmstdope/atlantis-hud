@@ -32,6 +32,33 @@ describe("changing the open game's ruleset", () => {
   });
 });
 
+describe("renaming the open game", () => {
+  beforeEach(resetWorkspaceStore);
+
+  it("updates the name without abandoning the selection", () => {
+    // A rename is not a game switch: the hex and unit the player is looking at are still there.
+    store().openGame({
+      gameId: "g1",
+      gameName: "Spring campaign",
+      databasePath: "idb://g1",
+      rulesetId: "neworigins"
+    });
+    store().selectRegion("1:7,53", "18642");
+
+    store().updateGameName("Binding of the North");
+
+    expect(store().game?.gameName).toBe("Binding of the North");
+    expect(store().selectedRegionId).toBe("1:7,53");
+    expect(store().selectedUnitId).toBe("18642");
+  });
+
+  it("does nothing when no game is open", () => {
+    store().updateGameName("Binding of the North");
+
+    expect(store().game).toBeNull();
+  });
+});
+
 describe("workspace selection", () => {
   beforeEach(resetWorkspaceStore);
 

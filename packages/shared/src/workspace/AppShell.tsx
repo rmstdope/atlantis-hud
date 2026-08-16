@@ -75,6 +75,7 @@ import {
   importGameBackup as importGameBackupAction,
   importGameBackupAsCopy,
   openGame as openGameAction,
+  renameGame as renameGameAction,
   replaceGameWithBackup,
   type GameActionOutcome
 } from "../gameActions";
@@ -274,6 +275,15 @@ export function AppShell({
   // Which game is open, and every game there is. Both live here because both change together:
   // creating, switching and deleting all move the open game and the list in one step.
   const [game, setGame] = useState<OpenedGame | null>(null);
+  // Bumped by `enterGame` alone - open, create and every import mode, replace included. What the
+  // ruleset-fetch, turn-restore and hex-notes effects below actually need to know is "did the
+  // player just land in a (possibly different) database", not "did `game`'s reference change":
+  // `changeRuleset` and `renameGame` both call `setGame` directly, without going through
+  // `enterGame`, and only `changeRuleset`'s ruleset id actually moving is a reason for those
+  // effects to redo their work - a rename is not. A `replace` import is the case object identity
+  // alone cannot distinguish from a rename: it keeps the same game id yet swaps out everything
+  // the id points at, which is exactly why this is a counter rather than a derived boolean.
+  const [gameEpoch, setGameEpoch] = useState(0);
   const [games, setGames] = useState<GameManifest[]>([]);
   const [gamesLoaded, setGamesLoaded] = useState(false);
   // The map's note pins (ah-o1t.3); the panel reads the same store directly.
@@ -413,6 +423,7 @@ export function AppShell({
 
   const closeGameInStore = useWorkspaceStore((state) => state.closeGame);
   const updateGameRulesetInStore = useWorkspaceStore((state) => state.updateGameRuleset);
+  const updateGameNameInStore = useWorkspaceStore((state) => state.updateGameName);
 
   /**
    * What is owed to storage, and one write at a time.
@@ -1155,16 +1166,23 @@ export function AppShell({
   // identical, and a report opened during the fetch was quietly parsed unclassified - which makes
   // every unit's man-count an estimate, including the single-race majority where the leading-group
   // figure is exactly right. Nothing said so.
+  //
+  // Keyed on the game and ruleset ids, plus `gameEpoch`, rather than on `game` itself (ah-lkw): a
+  // rename hands the shell a fresh `game` object too, and keying on identity alone would refetch
+  // and flash "loading" for a change the ruleset file has nothing to do with. `gameEpoch` is what
+  // still catches a `replace` import, which keeps the same game id and may keep the same ruleset
+  // id while swapping out everything else - see the epoch's own comment by its `useState`.
   useEffect(() => {
     if (!game) {
       setRuleset({ status: "unavailable" });
       return undefined;
     }
+    const rulesetId = game.manifest.metadata.rulesetId;
 
     let cancelled = false;
     setRuleset({ status: "loading" });
     void Promise.resolve()
-      .then(() => fetch(rulesetUrlFor(game.manifest.metadata.rulesetId)))
+      .then(() => fetch(rulesetUrlFor(rulesetId)))
       .then((response) => (response.ok ? response.text() : null))
       .then((text) => {
         if (!cancelled) {
@@ -1179,7 +1197,7 @@ export function AppShell({
     return () => {
       cancelled = true;
     };
-  }, [game]);
+  }, [openGameId, game?.manifest.metadata.rulesetId, gameEpoch]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1202,6 +1220,11 @@ export function AppShell({
    * Keeps the hex notes store in step with the open game (ah-o1t): loads its notes when a game
    * opens, clears them when it closes. Its own effect rather than folded into the restore effect
    * below - notes do not depend on the ruleset.
+   *
+   * Keyed on `openGameId` and `gameEpoch` rather than on `game` itself (ah-lkw): a rename hands
+   * the shell a fresh `game` object too, and the notes for a game do not change just because its
+   * name did. `gameEpoch` still catches a `replace` import, which swaps out the notes along with
+   * everything else under the same game id.
    */
   useEffect(() => {
     if (game) {
@@ -1209,7 +1232,7 @@ export function AppShell({
     } else {
       useHexNotesStore.getState().clear();
     }
-  }, [client, game]);
+  }, [client, openGameId, gameEpoch]);
 
   /**
    * Puts back the turn the player was last working on.
@@ -1225,7 +1248,11 @@ export function AppShell({
    * afterwards costs the redundancy issue #28 exists to remove.
    *
    * Keyed on the game and on the ruleset settling, not on `parsed`: this must not re-run when the
-   * player then opens a report of their own.
+   * player then opens a report of their own. Keyed on `openGameId` and `gameEpoch` rather than on
+   * `game` itself (ah-lkw): a rename hands the shell a fresh `game` object too, and neither the id
+   * nor the database path `restoreLatestTurn` reads off it change because the name did -
+   * re-parsing the turn (and the `busy` flip around it, which blurs whatever control has focus)
+   * would be pure churn. `gameEpoch` still catches a `replace` import under the same game id.
    */
   useEffect(() => {
     if (!game || ruleset.status === "loading") {
@@ -1308,7 +1335,7 @@ export function AppShell({
     return () => {
       cancelled = true;
     };
-  }, [client, game, ruleset, selectRegion, selectUnit]);
+  }, [client, openGameId, ruleset, selectRegion, selectUnit, gameEpoch]);
 
   /**
    * Moves the workspace into a game.
@@ -1320,6 +1347,7 @@ export function AppShell({
   const enterGame = useCallback(
     (opened: OpenedGame) => {
       setGame(opened);
+      setGameEpoch((epoch) => epoch + 1);
       setParsed(null);
       setRemembered([]);
       setRawReport("");
@@ -1370,9 +1398,13 @@ export function AppShell({
     [clearPlan, openGameInStore, setLevel, restoreSelection]
   );
 
-  /** Every game action runs through here: clears the last error, holds `busy`, reports a failure. */
+  /**
+   * Every game action runs through here: clears the last error, holds `busy`, reports a failure.
+   * Generic so a caller can learn whether its work finished - `renameGame` below needs that to
+   * decide whether to close its own edit field.
+   */
   const runGameAction = useCallback(
-    (work: () => Promise<void>, prefix?: string) => {
+    <T,>(work: () => Promise<T>, prefix?: string) => {
       setGameError(null);
       return runReported(work, setGameError, { busy: setBusy, prefix });
     },
@@ -1419,6 +1451,28 @@ export function AppShell({
       });
     },
     [client, game, flush, runGameAction, updateGameRulesetInStore]
+  );
+
+  /**
+   * Renames the open game. Resolves `true` when the name was saved, `false` when the core refused
+   * (the reason is in `gameError`) - the field's own save button reads this to decide whether to
+   * close.
+   */
+  const renameGame = useCallback(
+    async (gameName: string): Promise<boolean> => {
+      if (!game) {
+        return false;
+      }
+      const done = await runGameAction(async () => {
+        const result = await renameGameAction(client, game, gameName);
+        setGame({ ...game, manifest: result.manifest });
+        updateGameNameInStore(result.manifest.metadata.gameName);
+        setGames(result.games);
+        return true;
+      });
+      return done === true;
+    },
+    [client, game, runGameAction, updateGameNameInStore]
   );
 
   const createGame = useCallback(
@@ -2290,6 +2344,7 @@ export function AppShell({
             onDelete={(gameId) => void deleteGame(gameId)}
             onExport={(gameId) => void exportGameBackup(gameId)}
             onImport={(file, mode) => void importGameBackup(file, mode)}
+            onRename={renameGame}
             onDismiss={() => setPickerOpen(false)}
           />
         }

@@ -106,6 +106,13 @@ export type WorkspaceState = {
    */
   updateGameRuleset: (rulesetId: string) => void;
   /**
+   * Records that the open game now has another name.
+   *
+   * Unlike `openGame` this keeps the selection: a rename is not a game switch, and the hex and
+   * unit the player was looking at are still there.
+   */
+  updateGameName: (gameName: string) => void;
+  /**
    * Selects a hex, and with it a unit inside that hex.
    *
    * `defaultUnitId` is supplied by the caller, which knows what the hex contains. Landing on a hex
@@ -266,6 +273,9 @@ export const useWorkspaceStore = create<WorkspaceState>()(
 
       updateGameRuleset: (rulesetId) =>
         set((state) => (state.game ? { game: { ...state.game, rulesetId } } : state)),
+
+      updateGameName: (gameName) =>
+        set((state) => (state.game ? { game: { ...state.game, gameName } } : state)),
 
       // Moving to another hex abandons the unit that was selected in the old one: keeping it would
       // leave the detail panel and the orders editor describing a unit that is no longer in the list.

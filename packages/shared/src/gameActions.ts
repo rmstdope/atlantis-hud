@@ -11,13 +11,20 @@
 
 import type { CoreClient, GameManifest, OpenedGame } from "@atlantis/core-client";
 import { backupAsCopy, backupGameIdentity } from "./gameBackup";
-import { gameAfterDelete, newGameId, newGameManifest } from "./gameSession";
+import { gameAfterDelete, gameNameOf, newGameId, newGameManifest } from "./gameSession";
 import { rulesetById } from "./rulesets";
 
 /** The slice of the client these actions need - a fake in the tests is an object literal. */
 export type GameClient = Pick<
   CoreClient,
-  "listGames" | "openGame" | "createGame" | "deleteGame" | "exportGame" | "importGame" | "setGameRuleset"
+  | "listGames"
+  | "openGame"
+  | "createGame"
+  | "deleteGame"
+  | "exportGame"
+  | "importGame"
+  | "setGameRuleset"
+  | "setGameName"
 >;
 
 /** What a game action leaves behind for the shell to apply. */
@@ -168,5 +175,19 @@ export async function changeRuleset(
     throw new Error(`unknown ruleset: ${rulesetId}`);
   }
   const manifest = await client.setGameRuleset(game.manifest.metadata.gameId, rulesetId);
+  return { manifest, games: await client.listGames() };
+}
+
+/**
+ * Renames `game` to `gameName` (trimmed by `gameNameOf`, which throws "a game needs a name" for
+ * an empty one - the same rule creation applies). Resolves the new manifest and the refreshed
+ * games list.
+ */
+export async function renameGame(
+  client: GameClient,
+  game: OpenedGame,
+  gameName: string
+): Promise<{ manifest: OpenedGame["manifest"]; games: GameManifest[] }> {
+  const manifest = await client.setGameName(game.manifest.metadata.gameId, gameNameOf(gameName));
   return { manifest, games: await client.listGames() };
 }

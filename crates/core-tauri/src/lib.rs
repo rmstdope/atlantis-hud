@@ -12,7 +12,7 @@ use atlantis_hud_core_persistence::{
     create_game, delete_game, delete_hex_note, export_game, import_game, insert_imported_turn,
     list_games, list_hex_notes, list_imported_turns, load_imported_turn, load_latest_imported_turn,
     load_merged_reports, load_order_draft, load_region_sightings, open_game, preview_imported_turn,
-    set_game_ruleset, upsert_hex_note, upsert_imported_turn, upsert_merged_report,
+    set_game_name, set_game_ruleset, upsert_hex_note, upsert_imported_turn, upsert_merged_report,
     upsert_order_draft, upsert_region_sightings, GameManifest, GameMetadata, HexNote,
     ImportedTurnKey, ImportedTurnPreview, ImportedTurnRecord, MergedReportRecord, OpenedGame,
     OrderDraftKey, OrderDraftRecord, PersistenceError, ReportSourceRef,
@@ -453,6 +453,21 @@ pub fn command_set_game_ruleset(
     ruleset_id: &str,
 ) -> Result<GameManifestDto, String> {
     set_game_ruleset(Path::new(games_root), game_id, ruleset_id)
+        .map(GameManifestDto::from)
+        .map_err(|error| error.to_string())
+}
+
+/// Renames a game, returning the updated manifest.
+///
+/// # Errors
+///
+/// Returns an error when no game exists under this id, or when the change cannot be written.
+pub fn command_set_game_name(
+    games_root: &str,
+    game_id: &str,
+    game_name: &str,
+) -> Result<GameManifestDto, String> {
+    set_game_name(Path::new(games_root), game_id, game_name)
         .map(GameManifestDto::from)
         .map_err(|error| error.to_string())
 }
@@ -1372,6 +1387,41 @@ mod ruleset_command_tests {
 
         let error = command_set_game_ruleset(root, "no-such-game", "magicdeep")
             .expect_err("changing a missing game should fail");
+
+        assert!(error.contains("no-such-game"));
+    }
+}
+
+#[cfg(test)]
+mod rename_command_tests {
+    use super::test_support::manifest_dto;
+    use super::*;
+    use tempfile::tempdir;
+
+    /// The This game panel drives this command; what it needs back is the updated manifest, so the
+    /// shell can refresh its state without a second round trip.
+    #[test]
+    fn renaming_a_game_returns_the_updated_manifest() {
+        let dir = tempdir().expect("tempdir");
+        let root = dir.path().to_str().expect("a path");
+        command_create_game(root, manifest_dto("faction-95", "Borg TNG")).expect("created");
+
+        let updated = command_set_game_name(root, "faction-95", "Binding of the North")
+            .expect("the rename should succeed");
+        assert_eq!(updated.metadata.game_name, "Binding of the North");
+
+        // And it stuck: a fresh listing reads the manifest back off disk.
+        let listed = command_list_games(root).expect("listing should succeed");
+        assert_eq!(listed[0].metadata.game_name, "Binding of the North");
+    }
+
+    #[test]
+    fn renaming_a_missing_game_names_it() {
+        let dir = tempdir().expect("tempdir");
+        let root = dir.path().to_str().expect("a path");
+
+        let error = command_set_game_name(root, "no-such-game", "Binding of the North")
+            .expect_err("renaming a missing game should fail");
 
         assert!(error.contains("no-such-game"));
     }

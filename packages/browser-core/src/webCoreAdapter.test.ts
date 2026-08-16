@@ -190,6 +190,27 @@ describe("web core adapter", () => {
     );
   });
 
+  it("renames a game in the stored manifest", async () => {
+    const store = createMemoryWebStore();
+    const adapter = createWebCoreAdapter(fakeWasm(), store);
+    await adapter.createGame(manifest("g1", "Game One"));
+
+    const updated = (await adapter.setGameName("g1", "Binding of the North")) as GameManifest;
+
+    expect(updated.metadata.gameName).toBe("Binding of the North");
+    // And it stuck: the registry's copy is what every later open reads.
+    const stored = await store.getGame("g1");
+    expect((stored?.manifest as GameManifest).metadata.gameName).toBe("Binding of the North");
+  });
+
+  it("refuses to rename a game it does not hold", async () => {
+    const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
+
+    await expect(adapter.setGameName("ghost", "Binding of the North")).rejects.toThrow(
+      "no game with id ghost"
+    );
+  });
+
   it("routes logic calls to the core rather than to storage", async () => {
     const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
 
