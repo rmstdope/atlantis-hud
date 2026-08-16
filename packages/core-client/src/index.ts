@@ -39,6 +39,8 @@ export type { OrderDiagnosticSeverity } from "./generated/OrderDiagnosticSeverit
 export type { OrderDiagnostic } from "./generated/OrderDiagnostic";
 export type { OrderValidationResult } from "./generated/OrderValidationResult";
 
+export { aBattle, aBattleUnit, aParsedReport, aReportHeaderInfo, aReportRegion, aReportUnit } from "./builders";
+
 import type { Coordinate } from "./generated/Coordinate";
 import type { ReportRegion } from "./generated/ReportRegion";
 import type { ReportUnit } from "./generated/ReportUnit";
