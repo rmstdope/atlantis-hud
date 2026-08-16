@@ -16,7 +16,19 @@
  * "The player's faction" is simply the faction of the report on screen. A game deliberately holds
  * as many factions as its reports name, and none of them is marked as the player's - so the one
  * they are looking at is the one they are playing, and there is nothing else it could sensibly be.
+ *
+ * A report that names no faction is not a report the application can do anything with - not
+ * remembered, not compared, not routed - so it is refused before any of the above, whatever is on
+ * screen (ah-brd).
  */
+
+/**
+ * Why a report cannot become the working turn at all. One reason today: a report that names no
+ * faction is not a report the application can do anything with - not remembered, not compared, not
+ * routed - so it is refused before age or ownership are looked at (ah-brd). The batch importer skips
+ * such a file with the same words.
+ */
+export const REPORT_NAMES_NO_FACTION = "the report does not name its faction";
 
 /** As much of a report as deciding what to do with it needs. */
 export type LoadedReportIdentity = {
@@ -25,6 +37,8 @@ export type LoadedReportIdentity = {
 };
 
 export type ReportLoadDecision =
+  /** Cannot become the working turn at all; `reason` is shown to the player as it stands. */
+  | { kind: "reject"; reason: string }
   /** Nothing to ask about. */
   | { kind: "load" }
   /**
@@ -65,6 +79,10 @@ export function decideReportLoad(
   current: LoadedReportIdentity | null,
   incoming: LoadedReportIdentity
 ): ReportLoadDecision {
+  if (incoming.factionId === null) {
+    return { kind: "reject", reason: REPORT_NAMES_NO_FACTION };
+  }
+
   if (!current) {
     return { kind: "load" };
   }
@@ -77,8 +95,9 @@ export function decideReportLoad(
     };
   }
 
-  // A report whose faction cannot be read is not evidence of another faction: it just loads.
-  if (current.factionId === null || incoming.factionId === null) {
+  // A screen whose faction cannot be read is not evidence of another faction: the incoming report
+  // just loads.
+  if (current.factionId === null) {
     return { kind: "load" };
   }
   if (current.factionId === incoming.factionId) {

@@ -6,6 +6,7 @@ import type {
   RememberedRegion
 } from "@atlantis/core-client";
 import { describe, expect, it, vi } from "vitest";
+import { REPORT_NAMES_NO_FACTION } from "./reportLoadDecision";
 import {
   factionLabelOf,
   firstUnitIn,
@@ -295,6 +296,20 @@ describe("storeOlderTurn", () => {
 describe("routeReport", () => {
   it("loads when nothing is on screen", () => {
     expect(routeReport(null, report(), "text", "turn.rep")).toEqual({ kind: "load" });
+  });
+
+  it("rejects a report with no faction and says why", () => {
+    const viewer = report({ turnNumber: 71 });
+    const incoming = report({ factionId: null, factionName: null, turnNumber: null });
+
+    expect(routeReport(viewer, incoming, "junk", "junk.rep")).toEqual({
+      kind: "reject",
+      reason: REPORT_NAMES_NO_FACTION
+    });
+    expect(routeReport(null, incoming, "junk", "junk.rep")).toEqual({
+      kind: "reject",
+      reason: REPORT_NAMES_NO_FACTION
+    });
   });
 
   it("loads a newer turn of the same faction", () => {

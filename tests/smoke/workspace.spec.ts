@@ -438,15 +438,19 @@ test("the header keeps quiet about routine state", async ({ page }) => {
   const quiet = await status.boundingBox();
   expect(quiet === null || quiet.width <= 1).toBe(true);
 
-  // Something going wrong is the moment the line earns its room back. Junk parses to a turn
-  // that names no faction, which cannot be remembered - a warning the player should see.
+  // Something going wrong is the moment the line earns its room back. Junk names no faction, so
+  // it is refused outright (ah-brd) - a red status, and the loaded turn stays exactly as it was.
   await page.setInputFiles('input[type="file"]', {
     name: "junk.rep",
     mimeType: "text/plain",
     buffer: Buffer.from("this is not a report", "utf8")
   });
-  await expect(status).toContainText("cannot be remembered");
+  await expect(status).toContainText("could not read junk.rep: the report does not name its faction");
   await expect.poll(async () => (await status.boundingBox())?.width ?? 0).toBeGreaterThan(1);
+
+  // The turn that was on screen before the junk drop is still there - nothing was replaced.
+  await expect(page.getByTestId("app-header")).toContainText("Borg TNG (95)");
+  await expect(page.getByTestId("app-header")).toContainText("71");
 });
 
 /**

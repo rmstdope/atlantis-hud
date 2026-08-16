@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { decideReportLoad, isOlderTurn } from "./reportLoadDecision";
+import { REPORT_NAMES_NO_FACTION, decideReportLoad, isOlderTurn } from "./reportLoadDecision";
 
 const borgTng = { factionId: "95", turnNumber: 71 };
 const borg = (turnNumber: number | null) => ({ factionId: "73", turnNumber });
@@ -84,20 +84,32 @@ describe("deciding what to do with a chosen report", () => {
   });
 
   /**
-   * A report that does not name its faction is not evidence of another faction. It falls through to
-   * the age rule, which is the behaviour it had before there was a question to ask.
+   * A screen whose faction cannot be read is not evidence of another faction: the incoming report
+   * just loads.
    */
   it("does not raise the question over a faction it cannot read", () => {
     expect(decideReportLoad({ factionId: null, turnNumber: 71 }, borg(71))).toEqual({
       kind: "load"
     });
+  });
+
+  /**
+   * A report that names no faction is not a report the application can do anything with - not
+   * remembered, not compared, not routed - so it is refused before age or ownership are looked at,
+   * whatever is on screen (ah-brd).
+   */
+  it("rejects a report that names no faction, whatever is on screen", () => {
+    expect(decideReportLoad(null, { factionId: null, turnNumber: null })).toEqual({
+      kind: "reject",
+      reason: REPORT_NAMES_NO_FACTION
+    });
     expect(decideReportLoad(borgTng, { factionId: null, turnNumber: 71 })).toEqual({
-      kind: "load"
+      kind: "reject",
+      reason: REPORT_NAMES_NO_FACTION
     });
     expect(decideReportLoad(borgTng, { factionId: null, turnNumber: 2 })).toEqual({
-      kind: "storeOnly",
-      currentTurn: 71,
-      incomingTurn: 2
+      kind: "reject",
+      reason: REPORT_NAMES_NO_FACTION
     });
   });
 });
