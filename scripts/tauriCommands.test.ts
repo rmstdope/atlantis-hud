@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { invokedCommands, lockstep, registeredCommands } from "./tauriCommands";
+import { commandRenames, invokedCommands, lockstep, registeredCommands } from "./tauriCommands";
 import { SWEEP } from "../tests/native/sweep";
 
 const ROOT = join(__dirname, "..");
@@ -36,6 +36,48 @@ describe("registeredCommands", () => {
     `;
 
     expect(() => registeredCommands(mainRs)).toThrow();
+  });
+
+  it("reads a path-registered command by its bare name", () => {
+    const mainRs = `
+      .invoke_handler(tauri::generate_handler![
+          get_engine_info,
+          atlantis_hud_core_tauri::command_parse_report
+      ])
+    `;
+
+    expect(registeredCommands(mainRs)).toEqual(["get_engine_info", "parse_report"]);
+  });
+});
+
+describe("commandRenames", () => {
+  it("maps each renamed command to the function it sits on", () => {
+    const coreTauriLibRs = `
+      #[cfg_attr(feature = "tauri", tauri::command(rename_all = "snake_case", rename = "parse_report"))]
+      pub fn command_parse_report(raw_report: &str) -> ReportParseResultWire {
+
+      #[must_use]
+      #[cfg_attr(feature = "tauri", tauri::command(rename_all = "snake_case", rename = "get_engine_info"))]
+      pub fn command_get_engine_info() -> EngineInfo {
+    `;
+
+    expect(commandRenames(coreTauriLibRs)).toEqual(
+      new Map([
+        ["command_parse_report", "parse_report"],
+        ["command_get_engine_info", "get_engine_info"]
+      ])
+    );
+  });
+
+  it("ignores a rename further than 200 characters from its function", () => {
+    const filler = "x".repeat(250);
+    const coreTauriLibRs = `
+      #[cfg_attr(feature = "tauri", tauri::command(rename_all = "snake_case", rename = "parse_report"))]
+      // ${filler}
+      pub fn command_parse_report(raw_report: &str) -> ReportParseResultWire {
+    `;
+
+    expect(commandRenames(coreTauriLibRs)).toEqual(new Map());
   });
 });
 
@@ -112,15 +154,29 @@ describe("the live Tauri command lockstep", () => {
       join(ROOT, "packages", "core-client", "src", "index.ts"),
       "utf8"
     );
+    const coreTauriLibRs = readFileSync(
+      join(ROOT, "crates", "core-tauri", "src", "lib.rs"),
+      "utf8"
+    );
 
     const registered = registeredCommands(mainRs);
     const swept = SWEEP.map((entry) => entry.command);
     const invoked = invokedCommands(coreClientIndex);
+    const renames = commandRenames(coreTauriLibRs);
 
     expect(lockstep(registered, swept)).toEqual({
       registeredButNotSwept: [],
       sweptButNotRegistered: []
     });
     expect(invoked.filter((command) => !registered.includes(command))).toEqual([]);
+
+    // Every rename says what the function name says, and every renamed command is registered.
+    // A 25th command that forgets the attribute, or one that forgets to be registered, is what
+    // the pinned count catches — update it in the same commit that adds a path-registered command.
+    for (const [fn, wire] of renames) {
+      expect(wire, `${fn} renames to`).toBe(fn.slice("command_".length));
+      expect(registered, `${fn} is registered`).toContain(wire);
+    }
+    expect(renames.size).toBe(24);
   });
 });
