@@ -3,6 +3,7 @@
 //! Deliberately hand written rather than regex based: the crate has no regex dependency, and these
 //! shapes are simple enough that the parsing reads more clearly than a pattern would.
 
+use super::level;
 use super::model::{Coordinate, ItemAmount, MarketItem, Settlement, Skill};
 
 /// Splits on a separator, ignoring separators nested inside brackets or parentheses.
@@ -57,9 +58,9 @@ pub fn split_trailing_id(input: &str) -> Option<(String, String)> {
     Some((trimmed[..open].trim().to_string(), id.to_string()))
 }
 
-/// Reads a coordinate, accepting both `(7,53)` and the underworld form `(7,53,2)`.
-///
-/// A missing level means the surface, which the game numbers 1.
+/// Reads a coordinate: `(7,53)` on the surface, `(0,0,nexus)`, `(7,53,underworld)` - the third
+/// field is the level's name, and a bare number is also read (it is what this client wrote until
+/// ah-4b4). A name the engine never prints falls back to the surface, as before.
 #[must_use]
 pub fn parse_coordinate(input: &str) -> Option<Coordinate> {
     let inner = input.trim().trim_start_matches('(').trim_end_matches(')');
@@ -68,8 +69,8 @@ pub fn parse_coordinate(input: &str) -> Option<Coordinate> {
     let x = parts.next()?.parse::<i32>().ok()?;
     let y = parts.next()?.parse::<i32>().ok()?;
     let z = match parts.next() {
-        None => 1,
-        Some(level) => level.parse::<u32>().ok().unwrap_or(1),
+        None => level::SURFACE,
+        Some(field) => level::parse_level(field).unwrap_or(level::SURFACE),
     };
 
     Some(Coordinate { x, y, z })
@@ -221,6 +222,26 @@ mod tests {
         assert_eq!(
             parse_coordinate("(7,53,2)"),
             Some(Coordinate { x: 7, y: 53, z: 2 })
+        );
+    }
+
+    #[test]
+    fn reads_the_level_by_name() {
+        assert_eq!(
+            parse_coordinate("(0,0,nexus)"),
+            Some(Coordinate { x: 0, y: 0, z: 0 })
+        );
+        assert_eq!(
+            parse_coordinate("(7,53,underworld)"),
+            Some(Coordinate { x: 7, y: 53, z: 2 })
+        );
+        assert_eq!(
+            parse_coordinate("(7,53,2)"),
+            Some(Coordinate { x: 7, y: 53, z: 2 })
+        );
+        assert_eq!(
+            parse_coordinate("(7,53)"),
+            Some(Coordinate { x: 7, y: 53, z: 1 })
         );
     }
 

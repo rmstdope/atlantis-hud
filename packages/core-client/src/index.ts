@@ -284,12 +284,22 @@ export type KnownMapHex = {
   lastSeenTurn: number | null;
   /** `null` for a hex merely named by an exit, never visited. */
   region: ReportRegion | null;
+  /** The settlement the hex's description names, if any. */
+  settlement: SettlementInfo | null;
+};
+
+/** One level the known map has hexes on, with the word the level control shows for it. */
+export type MapLevel = {
+  z: number;
+  name: string;
 };
 
 /** Everything the faction knows about the map, resolved once by the core. */
 export type KnownMap = {
   /** Sorted by level, then row, then column. */
   hexes: KnownMapHex[];
+  /** The distinct levels `hexes` holds, ascending by z, each named by the core. */
+  levels: MapLevel[];
   currentTurn: number | null;
 };
 

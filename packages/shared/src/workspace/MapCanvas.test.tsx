@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import type { HexMapModel } from "../hexMapModel";
+import { SURFACE_LEVEL, type HexMapModel } from "../hexMapModel";
 import type { HexNoteRecord } from "@atlantis/core-client";
 import { MapCanvas } from "./MapCanvas";
 import { CONGESTED_HEXES } from "./mapThemes/congestedFixture";
@@ -23,10 +23,15 @@ function probe(): MapTheme {
   return {
     id: "probe",
     label: "Probe",
+    fogDamping: 0.5,
     Defs: () => <linearGradient id="probe-gradient" />,
     TerrainLayer: (props) => (
       // The knowledge of the bucket, so the three calls can be told apart and ordered.
-      <g data-layer="terrain" data-knowledge={props.views[0]?.knowledge ?? "empty"} />
+      <g
+        data-layer="terrain"
+        data-knowledge={props.views[0]?.knowledge ?? "empty"}
+        data-fog={props.views[0]?.fogOpacity ?? "none"}
+      />
     ),
     RoadLayer: mark("roads"),
     MarkLayer: mark("marks")
@@ -35,9 +40,8 @@ function probe(): MapTheme {
 
 const model: HexMapModel = {
   hexes: CONGESTED_HEXES,
-  levels: [1],
-  currentTurn: 71,
-  initialSelectedRegionId: null
+  levels: [SURFACE_LEVEL],
+  currentTurn: 71
 };
 
 function draw(
@@ -128,6 +132,14 @@ function drawWithRoute(): string {
 }
 
 describe("what the map hands a theme", () => {
+  it("hands a theme the fade already damped by its own factor", () => {
+    // CONGESTED_HEXES' one stale hex is eight turns old: 0.46 raw, halved by the probe theme's own
+    // 0.5 damping.
+    const svg = draw();
+
+    expect(svg).toContain('data-fog="0.23"');
+  });
+
   it("draws terrain weakest-knowledge first, so better knowledge is never buried", () => {
     const order = [...draw().matchAll(/data-layer="terrain" data-knowledge="(\w+)"/g)].map(
       (match) => match[1]
@@ -237,6 +249,7 @@ describe("what the map hands a theme", () => {
     const bare: MapTheme = {
       id: "bare",
       label: "Bare",
+      fogDamping: 1,
       TerrainLayer: () => null,
       RoadLayer: () => null,
       MarkLayer: () => null

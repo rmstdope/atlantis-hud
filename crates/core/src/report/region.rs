@@ -323,9 +323,20 @@ mod tests {
 
     #[test]
     fn reads_an_underworld_coordinate() {
-        let region = parse_region_header("cavern (7,53,2) in Deeps.").expect("header should parse");
+        let region =
+            parse_region_header("cavern (7,53,underworld) in Deeps.").expect("header should parse");
         assert_eq!(region.coordinate.z, 2);
         assert_eq!(region.region_id, "2:7,53");
+    }
+
+    #[test]
+    fn reads_the_nexus_onto_its_own_level() {
+        let region =
+            parse_region_header("nexus (0,0,nexus) in The Void.").expect("header should parse");
+        assert_eq!(region.coordinate.z, 0);
+        assert_eq!(region.region_id, "0:0,0");
+        assert_eq!(region.terrain, "nexus");
+        assert_eq!(region.province, "The Void");
     }
 
     #[test]

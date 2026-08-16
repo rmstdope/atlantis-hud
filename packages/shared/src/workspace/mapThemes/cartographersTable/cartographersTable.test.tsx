@@ -2,8 +2,9 @@ import { readFileSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { HexNode } from "../../../hexMapModel";
+import { FADE_LIMIT } from "../../mapHexView";
 import { CONGESTED_CENTRE, CONGESTED_HEXES, NAMED_ONLY } from "../congestedFixture";
-import { allBadges, buildHexViews, type HexView, type HexViewOptions } from "../hexView";
+import { allBadges, buildHexViews, dampFog, type HexView, type HexViewOptions } from "../hexView";
 import { cartographersTable } from "./index";
 import { keepOf, nameLift, shieldRow, workshopAnchors, ANCHORS } from "./paint";
 
@@ -334,8 +335,13 @@ describe("terrain, in pigment rather than in the app's own colours", () => {
 
   it("keeps the terrain readable under an old sighting, however old", () => {
     // The point of a wash is that the page has aged, not that the survey is gone: a stale ocean
-    // still has to read as ocean. The oldest sighting the view model produces is 0.62.
-    const ancient = viewWith({ knowledge: "stale", fogOpacity: 0.62, hatched: true });
+    // still has to read as ocean. The oldest sighting the view model produces, damped, is this
+    // theme's own fogDamping applied to FADE_LIMIT.
+    const ancient = viewWith({
+      knowledge: "stale",
+      fogOpacity: dampFog(FADE_LIMIT, cartographersTable.fogDamping),
+      hatched: true
+    });
     const svg = renderToStaticMarkup(
       <svg>
         <cartographersTable.TerrainLayer views={[ancient]} />
@@ -345,7 +351,11 @@ describe("terrain, in pigment rather than in the app's own colours", () => {
 
     expect(Number(/opacity="([\d.]+)"/.exec(wash)?.[1])).toBeLessThanOrEqual(0.45);
     // ...and still deepens with age, so a recent sighting and an ancient one differ.
-    const recent = viewWith({ knowledge: "stale", fogOpacity: 0.3, hatched: true });
+    const recent = viewWith({
+      knowledge: "stale",
+      fogOpacity: dampFog(0.3, cartographersTable.fogDamping),
+      hatched: true
+    });
     const recentSvg = renderToStaticMarkup(
       <svg>
         <cartographersTable.TerrainLayer views={[recent]} />

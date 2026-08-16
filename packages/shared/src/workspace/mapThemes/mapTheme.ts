@@ -25,6 +25,14 @@ export type MapTheme = {
   /** What the settings picker shows. */
   label: string;
   /**
+   * How much of the shared fade this theme lets through, 0 < n <= 1. `buildHexViews` scales
+   * `fogOpacity` by it for every faded state alike - a hex known only by name and a stale sighting
+   * both - so a theme paints `view.fogOpacity` as it arrives and never damps it itself. Declared
+   * here, applied there: the theme owns the number, the shared code owns the rule that both states
+   * get the same one (ah-rgp's review found every theme damping one and not the other).
+   */
+  fogDamping: number;
+  /**
    * Gradients, hatches and filters this theme needs, rendered inside the map's own `<defs>`. The
    * twelve biome patterns are shared and always present, so a theme never declares those.
    */

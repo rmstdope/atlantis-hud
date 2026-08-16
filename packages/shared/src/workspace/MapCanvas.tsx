@@ -243,8 +243,8 @@ export function MapCanvas({
    * the rest.
    */
   const viewOptions = useMemo(
-    () => ({ showStaleness, showTextures, badges }),
-    [showStaleness, showTextures, badges]
+    () => ({ showStaleness, showTextures, badges, fogDamping: theme.fogDamping }),
+    [showStaleness, showTextures, badges, theme.fogDamping]
   );
   const allViews = useMemo(() => buildHexViews(onLevel, viewOptions), [onLevel, viewOptions]);
   // The knowledge buckets are cut from that one pass rather than built again from `hexLayers`:

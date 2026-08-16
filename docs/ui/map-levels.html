@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The nexus on a level of its own — what the player sees</title>
+<style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --warn:#d9a441; --danger:#d97070;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1240px; margin-left:auto; margin-right:auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; }
+  h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:92ch; margin-top:10px; font-size:14px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:0.92em; }
+  header code, .q code { color:var(--brass-bright); }
+  .verdict { color:var(--ink) !important; border-left:2px solid var(--brass); padding-left:12px; }
+  .verdict b { color:var(--brass); font-weight:normal; }
+  .card.pick { border-color:var(--brass); }
+  .card h3 .chosen { color:var(--ground); background:var(--brass); border-radius:3px; font:11px/1.6 'Helvetica Neue',Arial,sans-serif; letter-spacing:1.2px; text-transform:uppercase; padding:1px 6px; margin-left:8px; vertical-align:2px; }
+  h2.q { font-size:20px; margin-top:38px; padding-top:18px; border-top:1px solid var(--edge); }
+  h2.q em { color:var(--brass); font-style:normal; font-size:12px; letter-spacing:1.6px; margin-right:10px; vertical-align:2px; }
+  p.lead { color:var(--ink-soft); font-size:14px; max-width:92ch; margin-top:8px; }
+  .cards { display:grid; grid-template-columns:repeat(3,1fr); gap:20px; margin-top:18px; align-items:start; }
+  .cards.two { grid-template-columns:repeat(2,1fr); }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:18px 18px 16px; display:flex; flex-direction:column; gap:12px; }
+  .card h3 { font-size:17px; }
+  .card h3 em { color:var(--brass); font-style:normal; font-size:12px; letter-spacing:1.6px; margin-right:8px; }
+  .concept { color:var(--ink-soft); font-size:13px; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; padding:12px; display:grid; gap:10px; }
+  .stage .cap { font:italic 11.5px Georgia,serif; color:var(--ink-dim); text-align:center; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"− "; color:var(--danger); }
+
+  /* --- the layer strip above the map, redrawn from LayerChips.tsx --- */
+  .strip { display:inline-flex; align-items:center; gap:6px; border:1px solid var(--edge); border-radius:6px; background:rgba(23,29,38,.95);
+           padding:4px 8px; font-family:'Helvetica Neue',Arial,sans-serif; font-size:11px; box-shadow:0 6px 16px rgba(0,0,0,.35); }
+  .chip { display:inline-flex; align-items:center; gap:5px; border:1px solid var(--edge); border-radius:4px; padding:1px 7px; color:var(--ink-dim); }
+  .chip.on { border-color:var(--select); background:rgba(74,159,216,.15); color:var(--ink); }
+  .tick { width:11px; height:11px; border:1px solid var(--ink-dim); border-radius:2px; position:relative; flex:none; }
+  .chip.on .tick { background:var(--select); border-color:var(--select); }
+  .chip.on .tick::after { content:""; position:absolute; left:2.9px; top:0.4px; width:3.2px; height:6.4px; border:solid var(--ground); border-width:0 1.6px 1.6px 0; transform:rotate(42deg); }
+  .btn { display:inline-flex; align-items:center; gap:4px; border:1px solid var(--edge); border-radius:4px; padding:1px 7px; color:var(--ink-dim); }
+  .btn .car { color:var(--ink-dim); }
+  .sel { position:relative; display:inline-flex; align-items:center; gap:6px; border:1px solid var(--edge); border-radius:4px; background:var(--raised); padding:1px 7px; color:var(--ink); }
+  .sel .car { color:var(--ink-dim); font-size:9px; }
+  .static { color:var(--ink-dim); padding:1px 7px; }
+  .drop { position:absolute; left:-1px; top:calc(100% + 3px); min-width:100%; background:var(--raised); border:1px solid var(--edge); border-radius:4px; padding:3px 0; z-index:2; white-space:nowrap; }
+  .drop div { padding:2px 8px; color:var(--ink); }
+  .drop div.cur { background:rgba(74,159,216,.25); }
+  .row { display:flex; align-items:flex-start; gap:14px; }
+  .row .strip { flex:none; }
+  .withdrop { padding-bottom:70px; }
+  .stateline { color:var(--ink-dim); font:italic 12px Georgia,serif; padding-top:5px; }
+
+  /* --- the region panel, for the unexplored-hex sentence --- */
+  .pane { font-family:'Helvetica Neue',Arial,sans-serif; font-size:11.5px; line-height:1.45;
+          border:1px solid var(--edge); border-radius:6px; background:var(--panel); overflow:hidden; box-shadow:0 6px 16px rgba(0,0,0,.35); }
+  .pane > .bar { display:flex; align-items:center; gap:8px; height:26px; padding:0 9px; border-bottom:1px solid var(--edge); }
+  .bar .name { font-size:10px; letter-spacing:1.4px; text-transform:uppercase; color:var(--brass); }
+  .bar .hint { color:var(--ink-dim); }
+  .bar .grow { flex:1; }
+  .bar .caret { color:var(--ink-dim); }
+  .body { padding:7px 9px 9px; display:grid; gap:6px; color:var(--ink-dim); font-style:italic; }
+  .body b { color:var(--ink); font-style:normal; font-weight:normal; }
+
+  /* --- a hex label as the region panel title / unit dock writes it --- */
+  .label { font-family:'Helvetica Neue',Arial,sans-serif; font-size:12px; color:var(--ink); background:var(--panel); border:1px solid var(--edge); border-radius:4px; padding:4px 9px; display:inline-block; }
+  .label .dim { color:var(--ink-dim); }
+
+  footer { margin-top:30px; color:var(--ink-dim); font-size:12.5px; font-style:italic; }
+  @media (max-width:1000px) { .cards, .cards.two { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Map levels <span>· the nexus on a level of its own</span></h1>
+  <p>Bead <code>ah-4b4</code>. A region header’s third coordinate is a <em>name</em>, not a number:
+  the engine writes <code>nexus (0,0,nexus) in The Void</code> for the nexus and
+  <code>cavern (7,53,underworld) in Deeps</code> underground — and only those two names ever appear
+  in a NewOrigins report (the engine also knows <code>underdeep</code> and <code>abyss</code>, which no
+  shipped ruleset turns on). The parser read that field as a number, fell back to the surface when it
+  was not one, and so filed both the nexus and every underworld hex on the surface, sharing an
+  identity with whatever is genuinely there.</p>
+  <p>Settled by the bead: the nexus (level 0), the surface (1) and the underworld (2) become distinct
+  levels with distinct region ids, and units, orders and the turn comparison follow. What is open is
+  what the player <em>sees</em> of that — four questions below, drawn from the strip above the map
+  (<code>LayerChips.tsx</code>) and the region panel as they are today. Everything else in the strip is
+  unchanged; only the level control and its words are in question.</p>
+  <p class="verdict"><b>Chosen (2026-08-16):</b> Q1 <b>A</b> — the report’s own words, lowercase, shallowest
+  first, supplied by the core. Q2 <b>B</b> — the nexus is remembered like any other hex and the control
+  offers it for the life of the game; a game imported before this bead has its mis-filed nexus row
+  repaired when the known map is resolved, not by a store migration. Q3 <b>A</b> — “…and no neighbour has
+  named it, in the underworld.” / “…, in the nexus.” Q4 <b>A</b> — hex labels stay <code>terrain (x,y) in
+  Province</code>; the report’s three-part form is a bead of its own if ever wanted. And on loading turn 1
+  the map stays on the nexus level until the player picks the surface — a new turn never moves the
+  player, and this is not made an exception.</p>
+</header>
+
+<main>
+
+<!-- ============================================================ Q1 -->
+<h2 class="q"><em>Q1</em>What the level control calls a level</h2>
+<p class="lead">Today the control reads <code>surface</code> for level 1 and <code>level 2</code> for
+anything else, and it is a plain <code>&lt;select&gt;</code> shown only when the map has more than one
+level; with one level it is a static word. That rule stays. The question is the words, now that every
+level has a name of its own. Three states are drawn for each variant: a game with the nexus and the
+surface both known, one with the surface and the underworld, and turn 0 — where the whole report is
+one hex, the nexus, and the control is the static word.</p>
+<div class="cards">
+  <section class="card pick">
+    <h3><em>A</em>The report’s own words, as written <span class="chosen">chosen</span></h3>
+    <p class="concept">Lowercase, exactly the word the report prints in the coordinate — the strip already says <code>surface</code> this way. Depth order, shallowest first.</p>
+    <div class="stage">
+      <div class="row withdrop">
+        <div class="strip"><span class="chip on"><span class="tick"></span>Staleness</span><span class="chip"><span class="tick"></span>Movement</span><span class="btn">Badges <span class="car">▾</span></span>
+          <span class="sel">surface <span class="car">▼</span><div class="drop"><div>nexus</div><div class="cur">surface</div></div></span></div>
+      </div>
+      <p class="cap">nexus and surface both known (turn 1, if the nexus is remembered — see Q2)</p>
+      <div class="row withdrop">
+        <div class="strip"><span class="chip on"><span class="tick"></span>Staleness</span><span class="chip"><span class="tick"></span>Movement</span><span class="btn">Badges <span class="car">▾</span></span>
+          <span class="sel">underworld <span class="car">▼</span><div class="drop"><div>surface</div><div class="cur">underworld</div></div></span></div>
+      </div>
+      <p class="cap">surface and underworld known</p>
+      <div class="row">
+        <div class="strip"><span class="chip on"><span class="tick"></span>Staleness</span><span class="chip"><span class="tick"></span>Movement</span><span class="btn">Badges <span class="car">▾</span></span>
+          <span class="static">nexus</span></div>
+      </div>
+      <p class="cap">turn 0: one level, the static word</p>
+    </div>
+    <ul class="notes">
+      <li>The word on the control is the word in the report the player is reading beside it.</li>
+      <li>No table of names to keep in the shell: the core names the level, the strip prints it.</li>
+      <li class="con">A lowercase word beside capitalised chips (Staleness, Movement, Badges) — as <code>surface</code> already is today.</li>
+    </ul>
+  </section>
+  <section class="card">
+    <h3><em>B</em>Capitalised names</h3>
+    <p class="concept">The same words, capitalised like the chips beside them.</p>
+    <div class="stage">
+      <div class="row withdrop">
+        <div class="strip"><span class="chip on"><span class="tick"></span>Staleness</span><span class="chip"><span class="tick"></span>Movement</span><span class="btn">Badges <span class="car">▾</span></span>
+          <span class="sel">Surface <span class="car">▼</span><div class="drop"><div>Nexus</div><div class="cur">Surface</div></div></span></div>
+      </div>
+      <p class="cap">nexus and surface both known</p>
+      <div class="row withdrop">
+        <div class="strip"><span class="chip on"><span class="tick"></span>Staleness</span><span class="chip"><span class="tick"></span>Movement</span><span class="btn">Badges <span class="car">▾</span></span>
+          <span class="sel">Underworld <span class="car">▼</span><div class="drop"><div>Surface</div><div class="cur">Underworld</div></div></span></div>
+      </div>
+      <p class="cap">surface and underworld known</p>
+      <div class="row">
+        <div class="strip"><span class="chip on"><span class="tick"></span>Staleness</span><span class="chip"><span class="tick"></span>Movement</span><span class="btn">Badges <span class="car">▾</span></span>
+          <span class="static">Nexus</span></div>
+      </div>
+      <p class="cap">turn 0</p>
+    </div>
+    <ul class="notes">
+      <li>Matches the case of the chips beside it.</li>
+      <li class="con">Changes the existing <code>surface</code> word’s case — a small visible change beyond the bug.</li>
+      <li class="con">The report writes lowercase; the strip would no longer quote it.</li>
+    </ul>
+  </section>
+  <section class="card">
+    <h3><em>C</em>Name and depth number</h3>
+    <p class="concept">The name with the level number the region id uses (<code>0:0,0</code>, <code>2:7,53</code>), for players who think in <code>z</code>.</p>
+    <div class="stage">
+      <div class="row withdrop">
+        <div class="strip"><span class="chip on"><span class="tick"></span>Staleness</span><span class="chip"><span class="tick"></span>Movement</span><span class="btn">Badges <span class="car">▾</span></span>
+          <span class="sel">1 · surface <span class="car">▼</span><div class="drop"><div>0 · nexus</div><div class="cur">1 · surface</div></div></span></div>
+      </div>
+      <p class="cap">nexus and surface both known</p>
+      <div class="row withdrop">
+        <div class="strip"><span class="chip on"><span class="tick"></span>Staleness</span><span class="chip"><span class="tick"></span>Movement</span><span class="btn">Badges <span class="car">▾</span></span>
+          <span class="sel">2 · underworld <span class="car">▼</span><div class="drop"><div>1 · surface</div><div class="cur">2 · underworld</div></div></span></div>
+      </div>
+      <p class="cap">surface and underworld known</p>
+      <div class="row">
+        <div class="strip"><span class="chip on"><span class="tick"></span>Staleness</span><span class="chip"><span class="tick"></span>Movement</span><span class="btn">Badges <span class="car">▾</span></span>
+          <span class="static">0 · nexus</span></div>
+      </div>
+      <p class="cap">turn 0</p>
+    </div>
+    <ul class="notes">
+      <li>The number is the one in every region id, so a player reading <code>2:7,53</code> anywhere can match it.</li>
+      <li class="con">The number is this client’s bookkeeping; the game never shows the player a level number.</li>
+      <li class="con">Wider control in a strip that already shares the map’s top band with the zoom cluster.</li>
+    </ul>
+  </section>
+</div>
+
+<!-- ============================================================ Q2 -->
+<h2 class="q"><em>Q2</em>The nexus after the faction has left it</h2>
+<p class="lead">The map remembers every hex a report has ever described, so once the nexus is on its
+own level it would stay on the map for the life of the game — a level with one stale hex, which the
+rules say a unit can never return to and which has no exits. Two ways to treat it.</p>
+<div class="cards two">
+  <section class="card">
+    <h3><em>A</em>Shown only while the report describes it</h3>
+    <p class="concept">Turn 0 opens on the nexus, the one hex the report has, with the starting unit in it. From turn 1 the nexus is not remembered: the level control has no <code>nexus</code> entry, and a game saved on the nexus level opens on the surface — the same rule that already moves a saved level the map no longer draws.</p>
+    <div class="stage">
+      <div class="row">
+        <div class="strip"><span class="chip on"><span class="tick"></span>Staleness</span><span class="chip"><span class="tick"></span>Movement</span><span class="btn">Badges <span class="car">▾</span></span>
+          <span class="static">nexus</span></div>
+        <span class="stateline">turn 0 — the nexus, one hex, your unit in it</span>
+      </div>
+      <div class="row">
+        <div class="strip"><span class="chip on"><span class="tick"></span>Staleness</span><span class="chip"><span class="tick"></span>Movement</span><span class="btn">Badges <span class="car">▾</span></span>
+          <span class="static">surface</span></div>
+        <span class="stateline">turn 1 onward — the nexus is gone; one level, no control</span>
+      </div>
+    </div>
+    <ul class="notes">
+      <li>No permanent entry in the control for a level nothing can ever be on again.</li>
+      <li>Loading turn 1 lands the player on the surface without a click.</li>
+      <li>Fixes a game imported before this bead by itself: the mis-filed nexus rows in its memory are the same rows this rule drops, so nothing has to be re-imported or migrated.</li>
+      <li class="con">The nexus is not on the map as history — the turn comparison still shows the unit having left it, but you cannot go and look at it.</li>
+    </ul>
+  </section>
+  <section class="card pick">
+    <h3><em>B</em>Remembered like any other hex <span class="chosen">chosen</span></h3>
+    <p class="concept">The nexus stays as a stale hex on level 0 for the whole game, and the level control offers it alongside the surface.</p>
+    <div class="stage">
+      <div class="row">
+        <div class="strip"><span class="chip on"><span class="tick"></span>Staleness</span><span class="chip"><span class="tick"></span>Movement</span><span class="btn">Badges <span class="car">▾</span></span>
+          <span class="static">nexus</span></div>
+        <span class="stateline">turn 0</span>
+      </div>
+      <div class="row withdrop">
+        <div class="strip"><span class="chip on"><span class="tick"></span>Staleness</span><span class="chip"><span class="tick"></span>Movement</span><span class="btn">Badges <span class="car">▾</span></span>
+          <span class="sel">surface <span class="car">▼</span><div class="drop"><div>nexus</div><div class="cur">surface</div></div></span></div>
+        <span class="stateline">turn 1 onward, for the rest of the game</span>
+      </div>
+    </div>
+    <ul class="notes">
+      <li>Consistent: a hex seen is a hex remembered, no exception.</li>
+      <li class="con">A <code>nexus</code> entry in the control for the life of the game, offering an empty stale hex.</li>
+      <li class="con">Loading turn 1 opens on the saved level — the nexus — until the player switches; and a game imported before this bead keeps its mis-filed nexus at surface (0,0) until a migration moves it in both stores (SQLite and IndexedDB).</li>
+    </ul>
+  </section>
+</div>
+
+<!-- ============================================================ Q3 -->
+<h2 class="q"><em>Q3</em>The region panel on an unexplored hex off the surface</h2>
+<p class="lead">Clicking empty ground selects a hex nobody has described, and the panel says so:
+today <code>…and no neighbour has named it, on level 2.</code> — the level number, only when it is not
+the surface. With levels named, two wordings.</p>
+<div class="cards two">
+  <section class="card pick">
+    <h3><em>A</em>Name the level <span class="chosen">chosen</span></h3>
+    <div class="stage">
+      <div class="pane"><div class="bar"><span class="name">Region</span><span class="hint">— unexplored (7,53)</span><span class="grow"></span><span class="caret">▾</span></div>
+        <div class="body"><p>Nothing is known about this hex. No report has described it, and no neighbour has named it, <b>in the underworld</b>.</p></div></div>
+      <div class="pane"><div class="bar"><span class="name">Region</span><span class="hint">— unexplored (2,0)</span><span class="grow"></span><span class="caret">▾</span></div>
+        <div class="body"><p>Nothing is known about this hex. No report has described it, and no neighbour has named it, <b>in the nexus</b>.</p></div></div>
+      <p class="cap">on the surface the sentence ends at “named it.” as today</p>
+    </div>
+    <ul class="notes"><li>Reads as a sentence; the same word as the level control.</li><li class="con">Needs a preposition per level (“in the underworld”, “in the nexus”) — spelled out in the plan, not composed.</li></ul>
+  </section>
+  <section class="card">
+    <h3><em>B</em>Keep the number</h3>
+    <div class="stage">
+      <div class="pane"><div class="bar"><span class="name">Region</span><span class="hint">— unexplored (7,53)</span><span class="grow"></span><span class="caret">▾</span></div>
+        <div class="body"><p>Nothing is known about this hex. No report has described it, and no neighbour has named it, <b>on level 2</b>.</p></div></div>
+      <div class="pane"><div class="bar"><span class="name">Region</span><span class="hint">— unexplored (2,0)</span><span class="grow"></span><span class="caret">▾</span></div>
+        <div class="body"><p>Nothing is known about this hex. No report has described it, and no neighbour has named it, <b>on level 0</b>.</p></div></div>
+    </div>
+    <ul class="notes"><li>No change to the sentence.</li><li class="con">“level 0” names nothing the game ever calls that; the control beside it says <code>nexus</code>.</li></ul>
+  </section>
+</div>
+
+<!-- ============================================================ Q4 -->
+<h2 class="q"><em>Q4</em>How a hex off the surface is named in panel titles and lists</h2>
+<p class="lead">A hex is named <code>terrain (x,y) in Province</code> everywhere — the region panel
+title, the units dock, the turn comparison — and today that omits the level even underground. Two
+choices; the second is a wider change than this bug.</p>
+<div class="cards two">
+  <section class="card pick">
+    <h3><em>A</em>As today: <code>(x,y)</code>, the level control says where you are <span class="chosen">chosen</span></h3>
+    <div class="stage">
+      <span class="label">nexus <span class="dim">(0,0)</span> in The Void</span>
+      <span class="label">cavern <span class="dim">(7,53)</span> in Deeps</span>
+      <span class="label">mountain <span class="dim">(7,53)</span> in Inhead</span>
+    </div>
+    <ul class="notes"><li>Nothing changes in any list; the fix is invisible here, which is the point of a bug fix.</li><li class="con">A surface and an underworld hex at the same x,y read alike in a list that mixes levels (the units dock does).</li></ul>
+  </section>
+  <section class="card">
+    <h3><em>B</em>As the report writes it: <code>(x,y,underworld)</code></h3>
+    <div class="stage">
+      <span class="label">nexus <span class="dim">(0,0,nexus)</span> in The Void</span>
+      <span class="label">cavern <span class="dim">(7,53,underworld)</span> in Deeps</span>
+      <span class="label">mountain <span class="dim">(7,53)</span> in Inhead</span>
+    </div>
+    <ul class="notes"><li>Exactly the report’s own line, so it can be searched for in the report.</li><li class="con">Touches every list and title, and the smoke tests that pin them — a bead of its own rather than a rider on this bug.</li></ul>
+  </section>
+</div>
+
+</main>
+<footer>Drawn in the workspace palette. The strip and panel are redrawn from <code>LayerChips.tsx</code> and <code>RegionPanel.tsx</code>; nothing here is a screenshot.</footer>
+</body>
+</html>

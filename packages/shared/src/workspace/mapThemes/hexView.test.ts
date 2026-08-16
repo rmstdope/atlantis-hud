@@ -6,6 +6,7 @@ import {
   allBadges,
   BADGES,
   buildHexViews,
+  dampFog,
   MONSTER_FACTION_ID,
   ROAD_VECTORS,
   type BadgeName,
@@ -134,6 +135,27 @@ describe("what a hex shows, prepared for whichever theme draws it", () => {
 
     expect(current.fogOpacity).toBe(0);
     expect(current.hatched).toBe(false);
+  });
+
+  it("scales the fade by the theme's damping, named and stale alike", () => {
+    const stale = viewOf(hex({ knowledge: "stale", ageInTurns: 8 }), { fogDamping: 0.5 });
+    const named = viewOf(hex({ knowledge: "named" }), { fogDamping: 0.5 });
+
+    expect(stale.fogOpacity).toBeCloseTo(0.23);
+    expect(named.fogOpacity).toBeCloseTo(0.2);
+
+    const staleUndamped = viewOf(hex({ knowledge: "stale", ageInTurns: 8 }));
+    const namedUndamped = viewOf(hex({ knowledge: "named" }));
+
+    expect(staleUndamped.fogOpacity).toBeCloseTo(0.46);
+    expect(namedUndamped.fogOpacity).toBeCloseTo(0.4);
+
+    const current = viewOf(hex({ knowledge: "current" }), { fogDamping: 0.5 });
+    expect(current.fogOpacity).toBe(0);
+  });
+
+  it("dampFog rounds to three decimals", () => {
+    expect(dampFog(0.62, 0.62)).toBe(0.384);
   });
 });
 

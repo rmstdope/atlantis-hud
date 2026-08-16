@@ -12,8 +12,9 @@
  */
 
 import { HEX_RADIUS } from "../../mapViewport";
-import { HEX_POINTS, radii } from "../geometry";
-import { ROAD_VECTORS, type HexView } from "../hexView";
+import { HEX_POINTS } from "../geometry";
+import type { HexView } from "../hexView";
+import { roadLayer, type RoadStyle } from "../roadLayer";
 import type { LayerProps, MapTheme } from "../mapTheme";
 import {
   ANCHORS,
@@ -68,25 +69,6 @@ const HATCH = Array.from({ length: 13 }, (_, index) => {
 
 const HEX_CLIP_ID = "ct-hex-clip";
 
-/**
- * How strong a wash is for a given fade, whichever state it is saying.
- *
- * Deliberately weaker than the fade the view model asks for. Fog is meant to hide ground; a wash is
- * meant to say something *about* the page, and the survey underneath it must still be readable - a
- * stale ocean has to keep looking like ocean. Laid at the full 0.62 an old sighting went uniformly
- * tan and every terrain became the same colour. The hatching carries "this is old"; the wash only
- * has to tint. Still proportional to age, so a recent sighting and an ancient one differ.
- *
- * Applied to unsurveyed ground as well, and that is not a detail. Left undamped, the named wash
- * came out at 0.400 against an ancient sighting's 0.384 - sixteen thousandths apart, so telling
- * "never surveyed" from "seen forty turns ago" meant comparing two shades of the same terrain,
- * which is the fault this whole treatment exists to remove. Damped, unsurveyed ground is the
- * lightest thing on the sheet, and the pencilled rim over it is what names the state.
- */
-function washOpacity(fogOpacity: number): number {
-  return Number((fogOpacity * 0.62).toFixed(3));
-}
-
 function at(point: { x: number; y: number }): string {
   return `translate(${point.x},${point.y})`;
 }
@@ -95,8 +77,11 @@ function at(point: { x: number; y: number }): string {
  * Terrain in pigment, with the atlas's own treatments over it.
  *
  * Age is a parchment wash rather than fog: the sheet yellows and the surveyor's pencil hatches it,
- * which is what an old page looks like. The wash's opacity is the view model's, so a sighting still
- * fades continuously with age rather than switching at a threshold.
+ * which is what an old page looks like. A wash is meant to say something *about* the page, and the
+ * survey underneath it must still be readable - a stale ocean has to keep looking like ocean. The
+ * hatching carries "this is old"; the wash only has to tint, and it arrives already damped by
+ * `fogDamping`, whichever state it is in, so unsurveyed ground stays the lightest thing on the
+ * sheet and the pencilled rim over it is what names the state.
  */
 function TerrainLayer({ views }: LayerProps) {
   return (
@@ -132,7 +117,7 @@ function TerrainLayer({ views }: LayerProps) {
                     points={HEX_POINTS_MOCKUP}
                     className="ct-unsurveyed"
                     data-wash="unsurveyed"
-                    opacity={washOpacity(view.fogOpacity)}
+                    opacity={view.fogOpacity}
                   />
                   {/*
                     The surveyor's dashed boundary: a sheet edge pencilled in from a neighbour's
@@ -155,7 +140,7 @@ function TerrainLayer({ views }: LayerProps) {
                   points={HEX_POINTS_MOCKUP}
                   className="ct-wash"
                   data-wash="stale"
-                  opacity={washOpacity(view.fogOpacity)}
+                  opacity={view.fogOpacity}
                 />
               ))}
             {view.hatched && (
@@ -188,53 +173,19 @@ const HEX_POINTS_MOCKUP = HEX_POINTS.split(" ")
   .join(" ");
 
 /**
+ * Roads as the surveyor's convention: a brown casing with a lighter dashed line over it.
+ *
  * The surveyor's two strokes - a 4-unit casing under a 1.4-unit dash - as fractions of the hex, so
  * the convention survives the whole zoom range instead of the casing growing as wide as the hex it
  * crosses. The dash pattern is in the same units, so the dashes keep their place along the casing.
- * See `docs/ui/map-themes.md` for which marks are measured this way.
  */
-const ROAD_CASING = radii(0.222);
-const ROAD_DASH = radii(0.078);
-
-/** Roads as the surveyor's convention: a brown casing with a lighter dashed line over it. */
-function RoadLayer({ views }: LayerProps) {
-  if (!views.some((view) => view.roads.length > 0)) {
-    return null;
-  }
-  return (
-    <g pointerEvents="none">
-      {views.flatMap((view) =>
-        view.roads.map((direction) => {
-          const bearing = ROAD_VECTORS[direction];
-          const x = view.at.x + bearing.x * HEX_RADIUS * 0.87;
-          const y = view.at.y + bearing.y * HEX_RADIUS * 0.87;
-          return (
-            <g key={`${view.key}-${direction}`}>
-              <line
-                className="ct-road"
-                x1={view.at.x}
-                y1={view.at.y}
-                x2={x}
-                y2={y}
-                strokeWidth={ROAD_CASING}
-                strokeLinecap="round"
-              />
-              <line
-                className="ct-road-dash"
-                x1={view.at.x}
-                y1={view.at.y}
-                x2={x}
-                y2={y}
-                strokeWidth={ROAD_DASH}
-                strokeDasharray="3 3"
-              />
-            </g>
-          );
-        })
-      )}
-    </g>
-  );
-}
+const ROAD_STYLE: RoadStyle = {
+  reach: 0.87,
+  strokes: [
+    { className: "ct-road", width: 0.222, linecap: "round" },
+    { className: "ct-road-dash", width: 0.078, dash: "3 3" }
+  ]
+};
 
 /** One house of a settlement, or one workshop between the settlement and the monsters. */
 function House({ small }: { small?: boolean }) {
@@ -490,8 +441,9 @@ function Defs() {
 export const cartographersTable: MapTheme = {
   id: "cartographers-table",
   label: "Cartographer's Table",
+  fogDamping: 0.62,
   Defs,
   TerrainLayer,
-  RoadLayer,
+  RoadLayer: roadLayer(ROAD_STYLE),
   MarkLayer
 };

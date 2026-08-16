@@ -9,12 +9,26 @@
  * - `named`    — named in another region's `Exits` block, in this report or a remembered one.
  *                Terrain and province only, never visited.
  * - unexplored — not represented here at all; the renderer draws the empty lattice.
+ *
+ * Which state a hex is in, and every precedence rule behind it, is decided once in core -
+ * `known_map::resolve_known_map` - and reaches the shell as a `KnownMap`. Nothing here derives that
+ * any more; this module only converts the resolved hexes into what the map draws.
  */
 
-import type { Coordinate, ParsedReport, ReportRegion } from "@atlantis/core-client";
+import type {
+  Coordinate,
+  HexKnowledge,
+  KnownMap,
+  KnownMapHex,
+  MapLevel,
+  ReportRegion,
+  ReportUnit
+} from "@atlantis/core-client";
 
-/** How much the player can trust what the map shows for a hex. */
-export type HexKnowledge = "current" | "stale" | "named";
+/** Owned by core since ah-u4e.1; re-exported so the map's consumers keep importing it from here. */
+export type { HexKnowledge };
+/** Owned by core since ah-4b4; re-exported so the map's consumers keep importing it from here. */
+export type { MapLevel };
 
 export type HexNode = {
   regionId: string;
@@ -36,21 +50,9 @@ export type HexNode = {
 
 export type HexMapModel = {
   hexes: HexNode[];
-  /** Level the hexes belong to; a report can describe more than one. */
-  levels: number[];
+  /** The levels the map has hexes on, shallowest first, each with the word the control shows. */
+  levels: MapLevel[];
   currentTurn: number | null;
-  initialSelectedRegionId: string | null;
-};
-
-/** A region carried over from an earlier turn, as persistence hands it back. */
-export type StoredRegion = {
-  regionId: string;
-  coordinate: Coordinate;
-  terrain: string;
-  province: string;
-  label: string;
-  lastSeenTurn: number;
-  region: ReportRegion | null;
 };
 
 /**
@@ -77,8 +79,38 @@ export function hexCorners(radius: number): Array<{ x: number; y: number }> {
   });
 }
 
-/** The level a report describes unless it says otherwise; levels are counted from here. */
+/** The nexus, level 0: above the surface, one hex, left once and never returned to. */
+export const NEXUS = 0;
+
+/** The level a report describes unless it says otherwise. */
 export const SURFACE = 1;
+
+/** The surface as a level entry, for a model with no game behind it. */
+export const SURFACE_LEVEL: MapLevel = { z: SURFACE, name: "surface" };
+
+/** The name the known map gives a level, or `null` when the map has no such level. */
+export function levelNameOf(levels: MapLevel[], z: number): string | null {
+  return levels.find((level) => level.z === z)?.name ?? null;
+}
+
+/**
+ * The clause the region panel adds for an unexplored hex off the surface: `""` on the surface or
+ * for a level the map does not list; `, in the nexus` / `, in the underworld` for a named level;
+ * `, on level 5` when the core's name is its `level N` fallback (`report/level.rs` `level_name`).
+ */
+export function levelClause(levels: MapLevel[], z: number): string {
+  if (z === SURFACE) {
+    return "";
+  }
+  const name = levelNameOf(levels, z);
+  if (name === null) {
+    return "";
+  }
+  if (/^level \d+$/.test(name)) {
+    return `, on ${name}`;
+  }
+  return `, in the ${name}`;
+}
 
 /** Whether a coordinate can exist: the lattice only uses positions where `x + y` is even. */
 export function isValidCoordinate(coordinate: Coordinate): boolean {
@@ -107,10 +139,10 @@ export function hexLabelOf(where: {
 /**
  * The coordinate an id names, or nothing when the text does not name one the game could hold.
  *
- * Held to the whole contract rather than to the shape of the text: levels are counted from the
- * surface, which is one, and only positions where `x + y` is even exist. A garbled id has to read
- * as no hex at all, because the alternative is a selection ring drawn off the lattice, or a
- * heading naming a level nobody plays on, with the panel looking as though it knew something.
+ * Held to the whole contract rather than to the shape of the text: the nexus is level 0, and only
+ * positions where `x + y` is even exist. A garbled id has to read as no hex at all, because the
+ * alternative is a selection ring drawn off the lattice, or a heading naming a level nobody plays
+ * on, with the panel looking as though it knew something.
  */
 export function parseRegionId(regionId: string): Coordinate | null {
   const match = /^(\d+):(-?\d+),(-?\d+)$/.exec(regionId);
@@ -118,7 +150,7 @@ export function parseRegionId(regionId: string): Coordinate | null {
     return null;
   }
   const coordinate = { z: Number(match[1]), x: Number(match[2]), y: Number(match[3]) };
-  if (coordinate.z < SURFACE || !isValidCoordinate(coordinate)) {
+  if (!isValidCoordinate(coordinate)) {
     return null;
   }
   return coordinate;
@@ -135,248 +167,62 @@ function countUnits(region: ReportRegion | null) {
 }
 
 /**
- * A hex in the current report, plus whatever an ally saw standing in it this same turn.
+ * One resolved hex as the screen draws it. The core has already decided the knowledge, the age's
+ * ingredients and which units (if any) count - this only shapes that decision into a `HexNode`.
  *
- * The current report always wins a hex it describes, and that is right: it is the freshest account
- * there is, and a stored payload from before the ruleset was fetchable may still carry estimated
- * man counts where the live parse carries exact ones. But an ally's
- * report merged into this same turn (issue #53) is stored and not on screen, so without this the
- * deep merge of a hex both factions stood in would be written correctly and never drawn - it would
- * surface next turn, once the hex goes stale, which is a strange thing for "merged 31 regions" to
- * mean.
- *
- * Additive only. Nothing of the current report is replaced; units it does not already name are
- * appended, and by construction those are all foreign - the merge marks every unit it contributes
- * as somebody else's before it stores it. `ownUnitCount` and `foreignUnitCount` recount from the
- * result, so the tallies follow without being told.
- *
- * Restricted to a stored sighting of *this* turn. An older one describes a hex before whatever
- * happened in it since, and letting that intrude would put last month's army back on the board.
+ * `ageInTurns` stays null for a `named` hex even though `lastSeenTurn` is set: nobody has stood
+ * there, so there is no visit to fade, and the arithmetic below would otherwise happily produce a
+ * number for a hex that was never seen.
  */
-function withAlliesUnits(
-  region: ReportRegion,
-  stored: StoredRegion | undefined,
-  currentTurn: number | null
-): ReportRegion {
-  const alsoSeen = stored?.region;
-  if (!alsoSeen || currentTurn === null || stored.lastSeenTurn !== currentTurn) {
-    return region;
-  }
-
-  const named = new Set(region.units.map((unit) => unit.unitId));
-  const extra = alsoSeen.units.filter((unit) => !named.has(unit.unitId));
-  if (extra.length === 0) {
-    return region;
-  }
-
-  return { ...region, units: [...region.units, ...extra.map((unit) => ({ ...unit, own: false }))] };
-}
-
-function nodeFromRegion(
-  region: ReportRegion,
-  knowledge: HexKnowledge,
-  lastSeenTurn: number | null,
-  currentTurn: number | null
-): HexNode {
+export function hexNodeOf(hex: KnownMapHex, currentTurn: number | null): HexNode {
   return {
-    regionId: region.regionId,
-    coordinate: region.coordinate,
-    terrain: region.terrain,
-    province: region.province,
-    label: hexLabelOf(region),
-    knowledge,
-    lastSeenTurn,
+    regionId: regionIdOf(hex.coordinate),
+    coordinate: hex.coordinate,
+    terrain: hex.terrain,
+    province: hex.province,
+    label: hexLabelOf(hex),
+    knowledge: hex.knowledge,
+    lastSeenTurn: hex.lastSeenTurn,
     ageInTurns:
-      currentTurn !== null && lastSeenTurn !== null ? Math.max(0, currentTurn - lastSeenTurn) : null,
-    settlementName: region.settlement?.name ?? null,
-    region,
-    ...countUnits(region)
-  };
-}
-
-/** One entry of a region's `Exits` block: the only account there is of a hex nobody has entered. */
-type Exit = ReportRegion["exits"][number];
-
-/**
- * A hex as somebody's exits describe it, and the turn they described it in.
- *
- * `lastSeenTurn` is the turn whose exits named it, which is not the same claim the field makes for
- * a visited hex - nobody has stood here. It is carried because a naming has a vintage and the map
- * would otherwise throw it away; `ageInTurns` stays null, because a hex never visited has no age
- * for the fade to run.
- */
-function namedFromExit(exit: Exit, namedInTurn: number | null): HexNode {
-  return {
-    regionId: regionIdOf(exit.coordinate),
-    coordinate: exit.coordinate,
-    terrain: exit.terrain,
-    province: exit.province,
-    label: hexLabelOf(exit),
-    knowledge: "named",
-    lastSeenTurn: namedInTurn,
-    ageInTurns: null,
-    settlementName: exit.settlement?.name ?? null,
-    region: null,
-    ownUnitCount: 0,
-    foreignUnitCount: 0
+      hex.knowledge === "named" || currentTurn === null || hex.lastSeenTurn === null
+        ? null
+        : Math.max(0, currentTurn - hex.lastSeenTurn),
+    settlementName: hex.settlement?.name ?? null,
+    region: hex.region,
+    ...countUnits(hex.region)
   };
 }
 
 /**
- * The remembered regions, oldest sighting first.
- *
- * Copied before it is sorted: `sort` works in place, and reordering the caller's own array under it
- * is not this function's to do. A sighting carrying no payload carries no exits either and simply
- * contributes nothing, which is why nothing filters them out first.
- *
- * Sightings of the same turn come back in the order the store listed them, which is what `sort` has
- * guaranteed since ES2019 - stability is part of the language here rather than a habit of one
- * engine, and this package compiles to ES2022. The caller turns that order into "the first naming
- * of a turn wins", and `settles two namings from the same turn the way a report does` fails if
- * either half of that stops holding.
+ * The map as the screen draws it, converted from the core's resolution. No rule lives here any
+ * more: which hex is current, stale or named, whose units count, and which naming won are all
+ * `known_map::resolve_known_map`'s (crates/core/src/known_map.rs, module doc). This turns each
+ * resolved hex into a `HexNode` and nothing else. The core hands the hexes sorted by level, row,
+ * column, and that order is kept.
  */
-function namingsOldestFirst(storedRegions: StoredRegion[]): StoredRegion[] {
-  return [...storedRegions].sort((left, right) => left.lastSeenTurn - right.lastSeenTurn);
-}
-
-/**
- * Builds the map from this turn's report and whatever earlier turns left behind.
- *
- * Precedence matters and is deliberate: a hex in the current report always wins over a stored
- * sighting, and a visited hex always wins over one merely named by a neighbour's exit. Otherwise a
- * hex would lose detail it already has, or be marked less certain than it deserves.
- *
- * These rules were ported to core's `known_map::resolve_known_map` by ah-u4e.1, which is now the
- * single source of truth for them; this file's own copy is deleted by ah-u4e.3, once the screen
- * consumes that resolution instead of re-deriving it here.
- */
-export function buildHexMapModel(
-  parsed: ParsedReport,
-  storedRegions: StoredRegion[] = []
-): HexMapModel {
-  const currentTurn = parsed.header.turnNumber;
-  const byKey = new Map<string, HexNode>();
-  const storedByKey = new Map(storedRegions.map((stored) => [regionIdOf(stored.coordinate), stored]));
-
-  // Weakest first, so stronger knowledge overwrites it.
-  //
-  // Namings oldest first, so a later account of the same ground overwrites an earlier one. A
-  // remembered region's exits are as old as the sighting that carried them, and within any single
-  // turn the first naming wins - the rule the report below has always used, applied to memory too.
-  // Without it the winner would be whichever row the store happened to list last, so a hex could
-  // change terrain from one turn to the next with no new information having arrived.
-  const namedInTurn = new Map<string, number>();
-  for (const stored of namingsOldestFirst(storedRegions)) {
-    for (const exit of stored.region?.exits ?? []) {
-      const key = regionIdOf(exit.coordinate);
-      if (namedInTurn.get(key) === stored.lastSeenTurn) {
-        continue;
-      }
-      namedInTurn.set(key, stored.lastSeenTurn);
-      byKey.set(key, namedFromExit(exit, stored.lastSeenTurn));
-    }
-  }
-
-  // The report on screen names last and so wins, whatever turn it carries: it is the account the
-  // player is reading, which is the same reason its regions beat a stored sighting below. Within it
-  // the first naming of a hex wins, as it always has - `byKey` can no longer answer that question
-  // on its own now that remembered namings are already in it.
-  const namedNow = new Set<string>();
-  for (const region of parsed.regions) {
-    for (const exit of region.exits) {
-      const key = regionIdOf(exit.coordinate);
-      if (namedNow.has(key)) {
-        continue;
-      }
-      namedNow.add(key);
-      byKey.set(key, namedFromExit(exit, currentTurn));
-    }
-  }
-
-  for (const stored of storedRegions) {
-    const key = regionIdOf(stored.coordinate);
-    const existing = byKey.get(key);
-    if (existing && existing.knowledge !== "named") {
-      continue;
-    }
-    // A sighting from this same turn - a hex only an ally reported, with none of my own - is as
-    // fresh as anything in the current report and is not what "stale" means; only a sighting from
-    // an earlier turn is memory, and a unit standing there when it was last seen may have moved,
-    // disbanded or died since, so only that case drops its units (ah-o86, issue #53's territory).
-    const isCurrentTurn = currentTurn !== null && stored.lastSeenTurn === currentTurn;
-    const remembered = stored.region
-      ? isCurrentTurn
-        ? stored.region
-        : { ...stored.region, units: [] }
-      : null;
-    byKey.set(key, {
-      regionId: stored.regionId,
-      coordinate: stored.coordinate,
-      terrain: stored.terrain,
-      province: stored.province,
-      label: stored.label,
-      knowledge: isCurrentTurn ? "current" : "stale",
-      lastSeenTurn: stored.lastSeenTurn,
-      ageInTurns: currentTurn === null ? null : Math.max(0, currentTurn - stored.lastSeenTurn),
-      settlementName: stored.region?.settlement?.name ?? null,
-      region: remembered,
-      ...countUnits(remembered)
-    });
-  }
-
-  for (const region of parsed.regions) {
-    const key = regionIdOf(region.coordinate);
-    byKey.set(
-      key,
-      nodeFromRegion(
-        withAlliesUnits(region, storedByKey.get(key), currentTurn),
-        "current",
-        currentTurn,
-        currentTurn
-      )
-    );
-  }
-
-  const hexes = [...byKey.values()].sort((left, right) => {
-    if (left.coordinate.z !== right.coordinate.z) {
-      return left.coordinate.z - right.coordinate.z;
-    }
-    if (left.coordinate.y !== right.coordinate.y) {
-      return left.coordinate.y - right.coordinate.y;
-    }
-    return left.coordinate.x - right.coordinate.x;
-  });
-
-  const levels = [...new Set(hexes.map((hex) => hex.coordinate.z))].sort((a, b) => a - b);
-
-  // Open on a hex the player has units in, falling back to any visited hex. Opening on a hex they
-  // have never been to would be a strange place to start - which now includes a hex only an ally
-  // reported this turn: it reads "current" for display, since the sighting is as fresh as anything
-  // else on screen, but the player was never there, so `ownRegionIds` (built from the player's own
-  // report, not from `knowledge`) is what "visited" means here (ah-o86).
-  const ownRegionIds = new Set(parsed.regions.map((region) => region.regionId));
-  const withOwnUnits = hexes.find((hex) => hex.ownUnitCount > 0);
-  const visited = hexes.find((hex) => ownRegionIds.has(hex.regionId));
+export function buildHexMapModel(known: KnownMap): HexMapModel {
+  const hexes = known.hexes.map((hex) => hexNodeOf(hex, known.currentTurn));
 
   return {
     hexes,
-    levels,
-    currentTurn,
-    initialSelectedRegionId: (withOwnUnits ?? visited)?.regionId ?? null
+    levels: known.levels,
+    currentTurn: known.currentTurn
   };
 }
 
-/** Units of one hex, own faction first, then by name — one of 92 being yours should not be buried. */
-export function unitsForHex(hex: HexNode | null) {
-  if (!hex?.region) {
-    return [];
-  }
-  return [...hex.region.units].sort((left, right) => {
+/** Own units first, then by name — one of 92 being yours should not be buried. */
+export function sortUnitsForDisplay(units: ReportUnit[]): ReportUnit[] {
+  return [...units].sort((left, right) => {
     if (left.own !== right.own) {
       return left.own ? -1 : 1;
     }
     return left.name.localeCompare(right.name);
   });
+}
+
+/** Units of one hex, for display. `[]` for a hex with no detail. */
+export function unitsForHex(hex: HexNode | null) {
+  return hex?.region ? sortUnitsForDisplay(hex.region.units) : [];
 }
 
 /** The report's long direction names, in the shorthand MOVE orders are written in. */

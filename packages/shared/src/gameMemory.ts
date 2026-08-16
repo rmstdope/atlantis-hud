@@ -17,43 +17,61 @@
 
 import type {
   CoreClient,
+  KnownMap,
   MergedReportRecord,
   OpenedGame,
   ParsedReport,
   RememberedRegion,
   ReportMergeResult
 } from "@atlantis/core-client";
-import { hexLabelOf, type StoredRegion } from "./hexMapModel";
 import { documentFor, draftKeyFor } from "./orderDraft";
 
 /**
- * Turns what the core remembers into what the map wants.
- *
- * The two disagree on shape rather than on content: the core keeps whole regions with the turn they
- * were seen in, and the map wants them flattened alongside a coordinate it can key on.
+ * What the shell holds about the world beyond the report: the remembered regions (for the planner
+ * and the map export, as the core keeps them) and the known map the core resolved from them (for the
+ * screen). Set together, always - a render that has one without the other is a hex the screen is
+ * about to draw against memory it never resolved.
  */
-export function toStoredRegions(remembered: RememberedRegion[]): StoredRegion[] {
-  return remembered.map((entry) => ({
-    regionId: entry.region.regionId,
-    coordinate: entry.region.coordinate,
-    terrain: entry.region.terrain,
-    province: entry.region.province,
-    label: hexLabelOf(entry.region),
-    lastSeenTurn: entry.lastSeenTurn,
-    region: entry.region
-  }));
+export type KnownMemory = { remembered: RememberedRegion[]; knownMap: KnownMap | null };
+
+export const EMPTY_MEMORY: KnownMemory = { remembered: [], knownMap: null };
+
+/** The detail behind a `knownMapFor` failure, for a warning message. */
+function detail(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+/**
+ * Resolves the map the screen draws.
+ *
+ * Never throws: a map that will not resolve with the memory is resolved from the report alone (what
+ * today's shell drew when the memory could not be read), and one that will not resolve at all is
+ * `null` - the map is empty, and the units panel, which reads the report, still works.
+ */
+export async function knownMapFor(
+  client: Pick<CoreClient, "knownMap">,
+  rawReport: string,
+  rulesetJson: string | null,
+  remembered: RememberedRegion[]
+): Promise<{ knownMap: KnownMap | null; warning: string | null }> {
+  try {
+    const known = await client.knownMap(rawReport, rulesetJson, remembered);
+    return { knownMap: known, warning: null };
+  } catch (firstError: unknown) {
+    try {
+      const known = await client.knownMap(rawReport, rulesetJson, []);
+      return {
+        knownMap: known,
+        warning: `the remembered map could not be drawn: ${detail(firstError)}`
+      };
+    } catch (secondError: unknown) {
+      return { knownMap: null, warning: `the map could not be drawn: ${detail(secondError)}` };
+    }
+  }
 }
 
 /** What remembering a turn produced, and anything that went wrong doing it. */
-export type MemoryOutcome = {
-  /**
-   * Everywhere the faction has been, as the core keeps it.
-   *
-   * Returned in the core's own shape rather than the map's, because both consumers need it: the map
-   * wants it flattened, and the planner wants it exactly as it is. Converting here and back again
-   * would be the shorter route to handing the planner nothing.
-   */
-  remembered: RememberedRegion[];
+export type MemoryOutcome = KnownMemory & {
   /**
    * Whose allied reports have been folded into this faction's map for this turn.
    *
@@ -62,7 +80,7 @@ export type MemoryOutcome = {
    * time the next report arrives.
    */
   merged: MergedReportRecord[];
-  /** Set when the turn could not be remembered. The report is still perfectly usable without it. */
+  /** Set when the turn, or the map resolved from it, could not be remembered or drawn. */
   warning: string | null;
 };
 
@@ -88,14 +106,17 @@ export async function rememberTurn(
 ): Promise<MemoryOutcome> {
   const committed = await commitTurn(client, game, parsed, rawReport, rulesetJson, now);
   if (committed.warning !== null) {
-    return { remembered: [], merged: [], warning: committed.warning };
+    const map = await knownMapFor(client, rawReport, rulesetJson, []);
+    return { remembered: [], knownMap: map.knownMap, merged: [], warning: committed.warning };
   }
 
   return readMemory(
     client,
     game,
     parsed.header.factionId as string,
-    parsed.header.turnNumber
+    parsed.header.turnNumber,
+    rawReport,
+    rulesetJson
   );
 }
 
@@ -140,13 +161,13 @@ export async function commitTurn(
     );
     return { warning: null };
   } catch (error: unknown) {
-    const detail = error instanceof Error ? error.message : String(error);
-    return { warning: `the turn could not be remembered: ${detail}` };
+    return { warning: `the turn could not be remembered: ${detail(error)}` };
   }
 }
 
 /**
- * Reads back everything one faction has seen, and who has been merged into a turn of theirs.
+ * Reads back everything one faction has seen, who has been merged into a turn of theirs, and the
+ * map resolved from it.
  *
  * The half of [`rememberTurn`] that reads. Makes the same trade the whole of it made: a map that
  * will not load is a warning rather than a failure, because the report it belongs to parsed
@@ -156,17 +177,29 @@ export async function readMemory(
   client: CoreClient,
   game: OpenedGame,
   factionId: string,
-  turnNumber: number | null
+  turnNumber: number | null,
+  rawReport: string,
+  rulesetJson: string | null
 ): Promise<MemoryOutcome> {
   const gameId = game.manifest.metadata.gameId;
 
   try {
     const remembered = await client.loadRegionSightings(game.databasePath, gameId, factionId);
     const merged = await mergedReportsFor(client, game, factionId, turnNumber);
-    return { remembered, merged, warning: null };
+    const map = await knownMapFor(client, rawReport, rulesetJson, remembered);
+    return { remembered, knownMap: map.knownMap, merged, warning: map.warning };
   } catch (error: unknown) {
-    const detail = error instanceof Error ? error.message : String(error);
-    return { remembered: [], merged: [], warning: `the turn could not be remembered: ${detail}` };
+    const map = await knownMapFor(client, rawReport, rulesetJson, []);
+    const memoryWarning = `the turn could not be remembered: ${detail(error)}`;
+    return {
+      remembered: [],
+      knownMap: map.knownMap,
+      merged: [],
+      // Both can fail independently - the memory read and the map resolved from what little (or
+      // nothing) is left of it - and a message naming only one would hide the other, especially
+      // when the map ends up empty too.
+      warning: map.warning !== null ? `${memoryWarning}; ${map.warning}` : memoryWarning
+    };
   }
 }
 
@@ -199,13 +232,13 @@ async function mergedReportsFor(
 }
 
 /** What merging an allied report produced, and the map it produced it into. */
-export type MergeOutcome = {
-  /** Everywhere the viewer's faction has been, the ally's contribution included. */
-  remembered: RememberedRegion[];
+export type MergeOutcome = KnownMemory & {
   /** Everyone whose report has been folded into this turn, the new one included. */
   merged: MergedReportRecord[];
   /** What the merge itself did, for the status line to report. */
   result: ReportMergeResult;
+  /** Set when the map resolved from the grown memory could not be drawn. */
+  warning: string | null;
 };
 
 /**
@@ -216,9 +249,11 @@ export type MergeOutcome = {
  * never looked at. Nothing else about the workspace moves - not the report, not the orders, not
  * the selection - because nothing else about it has changed.
  *
- * Unlike [`rememberTurn`], a failure here throws. That function warns because the report it failed
- * to remember is still on screen and still perfectly usable; here there is nothing to salvage, and
- * a status line reading "merged 0 regions" over a database that was never written would be a lie.
+ * Unlike [`rememberTurn`], a failure to merge throws. That function warns because the report it
+ * failed to remember is still on screen and still perfectly usable; here there is nothing to
+ * salvage, and a status line saying the merge worked over a database that was never written would be
+ * a lie. Resolving the map afterwards is not held to that: `viewerRawReport` is the report already on
+ * screen, so a failure there is the same kind of warning `readMemory` already makes.
  */
 export async function mergeTurn(
   client: CoreClient,
@@ -227,7 +262,8 @@ export async function mergeTurn(
   viewerTurnNumber: number,
   rawReport: string,
   rulesetJson: string | null,
-  now: string
+  now: string,
+  viewerRawReport: string
 ): Promise<MergeOutcome> {
   const gameId = game.manifest.metadata.gameId;
 
@@ -243,17 +279,17 @@ export async function mergeTurn(
 
   const remembered = await client.loadRegionSightings(game.databasePath, gameId, viewerFactionId);
   const merged = await mergedReportsFor(client, game, viewerFactionId, viewerTurnNumber);
+  const map = await knownMapFor(client, viewerRawReport, rulesetJson, remembered);
 
-  return { remembered, merged, result };
+  return { remembered, knownMap: map.knownMap, merged, result, warning: map.warning };
 }
 
 /** Everything a reopened game needs to put back on screen. */
-export type RestoredTurn = {
+export type RestoredTurn = KnownMemory & {
   parsed: ParsedReport;
   rawReport: string;
   factionId: string;
   turnNumber: number;
-  remembered: RememberedRegion[];
   /** Whose allied reports were folded into this turn, so a reopened game still says whose eyes. */
   merged: MergedReportRecord[];
   /** The saved draft if there is one, else the stored report's own orders template. */
@@ -272,7 +308,8 @@ export type RestoredTurn = {
  *
  * `parse` is injected rather than chosen here, because whether a report can be parsed *classified*
  * depends on a ruleset this module has no business fetching - and parsing twice to find out is the
- * redundancy issue #28 exists to remove.
+ * redundancy issue #28 exists to remove. `rulesetJson` is the same text handed to `parse`, so the
+ * known map is resolved against the same classification the report itself was.
  *
  * Nothing is committed. The turn is already stored, and re-committing would move its `updated_at`,
  * which would make merely opening a game look exactly like working in it - and the ranking that
@@ -283,7 +320,8 @@ export type RestoredTurn = {
 export async function restoreLatestTurn(
   client: CoreClient,
   game: OpenedGame,
-  parse: (rawReport: string) => Promise<ParsedReport>
+  parse: (rawReport: string) => Promise<ParsedReport>,
+  rulesetJson: string | null
 ): Promise<RestoredTurn | null> {
   const gameId = game.manifest.metadata.gameId;
   const stored = await client.loadLatestImportedTurn(game.databasePath, gameId);
@@ -301,11 +339,11 @@ export async function restoreLatestTurn(
   try {
     remembered = await client.loadRegionSightings(game.databasePath, gameId, factionId);
   } catch (error: unknown) {
-    const detail = error instanceof Error ? error.message : String(error);
-    warning = `the remembered map could not be read: ${detail}`;
+    warning = `the remembered map could not be read: ${detail(error)}`;
   }
 
   const merged = await mergedReportsFor(client, game, factionId, turnNumber);
+  const map = await knownMapFor(client, stored.rawReport, rulesetJson, remembered);
 
   const template = parsed.ordersTemplate?.text ?? "";
   const chosen = await documentFor(client, game, draftKeyFor(parsed), template);
@@ -316,9 +354,10 @@ export async function restoreLatestTurn(
     factionId,
     turnNumber,
     remembered,
+    knownMap: map.knownMap,
     merged,
     orders: chosen.text,
     ordersSavedAt: chosen.savedAt,
-    warning: warning ?? chosen.warning
+    warning: warning ?? map.warning ?? chosen.warning
   };
 }

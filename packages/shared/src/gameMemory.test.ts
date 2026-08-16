@@ -1,5 +1,6 @@
 import type {
   CoreClient,
+  KnownMap,
   OpenedGame,
   ParsedReport,
   RememberedRegion
@@ -7,11 +8,11 @@ import type {
 import { describe, expect, it, vi } from "vitest";
 import {
   commitTurn,
+  knownMapFor,
   mergeTurn,
   readMemory,
   rememberTurn,
-  restoreLatestTurn,
-  toStoredRegions
+  restoreLatestTurn
 } from "./gameMemory";
 
 function region(regionId: string, x: number, y: number) {
@@ -60,12 +61,15 @@ function report(factionId: string | null): ParsedReport {
   };
 }
 
+const KNOWN_MAP: KnownMap = { hexes: [], levels: [], currentTurn: 71 };
+
 function client(overrides: Partial<CoreClient> = {}): CoreClient {
   return {
     commitReportImport: vi.fn().mockResolvedValue({}),
     loadRegionSightings: vi.fn().mockResolvedValue([]),
     loadMergedReports: vi.fn().mockResolvedValue([]),
     mergeReport: vi.fn().mockResolvedValue(MERGE_RESULT),
+    knownMap: vi.fn().mockResolvedValue(KNOWN_MAP),
     ...overrides
   } as unknown as CoreClient;
 }
@@ -133,6 +137,8 @@ describe("remembering a turn", () => {
       true,
       NOW
     );
+    expect(core.knownMap).toHaveBeenCalledWith("raw text", RULESET, remembered);
+    expect(outcome.knownMap).toBe(KNOWN_MAP);
   });
 
   /**
@@ -148,6 +154,22 @@ describe("remembering a turn", () => {
 
     expect(outcome.warning).toContain("disk is full");
     expect(outcome.remembered).toEqual([]);
+  });
+
+  /**
+   * The map is still drawn from the report alone when the memory itself cannot be read, so the
+   * screen shows something rather than an empty lattice on a database hiccup.
+   */
+  it("draws the map from the report alone when the memory cannot be read", async () => {
+    const core = client({
+      loadRegionSightings: vi.fn().mockRejectedValue(new Error("database is locked"))
+    });
+
+    const outcome = await rememberTurn(core, OPEN_GAME, report("95"), "raw text", RULESET, NOW);
+
+    expect(core.knownMap).toHaveBeenCalledWith("raw text", RULESET, []);
+    expect(outcome.knownMap).toBe(KNOWN_MAP);
+    expect(outcome.warning).toContain("database is locked");
   });
 
   it("says so when the report does not name its faction", async () => {
@@ -242,11 +264,13 @@ describe("reading a faction's memory back", () => {
       loadMergedReports: vi.fn().mockResolvedValue([MERGE_RECORD])
     });
 
-    const memory = await readMemory(core, OPEN_GAME, "95", 71);
+    const memory = await readMemory(core, OPEN_GAME, "95", 71, "raw text", RULESET);
 
     expect(memory.remembered).toEqual(remembered);
     expect(memory.merged).toEqual([MERGE_RECORD]);
     expect(memory.warning).toBeNull();
+    expect(core.knownMap).toHaveBeenCalledWith("raw text", RULESET, remembered);
+    expect(memory.knownMap).toBe(KNOWN_MAP);
   });
 
   /** The same trade remembering a turn makes: a map that will not load is a warning, not a failure. */
@@ -255,20 +279,83 @@ describe("reading a faction's memory back", () => {
       loadRegionSightings: vi.fn().mockRejectedValue(new Error("database is locked"))
     });
 
-    const memory = await readMemory(core, OPEN_GAME, "95", 71);
+    const memory = await readMemory(core, OPEN_GAME, "95", 71, "raw text", RULESET);
 
     expect(memory.warning).toContain("database is locked");
     expect(memory.remembered).toEqual([]);
+  });
+
+  /**
+   * The memory read and the map resolved from what is left of it can fail independently. A message
+   * naming only the first would hide the second, especially when the map ends up empty too (review
+   * of PR #313).
+   */
+  it("names both failures when the map also will not resolve after the memory read failed", async () => {
+    const core = client({
+      loadRegionSightings: vi.fn().mockRejectedValue(new Error("database is locked")),
+      knownMap: vi.fn().mockRejectedValue(new Error("the report will not parse"))
+    });
+
+    const memory = await readMemory(core, OPEN_GAME, "95", 71, "raw text", RULESET);
+
+    expect(memory.warning).toContain("database is locked");
+    expect(memory.warning).toContain("the report will not parse");
+    expect(memory.knownMap).toBeNull();
   });
 
   /** Nothing on screen to hang a merge chip off, so there is no turn to ask about. */
   it("asks for nobody's merges when the turn is unknown", async () => {
     const core = client();
 
-    const memory = await readMemory(core, OPEN_GAME, "95", null);
+    const memory = await readMemory(core, OPEN_GAME, "95", null, "raw text", RULESET);
 
     expect(memory.merged).toEqual([]);
     expect(core.loadMergedReports).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * `knownMapFor` resolves the map the screen draws, and never throws: the report is already
+ * showable, so a map that will not resolve is a warning rather than a rejection.
+ */
+describe("resolving the known map", () => {
+  it("resolves with the memory it is given", async () => {
+    const core = client();
+
+    const outcome = await knownMapFor(core, "raw text", RULESET, []);
+
+    expect(core.knownMap).toHaveBeenCalledWith("raw text", RULESET, []);
+    expect(outcome).toEqual({ knownMap: KNOWN_MAP, warning: null });
+  });
+
+  it("warns and draws from the report alone when the map will not resolve with the memory", async () => {
+    const core = client({
+      knownMap: vi
+        .fn()
+        .mockRejectedValueOnce(new Error("remembered region is corrupt"))
+        .mockResolvedValueOnce(KNOWN_MAP)
+    });
+
+    const outcome = await knownMapFor(core, "raw text", RULESET, [
+      { region: region("1:1,1", 1, 1), lastSeenTurn: 71 }
+    ]);
+
+    expect(core.knownMap).toHaveBeenNthCalledWith(2, "raw text", RULESET, []);
+    expect(outcome.knownMap).toBe(KNOWN_MAP);
+    expect(outcome.warning).toContain("the remembered map could not be drawn");
+    expect(outcome.warning).toContain("remembered region is corrupt");
+  });
+
+  it("leaves the map empty, with a warning, when it will not resolve at all", async () => {
+    const core = client({
+      knownMap: vi.fn().mockRejectedValue(new Error("the report will not parse"))
+    });
+
+    const outcome = await knownMapFor(core, "raw text", RULESET, []);
+
+    expect(outcome.knownMap).toBeNull();
+    expect(outcome.warning).toContain("the map could not be drawn");
+    expect(outcome.warning).toContain("the report will not parse");
   });
 });
 
@@ -276,7 +363,7 @@ describe("merging an ally's report into the turn on screen", () => {
   it("merges under the viewer's faction and turn, not the report's", async () => {
     const core = client();
 
-    await mergeTurn(core, OPEN_GAME, "95", 71, "the ally's report", RULESET, NOW);
+    await mergeTurn(core, OPEN_GAME, "95", 71, "the ally's report", RULESET, NOW, "the viewer's report");
 
     expect(core.mergeReport).toHaveBeenCalledWith(
       "p.sqlite",
@@ -300,11 +387,30 @@ describe("merging an ally's report into the turn on screen", () => {
       loadMergedReports: vi.fn().mockResolvedValue([MERGE_RECORD])
     });
 
-    const outcome = await mergeTurn(core, OPEN_GAME, "95", 71, "the ally's report", RULESET, NOW);
+    const outcome = await mergeTurn(
+      core,
+      OPEN_GAME,
+      "95",
+      71,
+      "the ally's report",
+      RULESET,
+      NOW,
+      "the viewer's report"
+    );
 
     expect(outcome.remembered).toHaveLength(2);
     expect(outcome.merged).toEqual([MERGE_RECORD]);
     expect(outcome.result).toEqual(MERGE_RESULT);
+    expect(outcome.knownMap).toBe(KNOWN_MAP);
+  });
+
+  /** The known map is resolved against the report on screen, not the ally's text being merged. */
+  it("resolves the known map against the viewer's report, not the ally's", async () => {
+    const core = client();
+
+    await mergeTurn(core, OPEN_GAME, "95", 71, "the ally's report", RULESET, NOW, "the viewer's report");
+
+    expect(core.knownMap).toHaveBeenCalledWith("the viewer's report", RULESET, []);
   });
 
   /**
@@ -319,9 +425,9 @@ describe("merging an ally's report into the turn on screen", () => {
         .mockRejectedValue(new Error("a report from turn 2 cannot be merged into turn 71"))
     });
 
-    await expect(mergeTurn(core, OPEN_GAME, "95", 71, "an older report", RULESET, NOW)).rejects.toThrow(
-      "cannot be merged into turn 71"
-    );
+    await expect(
+      mergeTurn(core, OPEN_GAME, "95", 71, "an older report", RULESET, NOW, "the viewer's report")
+    ).rejects.toThrow("cannot be merged into turn 71");
   });
 });
 
@@ -354,9 +460,10 @@ describe("reopening the turn the player was last in", () => {
     });
     const parse = vi.fn().mockResolvedValue(report("95"));
 
-    const restored = await restoreLatestTurn(core, OPEN_GAME, parse);
+    const restored = await restoreLatestTurn(core, OPEN_GAME, parse, RULESET);
 
     expect(parse).toHaveBeenCalledWith("raw text of turn 71");
+    expect(core.knownMap).toHaveBeenCalledWith("raw text of turn 71", RULESET, remembered);
     expect(restored).toMatchObject({
       factionId: "95",
       turnNumber: 71,
@@ -375,7 +482,7 @@ describe("reopening the turn the player was last in", () => {
   it("does not commit the turn it just read", async () => {
     const core = restoring();
 
-    await restoreLatestTurn(core, OPEN_GAME, vi.fn().mockResolvedValue(report("95")));
+    await restoreLatestTurn(core, OPEN_GAME, vi.fn().mockResolvedValue(report("95")), RULESET);
 
     expect(core.commitReportImport).not.toHaveBeenCalled();
   });
@@ -384,7 +491,7 @@ describe("reopening the turn the player was last in", () => {
     const core = restoring({ loadLatestImportedTurn: vi.fn().mockResolvedValue(null) });
     const parse = vi.fn();
 
-    expect(await restoreLatestTurn(core, OPEN_GAME, parse)).toBeNull();
+    expect(await restoreLatestTurn(core, OPEN_GAME, parse, RULESET)).toBeNull();
     // A game just created, not a failure: nothing is parsed and nothing is complained about.
     expect(parse).not.toHaveBeenCalled();
   });
@@ -401,7 +508,8 @@ describe("reopening the turn the player was last in", () => {
     const restored = await restoreLatestTurn(
       core,
       OPEN_GAME,
-      vi.fn().mockResolvedValue(report("95"))
+      vi.fn().mockResolvedValue(report("95")),
+      RULESET
     );
 
     expect(restored?.turnNumber).toBe(71);
@@ -416,7 +524,8 @@ describe("reopening the turn the player was last in", () => {
     const restored = await restoreLatestTurn(
       core,
       OPEN_GAME,
-      vi.fn().mockResolvedValue(report("95"))
+      vi.fn().mockResolvedValue(report("95")),
+      RULESET
     );
 
     expect(restored?.merged).toEqual([MERGE_RECORD]);
@@ -431,7 +540,8 @@ describe("reopening the turn the player was last in", () => {
     const restored = await restoreLatestTurn(
       core,
       OPEN_GAME,
-      vi.fn().mockResolvedValue(report("95"))
+      vi.fn().mockResolvedValue(report("95")),
+      RULESET
     );
 
     expect(restored?.turnNumber).toBe(71);
@@ -446,27 +556,9 @@ describe("reopening the turn the player was last in", () => {
       ordersTemplate: { text: "#atlantis 95 pass", factionId: "95", units: [] }
     };
 
-    const restored = await restoreLatestTurn(core, OPEN_GAME, vi.fn().mockResolvedValue(withTemplate));
+    const restored = await restoreLatestTurn(core, OPEN_GAME, vi.fn().mockResolvedValue(withTemplate), RULESET);
 
     expect(restored?.orders).toBe("#atlantis 95 pass");
     expect(restored?.ordersSavedAt).toBeNull();
-  });
-});
-
-describe("handing remembered regions to the map", () => {
-  it("keeps the turn each was seen in, which is what staleness is drawn from", () => {
-    const stored = toStoredRegions([{ region: region("1:7,53", 7, 53), lastSeenTurn: 63 }]);
-
-    expect(stored).toEqual([
-      {
-        regionId: "1:7,53",
-        coordinate: { x: 7, y: 53, z: 1 },
-        terrain: "plain",
-        province: "Nowhere",
-        label: "plain (7,53) in Nowhere",
-        lastSeenTurn: 63,
-        region: region("1:7,53", 7, 53)
-      }
-    ]);
   });
 });
