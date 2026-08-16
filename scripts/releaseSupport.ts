@@ -1,58 +1,3 @@
-import { PUSH_AGAIN_MESSAGE } from "./beadsExportGate";
-
-/**
- * The two things that stranded v0.5.2, kept apart from the script that does them.
- *
- * `pnpm run release` committed the version bump and then died at the push, leaving both manifests
- * at the new version with no tag and nothing on the remote. Re-running made it worse: the tree was
- * clean at the already-bumped version, so the next run bumped again and the stranded version was
- * never released.
- *
- * The push failed because the bead export gate aborts the first push on main when the committed
- * export is stale. That is deliberate - a pre-push hook cannot amend the refs git has already
- * computed, so it commits the refresh and asks for another push - and the release script simply did
- * not know. Worse, its git helper piped both streams, so the gate's explanation went into a buffer
- * nobody read and the release looked like an unexplained crash.
- *
- * Cutting a release follows bead work, so the export is stale on essentially every release. v0.5.1
- * got through only because it happened to be current.
- */
-
-/**
- * What to do after running the export gate, before anything is at stake.
- *
- * The gate answers non-zero when it has committed a refresh and stopped a push. That commit is
- * local, so it has to reach the remote before the release commit is built on top of it - and once
- * it has, the gate is a no-op for the rest of the run and the release's own push meets nothing.
- */
-export function settleStep(gateCode: number): "push" | "none" {
-  return gateCode === 0 ? "none" : "push";
-}
-
-/** What settling the export produced: something to do, or a reason it could not be done. */
-export type Settlement = { action: "push" | "none" } | { problem: string };
-
-/**
- * Runs the gate and says what follows, without letting it take the release down.
- *
- * The gate guards itself only on its command-line path; called as a function it can throw - a
- * missing database, a git that will not commit, anything unforeseen. An uncaught throw here would
- * be the very failure this bead exists to remove, and the only reason it would be less damaging is
- * that it lands before the bump rather than after it. That is luck, not design.
- *
- * A problem is reported rather than swallowed. A stale export that cannot be settled means the push
- * after the bump would abort anyway, so stopping now - with nothing written - is the kind outcome.
- */
-export function settleExport(gate: () => number): Settlement {
-  try {
-    return { action: settleStep(gate()) };
-  } catch (error) {
-    const because = error instanceof Error ? error.message : String(error);
-
-    return { problem: `the bead export gate could not run: ${because}` };
-  }
-}
-
 /**
  * What a failed git command should say.
  *
@@ -97,62 +42,15 @@ function messageOf(error: unknown): string {
   return String(error);
 }
 
-/**
- * The retry v0.5.3 was missing.
- *
- * `settleExport` narrows the window between the export going stale and the release's own push, but
- * does not close it: the gate runs again on that push, minutes later, and with other agents claiming
- * and heartbeating beads the export can have gone stale again by then. v0.5.3 ended with the version
- * committed, nothing pushed and no tag - recovered by hand with one retried `git push`.
- *
- * Whether a failed push is the gate asking for another push, rather than a genuine refusal - a
- * rejected ref, a credential failure - which must never be retried into a loop.
- */
-export function isGateAbort(output: string): boolean {
-  return output.includes(PUSH_AGAIN_MESSAGE);
-}
-
-export type PushResult = { ok: true } | { ok: false; output: string };
-
-/**
- * Retries a push while, and only while, it fails on the gate's own abort.
- *
- * The push is injected so this is testable without git or a remote. Bounded, because the export can
- * go stale again between two attempts and an unbounded loop against a genuinely refusing remote is
- * worse than a clear failure - the manual recoveries this bead is named for both needed exactly one
- * retry.
- */
-export function pushWithRetry(
-  push: () => { ok: boolean; output: string },
-  attempts: number
-): PushResult {
-  let last: { ok: boolean; output: string } = { ok: false, output: "" };
-
-  for (let attempt = 1; attempt <= attempts; attempt += 1) {
-    last = push();
-    if (last.ok) {
-      return { ok: true };
-    }
-    if (!isGateAbort(last.output)) {
-      return { ok: false, output: last.output };
-    }
-  }
-
-  return {
-    ok: false,
-    output: `the export gate kept refreshing after ${attempts} attempts:\n${last.output}`
-  };
-}
-
 /** What a release did and did not manage, enough to say what finishing it by hand takes. */
 export type ReleaseState = {
   tag: string;
   branch: string;
   /**
    * The SHA of the `Release vX.Y.Z` commit, recorded before any push ran. `git tag <name>` with no
-   * second argument tags HEAD, and HEAD can have moved on by the time a human pastes this - the
-   * export gate commits a refresh on top of it during a push. Naming the commit here is what keeps
-   * a pasted recovery from reproducing the exact bug this bead exists to fix.
+   * second argument tags HEAD, and HEAD can have moved on by the time a human pastes this if
+   * anything else committed on top of it in the meantime - naming the commit here is what keeps a
+   * pasted recovery from landing on the wrong commit (ah-9dg).
    */
   releaseCommit: string;
   versionCommitPushed: boolean;
@@ -192,20 +90,21 @@ export type ReleaseEffects = {
 export type FinishReleaseResult = { ok: true } | { ok: false; output: string; advice: string[] };
 
 /**
- * The release tail: push the version commit, tag the commit it was made at, push the tag.
+ * The release tail: push the version commit once, tag the commit it was made at, push the tag once.
  *
- * The SHA is read once, before `pushBranch` runs, because the export gate can commit a refresh on
- * top of HEAD while settling a push - so HEAD by the time `createTag` would run is not necessarily
- * the release commit any more. `createTag` always receives the SHA recorded here, never a fresh
- * read of HEAD.
+ * The SHA is read once, before `pushBranch` runs, so `createTag` always receives the commit recorded
+ * here rather than a fresh read of HEAD - see `ReleaseState.releaseCommit` for why that matters.
+ * There is no retry any more: with the bead export refreshed and committed before the bump (ah-cgk),
+ * nothing else pushes main between here and the release's own push, so a push failure here is a
+ * genuine refusal - a rejected ref, a credential failure - not something worth looping on.
  */
 export function finishRelease(
   effects: ReleaseEffects,
-  release: { tag: string; branch: string; attempts: number }
+  release: { tag: string; branch: string }
 ): FinishReleaseResult {
   const releaseCommit = effects.headCommit();
 
-  const branchPush = pushWithRetry(effects.pushBranch, release.attempts);
+  const branchPush = effects.pushBranch();
   if (!branchPush.ok) {
     return {
       ok: false,
@@ -222,7 +121,8 @@ export function finishRelease(
   }
 
   // Not retried: `createTag` failing once means the tag was not made, so a second `git tag` attempt
-  // would meet a fresh state - unlike a push, where a retry is meeting the export gate's own abort.
+  // would meet a fresh state - unlike a push, where a retry used to mean meeting the export gate's
+  // own abort.
   const created = effects.createTag(release.tag, releaseCommit);
   if (!created.ok) {
     return {
@@ -239,7 +139,7 @@ export function finishRelease(
     };
   }
 
-  const tagPush = pushWithRetry(effects.pushTag, release.attempts);
+  const tagPush = effects.pushTag();
   if (!tagPush.ok) {
     return {
       ok: false,
