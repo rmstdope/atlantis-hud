@@ -430,21 +430,19 @@ pub fn find_order(command: &str) -> Option<&'static Order> {
         .find(|order| order.name.eq_ignore_ascii_case(command))
 }
 
-/// What the ruleset allows where the caret is, for the completion popup.
+/// The order the caret is inside, and every argument that may stand at the caret across its forms.
 ///
 /// `line_prefix` is one order line from its first character up to the caret, the caret's own
 /// half-typed word included: the position is worked out from the complete words before it, and the
 /// half-typed word is what the shell filters the answer by.
 ///
-/// Returns the words in the order they should be offered, and an empty list wherever the rules
-/// leave the position open - a unit number, a quantity, a name, anything after CAST - which is most
-/// positions and is not a failure. The command position answers empty too: `order_commands` speaks
-/// there.
-#[must_use]
-pub fn order_argument_completions(line_prefix: &str) -> Vec<String> {
+/// `None` in the command position, inside a comment or an unclosed quote, or for an order the table
+/// does not have. The `Arg`s are de-duplicated in form order: several forms often agree on what may
+/// stand next, and each is worth answering only once.
+pub(super) fn arguments_at_caret(line_prefix: &str) -> Option<(&'static Order, Vec<&'static Arg>)> {
     let lexed = lex_line(line_prefix);
     if lexed.comment.is_some() || lexed.unterminated_quote.is_some() {
-        return Vec::new();
+        return None;
     }
 
     let mut tokens = lexed.tokens;
@@ -456,27 +454,20 @@ pub fn order_argument_completions(line_prefix: &str) -> Vec<String> {
         tokens.pop();
     }
 
-    let Some((command, arguments)) = tokens.split_first() else {
-        // Nothing typed yet: the caret is in the command position, which `order_commands` answers.
-        return Vec::new();
-    };
+    // Nothing typed yet: the caret is in the command position, which `order_commands` answers.
+    let (command, arguments) = tokens.split_first()?;
+    let order = find_order(&command.text)?;
 
-    let Some(order) = find_order(&command.text) else {
-        return Vec::new();
-    };
-
-    let mut offered: Vec<&'static str> = Vec::new();
+    let mut offered: Vec<&'static Arg> = Vec::new();
     for form in order.forms {
         if let Some(argument) = next_argument(form, arguments) {
-            for keyword in keywords(argument) {
-                if !offered.contains(&keyword) {
-                    offered.push(keyword);
-                }
+            if !offered.contains(&argument) {
+                offered.push(argument);
             }
         }
     }
 
-    offered.into_iter().map(str::to_string).collect()
+    Some((order, offered))
 }
 
 /// The argument that may stand where the caret is, for one form; `None` when the typed words do not
@@ -518,7 +509,7 @@ fn next_argument(form: &'static [Arg], arguments: &[Token]) -> Option<&'static A
 }
 
 /// The words one argument allows, in the order they should be offered; empty for an open one.
-fn keywords(argument: &Arg) -> Vec<&'static str> {
+pub(super) fn keywords(argument: &Arg) -> Vec<&'static str> {
     match argument {
         Arg::Kw(keyword) => vec![*keyword],
         Arg::OneOf(list) => list.to_vec(),
@@ -820,115 +811,10 @@ mod tests {
         assert!(find_order("fly").is_none());
     }
 
-    #[test]
-    fn name_offers_everything_it_may_rename() {
-        assert_eq!(
-            order_argument_completions("NAME U"),
-            vec!["UNIT", "FACTION", "OBJECT", "CITY"]
-        );
-    }
-
-    #[test]
-    fn the_command_position_belongs_to_order_commands() {
-        for prefix in ["", "NAM", "  "] {
-            assert_eq!(order_argument_completions(prefix), Vec::<String>::new());
-        }
-    }
-
-    #[test]
-    fn an_unknown_order_offers_nothing() {
-        assert_eq!(order_argument_completions("WROK "), Vec::<String>::new());
-    }
-
-    #[test]
-    fn a_finished_form_offers_nothing() {
-        for prefix in ["DECLARE 15 ALLY ", "TAX "] {
-            assert_eq!(order_argument_completions(prefix), Vec::<String>::new());
-        }
-    }
-
-    #[test]
-    fn an_open_position_offers_nothing() {
-        for prefix in ["PRODUCE 5 ", "STUDY ", "GUARD ", "FORM "] {
-            assert_eq!(order_argument_completions(prefix), Vec::<String>::new());
-        }
-    }
-
-    #[test]
-    fn a_unit_reference_is_stepped_over_however_long_it_is() {
-        for prefix in ["GIVE 17 ", "GIVE NEW 2 ", "GIVE FACTION 15 NEW 2 "] {
-            assert_eq!(order_argument_completions(prefix), vec!["UNIT", "ALL"]);
-        }
-    }
-
-    #[test]
-    fn a_move_offers_its_steps_again_after_each_one() {
-        let expected = vec!["N", "NE", "SE", "S", "SW", "NW", "IN", "OUT"];
-        for prefix in ["MOVE ", "MOVE N ", "MOVE N S", "SAIL ", "ADVANCE IN "] {
-            assert_eq!(order_argument_completions(prefix), expected);
-        }
-    }
-
-    #[test]
-    fn item_classes_come_alphabetically() {
-        let offered = order_argument_completions("GIVE 4573 ALL ");
-        assert_eq!(offered.len(), ITEM_CLASSES.len());
-        assert_eq!(&offered[..3], &["ADVANCED", "ARMOR", "BATTLE"]);
-        let mut sorted = offered.clone();
-        sorted.sort_unstable();
-        assert_eq!(offered, sorted);
-    }
-
-    #[test]
-    fn a_second_keyword_position_is_reached_through_the_first() {
-        assert_eq!(
-            order_argument_completions("OPTION TEMPLATE "),
-            vec!["OFF", "SHORT", "LONG", "MAP"]
-        );
-        assert_eq!(order_argument_completions("TAKE "), vec!["FROM"]);
-    }
-
-    #[test]
-    fn a_comment_is_not_an_order() {
-        assert_eq!(
-            order_argument_completions("MOVE N ; go h"),
-            Vec::<String>::new()
-        );
-    }
-
-    #[test]
-    fn an_unclosed_quote_swallows_the_position() {
-        assert_eq!(
-            order_argument_completions("NAME UNIT \"Big "),
-            Vec::<String>::new()
-        );
-    }
-
-    #[test]
-    fn a_closed_quote_is_not_still_being_typed() {
-        // Unlike a bare word, a closing quote is unambiguous: the token it ends is complete, so
-        // the caret sitting right after it (no space typed yet) is already in the *next*
-        // position - here, BUILD's Name-then-COMPLETE form.
-        assert_eq!(
-            order_argument_completions("BUILD \"Big Boat\""),
-            vec!["COMPLETE"]
-        );
-    }
-
-    #[test]
-    fn the_repeat_prefix_and_indentation_are_ignored() {
-        let expected = vec!["UNIT", "FACTION", "OBJECT", "CITY"];
-        assert_eq!(order_argument_completions("@NAME U"), expected);
-        assert_eq!(order_argument_completions("   NAME U"), expected);
-    }
-
-    #[test]
-    fn the_half_typed_word_does_not_move_the_position() {
-        assert_eq!(
-            order_argument_completions("NAME U"),
-            order_argument_completions("NAME ")
-        );
-    }
+    // The `order_argument_completions` tests that used to live here moved to
+    // `completion.rs`'s own test module when the wire type widened (ah-bai.2): they now go
+    // through `arguments_at_caret` the same as everything else, with the three new arguments as
+    // `None`.
 
     #[test]
     fn every_form_keeps_its_rest_last() {

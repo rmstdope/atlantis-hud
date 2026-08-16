@@ -84,7 +84,15 @@ export const SWEEP: SweepEntry[] = [
     args: () => ({ raw_orders: "unit 18642\n@work", ruleset_json: RULESET })
   },
   { command: "order_commands", args: () => ({}) },
-  { command: "order_argument_completions", args: () => ({ line_prefix: "NAME U" }) },
+  {
+    command: "order_argument_completions",
+    args: () => ({
+      line_prefix: "BUY 5 ",
+      ruleset_json: RULESET,
+      raw_report: REPORT,
+      unit_id: "18642"
+    })
+  },
   {
     command: "plan_route",
     args: () => ({

@@ -342,21 +342,30 @@ describe("web core adapter", () => {
     expect(await adapter.orderCommands()).toEqual(["GIVE", "MOVE", "WORK"]);
   });
 
-  it("routes an argument-completion call to the core, line prefix included", async () => {
+  it("routes an argument-completion call to the core, every argument included", async () => {
+    const nameables = ["UNIT", "FACTION", "OBJECT", "CITY"].map((value) => ({
+      value,
+      name: "",
+      detail: ""
+    }));
     const adapter = createWebCoreAdapter(
       fakeWasm({
-        order_argument_completions_state: (linePrefix: string) =>
-          linePrefix === "NAME U" ? ["UNIT", "FACTION", "OBJECT", "CITY"] : []
+        order_argument_completions_state: (
+          linePrefix: string,
+          rulesetJson: string | null,
+          rawReport: string | null,
+          unitId: string | null
+        ) =>
+          linePrefix === "NAME U" && rulesetJson === "the ruleset" && rawReport === "the report" && unitId === "18642"
+            ? nameables
+            : []
       }),
       createMemoryWebStore()
     );
 
-    expect(await adapter.orderArgumentCompletions("NAME U")).toEqual([
-      "UNIT",
-      "FACTION",
-      "OBJECT",
-      "CITY"
-    ]);
+    expect(
+      await adapter.orderArgumentCompletions("NAME U", "the ruleset", "the report", "18642")
+    ).toEqual(nameables);
   });
 
   /**

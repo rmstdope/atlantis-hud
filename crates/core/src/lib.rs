@@ -127,7 +127,9 @@ impl OrderValidationResult {
 /// crate root. What changed underneath is that a command name is no longer all that is checked: see
 /// [`orders`] for the lexer and grammar that replaced the list this used to be.
 pub use orders::semantics::CheckOptions as OrderCheckOptions;
-pub use orders::{order_argument_completions, order_commands, validate_orders, validate_turn};
+pub use orders::{
+    order_argument_completions, order_commands, validate_orders, validate_turn, OrderCompletion,
+};
 
 /// Severity level emitted by the tolerant report parser.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

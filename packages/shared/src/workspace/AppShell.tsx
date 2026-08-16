@@ -1270,8 +1270,9 @@ export function AppShell({
   }, [client]);
 
   const argumentCompletions = useCallback<ArgumentLookup>(
-    (linePrefix) => client.orderArgumentCompletions(linePrefix),
-    [client]
+    (linePrefix) =>
+      client.orderArgumentCompletions(linePrefix, rulesetText, rawReport || null, unit?.unitId ?? null),
+    [client, rulesetText, rawReport, unit]
   );
 
   /**
