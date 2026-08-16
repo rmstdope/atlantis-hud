@@ -332,7 +332,7 @@ const WARNING_GROUPS: readonly {
       {
         code: "not-enough-items",
         title: "Overdrawn items",
-        description: "Orders give away more of an item than the unit holds."
+        description: "Orders give away or sell more of an item than the unit or the hex holds."
       }
     ]
   },

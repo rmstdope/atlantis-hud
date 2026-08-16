@@ -302,7 +302,7 @@ impl Ordered<'_> {
         })
     }
 
-    /// Whether the unit puts its purse at the disposal of the others in the hex.
+    /// Whether the unit puts its stock, silver included, at the disposal of the others in the hex.
     ///
     /// "SHARE [flag]: Instruct a unit to share its available resources with other units in the
     /// same region." The engine calls the result borrowing, and turn 71 is full of it.
@@ -703,6 +703,19 @@ fn charge(ledger: &mut Ledger<'_>, unit_id: &str, tag: &str, amount: i64, placed
     }
 }
 
+/// Silver and items a unit is short of, and what the hex's sharing units can cover for it.
+///
+/// The engine's `Unit::GetSharedNum` counts a unit's own holdings plus every same-faction unit in
+/// the region carrying `FLAG_SHARING` - the borrower's own flag is never consulted, and every tag
+/// but men (`IT_MAN`) is eligible. `DoGiveOrder`/`DoSell` draw on it for items,
+/// `DoBuy`/`Do1StudyOrder` through `GetSharedMoney` for silver.
+///
+/// A hex with no sharing unit judges each unit on its own, as before. A hex with one or more
+/// judges every pooled tag once, against the hex: the engine drains sharers in whatever order it
+/// iterates them, so which borrower "went short" is genuinely undeterminable, and blaming one of
+/// several would be as wrong as blaming the treasurer for holding the purse. Sixteen units of
+/// turn 71 sailed together with their money held by one of them; blaming each of the fifteen for
+/// being penniless would have been fifteen wrong answers.
 fn report_shortfalls(
     ledger: &Ledger<'_>,
     hex: &Hex<'_>,
@@ -710,7 +723,23 @@ fn report_shortfalls(
     options: &CheckOptions,
     findings: &mut Vec<Finding>,
 ) {
-    report_shared_purse(ledger, hex, options, findings);
+    let sharers: Vec<&Ordered<'_>> = hex.units.iter().filter(|o| o.shares()).collect();
+    // The pool is their sum, so one sharer whose sums cannot be trusted makes the sum
+    // untrustworthy - checked once here and applied after the per-unit pass below, which must
+    // still run so a doubted sharer does not also silence a non-pooled (men) finding.
+    let pool_trusted = !sharers
+        .iter()
+        .any(|o| ledger.doubted.contains(&o.unit.unit_id));
+    // Without a ruleset every tag pools; with one, men never do (the engine's one exception).
+    let pooled = |tag: &str| -> bool {
+        !sharers.is_empty() && !ruleset.is_some_and(|ruleset| ruleset.is_man(tag))
+    };
+
+    // tag -> the overdrafts of the units that must borrow it (non-sharers; a sharer's own
+    // overdraft is already inside the pool's sum, not a claim against it).
+    let mut claims: BTreeMap<String, i64> = BTreeMap::new();
+    // Every pooled tag any unit is short of, so the pool pass below knows what to judge.
+    let mut pooled_tags: BTreeSet<String> = BTreeSet::new();
 
     for ordered in &hex.units {
         let who = &ordered.unit.unit_id;
@@ -730,11 +759,15 @@ fn report_shortfalls(
             if *balance >= 0 {
                 continue;
             }
-            // A sharing unit's silver is not its own to be short of; the purse is answered for
-            // above, once for the hex.
-            if tag == SILVER && ordered.shares() {
+
+            if pooled(tag) {
+                pooled_tags.insert(tag.clone());
+                if !ordered.shares() {
+                    *claims.entry(tag.clone()).or_insert(0) += -balance;
+                }
                 continue;
             }
+
             let code = if tag == SILVER {
                 codes::NOT_ENOUGH_SILVER
             } else {
@@ -758,12 +791,12 @@ fn report_shortfalls(
                     at,
                 )
             } else {
-                let name = item_name(tag, hex, ordered, ruleset);
+                let name = item_name(tag, hex, ruleset);
                 ordered.finding(
                     hex,
                     codes::NOT_ENOUGH_ITEMS,
                     format!(
-                        "short {short} {name}: this unit can have {} and its orders give away {}",
+                        "short {short} {name}: this unit can have {} and its orders give away or sell {}",
                         ordered.holding(tag),
                         ordered.holding(tag) + short,
                     ),
@@ -773,65 +806,68 @@ fn report_shortfalls(
             findings.push(finding);
         }
     }
-}
 
-/// The silver of every sharing unit in the hex, answered for as the one purse it is.
-///
-/// Reported against the hex rather than against a unit. Sixteen units of turn 71 sail together
-/// with their money held by one of them; blaming each of the fifteen for being penniless would be
-/// fifteen wrong answers, and blaming the sixteenth for being the treasurer would be another.
-fn report_shared_purse(
-    ledger: &Ledger<'_>,
-    hex: &Hex<'_>,
-    options: &CheckOptions,
-    findings: &mut Vec<Finding>,
-) {
-    if !options.emits(codes::NOT_ENOUGH_SILVER) {
+    if !pool_trusted {
         return;
     }
-    let sharers: Vec<&Ordered<'_>> = hex.units.iter().filter(|o| o.shares()).collect();
-    if sharers.is_empty() {
-        return;
-    }
-    // The purse is their sum, so one unit whose sums cannot be trusted makes the sum untrustworthy.
-    if sharers
-        .iter()
-        .any(|o| ledger.doubted.contains(&o.unit.unit_id))
-    {
-        return;
-    }
+    for tag in pooled_tags {
+        let code = if tag == SILVER {
+            codes::NOT_ENOUGH_SILVER
+        } else {
+            codes::NOT_ENOUGH_ITEMS
+        };
+        if !options.emits(code) {
+            continue;
+        }
 
-    let purse: i64 = sharers
-        .iter()
-        .map(|o| balance_of(ledger, &o.unit.unit_id, SILVER))
-        .sum();
-    if purse >= 0 {
-        return;
-    }
+        let pool: i64 = sharers
+            .iter()
+            .map(|o| balance_of(ledger, &o.unit.unit_id, &tag))
+            .sum();
+        let short = claims.get(&tag).copied().unwrap_or(0) - pool;
+        if short <= 0 {
+            continue;
+        }
 
-    let held: i64 = sharers.iter().map(|o| o.holding(SILVER)).sum();
-    findings.push(hex.finding(
-        codes::NOT_ENOUGH_SILVER,
-        format!(
-            "the {} units sharing in this hex are short ${} between them: they can have ${held} \
-             and their orders spend ${}",
-            sharers.len(),
-            -purse,
-            held - purse,
-        ),
-    ));
+        // What the pool's members and its borrowers actually hold, so the message can say "they
+        // can have X and their orders spend/give away Y" the way the per-unit one does.
+        let held: i64 = hex
+            .units
+            .iter()
+            .filter(|o| {
+                o.shares()
+                    || (!ledger.doubted.contains(&o.unit.unit_id)
+                        && balance_of(ledger, &o.unit.unit_id, &tag) < 0)
+            })
+            .map(|o| o.holding(&tag))
+            .sum();
+
+        let message = if tag == SILVER {
+            format!(
+                "the units in this hex are short ${short} between them: they can have ${held} \
+                 and their orders spend ${}",
+                held + short,
+            )
+        } else {
+            let name = item_name(&tag, hex, ruleset);
+            format!(
+                "the units in this hex are short {short} {name} between them: they can have \
+                 {held} and their orders give away or sell {}",
+                held + short,
+            )
+        };
+        findings.push(hex.finding(code, message));
+    }
 }
 
 /// How to write an item in a message: the catalogue's name where there is one, the tag otherwise.
-fn item_name(tag: &str, hex: &Hex<'_>, ordered: &Ordered<'_>, ruleset: Option<&Ruleset>) -> String {
+fn item_name(tag: &str, hex: &Hex<'_>, ruleset: Option<&Ruleset>) -> String {
     if let Some(item) = ruleset.and_then(|ruleset| ruleset.find_item(tag)) {
         return item.name.clone();
     }
-    ordered
-        .unit
-        .items
+    hex.units
         .iter()
-        .chain(hex.units.iter().flat_map(|other| other.unit.items.iter()))
+        .flat_map(|ordered| ordered.unit.items.iter())
         .find(|item: &&ItemAmount| item.tag.eq_ignore_ascii_case(tag))
         .map_or_else(|| tag.to_string(), |item| item.name.clone())
 }
@@ -1346,6 +1382,10 @@ mod tests {
     //
     // Without this, sixteen units of that turn - a fleet whose purse is held by one of them - each
     // reported a shortfall for a study the game paid for without complaint.
+    //
+    // The engine's `Unit::GetSharedNum` counts the unit itself plus every same-faction unit in
+    // the region carrying `FLAG_SHARING` - the borrower's own flag is not consulted, so a
+    // non-sharer may draw on a sharer just as freely as a sharer may draw on another.
 
     fn sharing(mut unit: ReportUnit) -> ReportUnit {
         unit.flags.push("sharing".to_string());
@@ -1366,16 +1406,19 @@ mod tests {
         );
     }
 
+    /// The engine's `GetSharedNum` counts the unit itself plus every same-faction unit in the
+    /// region carrying `FLAG_SHARING` — the borrower's own flag is never consulted.
     #[test]
-    fn a_unit_that_does_not_share_cannot_borrow_from_one_that_does() {
+    fn a_unit_that_does_not_share_may_still_draw_on_one_that_does() {
         let regions = vec![region(vec![
             with_men(with_silver(unit("5"), 0), 2),
             sharing(with_silver(unit("7"), 500)),
         ])];
 
         assert_eq!(
-            codes(&check(regions, "unit 5\nSTUDY combat\n")),
-            ["not-enough-silver"]
+            check(regions, "unit 5\nSTUDY combat\n"),
+            vec![],
+            "unit 7 shares, so unit 5 can borrow the $20 from it even though unit 5 does not share"
         );
     }
 
@@ -1409,7 +1452,8 @@ mod tests {
         );
         assert_eq!(finding.line, None);
         assert!(
-            finding.message.contains("70") && finding.message.contains("shar"),
+            finding.message.contains("short $70")
+                && finding.message.contains("the units in this hex"),
             "it names the shortfall and says whose it is: {}",
             finding.message
         );
@@ -1640,6 +1684,11 @@ mod tests {
         let finding = only(check(regions, "unit 5\nGIVE 7 10 swords\n"));
         assert_eq!(finding.code.as_str(), "not-enough-items");
         assert!(finding.message.contains("sword"), "{}", finding.message);
+        assert!(
+            finding.message.contains("give away or sell"),
+            "a SELL also charges the item: {}",
+            finding.message
+        );
     }
 
     #[test]
@@ -1666,6 +1715,146 @@ mod tests {
             vec![],
             "the catalogue has no widget, so there is nothing to count against"
         );
+    }
+
+    // --- items pool like silver does -------------------------------------------------------
+
+    #[test]
+    fn a_sharing_unit_s_stock_covers_a_neighbour_that_gives_it_away() {
+        let regions = vec![region(vec![
+            unit("5"),
+            sharing(with_item(unit("7"), 10, "sword", "SWOR")),
+        ])];
+
+        assert_eq!(
+            check(regions, "unit 5\nGIVE 9 10 swords\n"),
+            vec![],
+            "unit 7 shares its swords, so unit 5 can give away 10 of them"
+        );
+    }
+
+    #[test]
+    fn a_sharing_unit_s_stock_covers_a_neighbour_that_sells_it() {
+        let mut hex = region(vec![
+            unit("5"),
+            sharing(with_item(unit("7"), 10, "sword", "SWOR")),
+        ]);
+        hex.wanted.push(MarketItem {
+            amount: 20,
+            name: "sword".to_string(),
+            tag: "SWOR".to_string(),
+            price: 30,
+        });
+
+        assert_eq!(
+            check(vec![hex], "unit 5\nSELL 10 swords\n"),
+            vec![],
+            "unit 7 shares its swords, so unit 5 can sell 10 of them"
+        );
+    }
+
+    /// When the shared stock itself runs dry, it is the hex that is short and not any one unit -
+    /// the item twin of `a_shared_purse_that_runs_dry_is_the_hex_s_problem`.
+    #[test]
+    fn a_shared_stock_that_runs_dry_is_the_hex_s_problem() {
+        let regions = vec![region(vec![
+            unit("5"),
+            sharing(with_item(unit("7"), 20, "sword", "SWOR")),
+        ])];
+
+        let finding = only(check(regions, "unit 5\nGIVE 9 30 swords\n"));
+        assert_eq!(finding.code.as_str(), "not-enough-items");
+        assert_eq!(
+            finding.unit_id, None,
+            "the stock is shared, so the shortfall is too"
+        );
+        assert_eq!(finding.line, None);
+        assert_eq!(
+            finding.message,
+            "the units in this hex are short 10 sword between them: they can have 20 \
+             and their orders give away or sell 30"
+        );
+    }
+
+    /// A non-sharer's own stock is not pooled - only a sharing unit's stock is anyone else's to
+    /// draw on.
+    #[test]
+    fn a_stock_a_unit_keeps_to_itself_is_not_lent() {
+        let regions = vec![region(vec![
+            with_item(unit("5"), 10, "sword", "SWOR"),
+            with_item(unit("7"), 0, "sword", "SWOR"),
+            sharing(unit("9")),
+        ])];
+
+        let finding = only(check(regions, "unit 7\nGIVE 8 10 swords\n"));
+        assert_eq!(finding.code.as_str(), "not-enough-items");
+        assert_eq!(
+            finding.unit_id, None,
+            "there is a sharer in the hex, so the shortfall is judged against the pool"
+        );
+        assert!(
+            finding.message.contains("short 10 sword"),
+            "unit 5's swords are not lent - only the sharer's (empty) stock is the pool: {}",
+            finding.message
+        );
+    }
+
+    /// Men are the engine's one exception (`GetSharedNum` excludes `IT_MAN`): never borrowed,
+    /// sharer or no sharer.
+    #[test]
+    fn men_are_never_borrowed_from_a_sharing_unit() {
+        let regions = vec![region(vec![
+            unit("5"),
+            sharing(with_item(unit("7"), 10, "human", "HUMN")),
+        ])];
+
+        let finding = only(check(regions, "unit 5\nGIVE 9 10 HUMN\n"));
+        assert_eq!(finding.code.as_str(), "not-enough-items");
+        assert_eq!(
+            finding.unit_id.as_deref(),
+            Some("5"),
+            "men do not pool, so the shortfall stays with the unit that ordered it"
+        );
+    }
+
+    /// The item twin of `a_doubted_unit_silences_the_purse_it_shares`.
+    #[test]
+    fn a_doubted_sharer_silences_the_stock_it_shares() {
+        let regions = vec![region(vec![
+            unit("5"),
+            sharing(with_item(unit("7"), 20, "sword", "SWOR")),
+        ])];
+
+        assert_eq!(
+            check(
+                regions,
+                "unit 5\nGIVE 9 30 swords\nunit 7\nWITHDRAW 10 grain\n"
+            ),
+            vec![]
+        );
+    }
+
+    #[test]
+    fn a_hex_without_sharers_still_reports_each_unit_on_its_own() {
+        let regions = vec![region(vec![
+            with_item(unit("5"), 3, "sword", "SWOR"),
+            with_item(unit("7"), 2, "sword", "SWOR"),
+        ])];
+
+        let findings = check(
+            regions,
+            "unit 5\nGIVE 9 10 swords\nunit 7\nGIVE 9 10 swords\n",
+        );
+        assert_eq!(
+            findings.len(),
+            2,
+            "no sharer in the hex: each is on its own"
+        );
+        for finding in &findings {
+            assert_eq!(finding.code.as_str(), "not-enough-items");
+            assert!(finding.unit_id.is_some());
+            assert!(finding.line.is_some());
+        }
     }
 
     // --- guarding ---------------------------------------------------------------------------
@@ -2131,17 +2320,20 @@ mod tests {
         }
     }
 
-    /// `not-enough-silver` comes from two different places - a single unit's balance and the
-    /// shared purse - and disabling the code has to close both, not just the one a simpler test
-    /// would happen to hit.
+    /// `not-enough-silver` comes from two different places - a single unit's balance in a hex
+    /// with no sharer, and the pool in a hex that has one - and disabling the code has to close
+    /// both, not just the one a simpler test would happen to hit.
     #[test]
     fn a_disabled_code_silences_both_its_emission_sites() {
-        let regions = vec![region(vec![
+        let no_sharer = region(vec![with_silver(unit("9"), 40)]);
+        let mut shared = region(vec![
             sharing(with_men(with_silver(unit("5"), 0), 10)),
             sharing(with_silver(unit("7"), 30)),
-            with_silver(unit("9"), 40),
-        ])];
-        let orders = "unit 5\nSTUDY combat\nunit 9\nGIVE 11 100 SILV\n";
+        ]);
+        shared.region_id = "1:8,53".to_string();
+        shared.coordinate = Coordinate { x: 8, y: 53, z: 1 };
+        let regions = vec![no_sharer, shared];
+        let orders = "unit 9\nGIVE 11 100 SILV\nunit 5\nSTUDY combat\n";
 
         let enabled = check_turn(
             &report(regions.clone()),
@@ -2157,7 +2349,7 @@ mod tests {
                 .filter(|code| *code == "not-enough-silver")
                 .count(),
             2,
-            "the shared purse and unit 9's own balance should both be short: {enabled:?}"
+            "unit 9's own balance and the shared pool should both be short: {enabled:?}"
         );
 
         assert_eq!(

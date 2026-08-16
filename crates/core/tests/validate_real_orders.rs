@@ -147,7 +147,7 @@ fn a_unit_told_to_spend_what_it_has_not_got_is_caught_in_that_same_turn() {
     );
     assert_eq!(findings[0].unit_id, None, "one purse, shared");
     assert!(
-        findings[0].message.contains("sharing"),
+        findings[0].message.contains("the units in this hex"),
         "{}",
         findings[0].message
     );
