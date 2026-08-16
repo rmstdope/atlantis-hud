@@ -42,6 +42,11 @@ export type CoreWasmModule = {
     orders: string
   ): unknown;
   export_map_state(rawReport: string, rememberedJson: string, requestJson: string): unknown;
+  known_map_state(
+    rawReport: string,
+    rulesetJson: string | null,
+    rememberedJson: string
+  ): unknown;
   preview_orders_state(
     rulesetJson: string,
     rawReport: string,
@@ -620,6 +625,10 @@ export function createWebCoreAdapter(
       // Straight through as well: the export is pure computation over the arguments, and the file
       // it produces is handed back as text for the shell to save.
       return wasm.export_map_state(rawReport, rememberedJson, requestJson);
+    },
+    knownMap(rawReport: string, rulesetJson: string | null, rememberedJson: string) {
+      // Straight through as well: the resolution is pure computation over the arguments.
+      return wasm.known_map_state(rawReport, rulesetJson, rememberedJson);
     },
     previewOrders(
       rulesetJson: string,

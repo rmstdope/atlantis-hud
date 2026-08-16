@@ -1109,6 +1109,78 @@ describe("map export", () => {
   });
 });
 
+/**
+ * The known map crosses the wire as three strings, the same shape `export_map` does, so the thing
+ * worth pinning is the argument names Tauri declares and that `null` passes through unchanged - a
+ * `""` there would be a real ruleset to the Rust side, not "none given".
+ */
+describe("known map", () => {
+  const REMEMBERED = [
+    {
+      region: {
+        regionId: "1:2,2",
+        coordinate: { x: 2, y: 2, z: 1 },
+        terrain: "plain",
+        province: "Nowhere",
+        settlement: null,
+        population: null,
+        race: null,
+        tax: null,
+        taxBase: null,
+        wages: null,
+        maxWages: null,
+        entertainment: null,
+        exits: [],
+        structures: [],
+        units: [],
+        products: [],
+        forSale: [],
+        wanted: []
+      },
+      lastSeenTurn: 5
+    }
+  ];
+  const ANSWER = { hexes: [], currentTurn: 6 };
+
+  it("asks tauri to resolve with the argument names its command declares", async () => {
+    const calls: Array<{ command: string; args?: Record<string, unknown> }> = [];
+    const invoke: TauriInvoke = <T,>(command: string, args?: Record<string, unknown>) => {
+      calls.push({ command, args });
+      return Promise.resolve(ANSWER as T);
+    };
+
+    const known = await createCoreClient(createTauriAdapter(invoke)).knownMap(
+      "the turn's report",
+      "{ruleset}",
+      REMEMBERED
+    );
+
+    expect(calls).toEqual([
+      {
+        command: "known_map",
+        args: {
+          raw_report: "the turn's report",
+          ruleset_json: "{ruleset}",
+          remembered_json: JSON.stringify(REMEMBERED)
+        }
+      }
+    ]);
+    expect(known).toEqual(ANSWER);
+  });
+
+  it("passes a null ruleset through unchanged, never as an empty string", async () => {
+    const calls: Array<{ command: string; args?: Record<string, unknown> }> = [];
+    const invoke: TauriInvoke = <T,>(command: string, args?: Record<string, unknown>) => {
+      calls.push({ command, args });
+      return Promise.resolve(ANSWER as T);
+    };
+
+    await createCoreClient(createTauriAdapter(invoke)).knownMap("report", null, []);
+
+    expect(calls[0]?.args?.ruleset_json).toBeNull();
+  });
+});
+
 describe("hex notes", () => {
   const NOTE: HexNoteRecord = {
     id: "note-1",

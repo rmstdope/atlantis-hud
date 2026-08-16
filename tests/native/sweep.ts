@@ -131,6 +131,14 @@ export const SWEEP: SweepEntry[] = [
     })
   },
   {
+    command: "known_map",
+    args: () => ({
+      raw_report: REPORT,
+      ruleset_json: null,
+      remembered_json: "[]"
+    })
+  },
+  {
     command: "preview_orders",
     args: () => ({
       ruleset_json: RULESET,
