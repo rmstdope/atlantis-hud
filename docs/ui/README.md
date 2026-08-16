@@ -27,6 +27,7 @@ was retired once they had all landed.
 | `panel-split-resize.html` | How the drag handle between the unit panel and the orders editor announces itself (bead ah-13o). Two live, draggable candidates plus the folded and limit-reached states; B, the always-visible grip pill in the existing gap, was chosen. |
 | `hex-notes.html` | Where a player's own note on a hex is written and how it is drawn on the map (bead ah-o1t, issue #261). Two homes for the editor, three map treatments and two switch placements, plus the states; A — a Notes section in the region panel — was chosen, with a pin on the map that opens into a stack of tags on click, and a `Notes` entry in the Badges menu. |
 | `units-pane-drag-resize.html` | Dragging the "Units in hex" pane to size it, replacing the row-count setting (bead ah-2r3). Two live candidates for what a dragged height means on a short list, snap vs free pixels, the bounds, and the folded, keyboard, empty and short-window states; A — the dragged height is the height — with free pixels, a one-row floor and a 70% ceiling was chosen. |
+| `backup-import-collision.html` | What importing a game backup does when that game is already here (bead ah-c0m). Three candidates plus the states; B — an inline Replace / Keep both / Cancel confirmation in the picker's *This game* tab — was chosen, with the copy named “<name> (imported)”. |
 
 The layout pages answered issue #17 and are kept as the record of that decision. Pages added later
 answer one bead each and are named after the question they settle, not after the layout — the table
