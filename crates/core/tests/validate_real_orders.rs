@@ -87,6 +87,13 @@ fn classified() -> ParsedReport {
     report
 }
 
+/// Since ah-dbb.2, this turn has exactly one real finding: four mages in hex `1:26,52`
+/// `CAST earm` (enchant armor) while the hex's shared stock holds no plate armor. The server
+/// accepted the order - `RunEnchant` never refuses a cast, it just enchants nothing - so this is
+/// not a mistake the *server* rejected. It is still a spell that spends the whole month to
+/// produce nothing, which is exactly what a shortfall warning exists to catch; the navigator
+/// chose to keep the warning (2026-08-16) rather than special-case enchant/transmutation as
+/// silent, so this is the one finding the bar allows through rather than a gap in it.
 #[test]
 fn the_committed_turn_has_no_semantic_problems_either() {
     let findings = check_turn(
@@ -96,10 +103,18 @@ fn the_committed_turn_has_no_semantic_problems_either() {
         CheckOptions::default(),
     );
 
+    assert_eq!(findings.len(), 1, "{findings:?}");
+    let finding = &findings[0];
+    assert_eq!(finding.code.as_str(), "not-enough-items");
+    assert_eq!(finding.region_id, "1:26,52");
     assert_eq!(
-        findings,
-        vec![],
-        "the checks invented a problem with a turn that was actually played"
+        finding.unit_id, None,
+        "the hex shares, so the shortfall is the hex's"
+    );
+    assert_eq!(
+        finding.message,
+        "the units in this hex are short 4 plate armor between them: they can have 0 and \
+         their orders give away or sell 4"
     );
 }
 
@@ -124,6 +139,10 @@ fn the_units_in_that_turn_are_counted_rather_than_estimated() {
 /// so there is one purse in that hex and the money in it is nobody's in particular. The per-unit
 /// path cannot be shown on this fixture at all, which is why the assertion below measures the
 /// flag rather than assuming it. `semantics.rs` covers both paths on input that varies.
+///
+/// The turn's own `not-enough-items` finding (see `the_committed_turn_has_no_semantic_problems_
+/// either`) rides along here too - it belongs to a different hex, and `check_turn` appends by
+/// region in report order, silver's hex first.
 #[test]
 fn a_unit_told_to_spend_what_it_has_not_got_is_caught_in_that_same_turn() {
     let report = classified();
@@ -142,7 +161,7 @@ fn a_unit_told_to_spend_what_it_has_not_got_is_caught_in_that_same_turn() {
 
     assert_eq!(
         findings.iter().map(|f| f.code.as_str()).collect::<Vec<_>>(),
-        vec!["not-enough-silver"],
+        vec!["not-enough-silver", "not-enough-items"],
         "{findings:?}"
     );
     assert_eq!(findings[0].unit_id, None, "one purse, shared");
@@ -172,9 +191,15 @@ fn a_whole_map_pass_re_reads_neither_the_report_nor_the_ruleset() {
 
     // Fifty passes over the committed turn. If any of them re-parsed the report this would take
     // long enough to notice; the point here is that they are all handed the same two objects.
+    // One finding is expected and stable across passes - see `the_committed_turn_has_no_semantic_
+    // problems_either` for what it is and why it belongs.
     for _ in 0..50 {
         let result = check_turn(&report, &template, Some(&ruleset), CheckOptions::default());
-        assert_eq!(result, vec![], "the turn is clean, pass after pass");
+        assert_eq!(
+            result.len(),
+            1,
+            "the turn's one finding is stable, pass after pass"
+        );
     }
 }
 

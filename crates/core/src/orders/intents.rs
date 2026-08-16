@@ -59,6 +59,13 @@ pub enum Intent {
     /// spending its month cannot be offered as somebody's spare teacher. Carries the keyword so a
     /// message can name it.
     MonthLong(&'static str),
+    /// `CAST <spell> [arguments…]`. The month is spoken for (as `MonthLong` says), and the spell
+    /// may consume what the ruleset says it costs; the arguments are kept for the one spell whose
+    /// cost depends on them (transmutation names its output, and optionally a number).
+    Cast {
+        spell: String,
+        arguments: Vec<String>,
+    },
     Move {
         steps: Vec<MoveStep>,
     },
@@ -257,8 +264,18 @@ fn read_order(command: &Token, arguments: &[Token]) -> Option<Intent> {
         }),
         "LEAVE" if arguments.is_empty() => Some(Intent::Leave),
         // Not every spell takes a month, but the rules make no promise about which, and a mage
-        // offered as somebody's spare teacher is worse than one left alone.
-        "CAST" => Some(Intent::MonthLong("CAST")),
+        // offered as somebody's spare teacher is worse than one left alone. The arguments are kept
+        // rather than discarded like BUILD/PRODUCE's, since transmutation's cost reads them.
+        "CAST" => {
+            let spell = arguments.first()?;
+            Some(Intent::Cast {
+                spell: spell.text.clone(),
+                arguments: arguments[1..]
+                    .iter()
+                    .map(|token| token.text.clone())
+                    .collect(),
+            })
+        }
         word if crate::movement::orders::is_movement_command(word) => Some(Intent::Move {
             steps: forms::read_move_line(command, arguments)?,
         }),
@@ -633,6 +650,19 @@ mod tests {
     #[test]
     fn a_leave_is_recorded() {
         assert_eq!(intents("unit 5\nLEAVE\n"), vec![Intent::Leave]);
+    }
+
+    /// `CAST` keeps the spell and its arguments, since transmutation's cost depends on them - and
+    /// still spends the whole month, the reason it used to be `MonthLong`.
+    #[test]
+    fn cast_keeps_the_spell_and_its_arguments() {
+        assert_eq!(
+            intents("unit 5\nCAST Transmutation 4 rootstone\n"),
+            vec![Intent::Cast {
+                spell: "Transmutation".to_string(),
+                arguments: vec!["4".to_string(), "rootstone".to_string()],
+            }]
+        );
     }
 
     /// A TURN block's contents are next month's orders, not this month's. Reading them as though
