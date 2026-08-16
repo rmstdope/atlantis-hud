@@ -100,6 +100,9 @@ export type CastInput = { tag: string; amount: number };
  */
 export type CastCost = { costs: CastInput[]; transmute: Record<string, string> };
 
+/** One thing a skill can make, and the level at which it can first be made. */
+export type Production = { tag: string; level: number };
+
 export type SkillEntry = {
   tag: string;
   name: string;
@@ -114,6 +117,11 @@ export type SkillEntry = {
   maxLevel: number;
   /** What CASTing this skill consumes, or null for the (large majority) that state no cost. */
   cast: CastCost | null;
+  /**
+   * What a unit with this skill may PRODUCE, in the order the page lists it, each with the level
+   * at which it becomes available. Empty for the great majority of skills, which make nothing.
+   */
+  produces: Production[];
 };
 
 export type SkillReference = Record<string, SkillEntry>;
@@ -364,6 +372,54 @@ function readCastCost(tag: string, paragraph: string): CastCost | null {
   return { costs, transmute };
 }
 
+/** The clause a production sentence opens with. Every PRODUCE on the page today is a `may PRODUCE`. */
+const PRODUCTION = /may PRODUCE ([^.]*)\./i;
+/** What separates one production from the next: `at a rate of 1 per man-month`, `... per 3 man-months`. */
+const PRODUCTION_RATE = /at a rate of [^.]*?man-months?/i;
+/** The tag in `swords [SWOR]`, `a number of meals [MEAL]`. */
+const PRODUCED_TAG = /\[([A-Z0-9]{2,6})\]/;
+
+/**
+ * What one level's paragraph says the skill may produce, or `[]` when it says nothing - true of
+ * most skills.
+ *
+ * The whole difficulty is telling a product from its materials: `swords [SWOR] from iron [IRON]`
+ * names two items and the skill makes only the first. So the clause is cut into one segment per
+ * production - the rate phrase is what ends each - and within a segment everything from the first
+ * ` from ` is dropped before the tag is read. A trailing empty segment carries no tag and is
+ * skipped; a clause that yields no tag at all is the page having changed shape, and throws.
+ */
+function readProduction(tag: string, paragraph: string, level: number): Production[] {
+  const clause = paragraph.match(PRODUCTION);
+  if (!clause) {
+    return [];
+  }
+
+  const made: Production[] = [];
+  for (const segment of clause[1].split(PRODUCTION_RATE)) {
+    const found = segment.split(" from ")[0].match(PRODUCED_TAG);
+    if (found) {
+      made.push({ tag: found[1], level });
+    }
+  }
+
+  if (made.length === 0) {
+    throw new RulesetScrapeError(`could not read what skill ${tag} produces from "${clause[0]}"`);
+  }
+  return made;
+}
+
+/** Unions production across levels: a tag keeps the lowest level that granted it. */
+function mergeProduction(existing: Production[] | undefined, found: Production[]): Production[] {
+  const merged = [...(existing ?? [])];
+  for (const made of found) {
+    if (!merged.some((seen) => seen.tag === made.tag)) {
+      merged.push(made);
+    }
+  }
+  return merged;
+}
+
 /** Unions two `CastCost`s across levels: `costs` from whichever level states them, `transmute` merged. */
 function mergeCast(existing: CastCost | null | undefined, found: CastCost | null): CastCost | null {
   if (!existing) {
@@ -406,7 +462,11 @@ export function parseSkillReference(html: string): SkillReference {
       // write null over a figure the page did give would lose every cost in the catalogue.
       cost: existing?.cost ?? stated,
       maxLevel: Math.max(existing?.maxLevel ?? 0, Number.parseInt(level, 10)),
-      cast: mergeCast(existing?.cast, readCastCost(tag, paragraph))
+      cast: mergeCast(existing?.cast, readCastCost(tag, paragraph)),
+      produces: mergeProduction(
+        existing?.produces,
+        readProduction(tag, paragraph, Number.parseInt(level, 10))
+      )
     };
   }
 
