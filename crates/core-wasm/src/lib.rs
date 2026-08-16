@@ -1,7 +1,9 @@
 //! The core's pure functions (parsing, planning, validation, map export), bound for the browser
 //! bundle. Persistence is not part of this crate: the desktop reads and writes through
 //! `core-tauri`'s Tauri commands, and the web has its own store in `@atlantis/browser-core`, over
-//! IndexedDB.
+//! IndexedDB. The one exception is the game backup codec (`encode_game_backup_state`,
+//! `decode_game_backup_state`): the rules about what a backup file contains live in the core, and
+//! the web's store calls through here so it never encodes or decodes one itself.
 
 use atlantis_hud_core::report::merge::{merge_report_into_sightings, StoredSighting};
 use atlantis_hud_core::report::sighting::{region_sightings, RegionSighting};
@@ -214,6 +216,28 @@ pub fn diff_imported_turn_state(existing: JsValue, candidate: JsValue) -> Result
 
     let diff = diff_imported_turn(existing.as_ref(), &candidate);
     to_js(&diff)
+}
+
+/// Encodes one game's rows as one backup document. `content_json` is the browser store's own
+/// records under the six keys of `GameBackupContent`; keys the codec does not know are ignored.
+#[wasm_bindgen]
+pub fn encode_game_backup_state(
+    content_json: String,
+    exported_at: String,
+) -> Result<String, JsValue> {
+    atlantis_hud_core::backup::encode_game_backup_json(&content_json, &exported_at)
+        .map_err(|error| JsValue::from_str(&error.to_string()))
+}
+
+/// Decodes one backup document into rows the browser store writes, or throws the codec's reason.
+#[wasm_bindgen]
+pub fn decode_game_backup_state(
+    backup_json: String,
+    opened_at: String,
+) -> Result<JsValue, JsValue> {
+    let decoded = atlantis_hud_core::backup::decode_game_backup(&backup_json, &opened_at)
+        .map_err(|error| JsValue::from_str(&error.to_string()))?;
+    to_js(&decoded)
 }
 
 /// Parses a report and counts each unit's men against the catalogue.

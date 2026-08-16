@@ -170,9 +170,18 @@ impl ReportRegion {
     /// How the region reads in the interface, for example `mountain (7,53) in Inhead`.
     #[must_use]
     pub fn label(&self) -> String {
-        format!(
-            "{} ({},{}) in {}",
-            self.terrain, self.coordinate.x, self.coordinate.y, self.province
+        region_label(
+            &self.terrain,
+            self.coordinate.x,
+            self.coordinate.y,
+            &self.province,
         )
     }
+}
+
+/// The label a region is shown by: its terrain, coordinate and province, spelled the same way
+/// whichever call built the region it comes from.
+#[must_use]
+pub fn region_label(terrain: &str, x: i32, y: i32, province: &str) -> String {
+    format!("{terrain} ({x},{y}) in {province}")
 }

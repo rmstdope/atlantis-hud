@@ -153,6 +153,27 @@ function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
         rejection: null
       };
     },
+    // Routing stand-ins, not the codec: the codec's rules are tested in Rust and against the real
+    // module in gameBackup.wasm.test.ts.
+    encode_game_backup_state: (contentJson: string, exportedAt: string) =>
+      JSON.stringify(
+        {
+          format: "atlantis-hud-game-backup",
+          version: 1,
+          exportedAt,
+          ...JSON.parse(contentJson)
+        },
+        null,
+        2
+      ),
+    decode_game_backup_state: (backupJson: string, openedAt: string) => {
+      const b = JSON.parse(backupJson) as Record<string, unknown>;
+      return {
+        ...b,
+        manifest: { ...(b.manifest as Record<string, unknown>), lastOpenedAt: openedAt },
+        hexNotes: b.hexNotes ?? []
+      };
+    },
     ...overrides
   };
 }
@@ -742,7 +763,15 @@ describe("exporting and importing games", () => {
       version: 1,
       exportedAt: NOW,
       manifest: { metadata: { gameId: "alpha" } },
-      importedTurns: [{ factionId: "17", turnNumber: 12, rawReport: REPORT }],
+      importedTurns: [
+        {
+          factionId: "17",
+          turnNumber: 12,
+          rawReport: REPORT,
+          importedAt: IMPORTED_AT,
+          updatedAt: IMPORTED_AT
+        }
+      ],
       orderDrafts: [{ factionId: "17", turnNumber: 12, orderText: "@work\n@study combat" }],
       regionSightings: [{ factionId: "17", regionId: "1:7,53", lastSeenTurn: 12 }],
       mergedReports: [{ factionId: "17", turnNumber: 12, mergedFactionId: "73" }],
@@ -794,40 +823,6 @@ describe("exporting and importing games", () => {
         updatedAt: "2026-08-08T00:00:00Z"
       }
     ]);
-  });
-
-  it("imports a backup written before hex notes existed", async () => {
-    const backup = JSON.stringify({
-      format: "atlantis-hud-game-backup",
-      version: 1,
-      exportedAt: NOW,
-      manifest: manifest("pre-hex-notes", "Pre Hex Notes"),
-      importedTurns: [],
-      orderDrafts: [],
-      regionSightings: [],
-      mergedReports: []
-      // No hexNotes key at all — the field did not exist yet.
-    });
-
-    const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
-    const restored = (await adapter.importGame(backup, NOW)) as { databasePath: string };
-
-    expect(await adapter.listHexNotes(restored.databasePath, "pre-hex-notes")).toEqual([]);
-  });
-
-  it("refuses a backup file from a newer format version", async () => {
-    const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
-    const backup = JSON.stringify({
-      format: "atlantis-hud-game-backup",
-      version: 99,
-      manifest: manifest("alpha", "Alpha"),
-      importedTurns: [],
-      orderDrafts: [],
-      regionSightings: [],
-      mergedReports: []
-    });
-
-    await expect(adapter.importGame(backup, NOW)).rejects.toThrow(/newer than this build supports/u);
   });
 
   it("refuses to import over an existing game", async () => {
