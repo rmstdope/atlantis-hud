@@ -17,6 +17,9 @@
  * leaves every piece of on-screen state exactly as it was, under the same red
  * `could not read <file>: <error>` status, rather than a new report shown over stale supporting
  * state.
+ *
+ * One thing *is* a failure and not a warning since ah-brd: a report that names no faction is
+ * refused before anything is committed or shown (`routeReport` -> `reject`).
  */
 
 import type {
@@ -215,6 +218,7 @@ export type PendingReportLoad = {
 };
 
 export type ReportRoute =
+  | { kind: "reject"; reason: string }
   | { kind: "load" }
   | { kind: "storeOnly"; currentTurn: number }
   | { kind: "ask"; pending: PendingReportLoad };
@@ -233,6 +237,10 @@ export function routeReport(
     viewer ? { factionId: viewer.header.factionId, turnNumber: viewer.header.turnNumber } : null,
     { factionId: report.header.factionId, turnNumber: report.header.turnNumber }
   );
+
+  if (decision.kind === "reject") {
+    return { kind: "reject", reason: decision.reason };
+  }
 
   if (decision.kind === "storeOnly") {
     return { kind: "storeOnly", currentTurn: decision.currentTurn };

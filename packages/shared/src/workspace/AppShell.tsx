@@ -950,6 +950,12 @@ export function AppShell({
 
           const route = routeReport(parsed, report, text, fileName);
 
+          if (route.kind === "reject") {
+            // Thrown rather than reported here, so `runReported`'s `could not read <file>: …`
+            // prefix and red status apply exactly as they do to a file that would not parse.
+            throw new Error(route.reason);
+          }
+
           if (route.kind === "ask") {
             // The question is asked and the load stops here. `busy` is released by `runReported`'s
             // `finally`, because it disables the button that opened this file and a prompt the
