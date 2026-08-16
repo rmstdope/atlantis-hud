@@ -148,9 +148,8 @@ pub fn with_global<T>(action: impl FnOnce(&mut ReportCache) -> T) -> T {
 mod tests {
     use super::*;
 
-    const TURN_71: &str =
-        include_str!("../../../tests/fixtures/reports/neworigins-3.0.0-g7-f95-t71.rep");
-    const RULESET: &str = include_str!("../../../config/public/ruleset.json");
+    const TURN_71: &str = atlantis_hud_fixtures::G7_F95_T71.text;
+    const RULESET: &str = atlantis_hud_fixtures::RULESET_JSON;
 
     /// A report nothing else in the suite parses, so the shared-cache test cannot be disturbed.
     const LONELY: &str = "Lonely (1) Report\n";

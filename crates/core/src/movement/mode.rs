@@ -273,7 +273,7 @@ mod tests {
     // ------------------------------------------------------------ fleets
 
     fn ruleset() -> Ruleset {
-        Ruleset::from_json(include_str!("../../../../config/public/ruleset.json"))
+        Ruleset::from_json(atlantis_hud_fixtures::RULESET_JSON)
             .expect("the committed ruleset loads")
     }
 

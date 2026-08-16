@@ -14,9 +14,8 @@ use atlantis_hud_core::report::model::{ReportRegion, ReportUnit};
 use atlantis_hud_core::report::parse_report_full;
 use atlantis_hud_core::report::sighting::{region_sightings, RegionSighting};
 
-const VIEWER: &str =
-    include_str!("../../../tests/fixtures/reports/neworigins-3.0.0-g7-f95-t71.rep");
-const ALLY: &str = include_str!("../../../tests/fixtures/reports/neworigins-3.0.0-g8-f73-t71.rep");
+const VIEWER: &str = atlantis_hud_fixtures::G7_F95_T71.text;
+const ALLY: &str = atlantis_hud_fixtures::G8_F73_T71.text;
 const SWAMP: &str = "1:10,50";
 
 /// Faction 95's stored map, exactly as importing its turn 71 would have written it.

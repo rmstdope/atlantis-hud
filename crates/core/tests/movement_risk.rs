@@ -6,21 +6,13 @@
 
 use atlantis_hud_core::movement::graph::MapKnowledge;
 use atlantis_hud_core::movement::risk::{assess_hex, assess_route, RiskLevel};
-use atlantis_hud_core::movement::rules::Ruleset;
-use atlantis_hud_core::report::model::{Coordinate, ReportUnit};
+use atlantis_hud_core::report::model::ReportUnit;
 use atlantis_hud_core::report::{classify_units, parse_report_full, ParsedReport};
 
-const TURN_71: &str =
-    include_str!("../../../tests/fixtures/reports/neworigins-3.0.0-g7-f95-t71.rep");
-const RULESET: &str = include_str!("../../../config/public/ruleset.json");
+const TURN_71: &str = atlantis_hud_fixtures::G7_F95_T71.text;
 
-fn at(x: i32, y: i32) -> Coordinate {
-    Coordinate { x, y, z: 1 }
-}
-
-fn ruleset() -> Ruleset {
-    Ruleset::from_json(RULESET).expect("the committed ruleset loads")
-}
+mod common;
+use common::{at, ruleset};
 
 /// Classified, because the risk heuristic weighs men and a unit's men are only exact once the
 /// catalogue has been consulted.

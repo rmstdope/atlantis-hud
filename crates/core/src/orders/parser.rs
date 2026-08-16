@@ -326,7 +326,7 @@ mod tests {
     use super::super::validate_orders;
     use crate::{OrderDiagnostic, OrderDiagnosticSeverity};
 
-    const RULESET: &str = include_str!("../../../../config/public/ruleset.json");
+    const RULESET: &str = atlantis_hud_fixtures::RULESET_JSON;
 
     fn diagnose(source: &str) -> Vec<OrderDiagnostic> {
         validate_orders(source, None).diagnostics

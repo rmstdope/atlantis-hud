@@ -13,28 +13,18 @@
 
 use atlantis_hud_core::movement::graph::{MapKnowledge, RememberedRegion};
 use atlantis_hud_core::movement::plan::{plan_route, RouteProblem};
-use atlantis_hud_core::movement::rules::{MovementMode, Ruleset};
+use atlantis_hud_core::movement::rules::MovementMode;
 use atlantis_hud_core::report::model::Coordinate;
 use atlantis_hud_core::report::{parse_report_full, ParsedReport};
 
-const TURN_71: &str =
-    include_str!("../../../tests/fixtures/reports/neworigins-3.0.0-g7-f95-t71.rep");
-const RULESET: &str = include_str!("../../../config/public/ruleset.json");
+const TURN_71: &str = atlantis_hud_fixtures::G7_F95_T71.text;
 
-const F42_T40: &str =
-    include_str!("../../../tests/fixtures/reports/neworigins-3.0.0-g3-f42-t40.rep");
-const F42_T41: &str =
-    include_str!("../../../tests/fixtures/reports/neworigins-3.0.0-g3-f42-t41.rep");
-const F42_T42: &str =
-    include_str!("../../../tests/fixtures/reports/neworigins-3.0.0-g3-f42-t42.rep");
+const F42_T40: &str = atlantis_hud_fixtures::G3_F42_T40.text;
+const F42_T41: &str = atlantis_hud_fixtures::G3_F42_T41.text;
+const F42_T42: &str = atlantis_hud_fixtures::G3_F42_T42.text;
 
-fn at(x: i32, y: i32) -> Coordinate {
-    Coordinate { x, y, z: 1 }
-}
-
-fn ruleset() -> Ruleset {
-    Ruleset::from_json(RULESET).expect("the committed ruleset loads")
-}
+mod common;
+use common::{at, ruleset};
 
 fn turn_71() -> ParsedReport {
     parse_report_full(TURN_71)

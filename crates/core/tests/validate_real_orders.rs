@@ -5,15 +5,16 @@
 //! written by a person playing the game and accepted by the server, so every line in it is correct
 //! by construction. Anything this parser has to say about it is something the parser got wrong.
 
-use atlantis_hud_core::movement::rules::Ruleset;
 use atlantis_hud_core::orders::semantics::{check_turn, CheckOptions};
 use atlantis_hud_core::report::orders::extract_orders_template;
 use atlantis_hud_core::report::{classify_units, parse_report_full, ParsedReport};
 use atlantis_hud_core::validate_orders;
 
-const TURN_71: &str =
-    include_str!("../../../tests/fixtures/reports/neworigins-3.0.0-g7-f95-t71.rep");
-const RULESET: &str = include_str!("../../../config/public/ruleset.json");
+const TURN_71: &str = atlantis_hud_fixtures::G7_F95_T71.text;
+const RULESET: &str = atlantis_hud_fixtures::RULESET_JSON;
+
+mod common;
+use common::ruleset;
 
 fn template() -> String {
     extract_orders_template(TURN_71)
@@ -79,10 +80,6 @@ fn one_wrong_word_in_that_same_document_is_found() {
 // The report is *classified* before it is checked, as it is in the application: a headcount that
 // is a guess prices no study, so an unclassified report would leave every studying unit unjudged
 // and this bar would clear itself by declining to look.
-
-fn ruleset() -> Ruleset {
-    Ruleset::from_json(RULESET).expect("the committed ruleset should be usable")
-}
 
 fn classified() -> ParsedReport {
     let mut report = parse_report_full(TURN_71);

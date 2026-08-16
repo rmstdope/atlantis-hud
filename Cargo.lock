@@ -190,6 +190,7 @@ dependencies = [
 name = "atlantis-hud-core"
 version = "0.1.0"
 dependencies = [
+ "atlantis-hud-fixtures",
  "serde",
  "serde_json",
 ]
@@ -212,6 +213,7 @@ version = "0.1.0"
 dependencies = [
  "atlantis-hud-core",
  "atlantis-hud-core-persistence",
+ "atlantis-hud-fixtures",
  "serde",
  "serde_json",
  "tempfile",
@@ -240,6 +242,10 @@ dependencies = [
  "tauri-plugin-fs",
  "tauri-plugin-opener",
 ]
+
+[[package]]
+name = "atlantis-hud-fixtures"
+version = "0.1.0"
 
 [[package]]
 name = "atomic-waker"

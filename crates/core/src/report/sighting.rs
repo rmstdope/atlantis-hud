@@ -62,8 +62,7 @@ mod tests {
     use super::*;
     use crate::report::parse_report_full;
 
-    const TURN_71: &str =
-        include_str!("../../../../tests/fixtures/reports/neworigins-3.0.0-g7-f95-t71.rep");
+    const TURN_71: &str = atlantis_hud_fixtures::G7_F95_T71.text;
 
     #[test]
     fn every_region_in_the_report_is_a_sighting_in_the_turn_it_was_seen() {

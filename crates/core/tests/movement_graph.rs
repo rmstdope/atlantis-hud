@@ -9,14 +9,11 @@ use atlantis_hud_core::movement::rules::MovementMode;
 use atlantis_hud_core::report::model::Coordinate;
 use atlantis_hud_core::report::parse_report_full;
 
-const TURN_71: &str =
-    include_str!("../../../tests/fixtures/reports/neworigins-3.0.0-g7-f95-t71.rep");
-const G3_F42_T40: &str =
-    include_str!("../../../tests/fixtures/reports/neworigins-3.0.0-g3-f42-t40.rep");
+const TURN_71: &str = atlantis_hud_fixtures::G7_F95_T71.text;
+const G3_F42_T40: &str = atlantis_hud_fixtures::G3_F42_T40.text;
 
-fn at(x: i32, y: i32) -> Coordinate {
-    Coordinate { x, y, z: 1 }
-}
+mod common;
+use common::at;
 
 fn knowledge() -> MapKnowledge {
     MapKnowledge::from_report(&parse_report_full(TURN_71))

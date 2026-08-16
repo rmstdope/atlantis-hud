@@ -1,5 +1,6 @@
 [workspace]
 members = [
+  "crates/fixtures",
   "crates/core",
   "crates/core-persistence",
   "crates/core-wasm",

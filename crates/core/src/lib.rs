@@ -451,8 +451,7 @@ pub fn diff_imported_turn_fields(
 mod tests {
     use super::*;
 
-    const TURN_71: &str =
-        include_str!("../../../tests/fixtures/reports/neworigins-3.0.0-g7-f95-t71.rep");
+    const TURN_71: &str = atlantis_hud_fixtures::G7_F95_T71.text;
 
     // --- the widened validation contract ----------------------------------------------------
 
