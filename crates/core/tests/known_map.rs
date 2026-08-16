@@ -553,11 +553,16 @@ fn a_nexus_sighting_stored_on_the_surface_is_given_its_level_back() {
     let legacy_nexus = parse_report_full(
         "Atlantis Report For:\nFoo (1)\nFebruary, Year 1\n\n\
          nexus (0,0) in The Void, 10 peasants (orcs), $5.\n\n\
-         Exits:\n  Southeast : plain (2,2) in Nowhere.\n",
+         Exits:\n  Southeast : plain (2,2) in Nowhere.\n\n\
+         - City Guard (1), on guard, Atlantis Defense (999), 10 vikings [VIKI].\n",
     )
     .regions[0]
         .clone();
     assert_eq!(legacy_nexus.coordinate.z, 1, "the pre-fix shape");
+    assert_eq!(
+        legacy_nexus.units[0].region_id, "1:0,0",
+        "the unit's own region_id carries the pre-fix shape too"
+    );
 
     let current = parse_report_full(
         "Atlantis Report For:\nFoo (1)\nMarch, Year 1\n\n\
@@ -643,4 +648,53 @@ fn a_neighbours_exit_naming_the_nexus_on_the_surface_is_also_repaired() {
         known.hexes.iter().all(|hex| hex.coordinate != at(0, 0)),
         "no phantom hex is left at the surface origin"
     );
+}
+
+/// A unit inside a misfiled region carries its own `region_id` (`ReportUnit.region_id`), separate
+/// from the region's - so repairing the region's coordinate without also repairing every unit
+/// inside it would leave a unit claiming to stand in `1:0,0` while its own region now reads
+/// `0:0,0`. A same-turn sighting is used so `resolve_known_map`'s Rule 3 keeps the units rather
+/// than dropping them as it does for an older, stale one.
+#[test]
+fn a_units_region_id_is_repaired_along_with_its_regions() {
+    let legacy_nexus = parse_report_full(
+        "Atlantis Report For:\nFoo (1)\nFebruary, Year 1\n\n\
+         nexus (0,0) in The Void, 10 peasants (orcs), $5.\n\n\
+         Exits:\n  Southeast : plain (2,2) in Nowhere.\n\n\
+         - City Guard (1), on guard, Atlantis Defense (999), 10 vikings [VIKI].\n",
+    )
+    .regions[0]
+        .clone();
+    assert_eq!(
+        legacy_nexus.units[0].region_id, "1:0,0",
+        "the unit's own region_id carries the pre-fix shape too"
+    );
+
+    // Same turn as the sighting, and a different hex, so Rule 4 does not overwrite the nexus entry
+    // and Rule 3 treats the sighting as current - keeping its units rather than dropping them.
+    let current = parse_report_full(
+        "Atlantis Report For:\nFoo (1)\nFebruary, Year 1\n\n\
+         mountain (36,4) in Slounspifra, 5 peasants (orcs), $5.\n\n\
+         Exits:\n  Southeast : plain (37,5) in Nowhere.\n",
+    );
+
+    let known = resolve_known_map(
+        &current,
+        &[RememberedRegion {
+            region: legacy_nexus,
+            last_seen_turn: current.header.turn_number.expect("a turn number"),
+        }],
+    );
+
+    let nexus_hex = known
+        .hexes
+        .iter()
+        .find(|hex| hex.region.as_ref().is_some_and(|r| r.terrain == "nexus"))
+        .expect("the nexus is still known");
+    let unit = nexus_hex
+        .region
+        .as_ref()
+        .and_then(|r| r.units.first())
+        .expect("the unit survives on a same-turn sighting");
+    assert_eq!(unit.region_id, "0:0,0");
 }

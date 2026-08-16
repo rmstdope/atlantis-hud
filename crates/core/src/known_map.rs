@@ -150,7 +150,9 @@ fn with_allies_units(
 /// A region's own coordinate is not the only place this can be wrong: its `exits` carry their own
 /// coordinates too (`Exit.coordinate`), so a neighbour's pre-fix sighting that names the nexus in
 /// its own exits list is repaired the same way, or Rule 1 would still file a phantom `Named` hex at
-/// the surface origin alongside the repaired direct sighting.
+/// the surface origin alongside the repaired direct sighting. And every unit inside a misfiled
+/// region carries its own `region_id` (`ReportUnit.region_id`) rather than reading the region's -
+/// left alone, a unit would claim to stand in `1:0,0` while its own region now reads `0:0,0`.
 fn with_nexus_level_repaired(entry: &RememberedRegion) -> RememberedRegion {
     let region_is_misfiled =
         entry.region.terrain == "nexus" && entry.region.coordinate.z == level::SURFACE;
@@ -167,6 +169,9 @@ fn with_nexus_level_repaired(entry: &RememberedRegion) -> RememberedRegion {
     if region_is_misfiled {
         repaired.region.coordinate.z = level::NEXUS;
         repaired.region.region_id = repaired.region.coordinate.id();
+        for unit in &mut repaired.region.units {
+            unit.region_id = repaired.region.region_id.clone();
+        }
     }
     for exit in &mut repaired.region.exits {
         if exit.terrain == "nexus" && exit.coordinate.z == level::SURFACE {
