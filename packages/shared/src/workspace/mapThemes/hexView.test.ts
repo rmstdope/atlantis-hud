@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Coordinate, ReportRegion, ReportUnit, StructureInfo } from "@atlantis/core-client";
+import { aReportRegion, aReportUnit } from "@atlantis/core-client";
 import type { HexKnowledge, HexNode } from "../../hexMapModel";
 import { COLUMN_PITCH, ROW_PITCH } from "../mapViewport";
 import {
@@ -22,50 +23,10 @@ function structure(kind: string, name = kind): StructureInfo {
   return { structureId: `${kind}-1`, name, kind, description: null, needs: null };
 }
 
-function unit(overrides: Partial<ReportUnit> = {}): ReportUnit {
-  return {
-    unitId: "900",
-    name: "Walker",
-    regionId: "1:7,53",
-    factionId: "17",
-    factionName: "Foo",
-    own: true,
-    onGuard: false,
-    flags: [],
-    items: [],
-    skills: [],
-    men: 1,
-    menEstimated: false,
-    menByRace: [],
-    weight: null,
-    capacity: null,
-    structureId: null,
-    ...overrides
-  };
-}
+const unit = (overrides: Partial<ReportUnit> = {}): ReportUnit =>
+  aReportUnit({ unitId: "900", name: "Walker", factionId: "17", factionName: "Foo", ...overrides });
 
-function region(overrides: Partial<ReportRegion> = {}): ReportRegion {
-  return {
-    regionId: "1:7,53",
-    coordinate: at(7, 53),
-    terrain: "mountain",
-    province: "Inhead",
-    settlement: null,
-    population: null,
-    race: null,
-    taxBase: null,
-    wages: null,
-    maxWages: null,
-    entertainment: null,
-    products: [],
-    wanted: [],
-    forSale: [],
-    exits: [],
-    structures: [],
-    units: [],
-    ...overrides
-  };
-}
+const region = (overrides: Partial<ReportRegion> = {}): ReportRegion => aReportRegion({ coordinate: at(7, 53), ...overrides });
 
 function hex(overrides: Partial<HexNode> & { knowledge: HexKnowledge }): HexNode {
   return {
