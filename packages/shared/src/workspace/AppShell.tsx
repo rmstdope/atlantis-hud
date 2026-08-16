@@ -1464,6 +1464,10 @@ export function AppShell({
         return false;
       }
       const done = await runGameAction(async () => {
+        // The rename writes the manifest to the same database a pending draft write may still be
+        // headed for; flushing first keeps the two from racing, the same as every other action
+        // here that touches the game's storage.
+        await flush();
         const result = await renameGameAction(client, game, gameName);
         setGame({ ...game, manifest: result.manifest });
         updateGameNameInStore(result.manifest.metadata.gameName);
@@ -1472,7 +1476,7 @@ export function AppShell({
       });
       return done === true;
     },
-    [client, game, runGameAction, updateGameNameInStore]
+    [client, game, flush, runGameAction, updateGameNameInStore]
   );
 
   const createGame = useCallback(

@@ -238,63 +238,65 @@ export function GamePicker({
             {isRenaming ? (
               <div className="flex flex-col gap-1">
                 <dt className="text-ink-soft">Name</dt>
-                <input
-                  ref={renameInputRef}
-                  data-testid="game-rename-input"
-                  aria-label="game name"
-                  value={renaming ?? ""}
-                  disabled={busy}
-                  autoFocus
-                  onChange={(event) => {
-                    setRenaming(event.target.value);
-                    setRenameError(null);
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") {
-                      event.preventDefault();
-                      void saveRename();
-                    }
-                    if (event.key === "Escape") {
-                      // Stop the *React* event here, before it reaches the picker's own `document`
-                      // Escape listener (React dispatches from the root container, below
-                      // `document` in the bubble path) - otherwise cancelling the edit also closes
-                      // the whole picker.
-                      event.stopPropagation();
-                      cancelRename();
-                    }
-                  }}
-                  className="rounded border border-edge bg-panel px-2 py-1 text-ink disabled:opacity-50"
-                />
-                {renameError ? (
-                  <p data-testid="game-rename-error" role="alert" className="text-danger">
-                    {renameError}
-                  </p>
-                ) : null}
-                {duplicate ? (
-                  <p data-testid="game-rename-warning" className="text-warn">
-                    Another game is already called “{duplicate}”.
-                  </p>
-                ) : null}
-                <div className="flex justify-end gap-1.5">
-                  <button
-                    type="button"
-                    data-testid="game-rename-save"
+                <dd className="flex flex-col gap-1">
+                  <input
+                    ref={renameInputRef}
+                    data-testid="game-rename-input"
+                    aria-label="game name"
+                    value={renaming ?? ""}
                     disabled={busy}
-                    onClick={() => void saveRename()}
-                    className="rounded border border-brass px-2 py-0.5 text-brass disabled:opacity-50"
-                  >
-                    {busy ? "Saving…" : "Save"}
-                  </button>
-                  <button
-                    type="button"
-                    data-testid="game-rename-cancel"
-                    disabled={busy}
-                    onClick={cancelRename}
-                    className="rounded border border-edge px-2 py-0.5 text-ink disabled:opacity-50"
-                  >
-                    Cancel
-                  </button>
-                </div>
+                    autoFocus
+                    onChange={(event) => {
+                      setRenaming(event.target.value);
+                      setRenameError(null);
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        void saveRename();
+                      }
+                      if (event.key === "Escape") {
+                        // Stop the *React* event here, before it reaches the picker's own
+                        // `document` Escape listener (React dispatches from the root container,
+                        // below `document` in the bubble path) - otherwise cancelling the edit
+                        // also closes the whole picker.
+                        event.stopPropagation();
+                        cancelRename();
+                      }
+                    }}
+                    className="rounded border border-edge bg-panel px-2 py-1 text-ink disabled:opacity-50"
+                  />
+                  {renameError ? (
+                    <p data-testid="game-rename-error" role="alert" className="text-danger">
+                      {renameError}
+                    </p>
+                  ) : null}
+                  {duplicate ? (
+                    <p data-testid="game-rename-warning" className="text-warn">
+                      Another game is already called “{duplicate}”.
+                    </p>
+                  ) : null}
+                  <div className="flex justify-end gap-1.5">
+                    <button
+                      type="button"
+                      data-testid="game-rename-save"
+                      disabled={busy}
+                      onClick={() => void saveRename()}
+                      className="rounded border border-brass px-2 py-0.5 text-brass disabled:opacity-50"
+                    >
+                      {busy ? "Saving…" : "Save"}
+                    </button>
+                    <button
+                      type="button"
+                      data-testid="game-rename-cancel"
+                      disabled={busy}
+                      onClick={cancelRename}
+                      className="rounded border border-edge px-2 py-0.5 text-ink disabled:opacity-50"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </dd>
               </div>
             ) : (
               <div className="flex items-baseline justify-between gap-2">
