@@ -339,6 +339,17 @@ export type RoutePlanResponse = {
   fullyModelled: boolean;
 };
 
+/** One entry in the orders editor's completion popup, mirroring the core's `OrderCompletion`. */
+export type OrderCompletion = {
+  /** What is written into the line when the entry is accepted, and the first thing the typed word
+   * is matched against. Always the canonical spelling: a keyword, or an item or skill tag. */
+  value: string;
+  /** The other thing the typed word may match: an item's or skill's name. Empty for a keyword. */
+  name: string;
+  /** What the entry shows beside its value. Empty for a keyword, which is its own explanation. */
+  detail: string;
+};
+
 export type ImportedTurnPreview = {
   exists: boolean;
   rawChanged: boolean;
@@ -454,10 +465,20 @@ export interface CoreAdapter {
   orderCommands(): Promise<string[]>;
   /**
    * What may stand where the caret is, for the orders editor's completion popup: one order line
-   * from its first character to the caret, answered with the words the ruleset allows there.
-   * Empty wherever the rules leave the position open, which is most of them.
+   * from its first character to the caret, answered with what the ruleset, the catalogue and the
+   * hex allow there. Empty wherever the rules leave the position open, which is most of them.
+   *
+   * `rulesetJson` and `rawReport` are the served ruleset and the imported turn, when there are
+   * any - only their presence widens the answer, since an item or a skill position is otherwise
+   * closed. `unitId` is whose block is being typed, which is what makes `BUY`, `SELL` and
+   * `PRODUCE` narrow to this unit's own hex.
    */
-  orderArgumentCompletions(linePrefix: string): Promise<string[]>;
+  orderArgumentCompletions(
+    linePrefix: string,
+    rulesetJson: string | null,
+    rawReport: string | null,
+    unitId: string | null
+  ): Promise<OrderCompletion[]>;
   planRoute(
     rulesetJson: string,
     rawReport: string,

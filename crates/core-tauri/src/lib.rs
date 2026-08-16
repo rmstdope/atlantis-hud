@@ -15,8 +15,8 @@ use atlantis_hud_core::report::merge::{merge_report_into_sightings, StoredSighti
 pub use atlantis_hud_core::report::ParsedReport;
 use atlantis_hud_core::{
     engine_info, order_argument_completions, order_commands, parse_report, reject_import,
-    reject_merge, EngineInfo, OrderCheckOptions, OrderValidationResult, ReportParseResult,
-    ReportParseResultWire,
+    reject_merge, EngineInfo, OrderCheckOptions, OrderCompletion, OrderValidationResult,
+    ReportParseResult, ReportParseResultWire,
 };
 use atlantis_hud_core_persistence::{
     create_game, delete_game, delete_hex_note, export_game, import_game, insert_imported_turn,
@@ -454,13 +454,28 @@ pub mod commands {
     }
 
     /// What may stand where the caret is, for the Tauri command surface.
+    ///
+    /// `ruleset_json` and `raw_report` go through the cache exactly as `command_validate_orders`
+    /// does; `unit_id` is whose block is being typed, which is what makes the hex-narrowed
+    /// positions (`BUY`, `SELL`, `PRODUCE`) answerable at all.
     #[must_use]
     #[cfg_attr(
         feature = "tauri",
         tauri::command(rename_all = "snake_case", rename = "order_argument_completions")
     )]
-    pub fn command_order_argument_completions(line_prefix: &str) -> Vec<String> {
-        order_argument_completions(line_prefix)
+    pub fn command_order_argument_completions(
+        line_prefix: &str,
+        ruleset_json: Option<&str>,
+        raw_report: Option<&str>,
+        unit_id: Option<&str>,
+    ) -> Vec<OrderCompletion> {
+        let (ruleset, report) = atlantis_hud_core::cache::with_global(|cache| {
+            let ruleset = ruleset_json.and_then(|json| cache.ruleset(json).ok());
+            let report = raw_report.map(|raw| cache.classified_when_possible(raw, ruleset_json));
+            (ruleset, report)
+        });
+
+        order_argument_completions(line_prefix, ruleset.as_deref(), report.as_deref(), unit_id)
     }
 
     /// Validates one order draft for the Tauri command surface.

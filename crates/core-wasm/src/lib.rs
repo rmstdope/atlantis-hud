@@ -506,9 +506,34 @@ pub fn order_commands_state() -> Result<JsValue, JsValue> {
 }
 
 /// What may stand where the caret is, so the editor's popup can answer an argument position.
+///
+/// `ruleset_json` and `raw_report` go through the same cache every other entry point uses - this
+/// runs on every keystroke, so re-parsing a seventy-kilobyte ruleset or a four-hundred-unit report
+/// per call would be the whole cost of the feature. `unit_id` is whose block is being typed, which
+/// is what makes the hex-narrowed positions (`BUY`, `SELL`, `PRODUCE`) answerable at all.
 #[wasm_bindgen]
-pub fn order_argument_completions_state(line_prefix: String) -> Result<JsValue, JsValue> {
-    to_js(&atlantis_hud_core::order_argument_completions(&line_prefix))
+pub fn order_argument_completions_state(
+    line_prefix: String,
+    ruleset_json: Option<String>,
+    raw_report: Option<String>,
+    unit_id: Option<String>,
+) -> Result<JsValue, JsValue> {
+    let (ruleset, report) = atlantis_hud_core::cache::with_global(|cache| {
+        let ruleset = ruleset_json
+            .as_deref()
+            .and_then(|json| cache.ruleset(json).ok());
+        let report = raw_report
+            .as_deref()
+            .map(|raw| cache.classified_when_possible(raw, ruleset_json.as_deref()));
+        (ruleset, report)
+    });
+
+    to_js(&atlantis_hud_core::order_argument_completions(
+        &line_prefix,
+        ruleset.as_deref(),
+        report.as_deref(),
+        unit_id.as_deref(),
+    ))
 }
 
 #[cfg(test)]
