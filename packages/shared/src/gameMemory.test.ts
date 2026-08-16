@@ -61,7 +61,7 @@ function report(factionId: string | null): ParsedReport {
   };
 }
 
-const KNOWN_MAP: KnownMap = { hexes: [], currentTurn: 71 };
+const KNOWN_MAP: KnownMap = { hexes: [], levels: [], currentTurn: 71 };
 
 function client(overrides: Partial<CoreClient> = {}): CoreClient {
   return {

@@ -1,9 +1,12 @@
+import type { MapLevel } from "@atlantis/core-client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it } from "vitest";
 import { LayerChips } from "./LayerChips";
+import { SURFACE_LEVEL } from "../hexMapModel";
 import { resetWorkspaceStore } from "../workspaceStore";
 
-const draw = (levels = [1]) => renderToStaticMarkup(<LayerChips levels={levels} />);
+const draw = (levels: MapLevel[] = [SURFACE_LEVEL]) =>
+  renderToStaticMarkup(<LayerChips levels={levels} />);
 
 describe("the strip of controls over the map", () => {
   beforeEach(resetWorkspaceStore);
@@ -34,5 +37,28 @@ describe("the strip of controls over the map", () => {
     // `renderToStaticMarkup` comes back unchanged. That the mark lights when a badge goes off is
     // the smoke suite's to prove, against a real store in a real browser.
     expect(draw()).toContain('data-badges-all="true"');
+  });
+
+  it("names each level with the core's word", () => {
+    const markup = draw([
+      { z: 0, name: "nexus" },
+      { z: 1, name: "surface" }
+    ]);
+
+    expect(markup).toContain("<select");
+    expect(markup).toContain(">nexus<");
+    expect(markup).toContain(">surface<");
+    expect(markup.indexOf(">nexus<")).toBeLessThan(markup.indexOf(">surface<"));
+  });
+
+  it("shows the single level as static text, not a control", () => {
+    const markup = draw([{ z: 0, name: "nexus" }]);
+
+    expect(markup).toContain("nexus");
+    expect(markup).not.toContain("<select");
+  });
+
+  it("falls back to the surface word when there are no levels at all", () => {
+    expect(draw([])).toContain("surface");
   });
 });

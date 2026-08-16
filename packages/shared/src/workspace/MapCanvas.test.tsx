@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import type { HexMapModel } from "../hexMapModel";
+import { SURFACE_LEVEL, type HexMapModel } from "../hexMapModel";
 import type { HexNoteRecord } from "@atlantis/core-client";
 import { MapCanvas } from "./MapCanvas";
 import { CONGESTED_HEXES } from "./mapThemes/congestedFixture";
@@ -40,7 +40,7 @@ function probe(): MapTheme {
 
 const model: HexMapModel = {
   hexes: CONGESTED_HEXES,
-  levels: [1],
+  levels: [SURFACE_LEVEL],
   currentTurn: 71
 };
 

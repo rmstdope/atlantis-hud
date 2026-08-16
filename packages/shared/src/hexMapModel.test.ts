@@ -1,4 +1,4 @@
-import type { Coordinate, KnownMap, KnownMapHex, ReportRegion, ReportUnit } from "@atlantis/core-client";
+import type { Coordinate, KnownMap, KnownMapHex, MapLevel, ReportRegion, ReportUnit } from "@atlantis/core-client";
 import { describe, expect, it } from "vitest";
 import {
   abbreviateDirection,
@@ -7,6 +7,8 @@ import {
   hexNodeOf,
   hexToPixel,
   isValidCoordinate,
+  levelClause,
+  levelNameOf,
   parseRegionId,
   regionIdOf,
   sortUnitsForDisplay,
@@ -77,8 +79,12 @@ function knownHex(overrides: Partial<KnownMapHex> = {}): KnownMapHex {
   };
 }
 
-function knownMap(hexes: KnownMapHex[], currentTurn: number | null = 71): KnownMap {
-  return { hexes, currentTurn };
+function knownMap(
+  hexes: KnownMapHex[],
+  currentTurn: number | null = 71,
+  levels: MapLevel[] = []
+): KnownMap {
+  return { hexes, currentTurn, levels };
 }
 
 describe("hex geometry", () => {
@@ -143,8 +149,8 @@ describe("addressing a hex", () => {
    * the panel looks as though it knows something.
    */
   it("refuses a hex the game could not hold", () => {
-    // Levels are counted from the surface, which is one.
-    expect(parseRegionId("0:7,53")).toBeNull();
+    // The nexus is level 0, so a level of zero is a hex, not a refusal.
+    expect(parseRegionId("0:7,53")).toEqual({ z: 0, x: 7, y: 53 });
     expect(parseRegionId("-1:7,53")).toBeNull();
     // Only positions where x + y is even exist.
     expect(parseRegionId("1:7,52")).toBeNull();
@@ -212,12 +218,20 @@ describe("converting the known map", () => {
     expect(node.ageInTurns).toBeNull();
   });
 
-  it("levels are every level the hexes span, ascending", () => {
+  it("levels are copied verbatim from the known map, the core's order kept", () => {
+    const levels: MapLevel[] = [
+      { z: 1, name: "surface" },
+      { z: 2, name: "underworld" }
+    ];
     const model = buildHexMapModel(
-      knownMap([knownHex({ coordinate: at(7, 53, 2) }), knownHex({ coordinate: at(7, 53, 1) })])
+      knownMap(
+        [knownHex({ coordinate: at(7, 53, 2) }), knownHex({ coordinate: at(7, 53, 1) })],
+        71,
+        levels
+      )
     );
 
-    expect(model.levels).toEqual([1, 2]);
+    expect(model.levels).toEqual(levels);
   });
 
   it("the core's order is kept", () => {
@@ -240,6 +254,26 @@ describe("converting the known map", () => {
   it("currentTurn is carried through from the known map", () => {
     const model = buildHexMapModel(knownMap([knownHex()], 42));
     expect(model.currentTurn).toBe(42);
+  });
+});
+
+describe("levels", () => {
+  const levels: MapLevel[] = [
+    { z: 0, name: "nexus" },
+    { z: 1, name: "surface" }
+  ];
+
+  it("names a level the map holds, and nothing for one it does not", () => {
+    expect(levelNameOf(levels, 0)).toBe("nexus");
+    expect(levelNameOf(levels, 2)).toBeNull();
+  });
+
+  it("the region panel's clause names the level, or is silent on the surface", () => {
+    expect(levelClause(levels, 1)).toBe("");
+    expect(levelClause(levels, 0)).toBe(", in the nexus");
+    expect(levelClause([{ z: 2, name: "underworld" }], 2)).toBe(", in the underworld");
+    expect(levelClause([{ z: 5, name: "level 5" }], 5)).toBe(", on level 5");
+    expect(levelClause([], 2)).toBe("");
   });
 });
 

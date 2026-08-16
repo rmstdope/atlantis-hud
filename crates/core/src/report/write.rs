@@ -132,12 +132,12 @@ fn region_header(region: &ReportRegion) -> String {
     line
 }
 
-/// `(7,53)` on the surface, `(7,53,2)` anywhere else - the form the parser reads back.
+/// `(7,53)` on the surface, `(0,0,nexus)` / `(7,53,underworld)` elsewhere - the form the parser
+/// reads back.
 fn coordinate(coordinate: super::model::Coordinate) -> String {
-    if coordinate.z == 1 {
-        format!("({},{})", coordinate.x, coordinate.y)
-    } else {
-        format!("({},{},{})", coordinate.x, coordinate.y, coordinate.z)
+    match super::level::level_field(coordinate.z) {
+        None => format!("({},{})", coordinate.x, coordinate.y),
+        Some(field) => format!("({},{},{})", coordinate.x, coordinate.y, field),
     }
 }
 
@@ -490,6 +490,17 @@ mod tests {
 
         let written = round_trip(&region, &ExportContent::default());
         assert_eq!(written.coordinate.z, 2);
+        assert_eq!(written, region);
+    }
+
+    #[test]
+    fn round_trips_the_nexus() {
+        let mut region = region_of(OCEAN);
+        region.coordinate.z = 0;
+        region.region_id = region.coordinate.id();
+
+        let written = round_trip(&region, &ExportContent::default());
+        assert_eq!(written.coordinate.z, 0);
         assert_eq!(written, region);
     }
 

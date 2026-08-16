@@ -2,9 +2,10 @@
 //! accumulated map are written, pinned rule by rule.
 
 use atlantis_hud_core::cache::ReportCache;
-use atlantis_hud_core::known_map::{known_map_json, resolve_known_map, HexKnowledge};
+use atlantis_hud_core::known_map::{known_map_json, resolve_known_map, HexKnowledge, MapLevel};
 use atlantis_hud_core::movement::graph::RememberedRegion;
 use atlantis_hud_core::report::parse_report_full;
+use atlantis_hud_core::report::region::parse_region_header;
 
 mod common;
 use common::at;
@@ -492,5 +493,154 @@ fn rejects_unreadable_remembered_json() {
     assert!(
         error.starts_with("remembered regions could not be read:"),
         "unexpected message: {error}"
+    );
+}
+
+/// `KnownMap.levels` lists the distinct levels the resolved hexes hold, ascending by z, each named
+/// by `report::level::level_name` - the level control reads this list rather than deriving it.
+#[test]
+fn the_map_lists_its_levels_by_name_shallowest_first() {
+    let current = report_at_turn("plain", "February", 1, "");
+    let underworld_region =
+        parse_region_header("cavern (7,53,underworld) in Deeps.").expect("header should parse");
+
+    let known = resolve_known_map(
+        &current,
+        &[RememberedRegion {
+            region: underworld_region,
+            last_seen_turn: 1,
+        }],
+    );
+
+    assert_eq!(
+        known.levels,
+        vec![
+            MapLevel {
+                z: 1,
+                name: "surface".to_string()
+            },
+            MapLevel {
+                z: 2,
+                name: "underworld".to_string()
+            },
+        ]
+    );
+
+    let nexus_report = parse_report_full(
+        "Atlantis Report For:\nFoo (1)\nFebruary, Year 1\n\n\
+         nexus (0,0,nexus) in The Void.\n\n\
+         Exits:\n  none\n",
+    );
+    let nexus_only = resolve_known_map(&nexus_report, &[]);
+    assert_eq!(
+        nexus_only.levels,
+        vec![MapLevel {
+            z: 0,
+            name: "nexus".to_string()
+        }]
+    );
+
+    let empty = empty_report("February", 1);
+    let known_empty = resolve_known_map(&empty, &[]);
+    assert!(known_empty.levels.is_empty());
+}
+
+/// A nexus sighting stored before ah-4b4 - at `(0,0)` on the surface, the shape the parser wrote
+/// before it could read the level field - is repaired at read time onto its own level, so a game
+/// imported before the fix draws the nexus correctly without a store migration.
+#[test]
+fn a_nexus_sighting_stored_on_the_surface_is_given_its_level_back() {
+    let legacy_nexus = parse_report_full(
+        "Atlantis Report For:\nFoo (1)\nFebruary, Year 1\n\n\
+         nexus (0,0) in The Void, 10 peasants (orcs), $5.\n\n\
+         Exits:\n  Southeast : plain (2,2) in Nowhere.\n",
+    )
+    .regions[0]
+        .clone();
+    assert_eq!(legacy_nexus.coordinate.z, 1, "the pre-fix shape");
+
+    let current = parse_report_full(
+        "Atlantis Report For:\nFoo (1)\nMarch, Year 1\n\n\
+         mountain (36,4) in Slounspifra, 5 peasants (orcs), $5.\n\n\
+         Exits:\n  Southeast : plain (37,5) in Nowhere.\n",
+    );
+
+    let known = resolve_known_map(
+        &current,
+        &[RememberedRegion {
+            region: legacy_nexus,
+            last_seen_turn: 1,
+        }],
+    );
+
+    let nexus_hex = known
+        .hexes
+        .iter()
+        .find(|hex| hex.region.as_ref().is_some_and(|r| r.terrain == "nexus"))
+        .expect("the nexus is still known");
+    assert_eq!(nexus_hex.coordinate.z, 0);
+    assert_eq!(
+        nexus_hex.region.as_ref().map(|r| r.region_id.as_str()),
+        Some("0:0,0")
+    );
+    assert_eq!(nexus_hex.knowledge, HexKnowledge::Stale);
+
+    assert!(
+        known.hexes.iter().all(|hex| hex.coordinate != at(0, 0)),
+        "no hex is left at the surface origin"
+    );
+    assert_eq!(
+        known.levels,
+        vec![
+            MapLevel {
+                z: 0,
+                name: "nexus".to_string()
+            },
+            MapLevel {
+                z: 1,
+                name: "surface".to_string()
+            },
+        ]
+    );
+}
+
+/// The repair above only rewrites a region's own coordinate; a pre-fix sighting can also name the
+/// nexus in its `exits` list at the same misfiled coordinate, and that has to be repaired too, or a
+/// phantom `Named` hex reappears at the surface origin alongside the correctly repaired nexus.
+#[test]
+fn a_neighbours_exit_naming_the_nexus_on_the_surface_is_also_repaired() {
+    let neighbour = parse_report_full(
+        "Atlantis Report For:\nFoo (1)\nFebruary, Year 1\n\n\
+         plain (2,2) in Nowhere, 10 peasants (orcs), $5.\n\n\
+         Exits:\n  Northwest : nexus (0,0) in The Void.\n",
+    )
+    .regions[0]
+        .clone();
+    assert_eq!(neighbour.exits[0].coordinate.z, 1, "the pre-fix shape");
+
+    let current = parse_report_full(
+        "Atlantis Report For:\nFoo (1)\nMarch, Year 1\n\n\
+         mountain (36,4) in Slounspifra, 5 peasants (orcs), $5.\n\n\
+         Exits:\n  Southeast : plain (37,5) in Nowhere.\n",
+    );
+
+    let known = resolve_known_map(
+        &current,
+        &[RememberedRegion {
+            region: neighbour,
+            last_seen_turn: 1,
+        }],
+    );
+
+    assert!(
+        known
+            .hexes
+            .iter()
+            .any(|hex| hex.coordinate.x == 0 && hex.coordinate.y == 0 && hex.coordinate.z == 0),
+        "the nexus is named at its own level"
+    );
+    assert!(
+        known.hexes.iter().all(|hex| hex.coordinate != at(0, 0)),
+        "no phantom hex is left at the surface origin"
     );
 }

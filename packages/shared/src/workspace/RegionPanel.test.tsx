@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it } from "vitest";
-import type { CoreClient, OpenedGame, OrderDiagnostic } from "@atlantis/core-client";
+import type { CoreClient, MapLevel, OpenedGame, OrderDiagnostic } from "@atlantis/core-client";
 import { SURFACE, type HexNode } from "../hexMapModel";
 import { resetHexNotesStore } from "../hexNotesStore";
 import { RegionPanel } from "./RegionPanel";
@@ -151,5 +151,62 @@ describe("the region panel's Notes section (ah-o1t)", () => {
     );
 
     expect(markup).toContain('data-testid="region-notes"');
+  });
+});
+
+describe("the region panel's sentence for an unexplored hex off the surface", () => {
+  const LEVELS: MapLevel[] = [
+    { z: 1, name: "surface" },
+    { z: 2, name: "underworld" }
+  ];
+
+  beforeEach(() => {
+    resetWorkspaceStore();
+    resetHexNotesStore();
+  });
+
+  it("names the underworld", () => {
+    const markup = renderToStaticMarkup(
+      <RegionPanel
+        hex={null}
+        unknown={{ x: 7, y: 53, z: 2 }}
+        levels={LEVELS}
+        client={CLIENT}
+        game={GAME}
+        turn={71}
+      />
+    );
+
+    expect(markup).toContain("named it, in the underworld.");
+  });
+
+  it("stays silent on the surface", () => {
+    const markup = renderToStaticMarkup(
+      <RegionPanel
+        hex={null}
+        unknown={{ x: 7, y: 53, z: SURFACE }}
+        levels={LEVELS}
+        client={CLIENT}
+        game={GAME}
+        turn={71}
+      />
+    );
+
+    expect(markup).toContain("named it.");
+  });
+
+  it("names the nexus", () => {
+    const markup = renderToStaticMarkup(
+      <RegionPanel
+        hex={null}
+        unknown={{ x: 2, y: 0, z: 0 }}
+        levels={[{ z: 0, name: "nexus" }, ...LEVELS]}
+        client={CLIENT}
+        game={GAME}
+        turn={71}
+      />
+    );
+
+    expect(markup).toContain("named it, in the nexus.");
   });
 });

@@ -1,4 +1,6 @@
 import { useState } from "react";
+import type { MapLevel } from "../hexMapModel";
+import { SURFACE_LEVEL } from "../hexMapModel";
 import { useWorkspaceStore, type LayerName } from "../workspaceStore";
 import { BadgeMenu } from "./BadgeMenu";
 
@@ -20,7 +22,7 @@ const LAYERS: Array<{ name: LayerName; label: string }> = [
   { name: "movement", label: "Movement" }
 ];
 
-export function LayerChips({ levels }: { levels: number[] }) {
+export function LayerChips({ levels }: { levels: MapLevel[] }) {
   const layers = useWorkspaceStore((state) => state.layers);
   const toggleLayer = useWorkspaceStore((state) => state.toggleLayer);
   const badges = useWorkspaceStore((state) => state.badges);
@@ -92,13 +94,15 @@ export function LayerChips({ levels }: { levels: number[] }) {
           className="rounded border border-edge bg-panel-raised px-2 py-0.5 text-[11px] text-ink"
         >
           {levels.map((candidate) => (
-            <option key={candidate} value={candidate}>
-              {candidate === 1 ? "surface" : `level ${candidate}`}
+            <option key={candidate.z} value={candidate.z}>
+              {candidate.name}
             </option>
           ))}
         </select>
       ) : (
-        <span className="px-2 py-0.5 text-[11px] text-ink-dim">surface</span>
+        <span className="px-2 py-0.5 text-[11px] text-ink-dim">
+          {levels[0]?.name ?? SURFACE_LEVEL.name}
+        </span>
       )}
     </div>
   );

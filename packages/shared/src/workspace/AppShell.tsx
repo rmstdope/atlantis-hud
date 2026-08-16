@@ -13,7 +13,13 @@ import type {
 } from "@atlantis/core-client";
 import { ADVISORY_CHECK_CODES } from "@atlantis/core-client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { buildHexMapModel, parseRegionId, unitsForHex, type HexMapModel } from "../hexMapModel";
+import {
+  buildHexMapModel,
+  parseRegionId,
+  SURFACE_LEVEL,
+  unitsForHex,
+  type HexMapModel
+} from "../hexMapModel";
 import { type TextFileSaver } from "../downloadFile";
 import { readUnitOrders, stripMovementOrderLines, writeUnitOrders } from "../ordersDocument";
 import { isOrdersFile, routeOrdersImport, type PendingOrdersImport } from "../ordersImport";
@@ -165,7 +171,7 @@ export { isOlderTurn };
 
 const EMPTY: HexMapModel = {
   hexes: [],
-  levels: [1],
+  levels: [SURFACE_LEVEL],
   currentTurn: null
 };
 
@@ -502,10 +508,10 @@ export function AppShell({
   // may only have been visible in an older report. Nothing on that level would be drawn and there
   // is nothing there to frame, so the whole saved view is abandoned and the defaults take over.
   useEffect(() => {
-    if (openGameId === null || model === EMPTY || model.levels.includes(level)) {
+    if (openGameId === null || model === EMPTY || model.levels.some((l) => l.z === level)) {
       return;
     }
-    setLevel(model.levels[0] ?? DEFAULT_LEVEL);
+    setLevel(model.levels[0]?.z ?? DEFAULT_LEVEL);
   }, [openGameId, model, level, setLevel]);
 
   /**
@@ -2639,6 +2645,7 @@ export function AppShell({
               <RegionPanel
                 hex={hex}
                 unknown={unknownHex}
+                levels={model.levels}
                 problems={findingsForHex(validated.diagnostics, hex?.regionId ?? null)}
                 client={client}
                 game={game}
