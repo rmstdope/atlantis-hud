@@ -15,9 +15,9 @@ import { normalize, repositoryRoot, strayWorktrees, targetDir } from "./cargoTar
  *
  * Cargo searches for `.cargo/config.toml` upward from the working directory, and `build.target-dir`
  * in it is resolved against the directory holding the config. The worktrees live under
- * `.claude/worktrees/`, inside the repository, so the repository's own config catches them and they
+ * `.cerebro/worktrees/`, inside the repository, so the repository's own config catches them and they
  * all resolve to the one tree at the root. Measured, with the control: without the config a
- * worktree answered `.claude/worktrees/task/target`, and with it `<repo>/target`.
+ * worktree answered `.cerebro/worktrees/task/target`, and with it `<repo>/target`.
  *
  * What is asserted here is the one property that would break the build elsewhere. An absolute path
  * would work on the machine it was written on and fail on CI, which builds on Linux and caches
@@ -67,7 +67,7 @@ describe("the shared cargo build directory", () => {
 describe("repositoryRoot", () => {
   it("answers the same path from a worktree as from the checkout it belongs to", () => {
     const root = createRepo();
-    const worktree = join(root, ".claude", "worktrees", "example");
+    const worktree = join(root, ".cerebro", "worktrees", "example");
     git(root, ["worktree", "add", "-b", "example", worktree]);
 
     expect(repositoryRoot(root)).toBe(root);
@@ -83,14 +83,14 @@ describe("strayWorktrees", () => {
   });
 
   it("does not flag a worktree under the agents' directory", () => {
-    const inside = `${root}/.claude/worktrees/x`;
+    const inside = `${root}/.cerebro/worktrees/x`;
     expect(strayWorktrees(`worktree ${root}\nworktree ${inside}\n`, root)).toEqual([]);
   });
 
   it("flags a sibling directory merely named after the agents' directory", () => {
-    // The trailing separator is the whole guard: without it `.claude-old` starts with `.claude`
+    // The trailing separator is the whole guard: without it `.cerebro-old` starts with `.cerebro`
     // and would pass as though it were inside.
-    const lookalike = `${root}/.claude-old/x`;
+    const lookalike = `${root}/.cerebro-old/x`;
     expect(strayWorktrees(`worktree ${root}\nworktree ${lookalike}\n`, root)).toEqual([lookalike]);
   });
 
@@ -105,7 +105,7 @@ describe("strayWorktrees", () => {
     // slashes, on Windows too. `sep` is already "/" on this platform, so this pins normalize's
     // idempotence rather than exercising a real backslash - the cross-platform conversion itself
     // needs a Windows machine to observe.
-    const built = ["", "repo", ".claude", "worktrees", "x"].join(sep);
+    const built = ["", "repo", ".cerebro", "worktrees", "x"].join(sep);
     const inside = normalize(built);
     expect(strayWorktrees(`worktree ${root}\nworktree ${inside}\n`, root)).toEqual([]);
   });
@@ -114,7 +114,7 @@ describe("strayWorktrees", () => {
 describe("the stray check, end to end", () => {
   it("reports a worktree outside the repository as a stray", () => {
     const root = createRepo();
-    const inside = join(root, ".claude", "worktrees", "example");
+    const inside = join(root, ".cerebro", "worktrees", "example");
     git(root, ["worktree", "add", "-b", "example", inside]);
 
     const outsideParent = realpathSync(mkdtempSync(join(tmpdir(), "cargo-target-dir-outside-")));

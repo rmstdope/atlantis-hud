@@ -387,3 +387,88 @@ fn the_newer_of_two_memories_wins() {
     assert_eq!(hex.terrain, "swamp");
     assert_eq!(hex.last_seen_turn, Some(60));
 }
+
+/// A same-turn ally sighting is as fresh as anything the current report itself describes, so the
+/// planner should see its units - the disagreement ah-u4e.1 fixes (the risk heuristic used to read
+/// "Nobody else is here" for exactly this hex; see `movement_risk.rs`).
+#[test]
+fn the_planner_sees_a_same_turn_allys_units() {
+    use atlantis_hud_core::movement::graph::RememberedRegion;
+
+    let ally_sighting = parse_report_full(
+        "Atlantis Report For:\nFoo (1)\nFebruary, Year 1\n\n\
+         plain (9,9) in Nowhere, 10 peasants (orcs), $5.\n\n\
+         Exits:\n  North : plain (9,7) in Nowhere.\n\n\
+         - Someone (500), Bar (2), 3 orcs [ORC].\n",
+    )
+    .regions[0]
+        .clone();
+
+    // The current report never visits (9,9) itself - the ally is the only account of it.
+    let current = parse_report_full("Atlantis Report For:\nFoo (1)\nFebruary, Year 1\n");
+
+    let map = MapKnowledge::from_remembered(
+        &current,
+        &[RememberedRegion {
+            region: ally_sighting,
+            last_seen_turn: 1,
+        }],
+    );
+
+    let hex = map.hex(at(9, 9)).expect("known");
+    assert!(hex.visited, "a same-turn sighting is as current as a visit");
+    assert_eq!(hex.units.len(), 1, "the ally's unit should be here");
+}
+
+/// A stale sighting still tells the planner a road is there - a road does not vanish because a
+/// unit's presence has gone stale - but must not claim a fort is still standing: only a current
+/// sighting can vouch for that.
+#[test]
+fn a_stale_sighting_contributes_roads_but_no_structures_to_planning() {
+    use atlantis_hud_core::movement::graph::RememberedRegion;
+
+    let older = parse_report_full(
+        "Foo (1) Report\n\n\
+         plain (11,11) in Nowhere, 10 peasants (orcs), $5.\n\n\
+         Exits:\n  North : plain (11,9) in Nowhere.\n\n\
+         + Northbound [1] : Road N.\n\
+         + Cartographers HQ [2] : Fort.\n",
+    )
+    .regions[0]
+        .clone();
+
+    // Turn 71, so the sighting at turn 1 is unambiguously stale.
+    let current = parse_report_full("Atlantis Report For:\nFoo (1)\nDecember, Year 6\n");
+
+    let map = MapKnowledge::from_remembered(
+        &current,
+        &[RememberedRegion {
+            region: older,
+            last_seen_turn: 1,
+        }],
+    );
+
+    let hex = map.hex(at(11, 11)).expect("known");
+    assert_eq!(
+        hex.roads,
+        vec![Direction::North],
+        "a road persists once stale"
+    );
+    assert!(
+        hex.structures.is_empty(),
+        "only a current sighting may claim a fort is still standing"
+    );
+}
+
+/// `from_report` is the no-memory path, and resolving with an empty `remembered` slice describes
+/// exactly the same map - pinning that equivalence is what justifies `from_report` delegating to
+/// `from_remembered` rather than carrying its own copy of the same rules.
+#[test]
+fn from_report_agrees_with_from_remembered_given_nothing_remembered() {
+    let report = parse_report_full(TURN_71);
+
+    assert_eq!(
+        MapKnowledge::from_report(&report),
+        MapKnowledge::from_remembered(&report, &[])
+    );
+}
