@@ -141,7 +141,7 @@ fn a_unit_told_to_spend_what_it_has_not_got_is_caught_in_that_same_turn() {
     let findings = check_turn(&report, &damaged, Some(&ruleset()), CheckOptions::default());
 
     assert_eq!(
-        findings.iter().map(|f| f.code).collect::<Vec<_>>(),
+        findings.iter().map(|f| f.code.as_str()).collect::<Vec<_>>(),
         vec!["not-enough-silver"],
         "{findings:?}"
     );
@@ -205,7 +205,7 @@ fn the_broad_guard_check_is_the_noisy_one_the_setting_holds_back() {
         .filter(|region| region.units.iter().any(|unit| unit.own))
         .count();
     assert_eq!(
-        noisy.iter().filter(|f| f.code == "hex-unguarded").count(),
+        noisy.iter().filter(|f| f.code.as_str() == "hex-unguarded").count(),
         hexes_with_our_units,
         "one per hex we stand in, and nothing guards any of them"
     );
