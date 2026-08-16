@@ -1,3 +1,5 @@
+import type { AdvisoryCheckCode } from "./coreVocabulary.generated";
+
 export type EngineInfo = {
   id: string;
   name: string;
@@ -195,6 +197,8 @@ export type RoutePlan = {
   steps: RouteStep[];
   totalCost: number;
   months: MonthLeg[];
+  /** The order this route becomes, as core writes it - `SAIL …` for a fleet, `MOVE …` for everyone else. */
+  order: string;
 };
 
 /**
@@ -598,20 +602,12 @@ export type OrderDiagnostic = {
   severity: OrderDiagnosticSeverity;
 };
 
-/** Advisory order-check codes, mirrored from crates/core semantics::codes::ALL. */
-export const ADVISORY_CHECK_CODES = [
-  "not-enough-silver",
-  "not-enough-items",
-  "guard-dropped",
-  "hex-unguarded",
-  "taught-not-here",
-  "taught-not-studying",
-  "teacher-cannot-teach",
-  "teaching-oversubscribed",
-  "teacher-has-free-slots"
-] as const;
-
-export type AdvisoryCheckCode = (typeof ADVISORY_CHECK_CODES)[number];
+export {
+  ADVISORY_CHECK_CODES,
+  MOVEMENT_ORDER_COMMANDS,
+  type AdvisoryCheckCode,
+  type MovementOrderCommand
+} from "./coreVocabulary.generated";
 
 /** Which of the checks that read the report to run. */
 export type OrderCheckOptions = {

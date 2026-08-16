@@ -38,6 +38,19 @@ pub struct FollowedMove {
     pub left_the_map: bool,
 }
 
+/// The order words that move a unit across the map. `parse_move` reads exactly these; the intents
+/// reader files exactly these as movement; the shell's generated vocabulary carries exactly these.
+pub const MOVEMENT_ORDER_COMMANDS: [&str; 3] = ["MOVE", "ADVANCE", "SAIL"];
+
+/// Whether `word` (a bare command token, no leading `@`) is one of [`MOVEMENT_ORDER_COMMANDS`], in
+/// any case.
+#[must_use]
+pub fn is_movement_command(word: &str) -> bool {
+    MOVEMENT_ORDER_COMMANDS
+        .iter()
+        .any(|command| command.eq_ignore_ascii_case(word))
+}
+
 /// Reads a MOVE, ADVANCE or SAIL order.
 ///
 /// Returns nothing for any other line, and also for an order carrying a direction the game has no
@@ -56,10 +69,7 @@ pub fn parse_move(line: &str) -> Option<Vec<MoveStep>> {
     // fleet's word for the same thing - both read to the same steps, because a step is a step
     // whichever order names it; only the mode a unit sails or walks under decides which word a
     // written route is rendered with, in `render_move`/`render_sail`.
-    if !command.eq_ignore_ascii_case("move")
-        && !command.eq_ignore_ascii_case("advance")
-        && !command.eq_ignore_ascii_case("sail")
-    {
+    if !is_movement_command(command) {
         return None;
     }
 

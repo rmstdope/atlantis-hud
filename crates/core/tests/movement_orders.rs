@@ -5,7 +5,8 @@
 
 use atlantis_hud_core::movement::graph::{Direction, MapKnowledge};
 use atlantis_hud_core::movement::orders::{
-    follow_move, parse_move, render_move, render_sail, MoveStep,
+    follow_move, is_movement_command, parse_move, render_move, render_sail, MoveStep,
+    MOVEMENT_ORDER_COMMANDS,
 };
 use atlantis_hud_core::report::{parse_report_full, ParsedReport};
 
@@ -16,6 +17,35 @@ use common::at;
 
 fn turn_71() -> ParsedReport {
     parse_report_full(TURN_71)
+}
+
+/// `parse_move` reads exactly the words `MOVEMENT_ORDER_COMMANDS` lists - one list, so a shell
+/// reader built from the same list can never disagree with the reader that already exists here.
+#[test]
+fn every_movement_command_is_read_by_parse_move() {
+    for word in MOVEMENT_ORDER_COMMANDS {
+        assert_eq!(
+            parse_move(&format!("{word} N")),
+            Some(vec![MoveStep::Go(Direction::North)]),
+            "{word} N should read as a move north"
+        );
+        let lower = word.to_lowercase();
+        assert_eq!(
+            parse_move(&format!("{lower} N")),
+            Some(vec![MoveStep::Go(Direction::North)]),
+            "{lower} N should read as a move north, any case"
+        );
+    }
+
+    assert!(
+        is_movement_command("Advance"),
+        "any case is a movement command"
+    );
+    assert!(!is_movement_command("STUDY"), "a non-movement word is not");
+    assert!(
+        !is_movement_command("@move"),
+        "a bare command token carries no @"
+    );
 }
 
 /// The turn 71 orders template carries exactly one real MOVE: "MOVE SE SE", for unit 15571.

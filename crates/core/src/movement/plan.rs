@@ -36,6 +36,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::movement::graph::{geometric_neighbour, Direction, KnownHex, MapKnowledge};
 use crate::movement::mode::{fleet_of, fleet_sailing, mobility, Mobility};
+use crate::movement::orders::{render_move, render_sail, MoveStep};
 use crate::movement::rules::{MovementMode, Ruleset};
 use crate::report::model::{Coordinate, ReportUnit};
 
@@ -110,6 +111,9 @@ pub struct RoutePlan {
     pub steps: Vec<RouteStep>,
     pub total_cost: u32,
     pub months: Vec<MonthLeg>,
+    /// The order this route becomes, exactly as the shell writes it into the unit's block:
+    /// `SAIL …` for a fleet, `MOVE …` for everything else (a flier and a rider MOVE too).
+    pub order: String,
 }
 
 /// Plans the cheapest route a unit can take to a hex.
@@ -197,6 +201,16 @@ pub fn plan_route(
         }
     }
 
+    let moves: Vec<MoveStep> = steps
+        .iter()
+        .map(|step| MoveStep::Go(step.direction))
+        .collect();
+    let order = if matches!(mode, MovementMode::Sail) {
+        render_sail(&moves)
+    } else {
+        render_move(&moves)
+    };
+
     Ok(RoutePlan {
         from: origin,
         to: destination,
@@ -204,6 +218,7 @@ pub fn plan_route(
         steps,
         total_cost,
         months,
+        order,
     })
 }
 

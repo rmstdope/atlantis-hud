@@ -378,6 +378,7 @@ fn a_route_of_several_steps_adds_up() {
         route.total_cost, 3,
         "three ordinary steps at one point each"
     );
+    assert_eq!(route.order, "MOVE SE SE SE");
 }
 
 /// Movement points carry over between months: "these movement points can be carried over from one
@@ -806,6 +807,7 @@ fn a_crewed_longship_is_planned_a_sea_route() {
         1,
         "MaxSpeed 4 covers one flat-cost step easily"
     );
+    assert_eq!(route.order, "SAIL S");
 }
 
 /// A single Longship (`sailingSkill: 4` in the ruleset) with only one crew holding SAIL 1: the
