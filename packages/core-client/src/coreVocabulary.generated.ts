@@ -11,7 +11,8 @@ export const ADVISORY_CHECK_CODES = [
   "taught-not-studying",
   "teacher-cannot-teach",
   "teaching-oversubscribed",
-  "teacher-has-free-slots"
+  "teacher-has-free-slots",
+  "form-alias-reused"
 ] as const;
 
 export type AdvisoryCheckCode = (typeof ADVISORY_CHECK_CODES)[number];
