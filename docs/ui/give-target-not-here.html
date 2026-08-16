@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>A GIVE that goes nowhere — what the player sees (bead ah-djq)</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --edge:#26303d; --edge-soft:#1e2733; --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --brass-bright:#eebe63; --ok:#4fb783; --warn:#d9a441; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1240px; margin-left:auto; margin-right:auto; }
+  h1 { font-size:26px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:96ch; margin-top:10px; font-size:14px; }
+  header p + p { margin-top:8px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:0.92em; }
+  h2.sec { margin-top:34px; font-size:18px; color:var(--brass); } h2.sec small { color:var(--ink-dim); font-size:13px; margin-left:10px; }
+  .cards { display:grid; grid-template-columns:repeat(2,1fr); gap:20px; margin-top:16px; align-items:start; }
+  .cards.three { grid-template-columns:repeat(3,1fr); }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:18px; display:flex; flex-direction:column; gap:12px; }
+  .card h3 { font-size:17px; } .card h3 em { color:var(--brass); font-style:normal; font-size:12px; letter-spacing:1.6px; margin-right:8px; }
+  .card.rec { border-color:var(--brass); }
+  .concept { color:var(--ink-soft); font-size:13px; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; padding:12px; display:grid; gap:10px; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; } .notes li.con::before { content:"\2212  "; color:var(--danger); }
+  .rep { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11.5px; line-height:1.55; color:var(--ink-soft); background:#0d1218; border:1px solid var(--edge); border-radius:6px; padding:8px 10px; white-space:pre; overflow-x:auto; }
+  .rep b { color:var(--brass-bright); font-weight:normal; }
+  .rep i { color:var(--danger); font-style:normal; }
+  .editor { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:12px; line-height:1.6; background:#0d1218; border:1px solid var(--edge); border-radius:6px; padding:8px 0; }
+  .ln { display:flex; } .ln .no { width:40px; text-align:right; color:var(--ink-dim); padding-right:10px; } .ln .tx { white-space:pre; color:var(--ink); }
+  .ln.warn .tx { text-decoration: underline wavy var(--warn); text-underline-offset:3px; } .ln.warn .no { color:var(--warn); }
+  .ln.dim .tx { color:var(--ink-dim); }
+  .pane { font-family:'Helvetica Neue',Arial,sans-serif; font-size:11.5px; line-height:1.45; border:1px solid var(--edge); border-radius:6px; background:var(--panel); overflow:hidden; }
+  .pane .bar { display:flex; align-items:center; height:26px; padding:0 9px; border-bottom:1px solid var(--edge); } .bar .name { font-size:10px; letter-spacing:1.4px; text-transform:uppercase; color:var(--brass); }
+  .body { padding:7px 9px 9px; display:grid; gap:5px; min-height:28px; } .prob { display:flex; gap:6px; } .prob .uid { color:var(--ink-dim); min-width:44px; flex:none; } .prob .warn { color:var(--warn); flex:none; } .prob .msg { color:var(--ink); }
+  .body .silent { color:var(--ink-dim); font-style:italic; }
+  .setting { font-family:'Helvetica Neue',Arial,sans-serif; font-size:12px; border:1px solid var(--edge); border-radius:6px; background:var(--panel); padding:8px 10px; display:grid; gap:6px; }
+  .setting .head { font-size:10px; letter-spacing:1.4px; text-transform:uppercase; color:var(--brass); }
+  .row { display:flex; gap:10px; align-items:flex-start; } .tog { width:28px; height:16px; border-radius:8px; background:var(--ok); position:relative; flex:none; margin-top:2px; } .tog::after { content:""; position:absolute; right:2px; top:2px; width:12px; height:12px; border-radius:6px; background:var(--ground); }
+  .row .t { color:var(--ink); } .row .d { color:var(--ink-dim); font-size:11px; }
+  table { border-collapse:collapse; font-size:12.5px; width:100%; margin-top:14px; } th, td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--edge-soft); vertical-align:top; } th { color:var(--brass); font-weight:normal; font-size:11px; letter-spacing:1px; text-transform:uppercase; } td.y { color:var(--ok); } td.n { color:var(--ink-dim); } td.w { color:var(--warn); } td.b { color:var(--danger); }
+  .banner { border:1px solid var(--edge); border-left:3px solid var(--danger); background:var(--panel); padding:14px 16px; border-radius:6px; margin-top:16px; color:var(--ink-soft); font-size:13.5px; }
+  .banner.ok { border-left-color:var(--ok); } .banner b { color:var(--ink); }
+  .score { display:flex; gap:6px; margin-top:4px; }
+  .pip { width:22px; height:22px; border-radius:4px; display:grid; place-items:center; font:11px/1 'SF Mono',monospace; }
+  .pip.hit { background:rgba(79,183,131,.18); color:var(--ok); border:1px solid rgba(79,183,131,.4); }
+  .pip.miss { background:rgba(217,112,112,.12); color:var(--danger); border:1px solid rgba(217,112,112,.35); }
+  .tagline { font:10px/1 'SF Mono',monospace; color:var(--brass); letter-spacing:1px; text-transform:uppercase; margin-top:6px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>A <code>GIVE</code> that goes nowhere — <span>what the player sees</span> (bead ah-djq)</h1>
+  <p>The engine refuses a gift whose target it cannot find, and says so after the turn has run: <code>GIVE: Nonexistant target (3247).</code> — five times across two turns of the committed corpus. The goods stay put, the turn is spent, and the player finds out a week later. This bead warns before the file is sent.</p>
+  <p><b>Reading the five real cases changed what this bead should be.</b> The bead says to warn when the id is “not visible in the report”. Only <b>two</b> of the five are that. The other three name a unit that is perfectly real and alive — <i>standing in a different hex</i>. The engine gives both the same message; the player needs different ones.</p>
+  <p><b>Decided, 2026-08-17, over two rounds.</b> (1) The test is <b>“is it in this hex”</b>, and the line <b>says which kind of mistake it is</b> — Option C below. (2) The wording <b>follows the teaching check</b>, giving the four sentences in the section after it. (3) The toggle is <b>Gifts to units that are not here</b>, in the existing <span class="mono">Orders</span> group, on by default. Everything in the closing table is accepted as drawn.</p>
+</header>
+<main>
+
+  <h2 class="sec">The five real cases <small>from <code>tests/fixtures/reports/</code>, faction 42</small></h2>
+  <div class="rep">t82:87   City Guards (13303): GIVE: Nonexistant target (<i>7233</i>).      <b>7233 appears nowhere</b> — died between turn 42 and turn 82
+t82:88   City Guards (13303): GIVE: Nonexistant target (<i>16585</i>).     <b>16585 appears nowhere</b> — never existed in any report
+t82:89   WoodsmenY (8443):    GIVE: Nonexistant target (<i>15467</i>).     <b>alive</b>, own unit, in mountain (36,4) — giver is in forest (40,4)
+t82:90   Taxers (4426):       GIVE: Nonexistant target (<i>13304</i>).     <b>alive</b>, own unit, in tundra (35,7) — giver is in mountain (35,5)
+t40:59   Farmers (6111):      GIVE: Nonexistant target (<i>3247</i>).      <b>alive</b>, own unit, in forest (49,3) — giver is in plain (39,7)</div>
+  <p class="concept" style="margin-top:10px">The rules make the test a <i>hex</i> test, not an existence test — “Two units in different regions cannot normally interact” (<code>neworigins-rules.html:830</code>), and <code>GIVE</code> requires a target “which it is able to see” (<code>:6236</code>). And because the server runs <code>GIVE</code> in phase 4, before anything moves, the positions printed in this report are exactly the positions next turn's gift resolves against — so a report-based check is sound.</p>
+
+  <h2 class="sec">What counts as a target that is there <small>Option C was chosen</small></h2>
+  <div class="cards three">
+    <section class="card"><h3><em>OPTION A — rejected</em> Anywhere in the report</h3>
+      <p class="concept">Warn only when the id appears nowhere in the whole report. This is what the bead's own wording asks for.</p>
+      <div class="score"><span class="pip hit">1</span><span class="pip hit">2</span><span class="pip miss">3</span><span class="pip miss">4</span><span class="pip miss">5</span></div>
+      <p class="concept" style="font-size:12px">Catches <b>2 of the 5</b> real cases.</p>
+      <ul class="notes"><li>Cannot possibly be wrong: an id in no report is in no hex either.</li><li class="con">Silent on three real, confirmed engine refusals — the commonest of the two kinds.</li></ul>
+    </section>
+    <section class="card"><h3><em>OPTION B — rejected</em> In this hex, one message</h3>
+      <p class="concept">Warn when the id is not among the units the report shows in the giver's own hex, whatever the rest of the report says.</p>
+      <div class="score"><span class="pip hit">1</span><span class="pip hit">2</span><span class="pip hit">3</span><span class="pip hit">4</span><span class="pip hit">5</span></div>
+      <p class="concept" style="font-size:12px">Catches <b>5 of the 5</b>.</p>
+      <div class="stage"><div class="pane"><div class="bar"><span class="name">Problems</span></div><div class="body">
+        <div class="prob"><span class="uid">8443</span><span class="warn">&#9888;</span><span class="msg">unit 15467 is not in this hex, so this gift goes nowhere</span></div>
+        <div class="prob"><span class="uid">13303</span><span class="warn">&#9888;</span><span class="msg">unit 16585 is not in this hex, so this gift goes nowhere</span></div>
+      </div></div></div>
+      <ul class="notes"><li>Matches the engine and the rules exactly.</li><li class="con">One sentence for two different mistakes — a typo and a courier that has moved need opposite fixes, and the line does not say which you have.</li></ul>
+    </section>
+    <section class="card rec"><h3><em>OPTION C — chosen</em> In this hex, and say which kind</h3>
+      <p class="concept">Same coverage as B, but when the report <i>does</i> know the unit, the line says where it actually is. One toggle, one code, two sentences.</p>
+      <div class="score"><span class="pip hit">1</span><span class="pip hit">2</span><span class="pip hit">3</span><span class="pip hit">4</span><span class="pip hit">5</span></div>
+      <p class="concept" style="font-size:12px">Catches <b>5 of the 5</b>.</p>
+      <div class="stage"><div class="pane"><div class="bar"><span class="name">Problems</span></div><div class="body">
+        <div class="prob"><span class="uid">8443</span><span class="warn">&#9888;</span><span class="msg">unit 15467 is not in this hex — your report shows it in mountain (36,4) in Slounspifra</span></div>
+        <div class="prob"><span class="uid">13303</span><span class="warn">&#9888;</span><span class="msg">no unit 16585 appears anywhere in your report</span></div>
+      </div></div></div>
+      <ul class="notes"><li>The first line tells you to move somebody; the second tells you to check the number. Different mistakes, different fixes.</li><li>The hex name comes from the report's own header wording.</li><li class="con">Two sentences to keep in step instead of one.</li></ul>
+    </section>
+  </div>
+
+  <h2 class="sec">The words <small>Wording 1 was chosen</small></h2>
+  <div class="cards">
+    <section class="card rec"><h3><em>WORDING 1 — chosen</em> Follow the teaching check</h3>
+      <p class="concept">The panel already says <span class="mono">unit 700 is not in this hex to be taught</span> for the same shape of mistake. These are the same sentence with a different ending.</p>
+      <div class="stage">
+        <div class="editor">
+          <div class="ln"><span class="no">7594</span><span class="tx">unit 8443</span></div>
+          <div class="ln warn"><span class="no">7600</span><span class="tx">GIVE 15467 ALL YEW</span></div>
+          <div class="ln"><span class="no">7523</span><span class="tx">unit 13303</span></div>
+          <div class="ln warn"><span class="no">7541</span><span class="tx">GIVE 16585 500 SILV</span></div>
+        </div>
+        <div class="pane"><div class="bar"><span class="name">Problems</span></div><div class="body">
+          <div class="prob"><span class="uid">8443</span><span class="warn">&#9888;</span><span class="msg">unit 15467 is not in this hex to be given to — your report shows it in mountain (36,4) in Slounspifra</span></div>
+          <div class="prob"><span class="uid">13303</span><span class="warn">&#9888;</span><span class="msg">unit 16585 is not in this hex to be given to, and appears nowhere else in your report</span></div>
+        </div></div>
+        <div class="setting"><div class="head">Orders</div>
+          <div class="row"><span class="tog"></span><div><div class="t">Gifts to units that are not here</div><div class="d">A GIVE or TAKE naming a unit the report does not show in that hex.</div></div></div>
+        </div>
+      </div>
+      <ul class="notes"><li>Consistent with <span class="mono">taught-not-here</span>, which a player may already have read.</li><li class="con">“to be given to” is clumsy next to “to be taught”.</li></ul>
+    </section>
+    <section class="card"><h3><em>WORDING 2 — rejected</em> Say what happens instead</h3>
+      <p class="concept">Leads with the consequence — the gift does not happen — rather than with the grammar of the order.</p>
+      <div class="stage">
+        <div class="editor">
+          <div class="ln"><span class="no">7594</span><span class="tx">unit 8443</span></div>
+          <div class="ln warn"><span class="no">7600</span><span class="tx">GIVE 15467 ALL YEW</span></div>
+          <div class="ln"><span class="no">7523</span><span class="tx">unit 13303</span></div>
+          <div class="ln warn"><span class="no">7541</span><span class="tx">GIVE 16585 500 SILV</span></div>
+        </div>
+        <div class="pane"><div class="bar"><span class="name">Problems</span></div><div class="body">
+          <div class="prob"><span class="uid">8443</span><span class="warn">&#9888;</span><span class="msg">unit 15467 is in mountain (36,4) in Slounspifra, not this hex, so this gift will be refused</span></div>
+          <div class="prob"><span class="uid">13303</span><span class="warn">&#9888;</span><span class="msg">no unit 16585 appears anywhere in your report, so this gift will be refused</span></div>
+        </div></div>
+        <div class="setting"><div class="head">Orders</div>
+          <div class="row"><span class="tog"></span><div><div class="t">Gifts that will be refused</div><div class="d">A GIVE or TAKE naming a unit that is not in the hex to receive it.</div></div></div>
+        </div>
+      </div>
+      <ul class="notes"><li>“will be refused” is what the engine actually does, and matches the sailing warnings' “so it will not sail”.</li><li>Puts the hex the unit <i>is</i> in first, where the eye lands.</li><li class="con">Longer.</li></ul>
+    </section>
+  </div>
+
+
+  <h2 class="sec">The four sentences, exactly as they ship <small>round 2: TAKE reads from the other end, so there are four, not two</small></h2>
+  <p class="concept" style="margin-top:8px">The panel already says <span class="mono">unit 700 is not in this hex to be taught</span> for the same shape of mistake (<code>semantics.rs:971</code>). These are that sentence with a different ending, and “to be given to” was kept — clumsy read alone — for the sake of matching it. Rejected: leading with the order, <span class="mono">GIVE names unit 15467, which is not in this hex — …</span>, which reads better but breaks step with the only sibling check of this shape.</p>
+  <div class="pane" style="margin-top:12px"><div class="bar"><span class="name">Problems</span></div><div class="body">
+    <div class="tagline">GIVE, unit known but standing elsewhere</div>
+    <div class="prob"><span class="uid">8443</span><span class="warn">&#9888;</span><span class="msg">unit 15467 is not in this hex to be given to - your report shows it in mountain (36,4) in Slounspifra</span></div>
+    <div class="tagline">GIVE, unit in no region of the report</div>
+    <div class="prob"><span class="uid">13303</span><span class="warn">&#9888;</span><span class="msg">unit 16585 is not in this hex to be given to, and appears nowhere else in your report</span></div>
+    <div class="tagline">TAKE, unit known but standing elsewhere</div>
+    <div class="prob"><span class="uid">4426</span><span class="warn">&#9888;</span><span class="msg">unit 13304 is not in this hex to be taken from - your report shows it in tundra (35,7) in Bedba</span></div>
+    <div class="tagline">TAKE, unit in no region of the report</div>
+    <div class="prob"><span class="uid">4426</span><span class="warn">&#9888;</span><span class="msg">unit 16585 is not in this hex to be taken from, and appears nowhere else in your report</span></div>
+  </div></div>
+  <p class="concept" style="margin-top:8px">The hex is named in the report's own header wording, which is what <code>ReportRegion::label()</code> already produces everywhere else in the interface. The dash is a plain hyphen rather than the em dash drawn above: every one of the twelve finding messages this codebase already ships is ASCII.</p>
+
+  <h2 class="sec">What it will and will not say <small>settled unless you object — every row is evidence, not a guess</small></h2>
+  <table>
+    <tr><th style="width:30%">The case</th><th style="width:16%">Warns?</th><th>Why</th></tr>
+    <tr><td><code>GIVE 0 100 SILV</code> — discard</td><td class="n">No</td><td>Unit zero is the game's way of destroying something (<code>rules:6268</code>), and the parser already reads it as its own thing rather than a unit number.</td></tr>
+    <tr><td><code>GIVE NEW 2 …</code></td><td class="n">No</td><td>A unit formed this turn has no number yet, so the report cannot show it.</td></tr>
+    <tr><td><code>GIVE FACTION 15 NEW 2 …</code></td><td class="n">No</td><td>Another faction's new unit. The rules bless this explicitly (<code>:6147</code>).</td></tr>
+    <tr><td><code>TAKE FROM 1234 …</code></td><td class="y">Yes, the same way</td><td>“TAKE works just like GIVE, except the direction is reversed” (<code>rules:7370</code>), and it needs the other unit in the same region too.</td></tr>
+    <tr><td>A gift to a <b>foreign</b> unit the report shows in this hex</td><td class="n">No</td><td>Perfectly legal, and the report lists other factions' visible units in the hex.</td></tr>
+    <tr><td>Orders inside a <code>TURN … ENDTURN</code> block</td><td class="w">Never checked</td><td>Existing behaviour of the order reader: repeating orders are not read as this month's intents. <b>31 of the corpus's cross-hex gifts are in these blocks</b> — the deliberate caravan pattern, correctly left alone. One of the five real errors is in one, so this check would catch four of the five in practice.</td></tr>
+    <tr><td>A <b>stealthed friendly</b> unit in your hex</td><td class="b">Yes — and wrongly</td><td>The only real false positive. A unit you cannot see is not printed, but you may legally give to it if its faction has declared you Friendly (<code>rules:6236</code>). We cannot tell that from a typo. Judged worth it: on the corpus this check fires ~8 times across two turns and at least 4 are confirmed engine refusals.</td></tr>
+    <tr><td>A gift of <b>silver</b> to an unlisted unit</td><td class="y">Yes</td><td>The rules do allow silver to anyone (<code>:6240</code>), which is an argument for exempting it — but <b>three of the four confirmed errors are silver gifts</b>, so exempting silver would gut the check.</td></tr>
+    <tr><td>The <b>Warnings tab</b></td><td class="n">One new toggle</td><td>Joins the existing <span class="mono">Orders</span> group beside <i>Reused FORM numbers</i>. On by default, like every code but <i>Unguarded hexes</i>.</td></tr>
+  </table>
+</main>
+</body>
+</html>
