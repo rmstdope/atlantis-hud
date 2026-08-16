@@ -1,4 +1,12 @@
 //! Tauri command adapter for Atlantis HUD core APIs.
+//!
+//! With the `tauri` feature on, the functions in [`commands`] *are* the desktop's Tauri
+//! commands: each carries `#[tauri::command]` itself, renamed to its bare name (`command_x` →
+//! `x`), and the desktop shell registers them by path rather than wrapping each one again. With
+//! the feature off (the default, so `cargo check --workspace` never builds `tauri`) they are
+//! plain functions this crate's own tests call directly. The eight commands that resolve a
+//! game's `games_root` are the exception: they are wrapped in the shell, which is the only place
+//! the games directory is known.
 
 use std::path::Path;
 
@@ -230,11 +238,749 @@ impl From<ImportedTurnPreview> for ImportedTurnPreviewDto {
     }
 }
 
-/// Returns canonical engine metadata for a Tauri command wrapper.
-#[must_use]
-pub fn command_get_engine_info() -> EngineInfo {
-    engine_info()
+pub mod commands {
+    use super::*;
+
+    /// Returns canonical engine metadata for the Tauri command surface.
+    #[must_use]
+    #[cfg_attr(
+        feature = "tauri",
+        tauri::command(rename_all = "snake_case", rename = "get_engine_info")
+    )]
+    pub fn command_get_engine_info() -> EngineInfo {
+        engine_info()
+    }
+
+    /// Parses a report into the full domain model.
+    ///
+    /// Returned as the model itself rather than as JSON. It already serializes to exactly the shape the
+    /// TypeScript side declares, so converting to a `Value` first would only add a round trip, and it
+    /// would force the desktop shell to depend on `serde_json` for a type it never inspects.
+    #[must_use]
+    #[cfg_attr(
+        feature = "tauri",
+        tauri::command(rename_all = "snake_case", rename = "parse_report_full")
+    )]
+    pub fn command_parse_report_full(raw_report: &str) -> ParsedReport {
+        atlantis_hud_core::report::parse_report_full(raw_report)
+    }
+
+    /// Parses one report and returns tolerant parser output.
+    #[must_use]
+    #[cfg_attr(
+        feature = "tauri",
+        tauri::command(rename_all = "snake_case", rename = "parse_report")
+    )]
+    pub fn command_parse_report(raw_report: &str) -> ReportParseResultWire {
+        ReportParseResultWire::from(parse_report(raw_report))
+    }
+
+    /// Parses one report and previews duplicate conflict for a confirmed faction.
+    #[cfg_attr(
+        feature = "tauri",
+        tauri::command(rename_all = "snake_case", rename = "preview_report_import")
+    )]
+    pub fn command_preview_report_import(
+        database_path: &str,
+        game_id: &str,
+        confirmed_faction_id: &str,
+        raw_report: &str,
+    ) -> Result<ReportImportPreviewDto, String> {
+        let parse_result = parse_report(raw_report);
+        let turn_number = parse_result
+            .turn_header
+            .as_ref()
+            .map(|header| header.turn_number);
+        let parsed_payload_json =
+            serde_json::to_string(&parse_result).map_err(|error| error.to_string())?;
+        let warnings_payload_json =
+            serde_json::to_string(&parse_result.warnings).map_err(|error| error.to_string())?;
+
+        let preview = if let Some(current_turn_number) = turn_number {
+            let candidate = ImportedTurnRecord {
+                key: ImportedTurnKey {
+                    game_id: game_id.to_string(),
+                    faction_id: confirmed_faction_id.to_string(),
+                    turn_number: current_turn_number,
+                },
+                raw_report: raw_report.to_string(),
+                parsed_payload_json,
+                warnings_payload_json,
+            };
+            preview_imported_turn(Path::new(database_path), &candidate)
+                .map(ImportedTurnPreviewDto::from)
+                .map_err(|error| error.to_string())?
+        } else {
+            ImportedTurnPreviewDto {
+                exists: false,
+                raw_changed: false,
+                parsed_changed: false,
+                warnings_changed: false,
+            }
+        };
+
+        Ok(ReportImportPreviewDto {
+            parse_result: ReportParseResultWire::from(parse_result),
+            duplicate_preview: preview,
+            turn_number,
+        })
+    }
+
+    /// Parses and commits one report import after faction confirmation.
+    ///
+    /// `imported_at` comes from the shell rather than from a clock here, the way `opened_at` and an
+    /// order draft's `updated_at` already do, so both platforms write the same format.
+    #[cfg_attr(
+        feature = "tauri",
+        tauri::command(rename_all = "snake_case", rename = "commit_report_import")
+    )]
+    pub fn command_commit_report_import(
+        database_path: &str,
+        game_id: &str,
+        confirmed_faction_id: &str,
+        raw_report: &str,
+        ruleset_json: Option<&str>,
+        allow_overwrite: bool,
+        imported_at: &str,
+    ) -> Result<ImportedTurnPreviewDto, String> {
+        // Both shapes come off one parse, and that parse is the one the shell already made when it
+        // showed the turn: the flat summary the import rules are decided against and that gets stored,
+        // and the full model the remembered regions are built from further down.
+        //
+        // Classified when the shell has a ruleset, exactly as the turn on screen is. The sightings
+        // below are the only account of a hex the map ever reads back, so an estimate stored here is
+        // an estimate forever - a tilde on every remembered unit, however complete the catalogue.
+        let report = atlantis_hud_core::cache::with_global(|cache| {
+            cache.classified_when_possible(raw_report, ruleset_json)
+        });
+        let parse_result = atlantis_hud_core::summarize(&report);
+        if let Some(rejection) = reject_import(&parse_result, confirmed_faction_id) {
+            return Err(rejection);
+        }
+
+        let turn_number = parse_result
+            .turn_header
+            .as_ref()
+            .map(|header| header.turn_number)
+            .ok_or_else(|| "turn header missing from parsed report".to_string())?;
+
+        let record = ImportedTurnRecord {
+            key: ImportedTurnKey {
+                game_id: game_id.to_string(),
+                faction_id: confirmed_faction_id.to_string(),
+                turn_number,
+            },
+            raw_report: raw_report.to_string(),
+            parsed_payload_json: serde_json::to_string(&parse_result)
+                .map_err(|error| error.to_string())?,
+            warnings_payload_json: serde_json::to_string(&parse_result.warnings)
+                .map_err(|error| error.to_string())?,
+        };
+        let preview = preview_imported_turn(Path::new(database_path), &record)
+            .map_err(|error| error.to_string())?;
+        if allow_overwrite {
+            upsert_imported_turn(Path::new(database_path), &record, imported_at)
+                .map_err(|error| error.to_string())?;
+        } else {
+            insert_imported_turn(Path::new(database_path), &record, imported_at).map_err(
+                |error| match error {
+                    PersistenceError::DuplicateImportedTurn { .. } => {
+                        "duplicate import exists and requires explicit overwrite confirmation"
+                            .to_string()
+                    }
+                    _ => error.to_string(),
+                },
+            )?;
+        }
+
+        // Regions get their own rows as well as living inside the turn payload, each carrying the turn
+        // it was seen in. Without this the map cannot tell a region in the current report from one held
+        // over from an earlier turn, which is the difference between two of its four states.
+        let sightings = atlantis_hud_core::report::sighting::region_sightings(&report, turn_number);
+
+        upsert_region_sightings(
+            Path::new(database_path),
+            game_id,
+            confirmed_faction_id,
+            &sightings,
+        )
+        .map_err(|error| error.to_string())?;
+
+        Ok(ImportedTurnPreviewDto::from(preview))
+    }
+
+    /// The order vocabulary, for the Tauri command surface.
+    ///
+    /// Exposed so the shell need not keep a hand-copied list of its own beside the core's; the two used
+    /// to drift, and one of them was wrong.
+    #[must_use]
+    #[cfg_attr(
+        feature = "tauri",
+        tauri::command(rename_all = "snake_case", rename = "order_commands")
+    )]
+    pub fn command_order_commands() -> Vec<String> {
+        order_commands().into_iter().map(str::to_string).collect()
+    }
+
+    /// Validates one order draft for the Tauri command surface.
+    ///
+    /// `ruleset_json` is the served ruleset when the shell has it; without it item names go unchecked
+    /// and everything else is checked as usual. `raw_report` is the turn the orders were written for,
+    /// when one has been imported: with it the answer covers the checks that read what each unit holds
+    /// and where it stands, and without it the answer is the syntax check alone.
+    ///
+    /// Both go through the cache, as they do on the web. This runs whenever the player stops typing,
+    /// and the desktop is not entitled to be slower about it than the browser.
+    #[must_use]
+    #[cfg_attr(
+        feature = "tauri",
+        tauri::command(rename_all = "snake_case", rename = "validate_orders")
+    )]
+    pub fn command_validate_orders(
+        raw_orders: &str,
+        ruleset_json: Option<&str>,
+        raw_report: Option<&str>,
+        disabled_codes: Option<Vec<String>>,
+    ) -> OrderValidationResult {
+        // Absent means the conservative default: `hex-unguarded` off, same as the bool this
+        // replaced defaulted to `false` (do not warn). Reuses `OrderCheckOptions::default()`
+        // rather than a hard-coded literal, so a renamed code cannot drift the two out of step.
+        // (Moved here from main.rs's wrapper, ah-wxk.1.)
+        let disabled = disabled_codes
+            .map(|codes| codes.into_iter().collect())
+            .unwrap_or_else(|| OrderCheckOptions::default().disabled);
+        let options = OrderCheckOptions { disabled };
+        let (ruleset, report) = atlantis_hud_core::cache::with_global(|cache| {
+            let ruleset = ruleset_json.and_then(|json| cache.ruleset(json).ok());
+            let report = raw_report.map(|raw| cache.classified_when_possible(raw, ruleset_json));
+            (ruleset, report)
+        });
+
+        atlantis_hud_core::validate_turn(raw_orders, ruleset.as_deref(), report.as_deref(), options)
+    }
+
+    /// Persists one order draft for the Tauri command surface.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the game's database cannot be written.
+    #[cfg_attr(
+        feature = "tauri",
+        tauri::command(rename_all = "snake_case", rename = "save_order_draft")
+    )]
+    pub fn command_save_order_draft(
+        database_path: &str,
+        game_id: &str,
+        faction_id: &str,
+        turn_number: u32,
+        order_text: &str,
+        updated_at: &str,
+    ) -> Result<OrderDraftRecordDto, String> {
+        let record = OrderDraftRecord {
+            key: OrderDraftKey {
+                game_id: game_id.to_string(),
+                faction_id: faction_id.to_string(),
+                turn_number,
+            },
+            order_text: order_text.to_string(),
+            updated_at: updated_at.to_string(),
+        };
+        upsert_order_draft(Path::new(database_path), &record).map_err(|error| error.to_string())?;
+        Ok(OrderDraftRecordDto {
+            key: OrderDraftKeyDto {
+                game_id: record.key.game_id,
+                faction_id: record.key.faction_id,
+                turn_number: record.key.turn_number,
+            },
+            order_text: record.order_text,
+            updated_at: record.updated_at,
+        })
+    }
+
+    /// Loads one order draft for the Tauri command surface.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the game's database cannot be read.
+    #[cfg_attr(
+        feature = "tauri",
+        tauri::command(rename_all = "snake_case", rename = "load_order_draft")
+    )]
+    pub fn command_load_order_draft(
+        database_path: &str,
+        game_id: &str,
+        faction_id: &str,
+        turn_number: u32,
+    ) -> Result<Option<OrderDraftRecordDto>, String> {
+        let loaded = load_order_draft(
+            Path::new(database_path),
+            &OrderDraftKey {
+                game_id: game_id.to_string(),
+                faction_id: faction_id.to_string(),
+                turn_number,
+            },
+        )
+        .map_err(|error| error.to_string())?;
+
+        Ok(loaded.map(|record| OrderDraftRecordDto {
+            key: OrderDraftKeyDto {
+                game_id: record.key.game_id,
+                faction_id: record.key.faction_id,
+                turn_number: record.key.turn_number,
+            },
+            order_text: record.order_text,
+            updated_at: record.updated_at,
+        }))
+    }
+
+    /// Lists a game's hex notes for the Tauri command surface.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the game's database cannot be read.
+    #[cfg_attr(
+        feature = "tauri",
+        tauri::command(rename_all = "snake_case", rename = "list_hex_notes")
+    )]
+    pub fn command_list_hex_notes(
+        database_path: &str,
+        game_id: &str,
+    ) -> Result<Vec<HexNoteDto>, String> {
+        list_hex_notes(Path::new(database_path), game_id)
+            .map(|notes| notes.into_iter().map(Into::into).collect())
+            .map_err(|error| error.to_string())
+    }
+
+    /// Saves one hex note for the Tauri command surface.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the game's database cannot be written.
+    #[cfg_attr(
+        feature = "tauri",
+        tauri::command(rename_all = "snake_case", rename = "save_hex_note")
+    )]
+    pub fn command_save_hex_note(
+        database_path: &str,
+        note: HexNoteDto,
+    ) -> Result<HexNoteDto, String> {
+        let note: HexNote = note.into();
+        upsert_hex_note(Path::new(database_path), &note).map_err(|error| error.to_string())?;
+        Ok(note.into())
+    }
+
+    /// Deletes one hex note for the Tauri command surface.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the game's database cannot be written.
+    #[cfg_attr(
+        feature = "tauri",
+        tauri::command(rename_all = "snake_case", rename = "delete_hex_note")
+    )]
+    pub fn command_delete_hex_note(
+        database_path: &str,
+        game_id: &str,
+        note_id: &str,
+    ) -> Result<bool, String> {
+        delete_hex_note(Path::new(database_path), game_id, note_id)
+            .map_err(|error| error.to_string())
+    }
+
+    /// Loads one imported turn payload for the Tauri command surface.
+    #[cfg_attr(
+        feature = "tauri",
+        tauri::command(rename_all = "snake_case", rename = "load_imported_turn")
+    )]
+    pub fn command_load_imported_turn(
+        database_path: &str,
+        game_id: &str,
+        faction_id: &str,
+        turn_number: u32,
+    ) -> Result<Option<ImportedTurnRecordDto>, String> {
+        let loaded = load_imported_turn(
+            Path::new(database_path),
+            &ImportedTurnKey {
+                game_id: game_id.to_string(),
+                faction_id: faction_id.to_string(),
+                turn_number,
+            },
+        )
+        .map_err(|error| error.to_string())?;
+
+        loaded.map(imported_turn_dto).transpose()
+    }
+
+    /// Loads the turn this game was last worked on, for the Tauri command surface.
+    ///
+    /// `None` means the game holds no imports, which is what a game just created looks like.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the database cannot be read, or when a stored payload will not parse.
+    #[cfg_attr(
+        feature = "tauri",
+        tauri::command(rename_all = "snake_case", rename = "load_latest_imported_turn")
+    )]
+    pub fn command_load_latest_imported_turn(
+        database_path: &str,
+        game_id: &str,
+    ) -> Result<Option<ImportedTurnRecordDto>, String> {
+        load_latest_imported_turn(Path::new(database_path), game_id)
+            .map_err(|error| error.to_string())?
+            .map(imported_turn_dto)
+            .transpose()
+    }
+
+    /// Lists every turn imported for a game, across every faction, for the Tauri command surface.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the database cannot be read.
+    #[cfg_attr(
+        feature = "tauri",
+        tauri::command(rename_all = "snake_case", rename = "list_imported_turns")
+    )]
+    pub fn command_list_imported_turns(
+        database_path: &str,
+        game_id: &str,
+    ) -> Result<Vec<ImportedTurnSummaryDto>, String> {
+        let listed = list_imported_turns(Path::new(database_path), game_id)
+            .map_err(|error| error.to_string())?;
+
+        Ok(listed
+            .into_iter()
+            .map(|summary| ImportedTurnSummaryDto {
+                key: OrderDraftKeyDto {
+                    game_id: summary.key.game_id,
+                    faction_id: summary.key.faction_id,
+                    turn_number: summary.key.turn_number,
+                },
+                season: summary.season,
+                imported_at: summary.imported_at,
+                updated_at: summary.updated_at,
+            })
+            .collect())
+    }
+
+    /// Reads back every region this faction has ever been seen in.
+    ///
+    /// A sighting whose payload cannot be parsed is skipped rather than failing the lot: it was written
+    /// by an older build, and losing one remembered hex is better than losing the map.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the database cannot be read.
+    #[cfg_attr(
+        feature = "tauri",
+        tauri::command(rename_all = "snake_case", rename = "load_region_sightings")
+    )]
+    pub fn command_load_region_sightings(
+        database_path: &str,
+        game_id: &str,
+        faction_id: &str,
+    ) -> Result<Vec<RememberedRegionDto>, String> {
+        let sightings = load_region_sightings(Path::new(database_path), game_id, faction_id)
+            .map_err(|error| error.to_string())?;
+
+        Ok(sightings
+            .into_iter()
+            .filter_map(|sighting| {
+                serde_json::from_str::<serde_json::Value>(&sighting.payload_json)
+                    .ok()
+                    .filter(|payload| !payload.is_null())
+                    .map(|region| RememberedRegionDto {
+                        region,
+                        last_seen_turn: sighting.last_seen_turn,
+                    })
+            })
+            .collect())
+    }
+
+    /// Folds an allied report for the same turn into the viewer's remembered map.
+    ///
+    /// Deliberately stores no imported turn of the ally's. The turn on screen is still the viewer's,
+    /// and writing the ally's would put it at the top of `load_latest_imported_turn` - so reopening the
+    /// game would come back up as the ally, silently performing the faction switch the player declined.
+    ///
+    /// The sightings land under `viewer_faction_id`, which is what makes them visible at all: the map
+    /// is read back for one faction, and a row written under the ally's id would be stored perfectly
+    /// and never looked at.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the report cannot be merged into this turn, or when the database cannot be
+    /// read or written.
+    #[cfg_attr(
+        feature = "tauri",
+        tauri::command(rename_all = "snake_case", rename = "merge_report")
+    )]
+    pub fn command_merge_report(
+        database_path: &str,
+        game_id: &str,
+        viewer_faction_id: &str,
+        viewer_turn_number: u32,
+        raw_report: &str,
+        ruleset_json: Option<&str>,
+        merged_at: &str,
+    ) -> Result<ReportMergeResultDto, String> {
+        // Classified for the same reason an import is: the ally's units enter the map through these
+        // sightings and nowhere else, so what is stored here is what the table will draw.
+        let report = atlantis_hud_core::cache::with_global(|cache| {
+            cache.classified_when_possible(raw_report, ruleset_json)
+        });
+        let parse_result = atlantis_hud_core::summarize(&report);
+        if let Some(rejection) = reject_merge(&parse_result, viewer_turn_number) {
+            return Err(rejection);
+        }
+
+        // Clearing the threshold means the report named its faction, so this is present.
+        let ally = parse_result
+            .detected_factions
+            .first()
+            .ok_or_else(|| "parsed report does not name the faction it belongs to".to_string())?;
+        if ally.faction_id == viewer_faction_id {
+            return Err("a faction's own report is loaded rather than merged".to_string());
+        }
+
+        let existing: Vec<StoredSighting> =
+            load_region_sightings(Path::new(database_path), game_id, viewer_faction_id)
+                .map_err(|error| error.to_string())?
+                .iter()
+                .map(StoredSighting::from)
+                .collect();
+        let outcome = merge_report_into_sightings(&existing, &report, viewer_turn_number);
+
+        upsert_region_sightings(
+            Path::new(database_path),
+            game_id,
+            viewer_faction_id,
+            &outcome.sightings,
+        )
+        .map_err(|error| error.to_string())?;
+
+        upsert_merged_report(
+            Path::new(database_path),
+            &MergedReportRecord {
+                game_id: game_id.to_string(),
+                faction_id: viewer_faction_id.to_string(),
+                turn_number: viewer_turn_number,
+                merged_faction_id: ally.faction_id.clone(),
+                merged_faction_name: ally.name.clone(),
+                merged_at: merged_at.to_string(),
+            },
+        )
+        .map_err(|error| error.to_string())?;
+
+        Ok(ReportMergeResultDto {
+            turn_number: viewer_turn_number,
+            merged_faction_id: ally.faction_id.clone(),
+            merged_faction_name: ally.name.clone(),
+            merged_region_count: u32::try_from(outcome.merged_region_count).unwrap_or(u32::MAX),
+            new_region_count: u32::try_from(outcome.new_region_count).unwrap_or(u32::MAX),
+        })
+    }
+
+    /// Every allied report folded into one faction's map for one turn.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the database cannot be read.
+    #[cfg_attr(
+        feature = "tauri",
+        tauri::command(rename_all = "snake_case", rename = "load_merged_reports")
+    )]
+    pub fn command_load_merged_reports(
+        database_path: &str,
+        game_id: &str,
+        faction_id: &str,
+        turn_number: u32,
+    ) -> Result<Vec<MergedReportRecordDto>, String> {
+        load_merged_reports(Path::new(database_path), game_id, faction_id, turn_number)
+            .map(|records| {
+                records
+                    .into_iter()
+                    .map(MergedReportRecordDto::from)
+                    .collect()
+            })
+            .map_err(|error| error.to_string())
+    }
+
+    /// Parses a report and counts each unit's men against the catalogue.
+    ///
+    /// The classifying counterpart of `command_parse_report_full`. Kept separate rather than replacing
+    /// it, because parsing has to keep working with no ruleset loaded.
+    #[must_use]
+    #[cfg_attr(
+        feature = "tauri",
+        tauri::command(rename_all = "snake_case", rename = "parse_report_classified")
+    )]
+    pub fn command_parse_report_classified(raw_report: &str, ruleset_json: &str) -> ParsedReport {
+        let report = atlantis_hud_core::cache::with_global(|cache| {
+            atlantis_hud_core::movement::request::parse_and_classify(
+                cache,
+                raw_report,
+                ruleset_json,
+            )
+        });
+        (*report).clone()
+    }
+
+    /// Plans a route for one unit against a ruleset the caller supplies.
+    ///
+    /// A thin delegation: the work lives in the core so the wasm adapter can call exactly the same
+    /// function without depending on this crate, which pulls in native SQLite.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error only when the ruleset itself cannot be used, or the destination is not a hex
+    /// identifier. A route that cannot be planned is a successful answer carrying a reason.
+    #[cfg_attr(
+        feature = "tauri",
+        tauri::command(rename_all = "snake_case", rename = "plan_route")
+    )]
+    pub fn command_plan_route(
+        ruleset_json: &str,
+        raw_report: &str,
+        remembered_json: &str,
+        unit_id: &str,
+        destination: &str,
+    ) -> Result<atlantis_hud_core::movement::request::RoutePlanResponse, String> {
+        atlantis_hud_core::cache::with_global(|cache| {
+            atlantis_hud_core::movement::request::plan_for_remembered_report(
+                cache,
+                ruleset_json,
+                raw_report,
+                remembered_json,
+                unit_id,
+                destination,
+            )
+        })
+    }
+
+    /// Writes the known map inside one rectangle out as report-shaped text.
+    ///
+    /// The desktop twin of the wasm binding, delegating to the same core entry so a map exported on
+    /// the desktop and the same map exported in the browser come out byte for byte identical.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the remembered regions or the request cannot be read. An empty rectangle
+    /// is a successful answer carrying a header and no regions.
+    #[cfg_attr(
+        feature = "tauri",
+        tauri::command(rename_all = "snake_case", rename = "export_map")
+    )]
+    pub fn command_export_map(
+        raw_report: &str,
+        remembered_json: &str,
+        request_json: &str,
+    ) -> Result<String, String> {
+        atlantis_hud_core::cache::with_global(|cache| {
+            atlantis_hud_core::report::export::export_map_text(
+                cache,
+                raw_report,
+                remembered_json,
+                request_json,
+            )
+        })
+    }
+
+    /// Resolves everything the faction knows about the map, once, for a caller on either shell.
+    ///
+    /// The desktop twin of the wasm binding, delegating to the same core entry so the two shells
+    /// cannot drift about who is in a hex.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the remembered regions cannot be read.
+    #[cfg_attr(
+        feature = "tauri",
+        tauri::command(rename_all = "snake_case", rename = "known_map")
+    )]
+    pub fn command_known_map(
+        raw_report: &str,
+        ruleset_json: Option<&str>,
+        remembered_json: &str,
+    ) -> Result<atlantis_hud_core::known_map::KnownMap, String> {
+        atlantis_hud_core::cache::with_global(|cache| {
+            atlantis_hud_core::known_map::known_map_json(
+                cache,
+                raw_report,
+                ruleset_json,
+                remembered_json,
+            )
+        })
+    }
+
+    /// Traces the MOVE or ADVANCE order in a unit's written orders across the remembered map.
+    ///
+    /// The desktop twin of the wasm binding, delegating to the same core entry so the two shells
+    /// cannot drift into tracing differently.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error only when the ruleset or the remembered regions cannot be read. An order that
+    /// cannot be traced is a successful answer carrying no path.
+    #[cfg_attr(
+        feature = "tauri",
+        tauri::command(rename_all = "snake_case", rename = "trace_move_orders")
+    )]
+    pub fn command_trace_move_orders(
+        ruleset_json: &str,
+        raw_report: &str,
+        remembered_json: &str,
+        unit_id: &str,
+        orders: &str,
+    ) -> Result<atlantis_hud_core::movement::request::MoveOrderTraceResponse, String> {
+        atlantis_hud_core::cache::with_global(|cache| {
+            atlantis_hud_core::movement::request::trace_orders_for_remembered_report(
+                cache,
+                ruleset_json,
+                raw_report,
+                remembered_json,
+                unit_id,
+                orders,
+            )
+        })
+    }
+
+    /// What the orders document makes of the faction's units, region by region.
+    ///
+    /// Returns an error only when the ruleset or the remembered regions cannot be read. Orders that
+    /// change nothing are a successful, empty answer.
+    #[cfg_attr(
+        feature = "tauri",
+        tauri::command(rename_all = "snake_case", rename = "preview_orders")
+    )]
+    pub fn command_preview_orders(
+        ruleset_json: &str,
+        raw_report: &str,
+        remembered_json: &str,
+        orders_document: &str,
+    ) -> Result<atlantis_hud_core::orders::effects::OrdersPreviewResponse, String> {
+        atlantis_hud_core::cache::with_global(|cache| {
+            atlantis_hud_core::orders::effects::preview_orders_for_remembered_report(
+                cache,
+                ruleset_json,
+                raw_report,
+                remembered_json,
+                orders_document,
+            )
+        })
+    }
 }
+
+pub use commands::{
+    command_commit_report_import, command_delete_hex_note, command_export_map,
+    command_get_engine_info, command_known_map, command_list_hex_notes,
+    command_list_imported_turns, command_load_imported_turn, command_load_latest_imported_turn,
+    command_load_merged_reports, command_load_order_draft, command_load_region_sightings,
+    command_merge_report, command_order_commands, command_parse_report,
+    command_parse_report_classified, command_parse_report_full, command_plan_route,
+    command_preview_orders, command_preview_report_import, command_save_hex_note,
+    command_save_order_draft, command_trace_move_orders, command_validate_orders,
+};
 
 /// Creates a game under the application's games directory and applies migrations.
 ///
@@ -335,353 +1081,6 @@ pub fn command_open_game(
         .map_err(|error| error.to_string())
 }
 
-/// Parses a report into the full domain model.
-///
-/// Returned as the model itself rather than as JSON. It already serializes to exactly the shape the
-/// TypeScript side declares, so converting to a `Value` first would only add a round trip, and it
-/// would force the desktop shell to depend on `serde_json` for a type it never inspects.
-#[must_use]
-pub fn command_parse_report_full(raw_report: &str) -> ParsedReport {
-    atlantis_hud_core::report::parse_report_full(raw_report)
-}
-
-/// Parses one report and returns tolerant parser output.
-#[must_use]
-pub fn command_parse_report(raw_report: &str) -> ReportParseResultWire {
-    ReportParseResultWire::from(parse_report(raw_report))
-}
-
-/// Parses one report and previews duplicate conflict for a confirmed faction.
-pub fn command_preview_report_import(
-    database_path: &str,
-    game_id: &str,
-    confirmed_faction_id: &str,
-    raw_report: &str,
-) -> Result<ReportImportPreviewDto, String> {
-    let parse_result = parse_report(raw_report);
-    let turn_number = parse_result
-        .turn_header
-        .as_ref()
-        .map(|header| header.turn_number);
-    let parsed_payload_json =
-        serde_json::to_string(&parse_result).map_err(|error| error.to_string())?;
-    let warnings_payload_json =
-        serde_json::to_string(&parse_result.warnings).map_err(|error| error.to_string())?;
-
-    let preview = if let Some(current_turn_number) = turn_number {
-        let candidate = ImportedTurnRecord {
-            key: ImportedTurnKey {
-                game_id: game_id.to_string(),
-                faction_id: confirmed_faction_id.to_string(),
-                turn_number: current_turn_number,
-            },
-            raw_report: raw_report.to_string(),
-            parsed_payload_json,
-            warnings_payload_json,
-        };
-        preview_imported_turn(Path::new(database_path), &candidate)
-            .map(ImportedTurnPreviewDto::from)
-            .map_err(|error| error.to_string())?
-    } else {
-        ImportedTurnPreviewDto {
-            exists: false,
-            raw_changed: false,
-            parsed_changed: false,
-            warnings_changed: false,
-        }
-    };
-
-    Ok(ReportImportPreviewDto {
-        parse_result: ReportParseResultWire::from(parse_result),
-        duplicate_preview: preview,
-        turn_number,
-    })
-}
-
-/// Parses and commits one report import after faction confirmation.
-///
-/// `imported_at` comes from the shell rather than from a clock here, the way `opened_at` and an
-/// order draft's `updated_at` already do, so both platforms write the same format.
-pub fn command_commit_report_import(
-    database_path: &str,
-    game_id: &str,
-    confirmed_faction_id: &str,
-    raw_report: &str,
-    ruleset_json: Option<&str>,
-    allow_overwrite: bool,
-    imported_at: &str,
-) -> Result<ImportedTurnPreviewDto, String> {
-    // Both shapes come off one parse, and that parse is the one the shell already made when it
-    // showed the turn: the flat summary the import rules are decided against and that gets stored,
-    // and the full model the remembered regions are built from further down.
-    //
-    // Classified when the shell has a ruleset, exactly as the turn on screen is. The sightings
-    // below are the only account of a hex the map ever reads back, so an estimate stored here is
-    // an estimate forever - a tilde on every remembered unit, however complete the catalogue.
-    let report = atlantis_hud_core::cache::with_global(|cache| {
-        cache.classified_when_possible(raw_report, ruleset_json)
-    });
-    let parse_result = atlantis_hud_core::summarize(&report);
-    if let Some(rejection) = reject_import(&parse_result, confirmed_faction_id) {
-        return Err(rejection);
-    }
-
-    let turn_number = parse_result
-        .turn_header
-        .as_ref()
-        .map(|header| header.turn_number)
-        .ok_or_else(|| "turn header missing from parsed report".to_string())?;
-
-    let record = ImportedTurnRecord {
-        key: ImportedTurnKey {
-            game_id: game_id.to_string(),
-            faction_id: confirmed_faction_id.to_string(),
-            turn_number,
-        },
-        raw_report: raw_report.to_string(),
-        parsed_payload_json: serde_json::to_string(&parse_result)
-            .map_err(|error| error.to_string())?,
-        warnings_payload_json: serde_json::to_string(&parse_result.warnings)
-            .map_err(|error| error.to_string())?,
-    };
-    let preview = preview_imported_turn(Path::new(database_path), &record)
-        .map_err(|error| error.to_string())?;
-    if allow_overwrite {
-        upsert_imported_turn(Path::new(database_path), &record, imported_at)
-            .map_err(|error| error.to_string())?;
-    } else {
-        insert_imported_turn(Path::new(database_path), &record, imported_at).map_err(|error| {
-            match error {
-                PersistenceError::DuplicateImportedTurn { .. } => {
-                    "duplicate import exists and requires explicit overwrite confirmation"
-                        .to_string()
-                }
-                _ => error.to_string(),
-            }
-        })?;
-    }
-
-    // Regions get their own rows as well as living inside the turn payload, each carrying the turn
-    // it was seen in. Without this the map cannot tell a region in the current report from one held
-    // over from an earlier turn, which is the difference between two of its four states.
-    let sightings = atlantis_hud_core::report::sighting::region_sightings(&report, turn_number);
-
-    upsert_region_sightings(
-        Path::new(database_path),
-        game_id,
-        confirmed_faction_id,
-        &sightings,
-    )
-    .map_err(|error| error.to_string())?;
-
-    Ok(ImportedTurnPreviewDto::from(preview))
-}
-
-/// The order vocabulary, for the Tauri command surface.
-///
-/// Exposed so the shell need not keep a hand-copied list of its own beside the core's; the two used
-/// to drift, and one of them was wrong.
-#[must_use]
-pub fn command_order_commands() -> Vec<String> {
-    order_commands().into_iter().map(str::to_string).collect()
-}
-
-/// Validates one order draft for the Tauri command surface.
-///
-/// `ruleset_json` is the served ruleset when the shell has it; without it item names go unchecked
-/// and everything else is checked as usual. `raw_report` is the turn the orders were written for,
-/// when one has been imported: with it the answer covers the checks that read what each unit holds
-/// and where it stands, and without it the answer is the syntax check alone.
-///
-/// Both go through the cache, as they do on the web. This runs whenever the player stops typing,
-/// and the desktop is not entitled to be slower about it than the browser.
-#[must_use]
-pub fn command_validate_orders(
-    raw_orders: &str,
-    ruleset_json: Option<&str>,
-    raw_report: Option<&str>,
-    disabled_codes: Vec<String>,
-) -> OrderValidationResult {
-    let options = OrderCheckOptions {
-        disabled: disabled_codes.into_iter().collect(),
-    };
-    let (ruleset, report) = atlantis_hud_core::cache::with_global(|cache| {
-        let ruleset = ruleset_json.and_then(|json| cache.ruleset(json).ok());
-        let report = raw_report.map(|raw| cache.classified_when_possible(raw, ruleset_json));
-        (ruleset, report)
-    });
-
-    atlantis_hud_core::validate_turn(raw_orders, ruleset.as_deref(), report.as_deref(), options)
-}
-
-/// Persists one order draft for the Tauri command surface.
-///
-/// # Errors
-///
-/// Returns an error when the game's database cannot be written.
-pub fn command_save_order_draft(
-    database_path: &str,
-    game_id: &str,
-    faction_id: &str,
-    turn_number: u32,
-    order_text: &str,
-    updated_at: &str,
-) -> Result<OrderDraftRecordDto, String> {
-    let record = OrderDraftRecord {
-        key: OrderDraftKey {
-            game_id: game_id.to_string(),
-            faction_id: faction_id.to_string(),
-            turn_number,
-        },
-        order_text: order_text.to_string(),
-        updated_at: updated_at.to_string(),
-    };
-    upsert_order_draft(Path::new(database_path), &record).map_err(|error| error.to_string())?;
-    Ok(OrderDraftRecordDto {
-        key: OrderDraftKeyDto {
-            game_id: record.key.game_id,
-            faction_id: record.key.faction_id,
-            turn_number: record.key.turn_number,
-        },
-        order_text: record.order_text,
-        updated_at: record.updated_at,
-    })
-}
-
-/// Loads one order draft for the Tauri command surface.
-///
-/// # Errors
-///
-/// Returns an error when the game's database cannot be read.
-pub fn command_load_order_draft(
-    database_path: &str,
-    game_id: &str,
-    faction_id: &str,
-    turn_number: u32,
-) -> Result<Option<OrderDraftRecordDto>, String> {
-    let loaded = load_order_draft(
-        Path::new(database_path),
-        &OrderDraftKey {
-            game_id: game_id.to_string(),
-            faction_id: faction_id.to_string(),
-            turn_number,
-        },
-    )
-    .map_err(|error| error.to_string())?;
-
-    Ok(loaded.map(|record| OrderDraftRecordDto {
-        key: OrderDraftKeyDto {
-            game_id: record.key.game_id,
-            faction_id: record.key.faction_id,
-            turn_number: record.key.turn_number,
-        },
-        order_text: record.order_text,
-        updated_at: record.updated_at,
-    }))
-}
-
-/// Lists a game's hex notes for the Tauri command surface.
-///
-/// # Errors
-///
-/// Returns an error when the game's database cannot be read.
-pub fn command_list_hex_notes(
-    database_path: &str,
-    game_id: &str,
-) -> Result<Vec<HexNoteDto>, String> {
-    list_hex_notes(Path::new(database_path), game_id)
-        .map(|notes| notes.into_iter().map(Into::into).collect())
-        .map_err(|error| error.to_string())
-}
-
-/// Saves one hex note for the Tauri command surface.
-///
-/// # Errors
-///
-/// Returns an error when the game's database cannot be written.
-pub fn command_save_hex_note(database_path: &str, note: HexNoteDto) -> Result<HexNoteDto, String> {
-    let note: HexNote = note.into();
-    upsert_hex_note(Path::new(database_path), &note).map_err(|error| error.to_string())?;
-    Ok(note.into())
-}
-
-/// Deletes one hex note for the Tauri command surface.
-///
-/// # Errors
-///
-/// Returns an error when the game's database cannot be written.
-pub fn command_delete_hex_note(
-    database_path: &str,
-    game_id: &str,
-    note_id: &str,
-) -> Result<bool, String> {
-    delete_hex_note(Path::new(database_path), game_id, note_id).map_err(|error| error.to_string())
-}
-
-/// Loads one imported turn payload for the Tauri command surface.
-pub fn command_load_imported_turn(
-    database_path: &str,
-    game_id: &str,
-    faction_id: &str,
-    turn_number: u32,
-) -> Result<Option<ImportedTurnRecordDto>, String> {
-    let loaded = load_imported_turn(
-        Path::new(database_path),
-        &ImportedTurnKey {
-            game_id: game_id.to_string(),
-            faction_id: faction_id.to_string(),
-            turn_number,
-        },
-    )
-    .map_err(|error| error.to_string())?;
-
-    loaded.map(imported_turn_dto).transpose()
-}
-
-/// Loads the turn this game was last worked on, for the Tauri command surface.
-///
-/// `None` means the game holds no imports, which is what a game just created looks like.
-///
-/// # Errors
-///
-/// Returns an error when the database cannot be read, or when a stored payload will not parse.
-pub fn command_load_latest_imported_turn(
-    database_path: &str,
-    game_id: &str,
-) -> Result<Option<ImportedTurnRecordDto>, String> {
-    load_latest_imported_turn(Path::new(database_path), game_id)
-        .map_err(|error| error.to_string())?
-        .map(imported_turn_dto)
-        .transpose()
-}
-
-/// Lists every turn imported for a game, across every faction, for the Tauri command surface.
-///
-/// # Errors
-///
-/// Returns an error when the database cannot be read.
-pub fn command_list_imported_turns(
-    database_path: &str,
-    game_id: &str,
-) -> Result<Vec<ImportedTurnSummaryDto>, String> {
-    let listed = list_imported_turns(Path::new(database_path), game_id)
-        .map_err(|error| error.to_string())?;
-
-    Ok(listed
-        .into_iter()
-        .map(|summary| ImportedTurnSummaryDto {
-            key: OrderDraftKeyDto {
-                game_id: summary.key.game_id,
-                faction_id: summary.key.faction_id,
-                turn_number: summary.key.turn_number,
-            },
-            season: summary.season,
-            imported_at: summary.imported_at,
-            updated_at: summary.updated_at,
-        })
-        .collect())
-}
-
 fn imported_turn_dto(record: ImportedTurnRecord) -> Result<ImportedTurnRecordDto, String> {
     let parse_result = serde_json::from_str::<ReportParseResult>(&record.parsed_payload_json)
         .map_err(|error| error.to_string())?;
@@ -705,36 +1104,6 @@ fn imported_turn_dto(record: ImportedTurnRecord) -> Result<ImportedTurnRecordDto
 pub struct RememberedRegionDto {
     pub region: serde_json::Value,
     pub last_seen_turn: u32,
-}
-
-/// Reads back every region this faction has ever been seen in.
-///
-/// A sighting whose payload cannot be parsed is skipped rather than failing the lot: it was written
-/// by an older build, and losing one remembered hex is better than losing the map.
-///
-/// # Errors
-///
-/// Returns an error when the database cannot be read.
-pub fn command_load_region_sightings(
-    database_path: &str,
-    game_id: &str,
-    faction_id: &str,
-) -> Result<Vec<RememberedRegionDto>, String> {
-    let sightings = load_region_sightings(Path::new(database_path), game_id, faction_id)
-        .map_err(|error| error.to_string())?;
-
-    Ok(sightings
-        .into_iter()
-        .filter_map(|sighting| {
-            serde_json::from_str::<serde_json::Value>(&sighting.payload_json)
-                .ok()
-                .filter(|payload| !payload.is_null())
-                .map(|region| RememberedRegionDto {
-                    region,
-                    last_seen_turn: sighting.last_seen_turn,
-                })
-        })
-        .collect())
 }
 
 /// What merging one allied report did to a faction's map.
@@ -773,243 +1142,6 @@ impl From<MergedReportRecord> for MergedReportRecordDto {
             merged_at: record.merged_at,
         }
     }
-}
-
-/// Folds an allied report for the same turn into the viewer's remembered map.
-///
-/// Deliberately stores no imported turn of the ally's. The turn on screen is still the viewer's,
-/// and writing the ally's would put it at the top of `load_latest_imported_turn` - so reopening the
-/// game would come back up as the ally, silently performing the faction switch the player declined.
-///
-/// The sightings land under `viewer_faction_id`, which is what makes them visible at all: the map
-/// is read back for one faction, and a row written under the ally's id would be stored perfectly
-/// and never looked at.
-///
-/// # Errors
-///
-/// Returns an error when the report cannot be merged into this turn, or when the database cannot be
-/// read or written.
-pub fn command_merge_report(
-    database_path: &str,
-    game_id: &str,
-    viewer_faction_id: &str,
-    viewer_turn_number: u32,
-    raw_report: &str,
-    ruleset_json: Option<&str>,
-    merged_at: &str,
-) -> Result<ReportMergeResultDto, String> {
-    // Classified for the same reason an import is: the ally's units enter the map through these
-    // sightings and nowhere else, so what is stored here is what the table will draw.
-    let report = atlantis_hud_core::cache::with_global(|cache| {
-        cache.classified_when_possible(raw_report, ruleset_json)
-    });
-    let parse_result = atlantis_hud_core::summarize(&report);
-    if let Some(rejection) = reject_merge(&parse_result, viewer_turn_number) {
-        return Err(rejection);
-    }
-
-    // Clearing the threshold means the report named its faction, so this is present.
-    let ally = parse_result
-        .detected_factions
-        .first()
-        .ok_or_else(|| "parsed report does not name the faction it belongs to".to_string())?;
-    if ally.faction_id == viewer_faction_id {
-        return Err("a faction's own report is loaded rather than merged".to_string());
-    }
-
-    let existing: Vec<StoredSighting> =
-        load_region_sightings(Path::new(database_path), game_id, viewer_faction_id)
-            .map_err(|error| error.to_string())?
-            .iter()
-            .map(StoredSighting::from)
-            .collect();
-    let outcome = merge_report_into_sightings(&existing, &report, viewer_turn_number);
-
-    upsert_region_sightings(
-        Path::new(database_path),
-        game_id,
-        viewer_faction_id,
-        &outcome.sightings,
-    )
-    .map_err(|error| error.to_string())?;
-
-    upsert_merged_report(
-        Path::new(database_path),
-        &MergedReportRecord {
-            game_id: game_id.to_string(),
-            faction_id: viewer_faction_id.to_string(),
-            turn_number: viewer_turn_number,
-            merged_faction_id: ally.faction_id.clone(),
-            merged_faction_name: ally.name.clone(),
-            merged_at: merged_at.to_string(),
-        },
-    )
-    .map_err(|error| error.to_string())?;
-
-    Ok(ReportMergeResultDto {
-        turn_number: viewer_turn_number,
-        merged_faction_id: ally.faction_id.clone(),
-        merged_faction_name: ally.name.clone(),
-        merged_region_count: u32::try_from(outcome.merged_region_count).unwrap_or(u32::MAX),
-        new_region_count: u32::try_from(outcome.new_region_count).unwrap_or(u32::MAX),
-    })
-}
-
-/// Every allied report folded into one faction's map for one turn.
-///
-/// # Errors
-///
-/// Returns an error when the database cannot be read.
-pub fn command_load_merged_reports(
-    database_path: &str,
-    game_id: &str,
-    faction_id: &str,
-    turn_number: u32,
-) -> Result<Vec<MergedReportRecordDto>, String> {
-    load_merged_reports(Path::new(database_path), game_id, faction_id, turn_number)
-        .map(|records| {
-            records
-                .into_iter()
-                .map(MergedReportRecordDto::from)
-                .collect()
-        })
-        .map_err(|error| error.to_string())
-}
-
-/// Parses a report and counts each unit's men against the catalogue.
-///
-/// The classifying counterpart of `command_parse_report_full`. Kept separate rather than replacing
-/// it, because parsing has to keep working with no ruleset loaded.
-#[must_use]
-pub fn command_parse_report_classified(raw_report: &str, ruleset_json: &str) -> ParsedReport {
-    let report = atlantis_hud_core::cache::with_global(|cache| {
-        atlantis_hud_core::movement::request::parse_and_classify(cache, raw_report, ruleset_json)
-    });
-    (*report).clone()
-}
-
-/// Plans a route for one unit against a ruleset the caller supplies.
-///
-/// A thin delegation: the work lives in the core so the wasm adapter can call exactly the same
-/// function without depending on this crate, which pulls in native SQLite.
-///
-/// # Errors
-///
-/// Returns an error only when the ruleset itself cannot be used, or the destination is not a hex
-/// identifier. A route that cannot be planned is a successful answer carrying a reason.
-pub fn command_plan_route(
-    ruleset_json: &str,
-    raw_report: &str,
-    remembered_json: &str,
-    unit_id: &str,
-    destination: &str,
-) -> Result<atlantis_hud_core::movement::request::RoutePlanResponse, String> {
-    atlantis_hud_core::cache::with_global(|cache| {
-        atlantis_hud_core::movement::request::plan_for_remembered_report(
-            cache,
-            ruleset_json,
-            raw_report,
-            remembered_json,
-            unit_id,
-            destination,
-        )
-    })
-}
-
-/// Writes the known map inside one rectangle out as report-shaped text.
-///
-/// The desktop twin of the wasm binding, delegating to the same core entry so a map exported on
-/// the desktop and the same map exported in the browser come out byte for byte identical.
-///
-/// # Errors
-///
-/// Returns an error when the remembered regions or the request cannot be read. An empty rectangle
-/// is a successful answer carrying a header and no regions.
-pub fn command_export_map(
-    raw_report: &str,
-    remembered_json: &str,
-    request_json: &str,
-) -> Result<String, String> {
-    atlantis_hud_core::cache::with_global(|cache| {
-        atlantis_hud_core::report::export::export_map_text(
-            cache,
-            raw_report,
-            remembered_json,
-            request_json,
-        )
-    })
-}
-
-/// Resolves everything the faction knows about the map, once, for a caller on either shell.
-///
-/// The desktop twin of the wasm binding, delegating to the same core entry so the two shells
-/// cannot drift about who is in a hex.
-///
-/// # Errors
-///
-/// Returns an error when the remembered regions cannot be read.
-pub fn command_known_map(
-    raw_report: &str,
-    ruleset_json: Option<&str>,
-    remembered_json: &str,
-) -> Result<atlantis_hud_core::known_map::KnownMap, String> {
-    atlantis_hud_core::cache::with_global(|cache| {
-        atlantis_hud_core::known_map::known_map_json(
-            cache,
-            raw_report,
-            ruleset_json,
-            remembered_json,
-        )
-    })
-}
-
-/// Traces the MOVE or ADVANCE order in a unit's written orders across the remembered map.
-///
-/// The desktop twin of the wasm binding, delegating to the same core entry so the two shells
-/// cannot drift into tracing differently.
-///
-/// # Errors
-///
-/// Returns an error only when the ruleset or the remembered regions cannot be read. An order that
-/// cannot be traced is a successful answer carrying no path.
-pub fn command_trace_move_orders(
-    ruleset_json: &str,
-    raw_report: &str,
-    remembered_json: &str,
-    unit_id: &str,
-    orders: &str,
-) -> Result<atlantis_hud_core::movement::request::MoveOrderTraceResponse, String> {
-    atlantis_hud_core::cache::with_global(|cache| {
-        atlantis_hud_core::movement::request::trace_orders_for_remembered_report(
-            cache,
-            ruleset_json,
-            raw_report,
-            remembered_json,
-            unit_id,
-            orders,
-        )
-    })
-}
-
-/// What the orders document makes of the faction's units, region by region.
-///
-/// Returns an error only when the ruleset or the remembered regions cannot be read. Orders that
-/// change nothing are a successful, empty answer.
-pub fn command_preview_orders(
-    ruleset_json: &str,
-    raw_report: &str,
-    remembered_json: &str,
-    orders_document: &str,
-) -> Result<atlantis_hud_core::orders::effects::OrdersPreviewResponse, String> {
-    atlantis_hud_core::cache::with_global(|cache| {
-        atlantis_hud_core::orders::effects::preview_orders_for_remembered_report(
-            cache,
-            ruleset_json,
-            raw_report,
-            remembered_json,
-            orders_document,
-        )
-    })
 }
 
 #[cfg(test)]
@@ -1737,7 +1869,7 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
         )
         .expect("create game");
 
-        let validation = command_validate_orders("FLY 1 2", None, None, Vec::new());
+        let validation = command_validate_orders("FLY 1 2", None, None, Some(Vec::new()));
         assert_eq!(
             validation.diagnostics,
             vec![atlantis_hud_core::OrderDiagnostic {
@@ -1767,6 +1899,24 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
             .expect("load draft");
 
         assert_eq!(loaded, Some(saved));
+    }
+
+    /// `disabled_codes: None` and the explicit conservative default must agree, or a caller that
+    /// omits the argument would silently see different checks than one that spells the default
+    /// out. `"unit 5\nWORK\n"` is the orders text `hex-unguarded` fires on when it is enabled
+    /// (`crates/core/src/orders/semantics.rs`'s `the_broad_guard_check_reports_an_unguarded_hex_when_it_is_asked_to`).
+    #[test]
+    fn absent_disabled_codes_use_the_conservative_default() {
+        let orders = "unit 5\nWORK\n";
+        let default_disabled: Vec<String> = atlantis_hud_core::OrderCheckOptions::default()
+            .disabled
+            .into_iter()
+            .collect();
+
+        assert_eq!(
+            command_validate_orders(orders, None, None, None),
+            command_validate_orders(orders, None, None, Some(default_disabled))
+        );
     }
 
     #[test]

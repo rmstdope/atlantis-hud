@@ -10,6 +10,7 @@ desktop-runtime = [
   "dep:tauri-plugin-opener",
   "dep:tauri-plugin-dialog",
   "dep:tauri-plugin-fs",
+  "atlantis-hud-core-tauri/tauri",
 ]
 
 [build-dependencies]

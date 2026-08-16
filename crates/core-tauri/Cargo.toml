@@ -3,11 +3,18 @@ name = "atlantis-hud-core-tauri"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+# The `command_*` functions double as the desktop's Tauri commands when this is on. Off by
+# default so `cargo check --workspace` never builds tauri; the desktop shell's `desktop-runtime`
+# feature turns it on (apps/desktop/src-tauri/Cargo.toml).
+tauri = ["dep:tauri"]
+
 [dependencies]
 atlantis-hud-core = { path = "../core" }
 atlantis-hud-core-persistence = { path = "../core-persistence" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+tauri = { version = "2", optional = true, default-features = false }
 
 [dev-dependencies]
 tempfile = "3.12"

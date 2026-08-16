@@ -56,7 +56,9 @@ travels as raw text, which is the key the core's parse cache remembers it under.
   on the same two grounds as `plan_route`.
 
 The Tauri commands take snake_case argument names verbatim (`rename_all = "snake_case"`); the
-TypeScript Tauri adapter passes them explicitly rather than translating.
+TypeScript Tauri adapter passes them explicitly rather than translating. Since `ah-wxk.1` the
+commands are core-tauri's `command_*` functions under the `tauri` feature, renamed to their bare
+names, except the eight games-root ones the shell wraps.
 
 ## Map export
 
