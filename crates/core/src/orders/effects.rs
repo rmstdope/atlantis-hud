@@ -107,9 +107,7 @@ pub fn preview_orders_for_remembered_report(
     let report = cache.classified(raw_report, ruleset_json);
 
     let mut working = Working::over_own_units(&report, ruleset.clone());
-    for line in orders_document.lines() {
-        working.read_line(line);
-    }
+    super::walk::walk(orders_document, |event| working.visit(event));
 
     // Movement is resolved after everything else, so a renamed or re-equipped unit departs and
     // arrives as the orders leave it, not as the report found it.
@@ -274,8 +272,6 @@ struct Working {
     /// Formed units being described, innermost last. `None` marks a FORM that could not be read,
     /// so its orders are swallowed rather than applied to whoever came before.
     forming: Vec<Option<usize>>,
-    /// How deep inside `TURN...ENDTURN` the walker is. Everything there is next month's business.
-    turn_depth: usize,
     /// Consulted only to tell people from equipment when a GIVE moves a race.
     ruleset: std::sync::Arc<crate::movement::rules::Ruleset>,
 }
@@ -302,46 +298,55 @@ impl Working {
             by_alias: BTreeMap::new(),
             current: None,
             forming: Vec::new(),
-            turn_depth: 0,
             ruleset,
         }
     }
 
-    fn read_line(&mut self, line: &str) {
-        let lexed = super::lexer::lex_line(line);
-        let Some((command, arguments)) = lexed.tokens.split_first() else {
-            return;
-        };
+    /// Folds one event from [`super::walk`] into the units being built.
+    ///
+    /// The walk settles the block bookkeeping - nesting, which closer belongs to which opener, an
+    /// unclosed block abandoned at the next `unit` line or `#` directive - so only the semantics
+    /// specific to a preview are left here: a `FORM` at top level starts describing a new unit, an
+    /// order at top level is applied to whichever unit (formed or not) is currently active, and
+    /// anything at `depth.turn > 0` is next month's and changes nothing.
+    fn visit(&mut self, event: super::walk::Event<'_>) {
+        use super::walk::{BlockKind, Event};
 
-        // Inside a TURN block only the block's own boundaries matter: a FORM in there is next
-        // month's FORM, and its END closes nothing out here.
-        if self.turn_depth > 0 {
-            if command.is("turn") {
-                self.turn_depth += 1;
-            } else if command.is("endturn") {
-                self.turn_depth -= 1;
+        match event {
+            Event::Broken { .. } => {}
+            Event::Directive(_) => {
+                // `#atlantis` and `#end` bound the document; neither leaves a unit's block open.
+                self.current = None;
+                self.forming.clear();
             }
-            return;
-        }
-
-        if command.is("turn") {
-            self.turn_depth = 1;
-        } else if command.text.starts_with('#') {
-            // `#atlantis` and `#end` bound the document; neither leaves a unit's block open.
-            self.current = None;
-            self.forming.clear();
-        } else if command.is("unit") {
-            self.forming.clear();
-            self.current = arguments
-                .first()
-                .and_then(|id| self.by_id.get(&id.text))
-                .copied();
-        } else if command.is("form") {
-            self.open_form(arguments);
-        } else if command.is("end") {
-            self.forming.pop();
-        } else {
-            self.read_order(command, arguments);
+            Event::Unit(line) => {
+                self.forming.clear();
+                self.current = line
+                    .arguments
+                    .first()
+                    .and_then(|id| self.by_id.get(&id.text))
+                    .copied();
+            }
+            Event::Open {
+                line,
+                kind: BlockKind::Form,
+                depth,
+            } if depth.turn == 0 => {
+                self.open_form(line.arguments);
+            }
+            Event::Open { .. } => {}
+            Event::Close {
+                kind: BlockKind::Form,
+                depth,
+                ..
+            } if depth.turn == 0 => {
+                self.forming.pop();
+            }
+            Event::Close { .. } | Event::Stray { .. } | Event::Abandoned(_) => {}
+            Event::Order { line, depth } if depth.turn == 0 => {
+                self.read_order(line.command, line.arguments);
+            }
+            Event::Order { .. } => {}
         }
     }
 
@@ -1019,6 +1024,37 @@ mod tests {
         // ENTER then LEAVE ends outside, where the report already had it: nothing to say.
         let left = preview("unit 900\nENTER 4\nLEAVE\n");
         assert!(left.regions.is_empty(), "{:?}", left.regions);
+    }
+
+    /// The walker abandons an unclosed TURN at the next `unit` line, as the parser and the intents
+    /// reader always did - so an unclosed block no longer swallows the units written after it.
+    #[test]
+    fn an_unclosed_turn_block_ends_at_the_next_unit() {
+        let response = preview_orders_for_remembered_report(
+            &mut ReportCache::new(),
+            RULESET,
+            &[
+                "Foo (1) Report",
+                "",
+                "plain (1,1) in Nowhere, 10 peasants (orcs), $5.",
+                "",
+                "* Walker (900), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
+                "* Bystander (901), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
+                "",
+            ]
+            .join("\n"),
+            "[]",
+            "unit 900\nTURN\nWORK\nunit 901\nGUARD 1\n",
+        )
+        .expect("the ruleset loads");
+
+        let bystander = response
+            .regions
+            .iter()
+            .flat_map(|region| region.units.iter())
+            .find(|unit| unit.unit.unit_id == "901")
+            .expect("unit 901's GUARD is applied even though unit 900 left a TURN block open");
+        assert!(bystander.unit.on_guard);
     }
 
     #[test]

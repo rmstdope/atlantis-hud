@@ -7,7 +7,8 @@
 //! see.
 
 use super::grammar::{find_order, match_order, Mismatch};
-use super::lexer::{lex_line, utf16_column, Token, TokenKind};
+use super::lexer::{utf16_column, Token, TokenKind};
+use super::walk::{self, Event, Line, Opened};
 use crate::movement::rules::Ruleset;
 use crate::{OrderDiagnostic, OrderDiagnosticSeverity, OrderValidationResult};
 
@@ -31,9 +32,7 @@ pub fn validate(source: &str, ruleset_json: Option<&str>) -> OrderValidationResu
 pub fn validate_against(source: &str, ruleset: Option<&Ruleset>) -> OrderValidationResult {
     let mut document = Document::default();
 
-    for (index, line) in source.lines().enumerate() {
-        document.read_line(index + 1, line, ruleset);
-    }
+    walk::walk(source, |event| document.visit(event, ruleset));
     document.finish(source);
 
     let mut diagnostics = document.diagnostics;
@@ -45,57 +44,48 @@ pub fn validate_against(source: &str, ruleset: Option<&Ruleset>) -> OrderValidat
     OrderValidationResult { diagnostics }
 }
 
-/// A block waiting for its terminator.
-struct OpenBlock {
-    /// The keyword that opened it, for the message.
-    opener: &'static str,
-    /// The keyword that has to close it.
-    terminator: &'static str,
-    line: usize,
-    /// Where the opening keyword sits on that line.
-    column_start: usize,
-    column_end: usize,
-}
-
 /// The state a document accumulates as it is read.
 #[derive(Default)]
 struct Document {
     diagnostics: Vec<OrderDiagnostic>,
-    blocks: Vec<OpenBlock>,
     /// Whether the document declared itself with `#atlantis`. Only then is `#end` expected: the
     /// pane validates whatever the player has typed, and a fragment is not a malformed document.
     opened: bool,
     closed: bool,
-    last_line: usize,
 }
 
 impl Document {
-    fn read_line(&mut self, number: usize, line: &str, ruleset: Option<&Ruleset>) {
-        self.last_line = number;
-        let lexed = lex_line(line);
-
-        if let Some((start, end)) = lexed.unterminated_quote {
-            // The rest of the line cannot be read, so nothing else about it is worth saying.
-            self.error(
-                number,
-                start,
-                end,
-                "unterminated-quote",
-                "a quotation mark is never closed".to_string(),
-            );
-            return;
-        }
-
-        let Some((command, arguments)) = lexed.tokens.split_first() else {
-            return;
-        };
-
-        if command.text.starts_with('#') {
-            self.read_directive(number, command, arguments);
-        } else if command.is("unit") {
-            self.read_unit_line(number, command, arguments);
-        } else {
-            self.read_order(number, line, command, arguments, ruleset);
+    /// Folds one event from [`super::walk`]. The walk itself has already settled which blocks are
+    /// open, nested and abandoned; what is left here is this document's own semantics - the
+    /// `#atlantis`/`#end` pair, a unit needing a number, and every order's argument shape.
+    fn visit(&mut self, event: Event<'_>, ruleset: Option<&Ruleset>) {
+        match event {
+            Event::Broken { number, span, .. } => {
+                // The rest of the line cannot be read, so nothing else about it is worth saying.
+                self.error(
+                    number,
+                    span.0,
+                    span.1,
+                    "unterminated-quote",
+                    "a quotation mark is never closed".to_string(),
+                );
+            }
+            Event::Directive(line) => {
+                self.read_directive(line.number, line.command, line.arguments)
+            }
+            Event::Unit(line) => self.read_unit_line(line.number, line.command, line.arguments),
+            // `TURN`, `FORM`, `END` and `ENDTURN` are grammar commands with their own argument
+            // shapes (`FORM n`, the rest taking none); the walk settled the block bookkeeping,
+            // this only checks the shape.
+            Event::Open { line, .. } | Event::Close { line, .. } => {
+                self.check_shape(&line, ruleset);
+            }
+            Event::Stray { line, expected, .. } => {
+                self.stray(&line, expected);
+                self.check_shape(&line, ruleset);
+            }
+            Event::Abandoned(opened) => self.unclosed(opened),
+            Event::Order { line, .. } => self.check_shape(&line, ruleset),
         }
     }
 
@@ -118,7 +108,6 @@ impl Document {
                 );
             }
         } else if command.is("#end") {
-            self.close_open_blocks();
             self.closed = true;
         } else {
             self.error(
@@ -132,9 +121,6 @@ impl Document {
     }
 
     fn read_unit_line(&mut self, number: usize, command: &Token, arguments: &[Token]) {
-        // A unit's orders end where the next unit's begin, so anything still open was left open.
-        self.close_open_blocks();
-
         if !arguments
             .first()
             .is_some_and(|unit| unit.kind == TokenKind::Number)
@@ -149,32 +135,25 @@ impl Document {
         }
     }
 
-    fn read_order(
-        &mut self,
-        number: usize,
-        line: &str,
-        command: &Token,
-        arguments: &[Token],
-        ruleset: Option<&Ruleset>,
-    ) {
-        let Some(order) = find_order(&command.text) else {
+    /// The argument-shape check every order gets, block keywords included. An unrecognised command
+    /// is `unknown-command`; a recognised one is checked against the grammar's own shape.
+    fn check_shape(&mut self, line: &Line<'_>, ruleset: Option<&Ruleset>) {
+        let Some(order) = find_order(&line.command.text) else {
             self.error(
-                number,
-                command.column_start,
-                command.column_end,
+                line.number,
+                line.command.column_start,
+                line.command.column_end,
                 "unknown-command",
-                format!("unknown order command: {}", command.text),
+                format!("unknown order command: {}", line.command.text),
             );
             return;
         };
 
-        self.track_block(number, command, order.name);
-
-        match match_order(order, arguments, ruleset) {
+        match match_order(order, line.arguments, ruleset) {
             Ok(unknown) => {
                 for item in unknown {
                     self.warning(
-                        number,
+                        line.number,
                         item.column_start,
                         item.column_end,
                         "unknown-item",
@@ -182,53 +161,66 @@ impl Document {
                     );
                 }
             }
-            Err(mismatch) => {
-                self.report_mismatch(number, line, command, arguments, order.name, &mismatch)
-            }
+            Err(mismatch) => self.report_mismatch(
+                line.number,
+                line.text,
+                line.command,
+                line.arguments,
+                order.name,
+                &mismatch,
+            ),
         }
     }
 
-    fn track_block(&mut self, number: usize, command: &Token, name: &'static str) {
-        match name {
-            "TURN" => self.blocks.push(OpenBlock {
-                opener: "TURN",
-                terminator: "ENDTURN",
-                line: number,
-                column_start: command.column_start,
-                column_end: command.column_end,
-            }),
-            "FORM" => self.blocks.push(OpenBlock {
-                opener: "FORM",
-                terminator: "END",
-                line: number,
-                column_start: command.column_start,
-                column_end: command.column_end,
-            }),
-            "ENDTURN" | "END" => {
-                if self
-                    .blocks
-                    .last()
-                    .is_some_and(|block| block.terminator == name)
-                {
-                    self.blocks.pop();
-                } else {
-                    self.error(
-                        number,
-                        command.column_start,
-                        command.column_end,
-                        "unexpected-block-end",
-                        match self.blocks.last() {
-                            Some(block) => format!(
-                                "{name} closes nothing here; the {} block opened on line {} is closed by {}",
-                                block.opener, block.line, block.terminator
-                            ),
-                            None => format!("{name} closes nothing here"),
-                        },
-                    );
-                }
-            }
-            _ => {}
-        }
+    /// `END` or `ENDTURN` closing nothing: no block open, or the innermost is the other kind.
+    fn stray(&mut self, line: &Line<'_>, expected: Option<Opened>) {
+        // The canonical spelling, as the grammar names it - not the case the player happened to
+        // type, which `command.is` already normalised past.
+        let name = if line.command.is("ENDTURN") {
+            "ENDTURN"
+        } else {
+            "END"
+        };
+        let message = match expected {
+            Some(opened) => format!(
+                "{name} closes nothing here; the {} block opened on line {} is closed by {}",
+                opened.kind.opener(),
+                opened.number,
+                opened.kind.terminator()
+            ),
+            None => format!("{name} closes nothing here"),
+        };
+        self.error(
+            line.number,
+            line.command.column_start,
+            line.command.column_end,
+            "unexpected-block-end",
+            message,
+        );
+    }
+
+    /// A block still open when a `unit` line, a `#` directive or the end of the document arrived.
+    ///
+    /// Filed against the line that *opened* the block rather than the line that discovered it. The
+    /// discovering line is the next `unit` line or `#end`, which is outside the block of the unit
+    /// whose orders are wrong - and the panel takes a unit's problems by line, so a diagnostic left
+    /// there was shown to nobody and the offending unit reported no errors at all.
+    fn unclosed(&mut self, opened: Opened) {
+        self.diagnostics.push(OrderDiagnostic {
+            code: "unclosed-block".to_string(),
+            message: format!(
+                "this {} block is never closed by {}",
+                opened.kind.opener(),
+                opened.kind.terminator()
+            ),
+            line_start: Some(opened.number),
+            line_end: Some(opened.number),
+            column_start: Some(opened.column_start),
+            column_end: Some(opened.column_end),
+            region_id: None,
+            unit_id: None,
+            severity: OrderDiagnosticSeverity::Error,
+        });
     }
 
     fn report_mismatch(
@@ -267,36 +259,9 @@ impl Document {
         self.error(number, found.column_start, found.column_end, code, message);
     }
 
-    /// Complains about every block still open, and forgets them so one mistake is reported once.
-    ///
-    /// Filed against the line that *opened* the block rather than the line that discovered it. The
-    /// discovering line is the next `unit` line or `#end`, which is outside the block of the unit
-    /// whose orders are wrong - and the panel takes a unit's problems by line, so a diagnostic left
-    /// there was shown to nobody and the offending unit reported no errors at all.
-    fn close_open_blocks(&mut self) {
-        for block in std::mem::take(&mut self.blocks) {
-            self.diagnostics.push(OrderDiagnostic {
-                code: "unclosed-block".to_string(),
-                message: format!(
-                    "this {} block is never closed by {}",
-                    block.opener, block.terminator
-                ),
-                line_start: Some(block.line),
-                line_end: Some(block.line),
-                column_start: Some(block.column_start),
-                column_end: Some(block.column_end),
-                region_id: None,
-                unit_id: None,
-                severity: OrderDiagnosticSeverity::Error,
-            });
-        }
-    }
-
     fn finish(&mut self, source: &str) {
         let last = source.lines().last().unwrap_or_default();
-        let number = self.last_line.max(1);
-
-        self.close_open_blocks();
+        let number = walk::last_line_number(source).max(1);
 
         if self.opened && !self.closed {
             self.error(
