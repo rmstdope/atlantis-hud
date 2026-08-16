@@ -239,10 +239,19 @@ pub fn walk(source: &str, mut visit: impl FnMut(Event<'_>)) {
     abandon_all(&mut stack, &mut visit);
 }
 
-/// The last line number in `source` (0 for an empty document).
+/// The last line's number (0 for an empty document) and its text.
+///
+/// What [`super::parser::Document::finish`] needs at the end of a document, in one pass rather than
+/// the separate `.lines().count()` and `.lines().last()` scans it used to make.
 #[must_use]
-pub fn last_line_number(source: &str) -> usize {
-    source.lines().count()
+pub fn last_line(source: &str) -> (usize, &str) {
+    let mut number = 0;
+    let mut text = "";
+    for line in source.lines() {
+        number += 1;
+        text = line;
+    }
+    (number, text)
 }
 
 #[cfg(test)]
@@ -393,5 +402,11 @@ mod tests {
     #[test]
     fn blank_and_comment_lines_produce_no_event() {
         assert_eq!(summarize("\n   \n;a comment\n"), Vec::<String>::new());
+    }
+
+    #[test]
+    fn last_line_reports_the_final_lines_number_and_text() {
+        assert_eq!(last_line("WORK\nMOVE N\n"), (2, "MOVE N"));
+        assert_eq!(last_line(""), (0, ""), "an empty document has no last line");
     }
 }

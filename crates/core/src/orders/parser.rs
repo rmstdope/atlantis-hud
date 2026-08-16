@@ -260,8 +260,8 @@ impl Document {
     }
 
     fn finish(&mut self, source: &str) {
-        let last = source.lines().last().unwrap_or_default();
-        let number = walk::last_line_number(source).max(1);
+        let (number, last) = walk::last_line(source);
+        let number = number.max(1);
 
         if self.opened && !self.closed {
             self.error(
