@@ -117,6 +117,7 @@ import {
 import { diffOrders, diffTurns } from "../turnDiff";
 import { type MapRect } from "./mapMarquee";
 import { loadSavedView, saveMapView } from "./mapViewportStorage";
+import type { MapViewState } from "./mapViewState";
 import { getMapTheme } from "./mapThemes";
 import { OrdersPanel } from "./OrdersPanel";
 import type { OrdersEditorHandle } from "./OrdersEditor";
@@ -380,7 +381,6 @@ export function AppShell({
   const selectUnit = useWorkspaceStore((state) => state.selectUnit);
   const level = useWorkspaceStore((state) => state.level);
   const setLevel = useWorkspaceStore((state) => state.setLevel);
-  const mapView = useWorkspaceStore((state) => state.mapView);
   const layers = useWorkspaceStore((state) => state.layers);
   const badges = useWorkspaceStore((state) => state.badges);
   const showTextures = useSettingsStore((state) => state.biomeTextures);
@@ -459,12 +459,30 @@ export function AppShell({
   // and zoom, all held in one place by the store's `mapView` slice now (ah-ian). Guarded on a
   // committed viewport: before the map has framed anything for this game there is nothing to
   // write yet, and writing `{level, regionId}` alone would make a reload fit instead of restore.
+  //
+  // Read via `subscribe` rather than the usual `useWorkspaceStore(state => state.mapView)`
+  // selector: `mapView` changes on every pan, zoom and wheel step, and a shell this size
+  // re-rendering on each of those would cost far more than the write itself does. `level` and
+  // `selectedRegionId` are already subscribed above for the UI they drive, so this effect still
+  // sees their latest values through the closure; only the write's own trigger - `mapView`
+  // changing - is kept out of the render loop.
   useEffect(() => {
-    if (openGameId === null || mapView.gameId !== openGameId || mapView.viewport === null) {
-      return;
+    if (openGameId === null) {
+      return undefined;
     }
-    saveMapView(openGameId, { viewport: mapView.viewport, level, regionId: selectedRegionId });
-  }, [openGameId, mapView, level, selectedRegionId]);
+    const write = (current: MapViewState) => {
+      if (current.gameId !== openGameId || current.viewport === null) {
+        return;
+      }
+      saveMapView(openGameId, { viewport: current.viewport, level, regionId: selectedRegionId });
+    };
+    write(useWorkspaceStore.getState().mapView);
+    return useWorkspaceStore.subscribe((state, previous) => {
+      if (state.mapView !== previous.mapView) {
+        write(state.mapView);
+      }
+    });
+  }, [openGameId, level, selectedRegionId]);
 
   // A level restored from storage that this game no longer draws. It can happen: the underworld
   // may only have been visible in an older report. Nothing on that level would be drawn and there

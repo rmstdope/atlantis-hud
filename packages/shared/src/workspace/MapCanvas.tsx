@@ -219,6 +219,13 @@ export function MapCanvas({
   const mapView = useWorkspaceStore((state) => state.mapView);
   const commitMapView = useWorkspaceStore((state) => state.commitMapView);
   const view = mapView.viewport ?? ORIGIN;
+  // Kept in step with `view` on every render, so the DOM transform below (applyView, driven by
+  // this ref) never lags behind a view that just changed through the store - most visibly on a
+  // game switch, where the store drops to ORIGIN the instant the previous game's committed
+  // viewport is cleared, before the frame effect has decided what replaces it. A drag or wheel
+  // gesture writes this ref directly and skips React state entirely (see `slide`), so this line
+  // never runs mid-gesture to clobber it - same pattern as `selectRef` above.
+  viewRef.current = view;
 
   const onLevel = useMemo(
     () => model.hexes.filter((hex) => hex.coordinate.z === level),
