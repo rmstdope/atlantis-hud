@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 /// `z` is the engine's own level index (see [`crate::report::level`]): the nexus is 0, the surface
 /// 1, the underworld 2. Only coordinates where `x + y` is even exist, which is why the map is drawn
 /// with flat-top hexes: north and south are direct neighbours.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Hash, Serialize, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct Coordinate {
@@ -29,7 +29,7 @@ impl Coordinate {
 }
 
 /// A quantity of one item, as in `57 grain [GRAI]`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct ItemAmount {
@@ -39,7 +39,7 @@ pub struct ItemAmount {
 }
 
 /// An item offered or sought in a market, as in `138 grain [GRAI] at $24`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct MarketItem {
@@ -50,7 +50,7 @@ pub struct MarketItem {
 }
 
 /// A settlement inside a region, as in `contains Inholm [city]`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[cfg_attr(
     test,
     derive(ts_rs::TS),
@@ -67,7 +67,7 @@ pub struct Settlement {
 ///
 /// An exit names a region the faction may never have visited, which is what makes a third map
 /// state necessary: known by name, with terrain and province but nothing else.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[cfg_attr(
     test,
     derive(ts_rs::TS),
@@ -83,7 +83,7 @@ pub struct Exit {
 }
 
 /// A building, ship or road, as introduced by a `+` line.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[cfg_attr(
     test,
     derive(ts_rs::TS),
@@ -101,7 +101,7 @@ pub struct Structure {
 }
 
 /// A skill with its level and accumulated study points, as in `stealth [STEA] 5 (450)`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[cfg_attr(
     test,
     derive(ts_rs::TS),
@@ -165,8 +165,34 @@ fn estimated_until_classified() -> bool {
     true
 }
 
+/// A unit nobody has described yet: no people, nothing carried, and — like every payload written
+/// before classification existed — an estimate rather than a count. Tests build from this with
+/// struct update; production never does.
+impl Default for ReportUnit {
+    fn default() -> Self {
+        Self {
+            unit_id: String::new(),
+            name: String::new(),
+            region_id: String::new(),
+            faction_id: None,
+            faction_name: None,
+            own: false,
+            on_guard: false,
+            flags: Vec::new(),
+            items: Vec::new(),
+            skills: Vec::new(),
+            men: 0,
+            men_estimated: true,
+            men_by_race: Vec::new(),
+            weight: None,
+            capacity: None,
+            structure_id: None,
+        }
+    }
+}
+
 /// A region as the report describes it.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct ReportRegion {
@@ -209,4 +235,32 @@ impl ReportRegion {
 #[must_use]
 pub fn region_label(terrain: &str, x: i32, y: i32, province: &str) -> String {
     format!("{terrain} ({x},{y}) in {province}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_default_unit_is_estimated_until_classified() {
+        let unit = ReportUnit::default();
+
+        assert!(unit.men_estimated);
+        assert!(unit.men_by_race.is_empty());
+    }
+
+    #[test]
+    fn a_default_region_has_the_nexus_origin() {
+        let region = ReportRegion::default();
+
+        assert_eq!(
+            region.coordinate,
+            Coordinate {
+                x: 0,
+                y: 0,
+                z: 0
+            }
+        );
+        assert!(region.units.is_empty());
+    }
 }
