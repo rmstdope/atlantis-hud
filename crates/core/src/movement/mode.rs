@@ -145,8 +145,8 @@ fn stated_sailing_requirement(description: &str) -> Option<i64> {
     need.trim().parse().ok()
 }
 
-/// `"Load: 110/150"` states have and need; this reads the second number, the weight a fleet
-/// carries.
+/// `"Load: 110/150"` states current and capacity; this reads the second number, the weight the
+/// fleet can carry.
 fn stated_cargo_capacity(description: &str) -> Option<i64> {
     let (_have, need) = stated_field(description, "Load:")?.split_once('/')?;
     need.trim().parse().ok()

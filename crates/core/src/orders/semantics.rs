@@ -1201,12 +1201,16 @@ fn check_sailing(
             .collect();
 
         // A MOVE by anyone aboard, or a MOVE that steps into this fleet, leaves the server's
-        // ordering against the SAIL unpromised - doubt, not a guess.
+        // ordering against the SAIL unpromised - doubt, not a guess. `MOVE IN` with no number
+        // enters whatever single structure the server finds in the hex, which may be this one, so
+        // it counts as touching every fleet here rather than none of them.
         let move_touches_fleet = hex.units.iter().any(|ordered| {
             ordered.intents.iter().any(|placed| match &placed.intent {
-                Intent::Move { steps } => steps.iter().any(
-                    |step| matches!(step, MoveStep::In(Some(id)) if id == &fleet.structure_id),
-                ),
+                Intent::Move { steps } => steps.iter().any(|step| match step {
+                    MoveStep::In(None) => true,
+                    MoveStep::In(Some(id)) => id == &fleet.structure_id,
+                    _ => false,
+                }),
                 _ => false,
             })
         });
@@ -2717,6 +2721,30 @@ mod tests {
         // The captain itself gives MOVE rather than SAIL: no SAIL, so the fleet is not checked.
         assert_eq!(
             codes(&check(vec![region], "unit 11125\nMOVE N\n")),
+            Vec::<&str>::new()
+        );
+    }
+
+    /// A bare `MOVE IN` names no structure - it boards whatever single one the server finds in
+    /// the hex - so it cannot be ruled out as touching this fleet either.
+    #[test]
+    fn a_bare_move_in_also_silences_the_fleet() {
+        let region = ReportRegion {
+            structures: vec![longship("329")],
+            ..region(vec![
+                aboard("11125", "329", 200, 0),
+                ReportUnit {
+                    weight: Some(0),
+                    ..unit("999")
+                },
+            ])
+        };
+
+        assert_eq!(
+            codes(&check(
+                vec![region],
+                "unit 11125\nSAIL N\nunit 999\nMOVE IN\n"
+            )),
             Vec::<&str>::new()
         );
     }
