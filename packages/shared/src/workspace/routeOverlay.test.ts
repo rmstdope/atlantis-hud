@@ -24,7 +24,8 @@ const plan: RoutePlan = {
   mode: "walk",
   steps: [step(7, 51), step(7, 49)],
   totalCost: 2,
-  months: [{ month: 1, steps: 2, endsAt: at(7, 49) }]
+  months: [{ month: 1, steps: 2, endsAt: at(7, 49) }],
+  order: "MOVE SE"
 };
 
 const trace: TracedPath = {

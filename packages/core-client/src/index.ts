@@ -1,3 +1,5 @@
+import type { AdvisoryCheckCode } from "./coreVocabulary.generated";
+
 export type EngineInfo = {
   id: string;
   name: string;
@@ -195,6 +197,8 @@ export type RoutePlan = {
   steps: RouteStep[];
   totalCost: number;
   months: MonthLeg[];
+  /** The order this route becomes, as core writes it - `SAIL …` for a fleet, `MOVE …` for everyone else. */
+  order: string;
 };
 
 /**

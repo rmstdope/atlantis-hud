@@ -1,6 +1,5 @@
-import type { RoutePlanResponse } from "@atlantis/core-client";
 import { describe, expect, it } from "vitest";
-import { describeEstimate, describeProblem, routeAsOrder } from "./PlannerPanel";
+import { describeEstimate, describeProblem } from "./PlannerPanel";
 
 describe("explaining why there is no route", () => {
   /**
@@ -52,41 +51,6 @@ describe("explaining why there is no route", () => {
     expect(sentence).toBe(
       "The crew cannot sail this fleet: it needs 4 levels of sailing, and the units aboard have 1."
     );
-  });
-});
-
-describe("writing a route as an order", () => {
-  const answer = (directions: string[]): RoutePlanResponse => ({
-    plan: {
-      from: { x: 1, y: 1, z: 1 },
-      to: { x: 3, y: 3, z: 1 },
-      mode: "walk",
-      steps: directions.map((direction, index) => ({
-        direction: direction as never,
-        to: { x: index, y: index, z: 1 },
-        terrain: "plain",
-        cost: 1,
-        road: false,
-        estimated: false
-      })),
-      totalCost: directions.length,
-      months: []
-    },
-    problem: null,
-    risk: null,
-    fullyModelled: false
-  });
-
-  it("writes the abbreviations the game uses", () => {
-    expect(routeAsOrder(answer(["southeast", "southeast"]))).toBe("MOVE SE SE");
-    expect(routeAsOrder(answer(["north", "northwest", "south"]))).toBe("MOVE N NW S");
-  });
-
-  it("writes SAIL rather than MOVE for a fleet's route", () => {
-    const sailPlan = answer(["north"]);
-    sailPlan.plan = { ...sailPlan.plan!, mode: "sail" };
-
-    expect(routeAsOrder(sailPlan)).toBe("SAIL N");
   });
 });
 
