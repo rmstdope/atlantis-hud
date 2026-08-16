@@ -191,6 +191,9 @@ export async function walkBatch(
         // account of a moment can be merged into. `viewerFactionId` is non-null here even though the
         // parameter type is not: `planReportBatch` never raises a step, own or ally, unless
         // `viewer.factionId` is non-null, so a "merge" step is proof of it.
+        // The known map this resolves is discarded here - the walk reads it back once at the end
+        // (`runBatch`'s `readMemory` call), not after every merged step - so there is no report on
+        // screen yet worth resolving against.
         await mergeTurn(
           client,
           game,
@@ -198,7 +201,8 @@ export async function walkBatch(
           step.turnNumber,
           source.text,
           rulesetText,
-          now()
+          now(),
+          ""
         );
       }
     } catch (error) {

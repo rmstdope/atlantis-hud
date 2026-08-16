@@ -9,31 +9,27 @@ import type {
   MoveOrderTraceResponse,
   OrdersPreviewResponse,
   RegionPreview,
-  RememberedRegion,
   RoutePlanResponse
 } from "@atlantis/core-client";
 import { ADVISORY_CHECK_CODES } from "@atlantis/core-client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  buildHexMapModel,
-  parseRegionId,
-  unitsForHex,
-  type HexMapModel
-} from "../hexMapModel";
+import { buildHexMapModel, parseRegionId, unitsForHex, type HexMapModel } from "../hexMapModel";
 import { type TextFileSaver } from "../downloadFile";
 import { readUnitOrders, stripMovementOrderLines, writeUnitOrders } from "../ordersDocument";
 import { isOrdersFile, routeOrdersImport, type PendingOrdersImport } from "../ordersImport";
 import { deliverGameBackupExport, deliverMapExport, deliverOrdersExport } from "./exportActions";
 import {
+  EMPTY_MEMORY,
   mergeTurn,
   readMemory,
   restoreLatestTurn,
-  toStoredRegions,
+  type KnownMemory,
   type MemoryOutcome
 } from "../gameMemory";
 import { isOlderTurn } from "../reportLoadDecision";
 import {
   factionLabelOf,
+  firstUnitIn,
   loadTurn,
   openingSelection,
   reportParser,
@@ -169,8 +165,7 @@ export { isOlderTurn };
 const EMPTY: HexMapModel = {
   hexes: [],
   levels: [1],
-  currentTurn: null,
-  initialSelectedRegionId: null
+  currentTurn: null
 };
 
 /**
@@ -246,9 +241,11 @@ export function AppShell({
   useEffect(() => {
     displayedTurn.current = parsed;
   }, [parsed]);
-  // Everywhere the faction has ever been, not just this turn. Without it the map stops at the
-  // fringe of the current report and no route can be longer than one step.
-  const [remembered, setRemembered] = useState<RememberedRegion[]>([]);
+  // Everywhere the faction has ever been, not just this turn, and the map the core resolved from
+  // it. Without the remembered regions the map stops at the fringe of the current report and no
+  // route can be longer than one step; the two are always set together, so a render never shows a
+  // new report over an old map or the reverse.
+  const [memory, setMemory] = useState<KnownMemory>(EMPTY_MEMORY);
   const [ordersDocument, setOrdersDocument] = useState("");
   const [status, setStatus] = useState<ImportStatus | null>(null);
   const [busy, setBusy] = useState(false);
@@ -441,16 +438,16 @@ export function AppShell({
   /** Stable across renders, so the effects below do not re-register on every keystroke. */
   const flush = useCallback(() => writer.flush(), [writer]);
 
-  // The map wants remembered regions flattened; the planner wants them as they are. Both come from
-  // the same list, so neither can drift out of step with the other.
-  const storedRegions = useMemo(() => toStoredRegions(remembered), [remembered]);
   // Serialized once per imported turn rather than once per route. The memory changes when a turn
   // is imported and at no other time, so doing this inside the planning effect meant serializing
   // every hex the faction has ever seen on the click that picks a destination.
-  const rememberedJson = useMemo(() => JSON.stringify(remembered), [remembered]);
+  const rememberedJson = useMemo(() => JSON.stringify(memory.remembered), [memory.remembered]);
+  // Converted straight from the core's resolution - no rule lives here any more. A report whose map
+  // could not be drawn (`memory.knownMap === null`) shows an empty lattice; the units panel, which
+  // reads `parsed` rather than the map, still works.
   const model = useMemo(
-    () => (parsed ? buildHexMapModel(parsed, storedRegions) : EMPTY),
-    [parsed, storedRegions]
+    () => (memory.knownMap ? buildHexMapModel(memory.knownMap) : EMPTY),
+    [memory.knownMap]
   );
 
   const openGameId = game?.manifest.metadata.gameId ?? null;
@@ -827,7 +824,7 @@ export function AppShell({
       // would go on claiming a relationship to a turn no longer on screen.
       setComparison(null);
       setTurnPickerOpen(false);
-      setRemembered(loaded.remembered);
+      setMemory({ remembered: loaded.remembered, knownMap: loaded.knownMap });
       // Reset from the turn just loaded, never merely added to: a merge belongs to the turn it
       // was made in, so turn 71's allies must not still be claimed on turn 72's map.
       setMergedReports(loaded.merged);
@@ -993,22 +990,23 @@ export function AppShell({
           pending.viewer.turnNumber as number,
           pending.text,
           rulesetText,
-          new Date().toISOString()
+          new Date().toISOString(),
+          rawReport
         );
-        setRemembered(outcome.remembered);
+        setMemory({ remembered: outcome.remembered, knownMap: outcome.knownMap });
         setMergedReports(outcome.merged);
         setStatus({
           regionCount: outcome.result.mergedRegionCount,
           unitCount: 0,
-          message: describeMerge(outcome.result),
+          message: outcome.warning ?? describeMerge(outcome.result),
           failed: false,
-          warning: false
+          warning: outcome.warning !== null
         });
       },
       (message) => setStatus(failedStatus(message)),
       { busy: setBusy, prefix: `could not merge ${pending.fileName}` }
     );
-  }, [pendingLoad, client, game, rulesetText]);
+  }, [pendingLoad, client, game, rulesetText, rawReport]);
 
   /**
    * Decides what an orders file dropped on the Import target should do: refuse it outright, or hold
@@ -1072,25 +1070,34 @@ export function AppShell({
             // of it, and a second commit would rewrite the turn's sightings from this report alone,
             // dropping every ally contribution to a hex the viewer also stood in. A landed import
             // step is proof `viewerFactionId` was not null (`walkBatch`'s note on why).
-            const memory = await readMemory(
+            const finishMemory = await readMemory(
               client,
               game,
               viewerFactionId as string,
-              walk.finish.step.turnNumber
+              walk.finish.step.turnNumber,
+              walk.finish.source.text,
+              rulesetText
             );
             await applyReport(
               walk.finish.source.report,
               walk.finish.source.text,
               walk.finish.step.fileName,
-              memory
+              finishMemory
             );
           } else if (viewerFactionId) {
             // Nothing of the viewer's own landed, so the turn on screen has not changed - only the
             // map under it, which the merges have grown. Nothing to read back at all when the batch
             // never had a faction to act under - every file is already accounted for in the summary.
-            const memory = await readMemory(client, game, viewerFactionId, parsed?.header.turnNumber ?? null);
-            setRemembered(memory.remembered);
-            setMergedReports(memory.merged);
+            const grownMemory = await readMemory(
+              client,
+              game,
+              viewerFactionId,
+              parsed?.header.turnNumber ?? null,
+              rawReport,
+              rulesetText
+            );
+            setMemory({ remembered: grownMemory.remembered, knownMap: grownMemory.knownMap });
+            setMergedReports(grownMemory.merged);
           }
 
           setImportSummary(batchSummary(walk, walk.finish?.source.report ?? parsed));
@@ -1105,7 +1112,7 @@ export function AppShell({
           }
         }
       ),
-    [client, rulesetText, parsed, game, applyReport]
+    [client, rulesetText, parsed, game, applyReport, rawReport]
   );
 
   /**
@@ -1281,7 +1288,7 @@ export function AppShell({
     let cancelled = false;
     setBusy(true);
 
-    void restoreLatestTurn(client, game, reportParser(client, ruleset))
+    void restoreLatestTurn(client, game, reportParser(client, ruleset), rulesetText)
       .then((restored) => {
         if (cancelled || !restored) {
           return;
@@ -1296,7 +1303,7 @@ export function AppShell({
         const turnAlreadyShowing = displayedTurn.current !== null;
         setParsed(restored.parsed);
         setRawReport(restored.rawReport);
-        setRemembered(restored.remembered);
+        setMemory({ remembered: restored.remembered, knownMap: restored.knownMap });
         // Whose reports were folded into this turn. Without it a reopened game shows the merged
         // hexes with nothing to say where they came from, which is the question the chip answers.
         setMergedReports(restored.merged);
@@ -1320,22 +1327,23 @@ export function AppShell({
         // Opening on a hex the player has units in, exactly as loading a report does — unless a
         // hex is already selected. This effect also re-runs after a ruleset change re-parse, and
         // yanking the player to the opening hex would make the settings dialog feel like a reload.
-        const opening = buildHexMapModel(restored.parsed);
         const selected = useWorkspaceStore.getState().selectedRegionId;
-        const landing = selected ?? opening.initialSelectedRegionId;
-        const landingHex = opening.hexes.find((candidate) => candidate.regionId === landing);
-        const firstUnit = unitsForHex(landingHex ?? null)[0]?.unitId ?? null;
-
         if (selected === null) {
-          selectRegion(landing, firstUnit);
+          const opening = openingSelection(restored.parsed);
+          if (opening) {
+            selectRegion(opening.regionId, opening.unitId);
+          }
           return;
         }
         // A hex restored from storage arrives without a unit, because storage holds no unit: the
         // hex is a place on the map and outlives a turn, while a unit id may not survive to the
         // next one. Filling it in here is what stops a reopened game showing a selected hex over
         // an empty unit panel - and it is only ever filled in, never replaced.
-        if (useWorkspaceStore.getState().selectedUnitId === null && firstUnit !== null) {
-          selectUnit(firstUnit);
+        if (useWorkspaceStore.getState().selectedUnitId === null) {
+          const firstUnit = firstUnitIn(restored.parsed, selected);
+          if (firstUnit !== null) {
+            selectUnit(firstUnit);
+          }
         }
       })
       .catch((error: unknown) => {
@@ -1354,7 +1362,7 @@ export function AppShell({
     return () => {
       cancelled = true;
     };
-  }, [client, openGameId, ruleset, selectRegion, selectUnit, gameEpoch]);
+  }, [client, openGameId, ruleset, rulesetText, selectRegion, selectUnit, gameEpoch]);
 
   /**
    * Moves the workspace into a game.
@@ -1368,7 +1376,7 @@ export function AppShell({
       setGame(opened);
       setGameEpoch((epoch) => epoch + 1);
       setParsed(null);
-      setRemembered([]);
+      setMemory(EMPTY_MEMORY);
       setRawReport("");
       setOrdersDocument("");
       setStatus(null);

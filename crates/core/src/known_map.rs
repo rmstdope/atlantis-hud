@@ -30,7 +30,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::cache::ReportCache;
 use crate::movement::graph::RememberedRegion;
-use crate::report::model::{Coordinate, ReportRegion};
+use crate::report::model::{Coordinate, ReportRegion, Settlement};
 use crate::report::ParsedReport;
 
 /// How much can be trusted about a hex on the accumulated map.
@@ -64,6 +64,9 @@ pub struct KnownMapHex {
     /// ally's extra units, marked foreign); a same-turn ally sighting as stored; an older sighting
     /// with its units dropped. `None` for a hex merely named by an exit.
     pub region: Option<ReportRegion>,
+    /// The settlement the hex's description names, if any - the exit's for a `Named` hex, the
+    /// region's own for a visited one. The screen labels the hex with it.
+    pub settlement: Option<Settlement>,
 }
 
 /// Everything the faction knows, resolved once.
@@ -152,6 +155,7 @@ pub fn resolve_known_map(current: &ParsedReport, remembered: &[RememberedRegion]
                     knowledge: HexKnowledge::Named,
                     last_seen_turn: Some(entry.last_seen_turn),
                     region: None,
+                    settlement: exit.settlement.clone(),
                 },
             );
         }
@@ -176,6 +180,7 @@ pub fn resolve_known_map(current: &ParsedReport, remembered: &[RememberedRegion]
                     knowledge: HexKnowledge::Named,
                     last_seen_turn: current_turn,
                     region: None,
+                    settlement: exit.settlement.clone(),
                 },
             );
         }
@@ -208,6 +213,7 @@ pub fn resolve_known_map(current: &ParsedReport, remembered: &[RememberedRegion]
                     HexKnowledge::Stale
                 },
                 last_seen_turn: Some(entry.last_seen_turn),
+                settlement: entry.region.settlement.clone(),
                 region: Some(region),
             },
         );
@@ -238,6 +244,7 @@ pub fn resolve_known_map(current: &ParsedReport, remembered: &[RememberedRegion]
                 province: resolved.province.clone(),
                 knowledge: HexKnowledge::Current,
                 last_seen_turn: current_turn,
+                settlement: resolved.settlement.clone(),
                 region: Some(resolved),
             },
         );

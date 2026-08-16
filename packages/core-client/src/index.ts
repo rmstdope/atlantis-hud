@@ -284,6 +284,8 @@ export type KnownMapHex = {
   lastSeenTurn: number | null;
   /** `null` for a hex merely named by an exit, never visited. */
   region: ReportRegion | null;
+  /** The settlement the hex's description names, if any. */
+  settlement: SettlementInfo | null;
 };
 
 /** Everything the faction knows about the map, resolved once by the core. */
