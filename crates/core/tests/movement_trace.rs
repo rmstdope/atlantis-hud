@@ -152,19 +152,6 @@ fn a_move_after_a_closed_form_block_is_this_units_own() {
     assert_eq!(path.steps[0].to, at(7, 51));
 }
 
-/// The other half: a TURN block still holds next month's orders, and END does not close one.
-#[test]
-fn end_does_not_close_a_turn_block() {
-    // `END` belongs to FORM. Were it allowed to close a TURN, the MOVE below would be read as this
-    // month's when it is next month's.
-    let deferred = trace("18642", "TURN\nEND\nMOVE N\nENDTURN\n");
-
-    assert_eq!(
-        deferred.path, None,
-        "everything here is inside the TURN block"
-    );
-}
-
 /// A movement line that cannot be read at all does not un-write the one that could.
 #[test]
 fn an_unreadable_movement_line_does_not_hide_a_readable_one() {

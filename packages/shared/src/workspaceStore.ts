@@ -18,6 +18,15 @@ import {
   clampUnitsHeight,
   type RailSide
 } from "./workspace/panelLayout";
+import {
+  mapViewCommitted,
+  mapViewOpened,
+  mapViewSelectionChanged,
+  NO_MAP_VIEW,
+  type MapViewState
+} from "./workspace/mapViewState";
+import type { SavedMapView } from "./workspace/mapViewportStorage";
+import type { Viewport } from "./workspace/mapViewport";
 
 /** The four panels that can be folded away to open up the map. */
 export type PanelName = "region" | "unit" | "orders" | "units" | "planner";
@@ -94,9 +103,17 @@ export type WorkspaceState = {
   badges: Record<BadgeName, boolean>;
   /** Whether the region panel's Problems section is shown. On by default. */
   regionProblemsShown: boolean;
+  /**
+   * The map view - pan, zoom, restore bookkeeping - as one piece of state; see `mapViewState.ts`.
+   * Not persisted by this store: the per-game localStorage record is the persistence (ah-ian).
+   */
+  mapView: MapViewState;
 
-  /** Opens a game, abandoning any selection made in the one before it. */
-  openGame: (game: WorkspaceGame) => void;
+  /**
+   * Opens a game on its saved view: level, selected hex and the pending viewport land in one set,
+   * so no render sees a new game over an old view or the reverse (ah-ian).
+   */
+  openGame: (game: WorkspaceGame, saved: SavedMapView | null) => void;
   closeGame: () => void;
   /**
    * Records that the open game is now played under another ruleset.
@@ -128,6 +145,8 @@ export type WorkspaceState = {
   restoreSelection: (regionId: string | null) => void;
   selectUnit: (unitId: string | null) => void;
   setLevel: (level: number) => void;
+  /** Records that the map committed a viewport for the open game on this level. */
+  commitMapView: (viewport: Viewport, level: number) => void;
   togglePanel: (panel: PanelName) => void;
   /** Sets (or, with null, resets) the orders editor's dragged height. Clamped on the way in. */
   setOrdersHeight: (rem: number | null) => void;
@@ -254,13 +273,16 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       badges: allBadges(true),
       regionProblemsShown: true,
       planner: { armed: false, destinationId: null },
+      mapView: NO_MAP_VIEW,
 
-      openGame: (game) =>
+      openGame: (game, saved) =>
         set({
           game,
-          selectedRegionId: null,
+          level: saved?.level ?? DEFAULT_LEVEL,
+          selectedRegionId: saved?.regionId ?? null,
           selectedUnitId: null,
-          selectionEpoch: 0
+          selectionEpoch: 0,
+          mapView: mapViewOpened(game.gameId, saved)
         }),
 
       closeGame: () =>
@@ -268,7 +290,8 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           game: null,
           selectedRegionId: null,
           selectedUnitId: null,
-          selectionEpoch: 0
+          selectionEpoch: 0,
+          mapView: NO_MAP_VIEW
         }),
 
       updateGameRuleset: (rulesetId) =>
@@ -286,12 +309,17 @@ export const useWorkspaceStore = create<WorkspaceState>()(
             : {
                 selectedRegionId: regionId,
                 selectedUnitId: defaultUnitId,
-                selectionEpoch: state.selectionEpoch + 1
+                selectionEpoch: state.selectionEpoch + 1,
+                mapView: mapViewSelectionChanged(state.mapView, regionId)
               }
         ),
 
       restoreSelection: (regionId) =>
-        set({ selectedRegionId: regionId, selectedUnitId: null }),
+        set((state) => ({
+          selectedRegionId: regionId,
+          selectedUnitId: null,
+          mapView: mapViewSelectionChanged(state.mapView, regionId)
+        })),
 
       selectUnit: (unitId) => set({ selectedUnitId: unitId }),
 
@@ -300,8 +328,17 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         set((state) =>
           state.level === level
             ? state
-            : { level, selectedRegionId: null, selectedUnitId: null, selectionEpoch: 0 }
+            : {
+                level,
+                selectedRegionId: null,
+                selectedUnitId: null,
+                selectionEpoch: 0,
+                mapView: mapViewSelectionChanged(state.mapView, null)
+              }
         ),
+
+      commitMapView: (viewport, level) =>
+        set((state) => ({ mapView: mapViewCommitted(state.mapView, viewport, level) })),
 
       togglePanel: (panel) =>
         set((state) => ({
@@ -401,6 +438,7 @@ export function resetWorkspaceStore() {
     rightRailWidthRem: null,
     layers: INITIAL_LAYERS,
     badges: allBadges(true),
-    regionProblemsShown: true
+    regionProblemsShown: true,
+    mapView: NO_MAP_VIEW
   });
 }
