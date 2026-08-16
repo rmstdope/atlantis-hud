@@ -164,11 +164,12 @@ pub fn check_turn(
         }
 
         let start = findings.len();
-        check_resources(&hex, ruleset, &options, &mut findings);
+        let ledger = ledger_for(&hex, ruleset);
+        check_resources(&hex, &ledger, ruleset, &options, &mut findings);
         check_guard(&hex, &options, &mut findings);
         check_teaching(&hex, ruleset, &options, &mut findings);
         check_forms(&hex, &options, &mut findings);
-        check_sailing(&hex, ruleset, &options, &mut findings);
+        check_sailing(&hex, &ledger, ruleset, &options, &mut findings);
 
         // Within a hex, what sits on a line comes first and in line order; what belongs to the hex
         // itself comes last. `sort_by_key` is stable, so checks that produce several findings for
@@ -376,12 +377,13 @@ struct Ledger<'a> {
     charged_at: BTreeMap<(String, String), PlacedIntent>,
 }
 
-fn check_resources(
-    hex: &Hex<'_>,
-    ruleset: Option<&Ruleset>,
-    options: &CheckOptions,
-    findings: &mut Vec<Finding>,
-) {
+/// Everything the hex's units hold, with this month's orders applied.
+///
+/// Built once per hex and read by two checks: `check_resources` asks whether the sums go negative,
+/// `check_sailing` asks what the change of stock weighs. One ledger rather than two, because the
+/// answer has to be the same one - a fleet judged against a different set of transfers from the
+/// set that produced the shortfall warnings would be two models of the same turn.
+fn ledger_for<'a>(hex: &Hex<'_>, ruleset: Option<&'a Ruleset>) -> Ledger<'a> {
     let mut ledger = Ledger {
         ruleset,
         balance: BTreeMap::new(),
@@ -404,7 +406,17 @@ fn check_resources(
         }
     }
 
-    report_shortfalls(&ledger, hex, ruleset, options, findings);
+    ledger
+}
+
+fn check_resources(
+    hex: &Hex<'_>,
+    ledger: &Ledger<'_>,
+    ruleset: Option<&Ruleset>,
+    options: &CheckOptions,
+    findings: &mut Vec<Finding>,
+) {
+    report_shortfalls(ledger, hex, ruleset, options, findings);
 }
 
 /// Applies one order to the ledger.
@@ -1198,14 +1210,51 @@ fn could_captain(ordered: &Ordered<'_>, fleet_id: &str) -> bool {
         )
 }
 
+/// What one unit weighs when the fleet sails: the weight the report gave it, plus everything this
+/// month's orders move into or out of it that the ruleset can price.
+///
+/// The ledger is read whole rather than filtered, because every order that changes an item balance
+/// runs before the fleet does: GIVE and TAKE in phase 4, SELL and BUY in phase 7, movement in
+/// phase 9. TAX, CLAIM, PILLAGE and STUDY move silver, which the ruleset weighs at 0; PRODUCE,
+/// BUILD and WORK are phase 10, after the fleet has gone, and touch no balance here anyway.
+///
+/// An order the ledger could not price changed no balance at all - `transfer`, `buy` and the
+/// WITHDRAW arm record their doubt and return before charging anything - so it contributes nothing
+/// here and the unit keeps the report's weight for that part. That is the navigator's answer to
+/// "silence or fall back": fall back. `None` only when the report never said what the unit weighs.
+fn weight_at_sailing(
+    ordered: &Ordered<'_>,
+    ledger: &Ledger<'_>,
+    ruleset: Option<&Ruleset>,
+) -> Option<i64> {
+    let mut weight = ordered.unit.weight?;
+
+    for ((unit_id, tag), balance) in &ledger.balance {
+        if unit_id != &ordered.unit.unit_id {
+            continue;
+        }
+        let moved = balance - ordered.holding(tag);
+        if moved == 0 {
+            continue;
+        }
+        if let Some(item) = ruleset.and_then(|ruleset| ruleset.find_item(tag)) {
+            weight = weight.saturating_add(moved.saturating_mul(item.weight));
+        }
+    }
+
+    Some(weight)
+}
+
 /// Every fleet in the hex that one of our units orders to SAIL: is what is aboard within what the
 /// hull carries, and is enough sailing skill aboard to sail it? Aboard means the report's units in
 /// the fleet, plus those that ENTER it this month, minus those that LEAVE - the instant orders the
-/// server runs before anything moves. Weights and skills are the report's own (`ah-eet` prices
-/// this month's GIVEs). Anything the report or the ruleset cannot price silences the fleet -
-/// never a guess.
+/// server runs before anything moves. Each of them is weighed at what this month's orders leave it
+/// holding (`weight_at_sailing`), not at what the report printed, because the server runs every
+/// transfer and every market order before it moves a fleet. Skills are still the report's own.
+/// Anything the report or the ruleset cannot price silences the fleet - never a guess.
 fn check_sailing(
     hex: &Hex<'_>,
+    ledger: &Ledger<'_>,
     ruleset: Option<&Ruleset>,
     options: &CheckOptions,
     findings: &mut Vec<Finding>,
@@ -1268,23 +1317,50 @@ fn check_sailing(
 
         let label = fleet_label(fleet);
 
-        if aboard.iter().all(|ordered| ordered.unit.weight.is_some()) {
-            let load: i64 = aboard
-                .iter()
-                .map(|ordered| ordered.unit.weight.expect("just checked"))
-                .sum();
-            if let Some(capacity) = cargo_capacity(fleet, ruleset) {
-                if load > capacity && options.emits(codes::FLEET_OVERLOADED) {
-                    findings.push(captain.finding(
-                        hex,
-                        codes::FLEET_OVERLOADED,
-                        format!(
-                            "{label} is overloaded: {load} aboard on a capacity of {capacity}, \
-                             so it will not sail"
-                        ),
-                        Some(sail_placement),
-                    ));
-                }
+        // What the report says is in the hull now, before this month's ENTER and LEAVE. On a real
+        // report this is the first number of the ship line's `Load: H/N`: the server computes it
+        // the same way, as the sum of the weights of the units standing in the hull. Checked
+        // against two committed reports - Longship [329] states 110 and holds 50 + 50 + 10
+        // (neworigins-3.0.0-g3-f42-t41.rep:2018), Raft [235] states 220 and holds 20 + 200
+        // (neworigins-3.0.0-g5-f21-t24.rep:1359). Summed here rather than read off the `Load:`
+        // line so that a fleet whose report states no load still gets a first number, and so that
+        // a report disagreeing with its own units cannot make the message claim that weight moved
+        // when nothing did.
+        let reported: Option<i64> = hex
+            .units
+            .iter()
+            .filter(|ordered| {
+                ordered.unit.structure_id.as_deref() == Some(fleet.structure_id.as_str())
+            })
+            .map(|ordered| ordered.unit.weight)
+            .sum();
+
+        let sailing: Option<i64> = aboard
+            .iter()
+            .map(|ordered| weight_at_sailing(ordered, ledger, ruleset))
+            .sum();
+
+        if let (Some(load), Some(capacity)) = (sailing, cargo_capacity(fleet, ruleset)) {
+            if load > capacity && options.emits(codes::FLEET_OVERLOADED) {
+                let overload = match reported.map(|reported| (reported, load - reported)) {
+                    Some((reported, change)) if change > 0 => format!(
+                        "{reported} aboard plus {change} loaded this month, \
+                         on a capacity of {capacity}"
+                    ),
+                    Some((reported, change)) if change < 0 => format!(
+                        "{reported} aboard less {} unloaded this month, on a capacity of {capacity}",
+                        -change
+                    ),
+                    // Nothing moved, or a unit in the hull whose weight the report never gave, so
+                    // there is no honest before-and-after to draw. `ah-j0e`'s own sentence.
+                    _ => format!("{load} aboard on a capacity of {capacity}"),
+                };
+                findings.push(captain.finding(
+                    hex,
+                    codes::FLEET_OVERLOADED,
+                    format!("{label} is overloaded: {overload}, so it will not sail"),
+                    Some(sail_placement),
+                ));
             }
         }
 
@@ -2759,6 +2835,279 @@ mod tests {
     }
 
     #[test]
+    fn a_gift_loaded_aboard_this_month_overloads_the_fleet() {
+        let region = ReportRegion {
+            structures: vec![longship("329")],
+            ..region(vec![
+                aboard("11125", "329", 50, 4),
+                with_item(unit("8801"), 30, "grain", "GRAI"),
+            ])
+        };
+
+        let finding = only(check(
+            vec![region],
+            "unit 8801\nGIVE 11125 30 GRAI\nunit 11125\nSAIL N\n",
+        ));
+        assert_eq!(finding.code.as_str(), "fleet-overloaded");
+        assert_eq!(finding.unit_id, Some("11125".to_string()));
+    }
+
+    #[test]
+    fn a_fleet_loaded_this_month_says_how_much_was_loaded() {
+        let region = ReportRegion {
+            structures: vec![longship("329")],
+            ..region(vec![
+                aboard("11125", "329", 50, 4),
+                with_item(unit("8801"), 30, "grain", "GRAI"),
+            ])
+        };
+
+        let finding = only(check(
+            vec![region],
+            "unit 8801\nGIVE 11125 30 GRAI\nunit 11125\nSAIL N\n",
+        ));
+        assert_eq!(
+            finding.message,
+            "Longship [329] is overloaded: 50 aboard plus 150 loaded this month, on a capacity of 150, so it will not sail"
+        );
+    }
+
+    #[test]
+    fn a_fleet_lightened_this_month_says_how_much_was_unloaded() {
+        let region = ReportRegion {
+            structures: vec![longship("329")],
+            ..region(vec![
+                with_item(aboard("11125", "329", 300, 4), 20, "grain", "GRAI"),
+                unit("8801"),
+            ])
+        };
+
+        let finding = only(check(
+            vec![region],
+            "unit 11125\nGIVE 8801 20 GRAI\nSAIL N\n",
+        ));
+        assert_eq!(
+            finding.message,
+            "Longship [329] is overloaded: 300 aboard less 100 unloaded this month, on a capacity of 150, so it will not sail"
+        );
+    }
+
+    #[test]
+    fn a_transfer_elsewhere_in_the_hex_leaves_the_fleet_alone() {
+        let region = ReportRegion {
+            structures: vec![longship("329")],
+            ..region(vec![
+                aboard("11125", "329", 190, 4),
+                with_item(unit("8801"), 30, "grain", "GRAI"),
+                unit("8802"),
+            ])
+        };
+
+        let finding = only(check(
+            vec![region],
+            "unit 8801\nGIVE 8802 30 GRAI\nunit 11125\nSAIL N\n",
+        ));
+        assert_eq!(
+            finding.message,
+            "Longship [329] is overloaded: 190 aboard on a capacity of 150, so it will not sail"
+        );
+    }
+
+    #[test]
+    fn a_unit_leaving_this_month_is_unloaded_weight() {
+        let region = ReportRegion {
+            structures: vec![longship("329")],
+            ..region(vec![
+                aboard("11125", "329", 200, 4),
+                aboard("12590", "329", 100, 0),
+            ])
+        };
+
+        let finding = only(check(
+            vec![region],
+            "unit 12590\nLEAVE\nunit 11125\nSAIL N\n",
+        ));
+        assert_eq!(
+            finding.message,
+            "Longship [329] is overloaded: 300 aboard less 100 unloaded this month, on a capacity of 150, so it will not sail"
+        );
+    }
+
+    #[test]
+    fn a_purchase_this_month_is_aboard_when_the_fleet_sails() {
+        let mut hex = ReportRegion {
+            structures: vec![longship("329")],
+            ..region(vec![with_silver(aboard("11125", "329", 50, 4), 10_000)])
+        };
+        hex.for_sale.push(MarketItem {
+            amount: 100,
+            name: "horse".to_string(),
+            tag: "HORS".to_string(),
+            price: 1,
+        });
+
+        let finding = only(check(vec![hex], "unit 11125\nBUY 3 horses\nSAIL N\n"));
+        assert_eq!(finding.code.as_str(), "fleet-overloaded");
+        assert!(finding
+            .message
+            .contains("50 aboard plus 150 loaded this month"));
+    }
+
+    #[test]
+    fn cargo_sold_this_month_is_no_longer_aboard() {
+        let mut hex = ReportRegion {
+            structures: vec![longship("329")],
+            ..region(vec![with_item(
+                aboard("11125", "329", 300, 4),
+                40,
+                "grain",
+                "GRAI",
+            )])
+        };
+        hex.wanted.push(MarketItem {
+            amount: 100,
+            name: "grain".to_string(),
+            tag: "GRAI".to_string(),
+            price: 1,
+        });
+
+        assert_eq!(
+            codes(&check(vec![hex], "unit 11125\nSELL 40 grain\nSAIL N\n")),
+            Vec::<&str>::new()
+        );
+    }
+
+    #[test]
+    fn silver_given_aboard_weighs_nothing() {
+        let region = ReportRegion {
+            structures: vec![longship("329")],
+            ..region(vec![
+                aboard("11125", "329", 200, 4),
+                with_silver(unit("8801"), 10_000),
+            ])
+        };
+
+        let finding = only(check(
+            vec![region],
+            "unit 8801\nGIVE 11125 10000 SILV\nunit 11125\nSAIL N\n",
+        ));
+        assert_eq!(
+            finding.message,
+            "Longship [329] is overloaded: 200 aboard on a capacity of 150, so it will not sail"
+        );
+    }
+
+    #[test]
+    fn a_gift_between_two_units_aboard_changes_nothing() {
+        let region = ReportRegion {
+            structures: vec![longship("329")],
+            ..region(vec![
+                with_item(aboard("11125", "329", 100, 4), 20, "grain", "GRAI"),
+                aboard("12590", "329", 50, 0),
+            ])
+        };
+
+        assert_eq!(
+            codes(&check(
+                vec![region],
+                "unit 11125\nGIVE 12590 20 GRAI\nSAIL N\n",
+            )),
+            Vec::<&str>::new()
+        );
+    }
+
+    #[test]
+    fn men_given_aboard_are_weighed() {
+        let region = ReportRegion {
+            structures: vec![longship("329")],
+            ..region(vec![
+                aboard("11125", "329", 50, 4),
+                with_men(with_item(unit("8801"), 20, "gnoll", "GNOL"), 20),
+            ])
+        };
+
+        let finding = only(check(
+            vec![region],
+            "unit 8801\nGIVE 11125 15 GNOL\nunit 11125\nSAIL N\n",
+        ));
+        assert_eq!(finding.code.as_str(), "fleet-overloaded");
+        assert!(finding
+            .message
+            .contains("50 aboard plus 150 loaded this month"));
+    }
+
+    #[test]
+    fn an_order_nothing_can_price_leaves_the_report_weights_standing() {
+        let region = ReportRegion {
+            structures: vec![longship("329")],
+            ..region(vec![aboard("11125", "329", 200, 4)])
+        };
+
+        let finding = only(check(
+            vec![region],
+            "unit 11125\nWITHDRAW 20 GRAI\nSAIL N\n",
+        ));
+        assert_eq!(finding.code.as_str(), "fleet-overloaded");
+        assert_eq!(
+            finding.message,
+            "Longship [329] is overloaded: 200 aboard on a capacity of 150, so it will not sail"
+        );
+    }
+
+    #[test]
+    fn an_item_the_catalogue_cannot_weigh_is_not_counted() {
+        let region = ReportRegion {
+            structures: vec![longship("329")],
+            ..region(vec![
+                aboard("11125", "329", 200, 4),
+                with_item(unit("8801"), 100, "moonstone", "MOON"),
+            ])
+        };
+
+        let finding = only(check(
+            vec![region],
+            "unit 8801\nGIVE 11125 100 MOON\nunit 11125\nSAIL N\n",
+        ));
+        assert_eq!(
+            finding.message,
+            "Longship [329] is overloaded: 200 aboard on a capacity of 150, so it will not sail"
+        );
+    }
+
+    #[test]
+    fn without_a_ruleset_the_report_weights_stand() {
+        let region = ReportRegion {
+            structures: vec![longship("329")],
+            ..region(vec![
+                aboard("11125", "329", 200, 4),
+                with_item(unit("8801"), 30, "grain", "GRAI"),
+            ])
+        };
+        let orders = "unit 8801\nGIVE 11125 30 GRAI\nunit 11125\nSAIL N\n";
+
+        let without_ruleset = only(check_turn(
+            &report(vec![region.clone()]),
+            orders,
+            None,
+            CheckOptions::default(),
+        ));
+        assert_eq!(
+            without_ruleset.message,
+            "Longship [329] is overloaded: 200 aboard on a capacity of 150, so it will not sail"
+        );
+
+        let with_ruleset = only(check_turn(
+            &report(vec![region]),
+            orders,
+            Some(&ruleset()),
+            CheckOptions::default(),
+        ));
+        assert!(with_ruleset
+            .message
+            .contains("200 aboard plus 150 loaded this month"));
+    }
+
+    #[test]
     fn a_fleet_within_its_numbers_sails_in_silence() {
         let region = ReportRegion {
             structures: vec![longship("329")],
@@ -2845,6 +3194,10 @@ mod tests {
             "unit 11125\nSAIL N\nunit 999\nENTER 329\n",
         ));
         assert_eq!(finding.code.as_str(), "fleet-overloaded");
+        assert_eq!(
+            finding.message,
+            "Longship [329] is overloaded: 50 aboard plus 200 loaded this month, on a capacity of 150, so it will not sail"
+        );
     }
 
     #[test]
