@@ -39,8 +39,8 @@ pub struct TurnRef {
 /// is what makes that valid. Ties: higher `turn_number`, then lower `faction_id` (as text), so the
 /// answer is total. A draft for a turn that was never imported counts for nothing.
 #[must_use]
-pub fn latest_turn(turns: &[TurnTouch], drafts: &[TurnTouch]) -> Option<TurnRef> {
-    let edited: HashMap<(&str, u32), &str> = drafts
+pub fn latest_turn<'a>(turns: &'a [TurnTouch], drafts: &'a [TurnTouch]) -> Option<TurnRef> {
+    let edited: HashMap<(&'a str, u32), &'a str> = drafts
         .iter()
         .map(|draft| {
             (
@@ -50,20 +50,22 @@ pub fn latest_turn(turns: &[TurnTouch], drafts: &[TurnTouch]) -> Option<TurnRef>
         })
         .collect();
 
-    let touched = |turn: &'_ TurnTouch| -> String {
+    // Borrows straight out of `turns`/`drafts` rather than allocating: both parameters share the
+    // lifetime `'a`, so the winner's `&str` can live as long as `edited` itself.
+    let touched = |turn: &'a TurnTouch| -> &'a str {
         let own = turn.updated_at.as_deref().unwrap_or("");
         let draft = edited
             .get(&(turn.faction_id.as_str(), turn.turn_number))
             .copied()
             .unwrap_or("");
-        own.max(draft).to_string()
+        own.max(draft)
     };
 
     turns
         .iter()
         .max_by(|a, b| {
             touched(a)
-                .cmp(&touched(b))
+                .cmp(touched(b))
                 .then(a.turn_number.cmp(&b.turn_number))
                 .then(b.faction_id.cmp(&a.faction_id))
         })
