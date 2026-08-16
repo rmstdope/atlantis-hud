@@ -2,10 +2,15 @@ import type { ReportUnit } from "@atlantis/core-client";
 import { aReportUnit } from "@atlantis/core-client";
 import { describe, expect, it } from "vitest";
 import {
+  COLUMN_MIN_PX,
+  DEFAULT_COLUMN_WIDTH_PX,
   DEFAULT_SORT,
+  columnWidthsFromStorage,
+  dragColumnBoundary,
   filterUnits,
   rowHeightAt,
   sortUnits,
+  widthOf,
   windowRange,
   type SortState
 } from "./unitTable";
@@ -272,5 +277,97 @@ describe("filterUnits", () => {
 
   it("returns nothing when no unit matches", () => {
     expect(filterUnits(units, "nobody")).toEqual([]);
+  });
+});
+
+describe("widthOf", () => {
+  it("falls back to the shipped default when nothing is stored", () => {
+    expect(widthOf("name", null)).toBe(DEFAULT_COLUMN_WIDTH_PX.name);
+    expect(widthOf("name", {})).toBe(DEFAULT_COLUMN_WIDTH_PX.name);
+  });
+
+  it("returns the stored width when there is one", () => {
+    expect(widthOf("name", { name: 300 })).toBe(300);
+  });
+
+  it("does not let one stored column leak into another", () => {
+    expect(widthOf("faction", { name: 300 })).toBe(DEFAULT_COLUMN_WIDTH_PX.faction);
+  });
+});
+
+describe("columnWidthsFromStorage", () => {
+  it("keeps well-formed widths for known columns", () => {
+    expect(columnWidthsFromStorage({ name: 240, faction: 180 })).toEqual({
+      name: 240,
+      faction: 180
+    });
+  });
+
+  it("drops a column this build does not know", () => {
+    expect(columnWidthsFromStorage({ name: 240, phantom: 999 })).toEqual({ name: 240 });
+  });
+
+  it("drops a width below the floor rather than clamping it up", () => {
+    expect(columnWidthsFromStorage({ name: COLUMN_MIN_PX - 1 })).toEqual({});
+  });
+
+  it("drops non-numeric, negative or non-finite entries", () => {
+    expect(
+      columnWidthsFromStorage({ name: "wide", faction: -10, men: Number.POSITIVE_INFINITY })
+    ).toEqual({});
+  });
+
+  it("returns nothing for a non-object, the way a corrupt record would arrive", () => {
+    expect(columnWidthsFromStorage(null)).toEqual({});
+    expect(columnWidthsFromStorage("nonsense")).toEqual({});
+    expect(columnWidthsFromStorage(42)).toEqual({});
+  });
+});
+
+describe("dragColumnBoundary", () => {
+  it("moves pixels from the right column to the left one, total unchanged", () => {
+    const result = dragColumnBoundary(200, 200, 40);
+    expect(result).toEqual({ left: 240, right: 160, atLimit: false });
+  });
+
+  it("moves the other way for a negative delta", () => {
+    const result = dragColumnBoundary(200, 200, -40);
+    expect(result).toEqual({ left: 160, right: 240, atLimit: false });
+  });
+
+  it("stops the left column at the floor and flags the limit", () => {
+    const result = dragColumnBoundary(50, 300, -1000);
+    expect(result.left).toBe(COLUMN_MIN_PX);
+    expect(result.right).toBe(350 - COLUMN_MIN_PX);
+    expect(result.atLimit).toBe(true);
+  });
+
+  it("stops the right column at the floor and flags the limit", () => {
+    const result = dragColumnBoundary(300, 50, 1000);
+    expect(result.right).toBe(COLUMN_MIN_PX);
+    expect(result.left).toBe(350 - COLUMN_MIN_PX);
+    expect(result.atLimit).toBe(true);
+  });
+
+  it("never changes the total the two columns own together", () => {
+    const cases: Array<[number, number, number]> = [
+      [200, 200, 40],
+      [50, 300, -1000],
+      [300, 50, 1000],
+      [36, 36, 0]
+    ];
+    for (const [left, right, delta] of cases) {
+      const result = dragColumnBoundary(left, right, delta);
+      expect(result.left + result.right).toBe(left + right);
+    }
+  });
+
+  it("splits a too-narrow pair evenly rather than favouring either side", () => {
+    // Both columns already sit under COLUMN_MIN_PX (a stored width from a narrower window) - the
+    // floor for this pair relaxes to half their total so the drag still has somewhere to land.
+    const result = dragColumnBoundary(30, 30, -1000);
+    expect(result.left).toBe(30);
+    expect(result.right).toBe(30);
+    expect(result.atLimit).toBe(true);
   });
 });

@@ -599,6 +599,73 @@ describe("the rails' stored widths", () => {
   });
 });
 
+describe("the units table's stored column widths", () => {
+  beforeEach(resetWorkspaceStore);
+
+  it("starts out null, meaning every column reads its shipped default", () => {
+    expect(store().unitColumnWidthsPx).toBeNull();
+  });
+
+  it("remembers a column's width across a reload", async () => {
+    store().setUnitColumnWidths({ name: 240 });
+    expect(store().unitColumnWidthsPx).toEqual({ name: 240 });
+
+    const options = useWorkspaceStore.persist.getOptions();
+    const raw = await options.storage?.getItem(options.name ?? "atlantis-hud-workspace");
+    const persisted = (raw as { state?: Record<string, unknown> } | null)?.state ?? {};
+    expect(persisted.unitColumnWidthsPx).toEqual({ name: 240 });
+
+    const merge = options.merge;
+    const merged = merge?.(persisted, store()) as ReturnType<typeof store> | undefined;
+    expect(merged?.unitColumnWidthsPx).toEqual({ name: 240 });
+  });
+
+  it("writes both sides of a boundary drag in one commit", () => {
+    store().setUnitColumnWidths({ name: 240, faction: 120 });
+    expect(store().unitColumnWidthsPx).toEqual({ name: 240, faction: 120 });
+  });
+
+  it("merges into what is already stored rather than replacing it", () => {
+    store().setUnitColumnWidths({ name: 240 });
+    store().setUnitColumnWidths({ faction: 120 });
+    expect(store().unitColumnWidthsPx).toEqual({ name: 240, faction: 120 });
+  });
+
+  it("reconciles garbage in storage to null rather than trusting it", () => {
+    const merge = useWorkspaceStore.persist.getOptions().merge;
+    const merged = merge?.(
+      { unitColumnWidthsPx: { name: "not a number", phantom: 240 } },
+      store()
+    ) as ReturnType<typeof store> | undefined;
+    expect(merged?.unitColumnWidthsPx).toBeNull();
+  });
+
+  it("resets every column at once", () => {
+    store().setUnitColumnWidths({ name: 240, faction: 120 });
+    store().resetUnitColumnWidths();
+    expect(store().unitColumnWidthsPx).toBeNull();
+  });
+
+  it("is cleared by resetWorkspaceStore", () => {
+    store().setUnitColumnWidths({ name: 240 });
+    resetWorkspaceStore();
+    expect(store().unitColumnWidthsPx).toBeNull();
+  });
+
+  it("survives opening a game and changing level - a layout preference outlives the game", () => {
+    store().setUnitColumnWidths({ name: 240 });
+    store().openGame(
+      { gameId: "g1", gameName: "Spring campaign", databasePath: "idb://g1", rulesetId: "neworigins" },
+      null
+    );
+    expect(store().unitColumnWidthsPx).toEqual({ name: 240 });
+    store().setLevel(1);
+    expect(store().unitColumnWidthsPx).toEqual({ name: 240 });
+    store().closeGame();
+    expect(store().unitColumnWidthsPx).toEqual({ name: 240 });
+  });
+});
+
 describe("the planner's own state", () => {
   /**
    * Arming is a one-shot, not a mode. The map means one thing at a time, and a mode you can forget

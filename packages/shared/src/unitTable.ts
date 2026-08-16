@@ -149,3 +149,97 @@ export function sortUnits(units: ReportUnit[], sort: SortState): ReportUnit[] {
     return "settled" in outcome ? outcome.settled : outcome.compare * direction;
   });
 }
+
+/**
+ * Column widths, in pixels.
+ *
+ * A Windows-Explorer-style table: every column has an explicit width, and a splitter at each
+ * internal boundary moves pixels from one side to the other without changing the table's own
+ * width. That invariant (`sum(widths)` never moves on a drag, only what each column owns) is what
+ * keeps the table from ever overflowing or leaving a gap - see `dragColumnBoundary`.
+ *
+ * Skills and Items used to be the two columns `table-fixed` auto-sized from whatever the other six
+ * left over. They still are, by default - `DEFAULT_COLUMN_WIDTH_PX` just writes down what that
+ * auto-sizing produced at a typical rail width, so the first drag has something concrete to move
+ * from rather than measuring a live layout before touching it.
+ */
+export const UNIT_COLUMNS = [
+  "own",
+  "unitId",
+  "name",
+  "faction",
+  "men",
+  "skills",
+  "items",
+  "structure"
+] as const;
+
+export type UnitColumn = (typeof UNIT_COLUMNS)[number];
+
+/** No column may be dragged narrower than this - enough for a truncated word and its ellipsis. */
+export const COLUMN_MIN_PX = 36;
+
+export const DEFAULT_COLUMN_WIDTH_PX: Record<UnitColumn, number> = {
+  own: 24,
+  unitId: 56,
+  name: 176,
+  faction: 168,
+  men: 56,
+  skills: 220,
+  items: 220,
+  structure: 72
+};
+
+export type ColumnWidths = Partial<Record<UnitColumn, number>>;
+
+/** A column's width: the stored preference if there is one, otherwise the shipped default. */
+export function widthOf(column: UnitColumn, widths: ColumnWidths | null): number {
+  return widths?.[column] ?? DEFAULT_COLUMN_WIDTH_PX[column];
+}
+
+/**
+ * A stored width record, reconciled against the columns this build knows - the same posture
+ * `reconcile` in `workspaceStore.ts` takes with booleans. A column that no longer exists is
+ * dropped; one that does but is missing, negative, non-finite or below the floor falls back to
+ * its default rather than being carried through broken.
+ */
+export function columnWidthsFromStorage(stored: unknown): ColumnWidths {
+  if (typeof stored !== "object" || stored === null) {
+    return {};
+  }
+  const kept: ColumnWidths = {};
+  for (const column of UNIT_COLUMNS) {
+    const value = (stored as Record<string, unknown>)[column];
+    if (typeof value === "number" && Number.isFinite(value) && value >= COLUMN_MIN_PX) {
+      kept[column] = value;
+    }
+  }
+  return kept;
+}
+
+export type ColumnDragResult = { left: number; right: number; atLimit: boolean };
+
+/**
+ * Resolves a boundary drag (or one keyboard step) between two adjacent columns.
+ *
+ * `deltaPx` is positive when the pointer moves right, growing the left column and shrinking the
+ * right one by the same amount - their sum, `leftStart + rightStart`, is therefore invariant: the
+ * table's own width never changes, only where the boundary between these two columns sits.
+ *
+ * Both floors are enforced together, the way `dragOrdersHeight`'s ceiling accounts for the unit
+ * panel's own floor: growing the left column can only take from what the right column has above
+ * its own `COLUMN_MIN_PX`, and the reverse for shrinking it, so one drag can never starve both
+ * sides at once.
+ */
+export function dragColumnBoundary(
+  leftStart: number,
+  rightStart: number,
+  deltaPx: number
+): ColumnDragResult {
+  const total = leftStart + rightStart;
+  const lowest = Math.min(COLUMN_MIN_PX, total / 2);
+  const highest = total - lowest;
+  const raw = leftStart + deltaPx;
+  const left = clamp(raw, lowest, highest);
+  return { left, right: total - left, atLimit: left !== raw };
+}

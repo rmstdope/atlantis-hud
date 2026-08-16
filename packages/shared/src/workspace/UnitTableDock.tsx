@@ -7,25 +7,31 @@ import {
   useState,
   type KeyboardEvent,
   type PointerEvent,
-  type ReactNode
+  type ReactNode,
+  type RefObject
 } from "react";
 import type { HexNode } from "../hexMapModel";
 import { unitsForHex } from "../hexMapModel";
 import { describeMenBriefly, whyEstimated } from "../unitComposition";
 import {
   DEFAULT_SORT,
+  UNIT_COLUMNS,
   filterUnits,
   rowHeightAt,
   sortUnits,
+  widthOf,
   windowRange,
+  type ColumnWidths,
   type SortColumn,
-  type SortState
+  type SortState,
+  type UnitColumn
 } from "../unitTable";
 import { changeFor, mergePreview, originalTooltip, type PreviewedUnit } from "../unitPreview";
 import { HOVER_DELAY_MS, type Point } from "../unitTooltip";
 import { useSettingsStore } from "../settingsStore";
 import { useWorkspaceStore } from "../workspaceStore";
 import { CollapsiblePanel } from "./CollapsiblePanel";
+import { ColumnSplitter } from "./ColumnSplitter";
 import { Absent } from "./primitives";
 import { UnitTooltip } from "./UnitTooltip";
 
@@ -59,6 +65,13 @@ export function UnitTableDock({
   const selectUnit = useWorkspaceStore((state) => state.selectUnit);
   const interfaceSize = useSettingsStore((state) => state.interfaceSize);
   const rowHeight = rowHeightAt(interfaceSize);
+  const columnWidths = useWorkspaceStore((state) => state.unitColumnWidthsPx);
+  const setUnitColumnWidths = useWorkspaceStore((state) => state.setUnitColumnWidths);
+  // One `<col>` per column, keyed by name rather than index so a splitter never has to translate
+  // between "the fifth column" and what it actually resizes. Mid-drag, `ColumnSplitter` writes
+  // straight to these nodes' `style.width` the same way `RailSplitter` writes to the rail's - see
+  // its own doc comment for why that lives outside React's render loop.
+  const colRefs = useRef<Partial<Record<UnitColumn, HTMLTableColElement | null>>>({});
   const [filter, setFilter] = useState("");
   const [sort, setSort] = useState<SortState>(DEFAULT_SORT);
 
@@ -321,14 +334,15 @@ export function UnitTableDock({
             aria-rowcount={visible.length + 1}
           >
             <colgroup>
-              <col className="w-6" />
-              <col className="w-16" />
-              <col className="w-52" />
-              <col className="w-48" />
-              <col className="w-16" />
-              <col />
-              <col />
-              <col className="w-20" />
+              {UNIT_COLUMNS.map((column) => (
+                <col
+                  key={column}
+                  ref={(el) => {
+                    colRefs.current[column] = el;
+                  }}
+                  style={{ width: widthOf(column, columnWidths) }}
+                />
+              ))}
             </colgroup>
             <thead ref={setHead}>
               {/* Indexed like the rows below it: if some rows carry a position, all of them must. */}
@@ -351,14 +365,42 @@ export function UnitTableDock({
                     *
                   </button>
                 </Th>
-                <SortableTh label="Id" column="unitId" sort={sort} onSort={sortByColumn} />
-                <SortableTh label="Unit" column="name" sort={sort} onSort={sortByColumn} />
-                <SortableTh label="Faction" column="faction" sort={sort} onSort={sortByColumn} />
-                <SortableTh label="Men" column="men" sort={sort} onSort={sortByColumn} />
+                <SortableTh
+                  label="Id"
+                  column="unitId"
+                  sort={sort}
+                  onSort={sortByColumn}
+                  resize={{ left: "unitId", right: "name", columns: colRefs, widths: columnWidths, onCommit: setUnitColumnWidths }}
+                />
+                <SortableTh
+                  label="Unit"
+                  column="name"
+                  sort={sort}
+                  onSort={sortByColumn}
+                  resize={{ left: "name", right: "faction", columns: colRefs, widths: columnWidths, onCommit: setUnitColumnWidths }}
+                />
+                <SortableTh
+                  label="Faction"
+                  column="faction"
+                  sort={sort}
+                  onSort={sortByColumn}
+                  resize={{ left: "faction", right: "men", columns: colRefs, widths: columnWidths, onCommit: setUnitColumnWidths }}
+                />
+                <SortableTh
+                  label="Men"
+                  column="men"
+                  sort={sort}
+                  onSort={sortByColumn}
+                  resize={{ left: "men", right: "skills", columns: colRefs, widths: columnWidths, onCommit: setUnitColumnWidths }}
+                />
                 {/* Skills and Items are comma-joined summaries; ordering them alphabetically
                     would sort on the first skill that happened to be listed. */}
-                <Th>Skills</Th>
-                <Th>Items</Th>
+                <Th resize={{ left: "skills", right: "items", columns: colRefs, widths: columnWidths, onCommit: setUnitColumnWidths }}>
+                  Skills
+                </Th>
+                <Th resize={{ left: "items", right: "structure", columns: colRefs, widths: columnWidths, onCommit: setUnitColumnWidths }}>
+                  Items
+                </Th>
                 <SortableTh
                   label="Structure"
                   column="structure"
@@ -412,12 +454,31 @@ function Spacer({ rows, rowHeight }: { rows: number; rowHeight: number }) {
   );
 }
 
-function Th({ children }: { children?: ReactNode }) {
+/** What a header needs to hand a splitter to its trailing edge; see `ColumnSplitter`. */
+type ColumnResize = {
+  left: UnitColumn;
+  right: UnitColumn;
+  columns: RefObject<Partial<Record<UnitColumn, HTMLTableColElement | null>>>;
+  widths: ColumnWidths | null;
+  onCommit: (widths: ColumnWidths) => void;
+};
+
+function Th({
+  children,
+  resize
+}: {
+  children?: ReactNode;
+  /** Present on every header but the last: that column has nothing on its right to trade with. */
+  resize?: ColumnResize;
+}) {
   return (
-    // The background is opaque and sits on the cells rather than the row: the panel behind is
-    // translucent over the map, and a see-through header would show the rows sliding under it.
-    <th className="sticky top-0 z-10 border-b border-edge bg-panel px-2 py-1 text-left font-medium">
+    // `relative` so the splitter, absolutely positioned, anchors to this header rather than the
+    // row - the background is opaque and sits on the cells rather than the row for the same
+    // reason: the panel behind is translucent over the map, and a see-through header would show
+    // the rows sliding under it.
+    <th className="sticky top-0 z-10 border-b border-edge bg-panel px-2 py-1 text-left font-medium relative">
       {children}
+      {resize ? <ColumnSplitter {...resize} /> : null}
     </th>
   );
 }
@@ -426,18 +487,20 @@ function SortableTh({
   label,
   column,
   sort,
-  onSort
+  onSort,
+  resize
 }: {
   label: string;
   column: SortColumn;
   sort: SortState;
   onSort: (column: SortColumn) => void;
+  resize?: ColumnResize;
 }) {
   const active = sort.column === column;
   return (
     <th
       aria-sort={active ? (sort.direction === "asc" ? "ascending" : "descending") : "none"}
-      className="sticky top-0 z-10 border-b border-edge bg-panel px-2 py-1 text-left font-medium"
+      className="sticky top-0 z-10 border-b border-edge bg-panel px-2 py-1 text-left font-medium relative"
     >
       <button
         type="button"
@@ -451,6 +514,7 @@ function SortableTh({
           {active ? (sort.direction === "asc" ? "▲" : "▼") : "↕"}
         </span>
       </button>
+      {resize ? <ColumnSplitter {...resize} /> : null}
     </th>
   );
 }

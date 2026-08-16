@@ -18,6 +18,7 @@ import {
   clampUnitsHeight,
   type RailSide
 } from "./workspace/panelLayout";
+import { columnWidthsFromStorage, type ColumnWidths } from "./unitTable";
 import {
   mapViewCommitted,
   mapViewOpened,
@@ -98,6 +99,13 @@ export type WorkspaceState = {
    */
   leftRailWidthRem: number | null;
   rightRailWidthRem: number | null;
+  /**
+   * The units-in-hex table's dragged column widths, in pixels - a layout preference exactly like
+   * `ordersHeightRem`, so it lives here and outlives the game the same way. Only the columns a
+   * player has actually dragged are present; everything else still reads from
+   * `DEFAULT_COLUMN_WIDTH_PX` (`unitTable.ts`) through `widthOf`.
+   */
+  unitColumnWidthsPx: ColumnWidths | null;
   layers: Record<LayerName, boolean>;
   /** Which marks the map draws over its terrain. */
   badges: Record<BadgeName, boolean>;
@@ -154,6 +162,14 @@ export type WorkspaceState = {
   setUnitsHeight: (rem: number | null) => void;
   /** Sets (or, with null, resets) one rail's dragged width. Clamped on the way in. */
   setRailWidth: (side: RailSide, rem: number | null) => void;
+  /**
+   * Writes both sides of a column boundary drag in one commit - `dragColumnBoundary` always
+   * resolves a pair, and setting them as two calls would let a re-render land between them with
+   * only one column moved. `null` for a column resets it to the shipped default.
+   */
+  setUnitColumnWidths: (widths: ColumnWidths) => void;
+  /** Drops every stored column width, the way a rail's width resets on double-click. */
+  resetUnitColumnWidths: () => void;
   toggleLayer: (layer: LayerName) => void;
   toggleBadge: (badge: BadgeName) => void;
   /** Shows or hides the region panel's Problems section. */
@@ -207,6 +223,11 @@ function reconcile<K extends string>(
   };
 }
 
+/** `null` for an empty record, so "nothing customized" reads the same way rail widths do. */
+function emptyToNull(widths: ColumnWidths): ColumnWidths | null {
+  return Object.keys(widths).length > 0 ? widths : null;
+}
+
 /** What a stored badge record means here; see `reconcile`. */
 export function badgesFromStorage(
   stored: Partial<Record<string, boolean>>
@@ -251,6 +272,7 @@ type Persisted = Pick<
   | "unitsHeightRem"
   | "leftRailWidthRem"
   | "rightRailWidthRem"
+  | "unitColumnWidthsPx"
   | "layers"
   | "badges"
   | "regionProblemsShown"
@@ -269,6 +291,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       unitsHeightRem: null,
       leftRailWidthRem: null,
       rightRailWidthRem: null,
+      unitColumnWidthsPx: null,
       layers: INITIAL_LAYERS,
       badges: allBadges(true),
       regionProblemsShown: true,
@@ -356,6 +379,13 @@ export const useWorkspaceStore = create<WorkspaceState>()(
             : { rightRailWidthRem: clampRailWidth(rem) }
         ),
 
+      setUnitColumnWidths: (widths) =>
+        set((state) => ({
+          unitColumnWidthsPx: { ...state.unitColumnWidthsPx, ...widths }
+        })),
+
+      resetUnitColumnWidths: () => set(() => ({ unitColumnWidthsPx: null })),
+
       toggleLayer: (layer) =>
         set((state) => ({
           layers: { ...state.layers, [layer]: !state.layers[layer] }
@@ -388,6 +418,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         unitsHeightRem: state.unitsHeightRem,
         leftRailWidthRem: state.leftRailWidthRem,
         rightRailWidthRem: state.rightRailWidthRem,
+        unitColumnWidthsPx: state.unitColumnWidthsPx,
         layers: state.layers,
         badges: state.badges,
         regionProblemsShown: state.regionProblemsShown
@@ -409,6 +440,9 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           unitsHeightRem: clampUnitsHeight(stored.unitsHeightRem),
           leftRailWidthRem: clampRailWidth(stored.leftRailWidthRem),
           rightRailWidthRem: clampRailWidth(stored.rightRailWidthRem),
+          // Not a boolean record, so `reconcile` does not apply - `columnWidthsFromStorage` is
+          // its column-width equivalent, dropping unknown columns and any width below the floor.
+          unitColumnWidthsPx: emptyToNull(columnWidthsFromStorage(stored.unitColumnWidthsPx ?? {})),
           layers: reconcile(INITIAL_LAYERS, stored.layers ?? {}),
           badges: badgesFromStorage(stored.badges ?? {}),
           // Not a record, so `reconcile` does not apply: a missing or malformed key must read
@@ -436,6 +470,7 @@ export function resetWorkspaceStore() {
     unitsHeightRem: null,
     leftRailWidthRem: null,
     rightRailWidthRem: null,
+    unitColumnWidthsPx: null,
     layers: INITIAL_LAYERS,
     badges: allBadges(true),
     regionProblemsShown: true,
