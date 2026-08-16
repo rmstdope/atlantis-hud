@@ -1,7 +1,14 @@
-import type { CoreClient, OpenedGame, ParsedReport, RememberedRegion } from "@atlantis/core-client";
+import type {
+  CoreClient,
+  KnownMap,
+  OpenedGame,
+  ParsedReport,
+  RememberedRegion
+} from "@atlantis/core-client";
 import { describe, expect, it, vi } from "vitest";
 import {
   factionLabelOf,
+  firstUnitIn,
   loadTurn,
   openingSelection,
   reportParser,
@@ -82,6 +89,8 @@ function report(overrides: Partial<ParsedReport["header"]> = {}, regions: unknow
   } as unknown as ParsedReport;
 }
 
+const KNOWN_MAP: KnownMap = { hexes: [], currentTurn: 71 };
+
 function client(overrides: Partial<CoreClient> = {}): CoreClient {
   return {
     commitReportImport: vi.fn().mockResolvedValue({}),
@@ -90,6 +99,7 @@ function client(overrides: Partial<CoreClient> = {}): CoreClient {
     loadOrderDraft: vi.fn().mockResolvedValue(null),
     parseReportClassified: vi.fn().mockResolvedValue(report()),
     parseReportFull: vi.fn().mockResolvedValue(report()),
+    knownMap: vi.fn().mockResolvedValue(KNOWN_MAP),
     ...overrides
   } as unknown as CoreClient;
 }
@@ -133,6 +143,7 @@ describe("loadTurn", () => {
     );
     expect(loaded.remembered).toEqual(remembered);
     expect(loaded.orders).toBe("@work");
+    expect(loaded.knownMap).toBe(KNOWN_MAP);
   });
 
   it("counts regions and units, and carries no warning when nothing went wrong", async () => {
@@ -192,6 +203,7 @@ describe("loadTurn", () => {
 
     await loadTurn(core, OPEN_GAME, report(), "raw text", RULESET, NOW, {
       remembered: [],
+      knownMap: null,
       merged: [],
       warning: null
     });
@@ -239,6 +251,26 @@ describe("openingSelection", () => {
 
   it("is null when the report visits nowhere at all", () => {
     expect(openingSelection(report({}, []))).toBeNull();
+  });
+});
+
+describe("firstUnitIn", () => {
+  it("picks the first unit of a visited hex with units", () => {
+    const withRegions = report({}, [region("1:2,2", 2, 2, true, "own-unit")]);
+
+    expect(firstUnitIn(withRegions, "1:2,2")).toBe("own-unit");
+  });
+
+  it("is null for a visited hex with nobody in it", () => {
+    const withRegions = report({}, [regionNoUnits("1:1,1", 1, 1)]);
+
+    expect(firstUnitIn(withRegions, "1:1,1")).toBeNull();
+  });
+
+  it("is null for a hex the report does not visit", () => {
+    const withRegions = report({}, [region("1:2,2", 2, 2, true)]);
+
+    expect(firstUnitIn(withRegions, "1:9,9")).toBeNull();
   });
 });
 

@@ -405,6 +405,51 @@ fn hexes_come_out_sorted_by_level_then_row_then_column() {
     );
 }
 
+/// A hex known only by name keeps the settlement its exit names, so a named town does not lose its
+/// label when the map is drawn from the resolved hex rather than the raw report.
+#[test]
+fn a_named_hex_keeps_the_settlement_its_exits_names() {
+    let current = parse_report_full(
+        "Atlantis Report For:\nFoo (1)\nDecember, Year 6\n\n\
+         plain (1,1) in Nowhere, 10 peasants (orcs), $5.\n\n\
+         Exits:\n  Southeast : plain (2,2) in Nowhere, contains Foo [village].\n",
+    );
+
+    let known = resolve_known_map(&current, &[]);
+
+    let hex = known
+        .hexes
+        .iter()
+        .find(|hex| hex.coordinate == at(2, 2))
+        .expect("named");
+    assert_eq!(hex.knowledge, HexKnowledge::Named);
+    let settlement = hex.settlement.as_ref().expect("settlement carried");
+    assert_eq!(settlement.name, "Foo");
+    assert_eq!(settlement.size, "village");
+}
+
+/// A visited hex carries its own settlement too, from the region as reported rather than from an
+/// exit.
+#[test]
+fn a_visited_hex_carries_its_own_settlement() {
+    let current = parse_report_full(
+        "Atlantis Report For:\nFoo (1)\nDecember, Year 6\n\n\
+         mountain (7,53) in Inhead, contains Inholm [city], 12051 peasants (hill dwarves), $33983.\n",
+    );
+
+    let known = resolve_known_map(&current, &[]);
+
+    let hex = known
+        .hexes
+        .iter()
+        .find(|hex| hex.coordinate == at(7, 53))
+        .expect("known");
+    assert_eq!(hex.knowledge, HexKnowledge::Current);
+    let settlement = hex.settlement.as_ref().expect("settlement carried");
+    assert_eq!(settlement.name, "Inholm");
+    assert_eq!(settlement.size, "city");
+}
+
 const REPORT: &str = concat!(
     "Atlantis Report For:\n",
     "Foo (1)\n",

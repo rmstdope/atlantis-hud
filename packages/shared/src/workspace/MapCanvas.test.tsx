@@ -41,8 +41,7 @@ function probe(): MapTheme {
 const model: HexMapModel = {
   hexes: CONGESTED_HEXES,
   levels: [1],
-  currentTurn: 71,
-  initialSelectedRegionId: null
+  currentTurn: 71
 };
 
 function draw(

@@ -21,16 +21,18 @@
 
 import type {
   CoreClient,
+  KnownMap,
   MergedReportRecord,
   OpenedGame,
   ParsedReport,
-  RememberedRegion
+  RememberedRegion,
+  ReportRegion
 } from "@atlantis/core-client";
 import type { ImportStatus } from "./workspace/AppHeader";
 import { commitTurn, rememberTurn, type MemoryOutcome } from "./gameMemory";
 import { documentFor, draftKeyFor } from "./orderDraft";
 import { decideReportLoad } from "./reportLoadDecision";
-import { buildHexMapModel, unitsForHex } from "./hexMapModel";
+import { sortUnitsForDisplay } from "./hexMapModel";
 import { warningStatus } from "./workspace/shellStatus";
 
 /**
@@ -55,6 +57,7 @@ export type LoadedTurn = {
   parsed: ParsedReport;
   rawReport: string;
   remembered: RememberedRegion[];
+  knownMap: KnownMap | null;
   merged: MergedReportRecord[];
   orders: string;
   ordersSavedAt: string | null;
@@ -90,7 +93,10 @@ export async function loadTurn(
   // own report alone, so every hex the ally contributed to and the viewer also stood in would lose
   // the ally's account of it, while the "+1 merged" chip went on claiming it.
   const memory: MemoryOutcome =
-    committed ?? (game ? await rememberTurn(client, game, report, text, rulesetText, now) : { remembered: [], merged: [], warning: null });
+    committed ??
+    (game
+      ? await rememberTurn(client, game, report, text, rulesetText, now)
+      : { remembered: [], knownMap: null, merged: [], warning: null });
 
   // Saved orders beat the report's own template, including on opening the same file again. There is
   // no undo anywhere in this application, and a stray file-open must not silently erase an evening's
@@ -107,6 +113,7 @@ export async function loadTurn(
     parsed: report,
     rawReport: text,
     remembered: memory.remembered,
+    knownMap: memory.knownMap,
     merged: memory.merged,
     orders: chosen.text,
     ordersSavedAt: chosen.savedAt,
@@ -121,27 +128,55 @@ export async function loadTurn(
   };
 }
 
+/** The hexes of a report in the order the map draws them: level, then row, then column. */
+function inMapOrder(regions: ReportRegion[]): ReportRegion[] {
+  return [...regions].sort((left, right) => {
+    if (left.coordinate.z !== right.coordinate.z) {
+      return left.coordinate.z - right.coordinate.z;
+    }
+    if (left.coordinate.y !== right.coordinate.y) {
+      return left.coordinate.y - right.coordinate.y;
+    }
+    return left.coordinate.x - right.coordinate.x;
+  });
+}
+
 /**
  * The hex and unit to land on when a turn opens into an empty selection, or `null`.
  *
  * Opening on a hex the player has units in beats opening on whatever came first, and the unit
  * inside it is chosen for the same reason - the shell only applies this when nothing is already
  * selected, which is a synchronous store read and stays with the shell.
+ *
+ * Only the report decides this: a hex only an ally saw this turn, or a remembered one, is not one
+ * the player has been to (the ah-o86 rule), so the known map - which would show both as `current` -
+ * is not consulted at all.
  */
 export function openingSelection(
   report: ParsedReport
 ): { regionId: string; unitId: string | null } | null {
-  const opening = buildHexMapModel(report);
-  if (opening.initialSelectedRegionId === null) {
+  const regions = inMapOrder(report.regions);
+  const landing = regions.find((region) => region.units.some((unit) => unit.own)) ?? regions[0];
+  if (!landing) {
     return null;
   }
-  const openingHex = opening.hexes.find(
-    (candidate) => candidate.regionId === opening.initialSelectedRegionId
-  );
   return {
-    regionId: opening.initialSelectedRegionId,
-    unitId: unitsForHex(openingHex ?? null)[0]?.unitId ?? null
+    regionId: landing.regionId,
+    unitId: sortUnitsForDisplay(landing.units)[0]?.unitId ?? null
   };
+}
+
+/**
+ * The first unit to select in `regionId`, as the report describes it - own units first, then by
+ * name, the same order the map shows them in. `null` when the report does not visit the hex, or
+ * visits it with nobody there.
+ */
+export function firstUnitIn(report: ParsedReport, regionId: string): string | null {
+  const region = report.regions.find((candidate) => candidate.regionId === regionId);
+  if (!region) {
+    return null;
+  }
+  return sortUnitsForDisplay(region.units)[0]?.unitId ?? null;
 }
 
 /**
