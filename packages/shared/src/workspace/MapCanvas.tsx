@@ -19,13 +19,12 @@ import {
   zoomBand,
   NO_INSETS,
   type ArrowKey,
-  type Insets,
   type Viewport
 } from "./mapViewport";
 import { rectFromCorners, rectPixels, type MapRect } from "./mapMarquee";
 import { isRecentreGesture } from "./mapRecentre";
-import { overlayInsets, type OverlayBox } from "./mapOverlayInsets";
 import { mapViewDecision, shouldFollowSelection } from "./mapViewState";
+import { useOverlayInsets } from "./useOverlayInsets";
 import { useWorkspaceStore } from "../workspaceStore";
 import type { RouteOverlay } from "./routeOverlay";
 import { regionDecorations } from "./regionDecorations";
@@ -172,6 +171,9 @@ type MapCanvasProps = {
  * - **The hexes are the accessible layer.** There is no longer a parallel set of off-screen
  *   buttons: each hex is itself a button, focusable and labelled, with the roving tabindex a grid
  *   is supposed to have so the map is one tab stop rather than several thousand.
+ * - **The fit is one-shot per level, against a measured strip.** `useOverlayInsets` is the strip;
+ *   it arrives before the first fit and is the only insets any path reads. A pane changing later
+ *   moves nothing until the next level or game (ah-lfo).
  */
 export function MapCanvas({
   gameId,
@@ -322,29 +324,9 @@ export function MapCanvas({
     [applyView]
   );
 
-  /**
-   * How much of the map the panes are covering right now.
-   *
-   * Read from the DOM at the moment it is needed rather than held in state: a pane folds, a dock
-   * grows, and a fit that used a remembered measurement would frame into a strip that has since
-   * moved. Nothing here knows which panes exist - a pane says so by marking itself.
-   */
-  const readInsets = useCallback((): Insets => {
-    const host = hostRef.current;
-    const container = host?.parentElement;
-    if (!host || !container) {
-      return NO_INSETS;
-    }
-    const overlays: OverlayBox[] = Array.from(
-      container.querySelectorAll<HTMLElement>("[data-map-overlay]")
-    ).map((element) => ({
-      // Handed over as the attribute reads. Whether it names an edge is `overlayInsets`'s
-      // question, and asserting it into the union here would only hide a typo from the answer.
-      edge: element.dataset.mapOverlay,
-      box: element.getBoundingClientRect()
-    }));
-    return overlayInsets(host.getBoundingClientRect(), overlays);
-  }, []);
+  // How much of the map the panes are covering, as a value the first fit waits for and every path
+  // below reads - see useOverlayInsets.ts. `null` until the first measurement lands.
+  const insets = useOverlayInsets(hostRef);
 
   // The canvas renderer got its size from Pixi's `resizeTo`. Rulers and framing need it too.
   useEffect(() => {
@@ -376,7 +358,8 @@ export function MapCanvas({
       view: mapView,
       gameId,
       level,
-      hasHexes: onLevel.length > 0
+      hasHexes: onLevel.length > 0,
+      stripKnown: insets !== null
     });
 
     if (decision.kind === "hold") {
@@ -392,14 +375,14 @@ export function MapCanvas({
       onLevel.map((hex) => hex.coordinate),
       size.width,
       size.height,
-      readInsets()
+      insets ?? NO_INSETS
     );
     // Only a view that actually reached the screen counts as framed. `fitTo` declines an empty
     // set, and committing anyway would leave the first report to arrive unframed.
     if (fitted) {
       commit(fitted);
     }
-  }, [gameId, level, onLevel, size, commit, readInsets, mapView]);
+  }, [gameId, level, onLevel, size, commit, insets, mapView]);
 
   // Brings the selection into view when it arrives from somewhere other than the map — the units
   // table, or a restored session. A hex clicked on the map is already visible, so nothing moves.
@@ -418,11 +401,11 @@ export function MapCanvas({
     if (!coordinate || coordinate.z !== level || size.width === 0) {
       return;
     }
-    const insets = readInsets();
-    if (isOffScreen(coordinate, viewRef.current, size.width, size.height, insets)) {
-      commit(centreOn(coordinate, viewRef.current, size.width, size.height, insets));
+    const currentInsets = insets ?? NO_INSETS;
+    if (isOffScreen(coordinate, viewRef.current, size.width, size.height, currentInsets)) {
+      commit(centreOn(coordinate, viewRef.current, size.width, size.height, currentInsets));
     }
-  }, [selectedRegionId, level, size, commit, readInsets, mapView.restoredRegionId]);
+  }, [selectedRegionId, level, size, commit, insets, mapView.restoredRegionId]);
 
   // React attaches `wheel` passively, so `preventDefault` inside an `onWheel` prop does nothing and
   // the page zooms instead of the map. This has to be a manual listener.
@@ -518,7 +501,7 @@ export function MapCanvas({
       viewRef.current,
       level
     );
-    commit(centreOn(coordinate, viewRef.current, size.width, size.height, readInsets()));
+    commit(centreOn(coordinate, viewRef.current, size.width, size.height, insets ?? NO_INSETS));
   };
 
   const onPointerDown = (event: React.PointerEvent<SVGSVGElement>) => {
@@ -581,12 +564,12 @@ export function MapCanvas({
       onLevel.map((hex) => hex.coordinate),
       size.width,
       size.height,
-      readInsets()
+      insets ?? NO_INSETS
     );
     if (fitted) {
       commit(fitted);
     }
-  }, [onLevel, size, commit, readInsets]);
+  }, [onLevel, size, commit, insets]);
 
   const onMapKeyDown = (event: React.KeyboardEvent<SVGPolygonElement>, from: Coordinate) => {
     if (event.key === "Enter" || event.key === " ") {
@@ -632,8 +615,11 @@ export function MapCanvas({
     const wanted = neighbour(from, event.key as ArrowKey);
     setCursor(wanted);
     pendingFocusRef.current = cursorKeyOf(wanted);
-    if (isOffScreen(wanted, viewRef.current, size.width, size.height)) {
-      commit(centreOn(wanted, viewRef.current, size.width, size.height));
+    // The same insets every other path reads - this used to skip them (ah-t2i's "known
+    // inconsistency": the cursor could recentre under a pane the pointer paths would have avoided).
+    const currentInsets = insets ?? NO_INSETS;
+    if (isOffScreen(wanted, viewRef.current, size.width, size.height, currentInsets)) {
+      commit(centreOn(wanted, viewRef.current, size.width, size.height, currentInsets));
     }
   };
 
@@ -721,7 +707,12 @@ export function MapCanvas({
   const overGround = resting ? hexAt(onLevel, resting) === null : false;
 
   return (
-    <div ref={hostRef} className="absolute inset-0" data-testid="map-canvas">
+    <div
+      ref={hostRef}
+      className="absolute inset-0"
+      data-testid="map-canvas"
+      data-map-insets={insets ? JSON.stringify(insets) : undefined}
+    >
       <svg
         ref={rootRef}
         className={`h-full w-full touch-none map-${band} map-theme-${theme.id}`}
@@ -800,7 +791,7 @@ export function MapCanvas({
             // `contextmenu` instead, but this is the belt to that suspender. Centres, never
             // selects, same as a right-click.
             if (isRecentreGesture({ button: event.button, ctrlKey: event.ctrlKey }, isMacPlatform())) {
-              commit(centreOn(coordinate, viewRef.current, size.width, size.height, readInsets()));
+              commit(centreOn(coordinate, viewRef.current, size.width, size.height, insets ?? NO_INSETS));
               return;
             }
             // Focus follows the click, as it does on a hex, so the arrow keys carry on from here.
@@ -1049,7 +1040,7 @@ export function MapCanvas({
                     isRecentreGesture({ button: event.button, ctrlKey: event.ctrlKey }, isMacPlatform())
                   ) {
                     commit(
-                      centreOn(hex.coordinate, viewRef.current, size.width, size.height, readInsets())
+                      centreOn(hex.coordinate, viewRef.current, size.width, size.height, insets ?? NO_INSETS)
                     );
                     return;
                   }

@@ -91,13 +91,25 @@ export type MapViewDecisionInput = {
   level: number;
   /** Whether this level has anything on it to frame. */
   hasHexes: boolean;
+  /**
+   * Whether the strip the map fits against - the host minus whatever panes are covering it - has
+   * been measured yet. Defaults to `true`, so a caller that never measures (every test above but
+   * one) keeps behaving as it always has.
+   *
+   * Only the `fit` branch waits on it: a fit is computed against the strip, so fitting before it is
+   * known is exactly the mistake a bigger default pane exploited on ah-2r3 - the fit ran against
+   * whatever was there a frame too early. A restore needs no strip at all; it is where the player
+   * left the map, not something computed from the layout.
+   */
+  stripKnown?: boolean;
 };
 
 export function mapViewDecision({
   view,
   gameId,
   level,
-  hasHexes
+  hasHexes,
+  stripKnown = true
 }: MapViewDecisionInput): MapViewDecision {
   const pending = view.pendingViewport;
   const framedLevel = view.gameId === gameId ? view.framedLevel : null;
@@ -112,7 +124,7 @@ export function mapViewDecision({
 
   // Nothing on this level to frame is a game with no report in it yet. Fitting would frame nowhere
   // and still count as framed, so the first report to arrive would never be framed at all.
-  if (framedLevel !== level && hasHexes) {
+  if (framedLevel !== level && hasHexes && stripKnown) {
     return { kind: "fit" };
   }
 

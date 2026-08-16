@@ -277,6 +277,14 @@ describe("what the map hands a theme", () => {
     expect(svg).toContain('aria-label="hex 1:7,53"');
     expect(svg).toContain('data-testid="map-ruler-x"');
   });
+
+  it("carries no data-map-insets before the strip has been measured", () => {
+    // A static render never runs effects, so useOverlayInsets never measures - the attribute is
+    // absent rather than "null", which is what the smoke suite's helper polls for.
+    const svg = draw();
+
+    expect(svg).not.toContain("data-map-insets");
+  });
 });
 
 describe("the selected hex's double ring", () => {
