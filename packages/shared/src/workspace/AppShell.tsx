@@ -116,7 +116,8 @@ import {
 } from "./changesView";
 import { diffOrders, diffTurns } from "../turnDiff";
 import { type MapRect } from "./mapMarquee";
-import { loadSavedView, saveFocusForGame } from "./mapViewportStorage";
+import { loadSavedView, saveMapView } from "./mapViewportStorage";
+import type { MapViewState } from "./mapViewState";
 import { getMapTheme } from "./mapThemes";
 import { OrdersPanel } from "./OrdersPanel";
 import type { OrdersEditorHandle } from "./OrdersEditor";
@@ -377,7 +378,6 @@ export function AppShell({
   const selectedUnitId = useWorkspaceStore((state) => state.selectedUnitId);
   const selectionEpoch = useWorkspaceStore((state) => state.selectionEpoch);
   const selectRegion = useWorkspaceStore((state) => state.selectRegion);
-  const restoreSelection = useWorkspaceStore((state) => state.restoreSelection);
   const selectUnit = useWorkspaceStore((state) => state.selectUnit);
   const level = useWorkspaceStore((state) => state.level);
   const setLevel = useWorkspaceStore((state) => state.setLevel);
@@ -455,14 +455,33 @@ export function AppShell({
 
   const openGameId = game?.manifest.metadata.gameId ?? null;
 
-  // Remembers which level and which hex the player is on, so reopening the game comes back to them.
-  // The map saves its own pan and zoom as it moves; these two live in the workspace store, which
-  // knows nothing about which game is open, so the shell is where they are written from.
+  // Writes the whole map view whenever any part of it changes - level, hex or the map's own pan
+  // and zoom, all held in one place by the store's `mapView` slice now (ah-ian). Guarded on a
+  // committed viewport: before the map has framed anything for this game there is nothing to
+  // write yet, and writing `{level, regionId}` alone would make a reload fit instead of restore.
+  //
+  // Read via `subscribe` rather than the usual `useWorkspaceStore(state => state.mapView)`
+  // selector: `mapView` changes on every pan, zoom and wheel step, and a shell this size
+  // re-rendering on each of those would cost far more than the write itself does. `level` and
+  // `selectedRegionId` are already subscribed above for the UI they drive, so this effect still
+  // sees their latest values through the closure; only the write's own trigger - `mapView`
+  // changing - is kept out of the render loop.
   useEffect(() => {
     if (openGameId === null) {
-      return;
+      return undefined;
     }
-    saveFocusForGame(openGameId, level, selectedRegionId);
+    const write = (current: MapViewState) => {
+      if (current.gameId !== openGameId || current.viewport === null) {
+        return;
+      }
+      saveMapView(openGameId, { viewport: current.viewport, level, regionId: selectedRegionId });
+    };
+    write(useWorkspaceStore.getState().mapView);
+    return useWorkspaceStore.subscribe((state, previous) => {
+      if (state.mapView !== previous.mapView) {
+        write(state.mapView);
+      }
+    });
   }, [openGameId, level, selectedRegionId]);
 
   // A level restored from storage that this game no longer draws. It can happen: the underworld
@@ -1370,32 +1389,22 @@ export function AppShell({
       setComparison(null);
       setTurnPickerOpen(false);
       setTurnSummaries([]);
-      openGameInStore({
-        gameId: opened.manifest.metadata.gameId,
-        gameName: opened.manifest.metadata.gameName,
-        databasePath: opened.databasePath,
-        rulesetId: opened.manifest.metadata.rulesetId
-      });
-
-      // Back to the level and the hex this game was left on. Applied here rather than after the
-      // turn is restored so that all three - the game, the level and the selection - reach the map
-      // in one render, and the map's own restore cannot be raced by a level arriving later.
-      //
-      // `setLevel` clears the selection, so the hex has to follow it rather than lead. A saved hex
-      // also stands the opening-hex fallback down, which is what used to pull the restored view
-      // back to wherever the faction's first unit happened to be standing.
-      //
-      // The level is set whether or not one was saved: it is the only part of the view the store
-      // keeps across a game switch, so a game with nothing saved would otherwise open on whichever
-      // level the game before it was left on.
-      const saved = loadSavedView(opened.manifest.metadata.gameId);
-      setLevel(saved?.level ?? DEFAULT_LEVEL);
-      if (saved?.regionId != null) {
-        // A silent restore, not a user-initiated change - it must not replay the lock-on pulse.
-        restoreSelection(saved.regionId);
-      }
+      // The game, the level, the selected hex and the pending viewport all land in one `set` -
+      // `openGame` reads the saved record itself, so no render sees a new game over an old view or
+      // the reverse (ah-ian). The level is set whether or not one was saved: it is the only part
+      // of the view the store keeps across a game switch, so a game with nothing saved would
+      // otherwise open on whichever level the game before it was left on.
+      openGameInStore(
+        {
+          gameId: opened.manifest.metadata.gameId,
+          gameName: opened.manifest.metadata.gameName,
+          databasePath: opened.databasePath,
+          rulesetId: opened.manifest.metadata.rulesetId
+        },
+        loadSavedView(opened.manifest.metadata.gameId)
+      );
     },
-    [clearPlan, openGameInStore, setLevel, restoreSelection]
+    [clearPlan, openGameInStore]
   );
 
   /**

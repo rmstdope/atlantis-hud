@@ -5,10 +5,9 @@
  * by game identifier, so each game reopens exactly where the player left it. Failures are silently
  * tolerated — remembering a view is a convenience and should never crash the application.
  *
- * There are two writers, because the two halves change at different moments: the map saves pan and
- * zoom on every view move, and the shell saves the level and the hex on every selection. Both
- * therefore read-modify-write the one record rather than replacing it, or each would keep undoing
- * the other's half of the view.
+ * There is one writer: the workspace store holds the whole view (`mapViewState.ts`), and the shell
+ * writes the whole record whenever any part of it changes. Nothing here reads the record back to
+ * preserve half of it, because there is nothing left that owns only half.
  */
 
 import { parseRegionId, SURFACE } from "../hexMapModel";
@@ -154,52 +153,36 @@ export function loadSavedView(
   return { viewport, level, regionId };
 }
 
-/** Writes a record, keeping whatever the other writer had already put in it. */
-function merge(
+/**
+ * Persists the whole view for a game: pan, zoom, level and the selected hex, written together.
+ *
+ * There is one writer now (the shell, from the store's `mapView`), so there is nothing to preserve
+ * from a previous write - the record is replaced whole. A `null` hex is stored as such rather than
+ * skipped: deselecting is a change to remember too, and a record that kept the last hex forever
+ * would reopen on one the player had deliberately left.
+ *
+ * Failures are silently ignored — remembering a view is a convenience and should never crash the
+ * application. `storage` is injectable for testing; production callers omit it and get
+ * localStorage.
+ */
+export function saveMapView(
   gameId: string,
-  storage: ViewportStorage | null,
-  changes: Partial<StoredView>
+  view: { viewport: Viewport; level: number; regionId: string | null },
+  storage: ViewportStorage | null = optionalStorage()
 ): void {
   if (!storage) return;
   try {
     storage.setItem(
       viewportStorageKey(gameId),
-      JSON.stringify({ ...(storedView(gameId, storage) ?? {}), ...changes })
+      JSON.stringify({
+        tx: view.viewport.tx,
+        ty: view.viewport.ty,
+        step: view.viewport.step,
+        level: view.level,
+        regionId: view.regionId
+      })
     );
   } catch {
     // Storage full or blocked; the view is not critical.
   }
-}
-
-/**
- * Persists the current pan and zoom for a game, leaving the level and the hex alone.
- *
- * Failures are silently ignored — remembering a view is a convenience and should never crash the
- * application.
- *
- * `storage` is injectable for testing; production callers omit it and get localStorage.
- */
-export function saveViewportForGame(
-  gameId: string,
-  viewport: Viewport,
-  storage: ViewportStorage | null = optionalStorage()
-): void {
-  merge(gameId, storage, viewport);
-}
-
-/**
- * Persists which level and which hex the player is on, leaving the pan and zoom alone.
- *
- * A `null` hex is stored as such rather than skipped: deselecting is a change to remember too, and
- * a record that kept the last hex forever would reopen on one the player had deliberately left.
- *
- * `storage` is injectable for testing; production callers omit it and get localStorage.
- */
-export function saveFocusForGame(
-  gameId: string,
-  level: number,
-  regionId: string | null,
-  storage: ViewportStorage | null = optionalStorage()
-): void {
-  merge(gameId, storage, { level, regionId });
 }
