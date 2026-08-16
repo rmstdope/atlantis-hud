@@ -6,6 +6,7 @@
   "scripts": {
     "lint": "pnpm -r run lint",
     "release": "tsx scripts/release.ts",
+    "beads:export": "tsx scripts/beadsExport.ts",
     "generate:biomes": "tsx scripts/genBiomes.ts",
     "typecheck": "pnpm -r run typecheck && pnpm run typecheck:tooling && cargo check --workspace",
     "typecheck:tooling": "tsc --noEmit -p tsconfig.tooling.json",
