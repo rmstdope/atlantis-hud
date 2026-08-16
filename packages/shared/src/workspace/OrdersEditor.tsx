@@ -233,6 +233,13 @@ export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(fu
   // newline an orders file ends with. In the editor only: the block boundary neither holds nor
   // needs it, so the document is not written (External, and not history either). An append at the
   // end never moves a caret that is anywhere else - what persistence.spec pins.
+  //
+  // `externalRevision` is in the dependency list too, and not only `savedAt`: an external write
+  // (an import, a route) that lands while the document is already saved bumps `externalRevision`
+  // without moving `savedAt`, and the reload effect above splices in the block as the document
+  // holds it - never carrying the trailing newline, which is editor-only. Without this dependency
+  // that splice would stand untidied until the next save actually lands. Effects run in the order
+  // they are declared, so the reload above has already applied by the time this one reads the doc.
   useEffect(() => {
     const editor = view.current;
     if (!editor || savedAt === null) {
@@ -246,7 +253,7 @@ export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(fu
         annotations: [External.of(true), Transaction.addToHistory.of(false)]
       });
     }
-  }, [savedAt, unitId]);
+  }, [savedAt, externalRevision, unitId]);
 
   // Diagnostics are pushed rather than pulled: validation already runs debounced in the shell,
   // and CodeMirror's own lint scheduler would only add a second debounce on top of it. Only when
