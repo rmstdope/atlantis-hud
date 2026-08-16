@@ -130,6 +130,7 @@ import { buildPaletteEntries } from "../commandPalette";
 import { diagnosticTargets, stepDiagnostic } from "../diagnosticNav";
 import { hasOpenDismissLayers } from "../dismissStack";
 import { firesInContext, isMacPlatform, matchShortcut, SHORTCUTS } from "../shortcuts";
+import type { ArgumentLookup } from "../orderCompletion";
 import { nextOwnUnit } from "../unitCycle";
 import {
   dragOrdersHeight,
@@ -1267,6 +1268,11 @@ export function AppShell({
       cancelled = true;
     };
   }, [client]);
+
+  const argumentCompletions = useCallback<ArgumentLookup>(
+    (linePrefix) => client.orderArgumentCompletions(linePrefix),
+    [client]
+  );
 
   /**
    * Keeps the hex notes store in step with the open game (ah-o1t): loads its notes when a game
@@ -2698,6 +2704,7 @@ export function AppShell({
                   save={save}
                   commands={orderCommands}
                   snippets={snippets}
+                  argumentCompletions={argumentCompletions}
                   editorRef={ordersEditor}
                 />
               </div>

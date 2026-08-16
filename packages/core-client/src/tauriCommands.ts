@@ -46,6 +46,7 @@ export const TAURI_COMMANDS = {
   ],
   validateOrders: ["validate_orders", "raw_orders", "ruleset_json", "raw_report", "disabled_codes"],
   orderCommands: ["order_commands"],
+  orderArgumentCompletions: ["order_argument_completions", "line_prefix"],
   planRoute: ["plan_route", "ruleset_json", "raw_report", "remembered_json", "unit_id", "destination"],
   traceMoveOrders: ["trace_move_orders", "ruleset_json", "raw_report", "remembered_json", "unit_id", "orders"],
   exportMap: ["export_map", "raw_report", "remembered_json", "request_json"],

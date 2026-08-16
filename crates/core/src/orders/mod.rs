@@ -18,7 +18,7 @@ pub mod parser;
 pub mod semantics;
 pub mod walk;
 
-pub use grammar::order_commands;
+pub use grammar::{order_argument_completions, order_commands};
 
 use crate::movement::rules::Ruleset;
 use crate::report::ParsedReport;
