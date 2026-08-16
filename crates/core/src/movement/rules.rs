@@ -280,6 +280,14 @@ pub struct CastCost {
     pub transmute: BTreeMap<String, String>,
 }
 
+/// One thing a skill can make, and the level at which it can first be made.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Production {
+    pub tag: String,
+    pub level: u32,
+}
+
 /// A skill, and what a month of studying it costs.
 ///
 /// Separate from the item catalogue rather than merged into it, because ten tags mean one thing as
@@ -298,6 +306,11 @@ pub struct SkillEntry {
     /// scraped, and for the (large majority of) skills the page states no cost for.
     #[serde(default)]
     pub cast: Option<CastCost>,
+    /// What a unit with this skill may PRODUCE, and the level at which each becomes available.
+    /// Empty for a skill that makes nothing, and for a ruleset generated before production was
+    /// scraped.
+    #[serde(default)]
+    pub produces: Vec<Production>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

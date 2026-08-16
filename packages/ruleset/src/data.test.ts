@@ -504,4 +504,109 @@ describe("parseSkillReference", () => {
 
     expect(() => parseSkillReference(html)).toThrowError(RulesetScrapeError);
   });
+
+  /**
+   * What a skill may PRODUCE, read from the "may PRODUCE ... at a rate of ..." sentences ah-bai.2
+   * will use to narrow the PRODUCE completion popup to what the unit standing in the hex can
+   * actually make. Most skills state no production at all, which is why `produces` is checked
+   * against fact for every skill that does, rather than sampled.
+   */
+  it("reads what a skill may produce", () => {
+    const skills = parseSkillReference(DATA_HTML);
+
+    // "mining [MINI] 1: ... A unit with this skill may PRODUCE iron [IRON] at a rate of 1 per
+    //  man-month."
+    expect(skills.MINI.produces).toContainEqual({ tag: "IRON", level: 1 });
+  });
+
+  it("does not mistake what a product is made from for a product", () => {
+    const skills = parseSkillReference(DATA_HTML);
+
+    // "weaponsmith [WEAP] 1: ... may PRODUCE swords [SWOR] from iron [IRON] at a rate of 1 per
+    //  man-month, crossbows [XBOW] from wood [WOOD] ..., longbows [LBOW] from wood [WOOD] ...,
+    //  picks [PICK] from iron [IRON] ..., spears [SPEA] from wood [WOOD] ..., axes [AXE] from
+    //  wood [WOOD] ..., hammers [HAMM] from iron [IRON] ..., and javelins [JAVE] from wood
+    //  [WOOD] ..."
+    const level1 = skills.WEAP.produces.filter((p) => p.level === 1).map((p) => p.tag);
+    expect(level1).toEqual(["SWOR", "XBOW", "LBOW", "PICK", "SPEA", "AXE", "HAMM", "JAVE"]);
+    expect(level1).not.toContain("IRON");
+    expect(level1).not.toContain("WOOD");
+  });
+
+  it("records the level at which each product becomes available", () => {
+    const skills = parseSkillReference(DATA_HTML);
+
+    // MINI: iron at 1, mithril at 3, admantium at 5.
+    expect(skills.MINI.produces).toEqual([
+      { tag: "IRON", level: 1 },
+      { tag: "MITH", level: 3 },
+      { tag: "ADMT", level: 5 }
+    ]);
+  });
+
+  it("reads a product whose sentence puts the materials in an odd place", () => {
+    const skills = parseSkillReference(DATA_HTML);
+
+    // "cooking [COOK] 1: ... may PRODUCE a number of meals [MEAL] equal to skill level divided by
+    //  2, rounded up from any of grain [GRAI], livestock [LIVE] and fish [FISH] at a rate of 1
+    //  per man-month."
+    expect(skills.COOK.produces).toEqual([{ tag: "MEAL", level: 1 }]);
+  });
+
+  it("reads several products in one sentence", () => {
+    const skills = parseSkillReference(DATA_HTML);
+
+    // "fishing [FISH] 1: ... may PRODUCE fish [FISH] at a rate of 1 per man-month and nets [NET]
+    //  from herb [HERB] at a rate of 1 per man-month."
+    expect(skills.FISH.produces.filter((p) => p.level === 1)).toEqual([
+      { tag: "FISH", level: 1 },
+      { tag: "NET", level: 1 }
+    ]);
+  });
+
+  it("fails loudly on a production it cannot read", () => {
+    const html =
+      "<html><body><pre>broken [BROK] 1: A unit with this skill may PRODUCE something odd " +
+      "at a rate of 1 per man-month.</pre></body></html>";
+
+    expect(() => parseSkillReference(html)).toThrowError(RulesetScrapeError);
+  });
+
+  it("records no production for a skill that makes nothing", () => {
+    const skills = parseSkillReference(DATA_HTML);
+
+    // "observation [OBSE] 1: A unit with this skill can see stealthy units or ..." - no PRODUCE.
+    expect(skills.OBSE.produces).toEqual([]);
+  });
+
+  it("keeps the page's order", () => {
+    const skills = parseSkillReference(DATA_HTML);
+
+    expect(skills.WEAP.produces.map((p) => p.tag)).toEqual([
+      "SWOR",
+      "XBOW",
+      "LBOW",
+      "PICK",
+      "SPEA",
+      "AXE",
+      "HAMM",
+      "JAVE",
+      "PIKE",
+      "MSWO",
+      "BAXE",
+      "MXBO",
+      "DBOW",
+      "ASWR"
+    ]);
+  });
+
+  it("reads a product made from several materials with quantities", () => {
+    const skills = parseSkillReference(DATA_HTML);
+
+    // "carpenter [CARP] 4: ... may PRODUCE catapults [CATP] from 250 wood [WOOD], 30 ironwood
+    //  [IRWD], 80 furs [FUR] and 3000 silver [SILV] at a rate of 1 per 4 man-months and steel
+    //  defenders [STED] from ... at a rate of 1 per 4 man-months."
+    const level4 = skills.CARP.produces.filter((p) => p.level === 4).map((p) => p.tag);
+    expect(level4).toEqual(["CATP", "STED"]);
+  });
 });
