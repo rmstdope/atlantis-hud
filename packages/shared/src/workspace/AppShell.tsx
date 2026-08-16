@@ -73,8 +73,12 @@ import {
   createGame as createGameAction,
   deleteGame as deleteGameAction,
   importGameBackup as importGameBackupAction,
-  openGame as openGameAction
+  importGameBackupAsCopy,
+  openGame as openGameAction,
+  replaceGameWithBackup,
+  type GameActionOutcome
 } from "../gameActions";
+import type { BackupImportMode } from "../gameBackup";
 import { DEFAULT_LEVEL, useWorkspaceStore } from "../workspaceStore";
 import { useHexNotesStore } from "../hexNotesStore";
 import { useSettingsStore } from "../settingsStore";
@@ -1503,7 +1507,8 @@ export function AppShell({
       runGameAction(async () => {
         await flush();
         const backup = await client.exportGame(gameId, new Date().toISOString());
-        const path = await deliverGameBackupExport(saveTextFile, gameId, backup);
+        const gameName = games.find((g) => g.metadata.gameId === gameId)?.metadata.gameName ?? gameId;
+        const path = await deliverGameBackupExport(saveTextFile, gameName, backup);
         if (path === null) {
           // The player cancelled the native save. Nothing was written, so the picker stays open
           // rather than claiming an export that never happened.
@@ -1511,20 +1516,34 @@ export function AppShell({
         }
         setPickerOpen(false);
       }),
-    [client, flush, runGameAction, saveTextFile]
+    [client, flush, games, runGameAction, saveTextFile]
   );
 
   const importGameBackup = useCallback(
-    (file: File) =>
+    (file: File, mode: BackupImportMode = "new") =>
       runGameAction(async () => {
-        await flush();
-        const outcome = await importGameBackupAction(client, await file.text(), new Date().toISOString());
+        const backupJson = await file.text();
+        const now = new Date().toISOString();
+        let outcome: GameActionOutcome & { opened: OpenedGame };
+        if (mode === "replace") {
+          outcome = await replaceGameWithBackup(client, backupJson, game?.manifest.metadata.gameId ?? null, now, {
+            flush,
+            discardOpenDraft: () => writer.discard()
+          });
+        } else {
+          // Before the workspace lets go of the old game (see openGameById).
+          await flush();
+          outcome =
+            mode === "copy"
+              ? await importGameBackupAsCopy(client, backupJson, now)
+              : await importGameBackupAction(client, backupJson, now);
+        }
         enterGame(outcome.opened);
         setGames(outcome.games);
         setPickerOpen(false);
         setSettingsOpen(false);
       }, `could not import ${file.name}`),
-    [client, enterGame, flush, runGameAction]
+    [client, enterGame, flush, game, runGameAction, writer]
   );
 
   // A destination and a unit are all the planner needs; the answer carries either a route or the
@@ -2270,7 +2289,7 @@ export function AppShell({
             onCreate={(name, rulesetId) => void createGame(name, rulesetId)}
             onDelete={(gameId) => void deleteGame(gameId)}
             onExport={(gameId) => void exportGameBackup(gameId)}
-            onImport={(file) => void importGameBackup(file)}
+            onImport={(file, mode) => void importGameBackup(file, mode)}
             onDismiss={() => setPickerOpen(false)}
           />
         }

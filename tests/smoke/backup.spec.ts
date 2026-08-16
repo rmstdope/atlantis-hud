@@ -124,6 +124,7 @@ test("a game backup restores turns, orders and remembered map after storage is c
   const downloadPromise = page.waitForEvent("download");
   await page.getByTestId("export-game").click();
   const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe("Backup game.atlantis-hud-game.json");
   const backupPath = testInfo.outputPath("backup-game.json");
   await download.saveAs(backupPath);
 
@@ -140,6 +141,91 @@ test("a game backup restores turns, orders and remembered map after storage is c
   const restoredGame = await gameIdentityFor(page, "Backup game");
   expect(restoredGame).not.toBeNull();
   expect(await storageCountsFor(page, restoredGame!.databasePath)).toEqual(before);
+});
+
+/**
+ * Gets to the point where the picker is asking whether to replace "Backup game" or keep both -
+ * every collision test starts here. Exports a backup of "Backup game" with one draft, then edits
+ * the draft further (without clearing storage) so replace and keep-both can be told apart from
+ * doing nothing, and picks the exported file back in through the import input.
+ */
+async function toImportCollision(page: Page, testInfo: { outputPath: (name: string) => string }) {
+  await clearGames(page);
+  await createGame(page, "Backup game");
+  await importReport(page, "turn-70.rep", TURN_70);
+  await expect(page.getByTestId("import-status")).toContainText("1 region");
+  await importReport(page, "turn-71.rep", TURN_71);
+  await expect(page.getByTestId("import-status")).toContainText("11 regions");
+  await openOrders(page);
+  await fillOrders(page, "@work");
+  await expect(page.getByTestId("orders-status")).toContainText(/saved \d/u, { timeout: 20_000 });
+
+  await page.getByTestId("game-indicator").click();
+  await page.getByTestId("game-picker-tab-settings").click();
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByTestId("export-game").click();
+  const download = await downloadPromise;
+  const backupPath = testInfo.outputPath("backup-collision.json");
+  await download.saveAs(backupPath);
+
+  // Without clearing: the backup still names the game that is still here.
+  await fillOrders(page, "@study combat");
+  await expect(page.getByTestId("orders-status")).toContainText(/saved \d/u, { timeout: 20_000 });
+
+  await page.getByTestId("game-indicator").click();
+  await page.getByTestId("game-picker-tab-settings").click();
+  await page.setInputFiles("[data-testid='import-game-input']", backupPath);
+
+  const confirm = page.getByTestId("game-import-confirm");
+  await expect(confirm).toBeVisible();
+  await expect(confirm).toContainText("“Backup game” is already here");
+}
+
+test("importing a backup of a game that is already here can keep both", async ({ page }, testInfo) => {
+  await toImportCollision(page, testInfo);
+
+  await page.getByTestId("game-import-keep-both").click();
+
+  await expect(page.getByTestId("game-indicator")).toContainText("Backup game (imported)");
+  await page.getByTestId("game-indicator").click();
+  await expect(page.locator('[data-testid^="game-row-"]')).toHaveCount(2);
+
+  await openOrders(page);
+  await expectOrders(page, /@work/u);
+});
+
+test("importing a backup of a game that is already here can replace it", async ({ page }, testInfo) => {
+  await toImportCollision(page, testInfo);
+  const before = await gameIdentityFor(page, "Backup game");
+  expect(before).not.toBeNull();
+
+  await page.getByTestId("game-import-replace").click();
+
+  await expect(page.getByTestId("game-picker")).not.toBeVisible();
+  await expect(page.getByTestId("game-indicator")).toContainText("Backup game");
+
+  await page.getByTestId("game-indicator").click();
+  await expect(page.locator('[data-testid^="game-row-"]')).toHaveCount(1);
+
+  await openOrders(page);
+  await expectOrders(page, /@work/u);
+
+  const after = await gameIdentityFor(page, "Backup game");
+  expect(after).not.toBeNull();
+  expect(after!.gameId).toBe(before!.gameId);
+});
+
+test("cancelling the import question leaves everything as it was", async ({ page }, testInfo) => {
+  await toImportCollision(page, testInfo);
+
+  await page.getByTestId("game-import-cancel").click();
+
+  await expect(page.getByTestId("game-import-confirm")).toHaveCount(0);
+  await expect(page.getByTestId("game-picker")).toBeVisible();
+  await expect(page.getByTestId("import-game")).toBeFocused();
+
+  await page.getByTestId("game-picker-tab-games").click();
+  await expect(page.locator('[data-testid^="game-row-"]')).toHaveCount(1);
 });
 
 test("a backup file from a newer format version is refused with an explanation", async ({ page }) => {

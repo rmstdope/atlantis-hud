@@ -41,23 +41,23 @@ describe("deliverOrdersExport", () => {
 });
 
 describe("deliverGameBackupExport", () => {
-  it("saves through the shell's saver, with the JSON mime type", async () => {
-    const saveTextFile = vi.fn().mockResolvedValue("/chosen/game-1.atlantis-hud-game.json");
+  it("saves through the shell's saver, named after the game, with the JSON mime type", async () => {
+    const saveTextFile = vi.fn().mockResolvedValue("/chosen/Backup game.atlantis-hud-game.json");
 
-    const path = await deliverGameBackupExport(saveTextFile, "game-1", "{}");
+    const path = await deliverGameBackupExport(saveTextFile, "Backup game", "{}");
 
     expect(saveTextFile).toHaveBeenCalledWith(
-      "game-1.atlantis-hud-game.json",
+      "Backup game.atlantis-hud-game.json",
       "{}",
       "application/json"
     );
-    expect(path).toBe("/chosen/game-1.atlantis-hud-game.json");
+    expect(path).toBe("/chosen/Backup game.atlantis-hud-game.json");
   });
 
   it("resolves null on a cancelled save, without throwing", async () => {
     const saveTextFile = vi.fn().mockResolvedValue(null);
 
-    await expect(deliverGameBackupExport(saveTextFile, "game-1", "{}")).resolves.toBeNull();
+    await expect(deliverGameBackupExport(saveTextFile, "Backup game", "{}")).resolves.toBeNull();
   });
 });
 

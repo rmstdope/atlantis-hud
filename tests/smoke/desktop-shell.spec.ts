@@ -118,7 +118,7 @@ test("a game backup export goes through the save dialog and closes the picker", 
   expect(calls[0]).toEqual([
     "save",
     expect.objectContaining({
-      defaultPath: expect.stringMatching(/\.atlantis-hud-game\.json$/u)
+      defaultPath: expect.stringMatching(/^Desktop backup game\.atlantis-hud-game\.json$/u)
     })
   ]);
   expect(calls[1][0]).toBe("write");

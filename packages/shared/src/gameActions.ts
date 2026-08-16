@@ -10,6 +10,7 @@
  */
 
 import type { CoreClient, GameManifest, OpenedGame } from "@atlantis/core-client";
+import { backupAsCopy, backupGameIdentity } from "./gameBackup";
 import { gameAfterDelete, newGameId, newGameManifest } from "./gameSession";
 import { rulesetById } from "./rulesets";
 
@@ -46,9 +47,67 @@ export async function importGameBackup(
   client: GameClient,
   backupJson: string,
   now: string
-): Promise<GameActionOutcome> {
+): Promise<GameActionOutcome & { opened: OpenedGame }> {
   const opened = await client.importGame(backupJson, now);
   return { opened, games: await client.listGames() };
+}
+
+/** "Keep both": imports `backupJson` as a new game under a fresh id, named "<name> (imported)". */
+export async function importGameBackupAsCopy(
+  client: GameClient,
+  backupJson: string,
+  now: string
+): Promise<GameActionOutcome & { opened: OpenedGame }> {
+  return importGameBackup(client, backupAsCopy(backupJson, newGameId()), now);
+}
+
+/**
+ * "Replace": deletes the game `backupJson` names, then imports the backup in its place, and
+ * resolves `{ opened: the imported game, games }`.
+ *
+ * Order, and why: (1) `hooks.discardOpenDraft()` when the named game is `openGameId` - its
+ * database is about to go, so nothing may be flushed into it (the rule `deleteGame` above states);
+ * otherwise `await hooks.flush()`, as any other import does before the workspace lets go of the
+ * open game. (2) `snapshot = await client.exportGame(gameId, now)` - the game as it stands. (3)
+ * `client.deleteGame(gameId)`. (4) `client.importGame(backupJson, now)`. If (4) rejects, the
+ * snapshot is imported back (`client.importGame(snapshot, now)`) before the error is rethrown, so a
+ * backup the core refuses (a newer format version, say) costs the player nothing. If putting the
+ * snapshot back also fails, the original error is still the one thrown; the second failure is
+ * logged.
+ *
+ * When `backupGameIdentity` returns `null` there is nothing to delete: falls through to a plain
+ * `client.importGame` and lets the core report the file.
+ */
+export async function replaceGameWithBackup(
+  client: GameClient,
+  backupJson: string,
+  openGameId: string | null,
+  now: string,
+  hooks: { flush: () => Promise<void>; discardOpenDraft: () => void }
+): Promise<GameActionOutcome & { opened: OpenedGame }> {
+  const identity = backupGameIdentity(backupJson);
+  if (!identity) {
+    return importGameBackup(client, backupJson, now);
+  }
+
+  if (identity.gameId === openGameId) {
+    hooks.discardOpenDraft();
+  } else {
+    await hooks.flush();
+  }
+
+  const snapshot = await client.exportGame(identity.gameId, now);
+  await client.deleteGame(identity.gameId);
+  try {
+    return await importGameBackup(client, backupJson, now);
+  } catch (error: unknown) {
+    try {
+      await client.importGame(snapshot, now);
+    } catch (restoreError: unknown) {
+      console.error(`could not restore ${identity.gameId} after a failed replace:`, restoreError);
+    }
+    throw error;
+  }
 }
 
 /**

@@ -1,6 +1,8 @@
 import type { GameManifest } from "@atlantis/core-client";
 import type { ChangeEvent } from "react";
 import { useEffect, useRef, useState } from "react";
+import type { BackupImportMode } from "../gameBackup";
+import { backupGameIdentity } from "../gameBackup";
 import { GameForm } from "./GameForm";
 
 /**
@@ -13,6 +15,9 @@ import { GameForm } from "./GameForm";
  *
  * Deleting asks first, inline, and says what is lost. There is no undo anywhere in this
  * application, and a game holds a season of turns.
+ *
+ * Importing a backup of a game that is already here asks the same way (ah-c0m) - Replace, Keep
+ * both, or Cancel - and says what replacing erases.
  */
 export function GamePicker({
   games,
@@ -34,14 +39,16 @@ export function GamePicker({
   onCreate: (name: string, rulesetId: string) => void;
   onDelete: (gameId: string) => void;
   onExport: (gameId: string) => void;
-  onImport: (file: File) => void;
+  onImport: (file: File, mode: BackupImportMode) => void;
   onDismiss: () => void;
 }) {
   const [creating, setCreating] = useState(games.length === 0);
   const [confirmingDeleteOf, setConfirmingDeleteOf] = useState<string | null>(null);
   const [tab, setTab] = useState<"games" | "settings">("games");
+  const [pendingImport, setPendingImport] = useState<{ file: File; gameName: string } | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
   const importRef = useRef<HTMLInputElement | null>(null);
+  const importButtonRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -84,10 +91,29 @@ export function GamePicker({
 
   const onPickImport = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (file) {
-      onImport(file);
-    }
     event.target.value = "";
+    if (!file) {
+      return;
+    }
+    void (async () => {
+      // A read failure here (the file vanished, a permission error) is rare and would otherwise
+      // be an unhandled rejection; fall through to a plain import and let the core report it in
+      // the words it already uses, rather than leaving the player with no feedback at all.
+      let text: string;
+      try {
+        text = await file.text();
+      } catch {
+        onImport(file, "new");
+        return;
+      }
+      const identity = backupGameIdentity(text);
+      const existing = identity ? games.find((game) => game.metadata.gameId === identity.gameId) : undefined;
+      if (existing) {
+        setPendingImport({ file, gameName: existing.metadata.gameName });
+      } else {
+        onImport(file, "new");
+      }
+    })();
   };
 
   return (
@@ -161,6 +187,7 @@ export function GamePicker({
               Export game backup…
             </button>
             <button
+              ref={importButtonRef}
               type="button"
               data-testid="import-game"
               disabled={busy}
@@ -177,9 +204,57 @@ export function GamePicker({
               className="hidden"
               onChange={onPickImport}
             />
-            <p className="mt-1.5 text-ink-soft">
-              Import creates a new game and refuses if that game's id already exists.
-            </p>
+            {pendingImport ? (
+              <div data-testid="game-import-confirm" className="mt-1.5 rounded border border-danger/40 p-1.5">
+                <p className="text-ink-soft">
+                  “{pendingImport.gameName}” is already here. Replace it with the backup, or import the
+                  backup as a second game?
+                </p>
+                <p className="mt-1 text-ink-soft">Replacing erases its current turns, orders and remembered map.</p>
+                <div className="mt-1.5 flex justify-end gap-1.5">
+                  <button
+                    type="button"
+                    data-testid="game-import-replace"
+                    disabled={busy}
+                    onClick={() => {
+                      onImport(pendingImport.file, "replace");
+                      setPendingImport(null);
+                    }}
+                    className="rounded border border-danger px-2 py-0.5 text-danger disabled:opacity-50"
+                  >
+                    Replace
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="game-import-keep-both"
+                    disabled={busy}
+                    onClick={() => {
+                      onImport(pendingImport.file, "copy");
+                      setPendingImport(null);
+                    }}
+                    className="rounded border border-brass px-2 py-0.5 text-brass disabled:opacity-50"
+                  >
+                    Keep both
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="game-import-cancel"
+                    autoFocus
+                    onClick={() => {
+                      setPendingImport(null);
+                      importButtonRef.current?.focus();
+                    }}
+                    className="rounded border border-edge px-2 py-0.5 text-ink"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <p className="mt-1.5 text-ink-soft">
+                Import creates a new game; if it is already here you are asked whether to replace it.
+              </p>
+            )}
           </div>
         </div>
       ) : (
