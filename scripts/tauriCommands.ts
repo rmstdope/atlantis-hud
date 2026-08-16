@@ -62,18 +62,95 @@ export function commandRenames(coreTauriLibRs: string): Map<string, string> {
 }
 
 /**
- * The commands `createTauriAdapter` invokes: every string literal passed as `invoke`'s first
- * argument, deduplicated in the order first seen. The type parameter is optional, so both
- * `invoke<T>("cmd", …)` and the untyped `invoke("cmd", …)` are found. A command name reached
- * through a variable (`invoke(command, …)`) is invisible to this — there is none in `core-client`
- * today; see `scripts/tauriCommands.test.ts` for how that is checked.
+ * Splits `text` on commas at nesting depth zero of `<>`, `()`, `[]` and `{}`; trims each piece;
+ * drops empties. A parameter list read out of Rust or TypeScript source can itself contain commas
+ * inside a generic (`HashMap<K, V>`) or an object type (`Record<string, unknown>`), and a plain
+ * `.split(",")` would miscount those as separate parameters.
  */
-export function invokedCommands(coreClientIndex: string): string[] {
-  const seen = new Set<string>();
-  for (const match of coreClientIndex.matchAll(/invoke(?:<[^>]*>)?\(\s*"([a-z_]+)"/gu)) {
-    seen.add(match[1]);
+export function splitTopLevel(text: string): string[] {
+  const pieces: string[] = [];
+  let depth = 0;
+  let current = "";
+  for (const char of text) {
+    if (char === "<" || char === "(" || char === "[" || char === "{") {
+      depth += 1;
+    } else if (char === ">" || char === ")" || char === "]" || char === "}") {
+      depth -= 1;
+    }
+    if (char === "," && depth === 0) {
+      pieces.push(current.trim());
+      current = "";
+    } else {
+      current += char;
+    }
   }
-  return [...seen];
+  pieces.push(current.trim());
+  return pieces.filter((piece) => piece.length > 0);
+}
+
+/**
+ * The wire parameter names of every Tauri command, in order, keyed by frontend name.
+ *
+ * From `main.rs`: each `#[tauri::command(rename_all = "snake_case")] fn name(params)`, minus an
+ * `app: tauri::AppHandle` parameter (the shell's own, not the frontend's). From core-tauri: each
+ * `pub fn command_x(params)` that `commandRenames` maps, read under its renamed (wire) name.
+ *
+ * A wire name declared by both sides is a bug — main.rs and core-tauri each register a distinct
+ * set of commands, so an overlap means one of them has drifted — and this throws rather than
+ * silently letting one shadow the other.
+ */
+export function commandParameters(mainRs: string, coreTauriLibRs: string): Record<string, string[]> {
+  const parameters: Record<string, string[]> = {};
+
+  for (const match of mainRs.matchAll(
+    /#\[tauri::command\(rename_all = "snake_case"\)\]\s*(?:pub\s+)?fn\s+([a-z_]+)\s*\(([^)]*)\)/gu
+  )) {
+    const [, name, params] = match;
+    parameters[name] = splitTopLevel(params)
+      .map((param) => param.split(":")[0].trim())
+      .filter((param) => param !== "app");
+  }
+
+  for (const [fn, wire] of commandRenames(coreTauriLibRs)) {
+    if (Object.prototype.hasOwnProperty.call(parameters, wire)) {
+      throw new Error(`"${wire}" is declared by both main.rs and core-tauri (via ${fn})`);
+    }
+    const signature = new RegExp(String.raw`pub fn ${fn}\(([^)]*)\)`, "u").exec(coreTauriLibRs);
+    if (!signature) {
+      throw new Error(`could not find the signature of ${fn} in core-tauri's lib.rs`);
+    }
+    parameters[wire] = splitTopLevel(signature[1]).map((param) => param.split(":")[0].trim());
+  }
+
+  return parameters;
+}
+
+/** `#[wasm_bindgen] pub fn name(params)` in core-wasm: name → parameter count. */
+export function wasmExports(coreWasmLibRs: string): Record<string, number> {
+  const exports: Record<string, number> = {};
+  for (const match of coreWasmLibRs.matchAll(/#\[wasm_bindgen\]\s*pub fn ([a-z_]+)\s*\(([^)]*)\)/gu)) {
+    exports[match[1]] = splitTopLevel(match[2]).length;
+  }
+  return exports;
+}
+
+/** The members of `export type CoreWasmModule = { … };` in webCoreAdapter.ts: name → parameter count. */
+export function wasmModuleMembers(webCoreAdapterTs: string): Record<string, number> {
+  const start = webCoreAdapterTs.indexOf("export type CoreWasmModule = {");
+  if (start === -1) {
+    throw new Error("could not find \"export type CoreWasmModule = {\" in webCoreAdapter.ts");
+  }
+  const end = webCoreAdapterTs.indexOf("\n};", start);
+  if (end === -1) {
+    throw new Error('could not find the closing "\\n};" of CoreWasmModule in webCoreAdapter.ts');
+  }
+  const block = webCoreAdapterTs.slice(start, end);
+
+  const members: Record<string, number> = {};
+  for (const match of block.matchAll(/^\s+([a-z_]+)\(([\s\S]*?)\):/gmu)) {
+    members[match[1]] = splitTopLevel(match[2]).length;
+  }
+  return members;
 }
 
 export interface LockstepResult {
