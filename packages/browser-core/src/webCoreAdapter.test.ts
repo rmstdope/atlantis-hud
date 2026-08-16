@@ -1,7 +1,34 @@
 import { describe, expect, it } from "vitest";
 import { createWebCoreAdapter, type CoreWasmModule } from "./webCoreAdapter";
-import type { GameManifest, HexNoteRecord, ImportedTurnSummary } from "@atlantis/core-client";
+import {
+  aReportHeaderInfo,
+  type GameManifest,
+  type HexNoteRecord,
+  type ImportedTurnSummary,
+  type ParsedReport,
+  type ReportParseResult
+} from "@atlantis/core-client";
 import { createMemoryWebStore, type StoredTurnSnapshot } from "./webStore";
+
+/** A minimal, complete `ReportParseResult` - every fake below merges its own fields over this. */
+const EMPTY_PARSE_RESULT: ReportParseResult = {
+  meetsMinimumImportThreshold: true,
+  turnHeader: null,
+  detectedFactions: [],
+  regions: [],
+  units: [],
+  inventories: [],
+  messageSummaries: [],
+  warnings: []
+};
+
+/** Likewise for `ParsedReport`. */
+const EMPTY_PARSED_REPORT: ParsedReport = {
+  header: aReportHeaderInfo(),
+  regions: [],
+  battles: [],
+  ordersTemplate: null
+};
 
 /**
  * Stands in for the compiled Rust core.
@@ -11,16 +38,17 @@ import { createMemoryWebStore, type StoredTurnSnapshot } from "./webStore";
  */
 function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
   return {
-    get_engine_info: () => ({ id: "atlantis", name: "Atlantis PBEM" }),
-    parse_report_state: (raw: string) => ({ raw }),
-    parse_report_full_state: (raw: string) => ({ header: {}, regions: [], ordersTemplate: null, raw }),
-    parse_report_classified_state: (raw: string, ruleset: string) => ({
-      header: {},
-      regions: [],
-      ordersTemplate: null,
-      raw,
-      ruleset
+    get_engine_info: () => ({
+      id: "atlantis",
+      name: "Atlantis PBEM",
+      rulesetVersion: "4.0",
+      maxFactionCount: 128
     }),
+    // `raw` rides along as an extra field (harmless - it is not part of `ReportParseResult`) so the
+    // "routes logic calls to the core" test below can prove the argument crossed unshuffled.
+    parse_report_state: (raw: string) => ({ ...EMPTY_PARSE_RESULT, raw }),
+    parse_report_full_state: (_raw: string) => EMPTY_PARSED_REPORT,
+    parse_report_classified_state: (_raw: string, _ruleset: string) => EMPTY_PARSED_REPORT,
     validate_orders_state: (
       rawOrders: string,
       rulesetJson: string | null,
@@ -32,6 +60,7 @@ function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
       `; Map export from Atlantis HUD\n; ${rawReport} ${rememberedJson} ${requestJson}\n`,
     known_map_state: (rawReport: string, rulesetJson: string | null, rememberedJson: string) => ({
       hexes: [],
+      levels: [],
       currentTurn: null,
       echoed: { rawReport, rulesetJson, rememberedJson }
     }),
@@ -78,7 +107,7 @@ function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
           warningsPayloadJson: "[]"
         },
         regionSightings: [],
-        parseResult: { raw },
+        parseResult: { ...EMPTY_PARSE_RESULT, raw },
         rejection: !hasTurn
           ? "parsed report did not meet minimum import threshold"
           : factionMatches
@@ -99,7 +128,7 @@ function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
         warningsChanged: stored.warningsPayloadJson !== next.warningsPayloadJson
       };
     },
-    hydrate_parse_result_state: (json: string) => ({ hydratedFrom: json }),
+    hydrate_parse_result_state: (json: string) => ({ ...EMPTY_PARSE_RESULT, hydratedFrom: json }),
     /**
      * Self-consistent, not correct: it reads `MERGE: <factionId> <turn> <regionId,…>` out of the
      * text and folds those regions into whatever the adapter handed it. Which account of a hex wins
@@ -168,11 +197,19 @@ function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
       ),
     decode_game_backup_state: (backupJson: string, openedAt: string) => {
       const b = JSON.parse(backupJson) as Record<string, unknown>;
+      // Self-consistent, not the real codec: the fields the fixtures below actually set come
+      // through as-is, and whatever is missing defaults to empty - the same tolerance the real
+      // decoder's `hexNotes` already has. The cast is the fake's, not production code's; the real
+      // decoder is typed and tested against the real wasm module in gameBackup.wasm.test.ts.
       return {
+        importedTurns: b.importedTurns ?? [],
+        orderDrafts: b.orderDrafts ?? [],
+        regionSightings: b.regionSightings ?? [],
+        mergedReports: b.mergedReports ?? [],
         ...b,
         manifest: { ...(b.manifest as Record<string, unknown>), lastOpenedAt: openedAt },
         hexNotes: b.hexNotes ?? []
-      };
+      } as unknown as ReturnType<CoreWasmModule["decode_game_backup_state"]>;
     },
     ...overrides
   };
@@ -240,8 +277,13 @@ describe("web core adapter", () => {
   it("routes logic calls to the core rather than to storage", async () => {
     const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
 
-    expect(await adapter.getEngineInfo()).toEqual({ id: "atlantis", name: "Atlantis PBEM" });
-    expect(await adapter.parseReport("anything")).toEqual({ raw: "anything" });
+    expect(await adapter.getEngineInfo()).toEqual({
+      id: "atlantis",
+      name: "Atlantis PBEM",
+      rulesetVersion: "4.0",
+      maxFactionCount: 128
+    });
+    expect(await adapter.parseReport("anything")).toMatchObject({ raw: "anything" });
     // Every argument is asserted, not just the orders: the report and the option are what the
     // checks that read the turn depend on, and an adapter that dropped them would still return a
     // perfectly well-shaped answer with half the checks silently not run.
@@ -364,7 +406,7 @@ describe("web core adapter", () => {
           parsedPayloadJson: `parsed:${raw}`,
           warningsPayloadJson: "[]"
         },
-        parseResult: { raw }
+        parseResult: { ...EMPTY_PARSE_RESULT, raw }
         // rejection deliberately absent
       })
     });
@@ -491,6 +533,7 @@ describe("web core adapter", () => {
   it("lists every imported turn of a game", async () => {
     const wasm = fakeWasm({
       hydrate_parse_result_state: (json: string) => ({
+        ...EMPTY_PARSE_RESULT,
         hydratedFrom: json,
         turnHeader: { turnNumber: 12, season: "Spring" }
       })
@@ -586,7 +629,9 @@ describe("web core adapter", () => {
     expect(listed.map((note) => note.id)).toEqual(["note-newer", "note-older"]);
   });
 
-  it("deletes a hex note and reports whether it existed", async () => {
+  // The adapter's contract is void (ah-wxk.2, matching the desktop side, which discards the same
+  // bool Tauri answers with) - deleting twice must not throw either time, and the note is gone.
+  it("deletes a hex note, and tolerates deleting it again", async () => {
     const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
     await adapter.saveHexNote(DB, {
       id: "note-1",
@@ -599,8 +644,9 @@ describe("web core adapter", () => {
       updatedAt: "2026-08-01T09:00:00Z"
     });
 
-    expect(await adapter.deleteHexNote(DB, "p", "note-1")).toBe(true);
-    expect(await adapter.deleteHexNote(DB, "p", "note-1")).toBe(false);
+    await adapter.deleteHexNote(DB, "p", "note-1");
+    await adapter.deleteHexNote(DB, "p", "note-1");
+
     expect(await adapter.listHexNotes(DB, "p")).toEqual([]);
   });
 
@@ -788,7 +834,7 @@ describe("exporting and importing games", () => {
     expect(await imported.loadImportedTurn(restored.databasePath, "alpha", "17", 12)).toEqual({
       key: { gameId: "alpha", factionId: "17", turnNumber: 12 },
       rawReport: REPORT,
-      parseResult: { hydratedFrom: `parsed:${REPORT}` }
+      parseResult: { ...EMPTY_PARSE_RESULT, hydratedFrom: `parsed:${REPORT}` }
     });
     expect(await imported.loadOrderDraft(restored.databasePath, "alpha", "17", 12)).toEqual({
       key: { gameId: "alpha", factionId: "17", turnNumber: 12 },
@@ -857,7 +903,7 @@ describe("planning a route", () => {
       "[remembered]",
       "18642",
       "1:7,51"
-    )) as { echoed: Record<string, string> };
+    )) as unknown as { echoed: Record<string, string> };
 
     expect(answer.echoed).toEqual({
       rulesetJson: "{ruleset}",
@@ -877,7 +923,7 @@ describe("resolving the known map", () => {
   it("passes the request straight to the core, unshuffled", async () => {
     const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
 
-    const answer = (await adapter.knownMap("{report}", "{ruleset}", "[remembered]")) as {
+    const answer = (await adapter.knownMap("{report}", "{ruleset}", "[remembered]")) as unknown as {
       echoed: Record<string, string | null>;
     };
 
@@ -891,7 +937,7 @@ describe("resolving the known map", () => {
   it("passes a null ruleset through unchanged", async () => {
     const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
 
-    const answer = (await adapter.knownMap("{report}", null, "[]")) as {
+    const answer = (await adapter.knownMap("{report}", null, "[]")) as unknown as {
       echoed: Record<string, string | null>;
     };
 
@@ -922,7 +968,7 @@ describe("remembering the map across turns", () => {
         lastSeenTurn: 12,
         payloadJson: JSON.stringify({ ...region, exits: [] })
       })),
-      parseResult: { raw },
+      parseResult: { ...EMPTY_PARSE_RESULT, raw },
       rejection: null
     })
   });
@@ -962,9 +1008,9 @@ describe("remembering the map across turns", () => {
     let fullParses = 0;
     const wasm = fakeWasm({
       ...prepareWith([{ regionId: "1:1,1", terrain: "plain" }]),
-      parse_report_full_state: (raw: string) => {
+      parse_report_full_state: (_raw: string) => {
         fullParses += 1;
-        return { header: {}, regions: [], ordersTemplate: null, raw };
+        return EMPTY_PARSED_REPORT;
       }
     });
     const adapter = createWebCoreAdapter(wasm, createMemoryWebStore());
@@ -996,7 +1042,7 @@ describe("remembering the map across turns", () => {
               payloadJson: JSON.stringify({ regionId: "1:1,1", terrain, exits: [] })
             }
           ],
-          parseResult: { raw },
+          parseResult: { ...EMPTY_PARSE_RESULT, raw },
           rejection: null
         })
       }),

@@ -7,64 +7,84 @@
  * different verdicts. Only the read and the write are the browser's own, and those carry no rules.
  */
 
-import type { CoreAdapter, GameManifest, HexNoteRecord } from "@atlantis/core-client";
+import type {
+  CoreAdapter,
+  EngineInfo,
+  GameManifest,
+  HexNoteRecord,
+  KnownMap,
+  MoveOrderTraceResponse,
+  OrderValidationResult,
+  OrdersPreviewResponse,
+  ParsedReport,
+  ReportParseResult,
+  RoutePlanResponse
+} from "@atlantis/core-client";
 import type { StoredTurn, StoredTurnSnapshot, WebStore } from "./webStore";
 import { createWebStore } from "./webStore";
 
-/** The subset of the generated wasm module this adapter needs. */
+/**
+ * The subset of the generated wasm module this adapter needs, typed against what each function
+ * hands back rather than `unknown` — the one trust point on the web, mirroring `invoke<T>` on the
+ * desktop: the module's return types are what the core serializes, checked nowhere at runtime
+ * (ah-wxk.2).
+ */
 export type CoreWasmModule = {
-  get_engine_info(): unknown;
-  parse_report_state(rawReport: string): unknown;
-  parse_report_full_state(rawReport: string): unknown;
-  parse_report_classified_state(rawReport: string, rulesetJson: string): unknown;
+  get_engine_info(): EngineInfo;
+  parse_report_state(rawReport: string): ReportParseResult;
+  parse_report_full_state(rawReport: string): ParsedReport;
+  parse_report_classified_state(rawReport: string, rulesetJson: string): ParsedReport;
   validate_orders_state(
     rawOrders: string,
     rulesetJson: string | null,
     rawReport: string | null,
-    disabledCodes: readonly string[]
-  ): unknown;
-  order_commands_state(): unknown;
+    disabledCodes: readonly string[] | null
+  ): OrderValidationResult;
+  order_commands_state(): string[];
   plan_route_state(
     rulesetJson: string,
     rawReport: string,
     rememberedJson: string,
     unitId: string,
     destination: string
-  ): unknown;
+  ): RoutePlanResponse;
   trace_move_orders_state(
     rulesetJson: string,
     rawReport: string,
     rememberedJson: string,
     unitId: string,
     orders: string
-  ): unknown;
-  export_map_state(rawReport: string, rememberedJson: string, requestJson: string): unknown;
+  ): MoveOrderTraceResponse;
+  export_map_state(rawReport: string, rememberedJson: string, requestJson: string): string;
   known_map_state(
     rawReport: string,
     rulesetJson: string | null,
     rememberedJson: string
-  ): unknown;
+  ): KnownMap;
   preview_orders_state(
     rulesetJson: string,
     rawReport: string,
     rememberedJson: string,
     ordersDocument: string
-  ): unknown;
+  ): OrdersPreviewResponse;
   prepare_report_import_state(
     rawReport: string,
     confirmedFactionId: string,
     rulesetJson: string | null
-  ): unknown;
+  ): PreparedImport;
   prepare_report_merge_state(
     rawReport: string,
     viewerTurnNumber: number,
     existingSightingsJson: string,
     rulesetJson: string | null
-  ): unknown;
-  diff_imported_turn_state(existing: unknown, candidate: unknown): unknown;
-  hydrate_parse_result_state(parsedPayloadJson: string): unknown;
+  ): PreparedMerge;
+  diff_imported_turn_state(
+    existing: StoredTurnSnapshot | null,
+    candidate: StoredTurnSnapshot
+  ): ImportedTurnDiff;
+  hydrate_parse_result_state(parsedPayloadJson: string): ReportParseResult;
   encode_game_backup_state(contentJson: string, exportedAt: string): string;
-  decode_game_backup_state(backupJson: string, openedAt: string): unknown;
+  decode_game_backup_state(backupJson: string, openedAt: string): DecodedGameBackup;
 };
 
 /** One region as the core serialized it, ready to be written as a row. */
@@ -84,10 +104,18 @@ type PreparedImport = {
    * serializing each region here instead meant a third parse of the same report and a JSON round
    * trip of eleven regions, which together cost more than the parsing did.
    */
-  regionSightings: PreparedRegionSighting[];
-  parseResult: unknown;
-  /** `null` when the report may be imported; otherwise the core's reason to refuse it. */
-  rejection: string | null;
+  /**
+   * Optional because `prepare` below tolerates its absence: `serde_wasm_bindgen` can omit a
+   * `None`-valued field entirely rather than serializing it as `null`, depending on serializer
+   * settings, and this one has always been read with `??` for exactly that reason.
+   */
+  regionSightings?: PreparedRegionSighting[];
+  parseResult: ReportParseResult;
+  /**
+   * `null` when the report may be imported; otherwise the core's reason to refuse it. Optional for
+   * the same reason `regionSightings` is - `prepare` below normalizes an absent field to `null`.
+   */
+  rejection?: string | null;
 };
 
 type PreparedMerge = {
@@ -180,11 +208,7 @@ export function createWebCoreAdapter(
     confirmedFactionId: string,
     rulesetJson: string | null
   ): PreparedImport => {
-    const prepared = wasm.prepare_report_import_state(
-      rawReport,
-      confirmedFactionId,
-      rulesetJson
-    ) as PreparedImport;
+    const prepared = wasm.prepare_report_import_state(rawReport, confirmedFactionId, rulesetJson);
 
     // Rust's None can arrive as undefined rather than null depending on serializer settings, and
     // the checks below are written against null. Normalise once, here.
@@ -205,7 +229,7 @@ export function createWebCoreAdapter(
         }
       : null;
 
-    return wasm.diff_imported_turn_state(existing, candidate) as ImportedTurnDiff;
+    return wasm.diff_imported_turn_state(existing, candidate);
   };
 
   const diffAgainstStored = async (
@@ -221,15 +245,15 @@ export function createWebCoreAdapter(
     );
 
   return {
-    getEngineInfo() {
+    async getEngineInfo() {
       return wasm.get_engine_info();
     },
 
-    parseReport(rawReport: string) {
+    async parseReport(rawReport: string) {
       return wasm.parse_report_state(rawReport);
     },
 
-    parseReportFull(rawReport: string) {
+    async parseReportFull(rawReport: string) {
       return wasm.parse_report_full_state(rawReport);
     },
 
@@ -282,7 +306,7 @@ export function createWebCoreAdapter(
           }))
         ),
         rulesetJson
-      ) as PreparedMerge;
+      );
 
       if (prepared.rejection) {
         throw new Error(prepared.rejection);
@@ -355,10 +379,10 @@ export function createWebCoreAdapter(
         }));
     },
 
-    parseReportClassified(rawReport: string, rulesetJson: string) {
+    async parseReportClassified(rawReport: string, rulesetJson: string) {
       return wasm.parse_report_classified_state(rawReport, rulesetJson);
     },
-    planRoute(
+    async planRoute(
       rulesetJson: string,
       rawReport: string,
       rememberedJson: string,
@@ -370,7 +394,7 @@ export function createWebCoreAdapter(
       // its last parse on, so planning over the turn already on screen re-parses nothing.
       return wasm.plan_route_state(rulesetJson, rawReport, rememberedJson, unitId, destination);
     },
-    traceMoveOrders(
+    async traceMoveOrders(
       rulesetJson: string,
       rawReport: string,
       rememberedJson: string,
@@ -380,16 +404,16 @@ export function createWebCoreAdapter(
       // Straight through for the same reason planRoute is: no browser storage stands in.
       return wasm.trace_move_orders_state(rulesetJson, rawReport, rememberedJson, unitId, orders);
     },
-    exportMap(rawReport: string, rememberedJson: string, requestJson: string) {
+    async exportMap(rawReport: string, rememberedJson: string, requestJson: string) {
       // Straight through as well: the export is pure computation over the arguments, and the file
       // it produces is handed back as text for the shell to save.
       return wasm.export_map_state(rawReport, rememberedJson, requestJson);
     },
-    knownMap(rawReport: string, rulesetJson: string | null, rememberedJson: string) {
+    async knownMap(rawReport: string, rulesetJson: string | null, rememberedJson: string) {
       // Straight through as well: the resolution is pure computation over the arguments.
       return wasm.known_map_state(rawReport, rulesetJson, rememberedJson);
     },
-    previewOrders(
+    async previewOrders(
       rulesetJson: string,
       rawReport: string,
       rememberedJson: string,
@@ -398,22 +422,24 @@ export function createWebCoreAdapter(
       // Straight through as well: the preview is pure computation over the arguments.
       return wasm.preview_orders_state(rulesetJson, rawReport, rememberedJson, ordersDocument);
     },
-    validateOrders(
+    async validateOrders(
       rawOrders: string,
       rulesetJson: string | null,
       rawReport: string | null,
-      disabledCodes: readonly string[]
+      disabledCodes: readonly string[] | null
     ) {
       // As with planning, the report goes across as text: the core keys its last parse on it, so
       // validating against the turn already on screen re-parses nothing.
       return wasm.validate_orders_state(rawOrders, rulesetJson, rawReport, disabledCodes);
     },
-    orderCommands() {
+    async orderCommands() {
       return wasm.order_commands_state();
     },
 
     async listGames() {
-      return (await store.listGames()).map((game) => game.manifest);
+      // The registry stores a manifest as an untyped blob; every other read of it in this file
+      // (openGame, setGameRuleset, setGameName below) trusts the same cast.
+      return (await store.listGames()).map((game) => game.manifest as GameManifest);
     },
 
     async createGame(manifest: GameManifest) {
@@ -457,7 +483,6 @@ export function createWebCoreAdapter(
         throw new Error(`no game with id ${gameId}`);
       }
       await store.deleteGame(gameId);
-      return null;
     },
 
     async exportGame(gameId: string, exportedAt: string) {
@@ -533,7 +558,7 @@ export function createWebCoreAdapter(
     async importGame(backupJson: string, openedAt: string) {
       let decoded: DecodedGameBackup;
       try {
-        decoded = wasm.decode_game_backup_state(backupJson, openedAt) as DecodedGameBackup;
+        decoded = wasm.decode_game_backup_state(backupJson, openedAt);
       } catch (error) {
         // wasm-bindgen throws the Rust error's text as a bare string; the shell's describeError
         // would show it either way, but `rejects.toThrow` and every caller expecting an Error
@@ -811,13 +836,11 @@ export function createWebCoreAdapter(
       // desktop/persistence peek, which the Rust side already treats as `season: None` on a bad
       // row rather than failing the whole list. This keeps the two paths agreeing.
       //
-      // The hydrator returns `ReportParseResultWire`, camelCase throughout since ah-164.1.
+      // The hydrator returns `ReportParseResult`, camelCase throughout since ah-164.1, typed rather
+      // than cast since ah-wxk.2.
       const seasonOf = (parsedPayloadJson: string): string | null => {
         try {
-          const parseResult = wasm.hydrate_parse_result_state(parsedPayloadJson) as {
-            turnHeader?: { season?: string } | null;
-          };
-          return parseResult.turnHeader?.season ?? null;
+          return wasm.hydrate_parse_result_state(parsedPayloadJson).turnHeader?.season ?? null;
         } catch {
           return null;
         }
@@ -885,7 +908,7 @@ export function createWebCoreAdapter(
     },
 
     async deleteHexNote(databasePath: string, gameId: string, noteId: string) {
-      return store.deleteHexNote(databasePath, gameId, noteId);
+      await store.deleteHexNote(databasePath, gameId, noteId);
     }
   };
 }

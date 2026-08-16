@@ -360,7 +360,9 @@ export {
 /** Which of the checks that read the report to run. */
 export type OrderCheckOptions = {
   /**
-   * Advisory codes not to produce. Omitted = the default: everything except `hex-unguarded`.
+   * Advisory codes not to produce. Omitted = the core's own default
+   * (`OrderCheckOptions::default()` in Rust), which leaves out one code that would otherwise
+   * speak about nearly every hex.
    *
    * Most hexes are deliberately unguarded, so warning about every one of them speaks about hex
    * after hex; dropping a guard you had is reported either way, because that is a change you may
@@ -406,278 +408,25 @@ export type ImportedTurnSummary = {
   importedAt: string;
   updatedAt: string;
 };
-
-type GameMetadataWireShape = {
-  gameId?: string;
-  game_id?: string;
-  gameName?: string;
-  game_name?: string;
-  rulesetId?: string;
-  ruleset_id?: string;
-};
-
-type ReportSourceRefWireShape = {
-  sourceId?: string;
-  source_id?: string;
-  label?: string;
-};
-
-type GameManifestWireShape = {
-  manifestVersion?: number;
-  manifest_version?: number;
-  metadata?: GameMetadataWireShape;
-  reportSources?: ReportSourceRefWireShape[];
-  report_sources?: ReportSourceRefWireShape[];
-  createdAt?: string;
-  created_at?: string;
-  lastOpenedAt?: string;
-  last_opened_at?: string;
-};
-
-type OpenedGameWireShape = {
-  gameFilePath?: string;
-  game_file_path?: string;
-  databasePath?: string;
-  database_path?: string;
-  schemaVersion?: number;
-  schema_version?: number;
-  manifest?: GameManifestWireShape;
-};
-
-type ImportedTurnPreviewWireShape = {
-  exists?: boolean;
-  rawChanged?: boolean;
-  raw_changed?: boolean;
-  parsedChanged?: boolean;
-  parsed_changed?: boolean;
-  warningsChanged?: boolean;
-  warnings_changed?: boolean;
-};
-
-type ReportImportPreviewWireShape = {
-  parseResult?: unknown;
-  parse_result?: unknown;
-  duplicatePreview?: ImportedTurnPreviewWireShape;
-  duplicate_preview?: ImportedTurnPreviewWireShape;
-  turnNumber?: number | null;
-  turn_number?: number | null;
-};
-
-type OrderDraftKeyWireShape = {
-  gameId?: string;
-  game_id?: string;
-  factionId?: string;
-  faction_id?: string;
-  turnNumber?: number;
-  turn_number?: number;
-};
-
-type OrderDraftRecordWireShape = {
-  key?: OrderDraftKeyWireShape;
-  orderText?: string;
-  order_text?: string;
-  updatedAt?: string;
-  updated_at?: string;
-};
-
-type HexNoteRecordWireShape = {
-  id?: string;
-  gameId?: string;
-  game_id?: string;
-  regionId?: string;
-  region_id?: string;
-  text?: string;
-  onMap?: boolean | number;
-  on_map?: boolean | number;
-  turn?: number;
-  createdAt?: string;
-  created_at?: string;
-  updatedAt?: string;
-  updated_at?: string;
-};
-
-type ReportMergeResultWireShape = {
-  turnNumber?: number;
-  turn_number?: number;
-  mergedFactionId?: string;
-  merged_faction_id?: string;
-  mergedFactionName?: string;
-  merged_faction_name?: string;
-  mergedRegionCount?: number;
-  merged_region_count?: number;
-  newRegionCount?: number;
-  new_region_count?: number;
-};
-
-type ImportedTurnRecordWireShape = {
-  key?: OrderDraftKeyWireShape;
-  rawReport?: string;
-  raw_report?: string;
-  parseResult?: unknown;
-  parse_result?: unknown;
-};
-
-type ImportedTurnSummaryWireShape = {
-  key?: OrderDraftKeyWireShape;
-  season?: string | null;
-  importedAt?: string;
-  imported_at?: string;
-  updatedAt?: string;
-  updated_at?: string;
-};
-
+/**
+ * The core, as one platform transport implements it — the desktop over Tauri IPC
+ * (`createTauriAdapter`), the browser over WebAssembly and IndexedDB (`createWebCoreAdapter` in
+ * `@atlantis/browser-core`). One method per Rust command, positional arguments in the command's
+ * order and wire form (JSON strings stay strings here; `createCoreClient` is where an object is
+ * accepted instead). Returns are the types the core serializes; nothing re-validates them.
+ */
 export interface CoreAdapter {
-  getEngineInfo(): Promise<unknown> | unknown;
-  listGames(): Promise<unknown> | unknown;
-  createGame(manifest: GameManifest): Promise<unknown> | unknown;
-  openGame(gameId: string, openedAt: string): Promise<unknown> | unknown;
-  deleteGame(gameId: string): Promise<unknown> | unknown;
-  exportGame(gameId: string, exportedAt: string): Promise<unknown> | unknown;
-  importGame(backupJson: string, openedAt: string): Promise<unknown> | unknown;
-  setGameRuleset(gameId: string, rulesetId: string): Promise<unknown> | unknown;
-  setGameName(gameId: string, gameName: string): Promise<unknown> | unknown;
-  parseReport(rawReport: string): Promise<unknown> | unknown;
-  parseReportFull(rawReport: string): Promise<unknown> | unknown;
-  parseReportClassified(rawReport: string, rulesetJson: string): Promise<unknown> | unknown;
-  previewReportImport(
-    databasePath: string,
-    gameId: string,
-    confirmedFactionId: string,
-    rawReport: string
-  ): Promise<unknown> | unknown;
-  commitReportImport(
-    databasePath: string,
-    gameId: string,
-    confirmedFactionId: string,
-    rawReport: string,
-    rulesetJson: string | null,
-    allowOverwrite: boolean,
-    importedAt: string
-  ): Promise<unknown> | unknown;
-  validateOrders(
-    rawOrders: string,
-    rulesetJson: string | null,
-    rawReport: string | null,
-    disabledCodes: readonly string[]
-  ): Promise<unknown> | unknown;
-  orderCommands(): Promise<unknown> | unknown;
-  planRoute(
-    rulesetJson: string,
-    rawReport: string,
-    rememberedJson: string,
-    unitId: string,
-    destination: string
-  ): Promise<unknown> | unknown;
-  traceMoveOrders(
-    rulesetJson: string,
-    rawReport: string,
-    rememberedJson: string,
-    unitId: string,
-    orders: string
-  ): Promise<unknown> | unknown;
-  exportMap(
-    rawReport: string,
-    rememberedJson: string,
-    requestJson: string
-  ): Promise<unknown> | unknown;
-  knownMap(
-    rawReport: string,
-    rulesetJson: string | null,
-    rememberedJson: string
-  ): Promise<unknown> | unknown;
-  previewOrders(
-    rulesetJson: string,
-    rawReport: string,
-    rememberedJson: string,
-    ordersDocument: string
-  ): Promise<unknown> | unknown;
-  loadRegionSightings(
-    databasePath: string,
-    gameId: string,
-    factionId: string
-  ): Promise<unknown> | unknown;
-  mergeReport(
-    databasePath: string,
-    gameId: string,
-    viewerFactionId: string,
-    viewerTurnNumber: number,
-    rawReport: string,
-    rulesetJson: string | null,
-    mergedAt: string
-  ): Promise<unknown> | unknown;
-  loadMergedReports(
-    databasePath: string,
-    gameId: string,
-    factionId: string,
-    turnNumber: number
-  ): Promise<unknown> | unknown;
-  loadImportedTurn(
-    databasePath: string,
-    gameId: string,
-    factionId: string,
-    turnNumber: number
-  ): Promise<unknown> | unknown;
-  loadLatestImportedTurn(databasePath: string, gameId: string): Promise<unknown> | unknown;
-  listImportedTurns(databasePath: string, gameId: string): Promise<unknown> | unknown;
-  loadOrderDraft(
-    databasePath: string,
-    gameId: string,
-    factionId: string,
-    turnNumber: number
-  ): Promise<unknown> | unknown;
-  saveOrderDraft(
-    databasePath: string,
-    gameId: string,
-    factionId: string,
-    turnNumber: number,
-    orderText: string,
-    updatedAt: string
-  ): Promise<unknown> | unknown;
-  listHexNotes(databasePath: string, gameId: string): Promise<unknown> | unknown;
-  saveHexNote(databasePath: string, note: HexNoteRecord): Promise<unknown> | unknown;
-  deleteHexNote(databasePath: string, gameId: string, noteId: string): Promise<unknown> | unknown;
-}
-
-export interface CoreClient {
   getEngineInfo(): Promise<EngineInfo>;
-  /**
-   * Every game this installation holds, in whatever order storage produced them.
-   *
-   * Ordering is the caller's business: the picker sorts by when each was last opened, and baking
-   * that into the contract would make the storage layer answer a question about presentation.
-   */
   listGames(): Promise<GameManifest[]>;
   createGame(manifest: GameManifest): Promise<OpenedGame>;
-  /** Opens a game and records that it was opened, which is what decides the next launch. */
   openGame(gameId: string, openedAt: string): Promise<OpenedGame>;
-  /** Erases a game and everything it stored. There is no undo. */
   deleteGame(gameId: string): Promise<void>;
-  /** Serializes one whole game, including turns, drafts and remembered map, to one JSON file. */
   exportGame(gameId: string, exportedAt: string): Promise<string>;
-  /** Creates one game from an exported JSON file and opens it at `openedAt`. */
   importGame(backupJson: string, openedAt: string): Promise<OpenedGame>;
-  /**
-   * Changes which ruleset a game is played under, returning the updated manifest.
-   *
-   * The manifest comes back so the shell can refresh what it holds without a second round trip —
-   * and re-fetch the ruleset itself, because everything parsed under the old one is now suspect.
-   */
   setGameRuleset(gameId: string, rulesetId: string): Promise<GameManifest>;
-  /**
-   * Renames a game, returning the updated manifest. The manifest comes back so the shell can
-   * refresh what it holds without a second round trip, the same as `setGameRuleset`.
-   */
   setGameName(gameId: string, gameName: string): Promise<GameManifest>;
   parseReport(rawReport: string): Promise<ReportParseResult>;
-  /** The full domain model. Returned as-is: it is descriptive data, not a contract to normalize. */
   parseReportFull(rawReport: string): Promise<ParsedReport>;
-  /**
-   * The same, with each unit's men counted against the item catalogue.
-   *
-   * A report cannot be split into men and equipment on its own, so without this every unit reads
-   * as an estimate - including the great majority holding a single race, where the figure is exact.
-   * An unusable ruleset leaves the report as parsed rather than refusing it.
-   */
   parseReportClassified(rawReport: string, rulesetJson: string): Promise<ParsedReport>;
   previewReportImport(
     databasePath: string,
@@ -685,18 +434,6 @@ export interface CoreClient {
     confirmedFactionId: string,
     rawReport: string
   ): Promise<ReportImportPreview>;
-  /**
-   * Stores a turn in the open game, and remembers the regions it describes.
-   *
-   * `importedAt` is the caller's clock, in ISO-8601, the way `openGame` and `saveOrderDraft`
-   * already take one. The persistence layer reads no clock of its own, so a turn and an order
-   * draft can be compared to work out which the player touched last.
-   *
-   * `rulesetJson` classifies what gets remembered, exactly as `parseReportClassified` classifies
-   * what gets shown. The stored sightings are the only account of a hex the map ever reads back,
-   * so an estimate stored here is an estimate forever - a tilde on every remembered unit. `null`
-   * when no ruleset could be fetched, which stores the estimates and says that is what they are.
-   */
   commitReportImport(
     databasePath: string,
     gameId: string,
@@ -706,6 +443,88 @@ export interface CoreClient {
     allowOverwrite: boolean,
     importedAt: string
   ): Promise<ImportedTurnPreview>;
+  validateOrders(
+    rawOrders: string,
+    rulesetJson: string | null,
+    rawReport: string | null,
+    disabledCodes: readonly string[] | null
+  ): Promise<OrderValidationResult>;
+  orderCommands(): Promise<string[]>;
+  planRoute(
+    rulesetJson: string,
+    rawReport: string,
+    rememberedJson: string,
+    unitId: string,
+    destination: string
+  ): Promise<RoutePlanResponse>;
+  traceMoveOrders(
+    rulesetJson: string,
+    rawReport: string,
+    rememberedJson: string,
+    unitId: string,
+    orders: string
+  ): Promise<MoveOrderTraceResponse>;
+  exportMap(rawReport: string, rememberedJson: string, requestJson: string): Promise<string>;
+  knownMap(rawReport: string, rulesetJson: string | null, rememberedJson: string): Promise<KnownMap>;
+  previewOrders(
+    rulesetJson: string,
+    rawReport: string,
+    rememberedJson: string,
+    ordersDocument: string
+  ): Promise<OrdersPreviewResponse>;
+  loadRegionSightings(
+    databasePath: string,
+    gameId: string,
+    factionId: string
+  ): Promise<RememberedRegion[]>;
+  mergeReport(
+    databasePath: string,
+    gameId: string,
+    viewerFactionId: string,
+    viewerTurnNumber: number,
+    rawReport: string,
+    rulesetJson: string | null,
+    mergedAt: string
+  ): Promise<ReportMergeResult>;
+  loadMergedReports(
+    databasePath: string,
+    gameId: string,
+    factionId: string,
+    turnNumber: number
+  ): Promise<MergedReportRecord[]>;
+  loadImportedTurn(
+    databasePath: string,
+    gameId: string,
+    factionId: string,
+    turnNumber: number
+  ): Promise<ImportedTurnRecord | null>;
+  loadLatestImportedTurn(databasePath: string, gameId: string): Promise<ImportedTurnRecord | null>;
+  listImportedTurns(databasePath: string, gameId: string): Promise<ImportedTurnSummary[]>;
+  loadOrderDraft(
+    databasePath: string,
+    gameId: string,
+    factionId: string,
+    turnNumber: number
+  ): Promise<OrderDraftRecord | null>;
+  saveOrderDraft(
+    databasePath: string,
+    gameId: string,
+    factionId: string,
+    turnNumber: number,
+    orderText: string,
+    updatedAt: string
+  ): Promise<OrderDraftRecord>;
+  listHexNotes(databasePath: string, gameId: string): Promise<HexNoteRecord[]>;
+  saveHexNote(databasePath: string, note: HexNoteRecord): Promise<HexNoteRecord>;
+  deleteHexNote(databasePath: string, gameId: string, noteId: string): Promise<void>;
+}
+
+/**
+ * `CoreAdapter` with three ergonomic signatures: an object where the wire takes JSON text, and
+ * options where the wire takes a list of disabled codes. Everything else is the adapter as it is —
+ * `createCoreClient` is the whole of the difference.
+ */
+export type CoreClient = Omit<CoreAdapter, "validateOrders" | "exportMap" | "knownMap"> & {
   /**
    * Checks one orders document, and the turn it was written for.
    *
@@ -724,46 +543,6 @@ export interface CoreClient {
     options?: OrderCheckOptions
   ): Promise<OrderValidationResult>;
   /**
-   * Every order command the core knows.
-   *
-   * Asked for rather than kept, because a copy in the shell is a copy that drifts: the one this
-   * replaced had four orders the ruleset has no such thing as and was missing END.
-   */
-  orderCommands(): Promise<string[]>;
-  /**
-   * Plans a route for one unit, or explains why there is none.
-   *
-   * `destination` is a hex identifier the way the game writes one, `1:7,53`. `rememberedJson` is
-   * the accumulated map - regions the faction saw in earlier turns, as JSON - and it is what lets a
-   * route be longer than one step: a single report describes its neighbours but not theirs. Pass an
-   * empty array when there is nothing remembered.
-   *
-   * Rejects only when the ruleset cannot be used; a route that cannot be planned resolves with a
-   * stated reason.
-   */
-  planRoute(
-    rulesetJson: string,
-    rawReport: string,
-    rememberedJson: string,
-    unitId: string,
-    destination: string
-  ): Promise<RoutePlanResponse>;
-  /**
-   * Where the MOVE or ADVANCE order in a unit's written orders takes it.
-   *
-   * `orders` is the unit's own order block as the editor holds it; the last readable movement
-   * line wins, matching how the game executes a re-issued order. Resolves with no path when
-   * there is nothing to draw - no order, no such unit, or an unknown origin. Rejects only when
-   * the ruleset or the remembered regions cannot be read.
-   */
-  traceMoveOrders(
-    rulesetJson: string,
-    rawReport: string,
-    rememberedJson: string,
-    unitId: string,
-    orders: string
-  ): Promise<MoveOrderTraceResponse>;
-  /**
    * The known map inside one rectangle, written as report-shaped text for an ally to read.
    *
    * `rememberedJson` is the accumulated map exactly as the planner takes it; the current report
@@ -773,11 +552,7 @@ export interface CoreClient {
    * Rejects when the request or the remembered regions cannot be read. A rectangle covering
    * nothing known resolves with a header and no regions.
    */
-  exportMap(
-    rawReport: string,
-    rememberedJson: string,
-    request: MapExportRequest
-  ): Promise<string>;
+  exportMap(rawReport: string, rememberedJson: string, request: MapExportRequest): Promise<string>;
   /**
    * Everything the faction knows about the map, resolved once by the core - the same rules the
    * planner and the risk heuristic already use, so a caller building a display over this cannot
@@ -793,703 +568,29 @@ export interface CoreClient {
     rulesetJson: string | null,
     remembered: RememberedRegion[]
   ): Promise<KnownMap>;
-  /**
-   * What the whole orders document makes of the faction's units, region by region.
-   *
-   * `ordersDocument` is the full document rather than one unit's block, because GIVE crosses
-   * units and MOVE crosses hexes: only the whole text says what a hex looks like next month.
-   * Resolves with an empty answer when the orders change nothing the preview models. Rejects
-   * only when the ruleset or the remembered regions cannot be read.
-   */
-  previewOrders(
-    rulesetJson: string,
-    rawReport: string,
-    rememberedJson: string,
-    ordersDocument: string
-  ): Promise<OrdersPreviewResponse>;
-  /**
-   * Every region this faction has been seen in, across every turn imported into the game.
-   *
-   * Empty for a game with no committed imports, which is not an error: it is what a map looks
-   * like before anything has been remembered.
-   */
-  loadRegionSightings(
-    databasePath: string,
-    gameId: string,
-    factionId: string
-  ): Promise<RememberedRegion[]>;
-  /**
-   * Folds an allied report for the same turn into the viewer's remembered map.
-   *
-   * The regions land under `viewerFactionId`, which is what makes them visible: the map is read
-   * back one faction at a time, so a row written under the ally's id would be stored perfectly and
-   * never looked at. No turn of the ally's is stored, so which turn the game reopens on does not
-   * change - merging adds to the map without changing whose turn is on screen.
-   *
-   * Rejects when the report is not from `viewerTurnNumber`, which is the only turn it can be
-   * merged into: two reports of one turn describe the same moment, so neither is staler.
-   *
-   * `rulesetJson` classifies the ally's units before they are stored, for the reason
-   * `commitReportImport` gives: the merged units enter the map through these sightings and
-   * nowhere else.
-   */
-  mergeReport(
-    databasePath: string,
-    gameId: string,
-    viewerFactionId: string,
-    viewerTurnNumber: number,
-    rawReport: string,
-    rulesetJson: string | null,
-    mergedAt: string
-  ): Promise<ReportMergeResult>;
-  /**
-   * Every allied report folded into one faction's map for one turn, oldest merge first.
-   *
-   * Empty is the ordinary case: most turns have nothing merged into them.
-   */
-  loadMergedReports(
-    databasePath: string,
-    gameId: string,
-    factionId: string,
-    turnNumber: number
-  ): Promise<MergedReportRecord[]>;
-  loadImportedTurn(
-    databasePath: string,
-    gameId: string,
-    factionId: string,
-    turnNumber: number
-  ): Promise<ImportedTurnRecord | null>;
-  /**
-   * The turn this game was last worked on, or `null` when it holds no imports.
-   *
-   * "Worked on" is the later of when a turn was imported and when its orders were last edited, so
-   * a player who imported a second faction and then spent the evening on the first one's orders
-   * comes back to the first. `null` is the ordinary state of a game just created.
-   */
-  loadLatestImportedTurn(databasePath: string, gameId: string): Promise<ImportedTurnRecord | null>;
-  /**
-   * Every turn imported for a game, across every faction, in turn order.
-   *
-   * A game with no imports returns an empty array, not an error — the ordinary state of a game
-   * just created.
-   */
-  listImportedTurns(databasePath: string, gameId: string): Promise<ImportedTurnSummary[]>;
-  loadOrderDraft(
-    databasePath: string,
-    gameId: string,
-    factionId: string,
-    turnNumber: number
-  ): Promise<OrderDraftRecord | null>;
-  saveOrderDraft(
-    databasePath: string,
-    gameId: string,
-    factionId: string,
-    turnNumber: number,
-    orderText: string,
-    updatedAt: string
-  ): Promise<OrderDraftRecord>;
-  /** A game's hex notes, newest first. Empty for a game with none, not an error. */
-  listHexNotes(databasePath: string, gameId: string): Promise<HexNoteRecord[]>;
-  /** Inserts or updates one hex note; an edit is an upsert on `note.id`. */
-  saveHexNote(databasePath: string, note: HexNoteRecord): Promise<HexNoteRecord>;
-  /** Deletes one hex note. */
-  deleteHexNote(databasePath: string, gameId: string, noteId: string): Promise<void>;
-}
+};
 
 export type TauriInvoke = <T>(command: string, args?: Record<string, unknown>) => Promise<T>;
 
-function normalizeGameMetadata(value: unknown): GameMetadata {
-  if (typeof value !== "object" || value === null) {
-    throw new Error("invalid game metadata payload");
-  }
-
-  const payload = value as GameMetadataWireShape;
-  const gameId = payload.gameId ?? payload.game_id;
-  const gameName = payload.gameName ?? payload.game_name;
-  const rulesetId = payload.rulesetId ?? payload.ruleset_id;
-
-  if (typeof gameId !== "string" || typeof gameName !== "string" || typeof rulesetId !== "string") {
-    throw new Error("incomplete game metadata payload");
-  }
-
-  return {
-    gameId,
-    gameName,
-    rulesetId
-  };
-}
-
-function normalizeReportSourceRef(value: unknown): ReportSourceRef {
-  if (typeof value !== "object" || value === null) {
-    throw new Error("invalid report source payload");
-  }
-
-  const payload = value as ReportSourceRefWireShape;
-  const sourceId = payload.sourceId ?? payload.source_id;
-
-  if (typeof sourceId !== "string" || typeof payload.label !== "string") {
-    throw new Error("incomplete report source payload");
-  }
-
-  return {
-    sourceId,
-    label: payload.label
-  };
-}
-
-function normalizeGameManifest(value: unknown): GameManifest {
-  if (typeof value !== "object" || value === null) {
-    throw new Error("invalid game manifest payload");
-  }
-
-  const payload = value as GameManifestWireShape;
-  const manifestVersion = payload.manifestVersion ?? payload.manifest_version;
-  const reportSources = payload.reportSources ?? payload.report_sources;
-  const createdAt = payload.createdAt ?? payload.created_at;
-  const lastOpenedAt = payload.lastOpenedAt ?? payload.last_opened_at;
-
-  if (
-    typeof manifestVersion !== "number" ||
-    !Array.isArray(reportSources) ||
-    payload.metadata === undefined ||
-    typeof createdAt !== "string" ||
-    typeof lastOpenedAt !== "string"
-  ) {
-    throw new Error("incomplete game manifest payload");
-  }
-
-  return {
-    manifestVersion,
-    metadata: normalizeGameMetadata(payload.metadata),
-    reportSources: reportSources.map((source) => normalizeReportSourceRef(source)),
-    createdAt,
-    lastOpenedAt
-  };
-}
-
-function normalizeGameList(value: unknown): GameManifest[] {
-  if (!Array.isArray(value)) {
-    throw new Error("invalid game list payload");
-  }
-
-  return value.map((entry) => normalizeGameManifest(entry));
-}
-
-function normalizeOpenedGame(value: unknown): OpenedGame {
-  if (typeof value !== "object" || value === null) {
-    throw new Error("invalid opened game payload");
-  }
-
-  const payload = value as OpenedGameWireShape;
-  const gameFilePath = payload.gameFilePath ?? payload.game_file_path;
-  const databasePath = payload.databasePath ?? payload.database_path;
-  const schemaVersion = payload.schemaVersion ?? payload.schema_version;
-
-  if (
-    typeof gameFilePath !== "string" ||
-    typeof databasePath !== "string" ||
-    typeof schemaVersion !== "number" ||
-    payload.manifest === undefined
-  ) {
-    throw new Error("incomplete opened game payload");
-  }
-
-  return {
-    gameFilePath,
-    databasePath,
-    schemaVersion,
-    manifest: normalizeGameManifest(payload.manifest)
-  };
-}
-
-
-function normalizeImportedTurnPreview(value: unknown): ImportedTurnPreview {
-  if (typeof value !== "object" || value === null) {
-    throw new Error("invalid import preview payload");
-  }
-  const payload = value as ImportedTurnPreviewWireShape;
-  const rawChanged = payload.rawChanged ?? payload.raw_changed;
-  const parsedChanged = payload.parsedChanged ?? payload.parsed_changed;
-  const warningsChanged = payload.warningsChanged ?? payload.warnings_changed;
-  if (
-    typeof payload.exists !== "boolean" ||
-    typeof rawChanged !== "boolean" ||
-    typeof parsedChanged !== "boolean" ||
-    typeof warningsChanged !== "boolean"
-  ) {
-    throw new Error("incomplete import preview payload");
-  }
-  return {
-    exists: payload.exists,
-    rawChanged,
-    parsedChanged,
-    warningsChanged
-  };
-}
-
 /**
- * A merge outcome, or a refusal to believe one.
- *
- * Strict rather than tolerant, unlike `loadMergedReports` beside it. A count nobody can read means
- * the status line would say the merge did nothing while the database says otherwise, and the two
- * disagreeing quietly is worse than the merge visibly failing.
+ * The adapter's methods, spread through unchanged, plus the three ergonomic conversions
+ * `CoreClient` adds over `CoreAdapter`. Nothing here re-validates what the adapter returns — the
+ * Tauri wire is Rust's own serde output and the web adapter is our own code, so both are typed at
+ * compile time instead of re-checked per call (ah-wxk.2).
  */
-function normalizeReportMergeResult(value: unknown): ReportMergeResult {
-  if (typeof value !== "object" || value === null) {
-    throw new Error("invalid report merge payload");
-  }
-  const payload = value as ReportMergeResultWireShape;
-  const turnNumber = payload.turnNumber ?? payload.turn_number;
-  const mergedFactionId = payload.mergedFactionId ?? payload.merged_faction_id;
-  const mergedFactionName = payload.mergedFactionName ?? payload.merged_faction_name;
-  const mergedRegionCount = payload.mergedRegionCount ?? payload.merged_region_count;
-  const newRegionCount = payload.newRegionCount ?? payload.new_region_count;
-  if (
-    typeof turnNumber !== "number" ||
-    typeof mergedFactionId !== "string" ||
-    typeof mergedFactionName !== "string" ||
-    typeof mergedRegionCount !== "number" ||
-    typeof newRegionCount !== "number"
-  ) {
-    throw new Error("incomplete report merge payload");
-  }
-  return { turnNumber, mergedFactionId, mergedFactionName, mergedRegionCount, newRegionCount };
-}
-
-function normalizeOrderDraftKey(value: unknown): OrderDraftKey {
-  if (typeof value !== "object" || value === null) {
-    throw new Error("invalid order draft payload");
-  }
-
-  const payload = value as OrderDraftKeyWireShape;
-  const gameId = payload.gameId ?? payload.game_id;
-  const factionId = payload.factionId ?? payload.faction_id;
-  const turnNumber = payload.turnNumber ?? payload.turn_number;
-
-  if (typeof gameId !== "string" || typeof factionId !== "string" || typeof turnNumber !== "number") {
-    throw new Error("incomplete order draft payload");
-  }
-
-  return {
-    gameId,
-    factionId,
-    turnNumber
-  };
-}
-
-function normalizeOrderDraftRecord(value: unknown): OrderDraftRecord {
-  if (typeof value !== "object" || value === null) {
-    throw new Error("invalid order draft payload");
-  }
-
-  const payload = value as OrderDraftRecordWireShape;
-  const orderText = payload.orderText ?? payload.order_text;
-  const updatedAt = payload.updatedAt ?? payload.updated_at;
-
-  if (payload.key === undefined || typeof orderText !== "string" || typeof updatedAt !== "string") {
-    throw new Error("incomplete order draft payload");
-  }
-
-  return {
-    key: normalizeOrderDraftKey(payload.key),
-    orderText,
-    updatedAt
-  };
-}
-
-function normalizeHexNoteRecord(value: unknown): HexNoteRecord {
-  if (typeof value !== "object" || value === null) {
-    throw new Error("invalid hex note payload");
-  }
-
-  const payload = value as HexNoteRecordWireShape;
-  const gameId = payload.gameId ?? payload.game_id;
-  const regionId = payload.regionId ?? payload.region_id;
-  const onMapRaw = payload.onMap ?? payload.on_map;
-  const createdAt = payload.createdAt ?? payload.created_at;
-  const updatedAt = payload.updatedAt ?? payload.updated_at;
-
-  if (
-    typeof payload.id !== "string" ||
-    typeof gameId !== "string" ||
-    typeof regionId !== "string" ||
-    typeof payload.text !== "string" ||
-    (typeof onMapRaw !== "boolean" && onMapRaw !== 0 && onMapRaw !== 1) ||
-    typeof payload.turn !== "number" ||
-    typeof createdAt !== "string" ||
-    typeof updatedAt !== "string"
-  ) {
-    throw new Error("incomplete hex note payload");
-  }
-
-  return {
-    id: payload.id,
-    gameId,
-    regionId,
-    text: payload.text,
-    onMap: typeof onMapRaw === "boolean" ? onMapRaw : onMapRaw !== 0,
-    turn: payload.turn,
-    createdAt,
-    updatedAt
-  };
-}
-
-function normalizeImportedTurnRecord(value: unknown): ImportedTurnRecord {
-  if (typeof value !== "object" || value === null) {
-    throw new Error("invalid imported turn payload");
-  }
-
-  const payload = value as ImportedTurnRecordWireShape;
-  const rawReport = payload.rawReport ?? payload.raw_report;
-  const parseResult = payload.parseResult ?? payload.parse_result;
-
-  if (
-    payload.key === undefined ||
-    typeof rawReport !== "string" ||
-    typeof parseResult !== "object" ||
-    parseResult === null
-  ) {
-    throw new Error("incomplete imported turn payload");
-  }
-
-  return {
-    key: normalizeOrderDraftKey(payload.key),
-    rawReport,
-    // Returned as-is: it is the wire shape the core already serializes, not a contract to
-    // normalize (ah-164.2).
-    parseResult: parseResult as ReportParseResult
-  };
-}
-
-function normalizeImportedTurnSummary(value: unknown): ImportedTurnSummary {
-  if (typeof value !== "object" || value === null) {
-    throw new Error("invalid imported turn summary payload");
-  }
-
-  const payload = value as ImportedTurnSummaryWireShape;
-  const importedAt = payload.importedAt ?? payload.imported_at;
-  const updatedAt = payload.updatedAt ?? payload.updated_at;
-  const season = payload.season ?? null;
-
-  if (payload.key === undefined || typeof importedAt !== "string" || typeof updatedAt !== "string") {
-    throw new Error("incomplete imported turn summary payload");
-  }
-  if (season !== null && typeof season !== "string") {
-    throw new Error("incomplete imported turn summary payload");
-  }
-
-  return {
-    key: normalizeOrderDraftKey(payload.key),
-    season,
-    importedAt,
-    updatedAt
-  };
-}
-
-function normalizeReportImportPreview(value: unknown): ReportImportPreview {
-  if (typeof value !== "object" || value === null) {
-    throw new Error("invalid report import preview payload");
-  }
-  const payload = value as ReportImportPreviewWireShape;
-  const parseResult = payload.parseResult ?? payload.parse_result;
-  const duplicatePreview = payload.duplicatePreview ?? payload.duplicate_preview;
-  const turnNumber = payload.turnNumber ?? payload.turn_number ?? null;
-  if (
-    typeof parseResult !== "object" ||
-    parseResult === null ||
-    duplicatePreview === undefined
-  ) {
-    throw new Error("incomplete report import preview payload");
-  }
-  if (turnNumber !== null && typeof turnNumber !== "number") {
-    throw new Error("incomplete report import preview payload");
-  }
-  return {
-    // Returned as-is, for the same reason normalizeImportedTurnRecord above does (ah-164.2).
-    parseResult: parseResult as ReportParseResult,
-    duplicatePreview: normalizeImportedTurnPreview(duplicatePreview),
-    turnNumber
-  };
-}
-
 export function createCoreClient(adapter: CoreAdapter): CoreClient {
   return {
-    async getEngineInfo() {
-      // Returned as-is: it is the wire shape the core already serializes, not a contract to
-      // normalize (ah-164.2).
-      return (await adapter.getEngineInfo()) as EngineInfo;
+    ...adapter,
+    validateOrders(rawOrders, rulesetJson, rawReport = null, options = {}) {
+      // `null` is "use the core's own default" (`OrderCheckOptions::default()`), so the default
+      // lives in Rust once instead of being copied here as a literal.
+      return adapter.validateOrders(rawOrders, rulesetJson, rawReport, options.disabledCodes ?? null);
     },
-    async listGames() {
-      const value = await adapter.listGames();
-      return normalizeGameList(value);
+    exportMap(rawReport, rememberedJson, request) {
+      return adapter.exportMap(rawReport, rememberedJson, JSON.stringify(request));
     },
-    async createGame(manifest: GameManifest) {
-      const value = await adapter.createGame(manifest);
-      return normalizeOpenedGame(value);
-    },
-    async openGame(gameId: string, openedAt: string) {
-      const value = await adapter.openGame(gameId, openedAt);
-      return normalizeOpenedGame(value);
-    },
-    async deleteGame(gameId: string) {
-      // Nothing to normalize: a deletion either happened or threw.
-      await adapter.deleteGame(gameId);
-    },
-    async exportGame(gameId: string, exportedAt: string) {
-      const value = await adapter.exportGame(gameId, exportedAt);
-      if (typeof value !== "string") {
-        throw new Error("invalid exported game payload");
-      }
-      return value;
-    },
-    async importGame(backupJson: string, openedAt: string) {
-      const value = await adapter.importGame(backupJson, openedAt);
-      return normalizeOpenedGame(value);
-    },
-    async setGameRuleset(gameId: string, rulesetId: string) {
-      const value = await adapter.setGameRuleset(gameId, rulesetId);
-      return normalizeGameManifest(value);
-    },
-    async setGameName(gameId: string, gameName: string) {
-      const value = await adapter.setGameName(gameId, gameName);
-      return normalizeGameManifest(value);
-    },
-    async parseReport(rawReport: string) {
-      // Returned as-is: it is the wire shape the core already serializes, not a contract to
-      // normalize (ah-164.2).
-      return (await adapter.parseReport(rawReport)) as ReportParseResult;
-    },
-    async parseReportClassified(rawReport: string, rulesetJson: string) {
-      return (await adapter.parseReportClassified(rawReport, rulesetJson)) as ParsedReport;
-    },
-    async parseReportFull(rawReport: string) {
-      return (await adapter.parseReportFull(rawReport)) as ParsedReport;
-    },
-    async previewReportImport(databasePath: string, gameId: string, confirmedFactionId: string, rawReport: string) {
-      const value = await adapter.previewReportImport(databasePath, gameId, confirmedFactionId, rawReport);
-      return normalizeReportImportPreview(value);
-    },
-    async commitReportImport(
-      databasePath: string,
-      gameId: string,
-      confirmedFactionId: string,
-      rawReport: string,
-      rulesetJson: string | null,
-      allowOverwrite: boolean,
-      importedAt: string
-    ) {
-      const value = await adapter.commitReportImport(
-        databasePath,
-        gameId,
-        confirmedFactionId,
-        rawReport,
-        rulesetJson,
-        allowOverwrite,
-        importedAt
-      );
-      return normalizeImportedTurnPreview(value);
-    },
-    async validateOrders(
-      rawOrders: string,
-      rulesetJson: string | null,
-      rawReport: string | null = null,
-      options: OrderCheckOptions = {}
-    ) {
-      // Returned as-is: it is the wire shape the core already serializes, not a contract to
-      // normalize (ah-164.2).
-      return (await adapter.validateOrders(
-        rawOrders,
-        rulesetJson,
-        rawReport,
-        options.disabledCodes ?? ["hex-unguarded"]
-      )) as OrderValidationResult;
-    },
-    async orderCommands() {
-      const value = await adapter.orderCommands();
-      if (!Array.isArray(value) || value.some((command) => typeof command !== "string")) {
-        throw new Error("invalid order vocabulary payload");
-      }
-      return value as string[];
-    },
-    async loadImportedTurn(databasePath: string, gameId: string, factionId: string, turnNumber: number) {
-      const value = await adapter.loadImportedTurn(databasePath, gameId, factionId, turnNumber);
-      // Undefined as well as null, for the same reason loadLatestImportedTurn below treats them
-      // alike: serde_wasm_bindgen can emit either for Rust's None, and a turn that genuinely is
-      // not there must not read as a payload that failed to normalize (ah-6l2).
-      if (value === null || value === undefined) {
-        return null;
-      }
-      return normalizeImportedTurnRecord(value);
-    },
-    async loadLatestImportedTurn(databasePath: string, gameId: string) {
-      const value = await adapter.loadLatestImportedTurn(databasePath, gameId);
-      // Undefined as well as null: serde_wasm_bindgen can emit either for Rust's None, and a game
-      // with nothing to reopen must not read as a payload that failed to normalize.
-      if (value === null || value === undefined) {
-        return null;
-      }
-      return normalizeImportedTurnRecord(value);
-    },
-    async listImportedTurns(databasePath: string, gameId: string) {
-      const value = await adapter.listImportedTurns(databasePath, gameId);
-      // A game with no imports is the ordinary state of a game just created, not a failure — so an
-      // adapter answering with nothing (null or undefined, whichever the transport prefers) reads
-      // as an empty list rather than as a payload that failed to normalize.
-      if (value === undefined || value === null) {
-        return [];
-      }
-      if (!Array.isArray(value)) {
-        throw new Error("invalid imported turn summary list payload");
-      }
-      return value.map(normalizeImportedTurnSummary);
-    },
-    async loadOrderDraft(databasePath: string, gameId: string, factionId: string, turnNumber: number) {
-      const value = await adapter.loadOrderDraft(databasePath, gameId, factionId, turnNumber);
-      // Undefined as well as null, for the same reason loadImportedTurn does above (ah-6l2): a
-      // sibling load with the identical "nothing stored yet" shape had the identical gap.
-      if (value === null || value === undefined) {
-        return null;
-      }
-
-      return normalizeOrderDraftRecord(value);
-    },
-    async saveOrderDraft(
-      databasePath: string,
-      gameId: string,
-      factionId: string,
-      turnNumber: number,
-      orderText: string,
-      updatedAt: string
-    ) {
-      const value = await adapter.saveOrderDraft(
-        databasePath,
-        gameId,
-        factionId,
-        turnNumber,
-        orderText,
-        updatedAt
-      );
-      return normalizeOrderDraftRecord(value);
-    },
-    async listHexNotes(databasePath: string, gameId: string) {
-      const value = await adapter.listHexNotes(databasePath, gameId);
-      // A game with no notes is the ordinary state, not a failure — same "undefined and null both
-      // mean empty" shape as listImportedTurns above.
-      if (value === undefined || value === null) {
-        return [];
-      }
-      if (!Array.isArray(value)) {
-        throw new Error("invalid hex note list payload");
-      }
-      return value.map(normalizeHexNoteRecord);
-    },
-    async saveHexNote(databasePath: string, note: HexNoteRecord) {
-      const value = await adapter.saveHexNote(databasePath, note);
-      return normalizeHexNoteRecord(value);
-    },
-    async deleteHexNote(databasePath: string, gameId: string, noteId: string) {
-      await adapter.deleteHexNote(databasePath, gameId, noteId);
-    },
-    async planRoute(
-      rulesetJson: string,
-      rawReport: string,
-      rememberedJson: string,
-      unitId: string,
-      destination: string
-    ) {
-      // Returned as-is: the core already serializes to exactly this shape, and normalizing would
-      // only add a chance for the two to disagree.
-      return (await adapter.planRoute(
-        rulesetJson,
-        rawReport,
-        rememberedJson,
-        unitId,
-        destination
-      )) as RoutePlanResponse;
-    },
-    async traceMoveOrders(
-      rulesetJson: string,
-      rawReport: string,
-      rememberedJson: string,
-      unitId: string,
-      orders: string
-    ) {
-      // Returned as-is for the same reason planRoute is: the core already serializes this shape.
-      return (await adapter.traceMoveOrders(
-        rulesetJson,
-        rawReport,
-        rememberedJson,
-        unitId,
-        orders
-      )) as MoveOrderTraceResponse;
-    },
-    async exportMap(rawReport: string, rememberedJson: string, request: MapExportRequest) {
-      const text = await adapter.exportMap(rawReport, rememberedJson, JSON.stringify(request));
-      // Checked rather than cast: everything else here comes back as a shape, and a shape that
-      // arrives wrong is visibly wrong. A file is not - an unreadable answer saved as text would
-      // be an empty document the player believes holds their map.
-      if (typeof text !== "string") {
-        throw new Error("map export did not come back as text");
-      }
-      return text;
-    },
-    async knownMap(rawReport: string, rulesetJson: string | null, remembered: RememberedRegion[]) {
-      // Returned as-is for the same reason planRoute is: the core already serializes this shape.
-      return (await adapter.knownMap(
-        rawReport,
-        rulesetJson,
-        JSON.stringify(remembered)
-      )) as KnownMap;
-    },
-    async previewOrders(
-      rulesetJson: string,
-      rawReport: string,
-      rememberedJson: string,
-      ordersDocument: string
-    ) {
-      // Returned as-is for the same reason planRoute is: the core already serializes this shape.
-      return (await adapter.previewOrders(
-        rulesetJson,
-        rawReport,
-        rememberedJson,
-        ordersDocument
-      )) as OrdersPreviewResponse;
-    },
-    async loadRegionSightings(databasePath: string, gameId: string, factionId: string) {
-      const value = await adapter.loadRegionSightings(databasePath, gameId, factionId);
-      return (Array.isArray(value) ? value : []) as RememberedRegion[];
-    },
-    async mergeReport(
-      databasePath: string,
-      gameId: string,
-      viewerFactionId: string,
-      viewerTurnNumber: number,
-      rawReport: string,
-      rulesetJson: string | null,
-      mergedAt: string
-    ) {
-      return normalizeReportMergeResult(
-        await adapter.mergeReport(
-          databasePath,
-          gameId,
-          viewerFactionId,
-          viewerTurnNumber,
-          rawReport,
-          rulesetJson,
-          mergedAt
-        )
-      );
-    },
-    async loadMergedReports(
-      databasePath: string,
-      gameId: string,
-      factionId: string,
-      turnNumber: number
-    ) {
-      // Tolerated the way `loadRegionSightings` tolerates it: a turn with nothing merged into it
-      // is the ordinary case, and a store that answers oddly should cost the chip, not the turn.
-      const value = await adapter.loadMergedReports(databasePath, gameId, factionId, turnNumber);
-      return (Array.isArray(value) ? value : []) as MergedReportRecord[];
+    knownMap(rawReport, rulesetJson, remembered) {
+      return adapter.knownMap(rawReport, rulesetJson, JSON.stringify(remembered));
     }
   };
 }
@@ -1500,13 +601,13 @@ export function createTauriAdapter(invoke: TauriInvoke): CoreAdapter {
       return invoke<EngineInfo>("get_engine_info");
     },
     listGames() {
-      return invoke<GameManifestWireShape[]>("list_games");
+      return invoke<GameManifest[]>("list_games");
     },
     createGame(manifest: GameManifest) {
-      return invoke<OpenedGameWireShape>("create_game", { manifest });
+      return invoke<OpenedGame>("create_game", { manifest });
     },
     openGame(gameId: string, openedAt: string) {
-      return invoke<OpenedGameWireShape>("open_game", {
+      return invoke<OpenedGame>("open_game", {
         game_id: gameId,
         opened_at: openedAt
       });
@@ -1518,19 +619,19 @@ export function createTauriAdapter(invoke: TauriInvoke): CoreAdapter {
       return invoke<string>("export_game", { game_id: gameId, exported_at: exportedAt });
     },
     importGame(backupJson: string, openedAt: string) {
-      return invoke<OpenedGameWireShape>("import_game", {
+      return invoke<OpenedGame>("import_game", {
         backup_json: backupJson,
         opened_at: openedAt
       });
     },
     setGameRuleset(gameId: string, rulesetId: string) {
-      return invoke<GameManifestWireShape>("set_game_ruleset", {
+      return invoke<GameManifest>("set_game_ruleset", {
         game_id: gameId,
         ruleset_id: rulesetId
       });
     },
     setGameName(gameId: string, gameName: string) {
-      return invoke<GameManifestWireShape>("set_game_name", {
+      return invoke<GameManifest>("set_game_name", {
         game_id: gameId,
         game_name: gameName
       });
@@ -1552,7 +653,7 @@ export function createTauriAdapter(invoke: TauriInvoke): CoreAdapter {
       });
     },
     previewReportImport(databasePath: string, gameId: string, confirmedFactionId: string, rawReport: string) {
-      return invoke<ReportImportPreviewWireShape>("preview_report_import", {
+      return invoke<ReportImportPreview>("preview_report_import", {
         database_path: databasePath,
         game_id: gameId,
         confirmed_faction_id: confirmedFactionId,
@@ -1568,7 +669,7 @@ export function createTauriAdapter(invoke: TauriInvoke): CoreAdapter {
       allowOverwrite: boolean,
       importedAt: string
     ) {
-      return invoke<ImportedTurnPreviewWireShape>("commit_report_import", {
+      return invoke<ImportedTurnPreview>("commit_report_import", {
         database_path: databasePath,
         game_id: gameId,
         confirmed_faction_id: confirmedFactionId,
@@ -1582,7 +683,7 @@ export function createTauriAdapter(invoke: TauriInvoke): CoreAdapter {
       rawOrders: string,
       rulesetJson: string | null,
       rawReport: string | null,
-      disabledCodes: readonly string[]
+      disabledCodes: readonly string[] | null
     ) {
       return invoke<OrderValidationResult>("validate_orders", {
         raw_orders: rawOrders,
@@ -1595,7 +696,7 @@ export function createTauriAdapter(invoke: TauriInvoke): CoreAdapter {
       return invoke<string[]>("order_commands");
     },
     loadImportedTurn(databasePath: string, gameId: string, factionId: string, turnNumber: number) {
-      return invoke<ImportedTurnRecordWireShape | null>("load_imported_turn", {
+      return invoke<ImportedTurnRecord | null>("load_imported_turn", {
         database_path: databasePath,
         game_id: gameId,
         faction_id: factionId,
@@ -1603,19 +704,19 @@ export function createTauriAdapter(invoke: TauriInvoke): CoreAdapter {
       });
     },
     loadLatestImportedTurn(databasePath: string, gameId: string) {
-      return invoke<ImportedTurnRecordWireShape | null>("load_latest_imported_turn", {
+      return invoke<ImportedTurnRecord | null>("load_latest_imported_turn", {
         database_path: databasePath,
         game_id: gameId
       });
     },
     listImportedTurns(databasePath: string, gameId: string) {
-      return invoke<ImportedTurnSummaryWireShape[]>("list_imported_turns", {
+      return invoke<ImportedTurnSummary[]>("list_imported_turns", {
         database_path: databasePath,
         game_id: gameId
       });
     },
     loadOrderDraft(databasePath: string, gameId: string, factionId: string, turnNumber: number) {
-      return invoke<OrderDraftRecordWireShape | null>("load_order_draft", {
+      return invoke<OrderDraftRecord | null>("load_order_draft", {
         database_path: databasePath,
         game_id: gameId,
         faction_id: factionId,
@@ -1630,7 +731,7 @@ export function createTauriAdapter(invoke: TauriInvoke): CoreAdapter {
       orderText: string,
       updatedAt: string
     ) {
-      return invoke<OrderDraftRecordWireShape>("save_order_draft", {
+      return invoke<OrderDraftRecord>("save_order_draft", {
         database_path: databasePath,
         game_id: gameId,
         faction_id: factionId,
@@ -1640,7 +741,7 @@ export function createTauriAdapter(invoke: TauriInvoke): CoreAdapter {
       });
     },
     listHexNotes(databasePath: string, gameId: string) {
-      return invoke<HexNoteRecordWireShape[]>("list_hex_notes", {
+      return invoke<HexNoteRecord[]>("list_hex_notes", {
         database_path: databasePath,
         game_id: gameId
       });
@@ -1648,13 +749,15 @@ export function createTauriAdapter(invoke: TauriInvoke): CoreAdapter {
     saveHexNote(databasePath: string, note: HexNoteRecord) {
       // The note goes through as one object, camelCase fields — the Tauri DTO's own
       // rename_all = "camelCase" reads them; only the invoke argument itself is snake_case.
-      return invoke<HexNoteRecordWireShape>("save_hex_note", {
+      return invoke<HexNoteRecord>("save_hex_note", {
         database_path: databasePath,
         note
       });
     },
-    deleteHexNote(databasePath: string, gameId: string, noteId: string) {
-      return invoke<void>("delete_hex_note", {
+    async deleteHexNote(databasePath: string, gameId: string, noteId: string) {
+      // Rust answers this command with a bool (whether a note was found to delete); the adapter's
+      // contract is void, so the answer is awaited and discarded rather than typed as void here.
+      await invoke<boolean>("delete_hex_note", {
         database_path: databasePath,
         game_id: gameId,
         note_id: noteId
