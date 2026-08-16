@@ -4,6 +4,11 @@ Real NewOrigins 3.0.0 turn reports, used by `crates/core/tests/*.rs`,
 `packages/browser-core/src/parseReportFull.test.ts`, `packages/ruleset/src/capacity.test.ts` and the
 Playwright suites under `tests/smoke/` and `tests/native/`.
 
+Every fixture here is named once per language rather than by string literal at each use site:
+`crates/fixtures/src/lib.rs` for Rust, `packages/fixtures/src/index.ts` for TypeScript. Both carry a
+test that fails when this directory and the names in that module disagree, so adding or renaming a
+fixture is: drop the file here, add its name in both modules, run both tests.
+
 ## Where they came from
 
 A personal archive of 209 reports across eight game/faction runs of the author's own Borg faction,

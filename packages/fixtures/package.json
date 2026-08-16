@@ -1,0 +1,14 @@
+{
+  "name": "@atlantis/fixtures",
+  "version": "0.1.0",
+  "private": true,
+  "main": "src/index.ts",
+  "devDependencies": {
+    "@types/node": "^22.10.2"
+  },
+  "scripts": {
+    "lint": "eslint src --max-warnings=0",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run"
+  }
+}

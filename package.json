@@ -20,6 +20,7 @@
     "check:fast": "pnpm run lint && pnpm run typecheck && pnpm run test && cargo fmt --check && cargo clippy --workspace --all-targets -- -D warnings"
   },
   "devDependencies": {
+    "@atlantis/fixtures": "workspace:*",
     "@playwright/test": "^1.55.0",
     "@types/node": "^22.10.2",
     "@types/react": "^19.2.18",

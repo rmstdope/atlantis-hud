@@ -1,6 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { readReport } from "@atlantis/fixtures";
 import { clearGames, createGame, expectOrders, expectOrdersNot, fillOrders, ordersInput } from "./gameSetup";
 
 /**
@@ -14,10 +13,7 @@ import { clearGames, createGame, expectOrders, expectOrdersNot, fillOrders, orde
  * `page.reload()` is how a browser quits and reopens. It is the same idiom `games.spec.ts` uses to
  * prove which game reopens, and here it proves what is inside one.
  */
-const REPORT = readFileSync(
-  join(__dirname, "..", "fixtures", "reports", "neworigins-3.0.0-g7-f95-t71.rep"),
-  "utf8"
-);
+const REPORT = readReport("g7f95t71");
 
 /** Inholm holds 92 units; this one is the player's, so its orders are editable. */
 const OWN_UNIT = "18642";

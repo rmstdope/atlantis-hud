@@ -1,6 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { readReport } from "@atlantis/fixtures";
 import { clearGames, createGame, expectOrders, expectOrdersNot, fillOrders, ordersInput } from "./gameSetup";
 
 /**
@@ -12,10 +11,7 @@ import { clearGames, createGame, expectOrders, expectOrdersNot, fillOrders, orde
  * refactor could drop without any other test noticing.
  */
 
-const REPORT = readFileSync(
-  join(__dirname, "..", "fixtures", "reports", "neworigins-3.0.0-g7-f95-t71.rep"),
-  "utf8"
-);
+const REPORT = readReport("g7f95t71");
 
 /** "Seven of Eight", the player's unit in Inholm at (7,53). */
 const OWN_UNIT = "18642";

@@ -1,5 +1,5 @@
-import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { readReport } from "@atlantis/fixtures";
 import {
   commandsOnly,
   findUnitBlocks,
@@ -245,10 +245,7 @@ describe("dropping the server's unit descriptions", () => {
 });
 
 /** The real report the export test pins against, and the long-format template it carries. */
-const TURN_71_REPORT = readFileSync(
-  new URL("../../../tests/fixtures/reports/neworigins-3.0.0-g7-f95-t71.rep", import.meta.url),
-  "utf8"
-);
+const TURN_71_REPORT = readReport("g7f95t71");
 const TEMPLATE_MARKER = "Orders Template (Long Format):\n\n";
 const TEMPLATE_START = TURN_71_REPORT.indexOf(TEMPLATE_MARKER);
 // Fail loudly rather than slicing from a bogus offset if the fixture ever loses the marker.

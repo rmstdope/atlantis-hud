@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { readReport } from "@atlantis/fixtures";
 import { createCoreClient } from "@atlantis/core-client";
 import { createWebCoreAdapter } from "./webCoreAdapter";
 import { createMemoryWebStore } from "./webStore";
@@ -11,10 +12,7 @@ import { createMemoryWebStore } from "./webStore";
  * adapter routes between logic and storage. This one is about the boundary itself: that the Rust
  * model crosses into TypeScript with the shape the types promise.
  */
-const REPORT = readFileSync(
-  new URL("../../../tests/fixtures/reports/neworigins-3.0.0-g7-f95-t71.rep", import.meta.url),
-  "utf8"
-);
+const REPORT = readReport("g7f95t71");
 
 async function realCore() {
   const wasm = await import("./wasm/atlantis_core.js");
