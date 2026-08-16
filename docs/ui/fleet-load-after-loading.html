@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>What the first number means — round 3 (bead ah-eet)</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --edge:#26303d; --edge-soft:#1e2733; --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --brass-bright:#eebe63; --ok:#4fb783; --warn:#d9a441; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1240px; margin-left:auto; margin-right:auto; }
+  h1 { font-size:26px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:96ch; margin-top:10px; font-size:14px; }
+  header p + p { margin-top:8px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:0.92em; }
+  h2.sec { margin-top:34px; font-size:18px; color:var(--brass); } h2.sec small { color:var(--ink-dim); font-size:13px; margin-left:10px; }
+  .cards { display:grid; grid-template-columns:repeat(2,1fr); gap:20px; margin-top:16px; align-items:start; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:18px; display:flex; flex-direction:column; gap:12px; }
+  .card h3 { font-size:17px; } .card h3 em { color:var(--brass); font-style:normal; font-size:12px; letter-spacing:1.6px; margin-right:8px; }
+  .card.rec { border-color:var(--brass); }
+  .concept { color:var(--ink-soft); font-size:13px; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; padding:12px; display:grid; gap:10px; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; } .notes li.con::before { content:"\2212  "; color:var(--danger); }
+  .rep { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11.5px; line-height:1.55; color:var(--ink-soft); background:#0d1218; border:1px solid var(--edge); border-radius:6px; padding:8px 10px; white-space:pre; overflow-x:auto; }
+  .rep b { color:var(--brass-bright); font-weight:normal; }
+  .editor { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:12px; line-height:1.6; background:#0d1218; border:1px solid var(--edge); border-radius:6px; padding:8px 0; }
+  .ln { display:flex; } .ln .no { width:34px; text-align:right; color:var(--ink-dim); padding-right:10px; } .ln .tx { white-space:pre; color:var(--ink); }
+  .ln.warn .tx { text-decoration: underline wavy var(--warn); text-underline-offset:3px; } .ln.warn .no { color:var(--warn); }
+  .ln.give .tx { color:var(--brass-bright); }
+  .pane { font-family:'Helvetica Neue',Arial,sans-serif; font-size:11.5px; line-height:1.45; border:1px solid var(--edge); border-radius:6px; background:var(--panel); overflow:hidden; }
+  .pane.narrow { max-width:290px; }
+  .pane .bar { display:flex; align-items:center; height:26px; padding:0 9px; border-bottom:1px solid var(--edge); } .bar .name { font-size:10px; letter-spacing:1.4px; text-transform:uppercase; color:var(--brass); }
+  .body { padding:7px 9px 9px; display:grid; gap:5px; min-height:28px; } .prob { display:flex; gap:6px; } .prob .uid { color:var(--ink-dim); min-width:44px; flex:none; } .prob .warn { color:var(--warn); flex:none; } .prob .msg { color:var(--ink); }
+  .mism { color:var(--danger); }
+  .match { color:var(--ok); }
+  table { border-collapse:collapse; font-size:12.5px; width:100%; margin-top:14px; } th, td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--edge-soft); vertical-align:top; } th { color:var(--brass); font-weight:normal; font-size:11px; letter-spacing:1px; text-transform:uppercase; } td.y { color:var(--ok); } td.n { color:var(--ink-dim); } td.w { color:var(--warn); }
+  .banner { border:1px solid var(--edge); border-left:3px solid var(--ok); background:var(--panel); padding:14px 16px; border-radius:6px; margin-top:16px; color:var(--ink-soft); font-size:13.5px; }
+  .banner b { color:var(--ink); }
+  .forms { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11.5px; background:#0d1218; border:1px solid var(--edge); border-radius:6px; padding:10px 12px; color:var(--ink-soft); display:grid; gap:6px; }
+  .forms i { color:var(--ink-dim); font-style:italic; }
+</style>
+</head>
+<body>
+<header>
+  <h1>The load a fleet sails with — <span>what the player reads</span> (bead ah-eet)</h1>
+  <p><code>ah-j0e</code> warns on a <code>SAIL</code> when a fleet is overloaded, weighing the units aboard at the weights the report printed for them. <code>ah-eet</code> prices this month's orders into those weights, so the load compared against capacity is the load at sailing time. Nothing new appears in the interface — same warning code, same toggle, same place. What changes is the number, and this page is the record of what the navigator decided it should say.</p>
+  <p><b>Decided, 2026-08-17, over three rounds.</b> (1) The number is shown as a <b>sum</b>, so the first figure agrees with the <code>Load:</code> line the report printed alongside it. (2) <b>Everything the ledger prices counts</b> — <code>GIVE</code>, <code>TAKE</code>, <code>BUY</code> and <code>SELL</code>; the bead's own premise, that the server runs the market after movement, is wrong, and the rules' <i>Sequence of Events</i> puts buying and selling in phase 7 against movement in phase 9. (3) The verb is <b>loaded / unloaded</b>. (4) An order nothing can price <b>falls back to the report's weights</b> rather than silencing the fleet, so this bead only ever adds warnings and never removes one. (5) Below: a unit <b>boarding</b> counts as weight loaded, which keeps the first figure equal to the report's own in every case.</p>
+</header>
+<main>
+
+  <h2 class="sec">The situation</h2>
+  <div class="cards">
+    <section class="card"><h3>What the report says</h3>
+      <div class="rep">  + Ship [329] : Cog; <b>Load: 110/750</b>; Sailors: 6/6; MaxSpeed: 4.
+    * Deckhands (11125), 3 vikings, sailing 3. Weight: 60.
+    * Bosun (12590), 2 vikings, sailing 3. Weight: 50.
+  * Marines (999), 20 vikings. Weight: 200.
+  * Granary (8801), 1 leader, 500 grain [GRAI]. Weight: 2510.</div>
+      <p class="concept">110 aboard of 750. Two units ashore: a 200-weight company of marines, and a granary holding 500 grain (2500).</p>
+    </section>
+    <section class="card"><h3>What the player writes</h3>
+      <div class="editor">
+        <div class="ln"><span class="no">38</span><span class="tx">unit 999</span></div>
+        <div class="ln give"><span class="no">39</span><span class="tx">ENTER 329</span></div>
+        <div class="ln"><span class="no">40</span><span class="tx">unit 8801</span></div>
+        <div class="ln give"><span class="no">41</span><span class="tx">GIVE 999 500 GRAI</span></div>
+        <div class="ln"><span class="no">42</span><span class="tx">unit 11125</span></div>
+        <div class="ln warn"><span class="no">43</span><span class="tx">SAIL N N</span></div>
+      </div>
+      <p class="concept">The marines board and are handed the grain. At sailing time the Cog carries <b>110 + 200 + 2500 = 2810</b> against 750. Both options below warn; they differ only in how the 2810 is split.</p>
+    </section>
+  </div>
+
+  <h2 class="sec">How the number is split <small>Option 2 was chosen</small></h2>
+  <div class="cards">
+    <section class="card"><h3><em>OPTION 1 — rejected</em> First number = who is aboard, at report weights</h3>
+      <p class="concept">Sum the report weights of every unit aboard once <code>ENTER</code>/<code>LEAVE</code> have run, then add what this month's orders moved. Boarding is part of the first number; gifts and purchases are the second.</p>
+      <div class="stage">
+        <div class="pane"><div class="bar"><span class="name">Problems</span></div><div class="body">
+          <div class="prob"><span class="uid">11125</span><span class="warn">&#9888;</span><span class="msg">Cog [329] is overloaded: <span class="mism">310</span> aboard plus 2500 loaded this month, on a capacity of 750, so it will not sail</span></div>
+        </div></div>
+        <div class="rep">report:  Load: <b>110</b>/750        warning: <span class="mism">310</span> aboard   &#8592; disagree</div>
+      </div>
+      <ul class="notes"><li>One definition of the first number, always — no dependence on whether the report stated a <code>Load:</code> line.</li><li><b>Leaves <code>ah-j0e</code>'s shipped message untouched</b>: a fleet overloaded purely by boarding still reads <span class="mono">310 aboard on a capacity of 750</span>, exactly as yesterday.</li><li class="con">The moment anyone boards, the first number stops matching the report — which is the property you picked “show the sum” to get.</li></ul>
+    </section>
+    <section class="card rec"><h3><em>OPTION 2 — chosen</em> First number = the report's own <code>Load:</code></h3>
+      <p class="concept">Take the first number of <code>Load: 110/750</code> verbatim, and let the second number carry <i>everything</i> this month changed — boarding, leaving, gifts, purchases, sales alike. A boarding unit is loading the ship, so it counts as loaded.</p>
+      <div class="stage">
+        <div class="pane"><div class="bar"><span class="name">Problems</span></div><div class="body">
+          <div class="prob"><span class="uid">11125</span><span class="warn">&#9888;</span><span class="msg">Cog [329] is overloaded: <span class="match">110</span> aboard plus 2700 loaded this month, on a capacity of 750, so it will not sail</span></div>
+        </div></div>
+        <div class="rep">report:  Load: <b>110</b>/750        warning: <span class="match">110</span> aboard   &#8592; agree</div>
+      </div>
+      <ul class="notes"><li>The first number is quoted from the report, so the two always agree on screen — the property you chose this shape for.</li><li>“2700 loaded this month” is the whole of what the player did, in one figure they can go and check.</li><li class="con"><b>Rewords a message that shipped yesterday</b>: a fleet overloaded purely by boarding changes from <span class="mono">310 aboard on a capacity of 750</span> to <span class="mono">110 aboard plus 200 loaded this month…</span>.</li><li class="con">A fleet whose report states no <code>Load:</code> line has no number to quote, and falls back to Option 1's definition.</li></ul>
+    </section>
+  </div>
+
+  <h2 class="sec">The three sentences, exactly as they would ship <small>whichever option — only the numbers move</small></h2>
+  <div class="forms">
+<i>nothing moved this month (most fleets) — ah-j0e's sentence, unchanged:</i>
+Cog [329] is overloaded: 810 aboard on a capacity of 750, so it will not sail
+
+<i>heavier than the report:</i>
+Cog [329] is overloaded: 110 aboard plus 2700 loaded this month, on a capacity of 750, so it will not sail
+
+<i>lighter than the report, but still over:</i>
+Cog [329] is overloaded: 900 aboard less 100 unloaded this month, on a capacity of 750, so it will not sail
+
+<i>the crew half, untouched by this bead:</i>
+Cog [329] is short of sailors: 2 sailing levels aboard, it needs 6, so it will not sail
+  </div>
+
+  <h2 class="sec">The narrow window <small>checked in the code, not guessed</small></h2>
+  <div class="cards">
+    <section class="card"><h3>It wraps, it does not truncate</h3>
+      <p class="concept"><code>ProblemsPanel.tsx:83</code> renders the message in a plain flex row with no <code>truncate</code> and no <code>whitespace-nowrap</code>, so a long message wraps onto a second line and the unit number stays put in its own column. Nothing is hidden at any width. The longest of the three sentences costs one extra line in the panel.</p>
+      <div class="stage">
+        <div class="pane narrow"><div class="bar"><span class="name">Problems</span></div><div class="body">
+          <div class="prob"><span class="uid">11125</span><span class="warn">&#9888;</span><span class="msg">Cog [329] is overloaded: 110 aboard plus 2700 loaded this month, on a capacity of 750, so it will not sail</span></div>
+        </div></div>
+      </div>
+      <ul class="notes"><li>No truncation to design around.</li><li class="con">Three lines in a narrow pane, where <code>ah-j0e</code>'s form takes two.</li></ul>
+    </section>
+    <section class="card"><h3>Everything else, unchanged</h3>
+      <table style="margin-top:0">
+        <tr><td>The line it points at</td><td class="n">The captain's <code>SAIL</code></td></tr>
+        <tr><td>Exactly at capacity</td><td class="n">Sails, silent</td></tr>
+        <tr><td>The <code>Sailing</code> settings group</td><td class="n">Same two toggles</td></tr>
+        <tr><td>Warning code</td><td class="n"><span class="mono">fleet-overloaded</span></td></tr>
+        <tr><td>No report loaded</td><td class="n">Silent</td></tr>
+        <tr><td>Foreign unit in the hull</td><td class="n">Silent</td></tr>
+        <tr><td>A unit's weight unstated</td><td class="n">Load silent, crew still judged</td></tr>
+      </table>
+    </section>
+  </div>
+
+  <div class="banner"><b>The plan is in the bead.</b> Everything else an implementer meets — which ledger to reuse, where the weight function lives, what the tests assert, how <code>Amount::All</code> and <code>BUY ALL</code> behave — is settled in <code>ah-eet</code>'s design field. Two earlier rounds of this discussion produced the first four decisions listed at the top; this page carries the last one and the states, and supersedes them.</div>
+</main>
+</body>
+</html>
