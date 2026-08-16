@@ -475,20 +475,27 @@ export function createWebCoreAdapter(
           store.getHexNotes(game.databasePath, gameId)
         ]);
 
-      // The store's own records go over as they are (`databasePath`, `gameId` and all); the codec
-      // ignores what it does not know. `JSON.stringify` drops an `undefined` `importedAt`, which
-      // the codec reads as absent - the one place this leniency is relied on.
-      return wasm.encode_game_backup_state(
-        JSON.stringify({
-          manifest: game.manifest,
-          importedTurns,
-          orderDrafts,
-          regionSightings,
-          mergedReports,
-          hexNotes
-        }),
-        exportedAt
-      );
+      try {
+        // The store's own records go over as they are (`databasePath`, `gameId` and all); the
+        // codec ignores what it does not know. `JSON.stringify` drops an `undefined`
+        // `importedAt`, which the codec reads as absent - the one place this leniency is relied
+        // on.
+        return wasm.encode_game_backup_state(
+          JSON.stringify({
+            manifest: game.manifest,
+            importedTurns,
+            orderDrafts,
+            regionSightings,
+            mergedReports,
+            hexNotes
+          }),
+          exportedAt
+        );
+      } catch (error) {
+        // wasm-bindgen throws the Rust error's text as a bare string, same as decode - see the
+        // wrapper in importGame below.
+        throw error instanceof Error ? error : new Error(String(error));
+      }
     },
 
     async setGameRuleset(gameId: string, rulesetId: string) {

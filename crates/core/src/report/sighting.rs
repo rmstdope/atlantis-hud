@@ -72,8 +72,9 @@ pub fn sighting_from_payload(
     last_seen_turn: u32,
     payload_json: &str,
 ) -> Result<RegionSighting, String> {
-    let region: serde_json::Value = serde_json::from_str(payload_json)
-        .map_err(|_| format!("remembered region {region_id} is missing regionId in its payload"))?;
+    let region: serde_json::Value = serde_json::from_str(payload_json).map_err(|_| {
+        format!("remembered region {region_id} has a payload that is not valid JSON")
+    })?;
 
     let payload_region_id = region
         .get("regionId")
@@ -91,17 +92,22 @@ pub fn sighting_from_payload(
         .get("coordinate")
         .and_then(serde_json::Value::as_object)
         .ok_or_else(|| format!("remembered region {region_id} is missing its coordinate"))?;
+    // `i32`/`u32::try_from` rather than `as`: a crafted payload with an out-of-range or negative
+    // `z` must be refused, not silently truncated or wrapped into a different coordinate.
     let x = coordinate
         .get("x")
         .and_then(serde_json::Value::as_i64)
+        .and_then(|value| i32::try_from(value).ok())
         .ok_or_else(|| format!("remembered region {region_id} is missing coordinate x"))?;
     let y = coordinate
         .get("y")
         .and_then(serde_json::Value::as_i64)
+        .and_then(|value| i32::try_from(value).ok())
         .ok_or_else(|| format!("remembered region {region_id} is missing coordinate y"))?;
     let z = coordinate
         .get("z")
         .and_then(serde_json::Value::as_i64)
+        .and_then(|value| u32::try_from(value).ok())
         .ok_or_else(|| format!("remembered region {region_id} is missing coordinate z"))?;
     let terrain = region
         .get("terrain")
@@ -111,13 +117,6 @@ pub fn sighting_from_payload(
         .get("province")
         .and_then(serde_json::Value::as_str)
         .ok_or_else(|| format!("remembered region {region_id} is missing its province"))?;
-
-    #[allow(clippy::cast_possible_truncation)]
-    let x = x as i32;
-    #[allow(clippy::cast_possible_truncation)]
-    let y = y as i32;
-    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-    let z = z as u32;
 
     Ok(RegionSighting {
         region_id: region_id.to_string(),

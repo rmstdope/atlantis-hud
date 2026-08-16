@@ -331,15 +331,20 @@ pub fn decode_game_backup(
     }
 
     let version = match value.get("version").and_then(serde_json::Value::as_u64) {
-        Some(version) => version as u32,
+        Some(version) => version,
         None => return Err(BackupError::NoVersion),
     };
-    if version > CURRENT_GAME_BACKUP_VERSION {
+    // Compared as `u64` before narrowing: a version too large for `u32` must still be judged
+    // "newer than this build supports" rather than truncating and wrapping into a value that
+    // passes the check below.
+    if version > u64::from(CURRENT_GAME_BACKUP_VERSION) {
         return Err(BackupError::NewerVersion {
-            actual: version,
+            actual: u32::try_from(version).unwrap_or(u32::MAX),
             max_supported: CURRENT_GAME_BACKUP_VERSION,
         });
     }
+    // Fits in `u32`: it has just been shown to be `<= CURRENT_GAME_BACKUP_VERSION`.
+    let version = u32::try_from(version).unwrap_or(u32::MAX);
     if version < 1 {
         return Err(BackupError::UnsupportedVersion(version));
     }
