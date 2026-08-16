@@ -18,7 +18,9 @@ import type {
   OrdersPreviewResponse,
   ParsedReport,
   ReportParseResult,
-  RoutePlanResponse
+  RoutePlanResponse,
+  TurnRef,
+  TurnTouch
 } from "@atlantis/core-client";
 import type { StoredTurn, StoredTurnSnapshot, WebStore } from "./webStore";
 import { createWebStore } from "./webStore";
@@ -90,6 +92,12 @@ export type CoreWasmModule = {
     candidate: StoredTurnSnapshot
   ): ImportedTurnDiff;
   hydrate_parse_result_state(parsedPayloadJson: string): ReportParseResult;
+  /**
+   * Which turn a game reopens on, given every turn's and draft's `(factionId, turnNumber,
+   * updatedAt?)` as JSON arrays. Returns `{ factionId, turnNumber }` or `null`. The rule and every
+   * tie-break are `atlantis_hud_core::reopen::latest_turn`'s.
+   */
+  latest_turn_state(turnsJson: string, draftsJson: string): TurnRef | null;
   encode_game_backup_state(contentJson: string, exportedAt: string): string;
   decode_game_backup_state(backupJson: string, openedAt: string): DecodedGameBackup;
 };
@@ -784,9 +792,9 @@ export function createWebCoreAdapter(
     /**
      * The turn this game was last worked on.
      *
-     * The desktop asks SQLite for this with a LEFT JOIN; IndexedDB has no joins, so the two stores
-     * are read and matched here. The ranking rule is the same on both: the later of when a turn was
-     * imported and when its orders were last edited, ties broken by turn number.
+     * Three fields per row cross to the core and it names the turn; the payloads stay here. Which
+     * turn that is - attention over arrival, and every tie-break - is decided once, in
+     * `atlantis_hud_core::reopen`, for both platforms.
      */
     async loadLatestImportedTurn(databasePath: string, gameId: string) {
       const [turns, drafts] = await Promise.all([
@@ -794,30 +802,31 @@ export function createWebCoreAdapter(
         store.getOrderDrafts(databasePath, gameId)
       ]);
 
-      const editedAt = new Map(
-        drafts.map((draft) => [`${draft.factionId}:${draft.turnNumber}`, draft.updatedAt])
+      // `updatedAt` may be undefined on a record written before turns carried a stamp; `null` on
+      // the wire is what the core's `#[serde(default)]` reads as none.
+      const touch = ({
+        factionId,
+        turnNumber,
+        updatedAt
+      }: {
+        factionId: string;
+        turnNumber: number;
+        updatedAt?: string;
+      }): TurnTouch => ({ factionId, turnNumber, updatedAt: updatedAt ?? null });
+
+      const named = wasm.latest_turn_state(
+        JSON.stringify(turns.map(touch)),
+        JSON.stringify(drafts.map(touch))
       );
-      // A record written before turns carried a time has none. It sorts last rather than being
-      // dropped: one unrankable turn must not turn into a game that reopens on nothing.
-      const touchedAt = (turn: StoredTurn) => {
-        const edited = editedAt.get(`${turn.factionId}:${turn.turnNumber}`) ?? "";
-        const imported = turn.updatedAt ?? "";
-        return edited > imported ? edited : imported;
-      };
-
-      const latest = turns.reduce<StoredTurn | null>((best, turn) => {
-        if (best === null) {
-          return turn;
-        }
-        const [a, b] = [touchedAt(turn), touchedAt(best)];
-        if (a !== b) {
-          return a > b ? turn : best;
-        }
-        return turn.turnNumber > best.turnNumber ? turn : best;
-      }, null);
-
-      if (!latest) {
+      if (!named) {
         return null;
+      }
+
+      const latest = turns.find(
+        (turn) => turn.factionId === named.factionId && turn.turnNumber === named.turnNumber
+      );
+      if (!latest) {
+        throw new Error("the core named a turn the store does not hold");
       }
 
       return {
@@ -828,7 +837,8 @@ export function createWebCoreAdapter(
     },
 
     /**
-     * Every turn imported for a game, across every faction, in turn order.
+     * Every turn imported for a game, across every faction, in no particular order —
+     * `@atlantis/core-client` orders it.
      *
      * No storage of its own is needed: `getImportedTurns` already carries everything but the
      * season, which is read the way `loadImportedTurn` above reads a full parse result — through
@@ -854,20 +864,12 @@ export function createWebCoreAdapter(
         }
       };
 
-      return turns
-        .slice()
-        .sort((a, b) => {
-          if (a.turnNumber !== b.turnNumber) {
-            return a.turnNumber - b.turnNumber;
-          }
-          return a.factionId < b.factionId ? -1 : a.factionId > b.factionId ? 1 : 0;
-        })
-        .map((turn) => ({
-          key: { gameId, factionId: turn.factionId, turnNumber: turn.turnNumber },
-          season: seasonOf(turn.parsedPayloadJson),
-          importedAt: turn.importedAt ?? "",
-          updatedAt: turn.updatedAt ?? ""
-        }));
+      return turns.map((turn) => ({
+        key: { gameId, factionId: turn.factionId, turnNumber: turn.turnNumber },
+        season: seasonOf(turn.parsedPayloadJson),
+        importedAt: turn.importedAt ?? "",
+        updatedAt: turn.updatedAt ?? ""
+      }));
     },
 
     async saveOrderDraft(

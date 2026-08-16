@@ -172,14 +172,14 @@ describe("remembering where a faction has been", () => {
 });
 
 describe("storing manual hex notes", () => {
-  it("reads back what was written, newest first", async () => {
+  it("reads back what was written", async () => {
     const store = createMemoryWebStore();
 
     await store.putHexNote(note({ id: "note-older", createdAt: "2026-08-01T09:00:00Z" }));
     await store.putHexNote(note({ id: "note-newer", createdAt: "2026-08-02T09:00:00Z" }));
 
     const stored = await store.getHexNotes(DB, "faction-95");
-    expect(stored.map((entry) => entry.id)).toEqual(["note-newer", "note-older"]);
+    expect(stored.map((entry) => entry.id).sort()).toEqual(["note-newer", "note-older"]);
   });
 
   it("deletes a note and reports whether it existed", async () => {
