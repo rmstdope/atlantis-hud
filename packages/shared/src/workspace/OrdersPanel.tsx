@@ -1,11 +1,9 @@
 import type { OrderDiagnostic, ReportUnit } from "@atlantis/core-client";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import type { HexNode } from "../hexMapModel";
 import { readableTime, type SaveState } from "../orderDraft";
 import {
   diagnosticsForUnit,
-  draftAfterDocumentChange,
-  draftAfterSave,
   offendingText,
   summarizeOrderValidation,
   type ValidatedOrders
@@ -28,6 +26,8 @@ type OrdersPanelProps = {
   hex: HexNode | null;
   /** The whole faction document, of which this panel edits one unit's slice. */
   document: string;
+  /** Moves when the document was written by something other than the editor — see `OrdersOrigin`; the editor reloads its block on it and on nothing else. */
+  externalRevision: number;
   ownFactionName: string;
   onChange: (unitId: string, orders: string) => void;
   /**
@@ -73,6 +73,7 @@ export function OrdersPanel({
   unit,
   hex,
   document,
+  externalRevision,
   ownFactionName,
   onChange,
   validated,
@@ -84,41 +85,6 @@ export function OrdersPanel({
   const unitId = unit?.unitId ?? null;
   const block = unitId === null ? null : readUnitOrders(document, unitId);
   const lock = lockFor(unit, hex, block);
-  const [draft, setDraft] = useState(block ?? "");
-  const [draftUnit, setDraftUnit] = useState(unitId);
-
-  // A different unit means a different draft *now*, in this very render - not an effect later.
-  // Waiting for the effect below handed the editor the old unit's text for one commit, which
-  // painted one unit's orders under another's name for a frame and made the editor mount with a
-  // document it then had to be corrected out of.
-  if (draftUnit !== unitId) {
-    setDraftUnit(unitId);
-    setDraft(block ?? "");
-  }
-
-  // Reload when this unit's own lines change, rather than on every edit anywhere in the
-  // document: never reloading would show stale text, and reloading constantly would fight the
-  // player's typing. `draftAfterDocumentChange` settles the case the two rules disagree about -
-  // the text coming back from a document that cannot hold the blank line just typed at the end
-  // of it.
-  useEffect(() => {
-    setDraft((current) => draftAfterDocumentChange(current, block ?? ""));
-  }, [unitId, block]);
-
-  // While the document stands saved, end the draft with the newline an orders file ends with -
-  // which tidies a draft the moment its save lands, and a saved draft the moment it is browsed
-  // to. Never while the document is dirty, so the tidying cannot land mid-sentence; and without
-  // touching the document, which cannot hold a trailing blank line and so already stores the same
-  // bytes either way. A functional update, deliberately: the reload above queues one too, and a
-  // plain value computed from this render's draft would overwrite it with a stale unit's text.
-  // The caret needs no bookkeeping here any more: the editor receives this as a minimal splice at
-  // the end of the text and maps the selection through it.
-  useEffect(() => {
-    if (save.kind !== "saved") {
-      return;
-    }
-    setDraft((current) => draftAfterSave(current));
-  }, [save, draft]);
 
   // This unit's problems, and how many the rest of the faction has. The document-wide figure is
   // what stops a mistake in a unit nobody is looking at from reaching the server unnoticed. Not
@@ -158,13 +124,14 @@ export function OrdersPanel({
           <OrdersEditor
             ref={editorRef}
             unitId={unit?.unitId ?? ""}
-            value={draft}
+            text={block ?? ""}
+            externalRevision={externalRevision}
+            savedAt={save.kind === "saved" ? save.at : null}
             ariaLabel={`Orders for unit ${unit?.unitId ?? ""}`}
             problems={problems}
             commands={commands}
             snippets={snippets}
             onChange={(text) => {
-              setDraft(text);
               if (unit) {
                 onChange(unit.unitId, text);
               }

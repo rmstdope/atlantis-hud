@@ -6,7 +6,6 @@ import {
   diagnosticsForUnit,
   findingsByHex,
   findingsForHex,
-  draftAfterDocumentChange,
   draftAfterSave,
   offendingText,
   shouldSaveOnBlur,
@@ -87,41 +86,6 @@ describe("orderEditor policy", () => {
     expect(shouldTriggerAutosave(1_000, 6_000)).toBe(true);
     expect(shouldSaveOnBlur(true)).toBe(true);
     expect(shouldSaveOnBlur(false)).toBe(false);
-  });
-});
-
-/**
- * The editor writes each keystroke into the faction document and the document comes straight back.
- * The block boundary cannot hold a trailing blank line, so the text returning is not always the
- * text sent - and taking it back unconditionally is what made it impossible to open a new line.
- */
-describe("keeping the editor's draft in step with the document", () => {
-  it("keeps the line the player has just opened at the end", () => {
-    expect(draftAfterDocumentChange("@study obse\n", "@study obse")).toBe("@study obse\n");
-  });
-
-  it("keeps a half-typed order on the new line", () => {
-    expect(draftAfterDocumentChange("@study obse\n@wo", "@study obse\n@wo")).toBe(
-      "@study obse\n@wo"
-    );
-  });
-
-  it("takes a write that came from somewhere else, such as a planned route", () => {
-    expect(draftAfterDocumentChange("@study obse\n", "@study obse\nMOVE N")).toBe(
-      "@study obse\nMOVE N"
-    );
-  });
-
-  it("takes the new unit's orders when the selection moves", () => {
-    expect(draftAfterDocumentChange("@study obse", "@claim 50")).toBe("@claim 50");
-  });
-
-  it("shows an empty block as empty rather than holding the last unit's orders", () => {
-    expect(draftAfterDocumentChange("@study obse", "")).toBe("");
-  });
-
-  it("keeps the blank lines the player typed into an empty block", () => {
-    expect(draftAfterDocumentChange("\n\n", "")).toBe("\n\n");
   });
 });
 
