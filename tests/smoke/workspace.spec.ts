@@ -1559,6 +1559,33 @@ test("layer toggles are operable and none is inert", async ({ page }) => {
 });
 
 /**
+ * ah-4b4: the nexus used to be filed on the surface at (0,0), sharing the surface origin's
+ * identity. A fresh faction's very first turn is nothing but the nexus, so it is the one report
+ * that exercises this without any other setup.
+ */
+test("a first turn opens on the nexus, on a level of its own", async ({ page }) => {
+  await clearGames(page);
+  await expect(page.getByTestId("game-gate")).toBeVisible();
+  await createGame(page, "Nexus game");
+  await expect(page.getByTestId("app-header")).toBeVisible();
+
+  await page.setInputFiles('input[type="file"]', {
+    name: "turn-0.rep",
+    mimeType: "text/plain",
+    buffer: Buffer.from(readReport("g2f42t0"), "utf8")
+  });
+
+  await expect(page.getByTestId("import-status")).toContainText("1 region ·");
+
+  const chips = page.getByTestId("layer-chips");
+  await expect(chips).toContainText("nexus");
+  await expect(chips.getByLabel("Map level")).toHaveCount(0);
+
+  await selectHex(page, "0:0,0");
+  await expect(page.getByTestId("panel-region")).toContainText("nexus (0,0)");
+});
+
+/**
  * The badges are what a hex says over its terrain, and a busy level says a great deal at once.
  * Each kind is switchable on its own - turning off the settlement names used to mean turning off
  * nothing, because the only controls were "units" and "structures" over nine kinds of mark - and

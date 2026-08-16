@@ -15,10 +15,20 @@
  * any more; this module only converts the resolved hexes into what the map draws.
  */
 
-import type { Coordinate, HexKnowledge, KnownMap, KnownMapHex, ReportRegion, ReportUnit } from "@atlantis/core-client";
+import type {
+  Coordinate,
+  HexKnowledge,
+  KnownMap,
+  KnownMapHex,
+  MapLevel,
+  ReportRegion,
+  ReportUnit
+} from "@atlantis/core-client";
 
 /** Owned by core since ah-u4e.1; re-exported so the map's consumers keep importing it from here. */
 export type { HexKnowledge };
+/** Owned by core since ah-4b4; re-exported so the map's consumers keep importing it from here. */
+export type { MapLevel };
 
 export type HexNode = {
   regionId: string;
@@ -40,8 +50,8 @@ export type HexNode = {
 
 export type HexMapModel = {
   hexes: HexNode[];
-  /** Level the hexes belong to; a report can describe more than one. */
-  levels: number[];
+  /** The levels the map has hexes on, shallowest first, each with the word the control shows. */
+  levels: MapLevel[];
   currentTurn: number | null;
 };
 
@@ -69,8 +79,38 @@ export function hexCorners(radius: number): Array<{ x: number; y: number }> {
   });
 }
 
-/** The level a report describes unless it says otherwise; levels are counted from here. */
+/** The nexus, level 0: above the surface, one hex, left once and never returned to. */
+export const NEXUS = 0;
+
+/** The level a report describes unless it says otherwise. */
 export const SURFACE = 1;
+
+/** The surface as a level entry, for a model with no game behind it. */
+export const SURFACE_LEVEL: MapLevel = { z: SURFACE, name: "surface" };
+
+/** The name the known map gives a level, or `null` when the map has no such level. */
+export function levelNameOf(levels: MapLevel[], z: number): string | null {
+  return levels.find((level) => level.z === z)?.name ?? null;
+}
+
+/**
+ * The clause the region panel adds for an unexplored hex off the surface: `""` on the surface or
+ * for a level the map does not list; `, in the nexus` / `, in the underworld` for a named level;
+ * `, on level 5` when the core's name is its `level N` fallback (`report/level.rs` `level_name`).
+ */
+export function levelClause(levels: MapLevel[], z: number): string {
+  if (z === SURFACE) {
+    return "";
+  }
+  const name = levelNameOf(levels, z);
+  if (name === null) {
+    return "";
+  }
+  if (/^level \d+$/.test(name)) {
+    return `, on ${name}`;
+  }
+  return `, in the ${name}`;
+}
 
 /** Whether a coordinate can exist: the lattice only uses positions where `x + y` is even. */
 export function isValidCoordinate(coordinate: Coordinate): boolean {
@@ -99,10 +139,10 @@ export function hexLabelOf(where: {
 /**
  * The coordinate an id names, or nothing when the text does not name one the game could hold.
  *
- * Held to the whole contract rather than to the shape of the text: levels are counted from the
- * surface, which is one, and only positions where `x + y` is even exist. A garbled id has to read
- * as no hex at all, because the alternative is a selection ring drawn off the lattice, or a
- * heading naming a level nobody plays on, with the panel looking as though it knew something.
+ * Held to the whole contract rather than to the shape of the text: the nexus is level 0, and only
+ * positions where `x + y` is even exist. A garbled id has to read as no hex at all, because the
+ * alternative is a selection ring drawn off the lattice, or a heading naming a level nobody plays
+ * on, with the panel looking as though it knew something.
  */
 export function parseRegionId(regionId: string): Coordinate | null {
   const match = /^(\d+):(-?\d+),(-?\d+)$/.exec(regionId);
@@ -110,7 +150,7 @@ export function parseRegionId(regionId: string): Coordinate | null {
     return null;
   }
   const coordinate = { z: Number(match[1]), x: Number(match[2]), y: Number(match[3]) };
-  if (coordinate.z < SURFACE || !isValidCoordinate(coordinate)) {
+  if (!isValidCoordinate(coordinate)) {
     return null;
   }
   return coordinate;
@@ -162,11 +202,10 @@ export function hexNodeOf(hex: KnownMapHex, currentTurn: number | null): HexNode
  */
 export function buildHexMapModel(known: KnownMap): HexMapModel {
   const hexes = known.hexes.map((hex) => hexNodeOf(hex, known.currentTurn));
-  const levels = [...new Set(hexes.map((hex) => hex.coordinate.z))].sort((a, b) => a - b);
 
   return {
     hexes,
-    levels,
+    levels: known.levels,
     currentTurn: known.currentTurn
   };
 }

@@ -136,10 +136,15 @@ describe("the saved map view", () => {
     expect(loadSavedView(GAME_A, storage)?.level).toBeNull();
   });
 
-  it("ignores a level above the surface", () => {
+  it("ignores a level shallower than the nexus", () => {
     saveMapView(GAME_A, primingView(), storage);
-    storage.data.set(keyOf(storage), JSON.stringify({ tx: 1, ty: 2, step: 0, level: 0 }));
+    storage.data.set(keyOf(storage), JSON.stringify({ tx: 1, ty: 2, step: 0, level: -1 }));
     expect(loadSavedView(GAME_A, storage)?.level).toBeNull();
+  });
+
+  it("keeps a saved level of 0, the nexus", () => {
+    saveMapView(GAME_A, { viewport: { tx: 1, ty: 2, step: 0 }, level: 0, regionId: null }, storage);
+    expect(loadSavedView(GAME_A, storage)?.level).toBe(0);
   });
 
   it("ignores a hex id that is not a string", () => {

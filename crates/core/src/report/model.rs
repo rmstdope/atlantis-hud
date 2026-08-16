@@ -8,8 +8,9 @@ use serde::{Deserialize, Serialize};
 
 /// A hex, in the game's own coordinate space.
 ///
-/// Levels are numbered from 1 at the surface. Only coordinates where `x + y` is even exist, which
-/// is why the map is drawn with flat-top hexes: north and south are direct neighbours.
+/// `z` is the engine's own level index (see [`crate::report::level`]): the nexus is 0, the surface
+/// 1, the underworld 2. Only coordinates where `x + y` is even exist, which is why the map is drawn
+/// with flat-top hexes: north and south are direct neighbours.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Coordinate {

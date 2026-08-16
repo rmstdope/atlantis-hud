@@ -288,10 +288,18 @@ export type KnownMapHex = {
   settlement: SettlementInfo | null;
 };
 
+/** One level the known map has hexes on, with the word the level control shows for it. */
+export type MapLevel = {
+  z: number;
+  name: string;
+};
+
 /** Everything the faction knows about the map, resolved once by the core. */
 export type KnownMap = {
   /** Sorted by level, then row, then column. */
   hexes: KnownMapHex[];
+  /** The distinct levels `hexes` holds, ascending by z, each named by the core. */
+  levels: MapLevel[];
   currentTurn: number | null;
 };
 

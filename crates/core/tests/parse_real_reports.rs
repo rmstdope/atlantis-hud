@@ -519,6 +519,20 @@ fn a_fresh_factions_first_turn_parses_with_no_history_to_speak_of() {
 }
 
 #[test]
+fn the_first_turn_is_the_nexus_on_its_own_level() {
+    let parsed = parse_regions(FIRST_TURN);
+
+    assert_eq!(parsed.regions.len(), 1);
+    let region = &parsed.regions[0];
+    assert_eq!(region.region_id, "0:0,0");
+    assert_eq!(region.coordinate.z, 0);
+    assert_eq!(region.terrain, "nexus");
+    assert_eq!(region.province, "The Void");
+    assert!(!region.units.is_empty());
+    assert!(region.exits.is_empty());
+}
+
+#[test]
 fn a_report_with_no_orders_template_parses_with_everything_else_intact() {
     let parsed = parse_regions(NO_ORDERS);
 
