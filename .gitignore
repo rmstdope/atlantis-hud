@@ -28,13 +28,16 @@ packages/browser-core/src/wasm/
 
 # Local agent scratch space; never part of the project, except the project-wide agent
 # configuration: the repository's skills, its agent definitions, and the shared settings (beads
-# session hook). `.claude/agents-state/` stays ignored - the stop flags in it are live state
-# belonging to one machine's running agents, not to the project.
+# session hook).
 .claude/*
 !.claude/skills/
 !.claude/agents/
 !.claude/settings.json
 !.claude/cerebro
+
+# Cerebro's own bookkeeping - agent state files, stop flags and the agents' worktrees. Live
+# machine state, never part of the project (ah-v82).
+.cerebro/
 
 # Games live in the platform application data directory, never in the repository. This is a
 # backstop against a stray relative path putting one here again, as one did before issue #33.

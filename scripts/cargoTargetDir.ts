@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { dirname, resolve, sep } from "node:path";
 
 /** Where the agents' worktrees live, relative to the repository root. */
-export const AGENT_WORKSPACES = ".claude";
+export const AGENT_WORKSPACES = ".cerebro";
 
 /** One separator, so a comparison is about the path rather than about the platform. */
 export function normalize(path: string): string {

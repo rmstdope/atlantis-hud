@@ -51,9 +51,9 @@ Every `.claude/cerebro/…` path below comes from that submodule. On a clone mad
 or directory" rather than anything that names the real cause.
 
 That script starts one interactive session and nothing else. The session takes a single bead through
-to merged, writes `done` to `.claude/agents-state/<name>.state.json`, and stops; the Emacs fleet view
+to merged, writes `done` to `.cerebro/state/<name>.state.json`, and stops; the Emacs fleet view
 sees that, ends it, and starts a fresh session for the next bead — unless
-`.claude/agents-state/<name>.stop` says otherwise. So one bead per session is a property of how
+`.cerebro/state/<name>.stop` says otherwise. So one bead per session is a property of how
 implementers run rather than a rule an agent has to keep, and no
 context grows across beads.
 
@@ -71,7 +71,7 @@ review comments unanswered. A session of its own can simply block until the revi
 That session is interactive, runs on Fable, and does nothing until you ask. It cannot start an
 implementer — starting one means starting a session, and only you can do that (`s` in the Emacs fleet
 view, or the launcher in a terminal). It takes one down by touching
-`.claude/agents-state/<name>.stop`. **Taking one down means telling it to finish**: the flag is read
+`.cerebro/state/<name>.stop`. **Taking one down means telling it to finish**: the flag is read
 when an implementer reports `done`, never mid-bead, so it completes what it is on and sees it merged
 — interrupting one mid-bead strands a claim, a worktree and an open PR.
 
@@ -85,7 +85,7 @@ a question only you can settle shows as `asking`, and hands the bead to the `hum
 answers within fifteen minutes.
 
 There are no `.log` files any more; they belonged to the `--print` launcher that could tee a
-`stream-json` stream. `.claude/agents-state/<name>.state.json` is what Cerebro reads instead.
+`stream-json` stream. `.cerebro/state/<name>.state.json` is what Cerebro reads instead.
 
 Cerebro also sweeps up after implementers that did not get to the end of their own cleanup, on
 startup and every ten minutes. `.claude/cerebro/scripts/prune-worktrees.sh` removes an agent worktree only when
@@ -184,7 +184,7 @@ defect fixed twice in the same place, a change that had to touch several files, 
 names a structural reason something cost time — never a bare principle or "could be cleaner". Every
 finding lands at **P4**, unranked, for Xavier to triage with you like anything else in the backlog;
 Bishop never edits code and never sets a priority itself. It writes the same
-`.claude/agents-state/<name>.state.json` file every other agent does, but holds no claim, lease or
+`.cerebro/state/<name>.state.json` file every other agent does, but holds no claim, lease or
 PR, so unlike every other role here it ends its own turn once the sweep is reported rather than
 looping — start it again with `.claude/cerebro/scripts/run-bishop` whenever you want another read.
 
@@ -319,7 +319,7 @@ rules that must always hold are:
   bead ID and a short description of the work, e.g., `ah-t65-load-multiple-reports`. Run
   `git fetch origin main` and branch from `origin/main` — with several agents about, `main` is
   often checked out in somebody else's worktree, and `git checkout main` then fails.
-- ALWAYS branch in **a worktree of your own** under `.claude/worktrees/`, and never in the main
+- ALWAYS branch in **a worktree of your own** under `.cerebro/worktrees/`, and never in the main
   checkout. This holds for every session that commits anything, not only implementers: the planner
   committing a chosen mockup or a documentation change does it from a worktree too. The main checkout
   is shared with the navigator, so a branch created there moves their HEAD out from under them
