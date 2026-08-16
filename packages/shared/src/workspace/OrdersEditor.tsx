@@ -6,6 +6,7 @@ import { Annotation, EditorState, Transaction } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
 import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef } from "react";
 import { minimalChange } from "../editorReconcile";
+import { draftAfterSave } from "../orderEditor";
 import { orderCommandCompletions } from "../orderCompletion";
 import { toEditorDiagnostics } from "../orderLint";
 import { snippetCompletionSource, type OrderSnippet } from "../orderSnippets";
@@ -27,7 +28,19 @@ export type OrdersEditorHandle = {
 type OrdersEditorProps = {
   /** Whose orders these are. A different unit is a different document and a different history. */
   unitId: string;
-  value: string;
+  /**
+   * The unit's block as the document holds it. Read when the editor is created for a unit and
+   * again whenever `externalRevision` moves; ignored otherwise - between those moments the
+   * editor's own text is the truth and the document is a step behind it.
+   */
+  text: string;
+  /** Moves when something other than this editor wrote the document. See `OrdersOrigin`. */
+  externalRevision: number;
+  /**
+   * When the document last landed on disk, or null. A landed save ends the shown text with the
+   * newline an orders file ends with (`draftAfterSave`) - in the editor only, never written back.
+   */
+  savedAt: string | null;
   ariaLabel: string;
   /** This unit's diagnostics, lines counted from the top of its block as `diagnosticsForUnit` re-bases them. */
   problems: OrderDiagnostic[];
@@ -59,33 +72,26 @@ const editingKeymap = defaultKeymap.filter(
 /**
  * The orders editor: CodeMirror, one unit's block at a time.
  *
- * The document flows in as a plain string and edits flow out the same way, so the panel's draft
- * state machine neither knows nor cares that the textarea is gone. What changed underneath is how
- * the two stay reconciled: an external update is dispatched as the smallest splice that turns the
- * shown text into the given one, and CodeMirror maps the selection through it - which is what the
- * old `keepCaret` bookkeeping existed to fake.
+ * `text` flows in from the document and is read at creation and again on `externalRevision`;
+ * edits flow out through `onChange`. The editor is never handed its own text back - it owns the
+ * selected unit's text while it is on screen and writes the document but does not read it back
+ * into itself, so there is no reconciliation of echoes here any more. Only a genuine external
+ * update - an import, a restore, a route from the planner - is applied, as the smallest splice
+ * that turns the shown text into the given one; CodeMirror maps the selection through it.
  *
  * Keyed on the unit by recreating the whole editor state: history lives in the state, so undo in
  * one unit's editor can never rewind into another unit's text.
  */
 export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(function OrdersEditor(
-  { unitId, value, ariaLabel, problems, commands, snippets, onChange },
+  { unitId, text, externalRevision, savedAt, ariaLabel, problems, commands, snippets, onChange },
   ref
 ) {
   const container = useRef<HTMLDivElement | null>(null);
   const view = useRef<EditorView | null>(null);
-  // Every text this editor has handed to `onChange` and not yet heard back, oldest first, so
-  // its own echoes can be told from real external updates. The round trip through React is
-  // asynchronous: under load, `value` lags the document by several commits, and dispatching a
-  // lagging echo threw the document backwards - the burst of mutations a whole-draft
-  // replacement produces arrived faster than the commits echoing them (caught by CI machines
-  // slow enough to interleave them). A queue rather than one remembered text, because the echo
-  // that arrives can be any of the unacknowledged ones, not only the newest.
-  const pendingEchoes = useRef<string[]>([]);
 
   // Read through refs by the editor's callbacks, so a fresh render never means a rebuilt editor.
-  const latest = useRef({ value, ariaLabel, commands, snippets, onChange });
-  latest.current = { value, ariaLabel, commands, snippets, onChange };
+  const latest = useRef({ text, ariaLabel, commands, snippets, onChange });
+  latest.current = { text, ariaLabel, commands, snippets, onChange };
 
   useLayoutEffect(() => {
     const parent = container.current;
@@ -96,7 +102,7 @@ export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(fu
     const created = new EditorView({
       parent,
       state: EditorState.create({
-        doc: latest.current.value,
+        doc: latest.current.text,
         extensions: [
           history(),
           // Mod-Shift-z redoes on every platform, deliberately beyond what historyKeymap
@@ -125,13 +131,7 @@ export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(fu
             if (update.transactions.every((transaction) => transaction.annotation(External))) {
               return;
             }
-            const text = update.state.doc.toString();
-            pendingEchoes.current.push(text);
-            // Bounded: an acknowledgement that never comes must not become a leak.
-            if (pendingEchoes.current.length > 128) {
-              pendingEchoes.current.shift();
-            }
-            latest.current.onChange(text);
+            latest.current.onChange(update.state.doc.toString());
           }),
           EditorView.contentAttributes.of({
             "aria-label": latest.current.ariaLabel,
@@ -205,45 +205,55 @@ export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(fu
     });
 
     view.current = created;
-    // A fresh unit is a fresh conversation: nothing has been emitted yet.
-    pendingEchoes.current = [];
     return () => {
       created.destroy();
       view.current = null;
     };
   }, [unitId]);
 
-  // The document coming back from outside: usually the editor's own text a moment later, so
-  // usually a no-op. When it differs, the smallest splice keeps the caret where the player put it.
+  // A write from outside - an import, a restore, a route from the planner - and only that: the
+  // editor's own writes never come back through here (see OrdersOrigin), so there is no echo to
+  // tell from a real change and nothing to rewind. Applied as the smallest splice so the caret
+  // stays where the player put it; kept out of the undo history because the player did not do it.
   useEffect(() => {
     const editor = view.current;
     if (!editor) {
       return;
     }
-    // The editor's own words coming back are never applied, however stale: while the player
-    // types, `value` lags the document by however many commits React is behind, and splicing a
-    // lagging echo in rewound the editor to text the player had already left. Hearing an echo
-    // acknowledges it and everything emitted before it. Only a value the editor never emitted
-    // is genuinely external.
-    const echoed = pendingEchoes.current.indexOf(value);
-    if (echoed >= 0) {
-      pendingEchoes.current.splice(0, echoed + 1);
-      return;
-    }
-    const change = minimalChange(editor.state.doc.toString(), value);
+    const change = minimalChange(editor.state.doc.toString(), latest.current.text);
     if (change) {
-      // Kept out of the undo history as well as out of `onChange`: the document coming back is
-      // not something the player did, so undo must never replay it - recording it made Ctrl+Z
-      // able to write one unit's orders into another unit's block.
       editor.dispatch({
         changes: change,
         annotations: [External.of(true), Transaction.addToHistory.of(false)]
       });
-      // A genuinely external update supersedes whatever was in flight; the applied text is as
-      // good as emitted, so hearing it back later is an echo like any other.
-      pendingEchoes.current = [value];
     }
-  }, [value, unitId]);
+  }, [externalRevision, unitId]);
+
+  // Once a save has landed - and when a saved unit is browsed to - the shown text ends with the
+  // newline an orders file ends with. In the editor only: the block boundary neither holds nor
+  // needs it, so the document is not written (External, and not history either). An append at the
+  // end never moves a caret that is anywhere else - what persistence.spec pins.
+  //
+  // `externalRevision` is in the dependency list too, and not only `savedAt`: an external write
+  // (an import, a route) that lands while the document is already saved bumps `externalRevision`
+  // without moving `savedAt`, and the reload effect above splices in the block as the document
+  // holds it - never carrying the trailing newline, which is editor-only. Without this dependency
+  // that splice would stand untidied until the next save actually lands. Effects run in the order
+  // they are declared, so the reload above has already applied by the time this one reads the doc.
+  useEffect(() => {
+    const editor = view.current;
+    if (!editor || savedAt === null) {
+      return;
+    }
+    const current = editor.state.doc.toString();
+    const tidy = draftAfterSave(current);
+    if (tidy !== current) {
+      editor.dispatch({
+        changes: { from: current.length, to: current.length, insert: "\n" },
+        annotations: [External.of(true), Transaction.addToHistory.of(false)]
+      });
+    }
+  }, [savedAt, externalRevision, unitId]);
 
   // Diagnostics are pushed rather than pulled: validation already runs debounced in the shell,
   // and CodeMirror's own lint scheduler would only add a second debounce on top of it. Only when
