@@ -265,17 +265,21 @@ fn read_order(command: &Token, arguments: &[Token]) -> Option<Intent> {
         "LEAVE" if arguments.is_empty() => Some(Intent::Leave),
         // Not every spell takes a month, but the rules make no promise about which, and a mage
         // offered as somebody's spare teacher is worse than one left alone. The arguments are kept
-        // rather than discarded like BUILD/PRODUCE's, since transmutation's cost reads them.
-        "CAST" => {
-            let spell = arguments.first()?;
-            Some(Intent::Cast {
+        // rather than discarded like BUILD/PRODUCE's, since transmutation's cost reads them. A
+        // bare CAST names no spell - the syntax checker already says so - but still falls back to
+        // MonthLong rather than yielding no intent at all: a dropped intent would leave the unit
+        // looking free for the month, reintroducing the "spare teacher" problem MonthLong exists
+        // to avoid.
+        "CAST" => match arguments.first() {
+            Some(spell) => Some(Intent::Cast {
                 spell: spell.text.clone(),
                 arguments: arguments[1..]
                     .iter()
                     .map(|token| token.text.clone())
                     .collect(),
-            })
-        }
+            }),
+            None => Some(Intent::MonthLong("CAST")),
+        },
         word if crate::movement::orders::is_movement_command(word) => Some(Intent::Move {
             steps: forms::read_move_line(command, arguments)?,
         }),
@@ -663,6 +667,16 @@ mod tests {
                 arguments: vec!["4".to_string(), "rootstone".to_string()],
             }]
         );
+    }
+
+    /// A bare `CAST` names no spell - the syntax checker already says so
+    /// (`missing-arguments`) - but it still spends the whole month exactly as any other `CAST`
+    /// does, so it is read as `MonthLong` rather than dropped. A dropped intent would leave the
+    /// unit looking free, and reintroduce the "spare teacher" problem `MonthLong` existed to
+    /// avoid in the first place.
+    #[test]
+    fn a_bare_cast_still_spends_the_month() {
+        assert_eq!(intents("unit 5\nCAST\n"), vec![Intent::MonthLong("CAST")]);
     }
 
     /// A TURN block's contents are next month's orders, not this month's. Reading them as though
