@@ -1,5 +1,5 @@
 import type { ChangeEvent, DragEvent, ReactNode } from "react";
-import { useRef, useState } from "react";
+import { useRef } from "react";
 import { describeTurnMessages } from "../turnMessages";
 import { ExportMenu } from "./ExportMenu";
 import type { StatusLine, StatusTone } from "./shellStatus";
@@ -22,6 +22,16 @@ export type TurnMessages = {
   events: string[];
 };
 
+/** The header's popovers, at most one of which is open. Dialogs (settings, battles, changes) are not popovers and keep their own flags. */
+export type HeaderPopoverId =
+  | "games"
+  | "turns"
+  | "merged"
+  | "faction"
+  | "messages"
+  | "problems"
+  | "export";
+
 /**
  * What the import button says while it is working.
  *
@@ -34,18 +44,16 @@ function importingLabel(progress: { done: number; total: number } | null): strin
 
 type AppHeaderProps = {
   gameName: string;
-  /** Whether the picker is showing. The header owns the button; the shell owns the panel. */
-  pickerOpen: boolean;
-  onTogglePicker: () => void;
+  /** Which header popover is open, if any - one at a time, owned by the shell. */
+  openPopover: HeaderPopoverId | null;
+  /** Opens the named popover (closing whichever was open), or closes all with null. */
+  onOpenPopover: (id: HeaderPopoverId | null) => void;
   /** The picker itself, rendered under the indicator when it is open. */
   picker: ReactNode;
   factionLabel: string | null;
   turnLabel: string | null;
   /** The working turn's bare number, e.g. "71" - what the chip collapses to while comparing. */
   workingTurnNumber: string | null;
-  /** Whether the turn picker is showing. Same split as the game picker: the shell owns the panel. */
-  turnPickerOpen: boolean;
-  onToggleTurnPicker: () => void;
   /** The picker itself, rendered under the chip when it is open. */
   turnPicker: ReactNode;
   /**
@@ -57,22 +65,13 @@ type AppHeaderProps = {
   onStopComparing: () => void;
   /** How many allied reports have been folded into this turn. Zero hides the chip entirely. */
   mergedCount: number;
-  /** Whether the merged-factions panel is showing. Same split as the picker. */
-  mergedOpen: boolean;
-  onToggleMerged: () => void;
   /** The panel itself, rendered under the chip when it is open. */
   mergedPanel: ReactNode;
-  /** Whether the faction view is showing. Same split as the picker: the shell owns the panel. */
-  factionOpen: boolean;
-  onFactionToggle: () => void;
   /** The panel itself, rendered under the faction name when it is open. */
   factionPanel: ReactNode;
   status: StatusLine | null;
   /** The loaded turn's errors and events, or null when no turn is loaded. */
   messages: TurnMessages | null;
-  /** Whether the messages panel is showing. As with the picker, the shell owns the panel. */
-  messagesOpen: boolean;
-  onToggleMessages: () => void;
   /** The panel itself, rendered under the chip when it is open. */
   messagesPanel: ReactNode;
   /**
@@ -82,9 +81,6 @@ type AppHeaderProps = {
    * is the one in the hex nobody clicked on.
    */
   problemCount: number;
-  /** Whether the problems panel is showing. Same split as the picker: the shell owns the panel. */
-  problemsOpen: boolean;
-  onToggleProblems: () => void;
   problemsPanel: ReactNode;
   /**
    * How many battles the loaded turn describes. Zero hides the chip entirely, as with the other
@@ -152,32 +148,22 @@ type AppHeaderProps = {
  */
 export function AppHeader({
   gameName,
-  pickerOpen,
-  onTogglePicker,
+  openPopover,
+  onOpenPopover,
   picker,
   factionLabel,
   turnLabel,
   workingTurnNumber,
-  turnPickerOpen,
-  onToggleTurnPicker,
   turnPicker,
   comparedTurnLabel,
   onStopComparing,
   mergedCount,
-  mergedOpen,
-  onToggleMerged,
   mergedPanel,
-  factionOpen,
-  onFactionToggle,
   factionPanel,
   status,
   messages,
-  messagesOpen,
-  onToggleMessages,
   messagesPanel,
   problemCount,
-  problemsOpen,
-  onToggleProblems,
   problemsPanel,
   battleCount,
   battlesOpen,
@@ -198,14 +184,7 @@ export function AppHeader({
   settings
 }: AppHeaderProps) {
   const fileRef = useRef<HTMLInputElement | null>(null);
-  /**
-   * Whether the export menu is showing.
-   *
-   * Held here rather than in the shell like the other header popovers, because nothing outside
-   * this header opens it: the command palette runs the exports directly, so a shell that knew
-   * about this state would only be passing it back down again.
-   */
-  const [exportOpen, setExportOpen] = useState(false);
+  const toggle = (id: HeaderPopoverId) => onOpenPopover(openPopover === id ? null : id);
 
   const errorCount = messages?.errors.length ?? 0;
   const chipLabel = describeTurnMessages(errorCount, messages?.events.length ?? 0);
@@ -260,8 +239,8 @@ export function AppHeader({
           type="button"
           data-testid="game-indicator"
           aria-haspopup="dialog"
-          aria-expanded={pickerOpen}
-          onClick={onTogglePicker}
+          aria-expanded={openPopover === "games"}
+          onClick={() => toggle("games")}
           className="rounded border border-edge bg-panel-raised px-2 py-0.5 text-ink hover:border-brass"
         >
           {gameName}
@@ -269,7 +248,7 @@ export function AppHeader({
             ▾
           </span>
         </button>
-        {pickerOpen ? picker : null}
+        {openPopover === "games" ? picker : null}
       </span>
       {turnLabel ? (
         <span className="text-ink-soft">
@@ -283,8 +262,8 @@ export function AppHeader({
               type="button"
               data-testid="turn-chip"
               aria-haspopup="dialog"
-              aria-expanded={turnPickerOpen}
-              onClick={onToggleTurnPicker}
+              aria-expanded={openPopover === "turns"}
+              onClick={() => toggle("turns")}
               className="rounded border border-edge bg-panel-raised px-2 py-0.5 text-ink hover:border-brass"
             >
               {comparedTurnLabel ? (
@@ -314,7 +293,7 @@ export function AppHeader({
                 ✕
               </button>
             ) : null}
-            {turnPickerOpen ? turnPicker : null}
+            {openPopover === "turns" ? turnPicker : null}
           </span>
         </span>
       ) : null}
@@ -340,8 +319,8 @@ export function AppHeader({
               type="button"
               data-testid="faction-chip"
               aria-haspopup="dialog"
-              aria-expanded={factionOpen}
-              onClick={onFactionToggle}
+              aria-expanded={openPopover === "faction"}
+              onClick={() => toggle("faction")}
               className="text-ink hover:text-brass"
             >
               {factionLabel}
@@ -349,7 +328,7 @@ export function AppHeader({
                 ▾
               </span>
             </button>
-            {factionOpen ? factionPanel : null}
+            {openPopover === "faction" ? factionPanel : null}
           </span>
           {mergedCount > 0 ? (
             <span className="relative">
@@ -357,8 +336,8 @@ export function AppHeader({
                 type="button"
                 data-testid="merged-factions-chip"
                 aria-haspopup="dialog"
-                aria-expanded={mergedOpen}
-                onClick={onToggleMerged}
+                aria-expanded={openPopover === "merged"}
+                onClick={() => toggle("merged")}
                 className="ml-1.5 rounded border border-edge bg-panel-raised px-2 py-0.5 text-ink-soft hover:border-brass"
               >
                 +{mergedCount} merged
@@ -366,7 +345,7 @@ export function AppHeader({
                   ▾
                 </span>
               </button>
-              {mergedOpen ? mergedPanel : null}
+              {openPopover === "merged" ? mergedPanel : null}
             </span>
           ) : null}
         </span>
@@ -418,8 +397,8 @@ export function AppHeader({
             type="button"
             data-testid="turn-messages-chip"
             aria-haspopup="dialog"
-            aria-expanded={messagesOpen}
-            onClick={onToggleMessages}
+            aria-expanded={openPopover === "messages"}
+            onClick={() => toggle("messages")}
             className={`rounded border px-2 py-0.5 ${
               errorCount > 0
                 ? "border-warn text-warn"
@@ -432,7 +411,7 @@ export function AppHeader({
               ▾
             </span>
           </button>
-          {messagesOpen ? messagesPanel : null}
+          {openPopover === "messages" ? messagesPanel : null}
         </span>
       ) : null}
 
@@ -450,8 +429,8 @@ export function AppHeader({
             type="button"
             data-testid="problems-chip"
             aria-haspopup="dialog"
-            aria-expanded={problemsOpen}
-            onClick={onToggleProblems}
+            aria-expanded={openPopover === "problems"}
+            onClick={() => toggle("problems")}
             className="rounded border border-warn px-2 py-0.5 text-warn"
           >
             <span aria-hidden>⚠ </span>
@@ -460,7 +439,7 @@ export function AppHeader({
               ▾
             </span>
           </button>
-          {problemsOpen ? problemsPanel : null}
+          {openPopover === "problems" ? problemsPanel : null}
         </span>
       ) : null}
 
@@ -529,8 +508,8 @@ export function AppHeader({
           type="button"
           data-testid="export-menu"
           aria-haspopup="dialog"
-          aria-expanded={exportOpen}
-          onClick={() => setExportOpen((open) => !open)}
+          aria-expanded={openPopover === "export"}
+          onClick={() => toggle("export")}
           className="rounded border border-edge bg-panel-raised px-2.5 py-1 text-ink"
         >
           Export
@@ -538,7 +517,7 @@ export function AppHeader({
             ▾
           </span>
         </button>
-        {exportOpen ? (
+        {openPopover === "export" ? (
           <ExportMenu
             canExportOrders={canExport}
             canExportOrdersLong={canExportLong}
@@ -546,7 +525,7 @@ export function AppHeader({
             onExportOrders={onExportOrders}
             onExportOrdersLong={onExportOrdersLong}
             onExportMap={onExportMap}
-            onDismiss={() => setExportOpen(false)}
+            onDismiss={() => onOpenPopover(null)}
           />
         ) : null}
       </span>
