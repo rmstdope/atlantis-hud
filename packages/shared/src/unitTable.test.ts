@@ -1,4 +1,5 @@
 import type { ReportUnit } from "@atlantis/core-client";
+import { aReportUnit } from "@atlantis/core-client";
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_SORT,
@@ -13,27 +14,15 @@ import {
  * hexMapModel's, and that resolves against the environment's locale, so anything with an
  * apostrophe or mixed case could order differently under CI than on a developer's machine.
  */
-function unit(unitId: string, own: boolean, overrides: Partial<ReportUnit> = {}): ReportUnit {
-  return {
+const unit = (unitId: string, own: boolean, overrides: Partial<ReportUnit> = {}): ReportUnit =>
+  aReportUnit({
     unitId,
     name: unitId,
-    regionId: "1:7,53",
+    own,
     factionId: own ? "95" : "32",
     factionName: own ? "Borg TNG" : "Elder Tree Forests",
-    own,
-    onGuard: false,
-    flags: [],
-    items: [],
-    skills: [],
-    men: 1,
-    menEstimated: false,
-    menByRace: [],
-    weight: null,
-    capacity: null,
-    structureId: null,
     ...overrides
-  };
-}
+  });
 
 const ids = (units: ReportUnit[]) => units.map((entry) => entry.unitId);
 const sortBy = (units: ReportUnit[], overrides: Partial<SortState>) =>

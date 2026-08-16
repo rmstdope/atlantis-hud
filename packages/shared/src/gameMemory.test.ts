@@ -1,10 +1,5 @@
-import type {
-  CoreClient,
-  KnownMap,
-  OpenedGame,
-  ParsedReport,
-  RememberedRegion
-} from "@atlantis/core-client";
+import type { CoreClient, KnownMap, OpenedGame, ParsedReport, RememberedRegion } from "@atlantis/core-client";
+import { aParsedReport, aReportHeaderInfo, aReportRegion } from "@atlantis/core-client";
 import { describe, expect, it, vi } from "vitest";
 import {
   commitTurn,
@@ -16,49 +11,11 @@ import {
 } from "./gameMemory";
 
 function region(regionId: string, x: number, y: number) {
-  return {
-    regionId,
-    coordinate: { x, y, z: 1 },
-    terrain: "plain",
-    province: "Nowhere",
-    settlement: null,
-    population: null,
-    race: null,
-    taxBase: null,
-    wages: null,
-    maxWages: null,
-    entertainment: null,
-    products: [],
-    wanted: [],
-    forSale: [],
-    exits: [],
-    structures: [],
-    units: []
-  };
+  return aReportRegion({ regionId, coordinate: { x, y, z: 1 }, terrain: "plain", province: "Nowhere" });
 }
 
 function report(factionId: string | null): ParsedReport {
-  return {
-    header: {
-      factionId,
-      factionName: "Borg TNG",
-      factionTypes: [],
-      month: "January",
-      year: 6,
-      turnNumber: 71,
-      engineVersion: null,
-      ruleset: null,
-      rulesetVersion: null,
-      unclaimedSilver: null,
-      errors: [],
-      events: [],
-      factionStatus: { entries: [], unparsed: [] },
-      attitudes: { defaultAttitude: null, levels: [] }
-    },
-    regions: [],
-    battles: [],
-    ordersTemplate: null
-  };
+  return aParsedReport({ header: aReportHeaderInfo({ factionId, factionName: "Borg", month: "January" }) });
 }
 
 const KNOWN_MAP: KnownMap = { hexes: [], levels: [], currentTurn: 71 };

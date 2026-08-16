@@ -1,4 +1,5 @@
-import type { OpenedGame, ParsedReport } from "@atlantis/core-client";
+import type { OpenedGame, ParsedReport, ReportHeaderInfo } from "@atlantis/core-client";
+import { aParsedReport, aReportHeaderInfo } from "@atlantis/core-client";
 import { describe, expect, it } from "vitest";
 import { describeOrdersImport, isOrdersFile, ordersFileFaction, routeOrdersImport } from "./ordersImport";
 
@@ -90,29 +91,8 @@ describe("describing an import before it happens", () => {
   });
 });
 
-function report(overrides: Partial<ParsedReport["header"]> = {}): ParsedReport {
-  return {
-    header: {
-      factionId: "95",
-      factionName: "Borg TNG",
-      factionTypes: [],
-      month: "January",
-      year: 6,
-      turnNumber: 71,
-      engineVersion: null,
-      ruleset: null,
-      rulesetVersion: null,
-      unclaimedSilver: null,
-      errors: [],
-      events: [],
-      factionStatus: { entries: [], unparsed: [] },
-      attitudes: { defaultAttitude: null, levels: [] },
-      ...overrides
-    },
-    regions: [],
-    battles: [],
-    ordersTemplate: null
-  } as unknown as ParsedReport;
+function report(overrides: Partial<ReportHeaderInfo> = {}): ParsedReport {
+  return aParsedReport({ header: aReportHeaderInfo({ month: "January", ...overrides }) });
 }
 
 const OPEN_GAME = {

@@ -1,28 +1,9 @@
 import type { ReportUnit } from "@atlantis/core-client";
+import { aReportUnit } from "@atlantis/core-client";
 import { describe, expect, it } from "vitest";
 import { describeMen, describeMenBriefly, whyEstimated } from "./unitComposition";
 
-function unit(overrides: Partial<ReportUnit>): ReportUnit {
-  return {
-    unitId: "1",
-    name: "Scouts",
-    regionId: "1:1,1",
-    factionId: "1",
-    factionName: "Foo",
-    own: true,
-    onGuard: false,
-    flags: [],
-    items: [],
-    skills: [],
-    men: 0,
-    menEstimated: false,
-    menByRace: [],
-    weight: null,
-    capacity: null,
-    structureId: null,
-    ...overrides
-  };
-}
+const unit = (overrides: Partial<ReportUnit>): ReportUnit => aReportUnit({ men: 0, ...overrides });
 
 describe("describeMen", () => {
   it("says so when the count is a guess", () => {

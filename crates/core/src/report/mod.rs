@@ -36,7 +36,7 @@ use unwrap::{unwrap_lines, LogicalLine};
 /// absent from `ReportParseResult` (`crates/core/src/lib.rs`), which *is* persisted per turn - see
 /// the module doc on `battle.rs` for why keeping the round statistics as text is safe here but
 /// would roughly double a stored turn there.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct ParsedReport {

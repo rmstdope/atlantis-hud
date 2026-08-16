@@ -1,31 +1,12 @@
 import type { Coordinate, ParsedReport, ReportRegion, ReportUnit } from "@atlantis/core-client";
+import { aParsedReport, aReportHeaderInfo, aReportRegion, aReportUnit } from "@atlantis/core-client";
 import { describe, expect, it } from "vitest";
 import { regionIdOf } from "./hexMapModel";
 import { diffOrders, diffTurns } from "./turnDiff";
 
 const at = (x: number, y: number, z = 1): Coordinate => ({ x, y, z });
 
-function unit(overrides: Partial<ReportUnit> = {}): ReportUnit {
-  return {
-    unitId: "1",
-    name: "Scouts",
-    regionId: regionIdOf(at(7, 53)),
-    factionId: "95",
-    factionName: "Borg TNG",
-    own: true,
-    onGuard: false,
-    flags: [],
-    items: [],
-    skills: [],
-    men: 1,
-    menEstimated: false,
-    menByRace: [],
-    weight: null,
-    capacity: null,
-    structureId: null,
-    ...overrides
-  };
-}
+const unit = (overrides: Partial<ReportUnit> = {}): ReportUnit => aReportUnit(overrides);
 
 function foreignUnit(overrides: Partial<ReportUnit> = {}): ReportUnit {
   return unit({
@@ -38,52 +19,11 @@ function foreignUnit(overrides: Partial<ReportUnit> = {}): ReportUnit {
   });
 }
 
-function region(coordinate: Coordinate, overrides: Partial<ReportRegion> = {}): ReportRegion {
-  return {
-    regionId: regionIdOf(coordinate),
-    coordinate,
-    terrain: "mountain",
-    province: "Inhead",
-    settlement: null,
-    population: null,
-    race: null,
-    taxBase: null,
-    wages: null,
-    maxWages: null,
-    entertainment: null,
-    products: [],
-    wanted: [],
-    forSale: [],
-    exits: [],
-    structures: [],
-    units: [],
-    ...overrides
-  };
-}
+const region = (coordinate: Coordinate, overrides: Partial<ReportRegion> = {}): ReportRegion =>
+  aReportRegion({ coordinate, ...overrides });
 
-function report(regions: ReportRegion[], turnNumber: number | null = 71): ParsedReport {
-  return {
-    header: {
-      factionId: "95",
-      factionName: "Borg TNG",
-      factionTypes: [],
-      month: "December",
-      year: 6,
-      turnNumber,
-      engineVersion: null,
-      ruleset: null,
-      rulesetVersion: null,
-      unclaimedSilver: null,
-      errors: [],
-      events: [],
-      factionStatus: { entries: [], unparsed: [] },
-      attitudes: { defaultAttitude: null, levels: [] }
-    },
-    regions,
-    battles: [],
-    ordersTemplate: null
-  };
-}
+const report = (regions: ReportRegion[], turnNumber: number | null = 71): ParsedReport =>
+  aParsedReport({ header: aReportHeaderInfo({ turnNumber }), regions });
 
 describe("diffTurns: units", () => {
   it("diffing a report against itself reports nothing", () => {

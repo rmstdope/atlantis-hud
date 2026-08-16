@@ -11,6 +11,7 @@
  */
 
 import type { Coordinate, ReportRegion, ReportUnit, StructureInfo } from "@atlantis/core-client";
+import { aReportRegion, aReportUnit } from "@atlantis/core-client";
 import type { HexKnowledge, HexNode } from "../../hexMapModel";
 
 const LEVEL = 1;
@@ -23,27 +24,8 @@ function structure(kind: string): StructureInfo {
   return { structureId: `${kind}-1`, name: kind, kind, description: null, needs: null };
 }
 
-function unit(overrides: Partial<ReportUnit> = {}): ReportUnit {
-  return {
-    unitId: "900",
-    name: "Walker",
-    regionId: "",
-    factionId: "17",
-    factionName: "Own",
-    own: true,
-    onGuard: false,
-    flags: [],
-    items: [],
-    skills: [],
-    men: 1,
-    menEstimated: false,
-    menByRace: [],
-    weight: null,
-    capacity: null,
-    structureId: null,
-    ...overrides
-  };
-}
+const unit = (overrides: Partial<ReportUnit> = {}): ReportUnit =>
+  aReportUnit({ unitId: "900", name: "Walker", regionId: "", factionId: "17", factionName: "Own", ...overrides });
 
 /** Units laid out as counts rather than one call per unit, which the hexes below read better as. */
 function units(spec: { own?: number; foreign?: number; monsters?: number; guard?: boolean }) {
@@ -77,25 +59,15 @@ function hex(spec: {
   const region: ReportRegion | null =
     spec.visited === false
       ? null
-      : {
+      : aReportRegion({
           regionId,
           coordinate: spec.coordinate,
           terrain: spec.terrain,
           province: "Inhead",
           settlement: spec.settlement ?? null,
-          population: null,
-          race: null,
-          taxBase: null,
-          wages: null,
-          maxWages: null,
-          entertainment: null,
-          products: [],
-          wanted: [],
-          forSale: [],
-          exits: [],
           structures: (spec.structures ?? []).map(structure),
           units: held.map((held) => ({ ...held, regionId }))
-        };
+        });
 
   return {
     regionId,

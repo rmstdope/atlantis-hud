@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { ReportRegion, ReportUnit } from "@atlantis/core-client";
+import { aReportRegion, aReportUnit } from "@atlantis/core-client";
 import type { HexNode } from "../hexMapModel";
 import { UnitTableDock } from "./UnitTableDock";
 
@@ -11,28 +12,8 @@ import { UnitTableDock } from "./UnitTableDock";
  * is checkable here is what the pane says when it has nothing to show, which is the part ah-o86
  * changed: a stale hex's empty list must not read as a genuinely empty hex.
  */
-function region(overrides: Partial<ReportRegion> = {}): ReportRegion {
-  return {
-    regionId: "1:6,52",
-    coordinate: { x: 6, y: 52, z: 1 },
-    terrain: "tundra",
-    province: "Farside",
-    settlement: null,
-    population: null,
-    race: null,
-    taxBase: null,
-    wages: null,
-    maxWages: null,
-    entertainment: null,
-    products: [],
-    wanted: [],
-    forSale: [],
-    exits: [],
-    structures: [],
-    units: [],
-    ...overrides
-  };
-}
+const region = (overrides: Partial<ReportRegion> = {}): ReportRegion =>
+  aReportRegion({ regionId: "1:6,52", coordinate: { x: 6, y: 52, z: 1 }, terrain: "tundra", province: "Farside", ...overrides });
 
 function hex(overrides: Partial<HexNode> = {}): HexNode {
   return {
@@ -56,27 +37,8 @@ function draw(node: HexNode | null): string {
   return renderToStaticMarkup(<UnitTableDock hex={node} />);
 }
 
-function unit(overrides: Partial<ReportUnit> = {}): ReportUnit {
-  return {
-    unitId: "1",
-    name: "Scout",
-    regionId: "1:6,52",
-    factionId: "1",
-    factionName: "My Faction",
-    own: true,
-    onGuard: false,
-    flags: [],
-    items: [],
-    skills: [],
-    men: 1,
-    menEstimated: false,
-    menByRace: [],
-    weight: null,
-    capacity: null,
-    structureId: null,
-    ...overrides
-  };
-}
+const unit = (overrides: Partial<ReportUnit> = {}): ReportUnit =>
+  aReportUnit({ unitId: "1", name: "Scout", regionId: "1:6,52", factionId: "1", factionName: "My Faction", ...overrides });
 
 describe("the units pane on an empty hex", () => {
   it("a stale hex explains its empty list instead of claiming an empty hex", () => {

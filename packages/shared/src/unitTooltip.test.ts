@@ -1,28 +1,10 @@
 import type { ReportUnit } from "@atlantis/core-client";
+import { aReportUnit } from "@atlantis/core-client";
 import { describe, expect, it } from "vitest";
 import { HOVER_DELAY_MS, placeTooltip, summariseUnit } from "./unitTooltip";
 
-function unit(overrides: Partial<ReportUnit> = {}): ReportUnit {
-  return {
-    unitId: "18642",
-    name: "Seven of Eight",
-    regionId: "1:7,53",
-    factionId: "95",
-    factionName: "Borg TNG",
-    own: true,
-    onGuard: false,
-    flags: [],
-    items: [],
-    skills: [],
-    men: 1,
-    menEstimated: false,
-    menByRace: [],
-    weight: null,
-    capacity: null,
-    structureId: null,
-    ...overrides
-  };
-}
+const unit = (overrides: Partial<ReportUnit> = {}): ReportUnit =>
+  aReportUnit({ unitId: "18642", name: "Seven of Eight", ...overrides });
 
 describe("HOVER_DELAY_MS", () => {
   it("waits long enough that passing the pointer over the table shows nothing", () => {

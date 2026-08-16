@@ -1,48 +1,41 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { Battle } from "@atlantis/core-client";
+import { aBattle, aBattleUnit } from "@atlantis/core-client";
 import { BattlesDialog } from "./BattlesDialog";
 
 const hexLabel = (regionId: string) => `hex ${regionId}`;
 
-const FIRST: Battle = {
-  headline: "AA Tomb's Guards (7280) attacks Pirates (14789) in ocean (25,55) in Atlantis Ocean!",
-  attacker: { name: "AA Tomb's Guards", id: "7280" },
-  defender: { name: "Pirates", id: "14789" },
-  terrain: "ocean",
-  coordinate: { x: 25, y: 55, z: 1 },
-  province: "Atlantis Ocean",
+const FIRST: Battle = aBattle({
   attackers: [
-    {
+    aBattleUnit({
       name: "AA Tomb's Guards",
       id: "7280",
       faction: { name: "Greywolf", id: "33" },
-      flags: [],
       body: "78 gnolls [GNOL], combat 5"
-    },
-    {
+    }),
+    aBattleUnit({
       name: "One of Eight",
       id: "18636",
       faction: { name: "Borg TNG", id: "95" },
       flags: ["LEAD"],
       body: "leather armor"
-    },
-    {
+    }),
+    aBattleUnit({
       name: "Ailen's Acolyte",
       id: "2965",
       faction: null,
       flags: ["LEAD"],
       body: "mithril sword [MSWO]"
-    }
+    })
   ],
   defenders: [
-    {
+    aBattleUnit({
       name: "Pirates",
       id: "14789",
       faction: { name: "Pirates", id: "0" },
-      flags: [],
       body: "15 sailors [SAIL]"
-    }
+    })
   ],
   rounds: [
     {
@@ -69,11 +62,8 @@ const FIRST: Battle = {
     }
   ],
   damagedUnits: ["14789"],
-  spoils: "3 magic crossbows [MXBO], 2531 silver [SILV]",
-  lineStart: 10,
-  lineEnd: 200,
-  assassination: false
-};
+  spoils: "3 magic crossbows [MXBO], 2531 silver [SILV]"
+});
 
 const SECOND: Battle = {
   ...FIRST,
@@ -196,23 +186,15 @@ describe("the battles dialog", () => {
   });
 
   it("shows an assassination with an unknown attacker, the victim as defender and real casualties", () => {
-    const assassination: Battle = {
-      ...FIRST,
+    const assassination: Battle = aBattle({
       headline: "L Arslan (1446) is assassinated in forest (43,79) in Utso!",
       attacker: null,
       defender: { name: "L Arslan", id: "1446" },
       terrain: "forest",
       coordinate: { x: 43, y: 79, z: 1 },
       province: "Utso",
-      attackers: [],
-      defenders: [],
-      rounds: [],
-      statistics: [],
-      casualties: [],
-      damagedUnits: [],
-      spoils: null,
       assassination: true
-    };
+    });
 
     const markup = draw({ battles: [assassination], selectedIndex: 0 });
 

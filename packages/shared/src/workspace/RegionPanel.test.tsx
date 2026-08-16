@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { CoreClient, MapLevel, OpenedGame, OrderDiagnostic } from "@atlantis/core-client";
+import { aReportRegion } from "@atlantis/core-client";
 import { SURFACE, type HexNode } from "../hexMapModel";
 import { resetHexNotesStore } from "../hexNotesStore";
 import { RegionPanel } from "./RegionPanel";
@@ -34,7 +35,7 @@ const HEX: HexNode = {
   settlementName: "Inholm",
   ownUnitCount: 1,
   foreignUnitCount: 91,
-  region: {
+  region: aReportRegion({
     regionId: "1:7,53",
     coordinate: { x: 7, y: 53, z: SURFACE },
     terrain: "mountain",
@@ -45,14 +46,8 @@ const HEX: HexNode = {
     taxBase: 1200,
     wages: "$14",
     maxWages: 16,
-    entertainment: 200,
-    products: [],
-    wanted: [],
-    forSale: [],
-    exits: [],
-    structures: [],
-    units: []
-  }
+    entertainment: 200
+  })
 };
 
 const PROBLEMS: OrderDiagnostic[] = [

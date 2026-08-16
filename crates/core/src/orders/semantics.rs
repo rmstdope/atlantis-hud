@@ -1070,7 +1070,6 @@ fn taught_by(teacher: &Ordered<'_>, hex: &Hex<'_>) -> i64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::report::header::ReportHeader;
     use crate::report::model::{Coordinate, Skill};
 
     const RULESET: &str = atlantis_hud_fixtures::RULESET_JSON;
@@ -1087,19 +1086,10 @@ mod tests {
             coordinate: Coordinate { x: 7, y: 53, z: 1 },
             terrain: "mountain".to_string(),
             province: "Inhead".to_string(),
-            settlement: None,
             population: Some(1000),
             race: Some("humans".to_string()),
-            tax_base: None,
-            wages: None,
-            max_wages: None,
-            entertainment: None,
-            products: Vec::new(),
-            wanted: Vec::new(),
-            for_sale: Vec::new(),
-            exits: Vec::new(),
-            structures: Vec::new(),
             units,
+            ..Default::default()
         }
     }
 
@@ -1111,18 +1101,11 @@ mod tests {
             faction_id: Some("95".to_string()),
             faction_name: Some("Ours".to_string()),
             own: true,
-            on_guard: false,
-            flags: Vec::new(),
-            items: Vec::new(),
-            skills: Vec::new(),
             men: 1,
             // The checks that price a study are entitled to an exact headcount, so the fixtures
             // give them one; `an_estimated_headcount_prices_no_study` covers the other case.
             men_estimated: false,
-            men_by_race: Vec::new(),
-            weight: None,
-            capacity: None,
-            structure_id: None,
+            ..Default::default()
         }
     }
 
@@ -1161,10 +1144,8 @@ mod tests {
 
     fn report(regions: Vec<ReportRegion>) -> ParsedReport {
         ParsedReport {
-            header: ReportHeader::default(),
             regions,
-            battles: Vec::new(),
-            orders_template: None,
+            ..Default::default()
         }
     }
 
