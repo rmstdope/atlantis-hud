@@ -43,7 +43,7 @@ export function ForeignReportPrompt({
     <section
       data-testid="foreign-report-prompt"
       aria-label="Report from another faction"
-      className="flex-none border-b border-edge bg-panel px-3 py-2 text-[11.5px] whitespace-normal"
+      className="flex-none border-b border-edge bg-panel px-3 py-2 text-pane whitespace-normal"
     >
       {foreignReportPromptCopy(copy).map((paragraph) => (
         <p key={paragraph} className="max-w-3xl text-ink-soft">

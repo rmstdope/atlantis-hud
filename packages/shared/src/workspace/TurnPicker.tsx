@@ -31,7 +31,7 @@ export function TurnPicker({
 
   return (
     <PopoverFrame testId="turn-picker" label="Turns of this game" align="left" width="w-72" padding="p-2">
-      <div className="px-1 pb-1.5 text-[10px] tracking-[0.12em] text-brass uppercase">
+      <div className="px-1 pb-1.5 text-pane-sm tracking-[0.12em] text-brass uppercase">
         Turns of this game
       </div>
       <ul className={`${POPOVER_BODY_MAX_H} overflow-y-auto`}>
@@ -51,7 +51,7 @@ export function TurnPicker({
                 <span className="w-3 text-center">{isWorking ? "●" : isCompared ? "⇄" : ""}</span>
                 <span className="tabular-nums text-ink">{turn.key.turnNumber}</span>
                 {turn.season ? <span className="text-ink-dim">{turn.season}</span> : null}
-                <span className="ml-auto text-[9.5px] text-ink-dim">
+                <span className="ml-auto text-pane-sm text-ink-dim">
                   {isWorking ? "playing" : isCompared ? "compare" : ""}
                 </span>
               </button>

@@ -26,7 +26,7 @@ export function Section({
 }) {
   return (
     <>
-      <p className="mt-2.5 mb-1 text-[10px] uppercase tracking-[0.1em] text-brass">
+      <p className="mt-2.5 mb-1 text-pane-sm uppercase tracking-[0.1em] text-brass">
         {title}
         {count === undefined ? null : (
           <span className="ml-1.5 normal-case tracking-normal text-ink-dim">{count}</span>

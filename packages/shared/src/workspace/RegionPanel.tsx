@@ -202,7 +202,7 @@ function RegionProblemsToggle({ count }: { count: number }) {
 
   return (
     <label
-      className={`flex cursor-pointer items-center gap-1.5 rounded border px-2 py-0.5 text-[10px] normal-case tracking-normal ${
+      className={`flex cursor-pointer items-center gap-1.5 rounded border px-2 py-0.5 text-pane-sm normal-case tracking-normal ${
         shown ? "border-select bg-select/15 text-ink" : "border-edge text-ink-dim"
       }`}
     >

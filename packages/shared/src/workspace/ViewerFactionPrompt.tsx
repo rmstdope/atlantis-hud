@@ -52,7 +52,7 @@ export function ViewerFactionPrompt({
         role="dialog"
         aria-modal="true"
         aria-label="Which faction is yours"
-        className="w-[30rem] rounded border border-edge bg-panel-raised p-3 text-[11.5px] whitespace-normal shadow-lg"
+        className="w-[30rem] rounded border border-edge bg-panel-raised p-3 text-pane whitespace-normal shadow-lg"
       >
         {viewerFactionQuestion(options.map((option) => option.label)).map((paragraph) => (
           <p key={paragraph} className="text-ink-soft">

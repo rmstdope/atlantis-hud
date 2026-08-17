@@ -3383,3 +3383,33 @@ test("a note pinned on the map opens its tags and selects the hex", async ({ pag
   await expect(notesCheckbox).toBeChecked();
   await expect(page.getByTestId("map-note-pin")).toBeVisible();
 });
+
+/**
+ * ah-46p.1: the panes' type used to be set in absolute `px`, which ignores the reader's own
+ * font-size preference outright. The three `--text-pane*` tokens are `rem`, so raising the root
+ * font size (what a reader's preference actually changes) must reach the panes - and the region
+ * panel must still fit inside its rail once it does.
+ */
+test("the panes grow when the reader's text size does", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+
+  const header = page.getByTestId("app-header");
+  const defaultSize = await header.evaluate(
+    (element) => Number.parseFloat(getComputedStyle(element).fontSize)
+  );
+
+  await page.addStyleTag({ content: "html { font-size: 20px }" });
+
+  const grownSize = await header.evaluate(
+    (element) => Number.parseFloat(getComputedStyle(element).fontSize)
+  );
+  expect(grownSize).toBeGreaterThan(defaultSize);
+
+  const rail = page.locator('[data-map-overlay="left"]');
+  const railBox = (await rail.boundingBox())!;
+  const view = page.viewportSize()!;
+  expect(railBox.x).toBeGreaterThanOrEqual(0);
+  expect(railBox.x + railBox.width).toBeLessThanOrEqual(view.width);
+  expect(railBox.y + railBox.height).toBeLessThanOrEqual(view.height);
+});
