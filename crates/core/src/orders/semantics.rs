@@ -1727,21 +1727,25 @@ fn check_quartermasters(
                 .iter()
                 .any(|held| held.tag.eq_ignore_ascii_case(&skill.tag))
         })
-        .flat_map(|unit| {
-            ordered
-                .get(&unit.unit_id)
-                .iter()
-                .filter_map(move |placed| match &placed.intent {
-                    Intent::Study { skill: studied } => Some((unit, placed, studied)),
-                    _ => None,
-                })
+        .filter_map(|unit| {
+            // The first STUDY order wins, the same as `Ordered::studies()` reads it - a unit that
+            // writes several is not asking to be counted once per line.
+            let placed =
+                ordered
+                    .get(&unit.unit_id)
+                    .iter()
+                    .find_map(|placed| match &placed.intent {
+                        Intent::Study { skill: studied } => Some((placed, studied)),
+                        _ => None,
+                    })?;
+            Some((unit, placed))
         })
-        .filter(|(_, _, studied)| {
+        .filter(|(_, (_, studied))| {
             ruleset
                 .find_skill(studied)
                 .is_some_and(|found| found.tag.eq_ignore_ascii_case(&skill.tag))
         })
-        .map(|(unit, placed, _)| (unit, placed))
+        .map(|(unit, (placed, _))| (unit, placed))
         .collect();
 
     candidates.sort_by_key(|(_, placed)| placed.line);
@@ -3780,6 +3784,22 @@ mod tests {
         assert_eq!(
             quartermasters(vec![region(vec![unit("5")])], "unit 5\nSTUDY QUAR\n", 2, 2),
             vec![]
+        );
+    }
+
+    /// A unit that writes two STUDY lines is not asking to be counted once per line - only the
+    /// first is what the server actually studies, the same as `Ordered::studies()` reads it.
+    #[test]
+    fn a_unit_with_two_study_orders_is_counted_once() {
+        assert_eq!(
+            quartermasters(
+                vec![region(vec![unit("5")])],
+                "unit 5\nSTUDY QUAM\nSTUDY QUAM\n",
+                1,
+                2
+            ),
+            vec![],
+            "the one free place is spent once, not once per STUDY line"
         );
     }
 

@@ -284,7 +284,7 @@ function GlobalSettings() {
 
 /**
  * Which advisory order-check codes should not run at all: the Warnings tab's on/off toggles,
- * grouped Teaching / Resources / Markets / Guarding / Orders / Sailing. Off means the core never
+ * grouped Studying/Teaching / Resources / Markets / Guarding / Orders / Sailing. Off means the core never
  * produces the finding - counts, chip, panels and editor underlines all agree, nothing anywhere
  * says "hidden".
  */
