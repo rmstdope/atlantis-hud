@@ -137,7 +137,7 @@ describe("pane type scale", () => {
   it("declares the pane type scale as rem tokens in the theme block", () => {
     const themeBlock = extractBlock(css, /@theme\b/);
     // Reaches inside an optional `calc(...)` while still capturing the rem base, so a token
-    // multiplied by `--ui-scale` (ah-46p.2) still matches here.
+    // wrapped in arithmetic still matches here.
     const sizes = new Map(
       [...themeBlock.matchAll(/(--text-pane[\w-]*)\s*:\s*(?:calc\(\s*)?([\d.]+rem)/g)].map(
         (match) => [match[1], match[2]]
@@ -153,12 +153,32 @@ describe("pane type scale", () => {
       expect(value.endsWith("rem"), `${token} is ${value}, not rem`).toBe(true);
     }
 
-    // Each token must carry the Interface size multiplier, or the setting (ah-46p.2) reaches
-    // nothing.
+    // No token may carry the Interface size multiplier: the root font size carries it for every
+    // `rem` in the application (ah-ziv), so a multiplier here would apply the setting twice —
+    // 400% type for a 200% setting.
     for (const token of ["--text-pane-sm", "--text-pane", "--text-pane-lg"]) {
       const declared = themeBlock.match(new RegExp(`${token}\\s*:\\s*([^;]+);`))?.[1] ?? "";
-      expect(declared, `${token} is ${declared}`).toContain("var(--ui-scale");
+      expect(declared, `${token} is ${declared}`).not.toContain("var(--ui-scale");
     }
+  });
+
+  it("applies the interface size once, at the root", () => {
+    // One multiplier, on the root font size, so every `rem` in the application follows it — type,
+    // widths, padding and gaps alike (ah-ziv). `rem` in the root's own `font-size` resolves
+    // against the *initial* root size (the reader's own preference), so this is not circular.
+    expect(css).toMatch(/font-size\s*:\s*calc\(\s*1rem\s*\*\s*var\(--ui-scale\)\s*\)\s*;/);
+  });
+
+  it("keeps a dialog inside the window", () => {
+    // A dialog declares the width its content wants, and at 200% that can be past the edge of the
+    // window — taking its Close button with it. The viewport is the last word (ah-ziv, O1). On the
+    // role rather than on each component, so a new dialog inherits it.
+    // `aria-modal` narrows it to the centred modals; an anchored `PopoverFrame` shares the role
+    // but is fluid and out of scope.
+    const dialogRule = extractBlock(css, /\[role="dialog"\]\[aria-modal="true"\]/);
+    expect(dialogRule).toMatch(/max-width\s*:/);
+    expect(dialogRule).toMatch(/max-height\s*:/);
+    expect(dialogRule).toMatch(/overflow\s*:/);
   });
 
   it("declares --ui-scale with a default of 1, outside the @theme block", () => {

@@ -327,6 +327,44 @@ test("the panes grow when the interface size does", async ({ page }) => {
   await expect(page.getByTestId("settings-panel")).toHaveCount(0);
 });
 
+/**
+ * ah-ziv: the setting reaches the boxes as well as the type. The multiplier sits on the root font
+ * size, so the Settings dialog's own `w-[26rem]` grows with the reader's text instead of squeezing
+ * it into two- and three-line rows - and the cap on a modal keeps it on screen while it does.
+ */
+test("the settings dialog grows with the interface size", async ({ page }) => {
+  await clearGames(page);
+  await createGame(page, "Settings scale game");
+  await openReport(page);
+
+  await page.getByTestId("settings-indicator").click();
+  const panel = page.getByTestId("settings-panel");
+  await expect(panel).toBeVisible();
+  const widthBefore = (await panel.boundingBox())!.width;
+
+  await page.getByTestId("settings-interface-size").fill("200");
+  // The slider re-renders the panel it lives in; read the box only once the growth has landed.
+  // `boundingBox()` is null while that re-render is mid-flight, so fall back to 0 and let `poll`
+  // retry rather than throwing on a transient.
+  await expect
+    .poll(async () => (await panel.boundingBox())?.width ?? 0)
+    .toBeGreaterThan(widthBefore * 1.5);
+
+  // ...and it is still fully inside the window, Close button included (O1).
+  const box = (await panel.boundingBox())!;
+  const viewport = page.viewportSize()!;
+  expect(box.x).toBeGreaterThanOrEqual(0);
+  expect(box.y).toBeGreaterThanOrEqual(0);
+  expect(box.x + box.width).toBeLessThanOrEqual(viewport.width + 1);
+  expect(box.y + box.height).toBeLessThanOrEqual(viewport.height + 1);
+  await expect(page.getByTestId("settings-close")).toBeVisible();
+
+  // Back to the default, so later tests inherit the look they expect.
+  await page.getByTestId("settings-interface-size").fill("100");
+  await page.keyboard.press("Escape");
+  await expect(panel).toHaveCount(0);
+});
+
 test("the settings dialog has no units-in-hex row controls", async ({ page }) => {
   await clearGames(page);
   await createGame(page, "No stepper game");

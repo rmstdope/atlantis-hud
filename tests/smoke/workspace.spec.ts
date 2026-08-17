@@ -53,6 +53,8 @@ const F42_T42 = readReport("g3f42t42");
  * exactly why the chip must still be visible at zero.
  */
 const F42_T82 = readReport("g3f42t82");
+/** Faction 21's turn 24: Raft [235] in the plain at (36,44), with a passenger aboard (ah-048). */
+const F21_T24 = readReport("g5f21t24");
 
 /** Inholm: a city with 24 structures and 92 units, one of them the player's. */
 const OWN_UNIT = "18642";
@@ -2251,6 +2253,36 @@ test("a written move order is drawn solid for next turn and dotted beyond", asyn
   await page.getByTestId("planner-arm").click();
   await expect(page.getByTestId("route-line-solid")).toHaveCount(0);
   await expect(page.getByTestId("route-line-dotted")).toHaveCount(0);
+});
+
+/**
+ * ah-048: a unit standing aboard a sailing ship writes no order of its own, and the map used to
+ * draw it nothing - though the units pane beside it already said "aboard Raft [235]", departing.
+ *
+ * Raft [235] sits in the plain at (36,44) of faction 21's turn 24, with Drones (10575) able to sail
+ * it and Drones (10594) simply aboard. The captain's SAIL SE is written, and then the passenger is
+ * selected: the map draws the passenger the same voyage, because it is the same voyage.
+ */
+test("selecting a passenger draws the fleet's voyage", async ({ page }) => {
+  await clearGames(page);
+  await expect(page.getByTestId("game-gate")).toBeVisible();
+  await createGame(page, "Passenger game");
+  await expect(page.getByTestId("app-header")).toBeVisible();
+  await choose(page, "turn-24.rep", F21_T24);
+  await expect(page.getByTestId("import-status")).toContainText("regions");
+
+  await selectHex(page, "1:36,44");
+  await selectUnit(page, "10575");
+  await fillOrders(page, "sail se");
+
+  // The captain's own voyage first, so the passenger's can be compared against something drawn.
+  await expect(page.getByTestId("route-line-solid")).toHaveCount(1);
+  const captain = await page.getByTestId("route-line-solid").getAttribute("points");
+
+  // The passenger wrote nothing, so its own block is empty - and the map draws the hull's route.
+  await selectUnit(page, "10594");
+  await expect(page.getByTestId("route-line-solid")).toHaveCount(1);
+  await expect(page.getByTestId("route-line-solid")).toHaveAttribute("points", captain ?? "");
 });
 
 /**

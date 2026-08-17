@@ -1023,7 +1023,7 @@ pub mod commands {
         raw_report: &str,
         remembered_json: &str,
         unit_id: &str,
-        orders: &str,
+        orders_document: &str,
     ) -> Result<atlantis_hud_core::movement::request::MoveOrderTraceResponse, String> {
         atlantis_hud_core::cache::with_global(|cache| {
             atlantis_hud_core::movement::request::trace_orders_for_remembered_report(
@@ -1032,7 +1032,7 @@ pub mod commands {
                 raw_report,
                 remembered_json,
                 unit_id,
-                orders,
+                orders_document,
             )
         })
     }
@@ -1346,8 +1346,16 @@ mod trace_move_orders_command_tests {
             serde_json::to_string(&far_side.regions[0]).expect("serializes")
         );
 
-        let answer = command_trace_move_orders(RULESET, &current, &remembered, "900", "MOVE SE SE")
-            .expect("the ruleset loads");
+        // The whole orders document, not one unit's block: a passenger's route is the hull's, so
+        // the core is given every unit's orders and finds the one this unit follows (ah-048).
+        let answer = command_trace_move_orders(
+            RULESET,
+            &current,
+            &remembered,
+            "900",
+            "unit 900\nMOVE SE SE",
+        )
+        .expect("the ruleset loads");
         let path = answer.path.expect("a traced path");
 
         assert_eq!(path.steps.len(), 2);
@@ -1364,7 +1372,7 @@ mod trace_move_orders_command_tests {
             corridor("plain", 1, 1, "  Southeast : plain (2,2) in Nowhere.")
         );
 
-        let answer = command_trace_move_orders(RULESET, &current, "[]", "900", "work")
+        let answer = command_trace_move_orders(RULESET, &current, "[]", "900", "unit 900\nwork")
             .expect("the ruleset loads");
         assert_eq!(answer.path, None);
     }

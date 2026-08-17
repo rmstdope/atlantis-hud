@@ -17,6 +17,10 @@ mod common;
 use common::at;
 
 /// Traces one unit's orders over the current report alone.
+///
+/// The core takes the whole orders document rather than one unit's block (ah-048), because a unit
+/// standing aboard a ship writes no order of its own - so these blocks are given the `unit` line
+/// the editor's document always carries.
 fn trace(unit_id: &str, orders: &str) -> MoveOrderTraceResponse {
     trace_orders_for_remembered_report(
         &mut ReportCache::new(),
@@ -24,9 +28,14 @@ fn trace(unit_id: &str, orders: &str) -> MoveOrderTraceResponse {
         TURN_71,
         "[]",
         unit_id,
-        orders,
+        &document(unit_id, orders),
     )
     .expect("the ruleset loads")
+}
+
+/// One unit's block as a document: `unit <id>` and then the orders.
+fn document(unit_id: &str, orders: &str) -> String {
+    format!("unit {unit_id}\n{orders}")
 }
 
 /// "* Seven of Eight (18642)" stands in the mountain at (7,53); "  North : mountain (7,51)".
@@ -53,7 +62,7 @@ fn a_written_sail_order_traces_over_water() {
         G3_F42_T40,
         "[]",
         "11125",
-        "SAIL S",
+        &document("11125", "SAIL S"),
     )
     .expect("the ruleset loads");
     let path = response.path.expect("a traced path");
@@ -170,7 +179,7 @@ fn an_unusable_ruleset_is_an_error() {
         TURN_71,
         "[]",
         "18642",
-        "MOVE N",
+        &document("18642", "MOVE N"),
     )
     .expect_err("should fail");
     assert!(error.contains("ruleset"), "message was: {error}");
@@ -184,7 +193,7 @@ fn memory_that_cannot_be_read_is_refused_rather_than_ignored() {
         TURN_71,
         "not json",
         "18642",
-        "MOVE N",
+        &document("18642", "MOVE N"),
     )
     .expect_err("should refuse");
     assert!(error.contains("remembered regions"), "message was: {error}");
@@ -196,10 +205,24 @@ fn memory_that_cannot_be_read_is_refused_rather_than_ignored() {
 fn a_second_trace_over_the_same_turn_parses_nothing() {
     let mut cache = ReportCache::new();
 
-    trace_orders_for_remembered_report(&mut cache, RULESET, TURN_71, "[]", "18642", "MOVE N")
-        .expect("the ruleset loads");
-    trace_orders_for_remembered_report(&mut cache, RULESET, TURN_71, "[]", "18642", "MOVE N N")
-        .expect("the ruleset loads");
+    trace_orders_for_remembered_report(
+        &mut cache,
+        RULESET,
+        TURN_71,
+        "[]",
+        "18642",
+        &document("18642", "MOVE N"),
+    )
+    .expect("the ruleset loads");
+    trace_orders_for_remembered_report(
+        &mut cache,
+        RULESET,
+        TURN_71,
+        "[]",
+        "18642",
+        &document("18642", "MOVE N N"),
+    )
+    .expect("the ruleset loads");
 
     assert_ne!(cache.parses(), 0, "the tracer never asked the cache");
     assert_eq!(cache.parses(), 1, "the second trace re-read the report");

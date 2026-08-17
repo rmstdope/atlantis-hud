@@ -111,12 +111,14 @@
 
   --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 
-  /* The panes' type scale. Three steps, in rem so the reader's own font-size preference reaches
-     them - `px` does not, which is the whole of ah-46p. The map sets its own sizes and is not on
-     this scale. */
-  --text-pane-sm: calc(0.6875rem * var(--ui-scale, 1));   /* 11px at a 16px root, at 100% */
-  --text-pane: calc(0.75rem * var(--ui-scale, 1));        /* 12px */
-  --text-pane-lg: calc(0.8125rem * var(--ui-scale, 1));   /* 13px */
+  /* The panes' type scale. Three steps, in rem so both the reader's own font-size preference and
+     the Interface size setting reach them - the root font size carries the multiplier for every
+     rem in the application, type and boxes alike (ah-ziv), so a token that multiplied by
+     `--ui-scale` here would scale twice. The map sets its own sizes in SVG user units and is on
+     neither scale. */
+  --text-pane-sm: 0.6875rem;   /* 11px at a 16px root, at 100% */
+  --text-pane: 0.75rem;        /* 12px */
+  --text-pane-lg: 0.8125rem;   /* 13px */
 }
 
 /*
@@ -301,10 +303,42 @@
 :root {
   --pane-transparency: 90;
 
-  /* What the Interface size setting multiplies the pane type scale by; 1 is 100%. Stamped on the
-     root by `settingsStore`, exactly as `--pane-transparency` is, and defaulted here so the app
-     renders correctly before the store has run and in any test that mounts a component alone. */
+  /* What the Interface size setting multiplies every rem in the application by; 1 is 100%. Stamped
+     on the root by `settingsStore`, exactly as `--pane-transparency` is, and defaulted here so the
+     app renders correctly before the store has run and in any test that mounts a component alone. */
   --ui-scale: 1;
+}
+
+/*
+ * Interface size, applied once. Every rem in the application resolves against this, so a reader who
+ * doubles it gets boxes, padding and gaps twice the size as well as type - which is what "Interface
+ * size" says on the tin, and what ah-ziv was filed about.
+ *
+ * `1rem` in the root element's own font-size is the *initial* root size (the browser's, and so the
+ * reader's own preference) rather than the computed one, so this is not circular however much it
+ * looks it - CSS Values 4, §5.1.1.
+ *
+ * On `html` rather than `:root` deliberately: the two select the same element, but `:root` is a
+ * pseudo-class and outranks a plain `html` rule, so a later stylesheet setting `html { font-size }`
+ * - a user stylesheet, or the smoke suite's simulation of a reader's preference - would lose to
+ * this one. Equal specificity lets the last word be the reader's.
+ */
+html {
+  font-size: calc(1rem * var(--ui-scale));
+}
+
+/*
+ * A dialog declares the width its content wants (`w-[64rem]` for Battles), and at 200% that is
+ * twice the pixels - past the edge of a laptop window, taking the Close button with it. The
+ * viewport is the last word: cap, and let the contents scroll (ah-ziv, navigator's choice O1).
+ * On the role rather than on nine components, so a tenth dialog inherits it. `aria-modal` narrows
+ * it to the centred modals: `PopoverFrame` carries `role="dialog"` too, but it is anchored, fluid
+ * and out of scope - an `overflow` on it would give it scrollbars it never asked for.
+ */
+[role="dialog"][aria-modal="true"] {
+  max-width: 95vw;
+  max-height: 90vh;
+  overflow: auto;
 }
 
 .bg-pane {
