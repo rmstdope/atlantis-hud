@@ -386,6 +386,41 @@ pub fn set_game_name(
     Ok(manifest)
 }
 
+/// Records which faction in this game is the player's, after creation.
+///
+/// The id is stored as the report names it, opaque to this crate, exactly as `confirmed_faction_id`
+/// reaches `commit_report_import`. Which faction that is - and when it may change - is the shell's
+/// decision, never this crate's.
+///
+/// # Errors
+///
+/// Returns an error when no game exists under this id, when its manifest cannot be read, or when
+/// the database cannot be opened or migrated.
+pub fn set_active_faction(
+    games_root: &Path,
+    game_id: &str,
+    faction_id: &str,
+) -> Result<GameManifest, PersistenceError> {
+    let game_file_path = game_home(games_root, game_id).join(GAME_MANIFEST_FILE_NAME);
+    if !game_file_path.exists() {
+        return Err(PersistenceError::GameNotFound(game_id.to_string()));
+    }
+
+    let mut manifest = load_game_manifest(&game_file_path)?;
+    ensure_supported_manifest_version(manifest.manifest_version)?;
+    manifest.metadata.active_faction_id = Some(faction_id.to_string());
+
+    // Database first, manifest second — the order `open_game` writes in, so a failure between the
+    // two leaves the manifest (which the frontends read) still agreeing with itself.
+    let database_path = sidecar_database_path(&game_file_path);
+    let mut connection = open_database(&database_path)?;
+    apply_migrations(&mut connection)?;
+    persist_game_snapshot(&mut connection, &manifest)?;
+    save_game_manifest(&game_file_path, &manifest)?;
+
+    Ok(manifest)
+}
+
 /// Every game under `games_root`, read from the games themselves.
 ///
 /// There is no index to consult: the games on disk are the list. That costs one small read per
@@ -1619,6 +1654,7 @@ mod tests {
                 game_id: game_id.to_string(),
                 game_name: game_name.to_string(),
                 ruleset_id: "neworigins".to_string(),
+                active_faction_id: None,
             },
             report_sources: vec![
                 ReportSourceRef {
@@ -1793,6 +1829,32 @@ mod tests {
             .query_row("SELECT game_name FROM game_metadata", [], |row| row.get(0))
             .expect("the name should be mirrored into the database");
         assert_eq!(stored, "Binding of the North");
+    }
+
+    #[test]
+    fn the_active_faction_is_remembered_across_reopening() {
+        let dir = tempdir().expect("tempdir");
+        create_game(dir.path(), &fixture_manifest()).expect("creation should succeed");
+
+        let updated = set_active_faction(dir.path(), GAME_ID, "95")
+            .expect("recording the active faction should succeed");
+        assert_eq!(updated.metadata.active_faction_id, Some("95".to_string()));
+
+        let reopened = open_game(dir.path(), GAME_ID, CREATED_AT).expect("reopen should succeed");
+        assert_eq!(
+            reopened.manifest.metadata.active_faction_id,
+            Some("95".to_string())
+        );
+    }
+
+    #[test]
+    fn setting_the_active_faction_of_a_game_that_does_not_exist_is_an_error() {
+        let dir = tempdir().expect("tempdir");
+
+        let error = set_active_faction(dir.path(), "no-such-game", "95")
+            .expect_err("setting the active faction of a missing game should fail");
+
+        assert!(matches!(error, PersistenceError::GameNotFound(ref id) if id == "no-such-game"));
     }
 
     #[test]
@@ -2635,6 +2697,7 @@ mod region_sighting_tests {
                     game_id: "faction-95".to_string(),
                     game_name: "Borg TNG".to_string(),
                     ruleset_id: "neworigins".to_string(),
+                    active_faction_id: None,
                 },
                 report_sources: Vec::new(),
                 created_at: "2026-08-01T09:00:00Z".to_string(),
@@ -2791,6 +2854,7 @@ mod region_sighting_tests {
                     game_id: "alpha".to_string(),
                     game_name: "Alpha".to_string(),
                     ruleset_id: "neworigins".to_string(),
+                    active_faction_id: None,
                 },
                 report_sources: Vec::new(),
                 created_at: "2026-08-01T09:00:00Z".to_string(),
@@ -2927,6 +2991,7 @@ mod region_sighting_tests {
                     game_id: "gamma".to_string(),
                     game_name: "Gamma".to_string(),
                     ruleset_id: "neworigins".to_string(),
+                    active_faction_id: None,
                 },
                 report_sources: Vec::new(),
                 created_at: "2026-08-01T09:00:00Z".to_string(),
@@ -2979,6 +3044,7 @@ mod region_sighting_tests {
                 game_id: "pre-hex-notes".to_string(),
                 game_name: "Pre Hex Notes".to_string(),
                 ruleset_id: "neworigins".to_string(),
+                active_faction_id: None,
             },
             report_sources: Vec::new(),
             created_at: "2026-08-01T09:00:00Z".to_string(),
@@ -3024,6 +3090,7 @@ mod region_sighting_tests {
                     game_id: "future".to_string(),
                     game_name: "Future".to_string(),
                     ruleset_id: "neworigins".to_string(),
+                    active_faction_id: None,
                 },
                 report_sources: Vec::new(),
                 created_at: "2026-08-01T09:00:00Z".to_string(),
@@ -3063,6 +3130,7 @@ mod merged_report_tests {
                     game_id: GAME.to_string(),
                     game_name: "Borg TNG".to_string(),
                     ruleset_id: "neworigins".to_string(),
+                    active_faction_id: None,
                 },
                 report_sources: Vec::new(),
                 created_at: "2026-08-01T09:00:00Z".to_string(),

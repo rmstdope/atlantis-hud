@@ -4,8 +4,8 @@
 ))]
 use atlantis_hud_core_tauri::{
     command_create_game, command_delete_game, command_export_game, command_import_game,
-    command_list_games, command_open_game, command_set_game_name, command_set_game_ruleset,
-    GameManifestDto, OpenedGameDto,
+    command_list_games, command_open_game, command_set_active_faction, command_set_game_name,
+    command_set_game_ruleset, GameManifestDto, OpenedGameDto,
 };
 
 #[cfg(all(
@@ -125,6 +125,19 @@ fn set_game_name(
     any(target_os = "linux", target_os = "macos", target_os = "windows"),
     feature = "desktop-runtime"
 ))]
+#[tauri::command(rename_all = "snake_case")]
+fn set_active_faction(
+    app: tauri::AppHandle,
+    game_id: String,
+    faction_id: String,
+) -> Result<GameManifestDto, String> {
+    command_set_active_faction(&games_root(&app)?, &game_id, &faction_id)
+}
+
+#[cfg(all(
+    any(target_os = "linux", target_os = "macos", target_os = "windows"),
+    feature = "desktop-runtime"
+))]
 fn main() {
     tauri::Builder::default()
         // Opening the releases page in the player's own browser is the whole of the desktop update
@@ -146,6 +159,7 @@ fn main() {
             import_game,
             set_game_ruleset,
             set_game_name,
+            set_active_faction,
             atlantis_hud_core_tauri::command_parse_report,
             atlantis_hud_core_tauri::command_parse_report_full,
             atlantis_hud_core_tauri::command_preview_report_import,

@@ -22,11 +22,11 @@ use atlantis_hud_core_persistence::{
     create_game, delete_game, delete_hex_note, export_game, import_game, insert_imported_turn,
     list_games, list_hex_notes, list_imported_turns, load_imported_turn, load_imported_turn_stamps,
     load_latest_imported_turn, load_merged_reports, load_order_draft, load_region_sightings,
-    open_game, preview_imported_turn, set_game_name, set_game_ruleset, upsert_hex_note,
-    upsert_imported_turn, upsert_merged_report, upsert_order_draft, upsert_region_sightings,
-    GameManifest, GameMetadata, HexNote, ImportedTurnKey, ImportedTurnPreview, ImportedTurnRecord,
-    MergedReportRecord, OpenedGame, OrderDraftKey, OrderDraftRecord, PersistenceError,
-    ReportSourceRef,
+    open_game, preview_imported_turn, set_active_faction, set_game_name, set_game_ruleset,
+    upsert_hex_note, upsert_imported_turn, upsert_merged_report, upsert_order_draft,
+    upsert_region_sightings, GameManifest, GameMetadata, HexNote, ImportedTurnKey,
+    ImportedTurnPreview, ImportedTurnRecord, MergedReportRecord, OpenedGame, OrderDraftKey,
+    OrderDraftRecord, PersistenceError, ReportSourceRef,
 };
 use serde::{Deserialize, Serialize};
 
@@ -36,6 +36,10 @@ pub struct GameMetadataDto {
     pub game_id: String,
     pub game_name: String,
     pub ruleset_id: String,
+    /// Which faction in this game is the player's, absent on a manifest written before the field
+    /// existed - hence `#[serde(default)]`, exactly as on `GameMetadata`.
+    #[serde(default)]
+    pub active_faction_id: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -163,6 +167,7 @@ impl From<GameMetadataDto> for GameMetadata {
             game_id: value.game_id,
             game_name: value.game_name,
             ruleset_id: value.ruleset_id,
+            active_faction_id: value.active_faction_id,
         }
     }
 }
@@ -194,6 +199,7 @@ impl From<GameMetadata> for GameMetadataDto {
             game_id: value.game_id,
             game_name: value.game_name,
             ruleset_id: value.ruleset_id,
+            active_faction_id: value.active_faction_id,
         }
     }
 }
@@ -1122,6 +1128,21 @@ pub fn command_set_game_name(
         .map_err(|error| error.to_string())
 }
 
+/// Records which faction in this game is the player's, returning the updated manifest.
+///
+/// # Errors
+///
+/// Returns an error when no game exists under this id, or when the change cannot be written.
+pub fn command_set_active_faction(
+    games_root: &str,
+    game_id: &str,
+    faction_id: &str,
+) -> Result<GameManifestDto, String> {
+    set_active_faction(Path::new(games_root), game_id, faction_id)
+        .map(GameManifestDto::from)
+        .map_err(|error| error.to_string())
+}
+
 /// Deletes a game and everything it stored.
 ///
 /// # Errors
@@ -1383,6 +1404,7 @@ mod test_support {
                 game_id: game_id.to_string(),
                 game_name: game_name.to_string(),
                 ruleset_id: "neworigins".to_string(),
+                active_faction_id: None,
             },
             report_sources: Vec::new(),
             created_at: OPENED_AT.to_string(),
@@ -1447,6 +1469,21 @@ mod rename_command_tests {
         // And it stuck: a fresh listing reads the manifest back off disk.
         let listed = command_list_games(root).expect("listing should succeed");
         assert_eq!(listed[0].metadata.game_name, "Binding of the North");
+    }
+
+    #[test]
+    fn setting_the_active_faction_returns_the_updated_manifest() {
+        let dir = tempdir().expect("tempdir");
+        let root = dir.path().to_str().expect("a path");
+        command_create_game(root, manifest_dto("faction-95", "Borg TNG")).expect("created");
+
+        let updated = command_set_active_faction(root, "faction-95", "95")
+            .expect("recording the active faction should succeed");
+        assert_eq!(updated.metadata.active_faction_id, Some("95".to_string()));
+
+        // And it stuck: a fresh listing reads the manifest back off disk.
+        let listed = command_list_games(root).expect("listing should succeed");
+        assert_eq!(listed[0].metadata.active_faction_id, Some("95".to_string()));
     }
 
     #[test]
