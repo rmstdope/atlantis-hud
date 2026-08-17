@@ -27,7 +27,6 @@ export type BattleSummary = {
   hex: string | null;
   attackerLosses: number | null;
   defenderLosses: number | null;
-  hasSpoils: boolean;
 };
 
 function combatantLabel(combatant: { name: string; id: string } | null): string | null {
@@ -54,8 +53,7 @@ export function summarise(battle: Battle, hexLabel: (regionId: string) => string
     defender: combatantLabel(battle.defender),
     hex: battle.coordinate ? hexLabel(regionIdOf(battle.coordinate)) : null,
     attackerLosses: lossesOf(battle, battle.attacker?.id),
-    defenderLosses: lossesOf(battle, battle.defender?.id),
-    hasSpoils: battle.spoils !== null
+    defenderLosses: lossesOf(battle, battle.defender?.id)
   };
 }
 
