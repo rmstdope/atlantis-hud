@@ -104,13 +104,22 @@ export function orderArgumentCompletions(lookUp: CaretLookup): CompletionSource 
       return null;
     }
 
+    // An accepted entry is separated from what surrounds it - the trailing space has always been
+    // here, and this is its missing other half. Needed only where the caret sits against a
+    // non-space character that still ends a token: `BUILD "Big Boat"` before COMPLETE (ah-4ue), and
+    // any other punctuation the grammar lets a token end with. Written as "not whitespace" rather
+    // than as a list of characters, so a boundary nobody has thought of yet is covered too.
+    // `caret.wordStart` is an offset into `before`, not into the document.
+    const preceding = before[caret.wordStart - 1];
+    const lead = caret.wordStart > 0 && preceding !== undefined && !/\s/u.test(preceding) ? " " : "";
+
     return {
       from: line.from + caret.wordStart,
       options: options.map((entry) => ({
         label: entry.value,
         detail: entry.detail || undefined,
         type: "keyword",
-        apply: `${entry.value} `
+        apply: `${lead}${entry.value} `
       })),
       filter: false
     };

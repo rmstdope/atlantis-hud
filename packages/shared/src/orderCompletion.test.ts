@@ -184,6 +184,29 @@ describe("orderArgumentCompletions", () => {
     expect(result?.from).toBe(text.length);
   });
 
+  it("separates an accepted entry from a closing quote", async () => {
+    // BUILD "Big Boat"COMPLETE is not an order (ah-4ue): the caret sits against a non-space
+    // character that still ends a token, so the insertion has to bring its own separator.
+    const lookUp = caret("argument", [kw("COMPLETE")]);
+    const text = 'BUILD "Big Boat"';
+    const result = await completeArgument(lookUp, text, text.length, true);
+    expect(result?.options.map((option) => option.apply)).toEqual([" COMPLETE "]);
+  });
+
+  it("separates an accepted entry from any non-space character before it", async () => {
+    // A boundary that is not a quote: the core answers "fresh argument" with the caret sitting
+    // against a closing parenthesis, so the same separator is owed.
+    const text = "FACTION (1)";
+    const lookUp: CaretLookup = async () => ({
+      position: "argument",
+      wordStart: text.length,
+      word: "",
+      options: [kw("COMPLETE")]
+    });
+    const result = await completeArgument(lookUp, text, text.length, true);
+    expect(result?.options.map((option) => option.apply)).toEqual([" COMPLETE "]);
+  });
+
   it("stays quiet right after a closing quote unless asked explicitly", async () => {
     const lookUp = caret("argument", [kw("COMPLETE")]);
     const text = 'BUILD "Big Boat"';

@@ -3,7 +3,7 @@ import { autocompletion } from "@codemirror/autocomplete";
 import { defaultKeymap, history, historyKeymap, redo } from "@codemirror/commands";
 import { lintGutter, setDiagnostics } from "@codemirror/lint";
 import { Annotation, EditorState, Transaction } from "@codemirror/state";
-import { EditorView, keymap } from "@codemirror/view";
+import { EditorView, keymap, tooltips } from "@codemirror/view";
 import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef } from "react";
 import { minimalChange } from "../editorReconcile";
 import { shownUnitText } from "../orderEditor";
@@ -129,6 +129,15 @@ export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(fu
             ...historyKeymap,
             { key: "Mod-Shift-z", run: redo, preventDefault: true }
           ]),
+          // The completion popup is wider than this pane for most of the ruleset's catalogue (96
+          // skills, whose names are the longest strings it shows), and the editor's own element is
+          // `overflow-hidden`, so a popup rendered inside it is cut off border and all (ah-e4v).
+          // Hosting it on `document.body` lets it overhang the panes to its right, which is what
+          // every code editor's completion does; CodeMirror keeps it inside the viewport itself, so
+          // near the window's right edge it shifts left rather than running off (the navigator's
+          // R1, 2026-08-17). `position: "fixed"` because the host is no longer an ancestor that
+          // scrolls with the editor.
+          tooltips({ parent: document.body, position: "fixed" }),
           autocompletion({
             override: [
               (context) =>
@@ -209,7 +218,10 @@ export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(fu
             ".cm-tooltip": {
               backgroundColor: "var(--color-panel-raised)",
               color: "var(--color-ink)",
-              border: "1px solid var(--color-edge)"
+              border: "1px solid var(--color-edge)",
+              // Above every pane (z-10 and z-20 in this workspace) and below the unit tooltip
+              // (z-50). No modal is open while the editor has focus, so it never has to fight one.
+              zIndex: "30"
             },
             ".cm-tooltip.cm-tooltip-autocomplete > ul > li[aria-selected]": {
               backgroundColor: "var(--color-select)",
