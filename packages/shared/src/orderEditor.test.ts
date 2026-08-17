@@ -6,7 +6,7 @@ import {
   diagnosticsForUnit,
   findingsByHex,
   findingsForHex,
-  draftAfterSave,
+  shownUnitText,
   offendingText,
   shouldSaveOnBlur,
   shouldTriggerAutosave,
@@ -90,21 +90,27 @@ describe("orderEditor policy", () => {
 });
 
 /**
- * Once a save has landed, the editor tidies the draft so it ends the way an orders file must: with
- * a newline. Only after a save, so the tidying never races the player's typing, and only in the
- * editor - the document's block boundary neither holds nor needs the trailing newline.
+ * One function answers whether a saved unit's text ends in a newline, and every path that puts text
+ * into the editor goes through it. Only after a save, so the tidying never races the player's
+ * typing, and only in the editor - the document's block boundary neither holds nor needs it.
  */
-describe("tidying the draft after a save", () => {
-  it("appends the missing newline to a saved draft", () => {
-    expect(draftAfterSave("@work\n@study combat")).toBe("@work\n@study combat\n");
+describe("the text the editor shows for a unit", () => {
+  const SAVED = "2026-08-17T10:00:00Z";
+
+  it("appends the missing newline once the document has been saved", () => {
+    expect(shownUnitText("@work\n@study combat", SAVED)).toBe("@work\n@study combat\n");
   });
 
-  it("leaves a draft already ending in a newline alone", () => {
-    expect(draftAfterSave("@work\n")).toBe("@work\n");
+  it("leaves text already ending in a newline alone", () => {
+    expect(shownUnitText("@work\n", SAVED)).toBe("@work\n");
+  });
+
+  it("leaves an unsaved unit alone, however it ends", () => {
+    expect(shownUnitText("@work\n@study combat", null)).toBe("@work\n@study combat");
   });
 
   it("leaves an empty draft empty rather than opening a blank line", () => {
-    expect(draftAfterSave("")).toBe("");
+    expect(shownUnitText("", SAVED)).toBe("");
   });
 });
 
