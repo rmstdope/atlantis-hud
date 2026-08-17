@@ -7,6 +7,7 @@ import {
   mapViewSelectionChanged,
   NO_MAP_VIEW,
   shouldFollowSelection,
+  travelsToSelection,
   type MapViewState
 } from "./mapViewState";
 import type { SavedMapView } from "./mapViewportStorage";
@@ -253,5 +254,61 @@ describe("keepsRestoredHex", () => {
 
   it("has no exemption to keep when nothing was restored", () => {
     expect(keepsRestoredHex(null, null)).toBe(false);
+  });
+});
+
+/**
+ * Whether the follow-selection effect should travel now.
+ *
+ * The effect also depends on `size` and `insets` so it can measure "off screen" once it decides to
+ * travel, and a container that resizes mid-import re-runs it for a reason that has nothing to do
+ * with the selection. `travelsToSelection` is what tells a genuine arrival apart from a resize: the
+ * same (selectedRegionId, restoredRegionId) pair as last time is not a new arrival, whatever the
+ * layout just did.
+ */
+describe("travelsToSelection", () => {
+  it("travels to a selection that has just arrived", () => {
+    expect(
+      travelsToSelection(
+        { selectedRegionId: "1:9,41", restoredRegionId: null },
+        { selectedRegionId: "1:7,53", restoredRegionId: null }
+      )
+    ).toBe(true);
+  });
+
+  it("does not travel again for the same selection", () => {
+    expect(
+      travelsToSelection(
+        { selectedRegionId: "1:9,41", restoredRegionId: null },
+        { selectedRegionId: "1:9,41", restoredRegionId: null }
+      )
+    ).toBe(false);
+  });
+
+  it("does not travel to the hex a restore put back", () => {
+    expect(
+      travelsToSelection(
+        { selectedRegionId: "1:7,53", restoredRegionId: "1:7,53" },
+        { selectedRegionId: null, restoredRegionId: null }
+      )
+    ).toBe(false);
+  });
+
+  it("travels once the restore exemption ends", () => {
+    expect(
+      travelsToSelection(
+        { selectedRegionId: "1:7,53", restoredRegionId: null },
+        { selectedRegionId: "1:7,53", restoredRegionId: "1:7,53" }
+      )
+    ).toBe(true);
+  });
+
+  it("does not travel when nothing is selected", () => {
+    expect(
+      travelsToSelection(
+        { selectedRegionId: null, restoredRegionId: "1:7,53" },
+        { selectedRegionId: null, restoredRegionId: "1:7,53" }
+      )
+    ).toBe(false);
   });
 });
