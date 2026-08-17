@@ -322,3 +322,47 @@ test("an accepted snippet expands with a tab-through placeholder", async ({ page
   await page.keyboard.type("N");
   await expectOrders(page, /^MOVE N\nGUARD 1\n?$/);
 });
+
+/** Ticks the Order OCD checkbox in the settings dialog and closes it again. */
+async function enableOrderOcd(page: Page) {
+  await page.getByTestId("settings-indicator").click();
+  await page.getByTestId("settings-order-ocd").check();
+  await page.getByTestId("settings-close").click();
+}
+
+test("with Order OCD on, a keyword uppercases as the word ends and a quoted name is left alone", async ({
+  page
+}) => {
+  await loadReport(page);
+  await enableOrderOcd(page);
+  await selectUnit(page, OWN_UNIT);
+
+  await fillOrders(page, "");
+  await ordersInput(page).click();
+  await page.keyboard.type('name unit "seven of eight" ');
+
+  await expectOrders(page, /^NAME UNIT "seven of eight" ?/);
+
+  // Clear of the half-second window history groups typing under, so the next press is a step of
+  // its own rather than part of the run above.
+  await page.waitForTimeout(700);
+  await page.keyboard.type("study");
+  await page.waitForTimeout(700);
+  await page.keyboard.type(" ");
+  await expectOrders(page, /STUDY $/);
+
+  // One press puts back the word as typed and takes the space with it: the uppercasing and the
+  // space are a single transaction, which is the whole promise of the setting.
+  await ordersInput(page).press("ControlOrMeta+z");
+  await expectOrders(page, /study$/);
+});
+
+test("with Order OCD off, nothing is uppercased", async ({ page }) => {
+  await loadReport(page);
+
+  await fillOrders(page, "");
+  await ordersInput(page).click();
+  await page.keyboard.type('name unit "seven of eight" ');
+
+  await expectOrders(page, /^name unit "seven of eight" ?/);
+});

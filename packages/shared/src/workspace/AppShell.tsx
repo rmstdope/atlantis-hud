@@ -288,6 +288,10 @@ export function AppShell({
   // The core's order vocabulary, fetched once for the editor's completion popup. Empty until it
   // arrives - or if it never does, which just leaves the popup with nothing to say.
   const [orderCommands, setOrderCommands] = useState<readonly string[]>([]);
+  // Every word the rules know, uppercase, for the Order OCD setting. Keyed on the ruleset as well
+  // as the client, since the item and skill half of it comes from there. Empty until it arrives,
+  // which simply makes the uppercasing a no-op.
+  const [orderVocabulary, setOrderVocabulary] = useState<readonly string[]>([]);
   // The same ruleset as the storage layer wants it: its text once it arrived, `null` while it has
   // not. What gets stored is classified with exactly what the screen was classified with.
   const rulesetText = ruleset.status === "ready" ? ruleset.text : null;
@@ -1302,6 +1306,23 @@ export function AppShell({
       cancelled = true;
     };
   }, [client]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void Promise.resolve()
+      .then(() => client.orderVocabulary(rulesetText))
+      .then((words) => {
+        if (!cancelled) {
+          setOrderVocabulary(words);
+        }
+      })
+      .catch(() => {
+        // Uppercasing is a convenience; the editor works without it.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [client, rulesetText]);
 
   /**
    * Where the caret is, asked once per keystroke however many completion sources want to know.
@@ -2897,6 +2918,7 @@ export function AppShell({
                   validated={validated}
                   save={save}
                   commands={orderCommands}
+                  orderVocabulary={orderVocabulary}
                   snippets={snippets}
                   caretCompletions={caretCompletions}
                   editorRef={ordersEditor}
