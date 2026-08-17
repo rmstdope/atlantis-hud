@@ -284,7 +284,7 @@ function GlobalSettings() {
 
 /**
  * Which advisory order-check codes should not run at all: the Warnings tab's on/off toggles,
- * grouped Studying/Teaching / Resources / Markets / Guarding / Orders / Sailing. Off means the core never
+ * grouped Studying/Teaching / Resources / Markets / Guarding / Orders / Building / Sailing. Off means the core never
  * produces the finding - counts, chip, panels and editor underlines all agree, nothing anywhere
  * says "hidden".
  */
@@ -390,6 +390,16 @@ const WARNING_GROUPS: readonly {
         code: "unit-overloaded",
         title: "Overloaded units",
         description: "A unit ordered to move carrying more than it can move with."
+      }
+    ]
+  },
+  {
+    heading: "Building",
+    entries: [
+      {
+        code: "already-built",
+        title: "Building what is built",
+        description: "A BUILD order on a structure the report already shows as finished."
       }
     ]
   },
