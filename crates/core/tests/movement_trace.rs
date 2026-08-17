@@ -41,9 +41,7 @@ fn document(unit_id: &str, orders: &str) -> String {
 /// "* Seven of Eight (18642)" stands in the mountain at (7,53); "  North : mountain (7,51)".
 #[test]
 fn a_written_move_is_traced_across_the_map() {
-    let path = trace("18642", &document("18642", "MOVE N"))
-        .path
-        .expect("a traced path");
+    let path = trace("18642", "MOVE N").path.expect("a traced path");
 
     assert_eq!(path.from, at(7, 53));
     assert_eq!(path.steps.len(), 1);
@@ -181,7 +179,7 @@ fn an_unusable_ruleset_is_an_error() {
         TURN_71,
         "[]",
         "18642",
-        &document("18642", &document("18642", "MOVE N")),
+        &document("18642", "MOVE N"),
     )
     .expect_err("should fail");
     assert!(error.contains("ruleset"), "message was: {error}");
@@ -195,7 +193,7 @@ fn memory_that_cannot_be_read_is_refused_rather_than_ignored() {
         TURN_71,
         "not json",
         "18642",
-        &document("18642", &document("18642", "MOVE N")),
+        &document("18642", "MOVE N"),
     )
     .expect_err("should refuse");
     assert!(error.contains("remembered regions"), "message was: {error}");
@@ -237,7 +235,7 @@ fn a_second_trace_over_the_same_turn_parses_nothing() {
 /// surface as an undefined read in the browser.
 #[test]
 fn the_answer_serializes_the_way_typescript_reads_it() {
-    let answer = trace("18642", &document("18642", "MOVE N N"));
+    let answer = trace("18642", "MOVE N N");
     let json = serde_json::to_value(&answer).expect("serializes");
 
     let path = &json["path"];
@@ -277,9 +275,7 @@ fn an_order_into_the_sea_says_where_the_doubt_starts() {
 fn an_order_into_unexplored_country_is_drawn_to_its_end() {
     // (7,53)'s north neighbour (7,51) is known by name only, so its own exits are unknown and the
     // second step must be extrapolated.
-    let path = trace("18642", &document("18642", "MOVE N N"))
-        .path
-        .expect("a traced path");
+    let path = trace("18642", "MOVE N N").path.expect("a traced path");
 
     assert_eq!(
         path.steps.iter().map(|step| step.to).collect::<Vec<_>>(),
