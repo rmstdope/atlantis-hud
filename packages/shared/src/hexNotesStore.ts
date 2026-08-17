@@ -127,23 +127,7 @@ const DEFAULT_TEST_STATE = { gameId: null, status: "idle" as const, notes: [], r
 
 /** Test helper, like `resetWorkspaceStore` (workspaceStore.ts). */
 export function resetHexNotesStore(): void {
-  setHexNotesStateForTest(DEFAULT_TEST_STATE);
-}
-
-/**
- * Sets store state for a test, visible to both `getState()` and a `renderToStaticMarkup` render.
- *
- * `useSyncExternalStore` always reads through `getServerSnapshot` (zustand's `getInitialState()`,
- * frozen at module load) when rendered via `react-dom/server` - `renderToStaticMarkup` never takes
- * the `getSnapshot` branch a browser does, so a plain `useHexNotesStore.setState(...)` before a
- * static render is invisible to it. Mutating the very object `getInitialState()` returns is what
- * makes the two agree; it has no effect on the real app, which always renders client-side.
- */
-export function setHexNotesStateForTest(
-  patch: Partial<Pick<HexNotesState, "gameId" | "status" | "notes" | "requestAdd">>
-): void {
-  useHexNotesStore.setState(patch);
-  Object.assign(useHexNotesStore.getInitialState(), patch);
+  useHexNotesStore.setState(DEFAULT_TEST_STATE);
 }
 
 /**
