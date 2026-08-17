@@ -2289,6 +2289,42 @@ test("selecting a passenger draws the fleet's voyage", async ({ page }) => {
 });
 
 /**
+ * ah-0fa: the same voyage, seen from the other end. Standing in the destination hex, the units table
+ * already lists the units arriving there this month - but selecting one used to find nothing at all,
+ * because the shell looked for the selected unit in the report's units for the hex and an arriving
+ * unit is only in the preview. No trace was asked for and the pane stayed empty.
+ *
+ * Raft [235] sails SE out of the plain at (36,44) into the ocean at (37,45), so selecting its
+ * captain in (37,45) - where it has not arrived yet - draws the path that is bringing it there.
+ */
+test("selecting an arriving unit in its destination hex draws its route", async ({ page }) => {
+  await clearGames(page);
+  await expect(page.getByTestId("game-gate")).toBeVisible();
+  await createGame(page, "Arriving game");
+  await expect(page.getByTestId("app-header")).toBeVisible();
+  await choose(page, "turn-24.rep", F21_T24);
+  await expect(page.getByTestId("import-status")).toContainText("regions");
+
+  await selectHex(page, "1:36,44");
+  await selectUnit(page, "10575");
+  await fillOrders(page, "sail se");
+
+  // The voyage as its origin hex draws it, to compare the destination's drawing against.
+  await expect(page.getByTestId("route-line-solid")).toHaveCount(1);
+  const fromOrigin = await page.getByTestId("route-line-solid").getAttribute("points");
+
+  // Now the destination, where the unit is listed as arriving rather than standing.
+  await selectHex(page, "1:37,45");
+  await selectUnit(page, "10575");
+
+  // The pane fills - selecting something and getting nothing reads as broken - and the same voyage
+  // is drawn, because the trace starts from the unit's own hex however the hex was reached.
+  await expect(page.getByTestId("panel-unit")).toContainText("10575");
+  await expect(page.getByTestId("route-line-solid")).toHaveCount(1);
+  await expect(page.getByTestId("route-line-solid")).toHaveAttribute("points", fromOrigin ?? "");
+});
+
+/**
  * A report cannot be split into men and equipment on its own, so a unit's headcount is a guess
  * until it has been counted against the scraped item catalogue. Classification is what removes the
  * guess, and it has to run on the path that draws the table - not only inside the planner.
