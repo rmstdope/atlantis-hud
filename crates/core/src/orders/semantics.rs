@@ -538,7 +538,7 @@ fn check_markets(
                 let name = item_name(&tag, hex, ruleset);
                 let has_or_wants = if verb == "sell" { "has" } else { "wants" };
                 format!(
-                    "this hex does not {verb} {name} — its market {has_or_wants} {}",
+                    "this hex does not {verb} {name} - its market {has_or_wants} {}",
                     market_list(lines)
                 )
             };
@@ -3348,7 +3348,7 @@ mod tests {
         assert_eq!(finding.code.as_str(), "not-traded-here");
         assert_eq!(
             finding.message,
-            "this hex does not sell silk — its market has perfume and gems"
+            "this hex does not sell silk - its market has perfume and gems"
         );
     }
 
@@ -3372,7 +3372,7 @@ mod tests {
         assert_eq!(finding.code.as_str(), "not-traded-here");
         assert_eq!(
             finding.message,
-            "this hex does not want fur — its market wants grain and livestock"
+            "this hex does not want fur - its market wants grain and livestock"
         );
     }
 
@@ -3389,7 +3389,7 @@ mod tests {
         let finding = only(check(vec![hex], "unit 5\nBUY 5 silk\n"));
         assert_eq!(
             finding.message,
-            "this hex does not sell silk — its market has perfume"
+            "this hex does not sell silk - its market has perfume"
         );
     }
 
@@ -3501,9 +3501,9 @@ mod tests {
         assert_eq!(
             messages,
             vec![
-                "this hex does not sell silk — its market has perfume, gems, hill dwarves and \
+                "this hex does not sell silk - its market has perfume, gems, hill dwarves and \
                  leaders",
-                "this hex does not want fur — its market wants grain, livestock, fish, spears, \
+                "this hex does not want fur - its market wants grain, livestock, fish, spears, \
                  leather armor, spinning wheels, lassoes, jewelry and truffles",
             ]
         );
