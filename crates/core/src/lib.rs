@@ -554,7 +554,10 @@ mod tests {
     /// has one place to look and one count to show.
     #[test]
     fn one_call_returns_both_the_syntax_and_the_semantic_problems() {
-        let result = turn("unit 100\nFLY 1 2\nGIVE 7 100 SILV\n");
+        // Unit 0 is GIVE's discard target (`Party::Discard`), not a missing unit - chosen here so
+        // this stays a test about the syntax/semantic combination and not also about
+        // `give-target-not-here`, which `orders::semantics` covers on its own.
+        let result = turn("unit 100\nFLY 1 2\nGIVE 0 100 SILV\n");
 
         assert_eq!(
             result
@@ -568,7 +571,7 @@ mod tests {
 
     #[test]
     fn a_semantic_finding_is_a_warning_and_never_blocks_the_export() {
-        let result = turn("unit 100\nGIVE 7 100 SILV\n");
+        let result = turn("unit 100\nGIVE 0 100 SILV\n");
 
         assert_eq!(result.diagnostics.len(), 1, "{:?}", result.diagnostics);
         assert_eq!(
@@ -590,7 +593,7 @@ mod tests {
 
     #[test]
     fn a_semantic_finding_carries_the_hex_and_the_unit_it_belongs_to() {
-        let diagnostic = turn("unit 100\nGIVE 7 100 SILV\n").diagnostics.remove(0);
+        let diagnostic = turn("unit 100\nGIVE 0 100 SILV\n").diagnostics.remove(0);
 
         assert_eq!(diagnostic.region_id.as_deref(), Some("1:12,34"));
         assert_eq!(diagnostic.unit_id.as_deref(), Some("100"));
