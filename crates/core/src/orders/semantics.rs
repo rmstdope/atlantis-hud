@@ -1595,8 +1595,15 @@ fn check_sailing(
                     .map(move |skill| i64::from(skill.level) * men)
             })
             .sum();
+        // A guessed headcount cannot price an exact number of sailing levels either - the same
+        // doubt `study` already treats `men_estimated` as (`:750`). Raised in review on this
+        // bead's own PR.
+        let headcount_is_doubtful = aboard.iter().any(|ordered| ordered.unit.men_estimated);
         if let Some(required) = sailing_requirement(fleet, ruleset) {
-            if levels < required && options.emits(codes::FLEET_UNDERCREWED) {
+            if !headcount_is_doubtful
+                && levels < required
+                && options.emits(codes::FLEET_UNDERCREWED)
+            {
                 findings.push(captain.finding(
                     hex,
                     codes::FLEET_UNDERCREWED,
@@ -4297,6 +4304,23 @@ mod tests {
         let region = ReportRegion {
             structures: vec![raft],
             ..region(vec![two_gnolls])
+        };
+
+        assert_eq!(
+            codes(&check(vec![region], "unit 9508\nSAIL N\n")),
+            Vec::<&str>::new()
+        );
+    }
+
+    /// A guessed headcount cannot price an exact number of sailing levels: doubt, not a warning.
+    /// Raised in review on this bead's own PR.
+    #[test]
+    fn an_estimated_headcount_silences_the_undercrewed_check() {
+        let mut guessed = aboard("9508", "329", 20, 1);
+        guessed.men_estimated = true;
+        let region = ReportRegion {
+            structures: vec![longship("329")],
+            ..region(vec![guessed])
         };
 
         assert_eq!(
