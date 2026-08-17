@@ -6,7 +6,7 @@ import { Annotation, EditorState, Transaction } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
 import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef } from "react";
 import { minimalChange } from "../editorReconcile";
-import { draftAfterSave } from "../orderEditor";
+import { shownUnitText } from "../orderEditor";
 import { orderArgumentCompletions, orderCommandCompletions, type ArgumentLookup } from "../orderCompletion";
 import { toEditorDiagnostics } from "../orderLint";
 import { snippetCompletionSource, type OrderSnippet } from "../orderSnippets";
@@ -38,7 +38,7 @@ type OrdersEditorProps = {
   externalRevision: number;
   /**
    * When the document last landed on disk, or null. A landed save ends the shown text with the
-   * newline an orders file ends with (`draftAfterSave`) - in the editor only, never written back.
+   * newline an orders file ends with (`shownUnitText`) - in the editor only, never written back.
    */
   savedAt: string | null;
   ariaLabel: string;
@@ -103,8 +103,8 @@ export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(fu
   const view = useRef<EditorView | null>(null);
 
   // Read through refs by the editor's callbacks, so a fresh render never means a rebuilt editor.
-  const latest = useRef({ text, ariaLabel, commands, snippets, argumentCompletions, onChange });
-  latest.current = { text, ariaLabel, commands, snippets, argumentCompletions, onChange };
+  const latest = useRef({ text, ariaLabel, savedAt, commands, snippets, argumentCompletions, onChange });
+  latest.current = { text, ariaLabel, savedAt, commands, snippets, argumentCompletions, onChange };
 
   useLayoutEffect(() => {
     const parent = container.current;
@@ -115,7 +115,7 @@ export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(fu
     const created = new EditorView({
       parent,
       state: EditorState.create({
-        doc: latest.current.text,
+        doc: shownUnitText(latest.current.text, latest.current.savedAt),
         extensions: [
           history(),
           // Mod-Shift-z redoes on every platform, deliberately beyond what historyKeymap
@@ -229,12 +229,17 @@ export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(fu
   // editor's own writes never come back through here (see OrdersOrigin), so there is no echo to
   // tell from a real change and nothing to rewind. Applied as the smallest splice so the caret
   // stays where the player put it; kept out of the undo history because the player did not do it.
+  // The text spliced in is already what the editor should show, so nothing runs after this to
+  // finish the job.
   useEffect(() => {
     const editor = view.current;
     if (!editor) {
       return;
     }
-    const change = minimalChange(editor.state.doc.toString(), latest.current.text);
+    const change = minimalChange(
+      editor.state.doc.toString(),
+      shownUnitText(latest.current.text, latest.current.savedAt)
+    );
     if (change) {
       editor.dispatch({
         changes: change,
@@ -243,31 +248,24 @@ export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(fu
     }
   }, [externalRevision, unitId]);
 
-  // Once a save has landed - and when a saved unit is browsed to - the shown text ends with the
-  // newline an orders file ends with. In the editor only: the block boundary neither holds nor
-  // needs it, so the document is not written (External, and not history either). An append at the
-  // end never moves a caret that is anywhere else - what persistence.spec pins.
-  //
-  // `externalRevision` is in the dependency list too, and not only `savedAt`: an external write
-  // (an import, a route) that lands while the document is already saved bumps `externalRevision`
-  // without moving `savedAt`, and the reload effect above splices in the block as the document
-  // holds it - never carrying the trailing newline, which is editor-only. Without this dependency
-  // that splice would stand untidied until the next save actually lands. Effects run in the order
-  // they are declared, so the reload above has already applied by the time this one reads the doc.
+  // Once a save has landed, the shown text ends with the newline an orders file ends with. In the
+  // editor only: the block boundary neither holds nor needs it, so the document is not written
+  // (External, and not history either). An append at the end never moves a caret that is anywhere
+  // else - what persistence.spec pins.
   useEffect(() => {
     const editor = view.current;
-    if (!editor || savedAt === null) {
+    if (!editor) {
       return;
     }
     const current = editor.state.doc.toString();
-    const tidy = draftAfterSave(current);
-    if (tidy !== current) {
+    const wanted = shownUnitText(current, savedAt);
+    if (wanted !== current) {
       editor.dispatch({
         changes: { from: current.length, to: current.length, insert: "\n" },
         annotations: [External.of(true), Transaction.addToHistory.of(false)]
       });
     }
-  }, [savedAt, externalRevision, unitId]);
+  }, [savedAt, unitId]);
 
   // Diagnostics are pushed rather than pulled: validation already runs debounced in the shell,
   // and CodeMirror's own lint scheduler would only add a second debounce on top of it. Only when
