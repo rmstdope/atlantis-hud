@@ -687,11 +687,16 @@ pub mod commands {
     pub fn command_load_latest_imported_turn(
         database_path: &str,
         game_id: &str,
+        active_faction_id: Option<String>,
     ) -> Result<Option<ImportedTurnRecordDto>, String> {
-        load_latest_imported_turn(Path::new(database_path), game_id)
-            .map_err(|error| error.to_string())?
-            .map(imported_turn_dto)
-            .transpose()
+        load_latest_imported_turn(
+            Path::new(database_path),
+            game_id,
+            active_faction_id.as_deref(),
+        )
+        .map_err(|error| error.to_string())?
+        .map(imported_turn_dto)
+        .transpose()
     }
 
     /// Lists every turn imported for a game, across every faction, for the Tauri command surface.
@@ -1879,11 +1884,43 @@ mod merge_tests {
         )
         .expect("the merge succeeds");
 
-        let latest = command_load_latest_imported_turn(&created.database_path, "faction-95")
+        let latest = command_load_latest_imported_turn(&created.database_path, "faction-95", None)
             .expect("the lookup succeeds")
             .expect("a turn reopens");
         assert_eq!(latest.key.faction_id, "95");
         assert_eq!(latest.key.turn_number, 71);
+    }
+
+    /// The remembered faction reaches the query rather than stopping at the command boundary.
+    ///
+    /// Two factions hold turn 71; which one reopens is decided by the argument alone.
+    #[test]
+    fn the_remembered_faction_reaches_the_query() {
+        let directory = tempdir().expect("a temporary directory");
+        let created = game_with_turn_71(directory.path());
+
+        command_commit_report_import(
+            &created.database_path,
+            "faction-95",
+            "73",
+            ALLY_TURN_71,
+            None,
+            true,
+            IMPORTED_AT,
+        )
+        .expect("the ally's own turn commits");
+
+        for remembered in ["95", "73"] {
+            let latest = command_load_latest_imported_turn(
+                &created.database_path,
+                "faction-95",
+                Some(remembered.to_string()),
+            )
+            .expect("the lookup succeeds")
+            .expect("a turn reopens");
+            assert_eq!(latest.key.faction_id, remembered);
+            assert_eq!(latest.key.turn_number, 71);
+        }
     }
 
     #[test]
