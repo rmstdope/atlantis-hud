@@ -1405,14 +1405,14 @@ fn check_building(hex: &Hex<'_>, options: &CheckOptions, findings: &mut Vec<Find
             Some(Party::New(_) | Party::Foreign { .. } | Party::Discard) => continue,
         };
 
-        let Some(structure_id) = &worker.unit.structure_id else {
+        let Some(structure_id) = structure_after_orders(worker) else {
             continue;
         };
         let Some(structure) = hex
             .region
             .structures
             .iter()
-            .find(|structure| &structure.structure_id == structure_id)
+            .find(|structure| structure.structure_id == structure_id)
         else {
             continue;
         };
@@ -3985,6 +3985,51 @@ mod tests {
             finding.message,
             "Soggy Saw Mill, which unit 4021 is in, is already finished"
         );
+    }
+
+    /// The same blindness as the magic-study check had: ENTER and LEAVE run before BUILD, so the
+    /// structure that matters is the one the unit ends its ENTER/LEAVE orders in.
+    #[test]
+    fn a_builder_that_leaves_this_month_is_not_told_the_structure_is_finished() {
+        assert_eq!(
+            check(
+                vec![ReportRegion {
+                    structures: vec![finished_mill("1")],
+                    ..region(vec![in_structure(unit("4021"), "1")])
+                }],
+                "unit 4021\nLEAVE\nBUILD\n",
+            ),
+            vec![]
+        );
+    }
+
+    #[test]
+    fn a_builder_that_enters_a_finished_structure_this_month_is_told_so() {
+        let finding = only(check(
+            vec![ReportRegion {
+                structures: vec![finished_mill("1")],
+                ..region(vec![unit("4021")])
+            }],
+            "unit 4021\nENTER 1\nBUILD\n",
+        ));
+
+        assert_eq!(finding.code.as_str(), "already-built");
+    }
+
+    /// With HELP the structure belongs to the *helped* unit, and so do the ENTER/LEAVE orders that
+    /// move it.
+    #[test]
+    fn a_helper_is_judged_on_where_the_helped_unit_ends_its_orders() {
+        let finding = only(check(
+            vec![ReportRegion {
+                structures: vec![finished_mill("1")],
+                ..region(vec![unit("4021"), unit("5")])
+            }],
+            "unit 4021\nENTER 1\nunit 5\nBUILD HELP 4021\n",
+        ));
+
+        assert_eq!(finding.code.as_str(), "already-built");
+        assert_eq!(finding.unit_id.as_deref(), Some("5"));
     }
 
     #[test]
