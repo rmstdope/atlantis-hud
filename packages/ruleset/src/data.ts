@@ -341,19 +341,20 @@ const STUDY_COST = /This skill costs (\d+) silver per month of study/i;
  * "This skill requires force [FORC] 1 to begin to study.", and for half of the sixty-six that state
  * one, "... force [FORC] 1 and pattern [PATT] 1 to begin to study."
  *
- * ` and ` is the whole of the separator grammar in the committed page - there is no comma form and
- * no three-requirement form - so splitting on anything else would be inventing one.
+ * Three forms appear in the committed page - one requirement, two joined by ` and `, and (twice)
+ * three joined by `, ` and a final ` and `. Rather than encode that punctuation, the tag/level
+ * pairs are read straight out of the sentence, which is separator-free and survives a fourth form.
  */
 const STUDY_REQUIREMENT = /This skill requires (.+?) to begin to study\./i;
 
-/** The tag and level inside one requirement clause: `force [FORC] 1`. */
-const REQUIREMENT_CLAUSE = /\[([A-Z0-9]{2,6})\]\s+(\d+)/;
+/** The tag and level of one requirement: `force [FORC] 1`. */
+const REQUIREMENT_CLAUSE = /\[([A-Z0-9]{2,6})\]\s+(\d+)/g;
 
 /**
  * Reads the prerequisites out of a skill's own paragraph.
  *
  * Matched on the tag and the number rather than on the skill's name, which keeps this independent
- * of how the page spells a name; a clause that cannot be read is dropped rather than turned into a
+ * of how the page spells a name; a clause stating neither is passed over rather than turned into a
  * requirement at a guessed level.
  */
 function readRequirements(paragraph: string): SkillRequirement[] {
@@ -361,10 +362,10 @@ function readRequirements(paragraph: string): SkillRequirement[] {
   if (!stated) {
     return [];
   }
-  return stated[1].split(" and ").flatMap((clause) => {
-    const part = clause.match(REQUIREMENT_CLAUSE);
-    return part ? [{ tag: part[1], level: Number.parseInt(part[2], 10) }] : [];
-  });
+  return [...stated[1].matchAll(REQUIREMENT_CLAUSE)].map((part) => ({
+    tag: part[1],
+    level: Number.parseInt(part[2], 10)
+  }));
 }
 
 /**

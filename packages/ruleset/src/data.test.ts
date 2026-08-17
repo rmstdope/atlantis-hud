@@ -463,6 +463,24 @@ describe("parseSkillReference", () => {
   });
 
   /**
+   * Two skills state three requirements, punctuated `a, b and c`. The parser reads the tag/level
+   * pairs out of the sentence rather than splitting it on a separator, which is why this form
+   * needs no code of its own - but it is pinned here, because splitting on ` and ` (as this parser
+   * first did) silently drops the middle one.
+   */
+  it("reads three prerequisites punctuated with a comma", () => {
+    const skills = parseSkillReference(DATA_HTML);
+
+    // "engrave runes of warding [ENGR] 1: ... requires artifact lore [ARTI] 2, energy shield
+    //  [ESHI] 3 and spirit shield [SSHI] 3 to begin to study."
+    expect(skills.ENGR.requires).toEqual([
+      { tag: "ARTI", level: 2 },
+      { tag: "ESHI", level: 3 },
+      { tag: "SSHI", level: 3 }
+    ]);
+  });
+
+  /**
    * Empty rather than absent, so a consumer never has to distinguish "states none" from "was not
    * scraped" - the great majority of the catalogue states none.
    */
