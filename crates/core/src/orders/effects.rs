@@ -58,6 +58,9 @@ pub struct UnitPreview {
     pub arriving_from: Option<String>,
     /// Where a departing unit ends the month, when the trace can say.
     pub departing_to: Option<String>,
+    /// The fleet carrying this unit away, as `<name> [<id>]`, when it is departing because the ship
+    /// it stands in is. Never set on an arriving row: an arrival says only where it came from.
+    pub aboard: Option<String>,
 }
 
 /// Every previewed unit standing in (or bound for) one region.
@@ -112,10 +115,16 @@ pub fn preview_orders_for_remembered_report(
     // Movement is resolved after everything else, so a renamed or re-equipped unit departs and
     // arrives as the orders leave it, not as the report found it.
     let map = MapKnowledge::from_remembered(&report, &remembered);
-    let mut regions: BTreeMap<String, Vec<UnitPreview>> = BTreeMap::new();
+
+    // Two passes, because a passenger's status depends on another unit's trace: the first decides
+    // every unit on its own orders and notes which fleets leave, the second carries the units
+    // standing in those fleets.
+    let mut decided: Vec<Decided> = Vec::new();
+    let mut sailing: BTreeMap<(String, String), SailingFleet> = BTreeMap::new();
+
     for entry in working.units {
-        let changes = entry.changes();
         let mut arrival = None;
+        let mut mode = None;
 
         let status = if entry.formed {
             UnitPreviewStatus::Formed
@@ -123,22 +132,81 @@ pub fn preview_orders_for_remembered_report(
             match trace_move(&map, &ruleset, &entry.unit, steps) {
                 // The first month's end is where the unit stands when the next report is written;
                 // the rest of a longer journey is later months' business.
-                Some(path) => match path.months.first() {
-                    Some(month) if month.ends_at.id() != entry.unit.region_id => {
-                        arrival = Some(month.ends_at.id());
-                        UnitPreviewStatus::Departing
+                Some(path) => {
+                    mode = path.mode;
+                    match path.months.first() {
+                        Some(month) if month.ends_at.id() != entry.unit.region_id => {
+                            arrival = Some(month.ends_at.id());
+                            UnitPreviewStatus::Departing
+                        }
+                        // A round trip is not a departure, so only the other changes count.
+                        Some(_) => UnitPreviewStatus::Present,
+                        // The report never said how the unit travels, so the trace cannot say
+                        // where the month ends: a departure to nowhere nameable.
+                        None => UnitPreviewStatus::Departing,
                     }
-                    // A round trip is not a departure, so only the other changes count.
-                    Some(_) => UnitPreviewStatus::Present,
-                    // The report never said how the unit travels, so the trace cannot say where
-                    // the month ends: a departure to nowhere nameable.
-                    None => UnitPreviewStatus::Departing,
-                },
+                }
                 None => UnitPreviewStatus::Departing,
             }
         } else {
             UnitPreviewStatus::Present
         };
+
+        // `TracedPath::mode` is the sail test rather than the order word: it is Sail exactly when
+        // the unit is aboard a priceable fleet, which is what the map already draws.
+        if status == UnitPreviewStatus::Departing
+            && mode == Some(crate::movement::rules::MovementMode::Sail)
+        {
+            if let Some(structure_id) = entry.unit.structure_id.clone() {
+                if let Some(label) = aboard_label(&report, &entry.unit.region_id, &structure_id) {
+                    sailing.insert(
+                        (entry.unit.region_id.clone(), structure_id),
+                        SailingFleet {
+                            // `None` is a value here, not a miss: a fleet whose destination cannot
+                            // be named carries its passengers to nowhere nameable.
+                            destination: arrival.clone(),
+                            label,
+                        },
+                    );
+                }
+            }
+        }
+
+        decided.push(Decided {
+            entry,
+            status,
+            arrival,
+            aboard: None,
+        });
+    }
+
+    for decided in &mut decided {
+        // A unit with its own movement order keeps its own destination and gets no marker, and a
+        // unit already departing or formed has been decided by its own orders.
+        if decided.entry.move_steps.is_some() || decided.status != UnitPreviewStatus::Present {
+            continue;
+        }
+        let Some(structure_id) = decided.entry.unit.structure_id.clone() else {
+            continue;
+        };
+        let Some(fleet) = sailing.get(&(decided.entry.unit.region_id.clone(), structure_id)) else {
+            continue;
+        };
+
+        decided.status = UnitPreviewStatus::Departing;
+        decided.arrival = fleet.destination.clone();
+        decided.aboard = Some(fleet.label.clone());
+    }
+
+    let mut regions: BTreeMap<String, Vec<UnitPreview>> = BTreeMap::new();
+    for Decided {
+        entry,
+        status,
+        arrival,
+        aboard,
+    } in decided
+    {
+        let changes = entry.changes();
 
         let departed = status == UnitPreviewStatus::Departing;
         if changes.is_empty() && !departed && status != UnitPreviewStatus::Formed {
@@ -148,8 +216,9 @@ pub fn preview_orders_for_remembered_report(
         if let Some(destination) = arrival {
             let mut arrived = entry.unit.clone();
             arrived.region_id.clone_from(&destination);
-            // A walker cannot take a building with it; whether a ship sails along is a question
-            // for a later issue, so the safe answer is to arrive outside.
+            // A walker cannot take a building with it, and a carried unit provably arrives still
+            // inside its hull - but a fleet keeping its structure on arrival is ah-l2i.3, so until
+            // that lands every arriving row is drawn ashore.
             arrived.structure_id = None;
             regions
                 .entry(destination.clone())
@@ -160,6 +229,8 @@ pub fn preview_orders_for_remembered_report(
                     changes: changes.clone(),
                     arriving_from: Some(entry.unit.region_id.clone()),
                     departing_to: None,
+                    // An arrival says only where the unit came from.
+                    aboard: None,
                 });
             regions
                 .entry(entry.unit.region_id.clone())
@@ -170,6 +241,7 @@ pub fn preview_orders_for_remembered_report(
                     status,
                     changes,
                     arriving_from: None,
+                    aboard,
                 });
         } else {
             regions
@@ -181,6 +253,7 @@ pub fn preview_orders_for_remembered_report(
                     changes,
                     arriving_from: None,
                     departing_to: None,
+                    aboard,
                 });
         }
     }
@@ -191,6 +264,45 @@ pub fn preview_orders_for_remembered_report(
             .map(|(region_id, units)| RegionPreview { region_id, units })
             .collect(),
     })
+}
+
+/// One unit's verdict, held between the two passes of the preview.
+struct Decided {
+    entry: WorkingUnit,
+    status: UnitPreviewStatus,
+    /// Where the unit ends the month, when the trace could say.
+    arrival: Option<String>,
+    /// Set on the departing row of a unit carried by a fleet: `<name> [<id>]`.
+    aboard: Option<String>,
+}
+
+/// A fleet leaving its hex this month, as its passengers need to read it.
+struct SailingFleet {
+    /// Where the fleet ends the month, or nothing when the trace could not say.
+    destination: Option<String>,
+    /// `<name> [<id>]`, for the carried unit's row.
+    label: String,
+}
+
+/// How a carrying fleet is named to the player: `Wavecrest [329]`.
+///
+/// The player renames a ship precisely so they can tell two apart, so the name is the half worth
+/// showing - `movement::mode::fleet_label`'s kind would read `Longship [329]` for every hull of that
+/// kind in the hex. Nothing is said about a hull the report does not list; in practice the trace
+/// found the fleet in this same list, so that is a guard rather than a case.
+fn aboard_label(
+    report: &crate::report::ParsedReport,
+    region_id: &str,
+    structure_id: &str,
+) -> Option<String> {
+    let structure = report
+        .regions
+        .iter()
+        .find(|region| region.region_id == region_id)?
+        .structures
+        .iter()
+        .find(|structure| structure.structure_id == structure_id)?;
+    Some(format!("{} [{}]", structure.name, structure.structure_id))
 }
 
 /// One unit as the walker holds it: the state being changed, and the report's word for diffing.
@@ -1361,6 +1473,181 @@ mod tests {
             .find(|region| region.region_id == "1:1,1")
             .expect("the origin changed");
         assert_eq!(origin.units[0].departing_to.as_deref(), Some("1:2,2"));
+    }
+
+    /// Two sea hexes, and in the first a named, priceable hull with two own units aboard, a
+    /// second hull with a third, and a fourth unit standing outside any structure. Everything a
+    /// sail trace needs is stated - `Load`, `Sailors` and `MaxSpeed` - because an unpriceable
+    /// fleet is traced as a walker instead, which is a different test.
+    fn fleet_report(first_hull: &str) -> String {
+        let mut text = String::from("Foo (1) Report\n\n");
+        text.push_str("ocean (1,1) in Sea.\n\n");
+        text.push_str("Exits:\n  Southeast : ocean (2,2) in Sea.\n\n");
+        text.push_str("* Ashore (903), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.\n");
+        text.push_str(&format!("+ {first_hull}\n"));
+        text.push_str(
+            "  * Sailors (900), Foo (1), leader [LEAD], sharing, centaur [CTAU]. Weight: 50. \
+             Capacity: 0/70/70/0. Skills: sailing [SAIL] 2 (90).\n",
+        );
+        text.push_str(
+            "  * Passengers (901), Foo (1), sharing, centaur [CTAU]. Weight: 50. \
+             Capacity: 0/70/70/0.\n",
+        );
+        text.push_str("+ Seagull [330] : Longship; Load: 0/150; Sailors: 4/4; MaxSpeed: 4.\n");
+        text.push_str(
+            "  * Idlers (902), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.\n",
+        );
+        text.push_str("\nocean (2,2) in Sea.\n\n");
+        text.push_str("Exits:\n  Northwest : ocean (1,1) in Sea.\n");
+        text
+    }
+
+    /// The hull the passengers ride in: named, so the marker can name it, and priceable, so the
+    /// trace calls the mode Sail.
+    const WAVECREST: &str = "Wavecrest [329] : Longship; Load: 110/150; Sailors: 4/4; MaxSpeed: 4.";
+
+    fn fleet_preview(hull: &str, orders: &str) -> OrdersPreviewResponse {
+        preview_orders_for_remembered_report(
+            &mut ReportCache::new(),
+            RULESET,
+            &fleet_report(hull),
+            "[]",
+            orders,
+        )
+        .expect("the ruleset loads")
+    }
+
+    fn region_of<'a>(
+        response: &'a OrdersPreviewResponse,
+        region_id: &str,
+    ) -> Option<&'a RegionPreview> {
+        response
+            .regions
+            .iter()
+            .find(|region| region.region_id == region_id)
+    }
+
+    fn row<'a>(
+        response: &'a OrdersPreviewResponse,
+        region_id: &str,
+        unit_id: &str,
+    ) -> Option<&'a UnitPreview> {
+        region_of(response, region_id).and_then(|region| {
+            region
+                .units
+                .iter()
+                .find(|unit| unit.unit.unit_id == unit_id)
+        })
+    }
+
+    #[test]
+    fn units_aboard_a_sailing_fleet_depart_with_it() {
+        // The passenger wrote no order of its own; it goes where the ship goes, so the origin hex
+        // must not keep men the fleet is taking away.
+        let response = fleet_preview(WAVECREST, "unit 900\nSAIL SE\n");
+
+        for unit_id in ["900", "901"] {
+            let departing =
+                row(&response, "1:1,1", unit_id).unwrap_or_else(|| panic!("{unit_id} departs"));
+            assert_eq!(departing.status, UnitPreviewStatus::Departing);
+            assert_eq!(departing.departing_to.as_deref(), Some("1:2,2"));
+
+            let arriving =
+                row(&response, "1:2,2", unit_id).unwrap_or_else(|| panic!("{unit_id} arrives"));
+            assert_eq!(arriving.status, UnitPreviewStatus::Arriving);
+            assert_eq!(arriving.arriving_from.as_deref(), Some("1:1,1"));
+        }
+    }
+
+    #[test]
+    fn a_carried_unit_names_the_fleet_that_takes_it() {
+        // Name plus id, from the report's own structure: two hulls of one kind read alike, so the
+        // name the player gave is the half worth showing.
+        let response = fleet_preview(WAVECREST, "unit 900\nSAIL SE\n");
+
+        let carried = row(&response, "1:1,1", "901").expect("the passenger departs");
+        assert_eq!(carried.aboard.as_deref(), Some("Wavecrest [329]"));
+    }
+
+    #[test]
+    fn the_unit_that_wrote_the_order_carries_no_aboard_marker() {
+        let response = fleet_preview(WAVECREST, "unit 900\nSAIL SE\n");
+
+        let sailor = row(&response, "1:1,1", "900").expect("the sailing unit departs");
+        assert_eq!(sailor.aboard, None, "it wrote the order; it is not cargo");
+    }
+
+    #[test]
+    fn an_arriving_row_carries_no_aboard_marker() {
+        // An arrival says only where the unit came from.
+        let response = fleet_preview(WAVECREST, "unit 900\nSAIL SE\n");
+
+        let arrived = row(&response, "1:2,2", "901").expect("the passenger arrives");
+        assert_eq!(arrived.aboard, None);
+    }
+
+    #[test]
+    fn a_passengers_own_move_order_wins() {
+        // Overwriting what the player deliberately typed was the rejected alternative.
+        let response = fleet_preview(WAVECREST, "unit 900\nSAIL SE\nunit 901\nMOVE NW\n");
+
+        let passenger = row(&response, "1:1,1", "901").expect("the passenger departs");
+        assert_eq!(passenger.status, UnitPreviewStatus::Departing);
+        assert_eq!(passenger.aboard, None, "it goes under its own order");
+        assert_ne!(
+            passenger.departing_to.as_deref(),
+            Some("1:2,2"),
+            "its own destination, not the ship's"
+        );
+    }
+
+    #[test]
+    fn passengers_follow_an_untraceable_ship() {
+        // `SAIL OUT` names no hex to enter, so the trace can price the fleet but cannot say where
+        // the month ends: the passengers depart to nowhere nameable, and appear in no destination.
+        let response = fleet_preview(WAVECREST, "unit 900\nSAIL OUT\n");
+
+        let carried = row(&response, "1:1,1", "901").expect("the passenger departs");
+        assert_eq!(carried.status, UnitPreviewStatus::Departing);
+        assert_eq!(carried.departing_to, None);
+        assert_eq!(carried.aboard.as_deref(), Some("Wavecrest [329]"));
+        assert!(
+            region_of(&response, "1:2,2").is_none(),
+            "an unknowable arrival is not drawn"
+        );
+    }
+
+    #[test]
+    fn a_unit_ashore_is_not_carried() {
+        let response = fleet_preview(WAVECREST, "unit 900\nSAIL SE\n");
+
+        assert!(
+            row(&response, "1:1,1", "903").is_none() && row(&response, "1:2,2", "903").is_none(),
+            "a unit outside the hull is untouched, so it is not in the answer at all"
+        );
+    }
+
+    #[test]
+    fn a_unit_in_a_different_structure_is_not_carried() {
+        let response = fleet_preview(WAVECREST, "unit 900\nSAIL SE\n");
+
+        assert!(
+            row(&response, "1:1,1", "902").is_none() && row(&response, "1:2,2", "902").is_none(),
+            "the other hull is not sailing"
+        );
+    }
+
+    #[test]
+    fn a_unit_aboard_a_fleet_that_walks_is_not_carried() {
+        // An unknown hull cannot be priced, so the trace falls back to the ordering unit's own
+        // land mobility: no Sail, nobody carried.
+        let response = fleet_preview("Dinghy [329] : Skiff.", "unit 900\nSAIL SE\n");
+
+        let passenger = row(&response, "1:1,1", "901");
+        assert!(
+            passenger.is_none(),
+            "the passenger is untouched: {passenger:?}"
+        );
     }
 
     /// Every order this module applies must be one the grammar recognises, so the two cannot
