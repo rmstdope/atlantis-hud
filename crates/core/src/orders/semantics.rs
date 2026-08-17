@@ -28,6 +28,13 @@ use crate::movement::rules::{item_spellings, Ruleset};
 use crate::report::model::{ItemAmount, MarketItem, ReportRegion, ReportUnit};
 use crate::report::ParsedReport;
 
+/// The report's name for the allowance this check reads from `Faction Status:`.
+const QUARTERMASTERS: &str = "quartermasters";
+
+/// The skill this check is about, by name rather than by tag - see [`check_faction`]'s own doc
+/// comment for why.
+const QUARTERMASTER_SKILL: &str = "quartermaster";
+
 /// The game's own currency tag.
 const SILVER: &str = "SILV";
 
@@ -82,13 +89,14 @@ pub mod codes {
     pub const GIVE_TARGET_NOT_HERE: Code = Code("give-target-not-here");
     pub const NOT_TRADED_HERE: Code = Code("not-traded-here");
     pub const UNIT_OVERLOADED: Code = Code("unit-overloaded");
+    pub const TOO_MANY_QUARTERMASTERS: Code = Code("too-many-quartermasters");
     /// Every code. This array's own order is not the settings tab's grouping (that groups by
     /// concern - Teaching / Resources / Markets / Guarding / Orders / Sailing - not by this list),
     /// but a new entry still goes last: the generated TypeScript copies this order. Until
     /// `give-target-not-here` every entry had also been last in its tab group; that one joins the
     /// existing *Orders* group instead, so the two orders are no longer in step and nothing depends
     /// on their being so.
-    pub const ALL: [Code; 15] = [
+    pub const ALL: [Code; 16] = [
         NOT_ENOUGH_SILVER,
         NOT_ENOUGH_ITEMS,
         GUARD_DROPPED,
@@ -104,6 +112,7 @@ pub mod codes {
         GIVE_TARGET_NOT_HERE,
         NOT_TRADED_HERE,
         UNIT_OVERLOADED,
+        TOO_MANY_QUARTERMASTERS,
     ];
 }
 
@@ -214,6 +223,11 @@ pub fn check_turn(
         // one line keep the order they produced them in.
         findings[start..].sort_by_key(|finding| (finding.line.is_none(), finding.line));
     }
+
+    // Everything above is about one hex. An allowance is spent across the whole map, so it is
+    // counted once, after every hex has been read - and `validate_turn` sorts the whole list by
+    // line afterwards, so these findings land beside the per-hex ones rather than after them.
+    check_faction(report, &ordered, ruleset, &options, &mut findings);
 
     findings
 }
@@ -1649,6 +1663,111 @@ fn check_movement(
     }
 }
 
+// --- allowances spent across the whole map -------------------------------------------------------
+
+/// Checks the allowances the faction spends across the whole map rather than in one hex.
+///
+/// The report states each one as `used (maximum)` in its `Faction Status:` block, and those are the
+/// faction's own figures rather than anything counted here: this only adds what the orders would
+/// spend on top of them.
+fn check_faction(
+    report: &ParsedReport,
+    ordered: &OrderedUnits,
+    ruleset: Option<&Ruleset>,
+    options: &CheckOptions,
+    findings: &mut Vec<Finding>,
+) {
+    check_quartermasters(report, ordered, ruleset, options, findings);
+}
+
+/// `STUDY: Can't have another quartermaster.` A faction may hold only so many at once, and the
+/// report prints the allowance in its own header - a unit ordered to study past it spends the
+/// month and is refused.
+fn check_quartermasters(
+    report: &ParsedReport,
+    ordered: &OrderedUnits,
+    ruleset: Option<&Ruleset>,
+    options: &CheckOptions,
+    findings: &mut Vec<Finding>,
+) {
+    if !options.emits(codes::TOO_MANY_QUARTERMASTERS) {
+        return;
+    }
+
+    // Without a ruleset there is no skill catalogue and no way to tell a quartermaster order from
+    // any other STUDY. Silent, per this module's accept-on-doubt policy.
+    let Some(ruleset) = ruleset else { return };
+
+    // The tag is QUAM. It is not QUAR, which is quarrying - resolving by name rather than writing
+    // a tag literal is what keeps that mistake out.
+    let Some(skill) = ruleset.find_skill(QUARTERMASTER_SKILL) else {
+        return;
+    };
+
+    let Some(entry) = report
+        .header
+        .faction_status
+        .entries
+        .iter()
+        .find(|entry| entry.label.eq_ignore_ascii_case(QUARTERMASTERS))
+    else {
+        return;
+    };
+
+    let free_places = (entry.maximum - entry.used).max(0);
+
+    let mut candidates: Vec<(&ReportUnit, &PlacedIntent)> = report
+        .regions
+        .iter()
+        .flat_map(|region| region.units.iter())
+        .filter(|unit| unit.own)
+        .filter(|unit| {
+            !unit
+                .skills
+                .iter()
+                .any(|held| held.tag.eq_ignore_ascii_case(&skill.tag))
+        })
+        .filter_map(|unit| {
+            // The first STUDY order wins, the same as `Ordered::studies()` reads it - a unit that
+            // writes several is not asking to be counted once per line.
+            let placed =
+                ordered
+                    .get(&unit.unit_id)
+                    .iter()
+                    .find_map(|placed| match &placed.intent {
+                        Intent::Study { skill: studied } => Some((placed, studied)),
+                        _ => None,
+                    })?;
+            Some((unit, placed))
+        })
+        .filter(|(_, (_, studied))| {
+            ruleset
+                .find_skill(studied)
+                .is_some_and(|found| found.tag.eq_ignore_ascii_case(&skill.tag))
+        })
+        .map(|(unit, (placed, _))| (unit, placed))
+        .collect();
+
+    candidates.sort_by_key(|(_, placed)| placed.line);
+
+    #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
+    let free_places = free_places as usize;
+    for (unit, placed) in candidates.into_iter().skip(free_places) {
+        findings.push(Finding {
+            code: codes::TOO_MANY_QUARTERMASTERS,
+            message: format!(
+                "your faction already has its {} quartermasters",
+                entry.maximum
+            ),
+            region_id: unit.region_id.clone(),
+            unit_id: Some(unit.unit_id.clone()),
+            line: Some(placed.line),
+            column_start: Some(placed.column_start),
+            column_end: Some(placed.column_end),
+        });
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1747,6 +1866,31 @@ mod tests {
 
     fn report(regions: Vec<ReportRegion>) -> ParsedReport {
         ParsedReport {
+            regions,
+            ..Default::default()
+        }
+    }
+
+    /// `report`, with a `Faction Status:` block carrying one `label: used (maximum)` entry - what
+    /// the faction-wide checks read instead of anything counted per hex.
+    fn report_with_status(
+        label: &str,
+        used: i64,
+        maximum: i64,
+        regions: Vec<ReportRegion>,
+    ) -> ParsedReport {
+        ParsedReport {
+            header: crate::report::header::ReportHeader {
+                faction_status: crate::report::header::FactionStatus {
+                    entries: vec![crate::report::header::FactionStatusEntry {
+                        label: label.to_string(),
+                        used,
+                        maximum,
+                    }],
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
             regions,
             ..Default::default()
         }
@@ -3353,56 +3497,74 @@ mod tests {
             with_men(with_silver(unit("700"), 1000), 20),
         ];
 
-        let cases: Vec<(Code, Vec<ReportRegion>, &str)> = vec![
+        // The fourth element is a `Faction Status:` allowance the case's report should carry -
+        // empty for every per-hex check, and what `too-many-quartermasters` needs instead of a hex.
+        type Case = (
+            Code,
+            Vec<ReportRegion>,
+            &'static str,
+            Option<(&'static str, i64, i64)>,
+        );
+        let cases: Vec<Case> = vec![
             (
                 codes::NOT_ENOUGH_SILVER,
                 vec![region(vec![with_silver(unit("5"), 40)])],
                 "unit 5\nGIVE 7 100 SILV\n",
+                None,
             ),
             (
                 codes::NOT_ENOUGH_ITEMS,
                 vec![region(vec![with_item(unit("5"), 3, "sword", "SWOR")])],
                 "unit 5\nGIVE 7 10 swords\n",
+                None,
             ),
             (
                 codes::GUARD_DROPPED,
                 vec![region(vec![guard_dropping])],
                 "unit 5\nMOVE N\n",
+                None,
             ),
             (
                 codes::HEX_UNGUARDED,
                 vec![region(vec![unit("5")])],
                 "unit 5\nWORK\n",
+                None,
             ),
             (
                 codes::TAUGHT_NOT_HERE,
                 vec![region(teaching_hex())],
                 "unit 500\nTEACH 999\n",
+                None,
             ),
             (
                 codes::TAUGHT_NOT_STUDYING,
                 vec![region(teaching_hex())],
                 "unit 500\nTEACH 700\nunit 700\nWORK\n",
+                None,
             ),
             (
                 codes::TEACHER_CANNOT_TEACH,
                 vec![region(teacher_below_student)],
                 "unit 500\nTEACH 700\nunit 700\nSTUDY combat\n",
+                None,
             ),
             (
                 codes::TEACHING_OVERSUBSCRIBED,
                 vec![region(oversubscribed)],
                 "unit 500\nTEACH 700\nunit 700\nSTUDY combat\n",
+                None,
             ),
             (
                 codes::TEACHER_HAS_FREE_SLOTS,
                 vec![region(teaching_hex())],
                 "unit 700\nSTUDY combat\n",
+                None,
             ),
             (
                 codes::FORM_ALIAS_REUSED,
                 vec![region(vec![unit("5")])],
                 "unit 5\nFORM 1\nEND\nFORM 1\nEND\n",
+                None,
             ),
             (
                 codes::FLEET_OVERLOADED,
@@ -3416,6 +3578,7 @@ mod tests {
                     }])
                 }],
                 "unit 11125\nSAIL N\n",
+                None,
             ),
             (
                 codes::FLEET_UNDERCREWED,
@@ -3428,21 +3591,31 @@ mod tests {
                     }])
                 }],
                 "unit 11125\nSAIL N\n",
+                None,
             ),
             (
                 codes::GIVE_TARGET_NOT_HERE,
                 vec![region(vec![with_silver(unit("5"), 1000)])],
                 "unit 5\nGIVE 16585 500 SILV\n",
+                None,
             ),
             (
                 codes::NOT_TRADED_HERE,
                 vec![region(vec![unit("5")])],
                 "unit 5\nBUY 5 silk\n",
+                None,
+            ),
+            (
+                codes::TOO_MANY_QUARTERMASTERS,
+                vec![region(vec![unit("5")])],
+                "unit 5\nSTUDY QUAM\n",
+                Some(("Quartermasters", 2, 2)),
             ),
             (
                 codes::UNIT_OVERLOADED,
                 vec![region(vec![carrying("5", 1800, 150)])],
                 "unit 5\nMOVE S\n",
+                None,
             ),
         ];
 
@@ -3452,11 +3625,18 @@ mod tests {
             "every code in codes::ALL needs a fixture here, or a silenced one would go unnoticed"
         );
 
-        for (code, regions, orders) in &cases {
+        for (code, regions, orders, status) in &cases {
+            let built = match status {
+                Some((label, used, maximum)) => {
+                    report_with_status(label, *used, *maximum, regions.clone())
+                }
+                None => report(regions.clone()),
+            };
+
             // Fully enabled (rather than the runtime default) so `hex-unguarded`'s own case, which
             // the default itself disables, still gets to prove its fixture fires at all.
             let enabled = check_turn(
-                &report(regions.clone()),
+                &built,
                 orders,
                 Some(&ruleset()),
                 CheckOptions {
@@ -3468,12 +3648,7 @@ mod tests {
                 "{code}'s own fixture should emit it when nothing is disabled: {enabled:?}"
             );
 
-            let silenced = check_turn(
-                &report(regions.clone()),
-                orders,
-                Some(&ruleset()),
-                disabling(*code),
-            );
+            let silenced = check_turn(&built, orders, Some(&ruleset()), disabling(*code));
             assert!(
                 !codes(&silenced).contains(&code.as_str()),
                 "{code} should be silenced once disabled: {silenced:?}"
@@ -3544,6 +3719,212 @@ mod tests {
                 disabling_all(&[codes::NOT_ENOUGH_SILVER, codes::GIVE_TARGET_NOT_HERE]),
             )),
             ["guard-dropped"]
+        );
+    }
+
+    // --- quartermasters -------------------------------------------------------------------------
+
+    fn quartermaster(mut unit: ReportUnit) -> ReportUnit {
+        unit.skills.push(Skill {
+            name: "quartermaster".to_string(),
+            tag: "QUAM".to_string(),
+            level: 1,
+            points: 0,
+        });
+        unit
+    }
+
+    /// Runs only the quartermaster check, with `not-enough-silver` disabled: the fixtures below
+    /// are about the allowance, not about whether the unit can afford the study, and `unit()`
+    /// starts with no silver of its own.
+    fn quartermasters(
+        regions: Vec<ReportRegion>,
+        orders: &str,
+        used: i64,
+        maximum: i64,
+    ) -> Vec<Finding> {
+        check_turn(
+            &report_with_status("Quartermasters", used, maximum, regions),
+            orders,
+            Some(&ruleset()),
+            disabling(codes::NOT_ENOUGH_SILVER),
+        )
+    }
+
+    #[test]
+    fn a_study_beyond_the_quartermaster_allowance_is_warned() {
+        let findings = quartermasters(vec![region(vec![unit("5")])], "unit 5\nSTUDY QUAM\n", 2, 2);
+
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].code, codes::TOO_MANY_QUARTERMASTERS);
+        assert_eq!(
+            findings[0].message,
+            "your faction already has its 2 quartermasters"
+        );
+        assert_eq!(findings[0].region_id, "1:7,53".to_string());
+        assert_eq!(findings[0].unit_id, Some("5".to_string()));
+        assert_eq!(findings[0].line, Some(2));
+    }
+
+    #[test]
+    fn the_skill_may_be_named_or_tagged() {
+        assert_eq!(
+            codes(&quartermasters(
+                vec![region(vec![unit("5")])],
+                "unit 5\nSTUDY quartermaster\n",
+                2,
+                2
+            )),
+            ["too-many-quartermasters"]
+        );
+    }
+
+    #[test]
+    fn quarrying_is_not_quartermaster() {
+        assert_eq!(
+            quartermasters(vec![region(vec![unit("5")])], "unit 5\nSTUDY QUAR\n", 2, 2),
+            vec![]
+        );
+    }
+
+    /// A unit that writes two STUDY lines is not asking to be counted once per line - only the
+    /// first is what the server actually studies, the same as `Ordered::studies()` reads it.
+    #[test]
+    fn a_unit_with_two_study_orders_is_counted_once() {
+        assert_eq!(
+            quartermasters(
+                vec![region(vec![unit("5")])],
+                "unit 5\nSTUDY QUAM\nSTUDY QUAM\n",
+                1,
+                2
+            ),
+            vec![],
+            "the one free place is spent once, not once per STUDY line"
+        );
+    }
+
+    #[test]
+    fn a_unit_that_is_already_a_quartermaster_is_not_counted() {
+        assert_eq!(
+            quartermasters(
+                vec![region(vec![quartermaster(unit("5"))])],
+                "unit 5\nSTUDY QUAM\n",
+                2,
+                2
+            ),
+            vec![]
+        );
+    }
+
+    #[test]
+    fn only_the_orders_past_the_allowance_are_warned() {
+        let findings = quartermasters(
+            vec![region(vec![unit("5"), unit("6"), unit("7")])],
+            "unit 5\nSTUDY QUAM\nunit 6\nSTUDY QUAM\nunit 7\nSTUDY QUAM\n",
+            1,
+            2,
+        );
+
+        assert_eq!(
+            findings
+                .iter()
+                .map(|f| f.unit_id.clone())
+                .collect::<Vec<_>>(),
+            vec![Some("6".to_string()), Some("7".to_string())],
+            "the first study fits in the one free place; the rest, in document order, are marked"
+        );
+    }
+
+    #[test]
+    fn an_allowance_with_room_is_silent() {
+        assert_eq!(
+            quartermasters(vec![region(vec![unit("5")])], "unit 5\nSTUDY QUAM\n", 0, 2),
+            vec![]
+        );
+    }
+
+    #[test]
+    fn without_a_quartermasters_line_nothing_is_said() {
+        assert_eq!(
+            check_turn(
+                &report(vec![region(vec![unit("5")])]),
+                "unit 5\nSTUDY QUAM\n",
+                Some(&ruleset()),
+                disabling(codes::NOT_ENOUGH_SILVER),
+            ),
+            vec![]
+        );
+    }
+
+    #[test]
+    fn without_a_ruleset_nothing_is_said() {
+        assert_eq!(
+            check_turn(
+                &report_with_status("Quartermasters", 2, 2, vec![region(vec![unit("5")])]),
+                "unit 5\nSTUDY QUAM\n",
+                None,
+                disabling(codes::NOT_ENOUGH_SILVER),
+            ),
+            vec![]
+        );
+    }
+
+    #[test]
+    fn a_foreign_unit_is_not_counted() {
+        let mut foreign = unit("5");
+        foreign.own = false;
+        foreign.faction_id = Some("99".to_string());
+        foreign.faction_name = Some("Someone Else".to_string());
+
+        assert_eq!(
+            quartermasters(vec![region(vec![foreign])], "unit 5\nSTUDY QUAM\n", 2, 2),
+            vec![],
+            "you cannot order a unit that is not yours, however the orders document reads"
+        );
+    }
+
+    #[test]
+    fn the_finding_sits_on_the_study_line() {
+        let findings = quartermasters(
+            vec![region(vec![unit("5")])],
+            "unit 5\nWORK\nSTUDY QUAM\n",
+            2,
+            2,
+        );
+
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].line, Some(3));
+        assert_eq!(findings[0].region_id, "1:7,53".to_string());
+    }
+
+    /// The committed turn-82 fixture's own faction is already at `Quartermasters: 2 (2)` - a real
+    /// report proving the header is read as the parser leaves it, not just as this module's own
+    /// hand-built fixtures build it.
+    #[test]
+    fn a_fixture_faction_already_at_its_quartermaster_allowance_is_warned() {
+        let report = crate::report::parse_report_full(atlantis_hud_fixtures::G3_F42_T82.text);
+        assert_eq!(
+            report
+                .header
+                .faction_status
+                .entries
+                .iter()
+                .find(|entry| entry.label.eq_ignore_ascii_case("Quartermasters"))
+                .map(|entry| (entry.used, entry.maximum)),
+            Some((2, 2))
+        );
+
+        let findings = check_turn(
+            &report,
+            "unit 10989\nSTUDY QUAM\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        assert!(
+            codes(&findings).contains(&"too-many-quartermasters"),
+            "unit 10989 studying quartermaster on top of an already-full allowance should warn: \
+             {findings:?}"
         );
     }
 

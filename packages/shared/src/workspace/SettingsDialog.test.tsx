@@ -36,11 +36,11 @@ describe("the Warnings settings tab", () => {
     resetSettingsStore();
   });
 
-  it("renders one toggle per advisory code, grouped Teaching / Resources / Guarding / Orders / Sailing", () => {
+  it("renders one toggle per advisory code, grouped Studying/Teaching / Resources / Guarding / Orders / Sailing", () => {
     resetSettingsStore();
     const html = renderToStaticMarkup(<WarningSettings />);
 
-    expect(html).toContain("Teaching");
+    expect(html).toContain("Studying/Teaching");
     expect(html).toContain("Resources");
     expect(html).toContain("Guarding");
     expect(html).toContain("Orders");
@@ -60,7 +60,8 @@ describe("the Warnings settings tab", () => {
       "Gifts to units that are not here",
       "Overloaded units",
       "Overloaded fleets",
-      "Undercrewed fleets"
+      "Undercrewed fleets",
+      "More quartermasters than allowed"
     ];
     for (const title of titles) {
       expect(html).toContain(title);
