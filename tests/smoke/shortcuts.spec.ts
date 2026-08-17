@@ -120,6 +120,16 @@ test("Alt+Arrows cycle the faction's units even while the editor is focused", as
 
 test("F8 walks to a problem in another unit's orders", async ({ page }) => {
   await loadReport(page);
+
+  // Six of Two (13402), in the same hex as OTHER_OWN_UNIT below, is reported already at combat 5
+  // and orders "@study comb" regardless of anything this test does - a genuine study-at-maximum
+  // finding (ah-1uj) the walk below is not about, so it is turned off to keep this test isolated
+  // to the one syntax problem it introduces.
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByTestId("settings-tab-warnings").click();
+  await page.getByTestId("settings-warning-study-at-maximum").uncheck();
+  await page.keyboard.press("Escape");
+
   await selectHex(page, "1:7,53");
   await selectUnit(page, OWN_UNIT);
   await fillOrders(page, "@work\nWROK");
@@ -175,6 +185,10 @@ test("Mod+/ shows how to get around, with the mouse as well as the keyboard", as
  */
 test("the map really answers the gestures the overlay describes", async ({ page }) => {
   await loadReport(page);
+  // The turn-71 report carries one finding of its own (ah-1uj), so the header's problems chip is
+  // never absent for this fixture - wait for it before measuring the map, or a late-mounting chip
+  // can shift the layout under a corner coordinate captured too early.
+  await expect(page.getByTestId("problems-chip")).toBeVisible();
   const map = page.getByTestId("map-canvas");
   const box = await map.boundingBox();
   if (!box) {

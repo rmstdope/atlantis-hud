@@ -925,16 +925,19 @@ test("a unit told to spend silver it has not got is warned about, without blocki
   await expect(page.getByTestId("export-orders")).toBeEnabled();
   await page.keyboard.press("Escape");
 
-  // And the whole map is counted, so the same problem is reachable from the header.
+  // And the whole map is counted, so the same problem is reachable from the header. The turn-71
+  // report carries one finding of its own throughout - Six of Two (13402) is already at combat 5,
+  // the ruleset's maximum, and still orders "@study comb" (ah-1uj) - so the count here is that
+  // baseline plus the one this test introduces.
   const chip = page.getByTestId("problems-chip");
-  await expect(chip).toContainText("1 problem");
+  await expect(chip).toContainText("2 problems");
   await chip.click();
   await expect(page.getByTestId("problems-panel")).toContainText("mountain (7,53)");
 
-  // Corrected, it goes away entirely.
+  // Corrected, this hex's problem goes away, leaving only the turn's baseline finding elsewhere.
   await fillOrders(page, "@work");
   await expect(page.getByTestId("region-problems")).toHaveCount(0);
-  await expect(page.getByTestId("problems-chip")).toHaveCount(0);
+  await expect(page.getByTestId("problems-chip")).toContainText("1 problem");
 });
 
 /**
@@ -1015,8 +1018,11 @@ test("a silenced advisory check disappears everywhere at once", async ({ page })
   await selectUnit(page, OWN_UNIT);
   await fillOrders(page, "GIVE 0 999999999 SILV");
 
+  // The turn-71 report carries one finding of its own throughout (unit 13402's study-at-maximum,
+  // ah-1uj), unaffected by the not-enough-silver toggle below - the chip counts it alongside the
+  // shortfall this test introduces.
   await expect(page.getByTestId("region-problems")).toContainText("short");
-  await expect(page.getByTestId("problems-chip")).toContainText("1 problem");
+  await expect(page.getByTestId("problems-chip")).toContainText("2 problems");
 
   await page.getByRole("button", { name: "Settings" }).click();
   await page.getByTestId("settings-tab-warnings").click();
@@ -1024,7 +1030,7 @@ test("a silenced advisory check disappears everywhere at once", async ({ page })
   await page.keyboard.press("Escape");
 
   await expect(page.getByTestId("region-problems")).toHaveCount(0);
-  await expect(page.getByTestId("problems-chip")).toHaveCount(0);
+  await expect(page.getByTestId("problems-chip")).toContainText("1 problem");
 
   await page.getByRole("button", { name: "Settings" }).click();
   await page.getByTestId("settings-tab-warnings").click();
@@ -1032,7 +1038,7 @@ test("a silenced advisory check disappears everywhere at once", async ({ page })
   await page.keyboard.press("Escape");
 
   await expect(page.getByTestId("region-problems")).toContainText("short");
-  await expect(page.getByTestId("problems-chip")).toContainText("1 problem");
+  await expect(page.getByTestId("problems-chip")).toContainText("2 problems");
 });
 
 /**
@@ -1304,6 +1310,23 @@ async function boxOf(page: Page, panel: string) {
   return box!;
 }
 
+/**
+ * Waits for a panel's height to stop changing before it is measured as a "before" baseline.
+ * Selecting a hex opens the panels, and reading a size while that settles - slower or busier on
+ * CI than locally - pins a mid-animation size rather than the resting one.
+ */
+async function waitForStableHeight(page: Page, panel: string) {
+  let last: number | null = null;
+  await expect
+    .poll(async () => {
+      const height = (await boxOf(page, panel)).height;
+      const stable = last !== null && height === last;
+      last = height;
+      return stable;
+    })
+    .toBe(true);
+}
+
 /** Where the map is standing, read the same way `shortcuts.spec.ts` does. */
 async function mapTransform(page: Page): Promise<string> {
   return (await page.getByTestId("map-world").getAttribute("transform")) ?? "";
@@ -1334,7 +1357,16 @@ async function resetSplit(page: Page) {
 
 test("the unit/orders split drags at the grip and survives a reload", async ({ page }) => {
   await loadReport(page);
+  // The default window (1280x683) leaves the orders editor's pin already at its own ceiling once
+  // enough advisory-check chips share the header with it (ah-1uj is one of several) - dragging it
+  // taller would then have nowhere to go, whatever the gesture. A taller window gives the split
+  // room to move regardless of how many chips the header carries; this test is about the drag
+  // mechanism, not about how little of it fits in the header's own default height.
+  await page.setViewportSize({ width: 1280, height: 900 });
   await selectHex(page, "1:7,53");
+  // Selecting a hex opens the panels; measuring "before" while that settles - slower or busier on
+  // CI than locally - would pin a mid-animation size rather than the resting one.
+  await waitForStableHeight(page, "orders");
 
   const before = await boxOf(page, "orders");
   const grip = page.getByTestId("panel-splitter");
@@ -1472,7 +1504,14 @@ test("folding the unit panel hides the grip and hands the column to the editor",
   page
 }) => {
   await loadReport(page);
+  // See "the unit/orders split drags..." above: at the default window height the editor's pin can
+  // already sit at its own ceiling once enough advisory-check chips share the header with it, and
+  // this test drags it taller twice over.
+  await page.setViewportSize({ width: 1280, height: 900 });
   await selectHex(page, "1:7,53");
+  // Selecting a hex opens the panels; measuring "before" while that settles - slower or busier on
+  // CI than locally - would pin a mid-animation size rather than the resting one.
+  await waitForStableHeight(page, "orders");
 
   const before = await boxOf(page, "orders");
   const grip = page.getByTestId("panel-splitter");
@@ -1483,12 +1522,18 @@ test("folding the unit panel hides the grip and hands the column to the editor",
   await page.mouse.down();
   await page.mouse.move(start.x, start.y - 60, { steps: 5 });
   await page.mouse.up();
+  // Polled, not a single read: the resize can still be settling (a CSS transition) the instant
+  // after the pointer lifts, slower or busier on CI than locally.
+  await expect
+    .poll(async () => (await boxOf(page, "orders")).height)
+    .toBeGreaterThan(before.height);
   const dragged = await boxOf(page, "orders");
-  expect(dragged.height).toBeGreaterThan(before.height);
 
   await foldPanel(page, "unit");
   await expect(grip).not.toBeVisible();
-  expect((await boxOf(page, "orders")).height).toBeGreaterThan(dragged.height);
+  await expect
+    .poll(async () => (await boxOf(page, "orders")).height)
+    .toBeGreaterThan(dragged.height);
 
   await unfoldPanel(page, "unit");
   await expect(grip).toBeVisible();
@@ -3321,11 +3366,20 @@ test("a note pinned on the map opens its tags and selects the hex", async ({ pag
 
   await page.getByTestId("layer-chips").getByRole("button", { name: "Badges" }).click();
   const badges = page.getByTestId("badge-menu");
-  await expect(badges.getByRole("checkbox", { name: "Notes" })).toBeChecked();
-  await badges.getByRole("checkbox", { name: "Notes" }).uncheck();
+  const notesCheckbox = badges.getByRole("checkbox", { name: "Notes" });
+  await expect(notesCheckbox).toBeChecked();
+  // Toggled by keyboard rather than a pointer click: this fixture's own always-on finding
+  // (ah-1uj) grows the header by a chip's width, which pushes this popover's anchor - and with it
+  // a list long enough to reach the units pane splitter below - just far enough that a real
+  // pointer click here can land on the splitter instead. The checkbox itself is unaffected; only
+  // where a mouse can safely land on it is.
+  await notesCheckbox.focus();
+  await page.keyboard.press("Space");
+  await expect(notesCheckbox).not.toBeChecked();
   await expect(page.getByTestId("map-note-pin")).toHaveCount(0);
 
   // The menu stays open across a toggle - unchecking it does not dismiss the popover.
-  await badges.getByRole("checkbox", { name: "Notes" }).check();
+  await page.keyboard.press("Space");
+  await expect(notesCheckbox).toBeChecked();
   await expect(page.getByTestId("map-note-pin")).toBeVisible();
 });

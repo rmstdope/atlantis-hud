@@ -18,7 +18,8 @@ export const ADVISORY_CHECK_CODES = [
   "give-target-not-here",
   "not-traded-here",
   "unit-overloaded",
-  "too-many-quartermasters"
+  "too-many-quartermasters",
+  "study-at-maximum"
 ] as const;
 
 export type AdvisoryCheckCode = (typeof ADVISORY_CHECK_CODES)[number];
