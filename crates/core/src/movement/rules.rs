@@ -288,6 +288,14 @@ pub struct Production {
     pub level: u32,
 }
 
+/// A skill a unit must already have, at a level, before it may begin to study another.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SkillRequirement {
+    pub tag: String,
+    pub level: u32,
+}
+
 /// A skill, and what a month of studying it costs.
 ///
 /// Separate from the item catalogue rather than merged into it, because ten tags mean one thing as
@@ -317,6 +325,11 @@ pub struct SkillEntry {
     /// studied by ordinary means anyway.
     #[serde(default)]
     pub magic: bool,
+    /// What a unit must already have before it may begin this skill, as the data page's `This
+    /// skill requires force [FORC] 1 to begin to study.` states it. Empty for a skill with no
+    /// prerequisites, and for a ruleset cached before they were scraped.
+    #[serde(default)]
+    pub requires: Vec<SkillRequirement>,
 }
 
 /// A building the game's data page describes, and how many mages may study in it.
