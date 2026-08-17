@@ -76,6 +76,7 @@ import {
   changeRuleset as changeRulesetAction,
   createGame as createGameAction,
   deleteGame as deleteGameAction,
+  resetGame as resetGameAction,
   importGameBackup as importGameBackupAction,
   importGameBackupAsCopy,
   openGame as openGameAction,
@@ -1593,15 +1594,24 @@ export function AppShell({
    * to the next game. Deleting some other game leaves the open document exactly where it was.
    */
   const deleteGame = useCallback(
-    (gameId: string) =>
-      runGameAction(async () => {
-        const result = await deleteGameAction(
-          client,
-          gameId,
-          game?.manifest.metadata.gameId ?? null,
-          new Date().toISOString(),
-          () => writer.discard()
-        );
+    (gameId: string): Promise<string | null> =>
+      runGameAction(async (): Promise<string | null> => {
+        let result;
+        try {
+          result = await deleteGameAction(
+            client,
+            gameId,
+            game?.manifest.metadata.gameId ?? null,
+            new Date().toISOString(),
+            () => writer.discard()
+          );
+        } catch (error: unknown) {
+          // Caught here rather than left to `runGameAction`, which would put it in the picker's
+          // shared error line: the remove panel reports both its own failures itself (ah-58n.2).
+          // Only the call is wrapped: a failure in the state updates below would be reported as
+          // "could not be deleted" for a game that is already gone.
+          return describeError(error);
+        }
         setGames(result.games);
         if (result.closedOpenGame) {
           if (result.opened) {
@@ -1612,8 +1622,45 @@ export function AppShell({
           }
         }
         closePopover("games");
-      }),
+        return null;
+        // `runGameAction` resolves `undefined` only when the work threw; the `?? null` below is the
+        // type-level tail of that, not a lost message.
+      }).then((failure) => failure ?? null),
     [client, closeGameInStore, enterGame, game, runGameAction, writer]
+  );
+
+  /**
+   * Empties a game and keeps it: same id, name and ruleset, nothing else.
+   *
+   * Nothing is flushed on the way out, for `deleteGame`'s reason: the database the open game's
+   * orders would be written to is about to be replaced. `enterGame` on the emptied game is what
+   * clears the workspace - the same call `deleteGame` makes when it falls back to another game - so
+   * nothing here clears the report, the document or the memory by hand.
+   */
+  const resetGame = useCallback(
+    (gameId: string): Promise<string | null> =>
+      runGameAction(async (): Promise<string | null> => {
+        let result;
+        try {
+          result = await resetGameAction(
+            client,
+            gameId,
+            game?.manifest.metadata.gameId ?? null,
+            new Date().toISOString(),
+            () => writer.discard()
+          );
+        } catch (error: unknown) {
+          return describeError(error);
+        }
+        setGames(result.games);
+        // Only when it was the open one: emptying some other game must not move the player.
+        if (result.wasOpenGame) {
+          enterGame(result.opened);
+        }
+        closePopover("games");
+        return null;
+      }).then((failure) => failure ?? null),
+    [client, enterGame, game, runGameAction, writer]
   );
 
   const exportGameBackup = useCallback(
@@ -2439,7 +2486,8 @@ export function AppShell({
             error={gameError}
             onOpen={(gameId) => void openGameById(gameId)}
             onCreate={(name, rulesetId) => void createGame(name, rulesetId)}
-            onDelete={(gameId) => void deleteGame(gameId)}
+            onDelete={deleteGame}
+            onReset={resetGame}
             onExport={(gameId) => void exportGameBackup(gameId)}
             onImport={(file, mode) => void importGameBackup(file, mode)}
             onRename={renameGame}
