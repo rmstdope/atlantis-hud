@@ -120,7 +120,8 @@ export const SWEEP: SweepEntry[] = [
       raw_report: REPORT,
       remembered_json: "[]",
       unit_id: "18642",
-      orders: "MOVE N"
+      // The whole document, not one unit's block: a passenger's route is the hull's (ah-048).
+      orders_document: "unit 18642\nMOVE N"
     })
   },
   {

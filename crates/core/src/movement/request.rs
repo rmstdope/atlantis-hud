@@ -136,11 +136,15 @@ pub struct MoveOrderTraceResponse {
 
 /// Traces the MOVE or ADVANCE order in a unit's written orders across the remembered map.
 ///
-/// `orders` is the unit's own order block as the editor holds it. The last readable movement line
-/// wins, because a later order replaces an earlier one when the game executes them - but only
-/// among the lines that are this unit's own for this turn. A `TURN` block holds orders for the
-/// turn after this one, and a `FORM` block's orders belong to the unit being formed, so movement
-/// inside either says nothing about where this unit goes next.
+/// `orders_document` is the **whole** orders document as the editor holds it, not one unit's block:
+/// a unit standing aboard a ship writes no order of its own and goes where the hull goes, so the
+/// order this unit travels by may be another unit's. [`crate::movement::fleet::steps_followed_by`]
+/// settles which, for this reader and the units-in-hex preview alike.
+///
+/// The last readable movement line of a block wins, because a later order replaces an earlier one
+/// when the game executes them - but only among the lines that are that unit's own for this turn. A
+/// `TURN` block holds orders for the turn after this one, and a `FORM` block's orders belong to the
+/// unit being formed, so movement inside either says nothing about where a unit goes next.
 ///
 /// # Errors
 ///
@@ -152,8 +156,9 @@ pub fn trace_orders_for_remembered_report(
     raw_report: &str,
     remembered_json: &str,
     unit_id: &str,
-    orders: &str,
+    orders_document: &str,
 ) -> Result<MoveOrderTraceResponse, String> {
+    use crate::movement::fleet::{steps_followed_by, OrderedUnits};
     use crate::movement::graph::MapKnowledge;
     use crate::movement::trace::trace_move;
 
@@ -166,47 +171,18 @@ pub fn trace_orders_for_remembered_report(
 
     let report = cache.classified(raw_report, ruleset_json);
 
-    let Some(steps) = last_top_level_move(orders) else {
+    let Some(unit) = report.units().find(|unit| unit.unit_id == unit_id).cloned() else {
         return Ok(MoveOrderTraceResponse { path: None });
     };
-    let Some(unit) = report.units().find(|unit| unit.unit_id == unit_id).cloned() else {
+    let ordered = OrderedUnits::from_document(orders_document);
+    let Some(steps) = steps_followed_by(&report, &ruleset, &ordered, &unit) else {
         return Ok(MoveOrderTraceResponse { path: None });
     };
 
     let map = MapKnowledge::from_remembered(&report, &remembered);
     Ok(MoveOrderTraceResponse {
-        path: trace_move(&map, &ruleset, &unit, &steps),
+        path: trace_move(&map, &ruleset, &unit, steps),
     })
-}
-
-/// The last readable MOVE or ADVANCE among the lines that are this unit's own for this turn.
-///
-/// Lines inside `TURN…ENDTURN` and `FORM…END` are skipped: the former belong to the turn after
-/// this one, the latter to the unit being formed. The blocks nest - a FORM inside a TURN is legal -
-/// which [`crate::orders::walk`] settles once for every reader in the crate rather than each
-/// keeping its own stack.
-///
-/// There is deliberately no `ENDFORM` - the NewOrigins vocabulary in [`crate::orders::grammar`]
-/// leaves it out and the syntax checker calls it an unknown command, so honouring it here would
-/// mean this reader alone accepting an order the rest of the application refuses; the walker does
-/// not know it either.
-///
-/// A block left open at the end of the document is abandoned there, same as anywhere else the walk
-/// abandons one - this reader never sees a document boundary as different from a `unit` line.
-fn last_top_level_move(orders: &str) -> Option<Vec<crate::movement::orders::MoveStep>> {
-    use crate::orders::walk::{walk, Depth, Event};
-
-    let mut last = None;
-    walk(orders, |event| {
-        if let Event::Order { line, depth } = event {
-            if depth == Depth::default() {
-                if let Some(steps) = crate::movement::orders::parse_move(line.text) {
-                    last = Some(steps);
-                }
-            }
-        }
-    });
-    last
 }
 
 /// Parses a report and counts each unit's men against the catalogue.
@@ -582,5 +558,88 @@ mod reaches_the_planner_tests {
             plan.steps.iter().all(|step| !step.estimated),
             "the memory describes the way, so nothing along it is guessed at"
         );
+    }
+
+    /// The bug ah-048 was filed for: Drones (10594) writes nothing and stands in Raft [235], which
+    /// Drones (10575) is sailing southeast out of the plain at (36,44). Asked about the passenger,
+    /// the trace draws the voyage the hull is taking it on.
+    #[test]
+    fn a_passenger_follows_the_fleets_route() {
+        const TURN_24: &str = atlantis_hud_fixtures::G5_F21_T24.text;
+        let orders = "unit 10575\nsail se\n";
+
+        let captain = trace_orders_for_remembered_report(
+            &mut ReportCache::new(),
+            RULESET,
+            TURN_24,
+            "[]",
+            "10575",
+            orders,
+        )
+        .expect("the ruleset loads")
+        .path
+        .expect("the captain's voyage");
+
+        let passenger = trace_orders_for_remembered_report(
+            &mut ReportCache::new(),
+            RULESET,
+            TURN_24,
+            "[]",
+            "10594",
+            orders,
+        )
+        .expect("the ruleset loads")
+        .path
+        .expect("the passenger's voyage - the same one");
+
+        assert_eq!(passenger.from, captain.from);
+        assert_eq!(passenger.steps, captain.steps);
+        assert_eq!(
+            passenger.mode,
+            Some(crate::movement::rules::MovementMode::Sail),
+            "a passenger is aboard the hull exactly as the unit that wrote the order is"
+        );
+    }
+
+    /// The bead's real acceptance: the two readers of one SAIL order name the same destination for
+    /// one passenger. They keep drifting apart (ah-p1p, ah-l2i, ah-048), so this pins them together.
+    #[test]
+    fn the_preview_and_the_trace_name_the_same_destination() {
+        const TURN_24: &str = atlantis_hud_fixtures::G5_F21_T24.text;
+        let orders = "unit 10575\nsail se\n";
+
+        let preview = crate::orders::effects::preview_orders_for_remembered_report(
+            &mut ReportCache::new(),
+            RULESET,
+            TURN_24,
+            "[]",
+            orders,
+        )
+        .expect("the ruleset loads");
+        let previewed = preview
+            .regions
+            .iter()
+            .flat_map(|region| region.units.iter())
+            .find(|preview| preview.unit.unit_id == "10594")
+            .expect("the pane has a row for the passenger");
+        let departing_to = previewed
+            .departing_to
+            .clone()
+            .expect("the pane says where it is going");
+
+        let traced = trace_orders_for_remembered_report(
+            &mut ReportCache::new(),
+            RULESET,
+            TURN_24,
+            "[]",
+            "10594",
+            orders,
+        )
+        .expect("the ruleset loads")
+        .path
+        .expect("the map draws the same voyage");
+        let ends_at = traced.months.first().expect("a first month").ends_at.id();
+
+        assert_eq!(ends_at, departing_to);
     }
 }

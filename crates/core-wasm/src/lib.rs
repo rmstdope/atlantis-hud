@@ -420,7 +420,7 @@ pub fn trace_move_orders_state(
     raw_report: String,
     remembered_json: String,
     unit_id: String,
-    orders: String,
+    orders_document: String,
 ) -> Result<JsValue, JsValue> {
     let response = atlantis_hud_core::cache::with_global(|cache| {
         atlantis_hud_core::movement::request::trace_orders_for_remembered_report(
@@ -429,7 +429,7 @@ pub fn trace_move_orders_state(
             &raw_report,
             &remembered_json,
             &unit_id,
-            &orders,
+            &orders_document,
         )
     })
     .map_err(|error| JsValue::from_str(&error))?;

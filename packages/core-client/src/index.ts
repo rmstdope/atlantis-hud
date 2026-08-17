@@ -581,12 +581,20 @@ export interface CoreAdapter {
     unitId: string,
     destination: string
   ): Promise<RoutePlanResponse>;
+  /**
+   * Where a unit's written movement order takes it, for the map's route overlay.
+   *
+   * `ordersDocument` is the **whole** document, not one unit's block: a unit standing aboard a
+   * ship writes no order of its own and goes where the hull goes, so the order `unitId` travels by
+   * may be another unit's (ah-048). The core settles which, once, for this reader and the
+   * units-in-hex preview alike.
+   */
   traceMoveOrders(
     rulesetJson: string,
     rawReport: string,
     rememberedJson: string,
     unitId: string,
-    orders: string
+    ordersDocument: string
   ): Promise<MoveOrderTraceResponse>;
   exportMap(rawReport: string, rememberedJson: string, requestJson: string): Promise<string>;
   knownMap(rawReport: string, rulesetJson: string | null, rememberedJson: string): Promise<KnownMap>;
