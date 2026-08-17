@@ -87,6 +87,13 @@ fn classified() -> ParsedReport {
     report
 }
 
+/// Since ah-dbb.2, this turn has exactly one real finding: four mages in hex `1:26,52`
+/// `CAST earm` (enchant armor) while the hex's shared stock holds no plate armor. The server
+/// accepted the order - `RunEnchant` never refuses a cast, it just enchants nothing - so this is
+/// not a mistake the *server* rejected. It is still a spell that spends the whole month to
+/// produce nothing, which is exactly what a shortfall warning exists to catch; the navigator
+/// chose to keep the warning (2026-08-16) rather than special-case enchant/transmutation as
+/// silent, so this is the one finding the bar allows through rather than a gap in it.
 #[test]
 fn the_committed_turn_has_no_semantic_problems_either() {
     let findings = check_turn(
@@ -96,21 +103,34 @@ fn the_committed_turn_has_no_semantic_problems_either() {
         CheckOptions::default(),
     );
 
-    // One exception: unit 13402 is reported at combat [COMB] 5 (450) - the ruleset's own
-    // maximum - and orders "@study comb" anyway. That is not an invented problem; it is a real
-    // wasted month the player actually sent, and precisely the defect `study-at-maximum` exists
-    // to catch (ah-1uj, filed from this same corpus). Only the fields that make it that specific
-    // finding are asserted, not the whole struct, so an unrelated fixture edit elsewhere in the
-    // turn does not force rewriting this test.
-    assert_eq!(findings.len(), 1, "{findings:?}");
-    let finding = &findings[0];
+    // Two exceptions since ah-1uj and ah-dbb.2 landed: unit 13402 is reported at combat [COMB] 5
+    // (450) - the ruleset's own maximum - and orders "@study comb" anyway, which is a real wasted
+    // month (`study-at-maximum`, ah-1uj); and the four enchant-armor mages above. Neither is an
+    // invented problem, and only the fields that make each finding specific are asserted, not the
+    // whole struct, so an unrelated fixture edit elsewhere in the turn does not force rewriting
+    // this test.
+    assert_eq!(findings.len(), 2, "{findings:?}");
+    let items = findings
+        .iter()
+        .find(|f| f.code.as_str() == "not-enough-items")
+        .unwrap_or_else(|| panic!("no not-enough-items finding: {findings:?}"));
+    assert_eq!(items.region_id, "1:26,52");
     assert_eq!(
-        finding.code,
-        atlantis_hud_core::orders::semantics::codes::STUDY_AT_MAXIMUM
+        items.unit_id, None,
+        "the hex shares, so the shortfall is the hex's"
     );
-    assert_eq!(finding.unit_id.as_deref(), Some("13402"));
     assert_eq!(
-        finding.message,
+        items.message,
+        "the units in this hex are short 4 plate armor between them: they can have 0 and \
+         their orders give away or sell 4"
+    );
+    let study = findings
+        .iter()
+        .find(|f| f.code == atlantis_hud_core::orders::semantics::codes::STUDY_AT_MAXIMUM)
+        .unwrap_or_else(|| panic!("no study-at-maximum finding: {findings:?}"));
+    assert_eq!(study.unit_id.as_deref(), Some("13402"));
+    assert_eq!(
+        study.message,
         "this unit is already at combat 5, the highest the ruleset has"
     );
 }
@@ -136,6 +156,10 @@ fn the_units_in_that_turn_are_counted_rather_than_estimated() {
 /// so there is one purse in that hex and the money in it is nobody's in particular. The per-unit
 /// path cannot be shown on this fixture at all, which is why the assertion below measures the
 /// flag rather than assuming it. `semantics.rs` covers both paths on input that varies.
+///
+/// The turn's own `not-enough-items` finding (see `the_committed_turn_has_no_semantic_problems_
+/// either`) rides along here too - it belongs to a different hex, and `check_turn` appends by
+/// region in report order, silver's hex first.
 #[test]
 fn a_unit_told_to_spend_what_it_has_not_got_is_caught_in_that_same_turn() {
     let report = classified();
@@ -162,11 +186,12 @@ fn a_unit_told_to_spend_what_it_has_not_got_is_caught_in_that_same_turn() {
     );
     let findings = check_turn(&report, &damaged, Some(&ruleset()), options);
 
-    // Alongside the introduced shortfall, the turn's one genuine `study-at-maximum` (unit
-    // 13402, see the test above) still fires - this fixture is not otherwise clean.
+    // Alongside the introduced shortfall, the turn's two genuine findings (the enchant-armor
+    // `not-enough-items` and unit 13402's `study-at-maximum`, see the test above) still fire -
+    // this fixture is not otherwise clean.
     assert_eq!(
         findings.iter().map(|f| f.code.as_str()).collect::<Vec<_>>(),
-        vec!["not-enough-silver", "study-at-maximum"],
+        vec!["not-enough-silver", "study-at-maximum", "not-enough-items"],
         "{findings:?}"
     );
     assert_eq!(findings[0].unit_id, None, "one purse, shared");
@@ -196,16 +221,16 @@ fn a_whole_map_pass_re_reads_neither_the_report_nor_the_ruleset() {
 
     // Fifty passes over the committed turn. If any of them re-parsed the report this would take
     // long enough to notice; the point here is that they are all handed the same two objects.
-    // The turn carries one genuine finding throughout (unit 13402's `study-at-maximum`, see
-    // above) - what this loop pins is that every pass reports it identically, not that the turn
-    // is silent.
+    // The turn carries two genuine findings throughout (the enchant-armor `not-enough-items` and
+    // unit 13402's `study-at-maximum`, see `the_committed_turn_has_no_semantic_problems_either`) -
+    // what this loop pins is that every pass reports them identically, not that the turn is silent.
     let expected = check_turn(&report, &template, Some(&ruleset), CheckOptions::default());
-    assert_eq!(expected.len(), 1, "{expected:?}");
+    assert_eq!(expected.len(), 2, "{expected:?}");
     for _ in 0..50 {
         let result = check_turn(&report, &template, Some(&ruleset), CheckOptions::default());
         assert_eq!(
             result, expected,
-            "every pass should report the same finding"
+            "every pass should report the same findings"
         );
     }
 }

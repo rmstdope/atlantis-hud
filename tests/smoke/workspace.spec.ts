@@ -926,18 +926,20 @@ test("a unit told to spend silver it has not got is warned about, without blocki
   await page.keyboard.press("Escape");
 
   // And the whole map is counted, so the same problem is reachable from the header. The turn-71
-  // report carries one finding of its own throughout - Six of Two (13402) is already at combat 5,
-  // the ruleset's maximum, and still orders "@study comb" (ah-1uj) - so the count here is that
+  // report carries two findings of its own throughout - Six of Two (13402) is already at combat 5,
+  // the ruleset's maximum, and still orders "@study comb" (ah-1uj); and four mages in a different
+  // hex CAST an enchant with no plate armor on hand (ah-dbb.2) - so the count here is that
   // baseline plus the one this test introduces.
   const chip = page.getByTestId("problems-chip");
-  await expect(chip).toContainText("2 problems");
+  await expect(chip).toContainText("3 problems");
   await chip.click();
   await expect(page.getByTestId("problems-panel")).toContainText("mountain (7,53)");
 
-  // Corrected, this hex's problem goes away, leaving only the turn's baseline finding elsewhere.
+  // Corrected, this hex's problem goes away, leaving only the turn's two baseline findings
+  // elsewhere.
   await fillOrders(page, "@work");
   await expect(page.getByTestId("region-problems")).toHaveCount(0);
-  await expect(page.getByTestId("problems-chip")).toContainText("1 problem");
+  await expect(page.getByTestId("problems-chip")).toContainText("2 problems");
 });
 
 /**
@@ -1018,11 +1020,12 @@ test("a silenced advisory check disappears everywhere at once", async ({ page })
   await selectUnit(page, OWN_UNIT);
   await fillOrders(page, "GIVE 0 999999999 SILV");
 
-  // The turn-71 report carries one finding of its own throughout (unit 13402's study-at-maximum,
-  // ah-1uj), unaffected by the not-enough-silver toggle below - the chip counts it alongside the
-  // shortfall this test introduces.
+  // The turn-71 report carries two findings of its own throughout (unit 13402's
+  // study-at-maximum, ah-1uj, and the enchant-armor not-enough-items in a different hex,
+  // ah-dbb.2), unaffected by the not-enough-silver toggle below - the chip counts them alongside
+  // the shortfall this test introduces.
   await expect(page.getByTestId("region-problems")).toContainText("short");
-  await expect(page.getByTestId("problems-chip")).toContainText("2 problems");
+  await expect(page.getByTestId("problems-chip")).toContainText("3 problems");
 
   await page.getByRole("button", { name: "Settings" }).click();
   await page.getByTestId("settings-tab-warnings").click();
@@ -1030,7 +1033,7 @@ test("a silenced advisory check disappears everywhere at once", async ({ page })
   await page.keyboard.press("Escape");
 
   await expect(page.getByTestId("region-problems")).toHaveCount(0);
-  await expect(page.getByTestId("problems-chip")).toContainText("1 problem");
+  await expect(page.getByTestId("problems-chip")).toContainText("2 problems");
 
   await page.getByRole("button", { name: "Settings" }).click();
   await page.getByTestId("settings-tab-warnings").click();
@@ -1038,7 +1041,7 @@ test("a silenced advisory check disappears everywhere at once", async ({ page })
   await page.keyboard.press("Escape");
 
   await expect(page.getByTestId("region-problems")).toContainText("short");
-  await expect(page.getByTestId("problems-chip")).toContainText("2 problems");
+  await expect(page.getByTestId("problems-chip")).toContainText("3 problems");
 });
 
 /**

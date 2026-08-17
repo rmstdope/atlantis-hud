@@ -360,6 +360,7 @@ impl Ordered<'_> {
                     | Intent::Move { .. }
                     | Intent::Sail { .. }
                     | Intent::MonthLong(_)
+                    | Intent::Cast { .. }
                     | Intent::Build { .. }
             )
         })
@@ -627,6 +628,7 @@ fn apply(
         Intent::Buy { amount, item } => buy(ledger, hex, actor, placed, amount, item, ruleset),
         Intent::Sell { amount, item } => sell(ledger, hex, actor, placed, amount, item, ruleset),
         Intent::Study { skill } => study(ledger, actor, placed, skill, ruleset),
+        Intent::Cast { spell, arguments } => cast(ledger, actor, placed, spell, arguments, ruleset),
         // The ruleset carries no withdrawal prices. Spending an amount nobody can count is exactly
         // the case for declining to judge the unit.
         Intent::Withdraw => {
@@ -781,6 +783,55 @@ fn study(
             ledger.doubted.insert(who.clone());
         }
     }
+}
+
+/// Charges what the ruleset says a cast consumes. A spell the ruleset does not know, or knows no
+/// cost for, charges nothing and doubts nothing: most spells cost nothing to cast, and a unit's
+/// other sums are still good.
+fn cast(
+    ledger: &mut Ledger<'_>,
+    actor: &Ordered<'_>,
+    placed: &PlacedIntent,
+    spell: &str,
+    arguments: &[String],
+    ruleset: Option<&Ruleset>,
+) {
+    let who = &actor.unit.unit_id;
+
+    let Some(cost) = ruleset
+        .and_then(|ruleset| ruleset.find_skill(spell))
+        .and_then(|skill| skill.cast.as_ref())
+    else {
+        return;
+    };
+
+    for input in &cost.costs {
+        charge(ledger, who, &input.tag, input.amount, placed);
+    }
+
+    if cost.transmute.is_empty() {
+        return;
+    }
+
+    // `CAST Transmutation [number] <material>`: the material is the spell's *output* - "the
+    // resource you wish to create" - and the source it is made from is the ruleset's business.
+    // An unnumbered cast makes as many as it can, so the least a successful one consumes is one.
+    let (number, material) = match arguments {
+        [count, material] => match count.parse::<i64>() {
+            Ok(count) if count > 0 => (count, material.as_str()),
+            _ => return,
+        },
+        [material] => (1, material.as_str()),
+        _ => return,
+    };
+
+    let Some(output) = ruleset.and_then(|ruleset| ruleset.find_item(material)) else {
+        return;
+    };
+    let Some(source) = cost.transmute.get(&output.tag.to_ascii_uppercase()) else {
+        return;
+    };
+    charge(ledger, who, source, number, placed);
 }
 
 /// What the hex's market says about an item an order names.
@@ -2697,6 +2748,175 @@ mod tests {
                 CheckOptions::default()
             ),
             vec![]
+        );
+    }
+
+    // --- what a spell costs to cast ---------------------------------------------------------
+
+    /// "Create Ring of Invisibility" is a silver-cost creation: the ruleset carries `$600` as its
+    /// cast cost, and the existing not-enough-silver reporting does the rest.
+    #[test]
+    fn a_mage_that_cannot_pay_for_the_artifact_it_casts_is_warned_about() {
+        let regions = vec![region(vec![with_silver(
+            with_skill(unit("5"), "CRRI", 3),
+            200,
+        )])];
+
+        let finding = only(check(regions, "unit 5\nCAST Create_Ring_Of_Invisibility\n"));
+        assert_eq!(finding.code.as_str(), "not-enough-silver");
+        assert_eq!(finding.unit_id.as_deref(), Some("5"));
+        assert_eq!(finding.line, Some(2));
+        assert_eq!(
+            finding.message,
+            "short $400: this unit can have $200 and its orders spend $600"
+        );
+    }
+
+    #[test]
+    fn a_mage_that_can_pay_is_silent() {
+        let regions = vec![region(vec![with_silver(
+            with_skill(unit("5"), "CRRI", 3),
+            600,
+        )])];
+
+        assert_eq!(
+            check(regions, "unit 5\nCAST Create_Ring_Of_Invisibility\n"),
+            vec![]
+        );
+    }
+
+    /// The engine charges the stated inputs once per cast, whatever the roll makes - not once per
+    /// item created.
+    #[test]
+    fn the_stated_cost_is_charged_once_however_much_the_spell_makes() {
+        let regions = vec![region(vec![with_silver(
+            with_skill(unit("5"), "CRRI", 3),
+            200,
+        )])];
+
+        let finding = only(check(regions, "unit 5\nCAST Create_Ring_Of_Invisibility\n"));
+        assert!(
+            finding.message.contains("400"),
+            "$600 once, not $600 times whatever the roll makes: {}",
+            finding.message
+        );
+    }
+
+    #[test]
+    fn an_enchanter_with_nothing_to_enchant_is_warned_about() {
+        let regions = vec![region(vec![with_skill(unit("5"), "ESWO", 3)])];
+
+        let finding = only(check(regions, "unit 5\nCAST Enchant_Swords\n"));
+        assert_eq!(finding.code.as_str(), "not-enough-items");
+        assert!(finding.message.contains("1 sword"), "{}", finding.message);
+    }
+
+    #[test]
+    fn an_enchanter_with_one_sword_is_silent() {
+        let regions = vec![region(vec![with_item(
+            with_skill(unit("5"), "ESWO", 3),
+            1,
+            "sword",
+            "SWOR",
+        )])];
+
+        assert_eq!(check(regions, "unit 5\nCAST Enchant_Swords\n"), vec![]);
+    }
+
+    /// Transmutation names its *output* - "the resource you wish to create" - and is charged the
+    /// source the ruleset says it is made from.
+    #[test]
+    fn a_transmuter_names_its_output_and_is_charged_the_source() {
+        let short = vec![region(vec![with_item(unit("5"), 3, "stone", "STON")])];
+        let finding = only(check(short, "unit 5\nCAST Transmutation 4 rootstone\n"));
+        assert_eq!(finding.code.as_str(), "not-enough-items");
+        assert!(finding.message.contains("1 stone"), "{}", finding.message);
+
+        let enough = vec![region(vec![with_item(unit("5"), 3, "stone", "STON")])];
+        assert_eq!(
+            check(enough, "unit 5\nCAST Transmutation rootstone\n"),
+            vec![],
+            "an unnumbered cast makes what it can, so the least it consumes is one"
+        );
+
+        let none = vec![region(vec![unit("5")])];
+        let finding = only(check(none, "unit 5\nCAST Transmutation rootstone\n"));
+        assert_eq!(finding.code.as_str(), "not-enough-items");
+        assert!(finding.message.contains("1 stone"), "{}", finding.message);
+    }
+
+    #[test]
+    fn constructing_a_gate_costs_a_thousand() {
+        let regions = vec![region(vec![with_silver(
+            with_skill(unit("5"), "CGAT", 3),
+            999,
+        )])];
+
+        let finding = only(check(regions, "unit 5\nCAST Construct_Gate\n"));
+        assert_eq!(finding.code.as_str(), "not-enough-silver");
+        assert_eq!(
+            finding.message,
+            "short $1: this unit can have $999 and its orders spend $1000"
+        );
+    }
+
+    #[test]
+    fn a_spell_with_no_stated_cost_charges_nothing() {
+        assert_eq!(
+            check(
+                vec![region(vec![with_silver(unit("5"), 0)])],
+                "unit 5\nCAST Fire\n"
+            ),
+            vec![]
+        );
+
+        // The mage's other sums are still good - a spell that costs nothing does not doubt it.
+        let regions = vec![region(vec![with_silver(with_men(unit("5"), 1), 10)])];
+        assert_eq!(check(regions, "unit 5\nCAST Fire\nSTUDY combat\n"), vec![]);
+    }
+
+    #[test]
+    fn an_unknown_spell_charges_nothing() {
+        assert_eq!(
+            check(
+                vec![region(vec![with_silver(unit("5"), 0)])],
+                "unit 5\nCAST Super_Magic\n"
+            ),
+            vec![]
+        );
+    }
+
+    /// The mage's own case of ah-j2w's rule: a hex's sharing units cover a caster too, since a
+    /// mage is usually supplied by its hex rather than carrying its own silver.
+    #[test]
+    fn a_mage_supplied_by_a_sharing_unit_in_the_hex_is_silent() {
+        let regions = vec![region(vec![
+            with_skill(unit("5"), "CRRI", 3),
+            sharing(with_silver(unit("7"), 600)),
+        ])];
+
+        assert_eq!(
+            check(regions, "unit 5\nCAST Create_Ring_Of_Invisibility\n"),
+            vec![]
+        );
+    }
+
+    /// `Intent::Cast` must join `Ordered::is_busy`'s `MonthLong` set, or a casting mage is offered
+    /// as somebody's spare teacher - the reason CAST was `MonthLong` in the first place.
+    #[test]
+    fn a_caster_is_not_a_spare_teacher() {
+        let units = vec![
+            with_skill(with_men(with_silver(unit("500"), 1000), 3), "COMB", 3),
+            with_men(with_silver(unit("700"), 1000), 2),
+        ];
+
+        assert_eq!(
+            check(
+                vec![region(units)],
+                "unit 500\nCAST Fire\nunit 700\nSTUDY combat\n"
+            ),
+            vec![],
+            "unit 500 is casting, so it has no month left to teach in"
         );
     }
 

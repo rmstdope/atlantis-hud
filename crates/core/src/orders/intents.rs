@@ -59,6 +59,13 @@ pub enum Intent {
     /// spending its month cannot be offered as somebody's spare teacher. Carries the keyword so a
     /// message can name it.
     MonthLong(&'static str),
+    /// `CAST <spell> [arguments…]`. The month is spoken for (as `MonthLong` says), and the spell
+    /// may consume what the ruleset says it costs; the arguments are kept for the one spell whose
+    /// cost depends on them (transmutation names its output, and optionally a number).
+    Cast {
+        spell: String,
+        arguments: Vec<String>,
+    },
     Move {
         steps: Vec<MoveStep>,
     },
@@ -305,8 +312,22 @@ fn read_order(command: &Token, arguments: &[Token]) -> Option<Intent> {
         }),
         "LEAVE" if arguments.is_empty() => Some(Intent::Leave),
         // Not every spell takes a month, but the rules make no promise about which, and a mage
-        // offered as somebody's spare teacher is worse than one left alone.
-        "CAST" => Some(Intent::MonthLong("CAST")),
+        // offered as somebody's spare teacher is worse than one left alone. The arguments are kept
+        // rather than discarded like BUILD/PRODUCE's, since transmutation's cost reads them. A
+        // bare CAST names no spell - the syntax checker already says so - but still falls back to
+        // MonthLong rather than yielding no intent at all: a dropped intent would leave the unit
+        // looking free for the month, reintroducing the "spare teacher" problem MonthLong exists
+        // to avoid.
+        "CAST" => match arguments.first() {
+            Some(spell) => Some(Intent::Cast {
+                spell: spell.text.clone(),
+                arguments: arguments[1..]
+                    .iter()
+                    .map(|token| token.text.clone())
+                    .collect(),
+            }),
+            None => Some(Intent::MonthLong("CAST")),
+        },
         word if crate::movement::orders::is_movement_command(word) => Some(Intent::Move {
             steps: forms::read_move_line(command, arguments)?,
         }),
@@ -681,6 +702,29 @@ mod tests {
     #[test]
     fn a_leave_is_recorded() {
         assert_eq!(intents("unit 5\nLEAVE\n"), vec![Intent::Leave]);
+    }
+
+    /// `CAST` keeps the spell and its arguments, since transmutation's cost depends on them - and
+    /// still spends the whole month, the reason it used to be `MonthLong`.
+    #[test]
+    fn cast_keeps_the_spell_and_its_arguments() {
+        assert_eq!(
+            intents("unit 5\nCAST Transmutation 4 rootstone\n"),
+            vec![Intent::Cast {
+                spell: "Transmutation".to_string(),
+                arguments: vec!["4".to_string(), "rootstone".to_string()],
+            }]
+        );
+    }
+
+    /// A bare `CAST` names no spell - the syntax checker already says so
+    /// (`missing-arguments`) - but it still spends the whole month exactly as any other `CAST`
+    /// does, so it is read as `MonthLong` rather than dropped. A dropped intent would leave the
+    /// unit looking free, and reintroduce the "spare teacher" problem `MonthLong` existed to
+    /// avoid in the first place.
+    #[test]
+    fn a_bare_cast_still_spends_the_month() {
+        assert_eq!(intents("unit 5\nCAST\n"), vec![Intent::MonthLong("CAST")]);
     }
 
     /// A bare BUILD carries on with whatever structure the unit already stands in - it names
