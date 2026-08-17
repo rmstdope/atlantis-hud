@@ -387,6 +387,11 @@ const WARNING_GROUPS: readonly {
         description: "A GIVE or TAKE naming a unit the report does not show in that hex."
       },
       {
+        code: "too-many-trade-regions",
+        title: "Producing in too many regions",
+        description: "PRODUCE orders in more regions than the faction's allowance permits."
+      },
+      {
         code: "unit-overloaded",
         title: "Overloaded units",
         description: "A unit ordered to move carrying more than it can move with."

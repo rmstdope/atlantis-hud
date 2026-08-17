@@ -20,7 +20,8 @@ export const ADVISORY_CHECK_CODES = [
   "unit-overloaded",
   "too-many-quartermasters",
   "study-at-maximum",
-  "already-built"
+  "already-built",
+  "too-many-trade-regions"
 ] as const;
 
 export type AdvisoryCheckCode = (typeof ADVISORY_CHECK_CODES)[number];
