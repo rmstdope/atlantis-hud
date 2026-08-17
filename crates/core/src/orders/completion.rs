@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 
 use super::grammar::{self, arguments_at_caret, caret_at, Arg, CaretShape, Order};
 use super::lexer::utf16_column;
-use crate::movement::rules::Ruleset;
+use crate::movement::rules::{Ruleset, SkillEntry};
 use crate::report::model::{ItemAmount, MarketItem, ReportRegion, ReportUnit};
 use crate::report::ParsedReport;
 
@@ -164,7 +164,11 @@ fn completions_for(
                 items = item_completions(order, ruleset, report, unit_id);
             }
             Arg::Skill if skills.is_empty() => {
-                skills = ruleset.map(skill_completions).unwrap_or_default();
+                skills = ruleset
+                    .map(|ruleset| {
+                        skill_completions(ruleset, located(report, unit_id).map(|(_, unit)| unit))
+                    })
+                    .unwrap_or_default();
             }
             _ => {}
         }
@@ -319,20 +323,62 @@ fn catalogue_completions(ruleset: &Ruleset) -> Vec<OrderCompletion> {
         .collect()
 }
 
-/// Every skill in the ruleset, tag order, with its monthly cost where the data page prices one.
-fn skill_completions(ruleset: &Ruleset) -> Vec<OrderCompletion> {
+/// What an `Arg::Skill` position offers: the skills this unit could actually study, tag order.
+///
+/// Two filters, and they are the two the ruleset can support:
+///
+/// - a skill the data page prices nowhere cannot be studied by ordinary means (`SkillEntry::cost`
+///   says so in its own doc), so it is never an answer to `STUDY`;
+/// - a skill the unit has already taken to the ruleset's maximum cannot be studied further - the
+///   same comparison `check_studying` makes for the `study-at-maximum` warning (`semantics.rs`), so
+///   the completion and the warning agree by construction.
+///
+/// Deliberately **not** filtered, because the ruleset carries neither: what a skill depends on, and
+/// which kinds of unit may learn it. Both are scraper work, filed as ah-6qp. Until then this list is
+/// narrower than it was and wider than it should be, which is the honest state and is better than
+/// pretending either way.
+///
+/// Without a unit - no report, no unit id, or a unit the report does not carry - only the first
+/// filter applies: an unstudiable skill is unstudiable for everybody, and the second has nothing to
+/// compare against. That keeps the answer sensible rather than empty, which the signature promises
+/// (only the presence of a ruleset widens it).
+fn skill_completions(ruleset: &Ruleset, unit: Option<&ReportUnit>) -> Vec<OrderCompletion> {
     ruleset
         .skills
         .values()
+        .filter(|skill| skill.cost.is_some())
+        .filter(|skill| level_of(unit, skill).is_none_or(|level| level < skill.max_level))
         .map(|skill| OrderCompletion {
             value: skill.tag.clone(),
             name: skill.name.clone(),
-            detail: match skill.cost {
-                Some(cost) => format!("{} · {cost} silver", skill.name),
-                None => skill.name.clone(),
-            },
+            detail: detail_for(skill, level_of(unit, skill)),
         })
         .collect()
+}
+
+/// The unit's level in this skill, matched case-insensitively as `check_studying` matches it
+/// (`semantics.rs`: the report's tags and the ruleset's do not always agree on case).
+fn level_of(unit: Option<&ReportUnit>, skill: &SkillEntry) -> Option<u32> {
+    unit?
+        .skills
+        .iter()
+        .find(|held| held.tag.eq_ignore_ascii_case(&skill.tag))
+        .map(|held| held.level)
+}
+
+/// `combat · 45 silver · at 3`, and `combat · 45 silver` for a skill the unit has never studied -
+/// absence is the message, and a placeholder on ninety rows says nothing ninety times.
+///
+/// `cost` is `Some` by the time this runs: `skill_completions` has already dropped the others.
+fn detail_for(skill: &SkillEntry, level: Option<u32>) -> String {
+    let mut detail = skill.name.clone();
+    if let Some(cost) = skill.cost {
+        detail.push_str(&format!(" · {cost} silver"));
+    }
+    if let Some(level) = level {
+        detail.push_str(&format!(" · at {level}"));
+    }
+    detail
 }
 
 #[cfg(test)]
@@ -502,16 +548,148 @@ mod tests {
             format!("{} · 50 silver", observation.name)
         );
 
-        let unpriced = offered
-            .iter()
-            .find(|entry| {
+        assert!(
+            !offered.iter().any(|entry| {
                 ruleset
                     .skills
                     .get(&entry.value)
                     .is_some_and(|skill| skill.cost.is_none())
-            })
-            .expect("at least one skill the data page prices nowhere");
-        assert_eq!(unpriced.detail, unpriced.name);
+            }),
+            "a skill the data page prices nowhere cannot be studied, so it is never offered"
+        );
+    }
+
+    // --- ah-3ej: STUDY narrows to what the unit can actually study ---------------------------
+
+    /// A one-unit report whose unit carries exactly these skills, so a test can put the unit at any
+    /// level in any skill without the fixture's own units getting in the way.
+    fn studier(skills: Vec<Skill>) -> ParsedReport {
+        let mut region = inholm_region();
+        region.units = vec![ReportUnit {
+            unit_id: "1".to_string(),
+            region_id: region.region_id.clone(),
+            own: true,
+            skills,
+            ..Default::default()
+        }];
+        report(vec![region])
+    }
+
+    fn skill_at(tag: &str, level: u32) -> Skill {
+        Skill {
+            name: String::new(),
+            tag: tag.to_string(),
+            level,
+            points: 0,
+        }
+    }
+
+    fn study_offer(report: &ParsedReport, ruleset: &Ruleset) -> Vec<OrderCompletion> {
+        order_argument_completions("STUDY ", Some(ruleset), Some(report), Some("1"))
+    }
+
+    #[test]
+    fn study_offers_only_skills_that_can_be_studied() {
+        let ruleset = ruleset();
+        let report = studier(Vec::new());
+
+        for offered in [
+            study_offer(&report, &ruleset),
+            order_argument_completions("STUDY ", Some(&ruleset), None, None),
+        ] {
+            assert!(
+                !offered.iter().any(|entry| {
+                    ruleset
+                        .skills
+                        .get(&entry.value)
+                        .is_some_and(|skill| skill.cost.is_none())
+                }),
+                "an unstudiable skill is unstudiable with or without a unit"
+            );
+        }
+    }
+
+    #[test]
+    fn study_drops_a_skill_the_unit_has_maxed() {
+        let ruleset = ruleset();
+        let combat = ruleset.skills.get("COMB").expect("combat is a skill");
+        let report = studier(vec![skill_at("COMB", combat.max_level)]);
+
+        assert!(!study_offer(&report, &ruleset)
+            .iter()
+            .any(|entry| entry.value == "COMB"));
+    }
+
+    #[test]
+    fn study_keeps_a_skill_the_unit_can_still_advance() {
+        let ruleset = ruleset();
+        let combat = ruleset.skills.get("COMB").expect("combat is a skill");
+        let report = studier(vec![skill_at("COMB", combat.max_level - 1)]);
+
+        assert!(study_offer(&report, &ruleset)
+            .iter()
+            .any(|entry| entry.value == "COMB"));
+    }
+
+    #[test]
+    fn study_keeps_a_skill_the_unit_has_never_studied() {
+        let ruleset = ruleset();
+        let report = studier(Vec::new());
+
+        assert!(study_offer(&report, &ruleset)
+            .iter()
+            .any(|entry| entry.value == "COMB"));
+    }
+
+    #[test]
+    fn study_names_the_level_the_unit_has() {
+        let ruleset = ruleset();
+        let combat = ruleset.skills.get("COMB").expect("combat is a skill");
+        let cost = combat.cost.expect("combat is priced");
+        let report = studier(vec![skill_at("COMB", 3)]);
+
+        let entry = study_offer(&report, &ruleset)
+            .into_iter()
+            .find(|entry| entry.value == "COMB")
+            .expect("combat is still studiable at 3");
+        assert_eq!(entry.detail, format!("combat · {cost} silver · at 3"));
+    }
+
+    #[test]
+    fn study_says_nothing_about_a_level_the_unit_lacks() {
+        let ruleset = ruleset();
+        let combat = ruleset.skills.get("COMB").expect("combat is a skill");
+        let cost = combat.cost.expect("combat is priced");
+        let report = studier(Vec::new());
+
+        let entry = study_offer(&report, &ruleset)
+            .into_iter()
+            .find(|entry| entry.value == "COMB")
+            .expect("an unstudied skill is offered");
+        assert_eq!(entry.detail, format!("combat · {cost} silver"));
+    }
+
+    #[test]
+    fn study_matches_the_unit_skill_tag_whatever_its_case() {
+        let ruleset = ruleset();
+        let combat = ruleset.skills.get("COMB").expect("combat is a skill");
+        let report = studier(vec![skill_at("comb", combat.max_level)]);
+
+        assert!(
+            !study_offer(&report, &ruleset)
+                .iter()
+                .any(|entry| entry.value == "COMB"),
+            "the report's case and the ruleset's differ; the level is still found"
+        );
+    }
+
+    #[test]
+    fn study_without_a_unit_still_drops_the_unstudiable() {
+        let ruleset = ruleset();
+        let offered = order_argument_completions("STUDY ", Some(&ruleset), None, None);
+
+        assert!(!offered.is_empty(), "the answer stays sensible, not empty");
+        assert!(offered.iter().any(|entry| entry.value == "COMB"));
     }
 
     // --- increment 3: BUY and SELL narrow to the hex ----------------------------------------
