@@ -2,7 +2,7 @@
 
 - **Implementer:** Cyclops
 - **Date:** 2026-08-17
-- **PR:** rmstdope/cerebro#52, and this one (the submodule bump)
+- **PR:** #380 (the submodule bump), and rmstdope/cerebro#52 (the work itself)
 
 ## A refactoring plan asserted the old and new queries were equivalent, and two of six were not
 
