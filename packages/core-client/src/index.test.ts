@@ -78,6 +78,7 @@ function fakeAdapter(overrides: Partial<CoreAdapter> = {}): CoreAdapter {
     createGame: vi.fn().mockResolvedValue(openedGame),
     openGame: vi.fn().mockResolvedValue(openedGame),
     deleteGame: vi.fn().mockResolvedValue(undefined),
+    resetGame: vi.fn().mockResolvedValue(openedGame),
     exportGame: vi.fn().mockResolvedValue("{}"),
     importGame: vi.fn().mockResolvedValue(openedGame),
     setGameRuleset: vi.fn().mockResolvedValue(gameManifest),

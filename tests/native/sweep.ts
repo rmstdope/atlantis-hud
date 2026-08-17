@@ -271,5 +271,8 @@ export const SWEEP: SweepEntry[] = [
       note_id: "binding-sweep-note"
     })
   },
+  // Immediately before delete_game and after every scoped command: a reset empties the game, so
+  // anything ordered after it would run against a game with none of the sweep's seeded data.
+  { command: "reset_game", args: () => ({ game_id: GAME_ID, now: ISO }) },
   { command: "delete_game", args: () => ({ game_id: GAME_ID }) }
 ];
