@@ -9,7 +9,7 @@
  * others - a route costed against numbers this game does not use, presented as fact.
  */
 
-import { htmlToText, tableHeader, tableRows } from "./html";
+import { findTable, htmlToText } from "./html";
 
 export type MovementPoints = {
   walk: number;
@@ -322,15 +322,15 @@ const BUILDING_HEADINGS = ["Size", "Cost", "Material", "Mages"];
  * already be off by one.
  */
 export function parseBuildings(html: string): BuildingReference {
-  const rows = tableRows(html, BUILDING_HEADINGS);
-  const header = tableHeader(html, BUILDING_HEADINGS);
-  if (rows.length === 0 || !header) {
+  const table = findTable(html, BUILDING_HEADINGS);
+  if (!table) {
     throw new RulesetScrapeError(
-      "could not read buildings: no table on the rules page has a header naming " +
+      `could not read buildings: no table on the rules page has a header naming ` +
         `${BUILDING_HEADINGS.join(", ")}. The page has probably been reworded; update the ` +
-        "heading list rather than guessing a value."
+        `heading list rather than guessing a value.`
     );
   }
+  const { header, body: rows } = table;
 
   const columnOf = (heading: string): number => header.indexOf(heading.toLowerCase());
   const sizeCol = columnOf("Size");

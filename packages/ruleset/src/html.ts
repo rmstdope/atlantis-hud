@@ -64,11 +64,11 @@ function cellText(html: string): string {
  * The header cells and body rows of the first table whose header names every heading given, or
  * `null` when no table's header matches.
  *
- * Shared by {@link tableRows} and {@link tableHeader} so a table is only located once: both read
- * the same match, which keeps the two answers about a lookup by construction rather than by two
- * regexes agreeing by luck.
+ * The shared implementation behind {@link tableRows} and {@link tableHeader} - each scans the
+ * HTML again to get its half of this, so a caller that needs both, like `parseBuildings`, should
+ * call this directly instead and read both fields off one scan.
  */
-function findTable(
+export function findTable(
   html: string,
   headings: string[]
 ): { header: string[]; body: string[][] } | null {
