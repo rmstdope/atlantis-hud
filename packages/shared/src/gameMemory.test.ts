@@ -2,6 +2,7 @@ import type { CoreClient, KnownMap, OpenedGame, ParsedReport, RememberedRegion }
 import { aParsedReport, aReportHeaderInfo, aReportRegion } from "@atlantis/core-client";
 import { describe, expect, it, vi } from "vitest";
 import {
+  commitMerge,
   commitTurn,
   knownMapFor,
   mergeTurn,
@@ -317,6 +318,41 @@ describe("resolving the known map", () => {
   });
 });
 
+describe("merging an ally's report without reading the map back", () => {
+  it("merges under the viewer's faction and turn, and stops there", async () => {
+    const core = client();
+
+    const result = await commitMerge(core, OPEN_GAME, "95", 71, "the ally's report", RULESET, NOW);
+
+    expect(result).toEqual(MERGE_RESULT);
+    expect(core.mergeReport).toHaveBeenCalledWith(
+      "p.sqlite",
+      "aug-2026",
+      "95",
+      71,
+      "the ally's report",
+      RULESET,
+      NOW
+    );
+    expect(core.loadRegionSightings).not.toHaveBeenCalled();
+    expect(core.loadMergedReports).not.toHaveBeenCalled();
+    expect(core.knownMap).not.toHaveBeenCalled();
+  });
+
+  /** The batch's `catch` depends on this to demote a step that will not land to a skip. */
+  it("throws when the merge does not land", async () => {
+    const core = client({
+      mergeReport: vi
+        .fn()
+        .mockRejectedValue(new Error("a report from turn 2 cannot be merged into turn 71"))
+    });
+
+    await expect(
+      commitMerge(core, OPEN_GAME, "95", 71, "an older report", RULESET, NOW)
+    ).rejects.toThrow("cannot be merged into turn 71");
+  });
+});
+
 describe("merging an ally's report into the turn on screen", () => {
   it("merges under the viewer's faction and turn, not the report's", async () => {
     const core = client();
@@ -386,6 +422,36 @@ describe("merging an ally's report into the turn on screen", () => {
     await expect(
       mergeTurn(core, OPEN_GAME, "95", 71, "an older report", RULESET, NOW, "the viewer's report")
     ).rejects.toThrow("cannot be merged into turn 71");
+  });
+
+  /**
+   * The merge reached the database, so the player is told it worked - with an amber warning that
+   * the map could not be read back, not the red message that says the merge itself failed. A
+   * reload shows the merge either way (navigator, 2026-08-17).
+   */
+  it("a merge that landed is not reported as failed when the map cannot be read back", async () => {
+    const core = client({
+      loadRegionSightings: vi.fn().mockRejectedValue(new Error("the database is locked"))
+    });
+
+    const outcome = await mergeTurn(
+      core,
+      OPEN_GAME,
+      "95",
+      71,
+      "the ally's report",
+      RULESET,
+      NOW,
+      "the viewer's report"
+    );
+
+    expect(outcome.result).toEqual(MERGE_RESULT);
+    expect(outcome.warning).toContain("the turn could not be remembered: the database is locked");
+    // What the shell then puts on screen, pinned: `readMemory`'s own answer to a failed read - no
+    // sightings, nobody merged, and a map drawn from the report alone rather than nothing at all.
+    expect(outcome.remembered).toEqual([]);
+    expect(outcome.merged).toEqual([]);
+    expect(outcome.knownMap).toBe(KNOWN_MAP);
   });
 });
 
