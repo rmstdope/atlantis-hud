@@ -47,6 +47,12 @@ const OWN_OLDER_REPORT = readReport("g7f95t70");
 const F42_T40 = readReport("g3f42t40");
 const F42_T41 = readReport("g3f42t41");
 const F42_T42 = readReport("g3f42t42");
+/**
+ * The same faction forty turns on, used together with `F42_T42` for the Trade chip walk (ah-1j5.2):
+ * the turn-71 fixture every other walk in this file uses has no trade routes at all, which is
+ * exactly why the chip must still be visible at zero.
+ */
+const F42_T82 = readReport("g3f42t82");
 
 /** Inholm: a city with 24 structures and 92 units, one of them the player's. */
 const OWN_UNIT = "18642";
@@ -1027,6 +1033,57 @@ test("a silenced advisory check disappears everywhere at once", async ({ page })
 
   await expect(page.getByTestId("region-problems")).toContainText("short");
   await expect(page.getByTestId("problems-chip")).toContainText("1 problem");
+});
+
+/**
+ * The Trade chip (ah-1j5.2) at zero: the turn-71 fixture every other walk in this file uses has no
+ * trade routes at all (seven goods for sale, thirteen wanted, no overlap), which is precisely why
+ * the chip is shown even then - unlike Problems and Battles, which vanish at zero.
+ */
+test("the trade chip is shown even with nothing to trade", async ({ page }) => {
+  await loadReport(page);
+
+  const chip = page.getByTestId("trade-chip");
+  await expect(chip).toContainText("Trade 0");
+  await chip.click();
+  await expect(page.getByTestId("trade-panel")).toContainText("Nothing to trade yet");
+});
+
+/**
+ * The Trade chip (ah-1j5.2) with something to trade: two real turns of the same faction give a
+ * known map with routes on it - see `crates/core/src/trade.rs::the_whole_known_map_answers` for
+ * the same six routes, and the same best one, pinned against the core directly.
+ */
+test("the trade chip lists routes and flies the map to one", async ({ page }) => {
+  await clearGames(page);
+  await createGame(page, "Trade game");
+  await expect(page.getByTestId("app-header")).toBeVisible();
+
+  await page.setInputFiles('input[type="file"]', {
+    name: "f42-t42.rep",
+    mimeType: "text/plain",
+    buffer: Buffer.from(F42_T42, "utf8")
+  });
+  await expect(page.getByTestId("app-header")).toContainText(/Turn\s*42\b/);
+
+  await choose(page, "f42-t82.rep", F42_T82);
+  await expect(page.getByTestId("app-header")).toContainText(/Turn\s*82\b/);
+
+  const chip = page.getByTestId("trade-chip");
+  await expect(chip).toContainText("Trade 6");
+  await chip.click();
+  const panel = page.getByTestId("trade-panel");
+  await expect(panel).toBeVisible();
+  // The best route first: the reciprocal chocolate/perfume circuit between (36,4) and (0,48),
+  // worth $15,598 - the same figure the core's own test pins.
+  await expect(panel.getByTestId("trade-route-0")).toContainText("36,4");
+  await expect(panel.getByTestId("trade-route-0")).toContainText("0,48");
+  await expect(panel.getByTestId("trade-route-0")).toContainText("$15,598");
+
+  await panel.getByTestId("trade-route-0").click();
+  await expect(panel).toHaveCount(0);
+  // The route starts from (36,4), so that hex - not (0,48) - is what selecting the row lands on.
+  await expect(page.getByTestId("panel-region")).toContainText("(36,4)");
 });
 
 test("an order with the wrong argument is caught, and the offending word quoted", async ({

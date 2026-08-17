@@ -9,7 +9,8 @@ import type {
   MoveOrderTraceResponse,
   OrdersPreviewResponse,
   RegionPreview,
-  RoutePlanResponse
+  RoutePlanResponse,
+  TradeRoute
 } from "@atlantis/core-client";
 import { ADVISORY_CHECK_CODES } from "@atlantis/core-client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -156,6 +157,7 @@ import { PlannerPanel } from "./PlannerPanel";
 import { chooseRouteOverlay } from "./routeOverlay";
 import { RegionPanel } from "./RegionPanel";
 import { ProblemsPanel } from "./ProblemsPanel";
+import { TradePanel } from "./TradePanel";
 import { TurnMessagesPanel, type TurnMessagesTab } from "./TurnMessagesPanel";
 import { UnitPanel } from "./UnitPanel";
 import { UnitTableDock } from "./UnitTableDock";
@@ -1774,6 +1776,39 @@ export function AppShell({
    */
   const problemsByHex = useMemo(() => findingsByHex(validated.diagnostics), [validated]);
 
+  /**
+   * Every trade route worth making across the known map, for the header's Trade chip (ah-1j5.2).
+   *
+   * Not debounced and not on a timer, unlike order validation: `rawReport` and `rememberedJson`
+   * change only when a report is imported or a turn is restored, a handful of times a session. A
+   * failure empties the list rather than raising a status message - this is advice, and the player
+   * has not asked for it at the moment it fails.
+   */
+  const [tradeRoutes, setTradeRoutes] = useState<TradeRoute[]>([]);
+
+  useEffect(() => {
+    if (ruleset.status !== "ready" || !rawReport) {
+      setTradeRoutes([]);
+      return undefined;
+    }
+    let cancelled = false;
+    void client
+      .tradeRoutes(ruleset.text, rawReport, rememberedJson)
+      .then((found) => {
+        if (!cancelled) {
+          setTradeRoutes(found);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setTradeRoutes([]);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [client, ruleset, rawReport, rememberedJson]);
+
   // The whole document previewed at once, unlike the per-unit trace, because GIVE crosses units
   // and MOVE crosses hexes: only the full text says what a hex looks like next month. Same
   // debounce, same stale-reply guard, same policy of leaving the last answer standing on failure -
@@ -2463,6 +2498,15 @@ export function AppShell({
             labelFor={hexLabel}
             onSelectHex={selectHex}
             onDismiss={() => closePopover("problems")}
+          />
+        }
+        tradeCount={tradeRoutes.length}
+        tradePanel={
+          <TradePanel
+            routes={tradeRoutes}
+            labelFor={hexLabel}
+            onSelectHex={selectHex}
+            onDismiss={() => closePopover("trade")}
           />
         }
         battleCount={parsed?.battles.length ?? 0}
