@@ -344,8 +344,10 @@ test("the settings dialog grows with the interface size", async ({ page }) => {
 
   await page.getByTestId("settings-interface-size").fill("200");
   // The slider re-renders the panel it lives in; read the box only once the growth has landed.
+  // `boundingBox()` is null while that re-render is mid-flight, so fall back to 0 and let `poll`
+  // retry rather than throwing on a transient.
   await expect
-    .poll(async () => (await panel.boundingBox())!.width)
+    .poll(async () => (await panel.boundingBox())?.width ?? 0)
     .toBeGreaterThan(widthBefore * 1.5);
 
   // ...and it is still fully inside the window, Close button included (O1).
