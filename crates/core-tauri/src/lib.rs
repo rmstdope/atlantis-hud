@@ -694,9 +694,9 @@ pub mod commands {
             game_id,
             active_faction_id.as_deref(),
         )
-            .map_err(|error| error.to_string())?
-            .map(imported_turn_dto)
-            .transpose()
+        .map_err(|error| error.to_string())?
+        .map(imported_turn_dto)
+        .transpose()
     }
 
     /// Lists every turn imported for a game, across every faction, for the Tauri command surface.
