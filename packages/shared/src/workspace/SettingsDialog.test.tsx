@@ -1,26 +1,15 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { ADVISORY_CHECK_CODES } from "@atlantis/core-client";
 import { resetSettingsStore, useSettingsStore } from "../settingsStore";
+import { restoreStoresForTest, setStoreStateForTest } from "../testing/storeState";
 import { GlobalSettings, WarningSettings } from "./SettingsDialog";
 
 /**
- * `renderToStaticMarkup` runs with no `window`, so React treats it as a server render and the
- * store's React binding reads `getInitialState()` rather than `getState()` - see
- * `UnitTableDock.test.tsx` for the same trap. Mocked here the same way, so a setting changed for
- * one of these tests is what the render sees.
+ * `renderToStaticMarkup` runs with no `window`, so React's server branch reads the store's
+ * `getInitialState()` rather than `getState()` - see `../testing/storeState.ts`, which is the one
+ * place that trap is explained and worked around.
  */
-vi.mock("../settingsStore", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../settingsStore")>();
-  return {
-    ...actual,
-    useSettingsStore: Object.assign(
-      (selector: (state: ReturnType<typeof actual.useSettingsStore.getState>) => unknown) =>
-        selector(actual.useSettingsStore.getState()),
-      actual.useSettingsStore
-    )
-  };
-});
 
 /** The markup of one testid's tag, so an assertion about it cannot match a sibling's attribute. */
 function tag(html: string, testid: string): string {
@@ -33,6 +22,7 @@ function tag(html: string, testid: string): string {
 
 describe("the Interface size setting", () => {
   afterEach(() => {
+    restoreStoresForTest();
     resetSettingsStore();
   });
 
@@ -50,6 +40,7 @@ describe("the Interface size setting", () => {
 
   it("reflects a changed interface size", () => {
     useSettingsStore.getState().setInterfaceSize(150);
+    setStoreStateForTest(useSettingsStore);
     const html = renderToStaticMarkup(<GlobalSettings />);
 
     expect(tag(html, "settings-interface-size")).toContain('value="150"');
@@ -58,6 +49,7 @@ describe("the Interface size setting", () => {
 
 describe("the Warnings settings tab", () => {
   afterEach(() => {
+    restoreStoresForTest();
     resetSettingsStore();
   });
 
@@ -118,6 +110,7 @@ describe("the Warnings settings tab", () => {
   it("reflects a toggled check", () => {
     resetSettingsStore();
     useSettingsStore.getState().setAdvisoryCheck("not-enough-silver", false);
+    setStoreStateForTest(useSettingsStore);
 
     const html = renderToStaticMarkup(<WarningSettings />);
 
