@@ -77,16 +77,24 @@ export function shouldSaveOnBlur(hasUnsavedChanges: boolean): boolean {
 }
 
 /**
- * The draft as it should read once a save has landed: ended with the newline an orders file ends
- * with.
+ * The text the editor should show for a unit: its block as the document holds it, ended with the
+ * newline an orders file ends with once the document has landed on disk.
  *
- * Only after a save, so the tidying never races the player's typing, and only in the editor - the
- * block boundary neither holds nor needs a trailing newline, so the document and what is on disk
- * are the same either way. An empty draft stays empty rather than gaining a blank line the player
- * never opened.
+ * The single answer to "does a saved unit's text end in a newline". The document's block boundary
+ * neither holds nor needs it - `writeUnitOrders` (ordersDocument.ts) drops trailing blank lines so
+ * an opened line cannot accumulate - so the editor is the only place the two differ, and every path
+ * that puts text into the editor goes through here. That is what replaced a second effect which had
+ * to run after the reload and had to be told about every source of an external write.
+ *
+ * Idempotent, and safe on the editor's own document: text already ending in a newline comes back
+ * unchanged, an unsaved unit comes back unchanged, and an empty draft stays empty rather than
+ * gaining a blank line the player never opened.
  */
-export function draftAfterSave(draft: string): string {
-  return draft === "" || draft.endsWith("\n") ? draft : `${draft}\n`;
+export function shownUnitText(text: string, savedAt: string | null): string {
+  if (savedAt === null || text === "" || text.endsWith("\n")) {
+    return text;
+  }
+  return `${text}\n`;
 }
 
 /**
