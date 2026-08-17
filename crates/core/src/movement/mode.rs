@@ -342,9 +342,9 @@ mod tests {
     }
 
     #[test]
-    fn the_ride_allowance_wins_when_it_is_higher() {
-        assert_eq!(best_allowance(&with_capacity("0/70/85/0")), Some(85));
-        assert_eq!(best_allowance(&with_capacity("10/0/0/0")), Some(10));
+    fn the_best_of_the_three_allowances_wins() {
+        assert_eq!(best_allowance(&with_capacity("0/70/85/0")), Some(85)); // walk beats ride
+        assert_eq!(best_allowance(&with_capacity("10/0/0/0")), Some(10)); // fly is the only one
     }
 
     #[test]
