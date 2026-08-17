@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>ah-58n — the reset control in the game list</title>
+<style>
+  :root { --page:#10151c; --panel:#171e28; --raised:#1c2531; --edge:#2a3442; --ink:#d7dee8; --soft:#aab3c0;
+          --dim:#8a94a3; --brass:#c9a24b; --select:#4d8fd6; --ok:#5eb45e; --danger:#d9534f; --warn:#d8a13a; }
+  body { background: var(--page); color: var(--ink); font: 14px/1.5 system-ui, sans-serif; margin: 0; padding: 24px 32px 64px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  h2 { font-size: 16px; margin: 38px 0 6px; border-top: 1px solid var(--edge); padding-top: 18px; }
+  h3 { font-size: 13.5px; margin: 0 0 8px; color: var(--soft); }
+  p.note { color: var(--dim); max-width: 92ch; }
+  p.note em { color: var(--soft); font-style: normal; }
+  .row { display: flex; gap: 30px; flex-wrap: wrap; margin: 14px 0 8px; align-items: flex-start; }
+  .variant { width: 340px; }
+  .cost { color: var(--dim); font-size: 13px; margin: 10px 0 0; max-width: 46ch; }
+  .picker { border: 1px solid var(--edge); border-radius: 6px; background: var(--panel); padding: 6px; font-size: 12.5px; }
+  .game { display: flex; align-items: center; gap: 4px; }
+  .name { flex: 1; padding: 4px 6px; border-radius: 3px; color: var(--ink); }
+  .name.cur { color: var(--brass); }
+  .ctrl { padding: 4px 6px; border-radius: 3px; color: var(--dim); cursor: default; }
+  .ctrl.x:hover { color: var(--danger); }
+  .ctrl.r { color: var(--dim); }
+  .ctrl.word { color: var(--dim); font-size: 11.5px; }
+  .confirm { margin-top: 4px; border: 1px solid rgba(217,83,79,.4); border-radius: 4px; padding: 6px; }
+  .confirm p { margin: 0; color: var(--soft); }
+  .btns { display: flex; justify-content: flex-end; gap: 6px; margin-top: 6px; }
+  .btn { border: 1px solid var(--edge); border-radius: 3px; padding: 1px 8px; color: var(--ink); font-size: 11.5px; }
+  .btn.danger { border-color: var(--danger); color: var(--danger); }
+  .btn.warn { border-color: var(--warn); color: var(--warn); }
+  .tag { display:inline-block; border:1px solid var(--brass); border-radius:3px; padding:0 5px; color:var(--brass);
+         font-size:11px; margin-left:8px; vertical-align:1px; }
+</style>
+</head>
+<body>
+
+<h1>ah-58n — the reset control in the game list</h1>
+<p class="note">Every variant is the same list, the same three games, the same <em>✕</em>. Only the reset control differs.
+The confirmation panel is shown open on <em>Binding of the North</em> so you can see both controls and the panel at once;
+its wording is the second mockup's question, not this one's.</p>
+
+<h2>A — a second icon beside ✕</h2>
+<div class="row">
+  <div class="variant">
+    <div class="picker">
+      <div class="game"><span class="name cur">● Binding of the North</span><span class="ctrl r">↺</span><span class="ctrl x">✕</span></div>
+      <div class="confirm">
+        <p>Reset “Binding of the North”? …</p>
+        <div class="btns"><span class="btn warn">Reset</span><span class="btn">Cancel</span></div>
+      </div>
+      <div class="game"><span class="name">○ Ocean Run</span><span class="ctrl r">↺</span><span class="ctrl x">✕</span></div>
+      <div class="game"><span class="name">○ Tuesday test game</span><span class="ctrl r">↺</span><span class="ctrl x">✕</span></div>
+    </div>
+    <p class="cost">Compact, and the row keeps its shape. Two destructive controls one character apart — a misclick
+    on a row you meant to open erases a game either way, and ↺ is the one that <em>looks</em> less final while being
+    nearly as destructive.</p>
+  </div>
+
+  <div class="variant">
+    <h3>A2 — same, with a gap between them</h3>
+    <div class="picker">
+      <div class="game"><span class="name cur">● Binding of the North</span><span class="ctrl r">↺</span><span style="width:14px"></span><span class="ctrl x">✕</span></div>
+      <div class="game"><span class="name">○ Ocean Run</span><span class="ctrl r">↺</span><span style="width:14px"></span><span class="ctrl x">✕</span></div>
+      <div class="game"><span class="name">○ Tuesday test game</span><span class="ctrl r">↺</span><span style="width:14px"></span><span class="ctrl x">✕</span></div>
+    </div>
+    <p class="cost">The whole of A's argument, minus most of the misclick: fourteen pixels is a deliberate move rather
+    than a slip. Costs a little width in a pane that is already narrow.</p>
+  </div>
+</div>
+
+<h2>B — a word, not a symbol</h2>
+<div class="row">
+  <div class="variant">
+    <div class="picker">
+      <div class="game"><span class="name cur">● Binding of the North</span><span class="ctrl word">Reset</span><span class="ctrl x">✕</span></div>
+      <div class="game"><span class="name">○ Ocean Run</span><span class="ctrl word">Reset</span><span class="ctrl x">✕</span></div>
+      <div class="game"><span class="name">○ Tuesday test game</span><span class="ctrl word">Reset</span><span class="ctrl x">✕</span></div>
+    </div>
+    <p class="cost">Says what it does with no icon to learn, and no chance of reading ↺ as “reload” or “undo”.
+    Widest of the three, and the only one whose control size changes if the word is ever translated.</p>
+  </div>
+</div>
+
+<h2>C — reset lives inside the delete confirmation</h2>
+<div class="row">
+  <div class="variant">
+    <div class="picker">
+      <div class="game"><span class="name cur">● Binding of the North</span><span class="ctrl x">✕</span></div>
+      <div class="confirm">
+        <p>Delete “Binding of the North”? Its turns, orders and remembered map are erased.</p>
+        <div class="btns"><span class="btn danger">Delete</span><span class="btn warn">Empty, keep the game</span><span class="btn">Cancel</span></div>
+      </div>
+      <div class="game"><span class="name">○ Ocean Run</span><span class="ctrl x">✕</span></div>
+      <div class="game"><span class="name">○ Tuesday test game</span><span class="ctrl x">✕</span></div>
+    </div>
+    <p class="cost">No new control on the row at all, and the choice is offered at the moment the player has already
+    decided to throw something away — which is exactly when they might prefer to keep the name. But it is hidden until
+    you press ✕, so a player looking for “start this over” never finds it.</p>
+  </div>
+</div>
+
+<h2>The narrow pane, under each</h2>
+<div class="row">
+  <div class="variant">
+    <h3>A / A2 at the pane’s minimum width</h3>
+    <div class="picker" style="width: 190px">
+      <div class="game"><span class="name cur" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">● Binding of the No…</span><span class="ctrl r">↺</span><span class="ctrl x">✕</span></div>
+    </div>
+    <p class="cost">The name truncates; both controls survive.</p>
+  </div>
+  <div class="variant">
+    <h3>B at the same width</h3>
+    <div class="picker" style="width: 190px">
+      <div class="game"><span class="name" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">● Binding of th…</span><span class="ctrl word">Reset</span><span class="ctrl x">✕</span></div>
+    </div>
+    <p class="cost">Four more characters of the name go. This is where B is paid for.</p>
+  </div>
+</div>
+
+</body>
+</html>

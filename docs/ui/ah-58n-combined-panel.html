@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>ah-58n — one panel, two outcomes</title>
+<style>
+  :root { --page:#10151c; --panel:#171e28; --raised:#1c2531; --edge:#2a3442; --ink:#d7dee8; --soft:#aab3c0;
+          --dim:#8a94a3; --brass:#c9a24b; --select:#4d8fd6; --ok:#5eb45e; --danger:#d9534f; --warn:#d8a13a; }
+  body { background: var(--page); color: var(--ink); font: 14px/1.5 system-ui, sans-serif; margin: 0; padding: 24px 32px 64px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  h2 { font-size: 16px; margin: 36px 0 6px; border-top: 1px solid var(--edge); padding-top: 18px; }
+  h3 { font-size: 13.5px; margin: 0 0 8px; color: var(--soft); }
+  p.note { color: var(--dim); max-width: 94ch; }
+  p.note em { color: var(--soft); font-style: normal; }
+  .row { display: flex; gap: 28px; flex-wrap: wrap; margin: 14px 0 8px; align-items: flex-start; }
+  .variant { width: 400px; }
+  .cost { color: var(--dim); font-size: 13px; margin: 10px 0 0; max-width: 52ch; }
+  .picker { border: 1px solid var(--edge); border-radius: 6px; background: var(--panel); padding: 6px; font-size: 12.5px; }
+  .game { display: flex; align-items: center; gap: 4px; }
+  .name { flex: 1; padding: 4px 6px; color: var(--brass); }
+  .ctrl { padding: 4px 6px; color: var(--dim); }
+  .confirm { margin-top: 4px; border: 1px solid rgba(217,83,79,.4); border-radius: 4px; padding: 6px; }
+  .confirm p { margin: 0; color: var(--soft); }
+  .confirm p + p { margin-top: 4px; }
+  .hint { color: var(--dim); }
+  .btns { display: flex; justify-content: flex-end; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+  .btn { border: 1px solid var(--edge); border-radius: 3px; padding: 1px 8px; color: var(--ink); font-size: 11.5px; }
+  .btn.danger { border-color: var(--danger); color: var(--danger); }
+  .btn.warn { border-color: var(--warn); color: var(--warn); }
+  .btn.focus { outline: 2px solid var(--select); outline-offset: 1px; }
+</style>
+</head>
+<body>
+
+<h1>ah-58n — one panel, two outcomes</h1>
+<p class="note">You chose <em>C</em>: no new control on the row, and ✕ opens a panel offering both. You also chose the
+<em>W1</em> wording and the <em>B2</em> backup line — but W1 was written for a panel that only ever offered reset, so the
+sentence has to be rebuilt to describe two outcomes at once. That is this mockup's only question. Every variant is the
+same row, the same ✕, and the same three buttons; only the prose differs.</p>
+
+<h2>P1 — one sentence for the loss, one for the difference</h2>
+<div class="row">
+  <div class="variant">
+    <div class="picker">
+      <div class="game"><span class="name">● Binding of the North</span><span class="ctrl">✕</span></div>
+      <div class="confirm">
+        <p>Delete “Binding of the North”? Its turns, orders, remembered map and notes are erased.</p>
+        <p>Reset erases the same things but keeps the game, with its name and ruleset.</p>
+        <p class="hint">Export it first if you might want it back.</p>
+        <div class="btns"><span class="btn danger">Delete</span><span class="btn warn">Reset</span><span class="btn focus">Cancel</span></div>
+      </div>
+    </div>
+    <p class="cost">Keeps today's delete sentence untouched, word for word, and adds one line that is entirely about
+    the difference. Three lines of prose in a narrow pane, and the panel is taller than anything else in this list.</p>
+  </div>
+</div>
+
+<h2>P2 — name the loss once, then both doors</h2>
+<div class="row">
+  <div class="variant">
+    <div class="picker">
+      <div class="game"><span class="name">● Binding of the North</span><span class="ctrl">✕</span></div>
+      <div class="confirm">
+        <p>“Binding of the North”: its turns, orders, remembered map and notes are erased either way. Delete removes
+        the game; Reset keeps it, with its name and ruleset.</p>
+        <p class="hint">Export it first if you might want it back.</p>
+        <div class="btns"><span class="btn danger">Delete</span><span class="btn warn">Reset</span><span class="btn focus">Cancel</span></div>
+      </div>
+    </div>
+    <p class="cost">Shortest of the three, and says the thing that matters first: whichever you press, the contents go.
+    Loses the question form — it no longer asks anything, it states and offers.</p>
+  </div>
+</div>
+
+<h2>P3 — a question, with the two answers spelled out</h2>
+<div class="row">
+  <div class="variant">
+    <div class="picker">
+      <div class="game"><span class="name">● Binding of the North</span><span class="ctrl">✕</span></div>
+      <div class="confirm">
+        <p>Delete “Binding of the North”, or empty it and keep the game?</p>
+        <p>Either way its turns, orders, remembered map and notes are erased. Reset keeps the name and ruleset.</p>
+        <p class="hint">Export it first if you might want it back.</p>
+        <div class="btns"><span class="btn danger">Delete</span><span class="btn warn">Reset</span><span class="btn focus">Cancel</span></div>
+      </div>
+    </div>
+    <p class="cost">The only variant whose first line is the actual choice, so a player who reads one line reads the
+    right one. Furthest from today's copy — the delete sentence everyone has already seen is rewritten.</p>
+  </div>
+</div>
+
+<h2>The button labels</h2>
+<div class="row">
+  <div class="variant">
+    <h3>L1 — Reset</h3>
+    <div class="picker"><div class="confirm"><div class="btns" style="margin-top:0">
+      <span class="btn danger">Delete</span><span class="btn warn">Reset</span><span class="btn focus">Cancel</span></div></div></div>
+    <p class="cost">Matches the bead, the shortest, and pairs with “Delete” in width. “Reset” is a word this
+    application does not use anywhere else yet, so it carries no baggage — and no meaning either, until pressed.</p>
+  </div>
+  <div class="variant">
+    <h3>L2 — Empty it</h3>
+    <div class="picker"><div class="confirm"><div class="btns" style="margin-top:0">
+      <span class="btn danger">Delete</span><span class="btn warn">Empty it</span><span class="btn focus">Cancel</span></div></div></div>
+    <p class="cost">Says what happens to the contents rather than naming an operation. Reads oddly next to Delete,
+    which is also a verb about the contents.</p>
+  </div>
+  <div class="variant">
+    <h3>L3 — Keep the game</h3>
+    <div class="picker"><div class="confirm"><div class="btns" style="margin-top:0">
+      <span class="btn danger">Delete</span><span class="btn warn">Keep the game</span><span class="btn focus">Cancel</span></div></div></div>
+    <p class="cost">Names what survives, which is the whole reason the button exists — but it reads as the safe
+    option next to Delete, and it is not safe: it erases everything in the game.</p>
+  </div>
+</div>
+
+<h2>The states the happy path hides</h2>
+<div class="row">
+  <div class="variant">
+    <h3>While it runs</h3>
+    <div class="picker">
+      <div class="game"><span class="name" style="opacity:.5">● Binding of the North</span><span class="ctrl" style="opacity:.5">✕</span></div>
+      <div class="confirm" style="opacity:.5">
+        <p>Delete “Binding of the North”? Its turns, orders, remembered map and notes are erased.</p>
+        <p>Reset erases the same things but keeps the game, with its name and ruleset.</p>
+        <div class="btns"><span class="btn danger">Delete</span><span class="btn warn">Reset</span><span class="btn">Cancel</span></div>
+      </div>
+    </div>
+    <p class="cost">Every button in the picker already dims and disables while a game operation is in flight
+    (<em>busy</em>). Reset joins that; nothing new.</p>
+  </div>
+  <div class="variant">
+    <h3>If it fails halfway</h3>
+    <div class="picker">
+      <div class="game"><span class="name">● Binding of the North</span><span class="ctrl">✕</span></div>
+      <div class="confirm">
+        <p style="color:var(--danger)">“Binding of the North” could not be reset: database is locked.</p>
+        <div class="btns"><span class="btn warn">Try again</span><span class="btn focus">Cancel</span></div>
+      </div>
+    </div>
+    <p class="cost">The panel stays open and says what went wrong, like the picker's existing error line. The
+    alternative is closing the panel and putting the message in the list's error slot, which is where a failed
+    <em>create</em> already goes.</p>
+  </div>
+</div>
+
+</body>
+</html>
