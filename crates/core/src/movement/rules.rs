@@ -319,6 +319,19 @@ pub struct SkillEntry {
     pub magic: bool,
 }
 
+/// A building the rules describe, and how many mages may study in it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BuildingEntry {
+    pub name: String,
+    pub size: i64,
+    pub cost: i64,
+    pub material: String,
+    /// How many mages the building provides study facilities for. **Zero for a Tower**, which is
+    /// the ruleset's own answer and not an oversight: a mage studying in one gets half a month.
+    pub mages: i64,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Ruleset {
@@ -331,6 +344,10 @@ pub struct Ruleset {
     /// nothing can be priced, not that everything is free.
     #[serde(default)]
     pub skills: BTreeMap<String, SkillEntry>,
+    /// Empty for a ruleset generated before buildings were scraped. Empty means nothing can be
+    /// said about a structure, not that no structure seats a mage.
+    #[serde(default)]
+    pub buildings: BTreeMap<String, BuildingEntry>,
 }
 
 /// Why a ruleset could not be used.
@@ -593,6 +610,20 @@ impl Ruleset {
         self.skills.get(tag).is_some_and(|skill| skill.magic)
     }
 
+    /// How many mages may study unhindered in a structure of this kind, when the catalogue knows
+    /// the kind at all.
+    ///
+    /// `None` for a structure the rules' buildings table does not name - a Mine, an Inn, a road, a
+    /// ship - and for a ruleset scraped before buildings were. That is deliberately distinct from
+    /// `Some(0)`, which is a Tower: one says the catalogue cannot tell you, the other says the
+    /// building seats nobody, and a caller that must not guess needs to tell them apart.
+    #[must_use]
+    pub fn mage_capacity(&self, kind: &str) -> Option<i64> {
+        self.buildings
+            .get(&kind.to_ascii_uppercase())
+            .map(|building| building.mages)
+    }
+
     /// The item an order names, written as a tag, a name, or the plural the rules' own examples
     /// use.
     ///
@@ -844,5 +875,45 @@ mod tests {
                 }
             }
         }
+    }
+
+    /// ah-a2k.3: the buildings table backs `ah-a2k.2`'s "no facilities here" warning, and a Tower
+    /// seating zero mages is the case that makes the check worth building - it must not be
+    /// mistaken for "unknown".
+    #[test]
+    fn a_buildings_mage_capacity_is_known() {
+        let ruleset = ruleset();
+        assert_eq!(ruleset.mage_capacity("Tower"), Some(0));
+        assert_eq!(ruleset.mage_capacity("Citadel"), Some(3));
+        // Case-insensitive, the same way `is_man` looks items up by their uppercase tag.
+        assert_eq!(ruleset.mage_capacity("tower"), Some(0));
+        // Not a building at all, and must not resolve to one by prefix or by stripping a
+        // direction.
+        assert_eq!(ruleset.mage_capacity("Road SE"), None);
+    }
+
+    /// The distinction between "no facilities" (`Some(0)`, a Tower) and "the catalogue cannot say"
+    /// (`None`, a Mine) is the whole reason the return type is an `Option` rather than a plain
+    /// integer defaulting to zero.
+    #[test]
+    fn a_structure_the_table_does_not_name_is_unknown_not_zero() {
+        let ruleset = ruleset();
+        assert_eq!(ruleset.mage_capacity("Mine"), None);
+    }
+
+    /// `#[serde(default)]` on `buildings` is what lets a ruleset cached before this bead keep
+    /// loading; this pins that a ruleset missing the key entirely still parses and answers `None`
+    /// rather than failing to load at all.
+    #[test]
+    fn a_ruleset_without_buildings_still_parses() {
+        let json: serde_json::Value = serde_json::from_str(RULESET).unwrap();
+        let mut json = json;
+        json.as_object_mut()
+            .expect("ruleset is a JSON object")
+            .remove("buildings");
+        let text = serde_json::to_string(&json).unwrap();
+
+        let ruleset = Ruleset::from_json(&text).expect("a ruleset without buildings still parses");
+        assert_eq!(ruleset.mage_capacity("Tower"), None);
     }
 }
