@@ -284,8 +284,9 @@ function GlobalSettings() {
 
 /**
  * Which advisory order-check codes should not run at all: the Warnings tab's on/off toggles,
- * grouped Teaching / Resources / Guarding / Orders. Off means the core never produces the finding -
- * counts, chip, panels and editor underlines all agree, nothing anywhere says "hidden".
+ * grouped Teaching / Resources / Markets / Guarding / Orders / Sailing. Off means the core never
+ * produces the finding - counts, chip, panels and editor underlines all agree, nothing anywhere
+ * says "hidden".
  */
 const WARNING_GROUPS: readonly {
   heading: string;
@@ -333,6 +334,16 @@ const WARNING_GROUPS: readonly {
         code: "not-enough-items",
         title: "Overdrawn items",
         description: "Orders give away or sell more of an item than the unit or the hex holds."
+      }
+    ]
+  },
+  {
+    heading: "Markets",
+    entries: [
+      {
+        code: "not-traded-here",
+        title: "Buying what is not sold",
+        description: "A BUY or SELL order for something this hex's market does not trade."
       }
     ]
   },
