@@ -943,6 +943,83 @@ describe("managing games", () => {
     const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
     await expect(adapter.deleteGame("missing")).rejects.toThrow(/no game/u);
   });
+
+  it("empties a game and keeps it in the list", async () => {
+    const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
+    const alpha = (await adapter.createGame(manifest("alpha", "Alpha"))) as { databasePath: string };
+    await adapter.commitReportImport(
+      alpha.databasePath,
+      "alpha",
+      "17",
+      REPORT,
+      null,
+      false,
+      IMPORTED_AT
+    );
+    await adapter.saveHexNote(alpha.databasePath, {
+      id: "note-1",
+      gameId: "alpha",
+      regionId: "1:7,53",
+      text: "Watch this pass",
+      onMap: true,
+      turn: 12,
+      createdAt: IMPORTED_AT,
+      updatedAt: IMPORTED_AT
+    });
+
+    await adapter.resetGame("alpha", "2026-08-17T09:00:00Z");
+
+    expect((await adapter.listGames()) as GameManifest[]).toHaveLength(1);
+    expect(await adapter.loadLatestImportedTurn(alpha.databasePath, "alpha", null)).toBeNull();
+    expect(await adapter.listHexNotes(alpha.databasePath, "alpha")).toEqual([]);
+  });
+
+  it("keeps the name and ruleset and forgets the faction", async () => {
+    const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
+    await adapter.createGame(manifest("alpha", "Alpha"));
+    await adapter.setActiveFaction("alpha", "17");
+
+    const reset = (await adapter.resetGame("alpha", "2026-08-17T09:00:00Z")) as {
+      manifest: GameManifest;
+    };
+
+    expect(reset.manifest.metadata.gameName).toBe("Alpha");
+    expect(reset.manifest.metadata.rulesetId).toBe("neworigins");
+    expect(reset.manifest.metadata.activeFactionId).toBeUndefined();
+    expect(reset.manifest.reportSources).toEqual([]);
+    expect(reset.manifest.createdAt).toBe("2026-08-17T09:00:00Z");
+
+    // And it stuck: what a later open reads is the emptied manifest, not the old one.
+    const reopened = (await adapter.openGame("alpha", "2026-08-17T10:00:00Z")) as {
+      manifest: GameManifest;
+    };
+    expect(reopened.manifest.metadata.gameName).toBe("Alpha");
+    expect(reopened.manifest.metadata.activeFactionId).toBeUndefined();
+    expect(reopened.manifest.createdAt).toBe("2026-08-17T09:00:00Z");
+  });
+
+  it("a reset game is not another game's business", async () => {
+    const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
+    const alpha = (await adapter.createGame(manifest("alpha", "Alpha"))) as { databasePath: string };
+    const beta = (await adapter.createGame(manifest("beta", "Beta"))) as { databasePath: string };
+    await adapter.commitReportImport(
+      beta.databasePath,
+      "beta",
+      "17",
+      REPORT,
+      null,
+      false,
+      IMPORTED_AT
+    );
+
+    await adapter.resetGame("alpha", "2026-08-17T09:00:00Z");
+
+    expect((await adapter.listGames()) as GameManifest[]).toHaveLength(2);
+    expect(await adapter.loadLatestImportedTurn(beta.databasePath, "beta", null)).toMatchObject({
+      key: { gameId: "beta", factionId: "17", turnNumber: 12 }
+    });
+    expect(alpha.databasePath).not.toBe(beta.databasePath);
+  });
 });
 
 describe("exporting and importing games", () => {

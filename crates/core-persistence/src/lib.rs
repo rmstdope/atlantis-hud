@@ -480,6 +480,76 @@ pub fn delete_game(games_root: &Path, game_id: &str) -> Result<(), PersistenceEr
     Ok(())
 }
 
+/// Empties a game and keeps it: same id, same name, same ruleset, nothing else.
+///
+/// Composed of a directory move and `create_game` rather than written afresh, so a reset game and a
+/// newly created one are the same thing by construction. `created_at` and `last_opened_at` are both
+/// `now` — the game the player is left with was made at this moment, whatever the one it replaced
+/// was made at — and `report_sources` and `active_faction_id` are cleared with everything else: an
+/// emptied game has imported nothing, so it is nobody's faction (ah-do8.1).
+///
+/// # Errors
+///
+/// Returns an error when no game exists under this id, when its manifest cannot be read, or when
+/// the directory cannot be replaced.
+pub fn reset_game(
+    games_root: &Path,
+    game_id: &str,
+    now: &str,
+) -> Result<OpenedGame, PersistenceError> {
+    let home = game_home(games_root, game_id);
+    let game_file_path = home.join(GAME_MANIFEST_FILE_NAME);
+    if !game_file_path.exists() {
+        return Err(PersistenceError::GameNotFound(game_id.to_string()));
+    }
+
+    let manifest = load_game_manifest(&game_file_path)?;
+    ensure_supported_manifest_version(manifest.manifest_version)?;
+
+    // Written field by field on purpose, *not* as `GameManifest { ..manifest }`: a struct-update
+    // expression carries every future field through a reset silently, and the next field added to a
+    // manifest is exactly the one that should not survive.
+    let fresh = GameManifest {
+        manifest_version: atlantis_hud_core::backup::CURRENT_MANIFEST_VERSION,
+        metadata: GameMetadata {
+            game_id: manifest.metadata.game_id.clone(),
+            game_name: manifest.metadata.game_name.clone(),
+            ruleset_id: manifest.metadata.ruleset_id.clone(),
+            active_faction_id: None,
+        },
+        report_sources: Vec::new(),
+        created_at: now.to_string(),
+        last_opened_at: now.to_string(),
+    };
+
+    // Move the old directory aside rather than deleting it: a failure between a delete and a create
+    // would leave the player with no game at all, while the panel that offers **Try again** on
+    // failure is promising that the game is still there.
+    let aside = home.with_extension("resetting");
+    // A leftover from a reset that died between these two renames. Removing it is safe: it is only
+    // ever the *old* copy, and it exists only while a reset is in flight.
+    if aside.exists() {
+        fs::remove_dir_all(&aside)?;
+    }
+    fs::rename(&home, &aside)?;
+    match create_game(games_root, &fresh) {
+        Ok(opened) => {
+            // Best effort, deliberately: the reset has already happened, and failing here would tell
+            // the caller it did not — sending ah-58n.2's **Try again** at a game that is already
+            // empty. What is left behind is only the old copy, and the next reset removes it above.
+            let _ = fs::remove_dir_all(&aside);
+            Ok(opened)
+        }
+        Err(error) => {
+            // Put it back rather than leaving the player with nothing. If this second rename also
+            // fails there is nothing further to try, and the original error is the one worth
+            // reporting.
+            let _ = fs::rename(&aside, &home);
+            Err(error)
+        }
+    }
+}
+
 /// Exports one whole game to one JSON document.
 pub fn export_game(
     games_root: &Path,
@@ -1911,6 +1981,211 @@ mod tests {
             .expect_err("deleting a missing game should fail");
 
         assert!(matches!(error, PersistenceError::GameNotFound(ref id) if id == "no-such-game"));
+    }
+
+    #[test]
+    fn a_reset_game_keeps_its_id_name_and_ruleset() {
+        let dir = tempdir().expect("tempdir");
+        create_game(dir.path(), &fixture_manifest()).expect("creation should succeed");
+
+        let reset = reset_game(dir.path(), GAME_ID, "2026-08-17T09:00:00Z")
+            .expect("the reset should succeed");
+
+        assert_eq!(reset.manifest.metadata.game_id, GAME_ID);
+        assert_eq!(
+            reset.manifest.metadata.game_name, "Faction 12 - Spring 12",
+            "the name is one of the three things a reset keeps"
+        );
+        assert_eq!(reset.manifest.metadata.ruleset_id, "neworigins");
+        assert!(
+            reset.manifest.report_sources.is_empty(),
+            "an emptied game has imported nothing"
+        );
+        assert_eq!(reset.manifest.created_at, "2026-08-17T09:00:00Z");
+        assert_eq!(reset.manifest.last_opened_at, "2026-08-17T09:00:00Z");
+
+        // What was handed back has to match what is on disk.
+        let reopened =
+            open_game(dir.path(), GAME_ID, "2026-08-17T10:00:00Z").expect("reopen should succeed");
+        assert_eq!(
+            reopened.manifest.metadata.game_name,
+            "Faction 12 - Spring 12"
+        );
+        assert_eq!(reopened.manifest.metadata.ruleset_id, "neworigins");
+        assert!(reopened.manifest.report_sources.is_empty());
+        assert_eq!(reopened.manifest.created_at, "2026-08-17T09:00:00Z");
+    }
+
+    #[test]
+    fn a_reset_game_holds_no_turns_orders_notes_or_sightings() {
+        let dir = tempdir().expect("tempdir");
+        let created =
+            create_game(dir.path(), &fixture_manifest()).expect("creation should succeed");
+
+        let turn = turn_in(&created, "17", "a turn worth forgetting");
+        upsert_imported_turn(&created.database_path, &turn, IMPORTED_AT, IMPORTED_AT)
+            .expect("seed the turn");
+        upsert_order_draft(
+            &created.database_path,
+            &OrderDraftRecord {
+                key: OrderDraftKey {
+                    game_id: GAME_ID.to_string(),
+                    faction_id: "17".to_string(),
+                    turn_number: 12,
+                },
+                order_text: "MOVE U100 R2".to_string(),
+                updated_at: IMPORTED_AT.to_string(),
+            },
+        )
+        .expect("seed the draft");
+        upsert_region_sightings(
+            &created.database_path,
+            GAME_ID,
+            "17",
+            &[RegionSighting {
+                region_id: "1:7,53".to_string(),
+                x: 7,
+                y: 53,
+                z: 1,
+                terrain: "mountain".to_string(),
+                province: "Inhead".to_string(),
+                label: "mountain (7,53) in Inhead".to_string(),
+                last_seen_turn: 12,
+                payload_json: "{}".to_string(),
+            }],
+        )
+        .expect("seed the sighting");
+        upsert_merged_report(
+            &created.database_path,
+            &MergedReportRecord {
+                game_id: GAME_ID.to_string(),
+                faction_id: "17".to_string(),
+                turn_number: 12,
+                merged_faction_id: "73".to_string(),
+                merged_faction_name: "Ally 73".to_string(),
+                merged_at: IMPORTED_AT.to_string(),
+            },
+        )
+        .expect("seed the merge");
+        upsert_hex_note(
+            &created.database_path,
+            &HexNote {
+                id: "note-1".to_string(),
+                game_id: GAME_ID.to_string(),
+                region_id: "1:7,53".to_string(),
+                text: "Watch this pass".to_string(),
+                on_map: true,
+                turn: 12,
+                created_at: IMPORTED_AT.to_string(),
+                updated_at: IMPORTED_AT.to_string(),
+            },
+        )
+        .expect("seed the note");
+
+        let reset = reset_game(dir.path(), GAME_ID, "2026-08-17T09:00:00Z")
+            .expect("the reset should succeed");
+
+        assert_eq!(
+            load_latest_imported_turn(&reset.database_path, GAME_ID, None)
+                .expect("load should succeed"),
+            None,
+            "no turns survive a reset"
+        );
+        assert_eq!(
+            load_order_draft(
+                &reset.database_path,
+                &OrderDraftKey {
+                    game_id: GAME_ID.to_string(),
+                    faction_id: "17".to_string(),
+                    turn_number: 12,
+                },
+            )
+            .expect("load should succeed"),
+            None,
+            "no order drafts survive a reset"
+        );
+        assert!(
+            load_region_sightings(&reset.database_path, GAME_ID, "17")
+                .expect("load should succeed")
+                .is_empty(),
+            "no remembered sightings survive a reset"
+        );
+        assert!(
+            load_merged_reports(&reset.database_path, GAME_ID, "17", 12)
+                .expect("load should succeed")
+                .is_empty(),
+            "no merged reports survive a reset"
+        );
+        assert!(
+            list_hex_notes(&reset.database_path, GAME_ID)
+                .expect("list should succeed")
+                .is_empty(),
+            "no hex notes survive a reset"
+        );
+    }
+
+    /// A stale faction on an emptied game decides which turn it reopens on the moment a report is
+    /// imported, so it has to go with everything else (ah-do8.1).
+    #[test]
+    fn a_reset_game_forgets_which_faction_was_yours() {
+        let dir = tempdir().expect("tempdir");
+        create_game(dir.path(), &fixture_manifest()).expect("creation should succeed");
+        set_active_faction(dir.path(), GAME_ID, "17").expect("the faction should be recorded");
+
+        let reset = reset_game(dir.path(), GAME_ID, "2026-08-17T09:00:00Z")
+            .expect("the reset should succeed");
+
+        assert_eq!(reset.manifest.metadata.active_faction_id, None);
+        let reopened =
+            open_game(dir.path(), GAME_ID, "2026-08-17T10:00:00Z").expect("reopen should succeed");
+        assert_eq!(reopened.manifest.metadata.active_faction_id, None);
+    }
+
+    #[test]
+    fn resetting_a_game_that_does_not_exist_is_an_error() {
+        let dir = tempdir().expect("tempdir");
+
+        let error = reset_game(dir.path(), "no-such-game", "2026-08-17T09:00:00Z")
+            .expect_err("resetting a missing game should fail");
+
+        assert!(matches!(error, PersistenceError::GameNotFound(ref id) if id == "no-such-game"));
+    }
+
+    #[test]
+    fn a_reset_leaves_other_games_alone() {
+        let dir = tempdir().expect("tempdir");
+        let emptied =
+            create_game(dir.path(), &manifest_named("emptied", "Emptied")).expect("emptied");
+        let kept = create_game(dir.path(), &manifest_named("kept", "Kept")).expect("kept");
+        upsert_imported_turn(
+            &emptied.database_path,
+            &turn_in(&emptied, "17", "emptied turn"),
+            IMPORTED_AT,
+            IMPORTED_AT,
+        )
+        .expect("seed emptied");
+        upsert_imported_turn(
+            &kept.database_path,
+            &turn_in(&kept, "17", "kept turn"),
+            IMPORTED_AT,
+            IMPORTED_AT,
+        )
+        .expect("seed kept");
+
+        reset_game(dir.path(), "emptied", "2026-08-17T09:00:00Z")
+            .expect("the reset should succeed");
+
+        let survivor = load_imported_turn(&kept.database_path, &turn_in(&kept, "17", "").key)
+            .expect("load should succeed")
+            .expect("the other game's turn should be untouched");
+        assert_eq!(survivor.raw_report, "kept turn");
+        assert_eq!(
+            list_games(dir.path())
+                .expect("listing should succeed")
+                .len(),
+            2,
+            "a reset game is still a game"
+        );
     }
 
     /// The point of a database per game: what one game imported is invisible to the other.
