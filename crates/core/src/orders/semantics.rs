@@ -93,6 +93,7 @@ pub mod codes {
     pub const STUDY_AT_MAXIMUM: Code = Code("study-at-maximum");
     pub const ALREADY_BUILT: Code = Code("already-built");
     pub const TOO_MANY_TRADE_REGIONS: Code = Code("too-many-trade-regions");
+    pub const MAGIC_STUDY_OUTSIDE_BUILDING: Code = Code("magic-study-outside-building");
     /// Every code. This array's own order is not the settings tab's grouping (that groups by
     /// concern - Teaching / Resources / Markets / Guarding / Orders / Sailing - not by this list):
     /// a new entry joins whichever group fits its concern, which need not be the last one
@@ -101,7 +102,7 @@ pub mod codes {
     /// group). What every entry so far has kept is new-*here*-last: the generated TypeScript
     /// copies this array's order, so a new code is always appended to it regardless of where it
     /// lands in the UI.
-    pub const ALL: [Code; 19] = [
+    pub const ALL: [Code; 20] = [
         NOT_ENOUGH_SILVER,
         NOT_ENOUGH_ITEMS,
         GUARD_DROPPED,
@@ -121,6 +122,7 @@ pub mod codes {
         STUDY_AT_MAXIMUM,
         ALREADY_BUILT,
         TOO_MANY_TRADE_REGIONS,
+        MAGIC_STUDY_OUTSIDE_BUILDING,
     ];
 }
 
@@ -223,6 +225,7 @@ pub fn check_turn(
         check_teaching(&hex, ruleset, &options, &mut findings);
         check_building(&hex, &options, &mut findings);
         check_studying(&hex, ruleset, &options, &mut findings);
+        check_magic_study(&hex, ruleset, &options, &mut findings);
         check_forms(&hex, &options, &mut findings);
         check_transfer_targets(&hex, &located, &options, &mut findings);
         check_sailing(&hex, &ledger, ruleset, &options, &mut findings);
@@ -1485,6 +1488,95 @@ fn check_studying(
                 Some(placed),
             ));
         }
+    }
+}
+
+// --- magic studied where nothing houses the mage --------------------------------------------------
+
+/// Magic studied above level 2 where nothing houses the mage: half the month is wasted.
+///
+/// The engine's own message is advisory - the study happens, at half rate - so this mirrors an
+/// advisory and never a refusal.
+///
+/// Silent when the ruleset cannot say: no ruleset, no buildings table, a skill the catalogue does
+/// not know, or a unit standing in a structure this region's report does not list. **Not** silent
+/// for an unfinished building: the navigator settled that one (2026-08-17) as a deliberate
+/// exception to this module's accept-on-doubt policy - an unfinished building shelters nobody, so
+/// the study really is halved and the player is told.
+fn check_magic_study(
+    hex: &Hex<'_>,
+    ruleset: Option<&Ruleset>,
+    options: &CheckOptions,
+    findings: &mut Vec<Finding>,
+) {
+    // No ruleset, or one cached before buildings were scraped: `mage_capacity` would answer `None`
+    // for every kind, and this check would then warn about every mage in the game.
+    let Some(ruleset) = ruleset else { return };
+    if !ruleset.knows_buildings() {
+        return;
+    }
+    if !options.emits(codes::MAGIC_STUDY_OUTSIDE_BUILDING) {
+        return;
+    }
+
+    for ordered in &hex.units {
+        let Some((placed, studying)) = ordered.studies_placed() else {
+            continue;
+        };
+        // A skill the catalogue does not know is one whose magic-ness cannot be judged.
+        let Some(skill) = ruleset.find_skill(studying) else {
+            continue;
+        };
+        if !ruleset.is_magic(&skill.tag) {
+            continue;
+        }
+
+        // "Above level 2" is the level reached, so the level held must be 2 or more. No entry at
+        // all means the unit has never studied it - level 0, and below the threshold either way.
+        let level = ordered
+            .unit
+            .skills
+            .iter()
+            .find(|entry| entry.tag.eq_ignore_ascii_case(&skill.tag))
+            .map_or(0, |entry| entry.level);
+        if level < 2 {
+            continue;
+        }
+
+        let standing_in = ordered.unit.structure_id.as_deref().map(|id| {
+            hex.region
+                .structures
+                .iter()
+                .find(|structure| structure.structure_id == id)
+        });
+        let sheltered = match standing_in {
+            // Not in a structure at all: nothing houses the mage.
+            None => false,
+            // In one the region's report does not list. Nothing can be said about a structure that
+            // is not there to look at, so say nothing.
+            Some(None) => continue,
+            // Unfinished shelters nobody; a kind the table does not name - a Mine, an Inn, a ship -
+            // houses no mages either, and a Tower is named and seats zero.
+            Some(Some(structure)) => {
+                structure.needs.is_none()
+                    && ruleset
+                        .mage_capacity(&structure.kind)
+                        .is_some_and(|seats| seats >= 1)
+            }
+        };
+        if sheltered {
+            continue;
+        }
+
+        findings.push(ordered.finding(
+            hex,
+            codes::MAGIC_STUDY_OUTSIDE_BUILDING,
+            format!(
+                "half of this month's study of {} is wasted outside a building that houses mages",
+                skill.name
+            ),
+            Some(placed),
+        ));
     }
 }
 
@@ -4065,6 +4157,175 @@ mod tests {
         assert_eq!(finding.line, Some(4), "the STUDY line, not the block's");
     }
 
+    // --- magic studied outside a building that houses mages ---------------------------------
+
+    /// A finished structure of the given kind, so a test can put a mage in a Castle, a Tower or a
+    /// ship without three near-identical fixtures.
+    fn finished_of_kind(structure_id: &str, kind: &str) -> Structure {
+        Structure {
+            structure_id: structure_id.to_string(),
+            name: "Building".to_string(),
+            kind: kind.to_string(),
+            description: None,
+            needs: None,
+        }
+    }
+
+    fn unfinished_of_kind(structure_id: &str, kind: &str) -> Structure {
+        Structure {
+            needs: Some(20),
+            ..finished_of_kind(structure_id, kind)
+        }
+    }
+
+    /// A funded mage holding `level` in force, ordered to study it.
+    fn mage(level: u32) -> ReportUnit {
+        studying_unit("5", "FORC", level)
+    }
+
+    #[test]
+    fn magic_studied_above_level_two_outside_a_building_is_a_warning() {
+        let finding = only(check(vec![region(vec![mage(2)])], "unit 5\nSTUDY FORC\n"));
+
+        assert_eq!(finding.code, codes::MAGIC_STUDY_OUTSIDE_BUILDING);
+        assert_eq!(finding.unit_id.as_deref(), Some("5"));
+        assert_eq!(finding.line, Some(2));
+        assert_eq!(
+            finding.message,
+            "half of this month's study of force is wasted outside a building that houses mages"
+        );
+    }
+
+    #[test]
+    fn magic_studied_inside_a_castle_is_silent() {
+        assert_eq!(
+            check(
+                vec![ReportRegion {
+                    structures: vec![finished_of_kind("1", "Castle")],
+                    ..region(vec![in_structure(mage(2), "1")])
+                }],
+                "unit 5\nSTUDY FORC\n",
+            ),
+            vec![]
+        );
+    }
+
+    /// The case that made the buildings table worth scraping: a Tower is in the rules' table and
+    /// seats no mages at all, so studying in one is no better than studying in the open.
+    #[test]
+    fn a_tower_seats_no_mages_so_the_study_is_still_halved() {
+        let finding = only(check(
+            vec![ReportRegion {
+                structures: vec![finished_of_kind("1", "Tower")],
+                ..region(vec![in_structure(mage(3), "1")])
+            }],
+            "unit 5\nSTUDY FORC\n",
+        ));
+
+        assert_eq!(finding.code, codes::MAGIC_STUDY_OUTSIDE_BUILDING);
+    }
+
+    /// The navigator's decision (2026-08-17), and a deliberate exception to accept-on-doubt: an
+    /// unfinished building shelters nobody, so the study really is halved.
+    #[test]
+    fn an_unfinished_building_shelters_nobody() {
+        let finding = only(check(
+            vec![ReportRegion {
+                structures: vec![unfinished_of_kind("1", "Fort")],
+                ..region(vec![in_structure(mage(2), "1")])
+            }],
+            "unit 5\nSTUDY FORC\n",
+        ));
+
+        assert_eq!(finding.code, codes::MAGIC_STUDY_OUTSIDE_BUILDING);
+    }
+
+    #[test]
+    fn a_mage_at_level_one_is_below_the_threshold() {
+        assert_eq!(
+            check(vec![region(vec![mage(1)])], "unit 5\nSTUDY FORC\n"),
+            vec![]
+        );
+    }
+
+    #[test]
+    fn a_ship_is_not_a_building_that_houses_mages() {
+        let finding = only(check(
+            vec![ReportRegion {
+                structures: vec![longship("1")],
+                ..region(vec![in_structure(mage(2), "1")])
+            }],
+            "unit 5\nSTUDY FORC\n",
+        ));
+
+        assert_eq!(finding.code, codes::MAGIC_STUDY_OUTSIDE_BUILDING);
+    }
+
+    #[test]
+    fn a_skill_the_unit_has_never_studied_is_below_the_threshold() {
+        let units = vec![with_silver(unit("5"), 1000)];
+        assert_eq!(check(vec![region(units)], "unit 5\nSTUDY FORC\n"), vec![]);
+    }
+
+    #[test]
+    fn a_mundane_skill_is_not_this_checks_business() {
+        let units = vec![studying_unit("5", "COMB", 4)];
+        assert_eq!(check(vec![region(units)], "unit 5\nSTUDY COMB\n"), vec![]);
+    }
+
+    /// Accept-on-doubt: nothing can be said about a structure the region's report does not list.
+    #[test]
+    fn a_structure_the_report_does_not_list_is_not_judged() {
+        assert_eq!(
+            check(
+                vec![region(vec![in_structure(mage(2), "999")])],
+                "unit 5\nSTUDY FORC\n",
+            ),
+            vec![]
+        );
+    }
+
+    /// A ruleset cached before the buildings table was scraped knows nothing about any building,
+    /// so warning off it would fire on every mage in the game.
+    #[test]
+    fn a_ruleset_without_a_buildings_table_says_nothing() {
+        let mut json: serde_json::Value = serde_json::from_str(RULESET).unwrap();
+        json.as_object_mut()
+            .expect("ruleset is a JSON object")
+            .remove("buildings");
+        let text = serde_json::to_string(&json).unwrap();
+        let bare = Ruleset::from_json(&text).expect("a ruleset without buildings still parses");
+
+        assert_eq!(
+            check_turn(
+                &report(vec![region(vec![mage(2)])]),
+                "unit 5\nSTUDY FORC\n",
+                Some(&bare),
+                CheckOptions::default(),
+            ),
+            vec![]
+        );
+    }
+
+    #[test]
+    fn a_skill_the_catalogue_does_not_know_says_nothing() {
+        let units = vec![with_silver(unit("5"), 1000)];
+        assert_eq!(check(vec![region(units)], "unit 5\nSTUDY xyzzy\n"), vec![]);
+    }
+
+    #[test]
+    fn the_magic_study_check_can_be_turned_off() {
+        assert_eq!(
+            check_turn(
+                &report(vec![region(vec![mage(2)])]),
+                "unit 5\nSTUDY FORC\n",
+                Some(&ruleset()),
+                disabling(codes::MAGIC_STUDY_OUTSIDE_BUILDING),
+            ),
+            vec![]
+        );
+    }
+
     // --- FORM aliases -------------------------------------------------------------------------
 
     #[test]
@@ -4503,6 +4764,12 @@ mod tests {
                 ],
                 "unit 5\nPRODUCE grain\nunit 6\nPRODUCE grain\nunit 7\nPRODUCE grain\n",
                 Some(("Trade Regions", 2, 2)),
+            ),
+            (
+                codes::MAGIC_STUDY_OUTSIDE_BUILDING,
+                vec![region(vec![mage(2)])],
+                "unit 5\nSTUDY FORC\n",
+                None,
             ),
         ];
 

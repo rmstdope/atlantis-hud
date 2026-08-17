@@ -354,6 +354,12 @@ const WARNING_GROUPS: readonly {
         code: "study-at-maximum",
         title: "Study with nothing to learn",
         description: "A unit ordered to study a skill it has already taken to the ruleset's maximum."
+      },
+      {
+        code: "magic-study-outside-building",
+        title: "Magic study outside a building",
+        description:
+          "A mage above level 2 studying magic where no building houses them, which halves the month's study."
       }
     ]
   },

@@ -109,7 +109,20 @@ fn the_committed_turn_has_no_semantic_problems_either() {
     // invented problem, and only the fields that make each finding specific are asserted, not the
     // whole struct, so an unrelated fixture edit elsewhere in the turn does not force rewriting
     // this test.
-    assert_eq!(findings.len(), 2, "{findings:?}");
+    //
+    // Six more since ah-a2k.2: the Borg mages aboard the Cloudship `Princess of the Dawn [1239]`
+    // study force (881, 12878, 12879, 20, 12880) and pattern (12881) at levels 3 and 4 while a
+    // Cloudship is not a kind the ruleset's buildings table seats mages in. The navigator settled
+    // this against the alternative on 2026-08-17: a structure the table does not name is no
+    // shelter, so these are real halved months and not invented problems - even though this turn's
+    // own "Errors during turn" section does not carry the engine's advisory for them.
+    assert_eq!(findings.len(), 8, "{findings:?}");
+    let halved: Vec<&str> = findings
+        .iter()
+        .filter(|f| f.code.as_str() == "magic-study-outside-building")
+        .filter_map(|f| f.unit_id.as_deref())
+        .collect();
+    assert_eq!(halved, ["881", "12878", "12879", "20", "12880", "12881"]);
     let items = findings
         .iter()
         .find(|f| f.code.as_str() == "not-enough-items")
@@ -186,12 +199,23 @@ fn a_unit_told_to_spend_what_it_has_not_got_is_caught_in_that_same_turn() {
     );
     let findings = check_turn(&report, &damaged, Some(&ruleset()), options);
 
-    // Alongside the introduced shortfall, the turn's two genuine findings (the enchant-armor
-    // `not-enough-items` and unit 13402's `study-at-maximum`, see the test above) still fire -
-    // this fixture is not otherwise clean.
+    // Alongside the introduced shortfall, the turn's genuine findings (the enchant-armor
+    // `not-enough-items`, unit 13402's `study-at-maximum`, and the six Cloudship mages'
+    // `magic-study-outside-building`, see the test above) still fire - this fixture is not
+    // otherwise clean.
     assert_eq!(
         findings.iter().map(|f| f.code.as_str()).collect::<Vec<_>>(),
-        vec!["not-enough-silver", "study-at-maximum", "not-enough-items"],
+        vec![
+            "not-enough-silver",
+            "magic-study-outside-building",
+            "magic-study-outside-building",
+            "magic-study-outside-building",
+            "magic-study-outside-building",
+            "magic-study-outside-building",
+            "magic-study-outside-building",
+            "study-at-maximum",
+            "not-enough-items",
+        ],
         "{findings:?}"
     );
     assert_eq!(findings[0].unit_id, None, "one purse, shared");
@@ -221,11 +245,12 @@ fn a_whole_map_pass_re_reads_neither_the_report_nor_the_ruleset() {
 
     // Fifty passes over the committed turn. If any of them re-parsed the report this would take
     // long enough to notice; the point here is that they are all handed the same two objects.
-    // The turn carries two genuine findings throughout (the enchant-armor `not-enough-items` and
-    // unit 13402's `study-at-maximum`, see `the_committed_turn_has_no_semantic_problems_either`) -
-    // what this loop pins is that every pass reports them identically, not that the turn is silent.
+    // The turn carries eight genuine findings throughout (the enchant-armor `not-enough-items`,
+    // unit 13402's `study-at-maximum`, and the six Cloudship mages' `magic-study-outside-building`;
+    // see `the_committed_turn_has_no_semantic_problems_either`) - what this loop pins is that every
+    // pass reports them identically, not that the turn is silent.
     let expected = check_turn(&report, &template, Some(&ruleset), CheckOptions::default());
-    assert_eq!(expected.len(), 2, "{expected:?}");
+    assert_eq!(expected.len(), 8, "{expected:?}");
     for _ in 0..50 {
         let result = check_turn(&report, &template, Some(&ruleset), CheckOptions::default());
         assert_eq!(
