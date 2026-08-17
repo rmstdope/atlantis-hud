@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ah-j0e — the sailors count and this month's GIVEs</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --edge:#26303d; --edge-soft:#1e2733; --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --brass-bright:#eebe63; --ok:#4fb783; --warn:#d9a441; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1240px; margin-left:auto; margin-right:auto; }
+  h1 { font-size:26px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:94ch; margin-top:10px; font-size:14px; }
+  header p + p { margin-top:8px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:0.92em; }
+  h2.sec { margin-top:34px; font-size:18px; color:var(--brass); border-top:1px solid var(--edge); padding-top:18px; } h2.sec small { color:var(--ink-dim); font-size:13px; margin-left:10px; }
+  .cards { display:grid; grid-template-columns:repeat(3,1fr); gap:20px; margin-top:16px; align-items:start; }
+  .cards.two { grid-template-columns:repeat(2,1fr); }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:18px; display:flex; flex-direction:column; gap:12px; }
+  .card h3 { font-size:16px; } .card h3 em { color:var(--brass); font-style:normal; font-size:12px; letter-spacing:1.6px; margin-right:8px; }
+  .concept { color:var(--ink-soft); font-size:13px; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; padding:12px; display:grid; gap:10px; }
+  .cap { font:italic 11.5px Georgia,serif; color:var(--ink-dim); text-align:center; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; } .notes li.con::before { content:"− "; color:var(--danger); }
+  .rep { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11.5px; line-height:1.55; color:var(--ink-soft); background:#0d1218; border:1px solid var(--edge); border-radius:6px; padding:8px 10px; white-space:pre; overflow-x:auto; }
+  .rep b { color:var(--brass); font-weight:normal; }
+  .editor { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:12px; line-height:1.6; background:#0d1218; border:1px solid var(--edge); border-radius:6px; padding:8px 0; }
+  .ln { display:flex; } .ln .no { width:34px; text-align:right; color:var(--ink-dim); padding-right:10px; } .ln .tx { white-space:pre; color:var(--ink); }
+  .ln.warn .tx { text-decoration: underline wavy var(--warn); text-underline-offset:3px; } .ln.warn .no { color:var(--warn); }
+  .pane { font-family:'Helvetica Neue',Arial,sans-serif; font-size:11.5px; line-height:1.45; border:1px solid var(--edge); border-radius:6px; background:var(--panel); overflow:hidden; }
+  .pane .bar { display:flex; align-items:center; height:26px; padding:0 9px; border-bottom:1px solid var(--edge); } .bar .name { font-size:10px; letter-spacing:1.4px; text-transform:uppercase; color:var(--brass); }
+  .body { padding:7px 9px 9px; display:grid; gap:5px; min-height:34px; } .prob { display:flex; gap:6px; } .prob .uid { color:var(--ink-dim); min-width:44px; } .prob .warn { color:var(--warn); } .prob .msg { color:var(--ink); }
+  .quiet { color:var(--ink-dim); font-style:italic; }
+  table { border-collapse:collapse; font-size:12.5px; width:100%; } th, td { text-align:left; padding:5px 8px; border-bottom:1px solid var(--edge-soft); vertical-align:top; } th { color:var(--brass); font-weight:normal; font-size:11px; letter-spacing:1px; text-transform:uppercase; } td.y { color:var(--ok); } td.n { color:var(--ink-dim); } td.bad { color:var(--danger); }
+  .lead { color:var(--ink-soft); font-size:13.5px; max-width:94ch; margin-top:10px; }
+</style>
+</head>
+<head>
+</head>
+<body>
+<header>
+  <h1>ah-j0e — the sailors count and <span>this month's GIVEs</span></h1>
+  <p>Verification failed twice. The first failure was the build — sailing levels were counted once per unit instead of once per man, and that is fixed. <strong>This is the second, and you judged it the plan's fault.</strong></p>
+  <p>The case: fixture <code>neworigins-3.0.0-g5-f21-t23.rep</code>, <code>Ship [218]</code>, a Raft stating <code>Load: 70/450; Sailors: 2/2</code>. <code>Drones (9508)</code> aboard is 2 gnolls at <code>sailing [SAIL] 1</code> — 2 levels, exactly the 2 the raft needs. Give one gnoll away and there is 1 level against 2 needed: <strong>the raft will not sail, and nothing warns.</strong></p>
+  <p>The reason is in the plan, not the code: <em>ah-j0e</em> said the crew is judged on "report units aboard ± ENTER/LEAVE at report weights and sailing levels", and <em>ah-eet</em> then made the <em>load</em> follow this month's GIVE/TAKE while saying in as many words that the sailors are still judged on the report figures. So the crew side of a GIVE is in neither design.</p>
+</header>
+
+<main>
+
+<h2 class="sec">The case, as the player sees it <small>Raft [218], needs 2 sailing levels</small></h2>
+<div class="rep">+ <b>Ship [218]</b> : Raft; <b>Load: 70/450; Sailors: 2/2</b>; MaxSpeed: 2.
+  * Drones (<b>9508</b>), Bees (21), 2 gnolls [GNOL], sailing [SAIL] 1 (30). Weight: 20.</div>
+
+<div class="cards" style="margin-top:16px">
+  <div class="card">
+    <h3><em>TODAY</em> silent — wrongly</h3>
+    <div class="stage">
+      <div class="editor">
+        <div class="ln"><span class="no">1</span><span class="tx">unit 9508</span></div>
+        <div class="ln"><span class="no">2</span><span class="tx">  give 0 1 GNOL</span></div>
+        <div class="ln"><span class="no">3</span><span class="tx">  sail N</span></div>
+      </div>
+      <div class="pane"><div class="bar"><span class="name">problems</span></div>
+        <div class="body"><div class="quiet">nothing to report</div></div></div>
+      <div class="cap">the raft will not sail; the player is told nothing</div>
+    </div>
+    <ul class="notes"><li class="con">the exact failure verification hit</li></ul>
+  </div>
+  <div class="card">
+    <h3><em>WANTED</em> warned</h3>
+    <div class="stage">
+      <div class="editor">
+        <div class="ln"><span class="no">1</span><span class="tx">unit 9508</span></div>
+        <div class="ln"><span class="no">2</span><span class="tx">  give 0 1 GNOL</span></div>
+        <div class="ln warn"><span class="no">3</span><span class="tx">  sail N</span></div>
+      </div>
+      <div class="pane"><div class="bar"><span class="name">problems</span></div>
+        <div class="body"><div class="prob"><span class="uid">9508</span><span class="warn">⚠</span><span class="msg">Raft [218] is short of sailors: 1 sailing levels aboard, it needs 2, so it will not sail</span></div></div></div>
+      <div class="cap">the crew counted after this month's orders</div>
+    </div>
+    <ul class="notes"><li>the load side already works exactly like this (ah-eet)</li></ul>
+  </div>
+  <div class="card">
+    <h3><em>MUST STAY</em> silent — rightly</h3>
+    <div class="stage">
+      <div class="editor">
+        <div class="ln"><span class="no">1</span><span class="tx">unit 9508</span></div>
+        <div class="ln"><span class="no">2</span><span class="tx">  sail N</span></div>
+      </div>
+      <div class="pane"><div class="bar"><span class="name">problems</span></div>
+        <div class="body"><div class="quiet">nothing to report</div></div></div>
+      <div class="cap">2 levels aboard, 2 needed — it sails</div>
+    </div>
+    <ul class="notes"><li>the first failure; fixed and must not come back</li></ul>
+  </div>
+</div>
+
+<h2 class="sec">Question 1 — which way does a GIVE of men count?</h2>
+<p class="lead">Men can leave a unit (given away, or <code>GIVE 0</code>, discarded) and men can arrive (given to it, or taken). Leaving is arithmetic we can do exactly: the unit's sailing level is held by each of its men, so fewer men is fewer levels. Arriving is not: when men are given <em>into</em> a unit the game merges them and recomputes the unit's skill, which this application does not model.</p>
+<div class="cards">
+  <div class="card">
+    <h3><em>R1</em> men out exact, men in silences</h3>
+    <p class="concept">Men leaving reduce the levels. Men arriving into a unit aboard put that fleet's crew check to silence for the month, rather than guessing what the merged unit knows.</p>
+    <div class="stage">
+      <table>
+        <tr><th>orders</th><th>crew check</th></tr>
+        <tr><td class="mono">give 0 1 GNOL</td><td class="y">warns — 1 of 2</td></tr>
+        <tr><td class="mono">give 9509 1 GNOL</td><td class="y">warns — 1 of 2</td></tr>
+        <tr><td class="mono">give 9508 2 GNOL<br><span style="color:var(--ink-dim)">(into a unit aboard)</span></td><td class="n">silent — cannot say</td></tr>
+        <tr><td class="mono">take 9509 2 GNOL</td><td class="n">silent — cannot say</td></tr>
+      </table>
+      <div class="cap">never a warning we cannot stand behind</div>
+    </div>
+    <ul class="notes"><li>catches the case verification found</li><li>same "silent on doubt" rule the rest of the module uses</li><li class="con">a reinforced fleet is still unchecked</li></ul>
+  </div>
+  <div class="card">
+    <h3><em>R2</em> both directions counted</h3>
+    <p class="concept">Men arriving count too, at the <em>receiving</em> unit's own sailing level. Symmetric and simple to state.</p>
+    <div class="stage">
+      <table>
+        <tr><th>orders</th><th>crew check</th></tr>
+        <tr><td class="mono">give 0 1 GNOL</td><td class="y">warns — 1 of 2</td></tr>
+        <tr><td class="mono">give 9509 1 GNOL</td><td class="y">warns — 1 of 2</td></tr>
+        <tr><td class="mono">give 9508 2 GNOL</td><td class="bad">silent — claims 4 levels</td></tr>
+        <tr><td class="mono">take 9509 2 GNOL</td><td class="bad">silent — claims 4 levels</td></tr>
+      </table>
+      <div class="cap">two unskilled gnolls become two sailors</div>
+    </div>
+    <ul class="notes"><li>one rule, no exceptions to remember</li><li class="con">invents skill the merged unit will not have — the wrong direction of error for a warning</li></ul>
+  </div>
+  <div class="card">
+    <h3><em>R3</em> any GIVE of men silences it</h3>
+    <p class="concept">Leave the counting on the report figures, and widen the doubt instead: a unit aboard that gives or takes <em>any</em> men puts the fleet's crew check to silence.</p>
+    <div class="stage">
+      <table>
+        <tr><th>orders</th><th>crew check</th></tr>
+        <tr><td class="mono">give 0 1 GNOL</td><td class="bad">silent — the failing case</td></tr>
+        <tr><td class="mono">give 9509 1 GNOL</td><td class="n">silent</td></tr>
+        <tr><td class="mono">give 9508 2 GNOL</td><td class="n">silent</td></tr>
+        <tr><td class="mono">take 9509 2 GNOL</td><td class="n">silent</td></tr>
+      </table>
+      <div class="cap">nothing wrong is ever said, and nothing useful either</div>
+    </div>
+    <ul class="notes"><li>cannot produce a false warning</li><li class="con">does not fix what verification failed on — the raft still sails away unwarned</li></ul>
+  </div>
+</div>
+
+<h2 class="sec">Question 2 — does the message say the crew changed this month?</h2>
+<p class="lead">The load half already does. When cargo moved this month, <em>ah-eet</em> made the overload message say so: <span class="mono" style="color:var(--brass)">Raft [218] is overloaded: 70 aboard plus 500 loaded this month, on a capacity of 450, so it will not sail</span>. The crew message currently states one number however it was arrived at. Both wordings below are exactly what would ship.</p>
+<div class="cards two">
+  <div class="card">
+    <h3><em>M1</em> one number, as today</h3>
+    <div class="stage">
+      <div class="pane"><div class="bar"><span class="name">problems</span></div>
+        <div class="body">
+          <div class="prob"><span class="uid">9508</span><span class="warn">⚠</span><span class="msg">Raft [218] is short of sailors: 1 sailing levels aboard, it needs 2, so it will not sail</span></div>
+        </div></div>
+      <div class="cap">identical whether the crew shrank this month or was always short</div>
+    </div>
+    <ul class="notes"><li>no new string; the sentence is already agreed and shipped</li><li>shorter line in a narrow problems pane</li><li class="con">does not point at the <code>give</code> that caused it, so the fix is not obvious</li></ul>
+  </div>
+  <div class="card">
+    <h3><em>M2</em> before and after, like the load</h3>
+    <div class="stage">
+      <div class="pane"><div class="bar"><span class="name">problems</span></div>
+        <div class="body">
+          <div class="prob"><span class="uid">9508</span><span class="warn">⚠</span><span class="msg">Raft [218] is short of sailors: 2 sailing levels aboard less 1 given away this month, it needs 2, so it will not sail</span></div>
+          <div class="prob"><span class="uid">9508</span><span class="warn">⚠</span><span class="msg">Raft [218] is short of sailors: 1 sailing levels aboard, it needs 2, so it will not sail</span></div>
+        </div></div>
+      <div class="cap">upper: the crew changed this month. lower: it was always short — M1's sentence, unchanged</div>
+    </div>
+    <ul class="notes"><li>names the order that caused it, so the fix is visible</li><li>symmetric with the overload message the player already reads</li><li class="con">a second sentence to write and test; the longest line in the pane</li></ul>
+  </div>
+</div>
+
+<h2 class="sec">What does not change</h2>
+<p class="lead">Both codes, both toggles, the <em>Sailing</em> group, the line the finding lands on, the per-man count, and every silencing rule already agreed (unknown hull, foreign unit aboard, a <code>MOVE</code> touching the fleet, an estimated headcount). Verification cases 1, 2 and 4 all passed last time and this must not disturb them.</p>
+
+</main>
+</body>
+</html>

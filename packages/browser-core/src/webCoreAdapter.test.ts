@@ -334,6 +334,23 @@ describe("web core adapter", () => {
     expect((stored?.manifest as GameManifest).metadata.gameName).toBe("Binding of the North");
   });
 
+  it("remembers which faction is yours, and hands it back on the next open", async () => {
+    const store = createMemoryWebStore();
+    const adapter = createWebCoreAdapter(fakeWasm(), store);
+    await adapter.createGame(manifest("g1", "Game One"));
+
+    await adapter.setActiveFaction("g1", "95");
+
+    const opened = await adapter.openGame("g1", "2026-08-17T00:00:00Z");
+    expect((opened.manifest as GameManifest).metadata.activeFactionId).toBe("95");
+  });
+
+  it("refuses to record an active faction for a game it does not hold", async () => {
+    const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
+
+    await expect(adapter.setActiveFaction("ghost", "95")).rejects.toThrow("no game with id ghost");
+  });
+
   it("refuses to rename a game it does not hold", async () => {
     const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
 
