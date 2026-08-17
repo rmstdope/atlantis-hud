@@ -2,7 +2,16 @@ import type { Coordinate, CoreClient, MapLevel, OpenedGame, OrderDiagnostic } fr
 import { abbreviateDirection, levelClause, regionIdOf, type HexNode } from "../hexMapModel";
 import { useWorkspaceStore } from "../workspaceStore";
 import { CollapsiblePanel } from "./CollapsiblePanel";
-import { Absent, Field, Row, Section, StaleBanner } from "./primitives";
+import {
+  Absent,
+  Field,
+  PROBLEM_CARD,
+  ProblemWho,
+  Row,
+  Section,
+  SeverityMark,
+  StaleBanner
+} from "./primitives";
 import { RegionNotes } from "./RegionNotes";
 
 /**
@@ -240,20 +249,17 @@ function Problems({ problems }: { problems: OrderDiagnostic[] }) {
 
   return (
     <Section title="Problems" count={problems.length}>
-      <ul data-testid="region-problems" className="m-0 list-none p-0">
+      <ul data-testid="region-problems" className={`m-0 list-none p-0 ${PROBLEM_CARD}`}>
         {problems.map((problem, index) => (
           <li
             key={`${problem.code}-${problem.unitId ?? "hex"}-${index}`}
             data-testid="region-problem"
             data-code={problem.code}
-            className="flex gap-1.5"
+            className="flex gap-1.5 border-t border-edge-soft px-1.5 py-0.5 first:border-t-0"
           >
-            {problem.unitId === null ? null : (
-              <span className="shrink-0 tabular-nums text-ink-dim">{problem.unitId}</span>
-            )}
-            <span className={problem.severity === "error" ? "text-danger" : "text-warn"}>
-              {problem.message}
-            </span>
+            <SeverityMark severity={problem.severity} />
+            <ProblemWho unitId={problem.unitId} />
+            <span className="text-ink">{problem.message}</span>
           </li>
         ))}
       </ul>

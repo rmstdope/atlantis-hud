@@ -121,6 +121,30 @@ describe("the region panel's problems toggle", () => {
   });
 });
 
+describe("the region panel's problem rows (ah-uia)", () => {
+  beforeEach(() => {
+    resetWorkspaceStore();
+    resetHexNotesStore();
+  });
+
+  it("boxes the problems without repeating the hex name", () => {
+    const markup = draw(PROBLEMS);
+
+    expect(markup).toContain("overflow-hidden rounded border border-edge bg-panel");
+    expect(markup).not.toContain("bg-brass/10");
+  });
+
+  it("marks each problem with a glyph and says hex where there is no unit", () => {
+    const markup = draw(PROBLEMS);
+
+    expect(markup).toContain("⚠");
+    expect(markup).toContain("✕");
+    expect(markup).toContain(">hex<");
+    expect(markup).toContain(">unit <");
+    expect(markup).toContain("18642");
+  });
+});
+
 describe("the region panel's Notes section (ah-o1t)", () => {
   beforeEach(() => {
     resetWorkspaceStore();

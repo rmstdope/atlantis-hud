@@ -1,6 +1,63 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
+import type { HexFindings } from "../orderEditor";
 import { ProblemsPanel } from "./ProblemsPanel";
+
+const HEXES: HexFindings[] = [
+  {
+    regionId: "1:7,53",
+    findings: [
+      {
+        code: "not-enough-silver",
+        message: "spends 250 silver it has not got",
+        lineStart: 3,
+        lineEnd: 3,
+        columnStart: 0,
+        columnEnd: 4,
+        regionId: "1:7,53",
+        unitId: "2042",
+        severity: "warning"
+      },
+      {
+        code: "hex-unguarded",
+        message: "nobody is guarding this hex",
+        lineStart: null,
+        lineEnd: null,
+        columnStart: null,
+        columnEnd: null,
+        regionId: "1:7,53",
+        unitId: null,
+        severity: "warning"
+      }
+    ]
+  },
+  {
+    regionId: "1:12,48",
+    findings: [
+      {
+        code: "bad-direction",
+        message: "no such direction",
+        lineStart: 7,
+        lineEnd: 7,
+        columnStart: 5,
+        columnEnd: 8,
+        regionId: "1:12,48",
+        unitId: "3310",
+        severity: "error"
+      }
+    ]
+  }
+];
+
+const drawHexes = () =>
+  renderToStaticMarkup(
+    <ProblemsPanel
+      hexes={HEXES}
+      labelFor={(regionId) => regionId}
+      onSelectHex={() => {}}
+      onDismiss={() => {}}
+    />
+  );
 
 describe("ProblemsPanel", () => {
   // ah-cp8: the list body used to be capped at a fixed 50vh regardless of how much window there
@@ -16,5 +73,26 @@ describe("ProblemsPanel", () => {
     );
     expect(markup).toContain("max-h-[calc(100vh-6rem)]");
     expect(markup).not.toContain("max-h-[50vh]");
+  });
+});
+
+describe("ProblemsPanel, one card per hex (ah-uia)", () => {
+  it("puts each hex in a bordered card with a brass header strip", () => {
+    const markup = drawHexes();
+
+    expect(markup.split("overflow-hidden rounded border border-edge bg-panel")).toHaveLength(3);
+    expect(markup.split("bg-brass/10")).toHaveLength(3);
+  });
+
+  it("leads every problem with a severity glyph rather than colouring the message", () => {
+    const markup = drawHexes();
+
+    expect(markup).toContain("⚠");
+    expect(markup).toContain("✕");
+    expect(markup).toContain('text-ink">spends 250');
+  });
+
+  it("says hex where a hex-level problem has no unit id", () => {
+    expect(drawHexes()).toContain(">hex<");
   });
 });

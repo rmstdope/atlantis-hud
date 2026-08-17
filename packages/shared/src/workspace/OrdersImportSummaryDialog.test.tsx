@@ -50,6 +50,25 @@ describe("OrdersImportSummaryDialog", () => {
     expect(secondErrorAt).toBeLessThan(warningAt);
   });
 
+  it("marks each imported diagnostic with a severity glyph (ah-uia)", () => {
+    const markup = renderToStaticMarkup(
+      <OrdersImportSummaryDialog
+        summary={{
+          unitCount: 2,
+          document: "",
+          diagnostics: [
+            diagnostic({ unitId: "1922", severity: "warning", message: "WORK in a hex with no wages" }),
+            diagnostic({ unitId: "1815", severity: "error", message: "unknown order PRODUCA" })
+          ]
+        }}
+        onDismiss={() => {}}
+      />
+    );
+
+    expect(markup).toContain("⚠");
+    expect(markup).toContain("✕");
+  });
+
   it("shows no diagnostics list when there are none", () => {
     const markup = renderToStaticMarkup(
       <OrdersImportSummaryDialog

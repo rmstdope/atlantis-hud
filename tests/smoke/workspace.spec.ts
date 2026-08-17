@@ -882,6 +882,8 @@ test("a bad order names itself, and belongs to the unit that carries it", async 
 
   const problems = page.getByTestId("orders-diagnostics");
   await expect(problems).toContainText("unknown order command: WROK");
+  // ah-uia: severity reads as a glyph now, not as the colour of the message alone.
+  await expect(problems).toContainText("✕");
   // Numbered from the top of this unit's block, which is what the editor shows.
   await expect(problems).toContainText("line 2");
   await expect(page.getByTestId("orders-status")).toContainText("1 error");
@@ -937,6 +939,7 @@ test("a unit told to spend silver it has not got is warned about, without blocki
   await expect(chip).toContainText("9 problems");
   await chip.click();
   await expect(page.getByTestId("problems-panel")).toContainText("mountain (7,53)");
+  await expect(page.getByTestId("problem-entry").first()).toContainText("⚠");
 
   // Corrected, this hex's problem goes away, leaving only the turn's eight baseline findings
   // elsewhere.
