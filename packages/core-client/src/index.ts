@@ -195,7 +195,8 @@ export type TravelTurns = { walk: number | null; ride: number | null; fly: numbe
 
 /** A pair of hexes worth trading between, and everything worth carrying either way. */
 export type TradeRoute = {
-  /** Where the journey starts: the hex whose outbound leg is worth more. */
+  /** Where the journey starts: the hex whose outbound leg is worth at least as much as the
+   * other way (a tie keeps the lower-indexed hex, for a stable answer). */
   from: Coordinate;
   to: Coordinate;
   /** Goods bought at `from` and sold at `to`. Never empty. */

@@ -56,7 +56,8 @@ pub struct TravelTurns {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TradeRoute {
-    /// Where the journey starts: the hex whose outbound leg is worth more.
+    /// Where the journey starts: the hex whose outbound leg is worth at least as much as the
+    /// other way (a tie keeps the lower-indexed hex, for a stable answer).
     pub from: Coordinate,
     pub to: Coordinate,
     /// Goods bought at `from` and sold at `to`. Never empty.

@@ -36,7 +36,18 @@ const FAKE_TRADE_ROUTES: TradeRoute[] = [
   {
     from: { x: 1, y: 1, z: 1 },
     to: { x: 2, y: 2, z: 1 },
-    outbound: [],
+    outbound: [
+      {
+        tag: "SILK",
+        name: "silk",
+        buyPrice: 60,
+        sellPrice: 300,
+        quantity: 15,
+        margin: 240,
+        buySeenTurn: null,
+        sellSeenTurn: null
+      }
+    ],
     inbound: [],
     worth: 3600,
     turns: { walk: null, ride: null, fly: null }
