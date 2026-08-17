@@ -184,7 +184,7 @@ export const SWEEP: SweepEntry[] = [
   },
   {
     command: "load_latest_imported_turn",
-    args: () => ({ database_path: context.databasePath, game_id: GAME_ID })
+    args: () => ({ database_path: context.databasePath, game_id: GAME_ID, active_faction_id: null })
   },
   {
     command: "list_imported_turns",

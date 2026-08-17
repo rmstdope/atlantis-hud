@@ -21,8 +21,7 @@ import type {
   ReportParseResult,
   RoutePlanResponse,
   TradeRoute,
-  TurnRef,
-  TurnTouch
+  TurnRef
 } from "@atlantis/core-client";
 import type { StoredTurn, StoredTurnSnapshot, WebStore } from "./webStore";
 import { createWebStore } from "./webStore";
@@ -102,11 +101,11 @@ export type CoreWasmModule = {
   ): ImportedTurnDiff;
   hydrate_parse_result_state(parsedPayloadJson: string): ReportParseResult;
   /**
-   * Which turn a game reopens on, given every turn's and draft's `(factionId, turnNumber,
-   * updatedAt?)` as JSON arrays. Returns `{ factionId, turnNumber }` or `null`. The rule and every
-   * tie-break are `atlantis_hud_core::reopen::latest_turn`'s.
+   * Which turn a game reopens on, given every turn's `(factionId, turnNumber)` as a JSON array
+   * and the faction the game remembers as the player's. Returns `{ factionId, turnNumber }` or
+   * `null`. The rule and its one tie-break are `atlantis_hud_core::reopen::latest_turn`'s.
    */
-  latest_turn_state(turnsJson: string, draftsJson: string): TurnRef | null;
+  latest_turn_state(turnsJson: string, activeFactionId: string | null): TurnRef | null;
   encode_game_backup_state(contentJson: string, exportedAt: string): string;
   decode_game_backup_state(backupJson: string, openedAt: string): DecodedGameBackup;
 };
@@ -827,33 +826,22 @@ export function createWebCoreAdapter(
     },
 
     /**
-     * The turn this game was last worked on.
+     * The turn this game reopens on.
      *
-     * Three fields per row cross to the core and it names the turn; the payloads stay here. Which
-     * turn that is - attention over arrival, and every tie-break - is decided once, in
-     * `atlantis_hud_core::reopen`, for both platforms.
+     * Two fields per row cross to the core, with the faction the game remembers, and it names the
+     * turn; the payloads stay here. Which turn that is - the remembered faction's highest, else
+     * the game's highest - is decided once, in `atlantis_hud_core::reopen`, for both platforms.
      */
-    async loadLatestImportedTurn(databasePath: string, gameId: string) {
-      const [turns, drafts] = await Promise.all([
-        store.getImportedTurns(databasePath, gameId),
-        store.getOrderDrafts(databasePath, gameId)
-      ]);
-
-      // `updatedAt` may be undefined on a record written before turns carried a stamp; `null` on
-      // the wire is what the core's `#[serde(default)]` reads as none.
-      const touch = ({
-        factionId,
-        turnNumber,
-        updatedAt
-      }: {
-        factionId: string;
-        turnNumber: number;
-        updatedAt?: string;
-      }): TurnTouch => ({ factionId, turnNumber, updatedAt: updatedAt ?? null });
+    async loadLatestImportedTurn(
+      databasePath: string,
+      gameId: string,
+      activeFactionId: string | null
+    ) {
+      const turns = await store.getImportedTurns(databasePath, gameId);
 
       const named = wasm.latest_turn_state(
-        JSON.stringify(turns.map(touch)),
-        JSON.stringify(drafts.map(touch))
+        JSON.stringify(turns.map(({ factionId, turnNumber }) => ({ factionId, turnNumber }))),
+        activeFactionId
       );
       if (!named) {
         return null;

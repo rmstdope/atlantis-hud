@@ -73,7 +73,7 @@ export const TAURI_COMMANDS = {
   ],
   loadMergedReports: ["load_merged_reports", "database_path", "game_id", "faction_id", "turn_number"],
   loadImportedTurn: ["load_imported_turn", "database_path", "game_id", "faction_id", "turn_number"],
-  loadLatestImportedTurn: ["load_latest_imported_turn", "database_path", "game_id"],
+  loadLatestImportedTurn: ["load_latest_imported_turn", "database_path", "game_id", "active_faction_id"],
   listImportedTurns: ["list_imported_turns", "database_path", "game_id"],
   loadOrderDraft: ["load_order_draft", "database_path", "game_id", "faction_id", "turn_number"],
   saveOrderDraft: [

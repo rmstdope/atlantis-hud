@@ -326,7 +326,8 @@ export async function restoreLatestTurn(
   rulesetJson: string | null
 ): Promise<RestoredTurn | null> {
   const gameId = game.manifest.metadata.gameId;
-  const stored = await client.loadLatestImportedTurn(game.databasePath, gameId);
+  const rememberedFaction = game.manifest.metadata.activeFactionId ?? null;
+  const stored = await client.loadLatestImportedTurn(game.databasePath, gameId, rememberedFaction);
   if (stored === null) {
     return null;
   }
@@ -342,6 +343,20 @@ export async function restoreLatestTurn(
     remembered = await client.loadRegionSightings(game.databasePath, gameId, factionId);
   } catch (error: unknown) {
     warning = `the remembered map could not be read: ${detail(error)}`;
+  }
+
+  // A game reopened by the fallback has now settled on a faction; remembering it is what stops the
+  // next import of somebody else's report deciding the question by accident. A failure here is a
+  // warning, not a failed restore - the turn on screen is right either way. The write is to the
+  // manifest rather than to a turn, so the module's promise above - that nothing is re-committed
+  // and no `updated_at` moves - still holds.
+  if (factionId !== rememberedFaction) {
+    try {
+      await client.setActiveFaction(gameId, factionId);
+    } catch (error: unknown) {
+      warning =
+        warning ?? `which faction this game reopens as could not be remembered: ${detail(error)}`;
+    }
   }
 
   const merged = await mergedReportsFor(client, game, factionId, turnNumber);
