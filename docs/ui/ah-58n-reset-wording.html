@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>ah-58n — what the reset confirmation says</title>
+<style>
+  :root { --page:#10151c; --panel:#171e28; --raised:#1c2531; --edge:#2a3442; --ink:#d7dee8; --soft:#aab3c0;
+          --dim:#8a94a3; --brass:#c9a24b; --select:#4d8fd6; --ok:#5eb45e; --danger:#d9534f; --warn:#d8a13a; }
+  body { background: var(--page); color: var(--ink); font: 14px/1.5 system-ui, sans-serif; margin: 0; padding: 24px 32px 64px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  h2 { font-size: 16px; margin: 38px 0 6px; border-top: 1px solid var(--edge); padding-top: 18px; }
+  h3 { font-size: 13.5px; margin: 0 0 8px; color: var(--soft); }
+  p.note { color: var(--dim); max-width: 92ch; }
+  p.note em { color: var(--soft); font-style: normal; }
+  .row { display: flex; gap: 30px; flex-wrap: wrap; margin: 14px 0 8px; align-items: flex-start; }
+  .variant { width: 400px; }
+  .cost { color: var(--dim); font-size: 13px; margin: 10px 0 0; max-width: 52ch; }
+  .picker { border: 1px solid var(--edge); border-radius: 6px; background: var(--panel); padding: 6px; font-size: 12.5px; }
+  .game { display: flex; align-items: center; gap: 4px; }
+  .name { flex: 1; padding: 4px 6px; color: var(--brass); }
+  .ctrl { padding: 4px 6px; color: var(--dim); }
+  .confirm { margin-top: 4px; border: 1px solid rgba(217,83,79,.4); border-radius: 4px; padding: 6px; }
+  .confirm.warnborder { border-color: rgba(216,161,58,.45); }
+  .confirm p { margin: 0; color: var(--soft); }
+  .btns { display: flex; justify-content: flex-end; gap: 6px; margin-top: 6px; }
+  .btn { border: 1px solid var(--edge); border-radius: 3px; padding: 1px 8px; color: var(--ink); font-size: 11.5px; }
+  .btn.danger { border-color: var(--danger); color: var(--danger); }
+  .btn.warn { border-color: var(--warn); color: var(--warn); }
+  .btn.plain { border-color: var(--edge); color: var(--ink); }
+  .existing { opacity: .85 }
+</style>
+</head>
+<body>
+
+<h1>ah-58n — what the reset confirmation says</h1>
+<p class="note">The panel itself is settled: inline, beneath the row, exactly like the delete confirmation it copies.
+Open both mockups before answering — this one is only about <em>the words and the border colour</em>, and the difference
+between W1 and W3 does not survive being described.</p>
+
+<h3>For comparison — the delete confirmation as it ships today</h3>
+<div class="row">
+  <div class="variant existing">
+    <div class="picker">
+      <div class="game"><span class="name">● Binding of the North</span><span class="ctrl">↺</span><span class="ctrl">✕</span></div>
+      <div class="confirm">
+        <p>Delete “Binding of the North”? Its turns, orders and remembered map are erased.</p>
+        <div class="btns"><span class="btn danger">Delete</span><span class="btn">Cancel</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<h2>W1 — the same sentence, with what survives named</h2>
+<div class="row">
+  <div class="variant">
+    <div class="picker">
+      <div class="game"><span class="name">● Binding of the North</span><span class="ctrl">↺</span><span class="ctrl">✕</span></div>
+      <div class="confirm warnborder">
+        <p>Reset “Binding of the North”? Its turns, orders, remembered map and notes are erased. The game keeps its name and ruleset.</p>
+        <div class="btns"><span class="btn warn">Reset</span><span class="btn">Cancel</span></div>
+      </div>
+    </div>
+    <p class="cost">Parallel to the delete copy, so the two read as a pair, and the second sentence is the whole
+    difference between them. Longest of the three — two lines in a narrow pane.</p>
+  </div>
+</div>
+
+<h2>W2 — lead with what it becomes</h2>
+<div class="row">
+  <div class="variant">
+    <div class="picker">
+      <div class="game"><span class="name">● Binding of the North</span><span class="ctrl">↺</span><span class="ctrl">✕</span></div>
+      <div class="confirm warnborder">
+        <p>Empty “Binding of the North”? It goes back to a game with nothing in it — same name, same ruleset, no turns.</p>
+        <div class="btns"><span class="btn warn">Empty it</span><span class="btn">Cancel</span></div>
+      </div>
+    </div>
+    <p class="cost">Says the outcome rather than the casualties, which is how this application usually words a
+    consequence. But it never names the notes or the map, so a player with fifty hex notes is not told they go.</p>
+  </div>
+</div>
+
+<h2>W3 — short, and unmistakably destructive</h2>
+<div class="row">
+  <div class="variant">
+    <div class="picker">
+      <div class="game"><span class="name">● Binding of the North</span><span class="ctrl">↺</span><span class="ctrl">✕</span></div>
+      <div class="confirm">
+        <p>Reset “Binding of the North”? Everything in it is erased; only the name and ruleset are kept.</p>
+        <div class="btns"><span class="btn danger">Reset</span><span class="btn">Cancel</span></div>
+      </div>
+    </div>
+    <p class="cost">One sentence, and “everything” is a promise that stays true when the next thing is added to a
+    game. Danger-red border and button like delete, because it is nearly as final. Names nothing specific, so it
+    relies on the player knowing what is in there.</p>
+  </div>
+</div>
+
+<h2>The backup question, drawn</h2>
+<p class="note">Reset is unrecoverable and Export already exists. Three ways the confirmation could acknowledge that.</p>
+<div class="row">
+  <div class="variant">
+    <h3>B1 — say nothing</h3>
+    <div class="picker">
+      <div class="confirm warnborder">
+        <p>Reset “Binding of the North”? Its turns, orders, remembered map and notes are erased. The game keeps its name and ruleset.</p>
+        <div class="btns"><span class="btn warn">Reset</span><span class="btn">Cancel</span></div>
+      </div>
+    </div>
+    <p class="cost">The delete confirmation says nothing either, and delete is worse. Consistent, and the shortest path
+    for a player resetting a scratch game for the fifth time.</p>
+  </div>
+  <div class="variant">
+    <h3>B2 — mention it</h3>
+    <div class="picker">
+      <div class="confirm warnborder">
+        <p>Reset “Binding of the North”? Its turns, orders, remembered map and notes are erased. The game keeps its name and ruleset.</p>
+        <p style="margin-top:4px; color: var(--dim)">Export it first if you might want it back.</p>
+        <div class="btns"><span class="btn warn">Reset</span><span class="btn">Cancel</span></div>
+      </div>
+    </div>
+    <p class="cost">One dim line, no new machinery, and the player is told the door exists. Adds a line to a panel
+    that appears on every reset for ever.</p>
+  </div>
+  <div class="variant">
+    <h3>B3 — offer it</h3>
+    <div class="picker">
+      <div class="confirm warnborder">
+        <p>Reset “Binding of the North”? Its turns, orders, remembered map and notes are erased. The game keeps its name and ruleset.</p>
+        <div class="btns"><span class="btn plain">Export first</span><span class="btn warn">Reset</span><span class="btn">Cancel</span></div>
+      </div>
+    </div>
+    <p class="cost">Three buttons in a panel that had two, and “Export first” has to save a file and then come back
+    to a panel that is still open — a second flow to design, and a second thing that can fail mid-reset.</p>
+  </div>
+</div>
+
+</body>
+</html>
