@@ -5,8 +5,121 @@ import type { BackupImportMode } from "../gameBackup";
 import { backupGameIdentity } from "../gameBackup";
 import { gameNameOf } from "../gameSession";
 import { describeError } from "./shellAction";
+import { useEscapeToDismiss } from "./dismissLayer";
 import { GameForm } from "./GameForm";
 import { PopoverFrame } from "./popover";
+
+/**
+ * The one panel behind a game row's `✕` (ah-58n): Delete, Reset or Cancel.
+ *
+ * A component rather than markup inline in the row, because it holds a hook - `useEscapeToDismiss`
+ * cannot be called from inside the `map` callback that renders the rows.
+ *
+ * `failure` replaces the question rather than joining it: once one of the two has been pressed and
+ * refused, what is left to say is why, and whether to try that same thing again. Which of the two
+ * to repeat is the caller's to remember - `onRetry` - so Try again is never a guess made from the
+ * wording of the message.
+ */
+export function RemoveGameConfirm({
+  gameId,
+  gameName,
+  busy,
+  failure,
+  onDelete,
+  onReset,
+  onRetry,
+  onCancel
+}: {
+  gameId: string;
+  gameName: string;
+  busy: boolean;
+  /** What went wrong last time one of the two was pressed, or null. */
+  failure: string | null;
+  onDelete: () => void;
+  onReset: () => void;
+  /** Repeats whichever of the two produced `failure`. */
+  onRetry: () => void;
+  onCancel: () => void;
+}) {
+  // Not while one of the two is in flight. The panel is the only place either failure is reported,
+  // so a panel dismissed mid-action would leave a failed delete or reset entirely unannounced -
+  // Escape and Cancel both wait, and the buttons are disabled anyway.
+  useEscapeToDismiss(() => {
+    if (!busy) {
+      onCancel();
+    }
+  });
+
+  // The button the player pressed unmounts when the failure replaces the question, which would
+  // otherwise drop focus to the body. `autoFocus` only fires when the panel mounts, so Try again
+  // has to be given focus as it appears.
+  const retryRef = useRef<HTMLButtonElement | null>(null);
+  useEffect(() => {
+    if (failure !== null) {
+      retryRef.current?.focus();
+    }
+  }, [failure]);
+
+  return (
+    <div data-testid={`game-delete-confirm-${gameId}`} className="mt-1 rounded border border-danger/40 p-1.5">
+      {failure === null ? (
+        <>
+          <p className="text-ink-soft">Delete “{gameName}”, or empty it and keep the game?</p>
+          <p className="mt-1 text-ink-soft">
+            Either way its turns, orders, remembered map and notes are erased. Reset keeps the name
+            and ruleset.
+          </p>
+          <p className="mt-1 text-ink-dim">Export it first if you might want it back.</p>
+        </>
+      ) : (
+        <p role="alert" className="text-danger">
+          {failure}
+        </p>
+      )}
+      <div className="mt-1.5 flex justify-end gap-1.5">
+        {failure === null ? (
+          <>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={onDelete}
+              className="rounded border border-danger px-2 py-0.5 text-danger disabled:opacity-50"
+            >
+              Delete
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={onReset}
+              className="rounded border border-warn px-2 py-0.5 text-warn disabled:opacity-50"
+            >
+              Reset
+            </button>
+          </>
+        ) : (
+          <button
+            type="button"
+            ref={retryRef}
+            disabled={busy}
+            onClick={onRetry}
+            className="rounded border border-danger px-2 py-0.5 text-danger disabled:opacity-50"
+          >
+            Try again
+          </button>
+        )}
+        <button
+          type="button"
+          autoFocus
+          disabled={busy}
+          onClick={onCancel}
+          className="rounded border border-edge px-2 py-0.5 text-ink disabled:opacity-50"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
 
 /**
  * The games the player has, and what can be done with them.
@@ -16,8 +129,9 @@ import { PopoverFrame } from "./popover";
  * more ceremony than the question deserves. It closes on Escape and on a click elsewhere, which is
  * what a player expects of something that opened under the thing they pressed.
  *
- * Deleting asks first, inline, and says what is lost. There is no undo anywhere in this
- * application, and a game holds a season of turns.
+ * The `✕` on a row asks first, inline, and offers both ways of getting rid of what is in a game:
+ * Delete, which takes the game with it, and Reset, which empties it and keeps the name and ruleset
+ * (ah-58n). There is no undo anywhere in this application, and a game holds a season of turns.
  *
  * Importing a backup of a game that is already here asks the same way (ah-c0m) - Replace, Keep
  * both, or Cancel - and says what replacing erases.
@@ -33,6 +147,7 @@ export function GamePicker({
   onOpen,
   onCreate,
   onDelete,
+  onReset,
   onExport,
   onImport,
   onRename
@@ -43,13 +158,23 @@ export function GamePicker({
   error: string | null;
   onOpen: (gameId: string) => void;
   onCreate: (name: string, rulesetId: string) => void;
-  onDelete: (gameId: string) => void;
+  /** Resolves `null` when the game is gone, or the reason it is not. */
+  onDelete: (gameId: string) => Promise<string | null>;
+  /** Resolves `null` when the game has been emptied, or the reason it has not. */
+  onReset: (gameId: string) => Promise<string | null>;
   onExport: (gameId: string) => void;
   onImport: (file: File, mode: BackupImportMode) => void;
   onRename: (name: string) => Promise<boolean>;
 }) {
   const [creating, setCreating] = useState(games.length === 0);
-  const [confirmingDeleteOf, setConfirmingDeleteOf] = useState<string | null>(null);
+  const [confirmingRemovalOf, setConfirmingRemovalOf] = useState<string | null>(null);
+  // What the last Delete or Reset refused to do, and which of the two it was, so Try again repeats
+  // that one rather than being guessed from the message.
+  const [removalFailure, setRemovalFailure] = useState<{
+    gameId: string;
+    action: "delete" | "reset";
+    message: string;
+  } | null>(null);
   const [tab, setTab] = useState<"games" | "settings">("games");
   const [pendingImport, setPendingImport] = useState<{ file: File; gameName: string } | null>(null);
   // `null` = at rest; a string = the draft currently in the field.
@@ -59,6 +184,8 @@ export function GamePicker({
   const importButtonRef = useRef<HTMLButtonElement | null>(null);
   const renameLinkRef = useRef<HTMLButtonElement | null>(null);
   const renameInputRef = useRef<HTMLInputElement | null>(null);
+  // One `✕` per row, so cancelling its panel can hand the focus back to the control that opened it.
+  const removeButtons = useRef(new Map<string, HTMLButtonElement>());
 
   const sorted = [...games].sort((left, right) =>
     right.lastOpenedAt.localeCompare(left.lastOpenedAt)
@@ -127,6 +254,30 @@ export function GamePicker({
     }
     // Else: the field stays open with the typed name; the picker's own error line (below) says
     // why, and Save can be retried.
+  };
+
+  /** Closes the remove panel and hands the focus back to the `✕` that opened it. */
+  const closeRemoval = (gameId: string) => {
+    setConfirmingRemovalOf(null);
+    setRemovalFailure(null);
+    removeButtons.current.get(gameId)?.focus();
+  };
+
+  /**
+   * Runs Delete or Reset and keeps the panel open when it refuses.
+   *
+   * Both report here rather than in the picker's shared error line below: the panel is where the
+   * player pressed the button, and one panel reporting its two failures in two different places
+   * depending on which was pressed is worse than either.
+   */
+  const removeGame = async (gameId: string, gameName: string, action: "delete" | "reset") => {
+    const reason = await (action === "delete" ? onDelete(gameId) : onReset(gameId));
+    if (reason === null) {
+      setRemovalFailure(null);
+      return;
+    }
+    const verb = action === "delete" ? "deleted" : "reset";
+    setRemovalFailure({ gameId, action, message: `“${gameName}” could not be ${verb}: ${reason}` });
   };
 
   const onPickImport = (event: ChangeEvent<HTMLInputElement>) => {
@@ -388,42 +539,47 @@ export function GamePicker({
                     </button>
                     <button
                       type="button"
+                      ref={(element) => {
+                        if (element) {
+                          removeButtons.current.set(gameId, element);
+                        } else {
+                          removeButtons.current.delete(gameId);
+                        }
+                      }}
                       disabled={busy}
-                      aria-label={`delete ${game.metadata.gameName}`}
-                      onClick={() => setConfirmingDeleteOf(gameId)}
+                      aria-label={`remove ${game.metadata.gameName}`}
+                      onClick={() => {
+                        setRemovalFailure(null);
+                        setConfirmingRemovalOf(gameId);
+                      }}
                       className="rounded px-1.5 py-1 text-ink-dim hover:text-danger disabled:opacity-50"
                     >
                       ✕
                     </button>
                   </div>
 
-                  {confirmingDeleteOf === gameId ? (
-                    <div
-                      data-testid={`game-delete-confirm-${gameId}`}
-                      className="mt-1 rounded border border-danger/40 p-1.5"
-                    >
-                      <p className="text-ink-soft">
-                        Delete “{game.metadata.gameName}”? Its turns, orders and remembered map are
-                        erased.
-                      </p>
-                      <div className="mt-1.5 flex justify-end gap-1.5">
-                        <button
-                          type="button"
-                          disabled={busy}
-                          onClick={() => onDelete(gameId)}
-                          className="rounded border border-danger px-2 py-0.5 text-danger disabled:opacity-50"
-                        >
-                          Delete
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setConfirmingDeleteOf(null)}
-                          className="rounded border border-edge px-2 py-0.5 text-ink"
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </div>
+                  {confirmingRemovalOf === gameId ? (
+                    (() => {
+                      // One reading of the failure state for this row, so the message shown and the
+                      // action Try again repeats can never come from different rows.
+                      const failed = removalFailure?.gameId === gameId ? removalFailure : null;
+                      return (
+                        <RemoveGameConfirm
+                          gameId={gameId}
+                          gameName={game.metadata.gameName}
+                          busy={busy}
+                          failure={failed?.message ?? null}
+                          onDelete={() => void removeGame(gameId, game.metadata.gameName, "delete")}
+                          onReset={() => void removeGame(gameId, game.metadata.gameName, "reset")}
+                          onRetry={() => {
+                            if (failed) {
+                              void removeGame(gameId, game.metadata.gameName, failed.action);
+                            }
+                          }}
+                          onCancel={() => closeRemoval(gameId)}
+                        />
+                      );
+                    })()
                   ) : null}
                 </li>
               );

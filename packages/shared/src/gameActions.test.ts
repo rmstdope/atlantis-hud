@@ -1,5 +1,5 @@
 import type { GameManifest, OpenedGame } from "@atlantis/core-client";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { GameClient } from "./gameActions";
 import {
   changeRuleset,
@@ -9,8 +9,10 @@ import {
   importGameBackupAsCopy,
   openGame,
   renameGame,
-  replaceGameWithBackup
+  replaceGameWithBackup,
+  resetGame
 } from "./gameActions";
+import { loadSavedView, saveMapView } from "./workspace/mapViewportStorage";
 
 // A second ruleset this build "ships" only for this test, so `changeRuleset`'s actual move can be
 // exercised - `rulesets.ts` ships exactly one ruleset otherwise, which cannot tell "known and
@@ -52,8 +54,23 @@ function fakeClient(overrides: Partial<GameClient> = {}): GameClient {
     importGame: vi.fn(),
     setGameRuleset: vi.fn(),
     setGameName: vi.fn(),
+    resetGame: vi.fn().mockImplementation(async (gameId: string) => opened(gameId)),
     ...overrides
   };
+}
+
+/**
+ * A localStorage stand-in on the global, so `resetGame`'s call into `forgetMapView` - which reaches
+ * for the real one - has something to reach. These tests run without a DOM, where `localStorage` is
+ * undefined and every saved view silently vanishes, which would make the forget assertion vacuous.
+ */
+function stubGlobalStorage(): void {
+  const data = new Map<string, string>();
+  vi.stubGlobal("localStorage", {
+    getItem: (key: string) => data.get(key) ?? null,
+    setItem: (key: string, value: string) => void data.set(key, value),
+    removeItem: (key: string) => void data.delete(key)
+  });
 }
 
 describe("opening a game", () => {
@@ -323,6 +340,75 @@ describe("deleting a game", () => {
     expect(result.closedOpenGame).toBe(false);
     expect(result.opened).toBeNull();
     expect(result.games).toEqual([manifest("other", NOW)]);
+  });
+});
+
+describe("resetting a game", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("empties the game and refreshes the list", async () => {
+    const calls: string[] = [];
+    const client = fakeClient({
+      resetGame: vi.fn().mockImplementation(async (gameId: string) => {
+        calls.push("resetGame");
+        return opened(gameId);
+      }),
+      listGames: vi.fn().mockImplementation(async () => {
+        calls.push("listGames");
+        return [manifest("kept", NOW)];
+      })
+    });
+
+    const result = await resetGame(client, "kept", null, NOW, vi.fn());
+
+    expect(client.resetGame).toHaveBeenCalledWith("kept", NOW);
+    expect(calls).toEqual(["resetGame", "listGames"]);
+    expect(result.opened.manifest.metadata.gameId).toBe("kept");
+    expect(result.games).toEqual([manifest("kept", NOW)]);
+    expect(result.wasOpenGame).toBe(false);
+  });
+
+  it("discards the open draft when the game being emptied is the open one", async () => {
+    const calls: string[] = [];
+    const client = fakeClient({
+      resetGame: vi.fn().mockImplementation(async (gameId: string) => {
+        calls.push("resetGame");
+        return opened(gameId);
+      })
+    });
+    const discardOpenDraft = vi.fn(() => {
+      calls.push("discard");
+    });
+
+    const result = await resetGame(client, "open-one", "open-one", NOW, discardOpenDraft);
+
+    expect(calls).toEqual(["discard", "resetGame"]);
+    expect(result.wasOpenGame).toBe(true);
+  });
+
+  it("leaves another game's draft alone", async () => {
+    const client = fakeClient();
+    const discardOpenDraft = vi.fn();
+
+    const result = await resetGame(client, "other", "open-one", NOW, discardOpenDraft);
+
+    expect(discardOpenDraft).not.toHaveBeenCalled();
+    expect(result.wasOpenGame).toBe(false);
+  });
+
+  it("forgets the emptied game's saved view", async () => {
+    stubGlobalStorage();
+    saveMapView("emptied", { viewport: { tx: 1, ty: 2, step: 0 }, level: 1, regionId: null });
+    saveMapView("untouched", { viewport: { tx: 3, ty: 4, step: 0 }, level: 1, regionId: null });
+    // The control: without this the assertion below could pass against a view that was never saved.
+    expect(loadSavedView("emptied")).not.toBeNull();
+
+    await resetGame(fakeClient(), "emptied", null, NOW, vi.fn());
+
+    expect(loadSavedView("emptied")).toBeNull();
+    expect(loadSavedView("untouched")).not.toBeNull();
   });
 });
 
