@@ -5,6 +5,7 @@ import type { HexNoteRecord } from "@atlantis/core-client";
 import { MapCanvas } from "./MapCanvas";
 import { CONGESTED_HEXES } from "./mapThemes/congestedFixture";
 import { allBadges } from "./mapThemes/hexView";
+import { worldOf } from "./mapViewport";
 import type { LayerProps, MapTheme } from "./mapThemes/mapTheme";
 
 /**
@@ -372,5 +373,55 @@ describe("the notes layer", () => {
     const svg = draw(probe(), [note()]);
 
     expect(svg).not.toContain('data-testid="map-note-tags"');
+  });
+});
+
+/** The same map, with a hovered trade route's arrow across it. */
+function drawWithArrow(twoWay: boolean): string {
+  return renderToStaticMarkup(
+    <MapCanvas
+      gameId={null}
+      model={model}
+      theme={probe()}
+      level={1}
+      selectedRegionId={null}
+      selectionEpoch={0}
+      onSelectRegion={() => {}}
+      showStaleness
+      showTextures={false}
+      badges={allBadges(true)}
+      arrow={{ from: { x: 7, y: 53, z: 1 }, to: { x: 9, y: 51, z: 1 }, twoWay }}
+    />
+  );
+}
+
+describe("MapCanvas trade arrow", () => {
+  it("draws a line between the two hexes of a hovered route", () => {
+    const svg = drawWithArrow(false);
+    const from = worldOf({ x: 7, y: 53, z: 1 });
+    const to = worldOf({ x: 9, y: 51, z: 1 });
+
+    expect(svg).toContain('data-testid="trade-arrow"');
+    expect(svg).toContain(`x1="${from.x}"`);
+    expect(svg).toContain(`y1="${from.y}"`);
+    expect(svg).toContain(`x2="${to.x}"`);
+    expect(svg).toContain(`y2="${to.y}"`);
+  });
+
+  it("heads only the far end of a one-way route", () => {
+    const svg = drawWithArrow(false);
+
+    expect(svg).toContain('marker-end="url(#trade-arrowhead)"');
+    expect(svg).not.toContain("marker-start=");
+  });
+
+  it("heads both ends of a circuit", () => {
+    const svg = drawWithArrow(true);
+
+    expect(svg).toContain('marker-start="url(#trade-arrowhead-start)"');
+  });
+
+  it("draws no arrow when no route is hovered", () => {
+    expect(draw()).not.toContain('data-testid="trade-arrow"');
   });
 });

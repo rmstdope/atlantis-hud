@@ -1097,6 +1097,48 @@ test("the trade chip lists routes and flies the map to one", async ({ page }) =>
   await expect(page.getByTestId("panel-region")).toContainText("(36,4)");
 });
 
+/**
+ * Hovering a route draws it and frames it (ah-60m).
+ *
+ * The best route in this fixture runs (36,4) to (0,48), most of the way across the map, so one end
+ * is always off screen: hovering the row must move the map to hold both, and looking away must put
+ * it back exactly. `AppShell` has no unit test - this package's tests have no DOM - so this walk is
+ * the only thing that proves the travel and the return.
+ */
+test("hovering a trade route draws it, frames it, and puts the map back", async ({ page }) => {
+  await clearGames(page);
+  await createGame(page, "Trade arrow game");
+  await expect(page.getByTestId("app-header")).toBeVisible();
+
+  await page.setInputFiles('input[type="file"]', {
+    name: "f42-t42.rep",
+    mimeType: "text/plain",
+    buffer: Buffer.from(F42_T42, "utf8")
+  });
+  await expect(page.getByTestId("app-header")).toContainText(/Turn\s*42\b/);
+  await choose(page, "f42-t82.rep", F42_T82);
+  await expect(page.getByTestId("app-header")).toContainText(/Turn\s*82\b/);
+
+  await page.getByTestId("trade-chip").click();
+  const panel = page.getByTestId("trade-panel");
+  await expect(panel).toBeVisible();
+
+  const world = page.getByTestId("map-world");
+  const before = await world.getAttribute("transform");
+
+  await panel.getByTestId("trade-route-0").hover();
+  const arrow = page.getByTestId("trade-arrow");
+  await expect(arrow).toHaveCount(1);
+  // A circuit: chocolate out, perfume back, so the line carries a head at both ends.
+  await expect(arrow.locator("line")).toHaveAttribute("marker-start", "url(#trade-arrowhead-start)");
+  await expect(world).not.toHaveAttribute("transform", before ?? "");
+
+  // Looking away undoes the whole gesture - the arrow and the view together.
+  await page.getByTestId("trade-chip").hover();
+  await expect(arrow).toHaveCount(0);
+  await expect(world).toHaveAttribute("transform", before ?? "");
+});
+
 test("an order with the wrong argument is caught, and the offending word quoted", async ({
   page
 }) => {

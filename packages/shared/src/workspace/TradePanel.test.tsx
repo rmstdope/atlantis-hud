@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
-import { aTradeRoute, aTradedGood } from "@atlantis/core-client";
+import { aTradeRoute, aTradedGood, type TradeRoute } from "@atlantis/core-client";
 import { TradePanel } from "./TradePanel";
 
 const labelFor = (regionId: string) => `hex ${regionId}`;
@@ -47,6 +47,7 @@ describe("TradePanel", () => {
         routes={[aTradeRoute()]}
         labelFor={labelFor}
         onSelectHex={() => {}}
+        onHoverRoute={() => {}}
         onDismiss={() => {}}
       />
     );
@@ -70,7 +71,8 @@ describe("TradePanel", () => {
       worth: 15_598
     });
     const markup = renderToStaticMarkup(
-      <TradePanel routes={[circuit]} labelFor={labelFor} onSelectHex={() => {}} onDismiss={() => {}} />
+      <TradePanel routes={[circuit]} labelFor={labelFor} onSelectHex={() => {}}
+        onHoverRoute={() => {}} onDismiss={() => {}} />
     );
     expect(markup).toContain("⇄");
     expect(markup).not.toContain("36,4 →");
@@ -83,7 +85,8 @@ describe("TradePanel", () => {
   it("a mode that cannot make it shows a dash", () => {
     const route = aTradeRoute({ turns: { walk: null, ride: null, fly: 9 } });
     const markup = renderToStaticMarkup(
-      <TradePanel routes={[route]} labelFor={labelFor} onSelectHex={() => {}} onDismiss={() => {}} />
+      <TradePanel routes={[route]} labelFor={labelFor} onSelectHex={() => {}}
+        onHoverRoute={() => {}} onDismiss={() => {}} />
     );
     expect(markup).toContain("—/—/9 turns on foot/riding/flying");
   });
@@ -91,7 +94,8 @@ describe("TradePanel", () => {
   it("a route nothing can reach says so", () => {
     const route = aTradeRoute({ turns: { walk: null, ride: null, fly: null } });
     const markup = renderToStaticMarkup(
-      <TradePanel routes={[route]} labelFor={labelFor} onSelectHex={() => {}} onDismiss={() => {}} />
+      <TradePanel routes={[route]} labelFor={labelFor} onSelectHex={() => {}}
+        onHoverRoute={() => {}} onDismiss={() => {}} />
     );
     expect(markup).toContain("no known way");
     expect(markup).not.toContain("turns on foot");
@@ -102,14 +106,16 @@ describe("TradePanel", () => {
       outbound: [aTradedGood({ buySeenTurn: 42, sellSeenTurn: 82 })]
     });
     const markup = renderToStaticMarkup(
-      <TradePanel routes={[route]} labelFor={labelFor} onSelectHex={() => {}} onDismiss={() => {}} />
+      <TradePanel routes={[route]} labelFor={labelFor} onSelectHex={() => {}}
+        onHoverRoute={() => {}} onDismiss={() => {}} />
     );
     expect(markup).toContain("buy price seen turn 42");
   });
 
   it("nothing to trade", () => {
     const markup = renderToStaticMarkup(
-      <TradePanel routes={[]} labelFor={labelFor} onSelectHex={() => {}} onDismiss={() => {}} />
+      <TradePanel routes={[]} labelFor={labelFor} onSelectHex={() => {}}
+        onHoverRoute={() => {}} onDismiss={() => {}} />
     );
     expect(markup).toContain(
       "Nothing to trade yet. No hex you have seen sells a good that another will pay more for."
@@ -125,6 +131,7 @@ describe("TradePanel", () => {
         routes={[aTradeRoute()]}
         labelFor={labelFor}
         onSelectHex={onSelectHex}
+        onHoverRoute={() => {}}
         onDismiss={onDismiss}
       />
     );
@@ -137,7 +144,8 @@ describe("TradePanel", () => {
 
   it("the footer says what the list assumes", () => {
     const markup = renderToStaticMarkup(
-      <TradePanel routes={[aTradeRoute()]} labelFor={labelFor} onSelectHex={() => {}} onDismiss={() => {}} />
+      <TradePanel routes={[aTradeRoute()]} labelFor={labelFor} onSelectHex={() => {}}
+        onHoverRoute={() => {}} onDismiss={() => {}} />
     );
     expect(markup).toContain(
       "Prices are as last seen, and the journeys assume an unladen unit through hexes you have explored."
@@ -150,9 +158,52 @@ describe("TradePanel", () => {
       to: { x: 0, y: 48, z: 1 }
     });
     const markup = renderToStaticMarkup(
-      <TradePanel routes={[route]} labelFor={labelFor} onSelectHex={() => {}} onDismiss={() => {}} />
+      <TradePanel routes={[route]} labelFor={labelFor} onSelectHex={() => {}}
+        onHoverRoute={() => {}} onDismiss={() => {}} />
     );
     expect(markup).toContain("2:7,53");
     expect(markup).toContain("1:0,48");
+  });
+});
+
+describe("TradePanel hover", () => {
+  /** The row's own props, so its handlers can be called without a DOM (see `findByTestId`). */
+  function row(onHoverRoute: (route: TradeRoute | null) => void, route = aTradeRoute()) {
+    const element = (
+      <TradePanel
+        routes={[route]}
+        labelFor={labelFor}
+        onSelectHex={() => {}}
+        onHoverRoute={onHoverRoute}
+        onDismiss={() => {}}
+      />
+    );
+    const found = findByTestId(element, "trade-route-0");
+    expect(found).not.toBeNull();
+    return found!.props as Record<string, () => void>;
+  }
+
+  it("asks for a row's arrow when the pointer enters it, and clears it on leaving", () => {
+    const onHoverRoute = vi.fn();
+    const route = aTradeRoute();
+    const props = row(onHoverRoute, route);
+
+    props.onPointerEnter();
+    expect(onHoverRoute).toHaveBeenLastCalledWith(route);
+
+    props.onPointerLeave();
+    expect(onHoverRoute).toHaveBeenLastCalledWith(null);
+  });
+
+  it("asks for it on focus too, so a keyboard reader sees the same thing", () => {
+    const onHoverRoute = vi.fn();
+    const route = aTradeRoute();
+    const props = row(onHoverRoute, route);
+
+    props.onFocus();
+    expect(onHoverRoute).toHaveBeenLastCalledWith(route);
+
+    props.onBlur();
+    expect(onHoverRoute).toHaveBeenLastCalledWith(null);
   });
 });
