@@ -11,12 +11,15 @@
 `:272`'s `not.toBe(before)` failing on the retry) on a PR whose diff is the orders-completion
 boundary — the core lexer, two bindings and three CodeMirror completion sources. Nothing in it can
 move the map. `pnpm run test:smoke -- shortcuts.spec.ts` locally: 16 passed, 25s, first attempt. One
-`gh run rerun --failed` was green.
+`gh run rerun --failed` was green. It then failed a **second** time on this same PR, on the same
+shard, after the branch was caught up to main — green again on the next re-run, with two of the two
+allowed re-runs spent on it.
 **Why.** Not established, same as the first sighting. The assertion compares a rendered SVG
 transform to two decimal places after a poll, which a not-yet-settled layout on a slow runner would
 fail exactly this way.
-**Cost.** One re-run, about six minutes of CI wall-clock, plus the local reproduction.
-**Prevent by.** This is the second sighting in two days, on two different shards (`web, 1, 2` then
+**Cost.** Two re-runs, about fifteen minutes of CI wall-clock, plus the local reproduction — the
+whole of this bead's re-run budget, spent on a test the bead does not touch.
+**Prevent by.** This is the second and third sighting in two days, on two different shards (`web, 1, 2` then
 `desktop-shell, 1, 2`) and on two unrelated diffs, which is what ah-do8.3 asked for before acting.
 The assertions at `tests/smoke/shortcuts.spec.ts:272` and `:290` want a tolerance on the transform
 rather than exact string equality; that is a change to a test outside any planned bead, so it is the
