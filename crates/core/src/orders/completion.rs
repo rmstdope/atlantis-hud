@@ -386,23 +386,36 @@ fn skill_completions(
         .skills
         .values()
         .filter(|skill| !studying || skill.cost.is_some())
-        .filter(|skill| level_of(unit, skill).is_none_or(|level| level < skill.max_level))
+        .filter(|skill| level_of(unit, &skill.tag).is_none_or(|level| level < skill.max_level))
+        .filter(|skill| meets_requirements(unit, skill))
         .map(|skill| OrderCompletion {
             value: skill.tag.clone(),
             name: skill.name.clone(),
-            detail: detail_for(skill, level_of(unit, skill)),
+            detail: detail_for(skill, level_of(unit, &skill.tag)),
         })
         .collect()
 }
 
-/// The unit's level in this skill, matched case-insensitively as `check_studying` matches it
+/// The unit's level in a skill, matched case-insensitively as `check_studying` matches it
 /// (`semantics.rs`: the report's tags and the ruleset's do not always agree on case).
-fn level_of(unit: Option<&ReportUnit>, skill: &SkillEntry) -> Option<u32> {
+fn level_of(unit: Option<&ReportUnit>, tag: &str) -> Option<u32> {
     unit?
         .skills
         .iter()
-        .find(|held| held.tag.eq_ignore_ascii_case(&skill.tag))
+        .find(|held| held.tag.eq_ignore_ascii_case(tag))
         .map(|held| held.level)
+}
+
+/// Whether the unit already has everything the skill asks for before it may be begun.
+///
+/// True when the ruleset states no requirements, and true when there is no unit to judge - the
+/// same asymmetry the ceiling filter keeps, and what stops the list emptying itself when the
+/// report cannot be read.
+fn meets_requirements(unit: Option<&ReportUnit>, skill: &SkillEntry) -> bool {
+    unit.is_none()
+        || skill.requires.iter().all(|required| {
+            level_of(unit, &required.tag).is_some_and(|level| level >= required.level)
+        })
 }
 
 /// `combat · 45 silver · at 3`, and `combat · 45 silver` for a skill the unit has never studied -
@@ -760,6 +773,53 @@ mod tests {
 
         assert!(!offered.is_empty(), "the answer stays sensible, not empty");
         assert!(offered.iter().any(|entry| entry.value == "COMB"));
+    }
+
+    // --- ah-6qp: STUDY drops a skill whose prerequisites the unit lacks ---------------------
+
+    #[test]
+    fn study_hides_a_skill_whose_requirement_the_unit_lacks() {
+        let ruleset = ruleset();
+        let fire = ruleset.skills.get("FIRE").expect("fire is a skill");
+        assert!(
+            !fire.requires.is_empty(),
+            "fire requires force, which is what this test is about"
+        );
+        let report = studier(Vec::new());
+
+        assert!(!study_offer(&report, &ruleset)
+            .iter()
+            .any(|entry| entry.value == "FIRE"));
+    }
+
+    #[test]
+    fn study_offers_a_skill_whose_requirement_the_unit_meets() {
+        let ruleset = ruleset();
+        let report = studier(vec![skill_at("FORC", 2)]);
+
+        assert!(study_offer(&report, &ruleset)
+            .iter()
+            .any(|entry| entry.value == "FIRE"));
+    }
+
+    #[test]
+    fn study_offers_a_skill_with_no_requirements() {
+        let ruleset = ruleset();
+        let report = studier(Vec::new());
+
+        assert!(study_offer(&report, &ruleset)
+            .iter()
+            .any(|entry| entry.value == "COMB"));
+    }
+
+    /// The same asymmetry the ceiling filter keeps: with no unit to judge, nothing is known to be
+    /// missing, so the skill is offered rather than the list emptied.
+    #[test]
+    fn study_without_a_unit_offers_a_skill_with_requirements() {
+        let ruleset = ruleset();
+        let offered = order_argument_completions("STUDY ", Some(&ruleset), None, None);
+
+        assert!(offered.iter().any(|entry| entry.value == "FIRE"));
     }
 
     // --- increment 3: BUY and SELL narrow to the hex ----------------------------------------
