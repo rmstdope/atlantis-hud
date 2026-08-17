@@ -1310,6 +1310,23 @@ async function boxOf(page: Page, panel: string) {
   return box!;
 }
 
+/**
+ * Waits for a panel's height to stop changing before it is measured as a "before" baseline.
+ * Selecting a hex opens the panels, and reading a size while that settles - slower or busier on
+ * CI than locally - pins a mid-animation size rather than the resting one.
+ */
+async function waitForStableHeight(page: Page, panel: string) {
+  let last: number | null = null;
+  await expect
+    .poll(async () => {
+      const height = (await boxOf(page, panel)).height;
+      const stable = last !== null && height === last;
+      last = height;
+      return stable;
+    })
+    .toBe(true);
+}
+
 /** Where the map is standing, read the same way `shortcuts.spec.ts` does. */
 async function mapTransform(page: Page): Promise<string> {
   return (await page.getByTestId("map-world").getAttribute("transform")) ?? "";
@@ -1340,7 +1357,16 @@ async function resetSplit(page: Page) {
 
 test("the unit/orders split drags at the grip and survives a reload", async ({ page }) => {
   await loadReport(page);
+  // The default window (1280x683) leaves the orders editor's pin already at its own ceiling once
+  // enough advisory-check chips share the header with it (ah-1uj is one of several) - dragging it
+  // taller would then have nowhere to go, whatever the gesture. A taller window gives the split
+  // room to move regardless of how many chips the header carries; this test is about the drag
+  // mechanism, not about how little of it fits in the header's own default height.
+  await page.setViewportSize({ width: 1280, height: 900 });
   await selectHex(page, "1:7,53");
+  // Selecting a hex opens the panels; measuring "before" while that settles - slower or busier on
+  // CI than locally - would pin a mid-animation size rather than the resting one.
+  await waitForStableHeight(page, "orders");
 
   const before = await boxOf(page, "orders");
   const grip = page.getByTestId("panel-splitter");
@@ -1478,7 +1504,14 @@ test("folding the unit panel hides the grip and hands the column to the editor",
   page
 }) => {
   await loadReport(page);
+  // See "the unit/orders split drags..." above: at the default window height the editor's pin can
+  // already sit at its own ceiling once enough advisory-check chips share the header with it, and
+  // this test drags it taller twice over.
+  await page.setViewportSize({ width: 1280, height: 900 });
   await selectHex(page, "1:7,53");
+  // Selecting a hex opens the panels; measuring "before" while that settles - slower or busier on
+  // CI than locally - would pin a mid-animation size rather than the resting one.
+  await waitForStableHeight(page, "orders");
 
   const before = await boxOf(page, "orders");
   const grip = page.getByTestId("panel-splitter");
@@ -1489,12 +1522,18 @@ test("folding the unit panel hides the grip and hands the column to the editor",
   await page.mouse.down();
   await page.mouse.move(start.x, start.y - 60, { steps: 5 });
   await page.mouse.up();
+  // Polled, not a single read: the resize can still be settling (a CSS transition) the instant
+  // after the pointer lifts, slower or busier on CI than locally.
+  await expect
+    .poll(async () => (await boxOf(page, "orders")).height)
+    .toBeGreaterThan(before.height);
   const dragged = await boxOf(page, "orders");
-  expect(dragged.height).toBeGreaterThan(before.height);
 
   await foldPanel(page, "unit");
   await expect(grip).not.toBeVisible();
-  expect((await boxOf(page, "orders")).height).toBeGreaterThan(dragged.height);
+  await expect
+    .poll(async () => (await boxOf(page, "orders")).height)
+    .toBeGreaterThan(dragged.height);
 
   await unfoldPanel(page, "unit");
   await expect(grip).toBeVisible();
