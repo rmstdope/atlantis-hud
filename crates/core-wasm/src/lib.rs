@@ -524,10 +524,30 @@ pub fn validate_orders_state(
     to_js(&result)
 }
 
-/// The order vocabulary, so the shell need not keep a copy of its own.
+/// Every order name, so the shell need not keep a copy of its own. Its wider twin below,
+/// `order_vocabulary_state`, answers every word the rules know rather than only the commands.
 #[wasm_bindgen]
 pub fn order_commands_state() -> Result<JsValue, JsValue> {
     to_js(&atlantis_hud_core::order_commands())
+}
+
+/// Every word the rules know, for the editor that has to spot a keyword as it is typed.
+///
+/// `ruleset_json` goes through the same process-global cache every other entry point uses, so a
+/// ruleset already parsed for this game is not parsed again.
+///
+/// # Errors
+///
+/// Returns an error only when the answer cannot be serialized to JavaScript.
+#[wasm_bindgen]
+pub fn order_vocabulary_state(ruleset_json: Option<String>) -> Result<JsValue, JsValue> {
+    let ruleset = atlantis_hud_core::cache::with_global(|cache| {
+        ruleset_json
+            .as_deref()
+            .and_then(|json| cache.ruleset(json).ok())
+    });
+
+    to_js(&atlantis_hud_core::order_vocabulary(ruleset.as_deref()))
 }
 
 /// What may stand where the caret is, so the editor's popup can answer an argument position.

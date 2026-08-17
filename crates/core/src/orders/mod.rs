@@ -17,6 +17,7 @@ pub mod intents;
 pub mod lexer;
 pub mod parser;
 pub mod semantics;
+pub mod vocabulary;
 pub mod walk;
 
 pub use completion::{
@@ -24,6 +25,7 @@ pub use completion::{
     OrderCompletion,
 };
 pub use grammar::order_commands;
+pub use vocabulary::order_vocabulary;
 
 use crate::movement::rules::Ruleset;
 use crate::report::ParsedReport;

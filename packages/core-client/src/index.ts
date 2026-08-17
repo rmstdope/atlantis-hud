@@ -548,6 +548,12 @@ export interface CoreAdapter {
   ): Promise<OrderValidationResult>;
   orderCommands(): Promise<string[]>;
   /**
+   * Every word the rules know, uppercase and sorted: the order names, the grammar's own fixed
+   * words, and - when a ruleset is passed - the item and skill tags and the words of their names.
+   * What Order OCD uppercases as the player types.
+   */
+  orderVocabulary(rulesetJson: string | null): Promise<string[]>;
+  /**
    * What may stand where the caret is, for the orders editor's completion popup: one order line
    * from its first character to the caret, answered with what the ruleset, the catalogue and the
    * hex allow there. Empty wherever the rules leave the position open, which is most of them.

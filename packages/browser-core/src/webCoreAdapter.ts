@@ -45,6 +45,7 @@ export type CoreWasmModule = {
     disabledCodes: readonly string[] | null
   ): OrderValidationResult;
   order_commands_state(): string[];
+  order_vocabulary_state(rulesetJson: string | null): string[];
   order_argument_completions_state(
     linePrefix: string,
     rulesetJson: string | null,
@@ -471,6 +472,9 @@ export function createWebCoreAdapter(
     },
     async orderCommands() {
       return wasm.order_commands_state();
+    },
+    async orderVocabulary(rulesetJson: string | null) {
+      return wasm.order_vocabulary_state(rulesetJson);
     },
     async orderArgumentCompletions(
       linePrefix: string,
