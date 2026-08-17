@@ -13,7 +13,10 @@ use std::collections::HashSet;
 
 use serde::{Deserialize, Serialize};
 
-use super::grammar::{self, arguments_at_caret, Arg, Order};
+use super::grammar::{
+    self, arguments_at_caret, caret_shape, word_at_caret, Arg, CaretShape, Order,
+};
+use super::lexer::utf16_column;
 use crate::movement::rules::Ruleset;
 use crate::report::model::{ItemAmount, MarketItem, ReportRegion, ReportUnit};
 use crate::report::ParsedReport;
@@ -39,6 +42,75 @@ impl OrderCompletion {
             name: String::new(),
             detail: String::new(),
         }
+    }
+}
+
+/// Which position the caret is in, decided once, in the core.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum CaretPosition {
+    /// The first word of the line, behind any indentation and an optional `@`. The shell's own
+    /// command and snippet lists answer here; `options` below is empty.
+    Command,
+    /// Any position after the command, where the grammar, the catalogue and the hex decide.
+    Argument,
+    /// Nowhere a completion belongs: inside a comment, inside an unterminated quote, or after a
+    /// command the grammar table does not have.
+    Nowhere,
+}
+
+/// Where the caret is in one order line, what word is being typed there, and what may stand there.
+///
+/// One call, because the three answers come from one lexing of the line and the shell needs all
+/// three for every keystroke. Splitting them is what left the caret's position decided in three
+/// places and two of them disagreeing about what a word is (ah-vfq).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CaretCompletions {
+    pub position: CaretPosition,
+    /// Where the word being typed starts, counted in **UTF-16 code units** from the start of the
+    /// line - the same counting the checker's spans use (`lexer.rs`) and the same unit
+    /// CodeMirror's own document offsets are in, so a shell adds it to `line.from` directly.
+    /// Equal to the caret's own column when no word is being typed - the caret sits after
+    /// whitespace or a closing quote - which is where a chosen entry is then written.
+    pub word_start: usize,
+    /// The word being typed, verbatim from the line. Empty when none is.
+    pub word: String,
+    /// What may stand here. Empty unless `position` is `Argument`.
+    pub options: Vec<OrderCompletion>,
+}
+
+/// The caret's whole story for one order line up to the caret. See [`CaretCompletions`].
+///
+/// The one reader of where the caret is: every completion source in every shell asks this rather
+/// than deciding for itself, which is what keeps a boundary case fixed once fixed everywhere.
+#[must_use]
+pub fn completions_at_caret(
+    line_prefix: &str,
+    ruleset: Option<&Ruleset>,
+    report: Option<&ParsedReport>,
+    unit_id: Option<&str>,
+) -> CaretCompletions {
+    let typed = word_at_caret(line_prefix);
+    let (word_start, word) = match typed {
+        Some(token) => (token.column_start, token.text),
+        None => (utf16_column(line_prefix, line_prefix.len()), String::new()),
+    };
+
+    let (position, options) = match caret_shape(line_prefix) {
+        CaretShape::Nowhere => (CaretPosition::Nowhere, Vec::new()),
+        CaretShape::Command => (CaretPosition::Command, Vec::new()),
+        CaretShape::InOrder(..) => (
+            CaretPosition::Argument,
+            order_argument_completions(line_prefix, ruleset, report, unit_id),
+        ),
+    };
+
+    CaretCompletions {
+        position,
+        word_start,
+        word,
+        options,
     }
 }
 
@@ -762,5 +834,77 @@ mod tests {
         let offered =
             order_argument_completions("BUY 5 ", Some(&ruleset), Some(&report), Some("99999"));
         assert_eq!(offered.len(), ruleset.items.len());
+    }
+
+    // --- where the caret is, decided once (ah-vfq) -------------------------------------------
+
+    fn caret(prefix: &str) -> CaretCompletions {
+        completions_at_caret(prefix, None, None, None)
+    }
+
+    #[test]
+    fn the_command_position_is_reported_as_such() {
+        let answer = caret("  @ta");
+        assert_eq!(answer.position, CaretPosition::Command);
+        assert_eq!(answer.word, "ta");
+        assert_eq!(answer.word_start, 3);
+        assert!(answer.options.is_empty());
+    }
+
+    #[test]
+    fn an_argument_position_carries_its_options() {
+        let answer = caret("NAME U");
+        assert_eq!(answer.position, CaretPosition::Argument);
+        assert_eq!(answer.word, "U");
+        assert_eq!(answer.word_start, 5);
+        assert_eq!(answer.options, no_ruleset("NAME U"));
+        assert!(!answer.options.is_empty());
+    }
+
+    #[test]
+    fn a_caret_after_a_closing_quote_is_the_next_position() {
+        let answer = caret("BUILD \"Big Boat\"");
+        assert_eq!(answer.position, CaretPosition::Argument);
+        assert_eq!(answer.word, "");
+        assert_eq!(answer.word_start, 16);
+    }
+
+    #[test]
+    fn a_caret_after_whitespace_types_no_word() {
+        let answer = caret("NAME UNIT ");
+        assert_eq!(answer.word, "");
+        assert_eq!(answer.word_start, 10);
+    }
+
+    #[test]
+    fn a_word_start_counts_utf16_code_units() {
+        let answer = caret("NAME UNIT \"Mörk\" ta");
+        assert_eq!(answer.word, "ta");
+        assert_eq!(answer.word_start, 17);
+    }
+
+    #[test]
+    fn a_comment_is_nowhere() {
+        let answer = caret("TAX ; note");
+        assert_eq!(answer.position, CaretPosition::Nowhere);
+        assert!(answer.options.is_empty());
+    }
+
+    #[test]
+    fn an_unterminated_quote_is_nowhere() {
+        assert_eq!(caret("BUILD \"Big").position, CaretPosition::Nowhere);
+    }
+
+    #[test]
+    fn an_order_the_grammar_does_not_have_is_nowhere() {
+        assert_eq!(caret("FLURBLE x").position, CaretPosition::Nowhere);
+    }
+
+    #[test]
+    fn an_empty_line_is_the_command_position() {
+        let answer = caret("");
+        assert_eq!(answer.position, CaretPosition::Command);
+        assert_eq!(answer.word, "");
+        assert_eq!(answer.word_start, 0);
     }
 }

@@ -19,7 +19,10 @@ pub mod parser;
 pub mod semantics;
 pub mod walk;
 
-pub use completion::{order_argument_completions, OrderCompletion};
+pub use completion::{
+    completions_at_caret, order_argument_completions, CaretCompletions, CaretPosition,
+    OrderCompletion,
+};
 pub use grammar::order_commands;
 
 use crate::movement::rules::Ruleset;
