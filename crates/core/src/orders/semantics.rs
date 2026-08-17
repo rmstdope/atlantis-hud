@@ -1648,6 +1648,11 @@ fn is_aboard(ordered: &Ordered<'_>, fleet_id: &str) -> bool {
 /// Both run before anything else a block can ask for, so every check that asks "what is this unit
 /// standing in when its orders happen" wants this rather than `unit.structure_id`, which is only
 /// where the report found it.
+///
+/// The movement layer, which is handed a report rather than parsed intents, answers the same
+/// question through `crate::movement::fleet::OrderedUnits::structure_of` and must keep the same
+/// rule. Two models of it exist on purpose until something decides where a shared one would live
+/// (ah-ssd); a change here belongs in both.
 fn structure_after_orders<'a>(ordered: &Ordered<'a>) -> Option<&'a str> {
     let mut entered: Option<&'a str> = None;
     let mut left = false;
