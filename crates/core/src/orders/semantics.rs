@@ -90,13 +90,16 @@ pub mod codes {
     pub const NOT_TRADED_HERE: Code = Code("not-traded-here");
     pub const UNIT_OVERLOADED: Code = Code("unit-overloaded");
     pub const TOO_MANY_QUARTERMASTERS: Code = Code("too-many-quartermasters");
+    pub const STUDY_AT_MAXIMUM: Code = Code("study-at-maximum");
     /// Every code. This array's own order is not the settings tab's grouping (that groups by
-    /// concern - Teaching / Resources / Markets / Guarding / Orders / Sailing - not by this list),
-    /// but a new entry still goes last: the generated TypeScript copies this order. Until
-    /// `give-target-not-here` every entry had also been last in its tab group; that one joins the
-    /// existing *Orders* group instead, so the two orders are no longer in step and nothing depends
-    /// on their being so.
-    pub const ALL: [Code; 16] = [
+    /// concern - Teaching / Resources / Markets / Guarding / Orders / Sailing - not by this list):
+    /// a new entry joins whichever group fits its concern, which need not be the last one
+    /// (`give-target-not-here` and `not-traded-here` joined the existing *Orders* group;
+    /// `too-many-quartermasters` and `study-at-maximum` joined the existing *Studying/Teaching*
+    /// group). What every entry so far has kept is new-*here*-last: the generated TypeScript
+    /// copies this array's order, so a new code is always appended to it regardless of where it
+    /// lands in the UI.
+    pub const ALL: [Code; 17] = [
         NOT_ENOUGH_SILVER,
         NOT_ENOUGH_ITEMS,
         GUARD_DROPPED,
@@ -113,6 +116,7 @@ pub mod codes {
         NOT_TRADED_HERE,
         UNIT_OVERLOADED,
         TOO_MANY_QUARTERMASTERS,
+        STUDY_AT_MAXIMUM,
     ];
 }
 
@@ -213,6 +217,7 @@ pub fn check_turn(
         check_markets(&hex, ruleset, &options, &mut findings);
         check_guard(&hex, &options, &mut findings);
         check_teaching(&hex, ruleset, &options, &mut findings);
+        check_studying(&hex, ruleset, &options, &mut findings);
         check_forms(&hex, &options, &mut findings);
         check_transfer_targets(&hex, &located, &options, &mut findings);
         check_sailing(&hex, &ledger, ruleset, &options, &mut findings);
@@ -363,8 +368,15 @@ impl Ordered<'_> {
     }
 
     fn studies(&self) -> Option<&str> {
-        self.intents().find_map(|intent| match intent {
-            Intent::Study { skill } => Some(skill.as_str()),
+        self.studies_placed().map(|(_, skill)| skill)
+    }
+
+    /// The unit's STUDY order and where it was written, for a finding that must sit on its line.
+    /// `studies()` answers the same question without the placement, and several callers only want
+    /// that.
+    fn studies_placed(&self) -> Option<(&PlacedIntent, &str)> {
+        self.intents.iter().find_map(|placed| match &placed.intent {
+            Intent::Study { skill } => Some((placed, skill.as_str())),
             _ => None,
         })
     }
@@ -1291,6 +1303,56 @@ fn taught_by(teacher: &Ordered<'_>, hex: &Hex<'_>) -> i64 {
         })
         .map(|pupil| pupil.unit.men)
         .sum()
+}
+
+// --- studying at the ceiling ----------------------------------------------------------------------
+
+/// Every own unit whose STUDY order names a skill it has already taken to the ruleset's maximum.
+fn check_studying(
+    hex: &Hex<'_>,
+    ruleset: Option<&Ruleset>,
+    options: &CheckOptions,
+    findings: &mut Vec<Finding>,
+) {
+    // No ruleset, no stated ceiling: there is nothing to compare the unit's level against.
+    let Some(ruleset) = ruleset else { return };
+    if !options.emits(codes::STUDY_AT_MAXIMUM) {
+        return;
+    }
+
+    for ordered in &hex.units {
+        let Some((placed, studying)) = ordered.studies_placed() else {
+            continue;
+        };
+        // A skill the catalogue does not know has no stated maximum, and guessing at one is
+        // exactly what accept-on-doubt forbids.
+        let Some(skill) = ruleset.find_skill(studying) else {
+            continue;
+        };
+        // No entry for this skill on the unit means it has never studied it, so it is not at any
+        // maximum.
+        let Some(level) = ordered
+            .unit
+            .skills
+            .iter()
+            .find(|entry| entry.tag.eq_ignore_ascii_case(&skill.tag))
+            .map(|entry| entry.level)
+        else {
+            continue;
+        };
+
+        if level >= skill.max_level {
+            findings.push(ordered.finding(
+                hex,
+                codes::STUDY_AT_MAXIMUM,
+                format!(
+                    "this unit is already at {} {}, the highest the ruleset has",
+                    skill.name, level
+                ),
+                Some(placed),
+            ));
+        }
+    }
 }
 
 // --- FORM aliases --------------------------------------------------------------------------------
@@ -3223,6 +3285,88 @@ mod tests {
         );
     }
 
+    // --- studying -------------------------------------------------------------------------
+
+    /// A unit fully funded for a month of study, so the silver check stays out of these tests.
+    fn studying_unit(id: &str, tag: &str, level: u32) -> ReportUnit {
+        with_skill(with_silver(unit(id), 1000), tag, level)
+    }
+
+    #[test]
+    fn a_unit_at_the_ruleset_maximum_is_warned() {
+        let units = vec![studying_unit("5", "OBSE", 5)];
+        let finding = only(check(vec![region(units)], "unit 5\nSTUDY OBSE\n"));
+
+        assert_eq!(finding.code.as_str(), "study-at-maximum");
+        assert_eq!(
+            finding.message,
+            "this unit is already at observation 5, the highest the ruleset has"
+        );
+    }
+
+    #[test]
+    fn the_skill_may_be_named_or_tagged() {
+        for order in ["STUDY observation", "STUDY obse"] {
+            let units = vec![studying_unit("5", "OBSE", 5)];
+            assert_eq!(
+                codes(&check(vec![region(units)], &format!("unit 5\n{order}\n"))),
+                ["study-at-maximum"],
+                "{order} should resolve to observation"
+            );
+        }
+    }
+
+    #[test]
+    fn a_skill_below_its_maximum_is_silent() {
+        let units = vec![studying_unit("5", "OBSE", 3)];
+        assert_eq!(check(vec![region(units)], "unit 5\nSTUDY OBSE\n"), vec![]);
+    }
+
+    #[test]
+    fn a_skill_the_unit_has_never_studied_is_silent() {
+        let units = vec![with_silver(unit("5"), 1000)];
+        assert_eq!(check(vec![region(units)], "unit 5\nSTUDY OBSE\n"), vec![]);
+    }
+
+    #[test]
+    fn a_skill_the_ruleset_does_not_know_is_silent() {
+        let units = vec![with_silver(unit("5"), 1000)];
+        assert_eq!(check(vec![region(units)], "unit 5\nSTUDY xyzzy\n"), vec![]);
+    }
+
+    #[test]
+    fn without_a_ruleset_nothing_is_said() {
+        let units = vec![studying_unit("5", "OBSE", 5)];
+        let regions = vec![region(units)];
+
+        assert_eq!(
+            check_turn(
+                &report(regions),
+                "unit 5\nSTUDY OBSE\n",
+                None,
+                CheckOptions::default(),
+            ),
+            vec![]
+        );
+    }
+
+    #[test]
+    fn a_level_above_the_maximum_still_warns() {
+        let units = vec![studying_unit("5", "OBSE", 6)];
+        assert_eq!(
+            codes(&check(vec![region(units)], "unit 5\nSTUDY OBSE\n")),
+            ["study-at-maximum"]
+        );
+    }
+
+    #[test]
+    fn the_finding_sits_on_the_study_line() {
+        let units = vec![studying_unit("5", "OBSE", 5)];
+        let finding = only(check(vec![region(units)], "unit 5\nWORK\n\nSTUDY OBSE\n"));
+
+        assert_eq!(finding.line, Some(4), "the STUDY line, not the block's");
+    }
+
     // --- FORM aliases -------------------------------------------------------------------------
 
     #[test]
@@ -3632,6 +3776,15 @@ mod tests {
                 vec![region(vec![carrying("5", 1800, 150)])],
                 "unit 5\nMOVE S\n",
                 None,
+            ),
+            (
+                codes::STUDY_AT_MAXIMUM,
+                vec![region(vec![with_skill(
+                    with_silver(unit("5"), 1000),
+                    "OBSE",
+                    5,
+                )])],
+                "unit 5\nSTUDY OBSE\n",
             ),
         ];
 

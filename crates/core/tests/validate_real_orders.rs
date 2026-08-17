@@ -96,9 +96,21 @@ fn the_committed_turn_has_no_semantic_problems_either() {
         CheckOptions::default(),
     );
 
+    // One exception: unit 13402 is reported at combat [COMB] 5 (450) - the ruleset's own
+    // maximum - and orders "@study comb" anyway. That is not an invented problem; it is a real
+    // wasted month the player actually sent, and precisely the defect `study-at-maximum` exists
+    // to catch (ah-1uj, filed from this same corpus).
     assert_eq!(
         findings,
-        vec![],
+        vec![atlantis_hud_core::orders::semantics::Finding {
+            code: atlantis_hud_core::orders::semantics::codes::STUDY_AT_MAXIMUM,
+            message: "this unit is already at combat 5, the highest the ruleset has".to_string(),
+            region_id: "1:26,52".to_string(),
+            unit_id: Some("13402".to_string()),
+            line: Some(472),
+            column_start: Some(1),
+            column_end: Some(6),
+        }],
         "the checks invented a problem with a turn that was actually played"
     );
 }
@@ -150,9 +162,11 @@ fn a_unit_told_to_spend_what_it_has_not_got_is_caught_in_that_same_turn() {
     );
     let findings = check_turn(&report, &damaged, Some(&ruleset()), options);
 
+    // Alongside the introduced shortfall, the turn's one genuine `study-at-maximum` (unit
+    // 13402, see the test above) still fires - this fixture is not otherwise clean.
     assert_eq!(
         findings.iter().map(|f| f.code.as_str()).collect::<Vec<_>>(),
-        vec!["not-enough-silver"],
+        vec!["not-enough-silver", "study-at-maximum"],
         "{findings:?}"
     );
     assert_eq!(findings[0].unit_id, None, "one purse, shared");
@@ -182,9 +196,17 @@ fn a_whole_map_pass_re_reads_neither_the_report_nor_the_ruleset() {
 
     // Fifty passes over the committed turn. If any of them re-parsed the report this would take
     // long enough to notice; the point here is that they are all handed the same two objects.
+    // The turn carries one genuine finding throughout (unit 13402's `study-at-maximum`, see
+    // above) - what this loop pins is that every pass reports it identically, not that the turn
+    // is silent.
+    let expected = check_turn(&report, &template, Some(&ruleset), CheckOptions::default());
+    assert_eq!(expected.len(), 1, "{expected:?}");
     for _ in 0..50 {
         let result = check_turn(&report, &template, Some(&ruleset), CheckOptions::default());
-        assert_eq!(result, vec![], "the turn is clean, pass after pass");
+        assert_eq!(
+            result, expected,
+            "every pass should report the same finding"
+        );
     }
 }
 
