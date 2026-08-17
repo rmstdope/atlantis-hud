@@ -1630,30 +1630,40 @@ fn check_forms(hex: &Hex<'_>, options: &CheckOptions, findings: &mut Vec<Finding
     }
 }
 
-/// Whether the unit is aboard `fleet_id` once this month's ENTER/LEAVE orders have run: the
-/// report's own structure first, then the last of this unit's ENTER/LEAVE intents in document
-/// order - which is the order the server itself would apply them in.
+/// Whether the unit is aboard `fleet_id` once this month's ENTER/LEAVE orders have run - see
+/// `structure_after_orders` for the rule, which is that every LEAVE runs before any ENTER.
 fn is_aboard(ordered: &Ordered<'_>, fleet_id: &str) -> bool {
     structure_after_orders(ordered) == Some(fleet_id)
 }
 
-/// The structure the unit is in once this month's ENTER/LEAVE orders have run: the report's own
-/// structure first, then the last of this unit's ENTER/LEAVE intents in document order - which is
-/// the order the server itself would apply them in. `None` when it ends the month in nothing.
+/// The structure the unit is in once this month's ENTER/LEAVE orders have run, or `None` when it
+/// ends the month in nothing.
 ///
-/// Both ENTER and LEAVE run before anything else a block can ask for, so every check that asks
-/// "what is this unit standing in when its orders happen" wants this rather than
-/// `unit.structure_id`, which is only where the report found it.
+/// **Every LEAVE is processed before any ENTER**, whatever order the lines were typed in - the
+/// engine's own order, confirmed by the navigator on 2026-08-18 after a verification failed on
+/// exactly this. So a block holding any ENTER ends inside the last structure entered, a block
+/// holding only LEAVEs ends in nothing, and a block holding neither stays where the report found
+/// it. Document order matters only among ENTERs; between an ENTER and a LEAVE it means nothing.
+///
+/// Both run before anything else a block can ask for, so every check that asks "what is this unit
+/// standing in when its orders happen" wants this rather than `unit.structure_id`, which is only
+/// where the report found it.
 fn structure_after_orders<'a>(ordered: &Ordered<'a>) -> Option<&'a str> {
-    let mut inside = ordered.unit.structure_id.as_deref();
+    let mut entered: Option<&'a str> = None;
+    let mut left = false;
     for placed in ordered.intents {
         match &placed.intent {
-            Intent::Enter { structure } => inside = Some(structure.as_str()),
-            Intent::Leave => inside = None,
+            Intent::Enter { structure } => entered = Some(structure.as_str()),
+            Intent::Leave => left = true,
             _ => {}
         }
     }
-    inside
+    match (entered, left) {
+        // An ENTER always wins: the LEAVE ran first, and the unit walked back in.
+        (Some(structure), _) => Some(structure),
+        (None, true) => None,
+        (None, false) => ordered.unit.structure_id.as_deref(),
+    }
 }
 
 /// Whether the unit could be giving the SAIL order for `fleet_id`: standing in it per the report,
@@ -4003,6 +4013,24 @@ mod tests {
         );
     }
 
+    /// LEAVE runs before ENTER, so a builder that does both ends inside and is told.
+    #[test]
+    fn a_builder_that_leaves_and_re_enters_is_told_the_structure_is_finished() {
+        for orders in [
+            "unit 4021\nLEAVE\nENTER 1\nBUILD\n",
+            "unit 4021\nENTER 1\nLEAVE\nBUILD\n",
+        ] {
+            let finding = only(check(
+                vec![ReportRegion {
+                    structures: vec![finished_mill("1")],
+                    ..region(vec![in_structure(unit("4021"), "1")])
+                }],
+                orders,
+            ));
+            assert_eq!(finding.code, codes::ALREADY_BUILT);
+        }
+    }
+
     #[test]
     fn a_builder_that_enters_a_finished_structure_this_month_is_told_so() {
         let finding = only(check(
@@ -4297,9 +4325,10 @@ mod tests {
         );
     }
 
-    /// Last ENTER/LEAVE in document order wins, which is the order the server applies them in.
+    /// Every LEAVE is processed before any ENTER, so a block holding both ends inside the
+    /// structure entered - whichever order the lines were typed in.
     #[test]
-    fn a_mage_that_leaves_and_re_enters_is_judged_on_the_last_order() {
+    fn a_mage_that_leaves_and_re_enters_is_sheltered() {
         let region_with_castle = || ReportRegion {
             structures: vec![finished_of_kind("1", "Castle")],
             ..region(vec![in_structure(mage(2), "1")])
@@ -4313,9 +4342,24 @@ mod tests {
             vec![]
         );
         assert_eq!(
-            only(check(
+            check(
                 vec![region_with_castle()],
                 "unit 5\nENTER 1\nLEAVE\nSTUDY FORC\n"
+            ),
+            vec![]
+        );
+    }
+
+    /// With no ENTER at all, the LEAVEs stand: the mage ends the month outside.
+    #[test]
+    fn a_mage_that_leaves_twice_is_outside() {
+        assert_eq!(
+            only(check(
+                vec![ReportRegion {
+                    structures: vec![finished_of_kind("1", "Castle")],
+                    ..region(vec![in_structure(mage(2), "1")])
+                }],
+                "unit 5\nLEAVE\nLEAVE\nSTUDY FORC\n"
             ))
             .code,
             codes::MAGIC_STUDY_OUTSIDE_BUILDING
@@ -5865,6 +5909,37 @@ mod tests {
                 "unit 11125\nSAIL N\nunit 12590\nLEAVE\n",
             )),
             Vec::<&str>::new()
+        );
+    }
+
+    /// Every LEAVE runs before any ENTER, so a unit that does both is aboard when the fleet sails
+    /// - in either written order.
+    #[test]
+    fn a_unit_that_leaves_and_re_enters_is_aboard() {
+        let region = || ReportRegion {
+            structures: vec![longship("329")],
+            ..region(vec![
+                aboard("11125", "329", 100, 4),
+                aboard("12590", "329", 100, 0),
+            ])
+        };
+
+        // Both aboard is 200 on a capacity of 150; only a unit that really left would silence it.
+        assert_eq!(
+            only(check(
+                vec![region()],
+                "unit 11125\nSAIL N\nunit 12590\nLEAVE\nENTER 329\n",
+            ))
+            .code,
+            codes::FLEET_OVERLOADED
+        );
+        assert_eq!(
+            only(check(
+                vec![region()],
+                "unit 11125\nSAIL N\nunit 12590\nENTER 329\nLEAVE\n",
+            ))
+            .code,
+            codes::FLEET_OVERLOADED
         );
     }
 
