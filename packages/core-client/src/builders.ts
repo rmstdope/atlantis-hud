@@ -21,6 +21,7 @@ import type { ParsedReport } from "./generated/ParsedReport";
 import type { ReportHeaderInfo } from "./generated/ReportHeaderInfo";
 import type { ReportRegion } from "./generated/ReportRegion";
 import type { ReportUnit } from "./generated/ReportUnit";
+import type { TradeRoute, TradedGood } from "./index";
 
 /** The mountain at (7,53) on the surface, where the default unit stands. */
 const DEFAULT_COORDINATE: Coordinate = { x: 7, y: 53, z: 1 };
@@ -140,6 +141,34 @@ export function aBattle(overrides: Partial<Battle> = {}): Battle {
     lineStart: 10,
     lineEnd: 200,
     assassination: false,
+    ...overrides
+  };
+}
+
+/** Chocolate, bought at (49,3) for $95 and sold at (0,48) for $344 — the ah-1j5 mockup's own row. */
+export function aTradedGood(overrides: Partial<TradedGood> = {}): TradedGood {
+  return {
+    tag: "CHOC",
+    name: "chocolate",
+    buyPrice: 95,
+    sellPrice: 344,
+    quantity: 41,
+    margin: 249,
+    buySeenTurn: null,
+    sellSeenTurn: null,
+    ...overrides
+  };
+}
+
+/** The one-way chocolate route from the ah-1j5 mockup: (49,3) → (0,48), worth $10,209. */
+export function aTradeRoute(overrides: Partial<TradeRoute> = {}): TradeRoute {
+  return {
+    from: { x: 49, y: 3, z: 1 },
+    to: { x: 0, y: 48, z: 1 },
+    outbound: [aTradedGood()],
+    inbound: [],
+    worth: 10_209,
+    turns: { walk: 14, ride: 7, fly: 4 },
     ...overrides
   };
 }
