@@ -1058,7 +1058,7 @@ fn report_shortfalls(
                     hex,
                     codes::NOT_ENOUGH_ITEMS,
                     format!(
-                        "short {short} {name}: this unit can have {} and its orders give away or sell {}",
+                        "short {short} {name}: this unit can have {} and its orders spend {}",
                         ordered.holding(tag),
                         ordered.holding(tag) + short,
                     ),
@@ -1092,7 +1092,7 @@ fn report_shortfalls(
         }
 
         // What the pool's members and its borrowers actually hold, so the message can say "they
-        // can have X and their orders spend/give away Y" the way the per-unit one does.
+        // can have X and their orders spend Y" the way the per-unit one does.
         let held: i64 = hex
             .units
             .iter()
@@ -1114,7 +1114,7 @@ fn report_shortfalls(
             let name = item_name(&tag, hex, ruleset);
             format!(
                 "the units in this hex are short {short} {name} between them: they can have \
-                 {held} and their orders give away or sell {}",
+                 {held} and their orders spend {}",
                 held + short,
             )
         };
@@ -3095,7 +3095,7 @@ mod tests {
         assert_eq!(finding.code.as_str(), "not-enough-items");
         assert!(finding.message.contains("sword"), "{}", finding.message);
         assert!(
-            finding.message.contains("give away or sell"),
+            finding.message.contains("spend"),
             "a SELL also charges the item: {}",
             finding.message
         );
@@ -3188,7 +3188,7 @@ mod tests {
         assert_eq!(
             finding.message,
             "the units in this hex are short 10 sword between them: they can have 20 \
-             and their orders give away or sell 30"
+             and their orders spend 30"
         );
     }
 
