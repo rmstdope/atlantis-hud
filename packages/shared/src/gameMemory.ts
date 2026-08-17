@@ -239,9 +239,44 @@ export type MergeOutcome = KnownMemory & {
   merged: MergedReportRecord[];
   /** What the merge itself did, for the status line to report. */
   result: ReportMergeResult;
-  /** Set when the map resolved from the grown memory could not be drawn. */
+  /**
+   * Set when the merge landed but reading back after it did not: the grown memory would not read,
+   * the map resolved from it would not draw, or both. Never says the merge itself failed - that
+   * throws.
+   */
   warning: string | null;
 };
+
+/**
+ * Folds an ally's report into the viewer's map for this turn, and stops there.
+ *
+ * The half of [`mergeTurn`] that writes, split out for the same reason [`commitTurn`] is split out
+ * of [`rememberTurn`]: a batch merges many reports and reads the map back once at the end, so a
+ * read-back per merged step is work thrown away - and a read-back failure after a merge that itself
+ * landed would mark a landed step as failed (review of ah-u4e.3, PR #313).
+ *
+ * Throws when the merge does not land. There is nothing to salvage: a status line saying the merge
+ * worked over a database that was never written would be a lie.
+ */
+export async function commitMerge(
+  client: CoreClient,
+  game: OpenedGame,
+  viewerFactionId: string,
+  viewerTurnNumber: number,
+  rawReport: string,
+  rulesetJson: string | null,
+  now: string
+): Promise<ReportMergeResult> {
+  return client.mergeReport(
+    game.databasePath,
+    game.manifest.metadata.gameId,
+    viewerFactionId,
+    viewerTurnNumber,
+    rawReport,
+    rulesetJson,
+    now
+  );
+}
 
 /**
  * Folds an ally's report for this same turn into the map, without changing whose turn is on screen.
@@ -251,11 +286,13 @@ export type MergeOutcome = KnownMemory & {
  * never looked at. Nothing else about the workspace moves - not the report, not the orders, not
  * the selection - because nothing else about it has changed.
  *
- * Unlike [`rememberTurn`], a failure to merge throws. That function warns because the report it
- * failed to remember is still on screen and still perfectly usable; here there is nothing to
- * salvage, and a status line saying the merge worked over a database that was never written would be
- * a lie. Resolving the map afterwards is not held to that: `viewerRawReport` is the report already on
- * screen, so a failure there is the same kind of warning `readMemory` already makes.
+ * It is the two halves of that operation, and they answer differently. [`commitMerge`] throws when the
+ * merge does not land: there is nothing to salvage, and a status line saying the merge worked over a
+ * database that was never written would be a lie. The read half warns like every other read in this
+ * module - once the merge has landed, a memory or map failure is a warning on a turn that is still
+ * on screen and still correct, not a merge reported as failed after it was written (navigator,
+ * 2026-08-17). `viewerRawReport` is the report already on screen, which is what the map is resolved
+ * against.
  */
 export async function mergeTurn(
   client: CoreClient,
@@ -267,11 +304,9 @@ export async function mergeTurn(
   now: string,
   viewerRawReport: string
 ): Promise<MergeOutcome> {
-  const gameId = game.manifest.metadata.gameId;
-
-  const result = await client.mergeReport(
-    game.databasePath,
-    gameId,
+  const result = await commitMerge(
+    client,
+    game,
     viewerFactionId,
     viewerTurnNumber,
     rawReport,
@@ -279,11 +314,16 @@ export async function mergeTurn(
     now
   );
 
-  const remembered = await client.loadRegionSightings(game.databasePath, gameId, viewerFactionId);
-  const merged = await mergedReportsFor(client, game, viewerFactionId, viewerTurnNumber);
-  const map = await knownMapFor(client, viewerRawReport, rulesetJson, remembered);
+  const memory = await readMemory(
+    client,
+    game,
+    viewerFactionId,
+    viewerTurnNumber,
+    viewerRawReport,
+    rulesetJson
+  );
 
-  return { remembered, knownMap: map.knownMap, merged, result, warning: map.warning };
+  return { ...memory, result };
 }
 
 /** Everything a reopened game needs to put back on screen. */
