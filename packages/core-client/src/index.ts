@@ -368,6 +368,11 @@ export type UnitPreview = {
   arrivingFrom: string | null;
   /** Where a departing unit ends the month, when the trace can say. */
   departingTo: string | null;
+  /**
+   * The fleet carrying this unit away, as `<name> [<id>]`, when it is departing because the ship it
+   * stands in is. Never set on an arriving row: an arrival says only where it came from.
+   */
+  aboard: string | null;
 };
 
 /** Every previewed unit standing in (or bound for) one region. */
