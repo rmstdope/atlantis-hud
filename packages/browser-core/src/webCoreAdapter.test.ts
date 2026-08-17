@@ -6,7 +6,8 @@ import {
   type HexNoteRecord,
   type ImportedTurnSummary,
   type ParsedReport,
-  type ReportParseResult
+  type ReportParseResult,
+  type TradeRoute
 } from "@atlantis/core-client";
 import { createMemoryWebStore, type StoredTurnSnapshot } from "./webStore";
 
@@ -29,6 +30,18 @@ const EMPTY_PARSED_REPORT: ParsedReport = {
   battles: [],
   ordersTemplate: null
 };
+
+/** A single fixed answer `trade_routes_state` hands back, so a test can assert it passed straight through. */
+const FAKE_TRADE_ROUTES: TradeRoute[] = [
+  {
+    from: { x: 1, y: 1, z: 1 },
+    to: { x: 2, y: 2, z: 1 },
+    outbound: [],
+    inbound: [],
+    worth: 3600,
+    turns: { walk: null, ride: null, fly: null }
+  }
+];
 
 /**
  * Stands in for the compiled Rust core.
@@ -97,6 +110,7 @@ function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
       regions: [],
       echoed: { rulesetJson, rawReport, rememberedJson, ordersDocument }
     }),
+    trade_routes_state: () => FAKE_TRADE_ROUTES,
     prepare_report_import_state: (raw: string, confirmedFactionId: string) => {
       const hasTurn = raw.includes("TURN: 12");
       const factionMatches = raw.includes(`FACTION: ${confirmedFactionId}`);
@@ -1078,6 +1092,19 @@ describe("planning a route", () => {
       unitId: "18642",
       destination: "1:7,51"
     });
+  });
+});
+
+describe("finding trade routes", () => {
+  /**
+   * Finding routes is pure, so the adapter has nothing to do but hand back what the core found.
+   */
+  it("resolves to what the core found", async () => {
+    const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
+
+    const routes = await adapter.tradeRoutes("{ruleset}", "{report}", "[remembered]");
+
+    expect(routes).toEqual(FAKE_TRADE_ROUTES);
   });
 });
 

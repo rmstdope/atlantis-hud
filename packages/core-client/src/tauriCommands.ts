@@ -58,6 +58,7 @@ export const TAURI_COMMANDS = {
   exportMap: ["export_map", "raw_report", "remembered_json", "request_json"],
   knownMap: ["known_map", "raw_report", "ruleset_json", "remembered_json"],
   previewOrders: ["preview_orders", "ruleset_json", "raw_report", "remembered_json", "orders_document"],
+  tradeRoutes: ["trade_routes", "ruleset_json", "raw_report", "remembered_json"],
   loadRegionSightings: ["load_region_sightings", "database_path", "game_id", "faction_id"],
   mergeReport: [
     "merge_report",

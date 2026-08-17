@@ -169,6 +169,45 @@ export type HexRisk = {
 /** A route is as dangerous as its worst hex, never an average of them. */
 export type RouteRisk = { level: RiskLevel; worst: HexRisk | null; hexes: HexRisk[] };
 
+/** One good worth carrying from one hex to another. */
+export type TradedGood = {
+  /** The item's tag, as both markets name it. */
+  tag: string;
+  /** The seller's own spelling, which is what the region panel shows. */
+  name: string;
+  buyPrice: number;
+  sellPrice: number;
+  /** The smaller of what the seller has and what the buyer will take. */
+  quantity: number;
+  /** `sellPrice - buyPrice`, per unit. */
+  margin: number;
+  /** The turn each half was last seen in, so a rumour can say so. `null` only when the report
+   * carries no turn number at all. */
+  buySeenTurn: number | null;
+  sellSeenTurn: number | null;
+};
+
+/**
+ * How long the journey takes, in months, for each way of travelling. `null` where the known map
+ * offers that mode no route at all - water for a walker, or a gap in what has been seen.
+ */
+export type TravelTurns = { walk: number | null; ride: number | null; fly: number | null };
+
+/** A pair of hexes worth trading between, and everything worth carrying either way. */
+export type TradeRoute = {
+  /** Where the journey starts: the hex whose outbound leg is worth more. */
+  from: Coordinate;
+  to: Coordinate;
+  /** Goods bought at `from` and sold at `to`. Never empty. */
+  outbound: TradedGood[];
+  /** Goods bought at `to` and sold at `from`. Empty unless the way back also pays, which is what
+   * makes this a circuit rather than a one-way trip. */
+  inbound: TradedGood[];
+  /** Silver earned running the whole thing once: every good on both legs, quantity times margin. */
+  worth: number;
+  turns: TravelTurns;
+};
+
 /**
  * One region the faction saw in an earlier turn.
  *
@@ -501,6 +540,8 @@ export interface CoreAdapter {
     rememberedJson: string,
     ordersDocument: string
   ): Promise<OrdersPreviewResponse>;
+  /** Every trade worth making in the map the faction has seen, best first. */
+  tradeRoutes(rulesetJson: string, rawReport: string, rememberedJson: string): Promise<TradeRoute[]>;
   loadRegionSightings(
     databasePath: string,
     gameId: string,

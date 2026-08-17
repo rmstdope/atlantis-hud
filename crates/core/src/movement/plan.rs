@@ -153,6 +153,56 @@ pub fn plan_route(
         return Err(RouteProblem::AlreadyThere);
     }
 
+    let (steps, months) =
+        route_for_mode(map, ruleset, mode, points_per_month, origin, destination)?;
+    let total_cost = steps.iter().map(|step| step.cost).sum();
+
+    let moves: Vec<MoveStep> = steps
+        .iter()
+        .map(|step| MoveStep::Go(step.direction))
+        .collect();
+    let order = if matches!(mode, MovementMode::Sail) {
+        render_sail(&moves)
+    } else {
+        render_move(&moves)
+    };
+
+    Ok(RoutePlan {
+        from: origin,
+        to: destination,
+        mode,
+        steps,
+        total_cost,
+        months,
+        order,
+    })
+}
+
+/// The cheapest route between two hexes for one way of travelling, and how the months fall.
+///
+/// What [`plan_route`] does once it knows a unit's mode: the two water guards, [`cheapest_path`]
+/// with its [`blocked_by_water`] fallback, [`split_into_months`], and the flight-must-end-on-land
+/// rule. `crate::trade` asks the same question of a hypothetical traveller rather than a unit's
+/// own. Sharing this is what stops the two disagreeing about whether a flier may end a month over
+/// water.
+///
+/// `points_per_month` is taken rather than resolved from `ruleset` here, because a fleet's speed is
+/// not in the ruleset's per-mode table at all - it comes from the fleet itself. A caller asking
+/// about `Walk`, `Ride` or `Fly` passes `ruleset.movement_points(mode)`; `plan_route` passes the
+/// fleet's own resolved speed for `Sail`.
+///
+/// # Errors
+///
+/// Returns a [`RouteProblem`] naming what stopped the route, rather than one it cannot stand
+/// behind.
+pub(crate) fn route_for_mode(
+    map: &MapKnowledge,
+    ruleset: &Ruleset,
+    mode: MovementMode,
+    points_per_month: u32,
+    origin: Coordinate,
+    destination: Coordinate,
+) -> Result<(Vec<RouteStep>, Vec<MonthLeg>), RouteProblem> {
     // Refuse the two cases whose reason is worth naming before searching, so the answer is
     // "that hex is water" rather than the far less useful "no route". An unexplored destination is
     // neither: nothing says it is water, so the route goes and the estimate says what it is worth.
@@ -182,7 +232,6 @@ pub fn plan_route(
         }
         Err(other) => return Err(other),
     };
-    let total_cost = steps.iter().map(|step| step.cost).sum();
     let months = split_into_months(points_per_month, origin, &steps);
 
     // A flying unit that ends a turn over water drowns, so a month may not run out mid-sea. The
@@ -201,25 +250,7 @@ pub fn plan_route(
         }
     }
 
-    let moves: Vec<MoveStep> = steps
-        .iter()
-        .map(|step| MoveStep::Go(step.direction))
-        .collect();
-    let order = if matches!(mode, MovementMode::Sail) {
-        render_sail(&moves)
-    } else {
-        render_move(&moves)
-    };
-
-    Ok(RoutePlan {
-        from: origin,
-        to: destination,
-        mode,
-        steps,
-        total_cost,
-        months,
-        order,
-    })
+    Ok((steps, months))
 }
 
 fn flies(mode: MovementMode) -> bool {

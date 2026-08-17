@@ -111,6 +111,7 @@ function fakeAdapter(overrides: Partial<CoreAdapter> = {}): CoreAdapter {
     exportMap: vi.fn().mockResolvedValue("; Map export from Atlantis HUD\n"),
     knownMap: vi.fn().mockResolvedValue({ hexes: [], levels: [], currentTurn: null }),
     previewOrders: vi.fn().mockResolvedValue({ regions: [] }),
+    tradeRoutes: vi.fn().mockResolvedValue([]),
     loadRegionSightings: vi.fn().mockResolvedValue([]),
     mergeReport: vi.fn().mockResolvedValue({
       turnNumber: 71,
