@@ -5,6 +5,7 @@
 //! what keeps this crate free of file I/O and therefore still able to compile to wasm, and it is
 //! why a value can be corrected without a rebuild.
 
+pub mod fleet;
 pub mod graph;
 pub mod mode;
 pub mod orders;

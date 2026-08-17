@@ -17,6 +17,10 @@ mod common;
 use common::at;
 
 /// Traces one unit's orders over the current report alone.
+///
+/// The core takes the whole orders document rather than one unit's block (ah-048), because a unit
+/// standing aboard a ship writes no order of its own - so these blocks are given the `unit` line
+/// the editor's document always carries.
 fn trace(unit_id: &str, orders: &str) -> MoveOrderTraceResponse {
     trace_orders_for_remembered_report(
         &mut ReportCache::new(),
@@ -24,15 +28,22 @@ fn trace(unit_id: &str, orders: &str) -> MoveOrderTraceResponse {
         TURN_71,
         "[]",
         unit_id,
-        orders,
+        &document(unit_id, orders),
     )
     .expect("the ruleset loads")
+}
+
+/// One unit's block as a document: `unit <id>` and then the orders.
+fn document(unit_id: &str, orders: &str) -> String {
+    format!("unit {unit_id}\n{orders}")
 }
 
 /// "* Seven of Eight (18642)" stands in the mountain at (7,53); "  North : mountain (7,51)".
 #[test]
 fn a_written_move_is_traced_across_the_map() {
-    let path = trace("18642", "MOVE N").path.expect("a traced path");
+    let path = trace("18642", &document("18642", "MOVE N"))
+        .path
+        .expect("a traced path");
 
     assert_eq!(path.from, at(7, 53));
     assert_eq!(path.steps.len(), 1);
@@ -53,7 +64,7 @@ fn a_written_sail_order_traces_over_water() {
         G3_F42_T40,
         "[]",
         "11125",
-        "SAIL S",
+        &document("11125", "SAIL S"),
     )
     .expect("the ruleset loads");
     let path = response.path.expect("a traced path");
@@ -170,7 +181,7 @@ fn an_unusable_ruleset_is_an_error() {
         TURN_71,
         "[]",
         "18642",
-        "MOVE N",
+        &document("18642", &document("18642", "MOVE N")),
     )
     .expect_err("should fail");
     assert!(error.contains("ruleset"), "message was: {error}");
@@ -184,7 +195,7 @@ fn memory_that_cannot_be_read_is_refused_rather_than_ignored() {
         TURN_71,
         "not json",
         "18642",
-        "MOVE N",
+        &document("18642", &document("18642", "MOVE N")),
     )
     .expect_err("should refuse");
     assert!(error.contains("remembered regions"), "message was: {error}");
@@ -196,10 +207,24 @@ fn memory_that_cannot_be_read_is_refused_rather_than_ignored() {
 fn a_second_trace_over_the_same_turn_parses_nothing() {
     let mut cache = ReportCache::new();
 
-    trace_orders_for_remembered_report(&mut cache, RULESET, TURN_71, "[]", "18642", "MOVE N")
-        .expect("the ruleset loads");
-    trace_orders_for_remembered_report(&mut cache, RULESET, TURN_71, "[]", "18642", "MOVE N N")
-        .expect("the ruleset loads");
+    trace_orders_for_remembered_report(
+        &mut cache,
+        RULESET,
+        TURN_71,
+        "[]",
+        "18642",
+        &document("18642", "MOVE N"),
+    )
+    .expect("the ruleset loads");
+    trace_orders_for_remembered_report(
+        &mut cache,
+        RULESET,
+        TURN_71,
+        "[]",
+        "18642",
+        &document("18642", "MOVE N N"),
+    )
+    .expect("the ruleset loads");
 
     assert_ne!(cache.parses(), 0, "the tracer never asked the cache");
     assert_eq!(cache.parses(), 1, "the second trace re-read the report");
@@ -212,7 +237,7 @@ fn a_second_trace_over_the_same_turn_parses_nothing() {
 /// surface as an undefined read in the browser.
 #[test]
 fn the_answer_serializes_the_way_typescript_reads_it() {
-    let answer = trace("18642", "MOVE N N");
+    let answer = trace("18642", &document("18642", "MOVE N N"));
     let json = serde_json::to_value(&answer).expect("serializes");
 
     let path = &json["path"];
@@ -252,7 +277,9 @@ fn an_order_into_the_sea_says_where_the_doubt_starts() {
 fn an_order_into_unexplored_country_is_drawn_to_its_end() {
     // (7,53)'s north neighbour (7,51) is known by name only, so its own exits are unknown and the
     // second step must be extrapolated.
-    let path = trace("18642", "MOVE N N").path.expect("a traced path");
+    let path = trace("18642", &document("18642", "MOVE N N"))
+        .path
+        .expect("a traced path");
 
     assert_eq!(
         path.steps.iter().map(|step| step.to).collect::<Vec<_>>(),

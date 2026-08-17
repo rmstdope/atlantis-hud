@@ -63,7 +63,7 @@ export const TAURI_COMMANDS = {
     "unit_id"
   ],
   planRoute: ["plan_route", "ruleset_json", "raw_report", "remembered_json", "unit_id", "destination"],
-  traceMoveOrders: ["trace_move_orders", "ruleset_json", "raw_report", "remembered_json", "unit_id", "orders"],
+  traceMoveOrders: ["trace_move_orders", "ruleset_json", "raw_report", "remembered_json", "unit_id", "orders_document"],
   exportMap: ["export_map", "raw_report", "remembered_json", "request_json"],
   knownMap: ["known_map", "raw_report", "ruleset_json", "remembered_json"],
   previewOrders: ["preview_orders", "ruleset_json", "raw_report", "remembered_json", "orders_document"],
