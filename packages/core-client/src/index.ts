@@ -71,6 +71,14 @@ export type GameMetadata = {
    * one it wants rather than a copy of it.
    */
   rulesetId: string;
+  /**
+   * Which faction in this game is the player's, if one has been chosen yet.
+   *
+   * Optional rather than `string | null` because it is genuinely absent on a game created before
+   * this field existed: the browser stores the manifest object as it stands, so an old record has
+   * no such key at all.
+   */
+  activeFactionId?: string | null;
 };
 
 export type ReportSourceRef = {
@@ -487,6 +495,7 @@ export interface CoreAdapter {
   importGame(backupJson: string, openedAt: string): Promise<OpenedGame>;
   setGameRuleset(gameId: string, rulesetId: string): Promise<GameManifest>;
   setGameName(gameId: string, gameName: string): Promise<GameManifest>;
+  setActiveFaction(gameId: string, factionId: string): Promise<GameManifest>;
   parseReport(rawReport: string): Promise<ReportParseResult>;
   parseReportFull(rawReport: string): Promise<ParsedReport>;
   parseReportClassified(rawReport: string, rulesetJson: string): Promise<ParsedReport>;

@@ -70,6 +70,7 @@ export const SWEEP: SweepEntry[] = [
   { command: "import_game", args: () => ({ backup_json: "{}", opened_at: ISO }) },
   { command: "set_game_ruleset", args: () => ({ game_id: GAME_ID, ruleset_id: "neworigins" }) },
   { command: "set_game_name", args: () => ({ game_id: GAME_ID, game_name: "Binding sweep" }) },
+  { command: "set_active_faction", args: () => ({ game_id: GAME_ID, faction_id: "95" }) },
   { command: "parse_report", args: () => ({ raw_report: REPORT }) },
   { command: "parse_report_full", args: () => ({ raw_report: REPORT }) },
   {

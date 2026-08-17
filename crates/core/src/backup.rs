@@ -26,6 +26,12 @@ pub struct GameMetadata {
     /// records which one it wants and nothing more. Storing the whole ruleset here would freeze a
     /// scrape into every game and make correcting a movement value a data migration.
     pub ruleset_id: String,
+    /// Which faction in this game is the player's, or `None` for a game that has never had a report
+    /// imported - and for every game written before this field existed, whose manifest simply has no
+    /// such key. Set only when the player says so at an import (ah-do8.3); read when the game is
+    /// reopened (ah-do8.2).
+    #[serde(default)]
+    pub active_faction_id: Option<String>,
 }
 
 /// Logical report source stored in the game manifest and database.
@@ -425,6 +431,7 @@ mod tests {
                 game_id: "g1".to_string(),
                 game_name: "Game One".to_string(),
                 ruleset_id: "newOrigins".to_string(),
+                active_faction_id: None,
             },
             report_sources: vec![],
             created_at: "2026-01-01T00:00:00Z".to_string(),
@@ -621,6 +628,37 @@ mod tests {
         let decoded = decode_game_backup(&encoded, "2026-02-01T00:00:00Z").expect("decodes");
 
         assert_eq!(decoded.manifest.last_opened_at, "2026-02-01T00:00:00Z");
+    }
+
+    #[test]
+    fn a_manifest_metadata_without_an_active_faction_reads_as_none() {
+        let metadata: GameMetadata = serde_json::from_str(
+            "{\"gameId\":\"g\",\"gameName\":\"G\",\"rulesetId\":\"neworigins\"}",
+        )
+        .expect("a manifest written before this field still loads");
+
+        assert_eq!(metadata.active_faction_id, None);
+    }
+
+    #[test]
+    fn an_active_faction_survives_the_backup_round_trip() {
+        let mut content = content_with(vec![], vec![], vec![], vec![], vec![]);
+        content.manifest.metadata.active_faction_id = Some("95".to_string());
+        let encoded = encode_game_backup(content, "2026-01-03T00:00:00Z").expect("encodes");
+
+        let decoded = decode_game_backup(&encoded, "2026-02-01T00:00:00Z").expect("decodes");
+
+        assert_eq!(
+            decoded.manifest.metadata.active_faction_id,
+            Some("95".to_string())
+        );
+
+        let unset = content_with(vec![], vec![], vec![], vec![], vec![]);
+        let encoded = encode_game_backup(unset, "2026-01-03T00:00:00Z").expect("encodes");
+
+        let decoded = decode_game_backup(&encoded, "2026-02-01T00:00:00Z").expect("decodes");
+
+        assert_eq!(decoded.manifest.metadata.active_faction_id, None);
     }
 
     #[test]
