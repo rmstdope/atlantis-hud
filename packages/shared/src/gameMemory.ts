@@ -239,7 +239,11 @@ export type MergeOutcome = KnownMemory & {
   merged: MergedReportRecord[];
   /** What the merge itself did, for the status line to report. */
   result: ReportMergeResult;
-  /** Set when the map resolved from the grown memory could not be drawn. */
+  /**
+   * Set when the merge landed but reading back after it did not: the grown memory would not read,
+   * the map resolved from it would not draw, or both. Never says the merge itself failed - that
+   * throws.
+   */
   warning: string | null;
 };
 
