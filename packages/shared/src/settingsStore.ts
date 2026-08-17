@@ -19,6 +19,9 @@ export type ThemeName = "dark" | "light";
 /** How see-through the floating panes start out: enough map underneath to navigate by. */
 export const DEFAULT_PANE_TRANSPARENCY = 90;
 
+/** The Interface size setting's default, as a percentage. 100 means the panes are as designed. */
+export const DEFAULT_INTERFACE_SIZE = 100;
+
 /** Whether each advisory order-check code is allowed to run at all, by code. */
 export type AdvisoryChecks = Record<AdvisoryCheckCode, boolean>;
 
@@ -68,6 +71,11 @@ export type SettingsState = {
    */
   paneTransparency: number;
   /**
+   * How much bigger the panes' type is than designed, as a percentage. The map is not on this
+   * scale and never moves with it.
+   */
+  interfaceSize: number;
+  /**
    * Whether each advisory order-check code is allowed to run at all - the Warnings settings tab.
    *
    * Off means the core does not produce that finding, at all: counts, chip, panels and editor
@@ -99,6 +107,7 @@ export type SettingsState = {
   setMapTheme: (id: string) => void;
   setBiomeTextures: (enabled: boolean) => void;
   setPaneTransparency: (percent: number) => void;
+  setInterfaceSize: (percent: number) => void;
   setAdvisoryCheck: (code: AdvisoryCheckCode, enabled: boolean) => void;
   setMovementPlanner: (enabled: boolean) => void;
   setShowShortcutsAtStartup: (enabled: boolean) => void;
@@ -113,6 +122,7 @@ type Persisted = Pick<
   | "mapTheme"
   | "biomeTextures"
   | "paneTransparency"
+  | "interfaceSize"
   | "advisoryChecks"
   | "movementPlanner"
   | "showShortcutsAtStartup"
@@ -169,6 +179,27 @@ function applyPaneTransparency(percent: number) {
 }
 
 /**
+ * 100% to 200%, in steps of 25. Rounded to a step rather than merely bounded, so a hand-edited
+ * localStorage value or an older payload cannot land the slider between its stops.
+ */
+function clampInterfaceSize(percent: number): number {
+  const numeric = Number(percent);
+  if (!Number.isFinite(numeric)) {
+    return DEFAULT_INTERFACE_SIZE;
+  }
+  const stepped = Math.round(numeric / 25) * 25;
+  return Math.min(200, Math.max(100, stepped));
+}
+
+/** Stamps the multiplier the pane type scale is expressed against. See `theme.css`'s `--ui-scale`. */
+function applyInterfaceSize(percent: number) {
+  if (typeof document === "undefined") {
+    return;
+  }
+  document.documentElement.style.setProperty("--ui-scale", String(percent / 100));
+}
+
+/**
  * Storage that degrades to nothing when there is none.
  *
  * The store is also constructed under Node, where `localStorage` does not exist, and a store that
@@ -210,6 +241,7 @@ const DEFAULTS: Persisted = {
   mapTheme: DEFAULT_MAP_THEME_ID,
   biomeTextures: true,
   paneTransparency: DEFAULT_PANE_TRANSPARENCY,
+  interfaceSize: DEFAULT_INTERFACE_SIZE,
   advisoryChecks: DEFAULT_ADVISORY_CHECKS,
   movementPlanner: false,
   showShortcutsAtStartup: true,
@@ -238,6 +270,12 @@ export const useSettingsStore = create<SettingsState>()(
         const clamped = clampTransparency(percent);
         applyPaneTransparency(clamped);
         set({ paneTransparency: clamped });
+      },
+
+      setInterfaceSize: (percent) => {
+        const clamped = clampInterfaceSize(percent);
+        applyInterfaceSize(clamped);
+        set({ interfaceSize: clamped });
       },
 
       setAdvisoryCheck: (code, enabled) => {
@@ -278,6 +316,7 @@ export const useSettingsStore = create<SettingsState>()(
         mapTheme: state.mapTheme,
         biomeTextures: state.biomeTextures,
         paneTransparency: state.paneTransparency,
+        interfaceSize: state.interfaceSize,
         advisoryChecks: state.advisoryChecks,
         movementPlanner: state.movementPlanner,
         showShortcutsAtStartup: state.showShortcutsAtStartup,
@@ -300,6 +339,10 @@ export function applyPersistedSettings() {
   const transparency = clampTransparency(useSettingsStore.getState().paneTransparency);
   useSettingsStore.setState({ paneTransparency: transparency });
   applyPaneTransparency(transparency);
+  // Same reconciliation for the Interface size setting.
+  const interfaceSize = clampInterfaceSize(useSettingsStore.getState().interfaceSize);
+  useSettingsStore.setState({ interfaceSize });
+  applyInterfaceSize(interfaceSize);
   // Same door again: a blob naming a theme this build never had would otherwise leave the map
   // with nothing to draw with.
   useSettingsStore.setState({
@@ -340,4 +383,5 @@ export function resetSettingsStore() {
   useSettingsStore.setState({ ...DEFAULTS });
   applyTheme(DEFAULTS.theme);
   applyPaneTransparency(DEFAULTS.paneTransparency);
+  applyInterfaceSize(DEFAULTS.interfaceSize);
 }

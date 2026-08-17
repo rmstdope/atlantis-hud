@@ -252,6 +252,70 @@ async function openReport(page: Page) {
   await expect(load).toBeEnabled();
 }
 
+/**
+ * ah-46p.2: the Interface size setting scales the panes' type (and, with it, the units dock's row
+ * height) without ever touching the map - full-page zoom already scales both, and that unhelpful
+ * trade is the reason this setting exists.
+ */
+test("the panes grow when the interface size does", async ({ page }) => {
+  await clearGames(page);
+  await createGame(page, "Settings game");
+  await openReport(page);
+
+  await page.getByRole("button", { name: "hex 1:7,53" }).click();
+
+  const pane = page.getByTestId("app-header");
+  const mapLabel = page.locator(".region-name").first();
+  const row = page.locator('[data-testid^="unit-row-"]').first();
+
+  const paneSizeBefore = await pane.evaluate(
+    (element) => Number.parseFloat(getComputedStyle(element).fontSize)
+  );
+  const mapSizeBefore = await mapLabel.evaluate(
+    (element) => Number.parseFloat(getComputedStyle(element).fontSize)
+  );
+  const rowHeightBefore = (await row.boundingBox())!.height;
+
+  await page.getByTestId("settings-indicator").click();
+  const slider = page.getByTestId("settings-interface-size");
+  await expect(slider).toHaveValue("100");
+  await expect(slider).toHaveAttribute("min", "100");
+  await expect(slider).toHaveAttribute("max", "200");
+  await slider.fill("200");
+  await page.keyboard.press("Escape");
+
+  const paneSizeAfter = await pane.evaluate(
+    (element) => Number.parseFloat(getComputedStyle(element).fontSize)
+  );
+  const mapSizeAfter = await mapLabel.evaluate(
+    (element) => Number.parseFloat(getComputedStyle(element).fontSize)
+  );
+  const rowHeightAfter = (await row.boundingBox())!.height;
+
+  // The panes double...
+  expect(paneSizeAfter).toBeCloseTo(paneSizeBefore * 2, 1);
+  // ...the map does not move at all...
+  expect(mapSizeAfter).toBeCloseTo(mapSizeBefore, 1);
+  // ...and the units dock's rows grow with the type, so nothing there clips.
+  expect(rowHeightAfter).toBeCloseTo(rowHeightBefore * 2, 0);
+  const overflow = await row.evaluate(
+    (element) => element.scrollHeight > element.clientHeight
+  );
+  expect(overflow).toBe(false);
+
+  // A preference, not a session choice: it holds across a reload.
+  await page.reload();
+  const rowAfterReload = page.locator('[data-testid^="unit-row-"]').first();
+  await expect(rowAfterReload).toBeVisible();
+  const rowHeightAfterReload = (await rowAfterReload.boundingBox())!.height;
+  expect(rowHeightAfterReload).toBeCloseTo(rowHeightBefore * 2, 0);
+
+  // Back to the default, so later tests inherit the look they expect.
+  await page.getByTestId("settings-indicator").click();
+  await page.getByTestId("settings-interface-size").fill("100");
+  await page.keyboard.press("Escape");
+});
+
 test("the settings dialog has no units-in-hex row controls", async ({ page }) => {
   await clearGames(page);
   await createGame(page, "No stepper game");

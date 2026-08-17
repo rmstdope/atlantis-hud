@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_SORT,
   filterUnits,
+  rowHeightAt,
   sortUnits,
   windowRange,
   type SortState
@@ -77,6 +78,21 @@ describe("windowRange", () => {
    */
   it("still renders a row when the viewport has not been measured yet", () => {
     expect(windowRange(0, 0, 20, 50, 0)).toEqual({ start: 0, end: 1 });
+  });
+});
+
+describe("rowHeightAt", () => {
+  // Rounded, deliberately: the windowing arithmetic divides scroll offsets by this, and a
+  // fractional height (e.g. 22 * 1.25 = 27.5) makes the first visible row drift from the one the
+  // scroller is actually showing.
+  it.each([
+    [100, 22],
+    [125, 28],
+    [150, 33],
+    [175, 39],
+    [200, 44]
+  ])("rounds the row height at %i%% to %i px", (interfaceSize, expected) => {
+    expect(rowHeightAt(interfaceSize)).toBe(expected);
   });
 });
 
