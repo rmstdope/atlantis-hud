@@ -78,13 +78,14 @@ pub mod codes {
     pub const FLEET_OVERLOADED: Code = Code("fleet-overloaded");
     pub const FLEET_UNDERCREWED: Code = Code("fleet-undercrewed");
     pub const GIVE_TARGET_NOT_HERE: Code = Code("give-target-not-here");
+    pub const NOT_TRADED_HERE: Code = Code("not-traded-here");
     /// Every code. This array's own order is not the settings tab's grouping (that groups by
-    /// concern - Teaching / Resources / Guarding / Orders / Sailing - not by this list), but a new
-    /// entry still goes last: the generated TypeScript copies this order. Until
+    /// concern - Teaching / Resources / Markets / Guarding / Orders / Sailing - not by this list),
+    /// but a new entry still goes last: the generated TypeScript copies this order. Until
     /// `give-target-not-here` every entry had also been last in its tab group; that one joins the
     /// existing *Orders* group instead, so the two orders are no longer in step and nothing depends
     /// on their being so.
-    pub const ALL: [Code; 13] = [
+    pub const ALL: [Code; 14] = [
         NOT_ENOUGH_SILVER,
         NOT_ENOUGH_ITEMS,
         GUARD_DROPPED,
@@ -98,6 +99,7 @@ pub mod codes {
         FLEET_OVERLOADED,
         FLEET_UNDERCREWED,
         GIVE_TARGET_NOT_HERE,
+        NOT_TRADED_HERE,
     ];
 }
 
@@ -195,6 +197,7 @@ pub fn check_turn(
         let start = findings.len();
         let ledger = ledger_for(&hex, ruleset);
         check_resources(&hex, &ledger, ruleset, &options, &mut findings);
+        check_markets(&hex, ruleset, &options, &mut findings);
         check_guard(&hex, &options, &mut findings);
         check_teaching(&hex, ruleset, &options, &mut findings);
         check_forms(&hex, &options, &mut findings);
@@ -449,6 +452,78 @@ fn check_resources(
     report_shortfalls(ledger, hex, ruleset, options, findings);
 }
 
+// --- markets: a BUY or SELL naming what this hex does not trade --------------------------------
+
+/// Every BUY against the hex's `For Sale` list, and every SELL against its `Wanted` list: is the
+/// item one this market actually trades? A separate pass rather than a hook inside `buy`/`sell`
+/// (`ah-d8u`) - those build the ledger and have nothing to push a [`Finding`] to, and threading one
+/// through would entangle pricing with reporting.
+fn check_markets(
+    hex: &Hex<'_>,
+    ruleset: Option<&Ruleset>,
+    options: &CheckOptions,
+    findings: &mut Vec<Finding>,
+) {
+    if !options.emits(codes::NOT_TRADED_HERE) {
+        return;
+    }
+
+    for ordered in &hex.units {
+        for placed in ordered.intents {
+            let (lines, item, verb, empty_message) = match &placed.intent {
+                Intent::Buy { item, .. } => (
+                    &hex.region.for_sale,
+                    item,
+                    "sell",
+                    "this hex sells nothing at all",
+                ),
+                Intent::Sell { item, .. } => (
+                    &hex.region.wanted,
+                    item,
+                    "want",
+                    "this hex wants nothing at all",
+                ),
+                _ => continue,
+            };
+
+            let MarketAnswer::NotTraded(tag) = market_answer(lines, item, hex, ordered, ruleset)
+            else {
+                continue;
+            };
+
+            let message = if lines.is_empty() {
+                empty_message.to_string()
+            } else {
+                let name = item_name(&tag, hex, ruleset);
+                let has_or_wants = if verb == "sell" { "has" } else { "wants" };
+                format!(
+                    "this hex does not {verb} {name} — its market {has_or_wants} {}",
+                    market_list(lines)
+                )
+            };
+
+            findings.push(ordered.finding(hex, codes::NOT_TRADED_HERE, message, Some(placed)));
+        }
+    }
+}
+
+/// A market's own lines, in the report's order and the report's own spelling, joined for a
+/// message: `"perfume, gems and hill dwarves"`, or just `"perfume"` for a single line.
+fn market_list(lines: &[MarketItem]) -> String {
+    match lines {
+        [] => String::new(),
+        [only] => only.name.clone(),
+        [rest @ .., last] => {
+            let rest = rest
+                .iter()
+                .map(|line| line.name.as_str())
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("{rest} and {}", last.name)
+        }
+    }
+}
+
 /// Applies one order to the ledger.
 fn apply(
     ledger: &mut Ledger<'_>,
@@ -671,6 +746,47 @@ fn study(
     }
 }
 
+/// What the hex's market says about an item an order names.
+#[derive(Debug, PartialEq, Eq)]
+enum MarketAnswer<'a> {
+    /// The market trades it, on this line.
+    Offered(&'a MarketItem),
+    /// The item was identified and this market does not trade it. Carries the canonical tag, so
+    /// a message can name the item the way the catalogue does rather than the way it was typed.
+    NotTraded(String),
+    /// Nothing could say what item this is - not the catalogue, not the inventories in the hex,
+    /// not the market lines. Saying "this hex does not sell it" would be inventing the "it".
+    Unknown,
+}
+
+/// The market line for an item, matched the same way an order's item argument is, and saying
+/// which kind of no it is when there is no line.
+fn market_answer<'a>(
+    lines: &'a [MarketItem],
+    text: &str,
+    hex: &Hex<'_>,
+    actor: &Ordered<'_>,
+    ruleset: Option<&Ruleset>,
+) -> MarketAnswer<'a> {
+    let Some(tag) = resolve_item(text, hex, actor, ruleset).or_else(|| {
+        // A market line is itself a naming of the item, so it can settle a name no catalogue does.
+        lines
+            .iter()
+            .find(|line| names_the_same_item(text, &line.tag, &line.name))
+            .map(|line| line.tag.to_ascii_uppercase())
+    }) else {
+        return MarketAnswer::Unknown;
+    };
+
+    match lines
+        .iter()
+        .find(|line| line.tag.eq_ignore_ascii_case(&tag))
+    {
+        Some(line) => MarketAnswer::Offered(line),
+        None => MarketAnswer::NotTraded(tag),
+    }
+}
+
 /// The market line for an item, matched the same way an order's item argument is.
 fn market<'a>(
     lines: &'a [MarketItem],
@@ -679,17 +795,10 @@ fn market<'a>(
     actor: &Ordered<'_>,
     ruleset: Option<&Ruleset>,
 ) -> Option<&'a MarketItem> {
-    let tag = resolve_item(text, hex, actor, ruleset).or_else(|| {
-        // A market line is itself a naming of the item, so it can settle a name no catalogue does.
-        lines
-            .iter()
-            .find(|line| names_the_same_item(text, &line.tag, &line.name))
-            .map(|line| line.tag.to_ascii_uppercase())
-    })?;
-
-    lines
-        .iter()
-        .find(|line| line.tag.eq_ignore_ascii_case(&tag))
+    match market_answer(lines, text, hex, actor, ruleset) {
+        MarketAnswer::Offered(line) => Some(line),
+        MarketAnswer::NotTraded(_) | MarketAnswer::Unknown => None,
+    }
 }
 
 /// The canonical tag for an item an order names.
@@ -2031,13 +2140,17 @@ mod tests {
     }
 
     /// The catalogue knows what a horse is; this hex is simply not selling any. Without a price
-    /// there is no sum, and without a sum there is nothing to be short of.
+    /// there is no sum, and without a sum there is nothing to be short of. `not-traded-here` is
+    /// disabled here because it now fires on this same order (`ah-d8u`); this test is about the
+    /// pricing/doubted behaviour, not the new warning, which has its own tests below.
     #[test]
     fn a_purchase_the_hex_does_not_offer_is_not_priced_and_not_judged() {
         assert_eq!(
-            check(
-                vec![region(vec![with_silver(unit("5"), 0)])],
-                "unit 5\nBUY 5 horses\n"
+            check_turn(
+                &report(vec![region(vec![with_silver(unit("5"), 0)])]),
+                "unit 5\nBUY 5 horses\n",
+                Some(&ruleset()),
+                disabling(codes::NOT_TRADED_HERE),
             ),
             vec![],
             "the market has no price for it, so there is no sum to check"
@@ -2281,6 +2394,252 @@ mod tests {
             assert!(finding.unit_id.is_some());
             assert!(finding.line.is_some());
         }
+    }
+
+    // --- markets: telling the two silences apart ------------------------------------------
+
+    #[test]
+    fn an_item_the_market_does_not_trade_is_named() {
+        let mut hex_region = region(vec![unit("5")]);
+        hex_region.for_sale.push(MarketItem {
+            amount: 10,
+            name: "perfume".to_string(),
+            tag: "PERF".to_string(),
+            price: 30,
+        });
+        let ordered = OrderedUnits::read("unit 5\nBUY 5 horses\n");
+        let hex = Hex::read(&hex_region, &ordered);
+        let actor = hex.find("5").expect("unit 5 is in the hex");
+
+        assert_eq!(
+            market_answer(
+                &hex.region.for_sale,
+                "horses",
+                &hex,
+                actor,
+                Some(&ruleset())
+            ),
+            MarketAnswer::NotTraded("HORS".to_string()),
+            "the catalogue knows a horse; this market simply does not sell one"
+        );
+    }
+
+    #[test]
+    fn an_item_nothing_can_identify_is_unknown() {
+        let hex_region = region(vec![unit("5")]);
+        let ordered = OrderedUnits::read("unit 5\nBUY 5 wodgets\n");
+        let hex = Hex::read(&hex_region, &ordered);
+        let actor = hex.find("5").expect("unit 5 is in the hex");
+
+        assert_eq!(
+            market_answer(
+                &hex.region.for_sale,
+                "wodgets",
+                &hex,
+                actor,
+                Some(&ruleset())
+            ),
+            MarketAnswer::Unknown,
+            "nothing - not the catalogue, not the hex's inventories, not the market lines - can \
+             say what a wodget is"
+        );
+    }
+
+    #[test]
+    fn a_purchase_the_hex_does_not_sell_warns() {
+        let mut hex = region(vec![unit("5")]);
+        hex.for_sale.push(MarketItem {
+            amount: 10,
+            name: "perfume".to_string(),
+            tag: "PERF".to_string(),
+            price: 30,
+        });
+        hex.for_sale.push(MarketItem {
+            amount: 5,
+            name: "gems".to_string(),
+            tag: "GEMS".to_string(),
+            price: 40,
+        });
+
+        let finding = only(check(vec![hex], "unit 5\nBUY 5 silk\n"));
+        assert_eq!(finding.code.as_str(), "not-traded-here");
+        assert_eq!(
+            finding.message,
+            "this hex does not sell silk — its market has perfume and gems"
+        );
+    }
+
+    #[test]
+    fn a_sale_the_hex_does_not_want_warns() {
+        let mut hex = region(vec![unit("5")]);
+        hex.wanted.push(MarketItem {
+            amount: 10,
+            name: "grain".to_string(),
+            tag: "GRAI".to_string(),
+            price: 3,
+        });
+        hex.wanted.push(MarketItem {
+            amount: 10,
+            name: "livestock".to_string(),
+            tag: "LIVE".to_string(),
+            price: 5,
+        });
+
+        let finding = only(check(vec![hex], "unit 5\nSELL 3 fur\n"));
+        assert_eq!(finding.code.as_str(), "not-traded-here");
+        assert_eq!(
+            finding.message,
+            "this hex does not want fur — its market wants grain and livestock"
+        );
+    }
+
+    #[test]
+    fn one_good_needs_no_list_punctuation() {
+        let mut hex = region(vec![unit("5")]);
+        hex.for_sale.push(MarketItem {
+            amount: 10,
+            name: "perfume".to_string(),
+            tag: "PERF".to_string(),
+            price: 30,
+        });
+
+        let finding = only(check(vec![hex], "unit 5\nBUY 5 silk\n"));
+        assert_eq!(
+            finding.message,
+            "this hex does not sell silk — its market has perfume"
+        );
+    }
+
+    #[test]
+    fn a_hex_with_no_market_says_so() {
+        let hex = region(vec![unit("5")]);
+
+        let finding = only(check(vec![hex], "unit 5\nBUY 5 silk\n"));
+        assert_eq!(finding.message, "this hex sells nothing at all");
+    }
+
+    #[test]
+    fn a_hex_wanting_nothing_says_so() {
+        let hex = region(vec![unit("5")]);
+
+        let finding = only(check(vec![hex], "unit 5\nSELL 3 fur\n"));
+        assert_eq!(finding.message, "this hex wants nothing at all");
+    }
+
+    #[test]
+    fn an_unidentifiable_item_stays_silent() {
+        let mut hex = region(vec![unit("5")]);
+        hex.for_sale.push(MarketItem {
+            amount: 10,
+            name: "perfume".to_string(),
+            tag: "PERF".to_string(),
+            price: 30,
+        });
+
+        assert_eq!(
+            codes(&check(vec![hex], "unit 5\nBUY 5 wodgets\n")),
+            Vec::<&str>::new(),
+            "nothing can identify a wodget, so nothing is said about it"
+        );
+    }
+
+    #[test]
+    fn an_item_the_market_does_trade_stays_silent() {
+        let mut hex = region(vec![with_silver(unit("5"), 1000)]);
+        hex.for_sale.push(MarketItem {
+            amount: 10,
+            name: "perfume".to_string(),
+            tag: "PERF".to_string(),
+            price: 30,
+        });
+
+        assert_eq!(
+            codes(&check(vec![hex], "unit 5\nBUY 5 PERF\n")),
+            Vec::<&str>::new()
+        );
+    }
+
+    #[test]
+    fn the_market_s_own_spelling_is_used() {
+        let mut hex = region(vec![unit("5")]);
+        hex.wanted.push(MarketItem {
+            amount: 10,
+            name: "hill dwarves".to_string(),
+            tag: "HDWA".to_string(),
+            price: 30,
+        });
+
+        let finding = only(check(vec![hex], "unit 5\nSELL 3 fur\n"));
+        assert!(
+            finding.message.contains("hill dwarves"),
+            "the report's own plural, not the catalogue's singular: {}",
+            finding.message
+        );
+    }
+
+    #[test]
+    fn a_foreign_unit_is_not_warned_about_a_market_it_cannot_use() {
+        let mut theirs = unit("900");
+        theirs.own = false;
+        theirs.faction_id = Some("15".to_string());
+        let mut hex = region(vec![theirs]);
+        hex.for_sale.push(MarketItem {
+            amount: 10,
+            name: "perfume".to_string(),
+            tag: "PERF".to_string(),
+            price: 30,
+        });
+
+        assert_eq!(
+            check(vec![hex], "unit 900\nBUY 5 silk\n"),
+            vec![],
+            "you cannot order it, so a warning about it is noise"
+        );
+    }
+
+    /// Real market lines, not hand-made ones: Inholm `(7,53)` sells `PERF, GEM, HDWA, LEAD` and
+    /// wants nine goods, exactly as the committed turn-71 fixture report writes them.
+    #[test]
+    fn a_fixture_hex_names_what_it_actually_sells_and_wants() {
+        let report = crate::report::parse_report_full(atlantis_hud_fixtures::G7_F95_T71.text);
+
+        let findings = check_turn(
+            &report,
+            "unit 18642\nBUY 5 SILK\nSELL ALL FUR\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        let messages: Vec<&str> = findings
+            .iter()
+            .filter(|finding| finding.code.as_str() == "not-traded-here")
+            .map(|finding| finding.message.as_str())
+            .collect();
+        assert_eq!(
+            messages,
+            vec![
+                "this hex does not sell silk — its market has perfume, gems, hill dwarves and \
+                 leaders",
+                "this hex does not want fur — its market wants grain, livestock, fish, spears, \
+                 leather armor, spinning wheels, lassoes, jewelry and truffles",
+            ]
+        );
+    }
+
+    #[test]
+    fn the_not_traded_finding_sits_on_the_order_line() {
+        let mut hex = region(vec![unit("5")]);
+        hex.for_sale.push(MarketItem {
+            amount: 10,
+            name: "perfume".to_string(),
+            tag: "PERF".to_string(),
+            price: 30,
+        });
+
+        let finding = only(check(vec![hex], "unit 5\nBUY 5 silk\n"));
+        assert_eq!(finding.region_id, "1:7,53");
+        assert_eq!(finding.unit_id.as_deref(), Some("5"));
+        assert_eq!(finding.line, Some(2), "the BUY line, not the unit header");
     }
 
     // --- guarding ---------------------------------------------------------------------------
@@ -3008,6 +3367,11 @@ mod tests {
                 codes::GIVE_TARGET_NOT_HERE,
                 vec![region(vec![with_silver(unit("5"), 1000)])],
                 "unit 5\nGIVE 16585 500 SILV\n",
+            ),
+            (
+                codes::NOT_TRADED_HERE,
+                vec![region(vec![unit("5")])],
+                "unit 5\nBUY 5 silk\n",
             ),
         ];
 
