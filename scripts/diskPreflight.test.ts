@@ -91,6 +91,14 @@ describe("describeReclaimable", () => {
   it("says nothing when there is nothing to reclaim", () => {
     expect(describeReclaimable([])).toBeNull();
   });
+
+  it("never rounds the reclaimable total up into overstating what is there", () => {
+    // Same rule describeSpace already applies to free space: 6.36 rounded to "6.4 GB" promises
+    // more than is actually reclaimable.
+    const said = describeReclaimable([{ path: "/repo/target", sizeGb: 6.36 }]);
+    expect(said).toContain("6.3 GB");
+    expect(said).not.toContain("6.4 GB");
+  });
 });
 
 describe("describeSpace with build trees to report", () => {

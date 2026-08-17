@@ -6,9 +6,10 @@
  * fix code that was never wrong. This is written from experience: the disk reached 100% capacity
  * with 2.0 GiB free, while three worktrees each kept a build tree of their own.
  *
- * The remedy for the cause is `.cargo/config.toml`, which gives every worktree one shared build
- * directory. This is the guard for what remains - the tree still grows, and a machine can fill up
- * for reasons that have nothing to do with this repository.
+ * `.cargo/config.toml` is tracked, so every worktree builds into its own `target/` rather than a
+ * shared one (see that file's own comment for why that is the deliberate choice). This is the guard
+ * for what remains - each tree still grows, several exist at once, and a machine can fill up for
+ * reasons that have nothing to do with this repository besides.
  */
 
 import { execFileSync } from "node:child_process";
@@ -83,7 +84,10 @@ export function describeReclaimable(trees: BuildTree[]): string | null {
     return null;
   }
 
-  const totalGb = Math.round(trees.reduce((sum, tree) => sum + tree.sizeGb, 0) * 10) / 10;
+  // Truncated, like describeSpace's free-space figure: rounding 6.36 up to "6.4 GB" promises more
+  // than is actually there, the same overstatement describeSpace's own comment already refuses to
+  // make about free space.
+  const totalGb = Math.floor(trees.reduce((sum, tree) => sum + tree.sizeGb, 0) * 10) / 10;
   const noun = trees.length === 1 ? "build tree" : "build trees";
 
   return `${totalGb} GB sits in ${trees.length} ${noun}; .claude/cerebro/scripts/prune-worktrees.sh reclaims what is safe.`;
