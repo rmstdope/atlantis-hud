@@ -166,7 +166,11 @@ fn completions_for(
             Arg::Skill if skills.is_empty() => {
                 skills = ruleset
                     .map(|ruleset| {
-                        skill_completions(ruleset, located(report, unit_id).map(|(_, unit)| unit))
+                        skill_completions(
+                            order,
+                            ruleset,
+                            located(report, unit_id).map(|(_, unit)| unit),
+                        )
                     })
                     .unwrap_or_default();
             }
@@ -323,9 +327,15 @@ fn catalogue_completions(ruleset: &Ruleset) -> Vec<OrderCompletion> {
         .collect()
 }
 
-/// What an `Arg::Skill` position offers: the skills this unit could actually study, tag order.
+/// What an `Arg::Skill` position offers, by the order it belongs to - tag order throughout.
 ///
-/// Two filters, and they are the two the ruleset can support:
+/// **Only `STUDY` narrows.** `Arg::Skill` also stands in `CAST`, `COMBAT`, `FORGET` and
+/// `SHOW SKILL`, and every filter below is about what can be *learned*: forgetting a maxed skill is
+/// exactly what `FORGET` is for, and `SHOW SKILL` is a question about the catalogue rather than
+/// about this unit. Narrowing those would hide legitimate orders, so they keep the whole list. This
+/// is `item_completions`' shape one function along: the order decides.
+///
+/// For `STUDY`, two filters, and they are the two the ruleset can support:
 ///
 /// - a skill the data page prices nowhere cannot be studied by ordinary means (`SkillEntry::cost`
 ///   says so in its own doc), so it is never an answer to `STUDY`;
@@ -342,11 +352,20 @@ fn catalogue_completions(ruleset: &Ruleset) -> Vec<OrderCompletion> {
 /// filter applies: an unstudiable skill is unstudiable for everybody, and the second has nothing to
 /// compare against. That keeps the answer sensible rather than empty, which the signature promises
 /// (only the presence of a ruleset widens it).
-fn skill_completions(ruleset: &Ruleset, unit: Option<&ReportUnit>) -> Vec<OrderCompletion> {
+fn skill_completions(
+    order: &'static Order,
+    ruleset: &Ruleset,
+    unit: Option<&ReportUnit>,
+) -> Vec<OrderCompletion> {
+    let studying = order.name == "STUDY";
+    // Nothing is known about the unit's standing where the order does not care about it, which is
+    // what keeps `detail` unchanged for the other four as well as the list itself.
+    let unit = if studying { unit } else { None };
+
     ruleset
         .skills
         .values()
-        .filter(|skill| skill.cost.is_some())
+        .filter(|skill| !studying || skill.cost.is_some())
         .filter(|skill| level_of(unit, skill).is_none_or(|level| level < skill.max_level))
         .map(|skill| OrderCompletion {
             value: skill.tag.clone(),
@@ -369,7 +388,8 @@ fn level_of(unit: Option<&ReportUnit>, skill: &SkillEntry) -> Option<u32> {
 /// `combat · 45 silver · at 3`, and `combat · 45 silver` for a skill the unit has never studied -
 /// absence is the message, and a placeholder on ninety rows says nothing ninety times.
 ///
-/// `cost` is `Some` by the time this runs: `skill_completions` has already dropped the others.
+/// An unpriced skill shows its name alone, as it always has - `STUDY` never reaches one, having
+/// dropped it, but the other four orders do offer it.
 fn detail_for(skill: &SkillEntry, level: Option<u32>) -> String {
     let mut detail = skill.name.clone();
     if let Some(cost) = skill.cost {
@@ -681,6 +701,36 @@ mod tests {
                 .any(|entry| entry.value == "COMB"),
             "the report's case and the ruleset's differ; the level is still found"
         );
+    }
+
+    #[test]
+    fn only_study_narrows_the_skill_list() {
+        // `Arg::Skill` also stands in CAST, COMBAT, FORGET and SHOW SKILL, and every filter here is
+        // about what can be learned. Forgetting a maxed skill is what FORGET is for.
+        let ruleset = ruleset();
+        let combat = ruleset.skills.get("COMB").expect("combat is a skill");
+        let report = studier(vec![skill_at("COMB", combat.max_level)]);
+        let whole_list = ruleset.skills.len();
+
+        for prefix in ["FORGET ", "CAST ", "COMBAT ", "SHOW SKILL "] {
+            let offered =
+                order_argument_completions(prefix, Some(&ruleset), Some(&report), Some("1"));
+            let skills: Vec<&OrderCompletion> = offered
+                .iter()
+                .filter(|entry| ruleset.skills.contains_key(&entry.value))
+                .collect();
+
+            assert_eq!(skills.len(), whole_list, "{prefix} keeps the whole list");
+            let combat_entry = skills
+                .iter()
+                .find(|entry| entry.value == "COMB")
+                .unwrap_or_else(|| panic!("{prefix} still offers a maxed skill"));
+            assert_eq!(
+                combat_entry.detail,
+                format!("combat · {} silver", combat.cost.expect("combat is priced")),
+                "{prefix} says nothing about the unit's own standing"
+            );
+        }
     }
 
     #[test]
