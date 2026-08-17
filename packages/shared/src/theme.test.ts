@@ -167,7 +167,10 @@ describe("pane type scale", () => {
         const path = join(dir, entry.name);
         if (entry.isDirectory()) {
           visit(path);
-        } else if (/\.tsx?$/.test(entry.name) && !entry.name.endsWith(".test.ts")) {
+          // Test files are excluded (both `.test.ts` and `.test.tsx`): fixture markup in a test can
+          // legitimately use an arbitrary pixel value that has nothing to do with pane type, and
+          // this guard is about production sources.
+        } else if (/\.tsx?$/.test(entry.name) && !/\.test\.tsx?$/.test(entry.name)) {
           const contents = readFileSync(path, "utf8");
           if (/text-\[[\d.]+px\]/.test(contents) || /fontSize:\s*["'][\d.]+px["']/.test(contents)) {
             offenders.push(path.slice(root.length));
