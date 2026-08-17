@@ -185,6 +185,10 @@ test("Mod+/ shows how to get around, with the mouse as well as the keyboard", as
  */
 test("the map really answers the gestures the overlay describes", async ({ page }) => {
   await loadReport(page);
+  // The turn-71 report carries one finding of its own (ah-1uj), so the header's problems chip is
+  // never absent for this fixture - wait for it before measuring the map, or a late-mounting chip
+  // can shift the layout under a corner coordinate captured too early.
+  await expect(page.getByTestId("problems-chip")).toBeVisible();
   const map = page.getByTestId("map-canvas");
   const box = await map.boundingBox();
   if (!box) {
