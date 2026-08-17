@@ -18,7 +18,12 @@ import {
   clampUnitsHeight,
   type RailSide
 } from "./workspace/panelLayout";
-import { columnWidthsFromStorage, type ColumnWidths } from "./unitTable";
+import {
+  columnOrderFromStorage,
+  columnWidthsFromStorage,
+  type ColumnOrder,
+  type ColumnWidths
+} from "./unitTable";
 import {
   mapViewCommitted,
   mapViewOpened,
@@ -106,6 +111,10 @@ export type WorkspaceState = {
    * `DEFAULT_COLUMN_WIDTH_PX` (`unitTable.ts`) through `widthOf`.
    */
   unitColumnWidthsPx: ColumnWidths | null;
+  /** The units-in-hex table's dragged column order - `null` means the shipped order,
+   *  `UNIT_COLUMNS` itself. Same posture as `unitColumnWidthsPx`, a separate preference: resizing
+   *  a column never implies reordering it, and the reverse. */
+  unitColumnOrder: ColumnOrder | null;
   layers: Record<LayerName, boolean>;
   /** Which marks the map draws over its terrain. */
   badges: Record<BadgeName, boolean>;
@@ -170,6 +179,11 @@ export type WorkspaceState = {
   setUnitColumnWidths: (widths: ColumnWidths) => void;
   /** Drops every stored column width, the way a rail's width resets on double-click. */
   resetUnitColumnWidths: () => void;
+  /** Overwrites the whole column order in one commit - unlike widths, a reorder always resolves
+   *  every column's position at once (`dragColumnOrder` returns a full order, not a pair). */
+  setUnitColumnOrder: (order: ColumnOrder) => void;
+  /** Drops the stored order, back to the shipped `UNIT_COLUMNS` sequence. */
+  resetUnitColumnOrder: () => void;
   toggleLayer: (layer: LayerName) => void;
   toggleBadge: (badge: BadgeName) => void;
   /** Shows or hides the region panel's Problems section. */
@@ -273,6 +287,7 @@ type Persisted = Pick<
   | "leftRailWidthRem"
   | "rightRailWidthRem"
   | "unitColumnWidthsPx"
+  | "unitColumnOrder"
   | "layers"
   | "badges"
   | "regionProblemsShown"
@@ -292,6 +307,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       leftRailWidthRem: null,
       rightRailWidthRem: null,
       unitColumnWidthsPx: null,
+      unitColumnOrder: null,
       layers: INITIAL_LAYERS,
       badges: allBadges(true),
       regionProblemsShown: true,
@@ -386,6 +402,10 @@ export const useWorkspaceStore = create<WorkspaceState>()(
 
       resetUnitColumnWidths: () => set(() => ({ unitColumnWidthsPx: null })),
 
+      setUnitColumnOrder: (order) => set(() => ({ unitColumnOrder: order })),
+
+      resetUnitColumnOrder: () => set(() => ({ unitColumnOrder: null })),
+
       toggleLayer: (layer) =>
         set((state) => ({
           layers: { ...state.layers, [layer]: !state.layers[layer] }
@@ -419,6 +439,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         leftRailWidthRem: state.leftRailWidthRem,
         rightRailWidthRem: state.rightRailWidthRem,
         unitColumnWidthsPx: state.unitColumnWidthsPx,
+        unitColumnOrder: state.unitColumnOrder,
         layers: state.layers,
         badges: state.badges,
         regionProblemsShown: state.regionProblemsShown
@@ -443,6 +464,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           // Not a boolean record, so `reconcile` does not apply - `columnWidthsFromStorage` is
           // its column-width equivalent, dropping unknown columns and any width below the floor.
           unitColumnWidthsPx: emptyToNull(columnWidthsFromStorage(stored.unitColumnWidthsPx ?? {})),
+          unitColumnOrder: columnOrderFromStorage(stored.unitColumnOrder),
           layers: reconcile(INITIAL_LAYERS, stored.layers ?? {}),
           badges: badgesFromStorage(stored.badges ?? {}),
           // Not a record, so `reconcile` does not apply: a missing or malformed key must read
@@ -471,6 +493,7 @@ export function resetWorkspaceStore() {
     leftRailWidthRem: null,
     rightRailWidthRem: null,
     unitColumnWidthsPx: null,
+    unitColumnOrder: null,
     layers: INITIAL_LAYERS,
     badges: allBadges(true),
     regionProblemsShown: true,

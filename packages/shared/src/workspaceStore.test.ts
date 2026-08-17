@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { BADGES } from "./workspace/mapThemes/hexView";
+import { UNIT_COLUMNS, type ColumnOrder } from "./unitTable";
 import { badgesFromStorage, resetWorkspaceStore, useWorkspaceStore } from "./workspaceStore";
 
 const store = () => useWorkspaceStore.getState();
@@ -663,6 +664,80 @@ describe("the units table's stored column widths", () => {
     expect(store().unitColumnWidthsPx).toEqual({ name: 240 });
     store().closeGame();
     expect(store().unitColumnWidthsPx).toEqual({ name: 240 });
+  });
+});
+
+describe("the units table's stored column order", () => {
+  beforeEach(resetWorkspaceStore);
+
+  const custom: ColumnOrder = [
+    "own",
+    "name",
+    "unitId",
+    "faction",
+    "men",
+    "skills",
+    "items",
+    "structure",
+    "longOrder"
+  ];
+
+  it("starts out null, meaning the shipped UNIT_COLUMNS order", () => {
+    expect(store().unitColumnOrder).toBeNull();
+  });
+
+  it("remembers a reorder across a reload", async () => {
+    store().setUnitColumnOrder(custom);
+    expect(store().unitColumnOrder).toEqual(custom);
+
+    const options = useWorkspaceStore.persist.getOptions();
+    const raw = await options.storage?.getItem(options.name ?? "atlantis-hud-workspace");
+    const persisted = (raw as { state?: Record<string, unknown> } | null)?.state ?? {};
+    expect(persisted.unitColumnOrder).toEqual(custom);
+
+    const merge = options.merge;
+    const merged = merge?.(persisted, store()) as ReturnType<typeof store> | undefined;
+    expect(merged?.unitColumnOrder).toEqual(custom);
+  });
+
+  it("replaces the whole order in one commit, not a merge", () => {
+    store().setUnitColumnOrder(custom);
+    store().setUnitColumnOrder([...UNIT_COLUMNS]);
+    expect(store().unitColumnOrder).toEqual([...UNIT_COLUMNS]);
+  });
+
+  it("reconciles a corrupt stored order to null rather than trusting it", () => {
+    const merge = useWorkspaceStore.persist.getOptions().merge;
+    const merged = merge?.(
+      { unitColumnOrder: ["own", "own", "phantom"] },
+      store()
+    ) as ReturnType<typeof store> | undefined;
+    expect(merged?.unitColumnOrder).toBeNull();
+  });
+
+  it("resets to the shipped order", () => {
+    store().setUnitColumnOrder(custom);
+    store().resetUnitColumnOrder();
+    expect(store().unitColumnOrder).toBeNull();
+  });
+
+  it("is cleared by resetWorkspaceStore", () => {
+    store().setUnitColumnOrder(custom);
+    resetWorkspaceStore();
+    expect(store().unitColumnOrder).toBeNull();
+  });
+
+  it("survives opening a game and changing level - a layout preference outlives the game", () => {
+    store().setUnitColumnOrder(custom);
+    store().openGame(
+      { gameId: "g1", gameName: "Spring campaign", databasePath: "idb://g1", rulesetId: "neworigins" },
+      null
+    );
+    expect(store().unitColumnOrder).toEqual(custom);
+    store().setLevel(1);
+    expect(store().unitColumnOrder).toEqual(custom);
+    store().closeGame();
+    expect(store().unitColumnOrder).toEqual(custom);
   });
 });
 

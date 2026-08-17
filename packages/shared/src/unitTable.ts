@@ -171,7 +171,8 @@ export const UNIT_COLUMNS = [
   "men",
   "skills",
   "items",
-  "structure"
+  "structure",
+  "longOrder"
 ] as const;
 
 export type UnitColumn = (typeof UNIT_COLUMNS)[number];
@@ -187,7 +188,8 @@ export const DEFAULT_COLUMN_WIDTH_PX: Record<UnitColumn, number> = {
   men: 56,
   skills: 220,
   items: 220,
-  structure: 72
+  structure: 72,
+  longOrder: 140
 };
 
 export type ColumnWidths = Partial<Record<UnitColumn, number>>;
@@ -242,4 +244,94 @@ export function dragColumnBoundary(
   const raw = leftStart + deltaPx;
   const left = clamp(raw, lowest, highest);
   return { left, right: total - left, atLimit: left !== raw };
+}
+
+/**
+ * The order columns are drawn in, left to right - a separate preference from `ColumnWidths`, so a
+ * player who has only resized never has an order stored, and one who has only reordered never has
+ * widths stored. `null` means "the shipped order", `UNIT_COLUMNS` itself.
+ */
+export type ColumnOrder = UnitColumn[];
+
+/** The order to draw columns in: the stored preference if there is one, otherwise the shipped
+ *  default - the order equivalent of `widthOf`. */
+export function orderOf(order: ColumnOrder | null): ColumnOrder {
+  return order ?? [...UNIT_COLUMNS];
+}
+
+/**
+ * A stored order, reconciled against the columns this build knows - `columnWidthsFromStorage`'s
+ * counterpart for order rather than width. Anything wrong with it - a column missing, one this
+ * build no longer has, a duplicate, the wrong length - and the whole thing is rejected rather than
+ * patched: a partial reorder is not obviously better than the shipped order, and guessing where a
+ * missing column belongs is worse than just starting over from the default.
+ */
+export function columnOrderFromStorage(stored: unknown): ColumnOrder | null {
+  if (!Array.isArray(stored)) {
+    return null;
+  }
+  if (stored.length !== UNIT_COLUMNS.length) {
+    return null;
+  }
+  const known = new Set<string>(UNIT_COLUMNS);
+  const seen = new Set<string>();
+  for (const entry of stored) {
+    if (typeof entry !== "string" || !known.has(entry) || seen.has(entry)) {
+      return null;
+    }
+    seen.add(entry);
+  }
+  return stored as ColumnOrder;
+}
+
+/** `own` never moves - too narrow to carry a grip, and the natural leftmost spot for a marker
+ *  column anyway. Every other column can trade places with any other. */
+export const REORDERABLE_COLUMNS = UNIT_COLUMNS.filter((column) => column !== "own");
+
+/**
+ * Resolves a drag-to-reorder gesture: given the current order, the column being dragged, and how
+ * far the pointer has moved (in pixels, positive rightward) since the drag started, returns the
+ * order after every adjacent swap that distance was enough to cross.
+ *
+ * Threshold to swap with a neighbour is that neighbour's own width - drag the column being moved
+ * past the whole of the next one over, in either direction, and the two trade places, the same way
+ * dragging a card past its neighbour in a sortable list swaps them. `own` is never a neighbour to
+ * swap with, since it never moves; a drag that reaches it simply stops one short.
+ */
+export function dragColumnOrder(
+  order: ColumnOrder,
+  dragged: UnitColumn,
+  deltaPx: number,
+  widths: ColumnWidths | null
+): ColumnOrder {
+  const next = [...order];
+  let index = next.indexOf(dragged);
+  if (index === -1 || dragged === "own") {
+    return next;
+  }
+  let remaining = deltaPx;
+
+  while (remaining > 0 && index < next.length - 1 && next[index + 1] !== "own") {
+    const neighbour = next[index + 1];
+    const threshold = widthOf(neighbour, widths);
+    if (remaining < threshold) {
+      break;
+    }
+    [next[index], next[index + 1]] = [next[index + 1], next[index]];
+    remaining -= threshold;
+    index += 1;
+  }
+
+  while (remaining < 0 && index > 0 && next[index - 1] !== "own") {
+    const neighbour = next[index - 1];
+    const threshold = widthOf(neighbour, widths);
+    if (-remaining < threshold) {
+      break;
+    }
+    [next[index], next[index - 1]] = [next[index - 1], next[index]];
+    remaining += threshold;
+    index -= 1;
+  }
+
+  return next;
 }

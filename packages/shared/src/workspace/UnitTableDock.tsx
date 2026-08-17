@@ -1,5 +1,6 @@
 import type { RegionPreview, ReportUnit } from "@atlantis/core-client";
 import {
+  Fragment,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -17,10 +18,12 @@ import {
   DEFAULT_SORT,
   UNIT_COLUMNS,
   filterUnits,
+  orderOf,
   rowHeightAt,
   sortUnits,
   widthOf,
   windowRange,
+  type ColumnOrder,
   type ColumnWidths,
   type SortColumn,
   type SortState,
@@ -31,6 +34,7 @@ import { HOVER_DELAY_MS, type Point } from "../unitTooltip";
 import { useSettingsStore } from "../settingsStore";
 import { useWorkspaceStore } from "../workspaceStore";
 import { CollapsiblePanel } from "./CollapsiblePanel";
+import { ColumnReorderHandle, isReorderable, type ColumnReorderHandleProps } from "./ColumnReorderHandle";
 import { ColumnSplitter } from "./ColumnSplitter";
 import { Absent } from "./primitives";
 import { UnitTooltip } from "./UnitTooltip";
@@ -38,8 +42,9 @@ import { UnitTooltip } from "./UnitTooltip";
 /** Rows built beyond each edge of the viewport, so a flick of the wheel does not show a gap. */
 const OVERSCAN = 6;
 
-/** The table has eight columns; spacer rows span all of them. */
-const COLUMNS = 8;
+/** The spacer rows span every column there currently is - always `UNIT_COLUMNS.length`, kept as
+ *  its own constant so a colSpan literal never has to be counted and updated by hand. */
+const COLUMNS = UNIT_COLUMNS.length;
 
 /**
  * Every unit in the selected hex, as a table, with one selectable.
@@ -55,11 +60,15 @@ const COLUMNS = 8;
  */
 export function UnitTableDock({
   hex,
-  preview = null
+  preview = null,
+  getLongOrder
 }: {
   hex: HexNode | null;
   /** The hex's slice of the orders preview, so rows show the coming month. */
   preview?: RegionPreview | null;
+  /** This unit's own current month-long order, for the Long order column - see `UnitRow`'s own
+   *  doc comment on the prop of the same name. */
+  getLongOrder?: (unitId: string) => string | null;
 }) {
   const selectedUnitId = useWorkspaceStore((state) => state.selectedUnitId);
   const selectUnit = useWorkspaceStore((state) => state.selectUnit);
@@ -67,6 +76,9 @@ export function UnitTableDock({
   const rowHeight = rowHeightAt(interfaceSize);
   const columnWidths = useWorkspaceStore((state) => state.unitColumnWidthsPx);
   const setUnitColumnWidths = useWorkspaceStore((state) => state.setUnitColumnWidths);
+  const unitColumnOrder = useWorkspaceStore((state) => state.unitColumnOrder);
+  const setUnitColumnOrder = useWorkspaceStore((state) => state.setUnitColumnOrder);
+  const order = useMemo(() => orderOf(unitColumnOrder), [unitColumnOrder]);
   // One `<col>` per column, keyed by name rather than index so a splitter never has to translate
   // between "the fifth column" and what it actually resizes. Mid-drag, `ColumnSplitter` writes
   // straight to these nodes' `style.width` the same way `RailSplitter` writes to the rail's - see
@@ -334,7 +346,7 @@ export function UnitTableDock({
             aria-rowcount={visible.length + 1}
           >
             <colgroup>
-              {UNIT_COLUMNS.map((column) => (
+              {order.map((column) => (
                 <col
                   key={column}
                   ref={(el) => {
@@ -347,66 +359,34 @@ export function UnitTableDock({
             <thead ref={setHead}>
               {/* Indexed like the rows below it: if some rows carry a position, all of them must. */}
               <tr aria-rowindex={1} className="text-pane-sm uppercase tracking-[0.06em] text-ink-soft">
-                <Th>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setSort((current) => ({
-                        ...current,
-                        groupOwnFirst: !current.groupOwnFirst
-                      }))
-                    }
-                    aria-pressed={sort.groupOwnFirst}
-                    aria-label="Group own units first"
-                    className={`w-full text-left focus-visible:outline focus-visible:outline-1 focus-visible:outline-brass ${
-                      sort.groupOwnFirst ? "text-ok" : "text-ink-dim"
-                    }`}
-                  >
-                    *
-                  </button>
-                </Th>
-                <SortableTh
-                  label="Id"
-                  column="unitId"
-                  sort={sort}
-                  onSort={sortByColumn}
-                  resize={{ left: "unitId", right: "name", columns: colRefs, widths: columnWidths, onCommit: setUnitColumnWidths }}
-                />
-                <SortableTh
-                  label="Unit"
-                  column="name"
-                  sort={sort}
-                  onSort={sortByColumn}
-                  resize={{ left: "name", right: "faction", columns: colRefs, widths: columnWidths, onCommit: setUnitColumnWidths }}
-                />
-                <SortableTh
-                  label="Faction"
-                  column="faction"
-                  sort={sort}
-                  onSort={sortByColumn}
-                  resize={{ left: "faction", right: "men", columns: colRefs, widths: columnWidths, onCommit: setUnitColumnWidths }}
-                />
-                <SortableTh
-                  label="Men"
-                  column="men"
-                  sort={sort}
-                  onSort={sortByColumn}
-                  resize={{ left: "men", right: "skills", columns: colRefs, widths: columnWidths, onCommit: setUnitColumnWidths }}
-                />
-                {/* Skills and Items are comma-joined summaries; ordering them alphabetically
-                    would sort on the first skill that happened to be listed. */}
-                <Th resize={{ left: "skills", right: "items", columns: colRefs, widths: columnWidths, onCommit: setUnitColumnWidths }}>
-                  Skills
-                </Th>
-                <Th resize={{ left: "items", right: "structure", columns: colRefs, widths: columnWidths, onCommit: setUnitColumnWidths }}>
-                  Items
-                </Th>
-                <SortableTh
-                  label="Structure"
-                  column="structure"
-                  sort={sort}
-                  onSort={sortByColumn}
-                />
+                {order.map((column, columnIndex) => {
+                  const rightNeighbour = order[columnIndex + 1];
+                  const resize = rightNeighbour
+                    ? {
+                        left: column,
+                        right: rightNeighbour,
+                        columns: colRefs,
+                        widths: columnWidths,
+                        onCommit: setUnitColumnWidths
+                      }
+                    : undefined;
+                  const reorder = isReorderable(column)
+                    ? { column, order, widths: columnWidths, onCommit: setUnitColumnOrder }
+                    : undefined;
+                  return (
+                    <ColumnHeaderCell
+                      key={column}
+                      column={column}
+                      sort={sort}
+                      onSort={sortByColumn}
+                      onToggleGroupOwn={() =>
+                        setSort((current) => ({ ...current, groupOwnFirst: !current.groupOwnFirst }))
+                      }
+                      resize={resize}
+                      reorder={reorder}
+                    />
+                  );
+                })}
               </tr>
             </thead>
             <tbody>
@@ -425,6 +405,8 @@ export function UnitTableDock({
                     pointerAt.current = point;
                   }}
                   onPointerGone={forgetHover}
+                  getLongOrder={getLongOrder}
+                  order={order}
                 />
               ))}
               <Spacer rows={visible.length - end} rowHeight={rowHeight} />
@@ -463,13 +445,94 @@ type ColumnResize = {
   onCommit: (widths: ColumnWidths) => void;
 };
 
+/** Column labels for the headers that are not "own" (a bare `*`) or already spelled out inline. */
+const COLUMN_LABELS: Partial<Record<UnitColumn, string>> = {
+  unitId: "Id",
+  name: "Unit",
+  faction: "Faction",
+  men: "Men",
+  skills: "Skills",
+  items: "Items",
+  structure: "Structure",
+  longOrder: "Long order"
+};
+
+const SORTABLE_COLUMNS: ReadonlySet<UnitColumn> = new Set<UnitColumn>([
+  "unitId",
+  "name",
+  "faction",
+  "men",
+  "structure"
+]);
+
+/**
+ * Dispatches one column to the header cell it needs: the "own" toggle button, a sortable column,
+ * or a plain label. The one place that knows all three shapes, so the header row above can just
+ * map over the live order without caring which kind each entry turns out to be.
+ */
+function ColumnHeaderCell({
+  column,
+  sort,
+  onSort,
+  onToggleGroupOwn,
+  resize,
+  reorder
+}: {
+  column: UnitColumn;
+  sort: SortState;
+  onSort: (column: SortColumn) => void;
+  onToggleGroupOwn: () => void;
+  resize?: ColumnResize;
+  reorder?: ColumnReorderHandleProps;
+}) {
+  if (column === "own") {
+    return (
+      <Th resize={resize}>
+        <button
+          type="button"
+          onClick={onToggleGroupOwn}
+          aria-pressed={sort.groupOwnFirst}
+          aria-label="Group own units first"
+          className={`w-full text-left focus-visible:outline focus-visible:outline-1 focus-visible:outline-brass ${
+            sort.groupOwnFirst ? "text-ok" : "text-ink-dim"
+          }`}
+        >
+          *
+        </button>
+      </Th>
+    );
+  }
+  if (SORTABLE_COLUMNS.has(column)) {
+    return (
+      <SortableTh
+        label={COLUMN_LABELS[column] ?? column}
+        column={column as SortColumn}
+        sort={sort}
+        onSort={onSort}
+        resize={resize}
+        reorder={reorder}
+      />
+    );
+  }
+  // Skills and Items are comma-joined summaries; ordering them alphabetically would sort on the
+  // first skill that happened to be listed, so - like Long order - neither carries a sort, just
+  // a label.
+  return (
+    <Th resize={resize} reorder={reorder}>
+      {COLUMN_LABELS[column] ?? column}
+    </Th>
+  );
+}
+
 function Th({
   children,
-  resize
+  resize,
+  reorder
 }: {
   children?: ReactNode;
   /** Present on every header but the last: that column has nothing on its right to trade with. */
   resize?: ColumnResize;
+  reorder?: ColumnReorderHandleProps;
 }) {
   return (
     // `relative` so the splitter, absolutely positioned, anchors to this header rather than the
@@ -477,7 +540,10 @@ function Th({
     // reason: the panel behind is translucent over the map, and a see-through header would show
     // the rows sliding under it.
     <th className="sticky top-0 z-10 border-b border-edge bg-panel px-2 py-1 text-left font-medium relative">
-      {children}
+      <div className="flex items-center gap-1">
+        {reorder ? <ColumnReorderHandle {...reorder} /> : null}
+        <span className="min-w-0 flex-1 truncate">{children}</span>
+      </div>
       {resize ? <ColumnSplitter {...resize} /> : null}
     </th>
   );
@@ -488,13 +554,15 @@ function SortableTh({
   column,
   sort,
   onSort,
-  resize
+  resize,
+  reorder
 }: {
   label: string;
   column: SortColumn;
   sort: SortState;
   onSort: (column: SortColumn) => void;
   resize?: ColumnResize;
+  reorder?: ColumnReorderHandleProps;
 }) {
   const active = sort.column === column;
   return (
@@ -502,18 +570,21 @@ function SortableTh({
       aria-sort={active ? (sort.direction === "asc" ? "ascending" : "descending") : "none"}
       className="sticky top-0 z-10 border-b border-edge bg-panel px-2 py-1 text-left font-medium relative"
     >
-      <button
-        type="button"
-        onClick={() => onSort(column)}
-        className={`flex w-full items-center gap-1 uppercase tracking-[0.06em] focus-visible:outline focus-visible:outline-1 focus-visible:outline-brass ${
-          active ? "text-brass" : ""
-        }`}
-      >
-        {label}
-        <span aria-hidden className={active ? "text-brass" : "text-ink-dim"}>
-          {active ? (sort.direction === "asc" ? "▲" : "▼") : "↕"}
-        </span>
-      </button>
+      <div className="flex items-center gap-1">
+        {reorder ? <ColumnReorderHandle {...reorder} /> : null}
+        <button
+          type="button"
+          onClick={() => onSort(column)}
+          className={`flex min-w-0 flex-1 items-center gap-1 uppercase tracking-[0.06em] focus-visible:outline focus-visible:outline-1 focus-visible:outline-brass ${
+            active ? "text-brass" : ""
+          }`}
+        >
+          {label}
+          <span aria-hidden className={active ? "text-brass" : "text-ink-dim"}>
+            {active ? (sort.direction === "asc" ? "▲" : "▼") : "↕"}
+          </span>
+        </button>
+      </div>
       {resize ? <ColumnSplitter {...resize} /> : null}
     </th>
   );
@@ -531,7 +602,9 @@ function UnitRow({
   onKeyDown,
   onPointerRest,
   onPointerAt,
-  onPointerGone
+  onPointerGone,
+  getLongOrder,
+  order
 }: {
   unit: PreviewedUnit;
   index: number;
@@ -544,6 +617,12 @@ function UnitRow({
   /** Where the pointer is now, so the summary opens where the user stopped looking. */
   onPointerAt: (point: Point) => void;
   onPointerGone: () => void;
+  /** This unit's own month-long order (see `longOrderOf`, `ordersDocument.ts`), or null when it
+   *  has none - absent entirely for a unit that is not this faction's own, since there is nothing
+   *  here to read the orders of. */
+  getLongOrder?: (unitId: string) => string | null;
+  /** The live column order, so the row draws its cells in the same sequence the header does. */
+  order: ColumnOrder;
 }) {
   const skills = unit.skills.map((skill) => `${skill.tag} ${skill.level}`).join(", ");
   const items = unit.items.map((item) => `${item.amount} ${item.tag}`).join(", ");
@@ -556,6 +635,89 @@ function UnitRow({
   const structureChange = changeFor(unit, "structureId");
   // A row that is somewhere else next month reads dimmed; its marker says where it went.
   const departing = unit.previewStatus === "departing";
+  const longOrder = unit.own ? (getLongOrder?.(unit.unitId) ?? null) : null;
+
+  // One cell per column, keyed by name rather than position - the row's own counterpart to the
+  // header's ColumnHeaderCell dispatch, so reordering the columns never means reordering this
+  // function's own logic, only the sequence `order` is read back in below.
+  const cellsByColumn: Record<UnitColumn, ReactNode> = {
+    // The report's own ownership marker, so the distinction reads before the faction name does.
+    own: <Td className={unit.own ? "text-ok" : "text-danger"}>{unit.own ? "*" : "−"}</Td>,
+    unitId: (
+      <Td className={unit.own ? "text-select" : "text-unit-foreign/70"}>
+        <button
+          type="button"
+          onClick={onSelect}
+          aria-label={`unit ${unit.unitId}`}
+          tabIndex={-1}
+          className="focus-visible:outline focus-visible:outline-1 focus-visible:outline-select"
+        >
+          {unit.unitId}
+        </button>
+      </Td>
+    ),
+    name: (
+      <Td className="truncate">
+        <span
+          className={nameChange ? PREDICTED : undefined}
+          data-predicted={nameChange ? "true" : undefined}
+          title={originalTooltip(nameChange)}
+        >
+          {unit.name}
+        </span>
+        {unit.onGuard ? (
+          <span
+            className={`ml-1.5 text-[10px] text-warn${guardChange ? " italic" : ""}`}
+            data-predicted={guardChange ? "true" : undefined}
+            title={originalTooltip(guardChange)}
+          >
+            on guard
+          </span>
+        ) : null}
+        {/* Where the unit is bound or from, said inline: the row is the story of a move. */}
+        {departing && unit.departingTo ? (
+          <span className="ml-1.5 text-[10px] text-ink-dim">→ {unit.departingTo}</span>
+        ) : null}
+        {departing && !unit.departingTo ? (
+          <span className="ml-1.5 text-[10px] text-ink-dim">→ …</span>
+        ) : null}
+        {unit.previewStatus === "arriving" ? (
+          <span className={`ml-1.5 text-[10px] ${PREDICTED}`}>← {unit.arrivingFrom ?? "…"}</span>
+        ) : null}
+        {unit.previewStatus === "formed" ? (
+          <span className={`ml-1.5 text-[10px] ${PREDICTED}`}>new</span>
+        ) : null}
+      </Td>
+    ),
+    faction: (
+      <Td className="truncate">
+        {unit.factionName ? `${unit.factionName} (${unit.factionId})` : "—"}
+      </Td>
+    ),
+    // A tilde marks a count the parser guessed at; the unit panel spells out why. A count the
+    // orders changed explains itself with the report's figure instead.
+    men: (
+      <Td className={menChange ? PREDICTED : ""} title={originalTooltip(menChange) ?? whyEstimated(unit)}>
+        {describeMenBriefly(unit)}
+      </Td>
+    ),
+    skills: <Td className="truncate">{skills}</Td>,
+    items: (
+      <Td className={`truncate${itemsChange ? ` ${PREDICTED}` : ""}`} title={originalTooltip(itemsChange)}>
+        {items}
+      </Td>
+    ),
+    structure: (
+      <Td className={structureChange ? PREDICTED : ""} title={originalTooltip(structureChange)}>
+        {unit.structureId ? `[${unit.structureId}]` : ""}
+      </Td>
+    ),
+    longOrder: (
+      <Td className="truncate" title={longOrder ?? undefined}>
+        {unit.own ? (longOrder ?? <span className="text-danger">—</span>) : ""}
+      </Td>
+    )
+  };
 
   return (
     <tr
@@ -591,74 +753,9 @@ function UnitRow({
         selected ? "bg-select/25 text-ink" : unit.own ? "text-ink" : "text-ink-soft"
       }${departing ? " opacity-60" : ""}`}
     >
-      {/* The report's own ownership marker, so the distinction reads before the faction name does. */}
-      <Td className={unit.own ? "text-ok" : "text-danger"}>{unit.own ? "*" : "−"}</Td>
-      <Td className={unit.own ? "text-select" : "text-unit-foreign/70"}>
-        <button
-          type="button"
-          onClick={onSelect}
-          aria-label={`unit ${unit.unitId}`}
-          tabIndex={-1}
-          className="focus-visible:outline focus-visible:outline-1 focus-visible:outline-select"
-        >
-          {unit.unitId}
-        </button>
-      </Td>
-      <Td className="truncate">
-        <span
-          className={nameChange ? PREDICTED : undefined}
-          data-predicted={nameChange ? "true" : undefined}
-          title={originalTooltip(nameChange)}
-        >
-          {unit.name}
-        </span>
-        {unit.onGuard ? (
-          <span
-            className={`ml-1.5 text-pane-sm text-warn${guardChange ? " italic" : ""}`}
-            data-predicted={guardChange ? "true" : undefined}
-            title={originalTooltip(guardChange)}
-          >
-            on guard
-          </span>
-        ) : null}
-        {/* Where the unit is bound or from, said inline: the row is the story of a move. */}
-        {departing && unit.departingTo ? (
-          <span className="ml-1.5 text-pane-sm text-ink-dim">→ {unit.departingTo}</span>
-        ) : null}
-        {departing && !unit.departingTo ? (
-          <span className="ml-1.5 text-pane-sm text-ink-dim">→ …</span>
-        ) : null}
-        {/* Brass and upright, not the italic that means "a field the orders changed": the unit
-            wrote no order, it is simply going where its ship goes. Deliberately not gated on
-            `departingTo`, so a passenger of an untraceable ship still names the hull. */}
-        {departing && unit.aboard ? (
-          <span className="ml-1.5 text-pane-sm text-brass">aboard {unit.aboard}</span>
-        ) : null}
-        {unit.previewStatus === "arriving" ? (
-          <span className={`ml-1.5 text-pane-sm ${PREDICTED}`}>← {unit.arrivingFrom ?? "…"}</span>
-        ) : null}
-        {unit.previewStatus === "formed" ? (
-          <span className={`ml-1.5 text-pane-sm ${PREDICTED}`}>new</span>
-        ) : null}
-      </Td>
-      <Td className="truncate">
-        {unit.factionName ? `${unit.factionName} (${unit.factionId})` : "—"}
-      </Td>
-      {/* A tilde marks a count the parser guessed at; the unit panel spells out why. A count the
-          orders changed explains itself with the report's figure instead. */}
-      <Td
-        className={menChange ? PREDICTED : ""}
-        title={originalTooltip(menChange) ?? whyEstimated(unit)}
-      >
-        {describeMenBriefly(unit)}
-      </Td>
-      <Td className="truncate">{skills}</Td>
-      <Td className={`truncate${itemsChange ? ` ${PREDICTED}` : ""}`} title={originalTooltip(itemsChange)}>
-        {items}
-      </Td>
-      <Td className={structureChange ? PREDICTED : ""} title={originalTooltip(structureChange)}>
-        {unit.structureId ? `[${unit.structureId}]` : ""}
-      </Td>
+      {order.map((column) => (
+        <Fragment key={column}>{cellsByColumn[column]}</Fragment>
+      ))}
     </tr>
   );
 }

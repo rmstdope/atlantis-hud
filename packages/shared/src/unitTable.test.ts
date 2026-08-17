@@ -3,15 +3,21 @@ import { aReportUnit } from "@atlantis/core-client";
 import { describe, expect, it } from "vitest";
 import {
   COLUMN_MIN_PX,
+  columnOrderFromStorage,
+  columnWidthsFromStorage,
   DEFAULT_COLUMN_WIDTH_PX,
   DEFAULT_SORT,
-  columnWidthsFromStorage,
   dragColumnBoundary,
+  dragColumnOrder,
   filterUnits,
+  orderOf,
   rowHeightAt,
   sortUnits,
+  UNIT_COLUMNS,
   widthOf,
   windowRange,
+  type ColumnOrder,
+  type ColumnWidths,
   type SortState
 } from "./unitTable";
 
@@ -369,5 +375,88 @@ describe("dragColumnBoundary", () => {
     expect(result.left).toBe(30);
     expect(result.right).toBe(30);
     expect(result.atLimit).toBe(true);
+  });
+});
+
+describe("orderOf", () => {
+  it("falls back to the shipped column order when nothing is stored", () => {
+    expect(orderOf(null)).toEqual([...UNIT_COLUMNS]);
+  });
+
+  it("returns the stored order when there is one", () => {
+    const custom = ["own", "name", "unitId", "faction", "men", "skills", "items", "structure", "longOrder"] as const;
+    expect(orderOf([...custom])).toEqual([...custom]);
+  });
+});
+
+describe("columnOrderFromStorage", () => {
+  it("accepts a permutation of every known column, exactly once each", () => {
+    const shuffled = [...UNIT_COLUMNS].reverse();
+    expect(columnOrderFromStorage(shuffled)).toEqual(shuffled);
+  });
+
+  it("rejects an order missing a column", () => {
+    expect(columnOrderFromStorage(UNIT_COLUMNS.slice(1))).toBeNull();
+  });
+
+  it("rejects an order carrying a column this build does not know", () => {
+    const withGhost = [...UNIT_COLUMNS.slice(1), "phantom"];
+    expect(columnOrderFromStorage(withGhost)).toBeNull();
+  });
+
+  it("rejects an order with a duplicate", () => {
+    // UNIT_COLUMNS[0] ("own") appears twice; the last column is dropped to keep the length right,
+    // so this is wrong in composition, not just in length.
+    const withDuplicate = [...UNIT_COLUMNS.slice(0, -1), UNIT_COLUMNS[0]];
+    expect(columnOrderFromStorage(withDuplicate)).toBeNull();
+  });
+
+  it("rejects anything that is not an array", () => {
+    expect(columnOrderFromStorage(null)).toBeNull();
+    expect(columnOrderFromStorage("own,name")).toBeNull();
+    expect(columnOrderFromStorage({})).toBeNull();
+  });
+});
+
+describe("dragColumnOrder", () => {
+  const order: ColumnOrder = ["own", "unitId", "name", "faction", "men"];
+  const widths: ColumnWidths = { unitId: 60, name: 200, faction: 150, men: 60 };
+
+  it("swaps with the next column once the drag crosses that neighbour's own width", () => {
+    // Dragging "name" right: its neighbour is "faction", width 150.
+    const result = dragColumnOrder(order, "name", 150, widths);
+    expect(result).toEqual(["own", "unitId", "faction", "name", "men"]);
+  });
+
+  it("does not swap short of the neighbour's width", () => {
+    const result = dragColumnOrder(order, "name", 149, widths);
+    expect(result).toEqual(order);
+  });
+
+  it("cascades through more than one swap in a single drag", () => {
+    // Past faction's 150 (one swap) and then, from its new spot, past men's 60 (a second): name
+    // ends up past both.
+    const result = dragColumnOrder(order, "name", 210, widths);
+    expect(result).toEqual(["own", "unitId", "faction", "men", "name"]);
+  });
+
+  it("swaps leftward for a negative delta, against the left neighbour's own width", () => {
+    // Dragging "faction" left: its neighbour there is "name", width 200.
+    const result = dragColumnOrder(order, "faction", -200, widths);
+    expect(result).toEqual(["own", "unitId", "faction", "name", "men"]);
+  });
+
+  it("never lets a column trade places with own", () => {
+    const result = dragColumnOrder(order, "unitId", -1000, widths);
+    expect(result).toEqual(order);
+  });
+
+  it("does not move own itself even if asked to", () => {
+    expect(dragColumnOrder(order, "own", 500, widths)).toEqual(order);
+  });
+
+  it("returns the order unchanged for a dragged column it cannot find", () => {
+    const strange = ["own", "unitId"] as unknown as ColumnOrder;
+    expect(dragColumnOrder(strange, "structure", 100, widths)).toEqual(strange);
   });
 });
