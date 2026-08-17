@@ -63,7 +63,8 @@ describe("the Warnings settings tab", () => {
       "Building what is built",
       "Overloaded fleets",
       "Undercrewed fleets",
-      "More quartermasters than allowed"
+      "More quartermasters than allowed",
+      "Producing in too many regions"
     ];
     for (const title of titles) {
       expect(html).toContain(title);
