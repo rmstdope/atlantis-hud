@@ -77,11 +77,14 @@ pub mod codes {
     pub const FORM_ALIAS_REUSED: Code = Code("form-alias-reused");
     pub const FLEET_OVERLOADED: Code = Code("fleet-overloaded");
     pub const FLEET_UNDERCREWED: Code = Code("fleet-undercrewed");
+    pub const GIVE_TARGET_NOT_HERE: Code = Code("give-target-not-here");
     /// Every code. This array's own order is not the settings tab's grouping (that groups by
     /// concern - Teaching / Resources / Guarding / Orders / Sailing - not by this list), but a new
-    /// entry still goes last: the generated TypeScript copies this order, and every entry added
-    /// since `hex-unguarded` has kept new-last / grouped-last in step with each other.
-    pub const ALL: [Code; 12] = [
+    /// entry still goes last: the generated TypeScript copies this order. Until
+    /// `give-target-not-here` every entry had also been last in its tab group; that one joins the
+    /// existing *Orders* group instead, so the two orders are no longer in step and nothing depends
+    /// on their being so.
+    pub const ALL: [Code; 13] = [
         NOT_ENOUGH_SILVER,
         NOT_ENOUGH_ITEMS,
         GUARD_DROPPED,
@@ -94,6 +97,7 @@ pub mod codes {
         FORM_ALIAS_REUSED,
         FLEET_OVERLOADED,
         FLEET_UNDERCREWED,
+        GIVE_TARGET_NOT_HERE,
     ];
 }
 
@@ -141,6 +145,22 @@ pub struct Finding {
     pub column_end: Option<usize>,
 }
 
+/// Where the report shows each unit, by unit number, across every region it covers.
+///
+/// Built once for the whole report rather than per hex, because the point of the lookup is to tell
+/// a mistyped unit number from a real unit standing somewhere else, and only the second of those
+/// is answerable from outside the hex. Every unit the report prints is in here, ours and any
+/// foreign one we can see: a gift to another faction's unit standing in our hex is ordinary.
+fn where_the_report_shows_each_unit(report: &ParsedReport) -> BTreeMap<&str, &ReportRegion> {
+    let mut located = BTreeMap::new();
+    for region in &report.regions {
+        for unit in &region.units {
+            located.insert(unit.unit_id.as_str(), region);
+        }
+    }
+    located
+}
+
 /// Checks a whole turn's orders against the report they were written for.
 ///
 /// Only the reporting faction's units, in the hexes this turn's report covers. Allied and foreign
@@ -155,6 +175,15 @@ pub fn check_turn(
     options: CheckOptions,
 ) -> Vec<Finding> {
     let ordered = OrderedUnits::read(source);
+    // `validate_turn` runs this on every keystroke once typing settles, so the lookup is built only
+    // when the check that reads it is actually enabled - skipping a walk of every region and unit
+    // in the report, with a label allocation per unit, on a hot path that would otherwise pay for it
+    // even with the toggle off.
+    let located = if options.emits(codes::GIVE_TARGET_NOT_HERE) {
+        where_the_report_shows_each_unit(report)
+    } else {
+        BTreeMap::new()
+    };
     let mut findings = Vec::new();
 
     for region in &report.regions {
@@ -169,6 +198,7 @@ pub fn check_turn(
         check_guard(&hex, &options, &mut findings);
         check_teaching(&hex, ruleset, &options, &mut findings);
         check_forms(&hex, &options, &mut findings);
+        check_transfer_targets(&hex, &located, &options, &mut findings);
         check_sailing(&hex, &ledger, ruleset, &options, &mut findings);
 
         // Within a hex, what sits on a line comes first and in line order; what belongs to the hex
@@ -1245,6 +1275,60 @@ fn weight_at_sailing(
     Some(weight)
 }
 
+// --- gifts and takings ---------------------------------------------------------------------------
+
+/// Every GIVE and TAKE one of our units gives whose counterparty is a unit number: is that unit in
+/// this hex to receive the goods, or to be taken from? The engine refuses the order outright when
+/// it is not - `GIVE: Nonexistant target (N).` - and says so only once the turn has run. GIVE and
+/// TAKE are phase 4, before anything moves in phase 9, so the hex the report prints a unit in is
+/// the hex the transfer will look for it in.
+///
+/// The test is against every unit the report shows in this region, not against `hex.find`, which
+/// sees only our own: giving to another faction's unit standing here is legal and ordinary.
+///
+/// A unit the report shows somewhere else has that region named, because a courier that has moved
+/// and a mistyped number are different mistakes with different fixes. NEW, FACTION n NEW and unit
+/// zero name nothing the report could show, and are passed over rather than guessed at.
+fn check_transfer_targets(
+    hex: &Hex<'_>,
+    located: &BTreeMap<&str, &ReportRegion>,
+    options: &CheckOptions,
+    findings: &mut Vec<Finding>,
+) {
+    if !options.emits(codes::GIVE_TARGET_NOT_HERE) {
+        return;
+    }
+
+    for ordered in &hex.units {
+        for placed in ordered.intents {
+            let (party, verb) = match &placed.intent {
+                Intent::Give { to, .. } => (to, "given to"),
+                Intent::Take { from, .. } => (from, "taken from"),
+                _ => continue,
+            };
+            let Party::Unit(id) = party else { continue };
+            if hex.region.units.iter().any(|unit| &unit.unit_id == id) {
+                continue;
+            }
+
+            // The label is only ever formatted here, on the rare path that actually emits a
+            // finding - `located` itself carries just a region reference per unit, so the common
+            // case (nothing wrong) never allocates a label string per unit in the report.
+            let message = match located.get(id.as_str()) {
+                Some(region) => format!(
+                    "unit {id} is not in this hex to be {verb} - your report shows it in {}",
+                    region.label()
+                ),
+                None => format!(
+                    "unit {id} is not in this hex to be {verb}, and appears nowhere else in \
+                     your report"
+                ),
+            };
+            findings.push(ordered.finding(hex, codes::GIVE_TARGET_NOT_HERE, message, Some(placed)));
+        }
+    }
+}
+
 /// Every fleet in the hex that one of our units orders to SAIL: is what is aboard within what the
 /// hull carries, and is enough sailing skill aboard to sail it? Aboard means the report's units in
 /// the fleet, plus those that ENTER it this month, minus those that LEAVE - the instant orders the
@@ -1503,6 +1587,22 @@ mod tests {
         )
     }
 
+    /// `check`, with `give-target-not-here` also disabled.
+    ///
+    /// A raft of resource-ledger fixtures below give or take from unit numbers ("7", "999", ...)
+    /// chosen only to be absent from the report - that is what lets them test "a recipient outside
+    /// the hex is not credited" without also standing up a whole second region. `give-target-not-here`
+    /// is built for exactly that shape and now fires on every one of them; real, but not what these
+    /// tests are about, so it is turned off here rather than folded into every fixture below.
+    fn check_ignoring_transfer_targets(regions: Vec<ReportRegion>, orders: &str) -> Vec<Finding> {
+        check_turn(
+            &report(regions),
+            orders,
+            Some(&ruleset()),
+            disabling(codes::GIVE_TARGET_NOT_HERE),
+        )
+    }
+
     fn codes(findings: &[Finding]) -> Vec<&str> {
         findings
             .iter()
@@ -1551,7 +1651,7 @@ mod tests {
     #[test]
     fn a_turn_with_nothing_wrong_says_nothing() {
         assert_eq!(
-            check(
+            check_ignoring_transfer_targets(
                 vec![region(vec![with_silver(unit("5"), 500)])],
                 "unit 5\nGIVE 7 100 SILV\n"
             ),
@@ -1563,7 +1663,7 @@ mod tests {
 
     #[test]
     fn a_unit_giving_away_more_silver_than_it_holds_is_warned_about() {
-        let finding = only(check(
+        let finding = only(check_ignoring_transfer_targets(
             vec![region(vec![with_silver(unit("5"), 40)])],
             "unit 5\nGIVE 7 100 SILV\n",
         ));
@@ -1614,7 +1714,7 @@ mod tests {
             },
         ];
 
-        let finding = only(check(
+        let finding = only(check_ignoring_transfer_targets(
             regions,
             "unit 5\nGIVE 7 100 SILV\nunit 7\nSTUDY combat\n",
         ));
@@ -1636,7 +1736,10 @@ mod tests {
         // Unit 5 starts with nothing, so without the take being counted it could not give the 100
         // away - which is what makes this test say anything about TAKE at all.
         assert_eq!(
-            check(regions, "unit 5\nTAKE FROM 7 100 SILV\nGIVE 8 100 SILV\n"),
+            check_ignoring_transfer_targets(
+                regions,
+                "unit 5\nTAKE FROM 7 100 SILV\nGIVE 8 100 SILV\n"
+            ),
             vec![]
         );
     }
@@ -1646,7 +1749,7 @@ mod tests {
     #[test]
     fn taking_all_of_something_from_outside_the_hex_leaves_the_taker_unjudged() {
         assert_eq!(
-            check(
+            check_ignoring_transfer_targets(
                 vec![region(vec![with_silver(unit("5"), 0)])],
                 "unit 5\nTAKE FROM 999 ALL SILV\nGIVE 8 100 SILV\n"
             ),
@@ -1658,7 +1761,7 @@ mod tests {
     /// Without this pairing the rule above would read as "any TAKE silences the unit".
     #[test]
     fn taking_a_stated_amount_from_outside_the_hex_is_still_counted() {
-        let finding = only(check(
+        let finding = only(check_ignoring_transfer_targets(
             vec![region(vec![with_silver(unit("5"), 0)])],
             "unit 5\nTAKE FROM 999 10 SILV\nGIVE 8 100 SILV\n",
         ));
@@ -1674,7 +1777,7 @@ mod tests {
     #[test]
     fn claimed_silver_is_money_the_unit_has() {
         assert_eq!(
-            check(
+            check_ignoring_transfer_targets(
                 vec![region(vec![with_silver(unit("5"), 0)])],
                 "unit 5\n@claim 200\nGIVE 7 100 SILV\n"
             ),
@@ -1785,7 +1888,7 @@ mod tests {
     #[test]
     fn giving_all_of_something_can_never_overdraw_it() {
         assert_eq!(
-            check(
+            check_ignoring_transfer_targets(
                 vec![region(vec![with_silver(unit("5"), 40)])],
                 "unit 5\nGIVE 7 ALL SILV\n"
             ),
@@ -1919,7 +2022,7 @@ mod tests {
     #[test]
     fn a_unit_spending_an_amount_we_cannot_price_is_left_alone() {
         assert_eq!(
-            check(
+            check_ignoring_transfer_targets(
                 vec![region(vec![with_silver(unit("5"), 0)])],
                 "unit 5\nWITHDRAW 10 grain\nGIVE 7 100 SILV\n"
             ),
@@ -1946,7 +2049,7 @@ mod tests {
     #[test]
     fn giving_a_whole_class_of_items_silences_the_unit() {
         assert_eq!(
-            check(
+            check_ignoring_transfer_targets(
                 vec![region(vec![with_silver(unit("5"), 0)])],
                 "unit 5\nGIVE 7 ALL ITEMS\nGIVE 8 100 SILV\n"
             ),
@@ -1989,7 +2092,10 @@ mod tests {
     fn a_unit_giving_away_more_of_an_item_than_it_holds_is_warned_about() {
         let regions = vec![region(vec![with_item(unit("5"), 3, "sword", "SWOR")])];
 
-        let finding = only(check(regions, "unit 5\nGIVE 7 10 swords\n"));
+        let finding = only(check_ignoring_transfer_targets(
+            regions,
+            "unit 5\nGIVE 7 10 swords\n",
+        ));
         assert_eq!(finding.code.as_str(), "not-enough-items");
         assert!(finding.message.contains("sword"), "{}", finding.message);
         assert!(
@@ -2007,7 +2113,7 @@ mod tests {
         ])];
 
         assert_eq!(
-            check(
+            check_ignoring_transfer_targets(
                 regions,
                 "unit 5\nGIVE 7 10 swords\nunit 7\nGIVE 8 10 SWOR\n"
             ),
@@ -2019,7 +2125,10 @@ mod tests {
     #[test]
     fn an_item_nobody_can_identify_is_not_counted() {
         assert_eq!(
-            check(vec![region(vec![unit("5")])], "unit 5\nGIVE 7 10 widgets\n"),
+            check_ignoring_transfer_targets(
+                vec![region(vec![unit("5")])],
+                "unit 5\nGIVE 7 10 widgets\n"
+            ),
             vec![],
             "the catalogue has no widget, so there is nothing to count against"
         );
@@ -2035,7 +2144,7 @@ mod tests {
         ])];
 
         assert_eq!(
-            check(regions, "unit 5\nGIVE 9 10 swords\n"),
+            check_ignoring_transfer_targets(regions, "unit 5\nGIVE 9 10 swords\n"),
             vec![],
             "unit 7 shares its swords, so unit 5 can give away 10 of them"
         );
@@ -2070,7 +2179,10 @@ mod tests {
             sharing(with_item(unit("7"), 20, "sword", "SWOR")),
         ])];
 
-        let finding = only(check(regions, "unit 5\nGIVE 9 30 swords\n"));
+        let finding = only(check_ignoring_transfer_targets(
+            regions,
+            "unit 5\nGIVE 9 30 swords\n",
+        ));
         assert_eq!(finding.code.as_str(), "not-enough-items");
         assert_eq!(
             finding.unit_id, None,
@@ -2094,7 +2206,10 @@ mod tests {
             sharing(unit("9")),
         ])];
 
-        let finding = only(check(regions, "unit 7\nGIVE 8 10 swords\n"));
+        let finding = only(check_ignoring_transfer_targets(
+            regions,
+            "unit 7\nGIVE 8 10 swords\n",
+        ));
         assert_eq!(finding.code.as_str(), "not-enough-items");
         assert_eq!(
             finding.unit_id, None,
@@ -2116,7 +2231,10 @@ mod tests {
             sharing(with_item(unit("7"), 10, "human", "HUMN")),
         ])];
 
-        let finding = only(check(regions, "unit 5\nGIVE 9 10 HUMN\n"));
+        let finding = only(check_ignoring_transfer_targets(
+            regions,
+            "unit 5\nGIVE 9 10 HUMN\n",
+        ));
         assert_eq!(finding.code.as_str(), "not-enough-items");
         assert_eq!(
             finding.unit_id.as_deref(),
@@ -2134,7 +2252,7 @@ mod tests {
         ])];
 
         assert_eq!(
-            check(
+            check_ignoring_transfer_targets(
                 regions,
                 "unit 5\nGIVE 9 30 swords\nunit 7\nWITHDRAW 10 grain\n"
             ),
@@ -2149,7 +2267,7 @@ mod tests {
             with_item(unit("7"), 2, "sword", "SWOR"),
         ])];
 
-        let findings = check(
+        let findings = check_ignoring_transfer_targets(
             regions,
             "unit 5\nGIVE 9 10 swords\nunit 7\nGIVE 9 10 swords\n",
         );
@@ -2621,12 +2739,176 @@ mod tests {
         assert!(finding.message.contains("line 2 already forms NEW 1"));
     }
 
+    // --- transfer targets ---------------------------------------------------------------------
+
+    #[test]
+    fn a_gift_to_a_unit_the_report_shows_elsewhere_names_that_hex() {
+        let mut elsewhere = region(vec![unit("3247")]);
+        elsewhere.region_id = "1:8,53".to_string();
+        elsewhere.coordinate = Coordinate { x: 8, y: 53, z: 1 };
+
+        let regions = vec![
+            region(vec![with_item(unit("8443"), 30, "grain", "GRAI")]),
+            elsewhere,
+        ];
+
+        let finding = only(check(regions, "unit 8443\nGIVE 3247 30 GRAI\n"));
+
+        assert_eq!(finding.code, codes::GIVE_TARGET_NOT_HERE);
+        assert_eq!(finding.unit_id, Some("8443".to_string()));
+        assert_eq!(finding.line, Some(2));
+        assert_eq!(
+            finding.message,
+            "unit 3247 is not in this hex to be given to - your report shows it in mountain (8,53) in Inhead"
+        );
+    }
+
+    #[test]
+    fn a_gift_to_a_unit_in_no_region_says_so() {
+        let finding = only(check(
+            vec![region(vec![with_silver(unit("13303"), 1000)])],
+            "unit 13303\nGIVE 16585 500 SILV\n",
+        ));
+
+        assert_eq!(
+            finding.message,
+            "unit 16585 is not in this hex to be given to, and appears nowhere else in your report"
+        );
+    }
+
+    #[test]
+    fn a_take_from_a_unit_the_report_shows_elsewhere_names_that_hex() {
+        let mut elsewhere = region(vec![unit("13304")]);
+        elsewhere.region_id = "1:8,53".to_string();
+        elsewhere.coordinate = Coordinate { x: 8, y: 53, z: 1 };
+
+        let regions = vec![region(vec![unit("4426")]), elsewhere];
+
+        let finding = only(check(regions, "unit 4426\nTAKE FROM 13304 50 SILV\n"));
+
+        assert_eq!(
+            finding.message,
+            "unit 13304 is not in this hex to be taken from - your report shows it in mountain (8,53) in Inhead"
+        );
+    }
+
+    #[test]
+    fn a_take_from_a_unit_in_no_region_says_so() {
+        let finding = only(check(
+            vec![region(vec![unit("4426")])],
+            "unit 4426\nTAKE FROM 16585 50 SILV\n",
+        ));
+
+        assert_eq!(
+            finding.message,
+            "unit 16585 is not in this hex to be taken from, and appears nowhere else in your report"
+        );
+    }
+
+    #[test]
+    fn a_gift_to_a_unit_in_this_hex_is_silent() {
+        assert_eq!(
+            codes(&check(
+                vec![region(vec![
+                    with_item(unit("8443"), 30, "grain", "GRAI"),
+                    unit("3247")
+                ])],
+                "unit 8443\nGIVE 3247 30 GRAI\n",
+            )),
+            Vec::<&str>::new()
+        );
+    }
+
+    /// This is the test that fails if the implementation reaches for `hex.find`, which sees only
+    /// our own units - a gift to a visible foreign unit standing in the same hex is legal.
+    #[test]
+    fn a_gift_to_a_foreign_unit_in_the_hex_is_silent() {
+        let mut foreign = unit("900");
+        foreign.own = false;
+        foreign.faction_id = Some("15".to_string());
+
+        assert_eq!(
+            codes(&check(
+                vec![region(vec![
+                    with_item(unit("8443"), 30, "grain", "GRAI"),
+                    foreign
+                ])],
+                "unit 8443\nGIVE 900 30 GRAI\n",
+            )),
+            Vec::<&str>::new()
+        );
+    }
+
+    /// `read_party` reads any all-zero token as `Party::Discard`, so `GIVE 0` can never look like a
+    /// missing unit.
+    #[test]
+    fn a_discard_is_not_a_missing_unit() {
+        assert_eq!(
+            codes(&check(
+                vec![region(vec![with_item(unit("8443"), 30, "grain", "GRAI")])],
+                "unit 8443\nGIVE 0 30 GRAI\n",
+            )),
+            Vec::<&str>::new()
+        );
+    }
+
+    #[test]
+    fn a_gift_to_a_unit_formed_this_month_is_silent() {
+        assert_eq!(
+            codes(&check(
+                vec![region(vec![with_item(unit("8443"), 30, "grain", "GRAI")])],
+                "unit 8443\nGIVE NEW 1 30 GRAI\n",
+            )),
+            Vec::<&str>::new()
+        );
+    }
+
+    #[test]
+    fn a_gift_to_another_factions_new_unit_is_silent() {
+        assert_eq!(
+            codes(&check(
+                vec![region(vec![with_item(unit("8443"), 30, "grain", "GRAI")])],
+                "unit 8443\nGIVE FACTION 15 NEW 2 30 GRAI\n",
+            )),
+            Vec::<&str>::new()
+        );
+    }
+
+    #[test]
+    fn both_a_give_and_a_take_on_one_unit_are_two_findings() {
+        let findings = check(
+            vec![region(vec![unit("4426")])],
+            "unit 4426\nGIVE 16585 50 SILV\nTAKE FROM 16586 50 SILV\n",
+        );
+
+        assert_eq!(
+            findings.iter().map(|f| f.code).collect::<Vec<_>>(),
+            vec![codes::GIVE_TARGET_NOT_HERE, codes::GIVE_TARGET_NOT_HERE]
+        );
+        assert_eq!(
+            findings.iter().map(|f| f.line).collect::<Vec<_>>(),
+            vec![Some(2), Some(3)]
+        );
+        assert!(findings[0].message.contains("given to"));
+        assert!(findings[1].message.contains("taken from"));
+    }
+
     // --- disabling advisory checks -------------------------------------------------------------
 
     /// The runtime default (`hex-unguarded` off, everything else on) plus one more code disabled.
     fn disabling(code: Code) -> CheckOptions {
         let mut options = CheckOptions::default();
         options.disabled.insert(code.as_str().to_string());
+        options
+    }
+
+    /// The runtime default plus every one of `codes`, for a test that needs more than one code
+    /// disabled alongside the one under test.
+    fn disabling_all(codes: &[Code]) -> CheckOptions {
+        let mut options = CheckOptions::default();
+        options
+            .disabled
+            .extend(codes.iter().map(|code| code.as_str().to_string()));
         options
     }
 
@@ -2722,6 +3004,11 @@ mod tests {
                 }],
                 "unit 11125\nSAIL N\n",
             ),
+            (
+                codes::GIVE_TARGET_NOT_HERE,
+                vec![region(vec![with_silver(unit("5"), 1000)])],
+                "unit 5\nGIVE 16585 500 SILV\n",
+            ),
         ];
 
         assert_eq!(
@@ -2772,15 +3059,15 @@ mod tests {
         shared.region_id = "1:8,53".to_string();
         shared.coordinate = Coordinate { x: 8, y: 53, z: 1 };
         let regions = vec![no_sharer, shared];
+        // Unit 11 does not exist in either region, so this order also trips `give-target-not-here` -
+        // orthogonal to what this test is about, and disabled below alongside the code under test.
         let orders = "unit 9\nGIVE 11 100 SILV\nunit 5\nSTUDY combat\n";
 
         let enabled = check_turn(
             &report(regions.clone()),
             orders,
             Some(&ruleset()),
-            CheckOptions {
-                disabled: BTreeSet::new(),
-            },
+            disabling(codes::GIVE_TARGET_NOT_HERE),
         );
         assert_eq!(
             codes(&enabled)
@@ -2796,7 +3083,7 @@ mod tests {
                 &report(regions),
                 orders,
                 Some(&ruleset()),
-                disabling(codes::NOT_ENOUGH_SILVER),
+                disabling_all(&[codes::NOT_ENOUGH_SILVER, codes::GIVE_TARGET_NOT_HERE]),
             ),
             vec![],
             "disabling the code should close both sites, not just one"
@@ -2810,6 +3097,8 @@ mod tests {
         let mut guarding = unit("9");
         guarding.on_guard = true;
         let regions = vec![region(vec![with_silver(unit("5"), 40), guarding])];
+        // Unit 7 does not exist in the report, so this order also trips `give-target-not-here` -
+        // orthogonal to what this test is about, and disabled below alongside the code under test.
         let orders = "unit 5\nGIVE 7 100 SILV\nunit 9\nMOVE N\n";
 
         assert_eq!(
@@ -2817,7 +3106,7 @@ mod tests {
                 &report(regions),
                 orders,
                 Some(&ruleset()),
-                disabling(codes::NOT_ENOUGH_SILVER),
+                disabling_all(&[codes::NOT_ENOUGH_SILVER, codes::GIVE_TARGET_NOT_HERE]),
             )),
             ["guard-dropped"]
         );
@@ -3401,7 +3690,7 @@ mod tests {
         let mut hex = region(vec![with_silver(unit("5"), 0), with_silver(unit("7"), 0)]);
         hex.units[0].on_guard = true;
 
-        let findings = check(
+        let findings = check_ignoring_transfer_targets(
             vec![hex],
             "unit 5\nGUARD 0\nGIVE 9 10 SILV\nunit 7\nGIVE 9 10 SILV\n",
         );
