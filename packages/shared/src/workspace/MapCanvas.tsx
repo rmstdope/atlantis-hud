@@ -27,6 +27,7 @@ import { mapViewDecision, travelsToSelection, type FollowedSelection } from "./m
 import { useOverlayInsets } from "./useOverlayInsets";
 import { useWorkspaceStore } from "../workspaceStore";
 import type { RouteOverlay } from "./routeOverlay";
+import { viewportForArrow, type TradeArrow } from "./tradeArrow";
 import { regionDecorations } from "./regionDecorations";
 import { guardSelection } from "./selectionGuard";
 import {
@@ -143,6 +144,12 @@ type MapCanvasProps = {
    * means the unit's speed is unknown and the whole line is dotted.
    */
   route?: RouteOverlay | null;
+  /**
+   * The trade route currently hovered in the Trade popover, drawn as a straight arrow between its
+   * two hexes. While one is set and either end is off screen the map frames both, and putting it
+   * back to `null` puts the view back exactly where it was.
+   */
+  arrow?: TradeArrow | null;
   /** How dangerous each hex entered is, so one bad step is visible rather than buried. */
   routeRisk?: HexRisk[];
   /**
@@ -188,6 +195,7 @@ export function MapCanvas({
   showTextures,
   badges,
   route = null,
+  arrow = null,
   routeRisk = [],
   onMarquee
 }: MapCanvasProps) {
@@ -418,6 +426,48 @@ export function MapCanvas({
       commit(centreOn(coordinate, viewRef.current, size.width, size.height, currentInsets));
     }
   }, [selectedRegionId, level, size, commit, insets, mapView.restoredRegionId]);
+
+  /**
+   * Frames a hovered trade route while the pointer is on its row, and puts the view back exactly
+   * when it leaves.
+   *
+   * The travel lives here rather than in the shell because everything it needs is here: the
+   * committed viewport, the measured size and the strip the panes leave. `viewBeforeArrow` is
+   * written once per gesture, not once per row - sweeping down the list must return to where the
+   * reader was before the *first* hover, or "back" would mean "the previous row's fit" and the map
+   * would never find its way home.
+   */
+  const viewBeforeArrow = useRef<Viewport | null>(null);
+  useEffect(() => {
+    if (size.width === 0) {
+      return;
+    }
+    const currentInsets = insets ?? NO_INSETS;
+    if (arrow) {
+      const wanted = viewportForArrow(
+        arrow,
+        viewRef.current,
+        size.width,
+        size.height,
+        currentInsets
+      );
+      // Nothing to move for: both ends are already on screen, or there is no room to frame
+      // anything. The arrow is drawn either way.
+      if (!wanted) {
+        return;
+      }
+      if (viewBeforeArrow.current === null) {
+        viewBeforeArrow.current = viewRef.current;
+      }
+      commit(wanted);
+      return;
+    }
+    const back = viewBeforeArrow.current;
+    viewBeforeArrow.current = null;
+    if (back) {
+      commit(back);
+    }
+  }, [arrow, size, insets, commit]);
 
   // React attaches `wheel` passively, so `preventDefault` inside an `onWheel` prop does nothing and
   // the page zooms instead of the map. This has to be a manual listener.
@@ -775,6 +825,34 @@ export function MapCanvas({
             patterns above are shared, because they are the same for every theme.
           */}
           {theme.Defs ? <theme.Defs /> : null}
+
+          {/*
+            The heads of a hovered trade route's arrow. Two definitions rather than one reused with
+            `orient="auto-start-reverse"`, which older WebKit - the desktop shell's renderer -
+            ignores, drawing a start head pointing the wrong way.
+          */}
+          <marker
+            id="trade-arrowhead"
+            viewBox="0 0 10 10"
+            refX="9"
+            refY="5"
+            markerWidth="5"
+            markerHeight="5"
+            orient="auto"
+          >
+            <path d="M 0 0 L 10 5 L 0 10 z" className="fill-brass" />
+          </marker>
+          <marker
+            id="trade-arrowhead-start"
+            viewBox="0 0 10 10"
+            refX="1"
+            refY="5"
+            markerWidth="5"
+            markerHeight="5"
+            orient="auto"
+          >
+            <path d="M 10 0 L 0 5 L 10 10 z" className="fill-brass" />
+          </marker>
         </defs>
 
         {/*
@@ -937,6 +1015,28 @@ export function MapCanvas({
           )}
 
           <theme.MarkLayer views={allViews} />
+
+          {/*
+            A hovered trade route, as a straight line between its two hexes - the shape of the
+            journey, not its path: what the reader wants from a hover is how far apart these are and
+            in which direction. `pointerEvents="none"` because at the zoom this feature is for the
+            line spans most of the map, and without it no hex underneath could be clicked.
+          */}
+          {arrow ? (
+            <g data-testid="trade-arrow" pointerEvents="none">
+              <line
+                x1={worldOf(arrow.from).x}
+                y1={worldOf(arrow.from).y}
+                x2={worldOf(arrow.to).x}
+                y2={worldOf(arrow.to).y}
+                className="stroke-brass"
+                strokeWidth={2.5}
+                vectorEffect="non-scaling-stroke"
+                markerEnd="url(#trade-arrowhead)"
+                markerStart={arrow.twoWay ? "url(#trade-arrowhead-start)" : undefined}
+              />
+            </g>
+          ) : null}
 
           {/*
             The export rectangle, while it is being dragged. Hidden and moved by hand rather than
