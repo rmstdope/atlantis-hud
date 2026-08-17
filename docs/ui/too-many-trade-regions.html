@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Producing in too many regions — what the player sees (bead ah-8om)</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --edge:#26303d; --edge-soft:#1e2733; --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --brass-bright:#eebe63; --ok:#4fb783; --warn:#d9a441; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1240px; margin-left:auto; margin-right:auto; }
+  h1 { font-size:26px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:96ch; margin-top:10px; font-size:14px; } header p + p { margin-top:8px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:0.92em; }
+  h2.sec { margin-top:34px; font-size:18px; color:var(--brass); } h2.sec small { color:var(--ink-dim); font-size:13px; margin-left:10px; }
+  .cards { display:grid; grid-template-columns:repeat(2,1fr); gap:20px; margin-top:16px; align-items:start; }
+  .cards.three { grid-template-columns:repeat(3,1fr); }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:18px; display:flex; flex-direction:column; gap:12px; }
+  .card h3 { font-size:17px; } .card h3 em { color:var(--brass); font-style:normal; font-size:12px; letter-spacing:1.6px; margin-right:8px; }
+  .card.rec { border-color:var(--brass); }
+  .concept { color:var(--ink-soft); font-size:13px; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; padding:12px; display:grid; gap:10px; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; } .notes li.con::before { content:"\2212  "; color:var(--danger); }
+  .rep { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11.5px; line-height:1.55; color:var(--ink-soft); background:#0d1218; border:1px solid var(--edge); border-radius:6px; padding:8px 10px; white-space:pre-wrap; overflow-x:auto; }
+  .rep b { color:var(--brass-bright); font-weight:normal; } .rep i { color:var(--danger); font-style:normal; }
+  .editor { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:12px; line-height:1.6; background:#0d1218; border:1px solid var(--edge); border-radius:6px; padding:8px 0; }
+  .ln { display:flex; } .ln .no { width:44px; text-align:right; color:var(--ink-dim); padding-right:10px; } .ln .tx { white-space:pre; color:var(--ink); }
+  .ln.warn .tx { text-decoration: underline wavy var(--warn); text-underline-offset:3px; } .ln.warn .no { color:var(--warn); }
+  .ln.dim .tx { color:var(--ink-dim); }
+  .pane { font-family:'Helvetica Neue',Arial,sans-serif; font-size:11.5px; line-height:1.45; border:1px solid var(--edge); border-radius:6px; background:var(--panel); overflow:hidden; }
+  .pane .bar { display:flex; align-items:center; height:26px; padding:0 9px; border-bottom:1px solid var(--edge); } .bar .name { font-size:10px; letter-spacing:1.4px; text-transform:uppercase; color:var(--brass); }
+  .body { padding:7px 9px 9px; display:grid; gap:5px; min-height:28px; }
+  .hexrow { color:var(--brass); font-size:11px; margin-top:4px; }
+  .prob { display:flex; gap:6px; padding-left:8px; } .prob .uid { color:var(--ink-dim); min-width:44px; flex:none; } .prob .warn { color:var(--warn); flex:none; } .prob .msg { color:var(--ink); }
+  .body .silent { color:var(--ink-dim); font-style:italic; } .body .wrong { color:var(--danger); font-style:italic; font-size:11px; }
+  table { border-collapse:collapse; font-size:12.5px; width:100%; margin-top:14px; } th, td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--edge-soft); vertical-align:top; } th { color:var(--brass); font-weight:normal; font-size:11px; letter-spacing:1px; text-transform:uppercase; } td.y { color:var(--ok); } td.n { color:var(--ink-dim); } td.w { color:var(--warn); }
+  .banner { border:1px solid var(--edge); border-left:3px solid var(--brass); background:var(--panel); padding:14px 16px; border-radius:6px; margin-top:16px; color:var(--ink-soft); font-size:13.5px; } .banner b { color:var(--ink); }
+  .banner.warn { border-left-color:var(--danger); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Producing in too many regions — <span>what the player sees</span> (bead ah-8om)</h1>
+  <p>A faction may only conduct trade activity — which means producing — in so many regions a month. Order production in one region too many and the engine refuses that region's orders outright: <code>PRODUCE: Faction can't produce in that many regions.</code>, five times across three turns of the committed corpus.</p>
+  <p><b>The arithmetic works exactly, and I checked it by hand.</b> In <code>neworigins-3.0.0-g3-f42-t41.rep</code> the faction's status block says <code>Trade Regions: 15 (15)</code> and its orders carry <code>PRODUCE</code> in <b>16</b> distinct regions. 16 − 15 = 1 region refused; that region is <code>tundra (35,9) in Bedba</code>; and it holds exactly the two units the report errors on. Nothing subtler is going on — <b>every <code>PRODUCE</code> counts</b>, primary or manufactured, basic good or advanced.</p>
+</header>
+<main>
+
+  <h2 class="sec">The situation</h2>
+  <div class="cards">
+    <section class="card"><h3>What the report says</h3>
+      <div class="rep">Faction Status:
+Tax Regions: 14 (15)
+<b>Trade Regions: 15 (15)</b>
+Quartermasters: 1 (2)
+
+Errors during turn:
+  <i>Smiths (12256): PRODUCE: Faction can't produce in that many regions.</i>
+  <i>Miners (11127): PRODUCE: Faction can't produce in that many regions.</i></div>
+      <p class="concept">Both errored units stand in <code>tundra (35,9) in Bedba</code> — the sixteenth region, and the one that lost.</p>
+    </section>
+    <section class="card"><h3>What the orders say</h3>
+      <div class="editor">
+        <div class="ln dim"><span class="no">2103</span><span class="tx">;*** forest (36,0) in Reprau ***</span></div>
+        <div class="ln"><span class="no">2118</span><span class="tx">@PRODUCE YEW</span></div>
+        <div class="ln dim"><span class="no">…</span><span class="tx">   fourteen more regions</span></div>
+        <div class="ln dim"><span class="no">2891</span><span class="tx">;*** tundra (35,9) in Bedba ***</span></div>
+        <div class="ln"><span class="no">2903</span><span class="tx">@PRODUCE IRON</span></div>
+        <div class="ln"><span class="no">2918</span><span class="tx">@PRODUCE swor</span></div>
+      </div>
+      <p class="concept">Forty <code>PRODUCE</code> orders across <b>sixteen</b> regions. The player cannot see the sixteenth is one too many without counting the whole file by hand, which is exactly what a client is for.</p>
+    </section>
+  </div>
+
+  <div class="banner"><b>Decided, 2026-08-17.</b> (1) The warning lands <b>on the first PRODUCE order in the document</b> — one line for one mistake, underlined on a real order, and the header count stays honest. (2) The message gives <b>the count, the limit and the consequence</b>, in three forms covering the two report schemas and a faction that may not trade at all. (3) The toggle is <b>Producing in too many regions</b> in the existing <span class="mono">Orders</span> group, on by default. A faction-wide row of its own was the honest answer and was deliberately deferred — it would mean teaching findings an optional hex and changing the panel, the region filter and the header count, which is a second bead nobody has filed.</div>
+
+  <div class="banner warn"><b>The problem this bead has and the others did not.</b> Every warning the panel shows belongs to a hex — that is what makes it filterable, and what puts it in the right group. <b>This one belongs to the faction.</b> A finding with no hex is silently dropped by the client (<code>orderEditor.ts:194</code> skips them by design, so it would vanish from the panel <i>and</i> from the header count), and a finding with a blank hex renders as a nameless row. So the question below is not cosmetic: it decides whether the warning can be seen at all.</div>
+
+  <h2 class="sec">Where the warning appears <small>Option B was chosen</small></h2>
+  <div class="cards three">
+    <section class="card"><h3><em>OPTION A — rejected</em> In every region that produces</h3>
+      <p class="concept">The same line under each of the sixteen hexes, wherever the player happens to be looking.</p>
+      <div class="stage"><div class="pane"><div class="bar"><span class="name">Problems</span></div><div class="body">
+        <div class="hexrow">forest (36,0) in Reprau</div>
+        <div class="prob"><span class="uid"></span><span class="warn">&#9888;</span><span class="msg">PRODUCE orders in 16 regions; this faction may trade in 15</span></div>
+        <div class="hexrow">forest (38,0) in Pla'ere</div>
+        <div class="prob"><span class="uid"></span><span class="warn">&#9888;</span><span class="msg">PRODUCE orders in 16 regions; this faction may trade in 15</span></div>
+        <div class="hexrow">…fourteen more, all identical</div>
+      </div></div></div>
+      <ul class="notes"><li>Impossible to miss, whichever hex you are working in.</li><li class="con">Sixteen copies of one sentence, and the header's problem count jumps by sixteen for one mistake.</li></ul>
+    </section>
+    <section class="card rec"><h3><em>OPTION B — chosen</em> On the first PRODUCE order in the file</h3>
+      <p class="concept">One line, in the hex holding the first <code>PRODUCE</code> the document contains, underlined on that order.</p>
+      <div class="stage">
+        <div class="editor">
+          <div class="ln dim"><span class="no">2103</span><span class="tx">;*** forest (36,0) in Reprau ***</span></div>
+          <div class="ln warn"><span class="no">2118</span><span class="tx">@PRODUCE YEW</span></div>
+        </div>
+        <div class="pane"><div class="bar"><span class="name">Problems</span></div><div class="body">
+        <div class="hexrow">forest (36,0) in Reprau</div>
+        <div class="prob"><span class="uid">13797</span><span class="warn">&#9888;</span><span class="msg">PRODUCE orders in 16 regions; this faction may trade in 15, so one region's production will be refused</span></div>
+      </div></div></div>
+      <ul class="notes"><li>One line for one mistake, and the count in the header is honest.</li><li>Lands on a real order, so the editor underlines something the player can click to.</li><li>Deterministic and explicable — the first <code>PRODUCE</code> in the file, every time.</li><li class="con">The hex it appears under is not itself at fault; it is simply the first.</li></ul>
+    </section>
+    <section class="card"><h3><em>OPTION C — deferred, not dismissed</em> A faction-wide row of its own</h3>
+      <p class="concept">A new bucket in the panel above the hexes, for warnings that belong to the faction rather than to a place.</p>
+      <div class="stage"><div class="pane"><div class="bar"><span class="name">Problems</span></div><div class="body">
+        <div class="hexrow">Your faction</div>
+        <div class="prob"><span class="uid"></span><span class="warn">&#9888;</span><span class="msg">PRODUCE orders in 16 regions; this faction may trade in 15</span></div>
+        <div class="hexrow">forest (36,0) in Reprau</div>
+        <div class="prob"><span class="uid"></span><span class="silent">…ordinary hex warnings…</span></div>
+      </div></div></div>
+      <ul class="notes"><li>Honest about what the warning is: not about a hex.</li><li>Somewhere for the next faction-wide check to go — the quartermaster one (<code>ah-oq3</code>) is the same shape.</li><li class="con"><b>A second bead.</b> Findings would have to carry an optional hex, and the panel, the region filter and the header count all have to learn about it. Too much to bolt onto this one.</li></ul>
+    </section>
+  </div>
+
+  <h2 class="sec">The words <small>Wording 1 was chosen; and the two report formats</small></h2>
+  <p class="concept" style="margin-top:8px">The corpus contains <b>two different status blocks</b>, and the check has to read both. Older reports print <code>Tax Regions: 14 (15)</code> and <code>Trade Regions: 15 (15)</code> separately. Newer ones print a single <code>Regions: 10 (10)</code> pooling taxing and trading together — so there the count must include <code>TAX</code> orders as well, and it checks out on the fixture that has one.</p>
+  <div class="cards">
+    <section class="card rec"><h3><em>WORDING 1 — chosen</em> Count, limit, consequence</h3>
+      <div class="stage"><div class="pane"><div class="bar"><span class="name">Problems</span></div><div class="body">
+        <div class="hexrow">separate counters</div>
+        <div class="prob"><span class="uid">13797</span><span class="warn">&#9888;</span><span class="msg">PRODUCE orders in 16 regions; this faction may trade in 15, so 1 region's production will be refused</span></div>
+        <div class="hexrow">one pooled counter</div>
+        <div class="prob"><span class="uid">11852</span><span class="warn">&#9888;</span><span class="msg">PRODUCE and TAX orders in 11 regions; this faction may tax and trade in 10, so 1 region's orders will be refused</span></div>
+        <div class="hexrow">a faction that may not trade at all</div>
+        <div class="prob"><span class="uid">7308</span><span class="warn">&#9888;</span><span class="msg">this faction may not trade in any region, so every PRODUCE order will be refused</span></div>
+      </div></div></div>
+      <ul class="notes"><li>Gives the player the two numbers and the size of the excess, which is what they need to choose what to drop.</li><li>The third form is real: two committed reports show <code>Regions: 0 (0)</code> for a pure-magic faction.</li><li class="con">Three wordings.</li></ul>
+    </section>
+    <section class="card"><h3><em>WORDING 2 — rejected</em> Name the surplus only</h3>
+      <div class="stage"><div class="pane"><div class="bar"><span class="name">Problems</span></div><div class="body">
+        <div class="prob"><span class="uid">13797</span><span class="warn">&#9888;</span><span class="msg">one region too many is producing this month; drop a PRODUCE order somewhere</span></div>
+        <div class="prob"><span class="uid">11852</span><span class="warn">&#9888;</span><span class="msg">one region too many is taxing or producing this month; drop an order somewhere</span></div>
+      </div></div></div>
+      <ul class="notes"><li>Shorter, and says what to do about it.</li><li>One shape covers a faction that may not trade at all (“sixteen regions too many”).</li><li class="con">Hides the two numbers, so the player cannot check the reasoning against the report's own status block.</li></ul>
+    </section>
+  </div>
+
+  <h2 class="sec">What it will and will not say <small>settled unless you object</small></h2>
+  <table>
+    <tr><th style="width:30%">The case</th><th style="width:16%">Warns?</th><th>Why</th></tr>
+    <tr><td>Exactly at the allowance</td><td class="n">No</td><td>15 regions on a maximum of 15 is a legal turn, and a common one.</td></tr>
+    <tr><td>No <code>Faction Status:</code> in the report</td><td class="n">No</td><td>Nothing to compare against. Accept on doubt.</td></tr>
+    <tr><td>A label the check does not recognise</td><td class="n">No</td><td>It looks for <code>Trade Regions</code>, then <code>Regions</code>. A third schema nobody has seen stays silent rather than guessing which counter is which.</td></tr>
+    <tr><td>Which region loses</td><td class="w">Never named</td><td>Both fixtures lost the last region in report order, but two samples do not establish the engine's rule, and naming the wrong hex would send the player to fix the wrong thing.</td></tr>
+    <tr><td>Orders inside <code>TURN</code> blocks</td><td class="n">Not counted</td><td>Next month's orders, and no check in the client reads them.</td></tr>
+    <tr><td>A <code>PRODUCE</code> that would fail anyway</td><td class="w">Still counted</td><td>Whether a region with no iron in it still consumes a slot is not something the corpus settles. Counting it may occasionally warn where the server would not; the alternative is guessing at the engine's internals.</td></tr>
+    <tr><td>The <b>Warnings tab</b></td><td class="n">One new toggle</td><td>Joins the existing <span class="mono">Orders</span> group, on by default.</td></tr>
+  </table>
+</main>
+</body>
+</html>
+<!-- planner note: the excess is written in digits rather than the word "one", so the same
+sentence reads correctly when the player is three regions over ("3 regions' production"). That is
+the planner's call, recorded in the bead, and easily reversed. -->
