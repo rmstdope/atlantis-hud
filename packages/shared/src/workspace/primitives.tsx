@@ -1,3 +1,4 @@
+import type { OrderDiagnosticSeverity } from "@atlantis/core-client";
 import type { ReactNode } from "react";
 
 /**
@@ -11,6 +12,53 @@ import type { ReactNode } from "react";
  * assembled from pieces - that is what would go unscanned.
  */
 export const POPOVER_BODY_MAX_H = "max-h-[calc(100vh-6rem)]";
+
+/**
+ * The box a hex's problems sit in.
+ *
+ * Whole literal, never assembled from pieces: Tailwind scans source text for class names, and a
+ * class built by concatenation is never emitted - the border would silently not appear.
+ */
+export const PROBLEM_CARD = "overflow-hidden rounded border border-edge bg-panel";
+
+/**
+ * How a diagnostic's severity reads: a glyph and a colour, never colour alone.
+ *
+ * The glyph is decorative and hidden; the word beside it is what a screen reader announces.
+ * `sr-only` is `position:absolute`, so the second span costs no layout inside the flex row.
+ */
+export function SeverityMark({ severity }: { severity: OrderDiagnosticSeverity }) {
+  return (
+    <>
+      <span
+        aria-hidden
+        className={`w-3 shrink-0 text-center ${severity === "error" ? "text-danger" : "text-warn"}`}
+      >
+        {severity === "error" ? "✕" : "⚠"}
+      </span>
+      <span className="sr-only">{severity === "error" ? "error" : "warning"}</span>
+    </>
+  );
+}
+
+/**
+ * Whose problem it is: a unit id, or `hex` for a diagnostic that belongs to the hex and to no unit.
+ */
+export function ProblemWho({ unitId }: { unitId: string | null }) {
+  return unitId === null ? (
+    <>
+      <span aria-hidden className="shrink-0 text-pane-sm italic tracking-wide text-ink-dim">
+        hex
+      </span>
+      <span className="sr-only">the whole hex</span>
+    </>
+  ) : (
+    <span className="shrink-0 tabular-nums text-ink-dim">
+      <span className="sr-only">unit </span>
+      {unitId}
+    </span>
+  );
+}
 
 /** A labelled group inside a panel, with an optional total for a list longer than the view. */
 export function Section({

@@ -8,6 +8,7 @@ import {
   summarizeOrderValidation,
   type ValidatedOrders
 } from "../orderEditor";
+import { SeverityMark } from "./primitives";
 import type { CaretLookup } from "../orderCompletion";
 import type { OrderSnippet } from "../orderSnippets";
 import { readUnitOrders } from "../ordersDocument";
@@ -193,6 +194,7 @@ function ProblemList({ problems, text }: { problems: OrderDiagnostic[]; text: st
             data-severity={problem.severity}
             className="flex gap-2"
           >
+            <SeverityMark severity={problem.severity} />
             <span className="shrink-0 tabular-nums text-ink-dim">line {problem.lineStart}</span>
             {found === null ? null : (
               <code
@@ -202,9 +204,7 @@ function ProblemList({ problems, text }: { problems: OrderDiagnostic[]; text: st
                 {found}
               </code>
             )}
-            <span className={problem.severity === "error" ? "text-danger" : "text-warn"}>
-              {problem.message}
-            </span>
+            <span className="text-ink">{problem.message}</span>
           </li>
         );
       })}

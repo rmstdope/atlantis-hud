@@ -1,5 +1,5 @@
 import type { HexFindings } from "../orderEditor";
-import { POPOVER_BODY_MAX_H } from "./primitives";
+import { POPOVER_BODY_MAX_H, PROBLEM_CARD, ProblemWho, SeverityMark } from "./primitives";
 import { PopoverFrame } from "./popover";
 
 /**
@@ -46,12 +46,12 @@ export function ProblemsPanel({
         </button>
       </div>
 
-      <ul className={`${POPOVER_BODY_MAX_H} list-none overflow-y-auto p-2`}>
+      <ul className={`${POPOVER_BODY_MAX_H} list-none space-y-2 overflow-y-auto p-2`}>
         {hexes.map((hex) => (
           <li
             key={hex.regionId}
             data-testid={`problem-hex-${hex.regionId}`}
-            className="border-t border-edge-soft py-1 first:border-t-0"
+            className={PROBLEM_CARD}
           >
             <button
               type="button"
@@ -62,27 +62,24 @@ export function ProblemsPanel({
                 onSelectHex(hex.regionId);
                 onDismiss();
               }}
-              className="w-full rounded px-1 text-left text-brass hover:bg-panel"
+              className="flex w-full items-baseline gap-1.5 border-b border-edge bg-brass/10 px-1.5 py-0.5 text-left text-pane-sm uppercase tracking-[0.06em] text-brass hover:bg-brass/20"
             >
               {labelFor(hex.regionId)}
-              <span className="ml-1.5 text-ink-dim">
-                {hex.findings.length} problem{hex.findings.length === 1 ? "" : "s"}
+              <span className="ml-auto normal-case tracking-normal text-ink-dim">
+                {hex.findings.length}
               </span>
             </button>
-            <ul className="m-0 list-none p-0 pl-1">
+            <ul className="m-0 list-none p-0">
               {hex.findings.map((finding, index) => (
                 <li
                   key={`${finding.code}-${finding.unitId ?? "hex"}-${index}`}
                   data-testid="problem-entry"
                   data-code={finding.code}
-                  className="flex gap-1.5"
+                  className="flex gap-1.5 border-t border-edge-soft px-1.5 py-0.5 first:border-t-0"
                 >
-                  {finding.unitId === null ? null : (
-                    <span className="shrink-0 tabular-nums text-ink-dim">{finding.unitId}</span>
-                  )}
-                  <span className={finding.severity === "error" ? "text-danger" : "text-warn"}>
-                    {finding.message}
-                  </span>
+                  <SeverityMark severity={finding.severity} />
+                  <ProblemWho unitId={finding.unitId} />
+                  <span className="text-ink">{finding.message}</span>
                 </li>
               ))}
             </ul>

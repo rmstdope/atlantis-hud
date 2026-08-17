@@ -1,6 +1,7 @@
 import type { OrderDiagnostic } from "@atlantis/core-client";
 import { unitIdForDiagnostic } from "../ordersImport";
 import { useEscapeToDismiss } from "./dismissLayer";
+import { SeverityMark } from "./primitives";
 
 /**
  * What a dirty orders import found, once it has finished.
@@ -86,9 +87,12 @@ export function OrdersImportSummaryDialog({
             {ordered.map(({ diagnostic, unitId }, index) => (
               <li
                 key={`${unitId ?? "doc"}-${index}`}
-                className={diagnostic.severity === "error" ? "text-danger" : "text-warn"}
+                className="flex gap-1.5"
               >
-                {unitId ? `unit ${unitId}: ${diagnostic.message}` : diagnostic.message}
+                <SeverityMark severity={diagnostic.severity} />
+                <span className="text-ink">
+                  {unitId ? `unit ${unitId}: ${diagnostic.message}` : diagnostic.message}
+                </span>
               </li>
             ))}
           </ul>
