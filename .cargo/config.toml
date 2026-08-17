@@ -1,21 +1,32 @@
-# One build directory for the repository and every worktree under it.
+# A build directory per worktree, on purpose.
 #
-# Agents work in git worktrees below `.cerebro/worktrees/`, and each of them used to compile into its
-# own `target/`: three worktrees held 16.4 GB between them, on a disk that reached 100% capacity. A
-# build that runs out of space there fails with a linker error that reads like a code problem, so
-# the cost is not only the space.
+# This file is tracked, so every git worktree carries its own copy, and cargo resolves
+# `target-dir` against the directory holding the *nearest* config it finds walking up from the
+# working directory - which is the worktree's own root, not the repository's. Measured with the
+# control, from a worktree, 2026-08-17:
 #
-# Cargo searches for this file upward from the working directory, and resolves `target-dir` against
-# the directory holding it. The worktrees sit inside the repository, so their search arrives here
-# and they all build into the one tree at the root. Measured with the control: without this file a
-# worktree answered `.cerebro/worktrees/task/target`; with it, `<repo>/target`.
+#     $ cargo metadata --no-deps --format-version 1 | jq -r .target_directory
+#     <repo>/.cerebro/worktrees/<bead>/target
+#
+# An earlier version of this comment claimed the opposite - "they all build into the one tree at
+# the root" - which was never true once the file was tracked into every worktree (ah-gdp).
+#
+# Per-worktree is deliberate, not an accident left uncorrected: cargo takes a file lock on a build
+# directory, so a genuinely shared tree would queue every implementer's Rust build behind every
+# other one's, and this fleet runs three or more implementers at once. Parallel builds are worth
+# the disk.
+#
+# The cost is roughly 2-3.5 GB per worktree. `.claude/cerebro/scripts/prune-worktrees.sh` reclaims
+# a removed worktree's tree as part of removing the worktree itself, and reclaims a long-cold kept
+# tree's `target/` on its own; `scripts/diskPreflight.ts`'s floor is sized for one worktree's build
+# on top of what is already there.
 #
 # The path stays relative on purpose. An absolute one would work on the machine it was written on
 # and break CI, which builds on Linux and caches `target/` at its default location. There is a test
 # for exactly that in scripts/cargoTargetDir.test.ts.
 #
-# For the repository itself this changes nothing - `target/` is where cargo already put things - so
-# CI and a plain clone are unaffected.
+# For the repository's own root checkout this changes nothing - `target/` is where cargo already
+# put things - so CI and a plain clone are unaffected.
 [build]
 target-dir = "target"
 

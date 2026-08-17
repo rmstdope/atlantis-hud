@@ -7,34 +7,38 @@ import { describe, expect, it } from "vitest";
 import { normalize, repositoryRoot, strayWorktrees, targetDir } from "./cargoTargetDir";
 
 /**
- * One build directory for every worktree.
+ * A build directory per worktree, and a worktree that stays inside the repository.
  *
- * Each git worktree used to compile into its own `target/`: three of them held 16.4 GB between them
- * for one repository, on a disk that reached 100% capacity - and an ENOSPC part-way through a build
- * surfaces as a strange linker error that reads like a code problem.
- *
- * Cargo searches for `.cargo/config.toml` upward from the working directory, and `build.target-dir`
- * in it is resolved against the directory holding the config. The worktrees live under
- * `.cerebro/worktrees/`, inside the repository, so the repository's own config catches them and they
- * all resolve to the one tree at the root. Measured, with the control: without the config a
- * worktree answered `.cerebro/worktrees/task/target`, and with it `<repo>/target`.
+ * `.cargo/config.toml` is tracked, so cargo's upward search for it - from any worktree, at
+ * `build.target-dir = "target"` - stops at the *nearest* copy, which is the worktree's own root,
+ * never a shared one at the repository root. An earlier version of this suite (and of the config's
+ * own comment) claimed the opposite; that was never true once the file was tracked into every
+ * worktree, and it went uncorrected for a while (ah-gdp). See `.cargo/config.toml`'s own comment
+ * for the corrected measurement and for why per-worktree is the deliberate choice, not a bug: cargo
+ * takes a file lock on a build directory, so a genuinely shared one would queue the fleet's Rust
+ * builds behind each other.
  *
  * What is asserted here is the one property that would break the build elsewhere. An absolute path
  * would work on the machine it was written on and fail on CI, which builds on Linux and caches
  * `target/` by its default location - so a well-meant `/Users/someone/.cache/...` would take the
  * Rust job down and leave the cache pointing at nothing.
  *
- * The "inside the repository" check below is asked of this worktree only, on purpose: it used to
- * ask about every worktree on the machine, which let one session's scratch worktree redden every
- * other session's gate (ah-efj).
+ * The worktree-location check below is a *second* line of defence, not the first: `ah-2sy`'s
+ * `prepare-worktree` script already refuses a path outside `.cerebro/worktrees/` at creation time.
+ * What it actually guards is not a shared cargo config - `bd` and cargo both find their own
+ * configuration by walking up from the working directory, so a worktree outside the repository
+ * silently gets its own empty bead database as well as its own build tree (`implement-bead`'s own
+ * reason, and the true one). It is asked of this worktree only, on purpose: it used to ask about
+ * every worktree on the machine, which let one session's scratch worktree redden every other
+ * session's gate (ah-efj).
  */
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = repositoryRoot(HERE);
 const CONFIG = join(REPO, ".cargo", "config.toml");
 
-describe("the shared cargo build directory", () => {
-  it("is configured at the repository root, where every worktree's search reaches it", () => {
+describe("the per-worktree cargo build directory", () => {
+  it("is configured, the same way in every worktree since the file is tracked", () => {
     expect(existsSync(CONFIG)).toBe(true);
     expect(targetDir(readFileSync(CONFIG, "utf8"))).toBe("target");
   });
@@ -51,7 +55,7 @@ describe("the shared cargo build directory", () => {
     expect(configured).not.toContain("~");
   });
 
-  it("runs from a worktree inside the repository, where the config and the bead database are shared", () => {
+  it("runs from a worktree inside the repository, where bd and cargo both find their configuration", () => {
     // Asked of THIS worktree only. The machine's other worktrees are other sessions' business - a
     // scratch tree elsewhere used to redden every session's gate (ah-efj). What matters for the
     // branch under test is that its own tree finds the repository's cargo config and bead database.
