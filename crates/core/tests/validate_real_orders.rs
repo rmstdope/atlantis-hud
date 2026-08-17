@@ -99,19 +99,19 @@ fn the_committed_turn_has_no_semantic_problems_either() {
     // One exception: unit 13402 is reported at combat [COMB] 5 (450) - the ruleset's own
     // maximum - and orders "@study comb" anyway. That is not an invented problem; it is a real
     // wasted month the player actually sent, and precisely the defect `study-at-maximum` exists
-    // to catch (ah-1uj, filed from this same corpus).
+    // to catch (ah-1uj, filed from this same corpus). Only the fields that make it that specific
+    // finding are asserted, not the whole struct, so an unrelated fixture edit elsewhere in the
+    // turn does not force rewriting this test.
+    assert_eq!(findings.len(), 1, "{findings:?}");
+    let finding = &findings[0];
     assert_eq!(
-        findings,
-        vec![atlantis_hud_core::orders::semantics::Finding {
-            code: atlantis_hud_core::orders::semantics::codes::STUDY_AT_MAXIMUM,
-            message: "this unit is already at combat 5, the highest the ruleset has".to_string(),
-            region_id: "1:26,52".to_string(),
-            unit_id: Some("13402".to_string()),
-            line: Some(472),
-            column_start: Some(1),
-            column_end: Some(6),
-        }],
-        "the checks invented a problem with a turn that was actually played"
+        finding.code,
+        atlantis_hud_core::orders::semantics::codes::STUDY_AT_MAXIMUM
+    );
+    assert_eq!(finding.unit_id.as_deref(), Some("13402"));
+    assert_eq!(
+        finding.message,
+        "this unit is already at combat 5, the highest the ruleset has"
     );
 }
 
