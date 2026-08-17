@@ -123,30 +123,37 @@ test("a report loaded in one game is not in the other", async ({ page }) => {
 
 /**
  * The picker renders inside the header, which sets `whitespace-nowrap` so the turn and faction
- * labels never wrap. That inherits, and the delete confirmation is the one piece of prose in
- * there: left alone it runs off the side of the panel as a single line.
+ * labels never wrap. That inherits, and the remove confirmation is the one piece of prose in
+ * there: left alone it runs off the side of the panel as a single line. Every paragraph is
+ * measured, not just the first - the panel gained two more with ah-58n.2, and each needs the same
+ * wrapping treatment.
  */
-test("the delete confirmation wraps inside the picker rather than running off it", async ({
+test("the remove confirmation wraps inside the picker rather than running off it", async ({
   page
 }) => {
   await clearGames(page);
   await createGame(page, "A game with a fairly long name");
 
   await page.getByTestId("game-indicator").click();
-  await page.getByRole("button", { name: "delete A game with a fairly long name" }).click();
+  await page.getByRole("button", { name: "remove A game with a fairly long name" }).click();
 
   // The box is constrained by its parent either way; what escapes is the text inside it, so the
   // question is whether the line is wider than the box that holds it.
-  const overflow = await page
+  const overflows = await page
     .getByTestId(/^game-delete-confirm-/u)
     .first()
     .locator("p")
-    .evaluate((element) => ({
-      scrollWidth: element.scrollWidth,
-      clientWidth: element.clientWidth
-    }));
+    .evaluateAll((elements) =>
+      elements.map((element) => ({
+        scrollWidth: element.scrollWidth,
+        clientWidth: element.clientWidth
+      }))
+    );
 
-  expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.clientWidth);
+  expect(overflows.length).toBeGreaterThan(0);
+  for (const overflow of overflows) {
+    expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.clientWidth);
+  }
 });
 
 test("deleting a game asks first, then falls back to the one that is left", async ({ page }) => {
@@ -158,7 +165,7 @@ test("deleting a game asks first, then falls back to the one that is left", asyn
   await createGame(page, "Doomed game");
 
   await page.getByTestId("game-indicator").click();
-  await page.getByRole("button", { name: "delete Doomed game" }).click();
+  await page.getByRole("button", { name: "remove Doomed game" }).click();
   await expect(page.getByTestId("game-picker")).toContainText("erased");
 
   await page.getByRole("button", { name: "Delete", exact: true }).click();
@@ -166,12 +173,51 @@ test("deleting a game asks first, then falls back to the one that is left", asyn
   await expect(page.getByTestId("game-indicator")).toContainText("Kept game");
 });
 
+test("resetting a game keeps it in the list and empties it", async ({ page }) => {
+  await clearGames(page);
+  await createGame(page, "Emptied game");
+
+  await page.setInputFiles('input[type="file"]', {
+    name: "turn-71.rep",
+    mimeType: "text/plain",
+    buffer: Buffer.from(REPORT, "utf8")
+  });
+  await expect(page.getByTestId("import-status")).toContainText("11 regions");
+
+  await page.getByTestId("game-indicator").click();
+  await page.getByRole("button", { name: "remove Emptied game" }).click();
+  await page.getByRole("button", { name: "Reset", exact: true }).click();
+
+  // Same game, same name - and nothing left in it.
+  await expect(page.getByTestId("game-indicator")).toContainText("Emptied game");
+  await expect(page.getByTestId("import-status")).toContainText("no report loaded");
+});
+
+test("Escape closes the remove panel and puts focus back on the control that opened it", async ({
+  page
+}) => {
+  await clearGames(page);
+  await createGame(page, "Kept whole");
+
+  await page.getByTestId("game-indicator").click();
+  const remove = page.getByRole("button", { name: "remove Kept whole" });
+  await remove.click();
+  await expect(page.getByTestId(/^game-delete-confirm-/u).first()).toBeVisible();
+
+  await page.keyboard.press("Escape");
+
+  await expect(page.getByTestId(/^game-delete-confirm-/u)).toHaveCount(0);
+  // The picker itself is still open: Escape closed the topmost surface, not everything.
+  await expect(page.getByTestId("game-picker")).toBeVisible();
+  await expect(remove).toBeFocused();
+});
+
 test("deleting the last game leaves the create screen", async ({ page }) => {
   await clearGames(page);
   await createGame(page, "Only game");
 
   await page.getByTestId("game-indicator").click();
-  await page.getByRole("button", { name: "delete Only game" }).click();
+  await page.getByRole("button", { name: "remove Only game" }).click();
   await page.getByRole("button", { name: "Delete", exact: true }).click();
 
   await expect(page.getByTestId("game-gate")).toBeVisible();

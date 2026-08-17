@@ -14,7 +14,7 @@ import { NEXUS, parseRegionId } from "../hexMapModel";
 import { MAX_STEP, MIN_STEP, type Viewport } from "./mapViewport";
 
 /** The minimal interface this module needs from any storage backend. */
-export type ViewportStorage = Pick<Storage, "getItem" | "setItem">;
+export type ViewportStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
 /**
  * localStorage key for the saved view of a specific game.
@@ -184,5 +184,27 @@ export function saveMapView(
     );
   } catch {
     // Storage full or blocked; the view is not critical.
+  }
+}
+
+/**
+ * Forgets one game's saved view. Called when a game is emptied (ah-58n).
+ *
+ * A reset keeps the game's id, so without this the emptied game reopens on a hex it no longer
+ * knows about. Only that game's key is touched; every other game's view is left where it is.
+ *
+ * Failures are silently ignored - remembering a view is a convenience and forgetting one must
+ * never crash the application, the same trade every other function in this module makes.
+ * `storage` is injectable for testing; production callers omit it and get localStorage.
+ */
+export function forgetMapView(
+  gameId: string,
+  storage: ViewportStorage | null = optionalStorage()
+): void {
+  if (!storage) return;
+  try {
+    storage.removeItem(viewportStorageKey(gameId));
+  } catch {
+    // Storage blocked; nothing here is critical.
   }
 }

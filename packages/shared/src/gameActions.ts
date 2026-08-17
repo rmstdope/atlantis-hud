@@ -13,6 +13,7 @@ import type { CoreClient, GameManifest, OpenedGame } from "@atlantis/core-client
 import { backupAsCopy, backupGameIdentity } from "./gameBackup";
 import { gameAfterDelete, gameNameOf, newGameId, newGameManifest } from "./gameSession";
 import { rulesetById } from "./rulesets";
+import { forgetMapView } from "./workspace/mapViewportStorage";
 
 /** The slice of the client these actions need - a fake in the tests is an object literal. */
 export type GameClient = Pick<
@@ -25,6 +26,7 @@ export type GameClient = Pick<
   | "importGame"
   | "setGameRuleset"
   | "setGameName"
+  | "resetGame"
 >;
 
 /** What a game action leaves behind for the shell to apply. */
@@ -156,6 +158,41 @@ export async function deleteGame(
   const next = gameAfterDelete(games, gameId);
   const opened = next ? await client.openGame(next.metadata.gameId, now) : null;
   return { opened, games, closedOpenGame: true };
+}
+
+/** What emptying a game leaves behind for the shell to apply. */
+export type ResetGameOutcome = {
+  /** The emptied game, ready to open. */
+  opened: OpenedGame;
+  games: GameManifest[];
+  /** Whether the game that was emptied is the one on screen. */
+  wasOpenGame: boolean;
+};
+
+/**
+ * Empties `gameId` and keeps it: same id, name and ruleset, nothing else (ah-58n).
+ *
+ * The open draft is discarded first when the game being emptied is the open one, for exactly
+ * `deleteGame`'s reason: the database its orders would be written to is about to be replaced, and a
+ * flush on the way out would write into a game that no longer holds it.
+ *
+ * The saved map view goes with the rest. It lives in localStorage rather than in the game, so the
+ * core cannot reach it and this is the only place it can be cleared.
+ */
+export async function resetGame(
+  client: GameClient,
+  gameId: string,
+  openGameId: string | null,
+  now: string,
+  discardOpenDraft: () => void
+): Promise<ResetGameOutcome> {
+  const wasOpenGame = openGameId === gameId;
+  if (wasOpenGame) {
+    discardOpenDraft();
+  }
+  const opened = await client.resetGame(gameId, now);
+  forgetMapView(gameId);
+  return { opened, games: await client.listGames(), wasOpenGame };
 }
 
 /**

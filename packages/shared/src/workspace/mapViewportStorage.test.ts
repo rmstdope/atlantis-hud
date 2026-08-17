@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { loadSavedView, saveMapView, type ViewportStorage } from "./mapViewportStorage";
+import { forgetMapView, loadSavedView, saveMapView, type ViewportStorage } from "./mapViewportStorage";
 import { MAX_STEP, type Viewport } from "./mapViewport";
 
 const GAME_A = "game-abc";
@@ -11,7 +11,8 @@ function makeStorage(): ViewportStorage & { data: Map<string, string> } {
   return {
     data,
     getItem: (key) => data.get(key) ?? null,
-    setItem: (key, value) => void data.set(key, value)
+    setItem: (key, value) => void data.set(key, value),
+    removeItem: (key) => void data.delete(key)
   };
 }
 
@@ -177,5 +178,33 @@ describe("the saved map view", () => {
     expect(() =>
       saveMapView(GAME_A, { viewport: { tx: 1, ty: 2, step: 0 }, level: 1, regionId: "1:7,53" }, null)
     ).not.toThrow();
+  });
+
+  // Emptying a game (ah-58n) keeps its id, so its saved view would otherwise survive and reopen
+  // the emptied game on a hex it no longer knows about.
+  it("forgets one game's saved view", () => {
+    saveMapView(GAME_A, primingView(), storage);
+    saveMapView(GAME_B, primingView({ tx: 9, ty: 9, step: 1 }), storage);
+
+    forgetMapView(GAME_A, storage);
+
+    expect(loadSavedView(GAME_A, storage)).toBeNull();
+    expect(loadSavedView(GAME_B, storage)).not.toBeNull();
+  });
+
+  it("tolerates storage that will not let it forget", () => {
+    const hostile: ViewportStorage = {
+      getItem: () => null,
+      setItem: () => {},
+      removeItem: () => {
+        throw new Error("blocked");
+      }
+    };
+
+    expect(() => forgetMapView(GAME_A, hostile)).not.toThrow();
+  });
+
+  it("does nothing when forgetting with no storage (unavailable)", () => {
+    expect(() => forgetMapView(GAME_A, null)).not.toThrow();
   });
 });
