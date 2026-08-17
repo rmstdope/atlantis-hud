@@ -1,7 +1,8 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { CoreClient, HexNoteRecord, OpenedGame } from "@atlantis/core-client";
-import { resetHexNotesStore, setHexNotesStateForTest } from "../hexNotesStore";
+import { resetHexNotesStore, useHexNotesStore } from "../hexNotesStore";
+import { restoreStoresForTest, setStoreStateForTest } from "../testing/storeState";
 import { RegionNotes } from "./RegionNotes";
 
 const GAME = {
@@ -42,9 +43,10 @@ const draw = () =>
 
 describe("the region panel's Notes section", () => {
   beforeEach(resetHexNotesStore);
+  afterEach(restoreStoresForTest);
 
   it("shows only the heading, no count and no add button, while loading", () => {
-    setHexNotesStateForTest({ gameId: "aug-2026", status: "loading", notes: [] });
+    setStoreStateForTest(useHexNotesStore, { gameId: "aug-2026", status: "loading", notes: [] });
 
     const markup = draw();
 
@@ -53,7 +55,7 @@ describe("the region panel's Notes section", () => {
   });
 
   it("says there are no notes, once ready and empty", () => {
-    setHexNotesStateForTest({ gameId: "aug-2026", status: "ready", notes: [] });
+    setStoreStateForTest(useHexNotesStore, { gameId: "aug-2026", status: "ready", notes: [] });
 
     const markup = draw();
 
@@ -62,7 +64,7 @@ describe("the region panel's Notes section", () => {
   });
 
   it("lists every note of the hex, newest first, with the on-map mark and the turn stamp", () => {
-    setHexNotesStateForTest({
+    setStoreStateForTest(useHexNotesStore, {
       gameId: "aug-2026",
       status: "ready",
       notes: [
@@ -84,7 +86,7 @@ describe("the region panel's Notes section", () => {
   });
 
   it("omits the turn stamp when the note is turn zero", () => {
-    setHexNotesStateForTest({
+    setStoreStateForTest(useHexNotesStore, {
       gameId: "aug-2026",
       status: "ready",
       notes: [note({ turn: 0 })]
@@ -96,7 +98,7 @@ describe("the region panel's Notes section", () => {
   });
 
   it("renders nothing without an open game", () => {
-    setHexNotesStateForTest({ gameId: "aug-2026", status: "ready", notes: [note()] });
+    setStoreStateForTest(useHexNotesStore, { gameId: "aug-2026", status: "ready", notes: [note()] });
 
     const markup = renderToStaticMarkup(
       <RegionNotes regionId="1:7,53" client={client()} game={null} turn={71} />
