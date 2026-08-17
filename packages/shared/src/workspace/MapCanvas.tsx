@@ -23,7 +23,7 @@ import {
 } from "./mapViewport";
 import { rectFromCorners, rectPixels, type MapRect } from "./mapMarquee";
 import { isRecentreGesture } from "./mapRecentre";
-import { mapViewDecision, shouldFollowSelection } from "./mapViewState";
+import { mapViewDecision, travelsToSelection, type FollowedSelection } from "./mapViewState";
 import { useOverlayInsets } from "./useOverlayInsets";
 import { useWorkspaceStore } from "../workspaceStore";
 import type { RouteOverlay } from "./routeOverlay";
@@ -391,29 +391,21 @@ export function MapCanvas({
   // view too: it carries the selection ring and the keyboard cursor like any other hex, and one of
   // those off screen is a ring nobody can see and a tab stop nobody can find.
   //
-  // Guarded against re-firing on a bare resize (ah-1uj): the effect also depends on `size` and
-  // `insets` so it can measure "off screen" against the current layout, but a container that
-  // resizes mid-import - the header growing a chip, a pane opening - re-runs it too, and centring
-  // against whatever size happened to be current in that instant leaves the view shifted once the
-  // container settles back. `lastFollowed` remembers the (selection, restore-exemption) pair this
-  // effect last acted on, so a resize alone - the pair unchanged - is a no-op; only a genuinely new
-  // arrival is followed.
-  const lastFollowed = useRef<{ selectedRegionId: string | null; restoredRegionId: string | null }>(
-    { selectedRegionId: null, restoredRegionId: null }
-  );
+  // Whether this run should travel is `travelsToSelection`'s call, not this effect's: the effect
+  // also depends on `size` and `insets` so it can measure "off screen" once it decides to travel,
+  // and a container that resizes mid-import - the header growing a chip, a pane opening - re-runs
+  // this effect too, for a reason that has nothing to do with the selection.
+  const lastFollowed = useRef<FollowedSelection>({
+    selectedRegionId: null,
+    restoredRegionId: null
+  });
   useEffect(() => {
     // The store already ended the restored hex's exemption in the same `set` that moved the
     // selection (see `mapViewSelectionChanged`), so there is nothing to clear here - only to read.
-    if (!shouldFollowSelection(selectedRegionId, mapView.restoredRegionId)) {
-      lastFollowed.current = { selectedRegionId, restoredRegionId: mapView.restoredRegionId };
-      return;
-    }
-
-    const alreadyFollowed =
-      lastFollowed.current.selectedRegionId === selectedRegionId &&
-      lastFollowed.current.restoredRegionId === mapView.restoredRegionId;
-    lastFollowed.current = { selectedRegionId, restoredRegionId: mapView.restoredRegionId };
-    if (alreadyFollowed) {
+    const current = { selectedRegionId, restoredRegionId: mapView.restoredRegionId };
+    const travels = travelsToSelection(current, lastFollowed.current);
+    lastFollowed.current = current;
+    if (!travels) {
       return;
     }
 

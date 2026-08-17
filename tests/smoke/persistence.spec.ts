@@ -188,6 +188,34 @@ test("a turn landing in the open game leaves the map where it is", async ({ page
   expect((await mapView(page)).scale).toBe(before.scale);
 });
 
+test("a pane opening leaves the map where it is", async ({ page }) => {
+  await clearGames(page);
+  await createGame(page, "Pane reflow game");
+  await openReport(page);
+  await selectHex(page, "1:7,53");
+  await moveTheMap(page);
+
+  const before = await mapView(page);
+
+  // Collapsing and reopening a pane reflows the strip the map fits against, exactly as a re-import
+  // that changes the header's chip count does. Nothing about the selection changed, so the map must
+  // not travel to it - ah-5g9, after ah-dbb.2 hit this 3/3 on CI and 0/3 locally.
+  //
+  // The units pane, not the region pane: it sits on the map's "bottom" edge and its collapsed
+  // height actually moves that edge's measured reach (`overlayInsets`'s vertical "bottom" is the
+  // host's bottom minus the pane's top). The region pane's collapse only changes its height inside
+  // a fixed-width rail, which never moves the "left" edge's horizontal reach - so toggling it would
+  // not exercise the insets path this test exists to cover.
+  const unitsPanelToggle = page.locator('[data-testid="panel-units"] header button');
+  await unitsPanelToggle.click();
+  await expect(unitsPanelToggle).toHaveAttribute("aria-expanded", "false");
+  await unitsPanelToggle.click();
+  await expect(unitsPanelToggle).toHaveAttribute("aria-expanded", "true");
+
+  await expect(page.getByTestId("map-world")).toHaveAttribute("transform", before.transform);
+  expect((await mapView(page)).scale).toBe(before.scale);
+});
+
 test("orders typed into a game are still there after a reload", async ({ page }) => {
   await clearGames(page);
   await createGame(page, "Typing game");
