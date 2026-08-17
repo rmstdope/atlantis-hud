@@ -1405,14 +1405,14 @@ fn check_building(hex: &Hex<'_>, options: &CheckOptions, findings: &mut Vec<Find
             Some(Party::New(_) | Party::Foreign { .. } | Party::Discard) => continue,
         };
 
-        let Some(structure_id) = &worker.unit.structure_id else {
+        let Some(structure_id) = structure_after_orders(worker) else {
             continue;
         };
         let Some(structure) = hex
             .region
             .structures
             .iter()
-            .find(|structure| &structure.structure_id == structure_id)
+            .find(|structure| structure.structure_id == structure_id)
         else {
             continue;
         };
@@ -1543,7 +1543,7 @@ fn check_magic_study(
             continue;
         }
 
-        let standing_in = ordered.unit.structure_id.as_deref().map(|id| {
+        let standing_in = structure_after_orders(ordered).map(|id| {
             hex.region
                 .structures
                 .iter()
@@ -1634,15 +1634,26 @@ fn check_forms(hex: &Hex<'_>, options: &CheckOptions, findings: &mut Vec<Finding
 /// report's own structure first, then the last of this unit's ENTER/LEAVE intents in document
 /// order - which is the order the server itself would apply them in.
 fn is_aboard(ordered: &Ordered<'_>, fleet_id: &str) -> bool {
-    let mut aboard = ordered.unit.structure_id.as_deref() == Some(fleet_id);
+    structure_after_orders(ordered) == Some(fleet_id)
+}
+
+/// The structure the unit is in once this month's ENTER/LEAVE orders have run: the report's own
+/// structure first, then the last of this unit's ENTER/LEAVE intents in document order - which is
+/// the order the server itself would apply them in. `None` when it ends the month in nothing.
+///
+/// Both ENTER and LEAVE run before anything else a block can ask for, so every check that asks
+/// "what is this unit standing in when its orders happen" wants this rather than
+/// `unit.structure_id`, which is only where the report found it.
+fn structure_after_orders<'a>(ordered: &Ordered<'a>) -> Option<&'a str> {
+    let mut inside = ordered.unit.structure_id.as_deref();
     for placed in ordered.intents {
         match &placed.intent {
-            Intent::Enter { structure } => aboard = structure == fleet_id,
-            Intent::Leave => aboard = false,
+            Intent::Enter { structure } => inside = Some(structure.as_str()),
+            Intent::Leave => inside = None,
             _ => {}
         }
     }
-    aboard
+    inside
 }
 
 /// Whether the unit could be giving the SAIL order for `fleet_id`: standing in it per the report,
@@ -3976,6 +3987,51 @@ mod tests {
         );
     }
 
+    /// The same blindness as the magic-study check had: ENTER and LEAVE run before BUILD, so the
+    /// structure that matters is the one the unit ends its ENTER/LEAVE orders in.
+    #[test]
+    fn a_builder_that_leaves_this_month_is_not_told_the_structure_is_finished() {
+        assert_eq!(
+            check(
+                vec![ReportRegion {
+                    structures: vec![finished_mill("1")],
+                    ..region(vec![in_structure(unit("4021"), "1")])
+                }],
+                "unit 4021\nLEAVE\nBUILD\n",
+            ),
+            vec![]
+        );
+    }
+
+    #[test]
+    fn a_builder_that_enters_a_finished_structure_this_month_is_told_so() {
+        let finding = only(check(
+            vec![ReportRegion {
+                structures: vec![finished_mill("1")],
+                ..region(vec![unit("4021")])
+            }],
+            "unit 4021\nENTER 1\nBUILD\n",
+        ));
+
+        assert_eq!(finding.code.as_str(), "already-built");
+    }
+
+    /// With HELP the structure belongs to the *helped* unit, and so do the ENTER/LEAVE orders that
+    /// move it.
+    #[test]
+    fn a_helper_is_judged_on_where_the_helped_unit_ends_its_orders() {
+        let finding = only(check(
+            vec![ReportRegion {
+                structures: vec![finished_mill("1")],
+                ..region(vec![unit("4021"), unit("5")])
+            }],
+            "unit 4021\nENTER 1\nunit 5\nBUILD HELP 4021\n",
+        ));
+
+        assert_eq!(finding.code.as_str(), "already-built");
+        assert_eq!(finding.unit_id.as_deref(), Some("5"));
+    }
+
     #[test]
     fn an_unfinished_structure_is_silent() {
         assert_eq!(
@@ -4208,6 +4264,89 @@ mod tests {
             ),
             vec![]
         );
+    }
+
+    /// The bug this bead was filed for: the mage steps out before the month's study happens, so
+    /// half of it is wasted and the player wrote the LEAVE deliberately.
+    #[test]
+    fn a_mage_that_leaves_the_building_this_month_is_warned() {
+        let finding = only(check(
+            vec![ReportRegion {
+                structures: vec![finished_of_kind("1", "Castle")],
+                ..region(vec![in_structure(mage(2), "1")])
+            }],
+            "unit 5\nLEAVE\nSTUDY FORC\n",
+        ));
+
+        assert_eq!(finding.code, codes::MAGIC_STUDY_OUTSIDE_BUILDING);
+    }
+
+    /// The mirror case, and the worse of the two: a warning about a mage that will be sheltered by
+    /// the time it studies teaches the player to distrust the check.
+    #[test]
+    fn a_mage_that_enters_a_building_this_month_is_silent() {
+        assert_eq!(
+            check(
+                vec![ReportRegion {
+                    structures: vec![finished_of_kind("1", "Castle")],
+                    ..region(vec![mage(2)])
+                }],
+                "unit 5\nENTER 1\nSTUDY FORC\n",
+            ),
+            vec![]
+        );
+    }
+
+    /// Last ENTER/LEAVE in document order wins, which is the order the server applies them in.
+    #[test]
+    fn a_mage_that_leaves_and_re_enters_is_judged_on_the_last_order() {
+        let region_with_castle = || ReportRegion {
+            structures: vec![finished_of_kind("1", "Castle")],
+            ..region(vec![in_structure(mage(2), "1")])
+        };
+
+        assert_eq!(
+            check(
+                vec![region_with_castle()],
+                "unit 5\nLEAVE\nENTER 1\nSTUDY FORC\n"
+            ),
+            vec![]
+        );
+        assert_eq!(
+            only(check(
+                vec![region_with_castle()],
+                "unit 5\nENTER 1\nLEAVE\nSTUDY FORC\n"
+            ))
+            .code,
+            codes::MAGIC_STUDY_OUTSIDE_BUILDING
+        );
+    }
+
+    /// Accept-on-doubt reaches the new input too: a structure entered but not listed is the same
+    /// doubt as one stood in but not listed.
+    #[test]
+    fn a_mage_entering_a_structure_the_report_does_not_list_is_not_judged() {
+        assert_eq!(
+            check(
+                vec![region(vec![mage(2)])],
+                "unit 5\nENTER 999\nSTUDY FORC\n"
+            ),
+            vec![]
+        );
+    }
+
+    /// Entering shelters the mage, but a Tower seats none, so the study is halved regardless.
+    #[test]
+    fn a_mage_entering_a_tower_is_still_halved() {
+        let finding = only(check(
+            vec![ReportRegion {
+                structures: vec![finished_of_kind("1", "Tower")],
+                ..region(vec![mage(2)])
+            }],
+            "unit 5\nENTER 1\nSTUDY FORC\n",
+        ));
+
+        assert_eq!(finding.code, codes::MAGIC_STUDY_OUTSIDE_BUILDING);
     }
 
     /// The case that made the buildings table worth scraping: a Tower is in the rules' table and
