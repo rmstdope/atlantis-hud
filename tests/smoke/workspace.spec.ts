@@ -902,8 +902,10 @@ test("a unit told to spend silver it has not got is warned about, without blocki
   await selectUnit(page, OWN_UNIT);
 
   // Nine figures is beyond any holding or income in the game, so this is short whatever the
-  // optimistic estimates allow.
-  await fillOrders(page, "GIVE 13401 999999999 SILV");
+  // optimistic estimates allow. Unit 0 discards the gift rather than naming a real target (ah-djq's
+  // "give-target-not-here" fires on a target the report cannot place, which this test is not about
+  // and would otherwise add a second problem here).
+  await fillOrders(page, "GIVE 0 999999999 SILV");
 
   // Every unit in this faction shares its purse, so the shortfall is the hex's rather than one
   // unit's - and the region panel is where a finding with no unit and no line belongs.
@@ -951,7 +953,7 @@ test("hiding the problems brings the region facts to the top", async ({ page }) 
   await warnAboutUnguardedHexes(page);
   await selectHex(page, "1:7,53");
   await selectUnit(page, OWN_UNIT);
-  await fillOrders(page, "GIVE 13401 999999999 SILV");
+  await fillOrders(page, "GIVE 0 999999999 SILV");
 
   const chip = page.getByTestId("region-problems-toggle");
   // The label the checkbox sits in, not the whole panel - other numbers live in the region facts.
@@ -982,7 +984,7 @@ test("the hidden problems stay hidden across a reload", async ({ page }) => {
   await warnAboutUnguardedHexes(page);
   await selectHex(page, "1:7,53");
   await selectUnit(page, OWN_UNIT);
-  await fillOrders(page, "GIVE 13401 999999999 SILV");
+  await fillOrders(page, "GIVE 0 999999999 SILV");
 
   await page.getByTestId("region-problems-toggle").uncheck();
   await expect(page.getByTestId("region-problems")).toHaveCount(0);
@@ -1005,7 +1007,7 @@ test("a silenced advisory check disappears everywhere at once", async ({ page })
   await loadReport(page);
   await selectHex(page, "1:7,53");
   await selectUnit(page, OWN_UNIT);
-  await fillOrders(page, "GIVE 13401 999999999 SILV");
+  await fillOrders(page, "GIVE 0 999999999 SILV");
 
   await expect(page.getByTestId("region-problems")).toContainText("short");
   await expect(page.getByTestId("problems-chip")).toContainText("1 problem");
@@ -1036,7 +1038,7 @@ test("an order with the wrong argument is caught, and the offending word quoted"
 
   // GIVE takes a quantity before the item, and "swords" is not one. Only a parser that reads the
   // arguments finds this; checking the command name alone accepts it.
-  await fillOrders(page, "GIVE 4573 swords");
+  await fillOrders(page, "GIVE 0 swords");
 
   const problems = page.getByTestId("orders-diagnostics");
   await expect(problems).toContainText("found \"swords\"");
@@ -1045,7 +1047,7 @@ test("an order with the wrong argument is caught, and the offending word quoted"
   await expect(page.getByTestId("orders-status")).toContainText("1 error");
 
   // Corrected, the syntax error goes.
-  await fillOrders(page, "GIVE 4573 10 swords");
+  await fillOrders(page, "GIVE 0 10 swords");
   await expect(page.getByTestId("orders-status")).toContainText("0 errors");
 
   // What is left is a different objection, and a true one (#82): Seven of Eight carries a leader
@@ -1091,7 +1093,7 @@ test("an item the catalogue does not know is a warning rather than an error", as
 
   // The shape is right, so this is not a refusal - the catalogue is scraped and may simply be
   // missing an entry. It is said out loud all the same, because it is usually a typo.
-  await fillOrders(page, "GIVE 4573 10 swordz");
+  await fillOrders(page, "GIVE 0 10 swordz");
 
   await expect(page.getByTestId("orders-diagnostics")).toContainText("swordz");
   const status = page.getByTestId("orders-status");
