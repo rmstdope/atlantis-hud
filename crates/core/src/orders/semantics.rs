@@ -4327,7 +4327,10 @@ mod tests {
     #[test]
     fn a_mage_entering_a_structure_the_report_does_not_list_is_not_judged() {
         assert_eq!(
-            check(vec![region(vec![mage(2)])], "unit 5\nENTER 999\nSTUDY FORC\n"),
+            check(
+                vec![region(vec![mage(2)])],
+                "unit 5\nENTER 999\nSTUDY FORC\n"
+            ),
             vec![]
         );
     }
