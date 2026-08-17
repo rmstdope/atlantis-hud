@@ -22,7 +22,8 @@ use atlantis_hud_core_persistence::{
     create_game, delete_game, delete_hex_note, export_game, import_game, insert_imported_turn,
     list_games, list_hex_notes, list_imported_turns, load_imported_turn, load_imported_turn_stamps,
     load_latest_imported_turn, load_merged_reports, load_order_draft, load_region_sightings,
-    open_game, preview_imported_turn, set_active_faction, set_game_name, set_game_ruleset,
+    open_game, preview_imported_turn, reset_game, set_active_faction, set_game_name,
+    set_game_ruleset,
     upsert_hex_note, upsert_imported_turn, upsert_merged_report, upsert_order_draft,
     upsert_region_sightings, GameManifest, GameMetadata, HexNote, ImportedTurnKey,
     ImportedTurnPreview, ImportedTurnRecord, MergedReportRecord, OpenedGame, OrderDraftKey,
@@ -1148,6 +1149,21 @@ pub fn command_set_active_faction(
         .map_err(|error| error.to_string())
 }
 
+/// Empties a game and keeps it, returning the fresh game.
+///
+/// # Errors
+///
+/// Returns an error when no game exists under this id, or when it cannot be replaced.
+pub fn command_reset_game(
+    games_root: &str,
+    game_id: &str,
+    now: &str,
+) -> Result<OpenedGameDto, String> {
+    reset_game(Path::new(games_root), game_id, now)
+        .map(OpenedGameDto::from)
+        .map_err(|error| error.to_string())
+}
+
 /// Deletes a game and everything it stored.
 ///
 /// # Errors
@@ -1500,6 +1516,28 @@ mod rename_command_tests {
             .expect_err("renaming a missing game should fail");
 
         assert!(error.contains("no-such-game"));
+    }
+
+    #[test]
+    fn resetting_a_game_returns_the_fresh_game() {
+        let dir = tempdir().expect("tempdir");
+        let root = dir.path().to_str().expect("a path");
+        command_create_game(root, manifest_dto("faction-95", "Borg TNG")).expect("created");
+        command_set_active_faction(root, "faction-95", "95").expect("faction recorded");
+
+        let reset = command_reset_game(root, "faction-95", "2026-08-17T09:00:00Z")
+            .expect("the reset should succeed");
+
+        assert_eq!(reset.manifest.metadata.game_id, "faction-95");
+        assert_eq!(reset.manifest.metadata.game_name, "Borg TNG");
+        assert_eq!(reset.manifest.metadata.active_faction_id, None);
+        assert!(reset.manifest.report_sources.is_empty());
+
+        // And it stuck: a fresh listing reads the manifest back off disk.
+        let listed = command_list_games(root).expect("listing should succeed");
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].metadata.game_name, "Borg TNG");
+        assert!(listed[0].report_sources.is_empty());
     }
 }
 
