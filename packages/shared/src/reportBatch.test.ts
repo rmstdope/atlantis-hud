@@ -1,12 +1,26 @@
 import { describe, expect, it } from "vitest";
 import { chooseViewerFaction, planReportBatch, type BatchCandidate } from "./reportBatch";
+import {
+  REPORT_HAS_NOTHING_IN_IT,
+  REPORT_NAMES_NO_FACTION,
+  REPORT_NAMES_NO_TURN,
+  type ReportUsability
+} from "./reportLoadDecision";
 
-/** A candidate, named the way the summary will name it. */
+/**
+ * A candidate, named the way the summary will name it. `usable` is what `judgeReportUsable` would
+ * have said about a report with this identity, which is what `prepareBatch` puts there.
+ */
 const file = (
   fileName: string,
   factionId: string | null,
-  turnNumber: number | null
-): BatchCandidate => ({ fileName, factionId, turnNumber });
+  turnNumber: number | null,
+  usable: ReportUsability = factionId === null
+    ? { ok: false, reason: REPORT_NAMES_NO_FACTION }
+    : turnNumber === null
+      ? { ok: false, reason: REPORT_NAMES_NO_TURN }
+      : { ok: true }
+): BatchCandidate => ({ fileName, factionId, turnNumber, usable });
 
 const borg = (turnNumber: number | null, name = `f95-t${turnNumber}.rep`) =>
   file(name, "95", turnNumber);
@@ -209,6 +223,32 @@ describe("planning a batch of reports", () => {
     expect(plan.steps).toHaveLength(1);
     expect(plan.skipped).toEqual([
       { index: 1, fileName: "undated.rep", reason: "the report does not name its turn" }
+    ]);
+  });
+
+  it("skips a report the shared judgement refuses, with its reason", () => {
+    const empty = file("truncated.rep", "95", 71, {
+      ok: false,
+      reason: REPORT_HAS_NOTHING_IN_IT
+    });
+    const plan = planReportBatch(viewer("95"), [borg(71), empty]);
+
+    expect(plan.steps).toHaveLength(1);
+    expect(plan.skipped).toEqual([
+      { index: 1, fileName: "truncated.rep", reason: REPORT_HAS_NOTHING_IN_IT }
+    ]);
+  });
+
+  it("still skips a usable report when there is no faction of your own", () => {
+    const plan = planReportBatch({ factionId: null, turnNumber: null }, [ally(71)]);
+
+    expect(plan.steps).toEqual([]);
+    expect(plan.skipped).toEqual([
+      {
+        index: 0,
+        fileName: "f73-t71.rep",
+        reason: "there is no faction of your own to import it into"
+      }
     ]);
   });
 

@@ -19,16 +19,58 @@
  *
  * A report that names no faction is not a report the application can do anything with - not
  * remembered, not compared, not routed - so it is refused before any of the above, whatever is on
- * screen (ah-brd).
+ * screen (ah-brd). That refusal, and two more like it, now live in `judgeReportUsable` below - one
+ * answer to "can this report be imported at all", asked by a single dropped file and by a batch
+ * alike, so the two front doors cannot drift apart again (ah-sgn.1). `decideReportLoad` is reached
+ * only for a report that judgement has already accepted.
  */
 
+import type { ParsedReport } from "@atlantis/core-client";
+
 /**
- * Why a report cannot become the working turn at all. One reason today: a report that names no
- * faction is not a report the application can do anything with - not remembered, not compared, not
- * routed - so it is refused before age or ownership are looked at (ah-brd). The batch importer skips
- * such a file with the same words.
+ * A report that names no faction is not a report the application can do anything with - not
+ * remembered, not compared, not routed - so it is refused before age or ownership are looked at
+ * (ah-brd). The batch importer skips such a file with the same words.
  */
 export const REPORT_NAMES_NO_FACTION = "the report does not name its faction";
+
+/** A report that cannot be filed under a turn, so it cannot be stored or compared (ah-sgn.1). */
+export const REPORT_NAMES_NO_TURN = "the report does not name its turn";
+
+/** A report describing nothing - a truncated file, say - which must not replace a populated map. */
+export const REPORT_HAS_NOTHING_IN_IT = "the report has no regions or units in it";
+
+/** Whether a report can be imported at all, and why not when it cannot. */
+export type ReportUsability = { ok: true } | { ok: false; reason: string };
+
+/**
+ * Whether this report can be imported at all - the one answer, for a file dropped on its own and
+ * for one of twenty in a batch alike.
+ *
+ * The three conditions are the Rust core's own `meets_minimum_import_threshold`
+ * (`crates/core/src/lib.rs:247`): a turn, a faction, and something in it. Kept in step with that
+ * function by hand and by the tests in this module's test file - the shells hold a `ParsedReport`
+ * from `parseReportFull`, not the `ReportParseResult` that carries the core's flag, so reading the
+ * flag would cost a second parse of every imported file.
+ *
+ * Order matters only for which reason the player is told first, and it goes from the most basic
+ * fact outwards: who it is from, when it is from, what is in it.
+ */
+export function judgeReportUsable(report: ParsedReport): ReportUsability {
+  if (report.header.factionId === null) {
+    return { ok: false, reason: REPORT_NAMES_NO_FACTION };
+  }
+  if (report.header.turnNumber === null) {
+    return { ok: false, reason: REPORT_NAMES_NO_TURN };
+  }
+  // The core's rule is "no regions *and* no units", and in a `ParsedReport` a unit only exists
+  // inside a region (`crates/core/src/report/mod.rs:53`, `units()` flat-maps the regions), so no
+  // regions implies no units. There is no second clause to add here.
+  if (report.regions.length === 0) {
+    return { ok: false, reason: REPORT_HAS_NOTHING_IN_IT };
+  }
+  return { ok: true };
+}
 
 /** As much of a report as deciding what to do with it needs. */
 export type LoadedReportIdentity = {
@@ -37,8 +79,6 @@ export type LoadedReportIdentity = {
 };
 
 export type ReportLoadDecision =
-  /** Cannot become the working turn at all; `reason` is shown to the player as it stands. */
-  | { kind: "reject"; reason: string }
   /** Nothing to ask about. */
   | { kind: "load" }
   /**
@@ -71,6 +111,11 @@ export function isOlderTurn(
 /**
  * What loading `incoming` should do, given whatever is on screen.
  *
+ * Whether the report can be imported at all is `judgeReportUsable`'s question, and both callers ask
+ * it first - so in practice nothing unusable reaches here. This function makes no such assumption of
+ * its own: an unknown turn number is still handled honestly (see `isOlderTurn`), because a rule that
+ * quietly depends on its caller is a rule that breaks the next time somebody adds a caller.
+ *
  * Age is checked before ownership: a report older than what is on screen is stored for history and
  * never becomes the working turn, whichever faction it names - gh-208. Only once a report is no
  * older does the faction question (issue #53) get asked at all.
@@ -79,10 +124,6 @@ export function decideReportLoad(
   current: LoadedReportIdentity | null,
   incoming: LoadedReportIdentity
 ): ReportLoadDecision {
-  if (incoming.factionId === null) {
-    return { kind: "reject", reason: REPORT_NAMES_NO_FACTION };
-  }
-
   if (!current) {
     return { kind: "load" };
   }

@@ -1,8 +1,65 @@
 import { describe, expect, it } from "vitest";
-import { REPORT_NAMES_NO_FACTION, decideReportLoad, isOlderTurn } from "./reportLoadDecision";
+import { aParsedReport, aReportHeaderInfo, aReportRegion } from "@atlantis/core-client";
+import type { ParsedReport, ReportHeaderInfo, ReportRegion } from "@atlantis/core-client";
+import {
+  REPORT_HAS_NOTHING_IN_IT,
+  REPORT_NAMES_NO_FACTION,
+  REPORT_NAMES_NO_TURN,
+  decideReportLoad,
+  isOlderTurn,
+  judgeReportUsable
+} from "./reportLoadDecision";
 
 const borgTng = { factionId: "95", turnNumber: 71 };
 const borg = (turnNumber: number | null) => ({ factionId: "73", turnNumber });
+
+function aReport(
+  header: Partial<ReportHeaderInfo> = {},
+  regions: ReportRegion[] = [aReportRegion()]
+): ParsedReport {
+  return aParsedReport({
+    header: aReportHeaderInfo({ factionId: "73", turnNumber: 71, ...header }),
+    regions
+  });
+}
+
+describe("judging whether a report can be imported at all", () => {
+  it("refuses a report that names no faction", () => {
+    expect(judgeReportUsable(aReport({ factionId: null }))).toEqual({
+      ok: false,
+      reason: REPORT_NAMES_NO_FACTION
+    });
+  });
+
+  it("refuses a report that names no turn", () => {
+    expect(judgeReportUsable(aReport({ turnNumber: null }))).toEqual({
+      ok: false,
+      reason: REPORT_NAMES_NO_TURN
+    });
+  });
+
+  it("refuses a report with nothing in it", () => {
+    expect(judgeReportUsable(aReport({}, []))).toEqual({
+      ok: false,
+      reason: REPORT_HAS_NOTHING_IN_IT
+    });
+  });
+
+  it("names the faction before the turn before the contents", () => {
+    expect(judgeReportUsable(aReport({ factionId: null, turnNumber: null }, []))).toEqual({
+      ok: false,
+      reason: REPORT_NAMES_NO_FACTION
+    });
+    expect(judgeReportUsable(aReport({ turnNumber: null }, []))).toEqual({
+      ok: false,
+      reason: REPORT_NAMES_NO_TURN
+    });
+  });
+
+  it("accepts a report with a faction, a turn and one region", () => {
+    expect(judgeReportUsable(aReport())).toEqual({ ok: true });
+  });
+});
 
 describe("isOlderTurn", () => {
   it("is older when the incoming turn is behind what is on screen", () => {
@@ -93,23 +150,4 @@ describe("deciding what to do with a chosen report", () => {
     });
   });
 
-  /**
-   * A report that names no faction is not a report the application can do anything with - not
-   * remembered, not compared, not routed - so it is refused before age or ownership are looked at,
-   * whatever is on screen (ah-brd).
-   */
-  it("rejects a report that names no faction, whatever is on screen", () => {
-    expect(decideReportLoad(null, { factionId: null, turnNumber: null })).toEqual({
-      kind: "reject",
-      reason: REPORT_NAMES_NO_FACTION
-    });
-    expect(decideReportLoad(borgTng, { factionId: null, turnNumber: 71 })).toEqual({
-      kind: "reject",
-      reason: REPORT_NAMES_NO_FACTION
-    });
-    expect(decideReportLoad(borgTng, { factionId: null, turnNumber: 2 })).toEqual({
-      kind: "reject",
-      reason: REPORT_NAMES_NO_FACTION
-    });
-  });
 });
