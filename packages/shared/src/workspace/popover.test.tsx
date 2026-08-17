@@ -43,20 +43,31 @@ describe("PopoverFrame", () => {
   });
 
   it("padding and text size are optional", () => {
+    // The explicit value here must differ from PopoverFrame's own default (text-pane) - otherwise
+    // both branches assert the same token and the test can't tell whether the prop was actually
+    // forwarded from whether the default merely rendered.
     const withBoth = renderToStaticMarkup(
-      <PopoverFrame testId="x" label="X" align="left" width="w-40" padding="p-1" textSize="text-[11px]">
+      <PopoverFrame
+        testId="x"
+        label="X"
+        align="left"
+        width="w-40"
+        padding="p-1"
+        textSize="text-pane-lg"
+      >
         body
       </PopoverFrame>
     );
     expect(withBoth).toContain("p-1");
-    expect(withBoth).toContain("text-[11px]");
+    expect(withBoth).toContain("text-pane-lg");
 
     const withNeither = renderToStaticMarkup(
       <PopoverFrame testId="x" label="X" align="left" width="w-40">
         body
       </PopoverFrame>
     );
-    expect(withNeither).toContain("text-[11.5px]");
+    expect(withNeither).toContain("text-pane");
+    expect(withNeither).not.toContain("text-pane-lg");
     expect(withNeither).not.toMatch(/\bp-\d/);
   });
 });

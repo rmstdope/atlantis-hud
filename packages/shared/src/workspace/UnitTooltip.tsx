@@ -50,7 +50,7 @@ export function UnitTooltip({ unit, at }: { unit: ReportUnit; at: Point }) {
       }}
       // Transparent to the pointer, so resting on a row cannot put the tooltip under the cursor
       // and take away the very hover that opened it.
-      className="pointer-events-none fixed z-50 max-h-[80vh] w-max max-w-sm overflow-hidden rounded-md border border-edge bg-panel/95 px-2.5 py-1.5 text-[11.5px] leading-snug text-ink shadow-lg backdrop-blur"
+      className="pointer-events-none fixed z-50 max-h-[80vh] w-max max-w-sm overflow-hidden rounded-md border border-edge bg-panel/95 px-2.5 py-1.5 text-pane leading-snug text-ink shadow-lg backdrop-blur"
     >
       <p className="m-0 font-medium text-brass">{summary.title}</p>
 

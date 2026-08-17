@@ -53,7 +53,7 @@ export function BattlesDialog({
         role="dialog"
         aria-modal="true"
         aria-label="Battles"
-        className="grid h-[85vh] w-[64rem] max-w-[94vw] grid-rows-[auto_1fr] rounded border border-edge bg-panel-raised text-[11.5px] whitespace-normal shadow-lg"
+        className="grid h-[85vh] w-[64rem] max-w-[94vw] grid-rows-[auto_1fr] rounded border border-edge bg-panel-raised text-pane whitespace-normal shadow-lg"
       >
         <div className="flex items-center gap-2 border-b border-edge px-2 py-1.5">
           <span className="text-ink-soft">
@@ -230,7 +230,7 @@ function BattleDetail({
       </div>
 
       <div className="flex flex-col gap-1">
-        <h3 className="text-[10px] uppercase tracking-wide text-brass">Outcome</h3>
+        <h3 className="text-pane-sm uppercase tracking-wide text-brass">Outcome</h3>
         <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
           <dt className="text-ink-soft">Casualties</dt>
           <dd className="text-ink">
@@ -255,10 +255,10 @@ function BattleDetail({
 
       {battle.rounds.length > 0 ? (
         <div className="flex flex-col gap-2">
-          <h3 className="text-[10px] uppercase tracking-wide text-brass">Rounds</h3>
+          <h3 className="text-pane-sm uppercase tracking-wide text-brass">Rounds</h3>
           {battle.rounds.map((round, index) => (
             <div key={index} className="flex flex-col gap-0.5 border-l-2 border-edge pl-2">
-              <span className="text-[10px] uppercase tracking-wide text-brass">
+              <span className="text-pane-sm uppercase tracking-wide text-brass">
                 {roundLabel(round)}
               </span>
               {round.lines.map((line, lineIndex) => (
@@ -308,7 +308,7 @@ function Roster({
 
   return (
     <div className="flex min-h-0 flex-col gap-1">
-      <h3 className="text-[10px] uppercase tracking-wide text-brass">
+      <h3 className="text-pane-sm uppercase tracking-wide text-brass">
         {label} <span className="text-ink-dim">{counts.total}</span>
         {counts.own > 0 ? <span className="text-ink-dim"> · {counts.own} yours</span> : null}
       </h3>

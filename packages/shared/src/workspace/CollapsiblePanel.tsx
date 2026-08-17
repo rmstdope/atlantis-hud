@@ -72,7 +72,7 @@ export function CollapsiblePanel({
           type="button"
           onClick={() => togglePanel(panel)}
           aria-expanded={!collapsed}
-          className="flex flex-1 items-center gap-2 text-left text-[10px] uppercase tracking-[0.12em] text-brass focus-visible:outline focus-visible:outline-1 focus-visible:outline-brass"
+          className="flex flex-1 items-center gap-2 text-left text-pane-sm uppercase tracking-[0.12em] text-brass focus-visible:outline focus-visible:outline-1 focus-visible:outline-brass"
         >
           <span>{title}</span>
           {hint ? (
@@ -87,7 +87,7 @@ export function CollapsiblePanel({
         {actions}
       </header>
       {collapsed ? null : (
-        <div className="min-h-0 flex-1 overflow-auto px-2.5 py-2 text-[11.5px] leading-snug">
+        <div className="min-h-0 flex-1 overflow-auto px-2.5 py-2 text-pane leading-snug">
           {children}
         </div>
       )}

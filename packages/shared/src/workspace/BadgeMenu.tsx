@@ -36,7 +36,7 @@ export function BadgeMenu({
       align="left"
       width="w-40"
       padding="p-1"
-      textSize="text-[11px]"
+      textSize="text-pane"
     >
       <div className="flex items-center justify-between px-1 pb-1 text-ink-dim">
         <span>Badges</span>

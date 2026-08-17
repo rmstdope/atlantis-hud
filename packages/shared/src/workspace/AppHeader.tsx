@@ -234,7 +234,7 @@ export function AppHeader({
       data-testid="app-header"
       onDragOver={(event) => event.preventDefault()}
       onDrop={onDrop}
-      className="flex flex-wrap min-h-9 flex-none items-center gap-x-3.5 border-b border-edge bg-panel px-3 text-[11.5px] whitespace-nowrap"
+      className="flex flex-wrap min-h-9 flex-none items-center gap-x-3.5 border-b border-edge bg-panel px-3 text-pane whitespace-nowrap"
     >
       {/*
         Game state, grouped so it can wrap internally on a very narrow window without disturbing

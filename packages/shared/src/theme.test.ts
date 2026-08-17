@@ -129,6 +129,65 @@ describe("theme palette", () => {
 });
 
 /**
+ * The panes' type scale (ah-46p.1): three named `rem` tokens replace 67 hard-coded `px` sites.
+ * `px` ignores the reader's font-size preference outright, so a token is what lets it reach the
+ * panes at all.
+ */
+describe("pane type scale", () => {
+  it("declares the pane type scale as rem tokens in the theme block", () => {
+    const themeBlock = extractBlock(css, /@theme\b/);
+    const sizes = new Map(
+      [...themeBlock.matchAll(/(--text-pane[\w-]*)\s*:\s*([\d.]+rem)/g)].map((match) => [
+        match[1],
+        match[2]
+      ])
+    );
+
+    expect(sizes.get("--text-pane-sm")).toBeDefined();
+    expect(sizes.get("--text-pane")).toBeDefined();
+    expect(sizes.get("--text-pane-lg")).toBeDefined();
+
+    // rem, not px: a `px` value here would silently recreate the whole bug.
+    for (const [token, value] of sizes) {
+      expect(value.endsWith("rem"), `${token} is ${value}, not rem`).toBe(true);
+    }
+  });
+
+  /**
+   * `px` ignores the reader's font-size preference; the three `--text-pane*` tokens are the scale.
+   * A new hard-coded `px` size is exactly how 67 of them accumulated in the first place.
+   */
+  async function sourcesWithAbsoluteType(): Promise<string[]> {
+    const { readdirSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const root = fileURLToPath(new URL(".", import.meta.url));
+    const offenders: string[] = [];
+    const visit = (dir: string) => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const path = join(dir, entry.name);
+        if (entry.isDirectory()) {
+          visit(path);
+          // Test files are excluded (both `.test.ts` and `.test.tsx`): fixture markup in a test can
+          // legitimately use an arbitrary pixel value that has nothing to do with pane type, and
+          // this guard is about production sources.
+        } else if (/\.tsx?$/.test(entry.name) && !/\.test\.tsx?$/.test(entry.name)) {
+          const contents = readFileSync(path, "utf8");
+          if (/text-\[[\d.]+px\]/.test(contents) || /fontSize:\s*["'][\d.]+px["']/.test(contents)) {
+            offenders.push(path.slice(root.length));
+          }
+        }
+      }
+    };
+    visit(root);
+    return offenders;
+  }
+
+  it("sets no pane type in absolute pixels", async () => {
+    expect(await sourcesWithAbsoluteType()).toEqual([]);
+  });
+});
+
+/**
  * Each map theme ships its own stylesheet, holding the colours that theme alone uses and its
  * zoom-band policy. The same parity trap applies there and for the same reason: a custom property
  * declared on `:root` but not under `:root[data-theme="light"]` silently keeps its dark value in

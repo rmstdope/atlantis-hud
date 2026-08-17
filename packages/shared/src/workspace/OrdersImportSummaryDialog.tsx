@@ -77,12 +77,12 @@ export function OrdersImportSummaryDialog({
         role="dialog"
         aria-modal="true"
         aria-label="Orders imported"
-        className="w-[30rem] rounded border border-edge bg-panel-raised p-3 text-[11.5px] whitespace-normal shadow-lg"
+        className="w-[30rem] rounded border border-edge bg-panel-raised p-3 text-pane whitespace-normal shadow-lg"
       >
         <h2 className="text-ink">{headline}</h2>
 
         {ordered.length > 0 ? (
-          <ul className="mt-2 max-h-64 overflow-y-auto rounded border border-edge-soft bg-ground p-1.5 font-mono text-[10.5px] text-ink-soft">
+          <ul className="mt-2 max-h-64 overflow-y-auto rounded border border-edge-soft bg-ground p-1.5 font-mono text-pane-sm text-ink-soft">
             {ordered.map(({ diagnostic, unitId }, index) => (
               <li
                 key={`${unitId ?? "doc"}-${index}`}
