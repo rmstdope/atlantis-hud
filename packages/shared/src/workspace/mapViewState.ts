@@ -164,7 +164,12 @@ export function keepsRestoredHex(
   return restoredRegionId !== null && selectedRegionId === restoredRegionId;
 }
 
-/** The pair the follow-selection effect last acted on. */
+/**
+ * The pair the follow-selection effect last *saw*, not last travelled for: it is written on every
+ * run, including one that declines to travel, so a later resize can be told apart from a genuinely
+ * new arrival. Writing it only on a travel would leave a declined pair behind for the next resize to
+ * misread as new.
+ */
 export type FollowedSelection = {
   selectedRegionId: string | null;
   restoredRegionId: string | null;
@@ -175,8 +180,9 @@ export type FollowedSelection = {
  *
  * Two questions, and both must answer yes. Does this selection want a travel at all
  * (`shouldFollowSelection` — a hex the player clicked on the map is already visible, and the hex a
- * restore put back is exempt)? And is it a *new* arrival rather than the pair we already travelled
- * for? The effect also depends on the measured `size` and `insets` so it can ask "off screen"
+ * restore put back is exempt)? And is it a *new* arrival rather than the pair the effect last saw,
+ * `last` - whether or not that run travelled? The effect also depends on the measured `size` and
+ * `insets` so it can ask "off screen"
  * against the current layout, which means a container that resizes mid-import - the header growing
  * a chip, a pane opening - re-runs it with nothing about the selection changed. Centring again
  * against whatever size happened to be current in that instant is what moved the map under a landed
