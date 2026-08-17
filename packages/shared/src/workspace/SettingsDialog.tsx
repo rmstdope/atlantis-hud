@@ -358,11 +358,6 @@ const WARNING_GROUPS: readonly {
         code: "form-alias-reused",
         title: "Reused FORM numbers",
         description: "Two units formed in the same hex this month with the same NEW number."
-      },
-      {
-        code: "give-target-not-here",
-        title: "Gifts to units that are not here",
-        description: "A GIVE or TAKE naming a unit the report does not show in that hex."
       }
     ]
   },
