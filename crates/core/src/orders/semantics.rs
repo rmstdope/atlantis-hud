@@ -1334,15 +1334,19 @@ fn check_building(hex: &Hex<'_>, options: &CheckOptions, findings: &mut Vec<Find
             continue;
         }
 
-        // Whose structure is it: the helped unit's, or the builder's own.
+        // Whose structure is it: the helped unit's, or the builder's own. A helper naming
+        // anything other than an existing unit of ours in this hex - a unit formed this turn
+        // with no number yet, another faction's unit, `HELP 0` - cannot be resolved to a
+        // structure at all, and is doubt rather than the builder's own structure.
         let (worker, helped_id) = match helping {
+            None => (ordered, None),
             Some(Party::Unit(id)) => match hex.find(id) {
                 Some(helped) => (helped, Some(id.as_str())),
                 // A unit not in this hex - not on the report at all, or one that formed this
                 // month and has no number yet - cannot be judged.
                 None => continue,
             },
-            Some(Party::New(_) | Party::Foreign { .. } | Party::Discard) | None => (ordered, None),
+            Some(Party::New(_) | Party::Foreign { .. } | Party::Discard) => continue,
         };
 
         let Some(structure_id) = &worker.unit.structure_id else {
@@ -3502,6 +3506,24 @@ mod tests {
                     ..region(vec![unit("5")])
                 }],
                 "unit 5\nBUILD HELP 4021\n",
+            ),
+            vec![]
+        );
+    }
+
+    /// A helper naming a unit that is not a concrete unit of ours in this hex - one formed this
+    /// turn and not yet on the report - cannot be resolved to a structure at all. Judging the
+    /// builder's own structure instead would be a guess, not what the order says.
+    #[test]
+    fn a_helper_naming_a_unit_formed_this_turn_is_silent_even_when_the_builder_stands_in_a_finished_structure(
+    ) {
+        assert_eq!(
+            check(
+                vec![ReportRegion {
+                    structures: vec![finished_mill("1")],
+                    ..region(vec![in_structure(unit("5"), "1")])
+                }],
+                "unit 5\nBUILD HELP NEW 2\n",
             ),
             vec![]
         );

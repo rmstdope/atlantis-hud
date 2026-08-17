@@ -257,27 +257,43 @@ fn read_order(command: &Token, arguments: &[Token]) -> Option<Intent> {
         // "This is a full month order." Nothing here reads them further; what matters is that the
         // unit's month is spoken for.
         "PRODUCE" => Some(Intent::MonthLong("PRODUCE")),
-        "BUILD" if arguments.is_empty() => Some(Intent::Build {
-            founding: None,
-            helping: None,
-        }),
-        "BUILD" if arguments.first().is_some_and(|token| token.is("COMPLETE")) => {
-            Some(Intent::Build {
+        // The grammar's own forms (`grammar.rs`'s BUILD entry): `HELP [unit] COMPLETE`,
+        // `HELP [unit]`, `COMPLETE`, `[name] COMPLETE`, `[name]`, and nothing at all. Read
+        // strictly - a token this reader does not account for makes the order unreadable, the
+        // same as everywhere else in this module, rather than being silently dropped.
+        "BUILD" => match arguments {
+            [] => Some(Intent::Build {
                 founding: None,
                 helping: None,
-            })
-        }
-        "BUILD" if arguments.first().is_some_and(|token| token.is("HELP")) => {
-            let (helping, _) = forms::read_party(&arguments[1..])?;
-            Some(Intent::Build {
+            }),
+            [complete] if complete.is("COMPLETE") => Some(Intent::Build {
                 founding: None,
-                helping: Some(helping),
-            })
-        }
-        "BUILD" => Some(Intent::Build {
-            founding: Some(arguments.first()?.text.clone()),
-            helping: None,
-        }),
+                helping: None,
+            }),
+            [help, rest @ ..] if help.is("HELP") => {
+                let (helping, rest) = forms::read_party(rest)?;
+                match rest {
+                    [] => Some(Intent::Build {
+                        founding: None,
+                        helping: Some(helping),
+                    }),
+                    [complete] if complete.is("COMPLETE") => Some(Intent::Build {
+                        founding: None,
+                        helping: Some(helping),
+                    }),
+                    _ => None,
+                }
+            }
+            [name] => Some(Intent::Build {
+                founding: Some(name.text.clone()),
+                helping: None,
+            }),
+            [name, complete] if complete.is("COMPLETE") => Some(Intent::Build {
+                founding: Some(name.text.clone()),
+                helping: None,
+            }),
+            _ => None,
+        },
         // A bare SAIL - the form the turn 71 template uses - spends the month but names no step
         // this reader can follow. With a route it is read below.
         "SAIL" if arguments.is_empty() => Some(Intent::Sail { steps: Vec::new() }),
@@ -727,6 +743,28 @@ mod tests {
                 helping: Some(Party::Unit("4021".to_string()))
             }]
         );
+    }
+
+    /// `BUILD HELP [new unit]` helps a unit formed this turn - not on the report, so the check
+    /// cannot resolve which structure that is, but the order is still readable.
+    #[test]
+    fn building_help_names_a_new_unit() {
+        assert_eq!(
+            intents("unit 5\nBUILD HELP NEW 2\n"),
+            vec![Intent::Build {
+                founding: None,
+                helping: Some(Party::New("2".to_string()))
+            }]
+        );
+    }
+
+    /// A token this reader does not account for makes the order unreadable, the same as every
+    /// other order here - a trailing word must not be silently dropped.
+    #[test]
+    fn a_build_with_a_trailing_word_is_unreadable() {
+        assert_eq!(intents("unit 5\nBUILD COMPLETE foo\n"), vec![]);
+        assert_eq!(intents("unit 5\nBUILD HELP 4021 foo\n"), vec![]);
+        assert_eq!(intents("unit 5\nBUILD Tower foo\n"), vec![]);
     }
 
     /// A TURN block's contents are next month's orders, not this month's. Reading them as though
