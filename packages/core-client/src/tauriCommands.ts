@@ -26,6 +26,7 @@ export const TAURI_COMMANDS = {
   createGame: ["create_game", "manifest"],
   openGame: ["open_game", "game_id", "opened_at"],
   deleteGame: ["delete_game", "game_id"],
+  resetGame: ["reset_game", "game_id", "now"],
   exportGame: ["export_game", "game_id", "exported_at"],
   importGame: ["import_game", "backup_json", "opened_at"],
   setGameRuleset: ["set_game_ruleset", "game_id", "ruleset_id"],
@@ -47,6 +48,13 @@ export const TAURI_COMMANDS = {
   ],
   validateOrders: ["validate_orders", "raw_orders", "ruleset_json", "raw_report", "disabled_codes"],
   orderCommands: ["order_commands"],
+  completionsAtCaret: [
+    "completions_at_caret",
+    "line_prefix",
+    "ruleset_json",
+    "raw_report",
+    "unit_id"
+  ],
   orderArgumentCompletions: [
     "order_argument_completions",
     "line_prefix",

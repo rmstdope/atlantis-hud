@@ -14,6 +14,7 @@ import type {
   HexNoteRecord,
   KnownMap,
   MoveOrderTraceResponse,
+  CaretCompletions,
   OrderCompletion,
   OrderValidationResult,
   OrdersPreviewResponse,
@@ -50,6 +51,12 @@ export type CoreWasmModule = {
     rawReport: string | null,
     unitId: string | null
   ): OrderCompletion[];
+  completions_at_caret_state(
+    linePrefix: string,
+    rulesetJson: string | null,
+    rawReport: string | null,
+    unitId: string | null
+  ): CaretCompletions;
   plan_route_state(
     rulesetJson: string,
     rawReport: string,
@@ -466,6 +473,14 @@ export function createWebCoreAdapter(
     ) {
       return wasm.order_argument_completions_state(linePrefix, rulesetJson, rawReport, unitId);
     },
+    async completionsAtCaret(
+      linePrefix: string,
+      rulesetJson: string | null,
+      rawReport: string | null,
+      unitId: string | null
+    ) {
+      return wasm.completions_at_caret_state(linePrefix, rulesetJson, rawReport, unitId);
+    },
 
     async listGames() {
       // The registry stores a manifest as an untyped blob; every other read of it in this file
@@ -514,6 +529,37 @@ export function createWebCoreAdapter(
         throw new Error(`no game with id ${gameId}`);
       }
       await store.deleteGame(gameId);
+    },
+
+    async resetGame(gameId: string, now: string) {
+      const game = await store.getGame(gameId);
+      if (!game) {
+        throw new Error(`no game with id ${gameId}`);
+      }
+
+      const previous = game.manifest as GameManifest;
+      // Built field by field, never spread from `previous`: most of a manifest does *not* survive a
+      // reset, and a spread would carry every field added later through it silently. `activeFactionId`
+      // is simply absent, which is how the optional field says "none".
+      const manifest: GameManifest = {
+        manifestVersion: previous.manifestVersion,
+        metadata: {
+          gameId: previous.metadata.gameId,
+          gameName: previous.metadata.gameName,
+          rulesetId: previous.metadata.rulesetId
+        },
+        reportSources: [],
+        createdAt: now,
+        lastOpenedAt: now
+      };
+      // The registry row first — the opposite order from the desktop's rename-aside, and for the same
+      // reason: a failure after this leaves an empty game, which is what was asked for, while a
+      // failure the other way round would leave a full game the picker no longer lists. Do not "make
+      // the two platforms consistent" here.
+      await store.putGame({ ...game, manifest });
+      await store.dropGameData(game.databasePath);
+
+      return { ...game, manifest, gameFilePath: game.databasePath };
     },
 
     async exportGame(gameId: string, exportedAt: string) {

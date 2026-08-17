@@ -14,19 +14,19 @@ use atlantis_hud_core::report::import::{import_writes, SeenRegion};
 use atlantis_hud_core::report::merge::{merge_report_into_sightings, StoredSighting};
 pub use atlantis_hud_core::report::ParsedReport;
 use atlantis_hud_core::{
-    engine_info, order_argument_completions, order_commands, parse_report, reject_import,
-    reject_merge, EngineInfo, OrderCheckOptions, OrderCompletion, OrderValidationResult,
-    ReportParseResult, ReportParseResultWire,
+    completions_at_caret, engine_info, order_argument_completions, order_commands, parse_report,
+    reject_import, reject_merge, CaretCompletions, EngineInfo, OrderCheckOptions, OrderCompletion,
+    OrderValidationResult, ReportParseResult, ReportParseResultWire,
 };
 use atlantis_hud_core_persistence::{
     create_game, delete_game, delete_hex_note, export_game, import_game, insert_imported_turn,
     list_games, list_hex_notes, list_imported_turns, load_imported_turn, load_imported_turn_stamps,
     load_latest_imported_turn, load_merged_reports, load_order_draft, load_region_sightings,
-    open_game, preview_imported_turn, set_active_faction, set_game_name, set_game_ruleset,
-    upsert_hex_note, upsert_imported_turn, upsert_merged_report, upsert_order_draft,
-    upsert_region_sightings, GameManifest, GameMetadata, HexNote, ImportedTurnKey,
-    ImportedTurnPreview, ImportedTurnRecord, MergedReportRecord, OpenedGame, OrderDraftKey,
-    OrderDraftRecord, PersistenceError, ReportSourceRef,
+    open_game, preview_imported_turn, reset_game, set_active_faction, set_game_name,
+    set_game_ruleset, upsert_hex_note, upsert_imported_turn, upsert_merged_report,
+    upsert_order_draft, upsert_region_sightings, GameManifest, GameMetadata, HexNote,
+    ImportedTurnKey, ImportedTurnPreview, ImportedTurnRecord, MergedReportRecord, OpenedGame,
+    OrderDraftKey, OrderDraftRecord, PersistenceError, ReportSourceRef,
 };
 use serde::{Deserialize, Serialize};
 
@@ -482,6 +482,31 @@ pub mod commands {
         });
 
         order_argument_completions(line_prefix, ruleset.as_deref(), report.as_deref(), unit_id)
+    }
+
+    /// Where the caret is in one order line, for the Tauri command surface.
+    ///
+    /// One call for all three completion sources, with the position decided in the core so no shell
+    /// keeps a rule of its own (ah-vfq). The cache is used exactly as
+    /// `command_order_argument_completions` uses it.
+    #[must_use]
+    #[cfg_attr(
+        feature = "tauri",
+        tauri::command(rename_all = "snake_case", rename = "completions_at_caret")
+    )]
+    pub fn command_completions_at_caret(
+        line_prefix: &str,
+        ruleset_json: Option<&str>,
+        raw_report: Option<&str>,
+        unit_id: Option<&str>,
+    ) -> CaretCompletions {
+        let (ruleset, report) = atlantis_hud_core::cache::with_global(|cache| {
+            let ruleset = ruleset_json.and_then(|json| cache.ruleset(json).ok());
+            let report = raw_report.map(|raw| cache.classified_when_possible(raw, ruleset_json));
+            (ruleset, report)
+        });
+
+        completions_at_caret(line_prefix, ruleset.as_deref(), report.as_deref(), unit_id)
     }
 
     /// Validates one order draft for the Tauri command surface.
@@ -1067,8 +1092,8 @@ pub mod commands {
 }
 
 pub use commands::{
-    command_commit_report_import, command_delete_hex_note, command_export_map,
-    command_get_engine_info, command_known_map, command_list_hex_notes,
+    command_commit_report_import, command_completions_at_caret, command_delete_hex_note,
+    command_export_map, command_get_engine_info, command_known_map, command_list_hex_notes,
     command_list_imported_turns, command_load_imported_turn, command_load_latest_imported_turn,
     command_load_merged_reports, command_load_order_draft, command_load_region_sightings,
     command_merge_report, command_order_argument_completions, command_order_commands,
@@ -1145,6 +1170,21 @@ pub fn command_set_active_faction(
 ) -> Result<GameManifestDto, String> {
     set_active_faction(Path::new(games_root), game_id, faction_id)
         .map(GameManifestDto::from)
+        .map_err(|error| error.to_string())
+}
+
+/// Empties a game and keeps it, returning the fresh game.
+///
+/// # Errors
+///
+/// Returns an error when no game exists under this id, or when it cannot be replaced.
+pub fn command_reset_game(
+    games_root: &str,
+    game_id: &str,
+    now: &str,
+) -> Result<OpenedGameDto, String> {
+    reset_game(Path::new(games_root), game_id, now)
+        .map(OpenedGameDto::from)
         .map_err(|error| error.to_string())
 }
 
@@ -1500,6 +1540,28 @@ mod rename_command_tests {
             .expect_err("renaming a missing game should fail");
 
         assert!(error.contains("no-such-game"));
+    }
+
+    #[test]
+    fn resetting_a_game_returns_the_fresh_game() {
+        let dir = tempdir().expect("tempdir");
+        let root = dir.path().to_str().expect("a path");
+        command_create_game(root, manifest_dto("faction-95", "Borg TNG")).expect("created");
+        command_set_active_faction(root, "faction-95", "95").expect("faction recorded");
+
+        let reset = command_reset_game(root, "faction-95", "2026-08-17T09:00:00Z")
+            .expect("the reset should succeed");
+
+        assert_eq!(reset.manifest.metadata.game_id, "faction-95");
+        assert_eq!(reset.manifest.metadata.game_name, "Borg TNG");
+        assert_eq!(reset.manifest.metadata.active_faction_id, None);
+        assert!(reset.manifest.report_sources.is_empty());
+
+        // And it stuck: a fresh listing reads the manifest back off disk.
+        let listed = command_list_games(root).expect("listing should succeed");
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].metadata.game_name, "Borg TNG");
+        assert!(listed[0].report_sources.is_empty());
     }
 }
 

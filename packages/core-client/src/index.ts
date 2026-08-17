@@ -411,6 +411,26 @@ export type OrderCompletion = {
   detail: string;
 };
 
+/** Which position the caret is in. Mirrors the core's `CaretPosition`. */
+export type CaretPosition = "command" | "argument" | "nowhere";
+
+/**
+ * Where the caret is in one order line, what word is being typed there, and what may stand there.
+ *
+ * Mirrors the core's `CaretCompletions`. One call, because the three answers come from one lexing
+ * of the line and the editor's three completion sources all need them on the same keystroke.
+ */
+export type CaretCompletions = {
+  position: CaretPosition;
+  /** Where the word being typed starts, in UTF-16 code units from the start of the line - the unit
+   * CodeMirror's own document offsets are in, so a shell adds it to `line.from` directly. */
+  wordStart: number;
+  /** The word being typed, verbatim. Empty when none is. */
+  word: string;
+  /** What may stand here. Empty unless `position` is `"argument"`. */
+  options: OrderCompletion[];
+};
+
 export type ImportedTurnPreview = {
   exists: boolean;
   rawChanged: boolean;
@@ -495,6 +515,8 @@ export interface CoreAdapter {
   createGame(manifest: GameManifest): Promise<OpenedGame>;
   openGame(gameId: string, openedAt: string): Promise<OpenedGame>;
   deleteGame(gameId: string): Promise<void>;
+  /** Empties a game and keeps it: same id, name and ruleset, nothing else. Resolves the fresh game. */
+  resetGame(gameId: string, now: string): Promise<OpenedGame>;
   exportGame(gameId: string, exportedAt: string): Promise<string>;
   importGame(backupJson: string, openedAt: string): Promise<OpenedGame>;
   setGameRuleset(gameId: string, rulesetId: string): Promise<GameManifest>;
@@ -541,6 +563,17 @@ export interface CoreAdapter {
     rawReport: string | null,
     unitId: string | null
   ): Promise<OrderCompletion[]>;
+  /**
+   * Where the caret is in one order line, and what may stand there: the one reader of the caret's
+   * position, so no shell keeps a rule of its own (ah-vfq). Same four arguments, and the same
+   * widening from `rulesetJson`, `rawReport` and `unitId`, as `orderArgumentCompletions`.
+   */
+  completionsAtCaret(
+    linePrefix: string,
+    rulesetJson: string | null,
+    rawReport: string | null,
+    unitId: string | null
+  ): Promise<CaretCompletions>;
   planRoute(
     rulesetJson: string,
     rawReport: string,

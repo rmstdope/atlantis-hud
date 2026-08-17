@@ -4,8 +4,8 @@
 ))]
 use atlantis_hud_core_tauri::{
     command_create_game, command_delete_game, command_export_game, command_import_game,
-    command_list_games, command_open_game, command_set_active_faction, command_set_game_name,
-    command_set_game_ruleset, GameManifestDto, OpenedGameDto,
+    command_list_games, command_open_game, command_reset_game, command_set_active_faction,
+    command_set_game_name, command_set_game_ruleset, GameManifestDto, OpenedGameDto,
 };
 
 #[cfg(all(
@@ -67,6 +67,19 @@ fn list_games(app: tauri::AppHandle) -> Result<Vec<GameManifestDto>, String> {
 #[tauri::command(rename_all = "snake_case")]
 fn delete_game(app: tauri::AppHandle, game_id: String) -> Result<(), String> {
     command_delete_game(&games_root(&app)?, &game_id)
+}
+
+#[cfg(all(
+    any(target_os = "linux", target_os = "macos", target_os = "windows"),
+    feature = "desktop-runtime"
+))]
+#[tauri::command(rename_all = "snake_case")]
+fn reset_game(
+    app: tauri::AppHandle,
+    game_id: String,
+    now: String,
+) -> Result<OpenedGameDto, String> {
+    command_reset_game(&games_root(&app)?, &game_id, &now)
 }
 
 #[cfg(all(
@@ -155,6 +168,7 @@ fn main() {
             open_game,
             list_games,
             delete_game,
+            reset_game,
             export_game,
             import_game,
             set_game_ruleset,
@@ -170,6 +184,7 @@ fn main() {
             atlantis_hud_core_tauri::command_validate_orders,
             atlantis_hud_core_tauri::command_order_commands,
             atlantis_hud_core_tauri::command_order_argument_completions,
+            atlantis_hud_core_tauri::command_completions_at_caret,
             atlantis_hud_core_tauri::command_save_order_draft,
             atlantis_hud_core_tauri::command_load_order_draft,
             atlantis_hud_core_tauri::command_list_hex_notes,
