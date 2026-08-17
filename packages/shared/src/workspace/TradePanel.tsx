@@ -65,12 +65,20 @@ export function TradePanel({
   routes,
   labelFor,
   onSelectHex,
+  onHoverRoute,
   onDismiss
 }: {
   routes: TradeRoute[];
   /** How a hex reads in the interface, for instance `mountain (7,53)`. */
   labelFor: (regionId: string) => string;
   onSelectHex: (regionId: string) => void;
+  /**
+   * The row the reader is on, so the map can draw it - and `null` the moment they look away.
+   *
+   * Called on focus as well as on hover: every row is a button, so this list is tabbed through, and
+   * a hover-only feature would show a keyboard reader nothing at all.
+   */
+  onHoverRoute: (route: TradeRoute | null) => void;
   onDismiss: () => void;
 }) {
   return (
@@ -108,6 +116,10 @@ export function TradePanel({
                   type="button"
                   data-testid={`trade-route-${index}`}
                   title={`${labelFor(regionIdOf(route.from))} ${circuit ? "⇄" : "→"} ${labelFor(regionIdOf(route.to))}`}
+                  onPointerEnter={() => onHoverRoute(route)}
+                  onPointerLeave={() => onHoverRoute(null)}
+                  onFocus={() => onHoverRoute(route)}
+                  onBlur={() => onHoverRoute(null)}
                   onClick={() => {
                     onSelectHex(regionIdOf(route.from));
                     onDismiss();

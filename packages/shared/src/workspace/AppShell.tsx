@@ -160,6 +160,7 @@ import { chooseRouteOverlay } from "./routeOverlay";
 import { RegionPanel } from "./RegionPanel";
 import { ProblemsPanel } from "./ProblemsPanel";
 import { TradePanel } from "./TradePanel";
+import { arrowFor } from "./tradeArrow";
 import { TurnMessagesPanel, type TurnMessagesTab } from "./TurnMessagesPanel";
 import { UnitPanel } from "./UnitPanel";
 import { UnitTableDock } from "./UnitTableDock";
@@ -1892,6 +1893,31 @@ export function AppShell({
    * has not asked for it at the moment it fails.
    */
   const [tradeRoutes, setTradeRoutes] = useState<TradeRoute[]>([]);
+  /**
+   * The trade route the reader is hovering (or has tabbed to) in the Trade popover, which the map
+   * draws an arrow for.
+   *
+   * Read through `openPopover` below rather than cleared on every dismissal path: a popover can
+   * close under the pointer - Escape, a click elsewhere, a row clicked - and a closed popover must
+   * never leave an arrow behind or the map framed somewhere the reader did not choose.
+   */
+  const [hoveredRoute, setHoveredRoute] = useState<TradeRoute | null>(null);
+  // Memoised because the map's framing effect depends on this value's identity: a fresh object on
+  // every render would re-frame the route on every render, and each framing commits a viewport,
+  // which renders again.
+  const tradeArrow = useMemo(
+    () => (openPopover === "trade" ? arrowFor(hoveredRoute) : null),
+    [openPopover, hoveredRoute]
+  );
+  // A dismissed popover forgets the row it was on. The gate above is what stops a closed popover
+  // drawing anything, but on its own it only hides the route: the popover unmounts without the row
+  // ever firing `onPointerLeave` or `onBlur`, so reopening Trade would draw and frame the last
+  // route hovered with the pointer nowhere near it (Copilot, #398).
+  useEffect(() => {
+    if (openPopover !== "trade") {
+      setHoveredRoute(null);
+    }
+  }, [openPopover]);
 
   useEffect(() => {
     if (ruleset.status !== "ready" || !rawReport) {
@@ -2614,6 +2640,7 @@ export function AppShell({
             routes={tradeRoutes}
             labelFor={hexLabel}
             onSelectHex={selectHex}
+            onHoverRoute={setHoveredRoute}
             onDismiss={() => closePopover("trade")}
           />
         }
@@ -2742,6 +2769,7 @@ export function AppShell({
             trace: orderTrace?.path ?? null
           })}
           routeRisk={layers.movement && route?.plan ? (route.risk?.hexes ?? []) : []}
+          arrow={tradeArrow}
           // Gated on a report for the same reason the header button and the palette entry are:
           // there is nothing to export a map of until one is loaded, and a dialog that opened
           // anyway could only refuse.
