@@ -88,6 +88,54 @@ export function splitTurnMessages(lines: readonly string[]): TurnMessage[] {
   return lines.map(splitTurnMessage);
 }
 
+/** One unit's events, or the faction-level ones. */
+export type TurnMessageGroup = {
+  /** The unit these belong to, or `null` for the General group. */
+  unitId: string | null;
+  /**
+   * The unit's name as its first line printed it, or `null` for General.
+   *
+   * From the first line rather than the last: a report can print two names for one id within a
+   * turn, and the first is the one the reader met.
+   */
+  unitName: string | null;
+  /** In report order, always - the order within a group is never rearranged. */
+  messages: TurnMessage[];
+};
+
+/**
+ * The messages grouped by the unit that caused them.
+ *
+ * General first when it has anything, then each unit in the order the report first mentioned it, so
+ * the list still walks the turn the way the report tells it and no group moves between turns for a
+ * reason the reader cannot see (navigator, 2026-08-17). An empty input is an empty list, and a
+ * General group is omitted entirely rather than shown empty.
+ *
+ * Keyed on `unitId` and nothing else. An id also appears *inside* a message - `Gives 50 silver
+ * [SILV] to Lookout (12159)` - and looking for one there would file every gift under both parties.
+ * `splitTurnMessage` reads only the leading `Name (id): ` prefix, which is exactly the unit the
+ * event is about.
+ *
+ * Nothing is sorted: a `Map` keeps insertion order, which is the report's order.
+ */
+export function groupTurnMessages(messages: readonly TurnMessage[]): TurnMessageGroup[] {
+  const groups = new Map<string | null, TurnMessageGroup>();
+
+  for (const message of messages) {
+    let group = groups.get(message.unitId);
+    if (!group) {
+      group = { unitId: message.unitId, unitName: message.unitName, messages: [] };
+      groups.set(message.unitId, group);
+    }
+    group.messages.push(message);
+  }
+
+  const general = groups.get(null);
+  const units = [...groups.values()].filter((group) => group.unitId !== null);
+
+  return general ? [general, ...units] : units;
+}
+
 const plural = (count: number, noun: string) => `${count} ${noun}${count === 1 ? "" : "s"}`;
 
 /**

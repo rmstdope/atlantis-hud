@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { splitTurnMessages, type TurnMessage } from "../turnMessages";
+import { groupTurnMessages, splitTurnMessages } from "../turnMessages";
 import { POPOVER_BODY_MAX_H } from "./primitives";
 import { PopoverFrame } from "./popover";
 
@@ -44,6 +44,7 @@ export function TurnMessagesPanel({
   const parsedErrors = useMemo(() => splitTurnMessages(errors), [errors]);
   const parsedEvents = useMemo(() => splitTurnMessages(events), [events]);
   const shown = tab === "errors" ? parsedErrors : parsedEvents;
+  const groups = useMemo(() => groupTurnMessages(parsedEvents), [parsedEvents]);
 
   return (
     <PopoverFrame testId="turn-messages" label="Turn messages" align="right" width="w-[28rem]">
@@ -68,7 +69,44 @@ export function TurnMessagesPanel({
       </div>
 
       <ul className={`${POPOVER_BODY_MAX_H} overflow-y-auto p-2`}>
-        {shown.map((message, index) => (
+        {tab === "events"
+          ? groups.map((group) => (
+              <li
+                key={group.unitId ?? "general"}
+                data-testid={`turn-messages-group-${group.unitId ?? "general"}`}
+                className="border-t border-edge-soft py-1 first:border-t-0"
+              >
+                <div className="flex items-baseline gap-2">
+                  {group.unitId ? (
+                    <Unit
+                      unitId={group.unitId}
+                      unitName={group.unitName}
+                      known={knownUnitIds}
+                      onSelectUnit={onSelectUnit}
+                    />
+                  ) : (
+                    <span className="text-ink-soft">General</span>
+                  )}
+                  <span className="flex-1" />
+                  <span className="text-ink-dim">{group.messages.length}</span>
+                </div>
+                {/*
+                  Every group is open: grouping alone does the work, and a one-line group hidden
+                  behind a control costs a click to read nothing (navigator, 2026-08-17).
+                */}
+                <ul className="pl-2">
+                  {group.messages.map((message, index) => (
+                    <li key={index} className="py-0.5">
+                      {message.verb ? (
+                        <span className="pr-2 text-ink-dim">{message.verb}</span>
+                      ) : null}
+                      <span className="text-ink">{message.text}</span>
+                    </li>
+                  ))}
+                </ul>
+              </li>
+            ))
+          : shown.map((message, index) => (
           <li
             key={`${tab}-${index}`}
             data-testid={`turn-messages-row-${index}`}
@@ -81,7 +119,12 @@ export function TurnMessagesPanel({
             */}
             {message.unitId || message.verb ? (
               <div className="flex items-baseline gap-2">
-                <Unit message={message} known={knownUnitIds} onSelectUnit={onSelectUnit} />
+                <Unit
+                  unitId={message.unitId}
+                  unitName={message.unitName}
+                  known={knownUnitIds}
+                  onSelectUnit={onSelectUnit}
+                />
                 {message.verb ? <span className="text-ink-dim">{message.verb}</span> : null}
               </div>
             ) : null}
@@ -132,20 +175,21 @@ function Tab({
  * died would be a button that does nothing, which is worse than plain text saying the same thing.
  */
 function Unit({
-  message,
+  unitId,
+  unitName,
   known,
   onSelectUnit
 }: {
-  message: TurnMessage;
+  unitId: string | null;
+  unitName: string | null;
   known: ReadonlySet<string>;
   onSelectUnit: (unitId: string) => void;
 }) {
-  const unitId = message.unitId;
   if (!unitId) {
     return null;
   }
 
-  const label = `${message.unitName} (${unitId})`;
+  const label = `${unitName} (${unitId})`;
   if (!known.has(unitId)) {
     return <span className="text-ink-dim">{label}</span>;
   }
