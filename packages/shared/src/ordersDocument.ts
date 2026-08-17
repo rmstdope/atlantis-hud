@@ -261,3 +261,65 @@ export function stripMovementOrderLines(orders: string): string {
     .join("\n")
     .trim();
 }
+
+/**
+ * The orders that occupy a unit's whole month, exactly as the rules name them: "The orders which
+ * take an entire month are ADVANCE, BUILD, ENTERTAIN, MOVE, PILLAGE, PRODUCE, SAIL, STUDY, TAX,
+ * TEACH and WORK." A unit can issue as many other orders as it likes alongside these (GIVE, GUARD,
+ * CLAIM, AUTOTAX...), but only one of these eleven - the game keeps whichever it is given last, so
+ * a document that already carries one and gains a second is a document quietly lying about what
+ * the unit will actually spend the month doing.
+ *
+ * Not the Rust core's `MOVEMENT_ORDER_COMMANDS`: that list exists for the planner, which only ever
+ * needs to know a movement order from a non-movement one. This is the ruleset's own full list, not
+ * generated from the core, because nothing there currently tracks it - see `ordersDocument.test.ts`
+ * for the citation.
+ */
+export const LONG_ORDER_COMMANDS = [
+  "ADVANCE",
+  "BUILD",
+  "ENTERTAIN",
+  "MOVE",
+  "PILLAGE",
+  "PRODUCE",
+  "SAIL",
+  "STUDY",
+  "TAX",
+  "TEACH",
+  "WORK"
+] as const;
+
+const LONG_ORDER_LINE = new RegExp(`^\\s*@?\\s*(${LONG_ORDER_COMMANDS.join("|")})\\b`, "iu");
+
+/** Whether a single line (as typed, not necessarily trimmed) is one of the eleven month-long
+ *  orders - `@`-repeated or not, upper or lower case, exactly as `MOVEMENT_ORDER_LINE` is read. */
+export function isLongOrderLine(line: string): boolean {
+  return LONG_ORDER_LINE.test(line);
+}
+
+/**
+ * A unit's orders with any existing month-long order removed, so a newly chosen one replaces
+ * whichever was there rather than sitting alongside it - the general form of what
+ * `stripMovementOrderLines` already does for the three movement commands specifically. Kept as two
+ * functions rather than one: the planner only ever means to replace a movement order with another
+ * movement order, and reaching for the wider one there would let a planned route silently delete an
+ * unrelated PRODUCE it was never asked to touch.
+ */
+export function stripLongOrderLines(orders: string): string {
+  return orders
+    .split("\n")
+    .filter((line) => !LONG_ORDER_LINE.test(line))
+    .join("\n")
+    .trim();
+}
+
+/**
+ * The month-long order a unit's orders currently carry, if the document has one - for a display
+ * that wants to say what a unit is actually going to spend its month on, at a glance. Comments and
+ * blank lines are never it; if a document somehow holds two (typed by hand, outside anything that
+ * calls `stripLongOrderLines`), the first is what the game will keep, so the first is what is shown.
+ */
+export function longOrderOf(orders: string): string | null {
+  return commandsOnly(orders).find((line) => LONG_ORDER_LINE.test(line)) ?? null;
+}
+

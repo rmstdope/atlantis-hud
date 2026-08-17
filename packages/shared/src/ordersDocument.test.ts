@@ -5,7 +5,11 @@ import {
   commandsOnly,
   findUnitBlocks,
   hasFactionHeader,
+  isLongOrderLine,
+  LONG_ORDER_COMMANDS,
+  longOrderOf,
   readUnitOrders,
+  stripLongOrderLines,
   stripMovementOrderLines,
   stripUnitComments,
   withoutTrailingBlankLines,
@@ -448,5 +452,84 @@ describe("stripping a unit's existing movement order", () => {
     for (const command of MOVEMENT_ORDER_COMMANDS) {
       expect(stripMovementOrderLines(`${command} N\n@study obse`)).toBe("@study obse");
     }
+  });
+});
+
+/**
+ * The month-long commands are the ruleset's own list, not derived from anything the core exports:
+ * "A unit can also do exactly one action that takes up the entire month, such as harvesting
+ * resources or moving from one region to another. The orders which take an entire month are
+ * ADVANCE, BUILD, ENTERTAIN, MOVE, PILLAGE, PRODUCE, SAIL, STUDY, TAX, TEACH and WORK."
+ */
+describe("isLongOrderLine", () => {
+  it("recognises every one of the eleven month-long commands", () => {
+    for (const command of LONG_ORDER_COMMANDS) {
+      expect(isLongOrderLine(`${command} some argument`)).toBe(true);
+    }
+  });
+
+  it("recognises a repeated one too", () => {
+    expect(isLongOrderLine("@produce iron")).toBe(true);
+  });
+
+  it("is case-insensitive, the way orders themselves are", () => {
+    expect(isLongOrderLine("work")).toBe(true);
+    expect(isLongOrderLine("Work")).toBe(true);
+  });
+
+  it("does not mistake an ordinary flag order for a month-long one", () => {
+    expect(isLongOrderLine("guard 1")).toBe(false);
+    expect(isLongOrderLine("autotax 1")).toBe(false);
+    expect(isLongOrderLine("@claim 50")).toBe(false);
+  });
+
+  it("does not match a command that merely starts with the same letters", () => {
+    // "taxation" is not "tax" - the same \b boundary MOVEMENT_ORDER_LINE already relies on.
+    expect(isLongOrderLine("taxation 1")).toBe(false);
+  });
+});
+
+describe("stripLongOrderLines", () => {
+  it("drops an existing PRODUCE line so a newly chosen order replaces it", () => {
+    // "@claim 50" is not itself a month-long order, so it is the marker that should survive here -
+    // "study" is one of the eleven this function strips, so it would be the wrong thing to check
+    // for untouched in this describe block.
+    expect(stripLongOrderLines('@claim 50\nproduce "iron"\n@claim 60')).toBe(
+      "@claim 50\n@claim 60"
+    );
+  });
+
+  it("drops whichever of the eleven commands is present, one at a time", () => {
+    for (const command of LONG_ORDER_COMMANDS) {
+      expect(stripLongOrderLines(`@claim 50\n${command} thing\n@claim 60`)).toBe(
+        "@claim 50\n@claim 60"
+      );
+    }
+  });
+
+  it("leaves an ordinary flag order untouched", () => {
+    expect(stripLongOrderLines("guard 1\nautotax 1")).toBe("guard 1\nautotax 1");
+  });
+
+  it("drops two month-long lines at once, if a document somehow holds both", () => {
+    expect(stripLongOrderLines("work\n@claim 50\nproduce iron")).toBe("@claim 50");
+  });
+});
+
+describe("longOrderOf", () => {
+  it("finds the month-long line among a unit's other orders", () => {
+    expect(longOrderOf('@claim 50\nproduce "iron"\n@study obse')).toBe('produce "iron"');
+  });
+
+  it("is null when the unit has no month-long order at all", () => {
+    expect(longOrderOf("@claim 50\nguard 1")).toBeNull();
+  });
+
+  it("ignores the game's own descriptive comments", () => {
+    expect(longOrderOf("; Scout (1392), avoiding\nwork")).toBe("work");
+  });
+
+  it("returns the first one when a document somehow holds two", () => {
+    expect(longOrderOf("work\nproduce iron")).toBe("work");
   });
 });

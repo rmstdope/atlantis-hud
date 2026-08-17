@@ -23,7 +23,12 @@ import {
   type HexMapModel
 } from "../hexMapModel";
 import { type TextFileSaver } from "../downloadFile";
-import { readUnitOrders, stripMovementOrderLines, writeUnitOrders } from "../ordersDocument";
+import {
+  longOrderOf,
+  readUnitOrders,
+  stripMovementOrderLines,
+  writeUnitOrders
+} from "../ordersDocument";
 import { isOrdersFile, routeOrdersImport, type PendingOrdersImport } from "../ordersImport";
 import { deliverGameBackupExport, deliverMapExport, deliverOrdersExport } from "./exportActions";
 import {
@@ -2125,6 +2130,15 @@ export function AppShell({
     [unit, game, draftKey, writer, writeOrdersDocument]
   );
 
+  /** A unit's current month-long order, read straight from the live document - the units table's
+   *  Long order column's source of truth. `useCallback` rather than a precomputed map: only the
+   *  units on screen are ever asked about, and `ordersDocument` already changes on every edit
+   *  that could move the answer. */
+  const getLongOrder = useCallback(
+    (unitId: string) => longOrderOf(readUnitOrders(ordersDocument, unitId) ?? ""),
+    [ordersDocument]
+  );
+
   /**
    * The autosave: five seconds after the last keystroke, and thirty at the outside.
    *
@@ -2957,7 +2971,7 @@ export function AppShell({
             style={unitsSlotStyle(collapsed, unitsHeightRem) ?? undefined}
             data-map-overlay="bottom"
           >
-            <UnitTableDock hex={hex} preview={hexPreview} />
+            <UnitTableDock hex={hex} preview={hexPreview} getLongOrder={getLongOrder} />
           </div>
         </div>
       </div>
