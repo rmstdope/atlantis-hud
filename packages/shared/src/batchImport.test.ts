@@ -95,7 +95,14 @@ describe("prepareBatch", () => {
     expect(batch.read).toEqual([{ text: "text", report: report() }, null]);
     expect(batch.candidates).toEqual([
       candidate({ fileName: "a.rep", factionId: "95", turnNumber: 71 }),
-      candidate({ fileName: "bad.rep", factionId: null, turnNumber: null })
+      candidate({
+        fileName: "bad.rep",
+        factionId: null,
+        turnNumber: null,
+        // A file nothing could be read from carries the read failure as its verdict too, so the plan
+        // never reports a faction-shaped reason for a parse failure.
+        usable: { ok: false, reason: "could not be read: gone" }
+      })
     ]);
     expect(batch.unreadable).toEqual([{ index: 1, fileName: "bad.rep", reason: "could not be read: gone" }]);
   });
@@ -106,7 +113,14 @@ describe("prepareBatch", () => {
     const batch = await prepareBatch([file("bad.rep", "garbage")], parse);
 
     expect(batch.read).toEqual([null]);
-    expect(batch.candidates).toEqual([candidate({ fileName: "bad.rep", factionId: null, turnNumber: null })]);
+    expect(batch.candidates).toEqual([
+      candidate({
+        fileName: "bad.rep",
+        factionId: null,
+        turnNumber: null,
+        usable: { ok: false, reason: "could not be read: not a report" }
+      })
+    ]);
     expect(batch.unreadable).toEqual([
       { index: 0, fileName: "bad.rep", reason: "could not be read: not a report" }
     ]);

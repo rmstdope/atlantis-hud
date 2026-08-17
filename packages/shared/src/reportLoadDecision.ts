@@ -111,8 +111,10 @@ export function isOlderTurn(
 /**
  * What loading `incoming` should do, given whatever is on screen.
  *
- * Whether the report can be imported at all is `judgeReportUsable`'s question, answered before this
- * one is asked, so every report reaching here names a faction and a turn and has something in it.
+ * Whether the report can be imported at all is `judgeReportUsable`'s question, and both callers ask
+ * it first - so in practice nothing unusable reaches here. This function makes no such assumption of
+ * its own: an unknown turn number is still handled honestly (see `isOlderTurn`), because a rule that
+ * quietly depends on its caller is a rule that breaks the next time somebody adds a caller.
  *
  * Age is checked before ownership: a report older than what is on screen is stored for history and
  * never becomes the working turn, whichever faction it names - gh-208. Only once a report is no
