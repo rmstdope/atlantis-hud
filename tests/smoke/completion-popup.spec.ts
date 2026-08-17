@@ -51,12 +51,17 @@ async function loadReport(page: Page) {
 /**
  * Opens the skills list - the longest entries the popup ever shows, and the reason this defect
  * surfaced when the ruleset's own catalogue went behind completion (ah-bai.2).
+ *
+ * `CAST `, not `STUDY `: both list skills, but STUDY now narrows to the skills this unit can
+ * actually study (ah-3ej, ah-6qp), and Seven of Eight is no mage - its list is short enough to fit
+ * the pane, which would leave these walks passing with nothing to clip. CAST offers the whole
+ * catalogue whoever is selected, which is what this file needs.
  */
 async function openSkillCompletions(page: Page) {
   await expect(page.locator('[data-commands-ready="true"]')).toBeVisible();
   await fillOrders(page, "");
   await ordersInput(page).click();
-  await page.keyboard.type("STUDY ");
+  await page.keyboard.type("CAST ");
   await page.keyboard.press("Control+Space");
 
   const popup = page.locator(".cm-tooltip-autocomplete");
