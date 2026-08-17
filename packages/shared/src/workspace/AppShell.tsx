@@ -859,6 +859,14 @@ export function AppShell({
       setSave(savedStateFor(loaded.ordersSavedAt));
       setStatus(loaded.status);
 
+      // The manifest was rewritten because this report changed which faction the game remembers.
+      // Putting it back keeps the in-memory copy level with the file, so the next report loaded in
+      // this session can tell whether anything actually changed.
+      if (loaded.manifest) {
+        const manifest = loaded.manifest;
+        setGame((current) => (current ? { ...current, manifest } : current));
+      }
+
       // Opening on a hex the player has units in beats opening on whatever came first, and the unit
       // inside it is chosen for the same reason.
       //
