@@ -624,6 +624,17 @@ impl Ruleset {
             .map(|building| building.mages)
     }
 
+    /// Whether this ruleset carries the buildings table at all.
+    ///
+    /// [`Ruleset::mage_capacity`] answers `None` both for a kind the table does not name and for a
+    /// ruleset cached before the table was scraped - a Mine really has no mage seats, but a
+    /// ruleset that knows no buildings knows nothing about any of them, and a check that cannot
+    /// tell those apart would warn about every mage in the game.
+    #[must_use]
+    pub fn knows_buildings(&self) -> bool {
+        !self.buildings.is_empty()
+    }
+
     /// The item an order names, written as a tag, a name, or the plural the rules' own examples
     /// use.
     ///
@@ -915,5 +926,21 @@ mod tests {
 
         let ruleset = Ruleset::from_json(&text).expect("a ruleset without buildings still parses");
         assert_eq!(ruleset.mage_capacity("Tower"), None);
+    }
+
+    /// ah-a2k.2: a check that warns about a mage outside a building must be able to tell "this
+    /// kind seats nobody" from "this ruleset knows no buildings at all" - both read as `None` from
+    /// `mage_capacity`, and only the second means stay silent.
+    #[test]
+    fn a_ruleset_without_a_buildings_table_knows_no_buildings() {
+        assert!(ruleset().knows_buildings());
+
+        let mut json: serde_json::Value = serde_json::from_str(RULESET).unwrap();
+        json.as_object_mut()
+            .expect("ruleset is a JSON object")
+            .remove("buildings");
+        let text = serde_json::to_string(&json).unwrap();
+        let bare = Ruleset::from_json(&text).expect("a ruleset without buildings still parses");
+        assert!(!bare.knows_buildings());
     }
 }
