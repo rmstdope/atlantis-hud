@@ -534,7 +534,10 @@ pub fn reset_game(
     fs::rename(&home, &aside)?;
     match create_game(games_root, &fresh) {
         Ok(opened) => {
-            fs::remove_dir_all(&aside)?;
+            // Best effort, deliberately: the reset has already happened, and failing here would tell
+            // the caller it did not — sending ah-58n.2's **Try again** at a game that is already
+            // empty. What is left behind is only the old copy, and the next reset removes it above.
+            let _ = fs::remove_dir_all(&aside);
             Ok(opened)
         }
         Err(error) => {
