@@ -26,6 +26,8 @@ export type PreviewedUnit = ReportUnit & {
   arrivingFrom?: string | null;
   /** Where a departing unit ends the month, when the trace could say. */
   departingTo?: string | null;
+  /** The fleet carrying this unit away, as `<name> [<id>]`, when the ship it stands in departs. */
+  aboard?: string | null;
 };
 
 /**
@@ -55,7 +57,8 @@ export function mergePreview(
       previewStatus: previewed.status,
       previewChanges: previewed.changes,
       arrivingFrom: previewed.arrivingFrom,
-      departingTo: previewed.departingTo
+      departingTo: previewed.departingTo,
+      aboard: previewed.aboard
     };
   });
 
@@ -66,7 +69,8 @@ export function mergePreview(
       previewStatus: previewed.status,
       previewChanges: previewed.changes,
       arrivingFrom: previewed.arrivingFrom,
-      departingTo: previewed.departingTo
+      departingTo: previewed.departingTo,
+      aboard: previewed.aboard
     });
   }
 
