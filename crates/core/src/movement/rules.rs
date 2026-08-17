@@ -766,12 +766,19 @@ mod tests {
     }
 
     /// force, pattern, spirit, necromancy, teleportation and illusion are magic; mining, lumberjack,
-    /// combat, sailing and building are not - the acceptance criteria for `ah-a2k.1`.
+    /// combat, sailing and building are not - the acceptance criteria for `ah-a2k.1`, checked
+    /// against the committed ruleset rather than trusted from the doc comment alone.
     #[test]
     fn a_magic_skill_is_known_from_the_catalogue() {
         let ruleset = ruleset();
-        assert!(ruleset.is_magic("FORC"));
-        assert!(!ruleset.is_magic("MINI"));
+        for magic in ["FORC", "PATT", "SPIR", "NECR", "TELE", "ILLU"] {
+            assert!(ruleset.is_magic(magic), "{magic} should be magic");
+        }
+        for mundane in ["MINI", "LUMB", "COMB", "SAIL", "BUIL"] {
+            assert!(!ruleset.is_magic(mundane), "{mundane} should not be magic");
+        }
+        // A tag the catalogue has never heard of cannot say "magic" any more than "mundane" - see
+        // `is_magic`'s own doc comment.
         assert!(!ruleset.is_magic("NOPE"));
     }
 

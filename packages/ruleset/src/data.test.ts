@@ -656,7 +656,7 @@ describe("parseSkillReference", () => {
    * `mage` and let `cast` match inside an unrelated word. "broadcast" is the case that would have
    * slipped through.
    */
-  it("does not mistake cast inside an unrelated word for the study cost verb", () => {
+  it("does not mistake cast inside an unrelated word for the CAST order's own name", () => {
     const html =
       "<html><body><pre>signaler [SIGN] 1: A unit with this skill can broadcast orders to " +
       "allies across the region. This skill costs 10 silver per month of study.</pre></body></html>";
@@ -664,5 +664,39 @@ describe("parseSkillReference", () => {
     const skills = parseSkillReference(html);
 
     expect(skills.SIGN.magic).toBe(false);
+  });
+
+  /**
+   * A leading `\b` only rules out `cast` matching mid-word ("broadcast"); "castle" is a real word
+   * that happens to start with `cast`, and the fixture names nine of them - a fortification, not a
+   * spell. Caught in review of ah-a2k.1's first draft, which anchored only the left edge.
+   */
+  it("does not mistake castle for casting a spell", () => {
+    const html =
+      "<html><body><pre>warden [WARD] 1: A unit with this skill can maintain a castle without " +
+      "extra upkeep. This skill costs 10 silver per month of study.</pre></body></html>";
+
+    const skills = parseSkillReference(html);
+
+    expect(skills.WARD.magic).toBe(false);
+  });
+
+  /**
+   * The negative lookahead must not over-correct: `cast`, `caster` and `casting` all appear in the
+   * fixture and must keep classifying a skill as magic.
+   */
+  it("still recognises cast, caster and casting as magic words", () => {
+    expect(parseSkillReference(
+      "<html><body><pre>a [AAAA] 1: A mage can cast this. This skill costs 100 silver per " +
+        "month of study.</pre></body></html>"
+    ).AAAA.magic).toBe(true);
+    expect(parseSkillReference(
+      "<html><body><pre>b [BBBB] 1: The caster gains a bonus. This skill costs 100 silver per " +
+        "month of study.</pre></body></html>"
+    ).BBBB.magic).toBe(true);
+    expect(parseSkillReference(
+      "<html><body><pre>c [CCCC] 1: This skill improves casting speed. This skill costs 100 " +
+        "silver per month of study.</pre></body></html>"
+    ).CCCC.magic).toBe(true);
   });
 });
