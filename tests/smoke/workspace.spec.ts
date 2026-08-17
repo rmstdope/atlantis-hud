@@ -3327,11 +3327,20 @@ test("a note pinned on the map opens its tags and selects the hex", async ({ pag
 
   await page.getByTestId("layer-chips").getByRole("button", { name: "Badges" }).click();
   const badges = page.getByTestId("badge-menu");
-  await expect(badges.getByRole("checkbox", { name: "Notes" })).toBeChecked();
-  await badges.getByRole("checkbox", { name: "Notes" }).uncheck();
+  const notesCheckbox = badges.getByRole("checkbox", { name: "Notes" });
+  await expect(notesCheckbox).toBeChecked();
+  // Toggled by keyboard rather than a pointer click: this fixture's own always-on finding
+  // (ah-1uj) grows the header by a chip's width, which pushes this popover's anchor - and with it
+  // a list long enough to reach the units pane splitter below - just far enough that a real
+  // pointer click here can land on the splitter instead. The checkbox itself is unaffected; only
+  // where a mouse can safely land on it is.
+  await notesCheckbox.focus();
+  await page.keyboard.press("Space");
+  await expect(notesCheckbox).not.toBeChecked();
   await expect(page.getByTestId("map-note-pin")).toHaveCount(0);
 
   // The menu stays open across a toggle - unchecking it does not dismiss the popover.
-  await badges.getByRole("checkbox", { name: "Notes" }).check();
+  await page.keyboard.press("Space");
+  await expect(notesCheckbox).toBeChecked();
   await expect(page.getByTestId("map-note-pin")).toBeVisible();
 });
