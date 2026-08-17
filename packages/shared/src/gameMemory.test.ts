@@ -28,6 +28,7 @@ function client(overrides: Partial<CoreClient> = {}): CoreClient {
     loadMergedReports: vi.fn().mockResolvedValue([]),
     mergeReport: vi.fn().mockResolvedValue(MERGE_RESULT),
     knownMap: vi.fn().mockResolvedValue(KNOWN_MAP),
+    setActiveFaction: vi.fn().mockResolvedValue(undefined),
     ...overrides
   } as unknown as CoreClient;
 }
@@ -508,6 +509,78 @@ describe("reopening the turn the player was last in", () => {
     await restoreLatestTurn(core, OPEN_GAME, vi.fn().mockResolvedValue(report("95")), RULESET);
 
     expect(core.commitReportImport).not.toHaveBeenCalled();
+  });
+
+  it("passes the remembered faction from the manifest", async () => {
+    const core = restoring();
+
+    await restoreLatestTurn(core, OPEN_GAME, vi.fn().mockResolvedValue(report("95")), RULESET);
+
+    // This manifest remembers none - a game created before the field existed - so the core is
+    // asked for the game's highest turn rather than one faction's.
+    expect(core.loadLatestImportedTurn).toHaveBeenCalledWith("p.sqlite", "aug-2026", null);
+
+    const remembering = restoring();
+    await restoreLatestTurn(
+      remembering,
+      {
+        ...OPEN_GAME,
+        manifest: {
+          ...OPEN_GAME.manifest,
+          metadata: { ...OPEN_GAME.manifest.metadata, activeFactionId: "95" }
+        }
+      } as OpenedGame,
+      vi.fn().mockResolvedValue(report("95")),
+      RULESET
+    );
+
+    expect(remembering.loadLatestImportedTurn).toHaveBeenCalledWith("p.sqlite", "aug-2026", "95");
+  });
+
+  /**
+   * A game upgraded from before `activeFactionId` reopens by the fallback, and then settles: the
+   * faction it came back as is the one it remembers from now on.
+   */
+  it("remembers the faction a fallback reopen settled on", async () => {
+    const core = restoring();
+
+    await restoreLatestTurn(core, OPEN_GAME, vi.fn().mockResolvedValue(report("95")), RULESET);
+
+    expect(core.setActiveFaction).toHaveBeenCalledTimes(1);
+    expect(core.setActiveFaction).toHaveBeenCalledWith("aug-2026", "95");
+
+    // Already remembering that faction, there is nothing to settle and nothing is written.
+    const settled = restoring();
+    await restoreLatestTurn(
+      settled,
+      {
+        ...OPEN_GAME,
+        manifest: {
+          ...OPEN_GAME.manifest,
+          metadata: { ...OPEN_GAME.manifest.metadata, activeFactionId: "95" }
+        }
+      } as OpenedGame,
+      vi.fn().mockResolvedValue(report("95")),
+      RULESET
+    );
+
+    expect(settled.setActiveFaction).not.toHaveBeenCalled();
+  });
+
+  it("warns rather than fails when the faction cannot be remembered", async () => {
+    const core = restoring({
+      setActiveFaction: vi.fn().mockRejectedValue(new Error("the manifest is read-only"))
+    });
+
+    const restored = await restoreLatestTurn(
+      core,
+      OPEN_GAME,
+      vi.fn().mockResolvedValue(report("95")),
+      RULESET
+    );
+
+    expect(restored).toMatchObject({ factionId: "95", turnNumber: 71 });
+    expect(restored?.warning).toContain("could not be remembered");
   });
 
   it("has nothing to restore in a game that holds no imports", async () => {

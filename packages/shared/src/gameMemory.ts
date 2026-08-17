@@ -353,9 +353,15 @@ export type RestoredTurn = KnownMemory & {
  * redundancy issue #28 exists to remove. `rulesetJson` is the same text handed to `parse`, so the
  * known map is resolved against the same classification the report itself was.
  *
+ * Which turn comes back is the core's rule (`atlantis_hud_core::reopen::latest_turn`): the
+ * remembered faction's highest-numbered imported turn, falling back to the game's highest turn
+ * whichever faction holds it when the manifest remembers none - and adopting that faction below.
+ * No timestamp decides it; ranking by what was touched last is what let an older report imported
+ * later take the game back in time (ah-do8).
+ *
  * Nothing is committed. The turn is already stored, and re-committing would move its `updated_at`,
- * which would make merely opening a game look exactly like working in it - and the ranking that
- * decides which turn reopens is built on that column.
+ * which other readers - the import stamps and the turn diff - still care about, even though it no
+ * longer decides which turn reopens.
  *
  * `null` means the game holds no imports, which is a game just created rather than a failure.
  */
@@ -366,7 +372,8 @@ export async function restoreLatestTurn(
   rulesetJson: string | null
 ): Promise<RestoredTurn | null> {
   const gameId = game.manifest.metadata.gameId;
-  const stored = await client.loadLatestImportedTurn(game.databasePath, gameId);
+  const rememberedFaction = game.manifest.metadata.activeFactionId ?? null;
+  const stored = await client.loadLatestImportedTurn(game.databasePath, gameId, rememberedFaction);
   if (stored === null) {
     return null;
   }
@@ -382,6 +389,20 @@ export async function restoreLatestTurn(
     remembered = await client.loadRegionSightings(game.databasePath, gameId, factionId);
   } catch (error: unknown) {
     warning = `the remembered map could not be read: ${detail(error)}`;
+  }
+
+  // A game reopened by the fallback has now settled on a faction; remembering it is what stops the
+  // next import of somebody else's report deciding the question by accident. A failure here is a
+  // warning, not a failed restore - the turn on screen is right either way. The write is to the
+  // manifest rather than to a turn, so the module's promise above - that nothing is re-committed
+  // and no `updated_at` moves - still holds.
+  if (factionId !== rememberedFaction) {
+    try {
+      await client.setActiveFaction(gameId, factionId);
+    } catch (error: unknown) {
+      warning =
+        warning ?? `which faction this game reopens as could not be remembered: ${detail(error)}`;
+    }
   }
 
   const merged = await mergedReportsFor(client, game, factionId, turnNumber);

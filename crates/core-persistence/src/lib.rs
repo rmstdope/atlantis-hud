@@ -7,7 +7,7 @@ use atlantis_hud_core::backup::{
     encode_game_backup, GameBackupContent, GameBackupHexNote, GameBackupImportedTurn,
     GameBackupMergedReport, GameBackupOrderDraft, GameBackupRegionSighting,
 };
-use atlantis_hud_core::reopen::{latest_turn, TurnTouch};
+use atlantis_hud_core::reopen::{latest_turn, TurnRef};
 use atlantis_hud_core::{diff_imported_turn_fields, ImportedTurnSnapshotRef};
 use rusqlite::{params, Connection, ErrorCode, OptionalExtension};
 use serde::{Deserialize, Serialize};
@@ -965,20 +965,21 @@ pub fn load_imported_turn_stamps(
         .map_err(PersistenceError::from)
 }
 
-/// The turn in this game the player worked on most recently, if there is one.
+/// The turn in this game the game reopens on, if there is one.
 ///
-/// "Worked on" is the later of when the turn was imported and when its orders were last edited.
-/// Ranking by the import alone would send a player who imported a second faction and then spent
-/// the evening writing the first one's orders back to the faction they only glanced at; editing
-/// orders is the strongest signal of attention there is.
+/// The remembered faction's highest-numbered imported turn, falling back to the game's highest
+/// turn whichever faction holds it when the manifest remembers no faction (or remembers one that
+/// holds no turns). `active_faction_id` is the caller's, read from the manifest: this function is
+/// given a database path rather than a game home, so it cannot read the manifest itself.
 ///
 /// `None` means the game holds no imports, which is the ordinary state of a game just created
-/// rather than a failure. Which turn wins, and every tie-break, is
+/// rather than a failure. Which turn wins, and the one tie-break, is
 /// `atlantis_hud_core::reopen::latest_turn`'s rule; this function only hands over what the store
 /// holds and loads the turn that rule names.
 pub fn load_latest_imported_turn(
     database_path: &Path,
     game_id: &str,
+    active_faction_id: Option<&str>,
 ) -> Result<Option<ImportedTurnRecord>, PersistenceError> {
     if !database_path.exists() {
         return Err(PersistenceError::DatabaseFileMissing(
@@ -989,9 +990,8 @@ pub fn load_latest_imported_turn(
     let mut connection = open_database(database_path)?;
     apply_migrations(&mut connection)?;
 
-    let turns = touches(&connection, "imported_turns", game_id)?;
-    let drafts = touches(&connection, "order_drafts", game_id)?;
-    let Some(latest) = latest_turn(&turns, &drafts) else {
+    let turns = imported_turn_refs(&connection, game_id)?;
+    let Some(latest) = latest_turn(&turns, active_faction_id) else {
         return Ok(None);
     };
 
@@ -1005,23 +1005,17 @@ pub fn load_latest_imported_turn(
     )
 }
 
-/// Every `(faction, turn, updated_at)` this game's `imported_turns` or `order_drafts` table
-/// holds, for `latest_turn` to rank. `table` is always one of those two literals, chosen inside
-/// this function's two call sites - never from a caller - so the `format!` below builds no SQL an
-/// outside value could reach.
-fn touches(
+/// Every `(faction, turn)` this game's `imported_turns` table holds, for `latest_turn` to rank.
+fn imported_turn_refs(
     connection: &Connection,
-    table: &str,
     game_id: &str,
-) -> Result<Vec<TurnTouch>, PersistenceError> {
-    let mut statement = connection.prepare(&format!(
-        "SELECT faction_id, turn_number, updated_at FROM {table} WHERE game_id = ?1"
-    ))?;
+) -> Result<Vec<TurnRef>, PersistenceError> {
+    let mut statement = connection
+        .prepare("SELECT faction_id, turn_number FROM imported_turns WHERE game_id = ?1")?;
     let rows = statement.query_map(params![game_id], |row| {
-        Ok(TurnTouch {
+        Ok(TurnRef {
             faction_id: row.get(0)?,
             turn_number: row.get(1)?,
-            updated_at: Some(row.get(2)?),
         })
     })?;
     rows.collect::<Result<Vec<_>, _>>()
@@ -2376,44 +2370,36 @@ mod tests {
         let created =
             create_game(dir.path(), &fixture_manifest()).expect("game creation should succeed");
 
-        let latest = load_latest_imported_turn(&created.database_path, GAME_ID)
+        let latest = load_latest_imported_turn(&created.database_path, GAME_ID, None)
             .expect("the query should succeed");
 
         assert_eq!(latest, None);
     }
 
-    /// Which turn reopens is decided by attention, not by arrival.
+    /// The reported defect: import turn 25, then turn 23, and reopening must still be 25.
     ///
-    /// A player imports one faction's turn, then another's, then spends the evening writing the
-    /// first one's orders. Coming back to the faction they only glanced at would be wrong.
+    /// A draft written on the older turn does not change that - nothing about reopening reads a
+    /// stamp any more, so the later import of an earlier turn cannot take the game back in time.
     #[test]
-    fn the_turn_most_recently_edited_wins_over_the_one_most_recently_imported() {
+    fn reopening_never_goes_back_to_an_older_turn() {
         let dir = tempdir().expect("tempdir");
         let created =
             create_game(dir.path(), &fixture_manifest()).expect("game creation should succeed");
 
         upsert_imported_turn(
             &created.database_path,
-            &turn_in(&created, "17", "worked on"),
+            &turn_at(&created, "17", 25, "the current turn"),
             "2026-08-09T18:00:00Z",
             "2026-08-09T18:00:00Z",
         )
-        .expect("seed the first faction");
+        .expect("seed turn 25");
         upsert_imported_turn(
             &created.database_path,
-            &turn_in(&created, "18", "only glanced at"),
+            &turn_at(&created, "17", 23, "an old report imported for history"),
             "2026-08-09T19:00:00Z",
             "2026-08-09T19:00:00Z",
         )
-        .expect("seed the second faction");
-
-        // Without a draft, the later import is the answer.
-        assert_eq!(
-            load_latest_imported_turn(&created.database_path, GAME_ID)
-                .expect("the query should succeed")
-                .map(|turn| turn.key.faction_id),
-            Some("18".to_string())
-        );
+        .expect("seed turn 23");
 
         upsert_order_draft(
             &created.database_path,
@@ -2421,7 +2407,7 @@ mod tests {
                 key: OrderDraftKey {
                     game_id: GAME_ID.to_string(),
                     faction_id: "17".to_string(),
-                    turn_number: 12,
+                    turn_number: 23,
                 },
                 order_text: "MOVE U100 R2".to_string(),
                 updated_at: "2026-08-09T22:00:00Z".to_string(),
@@ -2429,12 +2415,42 @@ mod tests {
         )
         .expect("the draft should persist");
 
-        let latest = load_latest_imported_turn(&created.database_path, GAME_ID)
+        let latest = load_latest_imported_turn(&created.database_path, GAME_ID, None)
             .expect("the query should succeed")
             .expect("there is a turn to come back to");
 
-        assert_eq!(latest.key.faction_id, "17");
-        assert_eq!(latest.raw_report, "worked on");
+        assert_eq!(latest.key.turn_number, 25);
+        assert_eq!(latest.raw_report, "the current turn");
+    }
+
+    /// Two factions holding the same turn: the remembered one is the one that reopens.
+    #[test]
+    fn the_remembered_faction_decides_which_turn_reopens() {
+        let dir = tempdir().expect("tempdir");
+        let created =
+            create_game(dir.path(), &fixture_manifest()).expect("game creation should succeed");
+
+        upsert_imported_turn(
+            &created.database_path,
+            &turn_in(&created, "17", "the ally"),
+            IMPORTED_AT,
+            IMPORTED_AT,
+        )
+        .expect("seed the first faction");
+        upsert_imported_turn(
+            &created.database_path,
+            &turn_in(&created, "18", "mine"),
+            IMPORTED_AT,
+            IMPORTED_AT,
+        )
+        .expect("seed the second faction");
+
+        let latest = load_latest_imported_turn(&created.database_path, GAME_ID, Some("18"))
+            .expect("the query should succeed")
+            .expect("there is a turn to come back to");
+
+        assert_eq!(latest.key.faction_id, "18");
+        assert_eq!(latest.raw_report, "mine");
     }
 
     /// The point of a database per game, asked of the new query too.
@@ -2453,12 +2469,12 @@ mod tests {
         .expect("seed alpha");
 
         assert_eq!(
-            load_latest_imported_turn(&beta.database_path, "alpha")
+            load_latest_imported_turn(&beta.database_path, "alpha", None)
                 .expect("the query should succeed"),
             None
         );
         assert_eq!(
-            load_latest_imported_turn(&beta.database_path, "beta")
+            load_latest_imported_turn(&beta.database_path, "beta", None)
                 .expect("the query should succeed"),
             None
         );
