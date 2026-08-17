@@ -5377,10 +5377,7 @@ mod tests {
         );
         let region = ReportRegion {
             structures: vec![raft("218")],
-            ..region(vec![
-                heavy,
-                with_item(unit("9509"), 1, "centaurs", "CTAU"),
-            ])
+            ..region(vec![heavy, with_item(unit("9509"), 1, "centaurs", "CTAU")])
         };
 
         let found = only(check(
