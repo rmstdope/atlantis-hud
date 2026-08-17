@@ -85,7 +85,7 @@ export function SettingsDialog({
         aria-label="Settings"
         // `whitespace-normal` undoes the header's `whitespace-nowrap`, which would otherwise
         // inherit through the anchor span this dialog is mounted in.
-        className="w-[26rem] rounded border border-edge bg-panel-raised p-3 text-[11.5px] whitespace-normal shadow-lg"
+        className="w-[26rem] rounded border border-edge bg-panel-raised p-3 text-pane whitespace-normal shadow-lg"
       >
         <div className="flex items-center justify-between">
           <h2 className="text-ink">Settings</h2>
@@ -210,7 +210,7 @@ function GlobalSettings() {
       <label className="flex items-center justify-between gap-2 text-ink-soft">
         <span>
           <span className="block">Map theme</span>
-          <span className="block text-[10px] text-ink-dim">How the world map draws each hex.</span>
+          <span className="block text-pane-sm text-ink-dim">How the world map draws each hex.</span>
         </span>
         <select
           data-testid="settings-map-theme"
@@ -284,15 +284,16 @@ function GlobalSettings() {
 
 /**
  * Which advisory order-check codes should not run at all: the Warnings tab's on/off toggles,
- * grouped Teaching / Resources / Guarding / Orders. Off means the core never produces the finding -
- * counts, chip, panels and editor underlines all agree, nothing anywhere says "hidden".
+ * grouped Studying/Teaching / Resources / Markets / Guarding / Orders / Building / Sailing. Off means the core never
+ * produces the finding - counts, chip, panels and editor underlines all agree, nothing anywhere
+ * says "hidden".
  */
 const WARNING_GROUPS: readonly {
   heading: string;
   entries: readonly { code: AdvisoryCheckCode; title: string; description: string }[];
 }[] = [
   {
-    heading: "Teaching",
+    heading: "Studying/Teaching",
     entries: [
       {
         code: "teacher-has-free-slots",
@@ -318,6 +319,17 @@ const WARNING_GROUPS: readonly {
         code: "taught-not-here",
         title: "Students elsewhere",
         description: "Teacher and student are not in the same hex."
+      },
+      {
+        code: "too-many-quartermasters",
+        title: "More quartermasters than allowed",
+        description:
+          "A unit ordered to study quartermaster when the faction already has all it may have."
+      },
+      {
+        code: "study-at-maximum",
+        title: "Study with nothing to learn",
+        description: "A unit ordered to study a skill it has already taken to the ruleset's maximum."
       }
     ]
   },
@@ -333,6 +345,16 @@ const WARNING_GROUPS: readonly {
         code: "not-enough-items",
         title: "Overdrawn items",
         description: "Orders give away or sell more of an item than the unit or the hex holds."
+      }
+    ]
+  },
+  {
+    heading: "Markets",
+    entries: [
+      {
+        code: "not-traded-here",
+        title: "Buying what is not sold",
+        description: "A BUY or SELL order for something this hex's market does not trade."
       }
     ]
   },
@@ -358,6 +380,31 @@ const WARNING_GROUPS: readonly {
         code: "form-alias-reused",
         title: "Reused FORM numbers",
         description: "Two units formed in the same hex this month with the same NEW number."
+      },
+      {
+        code: "give-target-not-here",
+        title: "Gifts to units that are not here",
+        description: "A GIVE or TAKE naming a unit the report does not show in that hex."
+      },
+      {
+        code: "too-many-trade-regions",
+        title: "Producing in too many regions",
+        description: "PRODUCE orders in more regions than the faction's allowance permits."
+      },
+      {
+        code: "unit-overloaded",
+        title: "Overloaded units",
+        description: "A unit ordered to move carrying more than it can move with."
+      }
+    ]
+  },
+  {
+    heading: "Building",
+    entries: [
+      {
+        code: "already-built",
+        title: "Building what is built",
+        description: "A BUILD order on a structure the report already shows as finished."
       }
     ]
   },
@@ -392,7 +439,7 @@ export function WarningSettings() {
     <div className="flex flex-col gap-3">
       {WARNING_GROUPS.map((group) => (
         <div key={group.heading} className="flex flex-col gap-2">
-          <div className="mt-2 text-[10px] uppercase tracking-wider text-ink-dim border-b border-edge/60 pb-0.5">
+          <div className="mt-2 text-pane-sm uppercase tracking-wider text-ink-dim border-b border-edge/60 pb-0.5">
             {group.heading}
           </div>
           {group.entries.map((entry) => (
@@ -534,7 +581,7 @@ function SnippetSettings() {
             >
               <span className="min-w-0">
                 <span className="block text-ink">{snippet.name}</span>
-                <span className="block truncate font-mono text-[10px] text-ink-dim">
+                <span className="block truncate font-mono text-pane-sm text-ink-dim">
                   {snippet.body.split("\n")[0]}
                   {snippet.body.includes("\n") ? " …" : ""}
                 </span>

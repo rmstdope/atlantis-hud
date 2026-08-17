@@ -14,8 +14,9 @@ use atlantis_hud_core::report::import::{import_writes, SeenRegion};
 use atlantis_hud_core::report::merge::{merge_report_into_sightings, StoredSighting};
 pub use atlantis_hud_core::report::ParsedReport;
 use atlantis_hud_core::{
-    engine_info, order_commands, parse_report, reject_import, reject_merge, EngineInfo,
-    OrderCheckOptions, OrderValidationResult, ReportParseResult, ReportParseResultWire,
+    engine_info, order_argument_completions, order_commands, parse_report, reject_import,
+    reject_merge, EngineInfo, OrderCheckOptions, OrderCompletion, OrderValidationResult,
+    ReportParseResult, ReportParseResultWire,
 };
 use atlantis_hud_core_persistence::{
     create_game, delete_game, delete_hex_note, export_game, import_game, insert_imported_turn,
@@ -450,6 +451,31 @@ pub mod commands {
     )]
     pub fn command_order_commands() -> Vec<String> {
         order_commands().into_iter().map(str::to_string).collect()
+    }
+
+    /// What may stand where the caret is, for the Tauri command surface.
+    ///
+    /// `ruleset_json` and `raw_report` go through the cache exactly as `command_validate_orders`
+    /// does; `unit_id` is whose block is being typed, which is what makes the hex-narrowed
+    /// positions (`BUY`, `SELL`, `PRODUCE`) answerable at all.
+    #[must_use]
+    #[cfg_attr(
+        feature = "tauri",
+        tauri::command(rename_all = "snake_case", rename = "order_argument_completions")
+    )]
+    pub fn command_order_argument_completions(
+        line_prefix: &str,
+        ruleset_json: Option<&str>,
+        raw_report: Option<&str>,
+        unit_id: Option<&str>,
+    ) -> Vec<OrderCompletion> {
+        let (ruleset, report) = atlantis_hud_core::cache::with_global(|cache| {
+            let ruleset = ruleset_json.and_then(|json| cache.ruleset(json).ok());
+            let report = raw_report.map(|raw| cache.classified_when_possible(raw, ruleset_json));
+            (ruleset, report)
+        });
+
+        order_argument_completions(line_prefix, ruleset.as_deref(), report.as_deref(), unit_id)
     }
 
     /// Validates one order draft for the Tauri command surface.
@@ -999,6 +1025,34 @@ pub mod commands {
             )
         })
     }
+
+    /// Every trade worth making in the map the faction has seen.
+    ///
+    /// The desktop twin of the wasm binding, delegating to the same core entry so the two shells
+    /// cannot drift into pricing trades differently.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error only when the ruleset cannot be used or the remembered regions cannot be
+    /// read. A report with nothing to trade is a successful answer carrying an empty list.
+    #[cfg_attr(
+        feature = "tauri",
+        tauri::command(rename_all = "snake_case", rename = "trade_routes")
+    )]
+    pub fn command_trade_routes(
+        ruleset_json: &str,
+        raw_report: &str,
+        remembered_json: &str,
+    ) -> Result<Vec<atlantis_hud_core::trade::TradeRoute>, String> {
+        atlantis_hud_core::cache::with_global(|cache| {
+            atlantis_hud_core::trade::trade_routes_json(
+                cache,
+                ruleset_json,
+                raw_report,
+                remembered_json,
+            )
+        })
+    }
 }
 
 pub use commands::{
@@ -1006,10 +1060,11 @@ pub use commands::{
     command_get_engine_info, command_known_map, command_list_hex_notes,
     command_list_imported_turns, command_load_imported_turn, command_load_latest_imported_turn,
     command_load_merged_reports, command_load_order_draft, command_load_region_sightings,
-    command_merge_report, command_order_commands, command_parse_report,
-    command_parse_report_classified, command_parse_report_full, command_plan_route,
-    command_preview_orders, command_preview_report_import, command_save_hex_note,
-    command_save_order_draft, command_trace_move_orders, command_validate_orders,
+    command_merge_report, command_order_argument_completions, command_order_commands,
+    command_parse_report, command_parse_report_classified, command_parse_report_full,
+    command_plan_route, command_preview_orders, command_preview_report_import,
+    command_save_hex_note, command_save_order_draft, command_trace_move_orders,
+    command_trade_routes, command_validate_orders,
 };
 
 /// Creates a game under the application's games directory and applies migrations.

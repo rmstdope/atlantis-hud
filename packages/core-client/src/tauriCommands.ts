@@ -46,11 +46,19 @@ export const TAURI_COMMANDS = {
   ],
   validateOrders: ["validate_orders", "raw_orders", "ruleset_json", "raw_report", "disabled_codes"],
   orderCommands: ["order_commands"],
+  orderArgumentCompletions: [
+    "order_argument_completions",
+    "line_prefix",
+    "ruleset_json",
+    "raw_report",
+    "unit_id"
+  ],
   planRoute: ["plan_route", "ruleset_json", "raw_report", "remembered_json", "unit_id", "destination"],
   traceMoveOrders: ["trace_move_orders", "ruleset_json", "raw_report", "remembered_json", "unit_id", "orders"],
   exportMap: ["export_map", "raw_report", "remembered_json", "request_json"],
   knownMap: ["known_map", "raw_report", "ruleset_json", "remembered_json"],
   previewOrders: ["preview_orders", "ruleset_json", "raw_report", "remembered_json", "orders_document"],
+  tradeRoutes: ["trade_routes", "ruleset_json", "raw_report", "remembered_json"],
   loadRegionSightings: ["load_region_sightings", "database_path", "game_id", "faction_id"],
   mergeReport: [
     "merge_report",

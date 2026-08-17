@@ -142,6 +142,50 @@ test("a half-typed command offers its completions", async ({ page }) => {
   await expect(popup).toHaveCount(0);
 });
 
+test("an argument offers the keywords the rules allow there", async ({ page }) => {
+  await loadReport(page);
+
+  await expect(page.locator('[data-commands-ready="true"]')).toBeVisible();
+
+  await fillOrders(page, "");
+  await ordersInput(page).click();
+  await page.keyboard.type("NAME U");
+
+  const popup = page.locator(".cm-tooltip-autocomplete");
+  await expect(popup).toBeVisible();
+  await expect(popup.locator("li[aria-selected]")).toContainText("UNIT");
+  // acceptCompletion deliberately ignores Enter within 75ms of the popup opening.
+  await page.waitForTimeout(150);
+
+  await page.keyboard.press("Enter");
+  // The space `apply` leaves is pinned by the unit test on `apply`; asserting trailing
+  // whitespace read back out of CodeMirror's DOM is a flake waiting to happen.
+  await expectOrders(page, /NAME UNIT/);
+  await expect(popup).toHaveCount(0);
+});
+
+test("an item argument offers what the hex sells", async ({ page }) => {
+  await loadReport(page);
+
+  await expect(page.locator('[data-commands-ready="true"]')).toBeVisible();
+
+  await fillOrders(page, "");
+  await ordersInput(page).click();
+  await page.keyboard.type("BUY 5 PER");
+
+  const popup = page.locator(".cm-tooltip-autocomplete");
+  await expect(popup).toBeVisible();
+  // The report reaches the core call here, which no unit test can prove: unit 18642 stands in
+  // Inholm, whose "For Sale" line carries 63 perfume [PERF] at $204.
+  await expect(popup.locator("li[aria-selected]")).toContainText("PERF");
+  // acceptCompletion deliberately ignores Enter within 75ms of the popup opening.
+  await page.waitForTimeout(150);
+
+  await page.keyboard.press("Enter");
+  await expectOrders(page, /BUY 5 PERF/);
+  await expect(popup).toHaveCount(0);
+});
+
 test("the caret follows the theme instead of defaulting to black", async ({ page }) => {
   await loadReport(page);
 

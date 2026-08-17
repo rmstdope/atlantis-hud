@@ -9,7 +9,8 @@ import type {
   MoveOrderTraceResponse,
   OrdersPreviewResponse,
   RegionPreview,
-  RoutePlanResponse
+  RoutePlanResponse,
+  TradeRoute
 } from "@atlantis/core-client";
 import { ADVISORY_CHECK_CODES } from "@atlantis/core-client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -130,6 +131,7 @@ import { buildPaletteEntries } from "../commandPalette";
 import { diagnosticTargets, stepDiagnostic } from "../diagnosticNav";
 import { hasOpenDismissLayers } from "../dismissStack";
 import { firesInContext, isMacPlatform, matchShortcut, SHORTCUTS } from "../shortcuts";
+import type { ArgumentLookup } from "../orderCompletion";
 import { nextOwnUnit } from "../unitCycle";
 import {
   dragOrdersHeight,
@@ -155,6 +157,7 @@ import { PlannerPanel } from "./PlannerPanel";
 import { chooseRouteOverlay } from "./routeOverlay";
 import { RegionPanel } from "./RegionPanel";
 import { ProblemsPanel } from "./ProblemsPanel";
+import { TradePanel } from "./TradePanel";
 import { TurnMessagesPanel, type TurnMessagesTab } from "./TurnMessagesPanel";
 import { UnitPanel } from "./UnitPanel";
 import { UnitTableDock } from "./UnitTableDock";
@@ -1268,6 +1271,12 @@ export function AppShell({
     };
   }, [client]);
 
+  const argumentCompletions = useCallback<ArgumentLookup>(
+    (linePrefix) =>
+      client.orderArgumentCompletions(linePrefix, rulesetText, rawReport || null, unit?.unitId ?? null),
+    [client, rulesetText, rawReport, unit]
+  );
+
   /**
    * Keeps the hex notes store in step with the open game (ah-o1t): loads its notes when a game
    * opens, clears them when it closes. Its own effect rather than folded into the restore effect
@@ -1766,6 +1775,39 @@ export function AppShell({
    * headings would read as two separate problems.
    */
   const problemsByHex = useMemo(() => findingsByHex(validated.diagnostics), [validated]);
+
+  /**
+   * Every trade route worth making across the known map, for the header's Trade chip (ah-1j5.2).
+   *
+   * Not debounced and not on a timer, unlike order validation: `rawReport` and `rememberedJson`
+   * change only when a report is imported or a turn is restored, a handful of times a session. A
+   * failure empties the list rather than raising a status message - this is advice, and the player
+   * has not asked for it at the moment it fails.
+   */
+  const [tradeRoutes, setTradeRoutes] = useState<TradeRoute[]>([]);
+
+  useEffect(() => {
+    if (ruleset.status !== "ready" || !rawReport) {
+      setTradeRoutes([]);
+      return undefined;
+    }
+    let cancelled = false;
+    void client
+      .tradeRoutes(ruleset.text, rawReport, rememberedJson)
+      .then((found) => {
+        if (!cancelled) {
+          setTradeRoutes(found);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setTradeRoutes([]);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [client, ruleset, rawReport, rememberedJson]);
 
   // The whole document previewed at once, unlike the per-unit trace, because GIVE crosses units
   // and MOVE crosses hexes: only the full text says what a hex looks like next month. Same
@@ -2458,6 +2500,15 @@ export function AppShell({
             onDismiss={() => closePopover("problems")}
           />
         }
+        tradeCount={tradeRoutes.length}
+        tradePanel={
+          <TradePanel
+            routes={tradeRoutes}
+            labelFor={hexLabel}
+            onSelectHex={selectHex}
+            onDismiss={() => closePopover("trade")}
+          />
+        }
         battleCount={parsed?.battles.length ?? 0}
         battlesOpen={battlesOpen}
         onToggleBattles={() =>
@@ -2698,6 +2749,7 @@ export function AppShell({
                   save={save}
                   commands={orderCommands}
                   snippets={snippets}
+                  argumentCompletions={argumentCompletions}
                   editorRef={ordersEditor}
                 />
               </div>

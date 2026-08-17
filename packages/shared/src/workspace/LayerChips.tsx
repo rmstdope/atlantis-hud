@@ -42,7 +42,7 @@ export function LayerChips({ levels }: { levels: MapLevel[] }) {
       {LAYERS.map(({ name, label }) => (
         <label
           key={name}
-          className={`flex cursor-pointer items-center gap-1.5 rounded border px-2 py-0.5 text-[11px] ${
+          className={`flex cursor-pointer items-center gap-1.5 rounded border px-2 py-0.5 text-pane ${
             layers[name] ? "border-select bg-select/15 text-ink" : "border-edge text-ink-dim"
           }`}
         >
@@ -69,7 +69,7 @@ export function LayerChips({ levels }: { levels: MapLevel[] }) {
           // the map is showing less than everything without the panel having to be open.
           data-badges-all={showingEverything}
           onClick={() => setBadgesOpen((open) => !open)}
-          className={`flex items-center gap-1 rounded border px-2 py-0.5 text-[11px] ${
+          className={`flex items-center gap-1 rounded border px-2 py-0.5 text-pane ${
             showingEverything ? "border-edge text-ink-dim" : "border-select bg-select/15 text-ink"
           }`}
         >
@@ -88,7 +88,7 @@ export function LayerChips({ levels }: { levels: MapLevel[] }) {
           value={level}
           onChange={(event) => setLevel(Number(event.target.value))}
           aria-label="Map level"
-          className="rounded border border-edge bg-panel-raised px-2 py-0.5 text-[11px] text-ink"
+          className="rounded border border-edge bg-panel-raised px-2 py-0.5 text-pane text-ink"
         >
           {levels.map((candidate) => (
             <option key={candidate.z} value={candidate.z}>
@@ -97,7 +97,7 @@ export function LayerChips({ levels }: { levels: MapLevel[] }) {
           ))}
         </select>
       ) : (
-        <span className="px-2 py-0.5 text-[11px] text-ink-dim">
+        <span className="px-2 py-0.5 text-pane text-ink-dim">
           {levels[0]?.name ?? SURFACE_LEVEL.name}
         </span>
       )}

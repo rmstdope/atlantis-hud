@@ -6,7 +6,8 @@ import {
   type HexNoteRecord,
   type ImportedTurnSummary,
   type ParsedReport,
-  type ReportParseResult
+  type ReportParseResult,
+  type TradeRoute
 } from "@atlantis/core-client";
 import { createMemoryWebStore, type StoredTurnSnapshot } from "./webStore";
 
@@ -29,6 +30,29 @@ const EMPTY_PARSED_REPORT: ParsedReport = {
   battles: [],
   ordersTemplate: null
 };
+
+/** A single fixed answer `trade_routes_state` hands back, so a test can assert it passed straight through. */
+const FAKE_TRADE_ROUTES: TradeRoute[] = [
+  {
+    from: { x: 1, y: 1, z: 1 },
+    to: { x: 2, y: 2, z: 1 },
+    outbound: [
+      {
+        tag: "SILK",
+        name: "silk",
+        buyPrice: 60,
+        sellPrice: 300,
+        quantity: 15,
+        margin: 240,
+        buySeenTurn: null,
+        sellSeenTurn: null
+      }
+    ],
+    inbound: [],
+    worth: 3600,
+    turns: { walk: null, ride: null, fly: null }
+  }
+];
 
 /**
  * Stands in for the compiled Rust core.
@@ -56,6 +80,7 @@ function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
       disabledCodes: readonly string[]
     ) => ({ diagnostics: [], rawOrders, rulesetJson, rawReport, disabledCodes }),
     order_commands_state: () => ["GIVE", "MOVE", "WORK"],
+    order_argument_completions_state: () => [],
     export_map_state: (rawReport: string, rememberedJson: string, requestJson: string) =>
       `; Map export from Atlantis HUD\n; ${rawReport} ${rememberedJson} ${requestJson}\n`,
     known_map_state: (rawReport: string, rulesetJson: string | null, rememberedJson: string) => ({
@@ -96,6 +121,7 @@ function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
       regions: [],
       echoed: { rulesetJson, rawReport, rememberedJson, ordersDocument }
     }),
+    trade_routes_state: () => FAKE_TRADE_ROUTES,
     prepare_report_import_state: (raw: string, confirmedFactionId: string) => {
       const hasTurn = raw.includes("TURN: 12");
       const factionMatches = raw.includes(`FACTION: ${confirmedFactionId}`);
@@ -339,6 +365,32 @@ describe("web core adapter", () => {
       disabledCodes: ["hex-unguarded"]
     });
     expect(await adapter.orderCommands()).toEqual(["GIVE", "MOVE", "WORK"]);
+  });
+
+  it("routes an argument-completion call to the core, every argument included", async () => {
+    const nameables = ["UNIT", "FACTION", "OBJECT", "CITY"].map((value) => ({
+      value,
+      name: "",
+      detail: ""
+    }));
+    const adapter = createWebCoreAdapter(
+      fakeWasm({
+        order_argument_completions_state: (
+          linePrefix: string,
+          rulesetJson: string | null,
+          rawReport: string | null,
+          unitId: string | null
+        ) =>
+          linePrefix === "NAME U" && rulesetJson === "the ruleset" && rawReport === "the report" && unitId === "18642"
+            ? nameables
+            : []
+      }),
+      createMemoryWebStore()
+    );
+
+    expect(
+      await adapter.orderArgumentCompletions("NAME U", "the ruleset", "the report", "18642")
+    ).toEqual(nameables);
   });
 
   /**
@@ -1051,6 +1103,19 @@ describe("planning a route", () => {
       unitId: "18642",
       destination: "1:7,51"
     });
+  });
+});
+
+describe("finding trade routes", () => {
+  /**
+   * Finding routes is pure, so the adapter has nothing to do but hand back what the core found.
+   */
+  it("resolves to what the core found", async () => {
+    const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
+
+    const routes = await adapter.tradeRoutes("{ruleset}", "{report}", "[remembered]");
+
+    expect(routes).toEqual(FAKE_TRADE_ROUTES);
   });
 });
 

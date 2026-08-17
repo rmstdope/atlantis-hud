@@ -8,6 +8,7 @@ import {
   summarizeOrderValidation,
   type ValidatedOrders
 } from "../orderEditor";
+import type { ArgumentLookup } from "../orderCompletion";
 import type { OrderSnippet } from "../orderSnippets";
 import { readUnitOrders } from "../ordersDocument";
 import type { Ref } from "react";
@@ -43,6 +44,8 @@ type OrdersPanelProps = {
   commands: readonly string[];
   /** The player's snippet library, offered in the same popup. */
   snippets: readonly OrderSnippet[];
+  /** What may stand at an argument position, asked of the core once per half-typed word. */
+  argumentCompletions: ArgumentLookup;
   /** The shell's line to the editor, for the shortcut layer's jumps and insertions. */
   editorRef?: Ref<OrdersEditorHandle>;
 };
@@ -80,6 +83,7 @@ export function OrdersPanel({
   save,
   commands,
   snippets,
+  argumentCompletions,
   editorRef
 }: OrdersPanelProps) {
   const unitId = unit?.unitId ?? null;
@@ -131,6 +135,7 @@ export function OrdersPanel({
             problems={problems}
             commands={commands}
             snippets={snippets}
+            argumentCompletions={argumentCompletions}
             onChange={(text) => {
               if (unit) {
                 onChange(unit.unitId, text);
@@ -139,7 +144,7 @@ export function OrdersPanel({
           />
           <p
             data-testid="orders-status"
-            className="m-0 flex items-center gap-3 border-t border-edge pt-1.5 text-[10px] text-ink-soft"
+            className="m-0 flex items-center gap-3 border-t border-edge pt-1.5 text-pane-sm text-ink-soft"
           >
             <span className={here.errorCount > 0 ? "text-danger" : "text-ok"}>
               {here.errorCount} error{here.errorCount === 1 ? "" : "s"}
@@ -176,7 +181,7 @@ function ProblemList({ problems, text }: { problems: OrderDiagnostic[]; text: st
   return (
     <ul
       data-testid="orders-diagnostics"
-      className="m-0 max-h-20 list-none overflow-y-auto p-0 pt-1 text-[10px] leading-snug"
+      className="m-0 max-h-20 list-none overflow-y-auto p-0 pt-1 text-pane-sm leading-snug"
     >
       {problems.map((problem, index) => {
         const found = offendingText(text, problem);
@@ -237,7 +242,7 @@ function LockNotice({ lock, ownFaction }: { lock: Lock; ownFaction: string }) {
       data-lock={lock.kind}
       className="flex h-full flex-col items-center justify-center gap-2 p-4 text-center text-ink-dim"
     >
-      <span className="rounded border border-edge px-2.5 py-1 text-[10px] uppercase tracking-[0.08em] text-ink-soft">
+      <span className="rounded border border-edge px-2.5 py-1 text-pane-sm uppercase tracking-[0.08em] text-ink-soft">
         {badge}
       </span>
       {lines.map((line) => (

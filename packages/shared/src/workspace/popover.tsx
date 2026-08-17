@@ -81,7 +81,7 @@ export function PopoverFrame({
       role="dialog"
       aria-label={label}
       onDragOver={(event) => event.stopPropagation()}
-      className={`absolute ${align === "left" ? "left-0" : "right-0"} top-full z-20 mt-1 ${width} rounded border border-edge bg-panel-raised ${padding ?? ""} ${textSize ?? "text-[11.5px]"} whitespace-normal shadow-lg`}
+      className={`absolute ${align === "left" ? "left-0" : "right-0"} top-full z-20 mt-1 ${width} rounded border border-edge bg-panel-raised ${padding ?? ""} ${textSize ?? "text-pane"} whitespace-normal shadow-lg`}
     >
       {children}
     </div>

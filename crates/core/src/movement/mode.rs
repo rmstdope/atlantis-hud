@@ -84,6 +84,21 @@ pub fn mobility(unit: &ReportUnit) -> Mobility {
     Mobility::Overloaded
 }
 
+/// The heaviest load this unit could move at all: the best of the flying, riding and walking
+/// allowances the server printed for it, whichever the game would end up choosing.
+///
+/// `mobility` asks which mode a unit uses and answers from the weight the report printed. An order
+/// check has to ask a narrower question - is *this* load, after a month of orders, more than
+/// anything the unit can manage - and a unit is overloaded exactly when its load beats all three,
+/// which is to say the best of them. Swimming is left out for the reason `mobility` leaves it out.
+///
+/// `None` when the report did not state the capacities, which is every foreign unit.
+#[must_use]
+pub fn best_allowance(unit: &ReportUnit) -> Option<i64> {
+    let capacity = unit.capacity.as_deref().and_then(parse_capacities)?;
+    Some(capacity.fly.max(capacity.ride).max(capacity.walk))
+}
+
 // ---------------------------------------------------------------- fleets
 
 /// The structure `unit.structure_id` names, when its kind names a hull or a fleet.
@@ -263,14 +278,21 @@ pub fn fleet_sailing(
 /// rather than trusted to agree with whatever `"Sailors: H/N"` states, because `H` is the server's
 /// own count of the same thing and comparing it against an independently-summed figure is what
 /// would catch either one being wrong.
+///
+/// A level is held by each of a unit's men, not by the unit once - "The sailors are the number of
+/// skill levels of the Sailing skill that must be aboard the ship" - so a skill's contribution is
+/// `level * men`, not `level`.
 #[must_use]
 pub fn crew_sailing_levels(units_in_hex: &[ReportUnit], structure_id: &str) -> i64 {
     units_in_hex
         .iter()
         .filter(|unit| unit.own && unit.structure_id.as_deref() == Some(structure_id))
-        .flat_map(|unit| unit.skills.iter())
-        .filter(|skill| skill.tag.eq_ignore_ascii_case("SAIL"))
-        .map(|skill| i64::from(skill.level))
+        .flat_map(|unit| {
+            unit.skills
+                .iter()
+                .filter(|skill| skill.tag.eq_ignore_ascii_case("SAIL"))
+                .map(move |skill| i64::from(skill.level) * unit.men)
+        })
         .sum()
 }
 
@@ -310,6 +332,36 @@ mod tests {
     fn a_negative_capacity_carries_nothing() {
         let capacities = parse_capacities("-1/-1/-1/-1").expect("still four numbers");
         assert_eq!(capacities.fly, -1);
+    }
+
+    // ------------------------------------------------------------ best_allowance
+
+    fn with_capacity(capacity: &str) -> ReportUnit {
+        ReportUnit {
+            capacity: Some(capacity.to_string()),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn the_walk_allowance_is_the_best_of_a_ground_unit() {
+        assert_eq!(best_allowance(&with_capacity("0/0/150/0")), Some(150));
+    }
+
+    #[test]
+    fn the_best_of_the_three_allowances_wins() {
+        assert_eq!(best_allowance(&with_capacity("0/70/85/0")), Some(85)); // walk beats ride
+        assert_eq!(best_allowance(&with_capacity("10/0/0/0")), Some(10)); // fly is the only one
+    }
+
+    #[test]
+    fn a_capacity_that_does_not_parse_is_not_judged() {
+        assert_eq!(best_allowance(&with_capacity("nonsense")), None);
+    }
+
+    #[test]
+    fn a_unit_with_no_stated_capacity_is_not_judged() {
+        assert_eq!(best_allowance(&ReportUnit::default()), None);
     }
 
     // ------------------------------------------------------------ fleets
@@ -560,6 +612,25 @@ mod tests {
 
         let units = vec![a, b, elsewhere, foreign];
         assert_eq!(crew_sailing_levels(&units, "329"), 4);
+    }
+
+    /// Atlantis counts a level per man, not per unit: "The sailors are the number of skill levels
+    /// of the Sailing skill that must be aboard the ship" (`neworigins-rules.html:3747-3752`), and
+    /// a unit's skill level is held by each of its men. A 2-gnoll unit at sailing 1 supplies 2
+    /// levels, not 1 - the false positive from `ah-j0e`'s verification failure, PR #341.
+    #[test]
+    fn crew_levels_are_reckoned_per_man_not_per_unit() {
+        let mut two_gnolls = sample_unit("9508", Some("218"));
+        two_gnolls.men = 2;
+        two_gnolls.skills = vec![crate::report::model::Skill {
+            name: "sailing".to_string(),
+            tag: "SAIL".to_string(),
+            level: 1,
+            points: 30,
+        }];
+
+        let units = vec![two_gnolls];
+        assert_eq!(crew_sailing_levels(&units, "218"), 2);
     }
 
     fn sample_unit(id: &str, structure_id: Option<&str>) -> ReportUnit {

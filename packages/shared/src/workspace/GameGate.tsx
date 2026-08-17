@@ -43,7 +43,7 @@ export function GameGate({
 
   return (
     <div className="flex h-full flex-col bg-ground text-ink">
-      <header className="flex flex-wrap min-h-9 flex-none items-center gap-3.5 border-b border-edge bg-panel px-3 text-[11.5px] whitespace-nowrap">
+      <header className="flex flex-wrap min-h-9 flex-none items-center gap-3.5 border-b border-edge bg-panel px-3 text-pane whitespace-nowrap">
         {/* Just the title, as in the workspace header: the build tag lives in the About tab. */}
         <span className="tracking-[0.06em] text-brass">ATLANTIS HUD</span>
         <span className="flex-1" />
@@ -68,8 +68,8 @@ export function GameGate({
         className="flex min-h-0 flex-1 items-center justify-center p-6"
       >
         <div className="w-72 rounded border border-edge bg-panel-raised p-4">
-          <h1 className="mb-1 text-[13px] text-ink">No game yet</h1>
-          <p className="mb-3 text-[11.5px] text-ink-soft">
+          <h1 className="mb-1 text-pane-lg text-ink">No game yet</h1>
+          <p className="mb-3 text-pane text-ink-soft">
             Every turn you load belongs to a game. Name one to begin.
           </p>
           <GameForm busy={busy} error={error} onCreate={onCreate} />

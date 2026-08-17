@@ -9,6 +9,7 @@
 //! it alone. The regression bar for that is a real report: the orders template committed as
 //! `atlantis_hud_fixtures::G7_F95_T71` must validate with nothing to say.
 
+pub mod completion;
 pub mod effects;
 pub mod forms;
 pub mod grammar;
@@ -18,6 +19,7 @@ pub mod parser;
 pub mod semantics;
 pub mod walk;
 
+pub use completion::{order_argument_completions, OrderCompletion};
 pub use grammar::order_commands;
 
 use crate::movement::rules::Ruleset;

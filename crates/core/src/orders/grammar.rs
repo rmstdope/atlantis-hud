@@ -11,7 +11,7 @@
 //! say", and it accepts anything, including nothing. That is the accept-on-doubt policy made
 //! concrete: a `CAST` whose arguments depend on the spell must not be guessed at.
 
-use super::lexer::{Token, TokenKind};
+use super::lexer::{lex_line, Token, TokenKind};
 use crate::movement::graph::Direction;
 use crate::movement::rules::Ruleset;
 
@@ -430,6 +430,118 @@ pub fn find_order(command: &str) -> Option<&'static Order> {
         .find(|order| order.name.eq_ignore_ascii_case(command))
 }
 
+/// The order the caret is inside, and every argument that may stand at the caret across its forms.
+///
+/// `line_prefix` is one order line from its first character up to the caret, the caret's own
+/// half-typed word included: the position is worked out from the complete words before it, and the
+/// half-typed word is what the shell filters the answer by.
+///
+/// `None` in the command position, inside a comment or an unclosed quote, or for an order the table
+/// does not have. The `Arg`s are de-duplicated in form order: several forms often agree on what may
+/// stand next, and each is worth answering only once.
+pub(super) fn arguments_at_caret(line_prefix: &str) -> Option<(&'static Order, Vec<&'static Arg>)> {
+    let lexed = lex_line(line_prefix);
+    if lexed.comment.is_some() || lexed.unterminated_quote.is_some() {
+        return None;
+    }
+
+    let mut tokens = lexed.tokens;
+    if !line_prefix.ends_with(char::is_whitespace) && !line_prefix.ends_with('"') {
+        // The last token is still being typed. A half-typed word says nothing about which position
+        // the caret is in, so it is dropped before counting the position. A closing quote is not
+        // this case: unlike a bare word, `"` is unambiguous - the token it ends is complete, so
+        // the caret sitting right after it is already in the *next* position.
+        tokens.pop();
+    }
+
+    // Nothing typed yet: the caret is in the command position, which `order_commands` answers.
+    let (command, arguments) = tokens.split_first()?;
+    let order = find_order(&command.text)?;
+
+    let mut offered: Vec<&'static Arg> = Vec::new();
+    for form in order.forms {
+        if let Some(argument) = next_argument(form, arguments) {
+            if !offered.contains(&argument) {
+                offered.push(argument);
+            }
+        }
+    }
+
+    Some((order, offered))
+}
+
+/// The argument that may stand where the caret is, for one form; `None` when the typed words do not
+/// match this form, or when the form is already finished.
+fn next_argument(form: &'static [Arg], arguments: &[Token]) -> Option<&'static Arg> {
+    // `match_arg` collects unrecognised item names for the checker's warnings; nothing here wants
+    // them, and with no ruleset it never fills this.
+    let mut unknown = Vec::new();
+    let mut at = 0;
+
+    for (index, argument) in form.iter().enumerate() {
+        match argument {
+            // Consumes the whole rest of the line, whatever it is. There is no position after it,
+            // and nothing to say about the one it swallows.
+            Arg::Tail => return None,
+            // `inner` binds as `&&'static Arg` - the field is already a reference and the match is
+            // through one - so both uses below dereference it. `Arg` is `Copy`, so that is free.
+            Arg::Rest(inner) => {
+                debug_assert_eq!(index, form.len() - 1, "Rest is a form's last argument");
+                loop {
+                    if at == arguments.len() {
+                        return Some(*inner);
+                    }
+                    at = match_arg(inner, arguments, at, None, &mut unknown).ok()?;
+                }
+            }
+            _ => {
+                if at == arguments.len() {
+                    return Some(argument);
+                }
+                at = match_arg(argument, arguments, at, None, &mut unknown).ok()?;
+            }
+        }
+    }
+
+    // Every argument matched and the form has no more positions: `TAX` takes nothing, and
+    // `DECLARE 15 ALLY` is finished.
+    None
+}
+
+/// The words one argument allows, in the order they should be offered; empty for an open one.
+pub(super) fn keywords(argument: &Arg) -> Vec<&'static str> {
+    match argument {
+        Arg::Kw(keyword) => vec![*keyword],
+        Arg::OneOf(list) => list.to_vec(),
+        Arg::ItemClass => {
+            // The one ordering exception (Q9): 22 unfamiliar words is past the point where a list
+            // in the rules page's own order can be scanned.
+            let mut classes = ITEM_CLASSES.to_vec();
+            classes.sort_unstable();
+            classes
+        }
+        Arg::MoveStep => {
+            let mut steps: Vec<&'static str> = Direction::ALL
+                .iter()
+                .map(|direction| direction.abbreviation())
+                .collect();
+            steps.push("IN");
+            steps.push("OUT");
+            steps
+        }
+        Arg::Unit
+        | Arg::Faction
+        | Arg::Object
+        | Arg::Number
+        | Arg::Flag
+        | Arg::Item
+        | Arg::Skill
+        | Arg::Name
+        | Arg::Tail
+        | Arg::Rest(_) => Vec::new(),
+    }
+}
+
 /// An item argument the catalogue did not recognise.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UnknownItem {
@@ -697,5 +809,28 @@ mod tests {
         assert_eq!(find_order("give").map(|order| order.name), Some("GIVE"));
         assert_eq!(find_order("Give").map(|order| order.name), Some("GIVE"));
         assert!(find_order("fly").is_none());
+    }
+
+    // The `order_argument_completions` tests that used to live here moved to
+    // `completion.rs`'s own test module when the wire type widened (ah-bai.2): they now go
+    // through `arguments_at_caret` the same as everything else, with the three new arguments as
+    // `None`.
+
+    #[test]
+    fn every_form_keeps_its_rest_last() {
+        for order in GRAMMAR {
+            for form in order.forms {
+                for (index, argument) in form.iter().enumerate() {
+                    if matches!(argument, Arg::Rest(_)) {
+                        assert_eq!(
+                            index,
+                            form.len() - 1,
+                            "{}: Rest is not this form's last argument",
+                            order.name
+                        );
+                    }
+                }
+            }
+        }
     }
 }

@@ -504,4 +504,199 @@ describe("parseSkillReference", () => {
 
     expect(() => parseSkillReference(html)).toThrowError(RulesetScrapeError);
   });
+
+  /**
+   * What a skill may PRODUCE, read from the "may PRODUCE ... at a rate of ..." sentences ah-bai.2
+   * will use to narrow the PRODUCE completion popup to what the unit standing in the hex can
+   * actually make. Most skills state no production at all, which is why `produces` is checked
+   * against fact for every skill that does, rather than sampled.
+   */
+  it("reads what a skill may produce", () => {
+    const skills = parseSkillReference(DATA_HTML);
+
+    // "mining [MINI] 1: ... A unit with this skill may PRODUCE iron [IRON] at a rate of 1 per
+    //  man-month."
+    expect(skills.MINI.produces).toContainEqual({ tag: "IRON", level: 1 });
+  });
+
+  it("does not mistake what a product is made from for a product", () => {
+    const skills = parseSkillReference(DATA_HTML);
+
+    // "weaponsmith [WEAP] 1: ... may PRODUCE swords [SWOR] from iron [IRON] at a rate of 1 per
+    //  man-month, crossbows [XBOW] from wood [WOOD] ..., longbows [LBOW] from wood [WOOD] ...,
+    //  picks [PICK] from iron [IRON] ..., spears [SPEA] from wood [WOOD] ..., axes [AXE] from
+    //  wood [WOOD] ..., hammers [HAMM] from iron [IRON] ..., and javelins [JAVE] from wood
+    //  [WOOD] ..."
+    const level1 = skills.WEAP.produces.filter((p) => p.level === 1).map((p) => p.tag);
+    expect(level1).toEqual(["SWOR", "XBOW", "LBOW", "PICK", "SPEA", "AXE", "HAMM", "JAVE"]);
+    expect(level1).not.toContain("IRON");
+    expect(level1).not.toContain("WOOD");
+  });
+
+  it("records the level at which each product becomes available", () => {
+    const skills = parseSkillReference(DATA_HTML);
+
+    // MINI: iron at 1, mithril at 3, admantium at 5.
+    expect(skills.MINI.produces).toEqual([
+      { tag: "IRON", level: 1 },
+      { tag: "MITH", level: 3 },
+      { tag: "ADMT", level: 5 }
+    ]);
+  });
+
+  it("reads a product whose sentence puts the materials in an odd place", () => {
+    const skills = parseSkillReference(DATA_HTML);
+
+    // "cooking [COOK] 1: ... may PRODUCE a number of meals [MEAL] equal to skill level divided by
+    //  2, rounded up from any of grain [GRAI], livestock [LIVE] and fish [FISH] at a rate of 1
+    //  per man-month."
+    expect(skills.COOK.produces).toEqual([{ tag: "MEAL", level: 1 }]);
+  });
+
+  it("reads several products in one sentence", () => {
+    const skills = parseSkillReference(DATA_HTML);
+
+    // "fishing [FISH] 1: ... may PRODUCE fish [FISH] at a rate of 1 per man-month and nets [NET]
+    //  from herb [HERB] at a rate of 1 per man-month."
+    expect(skills.FISH.produces.filter((p) => p.level === 1)).toEqual([
+      { tag: "FISH", level: 1 },
+      { tag: "NET", level: 1 }
+    ]);
+  });
+
+  it("fails loudly on a production it cannot read", () => {
+    const html =
+      "<html><body><pre>broken [BROK] 1: A unit with this skill may PRODUCE something odd " +
+      "at a rate of 1 per man-month.</pre></body></html>";
+
+    expect(() => parseSkillReference(html)).toThrowError(RulesetScrapeError);
+  });
+
+  it("records no production for a skill that makes nothing", () => {
+    const skills = parseSkillReference(DATA_HTML);
+
+    // "observation [OBSE] 1: A unit with this skill can see stealthy units or ..." - no PRODUCE.
+    expect(skills.OBSE.produces).toEqual([]);
+  });
+
+  it("keeps the page's order", () => {
+    const skills = parseSkillReference(DATA_HTML);
+
+    expect(skills.WEAP.produces.map((p) => p.tag)).toEqual([
+      "SWOR",
+      "XBOW",
+      "LBOW",
+      "PICK",
+      "SPEA",
+      "AXE",
+      "HAMM",
+      "JAVE",
+      "PIKE",
+      "MSWO",
+      "BAXE",
+      "MXBO",
+      "DBOW",
+      "ASWR"
+    ]);
+  });
+
+  it("reads a product made from several materials with quantities", () => {
+    const skills = parseSkillReference(DATA_HTML);
+
+    // "carpenter [CARP] 4: ... may PRODUCE catapults [CATP] from 250 wood [WOOD], 30 ironwood
+    //  [IRWD], 80 furs [FUR] and 3000 silver [SILV] at a rate of 1 per 4 man-months and steel
+    //  defenders [STED] from ... at a rate of 1 per 4 man-months."
+    const level4 = skills.CARP.produces.filter((p) => p.level === 4).map((p) => p.tag);
+    expect(level4).toEqual(["CATP", "STED"]);
+  });
+
+  /**
+   * The data page marks magic nowhere - no flag, no grouping, no "may only be studied by a mage"
+   * phrase - so a skill's own level-1 description is the only evidence there is. `ah-a2k.2` needs
+   * this to tell a magic skill from a mundane one before it can warn about studying one outside a
+   * building.
+   */
+  it("flags a magic skill from its own description", () => {
+    const skills = parseSkillReference(DATA_HTML);
+
+    expect(skills.FORC.magic).toBe(true);
+    expect(skills.NECR.magic).toBe(true);
+    expect(skills.ILLU.magic).toBe(true);
+    expect(skills.TELE.magic).toBe(true);
+  });
+
+  it("does not flag a mundane skill as magic", () => {
+    const skills = parseSkillReference(DATA_HTML);
+
+    expect(skills.MINI.magic).toBe(false);
+    expect(skills.LUMB.magic).toBe(false);
+    expect(skills.COMB.magic).toBe(false);
+    expect(skills.SAIL.magic).toBe(false);
+    expect(skills.BUIL.magic).toBe(false);
+  });
+
+  /**
+   * Higher-level paragraphs describe effects and mention magic often enough to misclassify a
+   * mundane skill if they were consulted - level 1 is where a skill says what it is.
+   */
+  it("only consults the level one paragraph to classify a skill", () => {
+    const html =
+      "<html><body><pre>mundane [MUND] 1: This skill deals with everyday, ordinary work and " +
+      "has nothing to do with the arcane. This skill costs 10 silver per month of study.\n\n" +
+      "mundane [MUND] 2: At second level a unit with this skill can assist with a minor spell " +
+      "in battle.</pre></body></html>";
+
+    const skills = parseSkillReference(html);
+
+    expect(skills.MUND.magic).toBe(false);
+  });
+
+  /**
+   * Alternation binds more loosely than `\b`, so an unparenthesised `\bmage|cast` would anchor only
+   * `mage` and let `cast` match inside an unrelated word. "broadcast" is the case that would have
+   * slipped through.
+   */
+  it("does not mistake cast inside an unrelated word for the CAST order's own name", () => {
+    const html =
+      "<html><body><pre>signaler [SIGN] 1: A unit with this skill can broadcast orders to " +
+      "allies across the region. This skill costs 10 silver per month of study.</pre></body></html>";
+
+    const skills = parseSkillReference(html);
+
+    expect(skills.SIGN.magic).toBe(false);
+  });
+
+  /**
+   * A leading `\b` only rules out `cast` matching mid-word ("broadcast"); "castle" is a real word
+   * that happens to start with `cast`, and the fixture names nine of them - a fortification, not a
+   * spell. Caught in review of ah-a2k.1's first draft, which anchored only the left edge.
+   */
+  it("does not mistake castle for casting a spell", () => {
+    const html =
+      "<html><body><pre>warden [WARD] 1: A unit with this skill can maintain a castle without " +
+      "extra upkeep. This skill costs 10 silver per month of study.</pre></body></html>";
+
+    const skills = parseSkillReference(html);
+
+    expect(skills.WARD.magic).toBe(false);
+  });
+
+  /**
+   * The negative lookahead must not over-correct: `cast`, `caster` and `casting` all appear in the
+   * fixture and must keep classifying a skill as magic.
+   */
+  it("still recognises cast, caster and casting as magic words", () => {
+    expect(parseSkillReference(
+      "<html><body><pre>a [AAAA] 1: A mage can cast this. This skill costs 100 silver per " +
+        "month of study.</pre></body></html>"
+    ).AAAA.magic).toBe(true);
+    expect(parseSkillReference(
+      "<html><body><pre>b [BBBB] 1: The caster gains a bonus. This skill costs 100 silver per " +
+        "month of study.</pre></body></html>"
+    ).BBBB.magic).toBe(true);
+    expect(parseSkillReference(
+      "<html><body><pre>c [CCCC] 1: This skill improves casting speed. This skill costs 100 " +
+        "silver per month of study.</pre></body></html>"
+    ).CCCC.magic).toBe(true);
+  });
 });

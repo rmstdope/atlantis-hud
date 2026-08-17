@@ -85,6 +85,15 @@ export const SWEEP: SweepEntry[] = [
   },
   { command: "order_commands", args: () => ({}) },
   {
+    command: "order_argument_completions",
+    args: () => ({
+      line_prefix: "BUY 5 ",
+      ruleset_json: RULESET,
+      raw_report: REPORT,
+      unit_id: "18642"
+    })
+  },
+  {
     command: "plan_route",
     args: () => ({
       ruleset_json: RULESET,
@@ -138,6 +147,10 @@ export const SWEEP: SweepEntry[] = [
       remembered_json: "[]",
       orders_document: "unit 18642\nGUARD 1"
     })
+  },
+  {
+    command: "trade_routes",
+    args: () => ({ ruleset_json: RULESET, raw_report: REPORT, remembered_json: "[]" })
   },
   {
     command: "preview_report_import",

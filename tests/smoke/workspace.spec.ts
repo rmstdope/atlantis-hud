@@ -47,6 +47,12 @@ const OWN_OLDER_REPORT = readReport("g7f95t70");
 const F42_T40 = readReport("g3f42t40");
 const F42_T41 = readReport("g3f42t41");
 const F42_T42 = readReport("g3f42t42");
+/**
+ * The same faction forty turns on, used together with `F42_T42` for the Trade chip walk (ah-1j5.2):
+ * the turn-71 fixture every other walk in this file uses has no trade routes at all, which is
+ * exactly why the chip must still be visible at zero.
+ */
+const F42_T82 = readReport("g3f42t82");
 
 /** Inholm: a city with 24 structures and 92 units, one of them the player's. */
 const OWN_UNIT = "18642";
@@ -902,8 +908,10 @@ test("a unit told to spend silver it has not got is warned about, without blocki
   await selectUnit(page, OWN_UNIT);
 
   // Nine figures is beyond any holding or income in the game, so this is short whatever the
-  // optimistic estimates allow.
-  await fillOrders(page, "GIVE 13401 999999999 SILV");
+  // optimistic estimates allow. Unit 0 discards the gift rather than naming a real target (ah-djq's
+  // "give-target-not-here" fires on a target the report cannot place, which this test is not about
+  // and would otherwise add a second problem here).
+  await fillOrders(page, "GIVE 0 999999999 SILV");
 
   // Every unit in this faction shares its purse, so the shortfall is the hex's rather than one
   // unit's - and the region panel is where a finding with no unit and no line belongs.
@@ -917,19 +925,21 @@ test("a unit told to spend silver it has not got is warned about, without blocki
   await expect(page.getByTestId("export-orders")).toBeEnabled();
   await page.keyboard.press("Escape");
 
-  // And the whole map is counted, so the same problem is reachable from the header - alongside
-  // the turn's own (ah-dbb.2): four mages in a different hex CAST an enchant with no plate armor
-  // on hand, which the server accepted but which still spends the whole month on nothing.
+  // And the whole map is counted, so the same problem is reachable from the header. The turn-71
+  // report carries two findings of its own throughout - Six of Two (13402) is already at combat 5,
+  // the ruleset's maximum, and still orders "@study comb" (ah-1uj); and four mages in a different
+  // hex CAST an enchant with no plate armor on hand (ah-dbb.2) - so the count here is that
+  // baseline plus the one this test introduces.
   const chip = page.getByTestId("problems-chip");
-  await expect(chip).toContainText("2 problems");
+  await expect(chip).toContainText("3 problems");
   await chip.click();
   await expect(page.getByTestId("problems-panel")).toContainText("mountain (7,53)");
 
-  // Corrected, this hex's own problem goes away entirely - the turn's other one, in a hex this
-  // test never touches, is still there.
+  // Corrected, this hex's problem goes away, leaving only the turn's two baseline findings
+  // elsewhere.
   await fillOrders(page, "@work");
   await expect(page.getByTestId("region-problems")).toHaveCount(0);
-  await expect(page.getByTestId("problems-chip")).toContainText("1 problem");
+  await expect(page.getByTestId("problems-chip")).toContainText("2 problems");
 });
 
 /**
@@ -954,7 +964,7 @@ test("hiding the problems brings the region facts to the top", async ({ page }) 
   await warnAboutUnguardedHexes(page);
   await selectHex(page, "1:7,53");
   await selectUnit(page, OWN_UNIT);
-  await fillOrders(page, "GIVE 13401 999999999 SILV");
+  await fillOrders(page, "GIVE 0 999999999 SILV");
 
   const chip = page.getByTestId("region-problems-toggle");
   // The label the checkbox sits in, not the whole panel - other numbers live in the region facts.
@@ -985,7 +995,7 @@ test("the hidden problems stay hidden across a reload", async ({ page }) => {
   await warnAboutUnguardedHexes(page);
   await selectHex(page, "1:7,53");
   await selectUnit(page, OWN_UNIT);
-  await fillOrders(page, "GIVE 13401 999999999 SILV");
+  await fillOrders(page, "GIVE 0 999999999 SILV");
 
   await page.getByTestId("region-problems-toggle").uncheck();
   await expect(page.getByTestId("region-problems")).toHaveCount(0);
@@ -1008,12 +1018,14 @@ test("a silenced advisory check disappears everywhere at once", async ({ page })
   await loadReport(page);
   await selectHex(page, "1:7,53");
   await selectUnit(page, OWN_UNIT);
-  await fillOrders(page, "GIVE 13401 999999999 SILV");
+  await fillOrders(page, "GIVE 0 999999999 SILV");
 
+  // The turn-71 report carries two findings of its own throughout (unit 13402's
+  // study-at-maximum, ah-1uj, and the enchant-armor not-enough-items in a different hex,
+  // ah-dbb.2), unaffected by the not-enough-silver toggle below - the chip counts them alongside
+  // the shortfall this test introduces.
   await expect(page.getByTestId("region-problems")).toContainText("short");
-  // Alongside the turn's own not-enough-items finding (ah-dbb.2), in a different hex - a
-  // not-enough-silver toggle silences only this one, so it is what the assertions below track.
-  await expect(page.getByTestId("problems-chip")).toContainText("2 problems");
+  await expect(page.getByTestId("problems-chip")).toContainText("3 problems");
 
   await page.getByRole("button", { name: "Settings" }).click();
   await page.getByTestId("settings-tab-warnings").click();
@@ -1021,7 +1033,7 @@ test("a silenced advisory check disappears everywhere at once", async ({ page })
   await page.keyboard.press("Escape");
 
   await expect(page.getByTestId("region-problems")).toHaveCount(0);
-  await expect(page.getByTestId("problems-chip")).toContainText("1 problem");
+  await expect(page.getByTestId("problems-chip")).toContainText("2 problems");
 
   await page.getByRole("button", { name: "Settings" }).click();
   await page.getByTestId("settings-tab-warnings").click();
@@ -1029,7 +1041,58 @@ test("a silenced advisory check disappears everywhere at once", async ({ page })
   await page.keyboard.press("Escape");
 
   await expect(page.getByTestId("region-problems")).toContainText("short");
-  await expect(page.getByTestId("problems-chip")).toContainText("2 problems");
+  await expect(page.getByTestId("problems-chip")).toContainText("3 problems");
+});
+
+/**
+ * The Trade chip (ah-1j5.2) at zero: the turn-71 fixture every other walk in this file uses has no
+ * trade routes at all (seven goods for sale, thirteen wanted, no overlap), which is precisely why
+ * the chip is shown even then - unlike Problems and Battles, which vanish at zero.
+ */
+test("the trade chip is shown even with nothing to trade", async ({ page }) => {
+  await loadReport(page);
+
+  const chip = page.getByTestId("trade-chip");
+  await expect(chip).toContainText("Trade 0");
+  await chip.click();
+  await expect(page.getByTestId("trade-panel")).toContainText("Nothing to trade yet");
+});
+
+/**
+ * The Trade chip (ah-1j5.2) with something to trade: two real turns of the same faction give a
+ * known map with routes on it - see `crates/core/src/trade.rs::the_whole_known_map_answers` for
+ * the same six routes, and the same best one, pinned against the core directly.
+ */
+test("the trade chip lists routes and flies the map to one", async ({ page }) => {
+  await clearGames(page);
+  await createGame(page, "Trade game");
+  await expect(page.getByTestId("app-header")).toBeVisible();
+
+  await page.setInputFiles('input[type="file"]', {
+    name: "f42-t42.rep",
+    mimeType: "text/plain",
+    buffer: Buffer.from(F42_T42, "utf8")
+  });
+  await expect(page.getByTestId("app-header")).toContainText(/Turn\s*42\b/);
+
+  await choose(page, "f42-t82.rep", F42_T82);
+  await expect(page.getByTestId("app-header")).toContainText(/Turn\s*82\b/);
+
+  const chip = page.getByTestId("trade-chip");
+  await expect(chip).toContainText("Trade 6");
+  await chip.click();
+  const panel = page.getByTestId("trade-panel");
+  await expect(panel).toBeVisible();
+  // The best route first: the reciprocal chocolate/perfume circuit between (36,4) and (0,48),
+  // worth $15,598 - the same figure the core's own test pins.
+  await expect(panel.getByTestId("trade-route-0")).toContainText("36,4");
+  await expect(panel.getByTestId("trade-route-0")).toContainText("0,48");
+  await expect(panel.getByTestId("trade-route-0")).toContainText("$15,598");
+
+  await panel.getByTestId("trade-route-0").click();
+  await expect(panel).toHaveCount(0);
+  // The route starts from (36,4), so that hex - not (0,48) - is what selecting the row lands on.
+  await expect(page.getByTestId("panel-region")).toContainText("(36,4)");
 });
 
 test("an order with the wrong argument is caught, and the offending word quoted", async ({
@@ -1041,7 +1104,7 @@ test("an order with the wrong argument is caught, and the offending word quoted"
 
   // GIVE takes a quantity before the item, and "swords" is not one. Only a parser that reads the
   // arguments finds this; checking the command name alone accepts it.
-  await fillOrders(page, "GIVE 4573 swords");
+  await fillOrders(page, "GIVE 0 swords");
 
   const problems = page.getByTestId("orders-diagnostics");
   await expect(problems).toContainText("found \"swords\"");
@@ -1050,7 +1113,7 @@ test("an order with the wrong argument is caught, and the offending word quoted"
   await expect(page.getByTestId("orders-status")).toContainText("1 error");
 
   // Corrected, the syntax error goes.
-  await fillOrders(page, "GIVE 4573 10 swords");
+  await fillOrders(page, "GIVE 0 10 swords");
   await expect(page.getByTestId("orders-status")).toContainText("0 errors");
 
   // What is left is a different objection, and a true one (#82): Seven of Eight carries a leader
@@ -1096,7 +1159,7 @@ test("an item the catalogue does not know is a warning rather than an error", as
 
   // The shape is right, so this is not a refusal - the catalogue is scraped and may simply be
   // missing an entry. It is said out loud all the same, because it is usually a typo.
-  await fillOrders(page, "GIVE 4573 10 swordz");
+  await fillOrders(page, "GIVE 0 10 swordz");
 
   await expect(page.getByTestId("orders-diagnostics")).toContainText("swordz");
   const status = page.getByTestId("orders-status");
@@ -1250,6 +1313,23 @@ async function boxOf(page: Page, panel: string) {
   return box!;
 }
 
+/**
+ * Waits for a panel's height to stop changing before it is measured as a "before" baseline.
+ * Selecting a hex opens the panels, and reading a size while that settles - slower or busier on
+ * CI than locally - pins a mid-animation size rather than the resting one.
+ */
+async function waitForStableHeight(page: Page, panel: string) {
+  let last: number | null = null;
+  await expect
+    .poll(async () => {
+      const height = (await boxOf(page, panel)).height;
+      const stable = last !== null && height === last;
+      last = height;
+      return stable;
+    })
+    .toBe(true);
+}
+
 /** Where the map is standing, read the same way `shortcuts.spec.ts` does. */
 async function mapTransform(page: Page): Promise<string> {
   return (await page.getByTestId("map-world").getAttribute("transform")) ?? "";
@@ -1280,7 +1360,16 @@ async function resetSplit(page: Page) {
 
 test("the unit/orders split drags at the grip and survives a reload", async ({ page }) => {
   await loadReport(page);
+  // The default window (1280x683) leaves the orders editor's pin already at its own ceiling once
+  // enough advisory-check chips share the header with it (ah-1uj is one of several) - dragging it
+  // taller would then have nowhere to go, whatever the gesture. A taller window gives the split
+  // room to move regardless of how many chips the header carries; this test is about the drag
+  // mechanism, not about how little of it fits in the header's own default height.
+  await page.setViewportSize({ width: 1280, height: 900 });
   await selectHex(page, "1:7,53");
+  // Selecting a hex opens the panels; measuring "before" while that settles - slower or busier on
+  // CI than locally - would pin a mid-animation size rather than the resting one.
+  await waitForStableHeight(page, "orders");
 
   const before = await boxOf(page, "orders");
   const grip = page.getByTestId("panel-splitter");
@@ -1418,7 +1507,14 @@ test("folding the unit panel hides the grip and hands the column to the editor",
   page
 }) => {
   await loadReport(page);
+  // See "the unit/orders split drags..." above: at the default window height the editor's pin can
+  // already sit at its own ceiling once enough advisory-check chips share the header with it, and
+  // this test drags it taller twice over.
+  await page.setViewportSize({ width: 1280, height: 900 });
   await selectHex(page, "1:7,53");
+  // Selecting a hex opens the panels; measuring "before" while that settles - slower or busier on
+  // CI than locally - would pin a mid-animation size rather than the resting one.
+  await waitForStableHeight(page, "orders");
 
   const before = await boxOf(page, "orders");
   const grip = page.getByTestId("panel-splitter");
@@ -1429,12 +1525,18 @@ test("folding the unit panel hides the grip and hands the column to the editor",
   await page.mouse.down();
   await page.mouse.move(start.x, start.y - 60, { steps: 5 });
   await page.mouse.up();
+  // Polled, not a single read: the resize can still be settling (a CSS transition) the instant
+  // after the pointer lifts, slower or busier on CI than locally.
+  await expect
+    .poll(async () => (await boxOf(page, "orders")).height)
+    .toBeGreaterThan(before.height);
   const dragged = await boxOf(page, "orders");
-  expect(dragged.height).toBeGreaterThan(before.height);
 
   await foldPanel(page, "unit");
   await expect(grip).not.toBeVisible();
-  expect((await boxOf(page, "orders")).height).toBeGreaterThan(dragged.height);
+  await expect
+    .poll(async () => (await boxOf(page, "orders")).height)
+    .toBeGreaterThan(dragged.height);
 
   await unfoldPanel(page, "unit");
   await expect(grip).toBeVisible();
@@ -3267,11 +3369,50 @@ test("a note pinned on the map opens its tags and selects the hex", async ({ pag
 
   await page.getByTestId("layer-chips").getByRole("button", { name: "Badges" }).click();
   const badges = page.getByTestId("badge-menu");
-  await expect(badges.getByRole("checkbox", { name: "Notes" })).toBeChecked();
-  await badges.getByRole("checkbox", { name: "Notes" }).uncheck();
+  const notesCheckbox = badges.getByRole("checkbox", { name: "Notes" });
+  await expect(notesCheckbox).toBeChecked();
+  // Toggled by keyboard rather than a pointer click: this fixture's own always-on finding
+  // (ah-1uj) grows the header by a chip's width, which pushes this popover's anchor - and with it
+  // a list long enough to reach the units pane splitter below - just far enough that a real
+  // pointer click here can land on the splitter instead. The checkbox itself is unaffected; only
+  // where a mouse can safely land on it is.
+  await notesCheckbox.focus();
+  await page.keyboard.press("Space");
+  await expect(notesCheckbox).not.toBeChecked();
   await expect(page.getByTestId("map-note-pin")).toHaveCount(0);
 
   // The menu stays open across a toggle - unchecking it does not dismiss the popover.
-  await badges.getByRole("checkbox", { name: "Notes" }).check();
+  await page.keyboard.press("Space");
+  await expect(notesCheckbox).toBeChecked();
   await expect(page.getByTestId("map-note-pin")).toBeVisible();
+});
+
+/**
+ * ah-46p.1: the panes' type used to be set in absolute `px`, which ignores the reader's own
+ * font-size preference outright. The three `--text-pane*` tokens are `rem`, so raising the root
+ * font size (what a reader's preference actually changes) must reach the panes - and the region
+ * panel must still fit inside its rail once it does.
+ */
+test("the panes grow when the reader's text size does", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+
+  const header = page.getByTestId("app-header");
+  const defaultSize = await header.evaluate(
+    (element) => Number.parseFloat(getComputedStyle(element).fontSize)
+  );
+
+  await page.addStyleTag({ content: "html { font-size: 20px }" });
+
+  const grownSize = await header.evaluate(
+    (element) => Number.parseFloat(getComputedStyle(element).fontSize)
+  );
+  expect(grownSize).toBeGreaterThan(defaultSize);
+
+  const rail = page.locator('[data-map-overlay="left"]');
+  const railBox = (await rail.boundingBox())!;
+  const view = page.viewportSize()!;
+  expect(railBox.x).toBeGreaterThanOrEqual(0);
+  expect(railBox.x + railBox.width).toBeLessThanOrEqual(view.width);
+  expect(railBox.y + railBox.height).toBeLessThanOrEqual(view.height);
 });

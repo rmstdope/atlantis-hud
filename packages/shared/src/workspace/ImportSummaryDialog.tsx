@@ -54,7 +54,7 @@ export function ImportSummaryDialog({
         aria-label="Import summary"
         // `whitespace-normal` undoes the header's `whitespace-nowrap`, which would otherwise
         // inherit through the anchor this dialog is mounted in.
-        className="w-[30rem] rounded border border-edge bg-panel-raised p-3 text-[11.5px] whitespace-normal shadow-lg"
+        className="w-[30rem] rounded border border-edge bg-panel-raised p-3 text-pane whitespace-normal shadow-lg"
       >
         <h2 className="text-ink">{copy.headline}</h2>
 

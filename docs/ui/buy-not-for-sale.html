@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Buying what the market does not sell — what the player sees (bead ah-d8u)</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --edge:#26303d; --edge-soft:#1e2733; --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --brass-bright:#eebe63; --ok:#4fb783; --warn:#d9a441; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1240px; margin-left:auto; margin-right:auto; }
+  h1 { font-size:26px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:96ch; margin-top:10px; font-size:14px; } header p + p { margin-top:8px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:0.92em; }
+  h2.sec { margin-top:34px; font-size:18px; color:var(--brass); } h2.sec small { color:var(--ink-dim); font-size:13px; margin-left:10px; }
+  .cards { display:grid; grid-template-columns:repeat(2,1fr); gap:20px; margin-top:16px; align-items:start; }
+  .cards.three { grid-template-columns:repeat(3,1fr); }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:18px; display:flex; flex-direction:column; gap:12px; }
+  .card h3 { font-size:17px; } .card h3 em { color:var(--brass); font-style:normal; font-size:12px; letter-spacing:1.6px; margin-right:8px; }
+  .card.rec { border-color:var(--brass); }
+  .concept { color:var(--ink-soft); font-size:13px; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; padding:12px; display:grid; gap:10px; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; } .notes li.con::before { content:"\2212  "; color:var(--danger); }
+  .rep { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11.5px; line-height:1.55; color:var(--ink-soft); background:#0d1218; border:1px solid var(--edge); border-radius:6px; padding:8px 10px; white-space:pre-wrap; overflow-x:auto; }
+  .rep b { color:var(--brass-bright); font-weight:normal; } .rep i { color:var(--danger); font-style:normal; } .rep u { color:var(--ok); text-decoration:none; }
+  .editor { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:12px; line-height:1.6; background:#0d1218; border:1px solid var(--edge); border-radius:6px; padding:8px 0; }
+  .ln { display:flex; } .ln .no { width:34px; text-align:right; color:var(--ink-dim); padding-right:10px; } .ln .tx { white-space:pre; color:var(--ink); }
+  .ln.warn .tx { text-decoration: underline wavy var(--warn); text-underline-offset:3px; } .ln.warn .no { color:var(--warn); }
+  .pane { font-family:'Helvetica Neue',Arial,sans-serif; font-size:11.5px; line-height:1.45; border:1px solid var(--edge); border-radius:6px; background:var(--panel); overflow:hidden; }
+  .pane .bar { display:flex; align-items:center; height:26px; padding:0 9px; border-bottom:1px solid var(--edge); } .bar .name { font-size:10px; letter-spacing:1.4px; text-transform:uppercase; color:var(--brass); }
+  .body { padding:7px 9px 9px; display:grid; gap:5px; min-height:28px; } .prob { display:flex; gap:6px; } .prob .uid { color:var(--ink-dim); min-width:44px; flex:none; } .prob .warn { color:var(--warn); flex:none; } .prob .msg { color:var(--ink); }
+  .body .silent { color:var(--ink-dim); font-style:italic; }
+  .tagline { font:10px/1 'SF Mono',monospace; color:var(--brass); letter-spacing:1px; text-transform:uppercase; margin-top:6px; }
+  .setting { font-family:'Helvetica Neue',Arial,sans-serif; font-size:12px; border:1px solid var(--edge); border-radius:6px; background:var(--panel); padding:8px 10px; display:grid; gap:6px; }
+  .setting .head { font-size:10px; letter-spacing:1.4px; text-transform:uppercase; color:var(--brass); }
+  .row { display:flex; gap:10px; align-items:flex-start; } .tog { width:28px; height:16px; border-radius:8px; background:var(--ok); position:relative; flex:none; margin-top:2px; } .tog::after { content:""; position:absolute; right:2px; top:2px; width:12px; height:12px; border-radius:6px; background:var(--ground); }
+  .row .t { color:var(--ink); } .row .d { color:var(--ink-dim); font-size:11px; }
+  table { border-collapse:collapse; font-size:12.5px; width:100%; margin-top:14px; } th, td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--edge-soft); vertical-align:top; } th { color:var(--brass); font-weight:normal; font-size:11px; letter-spacing:1px; text-transform:uppercase; } td.y { color:var(--ok); } td.n { color:var(--ink-dim); } td.w { color:var(--warn); }
+  .banner { border:1px solid var(--edge); border-left:3px solid var(--brass); background:var(--panel); padding:14px 16px; border-radius:6px; margin-top:16px; color:var(--ink-soft); font-size:13.5px; } .banner b { color:var(--ink); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Buying what the market does not sell — <span>what the player sees</span> (bead ah-d8u)</h1>
+  <p>The engine refuses the order and reports it a week later: <code>BUY: Can't buy that.</code> — three times across two turns of the committed corpus. Everything the check needs is in the report already: the region prints its market, and <code>orders::semantics::market()</code> already looks an item up in it.</p>
+  <p><b>Decided, 2026-08-17.</b> (1) The message <b>names the Products confusion</b> when the item is on that line, falling back to simply listing the market when it is not. (2) A hex with nothing for sale <b>says so</b> rather than reporting an empty list. (3) The toggle is <b>Buying what is not for sale</b> in the existing <span class="mono">Orders</span> group, on by default. (4) Measured afterwards and settled without asking: the market list is never truncated — the largest <code>For Sale</code> line in the whole corpus has four items.</p>
+  <p><b>The three real cases cannot be reconstructed.</b> The units that made them (7308, 7309, 7721) are gone from both the turn they appear in and the next, and the turn their orders were written against is not committed — so we know the mistake happened three times but not what was typed. The case below is instead the one the report's own layout invites, taken verbatim from <code>neworigins-3.0.0-g3-f42-t41.rep:484-488</code>.</p>
+</header>
+<main>
+
+  <h2 class="sec">The mistake the report invites</h2>
+  <div class="cards">
+    <section class="card"><h3>What the region prints</h3>
+      <div class="rep">  Wanted: none.
+  <u>For Sale: 88 wood elves [WELF] at $43, 17 leaders [LEAD] at $756.</u>
+  Entertainment available: $85.
+  <i>Products: 31 grain [GRAI], 35 wood [WOOD], 15 furs [FUR], 7 yew [YEW].</i></div>
+      <p class="concept"><b>Two different lines, and only one of them is a shop.</b> <u>For Sale</u> is what you may buy. <i>Products</i> is what the region's peasants can be set to <i>make</i> — grain, wood, furs and yew — and none of it is for sale. Writing <code>BUY 20 GRAI</code> here is the natural mistake, and the engine simply says <code>Can't buy that.</code></p>
+    </section>
+    <section class="card"><h3>What the player writes</h3>
+      <div class="editor">
+        <div class="ln"><span class="no">14</span><span class="tx">unit 7308</span></div>
+        <div class="ln warn"><span class="no">15</span><span class="tx">BUY 20 GRAI</span></div>
+      </div>
+      <p class="concept">The month's silver is spent on nothing, and the unit stands there empty-handed. All three questions below are about what the panel says back.</p>
+      <div class="setting"><div class="head">Orders</div>
+        <div class="row"><span class="tog"></span><div><div class="t">Buying what is not for sale</div><div class="d">A BUY order naming an item the region's market does not offer.</div></div></div>
+      </div>
+      <p class="concept">The toggle joins the existing <span class="mono">Orders</span> group, on by default. Say if you would rather it read differently.</p>
+    </section>
+  </div>
+
+  <h2 class="sec">How much the message says <small>Option C was chosen</small></h2>
+  <div class="cards three">
+    <section class="card"><h3><em>OPTION A — rejected</em> Just the refusal</h3>
+      <div class="stage"><div class="pane"><div class="bar"><span class="name">Problems</span></div><div class="body">
+        <div class="prob"><span class="uid">7308</span><span class="warn">&#9888;</span><span class="msg">the market here does not sell grain, so this BUY will be refused</span></div>
+      </div></div></div>
+      <ul class="notes"><li>Shortest, and one wording however odd the market is.</li><li class="con">Leaves the player to scroll back to the region and read the <code>For Sale</code> line themselves.</li></ul>
+    </section>
+    <section class="card"><h3><em>OPTION B — rejected</em> …and what it does sell</h3>
+      <div class="stage"><div class="pane"><div class="bar"><span class="name">Problems</span></div><div class="body">
+        <div class="prob"><span class="uid">7308</span><span class="warn">&#9888;</span><span class="msg">the market here does not sell grain: it offers wood elves and leaders</span></div>
+      </div></div></div>
+      <ul class="notes"><li>Answers the next question — <i>well, what <b>can</b> I buy?</i> — without leaving the panel.</li><li class="con">A market with eight lines makes a long sentence; needs a rule for how many to name.</li></ul>
+    </section>
+    <section class="card rec"><h3><em>OPTION C — chosen</em> …and name the confusion</h3>
+      <div class="stage"><div class="pane"><div class="bar"><span class="name">Problems</span></div><div class="body">
+        <div class="tagline">the item is on the Products line</div>
+        <div class="prob"><span class="uid">7308</span><span class="warn">&#9888;</span><span class="msg">the market here does not sell grain - the region produces it, which is not the same thing; the market offers wood elves and leaders</span></div>
+        <div class="tagline">the item is not here at all</div>
+        <div class="prob"><span class="uid">7309</span><span class="warn">&#9888;</span><span class="msg">the market here does not sell mithril: it offers wood elves and leaders</span></div>
+      </div></div></div>
+      <ul class="notes"><li>Catches the actual mistake this report layout provokes, and teaches the difference once.</li><li>Falls back to Option B's sentence when the item is not a product either.</li><li class="con">Longest line, and two wordings to keep in step.</li></ul>
+    </section>
+  </div>
+
+  <h2 class="sec">A market with nothing in it <small>Option 1 was chosen</small></h2>
+  <p class="concept" style="margin-top:8px">Most hexes print <code>For Sale: none.</code> A <code>BUY</code> there is just as refused, but “it offers wood elves and leaders” has nothing to fill in.</p>
+  <div class="cards">
+    <section class="card rec"><h3><em>OPTION 1 — chosen</em> Say there is no market</h3>
+      <div class="stage"><div class="pane"><div class="bar"><span class="name">Problems</span></div><div class="body">
+        <div class="prob"><span class="uid">7308</span><span class="warn">&#9888;</span><span class="msg">there is nothing for sale here, so this BUY will be refused</span></div>
+      </div></div></div>
+      <ul class="notes"><li>Names the real situation rather than a missing list.</li><li>Likely the commonest form of this warning, since most hexes sell nothing.</li></ul>
+    </section>
+    <section class="card"><h3><em>OPTION 2 — rejected</em> The same sentence, list empty</h3>
+      <div class="stage"><div class="pane"><div class="bar"><span class="name">Problems</span></div><div class="body">
+        <div class="prob"><span class="uid">7308</span><span class="warn">&#9888;</span><span class="msg">the market here does not sell grain, so this BUY will be refused</span></div>
+      </div></div></div>
+      <ul class="notes"><li>One fewer wording.</li><li class="con">“The market here” implies there is one, when the hex has no market at all.</li></ul>
+    </section>
+  </div>
+
+  <h2 class="sec">The states <small>settled unless you object</small></h2>
+  <table>
+    <tr><th style="width:30%">The case</th><th style="width:16%">Warns?</th><th>Why</th></tr>
+    <tr><td>An item name nothing can resolve</td><td class="n">No</td><td>Not the ruleset, not the hex's inventories, not the market lines. Accept on doubt: a name we cannot read is not evidence the market lacks the item.</td></tr>
+    <tr><td><code>BUY ALL LEAD</code> of something not sold</td><td class="y">Yes</td><td>Refused just the same. The ledger declines to price a <code>BUY ALL</code>, but whether the shop stocks it does not depend on how many.</td></tr>
+    <tr><td>An item sold here but too expensive</td><td class="n">No</td><td>Already covered by <span class="mono">Overspent silver</span>.</td></tr>
+    <tr><td>An item sold here but only 5 in stock, buying 20</td><td class="n">No</td><td>A different engine refusal and a different bead; nobody has filed it.</td></tr>
+    <tr><td><code>SELL</code> of something the market does not want</td><td class="n">No</td><td>The mirror case. Not this bead, and not filed — say if you want it.</td></tr>
+    <tr><td>No report loaded</td><td class="n">No</td><td>As every check.</td></tr>
+  </table>
+
+  <h2 class="sec">The four sentences, exactly as they ship <small>the two decisions compose</small></h2>
+  <p class="concept" style="margin-top:8px">Decisions 1 and 2 were taken separately, and a hex can be both — it produces the item <i>and</i> sells nothing, which the corpus suggests is the common case. The third sentence below splices the first decision's clause into the second decision's sentence, using its own words. It is the planner's composition rather than a drawn choice, and is easily reversed to the fourth sentence if you would rather.</p>
+  <div class="pane" style="margin-top:12px"><div class="bar"><span class="name">Problems</span></div><div class="body">
+    <div class="tagline">the market sells things, and the region produces this one</div>
+    <div class="prob"><span class="uid">7308</span><span class="warn">&#9888;</span><span class="msg">the market here does not sell grain - the region produces it, which is not the same thing; the market offers wood elves and leaders</span></div>
+    <div class="tagline">the market sells things, and this is not one of them</div>
+    <div class="prob"><span class="uid">7308</span><span class="warn">&#9888;</span><span class="msg">the market here does not sell mithril: it offers wood elves and leaders</span></div>
+    <div class="tagline">nothing for sale, and the region produces this</div>
+    <div class="prob"><span class="uid">7308</span><span class="warn">&#9888;</span><span class="msg">there is nothing for sale here - the region produces grain, which is not the same thing, so this BUY will be refused</span></div>
+    <div class="tagline">nothing for sale, and the region does not produce it either</div>
+    <div class="prob"><span class="uid">7308</span><span class="warn">&#9888;</span><span class="msg">there is nothing for sale here, so this BUY will be refused</span></div>
+  </div></div>
+  <p class="concept" style="margin-top:8px">The item the player asked for is named by <code>item_name</code>, the same helper the <i>Overspent items</i> warning already uses, so the two agree. What the market offers is named in the report's own words, plural and all — <code>88 wood elves [WELF]</code> gives <i>wood elves</i>.</p>
+
+  <div class="banner"><b>Why the evidence here is thinner than usual.</b> For the other order checks I could name the exact unit, the exact order and the exact numbers. Here the three refusals name units that appear nowhere in the committed reports, so the mistake is real and counted but its content is lost. The design above is argued from the report's own layout instead — which is why question 1 exists at all.</div>
+</main>
+</body>
+</html>

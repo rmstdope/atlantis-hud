@@ -263,7 +263,7 @@ export function UnitTableDock({
             onChange={(event) => setFilter(event.target.value)}
             placeholder="filter units…"
             aria-label="Filter units"
-            className="w-44 rounded border border-edge bg-ground px-2 py-0.5 text-[11px] text-ink placeholder:text-ink-dim focus:border-select focus:outline-none"
+            className="w-44 rounded border border-edge bg-ground px-2 py-0.5 text-pane text-ink placeholder:text-ink-dim focus:border-select focus:outline-none"
           />
         </div>
       }
@@ -318,7 +318,7 @@ export function UnitTableDock({
             </colgroup>
             <thead ref={setHead}>
               {/* Indexed like the rows below it: if some rows carry a position, all of them must. */}
-              <tr aria-rowindex={1} className="text-[10px] uppercase tracking-[0.06em] text-ink-soft">
+              <tr aria-rowindex={1} className="text-pane-sm uppercase tracking-[0.06em] text-ink-soft">
                 <Th>
                   <button
                     type="button"
@@ -533,7 +533,7 @@ function UnitRow({
         </span>
         {unit.onGuard ? (
           <span
-            className={`ml-1.5 text-[10px] text-warn${guardChange ? " italic" : ""}`}
+            className={`ml-1.5 text-pane-sm text-warn${guardChange ? " italic" : ""}`}
             data-predicted={guardChange ? "true" : undefined}
             title={originalTooltip(guardChange)}
           >
@@ -542,16 +542,16 @@ function UnitRow({
         ) : null}
         {/* Where the unit is bound or from, said inline: the row is the story of a move. */}
         {departing && unit.departingTo ? (
-          <span className="ml-1.5 text-[10px] text-ink-dim">→ {unit.departingTo}</span>
+          <span className="ml-1.5 text-pane-sm text-ink-dim">→ {unit.departingTo}</span>
         ) : null}
         {departing && !unit.departingTo ? (
-          <span className="ml-1.5 text-[10px] text-ink-dim">→ …</span>
+          <span className="ml-1.5 text-pane-sm text-ink-dim">→ …</span>
         ) : null}
         {unit.previewStatus === "arriving" ? (
-          <span className={`ml-1.5 text-[10px] ${PREDICTED}`}>← {unit.arrivingFrom ?? "…"}</span>
+          <span className={`ml-1.5 text-pane-sm ${PREDICTED}`}>← {unit.arrivingFrom ?? "…"}</span>
         ) : null}
         {unit.previewStatus === "formed" ? (
-          <span className={`ml-1.5 text-[10px] ${PREDICTED}`}>new</span>
+          <span className={`ml-1.5 text-pane-sm ${PREDICTED}`}>new</span>
         ) : null}
       </Td>
       <Td className="truncate">

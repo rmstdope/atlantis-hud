@@ -41,7 +41,16 @@ export type { OrderDiagnosticSeverity } from "./generated/OrderDiagnosticSeverit
 export type { OrderDiagnostic } from "./generated/OrderDiagnostic";
 export type { OrderValidationResult } from "./generated/OrderValidationResult";
 
-export { aBattle, aBattleUnit, aParsedReport, aReportHeaderInfo, aReportRegion, aReportUnit } from "./builders";
+export {
+  aBattle,
+  aBattleUnit,
+  aParsedReport,
+  aReportHeaderInfo,
+  aReportRegion,
+  aReportUnit,
+  aTradeRoute,
+  aTradedGood
+} from "./builders";
 
 import type { Coordinate } from "./generated/Coordinate";
 import type { ReportRegion } from "./generated/ReportRegion";
@@ -168,6 +177,46 @@ export type HexRisk = {
 
 /** A route is as dangerous as its worst hex, never an average of them. */
 export type RouteRisk = { level: RiskLevel; worst: HexRisk | null; hexes: HexRisk[] };
+
+/** One good worth carrying from one hex to another. */
+export type TradedGood = {
+  /** The item's tag, as both markets name it. */
+  tag: string;
+  /** The seller's own spelling, which is what the region panel shows. */
+  name: string;
+  buyPrice: number;
+  sellPrice: number;
+  /** The smaller of what the seller has and what the buyer will take. */
+  quantity: number;
+  /** `sellPrice - buyPrice`, per unit. */
+  margin: number;
+  /** The turn each half was last seen in, so a rumour can say so. `null` only when the report
+   * carries no turn number at all. */
+  buySeenTurn: number | null;
+  sellSeenTurn: number | null;
+};
+
+/**
+ * How long the journey takes, in months, for each way of travelling. `null` where the known map
+ * offers that mode no route at all - water for a walker, or a gap in what has been seen.
+ */
+export type TravelTurns = { walk: number | null; ride: number | null; fly: number | null };
+
+/** A pair of hexes worth trading between, and everything worth carrying either way. */
+export type TradeRoute = {
+  /** Where the journey starts: the hex whose outbound leg is worth at least as much as the
+   * other way (a tie keeps the lower-indexed hex, for a stable answer). */
+  from: Coordinate;
+  to: Coordinate;
+  /** Goods bought at `from` and sold at `to`. Never empty. */
+  outbound: TradedGood[];
+  /** Goods bought at `to` and sold at `from`. Empty unless the way back also pays, which is what
+   * makes this a circuit rather than a one-way trip. */
+  inbound: TradedGood[];
+  /** Silver earned running the whole thing once: every good on both legs, quantity times margin. */
+  worth: number;
+  turns: TravelTurns;
+};
 
 /**
  * One region the faction saw in an earlier turn.
@@ -339,6 +388,17 @@ export type RoutePlanResponse = {
   fullyModelled: boolean;
 };
 
+/** One entry in the orders editor's completion popup, mirroring the core's `OrderCompletion`. */
+export type OrderCompletion = {
+  /** What is written into the line when the entry is accepted, and the first thing the typed word
+   * is matched against. Always the canonical spelling: a keyword, or an item or skill tag. */
+  value: string;
+  /** The other thing the typed word may match: an item's or skill's name. Empty for a keyword. */
+  name: string;
+  /** What the entry shows beside its value. Empty for a keyword, which is its own explanation. */
+  detail: string;
+};
+
 export type ImportedTurnPreview = {
   exists: boolean;
   rawChanged: boolean;
@@ -452,6 +512,22 @@ export interface CoreAdapter {
     disabledCodes: readonly string[] | null
   ): Promise<OrderValidationResult>;
   orderCommands(): Promise<string[]>;
+  /**
+   * What may stand where the caret is, for the orders editor's completion popup: one order line
+   * from its first character to the caret, answered with what the ruleset, the catalogue and the
+   * hex allow there. Empty wherever the rules leave the position open, which is most of them.
+   *
+   * `rulesetJson` and `rawReport` are the served ruleset and the imported turn, when there are
+   * any - only their presence widens the answer, since an item or a skill position is otherwise
+   * closed. `unitId` is whose block is being typed, which is what makes `BUY`, `SELL` and
+   * `PRODUCE` narrow to this unit's own hex.
+   */
+  orderArgumentCompletions(
+    linePrefix: string,
+    rulesetJson: string | null,
+    rawReport: string | null,
+    unitId: string | null
+  ): Promise<OrderCompletion[]>;
   planRoute(
     rulesetJson: string,
     rawReport: string,
@@ -474,6 +550,8 @@ export interface CoreAdapter {
     rememberedJson: string,
     ordersDocument: string
   ): Promise<OrdersPreviewResponse>;
+  /** Every trade worth making in the map the faction has seen, best first. */
+  tradeRoutes(rulesetJson: string, rawReport: string, rememberedJson: string): Promise<TradeRoute[]>;
   loadRegionSightings(
     databasePath: string,
     gameId: string,

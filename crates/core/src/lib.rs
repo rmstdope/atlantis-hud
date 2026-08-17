@@ -7,6 +7,7 @@ pub mod movement;
 pub mod orders;
 pub mod reopen;
 pub mod report;
+pub mod trade;
 
 use serde::{Deserialize, Serialize};
 
@@ -127,7 +128,12 @@ impl OrderValidationResult {
 /// crate root. What changed underneath is that a command name is no longer all that is checked: see
 /// [`orders`] for the lexer and grammar that replaced the list this used to be.
 pub use orders::semantics::CheckOptions as OrderCheckOptions;
-pub use orders::{order_commands, validate_orders, validate_turn};
+pub use orders::{
+    order_argument_completions, order_commands, validate_orders, validate_turn, OrderCompletion,
+};
+
+/// The trade-route finder, re-exported for the same reason the order vocabulary is above.
+pub use trade::trade_routes;
 
 /// Severity level emitted by the tolerant report parser.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -548,7 +554,10 @@ mod tests {
     /// has one place to look and one count to show.
     #[test]
     fn one_call_returns_both_the_syntax_and_the_semantic_problems() {
-        let result = turn("unit 100\nFLY 1 2\nGIVE 7 100 SILV\n");
+        // Unit 0 is GIVE's discard target (`Party::Discard`), not a missing unit - chosen here so
+        // this stays a test about the syntax/semantic combination and not also about
+        // `give-target-not-here`, which `orders::semantics` covers on its own.
+        let result = turn("unit 100\nFLY 1 2\nGIVE 0 100 SILV\n");
 
         assert_eq!(
             result
@@ -562,7 +571,7 @@ mod tests {
 
     #[test]
     fn a_semantic_finding_is_a_warning_and_never_blocks_the_export() {
-        let result = turn("unit 100\nGIVE 7 100 SILV\n");
+        let result = turn("unit 100\nGIVE 0 100 SILV\n");
 
         assert_eq!(result.diagnostics.len(), 1, "{:?}", result.diagnostics);
         assert_eq!(
@@ -584,7 +593,7 @@ mod tests {
 
     #[test]
     fn a_semantic_finding_carries_the_hex_and_the_unit_it_belongs_to() {
-        let diagnostic = turn("unit 100\nGIVE 7 100 SILV\n").diagnostics.remove(0);
+        let diagnostic = turn("unit 100\nGIVE 0 100 SILV\n").diagnostics.remove(0);
 
         assert_eq!(diagnostic.region_id.as_deref(), Some("1:12,34"));
         assert_eq!(diagnostic.unit_id.as_deref(), Some("100"));

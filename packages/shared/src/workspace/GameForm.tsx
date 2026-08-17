@@ -29,7 +29,7 @@ export function GameForm({
   };
 
   return (
-    <form data-testid="game-form" onSubmit={submit} className="flex flex-col gap-2 text-[11.5px]">
+    <form data-testid="game-form" onSubmit={submit} className="flex flex-col gap-2 text-pane">
       <label className="flex flex-col gap-1">
         <span className="text-ink-soft">Name</span>
         <input

@@ -155,6 +155,7 @@ fn main() {
             atlantis_hud_core_tauri::command_list_imported_turns,
             atlantis_hud_core_tauri::command_validate_orders,
             atlantis_hud_core_tauri::command_order_commands,
+            atlantis_hud_core_tauri::command_order_argument_completions,
             atlantis_hud_core_tauri::command_save_order_draft,
             atlantis_hud_core_tauri::command_load_order_draft,
             atlantis_hud_core_tauri::command_list_hex_notes,
@@ -168,7 +169,8 @@ fn main() {
             atlantis_hud_core_tauri::command_load_region_sightings,
             atlantis_hud_core_tauri::command_merge_report,
             atlantis_hud_core_tauri::command_load_merged_reports,
-            atlantis_hud_core_tauri::command_parse_report_classified
+            atlantis_hud_core_tauri::command_parse_report_classified,
+            atlantis_hud_core_tauri::command_trade_routes
         ])
         .run(tauri::generate_context!())
         .expect("error while running atlantis-hud desktop shell");

@@ -103,18 +103,35 @@ fn the_committed_turn_has_no_semantic_problems_either() {
         CheckOptions::default(),
     );
 
-    assert_eq!(findings.len(), 1, "{findings:?}");
-    let finding = &findings[0];
-    assert_eq!(finding.code.as_str(), "not-enough-items");
-    assert_eq!(finding.region_id, "1:26,52");
+    // Two exceptions since ah-1uj and ah-dbb.2 landed: unit 13402 is reported at combat [COMB] 5
+    // (450) - the ruleset's own maximum - and orders "@study comb" anyway, which is a real wasted
+    // month (`study-at-maximum`, ah-1uj); and the four enchant-armor mages above. Neither is an
+    // invented problem, and only the fields that make each finding specific are asserted, not the
+    // whole struct, so an unrelated fixture edit elsewhere in the turn does not force rewriting
+    // this test.
+    assert_eq!(findings.len(), 2, "{findings:?}");
+    let items = findings
+        .iter()
+        .find(|f| f.code.as_str() == "not-enough-items")
+        .unwrap_or_else(|| panic!("no not-enough-items finding: {findings:?}"));
+    assert_eq!(items.region_id, "1:26,52");
     assert_eq!(
-        finding.unit_id, None,
+        items.unit_id, None,
         "the hex shares, so the shortfall is the hex's"
     );
     assert_eq!(
-        finding.message,
+        items.message,
         "the units in this hex are short 4 plate armor between them: they can have 0 and \
          their orders give away or sell 4"
+    );
+    let study = findings
+        .iter()
+        .find(|f| f.code == atlantis_hud_core::orders::semantics::codes::STUDY_AT_MAXIMUM)
+        .unwrap_or_else(|| panic!("no study-at-maximum finding: {findings:?}"));
+    assert_eq!(study.unit_id.as_deref(), Some("13402"));
+    assert_eq!(
+        study.message,
+        "this unit is already at combat 5, the highest the ruleset has"
     );
 }
 
@@ -153,15 +170,28 @@ fn a_unit_told_to_spend_what_it_has_not_got_is_caught_in_that_same_turn() {
         "this faction shares throughout, which is what makes the finding below the hex's"
     );
 
-    // A nine-figure gift is beyond any holding or income in the game.
+    // A nine-figure gift is beyond any holding or income in the game. Unit 13401 is a real unit
+    // elsewhere in this same report (see `semantics.rs`'s `give-target-not-here` fixtures), which
+    // would also be a true positive for that check; it is disabled below because this test is about
+    // the resource ledger, not the transfer-target check, and `semantics.rs` already covers the
+    // latter on input built to vary it.
     let damaged = template().replace("unit 13432\n", "unit 13432\nGIVE 13401 999999999 SILV\n");
     assert_ne!(damaged, template(), "the template should have been altered");
 
-    let findings = check_turn(&report, &damaged, Some(&ruleset()), CheckOptions::default());
+    let mut options = CheckOptions::default();
+    options.disabled.insert(
+        atlantis_hud_core::orders::semantics::codes::GIVE_TARGET_NOT_HERE
+            .as_str()
+            .to_string(),
+    );
+    let findings = check_turn(&report, &damaged, Some(&ruleset()), options);
 
+    // Alongside the introduced shortfall, the turn's two genuine findings (the enchant-armor
+    // `not-enough-items` and unit 13402's `study-at-maximum`, see the test above) still fire -
+    // this fixture is not otherwise clean.
     assert_eq!(
         findings.iter().map(|f| f.code.as_str()).collect::<Vec<_>>(),
-        vec!["not-enough-silver", "not-enough-items"],
+        vec!["not-enough-silver", "not-enough-items", "study-at-maximum"],
         "{findings:?}"
     );
     assert_eq!(findings[0].unit_id, None, "one purse, shared");
@@ -191,14 +221,16 @@ fn a_whole_map_pass_re_reads_neither_the_report_nor_the_ruleset() {
 
     // Fifty passes over the committed turn. If any of them re-parsed the report this would take
     // long enough to notice; the point here is that they are all handed the same two objects.
-    // One finding is expected and stable across passes - see `the_committed_turn_has_no_semantic_
-    // problems_either` for what it is and why it belongs.
+    // The turn carries two genuine findings throughout (the enchant-armor `not-enough-items` and
+    // unit 13402's `study-at-maximum`, see `the_committed_turn_has_no_semantic_problems_either`) -
+    // what this loop pins is that every pass reports them identically, not that the turn is silent.
+    let expected = check_turn(&report, &template, Some(&ruleset), CheckOptions::default());
+    assert_eq!(expected.len(), 2, "{expected:?}");
     for _ in 0..50 {
         let result = check_turn(&report, &template, Some(&ruleset), CheckOptions::default());
         assert_eq!(
-            result.len(),
-            1,
-            "the turn's one finding is stable, pass after pass"
+            result, expected,
+            "every pass should report the same findings"
         );
     }
 }

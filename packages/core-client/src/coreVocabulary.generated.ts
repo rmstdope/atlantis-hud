@@ -14,7 +14,14 @@ export const ADVISORY_CHECK_CODES = [
   "teacher-has-free-slots",
   "form-alias-reused",
   "fleet-overloaded",
-  "fleet-undercrewed"
+  "fleet-undercrewed",
+  "give-target-not-here",
+  "not-traded-here",
+  "unit-overloaded",
+  "too-many-quartermasters",
+  "study-at-maximum",
+  "already-built",
+  "too-many-trade-regions"
 ] as const;
 
 export type AdvisoryCheckCode = (typeof ADVISORY_CHECK_CODES)[number];

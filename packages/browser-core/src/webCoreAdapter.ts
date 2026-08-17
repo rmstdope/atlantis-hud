@@ -14,11 +14,13 @@ import type {
   HexNoteRecord,
   KnownMap,
   MoveOrderTraceResponse,
+  OrderCompletion,
   OrderValidationResult,
   OrdersPreviewResponse,
   ParsedReport,
   ReportParseResult,
   RoutePlanResponse,
+  TradeRoute,
   TurnRef,
   TurnTouch
 } from "@atlantis/core-client";
@@ -43,6 +45,12 @@ export type CoreWasmModule = {
     disabledCodes: readonly string[] | null
   ): OrderValidationResult;
   order_commands_state(): string[];
+  order_argument_completions_state(
+    linePrefix: string,
+    rulesetJson: string | null,
+    rawReport: string | null,
+    unitId: string | null
+  ): OrderCompletion[];
   plan_route_state(
     rulesetJson: string,
     rawReport: string,
@@ -69,6 +77,7 @@ export type CoreWasmModule = {
     rememberedJson: string,
     ordersDocument: string
   ): OrdersPreviewResponse;
+  trade_routes_state(rulesetJson: string, rawReport: string, rememberedJson: string): TradeRoute[];
   prepare_report_import_state(
     rawReport: string,
     confirmedFactionId: string,
@@ -433,6 +442,10 @@ export function createWebCoreAdapter(
       // Straight through as well: the preview is pure computation over the arguments.
       return wasm.preview_orders_state(rulesetJson, rawReport, rememberedJson, ordersDocument);
     },
+    async tradeRoutes(rulesetJson: string, rawReport: string, rememberedJson: string) {
+      // Straight through as well: finding routes is pure computation over the arguments.
+      return wasm.trade_routes_state(rulesetJson, rawReport, rememberedJson);
+    },
     async validateOrders(
       rawOrders: string,
       rulesetJson: string | null,
@@ -445,6 +458,14 @@ export function createWebCoreAdapter(
     },
     async orderCommands() {
       return wasm.order_commands_state();
+    },
+    async orderArgumentCompletions(
+      linePrefix: string,
+      rulesetJson: string | null,
+      rawReport: string | null,
+      unitId: string | null
+    ) {
+      return wasm.order_argument_completions_state(linePrefix, rulesetJson, rawReport, unitId);
     },
 
     async listGames() {
