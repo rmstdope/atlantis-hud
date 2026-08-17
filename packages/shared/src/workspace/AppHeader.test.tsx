@@ -25,6 +25,8 @@ const draw = (overrides: Partial<Parameters<typeof AppHeader>[0]> = {}) =>
       messagesPanel={null}
       problemCount={0}
       problemsPanel={null}
+      tradeCount={0}
+      tradePanel={null}
       battleCount={0}
       battlesOpen={false}
       onToggleBattles={() => {}}
@@ -133,6 +135,45 @@ describe("AppHeader popovers", () => {
 
     const closed = draw();
     expect(closed).not.toContain('data-testid="export-menu-panel"');
+  });
+});
+
+describe("AppHeader trade chip", () => {
+  beforeEach(resetWorkspaceStore);
+
+  // Copilot review on #358: matching the chip's classes anywhere in the markup can pass even when
+  // the Trade chip itself is not dimmed, since `border-edge`/`text-ink-dim` also occur elsewhere in
+  // the header - so the button's own `class` attribute is extracted and asserted against directly.
+  const tradeChipClass = (markup: string) => {
+    const match = markup.match(/<button[^>]*data-testid="trade-chip"[^>]*class="([^"]*)"/);
+    expect(match).not.toBeNull();
+    return match![1];
+  };
+
+  it("the trade chip is shown even when there is nothing to trade", () => {
+    const markup = draw({ tradeCount: 0 });
+    expect(markup).toContain('data-testid="trade-chip"');
+    expect(markup).toContain("Trade 0");
+    const chipClass = tradeChipClass(markup);
+    expect(chipClass).toContain("border-edge");
+    expect(chipClass).toContain("text-ink-dim");
+  });
+
+  it("it reads the count and turns gain-coloured once there is something to trade", () => {
+    const markup = draw({ tradeCount: 6 });
+    expect(markup).toContain("Trade 6");
+    const chipClass = tradeChipClass(markup);
+    expect(chipClass).toContain("border-gain");
+    expect(chipClass).toContain("text-gain");
+  });
+
+  it("says whether the popover is open", () => {
+    const closed = draw();
+    expect(closed).toContain('data-testid="trade-chip"');
+    expect(closed).toContain('aria-expanded="false"');
+
+    const open = draw({ openPopover: "trade" });
+    expect(open).toContain('aria-expanded="true"');
   });
 });
 

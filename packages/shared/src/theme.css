@@ -106,6 +106,9 @@
   --color-risk-medium: #d9a441;
   --color-risk-high: #f07070;
 
+  /* The colour of silver to be gained. The header's Trade chip is its only user today. */
+  --color-gain: #7fb069;
+
   --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
 
@@ -186,6 +189,9 @@
   --color-risk-low: #1c7fae;
   --color-risk-medium: #9a6f1d;
   --color-risk-high: #c05252;
+
+  /* Dark enough to read on parchment. */
+  --color-gain: #3f7233;
 }
 
 /*

@@ -31,6 +31,7 @@ export type HeaderPopoverId =
   | "faction"
   | "messages"
   | "problems"
+  | "trade"
   | "export";
 
 /**
@@ -83,6 +84,15 @@ type AppHeaderProps = {
    */
   problemCount: number;
   problemsPanel: ReactNode;
+  /**
+   * How many trade routes the known map currently offers, counted in rows as shown - a folded
+   * circuit counts once. Unlike every other counted chip here, this one is shown at zero too (the
+   * navigator's explicit choice, ah-1j5.2): a problem count of zero is the good outcome and needs
+   * no announcing, but a trade count of zero is a search that ran and found nothing, and a player
+   * who cannot see that has no way to tell it apart from "the feature is missing".
+   */
+  tradeCount: number;
+  tradePanel: ReactNode;
   /**
    * How many battles the loaded turn describes. Zero hides the chip entirely, as with the other
    * counted chips.
@@ -166,6 +176,8 @@ export function AppHeader({
   messagesPanel,
   problemCount,
   problemsPanel,
+  tradeCount,
+  tradePanel,
   battleCount,
   battlesOpen,
   onToggleBattles,
@@ -442,6 +454,33 @@ export function AppHeader({
           </button>
         </ChipPopover>
       ) : null}
+
+      {/*
+        What the map is worth trading between. Unlike the problems and battles chips, this one is
+        shown even at zero, dimmed - the navigator's call, against this header's usual rule. The
+        difference is what a zero means: no problems is the good outcome and needs no announcing,
+        while no routes is a search that ran and found nothing, and a player who cannot tell that
+        from "the feature is missing" learns nothing from the chip's absence.
+      */}
+      <ChipPopover open={openPopover === "trade"} onDismiss={close} panel={tradePanel}>
+        <button
+          type="button"
+          data-testid="trade-chip"
+          aria-haspopup="dialog"
+          aria-expanded={openPopover === "trade"}
+          onClick={() => toggle("trade")}
+          className={
+            tradeCount > 0
+              ? "rounded border border-gain px-2 py-0.5 text-gain"
+              : "rounded border border-edge px-2 py-0.5 text-ink-dim"
+          }
+        >
+          Trade {tradeCount}
+          <span aria-hidden className="ml-1 text-ink-dim">
+            ▾
+          </span>
+        </button>
+      </ChipPopover>
 
       {/*
         The turn's battles, if it had any. Hidden entirely otherwise, for the same reason the
