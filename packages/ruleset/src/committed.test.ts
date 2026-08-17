@@ -78,4 +78,19 @@ describe("the committed ruleset", () => {
       "XBOW"
     ]);
   });
+
+  /** ah-a2k.3: the census `ah-a2k.2` needs to tell a Tower from a Fort. */
+  it("carries the five buildings and what each seats", () => {
+    expect(
+      Object.values(COMMITTED.buildings)
+        .map((b) => [b.name, b.mages] as const)
+        .sort(([a], [b]) => a.localeCompare(b))
+    ).toEqual([
+      ["Castle", 2],
+      ["Citadel", 3],
+      ["Fort", 1],
+      ["Stockade", 1],
+      ["Tower", 0]
+    ]);
+  });
 });
