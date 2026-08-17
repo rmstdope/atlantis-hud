@@ -20,7 +20,9 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use super::forms::{Amount, Party, Selector};
 use super::intents::{read_intents, Intent, PlacedIntent, UnitIntents};
-use crate::movement::mode::{cargo_capacity, fleet_label, parse_fleet_kind, sailing_requirement};
+use crate::movement::mode::{
+    best_allowance, cargo_capacity, fleet_label, parse_fleet_kind, sailing_requirement,
+};
 use crate::movement::orders::MoveStep;
 use crate::movement::rules::{item_spellings, Ruleset};
 use crate::report::model::{ItemAmount, MarketItem, ReportRegion, ReportUnit};
@@ -79,13 +81,14 @@ pub mod codes {
     pub const FLEET_UNDERCREWED: Code = Code("fleet-undercrewed");
     pub const GIVE_TARGET_NOT_HERE: Code = Code("give-target-not-here");
     pub const NOT_TRADED_HERE: Code = Code("not-traded-here");
+    pub const UNIT_OVERLOADED: Code = Code("unit-overloaded");
     /// Every code. This array's own order is not the settings tab's grouping (that groups by
     /// concern - Teaching / Resources / Markets / Guarding / Orders / Sailing - not by this list),
     /// but a new entry still goes last: the generated TypeScript copies this order. Until
     /// `give-target-not-here` every entry had also been last in its tab group; that one joins the
     /// existing *Orders* group instead, so the two orders are no longer in step and nothing depends
     /// on their being so.
-    pub const ALL: [Code; 14] = [
+    pub const ALL: [Code; 15] = [
         NOT_ENOUGH_SILVER,
         NOT_ENOUGH_ITEMS,
         GUARD_DROPPED,
@@ -100,6 +103,7 @@ pub mod codes {
         FLEET_UNDERCREWED,
         GIVE_TARGET_NOT_HERE,
         NOT_TRADED_HERE,
+        UNIT_OVERLOADED,
     ];
 }
 
@@ -203,6 +207,7 @@ pub fn check_turn(
         check_forms(&hex, &options, &mut findings);
         check_transfer_targets(&hex, &located, &options, &mut findings);
         check_sailing(&hex, &ledger, ruleset, &options, &mut findings);
+        check_movement(&hex, &ledger, ruleset, &options, &mut findings);
 
         // Within a hex, what sits on a line comes first and in line order; what belongs to the hex
         // itself comes last. `sort_by_key` is stable, so checks that produce several findings for
@@ -1349,8 +1354,8 @@ fn could_captain(ordered: &Ordered<'_>, fleet_id: &str) -> bool {
         )
 }
 
-/// What one unit weighs when the fleet sails: the weight the report gave it, plus everything this
-/// month's orders move into or out of it that the ruleset can price.
+/// What one unit weighs once this month's orders have run: the weight the report gave it, plus
+/// everything those orders move into or out of it that the ruleset can price.
 ///
 /// The ledger is read whole rather than filtered, because every order that changes an item balance
 /// runs before the fleet does: GIVE and TAKE in phase 4, SELL and BUY in phase 7, movement in
@@ -1361,7 +1366,7 @@ fn could_captain(ordered: &Ordered<'_>, fleet_id: &str) -> bool {
 /// WITHDRAW arm record their doubt and return before charging anything - so it contributes nothing
 /// here and the unit keeps the report's weight for that part. That is the navigator's answer to
 /// "silence or fall back": fall back. `None` only when the report never said what the unit weighs.
-fn weight_at_sailing(
+fn weight_after_orders(
     ordered: &Ordered<'_>,
     ledger: &Ledger<'_>,
     ruleset: Option<&Ruleset>,
@@ -1442,13 +1447,13 @@ fn check_transfer_targets(
 /// hull carries, and is enough sailing skill aboard to sail it? Aboard means the report's units in
 /// the fleet, plus those that ENTER it this month, minus those that LEAVE - the instant orders the
 /// server runs before anything moves. Each of them is weighed at what this month's orders leave it
-/// holding (`weight_at_sailing`), not at what the report printed, because the server runs every
+/// holding (`weight_after_orders`), not at what the report printed, because the server runs every
 /// transfer and every market order before it moves a fleet. Skills are still the report's own.
 /// Two different kinds of "cannot price" behave differently, deliberately: a MOVE touching the
 /// fleet, a foreign unit aboard, or a report that never states a unit's weight silences the whole
 /// fleet - never a guess. A single transfer the ledger or the ruleset cannot price (a WITHDRAW, an
 /// item with no catalogue weight) instead falls back to that unit's report weight for its own
-/// contribution (`weight_at_sailing`'s doc comment), rather than silencing the fleet outright.
+/// contribution (`weight_after_orders`'s doc comment), rather than silencing the fleet outright.
 fn check_sailing(
     hex: &Hex<'_>,
     ledger: &Ledger<'_>,
@@ -1534,7 +1539,7 @@ fn check_sailing(
 
         let sailing: Option<i64> = aboard
             .iter()
-            .map(|ordered| weight_at_sailing(ordered, ledger, ruleset))
+            .map(|ordered| weight_after_orders(ordered, ledger, ruleset))
             .sum();
 
         if let (Some(load), Some(capacity)) = (sailing, cargo_capacity(fleet, ruleset)) {
@@ -1580,6 +1585,67 @@ fn check_sailing(
                 ));
             }
         }
+    }
+}
+
+/// Every unit of ours that orders a MOVE: is what it will be carrying when it steps off more than
+/// it can move with at all? "A unit can walk provided that the carrying capacity of its people,
+/// horses and wagons is at least as great as the weight of all its other items... Otherwise the
+/// unit cannot issue a MOVE order" - the game throws the whole order out rather than moving the
+/// unit part of the way.
+///
+/// The load is what the unit weighs after this month's transfers, not what the report printed,
+/// because the server runs every GIVE, TAKE, BUY and SELL before it moves anybody: giving the
+/// ballast away and walking off in the same month is the ordinary fix for being overloaded, and a
+/// check reading the printed weight would warn about it.
+///
+/// The allowance is the report's own, unrepriced. A unit that gives away the horses it was riding
+/// loses ride capacity as well as weight, and this does not follow that - the error runs towards
+/// saying nothing rather than towards a warning that is wrong, which is the trade this module
+/// makes everywhere.
+///
+/// A unit riding a fleet says `SAIL`, which is its own intent, so a passenger is passed over here
+/// without needing to be excluded.
+fn check_movement(
+    hex: &Hex<'_>,
+    ledger: &Ledger<'_>,
+    ruleset: Option<&Ruleset>,
+    options: &CheckOptions,
+    findings: &mut Vec<Finding>,
+) {
+    if !options.emits(codes::UNIT_OVERLOADED) {
+        return;
+    }
+
+    for ordered in &hex.units {
+        let Some(placed) = ordered
+            .intents
+            .iter()
+            .find(|placed| matches!(placed.intent, Intent::Move { .. }))
+        else {
+            continue;
+        };
+
+        let (Some(allowance), Some(weight)) = (
+            best_allowance(ordered.unit),
+            weight_after_orders(ordered, ledger, ruleset),
+        ) else {
+            continue;
+        };
+
+        if weight <= allowance {
+            continue;
+        }
+
+        findings.push(ordered.finding(
+            hex,
+            codes::UNIT_OVERLOADED,
+            format!(
+                "this unit is overloaded: it carries {weight} and the most it can move with is \
+                 {allowance}, so it will not move"
+            ),
+            Some(placed),
+        ));
     }
 }
 
@@ -3373,6 +3439,11 @@ mod tests {
                 vec![region(vec![unit("5")])],
                 "unit 5\nBUY 5 silk\n",
             ),
+            (
+                codes::UNIT_OVERLOADED,
+                vec![region(vec![carrying("5", 1800, 150)])],
+                "unit 5\nMOVE S\n",
+            ),
         ];
 
         assert_eq!(
@@ -4043,6 +4114,172 @@ mod tests {
 
         assert_eq!(
             codes(&check(vec![region], "unit 11125\nSAIL N\n")),
+            Vec::<&str>::new()
+        );
+    }
+
+    // --- movement ---------------------------------------------------------------------------
+
+    /// A unit carrying `weight` that the report says can move `allowance` on foot, as a real
+    /// report states it: `Weight: 600. Capacity: 0/0/75/0.`
+    fn carrying(id: &str, weight: i64, allowance: i64) -> ReportUnit {
+        ReportUnit {
+            weight: Some(weight),
+            capacity: Some(format!("0/0/{allowance}/0")),
+            ..unit(id)
+        }
+    }
+
+    #[test]
+    fn an_overloaded_unit_ordered_to_move_is_warned_on_its_move_line() {
+        let finding = only(check(
+            vec![region(vec![carrying("12054", 1800, 150)])],
+            "unit 12054\nMOVE S S\n",
+        ));
+        assert_eq!(finding.code.as_str(), "unit-overloaded");
+        assert_eq!(finding.unit_id.as_deref(), Some("12054"));
+        assert_eq!(finding.line, Some(2));
+        assert_eq!(
+            finding.message,
+            "this unit is overloaded: it carries 1800 and the most it can move with is 150, so \
+             it will not move"
+        );
+    }
+
+    #[test]
+    fn a_unit_within_its_allowance_moves_in_silence() {
+        assert_eq!(
+            codes(&check(
+                vec![region(vec![carrying("12054", 100, 150)])],
+                "unit 12054\nMOVE S S\n",
+            )),
+            Vec::<&str>::new()
+        );
+    }
+
+    /// "at least as great as" (rules:1101) - exactly at the allowance is fine.
+    #[test]
+    fn exactly_at_its_allowance_moves() {
+        assert_eq!(
+            codes(&check(
+                vec![region(vec![carrying("12054", 150, 150)])],
+                "unit 12054\nMOVE S S\n",
+            )),
+            Vec::<&str>::new()
+        );
+    }
+
+    /// The real turn-41 case: 11 stone weigh 550, so 600 - 550 = 50 <= 75. Fails if the check
+    /// read `ordered.unit.weight` instead of `weight_after_orders`.
+    #[test]
+    fn giving_the_ballast_away_first_lets_the_unit_move() {
+        let region = region(vec![
+            with_item(carrying("11619", 600, 75), 11, "stone", "STON"),
+            unit("11992"),
+        ]);
+        assert_eq!(
+            codes(&check(
+                vec![region],
+                "unit 11619\nGIVE 11992 11 STON\nMOVE S S\n",
+            )),
+            Vec::<&str>::new()
+        );
+    }
+
+    #[test]
+    fn a_gift_that_overloads_a_unit_stops_it_moving() {
+        let region = region(vec![
+            carrying("999", 100, 150),
+            with_item(unit("8801"), 30, "grain", "GRAI"),
+        ]);
+        let finding = only(check(
+            vec![region],
+            "unit 8801\nGIVE 999 30 GRAI\nunit 999\nMOVE S\n",
+        ));
+        assert_eq!(finding.code.as_str(), "unit-overloaded");
+        assert!(
+            finding
+                .message
+                .contains("it carries 250 and the most it can move with is 150"),
+            "{}",
+            finding.message
+        );
+    }
+
+    /// 80 beats the ride allowance of 70 but not the walk allowance of 85, and the game takes
+    /// whichever works - the comparison is against the best of the three, not the walk figure.
+    #[test]
+    fn the_best_of_the_three_allowances_is_what_counts() {
+        let unit = ReportUnit {
+            weight: Some(80),
+            capacity: Some("0/70/85/0".to_string()),
+            ..unit("13432")
+        };
+        assert_eq!(
+            codes(&check(vec![region(vec![unit])], "unit 13432\nMOVE S\n")),
+            Vec::<&str>::new()
+        );
+    }
+
+    #[test]
+    fn a_unit_the_report_gives_no_capacity_is_not_judged() {
+        let unit = ReportUnit {
+            weight: Some(9999),
+            capacity: None,
+            ..unit("5")
+        };
+        assert_eq!(
+            codes(&check(vec![region(vec![unit])], "unit 5\nMOVE S\n")),
+            Vec::<&str>::new()
+        );
+    }
+
+    #[test]
+    fn a_unit_the_report_gives_no_weight_is_not_judged() {
+        let unit = ReportUnit {
+            weight: None,
+            capacity: Some("0/0/1/0".to_string()),
+            ..unit("5")
+        };
+        assert_eq!(
+            codes(&check(vec![region(vec![unit])], "unit 5\nMOVE S\n")),
+            Vec::<&str>::new()
+        );
+    }
+
+    #[test]
+    fn an_advance_is_a_move() {
+        let finding = only(check(
+            vec![region(vec![carrying("12054", 1800, 150)])],
+            "unit 12054\nADVANCE S\n",
+        ));
+        assert_eq!(finding.code.as_str(), "unit-overloaded");
+        assert_eq!(
+            finding.message,
+            "this unit is overloaded: it carries 1800 and the most it can move with is 150, so \
+             it will not move"
+        );
+    }
+
+    #[test]
+    fn a_sail_is_not_a_move() {
+        let region = ReportRegion {
+            structures: vec![longship("329")],
+            ..region(vec![ReportUnit {
+                structure_id: Some("329".to_string()),
+                ..carrying("11125", 1800, 150)
+            }])
+        };
+        assert!(!codes(&check(vec![region], "unit 11125\nSAIL N\n")).contains(&"unit-overloaded"));
+    }
+
+    #[test]
+    fn a_unit_that_does_not_move_is_not_judged() {
+        assert_eq!(
+            codes(&check(
+                vec![region(vec![carrying("12054", 1800, 150)])],
+                "unit 12054\nWORK\n",
+            )),
             Vec::<&str>::new()
         );
     }
