@@ -79,7 +79,7 @@ export function OrdersImportPrompt({
     <section
       data-testid="orders-import-prompt"
       aria-label="Import orders"
-      className="flex-none border-b border-edge bg-panel px-3 py-2 text-[11.5px] whitespace-normal"
+      className="flex-none border-b border-edge bg-panel px-3 py-2 text-pane whitespace-normal"
       onDragOver={(event) => event.stopPropagation()}
     >
       <p className="max-w-3xl font-mono text-brass-bright">{copy.fileName}</p>

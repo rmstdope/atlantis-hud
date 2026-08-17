@@ -85,7 +85,7 @@ export function SettingsDialog({
         aria-label="Settings"
         // `whitespace-normal` undoes the header's `whitespace-nowrap`, which would otherwise
         // inherit through the anchor span this dialog is mounted in.
-        className="w-[26rem] rounded border border-edge bg-panel-raised p-3 text-[11.5px] whitespace-normal shadow-lg"
+        className="w-[26rem] rounded border border-edge bg-panel-raised p-3 text-pane whitespace-normal shadow-lg"
       >
         <div className="flex items-center justify-between">
           <h2 className="text-ink">Settings</h2>
@@ -210,7 +210,7 @@ function GlobalSettings() {
       <label className="flex items-center justify-between gap-2 text-ink-soft">
         <span>
           <span className="block">Map theme</span>
-          <span className="block text-[10px] text-ink-dim">How the world map draws each hex.</span>
+          <span className="block text-pane-sm text-ink-dim">How the world map draws each hex.</span>
         </span>
         <select
           data-testid="settings-map-theme"
@@ -439,7 +439,7 @@ export function WarningSettings() {
     <div className="flex flex-col gap-3">
       {WARNING_GROUPS.map((group) => (
         <div key={group.heading} className="flex flex-col gap-2">
-          <div className="mt-2 text-[10px] uppercase tracking-wider text-ink-dim border-b border-edge/60 pb-0.5">
+          <div className="mt-2 text-pane-sm uppercase tracking-wider text-ink-dim border-b border-edge/60 pb-0.5">
             {group.heading}
           </div>
           {group.entries.map((entry) => (
@@ -581,7 +581,7 @@ function SnippetSettings() {
             >
               <span className="min-w-0">
                 <span className="block text-ink">{snippet.name}</span>
-                <span className="block truncate font-mono text-[10px] text-ink-dim">
+                <span className="block truncate font-mono text-pane-sm text-ink-dim">
                   {snippet.body.split("\n")[0]}
                   {snippet.body.includes("\n") ? " …" : ""}
                 </span>

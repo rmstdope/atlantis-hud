@@ -70,7 +70,7 @@ export function CommandPalette({
         role="dialog"
         aria-modal="true"
         aria-label="Command palette"
-        className="w-[28rem] rounded border border-edge bg-panel-raised p-2 text-[11.5px] shadow-lg"
+        className="w-[28rem] rounded border border-edge bg-panel-raised p-2 text-pane shadow-lg"
       >
         <input
           type="text"
@@ -114,11 +114,11 @@ export function CommandPalette({
               >
                 <span className="min-w-0 truncate">{entry.label}</span>
                 <span className="flex shrink-0 items-baseline gap-2">
-                  <span className="text-[10px] uppercase tracking-[0.08em] text-ink-dim">
+                  <span className="text-pane-sm uppercase tracking-[0.08em] text-ink-dim">
                     {entry.kind === "order-help" ? "order" : entry.kind}
                   </span>
                   {entry.binding ? (
-                    <span className="font-mono text-[10px] text-ink-dim">{entry.binding}</span>
+                    <span className="font-mono text-pane-sm text-ink-dim">{entry.binding}</span>
                   ) : null}
                 </span>
               </button>

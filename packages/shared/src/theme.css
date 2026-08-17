@@ -110,6 +110,13 @@
   --color-gain: #7fb069;
 
   --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  /* The panes' type scale. Three steps, in rem so the reader's own font-size preference reaches
+     them - `px` does not, which is the whole of ah-46p. The map sets its own sizes and is not on
+     this scale. */
+  --text-pane-sm: 0.6875rem;   /* 11px at a 16px root */
+  --text-pane: 0.75rem;        /* 12px */
+  --text-pane-lg: 0.8125rem;   /* 13px */
 }
 
 /*

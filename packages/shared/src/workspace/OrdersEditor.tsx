@@ -158,7 +158,7 @@ export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(fu
           // Tokens, not hex literals: theme.test.ts's rule holds in spirit for injected styles
           // its component scan cannot see.
           EditorView.theme({
-            "&": { height: "100%", fontSize: "11.5px", color: "var(--color-ink)" },
+            "&": { height: "100%", fontSize: "var(--text-pane)", color: "var(--color-ink)" },
             ".cm-scroller": { fontFamily: "inherit" },
             "&.cm-focused": { outline: "none" },
             // The native caret, which is what an editor without drawSelection actually shows.

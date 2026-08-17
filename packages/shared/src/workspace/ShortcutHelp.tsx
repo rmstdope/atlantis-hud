@@ -74,7 +74,7 @@ export function ShortcutHelp({ isMac, onDismiss }: { isMac: boolean; onDismiss: 
         // A column with a capped height, so the header and the startup switch stay put and only
         // the middle scrolls. Capped against the viewport rather than at a fixed height: the two
         // columns are wide, and on a short window the guide is a good deal taller than the screen.
-        className="flex max-h-[85vh] w-[34rem] max-w-[calc(100vw-2rem)] flex-col rounded border border-edge bg-panel-raised p-3 text-[11.5px] shadow-lg"
+        className="flex max-h-[85vh] w-[34rem] max-w-[calc(100vw-2rem)] flex-col rounded border border-edge bg-panel-raised p-3 text-pane shadow-lg"
       >
         {/*
           A close button as well as Escape and the backdrop, because this is now the first thing a
@@ -125,7 +125,7 @@ export function ShortcutHelp({ isMac, onDismiss }: { isMac: boolean; onDismiss: 
                 Sticky, because a reader who has scrolled to the panels at the bottom is still
                 reading two columns and still needs to know which is which.
               */}
-              <tr className="text-[10px] uppercase tracking-[0.08em] text-ink-dim">
+              <tr className="text-pane-sm uppercase tracking-[0.08em] text-ink-dim">
                 <th className="sticky -top-px z-10 w-[45%] border-b border-edge bg-panel-raised py-1 font-normal">
                   Move
                 </th>
@@ -142,7 +142,7 @@ export function ShortcutHelp({ isMac, onDismiss }: { isMac: boolean; onDismiss: 
                 <tr>
                   <th
                     colSpan={3}
-                    className="pt-2.5 pb-0.5 text-[10px] font-normal uppercase tracking-[0.08em] text-brass"
+                    className="pt-2.5 pb-0.5 text-pane-sm font-normal uppercase tracking-[0.08em] text-brass"
                   >
                     {section.group}
                   </th>

@@ -19,7 +19,7 @@ export function SettingToggle({ title, description, testId, checked, onChange }:
     <label className="flex items-center justify-between gap-2 text-ink-soft">
       <span>
         <span className="block">{title}</span>
-        <span className="block text-[10px] text-ink-dim">{description}</span>
+        <span className="block text-pane-sm text-ink-dim">{description}</span>
       </span>
       <input
         type="checkbox"

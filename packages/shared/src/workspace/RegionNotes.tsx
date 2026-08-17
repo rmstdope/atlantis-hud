@@ -153,7 +153,7 @@ export function RegionNotes({
             <button
               type="button"
               data-testid="region-note-add"
-              className="text-[10px] text-select"
+              className="text-pane-sm text-select"
               onClick={beginAdd}
             >
               + Add note
@@ -205,7 +205,7 @@ export function RegionNotes({
           : null}
 
         {error ? (
-          <p data-testid="region-notes-error" className="m-0 text-[10.5px] text-danger">
+          <p data-testid="region-notes-error" className="m-0 text-pane-sm text-danger">
             {error}
           </p>
         ) : null}
@@ -234,7 +234,7 @@ function NoteEditor({
         rows={3}
         maxLength={HEX_NOTE_MAX_CHARS}
         value={draft}
-        className="w-full rounded border border-edge bg-surface p-1.5 text-[11px]"
+        className="w-full rounded border border-edge bg-surface p-1.5 text-pane"
         onChange={(event) => onChange(event.target.value)}
         onKeyDown={(event) => {
           const action = keyToAction({
@@ -264,7 +264,7 @@ function NoteEditor({
           Save
         </button>
       </div>
-      <p className="m-0 text-[10px] text-ink-dim">
+      <p className="m-0 text-pane-sm text-ink-dim">
         {mac ? "⌘↩ saves · Esc cancels" : "Ctrl+↩ saves · Esc cancels"}
       </p>
     </div>
@@ -302,7 +302,7 @@ function NoteRow({
         {note.text}
       </button>
       {removing ? (
-        <div className="flex items-center justify-between gap-2 text-[10px]">
+        <div className="flex items-center justify-between gap-2 text-pane-sm">
           <span>Remove this note?</span>
           <span className="flex gap-2">
             <button type="button" onClick={onKeep}>
@@ -319,7 +319,7 @@ function NoteRow({
           </span>
         </div>
       ) : (
-        <div className="flex items-center justify-between gap-2 text-[10px] text-ink-dim">
+        <div className="flex items-center justify-between gap-2 text-pane-sm text-ink-dim">
           {note.turn > 0 ? <span>turn {note.turn}</span> : <span />}
           <span className="flex items-center gap-2">
             <label className="flex cursor-pointer items-center gap-1">

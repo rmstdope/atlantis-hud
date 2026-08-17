@@ -57,7 +57,7 @@ export function ChangesDialog({
         role="dialog"
         aria-modal="true"
         aria-label="Changes"
-        className="grid h-[75vh] w-[48rem] max-w-[94vw] grid-rows-[auto_auto_1fr] rounded border border-edge bg-panel-raised text-[11.5px] whitespace-normal shadow-lg"
+        className="grid h-[75vh] w-[48rem] max-w-[94vw] grid-rows-[auto_auto_1fr] rounded border border-edge bg-panel-raised text-pane whitespace-normal shadow-lg"
       >
         <div className="flex items-center gap-2 border-b border-edge px-2 py-1.5">
           <span className="text-ink-soft">{pairLabel}</span>

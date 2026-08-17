@@ -48,7 +48,7 @@ export function MapExportDialog({
     <label className="flex items-center justify-between gap-2 text-ink-soft">
       <span>
         <span className="block">{label}</span>
-        <span className="block text-[10px] text-ink-dim">{description}</span>
+        <span className="block text-pane-sm text-ink-dim">{description}</span>
       </span>
       <input
         type="checkbox"
@@ -76,7 +76,7 @@ export function MapExportDialog({
         role="dialog"
         aria-modal="true"
         aria-label="Export map"
-        className="flex w-[26rem] flex-col gap-2 rounded border border-edge bg-panel-raised p-3 text-[11.5px] whitespace-normal shadow-lg"
+        className="flex w-[26rem] flex-col gap-2 rounded border border-edge bg-panel-raised p-3 text-pane whitespace-normal shadow-lg"
       >
         <div className="flex items-center justify-between">
           <h2 className="text-ink">Export map</h2>
@@ -95,7 +95,7 @@ export function MapExportDialog({
         <p data-testid="map-export-area" className="text-ink">
           {exportAreaSummary(selection)}
         </p>
-        <p className="text-[10px] text-ink-dim">
+        <p className="text-pane-sm text-ink-dim">
           Shift-drag on the map to export part of it instead.
         </p>
 

@@ -45,7 +45,7 @@ export function PlannerPanel({
             data-testid="planner-arm"
             disabled={!canPlan || busy}
             onClick={onArm}
-            className="rounded border border-edge bg-ground px-2 py-0.5 text-[11px] text-ink enabled:hover:border-select disabled:opacity-40"
+            className="rounded border border-edge bg-ground px-2 py-0.5 text-pane text-ink enabled:hover:border-select disabled:opacity-40"
           >
             {armed ? "Pick a hex…" : "Plan move"}
           </button>
@@ -54,7 +54,7 @@ export function PlannerPanel({
             data-testid="planner-clear"
             disabled={!answer && !armed}
             onClick={onClear}
-            className="rounded border border-edge bg-ground px-2 py-0.5 text-[11px] text-ink enabled:hover:border-select disabled:opacity-40"
+            className="rounded border border-edge bg-ground px-2 py-0.5 text-pane text-ink enabled:hover:border-select disabled:opacity-40"
           >
             Clear
           </button>
@@ -205,11 +205,11 @@ function Route({
           type="button"
           data-testid="planner-apply"
           onClick={() => onApply(order)}
-          className="rounded border border-edge bg-ground px-2 py-0.5 text-[11px] text-brass hover:border-select"
+          className="rounded border border-edge bg-ground px-2 py-0.5 text-pane text-brass hover:border-select"
         >
           Apply to orders
         </button>
-        <code data-testid="planner-order" className="text-[11px] text-ink-soft">
+        <code data-testid="planner-order" className="text-pane text-ink-soft">
           {order}
         </code>
       </div>
