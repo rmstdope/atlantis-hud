@@ -265,8 +265,15 @@ test("the panes grow when the interface size does", async ({ page }) => {
   await page.getByRole("button", { name: "hex 1:7,53" }).click();
 
   const pane = page.getByTestId("app-header");
-  const mapLabel = page.locator(".region-name").first();
+  // The ruler ticks, not `.region-name`: that class is hidden outright at a far zoom band
+  // (`.map-far .region-name { display: none }` in theme.css), while the rulers render at every
+  // zoom level and carry their own explicit `fontSize` attribute untouched by `--ui-scale`.
+  const mapLabel = page.locator('[data-testid="map-ruler-x"] text').first();
   const row = page.locator('[data-testid^="unit-row-"]').first();
+  // `boundingBox()` returns null for an element not yet rendered or off-screen; asserting
+  // visibility first is what makes the non-null assertions below safe rather than merely hopeful.
+  await expect(mapLabel).toBeVisible();
+  await expect(row).toBeVisible();
 
   const paneSizeBefore = await pane.evaluate(
     (element) => Number.parseFloat(getComputedStyle(element).fontSize)
@@ -283,6 +290,9 @@ test("the panes grow when the interface size does", async ({ page }) => {
   await expect(slider).toHaveAttribute("max", "200");
   await slider.fill("200");
   await page.keyboard.press("Escape");
+  // Closing is a modal teardown; reading computed styles before it finishes can race the dialog's
+  // own unmount, exactly as the other walks in this file wait for `settings-panel` to be gone.
+  await expect(page.getByTestId("settings-panel")).toHaveCount(0);
 
   const paneSizeAfter = await pane.evaluate(
     (element) => Number.parseFloat(getComputedStyle(element).fontSize)
@@ -314,6 +324,7 @@ test("the panes grow when the interface size does", async ({ page }) => {
   await page.getByTestId("settings-indicator").click();
   await page.getByTestId("settings-interface-size").fill("100");
   await page.keyboard.press("Escape");
+  await expect(page.getByTestId("settings-panel")).toHaveCount(0);
 });
 
 test("the settings dialog has no units-in-hex row controls", async ({ page }) => {
