@@ -81,9 +81,11 @@ describe("the committed ruleset", () => {
 
   /**
    * ah-a2k.3: the census `ah-a2k.2` needs to tell a Tower from a Fort - taken from the game's own
-   * data page since ah-9js, which is why it names nine structures rather than the rules table's
-   * four. Everything else the data page calls a building says nothing about mages and so seats
-   * none, a Tower included.
+   * data page since ah-9js, which is why it carries ten fortifications rather than the rules
+   * table's five, nine of them seating at least one mage. A fortification that says nothing about
+   * mages seats none, which is the Tower asserted below; everything else the data page calls a
+   * building - a Mine, a road, a lair - is deliberately absent, so it stays "the catalogue cannot
+   * say" rather than becoming "seats nobody".
    */
   it("carries every structure that seats a mage, and what each seats", () => {
     expect(
