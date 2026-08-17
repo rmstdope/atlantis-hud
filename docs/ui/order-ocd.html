@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Order OCD — when it fires and how far it reaches (bead ah-bn6)</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733; --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --brass-bright:#eebe63; --ok:#4fb783; --warn:#d9a441; --danger:#d97070; --select:#4a9fd8; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1240px; margin-left:auto; margin-right:auto; }
+  h1 { font-size:26px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:96ch; margin-top:10px; font-size:14px; } header p + p { margin-top:8px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:0.92em; }
+  h2.sec { margin-top:34px; font-size:18px; color:var(--brass); } h2.sec small { color:var(--ink-dim); font-size:13px; margin-left:10px; }
+  .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:20px; margin-top:16px; align-items:start; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:18px; display:flex; flex-direction:column; gap:12px; }
+  .card h3 { font-size:17px; } .card h3 em { color:var(--brass); font-style:normal; font-size:12px; letter-spacing:1.6px; margin-right:8px; }
+  .concept { color:var(--ink-soft); font-size:13px; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; padding:12px; display:flex; gap:16px; flex-wrap:wrap; align-items:flex-start; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; } .notes li.con::before { content:"\2212  "; color:var(--danger); }
+  .cap { font:10px/1.3 'SF Mono',monospace; color:var(--brass); letter-spacing:1px; text-transform:uppercase; margin-bottom:6px; }
+  .cap b { color:var(--ink-dim); font-weight:normal; text-transform:none; letter-spacing:0; }
+
+  /* --- simulated application chrome --- */
+  .chip { display:inline-block; font-family:'Helvetica Neue',Arial,sans-serif; font-size:12px; border:1px solid var(--warn); color:var(--warn); border-radius:4px; padding:1px 8px; }
+  .chip .caret { color:var(--ink-dim); margin-left:4px; }
+  .pane { font-family:'Helvetica Neue',Arial,sans-serif; font-size:12px; line-height:1.45; border:1px solid var(--edge); border-radius:6px; background:var(--panel); overflow:hidden; }
+  .pane.pop { width:320px; background:var(--raised); }
+  .pane.region { width:264px; }
+  .pane .bar { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:5px 8px; border-bottom:1px solid var(--edge); color:var(--ink-soft); font-size:12px; }
+  .pane .bar .x { color:var(--ink-dim); }
+  .pane .foot { border-top:1px solid var(--edge); padding:6px 8px; color:var(--ink-dim); font-size:11px; }
+  .body { padding:6px; display:grid; gap:2px; }
+  .sect { margin:8px 0 3px; font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--brass); }
+  .sect span { margin-left:6px; text-transform:none; letter-spacing:0; color:var(--ink-dim); }
+  .silent { color:var(--ink-dim); font-style:italic; padding:6px; }
+  .uid { color:var(--ink-dim); font-variant-numeric:tabular-nums; flex:none; }
+  .msg { color:var(--ink); }
+  .w { color:var(--warn); } .e { color:var(--danger); }
+  table { border-collapse:collapse; font-size:12.5px; width:100%; margin-top:14px; } th, td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--edge-soft); vertical-align:top; } th { color:var(--brass); font-weight:normal; font-size:11px; letter-spacing:1px; text-transform:uppercase; } td.y { color:var(--ok); } td.n { color:var(--ink-dim); } td.w { color:var(--warn); }
+  .banner { border:1px solid var(--edge); border-left:3px solid var(--brass); background:var(--panel); padding:14px 16px; border-radius:6px; margin-top:16px; color:var(--ink-soft); font-size:13.5px; } .banner b { color:var(--ink); }
+  .banner.warn { border-left-color:var(--danger); }
+  .nav { margin-top:14px; font-size:13px; color:var(--ink-soft); } .nav a { color:var(--brass); }
+  .strip { display:grid; gap:8px; }
+  .step { display:grid; grid-template-columns:88px 1fr; gap:10px; align-items:start; }
+  .step .k { font:10px/1.5 'SF Mono',monospace; color:var(--brass); text-transform:uppercase; letter-spacing:1px; padding-top:6px; }
+  .ed { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:12px; line-height:1.6; background:#0d1218; border:1px solid var(--edge); border-radius:5px; padding:6px 0; }
+  .ln { display:flex; } .ln .no { width:34px; text-align:right; color:var(--ink-dim); padding-right:10px; flex:none; } .ln .tx { white-space:pre; color:var(--ink); }
+  .up { color:var(--brass-bright); }
+  .quo { color:var(--ok); }
+  .cm { color:var(--ink-dim); font-style:italic; }
+  .car { border-left:2px solid var(--brass); margin-left:-1px; animation:none; }
+  .settingrow { font-family:'Helvetica Neue',Arial,sans-serif; border:1px solid var(--edge); border-radius:6px; background:var(--panel); padding:9px 11px; display:flex; gap:10px; align-items:flex-start; max-width:560px; }
+  .settingrow .box { width:13px; height:13px; border:1px solid var(--brass); border-radius:3px; background:var(--brass); color:var(--ground); font-size:10px; line-height:11px; text-align:center; flex:none; margin-top:3px; }
+  .settingrow .t { color:var(--ink); font-size:13px; } .settingrow .d { color:var(--ink-dim); font-size:12px; margin-top:2px; }
+  .verdict { color:var(--ink); border-left:2px solid var(--brass); padding-left:12px; margin-top:8px; font-size:13px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Order OCD — <span>when it fires, and how far it reaches</span> (bead ah-bn6)</h1>
+  <p>Orders are case-insensitive to the engine, so this is pure taste: some players want <code>MOVE</code>, <code>STUDY</code> and <code>ALL</code> shouting so the commands separate from the names. The one hard rule is that <b>nothing inside quotation marks is ever touched</b> &mdash; a unit called <span class="quo">&ldquo;Seven of Eight&rdquo;</span> is data, not presentation. Text after a <code>;</code> comment is left alone for the same reason.</p>
+  <p><b>Decided, 2026-08-17, over two rounds.</b> It fires <b>as the word ends</b> (T1) &mdash; the space after a word flips it, never mid-word. It reaches <b>every word the rules know</b> (R2, K3): the grammar's own words, the item tags, and the item and skill names, so only numbers, unit ids, quoted names and comments survive in lower case. Orders already written are tidied <b>the first time you open that unit</b> with the setting on (E3). The setting's wording is the bead's own sentence, shipped as suggested. The work is split in two: the core must publish the vocabulary before the editor can use it.</p>
+  <p>In every strip below the player is typing the same three lines in lower case. <span class="up">Brass</span> is what the setting changed; <span class="quo">green</span> is a quoted name, which never changes.</p>
+</header>
+<main>
+
+  <h2 class="sec">1. When does it fire? <small>the decision the whole feel of the feature rests on</small></h2>
+  <div class="cards">
+
+    <div class="card">
+      <h3><em>T1</em> As the word ends</h3>
+      <p class="concept">The moment you type the space after a command, it goes uppercase under your hands. Never mid-word &mdash; the word is only touched once you have finished it.</p>
+      <div class="strip">
+        <div class="step"><div class="k">typing</div><div class="ed"><div class="ln"><span class="no">1</span><span class="tx">move<span class="car"></span></span></div></div></div>
+        <div class="step"><div class="k">press space</div><div class="ed"><div class="ln"><span class="no">1</span><span class="tx"><span class="up">MOVE</span> <span class="car"></span></span></div></div></div>
+        <div class="step"><div class="k">carry on</div><div class="ed"><div class="ln"><span class="no">1</span><span class="tx"><span class="up">MOVE</span> n nw<span class="car"></span></span></div></div></div>
+      </div>
+      <ul class="notes">
+        <li>You see it work, so you trust it</li>
+        <li>Nothing to remember and nothing to press</li>
+        <li class="con">Text changing under the caret is the classic way an editor feels possessed</li>
+        <li class="con">Undo has to put back what you typed, not what it made &mdash; one Ctrl+Z, not two</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h3><em>T2</em> When you leave the line</h3>
+      <p class="concept">The line you are on is left exactly as typed. It is tidied the moment the caret moves to another line &mdash; on Enter, on an arrow, on a click elsewhere.</p>
+      <div class="strip">
+        <div class="step"><div class="k">typing</div><div class="ed"><div class="ln"><span class="no">1</span><span class="tx">move n nw<span class="car"></span></span></div></div></div>
+        <div class="step"><div class="k">press enter</div><div class="ed"><div class="ln"><span class="no">1</span><span class="tx"><span class="up">MOVE</span> n nw</span></div><div class="ln"><span class="no">2</span><span class="tx"><span class="car"></span></span></div></div></div>
+        <div class="step"><div class="k">next line</div><div class="ed"><div class="ln"><span class="no">1</span><span class="tx"><span class="up">MOVE</span> n nw</span></div><div class="ln"><span class="no">2</span><span class="tx">study combat<span class="car"></span></span></div></div></div>
+      </div>
+      <ul class="notes">
+        <li>Nothing ever changes at the caret, so typing feels ordinary</li>
+        <li>A whole line at once is one clean undo step</li>
+        <li class="con">The line you are looking at is the one that looks wrong</li>
+        <li class="con">The last line you typed stays lower case until you go somewhere else</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h3><em>T3</em> When the unit's orders are put away</h3>
+      <p class="concept">Type as you like; the whole block is tidied when you select another unit or the draft is saved &mdash; the same moment the editor already tidies a trailing newline.</p>
+      <div class="strip">
+        <div class="step"><div class="k">typing</div><div class="ed"><div class="ln"><span class="no">1</span><span class="tx">move n nw</span></div><div class="ln"><span class="no">2</span><span class="tx">study combat<span class="car"></span></span></div></div></div>
+        <div class="step"><div class="k">still lower</div><div class="ed"><div class="ln"><span class="no">1</span><span class="tx">move n nw</span></div><div class="ln"><span class="no">2</span><span class="tx">study combat</span></div></div></div>
+        <div class="step"><div class="k">pick another unit, come back</div><div class="ed"><div class="ln"><span class="no">1</span><span class="tx"><span class="up">MOVE</span> n nw</span></div><div class="ln"><span class="no">2</span><span class="tx"><span class="up">STUDY</span> combat</span></div></div></div>
+      </div>
+      <ul class="notes">
+        <li>Typing is never interrupted in any way</li>
+        <li>Reuses the moment the editor already rewrites text on its own</li>
+        <li class="con">You do not see it happen, so the first time it looks like a bug</li>
+        <li class="con">A player who never leaves the unit never sees it work</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h3><em>T4</em> Only when asked</h3>
+      <p class="concept">Not a live setting at all but a command &mdash; <span class="mono">Tidy the orders</span> in the command palette &mdash; that uppercases the current unit's orders when you run it.</p>
+      <div class="strip">
+        <div class="step"><div class="k">typing</div><div class="ed"><div class="ln"><span class="no">1</span><span class="tx">move n nw</span></div><div class="ln"><span class="no">2</span><span class="tx">study combat<span class="car"></span></span></div></div></div>
+        <div class="step"><div class="k">palette</div><div class="ed"><div class="ln"><span class="no"></span><span class="tx cm">&gt; tidy the orders</span></div></div></div>
+        <div class="step"><div class="k">run it</div><div class="ed"><div class="ln"><span class="no">1</span><span class="tx"><span class="up">MOVE</span> n nw</span></div><div class="ln"><span class="no">2</span><span class="tx"><span class="up">STUDY</span> combat</span></div></div></div>
+      </div>
+      <ul class="notes">
+        <li>Nothing can ever surprise you; it happens because you asked</li>
+        <li class="con">It is no longer the setting the bead asked for</li>
+        <li class="con">Tedious in exactly the way the bead complains about &mdash; you must remember, every unit</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2 class="sec">2. How far does it reach? <small>the same three lines, both ways</small></h2>
+  <div class="cards">
+    <div class="card">
+      <h3><em>R1</em> Commands only</h3>
+      <p class="concept">The words the core already publishes as <span class="mono">order_commands</span> &mdash; the first word of a line. Everything after it is left as typed.</p>
+      <div class="ed">
+        <div class="ln"><span class="no">1</span><span class="tx"><span class="up">MOVE</span> n nw</span></div>
+        <div class="ln"><span class="no">2</span><span class="tx"><span class="up">GIVE</span> 2042 all silv</span></div>
+        <div class="ln"><span class="no">3</span><span class="tx"><span class="up">NAME</span> unit <span class="quo">&quot;Seven of Eight&quot;</span></span></div>
+        <div class="ln"><span class="no">4</span><span class="tx"><span class="up">STUDY</span> combat <span class="cm">; cheaper here</span></span></div>
+      </div>
+      <ul class="notes">
+        <li>The keyword list already exists and is already in the app &mdash; nothing new to fetch</li>
+        <li>The command position is unambiguous: the first word, after an optional <span class="mono">@</span></li>
+        <li class="con"><span class="mono">all</span> and <span class="mono">silv</span> stay lower, which is arguably half the job</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3><em>R2</em> Commands and argument keywords</h3>
+      <p class="concept">Also <span class="mono">ALL</span>, <span class="mono">SILV</span>, <span class="mono">UNIT</span>, directions, item classes &mdash; every fixed word the grammar knows, as against a name or a number.</p>
+      <div class="ed">
+        <div class="ln"><span class="no">1</span><span class="tx"><span class="up">MOVE N NW</span></span></div>
+        <div class="ln"><span class="no">2</span><span class="tx"><span class="up">GIVE</span> 2042 <span class="up">ALL SILV</span></span></div>
+        <div class="ln"><span class="no">3</span><span class="tx"><span class="up">NAME UNIT</span> <span class="quo">&quot;Seven of Eight&quot;</span></span></div>
+        <div class="ln"><span class="no">4</span><span class="tx"><span class="up">STUDY COMBAT</span> <span class="cm">; cheaper here</span></span></div>
+      </div>
+      <ul class="notes">
+        <li>Reads like the manual, which is what the setting's name promises</li>
+        <li class="con">The core publishes only the command names to the app today &mdash; the argument keywords are known to Rust alone, so this needs a new call across the boundary</li>
+        <li class="con">A skill name like <span class="mono">combat</span> is a keyword to the grammar; uppercasing it is a judgement, not a fact</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2 class="sec">2b. R2 was chosen &mdash; but which words is &ldquo;a keyword&rdquo;? <small>the same four lines, three readings</small></h2>
+  <div class="cards">
+    <div class="card">
+      <h3><em>K1</em> Words the grammar fixes</h3>
+      <p class="concept">Only words written into the order grammar itself: <span class="mono">ALL</span>, <span class="mono">UNIT</span>, <span class="mono">FACTION</span>, the directions, the item classes. Item and skill <i>names</i> come from the ruleset, not the grammar, and stay as typed.</p>
+      <div class="ed">
+        <div class="ln"><span class="no">1</span><span class="tx"><span class="up">MOVE N NW</span></span></div>
+        <div class="ln"><span class="no">2</span><span class="tx"><span class="up">GIVE</span> 2042 <span class="up">ALL</span> silv</span></div>
+        <div class="ln"><span class="no">3</span><span class="tx"><span class="up">NAME UNIT</span> <span class="quo">&quot;Seven of Eight&quot;</span></span></div>
+        <div class="ln"><span class="no">4</span><span class="tx"><span class="up">STUDY</span> combat</span></div>
+      </div>
+      <ul class="notes"><li>One fixed list, the same in every game &mdash; nothing depends on which ruleset is open</li><li class="con"><span class="mono">silv</span> stays lower, and it is the word players type most</li></ul>
+    </div>
+    <div class="card">
+      <h3><em>K2</em> Grammar words and item tags</h3>
+      <p class="concept">The above, plus the short item tags the ruleset defines &mdash; <span class="mono">SILV</span>, <span class="mono">SWOR</span>, <span class="mono">HORS</span>. Skill names and full item names stay as typed.</p>
+      <div class="ed">
+        <div class="ln"><span class="no">1</span><span class="tx"><span class="up">MOVE N NW</span></span></div>
+        <div class="ln"><span class="no">2</span><span class="tx"><span class="up">GIVE</span> 2042 <span class="up">ALL SILV</span></span></div>
+        <div class="ln"><span class="no">3</span><span class="tx"><span class="up">NAME UNIT</span> <span class="quo">&quot;Seven of Eight&quot;</span></span></div>
+        <div class="ln"><span class="no">4</span><span class="tx"><span class="up">STUDY</span> combat</span></div>
+      </div>
+      <ul class="notes"><li>Matches how the reports themselves write items &mdash; tags in capitals</li><li>Covers the line the bead's own wording promises</li><li class="con">The list now depends on the open ruleset, so it must be fetched per game rather than once</li></ul>
+    </div>
+    <div class="card">
+      <h3><em>K3</em> Every word the rules know</h3>
+      <p class="concept">Also skill names and full item names: <span class="mono">COMBAT</span>, <span class="mono">LONGBOW</span>, <span class="mono">TACTICS</span>. Only numbers, unit ids and quoted names are left.</p>
+      <div class="ed">
+        <div class="ln"><span class="no">1</span><span class="tx"><span class="up">MOVE N NW</span></span></div>
+        <div class="ln"><span class="no">2</span><span class="tx"><span class="up">GIVE</span> 2042 <span class="up">ALL SILV</span></span></div>
+        <div class="ln"><span class="no">3</span><span class="tx"><span class="up">NAME UNIT</span> <span class="quo">&quot;Seven of Eight&quot;</span></span></div>
+        <div class="ln"><span class="no">4</span><span class="tx"><span class="up">STUDY COMBAT</span></span></div>
+      </div>
+      <ul class="notes"><li>Nothing is left half-shouted; the strongest reading of &ldquo;OCD&rdquo;</li><li class="con">A skill name can be two words (<span class="mono">unit tactics</span>) and a plain word like <span class="mono">wood</span> is both an item and ordinary English &mdash; more chances to shout at something that was not a keyword</li></ul>
+    </div>
+  </div>
+
+  <h2 class="sec">3. What about the orders already written? <small>the moment the setting is switched on</small></h2>
+  <div class="cards">
+    <div class="card">
+      <h3><em>E1</em> Leave them; only new typing is tidied</h3>
+      <p class="concept">Switching the setting on changes nothing that already exists. A turn half-written in lower case stays mixed until each line is touched.</p>
+      <ul class="notes"><li>Nothing is rewritten behind the player's back, ever</li><li class="con">A mixed-case turn is exactly what the OCD player cannot bear</li></ul>
+    </div>
+    <div class="card">
+      <h3><em>E2</em> Tidy everything, at once, on switching on</h3>
+      <p class="concept">Turning it on uppercases every unit's orders in the whole turn immediately.</p>
+      <ul class="notes"><li>The turn is consistent from the moment it is on, which is the point of the setting</li><li class="con">One click silently rewrites the whole document &mdash; and there is no undo across units</li></ul>
+    </div>
+    <div class="card">
+      <h3><em>E3</em> Tidy each unit's orders when you next open them</h3>
+      <p class="concept">Nothing happens on the click. A unit's block is uppercased the first time you select that unit with the setting on &mdash; the same pass that runs at T1/T2/T3, applied to what is already there.</p>
+      <ul class="notes"><li>The turn converges on consistency as you work through it</li><li>Never rewrites anything you are not looking at</li><li class="con">A unit you never open keeps its lower case into the export</li></ul>
+    </div>
+  </div>
+
+  <h2 class="sec">4. The setting itself <small>in the global settings tab &mdash; there is no per-game settings store, so it is global by construction</small></h2>
+  <div class="settingrow">
+    <div class="box">&#10003;</div>
+    <div>
+      <div class="t">Order OCD</div>
+      <div class="d">Uppercase the command keywords as you write, so MOVE, STUDY and ALL stand out from names. Text inside quotes is left alone.</div>
+    </div>
+  </div>
+  <p class="verdict">The wording above is the bead's own suggestion, drawn as it would ship. It mentions <span class="mono">ALL</span>, which only tells the truth if section 2 lands on R2 &mdash; if it lands on R1 the sentence needs to lose it.</p>
+
+  <div class="banner"><b>Decided without asking, and say so if any of it is wrong.</b> Nothing inside <span class="quo">&quot;quotes&quot;</span> is ever changed, including a quoted name that contains a keyword; nothing after a <span class="mono">;</span> comment is changed either. The setting is <b>off</b> by default. It lives in the global settings tab, since there is no per-game preference store to put it in. One <span class="mono">Ctrl+Z</span> undoes both what you typed and what the setting did to it &mdash; never two presses to get one word back.</div>
+</main>
+</body>
+</html>
