@@ -345,6 +345,12 @@ describe("web core adapter", () => {
     expect((opened.manifest as GameManifest).metadata.activeFactionId).toBe("95");
   });
 
+  it("refuses to record an active faction for a game it does not hold", async () => {
+    const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
+
+    await expect(adapter.setActiveFaction("ghost", "95")).rejects.toThrow("no game with id ghost");
+  });
+
   it("refuses to rename a game it does not hold", async () => {
     const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
 
