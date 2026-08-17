@@ -61,6 +61,7 @@ function client(overrides: Partial<CoreClient> = {}): CoreClient {
     loadRegionSightings: vi.fn().mockResolvedValue([]),
     loadMergedReports: vi.fn().mockResolvedValue([]),
     loadOrderDraft: vi.fn().mockResolvedValue(null),
+    setActiveFaction: vi.fn().mockImplementation(async () => REWRITTEN_MANIFEST),
     parseReportClassified: vi.fn().mockResolvedValue(report()),
     parseReportFull: vi.fn().mockResolvedValue(report()),
     knownMap: vi.fn().mockResolvedValue(KNOWN_MAP),
@@ -80,6 +81,11 @@ const OPEN_GAME = {
     lastOpenedAt: "2026-08-09T18:00:00Z"
   }
 } as OpenedGame;
+
+const REWRITTEN_MANIFEST = {
+  ...OPEN_GAME.manifest,
+  metadata: { ...OPEN_GAME.manifest.metadata, activeFactionId: "95" }
+};
 
 const NOW = "2026-08-15T18:30:00Z";
 const RULESET = '{"items":{}}';
@@ -189,6 +195,77 @@ describe("loadTurn", () => {
 
     await expect(loadTurn(core, OPEN_GAME, report(), "raw text", RULESET, NOW)).resolves.toBeDefined();
   });
+
+  it("remembers the faction whose report became the working turn", async () => {
+    const core = client();
+
+    const loaded = await loadTurn(core, OPEN_GAME, report(), "raw text", RULESET, NOW);
+
+    expect(core.setActiveFaction).toHaveBeenCalledTimes(1);
+    expect(core.setActiveFaction).toHaveBeenCalledWith("aug-2026", "95");
+    expect(loaded.manifest).toBe(REWRITTEN_MANIFEST);
+    expect(loaded.status.tone).toBe("routine");
+  });
+
+  it("does not rewrite the remembered faction when it is already this one", async () => {
+    const core = client();
+    const settled = {
+      ...OPEN_GAME,
+      manifest: REWRITTEN_MANIFEST
+    } as OpenedGame;
+
+    const loaded = await loadTurn(core, settled, report(), "raw text", RULESET, NOW);
+
+    expect(core.setActiveFaction).not.toHaveBeenCalled();
+    expect(loaded.manifest).toBeNull();
+  });
+
+  it("remembers the faction on the batch path too, where the turn was already committed", async () => {
+    const core = client();
+
+    const loaded = await loadTurn(core, OPEN_GAME, report(), "raw text", RULESET, NOW, {
+      remembered: [],
+      knownMap: null,
+      merged: [],
+      warning: null
+    });
+
+    expect(core.setActiveFaction).toHaveBeenCalledWith("aug-2026", "95");
+    expect(loaded.manifest).toBe(REWRITTEN_MANIFEST);
+  });
+
+  it("turns a manifest that will not write into a warning, not a failed load", async () => {
+    const core = client({
+      setActiveFaction: vi.fn().mockRejectedValue(new Error("the manifest is read-only"))
+    });
+
+    const loaded = await loadTurn(core, OPEN_GAME, report(), "raw text", RULESET, NOW);
+
+    expect(loaded.parsed).toBeDefined();
+    expect(loaded.manifest).toBeNull();
+    expect(loaded.status.text).toContain("the manifest is read-only");
+    expect(loaded.status.tone).toBe("warning");
+  });
+
+  it("lets the draft warning win over the remembering one", async () => {
+    const core = client({
+      loadOrderDraft: vi.fn().mockRejectedValue(new Error("draft is locked")),
+      setActiveFaction: vi.fn().mockRejectedValue(new Error("the manifest is read-only"))
+    });
+
+    const loaded = await loadTurn(core, OPEN_GAME, report(), "raw text", RULESET, NOW);
+
+    expect(loaded.status.text).toContain("draft is locked");
+  });
+
+  it("remembers nothing when there is no open game", async () => {
+    const core = client();
+
+    const loaded = await loadTurn(core, null, report(), "raw text", RULESET, NOW);
+
+    expect(core.setActiveFaction).not.toHaveBeenCalled();
+    expect(loaded.manifest).toBeNull();
+  });
 });
 
 describe("openingSelection", () => {
@@ -253,6 +330,14 @@ describe("storeOlderTurn", () => {
 
     expect(status.text).toContain("disk is full");
     expect(status.tone).toBe("warning");
+  });
+
+  it("does not change which faction the game reopens as", async () => {
+    const core = client();
+
+    await storeOlderTurn(core, OPEN_GAME, report(), "raw text", RULESET, NOW, 71);
+
+    expect(core.setActiveFaction).not.toHaveBeenCalled();
   });
 });
 
