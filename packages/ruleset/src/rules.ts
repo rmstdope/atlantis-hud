@@ -9,7 +9,7 @@
  * others - a route costed against numbers this game does not use, presented as fact.
  */
 
-import { findTable, htmlToText } from "./html";
+import { htmlToText } from "./html";
 
 export type MovementPoints = {
   walk: number;
@@ -291,71 +291,3 @@ export function parseMovementRules(html: string): MovementRules {
   };
 }
 
-/** A building the rules table describes, and how many mages may study in it. */
-export type BuildingEntry = {
-  name: string;
-  /** People it shelters. */
-  size: number;
-  /** Man-months of labour, and units of material, to finish it. */
-  cost: number;
-  /** What it is built from, as the table words it: `stone`, `wood`. */
-  material: string;
-  /**
-   * How many mages the building provides study facilities for, "to enable unhindered study above
-   * level 2 in magical skills". **Zero for a Tower** - the obvious guess is wrong in this ruleset,
-   * and a mage studying in one loses half the month.
-   */
-  mages: number;
-};
-
-export type BuildingReference = Record<string, BuildingEntry>;
-
-const BUILDING_HEADINGS = ["Size", "Cost", "Material", "Mages"];
-
-/**
- * Reads the rules page's buildings table into a catalogue keyed by the building's name,
- * uppercased - the same convention `items` and `skills` use, so a report's printed kind can be
- * matched without caring about case.
- *
- * Columns are found by their heading rather than by a fixed position, because the header's first
- * cell is blank (the name column carries no heading of its own) and a naive zero-based read would
- * already be off by one.
- */
-export function parseBuildings(html: string): BuildingReference {
-  const table = findTable(html, BUILDING_HEADINGS);
-  if (!table) {
-    throw new RulesetScrapeError(
-      `could not read buildings: no table on the rules page has a header naming ` +
-        `${BUILDING_HEADINGS.join(", ")}. The page has probably been reworded; update the ` +
-        `heading list rather than guessing a value.`
-    );
-  }
-  const { header, body: rows } = table;
-
-  const columnOf = (heading: string): number => header.indexOf(heading.toLowerCase());
-  const sizeCol = columnOf("Size");
-  const costCol = columnOf("Cost");
-  const materialCol = columnOf("Material");
-  const magesCol = columnOf("Mages");
-
-  const buildings: BuildingReference = {};
-  for (const row of rows) {
-    const name = row[0]?.trim();
-    if (!name) {
-      continue;
-    }
-    const size = toNumber(row[sizeCol] ?? "");
-    const cost = toNumber(row[costCol] ?? "");
-    const material = row[materialCol]?.trim();
-    const mages = toNumber(row[magesCol] ?? "");
-    if (size === null || cost === null || !material || mages === null) {
-      throw new RulesetScrapeError(
-        `could not read building "${name}": expected numeric Size, Cost and Mages and a ` +
-          "Material name; the page has probably been reworded."
-      );
-    }
-    buildings[name.toUpperCase()] = { name, size, cost, material, mages };
-  }
-
-  return buildings;
-}

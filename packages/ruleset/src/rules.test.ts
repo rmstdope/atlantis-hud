@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { parseBuildings, parseMovementRules, RulesetScrapeError } from "./rules";
+import { parseMovementRules, RulesetScrapeError } from "./rules";
 
 const RULES_HTML = readFileSync(
   fileURLToPath(new URL("../../../tests/fixtures/ruleset/neworigins-rules.html", import.meta.url)),
@@ -199,75 +199,5 @@ describe("parseMovementRules", () => {
     expect(reworded).not.toBe(RULES_HTML);
 
     expect(() => parseMovementRules(reworded)).toThrowError(/sailing/);
-  });
-});
-
-/**
- * The buildings table (ah-a2k.3) - a Tower's zero mage capacity is the reason `ah-a2k.2` needs
- * this data at all, so it gets its own test rather than riding along inside a bigger assertion.
- */
-describe("parseBuildings", () => {
-  it("reads all five buildings the table names", () => {
-    const buildings = parseBuildings(RULES_HTML);
-
-    expect(Object.keys(buildings).sort()).toEqual([
-      "CASTLE",
-      "CITADEL",
-      "FORT",
-      "STOCKADE",
-      "TOWER"
-    ]);
-  });
-
-  it("reads a building's size, cost, material and mage capacity", () => {
-    const buildings = parseBuildings(RULES_HTML);
-
-    expect(buildings.CITADEL).toEqual({
-      name: "Citadel",
-      size: 1000,
-      cost: 800,
-      material: "stone",
-      mages: 3
-    });
-  });
-
-  /**
-   * A Tower seats zero mages - the obvious assumption that a Tower is where a mage studies is
-   * wrong in this ruleset, and it is exactly the mistake `ah-a2k.2` exists to catch. This is its
-   * own test so nobody "corrects" it later.
-   */
-  it("reads that a Tower seats no mages", () => {
-    const buildings = parseBuildings(RULES_HTML);
-
-    expect(buildings.TOWER).toEqual({
-      name: "Tower",
-      size: 10,
-      cost: 10,
-      material: "stone",
-      mages: 0
-    });
-  });
-
-  it("refuses a page with no buildings table", () => {
-    expect(() => parseBuildings("<html></html>")).toThrowError(RulesetScrapeError);
-  });
-
-  /**
-   * The header's first cell is blank, so a naive zero-based read is already off by one for every
-   * column. This proves columns are found by their heading rather than by position: an extra
-   * column inserted between Material and Mages must not shift the mage count.
-   */
-  it("finds columns by their heading even when a column is inserted", () => {
-    const html = `
-      <table>
-        <tr><td></td><th>Size</th><th>Cost</th><th>Material</th><th>Upkeep</th><th>Mages</th></tr>
-        <tr><td>Tower</td><td>10</td><td>10</td><td>stone</td><td>1</td><td>0</td></tr>
-        <tr><td>Fort</td><td>50</td><td>40</td><td>stone</td><td>2</td><td>1</td></tr>
-      </table>
-    `;
-
-    const buildings = parseBuildings(html);
-
-    expect(buildings.FORT).toEqual({ name: "Fort", size: 50, cost: 40, material: "stone", mages: 1 });
   });
 });

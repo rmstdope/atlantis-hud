@@ -79,18 +79,38 @@ describe("the committed ruleset", () => {
     ]);
   });
 
-  /** ah-a2k.3: the census `ah-a2k.2` needs to tell a Tower from a Fort. */
-  it("carries the five buildings and what each seats", () => {
+  /**
+   * ah-a2k.3: the census `ah-a2k.2` needs to tell a Tower from a Fort - taken from the game's own
+   * data page since ah-9js, which is why it carries ten fortifications rather than the rules
+   * table's five, nine of them seating at least one mage. A fortification that says nothing about
+   * mages seats none, which is the Tower asserted below; everything else the data page calls a
+   * building - a Mine, a road, a lair - is deliberately absent, so it stays "the catalogue cannot
+   * say" rather than becoming "seats nobody".
+   */
+  it("carries every structure that seats a mage, and what each seats", () => {
     expect(
-      Object.values(COMMITTED.buildings)
-        .map((b) => [b.name, b.mages] as const)
+      Object.entries(COMMITTED.buildings)
+        .filter(([, building]) => building.mages > 0)
+        .map(([kind, building]) => [kind, building.mages] as const)
         .sort(([a], [b]) => a.localeCompare(b))
     ).toEqual([
-      ["Castle", 2],
-      ["Citadel", 3],
-      ["Fort", 1],
-      ["Stockade", 1],
-      ["Tower", 0]
+      ["CASTLE", 2],
+      ["CITADEL", 3],
+      ["FORT", 1],
+      ["HERMITS HUT", 1],
+      ["MAGICAL CASTLE", 30],
+      ["MAGICAL CITADEL", 50],
+      ["MAGICAL FORTRESS", 10],
+      ["MAGICAL TOWER", 3],
+      ["STOCKADE", 1]
     ]);
+
+    // The case ah-a2k.2 exists to catch: a Tower is named and seats nobody.
+    expect(COMMITTED.buildings.TOWER).toEqual({
+      size: 10,
+      cost: 10,
+      materials: ["stone"],
+      mages: 0
+    });
   });
 });

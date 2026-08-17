@@ -319,14 +319,21 @@ pub struct SkillEntry {
     pub magic: bool,
 }
 
-/// A building the rules describe, and how many mages may study in it.
+/// A building the game's data page describes, and how many mages may study in it.
+///
+/// Unlike its neighbours this does not `deny_unknown_fields`: a ruleset cached before ah-9js
+/// carries a `name` and a single `material` string, and refusing those would turn an old cache
+/// into a failed load rather than a ruleset that knows a little less.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 pub struct BuildingEntry {
-    pub name: String,
     pub size: i64,
     pub cost: i64,
-    pub material: String,
+    /// What it is built from, in the page's own order - a list because a structure can offer
+    /// alternatives (`an Inn from 10 wood or stone`). Empty for a ruleset cached before ah-9js,
+    /// which wrote a single `material` string this no longer reads.
+    #[serde(default)]
+    pub materials: Vec<String>,
     /// How many mages the building provides study facilities for. **Zero for a Tower**, which is
     /// the ruleset's own answer and not an oversight: a mage studying in one gets half a month.
     pub mages: i64,
