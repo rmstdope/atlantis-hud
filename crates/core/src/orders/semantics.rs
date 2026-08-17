@@ -1598,6 +1598,52 @@ fn weight_after_orders(
     Some(weight)
 }
 
+/// The sailing levels one unit supplies once this month's transfers of men have run.
+///
+/// A unit's skill level is held by each of its men - "the number of skill levels of the Sailing
+/// skill that must be aboard the ship" - so men leaving take levels with them. Read from the
+/// ledger for the same reason `weight_after_orders` is: the server runs every GIVE and TAKE
+/// (phase 4) before it moves anybody (phase 9), so giving a gnoll away and sailing in the same
+/// month is one turn, not two.
+///
+/// `None` - cannot say, so the caller silences the crew check for this fleet - when men arrive
+/// rather than leave. The game merges given men into the receiving unit and recomputes its skill,
+/// which this application does not model; counting them at the receiver's own level would turn two
+/// unskilled gnolls into two sailors, and a warning that is wrong is worse than one that is
+/// missing (this module's header, and the navigator's own answer on the amendment).
+fn sailing_levels_after_orders(
+    ordered: &Ordered<'_>,
+    ledger: &Ledger<'_>,
+    ruleset: Option<&Ruleset>,
+) -> Option<i64> {
+    let level: i64 = ordered
+        .unit
+        .skills
+        .iter()
+        .filter(|skill| skill.tag.eq_ignore_ascii_case("SAIL"))
+        .map(|skill| i64::from(skill.level))
+        .sum();
+
+    // Without a catalogue there is no telling which tags name people, so no delta can be computed.
+    let ruleset = ruleset?;
+
+    let mut men_moved: i64 = 0;
+    for ((unit_id, tag), balance) in &ledger.balance {
+        if unit_id != &ordered.unit.unit_id || !ruleset.is_man(tag) {
+            continue;
+        }
+        men_moved = men_moved.saturating_add(balance - ordered.holding(tag));
+    }
+
+    if men_moved > 0 {
+        // Men arrived: the merged unit's skill is unknowable.
+        return None;
+    }
+
+    let men = ordered.unit.men.saturating_add(men_moved).max(0);
+    Some(level.saturating_mul(men))
+}
+
 // --- gifts and takings ---------------------------------------------------------------------------
 
 /// Every GIVE and TAKE one of our units gives whose counterparty is a unit number: is that unit in
@@ -1657,7 +1703,10 @@ fn check_transfer_targets(
 /// the fleet, plus those that ENTER it this month, minus those that LEAVE - the instant orders the
 /// server runs before anything moves. Each of them is weighed at what this month's orders leave it
 /// holding (`weight_after_orders`), not at what the report printed, because the server runs every
-/// transfer and every market order before it moves a fleet. Skills are still the report's own.
+/// transfer and every market order before it moves a fleet. The crew is counted the same way
+/// (`sailing_levels_after_orders`): men given or taken away this month take their sailing levels
+/// with them, and men arriving into a unit aboard silence the crew check for the fleet, because
+/// the game merges them and recomputes the receiving unit's skill and that is not modelled here.
 /// Two different kinds of "cannot price" behave differently, deliberately: a MOVE touching the
 /// fleet, a foreign unit aboard, or a report that never states a unit's weight silences the whole
 /// fleet - never a guess. A single transfer the ledger or the ruleset cannot price (a WITHDRAW, an
@@ -1778,7 +1827,8 @@ fn check_sailing(
         // A level is held by each of a unit's men, not by the unit once - see
         // `movement::mode::crew_sailing_levels`, which this sums the same way over the
         // aboard-after set.
-        let levels: i64 = aboard
+        // What the report printed, which is the "before" the message compares against.
+        let reported_levels: i64 = aboard
             .iter()
             .flat_map(|ordered| {
                 let men = ordered.unit.men;
@@ -1790,22 +1840,40 @@ fn check_sailing(
                     .map(move |skill| i64::from(skill.level) * men)
             })
             .sum();
+        // The same after this month's transfers of men. `None` from any unit aboard silences the
+        // crew check for the whole fleet - one unknowable unit makes the fleet's total unknowable.
+        let levels: Option<i64> = aboard
+            .iter()
+            .map(|ordered| sailing_levels_after_orders(ordered, ledger, ruleset))
+            .sum();
         // A guessed headcount cannot price an exact number of sailing levels either - the same
         // doubt `study` already treats `men_estimated` as (`:750`). Raised in review on this
-        // bead's own PR.
-        let headcount_is_doubtful = aboard.iter().any(|ordered| ordered.unit.men_estimated);
-        if let Some(required) = sailing_requirement(fleet, ruleset) {
+        // bead's own PR. A unit whose sums the ledger could not follow is the same kind of doubt,
+        // and both guard the crew finding alone: the load half has never consulted `doubted`, and
+        // silencing overload warnings here would be a regression.
+        let headcount_is_doubtful = aboard.iter().any(|ordered| {
+            ordered.unit.men_estimated || ledger.doubted.contains(&ordered.unit.unit_id)
+        });
+        if let (Some(levels), Some(required)) = (levels, sailing_requirement(fleet, ruleset)) {
             if !headcount_is_doubtful
                 && levels < required
                 && options.emits(codes::FLEET_UNDERCREWED)
             {
+                let crew = match levels - reported_levels {
+                    change if change < 0 => format!(
+                        "{reported_levels} sailing levels aboard less {} given away this month, \
+                         it needs {required}",
+                        -change
+                    ),
+                    // Unchanged, and the sentence `ah-j0e` already shipped: the crew did not move
+                    // this month, so there is no before-and-after to draw. A positive change
+                    // cannot occur - men arriving returns `None` above.
+                    _ => format!("{levels} sailing levels aboard, it needs {required}"),
+                };
                 findings.push(captain.finding(
                     hex,
                     codes::FLEET_UNDERCREWED,
-                    format!(
-                        "{label} is short of sailors: {levels} sailing levels aboard, it needs \
-                         {required}, so it will not sail"
-                    ),
+                    format!("{label} is short of sailors: {crew}, so it will not sail"),
                     Some(sail_placement),
                 ));
             }
@@ -4760,6 +4828,29 @@ mod tests {
         aboard
     }
 
+    /// `Ship [218]` of `neworigins-3.0.0-g5-f21-t23.rep`: a Raft stating `Load: 70/450; Sailors:
+    /// 2/2`, the fleet both of this bead's verification failures were found on.
+    fn raft(structure_id: &str) -> Structure {
+        Structure {
+            structure_id: structure_id.to_string(),
+            name: "Ship".to_string(),
+            kind: "Raft".to_string(),
+            description: Some("Load: 70/450; Sailors: 2/2; MaxSpeed: 2.".to_string()),
+            needs: None,
+        }
+    }
+
+    /// `Drones (9508)` as that report prints it: two gnolls at sailing 1, which is exactly the two
+    /// levels the raft needs - until one of them is given away.
+    fn two_gnolls_aboard(id: &str, fleet_id: &str) -> ReportUnit {
+        with_item(
+            with_men(aboard(id, fleet_id, 20, 1), 2),
+            2,
+            "gnolls",
+            "GNOL",
+        )
+    }
+
     #[test]
     fn a_gift_loaded_aboard_this_month_overloads_the_fleet() {
         let region = ReportRegion {
@@ -5127,6 +5218,165 @@ mod tests {
         assert_eq!(
             codes(&check(vec![region], "unit 9508\nSAIL N\n")),
             Vec::<&str>::new()
+        );
+    }
+
+    /// The second verification failure on `ah-j0e`: a raft that will not sail, and no warning.
+    /// The server runs every GIVE (phase 4) before it moves anybody (phase 9), so a gnoll given
+    /// away this month is a sailing level the raft does not have when it sails.
+    #[test]
+    fn giving_a_sailor_away_this_month_is_short_of_sailors() {
+        let region = ReportRegion {
+            structures: vec![raft("218")],
+            ..region(vec![two_gnolls_aboard("9508", "218")])
+        };
+
+        let found = only(check(vec![region], "unit 9508\nGIVE 0 1 GNOL\nSAIL N\n"));
+        assert_eq!(found.code, codes::FLEET_UNDERCREWED);
+        assert_eq!(found.unit_id.as_deref(), Some("9508"));
+        assert_eq!(
+            found.message,
+            "Raft [218] is short of sailors: 2 sailing levels aboard less 1 given away this \
+             month, it needs 2, so it will not sail"
+        );
+    }
+
+    /// The men have left the hull whether they were discarded or handed to a neighbour, so the
+    /// counterparty is never what the crew count turns on.
+    #[test]
+    fn giving_a_sailor_to_a_unit_in_the_hex_is_short_of_sailors() {
+        let region = ReportRegion {
+            structures: vec![raft("218")],
+            ..region(vec![two_gnolls_aboard("9508", "218"), unit("9509")])
+        };
+
+        let found = only(check(vec![region], "unit 9508\nGIVE 9509 1 GNOL\nSAIL N\n"));
+        assert_eq!(found.code, codes::FLEET_UNDERCREWED);
+        assert_eq!(
+            found.message,
+            "Raft [218] is short of sailors: 2 sailing levels aboard less 1 given away this \
+             month, it needs 2, so it will not sail"
+        );
+    }
+
+    /// The first verification failure's regression: a full crew that transfers nothing still
+    /// sails, and must never be warned about again.
+    #[test]
+    fn a_full_crew_that_gives_nothing_away_still_sails() {
+        let region = ReportRegion {
+            structures: vec![raft("218")],
+            ..region(vec![two_gnolls_aboard("9508", "218")])
+        };
+
+        assert_eq!(
+            codes(&check(vec![region], "unit 9508\nSAIL N\n")),
+            Vec::<&str>::new()
+        );
+    }
+
+    /// Men given *into* a unit aboard are merged and the receiving unit's skill recomputed, which
+    /// this application does not model - so the crew check says nothing rather than inventing
+    /// sailors. The load half is untouched by that doubt and still warns.
+    #[test]
+    fn men_given_into_a_unit_aboard_silence_the_crew_check() {
+        let heavy = with_item(aboard("9508", "218", 500, 1), 1, "gnolls", "GNOL");
+        let region = ReportRegion {
+            structures: vec![raft("218")],
+            ..region(vec![heavy, with_item(unit("9509"), 2, "gnolls", "GNOL")])
+        };
+
+        let found = only(check(
+            vec![region],
+            "unit 9509\nGIVE 9508 2 GNOL\nunit 9508\nSAIL N\n",
+        ));
+        assert_eq!(found.code, codes::FLEET_OVERLOADED);
+    }
+
+    /// The same, taken rather than given: men arriving is the doubt, whichever order moved them.
+    #[test]
+    fn men_taken_aboard_silence_the_crew_check() {
+        let heavy = with_item(aboard("9508", "218", 500, 1), 1, "gnolls", "GNOL");
+        let region = ReportRegion {
+            structures: vec![raft("218")],
+            ..region(vec![heavy, with_item(unit("9509"), 2, "gnolls", "GNOL")])
+        };
+
+        let found = only(check(
+            vec![region],
+            "unit 9508\nTAKE FROM 9509 2 GNOL\nSAIL N\n",
+        ));
+        assert_eq!(found.code, codes::FLEET_OVERLOADED);
+    }
+
+    /// Only people carry sailing levels: giving equipment away moves weight and leaves the crew
+    /// exactly as it was.
+    #[test]
+    fn a_give_of_equipment_does_not_touch_the_crew() {
+        let armed = with_item(two_gnolls_aboard("9508", "218"), 1, "sword", "SWOR");
+        let region = ReportRegion {
+            structures: vec![raft("218")],
+            ..region(vec![armed])
+        };
+
+        assert_eq!(
+            codes(&check(vec![region], "unit 9508\nGIVE 0 1 SWOR\nSAIL N\n")),
+            Vec::<&str>::new()
+        );
+    }
+
+    /// Without a catalogue there is no telling which tags name people, so no transfer of men can
+    /// be recognised - silence, not a guess.
+    #[test]
+    fn no_ruleset_silences_the_crew_check() {
+        let region = ReportRegion {
+            structures: vec![raft("218")],
+            ..region(vec![with_item(
+                aboard("9508", "218", 20, 1),
+                1,
+                "gnolls",
+                "GNOL",
+            )])
+        };
+
+        assert_eq!(
+            codes(&check_turn(
+                &report(vec![region]),
+                "unit 9508\nSAIL N\n",
+                None,
+                CheckOptions::default(),
+            )),
+            Vec::<&str>::new()
+        );
+    }
+
+    /// A unit whose sums the ledger could not follow cannot price its crew either - but the load
+    /// half never consulted `doubted` and must go on warning exactly as it does today.
+    #[test]
+    fn a_doubted_unit_aboard_silences_the_crew_but_not_the_load() {
+        let heavy = with_silver(aboard("9508", "218", 500, 1), 500);
+        let region = ReportRegion {
+            structures: vec![raft("218")],
+            ..region(vec![heavy])
+        };
+
+        let found = only(check(vec![region], "unit 9508\nGIVE 0 1 flumph\nSAIL N\n"));
+        assert_eq!(found.code, codes::FLEET_OVERLOADED);
+    }
+
+    /// Giving the whole crew away leaves no sailors at all, and the clamp holds at zero.
+    #[test]
+    fn giving_every_man_away_is_short_of_sailors() {
+        let region = ReportRegion {
+            structures: vec![raft("218")],
+            ..region(vec![two_gnolls_aboard("9508", "218")])
+        };
+
+        let found = only(check(vec![region], "unit 9508\nGIVE 0 2 GNOL\nSAIL N\n"));
+        assert_eq!(found.code, codes::FLEET_UNDERCREWED);
+        assert_eq!(
+            found.message,
+            "Raft [218] is short of sailors: 2 sailing levels aboard less 2 given away this \
+             month, it needs 2, so it will not sail"
         );
     }
 
