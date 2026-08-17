@@ -1632,12 +1632,14 @@ fn sailing_levels_after_orders(
         if unit_id != &ordered.unit.unit_id || !ruleset.is_man(tag) {
             continue;
         }
-        men_moved = men_moved.saturating_add(balance - ordered.holding(tag));
-    }
-
-    if men_moved > 0 {
-        // Men arrived: the merged unit's skill is unknowable.
-        return None;
+        let moved = balance - ordered.holding(tag);
+        if moved > 0 {
+            // Men of this race arrived: the merged unit's skill is unknowable. Tested per tag
+            // rather than on the total, so a unit that takes gnolls in and gives centaurs away is
+            // doubted rather than netting out to a number that looks like a plain departure.
+            return None;
+        }
+        men_moved = men_moved.saturating_add(moved);
     }
 
     let men = ordered.unit.men.saturating_add(men_moved).max(0);
@@ -5360,6 +5362,31 @@ mod tests {
         };
 
         let found = only(check(vec![region], "unit 9508\nGIVE 0 1 flumph\nSAIL N\n"));
+        assert_eq!(found.code, codes::FLEET_OVERLOADED);
+    }
+
+    /// Men of one race arriving while men of another leave is still a merge, so the doubt is
+    /// per race and not on the total - raised in review on PR #387.
+    #[test]
+    fn men_of_one_race_arriving_silence_the_crew_even_as_others_leave() {
+        let heavy = with_item(
+            with_item(aboard("9508", "218", 500, 1), 1, "gnolls", "GNOL"),
+            0,
+            "centaurs",
+            "CTAU",
+        );
+        let region = ReportRegion {
+            structures: vec![raft("218")],
+            ..region(vec![
+                heavy,
+                with_item(unit("9509"), 1, "centaurs", "CTAU"),
+            ])
+        };
+
+        let found = only(check(
+            vec![region],
+            "unit 9509\nGIVE 9508 1 CTAU\nunit 9508\nGIVE 0 1 GNOL\nSAIL N\n",
+        ));
         assert_eq!(found.code, codes::FLEET_OVERLOADED);
     }
 
