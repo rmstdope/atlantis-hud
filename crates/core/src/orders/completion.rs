@@ -5,8 +5,8 @@
 //! market and products, and the skill list, none of which the grammar table knows anything about.
 //!
 //! **The hex decides.** `BUY` offers what this hex has for sale, `SELL` what its market wants,
-//! `PRODUCE` what can be produced here - by the ground or by this unit's own skills - and `GIVE`
-//! and everything else offer the whole catalogue. See the module's test table for exactly what each
+//! `PRODUCE` what can be produced here - by the ground or by this unit's own skills - `GIVE` what
+//! this unit is actually carrying, and everything else the whole catalogue. See the module's test table for exactly what each
 //! situation answers.
 
 use std::collections::HashSet;
@@ -188,12 +188,13 @@ fn item_completions(
     report: Option<&ParsedReport>,
     unit_id: Option<&str>,
 ) -> Vec<OrderCompletion> {
-    if matches!(order.name, "BUY" | "SELL" | "PRODUCE") {
+    if matches!(order.name, "BUY" | "SELL" | "PRODUCE" | "GIVE") {
         if let Some((region, unit)) = located(report, unit_id) {
             return match order.name {
                 "BUY" => market_completions(&region.for_sale, MarketSide::Sale),
                 "SELL" => market_completions(&region.wanted, MarketSide::Wanted),
                 "PRODUCE" => produce_completions(region, unit, ruleset),
+                "GIVE" => holdings_completions(unit),
                 _ => unreachable!("guarded by the outer match"),
             };
         }
@@ -244,6 +245,25 @@ fn market_completions(items: &[MarketItem], side: MarketSide) -> Vec<OrderComple
                     format!("{} · ${}, wants {}", item.name, item.price, item.amount)
                 }
             },
+        })
+        .collect()
+}
+
+/// What the unit is carrying, as a manifest: the tag to type, and the amount beside it.
+///
+/// Sorted by tag like `market_completions`, so two narrowed lists read the same way. Silver is an
+/// item like any other here - a report writes it `150 silver [SILV]` - so it appears without a
+/// special case, which is what stops the most-given thing in the game falling out of the list.
+fn holdings_completions(unit: &ReportUnit) -> Vec<OrderCompletion> {
+    let mut sorted: Vec<&ItemAmount> = unit.items.iter().collect();
+    sorted.sort_by(|a, b| a.tag.cmp(&b.tag));
+
+    sorted
+        .into_iter()
+        .map(|item| OrderCompletion {
+            value: item.tag.clone(),
+            name: item.name.clone(),
+            detail: format!("{} · {} held", item.name, item.amount),
         })
         .collect()
 }
@@ -1074,6 +1094,111 @@ mod tests {
         let offered =
             order_argument_completions("BUY 5 ", Some(&ruleset), Some(&report), Some("99999"));
         assert_eq!(offered.len(), ruleset.items.len());
+    }
+
+    // --- increment 6: GIVE narrows to what the unit holds (ah-84w) ---------------------------
+
+    /// The Inholm hex, with unit 18642 carrying a short, deliberately unsorted inventory.
+    fn carrying_report() -> ParsedReport {
+        let mut region = inholm_region();
+        let mut unit = unit_18642();
+        unit.items = vec![
+            ItemAmount {
+                amount: 1,
+                name: "sword".to_string(),
+                tag: "SWOR".to_string(),
+            },
+            ItemAmount {
+                amount: 150,
+                name: "silver".to_string(),
+                tag: "SILV".to_string(),
+            },
+            ItemAmount {
+                amount: 3,
+                name: "herbs".to_string(),
+                tag: "HERB".to_string(),
+            },
+        ];
+        region.units = vec![unit];
+        report(vec![region])
+    }
+
+    #[test]
+    fn give_offers_only_what_the_unit_holds() {
+        let ruleset = ruleset();
+        let report = carrying_report();
+        let offered =
+            order_argument_completions("GIVE 7 3 ", Some(&ruleset), Some(&report), Some("18642"));
+
+        let tags: Vec<&str> = offered.iter().map(|entry| entry.value.as_str()).collect();
+        assert_eq!(tags, vec!["HERB", "SILV", "SWOR"]);
+    }
+
+    #[test]
+    fn give_names_the_amount_held() {
+        let ruleset = ruleset();
+        let report = carrying_report();
+        let offered =
+            order_argument_completions("GIVE 7 3 ", Some(&ruleset), Some(&report), Some("18642"));
+
+        let herbs = offered.iter().find(|entry| entry.value == "HERB").unwrap();
+        assert_eq!(herbs.detail, "herbs · 3 held");
+    }
+
+    #[test]
+    fn give_offers_silver_like_any_other_item() {
+        let ruleset = ruleset();
+        let report = carrying_report();
+        let offered =
+            order_argument_completions("GIVE 7 3 ", Some(&ruleset), Some(&report), Some("18642"));
+
+        let silver = offered.iter().find(|entry| entry.value == "SILV").unwrap();
+        assert_eq!(silver.detail, "silver · 150 held");
+    }
+
+    #[test]
+    fn give_sorts_by_tag_like_a_market_list() {
+        let ruleset = ruleset();
+        let report = carrying_report();
+        let offered =
+            order_argument_completions("GIVE 7 3 ", Some(&ruleset), Some(&report), Some("18642"));
+
+        let tags: Vec<&str> = offered.iter().map(|entry| entry.value.as_str()).collect();
+        let mut sorted = tags.clone();
+        sorted.sort_unstable();
+        assert_eq!(tags, sorted);
+    }
+
+    #[test]
+    fn a_unit_holding_nothing_is_offered_nothing() {
+        let ruleset = ruleset();
+        let report = inholm_report(); // unit 18642 carries nothing here
+        let offered =
+            order_argument_completions("GIVE 7 3 ", Some(&ruleset), Some(&report), Some("18642"));
+
+        assert_eq!(offered, Vec::<OrderCompletion>::new());
+    }
+
+    #[test]
+    fn give_falls_back_to_the_catalogue_when_the_unit_cannot_be_found() {
+        let ruleset = ruleset();
+        let report = carrying_report();
+
+        for unit_id in [None, Some("99999")] {
+            let offered =
+                order_argument_completions("GIVE 7 3 ", Some(&ruleset), Some(&report), unit_id);
+            assert_eq!(offered.len(), ruleset.items.len());
+        }
+    }
+
+    #[test]
+    fn giving_a_whole_unit_still_offers_its_keywords() {
+        let ruleset = ruleset();
+        let report = carrying_report();
+        let offered =
+            order_argument_completions("GIVE 7 ", Some(&ruleset), Some(&report), Some("18642"));
+
+        assert_eq!(offered, vec![kw("UNIT"), kw("ALL")]);
     }
 
     // --- where the caret is, decided once (ah-vfq) -------------------------------------------
