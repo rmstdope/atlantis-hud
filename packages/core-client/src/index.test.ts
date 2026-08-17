@@ -107,6 +107,7 @@ function fakeAdapter(overrides: Partial<CoreAdapter> = {}): CoreAdapter {
     }),
     validateOrders: vi.fn().mockResolvedValue({ diagnostics: [] }),
     orderCommands: vi.fn().mockResolvedValue(["GIVE", "MOVE", "WORK"]),
+    orderVocabulary: vi.fn().mockResolvedValue(["ALL", "MOVE", "SILV"]),
     orderArgumentCompletions: vi.fn().mockResolvedValue([]),
     completionsAtCaret: vi
       .fn()
@@ -319,6 +320,20 @@ describe("merging an allied report", () => {
       "WORK"
     ]);
     expect(calls).toEqual(["order_commands"]);
+  });
+
+  it("asks tauri for every word the rules know, passing the ruleset", async () => {
+    const calls: Array<{ command: string; args?: Record<string, unknown> }> = [];
+    const invoke: TauriInvoke = <T,>(command: string, args?: Record<string, unknown>) => {
+      calls.push({ command, args });
+      return Promise.resolve(["ALL", "MOVE", "SILV"] as T);
+    };
+
+    await expect(
+      createCoreClient(createTauriAdapter(invoke)).orderVocabulary("{}")
+    ).resolves.toEqual(["ALL", "MOVE", "SILV"]);
+    expect(calls.map((call) => call.command)).toEqual(["order_vocabulary"]);
+    expect(calls[0].args).toEqual({ ruleset_json: "{}" });
   });
 
   it("asks tauri for merged reports by faction and turn", async () => {

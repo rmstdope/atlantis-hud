@@ -80,6 +80,7 @@ function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
       disabledCodes: readonly string[]
     ) => ({ diagnostics: [], rawOrders, rulesetJson, rawReport, disabledCodes }),
     order_commands_state: () => ["GIVE", "MOVE", "WORK"],
+    order_vocabulary_state: () => ["ALL", "MOVE", "SILV"],
     order_argument_completions_state: () => [],
     completions_at_caret_state: () => ({
       position: "nowhere" as const,
@@ -369,6 +370,21 @@ describe("web core adapter", () => {
       disabledCodes: ["hex-unguarded"]
     });
     expect(await adapter.orderCommands()).toEqual(["GIVE", "MOVE", "WORK"]);
+  });
+
+  it("hands the ruleset to the wasm vocabulary call", async () => {
+    let seen: string | null | undefined;
+    const adapter = createWebCoreAdapter(
+      fakeWasm({
+        order_vocabulary_state: (rulesetJson: string | null) => {
+          seen = rulesetJson;
+          return ["ALL", "MOVE", "SILV"];
+        }
+      })
+    );
+
+    expect(await adapter.orderVocabulary("{}")).toEqual(["ALL", "MOVE", "SILV"]);
+    expect(seen).toBe("{}");
   });
 
   it("routes an argument-completion call to the core, every argument included", async () => {

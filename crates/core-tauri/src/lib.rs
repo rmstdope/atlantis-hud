@@ -14,9 +14,10 @@ use atlantis_hud_core::report::import::{import_writes, SeenRegion};
 use atlantis_hud_core::report::merge::{merge_report_into_sightings, StoredSighting};
 pub use atlantis_hud_core::report::ParsedReport;
 use atlantis_hud_core::{
-    completions_at_caret, engine_info, order_argument_completions, order_commands, parse_report,
-    reject_import, reject_merge, CaretCompletions, EngineInfo, OrderCheckOptions, OrderCompletion,
-    OrderValidationResult, ReportParseResult, ReportParseResultWire,
+    completions_at_caret, engine_info, order_argument_completions, order_commands,
+    order_vocabulary, parse_report, reject_import, reject_merge, CaretCompletions, EngineInfo,
+    OrderCheckOptions, OrderCompletion, OrderValidationResult, ReportParseResult,
+    ReportParseResultWire,
 };
 use atlantis_hud_core_persistence::{
     create_game, delete_game, delete_hex_note, export_game, import_game, insert_imported_turn,
@@ -457,6 +458,22 @@ pub mod commands {
     )]
     pub fn command_order_commands() -> Vec<String> {
         order_commands().into_iter().map(str::to_string).collect()
+    }
+
+    /// Every word the rules know, for the editor that has to spot a keyword as it is typed.
+    ///
+    /// `ruleset_json` goes through the cache exactly as `command_order_argument_completions` does.
+    #[must_use]
+    #[cfg_attr(
+        feature = "tauri",
+        tauri::command(rename_all = "snake_case", rename = "order_vocabulary")
+    )]
+    pub fn command_order_vocabulary(ruleset_json: Option<&str>) -> Vec<String> {
+        let ruleset = atlantis_hud_core::cache::with_global(|cache| {
+            ruleset_json.and_then(|json| cache.ruleset(json).ok())
+        });
+
+        order_vocabulary(ruleset.as_deref())
     }
 
     /// What may stand where the caret is, for the Tauri command surface.
@@ -1097,10 +1114,10 @@ pub use commands::{
     command_list_imported_turns, command_load_imported_turn, command_load_latest_imported_turn,
     command_load_merged_reports, command_load_order_draft, command_load_region_sightings,
     command_merge_report, command_order_argument_completions, command_order_commands,
-    command_parse_report, command_parse_report_classified, command_parse_report_full,
-    command_plan_route, command_preview_orders, command_preview_report_import,
-    command_save_hex_note, command_save_order_draft, command_trace_move_orders,
-    command_trade_routes, command_validate_orders,
+    command_order_vocabulary, command_parse_report, command_parse_report_classified,
+    command_parse_report_full, command_plan_route, command_preview_orders,
+    command_preview_report_import, command_save_hex_note, command_save_order_draft,
+    command_trace_move_orders, command_trade_routes, command_validate_orders,
 };
 
 /// Creates a game under the application's games directory and applies migrations.

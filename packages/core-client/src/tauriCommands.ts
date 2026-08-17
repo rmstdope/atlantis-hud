@@ -48,6 +48,7 @@ export const TAURI_COMMANDS = {
   ],
   validateOrders: ["validate_orders", "raw_orders", "ruleset_json", "raw_report", "disabled_codes"],
   orderCommands: ["order_commands"],
+  orderVocabulary: ["order_vocabulary", "ruleset_json"],
   completionsAtCaret: [
     "completions_at_caret",
     "line_prefix",
