@@ -1901,6 +1901,15 @@ export function AppShell({
     () => (openPopover === "trade" ? arrowFor(hoveredRoute) : null),
     [openPopover, hoveredRoute]
   );
+  // A dismissed popover forgets the row it was on. The gate above is what stops a closed popover
+  // drawing anything, but on its own it only hides the route: the popover unmounts without the row
+  // ever firing `onPointerLeave` or `onBlur`, so reopening Trade would draw and frame the last
+  // route hovered with the pointer nowhere near it (Copilot, #398).
+  useEffect(() => {
+    if (openPopover !== "trade") {
+      setHoveredRoute(null);
+    }
+  }, [openPopover]);
 
   useEffect(() => {
     if (ruleset.status !== "ready" || !rawReport) {

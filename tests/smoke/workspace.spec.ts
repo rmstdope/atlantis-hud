@@ -1137,6 +1137,20 @@ test("hovering a trade route draws it, frames it, and puts the map back", async 
   await page.getByTestId("trade-chip").hover();
   await expect(arrow).toHaveCount(0);
   await expect(world).toHaveAttribute("transform", before ?? "");
+
+  // Dismissed from under the pointer - Escape with the cursor still on the row - the popover
+  // unmounts without that row ever firing pointerleave. Reopening it must draw nothing until a row
+  // is hovered again, so the route has to be forgotten rather than merely hidden (Copilot, #398).
+  await panel.getByTestId("trade-route-0").hover();
+  await expect(arrow).toHaveCount(1);
+  await page.keyboard.press("Escape");
+  await expect(panel).toHaveCount(0);
+  await expect(world).toHaveAttribute("transform", before ?? "");
+
+  await page.getByTestId("trade-chip").click();
+  await expect(panel).toBeVisible();
+  await expect(arrow).toHaveCount(0);
+  await expect(world).toHaveAttribute("transform", before ?? "");
 });
 
 test("an order with the wrong argument is caught, and the offending word quoted", async ({
