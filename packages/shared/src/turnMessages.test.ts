@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { describeTurnMessages, splitTurnMessage, splitTurnMessages } from "./turnMessages";
+import {
+  describeTurnMessages,
+  groupTurnMessages,
+  splitTurnMessage,
+  splitTurnMessages
+} from "./turnMessages";
 
 /**
  * Every line below is copied out of `tests/fixtures/reports`, so what is asserted here is what the
@@ -108,5 +113,76 @@ describe("describeTurnMessages", () => {
 
   it("has nothing to say about a turn with neither", () => {
     expect(describeTurnMessages(0, 0)).toBeNull();
+  });
+});
+
+/**
+ * The sample turn, as ah-7rd quotes it: the same units recur, scattered, and one line belongs to the
+ * faction rather than to any unit.
+ */
+const SAMPLE = [
+  "Times reward of 200 silver.",
+  "Taxers (8047): Gives 50 silver [SILV] to Lookout (12159).",
+  "Woodsmen (9431): Gives 20 wood [WOOD] to Smiths (11933).",
+  "Taxers (8047): Claims $878.",
+  "Taxers (8909): Gives 50 silver [SILV] to Unit (12160).",
+  "Taxers (8047): Studies Combat.",
+  "Taxers (8909): Gives 100 silver [SILV] to Carpenters (12881)."
+];
+
+describe("groupTurnMessages", () => {
+  const group = (id: string | null) =>
+    groupTurnMessages(splitTurnMessages(SAMPLE)).find((candidate) => candidate.unitId === id);
+
+  it("groups a unit's events together, in report order", () => {
+    expect(group("8047")?.messages.map((message) => message.text)).toEqual([
+      "Gives 50 silver [SILV] to Lookout (12159).",
+      "Claims $878.",
+      "Studies Combat."
+    ]);
+  });
+
+  it("puts the faction's own lines under General", () => {
+    const general = group(null);
+
+    expect(general?.unitName).toBeNull();
+    expect(general?.messages.map((message) => message.text)).toEqual(["Times reward of 200 silver."]);
+  });
+
+  it("puts General first, and the units in the order the report met them", () => {
+    expect(groupTurnMessages(splitTurnMessages(SAMPLE)).map((one) => one.unitId)).toEqual([
+      null,
+      "8047",
+      "9431",
+      "8909"
+    ]);
+  });
+
+  it("omits General entirely when every line names a unit", () => {
+    const groups = groupTurnMessages(splitTurnMessages(SAMPLE.slice(1)));
+
+    expect(groups.map((one) => one.unitId)).toEqual(["8047", "9431", "8909"]);
+  });
+
+  it("does not file an event under a unit it merely mentions", () => {
+    const groups = groupTurnMessages(splitTurnMessages(SAMPLE));
+
+    expect(groups.map((one) => one.unitId)).not.toContain("12159");
+    expect(
+      groups.flatMap((one) => one.messages).filter((message) => message.text.includes("Lookout"))
+    ).toHaveLength(1);
+  });
+
+  it("names a group from the first line that named the unit", () => {
+    const groups = groupTurnMessages(
+      splitTurnMessages(["Taxers (8047): Claims $878.", "Scouts (8047): Studies Combat."])
+    );
+
+    expect(groups).toHaveLength(1);
+    expect(groups[0]?.unitName).toBe("Taxers");
+  });
+
+  it("is empty for no messages", () => {
+    expect(groupTurnMessages([])).toEqual([]);
   });
 });
