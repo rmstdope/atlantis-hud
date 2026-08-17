@@ -1634,15 +1634,26 @@ fn check_forms(hex: &Hex<'_>, options: &CheckOptions, findings: &mut Vec<Finding
 /// report's own structure first, then the last of this unit's ENTER/LEAVE intents in document
 /// order - which is the order the server itself would apply them in.
 fn is_aboard(ordered: &Ordered<'_>, fleet_id: &str) -> bool {
-    let mut aboard = ordered.unit.structure_id.as_deref() == Some(fleet_id);
+    structure_after_orders(ordered) == Some(fleet_id)
+}
+
+/// The structure the unit is in once this month's ENTER/LEAVE orders have run: the report's own
+/// structure first, then the last of this unit's ENTER/LEAVE intents in document order - which is
+/// the order the server itself would apply them in. `None` when it ends the month in nothing.
+///
+/// Both ENTER and LEAVE run before anything else a block can ask for, so every check that asks
+/// "what is this unit standing in when its orders happen" wants this rather than
+/// `unit.structure_id`, which is only where the report found it.
+fn structure_after_orders<'a>(ordered: &Ordered<'a>) -> Option<&'a str> {
+    let mut inside = ordered.unit.structure_id.as_deref();
     for placed in ordered.intents {
         match &placed.intent {
-            Intent::Enter { structure } => aboard = structure == fleet_id,
-            Intent::Leave => aboard = false,
+            Intent::Enter { structure } => inside = Some(structure.as_str()),
+            Intent::Leave => inside = None,
             _ => {}
         }
     }
-    aboard
+    inside
 }
 
 /// Whether the unit could be giving the SAIL order for `fleet_id`: standing in it per the report,
