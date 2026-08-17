@@ -151,12 +151,11 @@ pub struct Finding {
 /// a mistyped unit number from a real unit standing somewhere else, and only the second of those
 /// is answerable from outside the hex. Every unit the report prints is in here, ours and any
 /// foreign one we can see: a gift to another faction's unit standing in our hex is ordinary.
-fn where_the_report_shows_each_unit(report: &ParsedReport) -> BTreeMap<&str, String> {
+fn where_the_report_shows_each_unit(report: &ParsedReport) -> BTreeMap<&str, &ReportRegion> {
     let mut located = BTreeMap::new();
     for region in &report.regions {
-        let label = region.label();
         for unit in &region.units {
-            located.insert(unit.unit_id.as_str(), label.clone());
+            located.insert(unit.unit_id.as_str(), region);
         }
     }
     located
@@ -1292,7 +1291,7 @@ fn weight_at_sailing(
 /// zero name nothing the report could show, and are passed over rather than guessed at.
 fn check_transfer_targets(
     hex: &Hex<'_>,
-    located: &BTreeMap<&str, String>,
+    located: &BTreeMap<&str, &ReportRegion>,
     options: &CheckOptions,
     findings: &mut Vec<Finding>,
 ) {
@@ -1312,9 +1311,13 @@ fn check_transfer_targets(
                 continue;
             }
 
+            // The label is only ever formatted here, on the rare path that actually emits a
+            // finding - `located` itself carries just a region reference per unit, so the common
+            // case (nothing wrong) never allocates a label string per unit in the report.
             let message = match located.get(id.as_str()) {
-                Some(label) => format!(
-                    "unit {id} is not in this hex to be {verb} - your report shows it in {label}"
+                Some(region) => format!(
+                    "unit {id} is not in this hex to be {verb} - your report shows it in {}",
+                    region.label()
                 ),
                 None => format!(
                     "unit {id} is not in this hex to be {verb}, and appears nowhere else in \
