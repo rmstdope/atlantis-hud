@@ -313,9 +313,15 @@ export type RestoredTurn = KnownMemory & {
  * redundancy issue #28 exists to remove. `rulesetJson` is the same text handed to `parse`, so the
  * known map is resolved against the same classification the report itself was.
  *
+ * Which turn comes back is the core's rule (`atlantis_hud_core::reopen::latest_turn`): the
+ * remembered faction's highest-numbered imported turn, falling back to the game's highest turn
+ * whichever faction holds it when the manifest remembers none - and adopting that faction below.
+ * No timestamp decides it; ranking by what was touched last is what let an older report imported
+ * later take the game back in time (ah-do8).
+ *
  * Nothing is committed. The turn is already stored, and re-committing would move its `updated_at`,
- * which would make merely opening a game look exactly like working in it - and the ranking that
- * decides which turn reopens is built on that column.
+ * which other readers - the import stamps and the turn diff - still care about, even though it no
+ * longer decides which turn reopens.
  *
  * `null` means the game holds no imports, which is a game just created rather than a failure.
  */
