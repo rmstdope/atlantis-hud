@@ -609,4 +609,60 @@ describe("parseSkillReference", () => {
     const level4 = skills.CARP.produces.filter((p) => p.level === 4).map((p) => p.tag);
     expect(level4).toEqual(["CATP", "STED"]);
   });
+
+  /**
+   * The data page marks magic nowhere - no flag, no grouping, no "may only be studied by a mage"
+   * phrase - so a skill's own level-1 description is the only evidence there is. `ah-a2k.2` needs
+   * this to tell a magic skill from a mundane one before it can warn about studying one outside a
+   * building.
+   */
+  it("flags a magic skill from its own description", () => {
+    const skills = parseSkillReference(DATA_HTML);
+
+    expect(skills.FORC.magic).toBe(true);
+    expect(skills.NECR.magic).toBe(true);
+    expect(skills.ILLU.magic).toBe(true);
+    expect(skills.TELE.magic).toBe(true);
+  });
+
+  it("does not flag a mundane skill as magic", () => {
+    const skills = parseSkillReference(DATA_HTML);
+
+    expect(skills.MINI.magic).toBe(false);
+    expect(skills.LUMB.magic).toBe(false);
+    expect(skills.COMB.magic).toBe(false);
+    expect(skills.SAIL.magic).toBe(false);
+    expect(skills.BUIL.magic).toBe(false);
+  });
+
+  /**
+   * Higher-level paragraphs describe effects and mention magic often enough to misclassify a
+   * mundane skill if they were consulted - level 1 is where a skill says what it is.
+   */
+  it("only consults the level one paragraph to classify a skill", () => {
+    const html =
+      "<html><body><pre>mundane [MUND] 1: This skill deals with everyday, ordinary work and " +
+      "has nothing to do with the arcane. This skill costs 10 silver per month of study.\n\n" +
+      "mundane [MUND] 2: At second level a unit with this skill can assist with a minor spell " +
+      "in battle.</pre></body></html>";
+
+    const skills = parseSkillReference(html);
+
+    expect(skills.MUND.magic).toBe(false);
+  });
+
+  /**
+   * Alternation binds more loosely than `\b`, so an unparenthesised `\bmage|cast` would anchor only
+   * `mage` and let `cast` match inside an unrelated word. "broadcast" is the case that would have
+   * slipped through.
+   */
+  it("does not mistake cast inside an unrelated word for the study cost verb", () => {
+    const html =
+      "<html><body><pre>signaler [SIGN] 1: A unit with this skill can broadcast orders to " +
+      "allies across the region. This skill costs 10 silver per month of study.</pre></body></html>";
+
+    const skills = parseSkillReference(html);
+
+    expect(skills.SIGN.magic).toBe(false);
+  });
 });
