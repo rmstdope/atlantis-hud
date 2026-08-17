@@ -9,6 +9,8 @@ import {
   snippetCompletionSource,
   type OrderSnippet
 } from "./orderSnippets";
+import type { CaretCompletions, CaretPosition } from "@atlantis/core-client";
+import type { CaretLookup } from "./orderCompletion";
 
 const PATROL: OrderSnippet = {
   id: "a1",
@@ -115,40 +117,72 @@ describe("snippetBodyProblem", () => {
 });
 
 /** Runs the source the way CodeMirror would: cursor at the end of `text`. */
-function complete(
+function caret(position: CaretPosition): CaretLookup {
+  return async (linePrefix) => {
+    const typing = !/[\s"]$/.test(linePrefix);
+    // `@` is the repeat prefix and never part of a word, exactly as the core's lexer has it.
+    const word = typing ? (/[^\s"@]*$/.exec(linePrefix)?.[0] ?? "") : "";
+    return {
+      position,
+      wordStart: linePrefix.length - word.length,
+      word,
+      options: []
+    } satisfies CaretCompletions;
+  };
+}
+
+async function complete(
   snippets: OrderSnippet[],
   text: string,
-  explicit = false
-): CompletionResult | null {
+  explicit = false,
+  position: CaretPosition = "command"
+): Promise<CompletionResult | null> {
   const state = EditorState.create({ doc: text, selection: { anchor: text.length } });
   const context = new CompletionContext(state, text.length, explicit);
-  return snippetCompletionSource(snippets)(context) as CompletionResult | null;
+  return (await snippetCompletionSource(snippets, caret(position))(
+    context
+  )) as CompletionResult | null;
 }
 
 describe("snippetCompletionSource", () => {
-  it("offers snippets whose names match the word being typed", () => {
-    const result = complete([PATROL, TAXES], "pat");
+  it("offers snippets whose names match the word being typed", async () => {
+    const result = await complete([PATROL, TAXES], "pat");
     expect(result?.options.map((option) => option.label)).toEqual(["patrol"]);
   });
 
-  it("labels its options as snippets, so a snippet cannot impersonate a command", () => {
-    const result = complete([PATROL, TAXES], "pat");
+  it("labels its options as snippets, so a snippet cannot impersonate a command", async () => {
+    const result = await complete([PATROL, TAXES], "pat");
     expect(result?.options[0].type).toBe("snippet");
   });
 
-  it("stays quiet mid-line, where orders take their arguments", () => {
-    expect(complete([PATROL], "MOVE pat")).toBeNull();
+  it("stays quiet where the core says the caret is not in the command position", async () => {
+    expect(await complete([PATROL], "MOVE pat", false, "argument")).toBeNull();
+    expect(await complete([PATROL], "TAX ; pat", true, "nowhere")).toBeNull();
   });
 
-  it("answers null with nothing to offer", () => {
-    expect(complete([], "pat")).toBeNull();
-    expect(complete([PATROL], "xyz")).toBeNull();
+  it("answers null with nothing to offer", async () => {
+    expect(await complete([], "pat")).toBeNull();
+    expect(await complete([PATROL], "xyz")).toBeNull();
   });
 
-  it("keeps a result valid only for words the source itself would answer", () => {
+  it("starts the replaced range where the core says the word starts", async () => {
+    const result = await complete([PATROL], "  @pat");
+    expect(result?.from).toBe(3);
+  });
+
+  it("still filters a hyphenated snippet name by the word the core reports", async () => {
+    // The client's own regex used to decide what a word was, and the two copies of that rule had
+    // already drifted over the hyphen (ah-vfq). The core's lexer decides now, and this is what it
+    // decides.
+    const hyphenated: OrderSnippet = { id: "c3", name: "tax-and-work", body: "TAX\nWORK" };
+    const result = await complete([hyphenated], "tax-and");
+    expect(result?.options.map((option) => option.label)).toEqual(["tax-and-work"]);
+  });
+
+  it("keeps a result valid only for words the source itself would answer", async () => {
     // validFor lets CodeMirror keep filtering without re-querying; wider than the source's own
     // word shape, it would keep a result alive for words the source would refuse.
-    const result = complete([PATROL], "pat");
+    const result = await complete([PATROL], "pat");
     const validFor = result?.validFor as RegExp;
     expect(validFor.test("patro")).toBe(true);
     expect(validFor.test("")).toBe(true);
@@ -156,16 +190,16 @@ describe("snippetCompletionSource", () => {
     expect(validFor.test("-x")).toBe(false);
   });
 
-  it("lists the whole library when summoned explicitly on an empty word", () => {
+  it("lists the whole library when summoned explicitly on an empty word", async () => {
     // Ctrl+Space on a fresh line is how a player browses what they have forgotten the name of;
     // the command source answers there, and the snippets must not be the one thing missing.
-    const result = complete([PATROL, TAXES], "", true);
+    const result = await complete([PATROL, TAXES], "", true);
     expect(result?.options.map((option) => option.label)).toEqual(["patrol", "taxes"]);
-    expect(complete([PATROL, TAXES], "", false)).toBeNull();
+    expect(await complete([PATROL, TAXES], "", false)).toBeNull();
   });
 
-  it("expands the body with tab-through fields when accepted", () => {
-    const result = complete([PATROL], "pat");
+  it("expands the body with tab-through fields when accepted", async () => {
+    const result = await complete([PATROL], "pat");
     const option = result!.options[0];
 
     // Applied the way CodeMirror applies it, against the smallest thing that can stand in for a

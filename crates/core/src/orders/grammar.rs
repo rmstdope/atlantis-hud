@@ -440,23 +440,66 @@ pub fn find_order(command: &str) -> Option<&'static Order> {
 /// does not have. The `Arg`s are de-duplicated in form order: several forms often agree on what may
 /// stand next, and each is worth answering only once.
 pub(super) fn arguments_at_caret(line_prefix: &str) -> Option<(&'static Order, Vec<&'static Arg>)> {
+    match caret_at(line_prefix).shape {
+        CaretShape::InOrder(order, offered) => Some((order, offered)),
+        _ => None,
+    }
+}
+
+/// Which position one order line's caret is in.
+pub(super) enum CaretShape {
+    /// Inside a comment or an unterminated quote, or after a command the table does not have.
+    Nowhere,
+    /// The first word of the line, behind any indentation and an optional `@`.
+    Command,
+    /// After the command, with every argument that may stand at the caret across its forms.
+    InOrder(&'static Order, Vec<&'static Arg>),
+}
+
+/// Where the caret is, and the word being typed there if one is.
+pub(super) struct Caret {
+    pub shape: CaretShape,
+    /// The token the caret is inside. `None` when the prefix ends in whitespace or a closing `"`:
+    /// unlike a bare word, `"` is unambiguous, so the token it ends is complete and the caret is
+    /// already in the next position.
+    pub word: Option<Token>,
+}
+
+/// Where the caret is in one order line, and what the grammar allows there - from **one** lexing,
+/// because everything asked about a caret is asked on the same keystroke (ah-vfq).
+///
+/// `line_prefix` is one order line from its first character up to the caret, the caret's own
+/// half-typed word included: the position is worked out from the complete words before it, and the
+/// half-typed word is what the shell filters the answer by.
+pub(super) fn caret_at(line_prefix: &str) -> Caret {
     let lexed = lex_line(line_prefix);
     if lexed.comment.is_some() || lexed.unterminated_quote.is_some() {
-        return None;
+        return Caret {
+            shape: CaretShape::Nowhere,
+            word: None,
+        };
     }
 
     let mut tokens = lexed.tokens;
-    if !line_prefix.ends_with(char::is_whitespace) && !line_prefix.ends_with('"') {
-        // The last token is still being typed. A half-typed word says nothing about which position
-        // the caret is in, so it is dropped before counting the position. A closing quote is not
-        // this case: unlike a bare word, `"` is unambiguous - the token it ends is complete, so
-        // the caret sitting right after it is already in the *next* position.
-        tokens.pop();
-    }
+    // The last token is still being typed. A half-typed word says nothing about which position
+    // the caret is in, so it is dropped before counting the position. A closing quote is not
+    // this case, for the reason `Caret::word` gives.
+    let typing = !line_prefix.ends_with(char::is_whitespace) && !line_prefix.ends_with('"');
+    let word = if typing { tokens.pop() } else { None };
 
     // Nothing typed yet: the caret is in the command position, which `order_commands` answers.
-    let (command, arguments) = tokens.split_first()?;
-    let order = find_order(&command.text)?;
+    let Some((command, arguments)) = tokens.split_first() else {
+        return Caret {
+            shape: CaretShape::Command,
+            word,
+        };
+    };
+    let Some(order) = find_order(&command.text) else {
+        return Caret {
+            shape: CaretShape::Nowhere,
+            word,
+        };
+    };
 
     let mut offered: Vec<&'static Arg> = Vec::new();
     for form in order.forms {
@@ -467,7 +510,10 @@ pub(super) fn arguments_at_caret(line_prefix: &str) -> Option<(&'static Order, V
         }
     }
 
-    Some((order, offered))
+    Caret {
+        shape: CaretShape::InOrder(order, offered),
+        word,
+    }
 }
 
 /// The argument that may stand where the caret is, for one form; `None` when the typed words do not

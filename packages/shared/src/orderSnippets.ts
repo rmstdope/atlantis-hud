@@ -1,4 +1,5 @@
 import { snippetCompletion, type Completion, type CompletionSource } from "@codemirror/autocomplete";
+import type { CaretLookup } from "./orderCompletion";
 
 /**
  * A reusable block of orders, insertable by name from the editor's completion popup.
@@ -91,26 +92,29 @@ export function snippetBodyProblem(body: string): string | null {
  * word of a line. Distinctly typed as "snippet", so a snippet named like an order command is
  * visibly a snippet in the popup rather than silently shadowing the command.
  */
-export function snippetCompletionSource(snippets: readonly OrderSnippet[]): CompletionSource {
+export function snippetCompletionSource(
+  snippets: readonly OrderSnippet[],
+  lookUp: CaretLookup
+): CompletionSource {
   const options: Completion[] = snippets.map((entry) =>
     snippetCompletion(entry.body, { label: entry.name, type: "snippet", detail: "snippet" })
   );
 
-  return (context) => {
+  return async (context) => {
     if (options.length === 0) {
       return null;
     }
     const line = context.state.doc.lineAt(context.pos);
     const before = context.state.sliceDoc(line.from, context.pos);
-    // The command position, as orderCommandCompletions defines it: indentation, an optional
-    // repeat prefix, then the word being typed. Anywhere else is arguments. An empty word
-    // answers only when summoned explicitly - Ctrl+Space on a fresh line is how a player
-    // browses a library whose names they have forgotten, and the command source answers there.
-    const match = /^(\s*@?\s*)([A-Za-z][\w-]*|)$/.exec(before);
-    if (!match) {
+    // The command position, and the core is the one thing that decides where that is (ah-vfq).
+    // Anywhere else is arguments. An empty word answers only when summoned explicitly - Ctrl+Space
+    // on a fresh line is how a player browses a library whose names they have forgotten, and the
+    // command source answers there.
+    const caret = await lookUp(before);
+    if (caret.position !== "command") {
       return null;
     }
-    const word = match[2].toLowerCase();
+    const word = caret.word.toLowerCase();
     if (word === "" && !context.explicit) {
       return null;
     }
@@ -119,7 +123,7 @@ export function snippetCompletionSource(snippets: readonly OrderSnippet[]): Comp
       return null;
     }
     return {
-      from: line.from + match[1].length,
+      from: line.from + caret.wordStart,
       options: matching,
       // Exactly the words this source itself answers, or a result would stay alive for a word
       // it would refuse - empty included, which explicit invocation makes reachable.
