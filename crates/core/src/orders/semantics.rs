@@ -1543,7 +1543,7 @@ fn check_magic_study(
             continue;
         }
 
-        let standing_in = ordered.unit.structure_id.as_deref().map(|id| {
+        let standing_in = structure_after_orders(ordered).map(|id| {
             hex.region
                 .structures
                 .iter()
@@ -4219,6 +4219,86 @@ mod tests {
             ),
             vec![]
         );
+    }
+
+    /// The bug this bead was filed for: the mage steps out before the month's study happens, so
+    /// half of it is wasted and the player wrote the LEAVE deliberately.
+    #[test]
+    fn a_mage_that_leaves_the_building_this_month_is_warned() {
+        let finding = only(check(
+            vec![ReportRegion {
+                structures: vec![finished_of_kind("1", "Castle")],
+                ..region(vec![in_structure(mage(2), "1")])
+            }],
+            "unit 5\nLEAVE\nSTUDY FORC\n",
+        ));
+
+        assert_eq!(finding.code, codes::MAGIC_STUDY_OUTSIDE_BUILDING);
+    }
+
+    /// The mirror case, and the worse of the two: a warning about a mage that will be sheltered by
+    /// the time it studies teaches the player to distrust the check.
+    #[test]
+    fn a_mage_that_enters_a_building_this_month_is_silent() {
+        assert_eq!(
+            check(
+                vec![ReportRegion {
+                    structures: vec![finished_of_kind("1", "Castle")],
+                    ..region(vec![mage(2)])
+                }],
+                "unit 5\nENTER 1\nSTUDY FORC\n",
+            ),
+            vec![]
+        );
+    }
+
+    /// Last ENTER/LEAVE in document order wins, which is the order the server applies them in.
+    #[test]
+    fn a_mage_that_leaves_and_re_enters_is_judged_on_the_last_order() {
+        let region_with_castle = || ReportRegion {
+            structures: vec![finished_of_kind("1", "Castle")],
+            ..region(vec![in_structure(mage(2), "1")])
+        };
+
+        assert_eq!(
+            check(
+                vec![region_with_castle()],
+                "unit 5\nLEAVE\nENTER 1\nSTUDY FORC\n"
+            ),
+            vec![]
+        );
+        assert_eq!(
+            only(check(
+                vec![region_with_castle()],
+                "unit 5\nENTER 1\nLEAVE\nSTUDY FORC\n"
+            ))
+            .code,
+            codes::MAGIC_STUDY_OUTSIDE_BUILDING
+        );
+    }
+
+    /// Accept-on-doubt reaches the new input too: a structure entered but not listed is the same
+    /// doubt as one stood in but not listed.
+    #[test]
+    fn a_mage_entering_a_structure_the_report_does_not_list_is_not_judged() {
+        assert_eq!(
+            check(vec![region(vec![mage(2)])], "unit 5\nENTER 999\nSTUDY FORC\n"),
+            vec![]
+        );
+    }
+
+    /// Entering shelters the mage, but a Tower seats none, so the study is halved regardless.
+    #[test]
+    fn a_mage_entering_a_tower_is_still_halved() {
+        let finding = only(check(
+            vec![ReportRegion {
+                structures: vec![finished_of_kind("1", "Tower")],
+                ..region(vec![mage(2)])
+            }],
+            "unit 5\nENTER 1\nSTUDY FORC\n",
+        ));
+
+        assert_eq!(finding.code, codes::MAGIC_STUDY_OUTSIDE_BUILDING);
     }
 
     /// The case that made the buildings table worth scraping: a Tower is in the rules' table and
