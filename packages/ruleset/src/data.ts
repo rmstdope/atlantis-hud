@@ -517,3 +517,111 @@ export function parseSkillReference(html: string): SkillReference {
 
   return skills;
 }
+
+/** One buildable structure as the data page describes it. */
+export type BuildingEntry = {
+  /** Men the structure protects - the rules table's "Size". */
+  size: number;
+  /** What building it costs, from the skill that builds it. */
+  cost: number;
+  /**
+   * What it is built from, in the page's own order. A list because the page offers alternatives -
+   * `an Inn from 10 wood [WOOD] or stone [STON]` - which one string cannot hold.
+   */
+  materials: string[];
+  /**
+   * Mages who may study above level 2 inside it. `0` when the entry says nothing: the data page
+   * lists every structure and states the capacity wherever there is one, so silence is a
+   * statement - and a Tower, which says nothing, really does seat none.
+   */
+  mages: number;
+};
+
+export type BuildingReference = Record<string, BuildingEntry>;
+
+/** `will allow one mage` is written as a word; every other capacity is a numeral. */
+function mageCount(text: string): number {
+  const match = text.match(/allow (?:up to )?(one|\d+) mages? to study above level 2/i);
+  if (!match) {
+    return 0;
+  }
+  return /^one$/i.test(match[1]) ? 1 : Number.parseInt(match[1], 10);
+}
+
+/**
+ * Reads the buildings out of the data page: the object entries say what a structure is and how
+ * many mages it seats, and the skill entries say what building it costs.
+ *
+ * Keyed by the object's name upper-cased, the convention `items` and `skills` already use, so a
+ * report's printed kind - `Magical Tower` - matches without caring about case.
+ */
+export function parseBuildingReference(html: string): BuildingReference {
+  const paragraphs = entryParagraphs(html);
+  const buildings: BuildingReference = {};
+
+  // Pass one: the object entries decide what a building is. Only a *fortification* counts - an
+  // entry that states "provides defense to the first N men inside it" - because that is the class
+  // of structure the page ever says anything about mages for, and because the alternative reading
+  // (every entry calling itself a building) would turn a Mine, a road and a lair from "the
+  // catalogue cannot say" into "seats nobody", which is a change to `ah-a2k.2`'s warning this bead
+  // is expressly not making. The ten it finds are the four the rules table named, the four magical
+  // fortifications, a Stockade and a Hermits hut.
+  for (const paragraph of paragraphs) {
+    // The name may not contain sentence punctuation, for the reason `parseItemReference` records:
+    // letting it wander across a full stop matches the tail of the previous sentence.
+    const opening = paragraph.match(/^([^.:[\]]{1,40}): This is a building\./);
+    if (!opening) {
+      continue;
+    }
+
+    // The page states size as protection, and that figure equals the rules table's Size for every
+    // structure both pages name - which is the evidence for reading it this way. It is an
+    // inference, not the page's own word.
+    const size = readNumber(paragraph, /provides defense to the first (\d+) men/i);
+    if (size === null) {
+      continue;
+    }
+
+    buildings[opening[1].trim().toUpperCase()] = {
+      size,
+      cost: 0,
+      materials: [],
+      mages: mageCount(paragraph)
+    };
+  }
+
+  // Pass two: the skills say what each costs.
+  for (const paragraph of paragraphs) {
+    for (const statement of paragraph.matchAll(
+      /A unit with this skill may BUILD ([^.]+)\./gi
+    )) {
+      // `a Citadel from 800 stone [STON], a Magical Tower from 10 rootstone [ROOT] or an Inn from
+      // 10 wood [WOOD] or stone [STON]` is three clauses, not five: the trailing `or stone [STON]`
+      // is another material for the Inn, not another structure. Splitting only before `a`/`an`
+      // plus a capital is what tells the two apart. Ships - `Longships [LONG] from 10 wood` -
+      // carry no article and so never match a clause at all.
+      for (const clause of statement[1].split(/(?:, | or )(?=an? [A-Z])/u)) {
+        const built = clause.match(
+          /^an? ([^,]+?) from (\d+) ((?:[a-z ]+ \[[A-Z0-9]{2,6}\](?: or )?)+)/
+        );
+        if (!built) {
+          continue;
+        }
+
+        const existing = buildings[built[1].trim().toUpperCase()];
+        if (!existing) {
+          // The object list decides what a building is; a name only a skill mentions is not one.
+          continue;
+        }
+
+        existing.cost = Number.parseInt(built[2], 10);
+        existing.materials = built[3]
+          .split(" or ")
+          .map((material) => material.replace(/\s*\[[A-Z0-9]{2,6}\]\s*/, "").trim())
+          .filter((material) => material.length > 0);
+      }
+    }
+  }
+
+  return buildings;
+}

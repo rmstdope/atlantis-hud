@@ -1,7 +1,12 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { parseItemReference, parseSkillReference, RulesetScrapeError } from "./data";
+import {
+  parseBuildingReference,
+  parseItemReference,
+  parseSkillReference,
+  RulesetScrapeError
+} from "./data";
 import { preformattedText } from "./html";
 
 const DATA_HTML = readFileSync(
@@ -698,5 +703,120 @@ describe("parseSkillReference", () => {
       "<html><body><pre>c [CCCC] 1: This skill improves casting speed. This skill costs 100 " +
         "silver per month of study.</pre></body></html>"
     ).CCCC.magic).toBe(true);
+  });
+});
+
+/**
+ * The buildings reference. The data page is the game's own object list, so it - and not the rules
+ * page's generic table - is what says which structures this game has and how many mages each seats.
+ * Every expected value below is quoted from the fixture's own entry.
+ */
+describe("parseBuildingReference", () => {
+  it("reads a building's size from the men it protects", () => {
+    const buildings = parseBuildingReference(DATA_HTML);
+
+    // "Tower: ... This structure provides defense to the first 10 men inside it."
+    expect(buildings.TOWER).toMatchObject({ size: 10 });
+    // "Citadel: ... provides defense to the first 1000 men inside it."
+    expect(buildings.CITADEL).toMatchObject({ size: 1000 });
+  });
+
+  it("reads a mage capacity written as a numeral", () => {
+    const buildings = parseBuildingReference(DATA_HTML);
+
+    // "Castle: ... will allow up to 2 mages to study above level 2."
+    expect(buildings.CASTLE.mages).toBe(2);
+    expect(buildings["MAGICAL CITADEL"].mages).toBe(50);
+  });
+
+  it("reads a mage capacity written as the word one", () => {
+    const buildings = parseBuildingReference(DATA_HTML);
+
+    // "will allow one mage to study above level 2" - a word, not a digit.
+    expect(buildings.FORT.mages).toBe(1);
+    expect(buildings.STOCKADE.mages).toBe(1);
+    expect(buildings["HERMITS HUT"].mages).toBe(1);
+  });
+
+  it("a building that says nothing about mages seats none", () => {
+    const buildings = parseBuildingReference(DATA_HTML);
+
+    // A Tower's entry never mentions mages, and that silence is the ruleset's answer: a mage
+    // studying in one loses half the month.
+    expect(buildings.TOWER.mages).toBe(0);
+  });
+
+  it("a paragraph that is not a building is not one", () => {
+    const buildings = parseBuildingReference(DATA_HTML);
+
+    expect(buildings.LEADER).toBeUndefined();
+    // A trade structure is a building the page never fortifies, and the catalogue stays silent
+    // about it rather than claiming it seats nobody.
+    expect(buildings.MINE).toBeUndefined();
+    expect(buildings["ROAD SE"]).toBeUndefined();
+    expect(buildings.MINING).toBeUndefined();
+    expect(buildings.BUILDING).toBeUndefined();
+  });
+
+  it("reads cost and material from the skill that builds it", () => {
+    const buildings = parseBuildingReference(DATA_HTML);
+
+    // "building [BUIL] 3: ... may BUILD a Citadel from 800 stone [STON] ..."
+    expect(buildings.CITADEL).toMatchObject({ cost: 800, materials: ["stone"] });
+    // "building [BUIL] 1: ... a Tower from 10 stone [STON] ..."
+    expect(buildings.TOWER).toMatchObject({ cost: 10, materials: ["stone"] });
+  });
+
+  it("reads alternative materials as a list", () => {
+    // "a Caravanserai from 20 wood [WOOD] or stone [STON]" is the shape; a Caravanserai is not a
+    // fortification, so the alternatives are pinned on a fortification the page words the same way
+    // - a Tower built "from 10 wood [WOOD] or stone [STON]" in a page shaped like the real one.
+    const html =
+      "<pre>building [BUIL] 1: A unit with this skill may BUILD a Tower from 10 wood [WOOD] or " +
+      "stone [STON].\n\n" +
+      "Tower: This is a building. This structure provides defense to the first 10 men inside it.</pre>";
+
+    expect(parseBuildingReference(html).TOWER).toMatchObject({
+      cost: 10,
+      materials: ["wood", "stone"]
+    });
+  });
+
+  it("does not read a second structure as another material", () => {
+    // "quarrying [QUAR] 3: ... may BUILD a Quarry from 10 wood [WOOD] or stone [STON] or a
+    //  Mystic Quarry from 10 rootstone [ROOT]." - two structures, the first with two materials.
+    // Neither Quarry is a fortification, so this is checked on the clause split itself, using the
+    // structures the same statement shape produces in the object list.
+    const html =
+      "<pre>building [BUIL] 1: A unit with this skill may BUILD a Tower from 10 wood [WOOD] or " +
+      "stone [STON] or a Fort from 40 rootstone [ROOT].\n\n" +
+      "Tower: This is a building. This structure provides defense to the first 10 men inside it.\n\n" +
+      "Fort: This is a building. This structure provides defense to the first 50 men inside it.</pre>";
+
+    const buildings = parseBuildingReference(html);
+    expect(buildings.TOWER).toMatchObject({ cost: 10, materials: ["wood", "stone"] });
+    expect(buildings.FORT).toMatchObject({ cost: 40, materials: ["rootstone"] });
+    expect(buildings["STONE [STON]"]).toBeUndefined();
+  });
+
+  it("does not read a ship as a building", () => {
+    const buildings = parseBuildingReference(DATA_HTML);
+
+    // "may BUILD Longships [LONG] from 10 wood [WOOD]" - plural, tagged, no article.
+    expect(buildings.LONGSHIP).toBeUndefined();
+    expect(buildings.LONGSHIPS).toBeUndefined();
+  });
+
+  it("a structure named by a skill but not in the object list is ignored", () => {
+    const html =
+      "<pre>building [BUIL] 1: A unit with this skill may BUILD a Tower from 10 stone [STON] " +
+      "or a Zeppelin Dock from 5 wood [WOOD].\n\n" +
+      "Tower: This is a building. This structure provides defense to the first 10 men inside it." +
+      "</pre>";
+
+    const buildings = parseBuildingReference(html);
+
+    expect(Object.keys(buildings)).toEqual(["TOWER"]);
+    expect(buildings.TOWER).toEqual({ size: 10, cost: 10, materials: ["stone"], mages: 0 });
   });
 });

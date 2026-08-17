@@ -79,18 +79,36 @@ describe("the committed ruleset", () => {
     ]);
   });
 
-  /** ah-a2k.3: the census `ah-a2k.2` needs to tell a Tower from a Fort. */
-  it("carries the five buildings and what each seats", () => {
+  /**
+   * ah-a2k.3: the census `ah-a2k.2` needs to tell a Tower from a Fort - taken from the game's own
+   * data page since ah-9js, which is why it names nine structures rather than the rules table's
+   * four. Everything else the data page calls a building says nothing about mages and so seats
+   * none, a Tower included.
+   */
+  it("carries every structure that seats a mage, and what each seats", () => {
     expect(
-      Object.values(COMMITTED.buildings)
-        .map((b) => [b.name, b.mages] as const)
+      Object.entries(COMMITTED.buildings)
+        .filter(([, building]) => building.mages > 0)
+        .map(([kind, building]) => [kind, building.mages] as const)
         .sort(([a], [b]) => a.localeCompare(b))
     ).toEqual([
-      ["Castle", 2],
-      ["Citadel", 3],
-      ["Fort", 1],
-      ["Stockade", 1],
-      ["Tower", 0]
+      ["CASTLE", 2],
+      ["CITADEL", 3],
+      ["FORT", 1],
+      ["HERMITS HUT", 1],
+      ["MAGICAL CASTLE", 30],
+      ["MAGICAL CITADEL", 50],
+      ["MAGICAL FORTRESS", 10],
+      ["MAGICAL TOWER", 3],
+      ["STOCKADE", 1]
     ]);
+
+    // The case ah-a2k.2 exists to catch: a Tower is named and seats nobody.
+    expect(COMMITTED.buildings.TOWER).toEqual({
+      size: 10,
+      cost: 10,
+      materials: ["stone"],
+      mages: 0
+    });
   });
 });

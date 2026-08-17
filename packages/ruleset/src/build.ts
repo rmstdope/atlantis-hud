@@ -7,18 +7,14 @@
  */
 
 import {
+  parseBuildingReference,
   parseItemReference,
   parseSkillReference,
+  type BuildingReference,
   type ItemReference,
   type SkillReference
 } from "./data";
-import {
-  parseBuildings,
-  parseMovementRules,
-  RulesetScrapeError,
-  type BuildingReference,
-  type MovementRules
-} from "./rules";
+import { parseMovementRules, RulesetScrapeError, type MovementRules } from "./rules";
 
 /**
  * How much stronger than us the opposition has to be before a hex is called dangerous.
@@ -107,8 +103,13 @@ export function buildRuleset(input: BuildInput): Ruleset {
   // Movement first: it is the part that stops the run, and there is no point reading a catalogue
   // for a ruleset we are going to refuse anyway.
   const movement = parseMovementRules(input.rulesHtml);
-  const buildings = parseBuildings(input.rulesHtml);
   const items = parseItemReference(input.dataHtml);
+  // Buildings come from the data page too - the game's own object list, not the rules page's
+  // generic table - so this reads after the items and before the race check below, which is the
+  // more fundamental refusal and must come first. An empty map is a valid answer: it is what
+  // `Ruleset::knows_buildings()` reads as "this ruleset cannot tell you", so there is no floor
+  // check here.
+  const buildings = parseBuildingReference(input.dataHtml);
 
   // The item parser is tolerant and objects only when it finds nothing at all, so a reshaped page
   // that left a handful of entries readable would sail through. This floor is tied to what the
