@@ -13,9 +13,7 @@ use std::collections::HashSet;
 
 use serde::{Deserialize, Serialize};
 
-use super::grammar::{
-    self, arguments_at_caret, caret_shape, word_at_caret, Arg, CaretShape, Order,
-};
+use super::grammar::{self, arguments_at_caret, caret_at, Arg, CaretShape, Order};
 use super::lexer::utf16_column;
 use crate::movement::rules::Ruleset;
 use crate::report::model::{ItemAmount, MarketItem, ReportRegion, ReportUnit};
@@ -91,18 +89,20 @@ pub fn completions_at_caret(
     report: Option<&ParsedReport>,
     unit_id: Option<&str>,
 ) -> CaretCompletions {
-    let typed = word_at_caret(line_prefix);
-    let (word_start, word) = match typed {
+    let caret = caret_at(line_prefix);
+    let (word_start, word) = match caret.word {
         Some(token) => (token.column_start, token.text),
         None => (utf16_column(line_prefix, line_prefix.len()), String::new()),
     };
 
-    let (position, options) = match caret_shape(line_prefix) {
+    let (position, options) = match caret.shape {
         CaretShape::Nowhere => (CaretPosition::Nowhere, Vec::new()),
         CaretShape::Command => (CaretPosition::Command, Vec::new()),
-        CaretShape::InOrder(..) => (
+        // The line is lexed once for the whole answer: `caret_at` already found the order and the
+        // arguments that may stand here, so what is left is turning them into entries.
+        CaretShape::InOrder(order, args) => (
             CaretPosition::Argument,
-            order_argument_completions(line_prefix, ruleset, report, unit_id),
+            completions_for(order, args, ruleset, report, unit_id),
         ),
     };
 
@@ -130,7 +130,19 @@ pub fn order_argument_completions(
     let Some((order, args)) = arguments_at_caret(line_prefix) else {
         return Vec::new();
     };
+    completions_for(order, args, ruleset, report, unit_id)
+}
 
+/// The entries for one already-known position: the order the caret is inside and the arguments the
+/// grammar allows there. Split out so `completions_at_caret` can answer from the one lexing it has
+/// already done rather than starting the line again (ah-vfq).
+fn completions_for(
+    order: &'static Order,
+    args: Vec<&'static Arg>,
+    ruleset: Option<&Ruleset>,
+    report: Option<&ParsedReport>,
+    unit_id: Option<&str>,
+) -> Vec<OrderCompletion> {
     // The three families answer in a fixed order regardless of which form of the order found
     // them: keywords first, then the item catalogue, then skills. That is what puts the 22 item
     // classes before the items at `GIVE 4573 ALL ` even though the EXCEPT form (which offers the

@@ -1287,28 +1287,43 @@ export function AppShell({
    * three times identically; one entry is all the cache needs, since the next keystroke changes the
    * prefix and kills the old answer. The key carries the ruleset, the report and the unit as well
    * as the prefix: the same prefix typed in another unit's block, or after the ruleset loads, has a
-   * different answer, and a prefix-only key would serve the stale one (ah-vfq).
+   * different answer, and a prefix-only key would serve the stale one (ah-vfq). The parts are
+   * compared one by one rather than joined into a key: `rawReport` is a whole turn's text, and
+   * concatenating it on every keystroke would copy it on every keystroke.
    *
    * A failed core call becomes a `nowhere` answer, which is how the popup stays silent rather than
    * opening empty - the silence `orderCompletion.ts` used to arrange with its own `.catch`.
    */
-  const lastCaret = useRef<{ key: string; answer: Promise<CaretCompletions> } | null>(null);
+  const lastCaret = useRef<{
+    linePrefix: string;
+    rulesetText: string | null;
+    rawReport: string | null;
+    unitId: string | null;
+    answer: Promise<CaretCompletions>;
+  } | null>(null);
   const caretCompletions = useCallback<CaretLookup>(
     (linePrefix) => {
       const unitId = unit?.unitId ?? null;
-      const key = [linePrefix, rulesetText, rawReport, unitId].join("\u0000");
-      if (lastCaret.current?.key === key) {
-        return lastCaret.current.answer;
+      const report = rawReport || null;
+      const hit = lastCaret.current;
+      if (
+        hit &&
+        hit.linePrefix === linePrefix &&
+        hit.rulesetText === rulesetText &&
+        hit.rawReport === report &&
+        hit.unitId === unitId
+      ) {
+        return hit.answer;
       }
       const answer = client
-        .completionsAtCaret(linePrefix, rulesetText, rawReport || null, unitId)
+        .completionsAtCaret(linePrefix, rulesetText, report, unitId)
         .catch<CaretCompletions>(() => ({
           position: "nowhere",
           wordStart: linePrefix.length,
           word: "",
           options: []
         }));
-      lastCaret.current = { key, answer };
+      lastCaret.current = { linePrefix, rulesetText, rawReport: report, unitId, answer };
       return answer;
     },
     [client, rulesetText, rawReport, unit]
