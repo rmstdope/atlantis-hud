@@ -1580,14 +1580,30 @@ fn check_sailing(
             }
         }
 
+        // A level is held by each of a unit's men, not by the unit once - see
+        // `movement::mode::crew_sailing_levels`, which this sums the same way over the
+        // aboard-after set.
         let levels: i64 = aboard
             .iter()
-            .flat_map(|ordered| ordered.unit.skills.iter())
-            .filter(|skill| skill.tag.eq_ignore_ascii_case("SAIL"))
-            .map(|skill| i64::from(skill.level))
+            .flat_map(|ordered| {
+                let men = ordered.unit.men;
+                ordered
+                    .unit
+                    .skills
+                    .iter()
+                    .filter(|skill| skill.tag.eq_ignore_ascii_case("SAIL"))
+                    .map(move |skill| i64::from(skill.level) * men)
+            })
             .sum();
+        // A guessed headcount cannot price an exact number of sailing levels either - the same
+        // doubt `study` already treats `men_estimated` as (`:750`). Raised in review on this
+        // bead's own PR.
+        let headcount_is_doubtful = aboard.iter().any(|ordered| ordered.unit.men_estimated);
         if let Some(required) = sailing_requirement(fleet, ruleset) {
-            if levels < required && options.emits(codes::FLEET_UNDERCREWED) {
+            if !headcount_is_doubtful
+                && levels < required
+                && options.emits(codes::FLEET_UNDERCREWED)
+            {
                 findings.push(captain.finding(
                     hex,
                     codes::FLEET_UNDERCREWED,
@@ -4267,6 +4283,49 @@ mod tests {
         assert_eq!(
             finding.message,
             "Longship [329] is short of sailors: 2 sailing levels aboard, it needs 4, so it will not sail"
+        );
+    }
+
+    /// Atlantis counts sailing levels per man, not per unit: a unit of several men at a low skill
+    /// supplies one level per man. Verification failure on `ah-j0e` (PR #341, fixtures
+    /// `neworigins-3.0.0-g5-f21-t23.rep` and `t24.rep`): a Raft stated `Sailors: 2/2`, crewed by
+    /// two gnolls at sailing 1, was warned as short of sailors because the check summed one level
+    /// per unit instead of per man.
+    #[test]
+    fn sailing_levels_are_reckoned_per_man_not_per_unit() {
+        let raft = Structure {
+            structure_id: "218".to_string(),
+            name: "Ship".to_string(),
+            kind: "Raft".to_string(),
+            description: Some("Load: 70/450; Sailors: 2/2; MaxSpeed: 2.".to_string()),
+            needs: None,
+        };
+        let two_gnolls = with_men(aboard("9508", "218", 20, 1), 2);
+        let region = ReportRegion {
+            structures: vec![raft],
+            ..region(vec![two_gnolls])
+        };
+
+        assert_eq!(
+            codes(&check(vec![region], "unit 9508\nSAIL N\n")),
+            Vec::<&str>::new()
+        );
+    }
+
+    /// A guessed headcount cannot price an exact number of sailing levels: doubt, not a warning.
+    /// Raised in review on this bead's own PR.
+    #[test]
+    fn an_estimated_headcount_silences_the_undercrewed_check() {
+        let mut guessed = aboard("9508", "329", 20, 1);
+        guessed.men_estimated = true;
+        let region = ReportRegion {
+            structures: vec![longship("329")],
+            ..region(vec![guessed])
+        };
+
+        assert_eq!(
+            codes(&check(vec![region], "unit 9508\nSAIL N\n")),
+            Vec::<&str>::new()
         );
     }
 

@@ -278,14 +278,21 @@ pub fn fleet_sailing(
 /// rather than trusted to agree with whatever `"Sailors: H/N"` states, because `H` is the server's
 /// own count of the same thing and comparing it against an independently-summed figure is what
 /// would catch either one being wrong.
+///
+/// A level is held by each of a unit's men, not by the unit once - "The sailors are the number of
+/// skill levels of the Sailing skill that must be aboard the ship" - so a skill's contribution is
+/// `level * men`, not `level`.
 #[must_use]
 pub fn crew_sailing_levels(units_in_hex: &[ReportUnit], structure_id: &str) -> i64 {
     units_in_hex
         .iter()
         .filter(|unit| unit.own && unit.structure_id.as_deref() == Some(structure_id))
-        .flat_map(|unit| unit.skills.iter())
-        .filter(|skill| skill.tag.eq_ignore_ascii_case("SAIL"))
-        .map(|skill| i64::from(skill.level))
+        .flat_map(|unit| {
+            unit.skills
+                .iter()
+                .filter(|skill| skill.tag.eq_ignore_ascii_case("SAIL"))
+                .map(move |skill| i64::from(skill.level) * unit.men)
+        })
         .sum()
 }
 
@@ -605,6 +612,25 @@ mod tests {
 
         let units = vec![a, b, elsewhere, foreign];
         assert_eq!(crew_sailing_levels(&units, "329"), 4);
+    }
+
+    /// Atlantis counts a level per man, not per unit: "The sailors are the number of skill levels
+    /// of the Sailing skill that must be aboard the ship" (`neworigins-rules.html:3747-3752`), and
+    /// a unit's skill level is held by each of its men. A 2-gnoll unit at sailing 1 supplies 2
+    /// levels, not 1 - the false positive from `ah-j0e`'s verification failure, PR #341.
+    #[test]
+    fn crew_levels_are_reckoned_per_man_not_per_unit() {
+        let mut two_gnolls = sample_unit("9508", Some("218"));
+        two_gnolls.men = 2;
+        two_gnolls.skills = vec![crate::report::model::Skill {
+            name: "sailing".to_string(),
+            tag: "SAIL".to_string(),
+            level: 1,
+            points: 30,
+        }];
+
+        let units = vec![two_gnolls];
+        assert_eq!(crew_sailing_levels(&units, "218"), 2);
     }
 
     fn sample_unit(id: &str, structure_id: Option<&str>) -> ReportUnit {
