@@ -12,6 +12,7 @@ import { SeverityMark } from "./primitives";
 import type { CaretLookup } from "../orderCompletion";
 import type { OrderSnippet } from "../orderSnippets";
 import { readUnitOrders } from "../ordersDocument";
+import { useSettingsStore } from "../settingsStore";
 import type { Ref } from "react";
 import { CollapsiblePanel } from "./CollapsiblePanel";
 import { OrdersEditor, type OrdersEditorHandle } from "./OrdersEditor";
@@ -43,6 +44,8 @@ type OrdersPanelProps = {
   save: SaveState;
   /** The core's order vocabulary, for the editor's completion popup. */
   commands: readonly string[];
+  /** Every word the rules know, uppercase, for the Order OCD setting. */
+  orderVocabulary: readonly string[];
   /** The player's snippet library, offered in the same popup. */
   snippets: readonly OrderSnippet[];
   /** What may stand at an argument position, asked of the core once per half-typed word. */
@@ -83,10 +86,14 @@ export function OrdersPanel({
   validated,
   save,
   commands,
+  orderVocabulary,
   snippets,
   caretCompletions,
   editorRef
 }: OrdersPanelProps) {
+  // Read here rather than in the editor: the panel re-renders on a settings change, which is what
+  // keeps the editor's `latest` ref current without rebuilding the view.
+  const orderOcd = useSettingsStore((state) => state.orderOcd);
   const unitId = unit?.unitId ?? null;
   const block = unitId === null ? null : readUnitOrders(document, unitId);
   const lock = lockFor(unit, hex, block);
@@ -135,6 +142,8 @@ export function OrdersPanel({
             ariaLabel={`Orders for unit ${unit?.unitId ?? ""}`}
             problems={problems}
             commands={commands}
+            orderVocabulary={orderVocabulary}
+            orderOcd={orderOcd}
             snippets={snippets}
             caretCompletions={caretCompletions}
             onChange={(text) => {

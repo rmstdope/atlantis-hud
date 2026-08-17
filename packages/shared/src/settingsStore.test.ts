@@ -98,6 +98,24 @@ describe("settings store", () => {
     expect(store().advisoryChecks["not-enough-silver"]).toBe(false);
   });
 
+  it("persists the Order OCD preference", async () => {
+    expect(store().orderOcd).toBe(false);
+    store().setOrderOcd(true);
+    expect(store().orderOcd).toBe(true);
+
+    const storage = useSettingsStore.persist.getOptions().storage;
+    const persisted = await storage?.getItem("atlantis-hud-settings");
+    if (!storage || !persisted) {
+      throw new Error("settings storage was not available");
+    }
+
+    useSettingsStore.setState({ orderOcd: false });
+    await storage.setItem("atlantis-hud-settings", persisted);
+    await useSettingsStore.persist.rehydrate();
+
+    expect(store().orderOcd).toBe(true);
+  });
+
   it("reconciles garbage advisory values to the defaults", () => {
     useSettingsStore.setState({
       advisoryChecks: {
