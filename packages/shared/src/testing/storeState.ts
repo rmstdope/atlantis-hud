@@ -24,9 +24,12 @@ const snapshots = new Map<TestableStore<never>, Snapshot>();
  * `useSyncExternalStore`'s `getServerSnapshot`, and the reason a plain `setState` before a static
  * render changes nothing. Call it with no patch after driving the store through its own actions.
  *
- * Every store it touches is snapshotted the first time, so `restoreStoresForTest()` puts them back
- * exactly as they were - the mutation outlives a `setState`-only reset and would otherwise leak
- * into the next test in the file.
+ * Every store it touches is snapshotted the **first** time, so `restoreStoresForTest()` puts them
+ * back exactly as they were then - the mutation outlives a `setState`-only reset and would
+ * otherwise leak into the next test in the file. That first call is what fixes the restore point:
+ * if it happens after an action, restore rolls back to the post-action state. To roll back to the
+ * pristine store, call `setStoreStateForTest(store)` once before driving the action - to take the
+ * snapshot - and again after it, to mirror.
  */
 export function setStoreStateForTest<T>(store: TestableStore<T>, patch?: Partial<T>): void {
   const key = store as unknown as TestableStore<never>;
