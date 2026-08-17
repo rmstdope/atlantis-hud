@@ -1,50 +1,57 @@
 import type { CompletionSource } from "@codemirror/autocomplete";
-import type { OrderCompletion } from "@atlantis/core-client";
+import type { CaretCompletions, OrderCompletion } from "@atlantis/core-client";
 import { suggestOrderCommands } from "./orderEditor";
+
+/**
+ * How the caret's position and candidates reach the core: one order line up to the caret.
+ *
+ * The one reader of where the caret is. This side used to decide it three times over - twice here
+ * and once in `orderSnippets.ts` - and two of those copies had already drifted over what counts as
+ * a word (ah-vfq). The core lexes the line and answers all three sources at once.
+ */
+export type CaretLookup = (linePrefix: string) => Promise<CaretCompletions>;
 
 /**
  * Completion for the command position: the first word of a line, behind whatever indentation and
  * repeat prefix (`@`) stand before it.
  *
  * Only there. Everything after the command is arguments - directions, item names, quantities -
- * and offering TAX inside a half-typed direction would be noise. The vocabulary is the core's
- * own, fetched through `CoreClient.orderCommands`, so this side cannot drift from the ruleset.
+ * and offering TAX inside a half-typed direction would be noise. Which position the caret is in is
+ * the core's answer, not a regex here; the vocabulary is the core's own too, fetched through
+ * `CoreClient.orderCommands`, so this side cannot drift from the ruleset.
  *
  * Quiet on an empty word unless summoned explicitly: popping open on every fresh line would sit
  * between the player and their own orders.
  */
-export function orderCommandCompletions(commands: readonly string[]): CompletionSource {
-  return (context) => {
+export function orderCommandCompletions(
+  commands: readonly string[],
+  lookUp: CaretLookup
+): CompletionSource {
+  return async (context) => {
     const line = context.state.doc.lineAt(context.pos);
     const before = context.state.sliceDoc(line.from, context.pos);
 
-    // The command position: indentation, an optional @, then the word being typed. Anything else
-    // on the line before the cursor means the command is already written.
-    const match = /^(\s*@?\s*)([A-Za-z]*)$/.exec(before);
-    if (!match) {
+    const caret = await lookUp(before);
+    if (caret.position !== "command") {
       return null;
     }
-    const word = match[2];
-    if (word === "" && !context.explicit) {
+    if (caret.word === "" && !context.explicit) {
       return null;
     }
 
-    const options = suggestOrderCommands(word, commands);
+    const options = suggestOrderCommands(caret.word, commands);
     if (options.length === 0) {
       return null;
     }
 
     return {
-      from: line.from + match[1].length,
+      from: line.from + caret.wordStart,
       options: options.map((command) => ({ label: command, type: "keyword", apply: `${command} ` })),
       // Keep filtering on further keystrokes instead of asking again from scratch.
       validFor: /^[A-Za-z]*$/
     };
   };
 }
-
-/** How the source reaches the core: one order line up to the caret, answered with what may stand there. */
-export type ArgumentLookup = (linePrefix: string) => Promise<readonly OrderCompletion[]>;
 
 /**
  * Whether a completion candidate matches the word being typed - on its `value` (the tag or
@@ -65,8 +72,8 @@ export function matchesArgument(word: string, entry: OrderCompletion): boolean {
  * catalogue and the hex close what may stand there.
  *
  * The vocabulary is the core's own - `completion.rs` answers per position, so this side never
- * learns how an order is shaped and cannot drift from the checker. Quiet in the command position,
- * which the core answers empty and `orderCommandCompletions` owns.
+ * learns how an order is shaped and cannot drift from the checker. Quiet wherever the core says
+ * the caret is not in an argument position, which `orderCommandCompletions` owns.
  *
  * Filters on `value` or `name` rather than `value` alone, which is richer than CodeMirror's own
  * filtering - so the result carries `filter: false` and no `validFor`: with `filter: false`
@@ -75,42 +82,30 @@ export function matchesArgument(word: string, entry: OrderCompletion): boolean {
  * consequence is a core call per keystroke rather than per word, which tag-or-name matching
  * requires and which the cache on both shells makes affordable.
  */
-export function orderArgumentCompletions(lookUp: ArgumentLookup): CompletionSource {
+export function orderArgumentCompletions(lookUp: CaretLookup): CompletionSource {
   return async (context) => {
     const line = context.state.doc.lineAt(context.pos);
     const before = context.state.sliceDoc(line.from, context.pos);
 
-    // The word being typed, anchored to a whitespace boundary. Falls back to an empty word when
-    // the caret sits right after something that is neither a letter nor whitespace - a closing
-    // quote, say (`BUILD "Big Boat"` should still offer COMPLETE) - which only an explicit
-    // invocation (Ctrl+Space) asks for; a keystroke that lands here on its own stays quiet, same
-    // as any other empty position.
-    const match = /(?:^|\s)([A-Za-z]*)$/.exec(before);
-    if (!match && !context.explicit) {
-      return null;
-    }
-    const word = match ? match[1] : "";
-
-    // Still in the command position - indentation, an optional repeat prefix, and the word itself
-    // is all there is. `orderCommandCompletions` owns that position, and asking the core about it
-    // means a round trip per keystroke to be told so.
-    const head = before.slice(0, before.length - word.length);
-    if (!/\S/.test(head.replace(/^\s*@?\s*/, ""))) {
+    const caret = await lookUp(before);
+    if (caret.position !== "argument") {
       return null;
     }
 
-    if (word === "" && !context.explicit) {
+    // Nothing typed of this word yet - the caret sits after whitespace or a closing quote (`BUILD
+    // "Big Boat"` should still offer COMPLETE). Only an explicit invocation (Ctrl+Space) asks for
+    // that; a keystroke that lands here on its own stays quiet, same as any other empty position.
+    if (caret.word === "" && !context.explicit) {
       return null;
     }
 
-    const offered = await lookUp(before).catch(() => []);
-    const options = offered.filter((entry) => matchesArgument(word, entry));
+    const options = caret.options.filter((entry) => matchesArgument(caret.word, entry));
     if (options.length === 0) {
       return null;
     }
 
     return {
-      from: context.pos - word.length,
+      from: line.from + caret.wordStart,
       options: options.map((entry) => ({
         label: entry.value,
         detail: entry.detail || undefined,

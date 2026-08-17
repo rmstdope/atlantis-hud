@@ -8,7 +8,7 @@ import {
   summarizeOrderValidation,
   type ValidatedOrders
 } from "../orderEditor";
-import type { ArgumentLookup } from "../orderCompletion";
+import type { CaretLookup } from "../orderCompletion";
 import type { OrderSnippet } from "../orderSnippets";
 import { readUnitOrders } from "../ordersDocument";
 import type { Ref } from "react";
@@ -45,7 +45,7 @@ type OrdersPanelProps = {
   /** The player's snippet library, offered in the same popup. */
   snippets: readonly OrderSnippet[];
   /** What may stand at an argument position, asked of the core once per half-typed word. */
-  argumentCompletions: ArgumentLookup;
+  caretCompletions: CaretLookup;
   /** The shell's line to the editor, for the shortcut layer's jumps and insertions. */
   editorRef?: Ref<OrdersEditorHandle>;
 };
@@ -83,7 +83,7 @@ export function OrdersPanel({
   save,
   commands,
   snippets,
-  argumentCompletions,
+  caretCompletions,
   editorRef
 }: OrdersPanelProps) {
   const unitId = unit?.unitId ?? null;
@@ -135,7 +135,7 @@ export function OrdersPanel({
             problems={problems}
             commands={commands}
             snippets={snippets}
-            argumentCompletions={argumentCompletions}
+            caretCompletions={caretCompletions}
             onChange={(text) => {
               if (unit) {
                 onChange(unit.unitId, text);

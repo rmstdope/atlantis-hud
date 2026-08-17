@@ -561,6 +561,36 @@ pub fn order_argument_completions_state(
     ))
 }
 
+/// Where the caret is in one order line, what word is being typed, and what may stand there.
+///
+/// One call for all three completion sources: they ask about the same caret on the same keystroke,
+/// and the position is decided in the core so no shell keeps a rule of its own (ah-vfq). The cache
+/// is used exactly as `order_argument_completions_state` uses it, and for the same reason.
+#[wasm_bindgen]
+pub fn completions_at_caret_state(
+    line_prefix: String,
+    ruleset_json: Option<String>,
+    raw_report: Option<String>,
+    unit_id: Option<String>,
+) -> Result<JsValue, JsValue> {
+    let (ruleset, report) = atlantis_hud_core::cache::with_global(|cache| {
+        let ruleset = ruleset_json
+            .as_deref()
+            .and_then(|json| cache.ruleset(json).ok());
+        let report = raw_report
+            .as_deref()
+            .map(|raw| cache.classified_when_possible(raw, ruleset_json.as_deref()));
+        (ruleset, report)
+    });
+
+    to_js(&atlantis_hud_core::completions_at_caret(
+        &line_prefix,
+        ruleset.as_deref(),
+        report.as_deref(),
+        unit_id.as_deref(),
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     // The syntax-only entry point, which the binding above no longer calls: it goes through

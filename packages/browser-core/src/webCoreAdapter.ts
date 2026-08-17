@@ -14,6 +14,7 @@ import type {
   HexNoteRecord,
   KnownMap,
   MoveOrderTraceResponse,
+  CaretCompletions,
   OrderCompletion,
   OrderValidationResult,
   OrdersPreviewResponse,
@@ -50,6 +51,12 @@ export type CoreWasmModule = {
     rawReport: string | null,
     unitId: string | null
   ): OrderCompletion[];
+  completions_at_caret_state(
+    linePrefix: string,
+    rulesetJson: string | null,
+    rawReport: string | null,
+    unitId: string | null
+  ): CaretCompletions;
   plan_route_state(
     rulesetJson: string,
     rawReport: string,
@@ -465,6 +472,14 @@ export function createWebCoreAdapter(
       unitId: string | null
     ) {
       return wasm.order_argument_completions_state(linePrefix, rulesetJson, rawReport, unitId);
+    },
+    async completionsAtCaret(
+      linePrefix: string,
+      rulesetJson: string | null,
+      rawReport: string | null,
+      unitId: string | null
+    ) {
+      return wasm.completions_at_caret_state(linePrefix, rulesetJson, rawReport, unitId);
     },
 
     async listGames() {

@@ -14,9 +14,9 @@ use atlantis_hud_core::report::import::{import_writes, SeenRegion};
 use atlantis_hud_core::report::merge::{merge_report_into_sightings, StoredSighting};
 pub use atlantis_hud_core::report::ParsedReport;
 use atlantis_hud_core::{
-    engine_info, order_argument_completions, order_commands, parse_report, reject_import,
-    reject_merge, EngineInfo, OrderCheckOptions, OrderCompletion, OrderValidationResult,
-    ReportParseResult, ReportParseResultWire,
+    completions_at_caret, engine_info, order_argument_completions, order_commands, parse_report,
+    reject_import, reject_merge, CaretCompletions, EngineInfo, OrderCheckOptions, OrderCompletion,
+    OrderValidationResult, ReportParseResult, ReportParseResultWire,
 };
 use atlantis_hud_core_persistence::{
     create_game, delete_game, delete_hex_note, export_game, import_game, insert_imported_turn,
@@ -482,6 +482,31 @@ pub mod commands {
         });
 
         order_argument_completions(line_prefix, ruleset.as_deref(), report.as_deref(), unit_id)
+    }
+
+    /// Where the caret is in one order line, for the Tauri command surface.
+    ///
+    /// One call for all three completion sources, with the position decided in the core so no shell
+    /// keeps a rule of its own (ah-vfq). The cache is used exactly as
+    /// `command_order_argument_completions` uses it.
+    #[must_use]
+    #[cfg_attr(
+        feature = "tauri",
+        tauri::command(rename_all = "snake_case", rename = "completions_at_caret")
+    )]
+    pub fn command_completions_at_caret(
+        line_prefix: &str,
+        ruleset_json: Option<&str>,
+        raw_report: Option<&str>,
+        unit_id: Option<&str>,
+    ) -> CaretCompletions {
+        let (ruleset, report) = atlantis_hud_core::cache::with_global(|cache| {
+            let ruleset = ruleset_json.and_then(|json| cache.ruleset(json).ok());
+            let report = raw_report.map(|raw| cache.classified_when_possible(raw, ruleset_json));
+            (ruleset, report)
+        });
+
+        completions_at_caret(line_prefix, ruleset.as_deref(), report.as_deref(), unit_id)
     }
 
     /// Validates one order draft for the Tauri command surface.
@@ -1067,8 +1092,8 @@ pub mod commands {
 }
 
 pub use commands::{
-    command_commit_report_import, command_delete_hex_note, command_export_map,
-    command_get_engine_info, command_known_map, command_list_hex_notes,
+    command_commit_report_import, command_completions_at_caret, command_delete_hex_note,
+    command_export_map, command_get_engine_info, command_known_map, command_list_hex_notes,
     command_list_imported_turns, command_load_imported_turn, command_load_latest_imported_turn,
     command_load_merged_reports, command_load_order_draft, command_load_region_sightings,
     command_merge_report, command_order_argument_completions, command_order_commands,

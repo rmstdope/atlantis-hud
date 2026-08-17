@@ -81,6 +81,12 @@ function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
     ) => ({ diagnostics: [], rawOrders, rulesetJson, rawReport, disabledCodes }),
     order_commands_state: () => ["GIVE", "MOVE", "WORK"],
     order_argument_completions_state: () => [],
+    completions_at_caret_state: () => ({
+      position: "nowhere" as const,
+      wordStart: 0,
+      word: "",
+      options: []
+    }),
     export_map_state: (rawReport: string, rememberedJson: string, requestJson: string) =>
       `; Map export from Atlantis HUD\n; ${rawReport} ${rememberedJson} ${requestJson}\n`,
     known_map_state: (rawReport: string, rulesetJson: string | null, rememberedJson: string) => ({

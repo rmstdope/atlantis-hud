@@ -184,6 +184,7 @@ fn main() {
             atlantis_hud_core_tauri::command_validate_orders,
             atlantis_hud_core_tauri::command_order_commands,
             atlantis_hud_core_tauri::command_order_argument_completions,
+            atlantis_hud_core_tauri::command_completions_at_caret,
             atlantis_hud_core_tauri::command_save_order_draft,
             atlantis_hud_core_tauri::command_load_order_draft,
             atlantis_hud_core_tauri::command_list_hex_notes,
