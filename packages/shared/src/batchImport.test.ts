@@ -194,6 +194,35 @@ describe("walkBatch", () => {
     ]);
   });
 
+  /**
+   * The walk merges through `commitMerge`, the half of `mergeTurn` that writes: the map is read
+   * back once at the end of the whole batch, not after every merged step. Merging through the whole
+   * of `mergeTurn` instead would read the sightings and resolve a map per step - work thrown away,
+   * and a read-back failure would then be counted against a step that landed (ah-u4e.3, PR #313).
+   */
+  it("does not read the map back after each merged step", async () => {
+    const core = client({ knownMap: vi.fn().mockResolvedValue({ hexes: [], levels: [], currentTurn: 71 }) });
+    const batch = {
+      read: [
+        { text: "ally", report: report({ factionId: "73", turnNumber: 71 }) },
+        { text: "other", report: report({ factionId: "12", turnNumber: 71 }) }
+      ],
+      candidates: [
+        candidate({ fileName: "ally.rep", factionId: "73", turnNumber: 71 }),
+        candidate({ fileName: "other.rep", factionId: "12", turnNumber: 71 })
+      ],
+      unreadable: []
+    };
+
+    const walk = await walkBatch(core, OPEN_GAME, batch, "95", 71, RULESET, NOW, () => {});
+
+    expect(walk.landed).toHaveLength(2);
+    expect(core.mergeReport).toHaveBeenCalledTimes(2);
+    expect(core.loadRegionSightings).not.toHaveBeenCalled();
+    expect(core.loadMergedReports).not.toHaveBeenCalled();
+    expect(core.knownMap).not.toHaveBeenCalled();
+  });
+
   it("demotes a commit warning to a skip", async () => {
     const core = client({
       commitReportImport: vi.fn().mockRejectedValue(new Error("disk is full"))
