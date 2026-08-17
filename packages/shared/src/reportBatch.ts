@@ -11,13 +11,15 @@
  * is left with the doing - reading the files, walking the steps, and saying what happened.
  */
 
-import { REPORT_NAMES_NO_FACTION } from "./reportLoadDecision";
+import type { ReportUsability } from "./reportLoadDecision";
 
 /** As much of a report as planning a batch needs, plus the name the summary will use for it. */
 export type BatchCandidate = {
   fileName: string;
   factionId: string | null;
   turnNumber: number | null;
+  /** `judgeReportUsable`'s answer for this file. `{ ok: false }` for one that would not even parse. */
+  usable: ReportUsability;
 };
 
 /** One report the batch will act on, and how. */
@@ -138,19 +140,13 @@ export function planReportBatch(
   }[] = [];
 
   for (const [index, candidate] of candidates.entries()) {
-    if (candidate.factionId === null) {
+    // Whether a report can be imported at all is one rule, shared with the single-file path -
+    // `judgeReportUsable`, already answered for this candidate by `prepareBatch` (ah-sgn.1).
+    if (!candidate.usable.ok) {
       skipped.push({
         index,
         fileName: candidate.fileName,
-        reason: REPORT_NAMES_NO_FACTION
-      });
-      continue;
-    }
-    if (candidate.turnNumber === null) {
-      skipped.push({
-        index,
-        fileName: candidate.fileName,
-        reason: "the report does not name its turn"
+        reason: candidate.usable.reason
       });
       continue;
     }
@@ -168,7 +164,8 @@ export function planReportBatch(
     usable.push({
       index,
       candidate,
-      turnNumber: candidate.turnNumber,
+      // `judgeReportUsable` has already refused a report naming no turn, so this is a number.
+      turnNumber: candidate.turnNumber as number,
       own: candidate.factionId === viewer.factionId
     });
   }

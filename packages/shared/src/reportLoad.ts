@@ -34,7 +34,7 @@ import type {
 import type { StatusLine } from "./workspace/shellStatus";
 import { commitTurn, rememberTurn, type MemoryOutcome } from "./gameMemory";
 import { documentFor, draftKeyFor } from "./orderDraft";
-import { decideReportLoad } from "./reportLoadDecision";
+import { decideReportLoad, judgeReportUsable } from "./reportLoadDecision";
 import { sortUnitsForDisplay } from "./hexMapModel";
 import { countsStatus, noticeStatus, warningStatus } from "./workspace/shellStatus";
 
@@ -224,8 +224,10 @@ export type ReportRoute =
   | { kind: "ask"; pending: PendingReportLoad };
 
 /**
- * Where a parsed report goes: `decideReportLoad` plus the foreign-report prompt's snapshot - the
- * viewer's identity is taken here, when the question is raised, never when it is answered.
+ * Where a parsed report goes: `judgeReportUsable` first - the one answer to whether a report can be
+ * imported at all, shared with the batch importer - then `decideReportLoad` and the foreign-report
+ * prompt's snapshot, whose viewer identity is taken here, when the question is raised, never when it
+ * is answered.
  */
 export function routeReport(
   viewer: ParsedReport | null,
@@ -233,14 +235,15 @@ export function routeReport(
   text: string,
   fileName: string
 ): ReportRoute {
+  const usable = judgeReportUsable(report);
+  if (!usable.ok) {
+    return { kind: "reject", reason: usable.reason };
+  }
+
   const decision = decideReportLoad(
     viewer ? { factionId: viewer.header.factionId, turnNumber: viewer.header.turnNumber } : null,
     { factionId: report.header.factionId, turnNumber: report.header.turnNumber }
   );
-
-  if (decision.kind === "reject") {
-    return { kind: "reject", reason: decision.reason };
-  }
 
   if (decision.kind === "storeOnly") {
     return { kind: "storeOnly", currentTurn: decision.currentTurn };
