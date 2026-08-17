@@ -90,6 +90,13 @@ export type SettingsState = {
    */
   movementPlanner: boolean;
   /**
+   * Whether the orders editor uppercases the command keywords as they are typed (Order OCD).
+   *
+   * Off by default: orders are case-insensitive to the engine, so this is purely a matter of how
+   * the player likes their turn to read.
+   */
+  orderOcd: boolean;
+  /**
    * Whether the keyboard shortcuts overlay shows itself when the application starts.
    *
    * On by default, and the only piece of the interface that appears uninvited. It earns that: the
@@ -110,6 +117,7 @@ export type SettingsState = {
   setInterfaceSize: (percent: number) => void;
   setAdvisoryCheck: (code: AdvisoryCheckCode, enabled: boolean) => void;
   setMovementPlanner: (enabled: boolean) => void;
+  setOrderOcd: (value: boolean) => void;
   setShowShortcutsAtStartup: (enabled: boolean) => void;
   addSnippet: (snippet: OrderSnippet) => void;
   updateSnippet: (id: string, changes: Pick<OrderSnippet, "name" | "body">) => void;
@@ -125,6 +133,7 @@ type Persisted = Pick<
   | "interfaceSize"
   | "advisoryChecks"
   | "movementPlanner"
+  | "orderOcd"
   | "showShortcutsAtStartup"
   | "snippets"
 >;
@@ -245,6 +254,7 @@ const DEFAULTS: Persisted = {
   interfaceSize: DEFAULT_INTERFACE_SIZE,
   advisoryChecks: DEFAULT_ADVISORY_CHECKS,
   movementPlanner: false,
+  orderOcd: false,
   showShortcutsAtStartup: true,
   snippets: []
 };
@@ -287,6 +297,10 @@ export const useSettingsStore = create<SettingsState>()(
         set({ movementPlanner });
       },
 
+      setOrderOcd: (orderOcd) => {
+        set({ orderOcd });
+      },
+
       setShowShortcutsAtStartup: (showShortcutsAtStartup) => {
         set({ showShortcutsAtStartup });
       },
@@ -320,6 +334,7 @@ export const useSettingsStore = create<SettingsState>()(
         interfaceSize: state.interfaceSize,
         advisoryChecks: state.advisoryChecks,
         movementPlanner: state.movementPlanner,
+        orderOcd: state.orderOcd,
         showShortcutsAtStartup: state.showShortcutsAtStartup,
         snippets: state.snippets
       })

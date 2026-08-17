@@ -4,8 +4,16 @@ import { defaultKeymap, history, historyKeymap, redo } from "@codemirror/command
 import { lintGutter, setDiagnostics } from "@codemirror/lint";
 import { Annotation, EditorState, Transaction } from "@codemirror/state";
 import { EditorView, keymap, tooltips } from "@codemirror/view";
-import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef } from "react";
+import {
+  forwardRef,
+  useEffect,
+  useImperativeHandle,
+  useLayoutEffect,
+  useMemo,
+  useRef
+} from "react";
 import { minimalChange } from "../editorReconcile";
+import { buildVocabulary, keywordJustFinished, uppercaseKeywords } from "../orderCase";
 import { shownUnitText } from "../orderEditor";
 import { orderArgumentCompletions, orderCommandCompletions, type CaretLookup } from "../orderCompletion";
 import { toEditorDiagnostics } from "../orderLint";
@@ -46,6 +54,10 @@ type OrdersEditorProps = {
   problems: OrderDiagnostic[];
   /** The core's order vocabulary, for the completion popup. Empty until fetched, which just keeps it quiet. */
   commands: readonly string[];
+  /** Whether keywords uppercase themselves as they are typed (the Order OCD setting, ah-bn6.2). */
+  orderOcd: boolean;
+  /** Every word the rules know, uppercase, as `client.orderVocabulary` gives them. */
+  orderVocabulary: readonly string[];
   /** The player's snippet library, offered in the same popup and expanded with tab-through fields. */
   snippets: readonly OrderSnippet[];
   /** What may stand at an argument position, asked of the core once per half-typed word. */
@@ -93,6 +105,8 @@ export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(fu
     ariaLabel,
     problems,
     commands,
+    orderOcd,
+    orderVocabulary,
     snippets,
     caretCompletions,
     onChange
@@ -103,8 +117,31 @@ export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(fu
   const view = useRef<EditorView | null>(null);
 
   // Read through refs by the editor's callbacks, so a fresh render never means a rebuilt editor.
-  const latest = useRef({ text, ariaLabel, savedAt, commands, snippets, caretCompletions, onChange });
-  latest.current = { text, ariaLabel, savedAt, commands, snippets, caretCompletions, onChange };
+  // The set is derived here rather than in the extension: the editor is built once per unit, so
+  // anything it reads must come through `latest` or it freezes at whatever it was on mount.
+  const vocabulary = useMemo(() => buildVocabulary(orderVocabulary), [orderVocabulary]);
+  const latest = useRef({
+    text,
+    ariaLabel,
+    savedAt,
+    commands,
+    orderOcd,
+    vocabulary,
+    snippets,
+    caretCompletions,
+    onChange
+  });
+  latest.current = {
+    text,
+    ariaLabel,
+    savedAt,
+    commands,
+    orderOcd,
+    vocabulary,
+    snippets,
+    caretCompletions,
+    onChange
+  };
 
   useLayoutEffect(() => {
     const parent = container.current;
@@ -118,6 +155,33 @@ export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(fu
         doc: shownUnitText(latest.current.text, latest.current.savedAt),
         extensions: [
           history(),
+          // Order OCD, as the word ends: the space or newline that finishes a keyword uppercases
+          // it in the same transaction that inserts the space, so one Ctrl+Z puts back both.
+          // Never annotated External - this change must reach onChange and be saved.
+          EditorView.inputHandler.of((editor, from, to, inserted) => {
+            if (!latest.current.orderOcd) {
+              return false;
+            }
+            if (from !== to || (inserted !== " " && inserted !== "\n")) {
+              return false;
+            }
+            const line = editor.state.doc.lineAt(from);
+            const found = keywordJustFinished(line.text, from - line.from, latest.current.vocabulary);
+            if (!found) {
+              return false;
+            }
+            editor.dispatch({
+              changes: [
+                { from: line.from + found.from, to: line.from + found.to, insert: found.upper },
+                { from, to: from, insert: inserted }
+              ],
+              selection: { anchor: from + inserted.length }
+              // Deliberately no `input.type` user event: that is what history joins runs of
+              // typing under, and joined here one Ctrl+Z would swallow the whole word instead of
+              // handing it back as it was typed. Its own step is the single-press promise.
+            });
+            return true;
+          }),
           // Mod-Shift-z redoes on every platform, deliberately beyond what historyKeymap
           // binds: its stock redo bindings are platform variants (mac Mod-Shift-z, a
           // linux-only Ctrl-Shift-z), and windows users expect the chord too. preventDefault
@@ -239,6 +303,22 @@ export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(fu
     });
 
     view.current = created;
+
+    // A block written before the setting was on is tidied the first time its unit is opened with
+    // the setting on (the navigator's E3). Not External: it is a real edit to the draft and must
+    // be saved. Kept out of the history - the player did not type it. An empty vocabulary (the
+    // call still in flight) makes this a no-op, and the block is tidied at the next open.
+    if (latest.current.orderOcd) {
+      const current = created.state.doc.toString();
+      const tidied = uppercaseKeywords(current, latest.current.vocabulary);
+      if (tidied !== current) {
+        created.dispatch({
+          changes: { from: 0, to: current.length, insert: tidied },
+          annotations: [Transaction.addToHistory.of(false)]
+        });
+      }
+    }
+
     return () => {
       created.destroy();
       view.current = null;

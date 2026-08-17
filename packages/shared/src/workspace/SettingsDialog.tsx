@@ -195,6 +195,8 @@ export function GlobalSettings() {
   const setShowShortcutsAtStartup = useSettingsStore((state) => state.setShowShortcutsAtStartup);
   const movementPlanner = useSettingsStore((state) => state.movementPlanner);
   const setMovementPlanner = useSettingsStore((state) => state.setMovementPlanner);
+  const orderOcd = useSettingsStore((state) => state.orderOcd);
+  const setOrderOcd = useSettingsStore((state) => state.setOrderOcd);
 
   return (
     <div className="flex flex-col gap-3">
@@ -301,6 +303,14 @@ export function GlobalSettings() {
         testId="settings-movement-planner"
         checked={movementPlanner}
         onChange={setMovementPlanner}
+      />
+
+      <SettingToggle
+        title="Order OCD"
+        description="Uppercase the command keywords as you write, so MOVE, STUDY and ALL stand out from names. Text inside quotes is left alone."
+        testId="settings-order-ocd"
+        checked={orderOcd}
+        onChange={setOrderOcd}
       />
     </div>
   );
