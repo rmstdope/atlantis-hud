@@ -667,7 +667,7 @@ function UnitRow({
         </span>
         {unit.onGuard ? (
           <span
-            className={`ml-1.5 text-[10px] text-warn${guardChange ? " italic" : ""}`}
+            className={`ml-1.5 text-pane-sm text-warn${guardChange ? " italic" : ""}`}
             data-predicted={guardChange ? "true" : undefined}
             title={originalTooltip(guardChange)}
           >
@@ -676,16 +676,22 @@ function UnitRow({
         ) : null}
         {/* Where the unit is bound or from, said inline: the row is the story of a move. */}
         {departing && unit.departingTo ? (
-          <span className="ml-1.5 text-[10px] text-ink-dim">→ {unit.departingTo}</span>
+          <span className="ml-1.5 text-pane-sm text-ink-dim">→ {unit.departingTo}</span>
         ) : null}
         {departing && !unit.departingTo ? (
-          <span className="ml-1.5 text-[10px] text-ink-dim">→ …</span>
+          <span className="ml-1.5 text-pane-sm text-ink-dim">→ …</span>
+        ) : null}
+        {/* Brass and upright, not the italic that means "a field the orders changed": the unit
+            wrote no order, it is simply going where its ship goes. Deliberately not gated on
+            `departingTo`, so a passenger of an untraceable ship still names the hull. */}
+        {departing && unit.aboard ? (
+          <span className="ml-1.5 text-pane-sm text-brass">aboard {unit.aboard}</span>
         ) : null}
         {unit.previewStatus === "arriving" ? (
-          <span className={`ml-1.5 text-[10px] ${PREDICTED}`}>← {unit.arrivingFrom ?? "…"}</span>
+          <span className={`ml-1.5 text-pane-sm ${PREDICTED}`}>← {unit.arrivingFrom ?? "…"}</span>
         ) : null}
         {unit.previewStatus === "formed" ? (
-          <span className={`ml-1.5 text-[10px] ${PREDICTED}`}>new</span>
+          <span className={`ml-1.5 text-pane-sm ${PREDICTED}`}>new</span>
         ) : null}
       </Td>
     ),
