@@ -516,6 +516,37 @@ export function createWebCoreAdapter(
       await store.deleteGame(gameId);
     },
 
+    async resetGame(gameId: string, now: string) {
+      const game = await store.getGame(gameId);
+      if (!game) {
+        throw new Error(`no game with id ${gameId}`);
+      }
+
+      const previous = game.manifest as GameManifest;
+      // Built field by field, never spread from `previous`: most of a manifest does *not* survive a
+      // reset, and a spread would carry every field added later through it silently. `activeFactionId`
+      // is simply absent, which is how the optional field says "none".
+      const manifest: GameManifest = {
+        manifestVersion: previous.manifestVersion,
+        metadata: {
+          gameId: previous.metadata.gameId,
+          gameName: previous.metadata.gameName,
+          rulesetId: previous.metadata.rulesetId
+        },
+        reportSources: [],
+        createdAt: now,
+        lastOpenedAt: now
+      };
+      // The registry row first — the opposite order from the desktop's rename-aside, and for the same
+      // reason: a failure after this leaves an empty game, which is what was asked for, while a
+      // failure the other way round would leave a full game the picker no longer lists. Do not "make
+      // the two platforms consistent" here.
+      await store.putGame({ ...game, manifest });
+      await store.dropGameData(game.databasePath);
+
+      return { ...game, manifest, gameFilePath: game.databasePath };
+    },
+
     async exportGame(gameId: string, exportedAt: string) {
       const game = await store.getGame(gameId);
       if (!game) {

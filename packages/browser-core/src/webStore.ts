@@ -112,6 +112,8 @@ export interface WebStore {
   getGame(gameId: string): Promise<StoredGame | null>;
   /** Forgets a game and drops the database holding everything it stored. */
   deleteGame(gameId: string): Promise<void>;
+  /** Drops one game's own IndexedDB database, leaving the registry row alone. */
+  dropGameData(databasePath: string): Promise<void>;
   putImportedTurn(turn: StoredTurn): Promise<void>;
   getImportedTurn(
     databasePath: string,
@@ -357,16 +359,19 @@ export function createIndexedDbWebStore(): WebStore {
         return;
       }
 
+      await this.dropGameData(stored.databasePath);
+    },
+    async dropGameData(databasePath) {
       // Close our handle first: an open connection blocks the delete, and a delete that silently
       // waits forever would leave the game's turns behind while the picker says it is gone.
-      const handle = gameHandles.get(stored.databasePath);
-      gameHandles.delete(stored.databasePath);
+      const handle = gameHandles.get(databasePath);
+      gameHandles.delete(databasePath);
       if (handle) {
         (await handle).close();
       }
 
       await promisify(
-        indexedDB.deleteDatabase(gameDatabaseName(stored.databasePath)) as unknown as IDBRequest
+        indexedDB.deleteDatabase(gameDatabaseName(databasePath)) as unknown as IDBRequest
       );
     },
     putImportedTurn: (turn) => write(turn.databasePath, IMPORTED_TURN_STORE, turn),
@@ -462,11 +467,14 @@ export function createMemoryWebStore(): WebStore {
       if (!stored) {
         return;
       }
-      dropDatabase(turns, stored.databasePath);
-      dropDatabase(drafts, stored.databasePath);
-      dropDatabase(sightings, stored.databasePath);
-      dropDatabase(merges, stored.databasePath);
-      dropDatabase(hexNotes, stored.databasePath);
+      await this.dropGameData(stored.databasePath);
+    },
+    async dropGameData(databasePath) {
+      dropDatabase(turns, databasePath);
+      dropDatabase(drafts, databasePath);
+      dropDatabase(sightings, databasePath);
+      dropDatabase(merges, databasePath);
+      dropDatabase(hexNotes, databasePath);
     },
     async putImportedTurn(turn) {
       turns.set(composite(turn.databasePath, turn.factionId, turn.turnNumber), turn);

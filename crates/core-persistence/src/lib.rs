@@ -1990,8 +1990,7 @@ mod tests {
 
         assert_eq!(reset.manifest.metadata.game_id, GAME_ID);
         assert_eq!(
-            reset.manifest.metadata.game_name,
-            "Faction 12 - Spring 12",
+            reset.manifest.metadata.game_name, "Faction 12 - Spring 12",
             "the name is one of the three things a reset keeps"
         );
         assert_eq!(reset.manifest.metadata.ruleset_id, "neworigins");
@@ -2005,7 +2004,10 @@ mod tests {
         // What was handed back has to match what is on disk.
         let reopened =
             open_game(dir.path(), GAME_ID, "2026-08-17T10:00:00Z").expect("reopen should succeed");
-        assert_eq!(reopened.manifest.metadata.game_name, "Faction 12 - Spring 12");
+        assert_eq!(
+            reopened.manifest.metadata.game_name,
+            "Faction 12 - Spring 12"
+        );
         assert_eq!(reopened.manifest.metadata.ruleset_id, "neworigins");
         assert!(reopened.manifest.report_sources.is_empty());
         assert_eq!(reopened.manifest.created_at, "2026-08-17T09:00:00Z");
@@ -2014,7 +2016,8 @@ mod tests {
     #[test]
     fn a_reset_game_holds_no_turns_orders_notes_or_sightings() {
         let dir = tempdir().expect("tempdir");
-        let created = create_game(dir.path(), &fixture_manifest()).expect("creation should succeed");
+        let created =
+            create_game(dir.path(), &fixture_manifest()).expect("creation should succeed");
 
         let turn = turn_in(&created, "17", "a turn worth forgetting");
         upsert_imported_turn(&created.database_path, &turn, IMPORTED_AT, IMPORTED_AT)
@@ -2166,7 +2169,8 @@ mod tests {
         )
         .expect("seed kept");
 
-        reset_game(dir.path(), "emptied", "2026-08-17T09:00:00Z").expect("the reset should succeed");
+        reset_game(dir.path(), "emptied", "2026-08-17T09:00:00Z")
+            .expect("the reset should succeed");
 
         let survivor = load_imported_turn(&kept.database_path, &turn_in(&kept, "17", "").key)
             .expect("load should succeed")

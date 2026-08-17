@@ -495,6 +495,8 @@ export interface CoreAdapter {
   createGame(manifest: GameManifest): Promise<OpenedGame>;
   openGame(gameId: string, openedAt: string): Promise<OpenedGame>;
   deleteGame(gameId: string): Promise<void>;
+  /** Empties a game and keeps it: same id, name and ruleset, nothing else. Resolves the fresh game. */
+  resetGame(gameId: string, now: string): Promise<OpenedGame>;
   exportGame(gameId: string, exportedAt: string): Promise<string>;
   importGame(backupJson: string, openedAt: string): Promise<OpenedGame>;
   setGameRuleset(gameId: string, rulesetId: string): Promise<GameManifest>;
