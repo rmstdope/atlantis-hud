@@ -113,10 +113,10 @@ function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
       rawReport: string,
       rememberedJson: string,
       unitId: string,
-      orders: string
+      ordersDocument: string
     ) => ({
       path: null,
-      echoed: { rulesetJson, rawReport, rememberedJson, unitId, orders }
+      echoed: { rulesetJson, rawReport, rememberedJson, unitId, ordersDocument }
     }),
     preview_orders_state: (
       rulesetJson: string,

@@ -1798,8 +1798,16 @@ export function AppShell({
   // entirely while the movement layer is off: the answer could not be drawn, and toggling the
   // layer back on re-runs this and asks again.
   useEffect(() => {
-    const orders = (unit?.own ? readUnitOrders(ordersDocument, unit.unitId) : null) ?? "";
-    if (!layers.movement || !unit?.own || !orders.trim() || ruleset.status !== "ready" || !rawReport) {
+    // The whole document goes to the core, not this unit's block: a unit standing aboard a ship
+    // writes no order of its own and goes where the hull goes, so the order it travels by may be
+    // another unit's (ah-048). The core settles which, once, for the map and the units pane alike.
+    if (
+      !layers.movement ||
+      !unit?.own ||
+      !ordersDocument.trim() ||
+      ruleset.status !== "ready" ||
+      !rawReport
+    ) {
       setOrderTrace(null);
       return undefined;
     }
@@ -1807,7 +1815,7 @@ export function AppShell({
     let cancelled = false;
     const timer = setTimeout(() => {
       void client
-        .traceMoveOrders(ruleset.text, rawReport, rememberedJson, unit.unitId, orders)
+        .traceMoveOrders(ruleset.text, rawReport, rememberedJson, unit.unitId, ordersDocument)
         .then((answer) => {
           if (!cancelled) {
             setOrderTrace(answer);

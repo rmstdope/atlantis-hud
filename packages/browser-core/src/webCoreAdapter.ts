@@ -69,7 +69,7 @@ export type CoreWasmModule = {
     rawReport: string,
     rememberedJson: string,
     unitId: string,
-    orders: string
+    ordersDocument: string
   ): MoveOrderTraceResponse;
   export_map_state(rawReport: string, rememberedJson: string, requestJson: string): string;
   known_map_state(
@@ -425,10 +425,17 @@ export function createWebCoreAdapter(
       rawReport: string,
       rememberedJson: string,
       unitId: string,
-      orders: string
+      ordersDocument: string
     ) {
-      // Straight through for the same reason planRoute is: no browser storage stands in.
-      return wasm.trace_move_orders_state(rulesetJson, rawReport, rememberedJson, unitId, orders);
+      // Straight through for the same reason planRoute is: no browser storage stands in. The whole
+      // document goes, not one unit's block: a passenger's route is the hull's (ah-048).
+      return wasm.trace_move_orders_state(
+        rulesetJson,
+        rawReport,
+        rememberedJson,
+        unitId,
+        ordersDocument
+      );
     },
     async exportMap(rawReport: string, rememberedJson: string, requestJson: string) {
       // Straight through as well: the export is pure computation over the arguments, and the file
