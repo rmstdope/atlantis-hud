@@ -68,7 +68,10 @@ test("the completion popup is not clipped by the orders editor", async ({ page }
   await loadReport(page);
   const popup = await openSkillCompletions(page);
 
-  const editorBox = await ordersInput(page).boundingBox();
+  // The `overflow-hidden` container, not `ordersInput`'s inner `.cm-content`: the container is
+  // what clips, and it is the wider of the two, so probing against the content box could land a
+  // point that is past the text but still inside the clipping box.
+  const editorBox = await page.getByTestId("orders-input").boundingBox();
   const popupBox = await popup.boundingBox();
   expect(editorBox).not.toBeNull();
   expect(popupBox).not.toBeNull();
