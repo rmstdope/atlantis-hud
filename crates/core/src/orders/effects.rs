@@ -216,10 +216,16 @@ pub fn preview_orders_for_remembered_report(
         if let Some(destination) = arrival {
             let mut arrived = entry.unit.clone();
             arrived.region_id.clone_from(&destination);
-            // A walker cannot take a building with it, and a carried unit provably arrives still
-            // inside its hull - but a fleet keeping its structure on arrival is ah-l2i.3, so until
-            // that lands every arriving row is drawn ashore.
-            arrived.structure_id = None;
+            // A walker cannot take a building with it. A ship can, and does: the hull is what is
+            // moving, so the unit is still standing in it when it gets there - the one that wrote
+            // the SAIL and every passenger alike (ah-l2i.3). Keyed off the origin region, because
+            // `arrived.region_id` is already the destination by now.
+            let sails_along = entry.unit.structure_id.as_deref().is_some_and(|id| {
+                sailing.contains_key(&(entry.unit.region_id.clone(), id.to_string()))
+            });
+            if !sails_along {
+                arrived.structure_id = None;
+            }
             regions
                 .entry(destination.clone())
                 .or_default()
@@ -1648,6 +1654,48 @@ mod tests {
             passenger.is_none(),
             "the passenger is untouched: {passenger:?}"
         );
+    }
+
+    #[test]
+    fn a_sailing_fleet_arrives_with_its_hull() {
+        // The hull is what is moving, so the unit that wrote the order is still standing in it
+        // when it gets there: the destination's `in` column reads the ship, not a dash.
+        let response = fleet_preview(WAVECREST, "unit 900\nSAIL SE\n");
+
+        let arrived = row(&response, "1:2,2", "900").expect("the sailing unit arrives");
+        assert_eq!(arrived.unit.structure_id.as_deref(), Some("329"));
+    }
+
+    #[test]
+    fn everyone_aboard_arrives_still_aboard() {
+        let response = fleet_preview(WAVECREST, "unit 900\nSAIL SE\n");
+
+        let arrived = row(&response, "1:2,2", "901").expect("the passenger arrives");
+        assert_eq!(arrived.unit.structure_id.as_deref(), Some("329"));
+    }
+
+    #[test]
+    fn a_walker_leaving_a_fort_arrives_outside_it() {
+        // A building never travels, so a unit standing in one arrives ashore.
+        let response = preview("unit 901\nENTER 5\nMOVE SE\n");
+
+        let arrived = row(&response, "1:2,2", "901").expect("the walker arrives");
+        assert_eq!(arrived.unit.structure_id, None);
+    }
+
+    #[test]
+    fn a_unit_that_left_the_ship_before_moving_arrives_outside() {
+        // `LEAVE` runs before movement is resolved, so there is no hull to carry.
+        let response = fleet_preview(WAVECREST, "unit 900\nLEAVE\nSAIL SE\n");
+
+        for region_id in ["1:1,1", "1:2,2"] {
+            if let Some(unit) = row(&response, region_id, "900") {
+                assert_eq!(
+                    unit.unit.structure_id, None,
+                    "it left the hull before moving ({region_id})"
+                );
+            }
+        }
     }
 
     /// Every order this module applies must be one the grammar recognises, so the two cannot
