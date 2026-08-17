@@ -35,4 +35,47 @@ describe("the committed ruleset", () => {
     expect(built, `config/public/ruleset.json is not the scraper's output; regenerate it with:\n  ${REGENERATE}`)
       .toEqual(COMMITTED);
   });
+
+  /**
+   * The shorter list, and the one that would notice a magic skill quietly becoming mundane. `ANNI`
+   * (annihilation) is magic - its description names no magic word, but it is the one skill the page
+   * prices nowhere (`cost: null`), which `SkillEntry`'s own doc glosses as "cannot be studied by
+   * ordinary means" - so a `STUDY` order for it is not a case `ah-a2k.2` can ever meet, and it is
+   * left here deliberately rather than special-cased in the scraper.
+   */
+  it("classifies exactly twenty-six skills as mundane", () => {
+    const mundane = Object.values(COMMITTED.skills)
+      .filter((skill) => !skill.magic)
+      .map((skill) => skill.tag)
+      .sort();
+
+    expect(mundane).toEqual([
+      "ANNI",
+      "ARMO",
+      "BUIL",
+      "CARP",
+      "COMB",
+      "COOK",
+      "ENTE",
+      "FARM",
+      "FISH",
+      "HEAL",
+      "HERB",
+      "HORS",
+      "HUNT",
+      "LBOW",
+      "LUMB",
+      "MINI",
+      "OBSE",
+      "QUAM",
+      "QUAR",
+      "RIDI",
+      "SAIL",
+      "SHIP",
+      "STEA",
+      "TACT",
+      "WEAP",
+      "XBOW"
+    ]);
+  });
 });

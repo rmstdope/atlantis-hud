@@ -311,6 +311,12 @@ pub struct SkillEntry {
     /// scraped.
     #[serde(default)]
     pub produces: Vec<Production>,
+    /// Whether this is one of the magic skills, which the data page marks nowhere and the scraper
+    /// therefore reads from the skill's own description. `false` for a skill scraped before this
+    /// was added, and for `annihilation`, whose description names no magic and which cannot be
+    /// studied by ordinary means anyway.
+    #[serde(default)]
+    pub magic: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -577,6 +583,16 @@ impl Ruleset {
             .is_some_and(|item| item.kind == ItemKind::Man)
     }
 
+    /// Whether a skill tag names one of the magic skills.
+    ///
+    /// The catalogue settles it when it was scraped with this known; a skill it does not carry, or
+    /// a ruleset generated before the flag existed, answers `false`, and a caller that must not
+    /// guess should treat that as "cannot say" rather than as "mundane".
+    #[must_use]
+    pub fn is_magic(&self, tag: &str) -> bool {
+        self.skills.get(tag).is_some_and(|skill| skill.magic)
+    }
+
     /// The item an order names, written as a tag, a name, or the plural the rules' own examples
     /// use.
     ///
@@ -747,6 +763,39 @@ mod tests {
         let entry: ItemEntry =
             serde_json::from_str(json).expect("an entry missing sailingSkill should still parse");
         assert_eq!(entry.sailing_skill, None);
+    }
+
+    /// force, pattern, spirit, necromancy, teleportation and illusion are magic; mining, lumberjack,
+    /// combat, sailing and building are not - the acceptance criteria for `ah-a2k.1`, checked
+    /// against the committed ruleset rather than trusted from the doc comment alone.
+    #[test]
+    fn a_magic_skill_is_known_from_the_catalogue() {
+        let ruleset = ruleset();
+        for magic in ["FORC", "PATT", "SPIR", "NECR", "TELE", "ILLU"] {
+            assert!(ruleset.is_magic(magic), "{magic} should be magic");
+        }
+        for mundane in ["MINI", "LUMB", "COMB", "SAIL", "BUIL"] {
+            assert!(!ruleset.is_magic(mundane), "{mundane} should not be magic");
+        }
+        // A tag the catalogue has never heard of cannot say "magic" any more than "mundane" - see
+        // `is_magic`'s own doc comment.
+        assert!(!ruleset.is_magic("NOPE"));
+    }
+
+    /// Mirrors `a_ruleset_written_before_this_field_existed_still_loads` above, for the skill
+    /// catalogue: `#[serde(default)]` is what lets `Ruleset::from_json` keep working on a ruleset
+    /// generated before this field existed, exactly as `cast` and `produces` already do.
+    #[test]
+    fn a_ruleset_without_the_magic_flag_still_parses() {
+        let json = r#"{
+            "tag": "MINI",
+            "name": "mining",
+            "cost": 10,
+            "maxLevel": 5
+        }"#;
+        let entry: SkillEntry =
+            serde_json::from_str(json).expect("a skill entry missing magic should still parse");
+        assert!(!entry.magic);
     }
 
     /// The spellings come back in the order they must be tried, and an empty text names nothing.
