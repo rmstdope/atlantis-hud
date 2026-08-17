@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ah-l2i — how a carried unit's row reads</title>
+<style>
+  :root { --page:#10151c; --panel:#171e28; --raised:#1c2531; --edge:#2a3442; --ink:#d7dee8; --soft:#aab3c0; --dim:#8a94a3;
+          --brass:#c9a24b; --select:#4d8fd6; --ok:#5eb45e; --danger:#d9534f; --warn:#d8a13a; }
+  body { background: var(--page); color: var(--ink); font: 14px/1.5 system-ui, sans-serif; margin: 0; padding: 24px 32px 64px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  h2 { font-size: 16px; margin: 38px 0 6px; border-top: 1px solid var(--edge); padding-top: 18px; }
+  h3 { font-size: 13.5px; margin: 0 0 8px; color: var(--soft); }
+  p.note { color: var(--dim); max-width: 90ch; }
+  p.note em { color: var(--soft); font-style: normal; }
+  .row { display: flex; gap: 30px; flex-wrap: wrap; margin: 14px 0 8px; align-items: flex-start; }
+  .variant { width: 440px; }
+  .cost { color: var(--dim); font-size: 13px; margin: 10px 0 0; max-width: 58ch; }
+  .orders { background: var(--raised); border: 1px solid var(--edge); border-radius: 4px; padding: 8px 10px;
+            font: 11.5px/1.7 ui-monospace, Menlo, monospace; color: var(--soft); margin: 0 0 14px; white-space: pre; }
+  .orders b { color: var(--brass); font-weight: normal; }
+  .dock { border: 1px solid var(--edge); border-radius: 6px; background: var(--panel); overflow: hidden; }
+  .dock .cap { font-size: 11.5px; color: var(--dim); padding: 5px 10px; border-bottom: 1px solid var(--edge); background: var(--raised); }
+  table { border-collapse: collapse; width: 100%; font-size: 11.5px; }
+  th { text-align: left; color: var(--dim); font-weight: normal; padding: 4px 8px; border-bottom: 1px solid var(--edge); white-space: nowrap; }
+  td { padding: 4px 8px; white-space: nowrap; }
+  tr.dep { opacity: .6; }
+  .own { color: var(--ok); }
+  .uid { color: var(--select); }
+  .to { color: var(--dim); margin-left: 6px; }
+  .from { color: var(--warn); font-style: italic; margin-left: 6px; }
+  .aboard { color: var(--brass); margin-left: 6px; }
+  .tag { display: inline-block; border: 1px solid var(--brass); border-radius: 3px; padding: 0 5px; color: var(--brass);
+         font-size: 11px; margin-left: 8px; vertical-align: 1px; }
+</style>
+</head>
+<body>
+
+<h1>ah-l2i — how a <em>carried</em> unit's row reads</h1>
+<p class="note">You chose <strong>B</strong>: everyone aboard a sailing fleet travels with it. That leaves one thing the first mockup
+could not settle. The Sea Rovers wrote the <code>SAIL</code> order; the Marines wrote nothing and are simply aboard. Should their two rows
+look the same? Every variant below is the same hex, the same orders, and the same dimming — only the marker text differs.</p>
+
+<div class="orders">unit 1471   <span style="color:var(--dim)">; Sea Rovers, aboard Wavecrest</span>
+  <b>SAIL</b> S S
+
+unit 1472   <span style="color:var(--dim)">; Marines, aboard Wavecrest — no orders of their own</span>
+unit 1602   <span style="color:var(--dim)">; Quarrymen, ashore</span>
+  <b>MOVE</b> N</div>
+
+<h2>Marker for a carried unit</h2>
+<div class="row">
+  <div class="variant">
+    <h3>1 — identical to an ordered unit <span class="tag">1</span></h3>
+    <div class="dock"><div class="cap">units in plain (49,31)</div>
+      <table>
+        <tr><th></th><th>unit</th><th>name</th><th>men</th><th>in</th></tr>
+        <tr class="dep"><td class="own">*</td><td class="uid">1471</td><td>Sea Rovers <span class="to">→ ocean (49,33)</span></td><td>6</td><td>Wavecrest</td></tr>
+        <tr class="dep"><td class="own">*</td><td class="uid">1472</td><td>Marines <span class="to">→ ocean (49,33)</span></td><td>20</td><td>Wavecrest</td></tr>
+        <tr class="dep"><td class="own">*</td><td class="uid">1602</td><td>Quarrymen <span class="to">→ forest (49,29)</span></td><td>8</td><td>—</td></tr>
+      </table></div>
+    <p class="cost">Simplest, and what the first mockup showed. The table answers "where will this be next month" and nothing else. You
+    can already tell a passenger by the <em>in</em> column — but the row itself claims an order the Marines never wrote.</p>
+  </div>
+  <div class="variant">
+    <h3>2 — the destination, and the ship that takes it <span class="tag">2</span></h3>
+    <div class="dock"><div class="cap">units in plain (49,31)</div>
+      <table>
+        <tr><th></th><th>unit</th><th>name</th><th>men</th><th>in</th></tr>
+        <tr class="dep"><td class="own">*</td><td class="uid">1471</td><td>Sea Rovers <span class="to">→ ocean (49,33)</span></td><td>6</td><td>Wavecrest</td></tr>
+        <tr class="dep"><td class="own">*</td><td class="uid">1472</td><td>Marines <span class="to">→ ocean (49,33)</span> <span class="aboard">aboard Wavecrest</span></td><td>20</td><td>Wavecrest</td></tr>
+        <tr class="dep"><td class="own">*</td><td class="uid">1602</td><td>Quarrymen <span class="to">→ forest (49,29)</span></td><td>8</td><td>—</td></tr>
+      </table></div>
+    <p class="cost">Says <em>why</em> it is leaving, in the row that makes the claim, and distinguishes carried from ordered. Costs a
+    little width in the name column — the one place the table is already tightest.</p>
+  </div>
+</div>
+<div class="row">
+  <div class="variant">
+    <h3>3 — carried, without repeating the destination <span class="tag">3</span></h3>
+    <div class="dock"><div class="cap">units in plain (49,31)</div>
+      <table>
+        <tr><th></th><th>unit</th><th>name</th><th>men</th><th>in</th></tr>
+        <tr class="dep"><td class="own">*</td><td class="uid">1471</td><td>Sea Rovers <span class="to">→ ocean (49,33)</span></td><td>6</td><td>Wavecrest</td></tr>
+        <tr class="dep"><td class="own">*</td><td class="uid">1472</td><td>Marines <span class="aboard">sails with Wavecrest</span></td><td>20</td><td>Wavecrest</td></tr>
+        <tr class="dep"><td class="own">*</td><td class="uid">1602</td><td>Quarrymen <span class="to">→ forest (49,29)</span></td><td>8</td><td>—</td></tr>
+      </table></div>
+    <p class="cost">Shortest of the distinguishing ones, and the arrow is reserved for a unit's own order. But the row no longer names
+    where the Marines end up — you read it off the ship's row above.</p>
+  </div>
+  <div class="variant">
+    <h3>The destination hex, under any of the three</h3>
+    <div class="dock"><div class="cap">units in ocean (49,33)</div>
+      <table>
+        <tr><th></th><th>unit</th><th>name</th><th>men</th><th>in</th></tr>
+        <tr><td class="own">*</td><td class="uid">1471</td><td>Sea Rovers <span class="from">← plain (49,31)</span></td><td>6</td><td>Wavecrest</td></tr>
+        <tr><td class="own">*</td><td class="uid">1472</td><td>Marines <span class="from">← plain (49,31)</span></td><td>20</td><td>Wavecrest</td></tr>
+      </table></div>
+    <p class="cost">An arrival already says only where it came from, so the carried/ordered distinction does not arise here. The
+    <em>in</em> column is the fourth question below.</p>
+  </div>
+</div>
+
+<h2 style="border-color:var(--brass)">Settled — and one thing the mockup above got wrong</h2>
+<p class="note">You chose variant <strong>2</strong>, destination plus <em>aboard the ship</em>. Also settled: a passenger's own
+<code>MOVE</code> wins over the ship's <code>SAIL</code>; passengers follow an untraceable ship with <span class="to">→ …</span>; and the
+fleet arrives with its hull, so <em>in</em> reads the ship in the destination hex.</p>
+<p class="note" style="color:var(--soft)"><strong>The correction:</strong> every variant above wrote <em>Wavecrest</em>, and this table
+does not name ships that way. The <em>in</em> column renders <code>[&lt;structure id&gt;]</code> and nothing else — literally
+<code>[329]</code>. The ship's name is available (<code>Structure.name</code>, often the bare word <em>Ship</em> when the player never
+renamed it) and so is its kind (<em>Longship</em>). So the words in the marker are still open, and they are below, exactly as they would
+ship.</p>
+
+<h3 style="margin:22px 0 8px">The words, as they will ship</h3>
+<div class="row">
+  <div class="variant">
+    <h3>W1 — the id, matching the <em>in</em> column</h3>
+    <div class="dock"><div class="cap">units in plain (49,31)</div>
+      <table>
+        <tr><th></th><th>unit</th><th>name</th><th>men</th><th>in</th></tr>
+        <tr class="dep"><td class="own">*</td><td class="uid">1471</td><td>Sea Rovers <span class="to">→ ocean (49,33)</span></td><td>6</td><td>[329]</td></tr>
+        <tr class="dep"><td class="own">*</td><td class="uid">1472</td><td>Marines <span class="to">→ ocean (49,33)</span> <span class="aboard">aboard [329]</span></td><td>20</td><td>[329]</td></tr>
+        <tr class="dep"><td class="own">*</td><td class="uid">1602</td><td>Quarrymen <span class="to">→ forest (49,29)</span></td><td>8</td><td>—</td></tr>
+      </table></div>
+    <p class="cost">Exactly the table's existing convention, and the shortest. <code>[329]</code> is the same token the <em>in</em> cell
+    shows on the same row, so the eye joins them without being told. Reads as jargon if you do not know the ship by number.</p>
+  </div>
+  <div class="variant">
+    <h3>W2 — the ship's own name</h3>
+    <div class="dock"><div class="cap">units in plain (49,31)</div>
+      <table>
+        <tr><th></th><th>unit</th><th>name</th><th>men</th><th>in</th></tr>
+        <tr class="dep"><td class="own">*</td><td class="uid">1471</td><td>Sea Rovers <span class="to">→ ocean (49,33)</span></td><td>6</td><td>[329]</td></tr>
+        <tr class="dep"><td class="own">*</td><td class="uid">1472</td><td>Marines <span class="to">→ ocean (49,33)</span> <span class="aboard">aboard Wavecrest</span></td><td>20</td><td>[329]</td></tr>
+        <tr class="dep"><td class="own">*</td><td class="uid">1602</td><td>Quarrymen <span class="to">→ forest (49,29)</span></td><td>8</td><td>—</td></tr>
+      </table></div>
+    <p class="cost">Friendliest when the ship has been named. But an unnamed hull is called <em>Ship</em>, so with two of them the row
+    reads <em>aboard Ship</em> twice and tells you nothing — and the name never matches the <code>[329]</code> beside it.</p>
+  </div>
+</div>
+<div class="row">
+  <div class="variant">
+    <h3>W3 — name and id together</h3>
+    <div class="dock"><div class="cap">units in plain (49,31)</div>
+      <table>
+        <tr><th></th><th>unit</th><th>name</th><th>men</th><th>in</th></tr>
+        <tr class="dep"><td class="own">*</td><td class="uid">1471</td><td>Sea Rovers <span class="to">→ ocean (49,33)</span></td><td>6</td><td>[329]</td></tr>
+        <tr class="dep"><td class="own">*</td><td class="uid">1472</td><td>Marines <span class="to">→ ocean (49,33)</span> <span class="aboard">aboard Wavecrest [329]</span></td><td>20</td><td>[329]</td></tr>
+        <tr class="dep"><td class="own">*</td><td class="uid">1602</td><td>Quarrymen <span class="to">→ forest (49,29)</span></td><td>8</td><td>—</td></tr>
+      </table></div>
+    <p class="cost">Unambiguous whatever the hull is called, and the same shape <code>fleet_label</code> already produces elsewhere in
+    the core. The longest — see the narrow pane below, which is where this is paid for.</p>
+  </div>
+  <div class="variant">
+    <h3>The narrow pane, under W3 — where it is paid for</h3>
+    <div class="dock" style="width:250px"><div class="cap">units in plain (49,31)</div>
+      <table>
+        <tr><th></th><th>unit</th><th>name</th><th>men</th></tr>
+        <tr class="dep"><td class="own">*</td><td class="uid">1471</td><td style="max-width:110px;overflow:hidden;text-overflow:ellipsis">Sea Rovers <span class="to">→ ocean (49…</span></td><td>6</td></tr>
+        <tr class="dep"><td class="own">*</td><td class="uid">1472</td><td style="max-width:110px;overflow:hidden;text-overflow:ellipsis">Marines <span class="to">→ ocean (49,33)</span> <span class="aboard">abo…</span></td><td>20</td></tr>
+      </table></div>
+    <p class="cost">The name cell already truncates, and every marker lives inside it — so on a narrow pane the destination is what gets
+    cut, and the <em>aboard</em> text is what pushed it out. W1 is the only variant that survives this width intact.</p>
+  </div>
+</div>
+
+<h2>The three remaining edges <span style="color:var(--brass);font-size:13px">— all answered; kept for the record</span></h2>
+<p class="note"><strong>A passenger with its own <code>MOVE</code>.</strong> Unit 1472 is aboard Wavecrest <em>and</em> writes
+<code>MOVE N</code>. Two destinations; one row. Its own order is what the player deliberately typed, so it probably wins — but then the
+row is ordered ashore off a ship that is leaving, which the game will resolve one way and this preview cannot.</p>
+<p class="note"><strong>An untraceable destination.</strong> When the trace cannot say where the ship ends the month — unexplored
+water, or a fleet whose speed the report never stated — the ship's own row already reads <span class="to">→ …</span> and it appears in
+no destination hex. Do the passengers read <span class="to">→ …</span> as well, or stay bright and stay put?</p>
+<p class="note"><strong>The <em>in</em> column on arrival.</strong> Today an arriving unit's structure is cleared, with the comment
+"a walker cannot take a building with it; whether a ship sails along is a question for a later issue". This bead is that later issue:
+a sailing fleet plainly does arrive, and so does everyone aboard it.</p>
+
+</body>
+</html>
