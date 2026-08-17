@@ -191,7 +191,7 @@ fn a_unit_told_to_spend_what_it_has_not_got_is_caught_in_that_same_turn() {
     // this fixture is not otherwise clean.
     assert_eq!(
         findings.iter().map(|f| f.code.as_str()).collect::<Vec<_>>(),
-        vec!["not-enough-silver", "not-enough-items", "study-at-maximum"],
+        vec!["not-enough-silver", "study-at-maximum", "not-enough-items"],
         "{findings:?}"
     );
     assert_eq!(findings[0].unit_id, None, "one purse, shared");
