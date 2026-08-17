@@ -31,7 +31,7 @@ function unit(overrides: Partial<BattleUnit> = {}): BattleUnit {
 }
 
 describe("the one-line summary of a battle", () => {
-  it("states participants, hex, losses and whether there were spoils", () => {
+  it("states participants, hex and losses", () => {
     const summary = summarise(battle(), hexLabel);
 
     expect(summary.attacker).toBe("AA Tomb's Guards (7280)");
@@ -39,13 +39,6 @@ describe("the one-line summary of a battle", () => {
     expect(summary.hex).toBe("hex 1:25,55");
     expect(summary.attackerLosses).toBe(0);
     expect(summary.defenderLosses).toBe(15);
-    expect(summary.hasSpoils).toBe(true);
-  });
-
-  it("says there were no spoils when the battle left none", () => {
-    const summary = summarise(battle({ spoils: null }), hexLabel);
-
-    expect(summary.hasSpoils).toBe(false);
   });
 
   it("has no hex to show when the headline named no coordinate", () => {
@@ -72,7 +65,6 @@ describe("the one-line summary of a battle", () => {
     expect(summary.hex).toBeNull();
     expect(summary.attackerLosses).toBeNull();
     expect(summary.defenderLosses).toBeNull();
-    expect(summary.hasSpoils).toBe(false);
   });
 });
 

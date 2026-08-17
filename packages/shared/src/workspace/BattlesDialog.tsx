@@ -160,7 +160,6 @@ function BattleRow({
               defender <span className="text-danger">−{summary.defenderLosses}</span>
             </span>
           ) : null}
-          {summary.hasSpoils ? <span>spoils</span> : null}
         </span>
       </button>
     </li>
