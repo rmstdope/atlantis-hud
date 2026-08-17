@@ -135,7 +135,7 @@ fn the_committed_turn_has_no_semantic_problems_either() {
     assert_eq!(
         items.message,
         "the units in this hex are short 4 plate armor between them: they can have 0 and \
-         their orders give away or sell 4"
+         their orders spend 4"
     );
     let study = findings
         .iter()
