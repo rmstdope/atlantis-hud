@@ -339,6 +339,29 @@ pub fn plan_route_state(
     to_js(&response)
 }
 
+/// Finds every trade worth making in the map the faction has seen.
+///
+/// The browser twin of the desktop command, calling the same core entry so the browser and the
+/// desktop cannot drift into pricing trades differently. A report with nothing to trade resolves
+/// to an empty list; only an unusable ruleset or unreadable remembered regions reject.
+#[wasm_bindgen]
+pub fn trade_routes_state(
+    ruleset_json: String,
+    raw_report: String,
+    remembered_json: String,
+) -> Result<JsValue, JsValue> {
+    let response = atlantis_hud_core::cache::with_global(|cache| {
+        atlantis_hud_core::trade::trade_routes_json(
+            cache,
+            &ruleset_json,
+            &raw_report,
+            &remembered_json,
+        )
+    })
+    .map_err(|error| JsValue::from_str(&error))?;
+    to_js(&response)
+}
+
 /// Writes the known map inside one rectangle out as report-shaped text.
 ///
 /// The browser twin of the desktop command, calling the same core entry so a map exported in the

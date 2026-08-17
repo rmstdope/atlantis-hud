@@ -7,6 +7,7 @@ pub mod movement;
 pub mod orders;
 pub mod reopen;
 pub mod report;
+pub mod trade;
 
 use serde::{Deserialize, Serialize};
 
@@ -130,6 +131,9 @@ pub use orders::semantics::CheckOptions as OrderCheckOptions;
 pub use orders::{
     order_argument_completions, order_commands, validate_orders, validate_turn, OrderCompletion,
 };
+
+/// The trade-route finder, re-exported for the same reason the order vocabulary is above.
+pub use trade::trade_routes;
 
 /// Severity level emitted by the tolerant report parser.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

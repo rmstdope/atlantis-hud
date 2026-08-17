@@ -149,6 +149,10 @@ export const SWEEP: SweepEntry[] = [
     })
   },
   {
+    command: "trade_routes",
+    args: () => ({ ruleset_json: RULESET, raw_report: REPORT, remembered_json: "[]" })
+  },
+  {
     command: "preview_report_import",
     args: () => ({
       database_path: context.databasePath,
