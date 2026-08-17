@@ -417,7 +417,7 @@ impl Working {
             return;
         };
 
-        if command.is("move") || command.is("advance") {
+        if crate::movement::orders::is_movement_command(&command.text) {
             if let Some(steps) = super::forms::read_move_line(command, arguments) {
                 // The last movement order wins, because a later order replaces an earlier one
                 // when the game executes them.
@@ -1234,6 +1234,61 @@ mod tests {
     }
 
     #[test]
+    fn a_sail_order_departs_here_and_arrives_there() {
+        // SAIL is a movement word like MOVE and ADVANCE; the preview reads it from the one list
+        // rather than spelling the words itself, so it cannot fall out of step with the trace
+        // again (ah-p1p).
+        let response = preview("unit 900\nSAIL SE\n");
+
+        let origin = response
+            .regions
+            .iter()
+            .find(|region| region.region_id == "1:1,1")
+            .expect("the origin changed");
+        let destination = response
+            .regions
+            .iter()
+            .find(|region| region.region_id == "1:2,2")
+            .expect("the destination changed");
+
+        let departing = &origin.units[0];
+        assert_eq!(departing.status, UnitPreviewStatus::Departing);
+        assert_eq!(departing.departing_to.as_deref(), Some("1:2,2"));
+
+        let arriving = &destination.units[0];
+        assert_eq!(arriving.status, UnitPreviewStatus::Arriving);
+        assert_eq!(arriving.arriving_from.as_deref(), Some("1:1,1"));
+        assert_eq!(arriving.unit.unit_id, "900");
+        assert_eq!(arriving.unit.region_id, "1:2,2");
+    }
+
+    #[test]
+    fn an_advance_order_still_departs() {
+        // The word that already worked, kept working: the list replaced two hand-spelt words,
+        // not one.
+        let response = preview("unit 900\nADVANCE SE\n");
+        let origin = response
+            .regions
+            .iter()
+            .find(|region| region.region_id == "1:1,1")
+            .expect("the origin changed");
+        assert_eq!(origin.units[0].status, UnitPreviewStatus::Departing);
+    }
+
+    #[test]
+    fn a_sail_order_with_no_direction_changes_nothing() {
+        // "SAIL" alone is a form of its own and parse_move refuses it - "an order that goes
+        // nowhere is not one". So move_steps stays unset, the unit is Present with no changes,
+        // and no region is entered into the response at all.
+        let response = preview("unit 900\nSAIL\n");
+        assert!(
+            response.regions.is_empty(),
+            "regions were: {:?}",
+            response.regions
+        );
+    }
+
+    #[test]
     fn the_arriving_row_carries_the_other_changes_but_not_the_structure() {
         let response = preview("unit 900\nNAME UNIT \"Wanderer\"\nENTER 4\nMOVE SE\n");
 
@@ -1312,10 +1367,18 @@ mod tests {
     /// drift apart: an order the validator rejects must never silently change the preview.
     #[test]
     fn every_effect_order_is_in_the_grammar() {
+        // The movement words are derived from the one list, so a fourth one can never be
+        // forgotten here.
         for keyword in [
-            "name", "guard", "avoid", "behind", "enter", "leave", "form", "give", "move",
-            "advance", "turn", "endturn",
-        ] {
+            "name", "guard", "avoid", "behind", "enter", "leave", "form", "give", "turn", "endturn",
+        ]
+        .iter()
+        .copied()
+        .chain(
+            crate::movement::orders::MOVEMENT_ORDER_COMMANDS
+                .iter()
+                .copied(),
+        ) {
             assert!(
                 crate::orders::grammar::find_order(keyword).is_some(),
                 "{keyword} is not in the grammar"
