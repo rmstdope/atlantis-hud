@@ -191,7 +191,8 @@ function clampInterfaceSize(percent: number): number {
   return Math.min(200, Math.max(100, stepped));
 }
 
-/** Stamps the multiplier the pane type scale is expressed against. See `theme.css`'s `--ui-scale`. */
+/** Stamps the multiplier every rem in the application is expressed against — the root font size
+ * carries it, so type, widths, padding and gaps all follow. See `theme.css`'s `--ui-scale`. */
 function applyInterfaceSize(percent: number) {
   if (typeof document === "undefined") {
     return;
