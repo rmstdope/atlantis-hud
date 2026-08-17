@@ -13,7 +13,7 @@ function writeHex(coordinate: Coordinate, sameLevelAs: Coordinate): string {
 
 /** `chocolate CHOC · 41 × +$249`, optionally prefixed `out: ` / `back: ` for a circuit's two legs. */
 function goodLine(good: TradedGood, prefix: string): string {
-  return `${prefix}${good.name} ${good.tag} · ${good.quantity} × +$${good.margin}`;
+  return `${prefix}${good.name} ${good.tag} · ${good.quantity.toLocaleString()} × +$${good.margin.toLocaleString()}`;
 }
 
 /** `14/7/4 turns on foot/riding/flying`, an em dash per mode that cannot make it, or, when none
