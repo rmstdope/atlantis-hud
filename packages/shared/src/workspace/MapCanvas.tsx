@@ -390,10 +390,30 @@ export function MapCanvas({
   // Read from the id rather than looked up among the hexes, so unexplored ground is brought into
   // view too: it carries the selection ring and the keyboard cursor like any other hex, and one of
   // those off screen is a ring nobody can see and a tab stop nobody can find.
+  //
+  // Guarded against re-firing on a bare resize (ah-1uj): the effect also depends on `size` and
+  // `insets` so it can measure "off screen" against the current layout, but a container that
+  // resizes mid-import - the header growing a chip, a pane opening - re-runs it too, and centring
+  // against whatever size happened to be current in that instant leaves the view shifted once the
+  // container settles back. `lastFollowed` remembers the (selection, restore-exemption) pair this
+  // effect last acted on, so a resize alone - the pair unchanged - is a no-op; only a genuinely new
+  // arrival is followed.
+  const lastFollowed = useRef<{ selectedRegionId: string | null; restoredRegionId: string | null }>(
+    { selectedRegionId: null, restoredRegionId: null }
+  );
   useEffect(() => {
     // The store already ended the restored hex's exemption in the same `set` that moved the
     // selection (see `mapViewSelectionChanged`), so there is nothing to clear here - only to read.
     if (!shouldFollowSelection(selectedRegionId, mapView.restoredRegionId)) {
+      lastFollowed.current = { selectedRegionId, restoredRegionId: mapView.restoredRegionId };
+      return;
+    }
+
+    const alreadyFollowed =
+      lastFollowed.current.selectedRegionId === selectedRegionId &&
+      lastFollowed.current.restoredRegionId === mapView.restoredRegionId;
+    lastFollowed.current = { selectedRegionId, restoredRegionId: mapView.restoredRegionId };
+    if (alreadyFollowed) {
       return;
     }
 
