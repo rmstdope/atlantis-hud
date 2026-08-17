@@ -2,31 +2,32 @@
 
 - **Implementer:** Storm
 - **Date:** 2026-08-17
-- **PR:** #362
+- **PR:** #387
 
-## `bd ready --claim` on a reopened bead left status `open`, so the first several heartbeats failed
+## An unformatted review fix reached CI, because the local gate could no longer be run at all
 
-**What happened.** `bd ready --label planned --exclude-label human --exclude-type epic --claim
---json` returned `ah-j0e` (reopened by Psylocke's failed verification, `verification:failed`
-label) with `"assignee": "Storm"` — the claim looked like it had taken. But `"status": "open"`,
-not `"in_progress"`. Every `bd heartbeat ah-j0e` afterward failed with `issue not claimable:
-ah-j0e status open` (seen 8 times over about 4 minutes while waiting on the Copilot review).
-Running `bd update ah-j0e --claim` again set status to `in_progress` and heartbeats succeeded
-from then on.
+**What happened.** `pnpm run check:fast` was green before the PR opened. The Copilot review then
+prompted a code change and a new test, at which point `pnpm run check:fast` exited 1 — not on
+anything in the diff, but on `scripts/diskPreflight.test.ts`, which shells out to the preflight and
+fails whenever the machine is under the 8 GB floor. The machine was at 7.5 GB, all of it held by
+other agents' live build trees (`prune-worktrees.sh` correctly reclaimed nothing). Reading that
+single failure as environmental, I pushed. CI's `rust` job then failed on `cargo fmt --check` — the
+new test was unformatted, which the gate would have caught in its `cargo` suite had it got that far.
+One CI cycle to find it, one commit and another cycle to fix it.
 
-**Why.** Not established. Plausibly something about a `verification:failed`-labelled, reopened
-bead makes the atomic claim in `bd ready --claim` assign without transitioning status, where an
-ordinary `bd update <id> --claim` on the same bead does both. Not confirmed against `bd`'s
-source.
+**Why.** `check:fast` is one pass/fail, so a fail that is entirely environmental is
+indistinguishable at a glance from one that is not, and the honest reading ("this is the disk, not
+my diff") is also the reading that skips every step after it. The tooling suite runs before cargo,
+so the disk floor masks fmt and clippy specifically.
 
-**Cost.** No bead time lost — the assignee was already correct and nothing else depended on the
-lease during that window — but the lease was not actually being renewed for several minutes,
-which on a busier fleet could have looked like an abandoned claim to another agent's `bd
-reclaim`.
+**Cost.** Two CI cycles, about 20 minutes.
 
-**Prevent by.** After `bd ready --claim` picks up a bead, `beads-workflow` or `implement-bead`'s
-*Picking up* section could add: confirm `status` in the claim's own JSON output reads
-`in_progress`, and if not, run `bd update <id> --claim` once more before proceeding — cheap
-insurance against relying on a heartbeat that will silently fail.
+**Prevent by.** When `check:fast` fails only on `scripts/diskPreflight.test.ts`, do not treat the
+gate as run. `cargo fmt --check` and `cargo clippy` are seconds each, need no build headroom beyond
+what is already warm, and are exactly what that failure hides — run them directly before pushing.
+The same applies to any push after the first: a review fix is a code change and wants the gate
+again, not just the test it was written for.
 
-**Seen before.** none found.
+**Seen before.** The disk floor itself is recorded in ah-quw, ah-do8.2, ah-s0m, ah-9r0, ah-9lv,
+ah-8m0.2 and ah-l2i.1 — seven files, none of which names what it hides downstream of it. That is the
+part this one adds.
