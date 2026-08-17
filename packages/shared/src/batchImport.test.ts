@@ -1,10 +1,34 @@
 import type { CoreClient, OpenedGame, ParsedReport, ReportHeaderInfo } from "@atlantis/core-client";
-import { aParsedReport, aReportHeaderInfo } from "@atlantis/core-client";
+import { aParsedReport, aReportHeaderInfo, aReportRegion } from "@atlantis/core-client";
 import { describe, expect, it, vi } from "vitest";
 import { batchSummary, prepareBatch, viewerFactionOptions, walkBatch, type ChosenFile } from "./batchImport";
+import type { BatchCandidate } from "./reportBatch";
+import { REPORT_NAMES_NO_FACTION, REPORT_NAMES_NO_TURN } from "./reportLoadDecision";
 
+/**
+ * A candidate as `prepareBatch` builds one: `usable` is what `judgeReportUsable` said about the
+ * report behind it, derived here from the identity so a fixture cannot forget the judgement.
+ */
+function candidate(
+  fields: Omit<BatchCandidate, "usable"> & Partial<Pick<BatchCandidate, "usable">>
+): BatchCandidate {
+  const usable: BatchCandidate["usable"] =
+    fields.usable ??
+    (fields.factionId === null
+      ? { ok: false, reason: REPORT_NAMES_NO_FACTION }
+      : fields.turnNumber === null
+        ? { ok: false, reason: REPORT_NAMES_NO_TURN }
+        : { ok: true });
+  return { ...fields, usable };
+}
+
+// One region, because a report with nothing in it is refused outright (ah-sgn.1) and these fixtures
+// stand for reports the batch is meant to act on.
 function report(overrides: Partial<ReportHeaderInfo> = {}): ParsedReport {
-  return aParsedReport({ header: aReportHeaderInfo({ month: "January", ...overrides }) });
+  return aParsedReport({
+    header: aReportHeaderInfo({ month: "January", ...overrides }),
+    regions: [aReportRegion()]
+  });
 }
 
 function client(overrides: Partial<CoreClient> = {}): CoreClient {
@@ -56,8 +80,8 @@ describe("prepareBatch", () => {
       { text: "73", report: report({ factionId: "73" }) }
     ]);
     expect(batch.candidates).toEqual([
-      { fileName: "a.rep", factionId: "95", turnNumber: 71 },
-      { fileName: "b.rep", factionId: "73", turnNumber: 71 }
+      candidate({ fileName: "a.rep", factionId: "95", turnNumber: 71 }),
+      candidate({ fileName: "b.rep", factionId: "73", turnNumber: 71 })
     ]);
     expect(batch.unreadable).toEqual([]);
   });
@@ -70,8 +94,8 @@ describe("prepareBatch", () => {
 
     expect(batch.read).toEqual([{ text: "text", report: report() }, null]);
     expect(batch.candidates).toEqual([
-      { fileName: "a.rep", factionId: "95", turnNumber: 71 },
-      { fileName: "bad.rep", factionId: null, turnNumber: null }
+      candidate({ fileName: "a.rep", factionId: "95", turnNumber: 71 }),
+      candidate({ fileName: "bad.rep", factionId: null, turnNumber: null })
     ]);
     expect(batch.unreadable).toEqual([{ index: 1, fileName: "bad.rep", reason: "could not be read: gone" }]);
   });
@@ -82,7 +106,7 @@ describe("prepareBatch", () => {
     const batch = await prepareBatch([file("bad.rep", "garbage")], parse);
 
     expect(batch.read).toEqual([null]);
-    expect(batch.candidates).toEqual([{ fileName: "bad.rep", factionId: null, turnNumber: null }]);
+    expect(batch.candidates).toEqual([candidate({ fileName: "bad.rep", factionId: null, turnNumber: null })]);
     expect(batch.unreadable).toEqual([
       { index: 0, fileName: "bad.rep", reason: "could not be read: not a report" }
     ]);
@@ -118,8 +142,8 @@ describe("walkBatch", () => {
         { text: "ally", report: report({ factionId: "73", turnNumber: 71 }) }
       ],
       candidates: [
-        { fileName: "own.rep", factionId: "95", turnNumber: 71 },
-        { fileName: "ally.rep", factionId: "73", turnNumber: 71 }
+        candidate({ fileName: "own.rep", factionId: "95", turnNumber: 71 }),
+        candidate({ fileName: "ally.rep", factionId: "73", turnNumber: 71 })
       ],
       unreadable: []
     };
@@ -162,7 +186,7 @@ describe("walkBatch", () => {
     });
     const batch = {
       read: [{ text: "own", report: report({ factionId: "95", turnNumber: 71 }) }],
-      candidates: [{ fileName: "own.rep", factionId: "95", turnNumber: 71 }],
+      candidates: [candidate({ fileName: "own.rep", factionId: "95", turnNumber: 71 })],
       unreadable: []
     };
 
@@ -179,7 +203,7 @@ describe("walkBatch", () => {
     const core = client({ mergeReport: vi.fn().mockRejectedValue(new Error("no such turn")) });
     const batch = {
       read: [{ text: "ally", report: report({ factionId: "73", turnNumber: 71 }) }],
-      candidates: [{ fileName: "ally.rep", factionId: "73", turnNumber: 71 }],
+      candidates: [candidate({ fileName: "ally.rep", factionId: "73", turnNumber: 71 })],
       unreadable: []
     };
 
@@ -197,8 +221,8 @@ describe("walkBatch", () => {
         { text: "second", report: report({ factionId: "95", turnNumber: 71 }) }
       ],
       candidates: [
-        { fileName: "first.rep", factionId: "95", turnNumber: 71 },
-        { fileName: "second.rep", factionId: "95", turnNumber: 71 }
+        candidate({ fileName: "first.rep", factionId: "95", turnNumber: 71 }),
+        candidate({ fileName: "second.rep", factionId: "95", turnNumber: 71 })
       ],
       unreadable: []
     };
@@ -213,7 +237,7 @@ describe("walkBatch", () => {
     const core = client();
     const batch = {
       read: [{ text: "ally", report: report({ factionId: "73", turnNumber: 71 }) }],
-      candidates: [{ fileName: "ally.rep", factionId: "73", turnNumber: 71 }],
+      candidates: [candidate({ fileName: "ally.rep", factionId: "73", turnNumber: 71 })],
       unreadable: []
     };
 
@@ -226,7 +250,7 @@ describe("walkBatch", () => {
     const core = client();
     const batch = {
       read: [{ text: "mystery", report: report({ factionId: null, turnNumber: null }) }],
-      candidates: [{ fileName: "mystery.rep", factionId: null, turnNumber: null }],
+      candidates: [candidate({ fileName: "mystery.rep", factionId: null, turnNumber: null })],
       unreadable: []
     };
 
@@ -247,7 +271,7 @@ describe("batchSummary", () => {
     const core = client();
     const batch = {
       read: [{ text: "own", report: report({ factionId: "95", turnNumber: 71 }) }],
-      candidates: [{ fileName: "own.rep", factionId: "95", turnNumber: 71 }],
+      candidates: [candidate({ fileName: "own.rep", factionId: "95", turnNumber: 71 })],
       unreadable: []
     };
     const walk = await walkBatch(core, OPEN_GAME, batch, "95", null, RULESET, NOW, () => {});
