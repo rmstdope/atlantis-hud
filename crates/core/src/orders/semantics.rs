@@ -25,7 +25,7 @@ use crate::movement::mode::{
 };
 use crate::movement::orders::MoveStep;
 use crate::movement::rules::{item_spellings, Ruleset};
-use crate::report::model::{ItemAmount, MarketItem, ReportRegion, ReportUnit};
+use crate::report::model::{ItemAmount, MarketItem, ReportRegion, ReportUnit, Structure};
 use crate::report::ParsedReport;
 
 /// The report's name for the allowance this check reads from `Faction Status:`.
@@ -91,6 +91,7 @@ pub mod codes {
     pub const UNIT_OVERLOADED: Code = Code("unit-overloaded");
     pub const TOO_MANY_QUARTERMASTERS: Code = Code("too-many-quartermasters");
     pub const STUDY_AT_MAXIMUM: Code = Code("study-at-maximum");
+    pub const ALREADY_BUILT: Code = Code("already-built");
     /// Every code. This array's own order is not the settings tab's grouping (that groups by
     /// concern - Teaching / Resources / Markets / Guarding / Orders / Sailing - not by this list):
     /// a new entry joins whichever group fits its concern, which need not be the last one
@@ -99,7 +100,7 @@ pub mod codes {
     /// group). What every entry so far has kept is new-*here*-last: the generated TypeScript
     /// copies this array's order, so a new code is always appended to it regardless of where it
     /// lands in the UI.
-    pub const ALL: [Code; 17] = [
+    pub const ALL: [Code; 18] = [
         NOT_ENOUGH_SILVER,
         NOT_ENOUGH_ITEMS,
         GUARD_DROPPED,
@@ -117,6 +118,7 @@ pub mod codes {
         UNIT_OVERLOADED,
         TOO_MANY_QUARTERMASTERS,
         STUDY_AT_MAXIMUM,
+        ALREADY_BUILT,
     ];
 }
 
@@ -217,6 +219,7 @@ pub fn check_turn(
         check_markets(&hex, ruleset, &options, &mut findings);
         check_guard(&hex, &options, &mut findings);
         check_teaching(&hex, ruleset, &options, &mut findings);
+        check_building(&hex, &options, &mut findings);
         check_studying(&hex, ruleset, &options, &mut findings);
         check_forms(&hex, &options, &mut findings);
         check_transfer_targets(&hex, &located, &options, &mut findings);
@@ -355,6 +358,7 @@ impl Ordered<'_> {
                     | Intent::Move { .. }
                     | Intent::Sail { .. }
                     | Intent::MonthLong(_)
+                    | Intent::Build { .. }
             )
         })
     }
@@ -634,7 +638,7 @@ fn apply(
         | Intent::Move { .. }
         | Intent::MonthLong(_)
         | Intent::Form { .. } => {}
-        Intent::Sail { .. } | Intent::Enter { .. } | Intent::Leave => {}
+        Intent::Sail { .. } | Intent::Enter { .. } | Intent::Leave | Intent::Build { .. } => {}
     }
 }
 
@@ -1305,6 +1309,82 @@ fn taught_by(teacher: &Ordered<'_>, hex: &Hex<'_>) -> i64 {
         .sum()
 }
 
+// --- building on what is already finished ---------------------------------------------------------
+
+/// A `BUILD` (bare, `COMPLETE`, or `HELP [unit]`) that carries on with a structure the report
+/// already shows as finished (`needs: None`) spends the unit's month for nothing. `BUILD [name]`
+/// founds something that does not exist yet and is never this case.
+fn check_building(hex: &Hex<'_>, options: &CheckOptions, findings: &mut Vec<Finding>) {
+    if !options.emits(codes::ALREADY_BUILT) {
+        return;
+    }
+
+    for ordered in &hex.units {
+        let Some(placed) = ordered
+            .intents
+            .iter()
+            .find(|placed| matches!(placed.intent, Intent::Build { .. }))
+        else {
+            continue;
+        };
+        let Intent::Build { founding, helping } = &placed.intent else {
+            continue;
+        };
+        if founding.is_some() {
+            continue;
+        }
+
+        // Whose structure is it: the helped unit's, or the builder's own. A helper naming
+        // anything other than an existing unit of ours in this hex - a unit formed this turn
+        // with no number yet, another faction's unit, `HELP 0` - cannot be resolved to a
+        // structure at all, and is doubt rather than the builder's own structure.
+        let (worker, helped_id) = match helping {
+            None => (ordered, None),
+            Some(Party::Unit(id)) => match hex.find(id) {
+                Some(helped) => (helped, Some(id.as_str())),
+                // A unit not in this hex - not on the report at all, or one that formed this
+                // month and has no number yet - cannot be judged.
+                None => continue,
+            },
+            Some(Party::New(_) | Party::Foreign { .. } | Party::Discard) => continue,
+        };
+
+        let Some(structure_id) = &worker.unit.structure_id else {
+            continue;
+        };
+        let Some(structure) = hex
+            .region
+            .structures
+            .iter()
+            .find(|structure| &structure.structure_id == structure_id)
+        else {
+            continue;
+        };
+        if structure.needs.is_some() {
+            continue;
+        }
+
+        let name = structure_label(structure);
+        let message = match helped_id {
+            Some(id) => format!("{name}, which unit {id} is in, is already finished"),
+            None => format!("{name} is already finished"),
+        };
+        findings.push(ordered.finding(hex, codes::ALREADY_BUILT, message, Some(placed)));
+    }
+}
+
+/// A structure's name, or - when the report gave it none and printed a placeholder like
+/// `+ Building [4] : Stockade` or `+ Ship [218] : Raft` - that placeholder with the id appended.
+fn structure_label(structure: &Structure) -> String {
+    if structure.name.eq_ignore_ascii_case("Building")
+        || structure.name.eq_ignore_ascii_case("Ship")
+    {
+        format!("{} {}", structure.name, structure.structure_id)
+    } else {
+        structure.name.clone()
+    }
+}
+
 // --- studying at the ceiling ----------------------------------------------------------------------
 
 /// Every own unit whose STUDY order names a skill it has already taken to the ruleset's maximum.
@@ -1849,7 +1929,7 @@ fn check_quartermasters(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::report::model::{Coordinate, Skill, Structure};
+    use crate::report::model::{Coordinate, Skill};
 
     const RULESET: &str = atlantis_hud_fixtures::RULESET_JSON;
 
@@ -3204,6 +3284,26 @@ mod tests {
         );
     }
 
+    /// A unit ordered to BUILD has its month spoken for too, exactly as MonthLong orders do -
+    /// without this, moving BUILD out of `Intent::MonthLong` compiles cleanly and silently turns
+    /// every builder into a candidate spare teacher.
+    #[test]
+    fn a_unit_building_is_not_offered_as_a_spare_teacher() {
+        let units = vec![
+            with_skill(with_men(with_silver(unit("500"), 1000), 3), "COMB", 3),
+            with_men(with_silver(unit("700"), 1000), 2),
+        ];
+
+        assert_eq!(
+            check(
+                vec![region(units)],
+                "unit 500\nBUILD\nunit 700\nSTUDY combat\n"
+            ),
+            vec![],
+            "unit 500 is building, so it has no month left to teach in"
+        );
+    }
+
     /// One finding per teacher, not one per pairing.
     #[test]
     fn a_teacher_who_could_take_several_students_is_reported_once() {
@@ -3280,6 +3380,181 @@ mod tests {
                 "unit 500\nTEACH 700\nunit 700\nSTUDY combat\n",
                 None,
                 CheckOptions::default(),
+            ),
+            vec![]
+        );
+    }
+
+    // --- building on what is already finished -----------------------------------------------
+
+    /// A structure with a name of its own, already finished (`needs: None`).
+    fn finished_mill(structure_id: &str) -> Structure {
+        Structure {
+            structure_id: structure_id.to_string(),
+            name: "Soggy Saw Mill".to_string(),
+            kind: "Timber Yard".to_string(),
+            description: None,
+            needs: None,
+        }
+    }
+
+    /// A structure the report never gave a name of its own - the engine's own placeholder,
+    /// `Building`, with the id following.
+    fn finished_unnamed_building(structure_id: &str) -> Structure {
+        Structure {
+            structure_id: structure_id.to_string(),
+            name: "Building".to_string(),
+            kind: "Stockade".to_string(),
+            description: None,
+            needs: None,
+        }
+    }
+
+    fn unfinished_building(structure_id: &str) -> Structure {
+        Structure {
+            structure_id: structure_id.to_string(),
+            name: "Building".to_string(),
+            kind: "Stockade".to_string(),
+            description: None,
+            needs: Some(45),
+        }
+    }
+
+    fn in_structure(unit: ReportUnit, structure_id: &str) -> ReportUnit {
+        ReportUnit {
+            structure_id: Some(structure_id.to_string()),
+            ..unit
+        }
+    }
+
+    #[test]
+    fn carrying_on_with_a_finished_structure_warns() {
+        let finding = only(check(
+            vec![ReportRegion {
+                structures: vec![finished_mill("1")],
+                ..region(vec![in_structure(unit("4021"), "1")])
+            }],
+            "unit 4021\nBUILD\n",
+        ));
+
+        assert_eq!(finding.code.as_str(), "already-built");
+        assert_eq!(finding.unit_id.as_deref(), Some("4021"));
+        assert_eq!(finding.line, Some(2));
+        assert_eq!(finding.message, "Soggy Saw Mill is already finished");
+    }
+
+    #[test]
+    fn a_helper_is_warned_about_the_structure_it_would_work_on() {
+        let finding = only(check(
+            vec![ReportRegion {
+                structures: vec![finished_mill("1")],
+                ..region(vec![in_structure(unit("4021"), "1"), unit("5")])
+            }],
+            "unit 5\nBUILD HELP 4021\n",
+        ));
+
+        assert_eq!(finding.code.as_str(), "already-built");
+        assert_eq!(finding.unit_id.as_deref(), Some("5"));
+        assert_eq!(
+            finding.message,
+            "Soggy Saw Mill, which unit 4021 is in, is already finished"
+        );
+    }
+
+    #[test]
+    fn an_unfinished_structure_is_silent() {
+        assert_eq!(
+            check(
+                vec![ReportRegion {
+                    structures: vec![unfinished_building("4")],
+                    ..region(vec![in_structure(unit("4021"), "4")])
+                }],
+                "unit 4021\nBUILD\n",
+            ),
+            vec![]
+        );
+    }
+
+    #[test]
+    fn founding_a_new_structure_is_silent() {
+        assert_eq!(
+            check(
+                vec![ReportRegion {
+                    structures: vec![finished_mill("1")],
+                    ..region(vec![in_structure(unit("4021"), "1")])
+                }],
+                "unit 4021\nBUILD Tower\n",
+            ),
+            vec![]
+        );
+    }
+
+    #[test]
+    fn a_unit_in_no_structure_is_silent() {
+        assert_eq!(
+            check(vec![region(vec![unit("4021")])], "unit 4021\nBUILD\n"),
+            vec![]
+        );
+    }
+
+    #[test]
+    fn a_helper_naming_a_unit_not_in_the_hex_is_silent() {
+        assert_eq!(
+            check(
+                vec![ReportRegion {
+                    structures: vec![finished_mill("1")],
+                    ..region(vec![unit("5")])
+                }],
+                "unit 5\nBUILD HELP 4021\n",
+            ),
+            vec![]
+        );
+    }
+
+    /// A helper naming a unit that is not a concrete unit of ours in this hex - one formed this
+    /// turn and not yet on the report - cannot be resolved to a structure at all. Judging the
+    /// builder's own structure instead would be a guess, not what the order says.
+    #[test]
+    fn a_helper_naming_a_unit_formed_this_turn_is_silent_even_when_the_builder_stands_in_a_finished_structure(
+    ) {
+        assert_eq!(
+            check(
+                vec![ReportRegion {
+                    structures: vec![finished_mill("1")],
+                    ..region(vec![in_structure(unit("5"), "1")])
+                }],
+                "unit 5\nBUILD HELP NEW 2\n",
+            ),
+            vec![]
+        );
+    }
+
+    #[test]
+    fn an_unnamed_structure_is_named_by_its_number() {
+        let finding = only(check(
+            vec![ReportRegion {
+                structures: vec![finished_unnamed_building("4")],
+                ..region(vec![in_structure(unit("4021"), "4")])
+            }],
+            "unit 4021\nBUILD\n",
+        ));
+
+        assert_eq!(finding.message, "Building 4 is already finished");
+    }
+
+    #[test]
+    fn a_foreign_unit_building_is_not_warned_about() {
+        let mut theirs = in_structure(unit("900"), "1");
+        theirs.own = false;
+        theirs.faction_id = Some("15".to_string());
+
+        assert_eq!(
+            check(
+                vec![ReportRegion {
+                    structures: vec![finished_mill("1")],
+                    ..region(vec![theirs])
+                }],
+                "unit 900\nBUILD\n",
             ),
             vec![]
         );
@@ -3785,6 +4060,15 @@ mod tests {
                     5,
                 )])],
                 "unit 5\nSTUDY OBSE\n",
+                None,
+            ),
+            (
+                codes::ALREADY_BUILT,
+                vec![ReportRegion {
+                    structures: vec![finished_mill("1")],
+                    ..region(vec![in_structure(unit("4021"), "1")])
+                }],
+                "unit 4021\nBUILD\n",
                 None,
             ),
         ];
