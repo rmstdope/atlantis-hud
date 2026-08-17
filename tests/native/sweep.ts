@@ -95,6 +95,15 @@ export const SWEEP: SweepEntry[] = [
     })
   },
   {
+    command: "completions_at_caret",
+    args: () => ({
+      line_prefix: "BUY 5 ",
+      ruleset_json: RULESET,
+      raw_report: REPORT,
+      unit_id: "18642"
+    })
+  },
+  {
     command: "plan_route",
     args: () => ({
       ruleset_json: RULESET,

@@ -884,6 +884,15 @@ mod tests {
     }
 
     #[test]
+    fn a_hyphenated_word_is_one_word() {
+        // What the snippet source filters by: if the lexer split on `-`, a snippet named
+        // `tax-and-work` would stop being reachable by typing it (ah-vfq).
+        let answer = caret("tax-and");
+        assert_eq!(answer.word, "tax-and");
+        assert_eq!(answer.word_start, 0);
+    }
+
+    #[test]
     fn a_comment_is_nowhere() {
         let answer = caret("TAX ; note");
         assert_eq!(answer.position, CaretPosition::Nowhere);
