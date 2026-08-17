@@ -524,7 +524,8 @@ pub fn validate_orders_state(
     to_js(&result)
 }
 
-/// The order vocabulary, so the shell need not keep a copy of its own.
+/// Every order name, so the shell need not keep a copy of its own. Its wider twin below,
+/// `order_vocabulary_state`, answers every word the rules know rather than only the commands.
 #[wasm_bindgen]
 pub fn order_commands_state() -> Result<JsValue, JsValue> {
     to_js(&atlantis_hud_core::order_commands())
