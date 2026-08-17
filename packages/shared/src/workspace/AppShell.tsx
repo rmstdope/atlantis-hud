@@ -575,9 +575,30 @@ export function AppShell({
     [model]
   );
 
+  /** The selected hex's slice of the preview, or nothing when the orders leave it alone. */
+  const hexPreview = useMemo<RegionPreview | null>(() => {
+    if (!hex || !ordersPreview) {
+      return null;
+    }
+    return ordersPreview.regions.find((region) => region.regionId === hex.regionId) ?? null;
+  }, [hex, ordersPreview]);
+
+  /**
+   * The selected unit: as the report has it in this hex, or - for a unit that is only arriving here
+   * this month - as the preview has it.
+   *
+   * An arriving unit is in the preview and not in the report, which is why selecting one used to
+   * find nothing at all: no trace was asked for and the pane stayed empty, even though the table had
+   * just drawn the row that was clicked (ah-0fa). The preview's `unit` is a whole `ReportUnit`, so
+   * everything downstream is unchanged - and the report still wins, so a unit that is genuinely
+   * standing here resolves to the reported one however the preview describes it.
+   */
   const unit = useMemo(
-    () => hex?.region?.units.find((candidate) => candidate.unitId === selectedUnitId) ?? null,
-    [hex, selectedUnitId]
+    () =>
+      hex?.region?.units.find((candidate) => candidate.unitId === selectedUnitId) ??
+      hexPreview?.units.find((previewed) => previewed.unit.unitId === selectedUnitId)?.unit ??
+      null,
+    [hex, hexPreview, selectedUnitId]
   );
 
   /** What the engine said about this turn. Null when there is no turn on screen to say it about. */
@@ -1969,14 +1990,6 @@ export function AppShell({
       clearTimeout(timer);
     };
   }, [client, ordersDocument, ruleset, rawReport, rememberedJson]);
-
-  /** The selected hex's slice of the preview, or nothing when the orders leave it alone. */
-  const hexPreview = useMemo<RegionPreview | null>(() => {
-    if (!hex || !ordersPreview) {
-      return null;
-    }
-    return ordersPreview.regions.find((region) => region.regionId === hex.regionId) ?? null;
-  }, [hex, ordersPreview]);
 
   /** The selected unit as the orders leave it, for the unit panel. */
   const unitPreview = useMemo(() => {
