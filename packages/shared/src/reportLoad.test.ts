@@ -9,7 +9,11 @@ import type {
 } from "@atlantis/core-client";
 import { aParsedReport, aReportHeaderInfo, aReportRegion, aReportUnit } from "@atlantis/core-client";
 import { describe, expect, it, vi } from "vitest";
-import { REPORT_NAMES_NO_FACTION } from "./reportLoadDecision";
+import {
+  REPORT_HAS_NOTHING_IN_IT,
+  REPORT_NAMES_NO_FACTION,
+  REPORT_NAMES_NO_TURN
+} from "./reportLoadDecision";
 import {
   factionLabelOf,
   firstUnitIn,
@@ -40,7 +44,12 @@ function regionNoUnits(regionId: string, x: number, y: number): ReportRegion {
   return aReportRegion({ regionId, coordinate: { x, y, z: 1 }, terrain: "plain", province: "Nowhere" });
 }
 
-function report(overrides: Partial<ReportHeaderInfo> = {}, regions: ReportRegion[] = []): ParsedReport {
+// One region by default: a report with nothing in it is refused outright (ah-sgn.1), so an empty
+// one is a deliberate fixture rather than the baseline.
+function report(
+  overrides: Partial<ReportHeaderInfo> = {},
+  regions: ReportRegion[] = [aReportRegion()]
+): ParsedReport {
   return aParsedReport({ header: aReportHeaderInfo({ month: "January", ...overrides }), regions });
 }
 
@@ -263,6 +272,28 @@ describe("routeReport", () => {
     expect(routeReport(null, incoming, "junk", "junk.rep")).toEqual({
       kind: "reject",
       reason: REPORT_NAMES_NO_FACTION
+    });
+  });
+
+  it("refuses an unnumbered report rather than loading it", () => {
+    const incoming = report({ turnNumber: null });
+
+    expect(routeReport(null, incoming, "text", "turn.rep")).toEqual({
+      kind: "reject",
+      reason: REPORT_NAMES_NO_TURN
+    });
+    expect(routeReport(report({ turnNumber: 71 }), incoming, "text", "turn.rep")).toEqual({
+      kind: "reject",
+      reason: REPORT_NAMES_NO_TURN
+    });
+  });
+
+  it("refuses an empty report rather than replacing what is on screen", () => {
+    const incoming = report({ turnNumber: 72 }, []);
+
+    expect(routeReport(report({ turnNumber: 71 }), incoming, "text", "turn.rep")).toEqual({
+      kind: "reject",
+      reason: REPORT_HAS_NOTHING_IN_IT
     });
   });
 

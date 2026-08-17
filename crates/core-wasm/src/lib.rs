@@ -6,7 +6,7 @@
 //! which turn a game reopens on (`latest_turn_state`): the rules live in the core, and the web's
 //! store calls through here rather than deciding them itself.
 
-use atlantis_hud_core::reopen::{latest_turn, TurnTouch};
+use atlantis_hud_core::reopen::{latest_turn, TurnRef};
 use atlantis_hud_core::report::import::{import_writes, SeenRegion};
 use atlantis_hud_core::report::merge::{merge_report_into_sightings, StoredSighting};
 use atlantis_hud_core::report::sighting::RegionSighting;
@@ -255,17 +255,19 @@ pub fn diff_imported_turn_state(existing: JsValue, candidate: JsValue) -> Result
 
 /// Which turn a game reopens on, from what the browser store holds.
 ///
-/// `turns_json` and `drafts_json` are `[{ factionId, turnNumber, updatedAt? }]` - the store's
-/// imported turns and order drafts, three fields each; the payloads stay behind. Returns
-/// `{ factionId, turnNumber }` or `null`.
+/// `turns_json` is `[{ factionId, turnNumber }]` - the store's imported turns, two fields each;
+/// the payloads stay behind. `active_faction_id` is the faction the game remembers as the
+/// player's, or `None` for a manifest that remembers none. Returns `{ factionId, turnNumber }` or
+/// `null`.
 #[wasm_bindgen]
-pub fn latest_turn_state(turns_json: String, drafts_json: String) -> Result<JsValue, JsValue> {
-    let turns: Vec<TurnTouch> =
+pub fn latest_turn_state(
+    turns_json: String,
+    active_faction_id: Option<String>,
+) -> Result<JsValue, JsValue> {
+    let turns: Vec<TurnRef> =
         serde_json::from_str(&turns_json).map_err(|error| JsValue::from_str(&error.to_string()))?;
-    let drafts: Vec<TurnTouch> = serde_json::from_str(&drafts_json)
-        .map_err(|error| JsValue::from_str(&error.to_string()))?;
 
-    to_js(&latest_turn(&turns, &drafts))
+    to_js(&latest_turn(&turns, active_faction_id.as_deref()))
 }
 
 /// Encodes one game's rows as one backup document. `content_json` is the browser store's own

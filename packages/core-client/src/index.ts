@@ -4,7 +4,6 @@ import type { AdvisoryCheckCode } from "./coreVocabulary.generated";
 // (crates/core, `cargo test`); see docs/implementation-plan.md §Generated bindings.
 export type { EngineInfo } from "./generated/EngineInfo";
 export type { TurnRef } from "./generated/TurnRef";
-export type { TurnTouch } from "./generated/TurnTouch";
 export type { WarningSeverity } from "./generated/WarningSeverity";
 export type { ParseWarning } from "./generated/ParseWarning";
 export type { TurnHeader } from "./generated/TurnHeader";
@@ -592,7 +591,11 @@ export interface CoreAdapter {
     factionId: string,
     turnNumber: number
   ): Promise<ImportedTurnRecord | null>;
-  loadLatestImportedTurn(databasePath: string, gameId: string): Promise<ImportedTurnRecord | null>;
+  loadLatestImportedTurn(
+    databasePath: string,
+    gameId: string,
+    activeFactionId: string | null
+  ): Promise<ImportedTurnRecord | null>;
   listImportedTurns(databasePath: string, gameId: string): Promise<ImportedTurnSummary[]>;
   loadOrderDraft(
     databasePath: string,

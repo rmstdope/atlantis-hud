@@ -23,6 +23,7 @@ import {
 } from "./reportBatch";
 import type { ImportSummary } from "./importSummary";
 import { factionLabelOf } from "./reportLoad";
+import { judgeReportUsable } from "./reportLoadDecision";
 import { describeError } from "./workspace/shellAction";
 
 /**
@@ -65,19 +66,23 @@ export async function prepareBatch(
       candidates.push({
         fileName: chosen.name,
         factionId: report.header.factionId,
-        turnNumber: report.header.turnNumber
+        turnNumber: report.header.turnNumber,
+        usable: judgeReportUsable(report)
       });
     } catch (error) {
       read.push(null);
-      // Still a candidate, so the plan's indices stay the indices of the chosen files. Its faction
-      // is unreadable, so the plan skips it - but with this reason rather than the plan's, because
-      // "could not be read: ..." says what actually went wrong.
-      candidates.push({ fileName: chosen.name, factionId: null, turnNumber: null });
-      unreadable.push({
-        index,
+      // Still a candidate, so the plan's indices stay the indices of the chosen files. Nothing about
+      // it could be read, so the plan skips it - and its verdict carries the same reason the
+      // `unreadable` entry does, because "could not be read: ..." says what actually went wrong.
+      // The player is shown the `unreadable` entry; the verdict is only how the plan knows to skip.
+      const reason = `could not be read: ${describeError(error)}`;
+      candidates.push({
         fileName: chosen.name,
-        reason: `could not be read: ${describeError(error)}`
+        factionId: null,
+        turnNumber: null,
+        usable: { ok: false, reason }
       });
+      unreadable.push({ index, fileName: chosen.name, reason });
     }
   }
 

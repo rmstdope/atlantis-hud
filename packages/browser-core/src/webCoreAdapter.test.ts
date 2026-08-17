@@ -164,37 +164,18 @@ function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
       };
     },
     hydrate_parse_result_state: (json: string) => ({ ...EMPTY_PARSE_RESULT, hydratedFrom: json }),
-    // Self-consistent, not correct: the real rule (and every tie-break) is the core's, pinned in
+    // Self-consistent, not correct: the real rule (and its tie-break) is the core's, pinned in
     // `reopen.rs` and against the real module in `reopen.wasm.test.ts`. This stand-in only has to
     // agree with itself so the routing tests below - which check the adapter hands over every
-    // turn and draft rather than deciding the ranking here - read true.
-    latest_turn_state: (turnsJson: string, draftsJson: string) => {
-      const turns = JSON.parse(turnsJson) as Array<{
-        factionId: string;
-        turnNumber: number;
-        updatedAt?: string;
-      }>;
-      const drafts = JSON.parse(draftsJson) as Array<{
-        factionId: string;
-        turnNumber: number;
-        updatedAt?: string;
-      }>;
-      const edited = new Map(drafts.map((d) => [`${d.factionId}:${d.turnNumber}`, d.updatedAt ?? ""]));
-      const touched = (t: { factionId: string; turnNumber: number; updatedAt?: string }) => {
-        const own = t.updatedAt ?? "";
-        const draft = edited.get(`${t.factionId}:${t.turnNumber}`) ?? "";
-        return own > draft ? own : draft;
-      };
-      const latest = turns.reduce<(typeof turns)[number] | null>((best, turn) => {
-        if (best === null) {
-          return turn;
-        }
-        const [a, b] = [touched(turn), touched(best)];
-        if (a !== b) {
-          return a > b ? turn : best;
-        }
-        return turn.turnNumber > best.turnNumber ? turn : best;
-      }, null);
+    // turn and the remembered faction rather than deciding the ranking here - read true.
+    latest_turn_state: (turnsJson: string, activeFactionId: string | null) => {
+      const turns = JSON.parse(turnsJson) as Array<{ factionId: string; turnNumber: number }>;
+      const mine = turns.filter((turn) => turn.factionId === activeFactionId);
+      const pool = mine.length > 0 ? mine : turns;
+      const latest = pool.reduce<(typeof pool)[number] | null>(
+        (best, turn) => (best === null || turn.turnNumber > best.turnNumber ? turn : best),
+        null
+      );
       return latest ? { factionId: latest.factionId, turnNumber: latest.turnNumber } : null;
     },
     /**
@@ -641,31 +622,30 @@ describe("web core adapter", () => {
     const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
 
     // A game just created, not a failure. The workspace opens empty rather than refusing.
-    expect(await adapter.loadLatestImportedTurn(DB, "p")).toBeNull();
+    expect(await adapter.loadLatestImportedTurn(DB, "p", null)).toBeNull();
   });
 
   /**
-   * The browser answers "which turn was I last in" the same way the desktop does.
+   * The browser answers "which turn do I come back to" the same way the desktop does.
    *
-   * Both stores hand every turn and draft to the core, and it names the turn - the same rule
-   * (attention, not arrival) on both platforms, pinned once in `reopen.rs`.
+   * Both stores hand every turn and the remembered faction to the core, and it names the turn -
+   * the same rule on both platforms, pinned once in `reopen.rs`.
    */
-  it("reopens on the turn last edited rather than the one last imported", async () => {
+  it("reopens on the highest turn of the remembered faction", async () => {
     const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore());
     const OTHER = "TURN: 12 Spring\nFACTION: 18 | Azure Wake";
 
     await adapter.commitReportImport(DB, "p", "17", REPORT, null, false, "2026-08-09T18:00:00Z");
     await adapter.commitReportImport(DB, "p", "18", OTHER, null, false, "2026-08-09T19:00:00Z");
 
-    // With nothing written, the later import is the answer.
-    expect(await adapter.loadLatestImportedTurn(DB, "p")).toMatchObject({
-      key: { gameId: "p", factionId: "18", turnNumber: 12 }
+    // Remembering none, the fallback takes the game's highest turn - here a tie the stand-in
+    // settles on the first it saw.
+    expect(await adapter.loadLatestImportedTurn(DB, "p", null)).toMatchObject({
+      key: { gameId: "p", turnNumber: 12 }
     });
 
-    // An evening spent on the first faction's orders moves it back in front.
-    await adapter.saveOrderDraft(DB, "p", "17", 12, "@work", "2026-08-09T22:00:00Z");
-
-    expect(await adapter.loadLatestImportedTurn(DB, "p")).toMatchObject({
+    // Remembering one, that faction's turn is the answer whatever else the game holds.
+    expect(await adapter.loadLatestImportedTurn(DB, "p", "17")).toMatchObject({
       key: { gameId: "p", factionId: "17", turnNumber: 12 },
       rawReport: REPORT
     });
@@ -676,16 +656,16 @@ describe("web core adapter", () => {
 
     await adapter.commitReportImport("idb://campaign-a", "p", "17", REPORT, null, false, IMPORTED_AT);
 
-    expect(await adapter.loadLatestImportedTurn("idb://campaign-b", "p")).toBeNull();
+    expect(await adapter.loadLatestImportedTurn("idb://campaign-b", "p", null)).toBeNull();
   });
 
-  it("hands every turn and draft to the core, three fields each, and returns the turn it names", async () => {
+  it("hands every turn and the remembered faction to the core, two fields each", async () => {
     let seenTurnsJson = "";
-    let seenDraftsJson = "";
+    let seenFaction: string | null | undefined;
     const wasm = fakeWasm({
-      latest_turn_state: (turnsJson: string, draftsJson: string) => {
+      latest_turn_state: (turnsJson: string, activeFactionId: string | null) => {
         seenTurnsJson = turnsJson;
-        seenDraftsJson = draftsJson;
+        seenFaction = activeFactionId;
         return { factionId: "17", turnNumber: 12 };
       }
     });
@@ -696,18 +676,17 @@ describe("web core adapter", () => {
     await adapter.commitReportImport(DB, "p", "18", OTHER, null, false, "2026-08-09T19:00:00Z");
     await adapter.saveOrderDraft(DB, "p", "18", 12, "@work", "2026-08-09T20:00:00Z");
 
-    const result = await adapter.loadLatestImportedTurn(DB, "p");
+    const result = await adapter.loadLatestImportedTurn(DB, "p", "17");
 
     const seenTurns = JSON.parse(seenTurnsJson) as unknown[];
-    const seenDrafts = JSON.parse(seenDraftsJson) as unknown[];
     expect(seenTurns).toEqual(
       expect.arrayContaining([
-        { factionId: "17", turnNumber: 12, updatedAt: "2026-08-09T18:00:00Z" },
-        { factionId: "18", turnNumber: 12, updatedAt: "2026-08-09T19:00:00Z" }
+        { factionId: "17", turnNumber: 12 },
+        { factionId: "18", turnNumber: 12 }
       ])
     );
     expect(seenTurns).toHaveLength(2);
-    expect(seenDrafts).toEqual([{ factionId: "18", turnNumber: 12, updatedAt: "2026-08-09T20:00:00Z" }]);
+    expect(seenFaction).toBe("17");
     expect(result?.rawReport).toBe(REPORT);
   });
 
@@ -719,7 +698,7 @@ describe("web core adapter", () => {
 
     await adapter.commitReportImport(DB, "p", "17", REPORT, null, false, IMPORTED_AT);
 
-    await expect(adapter.loadLatestImportedTurn(DB, "p")).rejects.toThrow(
+    await expect(adapter.loadLatestImportedTurn(DB, "p", null)).rejects.toThrow(
       "the core named a turn the store does not hold"
     );
   });
@@ -1373,7 +1352,7 @@ describe("merging an allied report", () => {
     await adapter.mergeReport("/db", "p", "95", 71, ALLY, null, MERGED_AT);
 
     await expect(store.getImportedTurns("/db", "p")).resolves.toEqual([]);
-    await expect(adapter.loadLatestImportedTurn("/db", "p")).resolves.toBeNull();
+    await expect(adapter.loadLatestImportedTurn("/db", "p", null)).resolves.toBeNull();
   });
 
   it("records who was merged, and reads it back oldest first", async () => {
