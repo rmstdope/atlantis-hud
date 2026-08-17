@@ -3305,7 +3305,7 @@ mod tests {
     }
 
     #[test]
-    fn the_skill_may_be_named_or_tagged() {
+    fn the_skill_may_be_named_or_tagged_for_study_at_maximum() {
         for order in ["STUDY observation", "STUDY obse"] {
             let units = vec![studying_unit("5", "OBSE", 5)];
             assert_eq!(
@@ -3335,7 +3335,7 @@ mod tests {
     }
 
     #[test]
-    fn without_a_ruleset_nothing_is_said() {
+    fn without_a_ruleset_nothing_is_said_for_study_at_maximum() {
         let units = vec![studying_unit("5", "OBSE", 5)];
         let regions = vec![region(units)];
 
@@ -3360,7 +3360,7 @@ mod tests {
     }
 
     #[test]
-    fn the_finding_sits_on_the_study_line() {
+    fn the_finding_sits_on_the_study_line_for_study_at_maximum() {
         let units = vec![studying_unit("5", "OBSE", 5)];
         let finding = only(check(vec![region(units)], "unit 5\nWORK\n\nSTUDY OBSE\n"));
 
@@ -3785,6 +3785,7 @@ mod tests {
                     5,
                 )])],
                 "unit 5\nSTUDY OBSE\n",
+                None,
             ),
         ];
 
