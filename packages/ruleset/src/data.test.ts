@@ -440,6 +440,54 @@ describe("parseSkillReference", () => {
   });
 
   /**
+   * The data page states a skill's prerequisites in its own description - `This skill requires
+   * force [FORC] 1 to begin to study.` - and the tag, not the name, is what is matched: the tag is
+   * stable and the spelling of the name is the page's business.
+   */
+  it("reads a single prerequisite", () => {
+    const skills = parseSkillReference(DATA_HTML);
+
+    // "fire [FIRE] 1: ... This skill requires force [FORC] 1 to begin to study."
+    expect(skills.FIRE.requires).toEqual([{ tag: "FORC", level: 1 }]);
+  });
+
+  it("reads two prerequisites joined by and", () => {
+    const skills = parseSkillReference(DATA_HTML);
+
+    // "earth lore [EQUA] 1: ... requires force [FORC] 1 and pattern [PATT] 1 ..." - in the page's
+    // own order, which is what a reader comparing the two would expect.
+    expect(skills.EQUA.requires).toEqual([
+      { tag: "FORC", level: 1 },
+      { tag: "PATT", level: 1 }
+    ]);
+  });
+
+  /**
+   * Empty rather than absent, so a consumer never has to distinguish "states none" from "was not
+   * scraped" - the great majority of the catalogue states none.
+   */
+  it("records no prerequisites for a skill that states none", () => {
+    const skills = parseSkillReference(DATA_HTML);
+
+    expect(skills.MINI.requires).toEqual([]);
+  });
+
+  /**
+   * The same tolerant style the rest of this parser keeps: a clause that cannot be read is dropped
+   * rather than guessed at, and the skill keeps every other field it stated.
+   */
+  it("drops an unreadable requirement clause rather than guessing", () => {
+    const skills = parseSkillReference(
+      "<html><body><pre>mangled [MANG] 1: A skill. This skill requires whatever it takes and " +
+        "pattern [PATT] 2 to begin to study. This skill costs 10 silver per month of study.\n\n" +
+        "</pre></body></html>"
+    );
+
+    expect(skills.MANG.requires).toEqual([{ tag: "PATT", level: 2 }]);
+    expect(skills.MANG.cost).toBe(10);
+  });
+
+  /**
    * What CASTing the skill consumes, read from the same "via magic at a cost of ..." / "the
    * attempt costs ..." / "may transmute ... into ..." sentences ah-dbb.2 will charge against. Most
    * skills a mage can CAST state no cost at all, which is why `cast` is nullable rather than a

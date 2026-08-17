@@ -103,6 +103,9 @@ export type CastCost = { costs: CastInput[]; transmute: Record<string, string> }
 /** One thing a skill can make, and the level at which it can first be made. */
 export type Production = { tag: string; level: number };
 
+/** A skill a unit must already have, at a level, before it may begin to study another. */
+export type SkillRequirement = { tag: string; level: number };
+
 export type SkillEntry = {
   tag: string;
   name: string;
@@ -133,6 +136,12 @@ export type SkillEntry = {
    * carpenter, combat and their kind. See `committed.test.ts` for the pinned classification.
    */
   magic: boolean;
+  /**
+   * What a unit must already have before it may begin this skill, as the data page's own `This
+   * skill requires force [FORC] 1 to begin to study.` sentence states it. Empty - never absent -
+   * for the majority of the catalogue, which states none.
+   */
+  requires: SkillRequirement[];
 };
 
 export type SkillReference = Record<string, SkillEntry>;
@@ -329,6 +338,36 @@ const SKILL_OPENING = /^([^.:[\]]{1,40}) \[([A-Z0-9]{2,6})\] (\d+): /;
 const STUDY_COST = /This skill costs (\d+) silver per month of study/i;
 
 /**
+ * "This skill requires force [FORC] 1 to begin to study.", and for half of the sixty-six that state
+ * one, "... force [FORC] 1 and pattern [PATT] 1 to begin to study."
+ *
+ * ` and ` is the whole of the separator grammar in the committed page - there is no comma form and
+ * no three-requirement form - so splitting on anything else would be inventing one.
+ */
+const STUDY_REQUIREMENT = /This skill requires (.+?) to begin to study\./i;
+
+/** The tag and level inside one requirement clause: `force [FORC] 1`. */
+const REQUIREMENT_CLAUSE = /\[([A-Z0-9]{2,6})\]\s+(\d+)/;
+
+/**
+ * Reads the prerequisites out of a skill's own paragraph.
+ *
+ * Matched on the tag and the number rather than on the skill's name, which keeps this independent
+ * of how the page spells a name; a clause that cannot be read is dropped rather than turned into a
+ * requirement at a guessed level.
+ */
+function readRequirements(paragraph: string): SkillRequirement[] {
+  const stated = paragraph.match(STUDY_REQUIREMENT);
+  if (!stated) {
+    return [];
+  }
+  return stated[1].split(" and ").flatMap((clause) => {
+    const part = clause.match(REQUIREMENT_CLAUSE);
+    return part ? [{ tag: part[1], level: Number.parseInt(part[2], 10) }] : [];
+  });
+}
+
+/**
  * What a magic skill's own description says about itself. The data page marks magic nowhere - no
  * flag, no grouping, no "may only be studied by a mage" phrase - so the skill's prose is the only
  * evidence there is. Measured over the committed page this separates the catalogue exactly: seventy
@@ -502,6 +541,12 @@ export function parseSkillReference(html: string): SkillReference {
       // that level and mention magic incidentally often enough to matter; level 1 is where a skill
       // says what it is. The `||` is what makes the order the paragraphs arrive in irrelevant: once
       // `magic` is true from an earlier entry, a later, non-level-1 paragraph cannot unset it.
+      // Stated on the level-1 entry, so - as with `cost` - whichever entry states them is kept and
+      // a later, silent level cannot empty them again.
+      requires:
+        existing?.requires && existing.requires.length > 0
+          ? existing.requires
+          : readRequirements(paragraph),
       magic:
         (existing?.magic ?? false) ||
         (Number.parseInt(level, 10) === 1 && MAGIC_WORDS.test(paragraph))
