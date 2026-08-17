@@ -116,7 +116,13 @@ export function keywordJustFinished(
   at: number,
   vocabulary: Vocabulary
 ): { from: number; to: number; upper: string } | null {
-  const word = bareWords(line).find((candidate) => candidate.to === at);
+  // `at` may sit past the word's own end when the player typed trailing punctuation - `move n,`
+  // then a space - which `bareWords` strips from the span. Anything between the two must be that
+  // punctuation and nothing else, so `move n, ` still shouts and `move n x ` does not.
+  const word = bareWords(line).find(
+    (candidate) =>
+      candidate.to <= at && /^[,.]*$/.test(line.slice(candidate.to, at))
+  );
   if (!word) return null;
   if (!isKeyword(word.text, vocabulary)) return null;
   const upper = word.text.toUpperCase();

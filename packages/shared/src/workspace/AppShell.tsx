@@ -1309,6 +1309,9 @@ export function AppShell({
 
   useEffect(() => {
     let cancelled = false;
+    // Cleared first: the words are the open ruleset's, so holding the previous one's while the
+    // new call is in flight would uppercase against a catalogue that is no longer on screen.
+    setOrderVocabulary([]);
     void Promise.resolve()
       .then(() => client.orderVocabulary(rulesetText))
       .then((words) => {

@@ -125,6 +125,14 @@ describe("keywordJustFinished", () => {
     expect(keywordJustFinished("frobnicate", 10, vocabulary)).toBeNull();
   });
 
+  it("looks past trailing punctuation the player typed", () => {
+    expect(keywordJustFinished("move n,", 7, vocabulary)).toEqual({ from: 5, to: 6, upper: "N" });
+  });
+
+  it("finds nothing when another word stands between the caret and the keyword", () => {
+    expect(keywordJustFinished("move frobnicate", 15, vocabulary)).toBeNull();
+  });
+
   it("finds nothing when the caret is mid-word", () => {
     expect(keywordJustFinished("move n", 2, vocabulary)).toBeNull();
   });
