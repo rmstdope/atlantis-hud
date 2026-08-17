@@ -84,6 +84,21 @@ pub fn mobility(unit: &ReportUnit) -> Mobility {
     Mobility::Overloaded
 }
 
+/// The heaviest load this unit could move at all: the best of the flying, riding and walking
+/// allowances the server printed for it, whichever the game would end up choosing.
+///
+/// `mobility` asks which mode a unit uses and answers from the weight the report printed. An order
+/// check has to ask a narrower question - is *this* load, after a month of orders, more than
+/// anything the unit can manage - and a unit is overloaded exactly when its load beats all three,
+/// which is to say the best of them. Swimming is left out for the reason `mobility` leaves it out.
+///
+/// `None` when the report did not state the capacities, which is every foreign unit.
+#[must_use]
+pub fn best_allowance(unit: &ReportUnit) -> Option<i64> {
+    let capacity = unit.capacity.as_deref().and_then(parse_capacities)?;
+    Some(capacity.fly.max(capacity.ride).max(capacity.walk))
+}
+
 // ---------------------------------------------------------------- fleets
 
 /// The structure `unit.structure_id` names, when its kind names a hull or a fleet.
@@ -310,6 +325,36 @@ mod tests {
     fn a_negative_capacity_carries_nothing() {
         let capacities = parse_capacities("-1/-1/-1/-1").expect("still four numbers");
         assert_eq!(capacities.fly, -1);
+    }
+
+    // ------------------------------------------------------------ best_allowance
+
+    fn with_capacity(capacity: &str) -> ReportUnit {
+        ReportUnit {
+            capacity: Some(capacity.to_string()),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn the_walk_allowance_is_the_best_of_a_ground_unit() {
+        assert_eq!(best_allowance(&with_capacity("0/0/150/0")), Some(150));
+    }
+
+    #[test]
+    fn the_ride_allowance_wins_when_it_is_higher() {
+        assert_eq!(best_allowance(&with_capacity("0/70/85/0")), Some(85));
+        assert_eq!(best_allowance(&with_capacity("10/0/0/0")), Some(10));
+    }
+
+    #[test]
+    fn a_capacity_that_does_not_parse_is_not_judged() {
+        assert_eq!(best_allowance(&with_capacity("nonsense")), None);
+    }
+
+    #[test]
+    fn a_unit_with_no_stated_capacity_is_not_judged() {
+        assert_eq!(best_allowance(&ReportUnit::default()), None);
     }
 
     // ------------------------------------------------------------ fleets

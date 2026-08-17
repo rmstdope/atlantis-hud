@@ -374,6 +374,11 @@ const WARNING_GROUPS: readonly {
         code: "give-target-not-here",
         title: "Gifts to units that are not here",
         description: "A GIVE or TAKE naming a unit the report does not show in that hex."
+      },
+      {
+        code: "unit-overloaded",
+        title: "Overloaded units",
+        description: "A unit ordered to move carrying more than it can move with."
       }
     ]
   },
