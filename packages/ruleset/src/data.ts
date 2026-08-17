@@ -122,6 +122,17 @@ export type SkillEntry = {
    * at which it becomes available. Empty for the great majority of skills, which make nothing.
    */
   produces: Production[];
+  /**
+   * Whether this is one of the magic skills.
+   *
+   * The data page marks magic nowhere - no flag, no grouping, no "may only be studied by a mage"
+   * phrase - so this is read from the skill's own level-1 description instead: a skill whose
+   * opening paragraph speaks of mages, magic, spells, casting, summoning, enchanting or the
+   * Foundations is magic. Measured over the committed fixture this separates the catalogue
+   * exactly: seventy magic, twenty-six mundane, and the twenty-six are armorer, building,
+   * carpenter, combat and their kind. See `committed.test.ts` for the pinned classification.
+   */
+  magic: boolean;
 };
 
 export type SkillReference = Record<string, SkillEntry>;
@@ -318,6 +329,26 @@ const SKILL_OPENING = /^([^.:[\]]{1,40}) \[([A-Z0-9]{2,6})\] (\d+): /;
 const STUDY_COST = /This skill costs (\d+) silver per month of study/i;
 
 /**
+ * What a magic skill's own description says about itself. The data page marks magic nowhere - no
+ * flag, no grouping, no "may only be studied by a mage" phrase - so the skill's prose is the only
+ * evidence there is. Measured over the committed page this separates the catalogue exactly: seventy
+ * magic, twenty-six mundane, and the twenty-six are armorer, building, carpenter, combat and their
+ * kind.
+ *
+ * No `g` flag: a global regex keeps `lastIndex` between calls and would match every other skill.
+ *
+ * The alternatives are grouped behind one `\b` rather than each written `\bword`: alternation binds
+ * more loosely than `\b`, so `\bmage|cast` would anchor only `mage` and let `cast` match inside
+ * "broadcast" or "outcast". `\b(?:...)` anchors every alternative's left edge alike.
+ *
+ * `cast` alone still matches inside "Castle" - the fixture has nine of them, none in a magic
+ * skill's level-1 paragraph today - because a leading `\b` only rules out mid-word matches, not a
+ * real word that happens to start the same way. `(?!le)` is the fixture's actual shape: `cast`,
+ * `caster`, `casting` and `CAST` all appear and must keep matching; `castle` must not.
+ */
+const MAGIC_WORDS = /\b(?:mage|magic|spell|cast(?!le)|summon|enchant|Foundation)/i;
+
+/**
  * "via magic at a cost of 600 silver [SILV]." / "... of sword [SWOR]." / "... of 75 floater
  * hides [FLOA] and 75 ironwood [IRWD]." Stops at the first period: the sentence continues "To use
  * this spell ...", and no input name in the fixture carries a dot of its own.
@@ -466,7 +497,14 @@ export function parseSkillReference(html: string): SkillReference {
       produces: mergeProduction(
         existing?.produces,
         readProduction(tag, paragraph, Number.parseInt(level, 10))
-      )
+      ),
+      // Only the level-1 paragraph is consulted. Higher levels describe what the skill does at
+      // that level and mention magic incidentally often enough to matter; level 1 is where a skill
+      // says what it is. The `||` is what makes the order the paragraphs arrive in irrelevant: once
+      // `magic` is true from an earlier entry, a later, non-level-1 paragraph cannot unset it.
+      magic:
+        (existing?.magic ?? false) ||
+        (Number.parseInt(level, 10) === 1 && MAGIC_WORDS.test(paragraph))
     };
   }
 
