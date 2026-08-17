@@ -136,11 +136,12 @@ describe("theme palette", () => {
 describe("pane type scale", () => {
   it("declares the pane type scale as rem tokens in the theme block", () => {
     const themeBlock = extractBlock(css, /@theme\b/);
+    // Reaches inside an optional `calc(...)` while still capturing the rem base, so a token
+    // multiplied by `--ui-scale` (ah-46p.2) still matches here.
     const sizes = new Map(
-      [...themeBlock.matchAll(/(--text-pane[\w-]*)\s*:\s*([\d.]+rem)/g)].map((match) => [
-        match[1],
-        match[2]
-      ])
+      [...themeBlock.matchAll(/(--text-pane[\w-]*)\s*:\s*(?:calc\(\s*)?([\d.]+rem)/g)].map(
+        (match) => [match[1], match[2]]
+      )
     );
 
     expect(sizes.get("--text-pane-sm")).toBeDefined();
@@ -151,6 +152,25 @@ describe("pane type scale", () => {
     for (const [token, value] of sizes) {
       expect(value.endsWith("rem"), `${token} is ${value}, not rem`).toBe(true);
     }
+
+    // Each token must carry the Interface size multiplier, or the setting (ah-46p.2) reaches
+    // nothing.
+    for (const token of ["--text-pane-sm", "--text-pane", "--text-pane-lg"]) {
+      const declared = themeBlock.match(new RegExp(`${token}\\s*:\\s*([^;]+);`))?.[1] ?? "";
+      expect(declared, `${token} is ${declared}`).toContain("var(--ui-scale");
+    }
+  });
+
+  it("declares --ui-scale with a default of 1, outside the @theme block", () => {
+    // Somewhere in the stylesheet, the panes must render correctly before `settingsStore` has
+    // stamped anything and in any test that mounts a component alone.
+    expect(css).toMatch(/--ui-scale\s*:\s*1\s*;/);
+
+    // Not inside `@theme`: that block is Tailwind's utility-generating namespace, and this is not
+    // a utility - `--pane-transparency` is the precedent for living in the plain block instead.
+    // (A reference like `var(--ui-scale, 1)` is fine there; only a declaration is not.)
+    const themeBlock = extractBlock(css, /@theme\b/);
+    expect(themeBlock).not.toMatch(/--ui-scale\s*:\s*1\s*;/);
   });
 
   /**

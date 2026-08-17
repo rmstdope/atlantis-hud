@@ -114,9 +114,9 @@
   /* The panes' type scale. Three steps, in rem so the reader's own font-size preference reaches
      them - `px` does not, which is the whole of ah-46p. The map sets its own sizes and is not on
      this scale. */
-  --text-pane-sm: 0.6875rem;   /* 11px at a 16px root */
-  --text-pane: 0.75rem;        /* 12px */
-  --text-pane-lg: 0.8125rem;   /* 13px */
+  --text-pane-sm: calc(0.6875rem * var(--ui-scale, 1));   /* 11px at a 16px root, at 100% */
+  --text-pane: calc(0.75rem * var(--ui-scale, 1));        /* 12px */
+  --text-pane-lg: calc(0.8125rem * var(--ui-scale, 1));   /* 13px */
 }
 
 /*
@@ -300,6 +300,11 @@
  */
 :root {
   --pane-transparency: 90;
+
+  /* What the Interface size setting multiplies the pane type scale by; 1 is 100%. Stamped on the
+     root by `settingsStore`, exactly as `--pane-transparency` is, and defaulted here so the app
+     renders correctly before the store has run and in any test that mounts a component alone. */
+  --ui-scale: 1;
 }
 
 .bg-pane {

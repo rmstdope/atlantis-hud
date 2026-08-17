@@ -2,7 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ADVISORY_CHECK_CODES } from "@atlantis/core-client";
 import { resetSettingsStore, useSettingsStore } from "../settingsStore";
-import { WarningSettings } from "./SettingsDialog";
+import { GlobalSettings, WarningSettings } from "./SettingsDialog";
 
 /**
  * `renderToStaticMarkup` runs with no `window`, so React treats it as a server render and the
@@ -30,6 +30,31 @@ function tag(html: string, testid: string): string {
   }
   return match[0];
 }
+
+describe("the Interface size setting", () => {
+  afterEach(() => {
+    resetSettingsStore();
+  });
+
+  it("renders the slider at its default with the map-unaffected hint", () => {
+    resetSettingsStore();
+    const html = renderToStaticMarkup(<GlobalSettings />);
+
+    const slider = tag(html, "settings-interface-size");
+    expect(slider).toContain('min="100"');
+    expect(slider).toContain('max="200"');
+    expect(slider).toContain('step="25"');
+    expect(slider).toContain('value="100"');
+    expect(html).toContain("Makes the panes, the header and the dialogs bigger. The map is not affected.");
+  });
+
+  it("reflects a changed interface size", () => {
+    useSettingsStore.getState().setInterfaceSize(150);
+    const html = renderToStaticMarkup(<GlobalSettings />);
+
+    expect(tag(html, "settings-interface-size")).toContain('value="150"');
+  });
+});
 
 describe("the Warnings settings tab", () => {
   afterEach(() => {

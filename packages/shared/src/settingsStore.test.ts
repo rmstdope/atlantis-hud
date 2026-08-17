@@ -272,6 +272,63 @@ describe("settings store", () => {
     expect(stub.documentElement.style.properties["--pane-transparency"]).toBe("40");
   });
 
+  it("defaults the interface size to 100 percent", () => {
+    expect(store().interfaceSize).toBe(100);
+  });
+
+  it("stamps the chosen interface size onto the document root as a multiplier", () => {
+    const stub = installDocumentStub();
+
+    store().setInterfaceSize(150);
+
+    expect(store().interfaceSize).toBe(150);
+    expect(stub.documentElement.style.properties["--ui-scale"]).toBe("1.5");
+  });
+
+  /**
+   * The slider only offers steps of 25 between 100 and 200, but the store is also fed by whatever
+   * localStorage holds, and a hand-edited or corrupted value must land on a real step rather than
+   * throw or leave the slider between its stops.
+   */
+  it("clamps the interface size to a 25-percent step between 100 and 200", () => {
+    store().setInterfaceSize(137);
+    expect(store().interfaceSize).toBe(125);
+
+    store().setInterfaceSize(500);
+    expect(store().interfaceSize).toBe(200);
+
+    store().setInterfaceSize(50);
+    expect(store().interfaceSize).toBe(100);
+
+    // A garbage value falls back to the default rather than to an extreme.
+    store().setInterfaceSize(Number.NaN);
+    expect(store().interfaceSize).toBe(100);
+  });
+
+  it("applies the persisted interface size at startup", () => {
+    store().setInterfaceSize(150);
+    const stub = installDocumentStub();
+
+    applyPersistedSettings();
+
+    expect(stub.documentElement.style.properties["--ui-scale"]).toBe("1.5");
+  });
+
+  /**
+   * Rehydration merges storage straight into state without the setter, so a hand-edited or
+   * out-of-range value would otherwise leave the slider saying one thing and the panes rendering
+   * another. Startup must reconcile both sides, exactly as it does for pane transparency.
+   */
+  it("sanitizes a persisted interface size from outside the range, state and stamp alike", () => {
+    useSettingsStore.setState({ interfaceSize: 999 });
+    const stub = installDocumentStub();
+
+    applyPersistedSettings();
+
+    expect(store().interfaceSize).toBe(200);
+    expect(stub.documentElement.style.properties["--ui-scale"]).toBe("2");
+  });
+
   /**
    * The retired units-pane keys (`unitListLimit`, `unitListFixedSize` - ah-2r3, removed with the
    * pane's row-count setting) must not survive a settings blob written before this build. Storage

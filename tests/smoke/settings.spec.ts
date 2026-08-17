@@ -252,6 +252,81 @@ async function openReport(page: Page) {
   await expect(load).toBeEnabled();
 }
 
+/**
+ * ah-46p.2: the Interface size setting scales the panes' type (and, with it, the units dock's row
+ * height) without ever touching the map - full-page zoom already scales both, and that unhelpful
+ * trade is the reason this setting exists.
+ */
+test("the panes grow when the interface size does", async ({ page }) => {
+  await clearGames(page);
+  await createGame(page, "Settings game");
+  await openReport(page);
+
+  await page.getByRole("button", { name: "hex 1:7,53" }).click();
+
+  const pane = page.getByTestId("app-header");
+  // The ruler ticks, not `.region-name`: that class is hidden outright at a far zoom band
+  // (`.map-far .region-name { display: none }` in theme.css), while the rulers render at every
+  // zoom level and carry their own explicit `fontSize` attribute untouched by `--ui-scale`.
+  const mapLabel = page.locator('[data-testid="map-ruler-x"] text').first();
+  const row = page.locator('[data-testid^="unit-row-"]').first();
+  // `boundingBox()` returns null for an element not yet rendered or off-screen; asserting
+  // visibility first is what makes the non-null assertions below safe rather than merely hopeful.
+  await expect(mapLabel).toBeVisible();
+  await expect(row).toBeVisible();
+
+  const paneSizeBefore = await pane.evaluate(
+    (element) => Number.parseFloat(getComputedStyle(element).fontSize)
+  );
+  const mapSizeBefore = await mapLabel.evaluate(
+    (element) => Number.parseFloat(getComputedStyle(element).fontSize)
+  );
+  const rowHeightBefore = (await row.boundingBox())!.height;
+
+  await page.getByTestId("settings-indicator").click();
+  const slider = page.getByTestId("settings-interface-size");
+  await expect(slider).toHaveValue("100");
+  await expect(slider).toHaveAttribute("min", "100");
+  await expect(slider).toHaveAttribute("max", "200");
+  await slider.fill("200");
+  await page.keyboard.press("Escape");
+  // Closing is a modal teardown; reading computed styles before it finishes can race the dialog's
+  // own unmount, exactly as the other walks in this file wait for `settings-panel` to be gone.
+  await expect(page.getByTestId("settings-panel")).toHaveCount(0);
+
+  const paneSizeAfter = await pane.evaluate(
+    (element) => Number.parseFloat(getComputedStyle(element).fontSize)
+  );
+  const mapSizeAfter = await mapLabel.evaluate(
+    (element) => Number.parseFloat(getComputedStyle(element).fontSize)
+  );
+  const rowHeightAfter = (await row.boundingBox())!.height;
+
+  // The panes double...
+  expect(paneSizeAfter).toBeCloseTo(paneSizeBefore * 2, 1);
+  // ...the map does not move at all...
+  expect(mapSizeAfter).toBeCloseTo(mapSizeBefore, 1);
+  // ...and the units dock's rows grow with the type, so nothing there clips.
+  expect(rowHeightAfter).toBeCloseTo(rowHeightBefore * 2, 0);
+  const overflow = await row.evaluate(
+    (element) => element.scrollHeight > element.clientHeight
+  );
+  expect(overflow).toBe(false);
+
+  // A preference, not a session choice: it holds across a reload.
+  await page.reload();
+  const rowAfterReload = page.locator('[data-testid^="unit-row-"]').first();
+  await expect(rowAfterReload).toBeVisible();
+  const rowHeightAfterReload = (await rowAfterReload.boundingBox())!.height;
+  expect(rowHeightAfterReload).toBeCloseTo(rowHeightBefore * 2, 0);
+
+  // Back to the default, so later tests inherit the look they expect.
+  await page.getByTestId("settings-indicator").click();
+  await page.getByTestId("settings-interface-size").fill("100");
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("settings-panel")).toHaveCount(0);
+});
+
 test("the settings dialog has no units-in-hex row controls", async ({ page }) => {
   await clearGames(page);
   await createGame(page, "No stepper game");

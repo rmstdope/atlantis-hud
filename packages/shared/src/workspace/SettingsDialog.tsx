@@ -179,7 +179,8 @@ function Tab({
  * Settings that hold for every game: the theme, the map's textures, how see-through panes are,
  * and how many units the hex list shows.
  */
-function GlobalSettings() {
+/** Exported for `SettingsDialog.test.tsx`, which renders this panel in isolation. */
+export function GlobalSettings() {
   const theme = useSettingsStore((state) => state.theme);
   const setTheme = useSettingsStore((state) => state.setTheme);
   const mapTheme = useSettingsStore((state) => state.mapTheme);
@@ -188,6 +189,8 @@ function GlobalSettings() {
   const setBiomeTextures = useSettingsStore((state) => state.setBiomeTextures);
   const paneTransparency = useSettingsStore((state) => state.paneTransparency);
   const setPaneTransparency = useSettingsStore((state) => state.setPaneTransparency);
+  const interfaceSize = useSettingsStore((state) => state.interfaceSize);
+  const setInterfaceSize = useSettingsStore((state) => state.setInterfaceSize);
   const showShortcutsAtStartup = useSettingsStore((state) => state.showShortcutsAtStartup);
   const setShowShortcutsAtStartup = useSettingsStore((state) => state.setShowShortcutsAtStartup);
   const movementPlanner = useSettingsStore((state) => state.movementPlanner);
@@ -269,6 +272,27 @@ function GlobalSettings() {
           onChange={(event) => setPaneTransparency(Number(event.target.value))}
           className="accent-brass"
         />
+      </label>
+
+      <label className="flex flex-col gap-1">
+        <span className="flex items-baseline justify-between gap-2">
+          <span className="text-ink-soft">Interface size</span>
+          <span className="text-ink">{interfaceSize}%</span>
+        </span>
+        <input
+          type="range"
+          data-testid="settings-interface-size"
+          aria-label="interface size"
+          min={100}
+          max={200}
+          step={25}
+          value={interfaceSize}
+          onChange={(event) => setInterfaceSize(Number(event.target.value))}
+          className="accent-brass"
+        />
+        <span className="text-pane-sm text-ink-dim">
+          Makes the panes, the header and the dialogs bigger. The map is not affected.
+        </span>
       </label>
 
       <SettingToggle

@@ -14,8 +14,8 @@ import { unitsForHex } from "../hexMapModel";
 import { describeMenBriefly, whyEstimated } from "../unitComposition";
 import {
   DEFAULT_SORT,
-  ROW_HEIGHT,
   filterUnits,
+  rowHeightAt,
   sortUnits,
   windowRange,
   type SortColumn,
@@ -23,6 +23,7 @@ import {
 } from "../unitTable";
 import { changeFor, mergePreview, originalTooltip, type PreviewedUnit } from "../unitPreview";
 import { HOVER_DELAY_MS, type Point } from "../unitTooltip";
+import { useSettingsStore } from "../settingsStore";
 import { useWorkspaceStore } from "../workspaceStore";
 import { CollapsiblePanel } from "./CollapsiblePanel";
 import { Absent } from "./primitives";
@@ -42,8 +43,9 @@ const COLUMNS = 8;
  * it sortable and filterable. Own units sort first, so the one that is yours is never buried.
  *
  * Only the rows on screen are built. The scrolled-away ones are stood in for by a pair of empty
- * rows of the right height, which is why every row is pinned to ROW_HEIGHT: the arithmetic and the
- * rendering read the same constant, so they cannot drift apart and leave the list misaligned.
+ * rows of the right height, which is why every row is pinned to `rowHeightAt(interfaceSize)`: the
+ * arithmetic and the rendering read the same number, so they cannot drift apart and leave the list
+ * misaligned - including as the Interface size setting scales it (ah-46p.2).
  */
 export function UnitTableDock({
   hex,
@@ -55,6 +57,8 @@ export function UnitTableDock({
 }) {
   const selectedUnitId = useWorkspaceStore((state) => state.selectedUnitId);
   const selectUnit = useWorkspaceStore((state) => state.selectUnit);
+  const interfaceSize = useSettingsStore((state) => state.interfaceSize);
+  const rowHeight = rowHeightAt(interfaceSize);
   const [filter, setFilter] = useState("");
   const [sort, setSort] = useState<SortState>(DEFAULT_SORT);
 
@@ -80,7 +84,7 @@ export function UnitTableDock({
   const { start, end } = windowRange(
     scrollTop,
     viewportHeight,
-    ROW_HEIGHT,
+    rowHeight,
     visible.length,
     OVERSCAN
   );
@@ -125,13 +129,13 @@ export function UnitTableDock({
       return;
     }
     const view = measure(scroller, head);
-    const furthest = Math.max(0, visible.length * ROW_HEIGHT - view);
+    const furthest = Math.max(0, visible.length * rowHeight - view);
     const from = Math.min(scroller.scrollTop, furthest);
-    const top = selectedIndex * ROW_HEIGHT;
+    const top = selectedIndex * rowHeight;
 
     let next = 0;
     if (selectedIndex >= 0) {
-      next = top < from ? top : top + ROW_HEIGHT > from + view ? top + ROW_HEIGHT - view : from;
+      next = top < from ? top : top + rowHeight > from + view ? top + rowHeight - view : from;
     }
     next = Math.min(Math.max(next, 0), furthest);
 
@@ -139,7 +143,17 @@ export function UnitTableDock({
     // Assigning scrollTop fires its scroll event asynchronously, so the state has to be set here
     // too — otherwise the next render windows from the old offset and the table paints blank.
     setScrollTop(next);
-  }, [scroller, head, selectedIndex, regionId, sort, filter, visible.length, viewportHeight]);
+  }, [
+    scroller,
+    head,
+    selectedIndex,
+    regionId,
+    sort,
+    filter,
+    visible.length,
+    viewportHeight,
+    rowHeight
+  ]);
 
   // Arrowing to a row that was outside the window selects it before it exists, so the focus has to
   // wait for the render that brings it in.
@@ -354,12 +368,13 @@ export function UnitTableDock({
               </tr>
             </thead>
             <tbody>
-              <Spacer rows={start} />
+              <Spacer rows={start} rowHeight={rowHeight} />
               {visible.slice(start, end).map((unit, offset) => (
                 <UnitRow
                   key={unit.unitId}
                   unit={unit}
                   index={start + offset}
+                  rowHeight={rowHeight}
                   selected={unit.unitId === selectedUnitId}
                   onSelect={() => selectUnit(unit.unitId)}
                   onKeyDown={onRowKeyDown}
@@ -370,7 +385,7 @@ export function UnitTableDock({
                   onPointerGone={forgetHover}
                 />
               ))}
-              <Spacer rows={visible.length - end} />
+              <Spacer rows={visible.length - end} rowHeight={rowHeight} />
             </tbody>
           </table>
           {hovered ? <UnitTooltip unit={hovered.unit} at={hovered.at} /> : null}
@@ -384,11 +399,11 @@ export function UnitTableDock({
 const byMouse = (event: PointerEvent<HTMLElement>) => event.pointerType === "mouse";
 
 /** Stands in for the rows above or below the window, so the scrollbar reflects the whole list. */
-function Spacer({ rows }: { rows: number }) {
+function Spacer({ rows, rowHeight }: { rows: number; rowHeight: number }) {
   if (rows <= 0) {
     return null;
   }
-  const height = rows * ROW_HEIGHT;
+  const height = rows * rowHeight;
   // A row with no cell in it is not reliably given a height, so the height goes on both.
   return (
     <tr aria-hidden style={{ height }}>
@@ -446,6 +461,7 @@ const PREDICTED = "italic text-brass";
 function UnitRow({
   unit,
   index,
+  rowHeight,
   selected,
   onSelect,
   onKeyDown,
@@ -455,6 +471,7 @@ function UnitRow({
 }: {
   unit: PreviewedUnit;
   index: number;
+  rowHeight: number;
   selected: boolean;
   onSelect: () => void;
   onKeyDown: (event: KeyboardEvent<HTMLTableRowElement>, index: number) => void;
@@ -505,7 +522,7 @@ function UnitRow({
       aria-selected={selected}
       // ARIA counts the header, so the first unit is row two.
       aria-rowindex={index + 2}
-      style={{ height: ROW_HEIGHT }}
+      style={{ height: rowHeight }}
       className={`cursor-pointer whitespace-nowrap focus-visible:outline focus-visible:outline-1 focus-visible:outline-select ${
         selected ? "bg-select/25 text-ink" : unit.own ? "text-ink" : "text-ink-soft"
       }${departing ? " opacity-60" : ""}`}

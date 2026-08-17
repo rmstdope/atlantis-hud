@@ -7,8 +7,19 @@ import type { ReportUnit } from "@atlantis/core-client";
  * repository has no jsdom: keeping it pure is what makes it testable at all.
  */
 
-/** Height of one rendered row, in pixels. */
+/** Height of one rendered row, in pixels, at the default Interface size (100%). */
 export const ROW_HEIGHT = 22;
+
+/**
+ * How tall a row is at a given interface size, in whole pixels.
+ *
+ * Rounded, because the windowing arithmetic divides scroll offsets by this and a fractional height
+ * makes the first visible row drift from the one the scroller is actually showing. The row's own
+ * inline height and every offset computed from it must use this same number.
+ */
+export function rowHeightAt(interfaceSize: number): number {
+  return Math.round((ROW_HEIGHT * interfaceSize) / 100);
+}
 
 /** Which column the table is ordered by. Skills and Items are summaries, so they do not sort. */
 export type SortColumn = "unitId" | "name" | "faction" | "men" | "structure";
