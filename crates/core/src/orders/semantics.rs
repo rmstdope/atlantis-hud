@@ -1827,9 +1827,12 @@ fn check_movement(
 
 /// Checks the allowances the faction spends across the whole map rather than in one hex.
 ///
-/// The report states each one as `used (maximum)` in its `Faction Status:` block, and those are the
-/// faction's own figures rather than anything counted here: this only adds what the orders would
-/// spend on top of them.
+/// The report states each one as `used (maximum)` in its `Faction Status:` block. `used` is the
+/// faction's own figure rather than anything counted here, and what each check does with it
+/// differs: `check_quartermasters` adds what these orders would spend on top of it, because a
+/// quartermaster already held is not re-spent by an order. `check_trade_regions` ignores it
+/// entirely - it counts last month's spend, and the question there is only what *this* month's
+/// orders would spend against the maximum.
 fn check_faction(
     report: &ParsedReport,
     ordered: &OrderedUnits,
