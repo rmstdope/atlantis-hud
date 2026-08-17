@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import type { ReportRegion, ReportUnit } from "@atlantis/core-client";
+import type { RegionPreview, ReportRegion, ReportUnit } from "@atlantis/core-client";
 import { aReportRegion, aReportUnit } from "@atlantis/core-client";
 import type { HexNode } from "../hexMapModel";
 import { UnitTableDock } from "./UnitTableDock";
@@ -33,8 +33,8 @@ function hex(overrides: Partial<HexNode> = {}): HexNode {
   };
 }
 
-function draw(node: HexNode | null): string {
-  return renderToStaticMarkup(<UnitTableDock hex={node} />);
+function draw(node: HexNode | null, preview: RegionPreview | null = null): string {
+  return renderToStaticMarkup(<UnitTableDock hex={node} preview={preview} />);
 }
 
 const unit = (overrides: Partial<ReportUnit> = {}): ReportUnit =>
@@ -96,3 +96,39 @@ describe("the dock stops sizing itself", () => {
   });
 });
 
+
+describe("a unit carried away by a sailing fleet", () => {
+  const carried = (aboard: string | null, departingTo: string | null): RegionPreview => ({
+    regionId: "1:6,52",
+    units: [
+      {
+        unit: unit({ unitId: "901", name: "Passengers", structureId: "329" }),
+        status: "departing",
+        changes: [],
+        arrivingFrom: null,
+        departingTo,
+        aboard
+      }
+    ]
+  });
+
+  it("names the fleet that takes it, beside where it is bound", () => {
+    const markup = draw(
+      hex({ region: region({ units: [unit({ unitId: "901", name: "Passengers", structureId: "329" })] }) }),
+      carried("Wavecrest [329]", "1:7,53")
+    );
+
+    expect(markup).toContain("→ 1:7,53");
+    expect(markup).toContain("aboard Wavecrest [329]");
+  });
+
+  it("still names the fleet when the ship's destination cannot be named", () => {
+    const markup = draw(
+      hex({ region: region({ units: [unit({ unitId: "901", name: "Passengers", structureId: "329" })] }) }),
+      carried("Wavecrest [329]", null)
+    );
+
+    expect(markup).toContain("→ …");
+    expect(markup).toContain("aboard Wavecrest [329]");
+  });
+});

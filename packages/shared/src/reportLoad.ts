@@ -24,6 +24,7 @@
 
 import type {
   CoreClient,
+  GameManifest,
   KnownMap,
   MergedReportRecord,
   OpenedGame,
@@ -64,9 +65,20 @@ export type LoadedTurn = {
   merged: MergedReportRecord[];
   orders: string;
   ordersSavedAt: string | null;
+  /**
+   * The game's manifest, rewritten because this report changed which faction the game remembers,
+   * or `null` when it did not. The shell puts it back into its `game` state so the in-memory
+   * manifest does not lag the file.
+   */
+  manifest: GameManifest | null;
   /** The routine counts, or the remember/draft warning if there was one. */
   status: StatusLine;
 };
+
+/** `gameMemory.ts`'s own one-liner, kept private here rather than exported across the module. */
+function detail(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
 
 /**
  * Reads everything a report needs to become the working turn: commits it (unless `committed` says a
@@ -109,10 +121,30 @@ export async function loadTurn(
     ? await documentFor(client, game, draftKeyFor(report), template)
     : { text: template, restored: false, savedAt: null, warning: null };
 
+  // The faction the player chose is the faction the game remembers (ah-do8). Only the paths that
+  // make a report the working turn reach here - a merge and an older report stored for history both
+  // stop short of it - which is exactly the navigator's rule: it changes only when the player says
+  // so at an import.
+  //
+  // A failure is a warning, like `rememberTurn`'s and `documentFor`'s: the report in front of the
+  // player parsed perfectly well, and refusing to show it over a manifest that would not write
+  // would be a worse answer than reopening on the wrong faction once.
+  let manifest: GameManifest | null = null;
+  let rememberWarning: string | null = null;
+  const factionId = report.header.factionId;
+  if (game && factionId && factionId !== game.manifest.metadata.activeFactionId) {
+    try {
+      manifest = await client.setActiveFaction(game.manifest.metadata.gameId, factionId);
+    } catch (error: unknown) {
+      rememberWarning = `which faction this game reopens as could not be remembered: ${detail(error)}`;
+    }
+  }
+
   const unitCount = report.regions.reduce((total, region) => total + region.units.length, 0);
-  const message = memory.warning ?? chosen.warning;
+  const message = memory.warning ?? chosen.warning ?? rememberWarning;
 
   return {
+    manifest,
     parsed: report,
     rawReport: text,
     remembered: memory.remembered,

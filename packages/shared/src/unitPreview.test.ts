@@ -21,7 +21,8 @@ describe("mergePreview", () => {
           status: "present",
           changes: [{ field: "name", original: "Walker" }],
           arrivingFrom: null,
-          departingTo: null
+          departingTo: null,
+          aboard: null
         }
       ])
     );
@@ -48,14 +49,16 @@ describe("mergePreview", () => {
           status: "arriving",
           changes: [],
           arrivingFrom: "1:0,0",
-          departingTo: null
+          departingTo: null,
+          aboard: null
         },
         {
           unit: unit({ unitId: "new-1", name: "Recruits" }),
           status: "formed",
           changes: [],
           arrivingFrom: null,
-          departingTo: null
+          departingTo: null,
+          aboard: null
         }
       ])
     );
@@ -64,6 +67,33 @@ describe("mergePreview", () => {
     expect(rows[1].previewStatus).toBe("arriving");
     expect(rows[1].arrivingFrom).toBe("1:0,0");
     expect(rows[2].previewStatus).toBe("formed");
+  });
+
+  it("carries the aboard marker through to the row, on the replaced row and the appended one", () => {
+    const rows = mergePreview(
+      [unit({})],
+      preview([
+        {
+          unit: unit({}),
+          status: "departing",
+          changes: [],
+          arrivingFrom: null,
+          departingTo: "1:2,2",
+          aboard: "Wavecrest [329]"
+        },
+        {
+          unit: unit({ unitId: "901", name: "Passengers" }),
+          status: "departing",
+          changes: [],
+          arrivingFrom: null,
+          departingTo: "1:2,2",
+          aboard: "Wavecrest [329]"
+        }
+      ])
+    );
+
+    expect(rows[0].aboard).toBe("Wavecrest [329]");
+    expect(rows[1].aboard).toBe("Wavecrest [329]");
   });
 
   it("carries a departing unit's destination onto its row", () => {
@@ -75,7 +105,8 @@ describe("mergePreview", () => {
           status: "departing",
           changes: [],
           arrivingFrom: null,
-          departingTo: "1:2,2"
+          departingTo: "1:2,2",
+          aboard: null
         }
       ])
     );
@@ -98,7 +129,8 @@ describe("changeFor and originalTooltip", () => {
             { field: "structureId", original: "" }
           ],
           arrivingFrom: null,
-          departingTo: null
+          departingTo: null,
+          aboard: null
         }
       ])
     );
