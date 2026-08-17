@@ -57,6 +57,7 @@ describe("the Warnings settings tab", () => {
       "Dropped guards",
       "Unguarded hexes",
       "Reused FORM numbers",
+      "Gifts to units that are not here",
       "Overloaded fleets",
       "Undercrewed fleets"
     ];
