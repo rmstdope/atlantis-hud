@@ -293,7 +293,8 @@ const WARNING_GROUPS: readonly {
   entries: readonly { code: AdvisoryCheckCode; title: string; description: string }[];
 }[] = [
   {
-    heading: "Teaching",
+    // `ah-1uj` renames this group; done here too since it had not merged when this check landed.
+    heading: "Studying/Teaching",
     entries: [
       {
         code: "teacher-has-free-slots",
@@ -319,6 +320,12 @@ const WARNING_GROUPS: readonly {
         code: "taught-not-here",
         title: "Students elsewhere",
         description: "Teacher and student are not in the same hex."
+      },
+      {
+        code: "too-many-quartermasters",
+        title: "More quartermasters than allowed",
+        description:
+          "A unit ordered to study quartermaster when the faction already has all it may have."
       }
     ]
   },

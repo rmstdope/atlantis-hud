@@ -17,7 +17,8 @@ export const ADVISORY_CHECK_CODES = [
   "fleet-undercrewed",
   "give-target-not-here",
   "not-traded-here",
-  "unit-overloaded"
+  "unit-overloaded",
+  "too-many-quartermasters"
 ] as const;
 
 export type AdvisoryCheckCode = (typeof ADVISORY_CHECK_CODES)[number];

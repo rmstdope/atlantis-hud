@@ -60,7 +60,8 @@ describe("the Warnings settings tab", () => {
       "Gifts to units that are not here",
       "Overloaded units",
       "Overloaded fleets",
-      "Undercrewed fleets"
+      "Undercrewed fleets",
+      "More quartermasters than allowed"
     ];
     for (const title of titles) {
       expect(html).toContain(title);
