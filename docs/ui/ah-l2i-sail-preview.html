@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ah-l2i — A SAIL order in the units-in-hex table</title>
+<style>
+  :root { --page:#10151c; --panel:#171e28; --raised:#1c2531; --edge:#2a3442; --ink:#d7dee8; --soft:#aab3c0; --dim:#8a94a3;
+          --brass:#c9a24b; --select:#4d8fd6; --ok:#5eb45e; --danger:#d9534f; --warn:#d8a13a; }
+  body { background: var(--page); color: var(--ink); font: 14px/1.5 system-ui, sans-serif; margin: 0; padding: 24px 32px 64px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  h2 { font-size: 16px; margin: 40px 0 6px; border-top: 1px solid var(--edge); padding-top: 20px; }
+  h3 { font-size: 14px; margin: 0 0 8px; }
+  p.note { color: var(--dim); max-width: 88ch; }
+  p.note em { color: var(--soft); font-style: normal; }
+  .row { display: flex; gap: 36px; flex-wrap: wrap; margin: 16px 0 8px; align-items: flex-start; }
+  .variant { width: 470px; }
+  .cost { color: var(--dim); font-size: 13px; margin: 10px 0 0; max-width: 60ch; }
+  .orders { background: var(--raised); border: 1px solid var(--edge); border-radius: 4px; padding: 8px 10px;
+            font: 11.5px/1.7 ui-monospace, "SF Mono", Menlo, monospace; color: var(--soft); margin: 0 0 14px; white-space: pre; }
+  .orders b { color: var(--brass); font-weight: normal; }
+  .dock { border: 1px solid var(--edge); border-radius: 6px; background: var(--panel); overflow: hidden; }
+  .dock .cap { font-size: 11.5px; color: var(--dim); padding: 5px 10px; border-bottom: 1px solid var(--edge); background: var(--raised); }
+  table { border-collapse: collapse; width: 100%; font-size: 11.5px; }
+  th { text-align: left; color: var(--dim); font-weight: normal; padding: 4px 8px; border-bottom: 1px solid var(--edge); white-space: nowrap; }
+  td { padding: 4px 8px; white-space: nowrap; }
+  tr.dep { opacity: .6; }
+  tr.sel { background: rgba(77,143,214,.25); }
+  .own { color: var(--ok); } .foreign { color: var(--danger); }
+  .uid { color: var(--select); }
+  .to { color: var(--dim); margin-left: 6px; }
+  .pred { color: var(--warn); font-style: italic; }
+  .from { color: var(--warn); font-style: italic; margin-left: 6px; }
+  .soft { color: var(--soft); }
+  .flag { color: var(--warn); margin-left: 6px; }
+  .tag { display: inline-block; border: 1px solid var(--edge); border-radius: 3px; padding: 0 5px; color: var(--dim);
+         font-size: 11px; margin-left: 8px; vertical-align: 1px; }
+  .tag.now { border-color: var(--danger); color: var(--danger); }
+  .tag.ok { border-color: var(--brass); color: var(--brass); }
+</style>
+</head>
+<body>
+
+<h1>ah-l2i — a <code>SAIL</code> order in the units-in-hex table</h1>
+<p class="note">Today a unit ordered <b>SAIL</b> is drawn leaving on the map and counted as leaving by the order checks, but the
+units-in-hex table previews it as <em>staying put</em> — the table's reader spells the movement words by hand and was never told about
+<code>SAIL</code>. This bead gives that reader the one list, so <code>SAIL</code> previews like <code>MOVE</code> does: the row dims and
+gains a <span class="to">→ destination</span> marker, and a copy of the row appears in the destination hex marked
+<span class="from">← origin</span>. <strong>No new wording, colour or layout</strong> — it reuses exactly what <code>MOVE</code> already
+draws.</p>
+<p class="note">The one open question is the <em>passengers</em>. A <code>SAIL</code> order is written on the fleet; the units aboard have
+no movement order of their own, but they go where the ship goes. Both panes below show the same hex and the same orders — only the
+passengers differ.</p>
+
+<div class="orders">unit 1471   <span class="soft">; Sea Rovers, aboard Wavecrest</span>
+<b>SAIL</b> S S
+
+unit 1472   <span class="soft">; Marines, aboard Wavecrest — no orders</span>
+unit 1508   <span class="soft">; Scouts, aboard Wavecrest — no orders</span>
+unit 1602   <span class="soft">; Quarrymen, ashore</span>
+  <b>MOVE</b> N</div>
+
+<h2>Option A — only the unit that carries the order</h2>
+<div class="row">
+  <div class="variant">
+    <h3>plain (49,31) — where they set out <span class="tag ok">A</span></h3>
+    <div class="dock">
+      <div class="cap">units in plain (49,31)</div>
+      <table>
+        <tr><th></th><th>unit</th><th>name</th><th>faction</th><th>men</th></tr>
+        <tr class="dep"><td class="own">*</td><td class="uid">1471</td><td>Sea Rovers <span class="to">→ ocean (49,33)</span></td><td>Kurelid (12)</td><td>6</td></tr>
+        <tr><td class="own">*</td><td class="uid">1472</td><td>Marines</td><td>Kurelid (12)</td><td>20</td></tr>
+        <tr><td class="own">*</td><td class="uid">1508</td><td>Scouts</td><td>Kurelid (12)</td><td>2</td></tr>
+        <tr class="dep"><td class="own">*</td><td class="uid">1602</td><td>Quarrymen <span class="to">→ forest (49,29)</span></td><td>Kurelid (12)</td><td>8</td></tr>
+      </table>
+    </div>
+    <p class="cost">Marines and Scouts stay bright and stay put. The table says exactly what the orders say, unit by unit — and nothing
+    more.</p>
+  </div>
+  <div class="variant">
+    <h3>ocean (49,33) — where the ship arrives <span class="tag ok">A</span></h3>
+    <div class="dock">
+      <div class="cap">units in ocean (49,33)</div>
+      <table>
+        <tr><th></th><th>unit</th><th>name</th><th>faction</th><th>men</th></tr>
+        <tr><td class="own">*</td><td class="uid">1471</td><td>Sea Rovers <span class="from">← plain (49,31)</span></td><td>Kurelid (12)</td><td>6</td></tr>
+      </table>
+    </div>
+    <p class="cost">One arrival: 6 men crossing an ocean, with the 22 that are really aboard left behind in the other hex.</p>
+  </div>
+</div>
+
+<h2>Option B — everyone aboard travels with the ship</h2>
+<div class="row">
+  <div class="variant">
+    <h3>plain (49,31) — where they set out <span class="tag ok">B</span></h3>
+    <div class="dock">
+      <div class="cap">units in plain (49,31)</div>
+      <table>
+        <tr><th></th><th>unit</th><th>name</th><th>faction</th><th>men</th></tr>
+        <tr class="dep"><td class="own">*</td><td class="uid">1471</td><td>Sea Rovers <span class="to">→ ocean (49,33)</span></td><td>Kurelid (12)</td><td>6</td></tr>
+        <tr class="dep"><td class="own">*</td><td class="uid">1472</td><td>Marines <span class="to">→ ocean (49,33)</span></td><td>Kurelid (12)</td><td>20</td></tr>
+        <tr class="dep"><td class="own">*</td><td class="uid">1508</td><td>Scouts <span class="to">→ ocean (49,33)</span></td><td>Kurelid (12)</td><td>2</td></tr>
+        <tr class="dep"><td class="own">*</td><td class="uid">1602</td><td>Quarrymen <span class="to">→ forest (49,29)</span></td><td>Kurelid (12)</td><td>8</td></tr>
+      </table>
+    </div>
+    <p class="cost">The hex empties, which is what will really happen. But three of those four rows carry a marker for an order their
+    unit does not have — and the Quarrymen's identical marker <em>is</em> their own order, with nothing to tell the two apart.</p>
+  </div>
+  <div class="variant">
+    <h3>ocean (49,33) — where the ship arrives <span class="tag ok">B</span></h3>
+    <div class="dock">
+      <div class="cap">units in ocean (49,33)</div>
+      <table>
+        <tr><th></th><th>unit</th><th>name</th><th>faction</th><th>men</th></tr>
+        <tr><td class="own">*</td><td class="uid">1471</td><td>Sea Rovers <span class="from">← plain (49,31)</span></td><td>Kurelid (12)</td><td>6</td></tr>
+        <tr><td class="own">*</td><td class="uid">1472</td><td>Marines <span class="from">← plain (49,31)</span></td><td>Kurelid (12)</td><td>20</td></tr>
+        <tr><td class="own">*</td><td class="uid">1508</td><td>Scouts <span class="from">← plain (49,31)</span></td><td>Kurelid (12)</td><td>2</td></tr>
+      </table>
+    </div>
+    <p class="cost">The landing party as it will actually arrive — 28 men, not 6. This is the answer that helps you plan an assault, and
+    it is the one that costs real work: the core must decide who is aboard which fleet and carry each passenger across.</p>
+  </div>
+</div>
+
+<h2>What each costs</h2>
+<p class="note"><strong>A</strong> is the one-line change this bead was filed for: the table's reader stops spelling the movement words
+by hand, so <code>SAIL</code> joins <code>MOVE</code> and <code>ADVANCE</code>, and everything else is already in place. Small, and it
+removes the divergence.</p>
+<p class="note"><strong>B</strong> is a feature on top: a new rule about who is aboard, every passenger moved, and a question this
+mockup cannot answer for you — whether a passenger's row should look identical to a unit with its own movement order, or say something
+different (<em>aboard Wavecrest</em>, say). That is a second bead, not a bigger version of this one.</p>
+<p class="note">There is also a middle answer that would make <strong>B</strong> honest, if you want it eventually: passengers depart, but
+with their own marker, so the table distinguishes <em>ordered to move</em> from <em>carried</em>.</p>
+
+</body>
+</html>
