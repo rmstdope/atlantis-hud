@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>An Interface size setting — what the player sees (bead ah-46p.2)</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --edge:#26303d; --edge-soft:#1e2733; --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --brass-bright:#eebe63; --ok:#4fb783; --warn:#d9a441; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1240px; margin-left:auto; margin-right:auto; }
+  h1 { font-size:26px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:96ch; margin-top:10px; font-size:14px; } header p + p { margin-top:8px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:0.92em; }
+  h2.sec { margin-top:34px; font-size:18px; color:var(--brass); } h2.sec small { color:var(--ink-dim); font-size:13px; margin-left:10px; }
+  .cards { display:grid; grid-template-columns:repeat(2,1fr); gap:20px; margin-top:16px; align-items:start; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:18px; display:flex; flex-direction:column; gap:12px; }
+  .card h3 { font-size:17px; } .card h3 em { color:var(--brass); font-style:normal; font-size:12px; letter-spacing:1.6px; margin-right:8px; }
+  .card.rec { border-color:var(--brass); }
+  .concept { color:var(--ink-soft); font-size:13px; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; padding:12px; display:grid; gap:10px; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; } .notes li.con::before { content:"\2212  "; color:var(--danger); }
+  /* the fake settings panel */
+  .dlg { font-family:'Helvetica Neue',Arial,sans-serif; border:1px solid var(--edge); border-radius:8px; background:var(--panel); overflow:hidden; }
+  .dlg .tabs { display:flex; gap:2px; padding:6px 8px 0; border-bottom:1px solid var(--edge); font-size:11px; }
+  .dlg .tabs span { padding:4px 9px; color:var(--ink-dim); border:1px solid transparent; border-bottom:none; border-radius:5px 5px 0 0; }
+  .dlg .tabs span.on { color:var(--brass); border-color:var(--edge); background:var(--ground); }
+  .dlg .bd { padding:12px; display:grid; gap:12px; font-size:12px; }
+  .fld { display:grid; gap:5px; }
+  .fld .lbl { display:flex; justify-content:space-between; align-items:baseline; } .fld .lbl b { color:var(--ink-soft); font-weight:normal; } .fld .lbl i { color:var(--ink); font-style:normal; }
+  .rng { position:relative; height:16px; }
+  .rng .trk { position:absolute; top:7px; left:0; right:0; height:2px; background:var(--edge); }
+  .rng .kn { position:absolute; top:2px; width:12px; height:12px; border-radius:6px; background:var(--brass); }
+  .rng .tick { position:absolute; top:11px; width:1px; height:4px; background:var(--edge); }
+  .seg { display:flex; gap:6px; } .seg button { font:inherit; padding:3px 10px; border-radius:5px; border:1px solid var(--edge); background:transparent; color:var(--ink-soft); } .seg button.on { border-color:var(--brass); color:var(--brass); }
+  .hint { color:var(--ink-dim); font-size:11px; }
+  /* the fake pane preview */
+  .pv { border:1px solid var(--edge); border-radius:6px; background:var(--panel); overflow:hidden; font-family:'Helvetica Neue',Arial,sans-serif; }
+  .pv .bar { height:22px; display:flex; align-items:center; padding:0 8px; border-bottom:1px solid var(--edge); font-size:9px; letter-spacing:1.3px; text-transform:uppercase; color:var(--brass); }
+  .pv .rows { padding:5px 8px 7px; display:grid; gap:2px; }
+  .pv .r { display:flex; gap:8px; align-items:center; }
+  .pv .r span:first-child { color:var(--ink-dim); min-width:42px; }
+  .rowbox { height:22px; display:flex; align-items:center; gap:8px; border-bottom:1px solid var(--edge-soft); overflow:hidden; }
+  .rowbox.clip { border-color:var(--danger); }
+  table { border-collapse:collapse; font-size:12.5px; width:100%; margin-top:14px; } th, td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--edge-soft); vertical-align:top; } th { color:var(--brass); font-weight:normal; font-size:11px; letter-spacing:1px; text-transform:uppercase; } td.y { color:var(--ok); } td.n { color:var(--ink-dim); } td.w { color:var(--warn); } td.b { color:var(--danger); }
+  .banner { border:1px solid var(--edge); border-left:3px solid var(--brass); background:var(--panel); padding:14px 16px; border-radius:6px; margin-top:16px; color:var(--ink-soft); font-size:13.5px; } .banner b { color:var(--ink); }
+  .banner.warn { border-left-color:var(--danger); }
+</style>
+</head>
+<body>
+<header>
+  <h1>An Interface size setting — <span>what the player sees</span> (bead ah-46p.2)</h1>
+  <p><code>ah-46p.1</code> merged this morning: the panes' six hard-coded pixel sizes became three rem tokens — <code>--text-pane-sm</code> 11px, <code>--text-pane</code> 12px, <code>--text-pane-lg</code> 13px at a 16px root — so a reader who raises their <i>browser's</i> font size now sees the panes grow. This bead adds a control inside the app, for the reader who would rather not change their browser, or who wants the panes bigger and the rest of the web left alone.</p>
+  <p><b>The map is safe, and that is not luck.</b> Every piece of map text carries its own explicit size — SVG <code>fontSize</code> numbers, or <code>px</code> in the theme stylesheets — and <code>theme.css</code> says so in as many words: “The map sets its own sizes and is not on this scale.” Scaling the three tokens cannot reach it.</p>
+</header>
+<main>
+
+  <div class="banner"><b>Decided, 2026-08-17.</b> (1) <b>A slider, 100% to 200% in steps of 25%</b>, in the Global tab directly beneath <i>Pane transparency</i> — the same primitive, one field down. (2) <b>Row heights follow the text</b>, so nothing clips at any offered size; pane <i>widths</i> stay as the player dragged them. (3) The default is <b>100%</b> — nothing changes for anybody until they ask — and the hint line ships verbatim: <i>“Makes the panes, the header and the dialogs bigger. The map is not affected.”</i></div>
+
+  <h2 class="sec">The control <small>Option A was chosen</small></h2>
+  <div class="cards">
+    <section class="card rec"><h3><em>OPTION A — chosen</em> A slider, like Pane transparency</h3>
+      <p class="concept">The Global tab already has one — <i>Pane transparency</i>, a range from 0 to 95 in steps of 5. An <i>Interface size</i> slider sits directly beneath it and needs no new kind of control.</p>
+      <div class="stage">
+        <div class="dlg">
+          <div class="tabs"><span class="on">Global</span><span>Per game</span><span>Warnings</span><span>Snippets</span><span>About</span></div>
+          <div class="bd">
+            <div class="fld"><div class="lbl"><b>Pane transparency</b><i>90%</i></div>
+              <div class="rng"><div class="trk"></div><div class="kn" style="left:88%"></div></div></div>
+            <div class="fld"><div class="lbl"><b>Interface size</b><i>125%</i></div>
+              <div class="rng"><div class="trk"></div>
+                <div class="tick" style="left:0"></div><div class="tick" style="left:25%"></div><div class="tick" style="left:50%"></div><div class="tick" style="left:75%"></div><div class="tick" style="left:calc(100% - 1px)"></div>
+                <div class="kn" style="left:23%"></div></div>
+              <div class="hint">100% to 200%, in steps of 25%. The map is not affected.</div></div>
+          </div>
+        </div>
+      </div>
+      <ul class="notes"><li>Matches a control that is already there, one field below.</li><li>A percentage is a thing readers understand from every other application.</li><li class="con">A slider invites values between the useful ones; the steps are what stop that.</li></ul>
+    </section>
+    <section class="card"><h3><em>OPTION B — rejected</em> Named steps</h3>
+      <p class="concept">Four buttons, in the shape of the existing Dark/Light theme control on the same tab.</p>
+      <div class="stage">
+        <div class="dlg">
+          <div class="tabs"><span class="on">Global</span><span>Per game</span><span>Warnings</span><span>Snippets</span><span>About</span></div>
+          <div class="bd">
+            <div class="fld"><div class="lbl"><b>Pane transparency</b><i>90%</i></div>
+              <div class="rng"><div class="trk"></div><div class="kn" style="left:88%"></div></div></div>
+            <div class="fld"><div class="lbl"><b>Interface size</b></div>
+              <div class="seg"><button>Normal</button><button class="on">Large</button><button>Larger</button><button>Largest</button></div>
+              <div class="hint">The map is not affected.</div></div>
+          </div>
+        </div>
+      </div>
+      <ul class="notes"><li>Only sensible values are reachable, and each has a name.</li><li>Reads faster than a number when you are choosing rather than tuning.</li><li class="con">Four words for four numbers, and “Largest” is a poor name for 200%.</li><li class="con">Does not say how much bigger, so a reader cannot tell what they will get.</li></ul>
+    </section>
+  </div>
+
+  <div class="banner warn"><b>The hazard, found by measuring rather than by guessing.</b> The unit table's rows are a fixed <b>22 pixels</b> (<code>unitTable.ts:11</code>, applied as an inline style because the table is virtualised — every row must be the same known height for the scrolling to work). At 100% the row holds 11px text comfortably. <b>At 200% it holds 22px text in a 22px box.</b> A smoke test pins that height exactly (<code>workspace.spec.ts:2299</code>), so this is not a thing that can be left to chance — question 2.</div>
+
+  <h2 class="sec">What else moves with the text <small>Option 1 was chosen</small></h2>
+  <div class="cards">
+    <section class="card rec"><h3><em>OPTION 1 — chosen</em> Row heights follow the text</h3>
+      <p class="concept">The unit table's row height becomes the scale times 22, so the text always has room. The panes' <i>widths</i> do not change — the player already drags those, and overriding a width they chose would be worse than leaving it.</p>
+      <div class="stage">
+        <div class="pv"><div class="bar">Units — interface size 200%</div><div class="rows">
+          <div class="rowbox" style="height:44px"><span style="color:var(--ink-dim);min-width:52px;font-size:22px">2416</span><span style="font-size:22px">Scouts</span></div>
+          <div class="rowbox" style="height:44px"><span style="color:var(--ink-dim);min-width:52px;font-size:22px">7671</span><span style="font-size:22px">Smiths</span></div>
+        </div></div>
+      </div>
+      <ul class="notes"><li>Nothing clips at any size the control offers.</li><li>The player keeps the rail widths they dragged; if bigger text needs more room, they widen the rail as they already can.</li><li class="con">The row-height smoke test has to learn the scale, and the dock shows fewer units before scrolling.</li></ul>
+    </section>
+    <section class="card"><h3><em>OPTION 2 — rejected</em> Only the text grows</h3>
+      <p class="concept">The simplest change: scale the three tokens and nothing else. Every fixed box stays as it is.</p>
+      <div class="stage">
+        <div class="pv"><div class="bar">Units — interface size 200%</div><div class="rows">
+          <div class="rowbox clip"><span style="color:var(--ink-dim);min-width:52px;font-size:22px">2416</span><span style="font-size:22px">Scouts</span></div>
+          <div class="rowbox clip"><span style="color:var(--ink-dim);min-width:52px;font-size:22px">7671</span><span style="font-size:22px">Smiths</span></div>
+        </div></div>
+        <div class="hint" style="color:var(--danger)">22px text in a 22px row — descenders cut, and the row above touches the row below.</div>
+      </div>
+      <ul class="notes"><li>Smallest change, and no smoke test has to move.</li><li class="con">Clips in the units dock at the larger settings, which is the pane most likely to be read at length.</li><li class="con">Would force the range down to about 125% to stay safe, which is most of the point gone.</li></ul>
+    </section>
+  </div>
+
+  <h2 class="sec">What does and does not scale <small>settled unless you object</small></h2>
+  <table>
+    <tr><th style="width:30%">Thing</th><th style="width:16%">Scales?</th><th>Why</th></tr>
+    <tr><td><b>The map</b> — hex labels, badges, rulers</td><td class="n">No</td><td>Every piece carries its own explicit size, in SVG units or <code>px</code>. It is already resolution-independent, and zooming it was the trade this whole epic exists to avoid.</td></tr>
+    <tr><td>All the panes and rails</td><td class="y">Yes</td><td>They read the three <code>--text-pane*</code> tokens — 78 uses across 31 files.</td></tr>
+    <tr><td>The header and its chips</td><td class="y">Yes</td><td>Same tokens. It will get taller at the larger settings; the narrow-window wrap already handles a taller header.</td></tr>
+    <tr><td>Dialogs, the command palette, shortcut help</td><td class="y">Yes</td><td>Same tokens. Including the Settings dialog itself, so the control resizes as you drag it — which is the right feedback.</td></tr>
+    <tr><td>The orders editor's text</td><td class="y">Yes</td><td><code>ah-46p.1</code> put CodeMirror's font size on <code>var(--text-pane)</code>, since it is pane text read by the same eyes.</td></tr>
+    <tr><td>Pane <b>widths</b> and the rails</td><td class="n">No</td><td>Question 2. The player drags these and that choice is saved; a size setting silently overriding it would be worse than leaving it.</td></tr>
+    <tr><td>The browser's own font-size preference</td><td class="y">Still works</td><td>The tokens stay in <code>rem</code>, so the reader's browser setting and this setting multiply. Raising both is allowed and simply larger.</td></tr>
+    <tr><td>Surviving a reload</td><td class="y">Yes</td><td>Stored beside <i>Pane transparency</i> in the same global settings, and applied before the first paint so there is no flash at the old size.</td></tr>
+    <tr><td>Per game?</td><td class="n">No</td><td>There is no per-game settings scope today; the Per game tab changes the game's ruleset and nothing else. This is a property of the reader's eyes, not of a game.</td></tr>
+  </table>
+</main>
+</body>
+</html>
