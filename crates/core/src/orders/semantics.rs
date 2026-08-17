@@ -177,8 +177,8 @@ pub fn check_turn(
     let ordered = OrderedUnits::read(source);
     // `validate_turn` runs this on every keystroke once typing settles, so the lookup is built only
     // when the check that reads it is actually enabled - skipping a walk of every region and unit
-    // in the report, with a label allocation per unit, on a hot path that would otherwise pay for it
-    // even with the toggle off.
+    // in the report (the map insert per unit below, not a label - that is formatted only where a
+    // finding is actually emitted) on a hot path that would otherwise pay for it with the toggle off.
     let located = if options.emits(codes::GIVE_TARGET_NOT_HERE) {
         where_the_report_shows_each_unit(report)
     } else {
