@@ -80,7 +80,7 @@ pub mod codes {
     pub const GIVE_TARGET_NOT_HERE: Code = Code("give-target-not-here");
     pub const NOT_TRADED_HERE: Code = Code("not-traded-here");
     /// Every code. This array's own order is not the settings tab's grouping (that groups by
-    /// concern - Teaching / Resources / Guarding / Orders / Sailing / Markets - not by this list),
+    /// concern - Teaching / Resources / Markets / Guarding / Orders / Sailing - not by this list),
     /// but a new entry still goes last: the generated TypeScript copies this order. Until
     /// `give-target-not-here` every entry had also been last in its tab group; that one joins the
     /// existing *Orders* group instead, so the two orders are no longer in step and nothing depends
