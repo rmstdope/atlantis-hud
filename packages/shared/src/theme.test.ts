@@ -126,6 +126,27 @@ describe("theme palette", () => {
     const missing = darkTokens.filter((token) => !lightTokens.has(token));
     expect(missing).toEqual([]);
   });
+
+  /**
+   * The map's label haloes are the map's decision, not the chrome's (ah-v09e).
+   *
+   * `.map-label` and `.region-name` used to stroke themselves with `--color-ground` and fill with
+   * `--color-ink-soft` - chrome tokens - which made the legibility of every label on the map
+   * hostage to a palette change made for the panels. Lifting the chrome's ground for eye strain
+   * would have lightened every label's outline with it. They get map-owned tokens instead,
+   * holding the values the chrome used to supply, so the rendered map is unchanged.
+   */
+  it("draws map labels from map-owned tokens, not the chrome palette", () => {
+    const mapLabel = extractBlock(css, /\.map-label\b/);
+    expect(mapLabel).toMatch(/stroke\s*:\s*var\(--color-map-label-halo\)/);
+    expect(mapLabel).not.toMatch(/var\(--color-ground\)/);
+
+    const regionName = extractBlock(css, /\.region-name\b/);
+    expect(regionName).toMatch(/stroke\s*:\s*var\(--color-map-label-halo\)/);
+    expect(regionName).toMatch(/fill\s*:\s*var\(--color-map-region-name/);
+    expect(regionName).not.toMatch(/var\(--color-ground\)/);
+    expect(regionName).not.toMatch(/var\(--color-ink-soft/);
+  });
 });
 
 /**

@@ -93,6 +93,14 @@
   --color-unit-foreign: #f07070;
   --color-settlement: #f0e2bd;
 
+  /* The halo behind map labels and region names. Was `--color-ground`, which made it hostage to
+     the UI chrome's palette (ah-v09e lifted the chrome and would have lightened every label's
+     outline with it). The map's legibility against terrain is its own decision, so it gets its own
+     token, holding the value the chrome used to supply. */
+  --color-map-label-halo: #10151c;
+  /* Region names are drawn on the map, not in the chrome, for the same reason. */
+  --color-map-region-name: #a3b0c0;
+
   /*
     A manual hex note's pin and tag (ah-o1t.3): warm paper yellow, distinct from every terrain and
     mark colour above so a note never reads as game state. Reads on the dark ground and on
@@ -191,6 +199,10 @@
   --color-unit-foreign: #c05252;
   --color-settlement: #8a6d3b;
 
+  /* The map's own halo and region-name colours (ah-v09e); today's light ground and ink-soft. */
+  --color-map-label-halo: #f2efe8;
+  --color-map-region-name: #4f5866;
+
   /* Same paper yellow as the dark theme: it reads on parchment as well as on the dark ground. */
   --color-note: #f2d27a;
   --color-note-ink: #2b2410;
@@ -211,7 +223,7 @@
 .map-label {
   font-size: calc(9px / var(--map-scale, 1));
   paint-order: stroke fill;
-  stroke: var(--color-ground);
+  stroke: var(--color-map-label-halo);
   stroke-width: calc(2.5px / var(--map-scale, 1));
   stroke-linejoin: round;
 }
@@ -277,11 +289,11 @@
 }
 
 .region-name {
-  fill: var(--color-ink-soft, #6b6558);
+  fill: var(--color-map-region-name, #6b6558);
   font-size: 8px;
   letter-spacing: 2.5px;
   paint-order: stroke fill;
-  stroke: var(--color-ground);
+  stroke: var(--color-map-label-halo);
   stroke-width: 2.2px;
   stroke-linejoin: round;
   text-transform: uppercase;
