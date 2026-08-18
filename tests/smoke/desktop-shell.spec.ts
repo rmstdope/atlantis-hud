@@ -59,8 +59,8 @@ test.beforeEach(async ({ page }, testInfo) => {
       // Nothing in this suite sends orders yet (ah-etb0.2 adds the control). The stand-in records
       // the call and answers an acceptance, so a spec that starts sending has something to assert
       // against - and the recorded body length never carries the password anywhere.
-      async httpPost(url: string, contentType: string, body: string) {
-        calls.push(["httpPost", url, contentType, body.length]);
+      async httpPost(url: string, contentType: string, body: string, signal: AbortSignal) {
+        calls.push(["httpPost", url, contentType, body.length, signal.aborted]);
         return { status: 200, body: "<pre>#end\nNo errors found.\n</pre>" };
       }
     };
