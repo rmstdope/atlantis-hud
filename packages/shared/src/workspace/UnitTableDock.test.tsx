@@ -132,3 +132,59 @@ describe("a unit carried away by a sailing fleet", () => {
     expect(markup).toContain("aboard Wavecrest [329]");
   });
 });
+
+describe("the structure column", () => {
+  const WAVECREST = {
+    structureId: "329",
+    name: "Wavecrest",
+    kind: "Longship",
+    description: null,
+    needs: null
+  };
+
+  const inStructures = (units: ReportUnit[]) =>
+    hex({ region: region({ structures: [WAVECREST], units }) });
+
+  it("names the structure a unit stands in, not just its number", () => {
+    const markup = draw(inStructures([unit({ unitId: "901", name: "Passengers", structureId: "329" })]));
+
+    expect(markup).toContain("Wavecrest [329] · Longship");
+  });
+
+  it("keeps the bare number when the region never described the structure", () => {
+    const markup = draw(inStructures([unit({ unitId: "901", name: "Passengers", structureId: "77" })]));
+
+    expect(markup).toContain("[77]");
+    expect(markup).not.toContain("Wavecrest [77]");
+  });
+
+  it("leaves the cell empty for a unit standing in the open", () => {
+    const markup = draw(inStructures([unit({ unitId: "902", name: "Scout", structureId: null })]));
+
+    expect(markup).not.toContain("Wavecrest");
+    // The structure cell is the row's last, and it renders with nothing in it at all.
+    expect(markup).toMatch(/<td[^>]*><\/td><\/tr>/);
+  });
+
+  it("the tooltip gives the whole label, and what the orders changed beneath it", () => {
+    const markup = draw(
+      inStructures([unit({ unitId: "901", name: "Passengers", structureId: "329" })]),
+      {
+        regionId: "1:6,52",
+        units: [
+          {
+            unit: unit({ unitId: "901", name: "Passengers", structureId: "329" }),
+            status: "present",
+            changes: [{ field: "structureId", original: "" }],
+            arrivingFrom: null,
+            departingTo: null,
+            aboard: null
+          }
+        ]
+      }
+    );
+
+    expect(markup).toContain("Wavecrest [329] · Longship\n");
+    expect(markup).toMatch(/title="Wavecrest \[329\] · Longship\n[^"]/);
+  });
+});
