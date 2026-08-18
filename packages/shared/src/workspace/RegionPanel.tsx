@@ -1,5 +1,6 @@
 import type { Coordinate, CoreClient, MapLevel, OpenedGame, OrderDiagnostic } from "@atlantis/core-client";
 import { abbreviateDirection, levelClause, regionIdOf, type HexNode } from "../hexMapModel";
+import { structureLabel } from "../structureLabel";
 import { useWorkspaceStore } from "../workspaceStore";
 import { CollapsiblePanel } from "./CollapsiblePanel";
 import {
@@ -184,7 +185,7 @@ export function RegionPanel({
             ) : (
               region.structures.map((structure) => (
                 <p key={structure.structureId} className="m-0 text-ink-soft">
-                  {structure.name} [{structure.structureId}] · {structure.kind}
+                  {structureLabel(structure)}
                   {structure.needs === null ? null : `, needs ${structure.needs}`}
                 </p>
               ))

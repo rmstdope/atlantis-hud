@@ -229,3 +229,34 @@ describe("the region panel's sentence for an unexplored hex off the surface", ()
     expect(markup).toContain("named it, in the nexus.");
   });
 });
+
+describe("the region panel's structure list", () => {
+  beforeEach(() => {
+    resetWorkspaceStore();
+    resetHexNotesStore();
+  });
+
+  it("writes each structure as name, number and type", () => {
+    const hex: HexNode = {
+      ...HEX,
+      region: aReportRegion({
+        ...HEX.region!,
+        structures: [
+          {
+            structureId: "12",
+            name: "Odds and Ends",
+            kind: "Fort",
+            description: null,
+            needs: null
+          }
+        ]
+      })
+    };
+
+    const markup = renderToStaticMarkup(
+      <RegionPanel hex={hex} problems={[]} client={CLIENT} game={GAME} turn={71} />
+    );
+
+    expect(markup).toContain("Odds and Ends [12] · Fort");
+  });
+});
