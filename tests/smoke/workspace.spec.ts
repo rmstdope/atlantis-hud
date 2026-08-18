@@ -3546,7 +3546,12 @@ test("the panes grow when the reader's text size does", async ({ page }) => {
   expect(railBox.y + railBox.height).toBeLessThanOrEqual(view.height);
 });
 
-test("the web build offers no Send button, because it could never read the reply", async ({ page }) => {
+test("the web build offers no Send button, because it could never read the reply", async ({ page }, testInfo) => {
+  test.skip(
+    testInfo.project.name !== "web",
+    "the desktop bundle passes an uploader, so it has the control this pins the absence of"
+  );
+
   await loadReport(page);
 
   // The game server sends no CORS headers, so the web shell passes no uploader and the control is
