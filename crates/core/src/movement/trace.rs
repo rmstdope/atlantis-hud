@@ -51,6 +51,7 @@ pub fn trace_move(
     ruleset: &Ruleset,
     unit: &ReportUnit,
     steps: &[MoveStep],
+    ordered: Option<&crate::movement::fleet::OrderedUnits>,
 ) -> Option<TracedPath> {
     let origin = map.hex_of_unit(unit)?;
     let from = origin.coordinate;
@@ -58,7 +59,8 @@ pub fn trace_move(
     // The trace draws intent, not legality, so a fleet's crew shortfall never stops it here - only
     // whether the fleet's numbers can be priced at all decides whether Sail is drawn. Exactly the
     // planner's own inference otherwise: aboard a priceable fleet, the mode is Sail.
-    let sailing = fleet_of(unit, origin).and_then(|fleet| fleet_sailing(ruleset, origin, fleet));
+    let sailing = fleet_of(unit, origin, ordered)
+        .and_then(|fleet| fleet_sailing(ruleset, origin, fleet, ordered));
     let mode_and_points = match sailing {
         Some((_, _, speed)) => Some((MovementMode::Sail, speed)),
         None => match mobility(unit) {
@@ -200,6 +202,7 @@ mod tests {
             &ruleset(),
             &unit,
             &parse_move(order).expect("a readable order"),
+            None,
         )
     }
 
@@ -298,6 +301,7 @@ mod tests {
             &ruleset(),
             &unit,
             &parse_move("MOVE SE").expect("a readable order"),
+            None,
         )
         .expect("the path is still drawn");
         assert_eq!(path.mode, None);
@@ -322,6 +326,7 @@ mod tests {
             &ruleset(),
             &unit,
             &parse_move("MOVE SE").expect("a readable order"),
+            None,
         )
         .expect("the path is still drawn");
         assert_eq!(path.mode, None);
@@ -345,6 +350,7 @@ mod tests {
                 &ruleset(),
                 &unit,
                 &parse_move("MOVE SE").expect("a readable order"),
+                None,
             ),
             None
         );
@@ -429,6 +435,7 @@ mod tests {
             &ruleset(),
             &unit,
             &parse_move("MOVE SE").expect("a readable order"),
+            None,
         )
         .expect("the path is still drawn");
         assert_eq!(path.blocked_from, None);

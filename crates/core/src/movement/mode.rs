@@ -8,6 +8,7 @@
 //! A report states these for your own units only. A foreign unit's mobility is therefore not
 //! unknown by oversight; it is genuinely absent, and saying so beats assuming it walks.
 
+use crate::movement::fleet::OrderedUnits;
 use crate::movement::graph::KnownHex;
 use crate::movement::rules::{MovementMode, Ruleset};
 use crate::report::model::{ReportUnit, Structure};
@@ -101,6 +102,22 @@ pub fn best_allowance(unit: &ReportUnit) -> Option<i64> {
 
 // ---------------------------------------------------------------- fleets
 
+/// Where this unit stands: after its own ENTER/LEAVE when a view of the orders is in hand, and as
+/// the report found it when it is not.
+///
+/// The `Option` is not a behavioural switch - an empty view would answer identically - but a
+/// caller that deliberately answers from the report alone has to say so at its call site rather
+/// than passing something that merely looks like orders. See `movement::plan`.
+fn aboard_structure<'a>(
+    unit: &'a ReportUnit,
+    ordered: Option<&'a OrderedUnits>,
+) -> Option<&'a str> {
+    ordered.map_or_else(
+        || unit.structure_id.as_deref(),
+        |ordered| ordered.structure_of(unit),
+    )
+}
+
 /// The structure `unit.structure_id` names, when its kind names a hull or a fleet.
 ///
 /// Whether a kind actually names a hull is a question for [`parse_fleet_kind`] to answer
@@ -108,8 +125,12 @@ pub fn best_allowance(unit: &ReportUnit) -> Option<i64> {
 /// separate question for [`sailing_requirement`] and [`fleet_speed`], answered afterwards. A
 /// structure whose kind neither form recognises - an ordinary building - is not a fleet at all.
 #[must_use]
-pub fn fleet_of<'a>(unit: &ReportUnit, hex: &'a KnownHex) -> Option<&'a Structure> {
-    let structure_id = unit.structure_id.as_deref()?;
+pub fn fleet_of<'a>(
+    unit: &ReportUnit,
+    hex: &'a KnownHex,
+    ordered: Option<&OrderedUnits>,
+) -> Option<&'a Structure> {
+    let structure_id = aboard_structure(unit, ordered)?;
     hex.structures
         .iter()
         .find(|structure| structure.structure_id == structure_id)
@@ -265,10 +286,11 @@ pub fn fleet_sailing(
     ruleset: &Ruleset,
     origin_hex: &KnownHex,
     fleet: &Structure,
+    ordered: Option<&OrderedUnits>,
 ) -> Option<(i64, i64, u32)> {
     let required = sailing_requirement(fleet, Some(ruleset))?;
     let speed = fleet_speed(fleet, ruleset)?;
-    let available = crew_sailing_levels(&origin_hex.units, &fleet.structure_id);
+    let available = crew_sailing_levels(&origin_hex.units, &fleet.structure_id, ordered);
     Some((required, available, speed))
 }
 
@@ -283,10 +305,14 @@ pub fn fleet_sailing(
 /// skill levels of the Sailing skill that must be aboard the ship" - so a skill's contribution is
 /// `level * men`, not `level`.
 #[must_use]
-pub fn crew_sailing_levels(units_in_hex: &[ReportUnit], structure_id: &str) -> i64 {
+pub fn crew_sailing_levels(
+    units_in_hex: &[ReportUnit],
+    structure_id: &str,
+    ordered: Option<&OrderedUnits>,
+) -> i64 {
     units_in_hex
         .iter()
-        .filter(|unit| unit.own && unit.structure_id.as_deref() == Some(structure_id))
+        .filter(|unit| unit.own && aboard_structure(unit, ordered) == Some(structure_id))
         .flat_map(|unit| {
             unit.skills
                 .iter()
@@ -611,7 +637,7 @@ mod tests {
         foreign.skills = a.skills.clone();
 
         let units = vec![a, b, elsewhere, foreign];
-        assert_eq!(crew_sailing_levels(&units, "329"), 4);
+        assert_eq!(crew_sailing_levels(&units, "329", None), 4);
     }
 
     /// Atlantis counts a level per man, not per unit: "The sailors are the number of skill levels
@@ -630,7 +656,7 @@ mod tests {
         }];
 
         let units = vec![two_gnolls];
-        assert_eq!(crew_sailing_levels(&units, "218"), 2);
+        assert_eq!(crew_sailing_levels(&units, "218", None), 2);
     }
 
     fn sample_unit(id: &str, structure_id: Option<&str>) -> ReportUnit {
@@ -671,10 +697,103 @@ mod tests {
         };
         let unit = sample_unit("11125", Some("329"));
 
-        let found = fleet_of(&unit, &hex).expect("the unit is aboard the longship");
+        let found = fleet_of(&unit, &hex, None).expect("the unit is aboard the longship");
         assert_eq!(found.structure_id, "329");
 
         let not_aboard = sample_unit("11126", None);
-        assert!(fleet_of(&not_aboard, &hex).is_none());
+        assert!(fleet_of(&not_aboard, &hex, None).is_none());
+    }
+
+    /// A sailor who boards this month is aboard when the fleet sails, so it counts - the
+    /// disagreement ah-ssd was filed for.
+    #[test]
+    fn a_sailor_that_boards_this_month_counts_towards_the_crew() {
+        let skills = vec![crate::report::model::Skill {
+            name: "sailing".to_string(),
+            tag: "SAIL".to_string(),
+            level: 2,
+            points: 90,
+        }];
+        let mut a = sample_unit("11125", Some("329"));
+        a.skills = skills.clone();
+        let mut boarding = sample_unit("12590", None);
+        boarding.skills = skills;
+
+        let units = vec![a, boarding];
+        let ordered =
+            crate::movement::fleet::OrderedUnits::from_document("unit 12590\nENTER 329\n");
+        assert_eq!(crew_sailing_levels(&units, "329", Some(&ordered)), 4);
+    }
+
+    #[test]
+    fn a_sailor_that_leaves_this_month_does_not_count() {
+        let skills = vec![crate::report::model::Skill {
+            name: "sailing".to_string(),
+            tag: "SAIL".to_string(),
+            level: 2,
+            points: 90,
+        }];
+        let mut a = sample_unit("11125", Some("329"));
+        a.skills = skills.clone();
+        let mut leaving = sample_unit("12590", Some("329"));
+        leaving.skills = skills;
+
+        let units = vec![a, leaving];
+        let ordered = crate::movement::fleet::OrderedUnits::from_document("unit 12590\nLEAVE\n");
+        assert_eq!(crew_sailing_levels(&units, "329", Some(&ordered)), 2);
+    }
+
+    /// The planner passes `None` on purpose and must keep reading the report alone; this test
+    /// exists so making the parameter a plain reference fails.
+    #[test]
+    fn passing_no_orders_counts_the_crew_the_report_found() {
+        let skills = vec![crate::report::model::Skill {
+            name: "sailing".to_string(),
+            tag: "SAIL".to_string(),
+            level: 2,
+            points: 90,
+        }];
+        let mut a = sample_unit("11125", Some("329"));
+        a.skills = skills.clone();
+        let mut b = sample_unit("12590", Some("329"));
+        b.skills = skills;
+
+        let units = vec![a, b];
+        assert_eq!(crew_sailing_levels(&units, "329", None), 4);
+    }
+
+    #[test]
+    fn fleet_of_follows_this_months_enter() {
+        let structure = Structure {
+            structure_id: "329".to_string(),
+            name: "Ship".to_string(),
+            kind: "Longship".to_string(),
+            description: None,
+            needs: None,
+        };
+        let hex = KnownHex {
+            coordinate: crate::report::model::Coordinate { x: 1, y: 1, z: 1 },
+            terrain: "ocean".to_string(),
+            province: "Sea".to_string(),
+            visited: true,
+            roads: Vec::new(),
+            structures: vec![structure],
+            units: Vec::new(),
+            last_seen_turn: Some(40),
+        };
+        let ashore = sample_unit("11126", None);
+        let ordered =
+            crate::movement::fleet::OrderedUnits::from_document("unit 11126\nENTER 329\n");
+
+        assert!(
+            fleet_of(&ashore, &hex, None).is_none(),
+            "the report has it ashore"
+        );
+        assert_eq!(
+            fleet_of(&ashore, &hex, Some(&ordered))
+                .expect("it boards the longship this month")
+                .structure_id,
+            "329"
+        );
     }
 }

@@ -11,6 +11,7 @@ use atlantis_hud_core::movement::request::{
 };
 const TURN_71: &str = atlantis_hud_fixtures::G7_F95_T71.text;
 const G3_F42_T40: &str = atlantis_hud_fixtures::G3_F42_T40.text;
+const G5_F21_T24: &str = atlantis_hud_fixtures::G5_F21_T24.text;
 const RULESET: &str = atlantis_hud_fixtures::RULESET_JSON;
 
 mod common;
@@ -285,4 +286,43 @@ fn an_order_into_unexplored_country_is_drawn_to_its_end() {
         path.steps[1].terrain, "mountain",
         "guessed from the last hex seen"
     );
+}
+
+/// A unit that boards a fleet this month sails with it: ENTER runs before anything moves, so the
+/// tracer must read where the unit stands *after* its own orders rather than where the report
+/// found it (ah-ssd). Drones (1297) stands ashore in the plain at (36,44); Raft [235] there is
+/// sailed by Drones (10575), and "Southeast : ocean (37,45)".
+#[test]
+fn a_unit_that_boards_a_fleet_this_month_is_traced_as_sailing_with_it() {
+    let orders = "unit 10575\nSAIL SE\nunit 1297\nENTER 235\n";
+    let response = trace_orders_for_remembered_report(
+        &mut ReportCache::new(),
+        RULESET,
+        G5_F21_T24,
+        "[]",
+        "1297",
+        orders,
+    )
+    .expect("the ruleset loads");
+    let path = response.path.expect("the boarding unit is carried");
+
+    assert_eq!(path.from, at(36, 44));
+    assert_eq!(path.steps[0].to, at(37, 45));
+    assert_eq!(
+        path.mode,
+        Some(atlantis_hud_core::movement::rules::MovementMode::Sail),
+        "it is aboard the raft once its own ENTER has run"
+    );
+
+    // Without the ENTER it stands ashore, and the same hull carries it nowhere.
+    let ashore = trace_orders_for_remembered_report(
+        &mut ReportCache::new(),
+        RULESET,
+        G5_F21_T24,
+        "[]",
+        "1297",
+        "unit 10575\nSAIL SE\n",
+    )
+    .expect("the ruleset loads");
+    assert_eq!(ashore.path, None, "a unit ashore follows nobody");
 }

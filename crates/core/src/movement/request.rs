@@ -181,7 +181,7 @@ pub fn trace_orders_for_remembered_report(
 
     let map = MapKnowledge::from_remembered(&report, &remembered);
     Ok(MoveOrderTraceResponse {
-        path: trace_move(&map, &ruleset, &unit, steps),
+        path: trace_move(&map, &ruleset, &unit, steps, Some(&ordered)),
     })
 }
 
