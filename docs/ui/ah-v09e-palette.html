@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reading for an hour — dark palette proposals (bead ah-v09e)</title>
+<style>
+  body { background:#0c1015; color:#dbe3ec; font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 72px; margin:0; }
+  * { box-sizing:border-box; }
+  header, main { max-width:1240px; margin-left:auto; margin-right:auto; }
+  h1 { font-size:26px; margin:0; } h1 span { color:#d9a441; }
+  header p { color:#a3b0c0; max-width:96ch; margin:10px 0 0; font-size:14px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:0.92em; }
+  h2.sec { margin:38px 0 0; font-size:18px; color:#d9a441; } h2.sec small { color:#8a97a8; font-size:13px; margin-left:10px; }
+  .banner { border:1px solid #26303d; border-left:3px solid #d9a441; background:#171d26; padding:14px 16px; border-radius:6px; margin-top:16px; color:#a3b0c0; font-size:13.5px; } .banner b { color:#dbe3ec; }
+  .banner.bad { border-left-color:#d97070; } .banner.good { border-left-color:#4fb783; }
+  table { border-collapse:collapse; font-size:12.5px; width:100%; margin-top:14px; }
+  th, td { text-align:left; padding:6px 8px; border-bottom:1px solid #1e2733; vertical-align:top; }
+  th { color:#d9a441; font-weight:normal; font-size:11px; letter-spacing:1px; text-transform:uppercase; }
+  td.num { font-family:'SF Mono',monospace; text-align:right; }
+  .aaa { color:#4fb783; } .aa { color:#a3b0c0; } .fail { color:#d97070; }
+  .sw { display:inline-block; width:11px; height:11px; border-radius:2px; border:1px solid #26303d; vertical-align:-1px; margin-right:5px; }
+  .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(340px,1fr)); gap:22px; margin-top:18px; align-items:start; }
+  .card { border:1px solid #26303d; border-radius:10px; overflow:hidden; background:#171d26; }
+  .card > .lab { padding:12px 16px; border-bottom:1px solid #26303d; }
+  .card > .lab h3 { margin:0; font-size:16px; } .card > .lab h3 em { color:#d9a441; font-style:normal; font-size:11px; letter-spacing:1.6px; margin-right:8px; }
+  .card > .lab p { margin:6px 0 0; font-size:12.5px; color:#a3b0c0; }
+  .notes { list-style:none; padding:12px 16px 14px; margin:0; font-size:12px; color:#a3b0c0; display:grid; gap:4px; border-top:1px solid #1e2733; }
+  .notes li::before { content:"+ "; color:#4fb783; font-weight:bold; } .notes li.con::before { content:"\2212  "; color:#d97070; }
+
+  /* --- the simulated application slice; every variant sets its own tokens --- */
+  .app { font-family:'Helvetica Neue',Arial,sans-serif; padding:14px; background:var(--ground); }
+  .app .pane { background:var(--panel); border:1px solid var(--edge); border-radius:6px; overflow:hidden; }
+  .app .bar { display:flex; align-items:baseline; gap:8px; padding:5px 9px; border-bottom:1px solid var(--edge); }
+  .app .bar .h { color:var(--brass); font-size:var(--tsm); letter-spacing:.08em; text-transform:uppercase; }
+  .app .bar .n { margin-left:auto; color:var(--dim); font-size:var(--tsm); }
+  .app .sect { color:var(--brass); font-size:var(--tsm); letter-spacing:.1em; text-transform:uppercase; padding:8px 9px 3px; }
+  .app .rows { padding:0 4px 6px; }
+  .app .r { display:flex; gap:8px; padding:3px 5px; border-top:1px solid var(--edgesoft); font-size:var(--tp); color:var(--ink); }
+  .app .r:first-child { border-top:0; }
+  .app .r .id { color:var(--dim); font-variant-numeric:tabular-nums; flex:none; width:4.2em; }
+  .app .r .sub { color:var(--soft); }
+  .app .r .tag { color:var(--dim); font-size:var(--tsm); margin-left:auto; flex:none; }
+  .app .prose { padding:6px 9px 9px; font-size:var(--tp); color:var(--ink); line-height:1.5; }
+  .app .prose .d { color:var(--dim); }
+  .app .raised { background:var(--raised); border:1px solid var(--edge); border-radius:5px; margin:8px 9px; padding:7px 9px; font-size:var(--tp); color:var(--ink); }
+  .app .raised .k { color:var(--soft); }
+  .app .warn { color:var(--warnc); }
+
+  .cur  { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edgesoft:#1e2733; --ink:#dbe3ec; --soft:#a3b0c0; --dim:#8a97a8; --brass:#d9a441; --warnc:#d9a441; --tsm:11px; --tp:12px; }
+  .va   { --ground:#1b212a; --panel:#222933; --raised:#2a323d; --edge:#46525f; --edgesoft:#333d49; --ink:#d4dce6; --soft:#a8b4c2; --dim:#8d99a8; --brass:#e0b25a; --warnc:#e0b25a; --tsm:11px; --tp:12px; }
+  .vb   { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#3f4c5b; --edgesoft:#2a3441; --ink:#c2ccd8; --soft:#9aa6b4; --dim:#828e9c; --brass:#d9a441; --warnc:#d9a441; --tsm:11px; --tp:12px; }
+  .big  { --tsm:12px; --tp:13.5px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Reading for an hour &mdash; <span>dark palette proposals</span> (bead ah-v09e)</h1>
+  <p>A player reported that after about fifteen minutes their eyes hurt, and suggested the font colour is &ldquo;not contrast enough&rdquo;. I measured every colour in the palette before proposing anything, and <b>the measurement disagrees with the diagnosis</b> &mdash; which changes what this bead should do.</p>
+</header>
+<main>
+
+  <div class="banner bad" style="margin-top:18px"><b>Correction, found after the first three questions were asked.</b> Everything in §1–§4 measures text against an <i>opaque</i> panel. The floating panes are not opaque. <code>--pane-transparency</code> defaults to <b>90</b> (<code>theme.css:304</code>), and <code>.bg-pane</code> (<code>theme.css:344-350</code>) paints the panel colour at <b>10% opacity over the live map</b>. So for every floating pane, the real background of the text is <b>the map</b>. §6 measures that, and it is a much bigger effect than anything in §3.</div>
+
+  <h2 class="sec">&sect;1 &nbsp;What the numbers actually say <small>every text token, measured against the surface it sits on</small></h2>
+  <table>
+    <tr><th style="width:30%">Role</th><th>Token on surface</th><th class="num" style="width:9%">Ratio</th><th style="width:14%">WCAG</th></tr>
+    <tr><td>Body text</td><td><span class="sw" style="background:#dbe3ec"></span><code>ink</code> on <code>ground</code></td><td class="num">14.14</td><td class="aaa">AAA &mdash; passes</td></tr>
+    <tr><td>Body text on a panel</td><td><span class="sw" style="background:#dbe3ec"></span><code>ink</code> on <code>panel</code></td><td class="num">13.07</td><td class="aaa">AAA &mdash; passes</td></tr>
+    <tr><td>Secondary text</td><td><span class="sw" style="background:#a3b0c0"></span><code>ink-soft</code> on <code>panel</code></td><td class="num">7.68</td><td class="aaa">AAA &mdash; passes</td></tr>
+    <tr><td>Dimmed text</td><td><span class="sw" style="background:#8a97a8"></span><code>ink-dim</code> on <code>panel</code></td><td class="num">5.70</td><td class="aa">AA &mdash; passes</td></tr>
+    <tr><td>Headings</td><td><span class="sw" style="background:#d9a441"></span><code>brass</code> on <code>panel</code></td><td class="num">7.53</td><td class="aaa">AAA &mdash; passes</td></tr>
+    <tr><td>Warnings</td><td><span class="sw" style="background:#d9a441"></span><code>warn</code> on <code>panel</code></td><td class="num">7.53</td><td class="aaa">AAA &mdash; passes</td></tr>
+    <tr><td>Errors</td><td><span class="sw" style="background:#d97070"></span><code>danger</code> on <code>panel</code></td><td class="num">5.24</td><td class="aa">AA &mdash; passes</td></tr>
+    <tr><td><b>Borders and dividers</b></td><td><span class="sw" style="background:#26303d"></span><code>edge</code> on <code>panel</code></td><td class="num fail">1.27</td><td class="fail">far below 3:1</td></tr>
+    <tr><td><b>Inner dividers</b></td><td><span class="sw" style="background:#1e2733"></span><code>edge-soft</code> on <code>panel</code></td><td class="num fail">1.12</td><td class="fail">far below 3:1</td></tr>
+  </table>
+
+  <div class="banner bad"><b>So the bead's acceptance criteria aim at a problem that does not exist.</b> They ask for body, header and dimmed text to each meet a stated ratio, with AA (4.5:1) as &ldquo;the floor to argue from&rdquo;. Every one of them already clears it, and body text clears AAA <i>twice over</i>. An implementer following those criteria would find nothing to fix &mdash; or, worse, would raise contrast further.</div>
+
+  <div class="banner good"><b>And the reporter's own reference argues the other way.</b> Discord's dark theme, which they named as &ldquo;very good&rdquo;, runs body text at <b>9.36:1</b> on a <b>much lighter</b> background (<code>#313338</code> against our <code>#10151c</code>). It is not more contrast than us. It is <i>less</i> &mdash; about two-thirds of ours &mdash; on a ground that is nowhere near black.</div>
+
+  <h2 class="sec">&sect;2 &nbsp;What I think is actually happening <small>three causes, none of which is &ldquo;too little contrast&rdquo;</small></h2>
+  <table>
+    <tr><th style="width:22%">Cause</th><th>Evidence</th><th style="width:26%">What would fix it</th></tr>
+    <tr>
+      <td><b>Halation</b><br><span style="color:#8a97a8">near-white on near-black</span></td>
+      <td>Body text runs at <b>13&ndash;14:1</b> on a ground of <code>#10151c</code>, which is very close to black. At that separation light text bleeds visibly into the dark around it, and the eye keeps hunting for a focus that is not there. This is the best-known cause of dark-theme eye strain, and it gets <i>worse</i> the more contrast you add. Discord avoids it by lifting the ground.</td>
+      <td>Lift the background, soften the text, or both &mdash; §3.</td>
+    </tr>
+    <tr>
+      <td><b>Small type</b></td>
+      <td>The panes' whole type scale is <code>--text-pane-sm: 11px</code>, <code>--text-pane: 12px</code>, <code>--text-pane-lg: 13px</code> (<code>theme.css:119-121</code>). Twelve-point-something pixels is fine for a glance and punishing for an hour. There <i>is</i> an <b>Interface size</b> setting that scales all of it &mdash; so the reporter may simply never have found it.</td>
+      <td>Raise the default, make the setting findable, or both &mdash; §4.</td>
+    </tr>
+    <tr>
+      <td><b>Invisible structure</b></td>
+      <td>Borders sit at <b>1.27:1</b> and inner dividers at <b>1.12:1</b>. They are very nearly not there. When the boxes do not separate themselves, the reader's eye does the grouping instead &mdash; on every glance, all session. This is the one genuine contrast failure in the palette, and it is not a text one.</td>
+      <td>Strengthen the two edge tokens &mdash; included in both §3 options.</td>
+    </tr>
+  </table>
+
+  <h2 class="sec">&sect;3 &nbsp;Two directions for the palette <small>the same slice of the app, drawn three times &mdash; compare them at arm's length, not up close</small></h2>
+  <div class="cards">
+
+    <div class="card">
+      <div class="lab"><h3><em>Today</em> The baseline</h3><p>Ground <code>#10151c</code>, ink <code>#dbe3ec</code>. Body at 13.07:1 on a panel.</p></div>
+      <div class="app cur">
+        <div class="pane">
+          <div class="bar"><span class="h">Units in hex</span><span class="n">6 units</span></div>
+          <div class="sect">Own units</div>
+          <div class="rows">
+            <div class="r"><span class="id">4021</span><span>Seven of Eight</span><span class="tag">studying</span></div>
+            <div class="r"><span class="id">4117</span><span>Drones <span class="sub">&mdash; 50 lizardmen</span></span><span class="tag">idle</span></div>
+            <div class="r"><span class="id">13432</span><span>Drone <span class="sub">&mdash; 1 hill dwarf</span></span><span class="tag">idle</span></div>
+          </div>
+          <div class="raised"><span class="k">Structure</span> &nbsp;Soggy Saw Mill [1] &middot; Timber Yard</div>
+          <div class="prose">This unit earns 2 silver working in desert (15,63). <span class="d">Maintenance costs 500 silver a month, drawn from the shared purse.</span> <span class="warn">&#9888; has no order that spends the month</span></div>
+        </div>
+      </div>
+      <ul class="notes"><li>The instrument-panel look, unchanged.</li><li class="con">The highest-contrast of the three, which is the problem rather than the merit.</li><li class="con">Boxes barely separate from each other.</li></ul>
+    </div>
+
+    <div class="card">
+      <div class="lab"><h3><em>A</em> Lift the ground</h3><p>Ground <code>#1b212a</code>, panel <code>#222933</code>, ink <code>#d4dce6</code>. Body at <b>10.59:1</b>. The Discord move.</p></div>
+      <div class="app va">
+        <div class="pane">
+          <div class="bar"><span class="h">Units in hex</span><span class="n">6 units</span></div>
+          <div class="sect">Own units</div>
+          <div class="rows">
+            <div class="r"><span class="id">4021</span><span>Seven of Eight</span><span class="tag">studying</span></div>
+            <div class="r"><span class="id">4117</span><span>Drones <span class="sub">&mdash; 50 lizardmen</span></span><span class="tag">idle</span></div>
+            <div class="r"><span class="id">13432</span><span>Drone <span class="sub">&mdash; 1 hill dwarf</span></span><span class="tag">idle</span></div>
+          </div>
+          <div class="raised"><span class="k">Structure</span> &nbsp;Soggy Saw Mill [1] &middot; Timber Yard</div>
+          <div class="prose">This unit earns 2 silver working in desert (15,63). <span class="d">Maintenance costs 500 silver a month, drawn from the shared purse.</span> <span class="warn">&#9888; has no order that spends the month</span></div>
+        </div>
+      </div>
+      <ul class="notes"><li>Kills halation at the source &mdash; nothing in the window is near black.</li><li>Panels, raised surfaces and borders all separate properly.</li><li>Still AAA for body text (10.59:1), well above Discord's 9.36.</li><li class="con">The biggest visual change of the three. The &ldquo;dark instrument in a dark room&rdquo; character softens into something closer to a normal dark app.</li><li class="con">The map sits in the same window and is tuned against a near-black ground; a lighter chrome changes what it looks like next to.</li></ul>
+    </div>
+
+    <div class="card">
+      <div class="lab"><h3><em>B</em> Soften the ink</h3><p>Ground unchanged, ink <code>#c2ccd8</code>. Body at <b>10.42:1</b>. Edges strengthened.</p></div>
+      <div class="app vb">
+        <div class="pane">
+          <div class="bar"><span class="h">Units in hex</span><span class="n">6 units</span></div>
+          <div class="sect">Own units</div>
+          <div class="rows">
+            <div class="r"><span class="id">4021</span><span>Seven of Eight</span><span class="tag">studying</span></div>
+            <div class="r"><span class="id">4117</span><span>Drones <span class="sub">&mdash; 50 lizardmen</span></span><span class="tag">idle</span></div>
+            <div class="r"><span class="id">13432</span><span>Drone <span class="sub">&mdash; 1 hill dwarf</span></span><span class="tag">idle</span></div>
+          </div>
+          <div class="raised"><span class="k">Structure</span> &nbsp;Soggy Saw Mill [1] &middot; Timber Yard</div>
+          <div class="prose">This unit earns 2 silver working in desert (15,63). <span class="d">Maintenance costs 500 silver a month, drawn from the shared purse.</span> <span class="warn">&#9888; has no order that spends the month</span></div>
+        </div>
+      </div>
+      <ul class="notes"><li>Keeps the dark, map-first character exactly as it is.</li><li>Same contrast reduction as A (10.42 vs 10.59), reached from the other end.</li><li>Nothing changes behind the map, so the map needs no re-look.</li><li class="con">The ground is still near-black, so some halation remains &mdash; a smaller fix for the same complaint.</li></ul>
+    </div>
+
+  </div>
+
+  <h2 class="sec">&sect;4 &nbsp;The type scale <small>the same panel at today's sizes and one step up &mdash; both in direction A</small></h2>
+  <div class="cards">
+    <div class="card">
+      <div class="lab"><h3><em>Now</em> 11 / 12 / 13 px</h3><p>The default. An hour of this is the complaint.</p></div>
+      <div class="app va">
+        <div class="pane">
+          <div class="bar"><span class="h">Orders</span><span class="n">line 14</span></div>
+          <div class="prose">unit 4117<br><span class="d">; Drones (4117), avoiding, behind, sharing, 50 lizardmen [LIZA], 7500 silver [SILV]. Weight: 500.</span><br><span class="warn">&#9888; has no order that spends the month</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="lab"><h3><em>Up one</em> 12 / 13.5 px</h3><p>About a 12% lift on the two sizes that carry text.</p></div>
+      <div class="app va big">
+        <div class="pane">
+          <div class="bar"><span class="h">Orders</span><span class="n">line 14</span></div>
+          <div class="prose">unit 4117<br><span class="d">; Drones (4117), avoiding, behind, sharing, 50 lizardmen [LIZA], 7500 silver [SILV]. Weight: 500.</span><br><span class="warn">&#9888; has no order that spends the month</span></div>
+        </div>
+      </div>
+      <ul class="notes"><li>Costs vertical room in every pane, which is the whole argument against it &mdash; a hex can hold three hundred units.</li><li>The <b>Interface size</b> setting already does this for anyone who finds it. Raising the default helps everyone who does not.</li></ul>
+    </div>
+  </div>
+
+  <div class="banner"><b>These are not exclusive.</b> A palette direction and a type decision can both be taken, and the palette change is worth making whichever way the type goes.</div>
+
+  <h2 class="sec">&sect;5 &nbsp;What comes with any of it</h2>
+  <ul class="notes" style="border:0;padding-left:0;font-size:13px;color:#a3b0c0">
+    <li><b>The light theme moves in step.</b> <code>theme.css:149+</code> defines a full light palette, and <code>theme.test.ts</code> fails if any <code>--color-*</code> token lacks a light counterpart. Every token this bead touches needs its light partner considered, not merely present.</li>
+    <li><b>The map is not in scope.</b> Terrain, fog, unit and settlement colours are their own tokens with their own rules, and the map themes have their own stylesheets. Nothing here touches them &mdash; but option A changes what the map is seen <i>next to</i>, which is a thing to look at rather than a thing to change.</li>
+    <li class="con"><b>The reporter should be answered either way.</b> Whatever is chosen, what they described is real; the diagnosis was simply not the one they offered.</li>
+  </ul>
+
+
+  <h2 class="sec">&sect;6 &nbsp;The real cause: pane text sits on the map <small>same tokens, measured against what the reader actually sees</small></h2>
+  <p style="color:#a3b0c0;font-size:13.5px;margin-top:10px;max-width:96ch">Every panel in the workspace uses <code>.bg-pane</code>. At the default setting it is 10% panel over whatever the map is drawing underneath. Contrast therefore depends on the terrain the pane happens to be floating over &mdash; and <b>it changes as you pan</b>, which is the single worst thing you can ask a reader's eye to cope with for an hour.</p>
+  <table>
+    <tr><th style="width:26%">Text token</th><th class="num" style="width:12%">On panel<br>(what the test checks)</th><th class="num" style="width:12%">Over forest</th><th class="num" style="width:12%">Over tundra</th><th class="num" style="width:12%">Over desert</th><th class="num" style="width:12%">Over plain</th></tr>
+    <tr><td><span class="sw" style="background:#dbe3ec"></span><code>ink</code> &mdash; body</td><td class="num aaa">13.07</td><td class="num aa">6.40</td><td class="num fail">3.90</td><td class="num fail">3.94</td><td class="num fail">4.20</td></tr>
+    <tr><td><span class="sw" style="background:#a3b0c0"></span><code>ink-soft</code></td><td class="num aaa">7.68</td><td class="num fail">3.76</td><td class="num fail">2.29</td><td class="num fail">2.32</td><td class="num fail">2.47</td></tr>
+    <tr><td><span class="sw" style="background:#8a97a8"></span><code>ink-dim</code></td><td class="num aa">5.70</td><td class="num fail">2.79</td><td class="num fail">1.70</td><td class="num fail">1.72</td><td class="num fail">1.83</td></tr>
+  </table>
+  <div class="banner bad"><b>Nothing in this application is &ldquo;large text&rdquo;.</b> The biggest size is 13px and the heaviest weight is 500, so every pair above is held to the 4.5:1 small-text bar. Body text fails it over three common terrains; secondary text fails everywhere but forest; dimmed text is at <b>1.7:1</b>, which is very close to not being there at all. <b>This is the eye strain.</b></div>
+  <div class="banner"><b>Why no test caught it.</b> <code>theme.test.ts:100-117</code> does do real WCAG maths, and asserts all nine ink×surface pairs clear 4.5:1 &mdash; against the <b>opaque</b> panel. It models a background the reader never sees for a floating pane.</div>
+
+  <h2 class="sec">&sect;7 &nbsp;How much transparency the text can afford <small>worst common terrain (desert), dark theme</small></h2>
+  <table>
+    <tr><th style="width:20%">Transparency</th><th class="num" style="width:16%">ink</th><th class="num" style="width:16%">ink-soft</th><th class="num" style="width:16%">ink-dim</th><th>Verdict</th></tr>
+    <tr><td><b>90% &mdash; today</b></td><td class="num fail">3.94</td><td class="num fail">2.32</td><td class="num fail">1.72</td><td class="fail">all three fail AA</td></tr>
+    <tr><td>75%</td><td class="num aa">4.83</td><td class="num fail">2.84</td><td class="num fail">2.11</td><td class="fail">two fail</td></tr>
+    <tr><td>50%</td><td class="num aa">6.91</td><td class="num fail">4.06</td><td class="num fail">3.01</td><td class="fail">two fail</td></tr>
+    <tr><td>30%</td><td class="num aaa">9.16</td><td class="num aa">5.39</td><td class="num fail">4.00</td><td class="fail">dimmed text still fails</td></tr>
+    <tr><td><b>20%</b></td><td class="num aaa">10.40</td><td class="num aa">6.11</td><td class="num aa">4.54</td><td class="aaa">first row where all three pass</td></tr>
+    <tr><td>10%</td><td class="num aaa">11.77</td><td class="num aa">6.92</td><td class="num aa">5.14</td><td class="aaa">comfortable</td></tr>
+    <tr><td>0% &mdash; opaque</td><td class="num aaa">13.07</td><td class="num aaa">7.68</td><td class="num aa">5.70</td><td class="aaa">the numbers in §1</td></tr>
+  </table>
+  <div class="banner good"><b>20% is the line.</b> Below it every ink token clears AA over the worst terrain in the game; above it something always fails. The slider today runs 0&ndash;95 and defaults to 90 &mdash; so the default is at the far wrong end, and a player can set themselves somewhere unreadable and reasonably conclude the app is badly made.</div>
+
+  <h2 class="sec">&sect;8 &nbsp;The light theme, which you asked me to look at too</h2>
+  <p style="color:#a3b0c0;font-size:13.5px;margin-top:10px;max-width:96ch">It has <b>genuine AA failures even on an opaque panel</b> &mdash; unlike the dark theme, where every text token passes. <code>theme.test.ts</code> never caught these because it checks only the three <code>ink</code> tokens and none of the accents.</p>
+  <table>
+    <tr><th style="width:34%">Light token on panel</th><th class="num" style="width:12%">Ratio</th><th style="width:16%">WCAG</th><th>Where it is used</th></tr>
+    <tr><td><span class="sw" style="background:#9a6f1d"></span><code>brass</code> <span style="color:#8a97a8">#9a6f1d</span></td><td class="num fail">3.61</td><td class="fail">fails AA</td><td><b>Every panel title and section heading in the app.</b> The most-used accent there is.</td></tr>
+    <tr><td><span class="sw" style="background:#9a6f1d"></span><code>warn</code> <span style="color:#8a97a8">#9a6f1d</span></td><td class="num fail">3.61</td><td class="fail">fails AA</td><td>Every order warning &mdash; including the two this session's beads add.</td></tr>
+    <tr><td><span class="sw" style="background:#2e7d54"></span><code>ok</code></td><td class="num fail">4.03</td><td class="fail">fails AA</td><td>Success marks.</td></tr>
+    <tr><td><span class="sw" style="background:#2470a8"></span><code>select</code></td><td class="num fail">4.25</td><td class="fail">fails AA</td><td>Selection and links.</td></tr>
+    <tr><td><span class="sw" style="background:#b04a4a"></span><code>danger</code></td><td class="num fail">4.29</td><td class="fail">fails AA</td><td>Errors.</td></tr>
+    <tr><td><span class="sw" style="background:#2a3038"></span><code>ink</code>, <code>ink-soft</code>, <code>ink-dim</code></td><td class="num aa">10.66 / 5.76 / 4.64</td><td class="aa">pass</td><td>The only ones the test checks.</td></tr>
+  </table>
+  <div class="banner bad"><b>And the pane problem is worse in light.</b> Dark ink over a 10%-light-panel on dark terrain measures <b>1.09:1</b> &mdash; text and background are effectively the same colour. Whatever is decided about transparency has to hold for both themes, not just dark.</div>
+
+</main>
+</body>
+</html>
