@@ -445,6 +445,16 @@ const WARNING_GROUPS: readonly {
         code: "already-built",
         title: "Building what is built",
         description: "A BUILD order on a structure the report already shows as finished."
+      },
+      {
+        code: "build-outside-structure",
+        title: "Building outside a structure",
+        description: "A bare BUILD or BUILD COMPLETE by a unit that is in no structure."
+      },
+      {
+        code: "build-help-not-building",
+        title: "Helping a unit that is not building",
+        description: "A BUILD HELP naming a unit with no BUILD order of its own."
       }
     ]
   },
