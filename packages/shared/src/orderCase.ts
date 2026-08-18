@@ -99,12 +99,52 @@ export function uppercaseLine(line: string, vocabulary: Vocabulary): string {
   return result;
 }
 
+/** One keyword to shout, in whole-block offsets. `insert` is always the same length as the span. */
+export interface CaseChange {
+  readonly from: number;
+  readonly to: number;
+  readonly insert: string;
+}
+
+/**
+ * Every keyword span of a whole block that is not already upper case, in block offsets.
+ *
+ * `protect`, when it is a number, is a block offset whose word is left alone — the caret, so a
+ * word still being typed is not shouted at under the cursor. `null` protects nothing. The test is
+ * inclusive at both ends: a caret immediately after the last character of `move` is exactly the
+ * "still typing it" case this rule exists for, and one at the head of the word counts too.
+ */
+export function keywordCaseChanges(
+  text: string,
+  vocabulary: Vocabulary,
+  protect: number | null
+): CaseChange[] {
+  const changes: CaseChange[] = [];
+  let lineStart = 0;
+  for (const line of text.split("\n")) {
+    for (const word of bareWords(line)) {
+      if (!isKeyword(word.text, vocabulary)) continue;
+      const insert = word.text.toUpperCase();
+      if (insert === word.text) continue;
+      const from = lineStart + word.from;
+      const to = lineStart + word.to;
+      if (protect !== null && protect >= from && protect <= to) continue;
+      changes.push({ from, to, insert });
+    }
+    lineStart += line.length + 1;
+  }
+  return changes;
+}
+
 /** A whole orders block, line by line. Returns the text unchanged when nothing matches. */
 export function uppercaseKeywords(text: string, vocabulary: Vocabulary): string {
-  return text
-    .split("\n")
-    .map((line) => uppercaseLine(line, vocabulary))
-    .join("\n");
+  let result = text;
+  const changes = keywordCaseChanges(text, vocabulary, null);
+  for (let i = changes.length - 1; i >= 0; i -= 1) {
+    const change = changes[i] as CaseChange;
+    result = result.slice(0, change.from) + change.insert + result.slice(change.to);
+  }
+  return result;
 }
 
 /**

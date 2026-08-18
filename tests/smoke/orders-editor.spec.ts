@@ -366,3 +366,28 @@ test("with Order OCD off, nothing is uppercased", async ({ page }) => {
 
   await expectOrders(page, /^name unit "seven of eight" ?/);
 });
+
+test("orders written before the setting was on are tidied on the first unit opened after a reload", async ({
+  page
+}) => {
+  await loadReport(page);
+  await fillOrders(page, "move n\nstudy combat");
+  // The reload proves nothing until the draft has actually been written.
+  await expect(page.getByTestId("orders-status")).toContainText(/saved \d/u, { timeout: 20_000 });
+  await enableOrderOcd(page);
+
+  await page.reload();
+  await selectHex(page, "1:7,53");
+  await selectUnit(page, OWN_UNIT);
+
+  // The first editor mounted since the load: its vocabulary is still in flight when it is built.
+  await expectOrders(page, /^MOVE N\nSTUDY COMBAT/);
+});
+
+test("turning Order OCD on tidies the unit already on screen", async ({ page }) => {
+  await loadReport(page);
+  await fillOrders(page, "move n\nstudy combat");
+  await enableOrderOcd(page);
+
+  await expectOrders(page, /^MOVE N\nSTUDY COMBAT/);
+});
