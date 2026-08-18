@@ -34,25 +34,31 @@
  * clients all use.
  */
 @theme {
-  --color-ground: #10151c;
-  --color-panel: #171d26;
-  --color-panel-raised: #1c232e;
-  --color-edge: #26303d;
-  --color-edge-soft: #1e2733;
+  --color-ground: #1b212a;
+  --color-panel: #222933;
+  --color-panel-raised: #2a323d;
+  --color-edge: #46525f;
+  --color-edge-soft: #333d49;
 
   /*
+    Three steps of emphasis, all of them readable. Re-measured for ah-v09e against the lifted
+    surfaces *and* against a pane composited over live terrain, which is what the reader actually
+    sees: 10.59 / 6.96 / 5.65 on a panel, and never below 4.5 anywhere. `ink-dim` is a shade
+    lighter than the palette mockup drew it - at #8d99a8 it fell to 4.47 on a raised panel and
+    4.04 through a pane over tundra, below the AA floor this bead commits to.
+
     Three steps of emphasis, all of them readable. `ink-dim` used to sit at 2.78:1 against a raised
     panel, which is below the 4.5:1 small text needs and was hard to read on the panels it is used
     most - the sentence under a checkbox, a field's label. Lightened until every step clears AA on
     every surface, keeping the gaps between them wide enough to still read as a hierarchy.
   */
-  --color-ink: #dbe3ec;
-  --color-ink-soft: #a3b0c0;
-  --color-ink-dim: #8a97a8;
+  --color-ink: #d4dce6;
+  --color-ink-soft: #a8b4c2;
+  --color-ink-dim: #96a2b1;
 
-  --color-brass: #d9a441;
+  --color-brass: #e0b25a;
   --color-brass-bright: #eebe63;
-  --color-select: #4a9fd8;
+  --color-select: #5aa9de;
 
   /*
    * The selected hex's double ring (ah-sup): a bright ring over a dark casing, achromatic so it
@@ -64,7 +70,7 @@
 
   --color-ok: #4fb783;
   --color-warn: #d9a441;
-  --color-danger: #d97070;
+  --color-danger: #e08585;
 
   /* Terrain. Read from the report, so these are data rather than styling choices. */
   --color-terrain-ocean: #1d3f63;

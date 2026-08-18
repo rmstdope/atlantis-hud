@@ -184,6 +184,81 @@ describe("theme palette", () => {
   });
 
   /**
+   * A band, not a floor (ah-v09e).
+   *
+   * Near-white body text on a near-black ground halates: the glyphs bloom into their background
+   * and a reader has to work to hold them still, which is the eye strain the report described.
+   * The floor above says text must be readable; this says it must not glow either. Discord's dark
+   * theme, the reporter's own reference, runs body text at 9.36:1.
+   */
+  const MAX_BODY_CONTRAST = 12;
+
+  it("keeps dark body text inside a band rather than at maximum contrast", () => {
+    const values = tokenValues(extractBlock(css, /@theme\b/));
+
+    const glaring: string[] = [];
+    for (const surface of SURFACES) {
+      const ratio = contrast(values.get("--color-ink")!, values.get(surface)!);
+      if (ratio > MAX_BODY_CONTRAST) {
+        glaring.push(`--color-ink on ${surface} is ${ratio.toFixed(2)}:1`);
+      }
+    }
+
+    expect(glaring).toEqual([]);
+  });
+
+  /**
+   * Every accent carries meaning - a heading, a warning, an error, a selection - so each is text
+   * and each is held to AA on every surface it can be written on.
+   *
+   * This passes today and must still pass: lifting the surfaces costs every accent about a ratio
+   * point, and on `--color-panel-raised` (dialogs, popovers, header chips) the pre-ah-v09e
+   * `danger` and `select` fell to 4.01 and 4.46. Fixing eye strain must not introduce two new
+   * accessibility failures on the way.
+   */
+  const ACCENT_TOKENS = [
+    "--color-brass",
+    "--color-brass-bright",
+    "--color-select",
+    "--color-ok",
+    "--color-warn",
+    "--color-danger",
+    "--color-gain"
+  ];
+
+  it("keeps every dark accent above AA on every surface", () => {
+    const values = tokenValues(extractBlock(css, /@theme\b/));
+
+    const unreadable: string[] = [];
+    for (const accent of ACCENT_TOKENS) {
+      for (const surface of SURFACES) {
+        const ratio = contrast(values.get(accent)!, values.get(surface)!);
+        if (ratio < AA_SMALL_TEXT) {
+          unreadable.push(`${accent} on ${surface} is ${ratio.toFixed(2)}:1`);
+        }
+      }
+    }
+
+    expect(unreadable).toEqual([]);
+  });
+
+  /**
+   * The boxes have to do their own grouping. `--color-edge` sat at 1.27:1 against the panel and
+   * `--color-edge-soft` at 1.12:1 - close enough to invisible that the reader's eye was grouping
+   * the panes by their contents instead, which is work (ah-v09e).
+   *
+   * Against `--color-panel` only: both sit lower on `--color-panel-raised` by design, since a
+   * lighter surface leaves an edge less room.
+   */
+  it("keeps dark borders visible against the panel", () => {
+    const values = tokenValues(extractBlock(css, /@theme\b/));
+    const panel = values.get("--color-panel")!;
+
+    expect(contrast(values.get("--color-edge")!, panel)).toBeGreaterThanOrEqual(1.6);
+    expect(contrast(values.get("--color-edge-soft")!, panel)).toBeGreaterThanOrEqual(1.15);
+  });
+
+  /**
    * The map's label haloes are the map's decision, not the chrome's (ah-v09e).
    *
    * `.map-label` and `.region-name` used to stroke themselves with `--color-ground` and fill with
