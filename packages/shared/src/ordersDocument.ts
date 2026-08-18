@@ -1,4 +1,5 @@
 import { MOVEMENT_ORDER_COMMANDS } from "@atlantis/core-client";
+import { passwordIsSendable } from "./workspace/ordersUpload";
 
 /**
  * Projects one unit's orders out of the faction's orders document, and splices edits back.
@@ -261,3 +262,45 @@ export function stripMovementOrderLines(orders: string): string {
     .join("\n")
     .trim();
 }
+
+/**
+ * The document with the typed password written into its `#atlantis` line, on a copy.
+ *
+ * The engine traditionally authenticates from that line, so a document uploaded with a stale or
+ * blank header password can have its turn rejected after the upload appeared to succeed. The id the
+ * line already carried is kept, and every other byte of the document is left exactly as it was -
+ * the same splice-and-rejoin discipline `writeUnitOrders` keeps. A document with no such line comes
+ * back unchanged.
+ *
+ * This writes a password in and returns; it never reads one out, so the module's promise that the
+ * password is never surfaced and never logged still holds.
+ */
+export function withFactionPassword(document: string, password: string): string {
+  // A password carrying a quote or a line break would not be written into the line, it would forge
+  // one - a second `#atlantis` directive the server would read instead. Refused rather than escaped:
+  // the Atlantis orders format has no escape for either.
+  if (!passwordIsSendable(password)) {
+    throw new Error("This password cannot be written into the orders header as it is written.");
+  }
+
+  const lines = document.split("\n");
+  const index = lines.findIndex((line) => FACTION_HEADER.test(line));
+  if (index === -1) {
+    return document;
+  }
+
+  // Everything about the line except the password is kept: its indentation, the id it carried, and
+  // the `\r` of a document written with CRLF endings - which is a byte the rest of the document
+  // still has, so dropping it here would leave the uploaded copy mixed.
+  const [, indent, id = "", carriageReturn = ""] = FACTION_HEADER.exec(lines[index]) ?? [];
+  lines[index] = `${indent}#atlantis${id === "" ? "" : ` ${id}`} "${password}"${carriageReturn}`;
+  return lines.join("\n");
+}
+
+/**
+ * The header line, with what must survive a rewrite of it.
+ *
+ * Anchored on a word boundary so `#atlantisfoo` is not mistaken for it, and the id is read only as
+ * a bare token - an old password, which is quoted, is deliberately not captured as one.
+ */
+const FACTION_HEADER = /^([ \t]*)#atlantis\b[ \t]*([^\s"]*)[^\r]*(\r?)$/;

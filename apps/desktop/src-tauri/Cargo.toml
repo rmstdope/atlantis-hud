@@ -10,6 +10,7 @@ desktop-runtime = [
   "dep:tauri-plugin-opener",
   "dep:tauri-plugin-dialog",
   "dep:tauri-plugin-fs",
+  "dep:tauri-plugin-http",
   "atlantis-hud-core-tauri/tauri",
 ]
 
@@ -28,3 +29,6 @@ tauri-plugin-opener = { version = "2", optional = true }
 # desktop that is the one thing they want to know. Gated with the rest of the desktop runtime.
 tauri-plugin-dialog = { version = "2", optional = true }
 tauri-plugin-fs = { version = "2", optional = true }
+# Posting orders to the game server. Gated behind desktop-runtime for the same reason the others
+# are, and scoped in capabilities/default.json to the one host the upload goes to.
+tauri-plugin-http = { version = "2", optional = true }
