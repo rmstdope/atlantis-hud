@@ -313,7 +313,7 @@
  * DEFAULT_PANE_TRANSPARENCY in settingsStore.ts, for the first paint before anything is stamped.
  */
 :root {
-  --pane-transparency: 90;
+  --pane-transparency: 20;
 
   /* What the Interface size setting multiplies every rem in the application by; 1 is 100%. Stamped
      on the root by `settingsStore`, exactly as `--pane-transparency` is, and defaulted here so the

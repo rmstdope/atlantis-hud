@@ -128,6 +128,62 @@ describe("theme palette", () => {
   });
 
   /**
+   * The floating panes are not opaque: `.bg-pane` paints `--color-panel` at
+   * `100 - --pane-transparency` percent over the live map, so the real background of nearly all
+   * the app's text is a terrain colour, and it changes as the player pans. The assertion above,
+   * against the opaque panel, is a background a reader never sees for a floating pane - and it
+   * passed all the way through the eye-strain report that produced ah-v09e. This is the one that
+   * would have caught it.
+   *
+   * Nothing in the app is WCAG "large text" - 13px is the largest size and 500 the heaviest
+   * weight - so 4.5:1 is the bar for every one of these.
+   *
+   * Dark only. Light mode fails this today (dark ink over a light pane on dark terrain is
+   * 1.09:1); that is ah-j1xd's scope, and a known-red assertion is worth nothing.
+   */
+  it("keeps dark ink readable through a pane over every terrain", () => {
+    // From the source rather than hard-coded, so a future change to the default either keeps the
+    // app readable or fails here.
+    const store = readFileSync(
+      fileURLToPath(new URL("./settingsStore.ts", import.meta.url)),
+      "utf8"
+    );
+    const defaultTransparency = Number.parseInt(
+      store.match(/DEFAULT_PANE_TRANSPARENCY\s*=\s*(\d+)/)![1],
+      10
+    );
+
+    const values = tokenValues(extractBlock(css, /@theme\b/));
+    // `color-mix(in srgb, panel P%, transparent)` over the terrain, per channel.
+    const alpha = (100 - defaultTransparency) / 100;
+    const composite = (top: string, bottom: string): string => {
+      const mix = [1, 3, 5].map((at) => {
+        const t = Number.parseInt(top.slice(at, at + 2), 16);
+        const b = Number.parseInt(bottom.slice(at, at + 2), 16);
+        return Math.round(t * alpha + b * (1 - alpha));
+      });
+      return `#${mix.map((c) => c.toString(16).padStart(2, "0")).join("")}`;
+    };
+
+    const panel = values.get("--color-panel")!;
+    const terrains = [...values.keys()].filter((token) => token.startsWith("--color-terrain-"));
+    expect(terrains.length).toBeGreaterThan(0);
+
+    const unreadable: string[] = [];
+    for (const terrain of terrains) {
+      const behind = composite(panel, values.get(terrain)!);
+      for (const ink of INK_TOKENS) {
+        const ratio = contrast(values.get(ink)!, behind);
+        if (ratio < AA_SMALL_TEXT) {
+          unreadable.push(`${ink} through a pane over ${terrain} is ${ratio.toFixed(2)}:1`);
+        }
+      }
+    }
+
+    expect(unreadable).toEqual([]);
+  });
+
+  /**
    * The map's label haloes are the map's decision, not the chrome's (ah-v09e).
    *
    * `.map-label` and `.region-name` used to stroke themselves with `--color-ground` and fill with
