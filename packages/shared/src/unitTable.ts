@@ -9,8 +9,15 @@ import { unitStructureLabel } from "./structureLabel";
  * repository has no jsdom: keeping it pure is what makes it testable at all.
  */
 
-/** Height of one rendered row, in pixels, at the default Interface size (100%). */
-export const ROW_HEIGHT = 22;
+/**
+ * Height of one rendered row, in pixels, at the default Interface size (100%).
+ *
+ * 24, not 22 (ah-v09e): a `<tr>`'s `height` is a minimum, so when the pane type scale went up a
+ * step the row's own content grew to 22.875px and every row silently rendered taller than the
+ * number the windowing arithmetic divides by - a pixel a row, which over three hundred rows puts
+ * the bottom of the list out of reach. This is the type scale's headroom, not a spacing choice.
+ */
+export const ROW_HEIGHT = 24;
 
 /**
  * How tall a row is at a given interface size, in whole pixels.

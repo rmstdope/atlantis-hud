@@ -163,16 +163,20 @@ export function railWidthStyle(widthRem: number | null): { width: string } | nul
  * `docs/ui/units-pane-drag-resize.html`: twelve rows by default (what the old row count gave),
  * one row as the floor, never more than seven tenths of the map column.
  *
- * 20.625rem = 330px: title bar 28 + body padding 16 + column header 22 + 12 rows × 22 (ROW_HEIGHT).
- * 5.5rem = 88px: the same with one row.
+ * 22.25rem = 356px: title bar 28 + body padding 16 + column header 24 + 12 rows × 24 (ROW_HEIGHT).
+ * 5.75rem = 92px: the same with one row.
+ *
+ * Both went up with ROW_HEIGHT when the pane type scale did (ah-v09e). The default is defined as
+ * twelve rows, so it has to follow the rows; leaving it at 330px would have shown eleven and a
+ * half of them.
  */
-export const UNITS_DEFAULT_REM = 20.625;
-export const UNITS_MIN_REM = 5.5;
+export const UNITS_DEFAULT_REM = 22.25;
+export const UNITS_MIN_REM = 5.75;
 export const UNITS_MAX_REM = 60; // sanity ceiling for stored values only
 export const UNITS_CEILING_FRACTION = 0.7;
 
-const PINNED_UNITS = "h-[20.625rem] max-h-[70%] min-h-[5.5rem] flex-none";
-const CUSTOM_UNITS = "min-h-[5.5rem] flex-none";
+const PINNED_UNITS = "h-[22.25rem] max-h-[70%] min-h-[5.75rem] flex-none";
+const CUSTOM_UNITS = "min-h-[5.75rem] flex-none";
 
 /** null unless a finite number; otherwise clamped into [UNITS_MIN_REM, UNITS_MAX_REM]. */
 export function clampUnitsHeight(value: unknown): number | null {
