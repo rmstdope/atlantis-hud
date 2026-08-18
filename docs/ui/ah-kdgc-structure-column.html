@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Units in hex — the Structure column</title>
+<style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1500px; margin:0 auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; }
+  h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:92ch; margin-top:10px; font-size:14px; }
+  header p + p { margin-top:8px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; }
+  header code { color:var(--brass-bright); font-size:12.5px; }
+
+  h3.sec { margin:34px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:92ch; }
+
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px 16px 14px; margin-bottom:20px; }
+  .card h2 { font-size:17px; margin-bottom:6px; }
+  .card h2 em { color:var(--brass); font-style:normal; font-size:11.5px; letter-spacing:1.5px; margin-right:8px; }
+  .concept { color:var(--ink-soft); font-size:13px; margin-bottom:12px; max-width:92ch; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; padding:10px; overflow-x:auto; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:11px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"− "; color:var(--danger); }
+  .notes li.n::before { content:"· "; color:var(--ink-dim); }
+
+  /* the table, as the app draws it */
+  table.units { width:100%; table-layout:fixed; border-collapse:separate; border-spacing:0;
+                font:12.5px/1.4 'Helvetica Neue',Arial,sans-serif; font-variant-numeric:tabular-nums; }
+  table.units th { text-align:left; font-size:10.5px; text-transform:uppercase; letter-spacing:.06em;
+                   color:var(--ink-soft); font-weight:400; padding:2px 8px; border-bottom:1px solid var(--edge); }
+  table.units td { padding:2px 8px; border-bottom:1px solid var(--edge-soft); white-space:nowrap; overflow:hidden; }
+  table.units tr { white-space:nowrap; }
+  .tr { text-overflow:ellipsis; overflow:hidden; }
+  .own { color:var(--ok); } .notown { color:var(--danger); }
+  .uid { color:var(--select); } .uidf { color:#8fa3bb; }
+  .dim { color:var(--ink-dim); }
+  .sub { color:var(--ink-dim); }
+  .hl { background:rgba(217,164,65,.10); }
+  .colhi { outline:1px solid var(--brass); outline-offset:-1px; }
+
+  .widthnote { font-size:11.5px; color:var(--ink-dim); margin-top:8px; }
+  .widthnote b { color:var(--ink-soft); font-weight:normal; }
+  .pane { border:1px solid var(--edge); border-radius:6px; padding:8px; background:var(--panel); }
+  .panelbl { font-size:11px; letter-spacing:1.2px; text-transform:uppercase; color:var(--ink-dim); margin-bottom:6px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Units in hex — <span>the Structure column</span></h1>
+  <p>Today the column reads <code>[12]</code>. The region pane, two panes away, writes the same structure as
+  <code>Odds and Ends [12] · Fort</code>. This page is about closing that gap without wrecking a table that is
+  already dense.</p>
+  <p><b>The constraint that shapes every option:</b> every row is pinned to one fixed height so the pane can
+  window three hundred units, and the table is <code>table-fixed</code>. So the text cannot wrap onto a second
+  line — whatever does not fit is cut off. The only real choices are how much width the column takes from its
+  neighbours, and what gets dropped when it still does not fit.</p>
+  <p>Data below is Inholm (<code>1:7,53</code>), the hex the smoke suite uses: a city with 24 structures and 92
+  units. The Structure column is outlined in brass in each table.</p>
+</header>
+
+<main>
+
+<h3 class="sec">Today, for comparison</h3>
+<p>The column is <code>w-20</code> — 5rem, about 80px. Enough for a bracketed number and nothing else.</p>
+<div class="card">
+  <div class="stage">
+    <table class="units">
+      <colgroup><col style="width:1.5rem"><col style="width:4rem"><col style="width:13rem"><col style="width:12rem"><col style="width:4rem"><col><col><col style="width:5rem"></colgroup>
+      <thead><tr><th>*</th><th>Id</th><th>Unit</th><th>Faction</th><th>Men</th><th>Skills</th><th>Items</th><th class="colhi">Structure</th></tr></thead>
+      <tbody>
+        <tr><td class="own">*</td><td class="uid">18642</td><td class="tr">Harbour Watch</td><td class="tr">My Faction (1)</td><td>12</td><td class="tr">obse 3, stea 2</td><td class="tr">12 leaders, 340 silver</td><td class="colhi">[12]</td></tr>
+        <tr><td class="notown">−</td><td class="uidf">12538</td><td class="tr">Dockhands</td><td class="tr">Green Tide (4)</td><td>40</td><td class="tr">buil 3</td><td class="tr">40 humans, 8 wood</td><td class="colhi">[12]</td></tr>
+        <tr><td class="notown">−</td><td class="uidf">14002</td><td class="tr">Wavecrest crew</td><td class="tr">Red Dragon (8)</td><td>25</td><td class="tr">sail 4, comb 2</td><td class="tr">25 humans</td><td class="colhi">[329]</td></tr>
+        <tr><td class="notown">−</td><td class="uidf">15511</td><td class="tr">Traders</td><td class="tr">Wandering (7)</td><td>6</td><td class="tr">ente 2</td><td class="tr">6 gnomes, 1200 silver</td><td class="colhi"></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="widthnote"><b>Reads:</b> which units share a structure, and nothing else. You cannot tell a fort from a ship without looking it up in the region pane.</div>
+</div>
+
+<h3 class="sec">The three options</h3>
+<p>Each shows the same four rows. Watch what the Skills and Items columns lose.</p>
+
+<div class="card">
+  <h2><em>A</em>Give the column the room — 13rem, truncate what still overflows</h2>
+  <div class="concept">The column matches the region pane exactly: <code>Odds and Ends [12] · Fort</code>. It takes
+  8rem from the two unsized columns, Skills and Items, which already truncate today. Anything still too long is
+  cut with an ellipsis and the full text is in the hover tooltip.</div>
+  <div class="stage">
+    <table class="units">
+      <colgroup><col style="width:1.5rem"><col style="width:4rem"><col style="width:13rem"><col style="width:12rem"><col style="width:4rem"><col><col><col style="width:13rem"></colgroup>
+      <thead><tr><th>*</th><th>Id</th><th>Unit</th><th>Faction</th><th>Men</th><th>Skills</th><th>Items</th><th class="colhi">Structure</th></tr></thead>
+      <tbody>
+        <tr><td class="own">*</td><td class="uid">18642</td><td class="tr">Harbour Watch</td><td class="tr">My Faction (1)</td><td>12</td><td class="tr">obse 3, ste…</td><td class="tr">12 leaders, 3…</td><td class="colhi tr">Odds and Ends [12] · Fort</td></tr>
+        <tr><td class="notown">−</td><td class="uidf">12538</td><td class="tr">Dockhands</td><td class="tr">Green Tide (4)</td><td>40</td><td class="tr">buil 3</td><td class="tr">40 humans, 8…</td><td class="colhi tr">Odds and Ends [12] · Fort</td></tr>
+        <tr><td class="notown">−</td><td class="uidf">14002</td><td class="tr">Wavecrest crew</td><td class="tr">Red Dragon (8)</td><td>25</td><td class="tr">sail 4, com…</td><td class="colhi tr" style="all:unset"></td><td class="colhi tr">Wavecrest [329] · Longship</td></tr>
+        <tr><td class="notown">−</td><td class="uidf">15511</td><td class="tr">Traders</td><td class="tr">Wandering (7)</td><td>6</td><td class="tr">ente 2</td><td class="tr">6 gnomes, 12…</td><td class="colhi"></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <ul class="notes">
+    <li>Reads exactly like the region pane — the same structure, said the same way, in both places</li>
+    <li>Type is visible at a glance: you can see who is in a ship and who is in a fort</li>
+    <li class="con">Skills and Items lose about 8rem between them, and they already truncate</li>
+    <li class="con">A long structure name still gets cut, so the tooltip is doing real work</li>
+  </ul>
+</div>
+
+<div class="card">
+  <h2><em>B</em>Keep it narrow — name only, everything else in the tooltip</h2>
+  <div class="concept">The column widens only to 8rem and shows the structure's <b>name</b>. The number and the
+  type live in the hover tooltip, along with the full name. Costs the neighbours almost nothing.</div>
+  <div class="stage">
+    <table class="units">
+      <colgroup><col style="width:1.5rem"><col style="width:4rem"><col style="width:13rem"><col style="width:12rem"><col style="width:4rem"><col><col><col style="width:8rem"></colgroup>
+      <thead><tr><th>*</th><th>Id</th><th>Unit</th><th>Faction</th><th>Men</th><th>Skills</th><th>Items</th><th class="colhi">Structure</th></tr></thead>
+      <tbody>
+        <tr><td class="own">*</td><td class="uid">18642</td><td class="tr">Harbour Watch</td><td class="tr">My Faction (1)</td><td>12</td><td class="tr">obse 3, stea 2</td><td class="tr">12 leaders, 340 s…</td><td class="colhi tr" title="Odds and Ends [12] · Fort">Odds and Ends</td></tr>
+        <tr><td class="notown">−</td><td class="uidf">12538</td><td class="tr">Dockhands</td><td class="tr">Green Tide (4)</td><td>40</td><td class="tr">buil 3</td><td class="tr">40 humans, 8 wood</td><td class="colhi tr">Odds and Ends</td></tr>
+        <tr><td class="notown">−</td><td class="uidf">14002</td><td class="tr">Wavecrest crew</td><td class="tr">Red Dragon (8)</td><td>25</td><td class="tr">sail 4, comb 2</td><td class="tr">25 humans</td><td class="colhi tr">Wavecrest</td></tr>
+        <tr><td class="notown">−</td><td class="uidf">15511</td><td class="tr">Traders</td><td class="tr">Wandering (7)</td><td>6</td><td class="tr">ente 2</td><td class="tr">6 gnomes, 1200 si…</td><td class="colhi"></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <ul class="notes">
+    <li>Cheapest in width by far — Skills and Items keep nearly everything they have</li>
+    <li>The name is the part that actually identifies the structure to a person</li>
+    <li class="con">The number is gone from the screen, and the filter matches on it</li>
+    <li class="con">Type only on hover, so "who is in a ship" is no longer answerable by scanning</li>
+    <li class="con">Arguably does not meet the bead's own acceptance, which asks for all three on screen</li>
+  </ul>
+</div>
+
+<div class="card">
+  <h2><em>C</em>Full form, but drop the type when it merely repeats the name</h2>
+  <div class="concept">Same as A, except <code>· Fort</code> is omitted when the type adds nothing the name has
+  not already said. Many structures are named after what they are, so in practice this buys back most of the
+  width A spends — the column can then sit at 11rem.</div>
+  <div class="stage">
+    <table class="units">
+      <colgroup><col style="width:1.5rem"><col style="width:4rem"><col style="width:13rem"><col style="width:12rem"><col style="width:4rem"><col><col><col style="width:11rem"></colgroup>
+      <thead><tr><th>*</th><th>Id</th><th>Unit</th><th>Faction</th><th>Men</th><th>Skills</th><th>Items</th><th class="colhi">Structure</th></tr></thead>
+      <tbody>
+        <tr><td class="own">*</td><td class="uid">18642</td><td class="tr">Harbour Watch</td><td class="tr">My Faction (1)</td><td>12</td><td class="tr">obse 3, stea…</td><td class="tr">12 leaders, 34…</td><td class="colhi tr">Odds and Ends [12] · Fort</td></tr>
+        <tr><td class="notown">−</td><td class="uidf">12538</td><td class="tr">Dockhands</td><td class="tr">Green Tide (4)</td><td>40</td><td class="tr">buil 3</td><td class="tr">40 humans, 8 w…</td><td class="colhi tr">Odds and Ends [12] · Fort</td></tr>
+        <tr><td class="notown">−</td><td class="uidf">14002</td><td class="tr">Wavecrest crew</td><td class="tr">Red Dragon (8)</td><td>25</td><td class="tr">sail 4, comb 2</td><td class="tr">25 humans</td><td class="colhi tr">Wavecrest [329] · Longship</td></tr>
+        <tr><td class="notown">−</td><td class="uidf">17004</td><td class="tr">Masons</td><td class="tr">Greymen (9)</td><td>10</td><td class="tr">buil 5</td><td class="tr">10 dwarves</td><td class="colhi tr">Fort [88]</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="widthnote"><b>The last row is the point:</b> a structure actually named <code>Fort</code> of type
+  <code>Fort</code> reads <code>Fort [88]</code>, not <code>Fort [88] · Fort</code>.</div>
+  <ul class="notes">
+    <li>Full information wherever it adds anything, and never says the same word twice</li>
+    <li>2rem cheaper than A in the common case</li>
+    <li class="con">The column is no longer a fixed shape — two rows can be formatted differently</li>
+    <li class="con">A rule with a comparison in it is a rule to get wrong; needs its own test</li>
+  </ul>
+</div>
+
+<h3 class="sec">The narrow pane</h3>
+<p>The units pane can be dragged narrower (<code>ah-2r3</code>). This is option A at about two-thirds width — the
+case that decides whether the tooltip is essential or merely nice.</p>
+<div class="card">
+  <div class="stage">
+    <div class="pane" style="max-width:640px">
+      <div class="panelbl">Units in hex — 1:7,53 · 92 units</div>
+      <table class="units">
+        <colgroup><col style="width:1.5rem"><col style="width:3.4rem"><col style="width:8rem"><col style="width:7rem"><col style="width:2.6rem"><col><col><col style="width:9rem"></colgroup>
+        <thead><tr><th>*</th><th>Id</th><th>Unit</th><th>Faction</th><th>Men</th><th>Skills</th><th>Items</th><th class="colhi">Structure</th></tr></thead>
+        <tbody>
+          <tr><td class="own">*</td><td class="uid">18642</td><td class="tr">Harbour Wa…</td><td class="tr">My Faction…</td><td>12</td><td class="tr">obse…</td><td class="tr">12 le…</td><td class="colhi tr" title="Odds and Ends [12] · Fort">Odds and En…</td></tr>
+          <tr><td class="notown">−</td><td class="uidf">14002</td><td class="tr">Wavecrest c…</td><td class="tr">Red Dragon…</td><td>25</td><td class="tr">sail…</td><td class="tr">25 h…</td><td class="colhi tr" title="Wavecrest [329] · Longship">Wavecrest [3…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <ul class="notes">
+    <li class="n">At this width every option truncates, and the tooltip is the only way to read the whole thing</li>
+    <li class="n">Option B degrades most gracefully here, because the name alone is short</li>
+  </ul>
+</div>
+
+</main>
+
+<footer style="margin-top:34px; color:var(--ink-dim); font-size:12.5px;">
+  Mockup for bead <span class="mono">ah-kdgc</span>. Column widths are the application's real ones:
+  <span class="mono">w-6 w-16 w-52 w-48 w-16 auto auto w-20</span> today.
+</footer>
+</body>
+</html>
