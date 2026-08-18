@@ -2711,7 +2711,11 @@ mod tests {
 
     #[test]
     fn giving_does_not_spend_the_month() {
-        assert!(!spends_the_month(&Intent::Withdraw));
+        assert!(!spends_the_month(&Intent::Give {
+            to: Party::Unit("4022".to_string()),
+            what: Selector::Item("SILV".to_string()),
+            amount: Amount::Exact(10),
+        }));
     }
 
     /// The `is_busy` rewrite must leave the teaching check exactly as it was. `is_busy` excludes
