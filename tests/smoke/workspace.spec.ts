@@ -3545,3 +3545,11 @@ test("the panes grow when the reader's text size does", async ({ page }) => {
   expect(railBox.x + railBox.width).toBeLessThanOrEqual(view.width);
   expect(railBox.y + railBox.height).toBeLessThanOrEqual(view.height);
 });
+
+test("the web build offers no Send button, because it could never read the reply", async ({ page }) => {
+  await loadReport(page);
+
+  // The game server sends no CORS headers, so the web shell passes no uploader and the control is
+  // absent rather than disabled - the decision recorded on ah-etb0.2.
+  await expect(page.getByTestId("send-orders")).toHaveCount(0);
+});
