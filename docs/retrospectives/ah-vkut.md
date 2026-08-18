@@ -65,3 +65,30 @@ expect or softening the new check.* The pattern already exists in `semantics.rs`
 naming where a planner will see it.
 
 **Seen before.** None found.
+
+## `shortcuts.spec.ts` "right-click centres the view on a hex" is flaky repo-wide
+
+**What happened.** This one smoke test failed twice on this PR — once on `smoke (desktop-shell, 1, 2)`
+and, after a re-run and an `update-branch`, once on `smoke (web, 1, 2)`. Both times it timed out
+waiting on the map transform to change (`expect.poll(() => mapTransform(page)).not.toBe(before)`,
+`tests/smoke/shortcuts.spec.ts:275`), and both times every other job was green. My diff touches no
+rendering: the second failure was on a **documentation-only** commit.
+
+**Why.** Not a regression from this bead. `gh run list --branch main` shows the same spec taking
+down main's own runs for `docs(ah-v09e): mockup (#428)`, `docs(ah-kdgc): mockup (#427)` and
+`docs(ah-vkut): mockup (#424)` — three `docs/`-only merges that cannot have touched the map. Locally
+the full smoke suite passed 409/409 including this spec. So the spec is timing-sensitive and fails
+on a loaded CI runner regardless of the diff.
+
+**Cost.** Two CI cycles on this PR (~25 minutes) plus a full local smoke run (~7 minutes) spent
+proving it was not mine, and it is doing the same to every other bead and every mockup PR that
+crosses it.
+
+**Prevent by.** The spec needs looking at as a bead of its own: it right-clicks and then polls for a
+transform change with a fixed 15 s budget, which is exactly the shape that fails under load. Either
+it should wait on a deterministic signal the app emits when the centring animation settles, rather
+than on the transform string differing, or the animation should be disabled under test. Filing that
+is the navigator's call, not mine — but the evidence that it is worth filing is now four runs across
+three different branches, which is why it is written here rather than absorbed as "just a flake".
+
+**Seen before.** None found under this spec's name.
