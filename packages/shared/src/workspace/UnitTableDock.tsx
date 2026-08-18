@@ -11,6 +11,7 @@ import {
 } from "react";
 import type { HexNode } from "../hexMapModel";
 import { unitsForHex } from "../hexMapModel";
+import { unitStructureLabel } from "../structureLabel";
 import { describeMenBriefly, whyEstimated } from "../unitComposition";
 import {
   DEFAULT_SORT,
@@ -75,7 +76,17 @@ export function UnitTableDock({
   // The orders preview folds in on top, so everything below it - filter and sort - already
   // works over the coming month's rows, arrivals and formed units included.
   const units = useMemo(() => mergePreview(unitsForHex(hex), preview), [hex, preview]);
-  const visible = useMemo(() => sortUnits(filterUnits(units, filter), sort), [units, filter, sort]);
+  const structures = useMemo(() => hex?.region?.structures ?? [], [hex]);
+  // Built once per hex, not scanned per row: a hex can hold three hundred units across two dozen
+  // structures, and the table re-renders on every scroll frame.
+  const structuresById = useMemo(
+    () => new Map(structures.map((structure) => [structure.structureId, structure])),
+    [structures]
+  );
+  const visible = useMemo(
+    () => sortUnits(filterUnits(units, filter, structures), sort, structures),
+    [units, filter, sort, structures]
+  );
   const selectedIndex = useMemo(
     () => visible.findIndex((unit) => unit.unitId === selectedUnitId),
     [visible, selectedUnitId]
@@ -328,7 +339,7 @@ export function UnitTableDock({
               <col className="w-16" />
               <col />
               <col />
-              <col className="w-20" />
+              <col className="w-52" />
             </colgroup>
             <thead ref={setHead}>
               {/* Indexed like the rows below it: if some rows carry a position, all of them must. */}
@@ -373,6 +384,7 @@ export function UnitTableDock({
                 <UnitRow
                   key={unit.unitId}
                   unit={unit}
+                  structureLabel={unitStructureLabel(unit.structureId, structuresById)}
                   index={start + offset}
                   rowHeight={rowHeight}
                   selected={unit.unitId === selectedUnitId}
@@ -460,6 +472,7 @@ const PREDICTED = "italic text-brass";
 
 function UnitRow({
   unit,
+  structureLabel,
   index,
   rowHeight,
   selected,
@@ -470,6 +483,8 @@ function UnitRow({
   onPointerGone
 }: {
   unit: PreviewedUnit;
+  /** The structure this unit stands in, written out in full, or null when it stands in the open. */
+  structureLabel: string | null;
   index: number;
   rowHeight: number;
   selected: boolean;
@@ -490,6 +505,10 @@ function UnitRow({
   const menChange = changeFor(unit, "men");
   const itemsChange = changeFor(unit, "items");
   const structureChange = changeFor(unit, "structureId");
+  // The cell truncates, so the whole label belongs in the tooltip whether or not it also changed;
+  // when it did change, what the report said goes on a line beneath it.
+  const structureTitle =
+    [structureLabel, originalTooltip(structureChange)].filter(Boolean).join("\n") || undefined;
   // A row that is somewhere else next month reads dimmed; its marker says where it went.
   const departing = unit.previewStatus === "departing";
 
@@ -592,8 +611,8 @@ function UnitRow({
       <Td className={`truncate${itemsChange ? ` ${PREDICTED}` : ""}`} title={originalTooltip(itemsChange)}>
         {items}
       </Td>
-      <Td className={structureChange ? PREDICTED : ""} title={originalTooltip(structureChange)}>
-        {unit.structureId ? `[${unit.structureId}]` : ""}
+      <Td className={`truncate${structureChange ? ` ${PREDICTED}` : ""}`} title={structureTitle}>
+        {structureLabel ?? ""}
       </Td>
     </tr>
   );

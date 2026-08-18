@@ -1,4 +1,4 @@
-import type { ReportUnit } from "@atlantis/core-client";
+import type { ReportUnit, StructureInfo } from "@atlantis/core-client";
 import { aReportUnit } from "@atlantis/core-client";
 import { describe, expect, it } from "vitest";
 import {
@@ -26,8 +26,11 @@ const unit = (unitId: string, own: boolean, overrides: Partial<ReportUnit> = {})
   });
 
 const ids = (units: ReportUnit[]) => units.map((entry) => entry.unitId);
-const sortBy = (units: ReportUnit[], overrides: Partial<SortState>) =>
-  sortUnits(units, { ...DEFAULT_SORT, ...overrides });
+const sortBy = (
+  units: ReportUnit[],
+  overrides: Partial<SortState>,
+  structures: StructureInfo[] = []
+) => sortUnits(units, { ...DEFAULT_SORT, ...overrides }, structures);
 
 describe("windowRange", () => {
   it("returns the rows covering the viewport, end exclusive", () => {
@@ -170,6 +173,22 @@ describe("sortUnits", () => {
     ]);
   });
 
+  it("sorts the structure column by name, with the number breaking ties", () => {
+    const structures = [
+      { structureId: "20", name: "Anvil", kind: "Fort", description: null, needs: null },
+      { structureId: "3", name: "Wavecrest", kind: "Longship", description: null, needs: null },
+      { structureId: "9", name: "Anvil", kind: "Fort", description: null, needs: null }
+    ];
+    const units = [
+      unit("a", false, { structureId: "3" }),
+      unit("b", false, { structureId: "20" }),
+      unit("c", false, { structureId: "9" })
+    ];
+
+    // Anvil [9] before Anvil [20] before Wavecrest [3]: name first, then the number as a number.
+    expect(ids(sortBy(units, { column: "structure" }, structures))).toEqual(["c", "b", "a"]);
+  });
+
   it("keeps units with no faction last whichever way the column is sorted", () => {
     const units = [
       unit("a", false, { factionName: null }),
@@ -260,6 +279,15 @@ describe("filterUnits", () => {
 
   it("matches on the faction name", () => {
     expect(ids(filterUnits(units, "Elder Tree"))).toEqual(["12538"]);
+  });
+
+  it("the filter finds a structure by its name as well as its number", () => {
+    const structures = [
+      { structureId: "194", name: "Wavecrest", kind: "Longship", description: null, needs: null }
+    ];
+
+    expect(ids(filterUnits(units, "wavecrest", structures))).toEqual(["18642"]);
+    expect(ids(filterUnits(units, "194", structures))).toEqual(["18642"]);
   });
 
   it("matches on the structure the unit occupies", () => {

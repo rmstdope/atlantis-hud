@@ -1,4 +1,6 @@
-import type { ReportUnit } from "@atlantis/core-client";
+import type { ReportUnit, StructureInfo } from "@atlantis/core-client";
+
+import { unitStructureLabel } from "./structureLabel";
 
 /**
  * How the units table is ordered, filtered and windowed.
@@ -64,19 +66,39 @@ export function windowRange(
   return { start, end: clamp(last, start, count) };
 }
 
-/** Case-insensitive substring match over the four fields a player would search by. */
-export function filterUnits(units: ReportUnit[], needle: string): ReportUnit[] {
+/**
+ * Case-insensitive substring match over the fields a player would search by.
+ *
+ * The structure is matched by its whole label - name, number and type - rather than by its id
+ * alone: the table shows the name now, and a column showing text the filter cannot find reads as
+ * a bug (ah-kdgc).
+ */
+export function filterUnits(
+  units: ReportUnit[],
+  needle: string,
+  structures: readonly StructureInfo[] = []
+): ReportUnit[] {
   const wanted = needle.trim().toLowerCase();
   if (!wanted) {
     return units;
   }
+  const byId = indexById(structures);
   return units.filter((unit) =>
-    [unit.name, unit.unitId, unit.factionName ?? "", unit.structureId ?? ""]
+    [
+      unit.name,
+      unit.unitId,
+      unit.factionName ?? "",
+      unit.structureId ?? "",
+      unitStructureLabel(unit.structureId, byId) ?? ""
+    ]
       .join(" ")
       .toLowerCase()
       .includes(wanted)
   );
 }
+
+const indexById = (structures: readonly StructureInfo[]) =>
+  new Map(structures.map((structure) => [structure.structureId, structure]));
 
 /**
  * Compares two values of a column, with absent ones always last.
@@ -102,7 +124,11 @@ function compareValues(
 }
 
 /** The sortable value of a column, or null where the report never said. */
-function valueOf(unit: ReportUnit, column: SortColumn): number | string | null {
+function valueOf(
+  unit: ReportUnit,
+  column: SortColumn,
+  structures: ReadonlyMap<string, StructureInfo>
+): number | string | null {
   switch (column) {
     case "unitId":
       return numberOrNull(unit.unitId);
@@ -113,8 +139,29 @@ function valueOf(unit: ReportUnit, column: SortColumn): number | string | null {
     case "men":
       return unit.men;
     case "structure":
-      return numberOrNull(unit.structureId);
+      return structureKey(unit.structureId, structures);
   }
+}
+
+/**
+ * Structures order by name, with the number breaking a tie between two of the same name.
+ *
+ * The key is the lower-cased name followed by the id padded to a fixed width, so one plain string
+ * comparison gives name-then-number and "9" still comes before "10". Sorting on the rendered label
+ * would not: "[20]" precedes "[3]" lexically, and the column has ordered ids numerically since it
+ * existed.
+ */
+function structureKey(
+  structureId: string | null,
+  structures: ReadonlyMap<string, StructureInfo>
+): string | null {
+  if (structureId === null) {
+    return null;
+  }
+  const name = structures.get(structureId)?.name ?? "";
+  const numeric = numberOrNull(structureId);
+  const tieBreak = numeric === null ? structureId : String(numeric).padStart(12, "0");
+  return `${name.toLowerCase()}\u0000${tieBreak}`;
 }
 
 /** Ids are numbers the report hands over as strings, so "9" must not beat "10". */
@@ -137,15 +184,23 @@ function numberOrNull(raw: string | null): number | null {
  * cannot bury the player's own units under a bigger foreign stack. Array.sort is stable, so units
  * a column cannot separate keep the order they arrived in.
  */
-export function sortUnits(units: ReportUnit[], sort: SortState): ReportUnit[] {
+export function sortUnits(
+  units: ReportUnit[],
+  sort: SortState,
+  structures: readonly StructureInfo[] = []
+): ReportUnit[] {
   const direction = sort.direction === "asc" ? 1 : -1;
+  const byId = indexById(structures);
 
   return [...units].sort((left, right) => {
     if (sort.groupOwnFirst && left.own !== right.own) {
       return left.own ? -1 : 1;
     }
 
-    const outcome = compareValues(valueOf(left, sort.column), valueOf(right, sort.column));
+    const outcome = compareValues(
+      valueOf(left, sort.column, byId),
+      valueOf(right, sort.column, byId)
+    );
     return "settled" in outcome ? outcome.settled : outcome.compare * direction;
   });
 }
