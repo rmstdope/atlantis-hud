@@ -94,6 +94,8 @@ pub mod codes {
     pub const ALREADY_BUILT: Code = Code("already-built");
     pub const TOO_MANY_TRADE_REGIONS: Code = Code("too-many-trade-regions");
     pub const MAGIC_STUDY_OUTSIDE_BUILDING: Code = Code("magic-study-outside-building");
+    pub const BUILD_OUTSIDE_STRUCTURE: Code = Code("build-outside-structure");
+    pub const BUILD_HELP_NOT_BUILDING: Code = Code("build-help-not-building");
     /// Every code. This array's own order is not the settings tab's grouping (that groups by
     /// concern - Teaching / Resources / Markets / Guarding / Orders / Sailing - not by this list):
     /// a new entry joins whichever group fits its concern, which need not be the last one
@@ -102,7 +104,7 @@ pub mod codes {
     /// group). What every entry so far has kept is new-*here*-last: the generated TypeScript
     /// copies this array's order, so a new code is always appended to it regardless of where it
     /// lands in the UI.
-    pub const ALL: [Code; 20] = [
+    pub const ALL: [Code; 22] = [
         NOT_ENOUGH_SILVER,
         NOT_ENOUGH_ITEMS,
         GUARD_DROPPED,
@@ -123,6 +125,8 @@ pub mod codes {
         ALREADY_BUILT,
         TOO_MANY_TRADE_REGIONS,
         MAGIC_STUDY_OUTSIDE_BUILDING,
+        BUILD_OUTSIDE_STRUCTURE,
+        BUILD_HELP_NOT_BUILDING,
     ];
 }
 
@@ -224,6 +228,8 @@ pub fn check_turn(
         check_guard(&hex, &options, &mut findings);
         check_teaching(&hex, ruleset, &options, &mut findings);
         check_building(&hex, &options, &mut findings);
+        check_building_outside(&hex, &options, &mut findings);
+        check_build_help(&hex, &options, &mut findings);
         check_studying(&hex, ruleset, &options, &mut findings);
         check_magic_study(&hex, ruleset, &options, &mut findings);
         check_forms(&hex, &options, &mut findings);
@@ -1429,6 +1435,102 @@ fn check_building(hex: &Hex<'_>, options: &CheckOptions, findings: &mut Vec<Find
     }
 }
 
+// --- building with nothing to build ----------------------------------------------------------
+
+/// Every own unit whose bare `BUILD` or `BUILD COMPLETE` is written from inside no structure at
+/// all. Neither form names what to work on, so from outside the order does nothing and the unit's
+/// month is spent for nothing.
+///
+/// Its own gate rather than a branch of `check_building`, which early-returns on `already-built`:
+/// hosting this there would silently switch it off with a different toggle.
+fn check_building_outside(hex: &Hex<'_>, options: &CheckOptions, findings: &mut Vec<Finding>) {
+    if !options.emits(codes::BUILD_OUTSIDE_STRUCTURE) {
+        return;
+    }
+
+    for ordered in &hex.units {
+        // One warning per unit, on the first BUILD in the block, as `check_building` does.
+        let Some(placed) = ordered
+            .intents
+            .iter()
+            .find(|placed| matches!(placed.intent, Intent::Build { .. }))
+        else {
+            continue;
+        };
+        let Intent::Build { founding, helping } = &placed.intent else {
+            continue;
+        };
+        // `BUILD [name]` founds something that needs no structure to stand in, and the HELP forms
+        // name whose structure to work on - that is `check_build_help`'s business, not this one's.
+        if founding.is_some() || helping.is_some() {
+            continue;
+        }
+        // Where the unit stands once its own ENTER/LEAVE have run, never `unit.structure_id`: an
+        // `ENTER` then `BUILD` is the ordinary correct way to write this, and a `LEAVE` then
+        // `BUILD` is the mistake, whatever the report shows.
+        if structure_after_orders(ordered).is_some() {
+            continue;
+        }
+
+        findings.push(ordered.finding(
+            hex,
+            codes::BUILD_OUTSIDE_STRUCTURE,
+            "is in no structure to build in".to_string(),
+            Some(placed),
+        ));
+    }
+}
+
+/// Every own unit whose `BUILD HELP` names one of our own units in this hex that has no BUILD
+/// order of its own. There is nothing to help with, so the helper's month is spent for nothing.
+///
+/// A helper whose target *is* building but is itself in no structure stays silent here: the
+/// target's own line carries that warning. One mistake, marked once, where it was made - a
+/// deliberate divergence from `check_building`'s helper behaviour.
+fn check_build_help(hex: &Hex<'_>, options: &CheckOptions, findings: &mut Vec<Finding>) {
+    if !options.emits(codes::BUILD_HELP_NOT_BUILDING) {
+        return;
+    }
+
+    for ordered in &hex.units {
+        let Some(placed) = ordered
+            .intents
+            .iter()
+            .find(|placed| matches!(placed.intent, Intent::Build { .. }))
+        else {
+            continue;
+        };
+        let Intent::Build { helping, .. } = &placed.intent else {
+            continue;
+        };
+        // A unit formed this month with no number yet, another faction's unit or `HELP 0` cannot
+        // be resolved to anything to judge.
+        let Some(Party::Unit(id)) = helping else {
+            continue;
+        };
+        // `hex.units` holds own units only, so this is also the "one of our own" test.
+        let Some(helped) = hex.find(id) else {
+            continue;
+        };
+        // Any BUILD counts, `BUILD [name]` included: founding is building, so there is work to
+        // help with. Whether that BUILD is any good is judged on the helped unit's own line.
+        if helped
+            .intents
+            .iter()
+            .any(|placed| matches!(placed.intent, Intent::Build { .. }))
+        {
+            continue;
+        }
+
+        findings.push(ordered.finding(
+            hex,
+            codes::BUILD_HELP_NOT_BUILDING,
+            format!("unit {id} is not building"),
+            Some(placed),
+        ));
+    }
+}
+
 /// A structure's name, or - when the report gave it none and printed a placeholder like
 /// `+ Building [4] : Stockade` or `+ Ship [218] : Raft` - that placeholder with the id appended.
 fn structure_label(structure: &Structure) -> String {
@@ -2449,6 +2551,26 @@ mod tests {
             orders,
             Some(&ruleset()),
             disabling(codes::GIVE_TARGET_NOT_HERE),
+        )
+    }
+
+    /// `check`, with both of the "this BUILD builds nothing" checks disabled.
+    ///
+    /// A run of fixtures below order a bare `BUILD` from a unit standing in nothing, or a
+    /// `BUILD HELP` naming a unit with no orders, only to have *something* in the block -
+    /// `already-built`'s helper cases, a unit that is busy rather than teaching, a BUILD that is
+    /// not a PRODUCE. `build-outside-structure` and `build-help-not-building` are real on every
+    /// one of them, and are pinned by their own tests; they are turned off here rather than
+    /// folded into fixtures that are about something else.
+    fn check_ignoring_empty_builds(regions: Vec<ReportRegion>, orders: &str) -> Vec<Finding> {
+        check_turn(
+            &report(regions),
+            orders,
+            Some(&ruleset()),
+            disabling_all(&[
+                codes::BUILD_OUTSIDE_STRUCTURE,
+                codes::BUILD_HELP_NOT_BUILDING,
+            ]),
         )
     }
 
@@ -3836,7 +3958,7 @@ mod tests {
         ];
 
         assert_eq!(
-            check(
+            check_ignoring_empty_builds(
                 vec![region(units)],
                 "unit 500\nBUILD\nunit 700\nSTUDY combat\n"
             ),
@@ -3986,7 +4108,7 @@ mod tests {
 
     #[test]
     fn a_helper_is_warned_about_the_structure_it_would_work_on() {
-        let finding = only(check(
+        let finding = only(check_ignoring_empty_builds(
             vec![ReportRegion {
                 structures: vec![finished_mill("1")],
                 ..region(vec![in_structure(unit("4021"), "1"), unit("5")])
@@ -4007,7 +4129,7 @@ mod tests {
     #[test]
     fn a_builder_that_leaves_this_month_is_not_told_the_structure_is_finished() {
         assert_eq!(
-            check(
+            check_ignoring_empty_builds(
                 vec![ReportRegion {
                     structures: vec![finished_mill("1")],
                     ..region(vec![in_structure(unit("4021"), "1")])
@@ -4053,7 +4175,7 @@ mod tests {
     /// move it.
     #[test]
     fn a_helper_is_judged_on_where_the_helped_unit_ends_its_orders() {
-        let finding = only(check(
+        let finding = only(check_ignoring_empty_builds(
             vec![ReportRegion {
                 structures: vec![finished_mill("1")],
                 ..region(vec![unit("4021"), unit("5")])
@@ -4096,7 +4218,7 @@ mod tests {
     #[test]
     fn a_unit_in_no_structure_is_silent() {
         assert_eq!(
-            check(vec![region(vec![unit("4021")])], "unit 4021\nBUILD\n"),
+            check_ignoring_empty_builds(vec![region(vec![unit("4021")])], "unit 4021\nBUILD\n"),
             vec![]
         );
     }
@@ -4161,6 +4283,253 @@ mod tests {
                 "unit 900\nBUILD\n",
             ),
             vec![]
+        );
+    }
+
+    // --- building outside a structure, and helping a unit that is not building ---------------
+
+    #[test]
+    fn a_bare_build_outside_any_structure_warns() {
+        let finding = only(check(
+            vec![region(vec![unit("4021")])],
+            "unit 4021\nBUILD\n",
+        ));
+
+        assert_eq!(finding.code.as_str(), "build-outside-structure");
+        assert_eq!(finding.unit_id.as_deref(), Some("4021"));
+        assert_eq!(finding.line, Some(2));
+        assert_eq!(finding.message, "is in no structure to build in");
+    }
+
+    #[test]
+    fn build_complete_outside_any_structure_warns() {
+        let finding = only(check(
+            vec![region(vec![unit("4021")])],
+            "unit 4021\nBUILD COMPLETE\n",
+        ));
+
+        assert_eq!(finding.code, codes::BUILD_OUTSIDE_STRUCTURE);
+        assert_eq!(finding.message, "is in no structure to build in");
+    }
+
+    #[test]
+    fn founding_a_structure_from_outside_is_silent() {
+        assert_eq!(
+            check(vec![region(vec![unit("4021")])], "unit 4021\nBUILD Tower\n"),
+            vec![]
+        );
+    }
+
+    #[test]
+    fn a_unit_inside_a_structure_is_not_told_it_is_outside() {
+        assert_eq!(
+            check(
+                vec![ReportRegion {
+                    structures: vec![unfinished_building("1")],
+                    ..region(vec![in_structure(unit("4021"), "1")])
+                }],
+                "unit 4021\nBUILD\n",
+            ),
+            vec![]
+        );
+    }
+
+    #[test]
+    fn a_foreign_unit_building_outside_is_not_warned_about() {
+        let mut theirs = unit("900");
+        theirs.own = false;
+        theirs.faction_id = Some("12".to_string());
+
+        assert_eq!(
+            check(vec![region(vec![theirs])], "unit 900\nBUILD\n"),
+            vec![]
+        );
+    }
+
+    /// The HELP forms name whose structure to work on, so they are never this check's business -
+    /// whatever `check_build_help` later says about them.
+    #[test]
+    fn a_build_help_is_not_told_it_is_outside_a_structure() {
+        let findings = check(
+            vec![ReportRegion {
+                structures: vec![unfinished_building("1")],
+                ..region(vec![in_structure(unit("4021"), "1"), unit("4117")])
+            }],
+            "unit 4021\nBUILD\nunit 4117\nBUILD HELP 4021\n",
+        );
+
+        assert!(
+            !codes(&findings).contains(&"build-outside-structure"),
+            "the HELP form is not this check's business: {findings:?}"
+        );
+    }
+
+    #[test]
+    fn only_the_first_build_in_a_block_is_warned_about() {
+        let finding = only(check(
+            vec![region(vec![unit("4021")])],
+            "unit 4021\nBUILD\nBUILD\n",
+        ));
+
+        assert_eq!(finding.code, codes::BUILD_OUTSIDE_STRUCTURE);
+        assert_eq!(finding.line, Some(2));
+    }
+
+    #[test]
+    fn a_unit_that_enters_a_structure_this_month_is_not_told_it_is_outside() {
+        assert_eq!(
+            check(
+                vec![ReportRegion {
+                    structures: vec![unfinished_building("1")],
+                    ..region(vec![unit("4021")])
+                }],
+                "unit 4021\nENTER 1\nBUILD\n",
+            ),
+            vec![]
+        );
+    }
+
+    /// The navigator's accepted consequence of reading where the unit stands *after* its own
+    /// orders: the report shows this unit safely inside a structure, and it is still warned,
+    /// because its own LEAVE takes it out before the BUILD runs. Do not soften this.
+    #[test]
+    fn a_unit_that_leaves_its_structure_this_month_is_told_it_is_outside() {
+        let finding = only(check(
+            vec![ReportRegion {
+                structures: vec![unfinished_building("1")],
+                ..region(vec![in_structure(unit("4021"), "1")])
+            }],
+            "unit 4021\nLEAVE\nBUILD\n",
+        ));
+
+        assert_eq!(finding.code, codes::BUILD_OUTSIDE_STRUCTURE);
+        assert_eq!(finding.unit_id.as_deref(), Some("4021"));
+        assert_eq!(finding.line, Some(3));
+    }
+
+    #[test]
+    fn helping_a_unit_that_is_not_building_warns() {
+        let finding = only(check(
+            vec![ReportRegion {
+                structures: vec![unfinished_building("1")],
+                ..region(vec![in_structure(unit("4021"), "1"), unit("4117")])
+            }],
+            "unit 4021\nWORK\nunit 4117\nBUILD HELP 4021\n",
+        ));
+
+        assert_eq!(finding.code.as_str(), "build-help-not-building");
+        assert_eq!(finding.unit_id.as_deref(), Some("4117"));
+        assert_eq!(finding.line, Some(4));
+        assert_eq!(finding.message, "unit 4021 is not building");
+    }
+
+    #[test]
+    fn helping_a_unit_that_is_building_is_silent() {
+        assert_eq!(
+            check(
+                vec![ReportRegion {
+                    structures: vec![unfinished_building("1")],
+                    ..region(vec![
+                        in_structure(unit("4021"), "1"),
+                        in_structure(unit("4117"), "1"),
+                    ])
+                }],
+                "unit 4021\nBUILD\nunit 4117\nBUILD HELP 4021\n",
+            ),
+            vec![]
+        );
+    }
+
+    /// Founding is building, so there is work to help with.
+    #[test]
+    fn helping_a_unit_that_is_founding_is_silent() {
+        assert_eq!(
+            check(
+                vec![region(vec![unit("4021"), unit("4117")])],
+                "unit 4021\nBUILD Tower\nunit 4117\nBUILD HELP 4021\n",
+            ),
+            vec![]
+        );
+    }
+
+    #[test]
+    fn helping_a_unit_not_in_this_hex_is_silent() {
+        assert_eq!(
+            check(
+                vec![region(vec![unit("4117")])],
+                "unit 4117\nBUILD HELP 9999\n",
+            ),
+            vec![]
+        );
+    }
+
+    #[test]
+    fn helping_a_new_unit_is_silent() {
+        assert_eq!(
+            check(
+                vec![region(vec![unit("4117")])],
+                "unit 4117\nFORM 1\nEND\nBUILD HELP NEW 1\n",
+            ),
+            vec![]
+        );
+    }
+
+    /// One mistake, marked once, where it was made: the target is building from outside a
+    /// structure and carries that warning on its own line; the helper is not warned as well.
+    /// A deliberate divergence from `already-built`'s helper behaviour - do not "fix" it.
+    #[test]
+    fn a_helper_whose_target_builds_from_outside_is_not_warned_too() {
+        let finding = only(check(
+            vec![region(vec![unit("4021"), unit("4117")])],
+            "unit 4021\nBUILD\nunit 4117\nBUILD HELP 4021\n",
+        ));
+
+        assert_eq!(finding.code, codes::BUILD_OUTSIDE_STRUCTURE);
+        assert_eq!(finding.unit_id.as_deref(), Some("4021"));
+    }
+
+    #[test]
+    fn the_build_outside_check_can_be_turned_off() {
+        assert_eq!(
+            check_turn(
+                &report(vec![region(vec![unit("4021")])]),
+                "unit 4021\nBUILD\n",
+                Some(&ruleset()),
+                disabling(codes::BUILD_OUTSIDE_STRUCTURE),
+            ),
+            vec![]
+        );
+    }
+
+    /// Its own gate, not `already-built`'s: switching off "Building what is built" leaves this
+    /// one running.
+    #[test]
+    fn the_build_help_check_can_be_turned_off() {
+        let regions = || {
+            vec![ReportRegion {
+                structures: vec![unfinished_building("1")],
+                ..region(vec![in_structure(unit("4021"), "1"), unit("4117")])
+            }]
+        };
+        let orders = "unit 4021\nWORK\nunit 4117\nBUILD HELP 4021\n";
+
+        assert_eq!(
+            check_turn(
+                &report(regions()),
+                orders,
+                Some(&ruleset()),
+                disabling(codes::BUILD_HELP_NOT_BUILDING),
+            ),
+            vec![]
+        );
+        assert_eq!(
+            codes(&check_turn(
+                &report(regions()),
+                orders,
+                Some(&ruleset()),
+                disabling(codes::ALREADY_BUILT),
+            )),
+            vec!["build-help-not-building"]
         );
     }
 
@@ -4957,6 +5326,21 @@ mod tests {
                 codes::MAGIC_STUDY_OUTSIDE_BUILDING,
                 vec![region(vec![mage(2)])],
                 "unit 5\nSTUDY FORC\n",
+                None,
+            ),
+            (
+                codes::BUILD_OUTSIDE_STRUCTURE,
+                vec![region(vec![unit("4021")])],
+                "unit 4021\nBUILD\n",
+                None,
+            ),
+            (
+                codes::BUILD_HELP_NOT_BUILDING,
+                vec![ReportRegion {
+                    structures: vec![unfinished_building("1")],
+                    ..region(vec![in_structure(unit("4021"), "1"), unit("4117")])
+                }],
+                "unit 4021\nWORK\nunit 4117\nBUILD HELP 4021\n",
                 None,
             ),
         ];
@@ -6300,7 +6684,9 @@ mod tests {
             &report_with_status(label, 0, maximum, regions),
             orders,
             Some(&ruleset()),
-            CheckOptions::default(),
+            // Their bare BUILDs are written from outside any structure, which
+            // `build-outside-structure` is right about and these tests are not about.
+            disabling(codes::BUILD_OUTSIDE_STRUCTURE),
         )
     }
 

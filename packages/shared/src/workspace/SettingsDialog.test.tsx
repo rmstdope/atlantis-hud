@@ -78,6 +78,8 @@ describe("the Warnings settings tab", () => {
       "Gifts to units that are not here",
       "Overloaded units",
       "Building what is built",
+      "Building outside a structure",
+      "Helping a unit that is not building",
       "Overloaded fleets",
       "Undercrewed fleets",
       "More quartermasters than allowed",
