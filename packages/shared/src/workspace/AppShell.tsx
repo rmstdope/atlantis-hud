@@ -2900,12 +2900,19 @@ export function AppShell({
           full-width wrapper would read as covering the map from left to right.
         */}
         {/*
-          `z-20`, above the splitters' `z-10`: the chips' own popovers hang below the row, and a
-          panel long enough to reach a splitter had its controls taken by it - the splitter claims
-          pointer events across the full width. How far down the row sits depends on the header's
-          height, so this is not a fixed distance to design around; it is a stacking order.
+          `z-20` for the splitters, which claim pointer events across the full width at `z-10` and
+          took the controls of any panel long enough to reach one. How far down the row sits
+          depends on the header's height, so this is not a fixed distance to design around; it is a
+          stacking order.
+
+          `z-30` on top of that so the menus the chips open clear the panel column too. That column
+          is a later sibling at `z: auto`, and `LayerChips` carries a `backdrop-blur` - a backdrop
+          filter opens a stacking context, so an open menu's own `z-20` orders it only within this
+          strip and can never lift it over the panels (ah-v09e). Nothing overlapped until the panes
+          grew, at which point the Badges menu's lower rows landed on the units dock's title bar
+          and stopped taking clicks.
         */}
-        <div className="pointer-events-none absolute inset-x-0 top-2.5 z-20 flex justify-center">
+        <div className="pointer-events-none absolute inset-x-0 top-2.5 z-30 flex justify-center">
           <div data-map-overlay="top">
             <LayerChips levels={model.levels} />
           </div>
