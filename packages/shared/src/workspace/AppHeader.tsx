@@ -142,6 +142,17 @@ type AppHeaderProps = {
   /** Opens the map export dialog. Off until a report is on screen to export a map of. */
   onExportMap: () => void;
   canExportMap: boolean;
+  /**
+   * Puts this turn's orders on the game server, when this shell can.
+   *
+   * Optional, and its absence is the whole of what hides the control on web: the game server sends
+   * no CORS headers, so a browser could fire the request and never read the reply - see ah-etb0.2.
+   */
+  onSendOrders?: () => void;
+  /** Off until the orders exist and carry an `#atlantis` line naming the faction. */
+  canSend?: boolean;
+  /** Why Send is off, shown on hover - so a dialog that could do nothing is never opened. */
+  sendDisabledReason?: string;
   /** Whether the settings panel is showing. Same split as the picker: header owns the button. */
   settingsOpen: boolean;
   onToggleSettings: () => void;
@@ -192,6 +203,9 @@ export function AppHeader({
   canExportLong,
   onExportMap,
   canExportMap,
+  onSendOrders,
+  canSend = false,
+  sendDisabledReason,
   settingsOpen,
   onToggleSettings,
   settings
@@ -571,6 +585,24 @@ export function AppHeader({
           </span>
         </button>
       </ChipPopover>
+
+      {/*
+        Send has a button of its own rather than a fourth item in the Export menu: it is the action
+        you most want to be one click, and Export is named for something this is not. Rendered only
+        when the shell offers an uploader, which is what omits it from web entirely.
+      */}
+      {onSendOrders ? (
+        <button
+          type="button"
+          data-testid="send-orders"
+          disabled={!canSend}
+          title={canSend ? undefined : sendDisabledReason}
+          onClick={onSendOrders}
+          className="rounded border border-edge bg-panel-raised px-2.5 py-1 text-ink disabled:opacity-50"
+        >
+          Send
+        </button>
+      ) : null}
 
       {/* Relative for the same reason the game indicator is: the panel hangs off this button. */}
       <span className="relative">
