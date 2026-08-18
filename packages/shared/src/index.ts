@@ -35,6 +35,7 @@ export * from "./workspace/MapCanvas";
 export * from "./workspace/MapExportDialog";
 export * from "./workspace/mapMarquee";
 export * from "./workspace/OrdersPanel";
+export * from "./workspace/ordersUpload";
 export * from "./workspace/RegionPanel";
 export * from "./workspace/SettingsDialog";
 export * from "./workspace/TurnMessagesPanel";

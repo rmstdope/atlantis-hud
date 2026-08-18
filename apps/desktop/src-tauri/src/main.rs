@@ -162,6 +162,7 @@ fn main() {
         // it went, which is what a file meant to be sent on to somebody else needs.
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_http::init())
         .invoke_handler(tauri::generate_handler![
             atlantis_hud_core_tauri::command_get_engine_info,
             create_game,
