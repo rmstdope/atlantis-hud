@@ -23,6 +23,7 @@ import {
   type HexMapModel
 } from "../hexMapModel";
 import { type TextFileSaver } from "../downloadFile";
+import type { OrdersUploader } from "./ordersUpload";
 import { readUnitOrders, stripMovementOrderLines, writeUnitOrders } from "../ordersDocument";
 import { isOrdersFile, routeOrdersImport, type PendingOrdersImport } from "../ordersImport";
 import { deliverGameBackupExport, deliverMapExport, deliverOrdersExport } from "./exportActions";
@@ -221,6 +222,8 @@ export function AppShell({
   registerBeforeQuit,
   saveTextFile,
   appUpdate = UNSUPPORTED_UPDATES
+  // `uploadOrders` is declared below but deliberately not destructured here: ah-etb0.1 builds and
+  // proves the port, and ah-etb0.2 adds the Send control that reads it.
 }: {
   client: CoreClient;
   platformLabel: string;
@@ -245,6 +248,14 @@ export function AppShell({
    * desktop bundle opened in a plain browser - and it needs a control that says so.
    */
   appUpdate?: AppUpdateControl;
+  /**
+   * How this shell puts orders on the game server, when it can.
+   *
+   * Injected for the same reason `saveTextFile` is, and **absent on web**: the game server sends no
+   * CORS headers, so a browser could send the form and never read the reply - it could not tell the
+   * player whether the turn went in. Its absence is what hides the control on web.
+   */
+  uploadOrders?: OrdersUploader;
 }) {
   const [parsed, setParsed] = useState<ParsedReport | null>(null);
   // The report currently on screen, readable at async resolve time. The restore effect below

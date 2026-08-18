@@ -9,6 +9,7 @@ import {
   stripMovementOrderLines,
   stripUnitComments,
   withoutTrailingBlankLines,
+  withFactionPassword,
   withUnitComments,
   writeUnitOrders
 } from "./ordersDocument";
@@ -448,5 +449,53 @@ describe("stripping a unit's existing movement order", () => {
     for (const command of MOVEMENT_ORDER_COMMANDS) {
       expect(stripMovementOrderLines(`${command} N\n@study obse`)).toBe("@study obse");
     }
+  });
+});
+
+describe("withFactionPassword", () => {
+  it("writes the typed password into the #atlantis line and changes nothing else", () => {
+    const rewritten = withFactionPassword(DOCUMENT, "typed-one");
+
+    expect(rewritten.split("\n")[0]).toBe('#atlantis 95 "typed-one"');
+    expect(rewritten.split("\n").slice(1)).toEqual(DOCUMENT.split("\n").slice(1));
+  });
+
+  it("keeps the faction id the document already carried", () => {
+    expect(withFactionPassword('#atlantis 7\nunit 1\n', "p").split("\n")[0]).toBe('#atlantis 7 "p"');
+  });
+
+  it("rewrites the header wherever it sits, leaving the lines above it alone", () => {
+    const document = ['; a comment', '', '#atlantis 95 "old"', "#end"].join("\n");
+    expect(withFactionPassword(document, "new")).toBe(
+      ['; a comment', '', '#atlantis 95 "new"', "#end"].join("\n")
+    );
+  });
+
+  it("keeps a CRLF document's line endings", () => {
+    expect(withFactionPassword('#atlantis 42 "old"\r\nunit 1\r\n#end\r\n', "new")).toBe(
+      '#atlantis 42 "new"\r\nunit 1\r\n#end\r\n'
+    );
+  });
+
+  it("keeps the line's own indentation and drops nothing else on it", () => {
+    expect(withFactionPassword('  #atlantis 42 "old"\n', "new")).toBe('  #atlantis 42 "new"\n');
+  });
+
+  it("is not fooled by a word that merely starts with #atlantis", () => {
+    const document = '#atlantisfoo\n#atlantis 42 "old"\n';
+    expect(withFactionPassword(document, "new")).toBe('#atlantisfoo\n#atlantis 42 "new"\n');
+  });
+
+  it("does not mistake an existing password for the faction id", () => {
+    expect(withFactionPassword('#atlantis "oldpw"\n', "new")).toBe('#atlantis "new"\n');
+  });
+
+  it("refuses a password that would forge a line rather than writing it in", () => {
+    expect(() => withFactionPassword(DOCUMENT, 'a"\n#atlantis 9 "x')).toThrow();
+  });
+
+  it("returns a document with no #atlantis line unchanged", () => {
+    const document = "unit 18642\n@work\n#end";
+    expect(withFactionPassword(document, "p")).toBe(document);
   });
 });

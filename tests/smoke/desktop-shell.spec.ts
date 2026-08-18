@@ -37,6 +37,12 @@ test.beforeEach(async ({ page }, testInfo) => {
         __ATLANTIS_DESKTOP_PLUGINS__: {
           save(options: { defaultPath?: string }): Promise<string | null>;
           writeTextFile(path: string, text: string): Promise<void>;
+          httpPost(
+            url: string,
+            contentType: string,
+            body: string,
+            signal: AbortSignal
+          ): Promise<{ status: number; body: string }>;
         };
       }
     ).__ATLANTIS_DESKTOP_PLUGINS__ = {
@@ -49,6 +55,13 @@ test.beforeEach(async ({ page }, testInfo) => {
       },
       async writeTextFile(path: string, text: string) {
         calls.push(["write", path, text.length]);
+      },
+      // Nothing in this suite sends orders yet (ah-etb0.2 adds the control). The stand-in records
+      // the call and answers an acceptance, so a spec that starts sending has something to assert
+      // against - and the recorded body length never carries the password anywhere.
+      async httpPost(url: string, contentType: string, body: string) {
+        calls.push(["httpPost", url, contentType, body.length]);
+        return { status: 200, body: "<pre>#end\nNo errors found.\n</pre>" };
       }
     };
   });
