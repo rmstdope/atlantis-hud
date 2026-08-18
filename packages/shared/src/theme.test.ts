@@ -73,6 +73,17 @@ describe("theme palette", () => {
   const SURFACES = ["--color-ground", "--color-panel", "--color-panel-raised"];
   const AA_SMALL_TEXT = 4.5;
 
+  /** Every accent carries meaning, so every one of them is text. */
+  const ACCENT_TOKENS = [
+    "--color-brass",
+    "--color-brass-bright",
+    "--color-select",
+    "--color-ok",
+    "--color-warn",
+    "--color-danger",
+    "--color-gain"
+  ];
+
   function tokenValues(block: string): Map<string, string> {
     return new Map(
       [...block.matchAll(/(--color-[\w-]+)\s*:\s*(#[0-9a-fA-F]{6})/g)].map((match) => [
@@ -135,13 +146,14 @@ describe("theme palette", () => {
    * passed all the way through the eye-strain report that produced ah-v09e. This is the one that
    * would have caught it.
    *
-   * Nothing in the app is WCAG "large text" - 13px is the largest size and 500 the heaviest
-   * weight - so 4.5:1 is the bar for every one of these.
+   * Nothing in the app is WCAG "large text" - 14px is the largest size and 500 the heaviest
+   * weight - so 4.5:1 is the bar for every one of these. Tundra is the worst terrain for every
+   * token, and `select` over it is the tightest pair in the palette.
    *
    * Dark only. Light mode fails this today (dark ink over a light pane on dark terrain is
    * 1.09:1); that is ah-j1xd's scope, and a known-red assertion is worth nothing.
    */
-  it("keeps dark ink readable through a pane over every terrain", () => {
+  it("keeps every dark text token readable through a pane over every terrain", () => {
     // From the source rather than hard-coded, so a future change to the default either keeps the
     // app readable or fails here.
     const store = readFileSync(
@@ -172,7 +184,9 @@ describe("theme palette", () => {
     const unreadable: string[] = [];
     for (const terrain of terrains) {
       const behind = composite(panel, values.get(terrain)!);
-      for (const ink of INK_TOKENS) {
+      // Every token text is drawn in, accents included: `select` over tundra is the tightest pair
+      // in the whole palette, and it is an accent, not an ink.
+      for (const ink of [...INK_TOKENS, ...ACCENT_TOKENS]) {
         const ratio = contrast(values.get(ink)!, behind);
         if (ratio < AA_SMALL_TEXT) {
           unreadable.push(`${ink} through a pane over ${terrain} is ${ratio.toFixed(2)}:1`);
@@ -216,15 +230,6 @@ describe("theme palette", () => {
    * `danger` and `select` fell to 4.01 and 4.46. Fixing eye strain must not introduce two new
    * accessibility failures on the way.
    */
-  const ACCENT_TOKENS = [
-    "--color-brass",
-    "--color-brass-bright",
-    "--color-select",
-    "--color-ok",
-    "--color-warn",
-    "--color-danger",
-    "--color-gain"
-  ];
 
   it("keeps every dark accent above AA on every surface", () => {
     const values = tokenValues(extractBlock(css, /@theme\b/));

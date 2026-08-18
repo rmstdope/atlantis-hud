@@ -44,8 +44,8 @@
     Three steps of emphasis, all of them readable. Re-measured for ah-v09e against the lifted
     surfaces *and* against a pane composited over live terrain, which is what the reader actually
     sees: 10.59 / 6.96 / 5.65 on a panel, and never below 4.5 anywhere. `ink-dim` is a shade
-    lighter than the palette mockup drew it - at #8d99a8 it fell to 4.47 on a raised panel and
-    4.04 through a pane over tundra, below the AA floor this bead commits to.
+    lighter than the palette first drew it - at #8d99a8 it fell to 4.47 on a raised panel and 4.07
+    through a pane over tundra, below the AA floor this bead commits to.
 
     Three steps of emphasis, all of them readable. `ink-dim` used to sit at 2.78:1 against a raised
     panel, which is below the 4.5:1 small text needs and was hard to read on the panels it is used
@@ -54,7 +54,7 @@
   */
   --color-ink: #d4dce6;
   --color-ink-soft: #a8b4c2;
-  --color-ink-dim: #96a2b1;
+  --color-ink-dim: #99a4b2;
 
   --color-brass: #e0b25a;
   --color-brass-bright: #eebe63;
@@ -70,7 +70,7 @@
 
   --color-ok: #4fb783;
   --color-warn: #d9a441;
-  --color-danger: #e08585;
+  --color-danger: #e89494;
 
   /* Terrain. Read from the report, so these are data rather than styling choices. */
   --color-terrain-ocean: #1d3f63;
