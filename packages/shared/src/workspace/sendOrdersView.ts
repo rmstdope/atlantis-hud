@@ -32,12 +32,31 @@ export function metaLine(factionLabel: string, turnNumber: number | null, server
 /**
  * Why this password cannot be sent as written, or nothing.
  *
- * A quote is the one case worth explaining: the password is written into `#atlantis <id>
- * "<password>"`, and the orders format has no escape for a quote inside it. An empty field is not
- * a complaint - it is simply not ready, which the disabled Send control already says.
+ * The one place either side asks the question, so the dialog and the send path cannot drift: every
+ * case `passwordIsSendable` refuses has a sentence here, and a password with nothing to say about
+ * it is exactly one that can be sent.
+ *
+ * A quote and a line break are refused for the same shape of reason - the password is written into
+ * `#atlantis <id> "<password>"` and into a multipart part, and either character would forge a line
+ * or a part of its own rather than sit inside one. A blank password is a problem to the send path
+ * and merely "not ready yet" to a dialog whose Send control is already disabled, which is what
+ * `blankIsAProblem` distinguishes: nagging a player about a field they have not finished typing is
+ * not an explanation, it is noise.
  */
-export function passwordProblem(password: string): string | null {
-  return password.includes('"') ? "A faction password cannot contain a double quote." : null;
+export function passwordProblem(
+  password: string,
+  { blankIsAProblem = true }: { blankIsAProblem?: boolean } = {}
+): string | null {
+  if (password.includes('"')) {
+    return "A faction password cannot contain a double quote.";
+  }
+  if (/[\r\n]/.test(password)) {
+    return "A faction password cannot contain a line break.";
+  }
+  if (password.trim() === "") {
+    return blankIsAProblem ? "A faction password cannot be empty." : null;
+  }
+  return null;
 }
 
 /** Whether the server's report is worth putting in front of the player. */

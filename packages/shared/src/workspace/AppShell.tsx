@@ -2248,12 +2248,18 @@ export function AppShell({
   /** The faction the orders name, which is what the server is told to file them under. */
   const sendFactionId = ordersFileFaction(ordersDocument);
   const uploadUrl = rulesetById(game?.manifest.metadata.rulesetId ?? "")?.ordersUploadUrl ?? null;
+  // A plain number, because that is all the server's form accepts: `#atlantis foo` names no faction
+  // it could file the turn under, so the control stays off rather than failing at the last step.
   const canSendOrders =
-    uploadOrders !== undefined && ordersDocument.length > 0 && sendFactionId !== null && uploadUrl !== null;
+    uploadOrders !== undefined &&
+    ordersDocument.length > 0 &&
+    sendFactionId !== null &&
+    /^\d+$/.test(sendFactionId) &&
+    uploadUrl !== null;
 
   const sendOrders = useCallback(
     async (password: string) => {
-      if (uploadOrders === undefined || uploadUrl === null || sendFactionId === null) {
+      if (uploadOrders === undefined || uploadUrl === null || sendFactionId === null || !canSendOrders) {
         return;
       }
       const controller = new AbortController();
@@ -2276,7 +2282,7 @@ export function AppShell({
         setSendPhase(phase);
       }
     },
-    [uploadOrders, uploadUrl, sendFactionId, flush, ordersDocument, ordersTemplateText]
+    [uploadOrders, uploadUrl, sendFactionId, canSendOrders, flush, ordersDocument, ordersTemplateText]
   );
 
   /** Cancel, Escape and the backdrop all mean the same thing: stop, and close. */

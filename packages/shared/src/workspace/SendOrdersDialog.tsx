@@ -51,9 +51,12 @@ export function SendOrdersDialog({
     }
   }, [phase.kind]);
 
-  const problem = passwordProblem(password);
+  const problem = passwordProblem(password, { blankIsAProblem: false });
   const canSend = phase.kind === "ready" && password.trim() !== "" && problem === null;
-  const settled = phase.kind === "sent" || phase.kind === "refused" || phase.kind === "unreachable";
+  // A refusal is not the end of the interaction: the password was probably wrong, and the plan's
+  // keyboard rules ask for it to be retyped in place. Only an acceptance and an unreachable server
+  // leave nothing further to do here, and only those collapse the footer to a single Close.
+  const settled = phase.kind === "sent" || phase.kind === "unreachable";
   const message = outcomeMessage(phase, turnNumber);
   const report = phase.kind === "sent" && showsServerReport(phase.serverReport) ? phase.serverReport : null;
 

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { passwordIsSendable } from "./ordersUpload";
 import {
   CLEAN_SERVER_REPORT,
   metaLine,
@@ -26,10 +27,22 @@ describe("what a password may contain", () => {
     expect(passwordProblem('hunter"2')).toBe("A faction password cannot contain a double quote.");
   });
 
+  it("refuses a password carrying a line break, for the same reason", () => {
+    expect(passwordProblem("hunter\n2")).toBe("A faction password cannot contain a line break.");
+    expect(passwordProblem("hunter\r2")).toBe("A faction password cannot contain a line break.");
+  });
+
+  it("agrees with the send path about what can be sent at all", () => {
+    for (const candidate of ['hunter"2', "hunter\n2", "hunter\r2", "hunter2", "  "]) {
+      expect(passwordProblem(candidate) === null).toBe(passwordIsSendable(candidate));
+    }
+  });
+
   it("has nothing to say about a password that can simply be sent", () => {
     expect(passwordProblem("hunter2")).toBeNull();
     // An empty field is not a complaint - the Send control is simply not available yet.
-    expect(passwordProblem("")).toBeNull();
+    expect(passwordProblem("")).toBe("A faction password cannot be empty.");
+    expect(passwordProblem("", { blankIsAProblem: false })).toBeNull();
   });
 });
 

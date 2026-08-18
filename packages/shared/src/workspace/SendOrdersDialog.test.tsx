@@ -50,6 +50,13 @@ describe("the send dialog", () => {
     expect(draw({ kind: "ready" })).toContain('data-testid="send-orders-cancel"');
   });
 
+  it("keeps the field, so a refused password can simply be retyped", () => {
+    const refused = draw({ kind: "refused", reason: "Faction password is incorrect." });
+    expect(refused).toContain('data-testid="send-orders-password"');
+    expect(refused).toContain('data-testid="send-orders-confirm"');
+    expect(refused).not.toContain('data-testid="send-orders-close"');
+  });
+
   it("shows the server's report only when it is not the clean one", () => {
     expect(draw({ kind: "sent", serverReport: "No errors found." })).not.toContain(
       'data-testid="send-orders-report"'

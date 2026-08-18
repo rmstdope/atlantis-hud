@@ -1,11 +1,6 @@
 import { withFactionPassword } from "../ordersDocument";
-import {
-  interpretOrdersUploadReply,
-  ordersUploadBody,
-  passwordIsSendable,
-  type OrdersUploader
-} from "./ordersUpload";
-import type { SendOrdersPhase } from "./sendOrdersView";
+import { interpretOrdersUploadReply, ordersUploadBody, type OrdersUploader } from "./ordersUpload";
+import { passwordProblem, type SendOrdersPhase } from "./sendOrdersView";
 
 /**
  * One attempt at putting a turn's orders on the server, end to end.
@@ -40,8 +35,9 @@ export async function performOrdersSend({
 }): Promise<SendOrdersPhase> {
   // Checked before anything happens at all: a password that cannot be written into the header is
   // not worth flushing a draft or opening a connection for, and the dialog has already said why.
-  if (!passwordIsSendable(password)) {
-    return { kind: "refused", reason: "A faction password cannot contain a double quote." };
+  const problem = passwordProblem(password);
+  if (problem !== null) {
+    return { kind: "refused", reason: problem };
   }
 
   // Unsaved edits reach disk before the request leaves, so a crash mid-send loses nothing and what
@@ -49,16 +45,20 @@ export async function performOrdersSend({
   await flush();
 
   // A copy carries the password; nothing on disk gains one.
-  const { contentType, body } = ordersUploadBody(
-    factionId,
-    password,
-    withFactionPassword(ordersText, password),
-    boundary
-  );
+  //
+  // Built inside the try because `ordersUploadBody` refuses anything it could not encode safely -
+  // a faction id that is not a plain number, a boundary occurring in the orders. Left to throw,
+  // those would leave the dialog stuck reading "Sending orders…" for ever.
+  let prepared;
+  try {
+    prepared = ordersUploadBody(factionId, password, withFactionPassword(ordersText, password), boundary);
+  } catch {
+    return { kind: "refused", reason: "These orders cannot be sent as they are written." };
+  }
 
   let reply;
   try {
-    reply = await upload({ url, contentType, body }, signal);
+    reply = await upload({ url, contentType: prepared.contentType, body: prepared.body }, signal);
   } catch {
     return { kind: "unreachable" };
   }

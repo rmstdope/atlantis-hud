@@ -53,6 +53,22 @@ describe("sending a turn's orders", () => {
     expect(phase).toEqual({ kind: "unreachable" });
   });
 
+  it("refuses orders naming a faction the server could not file them under", async () => {
+    const phase = await performOrdersSend({
+      flush: async () => {},
+      upload: async () => {
+        throw new Error("should never be reached");
+      },
+      url: "https://atlantis-pbem.com/game/upload-orders",
+      factionId: "foo",
+      password: "s3cret",
+      ordersText: "#atlantis foo\n#end\n",
+      boundary: "BOUND",
+      signal: new AbortController().signal
+    });
+    expect(phase).toEqual({ kind: "refused", reason: "These orders cannot be sent as they are written." });
+  });
+
   it("refuses a password it cannot write into the header, without going near the network", async () => {
     const order: string[] = [];
     const phase = await run(async () => ({ status: 200, body: "<pre>ok</pre>" }), order, 'hunter"2');
