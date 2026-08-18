@@ -126,11 +126,14 @@ test("F8 walks to a problem in another unit's orders", async ({ page }) => {
   // finding (ah-1uj) the walk below is not about, so it is turned off to keep this test isolated
   // to the one syntax problem it introduces. That hex also holds six Borg mages studying force or
   // pattern above level 2 aboard a Cloudship (magic-study-outside-building, ah-a2k.2), which the
-  // walk would otherwise stop at first, so it goes off for the same reason.
+  // walk would otherwise stop at first, so it goes off for the same reason. And the fixture's two
+  // units with no orders at all - 14451 and 13432 - are `unit-does-nothing` findings (ah-dwk6)
+  // that sort ahead of this one, so that check goes off for the third time for the same reason.
   await page.getByRole("button", { name: "Settings" }).click();
   await page.getByTestId("settings-tab-warnings").click();
   await page.getByTestId("settings-warning-study-at-maximum").uncheck();
   await page.getByTestId("settings-warning-magic-study-outside-building").uncheck();
+  await page.getByTestId("settings-warning-unit-does-nothing").uncheck();
   await page.keyboard.press("Escape");
 
   await selectHex(page, "1:7,53");

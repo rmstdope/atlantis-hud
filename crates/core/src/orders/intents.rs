@@ -118,6 +118,14 @@ pub struct UnitIntents {
     /// The `unit NNNN` line that opened the block.
     pub line: usize,
     pub intents: Vec<PlacedIntent>,
+    /// Order lines in this block that yielded no intent, and `TURN` blocks that were skipped.
+    ///
+    /// The app models about twenty of Atlantis's orders; the grammar knows a hundred. A line this
+    /// reader could not turn into an intent is not an absence of work - `ASSASSINATE 4021` spends
+    /// the month as surely as `WORK` does - so a check that asks "is this unit doing anything"
+    /// must be able to tell "nothing" from "nothing I understand". Carries line numbers so a
+    /// message could name one; nothing does yet.
+    pub unread: Vec<usize>,
 }
 
 impl UnitIntents {
@@ -158,6 +166,7 @@ pub fn read_intents(source: &str) -> Vec<UnitIntents> {
                     unit_id: id.text.clone(),
                     line: line.number,
                     intents: Vec::new(),
+                    unread: Vec::new(),
                 });
             }
         }
@@ -172,7 +181,20 @@ pub fn read_intents(source: &str) -> Vec<UnitIntents> {
                         column_start: line.command.column_start,
                         column_end: line.command.column_end,
                     });
+                } else {
+                    unit.unread.push(line.number);
                 }
+            }
+        }
+        // A TURN block holds next month's orders, which this reader deliberately skips - so a unit
+        // whose block contains one is not a unit we have fully read.
+        Event::Open {
+            line,
+            kind: walk::BlockKind::Turn,
+            depth,
+        } if depth == Depth::default() => {
+            if let Some(unit) = units.last_mut() {
+                unit.unread.push(line.number);
             }
         }
         Event::Open {
@@ -354,6 +376,29 @@ mod tests {
     }
 
     // --- the document's own shape ---------------------------------------------------------
+
+    #[test]
+    fn an_order_we_do_not_model_is_recorded_as_unread() {
+        let unit = only_unit("unit 5\nASSASSINATE 4021\n");
+        assert!(unit.intents.is_empty(), "{unit:?}");
+        assert_eq!(unit.unread, vec![2]);
+    }
+
+    #[test]
+    fn a_turn_block_is_recorded_as_unread() {
+        let unit = only_unit("unit 5\nWORK\nTURN\nWORK\nENDTURN\n");
+        assert_eq!(unit.unread, vec![3]);
+    }
+
+    #[test]
+    fn a_form_block_is_not_unread() {
+        let unit = only_unit("unit 5\nFORM 1\nWORK\nEND\n");
+        assert!(unit.unread.is_empty(), "{unit:?}");
+        assert!(unit
+            .intents
+            .iter()
+            .any(|placed| matches!(placed.intent, Intent::Form { .. })));
+    }
 
     #[test]
     fn each_unit_block_is_read_under_its_own_number() {
