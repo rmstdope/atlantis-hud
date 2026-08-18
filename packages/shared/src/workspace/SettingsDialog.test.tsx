@@ -77,6 +77,7 @@ describe("the Warnings settings tab", () => {
       "Reused FORM numbers",
       "Gifts to units that are not here",
       "Overloaded units",
+      "Units that do nothing",
       "Building what is built",
       "Building outside a structure",
       "Helping a unit that is not building",
