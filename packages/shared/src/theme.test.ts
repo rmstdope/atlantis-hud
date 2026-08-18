@@ -308,4 +308,26 @@ describe("map theme stylesheets", () => {
       expect(sheet!.source).toContain(`.map-theme-${theme.id} .region-outline-halo`);
     }
   });
+
+  it("thins itself out at distance, in every theme", async () => {
+    // Every theme carries at least one rule scoped to `.map-far` - what it hides under that scope
+    // is the theme's own business (glyphs, labels, badges, whatever it calls its own marks), but
+    // hiding *something* once the map is too far out to read it is a contract every theme owes
+    // the registry, the same way the province-outline colour above is. Checked structurally
+    // (the selector text is present) rather than by class name, since no two themes' marks share
+    // one: `.map-theme-${theme.id}.map-far` is the one substring every one of them has in common.
+    const { MAP_THEMES } = await import("./workspace/mapThemes/index");
+    const folderNameOf = (id: string) => id.replace(/-([a-z])/g, (_match, letter) => letter.toUpperCase());
+    const sheets = await themeSheets();
+
+    for (const theme of MAP_THEMES) {
+      const sheet = sheets.find((candidate) => candidate.theme === folderNameOf(theme.id));
+
+      expect(sheet, `no stylesheet directory for theme "${theme.id}"`).toBeDefined();
+      expect(
+        sheet!.source,
+        `theme "${theme.id}" has no .map-far rule - nothing hides its marks at distance`
+      ).toContain(`.map-theme-${theme.id}.map-far`);
+    }
+  });
 });

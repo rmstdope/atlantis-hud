@@ -5,6 +5,7 @@ import {
   badgeHref,
   housePositions,
   keepOf,
+  nameLift,
   shieldRow,
   workshopAnchors
 } from "./badges";
@@ -54,11 +55,34 @@ describe("housePositions", () => {
     expect(housePositions(1)).toEqual([{ x: 0, y: -4 }]);
   });
 
+  it("treats zero the same as one - keepOf never asks for zero, but nothing else picks the shape", () => {
+    expect(housePositions(0)).toEqual([{ x: 0, y: -4 }]);
+  });
+
   it("stands two houses either side of centre", () => {
     const positions = housePositions(2);
     expect(positions).toHaveLength(2);
     expect(positions[0].x).toBeLessThan(0);
     expect(positions[1].x).toBeGreaterThan(0);
+  });
+
+  it("falls back to the two-house layout above two as well - keepOf never asks for more than two, but the shape still answers something for it", () => {
+    expect(housePositions(3)).toEqual(housePositions(2));
+  });
+});
+
+describe("nameLift", () => {
+  it("lifts a city's name further, for the taller keep drawn under it", () => {
+    expect(nameLift("city")).toBe(-26);
+  });
+
+  it("lifts a village or town's name the ordinary amount", () => {
+    expect(nameLift("village")).toBe(-15);
+    expect(nameLift("town")).toBe(-15);
+  });
+
+  it("treats an unnamed tier the same as village or town", () => {
+    expect(nameLift(null)).toBe(-15);
   });
 });
 
