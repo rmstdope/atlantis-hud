@@ -321,6 +321,22 @@ describe("pane type scale", () => {
     expect(css).toMatch(/font-size\s*:\s*calc\(\s*1rem\s*\*\s*var\(--ui-scale\)\s*\)\s*;/);
   });
 
+  it("starts the pane type scale at 12px", () => {
+    // Up one rung (ah-v09e): 11/12/13 asked a reader to focus consciously for an hour-long
+    // sitting. Each token takes the next one's old value and a new top is added. `--ui-scale`
+    // still multiplies all three, so the Interface size setting reaches them exactly as before.
+    const themeBlock = extractBlock(css, /@theme\b/);
+    const sizes = new Map(
+      [...themeBlock.matchAll(/(--text-pane[\w-]*)\s*:\s*(?:calc\(\s*)?([\d.]+)rem/g)].map(
+        (match) => [match[1], match[2]]
+      )
+    );
+
+    expect(sizes.get("--text-pane-sm")).toBe("0.75");
+    expect(sizes.get("--text-pane")).toBe("0.8125");
+    expect(sizes.get("--text-pane-lg")).toBe("0.875");
+  });
+
   it("keeps a dialog inside the window", () => {
     // A dialog declares the width its content wants, and at 200% that can be past the edge of the
     // window — taking its Close button with it. The viewport is the last word (ah-ziv, O1). On the

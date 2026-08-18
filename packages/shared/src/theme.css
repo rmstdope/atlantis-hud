@@ -130,9 +130,9 @@
      rem in the application, type and boxes alike (ah-ziv), so a token that multiplied by
      `--ui-scale` here would scale twice. The map sets its own sizes in SVG user units and is on
      neither scale. */
-  --text-pane-sm: 0.6875rem;   /* 11px at a 16px root, at 100% */
-  --text-pane: 0.75rem;        /* 12px */
-  --text-pane-lg: 0.8125rem;   /* 13px */
+  --text-pane-sm: 0.75rem;     /* 12px at a 16px root, at 100% */
+  --text-pane: 0.8125rem;      /* 13px */
+  --text-pane-lg: 0.875rem;    /* 14px */
 }
 
 /*
