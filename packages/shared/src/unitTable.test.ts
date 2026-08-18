@@ -189,6 +189,20 @@ describe("sortUnits", () => {
     expect(ids(sortBy(units, { column: "structure" }, structures))).toEqual(["c", "b", "a"]);
   });
 
+  it("puts a structure the region never described after the named ones, not before them", () => {
+    const structures = [
+      { structureId: "20", name: "Anvil", kind: "Fort", description: null, needs: null }
+    ];
+    const units = [
+      unit("a", false, { structureId: "77" }),
+      unit("b", false, { structureId: "20" }),
+      unit("c", false, { structureId: null })
+    ];
+
+    // Anvil [20], then the nameless [77], then the unit standing in the open.
+    expect(ids(sortBy(units, { column: "structure" }, structures))).toEqual(["b", "a", "c"]);
+  });
+
   it("keeps units with no faction last whichever way the column is sorted", () => {
     const units = [
       unit("a", false, { factionName: null }),

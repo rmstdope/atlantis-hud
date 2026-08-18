@@ -483,7 +483,10 @@ function UnitRow({
   onPointerGone
 }: {
   unit: PreviewedUnit;
-  /** The structure this unit stands in, written out in full, or null when it stands in the open. */
+  /**
+   * The structure this unit stands in — its full label, or a bare `[id]` when the region never
+   * described it — and null when the unit stands in the open.
+   */
   structureLabel: string | null;
   index: number;
   rowHeight: number;

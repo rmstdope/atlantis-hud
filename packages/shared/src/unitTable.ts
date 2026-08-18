@@ -150,7 +150,14 @@ function valueOf(
  * comparison gives name-then-number and "9" still comes before "10". Sorting on the rendered label
  * would not: "[20]" precedes "[3]" lexically, and the column has ordered ids numerically since it
  * existed.
+ *
+ * A structure the region never described has no name to sort by, and it renders as a bare `[id]`.
+ * Those sort after every named structure rather than before them: an empty name would put the one
+ * row with least to say at the very top of the column.
  */
+/** Sorts after every real name, so an undescribed structure lands beneath the named ones. */
+const UNNAMED = "\uffff";
+
 function structureKey(
   structureId: string | null,
   structures: ReadonlyMap<string, StructureInfo>
@@ -158,10 +165,10 @@ function structureKey(
   if (structureId === null) {
     return null;
   }
-  const name = structures.get(structureId)?.name ?? "";
+  const name = structures.get(structureId)?.name.toLowerCase() ?? UNNAMED;
   const numeric = numberOrNull(structureId);
   const tieBreak = numeric === null ? structureId : String(numeric).padStart(12, "0");
-  return `${name.toLowerCase()}\u0000${tieBreak}`;
+  return `${name}\u0000${tieBreak}`;
 }
 
 /** Ids are numbers the report hands over as strings, so "9" must not beat "10". */
