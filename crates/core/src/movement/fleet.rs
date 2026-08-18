@@ -21,6 +21,15 @@ use crate::report::ParsedReport;
 #[derive(Debug, Default, Clone)]
 pub struct OrderedUnits {
     by_unit: BTreeMap<String, Vec<MoveStep>>,
+    /// Where each unit that wrote an ENTER or a LEAVE ends up once they have run: `Some(id)` for
+    /// the structure it is in, `None` for one that stepped out into nothing. A unit that wrote
+    /// neither is absent, and the report's own answer stands for it.
+    ///
+    /// Every LEAVE runs before any ENTER whatever order the lines were typed in, so a block
+    /// holding any ENTER ends inside the last structure entered - the same rule
+    /// `crate::orders::semantics`'s `structure_after_orders` states, and the one the navigator
+    /// settled on 2026-08-18 (ah-mjy).
+    aboard_by_unit: BTreeMap<String, Option<String>>,
 }
 
 impl OrderedUnits {
@@ -30,6 +39,7 @@ impl OrderedUnits {
         use crate::orders::walk::{walk, Depth, Event};
 
         let mut by_unit: BTreeMap<String, Vec<MoveStep>> = BTreeMap::new();
+        let mut aboard_by_unit: BTreeMap<String, Option<String>> = BTreeMap::new();
         let mut current: Option<String> = None;
 
         walk(orders_document, |event| match event {
@@ -43,17 +53,73 @@ impl OrderedUnits {
                 ) {
                     by_unit.insert(unit_id.clone(), steps);
                 }
+                if let Some(unit_id) = current.as_ref() {
+                    // An ENTER always wins over a LEAVE in the same block, whichever was typed
+                    // first: the LEAVE ran first and the unit walked back in. Among ENTERs the
+                    // last one wins, which is document order.
+                    // Read exactly as `orders::intents` reads them, through the same
+                    // `read_only_number`: an ENTER with anything but one numeric argument, or a
+                    // LEAVE with any argument at all, is an order the game does not have, and a
+                    // reader that acted on it would move a unit the server leaves alone.
+                    if line.command.is("enter") {
+                        if let Some(structure) =
+                            crate::orders::forms::read_only_number(line.arguments)
+                        {
+                            aboard_by_unit.insert(unit_id.clone(), Some(structure.to_string()));
+                        }
+                    } else if line.command.is("leave") && line.arguments.is_empty() {
+                        aboard_by_unit.entry(unit_id.clone()).or_insert(None);
+                    }
+                }
             }
             _ => {}
         });
 
-        Self { by_unit }
+        Self {
+            by_unit,
+            aboard_by_unit,
+        }
     }
 
     /// The unit's own movement steps, if it wrote any.
     #[must_use]
     pub fn steps_for(&self, unit_id: &str) -> Option<&[MoveStep]> {
         self.by_unit.get(unit_id).map(Vec::as_slice)
+    }
+
+    /// The structure this unit is in once this month's ENTER/LEAVE orders have run.
+    ///
+    /// ENTER and LEAVE both run before anything moves, so every reader that asks "what is this
+    /// unit standing in when its orders happen" wants this rather than `unit.structure_id`, which
+    /// is only where the report found it. The orders layer answers the same question through
+    /// `crate::orders::semantics`'s `structure_after_orders`; the two must not diverge.
+    ///
+    /// A unit that wrote neither order is absent from the map and keeps the report's answer -
+    /// which is why the two levels of `Option` are read with a `match` rather than flattened.
+    ///
+    /// This is where a unit *ends up*. For "could this unit be the one sailing the hull" the
+    /// question is different and [`Self::could_captain`] answers it.
+    #[must_use]
+    pub fn structure_of<'a>(&'a self, unit: &'a ReportUnit) -> Option<&'a str> {
+        match self.aboard_by_unit.get(&unit.unit_id) {
+            Some(after) => after.as_deref(),
+            None => unit.structure_id.as_deref(),
+        }
+    }
+}
+
+impl OrderedUnits {
+    /// Whether this unit could be the one giving the hull's movement order: standing in it per the
+    /// report, or boarding it this month.
+    ///
+    /// Deliberately not [`Self::structure_of`], and for the reason `orders::semantics`'s
+    /// `could_captain` gives: a unit that writes SAIL and then LEAVE still gave the order, because
+    /// the server reads the SAIL line before running the LEAVE. Asking where it *ends up* would
+    /// quietly strand every passenger aboard.
+    #[must_use]
+    pub fn could_captain(&self, unit: &ReportUnit, structure_id: &str) -> bool {
+        unit.structure_id.as_deref() == Some(structure_id)
+            || matches!(self.aboard_by_unit.get(&unit.unit_id), Some(Some(entered)) if entered == structure_id)
     }
 }
 
@@ -86,7 +152,7 @@ pub fn steps_followed_by<'a>(
         return Some(own);
     }
 
-    let structure_id = unit.structure_id.as_deref()?;
+    let structure_id = ordered.structure_of(unit)?;
     let region = report
         .regions
         .iter()
@@ -102,7 +168,7 @@ pub fn steps_followed_by<'a>(
         .units
         .iter()
         .filter(|aboard| {
-            aboard.structure_id.as_deref() == Some(structure_id) && aboard.unit_id != unit.unit_id
+            ordered.could_captain(aboard, structure_id) && aboard.unit_id != unit.unit_id
         })
         .filter_map(|aboard| ordered.steps_for(&aboard.unit_id))
         .next_back()
@@ -196,6 +262,142 @@ mod tests {
             followed(orders, "10594"),
             Some(vec![MoveStep::Go(crate::movement::graph::Direction::North)]),
             "its own order still wins over the hull's"
+        );
+    }
+
+    fn structure_after(orders: &str, unit_id: &str) -> Option<String> {
+        let mut cache = ReportCache::new();
+        let report = cache.classified(TURN_24, RULESET);
+        let ordered = OrderedUnits::from_document(orders);
+        let unit = report
+            .units()
+            .find(|unit| unit.unit_id == unit_id)
+            .expect("the fixture carries the unit")
+            .clone();
+        ordered.structure_of(&unit).map(str::to_string)
+    }
+
+    #[test]
+    fn a_unit_that_enters_this_month_is_in_the_structure_it_entered() {
+        // Drones (1297) stands ashore in the report's own answer.
+        assert_eq!(structure_after("", "1297"), None, "ashore in the report");
+        assert_eq!(
+            structure_after("unit 1297\nENTER 235\n", "1297"),
+            Some("235".to_string())
+        );
+    }
+
+    #[test]
+    fn a_unit_that_leaves_this_month_is_in_nothing() {
+        assert_eq!(structure_after("unit 10594\nLEAVE\n", "10594"), None);
+    }
+
+    #[test]
+    fn a_unit_that_wrote_neither_keeps_the_reports_answer() {
+        assert_eq!(
+            structure_after("unit 10594\nwork\n", "10594"),
+            Some("235".to_string()),
+            "the report's own answer stands for a unit that wrote no ENTER or LEAVE"
+        );
+    }
+
+    /// Every LEAVE runs before any ENTER, so an ENTER in the block wins whichever way round they
+    /// were typed - the rule `orders::semantics::structure_after_orders` states, confirmed by the
+    /// navigator on 2026-08-18 after a verification failed on exactly it (ah-mjy). Among ENTERs
+    /// the last one wins, which is document order.
+    #[test]
+    fn an_enter_wins_over_a_leave_in_the_same_block() {
+        assert_eq!(
+            structure_after("unit 1297\nENTER 235\nLEAVE\n", "1297"),
+            Some("235".to_string()),
+            "the LEAVE ran first and the unit walked back in"
+        );
+        assert_eq!(
+            structure_after("unit 10594\nLEAVE\nENTER 235\n", "10594"),
+            Some("235".to_string())
+        );
+    }
+
+    #[test]
+    fn the_last_of_several_enters_wins() {
+        assert_eq!(
+            structure_after("unit 1297\nENTER 3\nENTER 235\n", "1297"),
+            Some("235".to_string())
+        );
+    }
+
+    #[test]
+    fn an_enter_inside_a_turn_block_is_next_months_business() {
+        assert_eq!(
+            structure_after("unit 1297\nTURN\nENTER 235\nENDTURN\n", "1297"),
+            None,
+            "a TURN block is next month's orders"
+        );
+    }
+
+    #[test]
+    fn a_passenger_that_boards_this_month_follows_the_fleet() {
+        assert_eq!(
+            followed("unit 10575\nsail se\nunit 1297\nENTER 235\n", "1297"),
+            Some(vec![MoveStep::Go(
+                crate::movement::graph::Direction::Southeast
+            )]),
+            "1297 boards the raft 10575 is sailing"
+        );
+    }
+
+    #[test]
+    fn a_passenger_that_leaves_this_month_follows_nothing() {
+        assert_eq!(
+            followed("unit 10575\nsail se\nunit 10594\nLEAVE\n", "10594"),
+            None,
+            "10594 steps ashore before the raft goes"
+        );
+    }
+
+    /// A FORM block's orders belong to the unit being formed, not to the unit whose block holds
+    /// it - the same guard movement already relies on.
+    #[test]
+    fn an_enter_inside_a_form_block_belongs_to_the_formed_unit() {
+        assert_eq!(
+            structure_after("unit 1297\nFORM 1\nENTER 235\nEND\n", "1297"),
+            None,
+            "the ENTER is the new unit's, not 1297's"
+        );
+    }
+
+    /// The game's own parser is case-insensitive, and so is `Token::is`.
+    #[test]
+    fn the_orders_are_read_whatever_their_case() {
+        assert_eq!(
+            structure_after("unit 1297\nenter 235\n", "1297"),
+            Some("235".to_string())
+        );
+        assert_eq!(structure_after("unit 10594\nLeAvE\n", "10594"), None);
+    }
+
+    /// Read exactly as `orders::intents` reads them: an ENTER with anything but one numeric
+    /// argument, or a LEAVE with any argument, is not an order the game has, and moves nobody.
+    #[test]
+    fn an_unreadable_enter_or_leave_leaves_the_unit_where_the_report_found_it() {
+        assert_eq!(structure_after("unit 1297\nENTER 235 X\n", "1297"), None);
+        assert_eq!(structure_after("unit 1297\nENTER shed\n", "1297"), None);
+        assert_eq!(
+            structure_after("unit 10594\nLEAVE 3\n", "10594"),
+            Some("235".to_string())
+        );
+    }
+
+    /// A unit that writes SAIL and then LEAVE still gave the order - the server reads the SAIL
+    /// line before running the LEAVE - so its passengers must still be carried. Asking where the
+    /// captain *ends up* would strand them, which is why `could_captain` is a second predicate.
+    #[test]
+    fn a_captain_that_also_leaves_still_carries_its_passengers() {
+        assert_eq!(
+            followed("unit 10575\nsail se\nLEAVE\n", "10594"),
+            Some(vec![MoveStep::Go(
+                crate::movement::graph::Direction::Southeast
+            )])
         );
     }
 }

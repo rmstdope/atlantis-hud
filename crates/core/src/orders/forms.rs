@@ -144,7 +144,7 @@ fn read_number(token: &Token) -> Option<i64> {
         .flatten()
 }
 
-pub(super) fn read_only_number(tokens: &[Token]) -> Option<i64> {
+pub(crate) fn read_only_number(tokens: &[Token]) -> Option<i64> {
     match tokens {
         [only] => read_number(only),
         _ => None,

@@ -115,6 +115,11 @@ pub fn preview_orders_for_remembered_report(
     // Movement is resolved after everything else, so a renamed or re-equipped unit departs and
     // arrives as the orders leave it, not as the report found it.
     let map = MapKnowledge::from_remembered(&report, &remembered);
+    // Where each unit stands once its own ENTER/LEAVE have run: `entry.unit` is already corrected
+    // (see `Working::visit`), but the map and the aboard set it is compared against are the
+    // report's, so the correction was thrown away one call later. `Working` applies the same
+    // ENTER/LEAVE rule to the unit row, so the two halves of one preview cannot disagree.
+    let ordered = crate::movement::fleet::OrderedUnits::from_document(orders_document);
 
     // Two passes, because a passenger's status depends on another unit's trace: the first decides
     // every unit on its own orders and notes which fleets leave, the second carries the units
@@ -129,7 +134,7 @@ pub fn preview_orders_for_remembered_report(
         let status = if entry.formed {
             UnitPreviewStatus::Formed
         } else if let Some(steps) = &entry.move_steps {
-            match trace_move(&map, &ruleset, &entry.unit, steps) {
+            match trace_move(&map, &ruleset, &entry.unit, steps, Some(&ordered)) {
                 // The first month's end is where the unit stands when the next report is written;
                 // the rest of a longer journey is later months' business.
                 Some(path) => {
@@ -317,6 +322,11 @@ struct WorkingUnit {
     original: Option<ReportUnit>,
     formed: bool,
     move_steps: Option<Vec<crate::movement::orders::MoveStep>>,
+    /// Whether the unit's orders hold an ENTER. Every LEAVE runs before any ENTER whatever order
+    /// the lines were typed in, so once one is seen a later LEAVE cannot put the unit ashore -
+    /// the rule `orders::semantics::structure_after_orders` states and the navigator settled on
+    /// 2026-08-18 (ah-mjy), applied here too so the preview row and the tracer cannot disagree.
+    entered: bool,
 }
 
 impl WorkingUnit {
@@ -408,6 +418,7 @@ impl Working {
                 original: Some(unit.clone()),
                 formed: false,
                 move_steps: None,
+                entered: false,
             });
         }
         Self {
@@ -526,6 +537,7 @@ impl Working {
             original: None,
             formed: true,
             move_steps: None,
+            entered: false,
         });
         self.forming.push(Some(index));
     }
@@ -568,10 +580,11 @@ impl Working {
                 set_flag(&mut self.units[active].unit.flags, "behind", set);
             }
         } else if command.is("enter") {
-            if let Some(structure) = arguments.first() {
-                self.units[active].unit.structure_id = Some(structure.text.clone());
+            if let Some(structure) = super::forms::read_only_number(arguments) {
+                self.units[active].unit.structure_id = Some(structure.to_string());
+                self.units[active].entered = true;
             }
-        } else if command.is("leave") {
+        } else if command.is("leave") && arguments.is_empty() && !self.units[active].entered {
             self.units[active].unit.structure_id = None;
         } else if command.is("give") {
             self.give(active, arguments);
@@ -1139,9 +1152,26 @@ mod tests {
         let entered = preview("unit 900\nENTER 4\n");
         assert_eq!(only_unit(&entered).unit.structure_id.as_deref(), Some("4"));
 
-        // ENTER then LEAVE ends outside, where the report already had it: nothing to say.
-        let left = preview("unit 900\nENTER 4\nLEAVE\n");
+        // Every LEAVE runs before any ENTER, so a block holding both ends *inside* - the rule
+        // `semantics::structure_after_orders` states, settled by the navigator on 2026-08-18
+        // (ah-mjy). This assertion previously read the two in document order and so encoded the
+        // defect: it expected the unit ashore and no row at all.
+        let both = preview("unit 900\nENTER 4\nLEAVE\n");
+        assert_eq!(only_unit(&both).unit.structure_id.as_deref(), Some("4"));
+
+        // A LEAVE on its own does put it ashore, and the report already had it there: nothing to
+        // say.
+        let left = preview("unit 900\nLEAVE\n");
         assert!(left.regions.is_empty(), "{:?}", left.regions);
+    }
+
+    /// An ENTER the game would not read moves nobody: `read_only_number` is the same reader
+    /// `orders::intents` uses, so a stray argument or a non-numeric one leaves the unit alone.
+    #[test]
+    fn an_unreadable_enter_or_leave_moves_nobody() {
+        assert!(preview("unit 900\nENTER 4 X\n").regions.is_empty());
+        assert!(preview("unit 900\nENTER shed\n").regions.is_empty());
+        assert!(preview("unit 900\nLEAVE 3\n").regions.is_empty());
     }
 
     /// The walker abandons an unclosed TURN at the next `unit` line, as the parser and the intents
