@@ -2899,7 +2899,13 @@ export function AppShell({
           a panel. The chips row is marked rather than the strip that holds it: an unmarked
           full-width wrapper would read as covering the map from left to right.
         */}
-        <div className="pointer-events-none absolute inset-x-0 top-2.5 flex justify-center">
+        {/*
+          `z-20`, above the splitters' `z-10`: the chips' own popovers hang below the row, and a
+          panel long enough to reach a splitter had its controls taken by it - the splitter claims
+          pointer events across the full width. How far down the row sits depends on the header's
+          height, so this is not a fixed distance to design around; it is a stacking order.
+        */}
+        <div className="pointer-events-none absolute inset-x-0 top-2.5 z-20 flex justify-center">
           <div data-map-overlay="top">
             <LayerChips levels={model.levels} />
           </div>

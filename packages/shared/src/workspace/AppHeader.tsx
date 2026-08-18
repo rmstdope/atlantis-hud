@@ -248,7 +248,10 @@ export function AppHeader({
       data-testid="app-header"
       onDragOver={(event) => event.preventDefault()}
       onDrop={onDrop}
-      className="flex flex-wrap min-h-9 flex-none items-center gap-x-3.5 border-b border-edge bg-panel px-3 text-pane whitespace-nowrap"
+      // `relative z-30` gives the header a stacking context above the map's own overlays (the chips
+      // row sits at z-20): its popovers hang down over the map, and without this they lose to
+      // anything the map floats, whatever their own z-index says.
+      className="relative z-30 flex flex-wrap min-h-9 flex-none items-center gap-x-3.5 border-b border-edge bg-panel px-3 text-pane whitespace-nowrap"
     >
       {/*
         Game state, grouped so it can wrap internally on a very narrow window without disturbing
