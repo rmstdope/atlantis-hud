@@ -374,7 +374,18 @@ test("orders written before the setting was on are tidied on the first unit open
   await fillOrders(page, "move n\nstudy combat");
   // The reload proves nothing until the draft has actually been written.
   await expect(page.getByTestId("orders-status")).toContainText(/saved \d/u, { timeout: 20_000 });
-  await enableOrderOcd(page);
+
+  // The setting is turned on for the *next* load only, in the persisted store rather than through
+  // the dialog: ticking it here would tidy the mounted editor at once and the reload would then
+  // persist an already-upper-case draft, leaving nothing for the vocabulary to arrive late for.
+  await page.evaluate(() => {
+    const key = "atlantis-hud-settings";
+    const stored = JSON.parse(window.localStorage.getItem(key) ?? '{"state":{},"version":0}') as {
+      state: Record<string, unknown>;
+    };
+    stored.state.orderOcd = true;
+    window.localStorage.setItem(key, JSON.stringify(stored));
+  });
 
   await page.reload();
   await selectHex(page, "1:7,53");
