@@ -75,6 +75,15 @@ function reportDisk(): void {
     encoding: "utf8"
   });
 
+  // Said out loud for the same reason runLeg says it: a preflight that could not start (ENOENT on
+  // tsx) or was killed leaves empty stdout, which would otherwise be reported as the preflight
+  // having nothing to say - hiding the real failure behind a sentence about the disk.
+  if (run.error) {
+    process.stderr.write(`runGate: the disk preflight could not start: ${run.error.message}\n`);
+  } else if (run.signal) {
+    process.stderr.write(`runGate: the disk preflight was killed by signal ${run.signal}\n`);
+  }
+
   const said = (run.stdout ?? "").trim();
   process.stdout.write(said === "" ? "disk: the preflight said nothing.\n" : `${said}\n`);
 }
