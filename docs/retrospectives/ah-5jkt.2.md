@@ -40,17 +40,41 @@ rather than one per agent — worth the navigator's consideration as a change to
 **Seen before.** ah-87he, ah-9r0, ah-9lv, ah-l2i.1, ah-58n.1, ah-8m0.2, ah-vfq, ah-kdgc, ah-1znc,
 ah-vkut — ten files, and this is the eleventh.
 
-## `a folded panel shrinks to its title bar` failed in CI and passed locally, for the fourth time
+## `a folded panel shrinks to its title bar` was not flaky — main had been red for hours and nobody had noticed
 
-**What happened.** `smoke (desktop-shell, 2, 2)` failed on `strip.y` vs `open.y` at
-`workspace.spec.ts:1448`. Locally the same test passed three times out of three with
-`--repeat-each=3`, on the desktop-shell project. One `gh run rerun --failed` was green.
-**Why.** Not established, and three prior implementers did not establish it either. It is a
-sub-pixel geometry assertion at `precision: 0` that only ever fails on the desktop-shell project in
-CI.
-**Cost.** One CI cycle, about eight minutes, plus the local reproduction the flake cap requires.
-**Prevent by.** Four sightings is enough to stop treating it as noise: the assertion wants either a
-tolerance that admits a pixel of rounding, or a wait on the fold transition settling. That is a
-change to a test outside this bead, so it is the navigator's to schedule — but it is now costing
-roughly one CI cycle per bead that touches these panes.
-**Seen before.** ah-l9mp, ah-l2i.3, ah-bwly.2.
+**What happened.** `smoke (desktop-shell, 2, 2)` failed on my PR. Three prior retrospectives
+(ah-l9mp, ah-l2i.3, ah-bwly.2) describe the same test failing in CI and passing locally, so I spent
+both permitted re-runs on it as a flake. It failed again. `gh run list --branch main` then showed
+that **main itself had been failing the same two tests since roughly #469–#471**, including
+`f589c58b`, the commit my branch was cut from. My branch had inherited a red main.
+**Why.** The header gains a row once the loaded report's counts render, and everything under it —
+the map, and the panel column over it — drops by exactly that row, 36px. All three failing tests
+read a panel's box straight after `selectHex`, before that lands on a slow runner, so the baseline
+is a position nothing ever comes back to. `waitForStableHeight` already existed for precisely this
+reason and these tests did not use it.
+**Cost.** Roughly an hour: two wasted re-runs, one wrong fix of my own, and a question to the
+navigator. The three earlier retrospectives cost their implementers a cycle each for the same
+reason, and each concluded "flake, passed on re-run" — which is what a real defect looks like when
+it only fires on a slow runner.
+**Prevent by.** Two things. **A red main is not visible to an implementer**, and it should be: a
+check of `gh run list --branch main --limit 3` before the first CI wait would have found this in
+ten seconds and saved every minute above. Worth a line in `implement-bead`'s *Red CI* section —
+*before treating a failure as yours or as a flake, look at whether main is green*. And **three
+retrospectives naming one test as flaky is evidence it is not**; the re-run cap protects against
+looping on a flake, but nothing currently escalates a symptom seen four times.
+**Seen before.** ah-l9mp, ah-l2i.3, ah-bwly.2 — all three read it as a flake, as I did.
+
+## A `<button>` inside prose is not a drop-in for the text it replaces
+
+**What happened.** The first version of `GameDataLink` used a bare `<button>`. A button is
+`inline-block` and `user-select: none` by default, so in panes made of sentences it changed the
+line boxes around it and made the words unselectable — `a selection dragged out of a pane stays
+inside it` failed in CI because a drag anchored on a linked name selected nothing.
+**Why.** The plan specified `<button type="button">` for keyboard and screen-reader reasons, which
+is right, and neither it nor I thought about what else a button's UA defaults bring with them.
+**Cost.** One CI cycle. Confounded with the red-main failure above, which is what made it hard to
+read.
+**Prevent by.** `inline select-text align-baseline` is on `GAME_DATA_LINK_CLASS` with a comment
+saying why. Any future plan calling for a button inside running text should name those three, or
+say the affordance is a block.
+**Seen before.** none found.
