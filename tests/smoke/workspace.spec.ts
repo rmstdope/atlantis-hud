@@ -2624,7 +2624,9 @@ test("sorting by a column reorders the table, own units still first", async ({ p
   //
   // Scoped to the panel: names match by substring, and the planner's "Movement" strip contains
   // "men" too.
-  const men = page.getByTestId("panel-units").getByRole("button", { name: "Men" });
+  // `exact`, because every header now also carries a reorder grip whose accessible name is
+  // "Move the Men column" - a substring match resolves to both (ah-1owr.3).
+  const men = page.getByTestId("panel-units").getByRole("button", { name: "Men", exact: true });
   await men.click();
   await men.click();
 
@@ -2648,7 +2650,9 @@ test("the ownership toggle releases the own-units-first grouping", async ({ page
   await loadReport(page);
   await selectHex(page, "1:7,53");
 
-  const men = page.getByTestId("panel-units").getByRole("button", { name: "Men" });
+  // `exact`, because every header now also carries a reorder grip whose accessible name is
+  // "Move the Men column" - a substring match resolves to both (ah-1owr.3).
+  const men = page.getByTestId("panel-units").getByRole("button", { name: "Men", exact: true });
   await men.click();
   await men.click();
 
