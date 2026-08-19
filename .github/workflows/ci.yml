@@ -292,6 +292,15 @@ jobs:
     # which is the failure `timeout-minutes` above exists to bound (ah-3c80, four stalls in five
     # days). The tag must match the version in pnpm-lock.yaml; `scripts/playwrightImage.test.ts`
     # fails the gate if they drift (ah-f9q9).
+    #
+    # The cost, measured rather than assumed (ah-vzj9): a job-level container is pulled before any
+    # step gate is evaluated, and this job deliberately always expands its matrix so the four
+    # required contexts always report (ah-2m2). So a prose-only PR pulls the image in all four
+    # shards and then skips every step. Two one-file docs-only PRs either side of the change - a
+    # sample of two, #461 and #467 - went from 21s to 135s of runner time across the four shards,
+    # about 37s more wall-clock since they run in parallel. Weighed against a step that ran on
+    # every code PR, hit or miss, and stalled 25-55 minutes four times in five days (ah-3c80), and
+    # kept.
     container: mcr.microsoft.com/playwright:v1.62.1-noble
     strategy:
       fail-fast: false
@@ -361,7 +370,9 @@ jobs:
     # The libraries Playwright links against are baked into this image, so no apt runs here at all -
     # which is the failure `timeout-minutes` above exists to bound (ah-3c80, four stalls in five
     # days). The tag must match the version in pnpm-lock.yaml; `scripts/playwrightImage.test.ts`
-    # fails the gate if they drift (ah-f9q9).
+    # fails the gate if they drift (ah-f9q9). What a job-level container costs on the docs path is
+    # measured on `smoke` above (ah-vzj9); this job is skipped outright on a prose-only PR, so it
+    # pays none of it.
     container: mcr.microsoft.com/playwright:v1.62.1-noble
     steps:
       - name: Checkout
