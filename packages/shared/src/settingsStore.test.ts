@@ -357,6 +357,21 @@ describe("settings store", () => {
     expect(store().paneTransparency).toEqual({ dark: 65, light: 0 });
   });
 
+  it("falls back to each theme's own default when its stored value is unreadable", () => {
+    // Not one shared fallback: an unreadable light value must land on light's default of 0, or a
+    // corrupt blob would quietly put a light user back on see-through panes below AA.
+    useSettingsStore.setState({
+      paneTransparency: { dark: "nonsense", light: "nonsense" } as unknown as Record<
+        ThemeName,
+        number
+      >
+    });
+
+    applyPersistedSettings();
+
+    expect(store().paneTransparency).toEqual({ dark: 20, light: 0 });
+  });
+
   it("completes a half-written transparency record from the defaults", () => {
     useSettingsStore.setState({ paneTransparency: { dark: 40 } as Record<ThemeName, number> });
 

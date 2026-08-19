@@ -176,12 +176,18 @@ function knownMapTheme(id: string): string {
   return isMapThemeId(id) ? id : DEFAULT_MAP_THEME_ID;
 }
 
-function clampTransparency(percent: number): number {
+function clampTransparency(
+  percent: number,
+  // The themes do not share a default, so they cannot share a fallback either: an unreadable
+  // light value must land on light's 0, or a corrupt blob quietly puts a light user back on
+  // see-through panes below AA.
+  fallback: number = DEFAULT_PANE_TRANSPARENCY.dark
+): number {
   // Coerced before the finite check: storage is hand-editable and other writers exist, so the
   // "number" rehydrated into state can arrive as its string form.
   const numeric = Number(percent);
   if (!Number.isFinite(numeric)) {
-    return DEFAULT_PANE_TRANSPARENCY.dark;
+    return fallback;
   }
   return Math.min(95, Math.max(0, Math.round(numeric)));
 }
@@ -196,7 +202,10 @@ function clampTransparency(percent: number): number {
  */
 function reconcilePaneTransparency(stored: unknown): Record<ThemeName, number> {
   if (typeof stored === "number" || typeof stored === "string") {
-    return { dark: clampTransparency(stored as number), light: DEFAULT_PANE_TRANSPARENCY.light };
+    return {
+      dark: clampTransparency(stored as number, DEFAULT_PANE_TRANSPARENCY.dark),
+      light: DEFAULT_PANE_TRANSPARENCY.light
+    };
   }
   if (stored && typeof stored === "object" && !Array.isArray(stored)) {
     const record = stored as Partial<Record<ThemeName, unknown>>;
@@ -204,11 +213,11 @@ function reconcilePaneTransparency(stored: unknown): Record<ThemeName, number> {
       dark:
         record.dark === undefined
           ? DEFAULT_PANE_TRANSPARENCY.dark
-          : clampTransparency(record.dark as number),
+          : clampTransparency(record.dark as number, DEFAULT_PANE_TRANSPARENCY.dark),
       light:
         record.light === undefined
           ? DEFAULT_PANE_TRANSPARENCY.light
-          : clampTransparency(record.light as number)
+          : clampTransparency(record.light as number, DEFAULT_PANE_TRANSPARENCY.light)
     };
   }
   return { ...DEFAULT_PANE_TRANSPARENCY };
