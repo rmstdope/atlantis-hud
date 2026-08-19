@@ -163,19 +163,21 @@ export function railWidthStyle(widthRem: number | null): { width: string } | nul
  * `docs/ui/units-pane-drag-resize.html`: twelve rows by default (what the old row count gave),
  * one row as the floor, never more than seven tenths of the map column.
  *
- * 22.25rem = 356px: title bar 28 + body padding 16 + column header 24 + 12 rows × 24 (ROW_HEIGHT).
- * 5.75rem = 92px: the same with one row.
+ * 20.625rem = 330px: title bar 28 + body padding 16 + column header 24 + eleven and a half rows
+ * of 24 (ROW_HEIGHT). It was exactly twelve rows until ah-v09e took ROW_HEIGHT from 22 to 24 for
+ * the taller pane type, and it deliberately stayed where it was rather than growing with them: at
+ * a 720px window the extra 26px squeezes the right-hand column until the folded panels' own title
+ * bars stop taking clicks, and the pane is draggable anyway. Half a row is a cheaper price.
  *
- * Both went up with ROW_HEIGHT when the pane type scale did (ah-v09e). The default is defined as
- * twelve rows, so it has to follow the rows; leaving it at 330px would have shown eleven and a
- * half of them.
+ * 5.75rem = 92px: title bar 28 + body padding 16 + column header 24 + one row of 24. This one did
+ * follow ROW_HEIGHT, because a floor that cannot fit its single row is just a clipped row.
  */
-export const UNITS_DEFAULT_REM = 22.25;
+export const UNITS_DEFAULT_REM = 20.625;
 export const UNITS_MIN_REM = 5.75;
 export const UNITS_MAX_REM = 60; // sanity ceiling for stored values only
 export const UNITS_CEILING_FRACTION = 0.7;
 
-const PINNED_UNITS = "h-[22.25rem] max-h-[70%] min-h-[5.75rem] flex-none";
+const PINNED_UNITS = "h-[20.625rem] max-h-[70%] min-h-[5.75rem] flex-none";
 const CUSTOM_UNITS = "min-h-[5.75rem] flex-none";
 
 /** null unless a finite number; otherwise clamped into [UNITS_MIN_REM, UNITS_MAX_REM]. */
