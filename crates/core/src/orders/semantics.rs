@@ -431,23 +431,14 @@ impl Ordered<'_> {
 
     /// Whether the unit's month is already spoken for by something other than teaching.
     ///
-    /// Teaching is itself a full-month order, so a unit doing anything else with its month cannot
-    /// be offered as a spare teacher. Getting this wrong is not a small matter: without it, every
-    /// unit in a hex where fifteen units all study is a candidate teacher for all the others, and
-    /// one hex of turn 71 produced twenty-nine findings that were all the same non-observation.
+    /// Teaching is itself a full-month order, so a unit that also does something else with its
+    /// month has written an impossible turn, and its teaching slots are not worth offering. Since
+    /// ah-vw63 this only ever sees units that actually TEACH, so every other order is classified
+    /// by `spends_the_month` - CAST included, which the rules say leaves the month free. Teaching
+    /// itself is excluded here because it is the very thing being weighed.
     fn is_busy(&self) -> bool {
-        self.intents().any(|intent| match intent {
-            // Teaching is what the spare-teacher check is about, so it never counts here. This is
-            // the exclusion the doc comment above has always described.
-            Intent::Teach { .. } => false,
-            // CAST leaves the month free by the rules, and `spends_the_month` says so - but this
-            // check has always counted it, and following the rules here would add spare-teacher
-            // findings on every casting mage. ah-dwk6 was not asked to change that warning.
-            // `ah-vw63` narrows this check to units that actually TEACH, and when it lands this
-            // arm should go and CAST should be classified by the rules in both places.
-            Intent::Cast { .. } | Intent::MonthLong("CAST") => true,
-            other => spends_the_month(other),
-        })
+        self.intents()
+            .any(|intent| spends_the_month(intent) && !matches!(intent, Intent::Teach { .. }))
     }
 
     fn skill_level(&self, tag: &str) -> u32 {
@@ -1371,7 +1362,7 @@ fn describe_level(level: u32) -> String {
     }
 }
 
-/// The issue's own example: a teacher with slots going spare while somebody studies untaught.
+/// A unit that actually teaches, with slots going spare while somebody in its hex studies untaught.
 ///
 /// At most one finding per teacher, however many students it could take. A finding per pairing is
 /// a cross-product, and in a hex full of soldiers all learning the same skill that is dozens of
@@ -1388,7 +1379,27 @@ fn offer_free_slots(
         return;
     }
     let Some(ruleset) = ruleset else { return };
-    // Teaching takes the whole month, so a unit spending its month otherwise is not free to teach.
+
+    // Only a unit that actually wrote a TEACH order this month. Before ah-vw63 this ran for every
+    // unit in the hex, so a unit that was never asked to teach was told it had teaching slots
+    // free - and the idle-skilled-unit case this check was invented for is now ah-dwk6's
+    // `unit-does-nothing`, on the same unit and in the same list.
+    if !teacher
+        .intents()
+        .any(|intent| matches!(intent, Intent::Teach { .. }))
+    {
+        return;
+    }
+
+    // A TEACH naming nobody this hex holds is already reported as `taught-not-here`, and its slots
+    // are free only as a consequence of that mistake. One mistake, marked once.
+    if !teaches_somebody_here(teacher, hex) {
+        return;
+    }
+
+    // Teaching takes the whole month, so a unit spending its month otherwise is not free to teach:
+    // a unit writing both TEACH and WORK has an impossible month, and offering its slots would be
+    // advice about a turn nobody is playing.
     if teacher.is_busy() {
         return;
     }
@@ -1432,7 +1443,7 @@ fn offer_free_slots(
             hex,
             codes::TEACHER_HAS_FREE_SLOTS,
             format!(
-                "this unit has {free} teaching slots free and could teach unit {}{and_others}",
+                "has {free} teaching slots still free and could also teach unit {}{and_others}",
                 first.unit.unit_id,
             ),
             teacher
@@ -1441,6 +1452,26 @@ fn offer_free_slots(
                 .find(|placed| matches!(placed.intent, Intent::Teach { .. })),
         ),
     );
+}
+
+/// Whether this unit's TEACH orders name at least one unit the hex can resolve.
+///
+/// `Party::New`, `Party::Foreign` and `Party::Discard` never resolve: a unit formed this month has
+/// no number yet, and another faction's unit is not ours to read. Those are doubt, not students.
+/// A student that marches out of the hex does not resolve either - `check_one_teacher` reads it
+/// the same way and already reports it as `taught-not-here`.
+fn teaches_somebody_here(teacher: &Ordered<'_>, hex: &Hex<'_>) -> bool {
+    teacher
+        .intents()
+        .filter_map(|intent| match intent {
+            Intent::Teach { students } => Some(students),
+            _ => None,
+        })
+        .flatten()
+        .any(|student| match student {
+            Party::Unit(id) => hex.find(id).is_some_and(|pupil| !pupil.leaves_the_hex()),
+            _ => false,
+        })
 }
 
 /// How many student-men a teacher has already taken on.
@@ -1456,6 +1487,9 @@ fn taught_by(teacher: &Ordered<'_>, hex: &Hex<'_>) -> i64 {
             Party::Unit(id) => hex.find(id),
             _ => None,
         })
+        // A student that marches off is taught by nobody, so it holds no slot - the same reading
+        // `could_take` and `check_one_teacher` take of a departing pupil.
+        .filter(|pupil| !pupil.leaves_the_hex())
         .map(|pupil| pupil.unit.men)
         .sum()
 }
@@ -3401,25 +3435,6 @@ mod tests {
         );
     }
 
-    /// `Intent::Cast` must join `Ordered::is_busy`'s `MonthLong` set, or a casting mage is offered
-    /// as somebody's spare teacher - the reason CAST was `MonthLong` in the first place.
-    #[test]
-    fn a_caster_is_not_a_spare_teacher() {
-        let units = vec![
-            with_skill(with_men(with_silver(unit("500"), 1000), 3), "COMB", 3),
-            with_men(with_silver(unit("700"), 1000), 2),
-        ];
-
-        assert_eq!(
-            check(
-                vec![region(units)],
-                "unit 500\nCAST Fire\nunit 700\nSTUDY combat\n"
-            ),
-            vec![],
-            "unit 500 is casting, so it has no month left to teach in"
-        );
-    }
-
     // --- items other than silver ------------------------------------------------------------
 
     #[test]
@@ -4095,23 +4110,219 @@ mod tests {
         );
     }
 
-    /// The issue's own example: a teacher with slots to spare while somebody in the hex studies
-    /// untaught.
+    /// A unit that actually teaches, with slots left over while somebody else in the hex studies
+    /// untaught. Before ah-vw63 this test's teacher had no orders at all - which is exactly the
+    /// case the check was warning about wrongly.
     #[test]
     fn a_teacher_with_free_slots_beside_an_untaught_student_is_pointed_out() {
         let units = vec![
             with_skill(with_men(with_silver(unit("500"), 1000), 3), "COMB", 3),
             with_men(with_silver(unit("700"), 1000), 2),
+            with_men(with_silver(unit("900"), 1000), 2),
         ];
 
-        // Unit 500 has been given nothing to do, so its month is free to teach in.
-        let finding = only(check(vec![region(units)], "unit 700\nSTUDY combat\n"));
+        let finding = only(check(
+            vec![region(units)],
+            "unit 500\nTEACH 700\nunit 700\nSTUDY combat\nunit 900\nSTUDY combat\n",
+        ));
         assert_eq!(finding.code.as_str(), "teacher-has-free-slots");
         assert_eq!(finding.unit_id.as_deref(), Some("500"));
+        assert_eq!(
+            finding.message,
+            "has 28 teaching slots still free and could also teach unit 900"
+        );
+    }
+
+    /// The reported defect: a unit with no orders at all was told it had teaching slots free.
+    /// Being idle is `unit-does-nothing`'s observation, on the same unit and in the same list.
+    #[test]
+    fn a_unit_that_is_not_teaching_is_not_offered_as_a_teacher() {
+        let units = vec![
+            with_skill(with_men(with_silver(unit("500"), 1000), 3), "COMB", 3),
+            with_men(with_silver(unit("700"), 1000), 2),
+        ];
+
+        assert_eq!(
+            check(vec![region(units)], "unit 700\nSTUDY combat\n"),
+            vec![],
+            "unit 500 was never asked to teach, so it has no free teaching slots to report"
+        );
+    }
+
+    /// Not-teaching is the rule, not idleness: a unit with a month to spare that is doing
+    /// something other than teaching is still not a teacher.
+    #[test]
+    fn a_unit_that_gives_but_does_not_teach_is_not_offered() {
+        let units = vec![
+            with_skill(with_men(with_silver(unit("500"), 1000), 3), "COMB", 3),
+            with_men(with_silver(unit("700"), 1000), 2),
+        ];
+
+        assert_eq!(
+            check(
+                vec![region(units)],
+                "unit 500\nGIVE 700 100 silver\nunit 700\nSTUDY combat\n"
+            ),
+            vec![],
+            "giving leaves the month free, but unit 500 still teaches nobody"
+        );
+    }
+
+    /// A TEACH naming a unit this hex cannot resolve is already `taught-not-here`, and the free
+    /// slots exist only as a consequence of that one mistake. Marked once.
+    #[test]
+    fn a_teacher_whose_only_student_is_not_here_is_not_told_about_free_slots() {
+        let units = vec![
+            with_skill(with_men(with_silver(unit("500"), 1000), 3), "COMB", 3),
+            with_men(with_silver(unit("700"), 1000), 2),
+        ];
+
+        assert_eq!(
+            codes(&check(
+                vec![region(units)],
+                "unit 500\nTEACH 9999\nunit 700\nSTUDY combat\n"
+            )),
+            ["taught-not-here"]
+        );
+    }
+
+    /// A student that leaves the hex takes no slots with it, so it must not be subtracted from
+    /// what the teacher has free - `could_take` and `check_one_teacher` both read it that way.
+    #[test]
+    fn slots_held_by_a_student_that_leaves_the_hex_are_still_free() {
+        let units = vec![
+            with_skill(with_men(with_silver(unit("500"), 1000), 1), "COMB", 3),
+            with_men(with_silver(unit("700"), 1000), 8),
+            with_men(with_silver(unit("800"), 1000), 2),
+            with_men(with_silver(unit("900"), 1000), 2),
+        ];
+
+        let findings = check(
+            vec![region(units)],
+            "unit 500\nTEACH 700 800\nunit 700\nSTUDY combat\nunit 800\nSTUDY combat\nMOVE N\nunit 900\nSTUDY combat\n",
+        );
+        let spare = findings
+            .iter()
+            .find(|finding| finding.code.as_str() == "teacher-has-free-slots")
+            .expect("the teacher still has slots to offer");
+        assert_eq!(
+            spare.message, "has 2 teaching slots still free and could also teach unit 900",
+            "unit 800 marches off, so its two men hold no slots: {findings:?}"
+        );
+    }
+
+    /// A student that marches out of the hex is `taught-not-here` and nothing else - the same one
+    /// mistake, marked once.
+    #[test]
+    fn a_teacher_whose_only_student_leaves_the_hex_is_not_told_about_free_slots() {
+        let units = vec![
+            with_skill(with_men(with_silver(unit("500"), 1000), 3), "COMB", 3),
+            with_men(with_silver(unit("700"), 1000), 2),
+            with_men(with_silver(unit("900"), 1000), 2),
+        ];
+
+        assert_eq!(
+            codes(&check(
+                vec![region(units)],
+                "unit 500\nTEACH 700\nunit 700\nSTUDY combat\nMOVE N\nunit 900\nSTUDY combat\n"
+            )),
+            ["taught-not-here"]
+        );
+    }
+
+    /// One resolvable student means the TEACH order is real, so the slots going spare are a
+    /// separate fact and both findings stand.
+    #[test]
+    fn a_teacher_with_one_absent_student_and_one_real_one_is_still_told_about_free_slots() {
+        let units = vec![
+            with_skill(with_men(with_silver(unit("500"), 1000), 3), "COMB", 3),
+            with_men(with_silver(unit("700"), 1000), 2),
+            with_men(with_silver(unit("900"), 1000), 2),
+        ];
+
+        let findings = check(
+            vec![region(units)],
+            "unit 500\nTEACH 700 9999\nunit 700\nSTUDY combat\nunit 900\nSTUDY combat\n",
+        );
+        let mut found = codes(&findings);
+        found.sort_unstable();
+        assert_eq!(found, ["taught-not-here", "teacher-has-free-slots"]);
+    }
+
+    /// A unit formed this month has no number yet, so `TEACH NEW 1` never resolves to a student
+    /// the hex holds.
+    #[test]
+    fn a_teacher_naming_only_a_new_unit_is_not_told_about_free_slots() {
+        let units = vec![
+            with_skill(with_men(with_silver(unit("500"), 1000), 3), "COMB", 3),
+            with_men(with_silver(unit("700"), 1000), 2),
+        ];
+
         assert!(
-            finding.message.contains("700") && finding.message.contains("30"),
-            "it names the student and the slots going spare: {}",
-            finding.message
+            !codes(&check(
+                vec![region(units)],
+                "unit 500\nFORM 1\nEND\nTEACH NEW 1\nunit 700\nSTUDY combat\n"
+            ))
+            .contains(&"teacher-has-free-slots"),
+            "a NEW unit is doubt, not a student this hex can resolve"
+        );
+    }
+
+    /// CAST is not a full-month order by the rules, so a mage that casts and teaches genuinely
+    /// has teaching slots. Before ah-vw63 `is_busy` counted CAST as busy to keep this check off
+    /// every casting mage; requiring a TEACH order does that job instead.
+    #[test]
+    fn a_mage_that_casts_and_teaches_is_offered_its_free_slots() {
+        let units = vec![
+            with_skill(with_men(with_silver(unit("500"), 1000), 3), "COMB", 3),
+            with_men(with_silver(unit("700"), 1000), 2),
+            with_men(with_silver(unit("900"), 1000), 2),
+        ];
+
+        let finding = only(check(
+            vec![region(units)],
+            "unit 500\nCAST Fire\nTEACH 700\nunit 700\nSTUDY combat\nunit 900\nSTUDY combat\n",
+        ));
+        assert_eq!(finding.code.as_str(), "teacher-has-free-slots");
+        assert_eq!(finding.unit_id.as_deref(), Some("500"));
+    }
+
+    /// `free <= 0`: a teacher with every slot taken has nothing spare to offer.
+    #[test]
+    fn a_teacher_with_every_slot_taken_is_silent() {
+        let units = vec![
+            with_skill(with_men(with_silver(unit("500"), 1000), 1), "COMB", 3),
+            with_men(with_silver(unit("700"), 1000), 10),
+            with_men(with_silver(unit("900"), 1000), 2),
+        ];
+
+        assert_eq!(
+            check(
+                vec![region(units)],
+                "unit 500\nTEACH 700\nunit 700\nSTUDY combat\nunit 900\nSTUDY combat\n"
+            ),
+            vec![],
+            "one man teaches ten students, and all ten slots are spoken for"
+        );
+    }
+
+    /// The hex-wide `taught` set: a student somebody else already teaches is not offered again.
+    #[test]
+    fn a_teacher_whose_students_are_all_taught_by_others_is_silent() {
+        let units = vec![
+            with_skill(with_men(with_silver(unit("500"), 1000), 3), "COMB", 3),
+            with_skill(with_men(with_silver(unit("600"), 1000), 3), "COMB", 3),
+            with_men(with_silver(unit("700"), 1000), 2),
+            with_men(with_silver(unit("900"), 1000), 2),
+        ];
+
+        assert_eq!(
+            check(
+                vec![region(units)],
+                "unit 500\nTEACH 700\nunit 600\nTEACH 900\nunit 700\nSTUDY combat\nunit 900\nSTUDY combat\n"
+            ),
+            vec![],
+            "every student in the hex already has a teacher"
         );
     }
 
@@ -4130,7 +4341,7 @@ mod tests {
         assert_eq!(
             check(
                 vec![region(units)],
-                "unit 500\nSTUDY combat\nunit 700\nSTUDY combat\n"
+                "unit 500\nTEACH 700\nSTUDY combat\nunit 700\nSTUDY combat\n"
             ),
             vec![],
             "unit 500 is studying, so it has no month left to teach in"
@@ -4150,7 +4361,7 @@ mod tests {
         assert_eq!(
             check_ignoring_empty_builds(
                 vec![region(units)],
-                "unit 500\nBUILD\nunit 700\nSTUDY combat\n"
+                "unit 500\nTEACH 700\nBUILD\nunit 700\nSTUDY combat\n"
             ),
             vec![],
             "unit 500 is building, so it has no month left to teach in"
@@ -4169,11 +4380,11 @@ mod tests {
 
         let finding = only(check(
             vec![region(units)],
-            "unit 700\nSTUDY combat\nunit 800\nSTUDY combat\nunit 900\nSTUDY combat\n",
+            "unit 500\nTEACH 700\nunit 700\nSTUDY combat\nunit 800\nSTUDY combat\nunit 900\nSTUDY combat\n",
         ));
         assert_eq!(finding.code.as_str(), "teacher-has-free-slots");
         assert!(
-            finding.message.contains("2 others"),
+            finding.message.contains("1 other"),
             "the rest are counted rather than listed: {}",
             finding.message
         );
@@ -5595,8 +5806,12 @@ mod tests {
             ),
             (
                 codes::TEACHER_HAS_FREE_SLOTS,
-                vec![region(teaching_hex())],
-                "unit 700\nSTUDY combat\n",
+                vec![region(vec![
+                    with_skill(with_men(with_silver(unit("500"), 1000), 3), "COMB", 3),
+                    with_men(with_silver(unit("700"), 1000), 2),
+                    with_men(with_silver(unit("900"), 1000), 2),
+                ])],
+                "unit 500\nTEACH 700\nunit 700\nSTUDY combat\nunit 900\nSTUDY combat\n",
                 None,
             ),
             (

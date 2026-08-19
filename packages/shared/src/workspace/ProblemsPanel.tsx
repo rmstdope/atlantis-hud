@@ -1,5 +1,11 @@
 import type { HexFindings } from "../orderEditor";
-import { POPOVER_BODY_MAX_H, PROBLEM_CARD, ProblemWho, SeverityMark } from "./primitives";
+import {
+  POPOVER_BODY_MAX_H,
+  PROBLEM_CARD,
+  ProblemMessage,
+  ProblemWho,
+  SeverityMark
+} from "./primitives";
 import { PopoverFrame } from "./popover";
 
 /**
@@ -18,13 +24,19 @@ export function ProblemsPanel({
   hexes,
   labelFor,
   onSelectHex,
-  onDismiss
+  onDismiss,
+  known,
+  onSelectUnit
 }: {
   hexes: HexFindings[];
   /** How a hex reads in the interface, for instance `mountain (7,53)`. */
   labelFor: (regionId: string) => string;
   onSelectHex: (regionId: string) => void;
   onDismiss: () => void;
+  /** The unit ids the loaded turn describes, so only a unit that can be reached becomes a button. */
+  known?: ReadonlySet<string>;
+  /** Go and look at a unit. The caller closes this popover, since it is the one that opened it. */
+  onSelectUnit?: (unitId: string) => void;
 }) {
   const total = hexes.reduce((count, hex) => count + hex.findings.length, 0);
 
@@ -78,8 +90,18 @@ export function ProblemsPanel({
                   className="flex gap-1.5 border-t border-edge-soft px-1.5 py-0.5 first:border-t-0"
                 >
                   <SeverityMark severity={finding.severity} />
-                  <ProblemWho unitId={finding.unitId} />
-                  <span className="text-ink">{finding.message}</span>
+                  <ProblemWho
+                    unitId={finding.unitId}
+                    known={known}
+                    onSelectUnit={onSelectUnit}
+                  />
+                  <span className="text-ink">
+                    <ProblemMessage
+                      message={finding.message}
+                      known={known}
+                      onSelectUnit={onSelectUnit}
+                    />
+                  </span>
                 </li>
               ))}
             </ul>

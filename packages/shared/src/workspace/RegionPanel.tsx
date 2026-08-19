@@ -7,6 +7,7 @@ import {
   Absent,
   Field,
   PROBLEM_CARD,
+  ProblemMessage,
   ProblemWho,
   Row,
   Section,
@@ -30,7 +31,9 @@ export function RegionPanel({
   problems = [],
   client,
   game,
-  turn
+  turn,
+  known,
+  onSelectUnit
 }: {
   hex: HexNode | null;
   /**
@@ -53,6 +56,15 @@ export function RegionPanel({
   client: CoreClient;
   game: OpenedGame | null;
   turn: number | null;
+  /** The unit ids the loaded turn describes, so only a unit that can be reached becomes a button. */
+  known?: ReadonlySet<string>;
+  /**
+   * Go and look at a unit named in a problem.
+   *
+   * Threaded from `AppShell` rather than read from the store: the unit-to-region lookup lives in
+   * `AppShell`'s `unitRegions` memo, so there is nothing in the store to read.
+   */
+  onSelectUnit?: (unitId: string) => void;
 }) {
   const stale = hex?.knowledge === "stale";
   const asOf = stale && hex.lastSeenTurn !== null ? `as of turn ${hex.lastSeenTurn}` : null;
@@ -93,7 +105,7 @@ export function RegionPanel({
         <StaleBanner lastSeenTurn={hex.lastSeenTurn} ageInTurns={hex.ageInTurns ?? 0} />
       ) : null}
 
-      <Problems problems={problems} />
+      <Problems problems={problems} known={known} onSelectUnit={onSelectUnit} />
 
       <p className="m-0 mb-2">
         in {hex.province}
@@ -241,7 +253,15 @@ function RegionProblemsToggle({ count }: { count: number }) {
  * Hidden while `regionProblemsShown` is off - the header chip stays put and keeps the count, so
  * the diagnostics are put away rather than lost.
  */
-function Problems({ problems }: { problems: OrderDiagnostic[] }) {
+function Problems({
+  problems,
+  known,
+  onSelectUnit
+}: {
+  problems: OrderDiagnostic[];
+  known?: ReadonlySet<string>;
+  onSelectUnit?: (unitId: string) => void;
+}) {
   const shown = useWorkspaceStore((state) => state.regionProblemsShown);
 
   if (problems.length === 0 || !shown) {
@@ -259,8 +279,14 @@ function Problems({ problems }: { problems: OrderDiagnostic[] }) {
             className="flex gap-1.5 border-t border-edge-soft px-1.5 py-0.5 first:border-t-0"
           >
             <SeverityMark severity={problem.severity} />
-            <ProblemWho unitId={problem.unitId} />
-            <span className="text-ink">{problem.message}</span>
+            <ProblemWho unitId={problem.unitId} known={known} onSelectUnit={onSelectUnit} />
+            <span className="text-ink">
+              <ProblemMessage
+                message={problem.message}
+                known={known}
+                onSelectUnit={onSelectUnit}
+              />
+            </span>
           </li>
         ))}
       </ul>
