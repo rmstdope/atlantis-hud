@@ -6,6 +6,7 @@ import {
   resetSettingsStore,
   useSettingsStore
 } from "./settingsStore";
+import type { ThemeName } from "./settingsStore";
 import { DEFAULT_MAP_THEME_ID, MAP_THEMES } from "./workspace/mapThemes";
 
 const store = () => useSettingsStore.getState();
@@ -230,7 +231,7 @@ describe("settings store", () => {
     // 20, not 90 (ah-v09e): at 90 the panes were painted at 10% opacity and the app's text sat on
     // live terrain, below AA over most of the map. theme.css's `--pane-transparency` fallback
     // must carry the same number, or the first frame paints differently from every one after it.
-    expect(store().paneTransparency).toBe(20);
+    expect(store().paneTransparency.dark).toBe(20);
   });
 
   it("stamps the chosen pane transparency onto the document root", () => {
@@ -238,7 +239,45 @@ describe("settings store", () => {
 
     store().setPaneTransparency(40);
 
-    expect(store().paneTransparency).toBe(40);
+    expect(store().paneTransparency.dark).toBe(40);
+    expect(stub.documentElement.style.properties["--pane-transparency"]).toBe("40");
+  });
+
+  /**
+   * Light mode cannot afford see-through panes: dark ink over a light pane over the map fails AA
+   * across the terrain sweep, so light defaults to opaque while dark stays at 20 (ah-j1xd). One
+   * number could not express that, so each theme remembers its own.
+   */
+  it("keeps the pane transparency per theme", () => {
+    store().setPaneTransparency(40);
+    expect(store().paneTransparency.dark).toBe(40);
+    expect(store().paneTransparency.light).toBe(0);
+
+    store().setTheme("light");
+    store().setPaneTransparency(15);
+    expect(store().paneTransparency.light).toBe(15);
+    expect(store().paneTransparency.dark).toBe(40);
+
+    store().setTheme("dark");
+    expect(store().paneTransparency.dark).toBe(40);
+  });
+
+  /**
+   * The easiest thing here to miss: nothing re-stamped `--pane-transparency` on a theme change,
+   * because there used to be one value for both themes. Without this the panes stay painted at
+   * the other theme's value until something else happens to stamp, which reads as the setting
+   * being ignored at random.
+   */
+  it("repaints the panes when the theme changes", () => {
+    const stub = installDocumentStub();
+
+    store().setPaneTransparency(40);
+    expect(stub.documentElement.style.properties["--pane-transparency"]).toBe("40");
+
+    store().setTheme("light");
+    expect(stub.documentElement.style.properties["--pane-transparency"]).toBe("0");
+
+    store().setTheme("dark");
     expect(stub.documentElement.style.properties["--pane-transparency"]).toBe("40");
   });
 
@@ -248,14 +287,14 @@ describe("settings store", () => {
    */
   it("clamps the transparency to what the slider offers, 0 to 95", () => {
     store().setPaneTransparency(150);
-    expect(store().paneTransparency).toBe(95);
+    expect(store().paneTransparency.dark).toBe(95);
 
     store().setPaneTransparency(-10);
-    expect(store().paneTransparency).toBe(0);
+    expect(store().paneTransparency.dark).toBe(0);
 
     // A fraction rounds rather than stamping a long decimal into the CSS.
     store().setPaneTransparency(33.4);
-    expect(store().paneTransparency).toBe(33);
+    expect(store().paneTransparency.dark).toBe(33);
   });
 
   it("applies the persisted pane transparency at startup", () => {
@@ -273,25 +312,84 @@ describe("settings store", () => {
    * another. Startup must reconcile both sides, not just the CSS.
    */
   it("sanitizes a persisted transparency from outside the range, state and stamp alike", () => {
-    useSettingsStore.setState({ paneTransparency: 150 });
+    useSettingsStore.setState({ paneTransparency: { dark: 150, light: 0 } });
     const stub = installDocumentStub();
 
     applyPersistedSettings();
 
-    expect(store().paneTransparency).toBe(95);
+    expect(store().paneTransparency.dark).toBe(95);
     expect(stub.documentElement.style.properties["--pane-transparency"]).toBe("95");
   });
 
   it("reads a persisted transparency that storage kept as a string", () => {
     // JSON round-trips preserve numbers, but storage is hand-editable and other writers exist.
-    useSettingsStore.setState({ paneTransparency: "40" as unknown as number });
+    useSettingsStore.setState({
+      paneTransparency: { dark: "40", light: 0 } as unknown as Record<ThemeName, number>
+    });
     const stub = installDocumentStub();
 
     applyPersistedSettings();
 
-    expect(store().paneTransparency).toBe(40);
+    expect(store().paneTransparency.dark).toBe(40);
     expect(stub.documentElement.style.properties["--pane-transparency"]).toBe("40");
   });
+
+  /**
+   * Before ah-j1xd this was a single number shared by both themes, and it is persisted - so every
+   * existing profile has a number where the code now wants a record. Left unreconciled,
+   * `paneTransparency[theme]` is `undefined`, `String(undefined)` reaches the custom property and
+   * `.bg-pane`'s calc() produces nothing at all: panes with no background. A fresh profile never
+   * hits it, which is why only this test can.
+   */
+  it("keeps a stored transparency number as the dark theme's value", () => {
+    useSettingsStore.setState({ paneTransparency: 65 as unknown as Record<ThemeName, number> });
+
+    applyPersistedSettings();
+
+    expect(store().paneTransparency).toEqual({ dark: 65, light: 0 });
+  });
+
+  it("coerces a stored transparency number that storage kept as a string", () => {
+    useSettingsStore.setState({ paneTransparency: "65" as unknown as Record<ThemeName, number> });
+
+    applyPersistedSettings();
+
+    expect(store().paneTransparency).toEqual({ dark: 65, light: 0 });
+  });
+
+  it("falls back to each theme's own default when its stored value is unreadable", () => {
+    // Not one shared fallback: an unreadable light value must land on light's default of 0, or a
+    // corrupt blob would quietly put a light user back on see-through panes below AA.
+    useSettingsStore.setState({
+      paneTransparency: { dark: "nonsense", light: "nonsense" } as unknown as Record<
+        ThemeName,
+        number
+      >
+    });
+
+    applyPersistedSettings();
+
+    expect(store().paneTransparency).toEqual({ dark: 20, light: 0 });
+  });
+
+  it("completes a half-written transparency record from the defaults", () => {
+    useSettingsStore.setState({ paneTransparency: { dark: 40 } as Record<ThemeName, number> });
+
+    applyPersistedSettings();
+
+    expect(store().paneTransparency).toEqual({ dark: 40, light: 0 });
+  });
+
+  it.each([[null], [[]], ["x"], [true]])(
+    "falls back to both defaults when the stored transparency is %s",
+    (stored) => {
+      useSettingsStore.setState({ paneTransparency: stored as unknown as Record<ThemeName, number> });
+
+      applyPersistedSettings();
+
+      expect(store().paneTransparency).toEqual({ dark: 20, light: 0 });
+    }
+  );
 
   it("defaults the interface size to 100 percent", () => {
     expect(store().interfaceSize).toBe(100);
@@ -415,7 +513,7 @@ describe("settings store", () => {
 
     resetSettingsStore();
 
-    expect(store().paneTransparency).toBe(20);
+    expect(store().paneTransparency).toEqual({ dark: 20, light: 0 });
     expect(stub.documentElement.style.properties["--pane-transparency"]).toBe("20");
   });
 
@@ -534,7 +632,7 @@ describe("settings store", () => {
 
     // The transparency is the control: it proves the older blob was read at all, so the answer
     // below is the absent key being answered rather than storage being ignored.
-    expect(store().paneTransparency).toBe(35);
+    expect(store().paneTransparency.dark).toBe(35);
     expect(store().showShortcutsAtStartup).toBe(true);
   });
 
@@ -643,13 +741,13 @@ describe("the map theme", () => {
 
     await storage.setItem("atlantis-hud-settings", {
       ...persisted,
-      state: { ...persisted.state, mapTheme: theme, paneTransparency: 35 }
+      state: { ...persisted.state, mapTheme: theme, paneTransparency: { dark: 35, light: 0 } }
     });
     await useSettingsStore.persist.rehydrate();
 
     // The transparency rides along as a control: it proves the blob was read at all, using a value
     // no default could have produced.
-    expect(store().paneTransparency).toBe(35);
+    expect(store().paneTransparency.dark).toBe(35);
     expect(store().mapTheme).toBe(theme);
   });
 
