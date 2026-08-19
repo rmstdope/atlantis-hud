@@ -191,6 +191,11 @@ pub struct ItemEntry {
     pub capacity_condition: Option<String>,
     #[serde(default)]
     pub sailing_skill: Option<i64>,
+    /// What the data page says about it, after the preamble of name, tag, weight and capacity the
+    /// fields above already carry. `None` for an entry that is nothing but that preamble, and for
+    /// a ruleset cached before ah-3cj4.2, which carried no prose at all.
+    #[serde(default)]
+    pub description: Option<String>,
 }
 
 /// Thresholds for the risk heuristic. Ours, not the game's, which is why they carry `scraped`.
@@ -330,6 +335,18 @@ pub struct SkillEntry {
     /// prerequisites, and for a ruleset cached before they were scraped.
     #[serde(default)]
     pub requires: Vec<SkillRequirement>,
+    /// What the page says at each level, in level order, with the levels it fills with `No skill
+    /// report.` left out. Empty for a ruleset cached before ah-3cj4.2.
+    #[serde(default)]
+    pub levels: Vec<SkillLevel>,
+}
+
+/// What a skill's page says at one level, once the placeholders are dropped.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SkillLevel {
+    pub level: u32,
+    pub description: String,
 }
 
 /// A building the game's data page describes, and how many mages may study in it.

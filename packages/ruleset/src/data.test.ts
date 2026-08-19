@@ -969,3 +969,106 @@ describe("parseBuildingReference", () => {
     });
   });
 });
+
+/**
+ * The prose an entry carries, which ah-3cj4.2 keeps so a reference dialog can say more than
+ * numbers. Every expected value below is quoted from the fixture's own entry.
+ */
+describe("entry descriptions", () => {
+  it("keeps what the page says about an item", () => {
+    const items = parseItemReference(DATA_HTML);
+
+    // "chain armor [CARM], weight 1, costs 150 silver to withdraw. This is a type of armor. ..."
+    expect(items.CARM.description).toMatch(/^This is a type of armor\./);
+    expect(items.CARM.description).not.toContain("weight 1");
+    expect(items.CARM.description).not.toContain("[CARM]");
+  });
+
+  it("keeps the prose of a ship", () => {
+    const items = parseItemReference(DATA_HTML);
+
+    expect(items.LONG.description).toMatch(/^This is a ship with a capacity of 150/);
+  });
+
+  it("an item whose preamble carries a comma list is still cut at the tag", () => {
+    const items = parseItemReference(DATA_HTML);
+
+    // "leader [LEAD], weight 10, walking capacity 5, moves 2 hexes per month. This race may ..."
+    expect(items.LEAD.description).toBe("This race may study all skills to level 5.");
+  });
+
+  it("an entry that is only a preamble carries no description", () => {
+    const items = parseItemReference(
+      "<pre>widget [WIDG], weight 3, walking capacity 0, moves 0 hexes per month.</pre>"
+    );
+
+    expect(items.WIDG).toBeDefined();
+    expect("description" in items.WIDG).toBe(false);
+  });
+
+  it("keeps what a skill says at each level", () => {
+    const skills = parseSkillReference(DATA_HTML);
+
+    expect(skills.MINI.levels?.map((entry) => entry.level)).toEqual([1, 3, 5]);
+    expect(skills.MINI.levels?.[0].description).toMatch(
+      /^This skill deals with all aspects of extracting raw metals/
+    );
+    expect(skills.MINI.levels?.[1].description).toMatch(/PRODUCE mithril \[MITH\]/);
+  });
+
+  it("drops the levels that say No skill report", () => {
+    const skills = parseSkillReference(DATA_HTML);
+
+    for (const entry of skills.MINI.levels ?? []) {
+      expect(entry.description).not.toContain("No skill report");
+    }
+    expect(skills.MINI.levels?.some((entry) => entry.level === 2 || entry.level === 4)).toBe(false);
+  });
+
+  it("a skill with one useful level keeps exactly one", () => {
+    const skills = parseSkillReference(DATA_HTML);
+
+    // 71 of the 96 say something at one level only, so this is the ordinary case rather than a
+    // special one; the count is what pins that the placeholders are being dropped everywhere and
+    // not only on mining.
+    const single = Object.values(skills).filter((skill) => (skill.levels ?? []).length === 1);
+    expect(single.length).toBe(71);
+  });
+
+  it("the levels come out in level order", () => {
+    const skills = parseSkillReference(DATA_HTML);
+
+    for (const skill of Object.values(skills)) {
+      const levels = (skill.levels ?? []).map((entry) => entry.level);
+      expect(levels).toEqual([...levels].sort((a, b) => a - b));
+    }
+  });
+
+  it("a skill that says nothing at any level carries no levels key", () => {
+    // Hand-built, because no skill in the committed fixture is empty at every level - the rule is
+    // there so a future page produces no key rather than an empty list.
+    const skills = parseSkillReference(
+      "<pre>hush [HUSH] 1: No skill report.\n\nhush [HUSH] 2: No skill report.</pre>"
+    );
+
+    expect(skills.HUSH).toBeDefined();
+    expect("levels" in skills.HUSH).toBe(false);
+  });
+
+  it("keeps every item and skill it kept before", () => {
+    expect(Object.keys(parseItemReference(DATA_HTML)).length).toBe(171);
+    expect(Object.keys(parseSkillReference(DATA_HTML)).length).toBe(96);
+  });
+
+  it("a skill's existing fields are unchanged", () => {
+    const skills = parseSkillReference(DATA_HTML);
+
+    expect(skills.MINI).toMatchObject({
+      cost: 10,
+      maxLevel: 5,
+      magic: false,
+      requires: []
+    });
+    expect(skills.MINI.produces.map((entry) => entry.tag)).toEqual(["IRON", "MITH", "ADMT"]);
+  });
+});
