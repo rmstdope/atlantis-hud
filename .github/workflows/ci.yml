@@ -281,6 +281,12 @@ jobs:
     runs-on: ubuntu-latest
     needs: [changes, wasm]
     if: ${{ !cancelled() }}
+    # Four minutes is the longest this job has taken when it works (measured over eight runs,
+    # 2026-08-19). The ceiling is for the failure mode, not the work: `playwright install-deps`
+    # runs apt on every run, cache hit or miss, and has stalled 25-55 minutes four times in five
+    # days (ah-3c80). Unbounded, one stall holds a runner for an hour and the fleet queues behind
+    # it; bounded, it is a fast failure anyone can re-run.
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -361,6 +367,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: [changes, wasm]
     if: needs.changes.outputs.code == 'true'
+    # Same ceiling and the same reason as `smoke` above: this job reaches apt on every run.
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@v4
