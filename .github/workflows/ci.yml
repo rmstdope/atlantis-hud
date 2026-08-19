@@ -321,23 +321,10 @@ jobs:
           name: wasm-core
           path: packages/browser-core/src/wasm
 
-      - name: Cache the Playwright browser
-        id: playwright-cache
+      # The `changes` guard stays here: a composite action cannot see `needs`.
+      - name: Install the Playwright browser
         if: needs.changes.outputs.code == 'true'
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
-
-      # The browser itself caches; the system libraries it links against do not, so those are
-      # installed either way.
-      - name: Install Playwright Chromium
-        if: needs.changes.outputs.code == 'true' && steps.playwright-cache.outputs.cache-hit != 'true'
-        run: pnpm exec playwright install --with-deps chromium
-
-      - name: Install Playwright system dependencies
-        if: needs.changes.outputs.code == 'true' && steps.playwright-cache.outputs.cache-hit == 'true'
-        run: pnpm exec playwright install-deps chromium
+        uses: ./.github/actions/playwright-browser
 
       # SMOKE_PROJECT keeps the config from also building and serving the shell this job is not
       # walking: Playwright starts every `webServer` entry no matter which project runs.
@@ -392,20 +379,8 @@ jobs:
           name: wasm-core
           path: packages/browser-core/src/wasm
 
-      - name: Cache the Playwright browser
-        id: playwright-cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
-
-      - name: Install Playwright Chromium
-        if: steps.playwright-cache.outputs.cache-hit != 'true'
-        run: pnpm exec playwright install --with-deps chromium
-
-      - name: Install Playwright system dependencies
-        if: steps.playwright-cache.outputs.cache-hit == 'true'
-        run: pnpm exec playwright install-deps chromium
+      - name: Install the Playwright browser
+        uses: ./.github/actions/playwright-browser
 
       # `vite build` rather than the `build` script, which is `build:wasm && vite build`. The module
       # is already here, and rebuilding it would drag the Rust toolchain into a job that has none.
