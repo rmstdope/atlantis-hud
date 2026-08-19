@@ -1,5 +1,6 @@
 import type { OrderDiagnosticSeverity } from "@atlantis/core-client";
 import { Fragment, type ReactNode } from "react";
+import { itemEntryId, type GameDataIndex } from "../gameData";
 
 /**
  * The ceiling for a header popover's scrollable body.
@@ -41,11 +42,11 @@ export function SeverityMark({ severity }: { severity: OrderDiagnosticSeverity }
   );
 }
 
-/** The shared look of a unit id you can go and look at, so one gesture reads the same everywhere. */
 /** The shared look of a name that opens the game-data dictionary. */
 const GAME_DATA_LINK_CLASS =
   "border-b border-dotted border-ink-dim text-left hover:text-select hover:border-select focus-visible:outline focus-visible:outline-1 focus-visible:outline-select";
 
+/** The shared look of a unit id you can go and look at, so one gesture reads the same everywhere. */
 const UNIT_LINK_CLASS =
   "shrink-0 rounded text-left tabular-nums text-brass hover:underline focus-visible:outline focus-visible:outline-1 focus-visible:outline-brass";
 
@@ -237,6 +238,35 @@ export function GameDataLink({
     >
       {children}
     </button>
+  );
+}
+
+/**
+ * An item's name, linked to its dictionary entry when the catalogue knows its tag.
+ *
+ * One component rather than a copy in each pane: the unit pane and the region pane must agree on
+ * when a name is a link and when it is not, and two copies of that rule is how they stop agreeing.
+ *
+ * `itemEntryId` is null for a tag no item carries - a report can name what the scrape never took -
+ * and that renders as plain text rather than a link that would open nothing.
+ */
+export function GameDataItemName({
+  index,
+  item,
+  onOpen
+}: {
+  index: GameDataIndex | null;
+  item: { name: string; tag: string };
+  onOpen: ((entryId: string) => void) | null;
+}) {
+  const entryId = index === null || onOpen === null ? null : itemEntryId(index, item.tag);
+  if (entryId === null || onOpen === null) {
+    return <>{item.name}</>;
+  }
+  return (
+    <GameDataLink entryId={entryId} onOpen={onOpen}>
+      {item.name}
+    </GameDataLink>
   );
 }
 

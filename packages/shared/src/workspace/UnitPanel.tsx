@@ -3,8 +3,16 @@ import type { HexNode } from "../hexMapModel";
 import { originalTooltip } from "../unitPreview";
 import { describeMen } from "../unitComposition";
 import { CollapsiblePanel } from "./CollapsiblePanel";
-import { itemEntryId, skillEntryId, type GameDataIndex } from "../gameData";
-import { Absent, Field, GameDataLink, Row, Section, StaleBanner } from "./primitives";
+import { skillEntryId, type GameDataIndex } from "../gameData";
+import {
+  Absent,
+  Field,
+  GameDataItemName,
+  GameDataLink,
+  Row,
+  Section,
+  StaleBanner
+} from "./primitives";
 
 const PREVIEW = 8;
 
@@ -140,7 +148,12 @@ export function UnitPanel({
             {items.slice(0, PREVIEW).map((item) => (
               <Row
                 key={item.tag}
-                label={<ItemName index={gameData} item={item} onOpen={linkable} />}
+                label={
+                  <>
+                    <GameDataItemName index={gameData} item={item} onOpen={linkable} />{" "}
+                    {item.tag}
+                  </>
+                }
                 value={item.amount.toLocaleString()}
               />
             ))}
@@ -151,35 +164,5 @@ export function UnitPanel({
         )}
       </Section>
     </CollapsiblePanel>
-  );
-}
-
-/**
- * An item's name, linked to its dictionary entry when the catalogue knows the tag.
- *
- * `itemEntryId` is null for a tag no item carries - a report can name what the scrape never took -
- * and that renders as plain text rather than a link that would open nothing.
- */
-function ItemName({
-  index,
-  item,
-  onOpen
-}: {
-  index: GameDataIndex | null;
-  item: { name: string; tag: string };
-  onOpen: ((entryId: string) => void) | null;
-}) {
-  const entryId = index === null || onOpen === null ? null : itemEntryId(index, item.tag);
-  return (
-    <>
-      {entryId === null || onOpen === null ? (
-        item.name
-      ) : (
-        <GameDataLink entryId={entryId} onOpen={onOpen}>
-          {item.name}
-        </GameDataLink>
-      )}{" "}
-      {item.tag}
-    </>
   );
 }

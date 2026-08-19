@@ -1,6 +1,6 @@
 import { Fragment } from "react";
 import type { Coordinate, CoreClient, MapLevel, OpenedGame, OrderDiagnostic } from "@atlantis/core-client";
-import { buildingEntryId, itemEntryId, type GameDataIndex } from "../gameData";
+import { buildingEntryId, type GameDataIndex } from "../gameData";
 import { abbreviateDirection, levelClause, regionIdOf, type HexNode } from "../hexMapModel";
 import { structureLabelParts } from "../structureLabel";
 import { useWorkspaceStore } from "../workspaceStore";
@@ -8,6 +8,7 @@ import { CollapsiblePanel } from "./CollapsiblePanel";
 import {
   Absent,
   Field,
+  GameDataItemName,
   GameDataLink,
   PROBLEM_CARD,
   ProblemMessage,
@@ -170,7 +171,7 @@ export function RegionPanel({
                   <Fragment key={item.tag}>
                     {position === 0 ? null : " · "}
                     {item.amount}{" "}
-                    <ItemName index={gameData} item={item} onOpen={linkable} />
+                    <GameDataItemName index={gameData} item={item} onOpen={linkable} />
                   </Fragment>
                 ))}
               </p>
@@ -184,7 +185,7 @@ export function RegionPanel({
                   key={item.tag}
                   label={
                     <>
-                      <ItemName index={gameData} item={item} onOpen={linkable} /> {item.tag}
+                      <GameDataItemName index={gameData} item={item} onOpen={linkable} /> {item.tag}
                     </>
                   }
                   value={`$${item.price} ×${item.amount}`}
@@ -200,7 +201,7 @@ export function RegionPanel({
                   key={item.tag}
                   label={
                     <>
-                      <ItemName index={gameData} item={item} onOpen={linkable} /> {item.tag}
+                      <GameDataItemName index={gameData} item={item} onOpen={linkable} /> {item.tag}
                     </>
                   }
                   value={`$${item.price} ×${item.amount}`}
@@ -334,31 +335,5 @@ function Problems({
         ))}
       </ul>
     </Section>
-  );
-}
-
-/**
- * An item's name, linked to its dictionary entry when the catalogue knows the tag.
- *
- * `itemEntryId` is null for a tag no item carries, and that renders as plain text rather than a
- * link that would open nothing.
- */
-function ItemName({
-  index,
-  item,
-  onOpen
-}: {
-  index: GameDataIndex | null;
-  item: { name: string; tag: string };
-  onOpen: ((entryId: string) => void) | null;
-}) {
-  const entryId = index === null || onOpen === null ? null : itemEntryId(index, item.tag);
-  if (entryId === null || onOpen === null) {
-    return <>{item.name}</>;
-  }
-  return (
-    <GameDataLink entryId={entryId} onOpen={onOpen}>
-      {item.name}
-    </GameDataLink>
   );
 }
