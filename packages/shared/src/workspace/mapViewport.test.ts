@@ -286,6 +286,28 @@ describe("bringing a hex into view", () => {
     const cleared = centreOn(at(7, 53), ORIGIN, 1000, 800, insets);
     expect(isOffScreen(at(7, 53), cleared, 1000, 800, insets)).toBe(false);
   });
+
+  it("centring on the hex already in the middle of the visible strip changes nothing", () => {
+    // What `shortcuts.spec.ts` used to try to prove in a browser by right-clicking twice and
+    // comparing transform strings - which raced the strip measurement and cost six beads a
+    // re-run each (ah-d00t). Here it is exact and deterministic: no runner, no layout, no timing.
+    const insets = { left: 300, right: 330, top: 48, bottom: 520 };
+    const centred = centreOn(at(7, 53), ORIGIN, 1000, 800, insets);
+
+    // The hex now in the middle of the visible strip, asked for again. `coordinateAt` takes the
+    // pointer position in canvas pixels, the viewport and the level.
+    const middle = coordinateAt(
+      insets.left + (1000 - insets.left - insets.right) / 2,
+      insets.top + (800 - insets.top - insets.bottom) / 2,
+      centred,
+      1
+    );
+    const again = centreOn(middle, centred, 1000, 800, insets);
+
+    expect(again.tx).toBeCloseTo(centred.tx);
+    expect(again.ty).toBeCloseTo(centred.ty);
+    expect(again.step).toBe(centred.step);
+  });
 });
 
 describe("arrow keys", () => {
