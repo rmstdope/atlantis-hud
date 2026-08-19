@@ -20,6 +20,46 @@ function tag(html: string, testid: string): string {
   return match[0];
 }
 
+describe("the pane transparency setting", () => {
+  afterEach(() => {
+    restoreStoresForTest();
+    resetSettingsStore();
+  });
+
+  it("shows the active theme's own value", () => {
+    resetSettingsStore();
+    setStoreStateForTest(useSettingsStore, {
+      theme: "light",
+      paneTransparency: { dark: 40, light: 15 }
+    });
+
+    const slider = tag(renderToStaticMarkup(<GlobalSettings />), "pane-transparency");
+
+    expect(slider).toContain('value="15"');
+  });
+
+  it("shows the dark value again when dark is the active theme", () => {
+    resetSettingsStore();
+    setStoreStateForTest(useSettingsStore, {
+      theme: "dark",
+      paneTransparency: { dark: 40, light: 15 }
+    });
+
+    const slider = tag(renderToStaticMarkup(<GlobalSettings />), "pane-transparency");
+
+    expect(slider).toContain('value="40"');
+  });
+
+  it("says in its hint that each theme is remembered separately", () => {
+    resetSettingsStore();
+    const html = renderToStaticMarkup(<GlobalSettings />);
+
+    expect(html).toContain(
+      "Makes the panes see-through so the map shows behind them. Remembered separately for the dark and light themes."
+    );
+  });
+});
+
 describe("the Interface size setting", () => {
   afterEach(() => {
     restoreStoresForTest();

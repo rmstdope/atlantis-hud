@@ -158,22 +158,27 @@ describe("theme palette", () => {
    * weight - so 4.5:1 is the bar for every one of these. Tundra is the worst terrain for every
    * token, and `select` over it is the tightest pair in the palette.
    *
-   * Dark only. Light mode fails this today (dark ink over a light pane on dark terrain is
-   * 1.09:1); that is ah-j1xd's scope, and a known-red assertion is worth nothing.
+   * Both themes, each at its own default transparency (ah-j1xd). Light's is 0 - opaque - because
+   * dark ink over a light pane over the map cannot clear AA at any transparency the slider offers;
+   * at 0 the composite is the panel and this reduces to the surface assertion above. A player who
+   * moves light's slider is choosing that, deliberately, and the slider is not clamped.
    */
-  it("keeps every dark text token readable through a pane over every terrain", () => {
-    // From the source rather than hard-coded, so a future change to the default either keeps the
-    // app readable or fails here.
+  it.each([
+    ["dark", /@theme\b/],
+    ["light", /:root\[data-theme="light"\]/]
+  ])("keeps every %s text token readable through a pane over every terrain", (theme, opener) => {
+    // From the source rather than hard-coded, so a future change to either default either keeps
+    // the app readable or fails here.
     const store = readFileSync(
       fileURLToPath(new URL("./settingsStore.ts", import.meta.url)),
       "utf8"
     );
-    const defaultTransparency = Number.parseInt(
-      store.match(/DEFAULT_PANE_TRANSPARENCY\s*=\s*(\d+)/)![1],
-      10
-    );
+    const defaults = store.match(
+      /DEFAULT_PANE_TRANSPARENCY[^=]*=\s*\{\s*dark:\s*(\d+)\s*,\s*light:\s*(\d+)\s*\}/
+    )!;
+    const defaultTransparency = Number.parseInt(defaults[theme === "dark" ? 1 : 2], 10);
 
-    const values = tokenValues(extractBlock(css, /@theme\b/));
+    const values = tokenValues(extractBlock(css, opener));
     // `color-mix(in srgb, panel P%, transparent)` over the terrain, per channel.
     const alpha = (100 - defaultTransparency) / 100;
     const composite = (top: string, bottom: string): string => {
@@ -194,7 +199,7 @@ describe("theme palette", () => {
       const behind = composite(panel, values.get(terrain)!);
       // Every token text is drawn in, accents included: `select` over tundra is the tightest pair
       // in the whole palette, and it is an accent, not an ink.
-      for (const ink of [...INK_TOKENS, ...ACCENT_TOKENS]) {
+      for (const ink of TEXT_TOKENS) {
         const ratio = contrast(values.get(ink)!, behind);
         if (ratio < AA_SMALL_TEXT) {
           unreadable.push(`${ink} through a pane over ${terrain} is ${ratio.toFixed(2)}:1`);
