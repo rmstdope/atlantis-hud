@@ -564,17 +564,33 @@ export function parseSkillReference(html: string): SkillReference {
   return skills;
 }
 
-/** One buildable structure as the data page describes it. */
+/** One structure as the data page describes it. */
 export type BuildingEntry = {
-  /** Men the structure protects - the rules table's "Size". */
-  size: number;
-  /** What building it costs, from the skill that builds it. */
-  cost: number;
+  /**
+   * The description the page gives it, from the name onwards, verbatim and whitespace-collapsed -
+   * `This is a building. Units may enter this structure. This trade structure increases the
+   * amount of iron available in the region.`
+   *
+   * Kept because a reference entry that can only show numbers is most of the way to useless
+   * (ah-3cj4), and because it is already in front of the parser: the numbers are read out of this
+   * very text.
+   */
+  description: string;
+  /** What a trade structure increases the supply of, in the page's own word: `iron`, `yew`. */
+  produces?: string;
+  /**
+   * Men the structure protects - the rules table's "Size". Absent for a Mine, a road or a lair,
+   * which state no defence because they give none, and an absent field says that where a `0`
+   * would claim the page had said so.
+   */
+  size?: number;
+  /** What building it costs, from the skill that builds it. Absent for anything no skill builds. */
+  cost?: number;
   /**
    * What it is built from, in the page's own order. A list because the page offers alternatives -
    * `an Inn from 10 wood [WOOD] or stone [STON]` - which one string cannot hold.
    */
-  materials: string[];
+  materials?: string[];
   /**
    * Mages who may study above level 2 inside it. `0` when the entry says nothing: the data page
    * lists every structure and states the capacity wherever there is one, so silence is a
@@ -584,6 +600,15 @@ export type BuildingEntry = {
 };
 
 export type BuildingReference = Record<string, BuildingEntry>;
+
+/** What a trade structure increases the supply of, or `null` for anything that is not one. */
+function produces(text: string): string | null {
+  return (
+    text
+      .match(/This trade structure increases the amount of ([a-z ]+?) available/i)?.[1]
+      .trim() ?? null
+  );
+}
 
 /** `will allow one mage` is written as a word; every other capacity is a numeral. */
 function mageCount(text: string): number {
@@ -605,13 +630,16 @@ export function parseBuildingReference(html: string): BuildingReference {
   const paragraphs = entryParagraphs(html);
   const buildings: BuildingReference = {};
 
-  // Pass one: the object entries decide what a building is. Only a *fortification* counts - an
-  // entry that states "provides defense to the first N men inside it" - because that is the class
-  // of structure the page ever says anything about mages for, and because the alternative reading
-  // (every entry calling itself a building) would turn a Mine, a road and a lair from "the
-  // catalogue cannot say" into "seats nobody", which is a change to `ah-a2k.2`'s warning this bead
-  // is expressly not making. The ten it finds are the four the rules table named, the four magical
-  // fortifications, a Stockade and a Hermits hut.
+  // Pass one: the object entries decide what a building is - every entry that calls itself one,
+  // not only the fortifications. The filter that used to stand here kept the ten that state a
+  // defence and dropped forty-nine: every trade structure, every road, every lair, which is what
+  // ah-3cj4 was filed against. Its stated reason - that a Mine would go from "the catalogue cannot
+  // say" to "seats nobody" - does not survive reading the one consumer: `mage_capacity(kind)
+  // .is_some_and(|seats| seats >= 1)` is false for `None` and for `Some(0)` alike, so a mage in a
+  // Mine is warned either way. `ah-a2k.2`'s warning is unchanged, and pinned by its own tests.
+  //
+  // A name the page repeats - `Lair`, twice - keeps its last entry, since the map is keyed by the
+  // upper-cased name. 59 paragraphs become 58 keys, and neither Lair carries a figure.
   for (const paragraph of paragraphs) {
     // The name may not contain sentence punctuation, for the reason `parseItemReference` records:
     // letting it wander across a full stop matches the tail of the previous sentence.
@@ -624,14 +652,15 @@ export function parseBuildingReference(html: string): BuildingReference {
     // structure both pages name - which is the evidence for reading it this way. It is an
     // inference, not the page's own word.
     const size = readNumber(paragraph, /provides defense to the first (\d+) men/i);
-    if (size === null) {
-      continue;
-    }
+    const product = produces(paragraph);
 
+    // Only the fields the page actually states. `cost` and `materials` are left for pass two to
+    // write, rather than initialised to `0` and `[]`: a lair claiming to cost nothing is exactly
+    // the absence-turned-into-a-claim this bead exists to stop.
     buildings[opening[1].trim().toUpperCase()] = {
-      size,
-      cost: 0,
-      materials: [],
+      description: paragraph.slice(opening[0].length - "This is a building.".length).trim(),
+      ...(product === null ? {} : { produces: product }),
+      ...(size === null ? {} : { size }),
       mages: mageCount(paragraph)
     };
   }
