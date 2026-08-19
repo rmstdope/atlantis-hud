@@ -10,6 +10,7 @@ use std::collections::BTreeMap;
 
 use crate::movement::orders::MoveStep;
 use crate::report::model::ReportUnit;
+use crate::orders::standing::{self, standing_after, Boarding, BoardingOrder};
 use crate::report::ParsedReport;
 
 /// The last top-level movement order each unit wrote, read once from the whole orders document.
@@ -21,15 +22,12 @@ use crate::report::ParsedReport;
 #[derive(Debug, Default, Clone)]
 pub struct OrderedUnits {
     by_unit: BTreeMap<String, Vec<MoveStep>>,
-    /// Where each unit that wrote an ENTER or a LEAVE ends up once they have run: `Some(id)` for
-    /// the structure it is in, `None` for one that stepped out into nothing. A unit that wrote
+    /// Each unit's ENTER and LEAVE orders, in the order they were written. A unit that wrote
     /// neither is absent, and the report's own answer stands for it.
     ///
-    /// Every LEAVE runs before any ENTER whatever order the lines were typed in, so a block
-    /// holding any ENTER ends inside the last structure entered - the same rule
-    /// `crate::orders::semantics`'s `structure_after_orders` states, and the one the navigator
-    /// settled on 2026-08-18 (ah-mjy).
-    aboard_by_unit: BTreeMap<String, Option<String>>,
+    /// The orders themselves are kept rather than the answer, because two different questions are
+    /// asked of them - see [`crate::orders::standing`], which holds both and says why they differ.
+    boardings_by_unit: BTreeMap<String, Vec<BoardingOrder>>,
 }
 
 impl OrderedUnits {
@@ -39,7 +37,7 @@ impl OrderedUnits {
         use crate::orders::walk::{walk, Depth, Event};
 
         let mut by_unit: BTreeMap<String, Vec<MoveStep>> = BTreeMap::new();
-        let mut aboard_by_unit: BTreeMap<String, Option<String>> = BTreeMap::new();
+        let mut boardings_by_unit: BTreeMap<String, Vec<BoardingOrder>> = BTreeMap::new();
         let mut current: Option<String> = None;
 
         walk(orders_document, |event| match event {
@@ -54,21 +52,25 @@ impl OrderedUnits {
                     by_unit.insert(unit_id.clone(), steps);
                 }
                 if let Some(unit_id) = current.as_ref() {
-                    // An ENTER always wins over a LEAVE in the same block, whichever was typed
-                    // first: the LEAVE ran first and the unit walked back in. Among ENTERs the
-                    // last one wins, which is document order.
                     // Read exactly as `orders::intents` reads them, through the same
                     // `read_only_number`: an ENTER with anything but one numeric argument, or a
                     // LEAVE with any argument at all, is an order the game does not have, and a
-                    // reader that acted on it would move a unit the server leaves alone.
+                    // reader that acted on it would move a unit the server leaves alone. What the
+                    // orders then mean is `orders::standing`'s to say, not this walk's.
                     if line.command.is("enter") {
                         if let Some(structure) =
                             crate::orders::forms::read_only_number(line.arguments)
                         {
-                            aboard_by_unit.insert(unit_id.clone(), Some(structure.to_string()));
+                            boardings_by_unit
+                                .entry(unit_id.clone())
+                                .or_default()
+                                .push(BoardingOrder::Enter(structure.to_string()));
                         }
                     } else if line.command.is("leave") && line.arguments.is_empty() {
-                        aboard_by_unit.entry(unit_id.clone()).or_insert(None);
+                        boardings_by_unit
+                            .entry(unit_id.clone())
+                            .or_default()
+                            .push(BoardingOrder::Leave);
                     }
                 }
             }
@@ -77,7 +79,7 @@ impl OrderedUnits {
 
         Self {
             by_unit,
-            aboard_by_unit,
+            boardings_by_unit,
         }
     }
 
@@ -91,20 +93,23 @@ impl OrderedUnits {
     ///
     /// ENTER and LEAVE both run before anything moves, so every reader that asks "what is this
     /// unit standing in when its orders happen" wants this rather than `unit.structure_id`, which
-    /// is only where the report found it. The orders layer answers the same question through
-    /// `crate::orders::semantics`'s `structure_after_orders`; the two must not diverge.
-    ///
-    /// A unit that wrote neither order is absent from the map and keeps the report's answer -
-    /// which is why the two levels of `Option` are read with a `match` rather than flattened.
+    /// is only where the report found it. The rule is [`crate::orders::standing::standing_after`]'s
+    /// and is stated only there; this is the adapter that reads it out of an orders document.
     ///
     /// This is where a unit *ends up*. For "could this unit be the one sailing the hull" the
     /// question is different and [`Self::could_captain`] answers it.
     #[must_use]
     pub fn structure_of<'a>(&'a self, unit: &'a ReportUnit) -> Option<&'a str> {
-        match self.aboard_by_unit.get(&unit.unit_id) {
-            Some(after) => after.as_deref(),
-            None => unit.structure_id.as_deref(),
-        }
+        standing_after(unit.structure_id.as_deref(), self.boardings_of(&unit.unit_id))
+    }
+
+    /// One unit's boardings as the rule reads them.
+    fn boardings_of(&self, unit_id: &str) -> impl Iterator<Item = Boarding<'_>> + '_ {
+        self.boardings_by_unit
+            .get(unit_id)
+            .into_iter()
+            .flatten()
+            .map(BoardingOrder::as_boarding)
     }
 }
 
@@ -112,14 +117,15 @@ impl OrderedUnits {
     /// Whether this unit could be the one giving the hull's movement order: standing in it per the
     /// report, or boarding it this month.
     ///
-    /// Deliberately not [`Self::structure_of`], and for the reason `orders::semantics`'s
-    /// `could_captain` gives: a unit that writes SAIL and then LEAVE still gave the order, because
-    /// the server reads the SAIL line before running the LEAVE. Asking where it *ends up* would
-    /// quietly strand every passenger aboard.
+    /// Deliberately not [`Self::structure_of`], for the reason
+    /// [`crate::orders::standing::could_captain`] gives, which is where the rule lives.
     #[must_use]
     pub fn could_captain(&self, unit: &ReportUnit, structure_id: &str) -> bool {
-        unit.structure_id.as_deref() == Some(structure_id)
-            || matches!(self.aboard_by_unit.get(&unit.unit_id), Some(Some(entered)) if entered == structure_id)
+        standing::could_captain(
+            unit.structure_id.as_deref(),
+            structure_id,
+            self.boardings_of(&unit.unit_id),
+        )
     }
 }
 
