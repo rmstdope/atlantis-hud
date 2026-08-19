@@ -262,21 +262,28 @@ pub fn check_turn(
 /// `Intent` variant until somebody has said which side of this line it falls on.
 fn spends_the_month(intent: &Intent) -> bool {
     match intent {
+        // The rules' enumerated list, plus IDLE and ANNIHILATE, which reach here as `MonthLong`.
+        // ADVANCE arrives as `Intent::Move`.
         Intent::Study { .. }
         | Intent::Teach { .. }
         | Intent::Tax
         | Intent::Pillage
         | Intent::Work
         | Intent::Entertain
-        | Intent::MonthLong(_)
-        | Intent::Cast { .. }
         | Intent::Move { .. }
         | Intent::Sail { .. }
         | Intent::Build { .. } => true,
 
+        // CAST is NOT a full month order: "a mage may still MOVE, STUDY, or use any other month
+        // long order". A bare CAST falls back to `MonthLong("CAST")`, so it has to be caught
+        // before the arm below - which is why these two arms are in this order.
+        Intent::MonthLong("CAST") => false,
+        Intent::MonthLong(_) => true,
+
         // Each of these leaves the month free. GUARD is a flag rather than a month's work - a
         // guard can tax as well - and FORM only asks for a unit to exist.
-        Intent::Give { .. }
+        Intent::Cast { .. }
+        | Intent::Give { .. }
         | Intent::Take { .. }
         | Intent::Buy { .. }
         | Intent::Sell { .. }
@@ -429,8 +436,18 @@ impl Ordered<'_> {
     /// unit in a hex where fifteen units all study is a candidate teacher for all the others, and
     /// one hex of turn 71 produced twenty-nine findings that were all the same non-observation.
     fn is_busy(&self) -> bool {
-        self.intents()
-            .any(|intent| spends_the_month(intent) && !matches!(intent, Intent::Teach { .. }))
+        self.intents().any(|intent| match intent {
+            // Teaching is what the spare-teacher check is about, so it never counts here. This is
+            // the exclusion the doc comment above has always described.
+            Intent::Teach { .. } => false,
+            // CAST leaves the month free by the rules, and `spends_the_month` says so - but this
+            // check has always counted it, and following the rules here would add spare-teacher
+            // findings on every casting mage. ah-dwk6 was not asked to change that warning.
+            // `ah-vw63` narrows this check to units that actually TEACH, and when it lands this
+            // arm should go and CAST should be classified by the rules in both places.
+            Intent::Cast { .. } | Intent::MonthLong("CAST") => true,
+            other => spends_the_month(other),
+        })
     }
 
     fn skill_level(&self, tag: &str) -> u32 {
@@ -2707,6 +2724,33 @@ mod tests {
         assert!(spends_the_month(&Intent::Teach {
             students: Vec::new()
         }));
+    }
+
+    /// The rules: "a CAST order is not a full month order; a mage may still MOVE, STUDY, or use
+    /// any other month long order."
+    #[test]
+    fn casting_does_not_spend_the_month() {
+        assert!(!spends_the_month(&Intent::Cast {
+            spell: "Fire".to_string(),
+            arguments: Vec::new(),
+        }));
+    }
+
+    /// A bare `CAST` falls back to `MonthLong("CAST")`, which must be caught before the general
+    /// `MonthLong` arm or the correction silently does not apply to it.
+    #[test]
+    fn a_bare_cast_does_not_spend_the_month() {
+        assert!(!spends_the_month(&Intent::MonthLong("CAST")));
+    }
+
+    #[test]
+    fn idling_spends_the_month() {
+        assert!(spends_the_month(&Intent::MonthLong("IDLE")));
+    }
+
+    #[test]
+    fn annihilating_spends_the_month() {
+        assert!(spends_the_month(&Intent::MonthLong("ANNIHILATE")));
     }
 
     #[test]
@@ -5357,12 +5401,57 @@ mod tests {
         assert_eq!(codes(&findings), vec![codes::UNIT_DOES_NOTHING.as_str()]);
     }
 
+    /// ah-dwk6's verification failure, at the check's own level: a free order is not a month's
+    /// work, and a unit holding only one is still a unit with nothing to do.
     #[test]
-    fn a_unit_with_an_order_we_cannot_read_is_silent() {
+    fn a_unit_whose_only_order_is_free_is_warned() {
+        let findings = check_idle(
+            vec![region(vec![unit("4021")])],
+            "unit 4021\nNAME \"Scouts\"\n",
+        );
+        assert_eq!(codes(&findings), vec![codes::UNIT_DOES_NOTHING.as_str()]);
+    }
+
+    /// The rules: "STEAL and ASSASSINATE are not full month orders, and do not interfere with
+    /// other activities."
+    #[test]
+    fn a_unit_that_only_assassinates_is_warned() {
+        let findings = check_idle(
+            vec![region(vec![unit("4021")])],
+            "unit 4021\nASSASSINATE 13432\n",
+        );
+        assert_eq!(codes(&findings), vec![codes::UNIT_DOES_NOTHING.as_str()]);
+    }
+
+    /// The rules: "a CAST order is not a full month order."
+    #[test]
+    fn a_unit_that_only_casts_is_warned() {
+        let findings = check_idle(vec![region(vec![unit("4021")])], "unit 4021\nCAST Fire\n");
+        assert!(
+            codes(&findings).contains(&codes::UNIT_DOES_NOTHING.as_str()),
+            "{findings:?}"
+        );
+    }
+
+    /// IDLE spends the month by the rules - the player said so.
+    #[test]
+    fn a_unit_that_is_idle_is_silent() {
         assert_eq!(
             codes(&check_idle(
                 vec![region(vec![unit("4021")])],
-                "unit 4021\nASSASSINATE 13432\n",
+                "unit 4021\nIDLE\n",
+            )),
+            Vec::<&str>::new()
+        );
+    }
+
+    /// The false-positive guard, now narrow: only a keyword in neither list silences the check.
+    #[test]
+    fn a_unit_with_an_unknown_keyword_is_silent() {
+        assert_eq!(
+            codes(&check_idle(
+                vec![region(vec![unit("4021")])],
+                "unit 4021\nFLIBBERTIGIBBET\n",
             )),
             Vec::<&str>::new()
         );
