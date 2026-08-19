@@ -1688,9 +1688,12 @@ fn check_build_skill(
     options: &CheckOptions,
     findings: &mut Vec<Finding>,
 ) {
-    // No ruleset, or one cached before build requirements were scraped: every structure would look
-    // as though it needs nothing. Every lookup below would fail the same way, but say it once here
-    // rather than relying on that.
+    // No ruleset at all, or one carrying no buildings table: `build_requirement` would answer
+    // `None` for every kind, which the loop below already reads as silence, so this gate changes
+    // no verdict. It states the whole-catalogue case once and in one place - "this ruleset can say
+    // nothing about any structure" is a different fact from "the page names no requirement for
+    // this one", even though both end in the same silence - and saves resolving what every unit in
+    // the game is building only to find nothing to compare it against.
     let Some(ruleset) = ruleset else { return };
     if !ruleset.knows_buildings() {
         return;
