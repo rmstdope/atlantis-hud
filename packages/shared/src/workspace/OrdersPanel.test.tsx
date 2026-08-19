@@ -46,6 +46,12 @@ describe("OrdersPanel", () => {
   });
 
   it("never disables the buttons - the walk wraps, so there is no end to be at", () => {
-    expect(draw(() => {})).not.toContain("disabled");
+    const markup = draw(() => {});
+
+    for (const testid of ["walk-problem-prev", "walk-problem-next"]) {
+      const tag = new RegExp(`<button[^>]*data-testid="${testid}"[^>]*>`).exec(markup)?.[0];
+      expect(tag).toBeDefined();
+      expect(tag).not.toMatch(/\sdisabled/);
+    }
   });
 });

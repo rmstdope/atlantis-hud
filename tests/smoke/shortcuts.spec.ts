@@ -330,7 +330,7 @@ test("a problem with no offending word lands the cursor at the end of the orders
   // player has to type, so the cursor belongs after what is already there.
   await fillOrders(page, "AVOID 1");
   // Validation is debounced, so the walk has nothing to step until the count has landed.
-  await expect(page.getByTestId("problems-chip")).toContainText(/[1-9]\d* problems/);
+  await expect(page.getByTestId("problems-chip")).toContainText(/[1-9]\d* problems?/);
 
   await selectHex(page, "1:26,52");
   await selectUnit(page, OTHER_OWN_UNIT);
@@ -366,29 +366,34 @@ test("the walk buttons step to the next problem and back, and wrap at the end", 
   await expect(page.getByTestId("orders-status")).toContainText("0 errors");
   // Validation is debounced, so the walk has nothing to step until the count has landed - waiting
   // on the chip is what stops a click racing an empty list.
-  await expect(page.getByTestId("problems-chip")).toContainText(/[1-9]\d* problems/);
+  await expect(page.getByTestId("problems-chip")).toContainText(/[1-9]\d* problems?/);
 
   const next = page.getByTestId("walk-problem-next");
   const prev = page.getByTestId("walk-problem-prev");
   const unitPane = page.getByTestId("panel-unit");
 
+  // Which unit each stop belongs to is the fixture's business and changes as checks are added, so
+  // the stops are read rather than named: what this pins is that next moves on, and that prev
+  // comes back to the stop next just left.
   await next.click();
-  await expect(unitPane).toContainText(IDLE_UNIT);
+  await expect(unitPane).toContainText(/\(\d+\)/);
+  const first = (await unitPane.textContent()) ?? "";
 
   await next.click();
-  await expect(unitPane).toContainText(OTHER_IDLE_UNIT);
+  await expect(unitPane).not.toHaveText(first);
+  const second = (await unitPane.textContent()) ?? "";
 
   await prev.click();
-  await expect(unitPane).toContainText(IDLE_UNIT);
+  await expect(unitPane).toHaveText(first);
+  expect(second).not.toBe(first);
 
   // Past the last problem the walk comes round again rather than stopping - the buttons never die,
   // so stepping on far enough returns to where it started.
   let cameBack = false;
-  for (let step = 0; step < 10 && !cameBack; step += 1) {
+  for (let step = 0; step < 12 && !cameBack; step += 1) {
     await next.click();
     await expect(unitPane).not.toHaveText("");
-    cameBack =
-      step > 0 && ((await unitPane.textContent()) ?? "").includes(IDLE_UNIT);
+    cameBack = step > 0 && ((await unitPane.textContent()) ?? "") === first;
   }
   expect(cameBack).toBe(true);
 });
