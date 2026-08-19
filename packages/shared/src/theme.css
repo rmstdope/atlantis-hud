@@ -41,16 +41,15 @@
   --color-edge-soft: #333d49;
 
   /*
-    Three steps of emphasis, all of them readable. Re-measured for ah-v09e against the lifted
-    surfaces *and* against a pane composited over live terrain, which is what the reader actually
-    sees: 10.59 / 6.96 / 5.65 on a panel, and never below 4.5 anywhere. `ink-dim` is a shade
-    lighter than the palette first drew it - at #8d99a8 it fell to 4.47 on a raised panel and 4.07
-    through a pane over tundra, below the AA floor this bead commits to.
+    Three steps of emphasis, all of them readable, and the gaps between them wide enough to still
+    read as a hierarchy: 10.59 / 6.96 / 5.80 on a panel.
 
-    Three steps of emphasis, all of them readable. `ink-dim` used to sit at 2.78:1 against a raised
-    panel, which is below the 4.5:1 small text needs and was hard to read on the panels it is used
-    most - the sentence under a checkbox, a field's label. Lightened until every step clears AA on
-    every surface, keeping the gaps between them wide enough to still read as a hierarchy.
+    Measured against a pane composited over live terrain as well as against the surfaces
+    themselves, because a floating pane is painted at `100 - --pane-transparency` percent and the
+    real background of nearly all this text is the map (ah-v09e). Over tundra, the worst terrain
+    for every token, they come to 8.46 / 5.56 / 4.63 - never below the 4.5:1 that small text needs
+    anywhere. `ink-dim` is a shade lighter than the palette first drew it: at #8d99a8 it fell to
+    4.47 on a raised panel and 4.07 through a pane over tundra.
   */
   --color-ink: #d4dce6;
   --color-ink-soft: #a8b4c2;
