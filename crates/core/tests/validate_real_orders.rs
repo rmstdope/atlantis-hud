@@ -116,7 +116,17 @@ fn the_committed_turn_has_no_semantic_problems_either() {
     // this against the alternative on 2026-08-17: a structure the table does not name is no
     // shelter, so these are real halved months and not invented problems - even though this turn's
     // own "Errors during turn" section does not carry the engine's advisory for them.
-    assert_eq!(findings.len(), 8, "{findings:?}");
+    //
+    // Two more since ah-dwk6: units 14451 and 13432 are given no orders at all, so
+    // `unit-does-nothing` warns about each. Both are parked cargo units; the navigator was shown
+    // that measurement and chose to warn about them anyway rather than exempt an empty block.
+    assert_eq!(findings.len(), 10, "{findings:?}");
+    let idle: Vec<&str> = findings
+        .iter()
+        .filter(|f| f.code.as_str() == "unit-does-nothing")
+        .filter_map(|f| f.unit_id.as_deref())
+        .collect();
+    assert_eq!(idle, ["14451", "13432"]);
     let halved: Vec<&str> = findings
         .iter()
         .filter(|f| f.code.as_str() == "magic-study-outside-building")
@@ -206,6 +216,8 @@ fn a_unit_told_to_spend_what_it_has_not_got_is_caught_in_that_same_turn() {
     assert_eq!(
         findings.iter().map(|f| f.code.as_str()).collect::<Vec<_>>(),
         vec![
+            "unit-does-nothing",
+            "unit-does-nothing",
             "not-enough-silver",
             "magic-study-outside-building",
             "magic-study-outside-building",
@@ -218,11 +230,17 @@ fn a_unit_told_to_spend_what_it_has_not_got_is_caught_in_that_same_turn() {
         ],
         "{findings:?}"
     );
-    assert_eq!(findings[0].unit_id, None, "one purse, shared");
+    // The introduced shortfall, found by code rather than by position: two `unit-does-nothing`
+    // findings now sort ahead of it (ah-dwk6).
+    let shortfall = findings
+        .iter()
+        .find(|f| f.code.as_str() == "not-enough-silver")
+        .unwrap_or_else(|| panic!("no not-enough-silver finding: {findings:?}"));
+    assert_eq!(shortfall.unit_id, None, "one purse, shared");
     assert!(
-        findings[0].message.contains("the units in this hex"),
+        shortfall.message.contains("the units in this hex"),
         "{}",
-        findings[0].message
+        shortfall.message
     );
 }
 
@@ -245,12 +263,12 @@ fn a_whole_map_pass_re_reads_neither_the_report_nor_the_ruleset() {
 
     // Fifty passes over the committed turn. If any of them re-parsed the report this would take
     // long enough to notice; the point here is that they are all handed the same two objects.
-    // The turn carries eight genuine findings throughout (the enchant-armor `not-enough-items`,
+    // The turn carries ten genuine findings throughout (the enchant-armor `not-enough-items`,
     // unit 13402's `study-at-maximum`, and the six Cloudship mages' `magic-study-outside-building`;
     // see `the_committed_turn_has_no_semantic_problems_either`) - what this loop pins is that every
     // pass reports them identically, not that the turn is silent.
     let expected = check_turn(&report, &template, Some(&ruleset), CheckOptions::default());
-    assert_eq!(expected.len(), 8, "{expected:?}");
+    assert_eq!(expected.len(), 10, "{expected:?}");
     for _ in 0..50 {
         let result = check_turn(&report, &template, Some(&ruleset), CheckOptions::default());
         assert_eq!(

@@ -435,6 +435,11 @@ const WARNING_GROUPS: readonly {
         code: "unit-overloaded",
         title: "Overloaded units",
         description: "A unit ordered to move carrying more than it can move with."
+      },
+      {
+        code: "unit-does-nothing",
+        title: "Units that do nothing",
+        description: "A unit with no order that spends its month."
       }
     ]
   },

@@ -933,19 +933,21 @@ test("a unit told to spend silver it has not got is warned about, without blocki
   // report carries eight findings of its own throughout - Six of Two (13402) is already at combat
   // 5, the ruleset's maximum, and still orders "@study comb" (ah-1uj); four mages in a different
   // hex CAST an enchant with no plate armor on hand (ah-dbb.2); and six Borg mages study force or
-  // pattern above level 2 aboard a Cloudship, which seats no mages (ah-a2k.2) - so the count here
-  // is that baseline plus the one this test introduces.
+  // pattern above level 2 aboard a Cloudship, which seats no mages (ah-a2k.2). Since ah-dwk6 there
+  // are two more: units 14451 and 13432 are given no orders at all (unit-does-nothing), and this
+  // test's own unit is a third, since a lone GIVE spends none of its month. Ten baseline plus the
+  // two this test introduces on its own unit.
   const chip = page.getByTestId("problems-chip");
-  await expect(chip).toContainText("9 problems");
+  await expect(chip).toContainText("12 problems");
   await chip.click();
   await expect(page.getByTestId("problems-panel")).toContainText("mountain (7,53)");
   await expect(page.getByTestId("problem-entry").first()).toContainText("⚠");
 
-  // Corrected, this hex's problem goes away, leaving only the turn's eight baseline findings
-  // elsewhere.
+  // Corrected, this hex's problems go away - "@work" both covers the shortfall and spends the
+  // month - leaving only the turn's ten baseline findings elsewhere.
   await fillOrders(page, "@work");
   await expect(page.getByTestId("region-problems")).toHaveCount(0);
-  await expect(page.getByTestId("problems-chip")).toContainText("8 problems");
+  await expect(page.getByTestId("problems-chip")).toContainText("10 problems");
 });
 
 /**
@@ -965,8 +967,24 @@ async function warnAboutUnguardedHexes(page: Page) {
   await page.keyboard.press("Escape");
 }
 
+/**
+ * Turns `unit-does-nothing` (ah-dwk6) off.
+ *
+ * It is on by default and is right about the fixtures below - a unit given a single GIVE, or a
+ * line that does not parse, has no order that spends its month - but it is an extra finding in
+ * tests that are counting a specific pair of them or reading one editor's diagnostics. The check
+ * has its own coverage in the Rust suite and its own toggle test above.
+ */
+async function silenceIdleUnits(page: Page) {
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByTestId("settings-tab-warnings").click();
+  await page.getByTestId("settings-warning-unit-does-nothing").uncheck();
+  await page.keyboard.press("Escape");
+}
+
 test("hiding the problems brings the region facts to the top", async ({ page }) => {
   await loadReport(page);
+  await silenceIdleUnits(page);
   await warnAboutUnguardedHexes(page);
   await selectHex(page, "1:7,53");
   await selectUnit(page, OWN_UNIT);
@@ -1022,6 +1040,7 @@ test("the hidden problems stay hidden across a reload", async ({ page }) => {
  */
 test("a silenced advisory check disappears everywhere at once", async ({ page }) => {
   await loadReport(page);
+  await silenceIdleUnits(page);
   await selectHex(page, "1:7,53");
   await selectUnit(page, OWN_UNIT);
   await fillOrders(page, "GIVE 0 999999999 SILV");
@@ -1162,6 +1181,7 @@ test("an order with the wrong argument is caught, and the offending word quoted"
   page
 }) => {
   await loadReport(page);
+  await silenceIdleUnits(page);
   await selectHex(page, "1:7,53");
   await selectUnit(page, OWN_UNIT);
 
@@ -1217,6 +1237,7 @@ test("a TURN block left open is reported against the unit that wrote it", async 
 
 test("an item the catalogue does not know is a warning rather than an error", async ({ page }) => {
   await loadReport(page);
+  await silenceIdleUnits(page);
   await selectHex(page, "1:7,53");
   await selectUnit(page, OWN_UNIT);
 
