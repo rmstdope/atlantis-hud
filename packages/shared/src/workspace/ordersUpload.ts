@@ -149,9 +149,15 @@ export function refusalReason(body: string): string | null {
 /**
  * What the server said about the orders themselves - "No errors found.", or the errors it found.
  *
- * Only the tail of the echoed `<pre>`, after the **last** `#end` line, and that is what keeps the
- * password out of it: the `#atlantis` header is the first line of that block, so a function that
- * starts after `#end` can never reach it. It must never be widened to return the whole `<pre>`.
+ * The server annotates the echoed document **inline**, immediately above each offending line, and
+ * puts only the summary count after `#end`. Reading the tail alone (which is what shipped, and what
+ * ah-58dz was filed against) therefore reports "1 error found!" and nothing a player can act on.
+ *
+ * Every line returned is filtered against `FACTION_HEADER_LINE`, wherever it appears - that, and
+ * not the region boundary, is what keeps the password out of what a player sees. Do not remove the
+ * filter on the grounds that the header is "before the errors"; a document with a second faction
+ * block puts one anywhere, and neither a leading blank line nor indentation can defeat a match on
+ * the directive's name.
  */
 export function serverErrorReport(body: string): string | null {
   // The echo is the `<pre>` carrying the document's closing directive, which is not always the
@@ -164,17 +170,64 @@ export function serverErrorReport(body: string): string | null {
   }
 
   const lines = decodeEntities(stripTags(pre)).split("\n");
-  const end = lines.map((line) => line.trim()).lastIndexOf("#end");
-  const tail = lines
+  // Filtered once, up front, so no branch below can reintroduce the header into any intermediate
+  // value. Everything after this reads `safe` and never `lines`.
+  const safe = lines.filter((line) => !FACTION_HEADER_LINE.test(line));
+
+  const end = safe.map((line) => line.trim()).lastIndexOf("#end");
+  const document = end === -1 ? [] : safe.slice(0, end);
+  const tail = safe
     .slice(end + 1)
-    // The tail-only rule alone is not enough: a document holding a second faction block, or one
-    // missing its final `#end`, puts an `#atlantis <id> "<password>"` line after the last `#end`.
-    // Dropping the header positively is what actually keeps the password out of what a player sees.
-    .filter((line) => !FACTION_HEADER_LINE.test(line))
     .join("\n")
     .trim();
-  return tail === "" ? null : tail;
+
+  const blocks: string[] = [];
+  let lastUnit: string | null = null;
+  let emittedUnit: string | null = null;
+  for (let index = 0; index < document.length; index += 1) {
+    const line = document[index];
+    if (UNIT_LINE.test(line)) {
+      lastUnit = line.trim();
+      continue;
+    }
+    if (!ANNOTATION_LINE.test(line)) {
+      continue;
+    }
+
+    const entry: string[] = [];
+    if (lastUnit !== null && lastUnit !== emittedUnit) {
+      // The unit heading is emitted only when it changes, so three errors in one unit read as one
+      // heading and three annotations rather than the heading three times.
+      entry.push(lastUnit);
+      emittedUnit = lastUnit;
+    }
+    entry.push(line.trim());
+
+    const next = document[index + 1];
+    if (
+      next !== undefined &&
+      next.trim() !== "" &&
+      !ANNOTATION_LINE.test(next) &&
+      next.trim() !== "#end"
+    ) {
+      entry.push(next.replace(/\s+$/, ""));
+    }
+    blocks.push(entry.join("\n"));
+  }
+
+  const rendered = [...blocks, tail].filter((part) => part !== "").join("\n\n").trim();
+  return rendered === "" ? null : rendered;
 }
+
+/**
+ * The server's inline annotation marker. Matched on the leading `***` alone rather than on the
+ * word "Error", so a reply that says `*** Warning: ... ***` - or reworded errors - is still shown
+ * rather than silently dropped. Showing one line too many is the safe direction here; the failure
+ * this bead fixes was showing none.
+ */
+const ANNOTATION_LINE = /^\s*\*\*\*/;
+/** The `unit <n>` line an annotation falls under, so the player knows where to look. */
+const UNIT_LINE = /^\s*unit\s+\d+/i;
 
 const END_LINE = /^[ \t]*#end[ \t]*$/m;
 const FACTION_HEADER_LINE = /^\s*#atlantis\b/;

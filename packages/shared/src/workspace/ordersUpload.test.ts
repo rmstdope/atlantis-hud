@@ -155,6 +155,85 @@ describe("serverErrorReport", () => {
     expect(serverErrorReport(body)).toBe("No errors found.");
   });
 
+  it("names the failing order and the unit it belongs to", () => {
+    const body =
+      "<pre>#atlantis 95 &quot;swordfish&quot;\nunit 803\nFORM 5\n  STUDY FORC\n\n" +
+      '*** Error: xNAME is not a valid order. ***\n  xNAME UNIT &quot;Scouts&quot;\n  CLAIM 895\nEND\n#end\n\n1 error found!\n</pre>';
+
+    expect(serverErrorReport(body)).toBe(
+      'unit 803\n*** Error: xNAME is not a valid order. ***\n  xNAME UNIT "Scouts"\n\n1 error found!'
+    );
+  });
+
+  it("never returns an #atlantis line, wherever the reply puts one", () => {
+    const body =
+      "<pre>#atlantis 95 &quot;swordfish&quot;\nunit 803\n\n" +
+      "#atlantis 95 &quot;swordfish&quot;\n" +
+      "   #atlantis 95 &quot;swordfish&quot;\n" +
+      "*** Error: bad order. ***\n  XX 1\n#end\n" +
+      "#atlantis 95 &quot;swordfish&quot;\n1 error found!\n</pre>";
+    const report = serverErrorReport(body) ?? "";
+
+    expect(report).not.toContain("#atlantis");
+    expect(report).not.toContain("swordfish");
+    expect(report).toContain("*** Error: bad order. ***");
+  });
+
+  it("groups each error under the unit it falls in", () => {
+    const body =
+      "<pre>#atlantis 1 &quot;p&quot;\nunit 803\n*** Error: a. ***\n  AA 1\nunit 900\n" +
+      "*** Error: b. ***\n  BB 2\n#end\n2 errors found!\n</pre>";
+
+    expect(serverErrorReport(body)).toBe(
+      "unit 803\n*** Error: a. ***\n  AA 1\n\nunit 900\n*** Error: b. ***\n  BB 2\n\n2 errors found!"
+    );
+  });
+
+  it("repeats the unit line only when it changes", () => {
+    const body =
+      "<pre>#atlantis 1 &quot;p&quot;\nunit 803\n*** Error: a. ***\n  AA 1\n" +
+      "*** Error: b. ***\n  BB 2\n#end\n2 errors found!\n</pre>";
+
+    expect(serverErrorReport(body)).toBe(
+      "unit 803\n*** Error: a. ***\n  AA 1\n\n*** Error: b. ***\n  BB 2\n\n2 errors found!"
+    );
+  });
+
+  it("shows an annotation before any unit line without one", () => {
+    const body =
+      "<pre>#atlantis 1 &quot;p&quot;\n*** Error: faction-level. ***\n  FF 1\n#end\n1 error found!\n</pre>";
+
+    expect(serverErrorReport(body)).toBe(
+      "*** Error: faction-level. ***\n  FF 1\n\n1 error found!"
+    );
+  });
+
+  it("omits the offending line when the annotation is the last line", () => {
+    const body = "<pre>#atlantis 1 &quot;p&quot;\nunit 5\n*** Error: a. ***\n#end\n1 error found!\n</pre>";
+
+    expect(serverErrorReport(body)).toBe("unit 5\n*** Error: a. ***\n\n1 error found!");
+  });
+
+  it("omits it when the next line is another annotation", () => {
+    const body =
+      "<pre>#atlantis 1 &quot;p&quot;\nunit 5\n*** Error: a. ***\n*** Error: b. ***\n  BB 2\n#end\n2 errors found!\n</pre>";
+
+    expect(serverErrorReport(body)).toBe(
+      "unit 5\n*** Error: a. ***\n\n*** Error: b. ***\n  BB 2\n\n2 errors found!"
+    );
+  });
+
+  it("shows an annotation the server did not word as an Error", () => {
+    const body =
+      "<pre>#atlantis 1 &quot;p&quot;\nunit 5\n*** Warning: odd. ***\n  WW 1\n#end\n1 error found!\n</pre>";
+
+    expect(serverErrorReport(body)).toContain("*** Warning: odd. ***");
+  });
+
+  it("a clean reply is still the tail alone", () => {
+    expect(serverErrorReport(ACCEPTED)).toBe("No errors found.");
+  });
+
   it("is null when there is no pre, or nothing follows #end", () => {
     expect(serverErrorReport("<html>no pre here</html>")).toBeNull();
     expect(serverErrorReport("<pre>#atlantis 42\n#end\n</pre>")).toBeNull();
