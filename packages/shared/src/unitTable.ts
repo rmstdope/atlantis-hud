@@ -176,9 +176,10 @@ function valueOf(
 /**
  * What a long order compares as: lower-cased, with a leading `@` and the space after it dropped.
  *
- * Only the comparison is normalised - the cell still shows the line exactly as it was typed.
- * Without this `@tax` and `TAX` would sort a hundred rows apart on a character the reader is not
- * thinking about.
+ * This normalisation is for the comparison alone and is never rendered - what the cell shows is
+ * the caller's business, and `UnitTableDock` shows the line `longOrderOf` returned. Without this
+ * `@tax` and `TAX` would sort a hundred rows apart on a character the reader is not thinking
+ * about.
  */
 function longOrderKey(order: string | null): string | null {
   if (order === null) {
