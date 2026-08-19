@@ -2623,6 +2623,48 @@ test("a unit named in a turn message is a way back to it", async ({ page }) => {
   await expect(page.getByTestId("panel-region")).toContainText("Inholm");
 });
 
+/**
+ * ah-87he: the unit numbers in a problem list are inert - you read which unit has the problem and
+ * then go and find it yourself. These two cover the click, there being no jsdom for the unit tests.
+ */
+test("a unit named in the problems panel is a way to go there", async ({ page }) => {
+  await loadReport(page);
+
+  // Somewhere else first, so the jump has a hex to move away from - the whole point of the
+  // top-bar case is that the unit is not in the hex on screen.
+  await selectHex(page, "1:7,53");
+  await expect(page.getByTestId("panel-region")).toContainText("Inholm");
+
+  await page.getByTestId("problems-chip").click();
+  // Scoped to the panel: the region pane behind it carries links of its own, and this test is
+  // about the top-bar one. Six of Two (13402) is one of the turn's own baseline findings - it is
+  // already at the ruleset's maximum combat and still orders "@study comb" - and it stands in a
+  // hex that is not Inholm, which is what makes the jump worth testing.
+  const jump = page.getByTestId("problems-panel").getByTestId("problem-unit-13402").first();
+  await expect(jump).toBeVisible();
+  await jump.click();
+
+  // The panel got out of the way, and the workspace behind it followed the unit to its own hex.
+  await expect(page.getByTestId("problems-panel")).toHaveCount(0);
+  await expect(page.getByTestId("panel-unit")).toContainText("13402");
+  await expect(page.getByTestId("panel-region")).not.toContainText("Inholm");
+});
+
+test("a unit named in the region pane's problems is a way to select it", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+  await selectUnit(page, OWN_UNIT);
+  await fillOrders(page, "give 1 1 silv");
+
+  const jump = page.getByTestId("region-problems").getByTestId(`problem-unit-${OWN_UNIT}`).first();
+  await expect(jump).toBeVisible();
+  await jump.click();
+
+  // Selected, and the region pane is not a popover - it stays exactly where it was.
+  await expect(page.getByTestId("panel-unit")).toContainText(OWN_UNIT);
+  await expect(page.getByTestId("region-problems")).toBeVisible();
+});
+
 test("the turn messages panel closes on Escape", async ({ page }) => {
   await loadReport(page);
 

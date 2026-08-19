@@ -96,3 +96,25 @@ describe("ProblemsPanel, one card per hex (ah-uia)", () => {
     expect(drawHexes()).toContain(">hex<");
   });
 });
+
+describe("ProblemsPanel, a unit number is a way to go there (ah-87he)", () => {
+  it("the unit id is a button when a handler is given", () => {
+    const markup = renderToStaticMarkup(
+      <ProblemsPanel
+        hexes={HEXES}
+        labelFor={(regionId) => regionId}
+        onSelectHex={() => {}}
+        onDismiss={() => {}}
+        known={new Set(["3310"])}
+        onSelectUnit={() => {}}
+      />
+    );
+
+    expect(markup).toContain('data-testid="problem-unit-3310"');
+    expect(markup).toContain("text-brass");
+  });
+
+  it("keeps the plain span when no handler is given", () => {
+    expect(drawHexes()).not.toContain('data-testid="problem-unit-');
+  });
+});

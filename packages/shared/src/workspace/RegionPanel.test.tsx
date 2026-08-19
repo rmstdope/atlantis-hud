@@ -260,3 +260,31 @@ describe("the region panel's structure list", () => {
     expect(markup).toContain("Odds and Ends [12] · Fort");
   });
 });
+
+describe("the region panel's unit numbers are a way to go there (ah-87he)", () => {
+  beforeEach(() => {
+    resetWorkspaceStore();
+    resetHexNotesStore();
+  });
+
+  it("the unit id is a button when a handler is given", () => {
+    const markup = renderToStaticMarkup(
+      <RegionPanel
+        hex={HEX}
+        problems={PROBLEMS}
+        client={CLIENT}
+        game={GAME}
+        turn={71}
+        known={new Set(["18642"])}
+        onSelectUnit={() => {}}
+      />
+    );
+
+    expect(markup).toContain('data-testid="problem-unit-18642"');
+    expect(markup).toContain("text-brass");
+  });
+
+  it("keeps the plain span when no handler is given", () => {
+    expect(draw(PROBLEMS)).not.toContain('data-testid="problem-unit-');
+  });
+});
