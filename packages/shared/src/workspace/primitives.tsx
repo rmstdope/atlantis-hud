@@ -42,9 +42,17 @@ export function SeverityMark({ severity }: { severity: OrderDiagnosticSeverity }
   );
 }
 
-/** The shared look of a name that opens the game-data dictionary. */
+/**
+ * The shared look of a name that opens the game-data dictionary.
+ *
+ * `inline align-baseline` and `select-text` are not styling: a `<button>` is `inline-block` and
+ * `user-select: none` by default, which in a pane full of prose changes the line boxes around it
+ * and makes the words unselectable. Both were caught in CI on #474 - the region pane moved by a
+ * whole row, and a drag anchored on a name selected nothing. A link inside a sentence must sit in
+ * the sentence and behave like the text it replaces.
+ */
 const GAME_DATA_LINK_CLASS =
-  "border-b border-dotted border-ink-dim text-left hover:text-select hover:border-select focus-visible:outline focus-visible:outline-1 focus-visible:outline-select";
+  "inline select-text border-b border-dotted border-ink-dim align-baseline text-left hover:text-select hover:border-select focus-visible:outline focus-visible:outline-1 focus-visible:outline-select";
 
 /** The shared look of a unit id you can go and look at, so one gesture reads the same everywhere. */
 const UNIT_LINK_CLASS =
