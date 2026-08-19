@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Walking the problems one at a time (bead ah-dlao)</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733; --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --brass-bright:#eebe63; --ok:#4fb783; --warn:#d9a441; --danger:#d97070; --select:#4a9fd8; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1200px; margin-left:auto; margin-right:auto; }
+  h1 { font-size:26px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:96ch; margin-top:10px; font-size:14px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:0.92em; }
+  h2.sec { margin-top:34px; font-size:18px; color:var(--brass); } h2.sec small { color:var(--ink-dim); font-size:13px; margin-left:10px; }
+  .banner { border:1px solid var(--edge); border-left:3px solid var(--brass); background:var(--panel); padding:14px 16px; border-radius:6px; margin-top:16px; color:var(--ink-soft); font-size:13.5px; } .banner b { color:var(--ink); }
+  .banner.good { border-left-color:var(--ok); } .banner.bad { border-left-color:var(--danger); }
+  .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:20px; margin-top:16px; align-items:start; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; display:flex; flex-direction:column; gap:12px; }
+  .card h3 { font-size:16px; } .card h3 em { color:var(--brass); font-style:normal; font-size:11px; letter-spacing:1.6px; margin-right:8px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; }
+  .notes { list-style:none; font-size:12px; color:var(--ink-soft); display:grid; gap:4px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; } .notes li.con::before { content:"\2212  "; color:var(--danger); }
+  .cap { font:10px/1.3 'SF Mono',monospace; color:var(--brass); letter-spacing:1px; text-transform:uppercase; margin-bottom:6px; }
+  table { border-collapse:collapse; font-size:12.5px; width:100%; margin-top:14px; } th,td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--edge-soft); vertical-align:top; } th { color:var(--brass); font-weight:normal; font-size:11px; letter-spacing:1px; text-transform:uppercase; }
+  .ui { font-family:'Helvetica Neue',Arial,sans-serif; font-size:12px; }
+  .chipbar { display:flex; align-items:center; gap:6px; background:var(--panel); border:1px solid var(--edge); border-radius:6px; padding:5px 8px; }
+  .chip { border:1px solid var(--warn); color:var(--warn); border-radius:4px; padding:1px 8px; }
+  .chip.plain { border-color:var(--edge); color:var(--ink-soft); }
+  .step { border:1px solid var(--edge); color:var(--ink-soft); border-radius:4px; padding:1px 7px; cursor:pointer; }
+  .step.hov { border-color:var(--brass); color:var(--brass); }
+  .pane { border:1px solid var(--edge); border-radius:6px; background:var(--panel); overflow:hidden; }
+  .pane .bar { display:flex; align-items:center; gap:8px; padding:4px 8px; border-bottom:1px solid var(--edge); color:var(--ink-soft); }
+  .pane .bar .sp { margin-left:auto; display:flex; gap:4px; }
+  .prob { display:flex; gap:6px; padding:3px 8px; } .prob + .prob { border-top:1px solid var(--edge-soft); }
+  .prob.on { background:rgba(217,164,65,.12); }
+  .g { color:var(--warn); width:1em; text-align:center; flex:none; }
+  .uid { color:var(--brass); flex:none; font-variant-numeric:tabular-nums; }
+  .ed { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11.5px; line-height:1.6; background:var(--ground); border:1px solid var(--edge-soft); border-radius:5px; padding:8px 10px; white-space:pre; color:var(--ink-soft); }
+  .ed b { color:var(--ink); font-weight:normal; }
+  .sel { background:rgba(74,159,216,.35); color:var(--ink); }
+  .caret { display:inline-block; width:1px; height:1.05em; background:var(--brass-bright); vertical-align:-2px; animation:none; box-shadow:0 0 3px var(--brass-bright); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Walking the problems one at a time &mdash; <span>proposals</span> (bead ah-dlao)</h1>
+  <p>Working through a turn means finding each problem in a list and clicking to the unit that has it. The bead asks for <b>next problem / previous problem</b>, by mouse and by keyboard, so a player can remedy them one at a time without leaving the keyboard.</p>
+  <p><b>Half of it already exists.</b> <code>walkProblems</code> (<code>AppShell.tsx:737</code>) already steps the list on <b>F8</b> and <b>Shift-F8</b>, follows the unit into another hex, and lands the selection once the unit has loaded. What is missing is a way to do it with the mouse &mdash; and one behaviour the bead asks for that would <i>change</i> what F8 does today.</p>
+</header>
+<main>
+
+  <h2 class="sec">&sect;1 &nbsp;Where the mouse control lives</h2>
+  <div class="cards">
+    <div class="card">
+      <h3><em>A</em> Beside the problems chip</h3>
+      <div class="concept">Two small steppers in the header, next to the count that is already there.</div>
+      <div class="ui"><div class="chipbar">
+        <span class="chip">&#9888; 7 problems</span>
+        <span class="step">&#8249;</span><span class="step hov">&#8250;</span>
+        <span class="chip plain">Turn 71</span>
+      </div></div>
+      <ul class="notes">
+        <li>Next to the number it walks &mdash; the one place a player already looks for problems.</li>
+        <li>Available without opening anything.</li>
+        <li class="con">Two more controls in the header, which is <b>exactly the shared budget ah-csni is about</b>.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3><em>B</em> In the problems panel</h3>
+      <div class="concept">In the panel's own title bar, where the list is.</div>
+      <div class="ui"><div class="pane" style="width:290px">
+        <div class="bar"><span>7 problems in 4 hexes</span><span class="sp"><span class="step">&#8249;</span><span class="step hov">&#8250;</span></span></div>
+        <div class="prob on"><span class="g">&#9888;</span><span class="uid">4117</span><span>has no order that spends the month</span></div>
+        <div class="prob"><span class="g">&#9888;</span><span class="uid">4102</span><span>is in no structure to build in</span></div>
+      </div></div>
+      <ul class="notes">
+        <li>Costs the header nothing.</li>
+        <li>The walk highlights the current row, so the panel doubles as a position indicator.</li>
+        <li class="con">The panel overlays the workspace &mdash; and ah-87he just made it <b>close</b> on a jump, so it is not open while you work.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3><em>C</em> In the orders pane</h3>
+      <div class="concept">Above the editor, beside the per-unit problem list already there.</div>
+      <div class="ui"><div class="pane" style="width:290px">
+        <div class="bar"><span>Orders &mdash; unit 4117</span><span class="sp"><span class="step">&#8249;</span><span class="step hov">&#8250;</span></span></div>
+        <div class="prob"><span class="g">&#9888;</span><span style="color:var(--ink-dim)">line 3</span><span>has no order that spends the month</span></div>
+      </div></div>
+      <ul class="notes">
+        <li>Where the fixing actually happens &mdash; hand and eye are already there.</li>
+        <li>Stays visible while you type, unlike a popover.</li>
+        <li class="con">The pane is per-unit; a control that walks the <i>whole turn</i> sitting in it reads oddly.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2 class="sec">&sect;2 &nbsp;Where the cursor lands &mdash; and where the bead and the code disagree</h2>
+  <div class="banner bad"><b>The bead asks for something F8 does not do today, and it is not obviously better.</b> It says the editor should take focus <i>&ldquo;with the cursor at the end of the existing orders&rdquo;</i>. What <code>selectProblem</code> does now is <b>select the offending token</b> (<code>OrdersEditor.tsx:422-437</code>) &mdash; so you can type straight over the wrong order.</div>
+  <p style="color:var(--ink-soft);font-size:13.5px;margin-top:12px;max-width:96ch">Which is right depends on the warning, and there are now three shapes of finding:</p>
+  <table>
+    <tr><th style="width:30%">The finding</th><th style="width:22%">Has</th><th>What the fix usually is</th></tr>
+    <tr><td><code>spends 250 silver it has not got</code></td><td>a line and a token</td><td>Edit that order. <b>Selecting it is right.</b></td></tr>
+    <tr><td><code>has no order that spends the month</code><br><span style="color:var(--ink-dim)">ah-dwk6</span></td><td>a line, <b>no token</b></td><td>Add an order. The line is <code>unit 4117</code> &mdash; selecting it selects the block header, which you do not want to type over.</td></tr>
+    <tr><td><code>nobody is guarding this hex</code></td><td><b>no line at all</b></td><td>Nothing in this unit's orders. There is no cursor position that helps.</td></tr>
+  </table>
+
+  <div class="cards">
+    <div class="card">
+      <h3><em>D</em> Keep selecting the token; end of orders when there is none</h3>
+      <div class="concept">Today's behaviour where it works, the bead's where it does not.</div>
+      <div class="ui"><div class="ed">unit 4117
+  <span class="sel">GIVE 4021 250 SILV</span>
+  @study combat</div>
+      <div style="margin-top:8px" class="ed">unit 4117
+  @study combat<span class="caret"></span></div></div>
+      <ul class="notes">
+        <li>Each warning gets the landing that suits it.</li>
+        <li>No change at all to the F8 walk for findings that have a token.</li>
+        <li class="con">Two behaviours to explain, and which you get depends on a property you cannot see.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3><em>E</em> Always the end of the orders</h3>
+      <div class="concept">The bead as written.</div>
+      <div class="ui"><div class="ed">unit 4117
+  GIVE 4021 250 SILV
+  @study combat<span class="caret"></span></div></div>
+      <ul class="notes">
+        <li>One rule, always the same, easy to describe.</li>
+        <li>Always ready to type a new order.</li>
+        <li class="con"><b>Loses the selection F8 has today</b> &mdash; for a wrong order you now have to go and find it, which is the thing this bead is meant to stop.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3><em>F</em> Always select, and leave the cursor alone otherwise</h3>
+      <div class="concept">Today's behaviour, unchanged; the mouse control is all that is added.</div>
+      <div class="ui"><div class="ed">unit <span class="sel">4117</span>
+  GIVE 4021 250 SILV
+  @study combat</div></div>
+      <ul class="notes">
+        <li>Smallest change; nothing that works today moves.</li>
+        <li class="con">For ah-dwk6's warning it selects <code>unit 4117</code> &mdash; the block header. Typing replaces it, which is the worst outcome of the three.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2 class="sec">&sect;3 &nbsp;What the walk does at the ends</h2>
+  <p style="color:var(--ink-soft);font-size:13.5px;margin-top:10px;max-width:96ch">Today <code>stepDiagnostic</code> decides this and the bead says nothing about it. Whatever it does now, the mouse control should do the same &mdash; but it is worth being deliberate, because a stepper button that stops responding reads as broken where a key that does nothing does not.</p>
+
+</main>
+</body>
+</html>
