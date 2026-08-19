@@ -167,7 +167,13 @@ export function GameDataDialog({
                 setState((current) => ({ ...current, filter: event.target.value }))
               }
               onKeyDown={(event) => {
-                if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+                // Left and Right change tab, as agreed - but only with nothing typed, because
+                // focus opens here and a filter you cannot move the caret inside is worse than
+                // one more Tab press to reach the strip.
+                if (
+                  (event.key === "ArrowLeft" || event.key === "ArrowRight") &&
+                  state.filter === ""
+                ) {
                   event.preventDefault();
                   stepTab(event.key === "ArrowLeft" ? -1 : 1);
                   return;
@@ -352,7 +358,7 @@ function Detail({
         <Field label="Moves">{detail.moves} hexes a month</Field>
         <Field label="Carries">
           {detail.capacity.walk} walking · {detail.capacity.ride} riding · {detail.capacity.fly}{" "}
-          flying
+          flying · {detail.capacity.swim} swimming
         </Field>
         {detail.capacityCondition === null ? null : (
           <Field label="Only when">{detail.capacityCondition}</Field>

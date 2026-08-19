@@ -67,3 +67,16 @@ describe("the game data dialog's state", () => {
     expect(picked.back).toEqual([]);
   });
 });
+
+describe("an entry the scrape never took", () => {
+  it("still switches to the tab its id names, and back again", () => {
+    const opened = openGameDataDialog(index, "skill:MINI");
+    const followed = selectGameDataEntry(index, opened, "equipment:NOPE", { push: true });
+    expect(followed.category).toBe("equipment");
+    expect(goBack(index, followed).category).toBe("skill");
+
+    const structure = openGameDataDialog(index, "building:ROAD N");
+    expect(structure.category).toBe("building");
+    expect(structure.selectedId).toBe("building:ROAD N");
+  });
+});

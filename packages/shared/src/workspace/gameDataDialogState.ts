@@ -23,6 +23,25 @@ export type GameDataDialogState = {
   back: readonly string[];
 };
 
+/**
+ * The category an id belongs to, read from the id itself.
+ *
+ * The index is asked first, but an id it does not hold is still a real place to be - a produced
+ * item the scrape never took, a structure kind from a report - and its tab is the one named in
+ * front of the colon. Without this, following such a link showed an equipment entry with the
+ * Skills tab still lit.
+ */
+function categoryOf(index: GameDataIndex, entryId: string): GameDataCategory | null {
+  const known = index.byId.get(entryId)?.category;
+  if (known !== undefined) {
+    return known;
+  }
+  const prefix = entryId.slice(0, entryId.indexOf(":"));
+  return GAME_DATA_CATEGORIES.includes(prefix as GameDataCategory)
+    ? (prefix as GameDataCategory)
+    : null;
+}
+
 /** The entries on one tab, already in the index's alphabetical order. */
 export function entriesOf(
   index: GameDataIndex,
@@ -68,10 +87,10 @@ export function selectGameDataEntry(
   entryId: string,
   options: { push: boolean }
 ): GameDataDialogState {
-  const entry = index.byId.get(entryId);
+  const category = categoryOf(index, entryId);
   return {
-    category: entry?.category ?? state.category,
-    filter: entry !== undefined && entry.category !== state.category ? "" : state.filter,
+    category: category ?? state.category,
+    filter: category !== null && category !== state.category ? "" : state.filter,
     selectedId: entryId,
     back:
       options.push && state.selectedId !== null && state.selectedId !== entryId
@@ -87,7 +106,7 @@ export function goBack(index: GameDataIndex, state: GameDataDialogState): GameDa
     return state;
   }
   return {
-    category: index.byId.get(previous)?.category ?? state.category,
+    category: categoryOf(index, previous) ?? state.category,
     filter: "",
     selectedId: previous,
     back: state.back.slice(0, -1)
