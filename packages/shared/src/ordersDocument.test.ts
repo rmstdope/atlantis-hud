@@ -5,6 +5,8 @@ import {
   commandsOnly,
   findUnitBlocks,
   hasFactionHeader,
+  LONG_ORDER_COMMANDS,
+  longOrderOf,
   readUnitOrders,
   stripMovementOrderLines,
   stripUnitComments,
@@ -497,5 +499,43 @@ describe("withFactionPassword", () => {
   it("returns a document with no #atlantis line unchanged", () => {
     const document = "unit 18642\n@work\n#end";
     expect(withFactionPassword(document, "p")).toBe(document);
+  });
+});
+
+/**
+ * The month-long commands are the ruleset's own list, not derived from anything the core exports:
+ * "A unit can also do exactly one action that takes up the entire month, such as harvesting
+ * resources or moving from one region to another. The orders which take an entire month are
+ * ADVANCE, BUILD, ENTERTAIN, MOVE, PILLAGE, PRODUCE, SAIL, STUDY, TAX, TEACH and WORK."
+ */
+describe("finds the one order that takes the whole month", () => {
+  it("recognises every one of the eleven month-long commands", () => {
+    for (const command of LONG_ORDER_COMMANDS) {
+      expect(longOrderOf(`@claim 50\n${command} thing`)).toBe(`${command} thing`);
+    }
+  });
+
+  it("finds the month-long line among a unit's other orders", () => {
+    expect(longOrderOf('@claim 50\nproduce yew\nguard 1')).toBe("produce yew");
+  });
+
+  it("keeps a repeated order exactly as typed", () => {
+    expect(longOrderOf("@tax")).toBe("@tax");
+  });
+
+  it("ignores the game's own descriptive comments", () => {
+    expect(longOrderOf("; a comment about MOVE\nguard 1")).toBeNull();
+  });
+
+  it("is null when the unit has no month-long order at all", () => {
+    expect(longOrderOf("@GIVE 1 50 SILV\nguard 1")).toBeNull();
+  });
+
+  it("does not match a command that merely starts with the same letters", () => {
+    expect(longOrderOf("taxation 1")).toBeNull();
+  });
+
+  it("returns the first one when a document somehow holds two", () => {
+    expect(longOrderOf("produce yew\n@tax")).toBe("produce yew");
   });
 });
