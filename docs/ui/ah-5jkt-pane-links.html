@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Clickable things in the panes</title>
+<style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1340px; margin:0 auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; }
+  h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:94ch; margin-top:10px; font-size:14px; }
+  header p + p { margin-top:8px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; }
+  header code { color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:36px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:94ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; }
+  .card h2 { font-size:16px; margin-bottom:5px; }
+  .card h2 em { color:var(--brass); font-style:normal; font-size:11.5px; letter-spacing:1.5px; margin-right:8px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; margin-bottom:11px; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; padding:12px; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:11px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"− "; color:var(--danger); }
+  .notes li.n::before { content:"· "; color:var(--ink-dim); }
+  .cards3 { display:grid; grid-template-columns:repeat(3,1fr); gap:18px; align-items:start; }
+
+  /* the pane, as the app draws it */
+  .pane { background:var(--panel); border:1px solid var(--edge); border-radius:5px; padding:9px 11px;
+          font:12.5px/1.55 'Helvetica Neue',Arial,sans-serif; }
+  .sect { font-size:10px; letter-spacing:1.3px; text-transform:uppercase; color:var(--ink-dim);
+          border-bottom:1px solid var(--edge-soft); padding-bottom:2px; margin:9px 0 4px; }
+  .sect:first-child { margin-top:0; }
+  .row { display:flex; justify-content:space-between; gap:12px; }
+  .row .k { color:var(--ink-soft); } .row .v { color:var(--ink); font-variant-numeric:tabular-nums; }
+  .prose { color:var(--ink-soft); }
+
+  /* the three affordances */
+  .a .k b, .a .prose b { font-weight:normal; color:var(--select); }
+  .b .k b, .b .prose b { font-weight:normal; border-bottom:1px dotted var(--ink-dim); }
+  .b .k b:hover, .b .prose b:hover { color:var(--select); border-bottom-color:var(--select); }
+  .c .k b, .c .prose b { font-weight:normal; }
+  .c .k b:hover, .c .prose b:hover { color:var(--select); text-decoration:underline; }
+  .hoverdemo { outline:1px dashed rgba(217,164,65,.5); outline-offset:2px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Clickable things in the panes — <span>how much they should announce themselves</span></h1>
+  <p>The second half of <code>ah-5jkt</code>. A skill or item named in the unit pane, and a product, market
+  good or structure named in the region pane, opens the game-data dictionary
+  (<code>ah-5jkt.1</code>) already on that entry.</p>
+  <p>The question is <b>how visible the links should be</b>. These panes are dense — a unit's skills and items,
+  a region's products and both market lists — and almost every noun in them becomes clickable. Colour them all
+  and the pane turns blue; colour none and nobody discovers the feature.</p>
+  <p>The item marked with a dashed outline in each is shown as it looks <b>under the pointer</b>.</p>
+</header>
+
+<main>
+
+<h3 class="sec">1 · How a clickable thing looks</h3>
+<div class="cards3">
+
+  <div class="card">
+    <h2><em>A</em>Always coloured</h2>
+    <div class="concept">Every linkable name in the select blue the app already uses for a unit id.</div>
+    <div class="stage">
+      <div class="pane a">
+        <div class="sect">Skills</div>
+        <div class="row"><span class="k"><b>lumberjack</b> LUMB</span><span class="v">5 · 450</span></div>
+        <div class="row"><span class="k"><b>observation</b> OBSE</span><span class="v">1 · 30</span></div>
+        <div class="sect">Items</div>
+        <div class="row"><span class="k"><b>wood elf</b> WELF</span><span class="v">2</span></div>
+        <div class="row"><span class="k hoverdemo"><b>yew</b> YEW</span><span class="v">14</span></div>
+        <div class="sect">Structures</div>
+        <div class="prose">Odds and Ends [12] · <b>Fort</b></div>
+      </div>
+    </div>
+    <ul class="notes">
+      <li>Impossible to miss; the feature is discovered on the first report</li>
+      <li>Consistent with the blue already meaning "clickable" for unit ids</li>
+      <li class="con">Nearly every line goes blue, and the panes lose their quiet</li>
+      <li class="con">The blue stops meaning "a unit" once it means everything</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2><em>B</em>A dotted underline, colour on hover</h2>
+    <div class="concept">A faint dotted rule marks a name as linkable; it colours only under the pointer.</div>
+    <div class="stage">
+      <div class="pane b">
+        <div class="sect">Skills</div>
+        <div class="row"><span class="k"><b>lumberjack</b> LUMB</span><span class="v">5 · 450</span></div>
+        <div class="row"><span class="k"><b>observation</b> OBSE</span><span class="v">1 · 30</span></div>
+        <div class="sect">Items</div>
+        <div class="row"><span class="k"><b>wood elf</b> WELF</span><span class="v">2</span></div>
+        <div class="row"><span class="k hoverdemo"><b style="color:var(--select);border-bottom-color:var(--select)">yew</b> YEW</span><span class="v">14</span></div>
+        <div class="sect">Structures</div>
+        <div class="prose">Odds and Ends [12] · <b>Fort</b></div>
+      </div>
+    </div>
+    <ul class="notes">
+      <li>Discoverable without shouting — the pane stays readable as prose</li>
+      <li>The dotted rule is the app's own idiom for "there is more here" (tooltips)</li>
+      <li>Blue keeps meaning "a unit"</li>
+      <li class="con">A lot of dotted rules on a dense pane is its own kind of busy</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2><em>C</em>Nothing until hover</h2>
+    <div class="concept">The pane looks exactly as it does today; a name reveals itself only under the pointer.</div>
+    <div class="stage">
+      <div class="pane c">
+        <div class="sect">Skills</div>
+        <div class="row"><span class="k"><b>lumberjack</b> LUMB</span><span class="v">5 · 450</span></div>
+        <div class="row"><span class="k"><b>observation</b> OBSE</span><span class="v">1 · 30</span></div>
+        <div class="sect">Items</div>
+        <div class="row"><span class="k"><b>wood elf</b> WELF</span><span class="v">2</span></div>
+        <div class="row"><span class="k hoverdemo"><b style="color:var(--select);text-decoration:underline">yew</b> YEW</span><span class="v">14</span></div>
+        <div class="sect">Structures</div>
+        <div class="prose">Odds and Ends [12] · <b>Fort</b></div>
+      </div>
+    </div>
+    <ul class="notes">
+      <li>Costs the panes nothing at all; they read exactly as today</li>
+      <li class="con">Undiscoverable — nobody hovers a noun to see whether it does something</li>
+      <li class="con">Useless to anyone navigating by keyboard, who never hovers</li>
+    </ul>
+  </div>
+
+</div>
+
+<h3 class="sec">2 · What becomes clickable</h3>
+<p>Everything below already carries the tag or kind the dictionary needs, so all of it <i>could</i> be linked.
+Shown with option B's affordance.</p>
+<div class="card">
+  <div class="stage" style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+    <div class="pane b">
+      <div style="color:var(--brass);font-size:11px;letter-spacing:1.2px;text-transform:uppercase;margin-bottom:6px">Unit pane</div>
+      <div class="sect">Skills</div>
+      <div class="row"><span class="k"><b>lumberjack</b> LUMB</span><span class="v">5 · 450</span></div>
+      <div class="row"><span class="k"><b>observation</b> OBSE</span><span class="v">1 · 30</span></div>
+      <div class="sect">Items</div>
+      <div class="row"><span class="k"><b>wood elf</b> WELF</span><span class="v">2</span></div>
+      <div class="row"><span class="k"><b>yew</b> YEW</span><span class="v">14</span></div>
+      <div class="row"><span class="k"><b>magic wagon</b> MWAG</span><span class="v">4</span></div>
+    </div>
+    <div class="pane b">
+      <div style="color:var(--brass);font-size:11px;letter-spacing:1.2px;text-transform:uppercase;margin-bottom:6px">Region pane</div>
+      <div class="sect">Products</div>
+      <div class="prose">120 <b>grain</b> · 43 <b>wood</b> · 9 <b>truffles</b></div>
+      <div class="sect">Wanted</div>
+      <div class="row"><span class="k"><b>mithril</b> MITH</span><span class="v">$240 ×3</span></div>
+      <div class="sect">For sale</div>
+      <div class="row"><span class="k"><b>leader</b> LEAD</span><span class="v">$700 ×5</span></div>
+      <div class="sect">Structures</div>
+      <div class="prose">Odds and Ends [12] · <b>Fort</b></div>
+      <div class="prose">Wavecrest [329] · <b>Longship</b></div>
+      <div class="prose">Deepdelve [88] · <b>Mine</b></div>
+    </div>
+  </div>
+  <ul class="notes">
+    <li class="n">A structure's <b>kind</b> is the linkable part, not its name or number — "Fort" is in the catalogue, "Odds and Ends" is this region's own</li>
+    <li class="n">A <b>Longship</b> is an item, not a building, and lands on the Ships tab</li>
+    <li class="n">A <b>Mine</b> is in the catalogue but the scrape gives it no defence figures — it still opens, and shows what there is</li>
+    <li class="n">Products in the region pane are prose, not rows, so only the item's name is clickable within the sentence</li>
+  </ul>
+</div>
+
+</main>
+
+<footer style="margin-top:34px; color:var(--ink-dim); font-size:12.5px;">
+  Mockup for bead <span class="mono">ah-5jkt.2</span>. The dialog these open is
+  <span class="mono">docs/ui/ah-5jkt-dictionary.html</span>.
+</footer>
+</body>
+</html>

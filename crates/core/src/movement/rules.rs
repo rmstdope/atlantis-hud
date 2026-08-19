@@ -684,6 +684,25 @@ impl Ruleset {
             .map(|building| building.mages)
     }
 
+    /// The skill tag and level a structure of this kind must be built with, or `None` when the
+    /// catalogue does not say.
+    ///
+    /// `None` covers three different silences, and every one of them means the same thing to a
+    /// caller: a ruleset scraped before ah-bwly.1, a kind the page never names (a ship), and one
+    /// of the 22 buildings of 58 the page names without a requirement. None of them is a claim
+    /// that anybody may build it, so no caller may read `None` as "no skill needed".
+    ///
+    /// Keyed upper-cased, as [`Ruleset::mage_capacity`] already is: a report writes `Mine`, the
+    /// catalogue holds `MINE`.
+    #[must_use]
+    pub fn build_requirement(&self, kind: &str) -> Option<(&str, i64)> {
+        let building = self.buildings.get(&kind.to_ascii_uppercase())?;
+        // Both halves or neither. ah-bwly.1 writes them together, so a half-filled entry can only
+        // come from something having gone wrong - and reading that as no requirement stays quiet
+        // rather than warning about every unit in the game.
+        Some((building.build_skill.as_deref()?, building.build_level?))
+    }
+
     /// Whether this ruleset carries the buildings table at all.
     ///
     /// [`Ruleset::mage_capacity`] answers `None` both for a kind the table does not name and for a
@@ -778,6 +797,37 @@ mod tests {
             .expect("the committed ruleset names a Lair");
         assert_eq!(lair.build_skill, None);
         assert_eq!(lair.build_level, None);
+    }
+
+    #[test]
+    fn the_build_requirement_is_read_out_by_kind_however_it_is_written() {
+        let ruleset = ruleset();
+
+        // The report writes a structure's kind as the page prints it; the map is keyed
+        // upper-cased, as `mage_capacity` already assumes.
+        assert_eq!(ruleset.build_requirement("Mine"), Some(("MINI", 3)));
+        assert_eq!(ruleset.build_requirement("MINE"), Some(("MINI", 3)));
+        assert_eq!(ruleset.build_requirement("Tower"), Some(("BUIL", 1)));
+
+        // A structure the page names but gives no requirement for is not a structure anyone can
+        // be told they may build: the catalogue simply does not say.
+        assert_eq!(ruleset.build_requirement("Lair"), None);
+        // Nor is a kind the catalogue has never heard of - a ship.
+        assert_eq!(ruleset.build_requirement("Longship"), None);
+    }
+
+    /// Half an entry is not a state ah-bwly.1 can produce, but reading it as "no requirement" is
+    /// the safe way round if one ever appears.
+    #[test]
+    fn half_a_build_requirement_is_no_requirement() {
+        let mut ruleset = ruleset();
+        let mine = ruleset
+            .buildings
+            .get_mut("MINE")
+            .expect("the committed ruleset names a Mine");
+        mine.build_level = None;
+
+        assert_eq!(ruleset.build_requirement("Mine"), None);
     }
 
     #[test]
