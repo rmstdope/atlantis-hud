@@ -31,7 +31,27 @@ export function rowHeightAt(interfaceSize: number): number {
 }
 
 /** Which column the table is ordered by. Skills and Items are summaries, so they do not sort. */
-export type SortColumn = "unitId" | "name" | "faction" | "men" | "structure";
+export type SortColumn = "unitId" | "name" | "faction" | "men" | "structure" | "longOrder";
+
+/**
+ * The table's columns, in the order they are drawn.
+ *
+ * Kept as one list so the header, the rows and the spacer rows' colSpan all read the same thing
+ * and no positional literal has to be counted by hand.
+ */
+export const UNIT_COLUMNS = [
+  "own",
+  "unitId",
+  "name",
+  "faction",
+  "men",
+  "skills",
+  "items",
+  "structure",
+  "longOrder"
+] as const;
+
+export type UnitColumn = (typeof UNIT_COLUMNS)[number];
 
 export type SortState = {
   column: SortColumn;
@@ -134,7 +154,8 @@ function compareValues(
 function valueOf(
   unit: ReportUnit,
   column: SortColumn,
-  structures: ReadonlyMap<string, StructureInfo>
+  structures: ReadonlyMap<string, StructureInfo>,
+  longOrders: ReadonlyMap<string, string | null>
 ): number | string | null {
   switch (column) {
     case "unitId":
@@ -147,7 +168,24 @@ function valueOf(
       return unit.men;
     case "structure":
       return structureKey(unit.structureId, structures);
+    case "longOrder":
+      return longOrderKey(longOrders.get(unit.unitId) ?? null);
   }
+}
+
+/**
+ * What a long order compares as: lower-cased, with a leading `@` and the space after it dropped.
+ *
+ * This normalisation is for the comparison alone and is never rendered - what the cell shows is
+ * the caller's business, and `UnitTableDock` shows the line `longOrderOf` returned. Without this
+ * `@tax` and `TAX` would sort a hundred rows apart on a character the reader is not thinking
+ * about.
+ */
+function longOrderKey(order: string | null): string | null {
+  if (order === null) {
+    return null;
+  }
+  return order.replace(/^@\s*/u, "").toLowerCase();
 }
 
 /**
@@ -201,7 +239,9 @@ function numberOrNull(raw: string | null): number | null {
 export function sortUnits(
   units: ReportUnit[],
   sort: SortState,
-  structures: readonly StructureInfo[] = []
+  structures: readonly StructureInfo[] = [],
+  /** Each own unit's month-long order, for the column that sorts on it. */
+  longOrders: ReadonlyMap<string, string | null> = new Map()
 ): ReportUnit[] {
   const direction = sort.direction === "asc" ? 1 : -1;
   const byId = indexById(structures);
@@ -212,8 +252,8 @@ export function sortUnits(
     }
 
     const outcome = compareValues(
-      valueOf(left, sort.column, byId),
-      valueOf(right, sort.column, byId)
+      valueOf(left, sort.column, byId, longOrders),
+      valueOf(right, sort.column, byId, longOrders)
     );
     return "settled" in outcome ? outcome.settled : outcome.compare * direction;
   });
