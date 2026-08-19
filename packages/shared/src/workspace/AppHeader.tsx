@@ -371,6 +371,30 @@ export function AppHeader({
               </span>
             </button>
           </ChipPopover>
+          {/*
+            The map level, beside the faction name so it is glanceable (ah-l9mp). Inside the
+            faction group rather than as a header item of its own: the header wraps at a width the
+            CI runner's fonts already sit close to, and one more top-level item pushed it onto a
+            second row - which costs the orders editor's drag room, the resource ah-csni bounds.
+          */}
+          <span className="ml-1.5 text-ink-dim">
+            {levels.length > 1 ? (
+              <select
+                value={level}
+                onChange={(event) => setLevel(Number(event.target.value))}
+                aria-label="Map level"
+                className="rounded border border-edge bg-panel-raised px-1.5 py-0.5 text-ink"
+              >
+                {levels.map((candidate) => (
+                  <option key={candidate.z} value={candidate.z}>
+                    {candidate.name}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              (levels[0]?.name ?? SURFACE_LEVEL.name)
+            )}
+          </span>
           {mergedCount > 0 ? (
             <ChipPopover
               open={openPopover === "merged"}
@@ -395,24 +419,6 @@ export function AppHeader({
           ) : null}
         </span>
       ) : null}
-
-      {/* The map level, beside the faction name so it is glanceable (ah-l9mp). */}
-      {levels.length > 1 ? (
-        <select
-          value={level}
-          onChange={(event) => setLevel(Number(event.target.value))}
-          aria-label="Map level"
-          className="rounded border border-edge bg-panel-raised px-2 py-0.5 text-ink"
-        >
-          {levels.map((candidate) => (
-            <option key={candidate.z} value={candidate.z}>
-              {candidate.name}
-            </option>
-          ))}
-        </select>
-      ) : (
-        <span className="text-ink-dim">{levels[0]?.name ?? SURFACE_LEVEL.name}</span>
-      )}
 
       {/*
         The status line, taking up room only when its tone is worth a glance: a notice, a
