@@ -144,6 +144,8 @@ import { getMapTheme } from "./mapThemes";
 import { OrdersPanel } from "./OrdersPanel";
 import type { OrdersEditorHandle } from "./OrdersEditor";
 import { CommandPalette } from "./CommandPalette";
+import { GameDataDialog } from "./GameDataDialog";
+import { parseGameData } from "../gameData";
 import { ShortcutHelp } from "./ShortcutHelp";
 import { buildPaletteEntries } from "../commandPalette";
 import { diagnosticTargets, stepDiagnostic } from "../diagnosticNav";
@@ -330,6 +332,16 @@ export function AppShell({
   // The same ruleset as the storage layer wants it: its text once it arrived, `null` while it has
   // not. What gets stored is classified with exactly what the screen was classified with.
   const rulesetText = ruleset.status === "ready" ? ruleset.text : null;
+
+  // The game data dictionary, parsed once per ruleset load. `rulesetText` is null both while the
+  // ruleset is loading and when it could not be fetched, which is exactly the gate wanted here:
+  // no game data is offered until there is game data to offer.
+  const gameData = useMemo(
+    () => (rulesetText === null ? null : parseGameData(rulesetText)),
+    [rulesetText]
+  );
+  /** Null while the dictionary is closed; `entryId` is where it should land, or null for the top. */
+  const [gameDataOpen, setGameDataOpen] = useState<{ entryId: string | null } | null>(null);
   const [route, setRoute] = useState<RoutePlanResponse | null>(null);
   const [planning, setPlanning] = useState(false);
   // The selected unit's written MOVE order, traced so the map can draw it. Follows the editor
@@ -886,9 +898,12 @@ export function AppShell({
           : [])
       ],
       orderCommands,
-      insertOrder: (command) => ordersEditor.current?.insertOrder(command)
+      insertOrder: (command) => ordersEditor.current?.insertOrder(command),
+      gameData: gameData?.entries ?? [],
+      openGameData: (entryId) => setGameDataOpen({ entryId })
     });
   }, [
+    gameData,
     orderedOwnUnitIds,
     parsed,
     model,
@@ -2656,6 +2671,13 @@ export function AppShell({
         <CommandPalette entries={paletteEntries} onDismiss={() => setPaletteOpen(false)} />
       ) : null}
       {helpOpen ? <ShortcutHelp isMac={isMacPlatform()} onDismiss={() => setHelpOpen(false)} /> : null}
+      {gameDataOpen !== null && gameData !== null ? (
+        <GameDataDialog
+          index={gameData}
+          initialEntryId={gameDataOpen.entryId}
+          onDismiss={() => setGameDataOpen(null)}
+        />
+      ) : null}
     </>
   );
 

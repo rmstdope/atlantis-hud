@@ -3,7 +3,21 @@
  * the arrow keys move the highlight. All plain functions - the component only renders them.
  */
 
-export type PaletteEntryKind = "unit" | "region" | "action" | "order-help";
+import type { GameDataEntry } from "./gameData";
+
+export type PaletteEntryKind =
+  | "unit"
+  | "region"
+  | "action"
+  | "order-help"
+  /** One thing in the game data dictionary, named by the tab it opens on. */
+  | "skill"
+  | "man"
+  | "mount"
+  | "ship"
+  | "monster"
+  | "equipment"
+  | "building";
 
 export type PaletteEntry = {
   id: string;
@@ -20,12 +34,19 @@ export type PaletteInput = {
   actions: Array<{ id: string; label: string; binding?: string; run: () => void }>;
   orderCommands: readonly string[];
   insertOrder: (command: string) => void;
+  /** Every dictionary entry, or [] when the ruleset has not loaded. */
+  gameData: readonly GameDataEntry[];
+  openGameData: (entryId: string) => void;
 };
 
 /**
  * Everything the palette can offer, in reading order: the player's units first because going to
  * one is the palette's daily use, then places, then the app's own actions, then the order
- * vocabulary as a typeable reference.
+ * vocabulary as a typeable reference, then the game data dictionary.
+ *
+ * The dictionary goes last on purpose: it is two hundred and seventy-odd entries, and an empty
+ * query should still show the player's own units first. The tag rides in the label so typing
+ * `MITH` finds mithril, and so the palette reads the way the panes already do.
  */
 export function buildPaletteEntries(input: PaletteInput): PaletteEntry[] {
   return [
@@ -53,6 +74,12 @@ export function buildPaletteEntries(input: PaletteInput): PaletteEntry[] {
       kind: "order-help",
       label: command,
       run: () => input.insertOrder(command)
+    })),
+    ...input.gameData.map<PaletteEntry>((entry) => ({
+      id: `data-${entry.id}`,
+      kind: entry.category,
+      label: entry.tag === null ? entry.name : `${entry.name} ${entry.tag}`,
+      run: () => input.openGameData(entry.id)
     }))
   ];
 }

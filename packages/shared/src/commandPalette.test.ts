@@ -23,12 +23,18 @@ function entries(): PaletteEntry[] {
       { id: "theme", label: "Toggle theme", run: noop }
     ],
     orderCommands: ["MOVE", "STUDY"],
-    insertOrder: noop
+    insertOrder: noop,
+    gameData: [
+      { id: "skill:MINI", category: "skill", name: "mining", tag: "MINI" },
+      { id: "ship:LONG", category: "ship", name: "Longship", tag: "LONG" },
+      { id: "building:TOWER", category: "building", name: "Tower", tag: null }
+    ],
+    openGameData: noop
   });
 }
 
 describe("buildPaletteEntries", () => {
-  it("lists units, regions, actions and order help, in that reading order", () => {
+  it("lists units, regions, actions, order help and game data, in that reading order", () => {
     const kinds = entries().map((entry) => entry.kind);
     expect(kinds).toEqual([
       "unit",
@@ -38,7 +44,10 @@ describe("buildPaletteEntries", () => {
       "action",
       "action",
       "order-help",
-      "order-help"
+      "order-help",
+      "skill",
+      "ship",
+      "building"
     ]);
   });
 
@@ -98,7 +107,7 @@ describe("filterPalette", () => {
   });
 
   it("shows everything, in reading order, for an empty query", () => {
-    expect(filterPalette(entries(), "")).toHaveLength(8);
+    expect(filterPalette(entries(), "")).toHaveLength(11);
   });
 
   it("caps the list when asked to", () => {
@@ -129,5 +138,41 @@ describe("paletteKeyReduce", () => {
 
   it("stays put with nothing to highlight", () => {
     expect(paletteKeyReduce({ index: 0, count: 0 }, "ArrowDown")).toBeNull();
+  });
+});
+
+describe("game data in the palette", () => {
+  it("lists game data after order help, labelled with the tab it opens", () => {
+    const all = entries();
+    const data = all.slice(-3);
+    expect(all.slice(0, -3).every((entry) => entry.kind !== "skill")).toBe(true);
+    expect(data.map((entry) => entry.kind)).toEqual(["skill", "ship", "building"]);
+    expect(data.map((entry) => entry.id)).toEqual([
+      "data-skill:MINI",
+      "data-ship:LONG",
+      "data-building:TOWER"
+    ]);
+    expect(data.map((entry) => entry.label)).toEqual([
+      "mining MINI",
+      "Longship LONG",
+      "Tower"
+    ]);
+  });
+
+  it("finds an item by its tag, because the tag is in the label", () => {
+    expect(filterPalette(entries(), "LONG").map((entry) => entry.id)).toContain("data-ship:LONG");
+  });
+
+  it("offers no game data when the ruleset has not loaded", () => {
+    const without = buildPaletteEntries({
+      ownUnits: [],
+      regions: [],
+      actions: [],
+      orderCommands: [],
+      insertOrder: noop,
+      gameData: [],
+      openGameData: noop
+    });
+    expect(without).toEqual([]);
   });
 });
