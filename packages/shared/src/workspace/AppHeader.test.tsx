@@ -1,5 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it } from "vitest";
+import { SURFACE_LEVEL } from "../hexMapModel";
 import { AppHeader } from "./AppHeader";
 import { resetWorkspaceStore } from "../workspaceStore";
 import { failedStatus, noticeStatus, routineStatus, warningStatus } from "./shellStatus";
@@ -8,6 +9,7 @@ const draw = (overrides: Partial<Parameters<typeof AppHeader>[0]> = {}) =>
   renderToStaticMarkup(
     <AppHeader
       gameName="Game one"
+      levels={[SURFACE_LEVEL]}
       openPopover={null}
       onOpenPopover={() => {}}
       picker={null}
@@ -266,5 +268,36 @@ describe("AppHeader Send button", () => {
     const button = markup.match(/<button[^>]*data-testid="send-orders"[^>]*>/)![0];
     expect(button).toContain("disabled");
     expect(button).toContain(`title="${reason}"`);
+  });
+});
+
+describe("AppHeader map level", () => {
+  beforeEach(resetWorkspaceStore);
+
+  it("names each level with the core's word, as a select when there is a choice", () => {
+    // Moved up from the strip over the map (ah-l9mp): the level is changed often and wants to be
+    // seen at a glance, beside the faction name.
+    const markup = draw({
+      levels: [
+        { z: 0, name: "nexus" },
+        { z: 1, name: "surface" }
+      ]
+    });
+
+    expect(markup).toContain('aria-label="Map level"');
+    expect(markup).toContain(">nexus<");
+    expect(markup).toContain(">surface<");
+    expect(markup.indexOf(">nexus<")).toBeLessThan(markup.indexOf(">surface<"));
+  });
+
+  it("shows the single level as static text, not a control", () => {
+    const markup = draw({ levels: [{ z: 0, name: "nexus" }] });
+
+    expect(markup).toContain("nexus");
+    expect(markup).not.toContain('aria-label="Map level"');
+  });
+
+  it("falls back to the surface word when there are no levels at all", () => {
+    expect(draw({ levels: [] })).toContain("surface");
   });
 });

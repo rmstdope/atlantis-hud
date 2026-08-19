@@ -1807,18 +1807,31 @@ test("a folded panel is still folded after a reload", async ({ page }) => {
   await expect(page.getByTestId("import-status")).toContainText("restored turn 71");
 });
 
-test("layer toggles are operable and none is inert", async ({ page }) => {
+test("the layer toggles live in settings, not over the map", async ({ page }) => {
   await loadReport(page);
 
+  // ah-l9mp: staleness and movement moved into Settings > Global and gave the band back to the
+  // map. The strip survives with the badge chip alone.
   const chips = page.getByTestId("layer-chips");
-  // Trade routes is gone entirely: it was the last toggle with nothing behind it, and a control
-  // that does nothing is worse than no control.
-  await expect(chips.getByRole("checkbox", { name: "Trade routes" })).toHaveCount(0);
-  await expect(chips.getByRole("checkbox", { name: "Staleness" })).toBeChecked();
+  await expect(chips.getByRole("checkbox")).toHaveCount(0);
+  await expect(chips.getByRole("button", { name: "Badges" })).toBeVisible();
 
-  await chips.getByRole("checkbox", { name: "Staleness" }).uncheck();
-  await expect(chips.getByRole("checkbox", { name: "Staleness" })).not.toBeChecked();
+  await page.getByTestId("settings-indicator").click();
+  const staleness = page.getByTestId("settings-layer-staleness");
+  await expect(staleness).toBeChecked();
+  await staleness.uncheck();
+  await expect(staleness).not.toBeChecked();
+  await expect(page.getByTestId("settings-layer-movement")).toBeChecked();
+  await page.keyboard.press("Escape");
+
   await expect(page.getByTestId("map-canvas")).toBeVisible();
+
+  // The choice is the workspace store's, and it was already persisted - a reload must not undo it.
+  await page.reload();
+  await expect(page.getByTestId("map-canvas")).toBeVisible();
+  await page.getByTestId("settings-indicator").click();
+  await expect(page.getByTestId("settings-layer-staleness")).not.toBeChecked();
+  await page.keyboard.press("Escape");
 });
 
 /**
@@ -1840,12 +1853,62 @@ test("a first turn opens on the nexus, on a level of its own", async ({ page }) 
 
   await expect(page.getByTestId("import-status")).toContainText("1 region ·");
 
-  const chips = page.getByTestId("layer-chips");
-  await expect(chips).toContainText("nexus");
-  await expect(chips.getByLabel("Map level")).toHaveCount(0);
+  // ah-l9mp: the level reads from the top bar now, and a single level is text rather than a
+  // dead select.
+  const header = page.getByTestId("app-header");
+  await expect(header).toContainText("nexus");
+  await expect(header.getByLabel("Map level")).toHaveCount(0);
 
   await selectHex(page, "0:0,0");
   await expect(page.getByTestId("panel-region")).toContainText("nexus (0,0)");
+});
+
+/**
+ * ah-l9mp: the level moved out of the strip over the map and into the top bar, where it is
+ * glanceable. A game that knows more than one level gets a real control there, and changing it
+ * changes the level the map is drawn for.
+ */
+test("the level selector in the header changes level", async ({ page }) => {
+  await clearGames(page);
+  await expect(page.getByTestId("game-gate")).toBeVisible();
+  await createGame(page, "Two levels");
+  await expect(page.getByTestId("app-header")).toBeVisible();
+
+  // Turn 0 is the nexus alone; turn 23 is the surface. Together the game knows two levels, which
+  // is what puts a real control in the header rather than a word.
+  await page.setInputFiles('input[type="file"]', {
+    name: "turn-0.rep",
+    mimeType: "text/plain",
+    buffer: Buffer.from(readReport("g5f21t0"), "utf8")
+  });
+  await expect(page.getByTestId("import-status")).toContainText("region");
+  await page.setInputFiles('input[type="file"]', {
+    name: "turn-23.rep",
+    mimeType: "text/plain",
+    buffer: Buffer.from(readReport("g5f21t23"), "utf8")
+  });
+  await expect(page.getByTestId("import-status")).toContainText("region");
+
+  const selector = page.getByTestId("app-header").getByLabel("Map level");
+  await expect(selector).toBeVisible();
+  const values = await selector.locator("option").evaluateAll((options) =>
+    options.map((option) => (option as HTMLOptionElement).value)
+  );
+  expect(values.length).toBeGreaterThan(1);
+
+  // The nexus hex, which exists on the nexus level and nowhere else - so it is the map's own
+  // answer to which level is being drawn, rather than the selector repeating itself back.
+  const nexusHex = page.getByRole("button", { name: "hex 0:0,0" });
+
+  const current = await selector.inputValue();
+  const other = values.find((value) => value !== current) ?? current;
+  await selector.selectOption(other);
+  await expect(selector).toHaveValue(other);
+  await expect(page.getByTestId("map-canvas")).toBeVisible();
+  await expect(nexusHex).toHaveCount(other === "0" ? 1 : 0);
+
+  await selector.selectOption(current);
+  await expect(nexusHex).toHaveCount(current === "0" ? 1 : 0);
 });
 
 /**
@@ -2288,9 +2351,11 @@ test("the movement layer controls the route overlay and nothing else", async ({ 
   await selectHex(page, "1:7,51");
   await expect(page.getByTestId("planner-route")).toBeVisible();
 
-  // The chip starts on since #83, so this click turns the drawing OFF.
-  const movement = page.getByTestId("layer-chips").getByLabel("movement");
-  await movement.click();
+  // The toggle starts on since #83, so this click turns the drawing OFF. It lives in
+  // Settings > Global since ah-l9mp rather than in the strip over the map.
+  await page.getByTestId("settings-indicator").click();
+  await page.getByTestId("settings-layer-movement").uncheck();
+  await page.keyboard.press("Escape");
   await expect(page.getByTestId("route-line-solid")).toHaveCount(0);
 
   // The panel still knows the route; only the drawing follows the chip.

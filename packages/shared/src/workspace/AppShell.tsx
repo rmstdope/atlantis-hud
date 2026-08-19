@@ -2704,6 +2704,7 @@ export function AppShell({
     <div className="flex h-full flex-col bg-ground text-ink">
       <AppHeader
         gameName={game.manifest.metadata.gameName}
+        levels={model.levels}
         openPopover={openPopover}
         onOpenPopover={(id) => {
           if (id === "games") {
@@ -2962,7 +2963,7 @@ export function AppShell({
         */}
         <div className="pointer-events-none absolute inset-x-0 top-2.5 z-20 flex justify-center has-[[aria-expanded='true']]:z-30">
           <div data-map-overlay="top">
-            <LayerChips levels={model.levels} />
+            <LayerChips />
           </div>
         </div>
 

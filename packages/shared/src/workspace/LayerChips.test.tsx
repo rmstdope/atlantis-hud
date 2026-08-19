@@ -1,25 +1,27 @@
-import type { MapLevel } from "@atlantis/core-client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it } from "vitest";
 import { LayerChips } from "./LayerChips";
-import { SURFACE_LEVEL } from "../hexMapModel";
 import { resetWorkspaceStore } from "../workspaceStore";
 
-const draw = (levels: MapLevel[] = [SURFACE_LEVEL]) =>
-  renderToStaticMarkup(<LayerChips levels={levels} />);
+const draw = () => renderToStaticMarkup(<LayerChips />);
 
 describe("the strip of controls over the map", () => {
   beforeEach(resetWorkspaceStore);
 
-  it("keeps only what is not a badge as a chip of its own", () => {
-    // Units and structures went into the badge popover: each spoke for a whole family of marks,
-    // and ten checkboxes will not fit in a strip that shares the map's top band with the zoom
-    // cluster. What is left here is what the badges do not cover.
+  it("holds nothing but the badge chip", () => {
+    // Staleness and movement moved into Settings > Global (ah-l9mp): both are set once and then
+    // forgotten, and the band they took is the part of the canvas the map most wants. Badges
+    // stayed, because it is flicked while reading a crowded hex.
     const markup = draw();
 
-    expect(markup).toContain("Staleness");
-    expect(markup).toContain("Movement");
-    expect((markup.match(/type="checkbox"/g) ?? []).length).toBe(2);
+    expect(markup).not.toContain("Staleness");
+    expect(markup).not.toContain("Movement");
+    expect(markup).toContain("Badges");
+    expect((markup.match(/type="checkbox"/g) ?? []).length).toBe(0);
+  });
+
+  it("keeps the testid the smoke suite addresses the strip by", () => {
+    expect(draw()).toContain('data-testid="layer-chips"');
   });
 
   it("calls the badge trigger 'Badges', with the caret hidden from the accessible name", () => {
@@ -39,26 +41,6 @@ describe("the strip of controls over the map", () => {
     expect(draw()).toContain('data-badges-all="true"');
   });
 
-  it("names each level with the core's word", () => {
-    const markup = draw([
-      { z: 0, name: "nexus" },
-      { z: 1, name: "surface" }
-    ]);
 
-    expect(markup).toContain("<select");
-    expect(markup).toContain(">nexus<");
-    expect(markup).toContain(">surface<");
-    expect(markup.indexOf(">nexus<")).toBeLessThan(markup.indexOf(">surface<"));
-  });
 
-  it("shows the single level as static text, not a control", () => {
-    const markup = draw([{ z: 0, name: "nexus" }]);
-
-    expect(markup).toContain("nexus");
-    expect(markup).not.toContain("<select");
-  });
-
-  it("falls back to the surface word when there are no levels at all", () => {
-    expect(draw([])).toContain("surface");
-  });
 });
