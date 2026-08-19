@@ -1,5 +1,6 @@
 import type { OrderDiagnosticSeverity } from "@atlantis/core-client";
 import { Fragment, type ReactNode } from "react";
+import { itemEntryId, type GameDataIndex } from "../gameData";
 
 /**
  * The ceiling for a header popover's scrollable body.
@@ -40,6 +41,18 @@ export function SeverityMark({ severity }: { severity: OrderDiagnosticSeverity }
     </>
   );
 }
+
+/**
+ * The shared look of a name that opens the game-data dictionary.
+ *
+ * `inline align-baseline` and `select-text` are not styling: a `<button>` is `inline-block` and
+ * `user-select: none` by default, which in a pane full of prose changes the line boxes around it
+ * and makes the words unselectable. Both were caught in CI on #474 - the region pane moved by a
+ * whole row, and a drag anchored on a name selected nothing. A link inside a sentence must sit in
+ * the sentence and behave like the text it replaces.
+ */
+const GAME_DATA_LINK_CLASS =
+  "inline select-text border-b border-dotted border-ink-dim align-baseline text-left hover:text-select hover:border-select focus-visible:outline focus-visible:outline-1 focus-visible:outline-select";
 
 /** The shared look of a unit id you can go and look at, so one gesture reads the same everywhere. */
 const UNIT_LINK_CLASS =
@@ -207,8 +220,66 @@ export function Section({
   );
 }
 
+/**
+ * A name that opens its game-data entry.
+ *
+ * Dotted underline at rest, blue under the pointer: the panes still read as prose until you look
+ * for the link (ah-5jkt.2). A `<button>` rather than a clickable `<span>`, because the affordance
+ * is hover-led and that is exactly what a keyboard and a screen reader cannot hover for - hence
+ * the focus ring, which is not decoration here but the whole of the keyboard's affordance.
+ */
+export function GameDataLink({
+  entryId,
+  onOpen,
+  children
+}: {
+  entryId: string;
+  onOpen: (entryId: string) => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      data-game-data-entry={entryId}
+      onClick={() => onOpen(entryId)}
+      className={GAME_DATA_LINK_CLASS}
+    >
+      {children}
+    </button>
+  );
+}
+
+/**
+ * An item's name, linked to its dictionary entry when the catalogue knows its tag.
+ *
+ * One component rather than a copy in each pane: the unit pane and the region pane must agree on
+ * when a name is a link and when it is not, and two copies of that rule is how they stop agreeing.
+ *
+ * `itemEntryId` is null for a tag no item carries - a report can name what the scrape never took -
+ * and that renders as plain text rather than a link that would open nothing.
+ */
+export function GameDataItemName({
+  index,
+  item,
+  onOpen
+}: {
+  index: GameDataIndex | null;
+  item: { name: string; tag: string };
+  onOpen: ((entryId: string) => void) | null;
+}) {
+  const entryId = index === null || onOpen === null ? null : itemEntryId(index, item.tag);
+  if (entryId === null || onOpen === null) {
+    return <>{item.name}</>;
+  }
+  return (
+    <GameDataLink entryId={entryId} onOpen={onOpen}>
+      {item.name}
+    </GameDataLink>
+  );
+}
+
 /** A label and value on one line, with the value aligned right. */
-export function Row({ label, value }: { label: string; value: ReactNode }) {
+export function Row({ label, value }: { label: ReactNode; value: ReactNode }) {
   return (
     <div className="flex justify-between gap-3">
       <span>{label}</span>

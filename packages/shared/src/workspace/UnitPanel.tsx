@@ -3,7 +3,16 @@ import type { HexNode } from "../hexMapModel";
 import { originalTooltip } from "../unitPreview";
 import { describeMen } from "../unitComposition";
 import { CollapsiblePanel } from "./CollapsiblePanel";
-import { Absent, Field, Row, Section, StaleBanner } from "./primitives";
+import { skillEntryId, type GameDataIndex } from "../gameData";
+import {
+  Absent,
+  Field,
+  GameDataItemName,
+  GameDataLink,
+  Row,
+  Section,
+  StaleBanner
+} from "./primitives";
 
 const PREVIEW = 8;
 
@@ -19,13 +28,24 @@ const PREVIEW = 8;
 export function UnitPanel({
   unit,
   hex,
-  preview = null
+  preview = null,
+  gameData = null,
+  onOpenGameData
 }: {
   unit: ReportUnit | null;
   hex: HexNode | null;
   /** The unit as the orders leave it, when they change it. */
   preview?: UnitPreview | null;
+  /**
+   * The game-data dictionary, needed here rather than only in the dialog because an item's
+   * category - and so its entry id - is not knowable from its tag alone.
+   */
+  gameData?: GameDataIndex | null;
+  /** Absent while the ruleset has not loaded; nothing is then linked. */
+  onOpenGameData?: (entryId: string) => void;
 }) {
+  /** Both must be present: a link with nothing to open is worse than plain text. */
+  const linkable = gameData !== null && onOpenGameData !== undefined ? onOpenGameData : null;
   const stale = hex?.knowledge === "stale";
   const asOf = stale && hex.lastSeenTurn !== null ? `as of turn ${hex.lastSeenTurn}` : null;
 
@@ -101,7 +121,19 @@ export function UnitPanel({
           unit.skills.map((skill) => (
             <Row
               key={skill.tag}
-              label={`${skill.name} ${skill.tag}`}
+              label={
+                <>
+                  {/* The name is the link; the tag beside it is an identifier the eye scans past. */}
+                  {linkable ? (
+                    <GameDataLink entryId={skillEntryId(skill.tag)} onOpen={linkable}>
+                      {skill.name}
+                    </GameDataLink>
+                  ) : (
+                    skill.name
+                  )}{" "}
+                  {skill.tag}
+                </>
+              }
               value={`${skill.level} · ${skill.points}`}
             />
           ))
@@ -116,7 +148,12 @@ export function UnitPanel({
             {items.slice(0, PREVIEW).map((item) => (
               <Row
                 key={item.tag}
-                label={`${item.name} ${item.tag}`}
+                label={
+                  <>
+                    <GameDataItemName index={gameData} item={item} onOpen={linkable} />{" "}
+                    {item.tag}
+                  </>
+                }
                 value={item.amount.toLocaleString()}
               />
             ))}

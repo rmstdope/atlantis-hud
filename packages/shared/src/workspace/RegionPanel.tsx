@@ -1,11 +1,15 @@
+import { Fragment } from "react";
 import type { Coordinate, CoreClient, MapLevel, OpenedGame, OrderDiagnostic } from "@atlantis/core-client";
+import { buildingEntryId, type GameDataIndex } from "../gameData";
 import { abbreviateDirection, levelClause, regionIdOf, type HexNode } from "../hexMapModel";
-import { structureLabel } from "../structureLabel";
+import { structureLabelParts } from "../structureLabel";
 import { useWorkspaceStore } from "../workspaceStore";
 import { CollapsiblePanel } from "./CollapsiblePanel";
 import {
   Absent,
   Field,
+  GameDataItemName,
+  GameDataLink,
   PROBLEM_CARD,
   ProblemMessage,
   ProblemWho,
@@ -33,7 +37,9 @@ export function RegionPanel({
   game,
   turn,
   known,
-  onSelectUnit
+  onSelectUnit,
+  gameData = null,
+  onOpenGameData
 }: {
   hex: HexNode | null;
   /**
@@ -65,7 +71,16 @@ export function RegionPanel({
    * `AppShell`'s `unitRegions` memo, so there is nothing in the store to read.
    */
   onSelectUnit?: (unitId: string) => void;
+  /**
+   * The game-data dictionary, needed here rather than only in the dialog because an item's
+   * category - and so its entry id - is not knowable from its tag alone.
+   */
+  gameData?: GameDataIndex | null;
+  /** Absent while the ruleset has not loaded; nothing is then linked. */
+  onOpenGameData?: (entryId: string) => void;
 }) {
+  /** Both must be present: a link with nothing to open is worse than plain text. */
+  const linkable = gameData !== null && onOpenGameData !== undefined ? onOpenGameData : null;
   const stale = hex?.knowledge === "stale";
   const asOf = stale && hex.lastSeenTurn !== null ? `as of turn ${hex.lastSeenTurn}` : null;
 
@@ -147,8 +162,18 @@ export function RegionPanel({
 
           {region.products.length > 0 ? (
             <Section title="Products">
+              {/*
+                Prose rather than rows, so the line is built as fragments: joining it into one
+                string first and injecting links afterwards is how the amounts end up linked too.
+              */}
               <p className="m-0 text-ink-soft">
-                {region.products.map((item) => `${item.amount} ${item.name}`).join(" · ")}
+                {region.products.map((item, position) => (
+                  <Fragment key={item.tag}>
+                    {position === 0 ? null : " · "}
+                    {item.amount}{" "}
+                    <GameDataItemName index={gameData} item={item} onOpen={linkable} />
+                  </Fragment>
+                ))}
               </p>
             </Section>
           ) : null}
@@ -158,7 +183,11 @@ export function RegionPanel({
               {region.wanted.map((item) => (
                 <Row
                   key={item.tag}
-                  label={`${item.name} ${item.tag}`}
+                  label={
+                    <>
+                      <GameDataItemName index={gameData} item={item} onOpen={linkable} /> {item.tag}
+                    </>
+                  }
                   value={`$${item.price} ×${item.amount}`}
                 />
               ))}
@@ -170,7 +199,11 @@ export function RegionPanel({
               {region.forSale.map((item) => (
                 <Row
                   key={item.tag}
-                  label={`${item.name} ${item.tag}`}
+                  label={
+                    <>
+                      <GameDataItemName index={gameData} item={item} onOpen={linkable} /> {item.tag}
+                    </>
+                  }
                   value={`$${item.price} ×${item.amount}`}
                 />
               ))}
@@ -197,7 +230,18 @@ export function RegionPanel({
             ) : (
               region.structures.map((structure) => (
                 <p key={structure.structureId} className="m-0 text-ink-soft">
-                  {structureLabel(structure)}
+                  {/*
+                    The kind alone is the catalogue entry. The structure's own name and its number
+                    stay plain: linking `Odds and Ends` would look right and open nothing.
+                  */}
+                  {structureLabelParts(structure).prefix}
+                  {linkable ? (
+                    <GameDataLink entryId={buildingEntryId(structure.kind)} onOpen={linkable}>
+                      {structure.kind}
+                    </GameDataLink>
+                  ) : (
+                    structure.kind
+                  )}
                   {structure.needs === null ? null : `, needs ${structure.needs}`}
                 </p>
               ))
