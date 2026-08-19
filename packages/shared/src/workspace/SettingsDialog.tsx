@@ -504,6 +504,12 @@ const WARNING_GROUPS: readonly {
         code: "build-help-not-building",
         title: "Helping a unit that is not building",
         description: "A BUILD HELP naming a unit with no BUILD order of its own."
+      },
+      {
+        code: "build-without-skill",
+        title: "Building without the skill",
+        description:
+          "A BUILD order for a structure the unit has not the skill or level to build."
       }
     ]
   },
