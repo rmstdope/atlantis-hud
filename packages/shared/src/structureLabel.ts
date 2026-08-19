@@ -7,7 +7,19 @@ import type { StructureInfo } from "@atlantis/core-client";
  * different ways in two panes is the defect this was extracted for (ah-kdgc).
  */
 export function structureLabel(structure: StructureInfo): string {
-  return `${structure.name} [${structure.structureId}] · ${structure.kind}`;
+  const { prefix, kind } = structureLabelParts(structure);
+  return `${prefix}${kind}`;
+}
+
+/**
+ * The same label in two pieces, split where the region pane needs to link the kind alone.
+ *
+ * `kind` is the catalogue entry; `prefix` is this region's own name for the structure and its
+ * number, which name no entry at all. The two are derived here rather than in the pane so the
+ * linked form and the written-out form cannot drift apart (ah-5jkt.2).
+ */
+export function structureLabelParts(structure: StructureInfo): { prefix: string; kind: string } {
+  return { prefix: `${structure.name} [${structure.structureId}] · `, kind: structure.kind };
 }
 
 /**

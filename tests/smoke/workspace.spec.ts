@@ -3894,3 +3894,23 @@ test("the web build offers no Send button, because it could never read the reply
   // absent rather than disabled - the decision recorded on ah-etb0.2.
   await expect(page.getByTestId("send-orders")).toHaveCount(0);
 });
+
+test("a skill named in the unit panel opens its game data entry", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+  await selectUnit(page, OWN_UNIT);
+
+  // The whole point of ah-5jkt.2: the names the panes already show are the way into the
+  // dictionary, so nobody has to know the tag or find the palette first.
+  const skill = page
+    .getByTestId("panel-unit")
+    .locator("[data-game-data-entry^='skill:']")
+    .first();
+  const name = (await skill.textContent())?.trim() ?? "";
+  expect(name).not.toBe("");
+  await skill.click();
+
+  await expect(page.getByTestId("game-data-dialog")).toBeVisible();
+  await expect(page.getByTestId("game-data-tab-skill")).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByTestId("game-data-detail")).toContainText(name);
+});

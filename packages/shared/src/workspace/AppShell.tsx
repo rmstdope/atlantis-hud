@@ -3000,6 +3000,10 @@ export function AppShell({
                 turn={parsed?.header.turnNumber ?? null}
                 known={knownUnitIds}
                 onSelectUnit={(unitId) => goToUnit(unitId, null)}
+                gameData={gameData}
+                onOpenGameData={
+                  gameData === null ? undefined : (entryId) => setGameDataOpen({ entryId })
+                }
               />
               <RailSplitter
                 side="left"
@@ -3018,7 +3022,15 @@ export function AppShell({
               data-map-overlay="right"
             >
               <div className={unitSlotClass(collapsed)}>
-                <UnitPanel unit={unit} hex={hex} preview={unitPreview} />
+                <UnitPanel
+                  unit={unit}
+                  hex={hex}
+                  preview={unitPreview}
+                  gameData={gameData}
+                  onOpenGameData={
+                    gameData === null ? undefined : (entryId) => setGameDataOpen({ entryId })
+                  }
+                />
               </div>
               {/* Behind its feature flag, off by default: the pane is still finding its shape. */}
               {movementPlanner ? (
