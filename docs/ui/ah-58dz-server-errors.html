@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>What the server said went wrong — proposals (bead ah-58dz)</title>
+<style>
+  body { background:#0c1015; color:#dbe3ec; font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 72px; margin:0; }
+  * { box-sizing:border-box; }
+  header, main { max-width:1200px; margin:0 auto; }
+  h1 { font-size:26px; margin:0; } h1 span { color:#d9a441; }
+  header p { color:#a3b0c0; max-width:96ch; margin:10px 0 0; font-size:14px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:0.92em; }
+  h2.sec { margin:36px 0 0; font-size:18px; color:#d9a441; } h2.sec small { color:#8a97a8; font-size:13px; margin-left:10px; }
+  .banner { border:1px solid #26303d; border-left:3px solid #d9a441; background:#171d26; padding:14px 16px; border-radius:6px; margin-top:16px; color:#a3b0c0; font-size:13.5px; } .banner b { color:#dbe3ec; }
+  .banner.bad { border-left-color:#d97070; } .banner.good { border-left-color:#4fb783; }
+  .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(340px,1fr)); gap:20px; margin-top:16px; align-items:start; }
+  .card { border:1px solid #26303d; border-radius:10px; overflow:hidden; background:#171d26; }
+  .card > .lab { padding:12px 16px; border-bottom:1px solid #26303d; }
+  .card > .lab h3 { margin:0; font-size:16px; } .card > .lab h3 em { color:#d9a441; font-style:normal; font-size:11px; letter-spacing:1.6px; margin-right:8px; }
+  .notes { list-style:none; padding:12px 16px 14px; margin:0; font-size:12px; color:#a3b0c0; display:grid; gap:4px; border-top:1px solid #1e2733; }
+  .notes li::before { content:"+ "; color:#4fb783; font-weight:bold; } .notes li.con::before { content:"\2212  "; color:#d97070; }
+  .raw { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11.5px; line-height:1.5; color:#a3b0c0; background:#10151c; border:1px solid #1e2733; border-radius:5px; padding:10px 12px; white-space:pre; overflow-x:auto; margin-top:12px; }
+  .raw .pw { color:#d97070; } .raw .err { color:#eebe63; } .raw .keep { color:#dbe3ec; }
+
+  /* the real dialog, at its real width */
+  .stage { display:flex; gap:20px; flex-wrap:wrap; margin-top:14px; }
+  .dlg { font-family:'Helvetica Neue',Arial,sans-serif; width:26rem; background:#1c232e; border:1px solid #26303d; border-radius:4px; padding:12px; display:flex; flex-direction:column; gap:8px; font-size:12px; box-shadow:0 8px 24px rgba(0,0,0,.5); }
+  .dlg h4 { margin:0; font-size:12px; color:#dbe3ec; font-weight:normal; }
+  .dlg .meta { color:#a3b0c0; margin:0; font-size:12px; }
+  .dlg .out { color:#dbe3ec; margin:0; }
+  .dlg .lbl { color:#a3b0c0; }
+  .dlg pre { margin:0; max-height:7rem; overflow:auto; border:1px solid #26303d; background:#171d26; border-radius:3px; padding:8px; font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11px; line-height:1.5; color:#dbe3ec; white-space:pre-wrap; }
+  .dlg pre .e { color:#eebe63; }
+  .dlg pre .d { color:#8a97a8; }
+  .dlg .foot { display:flex; justify-content:flex-end; }
+  .dlg .btn { border:1px solid #d9a441; color:#d9a441; border-radius:3px; padding:1px 8px; font-size:12px; }
+  .cap { font:10px/1.3 'SF Mono',monospace; color:#d9a441; letter-spacing:1px; text-transform:uppercase; margin-bottom:6px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>What the server said went wrong &mdash; <span>proposals</span> (bead ah-58dz)</h1>
+  <p>Psylocke found this on a <b>real send to the live server</b> while verifying ah-etb0.2, which passed. Send a turn with a mistake in it and the dialog tells you, in full: <b>&ldquo;1 error found!&rdquo;</b> &mdash; and nothing else. Not which order, not which unit, not what was wrong with it. So you go back to the server's web interface to read what the application already received and threw away.</p>
+</header>
+<main>
+
+  <h2 class="sec">&sect;1 &nbsp;Why it happens, and why the obvious fix is forbidden</h2>
+  <p style="color:#a3b0c0;font-size:13.5px;margin-top:10px;max-width:96ch"><code>serverErrorReport</code> reads only the tail of the echoed block, <b>after the last <code>#end</code></b>. But the server does not put its errors there. It echoes your document and annotates it <b>inline, immediately above the offending line</b>. Everything useful is <i>before</i> <code>#end</code>; only the summary count is after it.</p>
+  <div class="raw"><span class="pw">#atlantis 95 "swordfish"        &lt;- the password. Must never reach the screen.</span>
+<span class="keep">unit 803</span>
+<span class="keep">FORM 5</span>
+<span class="keep">  STUDY FORC</span>
+
+<span class="err">*** Error: xNAME is not a valid order. ***</span>
+<span class="keep">  xNAME UNIT "Scouts"</span>
+<span class="keep">  CLAIM 895</span>
+<span class="keep">END</span>
+<span class="keep">#end</span>
+                                <span class="d">&lt;- everything above this line is thrown away today</span>
+1 error found!                  <span class="d">&lt;- this, alone, is what you are shown</span></div>
+  <div class="banner bad"><b>So it is not reading too little &mdash; it is reading the wrong region.</b> And widening it to the whole block is precisely what the password rule forbids: the <code>#atlantis</code> line, with the faction password in it, is the first line of that block.</div>
+  <div class="banner good"><b>But the password defence is already stronger than that comment suggests.</b> The code does not rely on &ldquo;start after <code>#end</code>&rdquo;. It already filters every line against <code>/^\s*#atlantis\b/</code> <i>positively</i>, and its own comment says why: <i>&ldquo;a document holding a second faction block, or one missing its final <code>#end</code>, puts an <code>#atlantis</code> line after the last <code>#end</code>. Dropping the header positively is what actually keeps the password out of what a player sees.&rdquo;</i> Applying that same filter to the wider region is safe, and it answers the bead's own open question: it matches the directive <b>by name</b>, so a leading blank line cannot defeat it.</div>
+
+  <h2 class="sec">&sect;2 &nbsp;How much of your own document to show <small>the real dialog, at its real 26rem width</small></h2>
+  <div class="cards">
+
+    <div class="card">
+      <div class="lab"><h3><em>A</em> The error lines only</h3><p>Every line matching <code>*** Error: … ***</code>, and nothing else.</p></div>
+      <div style="padding:14px"><div class="dlg">
+        <h4>Send orders to the server</h4>
+        <p class="meta">Borg TNG (95) &middot; turn 71 &middot; atlantis-pbem.com</p>
+        <p class="out">Turn 71 sent.</p>
+        <span class="lbl">The server reported</span>
+        <pre><span class="e">*** Error: xNAME is not a valid order. ***</span></pre>
+        <div class="foot"><span class="btn">Close</span></div>
+      </div></div>
+      <ul class="notes">
+        <li>Smallest possible exposure of the document.</li>
+        <li>Says <i>what</i> was wrong.</li>
+        <li class="con"><b>Still does not say which order or which unit.</b> With three identical errors you get three identical lines.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <div class="lab"><h3><em>B</em> Error, the order, and the unit</h3><p>Each error, the line beneath it, and the <code>unit</code> line the error falls under.</p></div>
+      <div style="padding:14px"><div class="dlg">
+        <h4>Send orders to the server</h4>
+        <p class="meta">Borg TNG (95) &middot; turn 71 &middot; atlantis-pbem.com</p>
+        <p class="out">Turn 71 sent.</p>
+        <span class="lbl">The server reported</span>
+        <pre><span class="d">unit 803</span>
+<span class="e">*** Error: xNAME is not a valid order. ***</span>
+  xNAME UNIT "Scouts"
+
+1 error found!</pre>
+        <div class="foot"><span class="btn">Close</span></div>
+      </div></div>
+      <ul class="notes">
+        <li><b>Everything needed to go and fix it</b> &mdash; the unit, the order, and the complaint.</li>
+        <li>Scales: three errors in three units read as three small blocks.</li>
+        <li>Keeps the summary count as a last line.</li>
+        <li class="con">More of the document on screen, and it needs a rule for "the enclosing unit line".</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <div class="lab"><h3><em>C</em> The whole echo</h3><p>Everything the server sent back, with every <code>#atlantis</code> line filtered out.</p></div>
+      <div style="padding:14px"><div class="dlg">
+        <h4>Send orders to the server</h4>
+        <p class="meta">Borg TNG (95) &middot; turn 71 &middot; atlantis-pbem.com</p>
+        <p class="out">Turn 71 sent.</p>
+        <span class="lbl">The server reported</span>
+        <pre><span class="d">unit 803
+FORM 5
+  STUDY FORC</span>
+
+<span class="e">*** Error: xNAME is not a valid order. ***</span>
+  xNAME UNIT "Scouts"
+<span class="d">  CLAIM 895
+END
+#end</span>
+
+1 error found!</pre>
+        <div class="foot"><span class="btn">Close</span></div>
+      </div></div>
+      <ul class="notes">
+        <li>Cannot miss anything, whatever shape the server's reply takes.</li>
+        <li>Simplest rule, so the least to go wrong if the server reformats.</li>
+        <li class="con">A real turn is <b>hundreds of lines</b>. The box is 7rem and scrolls, so one error means hunting for the highlighted line by scrolling &mdash; which is close to the problem being fixed.</li>
+      </ul>
+    </div>
+
+  </div>
+
+  <h2 class="sec">&sect;3 &nbsp;The safety rule, whichever is chosen</h2>
+  <div class="banner"><b>Every line shown is filtered against <code>/^\s*#atlantis\b/</code>, wherever it appears</b> &mdash; not just the first line, and not just after <code>#end</code>. That is what already protects the tail today, and it is what has to protect the wider region. A test should send a reply with an <code>#atlantis</code> line in the middle of the block, after a blank line, and with leading whitespace, and assert the password appears nowhere in the result.</div>
+
+</main>
+</body>
+</html>
