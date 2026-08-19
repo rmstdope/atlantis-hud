@@ -1425,6 +1425,28 @@ async function waitForStableHeight(page: Page, panel: string) {
     .toBe(true);
 }
 
+/**
+ * Waits for a panel to stop *moving* as well as stop resizing, before its position is measured.
+ *
+ * The header gains a row once the loaded report's counts render, and everything below it - the
+ * map, and the panel column over it - drops by that row. On a slow runner that lands after the
+ * first geometry read, so a baseline taken straight after `selectHex` is a position nothing ever
+ * comes back to: `a folded panel shrinks to its title bar` failed in CI with `y` 36px out, exactly
+ * one header row, while passing everywhere locally. Poll the whole box, not only the height.
+ */
+async function waitForStableBox(page: Page, panel: string) {
+  let last: string | null = null;
+  await expect
+    .poll(async () => {
+      const box = await boxOf(page, panel);
+      const now = `${Math.round(box.x)},${Math.round(box.y)},${Math.round(box.width)},${Math.round(box.height)}`;
+      const stable = last !== null && now === last;
+      last = now;
+      return stable;
+    })
+    .toBe(true);
+}
+
 /** Where the map is standing, read the same way `shortcuts.spec.ts` does. */
 async function mapTransform(page: Page): Promise<string> {
   return (await page.getByTestId("map-world").getAttribute("transform")) ?? "";
@@ -1434,6 +1456,7 @@ test("a folded panel shrinks to its title bar", async ({ page }) => {
   await loadReport(page);
   await selectHex(page, "1:7,53");
 
+  await waitForStableBox(page, "region");
   const open = await boxOf(page, "region");
   expect(open.height).toBeGreaterThan(100);
 
@@ -3311,6 +3334,7 @@ test("a selection dragged out of a pane stays inside it", async ({ page }) => {
   await selectHex(page, "1:7,53");
   await expect(page.getByTestId("panel-region")).toContainText("Inholm");
 
+  await waitForStableBox(page, "region");
   const pane = await page.getByTestId("panel-region").boundingBox();
   const point = await clearHexPoint(page);
 
@@ -3467,6 +3491,7 @@ test("clicking empty ground names the hex that was clicked", async ({ page }) =>
 
   // Inholm sits under the region panel, and a panel takes its own clicks. Folding it leaves the
   // map beneath live, which is where the hex being aimed at is.
+  await waitForStableBox(page, "region");
   await foldPanel(page, "region");
 
   // One hex further north than Inholm's northern neighbour, stepped out in pixels from the two of
