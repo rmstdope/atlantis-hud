@@ -5,8 +5,7 @@ import {
   createGame,
   expectOrders,
   fillOrders,
-  ordersInput,
-  visibleCentre
+  ordersInput
 } from "./gameSetup";
 
 /**
@@ -288,12 +287,9 @@ test("right-click centres the view on a hex, without selecting it", async ({ pag
     "true"
   );
 
-  // Right-clicking the middle of the visible strip a second time is now a no-op: whatever hex is
-  // already there is already centred, so asking again changes nothing.
-  const centred = await mapTransform(page);
-  const centre = await visibleCentre(page);
-  await page.mouse.click(centre.x, centre.y, { button: "right" });
-  await expect.poll(() => mapTransform(page)).toBe(centred);
-  await page.mouse.click(centre.x, centre.y, { button: "right" });
-  await expect.poll(() => mapTransform(page)).toBe(centred);
+  // The idempotence claim - centring on the hex already in the middle changes nothing - lives in
+  // `packages/shared/src/workspace/mapViewport.test.ts` against the pure `centreOn` and
+  // `coordinateAt`. It is deliberately not asserted here: comparing transform strings in the
+  // browser raced the strip measurement and cost six beads a re-run each (ah-d00t). Do not
+  // restore it. What this spec keeps is only what needs a browser.
 });
