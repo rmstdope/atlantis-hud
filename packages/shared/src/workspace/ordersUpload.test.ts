@@ -179,6 +179,17 @@ describe("serverErrorReport", () => {
     expect(report).toContain("*** Error: bad order. ***");
   });
 
+  it("drops the header however the player cased it", () => {
+    // Atlantis directives are case-insensitive, so a document written `#ATLANTIS 95 "swordfish"`
+    // is echoed back that way and must be filtered just the same.
+    const body =
+      '<pre>#ATLANTIS 95 &quot;swordfish&quot;\nunit 803\n*** Error: a. ***\n  AA 1\n#end\n1 error found!\n</pre>';
+    const report = serverErrorReport(body) ?? "";
+
+    expect(report.toLowerCase()).not.toContain("#atlantis");
+    expect(report).not.toContain("swordfish");
+  });
+
   it("groups each error under the unit it falls in", () => {
     const body =
       "<pre>#atlantis 1 &quot;p&quot;\nunit 803\n*** Error: a. ***\n  AA 1\nunit 900\n" +

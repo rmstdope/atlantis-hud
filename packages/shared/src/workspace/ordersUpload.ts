@@ -230,7 +230,7 @@ const ANNOTATION_LINE = /^\s*\*\*\*/;
 const UNIT_LINE = /^\s*unit\s+\d+/i;
 
 const END_LINE = /^[ \t]*#end[ \t]*$/m;
-const FACTION_HEADER_LINE = /^\s*#atlantis\b/;
+const FACTION_HEADER_LINE = /^\s*#atlantis\b/i;
 
 function stripTags(html: string): string {
   return html.replace(/<[^>]*>/g, "");
