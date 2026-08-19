@@ -59,7 +59,7 @@ const carrying = (has: (skill: (typeof SKILLS)[string]) => boolean): string[] =>
     .sort();
 
 describe("the skill catalogue against the page's own grammar", () => {
-  it("reads the same ninety-six skill entries out of the page that the parser does", () => {
+  it("finds the parser's ninety-six skills across the page's 480 level paragraphs", () => {
     expect(ENTRIES.length).toBe(480);
     expect(statedBy(/./u)).toEqual(Object.keys(SKILLS).sort());
   });
