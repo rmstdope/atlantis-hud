@@ -85,6 +85,30 @@ test("the palette goes to a region and runs an action", async ({ page }) => {
     .not.toBe(before);
 });
 
+test("the palette opens the game data dictionary on the thing it named", async ({ page }) => {
+  await loadReport(page);
+
+  await page.keyboard.press("ControlOrMeta+k");
+  await page.getByTestId("palette-input").fill("mining MINI");
+  await expect(page.getByTestId("palette-item").first()).toContainText("mining");
+  await page.keyboard.press("Enter");
+
+  const dialog = page.getByTestId("game-data-dialog");
+  await expect(dialog).toBeVisible();
+  await expect(page.getByTestId("game-data-detail")).toContainText("Study cost");
+  await expect(page.getByTestId("game-data-tab-skill")).toHaveAttribute("aria-selected", "true");
+
+  // A produced item is a way across to it, and Escape closes the whole dialog from there.
+  await page.getByTestId("game-data-link-equipment:MITH").click();
+  await expect(page.getByTestId("game-data-tab-equipment")).toHaveAttribute(
+    "aria-selected",
+    "true"
+  );
+  await expect(page.getByTestId("game-data-detail")).toContainText("mining");
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+});
+
 test("Escape closes only the palette, not the dialog under it", async ({ page }) => {
   await loadReport(page);
 

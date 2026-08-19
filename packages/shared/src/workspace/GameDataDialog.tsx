@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   GAME_DATA_CATEGORIES,
   GAME_DATA_CATEGORY_LABELS,
-  type GameDataCategory,
   type GameDataDetail,
   type GameDataIndex,
   type GameDataLink
