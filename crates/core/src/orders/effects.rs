@@ -16,6 +16,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::cache::ReportCache;
 use crate::movement::rules::item_spellings;
+use crate::orders::standing::{standing_after, BoardingOrder};
 use crate::report::model::ReportUnit;
 
 /// How a previewed unit relates to the hex its row sits in.
@@ -322,11 +323,16 @@ struct WorkingUnit {
     original: Option<ReportUnit>,
     formed: bool,
     move_steps: Option<Vec<crate::movement::orders::MoveStep>>,
-    /// Whether the unit's orders hold an ENTER. Every LEAVE runs before any ENTER whatever order
-    /// the lines were typed in, so once one is seen a later LEAVE cannot put the unit ashore -
-    /// the rule `orders::semantics::structure_after_orders` states and the navigator settled on
-    /// 2026-08-18 (ah-mjy), applied here too so the preview row and the tracer cannot disagree.
-    entered: bool,
+    /// Where this unit stood before any of its boarding orders ran: the report's answer, or for a
+    /// formed unit the structure its parent stood in when the FORM was read.
+    reported: Option<String>,
+    /// The unit's ENTER and LEAVE orders so far, in the order they were written.
+    ///
+    /// Kept rather than applied as they are read, because what they mean together is
+    /// [`super::standing`]'s to say and only its. The answer is recomputed from the whole list
+    /// after each one, so a FORM later in the block still inherits the structure the unit is
+    /// standing in by then - `visit` is a mutating walk and other arms read `structure_id`.
+    boardings: Vec<BoardingOrder>,
 }
 
 impl WorkingUnit {
@@ -418,7 +424,8 @@ impl Working {
                 original: Some(unit.clone()),
                 formed: false,
                 move_steps: None,
-                entered: false,
+                reported: unit.structure_id.clone(),
+                boardings: Vec::new(),
             });
         }
         Self {
@@ -530,6 +537,7 @@ impl Working {
             structure_id: parent.structure_id.clone(),
         };
 
+        let reported = unit.structure_id.clone();
         let index = self.units.len();
         self.by_alias.insert(key, index);
         self.units.push(WorkingUnit {
@@ -537,7 +545,8 @@ impl Working {
             original: None,
             formed: true,
             move_steps: None,
-            entered: false,
+            reported,
+            boardings: Vec::new(),
         });
         self.forming.push(Some(index));
     }
@@ -581,14 +590,29 @@ impl Working {
             }
         } else if command.is("enter") {
             if let Some(structure) = super::forms::read_only_number(arguments) {
-                self.units[active].unit.structure_id = Some(structure.to_string());
-                self.units[active].entered = true;
+                self.board(active, BoardingOrder::Enter(structure.to_string()));
             }
-        } else if command.is("leave") && arguments.is_empty() && !self.units[active].entered {
-            self.units[active].unit.structure_id = None;
+        } else if command.is("leave") && arguments.is_empty() {
+            self.board(active, BoardingOrder::Leave);
         } else if command.is("give") {
             self.give(active, arguments);
         }
+    }
+
+    /// Records one boarding order and puts the unit where the whole block leaves it so far.
+    ///
+    /// Recomputed from every boarding seen rather than applied in isolation, because a LEAVE after
+    /// an ENTER does not put the unit ashore: every LEAVE runs before any ENTER whatever order the
+    /// lines were typed in. That rule is [`super::standing::standing_after`]'s, stated only there.
+    fn board(&mut self, active: usize, boarding: BoardingOrder) {
+        self.units[active].boardings.push(boarding);
+        let working = &self.units[active];
+        let standing = standing_after(
+            working.reported.as_deref(),
+            working.boardings.iter().map(BoardingOrder::as_boarding),
+        )
+        .map(str::to_string);
+        self.units[active].unit.structure_id = standing;
     }
 
     /// `NAME UNIT "..."` renames the active unit; naming the faction or an object changes no row.
