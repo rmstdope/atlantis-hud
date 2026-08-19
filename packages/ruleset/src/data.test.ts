@@ -816,12 +816,89 @@ describe("parseBuildingReference", () => {
     const buildings = parseBuildingReference(DATA_HTML);
 
     expect(buildings.LEADER).toBeUndefined();
-    // A trade structure is a building the page never fortifies, and the catalogue stays silent
-    // about it rather than claiming it seats nobody.
-    expect(buildings.MINE).toBeUndefined();
-    expect(buildings["ROAD SE"]).toBeUndefined();
     expect(buildings.MINING).toBeUndefined();
     expect(buildings.BUILDING).toBeUndefined();
+  });
+
+  it("keeps every entry the page calls a building", () => {
+    // The fixture carries 59 paragraphs opening "<Name>: This is a building." Only the ten that
+    // also state a defence used to survive.
+    expect(Object.keys(parseBuildingReference(DATA_HTML))).toHaveLength(58);
+  });
+
+  it("the repeated Lair does not lose an entry", () => {
+    // 59 paragraphs, 58 keys: the page names "Lair" twice - once for Trents, once for Illyrthil -
+    // and the map is keyed by the upper-cased name, so the second entry wins. Neither carries a
+    // figure, so last-wins costs nothing here; a future page repeating a name that does carry one
+    // is where this would go wrong quietly.
+    expect(parseBuildingReference(DATA_HTML).LAIR).toBeDefined();
+  });
+
+  it("keeps a Mine, a road and a lair", () => {
+    const buildings = parseBuildingReference(DATA_HTML);
+
+    expect(buildings.MINE).toBeDefined();
+    expect(buildings["ROAD SE"]).toBeDefined();
+    expect(buildings.LAIR).toBeDefined();
+  });
+
+  it("a Mine states no size", () => {
+    // The entry says nothing about defence, and an absent field says that - where a 0 would claim
+    // the page had stated it.
+    expect(parseBuildingReference(DATA_HTML).MINE.size).toBeUndefined();
+  });
+
+  it("a lair states no cost and no materials", () => {
+    const lair = parseBuildingReference(DATA_HTML).LAIR;
+
+    expect(lair.cost).toBeUndefined();
+    expect(lair.materials).toBeUndefined();
+  });
+
+  it("a Tower still seats no mages and a Fort still seats one", () => {
+    const buildings = parseBuildingReference(DATA_HTML);
+
+    // The ten fortifications are untouched by the widening.
+    expect(buildings.TOWER).toMatchObject({ size: 10, cost: 10, materials: ["stone"], mages: 0 });
+    expect(buildings.FORT.mages).toBe(1);
+  });
+
+  it("keeps the description the page gives", () => {
+    expect(parseBuildingReference(DATA_HTML).MINE.description).toBe(
+      "This is a building. Units may enter this structure. This trade structure increases the " +
+        "amount of iron available in the region."
+    );
+  });
+
+  it("keeps the description of a fortification too", () => {
+    // The ten that were already kept gain prose as well.
+    expect(parseBuildingReference(DATA_HTML).TOWER.description).toContain(
+      "This structure provides defense to the first 10 men inside it."
+    );
+  });
+
+  it("reads what a trade structure produces", () => {
+    const buildings = parseBuildingReference(DATA_HTML);
+
+    expect(buildings.MINE.produces).toBe("iron");
+    expect(buildings["ARCANE MINE"].produces).toBe("mithril");
+    expect(buildings["SACRED GROVE"].produces).toBe("yew");
+    expect(buildings["FAERIE RING"].produces).toBe("mushrooms");
+  });
+
+  it("a road produces nothing and a fortification produces nothing", () => {
+    const buildings = parseBuildingReference(DATA_HTML);
+
+    expect(buildings["ROAD SE"].produces).toBeUndefined();
+    expect(buildings.TOWER.produces).toBeUndefined();
+  });
+
+  it("a Mine costs what the skill says", () => {
+    // Pass two already read this clause and discarded it for want of a Mine in the object list.
+    expect(parseBuildingReference(DATA_HTML).MINE).toMatchObject({
+      cost: 10,
+      materials: ["wood", "stone"]
+    });
   });
 
   it("reads cost and material from the skill that builds it", () => {
@@ -883,6 +960,12 @@ describe("parseBuildingReference", () => {
     const buildings = parseBuildingReference(html);
 
     expect(Object.keys(buildings)).toEqual(["TOWER"]);
-    expect(buildings.TOWER).toEqual({ size: 10, cost: 10, materials: ["stone"], mages: 0 });
+    expect(buildings.TOWER).toEqual({
+      description: "This is a building. This structure provides defense to the first 10 men inside it.",
+      size: 10,
+      cost: 10,
+      materials: ["stone"],
+      mages: 0
+    });
   });
 });
