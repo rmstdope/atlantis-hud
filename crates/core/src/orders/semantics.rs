@@ -1487,6 +1487,9 @@ fn taught_by(teacher: &Ordered<'_>, hex: &Hex<'_>) -> i64 {
             Party::Unit(id) => hex.find(id),
             _ => None,
         })
+        // A student that marches off is taught by nobody, so it holds no slot - the same reading
+        // `could_take` and `check_one_teacher` take of a departing pupil.
+        .filter(|pupil| !pupil.leaves_the_hex())
         .map(|pupil| pupil.unit.men)
         .sum()
 }
@@ -4180,6 +4183,31 @@ mod tests {
                 "unit 500\nTEACH 9999\nunit 700\nSTUDY combat\n"
             )),
             ["taught-not-here"]
+        );
+    }
+
+    /// A student that leaves the hex takes no slots with it, so it must not be subtracted from
+    /// what the teacher has free - `could_take` and `check_one_teacher` both read it that way.
+    #[test]
+    fn slots_held_by_a_student_that_leaves_the_hex_are_still_free() {
+        let units = vec![
+            with_skill(with_men(with_silver(unit("500"), 1000), 1), "COMB", 3),
+            with_men(with_silver(unit("700"), 1000), 8),
+            with_men(with_silver(unit("800"), 1000), 2),
+            with_men(with_silver(unit("900"), 1000), 2),
+        ];
+
+        let findings = check(
+            vec![region(units)],
+            "unit 500\nTEACH 700 800\nunit 700\nSTUDY combat\nunit 800\nSTUDY combat\nMOVE N\nunit 900\nSTUDY combat\n",
+        );
+        let spare = findings
+            .iter()
+            .find(|finding| finding.code.as_str() == "teacher-has-free-slots")
+            .expect("the teacher still has slots to offer");
+        assert_eq!(
+            spare.message, "has 2 teaching slots still free and could also teach unit 900",
+            "unit 800 marches off, so its two men hold no slots: {findings:?}"
         );
     }
 
