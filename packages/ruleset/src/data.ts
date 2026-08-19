@@ -79,6 +79,15 @@ export type ItemEntry = {
    * requirement, and the ship-only guard below keeps them from being mistaken for one.
    */
   sailingSkill?: number;
+  /**
+   * What the page says about it, after the preamble of name, tag, weight and capacity that the
+   * fields above already carry. Absent when the entry is nothing but that preamble.
+   *
+   * The preamble ends at the first full stop after the `[TAG]`, which holds for every shape the
+   * page uses: `chain armor [CARM], weight 1, costs 150 silver to withdraw.` then the prose;
+   * `Longship [LONG].` then the prose; `leader [LEAD], weight 10, ... month.` then the prose.
+   */
+  description?: string;
 };
 
 export type ItemReference = Record<string, ItemEntry>;
@@ -106,6 +115,9 @@ export type Production = { tag: string; level: number };
 /** A skill a unit must already have, at a level, before it may begin to study another. */
 export type SkillRequirement = { tag: string; level: number };
 
+/** What a skill's page says at one level, once the placeholders are dropped. */
+export type SkillLevel = { level: number; description: string };
+
 export type SkillEntry = {
   tag: string;
   name: string;
@@ -125,6 +137,19 @@ export type SkillEntry = {
    * at which it becomes available. Empty for the great majority of skills, which make nothing.
    */
   produces: Production[];
+  /**
+   * What the page says at each level, in level order, with the levels that say nothing left out.
+   *
+   * A list rather than a string because the page writes a skill five times, once per level, and
+   * the interesting part is usually not level 1: mining reaches mithril at 3 and admantium at 5,
+   * which is exactly what a reader opens the entry to find out. Levels the page fills with
+   * `No skill report.` carry no information and are dropped, so a skill that says something only
+   * at 1 and 3 has two entries here and not five.
+   *
+   * Absent rather than `[]` when the skill says nothing anywhere - the rule ah-3cj4.1 set for a
+   * building's `size` and `cost`, applied here so the file reads consistently.
+   */
+  levels?: SkillLevel[];
   /**
    * Whether this is one of the magic skills.
    *
@@ -170,6 +195,23 @@ function readNumber(text: string, pattern: RegExp): number | null {
   const value = Number.parseInt(match[1], 10);
   return Number.isNaN(value) ? null : value;
 }
+
+/**
+ * An entry's prose: everything after the first full stop that follows its `[TAG]`.
+ *
+ * Not simply "after the first full stop" - the preamble carries none before the tag, and anchoring
+ * on the tag is what makes this exact rather than nearly right. `. ` rather than `.` so a full
+ * stop inside the preamble cannot split the entry in the wrong place.
+ */
+function prose(paragraph: string): string | undefined {
+  const after = paragraph.slice(paragraph.indexOf("]") + 1);
+  const stop = after.indexOf(". ");
+  const text = (stop === -1 ? "" : after.slice(stop + 2)).trim();
+  return text === "" ? undefined : text;
+}
+
+/** The page's placeholder for a level that grants nothing. Not a description. */
+const NO_REPORT = /^No skill report\.?$/i;
 
 /**
  * Classifies an entry from the sentence the page uses to introduce it.
@@ -255,6 +297,12 @@ function sailingOf(kind: ItemKind, text: string): { sailingSkill?: number } {
   return skill === null ? {} : { sailingSkill: skill };
 }
 
+/** The prose of an item entry, as a spreadable field so an entry with none carries no key. */
+function descriptionOf(paragraph: string): { description?: string } {
+  const text = prose(paragraph);
+  return text === undefined ? {} : { description: text };
+}
+
 export function parseItemReference(html: string): ItemReference {
   const items: ItemReference = {};
 
@@ -301,6 +349,7 @@ export function parseItemReference(html: string): ItemReference {
       ...conditionOf(paragraph),
       ...cargoOf(kind, paragraph),
       ...sailingOf(kind, paragraph),
+      ...descriptionOf(paragraph),
       moves:
         readNumber(paragraph, /moves (\d+) hexes? per month/i) ??
         readNumber(paragraph, /speed of (\d+) hexes? per month/i) ??
@@ -513,6 +562,26 @@ function mergeCast(existing: CastCost | null | undefined, found: CastCost | null
  * lowest, the level from the highest, and the casting cost unioned across every level that states
  * one (Summon Wind's is on level 3, Transmutation adds outputs on levels 2 and 3).
  */
+/**
+ * A skill's level list with this paragraph's level added, when it says anything.
+ *
+ * The paragraphs arrive in the order the page lists them, which is level order, so appending is
+ * all the ordering this needs. A level whose text is the `No skill report.` placeholder, or empty,
+ * contributes nothing: keeping it would make the majority of entries read as broken data.
+ */
+function appendLevel(
+  existing: SkillLevel[] | undefined,
+  level: number,
+  paragraph: string
+): SkillLevel[] {
+  const description = paragraph.replace(SKILL_OPENING, "").trim();
+  const kept = existing ?? [];
+  if (description === "" || NO_REPORT.test(description)) {
+    return kept;
+  }
+  return [...kept, { level, description }];
+}
+
 export function parseSkillReference(html: string): SkillReference {
   const skills: SkillReference = {};
 
@@ -525,6 +594,10 @@ export function parseSkillReference(html: string): SkillReference {
     const [, name, tag, level] = opening;
     const stated = readNumber(paragraph, STUDY_COST);
     const existing = skills[tag];
+    // Appended, never overwritten: the page writes a skill once per level and the ruleset holds
+    // one entry per skill, so writing rather than appending would leave each skill with only what
+    // its last paragraph said - which still looks like a description.
+    const levels = appendLevel(existing?.levels, Number.parseInt(level, 10), paragraph);
 
     skills[tag] = {
       tag,
@@ -550,7 +623,8 @@ export function parseSkillReference(html: string): SkillReference {
           : readRequirements(paragraph),
       magic:
         (existing?.magic ?? false) ||
-        (Number.parseInt(level, 10) === 1 && MAGIC_WORDS.test(paragraph))
+        (Number.parseInt(level, 10) === 1 && MAGIC_WORDS.test(paragraph)),
+      ...(levels.length > 0 ? { levels } : {})
     };
   }
 
