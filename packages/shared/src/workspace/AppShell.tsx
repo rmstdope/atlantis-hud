@@ -3046,6 +3046,7 @@ export function AppShell({
                   snippets={snippets}
                   caretCompletions={caretCompletions}
                   editorRef={ordersEditor}
+                  onWalkProblems={walkProblems}
                 />
               </div>
               <RailSplitter
