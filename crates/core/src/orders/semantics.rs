@@ -1902,9 +1902,18 @@ fn is_aboard(ordered: &Ordered<'_>, fleet_id: &str) -> bool {
 /// rule. Two models of it exist on purpose until something decides where a shared one would live
 /// (ah-ssd); a change here belongs in both.
 fn structure_after_orders<'a>(ordered: &Ordered<'a>) -> Option<&'a str> {
+    structure_after_intents(ordered.unit.structure_id.as_deref(), ordered.intents)
+}
+
+/// [`structure_after_orders`] over the two things it actually reads, so a test can drive this
+/// reader without building a whole [`Ordered`].
+pub(crate) fn structure_after_intents<'a>(
+    reported: Option<&'a str>,
+    intents: &'a [PlacedIntent],
+) -> Option<&'a str> {
     let mut entered: Option<&'a str> = None;
     let mut left = false;
-    for placed in ordered.intents {
+    for placed in intents {
         match &placed.intent {
             Intent::Enter { structure } => entered = Some(structure.as_str()),
             Intent::Leave => left = true,
@@ -1915,7 +1924,7 @@ fn structure_after_orders<'a>(ordered: &Ordered<'a>) -> Option<&'a str> {
         // An ENTER always wins: the LEAVE ran first, and the unit walked back in.
         (Some(structure), _) => Some(structure),
         (None, true) => None,
-        (None, false) => ordered.unit.structure_id.as_deref(),
+        (None, false) => reported,
     }
 }
 
