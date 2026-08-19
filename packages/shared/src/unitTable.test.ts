@@ -316,3 +316,36 @@ describe("filterUnits", () => {
     expect(filterUnits(units, "nobody")).toEqual([]);
   });
 });
+
+describe("sorts by the long order, ignoring case and a leading @", () => {
+  const units = [
+    unit("1", true),
+    unit("2", true),
+    unit("3", true),
+    unit("4", true)
+  ];
+  const longOrders = new Map<string, string | null>([
+    ["1", "work"],
+    ["2", "@tax"],
+    ["3", "TAX"],
+    ["4", null]
+  ]);
+
+  it("puts a repeated order beside its plain, differently-cased twin", () => {
+    const order = ids(sortUnits(units, { ...DEFAULT_SORT, column: "longOrder" }, [], longOrders));
+
+    // "@tax" and "TAX" compare as "tax", so they land together ahead of "work".
+    expect(order.slice(0, 3)).toEqual(["2", "3", "1"]);
+  });
+
+  it("sorts a unit with nothing to do to the end, the way an absent structure already does", () => {
+    expect(
+      ids(sortUnits(units, { ...DEFAULT_SORT, column: "longOrder" }, [], longOrders)).at(-1)
+    ).toBe("4");
+    expect(
+      ids(
+        sortUnits(units, { ...DEFAULT_SORT, column: "longOrder", direction: "desc" }, [], longOrders)
+      ).at(-1)
+    ).toBe("4");
+  });
+});

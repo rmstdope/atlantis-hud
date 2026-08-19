@@ -1,5 +1,6 @@
 import type { RegionPreview, ReportUnit } from "@atlantis/core-client";
 import {
+  Fragment,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -19,8 +20,10 @@ import {
   rowHeightAt,
   sortUnits,
   windowRange,
+  UNIT_COLUMNS,
   type SortColumn,
-  type SortState
+  type SortState,
+  type UnitColumn
 } from "../unitTable";
 import { changeFor, mergePreview, originalTooltip, type PreviewedUnit } from "../unitPreview";
 import { HOVER_DELAY_MS, type Point } from "../unitTooltip";
@@ -33,8 +36,44 @@ import { UnitTooltip } from "./UnitTooltip";
 /** Rows built beyond each edge of the viewport, so a flick of the wheel does not show a gap. */
 const OVERSCAN = 6;
 
-/** The table has eight columns; spacer rows span all of them. */
-const COLUMNS = 8;
+/**
+ * Spacer rows span every column. Kept as its own constant derived from the column list so a
+ * colSpan literal never has to be counted and updated by hand.
+ */
+const COLUMNS = UNIT_COLUMNS.length;
+
+/** What each column's header says; `own` has a button rather than a label. */
+const COLUMN_LABELS: Partial<Record<UnitColumn, string>> = {
+  unitId: "Id",
+  name: "Unit",
+  faction: "Faction",
+  men: "Men",
+  skills: "Skills",
+  items: "Items",
+  structure: "Structure",
+  longOrder: "Long order"
+};
+
+/** The columns whose header carries a sort control. */
+const SORTABLE_COLUMNS: ReadonlySet<UnitColumn> = new Set<UnitColumn>([
+  "unitId",
+  "name",
+  "faction",
+  "men",
+  "structure",
+  "longOrder"
+]);
+
+/** The width each column is given, where it is given one; the rest share what is left. */
+const COLUMN_WIDTHS: Partial<Record<UnitColumn, string>> = {
+  own: "w-6",
+  unitId: "w-16",
+  name: "w-52",
+  faction: "w-48",
+  men: "w-16",
+  structure: "w-52",
+  longOrder: "w-36"
+};
 
 /**
  * Every unit in the selected hex, as a table, with one selectable.
@@ -50,11 +89,14 @@ const COLUMNS = 8;
  */
 export function UnitTableDock({
   hex,
-  preview = null
+  preview = null,
+  getLongOrder
 }: {
   hex: HexNode | null;
   /** The hex's slice of the orders preview, so rows show the coming month. */
   preview?: RegionPreview | null;
+  /** The month-long order a unit's live orders carry, for the Long order column. */
+  getLongOrder?: (unitId: string) => string | null;
 }) {
   const selectedUnitId = useWorkspaceStore((state) => state.selectedUnitId);
   const selectUnit = useWorkspaceStore((state) => state.selectUnit);
@@ -83,9 +125,17 @@ export function UnitTableDock({
     () => new Map(structures.map((structure) => [structure.structureId, structure])),
     [structures]
   );
+  // Only asked for when the table sorts on it: every other arrangement would read the document
+  // once per unit for an answer nothing compares.
+  const longOrders = useMemo(() => {
+    if (sort.column !== "longOrder" || !getLongOrder) {
+      return new Map<string, string | null>();
+    }
+    return new Map(units.filter((entry) => entry.own).map((entry) => [entry.unitId, getLongOrder(entry.unitId)]));
+  }, [units, sort.column, getLongOrder]);
   const visible = useMemo(
-    () => sortUnits(filterUnits(units, filter, structures), sort, structures),
-    [units, filter, sort, structures]
+    () => sortUnits(filterUnits(units, filter, structures), sort, structures, longOrders),
+    [units, filter, sort, structures, longOrders]
   );
   const selectedIndex = useMemo(
     () => visible.findIndex((unit) => unit.unitId === selectedUnitId),
@@ -332,50 +382,24 @@ export function UnitTableDock({
             aria-rowcount={visible.length + 1}
           >
             <colgroup>
-              <col className="w-6" />
-              <col className="w-16" />
-              <col className="w-52" />
-              <col className="w-48" />
-              <col className="w-16" />
-              <col />
-              <col />
-              <col className="w-52" />
+              {UNIT_COLUMNS.map((column) => (
+                <col key={column} className={COLUMN_WIDTHS[column]} />
+              ))}
             </colgroup>
             <thead ref={setHead}>
               {/* Indexed like the rows below it: if some rows carry a position, all of them must. */}
               <tr aria-rowindex={1} className="text-pane-sm uppercase tracking-[0.06em] text-ink-soft">
-                <Th>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setSort((current) => ({
-                        ...current,
-                        groupOwnFirst: !current.groupOwnFirst
-                      }))
+                {UNIT_COLUMNS.map((column) => (
+                  <ColumnHeaderCell
+                    key={column}
+                    column={column}
+                    sort={sort}
+                    onSort={sortByColumn}
+                    onToggleGroupOwn={() =>
+                      setSort((current) => ({ ...current, groupOwnFirst: !current.groupOwnFirst }))
                     }
-                    aria-pressed={sort.groupOwnFirst}
-                    aria-label="Group own units first"
-                    className={`w-full text-left focus-visible:outline focus-visible:outline-1 focus-visible:outline-brass ${
-                      sort.groupOwnFirst ? "text-ok" : "text-ink-dim"
-                    }`}
-                  >
-                    *
-                  </button>
-                </Th>
-                <SortableTh label="Id" column="unitId" sort={sort} onSort={sortByColumn} />
-                <SortableTh label="Unit" column="name" sort={sort} onSort={sortByColumn} />
-                <SortableTh label="Faction" column="faction" sort={sort} onSort={sortByColumn} />
-                <SortableTh label="Men" column="men" sort={sort} onSort={sortByColumn} />
-                {/* Skills and Items are comma-joined summaries; ordering them alphabetically
-                    would sort on the first skill that happened to be listed. */}
-                <Th>Skills</Th>
-                <Th>Items</Th>
-                <SortableTh
-                  label="Structure"
-                  column="structure"
-                  sort={sort}
-                  onSort={sortByColumn}
-                />
+                  />
+                ))}
               </tr>
             </thead>
             <tbody>
@@ -389,6 +413,7 @@ export function UnitTableDock({
                   rowHeight={rowHeight}
                   selected={unit.unitId === selectedUnitId}
                   onSelect={() => selectUnit(unit.unitId)}
+                  getLongOrder={getLongOrder}
                   onKeyDown={onRowKeyDown}
                   onPointerRest={restOn}
                   onPointerAt={(point) => {
@@ -422,6 +447,54 @@ function Spacer({ rows, rowHeight }: { rows: number; rowHeight: number }) {
       <td colSpan={COLUMNS} className="border-0 p-0" style={{ height }} />
     </tr>
   );
+}
+
+/**
+ * Dispatches one column to the header cell it needs: the "own" toggle button, a sortable column,
+ * or a plain label. The one place that knows all three shapes, so the header row can just map over
+ * the column list without caring which kind each entry turns out to be.
+ */
+function ColumnHeaderCell({
+  column,
+  sort,
+  onSort,
+  onToggleGroupOwn
+}: {
+  column: UnitColumn;
+  sort: SortState;
+  onSort: (column: SortColumn) => void;
+  onToggleGroupOwn: () => void;
+}) {
+  if (column === "own") {
+    return (
+      <Th>
+        <button
+          type="button"
+          onClick={onToggleGroupOwn}
+          aria-pressed={sort.groupOwnFirst}
+          aria-label="Group own units first"
+          className={`w-full text-left focus-visible:outline focus-visible:outline-1 focus-visible:outline-brass ${
+            sort.groupOwnFirst ? "text-ok" : "text-ink-dim"
+          }`}
+        >
+          *
+        </button>
+      </Th>
+    );
+  }
+  if (SORTABLE_COLUMNS.has(column)) {
+    return (
+      <SortableTh
+        label={COLUMN_LABELS[column] ?? column}
+        column={column as SortColumn}
+        sort={sort}
+        onSort={onSort}
+      />
+    );
+  }
+  // Skills and Items are comma-joined summaries; ordering them alphabetically would sort on the
+  // first skill that happened to be listed, so neither carries a sort - just a label.
+  return <Th>{COLUMN_LABELS[column] ?? column}</Th>;
 }
 
 function Th({ children }: { children?: ReactNode }) {
@@ -480,7 +553,8 @@ function UnitRow({
   onKeyDown,
   onPointerRest,
   onPointerAt,
-  onPointerGone
+  onPointerGone,
+  getLongOrder
 }: {
   unit: PreviewedUnit;
   /**
@@ -498,6 +572,8 @@ function UnitRow({
   /** Where the pointer is now, so the summary opens where the user stopped looking. */
   onPointerAt: (point: Point) => void;
   onPointerGone: () => void;
+  /** The month-long order this unit's live orders carry, where it is one of ours. */
+  getLongOrder?: (unitId: string) => string | null;
 }) {
   const skills = unit.skills.map((skill) => `${skill.tag} ${skill.level}`).join(", ");
   const items = unit.items.map((item) => `${item.amount} ${item.tag}`).join(", ");
@@ -514,43 +590,17 @@ function UnitRow({
     [structureLabel, originalTooltip(structureChange)].filter(Boolean).join("\n") || undefined;
   // A row that is somewhere else next month reads dimmed; its marker says where it went.
   const departing = unit.previewStatus === "departing";
+  // Only for our own units: there is nothing of anybody else's orders to read.
+  const longOrder = unit.own ? (getLongOrder?.(unit.unitId) ?? null) : null;
 
-  return (
-    <tr
-      data-testid={`unit-row-${unit.unitId}`}
-      data-selected={selected}
-      data-preview-status={unit.previewStatus}
-      onClick={onSelect}
-      onKeyDown={(event) => onKeyDown(event, index)}
-      // Pointer events rather than mouse events, for the guard: a finger has no hover to leave,
-      // so a touch would open a summary that never closed. Only a mouse can rest on something.
-      onPointerEnter={(event) => {
-        if (!byMouse(event)) {
-          return;
-        }
-        onPointerAt({ x: event.clientX, y: event.clientY });
-        onPointerRest(unit);
-      }}
-      onPointerMove={(event) => {
-        if (byMouse(event)) {
-          onPointerAt({ x: event.clientX, y: event.clientY });
-        }
-      }}
-      onPointerLeave={onPointerGone}
-      // Only the selected row is in the tab order, so Tab reaches the table once rather than
-      // stopping at every unit on screen; the arrow keys move from there.
-      tabIndex={selected ? 0 : -1}
-      // Which row is chosen, said out loud. The blue background says it to everyone else.
-      aria-selected={selected}
-      // ARIA counts the header, so the first unit is row two.
-      aria-rowindex={index + 2}
-      style={{ height: rowHeight }}
-      className={`cursor-pointer whitespace-nowrap focus-visible:outline focus-visible:outline-1 focus-visible:outline-select ${
-        selected ? "bg-select/25 text-ink" : unit.own ? "text-ink" : "text-ink-soft"
-      }${departing ? " opacity-60" : ""}`}
-    >
-      {/* The report's own ownership marker, so the distinction reads before the faction name does. */}
-      <Td className={unit.own ? "text-ok" : "text-danger"}>{unit.own ? "*" : "−"}</Td>
+  /**
+   * Every cell, keyed the same way the header's dispatch is, so reordering the columns never means
+   * reordering this.
+   */
+  const cellsByColumn: Record<UnitColumn, ReactNode> = {
+    // The report's own ownership marker, so the distinction reads before the faction name does.
+    own: <Td className={unit.own ? "text-ok" : "text-danger"}>{unit.own ? "*" : "−"}</Td>,
+    unitId: (
       <Td className={unit.own ? "text-select" : "text-unit-foreign/70"}>
         <button
           type="button"
@@ -562,6 +612,8 @@ function UnitRow({
           {unit.unitId}
         </button>
       </Td>
+    ),
+    name: (
       <Td className="truncate">
         <span
           className={nameChange ? PREDICTED : undefined}
@@ -599,24 +651,79 @@ function UnitRow({
           <span className={`ml-1.5 text-pane-sm ${PREDICTED}`}>new</span>
         ) : null}
       </Td>
+    ),
+    faction: (
       <Td className="truncate">
         {unit.factionName ? `${unit.factionName} (${unit.factionId})` : "—"}
       </Td>
-      {/* A tilde marks a count the parser guessed at; the unit panel spells out why. A count the
-          orders changed explains itself with the report's figure instead. */}
+    ),
+    // A tilde marks a count the parser guessed at; the unit panel spells out why. A count the
+    // orders changed explains itself with the report's figure instead.
+    men: (
       <Td
         className={menChange ? PREDICTED : ""}
         title={originalTooltip(menChange) ?? whyEstimated(unit)}
       >
         {describeMenBriefly(unit)}
       </Td>
-      <Td className="truncate">{skills}</Td>
+    ),
+    skills: <Td className="truncate">{skills}</Td>,
+    items: (
       <Td className={`truncate${itemsChange ? ` ${PREDICTED}` : ""}`} title={originalTooltip(itemsChange)}>
         {items}
       </Td>
+    ),
+    structure: (
       <Td className={`truncate${structureChange ? ` ${PREDICTED}` : ""}`} title={structureTitle}>
         {structureLabel ?? ""}
       </Td>
+    ),
+    // A unit of ours spending the month on nothing is worth flagging, hence the red dash; a unit
+    // that is not ours simply has nothing to say here.
+    longOrder: (
+      <Td className="truncate" title={longOrder ?? undefined}>
+        {unit.own ? (longOrder ?? <span className="text-danger">—</span>) : ""}
+      </Td>
+    )
+  };
+
+  return (
+    <tr
+      data-testid={`unit-row-${unit.unitId}`}
+      data-selected={selected}
+      data-preview-status={unit.previewStatus}
+      onClick={onSelect}
+      onKeyDown={(event) => onKeyDown(event, index)}
+      // Pointer events rather than mouse events, for the guard: a finger has no hover to leave,
+      // so a touch would open a summary that never closed. Only a mouse can rest on something.
+      onPointerEnter={(event) => {
+        if (!byMouse(event)) {
+          return;
+        }
+        onPointerAt({ x: event.clientX, y: event.clientY });
+        onPointerRest(unit);
+      }}
+      onPointerMove={(event) => {
+        if (byMouse(event)) {
+          onPointerAt({ x: event.clientX, y: event.clientY });
+        }
+      }}
+      onPointerLeave={onPointerGone}
+      // Only the selected row is in the tab order, so Tab reaches the table once rather than
+      // stopping at every unit on screen; the arrow keys move from there.
+      tabIndex={selected ? 0 : -1}
+      // Which row is chosen, said out loud. The blue background says it to everyone else.
+      aria-selected={selected}
+      // ARIA counts the header, so the first unit is row two.
+      aria-rowindex={index + 2}
+      style={{ height: rowHeight }}
+      className={`cursor-pointer whitespace-nowrap focus-visible:outline focus-visible:outline-1 focus-visible:outline-select ${
+        selected ? "bg-select/25 text-ink" : unit.own ? "text-ink" : "text-ink-soft"
+      }${departing ? " opacity-60" : ""}`}
+    >
+      {UNIT_COLUMNS.map((column) => (
+        <Fragment key={column}>{cellsByColumn[column]}</Fragment>
+      ))}
     </tr>
   );
 }

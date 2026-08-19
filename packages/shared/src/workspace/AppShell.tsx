@@ -24,7 +24,12 @@ import {
 } from "../hexMapModel";
 import { type TextFileSaver } from "../downloadFile";
 import type { OrdersUploader } from "./ordersUpload";
-import { readUnitOrders, stripMovementOrderLines, writeUnitOrders } from "../ordersDocument";
+import {
+  longOrderOf,
+  readUnitOrders,
+  stripMovementOrderLines,
+  writeUnitOrders
+} from "../ordersDocument";
 import { isOrdersFile, routeOrdersImport, type PendingOrdersImport } from "../ordersImport";
 import { ordersFileFaction } from "../ordersImport";
 import { rulesetById } from "../rulesets";
@@ -280,6 +285,16 @@ export function AppShell({
   // new report over an old map or the reverse.
   const [memory, setMemory] = useState<KnownMemory>(EMPTY_MEMORY);
   const [ordersDocument, setOrdersDocument] = useState("");
+
+  /**
+   * What a unit will spend the month on, read from the live document so the units table follows an
+   * edit in the orders pane without anything having to be reselected. `readUnitOrders` answers null
+   * for a unit with no block yet, which is the commonest case there is.
+   */
+  const getLongOrder = useCallback(
+    (unitId: string) => longOrderOf(readUnitOrders(ordersDocument, unitId) ?? ""),
+    [ordersDocument]
+  );
   /** How many writes to the document did not come from the editor. See `OrdersOrigin`. */
   const [externalOrdersRevision, setExternalOrdersRevision] = useState(0);
   /**
@@ -3063,7 +3078,7 @@ export function AppShell({
             style={unitsSlotStyle(collapsed, unitsHeightRem) ?? undefined}
             data-map-overlay="bottom"
           >
-            <UnitTableDock hex={hex} preview={hexPreview} />
+            <UnitTableDock hex={hex} preview={hexPreview} getLongOrder={getLongOrder} />
           </div>
         </div>
       </div>

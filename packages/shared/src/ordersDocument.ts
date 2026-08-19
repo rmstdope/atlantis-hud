@@ -304,3 +304,39 @@ export function withFactionPassword(document: string, password: string): string 
  * a bare token - an old password, which is quoted, is deliberately not captured as one.
  */
 const FACTION_HEADER = /^([ \t]*)#atlantis\b[ \t]*([^\s"]*)[^\r]*(\r?)$/;
+
+/**
+ * The orders that occupy a unit's whole month, exactly as the rules name them: "The orders which
+ * take an entire month are ADVANCE, BUILD, ENTERTAIN, MOVE, PILLAGE, PRODUCE, SAIL, STUDY, TAX,
+ * TEACH and WORK." A unit can issue as many other orders as it likes alongside these (GIVE, GUARD,
+ * CLAIM, AUTOTAX...), but only one of these eleven counts.
+ *
+ * Not the Rust core's `MOVEMENT_ORDER_COMMANDS`: that list exists for the planner, which only ever
+ * needs to know a movement order from a non-movement one. This is the ruleset's own full list.
+ */
+export const LONG_ORDER_COMMANDS = [
+  "ADVANCE",
+  "BUILD",
+  "ENTERTAIN",
+  "MOVE",
+  "PILLAGE",
+  "PRODUCE",
+  "SAIL",
+  "STUDY",
+  "TAX",
+  "TEACH",
+  "WORK"
+] as const;
+
+/** A line that is one of the eleven month-long orders, `@`-repeated or not. */
+const LONG_ORDER_LINE = new RegExp(`^\\s*@?\\s*(${LONG_ORDER_COMMANDS.join("|")})\\b`, "iu");
+
+/**
+ * The month-long order a unit's orders currently carry, if the document has one - for a display
+ * that wants to say what a unit is actually going to spend its month on, at a glance. Comments and
+ * blank lines are never it; if a document somehow holds two, the first is what the game will keep,
+ * so the first is what is shown.
+ */
+export function longOrderOf(orders: string): string | null {
+  return commandsOnly(orders).find((line) => LONG_ORDER_LINE.test(line)) ?? null;
+}
