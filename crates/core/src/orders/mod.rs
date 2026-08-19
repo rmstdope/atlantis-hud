@@ -17,6 +17,7 @@ pub mod intents;
 pub mod lexer;
 pub mod parser;
 pub mod semantics;
+pub mod standing;
 #[cfg(test)]
 mod standing_agreement;
 pub mod vocabulary;

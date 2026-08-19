@@ -20,6 +20,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use super::forms::{Amount, Party, Selector};
 use super::intents::{read_intents, Intent, PlacedIntent, UnitIntents};
+use super::standing::{self, standing_after, Boarding};
 use crate::movement::mode::{
     best_allowance, cargo_capacity, fleet_label, parse_fleet_kind, sailing_requirement,
 };
@@ -1887,55 +1888,40 @@ fn is_aboard(ordered: &Ordered<'_>, fleet_id: &str) -> bool {
 /// The structure the unit is in once this month's ENTER/LEAVE orders have run, or `None` when it
 /// ends the month in nothing.
 ///
-/// **Every LEAVE is processed before any ENTER**, whatever order the lines were typed in - the
-/// engine's own order, confirmed by the navigator on 2026-08-18 after a verification failed on
-/// exactly this. So a block holding any ENTER ends inside the last structure entered, a block
-/// holding only LEAVEs ends in nothing, and a block holding neither stays where the report found
-/// it. Document order matters only among ENTERs; between an ENTER and a LEAVE it means nothing.
-///
-/// Both run before anything else a block can ask for, so every check that asks "what is this unit
-/// standing in when its orders happen" wants this rather than `unit.structure_id`, which is only
-/// where the report found it.
-///
-/// The movement layer, which is handed a report rather than parsed intents, answers the same
-/// question through `crate::movement::fleet::OrderedUnits::structure_of` and must keep the same
-/// rule. Two models of it exist on purpose until something decides where a shared one would live
-/// (ah-ssd); a change here belongs in both.
+/// The rule itself lives in [`super::standing`], which is the one place it is stated; this is the
+/// adapter that reads it out of parsed intents.
 fn structure_after_orders<'a>(ordered: &Ordered<'a>) -> Option<&'a str> {
     structure_after_intents(ordered.unit.structure_id.as_deref(), ordered.intents)
 }
 
-/// [`structure_after_orders`] over the two things it actually reads, so a test can drive this
-/// reader without building a whole [`Ordered`].
+/// [`structure_after_orders`] over the two things it actually reads, so the agreement test can
+/// drive this reader without building a whole [`Ordered`].
 pub(crate) fn structure_after_intents<'a>(
     reported: Option<&'a str>,
     intents: &'a [PlacedIntent],
 ) -> Option<&'a str> {
-    let mut entered: Option<&'a str> = None;
-    let mut left = false;
-    for placed in intents {
-        match &placed.intent {
-            Intent::Enter { structure } => entered = Some(structure.as_str()),
-            Intent::Leave => left = true,
-            _ => {}
-        }
-    }
-    match (entered, left) {
-        // An ENTER always wins: the LEAVE ran first, and the unit walked back in.
-        (Some(structure), _) => Some(structure),
-        (None, true) => None,
-        (None, false) => reported,
+    standing_after(reported, intents.iter().filter_map(boarding_of))
+}
+
+/// One parsed intent as [`super::standing`] reads it; anything that is not a boarding order is not
+/// one.
+fn boarding_of(placed: &PlacedIntent) -> Option<Boarding<'_>> {
+    match &placed.intent {
+        Intent::Enter { structure } => Some(Boarding::Enter(structure.as_str())),
+        Intent::Leave => Some(Boarding::Leave),
+        _ => None,
     }
 }
 
-/// Whether the unit could be giving the SAIL order for `fleet_id`: standing in it per the report,
-/// or boarding it this month. A unit that also LEAVEs is not excluded here - the server would
-/// still read its SAIL line before running the LEAVE.
+/// Whether the unit could be giving the SAIL order for `fleet_id` - see
+/// [`super::standing::could_captain`], which states why that is not the same question as where the
+/// unit ends up.
 fn could_captain(ordered: &Ordered<'_>, fleet_id: &str) -> bool {
-    ordered.unit.structure_id.as_deref() == Some(fleet_id)
-        || ordered.intents.iter().any(
-            |placed| matches!(&placed.intent, Intent::Enter { structure } if structure == fleet_id),
-        )
+    standing::could_captain(
+        ordered.unit.structure_id.as_deref(),
+        fleet_id,
+        ordered.intents.iter().filter_map(boarding_of),
+    )
 }
 
 /// What one unit weighs once this month's orders have run: the weight the report gave it, plus
