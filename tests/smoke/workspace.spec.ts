@@ -1896,11 +1896,19 @@ test("the level selector in the header changes level", async ({ page }) => {
   );
   expect(values.length).toBeGreaterThan(1);
 
+  // The nexus hex, which exists on the nexus level and nowhere else - so it is the map's own
+  // answer to which level is being drawn, rather than the selector repeating itself back.
+  const nexusHex = page.getByRole("button", { name: "hex 0:0,0" });
+
   const current = await selector.inputValue();
   const other = values.find((value) => value !== current) ?? current;
   await selector.selectOption(other);
   await expect(selector).toHaveValue(other);
   await expect(page.getByTestId("map-canvas")).toBeVisible();
+  await expect(nexusHex).toHaveCount(other === "0" ? 1 : 0);
+
+  await selector.selectOption(current);
+  await expect(nexusHex).toHaveCount(current === "0" ? 1 : 0);
 });
 
 /**
