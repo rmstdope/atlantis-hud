@@ -239,3 +239,32 @@ describe("AppHeader status line", () => {
     expect(markup).toContain("sr-only");
   });
 });
+
+describe("AppHeader Send button", () => {
+  beforeEach(resetWorkspaceStore);
+
+  it("shows no Send button when the shell cannot send", () => {
+    expect(draw()).not.toContain('data-testid="send-orders"');
+  });
+
+  it("shows a Send button when the shell can", () => {
+    const markup = draw({ onSendOrders: () => {}, canSend: true });
+    expect(markup).toContain('data-testid="send-orders"');
+
+    // Immediately right of the export popover, and before the settings cog.
+    const exportIndex = markup.indexOf('data-testid="export-menu"');
+    const sendIndex = markup.indexOf('data-testid="send-orders"');
+    const settingsIndex = markup.indexOf('data-testid="settings-indicator"');
+    expect(sendIndex).toBeGreaterThan(exportIndex);
+    expect(settingsIndex).toBeGreaterThan(sendIndex);
+  });
+
+  it("disables Send and gives the reason when the orders carry no faction", () => {
+    const reason =
+      "These orders have no #atlantis line, so the server cannot tell which faction they belong to.";
+    const markup = draw({ onSendOrders: () => {}, canSend: false, sendDisabledReason: reason });
+    const button = markup.match(/<button[^>]*data-testid="send-orders"[^>]*>/)![0];
+    expect(button).toContain("disabled");
+    expect(button).toContain(`title="${reason}"`);
+  });
+});

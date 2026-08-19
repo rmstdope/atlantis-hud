@@ -14,7 +14,8 @@ describe("desktopPlugins", () => {
   it("returns the stand-in a test installed, before anything else is asked", () => {
     const fake: DesktopPlugins = {
       save: async () => "/fake/path",
-      writeTextFile: async () => undefined
+      writeTextFile: async () => undefined,
+      httpPost: async () => ({ status: 200, body: "" })
     };
     (globalThis as unknown as { window: { __ATLANTIS_DESKTOP_PLUGINS__?: DesktopPlugins } }).window =
       { __ATLANTIS_DESKTOP_PLUGINS__: fake };

@@ -187,6 +187,7 @@ export function GlobalSettings() {
   const setMapTheme = useSettingsStore((state) => state.setMapTheme);
   const biomeTextures = useSettingsStore((state) => state.biomeTextures);
   const setBiomeTextures = useSettingsStore((state) => state.setBiomeTextures);
+  // Per theme (ah-j1xd): the slider always shows and writes the theme the player is looking at.
   const paneTransparency = useSettingsStore((state) => state.paneTransparency);
   const setPaneTransparency = useSettingsStore((state) => state.setPaneTransparency);
   const interfaceSize = useSettingsStore((state) => state.interfaceSize);
@@ -256,7 +257,7 @@ export function GlobalSettings() {
       <label className="flex flex-col gap-1">
         <span className="flex items-baseline justify-between gap-2">
           <span className="text-ink-soft">Pane transparency</span>
-          <span className="text-ink">{paneTransparency}%</span>
+          <span className="text-ink">{paneTransparency[theme]}%</span>
         </span>
         {/*
           Capped at 95 rather than 100, because a fully transparent pane can neither be read nor
@@ -270,10 +271,14 @@ export function GlobalSettings() {
           min={0}
           max={95}
           step={5}
-          value={paneTransparency}
+          value={paneTransparency[theme]}
           onChange={(event) => setPaneTransparency(Number(event.target.value))}
           className="accent-brass"
         />
+        <span className="block text-pane-sm text-ink-dim">
+          Makes the panes see-through so the map shows behind them. Remembered separately for the
+          dark and light themes.
+        </span>
       </label>
 
       <label className="flex flex-col gap-1">
@@ -435,6 +440,11 @@ const WARNING_GROUPS: readonly {
         code: "unit-overloaded",
         title: "Overloaded units",
         description: "A unit ordered to move carrying more than it can move with."
+      },
+      {
+        code: "unit-does-nothing",
+        title: "Units that do nothing",
+        description: "A unit with no order that spends its month."
       }
     ]
   },

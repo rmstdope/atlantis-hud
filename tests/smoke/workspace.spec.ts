@@ -511,8 +511,16 @@ test("imports a run of turns and an ally's report in one action", async ({ page 
     ally saw would survive that and prove nothing.
   */
   await selectHex(page, "1:10,50");
-  await expect(page.getByTestId("panel-units")).toContainText("Swamp Watch");
-  await expect(page.getByTestId("panel-units")).toContainText("Tower Guard");
+  // Through the filter rather than by reading the whole pane: the table is windowed, so a unit
+  // only renders while it is scrolled into view, and whether the nineteenth row of this hex
+  // happens to fit is a fact about the pane's height and row height, not about the merge. It did
+  // fit until ah-v09e took the rows from 22px to 24px. Filtering asks the question the test means.
+  const unitsFilter = page.getByTestId("panel-units").getByLabel("Filter units");
+  for (const unit of ["Swamp Watch", "Tower Guard"]) {
+    await unitsFilter.fill(unit);
+    await expect(page.getByTestId("panel-units")).toContainText(unit);
+  }
+  await unitsFilter.fill("");
 });
 
 /** Two of your own turns stored, 71 left on screen as the working turn - ah-jg6.3's setup. */
@@ -933,19 +941,21 @@ test("a unit told to spend silver it has not got is warned about, without blocki
   // report carries eight findings of its own throughout - Six of Two (13402) is already at combat
   // 5, the ruleset's maximum, and still orders "@study comb" (ah-1uj); four mages in a different
   // hex CAST an enchant with no plate armor on hand (ah-dbb.2); and six Borg mages study force or
-  // pattern above level 2 aboard a Cloudship, which seats no mages (ah-a2k.2) - so the count here
-  // is that baseline plus the one this test introduces.
+  // pattern above level 2 aboard a Cloudship, which seats no mages (ah-a2k.2). Since ah-dwk6 there
+  // are two more: units 14451 and 13432 are given no orders at all (unit-does-nothing), and this
+  // test's own unit is a third, since a lone GIVE spends none of its month. Ten baseline plus the
+  // two this test introduces on its own unit.
   const chip = page.getByTestId("problems-chip");
-  await expect(chip).toContainText("9 problems");
+  await expect(chip).toContainText("12 problems");
   await chip.click();
   await expect(page.getByTestId("problems-panel")).toContainText("mountain (7,53)");
   await expect(page.getByTestId("problem-entry").first()).toContainText("⚠");
 
-  // Corrected, this hex's problem goes away, leaving only the turn's eight baseline findings
-  // elsewhere.
+  // Corrected, this hex's problems go away - "@work" both covers the shortfall and spends the
+  // month - leaving only the turn's ten baseline findings elsewhere.
   await fillOrders(page, "@work");
   await expect(page.getByTestId("region-problems")).toHaveCount(0);
-  await expect(page.getByTestId("problems-chip")).toContainText("8 problems");
+  await expect(page.getByTestId("problems-chip")).toContainText("10 problems");
 });
 
 /**
@@ -965,8 +975,24 @@ async function warnAboutUnguardedHexes(page: Page) {
   await page.keyboard.press("Escape");
 }
 
+/**
+ * Turns `unit-does-nothing` (ah-dwk6) off.
+ *
+ * It is on by default and is right about the fixtures below - a unit given a single GIVE, or a
+ * line that does not parse, has no order that spends its month - but it is an extra finding in
+ * tests that are counting a specific pair of them or reading one editor's diagnostics. The check
+ * has its own coverage in the Rust suite and its own toggle test above.
+ */
+async function silenceIdleUnits(page: Page) {
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByTestId("settings-tab-warnings").click();
+  await page.getByTestId("settings-warning-unit-does-nothing").uncheck();
+  await page.keyboard.press("Escape");
+}
+
 test("hiding the problems brings the region facts to the top", async ({ page }) => {
   await loadReport(page);
+  await silenceIdleUnits(page);
   await warnAboutUnguardedHexes(page);
   await selectHex(page, "1:7,53");
   await selectUnit(page, OWN_UNIT);
@@ -1022,6 +1048,7 @@ test("the hidden problems stay hidden across a reload", async ({ page }) => {
  */
 test("a silenced advisory check disappears everywhere at once", async ({ page }) => {
   await loadReport(page);
+  await silenceIdleUnits(page);
   await selectHex(page, "1:7,53");
   await selectUnit(page, OWN_UNIT);
   await fillOrders(page, "GIVE 0 999999999 SILV");
@@ -1162,6 +1189,7 @@ test("an order with the wrong argument is caught, and the offending word quoted"
   page
 }) => {
   await loadReport(page);
+  await silenceIdleUnits(page);
   await selectHex(page, "1:7,53");
   await selectUnit(page, OWN_UNIT);
 
@@ -1217,6 +1245,7 @@ test("a TURN block left open is reported against the unit that wrote it", async 
 
 test("an item the catalogue does not know is a warning rather than an error", async ({ page }) => {
   await loadReport(page);
+  await silenceIdleUnits(page);
   await selectHex(page, "1:7,53");
   await selectUnit(page, OWN_UNIT);
 
@@ -3544,4 +3573,17 @@ test("the panes grow when the reader's text size does", async ({ page }) => {
   expect(railBox.x).toBeGreaterThanOrEqual(0);
   expect(railBox.x + railBox.width).toBeLessThanOrEqual(view.width);
   expect(railBox.y + railBox.height).toBeLessThanOrEqual(view.height);
+});
+
+test("the web build offers no Send button, because it could never read the reply", async ({ page }, testInfo) => {
+  test.skip(
+    testInfo.project.name !== "web",
+    "the desktop bundle passes an uploader, so it has the control this pins the absence of"
+  );
+
+  await loadReport(page);
+
+  // The game server sends no CORS headers, so the web shell passes no uploader and the control is
+  // absent rather than disabled - the decision recorded on ah-etb0.2.
+  await expect(page.getByTestId("send-orders")).toHaveCount(0);
 });

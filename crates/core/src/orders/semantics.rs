@@ -96,6 +96,7 @@ pub mod codes {
     pub const MAGIC_STUDY_OUTSIDE_BUILDING: Code = Code("magic-study-outside-building");
     pub const BUILD_OUTSIDE_STRUCTURE: Code = Code("build-outside-structure");
     pub const BUILD_HELP_NOT_BUILDING: Code = Code("build-help-not-building");
+    pub const UNIT_DOES_NOTHING: Code = Code("unit-does-nothing");
     /// Every code. This array's own order is not the settings tab's grouping (that groups by
     /// concern - Teaching / Resources / Markets / Guarding / Orders / Sailing - not by this list):
     /// a new entry joins whichever group fits its concern, which need not be the last one
@@ -104,7 +105,7 @@ pub mod codes {
     /// group). What every entry so far has kept is new-*here*-last: the generated TypeScript
     /// copies this array's order, so a new code is always appended to it regardless of where it
     /// lands in the UI.
-    pub const ALL: [Code; 22] = [
+    pub const ALL: [Code; 23] = [
         NOT_ENOUGH_SILVER,
         NOT_ENOUGH_ITEMS,
         GUARD_DROPPED,
@@ -127,6 +128,7 @@ pub mod codes {
         MAGIC_STUDY_OUTSIDE_BUILDING,
         BUILD_OUTSIDE_STRUCTURE,
         BUILD_HELP_NOT_BUILDING,
+        UNIT_DOES_NOTHING,
     ];
 }
 
@@ -233,6 +235,7 @@ pub fn check_turn(
         check_studying(&hex, ruleset, &options, &mut findings);
         check_magic_study(&hex, ruleset, &options, &mut findings);
         check_forms(&hex, &options, &mut findings);
+        check_idle_units(&hex, &options, &mut findings);
         check_transfer_targets(&hex, &located, &options, &mut findings);
         check_sailing(&hex, &ledger, ruleset, &options, &mut findings);
         check_movement(&hex, &ledger, ruleset, &options, &mut findings);
@@ -251,28 +254,95 @@ pub fn check_turn(
     findings
 }
 
+/// Whether this order consumes the unit's month.
+///
+/// Written as an exhaustive `match` on purpose. `is_busy` below was a `matches!` with a fixed list,
+/// and a variant missing from such a list returns `false` silently - the failure `ah-90w` had to
+/// write a regression test against when `BUILD` gained a shape. Here the compiler refuses a new
+/// `Intent` variant until somebody has said which side of this line it falls on.
+fn spends_the_month(intent: &Intent) -> bool {
+    match intent {
+        // The rules' enumerated list, plus IDLE and ANNIHILATE, which reach here as `MonthLong`.
+        // ADVANCE arrives as `Intent::Move`.
+        Intent::Study { .. }
+        | Intent::Teach { .. }
+        | Intent::Tax
+        | Intent::Pillage
+        | Intent::Work
+        | Intent::Entertain
+        | Intent::Move { .. }
+        | Intent::Sail { .. }
+        | Intent::Build { .. } => true,
+
+        // CAST is NOT a full month order: "a mage may still MOVE, STUDY, or use any other month
+        // long order". A bare CAST falls back to `MonthLong("CAST")`, so it has to be caught
+        // before the arm below - which is why these two arms are in this order.
+        Intent::MonthLong("CAST") => false,
+        Intent::MonthLong(_) => true,
+
+        // Each of these leaves the month free. GUARD is a flag rather than a month's work - a
+        // guard can tax as well - and FORM only asks for a unit to exist.
+        Intent::Cast { .. }
+        | Intent::Give { .. }
+        | Intent::Take { .. }
+        | Intent::Buy { .. }
+        | Intent::Sell { .. }
+        | Intent::Guard(_)
+        | Intent::Claim(_)
+        | Intent::Withdraw
+        | Intent::Form { .. }
+        | Intent::Enter { .. }
+        | Intent::Leave => false,
+    }
+}
+
 /// Every unit block in the document, by unit number.
 ///
 /// A unit written twice has both blocks read as one: the server would run them both, so charging
 /// the unit for only the first would be a model of a turn nobody is playing.
 struct OrderedUnits {
-    by_unit: BTreeMap<String, Vec<PlacedIntent>>,
+    by_unit: BTreeMap<String, UnitOrders>,
+}
+
+/// One unit's orders as this pass needs them: what it was told to do, where its block starts, and
+/// whether anything in it could not be read.
+struct UnitOrders {
+    /// The `unit NNNN` line of the *first* block for this unit, to hang a finding on.
+    block_line: usize,
+    intents: Vec<PlacedIntent>,
+    /// Whether any line in any of this unit's blocks yielded no intent.
+    unread: bool,
 }
 
 impl OrderedUnits {
     fn read(source: &str) -> Self {
-        let mut by_unit: BTreeMap<String, Vec<PlacedIntent>> = BTreeMap::new();
+        let mut by_unit: BTreeMap<String, UnitOrders> = BTreeMap::new();
         for UnitIntents {
-            unit_id, intents, ..
+            unit_id,
+            line,
+            intents,
+            unread,
         } in read_intents(source)
         {
-            by_unit.entry(unit_id).or_default().extend(intents);
+            let entry = by_unit.entry(unit_id).or_insert_with(|| UnitOrders {
+                block_line: line,
+                intents: Vec::new(),
+                unread: false,
+            });
+            entry.intents.extend(intents);
+            entry.unread |= !unread.is_empty();
         }
         Self { by_unit }
     }
 
-    fn get(&self, unit_id: &str) -> &[PlacedIntent] {
-        self.by_unit.get(unit_id).map_or(&[], Vec::as_slice)
+    fn get(&self, unit_id: &str) -> Option<&UnitOrders> {
+        self.by_unit.get(unit_id)
+    }
+
+    /// Just the intents, for a caller that has no use for the block line or the unread flag.
+    fn intents_of(&self, unit_id: &str) -> &[PlacedIntent] {
+        self.get(unit_id)
+            .map_or(&[][..], |orders| orders.intents.as_slice())
     }
 }
 
@@ -286,6 +356,9 @@ struct Hex<'a> {
 struct Ordered<'a> {
     unit: &'a ReportUnit,
     intents: &'a [PlacedIntent],
+    /// `None` when the document has no block for this unit at all.
+    block_line: Option<usize>,
+    unread: bool,
 }
 
 impl<'a> Hex<'a> {
@@ -294,9 +367,14 @@ impl<'a> Hex<'a> {
             .units
             .iter()
             .filter(|unit| unit.own)
-            .map(|unit| Ordered {
-                unit,
-                intents: ordered.get(&unit.unit_id),
+            .map(|unit| {
+                let orders = ordered.get(&unit.unit_id);
+                Ordered {
+                    unit,
+                    intents: orders.map_or(&[][..], |orders| orders.intents.as_slice()),
+                    block_line: orders.map(|orders| orders.block_line),
+                    unread: orders.is_some_and(|orders| orders.unread),
+                }
             })
             .collect();
         Self { region, units }
@@ -358,20 +436,17 @@ impl Ordered<'_> {
     /// unit in a hex where fifteen units all study is a candidate teacher for all the others, and
     /// one hex of turn 71 produced twenty-nine findings that were all the same non-observation.
     fn is_busy(&self) -> bool {
-        self.intents().any(|intent| {
-            matches!(
-                intent,
-                Intent::Study { .. }
-                    | Intent::Work
-                    | Intent::Entertain
-                    | Intent::Tax
-                    | Intent::Pillage
-                    | Intent::Move { .. }
-                    | Intent::Sail { .. }
-                    | Intent::MonthLong(_)
-                    | Intent::Cast { .. }
-                    | Intent::Build { .. }
-            )
+        self.intents().any(|intent| match intent {
+            // Teaching is what the spare-teacher check is about, so it never counts here. This is
+            // the exclusion the doc comment above has always described.
+            Intent::Teach { .. } => false,
+            // CAST leaves the month free by the rules, and `spends_the_month` says so - but this
+            // check has always counted it, and following the rules here would add spare-teacher
+            // findings on every casting mage. ah-dwk6 was not asked to change that warning.
+            // `ah-vw63` narrows this check to units that actually TEACH, and when it lands this
+            // arm should go and CAST should be classified by the rules in both places.
+            Intent::Cast { .. } | Intent::MonthLong("CAST") => true,
+            other => spends_the_month(other),
         })
     }
 
@@ -414,6 +489,20 @@ impl Ordered<'_> {
             .iter()
             .find(|item| item.tag.eq_ignore_ascii_case(tag))
             .map_or(0, |item| item.amount)
+    }
+
+    /// A finding against the unit's block rather than against one order in it, for a check whose
+    /// subject is the absence of an order. No columns: there is no token to underline.
+    fn finding_at_block(&self, hex: &Hex<'_>, code: Code, message: String) -> Finding {
+        Finding {
+            code,
+            message,
+            region_id: hex.region.region_id.clone(),
+            unit_id: Some(self.unit.unit_id.clone()),
+            line: self.block_line,
+            column_start: None,
+            column_end: None,
+        }
     }
 
     fn finding(
@@ -1687,6 +1776,29 @@ fn check_magic_study(
 /// Every FORM in the hex, in document order; each alias after its first use is a block the server
 /// will refuse (the alias is per region for the month — see the rules on FORM), and says so on
 /// its own line, naming the first use. The first FORM is the one that will exist and is left alone.
+/// Every own unit whose orders, all of which we could read, spend none of its month.
+fn check_idle_units(hex: &Hex<'_>, options: &CheckOptions, findings: &mut Vec<Finding>) {
+    if !options.emits(codes::UNIT_DOES_NOTHING) {
+        return;
+    }
+
+    for ordered in &hex.units {
+        // A line we could not read may well be a month's work - `ASSASSINATE 4021` is - so a unit
+        // holding one is not judged at all. Silence here is the price of never being wrong.
+        if ordered.unread {
+            continue;
+        }
+        if ordered.intents().any(spends_the_month) {
+            continue;
+        }
+        findings.push(ordered.finding_at_block(
+            hex,
+            codes::UNIT_DOES_NOTHING,
+            "has no order that spends the month".to_string(),
+        ));
+    }
+}
+
 fn check_forms(hex: &Hex<'_>, options: &CheckOptions, findings: &mut Vec<Finding>) {
     if !options.emits(codes::FORM_ALIAS_REUSED) {
         return;
@@ -2239,7 +2351,7 @@ fn check_trade_regions(
     for region in &report.regions {
         let region_id = region.region_id.as_str();
         for unit in region.units.iter().filter(|unit| unit.own) {
-            for placed in ordered.get(&unit.unit_id) {
+            for placed in ordered.intents_of(&unit.unit_id) {
                 match &placed.intent {
                     Intent::MonthLong("PRODUCE") => {
                         producing.insert(region_id);
@@ -2355,7 +2467,7 @@ fn check_quartermasters(
             // writes several is not asking to be counted once per line.
             let placed =
                 ordered
-                    .get(&unit.unit_id)
+                    .intents_of(&unit.unit_id)
                     .iter()
                     .find_map(|placed| match &placed.intent {
                         Intent::Study { skill: studied } => Some((placed, studied)),
@@ -2529,12 +2641,20 @@ mod tests {
     }
 
     /// Runs the checks with the committed ruleset, which is what the shell serves.
+    /// The runtime default, with `unit-does-nothing` off.
+    ///
+    /// Nearly every fixture below stands up a unit to exercise one check and gives it only the
+    /// orders that check is about - a GIVE, a BUY, a bare block - so on the real default this check
+    /// fires on almost all of them and buries what each test is actually asserting. Exactly the
+    /// shape `check_ignoring_transfer_targets` below was written for when `give-target-not-here`
+    /// arrived. The check's own fixtures use `check_idle` above, and
+    /// `every_advisory_code_can_be_silenced` runs fully enabled.
     fn check(regions: Vec<ReportRegion>, orders: &str) -> Vec<Finding> {
         check_turn(
             &report(regions),
             orders,
             Some(&ruleset()),
-            CheckOptions::default(),
+            disabling(codes::UNIT_DOES_NOTHING),
         )
     }
 
@@ -2550,7 +2670,7 @@ mod tests {
             &report(regions),
             orders,
             Some(&ruleset()),
-            disabling(codes::GIVE_TARGET_NOT_HERE),
+            disabling_all(&[codes::GIVE_TARGET_NOT_HERE, codes::UNIT_DOES_NOTHING]),
         )
     }
 
@@ -2570,6 +2690,7 @@ mod tests {
             disabling_all(&[
                 codes::BUILD_OUTSIDE_STRUCTURE,
                 codes::BUILD_HELP_NOT_BUILDING,
+                codes::UNIT_DOES_NOTHING,
             ]),
         )
     }
@@ -2594,6 +2715,75 @@ mod tests {
     fn only(findings: Vec<Finding>) -> Finding {
         assert_eq!(findings.len(), 1, "expected one finding: {findings:?}");
         findings.into_iter().next().expect("just counted")
+    }
+
+    // --- what spends the month ---------------------------------------------------------------
+
+    #[test]
+    fn teaching_spends_the_month() {
+        assert!(spends_the_month(&Intent::Teach {
+            students: Vec::new()
+        }));
+    }
+
+    /// The rules: "a CAST order is not a full month order; a mage may still MOVE, STUDY, or use
+    /// any other month long order."
+    #[test]
+    fn casting_does_not_spend_the_month() {
+        assert!(!spends_the_month(&Intent::Cast {
+            spell: "Fire".to_string(),
+            arguments: Vec::new(),
+        }));
+    }
+
+    /// A bare `CAST` falls back to `MonthLong("CAST")`, which must be caught before the general
+    /// `MonthLong` arm or the correction silently does not apply to it.
+    #[test]
+    fn a_bare_cast_does_not_spend_the_month() {
+        assert!(!spends_the_month(&Intent::MonthLong("CAST")));
+    }
+
+    #[test]
+    fn idling_spends_the_month() {
+        assert!(spends_the_month(&Intent::MonthLong("IDLE")));
+    }
+
+    #[test]
+    fn annihilating_spends_the_month() {
+        assert!(spends_the_month(&Intent::MonthLong("ANNIHILATE")));
+    }
+
+    #[test]
+    fn giving_does_not_spend_the_month() {
+        assert!(!spends_the_month(&Intent::Give {
+            to: Party::Unit("4022".to_string()),
+            what: Selector::Item("SILV".to_string()),
+            amount: Amount::Exact(10),
+        }));
+    }
+
+    /// The `is_busy` rewrite must leave the teaching check exactly as it was. `is_busy` excludes
+    /// `Intent::Teach` on purpose, so a unit already teaching is *not* counted as busy and is still
+    /// weighed for spare teaching capacity - which is the whole point of that exclusion. If this
+    /// stops firing, the rewrite folded teaching into "busy" and broke the teaching check.
+    #[test]
+    fn a_teaching_unit_is_still_weighed_for_spare_capacity() {
+        let findings = check(
+            vec![region(vec![
+                with_skill(unit("1"), "COMB", 2),
+                unit("2"),
+                unit("3"),
+            ])],
+            concat!(
+                "unit 1\nTEACH 2\n",
+                "unit 2\nSTUDY COMB\n",
+                "unit 3\nSTUDY COMB\n",
+            ),
+        );
+        assert!(
+            codes(&findings).contains(&codes::TEACHER_HAS_FREE_SLOTS.as_str()),
+            "{findings:?}"
+        );
     }
 
     // --- coverage ---------------------------------------------------------------------------
@@ -3012,7 +3202,7 @@ mod tests {
                 &report(vec![region(vec![with_silver(unit("5"), 0)])]),
                 "unit 5\nBUY 5 horses\n",
                 Some(&ruleset()),
-                disabling(codes::NOT_TRADED_HERE),
+                disabling_all(&[codes::NOT_TRADED_HERE, codes::UNIT_DOES_NOTHING]),
             ),
             vec![],
             "the market has no price for it, so there is no sum to check"
@@ -5138,6 +5328,179 @@ mod tests {
         assert!(findings[1].message.contains("taken from"));
     }
 
+    // --- units with nothing to do --------------------------------------------------------------
+
+    /// `check`, with the checks that fire on a bare hex out of the way. A unit doing nothing also
+    /// leaves the hex unguarded, and these fixtures are not about that.
+    fn check_idle(regions: Vec<ReportRegion>, orders: &str) -> Vec<Finding> {
+        check_turn(
+            &report(regions),
+            orders,
+            Some(&ruleset()),
+            disabling_all(&[codes::TEACHER_HAS_FREE_SLOTS]),
+        )
+    }
+
+    #[test]
+    fn a_unit_with_no_orders_at_all_is_warned() {
+        let finding = only(check_idle(vec![region(vec![unit("4021")])], "unit 4021\n"));
+        assert_eq!(finding.code, codes::UNIT_DOES_NOTHING);
+        assert_eq!(finding.unit_id.as_deref(), Some("4021"));
+        assert_eq!(finding.line, Some(1));
+        assert_eq!(finding.column_start, None);
+        assert_eq!(finding.message, "has no order that spends the month");
+    }
+
+    #[test]
+    fn a_unit_that_only_gives_is_warned() {
+        let findings = check_idle(
+            vec![region(vec![with_silver(unit("4021"), 100), unit("4022")])],
+            "unit 4021\nGIVE 4022 10 SILV\nunit 4022\nWORK\n",
+        );
+        let idle: Vec<&Finding> = findings
+            .iter()
+            .filter(|f| f.code == codes::UNIT_DOES_NOTHING)
+            .collect();
+        assert_eq!(idle.len(), 1, "{findings:?}");
+        assert_eq!(idle[0].unit_id.as_deref(), Some("4021"));
+        // The block line, not the GIVE line.
+        assert_eq!(idle[0].line, Some(1));
+    }
+
+    #[test]
+    fn a_unit_that_works_is_silent() {
+        assert_eq!(
+            codes(&check_idle(
+                vec![region(vec![unit("4021")])],
+                "unit 4021\nWORK\n"
+            )),
+            Vec::<&str>::new()
+        );
+    }
+
+    #[test]
+    fn a_unit_that_teaches_is_silent() {
+        let findings = check_idle(
+            vec![region(vec![
+                with_skill(with_men(with_silver(unit("500"), 1000), 3), "COMB", 2),
+                with_skill(with_silver(unit("700"), 1000), "COMB", 1),
+            ])],
+            "unit 500\nTEACH 700\nunit 700\nSTUDY combat\n",
+        );
+        assert!(
+            !codes(&findings).contains(&codes::UNIT_DOES_NOTHING.as_str()),
+            "{findings:?}"
+        );
+    }
+
+    /// GUARD is a flag rather than a month's work - a guard can tax as well - so a garrison that
+    /// could be earning is worth being told about. The navigator chose this; do not "fix" it.
+    #[test]
+    fn a_unit_that_guards_is_warned() {
+        let findings = check_idle(vec![region(vec![unit("4021")])], "unit 4021\nGUARD 1\n");
+        assert_eq!(codes(&findings), vec![codes::UNIT_DOES_NOTHING.as_str()]);
+    }
+
+    /// ah-dwk6's verification failure, at the check's own level: a free order is not a month's
+    /// work, and a unit holding only one is still a unit with nothing to do.
+    #[test]
+    fn a_unit_whose_only_order_is_free_is_warned() {
+        let findings = check_idle(
+            vec![region(vec![unit("4021")])],
+            "unit 4021\nNAME \"Scouts\"\n",
+        );
+        assert_eq!(codes(&findings), vec![codes::UNIT_DOES_NOTHING.as_str()]);
+    }
+
+    /// The rules: "STEAL and ASSASSINATE are not full month orders, and do not interfere with
+    /// other activities."
+    #[test]
+    fn a_unit_that_only_assassinates_is_warned() {
+        let findings = check_idle(
+            vec![region(vec![unit("4021")])],
+            "unit 4021\nASSASSINATE 13432\n",
+        );
+        assert_eq!(codes(&findings), vec![codes::UNIT_DOES_NOTHING.as_str()]);
+    }
+
+    /// The rules: "a CAST order is not a full month order."
+    #[test]
+    fn a_unit_that_only_casts_is_warned() {
+        let findings = check_idle(vec![region(vec![unit("4021")])], "unit 4021\nCAST Fire\n");
+        assert!(
+            codes(&findings).contains(&codes::UNIT_DOES_NOTHING.as_str()),
+            "{findings:?}"
+        );
+    }
+
+    /// IDLE spends the month by the rules - the player said so.
+    #[test]
+    fn a_unit_that_is_idle_is_silent() {
+        assert_eq!(
+            codes(&check_idle(
+                vec![region(vec![unit("4021")])],
+                "unit 4021\nIDLE\n",
+            )),
+            Vec::<&str>::new()
+        );
+    }
+
+    /// The false-positive guard, now narrow: only a keyword in neither list silences the check.
+    #[test]
+    fn a_unit_with_an_unknown_keyword_is_silent() {
+        assert_eq!(
+            codes(&check_idle(
+                vec![region(vec![unit("4021")])],
+                "unit 4021\nFLIBBERTIGIBBET\n",
+            )),
+            Vec::<&str>::new()
+        );
+    }
+
+    #[test]
+    fn a_unit_with_a_turn_block_is_silent() {
+        assert_eq!(
+            codes(&check_idle(
+                vec![region(vec![unit("4021")])],
+                "unit 4021\nTURN\nWORK\nENDTURN\n",
+            )),
+            Vec::<&str>::new()
+        );
+    }
+
+    #[test]
+    fn a_unit_with_no_block_in_the_document_is_warned_with_no_line() {
+        let finding = only(check_idle(vec![region(vec![unit("4021")])], ""));
+        assert_eq!(finding.code, codes::UNIT_DOES_NOTHING);
+        assert_eq!(finding.line, None);
+    }
+
+    #[test]
+    fn a_foreign_unit_doing_nothing_is_not_warned_about() {
+        let mut theirs = unit("9999");
+        theirs.own = false;
+        assert_eq!(
+            codes(&check_idle(
+                vec![region(vec![theirs, unit("4021")])],
+                "unit 4021\nWORK\n",
+            )),
+            Vec::<&str>::new()
+        );
+    }
+
+    #[test]
+    fn the_idle_check_can_be_turned_off() {
+        assert_eq!(
+            codes(&check_turn(
+                &report(vec![region(vec![unit("4021")])]),
+                "unit 4021\n",
+                Some(&ruleset()),
+                disabling_all(&[codes::UNIT_DOES_NOTHING, codes::TEACHER_HAS_FREE_SLOTS]),
+            )),
+            Vec::<&str>::new()
+        );
+    }
+
     // --- disabling advisory checks -------------------------------------------------------------
 
     /// The runtime default (`hex-unguarded` off, everything else on) plus one more code disabled.
@@ -5343,6 +5706,12 @@ mod tests {
                 "unit 4021\nWORK\nunit 4117\nBUILD HELP 4021\n",
                 None,
             ),
+            (
+                codes::UNIT_DOES_NOTHING,
+                vec![region(vec![unit("4021")])],
+                "unit 4021\n",
+                None,
+            ),
         ];
 
         assert_eq!(
@@ -5403,7 +5772,7 @@ mod tests {
             &report(regions.clone()),
             orders,
             Some(&ruleset()),
-            disabling(codes::GIVE_TARGET_NOT_HERE),
+            disabling_all(&[codes::GIVE_TARGET_NOT_HERE, codes::UNIT_DOES_NOTHING]),
         );
         assert_eq!(
             codes(&enabled)
@@ -5419,7 +5788,11 @@ mod tests {
                 &report(regions),
                 orders,
                 Some(&ruleset()),
-                disabling_all(&[codes::NOT_ENOUGH_SILVER, codes::GIVE_TARGET_NOT_HERE]),
+                disabling_all(&[
+                    codes::NOT_ENOUGH_SILVER,
+                    codes::GIVE_TARGET_NOT_HERE,
+                    codes::UNIT_DOES_NOTHING,
+                ]),
             ),
             vec![],
             "disabling the code should close both sites, not just one"
@@ -5442,7 +5815,11 @@ mod tests {
                 &report(regions),
                 orders,
                 Some(&ruleset()),
-                disabling_all(&[codes::NOT_ENOUGH_SILVER, codes::GIVE_TARGET_NOT_HERE]),
+                disabling_all(&[
+                    codes::NOT_ENOUGH_SILVER,
+                    codes::GIVE_TARGET_NOT_HERE,
+                    codes::UNIT_DOES_NOTHING,
+                ]),
             )),
             ["guard-dropped"]
         );
@@ -5947,7 +6324,8 @@ mod tests {
             &report(vec![region.clone()]),
             orders,
             None,
-            CheckOptions::default(),
+            // Unit 8801 only gives, so `unit-does-nothing` is right about it and orthogonal here.
+            disabling(codes::UNIT_DOES_NOTHING),
         ));
         assert_eq!(
             without_ruleset.message,
@@ -5958,7 +6336,7 @@ mod tests {
             &report(vec![region]),
             orders,
             Some(&ruleset()),
-            CheckOptions::default(),
+            disabling(codes::UNIT_DOES_NOTHING),
         ));
         assert!(with_ruleset
             .message
@@ -6686,7 +7064,7 @@ mod tests {
             Some(&ruleset()),
             // Their bare BUILDs are written from outside any structure, which
             // `build-outside-structure` is right about and these tests are not about.
-            disabling(codes::BUILD_OUTSIDE_STRUCTURE),
+            disabling_all(&[codes::BUILD_OUTSIDE_STRUCTURE, codes::UNIT_DOES_NOTHING]),
         )
     }
 

@@ -23,8 +23,12 @@ import {
   type HexMapModel
 } from "../hexMapModel";
 import { type TextFileSaver } from "../downloadFile";
+import type { OrdersUploader } from "./ordersUpload";
 import { readUnitOrders, stripMovementOrderLines, writeUnitOrders } from "../ordersDocument";
 import { isOrdersFile, routeOrdersImport, type PendingOrdersImport } from "../ordersImport";
+import { ordersFileFaction } from "../ordersImport";
+import { rulesetById } from "../rulesets";
+import { ordersExportText } from "./ordersExport";
 import { deliverGameBackupExport, deliverMapExport, deliverOrdersExport } from "./exportActions";
 import {
   EMPTY_MEMORY,
@@ -108,6 +112,13 @@ import { MergedFactionsPanel } from "./MergedFactionsPanel";
 import { LayerChips } from "./LayerChips";
 import { MapCanvas } from "./MapCanvas";
 import { MapExportDialog } from "./MapExportDialog";
+import { SendOrdersDialog } from "./SendOrdersDialog";
+import type { SendOrdersPhase } from "./sendOrdersView";
+import { performOrdersSend } from "./sendOrders";
+
+/** Why Send is off. Stated on hover, so a dialog that could do nothing is never opened. */
+const SEND_DISABLED_REASON =
+  "These orders have no #atlantis line, so the server cannot tell which faction they belong to.";
 import { BattlesDialog } from "./BattlesDialog";
 import { ChangesDialog } from "./ChangesDialog";
 import {
@@ -220,7 +231,8 @@ export function AppShell({
   platformLabel,
   registerBeforeQuit,
   saveTextFile,
-  appUpdate = UNSUPPORTED_UPDATES
+  appUpdate = UNSUPPORTED_UPDATES,
+  uploadOrders
 }: {
   client: CoreClient;
   platformLabel: string;
@@ -245,6 +257,14 @@ export function AppShell({
    * desktop bundle opened in a plain browser - and it needs a control that says so.
    */
   appUpdate?: AppUpdateControl;
+  /**
+   * How this shell puts orders on the game server, when it can.
+   *
+   * Injected for the same reason `saveTextFile` is, and **absent on web**: the game server sends no
+   * CORS headers, so a browser could send the form and never read the reply - it could not tell the
+   * player whether the turn went in. Its absence is what hides the control on web.
+   */
+  uploadOrders?: OrdersUploader;
 }) {
   const [parsed, setParsed] = useState<ParsedReport | null>(null);
   // The report currently on screen, readable at async resolve time. The restore effect below
@@ -2216,6 +2236,63 @@ export function AppShell({
   }, [ordersDocument, ordersTemplateText, parsed, saveTextFile]);
 
   /**
+   * Where the send dialog has got to, or null when it is closed.
+   *
+   * The whole of the interaction's state, and deliberately nothing more: nothing is persisted and a
+   * reload closes the dialog, which is correct - a password must not survive one. The password
+   * itself never reaches this component; it lives in the dialog and goes with it.
+   */
+  const [sendPhase, setSendPhase] = useState<SendOrdersPhase | null>(null);
+  const sendAbort = useRef<AbortController | null>(null);
+
+  /** The faction the orders name, which is what the server is told to file them under. */
+  const sendFactionId = ordersFileFaction(ordersDocument);
+  const uploadUrl = rulesetById(game?.manifest.metadata.rulesetId ?? "")?.ordersUploadUrl ?? null;
+  // A plain number, because that is all the server's form accepts: `#atlantis foo` names no faction
+  // it could file the turn under, so the control stays off rather than failing at the last step.
+  const canSendOrders =
+    uploadOrders !== undefined &&
+    ordersDocument.length > 0 &&
+    sendFactionId !== null &&
+    /^\d+$/.test(sendFactionId) &&
+    uploadUrl !== null;
+
+  const sendOrders = useCallback(
+    async (password: string) => {
+      if (uploadOrders === undefined || uploadUrl === null || sendFactionId === null || !canSendOrders) {
+        return;
+      }
+      const controller = new AbortController();
+      sendAbort.current = controller;
+      setSendPhase({ kind: "sending" });
+      const phase = await performOrdersSend({
+        flush,
+        upload: uploadOrders,
+        url: uploadUrl,
+        factionId: sendFactionId,
+        password,
+        ordersText: ordersExportText(ordersDocument, ordersTemplateText, false),
+        boundary: `----atlantis-hud-${crypto.randomUUID()}`,
+        signal: controller.signal
+      });
+      // An aborted send closed the dialog, and an aborted upload may still have reached the server -
+      // so nothing is claimed about what happened to it.
+      if (sendAbort.current === controller) {
+        sendAbort.current = null;
+        setSendPhase(phase);
+      }
+    },
+    [uploadOrders, uploadUrl, sendFactionId, canSendOrders, flush, ordersDocument, ordersTemplateText]
+  );
+
+  /** Cancel, Escape and the backdrop all mean the same thing: stop, and close. */
+  const dismissSend = useCallback(() => {
+    sendAbort.current?.abort();
+    sendAbort.current = null;
+    setSendPhase(null);
+  }, []);
+
+  /**
    * Opens the export dialog on a clean slate.
    *
    * The failure of a previous attempt belongs to that attempt: a message left standing in a
@@ -2700,6 +2777,9 @@ export function AppShell({
         progress={importProgress}
         onExportOrders={exportOrders}
         canExport={ordersDocument.length > 0}
+        onSendOrders={uploadOrders === undefined ? undefined : () => setSendPhase({ kind: "ready" })}
+        canSend={canSendOrders}
+        sendDisabledReason={SEND_DISABLED_REASON}
         onExportOrdersLong={exportOrdersLong}
         canExportLong={ordersDocument.length > 0 && ordersTemplateText !== null}
         onExportMap={() => openExport()}
@@ -2819,7 +2899,25 @@ export function AppShell({
           a panel. The chips row is marked rather than the strip that holds it: an unmarked
           full-width wrapper would read as covering the map from left to right.
         */}
-        <div className="pointer-events-none absolute inset-x-0 top-2.5 flex justify-center">
+        {/*
+          `z-20` for the splitters, which claim pointer events across the full width at `z-10` and
+          took the controls of any panel long enough to reach one. How far down the row sits
+          depends on the header's height, so this is not a fixed distance to design around; it is a
+          stacking order.
+
+          `z-30` on top of that, but only while one of the chips' menus is open, so the menu clears
+          the panel column as well. That column is a later sibling at `z: auto`, and `LayerChips`
+          carries a `backdrop-blur` - a backdrop filter opens a stacking context, so an open menu's
+          own `z-20` orders it only within this strip and can never lift it over the panels
+          (ah-v09e). Nothing overlapped until the panes grew, at which point the Badges menu's
+          lower rows landed on the units dock's title bar and stopped taking clicks.
+
+          Conditional rather than always: lifting the strip to `z-30` unconditionally puts the
+          closed chips row over the panels too, and it then swallows clicks meant for whatever sits
+          under it - twelve smoke tests' worth, from the orders editor to the region panel. A menu
+          is the only thing that needs to be above the panels, and only while it is open.
+        */}
+        <div className="pointer-events-none absolute inset-x-0 top-2.5 z-20 flex justify-center has-[[aria-expanded='true']]:z-30">
           <div data-map-overlay="top">
             <LayerChips levels={model.levels} />
           </div>
@@ -2961,6 +3059,18 @@ export function AppShell({
           </div>
         </div>
       </div>
+      {sendPhase === null ? null : (
+        <SendOrdersDialog
+          // No report on screen means no faction name to show, but the orders still name an id -
+          // and that id is what the server files the turn under, so it is the honest label.
+          factionLabel={factionLabel ?? `Faction ${sendFactionId ?? "?"}`}
+          turnNumber={parsed?.header.turnNumber ?? null}
+          serverHost={uploadUrl === null ? "" : new URL(uploadUrl).host}
+          phase={sendPhase}
+          onSend={(password) => void sendOrders(password)}
+          onDismiss={dismissSend}
+        />
+      )}
       {exportOpen ? (
         <MapExportDialog
           hexes={model.hexes}

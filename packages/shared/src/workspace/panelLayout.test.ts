@@ -278,14 +278,14 @@ describe("unitsSlotClass", () => {
     const className = unitsSlotClass(OPEN, false);
     expect(className).toContain("h-[20.625rem]");
     expect(className).toContain("max-h-[70%]");
-    expect(className).toContain("min-h-[5.5rem]");
+    expect(className).toContain("min-h-[5.75rem]");
   });
 
   it("drops the pin classes for a custom height, keeping the floor", () => {
     const className = unitsSlotClass(OPEN, true);
     expect(className).not.toContain("h-[20.625rem]");
     expect(className).not.toContain("max-h-");
-    expect(className).toContain("min-h-[5.5rem]");
+    expect(className).toContain("min-h-[5.75rem]");
     expect(className).toContain("flex-none");
   });
 
