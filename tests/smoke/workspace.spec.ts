@@ -1503,7 +1503,8 @@ async function resetSplit(page: Page) {
 
 test("the unit/orders split drags at the grip and survives a reload", async ({ page }) => {
   await loadReport(page);
-  // The default window (1280x683) leaves the orders editor's pin already at its own ceiling once
+  // The pinned window (1280x720, see playwright.config.ts) leaves the orders editor's pin already
+  // at its own ceiling once
   // enough advisory-check chips share the header with it (ah-1uj is one of several) - dragging it
   // taller would then have nowhere to go, whatever the gesture. A taller window gives the split
   // room to move regardless of how many chips the header carries; this test is about the drag
