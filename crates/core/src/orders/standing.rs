@@ -117,13 +117,19 @@ mod tests {
 
     #[test]
     fn a_leave_alone_ends_in_nothing() {
-        assert_eq!(standing_after(Some("4"), boardings(&[Boarding::Leave])), None);
+        assert_eq!(
+            standing_after(Some("4"), boardings(&[Boarding::Leave])),
+            None
+        );
     }
 
     #[test]
     fn the_last_enter_wins() {
         assert_eq!(
-            standing_after(None, boardings(&[Boarding::Enter("4"), Boarding::Enter("5")])),
+            standing_after(
+                None,
+                boardings(&[Boarding::Enter("4"), Boarding::Enter("5")])
+            ),
             Some("5")
         );
     }

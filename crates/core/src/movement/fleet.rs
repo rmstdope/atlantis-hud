@@ -9,8 +9,8 @@
 use std::collections::BTreeMap;
 
 use crate::movement::orders::MoveStep;
-use crate::report::model::ReportUnit;
 use crate::orders::standing::{self, standing_after, Boarding, BoardingOrder};
+use crate::report::model::ReportUnit;
 use crate::report::ParsedReport;
 
 /// The last top-level movement order each unit wrote, read once from the whole orders document.
@@ -100,7 +100,10 @@ impl OrderedUnits {
     /// question is different and [`Self::could_captain`] answers it.
     #[must_use]
     pub fn structure_of<'a>(&'a self, unit: &'a ReportUnit) -> Option<&'a str> {
-        standing_after(unit.structure_id.as_deref(), self.boardings_of(&unit.unit_id))
+        standing_after(
+            unit.structure_id.as_deref(),
+            self.boardings_of(&unit.unit_id),
+        )
     }
 
     /// One unit's boardings as the rule reads them.

@@ -6,11 +6,11 @@
 //! preview walker (`orders::effects`) - and asserts one answer. Five beads each corrected one
 //! reader at a time; this is what makes the next divergence fail loudly instead of shipping.
 
+use crate::cache::ReportCache;
 use crate::movement::fleet::OrderedUnits;
 use crate::orders::effects::preview_orders_for_remembered_report;
 use crate::orders::intents::read_intents;
 use crate::orders::semantics::structure_after_intents;
-use crate::cache::ReportCache;
 use crate::report::parse_report_full;
 
 const RULESET: &str = atlantis_hud_fixtures::RULESET_JSON;
