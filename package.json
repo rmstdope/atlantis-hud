@@ -18,7 +18,7 @@
     "test:pwa": "tsx scripts/withGateLock.ts pnpm exec playwright test --config playwright.pwa.config.ts",
     "check:generated": "tsx scripts/checkGenerated.ts",
     "check": "pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run check:generated && pnpm run test:smoke && pnpm run build:web && pnpm run test:pwa && cargo fmt --check && cargo clippy --workspace --all-targets -- -D warnings",
-    "check:fast": "pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run check:generated && cargo fmt --check && cargo clippy --workspace --all-targets -- -D warnings"
+    "check:fast": "tsx scripts/runGate.ts"
   },
   "devDependencies": {
     "@atlantis/fixtures": "workspace:*",
