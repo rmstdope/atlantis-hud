@@ -118,13 +118,18 @@ pub struct UnitIntents {
     /// The `unit NNNN` line that opened the block.
     pub line: usize,
     pub intents: Vec<PlacedIntent>,
-    /// Order lines in this block that yielded no intent, and `TURN` blocks that were skipped.
+    /// Order lines whose keyword this reader does not recognise at all, and `TURN` blocks that
+    /// were skipped.
     ///
-    /// The app models about twenty of Atlantis's orders; the grammar knows a hundred. A line this
-    /// reader could not turn into an intent is not an absence of work - `ASSASSINATE 4021` spends
-    /// the month as surely as `WORK` does - so a check that asks "is this unit doing anything"
-    /// must be able to tell "nothing" from "nothing I understand". Carries line numbers so a
-    /// message could name one; nothing does yet.
+    /// **Not "every line that yielded no intent"** - that was ah-dwk6's first design and it failed
+    /// verification. The app turns about twenty keywords into intents; the rules describe about
+    /// sixty, and most of the rest leave the month free (`NAME`, `ADDRESS`, `ARMOR`, `ATTACK` ...).
+    /// Treating all of them as unknown made a unit holding any order at all unjudgeable, so the
+    /// idle-unit check went silent on exactly the units it exists to find.
+    ///
+    /// So a line is unread only when its keyword is in neither [`FREE_ORDERS`] nor the month-long
+    /// set - which means a typo, or an order the game has and this list has not. Carries line
+    /// numbers so a message could name one; nothing does yet.
     pub unread: Vec<usize>,
 }
 
@@ -181,7 +186,10 @@ pub fn read_intents(source: &str) -> Vec<UnitIntents> {
                         column_start: line.command.column_start,
                         column_end: line.command.column_end,
                     });
-                } else {
+                } else if !is_free_order(line.command) {
+                    // A recognised free order is dropped exactly as an unread one used to be: it
+                    // yields no intent because no check reads it, which is not the same as not
+                    // being understood.
                     unit.unread.push(line.number);
                 }
             }
@@ -222,6 +230,77 @@ pub fn read_intents(source: &str) -> Vec<UnitIntents> {
     });
 
     units
+}
+
+/// Order keywords the rules place outside the month, so a unit holding one is understood to be
+/// free rather than unjudgeable.
+///
+/// From <https://atlantis-pbem.com/rules>: the Sequence of Events groups everything that is not in
+/// the enumerated month-long list under *Instant orders*. Two the page never places were settled by
+/// the navigator on 2026-08-19: TRANSPORT and its synonym DISTRIBUTE are free; ANNIHILATE is
+/// month-long and is given an intent below.
+///
+/// Keywords that already yield an intent (BUY, SELL, GIVE, TAKE, ENTER, LEAVE, GUARD, CLAIM,
+/// WITHDRAW, FORM, CAST) never reach this list at runtime. They are listed anyway so that the
+/// classification of every order lives in one readable place.
+const FREE_ORDERS: &[&str] = &[
+    "ADDRESS",
+    "ARMOR",
+    "ASSASSINATE",
+    "ATTACK",
+    "AUTOTAX",
+    "AVOID",
+    "BEHIND",
+    "BUY",
+    "CAST",
+    "CLAIM",
+    "COMBAT",
+    "CONSUME",
+    "DECLARE",
+    "DESCRIBE",
+    "DESTROY",
+    "DISTRIBUTE",
+    "ENTER",
+    "EVICT",
+    "EXCHANGE",
+    "FACTION",
+    "FIND",
+    "FORGET",
+    "FORM",
+    "GIVE",
+    "GUARD",
+    "HOLD",
+    "JOIN",
+    "LEAVE",
+    "NAME",
+    "NOAID",
+    "NOCROSS",
+    "OPTION",
+    "PASSWORD",
+    "PREPARE",
+    "PROMOTE",
+    "QUIT",
+    "RESTART",
+    "REVEAL",
+    "SACRIFICE",
+    "SELL",
+    "SHARE",
+    "SHOW",
+    "SPOILS",
+    "STEAL",
+    "TAKE",
+    "TRANSPORT",
+    "WEAPON",
+    "WITHDRAW",
+];
+
+/// Whether the rules place this keyword outside the month, so that a line yielding no intent is
+/// still a line we understand. Keyed on the keyword rather than on "no intent": ah-dwk6 failed
+/// verification when every unread line silenced the check, and most orders yield no intent.
+fn is_free_order(command: &Token) -> bool {
+    FREE_ORDERS
+        .iter()
+        .any(|free| command.text.eq_ignore_ascii_case(free))
 }
 
 /// One order line, as an intent - or nothing, for an order no check reads and for one whose shape
@@ -286,6 +365,11 @@ fn read_order(command: &Token, arguments: &[Token]) -> Option<Intent> {
         // "This is a full month order." Nothing here reads them further; what matters is that the
         // unit's month is spoken for.
         "PRODUCE" => Some(Intent::MonthLong("PRODUCE")),
+        // The rules' enumerated list omits IDLE, but describes it as "do nothing for the entire
+        // month" - so it spends the month, and a unit told to be idle is not a forgotten one.
+        "IDLE" if arguments.is_empty() => Some(Intent::MonthLong("IDLE")),
+        // The rules never place ANNIHILATE; the navigator ruled it month-long (2026-08-19).
+        "ANNIHILATE" => Some(Intent::MonthLong("ANNIHILATE")),
         // The grammar's own forms (`grammar.rs`'s BUILD entry): `HELP [unit] COMPLETE`,
         // `HELP [unit]`, `COMPLETE`, `[name] COMPLETE`, `[name]`, and nothing at all. Read
         // strictly - a token this reader does not account for makes the order unreadable, the
@@ -378,10 +462,44 @@ mod tests {
     // --- the document's own shape ---------------------------------------------------------
 
     #[test]
-    fn an_order_we_do_not_model_is_recorded_as_unread() {
-        let unit = only_unit("unit 5\nASSASSINATE 4021\n");
+    fn an_unknown_keyword_is_recorded_as_unread() {
+        let unit = only_unit("unit 5\nFLIBBERTIGIBBET\n");
         assert!(unit.intents.is_empty(), "{unit:?}");
         assert_eq!(unit.unread, vec![2]);
+    }
+
+    /// The verification failure of ah-dwk6: a keyword the rules place outside the month yields no
+    /// intent, and that is not the same as a line we could not understand.
+    #[test]
+    fn a_free_order_is_not_unread() {
+        let unit = only_unit("unit 5\nNAME \"Scouts\"\n");
+        assert!(unit.intents.is_empty(), "{unit:?}");
+        assert!(unit.unread.is_empty(), "{unit:?}");
+    }
+
+    #[test]
+    fn assassinating_is_free() {
+        let unit = only_unit("unit 5\nASSASSINATE 4021\n");
+        assert!(unit.unread.is_empty(), "{unit:?}");
+    }
+
+    #[test]
+    fn stealing_is_free() {
+        let unit = only_unit("unit 5\nSTEAL 4021 SILV\n");
+        assert!(unit.unread.is_empty(), "{unit:?}");
+    }
+
+    #[test]
+    fn idling_is_read_as_a_month_long_order() {
+        assert_eq!(intents("unit 5\nIDLE\n"), vec![Intent::MonthLong("IDLE")]);
+    }
+
+    #[test]
+    fn annihilating_is_read_as_a_month_long_order() {
+        assert_eq!(
+            intents("unit 5\nANNIHILATE 1\n"),
+            vec![Intent::MonthLong("ANNIHILATE")]
+        );
     }
 
     #[test]
