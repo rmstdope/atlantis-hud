@@ -63,7 +63,11 @@ export function createReorderFeedback(overlay: HTMLElement, label: string): Reor
       }
       const width = overlay.getBoundingClientRect().width;
       line!.style.left = `${boundaryX}px`;
-      chip!.style.left = `${clamp(pointerX, 0, width)}px`;
+      // The chip is centred on this coordinate (`-translate-x-1/2`), so clamping the coordinate
+      // to the table alone would still let half the chip hang over each edge. Its own half-width
+      // is the inset - and zero when it has not been laid out, which leaves the old behaviour.
+      const half = (chip!.offsetWidth ?? 0) / 2;
+      chip!.style.left = `${clamp(pointerX, Math.min(half, width / 2), Math.max(width - half, width / 2))}px`;
     },
     remove() {
       line?.remove();

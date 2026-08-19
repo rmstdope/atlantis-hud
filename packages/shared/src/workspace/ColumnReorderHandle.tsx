@@ -91,8 +91,15 @@ export function ColumnReorderHandle({
       );
     };
 
+    /** Whether the gesture actually rearranged anything, rather than merely happening. */
+    const changed = () => prospective.some((each, at) => each !== startOrder[at]);
+
     // `commit` is false for `pointercancel` and for Escape; it is also false for a `pointerup` the
     // pointer never moved for, so a plain click on the grip stores nothing. See `ColumnSplitter`.
+    //
+    // A drag that moved but never crossed a neighbour is the same case: it resolves to the order
+    // it started from, and storing that would quietly turn the shipped order into a preference of
+    // its own - which then survives a build that ships a different one.
     const end = (commit: boolean) => {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
@@ -102,7 +109,7 @@ export function ColumnReorderHandle({
       undim();
       releaseSelection();
       layer();
-      if (commit && moved) {
+      if (commit && moved && changed()) {
         onCommit(prospective);
       }
     };

@@ -238,6 +238,15 @@ describe("ColumnReorderHandle cancelling", () => {
     expect(drag.cells.every((cell) => cell.style.opacity === "")).toBe(true);
   });
 
+  it("a drag that never crossed a neighbour commits nothing either", () => {
+    const drag = startDrag("name");
+    // Well short of the neighbouring column's width, so the order resolves to the one it started
+    // from - storing that would make the shipped order a stored preference.
+    drag.fire("pointermove", { clientX: 505 });
+    drag.fire("pointerup", {});
+    expect(drag.committed).toBe("unasked");
+  });
+
   it("a press that never moved commits nothing", () => {
     const drag = startDrag("name");
     drag.fire("pointerup", {});

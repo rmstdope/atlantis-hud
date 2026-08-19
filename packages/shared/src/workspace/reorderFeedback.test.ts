@@ -88,6 +88,18 @@ describe("createReorderFeedback", () => {
     expect(overlay.children[1].style.left).toBe("400px");
   });
 
+  it("keeps the whole chip inside the table, not merely its centre", () => {
+    const overlay = overlayOf(400);
+    const feedback = createReorderFeedback(asOverlay(overlay), "Men");
+    feedback.showAt(0, 0);
+    // The chip is centred on the coordinate, so its own half-width is the inset.
+    (overlay.children[1] as unknown as { offsetWidth: number }).offsetWidth = 60;
+    feedback.showAt(0, -80);
+    expect(overlay.children[1].style.left).toBe("30px");
+    feedback.showAt(0, 900);
+    expect(overlay.children[1].style.left).toBe("370px");
+  });
+
   it("removing twice is harmless, so pointerup and pointercancel may both arrive", () => {
     const overlay = overlayOf();
     const feedback = createReorderFeedback(asOverlay(overlay), "Men");
