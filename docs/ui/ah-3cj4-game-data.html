@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>What the game data can answer (bead ah-3cj4)</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733; --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --ok:#4fb783; --warn:#d9a441; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1200px; margin-left:auto; margin-right:auto; }
+  h1 { font-size:26px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:96ch; margin-top:10px; font-size:14px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:0.92em; }
+  h2.sec { margin-top:34px; font-size:18px; color:var(--brass); } h2.sec small { color:var(--ink-dim); font-size:13px; margin-left:10px; }
+  .banner { border:1px solid var(--edge); border-left:3px solid var(--brass); background:var(--panel); padding:14px 16px; border-radius:6px; margin-top:16px; color:var(--ink-soft); font-size:13.5px; } .banner b { color:var(--ink); }
+  .banner.bad { border-left-color:var(--danger); } .banner.good { border-left-color:var(--ok); }
+  table { border-collapse:collapse; font-size:12.5px; width:100%; margin-top:14px; } th, td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--edge-soft); vertical-align:top; } th { color:var(--brass); font-weight:normal; font-size:11px; letter-spacing:1px; text-transform:uppercase; }
+  .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:20px; margin-top:16px; align-items:start; }
+  .card { border:1px solid var(--edge); border-radius:10px; overflow:hidden; background:var(--panel); }
+  .card > .lab { padding:12px 16px; border-bottom:1px solid var(--edge); }
+  .card > .lab h3 { margin:0; font-size:16px; } .card > .lab h3 em { color:var(--brass); font-style:normal; font-size:11px; letter-spacing:1.6px; margin-right:8px; }
+  .card > .lab p { margin:6px 0 0; font-size:12.5px; color:var(--ink-soft); }
+  .notes { list-style:none; padding:12px 16px 14px; margin:0; font-size:12px; color:var(--ink-soft); display:grid; gap:4px; border-top:1px solid var(--edge-soft); }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; } .notes li.con::before { content:"\2212  "; color:var(--danger); }
+  .entry { font-family:'Helvetica Neue',Arial,sans-serif; margin:12px 14px; border:1px solid var(--edge); border-radius:5px; background:var(--raised); padding:10px 12px; font-size:12px; }
+  .entry h5 { margin:0 0 6px; font-size:13px; color:var(--ink); font-weight:normal; }
+  .entry .kind { color:var(--brass); font-size:11px; letter-spacing:.08em; text-transform:uppercase; }
+  .entry dl { display:grid; grid-template-columns:auto 1fr; gap:2px 10px; margin:6px 0 0; }
+  .entry dt { color:var(--ink-soft); } .entry dd { margin:0; color:var(--ink); }
+  .entry .prose { margin-top:8px; padding-top:8px; border-top:1px solid var(--edge-soft); color:var(--ink-soft); line-height:1.5; }
+  .entry .none { color:var(--ink-dim); font-style:italic; }
+  .src { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11.5px; color:var(--ink-soft); background:var(--ground); border:1px solid var(--edge-soft); border-radius:5px; padding:10px 12px; white-space:pre-wrap; margin-top:12px; }
+  .src b { color:var(--brass); font-weight:normal; }
+</style>
+</head>
+<body>
+<header>
+  <h1>What the game data can answer &mdash; <span>proposals</span> (bead ah-3cj4)</h1>
+  <p>The scraper takes only the ten fortifications, so a <b>Mine</b> &mdash; one of the commonest structures in the game &mdash; is absent from the data entirely. ah-5jkt puts that data in front of the player for the first time, which is what makes the hole visible.</p>
+  <p><b>The bead asks the planner to establish what is actually there to scrape before promising it. I went and looked.</b></p>
+</header>
+<main>
+
+  <h2 class="sec">&sect;1 &nbsp;What is actually there <small>counted from the committed fixture, <code>tests/fixtures/ruleset/neworigins-data.html</code></small></h2>
+  <div class="banner bad"><b>I got this wrong first time and the navigator corrected me.</b> I asked the live pages and was told <code>/data</code> carries no standalone structure entries and no prose. Both are false. The committed fixture settles it, and it is the file the scraper actually reads.</div>
+  <div class="src"><b>Mine: This is a building. Units may enter this structure. This trade structure increases the amount of iron available in the region.</b>
+Quarry: This is a building. Units may enter this structure. This trade structure increases the amount of stone available in the region.
+Road N: This is a building. Units may enter this structure.
+Hermits hut: This is a building. <b>It provides defense to the first 10 men inside it.</b> …</div>
+  <p style="color:var(--ink-soft);font-size:13.5px;margin-top:12px;max-width:96ch">Every entry has the same shape, and the product is named <b>in the prose itself</b>. The scraper already matches the opening &mdash; <code>^([^.:[\]]{1,40}): This is a building\.</code> &mdash; and then throws the entry away unless it also finds <code>provides defense to the first N men</code>. That one line is the whole filter.</p>
+  <table>
+    <tr><th style="width:34%">In the data page</th><th class="mono" style="width:12%">Count</th><th>Kept today?</th></tr>
+    <tr><td><b>Entries saying &ldquo;This is a building.&rdquo;</b></td><td class="mono"><b>59</b><br><span style="color:var(--ink-dim);font-size:11px">58 distinct &mdash; <code>Lair</code> twice</span></td><td>&mdash;</td></tr>
+    <tr><td>&hellip;that also state a defence &mdash; the fortifications</td><td class="mono">10</td><td style="color:var(--ok)"><b>Yes</b> &mdash; all that is kept</td></tr>
+    <tr><td>&hellip;that name a product they increase &mdash; trade structures</td><td class="mono">16</td><td style="color:var(--danger)"><b>No</b></td></tr>
+    <tr><td>&hellip;roads</td><td class="mono">6</td><td style="color:var(--danger)"><b>No</b></td></tr>
+    <tr><td>&hellip;lairs, ruins, caves, monoliths, ships and the rest</td><td class="mono">27</td><td style="color:var(--danger)"><b>No</b></td></tr>
+    <tr><td><b>Prose, per entry, uniform and machine-readable</b></td><td class="mono">59</td><td style="color:var(--danger)"><b>No &mdash; none of it is kept</b></td></tr>
+  </table>
+  <div class="banner good"><b>So the prose problem I warned about does not exist here.</b> It is not running rules text that has to be matched by name &mdash; it is one tidy sentence-set per entry, already keyed by the thing it describes. The sixteen trade structures even state their product in it: <i>&ldquo;increases the amount of <b>iron</b> available in the region&rdquo;</i>. &sect;4 below is kept only to record what I got wrong.</div>
+  <table>
+    <tr><th style="width:26%">Trade structure</th><th>Product, from its own prose</th></tr>
+    <tr><td>Mine / Arcane Mine</td><td>iron / mithril</td></tr>
+    <tr><td>Quarry / Mystic Quarry</td><td>stone / rootstone</td></tr>
+    <tr><td>Timber Yard / Forest Preserve / Sacred Grove</td><td>wood / ironwood / yew</td></tr>
+    <tr><td>Farm &middot; Ranch &middot; Temple</td><td>grain &middot; livestock &middot; herbs</td></tr>
+    <tr><td>Stables / Mythic Stables</td><td>horses / winged horses</td></tr>
+    <tr><td>Trapping Hut / Trapping Lodge</td><td>furs / floater hides</td></tr>
+    <tr><td>Inn &middot; Oasis &middot; Faerie Ring &middot; Alchemist Lab</td><td>entertainment &middot; camels &middot; mushrooms &middot; admantium</td></tr>
+  </table>
+
+  <h2 class="sec">&sect;2 &nbsp;The trap the scraper warns about, and why it does not bite</h2>
+  <p style="color:var(--ink-soft);font-size:13.5px;margin-top:10px;max-width:96ch"><code>parseBuildingReference</code>'s own comment says widening past fortifications would turn a Mine from <i>&ldquo;the catalogue cannot say&rdquo;</i> into <i>&ldquo;seats nobody&rdquo;</i>, and calls that a change to <b>ah-a2k.2</b>'s magic-study warning it is expressly not making. I checked the consumer:</p>
+  <div class="src"><b>crates/core/src/movement/rules.rs:641</b>
+pub fn mage_capacity(&self, kind: &str) -> Option&lt;i64&gt; { … }
+
+<b>crates/core/src/orders/semantics.rs:1753</b>
+ruleset.mage_capacity(&structure.kind).is_some_and(|seats| seats &gt;= 1)</div>
+  <div class="banner good"><b><code>None</code> and <code>Some(0)</code> are indistinguishable to the only consumer</b> &mdash; <code>is_some_and(seats &gt;= 1)</code> is false either way, so the mage is warned either way. Adding a Mine at <code>mages: 0</code> therefore changes <b>no behaviour at all</b>. The comment's caution was sound when written; the check that came after it made the distinction moot.</div>
+
+  <h2 class="sec">&sect;3 &nbsp;What an entry could then say <small>the same Mine, under three scopes</small></h2>
+  <div class="cards">
+    <div class="card">
+      <div class="lab"><h3><em>Today</em></h3><p>What ah-5jkt would show for a Mine as things stand.</p></div>
+      <div class="entry">
+        <div class="kind">Structure</div>
+        <h5>Mine</h5>
+        <p class="none">The game data does not describe this.</p>
+      </div>
+      <ul class="notes"><li class="con">Honest, and a hole the reader hits constantly.</li></ul>
+    </div>
+    <div class="card">
+      <div class="lab"><h3><em>A</em> Structures only</h3><p>The ten production structures, from the rules page's own list.</p></div>
+      <div class="entry">
+        <div class="kind">Structure</div>
+        <h5>Mine</h5>
+        <dl>
+          <dt>Built from</dt><dd>10 wood or stone</dd>
+          <dt>Needs</dt><dd>mining, level 3</dd>
+          <dt>Produces</dt><dd>iron</dd>
+        </dl>
+      </div>
+      <ul class="notes"><li>Closes the hole with facts a player acts on.</li><li>One list, one shape, one parser.</li><li class="con">Still no sentence saying what a Mine is <i>for</i>.</li></ul>
+    </div>
+    <div class="card">
+      <div class="lab"><h3><em>B</em> Structures and prose</h3><p>Plus the rules sentences that mention the thing.</p></div>
+      <div class="entry">
+        <div class="kind">Structure</div>
+        <h5>Mine</h5>
+        <dl>
+          <dt>Built from</dt><dd>10 wood or stone</dd>
+          <dt>Needs</dt><dd>mining, level 3</dd>
+          <dt>Produces</dt><dd>iron</dd>
+        </dl>
+        <div class="prose">A Mine will increase the amount of iron that is available to be mined in a region. The first structure built in a region will increase the maximum production of the related product by 25%.</div>
+      </div>
+      <ul class="notes"><li>The entry answers &ldquo;should I build one?&rdquo;, not just &ldquo;what does it cost?&rdquo;.</li><li class="con">The prose has to be <b>found</b> in running rules text, by matching the thing's name. That is inexact by nature: it will sometimes miss, and sometimes pull a sentence that only mentions the word in passing.</li></ul>
+    </div>
+  </div>
+
+  <h2 class="sec">&sect;4 &nbsp;What I got wrong, kept on the record <small>this is the danger if prose had to be matched out of running rules text &mdash; it does not</small></h2>
+  <table>
+    <tr><th style="width:34%">For</th><th style="width:30%">What matching finds</th><th>Reads as</th></tr>
+    <tr><td><b>Mine</b></td><td>&ldquo;a Mine will increase the amount of iron&hellip;&rdquo;</td><td style="color:var(--ok)">Exactly right.</td></tr>
+    <tr><td><b>Inn</b></td><td>Sentences containing the letters <code>inn</code> &mdash; <i>winning</i>, <i>beginning</i>, <i>inner</i></td><td style="color:var(--danger)">Nonsense, unless matched on whole words with a capital.</td></tr>
+    <tr><td><b>Temple</b></td><td>Possibly nothing at all</td><td style="color:var(--warn)">Empty prose block, which looks like a bug rather than an absence.</td></tr>
+    <tr><td><b>Stables</b></td><td>A sentence about horses that never names the structure</td><td style="color:var(--warn)">Missed &mdash; the useful line is not the one with the word in it.</td></tr>
+  </table>
+  <div class="banner"><b>Which is why prose is worth deciding separately from structures.</b> The structures are a clean list with a fixed shape; the prose is a judgement call that can be got wrong in public.</div>
+
+</main>
+</body>
+</html>
