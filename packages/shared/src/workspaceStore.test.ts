@@ -492,7 +492,9 @@ describe("the units pane's stored height", () => {
     expect(store().unitsHeightRem).toBe(30);
 
     store().setUnitsHeight(2);
-    expect(store().unitsHeightRem).toBe(5.5);
+    // UNITS_MIN_REM: one row plus the pane's own furniture. It went up with ROW_HEIGHT when the
+    // pane type scale did (ah-v09e).
+    expect(store().unitsHeightRem).toBe(5.75);
 
     store().setUnitsHeight(null);
     expect(store().unitsHeightRem).toBeNull();

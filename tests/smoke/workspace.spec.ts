@@ -511,8 +511,16 @@ test("imports a run of turns and an ally's report in one action", async ({ page 
     ally saw would survive that and prove nothing.
   */
   await selectHex(page, "1:10,50");
-  await expect(page.getByTestId("panel-units")).toContainText("Swamp Watch");
-  await expect(page.getByTestId("panel-units")).toContainText("Tower Guard");
+  // Through the filter rather than by reading the whole pane: the table is windowed, so a unit
+  // only renders while it is scrolled into view, and whether the nineteenth row of this hex
+  // happens to fit is a fact about the pane's height and row height, not about the merge. It did
+  // fit until ah-v09e took the rows from 22px to 24px. Filtering asks the question the test means.
+  const unitsFilter = page.getByTestId("panel-units").getByLabel("Filter units");
+  for (const unit of ["Swamp Watch", "Tower Guard"]) {
+    await unitsFilter.fill(unit);
+    await expect(page.getByTestId("panel-units")).toContainText(unit);
+  }
+  await unitsFilter.fill("");
 });
 
 /** Two of your own turns stored, 71 left on screen as the working turn - ah-jg6.3's setup. */

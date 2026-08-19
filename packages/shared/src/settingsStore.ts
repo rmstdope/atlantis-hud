@@ -16,8 +16,19 @@ import { DEFAULT_MAP_THEME_ID, isMapThemeId } from "./workspace/mapThemes";
 
 export type ThemeName = "dark" | "light";
 
-/** How see-through the floating panes start out: enough map underneath to navigate by. */
-export const DEFAULT_PANE_TRANSPARENCY = 90;
+/**
+ * How see-through the floating panes start out.
+ *
+ * 20, not 90 (ah-v09e): at 90 the panes are painted at 10% opacity, so the real background of
+ * nearly all the app's text is the live terrain, and body text fell to 3.90:1 over tundra while
+ * dimmed text reached 1.70:1 over desert - a background that changes contrast between 1.7:1 and
+ * 13:1 as the player pans. 20 is the line at which every ink token clears AA over the worst
+ * terrain in the game. The slider's range is unchanged; only the default moved, and anyone who
+ * has ever touched the slider keeps their stored value.
+ *
+ * `--pane-transparency` in theme.css must agree: it paints the first frame.
+ */
+export const DEFAULT_PANE_TRANSPARENCY = 20;
 
 /** The Interface size setting's default, as a percentage. 100 means the panes are as designed. */
 export const DEFAULT_INTERFACE_SIZE = 100;

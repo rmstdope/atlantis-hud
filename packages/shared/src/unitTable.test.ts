@@ -89,11 +89,11 @@ describe("rowHeightAt", () => {
   // fractional height (e.g. 22 * 1.25 = 27.5) makes the first visible row drift from the one the
   // scroller is actually showing.
   it.each([
-    [100, 22],
-    [125, 28],
-    [150, 33],
-    [175, 39],
-    [200, 44]
+    [100, 24],
+    [125, 30],
+    [150, 36],
+    [175, 42],
+    [200, 48]
   ])("rounds the row height at %i%% to %i px", (interfaceSize, expected) => {
     expect(rowHeightAt(interfaceSize)).toBe(expected);
   });

@@ -226,8 +226,11 @@ describe("settings store", () => {
     expect(stub.documentElement.dataset.theme).toBe("dark");
   });
 
-  it("defaults the pane transparency to 90 percent", () => {
-    expect(store().paneTransparency).toBe(90);
+  it("defaults the pane transparency to 20 percent", () => {
+    // 20, not 90 (ah-v09e): at 90 the panes were painted at 10% opacity and the app's text sat on
+    // live terrain, below AA over most of the map. theme.css's `--pane-transparency` fallback
+    // must carry the same number, or the first frame paints differently from every one after it.
+    expect(store().paneTransparency).toBe(20);
   });
 
   it("stamps the chosen pane transparency onto the document root", () => {
@@ -412,8 +415,8 @@ describe("settings store", () => {
 
     resetSettingsStore();
 
-    expect(store().paneTransparency).toBe(90);
-    expect(stub.documentElement.style.properties["--pane-transparency"]).toBe("90");
+    expect(store().paneTransparency).toBe(20);
+    expect(stub.documentElement.style.properties["--pane-transparency"]).toBe("20");
   });
 
   it("starts with no snippets", () => {

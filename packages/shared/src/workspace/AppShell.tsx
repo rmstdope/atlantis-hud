@@ -2900,12 +2900,24 @@ export function AppShell({
           full-width wrapper would read as covering the map from left to right.
         */}
         {/*
-          `z-20`, above the splitters' `z-10`: the chips' own popovers hang below the row, and a
-          panel long enough to reach a splitter had its controls taken by it - the splitter claims
-          pointer events across the full width. How far down the row sits depends on the header's
-          height, so this is not a fixed distance to design around; it is a stacking order.
+          `z-20` for the splitters, which claim pointer events across the full width at `z-10` and
+          took the controls of any panel long enough to reach one. How far down the row sits
+          depends on the header's height, so this is not a fixed distance to design around; it is a
+          stacking order.
+
+          `z-30` on top of that, but only while one of the chips' menus is open, so the menu clears
+          the panel column as well. That column is a later sibling at `z: auto`, and `LayerChips`
+          carries a `backdrop-blur` - a backdrop filter opens a stacking context, so an open menu's
+          own `z-20` orders it only within this strip and can never lift it over the panels
+          (ah-v09e). Nothing overlapped until the panes grew, at which point the Badges menu's
+          lower rows landed on the units dock's title bar and stopped taking clicks.
+
+          Conditional rather than always: lifting the strip to `z-30` unconditionally puts the
+          closed chips row over the panels too, and it then swallows clicks meant for whatever sits
+          under it - twelve smoke tests' worth, from the orders editor to the region panel. A menu
+          is the only thing that needs to be above the panels, and only while it is open.
         */}
-        <div className="pointer-events-none absolute inset-x-0 top-2.5 z-20 flex justify-center">
+        <div className="pointer-events-none absolute inset-x-0 top-2.5 z-20 flex justify-center has-[[aria-expanded='true']]:z-30">
           <div data-map-overlay="top">
             <LayerChips levels={model.levels} />
           </div>

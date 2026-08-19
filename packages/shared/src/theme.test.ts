@@ -73,6 +73,17 @@ describe("theme palette", () => {
   const SURFACES = ["--color-ground", "--color-panel", "--color-panel-raised"];
   const AA_SMALL_TEXT = 4.5;
 
+  /** Every accent carries meaning, so every one of them is text. */
+  const ACCENT_TOKENS = [
+    "--color-brass",
+    "--color-brass-bright",
+    "--color-select",
+    "--color-ok",
+    "--color-warn",
+    "--color-danger",
+    "--color-gain"
+  ];
+
   function tokenValues(block: string): Map<string, string> {
     return new Map(
       [...block.matchAll(/(--color-[\w-]+)\s*:\s*(#[0-9a-fA-F]{6})/g)].map((match) => [
@@ -126,6 +137,152 @@ describe("theme palette", () => {
     const missing = darkTokens.filter((token) => !lightTokens.has(token));
     expect(missing).toEqual([]);
   });
+
+  /**
+   * The floating panes are not opaque: `.bg-pane` paints `--color-panel` at
+   * `100 - --pane-transparency` percent over the live map, so the real background of nearly all
+   * the app's text is a terrain colour, and it changes as the player pans. The assertion above,
+   * against the opaque panel, is a background a reader never sees for a floating pane - and it
+   * passed all the way through the eye-strain report that produced ah-v09e. This is the one that
+   * would have caught it.
+   *
+   * Nothing in the app is WCAG "large text" - 14px is the largest size and 500 the heaviest
+   * weight - so 4.5:1 is the bar for every one of these. Tundra is the worst terrain for every
+   * token, and `select` over it is the tightest pair in the palette.
+   *
+   * Dark only. Light mode fails this today (dark ink over a light pane on dark terrain is
+   * 1.09:1); that is ah-j1xd's scope, and a known-red assertion is worth nothing.
+   */
+  it("keeps every dark text token readable through a pane over every terrain", () => {
+    // From the source rather than hard-coded, so a future change to the default either keeps the
+    // app readable or fails here.
+    const store = readFileSync(
+      fileURLToPath(new URL("./settingsStore.ts", import.meta.url)),
+      "utf8"
+    );
+    const defaultTransparency = Number.parseInt(
+      store.match(/DEFAULT_PANE_TRANSPARENCY\s*=\s*(\d+)/)![1],
+      10
+    );
+
+    const values = tokenValues(extractBlock(css, /@theme\b/));
+    // `color-mix(in srgb, panel P%, transparent)` over the terrain, per channel.
+    const alpha = (100 - defaultTransparency) / 100;
+    const composite = (top: string, bottom: string): string => {
+      const mix = [1, 3, 5].map((at) => {
+        const t = Number.parseInt(top.slice(at, at + 2), 16);
+        const b = Number.parseInt(bottom.slice(at, at + 2), 16);
+        return Math.round(t * alpha + b * (1 - alpha));
+      });
+      return `#${mix.map((c) => c.toString(16).padStart(2, "0")).join("")}`;
+    };
+
+    const panel = values.get("--color-panel")!;
+    const terrains = [...values.keys()].filter((token) => token.startsWith("--color-terrain-"));
+    expect(terrains.length).toBeGreaterThan(0);
+
+    const unreadable: string[] = [];
+    for (const terrain of terrains) {
+      const behind = composite(panel, values.get(terrain)!);
+      // Every token text is drawn in, accents included: `select` over tundra is the tightest pair
+      // in the whole palette, and it is an accent, not an ink.
+      for (const ink of [...INK_TOKENS, ...ACCENT_TOKENS]) {
+        const ratio = contrast(values.get(ink)!, behind);
+        if (ratio < AA_SMALL_TEXT) {
+          unreadable.push(`${ink} through a pane over ${terrain} is ${ratio.toFixed(2)}:1`);
+        }
+      }
+    }
+
+    expect(unreadable).toEqual([]);
+  });
+
+  /**
+   * A band, not a floor (ah-v09e).
+   *
+   * Near-white body text on a near-black ground halates: the glyphs bloom into their background
+   * and a reader has to work to hold them still, which is the eye strain the report described.
+   * The floor above says text must be readable; this says it must not glow either. Discord's dark
+   * theme, the reporter's own reference, runs body text at 9.36:1.
+   */
+  const MAX_BODY_CONTRAST = 12;
+
+  it("keeps dark body text inside a band rather than at maximum contrast", () => {
+    const values = tokenValues(extractBlock(css, /@theme\b/));
+
+    const glaring: string[] = [];
+    for (const surface of SURFACES) {
+      const ratio = contrast(values.get("--color-ink")!, values.get(surface)!);
+      if (ratio > MAX_BODY_CONTRAST) {
+        glaring.push(`--color-ink on ${surface} is ${ratio.toFixed(2)}:1`);
+      }
+    }
+
+    expect(glaring).toEqual([]);
+  });
+
+  /**
+   * Every accent carries meaning - a heading, a warning, an error, a selection - so each is text
+   * and each is held to AA on every surface it can be written on.
+   *
+   * This passes today and must still pass: lifting the surfaces costs every accent about a ratio
+   * point, and on `--color-panel-raised` (dialogs, popovers, header chips) the pre-ah-v09e
+   * `danger` and `select` fell to 4.01 and 4.46. Fixing eye strain must not introduce two new
+   * accessibility failures on the way.
+   */
+
+  it("keeps every dark accent above AA on every surface", () => {
+    const values = tokenValues(extractBlock(css, /@theme\b/));
+
+    const unreadable: string[] = [];
+    for (const accent of ACCENT_TOKENS) {
+      for (const surface of SURFACES) {
+        const ratio = contrast(values.get(accent)!, values.get(surface)!);
+        if (ratio < AA_SMALL_TEXT) {
+          unreadable.push(`${accent} on ${surface} is ${ratio.toFixed(2)}:1`);
+        }
+      }
+    }
+
+    expect(unreadable).toEqual([]);
+  });
+
+  /**
+   * The boxes have to do their own grouping. `--color-edge` sat at 1.27:1 against the panel and
+   * `--color-edge-soft` at 1.12:1 - close enough to invisible that the reader's eye was grouping
+   * the panes by their contents instead, which is work (ah-v09e).
+   *
+   * Against `--color-panel` only: both sit lower on `--color-panel-raised` by design, since a
+   * lighter surface leaves an edge less room.
+   */
+  it("keeps dark borders visible against the panel", () => {
+    const values = tokenValues(extractBlock(css, /@theme\b/));
+    const panel = values.get("--color-panel")!;
+
+    expect(contrast(values.get("--color-edge")!, panel)).toBeGreaterThanOrEqual(1.6);
+    expect(contrast(values.get("--color-edge-soft")!, panel)).toBeGreaterThanOrEqual(1.15);
+  });
+
+  /**
+   * The map's label haloes are the map's decision, not the chrome's (ah-v09e).
+   *
+   * `.map-label` and `.region-name` used to stroke themselves with `--color-ground` and fill with
+   * `--color-ink-soft` - chrome tokens - which made the legibility of every label on the map
+   * hostage to a palette change made for the panels. Lifting the chrome's ground for eye strain
+   * would have lightened every label's outline with it. They get map-owned tokens instead,
+   * holding the values the chrome used to supply, so the rendered map is unchanged.
+   */
+  it("draws map labels from map-owned tokens, not the chrome palette", () => {
+    const mapLabel = extractBlock(css, /\.map-label\b/);
+    expect(mapLabel).toMatch(/stroke\s*:\s*var\(--color-map-label-halo\)/);
+    expect(mapLabel).not.toMatch(/var\(--color-ground\)/);
+
+    const regionName = extractBlock(css, /\.region-name\b/);
+    expect(regionName).toMatch(/stroke\s*:\s*var\(--color-map-label-halo\)/);
+    expect(regionName).toMatch(/fill\s*:\s*var\(--color-map-region-name/);
+    expect(regionName).not.toMatch(/var\(--color-ground\)/);
+    expect(regionName).not.toMatch(/var\(--color-ink-soft/);
+  });
 });
 
 /**
@@ -167,6 +324,22 @@ describe("pane type scale", () => {
     // widths, padding and gaps alike (ah-ziv). `rem` in the root's own `font-size` resolves
     // against the *initial* root size (the reader's own preference), so this is not circular.
     expect(css).toMatch(/font-size\s*:\s*calc\(\s*1rem\s*\*\s*var\(--ui-scale\)\s*\)\s*;/);
+  });
+
+  it("starts the pane type scale at 12px", () => {
+    // Up one rung (ah-v09e): 11/12/13 asked a reader to focus consciously for an hour-long
+    // sitting. Each token takes the next one's old value and a new top is added. `--ui-scale`
+    // still multiplies all three, so the Interface size setting reaches them exactly as before.
+    const themeBlock = extractBlock(css, /@theme\b/);
+    const sizes = new Map(
+      [...themeBlock.matchAll(/(--text-pane[\w-]*)\s*:\s*(?:calc\(\s*)?([\d.]+)rem/g)].map(
+        (match) => [match[1], match[2]]
+      )
+    );
+
+    expect(sizes.get("--text-pane-sm")).toBe("0.75");
+    expect(sizes.get("--text-pane")).toBe("0.8125");
+    expect(sizes.get("--text-pane-lg")).toBe("0.875");
   });
 
   it("keeps a dialog inside the window", () => {
