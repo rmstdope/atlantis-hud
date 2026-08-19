@@ -174,4 +174,14 @@ describe("the units table's column widths (ah-1owr.2)", () => {
     expect(tag(html, "settings-reset-column-widths")).toContain("<button");
     expect(html).toContain("Reset widths");
   });
+
+  it("offers a way to put the column order back", () => {
+    const html = renderToStaticMarkup(<GlobalSettings />);
+
+    expect(tag(html, "settings-reset-column-order")).toContain("<button");
+    expect(html).toContain("Reset order");
+    // Two buttons, not one: order and widths are stored separately, so undoing one must not cost
+    // the other (ah-1owr.3).
+    expect(tag(html, "settings-reset-column-widths")).toContain("<button");
+  });
 });

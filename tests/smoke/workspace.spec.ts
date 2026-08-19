@@ -2479,6 +2479,80 @@ test("column widths are dragged, survive a reload, and can never push a column o
   expect(nameReset).toBeLessThan(ratioAfterReload - 0.01);
 });
 
+/**
+ * The units table's reorderable columns, and the feedback that is the whole point of them
+ * (ah-1owr.3).
+ *
+ * PR #421 built the drag and showed nothing until the pointer came up: the prospective order was
+ * computed on every move and never drawn, so a player was dragging blind. What this pins is that
+ * the drop line and the chip are on screen *during* the gesture, that the column lands where the
+ * line said, and that the order survives a reload and can be put back from Settings.
+ *
+ * It restores the shipped order before it ends: the assertions elsewhere in this file address
+ * columns as `td:nth-child(5)`, which only holds while nothing has been reordered.
+ */
+test("a column is dragged to a new place, shows where it will land, and survives a reload", async ({
+  page
+}) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+
+  const headers = () => page.locator("[data-testid='panel-units'] thead th");
+  const headerOrder = async () =>
+    (await page.locator("[data-testid^='column-reorder-']").evaluateAll((nodes) =>
+      nodes.map((node) => (node as HTMLElement).dataset.testid ?? "")
+    )).map((testid) => testid.replace("column-reorder-", ""));
+
+  await expect(headers().first()).toBeVisible();
+  const before = await headerOrder();
+  expect(before[1]).toBe("name");
+
+  // Drag the Unit column rightwards, past the whole of Faction.
+  const grip = await page.getByTestId("column-reorder-name").boundingBox();
+  const factionCell = await page
+    .locator("[data-testid^='unit-row-'] td:nth-child(4)")
+    .first()
+    .boundingBox();
+  await page.mouse.move(grip!.x + grip!.width / 2, grip!.y + grip!.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(
+    grip!.x + grip!.width / 2 + factionCell!.width + 20,
+    grip!.y + grip!.height / 2,
+    { steps: 8 }
+  );
+
+  // The defect, as an assertion: both must be on screen while the pointer is still down.
+  await expect(page.getByTestId("column-drop-line")).toBeVisible();
+  await expect(page.getByTestId("column-drag-chip")).toBeVisible();
+  await expect(page.getByTestId("column-drag-chip")).toHaveText("Unit");
+  const lineBox = await page.getByTestId("column-drop-line").boundingBox();
+
+  await page.mouse.up();
+
+  // Gone the moment the gesture ends, and the column landed where the line was standing.
+  await expect(page.getByTestId("column-drop-line")).toHaveCount(0);
+  await expect(page.getByTestId("column-drag-chip")).toHaveCount(0);
+  const after = await headerOrder();
+  expect(after.indexOf("name")).toBeGreaterThan(before.indexOf("name"));
+  const landed = await page
+    .locator(`[data-testid^='unit-row-'] td:nth-child(${after.indexOf("name") + 2})`)
+    .first()
+    .boundingBox();
+  expect(landed!.x).toBeCloseTo(lineBox!.x, 0);
+
+  // The order survives a reload...
+  await page.reload();
+  await expect(page.getByTestId("import-status")).toContainText("restored");
+  await selectHex(page, "1:7,53");
+  expect(await headerOrder()).toEqual(after);
+
+  // ...and Settings puts it back, without disturbing the widths.
+  await page.getByTestId("settings-indicator").click();
+  await page.getByTestId("settings-reset-column-order").click();
+  await page.keyboard.press("Escape");
+  expect(await headerOrder()).toEqual(before);
+});
+
 /** The ocean hex the report gives three hundred and eleven units. */
 const CROWDED_HEX = "1:26,52";
 

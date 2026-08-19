@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { UNIT_COLUMNS, type UnitColumn } from "./unitTable";
 import { BADGES } from "./workspace/mapThemes/hexView";
 import { badgesFromStorage, resetWorkspaceStore, useWorkspaceStore } from "./workspaceStore";
 
@@ -674,5 +675,38 @@ describe("the units table's stored column shares (ah-1owr.2)", () => {
     useWorkspaceStore.getState().setUnitColumnShares({ name: 0.2 });
     resetWorkspaceStore();
     expect(useWorkspaceStore.getState().unitColumnShares).toBeNull();
+  });
+});
+
+describe("the units table's column order", () => {
+  beforeEach(resetWorkspaceStore);
+
+  const swapped = () => {
+    const order = [...UNIT_COLUMNS] as UnitColumn[];
+    [order[2], order[3]] = [order[3], order[2]];
+    return order;
+  };
+
+  it("remembers a column order and forgets it on reset", () => {
+    expect(useWorkspaceStore.getState().unitColumnOrder).toBeNull();
+
+    useWorkspaceStore.getState().setUnitColumnOrder(swapped());
+    expect(useWorkspaceStore.getState().unitColumnOrder).toEqual(swapped());
+
+    useWorkspaceStore.getState().resetUnitColumnOrder();
+    expect(useWorkspaceStore.getState().unitColumnOrder).toBeNull();
+  });
+
+  it("is cleared by resetWorkspaceStore", () => {
+    useWorkspaceStore.getState().setUnitColumnOrder(swapped());
+    resetWorkspaceStore();
+    expect(useWorkspaceStore.getState().unitColumnOrder).toBeNull();
+  });
+
+  it("is independent of the column widths", () => {
+    useWorkspaceStore.getState().setUnitColumnShares({ name: 0.2 });
+    useWorkspaceStore.getState().setUnitColumnOrder(swapped());
+    useWorkspaceStore.getState().resetUnitColumnOrder();
+    expect(useWorkspaceStore.getState().unitColumnShares).toEqual({ name: 0.2 });
   });
 });
