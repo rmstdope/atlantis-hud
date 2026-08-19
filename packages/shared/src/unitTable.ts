@@ -397,3 +397,115 @@ export function columnWidthStyle(
 ): { width: string } {
   return { width: `${shareOf(column, shares) * 100}%` };
 }
+
+/** The order the table draws its columns in - always a permutation of `UNIT_COLUMNS`. */
+export type ColumnOrder = UnitColumn[];
+
+/**
+ * The order to draw columns in: the stored preference if there is one, otherwise the shipped
+ * default - the order equivalent of `shareOf`.
+ *
+ * It validates rather than trusting, using the same all-or-nothing test storage does. `merge`
+ * already rejects a bad stored value on load, so this only ever matters for one held in memory -
+ * but the cost is a walk over nine strings, memoised by the one caller, and the alternative is a
+ * table drawn from an order that is missing a column.
+ */
+export function orderOf(order: ColumnOrder | null): ColumnOrder {
+  return columnOrderFromStorage(order) ?? [...UNIT_COLUMNS];
+}
+
+/**
+ * A stored order, rejected whole if anything about it is wrong.
+ *
+ * All-or-nothing rather than repaired: a partial reorder is not obviously better than the shipped
+ * order, and guessing where a missing column belongs is worse than just starting over. A stored
+ * order missing a column that a later build added is exactly the case that tempts a patch.
+ */
+export function columnOrderFromStorage(stored: unknown): ColumnOrder | null {
+  if (!Array.isArray(stored) || stored.length !== UNIT_COLUMNS.length) {
+    return null;
+  }
+  const known = new Set<string>(UNIT_COLUMNS);
+  const seen = new Set<string>();
+  for (const entry of stored) {
+    if (typeof entry !== "string" || !known.has(entry) || seen.has(entry)) {
+      return null;
+    }
+    seen.add(entry);
+  }
+  return stored as ColumnOrder;
+}
+
+/**
+ * `own` never moves: a 24px marker column has no room for a grip, and the leftmost spot is the
+ * natural place for a marker anyway.
+ */
+export const REORDERABLE_COLUMNS = UNIT_COLUMNS.filter(
+  (column) => column !== "own"
+) as readonly UnitColumn[];
+
+/**
+ * Resolves a drag-to-reorder: the order after every adjacent swap the pointer has travelled far
+ * enough to cross. The threshold for swapping with a neighbour is that neighbour's own width, so a
+ * column trades places once dragged past the whole of it. `own` is never swapped with.
+ *
+ * Widths arrive as a lookup rather than a record because they are stored as shares (`ColumnShares`)
+ * and the caller resolves them to pixels once, at `pointerdown`, against the measured table.
+ */
+export function dragColumnOrder(
+  order: ColumnOrder,
+  dragged: UnitColumn,
+  deltaPx: number,
+  widthPxOf: (column: UnitColumn) => number
+): ColumnOrder {
+  const next = [...order];
+  let index = next.indexOf(dragged);
+  if (index === -1 || dragged === "own") {
+    return next;
+  }
+  let remaining = deltaPx;
+
+  while (remaining > 0 && index < next.length - 1 && next[index + 1] !== "own") {
+    const threshold = widthPxOf(next[index + 1]);
+    if (remaining < threshold) {
+      break;
+    }
+    [next[index], next[index + 1]] = [next[index + 1], next[index]];
+    remaining -= threshold;
+    index += 1;
+  }
+
+  while (remaining < 0 && index > 0 && next[index - 1] !== "own") {
+    const threshold = widthPxOf(next[index - 1]);
+    if (-remaining < threshold) {
+      break;
+    }
+    [next[index], next[index - 1]] = [next[index - 1], next[index]];
+    remaining += threshold;
+    index -= 1;
+  }
+
+  return next;
+}
+
+/**
+ * The x offset, from the table's left edge, of the boundary the dragged column will land on.
+ *
+ * The sum of the widths of every column that precedes it in the prospective order, itself excluded.
+ * Stated that way it is correct in both directions without an off-by-one: dragging left or right,
+ * the line marks the left edge of where the column comes to rest.
+ */
+export function dropBoundaryX(
+  prospective: ColumnOrder,
+  dragged: UnitColumn,
+  widthPxOf: (column: UnitColumn) => number
+): number {
+  let x = 0;
+  for (const column of prospective) {
+    if (column === dragged) {
+      break;
+    }
+    x += widthPxOf(column);
+  }
+  return x;
+}

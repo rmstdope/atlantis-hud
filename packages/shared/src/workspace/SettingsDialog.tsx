@@ -203,6 +203,7 @@ export function GlobalSettings() {
   // back how it was" - and a table whose columns have been dragged into a bad shape needs a way
   // out that is not on the table itself (ah-1owr.2).
   const resetUnitColumnShares = useWorkspaceStore((state) => state.resetUnitColumnShares);
+  const resetUnitColumnOrder = useWorkspaceStore((state) => state.resetUnitColumnOrder);
 
   return (
     <div className="flex flex-col gap-3">
@@ -311,17 +312,33 @@ export function GlobalSettings() {
         <span className="text-ink-soft">
           <span className="block">Units table columns</span>
           <span className="block text-pane-sm text-ink-dim">
-            Puts the dragged column widths back to how they ship.
+            Puts the dragged column widths, or the order they were dragged into, back to how they
+            ship.
           </span>
         </span>
-        <button
-          type="button"
-          data-testid="settings-reset-column-widths"
-          onClick={resetUnitColumnShares}
-          className="rounded border border-edge px-1.5 text-ink-soft hover:text-ink"
-        >
-          Reset widths
-        </button>
+        {/*
+          Two buttons rather than one "Reset columns": order and widths are separate preferences
+          stored separately, so a player can undo the mess they made of one without losing the
+          other (ah-1owr.3). The pair follows `BadgeMenu`'s All/None shape.
+        */}
+        <span className="flex gap-1">
+          <button
+            type="button"
+            data-testid="settings-reset-column-widths"
+            onClick={resetUnitColumnShares}
+            className="rounded border border-edge px-1.5 text-ink-soft hover:text-ink"
+          >
+            Reset widths
+          </button>
+          <button
+            type="button"
+            data-testid="settings-reset-column-order"
+            onClick={resetUnitColumnOrder}
+            className="rounded border border-edge px-1.5 text-ink-soft hover:text-ink"
+          >
+            Reset order
+          </button>
+        </span>
       </div>
 
       <SettingToggle

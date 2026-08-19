@@ -23,6 +23,8 @@ import {
   UNIT_COLUMNS,
   COLUMN_LABELS,
   columnWidthStyle,
+  orderOf,
+  type ColumnOrder,
   type SortColumn,
   type SortState,
   type UnitColumn
@@ -32,6 +34,7 @@ import { HOVER_DELAY_MS, type Point } from "../unitTooltip";
 import { useSettingsStore } from "../settingsStore";
 import { useWorkspaceStore } from "../workspaceStore";
 import { CollapsiblePanel } from "./CollapsiblePanel";
+import { ColumnReorderHandle } from "./ColumnReorderHandle";
 import { ColumnSplitter } from "./ColumnSplitter";
 import { Absent } from "./primitives";
 import { UnitTooltip } from "./UnitTooltip";
@@ -82,9 +85,17 @@ export function UnitTableDock({
   const selectUnit = useWorkspaceStore((state) => state.selectUnit);
   const columnShares = useWorkspaceStore((state) => state.unitColumnShares);
   const setColumnShares = useWorkspaceStore((state) => state.setUnitColumnShares);
+  const storedColumnOrder = useWorkspaceStore((state) => state.unitColumnOrder);
+  const setColumnOrder = useWorkspaceStore((state) => state.setUnitColumnOrder);
+  // The order everything below draws in - the colgroup, the header and every row alike, so the
+  // three cannot fall out of step (ah-1owr.3).
+  const order = useMemo(() => orderOf(storedColumnOrder), [storedColumnOrder]);
   // The `<col>` elements a drag writes to directly, and the table it measures a share against.
   const colRefs = useRef<Partial<Record<UnitColumn, HTMLTableColElement | null>>>({});
   const tableRef = useRef<HTMLTableElement | null>(null);
+  // Where a reorder draws its drop line and its chip: a sibling of the table, never inside
+  // `<thead>`, so table layout cannot touch it and the row height cannot move.
+  const overlayRef = useRef<HTMLDivElement | null>(null);
   const interfaceSize = useSettingsStore((state) => state.interfaceSize);
   const rowHeight = rowHeightAt(interfaceSize);
   const [filter, setFilter] = useState("");
@@ -354,6 +365,21 @@ export function UnitTableDock({
           // shell gives the panel (ah-2r3), which is what the panel itself fills too.
           className="h-full overflow-y-scroll overflow-x-hidden"
         >
+          {/*
+            A positioned wrapper so a reorder can draw its drop line and its chip over the table
+            without taking part in its layout. It is a sibling of the `<table>`, never a child of
+            `<thead>`: a positioned element inside a `table-fixed` header is at the mercy of table
+            layout, and every row must stay exactly `rowHeightAt(interfaceSize)` tall or the
+            windowing misaligns (ah-1owr.3).
+          */}
+          <div className="relative">
+            <div
+              ref={overlayRef}
+              data-testid="column-drag-overlay"
+              aria-hidden
+              // Without this the drop line eats the `pointerup` that ends the drag.
+              className="pointer-events-none absolute inset-0 z-20"
+            />
           <table
             // A grid rather than a plain table: rows here are selectable, and a screen reader only
             // treats a row as something you can land on and choose inside a grid.
@@ -373,7 +399,7 @@ export function UnitTableDock({
               columns out past the right edge with nothing to scroll them back (ah-1owr.2).
             */}
             <colgroup>
-              {UNIT_COLUMNS.map((column) => (
+              {order.map((column) => (
                 <col
                   key={column}
                   ref={(element) => {
@@ -386,7 +412,7 @@ export function UnitTableDock({
             <thead ref={setHead}>
               {/* Indexed like the rows below it: if some rows carry a position, all of them must. */}
               <tr aria-rowindex={1} className="text-pane-sm uppercase tracking-[0.06em] text-ink-soft">
-                {UNIT_COLUMNS.map((column, index) => (
+                {order.map((column, index) => (
                   <ColumnHeaderCell
                     key={column}
                     column={column}
@@ -400,14 +426,28 @@ export function UnitTableDock({
                     // a handle there would sit on top of the group-own-units toggle and swallow
                     // its clicks. It is a fixed marker column, not one anybody resizes.
                     splitter={
-                      column !== "own" && index < UNIT_COLUMNS.length - 1 ? (
+                      column !== "own" && index < order.length - 1 ? (
                         <ColumnSplitter
                           left={column}
-                          right={UNIT_COLUMNS[index + 1]}
+                          right={order[index + 1]}
                           columns={colRefs}
                           table={tableRef}
                           shares={columnShares}
                           onCommit={setColumnShares}
+                        />
+                      ) : null
+                    }
+                    // The marker column never moves, so it carries no grip: 24px has no room for
+                    // one, and the leftmost spot is where a marker belongs anyway.
+                    reorder={
+                      column !== "own" ? (
+                        <ColumnReorderHandle
+                          column={column}
+                          order={order}
+                          shares={columnShares}
+                          table={tableRef}
+                          overlay={overlayRef}
+                          onCommit={setColumnOrder}
                         />
                       ) : null
                     }
@@ -422,6 +462,7 @@ export function UnitTableDock({
                   key={unit.unitId}
                   unit={unit}
                   structureLabel={unitStructureLabel(unit.structureId, structuresById)}
+                  order={order}
                   index={start + offset}
                   rowHeight={rowHeight}
                   selected={unit.unitId === selectedUnitId}
@@ -438,6 +479,7 @@ export function UnitTableDock({
               <Spacer rows={visible.length - end} rowHeight={rowHeight} />
             </tbody>
           </table>
+          </div>
           {hovered ? <UnitTooltip unit={hovered.unit} at={hovered.at} /> : null}
         </div>
       )}
@@ -472,7 +514,8 @@ function ColumnHeaderCell({
   sort,
   onSort,
   onToggleGroupOwn,
-  splitter
+  splitter,
+  reorder
 }: {
   column: UnitColumn;
   sort: SortState;
@@ -480,10 +523,12 @@ function ColumnHeaderCell({
   onToggleGroupOwn: () => void;
   /** The resize handle for this column's boundary with the next, or null for the last column. */
   splitter: ReactNode;
+  /** The drag-to-reorder grip, or null for the marker column, which never moves. */
+  reorder: ReactNode;
 }) {
   if (column === "own") {
     return (
-      <Th splitter={splitter}>
+      <Th splitter={splitter} reorder={reorder}>
         <button
           type="button"
           onClick={onToggleGroupOwn}
@@ -506,15 +551,28 @@ function ColumnHeaderCell({
         sort={sort}
         onSort={onSort}
         splitter={splitter}
+        reorder={reorder}
       />
     );
   }
   // Skills and Items are comma-joined summaries; ordering them alphabetically would sort on the
   // first skill that happened to be listed, so neither carries a sort - just a label.
-  return <Th splitter={splitter}>{COLUMN_LABELS[column] ?? column}</Th>;
+  return (
+    <Th splitter={splitter} reorder={reorder}>
+      {COLUMN_LABELS[column] ?? column}
+    </Th>
+  );
 }
 
-function Th({ children, splitter }: { children?: ReactNode; splitter?: ReactNode }) {
+function Th({
+  children,
+  splitter,
+  reorder
+}: {
+  children?: ReactNode;
+  splitter?: ReactNode;
+  reorder?: ReactNode;
+}) {
   return (
     // The background is opaque and sits on the cells rather than the row: the panel behind is
     // translucent over the map, and a see-through header would show the rows sliding under it.
@@ -523,7 +581,14 @@ function Th({ children, splitter }: { children?: ReactNode; splitter?: ReactNode
     // taking part in the cell's layout - a handle in the flow would change the header's height,
     // which the row-height arithmetic assumes is fixed.
     <th className="relative sticky top-0 z-10 border-b border-edge bg-panel px-2 py-1 text-left font-medium">
-      {children}
+      {/*
+        The reorder grip leads the label and the resize handle sits on the trailing edge, so a
+        press is never ambiguous about which of the two gestures it meant (ah-1owr.3).
+      */}
+      <div className="flex items-center gap-1">
+        {reorder}
+        <span className="min-w-0 flex-1 truncate">{children}</span>
+      </div>
       {splitter}
     </th>
   );
@@ -534,13 +599,15 @@ function SortableTh({
   column,
   sort,
   onSort,
-  splitter
+  splitter,
+  reorder
 }: {
   label: string;
   column: SortColumn;
   sort: SortState;
   onSort: (column: SortColumn) => void;
   splitter?: ReactNode;
+  reorder?: ReactNode;
 }) {
   const active = sort.column === column;
   return (
@@ -548,18 +615,22 @@ function SortableTh({
       aria-sort={active ? (sort.direction === "asc" ? "ascending" : "descending") : "none"}
       className="relative sticky top-0 z-10 border-b border-edge bg-panel px-2 py-1 text-left font-medium"
     >
-      <button
-        type="button"
-        onClick={() => onSort(column)}
-        className={`flex w-full items-center gap-1 uppercase tracking-[0.06em] focus-visible:outline focus-visible:outline-1 focus-visible:outline-brass ${
-          active ? "text-brass" : ""
-        }`}
-      >
-        {label}
-        <span aria-hidden className={active ? "text-brass" : "text-ink-dim"}>
-          {active ? (sort.direction === "asc" ? "▲" : "▼") : "↕"}
-        </span>
-      </button>
+      {/* Grip, then the sort button - the same leading-edge placement every header uses. */}
+      <div className="flex items-center gap-1">
+        {reorder}
+        <button
+          type="button"
+          onClick={() => onSort(column)}
+          className={`flex min-w-0 flex-1 items-center gap-1 uppercase tracking-[0.06em] focus-visible:outline focus-visible:outline-1 focus-visible:outline-brass ${
+            active ? "text-brass" : ""
+          }`}
+        >
+          <span className="min-w-0 truncate">{label}</span>
+          <span aria-hidden className={active ? "text-brass" : "text-ink-dim"}>
+            {active ? (sort.direction === "asc" ? "▲" : "▼") : "↕"}
+          </span>
+        </button>
+      </div>
       {splitter}
     </th>
   );
@@ -571,6 +642,7 @@ const PREDICTED = "italic text-brass";
 function UnitRow({
   unit,
   structureLabel,
+  order,
   index,
   rowHeight,
   selected,
@@ -582,6 +654,8 @@ function UnitRow({
   getLongOrder
 }: {
   unit: PreviewedUnit;
+  /** The order the header is drawing in, so a row's cells can never fall out of step with it. */
+  order: ColumnOrder;
   /**
    * The structure this unit stands in — its full label, or a bare `[id]` when the region never
    * described it — and null when the unit stands in the open.
@@ -746,7 +820,7 @@ function UnitRow({
         selected ? "bg-select/25 text-ink" : unit.own ? "text-ink" : "text-ink-soft"
       }${departing ? " opacity-60" : ""}`}
     >
-      {UNIT_COLUMNS.map((column) => (
+      {order.map((column) => (
         <Fragment key={column}>{cellsByColumn[column]}</Fragment>
       ))}
     </tr>

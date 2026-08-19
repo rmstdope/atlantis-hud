@@ -1,9 +1,11 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import type { RegionPreview, ReportRegion, ReportUnit } from "@atlantis/core-client";
 import { aReportRegion, aReportUnit } from "@atlantis/core-client";
 import type { HexNode } from "../hexMapModel";
-import { DEFAULT_COLUMN_SHARES, UNIT_COLUMNS } from "../unitTable";
+import { DEFAULT_COLUMN_SHARES, UNIT_COLUMNS, type UnitColumn } from "../unitTable";
+import { restoreStoresForTest, setStoreStateForTest } from "../testing/storeState";
+import { resetWorkspaceStore, useWorkspaceStore } from "../workspaceStore";
 import { UnitTableDock } from "./UnitTableDock";
 
 /**
@@ -289,5 +291,98 @@ describe("the long order column", () => {
     expect(own).toContain("text-danger\">—");
     // A foreign unit's cell is blank rather than dashed - it is not a unit doing nothing.
     expect(foreign).not.toContain("text-danger\">—");
+  });
+});
+
+describe("column order (ah-1owr.3)", () => {
+  const withUnits = () =>
+    hex({
+      region: region({ units: [unit({ unitId: "1", own: true })] }),
+      ownUnitCount: 1,
+      foreignUnitCount: 0
+    });
+
+  afterEach(() => {
+    restoreStoresForTest();
+    resetWorkspaceStore();
+  });
+
+  const swapped = () => {
+    const order = [...UNIT_COLUMNS] as UnitColumn[];
+    // name and faction trade places, so header, colgroup and cells must all follow.
+    [order[2], order[3]] = [order[3], order[2]];
+    return order;
+  };
+
+  it("draws its header, its columns and its cells from one order", () => {
+    const markup = draw(withUnits());
+    const grips = [...markup.matchAll(/data-testid="column-reorder-(\w+)"/g)].map(
+      (match) => match[1]
+    );
+
+    expect(grips).toEqual(UNIT_COLUMNS.filter((column) => column !== "own"));
+    expect((markup.match(/<col\b/g) ?? []).length).toBe(UNIT_COLUMNS.length);
+
+    const row = /<tr[^>]*data-testid="unit-row-1"[\s\S]*?<\/tr>/.exec(markup)?.[0] ?? "";
+    expect((row.match(/<td\b/g) ?? []).length).toBe(UNIT_COLUMNS.length);
+  });
+
+  it("draws header, columns and rows in the stored order", () => {
+    // `renderToStaticMarkup` reads the store's `getInitialState()`, not its live state, so a
+    // preference has to be mirrored onto it - see `../testing/storeState.ts`.
+    setStoreStateForTest(useWorkspaceStore, { unitColumnOrder: swapped() });
+    const markup = draw(withUnits());
+
+    const grips = [...markup.matchAll(/data-testid="column-reorder-(\w+)"/g)].map(
+      (match) => match[1]
+    );
+    expect(grips).toEqual(swapped().filter((column) => column !== "own"));
+
+    const cols = markup.match(/<col\b[^>]*>/g) ?? [];
+    cols.forEach((col, index) => {
+      expect(col).toContain(`width:${DEFAULT_COLUMN_SHARES[swapped()[index]] * 100}%`);
+    });
+
+    // The rows follow the header rather than keeping a sequence of their own.
+    const row = /<tr[^>]*data-testid="unit-row-1"[\s\S]*?<\/tr>/.exec(markup)?.[0] ?? "";
+    expect((row.match(/<td\b/g) ?? []).length).toBe(UNIT_COLUMNS.length);
+  });
+
+  it("falls back to the shipped order when the stored one does not fit this build", () => {
+    // Not a permutation of this build's columns - the store's own `merge` rejects such a value on
+    // load, and a render must not try to draw one either.
+    setStoreStateForTest(useWorkspaceStore, { unitColumnOrder: ["own", "name"] as UnitColumn[] });
+    const grips = [...draw(withUnits()).matchAll(/data-testid="column-reorder-(\w+)"/g)].map(
+      (match) => match[1]
+    );
+
+    expect(grips).toEqual(UNIT_COLUMNS.filter((column) => column !== "own"));
+  });
+
+  it("mounts a reorder grip on every column but the marker", () => {
+    const markup = draw(withUnits());
+
+    expect(markup).not.toContain('data-testid="column-reorder-own"');
+    expect((markup.match(/data-testid="column-reorder-/g) ?? []).length).toBe(
+      UNIT_COLUMNS.length - 1
+    );
+  });
+
+  it("names each grip after the column it moves, as a reader hears it", () => {
+    expect(draw(withUnits())).toContain('aria-label="Move the Long order column"');
+  });
+
+  it("has an overlay for the drag feedback, outside the table and taking no pointer events", () => {
+    const markup = draw(withUnits());
+    const overlay = /<div[^>]*data-testid="column-drag-overlay"[^>]*>/.exec(markup)?.[0] ?? "";
+
+    expect(overlay).not.toBe("");
+    // Without this the drop line eats the `pointerup` that ends the drag.
+    expect(overlay).toContain("pointer-events-none");
+    // Never inside the header: a positioned element in a `table-fixed` thead is at the mercy of
+    // table layout, and the row height must not move.
+    expect(markup.indexOf('data-testid="column-drag-overlay"')).toBeLessThan(
+      markup.indexOf("<thead")
+    );
   });
 });

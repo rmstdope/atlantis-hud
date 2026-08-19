@@ -18,7 +18,12 @@ import {
   clampUnitsHeight,
   type RailSide
 } from "./workspace/panelLayout";
-import { columnSharesFromStorage, type ColumnShares } from "./unitTable";
+import {
+  columnOrderFromStorage,
+  columnSharesFromStorage,
+  type ColumnOrder,
+  type ColumnShares
+} from "./unitTable";
 import {
   mapViewCommitted,
   mapViewOpened,
@@ -112,6 +117,12 @@ export type WorkspaceState = {
    * overflow impossible.
    */
   unitColumnShares: ColumnShares | null;
+  /**
+   * The order the units table draws its columns in, or null while the shipped order applies -
+   * ah-1owr.3. Stored beside the widths and entirely independent of them: resizing a column never
+   * implies reordering it, or the reverse, so a player can undo one without losing the other.
+   */
+  unitColumnOrder: ColumnOrder | null;
   layers: Record<LayerName, boolean>;
   /** Which marks the map draws over its terrain. */
   badges: Record<BadgeName, boolean>;
@@ -176,6 +187,10 @@ export type WorkspaceState = {
   setUnitColumnShares: (shares: ColumnShares) => void;
   /** Drops every stored column width, back to the shipped shape. Reachable from Settings. */
   resetUnitColumnShares: () => void;
+  /** Replaces the whole order - a reorder resolves the entire row of columns, never a pair. */
+  setUnitColumnOrder: (order: ColumnOrder) => void;
+  /** Drops the stored order, back to the shipped one. Reachable from Settings. */
+  resetUnitColumnOrder: () => void;
   toggleLayer: (layer: LayerName) => void;
   toggleBadge: (badge: BadgeName) => void;
   /** Shows or hides the region panel's Problems section. */
@@ -279,6 +294,7 @@ type Persisted = Pick<
   | "leftRailWidthRem"
   | "rightRailWidthRem"
   | "unitColumnShares"
+  | "unitColumnOrder"
   | "layers"
   | "badges"
   | "regionProblemsShown"
@@ -298,6 +314,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       leftRailWidthRem: null,
       rightRailWidthRem: null,
       unitColumnShares: null,
+      unitColumnOrder: null,
       layers: INITIAL_LAYERS,
       badges: allBadges(true),
       regionProblemsShown: true,
@@ -393,6 +410,12 @@ export const useWorkspaceStore = create<WorkspaceState>()(
 
       resetUnitColumnShares: () => set(() => ({ unitColumnShares: null })),
 
+      // Replaced whole, not merged: `dragColumnOrder` hands back the entire order, and merging
+      // two permutations has no meaning.
+      setUnitColumnOrder: (order) => set(() => ({ unitColumnOrder: [...order] })),
+
+      resetUnitColumnOrder: () => set(() => ({ unitColumnOrder: null })),
+
       toggleLayer: (layer) =>
         set((state) => ({
           layers: { ...state.layers, [layer]: !state.layers[layer] }
@@ -426,6 +449,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         leftRailWidthRem: state.leftRailWidthRem,
         rightRailWidthRem: state.rightRailWidthRem,
         unitColumnShares: state.unitColumnShares,
+        unitColumnOrder: state.unitColumnOrder,
         layers: state.layers,
         badges: state.badges,
         regionProblemsShown: state.regionProblemsShown
@@ -451,6 +475,9 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           // its equivalent, dropping unknown columns and renormalising what survives so the
           // stored shape still covers exactly the whole table.
           unitColumnShares: emptyToNull(columnSharesFromStorage(stored.unitColumnShares ?? {})),
+          // No `emptyToNull` wrapper: `columnOrderFromStorage` already returns null for anything
+          // it rejects, and it rejects rather than repairs.
+          unitColumnOrder: columnOrderFromStorage(stored.unitColumnOrder),
           layers: reconcile(INITIAL_LAYERS, stored.layers ?? {}),
           badges: badgesFromStorage(stored.badges ?? {}),
           // Not a record, so `reconcile` does not apply: a missing or malformed key must read
@@ -479,6 +506,7 @@ export function resetWorkspaceStore() {
     leftRailWidthRem: null,
     rightRailWidthRem: null,
     unitColumnShares: null,
+    unitColumnOrder: null,
     layers: INITIAL_LAYERS,
     badges: allBadges(true),
     regionProblemsShown: true,

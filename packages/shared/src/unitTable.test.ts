@@ -12,8 +12,13 @@ import {
   UNIT_COLUMNS,
   columnSharesFromStorage,
   columnWidthStyle,
+  columnOrderFromStorage,
+  dragColumnOrder,
   dragColumnShare,
+  dropBoundaryX,
+  orderOf,
   shareOf,
+  REORDERABLE_COLUMNS,
   type SortState,
   type UnitColumn
 } from "./unitTable";
@@ -471,5 +476,121 @@ describe("columnSharesFromStorage", () => {
 
   it("has a floor expressed in pixels, for the splitter to convert against a live table", () => {
     expect(COLUMN_MIN_PX).toBeGreaterThan(0);
+  });
+});
+
+describe("columnOrderFromStorage", () => {
+  it("rejects a stored order that does not fit this build", () => {
+    expect(columnOrderFromStorage(null)).toBeNull();
+    expect(columnOrderFromStorage("own,name")).toBeNull();
+    expect(columnOrderFromStorage(UNIT_COLUMNS.slice(0, 3))).toBeNull();
+    expect(columnOrderFromStorage([...UNIT_COLUMNS, "extra"])).toBeNull();
+    expect(
+      columnOrderFromStorage(UNIT_COLUMNS.map((column) => (column === "men" ? "retired" : column)))
+    ).toBeNull();
+    expect(
+      columnOrderFromStorage(UNIT_COLUMNS.map((column) => (column === "men" ? "name" : column)))
+    ).toBeNull();
+    expect(columnOrderFromStorage(UNIT_COLUMNS.map((column, i) => (i === 4 ? 4 : column)))).toBeNull();
+  });
+
+  it("keeps a valid permutation", () => {
+    const swapped = [...UNIT_COLUMNS] as UnitColumn[];
+    [swapped[2], swapped[3]] = [swapped[3], swapped[2]];
+    expect(columnOrderFromStorage(swapped)).toEqual(swapped);
+  });
+
+  it("falls back to the shipped order when nothing is stored, or when what is does not fit", () => {
+    expect(orderOf(null)).toEqual([...UNIT_COLUMNS]);
+    expect(orderOf(["own", "name"] as UnitColumn[])).toEqual([...UNIT_COLUMNS]);
+    const swapped = [...UNIT_COLUMNS] as UnitColumn[];
+    [swapped[2], swapped[3]] = [swapped[3], swapped[2]];
+    expect(orderOf(swapped)).toEqual(swapped);
+  });
+
+  it("leaves the marker column out of the reorderable ones", () => {
+    expect(REORDERABLE_COLUMNS).not.toContain("own");
+    expect(REORDERABLE_COLUMNS).toHaveLength(UNIT_COLUMNS.length - 1);
+  });
+});
+
+describe("dragColumnOrder", () => {
+  const order = [...UNIT_COLUMNS] as UnitColumn[];
+  const widthPxOf = () => 100;
+
+  it("swaps with a neighbour once dragged past the whole of it", () => {
+    expect(dragColumnOrder(order, "name", 99, widthPxOf)).toEqual(order);
+    expect(dragColumnOrder(order, "name", 100, widthPxOf)).toEqual([
+      "own",
+      "unitId",
+      "faction",
+      "name",
+      "men",
+      "skills",
+      "items",
+      "structure",
+      "longOrder"
+    ]);
+    expect(dragColumnOrder(order, "name", 205, widthPxOf)).toEqual([
+      "own",
+      "unitId",
+      "faction",
+      "men",
+      "name",
+      "skills",
+      "items",
+      "structure",
+      "longOrder"
+    ]);
+  });
+
+  it("stops one short of the marker column when dragged left", () => {
+    expect(dragColumnOrder(order, "name", -1000, widthPxOf)).toEqual([
+      "own",
+      "name",
+      "unitId",
+      "faction",
+      "men",
+      "skills",
+      "items",
+      "structure",
+      "longOrder"
+    ]);
+  });
+
+  it("never moves the marker column itself", () => {
+    expect(dragColumnOrder(order, "own", 1000, widthPxOf)).toEqual(order);
+  });
+
+  it("always yields a permutation with the marker still leftmost", () => {
+    // Seeded rather than Math.random, so a failure is reproducible.
+    let seed = 20260819;
+    const next = () => {
+      seed = (seed * 1103515245 + 12345) % 2147483648;
+      return seed / 2147483648;
+    };
+    let current = [...UNIT_COLUMNS] as UnitColumn[];
+    for (let step = 0; step < 500; step += 1) {
+      const dragged = REORDERABLE_COLUMNS[Math.floor(next() * REORDERABLE_COLUMNS.length)];
+      current = dragColumnOrder(current, dragged, (next() - 0.5) * 1200, widthPxOf);
+      expect(current[0]).toBe("own");
+      expect([...current].sort()).toEqual([...UNIT_COLUMNS].sort());
+    }
+  });
+});
+
+describe("dropBoundaryX", () => {
+  const widthPxOf = (column: UnitColumn) => (column === "own" ? 24 : 100);
+
+  it("puts the drop line at the left edge of where the column lands", () => {
+    const order = [...UNIT_COLUMNS] as UnitColumn[];
+    // name sits third: own (24) + unitId (100) = 124.
+    expect(dropBoundaryX(order, "name", widthPxOf)).toBe(124);
+    // Dragged one place right, it lands after faction: own + unitId + faction.
+    const right = dragColumnOrder(order, "name", 100, widthPxOf);
+    expect(dropBoundaryX(right, "name", widthPxOf)).toBe(224);
+    // Dragged one place left, it lands right after the marker.
+    const left = dragColumnOrder(order, "name", -100, widthPxOf);
+    expect(dropBoundaryX(left, "name", widthPxOf)).toBe(24);
   });
 });
