@@ -1,4 +1,5 @@
 import type { OrderDiagnosticSeverity } from "@atlantis/core-client";
+import { Fragment } from "react";
 import type { ReactNode } from "react";
 
 /**
@@ -41,22 +42,130 @@ export function SeverityMark({ severity }: { severity: OrderDiagnosticSeverity }
   );
 }
 
+/** The shared look of a unit id you can go and look at, so one gesture reads the same everywhere. */
+const UNIT_LINK_CLASS =
+  "shrink-0 rounded text-left tabular-nums text-brass hover:underline focus-visible:outline focus-visible:outline-1 focus-visible:outline-brass";
+
 /**
  * Whose problem it is: a unit id, or `hex` for a diagnostic that belongs to the hex and to no unit.
+ *
+ * The id is a way to go and look at the unit, on the same terms `TurnMessagesPanel`'s `Unit` sets
+ * (ah-87he): a button only when the loaded turn actually describes that unit, and plain text
+ * otherwise, because a button that does nothing is worse than plain text saying the same thing.
+ * Without `onSelectUnit` it stays the plain span it has always been, so a caller that has no
+ * selection to offer loses nothing.
  */
-export function ProblemWho({ unitId }: { unitId: string | null }) {
-  return unitId === null ? (
-    <>
-      <span aria-hidden className="shrink-0 text-pane-sm italic tracking-wide text-ink-dim">
-        hex
-      </span>
-      <span className="sr-only">the whole hex</span>
-    </>
-  ) : (
+export function ProblemWho({
+  unitId,
+  known,
+  onSelectUnit
+}: {
+  unitId: string | null;
+  known?: ReadonlySet<string>;
+  onSelectUnit?: (unitId: string) => void;
+}) {
+  if (unitId === null) {
+    return (
+      <>
+        <span aria-hidden className="shrink-0 text-pane-sm italic tracking-wide text-ink-dim">
+          hex
+        </span>
+        <span className="sr-only">the whole hex</span>
+      </>
+    );
+  }
+
+  if (onSelectUnit && known?.has(unitId)) {
+    return (
+      <button
+        type="button"
+        data-testid={`problem-unit-${unitId}`}
+        onClick={() => onSelectUnit(unitId)}
+        className={UNIT_LINK_CLASS}
+      >
+        <span className="sr-only">unit </span>
+        {unitId}
+      </button>
+    );
+  }
+
+  return (
     <span className="shrink-0 tabular-nums text-ink-dim">
       <span className="sr-only">unit </span>
       {unitId}
     </span>
+  );
+}
+
+/**
+ * A diagnostic's message, with every unit it names turned into a way to go and look at it.
+ *
+ * The messages are prose built in Rust, so the ids have to be read back out of them - which means
+ * this is coupled to their wording, and a message reworded to say "by 4021" rather than "unit 4021"
+ * silently stops linking. That is the accepted cost of ah-87he's "every unit number": the failure
+ * is a link that is not offered, never a wrong one, because every id found is checked against
+ * `known` before it becomes a button.
+ */
+export function ProblemMessage({
+  message,
+  known,
+  onSelectUnit
+}: {
+  message: string;
+  known?: ReadonlySet<string>;
+  onSelectUnit?: (unitId: string) => void;
+}) {
+  if (!onSelectUnit || !known) {
+    return <>{message}</>;
+  }
+
+  // Built per call: a module-level /g regex keeps `lastIndex` between calls, which would link the
+  // ids in every other message and miss the rest.
+  const unitInMessage = /\bunit (\d+)\b/g;
+  const parts: ReactNode[] = [];
+  let cursor = 0;
+
+  for (let match = unitInMessage.exec(message); match; match = unitInMessage.exec(message)) {
+    const [matched, unitId] = match;
+
+    if (match.index > cursor) {
+      parts.push(message.slice(cursor, match.index));
+    }
+
+    // The word `unit` stays outside the button, so a screen reader does not hear "unit unit 4021".
+    parts.push(matched.slice(0, matched.length - unitId.length));
+    parts.push(
+      known.has(unitId) ? (
+        <button
+          key={`unit-${match.index}`}
+          type="button"
+          data-testid={`problem-unit-${unitId}`}
+          onClick={() => onSelectUnit(unitId)}
+          className={UNIT_LINK_CLASS}
+        >
+          {unitId}
+        </button>
+      ) : (
+        unitId
+      )
+    );
+    cursor = match.index + matched.length;
+  }
+
+  if (cursor === 0) {
+    return <>{message}</>;
+  }
+
+  if (cursor < message.length) {
+    parts.push(message.slice(cursor));
+  }
+
+  return (
+    <>
+      {parts.map((part, index) =>
+        typeof part === "string" ? <Fragment key={`text-${index}`}>{part}</Fragment> : part
+      )}
+    </>
   );
 }
 

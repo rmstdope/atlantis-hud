@@ -658,7 +658,7 @@ export function AppShell({
    * selecting and then switching would leave nothing selected at all.
    */
   const goToUnit = useCallback(
-    (unitId: string) => {
+    (unitId: string, closing: HeaderPopoverId | null = "messages") => {
       const regionId = unitRegions.get(unitId);
       if (!regionId) {
         return;
@@ -673,7 +673,11 @@ export function AppShell({
       // already the one on screen - which is exactly the case where a second message names a
       // different unit standing beside the first.
       selectUnit(unitId);
-      closePopover("messages");
+      // Whichever popover asked for the jump, rather than always the turn-messages one: the problems
+      // panel closes itself the same way, and the region pane is not a popover and closes nothing.
+      if (closing) {
+        closePopover(closing);
+      }
     },
     [unitRegions, level, setLevel, selectRegion, selectUnit, closePopover]
   );
@@ -2746,6 +2750,8 @@ export function AppShell({
             labelFor={hexLabel}
             onSelectHex={selectHex}
             onDismiss={() => closePopover("problems")}
+            known={knownUnitIds}
+            onSelectUnit={(unitId) => goToUnit(unitId, "problems")}
           />
         }
         tradeCount={tradeRoutes.length}
@@ -2954,6 +2960,8 @@ export function AppShell({
                 client={client}
                 game={game}
                 turn={parsed?.header.turnNumber ?? null}
+                known={knownUnitIds}
+                onSelectUnit={(unitId) => goToUnit(unitId, null)}
               />
               <RailSplitter
                 side="left"
