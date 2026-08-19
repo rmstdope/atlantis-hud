@@ -48,11 +48,19 @@ const EXPECTED: &[(&str, usize)] = &[
 
 /// The expectation table as a map, so an assertion can be read as a table.
 fn expected_counts() -> BTreeMap<&'static str, usize> {
-    EXPECTED.iter().copied().collect()
+    let table: BTreeMap<&'static str, usize> = EXPECTED.iter().copied().collect();
+    // A duplicated code would collapse into one row here and quietly take the second row's count,
+    // so the table would still look like a table while asserting something nobody wrote.
+    assert_eq!(
+        table.len(),
+        EXPECTED.len(),
+        "a code appears twice in EXPECTED: {EXPECTED:?}"
+    );
+    table
 }
 
 /// The findings by code, so an expectation can be compared as a table rather than as a total.
-fn counts(findings: &[Finding]) -> BTreeMap<&str, usize> {
+fn counts(findings: &[Finding]) -> BTreeMap<&'static str, usize> {
     let mut seen = BTreeMap::new();
     for finding in findings {
         *seen.entry(finding.code.as_str()).or_insert(0) += 1;

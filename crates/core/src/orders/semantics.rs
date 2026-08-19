@@ -6333,6 +6333,14 @@ mod tests {
             codes::ALL.len(),
             "every code in codes::ALL needs a fixture here, or a silenced one would go unnoticed"
         );
+        // Length alone would accept a case duplicated and another dropped, which is the same hole
+        // by a different route.
+        let distinct: BTreeSet<&str> = cases.iter().map(|case| case.code.as_str()).collect();
+        assert_eq!(
+            distinct.len(),
+            cases.len(),
+            "two cases share a code, so some other code has no fixture"
+        );
 
         for Case {
             code,
