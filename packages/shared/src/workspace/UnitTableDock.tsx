@@ -21,6 +21,8 @@ import {
   sortUnits,
   windowRange,
   UNIT_COLUMNS,
+  COLUMN_LABELS,
+  columnWidthStyle,
   type SortColumn,
   type SortState,
   type UnitColumn
@@ -30,6 +32,7 @@ import { HOVER_DELAY_MS, type Point } from "../unitTooltip";
 import { useSettingsStore } from "../settingsStore";
 import { useWorkspaceStore } from "../workspaceStore";
 import { CollapsiblePanel } from "./CollapsiblePanel";
+import { ColumnSplitter } from "./ColumnSplitter";
 import { Absent } from "./primitives";
 import { UnitTooltip } from "./UnitTooltip";
 
@@ -42,18 +45,6 @@ const OVERSCAN = 6;
  */
 const COLUMNS = UNIT_COLUMNS.length;
 
-/** What each column's header says; `own` has a button rather than a label. */
-const COLUMN_LABELS: Partial<Record<UnitColumn, string>> = {
-  unitId: "Id",
-  name: "Unit",
-  faction: "Faction",
-  men: "Men",
-  skills: "Skills",
-  items: "Items",
-  structure: "Structure",
-  longOrder: "Long order"
-};
-
 /** The columns whose header carries a sort control. */
 const SORTABLE_COLUMNS: ReadonlySet<UnitColumn> = new Set<UnitColumn>([
   "unitId",
@@ -63,17 +54,6 @@ const SORTABLE_COLUMNS: ReadonlySet<UnitColumn> = new Set<UnitColumn>([
   "structure",
   "longOrder"
 ]);
-
-/** The width each column is given, where it is given one; the rest share what is left. */
-const COLUMN_WIDTHS: Partial<Record<UnitColumn, string>> = {
-  own: "w-6",
-  unitId: "w-16",
-  name: "w-52",
-  faction: "w-48",
-  men: "w-16",
-  structure: "w-52",
-  longOrder: "w-36"
-};
 
 /**
  * Every unit in the selected hex, as a table, with one selectable.
@@ -100,6 +80,11 @@ export function UnitTableDock({
 }) {
   const selectedUnitId = useWorkspaceStore((state) => state.selectedUnitId);
   const selectUnit = useWorkspaceStore((state) => state.selectUnit);
+  const columnShares = useWorkspaceStore((state) => state.unitColumnShares);
+  const setColumnShares = useWorkspaceStore((state) => state.setUnitColumnShares);
+  // The `<col>` elements a drag writes to directly, and the table it measures a share against.
+  const colRefs = useRef<Partial<Record<UnitColumn, HTMLTableColElement | null>>>({});
+  const tableRef = useRef<HTMLTableElement | null>(null);
   const interfaceSize = useSettingsStore((state) => state.interfaceSize);
   const rowHeight = rowHeightAt(interfaceSize);
   const [filter, setFilter] = useState("");
@@ -378,18 +363,30 @@ export function UnitTableDock({
             //
             // Separated borders, because a sticky header loses its rule under border-collapse in
             // Chrome: a collapsed border belongs to the table, so it does not travel with the cell.
+            ref={tableRef}
             className="w-full table-fixed border-separate border-spacing-0 tabular-nums"
             aria-rowcount={visible.length + 1}
           >
+            {/*
+              Percentages, never pixels: the table is `w-full table-fixed` inside a scroller that
+              hides horizontal overflow, so a pixel total larger than the box lays the rightmost
+              columns out past the right edge with nothing to scroll them back (ah-1owr.2).
+            */}
             <colgroup>
               {UNIT_COLUMNS.map((column) => (
-                <col key={column} className={COLUMN_WIDTHS[column]} />
+                <col
+                  key={column}
+                  ref={(element) => {
+                    colRefs.current[column] = element;
+                  }}
+                  style={columnWidthStyle(column, columnShares)}
+                />
               ))}
             </colgroup>
             <thead ref={setHead}>
               {/* Indexed like the rows below it: if some rows carry a position, all of them must. */}
               <tr aria-rowindex={1} className="text-pane-sm uppercase tracking-[0.06em] text-ink-soft">
-                {UNIT_COLUMNS.map((column) => (
+                {UNIT_COLUMNS.map((column, index) => (
                   <ColumnHeaderCell
                     key={column}
                     column={column}
@@ -397,6 +394,22 @@ export function UnitTableDock({
                     onSort={sortByColumn}
                     onToggleGroupOwn={() =>
                       setSort((current) => ({ ...current, groupOwnFirst: !current.groupOwnFirst }))
+                    }
+                    // The last column has no boundary to its right, so it carries no handle - and
+                    // neither does `own`, whose 24px is narrower than the grip's own hit area:
+                    // a handle there would sit on top of the group-own-units toggle and swallow
+                    // its clicks. It is a fixed marker column, not one anybody resizes.
+                    splitter={
+                      column !== "own" && index < UNIT_COLUMNS.length - 1 ? (
+                        <ColumnSplitter
+                          left={column}
+                          right={UNIT_COLUMNS[index + 1]}
+                          columns={colRefs}
+                          table={tableRef}
+                          shares={columnShares}
+                          onCommit={setColumnShares}
+                        />
+                      ) : null
                     }
                   />
                 ))}
@@ -458,16 +471,19 @@ function ColumnHeaderCell({
   column,
   sort,
   onSort,
-  onToggleGroupOwn
+  onToggleGroupOwn,
+  splitter
 }: {
   column: UnitColumn;
   sort: SortState;
   onSort: (column: SortColumn) => void;
   onToggleGroupOwn: () => void;
+  /** The resize handle for this column's boundary with the next, or null for the last column. */
+  splitter: ReactNode;
 }) {
   if (column === "own") {
     return (
-      <Th>
+      <Th splitter={splitter}>
         <button
           type="button"
           onClick={onToggleGroupOwn}
@@ -489,20 +505,26 @@ function ColumnHeaderCell({
         column={column as SortColumn}
         sort={sort}
         onSort={onSort}
+        splitter={splitter}
       />
     );
   }
   // Skills and Items are comma-joined summaries; ordering them alphabetically would sort on the
   // first skill that happened to be listed, so neither carries a sort - just a label.
-  return <Th>{COLUMN_LABELS[column] ?? column}</Th>;
+  return <Th splitter={splitter}>{COLUMN_LABELS[column] ?? column}</Th>;
 }
 
-function Th({ children }: { children?: ReactNode }) {
+function Th({ children, splitter }: { children?: ReactNode; splitter?: ReactNode }) {
   return (
     // The background is opaque and sits on the cells rather than the row: the panel behind is
     // translucent over the map, and a see-through header would show the rows sliding under it.
-    <th className="sticky top-0 z-10 border-b border-edge bg-panel px-2 py-1 text-left font-medium">
+    //
+    // `relative` so the resize handle can be absolutely positioned over the boundary without
+    // taking part in the cell's layout - a handle in the flow would change the header's height,
+    // which the row-height arithmetic assumes is fixed.
+    <th className="relative sticky top-0 z-10 border-b border-edge bg-panel px-2 py-1 text-left font-medium">
       {children}
+      {splitter}
     </th>
   );
 }
@@ -511,18 +533,20 @@ function SortableTh({
   label,
   column,
   sort,
-  onSort
+  onSort,
+  splitter
 }: {
   label: string;
   column: SortColumn;
   sort: SortState;
   onSort: (column: SortColumn) => void;
+  splitter?: ReactNode;
 }) {
   const active = sort.column === column;
   return (
     <th
       aria-sort={active ? (sort.direction === "asc" ? "ascending" : "descending") : "none"}
-      className="sticky top-0 z-10 border-b border-edge bg-panel px-2 py-1 text-left font-medium"
+      className="relative sticky top-0 z-10 border-b border-edge bg-panel px-2 py-1 text-left font-medium"
     >
       <button
         type="button"
@@ -536,6 +560,7 @@ function SortableTh({
           {active ? (sort.direction === "asc" ? "▲" : "▼") : "↕"}
         </span>
       </button>
+      {splitter}
     </th>
   );
 }

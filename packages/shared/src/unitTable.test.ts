@@ -7,7 +7,15 @@ import {
   rowHeightAt,
   sortUnits,
   windowRange,
-  type SortState
+  COLUMN_MIN_PX,
+  DEFAULT_COLUMN_SHARES,
+  UNIT_COLUMNS,
+  columnSharesFromStorage,
+  columnWidthStyle,
+  dragColumnShare,
+  shareOf,
+  type SortState,
+  type UnitColumn
 } from "./unitTable";
 
 /**
@@ -347,5 +355,121 @@ describe("sorts by the long order, ignoring case and a leading @", () => {
         sortUnits(units, { ...DEFAULT_SORT, column: "longOrder", direction: "desc" }, [], longOrders)
       ).at(-1)
     ).toBe("4");
+  });
+});
+
+/**
+ * The column width model - shares of the table rather than pixels, which is what makes it
+ * arithmetically impossible for a column to be pushed off the right edge (ah-1owr.2).
+ */
+describe("column shares", () => {
+  it("the default shares sum to exactly one", () => {
+    const total = UNIT_COLUMNS.reduce((sum, column) => sum + DEFAULT_COLUMN_SHARES[column], 0);
+    expect(total).toBeCloseTo(1, 12);
+  });
+
+  it("gives every column a share, and reads a stored one in preference to the default", () => {
+    for (const column of UNIT_COLUMNS) {
+      expect(shareOf(column, null)).toBe(DEFAULT_COLUMN_SHARES[column]);
+    }
+    expect(shareOf("name", { name: 0.5 })).toBe(0.5);
+    expect(shareOf("faction", { name: 0.5 })).toBe(DEFAULT_COLUMN_SHARES.faction);
+  });
+
+  it("styles a column as a percentage, never as a pixel", () => {
+    expect(columnWidthStyle("name", { name: 0.25 })).toEqual({ width: "25%" });
+    expect(columnWidthStyle("name", null).width).toMatch(/%$/);
+  });
+});
+
+describe("dragColumnShare", () => {
+  it("a drag moves share from one column to its neighbour and never changes the total", () => {
+    for (const delta of [0, 0.01, -0.01, 0.2, -0.2, 10, -10, 0.0001]) {
+      const result = dragColumnShare(0.3, 0.2, delta, 0.02);
+      expect(result.left + result.right).toBeCloseTo(0.5, 12);
+      expect(result.left).toBeGreaterThanOrEqual(0.02);
+      expect(result.right).toBeGreaterThanOrEqual(0.02);
+    }
+  });
+
+  it("grows the left column by exactly what the right one gives up", () => {
+    const result = dragColumnShare(0.3, 0.2, 0.05, 0.02);
+    expect(result.left).toBeCloseTo(0.35, 12);
+    expect(result.right).toBeCloseTo(0.15, 12);
+    expect(result.atLimit).toBe(false);
+  });
+
+  it("reports atLimit exactly when the drag was clamped", () => {
+    expect(dragColumnShare(0.3, 0.2, 0.19, 0.02).atLimit).toBe(true);
+    expect(dragColumnShare(0.3, 0.2, 0.17, 0.02).atLimit).toBe(false);
+  });
+
+  it("halves the pair when even the floor cannot be honoured by both", () => {
+    const result = dragColumnShare(0.01, 0.01, 5, 0.02);
+    expect(result.left).toBeCloseTo(0.01, 12);
+    expect(result.right).toBeCloseTo(0.01, 12);
+  });
+
+  it("keeps the whole table summing to one across a long sequence of drags", () => {
+    // Seeded, so a failure is reproducible: this is the defect of PR #421 stated as a test.
+    let seed = 20260819;
+    const random = () => {
+      seed = (seed * 1103515245 + 12345) % 2147483648;
+      return seed / 2147483648;
+    };
+    const shares: Record<UnitColumn, number> = { ...DEFAULT_COLUMN_SHARES };
+    for (let step = 0; step < 50; step += 1) {
+      const index = Math.floor(random() * (UNIT_COLUMNS.length - 1));
+      const left = UNIT_COLUMNS[index];
+      const right = UNIT_COLUMNS[index + 1];
+      const result = dragColumnShare(shares[left], shares[right], random() * 0.6 - 0.3, 0.01);
+      shares[left] = result.left;
+      shares[right] = result.right;
+      const total = UNIT_COLUMNS.reduce((sum, column) => sum + shares[column], 0);
+      expect(total).toBeCloseTo(1, 10);
+    }
+  });
+});
+
+describe("columnSharesFromStorage", () => {
+  const sum = (shares: Partial<Record<UnitColumn, number>>) =>
+    UNIT_COLUMNS.reduce((total, column) => total + (shares[column] ?? 0), 0);
+
+  it("refuses anything that is not a record", () => {
+    expect(columnSharesFromStorage(null)).toEqual({});
+    expect(columnSharesFromStorage("nonsense")).toEqual({});
+    expect(columnSharesFromStorage(7)).toEqual({});
+  });
+
+  it("drops a column this build no longer has and renormalises the rest", () => {
+    const kept = columnSharesFromStorage({ ...DEFAULT_COLUMN_SHARES, retired: 0.4 });
+    expect(kept).not.toHaveProperty("retired");
+    expect(sum(kept)).toBeCloseTo(1, 12);
+  });
+
+  it("drops a value that is not a usable share, and still returns a whole table", () => {
+    const kept = columnSharesFromStorage({
+      ...DEFAULT_COLUMN_SHARES,
+      name: -0.2,
+      faction: Number.NaN,
+      men: 1.5
+    });
+    expect(sum(kept)).toBeCloseTo(1, 12);
+    expect(kept.name).toBe(DEFAULT_COLUMN_SHARES.name / sum(DEFAULT_COLUMN_SHARES));
+  });
+
+  it("renormalises a record that does not sum to one", () => {
+    for (const scale of [0.6, 1.4]) {
+      const scaled = Object.fromEntries(
+        UNIT_COLUMNS.map((column) => [column, DEFAULT_COLUMN_SHARES[column] * scale])
+      );
+      const kept = columnSharesFromStorage(scaled);
+      expect(sum(kept)).toBeCloseTo(1, 12);
+      expect(kept.name).toBeCloseTo(DEFAULT_COLUMN_SHARES.name, 12);
+    }
+  });
+
+  it("has a floor expressed in pixels, for the splitter to convert against a live table", () => {
+    expect(COLUMN_MIN_PX).toBeGreaterThan(0);
   });
 });

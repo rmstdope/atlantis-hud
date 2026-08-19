@@ -2409,6 +2409,76 @@ test("a merged hex's men are counted rather than guessed", async ({ page }) => {
   expect(restored.filter((cell) => cell.startsWith("~"))).toEqual([]);
 });
 
+/**
+ * The units table's resizable columns, and the bound that is the whole point of them (ah-1owr.2).
+ *
+ * PR #421 sized the columns in pixels; the table is `w-full table-fixed` inside a scroller that
+ * hides horizontal overflow, so widening a rail past the point where the pixel total no longer fit
+ * laid the rightmost columns out past the right edge, where nothing scrolled them back. Widths are
+ * shares now, so the columns always add up to exactly the table - which is what this pins.
+ */
+test("column widths are dragged, survive a reload, and can never push a column off the edge", async ({
+  page
+}) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+
+  const table = page.locator("[data-testid='panel-units'] table");
+  const nameHeader = page.getByRole("columnheader", { name: /Unit/ }).first();
+  const handle = page.getByTestId("column-splitter-name-faction");
+  const widthOf = async (nth: number) =>
+    (await page.locator(`[data-testid^='unit-row-'] td:nth-child(${nth})`).first().boundingBox())
+      ?.width ?? 0;
+
+  await expect(nameHeader).toBeVisible();
+  const tableWidthBefore = (await table.boundingBox())?.width ?? 0;
+  const nameBefore = await widthOf(3);
+  const factionBefore = await widthOf(4);
+
+  // Drag the Unit/Faction boundary to the right: Unit grows by exactly what Faction gives up.
+  const grip = await handle.boundingBox();
+  await page.mouse.move(grip!.x + grip!.width / 2, grip!.y + grip!.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(grip!.x + grip!.width / 2 + 60, grip!.y + grip!.height / 2, { steps: 6 });
+  await page.mouse.up();
+
+  const nameAfter = await widthOf(3);
+  const factionAfter = await widthOf(4);
+  expect(nameAfter).toBeGreaterThan(nameBefore + 20);
+  expect(factionAfter).toBeLessThan(factionBefore - 20);
+  // The table itself did not move, which is the invariant the shares model exists to hold.
+  expect((await table.boundingBox())?.width ?? 0).toBeCloseTo(tableWidthBefore, 0);
+
+  // Now what lost a column on PR #421: make the table far narrower than the pixel total the old
+  // model stored. Every column must still be on screen, narrower but present.
+  const viewport = page.viewportSize()!;
+  await page.setViewportSize({ width: 900, height: viewport.height });
+  await expect
+    .poll(async () => (await table.boundingBox())?.width ?? 0)
+    .toBeLessThan(tableWidthBefore - 100);
+  const lastCell = page.locator("[data-testid^='unit-row-'] td:last-child").first();
+  const lastBox = await lastCell.boundingBox();
+  const tableBox = await table.boundingBox();
+  expect(lastBox!.x + lastBox!.width).toBeLessThanOrEqual(tableBox!.x + tableBox!.width + 1);
+  expect(lastBox!.width).toBeGreaterThan(0);
+
+  await page.setViewportSize(viewport);
+
+  // The shape survives a reload...
+  await page.reload();
+  await expect(page.getByTestId("import-status")).toContainText("restored");
+  await selectHex(page, "1:7,53");
+  const ratioAfterReload = (await widthOf(3)) / ((await table.boundingBox())?.width ?? 1);
+  expect(ratioAfterReload).toBeGreaterThan(nameAfter / tableWidthBefore - 0.02);
+
+  // ...and Settings puts it back.
+  await page.getByTestId("settings-indicator").click();
+  await page.getByTestId("settings-reset-column-widths").click();
+  await page.keyboard.press("Escape");
+  const nameReset = (await widthOf(3)) / ((await table.boundingBox())?.width ?? 1);
+  expect(nameReset).toBeLessThan(ratioAfterReload - 0.01);
+});
+
 /** The ocean hex the report gives three hundred and eleven units. */
 const CROWDED_HEX = "1:26,52";
 
