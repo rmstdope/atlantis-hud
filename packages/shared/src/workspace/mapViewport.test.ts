@@ -304,9 +304,36 @@ describe("bringing a hex into view", () => {
     );
     const again = centreOn(middle, centred, 1000, 800, insets);
 
-    expect(again.tx).toBeCloseTo(centred.tx);
-    expect(again.ty).toBeCloseTo(centred.ty);
+    // Precision 10 rather than vitest's default 2, so per-call drift cannot hide under the
+    // tolerance. Not `toBe`: `ROW_PITCH` is `HEX_RADIUS * sqrt(3) / 2`, so the round trip through a
+    // coordinate is exact only up to floating point, and demanding bit-identity here would
+    // reproduce the exact-equality mistake this bead exists to remove one layer down.
+    expect(again.tx).toBeCloseTo(centred.tx, 10);
+    expect(again.ty).toBeCloseTo(centred.ty, 10);
     expect(again.step).toBe(centred.step);
+  });
+
+  it("does not drift when the same centred hex is asked for over and over", () => {
+    // The tolerance above is per call, so a small consistent error would still accumulate over
+    // repeated centrings - which is what a player holding down the gesture would do. Twenty
+    // rounds, measured against the first, is what rules that out.
+    const insets = { left: 300, right: 330, top: 48, bottom: 520 };
+    const first = centreOn(at(7, 53), ORIGIN, 1000, 800, insets);
+    let view = first;
+
+    for (let round = 0; round < 20; round += 1) {
+      const middle = coordinateAt(
+        insets.left + (1000 - insets.left - insets.right) / 2,
+        insets.top + (800 - insets.top - insets.bottom) / 2,
+        view,
+        1
+      );
+      view = centreOn(middle, view, 1000, 800, insets);
+    }
+
+    expect(view.tx).toBeCloseTo(first.tx, 10);
+    expect(view.ty).toBeCloseTo(first.ty, 10);
+    expect(view.step).toBe(first.step);
   });
 });
 
