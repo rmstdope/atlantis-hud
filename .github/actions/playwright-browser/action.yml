@@ -1,0 +1,26 @@
+name: Playwright browser
+description: >
+  Chromium and the system libraries it links against, cached where cacheable.
+  One copy of a trio that was written out four times; see ah-3c80.
+runs:
+  using: composite
+  steps:
+    - name: Cache the Playwright browser
+      id: playwright-cache
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/ms-playwright
+        key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+
+    # The browser itself caches; the system libraries it links against do not, so those are
+    # installed either way - which is why every run reaches apt, and why the callers carry a
+    # `timeout-minutes` (ah-3c80).
+    - name: Install Playwright Chromium
+      if: steps.playwright-cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: pnpm exec playwright install --with-deps chromium
+
+    - name: Install Playwright system dependencies
+      if: steps.playwright-cache.outputs.cache-hit == 'true'
+      shell: bash
+      run: pnpm exec playwright install-deps chromium
