@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reordering columns — showing the drag</title>
+<style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1400px; margin:0 auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; }
+  h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:94ch; margin-top:10px; font-size:14px; }
+  header p + p { margin-top:8px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; }
+  header code { color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:36px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:94ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:18px; }
+  .card h2 { font-size:16px; margin-bottom:5px; }
+  .card h2 em { color:var(--brass); font-style:normal; font-size:11.5px; letter-spacing:1.5px; margin-right:8px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; margin-bottom:11px; max-width:94ch; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; padding:14px 12px; position:relative; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:11px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"− "; color:var(--danger); }
+  .notes li.n::before { content:"· "; color:var(--ink-dim); }
+  .cards2 { display:grid; grid-template-columns:repeat(2,1fr); gap:18px; align-items:start; }
+  .lbl { font-size:11px; color:var(--ink-dim); margin-bottom:6px; }
+  .lbl b { color:var(--ink-soft); font-weight:normal; }
+
+  table.units { width:100%; table-layout:fixed; border-collapse:separate; border-spacing:0;
+                font:12px/1.4 'Helvetica Neue',Arial,sans-serif; font-variant-numeric:tabular-nums; }
+  table.units th { text-align:left; font-size:10px; text-transform:uppercase; letter-spacing:.06em; position:relative;
+                   color:var(--ink-soft); font-weight:400; padding:3px 7px; border-bottom:1px solid var(--edge); }
+  table.units td { padding:2px 7px; border-bottom:1px solid var(--edge-soft); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .own { color:var(--ok); } .uid { color:var(--select); }
+  .grip { display:inline-block; width:6px; height:11px; margin-right:5px; vertical-align:-1px;
+          background:repeating-linear-gradient(to bottom, var(--edge) 0 1px, transparent 1px 3px); }
+  .grip.hot { background:repeating-linear-gradient(to bottom, var(--brass) 0 1px, transparent 1px 3px); }
+  .rgrip { position:absolute; top:50%; right:-2px; transform:translateY(-50%); width:2px; height:12px; background:var(--edge); border-radius:2px; }
+  .dragging { color:var(--brass-bright); }
+  .ghostcol td, .ghostcol th { opacity:.32; }
+  .dropline { position:absolute; top:0; bottom:0; width:2px; background:var(--brass); box-shadow:0 0 6px rgba(217,164,65,.7); }
+  .floater { position:absolute; background:var(--raised); border:1px solid var(--brass); border-radius:4px;
+             padding:3px 9px; font:10px/1.4 'Helvetica Neue',Arial,sans-serif; text-transform:uppercase;
+             letter-spacing:.06em; color:var(--brass-bright); box-shadow:0 4px 14px rgba(0,0,0,.6); }
+  .movedcol th, .movedcol td { background:rgba(217,164,65,.10); }
+  .set { background:var(--raised); border:1px solid var(--edge); border-radius:5px; padding:9px 11px;
+         font:13px/1.5 'Helvetica Neue',Arial,sans-serif; }
+  .setrow { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:3px 0; }
+  .btn { background:var(--panel); border:1px solid var(--edge); color:var(--ink-soft); border-radius:4px;
+         padding:2px 8px; font-size:12px; }
+  .btns { display:flex; gap:6px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Reordering columns — <span>showing the drag while it happens</span></h1>
+  <p>A grip in each header lets a column be dragged to a new position. PR #421 built this and it worked, with
+  one flaw the review caught: <b>nothing moved until you let go.</b> The handle recomputed the order on every
+  pointer move and only committed on release, so you were dragging blind.</p>
+  <p>The arithmetic is already right — <code>dragColumnOrder</code> works out the new order on every move, and
+  swaps when you have dragged past the whole of a neighbour. What is missing is showing you the answer it has
+  already computed. Three ways to show it, below.</p>
+  <p>The example throughout: dragging <b>Long order</b> leftwards, far enough to have crossed Items and
+  Skills. The ownership marker <code>*</code> never moves.</p>
+</header>
+
+<main>
+
+<h3 class="sec">1 · How the drag shows itself</h3>
+
+<div class="card">
+  <h2><em>A</em>The table reorders live</h2>
+  <div class="concept">The columns actually move as you drag. What you see mid-gesture is exactly what you get
+  on release; letting go changes nothing on screen, and Escape puts it back.</div>
+  <div class="stage">
+    <div class="lbl">Mid-drag: <b>Long order has already moved</b>, and the header follows the pointer</div>
+    <table class="units">
+      <colgroup><col style="width:3%"><col style="width:7%"><col style="width:20%"><col style="width:16%"><col style="width:20%"><col style="width:19%"><col style="width:15%"></colgroup>
+      <thead><tr>
+        <th>*</th>
+        <th><span class="grip"></span>Id<span class="rgrip"></span></th>
+        <th><span class="grip"></span>Unit<span class="rgrip"></span></th>
+        <th class="dragging"><span class="grip hot"></span>Long order<span class="rgrip"></span></th>
+        <th><span class="grip"></span>Skills<span class="rgrip"></span></th>
+        <th><span class="grip"></span>Items<span class="rgrip"></span></th>
+        <th><span class="grip"></span>Faction</th>
+      </tr></thead>
+      <tbody>
+        <tr><td class="own">*</td><td class="uid">13797</td><td>WoodsmenY</td><td class="dragging">produce yew</td><td>lumb 5</td><td>2 welf, 14 yew</td><td>My Faction (1)</td></tr>
+        <tr><td class="own">*</td><td class="uid">10116</td><td>Taxers</td><td class="dragging">@tax</td><td>comb 1</td><td>19 helf</td><td>My Faction (1)</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <ul class="notes">
+    <li>No guessing — the mid-drag picture is the result, not a promise about it</li>
+    <li>Matches the resize gesture, which already writes live; the two feel like one table</li>
+    <li>Nothing new to draw: the machinery already computes this order on every move</li>
+    <li class="con">Columns jump under the pointer as thresholds are crossed, which can feel busy</li>
+    <li class="con">The whole table repaints on each swap, not just the header</li>
+  </ul>
+</div>
+
+<div class="cards2">
+  <div class="card">
+    <h2><em>B</em>A drop line between headers</h2>
+    <div class="concept">The table stays put; a brass line marks where the column will land, and the column
+    being dragged dims.</div>
+    <div class="stage">
+      <div class="lbl">Mid-drag: the line shows the destination</div>
+      <div style="position:relative">
+        <div class="dropline" style="left:29.5%"></div>
+        <table class="units">
+          <colgroup><col style="width:3%"><col style="width:7%"><col style="width:20%"><col style="width:16%"><col style="width:19%"><col style="width:20%"><col style="width:15%"></colgroup>
+          <thead><tr>
+            <th>*</th><th><span class="grip"></span>Id</th><th><span class="grip"></span>Unit</th>
+            <th><span class="grip"></span>Faction</th><th><span class="grip"></span>Skills</th>
+            <th><span class="grip"></span>Items</th>
+            <th class="dragging" style="opacity:.4"><span class="grip hot"></span>Long order</th>
+          </tr></thead>
+          <tbody>
+            <tr><td class="own">*</td><td class="uid">13797</td><td>WoodsmenY</td><td>My Faction (1)</td><td>lumb 5</td><td>2 welf</td><td style="opacity:.4">produce yew</td></tr>
+            <tr><td class="own">*</td><td class="uid">10116</td><td>Taxers</td><td>My Faction (1)</td><td>comb 1</td><td>19 helf</td><td style="opacity:.4">@tax</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <ul class="notes">
+      <li>Calm — nothing moves until you commit</li>
+      <li>The conventional idiom; people know what a drop line means</li>
+      <li class="con">You are told where it goes, not shown what you get</li>
+      <li class="con">A new thing to draw and position, over a table that is already `table-fixed`</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2><em>C</em>A chip follows the pointer, plus a drop line</h2>
+    <div class="concept">The header being dragged lifts off as a small floating label under the cursor, with
+    the drop line beneath it.</div>
+    <div class="stage">
+      <div class="lbl">Mid-drag: the column is "in hand"</div>
+      <div style="position:relative">
+        <div class="dropline" style="left:29.5%"></div>
+        <div class="floater" style="left:24%;top:-4px">Long order</div>
+        <table class="units">
+          <colgroup><col style="width:3%"><col style="width:7%"><col style="width:20%"><col style="width:16%"><col style="width:19%"><col style="width:20%"><col style="width:15%"></colgroup>
+          <thead><tr>
+            <th>*</th><th><span class="grip"></span>Id</th><th><span class="grip"></span>Unit</th>
+            <th><span class="grip"></span>Faction</th><th><span class="grip"></span>Skills</th>
+            <th><span class="grip"></span>Items</th>
+            <th style="opacity:.25"><span class="grip"></span>Long order</th>
+          </tr></thead>
+          <tbody>
+            <tr><td class="own">*</td><td class="uid">13797</td><td>WoodsmenY</td><td>My Faction (1)</td><td>lumb 5</td><td>2 welf</td><td style="opacity:.25">produce yew</td></tr>
+            <tr><td class="own">*</td><td class="uid">10116</td><td>Taxers</td><td>My Faction (1)</td><td>comb 1</td><td>19 helf</td><td style="opacity:.25">@tax</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <ul class="notes">
+      <li>Unmistakable that a drag is in progress and what is being dragged</li>
+      <li class="con">Two new things to draw, positioned over a live table</li>
+      <li class="con">The most work of the three, for feedback B already gives</li>
+    </ul>
+  </div>
+</div>
+
+<h3 class="sec">2 · Where the grips sit</h3>
+<p>Two gestures now live in one header cell. They must not have to guess what a press meant.</p>
+<div class="card">
+  <div class="stage">
+    <table class="units">
+      <colgroup><col style="width:4%"><col style="width:10%"><col style="width:28%"><col style="width:26%"><col style="width:32%"></colgroup>
+      <thead><tr>
+        <th>*</th>
+        <th><span class="grip"></span>Id<span class="rgrip"></span></th>
+        <th><span class="grip"></span>Unit<span class="rgrip"></span></th>
+        <th><span class="grip"></span>Men<span class="rgrip"></span></th>
+        <th><span class="grip"></span>Long order</th>
+      </tr></thead>
+      <tbody><tr><td class="own">*</td><td class="uid">13797</td><td>WoodsmenY</td><td>2</td><td>produce yew</td></tr></tbody>
+    </table>
+  </div>
+  <ul class="notes">
+    <li class="n">The reorder grip is the dotted handle at the <b>left</b> of each label; the resize handle is the bar on the <b>right</b> edge, on the boundary it moves</li>
+    <li class="n">The <code>*</code> column has neither: it never moves, and its right boundary is the Id column's to resize</li>
+    <li class="n">The last column has a reorder grip but no resize handle — there is no boundary to its right</li>
+  </ul>
+</div>
+
+<h3 class="sec">3 · The reset, now that there are two things to reset</h3>
+<p><code>ah-1owr.2</code> puts "Reset widths" in Settings, beside Interface size. Order is a separate
+preference — resizing never implies reordering — so there are two things a player might want back.</p>
+<div class="cards2">
+  <div class="card">
+    <h2><em>i</em>Two buttons on one row</h2>
+    <div class="concept">Each preference resets on its own, which matches how they are stored.</div>
+    <div class="stage">
+      <div class="set">
+        <div class="setrow"><span>Interface size</span><span class="btn">Medium ▾</span></div>
+        <div class="setrow"><span>Units table columns</span><span class="btns"><span class="btn">Reset widths</span><span class="btn">Reset order</span></span></div>
+      </div>
+    </div>
+    <ul class="notes">
+      <li>Undo exactly the mess you made, not the other one too</li>
+      <li class="con">Two buttons where most people want one</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h2><em>ii</em>One button that resets both</h2>
+    <div class="concept">"Reset columns" puts widths and order back together.</div>
+    <div class="stage">
+      <div class="set">
+        <div class="setrow"><span>Interface size</span><span class="btn">Medium ▾</span></div>
+        <div class="setrow"><span>Units table columns</span><span class="btn">Reset columns</span></div>
+      </div>
+    </div>
+    <ul class="notes">
+      <li>One control, one meaning: put the table back how it shipped</li>
+      <li>Replaces the row <code>ah-1owr.2</code> adds rather than growing it</li>
+      <li class="con">Throws away a careful set of widths when all you wanted was the order back</li>
+    </ul>
+  </div>
+</div>
+
+</main>
+
+<footer style="margin-top:34px; color:var(--ink-dim); font-size:12.5px;">
+  Mockup for bead <span class="mono">ah-1owr.3</span>. Column widths are shares, as
+  <span class="mono">ah-1owr.2</span> specifies.
+</footer>
+</body>
+</html>
