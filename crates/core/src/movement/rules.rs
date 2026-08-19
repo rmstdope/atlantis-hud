@@ -378,6 +378,14 @@ pub struct BuildingEntry {
     /// reads.
     #[serde(default)]
     pub materials: Option<Vec<String>>,
+    /// The tag of the skill that builds it - `BUIL`, `MINI`. `None` for a structure no skill's
+    /// entry names, and for a ruleset cached before ah-bwly.1: the catalogue not saying, never
+    /// "no skill needed".
+    #[serde(default)]
+    pub build_skill: Option<String>,
+    /// The lowest level of `build_skill` that can build it. `None` exactly when `build_skill` is.
+    #[serde(default)]
+    pub build_level: Option<i64>,
     /// How many mages the building provides study facilities for. **Zero for a Tower**, which is
     /// the ruleset's own answer and not an oversight: a mage studying in one gets half a month.
     pub mages: i64,
@@ -750,6 +758,38 @@ mod tests {
     // Failing to recognise a name is a **warning** wherever it is asked, never an error: the
     // catalogue is scraped from the game being played and may be stale, absent, or simply missing
     // an entry, and none of that is grounds for telling a player their order is wrong.
+
+    #[test]
+    fn a_buildings_build_requirement_survives_a_round_trip() {
+        let ruleset = ruleset();
+        let mine = ruleset
+            .buildings
+            .get("MINE")
+            .expect("the committed ruleset names a Mine");
+
+        assert_eq!(mine.build_skill.as_deref(), Some("MINI"));
+        assert_eq!(mine.build_level, Some(3));
+
+        // A structure no skill's entry names states neither half - an absence, not a claim that
+        // anyone can build it.
+        let lair = ruleset
+            .buildings
+            .get("LAIR")
+            .expect("the committed ruleset names a Lair");
+        assert_eq!(lair.build_skill, None);
+        assert_eq!(lair.build_level, None);
+    }
+
+    #[test]
+    fn a_ruleset_cached_before_build_requirements_still_loads() {
+        // The case both `Option`s exist for: JSON written before ah-bwly.1 carries neither field.
+        let entry: BuildingEntry =
+            serde_json::from_str(r#"{"description":"This is a building.","mages":0,"cost":10}"#)
+                .expect("a building entry without a build requirement should still load");
+
+        assert_eq!(entry.build_skill, None);
+        assert_eq!(entry.build_level, None);
+    }
 
     #[test]
     fn a_tag_is_recognised_whatever_its_case() {

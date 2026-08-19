@@ -132,4 +132,35 @@ describe("the committed ruleset", () => {
     expect(COMMITTED.buildings.LAIR.cost).toBeUndefined();
     expect(COMMITTED.buildings.LAIR.materials).toBeUndefined();
   });
+
+  /**
+   * ah-bwly.1: what skill builds each structure, and at what level. Both come from the opening of
+   * the skill's own entry on the data page, which states this for strictly more structures than
+   * the rules page's two tables do.
+   */
+  it("names the skill and level for every structure a skill can build", () => {
+    const withRequirement = Object.entries(COMMITTED.buildings).filter(
+      ([, building]) => building.buildSkill !== undefined
+    );
+
+    expect(withRequirement).toHaveLength(36);
+
+    for (const [kind, building] of withRequirement) {
+      const skill = COMMITTED.skills[building.buildSkill as string];
+      expect(skill, `${kind} names an unknown skill ${building.buildSkill}`).toBeDefined();
+      expect(building.buildLevel).toBeGreaterThanOrEqual(1);
+      expect(building.buildLevel).toBeLessThanOrEqual(skill.maxLevel);
+    }
+
+    expect(COMMITTED.buildings.MINE).toMatchObject({ buildSkill: "MINI", buildLevel: 3 });
+    expect(COMMITTED.buildings.TOWER).toMatchObject({ buildSkill: "BUIL", buildLevel: 1 });
+    expect(COMMITTED.buildings.CITADEL).toMatchObject({ buildSkill: "BUIL", buildLevel: 3 });
+
+    // Never one half without the other.
+    expect(
+      Object.entries(COMMITTED.buildings).filter(
+        ([, b]) => (b.buildSkill === undefined) !== (b.buildLevel === undefined)
+      )
+    ).toEqual([]);
+  });
 });

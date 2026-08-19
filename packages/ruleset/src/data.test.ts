@@ -965,7 +965,9 @@ describe("parseBuildingReference", () => {
       size: 10,
       cost: 10,
       materials: ["stone"],
-      mages: 0
+      mages: 0,
+      buildSkill: "BUIL",
+      buildLevel: 1
     });
   });
 });
@@ -1070,5 +1072,40 @@ describe("entry descriptions", () => {
       requires: []
     });
     expect(skills.MINI.produces.map((entry) => entry.tag)).toEqual(["IRON", "MITH", "ADMT"]);
+  });
+});
+
+/**
+ * What builds a structure, and at what level. Both facts live in the opening of the *skill's* own
+ * entry - `mining [MINI] 3: ...` - which is the paragraph pass two is already holding when it
+ * reads the `may BUILD` sentence out of it.
+ */
+describe("parseBuildingReference build requirements", () => {
+  it("says which skill builds a structure, and at what level", () => {
+    const buildings = parseBuildingReference(DATA_HTML);
+
+    // "mining [MINI] 3: ... A unit with this skill may BUILD a Mine from 10 stone [STON] ..."
+    expect(buildings.MINE).toMatchObject({ buildSkill: "MINI", buildLevel: 3 });
+    // "building [BUIL] 1: ... may BUILD a Tower ..."
+    expect(buildings.TOWER).toMatchObject({ buildSkill: "BUIL", buildLevel: 1 });
+    // "building [BUIL] 3: ... may BUILD a Citadel ..."
+    expect(buildings.CITADEL).toMatchObject({ buildSkill: "BUIL", buildLevel: 3 });
+  });
+
+  it("leaves the requirement absent for a structure no skill builds", () => {
+    const lair = parseBuildingReference(DATA_HTML).LAIR;
+
+    // The catalogue does not say - which is not the same claim as "no skill needed".
+    expect(lair.buildSkill).toBeUndefined();
+    expect(lair.buildLevel).toBeUndefined();
+  });
+
+  it("never states one half of the requirement without the other", () => {
+    const buildings = parseBuildingReference(DATA_HTML);
+
+    const halfFilled = Object.entries(buildings).filter(
+      ([, entry]) => (entry.buildSkill === undefined) !== (entry.buildLevel === undefined)
+    );
+    expect(halfFilled).toEqual([]);
   });
 });
