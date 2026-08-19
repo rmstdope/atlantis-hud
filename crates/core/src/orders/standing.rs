@@ -152,16 +152,20 @@ mod tests {
     }
 
     #[test]
-    fn could_captain_differs_from_standing_after_for_enter_then_leave() {
-        // The unit ends the month back outside 4, and could still be the one that sailed it: the
-        // server reads the SAIL line before running the LEAVE.
-        let block = [Boarding::Enter("4"), Boarding::Leave];
-        assert_eq!(standing_after(None, boardings(&block)), Some("4"));
-        assert!(could_captain(None, "4", boardings(&block)));
-
+    fn could_captain_says_yes_where_standing_after_says_nothing() {
+        // The divergence that matters: a unit reported aboard 4 that writes LEAVE ends the month
+        // ashore, and could still be the one that sailed 4 - the server reads its SAIL line before
+        // running the LEAVE. Collapsing could_captain into `standing_after(..) == Some(id)` would
+        // strand every passenger aboard.
         let ashore = [Boarding::Leave];
         assert_eq!(standing_after(Some("4"), boardings(&ashore)), None);
         assert!(could_captain(Some("4"), "4", boardings(&ashore)));
+
+        // A unit that boards 4 and then writes LEAVE is aboard by both answers, since every LEAVE
+        // runs before any ENTER.
+        let block = [Boarding::Enter("4"), Boarding::Leave];
+        assert_eq!(standing_after(None, boardings(&block)), Some("4"));
+        assert!(could_captain(None, "4", boardings(&block)));
     }
 
     #[test]
