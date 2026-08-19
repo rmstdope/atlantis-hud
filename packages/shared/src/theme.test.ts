@@ -84,6 +84,14 @@ describe("theme palette", () => {
     "--color-gain"
   ];
 
+  /**
+   * Every token the application draws text in. The surface assertion below used to hold only the
+   * three `ink` tokens in light mode, and that gap is why five light accents sat below AA
+   * unnoticed - `brass` at 3.61:1, carrying every panel title, every section heading and every
+   * order warning in the app (ah-j1xd).
+   */
+  const TEXT_TOKENS = [...INK_TOKENS, ...ACCENT_TOKENS];
+
   function tokenValues(block: string): Map<string, string> {
     return new Map(
       [...block.matchAll(/(--color-[\w-]+)\s*:\s*(#[0-9a-fA-F]{6})/g)].map((match) => [
@@ -111,11 +119,11 @@ describe("theme palette", () => {
   it.each([
     ["dark", /@theme\b/],
     ["light", /:root\[data-theme="light"\]/]
-  ])("keeps %s grey text readable on every surface it is written on", (_theme, opener) => {
+  ])("keeps %s text readable on every surface it is written on", (_theme, opener) => {
     const values = tokenValues(extractBlock(css, opener));
 
     const unreadable: string[] = [];
-    for (const ink of INK_TOKENS) {
+    for (const ink of TEXT_TOKENS) {
       for (const surface of SURFACES) {
         const ratio = contrast(values.get(ink)!, values.get(surface)!);
         if (ratio < AA_SMALL_TEXT) {

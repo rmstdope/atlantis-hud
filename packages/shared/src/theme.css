@@ -159,29 +159,35 @@
 :root[data-theme="light"] {
   color-scheme: light;
 
+  /* The panel is lightened from #eae6da (ah-j1xd): light's three ink steps all have to clear AA
+     while staying visibly distinct, and on the old panel `ink-dim` had to darken past where
+     `ink-soft` sat, collapsing the hierarchy. Panel is still the darkest of the three light
+     surfaces, so the elevation cue is unchanged. */
   --color-ground: #f2efe8;
-  --color-panel: #eae6da;
+  --color-panel: #f0ece2;
   --color-panel-raised: #f7f4ec;
   --color-edge: #c9c2b0;
   --color-edge-soft: #d8d2c2;
 
   /* The same three steps, darkened rather than lightened; see the note in the dark palette. */
   --color-ink: #2a3038;
-  --color-ink-soft: #4f5866;
-  --color-ink-dim: #5e6673;
+  --color-ink-soft: #454d59;
+  --color-ink-dim: #4a5160;
 
-  --color-brass: #9a6f1d;
+  /* Each accent keeps its hue and is darkened the smallest amount that clears AA (4.5:1) on the
+     panel, the darkest light surface; before ah-j1xd all five sat between 3.61 and 4.29. */
+  --color-brass: #8a6317;
   --color-brass-bright: #7d5a15;
-  --color-select: #2470a8;
+  --color-select: #1f5f8f;
 
   /* Inverted pairing (navigator's choice): on light parchment a white ring washes out, so light
      mode gets a near-black ring over a pale casing instead. */
   --color-selection-ring: #1c2530;
   --color-selection-casing: #f5f8fc;
 
-  --color-ok: #2e7d54;
-  --color-warn: #9a6f1d;
-  --color-danger: #b04a4a;
+  --color-ok: #256b48;
+  --color-warn: #8a6317;
+  --color-danger: #9c4040;
 
   --color-terrain-ocean: #a9c5de;
   --color-terrain-plain: #d9d2a0;
