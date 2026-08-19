@@ -16,6 +16,9 @@ import {
 import { ROW_HEIGHT } from "../../packages/shared/src/unitTable";
 // Likewise the hover delay: the test waits a fraction of it, so a copy here could outlive a change.
 import { HOVER_DELAY_MS } from "../../packages/shared/src/unitTooltip";
+// The seam itself, not a copy: the header budget below is only worth anything if it fails for the
+// same arithmetic the orders drag actually uses (ah-csni).
+import { railHasRoomToDrag, railRemFor } from "../../packages/shared/src/workspace/panelLayout";
 
 /**
  * Walks the workspace on a real turn report, in whichever shell the project targets.
@@ -1445,6 +1448,54 @@ test("a folded panel shrinks to its title bar", async ({ page }) => {
   expect(strip.y).toBeCloseTo(open.y, 0);
 });
 
+
+/**
+ * The tallest the header may be at the pinned viewport, in pixels.
+ *
+ * Measured, not chosen: on 2026-08-19 the header rendered at 73px in both projects, at the pinned
+ * 1280x720 viewport with a 16px root font. The budget is ~125% of that - loose enough that an
+ * ordinary change does not trip it, tight enough that one more chip or a step up in the type scale
+ * does.
+ *
+ * Raising it is allowed and deliberate - a bead that genuinely needs a taller header changes this
+ * number in the same commit as the header change, which is the whole point of ah-csni: the cost
+ * lands on the change that caused it instead of on two unrelated drag tests a day later.
+ */
+const HEADER_BUDGET_PX = 91;
+
+test("the header fits its budget, so a taller one fails here and not somewhere else", async ({
+  page
+}) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+
+  const header = (await page.getByTestId("app-header").boundingBox())!;
+  const rootFontPx = await page.evaluate(() =>
+    parseFloat(getComputedStyle(document.documentElement).fontSize)
+  );
+  const viewportPx = page.viewportSize()!.height;
+
+  // The ceiling itself: a chip, a control moved in, or a step up in the type scale trips this.
+  expect(header.height).toBeLessThanOrEqual(HEADER_BUDGET_PX);
+
+  // And the part that earns its keep: the header has not eaten so much of the vertical budget that
+  // the orders editor's pin is already at its ceiling. Without this, that shows up as a *drag* test
+  // failing somewhere else entirely - four incidents in five days.
+  expect(railHasRoomToDrag(railRemFor(viewportPx, header.height, rootFontPx))).toBe(true);
+});
+
+/**
+ * A window with room for the orders/unit split to actually move.
+ *
+ * At the pinned viewport the editor's pin can already sit at its own ceiling once the header is
+ * full (ah-1uj, ah-csni), so a test *about the drag mechanism* needs headroom the default does not
+ * promise. Declaring it here is the point: these tests were the only ones that noticed, and they
+ * noticed by failing.
+ */
+async function withRoomToDrag(page: Page): Promise<void> {
+  await page.setViewportSize({ width: 1280, height: 900 });
+}
+
 /** Restores the default split, so later tests inherit the look they expect. */
 async function resetSplit(page: Page) {
   await page.getByTestId("panel-splitter").dblclick();
@@ -1457,7 +1508,7 @@ test("the unit/orders split drags at the grip and survives a reload", async ({ p
   // taller would then have nowhere to go, whatever the gesture. A taller window gives the split
   // room to move regardless of how many chips the header carries; this test is about the drag
   // mechanism, not about how little of it fits in the header's own default height.
-  await page.setViewportSize({ width: 1280, height: 900 });
+  await withRoomToDrag(page);
   await selectHex(page, "1:7,53");
   // Selecting a hex opens the panels; measuring "before" while that settles - slower or busier on
   // CI than locally - would pin a mid-animation size rather than the resting one.
@@ -1602,7 +1653,7 @@ test("folding the unit panel hides the grip and hands the column to the editor",
   // See "the unit/orders split drags..." above: at the default window height the editor's pin can
   // already sit at its own ceiling once enough advisory-check chips share the header with it, and
   // this test drags it taller twice over.
-  await page.setViewportSize({ width: 1280, height: 900 });
+  await withRoomToDrag(page);
   await selectHex(page, "1:7,53");
   // Selecting a hex opens the panels; measuring "before" while that settles - slower or busier on
   // CI than locally - would pin a mid-animation size rather than the resting one.

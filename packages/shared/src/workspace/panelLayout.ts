@@ -92,6 +92,39 @@ export function dragOrdersHeight(startRem: number, deltaRem: number, railRem: nu
 }
 
 /**
+ * How much vertical room the rail has once the header has taken its share, in rem.
+ *
+ * The missing half of `dragOrdersHeight`, which takes `railRem` as a given and never asks what set
+ * it (ah-csni). Because nothing computed it in one place, a taller header surfaced as a *drag* test
+ * failing - four incidents in five days, ~7 hours, each naming a feature that had not changed.
+ *
+ * Everything that spends the vertical budget enters here: the header's pixel height covers a new
+ * chip or a control moved into it, and `rootFontPx` covers a step up in the type scale.
+ */
+export function railRemFor(viewportPx: number, headerPx: number, rootFontPx: number): number {
+  if (!Number.isFinite(rootFontPx) || rootFontPx <= 0) {
+    return 0;
+  }
+  const leftoverPx = viewportPx - headerPx;
+  if (!Number.isFinite(leftoverPx) || leftoverPx <= 0) {
+    return 0;
+  }
+  return leftoverPx / rootFontPx;
+}
+
+/**
+ * Whether the rail still has room for the orders editor to be dragged at all.
+ *
+ * `dragOrdersHeight`'s own ceiling, asked as a question instead of discovered as a stuck gesture:
+ * false means the pin is already at its limit and any drag test is about to fail for a reason that
+ * has nothing to do with dragging. It reuses that function's constants rather than re-deriving the
+ * arithmetic, because a seam that can disagree with the thing it describes would still be believed.
+ */
+export function railHasRoomToDrag(railRem: number): boolean {
+  return railRem - UNIT_MIN_REM - RAIL_GAP_REM > 0;
+}
+
+/**
  * Inline style for the orders slot, or null while the default pin applies.
  *
  * The `maxHeight` is the clamp-to-fit on a short window: the unit panel keeps `UNIT_MIN_REM` plus
