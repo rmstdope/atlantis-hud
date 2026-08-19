@@ -5183,6 +5183,22 @@ mod tests {
         assert_eq!(finding.code, codes::MAGIC_STUDY_OUTSIDE_BUILDING);
     }
 
+    /// ah-3cj4.1 put every building the data page describes into the catalogue, so a Mine now
+    /// answers `Some(0)` where it once answered `None`. The warning must not move: the one caller
+    /// reads `is_some_and(|seats| seats >= 1)`, false either way.
+    #[test]
+    fn a_mage_studying_in_a_mine_is_still_warned() {
+        let finding = only(check(
+            vec![ReportRegion {
+                structures: vec![finished_of_kind("1", "Mine")],
+                ..region(vec![in_structure(mage(3), "1")])
+            }],
+            "unit 5\nSTUDY FORC\n",
+        ));
+
+        assert_eq!(finding.code, codes::MAGIC_STUDY_OUTSIDE_BUILDING);
+    }
+
     /// The navigator's decision (2026-08-17), and a deliberate exception to accept-on-doubt: an
     /// unfinished building shelters nobody, so the study really is halved.
     #[test]
