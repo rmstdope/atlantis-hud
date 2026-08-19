@@ -4,6 +4,16 @@ import { smokePorts } from "./scripts/smokePorts";
 const { web, desktop } = smokePorts();
 
 /**
+ * The window every smoke test runs in, pinned rather than inherited.
+ *
+ * ~35 of the suite's tests spend from this window's leftover vertical slack without saying so, so
+ * its size is a decided policy rather than whatever `devices["Desktop Chrome"]` happens to carry
+ * (ah-csni). 1280x720 is exactly what was inherited when this was written down, so pinning it
+ * changed nothing - it only stops the number moving under those tests on a Playwright upgrade.
+ */
+const PINNED_VIEWPORT = { width: 1280, height: 720 } as const;
+
+/**
  * One server per shell, keyed by the project that talks to it. Playwright starts every entry in
  * `webServer` no matter which `--project` is selected, so a CI job walking one shell would still
  * build and serve the other; SMOKE_PROJECT lets that job name the one it needs. Unset - which is
@@ -76,6 +86,7 @@ export default defineConfig({
    */
   workers: 1,
   use: {
+    viewport: PINNED_VIEWPORT,
     trace: "on-first-retry"
   },
   projects: [
@@ -83,11 +94,15 @@ export default defineConfig({
       // Both projects run the same spec. The shells share their components, so a walk that passes
       // for one and fails for the other is a divergence, which is what this suite exists to catch.
       name: "web",
-      use: { ...devices["Desktop Chrome"], baseURL: `http://127.0.0.1:${web}` }
+      use: { ...devices["Desktop Chrome"], viewport: PINNED_VIEWPORT, baseURL: `http://127.0.0.1:${web}` }
     },
     {
       name: "desktop-shell",
-      use: { ...devices["Desktop Chrome"], baseURL: `http://127.0.0.1:${desktop}` }
+      use: {
+        ...devices["Desktop Chrome"],
+        viewport: PINNED_VIEWPORT,
+        baseURL: `http://127.0.0.1:${desktop}`
+      }
     }
   ],
   /**

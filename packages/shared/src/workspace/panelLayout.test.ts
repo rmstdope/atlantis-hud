@@ -9,9 +9,14 @@ import {
   dragUnitsHeight,
   ordersSlotClass,
   ordersSlotStyle,
+  railHasRoomToDrag,
+  railRemFor,
   railWidthStyle,
+  ORDERS_MIN_REM,
+  RAIL_GAP_REM,
   RAIL_MAX_REM,
   RAIL_MIN_REM,
+  UNIT_MIN_REM,
   unitSlotClass,
   unitsSlotClass,
   unitsSlotStyle,
@@ -137,6 +142,50 @@ describe("dragOrdersHeight", () => {
     const result = dragOrdersHeight(9, 0, 12);
     expect(result.rem).toBe(9);
     expect(result.atLimit).toBe(true);
+  });
+});
+
+describe("railRemFor", () => {
+  it("gives the rail whatever the header leaves, in rem", () => {
+    // 720px window, 64px header, 16px root: (720 - 64) / 16 = 41
+    expect(railRemFor(720, 64, 16)).toBeCloseTo(41, 5);
+    // A taller header leaves less: (720 - 128) / 16 = 37
+    expect(railRemFor(720, 128, 16)).toBeCloseTo(37, 5);
+    // A bigger type scale costs rail too, at the same pixel header: (720 - 64) / 20 = 32.8
+    expect(railRemFor(720, 64, 20)).toBeCloseTo(32.8, 5);
+  });
+
+  it("never goes below zero, however tall the header", () => {
+    expect(railRemFor(720, 900, 16)).toBe(0);
+  });
+
+  it("is zero rather than infinite when the root font size is nonsense", () => {
+    expect(railRemFor(720, 64, 0)).toBe(0);
+    expect(railRemFor(720, 64, Number.NaN)).toBe(0);
+  });
+});
+
+describe("railHasRoomToDrag", () => {
+  it("is true while the rail can still spare room above the unit floor", () => {
+    expect(railHasRoomToDrag(41)).toBe(true);
+  });
+
+  it("is false when the header has eaten the rail", () => {
+    // UNIT_MIN_REM(6) + RAIL_GAP_REM(0.625) = 6.625: at or below that there is nothing to drag into.
+    expect(railHasRoomToDrag(6.625)).toBe(false);
+    expect(railHasRoomToDrag(4)).toBe(false);
+  });
+
+  it("agrees with dragOrdersHeight's own ceiling rather than re-deriving it", () => {
+    for (const railRem of [4, 6.625, 6.7, 10, 15.625, 16, 41]) {
+      const stuck = dragOrdersHeight(ORDERS_MIN_REM, 100, railRem).rem <= ORDERS_MIN_REM;
+      const ceilingPositive = railRem - UNIT_MIN_REM - RAIL_GAP_REM > 0;
+      expect(railHasRoomToDrag(railRem)).toBe(ceilingPositive);
+      // Where the seam says there is no room, a maximal drag is already pinned at the floor.
+      if (!ceilingPositive) {
+        expect(stuck).toBe(true);
+      }
+    }
   });
 });
 
