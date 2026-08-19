@@ -539,6 +539,27 @@ describe("parseSkillReference", () => {
     });
   });
 
+  /**
+   * Neither punctuation occurs on the committed page - every cast-cost list there is a single item
+   * or two joined by ` and `. That is the point: `ah-6qp` shipped a wrong catalogue because the
+   * requirement parser was written from the punctuation the page happened to use, and this parser
+   * carried the same assumption until this test. The inputs are self-delimiting (`[TAG]`), so the
+   * separator is never looked at.
+   */
+  it("reads a casting cost list however it is punctuated", () => {
+    const skills = parseSkillReference(
+      "<html><body><pre>brew [BREW] 1: A mage with this skill can create a potion via magic at " +
+        "a cost of 5 herbs [HERB], 2 iron [IRON] and mithril [MITH]. This skill costs 100 silver " +
+        "per month of study.</pre></body></html>"
+    );
+
+    expect(skills.BREW.cast?.costs).toEqual([
+      { tag: "HERB", amount: 5 },
+      { tag: "IRON", amount: 2 },
+      { tag: "MITH", amount: 1 }
+    ]);
+  });
+
   it("reads the attempt cost of construct gate", () => {
     const skills = parseSkillReference(DATA_HTML);
 
