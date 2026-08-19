@@ -148,11 +148,15 @@ describe("ProblemMessage", () => {
     expect(twice).toContain('data-testid="problem-unit-4021"');
   });
 
-  it("keeps the word unit outside the button so it is not heard twice", () => {
+  it("names the button unit 4021 and hides the visible word, so it is heard once", () => {
     const markup = renderToStaticMarkup(
       <ProblemMessage message="unit 4021 is not building" known={known} onSelectUnit={() => {}} />
     );
 
-    expect(markup).not.toContain(">unit <");
+    // The word inside the button, for its accessible name; the visible one hidden, so linear
+    // reading does not hear "unit unit 4021".
+    expect(markup).toContain('<button type="button" data-testid="problem-unit-4021"');
+    expect(markup).toContain('<span class="sr-only">unit </span>4021');
+    expect(markup).toContain('aria-hidden="true">unit </span>');
   });
 });

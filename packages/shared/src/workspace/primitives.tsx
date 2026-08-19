@@ -1,6 +1,5 @@
 import type { OrderDiagnosticSeverity } from "@atlantis/core-client";
-import { Fragment } from "react";
-import type { ReactNode } from "react";
+import { Fragment, type ReactNode } from "react";
 
 /**
  * The ceiling for a header popover's scrollable body.
@@ -132,10 +131,19 @@ export function ProblemMessage({
       parts.push(message.slice(cursor, match.index));
     }
 
-    // The word `unit` stays outside the button, so a screen reader does not hear "unit unit 4021".
-    parts.push(matched.slice(0, matched.length - unitId.length));
-    parts.push(
-      known.has(unitId) ? (
+    const word = matched.slice(0, matched.length - unitId.length);
+
+    if (known.has(unitId)) {
+      // The visible `unit ` is hidden from assistive technology and repeated inside the button
+      // instead, so the button's accessible name is "unit 4021" rather than a bare "4021" - a
+      // screen reader's list of buttons is unreadable otherwise - while linear reading still
+      // hears it once.
+      parts.push(
+        <span key={`word-${match.index}`} aria-hidden>
+          {word}
+        </span>
+      );
+      parts.push(
         <button
           key={`unit-${match.index}`}
           type="button"
@@ -143,12 +151,14 @@ export function ProblemMessage({
           onClick={() => onSelectUnit(unitId)}
           className={UNIT_LINK_CLASS}
         >
+          <span className="sr-only">unit </span>
           {unitId}
         </button>
-      ) : (
-        unitId
-      )
-    );
+      );
+    } else {
+      parts.push(word);
+      parts.push(unitId);
+    }
     cursor = match.index + matched.length;
   }
 

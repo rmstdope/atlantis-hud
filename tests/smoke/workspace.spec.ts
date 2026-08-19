@@ -2636,15 +2636,17 @@ test("a unit named in the problems panel is a way to go there", async ({ page })
   await expect(page.getByTestId("panel-region")).toContainText("Inholm");
 
   await page.getByTestId("problems-chip").click();
-  const jump = page.getByTestId(/^problem-unit-/).first();
-  const unitId = await jump.getAttribute("data-testid");
+  // Scoped to the panel: the region pane behind it carries links of its own, and this test is
+  // about the top-bar one. Six of Two (13402) is one of the turn's own baseline findings - it is
+  // already at the ruleset's maximum combat and still orders "@study comb" - and it stands in a
+  // hex that is not Inholm, which is what makes the jump worth testing.
+  const jump = page.getByTestId("problems-panel").getByTestId("problem-unit-13402").first();
+  await expect(jump).toBeVisible();
   await jump.click();
 
   // The panel got out of the way, and the workspace behind it followed the unit to its own hex.
   await expect(page.getByTestId("problems-panel")).toHaveCount(0);
-  await expect(page.getByTestId("panel-unit")).toContainText(
-    (unitId ?? "").replace("problem-unit-", "")
-  );
+  await expect(page.getByTestId("panel-unit")).toContainText("13402");
   await expect(page.getByTestId("panel-region")).not.toContainText("Inholm");
 });
 
