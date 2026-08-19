@@ -1773,7 +1773,11 @@ fn check_build_skill(
         } else {
             format!("has {skill} {held}")
         };
-        let verb = if helps { "cannot help build" } else { "cannot build" };
+        let verb = if helps {
+            "cannot help build"
+        } else {
+            "cannot build"
+        };
         let article = article_for(&kind);
 
         findings.push(ordered.finding(
@@ -4906,7 +4910,10 @@ mod tests {
     #[test]
     fn founding_a_structure_from_outside_is_silent() {
         assert_eq!(
-            check_ignoring_build_skill(vec![region(vec![unit("4021")])], "unit 4021\nBUILD Tower\n"),
+            check_ignoring_build_skill(
+                vec![region(vec![unit("4021")])],
+                "unit 4021\nBUILD Tower\n"
+            ),
             vec![]
         );
     }
@@ -5086,10 +5093,7 @@ mod tests {
         let finding = only(check(
             vec![ReportRegion {
                 structures: vec![unfinished_mine("1")],
-                ..region(vec![in_structure(
-                    with_skill(unit("4021"), "MINI", 1),
-                    "1",
-                )])
+                ..region(vec![in_structure(with_skill(unit("4021"), "MINI", 1), "1")])
             }],
             "unit 4021\nBUILD\n",
         ));
@@ -5213,10 +5217,7 @@ mod tests {
     #[test]
     fn a_structure_the_catalogue_gives_no_requirement_is_not_judged() {
         assert_eq!(
-            check(
-                vec![region(vec![unit("4021")])],
-                "unit 4021\nBUILD Lair\n",
-            ),
+            check(vec![region(vec![unit("4021")])], "unit 4021\nBUILD Lair\n",),
             vec![]
         );
     }

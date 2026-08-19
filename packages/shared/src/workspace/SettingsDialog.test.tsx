@@ -121,6 +121,7 @@ describe("the Warnings settings tab", () => {
       "Building what is built",
       "Building outside a structure",
       "Helping a unit that is not building",
+      "Building without the skill",
       "Overloaded fleets",
       "Undercrewed fleets",
       "More quartermasters than allowed",
