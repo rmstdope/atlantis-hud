@@ -53,6 +53,24 @@ export const UNIT_COLUMNS = [
 
 export type UnitColumn = (typeof UNIT_COLUMNS)[number];
 
+/**
+ * What each column's header says; `own` has a button rather than a label.
+ *
+ * Here rather than in `UnitTableDock` because the resize handles name their column too - a screen
+ * reader must hear "Resize the Long order column", not "Resize the longOrder column" - and two
+ * lists of labels for one set of columns is exactly the drift `UNIT_COLUMNS` exists to prevent.
+ */
+export const COLUMN_LABELS: Partial<Record<UnitColumn, string>> = {
+  unitId: "Id",
+  name: "Unit",
+  faction: "Faction",
+  men: "Men",
+  skills: "Skills",
+  items: "Items",
+  structure: "Structure",
+  longOrder: "Long order"
+};
+
 export type SortState = {
   column: SortColumn;
   direction: "asc" | "desc";
@@ -257,4 +275,125 @@ export function sortUnits(
     );
     return "settled" in outcome ? outcome.settled : outcome.compare * direction;
   });
+}
+
+/**
+ * The units table's column widths, as **shares of the table** rather than pixels.
+ *
+ * The pixel model this replaces (PR #421) was arithmetically sound per drag - a boundary drag
+ * conserved the pair's sum - and still lost columns: the widths were absolute, the table is
+ * `w-full table-fixed` inside a scroller carrying `overflow-x-hidden`, and both rails are
+ * independently draggable. Widen a rail past the point where the pixel total no longer fits and
+ * `table-fixed` lays the rightmost columns out past the right edge, where nothing scrolls them
+ * back (ah-1owr.2).
+ *
+ * Shares make that impossible rather than merely bounded: the values always sum to 1, every
+ * `<col>` is styled as a percentage, so whatever the table's width the columns exactly fill it.
+ * The accepted cost is that a very narrow window makes every column narrow - nothing can be kept
+ * legible by choice - and `COLUMN_MIN_PX` can only be honoured approximately, since a share is
+ * not a pixel.
+ */
+export type ColumnShares = Partial<Record<UnitColumn, number>>;
+
+/**
+ * The shipped shape, as shares: exactly the widths the table renders today, taken at a nominal
+ * 1344px table - own 24, unitId 64, name 208, faction 192, men 64, skills 220, items 220,
+ * structure 208, longOrder 144. A player who never drags must see no difference at all, so these
+ * are a restatement of the Tailwind width classes they replace rather than a new choice.
+ */
+const NOMINAL_TABLE_PX = 1344;
+
+export const DEFAULT_COLUMN_SHARES: Record<UnitColumn, number> = {
+  own: 24 / NOMINAL_TABLE_PX,
+  unitId: 64 / NOMINAL_TABLE_PX,
+  name: 208 / NOMINAL_TABLE_PX,
+  faction: 192 / NOMINAL_TABLE_PX,
+  men: 64 / NOMINAL_TABLE_PX,
+  skills: 220 / NOMINAL_TABLE_PX,
+  items: 220 / NOMINAL_TABLE_PX,
+  structure: 208 / NOMINAL_TABLE_PX,
+  longOrder: 144 / NOMINAL_TABLE_PX
+};
+
+/**
+ * No column may be dragged narrower than this on screen, whatever the table's width - enough for
+ * a truncated word and its ellipsis. Kept in pixels because that is the unit a reader sees; the
+ * splitter converts it against the table's measured width once, at the start of each gesture.
+ */
+export const COLUMN_MIN_PX = 36;
+
+/** A column's share: the stored preference if there is one, otherwise the shipped default. */
+export function shareOf(column: UnitColumn, shares: ColumnShares | null): number {
+  return shares?.[column] ?? DEFAULT_COLUMN_SHARES[column];
+}
+
+/**
+ * A stored share record, reconciled against the columns this build knows - the same posture
+ * `reconcile` in `workspaceStore.ts` takes with booleans, plus the renormalisation that makes the
+ * "cannot overflow" claim hold *across versions* and not merely within one session.
+ *
+ * A column this build no longer has is dropped; a value that is not a finite number, is `<= 0` or
+ * is `>= 1` is dropped too. Whatever survives is completed from the defaults and scaled to sum to
+ * exactly 1, because a record that has lost a column no longer covers the table. Nothing usable
+ * at all returns `{}`, and `shareOf` then falls back to the defaults.
+ */
+export function columnSharesFromStorage(stored: unknown): ColumnShares {
+  if (typeof stored !== "object" || stored === null) {
+    return {};
+  }
+  const kept: ColumnShares = {};
+  for (const column of UNIT_COLUMNS) {
+    const value = (stored as Record<string, unknown>)[column];
+    if (typeof value === "number" && Number.isFinite(value) && value > 0 && value < 1) {
+      kept[column] = value;
+    }
+  }
+  if (Object.keys(kept).length === 0) {
+    return {};
+  }
+  const whole = UNIT_COLUMNS.map(
+    (column) => [column, kept[column] ?? DEFAULT_COLUMN_SHARES[column]] as const
+  );
+  const total = whole.reduce((sum, [, share]) => sum + share, 0);
+  return Object.fromEntries(whole.map(([column, share]) => [column, share / total]));
+}
+
+export type ColumnDragResult = { left: number; right: number; atLimit: boolean };
+
+/**
+ * Resolves a boundary drag (or one keyboard step) between two adjacent columns, in shares.
+ *
+ * `deltaShare` is positive when the pointer moves right, growing the left column and shrinking the
+ * right one by the same amount - `leftStart + rightStart` is therefore invariant, so the whole
+ * table still sums to 1 however many drags are applied, in any order.
+ *
+ * `minShare` is the caller's `COLUMN_MIN_PX` expressed against the table's measured width, so the
+ * floor is a real pixel floor even though the arithmetic is in shares. Both floors are enforced
+ * together: growing the left column can only take what the right one has above its own floor, and
+ * `Math.min(minShare, total / 2)` covers the case where two columns together cannot honour it.
+ */
+export function dragColumnShare(
+  leftStart: number,
+  rightStart: number,
+  deltaShare: number,
+  minShare: number
+): ColumnDragResult {
+  const total = leftStart + rightStart;
+  const lowest = Math.min(minShare, total / 2);
+  const highest = total - lowest;
+  const raw = leftStart + deltaShare;
+  const left = clamp(raw, lowest, highest);
+  return { left, right: total - left, atLimit: left !== raw };
+}
+
+/**
+ * The style for one `<col>`: a percentage, never a pixel. Mixing the two is exactly what let the
+ * pixel model overflow a `table-fixed` box, so this is the only way a column width is ever
+ * written - by the render and by the splitter's mid-drag writes alike.
+ */
+export function columnWidthStyle(
+  column: UnitColumn,
+  shares: ColumnShares | null
+): { width: string } {
+  return { width: `${shareOf(column, shares) * 100}%` };
 }

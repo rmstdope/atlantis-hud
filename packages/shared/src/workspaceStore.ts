@@ -18,6 +18,7 @@ import {
   clampUnitsHeight,
   type RailSide
 } from "./workspace/panelLayout";
+import { columnSharesFromStorage, type ColumnShares } from "./unitTable";
 import {
   mapViewCommitted,
   mapViewOpened,
@@ -98,6 +99,13 @@ export type WorkspaceState = {
    */
   leftRailWidthRem: number | null;
   rightRailWidthRem: number | null;
+  /**
+   * The units-in-hex table's dragged column widths, as shares of the table, or null while the
+   * shipped shape applies - a layout preference exactly like `ordersHeightRem`, so it lives here
+   * and outlives the game the same way. Only the columns a player has actually dragged are
+   * present; everything else reads from `DEFAULT_COLUMN_SHARES` through `shareOf` (ah-1owr.2).
+   */
+  unitColumnShares: ColumnShares | null;
   layers: Record<LayerName, boolean>;
   /** Which marks the map draws over its terrain. */
   badges: Record<BadgeName, boolean>;
@@ -154,6 +162,14 @@ export type WorkspaceState = {
   setUnitsHeight: (rem: number | null) => void;
   /** Sets (or, with null, resets) one rail's dragged width. Clamped on the way in. */
   setRailWidth: (side: RailSide, rem: number | null) => void;
+  /**
+   * Writes both sides of a column boundary drag in one commit - `dragColumnShare` always resolves
+   * a pair, and setting them as two calls would let a re-render land between them with only one
+   * column moved. Merged into what is stored, so an untouched column keeps reading its default.
+   */
+  setUnitColumnShares: (shares: ColumnShares) => void;
+  /** Drops every stored column width, back to the shipped shape. Reachable from Settings. */
+  resetUnitColumnShares: () => void;
   toggleLayer: (layer: LayerName) => void;
   toggleBadge: (badge: BadgeName) => void;
   /** Shows or hides the region panel's Problems section. */
@@ -207,6 +223,11 @@ function reconcile<K extends string>(
   };
 }
 
+/** `null` for an empty record, so "nothing customized" reads the same way rail widths do. */
+function emptyToNull(shares: ColumnShares): ColumnShares | null {
+  return Object.keys(shares).length > 0 ? shares : null;
+}
+
 /** What a stored badge record means here; see `reconcile`. */
 export function badgesFromStorage(
   stored: Partial<Record<string, boolean>>
@@ -251,6 +272,7 @@ type Persisted = Pick<
   | "unitsHeightRem"
   | "leftRailWidthRem"
   | "rightRailWidthRem"
+  | "unitColumnShares"
   | "layers"
   | "badges"
   | "regionProblemsShown"
@@ -269,6 +291,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       unitsHeightRem: null,
       leftRailWidthRem: null,
       rightRailWidthRem: null,
+      unitColumnShares: null,
       layers: INITIAL_LAYERS,
       badges: allBadges(true),
       regionProblemsShown: true,
@@ -356,6 +379,14 @@ export const useWorkspaceStore = create<WorkspaceState>()(
             : { rightRailWidthRem: clampRailWidth(rem) }
         ),
 
+      // No clamp on the way in, unlike `setUnitsHeight`: `dragColumnShare` is the only producer
+      // and it already clamps, and clamping a merge of two columns against a whole-table
+      // invariant would be wrong. `columnSharesFromStorage` is the guard, and it runs on load.
+      setUnitColumnShares: (shares) =>
+        set((state) => ({ unitColumnShares: { ...state.unitColumnShares, ...shares } })),
+
+      resetUnitColumnShares: () => set(() => ({ unitColumnShares: null })),
+
       toggleLayer: (layer) =>
         set((state) => ({
           layers: { ...state.layers, [layer]: !state.layers[layer] }
@@ -388,6 +419,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         unitsHeightRem: state.unitsHeightRem,
         leftRailWidthRem: state.leftRailWidthRem,
         rightRailWidthRem: state.rightRailWidthRem,
+        unitColumnShares: state.unitColumnShares,
         layers: state.layers,
         badges: state.badges,
         regionProblemsShown: state.regionProblemsShown
@@ -409,6 +441,10 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           unitsHeightRem: clampUnitsHeight(stored.unitsHeightRem),
           leftRailWidthRem: clampRailWidth(stored.leftRailWidthRem),
           rightRailWidthRem: clampRailWidth(stored.rightRailWidthRem),
+          // Not a boolean record, so `reconcile` does not apply - `columnSharesFromStorage` is
+          // its equivalent, dropping unknown columns and renormalising what survives so the
+          // stored shape still covers exactly the whole table.
+          unitColumnShares: emptyToNull(columnSharesFromStorage(stored.unitColumnShares ?? {})),
           layers: reconcile(INITIAL_LAYERS, stored.layers ?? {}),
           badges: badgesFromStorage(stored.badges ?? {}),
           // Not a record, so `reconcile` does not apply: a missing or malformed key must read
@@ -436,6 +472,7 @@ export function resetWorkspaceStore() {
     unitsHeightRem: null,
     leftRailWidthRem: null,
     rightRailWidthRem: null,
+    unitColumnShares: null,
     layers: INITIAL_LAYERS,
     badges: allBadges(true),
     regionProblemsShown: true,

@@ -646,3 +646,33 @@ describe("the planner's own state", () => {
     expect(persisted?.state).not.toHaveProperty("planner");
   });
 });
+
+describe("the units table's stored column shares (ah-1owr.2)", () => {
+  beforeEach(resetWorkspaceStore);
+
+  it("remembers dragged column shares and forgets them on reset", () => {
+    expect(useWorkspaceStore.getState().unitColumnShares).toBeNull();
+
+    useWorkspaceStore.getState().setUnitColumnShares({ name: 0.2, faction: 0.1 });
+    expect(useWorkspaceStore.getState().unitColumnShares).toEqual({ name: 0.2, faction: 0.1 });
+
+    useWorkspaceStore.getState().resetUnitColumnShares();
+    expect(useWorkspaceStore.getState().unitColumnShares).toBeNull();
+  });
+
+  it("merges each commit, so only the columns actually dragged are recorded", () => {
+    useWorkspaceStore.getState().setUnitColumnShares({ name: 0.2, faction: 0.1 });
+    useWorkspaceStore.getState().setUnitColumnShares({ faction: 0.15, men: 0.05 });
+    expect(useWorkspaceStore.getState().unitColumnShares).toEqual({
+      name: 0.2,
+      faction: 0.15,
+      men: 0.05
+    });
+  });
+
+  it("is cleared by resetWorkspaceStore", () => {
+    useWorkspaceStore.getState().setUnitColumnShares({ name: 0.2 });
+    resetWorkspaceStore();
+    expect(useWorkspaceStore.getState().unitColumnShares).toBeNull();
+  });
+});

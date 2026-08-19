@@ -4,6 +4,7 @@ import { useEscapeToDismiss } from "./dismissLayer";
 import { APP_VERSION } from "../appVersion";
 import { snippetBodyProblem, snippetNameProblem } from "../orderSnippets";
 import { useSettingsStore } from "../settingsStore";
+import { useWorkspaceStore } from "../workspaceStore";
 import type { ThemeName } from "../settingsStore";
 import { mapThemeOptions } from "./mapThemes";
 import { SettingToggle } from "./SettingToggle";
@@ -198,6 +199,10 @@ export function GlobalSettings() {
   const setMovementPlanner = useSettingsStore((state) => state.setMovementPlanner);
   const orderOcd = useSettingsStore((state) => state.orderOcd);
   const setOrderOcd = useSettingsStore((state) => state.setOrderOcd);
+  // A workspace preference rather than a setting, but this is where a player looks for "put it
+  // back how it was" - and a table whose columns have been dragged into a bad shape needs a way
+  // out that is not on the table itself (ah-1owr.2).
+  const resetUnitColumnShares = useWorkspaceStore((state) => state.resetUnitColumnShares);
 
   return (
     <div className="flex flex-col gap-3">
@@ -301,6 +306,23 @@ export function GlobalSettings() {
           Makes the panes, the header and the dialogs bigger. The map is not affected.
         </span>
       </label>
+
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-ink-soft">
+          <span className="block">Units table columns</span>
+          <span className="block text-pane-sm text-ink-dim">
+            Puts the dragged column widths back to how they ship.
+          </span>
+        </span>
+        <button
+          type="button"
+          data-testid="settings-reset-column-widths"
+          onClick={resetUnitColumnShares}
+          className="rounded border border-edge px-1.5 text-ink-soft hover:text-ink"
+        >
+          Reset widths
+        </button>
+      </div>
 
       <SettingToggle
         title="Movement planner"

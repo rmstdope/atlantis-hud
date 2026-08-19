@@ -160,3 +160,18 @@ describe("the Warnings settings tab", () => {
     expect(tag(html, "settings-warning-not-enough-silver")).not.toContain('checked=""');
   });
 });
+
+/**
+ * The whole-table reset for the units table's dragged column widths (ah-1owr.2). That it actually
+ * clears the store is pinned in `workspaceStore.test.ts` and end to end in the smoke suite; what
+ * matters here is that it exists, is named as the navigator settled it, and is reachable.
+ */
+describe("the units table's column widths (ah-1owr.2)", () => {
+  it("offers a way to put the units table's columns back", () => {
+    const html = renderToStaticMarkup(<GlobalSettings />);
+
+    expect(html).toContain("Units table columns");
+    expect(tag(html, "settings-reset-column-widths")).toContain("<button");
+    expect(html).toContain("Reset widths");
+  });
+});

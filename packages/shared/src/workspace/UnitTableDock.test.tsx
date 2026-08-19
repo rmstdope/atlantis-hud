@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { RegionPreview, ReportRegion, ReportUnit } from "@atlantis/core-client";
 import { aReportRegion, aReportUnit } from "@atlantis/core-client";
 import type { HexNode } from "../hexMapModel";
-import { UNIT_COLUMNS } from "../unitTable";
+import { DEFAULT_COLUMN_SHARES, UNIT_COLUMNS } from "../unitTable";
 import { UnitTableDock } from "./UnitTableDock";
 
 /**
@@ -207,6 +207,47 @@ describe("draws its header and its rows from the column list", () => {
     const row = /<tr[^>]*data-testid="unit-row-1"[\s\S]*?<\/tr>/.exec(markup)?.[0] ?? "";
 
     expect((row.match(/<td\b/g) ?? []).length).toBe(UNIT_COLUMNS.length);
+  });
+});
+
+describe("column widths (ah-1owr.2)", () => {
+  const withUnits = () =>
+    hex({ region: region({ units: [unit({ unitId: "1", own: true })] }), ownUnitCount: 1, foreignUnitCount: 0 });
+
+  it("sizes every column from its share, as a percentage", () => {
+    const markup = draw(withUnits());
+    const cols = markup.match(/<col\b[^>]*>/g) ?? [];
+
+    expect(cols).toHaveLength(UNIT_COLUMNS.length);
+    cols.forEach((col, index) => {
+      const column = UNIT_COLUMNS[index];
+      expect(col).toContain(`width:${DEFAULT_COLUMN_SHARES[column] * 100}%`);
+    });
+  });
+
+  it("leaves no pixel width and no Tailwind width class on any column", () => {
+    for (const col of draw(withUnits()).match(/<col\b[^>]*>/g) ?? []) {
+      expect(col).not.toMatch(/\dpx/);
+      expect(col).not.toMatch(/class="[^"]*\bw-/);
+    }
+  });
+
+  /**
+   * Every internal boundary except `own`'s: that column is 24px, narrower than the grip's own hit
+   * area, so a handle there sits on the group-own-units toggle and swallows its clicks.
+   */
+  it("mounts a resize handle at every internal boundary a column is wide enough for", () => {
+    const markup = draw(withUnits());
+
+    for (let index = 1; index < UNIT_COLUMNS.length - 1; index += 1) {
+      expect(markup).toContain(
+        `data-testid="column-splitter-${UNIT_COLUMNS[index]}-${UNIT_COLUMNS[index + 1]}"`
+      );
+    }
+    expect(markup).not.toContain('data-testid="column-splitter-own-');
+    expect((markup.match(/data-testid="column-splitter-/g) ?? []).length).toBe(
+      UNIT_COLUMNS.length - 2
+    );
   });
 });
 
