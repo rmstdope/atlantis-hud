@@ -166,3 +166,19 @@ describe("ColumnSplitter double-click", () => {
     });
   });
 });
+
+describe("ColumnSplitter accessible range", () => {
+  it("never reports a minimum above the value, however narrow the table", () => {
+    // The floor is in pixels, so a narrow table can render a column below it legitimately; a
+    // minimum above the current value would break the ARIA range rather than describe anything.
+    const el = tag(
+      markup({ shares: { name: 0.02 }, table: tableOf(200) }),
+      "column-splitter-name-faction"
+    );
+    const min = Number(/aria-valuemin="(\d+)"/.exec(el)?.[1]);
+    const now = Number(/aria-valuenow="(\d+)"/.exec(el)?.[1]);
+
+    expect(min).toBeLessThanOrEqual(now);
+    expect(now).toBeLessThanOrEqual(100);
+  });
+});

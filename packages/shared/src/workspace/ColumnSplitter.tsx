@@ -192,7 +192,13 @@ export function ColumnSplitter({
       aria-label={`Resize the ${COLUMN_LABELS[left] ?? left} column`}
       tabIndex={0}
       data-testid={`column-splitter-${left}-${right}`}
-      aria-valuemin={Math.round(measuredMinShare() * 100)}
+      // The floor is a pixel one, so on a narrow enough table a column can legitimately render
+      // below it and a bare `COLUMN_MIN_PX / width` would exceed `aria-valuenow` - which breaks
+      // the ARIA range constraint rather than describing anything. Report the lower of the two.
+      aria-valuemin={Math.min(
+        Math.round(measuredMinShare() * 100),
+        Math.round(shareOf(left, shares) * 100)
+      )}
       aria-valuenow={Math.round(shareOf(left, shares) * 100)}
       aria-valuemax={100}
       // `right-0`, not the half-overhang `RailSplitter` uses: each header cell is `sticky z-10`,

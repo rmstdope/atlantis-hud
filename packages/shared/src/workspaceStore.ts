@@ -102,8 +102,14 @@ export type WorkspaceState = {
   /**
    * The units-in-hex table's dragged column widths, as shares of the table, or null while the
    * shipped shape applies - a layout preference exactly like `ordersHeightRem`, so it lives here
-   * and outlives the game the same way. Only the columns a player has actually dragged are
-   * present; everything else reads from `DEFAULT_COLUMN_SHARES` through `shareOf` (ah-1owr.2).
+   * and outlives the game the same way. Anything absent reads from `DEFAULT_COLUMN_SHARES`
+   * through `shareOf` (ah-1owr.2).
+   *
+   * The record is partial within a session - `setUnitColumnShares` merges, so only the pairs
+   * actually dragged are written - but it comes back off disk complete: `columnSharesFromStorage`
+   * fills the gaps from the defaults and renormalises, because a record that has lost a column no
+   * longer covers the whole table and the "shares always sum to 1" claim is what makes an
+   * overflow impossible.
    */
   unitColumnShares: ColumnShares | null;
   layers: Record<LayerName, boolean>;
