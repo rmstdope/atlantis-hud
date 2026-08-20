@@ -117,3 +117,25 @@ describe("FactionPanel", () => {
     });
   });
 });
+
+describe("an attitude name as a way into the faction dossier (ah-bu2c)", () => {
+  it("renders every attitude name through renderFactionName", () => {
+    const markup = draw({
+      renderFactionName: (factionId: string, label: React.ReactNode) => (
+        <button type="button" data-testid={`open-dossier-${factionId}`}>
+          {label}
+        </button>
+      )
+    });
+
+    expect(markup).toContain('data-testid="open-dossier-2"');
+    expect(markup).toContain('data-testid="open-dossier-8"');
+    expect(markup).toContain("Creatures (2)");
+  });
+
+  it("prints the names plainly when nothing offers a dossier", () => {
+    const markup = draw();
+    expect(markup).toContain("Creatures (2)");
+    expect(markup).not.toContain("open-dossier");
+  });
+});

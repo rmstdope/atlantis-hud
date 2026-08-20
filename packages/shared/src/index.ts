@@ -1,5 +1,6 @@
 export * from "./appVersion";
 export * from "./downloadFile";
+export * from "./factionDossier";
 export * from "./featureFlags";
 export * from "./logging";
 export * from "./hexMapModel";
@@ -25,6 +26,7 @@ export * from "./unitTooltip";
 export * from "./workspace/appUpdate";
 export * from "./workspace/AppHeader";
 export * from "./workspace/AppShell";
+export * from "./workspace/FactionDossierPanel";
 export * from "./workspace/ForeignReportPrompt";
 export * from "./gameData";
 export * from "./workspace/GameDataDialog";

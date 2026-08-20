@@ -386,3 +386,66 @@ describe("column order (ah-1owr.3)", () => {
     );
   });
 });
+
+describe("a foreign faction's name in the faction column (ah-bu2c)", () => {
+  it("renders it through renderFactionName, so the dossier can hang off the name clicked", () => {
+    const markup = renderToStaticMarkup(
+      <UnitTableDock
+        hex={hex({ region: region({ units: [unit({ factionId: "2", factionName: "Creatures", own: false })] }) })}
+        preview={null}
+        renderFactionName={(factionId, label) => (
+          <button type="button" data-testid={`open-dossier-${factionId}`}>
+            {label}
+          </button>
+        )}
+      />
+    );
+
+    expect(markup).toContain('data-testid="open-dossier-2"');
+    expect(markup).toContain("Creatures (2)");
+  });
+
+  it("prints the plain name when nothing offers a dossier, and a dash for a concealed faction", () => {
+    const plain = draw(
+      hex({ region: region({ units: [unit({ factionId: "2", factionName: "Creatures", own: false })] }) })
+    );
+    expect(plain).toContain("Creatures (2)");
+    expect(plain).not.toContain("open-dossier");
+
+    const concealed = renderToStaticMarkup(
+      <UnitTableDock
+        hex={hex({ region: region({ units: [unit({ factionId: null, factionName: null, own: false })] }) })}
+        preview={null}
+        renderFactionName={(factionId, label) => (
+          <button type="button" data-testid={`open-dossier-${factionId}`}>
+            {label}
+          </button>
+        )}
+      />
+    );
+    // A concealed unit belongs to no faction, so there is nothing to open a dossier for.
+    expect(concealed).not.toContain("open-dossier");
+    expect(concealed).toContain("—");
+  });
+});
+
+describe("our own faction's name in the faction column (ah-bu2c)", () => {
+  it("is printed plainly, because a dossier is for the factions we cannot see inside", () => {
+    // It also keeps a row of our own to one button: the smoke suite selects a unit with
+    // `row.getByRole("button")`, and a second button in the row makes that ambiguous.
+    const markup = renderToStaticMarkup(
+      <UnitTableDock
+        hex={hex({ region: region({ units: [unit({ factionId: "95", factionName: "Borg TNG", own: true })] }) })}
+        preview={null}
+        renderFactionName={(factionId, label) => (
+          <button type="button" data-testid={`open-dossier-${factionId}`}>
+            {label}
+          </button>
+        )}
+      />
+    );
+
+    expect(markup).toContain("Borg TNG (95)");
+    expect(markup).not.toContain("open-dossier");
+  });
+});

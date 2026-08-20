@@ -73,13 +73,19 @@ const SORTABLE_COLUMNS: ReadonlySet<UnitColumn> = new Set<UnitColumn>([
 export function UnitTableDock({
   hex,
   preview = null,
-  getLongOrder
+  getLongOrder,
+  renderFactionName
 }: {
   hex: HexNode | null;
   /** The hex's slice of the orders preview, so rows show the coming month. */
   preview?: RegionPreview | null;
   /** The month-long order a unit's live orders carry, for the Long order column. */
   getLongOrder?: (unitId: string) => string | null;
+  /**
+   * Wraps a foreign faction's name so it can open that faction's dossier beside the row clicked
+   * (ah-bu2c). Left off, the name prints as it always did.
+   */
+  renderFactionName?: (factionId: string, label: ReactNode) => ReactNode;
 }) {
   const selectedUnitId = useWorkspaceStore((state) => state.selectedUnitId);
   const selectUnit = useWorkspaceStore((state) => state.selectUnit);
@@ -468,6 +474,7 @@ export function UnitTableDock({
                   selected={unit.unitId === selectedUnitId}
                   onSelect={() => selectUnit(unit.unitId)}
                   getLongOrder={getLongOrder}
+                  renderFactionName={renderFactionName}
                   onKeyDown={onRowKeyDown}
                   onPointerRest={restOn}
                   onPointerAt={(point) => {
@@ -651,7 +658,8 @@ function UnitRow({
   onPointerRest,
   onPointerAt,
   onPointerGone,
-  getLongOrder
+  getLongOrder,
+  renderFactionName
 }: {
   unit: PreviewedUnit;
   /** The order the header is drawing in, so a row's cells can never fall out of step with it. */
@@ -673,6 +681,8 @@ function UnitRow({
   onPointerGone: () => void;
   /** The month-long order this unit's live orders carry, where it is one of ours. */
   getLongOrder?: (unitId: string) => string | null;
+  /** Wraps a foreign faction's name so it can open that faction's dossier (ah-bu2c). */
+  renderFactionName?: (factionId: string, label: ReactNode) => ReactNode;
 }) {
   const skills = unit.skills.map((skill) => `${skill.tag} ${skill.level}`).join(", ");
   const items = unit.items.map((item) => `${item.amount} ${item.tag}`).join(", ");
@@ -751,9 +761,19 @@ function UnitRow({
         ) : null}
       </Td>
     ),
+    // A foreign faction that names itself can be opened; a concealed one (factionId null) has
+    // nothing to open, so it stays a dash, and our own faction is printed plainly - the faction
+    // view already says everything a dossier would, and a second button in a row of ours would
+    // make "the button in this row" ambiguous for everything that selects a unit that way.
     faction: (
       <Td className="truncate">
-        {unit.factionName ? `${unit.factionName} (${unit.factionId})` : "—"}
+        {unit.factionName === null || unit.factionId === null
+          ? "—"
+          : unit.own
+            ? `${unit.factionName} (${unit.factionId})`
+            : renderFactionName
+              ? renderFactionName(unit.factionId, `${unit.factionName} (${unit.factionId})`)
+              : `${unit.factionName} (${unit.factionId})`}
       </Td>
     ),
     // A tilde marks a count the parser guessed at; the unit panel spells out why. A count the

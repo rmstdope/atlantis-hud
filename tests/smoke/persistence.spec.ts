@@ -62,7 +62,9 @@ async function selectUnit(page: Page, unitId: string) {
   const row = page.getByTestId(`unit-row-${unitId}`);
   await expect(row).toHaveCount(1);
   await expect(row).toBeVisible();
-  await row.getByRole("button").click();
+  // Named, not "the button in this row": a foreign unit's row also carries the faction name as a
+  // control (ah-bu2c), so a bare role lookup is ambiguous there.
+  await row.getByRole("button", { name: `unit ${unitId}` }).click();
   await box.clear();
 }
 
