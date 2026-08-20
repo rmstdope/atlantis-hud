@@ -2676,11 +2676,14 @@ test("a column is dragged to a new place, shows where it will land, and survives
   await expect(page.getByTestId("column-drag-chip")).toHaveCount(0);
   const after = await headerOrder();
   expect(after.indexOf("name")).toBeGreaterThan(before.indexOf("name"));
-  const landed = await page
-    .locator(`[data-testid^='unit-row-'] td:nth-child(${after.indexOf("name") + 2})`)
-    .first()
-    .boundingBox();
-  expect(landed!.x).toBeCloseTo(lineBox!.x, 0);
+  // The line marks a gap in the table *as it was drawn during the drag* - the table deliberately
+  // does not reorder under the pointer - so the column comes to rest in that gap, not at that same
+  // pixel: everything to the right of the column's old slot shifts left by its width when the drag
+  // commits. What must hold is the slot, so assert the neighbour the line stood beside (ah-gfzu).
+  // Dragged past the whole of Faction, so the gap is Faction's right edge in the drag-time layout,
+  // and Faction is what the column now sits after.
+  expect(lineBox!.x).toBeCloseTo(factionCell!.x + factionCell!.width, 0);
+  expect(after[after.indexOf("name") - 1]).toBe("faction");
 
   // The order survives a reload...
   await page.reload();

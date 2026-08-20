@@ -582,15 +582,22 @@ describe("dragColumnOrder", () => {
 describe("dropBoundaryX", () => {
   const widthPxOf = (column: UnitColumn) => (column === "own" ? 24 : 100);
 
-  it("puts the drop line at the left edge of where the column lands", () => {
+  it("puts the drop line on a boundary of the table as it is drawn", () => {
     const order = [...UNIT_COLUMNS] as UnitColumn[];
     // name sits third: own (24) + unitId (100) = 124.
-    expect(dropBoundaryX(order, "name", widthPxOf)).toBe(124);
-    // Dragged one place right, it lands after faction: own + unitId + faction.
+    expect(dropBoundaryX(order, order, "name", widthPxOf)).toBe(124);
+    // Dragged one place right it passes faction, and the table has not reordered: the boundary the
+    // player is aiming at is faction's right edge on screen, own + unitId + name + faction = 324.
     const right = dragColumnOrder(order, "name", 100, widthPxOf);
-    expect(dropBoundaryX(right, "name", widthPxOf)).toBe(224);
+    expect(dropBoundaryX(order, right, "name", widthPxOf)).toBe(324);
     // Dragged one place left, it lands right after the marker.
     const left = dragColumnOrder(order, "name", -100, widthPxOf);
-    expect(dropBoundaryX(left, "name", widthPxOf)).toBe(24);
+    expect(dropBoundaryX(order, left, "name", widthPxOf)).toBe(24);
+  });
+
+  it("puts the drop line at the table's left edge when nothing precedes the column", () => {
+    const order = [...UNIT_COLUMNS] as UnitColumn[];
+    const farLeft = ["name", ...order.filter((column) => column !== "name")] as UnitColumn[];
+    expect(dropBoundaryX(order, farLeft, "name", widthPxOf)).toBe(0);
   });
 });
