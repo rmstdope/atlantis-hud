@@ -21,7 +21,12 @@ const RULESET = JSON.stringify({
     LONG: { tag: "LONG", name: "Longship", kind: "ship", weight: 0, moves: 4, cargoCapacity: 150, sailingSkill: 4, capacity: { walk: 0, ride: 0, fly: 0, swim: 0 }, selfMobile: { walk: false, ride: false, fly: false, swim: false }, description: "A ship." },
     GALL: { tag: "GALL", name: "Galleon", kind: "ship", weight: 0, moves: 4, cargoCapacity: 400, capacity: { walk: 0, ride: 0, fly: 0, swim: 0 }, selfMobile: { walk: false, ride: false, fly: false, swim: false } }
   },
-  buildings: { TOWER: { description: "A tower.", size: 10, cost: 10, materials: ["stone"], mages: 0 } }
+  buildings: {
+    TOWER: { description: "A tower.", size: 10, cost: 10, materials: ["stone"], mages: 0, buildSkill: "BUIL", buildLevel: 1 },
+    MINE: { description: "A mine.", produces: "iron", cost: 10, materials: ["wood", "stone"], mages: 0, buildSkill: "MINI", buildLevel: 3 },
+    LAIR: { description: "A lair.", mages: 0 },
+    SHRINE: { description: "A shrine.", mages: 0, buildSkill: "ZZZZ", buildLevel: 2 }
+  }
 });
 
 const index = parseGameData(RULESET) as GameDataIndex;
@@ -63,6 +68,30 @@ describe("GameDataDialog", () => {
       <GameDataDialog index={index} initialEntryId="building:ROAD N" onDismiss={() => {}} />
     );
     expect(html).toContain("The game data does not describe this.");
+  });
+
+  it("says what skill builds a buildable structure", () => {
+    const html = markup("building:MINE");
+    expect(html).toContain("Built with");
+    expect(html).toContain(">mining</button> 3<");
+  });
+
+  it("offers the build skill as a link into the skills tab", () => {
+    const html = markup("building:MINE");
+    expect(html).toContain('data-testid="game-data-link-skill:MINI"');
+  });
+
+  it("says nothing about building a structure with no build skill", () => {
+    const html = markup("building:LAIR");
+    expect(html).toContain("A lair.");
+    expect(html).not.toContain("Built with");
+  });
+
+  it("is silent rather than broken when the build tag matches no skill", () => {
+    const html = markup("building:SHRINE");
+    expect(html).toContain("A shrine.");
+    expect(html).not.toContain("Built with");
+    expect(html).not.toContain("ZZZZ");
   });
 
   it("names every tab with its count and offers a filter scoped to the tab", () => {

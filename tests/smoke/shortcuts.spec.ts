@@ -132,6 +132,27 @@ test("the palette opens the game data dictionary on the thing it named", async (
   await expect(dialog).toHaveCount(0);
 });
 
+/**
+ * ah-rpnb: a building entry names the skill that builds it, and that name is a way to reach it -
+ * the same cross-reference rule ah-5jkt.1 set for a skill's produced items.
+ */
+test("following a building's build skill opens that skill's entry", async ({ page }) => {
+  await loadReport(page);
+
+  await page.keyboard.press("ControlOrMeta+k");
+  await page.getByTestId("palette-input").fill("mining MINI");
+  await page.keyboard.press("Enter");
+  await expect(page.getByTestId("game-data-dialog")).toBeVisible();
+
+  await page.getByTestId("game-data-tab-building").click();
+  await page.getByTestId("game-data-entry-building:MINE").click();
+  await expect(page.getByTestId("game-data-detail")).toContainText("Built with");
+
+  await page.getByTestId("game-data-link-skill:MINI").click();
+  await expect(page.getByTestId("game-data-tab-skill")).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByTestId("game-data-detail")).toContainText("Study cost");
+});
+
 test("Escape closes only the palette, not the dialog under it", async ({ page }) => {
   await loadReport(page);
 

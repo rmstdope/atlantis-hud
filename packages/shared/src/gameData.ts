@@ -100,6 +100,12 @@ export type GameDataDetail =
       mages: number;
       produces: string | null;
       description: string | null;
+      /**
+       * The skill that builds this, as the ruleset's tag - `BUIL`, `MINI` - and the level it takes.
+       * Null on the 22 of 58 structures that are not buildable at all: a lair, a ruin, a monolith.
+       */
+      buildSkill: string | null;
+      buildLevel: number | null;
     }
   | { kind: "absent"; entry: GameDataEntry };
 
@@ -145,6 +151,8 @@ type RawBuilding = {
   cost?: number;
   materials?: string[];
   mages?: number;
+  buildSkill?: string;
+  buildLevel?: number;
 };
 
 const ITEM_KINDS: readonly string[] = ["man", "mount", "monster", "ship", "equipment"];
@@ -340,7 +348,9 @@ export function parseGameData(rulesetText: string): GameDataIndex | null {
         materials: building.materials ?? [],
         mages: building.mages ?? 0,
         produces: building.produces ?? null,
-        description: building.description ?? null
+        description: building.description ?? null,
+        buildSkill: building.buildSkill ?? null,
+        buildLevel: building.buildLevel ?? null
       };
     }
     const item = rawItems[entry.tag as string];
