@@ -184,7 +184,8 @@ import { TurnMessagesPanel, type TurnMessagesTab } from "./TurnMessagesPanel";
 import { UnitPanel } from "./UnitPanel";
 import { UnitTableDock } from "./UnitTableDock";
 import { dossierFor } from "../factionDossier";
-import { FactionDossierPanel, FloatingFactionDossier } from "./FactionDossierPanel";
+import { FloatingFactionDossier, MeasuredFactionDossier } from "./FactionDossierPanel";
+import type { KeepClear, PeekMode } from "./dossierPeek";
 import type { Point } from "../unitTooltip";
 import { describeError, runReported } from "./shellAction";
 import { failedStatus, noticeStatus, routineStatus, warningStatus, type StatusLine } from "./shellStatus";
@@ -2027,7 +2028,15 @@ export function AppShell({
   const [dossier, setDossier] = useState<
     { factionId: string; from: "attitudes" } | { factionId: string; from: "units"; at: Point } | null
   >(null);
+  /**
+   * The dossier row the pointer is on, and the one focus is on - held apart because the reader can
+   * do both at once, and a pointer leaving a row it shares with focus must not put the ring out
+   * while that row is still focused (Copilot, #486).
+   */
   const [hoveredFactionHex, setHoveredFactionHex] = useState<string | null>(null);
+  const [focusedFactionHex, setFocusedFactionHex] = useState<string | null>(null);
+  /** Where the open dossier is on screen, so a peek never lands underneath it (ah-mwqa). */
+  const [dossierRect, setDossierRect] = useState<KeepClear | null>(null);
   // Memoised because the map's framing effect depends on this value's identity: a fresh object on
   // every render would re-frame the route on every render, and each framing commits a viewport,
   // which renders again.
@@ -2055,10 +2064,28 @@ export function AppShell({
 
   // Memoised and gated on the dossier being open, exactly as `tradeArrow` is: a closed panel must
   // never leave a ring behind.
-  const factionRing = useMemo(
-    () => (openDossier === null ? null : hoveredFactionHex),
-    [openDossier, hoveredFactionHex]
-  );
+  /**
+   * One ring, two intents (ah-mwqa): a hover is a peek the map returns from, focus is navigation
+   * the map stays with. The pointer wins while it is on a row, because it is the more deliberate of
+   * the two - a focused row the reader has since pointed somewhere else is not what they are
+   * looking at - and focus is what is left when the pointer leaves.
+   *
+   * A closed dossier is `settle` with no hex, which is what leaves the map where a peek put it
+   * rather than snapping away as the panel disappears.
+   */
+  const factionPeek = useMemo((): { regionId: string | null; mode: PeekMode } => {
+    if (openDossier === null) {
+      return { regionId: null, mode: "settle" };
+    }
+    if (hoveredFactionHex !== null) {
+      return { regionId: hoveredFactionHex, mode: "peek" };
+    }
+    if (focusedFactionHex !== null) {
+      return { regionId: focusedFactionHex, mode: "settle" };
+    }
+    return { regionId: null, mode: "peek" };
+  }, [openDossier, hoveredFactionHex, focusedFactionHex]);
+  const factionRing = factionPeek.regionId;
   // A dismissed dossier forgets the row it was on. The gate above only hides the ring: the panel
   // unmounts without the row ever firing `onPointerLeave` or `onBlur`, so reopening would ring
   // the last hex hovered with the pointer nowhere near it (Copilot, #398, on TradePanel).
@@ -2068,6 +2095,8 @@ export function AppShell({
   useEffect(() => {
     if (openDossier === null) {
       setHoveredFactionHex(null);
+      setFocusedFactionHex(null);
+      setDossierRect(null);
     }
   }, [openDossier]);
   // The attitudes route lives inside the faction popover, so closing that popover closes the
@@ -2083,6 +2112,8 @@ export function AppShell({
     () => ({
       labelFor: hexLabel,
       onHoverHex: setHoveredFactionHex,
+      onFocusHex: setFocusedFactionHex,
+      onRect: setDossierRect,
       // Deliberately not `selectHex`: while the planner is armed that means "move here", and a
       // hex row is somewhere to look, not an order. It also follows the hex to its own level, the
       // way `goToUnit` does - a faction's units can be in the underworld, and selecting an
@@ -2842,7 +2873,7 @@ export function AppShell({
         }
         factionPanel={
           dossier?.from === "attitudes" && openDossier ? (
-            <FactionDossierPanel
+            <MeasuredFactionDossier
               dossier={openDossier}
               {...dossierProps}
               onBack={() => setDossier(null)}
@@ -3037,6 +3068,8 @@ export function AppShell({
           routeRisk={layers.movement && route?.plan ? (route.risk?.hexes ?? []) : []}
           arrow={tradeArrow}
           highlightedRegionId={factionRing}
+          highlightMode={factionPeek.mode}
+          keepClear={dossierRect}
           // Gated on a report for the same reason the header button and the palette entry are:
           // there is nothing to export a map of until one is loaded, and a dialog that opened
           // anyway could only refuse.

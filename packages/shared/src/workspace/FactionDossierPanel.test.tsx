@@ -53,6 +53,7 @@ const panel = (overrides: Partial<Parameters<typeof FactionDossierPanel>[0]> = {
     dossier={DOSSIER}
     labelFor={labelFor}
     onHoverHex={() => {}}
+    onFocusHex={() => {}}
     onSelectHex={() => {}}
     onSelectUnit={() => {}}
     onDismiss={() => {}}
@@ -108,28 +109,31 @@ describe("FactionDossierPanel", () => {
     }
   });
 
-  it("reports the hex a row is on, on hover AND on focus, and nothing when the reader looks away", () => {
+  it("reports the hex a row is on down the pointer's path and the keyboard's, and nothing when the reader looks away", () => {
     const onHoverHex = vi.fn();
-    const row = findByTestId(panel({ onHoverHex }), "dossier-hex-1:8,54");
+    const onFocusHex = vi.fn();
+    const row = findByTestId(panel({ onHoverHex, onFocusHex }), "dossier-hex-1:8,54");
     (row?.props.onPointerEnter as () => void)();
     expect(onHoverHex).toHaveBeenLastCalledWith("1:8,54");
     (row?.props.onPointerLeave as () => void)();
     expect(onHoverHex).toHaveBeenLastCalledWith(null);
     // Every row is a button, so this list is tabbed through: a hover-only feature would show a
-    // keyboard reader nothing at all.
+    // keyboard reader nothing at all. Focus reports down its own callback (ah-mwqa) because the map
+    // treats the two differently, but both ring the hex.
     (row?.props.onFocus as () => void)();
-    expect(onHoverHex).toHaveBeenLastCalledWith("1:8,54");
+    expect(onFocusHex).toHaveBeenLastCalledWith("1:8,54");
     (row?.props.onBlur as () => void)();
-    expect(onHoverHex).toHaveBeenLastCalledWith(null);
+    expect(onFocusHex).toHaveBeenLastCalledWith(null);
   });
 
   it("reports the hex a unit stands in when its row is hovered or focused", () => {
     const onHoverHex = vi.fn();
-    const row = findByTestId(panel({ onHoverHex }), "dossier-unit-104");
+    const onFocusHex = vi.fn();
+    const row = findByTestId(panel({ onHoverHex, onFocusHex }), "dossier-unit-104");
     (row?.props.onPointerEnter as () => void)();
     expect(onHoverHex).toHaveBeenLastCalledWith("1:8,54");
     (row?.props.onFocus as () => void)();
-    expect(onHoverHex).toHaveBeenLastCalledWith("1:8,54");
+    expect(onFocusHex).toHaveBeenLastCalledWith("1:8,54");
   });
 
   it("selects the hex and closes when a hex row is clicked", () => {
@@ -166,3 +170,28 @@ describe("the way back, when the dossier replaced the faction popover's contents
     expect(findByTestId(panel(), "dossier-back")).toBeNull();
   });
 });
+
+describe("a hovered row peeks; a focused row settles", () => {
+  it("tells the two apart on a hex row", () => {
+    const onHoverHex = vi.fn();
+    const onFocusHex = vi.fn();
+    const row = findByTestId(panel({ onHoverHex, onFocusHex }), "dossier-hex-1:7,53");
+    (row?.props.onPointerEnter as () => void)();
+    (row?.props.onFocus as () => void)();
+    (row?.props.onPointerLeave as () => void)();
+    (row?.props.onBlur as () => void)();
+    expect(onHoverHex.mock.calls).toEqual([["1:7,53"], [null]]);
+    expect(onFocusHex.mock.calls).toEqual([["1:7,53"], [null]]);
+  });
+
+  it("tells the two apart on a unit row", () => {
+    const onHoverHex = vi.fn();
+    const onFocusHex = vi.fn();
+    const row = findByTestId(panel({ onHoverHex, onFocusHex }), "dossier-unit-101");
+    (row?.props.onPointerEnter as () => void)();
+    (row?.props.onFocus as () => void)();
+    expect(onHoverHex.mock.calls).toEqual([["1:7,53"]]);
+    expect(onFocusHex.mock.calls).toEqual([["1:7,53"]]);
+  });
+});
+

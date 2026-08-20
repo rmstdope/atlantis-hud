@@ -4033,6 +4033,48 @@ test("tabbing to a hex row rings it on the map", async ({ page }) => {
   await expect(page.getByTestId("map-highlight-ring")).toHaveCount(0);
 });
 
+test("a focused dossier row moves the map and leaves it there", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, DOSSIER_HEX);
+  await page.getByTestId(`open-faction-dossier-${DOSSIER_FACTION}`).first().click();
+
+  const row = page.getByTestId(`dossier-hex-${DOSSIER_HEX}`);
+  await expect(row).toBeVisible();
+  // The panel opens beside the name clicked, over the map - so the ringed hex is underneath it,
+  // which is the case that was reported (ah-mwqa): the highlight existed and could not be seen.
+  await page.mouse.move(4, 4);
+  const before = await mapTransform(page);
+
+  await row.focus();
+  await expect.poll(() => mapTransform(page)).not.toBe(before);
+  const moved = await mapTransform(page);
+
+  // Focus is navigation, not a peek: tabbing away must NOT put the map back. This is the decision
+  // most likely to be "fixed" into a regression later - see the bead's user-facing decisions.
+  await row.blur();
+  await expect(page.getByTestId("map-highlight-ring")).toHaveCount(0);
+  expect(await mapTransform(page)).toBe(moved);
+});
+
+test("a hovered dossier row peeks at its hex and the map comes back", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, DOSSIER_HEX);
+  await page.getByTestId(`open-faction-dossier-${DOSSIER_FACTION}`).first().click();
+
+  const row = page.getByTestId(`dossier-hex-${DOSSIER_HEX}`);
+  await expect(row).toBeVisible();
+  await page.mouse.move(4, 4);
+  const before = await mapTransform(page);
+
+  await row.hover();
+  await expect.poll(() => mapTransform(page)).not.toBe(before);
+
+  // Leaving the row puts the view back exactly, and at once - a delayed restore reads as the map
+  // drifting by itself.
+  await page.mouse.move(4, 4);
+  await expect.poll(() => mapTransform(page)).toBe(before);
+});
+
 test("reopening after dismissal draws no ring", async ({ page }) => {
   await loadReport(page);
   await selectHex(page, DOSSIER_HEX);

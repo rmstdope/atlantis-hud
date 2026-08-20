@@ -1,10 +1,24 @@
 import { useLayoutEffect, useRef, useState } from "react";
+import type { RefObject } from "react";
 import { createPortal } from "react-dom";
 import type { FactionDossier } from "../factionDossier";
 import { placeTooltip, type Point } from "../unitTooltip";
 import { usePopoverDismiss } from "./popover";
+import type { KeepClear } from "./dossierPeek";
 import { POPOVER_BODY_MAX_H } from "./primitives";
 import { PopoverFrame } from "./popover";
+
+/** The four numbers of a `DOMRect` the map needs, so nothing downstream holds a live rect. */
+function boxOf(rect: DOMRect): KeepClear {
+  return { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom };
+}
+
+function sameBox(a: KeepClear | null, b: KeepClear | null): boolean {
+  if (a === null || b === null) {
+    return a === b;
+  }
+  return a.left === b.left && a.top === b.top && a.right === b.right && a.bottom === b.bottom;
+}
 
 /** Said under *Seen in*, so an empty list reads as "we cannot see" rather than "they have none". */
 export const SEEN_IN_LIMIT = "Where their units are this turn. Earlier turns are not remembered.";
@@ -25,6 +39,8 @@ export function FactionDossierPanel({
   dossier,
   labelFor,
   onHoverHex,
+  onFocusHex,
+  frameRef,
   onSelectHex,
   onSelectUnit,
   onBack,
@@ -36,10 +52,25 @@ export function FactionDossierPanel({
   /**
    * The row the reader is on, so the map can ring it - and `null` the moment they look away.
    *
-   * Called on focus as well as on hover: every row is a button, so this list is tabbed through, and
-   * a hover-only feature would show a keyboard reader nothing at all.
+   * The pointer's path only; `onFocusHex` carries the keyboard's. Every row is a button, so this
+   * list is tabbed through, and a hover-only feature would show a keyboard reader nothing at all.
    */
   onHoverHex: (regionId: string | null) => void;
+  /**
+   * The row focus is on, and `null` when it leaves - the keyboard's own path, kept apart from the
+   * pointer's because the two mean different things to the map (ah-mwqa): a hover is a peek and the
+   * map returns, focus is navigation and the map stays. Both ring the same hex.
+   */
+  onFocusHex: (regionId: string | null) => void;
+  /**
+   * A handle on the panel's own frame, so a wrapper can measure where it is on screen and keep the
+   * map from peeking at a hex underneath it (ah-mwqa) - see `useReportedRect`.
+   *
+   * The measuring lives in a wrapper rather than here because this component must stay hook-free:
+   * its tests have no jsdom and exercise a row by calling the component as a plain function, which
+   * would throw the moment it held a hook.
+   */
+  frameRef?: RefObject<HTMLDivElement | null>;
   onSelectHex: (regionId: string) => void;
   onSelectUnit: (unitId: string) => void;
   /**
@@ -51,7 +82,13 @@ export function FactionDossierPanel({
   onDismiss: () => void;
 }) {
   return (
-    <PopoverFrame testId="faction-dossier" label="Faction dossier" align="left" width="w-80">
+    <PopoverFrame
+      testId="faction-dossier"
+      label="Faction dossier"
+      align="left"
+      width="w-80"
+      frameRef={frameRef}
+    >
       <div className="flex items-center gap-2 border-b border-edge px-2 py-1.5">
         {onBack ? (
           <button
@@ -99,8 +136,8 @@ export function FactionDossierPanel({
                   aria-label={`go to ${labelFor(hex.regionId)}`}
                   onPointerEnter={() => onHoverHex(hex.regionId)}
                   onPointerLeave={() => onHoverHex(null)}
-                  onFocus={() => onHoverHex(hex.regionId)}
-                  onBlur={() => onHoverHex(null)}
+                  onFocus={() => onFocusHex(hex.regionId)}
+                  onBlur={() => onFocusHex(null)}
                   onClick={() => {
                     onSelectHex(hex.regionId);
                     onDismiss();
@@ -132,8 +169,8 @@ export function FactionDossierPanel({
                   aria-label={`go to ${unit.name} (${unit.unitId}) in ${labelFor(unit.regionId)}`}
                   onPointerEnter={() => onHoverHex(unit.regionId)}
                   onPointerLeave={() => onHoverHex(null)}
-                  onFocus={() => onHoverHex(unit.regionId)}
-                  onBlur={() => onHoverHex(null)}
+                  onFocus={() => onFocusHex(unit.regionId)}
+                  onBlur={() => onFocusHex(null)}
                   onClick={() => {
                     onSelectUnit(unit.unitId);
                     onDismiss();
@@ -155,6 +192,55 @@ export function FactionDossierPanel({
 }
 
 /**
+ * Reports where a panel's frame is on screen, and `null` once it is gone.
+ *
+ * Nothing else can measure the dossier: from the units table it is portalled into the body, where
+ * `useOverlayInsets` - which queries the map host's parent - cannot see it, and `Insets` are
+ * edge-based while this floats. Re-measured after every render, because the floating panel is
+ * placed one pass after it mounts and both routes grow with the faction's hexes; reported only when
+ * the numbers actually changed, since the reader of this is React state and an unconditional call
+ * would render, measure and call again for ever.
+ */
+export function useReportedRect(onRect?: (rect: KeepClear | null) => void) {
+  const frameRef = useRef<HTMLDivElement | null>(null);
+  const reported = useRef<KeepClear | null>(null);
+  const latest = useRef(onRect);
+  latest.current = onRect;
+
+  useLayoutEffect(() => {
+    const node = frameRef.current;
+    const box = node ? boxOf(node.getBoundingClientRect()) : null;
+    if (!sameBox(reported.current, box)) {
+      reported.current = box;
+      latest.current?.(box);
+    }
+  });
+
+  useLayoutEffect(
+    () => () => {
+      reported.current = null;
+      latest.current?.(null);
+    },
+    []
+  );
+
+  return frameRef;
+}
+
+/**
+ * The dossier in place of the faction popover's contents, measuring itself for the map.
+ *
+ * A wrapper rather than a prop on the panel for the reason `frameRef` gives: the panel holds no
+ * hooks. `FloatingFactionDossier` is the other route and measures the same way.
+ */
+export function MeasuredFactionDossier({
+  onRect,
+  ...panel
+}: { onRect?: (rect: KeepClear | null) => void } & Parameters<typeof FactionDossierPanel>[0]) {
+  return <FactionDossierPanel {...panel} frameRef={useReportedRect(onRect)} />;
+}
+
+/**
  * The dossier floating beside the name that was clicked, wherever on screen that name is.
  *
  * Rendered into the body rather than beside the row, for the reason `UnitTooltip` gives: the panel
@@ -165,8 +251,12 @@ export function FactionDossierPanel({
  */
 export function FloatingFactionDossier({
   at,
+  onRect,
   ...panel
-}: { at: Point } & Parameters<typeof FactionDossierPanel>[0]) {
+}: { at: Point; onRect?: (rect: KeepClear | null) => void } & Parameters<
+  typeof FactionDossierPanel
+>[0]) {
+  const frameRef = useReportedRect(onRect);
   const [node, setNode] = useState<HTMLDivElement | null>(null);
   const [placed, setPlaced] = useState<{ left: number; top: number } | null>(null);
   // Escape and a press elsewhere close it, like every other popover here. Portalled into the body,
@@ -220,7 +310,7 @@ export function FloatingFactionDossier({
       }}
     >
       <span className="relative block">
-        <FactionDossierPanel {...panel} />
+        <FactionDossierPanel {...panel} frameRef={frameRef} />
       </span>
     </div>,
     document.body
