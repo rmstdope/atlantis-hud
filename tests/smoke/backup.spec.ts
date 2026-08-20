@@ -26,7 +26,9 @@ async function openOrders(page: Page) {
   await filter.fill(OWN_UNIT);
   const row = page.getByTestId(`unit-row-${OWN_UNIT}`);
   await expect(row).toBeVisible();
-  await row.getByRole("button").click();
+  // Named, not "the button in this row": a foreign unit's row also carries the faction name as a
+  // control (ah-bu2c), so a bare role lookup is ambiguous there.
+  await row.getByRole("button", { name: `unit ${unitId}` }).click();
   await filter.clear();
   await expect(page.getByTestId("orders-input")).toBeVisible();
 }

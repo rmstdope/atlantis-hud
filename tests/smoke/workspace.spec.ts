@@ -81,7 +81,9 @@ async function selectUnit(page: Page, unitId: string) {
   const row = page.getByTestId(`unit-row-${unitId}`);
   await expect(row).toHaveCount(1);
   await expect(row).toBeVisible();
-  await row.getByRole("button").click();
+  // Named, not "the button in this row": a foreign unit's row also carries the faction name as a
+  // control (ah-bu2c), so a bare role lookup is ambiguous there.
+  await row.getByRole("button", { name: `unit ${unitId}` }).click();
   await box.clear();
 }
 
@@ -2853,7 +2855,11 @@ test("the units table is navigable by keyboard", async ({ page }) => {
 
   // Which is where a focus owed from that no-op would be spent. Selecting with the mouse must not
   // haul focus onto a row: only the arrow keys move focus, because only they asked to.
-  await page.locator("[data-testid^='unit-row-']").first().getByRole("button").click();
+  await page
+    .locator("[data-testid^='unit-row-']")
+    .first()
+    .getByRole("button", { name: /^unit / })
+    .click();
   await expect(page.locator("[data-testid^='unit-row-']:focus")).toHaveCount(0);
 });
 
