@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The scrolling palette, round two (bead ah-yk6b)</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733; --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --ok:#4fb783; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1180px; margin-left:auto; margin-right:auto; }
+  h1 { font-size:25px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:96ch; margin-top:10px; font-size:14px; }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:0.92em; }
+  h2.sec { margin-top:34px; font-size:18px; color:var(--brass); } h2.sec small { color:var(--ink-dim); font-size:13px; margin-left:10px; }
+  .banner { border:1px solid var(--edge); border-left:3px solid var(--brass); background:var(--panel); padding:14px 16px; border-radius:6px; margin-top:16px; color:var(--ink-soft); font-size:13.5px; } .banner b { color:var(--ink); }
+  .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); gap:20px; margin-top:16px; align-items:start; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; display:flex; flex-direction:column; gap:12px; }
+  .card h3 { font-size:16px; } .card h3 em { color:var(--brass); font-style:normal; font-size:11px; letter-spacing:1.6px; margin-right:8px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; }
+  .notes { list-style:none; font-size:12px; color:var(--ink-soft); display:grid; gap:4px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; } .notes li.con::before { content:"\2212  "; color:var(--danger); }
+  .pal { font-family:'Helvetica Neue',Arial,sans-serif; font-size:12px; background:var(--raised); border:1px solid var(--edge); border-radius:5px; overflow:hidden; }
+  .pal .q { padding:6px 9px; border-bottom:1px solid var(--edge); color:var(--ink); }
+  .pal .q .cur { color:var(--brass); }
+  .pal .row { display:flex; align-items:baseline; gap:8px; padding:3px 9px; }
+  .pal .row + .row { border-top:1px solid var(--edge-soft); }
+  .pal .row.on { background:rgba(217,164,65,.14); }
+  .pal .k { margin-left:auto; color:var(--ink-dim); font-size:10.5px; letter-spacing:.08em; text-transform:uppercase; flex:none; }
+  .pal .lab { color:var(--ink); }
+  .pal .rep { border-left:2px solid var(--brass); }
+  .sc { overflow-y:auto; scrollbar-color:var(--edge) transparent; }
+  .h8 { max-height:104px; } .h12 { max-height:156px; } .h20 { max-height:260px; }
+  .vp { border:1px dashed var(--edge); border-radius:6px; padding:10px; position:relative; }
+  .vp::after { content:"viewport"; position:absolute; right:6px; bottom:2px; font-size:9px; color:var(--ink-dim); font-family:'Helvetica Neue',Arial,sans-serif; }
+  .kbd { font-family:'SF Mono',Menlo,monospace; background:var(--raised); border:1px solid var(--edge); border-radius:3px; padding:0 4px; font-size:11px; color:var(--brass); }
+  table { border-collapse:collapse; font-size:12.5px; width:100%; margin-top:14px; } th,td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--edge-soft); vertical-align:top; } th { color:var(--brass); font-weight:normal; font-size:11px; letter-spacing:1px; text-transform:uppercase; }
+</style>
+</head>
+<body>
+<header>
+  <h1>The scrolling palette &mdash; <span>round two</span> (bead ah-yk6b)</h1>
+  <p>You chose <b>A</b> (every match, scrollable), <b>E</b> (every matching kind gets a place first) and <b>H</b> (drop subsequence matches when real ones exist). These are the things those three answers do not yet settle.</p>
+</header>
+<main>
+
+  <h2 class="sec">&sect;5 &nbsp;How tall is the list? <small>the dialog opens at 15vh from the top, so its height is the rest of the screen</small></h2>
+  <div class="cards">
+    <div class="card">
+      <h3><em>J</em> Eight rows</h3>
+      <div class="vp"><div class="pal"><div class="q">mine<span class="cur">|</span></div><div class="sc h8">
+        <div class="row on"><span class="lab">Miners (12531)</span><span class="k">unit</span></div>
+        <div class="row"><span class="lab">Central Mine Shaft [10]</span><span class="k">structure</span></div>
+        <div class="row"><span class="lab">Mine</span><span class="k">building</span></div>
+        <div class="row"><span class="lab">miners (2338)</span><span class="k">unit</span></div>
+        <div class="row"><span class="lab">Dwarven Miners (14355)</span><span class="k">unit</span></div>
+        <div class="row"><span class="lab">Platinum Miners (13887)</span><span class="k">unit</span></div>
+        <div class="row"><span class="lab">Wistful Miners (2999)</span><span class="k">unit</span></div>
+        <div class="row"><span class="lab">Lunar Mine [17]</span><span class="k">structure</span></div>
+      </div></div></div>
+      <ul class="notes"><li>Compact; the map stays visible behind it.</li><li>Fits any laptop, and any window you might shrink to.</li><li class="con">Fewer rows than today's 12 &mdash; you would scroll more often, not less.</li></ul>
+    </div>
+    <div class="card">
+      <h3><em>K</em> Twelve rows &mdash; today's number</h3>
+      <div class="vp"><div class="pal"><div class="q">mine<span class="cur">|</span></div><div class="sc h12">
+        <div class="row on"><span class="lab">Miners (12531)</span><span class="k">unit</span></div>
+        <div class="row"><span class="lab">Central Mine Shaft [10]</span><span class="k">structure</span></div>
+        <div class="row"><span class="lab">Mine</span><span class="k">building</span></div>
+        <div class="row"><span class="lab">miners (2338)</span><span class="k">unit</span></div>
+        <div class="row"><span class="lab">Dwarven Miners (14355)</span><span class="k">unit</span></div>
+        <div class="row"><span class="lab">Platinum Miners (13887)</span><span class="k">unit</span></div>
+        <div class="row"><span class="lab">Wistful Miners (2999)</span><span class="k">unit</span></div>
+        <div class="row"><span class="lab">Lunar Mine [17]</span><span class="k">structure</span></div>
+        <div class="row"><span class="lab">Dwarf Undermine [11]</span><span class="k">structure</span></div>
+        <div class="row"><span class="lab">Undermine No. 3 [15]</span><span class="k">structure</span></div>
+        <div class="row"><span class="lab">Arcane Mine</span><span class="k">building</span></div>
+        <div class="row"><span class="lab">Building [12] &middot; Mine</span><span class="k">structure</span></div>
+      </div></div></div>
+      <ul class="notes"><li><b>Nothing gets smaller.</b> Every list that fitted before still fits, and longer ones now scroll.</li><li>The number is already in the code and already lived with.</li><li class="con">A fixed row count ignores how tall the window actually is.</li></ul>
+    </div>
+    <div class="card">
+      <h3><em>L</em> As tall as the window allows</h3>
+      <div class="concept">A max height in <code>vh</code> &mdash; the list grows to fill the space under the input and stops short of the bottom edge.</div>
+      <div class="vp"><div class="pal"><div class="q">mine<span class="cur">|</span></div><div class="sc h20">
+        <div class="row on"><span class="lab">Miners (12531)</span><span class="k">unit</span></div>
+        <div class="row"><span class="lab">Central Mine Shaft [10]</span><span class="k">structure</span></div>
+        <div class="row"><span class="lab">Mine</span><span class="k">building</span></div>
+        <div class="row"><span class="lab">miners (2338)</span><span class="k">unit</span></div>
+        <div class="row"><span class="lab">Dwarven Miners (14355)</span><span class="k">unit</span></div>
+        <div class="row"><span class="lab">Platinum Miners (13887)</span><span class="k">unit</span></div>
+        <div class="row"><span class="lab">Wistful Miners (2999)</span><span class="k">unit</span></div>
+        <div class="row"><span class="lab">Lunar Mine [17]</span><span class="k">structure</span></div>
+        <div class="row"><span class="lab">Dwarf Undermine [11]</span><span class="k">structure</span></div>
+        <div class="row"><span class="lab">Undermine No. 3 [15]</span><span class="k">structure</span></div>
+        <div class="row"><span class="lab">Arcane Mine</span><span class="k">building</span></div>
+        <div class="row"><span class="lab">Building [12] &middot; Mine</span><span class="k">structure</span></div>
+        <div class="row"><span class="lab">Mithril</span><span class="k">item</span></div>
+        <div class="row"><span class="lab">Mining</span><span class="k">skill</span></div>
+        <div class="row"><span class="lab">Magician's Tower</span><span class="k">building</span></div>
+      </div></div></div>
+      <ul class="notes"><li><b>Uses a big screen properly</b> &mdash; on a tall monitor you may never scroll at all.</li><li>Adapts to a shrunk window instead of overflowing it.</li><li class="con">The dialog changes size as you type, which is movement under your eyes.</li></ul>
+    </div>
+  </div>
+  <div class="banner">Whatever the height, <b>the dialog must never grow past the bottom of the window</b> &mdash; it opens 15vh down, so a fixed row count on a short window is the one case that breaks today's layout. Say if you would rather it stopped growing and simply scrolled at that point, which is what L does by construction.</div>
+
+  <h2 class="sec">&sect;6 &nbsp;The keyboard, over a list that no longer fits</h2>
+  <table>
+    <tr><th style="width:22%">Key</th><th>Today</th><th>Proposed</th></tr>
+    <tr><td><span class="kbd">&darr;</span> <span class="kbd">&uarr;</span></td><td>Moves one row, wrapping at both ends</td><td>Same, and <b>scrolls the highlighted row into view</b> &mdash; which nothing does today</td></tr>
+    <tr><td><span class="kbd">Home</span> <span class="kbd">End</span></td><td>First and last row</td><td>Unchanged, now scrolling with it</td></tr>
+    <tr><td><span class="kbd">PgUp</span> <span class="kbd">PgDn</span></td><td>Nothing</td><td><b>Open question</b> &mdash; a screenful at a time, or leave them alone?</td></tr>
+    <tr><td><span class="kbd">Enter</span> <span class="kbd">Esc</span></td><td>Run the highlight / dismiss</td><td>Unchanged</td></tr>
+  </table>
+  <div class="cards">
+    <div class="card">
+      <h3><em>M</em> Keep the wrap</h3>
+      <ul class="notes"><li>One rule, and <span class="kbd">&uarr;</span> from the top is a fast way to the last row.</li><li class="con">Over 200 rows, one keypress teleports you from top to bottom with no warning.</li></ul>
+    </div>
+    <div class="card">
+      <h3><em>N</em> Stop at the ends</h3>
+      <ul class="notes"><li>Holding <span class="kbd">&darr;</span> settles on the last row instead of cycling forever past what you wanted.</li><li><span class="kbd">Home</span> and <span class="kbd">End</span> already cover the jump, so nothing is lost.</li><li class="con">Changes behaviour you are used to, on lists that were never long enough for it to matter.</li></ul>
+    </div>
+  </div>
+
+  <h2 class="sec">&sect;7 &nbsp;Option E's exact order <small>&ldquo;every matching kind gets one place first&rdquo; &mdash; but in what order are those first rows?</small></h2>
+  <div class="cards">
+    <div class="card">
+      <h3><em>P</em> Representatives by fit</h3>
+      <div class="concept">The best of each kind, those first rows sorted by how well they match.</div>
+      <div class="pal"><div class="q">mine<span class="cur">|</span></div>
+        <div class="row on rep"><span class="lab">Miners (12531)</span><span class="k">unit</span></div>
+        <div class="row rep"><span class="lab">Mine</span><span class="k">building</span></div>
+        <div class="row rep"><span class="lab">Central Mine Shaft [10]</span><span class="k">structure</span></div>
+        <div class="row"><span class="lab">miners (2338)</span><span class="k">unit</span></div>
+      </div>
+      <ul class="notes"><li><b>The best match overall is still the first row</b>, so Enter on a well-aimed query does what it always did.</li><li>One consistent idea: fit decides, kind only guarantees a seat.</li><li class="con">Which kind is second changes as you type.</li></ul>
+    </div>
+    <div class="card">
+      <h3><em>Q</em> Representatives in ah-wkwk's kind order</h3>
+      <div class="concept">Units, then places, then structures, then actions, then the dictionary &mdash; the order already decided for an empty query.</div>
+      <div class="pal"><div class="q">mine<span class="cur">|</span></div>
+        <div class="row on rep"><span class="lab">Miners (12531)</span><span class="k">unit</span></div>
+        <div class="row rep"><span class="lab">Central Mine Shaft [10]</span><span class="k">structure</span></div>
+        <div class="row rep"><span class="lab">Mine</span><span class="k">building</span></div>
+        <div class="row"><span class="lab">miners (2338)</span><span class="k">unit</span></div>
+      </div>
+      <ul class="notes"><li><b>The top of the list is in the same order every time</b>, whatever you type &mdash; so it becomes muscle memory.</li><li>Agrees with what the palette already does for an empty query.</li><li class="con">A perfect dictionary match can sit below a weaker structure match.</li></ul>
+    </div>
+  </div>
+  <div class="banner">In both, only <b>kinds that actually matched</b> get a row, and the remainder of the list is plain fit order. With one kind matching, both are identical to today.</div>
+
+</main>
+</body>
+</html>
