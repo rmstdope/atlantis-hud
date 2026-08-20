@@ -6133,82 +6133,89 @@ mod tests {
             with_men(with_silver(unit("700"), 1000), 20),
         ];
 
-        // The fourth element is a `Faction Status:` allowance the case's report should carry -
-        // empty for every per-hex check, and what `too-many-quartermasters` needs instead of a hex.
-        type Case = (
-            Code,
-            Vec<ReportRegion>,
-            &'static str,
-            Option<(&'static str, i64, i64)>,
-        );
+        /// One code, and the smallest fixture that makes it fire.
+        ///
+        /// Named fields rather than a tuple (ah-11lh): two beads adding a case each used to
+        /// auto-merge into a case that still compiled and asserted the wrong thing (ah-oq3).
+        /// Interleaved named fields do not compile, so a bad merge is a build error instead of a
+        /// silent one.
+        struct Case {
+            code: Code,
+            regions: Vec<ReportRegion>,
+            orders: &'static str,
+            /// A `Faction Status:` allowance the case's report should carry - `None` for every
+            /// per-hex check, and what `too-many-quartermasters` and `too-many-trade-regions`
+            /// need instead of a hex.
+            allowance: Option<(&'static str, i64, i64)>,
+        }
         let cases: Vec<Case> = vec![
-            (
-                codes::NOT_ENOUGH_SILVER,
-                vec![region(vec![with_silver(unit("5"), 40)])],
-                "unit 5\nGIVE 7 100 SILV\n",
-                None,
-            ),
-            (
-                codes::NOT_ENOUGH_ITEMS,
-                vec![region(vec![with_item(unit("5"), 3, "sword", "SWOR")])],
-                "unit 5\nGIVE 7 10 swords\n",
-                None,
-            ),
-            (
-                codes::GUARD_DROPPED,
-                vec![region(vec![guard_dropping])],
-                "unit 5\nMOVE N\n",
-                None,
-            ),
-            (
-                codes::HEX_UNGUARDED,
-                vec![region(vec![unit("5")])],
-                "unit 5\nWORK\n",
-                None,
-            ),
-            (
-                codes::TAUGHT_NOT_HERE,
-                vec![region(teaching_hex())],
-                "unit 500\nTEACH 999\n",
-                None,
-            ),
-            (
-                codes::TAUGHT_NOT_STUDYING,
-                vec![region(teaching_hex())],
-                "unit 500\nTEACH 700\nunit 700\nWORK\n",
-                None,
-            ),
-            (
-                codes::TEACHER_CANNOT_TEACH,
-                vec![region(teacher_below_student)],
-                "unit 500\nTEACH 700\nunit 700\nSTUDY combat\n",
-                None,
-            ),
-            (
-                codes::TEACHING_OVERSUBSCRIBED,
-                vec![region(oversubscribed)],
-                "unit 500\nTEACH 700\nunit 700\nSTUDY combat\n",
-                None,
-            ),
-            (
-                codes::TEACHER_HAS_FREE_SLOTS,
-                vec![region(vec![
+            Case {
+                code: codes::NOT_ENOUGH_SILVER,
+                regions: vec![region(vec![with_silver(unit("5"), 40)])],
+                orders: "unit 5\nGIVE 7 100 SILV\n",
+                allowance: None,
+            },
+            Case {
+                code: codes::NOT_ENOUGH_ITEMS,
+                regions: vec![region(vec![with_item(unit("5"), 3, "sword", "SWOR")])],
+                orders: "unit 5\nGIVE 7 10 swords\n",
+                allowance: None,
+            },
+            Case {
+                code: codes::GUARD_DROPPED,
+                regions: vec![region(vec![guard_dropping])],
+                orders: "unit 5\nMOVE N\n",
+                allowance: None,
+            },
+            Case {
+                code: codes::HEX_UNGUARDED,
+                regions: vec![region(vec![unit("5")])],
+                orders: "unit 5\nWORK\n",
+                allowance: None,
+            },
+            Case {
+                code: codes::TAUGHT_NOT_HERE,
+                regions: vec![region(teaching_hex())],
+                orders: "unit 500\nTEACH 999\n",
+                allowance: None,
+            },
+            Case {
+                code: codes::TAUGHT_NOT_STUDYING,
+                regions: vec![region(teaching_hex())],
+                orders: "unit 500\nTEACH 700\nunit 700\nWORK\n",
+                allowance: None,
+            },
+            Case {
+                code: codes::TEACHER_CANNOT_TEACH,
+                regions: vec![region(teacher_below_student)],
+                orders: "unit 500\nTEACH 700\nunit 700\nSTUDY combat\n",
+                allowance: None,
+            },
+            Case {
+                code: codes::TEACHING_OVERSUBSCRIBED,
+                regions: vec![region(oversubscribed)],
+                orders: "unit 500\nTEACH 700\nunit 700\nSTUDY combat\n",
+                allowance: None,
+            },
+            Case {
+                code: codes::TEACHER_HAS_FREE_SLOTS,
+                regions: vec![region(vec![
                     with_skill(with_men(with_silver(unit("500"), 1000), 3), "COMB", 3),
                     with_men(with_silver(unit("700"), 1000), 2),
                     with_men(with_silver(unit("900"), 1000), 2),
                 ])],
-                "unit 500\nTEACH 700\nunit 700\nSTUDY combat\nunit 900\nSTUDY combat\n",
-                None,
-            ),
-            (
-                codes::FORM_ALIAS_REUSED,
-                vec![region(vec![unit("5")])],
-                "unit 5\nFORM 1\nEND\nFORM 1\nEND\n",
-                None,
-            ),
-            (
-                codes::FLEET_OVERLOADED,
-                vec![ReportRegion {
+                orders: "unit 500\nTEACH 700\nunit 700\nSTUDY combat\nunit 900\nSTUDY combat\n",
+                allowance: None,
+            },
+            Case {
+                code: codes::FORM_ALIAS_REUSED,
+                regions: vec![region(vec![unit("5")])],
+                orders: "unit 5\nFORM 1\nEND\nFORM 1\nEND\n",
+                allowance: None,
+            },
+            Case {
+                code: codes::FLEET_OVERLOADED,
+                regions: vec![ReportRegion {
                     structures: vec![longship("329")],
                     ..region(vec![ReportUnit {
                         structure_id: Some("329".to_string()),
@@ -6217,12 +6224,12 @@ mod tests {
                         ..unit("11125")
                     }])
                 }],
-                "unit 11125\nSAIL N\n",
-                None,
-            ),
-            (
-                codes::FLEET_UNDERCREWED,
-                vec![ReportRegion {
+                orders: "unit 11125\nSAIL N\n",
+                allowance: None,
+            },
+            Case {
+                code: codes::FLEET_UNDERCREWED,
+                regions: vec![ReportRegion {
                     structures: vec![longship("329")],
                     ..region(vec![ReportUnit {
                         structure_id: Some("329".to_string()),
@@ -6230,95 +6237,95 @@ mod tests {
                         ..unit("11125")
                     }])
                 }],
-                "unit 11125\nSAIL N\n",
-                None,
-            ),
-            (
-                codes::GIVE_TARGET_NOT_HERE,
-                vec![region(vec![with_silver(unit("5"), 1000)])],
-                "unit 5\nGIVE 16585 500 SILV\n",
-                None,
-            ),
-            (
-                codes::NOT_TRADED_HERE,
-                vec![region(vec![unit("5")])],
-                "unit 5\nBUY 5 silk\n",
-                None,
-            ),
-            (
-                codes::TOO_MANY_QUARTERMASTERS,
-                vec![region(vec![unit("5")])],
-                "unit 5\nSTUDY QUAM\n",
-                Some(("Quartermasters", 2, 2)),
-            ),
-            (
-                codes::UNIT_OVERLOADED,
-                vec![region(vec![carrying("5", 1800, 150)])],
-                "unit 5\nMOVE S\n",
-                None,
-            ),
-            (
-                codes::STUDY_AT_MAXIMUM,
-                vec![region(vec![with_skill(
+                orders: "unit 11125\nSAIL N\n",
+                allowance: None,
+            },
+            Case {
+                code: codes::GIVE_TARGET_NOT_HERE,
+                regions: vec![region(vec![with_silver(unit("5"), 1000)])],
+                orders: "unit 5\nGIVE 16585 500 SILV\n",
+                allowance: None,
+            },
+            Case {
+                code: codes::NOT_TRADED_HERE,
+                regions: vec![region(vec![unit("5")])],
+                orders: "unit 5\nBUY 5 silk\n",
+                allowance: None,
+            },
+            Case {
+                code: codes::TOO_MANY_QUARTERMASTERS,
+                regions: vec![region(vec![unit("5")])],
+                orders: "unit 5\nSTUDY QUAM\n",
+                allowance: Some(("Quartermasters", 2, 2)),
+            },
+            Case {
+                code: codes::UNIT_OVERLOADED,
+                regions: vec![region(vec![carrying("5", 1800, 150)])],
+                orders: "unit 5\nMOVE S\n",
+                allowance: None,
+            },
+            Case {
+                code: codes::STUDY_AT_MAXIMUM,
+                regions: vec![region(vec![with_skill(
                     with_silver(unit("5"), 1000),
                     "OBSE",
                     5,
                 )])],
-                "unit 5\nSTUDY OBSE\n",
-                None,
-            ),
-            (
-                codes::ALREADY_BUILT,
-                vec![ReportRegion {
+                orders: "unit 5\nSTUDY OBSE\n",
+                allowance: None,
+            },
+            Case {
+                code: codes::ALREADY_BUILT,
+                regions: vec![ReportRegion {
                     structures: vec![finished_mill("1")],
                     ..region(vec![in_structure(unit("4021"), "1")])
                 }],
-                "unit 4021\nBUILD\n",
-                None,
-            ),
-            (
-                codes::TOO_MANY_TRADE_REGIONS,
-                vec![
+                orders: "unit 4021\nBUILD\n",
+                allowance: None,
+            },
+            Case {
+                code: codes::TOO_MANY_TRADE_REGIONS,
+                regions: vec![
                     region_at("1:7,53", 7, 53, vec![unit("5")]),
                     region_at("1:8,53", 8, 53, vec![unit("6")]),
                     region_at("1:9,53", 9, 53, vec![unit("7")]),
                 ],
-                "unit 5\nPRODUCE grain\nunit 6\nPRODUCE grain\nunit 7\nPRODUCE grain\n",
-                Some(("Trade Regions", 2, 2)),
-            ),
-            (
-                codes::MAGIC_STUDY_OUTSIDE_BUILDING,
-                vec![region(vec![mage(2)])],
-                "unit 5\nSTUDY FORC\n",
-                None,
-            ),
-            (
-                codes::BUILD_OUTSIDE_STRUCTURE,
-                vec![region(vec![unit("4021")])],
-                "unit 4021\nBUILD\n",
-                None,
-            ),
-            (
-                codes::BUILD_HELP_NOT_BUILDING,
-                vec![ReportRegion {
+                orders: "unit 5\nPRODUCE grain\nunit 6\nPRODUCE grain\nunit 7\nPRODUCE grain\n",
+                allowance: Some(("Trade Regions", 2, 2)),
+            },
+            Case {
+                code: codes::MAGIC_STUDY_OUTSIDE_BUILDING,
+                regions: vec![region(vec![mage(2)])],
+                orders: "unit 5\nSTUDY FORC\n",
+                allowance: None,
+            },
+            Case {
+                code: codes::BUILD_OUTSIDE_STRUCTURE,
+                regions: vec![region(vec![unit("4021")])],
+                orders: "unit 4021\nBUILD\n",
+                allowance: None,
+            },
+            Case {
+                code: codes::BUILD_HELP_NOT_BUILDING,
+                regions: vec![ReportRegion {
                     structures: vec![unfinished_building("1")],
                     ..region(vec![in_structure(unit("4021"), "1"), unit("4117")])
                 }],
-                "unit 4021\nWORK\nunit 4117\nBUILD HELP 4021\n",
-                None,
-            ),
-            (
-                codes::UNIT_DOES_NOTHING,
-                vec![region(vec![unit("4021")])],
-                "unit 4021\n",
-                None,
-            ),
-            (
-                codes::BUILD_WITHOUT_SKILL,
-                vec![region(vec![unit("4021")])],
-                "unit 4021\nBUILD Mine\n",
-                None,
-            ),
+                orders: "unit 4021\nWORK\nunit 4117\nBUILD HELP 4021\n",
+                allowance: None,
+            },
+            Case {
+                code: codes::UNIT_DOES_NOTHING,
+                regions: vec![region(vec![unit("4021")])],
+                orders: "unit 4021\n",
+                allowance: None,
+            },
+            Case {
+                code: codes::BUILD_WITHOUT_SKILL,
+                regions: vec![region(vec![unit("4021")])],
+                orders: "unit 4021\nBUILD Mine\n",
+                allowance: None,
+            },
         ];
 
         assert_eq!(
@@ -6326,9 +6333,23 @@ mod tests {
             codes::ALL.len(),
             "every code in codes::ALL needs a fixture here, or a silenced one would go unnoticed"
         );
+        // Length alone would accept a case duplicated and another dropped, which is the same hole
+        // by a different route.
+        let distinct: BTreeSet<&str> = cases.iter().map(|case| case.code.as_str()).collect();
+        assert_eq!(
+            distinct.len(),
+            cases.len(),
+            "two cases share a code, so some other code has no fixture"
+        );
 
-        for (code, regions, orders, status) in &cases {
-            let built = match status {
+        for Case {
+            code,
+            regions,
+            orders,
+            allowance,
+        } in &cases
+        {
+            let built = match allowance {
                 Some((label, used, maximum)) => {
                     report_with_status(label, *used, *maximum, regions.clone())
                 }
