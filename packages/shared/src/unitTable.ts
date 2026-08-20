@@ -489,23 +489,46 @@ export function dragColumnOrder(
 }
 
 /**
- * The x offset, from the table's left edge, of the boundary the dragged column will land on.
+ * The x offset, from the table's left edge, of the boundary the dragged column will land on -
+ * measured in the layout the player is actually looking at.
  *
- * The sum of the widths of every column that precedes it in the prospective order, itself excluded.
- * Stated that way it is correct in both directions without an off-by-one: dragging left or right,
- * the line marks the left edge of where the column comes to rest.
+ * That distinction is the whole of this function. The table deliberately does not reorder until the
+ * drop (see `reorderFeedback.ts`, where reordering under the pointer was the rejected option), so a
+ * boundary computed in the prospective order is drawn over a table laid out in the starting one.
+ * Dragging left the two coincide; dragging right they differ by exactly the dragged column's own
+ * width, and the line lands mid-column.
+ *
+ * So: find the last column that will precede the dragged one, and measure to its right edge in the
+ * *current* order - which is where the gap the player is aiming at actually is. If nothing precedes
+ * it, the answer is 0.
  */
 export function dropBoundaryX(
+  current: ColumnOrder,
   prospective: ColumnOrder,
   dragged: UnitColumn,
   widthPxOf: (column: UnitColumn) => number
 ): number {
-  let x = 0;
+  const before = new Set<UnitColumn>();
   for (const column of prospective) {
     if (column === dragged) {
       break;
     }
-    x += widthPxOf(column);
+    before.add(column);
   }
-  return x;
+  if (before.size === 0) {
+    return 0;
+  }
+
+  // Walk the *current* order, accumulating every width up to and including the last column that
+  // will end up before the dragged one. The dragged column's own width counts when it still sits
+  // within that span on screen - which is precisely the rightward case.
+  let x = 0;
+  let boundary = 0;
+  for (const column of current) {
+    x += widthPxOf(column);
+    if (before.has(column)) {
+      boundary = x;
+    }
+  }
+  return boundary;
 }

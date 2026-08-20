@@ -86,7 +86,7 @@ export function ColumnReorderHandle({
       moved = true;
       prospective = dragColumnOrder(startOrder, column, moveEvent.clientX - startX, widthPxOf);
       feedback.showAt(
-        dropBoundaryX(prospective, column, widthPxOf),
+        dropBoundaryX(startOrder, prospective, column, widthPxOf),
         moveEvent.clientX - tableLeft
       );
     };
