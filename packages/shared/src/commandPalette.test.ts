@@ -5,6 +5,7 @@ import {
   paletteKeyReduce,
   type PaletteEntry
 } from "./commandPalette";
+import { structurePaletteLabel } from "./structureLabel";
 
 const noop = () => {};
 
@@ -18,28 +19,66 @@ function entries(): PaletteEntry[] {
       { regionId: "1:7,53", label: "mountain (7,53)", run: noop },
       { regionId: "1:20,40", label: "ocean (20,40) in Atlantis Ocean", run: noop }
     ],
+    structures: [
+      { structureId: "12", label: "Arcane Mine [12] · cavern (3,41)", run: noop },
+      { structureId: "4", label: "Building [4] · Mine · plain (9,22)", run: noop }
+    ],
     actions: [
       { id: "settings", label: "Open settings", binding: "⌘,", run: noop },
       { id: "theme", label: "Toggle theme", run: noop }
     ],
     orderCommands: ["MOVE", "STUDY"],
-    insertOrder: noop
+    insertOrder: noop,
+    gameData: [
+      { id: "skill:MINI", category: "skill", name: "mining", tag: "MINI" },
+      { id: "ship:LONG", category: "ship", name: "Longship", tag: "LONG" },
+      { id: "building:MINE", category: "building", name: "Mine", tag: null }
+    ],
+    openGameData: noop
   });
 }
 
 describe("buildPaletteEntries", () => {
-  it("lists units, regions, actions and order help, in that reading order", () => {
+  it("lists units, regions, actions, order help and game data, in that reading order", () => {
     const kinds = entries().map((entry) => entry.kind);
     expect(kinds).toEqual([
       "unit",
       "unit",
       "region",
       "region",
+      "structure",
+      "structure",
       "action",
       "action",
       "order-help",
-      "order-help"
+      "order-help",
+      "skill",
+      "ship",
+      "building"
     ]);
+  });
+
+  it("offers a structure in the world", () => {
+    const structure = entries().find((entry) => entry.kind === "structure");
+    expect(structure?.label).toContain("Arcane Mine [12]");
+  });
+
+  it("tells a structure and a building type apart when both match \"mine\"", () => {
+    const found = filterPalette(entries(), "mine");
+    const kinds = new Set(found.map((entry) => entry.kind));
+    expect(kinds.has("structure")).toBe(true);
+    expect(kinds.has("building")).toBe(true);
+  });
+
+  it("puts structures after regions and before actions", () => {
+    const kinds = entries().map((entry) => entry.kind);
+    expect(kinds.lastIndexOf("region")).toBeLessThan(kinds.indexOf("structure"));
+    expect(kinds.lastIndexOf("structure")).toBeLessThan(kinds.indexOf("action"));
+  });
+
+  it("finds a structure by its id", () => {
+    const found = filterPalette(entries(), "12");
+    expect(found.some((entry) => entry.label.includes("Arcane Mine [12]"))).toBe(true);
   });
 
   it("labels a unit with its name and number, so either can be searched", () => {
@@ -98,7 +137,7 @@ describe("filterPalette", () => {
   });
 
   it("shows everything, in reading order, for an empty query", () => {
-    expect(filterPalette(entries(), "")).toHaveLength(8);
+    expect(filterPalette(entries(), "")).toHaveLength(13);
   });
 
   it("caps the list when asked to", () => {
@@ -129,5 +168,73 @@ describe("paletteKeyReduce", () => {
 
   it("stays put with nothing to highlight", () => {
     expect(paletteKeyReduce({ index: 0, count: 0 }, "ArrowDown")).toBeNull();
+  });
+});
+
+describe("game data in the palette", () => {
+  it("lists game data after order help, labelled with the tab it opens", () => {
+    const all = entries();
+    const data = all.slice(-3);
+    expect(all.slice(0, -3).every((entry) => entry.kind !== "skill")).toBe(true);
+    expect(data.map((entry) => entry.kind)).toEqual(["skill", "ship", "building"]);
+    expect(data.map((entry) => entry.id)).toEqual([
+      "data-skill:MINI",
+      "data-ship:LONG",
+      "data-building:MINE"
+    ]);
+    expect(data.map((entry) => entry.label)).toEqual([
+      "mining MINI",
+      "Longship LONG",
+      "Mine"
+    ]);
+  });
+
+  it("finds an item by its tag, because the tag is in the label", () => {
+    expect(filterPalette(entries(), "LONG").map((entry) => entry.id)).toContain("data-ship:LONG");
+  });
+
+  it("offers no game data when the ruleset has not loaded", () => {
+    const without = buildPaletteEntries({
+      ownUnits: [],
+      regions: [],
+      structures: [],
+      actions: [],
+      orderCommands: [],
+      insertOrder: noop,
+      gameData: [],
+      openGameData: noop
+    });
+    expect(without).toEqual([]);
+  });
+});
+
+describe("structurePaletteLabel", () => {
+  const hexLabel = () => "cavern (3,41)";
+
+  it("shows a named structure's name and hex", () => {
+    expect(
+      structurePaletteLabel(
+        { structureId: "12", name: "Arcane Mine", kind: "Mine", description: null, needs: null },
+        hexLabel()
+      )
+    ).toBe("Arcane Mine [12] · cavern (3,41)");
+  });
+
+  it("shows an unnamed structure's kind too", () => {
+    expect(
+      structurePaletteLabel(
+        { structureId: "4", name: "Building", kind: "Mine", description: null, needs: null },
+        "plain (9,22)"
+      )
+    ).toBe("Building [4] · Mine · plain (9,22)");
+  });
+
+  it("treats a ship placeholder as unnamed", () => {
+    expect(
+      structurePaletteLabel(
+        { structureId: "218", name: "ship", kind: "Longship", description: null, needs: null },
+        "ocean (1,1)"
+      )
+    ).toBe("ship [218] · Longship · ocean (1,1)");
   });
 });

@@ -14,7 +14,7 @@
 
 import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, statfsSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { repositoryRoot } from "./cargoTargetDir";
 
@@ -89,8 +89,14 @@ export function describeReclaimable(trees: BuildTree[]): string | null {
   // make about free space.
   const totalGb = Math.floor(trees.reduce((sum, tree) => sum + tree.sizeGb, 0) * 10) / 10;
   const noun = trees.length === 1 ? "build tree" : "build trees";
+  // Each tree named with its own size, so a total that disagrees with reality is visible where it
+  // is printed. ah-kdgc saw "2.2 GB sits in 2 build trees" for trees of 24 MB and 342 MB; the
+  // measurement itself is undiagnosed and deliberately not touched here.
+  const named = trees
+    .map((tree) => `${tree.path} (${Math.floor(tree.sizeGb * 10) / 10} GB)`)
+    .join(", ");
 
-  return `${totalGb} GB sits in ${trees.length} ${noun}; .claude/cerebro/scripts/prune-worktrees.sh reclaims what is safe.`;
+  return `${totalGb} GB sits in ${trees.length} ${noun}: ${named}; .claude/cerebro/scripts/prune-worktrees.sh reclaims what is safe.`;
 }
 
 /** Free gigabytes on the filesystem holding a path. */
@@ -163,7 +169,10 @@ if (invokedDirectly) {
   // reclaimable-trees line, not a reason to fail the preflight itself.
   const trees = (() => {
     try {
-      return findBuildTrees(repositoryRoot(cwd));
+      const root = repositoryRoot(cwd);
+      // Named relative to the repository root: the absolute paths are long enough to bury the
+      // sizes they exist to make checkable.
+      return findBuildTrees(root).map((tree) => ({ ...tree, path: relative(root, tree.path) }));
     } catch {
       return [];
     }

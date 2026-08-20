@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Showing every match in the palette (bead ah-yk6b)</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733; --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --ok:#4fb783; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1180px; margin-left:auto; margin-right:auto; }
+  h1 { font-size:26px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:96ch; margin-top:10px; font-size:14px; }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:0.92em; }
+  h2.sec { margin-top:34px; font-size:18px; color:var(--brass); } h2.sec small { color:var(--ink-dim); font-size:13px; margin-left:10px; }
+  .banner { border:1px solid var(--edge); border-left:3px solid var(--brass); background:var(--panel); padding:14px 16px; border-radius:6px; margin-top:16px; color:var(--ink-soft); font-size:13.5px; } .banner b { color:var(--ink); }
+  .banner.bad { border-left-color:var(--danger); }
+  .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(330px,1fr)); gap:20px; margin-top:16px; align-items:start; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; display:flex; flex-direction:column; gap:12px; }
+  .card h3 { font-size:16px; } .card h3 em { color:var(--brass); font-style:normal; font-size:11px; letter-spacing:1.6px; margin-right:8px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; }
+  .notes { list-style:none; font-size:12px; color:var(--ink-soft); display:grid; gap:4px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; } .notes li.con::before { content:"\2212  "; color:var(--danger); }
+  .pal { font-family:'Helvetica Neue',Arial,sans-serif; font-size:12px; background:var(--raised); border:1px solid var(--edge); border-radius:5px; overflow:hidden; }
+  .pal .q { padding:6px 9px; border-bottom:1px solid var(--edge); color:var(--ink); }
+  .pal .q .cur { color:var(--brass); }
+  .pal .row { display:flex; align-items:baseline; gap:8px; padding:3px 9px; }
+  .pal .row + .row { border-top:1px solid var(--edge-soft); }
+  .pal .row.on { background:rgba(217,164,65,.14); }
+  .pal .k { margin-left:auto; color:var(--ink-dim); font-size:10.5px; letter-spacing:.08em; text-transform:uppercase; flex:none; }
+  .pal .lab { color:var(--ink); }
+  .pal .cut { padding:4px 9px; color:var(--danger); font-size:11px; border-top:1px dashed var(--danger); }
+  .pal .more { padding:4px 9px; color:var(--ink-dim); font-size:11px; border-top:1px solid var(--edge); }
+  .pal .hdr { padding:3px 9px; color:var(--brass); font-size:10px; letter-spacing:.1em; text-transform:uppercase; background:rgba(217,164,65,.07); border-top:1px solid var(--edge); }
+  .scroll { max-height:150px; overflow-y:auto; }
+  table { border-collapse:collapse; font-size:12.5px; width:100%; margin-top:14px; } th,td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--edge-soft); vertical-align:top; } th { color:var(--brass); font-weight:normal; font-size:11px; letter-spacing:1px; text-transform:uppercase; }
+  td.n { font-family:'SF Mono',Menlo,monospace; color:var(--brass); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Showing every match in the palette &mdash; <span>proposals</span> (bead ah-yk6b)</h1>
+  <p>Your words at verification: <i>&ldquo;When I type mine, I get a number of &lsquo;Miners&rsquo; units. So many that the structure cannot be seen. It seems the palette only shows the first n matches. It needs to show all so that I can scroll.&rdquo;</i></p>
+  <p>The cap is <code>SHOWN_LIMIT = 12</code> in <code>CommandPalette.tsx:6</code>, applied by <code>filterPalette</code> as a bare <code>kept.slice(0, limit)</code> &mdash; no scroll, and nothing on screen to say anything was cut.</p>
+</header>
+<main>
+
+  <h2 class="sec">&sect;1 &nbsp;What I measured <small>the committed turn-71 report, 831 palette entries</small></h2>
+  <table>
+    <tr><th>You type</th><th class="n">matches</th><th class="n">dropped in silence</th><th>what is in them</th></tr>
+    <tr><td><code>m</code></td><td class="n">202</td><td class="n">190</td><td>47 prefix, 146 substring</td></tr>
+    <tr><td><code>mi</code></td><td class="n">75</td><td class="n">63</td><td>47 of them subsequence noise</td></tr>
+    <tr><td><code>min</code></td><td class="n">31</td><td class="n">19</td><td>19 subsequence noise</td></tr>
+    <tr><td><code>mine</code></td><td class="n">20</td><td class="n">8</td><td>13 subsequence noise</td></tr>
+  </table>
+  <div class="banner bad"><b>The cap bites hardest while you are still typing</b> &mdash; which is every keystroke on the way to the word you wanted. And on this report the five Mine structures land at positions <b>7 to 12</b>: they survive by one row. <b>One more unit named &ldquo;Miner-something&rdquo; and every structure falls off the list</b>, silently. That fragility is the bead, and it is why raising the number alone does not fix it.</div>
+  <div class="banner">A second finding, which &sect;4 is about: <b>35% of all matches across eight sample queries are &ldquo;subsequence&rdquo; matches</b> &mdash; the letters in order with gaps, which is how <code>mine</code> matches <code>MAGICIAN'S TOWER</code>. They are last by fit, so they are the ones being dropped, but they are also what inflates 20 matches from 7 real ones.</div>
+
+  <h2 class="sec">&sect;2 &nbsp;What replaces the hard cap</h2>
+  <div class="cards">
+    <div class="card">
+      <h3><em>A</em> Every match, scrollable</h3>
+      <div class="concept">No cap at all. The list gets a max height and scrolls; arrows scroll the highlight into view.</div>
+      <div class="pal">
+        <div class="q">mine<span class="cur">|</span></div>
+        <div class="scroll">
+          <div class="row on"><span class="lab">Miners (12531)</span><span class="k">unit</span></div>
+          <div class="row"><span class="lab">miners (2338)</span><span class="k">unit</span></div>
+          <div class="row"><span class="lab">Mine</span><span class="k">building</span></div>
+          <div class="row"><span class="lab">Dwarven Miners (14355)</span><span class="k">unit</span></div>
+          <div class="row"><span class="lab">Central Mine Shaft [10]</span><span class="k">structure</span></div>
+          <div class="row"><span class="lab">Lunar Mine [17]</span><span class="k">structure</span></div>
+          <div class="row"><span class="lab">Undermine No. 3 [15]</span><span class="k">structure</span></div>
+          <div class="row"><span class="lab">Magician's Tower</span><span class="k">building</span></div>
+        </div>
+      </div>
+      <ul class="notes">
+        <li><b>Exactly what you asked for.</b> Nothing is ever hidden.</li>
+        <li>Nothing to explain: no footer, no count, no rule to learn.</li>
+        <li class="con">Typing <code>m</code> gives a 202-row scroller, most of it noise.</li>
+        <li class="con">The arrow keys wrap top-to-bottom; over 202 rows that wrap is a long way.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3><em>B</em> Scrollable, with a generous backstop</h3>
+      <div class="concept">Scrolls like A, but stops at (say) 50 and says so.</div>
+      <div class="pal">
+        <div class="q">mi<span class="cur">|</span></div>
+        <div class="scroll">
+          <div class="row on"><span class="lab">Miners (12531)</span><span class="k">unit</span></div>
+          <div class="row"><span class="lab">miners (2338)</span><span class="k">unit</span></div>
+          <div class="row"><span class="lab">Mine</span><span class="k">building</span></div>
+          <div class="row"><span class="lab">Mithril</span><span class="k">item</span></div>
+          <div class="row"><span class="lab">Central Mine Shaft [10]</span><span class="k">structure</span></div>
+        </div>
+        <div class="more">and 25 more &mdash; keep typing to narrow</div>
+      </div>
+      <ul class="notes">
+        <li>Everything you would plausibly scroll to is reachable, and <b>the silence is gone</b>.</li>
+        <li>The footer teaches the one thing that actually helps: typing narrows faster than scrolling finds.</li>
+        <li class="con">Still a cap, so &ldquo;show all&rdquo; is not literally true.</li>
+        <li class="con">50 is a number with no principle behind it.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3><em>C</em> Keep 12, just admit it</h3>
+      <div class="concept">The smallest possible change: the cap stays, a footer counts what it hid.</div>
+      <div class="pal">
+        <div class="q">mine<span class="cur">|</span></div>
+        <div class="row on"><span class="lab">Miners (12531)</span><span class="k">unit</span></div>
+        <div class="row"><span class="lab">Dwarven Miners (14355)</span><span class="k">unit</span></div>
+        <div class="row"><span class="lab">Central Mine Shaft [10]</span><span class="k">structure</span></div>
+        <div class="more">and 8 more &mdash; keep typing to narrow</div>
+      </div>
+      <ul class="notes">
+        <li>Tiny change, no scrolling, no keyboard work.</li>
+        <li class="con"><b>Does not do what you asked.</b> The structure still cannot be reached when it is 13th.</li>
+        <li class="con">Tells you something is missing without giving you any way to get at it.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2 class="sec">&sect;3 &nbsp;Should the kind of thing affect the order? <small>today it is fit alone, and one kind can take every place</small></h2>
+  <div class="cards">
+    <div class="card">
+      <h3><em>D</em> Fit alone &mdash; unchanged</h3>
+      <div class="pal">
+        <div class="q">mine<span class="cur">|</span></div>
+        <div class="row on"><span class="lab">Miners (12531)</span><span class="k">unit</span></div>
+        <div class="row"><span class="lab">miners (2338)</span><span class="k">unit</span></div>
+        <div class="row"><span class="lab">Dwarven Miners (14355)</span><span class="k">unit</span></div>
+        <div class="row"><span class="lab">Platinum Miners (13887)</span><span class="k">unit</span></div>
+        <div class="row"><span class="lab">Wistful Miners (2999)</span><span class="k">unit</span></div>
+        <div class="row"><span class="lab">Central Mine Shaft [10]</span><span class="k">structure</span></div>
+      </div>
+      <ul class="notes">
+        <li>One rule, and the best match is always first.</li>
+        <li>Nothing about ah-wkwk's ordering changes.</li>
+        <li class="con">With scrolling this is fine; <b>without it, this is the bug</b>.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3><em>E</em> Every matching kind gets one place first</h3>
+      <div class="concept">One row per kind that matched, best of each, then the rest by fit.</div>
+      <div class="pal">
+        <div class="q">mine<span class="cur">|</span></div>
+        <div class="row on"><span class="lab">Miners (12531)</span><span class="k">unit</span></div>
+        <div class="row"><span class="lab">Central Mine Shaft [10]</span><span class="k">structure</span></div>
+        <div class="row"><span class="lab">Mine</span><span class="k">building</span></div>
+        <div class="row"><span class="lab">miners (2338)</span><span class="k">unit</span></div>
+        <div class="row"><span class="lab">Dwarven Miners (14355)</span><span class="k">unit</span></div>
+      </div>
+      <ul class="notes">
+        <li><b>A single overwhelming kind can never hide the others</b> &mdash; the deeper version of your complaint, and it holds even on the first screenful.</li>
+        <li>Works whether or not the list scrolls.</li>
+        <li class="con">The second row is no longer the second-best match, which is surprising if you noticed.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3><em>F</em> Grouped under headings</h3>
+      <div class="pal">
+        <div class="q">mine<span class="cur">|</span></div>
+        <div class="hdr">units</div>
+        <div class="row on"><span class="lab">Miners (12531)</span><span class="k">unit</span></div>
+        <div class="row"><span class="lab">miners (2338)</span><span class="k">unit</span></div>
+        <div class="hdr">structures</div>
+        <div class="row"><span class="lab">Central Mine Shaft [10]</span><span class="k">structure</span></div>
+        <div class="hdr">dictionary</div>
+        <div class="row"><span class="lab">Mine</span><span class="k">building</span></div>
+      </div>
+      <ul class="notes">
+        <li>You can always see that structures matched, and how many.</li>
+        <li class="con">Headings cost rows, in a list whose problem is rows.</li>
+        <li class="con">The kind column becomes redundant, so ah-wkwk's row design would be reopened.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2 class="sec">&sect;4 &nbsp;The subsequence matches <small>35% of matches, and the reason the numbers are so large</small></h2>
+  <div class="cards">
+    <div class="card">
+      <h3><em>G</em> Keep them always</h3>
+      <div class="concept">Unchanged. <code>mine</code> goes on matching <code>Magician's Tower</code>, last.</div>
+      <ul class="notes">
+        <li>A half-remembered name still finds its unit &mdash; the reason the rule exists.</li>
+        <li class="con">Two thirds of a long list is then noise you must scroll past.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3><em>H</em> Drop them when real matches exist</h3>
+      <div class="concept">If anything matched as prefix, word-start or substring, show only those. Subsequence matches appear only when they are all there is.</div>
+      <div class="pal">
+        <div class="q">mine<span class="cur">|</span></div>
+        <div class="row on"><span class="lab">Miners (12531)</span><span class="k">unit</span></div>
+        <div class="row"><span class="lab">Central Mine Shaft [10]</span><span class="k">structure</span></div>
+        <div class="more">7 matches, not 20</div>
+      </div>
+      <ul class="notes">
+        <li><b><code>mine</code> drops from 20 matches to 7</b>, and every one of them is a thing you might have meant.</li>
+        <li>The half-remembered-name rescue still works, because it fires when nothing better matched.</li>
+        <li class="con">A genuine subsequence match is hidden whenever any weak substring match exists.</li>
+      </ul>
+    </div>
+  </div>
+
+</main>
+</body>
+</html>

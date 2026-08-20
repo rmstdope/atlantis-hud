@@ -20,6 +20,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use super::forms::{Amount, Party, Selector};
 use super::intents::{read_intents, Intent, PlacedIntent, UnitIntents};
+use super::standing::{self, standing_after, Boarding};
 use crate::movement::mode::{
     best_allowance, cargo_capacity, fleet_label, parse_fleet_kind, sailing_requirement,
 };
@@ -94,6 +95,10 @@ pub mod codes {
     pub const ALREADY_BUILT: Code = Code("already-built");
     pub const TOO_MANY_TRADE_REGIONS: Code = Code("too-many-trade-regions");
     pub const MAGIC_STUDY_OUTSIDE_BUILDING: Code = Code("magic-study-outside-building");
+    pub const BUILD_OUTSIDE_STRUCTURE: Code = Code("build-outside-structure");
+    pub const BUILD_HELP_NOT_BUILDING: Code = Code("build-help-not-building");
+    pub const UNIT_DOES_NOTHING: Code = Code("unit-does-nothing");
+    pub const BUILD_WITHOUT_SKILL: Code = Code("build-without-skill");
     /// Every code. This array's own order is not the settings tab's grouping (that groups by
     /// concern - Teaching / Resources / Markets / Guarding / Orders / Sailing - not by this list):
     /// a new entry joins whichever group fits its concern, which need not be the last one
@@ -102,7 +107,7 @@ pub mod codes {
     /// group). What every entry so far has kept is new-*here*-last: the generated TypeScript
     /// copies this array's order, so a new code is always appended to it regardless of where it
     /// lands in the UI.
-    pub const ALL: [Code; 20] = [
+    pub const ALL: [Code; 24] = [
         NOT_ENOUGH_SILVER,
         NOT_ENOUGH_ITEMS,
         GUARD_DROPPED,
@@ -123,6 +128,10 @@ pub mod codes {
         ALREADY_BUILT,
         TOO_MANY_TRADE_REGIONS,
         MAGIC_STUDY_OUTSIDE_BUILDING,
+        BUILD_OUTSIDE_STRUCTURE,
+        BUILD_HELP_NOT_BUILDING,
+        UNIT_DOES_NOTHING,
+        BUILD_WITHOUT_SKILL,
     ];
 }
 
@@ -224,9 +233,13 @@ pub fn check_turn(
         check_guard(&hex, &options, &mut findings);
         check_teaching(&hex, ruleset, &options, &mut findings);
         check_building(&hex, &options, &mut findings);
+        check_building_outside(&hex, &options, &mut findings);
+        check_build_help(&hex, &options, &mut findings);
+        check_build_skill(&hex, ruleset, &options, &mut findings);
         check_studying(&hex, ruleset, &options, &mut findings);
         check_magic_study(&hex, ruleset, &options, &mut findings);
         check_forms(&hex, &options, &mut findings);
+        check_idle_units(&hex, &options, &mut findings);
         check_transfer_targets(&hex, &located, &options, &mut findings);
         check_sailing(&hex, &ledger, ruleset, &options, &mut findings);
         check_movement(&hex, &ledger, ruleset, &options, &mut findings);
@@ -245,28 +258,95 @@ pub fn check_turn(
     findings
 }
 
+/// Whether this order consumes the unit's month.
+///
+/// Written as an exhaustive `match` on purpose. `is_busy` below was a `matches!` with a fixed list,
+/// and a variant missing from such a list returns `false` silently - the failure `ah-90w` had to
+/// write a regression test against when `BUILD` gained a shape. Here the compiler refuses a new
+/// `Intent` variant until somebody has said which side of this line it falls on.
+fn spends_the_month(intent: &Intent) -> bool {
+    match intent {
+        // The rules' enumerated list, plus IDLE and ANNIHILATE, which reach here as `MonthLong`.
+        // ADVANCE arrives as `Intent::Move`.
+        Intent::Study { .. }
+        | Intent::Teach { .. }
+        | Intent::Tax
+        | Intent::Pillage
+        | Intent::Work
+        | Intent::Entertain
+        | Intent::Move { .. }
+        | Intent::Sail { .. }
+        | Intent::Build { .. } => true,
+
+        // CAST is NOT a full month order: "a mage may still MOVE, STUDY, or use any other month
+        // long order". A bare CAST falls back to `MonthLong("CAST")`, so it has to be caught
+        // before the arm below - which is why these two arms are in this order.
+        Intent::MonthLong("CAST") => false,
+        Intent::MonthLong(_) => true,
+
+        // Each of these leaves the month free. GUARD is a flag rather than a month's work - a
+        // guard can tax as well - and FORM only asks for a unit to exist.
+        Intent::Cast { .. }
+        | Intent::Give { .. }
+        | Intent::Take { .. }
+        | Intent::Buy { .. }
+        | Intent::Sell { .. }
+        | Intent::Guard(_)
+        | Intent::Claim(_)
+        | Intent::Withdraw
+        | Intent::Form { .. }
+        | Intent::Enter { .. }
+        | Intent::Leave => false,
+    }
+}
+
 /// Every unit block in the document, by unit number.
 ///
 /// A unit written twice has both blocks read as one: the server would run them both, so charging
 /// the unit for only the first would be a model of a turn nobody is playing.
 struct OrderedUnits {
-    by_unit: BTreeMap<String, Vec<PlacedIntent>>,
+    by_unit: BTreeMap<String, UnitOrders>,
+}
+
+/// One unit's orders as this pass needs them: what it was told to do, where its block starts, and
+/// whether anything in it could not be read.
+struct UnitOrders {
+    /// The `unit NNNN` line of the *first* block for this unit, to hang a finding on.
+    block_line: usize,
+    intents: Vec<PlacedIntent>,
+    /// Whether any line in any of this unit's blocks yielded no intent.
+    unread: bool,
 }
 
 impl OrderedUnits {
     fn read(source: &str) -> Self {
-        let mut by_unit: BTreeMap<String, Vec<PlacedIntent>> = BTreeMap::new();
+        let mut by_unit: BTreeMap<String, UnitOrders> = BTreeMap::new();
         for UnitIntents {
-            unit_id, intents, ..
+            unit_id,
+            line,
+            intents,
+            unread,
         } in read_intents(source)
         {
-            by_unit.entry(unit_id).or_default().extend(intents);
+            let entry = by_unit.entry(unit_id).or_insert_with(|| UnitOrders {
+                block_line: line,
+                intents: Vec::new(),
+                unread: false,
+            });
+            entry.intents.extend(intents);
+            entry.unread |= !unread.is_empty();
         }
         Self { by_unit }
     }
 
-    fn get(&self, unit_id: &str) -> &[PlacedIntent] {
-        self.by_unit.get(unit_id).map_or(&[], Vec::as_slice)
+    fn get(&self, unit_id: &str) -> Option<&UnitOrders> {
+        self.by_unit.get(unit_id)
+    }
+
+    /// Just the intents, for a caller that has no use for the block line or the unread flag.
+    fn intents_of(&self, unit_id: &str) -> &[PlacedIntent] {
+        self.get(unit_id)
+            .map_or(&[][..], |orders| orders.intents.as_slice())
     }
 }
 
@@ -280,6 +360,9 @@ struct Hex<'a> {
 struct Ordered<'a> {
     unit: &'a ReportUnit,
     intents: &'a [PlacedIntent],
+    /// `None` when the document has no block for this unit at all.
+    block_line: Option<usize>,
+    unread: bool,
 }
 
 impl<'a> Hex<'a> {
@@ -288,9 +371,14 @@ impl<'a> Hex<'a> {
             .units
             .iter()
             .filter(|unit| unit.own)
-            .map(|unit| Ordered {
-                unit,
-                intents: ordered.get(&unit.unit_id),
+            .map(|unit| {
+                let orders = ordered.get(&unit.unit_id);
+                Ordered {
+                    unit,
+                    intents: orders.map_or(&[][..], |orders| orders.intents.as_slice()),
+                    block_line: orders.map(|orders| orders.block_line),
+                    unread: orders.is_some_and(|orders| orders.unread),
+                }
             })
             .collect();
         Self { region, units }
@@ -347,26 +435,14 @@ impl Ordered<'_> {
 
     /// Whether the unit's month is already spoken for by something other than teaching.
     ///
-    /// Teaching is itself a full-month order, so a unit doing anything else with its month cannot
-    /// be offered as a spare teacher. Getting this wrong is not a small matter: without it, every
-    /// unit in a hex where fifteen units all study is a candidate teacher for all the others, and
-    /// one hex of turn 71 produced twenty-nine findings that were all the same non-observation.
+    /// Teaching is itself a full-month order, so a unit that also does something else with its
+    /// month has written an impossible turn, and its teaching slots are not worth offering. Since
+    /// ah-vw63 this only ever sees units that actually TEACH, so every other order is classified
+    /// by `spends_the_month` - CAST included, which the rules say leaves the month free. Teaching
+    /// itself is excluded here because it is the very thing being weighed.
     fn is_busy(&self) -> bool {
-        self.intents().any(|intent| {
-            matches!(
-                intent,
-                Intent::Study { .. }
-                    | Intent::Work
-                    | Intent::Entertain
-                    | Intent::Tax
-                    | Intent::Pillage
-                    | Intent::Move { .. }
-                    | Intent::Sail { .. }
-                    | Intent::MonthLong(_)
-                    | Intent::Cast { .. }
-                    | Intent::Build { .. }
-            )
-        })
+        self.intents()
+            .any(|intent| spends_the_month(intent) && !matches!(intent, Intent::Teach { .. }))
     }
 
     fn skill_level(&self, tag: &str) -> u32 {
@@ -408,6 +484,20 @@ impl Ordered<'_> {
             .iter()
             .find(|item| item.tag.eq_ignore_ascii_case(tag))
             .map_or(0, |item| item.amount)
+    }
+
+    /// A finding against the unit's block rather than against one order in it, for a check whose
+    /// subject is the absence of an order. No columns: there is no token to underline.
+    fn finding_at_block(&self, hex: &Hex<'_>, code: Code, message: String) -> Finding {
+        Finding {
+            code,
+            message,
+            region_id: hex.region.region_id.clone(),
+            unit_id: Some(self.unit.unit_id.clone()),
+            line: self.block_line,
+            column_start: None,
+            column_end: None,
+        }
     }
 
     fn finding(
@@ -1276,7 +1366,7 @@ fn describe_level(level: u32) -> String {
     }
 }
 
-/// The issue's own example: a teacher with slots going spare while somebody studies untaught.
+/// A unit that actually teaches, with slots going spare while somebody in its hex studies untaught.
 ///
 /// At most one finding per teacher, however many students it could take. A finding per pairing is
 /// a cross-product, and in a hex full of soldiers all learning the same skill that is dozens of
@@ -1293,7 +1383,27 @@ fn offer_free_slots(
         return;
     }
     let Some(ruleset) = ruleset else { return };
-    // Teaching takes the whole month, so a unit spending its month otherwise is not free to teach.
+
+    // Only a unit that actually wrote a TEACH order this month. Before ah-vw63 this ran for every
+    // unit in the hex, so a unit that was never asked to teach was told it had teaching slots
+    // free - and the idle-skilled-unit case this check was invented for is now ah-dwk6's
+    // `unit-does-nothing`, on the same unit and in the same list.
+    if !teacher
+        .intents()
+        .any(|intent| matches!(intent, Intent::Teach { .. }))
+    {
+        return;
+    }
+
+    // A TEACH naming nobody this hex holds is already reported as `taught-not-here`, and its slots
+    // are free only as a consequence of that mistake. One mistake, marked once.
+    if !teaches_somebody_here(teacher, hex) {
+        return;
+    }
+
+    // Teaching takes the whole month, so a unit spending its month otherwise is not free to teach:
+    // a unit writing both TEACH and WORK has an impossible month, and offering its slots would be
+    // advice about a turn nobody is playing.
     if teacher.is_busy() {
         return;
     }
@@ -1337,7 +1447,7 @@ fn offer_free_slots(
             hex,
             codes::TEACHER_HAS_FREE_SLOTS,
             format!(
-                "this unit has {free} teaching slots free and could teach unit {}{and_others}",
+                "has {free} teaching slots still free and could also teach unit {}{and_others}",
                 first.unit.unit_id,
             ),
             teacher
@@ -1346,6 +1456,26 @@ fn offer_free_slots(
                 .find(|placed| matches!(placed.intent, Intent::Teach { .. })),
         ),
     );
+}
+
+/// Whether this unit's TEACH orders name at least one unit the hex can resolve.
+///
+/// `Party::New`, `Party::Foreign` and `Party::Discard` never resolve: a unit formed this month has
+/// no number yet, and another faction's unit is not ours to read. Those are doubt, not students.
+/// A student that marches out of the hex does not resolve either - `check_one_teacher` reads it
+/// the same way and already reports it as `taught-not-here`.
+fn teaches_somebody_here(teacher: &Ordered<'_>, hex: &Hex<'_>) -> bool {
+    teacher
+        .intents()
+        .filter_map(|intent| match intent {
+            Intent::Teach { students } => Some(students),
+            _ => None,
+        })
+        .flatten()
+        .any(|student| match student {
+            Party::Unit(id) => hex.find(id).is_some_and(|pupil| !pupil.leaves_the_hex()),
+            _ => false,
+        })
 }
 
 /// How many student-men a teacher has already taken on.
@@ -1361,6 +1491,9 @@ fn taught_by(teacher: &Ordered<'_>, hex: &Hex<'_>) -> i64 {
             Party::Unit(id) => hex.find(id),
             _ => None,
         })
+        // A student that marches off is taught by nobody, so it holds no slot - the same reading
+        // `could_take` and `check_one_teacher` take of a departing pupil.
+        .filter(|pupil| !pupil.leaves_the_hex())
         .map(|pupil| pupil.unit.men)
         .sum()
 }
@@ -1427,6 +1560,251 @@ fn check_building(hex: &Hex<'_>, options: &CheckOptions, findings: &mut Vec<Find
         };
         findings.push(ordered.finding(hex, codes::ALREADY_BUILT, message, Some(placed)));
     }
+}
+
+// --- building with nothing to build ----------------------------------------------------------
+
+/// Every own unit whose bare `BUILD` or `BUILD COMPLETE` is written from inside no structure at
+/// all. Neither form names what to work on, so from outside the order does nothing and the unit's
+/// month is spent for nothing.
+///
+/// Its own gate rather than a branch of `check_building`, which early-returns on `already-built`:
+/// hosting this there would silently switch it off with a different toggle.
+fn check_building_outside(hex: &Hex<'_>, options: &CheckOptions, findings: &mut Vec<Finding>) {
+    if !options.emits(codes::BUILD_OUTSIDE_STRUCTURE) {
+        return;
+    }
+
+    for ordered in &hex.units {
+        // One warning per unit, on the first BUILD in the block, as `check_building` does.
+        let Some(placed) = ordered
+            .intents
+            .iter()
+            .find(|placed| matches!(placed.intent, Intent::Build { .. }))
+        else {
+            continue;
+        };
+        let Intent::Build { founding, helping } = &placed.intent else {
+            continue;
+        };
+        // `BUILD [name]` founds something that needs no structure to stand in, and the HELP forms
+        // name whose structure to work on - that is `check_build_help`'s business, not this one's.
+        if founding.is_some() || helping.is_some() {
+            continue;
+        }
+        // Where the unit stands once its own ENTER/LEAVE have run, never `unit.structure_id`: an
+        // `ENTER` then `BUILD` is the ordinary correct way to write this, and a `LEAVE` then
+        // `BUILD` is the mistake, whatever the report shows.
+        if structure_after_orders(ordered).is_some() {
+            continue;
+        }
+
+        findings.push(ordered.finding(
+            hex,
+            codes::BUILD_OUTSIDE_STRUCTURE,
+            "is in no structure to build in".to_string(),
+            Some(placed),
+        ));
+    }
+}
+
+/// Every own unit whose `BUILD HELP` names one of our own units in this hex that has no BUILD
+/// order of its own. There is nothing to help with, so the helper's month is spent for nothing.
+///
+/// A helper whose target *is* building but is itself in no structure stays silent here: the
+/// target's own line carries that warning. One mistake, marked once, where it was made - a
+/// deliberate divergence from `check_building`'s helper behaviour.
+fn check_build_help(hex: &Hex<'_>, options: &CheckOptions, findings: &mut Vec<Finding>) {
+    if !options.emits(codes::BUILD_HELP_NOT_BUILDING) {
+        return;
+    }
+
+    for ordered in &hex.units {
+        let Some(placed) = ordered
+            .intents
+            .iter()
+            .find(|placed| matches!(placed.intent, Intent::Build { .. }))
+        else {
+            continue;
+        };
+        let Intent::Build { helping, .. } = &placed.intent else {
+            continue;
+        };
+        // A unit formed this month with no number yet, another faction's unit or `HELP 0` cannot
+        // be resolved to anything to judge.
+        let Some(Party::Unit(id)) = helping else {
+            continue;
+        };
+        // `hex.units` holds own units only, so this is also the "one of our own" test.
+        let Some(helped) = hex.find(id) else {
+            continue;
+        };
+        // Any BUILD counts, `BUILD [name]` included: founding is building, so there is work to
+        // help with. Whether that BUILD is any good is judged on the helped unit's own line.
+        if helped
+            .intents
+            .iter()
+            .any(|placed| matches!(placed.intent, Intent::Build { .. }))
+        {
+            continue;
+        }
+
+        findings.push(ordered.finding(
+            hex,
+            codes::BUILD_HELP_NOT_BUILDING,
+            format!("unit {id} is not building"),
+            Some(placed),
+        ));
+    }
+}
+
+// --- building without the skill ---------------------------------------------------------------
+
+/// `a` or `an` for a structure kind, from its first letter. `an Inn`, `an Oasis`, `a Mine`.
+///
+/// Letter-wise rather than clever: every kind the data page names is an ordinary English noun, and
+/// none of them is one of the exceptions (`a unicorn`, `an hour`) that a rule reading the sound
+/// would be needed for.
+fn article_for(kind: &str) -> &'static str {
+    match kind.chars().next() {
+        Some(first) if "aeiouAEIOU".contains(first) => "an",
+        _ => "a",
+    }
+}
+
+/// Every own unit whose BUILD names - or stands in - a structure it has not the skill, or not the
+/// level, to build. The order is legal to write and spends the month for nothing.
+///
+/// A fourth check beside `check_building`, `check_building_outside` and `check_build_help` rather
+/// than a branch of any of them, for the reason `check_building_outside`'s own doc gives: hosting
+/// it there would silently switch it off with a different toggle.
+///
+/// Ships are out of scope - they are items, not buildings, and the catalogue carries no build
+/// requirement for them, so a `BUILD` of one looks exactly like a kind the page does not name and
+/// stays silent for that reason.
+fn check_build_skill(
+    hex: &Hex<'_>,
+    ruleset: Option<&Ruleset>,
+    options: &CheckOptions,
+    findings: &mut Vec<Finding>,
+) {
+    // No ruleset at all, or one carrying no buildings table: `build_requirement` would answer
+    // `None` for every kind, which the loop below already reads as silence, so this gate changes
+    // no verdict. It states the whole-catalogue case once and in one place - "this ruleset can say
+    // nothing about any structure" is a different fact from "the page names no requirement for
+    // this one", even though both end in the same silence - and saves resolving what every unit in
+    // the game is building only to find nothing to compare it against.
+    let Some(ruleset) = ruleset else { return };
+    if !ruleset.knows_buildings() {
+        return;
+    }
+    if !options.emits(codes::BUILD_WITHOUT_SKILL) {
+        return;
+    }
+
+    for ordered in &hex.units {
+        // One warning per unit, on the first BUILD in the block, as the other two BUILD checks do.
+        let Some(placed) = ordered
+            .intents
+            .iter()
+            .find(|placed| matches!(placed.intent, Intent::Build { .. }))
+        else {
+            continue;
+        };
+        let Intent::Build { founding, helping } = &placed.intent else {
+            continue;
+        };
+
+        let (kind, helps) = match (founding, helping) {
+            // The player named the structure type outright.
+            (Some(name), _) => (name.clone(), false),
+            // `BUILD HELP <n>`: the helper is judged on what the helped unit is building. One
+            // level of indirection only - a helper of a helper is not resolved and stays silent,
+            // since nothing here says which of the two the chain really lands on.
+            (None, Some(Party::Unit(id))) => {
+                let Some(helped) = hex.find(id) else {
+                    continue;
+                };
+                let Some(target) = helped
+                    .intents
+                    .iter()
+                    .find_map(|placed| match &placed.intent {
+                        Intent::Build { founding, helping } => Some((founding, helping)),
+                        _ => None,
+                    })
+                else {
+                    // Nothing being helped with at all - `check_build_help`'s warning, not this
+                    // one's.
+                    continue;
+                };
+                match target {
+                    (Some(name), _) => (name.clone(), true),
+                    (None, Some(_)) => continue,
+                    (None, None) => match kind_standing_in(hex, helped) {
+                        Some(kind) => (kind, true),
+                        None => continue,
+                    },
+                }
+            }
+            // `HELP 0`, another faction's unit, or a unit formed this month with no number yet.
+            (None, Some(_)) => continue,
+            // A bare `BUILD` or `BUILD COMPLETE`: the unit works on the structure it stands in.
+            (None, None) => match kind_standing_in(hex, ordered) {
+                Some(kind) => (kind, false),
+                None => continue,
+            },
+        };
+
+        // 22 of the page's 58 buildings state no requirement. That is the catalogue declining to
+        // say, never a claim that anyone may build it, so it is silence here.
+        let Some((tag, required)) = ruleset.build_requirement(&kind) else {
+            continue;
+        };
+        // `skill_level` answers 0 for a skill the unit has not got, which makes the comparison
+        // uniform - the *message* still has to tell the two apart.
+        let held = i64::from(ordered.skill_level(tag));
+        if held >= required {
+            continue;
+        }
+
+        // The catalogue's own lower-case name, not the tag: "mining", not "MINI".
+        let skill = ruleset
+            .find_skill(tag)
+            .map_or_else(|| tag.to_ascii_lowercase(), |entry| entry.name.clone());
+        let shortfall = if held == 0 {
+            format!("has no {skill}")
+        } else {
+            format!("has {skill} {held}")
+        };
+        let verb = if helps {
+            "cannot help build"
+        } else {
+            "cannot build"
+        };
+        let article = article_for(&kind);
+
+        findings.push(ordered.finding(
+            hex,
+            codes::BUILD_WITHOUT_SKILL,
+            format!("{verb} {article} {kind}: needs {skill} {required}, {shortfall}"),
+            Some(placed),
+        ));
+    }
+}
+
+/// The kind of structure a unit is working on when its BUILD names none: the one it stands in once
+/// its own ENTER/LEAVE have run.
+///
+/// `None` for both silences - standing in nothing at all, which is `check_building_outside`'s
+/// warning rather than this one's, and standing in a structure the report does not describe, which
+/// is simply unknowable.
+fn kind_standing_in(hex: &Hex<'_>, ordered: &Ordered<'_>) -> Option<String> {
+    let id = structure_after_orders(ordered)?;
+    hex.region
+        .structures
+        .iter()
+        .find(|structure| structure.structure_id == id)
+        .map(|structure| structure.kind.clone())
 }
 
 /// A structure's name, or - when the report gave it none and printed a placeholder like
@@ -1585,6 +1963,29 @@ fn check_magic_study(
 /// Every FORM in the hex, in document order; each alias after its first use is a block the server
 /// will refuse (the alias is per region for the month — see the rules on FORM), and says so on
 /// its own line, naming the first use. The first FORM is the one that will exist and is left alone.
+/// Every own unit whose orders, all of which we could read, spend none of its month.
+fn check_idle_units(hex: &Hex<'_>, options: &CheckOptions, findings: &mut Vec<Finding>) {
+    if !options.emits(codes::UNIT_DOES_NOTHING) {
+        return;
+    }
+
+    for ordered in &hex.units {
+        // A line we could not read may well be a month's work - `ASSASSINATE 4021` is - so a unit
+        // holding one is not judged at all. Silence here is the price of never being wrong.
+        if ordered.unread {
+            continue;
+        }
+        if ordered.intents().any(spends_the_month) {
+            continue;
+        }
+        findings.push(ordered.finding_at_block(
+            hex,
+            codes::UNIT_DOES_NOTHING,
+            "has no order that spends the month".to_string(),
+        ));
+    }
+}
+
 fn check_forms(hex: &Hex<'_>, options: &CheckOptions, findings: &mut Vec<Finding>) {
     if !options.emits(codes::FORM_ALIAS_REUSED) {
         return;
@@ -1639,41 +2040,40 @@ fn is_aboard(ordered: &Ordered<'_>, fleet_id: &str) -> bool {
 /// The structure the unit is in once this month's ENTER/LEAVE orders have run, or `None` when it
 /// ends the month in nothing.
 ///
-/// **Every LEAVE is processed before any ENTER**, whatever order the lines were typed in - the
-/// engine's own order, confirmed by the navigator on 2026-08-18 after a verification failed on
-/// exactly this. So a block holding any ENTER ends inside the last structure entered, a block
-/// holding only LEAVEs ends in nothing, and a block holding neither stays where the report found
-/// it. Document order matters only among ENTERs; between an ENTER and a LEAVE it means nothing.
-///
-/// Both run before anything else a block can ask for, so every check that asks "what is this unit
-/// standing in when its orders happen" wants this rather than `unit.structure_id`, which is only
-/// where the report found it.
+/// The rule itself lives in [`super::standing`], which is the one place it is stated; this is the
+/// adapter that reads it out of parsed intents.
 fn structure_after_orders<'a>(ordered: &Ordered<'a>) -> Option<&'a str> {
-    let mut entered: Option<&'a str> = None;
-    let mut left = false;
-    for placed in ordered.intents {
-        match &placed.intent {
-            Intent::Enter { structure } => entered = Some(structure.as_str()),
-            Intent::Leave => left = true,
-            _ => {}
-        }
-    }
-    match (entered, left) {
-        // An ENTER always wins: the LEAVE ran first, and the unit walked back in.
-        (Some(structure), _) => Some(structure),
-        (None, true) => None,
-        (None, false) => ordered.unit.structure_id.as_deref(),
+    structure_after_intents(ordered.unit.structure_id.as_deref(), ordered.intents)
+}
+
+/// [`structure_after_orders`] over the two things it actually reads, so the agreement test can
+/// drive this reader without building a whole [`Ordered`].
+pub(crate) fn structure_after_intents<'a>(
+    reported: Option<&'a str>,
+    intents: &'a [PlacedIntent],
+) -> Option<&'a str> {
+    standing_after(reported, intents.iter().filter_map(boarding_of))
+}
+
+/// One parsed intent as [`super::standing`] reads it; anything that is not a boarding order is not
+/// one.
+fn boarding_of(placed: &PlacedIntent) -> Option<Boarding<'_>> {
+    match &placed.intent {
+        Intent::Enter { structure } => Some(Boarding::Enter(structure.as_str())),
+        Intent::Leave => Some(Boarding::Leave),
+        _ => None,
     }
 }
 
-/// Whether the unit could be giving the SAIL order for `fleet_id`: standing in it per the report,
-/// or boarding it this month. A unit that also LEAVEs is not excluded here - the server would
-/// still read its SAIL line before running the LEAVE.
+/// Whether the unit could be giving the SAIL order for `fleet_id` - see
+/// [`super::standing::could_captain`], which states why that is not the same question as where the
+/// unit ends up.
 fn could_captain(ordered: &Ordered<'_>, fleet_id: &str) -> bool {
-    ordered.unit.structure_id.as_deref() == Some(fleet_id)
-        || ordered.intents.iter().any(
-            |placed| matches!(&placed.intent, Intent::Enter { structure } if structure == fleet_id),
-        )
+    standing::could_captain(
+        ordered.unit.structure_id.as_deref(),
+        fleet_id,
+        ordered.intents.iter().filter_map(boarding_of),
+    )
 }
 
 /// What one unit weighs once this month's orders have run: the weight the report gave it, plus
@@ -2132,7 +2532,7 @@ fn check_trade_regions(
     for region in &report.regions {
         let region_id = region.region_id.as_str();
         for unit in region.units.iter().filter(|unit| unit.own) {
-            for placed in ordered.get(&unit.unit_id) {
+            for placed in ordered.intents_of(&unit.unit_id) {
                 match &placed.intent {
                     Intent::MonthLong("PRODUCE") => {
                         producing.insert(region_id);
@@ -2248,7 +2648,7 @@ fn check_quartermasters(
             // writes several is not asking to be counted once per line.
             let placed =
                 ordered
-                    .get(&unit.unit_id)
+                    .intents_of(&unit.unit_id)
                     .iter()
                     .find_map(|placed| match &placed.intent {
                         Intent::Study { skill: studied } => Some((placed, studied)),
@@ -2422,12 +2822,20 @@ mod tests {
     }
 
     /// Runs the checks with the committed ruleset, which is what the shell serves.
+    /// The runtime default, with `unit-does-nothing` off.
+    ///
+    /// Nearly every fixture below stands up a unit to exercise one check and gives it only the
+    /// orders that check is about - a GIVE, a BUY, a bare block - so on the real default this check
+    /// fires on almost all of them and buries what each test is actually asserting. Exactly the
+    /// shape `check_ignoring_transfer_targets` below was written for when `give-target-not-here`
+    /// arrived. The check's own fixtures use `check_idle` above, and
+    /// `every_advisory_code_can_be_silenced` runs fully enabled.
     fn check(regions: Vec<ReportRegion>, orders: &str) -> Vec<Finding> {
         check_turn(
             &report(regions),
             orders,
             Some(&ruleset()),
-            CheckOptions::default(),
+            disabling(codes::UNIT_DOES_NOTHING),
         )
     }
 
@@ -2443,7 +2851,45 @@ mod tests {
             &report(regions),
             orders,
             Some(&ruleset()),
-            disabling(codes::GIVE_TARGET_NOT_HERE),
+            disabling_all(&[codes::GIVE_TARGET_NOT_HERE, codes::UNIT_DOES_NOTHING]),
+        )
+    }
+
+    /// `check`, with both of the "this BUILD builds nothing" checks disabled.
+    ///
+    /// A run of fixtures below order a bare `BUILD` from a unit standing in nothing, or a
+    /// `BUILD HELP` naming a unit with no orders, only to have *something* in the block -
+    /// `already-built`'s helper cases, a unit that is busy rather than teaching, a BUILD that is
+    /// not a PRODUCE. `build-outside-structure` and `build-help-not-building` are real on every
+    /// one of them, and are pinned by their own tests; they are turned off here rather than
+    /// folded into fixtures that are about something else.
+    fn check_ignoring_empty_builds(regions: Vec<ReportRegion>, orders: &str) -> Vec<Finding> {
+        check_turn(
+            &report(regions),
+            orders,
+            Some(&ruleset()),
+            disabling_all(&[
+                codes::BUILD_OUTSIDE_STRUCTURE,
+                codes::BUILD_HELP_NOT_BUILDING,
+                codes::UNIT_DOES_NOTHING,
+            ]),
+        )
+    }
+
+    /// `check`, with `build-without-skill` also disabled.
+    ///
+    /// The fixtures for the other three BUILD checks stand a unit up with no skills at all and put
+    /// it to work on a Timber Yard, a Stockade or a Tower - every one of which states a
+    /// requirement, so every one of them newly warns, correctly and beside the point. Turned off
+    /// here rather than skilling up a dozen fixtures written about something else, and rather than
+    /// softening the new check until they go quiet (`docs/retrospectives/ah-vkut.md`, second
+    /// section, is about exactly that temptation).
+    fn check_ignoring_build_skill(regions: Vec<ReportRegion>, orders: &str) -> Vec<Finding> {
+        check_turn(
+            &report(regions),
+            orders,
+            Some(&ruleset()),
+            disabling_all(&[codes::BUILD_WITHOUT_SKILL, codes::UNIT_DOES_NOTHING]),
         )
     }
 
@@ -2467,6 +2913,75 @@ mod tests {
     fn only(findings: Vec<Finding>) -> Finding {
         assert_eq!(findings.len(), 1, "expected one finding: {findings:?}");
         findings.into_iter().next().expect("just counted")
+    }
+
+    // --- what spends the month ---------------------------------------------------------------
+
+    #[test]
+    fn teaching_spends_the_month() {
+        assert!(spends_the_month(&Intent::Teach {
+            students: Vec::new()
+        }));
+    }
+
+    /// The rules: "a CAST order is not a full month order; a mage may still MOVE, STUDY, or use
+    /// any other month long order."
+    #[test]
+    fn casting_does_not_spend_the_month() {
+        assert!(!spends_the_month(&Intent::Cast {
+            spell: "Fire".to_string(),
+            arguments: Vec::new(),
+        }));
+    }
+
+    /// A bare `CAST` falls back to `MonthLong("CAST")`, which must be caught before the general
+    /// `MonthLong` arm or the correction silently does not apply to it.
+    #[test]
+    fn a_bare_cast_does_not_spend_the_month() {
+        assert!(!spends_the_month(&Intent::MonthLong("CAST")));
+    }
+
+    #[test]
+    fn idling_spends_the_month() {
+        assert!(spends_the_month(&Intent::MonthLong("IDLE")));
+    }
+
+    #[test]
+    fn annihilating_spends_the_month() {
+        assert!(spends_the_month(&Intent::MonthLong("ANNIHILATE")));
+    }
+
+    #[test]
+    fn giving_does_not_spend_the_month() {
+        assert!(!spends_the_month(&Intent::Give {
+            to: Party::Unit("4022".to_string()),
+            what: Selector::Item("SILV".to_string()),
+            amount: Amount::Exact(10),
+        }));
+    }
+
+    /// The `is_busy` rewrite must leave the teaching check exactly as it was. `is_busy` excludes
+    /// `Intent::Teach` on purpose, so a unit already teaching is *not* counted as busy and is still
+    /// weighed for spare teaching capacity - which is the whole point of that exclusion. If this
+    /// stops firing, the rewrite folded teaching into "busy" and broke the teaching check.
+    #[test]
+    fn a_teaching_unit_is_still_weighed_for_spare_capacity() {
+        let findings = check(
+            vec![region(vec![
+                with_skill(unit("1"), "COMB", 2),
+                unit("2"),
+                unit("3"),
+            ])],
+            concat!(
+                "unit 1\nTEACH 2\n",
+                "unit 2\nSTUDY COMB\n",
+                "unit 3\nSTUDY COMB\n",
+            ),
+        );
+        assert!(
+            codes(&findings).contains(&codes::TEACHER_HAS_FREE_SLOTS.as_str()),
+            "{findings:?}"
+        );
     }
 
     // --- coverage ---------------------------------------------------------------------------
@@ -2885,7 +3400,7 @@ mod tests {
                 &report(vec![region(vec![with_silver(unit("5"), 0)])]),
                 "unit 5\nBUY 5 horses\n",
                 Some(&ruleset()),
-                disabling(codes::NOT_TRADED_HERE),
+                disabling_all(&[codes::NOT_TRADED_HERE, codes::UNIT_DOES_NOTHING]),
             ),
             vec![],
             "the market has no price for it, so there is no sum to check"
@@ -3081,25 +3596,6 @@ mod tests {
         assert_eq!(
             check(regions, "unit 5\nCAST Create_Ring_Of_Invisibility\n"),
             vec![]
-        );
-    }
-
-    /// `Intent::Cast` must join `Ordered::is_busy`'s `MonthLong` set, or a casting mage is offered
-    /// as somebody's spare teacher - the reason CAST was `MonthLong` in the first place.
-    #[test]
-    fn a_caster_is_not_a_spare_teacher() {
-        let units = vec![
-            with_skill(with_men(with_silver(unit("500"), 1000), 3), "COMB", 3),
-            with_men(with_silver(unit("700"), 1000), 2),
-        ];
-
-        assert_eq!(
-            check(
-                vec![region(units)],
-                "unit 500\nCAST Fire\nunit 700\nSTUDY combat\n"
-            ),
-            vec![],
-            "unit 500 is casting, so it has no month left to teach in"
         );
     }
 
@@ -3778,23 +4274,219 @@ mod tests {
         );
     }
 
-    /// The issue's own example: a teacher with slots to spare while somebody in the hex studies
-    /// untaught.
+    /// A unit that actually teaches, with slots left over while somebody else in the hex studies
+    /// untaught. Before ah-vw63 this test's teacher had no orders at all - which is exactly the
+    /// case the check was warning about wrongly.
     #[test]
     fn a_teacher_with_free_slots_beside_an_untaught_student_is_pointed_out() {
         let units = vec![
             with_skill(with_men(with_silver(unit("500"), 1000), 3), "COMB", 3),
             with_men(with_silver(unit("700"), 1000), 2),
+            with_men(with_silver(unit("900"), 1000), 2),
         ];
 
-        // Unit 500 has been given nothing to do, so its month is free to teach in.
-        let finding = only(check(vec![region(units)], "unit 700\nSTUDY combat\n"));
+        let finding = only(check(
+            vec![region(units)],
+            "unit 500\nTEACH 700\nunit 700\nSTUDY combat\nunit 900\nSTUDY combat\n",
+        ));
         assert_eq!(finding.code.as_str(), "teacher-has-free-slots");
         assert_eq!(finding.unit_id.as_deref(), Some("500"));
+        assert_eq!(
+            finding.message,
+            "has 28 teaching slots still free and could also teach unit 900"
+        );
+    }
+
+    /// The reported defect: a unit with no orders at all was told it had teaching slots free.
+    /// Being idle is `unit-does-nothing`'s observation, on the same unit and in the same list.
+    #[test]
+    fn a_unit_that_is_not_teaching_is_not_offered_as_a_teacher() {
+        let units = vec![
+            with_skill(with_men(with_silver(unit("500"), 1000), 3), "COMB", 3),
+            with_men(with_silver(unit("700"), 1000), 2),
+        ];
+
+        assert_eq!(
+            check(vec![region(units)], "unit 700\nSTUDY combat\n"),
+            vec![],
+            "unit 500 was never asked to teach, so it has no free teaching slots to report"
+        );
+    }
+
+    /// Not-teaching is the rule, not idleness: a unit with a month to spare that is doing
+    /// something other than teaching is still not a teacher.
+    #[test]
+    fn a_unit_that_gives_but_does_not_teach_is_not_offered() {
+        let units = vec![
+            with_skill(with_men(with_silver(unit("500"), 1000), 3), "COMB", 3),
+            with_men(with_silver(unit("700"), 1000), 2),
+        ];
+
+        assert_eq!(
+            check(
+                vec![region(units)],
+                "unit 500\nGIVE 700 100 silver\nunit 700\nSTUDY combat\n"
+            ),
+            vec![],
+            "giving leaves the month free, but unit 500 still teaches nobody"
+        );
+    }
+
+    /// A TEACH naming a unit this hex cannot resolve is already `taught-not-here`, and the free
+    /// slots exist only as a consequence of that one mistake. Marked once.
+    #[test]
+    fn a_teacher_whose_only_student_is_not_here_is_not_told_about_free_slots() {
+        let units = vec![
+            with_skill(with_men(with_silver(unit("500"), 1000), 3), "COMB", 3),
+            with_men(with_silver(unit("700"), 1000), 2),
+        ];
+
+        assert_eq!(
+            codes(&check(
+                vec![region(units)],
+                "unit 500\nTEACH 9999\nunit 700\nSTUDY combat\n"
+            )),
+            ["taught-not-here"]
+        );
+    }
+
+    /// A student that leaves the hex takes no slots with it, so it must not be subtracted from
+    /// what the teacher has free - `could_take` and `check_one_teacher` both read it that way.
+    #[test]
+    fn slots_held_by_a_student_that_leaves_the_hex_are_still_free() {
+        let units = vec![
+            with_skill(with_men(with_silver(unit("500"), 1000), 1), "COMB", 3),
+            with_men(with_silver(unit("700"), 1000), 8),
+            with_men(with_silver(unit("800"), 1000), 2),
+            with_men(with_silver(unit("900"), 1000), 2),
+        ];
+
+        let findings = check(
+            vec![region(units)],
+            "unit 500\nTEACH 700 800\nunit 700\nSTUDY combat\nunit 800\nSTUDY combat\nMOVE N\nunit 900\nSTUDY combat\n",
+        );
+        let spare = findings
+            .iter()
+            .find(|finding| finding.code.as_str() == "teacher-has-free-slots")
+            .expect("the teacher still has slots to offer");
+        assert_eq!(
+            spare.message, "has 2 teaching slots still free and could also teach unit 900",
+            "unit 800 marches off, so its two men hold no slots: {findings:?}"
+        );
+    }
+
+    /// A student that marches out of the hex is `taught-not-here` and nothing else - the same one
+    /// mistake, marked once.
+    #[test]
+    fn a_teacher_whose_only_student_leaves_the_hex_is_not_told_about_free_slots() {
+        let units = vec![
+            with_skill(with_men(with_silver(unit("500"), 1000), 3), "COMB", 3),
+            with_men(with_silver(unit("700"), 1000), 2),
+            with_men(with_silver(unit("900"), 1000), 2),
+        ];
+
+        assert_eq!(
+            codes(&check(
+                vec![region(units)],
+                "unit 500\nTEACH 700\nunit 700\nSTUDY combat\nMOVE N\nunit 900\nSTUDY combat\n"
+            )),
+            ["taught-not-here"]
+        );
+    }
+
+    /// One resolvable student means the TEACH order is real, so the slots going spare are a
+    /// separate fact and both findings stand.
+    #[test]
+    fn a_teacher_with_one_absent_student_and_one_real_one_is_still_told_about_free_slots() {
+        let units = vec![
+            with_skill(with_men(with_silver(unit("500"), 1000), 3), "COMB", 3),
+            with_men(with_silver(unit("700"), 1000), 2),
+            with_men(with_silver(unit("900"), 1000), 2),
+        ];
+
+        let findings = check(
+            vec![region(units)],
+            "unit 500\nTEACH 700 9999\nunit 700\nSTUDY combat\nunit 900\nSTUDY combat\n",
+        );
+        let mut found = codes(&findings);
+        found.sort_unstable();
+        assert_eq!(found, ["taught-not-here", "teacher-has-free-slots"]);
+    }
+
+    /// A unit formed this month has no number yet, so `TEACH NEW 1` never resolves to a student
+    /// the hex holds.
+    #[test]
+    fn a_teacher_naming_only_a_new_unit_is_not_told_about_free_slots() {
+        let units = vec![
+            with_skill(with_men(with_silver(unit("500"), 1000), 3), "COMB", 3),
+            with_men(with_silver(unit("700"), 1000), 2),
+        ];
+
         assert!(
-            finding.message.contains("700") && finding.message.contains("30"),
-            "it names the student and the slots going spare: {}",
-            finding.message
+            !codes(&check(
+                vec![region(units)],
+                "unit 500\nFORM 1\nEND\nTEACH NEW 1\nunit 700\nSTUDY combat\n"
+            ))
+            .contains(&"teacher-has-free-slots"),
+            "a NEW unit is doubt, not a student this hex can resolve"
+        );
+    }
+
+    /// CAST is not a full-month order by the rules, so a mage that casts and teaches genuinely
+    /// has teaching slots. Before ah-vw63 `is_busy` counted CAST as busy to keep this check off
+    /// every casting mage; requiring a TEACH order does that job instead.
+    #[test]
+    fn a_mage_that_casts_and_teaches_is_offered_its_free_slots() {
+        let units = vec![
+            with_skill(with_men(with_silver(unit("500"), 1000), 3), "COMB", 3),
+            with_men(with_silver(unit("700"), 1000), 2),
+            with_men(with_silver(unit("900"), 1000), 2),
+        ];
+
+        let finding = only(check(
+            vec![region(units)],
+            "unit 500\nCAST Fire\nTEACH 700\nunit 700\nSTUDY combat\nunit 900\nSTUDY combat\n",
+        ));
+        assert_eq!(finding.code.as_str(), "teacher-has-free-slots");
+        assert_eq!(finding.unit_id.as_deref(), Some("500"));
+    }
+
+    /// `free <= 0`: a teacher with every slot taken has nothing spare to offer.
+    #[test]
+    fn a_teacher_with_every_slot_taken_is_silent() {
+        let units = vec![
+            with_skill(with_men(with_silver(unit("500"), 1000), 1), "COMB", 3),
+            with_men(with_silver(unit("700"), 1000), 10),
+            with_men(with_silver(unit("900"), 1000), 2),
+        ];
+
+        assert_eq!(
+            check(
+                vec![region(units)],
+                "unit 500\nTEACH 700\nunit 700\nSTUDY combat\nunit 900\nSTUDY combat\n"
+            ),
+            vec![],
+            "one man teaches ten students, and all ten slots are spoken for"
+        );
+    }
+
+    /// The hex-wide `taught` set: a student somebody else already teaches is not offered again.
+    #[test]
+    fn a_teacher_whose_students_are_all_taught_by_others_is_silent() {
+        let units = vec![
+            with_skill(with_men(with_silver(unit("500"), 1000), 3), "COMB", 3),
+            with_skill(with_men(with_silver(unit("600"), 1000), 3), "COMB", 3),
+            with_men(with_silver(unit("700"), 1000), 2),
+            with_men(with_silver(unit("900"), 1000), 2),
+        ];
+
+        assert_eq!(
+            check(
+                vec![region(units)],
+                "unit 500\nTEACH 700\nunit 600\nTEACH 900\nunit 700\nSTUDY combat\nunit 900\nSTUDY combat\n"
+            ),
+            vec![],
+            "every student in the hex already has a teacher"
         );
     }
 
@@ -3813,7 +4505,7 @@ mod tests {
         assert_eq!(
             check(
                 vec![region(units)],
-                "unit 500\nSTUDY combat\nunit 700\nSTUDY combat\n"
+                "unit 500\nTEACH 700\nSTUDY combat\nunit 700\nSTUDY combat\n"
             ),
             vec![],
             "unit 500 is studying, so it has no month left to teach in"
@@ -3831,9 +4523,9 @@ mod tests {
         ];
 
         assert_eq!(
-            check(
+            check_ignoring_empty_builds(
                 vec![region(units)],
-                "unit 500\nBUILD\nunit 700\nSTUDY combat\n"
+                "unit 500\nTEACH 700\nBUILD\nunit 700\nSTUDY combat\n"
             ),
             vec![],
             "unit 500 is building, so it has no month left to teach in"
@@ -3852,11 +4544,11 @@ mod tests {
 
         let finding = only(check(
             vec![region(units)],
-            "unit 700\nSTUDY combat\nunit 800\nSTUDY combat\nunit 900\nSTUDY combat\n",
+            "unit 500\nTEACH 700\nunit 700\nSTUDY combat\nunit 800\nSTUDY combat\nunit 900\nSTUDY combat\n",
         ));
         assert_eq!(finding.code.as_str(), "teacher-has-free-slots");
         assert!(
-            finding.message.contains("2 others"),
+            finding.message.contains("1 other"),
             "the rest are counted rather than listed: {}",
             finding.message
         );
@@ -3956,6 +4648,39 @@ mod tests {
         }
     }
 
+    /// A Citadel still being built - `BUIL` 3, and the fixture for "has none of the skill".
+    fn unfinished_citadel(structure_id: &str) -> Structure {
+        Structure {
+            structure_id: structure_id.to_string(),
+            name: "Building".to_string(),
+            kind: "Citadel".to_string(),
+            description: None,
+            needs: Some(200),
+        }
+    }
+
+    /// A Tower still being built - `BUIL` 1, the cheapest requirement there is.
+    fn unfinished_tower(structure_id: &str) -> Structure {
+        Structure {
+            structure_id: structure_id.to_string(),
+            name: "Building".to_string(),
+            kind: "Tower".to_string(),
+            description: None,
+            needs: Some(10),
+        }
+    }
+
+    /// A Mine still being built - the plan's worked example, needing `MINI` 3.
+    fn unfinished_mine(structure_id: &str) -> Structure {
+        Structure {
+            structure_id: structure_id.to_string(),
+            name: "Building".to_string(),
+            kind: "Mine".to_string(),
+            description: None,
+            needs: Some(20),
+        }
+    }
+
     fn in_structure(unit: ReportUnit, structure_id: &str) -> ReportUnit {
         ReportUnit {
             structure_id: Some(structure_id.to_string()),
@@ -3965,7 +4690,7 @@ mod tests {
 
     #[test]
     fn carrying_on_with_a_finished_structure_warns() {
-        let finding = only(check(
+        let finding = only(check_ignoring_build_skill(
             vec![ReportRegion {
                 structures: vec![finished_mill("1")],
                 ..region(vec![in_structure(unit("4021"), "1")])
@@ -3981,7 +4706,7 @@ mod tests {
 
     #[test]
     fn a_helper_is_warned_about_the_structure_it_would_work_on() {
-        let finding = only(check(
+        let finding = only(check_ignoring_empty_builds(
             vec![ReportRegion {
                 structures: vec![finished_mill("1")],
                 ..region(vec![in_structure(unit("4021"), "1"), unit("5")])
@@ -4002,7 +4727,7 @@ mod tests {
     #[test]
     fn a_builder_that_leaves_this_month_is_not_told_the_structure_is_finished() {
         assert_eq!(
-            check(
+            check_ignoring_empty_builds(
                 vec![ReportRegion {
                     structures: vec![finished_mill("1")],
                     ..region(vec![in_structure(unit("4021"), "1")])
@@ -4020,7 +4745,7 @@ mod tests {
             "unit 4021\nLEAVE\nENTER 1\nBUILD\n",
             "unit 4021\nENTER 1\nLEAVE\nBUILD\n",
         ] {
-            let finding = only(check(
+            let finding = only(check_ignoring_build_skill(
                 vec![ReportRegion {
                     structures: vec![finished_mill("1")],
                     ..region(vec![in_structure(unit("4021"), "1")])
@@ -4033,7 +4758,7 @@ mod tests {
 
     #[test]
     fn a_builder_that_enters_a_finished_structure_this_month_is_told_so() {
-        let finding = only(check(
+        let finding = only(check_ignoring_build_skill(
             vec![ReportRegion {
                 structures: vec![finished_mill("1")],
                 ..region(vec![unit("4021")])
@@ -4048,7 +4773,7 @@ mod tests {
     /// move it.
     #[test]
     fn a_helper_is_judged_on_where_the_helped_unit_ends_its_orders() {
-        let finding = only(check(
+        let finding = only(check_ignoring_empty_builds(
             vec![ReportRegion {
                 structures: vec![finished_mill("1")],
                 ..region(vec![unit("4021"), unit("5")])
@@ -4063,7 +4788,7 @@ mod tests {
     #[test]
     fn an_unfinished_structure_is_silent() {
         assert_eq!(
-            check(
+            check_ignoring_build_skill(
                 vec![ReportRegion {
                     structures: vec![unfinished_building("4")],
                     ..region(vec![in_structure(unit("4021"), "4")])
@@ -4077,7 +4802,7 @@ mod tests {
     #[test]
     fn founding_a_new_structure_is_silent() {
         assert_eq!(
-            check(
+            check_ignoring_build_skill(
                 vec![ReportRegion {
                     structures: vec![finished_mill("1")],
                     ..region(vec![in_structure(unit("4021"), "1")])
@@ -4091,7 +4816,7 @@ mod tests {
     #[test]
     fn a_unit_in_no_structure_is_silent() {
         assert_eq!(
-            check(vec![region(vec![unit("4021")])], "unit 4021\nBUILD\n"),
+            check_ignoring_empty_builds(vec![region(vec![unit("4021")])], "unit 4021\nBUILD\n"),
             vec![]
         );
     }
@@ -4130,7 +4855,7 @@ mod tests {
 
     #[test]
     fn an_unnamed_structure_is_named_by_its_number() {
-        let finding = only(check(
+        let finding = only(check_ignoring_build_skill(
             vec![ReportRegion {
                 structures: vec![finished_unnamed_building("4")],
                 ..region(vec![in_structure(unit("4021"), "4")])
@@ -4156,6 +4881,426 @@ mod tests {
                 "unit 900\nBUILD\n",
             ),
             vec![]
+        );
+    }
+
+    // --- building outside a structure, and helping a unit that is not building ---------------
+
+    #[test]
+    fn a_bare_build_outside_any_structure_warns() {
+        let finding = only(check(
+            vec![region(vec![unit("4021")])],
+            "unit 4021\nBUILD\n",
+        ));
+
+        assert_eq!(finding.code.as_str(), "build-outside-structure");
+        assert_eq!(finding.unit_id.as_deref(), Some("4021"));
+        assert_eq!(finding.line, Some(2));
+        assert_eq!(finding.message, "is in no structure to build in");
+    }
+
+    #[test]
+    fn build_complete_outside_any_structure_warns() {
+        let finding = only(check(
+            vec![region(vec![unit("4021")])],
+            "unit 4021\nBUILD COMPLETE\n",
+        ));
+
+        assert_eq!(finding.code, codes::BUILD_OUTSIDE_STRUCTURE);
+        assert_eq!(finding.message, "is in no structure to build in");
+    }
+
+    #[test]
+    fn founding_a_structure_from_outside_is_silent() {
+        assert_eq!(
+            check_ignoring_build_skill(
+                vec![region(vec![unit("4021")])],
+                "unit 4021\nBUILD Tower\n"
+            ),
+            vec![]
+        );
+    }
+
+    #[test]
+    fn a_unit_inside_a_structure_is_not_told_it_is_outside() {
+        assert_eq!(
+            check_ignoring_build_skill(
+                vec![ReportRegion {
+                    structures: vec![unfinished_building("1")],
+                    ..region(vec![in_structure(unit("4021"), "1")])
+                }],
+                "unit 4021\nBUILD\n",
+            ),
+            vec![]
+        );
+    }
+
+    #[test]
+    fn a_foreign_unit_building_outside_is_not_warned_about() {
+        let mut theirs = unit("900");
+        theirs.own = false;
+        theirs.faction_id = Some("12".to_string());
+
+        assert_eq!(
+            check(vec![region(vec![theirs])], "unit 900\nBUILD\n"),
+            vec![]
+        );
+    }
+
+    /// The HELP forms name whose structure to work on, so they are never this check's business -
+    /// whatever `check_build_help` later says about them.
+    #[test]
+    fn a_build_help_is_not_told_it_is_outside_a_structure() {
+        let findings = check(
+            vec![ReportRegion {
+                structures: vec![unfinished_building("1")],
+                ..region(vec![in_structure(unit("4021"), "1"), unit("4117")])
+            }],
+            "unit 4021\nBUILD\nunit 4117\nBUILD HELP 4021\n",
+        );
+
+        assert!(
+            !codes(&findings).contains(&"build-outside-structure"),
+            "the HELP form is not this check's business: {findings:?}"
+        );
+    }
+
+    #[test]
+    fn only_the_first_build_in_a_block_is_warned_about() {
+        let finding = only(check(
+            vec![region(vec![unit("4021")])],
+            "unit 4021\nBUILD\nBUILD\n",
+        ));
+
+        assert_eq!(finding.code, codes::BUILD_OUTSIDE_STRUCTURE);
+        assert_eq!(finding.line, Some(2));
+    }
+
+    #[test]
+    fn a_unit_that_enters_a_structure_this_month_is_not_told_it_is_outside() {
+        assert_eq!(
+            check_ignoring_build_skill(
+                vec![ReportRegion {
+                    structures: vec![unfinished_building("1")],
+                    ..region(vec![unit("4021")])
+                }],
+                "unit 4021\nENTER 1\nBUILD\n",
+            ),
+            vec![]
+        );
+    }
+
+    /// The navigator's accepted consequence of reading where the unit stands *after* its own
+    /// orders: the report shows this unit safely inside a structure, and it is still warned,
+    /// because its own LEAVE takes it out before the BUILD runs. Do not soften this.
+    #[test]
+    fn a_unit_that_leaves_its_structure_this_month_is_told_it_is_outside() {
+        let finding = only(check(
+            vec![ReportRegion {
+                structures: vec![unfinished_building("1")],
+                ..region(vec![in_structure(unit("4021"), "1")])
+            }],
+            "unit 4021\nLEAVE\nBUILD\n",
+        ));
+
+        assert_eq!(finding.code, codes::BUILD_OUTSIDE_STRUCTURE);
+        assert_eq!(finding.unit_id.as_deref(), Some("4021"));
+        assert_eq!(finding.line, Some(3));
+    }
+
+    #[test]
+    fn helping_a_unit_that_is_not_building_warns() {
+        let finding = only(check(
+            vec![ReportRegion {
+                structures: vec![unfinished_building("1")],
+                ..region(vec![in_structure(unit("4021"), "1"), unit("4117")])
+            }],
+            "unit 4021\nWORK\nunit 4117\nBUILD HELP 4021\n",
+        ));
+
+        assert_eq!(finding.code.as_str(), "build-help-not-building");
+        assert_eq!(finding.unit_id.as_deref(), Some("4117"));
+        assert_eq!(finding.line, Some(4));
+        assert_eq!(finding.message, "unit 4021 is not building");
+    }
+
+    #[test]
+    fn helping_a_unit_that_is_building_is_silent() {
+        assert_eq!(
+            check_ignoring_build_skill(
+                vec![ReportRegion {
+                    structures: vec![unfinished_building("1")],
+                    ..region(vec![
+                        in_structure(unit("4021"), "1"),
+                        in_structure(unit("4117"), "1"),
+                    ])
+                }],
+                "unit 4021\nBUILD\nunit 4117\nBUILD HELP 4021\n",
+            ),
+            vec![]
+        );
+    }
+
+    /// Founding is building, so there is work to help with.
+    #[test]
+    fn helping_a_unit_that_is_founding_is_silent() {
+        assert_eq!(
+            check_ignoring_build_skill(
+                vec![region(vec![unit("4021"), unit("4117")])],
+                "unit 4021\nBUILD Tower\nunit 4117\nBUILD HELP 4021\n",
+            ),
+            vec![]
+        );
+    }
+
+    #[test]
+    fn helping_a_unit_not_in_this_hex_is_silent() {
+        assert_eq!(
+            check(
+                vec![region(vec![unit("4117")])],
+                "unit 4117\nBUILD HELP 9999\n",
+            ),
+            vec![]
+        );
+    }
+
+    #[test]
+    fn helping_a_new_unit_is_silent() {
+        assert_eq!(
+            check(
+                vec![region(vec![unit("4117")])],
+                "unit 4117\nFORM 1\nEND\nBUILD HELP NEW 1\n",
+            ),
+            vec![]
+        );
+    }
+
+    /// One mistake, marked once, where it was made: the target is building from outside a
+    /// structure and carries that warning on its own line; the helper is not warned as well.
+    /// A deliberate divergence from `already-built`'s helper behaviour - do not "fix" it.
+    #[test]
+    fn a_helper_whose_target_builds_from_outside_is_not_warned_too() {
+        let finding = only(check(
+            vec![region(vec![unit("4021"), unit("4117")])],
+            "unit 4021\nBUILD\nunit 4117\nBUILD HELP 4021\n",
+        ));
+
+        assert_eq!(finding.code, codes::BUILD_OUTSIDE_STRUCTURE);
+        assert_eq!(finding.unit_id.as_deref(), Some("4021"));
+    }
+
+    // --- building without the skill ------------------------------------------------------------
+
+    #[test]
+    fn a_unit_told_to_build_a_mine_without_mining_three_is_warned() {
+        let finding = only(check(
+            vec![ReportRegion {
+                structures: vec![unfinished_mine("1")],
+                ..region(vec![in_structure(with_skill(unit("4021"), "MINI", 1), "1")])
+            }],
+            "unit 4021\nBUILD\n",
+        ));
+
+        assert_eq!(finding.code.as_str(), "build-without-skill");
+        assert_eq!(finding.unit_id.as_deref(), Some("4021"));
+        assert_eq!(
+            finding.message,
+            "cannot build a Mine: needs mining 3, has mining 1"
+        );
+    }
+
+    #[test]
+    fn a_unit_with_the_skill_at_the_level_is_not_warned() {
+        for level in [3, 4] {
+            assert_eq!(
+                check(
+                    vec![ReportRegion {
+                        structures: vec![unfinished_mine("1")],
+                        ..region(vec![in_structure(
+                            with_skill(unit("4021"), "MINI", level),
+                            "1"
+                        )])
+                    }],
+                    "unit 4021\nBUILD\n",
+                ),
+                vec![],
+                "mining {level} should be enough for a Mine"
+            );
+        }
+    }
+
+    /// `skill_level` answers 0 for a skill the unit has not got, which is what makes the
+    /// comparison uniform - but "has building 0" reads wrong, so the message says it in words.
+    #[test]
+    fn a_unit_with_none_of_the_skill_is_told_which_it_lacks() {
+        let finding = only(check(
+            vec![ReportRegion {
+                structures: vec![unfinished_citadel("1")],
+                ..region(vec![in_structure(unit("4021"), "1")])
+            }],
+            "unit 4021\nBUILD\n",
+        ));
+
+        assert_eq!(
+            finding.message,
+            "cannot build a Citadel: needs building 3, has no building"
+        );
+    }
+
+    #[test]
+    fn building_a_named_structure_checks_that_structure_s_requirement() {
+        let finding = only(check(
+            vec![region(vec![with_skill(unit("4021"), "MINI", 1)])],
+            "unit 4021\nBUILD Mine\n",
+        ));
+
+        assert_eq!(
+            finding.message,
+            "cannot build a Mine: needs mining 3, has mining 1"
+        );
+    }
+
+    /// `an Inn`, not `a Inn`. The sort of thing that reaches a player.
+    #[test]
+    fn a_kind_beginning_with_a_vowel_takes_an() {
+        let finding = only(check(
+            vec![region(vec![unit("4021")])],
+            "unit 4021\nBUILD Inn\n",
+        ));
+
+        assert_eq!(
+            finding.message,
+            "cannot build an Inn: needs building 3, has no building"
+        );
+    }
+
+    #[test]
+    fn a_helper_without_the_skill_is_warned_for_what_the_target_is_building() {
+        let findings = check(
+            vec![ReportRegion {
+                structures: vec![unfinished_tower("1")],
+                ..region(vec![
+                    in_structure(with_skill(unit("4021"), "BUIL", 1), "1"),
+                    unit("4117"),
+                ])
+            }],
+            "unit 4021\nBUILD\nunit 4117\nBUILD HELP 4021\n",
+        );
+
+        // The builder itself has the level; only the helper is short.
+        let finding = only(findings);
+        assert_eq!(finding.unit_id.as_deref(), Some("4117"));
+        assert_eq!(
+            finding.message,
+            "cannot help build a Tower: needs building 1, has no building"
+        );
+    }
+
+    /// One level of indirection only: nothing in a chain of helpers says which structure it really
+    /// lands on, so the second helper is not judged.
+    #[test]
+    fn a_helper_of_a_helper_is_not_judged() {
+        let findings = check(
+            vec![ReportRegion {
+                structures: vec![unfinished_tower("1")],
+                ..region(vec![
+                    in_structure(with_skill(unit("4021"), "BUIL", 1), "1"),
+                    with_skill(unit("4117"), "BUIL", 1),
+                    unit("4200"),
+                ])
+            }],
+            "unit 4021\nBUILD\nunit 4117\nBUILD HELP 4021\nunit 4200\nBUILD HELP 4117\n",
+        );
+
+        assert_eq!(codes(&findings), Vec::<&str>::new());
+    }
+
+    /// 22 of the page's 58 buildings state no requirement, and that is the catalogue declining to
+    /// say - never a claim that anybody may build one.
+    #[test]
+    fn a_structure_the_catalogue_gives_no_requirement_is_not_judged() {
+        assert_eq!(
+            check(vec![region(vec![unit("4021")])], "unit 4021\nBUILD Lair\n",),
+            vec![]
+        );
+    }
+
+    /// A ruleset cached before build requirements were scraped would make every structure look as
+    /// though it needs nothing, so the check says nothing at all rather than clearing every unit.
+    #[test]
+    fn a_ruleset_without_build_requirements_says_nothing() {
+        let mut json: serde_json::Value =
+            serde_json::from_str(RULESET).expect("the committed ruleset should parse");
+        json["buildings"] = serde_json::json!({});
+        let stripped = Ruleset::from_json(&json.to_string()).expect("still a usable ruleset");
+
+        assert_eq!(
+            check_turn(
+                &report(vec![region(vec![unit("4021")])]),
+                "unit 4021\nBUILD Mine\n",
+                Some(&stripped),
+                disabling(codes::UNIT_DOES_NOTHING),
+            ),
+            vec![]
+        );
+    }
+
+    /// Its own gate, not the other BUILD checks': switching one of those off leaves this running.
+    #[test]
+    fn the_build_skill_check_can_be_turned_off() {
+        assert_eq!(
+            check_turn(
+                &report(vec![region(vec![unit("4021")])]),
+                "unit 4021\nBUILD Mine\n",
+                Some(&ruleset()),
+                disabling_all(&[codes::BUILD_WITHOUT_SKILL, codes::UNIT_DOES_NOTHING]),
+            ),
+            vec![]
+        );
+    }
+
+    #[test]
+    fn the_build_outside_check_can_be_turned_off() {
+        assert_eq!(
+            check_turn(
+                &report(vec![region(vec![unit("4021")])]),
+                "unit 4021\nBUILD\n",
+                Some(&ruleset()),
+                disabling(codes::BUILD_OUTSIDE_STRUCTURE),
+            ),
+            vec![]
+        );
+    }
+
+    /// Its own gate, not `already-built`'s: switching off "Building what is built" leaves this
+    /// one running.
+    #[test]
+    fn the_build_help_check_can_be_turned_off() {
+        let regions = || {
+            vec![ReportRegion {
+                structures: vec![unfinished_building("1")],
+                ..region(vec![in_structure(unit("4021"), "1"), unit("4117")])
+            }]
+        };
+        let orders = "unit 4021\nWORK\nunit 4117\nBUILD HELP 4021\n";
+
+        assert_eq!(
+            check_turn(
+                &report(regions()),
+                orders,
+                Some(&ruleset()),
+                disabling(codes::BUILD_HELP_NOT_BUILDING),
+            ),
+            vec![]
+        );
+        assert_eq!(
+            codes(&check_turn(
+                &report(regions()),
+                orders,
+                Some(&ruleset()),
+                disabling(codes::ALREADY_BUILT),
+            )),
+            vec!["build-help-not-building"]
         );
     }
 
@@ -4400,6 +5545,22 @@ mod tests {
         let finding = only(check(
             vec![ReportRegion {
                 structures: vec![finished_of_kind("1", "Tower")],
+                ..region(vec![in_structure(mage(3), "1")])
+            }],
+            "unit 5\nSTUDY FORC\n",
+        ));
+
+        assert_eq!(finding.code, codes::MAGIC_STUDY_OUTSIDE_BUILDING);
+    }
+
+    /// ah-3cj4.1 put every building the data page describes into the catalogue, so a Mine now
+    /// answers `Some(0)` where it once answered `None`. The warning must not move: the one caller
+    /// reads `is_some_and(|seats| seats >= 1)`, false either way.
+    #[test]
+    fn a_mage_studying_in_a_mine_is_still_warned() {
+        let finding = only(check(
+            vec![ReportRegion {
+                structures: vec![finished_of_kind("1", "Mine")],
                 ..region(vec![in_structure(mage(3), "1")])
             }],
             "unit 5\nSTUDY FORC\n",
@@ -4764,6 +5925,179 @@ mod tests {
         assert!(findings[1].message.contains("taken from"));
     }
 
+    // --- units with nothing to do --------------------------------------------------------------
+
+    /// `check`, with the checks that fire on a bare hex out of the way. A unit doing nothing also
+    /// leaves the hex unguarded, and these fixtures are not about that.
+    fn check_idle(regions: Vec<ReportRegion>, orders: &str) -> Vec<Finding> {
+        check_turn(
+            &report(regions),
+            orders,
+            Some(&ruleset()),
+            disabling_all(&[codes::TEACHER_HAS_FREE_SLOTS]),
+        )
+    }
+
+    #[test]
+    fn a_unit_with_no_orders_at_all_is_warned() {
+        let finding = only(check_idle(vec![region(vec![unit("4021")])], "unit 4021\n"));
+        assert_eq!(finding.code, codes::UNIT_DOES_NOTHING);
+        assert_eq!(finding.unit_id.as_deref(), Some("4021"));
+        assert_eq!(finding.line, Some(1));
+        assert_eq!(finding.column_start, None);
+        assert_eq!(finding.message, "has no order that spends the month");
+    }
+
+    #[test]
+    fn a_unit_that_only_gives_is_warned() {
+        let findings = check_idle(
+            vec![region(vec![with_silver(unit("4021"), 100), unit("4022")])],
+            "unit 4021\nGIVE 4022 10 SILV\nunit 4022\nWORK\n",
+        );
+        let idle: Vec<&Finding> = findings
+            .iter()
+            .filter(|f| f.code == codes::UNIT_DOES_NOTHING)
+            .collect();
+        assert_eq!(idle.len(), 1, "{findings:?}");
+        assert_eq!(idle[0].unit_id.as_deref(), Some("4021"));
+        // The block line, not the GIVE line.
+        assert_eq!(idle[0].line, Some(1));
+    }
+
+    #[test]
+    fn a_unit_that_works_is_silent() {
+        assert_eq!(
+            codes(&check_idle(
+                vec![region(vec![unit("4021")])],
+                "unit 4021\nWORK\n"
+            )),
+            Vec::<&str>::new()
+        );
+    }
+
+    #[test]
+    fn a_unit_that_teaches_is_silent() {
+        let findings = check_idle(
+            vec![region(vec![
+                with_skill(with_men(with_silver(unit("500"), 1000), 3), "COMB", 2),
+                with_skill(with_silver(unit("700"), 1000), "COMB", 1),
+            ])],
+            "unit 500\nTEACH 700\nunit 700\nSTUDY combat\n",
+        );
+        assert!(
+            !codes(&findings).contains(&codes::UNIT_DOES_NOTHING.as_str()),
+            "{findings:?}"
+        );
+    }
+
+    /// GUARD is a flag rather than a month's work - a guard can tax as well - so a garrison that
+    /// could be earning is worth being told about. The navigator chose this; do not "fix" it.
+    #[test]
+    fn a_unit_that_guards_is_warned() {
+        let findings = check_idle(vec![region(vec![unit("4021")])], "unit 4021\nGUARD 1\n");
+        assert_eq!(codes(&findings), vec![codes::UNIT_DOES_NOTHING.as_str()]);
+    }
+
+    /// ah-dwk6's verification failure, at the check's own level: a free order is not a month's
+    /// work, and a unit holding only one is still a unit with nothing to do.
+    #[test]
+    fn a_unit_whose_only_order_is_free_is_warned() {
+        let findings = check_idle(
+            vec![region(vec![unit("4021")])],
+            "unit 4021\nNAME \"Scouts\"\n",
+        );
+        assert_eq!(codes(&findings), vec![codes::UNIT_DOES_NOTHING.as_str()]);
+    }
+
+    /// The rules: "STEAL and ASSASSINATE are not full month orders, and do not interfere with
+    /// other activities."
+    #[test]
+    fn a_unit_that_only_assassinates_is_warned() {
+        let findings = check_idle(
+            vec![region(vec![unit("4021")])],
+            "unit 4021\nASSASSINATE 13432\n",
+        );
+        assert_eq!(codes(&findings), vec![codes::UNIT_DOES_NOTHING.as_str()]);
+    }
+
+    /// The rules: "a CAST order is not a full month order."
+    #[test]
+    fn a_unit_that_only_casts_is_warned() {
+        let findings = check_idle(vec![region(vec![unit("4021")])], "unit 4021\nCAST Fire\n");
+        assert!(
+            codes(&findings).contains(&codes::UNIT_DOES_NOTHING.as_str()),
+            "{findings:?}"
+        );
+    }
+
+    /// IDLE spends the month by the rules - the player said so.
+    #[test]
+    fn a_unit_that_is_idle_is_silent() {
+        assert_eq!(
+            codes(&check_idle(
+                vec![region(vec![unit("4021")])],
+                "unit 4021\nIDLE\n",
+            )),
+            Vec::<&str>::new()
+        );
+    }
+
+    /// The false-positive guard, now narrow: only a keyword in neither list silences the check.
+    #[test]
+    fn a_unit_with_an_unknown_keyword_is_silent() {
+        assert_eq!(
+            codes(&check_idle(
+                vec![region(vec![unit("4021")])],
+                "unit 4021\nFLIBBERTIGIBBET\n",
+            )),
+            Vec::<&str>::new()
+        );
+    }
+
+    #[test]
+    fn a_unit_with_a_turn_block_is_silent() {
+        assert_eq!(
+            codes(&check_idle(
+                vec![region(vec![unit("4021")])],
+                "unit 4021\nTURN\nWORK\nENDTURN\n",
+            )),
+            Vec::<&str>::new()
+        );
+    }
+
+    #[test]
+    fn a_unit_with_no_block_in_the_document_is_warned_with_no_line() {
+        let finding = only(check_idle(vec![region(vec![unit("4021")])], ""));
+        assert_eq!(finding.code, codes::UNIT_DOES_NOTHING);
+        assert_eq!(finding.line, None);
+    }
+
+    #[test]
+    fn a_foreign_unit_doing_nothing_is_not_warned_about() {
+        let mut theirs = unit("9999");
+        theirs.own = false;
+        assert_eq!(
+            codes(&check_idle(
+                vec![region(vec![theirs, unit("4021")])],
+                "unit 4021\nWORK\n",
+            )),
+            Vec::<&str>::new()
+        );
+    }
+
+    #[test]
+    fn the_idle_check_can_be_turned_off() {
+        assert_eq!(
+            codes(&check_turn(
+                &report(vec![region(vec![unit("4021")])]),
+                "unit 4021\n",
+                Some(&ruleset()),
+                disabling_all(&[codes::UNIT_DOES_NOTHING, codes::TEACHER_HAS_FREE_SLOTS]),
+            )),
+            Vec::<&str>::new()
+        );
+    }
+
     // --- disabling advisory checks -------------------------------------------------------------
 
     /// The runtime default (`hex-unguarded` off, everything else on) plus one more code disabled.
@@ -4799,78 +6133,89 @@ mod tests {
             with_men(with_silver(unit("700"), 1000), 20),
         ];
 
-        // The fourth element is a `Faction Status:` allowance the case's report should carry -
-        // empty for every per-hex check, and what `too-many-quartermasters` needs instead of a hex.
-        type Case = (
-            Code,
-            Vec<ReportRegion>,
-            &'static str,
-            Option<(&'static str, i64, i64)>,
-        );
+        /// One code, and the smallest fixture that makes it fire.
+        ///
+        /// Named fields rather than a tuple (ah-11lh): two beads adding a case each used to
+        /// auto-merge into a case that still compiled and asserted the wrong thing (ah-oq3).
+        /// Interleaved named fields do not compile, so a bad merge is a build error instead of a
+        /// silent one.
+        struct Case {
+            code: Code,
+            regions: Vec<ReportRegion>,
+            orders: &'static str,
+            /// A `Faction Status:` allowance the case's report should carry - `None` for every
+            /// per-hex check, and what `too-many-quartermasters` and `too-many-trade-regions`
+            /// need instead of a hex.
+            allowance: Option<(&'static str, i64, i64)>,
+        }
         let cases: Vec<Case> = vec![
-            (
-                codes::NOT_ENOUGH_SILVER,
-                vec![region(vec![with_silver(unit("5"), 40)])],
-                "unit 5\nGIVE 7 100 SILV\n",
-                None,
-            ),
-            (
-                codes::NOT_ENOUGH_ITEMS,
-                vec![region(vec![with_item(unit("5"), 3, "sword", "SWOR")])],
-                "unit 5\nGIVE 7 10 swords\n",
-                None,
-            ),
-            (
-                codes::GUARD_DROPPED,
-                vec![region(vec![guard_dropping])],
-                "unit 5\nMOVE N\n",
-                None,
-            ),
-            (
-                codes::HEX_UNGUARDED,
-                vec![region(vec![unit("5")])],
-                "unit 5\nWORK\n",
-                None,
-            ),
-            (
-                codes::TAUGHT_NOT_HERE,
-                vec![region(teaching_hex())],
-                "unit 500\nTEACH 999\n",
-                None,
-            ),
-            (
-                codes::TAUGHT_NOT_STUDYING,
-                vec![region(teaching_hex())],
-                "unit 500\nTEACH 700\nunit 700\nWORK\n",
-                None,
-            ),
-            (
-                codes::TEACHER_CANNOT_TEACH,
-                vec![region(teacher_below_student)],
-                "unit 500\nTEACH 700\nunit 700\nSTUDY combat\n",
-                None,
-            ),
-            (
-                codes::TEACHING_OVERSUBSCRIBED,
-                vec![region(oversubscribed)],
-                "unit 500\nTEACH 700\nunit 700\nSTUDY combat\n",
-                None,
-            ),
-            (
-                codes::TEACHER_HAS_FREE_SLOTS,
-                vec![region(teaching_hex())],
-                "unit 700\nSTUDY combat\n",
-                None,
-            ),
-            (
-                codes::FORM_ALIAS_REUSED,
-                vec![region(vec![unit("5")])],
-                "unit 5\nFORM 1\nEND\nFORM 1\nEND\n",
-                None,
-            ),
-            (
-                codes::FLEET_OVERLOADED,
-                vec![ReportRegion {
+            Case {
+                code: codes::NOT_ENOUGH_SILVER,
+                regions: vec![region(vec![with_silver(unit("5"), 40)])],
+                orders: "unit 5\nGIVE 7 100 SILV\n",
+                allowance: None,
+            },
+            Case {
+                code: codes::NOT_ENOUGH_ITEMS,
+                regions: vec![region(vec![with_item(unit("5"), 3, "sword", "SWOR")])],
+                orders: "unit 5\nGIVE 7 10 swords\n",
+                allowance: None,
+            },
+            Case {
+                code: codes::GUARD_DROPPED,
+                regions: vec![region(vec![guard_dropping])],
+                orders: "unit 5\nMOVE N\n",
+                allowance: None,
+            },
+            Case {
+                code: codes::HEX_UNGUARDED,
+                regions: vec![region(vec![unit("5")])],
+                orders: "unit 5\nWORK\n",
+                allowance: None,
+            },
+            Case {
+                code: codes::TAUGHT_NOT_HERE,
+                regions: vec![region(teaching_hex())],
+                orders: "unit 500\nTEACH 999\n",
+                allowance: None,
+            },
+            Case {
+                code: codes::TAUGHT_NOT_STUDYING,
+                regions: vec![region(teaching_hex())],
+                orders: "unit 500\nTEACH 700\nunit 700\nWORK\n",
+                allowance: None,
+            },
+            Case {
+                code: codes::TEACHER_CANNOT_TEACH,
+                regions: vec![region(teacher_below_student)],
+                orders: "unit 500\nTEACH 700\nunit 700\nSTUDY combat\n",
+                allowance: None,
+            },
+            Case {
+                code: codes::TEACHING_OVERSUBSCRIBED,
+                regions: vec![region(oversubscribed)],
+                orders: "unit 500\nTEACH 700\nunit 700\nSTUDY combat\n",
+                allowance: None,
+            },
+            Case {
+                code: codes::TEACHER_HAS_FREE_SLOTS,
+                regions: vec![region(vec![
+                    with_skill(with_men(with_silver(unit("500"), 1000), 3), "COMB", 3),
+                    with_men(with_silver(unit("700"), 1000), 2),
+                    with_men(with_silver(unit("900"), 1000), 2),
+                ])],
+                orders: "unit 500\nTEACH 700\nunit 700\nSTUDY combat\nunit 900\nSTUDY combat\n",
+                allowance: None,
+            },
+            Case {
+                code: codes::FORM_ALIAS_REUSED,
+                regions: vec![region(vec![unit("5")])],
+                orders: "unit 5\nFORM 1\nEND\nFORM 1\nEND\n",
+                allowance: None,
+            },
+            Case {
+                code: codes::FLEET_OVERLOADED,
+                regions: vec![ReportRegion {
                     structures: vec![longship("329")],
                     ..region(vec![ReportUnit {
                         structure_id: Some("329".to_string()),
@@ -4879,12 +6224,12 @@ mod tests {
                         ..unit("11125")
                     }])
                 }],
-                "unit 11125\nSAIL N\n",
-                None,
-            ),
-            (
-                codes::FLEET_UNDERCREWED,
-                vec![ReportRegion {
+                orders: "unit 11125\nSAIL N\n",
+                allowance: None,
+            },
+            Case {
+                code: codes::FLEET_UNDERCREWED,
+                regions: vec![ReportRegion {
                     structures: vec![longship("329")],
                     ..region(vec![ReportUnit {
                         structure_id: Some("329".to_string()),
@@ -4892,68 +6237,95 @@ mod tests {
                         ..unit("11125")
                     }])
                 }],
-                "unit 11125\nSAIL N\n",
-                None,
-            ),
-            (
-                codes::GIVE_TARGET_NOT_HERE,
-                vec![region(vec![with_silver(unit("5"), 1000)])],
-                "unit 5\nGIVE 16585 500 SILV\n",
-                None,
-            ),
-            (
-                codes::NOT_TRADED_HERE,
-                vec![region(vec![unit("5")])],
-                "unit 5\nBUY 5 silk\n",
-                None,
-            ),
-            (
-                codes::TOO_MANY_QUARTERMASTERS,
-                vec![region(vec![unit("5")])],
-                "unit 5\nSTUDY QUAM\n",
-                Some(("Quartermasters", 2, 2)),
-            ),
-            (
-                codes::UNIT_OVERLOADED,
-                vec![region(vec![carrying("5", 1800, 150)])],
-                "unit 5\nMOVE S\n",
-                None,
-            ),
-            (
-                codes::STUDY_AT_MAXIMUM,
-                vec![region(vec![with_skill(
+                orders: "unit 11125\nSAIL N\n",
+                allowance: None,
+            },
+            Case {
+                code: codes::GIVE_TARGET_NOT_HERE,
+                regions: vec![region(vec![with_silver(unit("5"), 1000)])],
+                orders: "unit 5\nGIVE 16585 500 SILV\n",
+                allowance: None,
+            },
+            Case {
+                code: codes::NOT_TRADED_HERE,
+                regions: vec![region(vec![unit("5")])],
+                orders: "unit 5\nBUY 5 silk\n",
+                allowance: None,
+            },
+            Case {
+                code: codes::TOO_MANY_QUARTERMASTERS,
+                regions: vec![region(vec![unit("5")])],
+                orders: "unit 5\nSTUDY QUAM\n",
+                allowance: Some(("Quartermasters", 2, 2)),
+            },
+            Case {
+                code: codes::UNIT_OVERLOADED,
+                regions: vec![region(vec![carrying("5", 1800, 150)])],
+                orders: "unit 5\nMOVE S\n",
+                allowance: None,
+            },
+            Case {
+                code: codes::STUDY_AT_MAXIMUM,
+                regions: vec![region(vec![with_skill(
                     with_silver(unit("5"), 1000),
                     "OBSE",
                     5,
                 )])],
-                "unit 5\nSTUDY OBSE\n",
-                None,
-            ),
-            (
-                codes::ALREADY_BUILT,
-                vec![ReportRegion {
+                orders: "unit 5\nSTUDY OBSE\n",
+                allowance: None,
+            },
+            Case {
+                code: codes::ALREADY_BUILT,
+                regions: vec![ReportRegion {
                     structures: vec![finished_mill("1")],
                     ..region(vec![in_structure(unit("4021"), "1")])
                 }],
-                "unit 4021\nBUILD\n",
-                None,
-            ),
-            (
-                codes::TOO_MANY_TRADE_REGIONS,
-                vec![
+                orders: "unit 4021\nBUILD\n",
+                allowance: None,
+            },
+            Case {
+                code: codes::TOO_MANY_TRADE_REGIONS,
+                regions: vec![
                     region_at("1:7,53", 7, 53, vec![unit("5")]),
                     region_at("1:8,53", 8, 53, vec![unit("6")]),
                     region_at("1:9,53", 9, 53, vec![unit("7")]),
                 ],
-                "unit 5\nPRODUCE grain\nunit 6\nPRODUCE grain\nunit 7\nPRODUCE grain\n",
-                Some(("Trade Regions", 2, 2)),
-            ),
-            (
-                codes::MAGIC_STUDY_OUTSIDE_BUILDING,
-                vec![region(vec![mage(2)])],
-                "unit 5\nSTUDY FORC\n",
-                None,
-            ),
+                orders: "unit 5\nPRODUCE grain\nunit 6\nPRODUCE grain\nunit 7\nPRODUCE grain\n",
+                allowance: Some(("Trade Regions", 2, 2)),
+            },
+            Case {
+                code: codes::MAGIC_STUDY_OUTSIDE_BUILDING,
+                regions: vec![region(vec![mage(2)])],
+                orders: "unit 5\nSTUDY FORC\n",
+                allowance: None,
+            },
+            Case {
+                code: codes::BUILD_OUTSIDE_STRUCTURE,
+                regions: vec![region(vec![unit("4021")])],
+                orders: "unit 4021\nBUILD\n",
+                allowance: None,
+            },
+            Case {
+                code: codes::BUILD_HELP_NOT_BUILDING,
+                regions: vec![ReportRegion {
+                    structures: vec![unfinished_building("1")],
+                    ..region(vec![in_structure(unit("4021"), "1"), unit("4117")])
+                }],
+                orders: "unit 4021\nWORK\nunit 4117\nBUILD HELP 4021\n",
+                allowance: None,
+            },
+            Case {
+                code: codes::UNIT_DOES_NOTHING,
+                regions: vec![region(vec![unit("4021")])],
+                orders: "unit 4021\n",
+                allowance: None,
+            },
+            Case {
+                code: codes::BUILD_WITHOUT_SKILL,
+                regions: vec![region(vec![unit("4021")])],
+                orders: "unit 4021\nBUILD Mine\n",
+                allowance: None,
+            },
         ];
 
         assert_eq!(
@@ -4961,9 +6333,23 @@ mod tests {
             codes::ALL.len(),
             "every code in codes::ALL needs a fixture here, or a silenced one would go unnoticed"
         );
+        // Length alone would accept a case duplicated and another dropped, which is the same hole
+        // by a different route.
+        let distinct: BTreeSet<&str> = cases.iter().map(|case| case.code.as_str()).collect();
+        assert_eq!(
+            distinct.len(),
+            cases.len(),
+            "two cases share a code, so some other code has no fixture"
+        );
 
-        for (code, regions, orders, status) in &cases {
-            let built = match status {
+        for Case {
+            code,
+            regions,
+            orders,
+            allowance,
+        } in &cases
+        {
+            let built = match allowance {
                 Some((label, used, maximum)) => {
                     report_with_status(label, *used, *maximum, regions.clone())
                 }
@@ -5014,7 +6400,7 @@ mod tests {
             &report(regions.clone()),
             orders,
             Some(&ruleset()),
-            disabling(codes::GIVE_TARGET_NOT_HERE),
+            disabling_all(&[codes::GIVE_TARGET_NOT_HERE, codes::UNIT_DOES_NOTHING]),
         );
         assert_eq!(
             codes(&enabled)
@@ -5030,7 +6416,11 @@ mod tests {
                 &report(regions),
                 orders,
                 Some(&ruleset()),
-                disabling_all(&[codes::NOT_ENOUGH_SILVER, codes::GIVE_TARGET_NOT_HERE]),
+                disabling_all(&[
+                    codes::NOT_ENOUGH_SILVER,
+                    codes::GIVE_TARGET_NOT_HERE,
+                    codes::UNIT_DOES_NOTHING,
+                ]),
             ),
             vec![],
             "disabling the code should close both sites, not just one"
@@ -5053,7 +6443,11 @@ mod tests {
                 &report(regions),
                 orders,
                 Some(&ruleset()),
-                disabling_all(&[codes::NOT_ENOUGH_SILVER, codes::GIVE_TARGET_NOT_HERE]),
+                disabling_all(&[
+                    codes::NOT_ENOUGH_SILVER,
+                    codes::GIVE_TARGET_NOT_HERE,
+                    codes::UNIT_DOES_NOTHING,
+                ]),
             )),
             ["guard-dropped"]
         );
@@ -5558,7 +6952,8 @@ mod tests {
             &report(vec![region.clone()]),
             orders,
             None,
-            CheckOptions::default(),
+            // Unit 8801 only gives, so `unit-does-nothing` is right about it and orthogonal here.
+            disabling(codes::UNIT_DOES_NOTHING),
         ));
         assert_eq!(
             without_ruleset.message,
@@ -5569,7 +6964,7 @@ mod tests {
             &report(vec![region]),
             orders,
             Some(&ruleset()),
-            CheckOptions::default(),
+            disabling(codes::UNIT_DOES_NOTHING),
         ));
         assert!(with_ruleset
             .message
@@ -6295,7 +7690,9 @@ mod tests {
             &report_with_status(label, 0, maximum, regions),
             orders,
             Some(&ruleset()),
-            CheckOptions::default(),
+            // Their bare BUILDs are written from outside any structure, which
+            // `build-outside-structure` is right about and these tests are not about.
+            disabling_all(&[codes::BUILD_OUTSIDE_STRUCTURE, codes::UNIT_DOES_NOTHING]),
         )
     }
 

@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The light theme's own failures — proposals (bead ah-j1xd)</title>
+<style>
+  body { background:#0c1015; color:#dbe3ec; font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 72px; margin:0; }
+  * { box-sizing:border-box; }
+  header, main { max-width:1200px; margin:0 auto; }
+  h1 { font-size:26px; margin:0; } h1 span { color:#d9a441; }
+  header p { color:#a3b0c0; max-width:96ch; margin:10px 0 0; font-size:14px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:0.92em; }
+  h2.sec { margin:38px 0 0; font-size:18px; color:#d9a441; } h2.sec small { color:#8a97a8; font-size:13px; margin-left:10px; }
+  .banner { border:1px solid #26303d; border-left:3px solid #d9a441; background:#171d26; padding:14px 16px; border-radius:6px; margin-top:16px; color:#a3b0c0; font-size:13.5px; } .banner b { color:#dbe3ec; }
+  .banner.bad { border-left-color:#d97070; } .banner.good { border-left-color:#4fb783; }
+  table { border-collapse:collapse; font-size:12.5px; width:100%; margin-top:14px; }
+  th, td { text-align:left; padding:6px 8px; border-bottom:1px solid #1e2733; vertical-align:top; }
+  th { color:#d9a441; font-weight:normal; font-size:11px; letter-spacing:1px; text-transform:uppercase; }
+  td.num { font-family:'SF Mono',monospace; text-align:right; }
+  .aaa { color:#4fb783; } .aa { color:#a3b0c0; } .fail { color:#d97070; }
+  .sw { display:inline-block; width:11px; height:11px; border-radius:2px; border:1px solid #555; vertical-align:-1px; margin-right:5px; }
+  .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(330px,1fr)); gap:22px; margin-top:18px; align-items:start; }
+  .card { border:1px solid #26303d; border-radius:10px; overflow:hidden; background:#171d26; }
+  .card > .lab { padding:12px 16px; border-bottom:1px solid #26303d; }
+  .card > .lab h3 { margin:0; font-size:16px; } .card > .lab h3 em { color:#d9a441; font-style:normal; font-size:11px; letter-spacing:1.6px; margin-right:8px; }
+  .card > .lab p { margin:6px 0 0; font-size:12.5px; color:#a3b0c0; }
+  .notes { list-style:none; padding:12px 16px 14px; margin:0; font-size:12px; color:#a3b0c0; display:grid; gap:4px; border-top:1px solid #1e2733; }
+  .notes li::before { content:"+ "; color:#4fb783; font-weight:bold; } .notes li.con::before { content:"\2212  "; color:#d97070; }
+
+  .app { font-family:'Helvetica Neue',Arial,sans-serif; padding:14px; background:var(--ground); }
+  .app .pane { background:var(--panel); border:1px solid var(--edge); border-radius:6px; overflow:hidden; }
+  .app .bar { display:flex; align-items:baseline; gap:8px; padding:5px 9px; border-bottom:1px solid var(--edge); }
+  .app .bar .h { color:var(--brass); font-size:11px; letter-spacing:.08em; text-transform:uppercase; }
+  .app .bar .n { margin-left:auto; color:var(--dim); font-size:11px; }
+  .app .sect { color:var(--brass); font-size:11px; letter-spacing:.1em; text-transform:uppercase; padding:8px 9px 3px; }
+  .app .r { display:flex; gap:8px; padding:3px 9px; font-size:12px; color:var(--ink); }
+  .app .r .id { color:var(--dim); font-variant-numeric:tabular-nums; flex:none; width:4.2em; }
+  .app .r .sub { color:var(--soft); }
+  .app .prose { padding:6px 9px 9px; font-size:12px; color:var(--ink); line-height:1.5; }
+  .app .prose .d { color:var(--dim); } .app .prose .s { color:var(--soft); }
+  .app .warn { color:var(--warnc); } .app .err { color:var(--dangerc); } .app .selc { color:var(--selectc); } .app .okc { color:var(--okc); }
+
+  .lnow { --ground:#f2efe8; --panel:#eae6da; --edge:#c9c2b0; --ink:#2a3038; --soft:#4f5866; --dim:#5e6673; --brass:#9a6f1d; --warnc:#9a6f1d; --dangerc:#b04a4a; --selectc:#2470a8; --okc:#2e7d54; }
+  .lnew { --ground:#f2efe8; --panel:#f0ece2; --edge:#c2bba8; --ink:#2a3038; --soft:#454d59; --dim:#4a5160; --brass:#8a6317; --warnc:#8a6317; --dangerc:#9c4040; --selectc:#1f5f8f; --okc:#256b48; }
+</style>
+</head>
+<body>
+<header>
+  <h1>The light theme's own failures &mdash; <span>proposals</span> (bead ah-j1xd)</h1>
+  <p>Split out of <b>ah-v09e</b>, which you scoped to the dark theme. The light theme is worse: five accent tokens fail AA <i>even on an opaque panel</i>, and <code>brass</code> &mdash; the worst of them at 3.61:1 &mdash; carries every panel title, every section heading, the wordmark and every order warning in the application.</p>
+  <p><b>This bead is blocked by ah-v09e</b>, because its numbers depend on the pane transparency default that bead changes from 90 to 20.</p>
+</header>
+<main>
+
+  <h2 class="sec">&sect;1 &nbsp;What fails today <small>light tokens on the light panel <code>#eae6da</code>, which is the darkest of the three light surfaces and so the worst case</small></h2>
+  <table>
+    <tr><th style="width:26%">Token</th><th class="num" style="width:10%">Ratio</th><th style="width:14%">WCAG</th><th>Where it is drawn</th></tr>
+    <tr><td><span class="sw" style="background:#9a6f1d"></span><code>brass</code> <span class="mono">#9a6f1d</span></td><td class="num fail">3.61</td><td class="fail">fails AA</td><td><b>Every panel title</b> (<code>CollapsiblePanel.tsx:75</code>), <b>every section heading</b> (<code>primitives.tsx:77</code>), the wordmark (<code>AppHeader.tsx:245</code>).</td></tr>
+    <tr><td><span class="sw" style="background:#9a6f1d"></span><code>warn</code> <span class="mono">#9a6f1d</span></td><td class="num fail">3.61</td><td class="fail">fails AA</td><td>Every order warning, including the ones ah-vkut and ah-dwk6 add.</td></tr>
+    <tr><td><span class="sw" style="background:#2e7d54"></span><code>ok</code></td><td class="num fail">4.03</td><td class="fail">fails AA</td><td>Success marks.</td></tr>
+    <tr><td><span class="sw" style="background:#2470a8"></span><code>select</code></td><td class="num fail">4.25</td><td class="fail">fails AA</td><td>Selection and links.</td></tr>
+    <tr><td><span class="sw" style="background:#b04a4a"></span><code>danger</code></td><td class="num fail">4.29</td><td class="fail">fails AA</td><td>Errors.</td></tr>
+    <tr><td><span class="sw" style="background:#5e6673"></span><code>ink-dim</code></td><td class="num aa">4.64</td><td class="aa">passes, barely</td><td>Counts, hints, placeholders, setting descriptions.</td></tr>
+  </table>
+  <div class="banner"><b>Why no test caught it.</b> <code>theme.test.ts:100-117</code> checks only the three <code>ink</code> tokens against the three surfaces. <b>No accent token is checked in either theme.</b> Dark happens to pass anyway; light does not. Fixing that gap is half of this bead.</div>
+
+  <h2 class="sec">&sect;2 &nbsp;And then the map shows through <small>after ah-v09e sets transparency to 20, a light pane is 80% panel over the terrain</small></h2>
+  <p style="color:#a3b0c0;font-size:13.5px;margin-top:10px;max-width:96ch">Light text tokens are dark, so a light pane is worst over <b>dark</b> terrain &mdash; volcano, ocean, cavern &mdash; the mirror image of the dark theme's problem. Measured over volcano, the worst case:</p>
+  <table>
+    <tr><th style="width:26%">Token</th><th class="num" style="width:14%">On panel</th><th class="num" style="width:18%">Through a pane<br>over volcano</th><th>Verdict</th></tr>
+    <tr><td><code>ink</code></td><td class="num aaa">10.66</td><td class="num aaa">7.43</td><td class="aaa">fine either way</td></tr>
+    <tr><td><code>ink-soft</code></td><td class="num aa">5.76</td><td class="num fail">4.02</td><td class="fail">fails over the map</td></tr>
+    <tr><td><code>ink-dim</code></td><td class="num aa">4.64</td><td class="num fail">3.24</td><td class="fail">fails over the map</td></tr>
+  </table>
+  <div class="banner bad"><b>And lowering the transparency further does not rescue it.</b> Even at 5% transparency &mdash; panes almost solid &mdash; <code>ink-dim</code> reaches only <b>4.28</b>, because the token is already marginal at 4.64 on the opaque panel. <b>The tokens have to move.</b></div>
+
+  <h2 class="sec">&sect;3 &nbsp;The squeeze, which is the one thing I need you to decide</h2>
+  <p style="color:#a3b0c0;font-size:13.5px;margin-top:10px;max-width:96ch">To clear AA over dark terrain, <code>ink-dim</code> has to darken to roughly <span class="mono">#43495a</span> &mdash; which is <b>darker than <code>ink-soft</code> is today</b>. Keep the surfaces as they are and the three-level text hierarchy collapses: secondary and dimmed text end up the same colour, or dimmed ends up darker than secondary, which is worse than either.</p>
+  <div class="cards">
+    <div class="card">
+      <div class="lab"><h3><em>1</em> Lighten the panel</h3><p>Panel <code>#eae6da</code> &rarr; <code>#f0ece2</code>. Everything else follows from the headroom that buys.</p></div>
+      <div class="app lnew">
+        <div class="pane">
+          <div class="bar"><span class="h">Units in hex</span><span class="n">6 units</span></div>
+          <div class="sect">Own units</div>
+          <div class="r"><span class="id">4021</span><span>Seven of Eight <span class="sub">&mdash; studying combat</span></span></div>
+          <div class="r"><span class="id">4117</span><span>Drones <span class="sub">&mdash; 50 lizardmen</span></span></div>
+          <div class="prose">Earns 2 silver working in desert (15,63). <span class="d">Maintenance 500 silver a month.</span><br><span class="warn">&#9888; has no order that spends the month</span><br><span class="err">&#10005; spends 250 silver it has not got</span> &nbsp; <span class="okc">&#10003; orders accepted</span> &nbsp; <span class="selc">selected hex</span></div>
+        </div>
+      </div>
+      <ul class="notes">
+        <li><b>All three ink levels clear AA over the worst terrain</b> and stay visibly distinct: 7.84 / 5.03 / 4.69.</li>
+        <li>The extra headroom fixes the accents too &mdash; <code>brass</code> needs less darkening.</li>
+        <li>Panel stays the darkest of the three light surfaces, so the elevation cue is unchanged.</li>
+        <li class="con">The paper tone lightens slightly. It is the one change here you would notice as a change rather than as a fix.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <div class="lab"><h3><em>Today</em> For comparison</h3><p>Unchanged, so you can see what the numbers in §1 actually look like.</p></div>
+      <div class="app lnow">
+        <div class="pane">
+          <div class="bar"><span class="h">Units in hex</span><span class="n">6 units</span></div>
+          <div class="sect">Own units</div>
+          <div class="r"><span class="id">4021</span><span>Seven of Eight <span class="sub">&mdash; studying combat</span></span></div>
+          <div class="r"><span class="id">4117</span><span>Drones <span class="sub">&mdash; 50 lizardmen</span></span></div>
+          <div class="prose">Earns 2 silver working in desert (15,63). <span class="d">Maintenance 500 silver a month.</span><br><span class="warn">&#9888; has no order that spends the month</span><br><span class="err">&#10005; spends 250 silver it has not got</span> &nbsp; <span class="okc">&#10003; orders accepted</span> &nbsp; <span class="selc">selected hex</span></div>
+        </div>
+      </div>
+      <ul class="notes"><li class="con">The headings and the warning are the failing 3.61:1 &mdash; look at how they sit against the panel next to the body text.</li></ul>
+    </div>
+  </div>
+
+  <h2 class="sec">&sect;4 &nbsp;The proposed values <small>option 1 in full; every ratio measured against the new panel <code>#f0ece2</code></small></h2>
+  <table>
+    <tr><th style="width:22%">Token</th><th style="width:15%">Today</th><th style="width:15%">Proposed</th><th class="num" style="width:11%">On panel</th><th class="num" style="width:15%">Over volcano<br>through a pane</th><th>Note</th></tr>
+    <tr><td><code>panel</code></td><td class="mono">#eae6da</td><td class="mono">#f0ece2</td><td>&mdash;</td><td>&mdash;</td><td>The headroom everything else needs.</td></tr>
+    <tr><td><code>ink</code></td><td class="mono">#2a3038</td><td class="mono">unchanged</td><td class="num aaa">11.28</td><td class="num aaa">7.84</td><td>Already fine.</td></tr>
+    <tr><td><code>ink-soft</code></td><td class="mono">#4f5866</td><td class="mono">#454d59</td><td class="num aaa">7.24</td><td class="num aa">5.03</td><td>Was 4.02 over the map.</td></tr>
+    <tr><td><code>ink-dim</code></td><td class="mono">#5e6673</td><td class="mono">#4a5160</td><td class="num aa">6.75</td><td class="num aa">4.69</td><td>Was 3.24 over the map.</td></tr>
+    <tr><td><code>brass</code> / <code>warn</code></td><td class="mono">#9a6f1d</td><td class="mono">#8a6317</td><td class="num aa">4.59</td><td>&mdash;</td><td>Was <b>3.61</b>. Headings and warnings.</td></tr>
+    <tr><td><code>select</code></td><td class="mono">#2470a8</td><td class="mono">#1f5f8f</td><td class="num aa">5.76</td><td>&mdash;</td><td>Was 4.25.</td></tr>
+    <tr><td><code>ok</code></td><td class="mono">#2e7d54</td><td class="mono">#256b48</td><td class="num aa">5.44</td><td>&mdash;</td><td>Was 4.03.</td></tr>
+    <tr><td><code>danger</code></td><td class="mono">#b04a4a</td><td class="mono">#9c4040</td><td class="num aa">5.53</td><td>&mdash;</td><td>Was 4.29.</td></tr>
+    <tr><td><code>brass-bright</code></td><td class="mono">#7d5a15</td><td class="mono">unchanged</td><td class="num aa">5.32</td><td>&mdash;</td><td>Already passes.</td></tr>
+    <tr><td><code>gain</code></td><td class="mono">#3f7233</td><td class="mono">unchanged</td><td class="num aa">4.90</td><td>&mdash;</td><td>Already passes.</td></tr>
+  </table>
+  <div class="banner good"><b>Every hue is kept.</b> Each accent is the same colour, darkened until it clears the bar &mdash; no token changes what it means or what family it belongs to.</div>
+
+</main>
+</body>
+</html>

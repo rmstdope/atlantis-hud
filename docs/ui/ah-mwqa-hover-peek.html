@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Peeking at a dossier row's hex</title>
+<style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1360px; margin:0 auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; }
+  h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:94ch; margin-top:10px; font-size:14px; }
+  header p + p { margin-top:8px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; }
+  header code { color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:36px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:94ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; }
+  .card h2 { font-size:16px; margin-bottom:5px; }
+  .card h2 em { color:var(--brass); font-style:normal; font-size:11.5px; letter-spacing:1.5px; margin-right:8px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; margin-bottom:11px; min-height:3.4em; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; padding:10px; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:11px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"− "; color:var(--danger); }
+  .notes li.n::before { content:"· "; color:var(--ink-dim); }
+  .cards3 { display:grid; grid-template-columns:repeat(3,1fr); gap:18px; align-items:start; }
+  .cards2 { display:grid; grid-template-columns:repeat(2,1fr); gap:18px; align-items:start; }
+
+  /* a little fake map */
+  .map { position:relative; height:190px; background:
+      radial-gradient(circle at 30% 40%, #16202a 0 40%, transparent 41%),
+      radial-gradient(circle at 70% 65%, #17232c 0 35%, transparent 36%), #0d1218;
+      border:1px solid var(--edge); border-radius:6px; overflow:hidden; }
+  .hexrow { position:absolute; display:flex; gap:3px; }
+  .hex { width:26px; height:23px; background:#1b2732; clip-path:polygon(25% 0,75% 0,100% 50%,75% 100%,25% 100%,0 50%); }
+  .hex.b { background:#233042; } .hex.c { background:#1e2b36; }
+  .ring { outline:2px solid var(--brass); outline-offset:1px; border-radius:2px; }
+  .sel { outline:2px solid #cfd9e4; outline-offset:1px; border-radius:2px; }
+  .pop { position:absolute; right:8px; top:10px; width:150px; background:var(--raised);
+         border:1px solid var(--edge); border-radius:5px; padding:7px 8px;
+         font:11.5px/1.5 'Helvetica Neue',Arial,sans-serif; box-shadow:0 6px 20px rgba(0,0,0,.6); z-index:5; }
+  .pop .t { color:var(--brass); font-size:10px; letter-spacing:1.1px; text-transform:uppercase; margin-bottom:4px; }
+  .pop .r { color:var(--ink-soft); padding:1px 3px; border-radius:2px; }
+  .pop .r.on { background:#243040; color:var(--ink); }
+  .caption { font-size:11.5px; color:var(--ink-dim); margin-top:7px; }
+  .caption b { color:var(--ink-soft); font-weight:normal; }
+  .hidden { position:relative; }
+  .hidden::after { content:"hex is under here"; position:absolute; inset:0; display:flex;
+    align-items:center; justify-content:center; font:10px 'Helvetica Neue',Arial,sans-serif;
+    color:var(--danger); background:rgba(217,112,112,.10); border-radius:4px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Peeking at a dossier row's hex — <span>move the map, then move it back</span></h1>
+  <p>The faction dossier rings the hex under the hovered row, but nothing moves the map. So the ring can be
+  drawn off screen, or — the case you hit — <b>underneath the dossier itself</b>, which opens beside the row and
+  therefore over the map.</p>
+  <p>Worth knowing: the "do not pan" behaviour was <b>chosen</b>, not overlooked. <code>MapCanvas</code>'s own
+  comment reads <i>"Deliberately does NOT frame or pan the map, unlike <code>arrow</code>: running down a list
+  while the map jumps under you is worse than no highlight at all."</i> You have now met the other side of that
+  trade, so this bead reverses it — but the worry behind it is real, and it is what sections 1 and 2 are asking
+  about.</p>
+  <p>The machinery already exists: <code>centreOn</code>, <code>isOffScreen</code>, and a travel-and-restore
+  effect used by the trade arrow whose own comment says <i>"written once per gesture, not once per row —
+  sweeping down the list must return to where the reader was before the first hover."</i></p>
+</header>
+
+<main>
+
+<h3 class="sec">1 · When should the map move at all?</h3>
+<p>Left of each pair is the hover; right is what the map does.</p>
+<div class="cards3">
+
+  <div class="card">
+    <h2><em>A</em>Only when off screen</h2>
+    <div class="concept">Reuses <code>isOffScreen</code> exactly as the selection already does. Calmest — the
+    map only ever moves when it must.</div>
+    <div class="stage">
+      <div class="map">
+        <div class="hexrow" style="left:14px;top:20px"><span class="hex"></span><span class="hex b"></span><span class="hex"></span><span class="hex c"></span></div>
+        <div class="hexrow" style="left:28px;top:44px"><span class="hex c"></span><span class="hex"></span><span class="hex b ring"></span><span class="hex"></span></div>
+        <div class="hexrow" style="left:14px;top:68px"><span class="hex"></span><span class="hex c"></span><span class="hex"></span><span class="hex b"></span></div>
+        <div class="pop"><div class="t">Green Tide</div>
+          <div class="r on">mountain (7,53)</div><div class="r">plain (16,0)</div><div class="r">forest (36,0)</div></div>
+      </div>
+      <div class="caption"><b>Hex is visible:</b> nothing moves. Correct and calm.</div>
+      <div class="map" style="margin-top:9px">
+        <div class="hexrow" style="left:150px;top:60px"><span class="hex"></span><span class="hex b ring"></span></div>
+        <div class="pop"><div class="t">Green Tide</div>
+          <div class="r">mountain (7,53)</div><div class="r on">plain (16,0)</div><div class="r">forest (36,0)</div></div>
+      </div>
+      <div class="caption"><b>But:</b> a hex behind the popover counts as "visible", so the case you hit is not fixed.</div>
+    </div>
+    <ul class="notes">
+      <li>Zero new machinery — the helper and the pattern both exist</li>
+      <li>The map moves as rarely as possible</li>
+      <li class="con">Does not solve the reported problem: behind the dossier still counts as on screen</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2><em>B</em>Off screen, or behind the dossier</h2>
+    <div class="concept">Also moves when the hex sits under the popover's own rectangle, centring it into the
+    part of the map still showing.</div>
+    <div class="stage">
+      <div class="map">
+        <div class="hexrow" style="left:150px;top:60px"><span class="hex"></span><span class="hex b ring"></span></div>
+        <div class="pop"><div class="t">Green Tide</div>
+          <div class="r">mountain (7,53)</div><div class="r on">plain (16,0)</div><div class="r">forest (36,0)</div></div>
+      </div>
+      <div class="caption"><b>Before:</b> the ring is under the dossier.</div>
+      <div class="map" style="margin-top:9px">
+        <div class="hexrow" style="left:52px;top:80px"><span class="hex"></span><span class="hex b ring"></span></div>
+        <div class="pop"><div class="t">Green Tide</div>
+          <div class="r">mountain (7,53)</div><div class="r on">plain (16,0)</div><div class="r">forest (36,0)</div></div>
+      </div>
+      <div class="caption"><b>After:</b> centred in the visible part, clear of the popover.</div>
+    </div>
+    <ul class="notes">
+      <li>Actually fixes what you reported</li>
+      <li>Still calm: a hex you can already see does not move</li>
+      <li class="con">Needs the popover's rectangle, which is private to the floating panel and portalled to the body — the existing inset mechanism cannot see it</li>
+      <li class="con">Two dossier routes with different geometry (beside a row, or inside the faction chip popover)</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2><em>C</em>Always centre the hovered hex</h2>
+    <div class="concept">Every row centres its hex, visible or not.</div>
+    <div class="stage">
+      <div class="map">
+        <div class="hexrow" style="left:14px;top:20px"><span class="hex"></span><span class="hex b ring"></span><span class="hex"></span></div>
+        <div class="pop"><div class="t">Green Tide</div>
+          <div class="r on">mountain (7,53)</div><div class="r">plain (16,0)</div><div class="r">forest (36,0)</div></div>
+      </div>
+      <div class="caption"><b>Before:</b> visible, near the edge.</div>
+      <div class="map" style="margin-top:9px">
+        <div class="hexrow" style="left:52px;top:80px"><span class="hex"></span><span class="hex b ring"></span></div>
+        <div class="pop"><div class="t">Green Tide</div>
+          <div class="r on">mountain (7,53)</div><div class="r">plain (16,0)</div><div class="r">forest (36,0)</div></div>
+      </div>
+      <div class="caption"><b>After:</b> centred — but it moved for a hex you could already see.</div>
+    </div>
+    <ul class="notes">
+      <li>Simplest rule to build, and to explain</li>
+      <li>Always solves the popover case, without knowing where the popover is</li>
+      <li class="con">The map lurches on every row you cross — exactly what the existing comment warned against</li>
+    </ul>
+  </div>
+
+</div>
+
+<h3 class="sec">2 · How quickly, and how smoothly?</h3>
+<p>There is no easing anywhere in the map today — every move is instant. The only animation is the selection
+pulse, which honours <code>prefers-reduced-motion</code>.</p>
+<div class="cards3">
+  <div class="card">
+    <h2><em>i</em>Instant, after a short pause</h2>
+    <div class="concept">The map jumps, but only once the pointer has rested on a row for a moment
+    (<code>HOVER_DELAY_MS</code> is already 300ms for tooltips).</div>
+    <ul class="notes">
+      <li>Matches every other map move in the application</li>
+      <li>Sweeping down ten rows moves nothing — only a row you stop on</li>
+      <li class="con">A jump is still a jump; you have to re-find your bearings</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h2><em>ii</em>Eased glide, after a short pause</h2>
+    <div class="concept">The map slides over ~200ms so the eye can follow where it went.</div>
+    <ul class="notes">
+      <li>Much easier to keep your bearings — you see the journey</li>
+      <li class="con">The first animated map movement in the app; needs a reduced-motion opt-out</li>
+      <li class="con">A quick scan can outrun the animation</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h2><em>iii</em>Instant, no pause</h2>
+    <div class="concept">Moves the moment a row is hovered.</div>
+    <ul class="notes">
+      <li>Most responsive</li>
+      <li class="con">Crossing rows on the way to the one you want drags the map through every hex in between</li>
+    </ul>
+  </div>
+</div>
+
+<h3 class="sec">3 · What happens on the keyboard?</h3>
+<p>Every row is a button and the dossier is tabbed through; the ring already follows focus as well as the
+pointer. But focus is not a peek — it is how a keyboard reader navigates.</p>
+<div class="cards2">
+  <div class="card">
+    <h2><em>i</em>Focus peeks and returns, like hover</h2>
+    <div class="concept">Tabbing to a row moves the map; tabbing away puts it back.</div>
+    <ul class="notes">
+      <li>One rule for both paths — nothing extra to explain or test</li>
+      <li class="con">A keyboard reader tabbing down the list gets the map yo-yoing back after every row</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h2><em>ii</em>Focus moves and stays</h2>
+    <div class="concept">Tabbing to a row moves the map and leaves it there; only pointer hover restores.</div>
+    <ul class="notes">
+      <li>Treats keyboard as navigation, which is what it is — the bead itself suggests this</li>
+      <li class="con">Two rules, and a reader who both tabs and hovers meets both</li>
+    </ul>
+  </div>
+</div>
+
+</main>
+
+<footer style="margin-top:34px; color:var(--ink-dim); font-size:12.5px;">
+  Mockup for bead <span class="mono">ah-mwqa</span>. The map is schematic; the dossier's position and width are
+  the real ones (<span class="mono">w-80</span>, placed beside the row).
+</footer>
+</body>
+</html>

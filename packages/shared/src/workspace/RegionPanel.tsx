@@ -1,11 +1,17 @@
+import { Fragment } from "react";
 import type { Coordinate, CoreClient, MapLevel, OpenedGame, OrderDiagnostic } from "@atlantis/core-client";
+import { buildingEntryId, type GameDataIndex } from "../gameData";
 import { abbreviateDirection, levelClause, regionIdOf, type HexNode } from "../hexMapModel";
+import { structureLabelParts } from "../structureLabel";
 import { useWorkspaceStore } from "../workspaceStore";
 import { CollapsiblePanel } from "./CollapsiblePanel";
 import {
   Absent,
   Field,
+  GameDataItemName,
+  GameDataLink,
   PROBLEM_CARD,
+  ProblemMessage,
   ProblemWho,
   Row,
   Section,
@@ -29,7 +35,11 @@ export function RegionPanel({
   problems = [],
   client,
   game,
-  turn
+  turn,
+  known,
+  onSelectUnit,
+  gameData = null,
+  onOpenGameData
 }: {
   hex: HexNode | null;
   /**
@@ -52,7 +62,25 @@ export function RegionPanel({
   client: CoreClient;
   game: OpenedGame | null;
   turn: number | null;
+  /** The unit ids the loaded turn describes, so only a unit that can be reached becomes a button. */
+  known?: ReadonlySet<string>;
+  /**
+   * Go and look at a unit named in a problem.
+   *
+   * Threaded from `AppShell` rather than read from the store: the unit-to-region lookup lives in
+   * `AppShell`'s `unitRegions` memo, so there is nothing in the store to read.
+   */
+  onSelectUnit?: (unitId: string) => void;
+  /**
+   * The game-data dictionary, needed here rather than only in the dialog because an item's
+   * category - and so its entry id - is not knowable from its tag alone.
+   */
+  gameData?: GameDataIndex | null;
+  /** Absent while the ruleset has not loaded; nothing is then linked. */
+  onOpenGameData?: (entryId: string) => void;
 }) {
+  /** Both must be present: a link with nothing to open is worse than plain text. */
+  const linkable = gameData !== null && onOpenGameData !== undefined ? onOpenGameData : null;
   const stale = hex?.knowledge === "stale";
   const asOf = stale && hex.lastSeenTurn !== null ? `as of turn ${hex.lastSeenTurn}` : null;
 
@@ -92,7 +120,7 @@ export function RegionPanel({
         <StaleBanner lastSeenTurn={hex.lastSeenTurn} ageInTurns={hex.ageInTurns ?? 0} />
       ) : null}
 
-      <Problems problems={problems} />
+      <Problems problems={problems} known={known} onSelectUnit={onSelectUnit} />
 
       <p className="m-0 mb-2">
         in {hex.province}
@@ -134,8 +162,18 @@ export function RegionPanel({
 
           {region.products.length > 0 ? (
             <Section title="Products">
+              {/*
+                Prose rather than rows, so the line is built as fragments: joining it into one
+                string first and injecting links afterwards is how the amounts end up linked too.
+              */}
               <p className="m-0 text-ink-soft">
-                {region.products.map((item) => `${item.amount} ${item.name}`).join(" · ")}
+                {region.products.map((item, position) => (
+                  <Fragment key={item.tag}>
+                    {position === 0 ? null : " · "}
+                    {item.amount}{" "}
+                    <GameDataItemName index={gameData} item={item} onOpen={linkable} />
+                  </Fragment>
+                ))}
               </p>
             </Section>
           ) : null}
@@ -145,7 +183,11 @@ export function RegionPanel({
               {region.wanted.map((item) => (
                 <Row
                   key={item.tag}
-                  label={`${item.name} ${item.tag}`}
+                  label={
+                    <>
+                      <GameDataItemName index={gameData} item={item} onOpen={linkable} /> {item.tag}
+                    </>
+                  }
                   value={`$${item.price} ×${item.amount}`}
                 />
               ))}
@@ -157,7 +199,11 @@ export function RegionPanel({
               {region.forSale.map((item) => (
                 <Row
                   key={item.tag}
-                  label={`${item.name} ${item.tag}`}
+                  label={
+                    <>
+                      <GameDataItemName index={gameData} item={item} onOpen={linkable} /> {item.tag}
+                    </>
+                  }
                   value={`$${item.price} ×${item.amount}`}
                 />
               ))}
@@ -184,7 +230,18 @@ export function RegionPanel({
             ) : (
               region.structures.map((structure) => (
                 <p key={structure.structureId} className="m-0 text-ink-soft">
-                  {structure.name} [{structure.structureId}] · {structure.kind}
+                  {/*
+                    The kind alone is the catalogue entry. The structure's own name and its number
+                    stay plain: linking `Odds and Ends` would look right and open nothing.
+                  */}
+                  {structureLabelParts(structure).prefix}
+                  {linkable ? (
+                    <GameDataLink entryId={buildingEntryId(structure.kind)} onOpen={linkable}>
+                      {structure.kind}
+                    </GameDataLink>
+                  ) : (
+                    structure.kind
+                  )}
                   {structure.needs === null ? null : `, needs ${structure.needs}`}
                 </p>
               ))
@@ -240,7 +297,15 @@ function RegionProblemsToggle({ count }: { count: number }) {
  * Hidden while `regionProblemsShown` is off - the header chip stays put and keeps the count, so
  * the diagnostics are put away rather than lost.
  */
-function Problems({ problems }: { problems: OrderDiagnostic[] }) {
+function Problems({
+  problems,
+  known,
+  onSelectUnit
+}: {
+  problems: OrderDiagnostic[];
+  known?: ReadonlySet<string>;
+  onSelectUnit?: (unitId: string) => void;
+}) {
   const shown = useWorkspaceStore((state) => state.regionProblemsShown);
 
   if (problems.length === 0 || !shown) {
@@ -258,8 +323,14 @@ function Problems({ problems }: { problems: OrderDiagnostic[] }) {
             className="flex gap-1.5 border-t border-edge-soft px-1.5 py-0.5 first:border-t-0"
           >
             <SeverityMark severity={problem.severity} />
-            <ProblemWho unitId={problem.unitId} />
-            <span className="text-ink">{problem.message}</span>
+            <ProblemWho unitId={problem.unitId} known={known} onSelectUnit={onSelectUnit} />
+            <span className="text-ink">
+              <ProblemMessage
+                message={problem.message}
+                known={known}
+                onSelectUnit={onSelectUnit}
+              />
+            </span>
           </li>
         ))}
       </ul>

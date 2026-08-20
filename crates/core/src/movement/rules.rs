@@ -191,6 +191,11 @@ pub struct ItemEntry {
     pub capacity_condition: Option<String>,
     #[serde(default)]
     pub sailing_skill: Option<i64>,
+    /// What the data page says about it, after the preamble of name, tag, weight and capacity the
+    /// fields above already carry. `None` for an entry that is nothing but that preamble, and for
+    /// a ruleset cached before ah-3cj4.2, which carried no prose at all.
+    #[serde(default)]
+    pub description: Option<String>,
 }
 
 /// Thresholds for the risk heuristic. Ours, not the game's, which is why they carry `scraped`.
@@ -330,6 +335,18 @@ pub struct SkillEntry {
     /// prerequisites, and for a ruleset cached before they were scraped.
     #[serde(default)]
     pub requires: Vec<SkillRequirement>,
+    /// What the page says at each level, in level order, with the levels it fills with `No skill
+    /// report.` left out. Empty for a ruleset cached before ah-3cj4.2.
+    #[serde(default)]
+    pub levels: Vec<SkillLevel>,
+}
+
+/// What a skill's page says at one level, once the placeholders are dropped.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SkillLevel {
+    pub level: u32,
+    pub description: String,
 }
 
 /// A building the game's data page describes, and how many mages may study in it.
@@ -340,13 +357,35 @@ pub struct SkillEntry {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BuildingEntry {
-    pub size: i64,
-    pub cost: i64,
-    /// What it is built from, in the page's own order - a list because a structure can offer
-    /// alternatives (`an Inn from 10 wood or stone`). Empty for a ruleset cached before ah-9js,
-    /// which wrote a single `material` string this no longer reads.
+    /// The description the data page gives it, verbatim and whitespace-collapsed. Empty for a
+    /// ruleset cached before ah-3cj4.1, which carried no prose at all.
     #[serde(default)]
-    pub materials: Vec<String>,
+    pub description: String,
+    /// What a trade structure increases the supply of, in the page's own word - `iron`, `yew`.
+    /// `None` for anything that is not one.
+    #[serde(default)]
+    pub produces: Option<String>,
+    /// Men the structure protects. `None` for a Mine, a road or a lair, which state no defence
+    /// because they give none - an absence, not a zero, which would claim the page had said so.
+    #[serde(default)]
+    pub size: Option<i64>,
+    /// What building it costs. `None` for anything no skill can build.
+    #[serde(default)]
+    pub cost: Option<i64>,
+    /// What it is built from, in the page's own order - a list because a structure can offer
+    /// alternatives (`an Inn from 10 wood or stone`). `None` for anything no skill can build, and
+    /// for a ruleset cached before ah-9js, which wrote a single `material` string this no longer
+    /// reads.
+    #[serde(default)]
+    pub materials: Option<Vec<String>>,
+    /// The tag of the skill that builds it - `BUIL`, `MINI`. `None` for a structure no skill's
+    /// entry names, and for a ruleset cached before ah-bwly.1: the catalogue not saying, never
+    /// "no skill needed".
+    #[serde(default)]
+    pub build_skill: Option<String>,
+    /// The lowest level of `build_skill` that can build it. `None` exactly when `build_skill` is.
+    #[serde(default)]
+    pub build_level: Option<i64>,
     /// How many mages the building provides study facilities for. **Zero for a Tower**, which is
     /// the ruleset's own answer and not an oversight: a mage studying in one gets half a month.
     pub mages: i64,
@@ -633,15 +672,35 @@ impl Ruleset {
     /// How many mages may study unhindered in a structure of this kind, when the catalogue knows
     /// the kind at all.
     ///
-    /// `None` for a structure the rules' buildings table does not name - a Mine, an Inn, a road, a
-    /// ship - and for a ruleset scraped before buildings were. That is deliberately distinct from
-    /// `Some(0)`, which is a Tower: one says the catalogue cannot tell you, the other says the
-    /// building seats nobody, and a caller that must not guess needs to tell them apart.
+    /// `None` for a structure the data page does not name - a ship - and for a ruleset scraped
+    /// before buildings were. Since ah-3cj4.1 the page's every building is carried, so a Mine, an
+    /// Inn and a road now answer `Some(0)`: the page states a capacity wherever there is one, and
+    /// silence is its way of saying none. The one caller reads
+    /// `is_some_and(|seats| seats >= 1)`, which is false for `None` and `Some(0)` alike.
     #[must_use]
     pub fn mage_capacity(&self, kind: &str) -> Option<i64> {
         self.buildings
             .get(&kind.to_ascii_uppercase())
             .map(|building| building.mages)
+    }
+
+    /// The skill tag and level a structure of this kind must be built with, or `None` when the
+    /// catalogue does not say.
+    ///
+    /// `None` covers three different silences, and every one of them means the same thing to a
+    /// caller: a ruleset scraped before ah-bwly.1, a kind the page never names (a ship), and one
+    /// of the 22 buildings of 58 the page names without a requirement. None of them is a claim
+    /// that anybody may build it, so no caller may read `None` as "no skill needed".
+    ///
+    /// Keyed upper-cased, as [`Ruleset::mage_capacity`] already is: a report writes `Mine`, the
+    /// catalogue holds `MINE`.
+    #[must_use]
+    pub fn build_requirement(&self, kind: &str) -> Option<(&str, i64)> {
+        let building = self.buildings.get(&kind.to_ascii_uppercase())?;
+        // Both halves or neither. ah-bwly.1 writes them together, so a half-filled entry can only
+        // come from something having gone wrong - and reading that as no requirement stays quiet
+        // rather than warning about every unit in the game.
+        Some((building.build_skill.as_deref()?, building.build_level?))
     }
 
     /// Whether this ruleset carries the buildings table at all.
@@ -718,6 +777,69 @@ mod tests {
     // Failing to recognise a name is a **warning** wherever it is asked, never an error: the
     // catalogue is scraped from the game being played and may be stale, absent, or simply missing
     // an entry, and none of that is grounds for telling a player their order is wrong.
+
+    #[test]
+    fn a_buildings_build_requirement_survives_a_round_trip() {
+        let ruleset = ruleset();
+        let mine = ruleset
+            .buildings
+            .get("MINE")
+            .expect("the committed ruleset names a Mine");
+
+        assert_eq!(mine.build_skill.as_deref(), Some("MINI"));
+        assert_eq!(mine.build_level, Some(3));
+
+        // A structure no skill's entry names states neither half - an absence, not a claim that
+        // anyone can build it.
+        let lair = ruleset
+            .buildings
+            .get("LAIR")
+            .expect("the committed ruleset names a Lair");
+        assert_eq!(lair.build_skill, None);
+        assert_eq!(lair.build_level, None);
+    }
+
+    #[test]
+    fn the_build_requirement_is_read_out_by_kind_however_it_is_written() {
+        let ruleset = ruleset();
+
+        // The report writes a structure's kind as the page prints it; the map is keyed
+        // upper-cased, as `mage_capacity` already assumes.
+        assert_eq!(ruleset.build_requirement("Mine"), Some(("MINI", 3)));
+        assert_eq!(ruleset.build_requirement("MINE"), Some(("MINI", 3)));
+        assert_eq!(ruleset.build_requirement("Tower"), Some(("BUIL", 1)));
+
+        // A structure the page names but gives no requirement for is not a structure anyone can
+        // be told they may build: the catalogue simply does not say.
+        assert_eq!(ruleset.build_requirement("Lair"), None);
+        // Nor is a kind the catalogue has never heard of - a ship.
+        assert_eq!(ruleset.build_requirement("Longship"), None);
+    }
+
+    /// Half an entry is not a state ah-bwly.1 can produce, but reading it as "no requirement" is
+    /// the safe way round if one ever appears.
+    #[test]
+    fn half_a_build_requirement_is_no_requirement() {
+        let mut ruleset = ruleset();
+        let mine = ruleset
+            .buildings
+            .get_mut("MINE")
+            .expect("the committed ruleset names a Mine");
+        mine.build_level = None;
+
+        assert_eq!(ruleset.build_requirement("Mine"), None);
+    }
+
+    #[test]
+    fn a_ruleset_cached_before_build_requirements_still_loads() {
+        // The case both `Option`s exist for: JSON written before ah-bwly.1 carries neither field.
+        let entry: BuildingEntry =
+            serde_json::from_str(r#"{"description":"This is a building.","mages":0,"cost":10}"#)
+                .expect("a building entry without a build requirement should still load");
+
+        assert_eq!(entry.build_skill, None);
+        assert_eq!(entry.build_level, None);
+    }
 
     #[test]
     fn a_tag_is_recognised_whatever_its_case() {
@@ -918,18 +1040,22 @@ mod tests {
         assert_eq!(ruleset.mage_capacity("Citadel"), Some(3));
         // Case-insensitive, the same way `is_man` looks items up by their uppercase tag.
         assert_eq!(ruleset.mage_capacity("tower"), Some(0));
-        // Not a building at all, and must not resolve to one by prefix or by stripping a
-        // direction.
-        assert_eq!(ruleset.mage_capacity("Road SE"), None);
+        // A road is a building the page describes, and since ah-3cj4.1 the catalogue carries it.
+        // It seats nobody, which is what the page's silence about mages says. It must still not
+        // resolve to another entry by prefix or by stripping the direction.
+        assert_eq!(ruleset.mage_capacity("Road SE"), Some(0));
     }
 
-    /// The distinction between "no facilities" (`Some(0)`, a Tower) and "the catalogue cannot say"
-    /// (`None`, a Mine) is the whole reason the return type is an `Option` rather than a plain
-    /// integer defaulting to zero.
+    /// The distinction between "no facilities" (`Some(0)`) and "the catalogue cannot say" (`None`)
+    /// is the whole reason the return type is an `Option` rather than a plain integer defaulting
+    /// to zero. Since ah-3cj4.1 a Mine is on the near side of it - the page describes it, and its
+    /// silence about mages means none - so the `None` case is now a structure the data page never
+    /// calls a building at all, such as a ship.
     #[test]
-    fn a_structure_the_table_does_not_name_is_unknown_not_zero() {
+    fn a_structure_the_page_does_not_describe_is_unknown_not_zero() {
         let ruleset = ruleset();
-        assert_eq!(ruleset.mage_capacity("Mine"), None);
+        assert_eq!(ruleset.mage_capacity("Longship"), None);
+        assert_eq!(ruleset.mage_capacity("Mine"), Some(0));
     }
 
     /// `#[serde(default)]` on `buildings` is what lets a ruleset cached before this bead keep

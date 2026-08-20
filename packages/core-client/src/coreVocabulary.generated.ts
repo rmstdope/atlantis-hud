@@ -22,7 +22,11 @@ export const ADVISORY_CHECK_CODES = [
   "study-at-maximum",
   "already-built",
   "too-many-trade-regions",
-  "magic-study-outside-building"
+  "magic-study-outside-building",
+  "build-outside-structure",
+  "build-help-not-building",
+  "unit-does-nothing",
+  "build-without-skill"
 ] as const;
 
 export type AdvisoryCheckCode = (typeof ADVISORY_CHECK_CODES)[number];

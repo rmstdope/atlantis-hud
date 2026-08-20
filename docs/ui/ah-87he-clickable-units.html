@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Clicking a unit number in a problem list (bead ah-87he)</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733; --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --brass-bright:#eebe63; --ok:#4fb783; --warn:#d9a441; --danger:#d97070; --select:#4a9fd8; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1200px; margin-left:auto; margin-right:auto; }
+  h1 { font-size:26px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:96ch; margin-top:10px; font-size:14px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:0.92em; }
+  h2.sec { margin-top:34px; font-size:18px; color:var(--brass); } h2.sec small { color:var(--ink-dim); font-size:13px; margin-left:10px; }
+  .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(310px,1fr)); gap:20px; margin-top:16px; align-items:start; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:18px; display:flex; flex-direction:column; gap:12px; }
+  .card h3 { font-size:17px; } .card h3 em { color:var(--brass); font-style:normal; font-size:12px; letter-spacing:1.6px; margin-right:8px; }
+  .concept { color:var(--ink-soft); font-size:13px; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; padding:12px; display:flex; gap:16px; flex-wrap:wrap; align-items:flex-start; margin-top:14px; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; } .notes li.con::before { content:"\2212  "; color:var(--danger); }
+  .cap { font:10px/1.3 'SF Mono',monospace; color:var(--brass); letter-spacing:1px; text-transform:uppercase; margin-bottom:6px; }
+  .banner { border:1px solid var(--edge); border-left:3px solid var(--brass); background:var(--panel); padding:14px 16px; border-radius:6px; margin-top:16px; color:var(--ink-soft); font-size:13.5px; } .banner b { color:var(--ink); }
+  table { border-collapse:collapse; font-size:12.5px; width:100%; margin-top:14px; } th, td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--edge-soft); vertical-align:top; } th { color:var(--brass); font-weight:normal; font-size:11px; letter-spacing:1px; text-transform:uppercase; }
+
+  /* --- the app's own problem list, exactly as ah-uia drew it --- */
+  .pane { font-family:'Helvetica Neue',Arial,sans-serif; font-size:12px; line-height:1.45; border:1px solid var(--edge); border-radius:6px; background:var(--panel); overflow:hidden; }
+  .pane.pop { width:320px; background:var(--raised); }
+  .pane .bar { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:5px 8px; border-bottom:1px solid var(--edge); color:var(--ink-soft); font-size:12px; }
+  .body { padding:6px; display:grid; gap:8px; }
+  .hexcard { border:1px solid var(--edge); border-radius:5px; overflow:hidden; background:var(--panel); }
+  .hexcard .head { display:flex; align-items:baseline; gap:6px; background:rgba(217,164,65,.12); border-bottom:1px solid var(--edge); color:var(--brass); padding:3px 7px; font-size:11px; letter-spacing:.06em; text-transform:uppercase; cursor:pointer; }
+  .hexcard .head .n { margin-left:auto; color:var(--ink-dim); text-transform:none; letter-spacing:0; }
+  .prob { display:flex; gap:6px; padding:3px 7px; }
+  .prob + .prob { border-top:1px solid var(--edge-soft); }
+  .prob .g { flex:none; width:1em; text-align:center; }
+  .uid { color:var(--ink-dim); font-variant-numeric:tabular-nums; flex:none; }
+  .prob.hexlvl .uid { font-style:italic; letter-spacing:.06em; font-size:11px; }
+  .msg { color:var(--ink); }
+  .w { color:var(--warn); } .e { color:var(--danger); }
+
+  /* the three treatments */
+  .tA .uid.link { color:var(--select); cursor:pointer; }
+  .tA .uid.link.hov { text-decoration:underline; }
+  .tB .uid.link { cursor:pointer; }
+  .tB .uid.link.hov { color:var(--ink); text-decoration:underline; }
+  .tC .uid.link { color:var(--ink); cursor:pointer; }
+  .tC .uid.link.hov { text-decoration:underline; }
+  .uid.link.foc { outline:1px solid var(--brass); outline-offset:1px; border-radius:2px; }
+  .inline-link { color:var(--select); cursor:pointer; }
+  .inline-link.hov { text-decoration:underline; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Clicking a unit number in a problem list &mdash; <span>proposals</span> (bead ah-87he)</h1>
+  <p>The problem lists name the unit at fault by number, and the number is inert: you read which unit has the problem and then go and find it yourself. Make it a link that selects the unit &mdash; and, from the top bar, moves the selected hex to follow it.</p>
+  <p><b>This matters more this week than last.</b> The five warnings added over the last two days all name a unit by number, so there are considerably more inert numbers in front of you than there were.</p>
+</header>
+<main>
+
+  <h2 class="sec">&sect;1 &nbsp;How the number should look <small>hover shown on the second row of each; focus ring on the third</small></h2>
+  <div class="cards">
+
+    <div class="card">
+      <h3><em>A</em> Link blue</h3>
+      <div class="concept">The number takes <code>--color-select</code>, the app's colour for selection and links.</div>
+      <div class="pane tA">
+        <div class="body"><div class="hexcard">
+          <div class="head"><span>forest (21,37)</span><span class="n">3</span></div>
+          <div class="prob"><span class="g w">&#9888;</span><span class="uid link">4102</span><span class="msg">is in no structure to build in</span></div>
+          <div class="prob"><span class="g w">&#9888;</span><span class="uid link hov">4117</span><span class="msg">has no order that spends the month</span></div>
+          <div class="prob"><span class="g e">&#10005;</span><span class="uid link foc">2042</span><span class="msg">spends 250 silver it has not got</span></div>
+        </div></div>
+      </div>
+      <ul class="notes">
+        <li>Unmistakably clickable, without hovering to find out.</li>
+        <li>Uses the token that already means &ldquo;selection and links&rdquo;.</li>
+        <li class="con">A hex of ten warnings becomes a column of blue &mdash; the objection ah-uia raised about amber, in a different colour.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h3><em>B</em> Quiet until hovered</h3>
+      <div class="concept">The number keeps <code>ink-dim</code> exactly as today; it brightens and underlines only on hover or focus.</div>
+      <div class="pane tB">
+        <div class="body"><div class="hexcard">
+          <div class="head"><span>forest (21,37)</span><span class="n">3</span></div>
+          <div class="prob"><span class="g w">&#9888;</span><span class="uid link">4102</span><span class="msg">is in no structure to build in</span></div>
+          <div class="prob"><span class="g w">&#9888;</span><span class="uid link hov">4117</span><span class="msg">has no order that spends the month</span></div>
+          <div class="prob"><span class="g e">&#10005;</span><span class="uid link foc">2042</span><span class="msg">spends 250 silver it has not got</span></div>
+        </div></div>
+      </div>
+      <ul class="notes">
+        <li>The list looks exactly as it does today &mdash; nothing added to a dense pane.</li>
+        <li>Follows ah-uia's rule that colour lives in the glyph alone.</li>
+        <li class="con"><b>Undiscoverable.</b> A player who never happens to hover a number never learns it does anything.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h3><em>C</em> A shade brighter</h3>
+      <div class="concept">The number rises from <code>ink-dim</code> to <code>ink</code> &mdash; brighter than the metadata around it, without taking a new hue.</div>
+      <div class="pane tC">
+        <div class="body"><div class="hexcard">
+          <div class="head"><span>forest (21,37)</span><span class="n">3</span></div>
+          <div class="prob"><span class="g w">&#9888;</span><span class="uid link">4102</span><span class="msg">is in no structure to build in</span></div>
+          <div class="prob"><span class="g w">&#9888;</span><span class="uid link hov">4117</span><span class="msg">has no order that spends the month</span></div>
+          <div class="prob"><span class="g e">&#10005;</span><span class="uid link foc">2042</span><span class="msg">spends 250 silver it has not got</span></div>
+        </div></div>
+      </div>
+      <ul class="notes">
+        <li>Reads as interactive without adding a colour to the pane.</li>
+        <li>Keeps the severity glyph as the only coloured thing in the row.</li>
+        <li class="con">Less obviously a link than A &mdash; brightness alone is a weaker signal than hue.</li>
+        <li class="con">The unit number stops being visually subordinate to the message.</li>
+      </ul>
+    </div>
+
+  </div>
+  <div class="banner"><b>The focus ring is the same in all three</b> &mdash; a brass outline, matching the panel titles' <code>focus-visible:outline-brass</code>. The number becomes a real <code>&lt;button&gt;</code>, so it is tab-reachable and works on Enter and Space, whichever treatment is chosen.</div>
+
+  <h2 class="sec">&sect;2 &nbsp;The numbers inside the message <small>the question the bead does not ask</small></h2>
+  <p style="color:var(--ink-soft);font-size:13.5px;margin-top:10px;max-width:96ch">Several warnings name a <b>second</b> unit in their text &mdash; the one being helped, taught, or given to. Those numbers are just as inert, and just as much a thing you would want to jump to.</p>
+  <div class="stage">
+    <div>
+      <div class="cap">Subject only</div>
+      <div class="pane tA" style="width:340px"><div class="body"><div class="hexcard">
+        <div class="head"><span>forest (21,37)</span><span class="n">3</span></div>
+        <div class="prob"><span class="g w">&#9888;</span><span class="uid link">4117</span><span class="msg">unit 4021 is not building</span></div>
+        <div class="prob"><span class="g w">&#9888;</span><span class="uid link">3300</span><span class="msg">unit 9002 is not in this hex to be taught</span></div>
+        <div class="prob"><span class="g w">&#9888;</span><span class="uid link">2042</span><span class="msg">Soggy Saw Mill, which unit 4021 is in, is already finished</span></div>
+      </div></div></div>
+    </div>
+    <div>
+      <div class="cap">Every unit number</div>
+      <div class="pane tA" style="width:340px"><div class="body"><div class="hexcard">
+        <div class="head"><span>forest (21,37)</span><span class="n">3</span></div>
+        <div class="prob"><span class="g w">&#9888;</span><span class="uid link">4117</span><span class="msg">unit <span class="inline-link">4021</span> is not building</span></div>
+        <div class="prob"><span class="g w">&#9888;</span><span class="uid link">3300</span><span class="msg">unit <span class="inline-link hov">9002</span> is not in this hex to be taught</span></div>
+        <div class="prob"><span class="g w">&#9888;</span><span class="uid link">2042</span><span class="msg">Soggy Saw Mill, which unit <span class="inline-link">4021</span> is in, is already finished</span></div>
+      </div></div></div>
+    </div>
+  </div>
+  <div class="banner"><b>The catch:</b> the messages are plain strings built in Rust, so making the embedded numbers clickable means <b>parsing them back out of prose</b> with a pattern like <code>/\bunit (\d+)\b/</code>. That works today and breaks silently the first time a message is reworded &mdash; and one of them (<i>&ldquo;unit 9002 is not in this hex&rdquo;</i>) names a unit that <b>is not there to select</b>.</div>
+
+  <h2 class="sec">&sect;3 &nbsp;What clicking does, from each list</h2>
+  <table>
+    <tr><th style="width:26%">Clicked from</th><th style="width:30%">The unit is&hellip;</th><th>What happens</th></tr>
+    <tr><td>Region pane</td><td>in the hex you are looking at, always</td><td>The unit is selected. The hex does not change, because it cannot.</td></tr>
+    <tr><td>Top-bar problems panel</td><td>in the hex the card names &mdash; often not the selected one</td><td>The selected hex moves to that card's hex, then the unit is selected. The panel already does the first half: its card head is a jump-to-hex button.</td></tr>
+    <tr><td>Top-bar problems panel</td><td>a hex-level finding &mdash; no unit at all</td><td>Nothing to click. It shows <i>hex</i> in italics where the number would be, and stays inert.</td></tr>
+    <tr><td>Either</td><td>named in the message but absent from the report</td><td>Only reachable under &ldquo;every unit number&rdquo; in &sect;2, and there is nothing to select.</td></tr>
+  </table>
+
+
+  <h2 class="sec">&sect;4 &nbsp;A precedent I found after you chose <small>the app already has this exact control, in brass</small></h2>
+  <p style="color:var(--ink-soft);font-size:13.5px;margin-top:10px;max-width:96ch"><b>The turn-messages panel already turns a unit id into a way to go and look at it</b> &mdash; <code>TurnMessagesPanel.tsx:171-207</code>, a <code>&lt;button&gt;</code> classed <code>text-brass hover:underline</code>. Its doc comment even settles the absent-unit case: <i>&ldquo;Only when the loaded turn actually describes it. An id from an order for a unit that has since died would be a button that does nothing, which is worse than plain text saying the same thing.&rdquo;</i></p>
+  <p style="color:var(--ink-soft);font-size:13.5px;margin-top:8px;max-width:96ch">So the same gesture would read <b>brass in one panel and blue in the other</b>. Blue is not arbitrary either &mdash; the units table draws an own unit&rsquo;s id in <code>text-select</code> &mdash; but these two lists sit side by side in the header.</p>
+  <div class="stage">
+    <div>
+      <div class="cap">Brass &mdash; matching turn messages</div>
+      <div class="pane" style="width:340px"><div class="body"><div class="hexcard">
+        <div class="head"><span>forest (21,37)</span><span class="n">3</span></div>
+        <div class="prob"><span class="g w">&#9888;</span><span class="uid" style="color:var(--brass);cursor:pointer">4102</span><span class="msg">is in no structure to build in</span></div>
+        <div class="prob"><span class="g w">&#9888;</span><span class="uid" style="color:var(--brass);cursor:pointer;text-decoration:underline">4117</span><span class="msg">unit <span style="color:var(--brass)">4021</span> is not building</span></div>
+        <div class="prob"><span class="g e">&#10005;</span><span class="uid" style="color:var(--brass);cursor:pointer">2042</span><span class="msg">spends 250 silver it has not got</span></div>
+      </div></div></div>
+      <ul class="notes" style="margin-top:10px;max-width:340px"><li>One colour for &ldquo;a unit you can jump to&rdquo;, everywhere.</li><li class="con">Brass is also the heading colour in these very cards, so the number competes with the hex title.</li></ul>
+    </div>
+    <div>
+      <div class="cap">Blue &mdash; your choice, matching the units table</div>
+      <div class="pane" style="width:340px"><div class="body"><div class="hexcard">
+        <div class="head"><span>forest (21,37)</span><span class="n">3</span></div>
+        <div class="prob"><span class="g w">&#9888;</span><span class="uid" style="color:var(--select);cursor:pointer">4102</span><span class="msg">is in no structure to build in</span></div>
+        <div class="prob"><span class="g w">&#9888;</span><span class="uid" style="color:var(--select);cursor:pointer;text-decoration:underline">4117</span><span class="msg">unit <span style="color:var(--select)">4021</span> is not building</span></div>
+        <div class="prob"><span class="g e">&#10005;</span><span class="uid" style="color:var(--select);cursor:pointer">2042</span><span class="msg">spends 250 silver it has not got</span></div>
+      </div></div></div>
+      <ul class="notes" style="margin-top:10px;max-width:340px"><li>Distinct from the brass hex heading directly above it.</li><li>Matches the units table, where an own unit&rsquo;s id is already <code>text-select</code>.</li><li class="con">Two colours for one gesture, in two panels behind adjacent header chips.</li></ul>
+    </div>
+  </div>
+  <div class="banner"><b>Whichever wins, the absent-unit rule is settled by the precedent:</b> a number naming a unit the report does not describe renders as <b>plain dimmed text, not a button</b>. That is what makes &sect;2's &ldquo;every unit number&rdquo; safe &mdash; <i>&ldquo;unit 9002 is not in this hex to be taught&rdquo;</i> simply is not a link.</div>
+
+</main>
+</body>
+</html>

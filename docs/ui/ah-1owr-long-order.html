@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Long order column</title>
+<style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1440px; margin:0 auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; }
+  h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:94ch; margin-top:10px; font-size:14px; }
+  header p + p { margin-top:8px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; }
+  header code { color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:36px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:94ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:18px; }
+  .card h2 { font-size:16px; margin-bottom:5px; }
+  .card h2 em { color:var(--brass); font-style:normal; font-size:11.5px; letter-spacing:1.5px; margin-right:8px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; margin-bottom:11px; max-width:94ch; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; padding:10px; overflow-x:auto; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:11px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"− "; color:var(--danger); }
+  .notes li.n::before { content:"· "; color:var(--ink-dim); }
+  .cards2 { display:grid; grid-template-columns:repeat(3,1fr); gap:18px; align-items:start; }
+
+  table.units { width:100%; table-layout:fixed; border-collapse:separate; border-spacing:0;
+                font:12.5px/1.4 'Helvetica Neue',Arial,sans-serif; font-variant-numeric:tabular-nums; }
+  table.units th { text-align:left; font-size:10.5px; text-transform:uppercase; letter-spacing:.06em;
+                   color:var(--ink-soft); font-weight:400; padding:2px 8px; border-bottom:1px solid var(--edge); }
+  table.units td { padding:2px 8px; border-bottom:1px solid var(--edge-soft); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .own { color:var(--ok); } .notown { color:var(--danger); }
+  .uid { color:var(--select); } .uidf { color:#8fa3bb; }
+  .dash { color:var(--danger); }
+  .colhi { outline:1px solid var(--brass); outline-offset:-1px; }
+  .sortmark { color:var(--ink-dim); }
+</style>
+</head>
+<body>
+<header>
+  <h1>The Long order column — <span>where it sits, and what it says</span></h1>
+  <p>A ninth column on the units-in-hex table saying what each of your own units will actually spend the month
+  doing: whichever of <code>ADVANCE BUILD ENTERTAIN MOVE PILLAGE PRODUCE SAIL STUDY TAX TEACH WORK</code> its
+  orders carry. Read live from the orders document, so editing an order changes the table.</p>
+  <p>Three things the contributor's branch decided by default, which are yours rather than theirs: <b>where the
+  column sits</b>, <b>whether it sorts</b>, and <b>how the order is written out</b>. Everything else about this
+  column was already settled in review — an own unit with no long order shows a <span class="dash">red em
+  dash</span>, and someone else's unit shows nothing.</p>
+  <p>Rows below are real orders from the fixture report: <code>produce yew</code>, <code>@tax</code>,
+  <code>@study stea</code>, <code>MOVE SW</code>, and one own unit given nothing.</p>
+</header>
+
+<main>
+
+<h3 class="sec">1 · Where the column sits</h3>
+<p>The Structure column is now 13rem wide (<code>ah-kdgc</code>, merged), so the strip is already fuller than
+the branch assumed.</p>
+
+<div class="card">
+  <h2><em>A</em>Last, after Structure</h2>
+  <div class="concept">What the branch does. The new column joins the end of the row and disturbs nothing.</div>
+  <div class="stage">
+    <table class="units">
+      <colgroup><col style="width:1.5rem"><col style="width:3.5rem"><col style="width:11rem"><col style="width:10rem"><col style="width:3.5rem"><col><col><col style="width:13rem"><col style="width:9rem"></colgroup>
+      <thead><tr><th>*</th><th>Id</th><th>Unit</th><th>Faction</th><th>Men</th><th>Skills</th><th>Items</th><th>Structure</th><th class="colhi">Long order</th></tr></thead>
+      <tbody>
+        <tr><td class="own">*</td><td class="uid">13797</td><td>WoodsmenY</td><td>My Faction (1)</td><td>2</td><td>lumb 5</td><td>2 welf, 14 yew</td><td>Odds and Ends [12] · Fort</td><td class="colhi">produce yew</td></tr>
+        <tr><td class="own">*</td><td class="uid">10116</td><td>Taxers</td><td>My Faction (1)</td><td>19</td><td>comb 1</td><td>19 helf, 13257 silv</td><td></td><td class="colhi">@tax</td></tr>
+        <tr><td class="own">*</td><td class="uid">15927</td><td>Landlord</td><td>My Faction (1)</td><td>1</td><td>obse 5, stea 5</td><td>1 lead</td><td></td><td class="colhi">@study stea</td></tr>
+        <tr><td class="own">*</td><td class="uid">14174</td><td>Landlord</td><td>My Faction (1)</td><td>1</td><td>obse 5, stea 4</td><td>1 lead</td><td></td><td class="colhi dash">—</td></tr>
+        <tr><td class="notown">−</td><td class="uidf">12538</td><td>Dockhands</td><td>Green Tide (4)</td><td>40</td><td>buil 3</td><td>40 humn, 8 wood</td><td>Odds and Ends [12] · Fort</td><td class="colhi"></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <ul class="notes">
+    <li>Nothing existing moves — no muscle memory broken, no smoke assertion disturbed</li>
+    <li class="con">The most decision-relevant column is furthest from the unit's name</li>
+    <li class="con">First to fall off the edge when the pane is narrowed</li>
+  </ul>
+</div>
+
+<div class="card">
+  <h2><em>B</em>Straight after the unit's name</h2>
+  <div class="concept">Name then what it is doing, read as a sentence: "WoodsmenY — produce yew". Faction, Men,
+  Skills, Items and Structure all shift one to the right.</div>
+  <div class="stage">
+    <table class="units">
+      <colgroup><col style="width:1.5rem"><col style="width:3.5rem"><col style="width:11rem"><col style="width:9rem"><col style="width:10rem"><col style="width:3.5rem"><col><col><col style="width:13rem"></colgroup>
+      <thead><tr><th>*</th><th>Id</th><th>Unit</th><th class="colhi">Long order</th><th>Faction</th><th>Men</th><th>Skills</th><th>Items</th><th>Structure</th></tr></thead>
+      <tbody>
+        <tr><td class="own">*</td><td class="uid">13797</td><td>WoodsmenY</td><td class="colhi">produce yew</td><td>My Faction (1)</td><td>2</td><td>lumb 5</td><td>2 welf, 14 yew</td><td>Odds and Ends [12] · Fort</td></tr>
+        <tr><td class="own">*</td><td class="uid">10116</td><td>Taxers</td><td class="colhi">@tax</td><td>My Faction (1)</td><td>19</td><td>comb 1</td><td>19 helf, 13257 silv</td><td></td></tr>
+        <tr><td class="own">*</td><td class="uid">15927</td><td>Landlord</td><td class="colhi">@study stea</td><td>My Faction (1)</td><td>1</td><td>obse 5, stea 5</td><td>1 lead</td><td></td></tr>
+        <tr><td class="own">*</td><td class="uid">14174</td><td>Landlord</td><td class="colhi dash">—</td><td>My Faction (1)</td><td>1</td><td>obse 5, stea 4</td><td>1 lead</td><td></td></tr>
+        <tr><td class="notown">−</td><td class="uidf">12538</td><td>Dockhands</td><td class="colhi"></td><td>Green Tide (4)</td><td>40</td><td>buil 3</td><td>40 humn, 8 wood</td><td>Odds and Ends [12] · Fort</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <ul class="notes">
+    <li>Reads as a sentence, and the red dash is right where your eye already is</li>
+    <li>Survives a narrowed pane — it is nowhere near the right edge</li>
+    <li class="con">Six columns shift position; the smoke suite asserts on <code>td:nth-child(5)</code> for Men and would need updating</li>
+    <li class="con">Foreign units get a permanently blank column in the middle of the row</li>
+  </ul>
+</div>
+
+<h3 class="sec">2 · How the order is written out</h3>
+<p>Orders are typed by hand, so the document holds whatever case the player used, <code>@</code> included.
+Three rows here are the same three units.</p>
+<div class="cards2">
+  <div class="card">
+    <h2><em>i</em>Exactly as typed</h2>
+    <div class="concept">The line straight from the document, trimmed and no more.</div>
+    <div class="stage">
+      <table class="units"><colgroup><col style="width:6rem"><col></colgroup>
+        <tbody>
+          <tr><td>WoodsmenY</td><td class="colhi">produce yew</td></tr>
+          <tr><td>Taxers</td><td class="colhi">@tax</td></tr>
+          <tr><td>Landlord</td><td class="colhi">@study stea</td></tr>
+          <tr><td>Lone Rider</td><td class="colhi">MOVE SW</td></tr>
+        </tbody></table>
+    </div>
+    <ul class="notes">
+      <li>Truthful — it is what is actually in the file</li>
+      <li class="con">A ragged column: case and <code>@</code> vary row to row for no reason the reader cares about</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h2><em>ii</em>Upper-cased, @ kept</h2>
+    <div class="concept">The whole line normalised, so the column is uniform but nothing is dropped.</div>
+    <div class="stage">
+      <table class="units"><colgroup><col style="width:6rem"><col></colgroup>
+        <tbody>
+          <tr><td>WoodsmenY</td><td class="colhi">PRODUCE YEW</td></tr>
+          <tr><td>Taxers</td><td class="colhi">@TAX</td></tr>
+          <tr><td>Landlord</td><td class="colhi">@STUDY STEA</td></tr>
+          <tr><td>Lone Rider</td><td class="colhi">MOVE SW</td></tr>
+        </tbody></table>
+    </div>
+    <ul class="notes">
+      <li>Scans cleanly down the column; the <code>@</code> still marks a repeating order</li>
+      <li>Matches how the rules and the order help write commands</li>
+      <li class="con">Not byte-for-byte what the player typed, which this app is otherwise strict about</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h2><em>iii</em>The command only</h2>
+    <div class="concept">Just which of the eleven it is, dropping the arguments.</div>
+    <div class="stage">
+      <table class="units"><colgroup><col style="width:6rem"><col></colgroup>
+        <tbody>
+          <tr><td>WoodsmenY</td><td class="colhi">PRODUCE</td></tr>
+          <tr><td>Taxers</td><td class="colhi">TAX</td></tr>
+          <tr><td>Landlord</td><td class="colhi">STUDY</td></tr>
+          <tr><td>Lone Rider</td><td class="colhi">MOVE</td></tr>
+        </tbody></table>
+    </div>
+    <ul class="notes">
+      <li>Narrowest by far, and groups perfectly if the column ever sorts</li>
+      <li class="con">Loses what is being produced, studied or where it is moving — often the point</li>
+    </ul>
+  </div>
+</div>
+
+<h3 class="sec">3 · Should the column sort?</h3>
+<p>The branch says no. Five columns sort today: Id, Unit, Faction, Men and Structure.</p>
+<div class="card">
+  <div class="stage">
+    <table class="units">
+      <colgroup><col style="width:1.5rem"><col style="width:3.5rem"><col style="width:11rem"><col style="width:3.5rem"><col style="width:9rem"></colgroup>
+      <thead><tr><th>*</th><th>Id <span class="sortmark">▾</span></th><th>Unit <span class="sortmark">▾</span></th><th>Men <span class="sortmark">▾</span></th><th class="colhi">Long order <span class="sortmark">▾</span></th></tr></thead>
+      <tbody>
+        <tr><td class="own">*</td><td class="uid">14174</td><td>Landlord</td><td>1</td><td class="colhi dash">—</td></tr>
+        <tr><td class="own">*</td><td class="uid">15927</td><td>Landlord</td><td>1</td><td class="colhi">@STUDY STEA</td></tr>
+        <tr><td class="own">*</td><td class="uid">10116</td><td>Taxers</td><td>19</td><td class="colhi">@TAX</td></tr>
+        <tr><td class="own">*</td><td class="uid">13797</td><td>WoodsmenY</td><td>2</td><td class="colhi">PRODUCE YEW</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <ul class="notes">
+    <li class="n">Sorted, the units with nothing to do gather at one end — which is arguably the whole point of the red dash</li>
+    <li class="n">But foreign units all sort together on an empty value, mixing them into your own</li>
+  </ul>
+</div>
+
+</main>
+
+<footer style="margin-top:34px; color:var(--ink-dim); font-size:12.5px;">
+  Mockup for bead <span class="mono">ah-1owr.1</span>. Column widths are the application's real ones, including
+  the 13rem Structure column that <span class="mono">ah-kdgc</span> shipped.
+</footer>
+</body>
+</html>

@@ -10,6 +10,7 @@ use atlantis_hud_core::orders::effects::{preview_orders_for_remembered_report, U
 use atlantis_hud_core::report::orders::extract_orders_template;
 
 const TURN_71: &str = atlantis_hud_fixtures::G7_F95_T71.text;
+const G5_F21_T24: &str = atlantis_hud_fixtures::G5_F21_T24.text;
 const RULESET: &str = atlantis_hud_fixtures::RULESET_JSON;
 
 #[test]
@@ -129,4 +130,49 @@ fn a_real_unit_renamed_guarded_and_marched_previews_in_both_hexes() {
     assert_eq!(arriving.status, UnitPreviewStatus::Arriving);
     assert_eq!(arriving.arriving_from.as_deref(), Some("1:7,53"));
     assert_eq!(arriving.unit.name, "Nine of Eight");
+}
+
+/// The units-in-hex preview and the tracer must answer "who is aboard" the same way: a unit that
+/// writes ENTER for a departing fleet departs with it (ah-ssd).
+///
+/// The preview reaches that answer through `Working`, which applies ENTER and LEAVE to the unit
+/// row itself before anything asks where it stands - so this test held before ah-ssd too, and it
+/// is here to pin the agreement rather than to prove the change. Its control is the second half:
+/// without the ENTER the same unit stays put, so the assertion is not vacuous.
+#[test]
+fn a_unit_that_boards_a_departing_fleet_is_previewed_as_departing() {
+    let response = preview_orders_for_remembered_report(
+        &mut ReportCache::new(),
+        RULESET,
+        G5_F21_T24,
+        "[]",
+        "unit 10575\nSAIL SE\nunit 1297\nENTER 235\n",
+    )
+    .expect("the ruleset loads");
+
+    let boarding = response
+        .regions
+        .iter()
+        .flat_map(|region| region.units.iter())
+        .find(|unit| unit.unit.unit_id == "1297")
+        .expect("the boarding unit has a preview row");
+    assert_eq!(boarding.status, UnitPreviewStatus::Departing);
+    assert_eq!(boarding.departing_to.as_deref(), Some("1:37,45"));
+
+    let without = preview_orders_for_remembered_report(
+        &mut ReportCache::new(),
+        RULESET,
+        G5_F21_T24,
+        "[]",
+        "unit 10575\nSAIL SE\n",
+    )
+    .expect("the ruleset loads");
+    assert!(
+        without
+            .regions
+            .iter()
+            .flat_map(|region| region.units.iter())
+            .all(|unit| unit.unit.unit_id != "1297"),
+        "with no ENTER, the unit ashore is not carried and has nothing to preview"
+    );
 }

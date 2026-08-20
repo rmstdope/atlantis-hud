@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Resizable columns, and the lost-column defect</title>
+<style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1400px; margin:0 auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; }
+  h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:94ch; margin-top:10px; font-size:14px; }
+  header p + p { margin-top:8px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; }
+  header code { color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:36px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:94ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:18px; }
+  .card h2 { font-size:16px; margin-bottom:5px; }
+  .card h2 em { color:var(--brass); font-style:normal; font-size:11.5px; letter-spacing:1.5px; margin-right:8px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; margin-bottom:11px; max-width:94ch; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; padding:12px; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:11px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"− "; color:var(--danger); }
+  .notes li.n::before { content:"· "; color:var(--ink-dim); }
+  .cards3 { display:grid; grid-template-columns:repeat(3,1fr); gap:18px; align-items:start; }
+
+  .clip { overflow:hidden; border:1px dashed rgba(217,112,112,.55); border-radius:4px; }
+  .scrollx { overflow-x:auto; border:1px solid var(--edge); border-radius:4px; }
+  table.units { table-layout:fixed; border-collapse:separate; border-spacing:0;
+                font:12px/1.4 'Helvetica Neue',Arial,sans-serif; font-variant-numeric:tabular-nums; }
+  table.units th { text-align:left; font-size:10px; text-transform:uppercase; letter-spacing:.06em; position:relative;
+                   color:var(--ink-soft); font-weight:400; padding:2px 7px; border-bottom:1px solid var(--edge); }
+  table.units td { padding:2px 7px; border-bottom:1px solid var(--edge-soft); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .own { color:var(--ok); } .uid { color:var(--select); }
+  .grip { position:absolute; top:50%; right:-2px; transform:translateY(-50%); width:2px; height:14px;
+          background:var(--edge); border-radius:2px; }
+  .grip.hot { background:var(--brass); }
+  .lbl { font-size:11px; color:var(--ink-dim); margin-bottom:5px; }
+  .lbl b { color:var(--ink-soft); font-weight:normal; }
+  .lost { color:var(--danger); }
+  /* reset placements */
+  .set { background:var(--raised); border:1px solid var(--edge); border-radius:5px; padding:9px 11px;
+         font:13px/1.5 'Helvetica Neue',Arial,sans-serif; }
+  .setrow { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:3px 0; }
+  .btn { background:var(--panel); border:1px solid var(--edge); color:var(--ink-soft); border-radius:4px;
+         padding:2px 8px; font-size:12px; }
+  .bar { display:flex; align-items:center; gap:9px; background:var(--panel); border:1px solid var(--edge);
+         border-radius:5px; padding:5px 9px; font:12.5px/1.4 'Helvetica Neue',Arial,sans-serif; }
+  .bar .t { color:var(--brass); } .bar .sp { margin-left:auto; }
+  .inp { background:var(--ground); border:1px solid var(--edge); border-radius:3px; color:var(--ink-dim);
+         padding:2px 7px; font-size:12px; width:8rem; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Resizable columns — <span>and the defect this must not repeat</span></h1>
+  <p>A splitter at each boundary between two headers; dragging moves width from one column to the other.
+  Widths persist. That much is straightforward and PR #421 already has it working.</p>
+  <p><b>What went wrong on that branch, precisely.</b> The drag itself is sound —
+  <code>dragColumnBoundary</code> keeps <code>left + right</code> constant, so a drag can never change the
+  table's total. The loss comes from somewhere else: the stored widths are <b>pixels</b> totalling
+  <code>1132px</code>, while the table is <code>w-full table-fixed</code> inside a box whose width is the window
+  minus both rails — each of which the player can drag between 12 and 45rem. When that box gets narrower than
+  the total, the rightmost columns are laid out past the edge, and the container's
+  <code>overflow-x-hidden</code> clips them with no scrollbar to bring them back.</p>
+  <p>So widening a rail can lose a column, and nothing the player does to the table can recover it. Both
+  answers below fix that; they differ in what happens to your chosen widths when the space changes.</p>
+</header>
+
+<main>
+
+<h3 class="sec">1 · What happens today</h3>
+<div class="card">
+  <div class="lbl">The same table in a box <b>240px narrower than the columns need</b>. The dashed edge is the clip.</div>
+  <div class="stage">
+    <div class="clip" style="width:640px">
+      <table class="units" style="width:880px">
+        <colgroup><col style="width:24px"><col style="width:56px"><col style="width:176px"><col style="width:168px"><col style="width:56px"><col style="width:160px"><col style="width:100px"><col style="width:140px"></colgroup>
+        <thead><tr><th>*</th><th>Id</th><th>Unit</th><th>Faction</th><th>Men</th><th>Skills</th><th>Items</th><th class="lost">Long order</th></tr></thead>
+        <tbody>
+          <tr><td class="own">*</td><td class="uid">13797</td><td>WoodsmenY</td><td>My Faction (1)</td><td>2</td><td>lumb 5</td><td>2 welf, 14 yew</td><td class="lost">produce yew</td></tr>
+          <tr><td class="own">*</td><td class="uid">10116</td><td>Taxers</td><td>My Faction (1)</td><td>19</td><td>comb 1</td><td>19 helf</td><td class="lost">@tax</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <ul class="notes"><li class="con">The Long order column is off the right edge. There is no scrollbar, and no control brings it back.</li></ul>
+</div>
+
+<h3 class="sec">2 · The two answers</h3>
+<p>Both make the loss impossible. The difference is what your chosen widths do when the space changes.</p>
+
+<div class="card">
+  <h2><em>A</em>Widths are shares of the table, not pixels</h2>
+  <div class="concept">A column stores what <i>fraction</i> of the table it owns. The table is always exactly
+  100% wide, so the columns can never total more than it — the overflow is not prevented, it is impossible.
+  Narrow the window and every column shrinks in proportion, keeping the shape you chose.</div>
+  <div class="stage">
+    <div class="lbl">Wide — the shape you dragged</div>
+    <div class="scrollx" style="width:880px;margin-bottom:12px">
+      <table class="units" style="width:100%">
+        <colgroup><col style="width:2.7%"><col style="width:6.4%"><col style="width:20%"><col style="width:19%"><col style="width:6.4%"><col style="width:18.2%"><col style="width:11.4%"><col style="width:15.9%"></colgroup>
+        <thead><tr><th>*<span class="grip"></span></th><th>Id<span class="grip"></span></th><th>Unit<span class="grip hot"></span></th><th>Faction<span class="grip"></span></th><th>Men<span class="grip"></span></th><th>Skills<span class="grip"></span></th><th>Items<span class="grip"></span></th><th>Long order</th></tr></thead>
+        <tbody>
+          <tr><td class="own">*</td><td class="uid">13797</td><td>WoodsmenY</td><td>My Faction (1)</td><td>2</td><td>lumb 5</td><td>2 welf, 14 yew</td><td>produce yew</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="lbl">Narrow — <b>the same shares</b>, everything still visible</div>
+    <div class="scrollx" style="width:560px">
+      <table class="units" style="width:100%">
+        <colgroup><col style="width:2.7%"><col style="width:6.4%"><col style="width:20%"><col style="width:19%"><col style="width:6.4%"><col style="width:18.2%"><col style="width:11.4%"><col style="width:15.9%"></colgroup>
+        <thead><tr><th>*</th><th>Id</th><th>Unit</th><th>Faction</th><th>Men</th><th>Skills</th><th>Items</th><th>Long order</th></tr></thead>
+        <tbody>
+          <tr><td class="own">*</td><td class="uid">13797</td><td>WoodsmenY</td><td>My Faction (1)</td><td>2</td><td>lumb 5</td><td>2 welf</td><td>produce yew</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <ul class="notes">
+    <li>A column cannot be lost, by any sequence of drags, rail moves or window sizes — it is arithmetically impossible, not merely bounded</li>
+    <li>The shape you chose survives every resize, proportionally</li>
+    <li>Nothing new on screen: no scrollbar, no reflow, no jump</li>
+    <li class="con">A very narrow window makes every column narrow; nothing stays legible by choice</li>
+    <li class="con">A minimum width in pixels can only be honoured approximately, since a share is not a pixel</li>
+  </ul>
+</div>
+
+<div class="card">
+  <h2><em>B</em>Pixels, and the table scrolls sideways when it must</h2>
+  <div class="concept">Columns keep the exact pixel widths you gave them. When they no longer fit, a horizontal
+  scrollbar appears and you scroll to the rest — a real Windows-Explorer table.</div>
+  <div class="stage">
+    <div class="lbl">Narrow — widths unchanged, <b>a scrollbar appears</b></div>
+    <div class="scrollx" style="width:560px">
+      <table class="units" style="width:880px">
+        <colgroup><col style="width:24px"><col style="width:56px"><col style="width:176px"><col style="width:168px"><col style="width:56px"><col style="width:160px"><col style="width:100px"><col style="width:140px"></colgroup>
+        <thead><tr><th>*<span class="grip"></span></th><th>Id<span class="grip"></span></th><th>Unit<span class="grip hot"></span></th><th>Faction<span class="grip"></span></th><th>Men<span class="grip"></span></th><th>Skills<span class="grip"></span></th><th>Items<span class="grip"></span></th><th>Long order</th></tr></thead>
+        <tbody>
+          <tr><td class="own">*</td><td class="uid">13797</td><td>WoodsmenY</td><td>My Faction (1)</td><td>2</td><td>lumb 5</td><td>2 welf, 14 yew</td><td>produce yew</td></tr>
+          <tr><td class="own">*</td><td class="uid">10116</td><td>Taxers</td><td>My Faction (1)</td><td>19</td><td>comb 1</td><td>19 helf</td><td>@tax</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <ul class="notes">
+    <li>A column you made wide stays exactly that wide, whatever the window does</li>
+    <li>Nothing is ever unreachable — you can always scroll to it</li>
+    <li>Familiar: this is how file managers and spreadsheets behave</li>
+    <li class="con">A horizontal scrollbar in a pane that has never had one, under a list that already scrolls vertically</li>
+    <li class="con">You can still end up scrolling to see a column, which is the annoyance the defect was about</li>
+  </ul>
+</div>
+
+<h3 class="sec">3 · Where the reset lives</h3>
+<p>Whatever else, a player who has made a mess needs a way back. Double-clicking one boundary already resets
+that pair — this is the control that restores <b>all</b> the columns. The app has no reset control of any kind
+today, so this is a new thing wherever it goes.</p>
+<div class="cards3">
+  <div class="card">
+    <h2><em>i</em>A row in Settings</h2>
+    <div class="concept">Under the global tab, beside Interface size.</div>
+    <div class="stage">
+      <div class="set">
+        <div class="setrow"><span>Interface size</span><span class="btn">Medium ▾</span></div>
+        <div class="setrow"><span>Theme</span><span class="btn">Dark ▾</span></div>
+        <div class="setrow"><span>Units table columns</span><span class="btn">Reset widths</span></div>
+      </div>
+    </div>
+    <ul class="notes">
+      <li>Where a person looks for "put it back how it was"</li>
+      <li>Matches the existing settings row pattern exactly</li>
+      <li class="con">Two clicks and a dialog away from the table it fixes</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h2><em>ii</em>In the units pane's own title bar</h2>
+    <div class="concept">Beside the filter box, where the pane's other controls already are.</div>
+    <div class="stage">
+      <div class="bar">
+        <span class="t">Units in hex</span><span style="color:var(--ink-dim)">92</span>
+        <span class="sp"></span>
+        <input class="inp" value="" placeholder="Filter…" readonly>
+        <span class="btn">Reset columns</span>
+      </div>
+    </div>
+    <ul class="notes">
+      <li>Right where the problem is — no hunting</li>
+      <li>Follows the All/None pair the badge menu already uses</li>
+      <li class="con">A permanent button for something used once a year, in a bar that is already busy</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h2><em>iii</em>Only on the splitters</h2>
+    <div class="concept">No global control at all: double-click each boundary, or press Enter on a focused
+    handle, to reset that pair.</div>
+    <div class="stage" style="min-height:96px;display:flex;align-items:center;justify-content:center">
+      <span style="color:var(--ink-dim);font-size:12.5px">— no new control —</span>
+    </div>
+    <ul class="notes">
+      <li>Nothing added to any bar or dialog</li>
+      <li class="con">Undiscoverable, and fixing eight columns means eight double-clicks</li>
+      <li class="con">The bead asks for a reset reachable from the interface; this arguably is not one</li>
+    </ul>
+  </div>
+</div>
+
+</main>
+
+<footer style="margin-top:34px; color:var(--ink-dim); font-size:12.5px;">
+  Mockup for bead <span class="mono">ah-1owr.2</span>. The clipped table in section 1 is the real defect,
+  reproduced at the branch's real default widths.
+</footer>
+</body>
+</html>

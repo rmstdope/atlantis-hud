@@ -13,7 +13,7 @@ import {
   useRef
 } from "react";
 import { minimalChange } from "../editorReconcile";
-import { buildVocabulary, keywordJustFinished, uppercaseKeywords } from "../orderCase";
+import { buildVocabulary, keywordCaseChanges, keywordJustFinished } from "../orderCase";
 import { shownUnitText } from "../orderEditor";
 import { orderArgumentCompletions, orderCommandCompletions, type CaretLookup } from "../orderCompletion";
 import { toEditorDiagnostics } from "../orderLint";
@@ -304,21 +304,6 @@ export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(fu
 
     view.current = created;
 
-    // A block written before the setting was on is tidied the first time its unit is opened with
-    // the setting on (the navigator's E3). Not External: it is a real edit to the draft and must
-    // be saved. Kept out of the history - the player did not type it. An empty vocabulary (the
-    // call still in flight) makes this a no-op, and the block is tidied at the next open.
-    if (latest.current.orderOcd) {
-      const current = created.state.doc.toString();
-      const tidied = uppercaseKeywords(current, latest.current.vocabulary);
-      if (tidied !== current) {
-        created.dispatch({
-          changes: { from: 0, to: current.length, insert: tidied },
-          annotations: [Transaction.addToHistory.of(false)]
-        });
-      }
-    }
-
     return () => {
       created.destroy();
       view.current = null;
@@ -347,6 +332,41 @@ export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(fu
       });
     }
   }, [externalRevision, unitId]);
+
+  // The tidy E3 promises, run whenever it *can* run rather than only at mount. The vocabulary
+  // arrives from the core asynchronously, so the first editor created after a page load is built
+  // against an empty set and would otherwise never be tidied (ah-1znc). Keyed on the vocabulary and
+  // the setting as well as the unit, so the same effect catches the setting being turned on with a
+  // unit already open, and a ruleset switch bringing a new catalogue. Keyed on `externalRevision`
+  // too, and declared after the effect that reads it, so a draft restored asynchronously after a
+  // reload is tidied once it is actually in the document rather than while the editor is empty.
+  useEffect(() => {
+    const editor = view.current;
+    if (!editor || !orderOcd || vocabulary.size === 0) {
+      return;
+    }
+    // The word the caret is inside is left as typed: while typing, this setting only shouts a word
+    // as the space ends it, and a late tidy must not break that promise. Unfocused there is no
+    // caret to protect - and selecting a unit row does not focus the editor, so that is the common
+    // case, not the exotic one.
+    const protect = editor.hasFocus ? editor.state.selection.main.head : null;
+    const changes = keywordCaseChanges(editor.state.doc.toString(), vocabulary, protect);
+    if (changes.length === 0) {
+      return;
+    }
+    editor.dispatch({
+      changes,
+      // Every replacement is exactly as long as what it replaces, so every offset still means what
+      // it meant. Restated anyway when there is a caret, because CodeMirror maps a position sitting
+      // on a replacement boundary to the far side of it. Left untouched when unfocused: writing a
+      // selection there would paint one on an editor nobody is in.
+      ...(protect === null ? {} : { selection: editor.state.selection }),
+      // Deliberately not External: this is a real edit to the draft, it must reach `onChange` and be
+      // saved. Deliberately out of the history: the player did not type it, exactly as the tidy this
+      // replaces was. And deliberately no `userEvent`, which is what history groups typing under.
+      annotations: [Transaction.addToHistory.of(false)]
+    });
+  }, [externalRevision, unitId, orderOcd, vocabulary]);
 
   // Once a save has landed, the shown text ends with the newline an orders file ends with. In the
   // editor only: the block boundary neither holds nor needs it, so the document is not written
@@ -402,6 +422,19 @@ export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(fu
     selectProblem(problem) {
       const editor = view.current;
       if (!editor) {
+        return;
+      }
+      // A finding with no columns has no token to put the cursor on - and `toEditorDiagnostics`
+      // widens a collapsed span to its whole line, so selecting what it gives back would select
+      // the `unit 4117` block header and the next keystroke would replace it. Those findings are
+      // about an order that is *missing* (ah-dwk6), so the useful place to be is the end of the
+      // block, ready to type the order that is not there (ah-dlao). The editor's document is one
+      // unit's block (`OrdersPanel` sets it from `readUnitOrders`), so `doc.length` is the end of
+      // this unit's orders rather than the end of the file.
+      if (problem.columnStart === null || problem.columnEnd === null) {
+        const end = editor.state.doc.length;
+        editor.dispatch({ selection: { anchor: end, head: end }, scrollIntoView: true });
+        editor.focus();
         return;
       }
       // The same mapping the lint gutter uses, so the walk lands exactly where the underline

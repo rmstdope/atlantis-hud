@@ -20,6 +20,46 @@ function tag(html: string, testid: string): string {
   return match[0];
 }
 
+describe("the pane transparency setting", () => {
+  afterEach(() => {
+    restoreStoresForTest();
+    resetSettingsStore();
+  });
+
+  it("shows the active theme's own value", () => {
+    resetSettingsStore();
+    setStoreStateForTest(useSettingsStore, {
+      theme: "light",
+      paneTransparency: { dark: 40, light: 15 }
+    });
+
+    const slider = tag(renderToStaticMarkup(<GlobalSettings />), "pane-transparency");
+
+    expect(slider).toContain('value="15"');
+  });
+
+  it("shows the dark value again when dark is the active theme", () => {
+    resetSettingsStore();
+    setStoreStateForTest(useSettingsStore, {
+      theme: "dark",
+      paneTransparency: { dark: 40, light: 15 }
+    });
+
+    const slider = tag(renderToStaticMarkup(<GlobalSettings />), "pane-transparency");
+
+    expect(slider).toContain('value="40"');
+  });
+
+  it("says in its hint that each theme is remembered separately", () => {
+    resetSettingsStore();
+    const html = renderToStaticMarkup(<GlobalSettings />);
+
+    expect(html).toContain(
+      "Makes the panes see-through so the map shows behind them. Remembered separately for the dark and light themes."
+    );
+  });
+});
+
 describe("the Interface size setting", () => {
   afterEach(() => {
     restoreStoresForTest();
@@ -77,7 +117,11 @@ describe("the Warnings settings tab", () => {
       "Reused FORM numbers",
       "Gifts to units that are not here",
       "Overloaded units",
+      "Units that do nothing",
       "Building what is built",
+      "Building outside a structure",
+      "Helping a unit that is not building",
+      "Building without the skill",
       "Overloaded fleets",
       "Undercrewed fleets",
       "More quartermasters than allowed",
@@ -115,5 +159,58 @@ describe("the Warnings settings tab", () => {
     const html = renderToStaticMarkup(<WarningSettings />);
 
     expect(tag(html, "settings-warning-not-enough-silver")).not.toContain('checked=""');
+  });
+});
+
+/**
+ * The whole-table reset for the units table's dragged column widths (ah-1owr.2). That it actually
+ * clears the store is pinned in `workspaceStore.test.ts` and end to end in the smoke suite; what
+ * matters here is that it exists, is named as the navigator settled it, and is reachable.
+ */
+describe("the units table's column widths (ah-1owr.2)", () => {
+  it("offers a way to put the units table's columns back", () => {
+    const html = renderToStaticMarkup(<GlobalSettings />);
+
+    expect(html).toContain("Units table columns");
+    expect(tag(html, "settings-reset-column-widths")).toContain("<button");
+    expect(html).toContain("Reset widths");
+  });
+
+  it("offers a way to put the column order back", () => {
+    const html = renderToStaticMarkup(<GlobalSettings />);
+
+    expect(tag(html, "settings-reset-column-order")).toContain("<button");
+    expect(html).toContain("Reset order");
+    // Two buttons, not one: order and widths are stored separately, so undoing one must not cost
+    // the other (ah-1owr.3).
+    expect(tag(html, "settings-reset-column-widths")).toContain("<button");
+  });
+});
+
+describe("the map layer settings", () => {
+  afterEach(() => {
+    restoreStoresForTest();
+    resetSettingsStore();
+  });
+
+  it("offers Staleness and Movement in the Global tab, with the hints the chips' names imply", () => {
+    // They used to sit in the strip over the map (ah-l9mp). They are set once and then forgotten,
+    // so they belong beside the other display preferences and give the band back to the map.
+    const html = renderToStaticMarkup(<GlobalSettings />);
+
+    expect(html).toContain("Staleness");
+    expect(html).toContain("Shade hexes by how long ago you last saw them.");
+    expect(html).toContain("Movement");
+    expect(html).toContain("Draw the routes units are ordered to travel.");
+    expect(tag(html, "settings-layer-staleness")).toContain('type="checkbox"');
+    expect(tag(html, "settings-layer-movement")).toContain('type="checkbox"');
+  });
+
+  it("shows each layer's current state", () => {
+    const html = renderToStaticMarkup(<GlobalSettings />);
+
+    // Both layers start on, as the workspace store's initial state has them.
+    expect(tag(html, "settings-layer-staleness")).toContain("checked");
+    expect(tag(html, "settings-layer-movement")).toContain("checked");
   });
 });

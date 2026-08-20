@@ -34,25 +34,30 @@
  * clients all use.
  */
 @theme {
-  --color-ground: #10151c;
-  --color-panel: #171d26;
-  --color-panel-raised: #1c232e;
-  --color-edge: #26303d;
-  --color-edge-soft: #1e2733;
+  --color-ground: #1b212a;
+  --color-panel: #222933;
+  --color-panel-raised: #2a323d;
+  --color-edge: #46525f;
+  --color-edge-soft: #333d49;
 
   /*
-    Three steps of emphasis, all of them readable. `ink-dim` used to sit at 2.78:1 against a raised
-    panel, which is below the 4.5:1 small text needs and was hard to read on the panels it is used
-    most - the sentence under a checkbox, a field's label. Lightened until every step clears AA on
-    every surface, keeping the gaps between them wide enough to still read as a hierarchy.
-  */
-  --color-ink: #dbe3ec;
-  --color-ink-soft: #a3b0c0;
-  --color-ink-dim: #8a97a8;
+    Three steps of emphasis, all of them readable, and the gaps between them wide enough to still
+    read as a hierarchy: 10.59 / 6.96 / 5.80 on a panel.
 
-  --color-brass: #d9a441;
+    Measured against a pane composited over live terrain as well as against the surfaces
+    themselves, because a floating pane is painted at `100 - --pane-transparency` percent and the
+    real background of nearly all this text is the map (ah-v09e). Over tundra, the worst terrain
+    for every token, they come to 8.46 / 5.56 / 4.63 - never below the 4.5:1 that small text needs
+    anywhere. `ink-dim` is a shade lighter than the palette first drew it: at #8d99a8 it fell to
+    4.47 on a raised panel and 4.07 through a pane over tundra.
+  */
+  --color-ink: #d4dce6;
+  --color-ink-soft: #a8b4c2;
+  --color-ink-dim: #99a4b2;
+
+  --color-brass: #e0b25a;
   --color-brass-bright: #eebe63;
-  --color-select: #4a9fd8;
+  --color-select: #5aa9de;
 
   /*
    * The selected hex's double ring (ah-sup): a bright ring over a dark casing, achromatic so it
@@ -64,7 +69,7 @@
 
   --color-ok: #4fb783;
   --color-warn: #d9a441;
-  --color-danger: #d97070;
+  --color-danger: #e89494;
 
   /* Terrain. Read from the report, so these are data rather than styling choices. */
   --color-terrain-ocean: #1d3f63;
@@ -93,6 +98,14 @@
   --color-unit-foreign: #f07070;
   --color-settlement: #f0e2bd;
 
+  /* The halo behind map labels and region names. Was `--color-ground`, which made it hostage to
+     the UI chrome's palette (ah-v09e lifted the chrome and would have lightened every label's
+     outline with it). The map's legibility against terrain is its own decision, so it gets its own
+     token, holding the value the chrome used to supply. */
+  --color-map-label-halo: #10151c;
+  /* Region names are drawn on the map, not in the chrome, for the same reason. */
+  --color-map-region-name: #a3b0c0;
+
   /*
     A manual hex note's pin and tag (ah-o1t.3): warm paper yellow, distinct from every terrain and
     mark colour above so a note never reads as game state. Reads on the dark ground and on
@@ -116,9 +129,9 @@
      rem in the application, type and boxes alike (ah-ziv), so a token that multiplied by
      `--ui-scale` here would scale twice. The map sets its own sizes in SVG user units and is on
      neither scale. */
-  --text-pane-sm: 0.6875rem;   /* 11px at a 16px root, at 100% */
-  --text-pane: 0.75rem;        /* 12px */
-  --text-pane-lg: 0.8125rem;   /* 13px */
+  --text-pane-sm: 0.75rem;     /* 12px at a 16px root, at 100% */
+  --text-pane: 0.8125rem;      /* 13px */
+  --text-pane-lg: 0.875rem;    /* 14px */
 }
 
 /*
@@ -146,29 +159,35 @@
 :root[data-theme="light"] {
   color-scheme: light;
 
+  /* The panel is lightened from #eae6da (ah-j1xd): light's three ink steps all have to clear AA
+     while staying visibly distinct, and on the old panel `ink-dim` had to darken past where
+     `ink-soft` sat, collapsing the hierarchy. Panel is still the darkest of the three light
+     surfaces, so the elevation cue is unchanged. */
   --color-ground: #f2efe8;
-  --color-panel: #eae6da;
+  --color-panel: #f0ece2;
   --color-panel-raised: #f7f4ec;
   --color-edge: #c9c2b0;
   --color-edge-soft: #d8d2c2;
 
   /* The same three steps, darkened rather than lightened; see the note in the dark palette. */
   --color-ink: #2a3038;
-  --color-ink-soft: #4f5866;
-  --color-ink-dim: #5e6673;
+  --color-ink-soft: #454d59;
+  --color-ink-dim: #4a5160;
 
-  --color-brass: #9a6f1d;
+  /* Each accent keeps its hue and is darkened the smallest amount that clears AA (4.5:1) on the
+     panel, the darkest light surface; before ah-j1xd all five sat between 3.61 and 4.29. */
+  --color-brass: #8a6317;
   --color-brass-bright: #7d5a15;
-  --color-select: #2470a8;
+  --color-select: #1f5f8f;
 
   /* Inverted pairing (navigator's choice): on light parchment a white ring washes out, so light
      mode gets a near-black ring over a pale casing instead. */
   --color-selection-ring: #1c2530;
   --color-selection-casing: #f5f8fc;
 
-  --color-ok: #2e7d54;
-  --color-warn: #9a6f1d;
-  --color-danger: #b04a4a;
+  --color-ok: #256b48;
+  --color-warn: #8a6317;
+  --color-danger: #9c4040;
 
   --color-terrain-ocean: #a9c5de;
   --color-terrain-plain: #d9d2a0;
@@ -191,6 +210,10 @@
   --color-unit-foreign: #c05252;
   --color-settlement: #8a6d3b;
 
+  /* The map's own halo and region-name colours (ah-v09e); today's light ground and ink-soft. */
+  --color-map-label-halo: #f2efe8;
+  --color-map-region-name: #4f5866;
+
   /* Same paper yellow as the dark theme: it reads on parchment as well as on the dark ground. */
   --color-note: #f2d27a;
   --color-note-ink: #2b2410;
@@ -211,7 +234,7 @@
 .map-label {
   font-size: calc(9px / var(--map-scale, 1));
   paint-order: stroke fill;
-  stroke: var(--color-ground);
+  stroke: var(--color-map-label-halo);
   stroke-width: calc(2.5px / var(--map-scale, 1));
   stroke-linejoin: round;
 }
@@ -277,11 +300,11 @@
 }
 
 .region-name {
-  fill: var(--color-ink-soft, #6b6558);
+  fill: var(--color-map-region-name, #6b6558);
   font-size: 8px;
   letter-spacing: 2.5px;
   paint-order: stroke fill;
-  stroke: var(--color-ground);
+  stroke: var(--color-map-label-halo);
   stroke-width: 2.2px;
   stroke-linejoin: round;
   text-transform: uppercase;
@@ -301,7 +324,7 @@
  * DEFAULT_PANE_TRANSPARENCY in settingsStore.ts, for the first paint before anything is stamped.
  */
 :root {
-  --pane-transparency: 90;
+  --pane-transparency: 20;
 
   /* What the Interface size setting multiplies every rem in the application by; 1 is 100%. Stamped
      on the root by `settingsStore`, exactly as `--pane-transparency` is, and defaulted here so the

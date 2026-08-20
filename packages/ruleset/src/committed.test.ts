@@ -83,9 +83,9 @@ describe("the committed ruleset", () => {
    * ah-a2k.3: the census `ah-a2k.2` needs to tell a Tower from a Fort - taken from the game's own
    * data page since ah-9js, which is why it carries ten fortifications rather than the rules
    * table's five, nine of them seating at least one mage. A fortification that says nothing about
-   * mages seats none, which is the Tower asserted below; everything else the data page calls a
-   * building - a Mine, a road, a lair - is deliberately absent, so it stays "the catalogue cannot
-   * say" rather than becoming "seats nobody".
+   * mages seats none, which is the Tower asserted below. Since ah-3cj4.1 everything else the page
+   * calls a building - a Mine, a road, a lair - is carried too and seats nobody: the page states a
+   * capacity wherever there is one, so its silence is an answer rather than a gap.
    */
   it("carries every structure that seats a mage, and what each seats", () => {
     expect(
@@ -106,11 +106,61 @@ describe("the committed ruleset", () => {
     ]);
 
     // The case ah-a2k.2 exists to catch: a Tower is named and seats nobody.
-    expect(COMMITTED.buildings.TOWER).toEqual({
+    expect(COMMITTED.buildings.TOWER).toMatchObject({
       size: 10,
       cost: 10,
       materials: ["stone"],
       mages: 0
     });
+    expect(COMMITTED.buildings.TOWER.description).toContain(
+      "This structure provides defense to the first 10 men inside it."
+    );
+  });
+
+  /**
+   * ah-3cj4.1: every entry the data page calls a building, not only the ten that state a defence.
+   * A Mine is one of the commonest structures in the game, and the reference feature (ah-5jkt) had
+   * nothing at all to say about it.
+   */
+  it("carries every structure the data page describes", () => {
+    expect(Object.keys(COMMITTED.buildings)).toHaveLength(58);
+
+    expect(COMMITTED.buildings.MINE).toMatchObject({ produces: "iron", cost: 10, mages: 0 });
+    // No defence stated, so no `size` - an absence rather than a claim that it protects nobody.
+    expect(COMMITTED.buildings.MINE.size).toBeUndefined();
+    // No skill builds a lair, so it carries neither a cost nor materials.
+    expect(COMMITTED.buildings.LAIR.cost).toBeUndefined();
+    expect(COMMITTED.buildings.LAIR.materials).toBeUndefined();
+  });
+
+  /**
+   * ah-bwly.1: what skill builds each structure, and at what level. Both come from the opening of
+   * the skill's own entry on the data page, which states this for strictly more structures than
+   * the rules page's two tables do.
+   */
+  it("names the skill and level for every structure a skill can build", () => {
+    const withRequirement = Object.entries(COMMITTED.buildings).filter(
+      ([, building]) => building.buildSkill !== undefined
+    );
+
+    expect(withRequirement).toHaveLength(36);
+
+    for (const [kind, building] of withRequirement) {
+      const skill = COMMITTED.skills[building.buildSkill as string];
+      expect(skill, `${kind} names an unknown skill ${building.buildSkill}`).toBeDefined();
+      expect(building.buildLevel).toBeGreaterThanOrEqual(1);
+      expect(building.buildLevel).toBeLessThanOrEqual(skill.maxLevel);
+    }
+
+    expect(COMMITTED.buildings.MINE).toMatchObject({ buildSkill: "MINI", buildLevel: 3 });
+    expect(COMMITTED.buildings.TOWER).toMatchObject({ buildSkill: "BUIL", buildLevel: 1 });
+    expect(COMMITTED.buildings.CITADEL).toMatchObject({ buildSkill: "BUIL", buildLevel: 3 });
+
+    // Never one half without the other.
+    expect(
+      Object.entries(COMMITTED.buildings).filter(
+        ([, b]) => (b.buildSkill === undefined) !== (b.buildLevel === undefined)
+      )
+    ).toEqual([]);
   });
 });

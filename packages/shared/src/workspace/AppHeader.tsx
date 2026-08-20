@@ -1,5 +1,8 @@
 import type { ChangeEvent, DragEvent, ReactNode } from "react";
 import { useRef } from "react";
+import type { MapLevel } from "../hexMapModel";
+import { SURFACE_LEVEL } from "../hexMapModel";
+import { useWorkspaceStore } from "../workspaceStore";
 import { describeTurnMessages } from "../turnMessages";
 import { ExportMenu } from "./ExportMenu";
 import { ChipPopover } from "./popover";
@@ -46,6 +49,14 @@ function importingLabel(progress: { done: number; total: number } | null): strin
 
 type AppHeaderProps = {
   gameName: string;
+  /**
+   * The map's levels, for the selector beside the faction name (ah-l9mp).
+   *
+   * It moved up from the strip over the map because it is changed often and wants to be seen at a
+   * glance. Its two shapes are unchanged: a control when there is a choice, plain text when there
+   * is not - a select over a single level is a dead control in every one-level game.
+   */
+  levels: MapLevel[];
   /** Which header popover is open, if any - one at a time, owned by the shell. */
   openPopover: HeaderPopoverId | null;
   /** Opens the named popover (closing whichever was open), or closes all with null. */
@@ -142,6 +153,17 @@ type AppHeaderProps = {
   /** Opens the map export dialog. Off until a report is on screen to export a map of. */
   onExportMap: () => void;
   canExportMap: boolean;
+  /**
+   * Puts this turn's orders on the game server, when this shell can.
+   *
+   * Optional, and its absence is the whole of what hides the control on web: the game server sends
+   * no CORS headers, so a browser could fire the request and never read the reply - see ah-etb0.2.
+   */
+  onSendOrders?: () => void;
+  /** Off until the orders exist and carry an `#atlantis` line naming the faction. */
+  canSend?: boolean;
+  /** Why Send is off, shown on hover - so a dialog that could do nothing is never opened. */
+  sendDisabledReason?: string;
   /** Whether the settings panel is showing. Same split as the picker: header owns the button. */
   settingsOpen: boolean;
   onToggleSettings: () => void;
@@ -159,6 +181,7 @@ type AppHeaderProps = {
  */
 export function AppHeader({
   gameName,
+  levels,
   openPopover,
   onOpenPopover,
   picker,
@@ -192,11 +215,16 @@ export function AppHeader({
   canExportLong,
   onExportMap,
   canExportMap,
+  onSendOrders,
+  canSend = false,
+  sendDisabledReason,
   settingsOpen,
   onToggleSettings,
   settings
 }: AppHeaderProps) {
   const fileRef = useRef<HTMLInputElement | null>(null);
+  const level = useWorkspaceStore((state) => state.level);
+  const setLevel = useWorkspaceStore((state) => state.setLevel);
   const toggle = (id: HeaderPopoverId) => onOpenPopover(openPopover === id ? null : id);
   const close = () => onOpenPopover(null);
 
@@ -234,7 +262,10 @@ export function AppHeader({
       data-testid="app-header"
       onDragOver={(event) => event.preventDefault()}
       onDrop={onDrop}
-      className="flex flex-wrap min-h-9 flex-none items-center gap-x-3.5 border-b border-edge bg-panel px-3 text-pane whitespace-nowrap"
+      // `relative z-30` gives the header a stacking context above the map's own overlays (the chips
+      // row sits at z-20): its popovers hang down over the map, and without this they lose to
+      // anything the map floats, whatever their own z-index says.
+      className="relative z-30 flex flex-wrap min-h-9 flex-none items-center gap-x-3.5 border-b border-edge bg-panel px-3 text-pane whitespace-nowrap"
     >
       {/*
         Game state, grouped so it can wrap internally on a very narrow window without disturbing
@@ -340,6 +371,30 @@ export function AppHeader({
               </span>
             </button>
           </ChipPopover>
+          {/*
+            The map level, beside the faction name so it is glanceable (ah-l9mp). Inside the
+            faction group rather than as a header item of its own: the header wraps at a width the
+            CI runner's fonts already sit close to, and one more top-level item pushed it onto a
+            second row - which costs the orders editor's drag room, the resource ah-csni bounds.
+          */}
+          <span className="ml-1.5 text-ink-dim">
+            {levels.length > 1 ? (
+              <select
+                value={level}
+                onChange={(event) => setLevel(Number(event.target.value))}
+                aria-label="Map level"
+                className="rounded border border-edge bg-panel-raised px-1.5 py-0.5 text-ink"
+              >
+                {levels.map((candidate) => (
+                  <option key={candidate.z} value={candidate.z}>
+                    {candidate.name}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              (levels[0]?.name ?? SURFACE_LEVEL.name)
+            )}
+          </span>
           {mergedCount > 0 ? (
             <ChipPopover
               open={openPopover === "merged"}
@@ -571,6 +626,24 @@ export function AppHeader({
           </span>
         </button>
       </ChipPopover>
+
+      {/*
+        Send has a button of its own rather than a fourth item in the Export menu: it is the action
+        you most want to be one click, and Export is named for something this is not. Rendered only
+        when the shell offers an uploader, which is what omits it from web entirely.
+      */}
+      {onSendOrders ? (
+        <button
+          type="button"
+          data-testid="send-orders"
+          disabled={!canSend}
+          title={canSend ? undefined : sendDisabledReason}
+          onClick={onSendOrders}
+          className="rounded border border-edge bg-panel-raised px-2.5 py-1 text-ink disabled:opacity-50"
+        >
+          Send
+        </button>
+      ) : null}
 
       {/* Relative for the same reason the game indicator is: the panel hangs off this button. */}
       <span className="relative">
