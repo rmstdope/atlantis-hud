@@ -35,6 +35,35 @@ describe("recognising an orders file", () => {
     const withLeadingBlanks = ["", "  ", ORDERS_FILE].join("\n");
     expect(isOrdersFile(withLeadingBlanks)).toBe(true);
   });
+
+  it("recognises the file even with a leading UTF-8 byte-order mark", () => {
+    // trim() does not strip \uFEFF - it is a format character, not whitespace, by the same rule
+    // trim() itself follows - so a file an editor or another client saved with one would
+    // otherwise sit one invisible character ahead of #atlantis and never match at all.
+    expect(isOrdersFile("\uFEFF" + ORDERS_FILE)).toBe(true);
+  });
+
+  it("still finds the header past a byte-order mark ahead of leading blank lines", () => {
+    const withBomAndBlanks = "\uFEFF" + ["", "  ", ORDERS_FILE].join("\n");
+    expect(isOrdersFile(withBomAndBlanks)).toBe(true);
+  });
+
+  it("finds the header past a leading turn-date comment - the ordinary shape of a real export", () => {
+    // "; August, Year 1" ahead of "#atlantis" is not a rare case - every .ord file this app's own
+    // export writes, and every one at least one other client writes, opens exactly this way.
+    const withDateComment = ["; August, Year 1", ORDERS_FILE].join("\n");
+    expect(isOrdersFile(withDateComment)).toBe(true);
+  });
+
+  it("finds the header past more than one leading comment line", () => {
+    const withTwoComments = ["; August, Year 1", "; a second comment line", ORDERS_FILE].join("\n");
+    expect(isOrdersFile(withTwoComments)).toBe(true);
+  });
+
+  it("does not mistake a report's own leading comments for an orders file", () => {
+    const reportWithComments = ["; Treasury:", "; nothing here names a faction"].join("\n");
+    expect(isOrdersFile(reportWithComments)).toBe(false);
+  });
 });
 
 describe("the faction id on the header", () => {
@@ -45,6 +74,15 @@ describe("the faction id on the header", () => {
 
   it("returns null for a document with no header", () => {
     expect(ordersFileFaction(REPORT_START)).toBeNull();
+  });
+
+  it("reads the faction id past a leading byte-order mark too", () => {
+    expect(ordersFileFaction("\uFEFF" + ORDERS_FILE)).toBe("95");
+  });
+
+  it("reads the faction id past a leading turn-date comment too", () => {
+    const withDateComment = ["; August, Year 1", ORDERS_FILE].join("\n");
+    expect(ordersFileFaction(withDateComment)).toBe("95");
   });
 });
 

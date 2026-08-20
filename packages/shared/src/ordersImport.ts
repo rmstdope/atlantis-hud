@@ -15,21 +15,44 @@ import { factionLabelOf } from "./reportLoad";
 const ATLANTIS_HEADER = /^#atlantis\b/iu;
 const FACTION_ID = /^#atlantis\s+(\S+)/iu;
 
-/** The first line that is not blank, or the empty string for a document of nothing but blanks. */
+/**
+ * The first line that carries anything to sniff a header against - blank lines skipped, and a
+ * leading run of the game's own `;`-comments skipped too, since a real orders file often opens
+ * with one before ever reaching `#atlantis` (`; August, Year 1`, the turn a batch export or
+ * another client's own header line stamps on it, is the ordinary case, not a rare one). A leading
+ * UTF-8 byte-order mark is stripped first: `String.prototype.trim()` does not remove it (U+FEFF is
+ * a format character, not whitespace, by the rule `trim()` itself follows), so a file saved by an
+ * editor or another client that writes one - common enough on Windows - would otherwise sit one
+ * invisible character ahead of everything else here.
+ *
+ * Stops at the first line that is neither blank nor a comment, whatever it turns out to be - this
+ * still never scans deep into a report the way `hasFactionHeader` (`./ordersDocument`) does for a
+ * different question; a report's own run of leading comments ends at its first real content line
+ * just as quickly, long before anything resembling `#atlantis` could turn up in one further down.
+ */
 function firstNonBlankLine(text: string): string {
-  return text.split("\n").find((line) => line.trim() !== "")?.trim() ?? "";
+  const lines = text.replace(/^\uFEFF/u, "").split("\n");
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (line === "" || line.startsWith(";")) {
+      continue;
+    }
+    return line;
+  }
+  return "";
 }
 
 /**
  * Whether `text` is an orders file rather than a turn report.
  *
  * The one thing every orders file carries and no report does: the `#atlantis` line the server reads
- * the faction and password from. Checked only on the first non-blank line - deliberately stricter
- * than {@link hasFactionHeader} in `./ordersDocument`, which scans the whole document to answer a
- * different question ("has this in-play document lost its header edit"). Sniffing a file dropped on
- * the Import target is a different question again: only a document that *opens* with `#atlantis` is
- * an orders file, so a report that happens to quote the line in a comment further down is never
- * misread as one.
+ * the faction and password from. Checked only on the first line `firstNonBlankLine` finds - past any
+ * leading blanks and comments, but no further - deliberately stricter than {@link hasFactionHeader}
+ * in `./ordersDocument`, which scans the whole document to answer a different question ("has this
+ * in-play document lost its header edit"). Sniffing a file dropped on the Import target is a
+ * different question again: only a document that *opens* with `#atlantis`, once past whatever
+ * leading comment lines it carries, is an orders file, so a report that happens to quote the line
+ * in a comment much further down is never misread as one.
  */
 export function isOrdersFile(text: string): boolean {
   return ATLANTIS_HEADER.test(firstNonBlankLine(text));
