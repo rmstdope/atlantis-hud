@@ -38,8 +38,9 @@ const ATLANTIS_HEADER_LINE = /^#atlantis\b/iu;
  * appending everything typed afterwards below it.
  *
  * Case-insensitively, for `#end` and `#atlantis` alike: "The parser is not case sensitive, so all
- * commands may be given in upper case, lower case or a mixture of the two... [this] applies] to the
- * #ATLANTIS and #END lines as well as to order lines" (règles.txt). A document this app itself
+ * commands may be given in upper case, lower case or a mixture of the two... [this] applies to the
+ * #ATLANTIS and #END lines as well as to order lines"
+ * (https://atlantis-pbem.com/rules). A document this app itself
  * writes is always lowercase, which is easy to mistake for the only shape worth reading - a hand-
  * edited file, or one written by another client, is under no obligation to match it.
  */

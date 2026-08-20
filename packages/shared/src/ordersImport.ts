@@ -19,11 +19,7 @@ const FACTION_ID = /^#atlantis\s+(\S+)/iu;
  * The first line that carries anything to sniff a header against - blank lines skipped, and a
  * leading run of the game's own `;`-comments skipped too, since a real orders file often opens
  * with one before ever reaching `#atlantis` (`; August, Year 1`, the turn a batch export or
- * another client's own header line stamps on it, is the ordinary case, not a rare one). A leading
- * UTF-8 byte-order mark is stripped first: `String.prototype.trim()` does not remove it (U+FEFF is
- * a format character, not whitespace, by the rule `trim()` itself follows), so a file saved by an
- * editor or another client that writes one - common enough on Windows - would otherwise sit one
- * invisible character ahead of everything else here.
+ * another client's own header line stamps on it, is the ordinary case, not a rare one).
  *
  * Stops at the first line that is neither blank nor a comment, whatever it turns out to be - this
  * still never scans deep into a report the way `hasFactionHeader` (`./ordersDocument`) does for a
@@ -31,7 +27,7 @@ const FACTION_ID = /^#atlantis\s+(\S+)/iu;
  * just as quickly, long before anything resembling `#atlantis` could turn up in one further down.
  */
 function firstNonBlankLine(text: string): string {
-  const lines = text.replace(/^\uFEFF/u, "").split("\n");
+  const lines = text.split("\n");
   for (const raw of lines) {
     const line = raw.trim();
     if (line === "" || line.startsWith(";")) {
