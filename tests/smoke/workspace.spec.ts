@@ -3938,4 +3938,121 @@ test("a skill named in the unit panel opens its game data entry", async ({ page 
   await expect(page.getByTestId("game-data-dialog")).toBeVisible();
   await expect(page.getByTestId("game-data-tab-skill")).toHaveAttribute("aria-selected", "true");
   await expect(page.getByTestId("game-data-detail")).toContainText(name);
+/**
+ * ah-bu2c: a faction's name is a way into everything the turn knows about that faction.
+ *
+ * The hex is `1:10,50`, which holds several units of Elder Tree Forests (32), a faction the
+ * attitudes block declares Ally toward and whose units are spread across three hexes - so the
+ * dossier has an attitude, several hexes and a long unit list to show.
+ */
+const DOSSIER_HEX = "1:10,50";
+const DOSSIER_FACTION = "32";
+
+test("a faction name in the units table opens its dossier", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, DOSSIER_HEX);
+
+  await page.getByTestId(`open-faction-dossier-${DOSSIER_FACTION}`).first().click();
+
+  const dossier = page.getByTestId("faction-dossier");
+  await expect(dossier).toBeVisible();
+  await expect(dossier).toContainText("Elder Tree Forests");
+  await expect(dossier).toContainText("Ally");
+  // Their units stand in three hexes, each counted - so "seen in" is a real list, not one row.
+  await expect(dossier).toContainText("swamp (10,50)");
+  await expect(dossier).toContainText("8 units");
+  await expect(dossier).toContainText(
+    "Where their units are this turn. Earlier turns are not remembered."
+  );
+  await expect(dossier).toContainText("A unit hiding its faction is not counted here.");
+  // The map is still there to draw a highlight on, which is the whole reason this is a popover
+  // rather than a dialog: a modal would dim the very hex the ring goes on.
+  await expect(page.getByTestId("panel-region")).toContainText("(10,50)");
+});
+
+test("a faction name in the attitudes list opens its dossier", async ({ page }) => {
+  await loadReport(page);
+
+  await page.getByTestId("faction-chip").click();
+  await page.getByTestId("open-faction-dossier-2").click();
+
+  const dossier = page.getByTestId("faction-dossier");
+  await expect(dossier).toBeVisible();
+  await expect(dossier).toContainText("Creatures");
+  await expect(dossier).toContainText("Hostile");
+
+  // The attitudes list cannot hold a nested popover - its body scrolls - so the dossier takes its
+  // place, and there has to be a way back to where the reader came from.
+  await expect(page.getByTestId("faction-panel")).toHaveCount(0);
+  await page.getByTestId("dossier-back").click();
+  await expect(page.getByTestId("faction-panel")).toBeVisible();
+});
+
+test("tabbing to a hex row rings it on the map", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, DOSSIER_HEX);
+  await page.getByTestId(`open-faction-dossier-${DOSSIER_FACTION}`).first().click();
+
+  const row = page.getByTestId(`dossier-hex-${DOSSIER_HEX}`);
+  await expect(row).toBeVisible();
+  // The panel opens beside the name clicked, so it lands under the pointer and whichever row is
+  // beneath it is genuinely hovered. Move away first, or "no ring yet" is not the state we are in.
+  await page.mouse.move(4, 4);
+  await expect(page.getByTestId("map-highlight-ring")).toHaveCount(0);
+
+  // Focus, not hover: a hover-only implementation shows a keyboard reader nothing at all, and
+  // every other test here would still pass.
+  await row.focus();
+  await expect(page.getByTestId("map-highlight-ring")).toHaveCount(1);
+
+  await row.blur();
+  await expect(page.getByTestId("map-highlight-ring")).toHaveCount(0);
+});
+
+test("reopening after dismissal draws no ring", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, DOSSIER_HEX);
+  await page.getByTestId(`open-faction-dossier-${DOSSIER_FACTION}`).first().click();
+
+  await page.mouse.move(4, 4);
+  await page.getByTestId(`dossier-hex-${DOSSIER_HEX}`).focus();
+  await expect(page.getByTestId("map-highlight-ring")).toHaveCount(1);
+
+  // Escape rather than the close button: clicking ✕ blurs the row, which clears the hover on the
+  // way out and cannot reproduce the scar at all. Escape closes the panel with the row still
+  // focused, so the row never fires blur or pointerleave and the last hover survives the
+  // unmount - which is exactly how reopening drew a ring with the pointer nowhere near it
+  // (Copilot, #398). Verified by mutation: deleting the forgetting effect fails this.
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("faction-dossier")).toHaveCount(0);
+
+  // Reopened from the keyboard, with the pointer parked far away: a mouse click would put the
+  // pointer over the reopened panel, hover whichever row landed under it, and draw a ring for a
+  // reason that has nothing to do with the scar - and moving the pointer off afterwards would
+  // clear the stale hover too, hiding the very thing this test exists for. Verified by mutation:
+  // deleting AppShell's forgetting effect fails this.
+  const trigger = page.getByTestId(`open-faction-dossier-${DOSSIER_FACTION}`).first();
+  await trigger.focus();
+  await trigger.press("Enter");
+  await expect(page.getByTestId("faction-dossier")).toBeVisible();
+  await expect(page.getByTestId("map-highlight-ring")).toHaveCount(0);
+});
+
+test("clicking a hex row selects that hex, and a unit row selects that unit", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, DOSSIER_HEX);
+  await page.getByTestId(`open-faction-dossier-${DOSSIER_FACTION}`).first().click();
+
+  // A unit of theirs standing in a DIFFERENT hex, so the assertion cannot pass by the selection
+  // simply staying where it already was.
+  const unitRow = page.getByTestId("dossier-unit-1962");
+  await expect(unitRow).toBeVisible();
+  await unitRow.click();
+  await expect(page.getByTestId("faction-dossier")).toHaveCount(0);
+  await expect(page.getByTestId("panel-region")).toContainText("(26,52)");
+
+  await page.getByTestId(`open-faction-dossier-${DOSSIER_FACTION}`).first().click();
+  await page.getByTestId(`dossier-hex-${DOSSIER_HEX}`).click();
+  await expect(page.getByTestId("faction-dossier")).toHaveCount(0);
+  await expect(page.getByTestId("panel-region")).toContainText("(10,50)");
 });
