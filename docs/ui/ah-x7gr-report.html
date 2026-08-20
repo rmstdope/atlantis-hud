@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reporting a finding sighted three times</title>
+<style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1300px; margin:0 auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; }
+  h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:94ch; margin-top:10px; font-size:14px; }
+  header p + p { margin-top:8px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; }
+  header code { color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:36px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:94ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; }
+  .card h2 { font-size:16px; margin-bottom:5px; }
+  .card h2 em { color:var(--brass); font-style:normal; font-size:11.5px; letter-spacing:1.5px; margin-right:8px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; margin-bottom:11px; min-height:3.2em; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:11px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"− "; color:var(--danger); }
+  .notes li.n::before { content:"· "; color:var(--ink-dim); }
+  .cards2 { display:grid; grid-template-columns:repeat(2,1fr); gap:18px; align-items:start; }
+  pre.term { background:#0b0f14; border:1px solid var(--edge); border-radius:6px; padding:12px 13px;
+             font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11.5px; line-height:1.65;
+             color:#c7d2de; white-space:pre; overflow-x:auto; margin:0; }
+  .term .h { color:var(--brass); } .term .n { color:var(--danger); } .term .w { color:var(--brass-bright); }
+  .term .d { color:var(--ink-dim); } .term .g { color:var(--ok); } .term .b { color:var(--select); }
+</style>
+</head>
+<body>
+<header>
+  <h1>A finding sighted three times — <span>what the sweep should print</span></h1>
+  <p>Every retrospective carries a <code>**Seen before.**</code> line naming earlier beads with the same
+  finding, and nothing reads them. The apt/Playwright stall reached <b>nine sightings</b> before the fix
+  landed; sightings three and four were two days before the day it cost about eight hours.</p>
+  <p>The citations form a graph — <code>ah-csni</code> cites <code>ah-3c80</code>, which cites four
+  others — so one root cause is one <b>connected component</b>, however many beads are in the chain. That is
+  what stops a chain of five reading as five separate findings.</p>
+  <p>The numbers below are real, counted from the 114 committed retrospectives.</p>
+</header>
+
+<main>
+
+<h3 class="sec">1 · What the sweep prints</h3>
+<div class="cards2">
+
+  <div class="card">
+    <h2><em>A</em>One line each, newest sighting first</h2>
+    <div class="concept">A compact list. Every finding is one line: how many sightings, and the bead that
+    saw it last.</div>
+    <pre class="term"><span class="h">Repeated findings (3+ sightings)</span>
+<span class="n">  9</span>  apt stalls installing Playwright   <span class="d">last: ah-vzj9</span>
+<span class="n">  10</span> disk floor refuses the build       <span class="d">last: ah-9lv</span>
+<span class="w">  4</span>  smoke fixtures break on a new check <span class="d">last: ah-csni</span>
+<span class="w">  3</span>  cerebro worktree trap              <span class="d">last: ah-4ao</span>
+
+<span class="d">  bd recall retro-watermark  ·  3 new retrospectives since</span></pre>
+    <ul class="notes">
+      <li>Fits in a greeting without pushing everything else off screen</li>
+      <li>The count is the first thing on the line, which is the thing that matters</li>
+      <li class="con">Does not say which beads sighted it, so acting means going and looking</li>
+      <li class="con">"apt stalls installing Playwright" has to come from somewhere — see section 2</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2><em>B</em>The beads, named</h2>
+    <div class="concept">Each finding lists the beads in its chain, so the evidence is in front of you.</div>
+    <pre class="term"><span class="h">Repeated findings (3+ sightings)</span>
+
+<span class="n">  9 sightings</span>  <span class="d">last seen ah-vzj9, 2026-08-19</span>
+    ah-k6i.5, ah-bn6.1, ah-mjy, ah-vw63, ah-58dz,
+    ah-3cj4.2, ah-3c80, ah-csni, ah-vzj9
+
+<span class="n">  10 sightings</span> <span class="d">last seen ah-9lv, 2026-08-20</span>
+    ah-9r0, ah-9lv, ah-quw, ah-j0e, ah-8m0.2, …
+
+<span class="w">  3 sightings</span>  <span class="d">last seen ah-4ao, 2026-08-18</span>
+    ah-4ao, ah-aao, ah-axj
+
+<span class="d">  3 new retrospectives since the last sweep</span></pre>
+    <ul class="notes">
+      <li>Everything needed to judge it is on screen — no second command</li>
+      <li>Names no cause, so nothing has to be invented or guessed</li>
+      <li class="con">Long: four findings fill a greeting</li>
+      <li class="con">A list of ids is not self-explanatory without opening one</li>
+    </ul>
+  </div>
+</div>
+
+<h3 class="sec">2 · Where the finding's name comes from</h3>
+<p>The retrospectives cite <b>bead ids</b>, not causes. Nothing in the data says "apt stalls installing
+Playwright" — that phrase would have to come from somewhere.</p>
+<div class="cards2">
+  <div class="card">
+    <h2><em>i</em>The oldest bead's own headline</h2>
+    <div class="concept">Use the <code>##</code> heading of the earliest retrospective in the chain — it is
+    already written as "the symptom, not the cause".</div>
+    <pre class="term"><span class="n">  9</span>  <span class="d">ah-k6i.5:</span> the apt step hung for twenty minutes
+<span class="n">  10</span> <span class="d">ah-9r0:</span> the build refused to start on a full disk</pre>
+    <ul class="notes">
+      <li>Free, and written by someone who saw the problem</li>
+      <li>Traceable — the name is a quotation, with its source</li>
+      <li class="con">The earliest sighting is often the least well understood one</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h2><em>ii</em>No name at all — just the ids</h2>
+    <div class="concept">Print the chain and let the reader open one. This is option B above.</div>
+    <ul class="notes">
+      <li>Cannot be wrong, because it claims nothing</li>
+      <li>No parsing beyond the citation itself</li>
+      <li class="con">Every report costs a file-open before it means anything</li>
+    </ul>
+  </div>
+</div>
+
+<h3 class="sec">3 · Silencing one that has been dealt with</h3>
+<p>The container fix landed; the apt chain should stop being reported. A cause is a set of bead ids, and the
+set grows, so what exactly gets remembered?</p>
+<div class="cards2">
+  <div class="card">
+    <h2><em>i</em>Name any bead in the chain</h2>
+    <div class="concept"><code>pnpm sightings --dismiss ah-k6i.5</code> silences the whole chain that bead
+    belongs to, now and as it grows.</div>
+    <pre class="term">$ pnpm sightings --dismiss ah-k6i.5
+<span class="g">dismissed</span> the finding containing ah-k6i.5 <span class="d">(9 sightings)</span>
+<span class="d">it will stay hidden even as more beads join it</span></pre>
+    <ul class="notes">
+      <li>Survives the chain growing — a tenth sighting stays silent</li>
+      <li>Forgiving: any member works, so you need not know the "right" one</li>
+      <li class="con">A genuinely new cause that happens to cite a dismissed bead goes quiet too</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h2><em>ii</em>Dismiss, but speak up if it keeps happening</h2>
+    <div class="concept">Same, except a dismissed finding returns if it gains, say, three further
+    sightings — the fix did not hold.</div>
+    <pre class="term">$ pnpm sightings
+<span class="h">Repeated findings (3+ sightings)</span>
+<span class="n">  12</span> <span class="d">ah-k6i.5:</span> the apt step hung
+      <span class="w">dismissed at 9 — three more since</span></pre>
+    <ul class="notes">
+      <li>A fix that did not work cannot hide behind the dismissal</li>
+      <li class="con">More state to keep: the count at dismissal, not just the fact of it</li>
+      <li class="con">Re-nags about something you decided to tolerate</li>
+    </ul>
+  </div>
+</div>
+
+</main>
+
+<footer style="margin-top:34px; color:var(--ink-dim); font-size:12.5px;">
+  Mockup for bead <span class="mono">ah-x7gr</span>. Sighting counts are real, from the 114 committed
+  retrospectives; the finding names in section 1A are illustrative.
+</footer>
+</body>
+</html>
