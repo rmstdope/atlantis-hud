@@ -48,3 +48,19 @@ export function unitStructureLabel(
         );
   return match ? structureLabel(match) : `[${structureId}]`;
 }
+
+/**
+ * How a structure reads in the command palette: `Arcane Mine [12] · cavern (3,41)`, and
+ * `Building [4] · Mine · plain (9,22)` when the report gave it no name of its own.
+ *
+ * The kind is spelled out only where the name does not carry it, which is the navigator's choice
+ * for ah-wkwk: short where it can be, informative where it must be. Whether a structure is named
+ * is decided by the same rule as `structure_label` in `crates/core/src/orders/semantics.rs` -
+ * `Building` and `Ship` are the engine's own words for an unnamed structure, matched
+ * case-insensitively. Mirrored rather than reinvented, so the two cannot drift apart.
+ */
+export function structurePaletteLabel(structure: StructureInfo, hexLabel: string): string {
+  const unnamed = ["building", "ship"].includes(structure.name.toLowerCase());
+  const kind = unnamed ? `${structure.kind} · ` : "";
+  return `${structure.name} [${structure.structureId}] · ${kind}${hexLabel}`;
+}

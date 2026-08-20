@@ -8,6 +8,14 @@ import type { GameDataEntry } from "./gameData";
 export type PaletteEntryKind =
   | "unit"
   | "region"
+  /**
+   * One structure standing in the world - `Soggy Saw Mill [1]`, not the dictionary's `Mine`.
+   *
+   * A separate kind from `building` on purpose (ah-wkwk): since ah-5jkt the palette holds both,
+   * and typing `mine` matches a page describing what a Mine costs *and* every Mine on the map.
+   * The kind label beside the row is what tells them apart.
+   */
+  | "structure"
   | "action"
   | "order-help"
   /** One thing in the game data dictionary, named by the tab it opens on. */
@@ -31,6 +39,8 @@ export type PaletteEntry = {
 export type PaletteInput = {
   ownUnits: Array<{ unitId: string; name: string; run: () => void }>;
   regions: Array<{ regionId: string; label: string; run: () => void }>;
+  /** Every structure in this turn's report, labelled by `structurePaletteLabel`. */
+  structures: Array<{ structureId: string; label: string; run: () => void }>;
   actions: Array<{ id: string; label: string; binding?: string; run: () => void }>;
   orderCommands: readonly string[];
   insertOrder: (command: string) => void;
@@ -41,8 +51,9 @@ export type PaletteInput = {
 
 /**
  * Everything the palette can offer, in reading order: the player's units first because going to
- * one is the palette's daily use, then places, then the app's own actions, then the order
- * vocabulary as a typeable reference, then the game data dictionary.
+ * one is the palette's daily use, then places - the hexes, then the structures standing in them -
+ * then the app's own actions, then the order vocabulary as a typeable reference, then the game
+ * data dictionary.
  *
  * The dictionary goes last on purpose: it is two hundred and seventy-odd entries, and an empty
  * query should still show the player's own units first. The tag rides in the label so typing
@@ -61,6 +72,12 @@ export function buildPaletteEntries(input: PaletteInput): PaletteEntry[] {
       kind: "region",
       label: region.label,
       run: region.run
+    })),
+    ...input.structures.map<PaletteEntry>((structure) => ({
+      id: `structure-${structure.structureId}`,
+      kind: "structure",
+      label: structure.label,
+      run: structure.run
     })),
     ...input.actions.map<PaletteEntry>((action) => ({
       id: `action-${action.id}`,

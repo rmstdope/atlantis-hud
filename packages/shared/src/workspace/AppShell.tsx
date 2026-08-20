@@ -148,6 +148,7 @@ import { GameDataDialog } from "./GameDataDialog";
 import { parseGameData } from "../gameData";
 import { ShortcutHelp } from "./ShortcutHelp";
 import { buildPaletteEntries } from "../commandPalette";
+import { structurePaletteLabel } from "../structureLabel";
 import { diagnosticTargets, stepDiagnostic } from "../diagnosticNav";
 import { hasOpenDismissLayers } from "../dismissStack";
 import { firesInContext, isMacPlatform, matchShortcut, SHORTCUTS } from "../shortcuts";
@@ -844,6 +845,16 @@ export function AppShell({
         label: candidate.label,
         run: () => selectHex(candidate.regionId)
       })),
+      // Every structure standing in this turn's report, with the places rather than with the
+      // dictionary's building pages: a structure is somewhere you go, and choosing one goes to
+      // its hex exactly as choosing the hex itself does.
+      structures: (parsed?.regions ?? []).flatMap((region) =>
+        region.structures.map((structure) => ({
+          structureId: `${region.regionId}-${structure.structureId}`,
+          label: structurePaletteLabel(structure, hexLabel(region.regionId)),
+          run: () => selectHex(region.regionId)
+        }))
+      ),
       actions: [
         { id: "settings", label: "Open settings", run: () => setSettingsOpen(true) },
         // Only where the picker can actually open: on the gate screen it renders nowhere, and
@@ -908,6 +919,7 @@ export function AppShell({
     parsed,
     model,
     goToUnit,
+    hexLabel,
     selectHex,
     setTheme,
     theme,

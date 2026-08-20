@@ -64,6 +64,27 @@ test("the palette opens on Mod+K, finds a unit, and Enter goes to it", async ({ 
   await expect(page.getByTestId("panel-region")).toContainText("Inholm");
 });
 
+test("the palette goes to a structure's hex, and tells one from a dictionary page", async ({
+  page
+}) => {
+  await loadReport(page);
+
+  // A structure the player named, in the mountain at (7,53).
+  await page.keyboard.press("ControlOrMeta+k");
+  await page.getByTestId("palette-input").fill("Cartographers HQ");
+  await expect(page.getByTestId("palette-item").first()).toContainText("Cartographers HQ [1]");
+  await page.keyboard.press("Enter");
+  await expect(page.getByTestId("panel-region")).toContainText("Inholm");
+
+  // "mine" names both a thing standing on the map and the dictionary's page about mines, and the
+  // list has to say which is which (ah-wkwk).
+  await page.keyboard.press("ControlOrMeta+k");
+  await page.getByTestId("palette-input").fill("mine");
+  const items = page.getByTestId("palette-item");
+  await expect(items.filter({ hasText: "structure" }).first()).toBeVisible();
+  await expect(items.filter({ hasText: "building" }).first()).toBeVisible();
+});
+
 test("the palette goes to a region and runs an action", async ({ page }) => {
   await loadReport(page);
 
