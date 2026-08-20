@@ -15,9 +15,19 @@ import { factionLabelOf } from "./reportLoad";
 const ATLANTIS_HEADER = /^#atlantis\b/iu;
 const FACTION_ID = /^#atlantis\s+(\S+)/iu;
 
-/** The first line that is not blank, or the empty string for a document of nothing but blanks. */
+/** The first line that is not blank, or the empty string for a document of nothing but blanks.
+ *  A leading UTF-8 byte-order mark is stripped first: `String.prototype.trim()` does not remove
+ *  it (U+FEFF is a format character, not whitespace, by the rule `trim()` itself follows), so a
+ *  file saved by an editor or another client that writes one - common enough on Windows - would
+ *  otherwise sit one invisible character ahead of `^#atlantis`, and never match at all. */
 function firstNonBlankLine(text: string): string {
-  return text.split("\n").find((line) => line.trim() !== "")?.trim() ?? "";
+  return (
+    text
+      .replace(/^\uFEFF/u, "")
+      .split("\n")
+      .find((line) => line.trim() !== "")
+      ?.trim() ?? ""
+  );
 }
 
 /**

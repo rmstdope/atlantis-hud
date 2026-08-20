@@ -35,6 +35,18 @@ describe("recognising an orders file", () => {
     const withLeadingBlanks = ["", "  ", ORDERS_FILE].join("\n");
     expect(isOrdersFile(withLeadingBlanks)).toBe(true);
   });
+
+  it("recognises the file even with a leading UTF-8 byte-order mark", () => {
+    // trim() does not strip \uFEFF - it is a format character, not whitespace, by the same rule
+    // trim() itself follows - so a file an editor or another client saved with one would
+    // otherwise sit one invisible character ahead of #atlantis and never match at all.
+    expect(isOrdersFile("\uFEFF" + ORDERS_FILE)).toBe(true);
+  });
+
+  it("still finds the header past a byte-order mark ahead of leading blank lines", () => {
+    const withBomAndBlanks = "\uFEFF" + ["", "  ", ORDERS_FILE].join("\n");
+    expect(isOrdersFile(withBomAndBlanks)).toBe(true);
+  });
 });
 
 describe("the faction id on the header", () => {
@@ -45,6 +57,10 @@ describe("the faction id on the header", () => {
 
   it("returns null for a document with no header", () => {
     expect(ordersFileFaction(REPORT_START)).toBeNull();
+  });
+
+  it("reads the faction id past a leading byte-order mark too", () => {
+    expect(ordersFileFaction("\uFEFF" + ORDERS_FILE)).toBe("95");
   });
 });
 
