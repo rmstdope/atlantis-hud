@@ -381,7 +381,7 @@ export function parseItemReference(html: string): ItemReference {
  * Both live in the same `<pre>` block, and `parseItemReference` skips these paragraphs for exactly
  * the same reason this one skips its own.
  */
-const SKILL_OPENING = /^([^.:[\]]{1,40}) \[([A-Z0-9]{2,6})\] (\d+): /;
+export const SKILL_OPENING = /^([^.:[\]]{1,40}) \[([A-Z0-9]{2,6})\] (\d+): /;
 
 /** "This skill costs 10 silver per month of study." Stated once per skill, on its level 1 entry. */
 const STUDY_COST = /This skill costs (\d+) silver per month of study/i;
@@ -443,8 +443,15 @@ const MAGIC_WORDS = /\b(?:mage|magic|spell|cast(?!le)|summon|enchant|Foundation)
  * this spell ...", and no input name in the fixture carries a dot of its own.
  */
 const CAST_COST = /via magic at a cost of ([^.]+)\./i;
-/** One input inside the list `CAST_COST` captures: an optional number, a name, the tag. */
-const CAST_INPUT = /^(?:(\d+) )?[a-z][a-z ]* \[([A-Z0-9]{2,6})\]$/i;
+/**
+ * One input inside the list `CAST_COST` captures: an optional number, a name, the tag.
+ *
+ * Global, and read straight out of the clause rather than out of a piece split off it: the pairs
+ * are self-delimiting, so `a and b`, `a, b and c` and whatever the page adopts next all read the
+ * same, because the separator is never looked at. `readRequirements` was rewritten this way by
+ * `ah-6qp` after the same assumption - a fixed separator - shipped a wrong catalogue.
+ */
+const CAST_INPUT = /(?:(\d+) )?[a-z][a-z ]*\[([A-Z0-9]{2,6})\]/gi;
 /** "the attempt costs 1000 silver." (Construct Gate) */
 const ATTEMPT_COST = /the attempt costs (\d+) silver/i;
 /** "2 stone [STON] times the skill level into rootstone [ROOT]" - the source and what it becomes. */
@@ -463,14 +470,15 @@ function readCastCost(tag: string, paragraph: string): CastCost | null {
 
   const costMatch = paragraph.match(CAST_COST);
   if (costMatch) {
-    for (const part of costMatch[1].split(" and ")) {
-      const inputMatch = part.trim().match(CAST_INPUT);
-      if (!inputMatch) {
-        throw new RulesetScrapeError(
-          `could not read the casting cost of skill ${tag}: "${part.trim()}" in "${costMatch[0]}"`
-        );
-      }
-      const [, amount, inputTag] = inputMatch;
+    const stated = [...costMatch[1].matchAll(CAST_INPUT)];
+    // A cost sentence naming no input at all is the page having changed shape, and must stay loud:
+    // a scraper that reads nothing and says nothing is a worse version of the bug this prevents.
+    if (stated.length === 0) {
+      throw new RulesetScrapeError(
+        `could not read the casting cost of skill ${tag}: "${costMatch[1].trim()}" in "${costMatch[0]}"`
+      );
+    }
+    for (const [, amount, inputTag] of stated) {
       costs.push({ tag: inputTag, amount: amount === undefined ? 1 : Number.parseInt(amount, 10) });
     }
   }
