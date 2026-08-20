@@ -26,7 +26,8 @@ const RULESET = JSON.stringify({
     MINE: { description: "A mine.", produces: "iron", cost: 10, materials: ["wood", "stone"], mages: 0, buildSkill: "MINI", buildLevel: 3 },
     LAIR: { description: "A lair.", mages: 0 },
     SHRINE: { description: "A shrine.", mages: 0, buildSkill: "ZZZZ", buildLevel: 2 },
-    HUT: { description: "A hut.", mages: 0, buildSkill: "MINI" }
+    HUT: { description: "A hut.", mages: 0, buildSkill: "MINI" },
+    FORT: { description: "A fort.", size: 50, cost: 10, materials: ["stone"], mages: 1, buildSkill: "BUIL", buildLevel: 1 }
   }
 });
 
@@ -98,6 +99,24 @@ describe("GameDataDialog", () => {
   it("leaves no trailing space when the build skill carries no level", () => {
     const html = markup("building:HUT");
     expect(html).toContain(">mining</button></span>");
+  });
+
+  it("says a structure that shelters mages does so", () => {
+    const html = markup("building:FORT");
+    expect(html).toContain("Mages sheltered");
+    expect(html).toContain(">1<");
+  });
+
+  it("says nothing about mages for a structure that shelters none", () => {
+    const html = markup("building:TOWER");
+    expect(html).toContain("A tower.");
+    expect(html).not.toContain("Mages");
+  });
+
+  it("no longer claims a structure needs mages", () => {
+    for (const id of ["building:FORT", "building:TOWER", "building:LAIR"]) {
+      expect(markup(id)).not.toContain("Mages needed");
+    }
   });
 
   it("names every tab with its count and offers a filter scoped to the tab", () => {

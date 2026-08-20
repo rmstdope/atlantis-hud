@@ -382,7 +382,12 @@ function Detail({
             </Field>
           )}
           {detail.produces === null ? null : <Field label="Increases">{detail.produces}</Field>}
-          <Field label="Mages needed">{detail.mages}</Field>
+          {/* A capacity, not a prerequisite: how many mages the structure houses, which is what
+              the magic-study warning reads it for. It used to say "Mages needed", which invented a
+              requirement (ah-q3o1). Omitted at zero like every other field here — about fifty of
+              the fifty-eight buildings shelter none, and after ah-3cj4.1 a zero is a fact rather
+              than missing data, so silence means "none" rather than "unknown". */}
+          {detail.mages === 0 ? null : <Field label="Mages sheltered">{detail.mages}</Field>}
         </div>
       </div>
     );
