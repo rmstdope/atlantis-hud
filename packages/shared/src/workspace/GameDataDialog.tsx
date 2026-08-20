@@ -377,8 +377,8 @@ function Detail({
                 className="text-left text-accent hover:underline"
               >
                 {buildWith.name}
-              </button>{" "}
-              {detail.buildLevel}
+              </button>
+              {detail.buildLevel === null ? null : ` ${detail.buildLevel}`}
             </Field>
           )}
           {detail.produces === null ? null : <Field label="Increases">{detail.produces}</Field>}

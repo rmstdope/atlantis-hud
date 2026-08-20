@@ -25,7 +25,8 @@ const RULESET = JSON.stringify({
     TOWER: { description: "A tower.", size: 10, cost: 10, materials: ["stone"], mages: 0, buildSkill: "BUIL", buildLevel: 1 },
     MINE: { description: "A mine.", produces: "iron", cost: 10, materials: ["wood", "stone"], mages: 0, buildSkill: "MINI", buildLevel: 3 },
     LAIR: { description: "A lair.", mages: 0 },
-    SHRINE: { description: "A shrine.", mages: 0, buildSkill: "ZZZZ", buildLevel: 2 }
+    SHRINE: { description: "A shrine.", mages: 0, buildSkill: "ZZZZ", buildLevel: 2 },
+    HUT: { description: "A hut.", mages: 0, buildSkill: "MINI" }
   }
 });
 
@@ -92,6 +93,11 @@ describe("GameDataDialog", () => {
     expect(html).toContain("A shrine.");
     expect(html).not.toContain("Built with");
     expect(html).not.toContain("ZZZZ");
+  });
+
+  it("leaves no trailing space when the build skill carries no level", () => {
+    const html = markup("building:HUT");
+    expect(html).toContain(">mining</button></span>");
   });
 
   it("names every tab with its count and offers a filter scoped to the tab", () => {
