@@ -11,6 +11,18 @@ permissions:
   contents: read
   pull-requests: read
 
+# One run per ref (ah-pg3j). Two events on the same sha used to produce two complete, independent
+# runs - 10 of 126 runs in the 72 hours to 2026-08-20 were a duplicate inside 60 seconds. The
+# direct saving is small (~2.7% of a typical bead); the real one is contention, since duplicates
+# cost most on exactly the days the Actions queue is already starving.
+#
+# `cancel-in-progress` is deliberately conditional. On a pull request, superseding an older run is
+# what we want: only the newest head matters. On `main` it is not - cancelling an in-flight run
+# there could kill the one gating a release, so pushes to main queue behind each other instead.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   # Every required job below is gated on this job's `code` output, so a prose-only PR reports all
   # ten required checks - most of them skipped - in under a minute instead of waiting on the
