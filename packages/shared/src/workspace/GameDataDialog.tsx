@@ -4,7 +4,8 @@ import {
   GAME_DATA_CATEGORY_LABELS,
   type GameDataDetail,
   type GameDataIndex,
-  type GameDataLink
+  type GameDataLink,
+  skillEntryId
 } from "../gameData";
 import { paletteKeyReduce } from "../commandPalette";
 import { useEscapeToDismiss } from "./dismissLayer";
@@ -218,7 +219,7 @@ export function GameDataDialog({
             {detail === null ? (
               <p className="text-ink-dim">Nothing to show.</p>
             ) : (
-              <Detail detail={detail} onFollow={follow} />
+              <Detail detail={detail} index={index} onFollow={follow} />
             )}
           </div>
         </div>
@@ -273,11 +274,33 @@ function Links({
   );
 }
 
+/**
+ * The skill that builds this, as a dictionary entry rather than a tag.
+ *
+ * `buildSkill` is stored as the ruleset's tag - `BUIL`, `MINI` - so it has to be looked up against
+ * the skills the dictionary already holds. Null when the structure is not buildable, and also when
+ * the tag names a skill the dictionary does not carry: a link that goes nowhere is worse than a
+ * plain number, and the level alone would be meaningless without the skill's name.
+ */
+function buildSkillEntry(
+  index: GameDataIndex,
+  buildSkill: string | null
+): { id: string; name: string } | null {
+  if (buildSkill === null) {
+    return null;
+  }
+  const id = skillEntryId(buildSkill);
+  const entry = index.byId.get(id);
+  return entry === undefined ? null : { id, name: entry.name };
+}
+
 function Detail({
   detail,
+  index,
   onFollow
 }: {
   detail: GameDataDetail;
+  index: GameDataIndex;
   onFollow: (id: string) => void;
 }) {
   const heading = (
@@ -331,6 +354,10 @@ function Detail({
   }
 
   if (detail.kind === "building") {
+    // 36 of the 58 buildings carry this; a lair or a ruin is not buildable and says nothing
+    // (ah-rpnb). "Built with" rather than "Requires", which already means a *skill's* own
+    // prerequisites in this dialog.
+    const buildWith = buildSkillEntry(index, detail.buildSkill);
     return (
       <div>
         {heading}
@@ -340,6 +367,19 @@ function Detail({
           {detail.cost === null ? null : <Field label="Building cost">{detail.cost}</Field>}
           {detail.materials.length === 0 ? null : (
             <Field label="Materials">{detail.materials.join(", ")}</Field>
+          )}
+          {buildWith === null ? null : (
+            <Field label="Built with">
+              <button
+                type="button"
+                data-testid={`game-data-link-${buildWith.id}`}
+                onClick={() => onFollow(buildWith.id)}
+                className="text-left text-accent hover:underline"
+              >
+                {buildWith.name}
+              </button>
+              {detail.buildLevel === null ? null : ` ${detail.buildLevel}`}
+            </Field>
           )}
           {detail.produces === null ? null : <Field label="Increases">{detail.produces}</Field>}
           <Field label="Mages needed">{detail.mages}</Field>
