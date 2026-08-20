@@ -424,6 +424,19 @@ export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(fu
       if (!editor) {
         return;
       }
+      // A finding with no columns has no token to put the cursor on - and `toEditorDiagnostics`
+      // widens a collapsed span to its whole line, so selecting what it gives back would select
+      // the `unit 4117` block header and the next keystroke would replace it. Those findings are
+      // about an order that is *missing* (ah-dwk6), so the useful place to be is the end of the
+      // block, ready to type the order that is not there (ah-dlao). The editor's document is one
+      // unit's block (`OrdersPanel` sets it from `readUnitOrders`), so `doc.length` is the end of
+      // this unit's orders rather than the end of the file.
+      if (problem.columnStart === null || problem.columnEnd === null) {
+        const end = editor.state.doc.length;
+        editor.dispatch({ selection: { anchor: end, head: end }, scrollIntoView: true });
+        editor.focus();
+        return;
+      }
       // The same mapping the lint gutter uses, so the walk lands exactly where the underline
       // is - clamping included, for a diagnostic a keystroke behind the document.
       const [placed] = toEditorDiagnostics(editor.state.doc.toString(), [problem]);

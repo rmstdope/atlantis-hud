@@ -33,7 +33,9 @@ async function selectUnit(page: Page, unitId: string) {
   const row = page.getByTestId(`unit-row-${unitId}`);
   await expect(row).toHaveCount(1);
   await expect(row).toBeVisible();
-  await row.getByRole("button").click();
+  // Named, not "the button in this row": a foreign unit's row also carries the faction name as a
+  // control (ah-bu2c), so a bare role lookup is ambiguous there.
+  await row.getByRole("button", { name: `unit ${unitId}` }).click();
   await box.clear();
 }
 
@@ -64,6 +66,27 @@ test("the palette opens on Mod+K, finds a unit, and Enter goes to it", async ({ 
   await expect(page.getByTestId("panel-region")).toContainText("Inholm");
 });
 
+test("the palette goes to a structure's hex, and tells one from a dictionary page", async ({
+  page
+}) => {
+  await loadReport(page);
+
+  // A structure the player named, in the mountain at (7,53).
+  await page.keyboard.press("ControlOrMeta+k");
+  await page.getByTestId("palette-input").fill("Cartographers HQ");
+  await expect(page.getByTestId("palette-item").first()).toContainText("Cartographers HQ [1]");
+  await page.keyboard.press("Enter");
+  await expect(page.getByTestId("panel-region")).toContainText("Inholm");
+
+  // "mine" names both a thing standing on the map and the dictionary's page about mines, and the
+  // list has to say which is which (ah-wkwk).
+  await page.keyboard.press("ControlOrMeta+k");
+  await page.getByTestId("palette-input").fill("mine");
+  const items = page.getByTestId("palette-item");
+  await expect(items.filter({ hasText: "structure" }).first()).toBeVisible();
+  await expect(items.filter({ hasText: "building" }).first()).toBeVisible();
+});
+
 test("the palette goes to a region and runs an action", async ({ page }) => {
   await loadReport(page);
 
@@ -83,6 +106,30 @@ test("the palette goes to a region and runs an action", async ({ page }) => {
   await expect
     .poll(() => page.evaluate(() => document.documentElement.dataset.theme))
     .not.toBe(before);
+});
+
+test("the palette opens the game data dictionary on the thing it named", async ({ page }) => {
+  await loadReport(page);
+
+  await page.keyboard.press("ControlOrMeta+k");
+  await page.getByTestId("palette-input").fill("mining MINI");
+  await expect(page.getByTestId("palette-item").first()).toContainText("mining");
+  await page.keyboard.press("Enter");
+
+  const dialog = page.getByTestId("game-data-dialog");
+  await expect(dialog).toBeVisible();
+  await expect(page.getByTestId("game-data-detail")).toContainText("Study cost");
+  await expect(page.getByTestId("game-data-tab-skill")).toHaveAttribute("aria-selected", "true");
+
+  // A produced item is a way across to it, and Escape closes the whole dialog from there.
+  await page.getByTestId("game-data-link-equipment:MITH").click();
+  await expect(page.getByTestId("game-data-tab-equipment")).toHaveAttribute(
+    "aria-selected",
+    "true"
+  );
+  await expect(page.getByTestId("game-data-detail")).toContainText("mining");
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
 });
 
 test("Escape closes only the palette, not the dialog under it", async ({ page }) => {
@@ -292,4 +339,129 @@ test("right-click centres the view on a hex, without selecting it", async ({ pag
   // `coordinateAt`. It is deliberately not asserted here: comparing transform strings in the
   // browser raced the strip measurement and cost six beads a re-run each (ah-d00t). Do not
   // restore it. What this spec keeps is only what needs a browser.
+});
+
+/**
+ * The turn's problems walked one at a time, by mouse as well as by key (ah-dlao).
+ *
+ * The two units with no orders at all - 14451 and 13432 - are `unit-does-nothing` findings
+ * (ah-dwk6) standing first in document order, so with the fixture's other standing warnings off
+ * they are the whole list and the walk's stops are known. They are also the shape that has no
+ * offending word to select, which is what the landing below is about.
+ */
+async function onlyTheUnitsWithNoOrders(page: Page) {
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByTestId("settings-tab-warnings").click();
+  await page.getByTestId("settings-warning-study-at-maximum").uncheck();
+  await page.getByTestId("settings-warning-magic-study-outside-building").uncheck();
+  await page.getByTestId("settings-warning-unit-does-nothing").check();
+  await page.keyboard.press("Escape");
+}
+
+/** The first unit with no orders, and the walk's first stop. */
+const IDLE_UNIT = "14451";
+/** The second, and its second stop. */
+const OTHER_IDLE_UNIT = "13432";
+
+test("a problem with no offending word lands the cursor at the end of the orders", async ({
+  page
+}) => {
+  await loadReport(page);
+  await onlyTheUnitsWithNoOrders(page);
+
+  await selectHex(page, "1:7,53");
+  await selectUnit(page, OWN_UNIT);
+  // A unit told only to avoid combat has been given no order that spends its month, which is a
+  // `unit-does-nothing` finding (ah-dwk6) - the shape that names a line but no columns, because
+  // there is no wrong word in the orders to point at. The order that is *missing* is what the
+  // player has to type, so the cursor belongs after what is already there.
+  await fillOrders(page, "AVOID 1");
+  // Validation is debounced, so the walk has nothing to step until the count has landed.
+  await expect(page.getByTestId("problems-chip")).toContainText(/[1-9]\d* problems?/);
+
+  await selectHex(page, "1:26,52");
+  await selectUnit(page, OTHER_OWN_UNIT);
+  await ordersInput(page).click();
+
+  // The walk crosses the whole faction and the fixture has other idle units in it, so step until
+  // it reaches this one rather than assuming it is first.
+  for (let step = 0; step < 10; step += 1) {
+    await page.keyboard.press("F8");
+    if ((await page.getByTestId("panel-unit").textContent())?.includes(OWN_UNIT)) {
+      break;
+    }
+  }
+  await expect(page.getByTestId("panel-unit")).toContainText(OWN_UNIT);
+
+  // Nothing stands selected - there is no wrong word to type over - and what is typed joins the
+  // orders rather than replacing them.
+  await expect
+    .poll(() => page.evaluate(() => window.getSelection()?.toString() ?? ""))
+    .toBe("");
+  await page.keyboard.type("\nWORK");
+  await expectOrders(page, /^AVOID 1\nWORK\n?$/);
+});
+
+test("the walk buttons step to the next problem and back, and wrap at the end", async ({ page }) => {
+  await loadReport(page);
+  await onlyTheUnitsWithNoOrders(page);
+
+  await selectHex(page, "1:7,53");
+  await selectUnit(page, OWN_UNIT);
+  // Writing this unit's orders is what puts an orders document there to validate at all.
+  await fillOrders(page, "@work\nTAX");
+  await expect(page.getByTestId("orders-status")).toContainText("0 errors");
+  // Validation is debounced, so the walk has nothing to step until the count has landed - waiting
+  // on the chip is what stops a click racing an empty list.
+  await expect(page.getByTestId("problems-chip")).toContainText(/[1-9]\d* problems?/);
+
+  const next = page.getByTestId("walk-problem-next");
+  const prev = page.getByTestId("walk-problem-prev");
+  const unitPane = page.getByTestId("panel-unit");
+
+  // Which unit each stop belongs to is the fixture's business and changes as checks are added, so
+  // the stops are read rather than named: what this pins is that next moves on, and that prev
+  // comes back to the stop next just left.
+  await next.click();
+  await expect(unitPane).toContainText(/\(\d+\)/);
+  const first = (await unitPane.textContent()) ?? "";
+
+  await next.click();
+  await expect(unitPane).not.toHaveText(first);
+  const second = (await unitPane.textContent()) ?? "";
+
+  await prev.click();
+  await expect(unitPane).toHaveText(first);
+  expect(second).not.toBe(first);
+
+  // Past the last problem the walk comes round again rather than stopping - the buttons never die,
+  // so stepping on far enough returns to where it started.
+  let cameBack = false;
+  for (let step = 0; step < 12 && !cameBack; step += 1) {
+    await next.click();
+    await expect(unitPane).not.toHaveText("");
+    cameBack = step > 0 && ((await unitPane.textContent()) ?? "") === first;
+  }
+  expect(cameBack).toBe(true);
+});
+
+test("the walk buttons stay enabled with no problems at all", async ({ page }) => {
+  await loadReport(page);
+  await onlyTheUnitsWithNoOrders(page);
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByTestId("settings-tab-warnings").click();
+  await page.getByTestId("settings-warning-unit-does-nothing").uncheck();
+  await page.keyboard.press("Escape");
+
+  await selectHex(page, "1:7,53");
+  await selectUnit(page, OWN_UNIT);
+  await fillOrders(page, "@work\nTAX");
+  await expect(page.getByTestId("orders-status")).toContainText("0 errors");
+  const next = page.getByTestId("walk-problem-next");
+  await expect(next).toBeEnabled();
+  await next.click();
+
+  // Nothing to walk to, so nothing moves - and the button is still there to be pressed.
+  await expect(page.getByTestId("panel-unit")).toContainText(OWN_UNIT);
+  await expect(next).toBeEnabled();
 });

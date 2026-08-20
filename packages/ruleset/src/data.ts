@@ -679,6 +679,15 @@ export type BuildingEntry = {
    * statement - and a Tower, which says nothing, really does seat none.
    */
   mages: number;
+  /**
+   * The tag of the skill that builds it - `BUIL`, `MINI` - taken from the opening of that skill's
+   * own entry. Absent for a structure no skill's entry names, which is 22 of the 58: the lairs,
+   * and everything the page says cannot be built by players. Absent means the catalogue does not
+   * say, never that no skill is needed.
+   */
+  buildSkill?: string;
+  /** The lowest level of `buildSkill` that can build it. Absent exactly when `buildSkill` is. */
+  buildLevel?: number;
 };
 
 export type BuildingReference = Record<string, BuildingEntry>;
@@ -747,8 +756,12 @@ export function parseBuildingReference(html: string): BuildingReference {
     };
   }
 
-  // Pass two: the skills say what each costs.
+  // Pass two: the skills say what each costs, and - from the entry's own opening rather than from
+  // the BUILD sentence - which skill builds it and at what level. `mining [MINI] 3: ... may BUILD
+  // a Mine` states both: the sentence says what is built, the header says who by.
   for (const paragraph of paragraphs) {
+    const skill = paragraph.match(SKILL_OPENING);
+
     for (const statement of paragraph.matchAll(
       /A unit with this skill may BUILD ([^.]+)\./gi
     )) {
@@ -776,6 +789,14 @@ export function parseBuildingReference(html: string): BuildingReference {
           .split(" or ")
           .map((material) => material.replace(/\s*\[[A-Z0-9]{2,6}\]\s*/, "").trim())
           .filter((material) => material.length > 0);
+
+        // Written together or not at all: a requirement with a level of `undefined` compares as
+        // `NaN` against a unit's level, which is false for everything - a warning that silently
+        // never fires.
+        if (skill) {
+          existing.buildSkill = skill[2];
+          existing.buildLevel = Number.parseInt(skill[3], 10);
+        }
       }
     }
   }

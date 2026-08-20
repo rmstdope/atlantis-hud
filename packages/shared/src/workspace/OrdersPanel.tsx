@@ -52,6 +52,13 @@ type OrdersPanelProps = {
   caretCompletions: CaretLookup;
   /** The shell's line to the editor, for the shortcut layer's jumps and insertions. */
   editorRef?: Ref<OrdersEditorHandle>;
+  /**
+   * Step to the next or previous problem in the whole turn - the same walk F8 and Shift-F8 make.
+   *
+   * The shell's own `walkProblems`, passed down rather than reimplemented: one engine with two ways
+   * in, so the mouse and the keyboard cannot keep two positions that drift apart.
+   */
+  onWalkProblems?: (direction: 1 | -1) => void;
 };
 
 function lockFor(unit: ReportUnit | null, hex: HexNode | null, block: string | null): Lock | null {
@@ -89,7 +96,8 @@ export function OrdersPanel({
   orderVocabulary,
   snippets,
   caretCompletions,
-  editorRef
+  editorRef,
+  onWalkProblems
 }: OrdersPanelProps) {
   // Read here rather than in the editor: the panel re-renders on a settings change, which is what
   // keeps the editor's `latest` ref current without rebuilding the view.
@@ -128,6 +136,7 @@ export function OrdersPanel({
       title="Orders"
       hint={unit ? `— unit ${unit.unitId}` : undefined}
       className="min-h-0"
+      actions={<WalkProblems onWalk={onWalkProblems} />}
     >
       {lock ? (
         <LockNotice lock={lock} ownFaction={ownFactionName} />
@@ -172,6 +181,44 @@ export function OrdersPanel({
         </div>
       )}
     </CollapsiblePanel>
+  );
+}
+
+/**
+ * The mouse route into the turn's problems, beside the pane's title (ah-dlao).
+ *
+ * Never disabled and never hidden: the walk wraps, so there is no end to be at, and with no problems
+ * at all the step is already a no-op - a disabled state would be a second source of truth about
+ * whether there is anything to walk. The tooltips name the keys, so the mouse route teaches the
+ * keyboard one.
+ */
+function WalkProblems({ onWalk }: { onWalk?: (direction: 1 | -1) => void }) {
+  const style =
+    "rounded px-1 text-pane-sm text-ink-dim hover:text-ink focus-visible:outline focus-visible:outline-1 focus-visible:outline-brass";
+
+  return (
+    <span className="flex flex-none items-center gap-0.5">
+      <button
+        type="button"
+        data-testid="walk-problem-prev"
+        aria-label="Previous problem"
+        title="Previous problem (Shift-F8)"
+        onClick={() => onWalk?.(-1)}
+        className={style}
+      >
+        ‹
+      </button>
+      <button
+        type="button"
+        data-testid="walk-problem-next"
+        aria-label="Next problem"
+        title="Next problem (F8)"
+        onClick={() => onWalk?.(1)}
+        className={style}
+      >
+        ›
+      </button>
+    </span>
   );
 }
 

@@ -121,6 +121,7 @@ describe("the Warnings settings tab", () => {
       "Building what is built",
       "Building outside a structure",
       "Helping a unit that is not building",
+      "Building without the skill",
       "Overloaded fleets",
       "Undercrewed fleets",
       "More quartermasters than allowed",
@@ -183,5 +184,33 @@ describe("the units table's column widths (ah-1owr.2)", () => {
     // Two buttons, not one: order and widths are stored separately, so undoing one must not cost
     // the other (ah-1owr.3).
     expect(tag(html, "settings-reset-column-widths")).toContain("<button");
+  });
+});
+
+describe("the map layer settings", () => {
+  afterEach(() => {
+    restoreStoresForTest();
+    resetSettingsStore();
+  });
+
+  it("offers Staleness and Movement in the Global tab, with the hints the chips' names imply", () => {
+    // They used to sit in the strip over the map (ah-l9mp). They are set once and then forgotten,
+    // so they belong beside the other display preferences and give the band back to the map.
+    const html = renderToStaticMarkup(<GlobalSettings />);
+
+    expect(html).toContain("Staleness");
+    expect(html).toContain("Shade hexes by how long ago you last saw them.");
+    expect(html).toContain("Movement");
+    expect(html).toContain("Draw the routes units are ordered to travel.");
+    expect(tag(html, "settings-layer-staleness")).toContain('type="checkbox"');
+    expect(tag(html, "settings-layer-movement")).toContain('type="checkbox"');
+  });
+
+  it("shows each layer's current state", () => {
+    const html = renderToStaticMarkup(<GlobalSettings />);
+
+    // Both layers start on, as the workspace store's initial state has them.
+    expect(tag(html, "settings-layer-staleness")).toContain("checked");
+    expect(tag(html, "settings-layer-movement")).toContain("checked");
   });
 });

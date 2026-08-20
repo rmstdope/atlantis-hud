@@ -378,6 +378,14 @@ pub struct BuildingEntry {
     /// reads.
     #[serde(default)]
     pub materials: Option<Vec<String>>,
+    /// The tag of the skill that builds it - `BUIL`, `MINI`. `None` for a structure no skill's
+    /// entry names, and for a ruleset cached before ah-bwly.1: the catalogue not saying, never
+    /// "no skill needed".
+    #[serde(default)]
+    pub build_skill: Option<String>,
+    /// The lowest level of `build_skill` that can build it. `None` exactly when `build_skill` is.
+    #[serde(default)]
+    pub build_level: Option<i64>,
     /// How many mages the building provides study facilities for. **Zero for a Tower**, which is
     /// the ruleset's own answer and not an oversight: a mage studying in one gets half a month.
     pub mages: i64,
@@ -676,6 +684,25 @@ impl Ruleset {
             .map(|building| building.mages)
     }
 
+    /// The skill tag and level a structure of this kind must be built with, or `None` when the
+    /// catalogue does not say.
+    ///
+    /// `None` covers three different silences, and every one of them means the same thing to a
+    /// caller: a ruleset scraped before ah-bwly.1, a kind the page never names (a ship), and one
+    /// of the 22 buildings of 58 the page names without a requirement. None of them is a claim
+    /// that anybody may build it, so no caller may read `None` as "no skill needed".
+    ///
+    /// Keyed upper-cased, as [`Ruleset::mage_capacity`] already is: a report writes `Mine`, the
+    /// catalogue holds `MINE`.
+    #[must_use]
+    pub fn build_requirement(&self, kind: &str) -> Option<(&str, i64)> {
+        let building = self.buildings.get(&kind.to_ascii_uppercase())?;
+        // Both halves or neither. ah-bwly.1 writes them together, so a half-filled entry can only
+        // come from something having gone wrong - and reading that as no requirement stays quiet
+        // rather than warning about every unit in the game.
+        Some((building.build_skill.as_deref()?, building.build_level?))
+    }
+
     /// Whether this ruleset carries the buildings table at all.
     ///
     /// [`Ruleset::mage_capacity`] answers `None` both for a kind the table does not name and for a
@@ -750,6 +777,69 @@ mod tests {
     // Failing to recognise a name is a **warning** wherever it is asked, never an error: the
     // catalogue is scraped from the game being played and may be stale, absent, or simply missing
     // an entry, and none of that is grounds for telling a player their order is wrong.
+
+    #[test]
+    fn a_buildings_build_requirement_survives_a_round_trip() {
+        let ruleset = ruleset();
+        let mine = ruleset
+            .buildings
+            .get("MINE")
+            .expect("the committed ruleset names a Mine");
+
+        assert_eq!(mine.build_skill.as_deref(), Some("MINI"));
+        assert_eq!(mine.build_level, Some(3));
+
+        // A structure no skill's entry names states neither half - an absence, not a claim that
+        // anyone can build it.
+        let lair = ruleset
+            .buildings
+            .get("LAIR")
+            .expect("the committed ruleset names a Lair");
+        assert_eq!(lair.build_skill, None);
+        assert_eq!(lair.build_level, None);
+    }
+
+    #[test]
+    fn the_build_requirement_is_read_out_by_kind_however_it_is_written() {
+        let ruleset = ruleset();
+
+        // The report writes a structure's kind as the page prints it; the map is keyed
+        // upper-cased, as `mage_capacity` already assumes.
+        assert_eq!(ruleset.build_requirement("Mine"), Some(("MINI", 3)));
+        assert_eq!(ruleset.build_requirement("MINE"), Some(("MINI", 3)));
+        assert_eq!(ruleset.build_requirement("Tower"), Some(("BUIL", 1)));
+
+        // A structure the page names but gives no requirement for is not a structure anyone can
+        // be told they may build: the catalogue simply does not say.
+        assert_eq!(ruleset.build_requirement("Lair"), None);
+        // Nor is a kind the catalogue has never heard of - a ship.
+        assert_eq!(ruleset.build_requirement("Longship"), None);
+    }
+
+    /// Half an entry is not a state ah-bwly.1 can produce, but reading it as "no requirement" is
+    /// the safe way round if one ever appears.
+    #[test]
+    fn half_a_build_requirement_is_no_requirement() {
+        let mut ruleset = ruleset();
+        let mine = ruleset
+            .buildings
+            .get_mut("MINE")
+            .expect("the committed ruleset names a Mine");
+        mine.build_level = None;
+
+        assert_eq!(ruleset.build_requirement("Mine"), None);
+    }
+
+    #[test]
+    fn a_ruleset_cached_before_build_requirements_still_loads() {
+        // The case both `Option`s exist for: JSON written before ah-bwly.1 carries neither field.
+        let entry: BuildingEntry =
+            serde_json::from_str(r#"{"description":"This is a building.","mages":0,"cost":10}"#)
+                .expect("a building entry without a build requirement should still load");
+
+        assert_eq!(entry.build_skill, None);
+        assert_eq!(entry.build_level, None);
+    }
 
     #[test]
     fn a_tag_is_recognised_whatever_its_case() {

@@ -144,8 +144,11 @@ import { getMapTheme } from "./mapThemes";
 import { OrdersPanel } from "./OrdersPanel";
 import type { OrdersEditorHandle } from "./OrdersEditor";
 import { CommandPalette } from "./CommandPalette";
+import { GameDataDialog } from "./GameDataDialog";
+import { parseGameData } from "../gameData";
 import { ShortcutHelp } from "./ShortcutHelp";
 import { buildPaletteEntries } from "../commandPalette";
+import { structurePaletteLabel } from "../structureLabel";
 import { diagnosticTargets, stepDiagnostic } from "../diagnosticNav";
 import { hasOpenDismissLayers } from "../dismissStack";
 import { firesInContext, isMacPlatform, matchShortcut, SHORTCUTS } from "../shortcuts";
@@ -180,6 +183,9 @@ import { arrowFor } from "./tradeArrow";
 import { TurnMessagesPanel, type TurnMessagesTab } from "./TurnMessagesPanel";
 import { UnitPanel } from "./UnitPanel";
 import { UnitTableDock } from "./UnitTableDock";
+import { dossierFor } from "../factionDossier";
+import { FactionDossierPanel, FloatingFactionDossier } from "./FactionDossierPanel";
+import type { Point } from "../unitTooltip";
 import { describeError, runReported } from "./shellAction";
 import { failedStatus, noticeStatus, routineStatus, warningStatus, type StatusLine } from "./shellStatus";
 
@@ -330,6 +336,16 @@ export function AppShell({
   // The same ruleset as the storage layer wants it: its text once it arrived, `null` while it has
   // not. What gets stored is classified with exactly what the screen was classified with.
   const rulesetText = ruleset.status === "ready" ? ruleset.text : null;
+
+  // The game data dictionary, parsed once per ruleset load. `rulesetText` is null both while the
+  // ruleset is loading and when it could not be fetched, which is exactly the gate wanted here:
+  // no game data is offered until there is game data to offer.
+  const gameData = useMemo(
+    () => (rulesetText === null ? null : parseGameData(rulesetText)),
+    [rulesetText]
+  );
+  /** Null while the dictionary is closed; `entryId` is where it should land, or null for the top. */
+  const [gameDataOpen, setGameDataOpen] = useState<{ entryId: string | null } | null>(null);
   const [route, setRoute] = useState<RoutePlanResponse | null>(null);
   const [planning, setPlanning] = useState(false);
   // The selected unit's written MOVE order, traced so the map can draw it. Follows the editor
@@ -832,6 +848,16 @@ export function AppShell({
         label: candidate.label,
         run: () => selectHex(candidate.regionId)
       })),
+      // Every structure standing in this turn's report, with the places rather than with the
+      // dictionary's building pages: a structure is somewhere you go, and choosing one goes to
+      // its hex exactly as choosing the hex itself does.
+      structures: (parsed?.regions ?? []).flatMap((region) =>
+        region.structures.map((structure) => ({
+          structureId: `${region.regionId}-${structure.structureId}`,
+          label: structurePaletteLabel(structure, hexLabel(region.regionId)),
+          run: () => selectHex(region.regionId)
+        }))
+      ),
       actions: [
         { id: "settings", label: "Open settings", run: () => setSettingsOpen(true) },
         // Only where the picker can actually open: on the gate screen it renders nowhere, and
@@ -886,13 +912,17 @@ export function AppShell({
           : [])
       ],
       orderCommands,
-      insertOrder: (command) => ordersEditor.current?.insertOrder(command)
+      insertOrder: (command) => ordersEditor.current?.insertOrder(command),
+      gameData: gameData?.entries ?? [],
+      openGameData: (entryId) => setGameDataOpen({ entryId })
     });
   }, [
+    gameData,
     orderedOwnUnitIds,
     parsed,
     model,
     goToUnit,
+    hexLabel,
     selectHex,
     setTheme,
     theme,
@@ -1986,6 +2016,18 @@ export function AppShell({
    * never leave an arrow behind or the map framed somewhere the reader did not choose.
    */
   const [hoveredRoute, setHoveredRoute] = useState<TradeRoute | null>(null);
+  /**
+   * The foreign faction whose dossier is open, and where it was opened from (ah-bu2c).
+   *
+   * `from` decides how it is drawn, because the two entry points cannot be drawn the same way:
+   * from the units table it floats beside the name clicked, and from the attitudes list it takes
+   * the place of the faction popover's contents - that popover's body scrolls, so a panel hung
+   * inside it would be clipped. See the PR body; the plan sanctioned this fallback.
+   */
+  const [dossier, setDossier] = useState<
+    { factionId: string; from: "attitudes" } | { factionId: string; from: "units"; at: Point } | null
+  >(null);
+  const [hoveredFactionHex, setHoveredFactionHex] = useState<string | null>(null);
   // Memoised because the map's framing effect depends on this value's identity: a fresh object on
   // every render would re-frame the route on every render, and each framing commits a viewport,
   // which renders again.
@@ -2002,6 +2044,66 @@ export function AppShell({
       setHoveredRoute(null);
     }
   }, [openPopover]);
+
+  const openDossier = useMemo(
+    () =>
+      dossier === null || parsed === null
+        ? null
+        : dossierFor(parsed, parsed.header.attitudes ?? null, dossier.factionId),
+    [dossier, parsed]
+  );
+
+  // Memoised and gated on the dossier being open, exactly as `tradeArrow` is: a closed panel must
+  // never leave a ring behind.
+  const factionRing = useMemo(
+    () => (openDossier === null ? null : hoveredFactionHex),
+    [openDossier, hoveredFactionHex]
+  );
+  // A dismissed dossier forgets the row it was on. The gate above only hides the ring: the panel
+  // unmounts without the row ever firing `onPointerLeave` or `onBlur`, so reopening would ring
+  // the last hex hovered with the pointer nowhere near it (Copilot, #398, on TradePanel).
+  // Gated and cleared on `openDossier` rather than `dossier`, because the panel can also vanish
+  // with the report under it - closing the game leaves `dossier` set and `parsed` null, and the
+  // ring would outlive the panel with nothing on screen able to clear it.
+  useEffect(() => {
+    if (openDossier === null) {
+      setHoveredFactionHex(null);
+    }
+  }, [openDossier]);
+  // The attitudes route lives inside the faction popover, so closing that popover closes the
+  // dossier with it rather than leaving it orphaned behind a chip that now reads "closed".
+  useEffect(() => {
+    if (openPopover !== "faction") {
+      setDossier((open) => (open?.from === "attitudes" ? null : open));
+    }
+  }, [openPopover]);
+
+  /** What both entry points hand the panel, so the two routes cannot drift apart. */
+  const dossierProps = useMemo(
+    () => ({
+      labelFor: hexLabel,
+      onHoverHex: setHoveredFactionHex,
+      // Deliberately not `selectHex`: while the planner is armed that means "move here", and a
+      // hex row is somewhere to look, not an order. It also follows the hex to its own level, the
+      // way `goToUnit` does - a faction's units can be in the underworld, and selecting an
+      // off-level hex would otherwise leave the map where it was with nothing marked.
+      onSelectHex: (regionId: string) => {
+        const target = Number(regionId.split(":")[0]);
+        if (Number.isFinite(target) && target !== level) {
+          setLevel(target);
+        }
+        const found = model.hexes.find((candidate) => candidate.regionId === regionId) ?? null;
+        selectRegion(regionId, unitsForHex(found)[0]?.unitId ?? null);
+        setDossier(null);
+      },
+      onSelectUnit: (unitId: string) => {
+        goToUnit(unitId, null);
+        setDossier(null);
+      },
+      onDismiss: () => setDossier(null)
+    }),
+    [hexLabel, goToUnit, level, setLevel, model, selectRegion]
+  );
 
   useEffect(() => {
     if (ruleset.status !== "ready" || !rawReport) {
@@ -2656,6 +2758,13 @@ export function AppShell({
         <CommandPalette entries={paletteEntries} onDismiss={() => setPaletteOpen(false)} />
       ) : null}
       {helpOpen ? <ShortcutHelp isMac={isMacPlatform()} onDismiss={() => setHelpOpen(false)} /> : null}
+      {gameDataOpen !== null && gameData !== null ? (
+        <GameDataDialog
+          index={gameData}
+          initialEntryId={gameDataOpen.entryId}
+          onDismiss={() => setGameDataOpen(null)}
+        />
+      ) : null}
     </>
   );
 
@@ -2682,6 +2791,7 @@ export function AppShell({
     <div className="flex h-full flex-col bg-ground text-ink">
       <AppHeader
         gameName={game.manifest.metadata.gameName}
+        levels={model.levels}
         openPopover={openPopover}
         onOpenPopover={(id) => {
           if (id === "games") {
@@ -2731,6 +2841,13 @@ export function AppShell({
           />
         }
         factionPanel={
+          dossier?.from === "attitudes" && openDossier ? (
+            <FactionDossierPanel
+              dossier={openDossier}
+              {...dossierProps}
+              onBack={() => setDossier(null)}
+            />
+          ) : (
           <FactionPanel
             factionName={parsed?.header.factionName ?? null}
             factionId={parsed?.header.factionId ?? null}
@@ -2739,8 +2856,19 @@ export function AppShell({
             status={parsed?.header.factionStatus ?? null}
             attitudes={parsed?.header.attitudes ?? null}
             mergedFactionIds={new Set(mergedReports.map((record) => record.mergedFactionId))}
+            renderFactionName={(factionId, label) => (
+              <button
+                type="button"
+                data-testid={`open-faction-dossier-${factionId}`}
+                onClick={() => setDossier({ factionId, from: "attitudes" })}
+                className="rounded underline decoration-dotted underline-offset-2 hover:text-brass-bright"
+              >
+                {label}
+              </button>
+            )}
             onDismiss={() => closePopover("faction")}
           />
+          )
         }
         status={status}
         messages={messages}
@@ -2908,6 +3036,7 @@ export function AppShell({
           })}
           routeRisk={layers.movement && route?.plan ? (route.risk?.hexes ?? []) : []}
           arrow={tradeArrow}
+          highlightedRegionId={factionRing}
           // Gated on a report for the same reason the header button and the palette entry are:
           // there is nothing to export a map of until one is loaded, and a dialog that opened
           // anyway could only refuse.
@@ -2940,7 +3069,7 @@ export function AppShell({
         */}
         <div className="pointer-events-none absolute inset-x-0 top-2.5 z-20 flex justify-center has-[[aria-expanded='true']]:z-30">
           <div data-map-overlay="top">
-            <LayerChips levels={model.levels} />
+            <LayerChips />
           </div>
         </div>
 
@@ -2977,6 +3106,10 @@ export function AppShell({
                 turn={parsed?.header.turnNumber ?? null}
                 known={knownUnitIds}
                 onSelectUnit={(unitId) => goToUnit(unitId, null)}
+                gameData={gameData}
+                onOpenGameData={
+                  gameData === null ? undefined : (entryId) => setGameDataOpen({ entryId })
+                }
               />
               <RailSplitter
                 side="left"
@@ -2995,7 +3128,15 @@ export function AppShell({
               data-map-overlay="right"
             >
               <div className={unitSlotClass(collapsed)}>
-                <UnitPanel unit={unit} hex={hex} preview={unitPreview} />
+                <UnitPanel
+                  unit={unit}
+                  hex={hex}
+                  preview={unitPreview}
+                  gameData={gameData}
+                  onOpenGameData={
+                    gameData === null ? undefined : (entryId) => setGameDataOpen({ entryId })
+                  }
+                />
               </div>
               {/* Behind its feature flag, off by default: the pane is still finding its shape. */}
               {movementPlanner ? (
@@ -3046,6 +3187,7 @@ export function AppShell({
                   snippets={snippets}
                   caretCompletions={caretCompletions}
                   editorRef={ordersEditor}
+                  onWalkProblems={walkProblems}
                 />
               </div>
               <RailSplitter
@@ -3078,10 +3220,39 @@ export function AppShell({
             style={unitsSlotStyle(collapsed, unitsHeightRem) ?? undefined}
             data-map-overlay="bottom"
           >
-            <UnitTableDock hex={hex} preview={hexPreview} getLongOrder={getLongOrder} />
+            <UnitTableDock
+              hex={hex}
+              preview={hexPreview}
+              getLongOrder={getLongOrder}
+              renderFactionName={(factionId, label) => (
+                <button
+                  type="button"
+                  data-testid={`open-faction-dossier-${factionId}`}
+                  // Not a tab stop, exactly as the in-row unit-id button beside it is not: the
+                  // units table is one tab stop per row with a roving tabIndex, and a control
+                  // inside a cell would put a second stop in every row of a three-hundred-row
+                  // table. The keyboard route to a dossier is the attitudes list, which is
+                  // rendered inline and fully tabbable (Copilot, #478).
+                  tabIndex={-1}
+                  onClick={(event) => {
+                    // The row is itself a click target that selects the unit. Opening a dossier is
+                    // not selecting a unit, so this click stops here.
+                    event.stopPropagation();
+                    const rect = event.currentTarget.getBoundingClientRect();
+                    setDossier({ factionId, from: "units", at: { x: rect.left, y: rect.bottom } });
+                  }}
+                  className="rounded underline decoration-dotted underline-offset-2 hover:text-brass-bright"
+                >
+                  {label}
+                </button>
+              )}
+            />
           </div>
         </div>
       </div>
+      {dossier?.from === "units" && openDossier ? (
+        <FloatingFactionDossier at={dossier.at} dossier={openDossier} {...dossierProps} />
+      ) : null}
       {sendPhase === null ? null : (
         <SendOrdersDialog
           // No report on screen means no faction name to show, but the orders still name an id -

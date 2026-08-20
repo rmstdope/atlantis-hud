@@ -202,6 +202,8 @@ export function GlobalSettings() {
   // A workspace preference rather than a setting, but this is where a player looks for "put it
   // back how it was" - and a table whose columns have been dragged into a bad shape needs a way
   // out that is not on the table itself (ah-1owr.2).
+  const layers = useWorkspaceStore((state) => state.layers);
+  const toggleLayer = useWorkspaceStore((state) => state.toggleLayer);
   const resetUnitColumnShares = useWorkspaceStore((state) => state.resetUnitColumnShares);
   const resetUnitColumnOrder = useWorkspaceStore((state) => state.resetUnitColumnOrder);
 
@@ -245,6 +247,28 @@ export function GlobalSettings() {
         testId="settings-biome-textures"
         checked={biomeTextures}
         onChange={setBiomeTextures}
+      />
+
+      {/*
+        The two map layers that used to be chips over the map (ah-l9mp). Both are set once and then
+        forgotten, so they sit here with the other "how the map draws" preferences; the badge menu
+        stayed on the map because it is flicked while reading a hex. The state is the workspace
+        store's, unchanged - these are the same switches driven from a different place.
+      */}
+      <SettingToggle
+        title="Staleness"
+        description="Shade hexes by how long ago you last saw them."
+        testId="settings-layer-staleness"
+        checked={layers.staleness}
+        onChange={() => toggleLayer("staleness")}
+      />
+
+      <SettingToggle
+        title="Movement"
+        description="Draw the routes units are ordered to travel."
+        testId="settings-layer-movement"
+        checked={layers.movement}
+        onChange={() => toggleLayer("movement")}
       />
 
       {/*
@@ -504,6 +528,12 @@ const WARNING_GROUPS: readonly {
         code: "build-help-not-building",
         title: "Helping a unit that is not building",
         description: "A BUILD HELP naming a unit with no BUILD order of its own."
+      },
+      {
+        code: "build-without-skill",
+        title: "Building without the skill",
+        description:
+          "A BUILD order for a structure the unit has not the skill or level to build."
       }
     ]
   },

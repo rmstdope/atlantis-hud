@@ -129,6 +129,14 @@ type MapCanvasProps = {
   level: number;
   selectedRegionId: string | null;
   /**
+   * The hex the reader is pointing at from somewhere else - a row of the faction dossier - ringed
+   * in brass so it is never mistaken for the white selection ring (ah-bu2c).
+   *
+   * Deliberately does NOT frame or pan the map, unlike `arrow`: running down a list while the map
+   * jumps under you is worse than no highlight at all.
+   */
+  highlightedRegionId?: string | null;
+  /**
    * Counts user-initiated selection changes; the map replays its lock-on pulse when this changes,
    * and stays silent when it doesn't - see `selectionEpoch` on `workspaceStore.ts`.
    */
@@ -189,6 +197,7 @@ export function MapCanvas({
   theme,
   level,
   selectedRegionId,
+  highlightedRegionId = null,
   selectionEpoch,
   onSelectRegion,
   showStaleness,
@@ -763,6 +772,11 @@ export function MapCanvas({
     return coordinate?.z === level ? coordinate : null;
   }, [selectedRegionId, level]);
 
+  const highlightedAt = useMemo(() => {
+    const coordinate = highlightedRegionId === null ? null : parseRegionId(highlightedRegionId);
+    return coordinate && coordinate.z === level ? coordinate : null;
+  }, [highlightedRegionId, level]);
+
   // Where the cursor rests before anyone has moved it.
   const resting = cursor ?? selectedAt ?? onLevel[0]?.coordinate ?? null;
   const restingKey = resting ? cursorKeyOf(resting) : null;
@@ -1087,6 +1101,37 @@ export function MapCanvas({
                   vectorEffect="non-scaling-stroke"
                 />
               </g>
+            </g>
+          )}
+
+          {/*
+            Where something elsewhere is pointing - a row of the faction dossier. The selection
+            ring's geometry exactly, in brass rather than white, so the two marks are the same
+            shape and differ in the one way a reader can name (ah-bu2c). Drawn after the selection
+            so both are visible when they land on the same hex.
+          */}
+          {highlightedAt && (
+            <g
+              transform={translateAt(highlightedAt)}
+              pointerEvents="none"
+              data-testid="map-highlight-ring"
+            >
+              <polygon
+                points={HEX_POINTS}
+                fill="none"
+                className="stroke-selection-casing"
+                strokeWidth={7}
+                strokeLinejoin="round"
+                vectorEffect="non-scaling-stroke"
+              />
+              <polygon
+                points={HEX_POINTS}
+                fill="none"
+                className="stroke-brass"
+                strokeWidth={3}
+                strokeLinejoin="round"
+                vectorEffect="non-scaling-stroke"
+              />
             </g>
           )}
 

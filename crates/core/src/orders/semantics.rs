@@ -20,6 +20,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use super::forms::{Amount, Party, Selector};
 use super::intents::{read_intents, Intent, PlacedIntent, UnitIntents};
+use super::standing::{self, standing_after, Boarding};
 use crate::movement::mode::{
     best_allowance, cargo_capacity, fleet_label, parse_fleet_kind, sailing_requirement,
 };
@@ -97,6 +98,7 @@ pub mod codes {
     pub const BUILD_OUTSIDE_STRUCTURE: Code = Code("build-outside-structure");
     pub const BUILD_HELP_NOT_BUILDING: Code = Code("build-help-not-building");
     pub const UNIT_DOES_NOTHING: Code = Code("unit-does-nothing");
+    pub const BUILD_WITHOUT_SKILL: Code = Code("build-without-skill");
     /// Every code. This array's own order is not the settings tab's grouping (that groups by
     /// concern - Teaching / Resources / Markets / Guarding / Orders / Sailing - not by this list):
     /// a new entry joins whichever group fits its concern, which need not be the last one
@@ -105,7 +107,7 @@ pub mod codes {
     /// group). What every entry so far has kept is new-*here*-last: the generated TypeScript
     /// copies this array's order, so a new code is always appended to it regardless of where it
     /// lands in the UI.
-    pub const ALL: [Code; 23] = [
+    pub const ALL: [Code; 24] = [
         NOT_ENOUGH_SILVER,
         NOT_ENOUGH_ITEMS,
         GUARD_DROPPED,
@@ -129,6 +131,7 @@ pub mod codes {
         BUILD_OUTSIDE_STRUCTURE,
         BUILD_HELP_NOT_BUILDING,
         UNIT_DOES_NOTHING,
+        BUILD_WITHOUT_SKILL,
     ];
 }
 
@@ -232,6 +235,7 @@ pub fn check_turn(
         check_building(&hex, &options, &mut findings);
         check_building_outside(&hex, &options, &mut findings);
         check_build_help(&hex, &options, &mut findings);
+        check_build_skill(&hex, ruleset, &options, &mut findings);
         check_studying(&hex, ruleset, &options, &mut findings);
         check_magic_study(&hex, ruleset, &options, &mut findings);
         check_forms(&hex, &options, &mut findings);
@@ -1654,6 +1658,155 @@ fn check_build_help(hex: &Hex<'_>, options: &CheckOptions, findings: &mut Vec<Fi
     }
 }
 
+// --- building without the skill ---------------------------------------------------------------
+
+/// `a` or `an` for a structure kind, from its first letter. `an Inn`, `an Oasis`, `a Mine`.
+///
+/// Letter-wise rather than clever: every kind the data page names is an ordinary English noun, and
+/// none of them is one of the exceptions (`a unicorn`, `an hour`) that a rule reading the sound
+/// would be needed for.
+fn article_for(kind: &str) -> &'static str {
+    match kind.chars().next() {
+        Some(first) if "aeiouAEIOU".contains(first) => "an",
+        _ => "a",
+    }
+}
+
+/// Every own unit whose BUILD names - or stands in - a structure it has not the skill, or not the
+/// level, to build. The order is legal to write and spends the month for nothing.
+///
+/// A fourth check beside `check_building`, `check_building_outside` and `check_build_help` rather
+/// than a branch of any of them, for the reason `check_building_outside`'s own doc gives: hosting
+/// it there would silently switch it off with a different toggle.
+///
+/// Ships are out of scope - they are items, not buildings, and the catalogue carries no build
+/// requirement for them, so a `BUILD` of one looks exactly like a kind the page does not name and
+/// stays silent for that reason.
+fn check_build_skill(
+    hex: &Hex<'_>,
+    ruleset: Option<&Ruleset>,
+    options: &CheckOptions,
+    findings: &mut Vec<Finding>,
+) {
+    // No ruleset at all, or one carrying no buildings table: `build_requirement` would answer
+    // `None` for every kind, which the loop below already reads as silence, so this gate changes
+    // no verdict. It states the whole-catalogue case once and in one place - "this ruleset can say
+    // nothing about any structure" is a different fact from "the page names no requirement for
+    // this one", even though both end in the same silence - and saves resolving what every unit in
+    // the game is building only to find nothing to compare it against.
+    let Some(ruleset) = ruleset else { return };
+    if !ruleset.knows_buildings() {
+        return;
+    }
+    if !options.emits(codes::BUILD_WITHOUT_SKILL) {
+        return;
+    }
+
+    for ordered in &hex.units {
+        // One warning per unit, on the first BUILD in the block, as the other two BUILD checks do.
+        let Some(placed) = ordered
+            .intents
+            .iter()
+            .find(|placed| matches!(placed.intent, Intent::Build { .. }))
+        else {
+            continue;
+        };
+        let Intent::Build { founding, helping } = &placed.intent else {
+            continue;
+        };
+
+        let (kind, helps) = match (founding, helping) {
+            // The player named the structure type outright.
+            (Some(name), _) => (name.clone(), false),
+            // `BUILD HELP <n>`: the helper is judged on what the helped unit is building. One
+            // level of indirection only - a helper of a helper is not resolved and stays silent,
+            // since nothing here says which of the two the chain really lands on.
+            (None, Some(Party::Unit(id))) => {
+                let Some(helped) = hex.find(id) else {
+                    continue;
+                };
+                let Some(target) = helped
+                    .intents
+                    .iter()
+                    .find_map(|placed| match &placed.intent {
+                        Intent::Build { founding, helping } => Some((founding, helping)),
+                        _ => None,
+                    })
+                else {
+                    // Nothing being helped with at all - `check_build_help`'s warning, not this
+                    // one's.
+                    continue;
+                };
+                match target {
+                    (Some(name), _) => (name.clone(), true),
+                    (None, Some(_)) => continue,
+                    (None, None) => match kind_standing_in(hex, helped) {
+                        Some(kind) => (kind, true),
+                        None => continue,
+                    },
+                }
+            }
+            // `HELP 0`, another faction's unit, or a unit formed this month with no number yet.
+            (None, Some(_)) => continue,
+            // A bare `BUILD` or `BUILD COMPLETE`: the unit works on the structure it stands in.
+            (None, None) => match kind_standing_in(hex, ordered) {
+                Some(kind) => (kind, false),
+                None => continue,
+            },
+        };
+
+        // 22 of the page's 58 buildings state no requirement. That is the catalogue declining to
+        // say, never a claim that anyone may build it, so it is silence here.
+        let Some((tag, required)) = ruleset.build_requirement(&kind) else {
+            continue;
+        };
+        // `skill_level` answers 0 for a skill the unit has not got, which makes the comparison
+        // uniform - the *message* still has to tell the two apart.
+        let held = i64::from(ordered.skill_level(tag));
+        if held >= required {
+            continue;
+        }
+
+        // The catalogue's own lower-case name, not the tag: "mining", not "MINI".
+        let skill = ruleset
+            .find_skill(tag)
+            .map_or_else(|| tag.to_ascii_lowercase(), |entry| entry.name.clone());
+        let shortfall = if held == 0 {
+            format!("has no {skill}")
+        } else {
+            format!("has {skill} {held}")
+        };
+        let verb = if helps {
+            "cannot help build"
+        } else {
+            "cannot build"
+        };
+        let article = article_for(&kind);
+
+        findings.push(ordered.finding(
+            hex,
+            codes::BUILD_WITHOUT_SKILL,
+            format!("{verb} {article} {kind}: needs {skill} {required}, {shortfall}"),
+            Some(placed),
+        ));
+    }
+}
+
+/// The kind of structure a unit is working on when its BUILD names none: the one it stands in once
+/// its own ENTER/LEAVE have run.
+///
+/// `None` for both silences - standing in nothing at all, which is `check_building_outside`'s
+/// warning rather than this one's, and standing in a structure the report does not describe, which
+/// is simply unknowable.
+fn kind_standing_in(hex: &Hex<'_>, ordered: &Ordered<'_>) -> Option<String> {
+    let id = structure_after_orders(ordered)?;
+    hex.region
+        .structures
+        .iter()
+        .find(|structure| structure.structure_id == id)
+        .map(|structure| structure.kind.clone())
+}
+
 /// A structure's name, or - when the report gave it none and printed a placeholder like
 /// `+ Building [4] : Stockade` or `+ Ship [218] : Raft` - that placeholder with the id appended.
 fn structure_label(structure: &Structure) -> String {
@@ -1887,46 +2040,40 @@ fn is_aboard(ordered: &Ordered<'_>, fleet_id: &str) -> bool {
 /// The structure the unit is in once this month's ENTER/LEAVE orders have run, or `None` when it
 /// ends the month in nothing.
 ///
-/// **Every LEAVE is processed before any ENTER**, whatever order the lines were typed in - the
-/// engine's own order, confirmed by the navigator on 2026-08-18 after a verification failed on
-/// exactly this. So a block holding any ENTER ends inside the last structure entered, a block
-/// holding only LEAVEs ends in nothing, and a block holding neither stays where the report found
-/// it. Document order matters only among ENTERs; between an ENTER and a LEAVE it means nothing.
-///
-/// Both run before anything else a block can ask for, so every check that asks "what is this unit
-/// standing in when its orders happen" wants this rather than `unit.structure_id`, which is only
-/// where the report found it.
-///
-/// The movement layer, which is handed a report rather than parsed intents, answers the same
-/// question through `crate::movement::fleet::OrderedUnits::structure_of` and must keep the same
-/// rule. Two models of it exist on purpose until something decides where a shared one would live
-/// (ah-ssd); a change here belongs in both.
+/// The rule itself lives in [`super::standing`], which is the one place it is stated; this is the
+/// adapter that reads it out of parsed intents.
 fn structure_after_orders<'a>(ordered: &Ordered<'a>) -> Option<&'a str> {
-    let mut entered: Option<&'a str> = None;
-    let mut left = false;
-    for placed in ordered.intents {
-        match &placed.intent {
-            Intent::Enter { structure } => entered = Some(structure.as_str()),
-            Intent::Leave => left = true,
-            _ => {}
-        }
-    }
-    match (entered, left) {
-        // An ENTER always wins: the LEAVE ran first, and the unit walked back in.
-        (Some(structure), _) => Some(structure),
-        (None, true) => None,
-        (None, false) => ordered.unit.structure_id.as_deref(),
+    structure_after_intents(ordered.unit.structure_id.as_deref(), ordered.intents)
+}
+
+/// [`structure_after_orders`] over the two things it actually reads, so the agreement test can
+/// drive this reader without building a whole [`Ordered`].
+pub(crate) fn structure_after_intents<'a>(
+    reported: Option<&'a str>,
+    intents: &'a [PlacedIntent],
+) -> Option<&'a str> {
+    standing_after(reported, intents.iter().filter_map(boarding_of))
+}
+
+/// One parsed intent as [`super::standing`] reads it; anything that is not a boarding order is not
+/// one.
+fn boarding_of(placed: &PlacedIntent) -> Option<Boarding<'_>> {
+    match &placed.intent {
+        Intent::Enter { structure } => Some(Boarding::Enter(structure.as_str())),
+        Intent::Leave => Some(Boarding::Leave),
+        _ => None,
     }
 }
 
-/// Whether the unit could be giving the SAIL order for `fleet_id`: standing in it per the report,
-/// or boarding it this month. A unit that also LEAVEs is not excluded here - the server would
-/// still read its SAIL line before running the LEAVE.
+/// Whether the unit could be giving the SAIL order for `fleet_id` - see
+/// [`super::standing::could_captain`], which states why that is not the same question as where the
+/// unit ends up.
 fn could_captain(ordered: &Ordered<'_>, fleet_id: &str) -> bool {
-    ordered.unit.structure_id.as_deref() == Some(fleet_id)
-        || ordered.intents.iter().any(
-            |placed| matches!(&placed.intent, Intent::Enter { structure } if structure == fleet_id),
-        )
+    standing::could_captain(
+        ordered.unit.structure_id.as_deref(),
+        fleet_id,
+        ordered.intents.iter().filter_map(boarding_of),
+    )
 }
 
 /// What one unit weighs once this month's orders have run: the weight the report gave it, plus
@@ -2726,6 +2873,23 @@ mod tests {
                 codes::BUILD_HELP_NOT_BUILDING,
                 codes::UNIT_DOES_NOTHING,
             ]),
+        )
+    }
+
+    /// `check`, with `build-without-skill` also disabled.
+    ///
+    /// The fixtures for the other three BUILD checks stand a unit up with no skills at all and put
+    /// it to work on a Timber Yard, a Stockade or a Tower - every one of which states a
+    /// requirement, so every one of them newly warns, correctly and beside the point. Turned off
+    /// here rather than skilling up a dozen fixtures written about something else, and rather than
+    /// softening the new check until they go quiet (`docs/retrospectives/ah-vkut.md`, second
+    /// section, is about exactly that temptation).
+    fn check_ignoring_build_skill(regions: Vec<ReportRegion>, orders: &str) -> Vec<Finding> {
+        check_turn(
+            &report(regions),
+            orders,
+            Some(&ruleset()),
+            disabling_all(&[codes::BUILD_WITHOUT_SKILL, codes::UNIT_DOES_NOTHING]),
         )
     }
 
@@ -4484,6 +4648,39 @@ mod tests {
         }
     }
 
+    /// A Citadel still being built - `BUIL` 3, and the fixture for "has none of the skill".
+    fn unfinished_citadel(structure_id: &str) -> Structure {
+        Structure {
+            structure_id: structure_id.to_string(),
+            name: "Building".to_string(),
+            kind: "Citadel".to_string(),
+            description: None,
+            needs: Some(200),
+        }
+    }
+
+    /// A Tower still being built - `BUIL` 1, the cheapest requirement there is.
+    fn unfinished_tower(structure_id: &str) -> Structure {
+        Structure {
+            structure_id: structure_id.to_string(),
+            name: "Building".to_string(),
+            kind: "Tower".to_string(),
+            description: None,
+            needs: Some(10),
+        }
+    }
+
+    /// A Mine still being built - the plan's worked example, needing `MINI` 3.
+    fn unfinished_mine(structure_id: &str) -> Structure {
+        Structure {
+            structure_id: structure_id.to_string(),
+            name: "Building".to_string(),
+            kind: "Mine".to_string(),
+            description: None,
+            needs: Some(20),
+        }
+    }
+
     fn in_structure(unit: ReportUnit, structure_id: &str) -> ReportUnit {
         ReportUnit {
             structure_id: Some(structure_id.to_string()),
@@ -4493,7 +4690,7 @@ mod tests {
 
     #[test]
     fn carrying_on_with_a_finished_structure_warns() {
-        let finding = only(check(
+        let finding = only(check_ignoring_build_skill(
             vec![ReportRegion {
                 structures: vec![finished_mill("1")],
                 ..region(vec![in_structure(unit("4021"), "1")])
@@ -4548,7 +4745,7 @@ mod tests {
             "unit 4021\nLEAVE\nENTER 1\nBUILD\n",
             "unit 4021\nENTER 1\nLEAVE\nBUILD\n",
         ] {
-            let finding = only(check(
+            let finding = only(check_ignoring_build_skill(
                 vec![ReportRegion {
                     structures: vec![finished_mill("1")],
                     ..region(vec![in_structure(unit("4021"), "1")])
@@ -4561,7 +4758,7 @@ mod tests {
 
     #[test]
     fn a_builder_that_enters_a_finished_structure_this_month_is_told_so() {
-        let finding = only(check(
+        let finding = only(check_ignoring_build_skill(
             vec![ReportRegion {
                 structures: vec![finished_mill("1")],
                 ..region(vec![unit("4021")])
@@ -4591,7 +4788,7 @@ mod tests {
     #[test]
     fn an_unfinished_structure_is_silent() {
         assert_eq!(
-            check(
+            check_ignoring_build_skill(
                 vec![ReportRegion {
                     structures: vec![unfinished_building("4")],
                     ..region(vec![in_structure(unit("4021"), "4")])
@@ -4605,7 +4802,7 @@ mod tests {
     #[test]
     fn founding_a_new_structure_is_silent() {
         assert_eq!(
-            check(
+            check_ignoring_build_skill(
                 vec![ReportRegion {
                     structures: vec![finished_mill("1")],
                     ..region(vec![in_structure(unit("4021"), "1")])
@@ -4658,7 +4855,7 @@ mod tests {
 
     #[test]
     fn an_unnamed_structure_is_named_by_its_number() {
-        let finding = only(check(
+        let finding = only(check_ignoring_build_skill(
             vec![ReportRegion {
                 structures: vec![finished_unnamed_building("4")],
                 ..region(vec![in_structure(unit("4021"), "4")])
@@ -4716,7 +4913,10 @@ mod tests {
     #[test]
     fn founding_a_structure_from_outside_is_silent() {
         assert_eq!(
-            check(vec![region(vec![unit("4021")])], "unit 4021\nBUILD Tower\n"),
+            check_ignoring_build_skill(
+                vec![region(vec![unit("4021")])],
+                "unit 4021\nBUILD Tower\n"
+            ),
             vec![]
         );
     }
@@ -4724,7 +4924,7 @@ mod tests {
     #[test]
     fn a_unit_inside_a_structure_is_not_told_it_is_outside() {
         assert_eq!(
-            check(
+            check_ignoring_build_skill(
                 vec![ReportRegion {
                     structures: vec![unfinished_building("1")],
                     ..region(vec![in_structure(unit("4021"), "1")])
@@ -4779,7 +4979,7 @@ mod tests {
     #[test]
     fn a_unit_that_enters_a_structure_this_month_is_not_told_it_is_outside() {
         assert_eq!(
-            check(
+            check_ignoring_build_skill(
                 vec![ReportRegion {
                     structures: vec![unfinished_building("1")],
                     ..region(vec![unit("4021")])
@@ -4827,7 +5027,7 @@ mod tests {
     #[test]
     fn helping_a_unit_that_is_building_is_silent() {
         assert_eq!(
-            check(
+            check_ignoring_build_skill(
                 vec![ReportRegion {
                     structures: vec![unfinished_building("1")],
                     ..region(vec![
@@ -4845,7 +5045,7 @@ mod tests {
     #[test]
     fn helping_a_unit_that_is_founding_is_silent() {
         assert_eq!(
-            check(
+            check_ignoring_build_skill(
                 vec![region(vec![unit("4021"), unit("4117")])],
                 "unit 4021\nBUILD Tower\nunit 4117\nBUILD HELP 4021\n",
             ),
@@ -4887,6 +5087,176 @@ mod tests {
 
         assert_eq!(finding.code, codes::BUILD_OUTSIDE_STRUCTURE);
         assert_eq!(finding.unit_id.as_deref(), Some("4021"));
+    }
+
+    // --- building without the skill ------------------------------------------------------------
+
+    #[test]
+    fn a_unit_told_to_build_a_mine_without_mining_three_is_warned() {
+        let finding = only(check(
+            vec![ReportRegion {
+                structures: vec![unfinished_mine("1")],
+                ..region(vec![in_structure(with_skill(unit("4021"), "MINI", 1), "1")])
+            }],
+            "unit 4021\nBUILD\n",
+        ));
+
+        assert_eq!(finding.code.as_str(), "build-without-skill");
+        assert_eq!(finding.unit_id.as_deref(), Some("4021"));
+        assert_eq!(
+            finding.message,
+            "cannot build a Mine: needs mining 3, has mining 1"
+        );
+    }
+
+    #[test]
+    fn a_unit_with_the_skill_at_the_level_is_not_warned() {
+        for level in [3, 4] {
+            assert_eq!(
+                check(
+                    vec![ReportRegion {
+                        structures: vec![unfinished_mine("1")],
+                        ..region(vec![in_structure(
+                            with_skill(unit("4021"), "MINI", level),
+                            "1"
+                        )])
+                    }],
+                    "unit 4021\nBUILD\n",
+                ),
+                vec![],
+                "mining {level} should be enough for a Mine"
+            );
+        }
+    }
+
+    /// `skill_level` answers 0 for a skill the unit has not got, which is what makes the
+    /// comparison uniform - but "has building 0" reads wrong, so the message says it in words.
+    #[test]
+    fn a_unit_with_none_of_the_skill_is_told_which_it_lacks() {
+        let finding = only(check(
+            vec![ReportRegion {
+                structures: vec![unfinished_citadel("1")],
+                ..region(vec![in_structure(unit("4021"), "1")])
+            }],
+            "unit 4021\nBUILD\n",
+        ));
+
+        assert_eq!(
+            finding.message,
+            "cannot build a Citadel: needs building 3, has no building"
+        );
+    }
+
+    #[test]
+    fn building_a_named_structure_checks_that_structure_s_requirement() {
+        let finding = only(check(
+            vec![region(vec![with_skill(unit("4021"), "MINI", 1)])],
+            "unit 4021\nBUILD Mine\n",
+        ));
+
+        assert_eq!(
+            finding.message,
+            "cannot build a Mine: needs mining 3, has mining 1"
+        );
+    }
+
+    /// `an Inn`, not `a Inn`. The sort of thing that reaches a player.
+    #[test]
+    fn a_kind_beginning_with_a_vowel_takes_an() {
+        let finding = only(check(
+            vec![region(vec![unit("4021")])],
+            "unit 4021\nBUILD Inn\n",
+        ));
+
+        assert_eq!(
+            finding.message,
+            "cannot build an Inn: needs building 3, has no building"
+        );
+    }
+
+    #[test]
+    fn a_helper_without_the_skill_is_warned_for_what_the_target_is_building() {
+        let findings = check(
+            vec![ReportRegion {
+                structures: vec![unfinished_tower("1")],
+                ..region(vec![
+                    in_structure(with_skill(unit("4021"), "BUIL", 1), "1"),
+                    unit("4117"),
+                ])
+            }],
+            "unit 4021\nBUILD\nunit 4117\nBUILD HELP 4021\n",
+        );
+
+        // The builder itself has the level; only the helper is short.
+        let finding = only(findings);
+        assert_eq!(finding.unit_id.as_deref(), Some("4117"));
+        assert_eq!(
+            finding.message,
+            "cannot help build a Tower: needs building 1, has no building"
+        );
+    }
+
+    /// One level of indirection only: nothing in a chain of helpers says which structure it really
+    /// lands on, so the second helper is not judged.
+    #[test]
+    fn a_helper_of_a_helper_is_not_judged() {
+        let findings = check(
+            vec![ReportRegion {
+                structures: vec![unfinished_tower("1")],
+                ..region(vec![
+                    in_structure(with_skill(unit("4021"), "BUIL", 1), "1"),
+                    with_skill(unit("4117"), "BUIL", 1),
+                    unit("4200"),
+                ])
+            }],
+            "unit 4021\nBUILD\nunit 4117\nBUILD HELP 4021\nunit 4200\nBUILD HELP 4117\n",
+        );
+
+        assert_eq!(codes(&findings), Vec::<&str>::new());
+    }
+
+    /// 22 of the page's 58 buildings state no requirement, and that is the catalogue declining to
+    /// say - never a claim that anybody may build one.
+    #[test]
+    fn a_structure_the_catalogue_gives_no_requirement_is_not_judged() {
+        assert_eq!(
+            check(vec![region(vec![unit("4021")])], "unit 4021\nBUILD Lair\n",),
+            vec![]
+        );
+    }
+
+    /// A ruleset cached before build requirements were scraped would make every structure look as
+    /// though it needs nothing, so the check says nothing at all rather than clearing every unit.
+    #[test]
+    fn a_ruleset_without_build_requirements_says_nothing() {
+        let mut json: serde_json::Value =
+            serde_json::from_str(RULESET).expect("the committed ruleset should parse");
+        json["buildings"] = serde_json::json!({});
+        let stripped = Ruleset::from_json(&json.to_string()).expect("still a usable ruleset");
+
+        assert_eq!(
+            check_turn(
+                &report(vec![region(vec![unit("4021")])]),
+                "unit 4021\nBUILD Mine\n",
+                Some(&stripped),
+                disabling(codes::UNIT_DOES_NOTHING),
+            ),
+            vec![]
+        );
+    }
+
+    /// Its own gate, not the other BUILD checks': switching one of those off leaves this running.
+    #[test]
+    fn the_build_skill_check_can_be_turned_off() {
+        assert_eq!(
+            check_turn(
+                &report(vec![region(vec![unit("4021")])]),
+                "unit 4021\nBUILD Mine\n",
+                Some(&ruleset()),
+                disabling_all(&[codes::BUILD_WITHOUT_SKILL, codes::UNIT_DOES_NOTHING]),
+            ),
+            vec![]
+        );
     }
 
     #[test]
@@ -5941,6 +6311,12 @@ mod tests {
                 codes::UNIT_DOES_NOTHING,
                 vec![region(vec![unit("4021")])],
                 "unit 4021\n",
+                None,
+            ),
+            (
+                codes::BUILD_WITHOUT_SKILL,
+                vec![region(vec![unit("4021")])],
+                "unit 4021\nBUILD Mine\n",
                 None,
             ),
         ];

@@ -16,6 +16,9 @@ import {
 import { ROW_HEIGHT } from "../../packages/shared/src/unitTable";
 // Likewise the hover delay: the test waits a fraction of it, so a copy here could outlive a change.
 import { HOVER_DELAY_MS } from "../../packages/shared/src/unitTooltip";
+// The seam itself, not a copy: the header budget below is only worth anything if it fails for the
+// same arithmetic the orders drag actually uses (ah-csni).
+import { railHasRoomToDrag, railRemFor } from "../../packages/shared/src/workspace/panelLayout";
 
 /**
  * Walks the workspace on a real turn report, in whichever shell the project targets.
@@ -78,7 +81,9 @@ async function selectUnit(page: Page, unitId: string) {
   const row = page.getByTestId(`unit-row-${unitId}`);
   await expect(row).toHaveCount(1);
   await expect(row).toBeVisible();
-  await row.getByRole("button").click();
+  // Named, not "the button in this row": a foreign unit's row also carries the faction name as a
+  // control (ah-bu2c), so a bare role lookup is ambiguous there.
+  await row.getByRole("button", { name: `unit ${unitId}` }).click();
   await box.clear();
 }
 
@@ -1422,6 +1427,28 @@ async function waitForStableHeight(page: Page, panel: string) {
     .toBe(true);
 }
 
+/**
+ * Waits for a panel to stop *moving* as well as stop resizing, before its position is measured.
+ *
+ * The header gains a row once the loaded report's counts render, and everything below it - the
+ * map, and the panel column over it - drops by that row. On a slow runner that lands after the
+ * first geometry read, so a baseline taken straight after `selectHex` is a position nothing ever
+ * comes back to: `a folded panel shrinks to its title bar` failed in CI with `y` 36px out, exactly
+ * one header row, while passing everywhere locally. Poll the whole box, not only the height.
+ */
+async function waitForStableBox(page: Page, panel: string) {
+  let last: string | null = null;
+  await expect
+    .poll(async () => {
+      const box = await boxOf(page, panel);
+      const now = `${Math.round(box.x)},${Math.round(box.y)},${Math.round(box.width)},${Math.round(box.height)}`;
+      const stable = last !== null && now === last;
+      last = now;
+      return stable;
+    })
+    .toBe(true);
+}
+
 /** Where the map is standing, read the same way `shortcuts.spec.ts` does. */
 async function mapTransform(page: Page): Promise<string> {
   return (await page.getByTestId("map-world").getAttribute("transform")) ?? "";
@@ -1431,6 +1458,7 @@ test("a folded panel shrinks to its title bar", async ({ page }) => {
   await loadReport(page);
   await selectHex(page, "1:7,53");
 
+  await waitForStableBox(page, "region");
   const open = await boxOf(page, "region");
   expect(open.height).toBeGreaterThan(100);
 
@@ -1445,6 +1473,54 @@ test("a folded panel shrinks to its title bar", async ({ page }) => {
   expect(strip.y).toBeCloseTo(open.y, 0);
 });
 
+
+/**
+ * The tallest the header may be at the pinned viewport, in pixels.
+ *
+ * Measured, not chosen: on 2026-08-19 the header rendered at 73px in both projects, at the pinned
+ * 1280x720 viewport with a 16px root font. The budget is ~125% of that - loose enough that an
+ * ordinary change does not trip it, tight enough that one more chip or a step up in the type scale
+ * does.
+ *
+ * Raising it is allowed and deliberate - a bead that genuinely needs a taller header changes this
+ * number in the same commit as the header change, which is the whole point of ah-csni: the cost
+ * lands on the change that caused it instead of on two unrelated drag tests a day later.
+ */
+const HEADER_BUDGET_PX = 91;
+
+test("the header fits its budget, so a taller one fails here and not somewhere else", async ({
+  page
+}) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+
+  const header = (await page.getByTestId("app-header").boundingBox())!;
+  const rootFontPx = await page.evaluate(() =>
+    parseFloat(getComputedStyle(document.documentElement).fontSize)
+  );
+  const viewportPx = page.viewportSize()!.height;
+
+  // The ceiling itself: a chip, a control moved in, or a step up in the type scale trips this.
+  expect(header.height).toBeLessThanOrEqual(HEADER_BUDGET_PX);
+
+  // And the part that earns its keep: the header has not eaten so much of the vertical budget that
+  // the orders editor's pin is already at its ceiling. Without this, that shows up as a *drag* test
+  // failing somewhere else entirely - four incidents in five days.
+  expect(railHasRoomToDrag(railRemFor(viewportPx, header.height, rootFontPx))).toBe(true);
+});
+
+/**
+ * A window with room for the orders/unit split to actually move.
+ *
+ * At the pinned viewport the editor's pin can already sit at its own ceiling once the header is
+ * full (ah-1uj, ah-csni), so a test *about the drag mechanism* needs headroom the default does not
+ * promise. Declaring it here is the point: these tests were the only ones that noticed, and they
+ * noticed by failing.
+ */
+async function withRoomToDrag(page: Page): Promise<void> {
+  await page.setViewportSize({ width: 1280, height: 900 });
+}
+
 /** Restores the default split, so later tests inherit the look they expect. */
 async function resetSplit(page: Page) {
   await page.getByTestId("panel-splitter").dblclick();
@@ -1452,12 +1528,13 @@ async function resetSplit(page: Page) {
 
 test("the unit/orders split drags at the grip and survives a reload", async ({ page }) => {
   await loadReport(page);
-  // The default window (1280x683) leaves the orders editor's pin already at its own ceiling once
+  // The pinned window (1280x720, see playwright.config.ts) leaves the orders editor's pin already
+  // at its own ceiling once
   // enough advisory-check chips share the header with it (ah-1uj is one of several) - dragging it
   // taller would then have nowhere to go, whatever the gesture. A taller window gives the split
   // room to move regardless of how many chips the header carries; this test is about the drag
   // mechanism, not about how little of it fits in the header's own default height.
-  await page.setViewportSize({ width: 1280, height: 900 });
+  await withRoomToDrag(page);
   await selectHex(page, "1:7,53");
   // Selecting a hex opens the panels; measuring "before" while that settles - slower or busier on
   // CI than locally - would pin a mid-animation size rather than the resting one.
@@ -1602,7 +1679,7 @@ test("folding the unit panel hides the grip and hands the column to the editor",
   // See "the unit/orders split drags..." above: at the default window height the editor's pin can
   // already sit at its own ceiling once enough advisory-check chips share the header with it, and
   // this test drags it taller twice over.
-  await page.setViewportSize({ width: 1280, height: 900 });
+  await withRoomToDrag(page);
   await selectHex(page, "1:7,53");
   // Selecting a hex opens the panels; measuring "before" while that settles - slower or busier on
   // CI than locally - would pin a mid-animation size rather than the resting one.
@@ -1755,18 +1832,31 @@ test("a folded panel is still folded after a reload", async ({ page }) => {
   await expect(page.getByTestId("import-status")).toContainText("restored turn 71");
 });
 
-test("layer toggles are operable and none is inert", async ({ page }) => {
+test("the layer toggles live in settings, not over the map", async ({ page }) => {
   await loadReport(page);
 
+  // ah-l9mp: staleness and movement moved into Settings > Global and gave the band back to the
+  // map. The strip survives with the badge chip alone.
   const chips = page.getByTestId("layer-chips");
-  // Trade routes is gone entirely: it was the last toggle with nothing behind it, and a control
-  // that does nothing is worse than no control.
-  await expect(chips.getByRole("checkbox", { name: "Trade routes" })).toHaveCount(0);
-  await expect(chips.getByRole("checkbox", { name: "Staleness" })).toBeChecked();
+  await expect(chips.getByRole("checkbox")).toHaveCount(0);
+  await expect(chips.getByRole("button", { name: "Badges" })).toBeVisible();
 
-  await chips.getByRole("checkbox", { name: "Staleness" }).uncheck();
-  await expect(chips.getByRole("checkbox", { name: "Staleness" })).not.toBeChecked();
+  await page.getByTestId("settings-indicator").click();
+  const staleness = page.getByTestId("settings-layer-staleness");
+  await expect(staleness).toBeChecked();
+  await staleness.uncheck();
+  await expect(staleness).not.toBeChecked();
+  await expect(page.getByTestId("settings-layer-movement")).toBeChecked();
+  await page.keyboard.press("Escape");
+
   await expect(page.getByTestId("map-canvas")).toBeVisible();
+
+  // The choice is the workspace store's, and it was already persisted - a reload must not undo it.
+  await page.reload();
+  await expect(page.getByTestId("map-canvas")).toBeVisible();
+  await page.getByTestId("settings-indicator").click();
+  await expect(page.getByTestId("settings-layer-staleness")).not.toBeChecked();
+  await page.keyboard.press("Escape");
 });
 
 /**
@@ -1788,12 +1878,62 @@ test("a first turn opens on the nexus, on a level of its own", async ({ page }) 
 
   await expect(page.getByTestId("import-status")).toContainText("1 region ·");
 
-  const chips = page.getByTestId("layer-chips");
-  await expect(chips).toContainText("nexus");
-  await expect(chips.getByLabel("Map level")).toHaveCount(0);
+  // ah-l9mp: the level reads from the top bar now, and a single level is text rather than a
+  // dead select.
+  const header = page.getByTestId("app-header");
+  await expect(header).toContainText("nexus");
+  await expect(header.getByLabel("Map level")).toHaveCount(0);
 
   await selectHex(page, "0:0,0");
   await expect(page.getByTestId("panel-region")).toContainText("nexus (0,0)");
+});
+
+/**
+ * ah-l9mp: the level moved out of the strip over the map and into the top bar, where it is
+ * glanceable. A game that knows more than one level gets a real control there, and changing it
+ * changes the level the map is drawn for.
+ */
+test("the level selector in the header changes level", async ({ page }) => {
+  await clearGames(page);
+  await expect(page.getByTestId("game-gate")).toBeVisible();
+  await createGame(page, "Two levels");
+  await expect(page.getByTestId("app-header")).toBeVisible();
+
+  // Turn 0 is the nexus alone; turn 23 is the surface. Together the game knows two levels, which
+  // is what puts a real control in the header rather than a word.
+  await page.setInputFiles('input[type="file"]', {
+    name: "turn-0.rep",
+    mimeType: "text/plain",
+    buffer: Buffer.from(readReport("g5f21t0"), "utf8")
+  });
+  await expect(page.getByTestId("import-status")).toContainText("region");
+  await page.setInputFiles('input[type="file"]', {
+    name: "turn-23.rep",
+    mimeType: "text/plain",
+    buffer: Buffer.from(readReport("g5f21t23"), "utf8")
+  });
+  await expect(page.getByTestId("import-status")).toContainText("region");
+
+  const selector = page.getByTestId("app-header").getByLabel("Map level");
+  await expect(selector).toBeVisible();
+  const values = await selector.locator("option").evaluateAll((options) =>
+    options.map((option) => (option as HTMLOptionElement).value)
+  );
+  expect(values.length).toBeGreaterThan(1);
+
+  // The nexus hex, which exists on the nexus level and nowhere else - so it is the map's own
+  // answer to which level is being drawn, rather than the selector repeating itself back.
+  const nexusHex = page.getByRole("button", { name: "hex 0:0,0" });
+
+  const current = await selector.inputValue();
+  const other = values.find((value) => value !== current) ?? current;
+  await selector.selectOption(other);
+  await expect(selector).toHaveValue(other);
+  await expect(page.getByTestId("map-canvas")).toBeVisible();
+  await expect(nexusHex).toHaveCount(other === "0" ? 1 : 0);
+
+  await selector.selectOption(current);
+  await expect(nexusHex).toHaveCount(current === "0" ? 1 : 0);
 });
 
 /**
@@ -2236,9 +2376,11 @@ test("the movement layer controls the route overlay and nothing else", async ({ 
   await selectHex(page, "1:7,51");
   await expect(page.getByTestId("planner-route")).toBeVisible();
 
-  // The chip starts on since #83, so this click turns the drawing OFF.
-  const movement = page.getByTestId("layer-chips").getByLabel("movement");
-  await movement.click();
+  // The toggle starts on since #83, so this click turns the drawing OFF. It lives in
+  // Settings > Global since ah-l9mp rather than in the strip over the map.
+  await page.getByTestId("settings-indicator").click();
+  await page.getByTestId("settings-layer-movement").uncheck();
+  await page.keyboard.press("Escape");
   await expect(page.getByTestId("route-line-solid")).toHaveCount(0);
 
   // The panel still knows the route; only the drawing follows the chip.
@@ -2713,7 +2855,11 @@ test("the units table is navigable by keyboard", async ({ page }) => {
 
   // Which is where a focus owed from that no-op would be spent. Selecting with the mouse must not
   // haul focus onto a row: only the arrow keys move focus, because only they asked to.
-  await page.locator("[data-testid^='unit-row-']").first().getByRole("button").click();
+  await page
+    .locator("[data-testid^='unit-row-']")
+    .first()
+    .getByRole("button", { name: /^unit / })
+    .click();
   await expect(page.locator("[data-testid^='unit-row-']:focus")).toHaveCount(0);
 });
 
@@ -3194,6 +3340,7 @@ test("a selection dragged out of a pane stays inside it", async ({ page }) => {
   await selectHex(page, "1:7,53");
   await expect(page.getByTestId("panel-region")).toContainText("Inholm");
 
+  await waitForStableBox(page, "region");
   const pane = await page.getByTestId("panel-region").boundingBox();
   const point = await clearHexPoint(page);
 
@@ -3350,6 +3497,7 @@ test("clicking empty ground names the hex that was clicked", async ({ page }) =>
 
   // Inholm sits under the region panel, and a panel takes its own clicks. Folding it leaves the
   // map beneath live, which is where the hex being aimed at is.
+  await waitForStableBox(page, "region");
   await foldPanel(page, "region");
 
   // One hex further north than Inholm's northern neighbour, stepped out in pixels from the two of
@@ -3776,4 +3924,156 @@ test("the web build offers no Send button, because it could never read the reply
   // The game server sends no CORS headers, so the web shell passes no uploader and the control is
   // absent rather than disabled - the decision recorded on ah-etb0.2.
   await expect(page.getByTestId("send-orders")).toHaveCount(0);
+});
+
+test("a skill named in the unit panel opens its game data entry", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+  await selectUnit(page, OWN_UNIT);
+
+  // The whole point of ah-5jkt.2: the names the panes already show are the way into the
+  // dictionary, so nobody has to know the tag or find the palette first.
+  const skill = page
+    .getByTestId("panel-unit")
+    .locator("[data-game-data-entry^='skill:']")
+    .first();
+  const name = (await skill.textContent())?.trim() ?? "";
+  expect(name).not.toBe("");
+  await skill.click();
+
+  await expect(page.getByTestId("game-data-dialog")).toBeVisible();
+  await expect(page.getByTestId("game-data-tab-skill")).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByTestId("game-data-detail")).toContainText(name);
+});
+
+/**
+ * ah-bu2c: a faction's name is a way into everything the turn knows about that faction.
+ *
+ * The hex is `1:10,50`, which holds several units of Elder Tree Forests (32), a faction the
+ * attitudes block declares Ally toward and whose units are spread across three hexes - so the
+ * dossier has an attitude, several hexes and a long unit list to show.
+ */
+const DOSSIER_HEX = "1:10,50";
+const DOSSIER_FACTION = "32";
+
+test("a faction name in the units table opens its dossier", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, DOSSIER_HEX);
+
+  // Which row is selected before the name is clicked, so the click can be shown to have opened a
+  // dossier and nothing else: the row is itself a click target that selects the unit, and a button
+  // inside it would otherwise do both at once (Copilot, #478).
+  const selectedBefore = await page
+    .locator("tr[data-selected='true']")
+    .first()
+    .getAttribute("data-testid");
+
+  await page.getByTestId(`open-faction-dossier-${DOSSIER_FACTION}`).first().click();
+
+  await expect(page.locator("tr[data-selected='true']").first()).toHaveAttribute(
+    "data-testid",
+    selectedBefore ?? ""
+  );
+
+  const dossier = page.getByTestId("faction-dossier");
+  await expect(dossier).toBeVisible();
+  await expect(dossier).toContainText("Elder Tree Forests");
+  await expect(dossier).toContainText("Ally");
+  // Their units stand in three hexes, each counted - so "seen in" is a real list, not one row.
+  await expect(dossier).toContainText("swamp (10,50)");
+  await expect(dossier).toContainText("8 units");
+  await expect(dossier).toContainText(
+    "Where their units are this turn. Earlier turns are not remembered."
+  );
+  await expect(dossier).toContainText("A unit hiding its faction is not counted here.");
+  // The map is still there to draw a highlight on, which is the whole reason this is a popover
+  // rather than a dialog: a modal would dim the very hex the ring goes on.
+  await expect(page.getByTestId("panel-region")).toContainText("(10,50)");
+});
+
+test("a faction name in the attitudes list opens its dossier", async ({ page }) => {
+  await loadReport(page);
+
+  await page.getByTestId("faction-chip").click();
+  await page.getByTestId("open-faction-dossier-2").click();
+
+  const dossier = page.getByTestId("faction-dossier");
+  await expect(dossier).toBeVisible();
+  await expect(dossier).toContainText("Creatures");
+  await expect(dossier).toContainText("Hostile");
+
+  // The attitudes list cannot hold a nested popover - its body scrolls - so the dossier takes its
+  // place, and there has to be a way back to where the reader came from.
+  await expect(page.getByTestId("faction-panel")).toHaveCount(0);
+  await page.getByTestId("dossier-back").click();
+  await expect(page.getByTestId("faction-panel")).toBeVisible();
+});
+
+test("tabbing to a hex row rings it on the map", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, DOSSIER_HEX);
+  await page.getByTestId(`open-faction-dossier-${DOSSIER_FACTION}`).first().click();
+
+  const row = page.getByTestId(`dossier-hex-${DOSSIER_HEX}`);
+  await expect(row).toBeVisible();
+  // The panel opens beside the name clicked, so it lands under the pointer and whichever row is
+  // beneath it is genuinely hovered. Move away first, or "no ring yet" is not the state we are in.
+  await page.mouse.move(4, 4);
+  await expect(page.getByTestId("map-highlight-ring")).toHaveCount(0);
+
+  // Focus, not hover: a hover-only implementation shows a keyboard reader nothing at all, and
+  // every other test here would still pass.
+  await row.focus();
+  await expect(page.getByTestId("map-highlight-ring")).toHaveCount(1);
+
+  await row.blur();
+  await expect(page.getByTestId("map-highlight-ring")).toHaveCount(0);
+});
+
+test("reopening after dismissal draws no ring", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, DOSSIER_HEX);
+  await page.getByTestId(`open-faction-dossier-${DOSSIER_FACTION}`).first().click();
+
+  await page.mouse.move(4, 4);
+  await page.getByTestId(`dossier-hex-${DOSSIER_HEX}`).focus();
+  await expect(page.getByTestId("map-highlight-ring")).toHaveCount(1);
+
+  // Escape rather than the close button: clicking ✕ blurs the row, which clears the hover on the
+  // way out and cannot reproduce the scar at all. Escape closes the panel with the row still
+  // focused, so the row never fires blur or pointerleave and the last hover survives the
+  // unmount - which is exactly how reopening drew a ring with the pointer nowhere near it
+  // (Copilot, #398). Verified by mutation: deleting the forgetting effect fails this.
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("faction-dossier")).toHaveCount(0);
+
+  // Reopened from the keyboard, with the pointer parked far away: a mouse click would put the
+  // pointer over the reopened panel, hover whichever row landed under it, and draw a ring for a
+  // reason that has nothing to do with the scar - and moving the pointer off afterwards would
+  // clear the stale hover too, hiding the very thing this test exists for. Verified by mutation:
+  // deleting AppShell's forgetting effect fails this.
+  const trigger = page.getByTestId(`open-faction-dossier-${DOSSIER_FACTION}`).first();
+  await trigger.focus();
+  await trigger.press("Enter");
+  await expect(page.getByTestId("faction-dossier")).toBeVisible();
+  await expect(page.getByTestId("map-highlight-ring")).toHaveCount(0);
+});
+
+test("clicking a hex row selects that hex, and a unit row selects that unit", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, DOSSIER_HEX);
+  await page.getByTestId(`open-faction-dossier-${DOSSIER_FACTION}`).first().click();
+
+  // A unit of theirs standing in a DIFFERENT hex, so the assertion cannot pass by the selection
+  // simply staying where it already was.
+  const unitRow = page.getByTestId("dossier-unit-1962");
+  await expect(unitRow).toBeVisible();
+  await unitRow.click();
+  await expect(page.getByTestId("faction-dossier")).toHaveCount(0);
+  await expect(page.getByTestId("panel-region")).toContainText("(26,52)");
+
+  await page.getByTestId(`open-faction-dossier-${DOSSIER_FACTION}`).first().click();
+  await page.getByTestId(`dossier-hex-${DOSSIER_HEX}`).click();
+  await expect(page.getByTestId("faction-dossier")).toHaveCount(0);
+  await expect(page.getByTestId("panel-region")).toContainText("(10,50)");
 });

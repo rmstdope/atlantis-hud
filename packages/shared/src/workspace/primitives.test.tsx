@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 
-import { ProblemMessage, ProblemWho, SeverityMark } from "./primitives";
+import { GameDataLink, ProblemMessage, ProblemWho, Row, SeverityMark } from "./primitives";
 
 describe("SeverityMark", () => {
   it("marks a warning with an amber glyph and the word warning", () => {
@@ -158,5 +158,42 @@ describe("ProblemMessage", () => {
     expect(markup).toContain('<button type="button" data-testid="problem-unit-4021"');
     expect(markup).toContain('<span class="sr-only">unit </span>4021');
     expect(markup).toContain('aria-hidden="true">unit </span>');
+  });
+});
+
+describe("a game data link", () => {
+  it("is a button carrying its entry id", () => {
+    const html = renderToStaticMarkup(
+      <GameDataLink entryId="skill:LUMB" onOpen={() => {}}>
+        lumberjack
+      </GameDataLink>
+    );
+    expect(html).toContain('type="button"');
+    expect(html).toContain('data-game-data-entry="skill:LUMB"');
+    expect(html).toContain("lumberjack");
+  });
+
+  it("takes focus visibly, so the hover-led affordance is reachable from the keyboard", () => {
+    const html = renderToStaticMarkup(
+      <GameDataLink entryId="skill:LUMB" onOpen={() => {}}>
+        lumberjack
+      </GameDataLink>
+    );
+    expect(html).toContain("focus-visible:outline");
+    expect(html).toContain("border-dotted");
+  });
+
+  it("lets a row's label be a node, not only a string", () => {
+    const html = renderToStaticMarkup(
+      <Row
+        label={
+          <GameDataLink entryId="skill:LUMB" onOpen={() => {}}>
+            lumberjack
+          </GameDataLink>
+        }
+        value="1 · 30"
+      />
+    );
+    expect(html).toContain('data-game-data-entry="skill:LUMB"');
   });
 });
