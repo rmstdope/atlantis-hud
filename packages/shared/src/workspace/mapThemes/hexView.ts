@@ -201,15 +201,30 @@ function isShip(kind: string): boolean {
   return SHIP_KINDS.has(name) || name.includes("ship") || name.includes("boat");
 }
 
+/**
+ * A structure's own type, with whatever trailing description the report happened to append after
+ * a comma stripped off - "Shaft, contains an inner location", "Lair, closed to player units",
+ * "Cave, closed to player units" all report exactly this way. The parser
+ * (`crates/core/src/report/region.rs`'s own `parse_structure`) only splits a proper description
+ * out of `kind` when the raw line carries a semicolon; a shaft, a lair, a cave, a ruin and several
+ * others never do; the whole clause after the colon lands in `kind` verbatim instead. Every
+ * classifier below reads this, not the raw `structure.kind`, so an exact match against "shaft" or
+ * "lair" actually has something to match rather than comparing against "shaft, contains an inner
+ * location" and silently finding nothing.
+ */
+function structureType(kind: string): string {
+  return (kind.split(",")[0] ?? "").trim().toLowerCase();
+}
+
 /** What a structure is drawn as. Every structure is exactly one of these. */
 type StructureKind = "road" | "ship" | "shaft" | "lair" | "building";
 
 function classify(structure: StructureInfo): StructureKind {
-  const kind = structure.kind.trim().toLowerCase();
-  if (roadDirection(structure.kind) !== null) {
+  const kind = structureType(structure.kind);
+  if (roadDirection(kind) !== null) {
     return "road";
   }
-  if (isShip(structure.kind)) {
+  if (isShip(kind)) {
     return "ship";
   }
   if (SHAFT_KINDS.has(kind)) {
@@ -244,7 +259,7 @@ function tallyStructures(region: ReportRegion | null): StructureTally {
   for (const structure of region?.structures ?? []) {
     switch (classify(structure)) {
       case "road": {
-        const direction = roadDirection(structure.kind);
+        const direction = roadDirection(structureType(structure.kind));
         if (direction) {
           tally.roads.push(direction);
         }

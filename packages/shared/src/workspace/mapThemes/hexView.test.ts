@@ -349,6 +349,31 @@ describe("structures, split by what they mean rather than counted together", () 
     expect(withStructures(["Lair"]).lairs).toBe(1);
   });
 
+  it("still recognises a structure whose kind carries the report's own trailing description", () => {
+    // parse_structure (crates/core/src/report/region.rs) only splits a proper description out of
+    // `kind` when the raw line has a semicolon - a shaft, a lair, a cave and a ruin never do, so
+    // the whole clause after the colon lands in `kind` verbatim: "Shaft, contains an inner
+    // location", not "Shaft". An exact match against the bare word alone would find nothing here -
+    // this is the actual text a real report sends, not a synthetic shortcut for it.
+    expect(withStructures(["Shaft, contains an inner location"]).shafts).toBe(1);
+    expect(withStructures(["Lair, closed to player units"]).lairs).toBe(1);
+    expect(withStructures(["Cave, closed to player units"]).lairs).toBe(1);
+    expect(withStructures(["Ruin, closed to player units"]).lairs).toBe(1);
+  });
+
+  it("still recognises a ship or a road with the same kind of trailing description", () => {
+    expect(withStructures(["Galleon, closed to player units"]).ships).toBe(1);
+    expect(withStructures(["road n, a well-worn track"]).roads).toEqual(["n"]);
+  });
+
+  it("does not let a trailing description accidentally match a different kind", () => {
+    // "Cave, formerly a Shaft" is a contrived case, but the split has to take the *first* comma-
+    // separated segment as the type, not merely check whether some known word appears anywhere in
+    // the string - otherwise a coincidental substring match could misclassify a structure entirely.
+    expect(withStructures(["Cave, formerly a Shaft"]).lairs).toBe(1);
+    expect(withStructures(["Cave, formerly a Shaft"]).shafts).toBe(0);
+  });
+
   it("counts an unvisited hex as holding nothing, rather than guessing", () => {
     const view = viewOf(hex({ knowledge: "named" }));
 
