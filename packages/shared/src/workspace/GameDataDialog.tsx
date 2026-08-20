@@ -7,7 +7,7 @@ import {
   type GameDataLink,
   skillEntryId
 } from "../gameData";
-import { paletteKeyReduce } from "../commandPalette";
+import { paletteKeyReduce, PALETTE_PAGE_ROWS } from "../commandPalette";
 import { useEscapeToDismiss } from "./dismissLayer";
 import {
   entriesOf,
@@ -75,7 +75,10 @@ export function GameDataDialog({
 
   const moveWithin = (key: string) => {
     const at = shown.findIndex((entry) => entry.id === state.selectedId);
-    const next = paletteKeyReduce({ index: at === -1 ? 0 : at, count: shown.length }, key);
+    const next = paletteKeyReduce(
+      { index: at === -1 ? 0 : at, count: shown.length, pageSize: PALETTE_PAGE_ROWS },
+      key
+    );
     if (next === null) {
       return false;
     }

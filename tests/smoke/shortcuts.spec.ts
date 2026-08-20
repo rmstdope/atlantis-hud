@@ -87,6 +87,38 @@ test("the palette goes to a structure's hex, and tells one from a dictionary pag
   await expect(items.filter({ hasText: "building" }).first()).toBeVisible();
 });
 
+test("arrowing down a long list keeps the highlight on screen", async ({ page }) => {
+  await loadReport(page);
+
+  // "m" matches most of the palette, which used to be truncated to twelve rows with nothing on
+  // screen to say so (ah-yk6b). Now the list scrolls and the highlight follows the arrows.
+  await page.keyboard.press("ControlOrMeta+k");
+  await page.getByTestId("palette-input").fill("m");
+  const items = page.getByTestId("palette-item");
+  await expect(items.first()).toBeVisible();
+  expect(await items.count()).toBeGreaterThan(12);
+
+  // The dialog fits the window however many rows matched.
+  const dialog = page.getByRole("dialog", { name: "Command palette" });
+  const box = (await dialog.boundingBox())!;
+  expect(box.y + box.height).toBeLessThanOrEqual(page.viewportSize()!.height);
+
+  for (let at = 0; at < 25; at += 1) {
+    await page.keyboard.press("ArrowDown");
+
+  }
+  await expect(items.nth(25)).toHaveAttribute("aria-selected", "true");
+  await expect(items.nth(25)).toBeInViewport();
+
+  // Clamping, not wrapping: holding Down settles on the last row rather than cycling.
+  const total = await items.count();
+  for (let at = 0; at < total + 5; at += 1) {
+    await page.keyboard.press("ArrowDown");
+  }
+  await expect(items.nth(total - 1)).toHaveAttribute("aria-selected", "true");
+  await expect(page.locator('[data-testid="palette-item"][aria-selected="true"]')).toBeInViewport();
+});
+
 test("the palette goes to a region and runs an action", async ({ page }) => {
   await loadReport(page);
 

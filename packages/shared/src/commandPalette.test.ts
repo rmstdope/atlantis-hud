@@ -9,6 +9,11 @@ import { structurePaletteLabel } from "./structureLabel";
 
 const noop = () => {};
 
+/** A bare entry list, for the rules that are about the shape of a result rather than the palette. */
+function of(...rows: Array<[PaletteEntry["kind"], string]>): PaletteEntry[] {
+  return rows.map(([kind, label], at) => ({ id: `${kind}-${at}`, kind, label, run: noop }));
+}
+
 function entries(): PaletteEntry[] {
   return buildPaletteEntries({
     ownUnits: [
@@ -105,27 +110,29 @@ describe("filterPalette", () => {
     expect(found[0].label).toContain("Drones");
   });
 
-  it("ranks prefix above word-start above scattered letters", () => {
+  it("ranks prefix above word-start above a substring", () => {
     // "st" is a prefix of STUDY and merely scattered through "Seven of eighT": the prefix
-    // must come back first, however early the unit sits in the reading order.
+    // must come back first, and the scattered match is dropped entirely (ah-yk6b rule 2).
     const prefixed = filterPalette(entries(), "st").map((entry) => entry.label);
-    const study = prefixed.indexOf("STUDY");
-    const scattered = prefixed.findIndex((label) => label.includes("Seven of Eight"));
-    expect(study).not.toBe(-1);
-    expect(scattered).not.toBe(-1);
-    expect(study).toBeLessThan(scattered);
+    expect(prefixed.indexOf("STUDY")).toBe(0);
+    expect(prefixed.some((label) => label.includes("Seven of Eight"))).toBe(false);
 
-    // "set" starts a word of "Open settings" and is scattered through "Seven of eighT":
-    // the word start wins the same way.
+    // "set" starts a word of "Open settings", so the word start wins and the scattered
+    // "Seven of eighT" is not offered beside it.
     const wordStart = filterPalette(entries(), "set").map((entry) => entry.label);
-    const settings = wordStart.indexOf("Open settings");
-    const seven = wordStart.findIndex((label) => label.includes("Seven of Eight"));
-    expect(settings).not.toBe(-1);
-    expect(seven).not.toBe(-1);
-    expect(settings).toBeLessThan(seven);
+    expect(wordStart.indexOf("Open settings")).toBe(0);
+    expect(wordStart.some((label) => label.includes("Seven of Eight"))).toBe(false);
 
     // A query that is a prefix of one label ranks that label first outright.
     expect(filterPalette(entries(), "toggle")[0].label).toBe("Toggle theme");
+  });
+
+  it("ranks a word start above a substring, among matches of one kind", () => {
+    const found = filterPalette(
+      of(["unit", "Deep Mine"], ["unit", "Undermine"], ["unit", "Mine Crew"]),
+      "mine"
+    ).map((entry) => entry.label);
+    expect(found).toEqual(["Mine Crew", "Deep Mine", "Undermine"]);
   });
 
   it("keeps subsequence matches, for the half-remembered name", () => {
@@ -140,8 +147,52 @@ describe("filterPalette", () => {
     expect(filterPalette(entries(), "")).toHaveLength(13);
   });
 
-  it("caps the list when asked to", () => {
-    expect(filterPalette(entries(), "", 3)).toHaveLength(3);
+  it("returns every match, with no cap", () => {
+    // Twenty units named for mining, and one Mine standing on the map: the structure used to
+    // fall off the end of a twelve-row list with nothing on screen to say so (ah-yk6b).
+    const crowd = of(
+      ...Array.from(
+        { length: 20 },
+        (_, at) => ["unit", `Miners ${at}`] as [PaletteEntry["kind"], string]
+      ),
+      ["structure", "Arcane Mine [12]"]
+    );
+    const found = filterPalette(crowd, "mine");
+    expect(found).toHaveLength(21);
+    expect(found.some((entry) => entry.kind === "structure")).toBe(true);
+  });
+
+  it("drops subsequence matches when better ones exist", () => {
+    const found = filterPalette(
+      of(["structure", "Arcane Mine [12]"], ["building", "Magician's Tower"]),
+      "mine"
+    ).map((entry) => entry.label);
+    expect(found).toEqual(["Arcane Mine [12]"]);
+  });
+
+  it("gives every matching kind a place at the top", () => {
+    const crowd = of(
+      ...Array.from(
+        { length: 20 },
+        (_, at) => ["unit", `Miners ${at}`] as [PaletteEntry["kind"], string]
+      ),
+      ["structure", "Arcane Mine [12]"],
+      ["building", "Mine"]
+    );
+    const top = filterPalette(crowd, "mine").slice(0, 3);
+    expect(new Set(top.map((entry) => entry.kind))).toEqual(
+      new Set(["unit", "structure", "building"])
+    );
+  });
+
+  it("still puts the best match first", () => {
+    // The representatives lead in fit order, so a prefix match outranks a kind that merely
+    // contains the query - Enter on a well-aimed query does what it always did.
+    const found = filterPalette(
+      of(["structure", "Arcane Mine [12]"], ["building", "Mine"], ["unit", "Deep Mine"]),
+      "mine"
+    );
+    expect(found[0].label).toBe("Mine");
   });
 
   it("answers nothing for a query nothing matches", () => {
@@ -150,24 +201,33 @@ describe("filterPalette", () => {
 });
 
 describe("paletteKeyReduce", () => {
-  it("moves the highlight down and up with wrap-around", () => {
-    expect(paletteKeyReduce({ index: 0, count: 3 }, "ArrowDown")).toBe(1);
-    expect(paletteKeyReduce({ index: 2, count: 3 }, "ArrowDown")).toBe(0);
-    expect(paletteKeyReduce({ index: 0, count: 3 }, "ArrowUp")).toBe(2);
+  it("clamps the highlight at both ends", () => {
+    // Uncapped, a wrapping list cycles past what you wanted for ever (ah-yk6b), and a number
+    // must still come back at the ends so the caller calls preventDefault.
+    expect(paletteKeyReduce({ index: 0, count: 3, pageSize: 2 }, "ArrowDown")).toBe(1);
+    expect(paletteKeyReduce({ index: 2, count: 3, pageSize: 2 }, "ArrowDown")).toBe(2);
+    expect(paletteKeyReduce({ index: 0, count: 3, pageSize: 2 }, "ArrowUp")).toBe(0);
+  });
+
+  it("moves a page at a time", () => {
+    expect(paletteKeyReduce({ index: 0, count: 20, pageSize: 8 }, "PageDown")).toBe(8);
+    expect(paletteKeyReduce({ index: 18, count: 20, pageSize: 8 }, "PageDown")).toBe(19);
+    expect(paletteKeyReduce({ index: 10, count: 20, pageSize: 8 }, "PageUp")).toBe(2);
+    expect(paletteKeyReduce({ index: 3, count: 20, pageSize: 8 }, "PageUp")).toBe(0);
   });
 
   it("jumps to the ends on Home and End", () => {
-    expect(paletteKeyReduce({ index: 1, count: 3 }, "Home")).toBe(0);
-    expect(paletteKeyReduce({ index: 1, count: 3 }, "End")).toBe(2);
+    expect(paletteKeyReduce({ index: 1, count: 3, pageSize: 2 }, "Home")).toBe(0);
+    expect(paletteKeyReduce({ index: 1, count: 3, pageSize: 2 }, "End")).toBe(2);
   });
 
   it("leaves every other key to the input", () => {
-    expect(paletteKeyReduce({ index: 1, count: 3 }, "a")).toBeNull();
-    expect(paletteKeyReduce({ index: 1, count: 3 }, "Enter")).toBeNull();
+    expect(paletteKeyReduce({ index: 1, count: 3, pageSize: 2 }, "a")).toBeNull();
+    expect(paletteKeyReduce({ index: 1, count: 3, pageSize: 2 }, "Enter")).toBeNull();
   });
 
   it("stays put with nothing to highlight", () => {
-    expect(paletteKeyReduce({ index: 0, count: 0 }, "ArrowDown")).toBeNull();
+    expect(paletteKeyReduce({ index: 0, count: 0, pageSize: 2 }, "ArrowDown")).toBeNull();
   });
 });
 

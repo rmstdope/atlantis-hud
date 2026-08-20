@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { filterPalette, paletteKeyReduce, type PaletteEntry } from "../commandPalette";
+import {
+  filterPalette,
+  paletteKeyReduce,
+  PALETTE_PAGE_ROWS,
+  type PaletteEntry
+} from "../commandPalette";
 import { useEscapeToDismiss } from "./dismissLayer";
-
-/** More results than fit a keyboard's patience; typing narrows faster than scrolling finds. */
-const SHOWN_LIMIT = 12;
 
 /**
  * The command palette: one input over everything reachable by name.
@@ -22,11 +24,26 @@ export function CommandPalette({
 }) {
   const [query, setQuery] = useState("");
   const [index, setIndex] = useState(0);
-  const shown = useMemo(() => filterPalette(entries, query, SHOWN_LIMIT), [entries, query]);
+  const shown = useMemo(() => filterPalette(entries, query), [entries, query]);
   // Clamped rather than stored: a narrowing query must not leave the highlight past the end.
   const active = Math.min(index, Math.max(0, shown.length - 1));
 
   useEscapeToDismiss(onDismiss);
+
+  // The highlighted row is scrolled into view for the keyboard only. Doing it on hover would move
+  // the row out from under the pointer, firing another `pointerenter` - a list that will not stand
+  // still. `block: "nearest"` scrolls only when the row is actually off screen, so arrowing within
+  // the visible rows does not jog it.
+  const list = useRef<HTMLUListElement | null>(null);
+  const byKeyboard = useRef(false);
+  useEffect(() => {
+    if (!byKeyboard.current) {
+      return;
+    }
+    byKeyboard.current = false;
+    const rows = list.current?.querySelectorAll('[data-testid="palette-item"]');
+    rows?.[active]?.scrollIntoView({ block: "nearest" });
+  }, [active]);
 
   // Focus returns to where the palette was summoned from - unless the entry that ran took it
   // somewhere on purpose, which is what the activeElement check respects. Captured during the
@@ -89,15 +106,36 @@ export function CommandPalette({
               run(shown[active]);
               return;
             }
-            const moved = paletteKeyReduce({ index: active, count: shown.length }, event.key);
-            if (moved !== null) {
+            const step = (from: number) =>
+              paletteKeyReduce(
+                {
+                  // The same clamp `active` applies, so a narrowed list still steps from a real row.
+                  index: Math.min(from, Math.max(0, shown.length - 1)),
+                  count: shown.length,
+                  pageSize: PALETTE_PAGE_ROWS
+                },
+                event.key
+              );
+            // Recognising the key does not depend on where the highlight is, so this call answers
+            // "is this ours?"; the move itself is applied to the *pending* index rather than to
+            // the rendered one. Holding Down outruns React's renders otherwise, and every press
+            // within one commit computes the same next row - the highlight then crawls.
+            if (step(active) !== null) {
               event.preventDefault();
-              setIndex(moved);
+              byKeyboard.current = true;
+              setIndex((current) => step(current) ?? current);
             }
           }}
           className="w-full rounded border border-edge bg-ground px-2 py-1 text-ink outline-none focus:border-select"
         />
-        <ul role="listbox" aria-label="matches" className="m-0 mt-1 list-none p-0">
+        {/* 70vh against the dialog's own pt-[15vh]: the list uses a tall window and simply
+            scrolls on a short one, and the dialog can never run past the bottom edge. */}
+        <ul
+          ref={list}
+          role="listbox"
+          aria-label="matches"
+          className="m-0 mt-1 max-h-[70vh] list-none overflow-y-auto p-0"
+        >
           {shown.map((entry, at) => (
             <li key={entry.id} role="presentation">
               <button
@@ -105,8 +143,14 @@ export function CommandPalette({
                 role="option"
                 aria-selected={at === active}
                 data-testid="palette-item"
-                // Selection follows the pointer the way it follows the arrows.
-                onPointerEnter={() => setIndex(at)}
+                // Selection follows the pointer the way it follows the arrows - but on real
+                // movement only. `pointerenter` also fires when a row scrolls *under* a
+                // stationary mouse, so on an uncapped list (ah-yk6b) arrowing down would scroll
+                // a row beneath the pointer and hand the highlight straight back to it.
+                onPointerMove={() => {
+                  byKeyboard.current = false;
+                  setIndex(at);
+                }}
                 onClick={() => run(entry)}
                 className={`flex w-full items-baseline justify-between gap-2 rounded px-2 py-1 text-left ${
                   at === active ? "bg-edge/40 text-ink" : "text-ink-soft"
