@@ -65,6 +65,7 @@ export function PopoverFrame({
   width,
   padding,
   textSize,
+  frameRef,
   children
 }: {
   testId: string;
@@ -73,10 +74,13 @@ export function PopoverFrame({
   width: string;
   padding?: string;
   textSize?: string;
+  /** So a popover that has to know where it is on screen can measure itself (ah-mwqa). */
+  frameRef?: RefObject<HTMLDivElement | null>;
   children: ReactNode;
 }) {
   return (
     <div
+      ref={frameRef}
       data-testid={testId}
       role="dialog"
       aria-label={label}
