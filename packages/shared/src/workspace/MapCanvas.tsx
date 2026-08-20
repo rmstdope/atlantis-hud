@@ -874,10 +874,12 @@ export function MapCanvas({
       }
     };
 
-    // Leaving a row puts the map back at once: a delayed restore reads as the map drifting by
-    // itself. Only the move waits for the pointer to settle, which is what stops a quick sweep down
-    // ten rows dragging the map through every hex on the way.
-    if (highlightedAt === null) {
+    // Only a pointer peek waits, which is what stops a quick sweep down ten rows dragging the map
+    // through every hex on the way. Leaving a row puts the map back at once - a delayed restore
+    // reads as the map drifting by itself - and so does a focused row, because that is a keyboard
+    // reader navigating and 300ms of nothing after a Tab reads as the map having missed it
+    // (Copilot, #486).
+    if (highlightedAt === null || highlightMode === "settle") {
       run();
       return undefined;
     }

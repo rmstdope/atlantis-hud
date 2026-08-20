@@ -109,7 +109,7 @@ describe("FactionDossierPanel", () => {
     }
   });
 
-  it("reports the hex a row is on, on hover AND on focus, and nothing when the reader looks away", () => {
+  it("reports the hex a row is on down the pointer's path and the keyboard's, and nothing when the reader looks away", () => {
     const onHoverHex = vi.fn();
     const onFocusHex = vi.fn();
     const row = findByTestId(panel({ onHoverHex, onFocusHex }), "dossier-hex-1:8,54");
