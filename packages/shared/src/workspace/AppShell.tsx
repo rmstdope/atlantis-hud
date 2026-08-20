@@ -3228,7 +3228,16 @@ export function AppShell({
                 <button
                   type="button"
                   data-testid={`open-faction-dossier-${factionId}`}
+                  // Not a tab stop, exactly as the in-row unit-id button beside it is not: the
+                  // units table is one tab stop per row with a roving tabIndex, and a control
+                  // inside a cell would put a second stop in every row of a three-hundred-row
+                  // table. The keyboard route to a dossier is the attitudes list, which is
+                  // rendered inline and fully tabbable (Copilot, #478).
+                  tabIndex={-1}
                   onClick={(event) => {
+                    // The row is itself a click target that selects the unit. Opening a dossier is
+                    // not selecting a unit, so this click stops here.
+                    event.stopPropagation();
                     const rect = event.currentTarget.getBoundingClientRect();
                     setDossier({ factionId, from: "units", at: { x: rect.left, y: rect.bottom } });
                   }}

@@ -3938,6 +3938,8 @@ test("a skill named in the unit panel opens its game data entry", async ({ page 
   await expect(page.getByTestId("game-data-dialog")).toBeVisible();
   await expect(page.getByTestId("game-data-tab-skill")).toHaveAttribute("aria-selected", "true");
   await expect(page.getByTestId("game-data-detail")).toContainText(name);
+});
+
 /**
  * ah-bu2c: a faction's name is a way into everything the turn knows about that faction.
  *
@@ -3952,7 +3954,20 @@ test("a faction name in the units table opens its dossier", async ({ page }) => 
   await loadReport(page);
   await selectHex(page, DOSSIER_HEX);
 
+  // Which row is selected before the name is clicked, so the click can be shown to have opened a
+  // dossier and nothing else: the row is itself a click target that selects the unit, and a button
+  // inside it would otherwise do both at once (Copilot, #478).
+  const selectedBefore = await page
+    .locator("tr[data-selected='true']")
+    .first()
+    .getAttribute("data-testid");
+
   await page.getByTestId(`open-faction-dossier-${DOSSIER_FACTION}`).first().click();
+
+  await expect(page.locator("tr[data-selected='true']").first()).toHaveAttribute(
+    "data-testid",
+    selectedBefore ?? ""
+  );
 
   const dossier = page.getByTestId("faction-dossier");
   await expect(dossier).toBeVisible();
