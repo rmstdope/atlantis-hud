@@ -40,6 +40,37 @@ describe("finding unit blocks", () => {
     const lines = DOCUMENT.split("\n");
     expect(lines[last.lastLine]).toBe(";Drone (13401), behind.");
   });
+
+  it("finds a unit whatever case the line is written in - the rules' own worked example uses UNIT", () => {
+    // "The parser is not case sensitive... [this] applies to the #ATLANTIS and #END lines as well
+    // as to order lines" (règles.txt) - a document is under no obligation to match this app's own
+    // lowercase habit, and the rules' own worked example is uppercase throughout.
+    const upperCase = ['#ATLANTIS 95 "secret"', "", "UNIT 18642", "@claim 50", "", "#END"].join(
+      "\n"
+    );
+    expect(findUnitBlocks(upperCase).map((block) => block.unitId)).toEqual(["18642"]);
+  });
+
+  it("does not let an uppercase #END get folded into the last unit's own orders", () => {
+    const upperCase = ['#ATLANTIS 95 "secret"', "", "UNIT 18642", "@claim 50", "", "#END"].join(
+      "\n"
+    );
+    expect(readUnitOrders(upperCase, "18642")).toBe("@claim 50");
+  });
+});
+
+describe("hasFactionHeader", () => {
+  it("finds a lowercase header, this app's own habit", () => {
+    expect(hasFactionHeader('#atlantis 95 "secret"')).toBe(true);
+  });
+
+  it("finds an uppercase header just as well - the rules' own worked example uses #ATLANTIS", () => {
+    expect(hasFactionHeader('#ATLANTIS 95 "secret"')).toBe(true);
+  });
+
+  it("is false for a document with no header at all", () => {
+    expect(hasFactionHeader("unit 18642\n@claim 50")).toBe(false);
+  });
 });
 
 describe("reading a unit's orders", () => {

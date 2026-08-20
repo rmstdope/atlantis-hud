@@ -22,10 +22,11 @@ export type UnitBlock = {
   lastLine: number;
 };
 
-const UNIT_LINE = /^unit\s+(\S+)\s*$/u;
-const DOCUMENT_END = "#end";
+const UNIT_LINE = /^unit\s+(\S+)\s*$/iu;
+const DOCUMENT_END_LINE = /^#end$/iu;
 /** `;*** mountain (7,53) in Inhead, contains Inholm [city] ***`, one before each region's units. */
 const REGION_BANNER = /^;\*\*\*/u;
+const ATLANTIS_HEADER_LINE = /^#atlantis\b/iu;
 
 /**
  * Whether a line is the document's own furniture rather than any unit's orders.
@@ -34,13 +35,19 @@ const REGION_BANNER = /^;\*\*\*/u;
  * the last unit of one region and the first unit of the next - and a block that runs to the line
  * before the next `unit` swallows it, putting another region's heading in this unit's editor and
  * appending everything typed afterwards below it.
+ *
+ * Case-insensitively, for `#end` and `#atlantis` alike: "The parser is not case sensitive, so all
+ * commands may be given in upper case, lower case or a mixture of the two... [this] applies] to the
+ * #ATLANTIS and #END lines as well as to order lines" (règles.txt). A document this app itself
+ * writes is always lowercase, which is easy to mistake for the only shape worth reading - a hand-
+ * edited file, or one written by another client, is under no obligation to match it.
  */
 function belongsToDocument(line: string): boolean {
   const trimmed = line.trim();
   return (
     trimmed === "" ||
-    trimmed === DOCUMENT_END ||
-    trimmed.startsWith("#atlantis") ||
+    DOCUMENT_END_LINE.test(trimmed) ||
+    ATLANTIS_HEADER_LINE.test(trimmed) ||
     REGION_BANNER.test(trimmed)
   );
 }
@@ -240,7 +247,7 @@ export function commandsOnly(orders: string): string[] {
 
 /** Whether the document still carries the header the server requires. */
 export function hasFactionHeader(document: string): boolean {
-  return document.split("\n").some((line) => line.trim().startsWith("#atlantis"));
+  return document.split("\n").some((line) => ATLANTIS_HEADER_LINE.test(line.trim()));
 }
 
 /** A line that is one of the core's movement orders, `@`-repeated or not. */
