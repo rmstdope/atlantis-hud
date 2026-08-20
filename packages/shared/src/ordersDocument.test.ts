@@ -46,8 +46,8 @@ describe("finding unit blocks", () => {
 
   it("finds a unit whatever case the line is written in - the rules' own worked example uses UNIT", () => {
     // "The parser is not case sensitive... [this] applies to the #ATLANTIS and #END lines as well
-    // as to order lines" (règles.txt) - a document is under no obligation to match this app's own
-    // lowercase habit, and the rules' own worked example is uppercase throughout.
+    // as to order lines" (https://atlantis-pbem.com/rules) - a document is under no obligation to
+    // match this app's own lowercase habit, and the rules' own worked example is uppercase.
     const upperCase = ['#ATLANTIS 95 "secret"', "", "UNIT 18642", "@claim 50", "", "#END"].join(
       "\n"
     );
