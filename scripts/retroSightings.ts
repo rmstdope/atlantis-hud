@@ -249,6 +249,10 @@ export function formatReport(
   const lines: string[] = [];
 
   if (shown.length === 0) {
+    // Verbatim from the mockup the navigator chose, threshold spelled as a word and with no
+    // separate line for "all of them are dismissed" - a dismissed finding is one that has been
+    // dealt with, and saying so again is the nagging the dismissal exists to stop. If
+    // `DEFAULT_THRESHOLD` ever moves, this sentence moves with it by hand.
     lines.push("No finding has been sighted three times.");
   } else {
     lines.push(`Repeated findings (${DEFAULT_THRESHOLD}+ sightings)`);
@@ -313,6 +317,7 @@ export function readCorpus(root: string): Retro[] {
     .sort();
 
   const retros: Retro[] = [];
+  const byBead = new Map<string, Retro>();
   for (const path of paths) {
     const beadId = beadIdFromRetroPath(path);
     if (beadId === null) {
@@ -324,11 +329,13 @@ export function readCorpus(root: string): Retro[] {
       : git(root, ["show", `origin/main:${path}`]);
     // Two files for one bead - `ah-wxk.1.md` and `ah-wxk.1-verifier.md` - are two records of the
     // same bead sighting things, so their paragraphs are read together rather than as two beads.
-    const existing = retros.find((retro) => retro.beadId === beadId);
+    const existing = byBead.get(beadId);
     if (existing) {
       existing.text = `${existing.text}\n\n${text}`;
     } else {
-      retros.push({ beadId, path, text });
+      const retro = { beadId, path, text };
+      byBead.set(beadId, retro);
+      retros.push(retro);
     }
   }
 
