@@ -103,8 +103,7 @@ describe("GameDataDialog", () => {
 
   it("says a structure that shelters mages does so", () => {
     const html = markup("building:FORT");
-    expect(html).toContain("Mages sheltered");
-    expect(html).toContain(">1<");
+    expect(html).toMatch(/Mages sheltered<\/span><span class="text-ink">1<\/span>/);
   });
 
   it("says nothing about mages for a structure that shelters none", () => {
