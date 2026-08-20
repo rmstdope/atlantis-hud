@@ -1,8 +1,11 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import type { RegionPreview, ReportRegion, ReportUnit } from "@atlantis/core-client";
 import { aReportRegion, aReportUnit } from "@atlantis/core-client";
 import type { HexNode } from "../hexMapModel";
+import { DEFAULT_COLUMN_SHARES, UNIT_COLUMNS, type UnitColumn } from "../unitTable";
+import { restoreStoresForTest, setStoreStateForTest } from "../testing/storeState";
+import { resetWorkspaceStore, useWorkspaceStore } from "../workspaceStore";
 import { UnitTableDock } from "./UnitTableDock";
 
 /**
@@ -130,5 +133,319 @@ describe("a unit carried away by a sailing fleet", () => {
 
     expect(markup).toContain("→ …");
     expect(markup).toContain("aboard Wavecrest [329]");
+  });
+});
+
+describe("the structure column", () => {
+  const WAVECREST = {
+    structureId: "329",
+    name: "Wavecrest",
+    kind: "Longship",
+    description: null,
+    needs: null
+  };
+
+  const inStructures = (units: ReportUnit[]) =>
+    hex({ region: region({ structures: [WAVECREST], units }) });
+
+  it("names the structure a unit stands in, not just its number", () => {
+    const markup = draw(inStructures([unit({ unitId: "901", name: "Passengers", structureId: "329" })]));
+
+    expect(markup).toContain("Wavecrest [329] · Longship");
+  });
+
+  it("keeps the bare number when the region never described the structure", () => {
+    const markup = draw(inStructures([unit({ unitId: "901", name: "Passengers", structureId: "77" })]));
+
+    expect(markup).toContain("[77]");
+    expect(markup).not.toContain("Wavecrest [77]");
+  });
+
+  it("leaves the cell empty for a unit standing in the open", () => {
+    const markup = draw(inStructures([unit({ unitId: "902", name: "Scout", structureId: null })]));
+
+    expect(markup).not.toContain("Wavecrest");
+    // The structure cell renders with nothing in it at all. It is the second-to-last cell now that
+    // the Long order column sits after it, so the match runs up to that cell rather than to </tr>.
+    expect(markup).toMatch(/<td[^>]*><\/td><td[^>]*>(<span class="text-danger">—<\/span>)?<\/td><\/tr>/);
+  });
+
+  it("the tooltip gives the whole label, and what the orders changed beneath it", () => {
+    const markup = draw(
+      inStructures([unit({ unitId: "901", name: "Passengers", structureId: "329" })]),
+      {
+        regionId: "1:6,52",
+        units: [
+          {
+            unit: unit({ unitId: "901", name: "Passengers", structureId: "329" }),
+            status: "present",
+            changes: [{ field: "structureId", original: "" }],
+            arrivingFrom: null,
+            departingTo: null,
+            aboard: null
+          }
+        ]
+      }
+    );
+
+    expect(markup).toContain("Wavecrest [329] · Longship\n");
+    expect(markup).toMatch(/title="Wavecrest \[329\] · Longship\n[^"]/);
+  });
+});
+
+describe("draws its header and its rows from the column list", () => {
+  const withUnits = () =>
+    hex({ region: region({ units: [unit({ unitId: "1", own: true }), unit({ unitId: "2", own: false, factionId: "9", factionName: "Them" })] }), ownUnitCount: 1, foreignUnitCount: 1 });
+
+  it("has one header cell and one column for every column in the list", () => {
+    const markup = draw(withUnits());
+
+    expect((markup.match(/<th\b/g) ?? []).length).toBe(UNIT_COLUMNS.length);
+    expect((markup.match(/<col\b/g) ?? []).length).toBe(UNIT_COLUMNS.length);
+  });
+
+  it("gives every row exactly one cell per column", () => {
+    const markup = draw(withUnits());
+    const row = /<tr[^>]*data-testid="unit-row-1"[\s\S]*?<\/tr>/.exec(markup)?.[0] ?? "";
+
+    expect((row.match(/<td\b/g) ?? []).length).toBe(UNIT_COLUMNS.length);
+  });
+});
+
+describe("column widths (ah-1owr.2)", () => {
+  const withUnits = () =>
+    hex({ region: region({ units: [unit({ unitId: "1", own: true })] }), ownUnitCount: 1, foreignUnitCount: 0 });
+
+  it("sizes every column from its share, as a percentage", () => {
+    const markup = draw(withUnits());
+    const cols = markup.match(/<col\b[^>]*>/g) ?? [];
+
+    expect(cols).toHaveLength(UNIT_COLUMNS.length);
+    cols.forEach((col, index) => {
+      const column = UNIT_COLUMNS[index];
+      expect(col).toContain(`width:${DEFAULT_COLUMN_SHARES[column] * 100}%`);
+    });
+  });
+
+  it("leaves no pixel width and no Tailwind width class on any column", () => {
+    for (const col of draw(withUnits()).match(/<col\b[^>]*>/g) ?? []) {
+      expect(col).not.toMatch(/\dpx/);
+      expect(col).not.toMatch(/class="[^"]*\bw-/);
+    }
+  });
+
+  /**
+   * Every internal boundary except `own`'s: that column is 24px, narrower than the grip's own hit
+   * area, so a handle there sits on the group-own-units toggle and swallows its clicks.
+   */
+  it("mounts a resize handle at every internal boundary a column is wide enough for", () => {
+    const markup = draw(withUnits());
+
+    for (let index = 1; index < UNIT_COLUMNS.length - 1; index += 1) {
+      expect(markup).toContain(
+        `data-testid="column-splitter-${UNIT_COLUMNS[index]}-${UNIT_COLUMNS[index + 1]}"`
+      );
+    }
+    expect(markup).not.toContain('data-testid="column-splitter-own-');
+    expect((markup.match(/data-testid="column-splitter-/g) ?? []).length).toBe(
+      UNIT_COLUMNS.length - 2
+    );
+  });
+});
+
+describe("the long order column", () => {
+  const twoUnits = () =>
+    hex({
+      region: region({
+        units: [
+          unit({ unitId: "1", own: true }),
+          unit({ unitId: "2", own: false, factionId: "9", factionName: "Them" })
+        ]
+      }),
+      ownUnitCount: 1,
+      foreignUnitCount: 1
+    });
+
+  const drawWith = (getLongOrder: (unitId: string) => string | null): string =>
+    renderToStaticMarkup(<UnitTableDock hex={twoUnits()} preview={null} getLongOrder={getLongOrder} />);
+
+
+  const rowOf = (markup: string, unitId: string): string =>
+    new RegExp(`<tr[^>]*data-testid="unit-row-${unitId}"[\\s\\S]*?</tr>`).exec(markup)?.[0] ?? "";
+
+  it("shows an own unit's month-long order, and nothing for anybody else's", () => {
+    const markup = drawWith((unitId) => (unitId === "1" ? "@produce yew" : "work"));
+
+    expect(markup).toContain("Long order");
+    expect(rowOf(markup, "1")).toContain("@produce yew");
+    // The foreign unit's cell is empty even when something answers for it: there is nothing of
+    // anybody else's orders to read.
+    expect(rowOf(markup, "2")).not.toContain("work");
+  });
+
+  it("an own unit given nothing to do this month is marked in red", () => {
+    const markup = drawWith(() => null);
+    const own = rowOf(markup, "1");
+    const foreign = rowOf(markup, "2");
+
+    expect(own).toContain("text-danger\">—");
+    // A foreign unit's cell is blank rather than dashed - it is not a unit doing nothing.
+    expect(foreign).not.toContain("text-danger\">—");
+  });
+});
+
+describe("column order (ah-1owr.3)", () => {
+  const withUnits = () =>
+    hex({
+      region: region({ units: [unit({ unitId: "1", own: true })] }),
+      ownUnitCount: 1,
+      foreignUnitCount: 0
+    });
+
+  afterEach(() => {
+    restoreStoresForTest();
+    resetWorkspaceStore();
+  });
+
+  const swapped = () => {
+    const order = [...UNIT_COLUMNS] as UnitColumn[];
+    // name and faction trade places, so header, colgroup and cells must all follow.
+    [order[2], order[3]] = [order[3], order[2]];
+    return order;
+  };
+
+  it("draws its header, its columns and its cells from one order", () => {
+    const markup = draw(withUnits());
+    const grips = [...markup.matchAll(/data-testid="column-reorder-(\w+)"/g)].map(
+      (match) => match[1]
+    );
+
+    expect(grips).toEqual(UNIT_COLUMNS.filter((column) => column !== "own"));
+    expect((markup.match(/<col\b/g) ?? []).length).toBe(UNIT_COLUMNS.length);
+
+    const row = /<tr[^>]*data-testid="unit-row-1"[\s\S]*?<\/tr>/.exec(markup)?.[0] ?? "";
+    expect((row.match(/<td\b/g) ?? []).length).toBe(UNIT_COLUMNS.length);
+  });
+
+  it("draws header, columns and rows in the stored order", () => {
+    // `renderToStaticMarkup` reads the store's `getInitialState()`, not its live state, so a
+    // preference has to be mirrored onto it - see `../testing/storeState.ts`.
+    setStoreStateForTest(useWorkspaceStore, { unitColumnOrder: swapped() });
+    const markup = draw(withUnits());
+
+    const grips = [...markup.matchAll(/data-testid="column-reorder-(\w+)"/g)].map(
+      (match) => match[1]
+    );
+    expect(grips).toEqual(swapped().filter((column) => column !== "own"));
+
+    const cols = markup.match(/<col\b[^>]*>/g) ?? [];
+    cols.forEach((col, index) => {
+      expect(col).toContain(`width:${DEFAULT_COLUMN_SHARES[swapped()[index]] * 100}%`);
+    });
+
+    // The rows follow the header rather than keeping a sequence of their own.
+    const row = /<tr[^>]*data-testid="unit-row-1"[\s\S]*?<\/tr>/.exec(markup)?.[0] ?? "";
+    expect((row.match(/<td\b/g) ?? []).length).toBe(UNIT_COLUMNS.length);
+  });
+
+  it("falls back to the shipped order when the stored one does not fit this build", () => {
+    // Not a permutation of this build's columns - the store's own `merge` rejects such a value on
+    // load, and a render must not try to draw one either.
+    setStoreStateForTest(useWorkspaceStore, { unitColumnOrder: ["own", "name"] as UnitColumn[] });
+    const grips = [...draw(withUnits()).matchAll(/data-testid="column-reorder-(\w+)"/g)].map(
+      (match) => match[1]
+    );
+
+    expect(grips).toEqual(UNIT_COLUMNS.filter((column) => column !== "own"));
+  });
+
+  it("mounts a reorder grip on every column but the marker", () => {
+    const markup = draw(withUnits());
+
+    expect(markup).not.toContain('data-testid="column-reorder-own"');
+    expect((markup.match(/data-testid="column-reorder-/g) ?? []).length).toBe(
+      UNIT_COLUMNS.length - 1
+    );
+  });
+
+  it("names each grip after the column it moves, as a reader hears it", () => {
+    expect(draw(withUnits())).toContain('aria-label="Move the Long order column"');
+  });
+
+  it("has an overlay for the drag feedback, outside the table and taking no pointer events", () => {
+    const markup = draw(withUnits());
+    const overlay = /<div[^>]*data-testid="column-drag-overlay"[^>]*>/.exec(markup)?.[0] ?? "";
+
+    expect(overlay).not.toBe("");
+    // Without this the drop line eats the `pointerup` that ends the drag.
+    expect(overlay).toContain("pointer-events-none");
+    // Never inside the header: a positioned element in a `table-fixed` thead is at the mercy of
+    // table layout, and the row height must not move.
+    expect(markup.indexOf('data-testid="column-drag-overlay"')).toBeLessThan(
+      markup.indexOf("<thead")
+    );
+  });
+});
+
+describe("a foreign faction's name in the faction column (ah-bu2c)", () => {
+  it("renders it through renderFactionName, so the dossier can hang off the name clicked", () => {
+    const markup = renderToStaticMarkup(
+      <UnitTableDock
+        hex={hex({ region: region({ units: [unit({ factionId: "2", factionName: "Creatures", own: false })] }) })}
+        preview={null}
+        renderFactionName={(factionId, label) => (
+          <button type="button" data-testid={`open-dossier-${factionId}`}>
+            {label}
+          </button>
+        )}
+      />
+    );
+
+    expect(markup).toContain('data-testid="open-dossier-2"');
+    expect(markup).toContain("Creatures (2)");
+  });
+
+  it("prints the plain name when nothing offers a dossier, and a dash for a concealed faction", () => {
+    const plain = draw(
+      hex({ region: region({ units: [unit({ factionId: "2", factionName: "Creatures", own: false })] }) })
+    );
+    expect(plain).toContain("Creatures (2)");
+    expect(plain).not.toContain("open-dossier");
+
+    const concealed = renderToStaticMarkup(
+      <UnitTableDock
+        hex={hex({ region: region({ units: [unit({ factionId: null, factionName: null, own: false })] }) })}
+        preview={null}
+        renderFactionName={(factionId, label) => (
+          <button type="button" data-testid={`open-dossier-${factionId}`}>
+            {label}
+          </button>
+        )}
+      />
+    );
+    // A concealed unit belongs to no faction, so there is nothing to open a dossier for.
+    expect(concealed).not.toContain("open-dossier");
+    expect(concealed).toContain("—");
+  });
+});
+
+describe("our own faction's name in the faction column (ah-bu2c)", () => {
+  it("is printed plainly, because a dossier is for the factions we cannot see inside", () => {
+    // It also keeps a row of our own to one button: the smoke suite selects a unit with
+    // `row.getByRole("button")`, and a second button in the row makes that ambiguous.
+    const markup = renderToStaticMarkup(
+      <UnitTableDock
+        hex={hex({ region: region({ units: [unit({ factionId: "95", factionName: "Borg TNG", own: true })] }) })}
+        preview={null}
+        renderFactionName={(factionId, label) => (
+          <button type="button" data-testid={`open-dossier-${factionId}`}>
+            {label}
+          </button>
+        )}
+      />
+    );
+
+    expect(markup).toContain("Borg TNG (95)");
+    expect(markup).not.toContain("open-dossier");
   });
 });

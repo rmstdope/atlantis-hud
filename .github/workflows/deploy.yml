@@ -26,6 +26,11 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    # The same ceiling as `ci.yml`'s browser jobs and for the same reason - this job reaches apt
+    # through `playwright install-deps` on every run, and that step has stalled 25-55 minutes
+    # (ah-3c80). Larger than `smoke`'s 15 because this job also builds the Rust wasm core, so its
+    # honest runtime is longer; the point is bounding an hour-long stall, not budgeting the work.
+    timeout-minutes: 30
     steps:
       # Full history, because the guard below has to decide whether a tag is on main, and a shallow
       # clone cannot answer that.
@@ -110,20 +115,8 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Cache the Playwright browser
-        id: playwright-cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
-
-      - name: Install Playwright Chromium
-        if: steps.playwright-cache.outputs.cache-hit != 'true'
-        run: pnpm exec playwright install --with-deps chromium
-
-      - name: Install Playwright system dependencies
-        if: steps.playwright-cache.outputs.cache-hit == 'true'
-        run: pnpm exec playwright install-deps chromium
+      - name: Install the Playwright browser
+        uses: ./.github/actions/playwright-browser
 
       - name: Build the web application
         run: pnpm run build:web

@@ -15,8 +15,9 @@
 import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { type LegResult, summarizeLegs } from "./summarizeLegs";
 
-export type SuiteResult = { name: string; passed: boolean };
+export type SuiteResult = LegResult;
 
 type Suite = { name: string; command: string; args: string[] };
 
@@ -27,22 +28,14 @@ const SUITES: readonly Suite[] = [
   { name: "cargo", command: "cargo", args: ["test", "--workspace"] }
 ];
 
-/** What to print and exit with, once every suite has already run. Pure, so the cases are plain. */
+/**
+ * What to print and exit with, once every suite has already run. Pure, so the cases are plain.
+ *
+ * The shape is shared with `runGate.ts`, which makes the same exhaustive-rather-than-chained trade
+ * over the fast gate; see `summarizeLegs.ts`.
+ */
 export function summarize(results: readonly SuiteResult[]): { exitCode: number; text: string } {
-  const line = `suites: ${results
-    .map((result) => `${result.name} ${result.passed ? "PASS" : "FAIL"}`)
-    .join("  ")}`;
-  const failed = results.filter((result) => !result.passed);
-
-  if (failed.length === 0) {
-    return { exitCode: 0, text: line };
-  }
-
-  const names = failed.map((result) => result.name).join(", ");
-  return {
-    exitCode: 1,
-    text: `${line}\n${failed.length} of ${results.length} suites failed: ${names}`
-  };
+  return summarizeLegs("suites", "suites", results);
 }
 
 /** Runs one suite with its output going straight to the terminal, and says whether it passed. */

@@ -5,16 +5,68 @@
 //! written by a person playing the game and accepted by the server, so every line in it is correct
 //! by construction. Anything this parser has to say about it is something the parser got wrong.
 
-use atlantis_hud_core::orders::semantics::{check_turn, CheckOptions};
+use atlantis_hud_core::orders::semantics::{check_turn, CheckOptions, Finding};
 use atlantis_hud_core::report::orders::extract_orders_template;
 use atlantis_hud_core::report::{classify_units, parse_report_full, ParsedReport};
 use atlantis_hud_core::validate_orders;
+use std::collections::BTreeMap;
 
 const TURN_71: &str = atlantis_hud_fixtures::G7_F95_T71.text;
 const RULESET: &str = atlantis_hud_fixtures::RULESET_JSON;
 
 mod common;
 use common::ruleset;
+
+/// What the committed turn genuinely contains, per code.
+///
+/// A table rather than a positional list of codes or an absolute total, because those made every
+/// new advisory check renegotiate this file: a list moves when a check is added anywhere, and a
+/// count of ten says nothing about *which* ten (ah-11lh). A new check adds a row here and touches
+/// nothing else - and, more importantly, a check that stops firing on real orders shows up as a
+/// row that changed rather than disappearing into a total.
+///
+/// The turn is not clean and is not meant to be; each row is a real finding about real orders:
+///
+/// - `unit-does-nothing` (ah-dwk6): units 14451 and 13432 are given no orders at all. Both are
+///   parked cargo units; the navigator was shown that measurement and chose to warn about them
+///   anyway rather than exempt an empty block.
+/// - `magic-study-outside-building` (ah-a2k.2): the Borg mages aboard the Cloudship
+///   `Princess of the Dawn [1239]` study force (881, 12878, 12879, 20, 12880) and pattern (12881)
+///   while a Cloudship is not a kind the ruleset's buildings table seats mages in. The navigator
+///   settled this against the alternative on 2026-08-17: a structure the table does not name is no
+///   shelter, so these are real halved months and not invented problems - even though this turn's
+///   own "Errors during turn" section does not carry the engine's advisory for them.
+/// - `study-at-maximum` (ah-1uj): unit 13402 is reported at combat [COMB] 5 (450) - the ruleset's
+///   own maximum - and orders "@study comb" anyway, which is a real wasted month.
+/// - `not-enough-items` (ah-dbb.2): the enchant-armor mages are short plate armor between them.
+const EXPECTED: &[(&str, usize)] = &[
+    ("magic-study-outside-building", 6),
+    ("not-enough-items", 1),
+    ("study-at-maximum", 1),
+    ("unit-does-nothing", 2),
+];
+
+/// The expectation table as a map, so an assertion can be read as a table.
+fn expected_counts() -> BTreeMap<&'static str, usize> {
+    let table: BTreeMap<&'static str, usize> = EXPECTED.iter().copied().collect();
+    // A duplicated code would collapse into one row here and quietly take the second row's count,
+    // so the table would still look like a table while asserting something nobody wrote.
+    assert_eq!(
+        table.len(),
+        EXPECTED.len(),
+        "a code appears twice in EXPECTED: {EXPECTED:?}"
+    );
+    table
+}
+
+/// The findings by code, so an expectation can be compared as a table rather than as a total.
+fn counts(findings: &[Finding]) -> BTreeMap<&'static str, usize> {
+    let mut seen = BTreeMap::new();
+    for finding in findings {
+        *seen.entry(finding.code.as_str()).or_insert(0) += 1;
+    }
+    seen
+}
 
 fn template() -> String {
     extract_orders_template(TURN_71)
@@ -103,20 +155,17 @@ fn the_committed_turn_has_no_semantic_problems_either() {
         CheckOptions::default(),
     );
 
-    // Two exceptions since ah-1uj and ah-dbb.2 landed: unit 13402 is reported at combat [COMB] 5
-    // (450) - the ruleset's own maximum - and orders "@study comb" anyway, which is a real wasted
-    // month (`study-at-maximum`, ah-1uj); and the four enchant-armor mages above. Neither is an
-    // invented problem, and only the fields that make each finding specific are asserted, not the
-    // whole struct, so an unrelated fixture edit elsewhere in the turn does not force rewriting
-    // this test.
-    //
-    // Six more since ah-a2k.2: the Borg mages aboard the Cloudship `Princess of the Dawn [1239]`
-    // study force (881, 12878, 12879, 20, 12880) and pattern (12881) at levels 3 and 4 while a
-    // Cloudship is not a kind the ruleset's buildings table seats mages in. The navigator settled
-    // this against the alternative on 2026-08-17: a structure the table does not name is no
-    // shelter, so these are real halved months and not invented problems - even though this turn's
-    // own "Errors during turn" section does not carry the engine's advisory for them.
-    assert_eq!(findings.len(), 8, "{findings:?}");
+    // What the turn contains, per code - the exception log that used to live here is on
+    // `EXPECTED`, which every assertion in this file now derives from. Only the fields that make
+    // each finding specific are asserted below, not the whole struct, so an unrelated fixture edit
+    // elsewhere in the turn does not force rewriting this test.
+    assert_eq!(counts(&findings), expected_counts(), "{findings:?}");
+    let idle: Vec<&str> = findings
+        .iter()
+        .filter(|f| f.code.as_str() == "unit-does-nothing")
+        .filter_map(|f| f.unit_id.as_deref())
+        .collect();
+    assert_eq!(idle, ["14451", "13432"]);
     let halved: Vec<&str> = findings
         .iter()
         .filter(|f| f.code.as_str() == "magic-study-outside-building")
@@ -199,30 +248,23 @@ fn a_unit_told_to_spend_what_it_has_not_got_is_caught_in_that_same_turn() {
     );
     let findings = check_turn(&report, &damaged, Some(&ruleset()), options);
 
-    // Alongside the introduced shortfall, the turn's genuine findings (the enchant-armor
-    // `not-enough-items`, unit 13402's `study-at-maximum`, and the six Cloudship mages'
-    // `magic-study-outside-building`, see the test above) still fire - this fixture is not
-    // otherwise clean.
-    assert_eq!(
-        findings.iter().map(|f| f.code.as_str()).collect::<Vec<_>>(),
-        vec![
-            "not-enough-silver",
-            "magic-study-outside-building",
-            "magic-study-outside-building",
-            "magic-study-outside-building",
-            "magic-study-outside-building",
-            "magic-study-outside-building",
-            "magic-study-outside-building",
-            "study-at-maximum",
-            "not-enough-items",
-        ],
-        "{findings:?}"
-    );
-    assert_eq!(findings[0].unit_id, None, "one purse, shared");
+    // Alongside the introduced shortfall, the turn's genuine findings (see `EXPECTED`) still
+    // fire - this fixture is not otherwise clean. Derived from the one table rather than repeated,
+    // so a new check adds a row there and nothing here (ah-11lh).
+    let mut expected = expected_counts();
+    *expected.entry("not-enough-silver").or_insert(0) += 1; // the shortfall this case introduces
+    assert_eq!(counts(&findings), expected, "{findings:?}");
+    // The introduced shortfall, found by code rather than by position: two `unit-does-nothing`
+    // findings now sort ahead of it (ah-dwk6).
+    let shortfall = findings
+        .iter()
+        .find(|f| f.code.as_str() == "not-enough-silver")
+        .unwrap_or_else(|| panic!("no not-enough-silver finding: {findings:?}"));
+    assert_eq!(shortfall.unit_id, None, "one purse, shared");
     assert!(
-        findings[0].message.contains("the units in this hex"),
+        shortfall.message.contains("the units in this hex"),
         "{}",
-        findings[0].message
+        shortfall.message
     );
 }
 
@@ -245,12 +287,15 @@ fn a_whole_map_pass_re_reads_neither_the_report_nor_the_ruleset() {
 
     // Fifty passes over the committed turn. If any of them re-parsed the report this would take
     // long enough to notice; the point here is that they are all handed the same two objects.
-    // The turn carries eight genuine findings throughout (the enchant-armor `not-enough-items`,
-    // unit 13402's `study-at-maximum`, and the six Cloudship mages' `magic-study-outside-building`;
-    // see `the_committed_turn_has_no_semantic_problems_either`) - what this loop pins is that every
-    // pass reports them identically, not that the turn is silent.
+    // The turn carries genuine findings throughout (see `EXPECTED`) - what this loop pins is that
+    // every pass reports them identically, not that the turn is silent. The total is summed from
+    // that same table so the three assertions in this file cannot drift apart (ah-11lh).
     let expected = check_turn(&report, &template, Some(&ruleset), CheckOptions::default());
-    assert_eq!(expected.len(), 8, "{expected:?}");
+    assert_eq!(
+        expected.len(),
+        EXPECTED.iter().map(|(_, n)| n).sum::<usize>(),
+        "{expected:?}"
+    );
     for _ in 0..50 {
         let result = check_turn(&report, &template, Some(&ruleset), CheckOptions::default());
         assert_eq!(

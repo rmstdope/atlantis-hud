@@ -36,12 +36,17 @@ function isEdge(edge: string | undefined): edge is Edge {
   return EDGES.includes(edge as Edge);
 }
 
-function isVisible(box: Box): boolean {
+export function isVisible(box: Box): boolean {
   return box.right > box.left && box.bottom > box.top;
 }
 
-/** How far into the host a pane on this edge reaches. Never negative: a pane may sit outside. */
-function reach(host: Box, edge: Edge, box: Box): number {
+/**
+ * How far into the host a pane on this edge reaches. Never negative: a pane may sit outside.
+ *
+ * Exported because the dossier's keep-clear rectangle measures itself the same way (ah-mwqa), and
+ * a second copy of this arithmetic is a second place for it to drift.
+ */
+export function reach(host: Box, edge: Edge, box: Box): number {
   switch (edge) {
     case "left":
       return box.right - host.left;

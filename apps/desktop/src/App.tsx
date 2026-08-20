@@ -2,6 +2,7 @@ import type { CoreClient } from "@atlantis/core-client";
 import { AppShell } from "@atlantis/shared";
 import { beforeQuit } from "./quitGuard";
 import { desktopTextFileSaver } from "./saveTextFile";
+import { desktopOrdersUploader } from "./uploadOrders";
 import { useDesktopAppUpdate } from "./updateCheck";
 
 /**
@@ -22,6 +23,9 @@ export default function App({ client }: { client: CoreClient }) {
       // and the smoke suite do: there is no native dialog there, and the download is the answer.
       saveTextFile={desktopTextFileSaver()}
       appUpdate={useDesktopAppUpdate()}
+      // Desktop only: the game server sends no CORS headers, so the web build could send orders and
+      // never learn whether they were accepted. Rejects when this bundle is opened in a browser.
+      uploadOrders={desktopOrdersUploader()}
     />
   );
 }

@@ -268,10 +268,17 @@ fn sail_mode(
     unit: &ReportUnit,
     origin_hex: &KnownHex,
 ) -> Result<Option<(MovementMode, u32)>, RouteProblem> {
-    let Some(fleet) = fleet_of(unit, origin_hex) else {
+    // The planner answers from the report on purpose, and passes no orders view below to say so.
+    // It is
+    // asked "where could this unit get to", which is a question about the turn as it stands rather
+    // than about the orders currently in the editor - and it is handed no orders document to read
+    // (`plan_route`'s callers, down from `plan_for_remembered_report`, pass none). The tracer and
+    // the units-in-hex preview do answer after this month's ENTER and LEAVE, so the two
+    // deliberately differ; the navigator settled that on 2026-08-18 (ah-ssd).
+    let Some(fleet) = fleet_of(unit, origin_hex, None) else {
         return Ok(None);
     };
-    let Some((required, available, speed)) = fleet_sailing(ruleset, origin_hex, fleet) else {
+    let Some((required, available, speed)) = fleet_sailing(ruleset, origin_hex, fleet, None) else {
         return Ok(None);
     };
     if available < required {

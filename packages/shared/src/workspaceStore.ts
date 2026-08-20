@@ -19,6 +19,12 @@ import {
   type RailSide
 } from "./workspace/panelLayout";
 import {
+  columnOrderFromStorage,
+  columnSharesFromStorage,
+  type ColumnOrder,
+  type ColumnShares
+} from "./unitTable";
+import {
   mapViewCommitted,
   mapViewOpened,
   mapViewSelectionChanged,
@@ -98,6 +104,25 @@ export type WorkspaceState = {
    */
   leftRailWidthRem: number | null;
   rightRailWidthRem: number | null;
+  /**
+   * The units-in-hex table's dragged column widths, as shares of the table, or null while the
+   * shipped shape applies - a layout preference exactly like `ordersHeightRem`, so it lives here
+   * and outlives the game the same way. Anything absent reads from `DEFAULT_COLUMN_SHARES`
+   * through `shareOf` (ah-1owr.2).
+   *
+   * The record is partial within a session - `setUnitColumnShares` merges, so only the pairs
+   * actually dragged are written - but it comes back off disk complete: `columnSharesFromStorage`
+   * fills the gaps from the defaults and renormalises, because a record that has lost a column no
+   * longer covers the whole table and the "shares always sum to 1" claim is what makes an
+   * overflow impossible.
+   */
+  unitColumnShares: ColumnShares | null;
+  /**
+   * The order the units table draws its columns in, or null while the shipped order applies -
+   * ah-1owr.3. Stored beside the widths and entirely independent of them: resizing a column never
+   * implies reordering it, or the reverse, so a player can undo one without losing the other.
+   */
+  unitColumnOrder: ColumnOrder | null;
   layers: Record<LayerName, boolean>;
   /** Which marks the map draws over its terrain. */
   badges: Record<BadgeName, boolean>;
@@ -154,6 +179,18 @@ export type WorkspaceState = {
   setUnitsHeight: (rem: number | null) => void;
   /** Sets (or, with null, resets) one rail's dragged width. Clamped on the way in. */
   setRailWidth: (side: RailSide, rem: number | null) => void;
+  /**
+   * Writes both sides of a column boundary drag in one commit - `dragColumnShare` always resolves
+   * a pair, and setting them as two calls would let a re-render land between them with only one
+   * column moved. Merged into what is stored, so an untouched column keeps reading its default.
+   */
+  setUnitColumnShares: (shares: ColumnShares) => void;
+  /** Drops every stored column width, back to the shipped shape. Reachable from Settings. */
+  resetUnitColumnShares: () => void;
+  /** Replaces the whole order - a reorder resolves the entire row of columns, never a pair. */
+  setUnitColumnOrder: (order: ColumnOrder) => void;
+  /** Drops the stored order, back to the shipped one. Reachable from Settings. */
+  resetUnitColumnOrder: () => void;
   toggleLayer: (layer: LayerName) => void;
   toggleBadge: (badge: BadgeName) => void;
   /** Shows or hides the region panel's Problems section. */
@@ -207,6 +244,11 @@ function reconcile<K extends string>(
   };
 }
 
+/** `null` for an empty record, so "nothing customized" reads the same way rail widths do. */
+function emptyToNull(shares: ColumnShares): ColumnShares | null {
+  return Object.keys(shares).length > 0 ? shares : null;
+}
+
 /** What a stored badge record means here; see `reconcile`. */
 export function badgesFromStorage(
   stored: Partial<Record<string, boolean>>
@@ -251,6 +293,8 @@ type Persisted = Pick<
   | "unitsHeightRem"
   | "leftRailWidthRem"
   | "rightRailWidthRem"
+  | "unitColumnShares"
+  | "unitColumnOrder"
   | "layers"
   | "badges"
   | "regionProblemsShown"
@@ -269,6 +313,8 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       unitsHeightRem: null,
       leftRailWidthRem: null,
       rightRailWidthRem: null,
+      unitColumnShares: null,
+      unitColumnOrder: null,
       layers: INITIAL_LAYERS,
       badges: allBadges(true),
       regionProblemsShown: true,
@@ -356,6 +402,20 @@ export const useWorkspaceStore = create<WorkspaceState>()(
             : { rightRailWidthRem: clampRailWidth(rem) }
         ),
 
+      // No clamp on the way in, unlike `setUnitsHeight`: `dragColumnShare` is the only producer
+      // and it already clamps, and clamping a merge of two columns against a whole-table
+      // invariant would be wrong. `columnSharesFromStorage` is the guard, and it runs on load.
+      setUnitColumnShares: (shares) =>
+        set((state) => ({ unitColumnShares: { ...state.unitColumnShares, ...shares } })),
+
+      resetUnitColumnShares: () => set(() => ({ unitColumnShares: null })),
+
+      // Replaced whole, not merged: `dragColumnOrder` hands back the entire order, and merging
+      // two permutations has no meaning.
+      setUnitColumnOrder: (order) => set(() => ({ unitColumnOrder: [...order] })),
+
+      resetUnitColumnOrder: () => set(() => ({ unitColumnOrder: null })),
+
       toggleLayer: (layer) =>
         set((state) => ({
           layers: { ...state.layers, [layer]: !state.layers[layer] }
@@ -388,6 +448,8 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         unitsHeightRem: state.unitsHeightRem,
         leftRailWidthRem: state.leftRailWidthRem,
         rightRailWidthRem: state.rightRailWidthRem,
+        unitColumnShares: state.unitColumnShares,
+        unitColumnOrder: state.unitColumnOrder,
         layers: state.layers,
         badges: state.badges,
         regionProblemsShown: state.regionProblemsShown
@@ -409,6 +471,13 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           unitsHeightRem: clampUnitsHeight(stored.unitsHeightRem),
           leftRailWidthRem: clampRailWidth(stored.leftRailWidthRem),
           rightRailWidthRem: clampRailWidth(stored.rightRailWidthRem),
+          // Not a boolean record, so `reconcile` does not apply - `columnSharesFromStorage` is
+          // its equivalent, dropping unknown columns and renormalising what survives so the
+          // stored shape still covers exactly the whole table.
+          unitColumnShares: emptyToNull(columnSharesFromStorage(stored.unitColumnShares ?? {})),
+          // No `emptyToNull` wrapper: `columnOrderFromStorage` already returns null for anything
+          // it rejects, and it rejects rather than repairs.
+          unitColumnOrder: columnOrderFromStorage(stored.unitColumnOrder),
           layers: reconcile(INITIAL_LAYERS, stored.layers ?? {}),
           badges: badgesFromStorage(stored.badges ?? {}),
           // Not a record, so `reconcile` does not apply: a missing or malformed key must read
@@ -436,6 +505,8 @@ export function resetWorkspaceStore() {
     unitsHeightRem: null,
     leftRailWidthRem: null,
     rightRailWidthRem: null,
+    unitColumnShares: null,
+    unitColumnOrder: null,
     layers: INITIAL_LAYERS,
     badges: allBadges(true),
     regionProblemsShown: true,

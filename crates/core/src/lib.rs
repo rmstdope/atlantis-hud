@@ -546,9 +546,16 @@ mod tests {
         "* Guard Patrol (100), Crimson Tide (17), behind, 10 humans [HUMN], 40 silver [SILV].\n",
     );
 
+    /// A turn checked with `unit-does-nothing` off.
+    ///
+    /// These fixtures give unit 100 a single GIVE line to raise one semantic finding; on the real
+    /// default that unit also has no order that spends its month, which is true but is not what
+    /// they are asserting. `orders::semantics` owns that check's own tests.
     fn turn(orders: &str) -> OrderValidationResult {
         let parsed = report::parse_report_full(MINI_ORDERS_REPORT);
-        validate_turn(orders, None, Some(&parsed), OrderCheckOptions::default())
+        let mut options = OrderCheckOptions::default();
+        options.disabled.insert("unit-does-nothing".to_string());
+        validate_turn(orders, None, Some(&parsed), options)
     }
 
     /// The whole point of widening the call: one list, syntax and semantics together, so the panel

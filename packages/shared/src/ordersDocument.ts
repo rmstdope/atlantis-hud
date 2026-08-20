@@ -1,4 +1,5 @@
 import { MOVEMENT_ORDER_COMMANDS } from "@atlantis/core-client";
+import { passwordIsSendable } from "./workspace/ordersUpload";
 
 /**
  * Projects one unit's orders out of the faction's orders document, and splices edits back.
@@ -267,4 +268,82 @@ export function stripMovementOrderLines(orders: string): string {
     .filter((line) => !MOVEMENT_ORDER_LINE.test(line))
     .join("\n")
     .trim();
+}
+
+/**
+ * The document with the typed password written into its `#atlantis` line, on a copy.
+ *
+ * The engine traditionally authenticates from that line, so a document uploaded with a stale or
+ * blank header password can have its turn rejected after the upload appeared to succeed. The id the
+ * line already carried is kept, and every other byte of the document is left exactly as it was -
+ * the same splice-and-rejoin discipline `writeUnitOrders` keeps. A document with no such line comes
+ * back unchanged.
+ *
+ * This writes a password in and returns; it never reads one out, so the module's promise that the
+ * password is never surfaced and never logged still holds.
+ */
+export function withFactionPassword(document: string, password: string): string {
+  // A password carrying a quote or a line break would not be written into the line, it would forge
+  // one - a second `#atlantis` directive the server would read instead. Refused rather than escaped:
+  // the Atlantis orders format has no escape for either.
+  if (!passwordIsSendable(password)) {
+    throw new Error("This password cannot be written into the orders header as it is written.");
+  }
+
+  const lines = document.split("\n");
+  const index = lines.findIndex((line) => FACTION_HEADER.test(line));
+  if (index === -1) {
+    return document;
+  }
+
+  // Everything about the line except the password is kept: its indentation, the id it carried, and
+  // the `\r` of a document written with CRLF endings - which is a byte the rest of the document
+  // still has, so dropping it here would leave the uploaded copy mixed.
+  const [, indent, id = "", carriageReturn = ""] = FACTION_HEADER.exec(lines[index]) ?? [];
+  lines[index] = `${indent}#atlantis${id === "" ? "" : ` ${id}`} "${password}"${carriageReturn}`;
+  return lines.join("\n");
+}
+
+/**
+ * The header line, with what must survive a rewrite of it.
+ *
+ * Anchored on a word boundary so `#atlantisfoo` is not mistaken for it, and the id is read only as
+ * a bare token - an old password, which is quoted, is deliberately not captured as one.
+ */
+const FACTION_HEADER = /^([ \t]*)#atlantis\b[ \t]*([^\s"]*)[^\r]*(\r?)$/;
+
+/**
+ * The orders that occupy a unit's whole month, exactly as the rules name them: "The orders which
+ * take an entire month are ADVANCE, BUILD, ENTERTAIN, MOVE, PILLAGE, PRODUCE, SAIL, STUDY, TAX,
+ * TEACH and WORK." A unit can issue as many other orders as it likes alongside these (GIVE, GUARD,
+ * CLAIM, AUTOTAX...), but only one of these eleven counts.
+ *
+ * Not the Rust core's `MOVEMENT_ORDER_COMMANDS`: that list exists for the planner, which only ever
+ * needs to know a movement order from a non-movement one. This is the ruleset's own full list.
+ */
+export const LONG_ORDER_COMMANDS = [
+  "ADVANCE",
+  "BUILD",
+  "ENTERTAIN",
+  "MOVE",
+  "PILLAGE",
+  "PRODUCE",
+  "SAIL",
+  "STUDY",
+  "TAX",
+  "TEACH",
+  "WORK"
+] as const;
+
+/** A line that is one of the eleven month-long orders, `@`-repeated or not. */
+const LONG_ORDER_LINE = new RegExp(`^\\s*@?\\s*(${LONG_ORDER_COMMANDS.join("|")})\\b`, "iu");
+
+/**
+ * The month-long order a unit's orders currently carry, if the document has one - for a display
+ * that wants to say what a unit is actually going to spend its month on, at a glance. Comments and
+ * blank lines are never it; if a document somehow holds two, the first is what the game will keep,
+ * so the first is what is shown.
+ */
+export function longOrderOf(orders: string): string | null {
+  return commandsOnly(orders).find((line) => LONG_ORDER_LINE.test(line)) ?? null;
 }

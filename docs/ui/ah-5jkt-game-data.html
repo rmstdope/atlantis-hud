@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reading the game data</title>
+<style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070; --warn:#d9a441;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1340px; margin:0 auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; }
+  h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:92ch; margin-top:10px; font-size:14px; }
+  header p + p { margin-top:8px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; }
+  header code { color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:36px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:92ch; }
+  .cards { display:grid; grid-template-columns:repeat(2,1fr); gap:20px; align-items:start; }
+  .cards.three { grid-template-columns:repeat(3,1fr); }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; display:flex; flex-direction:column; gap:11px; }
+  .card h2 { font-size:16px; }
+  .card h2 em { color:var(--brass); font-style:normal; font-size:11px; letter-spacing:1.5px; margin-right:7px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; min-height:3.2em; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; padding:16px 12px; display:flex; justify-content:center; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"− "; color:var(--danger); }
+  .notes li.n::before { content:"· "; color:var(--ink-dim); }
+
+  /* dialog */
+  .dlg { background:var(--raised); border:1px solid var(--edge); border-radius:6px; width:24rem; max-width:100%;
+         font:13px/1.5 'Helvetica Neue',Arial,sans-serif; box-shadow:0 10px 30px rgba(0,0,0,.55); }
+  .dlg.wide { width:38rem; }
+  .dhead { display:flex; align-items:baseline; gap:8px; padding:11px 13px 8px; border-bottom:1px solid var(--edge); }
+  .dhead h4 { font:600 15px/1.3 'Helvetica Neue',Arial,sans-serif; }
+  .tag { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11.5px; color:var(--brass-bright); }
+  .kindchip { margin-left:auto; font-size:10.5px; letter-spacing:1.2px; text-transform:uppercase; color:var(--ink-dim);
+              border:1px solid var(--edge); border-radius:3px; padding:1px 6px; }
+  .dbody { padding:10px 13px 12px; display:grid; gap:9px; }
+  .grp { display:grid; gap:3px; }
+  .grplbl { font-size:10.5px; letter-spacing:1.3px; text-transform:uppercase; color:var(--ink-dim); }
+  .row { display:flex; justify-content:space-between; gap:12px; }
+  .row .k { color:var(--ink-soft); }
+  .row .v { color:var(--ink); font-variant-numeric:tabular-nums; }
+  .lnk { color:var(--select); border-bottom:1px dotted rgba(74,159,216,.5); cursor:pointer; }
+  .none { color:var(--ink-dim); font-style:italic; }
+  .dfoot { display:flex; justify-content:flex-end; border-top:1px solid var(--edge); padding:8px 13px; }
+  .b { background:var(--panel); border:1px solid var(--edge); color:var(--ink); border-radius:4px; padding:4px 11px; font:13px/1.3 'Helvetica Neue',Arial,sans-serif; }
+  .b.primary { border-color:var(--brass); color:var(--brass-bright); }
+  .banner { border-radius:4px; padding:7px 9px; font-size:12.5px; display:flex; gap:7px; align-items:flex-start;
+            background:rgba(217,164,65,.11); border:1px solid rgba(217,164,65,.4); color:#e8cd93; }
+
+  /* palette */
+  .pal { background:var(--raised); border:1px solid var(--edge); border-radius:6px; width:28rem; max-width:100%;
+         font:13px/1.5 'Helvetica Neue',Arial,sans-serif; box-shadow:0 10px 30px rgba(0,0,0,.55); overflow:hidden; }
+  .palin { width:100%; background:var(--ground); border:0; border-bottom:1px solid var(--edge); color:var(--ink);
+           padding:9px 12px; font:13px/1.4 'Helvetica Neue',Arial,sans-serif; }
+  .palrow { display:flex; align-items:center; gap:10px; padding:5px 12px; }
+  .palrow.sel { background:#243040; }
+  .palrow .lbl { flex:1; }
+  .palrow .kind { font-size:10.5px; letter-spacing:1.1px; text-transform:uppercase; color:var(--ink-dim); }
+  .palrow .kind.data { color:var(--brass); }
+  .split2 { display:grid; grid-template-columns:13rem 1fr; }
+  .listcol { border-right:1px solid var(--edge); max-height:15rem; overflow:auto; }
+  .listrow { padding:4px 10px; color:var(--ink-soft); }
+  .listrow.sel { background:#243040; color:var(--ink); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Reading the game data — <span>the reference dialog and the way in</span></h1>
+  <p>The application scrapes the game server's rules and data pages into <code>ruleset.json</code>, but nothing
+  shows it to you. This adds a way to look a thing up.</p>
+  <p><b>The constraint worth knowing before you judge the layouts:</b> the scraped data has <b>no prose at
+  all</b>. There are no descriptions, no flavour text, no rules explanations — only numbers and
+  cross-references. Everything below is drawn from the real shipped file: 96 skills, 171 items, 10 buildings.
+  A "game data" dialog is therefore a <i>stat block</i>, and the honest question is how to make a stat block
+  worth opening.</p>
+  <p>Note the coverage gap, which is real and cannot be fixed here: <code>buildings</code> holds only the ten
+  fortifications — <code>TOWER FORT CASTLE CITADEL</code>, their four magical twins, <code>HERMITS HUT</code> and
+  <code>STOCKADE</code>. A Mine, a Shaft, a road or a Longship is <i>not</i> in there (ships are items).</p>
+</header>
+
+<main>
+
+<h3 class="sec">1 · The dialog, in two shapes</h3>
+<p>Both drawn with the real values for <code>MINI</code> (mining), <code>LONG</code> (Longship) and
+<code>BALR</code> (balrog). Cross-references — what a skill produces, what it requires — are shown as links
+that open that entry.</p>
+
+<div class="cards">
+  <div class="card">
+    <h2><em>A</em>One thing at a time</h2>
+    <div class="concept">A small dialog showing just the thing you asked for. Cross-references replace the
+    contents in place, and the header keeps a back arrow once you have followed one.</div>
+    <div class="stage">
+      <div class="dlg">
+        <div class="dhead">
+          <h4>mining</h4><span class="tag">MINI</span><span class="kindchip">Skill</span>
+        </div>
+        <div class="dbody">
+          <div class="grp">
+            <div class="row"><span class="k">Study cost</span><span class="v">10 silver per man per month</span></div>
+            <div class="row"><span class="k">Highest level</span><span class="v">5</span></div>
+            <div class="row"><span class="k">Magic</span><span class="v">no</span></div>
+          </div>
+          <div class="grp">
+            <div class="grplbl">Produces</div>
+            <div class="row"><span class="k"><span class="lnk">iron</span></span><span class="v">level 1</span></div>
+            <div class="row"><span class="k"><span class="lnk">mithril</span></span><span class="v">level 3</span></div>
+            <div class="row"><span class="k"><span class="lnk">admantium</span></span><span class="v">level 5</span></div>
+          </div>
+          <div class="grp">
+            <div class="grplbl">Requires</div>
+            <div class="none">nothing</div>
+          </div>
+        </div>
+        <div class="dfoot"><button class="b primary">Close</button></div>
+      </div>
+    </div>
+    <ul class="notes">
+      <li>Small, focused, and quick to read — the thing you asked about and nothing else</li>
+      <li>Fits the house dialogs exactly; nothing new to invent</li>
+      <li class="con">Browsing means going back to the palette each time</li>
+      <li class="con">Following a cross-reference loses where you were unless there is a back control</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2><em>B</em>List beside detail</h2>
+    <div class="concept">A wider dialog with everything of that kind listed down the left and the chosen one
+    detailed on the right — the shape <code>BattlesDialog</code> already uses. Arrow keys walk the list.</div>
+    <div class="stage">
+      <div class="dlg wide">
+        <div class="dhead"><h4>Game data</h4><span class="kindchip">Skills · Items · Buildings</span></div>
+        <div class="split2">
+          <div class="listcol">
+            <div class="listrow">longbow <span class="tag">LBOW</span></div>
+            <div class="listrow">magical healing</div>
+            <div class="listrow">manipulation</div>
+            <div class="listrow sel">mining <span class="tag">MINI</span></div>
+            <div class="listrow">necromancy</div>
+            <div class="listrow">observation</div>
+            <div class="listrow">pattern</div>
+            <div class="listrow">quarrying</div>
+          </div>
+          <div class="dbody">
+            <div class="dhead" style="padding:0 0 6px;border:0"><h4>mining</h4><span class="tag">MINI</span><span class="kindchip">Skill</span></div>
+            <div class="grp">
+              <div class="row"><span class="k">Study cost</span><span class="v">10 silver per man per month</span></div>
+              <div class="row"><span class="k">Highest level</span><span class="v">5</span></div>
+              <div class="row"><span class="k">Magic</span><span class="v">no</span></div>
+            </div>
+            <div class="grp">
+              <div class="grplbl">Produces</div>
+              <div class="row"><span class="k"><span class="lnk">iron</span></span><span class="v">level 1</span></div>
+              <div class="row"><span class="k"><span class="lnk">mithril</span></span><span class="v">level 3</span></div>
+              <div class="row"><span class="k"><span class="lnk">admantium</span></span><span class="v">level 5</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="dfoot"><button class="b primary">Close</button></div>
+      </div>
+    </div>
+    <ul class="notes">
+      <li>Browsable — you can read around a subject, not just look one thing up</li>
+      <li>Answers "what skills are there at all?", which the palette cannot</li>
+      <li class="con">A much bigger dialog for a stat block of six numbers</li>
+      <li class="con">277 things in one list needs its own filtering, duplicating the palette</li>
+    </ul>
+  </div>
+</div>
+
+<h3 class="sec">2 · What the other kinds look like</h3>
+<p>Same layout, different fields. This is everything the scrape actually has — there is no more.</p>
+<div class="cards three">
+  <div class="card">
+    <h2><em>i</em>A ship</h2>
+    <div class="concept">Ships live among the items, not the buildings.</div>
+    <div class="stage">
+      <div class="dlg" style="width:100%">
+        <div class="dhead"><h4>Longship</h4><span class="tag">LONG</span><span class="kindchip">Ship</span></div>
+        <div class="dbody">
+          <div class="row"><span class="k">Cargo capacity</span><span class="v">150</span></div>
+          <div class="row"><span class="k">Sailing skill</span><span class="v">4</span></div>
+          <div class="row"><span class="k">Moves</span><span class="v">4 hexes a month</span></div>
+          <div class="row"><span class="k">Weight</span><span class="v">0</span></div>
+        </div>
+        <div class="dfoot"><button class="b primary">Close</button></div>
+      </div>
+    </div>
+  </div>
+  <div class="card">
+    <h2><em>ii</em>A monster</h2>
+    <div class="concept">Only monsters carry combat numbers, and only when the page gave all four.</div>
+    <div class="stage">
+      <div class="dlg" style="width:100%">
+        <div class="dhead"><h4>balrog</h4><span class="tag">BALR</span><span class="kindchip">Monster</span></div>
+        <div class="dbody">
+          <div class="grp">
+            <div class="grplbl">Combat</div>
+            <div class="row"><span class="k">Skill</span><span class="v">6</span></div>
+            <div class="row"><span class="k">Attacks a round</span><span class="v">200</span></div>
+            <div class="row"><span class="k">Hits to kill</span><span class="v">280</span></div>
+            <div class="row"><span class="k">Damage an attack</span><span class="v">1</span></div>
+          </div>
+          <div class="grp">
+            <div class="grplbl">Movement</div>
+            <div class="row"><span class="k">Moves itself</span><span class="v">walking, riding, flying</span></div>
+            <div class="row"><span class="k">Moves</span><span class="v">4 hexes a month</span></div>
+            <div class="row"><span class="k">Carries</span><span class="v">50 walking · 50 riding · 50 flying</span></div>
+          </div>
+          <div class="row"><span class="k">Weight</span><span class="v">250</span></div>
+        </div>
+        <div class="dfoot"><button class="b primary">Close</button></div>
+      </div>
+    </div>
+  </div>
+  <div class="card">
+    <h2><em>iii</em>A building</h2>
+    <div class="concept">Ten fortifications, and nothing else is in there.</div>
+    <div class="stage">
+      <div class="dlg" style="width:100%">
+        <div class="dhead"><h4>Fort</h4><span class="kindchip">Building</span></div>
+        <div class="dbody">
+          <div class="row"><span class="k">Protects</span><span class="v">50 men</span></div>
+          <div class="row"><span class="k">Building cost</span><span class="v">40</span></div>
+          <div class="row"><span class="k">Materials</span><span class="v"><span class="lnk">stone</span></span></div>
+          <div class="row"><span class="k">Mages needed</span><span class="v">1</span></div>
+        </div>
+        <div class="dfoot"><button class="b primary">Close</button></div>
+      </div>
+    </div>
+    <ul class="notes"><li class="n">A building has no tag — the data keys it by its upper-cased name</li></ul>
+  </div>
+</div>
+
+<h3 class="sec">3 · Getting there from the palette</h3>
+<p>The palette holds units, regions, actions and order help. Adding 277 things of a new kind changes what it
+feels like — with an empty query it lists whatever comes first, twelve at a time.</p>
+<div class="cards">
+  <div class="card">
+    <h2><em>A</em>Mixed in with everything else</h2>
+    <div class="concept">Game data entries join the same flat list, marked with their own kind label. Typing
+    <code>mining</code> finds the skill alongside anything else called that.</div>
+    <div class="stage">
+      <div class="pal">
+        <input class="palin" value="min" readonly>
+        <div class="palrow sel"><span class="lbl">mining <span class="tag">MINI</span></span><span class="kind data">skill</span></div>
+        <div class="palrow"><span class="lbl">Miners (7227)</span><span class="kind">unit</span></div>
+        <div class="palrow"><span class="lbl">MinersA (5104)</span><span class="kind">unit</span></div>
+        <div class="palrow"><span class="lbl">mithril <span class="tag">MITH</span></span><span class="kind data">item</span></div>
+        <div class="palrow"><span class="lbl">MinersM (3826)</span><span class="kind">unit</span></div>
+      </div>
+    </div>
+    <ul class="notes">
+      <li>One box, one habit — nothing new to learn or remember</li>
+      <li>Finds a thing whether it is your unit or a rule about mining</li>
+      <li class="con">277 entries dilute the list; your own units get pushed down by data you did not want</li>
+      <li class="con">With an empty query the palette becomes a wall of game data</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h2><em>B</em>Behind a prefix</h2>
+    <div class="concept">Typing <code>?</code> first switches the palette to game data only, the way many
+    editors scope a search. Without the prefix the palette is exactly as it is today.</div>
+    <div class="stage">
+      <div class="pal">
+        <input class="palin" value="?min" readonly>
+        <div class="palrow sel"><span class="lbl">mining <span class="tag">MINI</span></span><span class="kind data">skill</span></div>
+        <div class="palrow"><span class="lbl">mithril <span class="tag">MITH</span></span><span class="kind data">item</span></div>
+        <div class="palrow"><span class="lbl">mithril armor <span class="tag">MARM</span></span><span class="kind data">item</span></div>
+        <div class="palrow"><span class="lbl">mithril sword <span class="tag">MSWO</span></span><span class="kind data">item</span></div>
+      </div>
+    </div>
+    <ul class="notes">
+      <li>Today's palette is untouched — no dilution, no wall of data</li>
+      <li>Scopes the search, so results are all of one sort and easy to scan</li>
+      <li class="con">A prefix is a thing to know; nothing on screen teaches it</li>
+      <li class="con">Two habits instead of one, for a feature you may use rarely</li>
+    </ul>
+  </div>
+</div>
+
+<h3 class="sec">4 · When there is nothing to show</h3>
+<p>The gap is unavoidable: a Mine, a Shaft, a road and every non-fortification is missing from the scrape.
+This is what a player meets when they ask about one.</p>
+<div class="cards">
+  <div class="card">
+    <h2><em>i</em>Say what is missing</h2>
+    <div class="concept">The thing is named in the report but absent from the data.</div>
+    <div class="stage">
+      <div class="dlg">
+        <div class="dhead"><h4>Mine</h4><span class="kindchip">Building</span></div>
+        <div class="dbody">
+          <div class="banner"><span>!</span><span>The game data does not describe this. Only fortifications were scraped from the rules page.</span></div>
+        </div>
+        <div class="dfoot"><button class="b primary">Close</button></div>
+      </div>
+    </div>
+    <ul class="notes"><li class="n">Honest, and stops the player wondering whether they mistyped</li></ul>
+  </div>
+  <div class="card">
+    <h2><em>ii</em>Never offer it</h2>
+    <div class="concept">Things with no data simply are not searchable and never become clickable, so this
+    dialog cannot be reached at all.</div>
+    <div class="stage" style="align-items:center;min-height:150px">
+      <span style="color:var(--ink-dim);font-size:12.5px">— no dialog exists for it —</span>
+    </div>
+    <ul class="notes">
+      <li class="n">Nothing dead-ends, because nothing offers a dead end</li>
+      <li class="n">But in the panes (ah-5jkt.2) some structures would be clickable and others not, with no visible reason</li>
+    </ul>
+  </div>
+</div>
+
+</main>
+
+<footer style="margin-top:34px; color:var(--ink-dim); font-size:12.5px;">
+  Mockup for bead <span class="mono">ah-5jkt.1</span>. Every value shown is real, read out of
+  <span class="mono">config/public/ruleset.json</span>.
+</footer>
+</body>
+</html>

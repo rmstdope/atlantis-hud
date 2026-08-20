@@ -16,8 +16,19 @@ import { DEFAULT_MAP_THEME_ID, isMapThemeId } from "./workspace/mapThemes";
 
 export type ThemeName = "dark" | "light";
 
-/** How see-through the floating panes start out: enough map underneath to navigate by. */
-export const DEFAULT_PANE_TRANSPARENCY = 90;
+/**
+ * How see-through the floating panes start out.
+ *
+ * 20, not 90 (ah-v09e): at 90 the panes are painted at 10% opacity, so the real background of
+ * nearly all the app's text is the live terrain, and body text fell to 3.90:1 over tundra while
+ * dimmed text reached 1.70:1 over desert - a background that changes contrast between 1.7:1 and
+ * 13:1 as the player pans. 20 is the line at which every ink token clears AA over the worst
+ * terrain in the game. The slider's range is unchanged; only the default moved, and anyone who
+ * has ever touched the slider keeps their stored value.
+ *
+ * `--pane-transparency` in theme.css must agree: it paints the first frame.
+ */
+export const DEFAULT_PANE_TRANSPARENCY: Record<ThemeName, number> = { dark: 20, light: 0 };
 
 /** The Interface size setting's default, as a percentage. 100 means the panes are as designed. */
 export const DEFAULT_INTERFACE_SIZE = 100;
@@ -69,7 +80,7 @@ export type SettingsState = {
    * 0 is opaque and 95 is the most transparent the slider offers - never 100, because a pane that
    * cannot be seen at all can also not be found to make visible again.
    */
-  paneTransparency: number;
+  paneTransparency: Record<ThemeName, number>;
   /**
    * How much bigger the panes' type is than designed, as a percentage. The map is not on this
    * scale and never moves with it.
@@ -165,14 +176,51 @@ function knownMapTheme(id: string): string {
   return isMapThemeId(id) ? id : DEFAULT_MAP_THEME_ID;
 }
 
-function clampTransparency(percent: number): number {
+function clampTransparency(
+  percent: number,
+  // The themes do not share a default, so they cannot share a fallback either: an unreadable
+  // light value must land on light's 0, or a corrupt blob quietly puts a light user back on
+  // see-through panes below AA.
+  fallback: number = DEFAULT_PANE_TRANSPARENCY.dark
+): number {
   // Coerced before the finite check: storage is hand-editable and other writers exist, so the
   // "number" rehydrated into state can arrive as its string form.
   const numeric = Number(percent);
   if (!Number.isFinite(numeric)) {
-    return DEFAULT_PANE_TRANSPARENCY;
+    return fallback;
   }
   return Math.min(95, Math.max(0, Math.round(numeric)));
+}
+
+/**
+ * The transparency each theme is painted at, from whatever storage held.
+ *
+ * Before ah-j1xd this was a single number shared by both themes, and it is persisted - so every
+ * existing profile arrives here with a number where the code now wants a record. A stored number
+ * is a choice the player made, so it is kept, for dark, where see-through panes are affordable;
+ * light takes its new default rather than inheriting a value measured against the wrong theme.
+ */
+function reconcilePaneTransparency(stored: unknown): Record<ThemeName, number> {
+  if (typeof stored === "number" || typeof stored === "string") {
+    return {
+      dark: clampTransparency(stored as number, DEFAULT_PANE_TRANSPARENCY.dark),
+      light: DEFAULT_PANE_TRANSPARENCY.light
+    };
+  }
+  if (stored && typeof stored === "object" && !Array.isArray(stored)) {
+    const record = stored as Partial<Record<ThemeName, unknown>>;
+    return {
+      dark:
+        record.dark === undefined
+          ? DEFAULT_PANE_TRANSPARENCY.dark
+          : clampTransparency(record.dark as number, DEFAULT_PANE_TRANSPARENCY.dark),
+      light:
+        record.light === undefined
+          ? DEFAULT_PANE_TRANSPARENCY.light
+          : clampTransparency(record.light as number, DEFAULT_PANE_TRANSPARENCY.light)
+    };
+  }
+  return { ...DEFAULT_PANE_TRANSPARENCY };
 }
 
 /**
@@ -250,7 +298,7 @@ const DEFAULTS: Persisted = {
   theme: "dark",
   mapTheme: DEFAULT_MAP_THEME_ID,
   biomeTextures: true,
-  paneTransparency: DEFAULT_PANE_TRANSPARENCY,
+  paneTransparency: { ...DEFAULT_PANE_TRANSPARENCY },
   interfaceSize: DEFAULT_INTERFACE_SIZE,
   advisoryChecks: DEFAULT_ADVISORY_CHECKS,
   movementPlanner: false,
@@ -261,11 +309,15 @@ const DEFAULTS: Persisted = {
 
 export const useSettingsStore = create<SettingsState>()(
   persist<SettingsState, [], [], Persisted>(
-    (set) => ({
+    (set, get) => ({
       ...DEFAULTS,
 
       setTheme: (theme) => {
         applyTheme(theme);
+        // The panes are repainted too: each theme remembers its own transparency (ah-j1xd), so
+        // without this the panes stay at the theme the player just left until something else
+        // happens to stamp - which reads as the setting being ignored at random.
+        applyPaneTransparency(get().paneTransparency[theme]);
         set({ theme });
       },
 
@@ -278,9 +330,11 @@ export const useSettingsStore = create<SettingsState>()(
       },
 
       setPaneTransparency: (percent) => {
+        // The slider always means the theme the player is looking at.
+        const theme = get().theme;
         const clamped = clampTransparency(percent);
         applyPaneTransparency(clamped);
-        set({ paneTransparency: clamped });
+        set({ paneTransparency: { ...get().paneTransparency, [theme]: clamped } });
       },
 
       setInterfaceSize: (percent) => {
@@ -352,9 +406,9 @@ export function applyPersistedSettings() {
   // Rehydration merges storage straight into state without the setter, so an out-of-range or
   // string value must be reconciled in BOTH places here: stamped clamped into the CSS, and
   // written back into the store so the slider does not claim a value the panes are not painting.
-  const transparency = clampTransparency(useSettingsStore.getState().paneTransparency);
+  const transparency = reconcilePaneTransparency(useSettingsStore.getState().paneTransparency);
   useSettingsStore.setState({ paneTransparency: transparency });
-  applyPaneTransparency(transparency);
+  applyPaneTransparency(transparency[useSettingsStore.getState().theme]);
   // Same reconciliation for the Interface size setting.
   const interfaceSize = clampInterfaceSize(useSettingsStore.getState().interfaceSize);
   useSettingsStore.setState({ interfaceSize });
@@ -396,8 +450,8 @@ export function applyPersistedSettings() {
 export function resetSettingsStore() {
   MEMORY.clear();
   optionalStorage()?.removeItem("atlantis-hud-settings");
-  useSettingsStore.setState({ ...DEFAULTS });
+  useSettingsStore.setState({ ...DEFAULTS, paneTransparency: { ...DEFAULT_PANE_TRANSPARENCY } });
   applyTheme(DEFAULTS.theme);
-  applyPaneTransparency(DEFAULTS.paneTransparency);
+  applyPaneTransparency(DEFAULTS.paneTransparency[DEFAULTS.theme]);
   applyInterfaceSize(DEFAULTS.interfaceSize);
 }

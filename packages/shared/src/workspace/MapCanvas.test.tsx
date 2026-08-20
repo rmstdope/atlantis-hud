@@ -99,6 +99,25 @@ function drawSelected(selectedRegionId: string, selectionEpoch = 0): string {
   );
 }
 
+/** The same map, with a hex highlighted the way the faction dossier highlights one (ah-bu2c). */
+function drawHighlighted(highlightedRegionId: string | null, selectedRegionId: string | null = null): string {
+  return renderToStaticMarkup(
+    <MapCanvas
+      gameId={null}
+      model={model}
+      theme={probe()}
+      level={1}
+      selectedRegionId={selectedRegionId}
+      selectionEpoch={0}
+      onSelectRegion={() => {}}
+      showStaleness
+      showTextures={false}
+      badges={allBadges(true)}
+      highlightedRegionId={highlightedRegionId}
+    />
+  );
+}
+
 /** The same map, with a one-step route drawn across it and the hex entered assessed as risky. */
 function drawWithRoute(): string {
   return renderToStaticMarkup(
@@ -423,5 +442,32 @@ describe("MapCanvas trade arrow", () => {
 
   it("draws no arrow when no route is hovered", () => {
     expect(draw()).not.toContain('data-testid="trade-arrow"');
+  });
+});
+
+describe("the highlighted hex's brass ring", () => {
+  it("rings the highlighted hex in brass, distinctly from the selection", () => {
+    const svg = drawHighlighted("1:8,54", "1:7,53");
+    const ringMatch = /<g[^>]*data-testid="map-highlight-ring"[^>]*>[\s\S]*?<\/g>/.exec(svg);
+    expect(ringMatch).not.toBeNull();
+    const ring = [...(ringMatch?.[0] ?? "").matchAll(/<polygon[^>]*>/g)].map((match) => match[0]);
+    // Brass, never the selection white: a second ring in `--color-selection-ring` would be
+    // indistinguishable from a selection, which is the one thing this must not be.
+    expect(ring.some((tag) => tag.includes("stroke-brass"))).toBe(true);
+    expect(ring.every((tag) => !tag.includes("stroke-selection-ring"))).toBe(true);
+    // The same geometry as the selection ring, so the two marks differ in colour and nothing else.
+    expect(ring.some((tag) => tag.includes('stroke-width="3"'))).toBe(true);
+    expect(svg).toContain('data-testid="map-selection-ring"');
+  });
+
+  it("draws no ring for null, and none when the prop is left off entirely", () => {
+    expect(drawHighlighted(null)).not.toContain('data-testid="map-highlight-ring"');
+    expect(draw()).not.toContain('data-testid="map-highlight-ring"');
+  });
+
+  it("rings a highlighted hex that is also the selected one, without dropping either mark", () => {
+    const svg = drawHighlighted("1:7,53", "1:7,53");
+    expect(svg).toContain('data-testid="map-highlight-ring"');
+    expect(svg).toContain('data-testid="map-selection-ring"');
   });
 });

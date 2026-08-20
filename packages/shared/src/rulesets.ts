@@ -14,10 +14,24 @@ export type Ruleset = {
   label: string;
   /** Where the shell fetches this ruleset from, relative to the app. */
   url: string;
+  /**
+   * Where a faction's orders are posted for this ruleset's server.
+   *
+   * The upload address belongs to the game rather than to the build, and a game already records
+   * which ruleset it is played under - so this is where that id becomes an address, exactly as
+   * `url` is. The known weakness, accepted when this was chosen over a per-game field: two games on
+   * different servers sharing one ruleset would collide.
+   */
+  ordersUploadUrl: string;
 };
 
 export const RULESETS: readonly Ruleset[] = [
-  { id: "neworigins", label: "NewOrigins", url: "/ruleset.json" }
+  {
+    id: "neworigins",
+    label: "NewOrigins",
+    url: "/ruleset.json",
+    ordersUploadUrl: "https://atlantis-pbem.com/game/upload-orders"
+  }
 ] as const;
 
 /** The ruleset with this id, or `null` when this build does not ship it. */

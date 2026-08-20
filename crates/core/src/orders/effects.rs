@@ -16,6 +16,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::cache::ReportCache;
 use crate::movement::rules::item_spellings;
+use crate::orders::standing::{standing_after, BoardingOrder};
 use crate::report::model::ReportUnit;
 
 /// How a previewed unit relates to the hex its row sits in.
@@ -115,6 +116,11 @@ pub fn preview_orders_for_remembered_report(
     // Movement is resolved after everything else, so a renamed or re-equipped unit departs and
     // arrives as the orders leave it, not as the report found it.
     let map = MapKnowledge::from_remembered(&report, &remembered);
+    // Where each unit stands once its own ENTER/LEAVE have run: `entry.unit` is already corrected
+    // (see `Working::visit`), but the map and the aboard set it is compared against are the
+    // report's, so the correction was thrown away one call later. `Working` applies the same
+    // ENTER/LEAVE rule to the unit row, so the two halves of one preview cannot disagree.
+    let ordered = crate::movement::fleet::OrderedUnits::from_document(orders_document);
 
     // Two passes, because a passenger's status depends on another unit's trace: the first decides
     // every unit on its own orders and notes which fleets leave, the second carries the units
@@ -129,7 +135,7 @@ pub fn preview_orders_for_remembered_report(
         let status = if entry.formed {
             UnitPreviewStatus::Formed
         } else if let Some(steps) = &entry.move_steps {
-            match trace_move(&map, &ruleset, &entry.unit, steps) {
+            match trace_move(&map, &ruleset, &entry.unit, steps, Some(&ordered)) {
                 // The first month's end is where the unit stands when the next report is written;
                 // the rest of a longer journey is later months' business.
                 Some(path) => {
@@ -317,6 +323,16 @@ struct WorkingUnit {
     original: Option<ReportUnit>,
     formed: bool,
     move_steps: Option<Vec<crate::movement::orders::MoveStep>>,
+    /// Where this unit stood before any of its boarding orders ran: the report's answer, or for a
+    /// formed unit the structure its parent stood in when the FORM was read.
+    reported: Option<String>,
+    /// The unit's ENTER and LEAVE orders so far, in the order they were written.
+    ///
+    /// Kept rather than applied as they are read, because what they mean together is
+    /// [`super::standing`]'s to say and only its. The answer is recomputed from the whole list
+    /// after each one, so a FORM later in the block still inherits the structure the unit is
+    /// standing in by then - `visit` is a mutating walk and other arms read `structure_id`.
+    boardings: Vec<BoardingOrder>,
 }
 
 impl WorkingUnit {
@@ -408,6 +424,8 @@ impl Working {
                 original: Some(unit.clone()),
                 formed: false,
                 move_steps: None,
+                reported: unit.structure_id.clone(),
+                boardings: Vec::new(),
             });
         }
         Self {
@@ -519,6 +537,7 @@ impl Working {
             structure_id: parent.structure_id.clone(),
         };
 
+        let reported = unit.structure_id.clone();
         let index = self.units.len();
         self.by_alias.insert(key, index);
         self.units.push(WorkingUnit {
@@ -526,6 +545,8 @@ impl Working {
             original: None,
             formed: true,
             move_steps: None,
+            reported,
+            boardings: Vec::new(),
         });
         self.forming.push(Some(index));
     }
@@ -568,14 +589,30 @@ impl Working {
                 set_flag(&mut self.units[active].unit.flags, "behind", set);
             }
         } else if command.is("enter") {
-            if let Some(structure) = arguments.first() {
-                self.units[active].unit.structure_id = Some(structure.text.clone());
+            if let Some(structure) = super::forms::read_only_number(arguments) {
+                self.board(active, BoardingOrder::Enter(structure.to_string()));
             }
-        } else if command.is("leave") {
-            self.units[active].unit.structure_id = None;
+        } else if command.is("leave") && arguments.is_empty() {
+            self.board(active, BoardingOrder::Leave);
         } else if command.is("give") {
             self.give(active, arguments);
         }
+    }
+
+    /// Records one boarding order and puts the unit where the whole block leaves it so far.
+    ///
+    /// Recomputed from every boarding seen rather than applied in isolation, because a LEAVE after
+    /// an ENTER does not put the unit ashore: every LEAVE runs before any ENTER whatever order the
+    /// lines were typed in. That rule is [`super::standing::standing_after`]'s, stated only there.
+    fn board(&mut self, active: usize, boarding: BoardingOrder) {
+        self.units[active].boardings.push(boarding);
+        let working = &self.units[active];
+        let standing = standing_after(
+            working.reported.as_deref(),
+            working.boardings.iter().map(BoardingOrder::as_boarding),
+        )
+        .map(str::to_string);
+        self.units[active].unit.structure_id = standing;
     }
 
     /// `NAME UNIT "..."` renames the active unit; naming the faction or an object changes no row.
@@ -1139,9 +1176,26 @@ mod tests {
         let entered = preview("unit 900\nENTER 4\n");
         assert_eq!(only_unit(&entered).unit.structure_id.as_deref(), Some("4"));
 
-        // ENTER then LEAVE ends outside, where the report already had it: nothing to say.
-        let left = preview("unit 900\nENTER 4\nLEAVE\n");
+        // Every LEAVE runs before any ENTER, so a block holding both ends *inside* - the rule
+        // `semantics::structure_after_orders` states, settled by the navigator on 2026-08-18
+        // (ah-mjy). This assertion previously read the two in document order and so encoded the
+        // defect: it expected the unit ashore and no row at all.
+        let both = preview("unit 900\nENTER 4\nLEAVE\n");
+        assert_eq!(only_unit(&both).unit.structure_id.as_deref(), Some("4"));
+
+        // A LEAVE on its own does put it ashore, and the report already had it there: nothing to
+        // say.
+        let left = preview("unit 900\nLEAVE\n");
         assert!(left.regions.is_empty(), "{:?}", left.regions);
+    }
+
+    /// An ENTER the game would not read moves nobody: `read_only_number` is the same reader
+    /// `orders::intents` uses, so a stray argument or a non-numeric one leaves the unit alone.
+    #[test]
+    fn an_unreadable_enter_or_leave_moves_nobody() {
+        assert!(preview("unit 900\nENTER 4 X\n").regions.is_empty());
+        assert!(preview("unit 900\nENTER shed\n").regions.is_empty());
+        assert!(preview("unit 900\nLEAVE 3\n").regions.is_empty());
     }
 
     /// The walker abandons an unclosed TURN at the next `unit` line, as the parser and the intents

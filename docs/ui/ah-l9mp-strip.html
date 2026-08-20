@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Giving the strip back to the map (bead ah-l9mp)</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733; --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --ok:#4fb783; --warn:#d9a441; --danger:#d97070; --select:#4a9fd8; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1200px; margin-left:auto; margin-right:auto; }
+  h1 { font-size:26px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:96ch; margin-top:10px; font-size:14px; }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:0.92em; }
+  h2.sec { margin-top:34px; font-size:18px; color:var(--brass); } h2.sec small { color:var(--ink-dim); font-size:13px; margin-left:10px; }
+  .banner { border:1px solid var(--edge); border-left:3px solid var(--brass); background:var(--panel); padding:14px 16px; border-radius:6px; margin-top:16px; color:var(--ink-soft); font-size:13.5px; } .banner b { color:var(--ink); }
+  .banner.bad { border-left-color:var(--danger); } .banner.good { border-left-color:var(--ok); }
+  .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:20px; margin-top:16px; align-items:start; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; display:flex; flex-direction:column; gap:12px; }
+  .card h3 { font-size:16px; } .card h3 em { color:var(--brass); font-style:normal; font-size:11px; letter-spacing:1.6px; margin-right:8px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; }
+  .notes { list-style:none; font-size:12px; color:var(--ink-soft); display:grid; gap:4px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; } .notes li.con::before { content:"\2212  "; color:var(--danger); }
+  .cap { font:10px/1.3 'SF Mono',monospace; color:var(--brass); letter-spacing:1px; text-transform:uppercase; margin-bottom:6px; }
+  .ui { font-family:'Helvetica Neue',Arial,sans-serif; font-size:12px; }
+  .maparea { position:relative; height:150px; border:1px solid var(--edge); border-radius:6px; background:linear-gradient(135deg,#16324a,#1d3f63 40%,#2f5d3a); overflow:hidden; }
+  .maparea .hexes { position:absolute; inset:0; opacity:.35; background-image:radial-gradient(circle at 12px 10px, rgba(255,255,255,.18) 2px, transparent 3px); background-size:26px 22px; }
+  .strip { position:absolute; top:8px; left:8px; display:flex; gap:6px; align-items:center; background:rgba(23,29,38,.95); border:1px solid var(--edge); border-radius:6px; padding:4px 8px; }
+  .tog { border:1px solid var(--edge); color:var(--ink-dim); border-radius:4px; padding:1px 8px; }
+  .tog.on { border-color:var(--select); background:rgba(74,159,216,.15); color:var(--ink); }
+  .sel { border:1px solid var(--edge); background:var(--raised); color:var(--ink); border-radius:4px; padding:1px 8px; }
+  .gained { position:absolute; left:8px; top:8px; right:8px; height:30px; border:1px dashed var(--ok); border-radius:6px; color:var(--ok); font-size:11px; display:flex; align-items:center; justify-content:center; letter-spacing:.08em; text-transform:uppercase; }
+  .topbar { display:flex; align-items:center; gap:8px; background:var(--panel); border:1px solid var(--edge); border-radius:6px; padding:5px 9px; }
+  .topbar .wm { color:var(--brass); letter-spacing:.06em; }
+  .topbar .sp { margin-left:auto; display:flex; gap:6px; }
+  .chip { border:1px solid var(--edge); color:var(--ink-soft); border-radius:4px; padding:1px 8px; }
+  .chip.warn { border-color:var(--warn); color:var(--warn); }
+  .set { border:1px solid var(--edge); border-radius:6px; background:var(--panel); padding:10px 12px; }
+  .set .grp { font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--brass); margin:10px 0 6px; } .set .grp:first-child { margin-top:0; }
+  .row { display:flex; gap:9px; padding:4px 0; align-items:flex-start; } .row + .row { border-top:1px solid var(--edge-soft); }
+  .box { flex:none; width:13px; height:13px; border:1px solid var(--ink-dim); border-radius:3px; margin-top:2px; position:relative; }
+  .box.on { background:var(--brass); border-color:var(--brass); }
+  .box.on::after { content:"\2713"; position:absolute; inset:0; color:#10151c; font-size:10px; line-height:12px; text-align:center; }
+  .row .t { font-size:12.5px; color:var(--ink); } .row .d { font-size:11.5px; color:var(--ink-dim); }
+  table { border-collapse:collapse; font-size:12.5px; width:100%; margin-top:14px; } th,td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--edge-soft); vertical-align:top; } th { color:var(--brass); font-weight:normal; font-size:11px; letter-spacing:1px; text-transform:uppercase; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Giving the strip back to the map &mdash; <span>proposals</span> (bead ah-l9mp)</h1>
+  <p>The staleness, movement and badge controls sit in a strip over the map and take room the map could use. The bead asks for them to move into settings, and for the <b>selected level</b> to move up into the top bar instead &mdash; because it is changed often and wants to be seen at a glance.</p>
+  <p><b>That empties <code>LayerChips</code> completely</b>, so the strip goes rather than shrinks. Which is the appeal &mdash; and it is also why one of the four controls deserves a second look.</p>
+</header>
+<main>
+
+  <h2 class="sec">&sect;1 &nbsp;What the strip holds today, and what the map gets back</h2>
+  <div class="cards">
+    <div class="card">
+      <h3><em>Today</em></h3>
+      <div class="ui"><div class="maparea"><div class="hexes"></div>
+        <div class="strip">
+          <span class="tog on">&#10003; Staleness</span>
+          <span class="tog">Movement</span>
+          <span class="tog">Badges &#9662;</span>
+          <span class="sel">Surface &#9662;</span>
+        </div>
+      </div></div>
+      <ul class="notes"><li class="con">Four controls floating over the map, in the corner the map most wants.</li></ul>
+    </div>
+    <div class="card">
+      <h3><em>After</em></h3>
+      <div class="ui"><div class="maparea"><div class="hexes"></div>
+        <div class="gained">this band returns to the map</div>
+      </div></div>
+      <ul class="notes"><li>The strip is deleted, not shrunk &mdash; nothing floats there at all.</li><li>Staleness and movement are set-once; settings is where set-once things live.</li></ul>
+    </div>
+  </div>
+
+  <h2 class="sec">&sect;2 &nbsp;The one that may not belong in settings <small>badges is ten toggles you flick while reading the map</small></h2>
+  <div class="banner bad"><b>Staleness and movement are two switches you set once. Badges is not.</b> It is a menu of about ten marks &mdash; ships, shafts, lairs, roads and the rest &mdash; and its own chip already lights up when any of them is off, <i>&ldquo;so a hex missing a mark is never a mystery&rdquo;</i> (<code>LayerChips.tsx</code>). Hiding a badge to read a crowded hex is a thing done <b>while looking at the map</b>; behind a settings dialog it becomes open-dialog, find-tab, toggle, close, look.</div>
+  <div class="cards">
+    <div class="card">
+      <h3><em>A</em> All three into settings</h3>
+      <div class="concept">The bead as written. The strip goes entirely.</div>
+      <ul class="notes">
+        <li>Simplest rule, and the map gets the whole band.</li>
+        <li>One place for every display preference.</li>
+        <li class="con">Hiding one badge to read a crowded hex becomes four gestures and covers the map while you do it.</li>
+        <li class="con">Loses the chip's &ldquo;something is hidden&rdquo; light, unless settings grows one.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3><em>B</em> Staleness and movement move; badges stays</h3>
+      <div class="concept">The two set-once toggles go; the map-reading menu keeps its place.</div>
+      <div class="ui"><div class="maparea"><div class="hexes"></div>
+        <div class="strip"><span class="tog">Badges &#9662;</span></div>
+      </div></div>
+      <ul class="notes">
+        <li>Keeps the gesture that is used while reading, where it is used.</li>
+        <li>Keeps the &ldquo;something is hidden&rdquo; light on the map.</li>
+        <li class="con">A strip survives, so the map gains a chip's width rather than the whole band.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3><em>C</em> All three move, and Badges joins the top bar</h3>
+      <div class="concept">Settings for the two switches; the badge menu becomes a header chip beside the others.</div>
+      <div class="ui"><div class="topbar">
+        <span class="wm">ATLANTIS HUD</span><span class="chip">Borg TNG (95)</span>
+        <span class="sp"><span class="chip">Badges &#9662;</span><span class="chip warn">&#9888; 7</span></span>
+      </div></div>
+      <ul class="notes">
+        <li>Nothing floats over the map at all, and the gesture stays one click.</li>
+        <li>The header is already where every other popover lives.</li>
+        <li class="con"><b>Spends from the header budget</b> that ah-csni is being built to protect, right now.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2 class="sec">&sect;3 &nbsp;The level, in the top bar</h2>
+  <p style="color:var(--ink-soft);font-size:13.5px;margin-top:10px;max-width:96ch">Today it is a <code>&lt;select&gt;</code> when the game has more than one level, and plain text when it has one. In the top bar it sits beside the faction name.</p>
+  <div class="cards">
+    <div class="card">
+      <h3><em>D</em> A select, as today</h3>
+      <div class="ui"><div class="topbar"><span class="wm">ATLANTIS HUD</span><span class="chip">Borg TNG (95)</span><span class="sel">Surface &#9662;</span><span class="chip">Turn 71</span></div></div>
+      <ul class="notes"><li>Same control, same behaviour, moved.</li><li class="con">A native select among chips looks like a different kind of thing.</li></ul>
+    </div>
+    <div class="card">
+      <h3><em>E</em> A chip that opens a list</h3>
+      <div class="ui"><div class="topbar"><span class="wm">ATLANTIS HUD</span><span class="chip">Borg TNG (95)</span><span class="chip" style="border-color:var(--select);color:var(--ink)">Surface &#9662;</span><span class="chip">Turn 71</span></div></div>
+      <ul class="notes"><li>Matches every other header control.</li><li class="con">A new popover for something a select already did.</li></ul>
+    </div>
+    <div class="card">
+      <h3><em>F</em> Plain text until there is a choice</h3>
+      <div class="ui"><div class="topbar"><span class="wm">ATLANTIS HUD</span><span class="chip">Borg TNG (95)</span><span style="color:var(--ink-soft)">Surface</span><span class="chip">Turn 71</span></div></div>
+      <ul class="notes"><li>Today's rule, kept: one level reads as a label, several as a control.</li><li>Costs the header nothing in the common case.</li><li class="con">The same spot changes shape between games.</li></ul>
+    </div>
+  </div>
+
+  <h2 class="sec">&sect;4 &nbsp;Where in settings</h2>
+  <div class="ui" style="max-width:420px;margin-top:12px"><div class="set">
+    <div class="grp">Global</div>
+    <div class="row"><span class="box on"></span><span><span class="t">App theme</span><br><span class="d">Dark / Light</span></span></div>
+    <div class="row"><span class="box on"></span><span><span class="t">Biome textures</span><br><span class="d">Whether the map draws terrain textures.</span></span></div>
+    <div class="row"><span class="box on"></span><span><span class="t" style="color:var(--brass)">Staleness</span><br><span class="d">Shade hexes by how long ago you last saw them.</span></span></div>
+    <div class="row"><span class="box"></span><span><span class="t" style="color:var(--brass)">Movement</span><br><span class="d">Draw the routes units are ordered to travel.</span></span></div>
+  </div></div>
+  <div class="banner">The <b>Global</b> tab already holds App theme, Map theme, Biome textures, pane transparency and interface size &mdash; every other &ldquo;how the map and panes look&rdquo; control. These two belong beside them. <b>The wording above is a proposal, not a decision</b>; both descriptions are yours.</div>
+
+</main>
+</body>
+</html>

@@ -4,6 +4,7 @@ import {
   bareWords,
   buildVocabulary,
   isKeyword,
+  keywordCaseChanges,
   keywordJustFinished,
   uppercaseKeywords,
   uppercaseLine,
@@ -135,5 +136,33 @@ describe("keywordJustFinished", () => {
 
   it("finds nothing when the caret is mid-word", () => {
     expect(keywordJustFinished("move n", 2, vocabulary)).toBeNull();
+  });
+});
+
+describe("keywordCaseChanges", () => {
+  const vocabulary = buildVocabulary(["MOVE", "N", "STUDY", "COMBAT"]);
+
+  it("returns a span per keyword that is not already upper case", () => {
+    expect(keywordCaseChanges("move n\nstudy combat", vocabulary, null)).toEqual([
+      { from: 0, to: 4, insert: "MOVE" },
+      { from: 5, to: 6, insert: "N" },
+      { from: 7, to: 12, insert: "STUDY" },
+      { from: 13, to: 19, insert: "COMBAT" }
+    ]);
+  });
+
+  it("returns nothing when the block is already upper case", () => {
+    expect(keywordCaseChanges("MOVE N", vocabulary, null)).toEqual([]);
+  });
+
+  it("leaves the word the caret is inside alone", () => {
+    expect(keywordCaseChanges("study combat\nmove", vocabulary, 17)).toEqual([
+      { from: 0, to: 5, insert: "STUDY" },
+      { from: 6, to: 12, insert: "COMBAT" }
+    ]);
+  });
+
+  it("protects a caret at the head of a word", () => {
+    expect(keywordCaseChanges("move n", vocabulary, 0)).toEqual([{ from: 5, to: 6, insert: "N" }]);
   });
 });

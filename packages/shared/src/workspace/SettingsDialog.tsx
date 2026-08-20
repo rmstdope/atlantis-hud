@@ -4,6 +4,7 @@ import { useEscapeToDismiss } from "./dismissLayer";
 import { APP_VERSION } from "../appVersion";
 import { snippetBodyProblem, snippetNameProblem } from "../orderSnippets";
 import { useSettingsStore } from "../settingsStore";
+import { useWorkspaceStore } from "../workspaceStore";
 import type { ThemeName } from "../settingsStore";
 import { mapThemeOptions } from "./mapThemes";
 import { SettingToggle } from "./SettingToggle";
@@ -187,6 +188,7 @@ export function GlobalSettings() {
   const setMapTheme = useSettingsStore((state) => state.setMapTheme);
   const biomeTextures = useSettingsStore((state) => state.biomeTextures);
   const setBiomeTextures = useSettingsStore((state) => state.setBiomeTextures);
+  // Per theme (ah-j1xd): the slider always shows and writes the theme the player is looking at.
   const paneTransparency = useSettingsStore((state) => state.paneTransparency);
   const setPaneTransparency = useSettingsStore((state) => state.setPaneTransparency);
   const interfaceSize = useSettingsStore((state) => state.interfaceSize);
@@ -197,6 +199,13 @@ export function GlobalSettings() {
   const setMovementPlanner = useSettingsStore((state) => state.setMovementPlanner);
   const orderOcd = useSettingsStore((state) => state.orderOcd);
   const setOrderOcd = useSettingsStore((state) => state.setOrderOcd);
+  // A workspace preference rather than a setting, but this is where a player looks for "put it
+  // back how it was" - and a table whose columns have been dragged into a bad shape needs a way
+  // out that is not on the table itself (ah-1owr.2).
+  const layers = useWorkspaceStore((state) => state.layers);
+  const toggleLayer = useWorkspaceStore((state) => state.toggleLayer);
+  const resetUnitColumnShares = useWorkspaceStore((state) => state.resetUnitColumnShares);
+  const resetUnitColumnOrder = useWorkspaceStore((state) => state.resetUnitColumnOrder);
 
   return (
     <div className="flex flex-col gap-3">
@@ -241,6 +250,28 @@ export function GlobalSettings() {
       />
 
       {/*
+        The two map layers that used to be chips over the map (ah-l9mp). Both are set once and then
+        forgotten, so they sit here with the other "how the map draws" preferences; the badge menu
+        stayed on the map because it is flicked while reading a hex. The state is the workspace
+        store's, unchanged - these are the same switches driven from a different place.
+      */}
+      <SettingToggle
+        title="Staleness"
+        description="Shade hexes by how long ago you last saw them."
+        testId="settings-layer-staleness"
+        checked={layers.staleness}
+        onChange={() => toggleLayer("staleness")}
+      />
+
+      <SettingToggle
+        title="Movement"
+        description="Draw the routes units are ordered to travel."
+        testId="settings-layer-movement"
+        checked={layers.movement}
+        onChange={() => toggleLayer("movement")}
+      />
+
+      {/*
         The same switch the overlay itself carries. Here as well because the overlay is the one
         screen a player can turn off from inside and then be unable to find again: the key that
         opens it is written on the thing they just dismissed.
@@ -256,7 +287,7 @@ export function GlobalSettings() {
       <label className="flex flex-col gap-1">
         <span className="flex items-baseline justify-between gap-2">
           <span className="text-ink-soft">Pane transparency</span>
-          <span className="text-ink">{paneTransparency}%</span>
+          <span className="text-ink">{paneTransparency[theme]}%</span>
         </span>
         {/*
           Capped at 95 rather than 100, because a fully transparent pane can neither be read nor
@@ -270,10 +301,14 @@ export function GlobalSettings() {
           min={0}
           max={95}
           step={5}
-          value={paneTransparency}
+          value={paneTransparency[theme]}
           onChange={(event) => setPaneTransparency(Number(event.target.value))}
           className="accent-brass"
         />
+        <span className="block text-pane-sm text-ink-dim">
+          Makes the panes see-through so the map shows behind them. Remembered separately for the
+          dark and light themes.
+        </span>
       </label>
 
       <label className="flex flex-col gap-1">
@@ -296,6 +331,39 @@ export function GlobalSettings() {
           Makes the panes, the header and the dialogs bigger. The map is not affected.
         </span>
       </label>
+
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-ink-soft">
+          <span className="block">Units table columns</span>
+          <span className="block text-pane-sm text-ink-dim">
+            Puts the dragged column widths, or the order they were dragged into, back to how they
+            ship.
+          </span>
+        </span>
+        {/*
+          Two buttons rather than one "Reset columns": order and widths are separate preferences
+          stored separately, so a player can undo the mess they made of one without losing the
+          other (ah-1owr.3). The pair follows `BadgeMenu`'s All/None shape.
+        */}
+        <span className="flex gap-1">
+          <button
+            type="button"
+            data-testid="settings-reset-column-widths"
+            onClick={resetUnitColumnShares}
+            className="rounded border border-edge px-1.5 text-ink-soft hover:text-ink"
+          >
+            Reset widths
+          </button>
+          <button
+            type="button"
+            data-testid="settings-reset-column-order"
+            onClick={resetUnitColumnOrder}
+            className="rounded border border-edge px-1.5 text-ink-soft hover:text-ink"
+          >
+            Reset order
+          </button>
+        </span>
+      </div>
 
       <SettingToggle
         title="Movement planner"
@@ -435,6 +503,11 @@ const WARNING_GROUPS: readonly {
         code: "unit-overloaded",
         title: "Overloaded units",
         description: "A unit ordered to move carrying more than it can move with."
+      },
+      {
+        code: "unit-does-nothing",
+        title: "Units that do nothing",
+        description: "A unit with no order that spends its month."
       }
     ]
   },
@@ -445,6 +518,22 @@ const WARNING_GROUPS: readonly {
         code: "already-built",
         title: "Building what is built",
         description: "A BUILD order on a structure the report already shows as finished."
+      },
+      {
+        code: "build-outside-structure",
+        title: "Building outside a structure",
+        description: "A bare BUILD or BUILD COMPLETE by a unit that is in no structure."
+      },
+      {
+        code: "build-help-not-building",
+        title: "Helping a unit that is not building",
+        description: "A BUILD HELP naming a unit with no BUILD order of its own."
+      },
+      {
+        code: "build-without-skill",
+        title: "Building without the skill",
+        description:
+          "A BUILD order for a structure the unit has not the skill or level to build."
       }
     ]
   },

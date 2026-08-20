@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Everything known about a faction (bead ah-bu2c)</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733; --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --ok:#4fb783; --warn:#d9a441; --danger:#d97070; --select:#4a9fd8; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1200px; margin-left:auto; margin-right:auto; }
+  h1 { font-size:26px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:96ch; margin-top:10px; font-size:14px; }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:0.92em; }
+  h2.sec { margin-top:34px; font-size:18px; color:var(--brass); } h2.sec small { color:var(--ink-dim); font-size:13px; margin-left:10px; }
+  .banner { border:1px solid var(--edge); border-left:3px solid var(--brass); background:var(--panel); padding:14px 16px; border-radius:6px; margin-top:16px; color:var(--ink-soft); font-size:13.5px; } .banner b { color:var(--ink); }
+  .banner.bad { border-left-color:var(--danger); } .banner.good { border-left-color:var(--ok); }
+  .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); gap:20px; margin-top:16px; align-items:start; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; display:flex; flex-direction:column; gap:12px; }
+  .card h3 { font-size:16px; } .card h3 em { color:var(--brass); font-style:normal; font-size:11px; letter-spacing:1.6px; margin-right:8px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; }
+  .notes { list-style:none; font-size:12px; color:var(--ink-soft); display:grid; gap:4px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; } .notes li.con::before { content:"\2212  "; color:var(--danger); }
+  .ui { font-family:'Helvetica Neue',Arial,sans-serif; font-size:12px; }
+  .stage { position:relative; height:230px; border:1px solid var(--edge); border-radius:6px; overflow:hidden; background:linear-gradient(135deg,#16324a,#1d3f63 40%,#2f5d3a); }
+  .stage .hexes { position:absolute; inset:0; opacity:.3; background-image:radial-gradient(circle at 12px 10px, rgba(255,255,255,.2) 2px, transparent 3px); background-size:26px 22px; }
+  .dim { position:absolute; inset:0; background:rgba(0,0,0,.5); }
+  .topbar { position:absolute; top:0; left:0; right:0; display:flex; align-items:center; gap:8px; background:var(--panel); border-bottom:1px solid var(--edge); padding:5px 9px; }
+  .topbar .wm { color:var(--brass); letter-spacing:.06em; }
+  .chip { border:1px solid var(--edge); color:var(--ink-soft); border-radius:4px; padding:1px 8px; }
+  .modal { position:absolute; left:50%; top:52%; transform:translate(-50%,-50%); width:300px; background:var(--raised); border:1px solid var(--edge); border-radius:5px; padding:10px 12px; box-shadow:0 8px 24px rgba(0,0,0,.6); }
+  .pop { position:absolute; left:96px; top:34px; width:270px; background:var(--raised); border:1px solid var(--edge); border-radius:5px; box-shadow:0 8px 24px rgba(0,0,0,.6); }
+  .pop h5, .modal h5 { margin:0 0 6px; font-size:12.5px; color:var(--ink); font-weight:normal; }
+  .sect { color:var(--brass); font-size:10.5px; letter-spacing:.09em; text-transform:uppercase; margin:8px 0 3px; }
+  .row2 { display:flex; gap:6px; padding:2px 4px; border-radius:3px; }
+  .row2.hot { background:rgba(217,164,65,.18); }
+  .row2 .k { color:var(--ink-dim); flex:none; }
+  .body { padding:8px 10px; }
+  .ring { position:absolute; width:34px; height:30px; border:2px solid var(--brass); border-radius:6px; box-shadow:0 0 10px var(--brass); }
+  .ring.sel { border-color:#f5f8fc; box-shadow:0 0 10px #f5f8fc; }
+  .lbl { position:absolute; font:10px/1 'SF Mono',monospace; color:var(--brass); letter-spacing:.08em; text-transform:uppercase; }
+  table { border-collapse:collapse; font-size:12.5px; width:100%; margin-top:14px; } th,td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--edge-soft); vertical-align:top; } th { color:var(--brass); font-weight:normal; font-size:11px; letter-spacing:1px; text-transform:uppercase; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Everything known about a faction &mdash; <span>proposals</span> (bead ah-bu2c)</h1>
+  <p>A faction's name appears in the attitudes list and in the units-in-hex table, and naming it is all it does. The bead asks for it to be clickable, opening <b>a dialog</b> of the attitude toward it, the hexes it has been seen in and its known units &mdash; where <b>hovering a hex or a unit highlights that hex on the map</b>.</p>
+  <p><b>Those two requirements are incompatible as written, and that is the first thing to settle.</b></p>
+</header>
+<main>
+
+  <h2 class="sec">&sect;1 &nbsp;A dialog dims the map it is pointing at</h2>
+  <p style="color:var(--ink-soft);font-size:13.5px;margin-top:10px;max-width:96ch">Every dialog in this workspace is modal &mdash; <code>fixed inset-0 &hellip; bg-black/50</code> with <code>aria-modal="true"</code> (<code>BattlesDialog.tsx:49-54</code>, <code>ChangesDialog.tsx:53-58</code>). It covers and dims the whole screen. Popovers are anchored under their chip and leave the map alone.</p>
+  <div class="cards">
+    <div class="card">
+      <h3><em>A</em> A modal dialog, as the bead says</h3>
+      <div class="ui"><div class="stage"><div class="hexes"></div>
+        <div class="topbar"><span class="wm">ATLANTIS HUD</span><span class="chip">Borg TNG (95)</span></div>
+        <div class="dim"></div>
+        <div class="modal">
+          <h5>Archon Dominion (53)</h5>
+          <div class="sect">Attitude</div><div class="row2">Unfriendly</div>
+          <div class="sect">Seen in</div>
+          <div class="row2 hot"><span class="k">&#9673;</span>ocean (20,40)</div>
+          <div class="row2"><span class="k">&#9673;</span>swamp (10,50)</div>
+          <div class="sect">Known units</div>
+          <div class="row2"><span class="k">16999</span>scoutL</div>
+        </div>
+      </div></div>
+      <ul class="notes">
+        <li>Room for everything; the biggest surface of the three.</li>
+        <li class="con"><b>The highlight is invisible.</b> The row is hovered, the hex lights up, and the reader is looking at a dimmed screen with a box over it.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3><em>B</em> A popover, like Trade</h3>
+      <div class="concept">Anchored under a header chip; the map stays lit and the highlight is the point.</div>
+      <div class="ui"><div class="stage"><div class="hexes"></div>
+        <div class="topbar"><span class="wm">ATLANTIS HUD</span><span class="chip" style="border-color:var(--select);color:var(--ink)">Archon Dominion (53)</span></div>
+        <div class="ring" style="left:186px;top:96px"></div>
+        <span class="lbl" style="left:180px;top:132px">ocean (20,40)</span>
+        <div class="pop"><div class="body">
+          <h5>Archon Dominion (53)</h5>
+          <div class="sect">Attitude</div><div class="row2">Unfriendly</div>
+          <div class="sect">Seen in</div>
+          <div class="row2 hot"><span class="k">&#9673;</span>ocean (20,40)</div>
+          <div class="row2"><span class="k">&#9673;</span>swamp (10,50)</div>
+          <div class="sect">Known units</div>
+          <div class="row2"><span class="k">16999</span>scoutL</div>
+        </div></div>
+      </div></div>
+      <ul class="notes">
+        <li><b>The highlight works</b>, because the map is visible beside it.</li>
+        <li>Exactly the shape <code>TradePanel</code> already uses for hover-draws-on-the-map.</li>
+        <li class="con">Narrower than a dialog; a faction with many units needs scrolling.</li>
+        <li class="con">Needs somewhere to be anchored &mdash; and the header is the budget <code>ah-csni</code> protects.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3><em>C</em> A dialog, and drop the highlight</h3>
+      <div class="concept">The bead's dialog, with hovering doing nothing; hexes and units are links instead.</div>
+      <div class="ui"><div class="stage"><div class="hexes"></div>
+        <div class="topbar"><span class="wm">ATLANTIS HUD</span><span class="chip">Borg TNG (95)</span></div>
+        <div class="dim"></div>
+        <div class="modal">
+          <h5>Archon Dominion (53)</h5>
+          <div class="sect">Seen in</div>
+          <div class="row2"><span class="k">&#9673;</span><span style="color:var(--brass)">ocean (20,40)</span></div>
+          <div class="sect">Known units</div>
+          <div class="row2"><span class="k" style="color:var(--brass)">16999</span>scoutL</div>
+        </div>
+      </div></div>
+      <ul class="notes">
+        <li>Consistent with <b>ah-87he</b>, which just made unit numbers clickable elsewhere.</li>
+        <li>Clicking closes the dialog and takes you there &mdash; a stronger gesture than a highlight.</li>
+        <li class="con">Drops something the bead explicitly asked for.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2 class="sec">&sect;2 &nbsp;What a highlight looks like, if there is one <small>the map already draws a selection ring, and it must not be confused with one</small></h2>
+  <div class="cards">
+    <div class="card">
+      <h3><em>D</em> A brass ring</h3>
+      <div class="ui"><div class="stage" style="height:120px"><div class="hexes"></div>
+        <div class="ring sel" style="left:60px;top:40px"></div><span class="lbl" style="left:56px;top:76px">selected</span>
+        <div class="ring" style="left:200px;top:40px"></div><span class="lbl" style="left:196px;top:76px">hovered</span>
+      </div></div>
+      <ul class="notes"><li>Reads as "the map is pointing at this", and brass is the app's pointing colour.</li><li class="con">Two rings on screen at once; a reader must learn which is which.</li></ul>
+    </div>
+    <div class="card">
+      <h3><em>E</em> A tint over the hex</h3>
+      <div class="ui"><div class="stage" style="height:120px"><div class="hexes"></div>
+        <div class="ring sel" style="left:60px;top:40px"></div><span class="lbl" style="left:56px;top:76px">selected</span>
+        <div style="position:absolute;left:200px;top:40px;width:34px;height:30px;border-radius:6px;background:rgba(217,164,65,.45)"></div><span class="lbl" style="left:196px;top:76px">hovered</span>
+      </div></div>
+      <ul class="notes"><li>Unmistakably not a selection &mdash; a different kind of mark entirely.</li><li class="con">A fill hides the hex's own terrain and badges, which is what you were trying to look at.</li></ul>
+    </div>
+    <div class="card">
+      <h3><em>F</em> Every hex at once, no hover</h3>
+      <div class="concept">Opening the faction marks <b>all</b> its hexes; hovering does nothing.</div>
+      <div class="ui"><div class="stage" style="height:120px"><div class="hexes"></div>
+        <div class="ring" style="left:60px;top:26px"></div>
+        <div class="ring" style="left:150px;top:56px"></div>
+        <div class="ring" style="left:230px;top:30px"></div>
+      </div></div>
+      <ul class="notes"><li><b>Answers "where are they?" at a glance</b>, which is the actual question.</li><li>Works with a modal dialog too, if the dialog can be dismissed and the marks persist.</li><li class="con">Not what the bead asked for, and a faction seen in twenty hexes is a lot of rings.</li></ul>
+    </div>
+  </div>
+
+  <h2 class="sec">&sect;3 &nbsp;What the data can actually answer</h2>
+  <table>
+    <tr><th style="width:26%">The bead asks for</th><th style="width:26%">Where it comes from</th><th>Caveat</th></tr>
+    <tr><td>the attitude toward the faction</td><td><code>DeclaredAttitudes</code> &rarr; levels &rarr; <code>FactionRef {name, id}</code></td><td>Only for factions the report's attitudes block names. Others show the default attitude, or nothing.</td></tr>
+    <tr><td>the hexes it has been seen in</td><td>distinct <code>regionId</code> of units whose <code>factionId</code> matches</td><td><b>&ldquo;Seen&rdquo; means &ldquo;has a unit in this turn's report&rdquo;</b> &mdash; not a memory of past turns. Worth saying so in the panel.</td></tr>
+    <tr><td>its known units</td><td><code>ReportUnit</code> where <code>factionId</code> matches</td><td><code>factionId</code> is <b>null when a foreign unit conceals its faction</b> (<code>ReportUnit.ts:13</code>), so a concealed unit belongs to no faction here.</td></tr>
+  </table>
+  <div class="banner">There is a fourth thing the data has and the bead did not ask for: <b>how many units, and where they are concentrated</b>. Not proposed &mdash; noted, because it is free once the list exists.</div>
+
+</main>
+</body>
+</html>

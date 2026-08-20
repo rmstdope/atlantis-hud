@@ -1,36 +1,24 @@
 import { useState } from "react";
-import type { MapLevel } from "../hexMapModel";
-import { SURFACE_LEVEL } from "../hexMapModel";
-import { useWorkspaceStore, type LayerName } from "../workspaceStore";
+import { useWorkspaceStore } from "../workspaceStore";
 import { BadgeMenu } from "./BadgeMenu";
 import { ChipPopover } from "./popover";
 
 /**
- * Layer toggles above the map.
+ * The badge menu, above the map.
  *
- * Every toggle here drives the map. Trade routes used to sit alongside them with nothing behind
- * it, waiting for a feature that never came; a control that does nothing is worse than no
- * control, so it went the way inert controls should.
+ * Staleness and movement used to sit here too. They are set once and then forgotten, so they moved
+ * into Settings > Global beside the other display preferences and gave the band back to the map
+ * (ah-l9mp). Badges did not: it is ten marks flicked *while reading* a crowded hex, and its chip
+ * lights when any of them is off, so a hex missing a mark is never a mystery. Behind a dialog that
+ * gesture becomes four, with the dialog over the hex being read.
  *
- * Two of them have since gone the other way. "Units" and "structures" each spoke for a whole
- * family of marks, so hiding the buildings on a crowded level also took the ships, the shafts,
- * the lairs and the roads; each mark now has a toggle of its own, and they live behind the Badges
- * chip because ten of them will not fit in a strip that shares the map's top band with the zoom
- * cluster. What is left here is what is not a badge.
+ * The level selector left too, for the opposite reason - it is changed often enough to want to be
+ * visible without looking at the map's corner, so it is in the top bar.
  */
-const LAYERS: Array<{ name: LayerName; label: string }> = [
-  { name: "staleness", label: "Staleness" },
-  { name: "movement", label: "Movement" }
-];
-
-export function LayerChips({ levels }: { levels: MapLevel[] }) {
-  const layers = useWorkspaceStore((state) => state.layers);
-  const toggleLayer = useWorkspaceStore((state) => state.toggleLayer);
+export function LayerChips() {
   const badges = useWorkspaceStore((state) => state.badges);
   const toggleBadge = useWorkspaceStore((state) => state.toggleBadge);
   const setAllBadges = useWorkspaceStore((state) => state.setAllBadges);
-  const level = useWorkspaceStore((state) => state.level);
-  const setLevel = useWorkspaceStore((state) => state.setLevel);
   const [badgesOpen, setBadgesOpen] = useState(false);
   const showingEverything = Object.values(badges).every(Boolean);
 
@@ -39,23 +27,6 @@ export function LayerChips({ levels }: { levels: MapLevel[] }) {
       data-testid="layer-chips"
       className="pointer-events-auto flex items-center gap-1.5 rounded-md border border-edge bg-panel/95 px-2 py-1 shadow-lg backdrop-blur"
     >
-      {LAYERS.map(({ name, label }) => (
-        <label
-          key={name}
-          className={`flex cursor-pointer items-center gap-1.5 rounded border px-2 py-0.5 text-pane ${
-            layers[name] ? "border-select bg-select/15 text-ink" : "border-edge text-ink-dim"
-          }`}
-        >
-          <input
-            type="checkbox"
-            checked={layers[name]}
-            onChange={() => toggleLayer(name)}
-            className="h-3 w-3 accent-select"
-          />
-          {label}
-        </label>
-      ))}
-
       <ChipPopover
         open={badgesOpen}
         onDismiss={() => setBadgesOpen(false)}
@@ -83,24 +54,6 @@ export function LayerChips({ levels }: { levels: MapLevel[] }) {
         </button>
       </ChipPopover>
 
-      {levels.length > 1 ? (
-        <select
-          value={level}
-          onChange={(event) => setLevel(Number(event.target.value))}
-          aria-label="Map level"
-          className="rounded border border-edge bg-panel-raised px-2 py-0.5 text-pane text-ink"
-        >
-          {levels.map((candidate) => (
-            <option key={candidate.z} value={candidate.z}>
-              {candidate.name}
-            </option>
-          ))}
-        </select>
-      ) : (
-        <span className="px-2 py-0.5 text-pane text-ink-dim">
-          {levels[0]?.name ?? SURFACE_LEVEL.name}
-        </span>
-      )}
     </div>
   );
 }

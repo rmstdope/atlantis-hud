@@ -44,7 +44,9 @@ async function selectUnit(page: Page, unitId: string) {
   const row = page.getByTestId(`unit-row-${unitId}`);
   await expect(row).toHaveCount(1);
   await expect(row).toBeVisible();
-  await row.getByRole("button").click();
+  // Named, not "the button in this row": a foreign unit's row also carries the faction name as a
+  // control (ah-bu2c), so a bare role lookup is ambiguous there.
+  await row.getByRole("button", { name: `unit ${unitId}` }).click();
   await box.clear();
 }
 
@@ -365,4 +367,40 @@ test("with Order OCD off, nothing is uppercased", async ({ page }) => {
   await page.keyboard.type('name unit "seven of eight" ');
 
   await expectOrders(page, /^name unit "seven of eight" ?/);
+});
+
+test("orders written before the setting was on are tidied on the first unit opened after a reload", async ({
+  page
+}) => {
+  await loadReport(page);
+  await fillOrders(page, "move n\nstudy combat");
+  // The reload proves nothing until the draft has actually been written.
+  await expect(page.getByTestId("orders-status")).toContainText(/saved \d/u, { timeout: 20_000 });
+
+  // The setting is turned on for the *next* load only, in the persisted store rather than through
+  // the dialog: ticking it here would tidy the mounted editor at once and the reload would then
+  // persist an already-upper-case draft, leaving nothing for the vocabulary to arrive late for.
+  await page.evaluate(() => {
+    const key = "atlantis-hud-settings";
+    const stored = JSON.parse(window.localStorage.getItem(key) ?? '{"state":{},"version":0}') as {
+      state: Record<string, unknown>;
+    };
+    stored.state.orderOcd = true;
+    window.localStorage.setItem(key, JSON.stringify(stored));
+  });
+
+  await page.reload();
+  await selectHex(page, "1:7,53");
+  await selectUnit(page, OWN_UNIT);
+
+  // The first editor mounted since the load: its vocabulary is still in flight when it is built.
+  await expectOrders(page, /^MOVE N\nSTUDY COMBAT/);
+});
+
+test("turning Order OCD on tidies the unit already on screen", async ({ page }) => {
+  await loadReport(page);
+  await fillOrders(page, "move n\nstudy combat");
+  await enableOrderOcd(page);
+
+  await expectOrders(page, /^MOVE N\nSTUDY COMBAT/);
 });

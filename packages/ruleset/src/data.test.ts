@@ -539,6 +539,27 @@ describe("parseSkillReference", () => {
     });
   });
 
+  /**
+   * Neither punctuation occurs on the committed page - every cast-cost list there is a single item
+   * or two joined by ` and `. That is the point: `ah-6qp` shipped a wrong catalogue because the
+   * requirement parser was written from the punctuation the page happened to use, and this parser
+   * carried the same assumption until this test. The inputs are self-delimiting (`[TAG]`), so the
+   * separator is never looked at.
+   */
+  it("reads a casting cost list however it is punctuated", () => {
+    const skills = parseSkillReference(
+      "<html><body><pre>brew [BREW] 1: A mage with this skill can create a potion via magic at " +
+        "a cost of 5 herbs [HERB], 2 iron [IRON] and mithril [MITH]. This skill costs 100 silver " +
+        "per month of study.</pre></body></html>"
+    );
+
+    expect(skills.BREW.cast?.costs).toEqual([
+      { tag: "HERB", amount: 5 },
+      { tag: "IRON", amount: 2 },
+      { tag: "MITH", amount: 1 }
+    ]);
+  });
+
   it("reads the attempt cost of construct gate", () => {
     const skills = parseSkillReference(DATA_HTML);
 
@@ -816,12 +837,89 @@ describe("parseBuildingReference", () => {
     const buildings = parseBuildingReference(DATA_HTML);
 
     expect(buildings.LEADER).toBeUndefined();
-    // A trade structure is a building the page never fortifies, and the catalogue stays silent
-    // about it rather than claiming it seats nobody.
-    expect(buildings.MINE).toBeUndefined();
-    expect(buildings["ROAD SE"]).toBeUndefined();
     expect(buildings.MINING).toBeUndefined();
     expect(buildings.BUILDING).toBeUndefined();
+  });
+
+  it("keeps every entry the page calls a building", () => {
+    // The fixture carries 59 paragraphs opening "<Name>: This is a building." Only the ten that
+    // also state a defence used to survive.
+    expect(Object.keys(parseBuildingReference(DATA_HTML))).toHaveLength(58);
+  });
+
+  it("the repeated Lair does not lose an entry", () => {
+    // 59 paragraphs, 58 keys: the page names "Lair" twice - once for Trents, once for Illyrthil -
+    // and the map is keyed by the upper-cased name, so the second entry wins. Neither carries a
+    // figure, so last-wins costs nothing here; a future page repeating a name that does carry one
+    // is where this would go wrong quietly.
+    expect(parseBuildingReference(DATA_HTML).LAIR).toBeDefined();
+  });
+
+  it("keeps a Mine, a road and a lair", () => {
+    const buildings = parseBuildingReference(DATA_HTML);
+
+    expect(buildings.MINE).toBeDefined();
+    expect(buildings["ROAD SE"]).toBeDefined();
+    expect(buildings.LAIR).toBeDefined();
+  });
+
+  it("a Mine states no size", () => {
+    // The entry says nothing about defence, and an absent field says that - where a 0 would claim
+    // the page had stated it.
+    expect(parseBuildingReference(DATA_HTML).MINE.size).toBeUndefined();
+  });
+
+  it("a lair states no cost and no materials", () => {
+    const lair = parseBuildingReference(DATA_HTML).LAIR;
+
+    expect(lair.cost).toBeUndefined();
+    expect(lair.materials).toBeUndefined();
+  });
+
+  it("a Tower still seats no mages and a Fort still seats one", () => {
+    const buildings = parseBuildingReference(DATA_HTML);
+
+    // The ten fortifications are untouched by the widening.
+    expect(buildings.TOWER).toMatchObject({ size: 10, cost: 10, materials: ["stone"], mages: 0 });
+    expect(buildings.FORT.mages).toBe(1);
+  });
+
+  it("keeps the description the page gives", () => {
+    expect(parseBuildingReference(DATA_HTML).MINE.description).toBe(
+      "This is a building. Units may enter this structure. This trade structure increases the " +
+        "amount of iron available in the region."
+    );
+  });
+
+  it("keeps the description of a fortification too", () => {
+    // The ten that were already kept gain prose as well.
+    expect(parseBuildingReference(DATA_HTML).TOWER.description).toContain(
+      "This structure provides defense to the first 10 men inside it."
+    );
+  });
+
+  it("reads what a trade structure produces", () => {
+    const buildings = parseBuildingReference(DATA_HTML);
+
+    expect(buildings.MINE.produces).toBe("iron");
+    expect(buildings["ARCANE MINE"].produces).toBe("mithril");
+    expect(buildings["SACRED GROVE"].produces).toBe("yew");
+    expect(buildings["FAERIE RING"].produces).toBe("mushrooms");
+  });
+
+  it("a road produces nothing and a fortification produces nothing", () => {
+    const buildings = parseBuildingReference(DATA_HTML);
+
+    expect(buildings["ROAD SE"].produces).toBeUndefined();
+    expect(buildings.TOWER.produces).toBeUndefined();
+  });
+
+  it("a Mine costs what the skill says", () => {
+    // Pass two already read this clause and discarded it for want of a Mine in the object list.
+    expect(parseBuildingReference(DATA_HTML).MINE).toMatchObject({
+      cost: 10,
+      materials: ["wood", "stone"]
+    });
   });
 
   it("reads cost and material from the skill that builds it", () => {
@@ -883,6 +981,152 @@ describe("parseBuildingReference", () => {
     const buildings = parseBuildingReference(html);
 
     expect(Object.keys(buildings)).toEqual(["TOWER"]);
-    expect(buildings.TOWER).toEqual({ size: 10, cost: 10, materials: ["stone"], mages: 0 });
+    expect(buildings.TOWER).toEqual({
+      description: "This is a building. This structure provides defense to the first 10 men inside it.",
+      size: 10,
+      cost: 10,
+      materials: ["stone"],
+      mages: 0,
+      buildSkill: "BUIL",
+      buildLevel: 1
+    });
+  });
+});
+
+/**
+ * The prose an entry carries, which ah-3cj4.2 keeps so a reference dialog can say more than
+ * numbers. Every expected value below is quoted from the fixture's own entry.
+ */
+describe("entry descriptions", () => {
+  it("keeps what the page says about an item", () => {
+    const items = parseItemReference(DATA_HTML);
+
+    // "chain armor [CARM], weight 1, costs 150 silver to withdraw. This is a type of armor. ..."
+    expect(items.CARM.description).toMatch(/^This is a type of armor\./);
+    expect(items.CARM.description).not.toContain("weight 1");
+    expect(items.CARM.description).not.toContain("[CARM]");
+  });
+
+  it("keeps the prose of a ship", () => {
+    const items = parseItemReference(DATA_HTML);
+
+    expect(items.LONG.description).toMatch(/^This is a ship with a capacity of 150/);
+  });
+
+  it("an item whose preamble carries a comma list is still cut at the tag", () => {
+    const items = parseItemReference(DATA_HTML);
+
+    // "leader [LEAD], weight 10, walking capacity 5, moves 2 hexes per month. This race may ..."
+    expect(items.LEAD.description).toBe("This race may study all skills to level 5.");
+  });
+
+  it("an entry that is only a preamble carries no description", () => {
+    const items = parseItemReference(
+      "<pre>widget [WIDG], weight 3, walking capacity 0, moves 0 hexes per month.</pre>"
+    );
+
+    expect(items.WIDG).toBeDefined();
+    expect("description" in items.WIDG).toBe(false);
+  });
+
+  it("keeps what a skill says at each level", () => {
+    const skills = parseSkillReference(DATA_HTML);
+
+    expect(skills.MINI.levels?.map((entry) => entry.level)).toEqual([1, 3, 5]);
+    expect(skills.MINI.levels?.[0].description).toMatch(
+      /^This skill deals with all aspects of extracting raw metals/
+    );
+    expect(skills.MINI.levels?.[1].description).toMatch(/PRODUCE mithril \[MITH\]/);
+  });
+
+  it("drops the levels that say No skill report", () => {
+    const skills = parseSkillReference(DATA_HTML);
+
+    for (const entry of skills.MINI.levels ?? []) {
+      expect(entry.description).not.toContain("No skill report");
+    }
+    expect(skills.MINI.levels?.some((entry) => entry.level === 2 || entry.level === 4)).toBe(false);
+  });
+
+  it("a skill with one useful level keeps exactly one", () => {
+    const skills = parseSkillReference(DATA_HTML);
+
+    // 71 of the 96 say something at one level only, so this is the ordinary case rather than a
+    // special one; the count is what pins that the placeholders are being dropped everywhere and
+    // not only on mining.
+    const single = Object.values(skills).filter((skill) => (skill.levels ?? []).length === 1);
+    expect(single.length).toBe(71);
+  });
+
+  it("the levels come out in level order", () => {
+    const skills = parseSkillReference(DATA_HTML);
+
+    for (const skill of Object.values(skills)) {
+      const levels = (skill.levels ?? []).map((entry) => entry.level);
+      expect(levels).toEqual([...levels].sort((a, b) => a - b));
+    }
+  });
+
+  it("a skill that says nothing at any level carries no levels key", () => {
+    // Hand-built, because no skill in the committed fixture is empty at every level - the rule is
+    // there so a future page produces no key rather than an empty list.
+    const skills = parseSkillReference(
+      "<pre>hush [HUSH] 1: No skill report.\n\nhush [HUSH] 2: No skill report.</pre>"
+    );
+
+    expect(skills.HUSH).toBeDefined();
+    expect("levels" in skills.HUSH).toBe(false);
+  });
+
+  it("keeps every item and skill it kept before", () => {
+    expect(Object.keys(parseItemReference(DATA_HTML)).length).toBe(171);
+    expect(Object.keys(parseSkillReference(DATA_HTML)).length).toBe(96);
+  });
+
+  it("a skill's existing fields are unchanged", () => {
+    const skills = parseSkillReference(DATA_HTML);
+
+    expect(skills.MINI).toMatchObject({
+      cost: 10,
+      maxLevel: 5,
+      magic: false,
+      requires: []
+    });
+    expect(skills.MINI.produces.map((entry) => entry.tag)).toEqual(["IRON", "MITH", "ADMT"]);
+  });
+});
+
+/**
+ * What builds a structure, and at what level. Both facts live in the opening of the *skill's* own
+ * entry - `mining [MINI] 3: ...` - which is the paragraph pass two is already holding when it
+ * reads the `may BUILD` sentence out of it.
+ */
+describe("parseBuildingReference build requirements", () => {
+  it("says which skill builds a structure, and at what level", () => {
+    const buildings = parseBuildingReference(DATA_HTML);
+
+    // "mining [MINI] 3: ... A unit with this skill may BUILD a Mine from 10 stone [STON] ..."
+    expect(buildings.MINE).toMatchObject({ buildSkill: "MINI", buildLevel: 3 });
+    // "building [BUIL] 1: ... may BUILD a Tower ..."
+    expect(buildings.TOWER).toMatchObject({ buildSkill: "BUIL", buildLevel: 1 });
+    // "building [BUIL] 3: ... may BUILD a Citadel ..."
+    expect(buildings.CITADEL).toMatchObject({ buildSkill: "BUIL", buildLevel: 3 });
+  });
+
+  it("leaves the requirement absent for a structure no skill builds", () => {
+    const lair = parseBuildingReference(DATA_HTML).LAIR;
+
+    // The catalogue does not say - which is not the same claim as "no skill needed".
+    expect(lair.buildSkill).toBeUndefined();
+    expect(lair.buildLevel).toBeUndefined();
+  });
+
+  it("never states one half of the requirement without the other", () => {
+    const buildings = parseBuildingReference(DATA_HTML);
+
+    const halfFilled = Object.entries(buildings).filter(
+      ([, entry]) => (entry.buildSkill === undefined) !== (entry.buildLevel === undefined)
+    );
+    expect(halfFilled).toEqual([]);
   });
 });

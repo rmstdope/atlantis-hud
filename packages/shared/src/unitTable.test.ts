@@ -1,4 +1,4 @@
-import type { ReportUnit } from "@atlantis/core-client";
+import type { ReportUnit, StructureInfo } from "@atlantis/core-client";
 import { aReportUnit } from "@atlantis/core-client";
 import { describe, expect, it } from "vitest";
 import {
@@ -7,7 +7,20 @@ import {
   rowHeightAt,
   sortUnits,
   windowRange,
-  type SortState
+  COLUMN_MIN_PX,
+  DEFAULT_COLUMN_SHARES,
+  UNIT_COLUMNS,
+  columnSharesFromStorage,
+  columnWidthStyle,
+  columnOrderFromStorage,
+  dragColumnOrder,
+  dragColumnShare,
+  dropBoundaryX,
+  orderOf,
+  shareOf,
+  REORDERABLE_COLUMNS,
+  type SortState,
+  type UnitColumn
 } from "./unitTable";
 
 /**
@@ -26,8 +39,11 @@ const unit = (unitId: string, own: boolean, overrides: Partial<ReportUnit> = {})
   });
 
 const ids = (units: ReportUnit[]) => units.map((entry) => entry.unitId);
-const sortBy = (units: ReportUnit[], overrides: Partial<SortState>) =>
-  sortUnits(units, { ...DEFAULT_SORT, ...overrides });
+const sortBy = (
+  units: ReportUnit[],
+  overrides: Partial<SortState>,
+  structures: StructureInfo[] = []
+) => sortUnits(units, { ...DEFAULT_SORT, ...overrides }, structures);
 
 describe("windowRange", () => {
   it("returns the rows covering the viewport, end exclusive", () => {
@@ -86,11 +102,11 @@ describe("rowHeightAt", () => {
   // fractional height (e.g. 22 * 1.25 = 27.5) makes the first visible row drift from the one the
   // scroller is actually showing.
   it.each([
-    [100, 22],
-    [125, 28],
-    [150, 33],
-    [175, 39],
-    [200, 44]
+    [100, 24],
+    [125, 30],
+    [150, 36],
+    [175, 42],
+    [200, 48]
   ])("rounds the row height at %i%% to %i px", (interfaceSize, expected) => {
     expect(rowHeightAt(interfaceSize)).toBe(expected);
   });
@@ -168,6 +184,36 @@ describe("sortUnits", () => {
       "c",
       "a"
     ]);
+  });
+
+  it("sorts the structure column by name, with the number breaking ties", () => {
+    const structures = [
+      { structureId: "20", name: "Anvil", kind: "Fort", description: null, needs: null },
+      { structureId: "3", name: "Wavecrest", kind: "Longship", description: null, needs: null },
+      { structureId: "9", name: "Anvil", kind: "Fort", description: null, needs: null }
+    ];
+    const units = [
+      unit("a", false, { structureId: "3" }),
+      unit("b", false, { structureId: "20" }),
+      unit("c", false, { structureId: "9" })
+    ];
+
+    // Anvil [9] before Anvil [20] before Wavecrest [3]: name first, then the number as a number.
+    expect(ids(sortBy(units, { column: "structure" }, structures))).toEqual(["c", "b", "a"]);
+  });
+
+  it("puts a structure the region never described after the named ones, not before them", () => {
+    const structures = [
+      { structureId: "20", name: "Anvil", kind: "Fort", description: null, needs: null }
+    ];
+    const units = [
+      unit("a", false, { structureId: "77" }),
+      unit("b", false, { structureId: "20" }),
+      unit("c", false, { structureId: null })
+    ];
+
+    // Anvil [20], then the nameless [77], then the unit standing in the open.
+    expect(ids(sortBy(units, { column: "structure" }, structures))).toEqual(["b", "a", "c"]);
   });
 
   it("keeps units with no faction last whichever way the column is sorted", () => {
@@ -262,6 +308,15 @@ describe("filterUnits", () => {
     expect(ids(filterUnits(units, "Elder Tree"))).toEqual(["12538"]);
   });
 
+  it("the filter finds a structure by its name as well as its number", () => {
+    const structures = [
+      { structureId: "194", name: "Wavecrest", kind: "Longship", description: null, needs: null }
+    ];
+
+    expect(ids(filterUnits(units, "wavecrest", structures))).toEqual(["18642"]);
+    expect(ids(filterUnits(units, "194", structures))).toEqual(["18642"]);
+  });
+
   it("matches on the structure the unit occupies", () => {
     expect(ids(filterUnits(units, "194"))).toEqual(["18642"]);
   });
@@ -272,5 +327,277 @@ describe("filterUnits", () => {
 
   it("returns nothing when no unit matches", () => {
     expect(filterUnits(units, "nobody")).toEqual([]);
+  });
+});
+
+describe("sorts by the long order, ignoring case and a leading @", () => {
+  const units = [
+    unit("1", true),
+    unit("2", true),
+    unit("3", true),
+    unit("4", true)
+  ];
+  const longOrders = new Map<string, string | null>([
+    ["1", "work"],
+    ["2", "@tax"],
+    ["3", "TAX"],
+    ["4", null]
+  ]);
+
+  it("puts a repeated order beside its plain, differently-cased twin", () => {
+    const order = ids(sortUnits(units, { ...DEFAULT_SORT, column: "longOrder" }, [], longOrders));
+
+    // "@tax" and "TAX" compare as "tax", so they land together ahead of "work".
+    expect(order.slice(0, 3)).toEqual(["2", "3", "1"]);
+  });
+
+  it("sorts a unit with nothing to do to the end, the way an absent structure already does", () => {
+    expect(
+      ids(sortUnits(units, { ...DEFAULT_SORT, column: "longOrder" }, [], longOrders)).at(-1)
+    ).toBe("4");
+    expect(
+      ids(
+        sortUnits(units, { ...DEFAULT_SORT, column: "longOrder", direction: "desc" }, [], longOrders)
+      ).at(-1)
+    ).toBe("4");
+  });
+});
+
+/**
+ * The column width model - shares of the table rather than pixels, which is what makes it
+ * arithmetically impossible for a column to be pushed off the right edge (ah-1owr.2).
+ */
+describe("column shares", () => {
+  it("the default shares sum to exactly one", () => {
+    const total = UNIT_COLUMNS.reduce((sum, column) => sum + DEFAULT_COLUMN_SHARES[column], 0);
+    expect(total).toBeCloseTo(1, 12);
+  });
+
+  it("gives every column a share, and reads a stored one in preference to the default", () => {
+    for (const column of UNIT_COLUMNS) {
+      expect(shareOf(column, null)).toBe(DEFAULT_COLUMN_SHARES[column]);
+    }
+    expect(shareOf("name", { name: 0.5 })).toBe(0.5);
+    expect(shareOf("faction", { name: 0.5 })).toBe(DEFAULT_COLUMN_SHARES.faction);
+  });
+
+  it("styles a column as a percentage, never as a pixel", () => {
+    expect(columnWidthStyle("name", { name: 0.25 })).toEqual({ width: "25%" });
+    expect(columnWidthStyle("name", null).width).toMatch(/%$/);
+  });
+});
+
+describe("dragColumnShare", () => {
+  it("a drag moves share from one column to its neighbour and never changes the total", () => {
+    for (const delta of [0, 0.01, -0.01, 0.2, -0.2, 10, -10, 0.0001]) {
+      const result = dragColumnShare(0.3, 0.2, delta, 0.02);
+      expect(result.left + result.right).toBeCloseTo(0.5, 12);
+      expect(result.left).toBeGreaterThanOrEqual(0.02);
+      expect(result.right).toBeGreaterThanOrEqual(0.02);
+    }
+  });
+
+  it("grows the left column by exactly what the right one gives up", () => {
+    const result = dragColumnShare(0.3, 0.2, 0.05, 0.02);
+    expect(result.left).toBeCloseTo(0.35, 12);
+    expect(result.right).toBeCloseTo(0.15, 12);
+    expect(result.atLimit).toBe(false);
+  });
+
+  it("reports atLimit exactly when the drag was clamped", () => {
+    expect(dragColumnShare(0.3, 0.2, 0.19, 0.02).atLimit).toBe(true);
+    expect(dragColumnShare(0.3, 0.2, 0.17, 0.02).atLimit).toBe(false);
+  });
+
+  it("halves the pair when even the floor cannot be honoured by both", () => {
+    const result = dragColumnShare(0.01, 0.01, 5, 0.02);
+    expect(result.left).toBeCloseTo(0.01, 12);
+    expect(result.right).toBeCloseTo(0.01, 12);
+  });
+
+  it("keeps the whole table summing to one across a long sequence of drags", () => {
+    // Seeded, so a failure is reproducible: this is the defect of PR #421 stated as a test.
+    let seed = 20260819;
+    const random = () => {
+      seed = (seed * 1103515245 + 12345) % 2147483648;
+      return seed / 2147483648;
+    };
+    const shares: Record<UnitColumn, number> = { ...DEFAULT_COLUMN_SHARES };
+    for (let step = 0; step < 50; step += 1) {
+      const index = Math.floor(random() * (UNIT_COLUMNS.length - 1));
+      const left = UNIT_COLUMNS[index];
+      const right = UNIT_COLUMNS[index + 1];
+      const result = dragColumnShare(shares[left], shares[right], random() * 0.6 - 0.3, 0.01);
+      shares[left] = result.left;
+      shares[right] = result.right;
+      const total = UNIT_COLUMNS.reduce((sum, column) => sum + shares[column], 0);
+      expect(total).toBeCloseTo(1, 10);
+    }
+  });
+});
+
+describe("columnSharesFromStorage", () => {
+  const sum = (shares: Partial<Record<UnitColumn, number>>) =>
+    UNIT_COLUMNS.reduce((total, column) => total + (shares[column] ?? 0), 0);
+
+  it("refuses anything that is not a record", () => {
+    expect(columnSharesFromStorage(null)).toEqual({});
+    expect(columnSharesFromStorage("nonsense")).toEqual({});
+    expect(columnSharesFromStorage(7)).toEqual({});
+  });
+
+  it("drops a column this build no longer has and renormalises the rest", () => {
+    const kept = columnSharesFromStorage({ ...DEFAULT_COLUMN_SHARES, retired: 0.4 });
+    expect(kept).not.toHaveProperty("retired");
+    expect(sum(kept)).toBeCloseTo(1, 12);
+  });
+
+  it("drops a value that is not a usable share, and still returns a whole table", () => {
+    const kept = columnSharesFromStorage({
+      ...DEFAULT_COLUMN_SHARES,
+      name: -0.2,
+      faction: Number.NaN,
+      men: 1.5
+    });
+    expect(sum(kept)).toBeCloseTo(1, 12);
+    expect(kept.name).toBe(DEFAULT_COLUMN_SHARES.name / sum(DEFAULT_COLUMN_SHARES));
+  });
+
+  it("renormalises a record that does not sum to one", () => {
+    for (const scale of [0.6, 1.4]) {
+      const scaled = Object.fromEntries(
+        UNIT_COLUMNS.map((column) => [column, DEFAULT_COLUMN_SHARES[column] * scale])
+      );
+      const kept = columnSharesFromStorage(scaled);
+      expect(sum(kept)).toBeCloseTo(1, 12);
+      expect(kept.name).toBeCloseTo(DEFAULT_COLUMN_SHARES.name, 12);
+    }
+  });
+
+  it("has a floor expressed in pixels, for the splitter to convert against a live table", () => {
+    expect(COLUMN_MIN_PX).toBeGreaterThan(0);
+  });
+});
+
+describe("columnOrderFromStorage", () => {
+  it("rejects a stored order that does not fit this build", () => {
+    expect(columnOrderFromStorage(null)).toBeNull();
+    expect(columnOrderFromStorage("own,name")).toBeNull();
+    expect(columnOrderFromStorage(UNIT_COLUMNS.slice(0, 3))).toBeNull();
+    expect(columnOrderFromStorage([...UNIT_COLUMNS, "extra"])).toBeNull();
+    expect(
+      columnOrderFromStorage(UNIT_COLUMNS.map((column) => (column === "men" ? "retired" : column)))
+    ).toBeNull();
+    expect(
+      columnOrderFromStorage(UNIT_COLUMNS.map((column) => (column === "men" ? "name" : column)))
+    ).toBeNull();
+    expect(columnOrderFromStorage(UNIT_COLUMNS.map((column, i) => (i === 4 ? 4 : column)))).toBeNull();
+  });
+
+  it("keeps a valid permutation", () => {
+    const swapped = [...UNIT_COLUMNS] as UnitColumn[];
+    [swapped[2], swapped[3]] = [swapped[3], swapped[2]];
+    expect(columnOrderFromStorage(swapped)).toEqual(swapped);
+  });
+
+  it("falls back to the shipped order when nothing is stored, or when what is does not fit", () => {
+    expect(orderOf(null)).toEqual([...UNIT_COLUMNS]);
+    expect(orderOf(["own", "name"] as UnitColumn[])).toEqual([...UNIT_COLUMNS]);
+    const swapped = [...UNIT_COLUMNS] as UnitColumn[];
+    [swapped[2], swapped[3]] = [swapped[3], swapped[2]];
+    expect(orderOf(swapped)).toEqual(swapped);
+  });
+
+  it("leaves the marker column out of the reorderable ones", () => {
+    expect(REORDERABLE_COLUMNS).not.toContain("own");
+    expect(REORDERABLE_COLUMNS).toHaveLength(UNIT_COLUMNS.length - 1);
+  });
+});
+
+describe("dragColumnOrder", () => {
+  const order = [...UNIT_COLUMNS] as UnitColumn[];
+  const widthPxOf = () => 100;
+
+  it("swaps with a neighbour once dragged past the whole of it", () => {
+    expect(dragColumnOrder(order, "name", 99, widthPxOf)).toEqual(order);
+    expect(dragColumnOrder(order, "name", 100, widthPxOf)).toEqual([
+      "own",
+      "unitId",
+      "faction",
+      "name",
+      "men",
+      "skills",
+      "items",
+      "structure",
+      "longOrder"
+    ]);
+    expect(dragColumnOrder(order, "name", 205, widthPxOf)).toEqual([
+      "own",
+      "unitId",
+      "faction",
+      "men",
+      "name",
+      "skills",
+      "items",
+      "structure",
+      "longOrder"
+    ]);
+  });
+
+  it("stops one short of the marker column when dragged left", () => {
+    expect(dragColumnOrder(order, "name", -1000, widthPxOf)).toEqual([
+      "own",
+      "name",
+      "unitId",
+      "faction",
+      "men",
+      "skills",
+      "items",
+      "structure",
+      "longOrder"
+    ]);
+  });
+
+  it("never moves the marker column itself", () => {
+    expect(dragColumnOrder(order, "own", 1000, widthPxOf)).toEqual(order);
+  });
+
+  it("always yields a permutation with the marker still leftmost", () => {
+    // Seeded rather than Math.random, so a failure is reproducible.
+    let seed = 20260819;
+    const next = () => {
+      seed = (seed * 1103515245 + 12345) % 2147483648;
+      return seed / 2147483648;
+    };
+    let current = [...UNIT_COLUMNS] as UnitColumn[];
+    for (let step = 0; step < 500; step += 1) {
+      const dragged = REORDERABLE_COLUMNS[Math.floor(next() * REORDERABLE_COLUMNS.length)];
+      current = dragColumnOrder(current, dragged, (next() - 0.5) * 1200, widthPxOf);
+      expect(current[0]).toBe("own");
+      expect([...current].sort()).toEqual([...UNIT_COLUMNS].sort());
+    }
+  });
+});
+
+describe("dropBoundaryX", () => {
+  const widthPxOf = (column: UnitColumn) => (column === "own" ? 24 : 100);
+
+  it("puts the drop line on a boundary of the table as it is drawn", () => {
+    const order = [...UNIT_COLUMNS] as UnitColumn[];
+    // name sits third: own (24) + unitId (100) = 124.
+    expect(dropBoundaryX(order, order, "name", widthPxOf)).toBe(124);
+    // Dragged one place right it passes faction, and the table has not reordered: the boundary the
+    // player is aiming at is faction's right edge on screen, own + unitId + name + faction = 324.
+    const right = dragColumnOrder(order, "name", 100, widthPxOf);
+    expect(dropBoundaryX(order, right, "name", widthPxOf)).toBe(324);
+    // Dragged one place left, it lands right after the marker.
+    const left = dragColumnOrder(order, "name", -100, widthPxOf);
+    expect(dropBoundaryX(order, left, "name", widthPxOf)).toBe(24);
+  });
+
+  it("puts the drop line at the table's left edge when nothing precedes the column", () => {
+    const order = [...UNIT_COLUMNS] as UnitColumn[];
+    const farLeft = ["name", ...order.filter((column) => column !== "name")] as UnitColumn[];
+    expect(dropBoundaryX(order, farLeft, "name", widthPxOf)).toBe(0);
   });
 });

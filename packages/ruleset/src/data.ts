@@ -79,6 +79,15 @@ export type ItemEntry = {
    * requirement, and the ship-only guard below keeps them from being mistaken for one.
    */
   sailingSkill?: number;
+  /**
+   * What the page says about it, after the preamble of name, tag, weight and capacity that the
+   * fields above already carry. Absent when the entry is nothing but that preamble.
+   *
+   * The preamble ends at the first full stop after the `[TAG]`, which holds for every shape the
+   * page uses: `chain armor [CARM], weight 1, costs 150 silver to withdraw.` then the prose;
+   * `Longship [LONG].` then the prose; `leader [LEAD], weight 10, ... month.` then the prose.
+   */
+  description?: string;
 };
 
 export type ItemReference = Record<string, ItemEntry>;
@@ -106,6 +115,9 @@ export type Production = { tag: string; level: number };
 /** A skill a unit must already have, at a level, before it may begin to study another. */
 export type SkillRequirement = { tag: string; level: number };
 
+/** What a skill's page says at one level, once the placeholders are dropped. */
+export type SkillLevel = { level: number; description: string };
+
 export type SkillEntry = {
   tag: string;
   name: string;
@@ -125,6 +137,19 @@ export type SkillEntry = {
    * at which it becomes available. Empty for the great majority of skills, which make nothing.
    */
   produces: Production[];
+  /**
+   * What the page says at each level, in level order, with the levels that say nothing left out.
+   *
+   * A list rather than a string because the page writes a skill five times, once per level, and
+   * the interesting part is usually not level 1: mining reaches mithril at 3 and admantium at 5,
+   * which is exactly what a reader opens the entry to find out. Levels the page fills with
+   * `No skill report.` carry no information and are dropped, so a skill that says something only
+   * at 1 and 3 has two entries here and not five.
+   *
+   * Absent rather than `[]` when the skill says nothing anywhere - the rule ah-3cj4.1 set for a
+   * building's `size` and `cost`, applied here so the file reads consistently.
+   */
+  levels?: SkillLevel[];
   /**
    * Whether this is one of the magic skills.
    *
@@ -170,6 +195,23 @@ function readNumber(text: string, pattern: RegExp): number | null {
   const value = Number.parseInt(match[1], 10);
   return Number.isNaN(value) ? null : value;
 }
+
+/**
+ * An entry's prose: everything after the first full stop that follows its `[TAG]`.
+ *
+ * Not simply "after the first full stop" - the preamble carries none before the tag, and anchoring
+ * on the tag is what makes this exact rather than nearly right. `. ` rather than `.` so a full
+ * stop inside the preamble cannot split the entry in the wrong place.
+ */
+function prose(paragraph: string): string | undefined {
+  const after = paragraph.slice(paragraph.indexOf("]") + 1);
+  const stop = after.indexOf(". ");
+  const text = (stop === -1 ? "" : after.slice(stop + 2)).trim();
+  return text === "" ? undefined : text;
+}
+
+/** The page's placeholder for a level that grants nothing. Not a description. */
+const NO_REPORT = /^No skill report\.?$/i;
 
 /**
  * Classifies an entry from the sentence the page uses to introduce it.
@@ -255,6 +297,12 @@ function sailingOf(kind: ItemKind, text: string): { sailingSkill?: number } {
   return skill === null ? {} : { sailingSkill: skill };
 }
 
+/** The prose of an item entry, as a spreadable field so an entry with none carries no key. */
+function descriptionOf(paragraph: string): { description?: string } {
+  const text = prose(paragraph);
+  return text === undefined ? {} : { description: text };
+}
+
 export function parseItemReference(html: string): ItemReference {
   const items: ItemReference = {};
 
@@ -301,6 +349,7 @@ export function parseItemReference(html: string): ItemReference {
       ...conditionOf(paragraph),
       ...cargoOf(kind, paragraph),
       ...sailingOf(kind, paragraph),
+      ...descriptionOf(paragraph),
       moves:
         readNumber(paragraph, /moves (\d+) hexes? per month/i) ??
         readNumber(paragraph, /speed of (\d+) hexes? per month/i) ??
@@ -332,7 +381,7 @@ export function parseItemReference(html: string): ItemReference {
  * Both live in the same `<pre>` block, and `parseItemReference` skips these paragraphs for exactly
  * the same reason this one skips its own.
  */
-const SKILL_OPENING = /^([^.:[\]]{1,40}) \[([A-Z0-9]{2,6})\] (\d+): /;
+export const SKILL_OPENING = /^([^.:[\]]{1,40}) \[([A-Z0-9]{2,6})\] (\d+): /;
 
 /** "This skill costs 10 silver per month of study." Stated once per skill, on its level 1 entry. */
 const STUDY_COST = /This skill costs (\d+) silver per month of study/i;
@@ -394,8 +443,15 @@ const MAGIC_WORDS = /\b(?:mage|magic|spell|cast(?!le)|summon|enchant|Foundation)
  * this spell ...", and no input name in the fixture carries a dot of its own.
  */
 const CAST_COST = /via magic at a cost of ([^.]+)\./i;
-/** One input inside the list `CAST_COST` captures: an optional number, a name, the tag. */
-const CAST_INPUT = /^(?:(\d+) )?[a-z][a-z ]* \[([A-Z0-9]{2,6})\]$/i;
+/**
+ * One input inside the list `CAST_COST` captures: an optional number, a name, the tag.
+ *
+ * Global, and read straight out of the clause rather than out of a piece split off it: the pairs
+ * are self-delimiting, so `a and b`, `a, b and c` and whatever the page adopts next all read the
+ * same, because the separator is never looked at. `readRequirements` was rewritten this way by
+ * `ah-6qp` after the same assumption - a fixed separator - shipped a wrong catalogue.
+ */
+const CAST_INPUT = /(?:(\d+) )?[a-z][a-z ]*\[([A-Z0-9]{2,6})\]/gi;
 /** "the attempt costs 1000 silver." (Construct Gate) */
 const ATTEMPT_COST = /the attempt costs (\d+) silver/i;
 /** "2 stone [STON] times the skill level into rootstone [ROOT]" - the source and what it becomes. */
@@ -414,14 +470,15 @@ function readCastCost(tag: string, paragraph: string): CastCost | null {
 
   const costMatch = paragraph.match(CAST_COST);
   if (costMatch) {
-    for (const part of costMatch[1].split(" and ")) {
-      const inputMatch = part.trim().match(CAST_INPUT);
-      if (!inputMatch) {
-        throw new RulesetScrapeError(
-          `could not read the casting cost of skill ${tag}: "${part.trim()}" in "${costMatch[0]}"`
-        );
-      }
-      const [, amount, inputTag] = inputMatch;
+    const stated = [...costMatch[1].matchAll(CAST_INPUT)];
+    // A cost sentence naming no input at all is the page having changed shape, and must stay loud:
+    // a scraper that reads nothing and says nothing is a worse version of the bug this prevents.
+    if (stated.length === 0) {
+      throw new RulesetScrapeError(
+        `could not read the casting cost of skill ${tag}: "${costMatch[1].trim()}" in "${costMatch[0]}"`
+      );
+    }
+    for (const [, amount, inputTag] of stated) {
       costs.push({ tag: inputTag, amount: amount === undefined ? 1 : Number.parseInt(amount, 10) });
     }
   }
@@ -513,6 +570,26 @@ function mergeCast(existing: CastCost | null | undefined, found: CastCost | null
  * lowest, the level from the highest, and the casting cost unioned across every level that states
  * one (Summon Wind's is on level 3, Transmutation adds outputs on levels 2 and 3).
  */
+/**
+ * A skill's level list with this paragraph's level added, when it says anything.
+ *
+ * The paragraphs arrive in the order the page lists them, which is level order, so appending is
+ * all the ordering this needs. A level whose text is the `No skill report.` placeholder, or empty,
+ * contributes nothing: keeping it would make the majority of entries read as broken data.
+ */
+function appendLevel(
+  existing: SkillLevel[] | undefined,
+  level: number,
+  paragraph: string
+): SkillLevel[] {
+  const description = paragraph.replace(SKILL_OPENING, "").trim();
+  const kept = existing ?? [];
+  if (description === "" || NO_REPORT.test(description)) {
+    return kept;
+  }
+  return [...kept, { level, description }];
+}
+
 export function parseSkillReference(html: string): SkillReference {
   const skills: SkillReference = {};
 
@@ -525,6 +602,10 @@ export function parseSkillReference(html: string): SkillReference {
     const [, name, tag, level] = opening;
     const stated = readNumber(paragraph, STUDY_COST);
     const existing = skills[tag];
+    // Appended, never overwritten: the page writes a skill once per level and the ruleset holds
+    // one entry per skill, so writing rather than appending would leave each skill with only what
+    // its last paragraph said - which still looks like a description.
+    const levels = appendLevel(existing?.levels, Number.parseInt(level, 10), paragraph);
 
     skills[tag] = {
       tag,
@@ -550,7 +631,8 @@ export function parseSkillReference(html: string): SkillReference {
           : readRequirements(paragraph),
       magic:
         (existing?.magic ?? false) ||
-        (Number.parseInt(level, 10) === 1 && MAGIC_WORDS.test(paragraph))
+        (Number.parseInt(level, 10) === 1 && MAGIC_WORDS.test(paragraph)),
+      ...(levels.length > 0 ? { levels } : {})
     };
   }
 
@@ -564,26 +646,60 @@ export function parseSkillReference(html: string): SkillReference {
   return skills;
 }
 
-/** One buildable structure as the data page describes it. */
+/** One structure as the data page describes it. */
 export type BuildingEntry = {
-  /** Men the structure protects - the rules table's "Size". */
-  size: number;
-  /** What building it costs, from the skill that builds it. */
-  cost: number;
+  /**
+   * The description the page gives it, from the name onwards, verbatim and whitespace-collapsed -
+   * `This is a building. Units may enter this structure. This trade structure increases the
+   * amount of iron available in the region.`
+   *
+   * Kept because a reference entry that can only show numbers is most of the way to useless
+   * (ah-3cj4), and because it is already in front of the parser: the numbers are read out of this
+   * very text.
+   */
+  description: string;
+  /** What a trade structure increases the supply of, in the page's own word: `iron`, `yew`. */
+  produces?: string;
+  /**
+   * Men the structure protects - the rules table's "Size". Absent for a Mine, a road or a lair,
+   * which state no defence because they give none, and an absent field says that where a `0`
+   * would claim the page had said so.
+   */
+  size?: number;
+  /** What building it costs, from the skill that builds it. Absent for anything no skill builds. */
+  cost?: number;
   /**
    * What it is built from, in the page's own order. A list because the page offers alternatives -
    * `an Inn from 10 wood [WOOD] or stone [STON]` - which one string cannot hold.
    */
-  materials: string[];
+  materials?: string[];
   /**
    * Mages who may study above level 2 inside it. `0` when the entry says nothing: the data page
    * lists every structure and states the capacity wherever there is one, so silence is a
    * statement - and a Tower, which says nothing, really does seat none.
    */
   mages: number;
+  /**
+   * The tag of the skill that builds it - `BUIL`, `MINI` - taken from the opening of that skill's
+   * own entry. Absent for a structure no skill's entry names, which is 22 of the 58: the lairs,
+   * and everything the page says cannot be built by players. Absent means the catalogue does not
+   * say, never that no skill is needed.
+   */
+  buildSkill?: string;
+  /** The lowest level of `buildSkill` that can build it. Absent exactly when `buildSkill` is. */
+  buildLevel?: number;
 };
 
 export type BuildingReference = Record<string, BuildingEntry>;
+
+/** What a trade structure increases the supply of, or `null` for anything that is not one. */
+function produces(text: string): string | null {
+  return (
+    text
+      .match(/This trade structure increases the amount of ([a-z ]+?) available/i)?.[1]
+      .trim() ?? null
+  );
+}
 
 /** `will allow one mage` is written as a word; every other capacity is a numeral. */
 function mageCount(text: string): number {
@@ -605,13 +721,16 @@ export function parseBuildingReference(html: string): BuildingReference {
   const paragraphs = entryParagraphs(html);
   const buildings: BuildingReference = {};
 
-  // Pass one: the object entries decide what a building is. Only a *fortification* counts - an
-  // entry that states "provides defense to the first N men inside it" - because that is the class
-  // of structure the page ever says anything about mages for, and because the alternative reading
-  // (every entry calling itself a building) would turn a Mine, a road and a lair from "the
-  // catalogue cannot say" into "seats nobody", which is a change to `ah-a2k.2`'s warning this bead
-  // is expressly not making. The ten it finds are the four the rules table named, the four magical
-  // fortifications, a Stockade and a Hermits hut.
+  // Pass one: the object entries decide what a building is - every entry that calls itself one,
+  // not only the fortifications. The filter that used to stand here kept the ten that state a
+  // defence and dropped forty-nine: every trade structure, every road, every lair, which is what
+  // ah-3cj4 was filed against. Its stated reason - that a Mine would go from "the catalogue cannot
+  // say" to "seats nobody" - does not survive reading the one consumer: `mage_capacity(kind)
+  // .is_some_and(|seats| seats >= 1)` is false for `None` and for `Some(0)` alike, so a mage in a
+  // Mine is warned either way. `ah-a2k.2`'s warning is unchanged, and pinned by its own tests.
+  //
+  // A name the page repeats - `Lair`, twice - keeps its last entry, since the map is keyed by the
+  // upper-cased name. 59 paragraphs become 58 keys, and neither Lair carries a figure.
   for (const paragraph of paragraphs) {
     // The name may not contain sentence punctuation, for the reason `parseItemReference` records:
     // letting it wander across a full stop matches the tail of the previous sentence.
@@ -624,20 +743,25 @@ export function parseBuildingReference(html: string): BuildingReference {
     // structure both pages name - which is the evidence for reading it this way. It is an
     // inference, not the page's own word.
     const size = readNumber(paragraph, /provides defense to the first (\d+) men/i);
-    if (size === null) {
-      continue;
-    }
+    const product = produces(paragraph);
 
+    // Only the fields the page actually states. `cost` and `materials` are left for pass two to
+    // write, rather than initialised to `0` and `[]`: a lair claiming to cost nothing is exactly
+    // the absence-turned-into-a-claim this bead exists to stop.
     buildings[opening[1].trim().toUpperCase()] = {
-      size,
-      cost: 0,
-      materials: [],
+      description: paragraph.slice(opening[0].length - "This is a building.".length).trim(),
+      ...(product === null ? {} : { produces: product }),
+      ...(size === null ? {} : { size }),
       mages: mageCount(paragraph)
     };
   }
 
-  // Pass two: the skills say what each costs.
+  // Pass two: the skills say what each costs, and - from the entry's own opening rather than from
+  // the BUILD sentence - which skill builds it and at what level. `mining [MINI] 3: ... may BUILD
+  // a Mine` states both: the sentence says what is built, the header says who by.
   for (const paragraph of paragraphs) {
+    const skill = paragraph.match(SKILL_OPENING);
+
     for (const statement of paragraph.matchAll(
       /A unit with this skill may BUILD ([^.]+)\./gi
     )) {
@@ -665,6 +789,14 @@ export function parseBuildingReference(html: string): BuildingReference {
           .split(" or ")
           .map((material) => material.replace(/\s*\[[A-Z0-9]{2,6}\]\s*/, "").trim())
           .filter((material) => material.length > 0);
+
+        // Written together or not at all: a requirement with a level of `undefined` compares as
+        // `NaN` against a unit's level, which is false for everything - a warning that silently
+        // never fires.
+        if (skill) {
+          existing.buildSkill = skill[2];
+          existing.buildLevel = Number.parseInt(skill[3], 10);
+        }
       }
     }
   }

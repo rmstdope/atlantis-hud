@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { UNIT_COLUMNS, type UnitColumn } from "./unitTable";
 import { BADGES } from "./workspace/mapThemes/hexView";
 import { badgesFromStorage, resetWorkspaceStore, useWorkspaceStore } from "./workspaceStore";
 
@@ -492,7 +493,9 @@ describe("the units pane's stored height", () => {
     expect(store().unitsHeightRem).toBe(30);
 
     store().setUnitsHeight(2);
-    expect(store().unitsHeightRem).toBe(5.5);
+    // UNITS_MIN_REM: one row plus the pane's own furniture. It went up with ROW_HEIGHT when the
+    // pane type scale did (ah-v09e).
+    expect(store().unitsHeightRem).toBe(5.75);
 
     store().setUnitsHeight(null);
     expect(store().unitsHeightRem).toBeNull();
@@ -642,5 +645,68 @@ describe("the planner's own state", () => {
 
     expect(persisted?.state).toBeDefined();
     expect(persisted?.state).not.toHaveProperty("planner");
+  });
+});
+
+describe("the units table's stored column shares (ah-1owr.2)", () => {
+  beforeEach(resetWorkspaceStore);
+
+  it("remembers dragged column shares and forgets them on reset", () => {
+    expect(useWorkspaceStore.getState().unitColumnShares).toBeNull();
+
+    useWorkspaceStore.getState().setUnitColumnShares({ name: 0.2, faction: 0.1 });
+    expect(useWorkspaceStore.getState().unitColumnShares).toEqual({ name: 0.2, faction: 0.1 });
+
+    useWorkspaceStore.getState().resetUnitColumnShares();
+    expect(useWorkspaceStore.getState().unitColumnShares).toBeNull();
+  });
+
+  it("merges each commit, so only the columns actually dragged are recorded", () => {
+    useWorkspaceStore.getState().setUnitColumnShares({ name: 0.2, faction: 0.1 });
+    useWorkspaceStore.getState().setUnitColumnShares({ faction: 0.15, men: 0.05 });
+    expect(useWorkspaceStore.getState().unitColumnShares).toEqual({
+      name: 0.2,
+      faction: 0.15,
+      men: 0.05
+    });
+  });
+
+  it("is cleared by resetWorkspaceStore", () => {
+    useWorkspaceStore.getState().setUnitColumnShares({ name: 0.2 });
+    resetWorkspaceStore();
+    expect(useWorkspaceStore.getState().unitColumnShares).toBeNull();
+  });
+});
+
+describe("the units table's column order", () => {
+  beforeEach(resetWorkspaceStore);
+
+  const swapped = () => {
+    const order = [...UNIT_COLUMNS] as UnitColumn[];
+    [order[2], order[3]] = [order[3], order[2]];
+    return order;
+  };
+
+  it("remembers a column order and forgets it on reset", () => {
+    expect(useWorkspaceStore.getState().unitColumnOrder).toBeNull();
+
+    useWorkspaceStore.getState().setUnitColumnOrder(swapped());
+    expect(useWorkspaceStore.getState().unitColumnOrder).toEqual(swapped());
+
+    useWorkspaceStore.getState().resetUnitColumnOrder();
+    expect(useWorkspaceStore.getState().unitColumnOrder).toBeNull();
+  });
+
+  it("is cleared by resetWorkspaceStore", () => {
+    useWorkspaceStore.getState().setUnitColumnOrder(swapped());
+    resetWorkspaceStore();
+    expect(useWorkspaceStore.getState().unitColumnOrder).toBeNull();
+  });
+
+  it("is independent of the column widths", () => {
+    useWorkspaceStore.getState().setUnitColumnShares({ name: 0.2 });
+    useWorkspaceStore.getState().setUnitColumnOrder(swapped());
+    useWorkspaceStore.getState().resetUnitColumnOrder();
+    expect(useWorkspaceStore.getState().unitColumnShares).toEqual({ name: 0.2 });
   });
 });

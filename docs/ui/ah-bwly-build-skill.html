@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Warning: BUILD without the skill</title>
+<style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070; --warn:#d9a441;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1320px; margin:0 auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; }
+  h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:94ch; margin-top:10px; font-size:14px; }
+  header p + p { margin-top:8px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; }
+  header code { color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:36px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:94ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:18px; }
+  .card h2 { font-size:16px; margin-bottom:5px; }
+  .card h2 em { color:var(--brass); font-style:normal; font-size:11.5px; letter-spacing:1.5px; margin-right:8px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; margin-bottom:11px; max-width:94ch; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; padding:14px 12px; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:11px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"− "; color:var(--danger); }
+  .notes li.n::before { content:"· "; color:var(--ink-dim); }
+  .cards2 { display:grid; grid-template-columns:repeat(2,1fr); gap:18px; align-items:start; }
+
+  /* problem card, as the region pane draws one */
+  .prob { display:flex; gap:8px; align-items:flex-start; border:1px solid var(--edge); border-radius:5px;
+          background:var(--raised); padding:7px 9px; font:13px/1.5 'Helvetica Neue',Arial,sans-serif; margin-bottom:7px; }
+  .mark { color:var(--warn); font-weight:bold; flex:0 0 auto; }
+  .who { color:var(--select); flex:0 0 auto; }
+  .msg { color:var(--ink); }
+  .msg .lnk { color:var(--select); border-bottom:1px dotted rgba(74,159,216,.5); }
+  .panelbl { font-size:11px; letter-spacing:1.2px; text-transform:uppercase; color:var(--ink-dim); margin-bottom:7px; }
+  /* settings row */
+  .set { background:var(--raised); border:1px solid var(--edge); border-radius:5px; padding:10px 12px;
+         font:13px/1.5 'Helvetica Neue',Arial,sans-serif; }
+  .grp { font-size:10.5px; letter-spacing:1.3px; text-transform:uppercase; color:var(--ink-dim);
+         border-bottom:1px solid var(--edge); padding-bottom:3px; margin:10px 0 7px; }
+  .grp:first-child { margin-top:0; }
+  .trow { display:flex; gap:10px; align-items:flex-start; padding:4px 0; }
+  .tog { flex:0 0 auto; width:26px; height:15px; border-radius:8px; background:var(--brass); position:relative; margin-top:2px; }
+  .tog::after { content:""; position:absolute; right:2px; top:2px; width:11px; height:11px; border-radius:50%; background:var(--ground); }
+  .tt { color:var(--ink); } .td { color:var(--ink-dim); font-size:12px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Warning: <span>BUILD without the skill for it</span></h1>
+  <p>A unit ordered to <code>BUILD</code> a structure it lacks the skill for spends its month for nothing.
+  The same class of wasted month as <code>ah-vkut</code> and <code>ah-dwk6</code>, and now checkable, because
+  <code>ah-bwly.1</code> puts the requirement in the ruleset.</p>
+  <p>What the data says, for the cases below: a <b>Mine</b> needs <code>mining</code> at 3; a <b>Tower</b>
+  needs <code>building</code> at 1; a <b>Citadel</b> needs <code>building</code> at 3. Thirty-six of the
+  fifty-eight structures carry a requirement; the rest say nothing, and the check stays silent for those.</p>
+  <p>Existing warnings are phrased as a verb phrase completing the unit's name — <i>"Miners (7227) is in no
+  structure to build in"</i>, <i>"has no order that spends the month"</i>. All three options below keep that
+  shape.</p>
+</header>
+
+<main>
+
+<h3 class="sec">1 · How the warning reads</h3>
+<p>Drawn as the region pane draws a problem. Two rows each: a unit with the skill but too low a level, and a
+unit without the skill at all.</p>
+
+<div class="cards2">
+  <div class="card">
+    <h2><em>A</em>What is needed, and what it has</h2>
+    <div class="concept">States the requirement and the shortfall in one line.</div>
+    <div class="stage">
+      <div class="panelbl">Problems — plain (16,0)</div>
+      <div class="prob"><span class="mark">▲</span><span class="who">Miners (7227)</span>
+        <span class="msg">cannot build a Mine: needs mining 3, has mining 1</span></div>
+      <div class="prob"><span class="mark">▲</span><span class="who">Builders (7675)</span>
+        <span class="msg">cannot build a Citadel: needs building 3, has no building</span></div>
+    </div>
+    <ul class="notes">
+      <li>Everything you need to act on, in one line: the structure, the skill, the gap</li>
+      <li>Reads the same whether the shortfall is one level or the whole skill</li>
+      <li class="con">The longest of the three, in a list that can already be long</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2><em>B</em>Just what is needed</h2>
+    <div class="concept">States the requirement; leaves you to see the unit's own skills in the pane.</div>
+    <div class="stage">
+      <div class="panelbl">Problems — plain (16,0)</div>
+      <div class="prob"><span class="mark">▲</span><span class="who">Miners (7227)</span>
+        <span class="msg">needs mining 3 to build a Mine</span></div>
+      <div class="prob"><span class="mark">▲</span><span class="who">Builders (7675)</span>
+        <span class="msg">needs building 3 to build a Citadel</span></div>
+    </div>
+    <ul class="notes">
+      <li>Short, and says the one thing that would fix it</li>
+      <li>Reads naturally aloud</li>
+      <li class="con">Does not say how far short the unit is, so a level-2 unit and a level-0 unit look identical</li>
+    </ul>
+  </div>
+</div>
+
+<div class="card">
+  <h2><em>C</em>Two different messages</h2>
+  <div class="concept">A unit with none of the skill and a unit one level short are arguably different
+  mistakes: one is the wrong unit for the job, the other is a unit that needs a month of study.</div>
+  <div class="stage">
+    <div class="panelbl">Problems — plain (16,0)</div>
+    <div class="prob"><span class="mark">▲</span><span class="who">Miners (7227)</span>
+      <span class="msg">has mining 1, and a Mine needs 3</span></div>
+    <div class="prob"><span class="mark">▲</span><span class="who">Builders (7675)</span>
+      <span class="msg">has no building skill, which a Citadel needs</span></div>
+  </div>
+  <ul class="notes">
+    <li>Each case reads as what it actually is</li>
+    <li class="con">Two strings and two branches for one check, and both still say the same thing</li>
+    <li class="con">Two shapes in one problem list reads as two different warnings</li>
+  </ul>
+</div>
+
+<h3 class="sec">2 · Does a helper need the skill too?</h3>
+<p><code>BUILD HELP 7227</code> contributes a unit's labour to somebody else's building work. Whether the
+helper needs the skill is a rules question the scraped data does not answer, and it decides whether this check
+fires on helpers at all.</p>
+<div class="card">
+  <div class="stage">
+    <div class="panelbl">Problems — plain (16,0)</div>
+    <div class="prob"><span class="mark">▲</span><span class="who">Labourers (9812)</span>
+      <span class="msg">needs building 1 to help build a Tower</span></div>
+    <div class="prob" style="opacity:.4"><span class="mark">▲</span><span class="who">Labourers (9812)</span>
+      <span class="msg">— or no warning at all —</span></div>
+  </div>
+  <ul class="notes">
+    <li class="n">The existing <code>build-help-not-building</code> check already covers a helper whose target is not building</li>
+    <li class="n">If helpers do need the skill, a silent check here lets a wasted month through; if they do not, warning is simply wrong</li>
+  </ul>
+</div>
+
+<h3 class="sec">3 · Where the toggle sits</h3>
+<p>Settings → Warnings already has a <b>Building</b> group holding the three existing BUILD checks. This joins
+it as a fourth.</p>
+<div class="card">
+  <div class="stage">
+    <div class="set">
+      <div class="grp">Building</div>
+      <div class="trow"><span class="tog"></span><span><span class="tt">Building what is built</span><br>
+        <span class="td">A BUILD order on a structure the report already shows as finished.</span></span></div>
+      <div class="trow"><span class="tog"></span><span><span class="tt">Building outside a structure</span><br>
+        <span class="td">A bare BUILD or BUILD COMPLETE by a unit that is in no structure.</span></span></div>
+      <div class="trow"><span class="tog"></span><span><span class="tt">Helping a unit that is not building</span><br>
+        <span class="td">A BUILD HELP naming a unit with no BUILD order of its own.</span></span></div>
+      <div class="trow"><span class="tog"></span><span><span class="tt">Building without the skill</span><br>
+        <span class="td">A BUILD order for a structure the unit has not the skill or level to build.</span></span></div>
+    </div>
+  </div>
+  <ul class="notes">
+    <li class="n">New checks default to <b>on</b>; only the broad unguarded-hex check ships off</li>
+    <li class="n">The title and description above are the proposal, and are yours to change</li>
+  </ul>
+</div>
+
+</main>
+
+<footer style="margin-top:34px; color:var(--ink-dim); font-size:12.5px;">
+  Mockup for bead <span class="mono">ah-bwly.2</span>. Requirements shown are real, from the data page.
+</footer>
+</body>
+</html>

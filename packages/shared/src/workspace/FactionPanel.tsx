@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type { DeclaredAttitudes, FactionStatus } from "@atlantis/core-client";
 import { allowanceRows, attitudeLines } from "./factionView";
 import { POPOVER_BODY_MAX_H } from "./primitives";
@@ -19,6 +20,7 @@ export function FactionPanel({
   status,
   attitudes,
   mergedFactionIds,
+  renderFactionName,
   onDismiss
 }: {
   factionName: string | null;
@@ -28,6 +30,12 @@ export function FactionPanel({
   status: FactionStatus | null;
   attitudes: DeclaredAttitudes | null;
   mergedFactionIds: ReadonlySet<string>;
+  /**
+   * Wraps a named faction so it can open that faction's dossier beside itself (ah-bu2c). Left off,
+   * the name prints as it always did - this panel has no idea what a dossier is, and does not need
+   * the report to draw the attitudes list.
+   */
+  renderFactionName?: (factionId: string, label: ReactNode) => ReactNode;
   onDismiss: () => void;
 }) {
   const rows = status ? allowanceRows(status) : [];
@@ -103,13 +111,18 @@ export function FactionPanel({
                       {line.factions.map((faction, index) => (
                         <span key={faction.id}>
                           {index > 0 ? ", " : ""}
-                          <span
-                            data-testid={`faction-attitude-name-${faction.id}`}
-                            className={faction.merged ? "text-brass-bright" : undefined}
-                          >
-                            {faction.name} ({faction.id})
-                            {faction.merged ? " ⌂" : ""}
-                          </span>
+                          {(() => {
+                            const label = (
+                              <span
+                                data-testid={`faction-attitude-name-${faction.id}`}
+                                className={faction.merged ? "text-brass-bright" : undefined}
+                              >
+                                {faction.name} ({faction.id})
+                                {faction.merged ? " ⌂" : ""}
+                              </span>
+                            );
+                            return renderFactionName ? renderFactionName(faction.id, label) : label;
+                          })()}
                         </span>
                       ))}
                     </span>

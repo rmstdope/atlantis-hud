@@ -92,6 +92,39 @@ export function dragOrdersHeight(startRem: number, deltaRem: number, railRem: nu
 }
 
 /**
+ * How much vertical room the rail has once the header has taken its share, in rem.
+ *
+ * The missing half of `dragOrdersHeight`, which takes `railRem` as a given and never asks what set
+ * it (ah-csni). Because nothing computed it in one place, a taller header surfaced as a *drag* test
+ * failing - four incidents in five days, ~7 hours, each naming a feature that had not changed.
+ *
+ * Everything that spends the vertical budget enters here: the header's pixel height covers a new
+ * chip or a control moved into it, and `rootFontPx` covers a step up in the type scale.
+ */
+export function railRemFor(viewportPx: number, headerPx: number, rootFontPx: number): number {
+  if (!Number.isFinite(rootFontPx) || rootFontPx <= 0) {
+    return 0;
+  }
+  const leftoverPx = viewportPx - headerPx;
+  if (!Number.isFinite(leftoverPx) || leftoverPx <= 0) {
+    return 0;
+  }
+  return leftoverPx / rootFontPx;
+}
+
+/**
+ * Whether the rail still has room for the orders editor to be dragged at all.
+ *
+ * `dragOrdersHeight`'s own ceiling, asked as a question instead of discovered as a stuck gesture:
+ * false means the pin is already at its limit and any drag test is about to fail for a reason that
+ * has nothing to do with dragging. It reuses that function's constants rather than re-deriving the
+ * arithmetic, because a seam that can disagree with the thing it describes would still be believed.
+ */
+export function railHasRoomToDrag(railRem: number): boolean {
+  return railRem - UNIT_MIN_REM - RAIL_GAP_REM > 0;
+}
+
+/**
  * Inline style for the orders slot, or null while the default pin applies.
  *
  * The `maxHeight` is the clamp-to-fit on a short window: the unit panel keeps `UNIT_MIN_REM` plus
@@ -163,16 +196,22 @@ export function railWidthStyle(widthRem: number | null): { width: string } | nul
  * `docs/ui/units-pane-drag-resize.html`: twelve rows by default (what the old row count gave),
  * one row as the floor, never more than seven tenths of the map column.
  *
- * 20.625rem = 330px: title bar 28 + body padding 16 + column header 22 + 12 rows × 22 (ROW_HEIGHT).
- * 5.5rem = 88px: the same with one row.
+ * 20.625rem = 330px: title bar 28 + body padding 16 + column header 24 + eleven and a half rows
+ * of 24 (ROW_HEIGHT). It was exactly twelve rows until ah-v09e took ROW_HEIGHT from 22 to 24 for
+ * the taller pane type, and it deliberately stayed where it was rather than growing with them: at
+ * a 720px window the extra 26px squeezes the right-hand column until the folded panels' own title
+ * bars stop taking clicks, and the pane is draggable anyway. Half a row is a cheaper price.
+ *
+ * 5.75rem = 92px: title bar 28 + body padding 16 + column header 24 + one row of 24. This one did
+ * follow ROW_HEIGHT, because a floor that cannot fit its single row is just a clipped row.
  */
 export const UNITS_DEFAULT_REM = 20.625;
-export const UNITS_MIN_REM = 5.5;
+export const UNITS_MIN_REM = 5.75;
 export const UNITS_MAX_REM = 60; // sanity ceiling for stored values only
 export const UNITS_CEILING_FRACTION = 0.7;
 
-const PINNED_UNITS = "h-[20.625rem] max-h-[70%] min-h-[5.5rem] flex-none";
-const CUSTOM_UNITS = "min-h-[5.5rem] flex-none";
+const PINNED_UNITS = "h-[20.625rem] max-h-[70%] min-h-[5.75rem] flex-none";
+const CUSTOM_UNITS = "min-h-[5.75rem] flex-none";
 
 /** null unless a finite number; otherwise clamped into [UNITS_MIN_REM, UNITS_MAX_REM]. */
 export function clampUnitsHeight(value: unknown): number | null {

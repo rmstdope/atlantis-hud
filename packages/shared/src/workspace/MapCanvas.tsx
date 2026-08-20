@@ -28,6 +28,8 @@ import { useOverlayInsets } from "./useOverlayInsets";
 import { useWorkspaceStore } from "../workspaceStore";
 import type { RouteOverlay } from "./routeOverlay";
 import { viewportForArrow, type TradeArrow } from "./tradeArrow";
+import { peekStep, type KeepClear, type PeekMode } from "./dossierPeek";
+import { HOVER_DELAY_MS } from "../unitTooltip";
 import { regionDecorations } from "./regionDecorations";
 import { guardSelection } from "./selectionGuard";
 import {
@@ -129,6 +131,32 @@ type MapCanvasProps = {
   level: number;
   selectedRegionId: string | null;
   /**
+   * The hex the reader is pointing at from somewhere else - a row of the faction dossier - ringed
+   * in brass so it is never mistaken for the white selection ring (ah-bu2c).
+   *
+   * The map **peeks** at that hex when the reader could not otherwise see it - off screen, or
+   * underneath the dossier itself - and returns to where they were when they look away (ah-mwqa).
+   * A hex already comfortably visible moves nothing: this used to refuse to pan at all, because
+   * running down a list while the map jumps under you is worse than no highlight, and the rule
+   * above is what keeps that true while still making the ring findable.
+   */
+  highlightedRegionId?: string | null;
+  /**
+   * Whether the highlight is a peek that returns (the pointer) or a move that stays (focus).
+   *
+   * Tabbing through the dossier is navigation rather than a peek, and a map that yo-yos back after
+   * every tabbed row is unusable - so focus moves the map and keeps no way back, and a later hover
+   * peeks away from there and returns to exactly that.
+   */
+  highlightMode?: PeekMode;
+  /**
+   * The dossier's own rectangle in client pixels, so a peek never lands underneath it (ah-mwqa).
+   *
+   * Reported upward by the panel because nothing here can measure it: from the units table it is
+   * portalled into the body, where `useOverlayInsets` cannot see it.
+   */
+  keepClear?: KeepClear | null;
+  /**
    * Counts user-initiated selection changes; the map replays its lock-on pulse when this changes,
    * and stays silent when it doesn't - see `selectionEpoch` on `workspaceStore.ts`.
    */
@@ -189,6 +217,9 @@ export function MapCanvas({
   theme,
   level,
   selectedRegionId,
+  highlightedRegionId = null,
+  highlightMode = "peek",
+  keepClear = null,
   selectionEpoch,
   onSelectRegion,
   showStaleness,
@@ -486,7 +517,9 @@ export function MapCanvas({
         return;
       }
       const bounds = root.getBoundingClientRect();
-      // Wheel down is positive and means zoom out.
+      // Wheel down is positive and means zoom out. Zooming is the reader taking control, so any
+      // dossier peek in flight stops expecting to be undone (ah-mwqa).
+      clearPeekRestore();
       commit(
         zoomAt(viewRef.current, -steps, event.clientX - bounds.left, event.clientY - bounds.top)
       );
@@ -563,6 +596,7 @@ export function MapCanvas({
       viewRef.current,
       level
     );
+    clearPeekRestore();
     commit(centreOn(coordinate, viewRef.current, size.width, size.height, insets ?? NO_INSETS));
   };
 
@@ -604,6 +638,9 @@ export function MapCanvas({
       window.removeEventListener("pointercancel", up);
       releaseSelection();
       if (draggedRef.current) {
+        // A hand on the map is the reader taking control: a peek in flight stops expecting to be
+        // undone, so leaving the dossier row leaves the map where they put it (ah-mwqa).
+        clearPeekRestore();
         commit(viewRef.current);
         setCursor(null);
         setMapFocused(false);
@@ -616,6 +653,7 @@ export function MapCanvas({
 
   const zoomBy = useCallback(
     (steps: number) => {
+      clearPeekRestore();
       commit(zoomAt(viewRef.current, steps, size.width / 2, size.height / 2));
     },
     [commit, size]
@@ -667,6 +705,7 @@ export function MapCanvas({
       const current = viewRef.current;
       const dx = event.key === "ArrowLeft" ? nudge : event.key === "ArrowRight" ? -nudge : 0;
       const dy = event.key === "ArrowUp" ? nudge : event.key === "ArrowDown" ? -nudge : 0;
+      clearPeekRestore();
       commit({ tx: current.tx + dx, ty: current.ty + dy, step: current.step });
       return;
     }
@@ -762,6 +801,91 @@ export function MapCanvas({
     const coordinate = selectedRegionId === null ? null : parseRegionId(selectedRegionId);
     return coordinate?.z === level ? coordinate : null;
   }, [selectedRegionId, level]);
+
+  const highlightedAt = useMemo(() => {
+    const coordinate = highlightedRegionId === null ? null : parseRegionId(highlightedRegionId);
+    return coordinate && coordinate.z === level ? coordinate : null;
+  }, [highlightedRegionId, level]);
+
+  /**
+   * Peeks at the hex a dossier row is on while the reader is on that row, and puts the view back
+   * when they leave it (ah-mwqa).
+   *
+   * A sibling of the trade-arrow travel just above rather than a shared mechanism: the two differ
+   * in their rule, in their debounce and in what abandons them, and merging them to share a ref
+   * would cost more than it saves. The rule itself is `peekStep`, in `dossierPeek.ts`, because this
+   * package has no jsdom and a rule written inside a component is a rule no test can read.
+   */
+  const viewBeforePeek = useRef<Viewport | null>(null);
+  /**
+   * Abandons the way back, leaving the map wherever the peek left it.
+   *
+   * Called wherever the reader takes control - a drag, a zoom, the keyboard nudge, the right-click
+   * recentre - because snapping the map back out from under somebody who has just moved it
+   * themselves is fighting them.
+   */
+  const clearPeekRestore = useCallback(() => {
+    viewBeforePeek.current = null;
+  }, []);
+
+  // Selecting anything is taking control too, so it abandons the restore the same way a pan does -
+  // which is also what makes clicking a dossier row leave the map on the hex it just took you to.
+  useEffect(() => {
+    clearPeekRestore();
+  }, [selectedRegionId, clearPeekRestore]);
+
+  useEffect(() => {
+    if (size.width === 0) {
+      return undefined;
+    }
+    // A highlighted hex on another level cannot be peeked at and must not be treated as "the
+    // reader looked away" either: leave the map alone and leave the way back intact.
+    if (highlightedRegionId !== null && highlightedAt === null) {
+      return undefined;
+    }
+    const bounds = hostRef.current?.getBoundingClientRect() ?? null;
+    const host = { left: 0, top: 0, right: size.width, bottom: size.height };
+    // The panel measures itself in client pixels; the insets are about the host.
+    const relative: KeepClear | null =
+      keepClear && bounds
+        ? {
+            left: keepClear.left - bounds.left,
+            top: keepClear.top - bounds.top,
+            right: keepClear.right - bounds.left,
+            bottom: keepClear.bottom - bounds.top
+          }
+        : null;
+
+    const run = () => {
+      const step = peekStep({
+        target: highlightedAt,
+        mode: highlightMode,
+        current: viewRef.current,
+        restore: viewBeforePeek.current,
+        host,
+        width: size.width,
+        height: size.height,
+        insets: insets ?? NO_INSETS,
+        keepClear: relative
+      });
+      viewBeforePeek.current = step.restore;
+      if (step.commit) {
+        commit(step.commit);
+      }
+    };
+
+    // Only a pointer peek waits, which is what stops a quick sweep down ten rows dragging the map
+    // through every hex on the way. Leaving a row puts the map back at once - a delayed restore
+    // reads as the map drifting by itself - and so does a focused row, because that is a keyboard
+    // reader navigating and 300ms of nothing after a Tab reads as the map having missed it
+    // (Copilot, #486).
+    if (highlightedAt === null || highlightMode === "settle") {
+      run();
+      return undefined;
+    }
+    const timer = setTimeout(run, HOVER_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [highlightedAt, highlightedRegionId, highlightMode, keepClear, size, insets, commit]);
 
   // Where the cursor rests before anyone has moved it.
   const resting = cursor ?? selectedAt ?? onLevel[0]?.coordinate ?? null;
@@ -1087,6 +1211,37 @@ export function MapCanvas({
                   vectorEffect="non-scaling-stroke"
                 />
               </g>
+            </g>
+          )}
+
+          {/*
+            Where something elsewhere is pointing - a row of the faction dossier. The selection
+            ring's geometry exactly, in brass rather than white, so the two marks are the same
+            shape and differ in the one way a reader can name (ah-bu2c). Drawn after the selection
+            so both are visible when they land on the same hex.
+          */}
+          {highlightedAt && (
+            <g
+              transform={translateAt(highlightedAt)}
+              pointerEvents="none"
+              data-testid="map-highlight-ring"
+            >
+              <polygon
+                points={HEX_POINTS}
+                fill="none"
+                className="stroke-selection-casing"
+                strokeWidth={7}
+                strokeLinejoin="round"
+                vectorEffect="non-scaling-stroke"
+              />
+              <polygon
+                points={HEX_POINTS}
+                fill="none"
+                className="stroke-brass"
+                strokeWidth={3}
+                strokeLinejoin="round"
+                vectorEffect="non-scaling-stroke"
+              />
             </g>
           )}
 

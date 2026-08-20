@@ -82,6 +82,20 @@ describe("describeReclaimable", () => {
     expect(said).toContain(".claude/cerebro/scripts/prune-worktrees.sh");
   });
 
+  it("names each tree and its size, so the total can be checked against reality", () => {
+    // ah-kdgc saw this line report "2.2 GB sits in 2 build trees" for trees that were 24 MB and
+    // 342 MB. The measurement itself is undiagnosed and not fixed here; naming each tree is what
+    // makes a wrong total visible at the moment it is printed instead of a bare number nobody can
+    // check.
+    const said = describeReclaimable([
+      { path: ".cerebro/worktrees/ah-x/target", sizeGb: 1.9 },
+      { path: "target", sizeGb: 0.3 }
+    ]);
+
+    expect(said).toContain(".cerebro/worktrees/ah-x/target (1.9 GB)");
+    expect(said).toContain("target (0.3 GB)");
+  });
+
   it("says nothing about a single tree in the plural", () => {
     const said = describeReclaimable([{ path: "/repo/target", sizeGb: 3.5 }]);
     expect(said).toContain("1 build tree");
@@ -137,13 +151,36 @@ describe("describeSpace with build trees to report", () => {
  * exited 0, which is the worst answer available - a silent success reads as headroom.
  */
 describe("the preflight as a command", () => {
-  it("says what it found, and succeeds while this disk has room", () => {
-    const said = execFileSync(TSX, [SCRIPT], { encoding: "utf8", timeout: 20_000 });
+  it("says what it found, whether or not this disk has room", () => {
+    // Deliberately indifferent to the exit code: this asserts the script *runs and reports*, which
+    // is a property of the code. Whether the machine happens to have 8 GB free is not, and
+    // asserting it here made a full disk fail the code gate and silently skip fmt and clippy
+    // (ah-tn2z).
+    const said = runPreflight();
 
     expect(said).toMatch(/GB free/u);
     expect(said).toContain(String(FREE_SPACE_FLOOR_GB));
   });
 });
+
+/**
+ * The script's stdout, on either exit path.
+ *
+ * `execFileSync` throws when the command exits non-zero, and the thrown error carries the `stdout`
+ * it had already produced - so a refusal is read off the error rather than by running the script a
+ * second time, which would repeat a `du` walk that is the slow part of it.
+ */
+function runPreflight(): string {
+  try {
+    return execFileSync(TSX, [SCRIPT], { encoding: "utf8", timeout: 20_000 });
+  } catch (error) {
+    const stdout = (error as { stdout?: string | Buffer }).stdout;
+    if (stdout === undefined) {
+      throw error;
+    }
+    return stdout.toString();
+  }
+}
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, "diskPreflight.ts");

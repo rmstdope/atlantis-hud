@@ -21,15 +21,29 @@
 
 import { save } from "@tauri-apps/plugin-dialog";
 import { writeTextFile } from "@tauri-apps/plugin-fs";
+import { fetch } from "@tauri-apps/plugin-http";
 import { hasTauriRuntime } from "./desktopCore";
 
-/** What the shell asks of Tauri's plugins - the whole of it, so a stand-in is two functions. */
+/** What the shell asks of Tauri's plugins - the whole of it, so a stand-in is three functions. */
 export type DesktopPlugins = {
   save(options: {
     defaultPath?: string;
     filters?: { name: string; extensions: string[] }[];
   }): Promise<string | null>;
   writeTextFile(path: string, text: string): Promise<void>;
+  /**
+   * One POST, answered with the status and the body as text.
+   *
+   * Only the desktop has this: `atlantis-pbem.com` sends no `Access-Control-Allow-Origin`, so a
+   * browser could send the form and never read what came back. The body it answers with is secret -
+   * it echoes the orders document, faction password and all - so nothing here logs it or keeps it.
+   */
+  httpPost(
+    url: string,
+    contentType: string,
+    body: string,
+    signal: AbortSignal
+  ): Promise<{ status: number; body: string }>;
 };
 
 declare global {
@@ -50,5 +64,17 @@ export function desktopPlugins(): DesktopPlugins | undefined {
   if (!hasTauriRuntime()) {
     return undefined;
   }
-  return { save, writeTextFile };
+  return {
+    save,
+    writeTextFile,
+    async httpPost(url, contentType, body, signal) {
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": contentType },
+        body,
+        signal
+      });
+      return { status: response.status, body: await response.text() };
+    }
+  };
 }
