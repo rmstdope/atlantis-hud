@@ -761,15 +761,19 @@ function UnitRow({
         ) : null}
       </Td>
     ),
-    // A faction that names itself can be opened; a concealed one (factionId null) has nothing to
-    // open, so it stays a dash.
+    // A foreign faction that names itself can be opened; a concealed one (factionId null) has
+    // nothing to open, so it stays a dash, and our own faction is printed plainly - the faction
+    // view already says everything a dossier would, and a second button in a row of ours would
+    // make "the button in this row" ambiguous for everything that selects a unit that way.
     faction: (
       <Td className="truncate">
         {unit.factionName === null || unit.factionId === null
           ? "—"
-          : renderFactionName
-            ? renderFactionName(unit.factionId, `${unit.factionName} (${unit.factionId})`)
-            : `${unit.factionName} (${unit.factionId})`}
+          : unit.own
+            ? `${unit.factionName} (${unit.factionId})`
+            : renderFactionName
+              ? renderFactionName(unit.factionId, `${unit.factionName} (${unit.factionId})`)
+              : `${unit.factionName} (${unit.factionId})`}
       </Td>
     ),
     // A tilde marks a count the parser guessed at; the unit panel spells out why. A count the

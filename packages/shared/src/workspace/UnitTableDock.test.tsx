@@ -428,3 +428,24 @@ describe("a foreign faction's name in the faction column (ah-bu2c)", () => {
     expect(concealed).toContain("—");
   });
 });
+
+describe("our own faction's name in the faction column (ah-bu2c)", () => {
+  it("is printed plainly, because a dossier is for the factions we cannot see inside", () => {
+    // It also keeps a row of our own to one button: the smoke suite selects a unit with
+    // `row.getByRole("button")`, and a second button in the row makes that ambiguous.
+    const markup = renderToStaticMarkup(
+      <UnitTableDock
+        hex={hex({ region: region({ units: [unit({ factionId: "95", factionName: "Borg TNG", own: true })] }) })}
+        preview={null}
+        renderFactionName={(factionId, label) => (
+          <button type="button" data-testid={`open-dossier-${factionId}`}>
+            {label}
+          </button>
+        )}
+      />
+    );
+
+    expect(markup).toContain("Borg TNG (95)");
+    expect(markup).not.toContain("open-dossier");
+  });
+});
