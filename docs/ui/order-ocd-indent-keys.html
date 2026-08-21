@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Order OCD — keys, undo and paste</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --edge:#26303d; --ink:#dbe3ec; --ink-soft:#a3b0c0;
+    --ink-dim:#8a97a8; --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1320px; margin:0 auto; }
+  h1 { font-size:26px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:96ch; margin-top:10px; font-size:14px; }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; color:var(--brass-bright); font-size:12.5px; }
+  kbd { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11px; background:#1d2530;
+        border:1px solid var(--edge); border-radius:4px; padding:1px 5px; color:var(--ink); }
+  h3.sec { margin:36px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:96ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; }
+  .card h2 { font-size:15.5px; margin-bottom:5px; }
+  .card h2 em { color:var(--brass); font-style:normal; font-size:11.5px; letter-spacing:1.5px; margin-right:8px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; margin-bottom:11px; min-height:3.4em; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:11px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212  "; color:var(--danger); }
+  .cards2 { display:grid; grid-template-columns:repeat(2,1fr); gap:18px; align-items:start; }
+  pre.ed { background:#0b0f14; border:1px solid var(--edge); border-radius:6px; padding:10px 11px;
+           font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11.5px; line-height:1.7;
+           color:#c7d2de; white-space:pre; overflow-x:auto; margin:0; }
+  .ed .k { color:var(--brass-bright); } .ed .s { color:var(--ok); } .ed .d { color:var(--ink-dim); }
+  .ed .add { background:rgba(79,183,131,0.16); } .ed .ws { background:rgba(217,164,65,0.22); }
+  .caret { display:inline-block; width:2px; height:1.05em; background:var(--select); vertical-align:-2px; animation:b 1s steps(2) infinite; }
+  @keyframes b { 50% { opacity:0 } }
+  .steps { display:grid; grid-template-columns:1fr 1fr 1fr; gap:9px; }
+  .steps h4 { font-size:10.5px; letter-spacing:1.2px; text-transform:uppercase; color:var(--ink-dim); margin-bottom:5px; font-weight:normal; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Order OCD — <span>keys, undo and paste</span></h1>
+  <p>Settled: indent both as you type and on the whole block; closers align with their openers;
+  trailing blanks collapse when the tidy runs; unclosed blocks indent by running depth; comments
+  indent and blank lines stay empty; an empty unit stays empty. What is left is what the keyboard
+  does, and what happens to text that arrives all at once.</p>
+</header>
+
+<main>
+
+<h3 class="sec">1 · Backspace on a line the editor indented for you</h3>
+<p>Enter inside a nested <code>FORM</code> puts the caret two spaces in. You change your mind and
+want to write at the outer level.</p>
+<div class="cards2">
+  <div class="card">
+    <h2><em>A</em>Backspace clears the whole indent</h2>
+    <div class="concept">One press from inside the auto-indent takes the caret to column 0. A second
+    press joins the line to the one above, as usual.</div>
+    <div class="steps">
+      <div><h4>after Enter</h4><pre class="ed"> <span class="k">FORM</span> 1
+<span class="add">  </span><span class="caret"></span></pre></div>
+      <div><h4>Backspace</h4><pre class="ed"> <span class="k">FORM</span> 1
+<span class="caret"></span></pre></div>
+      <div><h4>again</h4><pre class="ed"> <span class="k">FORM</span> 1<span class="caret"></span></pre></div>
+    </div>
+    <ul class="notes">
+      <li>One press undoes one thing the editor did — symmetrical with Enter</li>
+      <li>Never leaves an odd number of spaces behind</li>
+      <li class="con">Differs from Backspace anywhere else in the document, which deletes one character</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h2><em>B</em>Backspace deletes one space</h2>
+    <div class="concept">Nothing special. Two presses to clear two spaces, a third to join the line
+    above. Stock CodeMirror behaviour, untouched.</div>
+    <div class="steps">
+      <div><h4>after Enter</h4><pre class="ed"> <span class="k">FORM</span> 1
+<span class="add">  </span><span class="caret"></span></pre></div>
+      <div><h4>Backspace</h4><pre class="ed"> <span class="k">FORM</span> 1
+<span class="add"> </span><span class="caret"></span></pre></div>
+      <div><h4>again</h4><pre class="ed"> <span class="k">FORM</span> 1
+<span class="caret"></span></pre></div>
+    </div>
+    <ul class="notes">
+      <li>Backspace means the same thing everywhere in the editor</li>
+      <li>Nothing to implement and nothing to get wrong</li>
+      <li class="con">At six levels deep that is six presses to get to the margin</li>
+    </ul>
+  </div>
+</div>
+
+<h3 class="sec">2 · Undo, twice over</h3>
+<p>Two different edits the player did not fully type: the indent that came with <kbd>Enter</kbd>, and
+the whole-block tidy that runs when a unit is opened.</p>
+<div class="cards2">
+  <div class="card">
+    <h2><em>i</em>Enter is one step; the tidy is not undoable</h2>
+    <div class="concept">One <kbd>Ctrl+Z</kbd> after Enter takes back the newline and its indent
+    together. The whole-block re-indent stays out of the history entirely — exactly what the case
+    tidy already does, because the player did not do it.</div>
+    <pre class="ed"> <span class="k">FORM</span> 1
+<span class="add">  </span><span class="caret"></span>
+<span class="d">Ctrl+Z &rarr;</span>
+ <span class="k">FORM</span> 1<span class="caret"></span>
+<span class="d">both gone in one press</span></pre>
+    <ul class="notes">
+      <li>Matches the precedent already set for keyword shouting (ah-bn6.2)</li>
+      <li>Undo never rewinds past something you typed to reach something you did not</li>
+      <li class="con">A re-indent you disagree with cannot be taken back — only edited</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h2><em>ii</em>Both undoable, one step each</h2>
+    <div class="concept">The whole-block tidy is a history step of its own: <kbd>Ctrl+Z</kbd> on
+    opening a unit puts the indentation back as it was.</div>
+    <pre class="ed"><span class="d">unit opened, block re-indented</span>
+<span class="d">Ctrl+Z &rarr; back to as typed</span>
+<span class="d">Ctrl+Z &rarr; ...your last real edit</span></pre>
+    <ul class="notes">
+      <li>Everything on screen can be taken back</li>
+      <li class="con">The first <kbd>Ctrl+Z</kbd> after opening a unit does something you did not ask for</li>
+      <li class="con">The tidy would then re-run and undo the undo</li>
+    </ul>
+  </div>
+</div>
+
+<h3 class="sec">3 · Pasting a block of orders</h3>
+<p>Orders copied from another unit, from Discord, or from last month's file — arriving all at once,
+with whatever indentation they had.</p>
+<div class="cards2">
+  <div class="card">
+    <h2><em>P1</em>Tidied on paste</h2>
+    <div class="concept">The paste lands and is immediately uppercased, re-indented and trimmed, in
+    the same step — one <kbd>Ctrl+Z</kbd> removes the whole thing.</div>
+    <pre class="ed"><span class="d">clipboard:</span>
+<span class="d">    form 1</span>
+<span class="d">study combat</span>
+<span class="d">    end</span>
+<span class="d">&darr; pasted as</span>
+ <span class="k">FORM</span> 1
+<span class="add">  </span><span class="k">STUDY</span> <span class="s">COMBAT</span>
+ <span class="k">END</span></pre>
+    <ul class="notes">
+      <li>The setting is true of everything on screen at all times</li>
+      <li>No "click away and back" needed to see it take effect</li>
+      <li class="con">A third moment the tidy runs, with its own way of being wrong</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h2><em>P2</em>Tidied when the block next is</h2>
+    <div class="concept">Paste is a plain paste. The text is tidied the next time the tidy runs —
+    on reopening the unit, or on the setting being toggled.</div>
+    <pre class="ed"><span class="d">&darr; pasted as</span>
+    <span class="k">form</span> 1
+<span class="k">study combat</span>
+    <span class="k">end</span>
+<span class="d">(tidied next time the unit
+ is opened)</span></pre>
+    <ul class="notes">
+      <li>Nothing new to build — paste is already covered by the on-open tidy</li>
+      <li>What you pasted is what you can check before it is rewritten</li>
+      <li class="con">The most obvious moment to want tidying is the one that does not</li>
+    </ul>
+  </div>
+</div>
+
+</main>
+
+<footer style="margin-top:34px; color:var(--ink-dim); font-size:12.5px;">
+  Mockup for bead <code>ah-2tj8</code>, third round.
+</footer>
+</body>
+</html>
