@@ -2,7 +2,7 @@
 
 - **Implementer:** Storm
 - **Date:** 2026-08-21
-- **PR:** rmstdope/cerebro#68 (the change), atlantis-hud#TBD (the pin bump)
+- **PR:** rmstdope/cerebro#68 (the change), atlantis-hud#516 (the pin bump)
 
 ## A bead whose work is entirely inside the cerebro submodule has nowhere the skill puts its worktree
 
