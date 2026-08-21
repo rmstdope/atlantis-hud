@@ -409,3 +409,21 @@ test("a snippet is created in settings, refuses duplicates, and survives a reloa
   await page.getByTestId("snippet-delete").click();
   await expect(page.getByTestId("snippet-row")).toHaveCount(0);
 });
+
+test("the About tab names the variants and offers somewhere to report a bug", async ({ page }) => {
+  await clearGames(page);
+
+  await page.getByTestId("settings-indicator").click();
+  await page.getByTestId("settings-tab-about").click();
+
+  // Read from the shipped rulesets rather than written into the prose, so this row grows on its own
+  // the day a second variant lands.
+  await expect(page.getByTestId("app-variants")).toHaveText("New Origins");
+
+  // A button rather than an anchor: inside the Tauri webview a link has to be handed to the
+  // operating system, and only the button-plus-port path does that. Asserting that a new tab opens
+  // is not worth the machinery; that the call to action is there and reachable is.
+  const issues = page.getByTestId("about-issues-link");
+  await expect(issues).toBeVisible();
+  await expect(issues).toHaveAccessibleName("project's issue page on GitHub");
+});

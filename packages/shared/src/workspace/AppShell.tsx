@@ -106,6 +106,8 @@ import { GameGate } from "./GameGate";
 import { SettingsDialog } from "./SettingsDialog";
 import type { AppUpdateControl } from "./appUpdate";
 import { UNSUPPORTED_UPDATES } from "./appUpdate";
+import type { OpenExternal } from "./openExternal";
+import { OPEN_EXTERNAL_IN_NEW_TAB } from "./openExternal";
 import { ForeignReportPrompt } from "./ForeignReportPrompt";
 import { ImportSummaryDialog } from "./ImportSummaryDialog";
 import { OrdersImportPrompt } from "./OrdersImportPrompt";
@@ -244,6 +246,7 @@ export function AppShell({
   registerBeforeQuit,
   saveTextFile,
   appUpdate = UNSUPPORTED_UPDATES,
+  openExternal = OPEN_EXTERNAL_IN_NEW_TAB,
   uploadOrders
 }: {
   client: CoreClient;
@@ -269,6 +272,7 @@ export function AppShell({
    * desktop bundle opened in a plain browser - and it needs a control that says so.
    */
   appUpdate?: AppUpdateControl;
+  openExternal?: OpenExternal;
   /**
    * How this shell puts orders on the game server, when it can.
    *
@@ -2790,6 +2794,7 @@ export function AppShell({
     <SettingsDialog
       platformLabel={platformLabel}
       appUpdate={appUpdate}
+      openExternal={openExternal}
       game={
         game
           ? {

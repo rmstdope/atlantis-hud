@@ -3,7 +3,9 @@ import { afterEach, describe, expect, it } from "vitest";
 import { ADVISORY_CHECK_CODES } from "@atlantis/core-client";
 import { resetSettingsStore, useSettingsStore } from "../settingsStore";
 import { restoreStoresForTest, setStoreStateForTest } from "../testing/storeState";
-import { GlobalSettings, WarningSettings } from "./SettingsDialog";
+import { RULESETS } from "../rulesets";
+import { UNSUPPORTED_UPDATES } from "./appUpdate";
+import { About, GlobalSettings, WarningSettings } from "./SettingsDialog";
 
 /**
  * `renderToStaticMarkup` runs with no `window`, so React's server branch reads the store's
@@ -212,5 +214,41 @@ describe("the map layer settings", () => {
     // Both layers start on, as the workspace store's initial state has them.
     expect(tag(html, "settings-layer-staleness")).toContain("checked");
     expect(tag(html, "settings-layer-movement")).toContain("checked");
+  });
+});
+
+describe("About", () => {
+  const html = () =>
+    renderToStaticMarkup(
+      <About
+        platformLabel="Desktop (Windows)"
+        appUpdate={UNSUPPORTED_UPDATES}
+        openExternal={() => undefined}
+      />
+    );
+
+  const text = () => html().replace(/<[^>]*>/g, " ").replace(/&#x27;/g, "'");
+
+  it("says what the app is, what it needs, and where to report a problem", () => {
+    const screenText = text();
+    expect(screenText).toContain("the play-by-email game");
+    expect(screenText).toContain("the particular Atlantis variant");
+    expect(screenText).toContain("project's issue page");
+  });
+
+  it("reads the variants from the build rather than restating them", () => {
+    const screenText = text();
+    expect(screenText).toContain(RULESETS.map((ruleset) => ruleset.label).join(", "));
+    expect(html()).toContain('data-testid="app-variants"');
+  });
+
+  it("never calls the app web based, which the Build row above it contradicts", () => {
+    expect(text().toLowerCase()).not.toContain("web based");
+  });
+
+  it("gives the issue page a button rather than an anchor, so the desktop shell can open it", () => {
+    const markup = html();
+    expect(markup).toContain('data-testid="about-issues-link"');
+    expect(markup).not.toContain("<a ");
   });
 });
