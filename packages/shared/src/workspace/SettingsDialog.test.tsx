@@ -2,7 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it } from "vitest";
 import { ADVISORY_CHECK_CODES } from "@atlantis/core-client";
 import { resetSettingsStore, useSettingsStore } from "../settingsStore";
-import { restoreStoresForTest, setStoreStateForTest } from "../testing/storeState";
+import { renderWithStoreState, restoreStoresForTest } from "../testing/storeState";
 import { RULESETS } from "../rulesets";
 import { UNSUPPORTED_UPDATES } from "./appUpdate";
 import { About, GlobalSettings, WarningSettings } from "./SettingsDialog";
@@ -30,24 +30,26 @@ describe("the pane transparency setting", () => {
 
   it("shows the active theme's own value", () => {
     resetSettingsStore();
-    setStoreStateForTest(useSettingsStore, {
-      theme: "light",
-      paneTransparency: { dark: 40, light: 15 }
-    });
-
-    const slider = tag(renderToStaticMarkup(<GlobalSettings />), "pane-transparency");
+    const slider = tag(
+      renderWithStoreState(<GlobalSettings />, useSettingsStore, {
+        theme: "light",
+        paneTransparency: { dark: 40, light: 15 }
+      }),
+      "pane-transparency"
+    );
 
     expect(slider).toContain('value="15"');
   });
 
   it("shows the dark value again when dark is the active theme", () => {
     resetSettingsStore();
-    setStoreStateForTest(useSettingsStore, {
-      theme: "dark",
-      paneTransparency: { dark: 40, light: 15 }
-    });
-
-    const slider = tag(renderToStaticMarkup(<GlobalSettings />), "pane-transparency");
+    const slider = tag(
+      renderWithStoreState(<GlobalSettings />, useSettingsStore, {
+        theme: "dark",
+        paneTransparency: { dark: 40, light: 15 }
+      }),
+      "pane-transparency"
+    );
 
     expect(slider).toContain('value="40"');
   });
@@ -82,8 +84,7 @@ describe("the Interface size setting", () => {
 
   it("reflects a changed interface size", () => {
     useSettingsStore.getState().setInterfaceSize(150);
-    setStoreStateForTest(useSettingsStore);
-    const html = renderToStaticMarkup(<GlobalSettings />);
+    const html = renderWithStoreState(<GlobalSettings />, useSettingsStore);
 
     expect(tag(html, "settings-interface-size")).toContain('value="150"');
   });
@@ -156,9 +157,7 @@ describe("the Warnings settings tab", () => {
   it("reflects a toggled check", () => {
     resetSettingsStore();
     useSettingsStore.getState().setAdvisoryCheck("not-enough-silver", false);
-    setStoreStateForTest(useSettingsStore);
-
-    const html = renderToStaticMarkup(<WarningSettings />);
+    const html = renderWithStoreState(<WarningSettings />, useSettingsStore);
 
     expect(tag(html, "settings-warning-not-enough-silver")).not.toContain('checked=""');
   });

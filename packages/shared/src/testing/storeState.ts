@@ -1,3 +1,5 @@
+import type { ReactElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import type { StoreApi } from "zustand";
 
 /**
@@ -52,4 +54,22 @@ export function restoreStoresForTest(): void {
     Object.assign(store.getInitialState() as object, snapshot.initial as object);
   }
   snapshots.clear();
+}
+
+/**
+ * Renders `element` to static markup with `store` in the state you asked for - the one call that
+ * replaces "apply the state, then render", so the escape route is an import rather than a recipe
+ * somebody has to already know exists (ah-nass).
+ *
+ * `patch` is optional for the same reason it is on `setStoreStateForTest`: call it with no patch
+ * after driving the store through its own actions. Everything it touches is undone by
+ * `restoreStoresForTest()`, so the `afterEach` stays exactly as it was.
+ */
+export function renderWithStoreState<T>(
+  element: ReactElement,
+  store: TestableStore<T>,
+  patch?: Partial<T>
+): string {
+  setStoreStateForTest(store, patch);
+  return renderToStaticMarkup(element);
 }

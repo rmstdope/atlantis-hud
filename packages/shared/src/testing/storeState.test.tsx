@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it } from "vitest";
 import { create } from "zustand";
-import { restoreStoresForTest, setStoreStateForTest } from "./storeState";
+import { renderWithStoreState, restoreStoresForTest, setStoreStateForTest } from "./storeState";
 
 type CounterState = {
   label: string;
@@ -51,6 +51,30 @@ describe("setStoreStateForTest", () => {
     restoreStoresForTest();
 
     expect(useCounterStore.getState().label).toBe("default");
+    expect(draw()).toContain("default");
+  });
+});
+
+describe("renderWithStoreState", () => {
+  afterEach(restoreStoresForTest);
+
+  it("renders a component seeing store state it was never given by default", () => {
+    const markup = renderWithStoreState(<Label />, useCounterStore, { label: "patched" });
+
+    expect(markup).toContain("patched");
+  });
+
+  it("mirrors state the store reached through its own actions, given no patch", () => {
+    setStoreStateForTest(useCounterStore);
+    useCounterStore.getState().bump();
+
+    expect(renderWithStoreState(<Label />, useCounterStore)).toContain("bumped");
+  });
+
+  it("is undone by restoreStoresForTest like the two-step call it replaces", () => {
+    renderWithStoreState(<Label />, useCounterStore, { label: "patched" });
+    restoreStoresForTest();
+
     expect(draw()).toContain("default");
   });
 });

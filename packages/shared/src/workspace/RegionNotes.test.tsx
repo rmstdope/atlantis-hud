@@ -1,8 +1,7 @@
-import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { CoreClient, HexNoteRecord, OpenedGame } from "@atlantis/core-client";
-import { resetHexNotesStore, useHexNotesStore } from "../hexNotesStore";
-import { restoreStoresForTest, setStoreStateForTest } from "../testing/storeState";
+import { type HexNotesState, resetHexNotesStore, useHexNotesStore } from "../hexNotesStore";
+import { renderWithStoreState, restoreStoresForTest } from "../testing/storeState";
 import { RegionNotes } from "./RegionNotes";
 
 const GAME = {
@@ -36,9 +35,11 @@ function note(overrides: Partial<HexNoteRecord> = {}): HexNoteRecord {
   };
 }
 
-const draw = () =>
-  renderToStaticMarkup(
-    <RegionNotes regionId="1:7,53" client={client()} game={GAME} turn={71} />
+const draw = (notes: Partial<HexNotesState>) =>
+  renderWithStoreState(
+    <RegionNotes regionId="1:7,53" client={client()} game={GAME} turn={71} />,
+    useHexNotesStore,
+    notes
   );
 
 describe("the region panel's Notes section", () => {
@@ -46,25 +47,21 @@ describe("the region panel's Notes section", () => {
   afterEach(restoreStoresForTest);
 
   it("shows only the heading, no count and no add button, while loading", () => {
-    setStoreStateForTest(useHexNotesStore, { gameId: "aug-2026", status: "loading", notes: [] });
-
-    const markup = draw();
+    const markup = draw({ gameId: "aug-2026", status: "loading", notes: [] });
 
     expect(markup).toContain("Notes");
     expect(markup).not.toContain("region-note-add");
   });
 
   it("says there are no notes, once ready and empty", () => {
-    setStoreStateForTest(useHexNotesStore, { gameId: "aug-2026", status: "ready", notes: [] });
-
-    const markup = draw();
+    const markup = draw({ gameId: "aug-2026", status: "ready", notes: [] });
 
     expect(markup).toContain("No notes on this hex.");
     expect(markup).toContain("region-note-add");
   });
 
   it("lists every note of the hex, newest first, with the on-map mark and the turn stamp", () => {
-    setStoreStateForTest(useHexNotesStore, {
+    const markup = draw({
       gameId: "aug-2026",
       status: "ready",
       notes: [
@@ -72,8 +69,6 @@ describe("the region panel's Notes section", () => {
         note({ id: "older", createdAt: "2026-08-01T09:00:00Z", onMap: true, text: "Older note" })
       ]
     });
-
-    const markup = draw();
     const newerIndex = markup.indexOf("Newer note");
     const olderIndex = markup.indexOf("Older note");
 
@@ -86,22 +81,20 @@ describe("the region panel's Notes section", () => {
   });
 
   it("omits the turn stamp when the note is turn zero", () => {
-    setStoreStateForTest(useHexNotesStore, {
+    const markup = draw({
       gameId: "aug-2026",
       status: "ready",
       notes: [note({ turn: 0 })]
     });
 
-    const markup = draw();
-
     expect(markup).not.toMatch(/turn 0\b/);
   });
 
   it("renders nothing without an open game", () => {
-    setStoreStateForTest(useHexNotesStore, { gameId: "aug-2026", status: "ready", notes: [note()] });
-
-    const markup = renderToStaticMarkup(
-      <RegionNotes regionId="1:7,53" client={client()} game={null} turn={71} />
+    const markup = renderWithStoreState(
+      <RegionNotes regionId="1:7,53" client={client()} game={null} turn={71} />,
+      useHexNotesStore,
+      { gameId: "aug-2026", status: "ready", notes: [note()] }
     );
 
     expect(markup).toBe("");
