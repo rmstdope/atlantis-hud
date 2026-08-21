@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>What a fleet draws on the map (bead ah-3pr9)</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733; --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --ok:#4fb783; --danger:#d97070; --select:#4a9fd8; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1140px; margin-left:auto; margin-right:auto; }
+  h1 { font-size:25px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:96ch; margin-top:10px; font-size:14px; }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:0.9em; }
+  h2.sec { margin-top:32px; font-size:18px; color:var(--brass); } h2.sec small { color:var(--ink-dim); font-size:13px; margin-left:10px; }
+  .banner { border:1px solid var(--edge); border-left:3px solid var(--brass); background:var(--panel); padding:14px 16px; border-radius:6px; margin-top:16px; color:var(--ink-soft); font-size:13.5px; } .banner b { color:var(--ink); }
+  .banner.bad { border-left-color:var(--danger); }
+  .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:20px; margin-top:16px; align-items:start; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; display:flex; flex-direction:column; gap:12px; }
+  .card h3 { font-size:16px; } .card h3 em { color:var(--brass); font-style:normal; font-size:11px; letter-spacing:1.6px; margin-right:8px; }
+  .notes { list-style:none; font-size:12px; color:var(--ink-soft); display:grid; gap:4px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; } .notes li.con::before { content:"\2212  "; color:var(--danger); }
+  table { border-collapse:collapse; font-size:12.5px; width:100%; margin-top:14px; } th,td { text-align:left; padding:5px 8px; border-bottom:1px solid var(--edge-soft); } th { color:var(--brass); font-weight:normal; font-size:11px; letter-spacing:1px; text-transform:uppercase; }
+  td.bad { color:var(--danger); font-weight:bold; } td.ok { color:var(--ok); }
+  .hexrow { display:flex; gap:14px; flex-wrap:wrap; justify-content:center; }
+  .hexwrap { text-align:center; font-family:'Helvetica Neue',Arial,sans-serif; font-size:10.5px; color:var(--ink-dim); }
+  .hexwrap b { display:block; color:var(--ink); font-size:11px; font-weight:normal; margin-top:3px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>What a fleet draws on the map &mdash; <span>proposals</span> (ah-3pr9)</h1>
+  <p>Found while planning ah-o0d3 by simulating <code>classify()</code> over all 100 distinct structure kinds in the fixtures. <code>SHIP_KINDS</code> is <code>galley, raft, cog, clipper, galleon, corsair, balloon</code> &mdash; <b><code>fleet</code> is not in it.</b></p>
+</header>
+<main>
+
+  <h2 class="sec">&sect;1 &nbsp;What the report actually sends, and what is drawn</h2>
+  <table>
+    <tr><th>The line</th><th>First word</th><th>Drawn as</th></tr>
+    <tr><td><code>Ship [623] : Galley.</code></td><td>galley</td><td class="ok">ship</td></tr>
+    <tr><td><code>Frozen Tomb [194] : Galley, 40 Galleons, 11 Galleys, 10 Balloons.</code></td><td>galley</td><td class="ok">ship</td></tr>
+    <tr><td><code>Princess of the Dawn [1239] : Cloudship, 14 Cloudships, 4 Airships.</code></td><td>cloudship</td><td class="ok">ship</td></tr>
+    <tr><td><code>Red Squadron [1027] : Fleet, 6 Airships.</code></td><td>fleet</td><td class="ok">ship &mdash; by accident</td></tr>
+    <tr><td><code>Fleet [988] : Fleet, 8 Corsairs.</code></td><td>fleet</td><td class="bad">building</td></tr>
+    <tr><td><code>Ship [1121] : Fleet, 2 Galleons.</code></td><td>fleet</td><td class="bad">building</td></tr>
+    <tr><td><code>Ship [386] : Fleet, 2 Balloons.</code></td><td>fleet</td><td class="bad">building</td></tr>
+    <tr><td><code>Ship [1176] : Fleet, 3 Corsairs.</code></td><td>fleet</td><td class="bad">building</td></tr>
+    <tr><td><code>Bradr [797] : Fleet, 2 Corsairs.</code></td><td>fleet</td><td class="bad">building</td></tr>
+    <tr><td><code>Ship [697] : Fleet, 4 Galleons, 1 Balloon.</code></td><td>fleet</td><td class="bad">building</td></tr>
+  </table>
+  <div class="banner bad"><b>Atlantis writes the lead vessel&rsquo;s type, or the word <code>Fleet</code> when there isn&rsquo;t one.</b> Both mean &ldquo;vessels sitting in this hex&rdquo;. Only one of the seven <code>Fleet</code> lines draws correctly, and only because <code>Airships</code> happens to contain the letters <code>ship</code> &mdash; the substring test in <code>isShip()</code>. Three of these are even <i>named</i> <code>Ship</code> or <code>Fleet</code> by their owner.</div>
+
+  <h2 class="sec">&sect;2 &nbsp;What should a fleet draw?</h2>
+  <div class="cards">
+    <div class="card">
+      <h3><em>A</em> A fleet is a ship</h3>
+      <div class="hexrow">
+        <div class="hexwrap"><svg width="86" height="96" viewBox="0 0 86 96"><polygon points="43,4 82,26 82,70 43,92 4,70 4,26" fill="#182430" stroke="#3c4a52"/><path d="M26 58 h34 l-6 8 h-22 z" fill="#a3b0c0"/><path d="M43 26 l0 30 M43 30 l12 16 h-12" fill="none" stroke="#a3b0c0" stroke-width="2"/></svg><b>Fleet, 8 Corsairs</b>ship</div>
+      </div>
+      <ul class="notes">
+        <li><b>Consistent with what already happens.</b> A <code>Galley, 40 Galleons, 11 Galleys, 10 Balloons</code> &mdash; 61 vessels &mdash; already draws as one ship. A fleet is the same thing under a different first word.</li>
+        <li>Probably one word added to <code>SHIP_KINDS</code>; fixes all six at once.</li>
+        <li>The Ships badge already exists and already means &ldquo;vessels here&rdquo;.</li>
+        <li class="con">A lone raft and a fleet of forty look identical on the map.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3><em>B</em> A fleet gets its own mark</h3>
+      <div class="hexrow">
+        <div class="hexwrap"><svg width="86" height="96" viewBox="0 0 86 96"><polygon points="43,4 82,26 82,70 43,92 4,70 4,26" fill="#182430" stroke="#3c4a52"/><path d="M18 62 h24 l-4 6 h-16 z" fill="#a3b0c0" opacity=".6"/><path d="M32 52 h28 l-5 7 h-18 z" fill="#a3b0c0"/><path d="M46 24 l0 28" stroke="#a3b0c0" stroke-width="2"/><path d="M46 28 l11 14 h-11" fill="#a3b0c0"/></svg><b>Fleet, 8 Corsairs</b>fleet</div>
+      </div>
+      <ul class="notes">
+        <li>A stack of vessels is militarily a different thing from one boat, and the map would say so.</li>
+        <li class="con"><b>A new mark to design, in four themes, plus a badge</b> &mdash; far bigger than the bug.</li>
+        <li class="con">The distinction is not the one the data draws: a <code>Galley, 40 Galleons&hellip;</code> is also a stack, and would still be a plain ship.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="banner">&sect;3 &nbsp;<b>A related thing I am NOT proposing to fix here.</b> The Ships badge counts <i>structures</i>, not vessels &mdash; so <code>Galley, 40 Galleons, 11 Galleys, 10 Balloons</code> counts as <b>1</b>, not 61. That is already true today and has nothing to do with <code>fleet</code> being missing from the set; it would apply to galleys and cloudships equally. If you want the count to mean vessels, that is a separate bead and I will file it. Say so and I will.</div>
+
+</main>
+</body>
+</html>
