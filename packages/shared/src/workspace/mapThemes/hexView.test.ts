@@ -361,9 +361,46 @@ describe("structures, split by what they mean rather than counted together", () 
 
   it("knows a hull the report qualified with the vessels it holds", () => {
     // Also from the fixtures: a galley reports the stack it leads, and the tail defeated the exact
-    // match the same way the lair's qualifier did.
-    expect(withStructures(["Galley, 2 Galleys, 3 Galleons"]).ships).toBe(1);
-    expect(withStructures(["Galley, 40 Galleons, 11 Galleys, 10 Balloons"]).ships).toBe(1);
+    // match the same way the lair's qualifier did. The count is of vessels, not of structures.
+    expect(withStructures(["Galley, 2 Galleys, 3 Galleons"]).ships).toBe(5);
+    expect(withStructures(["Galley, 40 Galleons, 11 Galleys, 10 Balloons"]).ships).toBe(61);
+  });
+
+  it("draws every fleet in the fixtures as a hull, not as a roof", () => {
+    // A fleet is what Atlantis writes when a stack of vessels has no single lead type to name it
+    // by, so it means exactly what `Galley, 2 Galleys` means. Six of these seven drew as buildings
+    // before ah-3pr9; the seventh passed only because `Airships` contains "ship".
+    for (const kind of [
+      "Fleet, 8 Corsairs",
+      "Fleet, 2 Galleons",
+      "Fleet, 3 Corsairs",
+      "Fleet, 2 Balloons",
+      "Fleet, 2 Corsairs",
+      "Fleet, 4 Galleons, 1 Balloon",
+      "Fleet, 6 Airships"
+    ]) {
+      expect(withStructures([kind]).buildings).toBe(0);
+    }
+  });
+
+  it("counts the vessels a fleet holds rather than the one structure naming them", () => {
+    // The lead word is a label, not a vessel: the report writes `Cloudship, 14 Cloudships, 4
+    // Airships` for eighteen vessels, and reading the label as a nineteenth is the obvious mistake
+    // the report itself disproves - it says 14 cloudships, not 15.
+    expect(withStructures(["Cloudship, 14 Cloudships, 4 Airships"]).ships).toBe(18);
+    expect(withStructures(["Fleet, 8 Corsairs"]).ships).toBe(8);
+    expect(withStructures(["Fleet, 4 Galleons, 1 Balloon"]).ships).toBe(5);
+  });
+
+  it("counts a lone hull as one vessel, and never counts a hull as none", () => {
+    // A kind with no inventory is a fleet of exactly one, and a tail nothing can be read out of
+    // must still leave the ship on the badge - under-counting beats losing it.
+    expect(withStructures(["Galley"]).ships).toBe(1);
+    expect(withStructures(["Cloudship, several Airships"]).ships).toBe(1);
+  });
+
+  it("adds up two fleets moored in the same hex", () => {
+    expect(withStructures(["Fleet, 8 Corsairs", "Fleet, 2 Balloons"]).ships).toBe(10);
   });
 
   it("leaves a road and a half-built keep alone", () => {
@@ -379,7 +416,7 @@ describe("structures, split by what they mean rather than counted together", () 
     // finds "ship" in "Airships" - `fleet` is in neither SHIP_KINDS nor the substring test. So the
     // raw kind must keep reaching `isShip` even once the qualified kind is cleaned for the set
     // lookups; drop `isShip(structure.kind)` and this hull becomes a roof (ah-o0d3).
-    expect(withStructures(["Fleet, 6 Airships"]).ships).toBe(1);
+    expect(withStructures(["Fleet, 6 Airships"]).ships).toBe(6);
   });
 
   it("counts an unvisited hex as holding nothing, rather than guessing", () => {
