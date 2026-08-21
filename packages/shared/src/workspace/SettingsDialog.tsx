@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { AdvisoryCheckCode } from "@atlantis/core-client";
 import { useEscapeToDismiss } from "./dismissLayer";
 import { APP_VERSION } from "../appVersion";
+import { RULESETS } from "../rulesets";
 import { snippetBodyProblem, snippetNameProblem } from "../orderSnippets";
 import { useSettingsStore } from "../settingsStore";
 import { useWorkspaceStore } from "../workspaceStore";
@@ -11,6 +12,7 @@ import { SettingToggle } from "./SettingToggle";
 import type { WorkspaceGame } from "../workspaceStore";
 import type { AppUpdateControl } from "./appUpdate";
 import { updatePresentationFor } from "./appUpdate";
+import type { OpenExternal } from "./openExternal";
 import type { SettingsTabId } from "./settingsTabs";
 import { SETTINGS_TABS, gameSettingsPresentation, nextTab, rulesetOptions } from "./settingsTabs";
 
@@ -34,6 +36,7 @@ import { SETTINGS_TABS, gameSettingsPresentation, nextTab, rulesetOptions } from
 export function SettingsDialog({
   platformLabel,
   appUpdate,
+  openExternal,
   game,
   busy,
   error,
@@ -42,6 +45,7 @@ export function SettingsDialog({
 }: {
   platformLabel: string;
   appUpdate: AppUpdateControl;
+  openExternal: OpenExternal;
   game: WorkspaceGame | null;
   busy: boolean;
   error: string | null;
@@ -139,7 +143,13 @@ export function SettingsDialog({
           ) : null}
           {tab === "warnings" ? <WarningSettings /> : null}
           {tab === "snippets" ? <SnippetSettings /> : null}
-          {tab === "about" ? <About platformLabel={platformLabel} appUpdate={appUpdate} /> : null}
+          {tab === "about" ? (
+            <About
+              platformLabel={platformLabel}
+              appUpdate={appUpdate}
+              openExternal={openExternal}
+            />
+          ) : null}
         </div>
       </div>
     </div>
@@ -779,13 +789,34 @@ function SnippetSettings() {
   );
 }
 
-/** What this build is, and whether there is a newer one — the old settings panel, now a tab. */
-function About({
+/**
+ * Where a player reports a bug or asks for a feature.
+ *
+ * `/issues/new` rather than `/issues`: the call to action is "describe it", so the form is the
+ * right target rather than a list to hunt through. The desktop capability scopes
+ * `opener:allow-open-url` to `https://github.com/rmstdope/atlantis-hud/*`, so this address is
+ * already inside the allowance and no capability change is needed - one that drifts outside it
+ * would be refused at runtime rather than opened.
+ */
+const ISSUES_URL = "https://github.com/rmstdope/atlantis-hud/issues/new";
+
+/**
+ * What this build is, and whether there is a newer one - the old settings panel, now a tab.
+ *
+ * Exported for `SettingsDialog.test.tsx`, which renders this panel in isolation.
+ *
+ * The variants row is read from `RULESETS` rather than written into the prose, so the day a second
+ * ruleset ships it appears here without anyone editing a sentence - and there is one spelling of
+ * the name across the whole app, this tab and the game-settings picker alike.
+ */
+export function About({
   platformLabel,
-  appUpdate
+  appUpdate,
+  openExternal
 }: {
   platformLabel: string;
   appUpdate: AppUpdateControl;
+  openExternal: OpenExternal;
 }) {
   const { message, action } = updatePresentationFor(appUpdate.state);
 
@@ -802,7 +833,36 @@ function About({
           <dt className="text-ink-soft">Build</dt>
           <dd className="text-ink">{platformLabel}</dd>
         </div>
+        <div className="flex items-baseline justify-between gap-2">
+          <dt className="text-ink-soft">Variants</dt>
+          <dd data-testid="app-variants" className="text-ink">
+            {RULESETS.map((ruleset) => ruleset.label).join(", ")}
+          </dd>
+        </div>
       </dl>
+
+      <div className="mt-2 flex flex-col gap-2 border-t border-edge pt-2 text-ink-soft">
+        <p>
+          Atlantis HUD is a client for Atlantis, the play-by-email game. It runs in a browser and as
+          a desktop app.
+        </p>
+        <p>
+          To work properly it needs the rules and game data for the particular Atlantis variant you
+          are playing.
+        </p>
+        <p>
+          If you run into a bug or would like a feature added, please describe it on the{" "}
+          <button
+            type="button"
+            data-testid="about-issues-link"
+            onClick={() => openExternal(ISSUES_URL)}
+            className="text-select underline underline-offset-2 hover:text-brass"
+          >
+            project&apos;s issue page on GitHub
+          </button>
+          .
+        </p>
+      </div>
 
       <div className="mt-2 border-t border-edge pt-2">
         {action ? (

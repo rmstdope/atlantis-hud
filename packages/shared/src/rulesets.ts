@@ -28,7 +28,7 @@ export type Ruleset = {
 export const RULESETS: readonly Ruleset[] = [
   {
     id: "neworigins",
-    label: "NewOrigins",
+    label: "New Origins",
     url: "/ruleset.json",
     ordersUploadUrl: "https://atlantis-pbem.com/game/upload-orders"
   }

@@ -34,7 +34,7 @@ test("creating a game asks which ruleset it is played under", async ({ page }) =
 
   const ruleset = page.getByTestId("game-ruleset");
   await expect(ruleset).toBeVisible();
-  await expect(ruleset.getByRole("option")).toHaveText(["NewOrigins"]);
+  await expect(ruleset.getByRole("option")).toHaveText(["New Origins"]);
 
   await createGame(page, "Ruleset game");
   await expect(page.getByTestId("map-canvas")).toBeVisible();
