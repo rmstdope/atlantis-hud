@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Starting an agent — the seven shims</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --edge:#26303d; --ink:#dbe3ec; --ink-soft:#a3b0c0;
+    --ink-dim:#8a97a8; --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1340px; margin:0 auto; }
+  h1 { font-size:26px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:98ch; margin-top:10px; font-size:14px; }
+  header p + p { margin-top:8px; }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:36px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:98ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; }
+  .card h2 { font-size:15.5px; margin-bottom:5px; }
+  .card h2 em { color:var(--brass); font-style:normal; font-size:11.5px; letter-spacing:1.5px; margin-right:8px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; margin-bottom:12px; min-height:4.4em; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:12px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212  "; color:var(--danger); }
+  .cards3 { display:grid; grid-template-columns:repeat(3,1fr); gap:18px; align-items:start; }
+  pre.term { background:#0b0f14; border:1px solid var(--edge); border-radius:6px; padding:11px 12px;
+             font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11.5px; line-height:1.7;
+             color:#c7d2de; white-space:pre; overflow-x:auto; margin:0; }
+  .term .p { color:var(--ok); } .term .d { color:var(--ink-dim); } .term .n { color:var(--danger); }
+  .term .w { color:var(--brass-bright); } .term .b { color:var(--select); }
+  table { border-collapse:collapse; width:100%; font-size:12.5px; margin-top:6px; }
+  th, td { text-align:left; padding:4px 8px; border-bottom:1px solid var(--edge); }
+  th { color:var(--ink-dim); font-weight:normal; font-size:10.5px; letter-spacing:1.2px; text-transform:uppercase; }
+  td.m { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11.5px; color:var(--brass-bright); }
+  td.x { color:var(--danger); } td.y { color:var(--ok); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Starting an agent — <span>the seven shims</span></h1>
+  <p>Every role has a one-line script that starts it: <code>run-planner</code>,
+  <code>run-orchestrator</code>, <code>run-psylocke</code> and four more. Each does nothing but
+  <code>exec launch &lt;Name&gt;</code>, and each says in its own comment that it exists
+  <i>"because the docs and the navigator's fingers know it"</i>. Seven copies of one line.</p>
+  <p>That is a real reason and it is <b>your</b> reason — these are the commands you type, and they
+  are what <code>CLAUDE.md</code> documents. So the question is not whether the duplication is ugly,
+  it is whether you want the commands to change.</p>
+  <p>There is a second, smaller thing tangled in it: <b>the shims are not named consistently.</b>
+  Four are named after the agent, three after the role, and one role has two agents.</p>
+
+  <table>
+    <tr><th>you type</th><th>you get</th><th>named after</th></tr>
+    <tr><td class="m">run-planner</td><td>Xavier</td><td class="x">the role — but only one of its two agents</td></tr>
+    <tr><td class="m">run-beast</td><td>Beast</td><td class="y">the agent</td></tr>
+    <tr><td class="m">run-orchestrator</td><td>Cerebro</td><td class="x">the role</td></tr>
+    <tr><td class="m">run-user-feedback</td><td>Moira</td><td class="x">the role</td></tr>
+    <tr><td class="m">run-implementer Cyclops</td><td>Cyclops</td><td class="y">the role, and takes a name</td></tr>
+    <tr><td class="m">run-psylocke</td><td>Psylocke</td><td class="y">the agent</td></tr>
+    <tr><td class="m">run-cypher</td><td>Cypher</td><td class="y">the agent</td></tr>
+    <tr><td class="m">run-forge</td><td>Forge</td><td class="y">the agent</td></tr>
+  </table>
+</header>
+
+<main>
+
+<h3 class="sec">1 · What replaces seven hand-written copies</h3>
+
+<div class="cards3">
+  <div class="card">
+    <h2><em>A</em>One dispatcher, symlinked</h2>
+    <div class="concept">One real script; the seven names become symlinks to it, and it reads which
+    agent to start from the name it was invoked as. Every command you know keeps working, byte for
+    byte.</div>
+    <pre class="term"><span class="p">$</span> ls -l scripts/run-*
+run-beast   <span class="d">-> run-agent</span>
+run-cypher  <span class="d">-> run-agent</span>
+run-forge   <span class="d">-> run-agent</span>
+<span class="d">... and four more</span>
+
+<span class="p">$</span> scripts/run-planner
+<span class="d">starting Xavier ...</span>
+
+<span class="d">a consumer adds a role:</span>
+<span class="p">$</span> ln -s run-agent run-archivist</pre>
+    <ul class="notes">
+      <li>Nothing you type changes, and nothing in <code>CLAUDE.md</code> changes</li>
+      <li>One file to fix when launching changes, not seven</li>
+      <li>A consumer adds a shim with one <code>ln -s</code></li>
+      <li class="con">Symlinks in git are a thing some checkouts and some Windows setups mishandle</li>
+      <li class="con">Argv-name dispatch is a clever trick, and clever is a cost</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2><em>B</em>Generated from the roster</h2>
+    <div class="concept">A script writes the shims from <code>scripts/roster</code>, and a test fails
+    if the checked-in files disagree with what it would write. Real files, no symlinks.</div>
+    <pre class="term"><span class="p">$</span> scripts/generate-launchers
+wrote 8 shims from the roster
+
+<span class="p">$</span> scripts/run-planner
+<span class="d">starting Xavier ...</span>
+
+<span class="d">a consumer adds a role, then:</span>
+<span class="p">$</span> scripts/generate-launchers
+wrote 9 shims from the roster
+<span class="w">  + run-archivist</span></pre>
+    <ul class="notes">
+      <li>Nothing you type changes</li>
+      <li>Ordinary files — no symlink, nothing clever to explain</li>
+      <li class="con">A generator, a check, and generated files in the tree: three new things</li>
+      <li class="con">The duplication still exists, it is just now nobody's fault</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2><em>C</em>Drop them — <code>launch &lt;Name&gt;</code> only</h2>
+    <div class="concept">The seven go. One command starts any agent, by name, and the docs say so.
+    <code>launch</code> already does all the work and is already documented for the planners.</div>
+    <pre class="term"><span class="p">$</span> scripts/launch Xavier
+<span class="d">starting Xavier ...</span>
+<span class="p">$</span> scripts/launch Cyclops
+<span class="d">starting Cyclops ...</span>
+
+<span class="p">$</span> scripts/run-planner
+<span class="n">zsh: no such file or directory</span>
+
+<span class="p">$</span> scripts/launch
+<span class="w">usage: launch &lt;name&gt;</span>
+<span class="d">Xavier Beast Cerebro Moira</span>
+<span class="d">Psylocke Cypher Forge</span>
+<span class="d">Cyclops Storm Wolverine ...</span></pre>
+    <ul class="notes">
+      <li>One command for everything, and the inconsistency in the table above simply vanishes</li>
+      <li>Least code of the three, and a consumer adds a role by adding a roster line</li>
+      <li class="con"><b>Every command you know stops working</b>, and <code>CLAUDE.md</code> changes in eight places</li>
+      <li class="con">Loses <code>run-implementer</code>'s guard against starting Forge as an implementer</li>
+    </ul>
+  </div>
+</div>
+
+<h3 class="sec">2 · The naming inconsistency</h3>
+<p>Only worth deciding if the shims stay. <code>run-planner</code> starts Xavier and not Beast, which
+is the one that actually misleads.</p>
+
+<div class="cards3">
+  <div class="card">
+    <h2><em>i</em>Leave it</h2>
+    <div class="concept">The names are what they are; each shim's comment already explains itself.
+    Nothing you type changes.</div>
+    <pre class="term"><span class="p">$</span> run-planner   <span class="d">Xavier</span>
+<span class="p">$</span> run-beast     <span class="d">Beast</span>
+<span class="p">$</span> run-forge     <span class="d">Forge</span></pre>
+    <ul class="notes">
+      <li>Zero disruption</li>
+      <li class="con"><code>run-planner</code> will keep reading as "start a planner"</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h2><em>ii</em>Everything by agent name</h2>
+    <div class="concept">One rule: the shim is named after the agent it starts. <code>run-xavier</code>,
+    <code>run-cerebro</code>, <code>run-moira</code>. The role-named ones keep working as aliases.</div>
+    <pre class="term"><span class="p">$</span> run-xavier    <span class="d">Xavier</span>
+<span class="p">$</span> run-beast     <span class="d">Beast</span>
+<span class="p">$</span> run-cerebro   <span class="d">Cerebro</span>
+<span class="p">$</span> run-moira     <span class="d">Moira</span>
+<span class="d">old names still work</span></pre>
+    <ul class="notes">
+      <li>One rule with no exceptions, and the two planners finally look alike</li>
+      <li>Nothing breaks — the old names stay as aliases</li>
+      <li class="con">More names, not fewer, which is the opposite of the bead's direction</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h2><em>iii</em>Retire <code>run-planner</code> only</h2>
+    <div class="concept">Add <code>run-xavier</code>, and make <code>run-planner</code> print which
+    planner it is starting and that it means Xavier. The other six are left alone.</div>
+    <pre class="term"><span class="p">$</span> run-planner
+<span class="w">run-planner starts Xavier;</span>
+<span class="w">Beast is run-beast</span>
+<span class="d">starting Xavier ...</span></pre>
+    <ul class="notes">
+      <li>Fixes the one name that actually misleads, and nothing else</li>
+      <li>Smallest change that removes a real trap</li>
+      <li class="con">A notice on every start is noise once you have read it twice</li>
+    </ul>
+  </div>
+</div>
+
+</main>
+
+<footer style="margin-top:34px; color:var(--ink-dim); font-size:12.5px;">
+  Mockup for bead <code>ah-qled.5.3</code>. Terminal panes are illustrative; the table of what each
+  shim starts today is read from the scripts.
+</footer>
+</body>
+</html>
