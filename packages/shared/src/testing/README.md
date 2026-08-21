@@ -16,11 +16,15 @@ ah-1owr.3, ah-mwqa) before `noDom.ts` was written to say it out loud.
 and call it — which is a job for the smoke suite, not for a unit test here.
 
 `workspace/dossierPeek.ts` is the worked example. Where the map should go while the reader runs
-down a faction dossier is a plain function of a viewport and a rectangle, and its own test file
-covers it exhaustively with no React at all. `workspace/FactionDossierPanel.tsx` is the thin part:
-a `useLayoutEffect` that reads a `DOMRect` and hands the four numbers to the rule.
-`workspace/tradeArrow.ts` is the sibling written first, and `workspace/mapOverlayInsets.ts` +
-`workspace/useOverlayInsets.ts` are the same split again.
+down a faction dossier is `peekStep`, a plain function of a viewport and a rectangle, and its own
+test file covers it exhaustively with no React at all.
+
+The rest of the split is deliberately thin and deliberately untested here. `useReportedRect`, in
+`workspace/FactionDossierPanel.tsx`, is the `useLayoutEffect` that reads a `DOMRect` and reports
+its four numbers upward — the panel component itself must stay hook-free, so the measuring lives in
+a wrapper (`MeasuredFactionDossier`) beside it. `workspace/MapCanvas.tsx` is what feeds those
+numbers to `peekStep`. `workspace/tradeArrow.ts` is the sibling written first, and
+`workspace/mapOverlayInsets.ts` + `workspace/useOverlayInsets.ts` are the same split again.
 
 This is worth doing on its own merits rather than only as a concession: the rule ends up somewhere
 trivial to test, and it stops being reachable only through a render.
