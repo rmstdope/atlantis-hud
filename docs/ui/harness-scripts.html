@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Harness scripts that live in the wrong repository</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --edge:#26303d; --ink:#dbe3ec; --ink-soft:#a3b0c0;
+    --ink-dim:#8a97a8; --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1340px; margin:0 auto; }
+  h1 { font-size:26px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:98ch; margin-top:10px; font-size:14px; }
+  header p + p { margin-top:8px; }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:36px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:98ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; }
+  .card h2 { font-size:15.5px; margin-bottom:5px; }
+  .card h2 em { color:var(--brass); font-style:normal; font-size:11.5px; letter-spacing:1.5px; margin-right:8px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; margin-bottom:12px; min-height:5em; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:12px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212  "; color:var(--danger); }
+  .cards3 { display:grid; grid-template-columns:repeat(3,1fr); gap:18px; align-items:start; }
+  .cards2 { display:grid; grid-template-columns:repeat(2,1fr); gap:18px; align-items:start; }
+  pre.term { background:#0b0f14; border:1px solid var(--edge); border-radius:6px; padding:11px 12px;
+             font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11.5px; line-height:1.75;
+             color:#c7d2de; white-space:pre-wrap; overflow-x:auto; margin:0; }
+  .term .p { color:var(--ok); } .term .d { color:var(--ink-dim); } .term .n { color:var(--danger); }
+  .term .w { color:var(--brass-bright); } .term .g { color:var(--ok); }
+  .box { background:#0b0f14; border:1px solid var(--edge); border-radius:6px; padding:9px 11px;
+         font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11px; color:#c7d2de; line-height:1.75; margin-bottom:10px; }
+  .box b { color:var(--brass-bright); font-weight:normal; }
+  .box .c { color:var(--ink-dim); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Harness scripts — <span>that live in the wrong repository</span></h1>
+  <p>Two pieces of the harness are <b>cerebro's job</b> but live in <b>this project's</b>
+  <code>scripts/</code>, and are reached through this project's package manager. Another project
+  adopting the fleet gets an agent instruction that cannot run.</p>
+  <div class="box">
+<span class="c"># agents/orchestrator.md</span>
+<b>pnpm sightings</b>            <span class="c"># -> tsx scripts/retroSightings.ts, in ATLANTIS-HUD</span>
+
+<span class="c"># skills/implement-bead/SKILL.md:363</span>
+<b>pnpm exec tsx scripts/diskPreflight.ts</b>   <span class="c"># also this project's</span>
+  </div>
+  <p>Both are genuinely cerebro concepts. Retrospectives are the fleet's own practice — the conf
+  already declares <code>retro_dir&nbsp;&nbsp;docs/retrospectives</code> — and the disk floor is what
+  stops an implementer starting a bead it cannot build.</p>
+  <p>Worse, <b>cerebro already reaches back into this project to read the floor</b>:
+  <code>prune-worktrees.sh</code> <code>sed</code>s <code>FREE_SPACE_FLOOR_GB</code> out of
+  <code>scripts/diskPreflight.ts</code>, because a threshold of its own would drift from the one that
+  refuses to start beads. A shared submodule grepping a consumer's TypeScript for a number is the
+  coupling in its clearest form.</p>
+</header>
+
+<main>
+
+<h3 class="sec">1 · <code>retroSightings.ts</code> — 500 lines of TypeScript in a bash-and-elisp repo</h3>
+<p>It reads the retrospectives, treats their <code>Seen before</code> citations as a graph, and
+reports each connected component as one finding. <b>It imports nothing but <code>node:</code>
+builtins</b> — no npm packages at all — which is what makes the second option below possible.</p>
+
+<div class="cards3">
+  <div class="card">
+    <h2><em>A</em>Move it as TypeScript</h2>
+    <div class="concept">The file moves to <code>.claude/cerebro/scripts/retroSightings.ts</code> and
+    is called by path. cerebro now carries a TypeScript file and needs a TypeScript runner.</div>
+    <pre class="term"><span class="p">$</span> pnpm exec tsx \
+    .claude/cerebro/scripts/retroSightings.ts
+<span class="w">Repeated findings (3+ sightings)</span>
+<span class="n">  11</span> disk floor refuses the build
+
+<span class="d">a consumer with no tsx:</span>
+<span class="n">command not found: tsx</span></pre>
+    <ul class="notes">
+      <li>The code moves unchanged — no rewrite, no risk to a working algorithm</li>
+      <li class="con">cerebro gains a TypeScript dependency it has never had</li>
+      <li class="con">A consumer that is not a Node project cannot run it at all</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2><em>B</em>Move it as plain JavaScript</h2>
+    <div class="concept">The types come off and it becomes
+    <code>.claude/cerebro/scripts/retro-sightings.mjs</code>, run by <code>node</code> directly. It
+    uses no npm packages, so nothing else has to come with it.</div>
+    <pre class="term"><span class="p">$</span> node \
+    .claude/cerebro/scripts/retro-sightings.mjs
+<span class="w">Repeated findings (3+ sightings)</span>
+<span class="n">  11</span> disk floor refuses the build
+
+<span class="d">a consumer with node:</span>
+<span class="g">works, with nothing installed</span></pre>
+    <ul class="notes">
+      <li>Needs only <code>node</code> — no package manager, no install, no <code>tsx</code></li>
+      <li>Works in a consumer that is not a JavaScript project at all</li>
+      <li class="con">A rewrite of working code, and its type-checking goes with the types</li>
+      <li class="con">Its unit tests are Vitest, in this project — they would have to move or go</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2><em>C</em>Leave it, and declare it</h2>
+    <div class="concept">The script stays where its toolchain is. A <code>sightings_cmd</code>
+    project key names how to run it, exactly as <code>release_cmd</code> does — absent means the
+    fleet has no sightings report.</div>
+    <div class="box">release_cmd    <b>pnpm run release</b><br>sightings_cmd  <b>pnpm sightings</b></div>
+    <pre class="term"><span class="d">a consumer that has none:</span>
+<span class="d">no sightings_cmd - nothing to run,</span>
+<span class="d">and nothing said about it</span></pre>
+    <ul class="notes">
+      <li>No rewrite, no move, and the same pattern as every other project fact</li>
+      <li>A consumer may point it at their own implementation in any language</li>
+      <li class="con">The fleet's own practice stays outside the fleet's own repository</li>
+      <li class="con">Every consumer that wants it has to write it themselves</li>
+    </ul>
+  </div>
+</div>
+
+<h3 class="sec">2 · The disk preflight, and the floor two scripts share</h3>
+<p>This is what an implementer prints when it will not start, and it is the message you read when a
+bead stalls.</p>
+
+<div class="cards2">
+  <div class="card">
+    <h2><em>i</em>cerebro owns the check; the project declares the floor</h2>
+    <div class="concept">A <code>.claude/cerebro/scripts/disk-preflight</code> in bash. The number
+    becomes a project key, so <code>prune-worktrees.sh</code> and the preflight read the same
+    declaration instead of one grepping the other's source.</div>
+    <div class="box">disk_floor_gb  <b>8</b></div>
+    <pre class="term"><span class="p">$</span> .claude/cerebro/scripts/disk-preflight
+<span class="n">disk: 4.7 GB free, below the 8 GB</span>
+<span class="n">floor needed to build.</span>
+<span class="d">reclaimable: 2.1 GB in ~/.cargo/…</span>
+<span class="d">exit 1 - do not start</span></pre>
+    <ul class="notes">
+      <li>Kills the grep-a-consumer's-TypeScript-for-a-number coupling outright</li>
+      <li>Every consumer gets the check that eleven retrospectives say is needed</li>
+      <li>One declared number, read by both, cannot drift</li>
+      <li class="con">A rewrite in bash of a tested TypeScript file, and the app's own test of it goes</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h2><em>ii</em>An optional hook the project supplies</h2>
+    <div class="concept">A <code>preflight_cmd</code> key. If it names something, run it and do not
+    start on a non-zero exit. If it names nothing, there is no preflight and that is fine.</div>
+    <div class="box">preflight_cmd  <b>pnpm exec tsx scripts/diskPreflight.ts</b></div>
+    <pre class="term"><span class="p">$</span> <span class="d">(what preflight_cmd names)</span>
+<span class="n">disk: 4.7 GB free, below the 8 GB</span>
+<span class="n">floor needed to build.</span>
+
+<span class="d">a consumer with no hook:</span>
+<span class="d">nothing runs, the bead starts</span></pre>
+    <ul class="notes">
+      <li>Nothing is rewritten; this project keeps the file and the test it already has</li>
+      <li>A consumer may check anything it likes, not only disk</li>
+      <li class="con">A consumer gets no disk check unless they write one — the commonest stall in this repository's history, unguarded by default</li>
+      <li class="con">Leaves <code>prune-worktrees.sh</code> still grepping a TypeScript file for the floor</li>
+    </ul>
+  </div>
+</div>
+
+</main>
+
+<footer style="margin-top:34px; color:var(--ink-dim); font-size:12.5px;">
+  Mockup for bead <code>ah-qled.7.2</code>. Terminal panes are illustrative; the two call sites, the
+  conf keys and <code>retroSightings.ts</code>'s imports are read from the repository.
+</footer>
+</body>
+</html>
