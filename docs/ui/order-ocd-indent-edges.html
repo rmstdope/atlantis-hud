@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Order OCD — the awkward cases</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --edge:#26303d; --ink:#dbe3ec; --ink-soft:#a3b0c0;
+    --ink-dim:#8a97a8; --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1320px; margin:0 auto; }
+  h1 { font-size:26px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:96ch; margin-top:10px; font-size:14px; }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:36px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:96ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; }
+  .card h2 { font-size:15.5px; margin-bottom:5px; }
+  .card h2 em { color:var(--brass); font-style:normal; font-size:11.5px; letter-spacing:1.5px; margin-right:8px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; margin-bottom:11px; min-height:3.4em; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:11px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212  "; color:var(--danger); }
+  .cards2 { display:grid; grid-template-columns:repeat(2,1fr); gap:18px; align-items:start; }
+  .cards3 { display:grid; grid-template-columns:repeat(3,1fr); gap:18px; align-items:start; }
+  pre.ed { background:#0b0f14; border:1px solid var(--edge); border-radius:6px; padding:10px 11px;
+           font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11.5px; line-height:1.7;
+           color:#c7d2de; white-space:pre; overflow-x:auto; margin:0; }
+  .ed .k { color:var(--brass-bright); } .ed .s { color:var(--ok); }
+  .ed .d { color:var(--ink-dim); } .ed .c { color:#7f8b99; }
+  .ed .add { background:rgba(79,183,131,0.16); }
+  .ed .bad { background:rgba(217,112,112,0.18); }
+  .ed .ws { background:rgba(217,164,65,0.22); }
+  .caret { display:inline-block; width:2px; height:1.05em; background:var(--select); vertical-align:-2px; animation:b 1s steps(2) infinite; }
+  @keyframes b { 50% { opacity:0 } }
+  .setting { background:#141a22; border:1px solid var(--edge); border-radius:8px; padding:12px 13px; display:flex; gap:12px; align-items:flex-start; }
+  .setting .sw { width:34px; height:19px; border-radius:10px; background:var(--select); position:relative; flex:none; margin-top:2px; }
+  .setting .sw::after { content:""; position:absolute; right:2px; top:2px; width:15px; height:15px; border-radius:50%; background:#0b0f14; }
+  .setting b { font-size:13.5px; font-family:system-ui,sans-serif; }
+  .setting p { font-size:12.5px; color:var(--ink-soft); margin-top:3px; font-family:system-ui,sans-serif; line-height:1.5; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Order OCD — <span>the cases the happy path hides</span></h1>
+  <p>Settled already: indentation applies <b>both</b> as you type and on the whole block when the
+  tidy runs; <code>END</code> and <code>ENDTURN</code> line up with their openers; trailing blank
+  lines collapse to exactly one newline <b>when the tidy runs</b>, not while you type. What is left
+  is what happens when the orders are not well formed, and what the setting now calls itself.</p>
+</header>
+
+<main>
+
+<h3 class="sec">1 · A block that is not closed, or closed by the wrong keyword</h3>
+<p>Half-written orders are the ordinary state of a turn. <code>FORM 1</code> with no <code>END</code>
+yet, or a stray <code>END</code> closing nothing, and the re-indent has to decide what to do.</p>
+
+<div class="cards2">
+  <div class="card">
+    <h2><em>A</em>Indent by the running depth anyway</h2>
+    <div class="concept">The walk counts what it sees. An unclosed <code>FORM</code> means everything
+    after it stays one level in, to the bottom of the block; a stray closer that matches nothing
+    changes nothing.</div>
+    <pre class="ed"><span class="k">TURN</span>
+ <span class="k">NAME UNIT</span> <span class="s">"Scout"</span>
+ <span class="k">FORM</span> 1        <span class="d">&larr; never closed</span>
+<span class="add">  </span><span class="k">STUDY</span> <span class="s">COMBAT</span>
+<span class="add">  </span><span class="k">WORK</span>
+<span class="add">  </span><span class="k">MOVE</span> N
+<span class="bad">  </span><span class="k">ENDTURN</span>   <span class="d">&larr; stray: FORM is innermost</span></pre>
+    <ul class="notes">
+      <li>The runaway indent is itself the signal that a block was left open</li>
+      <li>One rule, no special cases to explain or test</li>
+      <li class="con">One missing <code>END</code> visibly shifts every line below it</li>
+      <li class="con">The stray <code>ENDTURN</code> ends up indented, next to nothing</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h2><em>B</em>Leave a broken block alone</h2>
+    <div class="concept">If the walk finds an unclosed block or a stray closer anywhere in the unit,
+    the whole-block re-indent does not run at all. Case tidying and the trailing newline still do,
+    and Enter still indents as you type.</div>
+    <pre class="ed"><span class="k">TURN</span>
+<span class="k">NAME UNIT</span> <span class="s">"Scout"</span>
+<span class="k">FORM</span> 1        <span class="d">&larr; never closed</span>
+<span class="k">STUDY</span> <span class="s">COMBAT</span>
+<span class="k">WORK</span>
+<span class="k">MOVE</span> N
+<span class="k">ENDTURN</span>
+<span class="d">(left exactly as typed until
+ the block parses)</span></pre>
+    <ul class="notes">
+      <li>Never rearranges text whose structure it cannot actually read</li>
+      <li>The moment you type the missing <code>END</code>, it all snaps into place</li>
+      <li class="con">"Why is nothing indented?" has an answer you cannot see on screen</li>
+      <li class="con">A unit with one old stray closer never gets tidied at all</li>
+    </ul>
+  </div>
+</div>
+
+<h3 class="sec">2 · Blank lines, and the player's own comments</h3>
+<p>A block is rarely only orders. <code>;</code> lines are the player's notes, <code>@;</code> is a
+repeating comment the server acts on, and blank lines are thinking room.</p>
+
+<div class="cards3">
+  <div class="card">
+    <h2><em>i</em>Comments indent, blanks stay empty</h2>
+    <div class="concept">A comment is a line of the block like any other. A blank line is left truly
+    empty — no invisible spaces on it.</div>
+    <pre class="ed"><span class="k">TURN</span>
+ <span class="c">; scouting party</span>
+ <span class="k">NAME UNIT</span> <span class="s">"Scout"</span>
+
+ <span class="c">@; keep working</span>
+ <span class="k">MOVE</span> N
+<span class="k">ENDTURN</span></pre>
+    <ul class="notes">
+      <li>A note lines up with the orders it is a note about</li>
+      <li>Nothing invisible is ever written into the file</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h2><em>ii</em>Comments indent, blanks get the indent too</h2>
+    <div class="concept">Every line inside a block carries the block's indentation, including the
+    empty ones — so the caret starts in the right column when you click one.</div>
+    <pre class="ed"><span class="k">TURN</span>
+ <span class="c">; scouting party</span>
+ <span class="k">NAME UNIT</span> <span class="s">"Scout"</span>
+<span class="ws"> </span>
+ <span class="c">@; keep working</span>
+ <span class="k">MOVE</span> N
+<span class="k">ENDTURN</span></pre>
+    <ul class="notes">
+      <li>Clicking a blank line puts you where the next order goes</li>
+      <li class="con">Trailing whitespace on otherwise empty lines, written to the orders file</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h2><em>iii</em>Comments stay at column 0</h2>
+    <div class="concept">Only real orders are indented; anything the server will not act on is left
+    hard against the left edge.</div>
+    <pre class="ed"><span class="k">TURN</span>
+<span class="c">; scouting party</span>
+ <span class="k">NAME UNIT</span> <span class="s">"Scout"</span>
+
+ <span class="c">@; keep working</span>
+ <span class="k">MOVE</span> N
+<span class="k">ENDTURN</span></pre>
+    <ul class="notes">
+      <li>Notes read as a margin, distinct from the orders</li>
+      <li class="con"><code>@;</code> <b>is</b> an order, so the rule would have to split the two</li>
+      <li class="con">Breaks up the indented run the eye is following</li>
+    </ul>
+  </div>
+</div>
+
+<h3 class="sec">3 · A unit with no orders at all</h3>
+<p>"Exactly one newline at the end" — of nothing. Clicking in an empty editor is exactly the case
+the ask came from, but a blank line written into an empty draft is a line the player never opened.</p>
+
+<div class="cards2">
+  <div class="card">
+    <h2><em>i</em>Empty stays empty</h2>
+    <div class="concept">A unit with no orders shows an empty editor. The caret is already on line
+    one, so there is nothing the newline would buy.</div>
+    <pre class="ed"><span class="caret"></span>
+<span class="d">(nothing typed yet)</span></pre>
+    <ul class="notes">
+      <li>Clicking anywhere lands on line one regardless — the symptom cannot occur</li>
+      <li>No unit gains stored orders merely by being looked at</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h2><em>ii</em>Always one newline, even when empty</h2>
+    <div class="concept">The rule holds literally: every block ends with a newline, so an empty one
+    is a single blank line.</div>
+    <pre class="ed">
+<span class="caret"></span>
+<span class="d">(one blank line above)</span></pre>
+    <ul class="notes">
+      <li>One sentence describes every unit with no exceptions</li>
+      <li class="con">Opening a unit dirties its draft, so it saves and appears edited</li>
+    </ul>
+  </div>
+</div>
+
+<h3 class="sec">4 · What the setting calls itself</h3>
+<p>Today it says one thing and will now do three. This is the line in <b>Settings &rarr; Order OCD</b>.</p>
+
+<div class="cards2">
+  <div class="card">
+    <h2><em>W1</em>All three, plainly</h2>
+    <div class="setting">
+      <div class="sw"></div>
+      <div>
+        <b>Order OCD</b>
+        <p>Uppercase the command keywords as you write, indent each level of a nested FORM or TURN
+        by one space, and end every unit's orders with a single blank line. Text inside quotes is
+        left alone.</p>
+      </div>
+    </div>
+    <ul class="notes">
+      <li>Says everything it does, so nothing it does is a surprise</li>
+      <li class="con">Three clauses in one sentence, and the longest description in the dialog</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h2><em>W2</em>The intent, then the detail</h2>
+    <div class="setting">
+      <div class="sw"></div>
+      <div>
+        <b>Order OCD</b>
+        <p>Keeps your orders tidy as you write: keywords uppercased so MOVE, STUDY and ALL stand out
+        from names, one space of indentation per level inside FORM and TURN, and a clean line at the
+        end. Text inside quotes is left alone.</p>
+      </div>
+    </div>
+    <ul class="notes">
+      <li>Leads with why you would want it rather than with a list</li>
+      <li class="con">"a clean line at the end" is vaguer than the thing it does</li>
+    </ul>
+  </div>
+</div>
+
+</main>
+
+<footer style="margin-top:34px; color:var(--ink-dim); font-size:12.5px;">
+  Mockup for bead <code>ah-2tj8</code>, second round. Amber highlight is whitespace that would be
+  written; red is a line the walk could not make sense of.
+</footer>
+</body>
+</html>

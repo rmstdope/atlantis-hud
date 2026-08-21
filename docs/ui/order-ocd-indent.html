@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Order OCD — indentation and the trailing newline</title>
+<style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --edge:#26303d;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1320px; margin:0 auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; }
+  h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:96ch; margin-top:10px; font-size:14px; }
+  header p + p { margin-top:8px; }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:36px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:96ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; }
+  .card h2 { font-size:16px; margin-bottom:5px; }
+  .card h2 em { color:var(--brass); font-style:normal; font-size:11.5px; letter-spacing:1.5px; margin-right:8px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; margin-bottom:11px; min-height:3.6em; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:11px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212  "; color:var(--danger); }
+  .notes li.n::before { content:"\00b7  "; color:var(--ink-dim); }
+  .cards2 { display:grid; grid-template-columns:repeat(2,1fr); gap:18px; align-items:start; }
+  .cards3 { display:grid; grid-template-columns:repeat(3,1fr); gap:18px; align-items:start; }
+  pre.ed { background:#0b0f14; border:1px solid var(--edge); border-radius:6px; padding:10px 11px;
+           font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11.5px; line-height:1.7;
+           color:#c7d2de; white-space:pre; overflow-x:auto; margin:0; }
+  .ed .k { color:var(--brass-bright); }
+  .ed .s { color:var(--ok); }
+  .ed .d { color:var(--ink-dim); }
+  .ed .add { background:rgba(79,183,131,0.16); }
+  .caret { display:inline-block; width:2px; height:1.05em; background:var(--select); vertical-align:-2px; animation:b 1s steps(2) infinite; }
+  @keyframes b { 50% { opacity:0 } }
+  .pair { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .pair h4 { font-size:11px; letter-spacing:1.3px; text-transform:uppercase; color:var(--ink-dim); margin-bottom:5px; font-weight:normal; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Order OCD — <span>indentation, and the newline at the end</span></h1>
+  <p>Two additions to a setting that today only shouts keywords. <b>One space per nesting level</b>
+  inside <code>FORM…END</code> and <code>TURN…ENDTURN</code>, and <b>exactly one newline at the end
+  of a unit's orders</b>, so clicking in the empty space below the last order puts the cursor on a
+  fresh line rather than at the end of the last one.</p>
+  <p>Everything below is one unit's block as the editor shows it. The existing tidy runs
+  <b>when the unit is next opened</b>, when the setting is switched on with a unit already open, and
+  when the core's word list arrives late — that is the behaviour <code>ah-1znc</code> settled, and
+  these two additions can either join it or run on their own clock.</p>
+</header>
+
+<main>
+
+<h3 class="sec">1 · When the indentation is applied</h3>
+<p>The player typed this, flat, with no indentation — and in the third line, four spaces of their own.
+What should the editor do with it?</p>
+
+<div class="cards3">
+
+  <div class="card">
+    <h2><em>A</em>Only as you type</h2>
+    <div class="concept">Pressing Enter inside a block opens the new line already indented to that
+    level. Nothing that is already on screen is ever touched.</div>
+    <div class="pair">
+      <div><h4>before</h4><pre class="ed"><span class="k">CLAIM</span> 100
+<span class="k">TURN</span>
+    <span class="k">NAME UNIT</span> <span class="s">"Scout"</span>
+<span class="k">FORM</span> 1
+<span class="k">STUDY</span> <span class="s">COMBAT</span>
+<span class="k">END</span>
+<span class="k">ENDTURN</span></pre></div>
+      <div><h4>after</h4><pre class="ed"><span class="k">CLAIM</span> 100
+<span class="k">TURN</span>
+    <span class="k">NAME UNIT</span> <span class="s">"Scout"</span>
+<span class="k">FORM</span> 1
+<span class="k">STUDY</span> <span class="s">COMBAT</span>
+<span class="k">END</span>
+<span class="k">ENDTURN</span>
+<span class="d">(unchanged — new lines only)</span></pre></div>
+    </div>
+    <ul class="notes">
+      <li>Never fights the player over text they wrote deliberately</li>
+      <li>No surprise edit when a unit is opened</li>
+      <li class="con">A half-written turn stays mixed — the exact thing rejected in ah-1znc</li>
+      <li class="con">Imported orders and pasted text are never tidied at all</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2><em>B</em>On open, the whole block re-indented</h2>
+    <div class="concept">The indentation is recomputed from the block structure whenever the case
+    tidy runs — every leading space is replaced, whatever the player put there.</div>
+    <div class="pair">
+      <div><h4>before</h4><pre class="ed"><span class="k">CLAIM</span> 100
+<span class="k">TURN</span>
+    <span class="k">NAME UNIT</span> <span class="s">"Scout"</span>
+<span class="k">FORM</span> 1
+<span class="k">STUDY</span> <span class="s">COMBAT</span>
+<span class="k">END</span>
+<span class="k">ENDTURN</span></pre></div>
+      <div><h4>after</h4><pre class="ed"><span class="k">CLAIM</span> 100
+<span class="k">TURN</span>
+<span class="add"> </span><span class="k">NAME UNIT</span> <span class="s">"Scout"</span>
+<span class="add"> </span><span class="k">FORM</span> 1
+<span class="add">  </span><span class="k">STUDY</span> <span class="s">COMBAT</span>
+<span class="add"> </span><span class="k">END</span>
+<span class="k">ENDTURN</span></pre></div>
+    </div>
+    <ul class="notes">
+      <li>One rule, one look — imports, pastes and hand-typed text all end up the same</li>
+      <li>Exactly the promise the case tidy already makes</li>
+      <li class="con">The player's own four-space indent is thrown away without asking</li>
+      <li class="con">A block only opens correct-looking after you click away and back</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2><em>C</em>Both</h2>
+    <div class="concept">Enter indents the new line as you type <b>and</b> the whole block is
+    re-indented when the tidy runs. B's result, reached sooner.</div>
+    <div class="pair">
+      <div><h4>typing</h4><pre class="ed"><span class="k">TURN</span>
+<span class="add"> </span><span class="k">FORM</span> 1
+<span class="add">  </span><span class="caret"></span>
+<span class="d">Enter after FORM 1 opens
+here, two spaces in</span></pre></div>
+      <div><h4>on open</h4><pre class="ed"><span class="k">CLAIM</span> 100
+<span class="k">TURN</span>
+<span class="add"> </span><span class="k">NAME UNIT</span> <span class="s">"Scout"</span>
+<span class="add"> </span><span class="k">FORM</span> 1
+<span class="add">  </span><span class="k">STUDY</span> <span class="s">COMBAT</span>
+<span class="add"> </span><span class="k">END</span>
+<span class="k">ENDTURN</span></pre></div>
+    </div>
+    <ul class="notes">
+      <li>The indentation is right while you write, not only afterwards</li>
+      <li>Everything ends up consistent whatever its origin</li>
+      <li class="con">Two mechanisms rather than one, and two ways to be wrong</li>
+      <li class="con">Enter inside a block now inserts text the player did not type — one Ctrl+Z has to put back both</li>
+    </ul>
+  </div>
+</div>
+
+<h3 class="sec">2 · Where the closing keyword sits</h3>
+<p>Whichever of the above: <code>FORM</code> opens a level and <code>END</code> closes it, so
+<code>END</code> could belong to the level outside the block or to the level inside it.</p>
+
+<div class="cards2">
+  <div class="card">
+    <h2><em>i</em>Closer aligns with its opener</h2>
+    <div class="concept">Only the block's <i>contents</i> are indented. This is how every
+    programming editor lays out a brace.</div>
+    <pre class="ed"><span class="k">TURN</span>
+ <span class="k">NAME UNIT</span> <span class="s">"Scout"</span>
+ <span class="k">FORM</span> 1
+  <span class="k">NAME UNIT</span> <span class="s">"New"</span>
+  <span class="k">STUDY</span> <span class="s">COMBAT</span>
+ <span class="k">END</span>
+ <span class="k">MOVE</span> N
+<span class="k">ENDTURN</span>
+<span class="k">WORK</span></pre>
+    <ul class="notes">
+      <li>The pair brackets the indented run, so a missing END is visible at a glance</li>
+      <li>What a player who writes code will expect</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h2><em>ii</em>Closer sits with the contents</h2>
+    <div class="concept">Everything between the opener and the closer, closer included, moves in
+    one level.</div>
+    <pre class="ed"><span class="k">TURN</span>
+ <span class="k">NAME UNIT</span> <span class="s">"Scout"</span>
+ <span class="k">FORM</span> 1
+  <span class="k">NAME UNIT</span> <span class="s">"New"</span>
+  <span class="k">STUDY</span> <span class="s">COMBAT</span>
+  <span class="k">END</span>
+ <span class="k">MOVE</span> N
+ <span class="k">ENDTURN</span>
+<span class="k">WORK</span></pre>
+    <ul class="notes">
+      <li>"Everything inside the block is indented" is a simpler sentence to hold</li>
+      <li class="con">The closer no longer lines up with anything, so an unclosed block hides</li>
+    </ul>
+  </div>
+</div>
+
+<h3 class="sec">3 · The newline at the end</h3>
+<p>The ask is a symptom: <b>click in the empty space below the last order and the cursor should be on
+a fresh line.</b> That happens when the block's text ends in a newline. Today it does — but only
+<i>after a save has landed</i>, and nothing removes extra blank lines the player left behind while
+they are still in the editor.</p>
+
+<div class="cards2">
+  <div class="card">
+    <h2><em>i</em>Fixed up with the rest of the tidy</h2>
+    <div class="concept">When the block is tidied — on open, on the setting being switched on — the
+    trailing blank lines are collapsed to exactly one newline. While typing, Enter behaves normally.</div>
+    <div class="pair">
+      <div><h4>as left</h4><pre class="ed"><span class="k">WORK</span>
+<span class="k">STUDY</span> <span class="s">COMBAT</span>
+<span class="d">·</span>
+<span class="d">·</span>
+<span class="d">·</span></pre></div>
+      <div><h4>on open</h4><pre class="ed"><span class="k">WORK</span>
+<span class="k">STUDY</span> <span class="s">COMBAT</span>
+<span class="caret"></span></pre></div>
+    </div>
+    <ul class="notes">
+      <li>Enter still opens as many lines as you press it — nothing fights you mid-thought</li>
+      <li>Same clock as everything else in the setting, so one rule explains all of it</li>
+      <li class="con">A block you just typed three blank lines into keeps them until you leave and come back</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h2><em>ii</em>Held true continuously</h2>
+    <div class="concept">The block always ends in exactly one newline, moment to moment. A second
+    Enter at the very bottom is absorbed.</div>
+    <div class="pair">
+      <div><h4>press Enter twice</h4><pre class="ed"><span class="k">STUDY</span> <span class="s">COMBAT</span>
+<span class="caret"></span></pre></div>
+      <div><h4>then again</h4><pre class="ed"><span class="k">STUDY</span> <span class="s">COMBAT</span>
+<span class="caret"></span>
+<span class="d">(the second Enter
+ did nothing)</span></pre></div>
+    </div>
+    <ul class="notes">
+      <li>The promise is literally true at every instant</li>
+      <li class="con">Enter silently not working is the kind of thing that gets reported as broken</li>
+      <li class="con">Blocks the ordinary habit of opening space to think in</li>
+    </ul>
+  </div>
+</div>
+
+</main>
+
+<footer style="margin-top:34px; color:var(--ink-dim); font-size:12.5px;">
+  Mockup for bead <code>ah-2tj8</code> — Order OCD: indentation and the trailing newline.
+  Colours are the app's own tokens; the editor panes are illustrative, not screenshots.
+</footer>
+</body>
+</html>
