@@ -203,6 +203,43 @@ export function buildingEntryId(kind: string): string {
   return `building:${kind.toUpperCase()}`;
 }
 
+/**
+ * The dictionary id a structure's kind names, ships first and buildings second (ah-t5fk).
+ *
+ * A structure's kind can be either — `Galley` is a ship, `Fort` is a building — and only the
+ * catalogue knows which, so it is asked rather than a list of vessel words being kept beside it.
+ * `SHIP_KINDS` in `hexView.ts` is deliberately NOT consulted: ah-lcyn is a whole bead about an
+ * enumerated word list failing on the kind nobody listed.
+ *
+ * Plural spellings are tried the way `isKeyword` (`orderCase.ts`) does, mirroring the Rust core's
+ * `item_spellings`: the word AS WRITTEN first, then without a trailing `ES`, then without a
+ * trailing `S`. A report writes `40 Galleons`; the entry is `Galleon`. As-written comes first so a
+ * vessel whose real name ends in `s` is found before anything is stripped from it.
+ *
+ * Falls back to the building id, which is what it has always been: a kind the scrape never took
+ * still yields an id whose `detailOf` reports it absent, and saying so is the point of landing
+ * there (ah-5jkt.2).
+ *
+ * A linear scan over the ship entries — a few hundred entries, a handful of links per pane — rather
+ * than a name index built at parse time, which would put a second map in every parsed ruleset for a
+ * lookup this rare.
+ */
+export function structureEntryId(index: GameDataIndex, kind: string): string {
+  const wanted = kind.trim().toUpperCase();
+  const spellings = [wanted];
+  if (wanted.endsWith("ES")) spellings.push(wanted.slice(0, -2));
+  if (wanted.endsWith("S")) spellings.push(wanted.slice(0, -1));
+  for (const spelling of spellings) {
+    const ship = index.entries.find(
+      (entry) => entry.category === "ship" && entry.name.toUpperCase() === spelling
+    );
+    if (ship) {
+      return ship.id;
+    }
+  }
+  return buildingEntryId(kind);
+}
+
 /** Parses the ruleset text. Returns null when the text is not a ruleset at all. */
 export function parseGameData(rulesetText: string): GameDataIndex | null {
   let parsed: unknown;

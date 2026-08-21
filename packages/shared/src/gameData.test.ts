@@ -4,8 +4,10 @@ import {
   buildingEntryId,
   itemEntryId,
   parseGameData,
-  skillEntryId
+  skillEntryId,
+  structureEntryId
 } from "./gameData";
+import type { GameDataIndex } from "./gameData";
 
 /** A tiny ruleset covering every branch the index has to build. */
 const RULESET = JSON.stringify({
@@ -153,5 +155,60 @@ describe("the ruleset this application ships", () => {
     const index = parseGameData(text);
     expect(index).not.toBeNull();
     expect(index?.entries.length ?? 0).toBeGreaterThan(200);
+  });
+});
+
+describe("the entry a structure kind names (ah-t5fk)", () => {
+  const shipped = (): GameDataIndex => {
+    const text = readFileSync(
+      new URL("../../../config/public/ruleset.json", import.meta.url),
+      "utf8"
+    );
+    const index = parseGameData(text);
+    if (index === null) {
+      throw new Error("expected the shipped ruleset to parse");
+    }
+    return index;
+  };
+
+  it("resolves a vessel name to its ship entry, not a building", () => {
+    // `Ship [623] : Galley`, fixture neworigins-3.0.0-g5-f21-t39.rep.
+    expect(structureEntryId(shipped(), "Galley")).toBe("ship:GLLY");
+  });
+
+  it("resolves the plural a report writes to the singular the catalogue holds", () => {
+    // `Frozen Tomb [194] : Galley, 40 Galleons, 11 Galleys, 10 Balloons`, turn-71 fixture.
+    const index = shipped();
+    expect(structureEntryId(index, "Galleons")).toBe("ship:GALL");
+    expect(structureEntryId(index, "Galleys")).toBe("ship:GLLY");
+    expect(structureEntryId(index, "Balloons")).toBe("ship:BALL");
+  });
+
+  it("tries the name as written before stripping anything from it", () => {
+    // `Odds and Ends` is a structure NAME rather than a kind, but the rule is the one that
+    // matters: a word ending in `s` must be found as written before a plural is assumed.
+    const index = parseGameData(
+      JSON.stringify({
+        skills: {},
+        items: {
+          GLLY: { tag: "GLLY", name: "Galleys", kind: "ship" },
+          GALL: { tag: "GALL", name: "Galley", kind: "ship" }
+        },
+        buildings: {}
+      })
+    );
+    expect(structureEntryId(index!, "Galleys")).toBe("ship:GLLY");
+  });
+
+  it("resolves an ordinary building exactly as it does today", () => {
+    const index = shipped();
+    expect(structureEntryId(index, "Fort")).toBe("building:FORT");
+    expect(structureEntryId(index, "Mine")).toBe("building:MINE");
+    expect(structureEntryId(index, "Stockade")).toBe("building:STOCKADE");
+  });
+
+  it("still answers with a building id for a kind the catalogue never took", () => {
+    // ah-5jkt.2: the dialog opens and says the entry is absent - that is the point of landing there.
+    expect(structureEntryId(shipped(), "Wobbly Shed")).toBe("building:WOBBLY SHED");
   });
 });

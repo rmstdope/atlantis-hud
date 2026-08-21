@@ -359,3 +359,94 @@ describe("naming game data in the region panel", () => {
     expect(drawMarket()).not.toContain("data-game-data-entry");
   });
 });
+
+/**
+ * A fleet names several vessels in one kind, and each of them is a real dictionary entry
+ * (ah-t5fk). Every string here is from `tests/fixtures/reports/*.rep`.
+ */
+describe("a fleet's vessels are each their own link (ah-t5fk)", () => {
+  beforeEach(() => {
+    resetWorkspaceStore();
+    resetHexNotesStore();
+  });
+
+  const shipsIndex: GameDataIndex = {
+    entries: [
+      { id: "ship:GLLY", category: "ship", name: "Galley", tag: "GLLY" },
+      { id: "ship:GALL", category: "ship", name: "Galleon", tag: "GALL" },
+      { id: "ship:BALL", category: "ship", name: "Balloon", tag: "BALL" }
+    ] as GameDataEntry[],
+    byId: new Map(),
+    detailOf: () => null
+  };
+
+  const withStructure = (kind: string, needs: number | null = null): HexNode => ({
+    ...HEX,
+    region: aReportRegion({
+      ...HEX.region!,
+      structures: [
+        { structureId: "194", name: "Frozen Tomb", kind, description: null, needs }
+      ]
+    })
+  });
+
+  const draw = (kind: string, needs: number | null = null) =>
+    renderToStaticMarkup(
+      <RegionPanel
+        hex={withStructure(kind, needs)}
+        problems={[]}
+        client={CLIENT}
+        game={GAME}
+        turn={71}
+        gameData={shipsIndex}
+        onOpenGameData={() => {}}
+      />
+    );
+
+  const MANIFEST = "Galley, 40 Galleons, 11 Galleys, 10 Balloons";
+
+  it("renders one link per named vessel", () => {
+    const html = draw(MANIFEST);
+    expect(html).toContain('data-game-data-entry="ship:GLLY"');
+    expect(html).toContain('data-game-data-entry="ship:GALL"');
+    expect(html).toContain('data-game-data-entry="ship:BALL"');
+    expect(html).toContain(">Galley</button>");
+    expect(html).toContain(">Galleons</button>");
+    expect(html).toContain(">Galleys</button>");
+    expect(html).toContain(">Balloons</button>");
+  });
+
+  it("leaves the counts as plain text", () => {
+    const html = draw(MANIFEST);
+    expect(html).not.toContain(">40 Galleons</button>");
+    expect(html).toContain("40 ");
+    expect(html).toContain("11 ");
+    expect(html).toContain("10 ");
+  });
+
+  it("links a single-vessel structure to its ship entry", () => {
+    // `Ship [623] : Galley` was a dead building lookup before this bead.
+    const html = draw("Galley");
+    expect(html).toContain('data-game-data-entry="ship:GLLY"');
+    expect(html).not.toContain('data-game-data-entry="building:GALLEY"');
+  });
+
+  it("leaves an ordinary building exactly as it was, needs and all", () => {
+    const html = draw("Stockade", 20);
+    expect(html).toContain('data-game-data-entry="building:STOCKADE"');
+    expect(html).toContain(">Stockade</button>");
+    expect(html).toContain(", needs 20");
+    expect(html).not.toContain(">, needs 20</button>");
+  });
+
+  it("still links a vessel name the catalogue does not describe", () => {
+    const html = draw("Galley, 2 Dinghies");
+    expect(html).toContain(">Dinghies</button>");
+  });
+
+  it("keeps the structure's own name and number plain", () => {
+    const html = draw(MANIFEST);
+    expect(html).toContain("Frozen Tomb [194]");
+    expect(html).not.toContain(">Frozen Tomb</button>");
+  });
+});
