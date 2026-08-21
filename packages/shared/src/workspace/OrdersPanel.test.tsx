@@ -9,7 +9,10 @@ import { OrdersPanel } from "./OrdersPanel";
  * the buttons walk the whole turn rather than this unit's problems, so they belong to the header
  * whatever the editor below is doing.
  */
-const draw = (onWalkProblems?: (direction: 1 | -1) => void) =>
+const draw = (
+  onWalkProblems?: (direction: 1 | -1) => void,
+  walkPosition?: { at: number; of: number } | null
+) =>
   renderToStaticMarkup(
     <OrdersPanel
       unit={null}
@@ -25,6 +28,7 @@ const draw = (onWalkProblems?: (direction: 1 | -1) => void) =>
       snippets={[]}
       caretCompletions={async () => ({ position: "command", wordStart: 0, word: "", options: [] })}
       onWalkProblems={onWalkProblems}
+      walkPosition={walkPosition ?? null}
     />
   );
 
@@ -53,5 +57,27 @@ describe("OrdersPanel", () => {
       expect(tag).toBeDefined();
       expect(tag).not.toMatch(/\sdisabled/);
     }
+  });
+
+  it("counts the walk's place between the arrows, one-based", () => {
+    const markup = draw(() => {}, { at: 3, of: 7 });
+
+    expect(markup).toContain('data-position="3/7"');
+    expect(markup).toContain("3/7");
+  });
+
+  it("draws no counter at all when the walk is not standing on a problem", () => {
+    const markup = draw(() => {}, null);
+
+    expect(markup).not.toContain('data-testid="walk-position"');
+  });
+
+  it("keeps the counter in the DOM below the sm breakpoint, where it is only hidden", () => {
+    // The smoke suite's barrier is the attribute, not the pixels: rendering nothing at narrow
+    // widths would put the flake this bead removed straight back (ah-9ess).
+    const tag = /<span[^>]*data-testid="walk-position"[^>]*>/.exec(draw(() => {}, { at: 1, of: 2 }));
+
+    expect(tag?.[0]).toMatch(/hidden/);
+    expect(tag?.[0]).toMatch(/sm:inline/);
   });
 });

@@ -59,6 +59,14 @@ type OrdersPanelProps = {
    * in, so the mouse and the keyboard cannot keep two positions that drift apart.
    */
   onWalkProblems?: (direction: 1 | -1) => void;
+
+  /**
+   * Where the walk stands, one-based, or null when it is not standing on a problem at all.
+   *
+   * The walk wraps, so there is no end to bump into and no other way to know you have seen
+   * everything (ah-9ess).
+   */
+  walkPosition?: { at: number; of: number } | null;
 };
 
 function lockFor(unit: ReportUnit | null, hex: HexNode | null, block: string | null): Lock | null {
@@ -97,7 +105,8 @@ export function OrdersPanel({
   snippets,
   caretCompletions,
   editorRef,
-  onWalkProblems
+  onWalkProblems,
+  walkPosition
 }: OrdersPanelProps) {
   // Read here rather than in the editor: the panel re-renders on a settings change, which is what
   // keeps the editor's `latest` ref current without rebuilding the view.
@@ -136,7 +145,7 @@ export function OrdersPanel({
       title="Orders"
       hint={unit ? `— unit ${unit.unitId}` : undefined}
       className="min-h-0"
-      actions={<WalkProblems onWalk={onWalkProblems} />}
+      actions={<WalkProblems onWalk={onWalkProblems} position={walkPosition ?? null} />}
     >
       {lock ? (
         <LockNotice lock={lock} ownFaction={ownFactionName} />
@@ -192,7 +201,13 @@ export function OrdersPanel({
  * whether there is anything to walk. The tooltips name the keys, so the mouse route teaches the
  * keyboard one.
  */
-function WalkProblems({ onWalk }: { onWalk?: (direction: 1 | -1) => void }) {
+function WalkProblems({
+  onWalk,
+  position
+}: {
+  onWalk?: (direction: 1 | -1) => void;
+  position: { at: number; of: number } | null;
+}) {
   const style =
     "rounded px-1 text-pane-sm text-ink-dim hover:text-ink focus-visible:outline focus-visible:outline-1 focus-visible:outline-brass";
 
@@ -208,6 +223,18 @@ function WalkProblems({ onWalk }: { onWalk?: (direction: 1 | -1) => void }) {
       >
         ‹
       </button>
+      {position ? (
+        <span
+          data-testid="walk-position"
+          data-position={`${position.at}/${position.of}`}
+          // Hidden below the sm breakpoint rather than dropped: the arrows and the unit hint keep
+          // the narrow header whole, and the attribute stays readable to the smoke suite, which is
+          // what makes the barrier exist at every width (ah-9ess).
+          className="hidden rounded bg-brass/15 px-1 text-pane-sm text-brass sm:inline"
+        >
+          {position.at}/{position.of}
+        </span>
+      ) : null}
       <button
         type="button"
         data-testid="walk-problem-next"

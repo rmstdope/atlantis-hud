@@ -1,6 +1,6 @@
 import type { OrderDiagnostic } from "@atlantis/core-client";
 import { describe, expect, it } from "vitest";
-import { diagnosticTargets, stepDiagnostic } from "./diagnosticNav";
+import { diagnosticTargets, resumeWalk, stepDiagnostic, stopKeys } from "./diagnosticNav";
 
 /**
  * A little faction document, as validation saw it. Lines count from 1 in a diagnostic's terms:
@@ -89,5 +89,105 @@ describe("stepDiagnostic", () => {
 
   it("clamps a stale last position from a list that has since shrunk", () => {
     expect(stepDiagnostic(2, 5, 1)).toBe(0);
+  });
+});
+
+describe("stopKeys", () => {
+  it("gives each stop its document position, in the order diagnosticTargets returned them", () => {
+    const targets = diagnosticTargets(TEXT, [
+      problem({ lineStart: 6, lineEnd: 6, message: "second" }),
+      problem({ lineStart: 3, lineEnd: 3, message: "first" })
+    ]);
+    const keys = stopKeys(TEXT, targets);
+
+    expect(keys).toHaveLength(2);
+    // Non-decreasing, because diagnosticTargets already sorted by the same arithmetic.
+    expect(keys[0].line).toBeLessThan(keys[1].line);
+  });
+
+  it("separates two problems that share one unit by line or column", () => {
+    const targets = diagnosticTargets(TEXT, [
+      problem({ lineStart: 2, lineEnd: 2, columnStart: 0, message: "a" }),
+      problem({ lineStart: 3, lineEnd: 3, columnStart: 0, message: "b" })
+    ]);
+    const keys = stopKeys(TEXT, targets);
+
+    expect(targets[0].unitId).toBe(targets[1].unitId);
+    expect(keys[0]).not.toEqual(keys[1]);
+  });
+
+  it("puts a later block's problems strictly after an earlier block's", () => {
+    const targets = diagnosticTargets(TEXT, [
+      problem({ lineStart: 3, lineEnd: 3, message: "unit 100" }),
+      problem({ lineStart: 6, lineEnd: 6, message: "unit 200" })
+    ]);
+    const keys = stopKeys(TEXT, targets);
+
+    expect(keys[1].line).toBeGreaterThan(keys[0].line);
+  });
+});
+
+describe("resumeWalk", () => {
+  const keys = (...lines: number[]) => lines.map((line) => ({ line, column: 0 }));
+
+  it("keeps the player's place when the problem they stood on survived", () => {
+    // The bead's actual promise: remember #3 of 7, delete it, and the next step lands on what
+    // was #4 - nothing skipped and nothing repeated.
+    const before = keys(1, 2, 3, 4, 5, 6, 7);
+    const remembered = before[2];
+    const after = keys(1, 2, 4, 5, 6, 7);
+
+    const resume = resumeWalk(after, remembered);
+    expect(stepDiagnostic(after.length, resume.index, 1)).toBe(2);
+    expect(after[2].line).toBe(4);
+  });
+
+  it("stands on the surviving problem itself when it is still there", () => {
+    const list = keys(1, 2, 3);
+    expect(resumeWalk(list, { line: 2, column: 0 })).toEqual({ index: 1, standing: true });
+  });
+
+  it("prefers an exact match over the first-greater rule", () => {
+    const list = keys(1, 2, 3);
+    const resume = resumeWalk(list, { line: 1, column: 0 });
+    expect(resume).toEqual({ index: 0, standing: true });
+  });
+
+  it("stands on the last problem when that is the one remembered", () => {
+    const list = keys(1, 2, 3);
+    expect(resumeWalk(list, { line: 3, column: 0 })).toEqual({ index: 2, standing: true });
+  });
+
+  it("has no position at all when nothing was remembered", () => {
+    expect(resumeWalk(keys(1, 2), null)).toEqual({ index: null, standing: false });
+  });
+
+  it("resumes from nowhere when the next problem is the first one", () => {
+    // stepDiagnostic from null in direction 1 already gives 0, so there is nothing to sit before.
+    expect(resumeWalk(keys(5, 6), { line: 1, column: 0 })).toEqual({
+      index: null,
+      standing: false
+    });
+  });
+
+  it("wraps to the top when nothing sits after where the player stood", () => {
+    expect(resumeWalk(keys(1, 2), { line: 9, column: 0 })).toEqual({
+      index: null,
+      standing: false
+    });
+  });
+
+  it("has no position when there are no problems left", () => {
+    expect(resumeWalk([], { line: 2, column: 0 })).toEqual({ index: null, standing: false });
+  });
+
+  it("compares column when two problems share a line", () => {
+    const list = [
+      { line: 2, column: 0 },
+      { line: 2, column: 8 }
+    ];
+    const resume = resumeWalk(list, { line: 2, column: 4 });
+    expect(resume).toEqual({ index: 0, standing: false });
+    expect(stepDiagnostic(list.length, resume.index, 1)).toBe(1);
   });
 });
