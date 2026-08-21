@@ -70,13 +70,18 @@ function runLeg(leg: Leg): LegResult {
  * what must not happen is their being skipped in silence.
  */
 function reportDisk(): void {
+  // The check is cerebro's, and the floor it reads is this project's own `disk_floor_gb` in
+  // .claude/cerebro-project.conf (ah-qled.7.2). It used to be scripts/diskPreflight.ts, reached
+  // through this package's own tsx - which meant a consumer of the fleet without a JavaScript
+  // toolchain had an agent instruction it could not run.
   const here = dirname(fileURLToPath(import.meta.url));
-  const run = spawnSync(resolve(here, "..", "node_modules", ".bin", "tsx"), [resolve(here, "diskPreflight.ts")], {
+  const run = spawnSync(resolve(here, "..", ".claude", "cerebro", "scripts", "disk-preflight"), [], {
     encoding: "utf8"
   });
 
   // Said out loud for the same reason runLeg says it: a preflight that could not start (ENOENT on
-  // tsx) or was killed leaves empty stdout, which would otherwise be reported as the preflight
+  // the script, in a clone made without the submodule) or was killed leaves empty stdout, which
+  // would otherwise be reported as the preflight
   // having nothing to say - hiding the real failure behind a sentence about the disk.
   if (run.error) {
     process.stderr.write(`runGate: the disk preflight could not start: ${run.error.message}\n`);
