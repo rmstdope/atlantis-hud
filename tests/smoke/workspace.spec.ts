@@ -8,6 +8,7 @@ import {
   expectOrders,
   expectOrdersNot,
   fillOrders,
+  loadReport,
   ordersInput,
   ordersText,
   visibleStrip,
@@ -108,20 +109,6 @@ async function selectHex(page: Page, regionId: string) {
   await hex.press("Enter");
 }
 
-async function loadReport(page: Page) {
-  await clearGames(page);
-  await expect(page.getByTestId("game-gate")).toBeVisible();
-  await createGame(page, "Smoke game");
-  await expect(page.getByTestId("app-header")).toBeVisible();
-
-  await page.setInputFiles('input[type="file"]', {
-    name: "turn-71.rep",
-    mimeType: "text/plain",
-    buffer: Buffer.from(REPORT, "utf8")
-  });
-
-  await expect(page.getByTestId("import-status")).toContainText("11 regions");
-}
 
 test("loads a report and shows the turn it describes", async ({ page }) => {
   await loadReport(page);

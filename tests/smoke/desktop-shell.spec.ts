@@ -1,6 +1,10 @@
 import { expect, test } from "@playwright/test";
 import { readReport } from "@atlantis/fixtures";
-import { clearGames, createGame } from "./gameSetup";
+import {
+  clearGames,
+  createGame,
+  importReport
+} from "./gameSetup";
 
 /**
  * The `desktop-shell` project's own tests (ah-9lv).
@@ -73,17 +77,6 @@ async function desktopCalls(page: import("@playwright/test").Page): Promise<Desk
   );
 }
 
-async function importReport(
-  page: import("@playwright/test").Page,
-  name: string,
-  report: string
-) {
-  await page.setInputFiles('input[type="file"]', {
-    name,
-    mimeType: "text/plain",
-    buffer: Buffer.from(report, "utf8")
-  });
-}
 
 test("an orders export goes through the save dialog, with no browser download", async ({ page }) => {
   await clearGames(page);

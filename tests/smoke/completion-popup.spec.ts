@@ -1,6 +1,12 @@
 import { expect, test, type Page } from "@playwright/test";
 import { readReport } from "@atlantis/fixtures";
-import { clearGames, createGame, fillOrders, ordersInput } from "./gameSetup";
+import {
+  clearGames,
+  createGame,
+  fillOrders,
+  loadReport,
+  ordersInput
+} from "./gameSetup";
 
 /**
  * Where the completion popup is allowed to be (ah-e4v).
@@ -37,15 +43,9 @@ async function selectUnit(page: Page, unitId: string) {
   await box.clear();
 }
 
-async function loadReport(page: Page) {
-  await clearGames(page);
-  await createGame(page, "Completion popup smoke");
-  await page.setInputFiles('input[type="file"]', {
-    name: "turn-71.rep",
-    mimeType: "text/plain",
-    buffer: Buffer.from(REPORT, "utf8")
-  });
-  await expect(page.getByTestId("import-status")).toContainText("11 regions");
+/** A loaded game with OWN_UNIT selected and its orders on screen - where every walk here starts. */
+async function openEditor(page: Page) {
+  await loadReport(page, "Completion popup smoke");
   await selectHex(page, "1:7,53");
   await selectUnit(page, OWN_UNIT);
 }
@@ -72,7 +72,7 @@ async function openSkillCompletions(page: Page) {
 }
 
 test("the completion popup is not clipped by the orders editor", async ({ page }) => {
-  await loadReport(page);
+  await openEditor(page);
   const popup = await openSkillCompletions(page);
 
   // The `overflow-hidden` container, not `ordersInput`'s inner `.cm-content`: the container is
@@ -108,7 +108,7 @@ test("the completion popup is not clipped by the orders editor", async ({ page }
 });
 
 test("the completion popup stays inside the window", async ({ page }) => {
-  await loadReport(page);
+  await openEditor(page);
   const popup = await openSkillCompletions(page);
 
   const popupBox = await popup.boundingBox();

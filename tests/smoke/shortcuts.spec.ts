@@ -5,6 +5,7 @@ import {
   createGame,
   expectOrders,
   fillOrders,
+  loadReport,
   ordersInput
 } from "./gameSetup";
 
@@ -39,16 +40,6 @@ async function selectUnit(page: Page, unitId: string) {
   await box.clear();
 }
 
-async function loadReport(page: Page) {
-  await clearGames(page);
-  await createGame(page, "Shortcut smoke");
-  await page.setInputFiles('input[type="file"]', {
-    name: "turn-71.rep",
-    mimeType: "text/plain",
-    buffer: Buffer.from(REPORT, "utf8")
-  });
-  await expect(page.getByTestId("import-status")).toContainText("11 regions");
-}
 
 test("the palette opens on Mod+K, finds a unit, and Enter goes to it", async ({ page }) => {
   await loadReport(page);

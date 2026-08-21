@@ -1,7 +1,11 @@
 import { expect, test, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import { readReport } from "@atlantis/fixtures";
-import { clearGames, createGame } from "./gameSetup";
+import {
+  clearGames,
+  createGame,
+  importReport
+} from "./gameSetup";
 
 /**
  * Exporting part of the map as a file an ally can read.
@@ -14,14 +18,6 @@ import { clearGames, createGame } from "./gameSetup";
 
 const TURN_71 = readReport("g7f95t71");
 
-async function importReport(page: Page, report: string) {
-  await page.setInputFiles('input[type="file"]', {
-    name: "turn-71.rep",
-    mimeType: "text/plain",
-    buffer: Buffer.from(report, "utf8")
-  });
-  await expect(page.getByTestId("import-status")).toContainText("region");
-}
 
 /**
  * Drags an export rectangle across the open map.
@@ -68,7 +64,8 @@ async function exportAndRead(page: Page, testInfo: { outputPath: (name: string) 
 test("exports the whole known map when nothing was selected", async ({ page }, testInfo) => {
   await clearGames(page);
   await createGame(page, "Export game");
-  await importReport(page, TURN_71);
+  await importReport(page, "turn-71.rep", TURN_71);
+  await expect(page.getByTestId("import-status")).toContainText("region");
 
   await openMapExport(page);
   await expect(page.getByTestId("map-export-panel")).toBeVisible();
@@ -93,7 +90,8 @@ test("exports the whole known map when nothing was selected", async ({ page }, t
 test("exports only the area a shift-drag selected", async ({ page }, testInfo) => {
   await clearGames(page);
   await createGame(page, "Export game");
-  await importReport(page, TURN_71);
+  await importReport(page, "turn-71.rep", TURN_71);
+  await expect(page.getByTestId("import-status")).toContainText("region");
 
   await dragRectangle(page);
   await expect(page.getByTestId("map-export-panel")).toBeVisible();
@@ -118,7 +116,8 @@ test("exports only the area a shift-drag selected", async ({ page }, testInfo) =
 test("leaves out the content the player unticks", async ({ page }, testInfo) => {
   await clearGames(page);
   await createGame(page, "Export game");
-  await importReport(page, TURN_71);
+  await importReport(page, "turn-71.rep", TURN_71);
+  await expect(page.getByTestId("import-status")).toContainText("region");
 
   await openMapExport(page);
   await page.getByTestId("map-export-units").uncheck();

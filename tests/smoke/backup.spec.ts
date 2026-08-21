@@ -1,18 +1,17 @@
 import { expect, test, type Page } from "@playwright/test";
 import { readReport } from "@atlantis/fixtures";
-import { clearGames, createGame, expectOrders, fillOrders } from "./gameSetup";
+import {
+  clearGames,
+  createGame,
+  expectOrders,
+  fillOrders,
+  importReport
+} from "./gameSetup";
 
 const TURN_70 = readReport("g7f95t70");
 const TURN_71 = readReport("g7f95t71");
 const OWN_UNIT = "18642";
 
-async function importReport(page: Page, name: string, report: string) {
-  await page.setInputFiles('input[type="file"]', {
-    name,
-    mimeType: "text/plain",
-    buffer: Buffer.from(report, "utf8")
-  });
-}
 
 async function selectHex(page: Page, regionId: string) {
   const hex = page.getByRole("button", { name: `hex ${regionId}` });

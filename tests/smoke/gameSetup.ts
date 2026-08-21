@@ -1,4 +1,5 @@
 import { expect, type Page } from "@playwright/test";
+import { readReport } from "@atlantis/fixtures";
 
 /**
  * Getting a walk to the point where there is a game to work in.
@@ -70,6 +71,44 @@ export async function createGame(page: Page, name: string) {
   await page.getByTestId("game-name").fill(name);
   await page.getByRole("button", { name: "Create game" }).click();
   await expect(page.getByTestId("game-indicator")).toContainText(name);
+}
+
+/**
+ * Hands a report to the file input, as a player dropping one in would.
+ *
+ * Says nothing about what the import produced: three specs carried a copy of this, and only
+ * `map-export.spec.ts` also asserted on the import status - that assertion stays at its call
+ * sites, where it is about that walk rather than about handing over a file.
+ */
+export async function importReport(page: Page, name: string, report: string) {
+  await page.setInputFiles('input[type="file"]', {
+    name,
+    mimeType: "text/plain",
+    buffer: Buffer.from(report, "utf8")
+  });
+}
+
+/** The turn every walk that just needs "a game with a map in it" loads. */
+const TURN_71 = readReport("g7f95t71");
+
+/**
+ * A fresh game with the standard turn loaded: the start of most walks in this suite.
+ *
+ * Four specs carried a copy of this. They differed in the game's name - which nothing asserts on,
+ * so one name serves all of them - and in how carefully they waited: only `workspace.spec.ts`
+ * checked that the gate appeared before creating and that the header appeared after. That is the
+ * version kept, because it is the correct one: both hold in every walk, since every walk starts
+ * from `clearGames`, and both are waits rather than claims about the walk under test.
+ */
+export async function loadReport(page: Page, gameName = "Smoke game", report = TURN_71) {
+  await clearGames(page);
+  await expect(page.getByTestId("game-gate")).toBeVisible();
+  await createGame(page, gameName);
+  await expect(page.getByTestId("app-header")).toBeVisible();
+
+  await importReport(page, "turn-71.rep", report);
+
+  await expect(page.getByTestId("import-status")).toContainText("11 regions");
 }
 
 /**
