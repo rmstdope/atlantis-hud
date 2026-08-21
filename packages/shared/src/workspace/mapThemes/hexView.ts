@@ -272,7 +272,9 @@ function noStructures(): StructureTally {
  * The label is NOT a vessel: that example would otherwise read 15 cloudships where the report says
  * 14. A kind with no inventory (`Galley`) is a fleet of exactly one.
  *
- * Anything unparsable counts as 1 rather than 0 - a ship that is on the map must never tally as
+ * Only the leading integer of each segment is read, and a segment without one contributes nothing:
+ * the counts in a real report are always written as numerals. A kind whose inventory yields no
+ * number at all still counts 1 rather than 0 - a ship that is on the map must never tally as
  * nothing, and under-counting a strange kind is far better than losing it.
  *
  * Read from the RAW kind: `classify` strips the inventory to match its bare-word sets, and the
