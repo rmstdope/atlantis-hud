@@ -258,7 +258,7 @@ export function RegionPanel({
 /**
  * The header chip that hides the Problems section without losing track of what it hides.
  *
- * Modelled on `LayerChips`: a real checkbox under styled `label` text, lit while the section is
+ * Modelled on `MapViewControls`: a real checkbox under styled `label` text, lit while the section is
  * shown. Absent entirely when there is nothing to hide - the caller only renders this when
  * `problems.length > 0`.
  */

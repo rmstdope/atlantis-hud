@@ -1832,6 +1832,65 @@ test("a folded panel is still folded after a reload", async ({ page }) => {
   await expect(page.getByTestId("import-status")).toContainText("restored turn 71");
 });
 
+test("every control that acts on the map view sits in one strip", async ({ page }) => {
+  await loadReport(page);
+
+  // ah-ljil: the zoom buttons moved up from the map's own top-right corner into the strip that
+  // holds the Badges chip, so the two halves of one job are no longer in two corners.
+  const chips = page.getByTestId("layer-chips");
+  await expect(chips.getByRole("button", { name: "Badges" })).toBeVisible();
+  await expect(chips.getByRole("button", { name: "Zoom in" })).toBeVisible();
+  await expect(chips.getByRole("button", { name: "Zoom out" })).toBeVisible();
+  await expect(chips.getByRole("button", { name: "Zoom to fit" })).toBeVisible();
+
+  // Exactly one element marked as covering the top edge, which is what zoom-to-fit measures: two
+  // would ask `useOverlayInsets` to union a pair on one edge, and none would let the fit frame the
+  // world under the controls.
+  await expect(page.locator('[data-map-overlay="top"]')).toHaveCount(1);
+
+  // The strip lives inside the top forty-eight pixels of the map, which is the only band the
+  // inspector panels' full-bleed overlay leaves clickable.
+  const box = await chips.boundingBox();
+  const map = await page.getByTestId("map-canvas").boundingBox();
+  expect(box && map && box.y + box.height - map.y).toBeLessThanOrEqual(48);
+});
+
+/**
+ * ah-v09e, both halves. The strip carries a `backdrop-blur`, which opens a stacking context, so an
+ * open menu's own z-order can never lift it over the panel column on its own: the strip is lifted
+ * instead, and only while a menu is open. Lifted always, it swallows clicks meant for whatever sits
+ * under it. ah-ljil moved the zoom buttons into this strip, and this is what must have survived.
+ */
+test("the badge menu's lower rows take clicks, and give the map back when it closes", async ({
+  page
+}) => {
+  await loadReport(page);
+
+  const trigger = page.getByTestId("layer-chips").getByRole("button", { name: "Badges" });
+  await trigger.click();
+  const menu = page.getByTestId("badge-menu");
+  const lowest = menu.getByRole("checkbox").last();
+  const wasChecked = await lowest.isChecked();
+  await lowest.click();
+  expect(await lowest.isChecked()).toBe(!wasChecked);
+
+  // Closed, the strip must stop claiming that area: whatever the menu covered takes clicks again.
+  const where = await lowest.boundingBox();
+  // Asserted rather than defaulted: a null box would otherwise send `elementFromPoint` to the
+  // window's top-left corner, where it finds no strip and the test passes having checked nothing.
+  expect(where).not.toBeNull();
+  await page.keyboard.press("Escape");
+  await expect(menu).toHaveCount(0);
+  const under = await page.evaluate(
+    (point) =>
+      document
+        .elementFromPoint(point.x, point.y)
+        ?.closest("[data-testid='layer-chips']") === null,
+    { x: where!.x + 4, y: where!.y + 4 }
+  );
+  expect(under).toBe(true);
+});
+
 test("the layer toggles live in settings, not over the map", async ({ page }) => {
   await loadReport(page);
 

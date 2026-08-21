@@ -114,8 +114,8 @@ import { ViewerFactionPrompt, type ViewerFactionOption } from "./ViewerFactionPr
 import { GamePicker } from "./GamePicker";
 import { FactionPanel } from "./FactionPanel";
 import { MergedFactionsPanel } from "./MergedFactionsPanel";
-import { LayerChips } from "./LayerChips";
-import { MapCanvas } from "./MapCanvas";
+import { MapViewControls } from "./MapViewControls";
+import { MapCanvas, type MapCanvasHandle } from "./MapCanvas";
 import { MapExportDialog } from "./MapExportDialog";
 import { SendOrdersDialog } from "./SendOrdersDialog";
 import type { SendOrdersPhase } from "./sendOrdersView";
@@ -409,6 +409,9 @@ export function AppShell({
     ReturnType<typeof diagnosticTargets>[number] | null
   >(null);
   const ordersEditor = useRef<OrdersEditorHandle | null>(null);
+  // The map's two view actions, driven from the overlay strip's zoom buttons (ah-ljil). They close
+  // over the map's own view state, so the actions cross the boundary rather than the state.
+  const mapCanvas = useRef<MapCanvasHandle | null>(null);
   const ordersSlotRef = useRef<HTMLDivElement | null>(null);
   const unitsSlotRef = useRef<HTMLDivElement | null>(null);
   const leftRailRef = useRef<HTMLDivElement | null>(null);
@@ -3071,6 +3074,7 @@ export function AppShell({
 
       <div className="relative min-h-0 flex-1">
         <MapCanvas
+          ref={mapCanvas}
           gameId={game?.manifest.metadata.gameId ?? null}
           model={model}
           notes={hexNotes}
@@ -3112,7 +3116,8 @@ export function AppShell({
           stacking order.
 
           `z-30` on top of that, but only while one of the chips' menus is open, so the menu clears
-          the panel column as well. That column is a later sibling at `z: auto`, and `LayerChips`
+          the panel column as well. That column is a later sibling at `z: auto`, and
+          `MapViewControls`
           carries a `backdrop-blur` - a backdrop filter opens a stacking context, so an open menu's
           own `z-20` orders it only within this strip and can never lift it over the panels
           (ah-v09e). Nothing overlapped until the panes grew, at which point the Badges menu's
@@ -3123,9 +3128,17 @@ export function AppShell({
           under it - twelve smoke tests' worth, from the orders editor to the region panel. A menu
           is the only thing that needs to be above the panels, and only while it is open.
         */}
-        <div className="pointer-events-none absolute inset-x-0 top-2.5 z-20 flex justify-center has-[[aria-expanded='true']]:z-30">
+        {/*
+          Right-aligned rather than centred (ah-ljil): the zoom buttons moved up from the map's own
+          top-right corner into this strip, so the cluster sits where the hand already looks for
+          them and every control that acts on the map view is in one place.
+        */}
+        <div className="pointer-events-none absolute inset-x-0 top-2.5 z-20 flex justify-end pr-2.5 has-[[aria-expanded='true']]:z-30">
           <div data-map-overlay="top">
-            <LayerChips />
+            <MapViewControls
+              onZoomBy={(steps) => mapCanvas.current?.zoomBy(steps)}
+              onFrameAll={() => mapCanvas.current?.frameAll()}
+            />
           </div>
         </div>
 
