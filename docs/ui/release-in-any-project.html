@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cutting a release in a project that is not this one</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --edge:#26303d; --ink:#dbe3ec; --ink-soft:#a3b0c0;
+    --ink-dim:#8a97a8; --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1340px; margin:0 auto; }
+  h1 { font-size:26px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:98ch; margin-top:10px; font-size:14px; }
+  header p + p { margin-top:8px; }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:36px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:98ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; }
+  .card h2 { font-size:15.5px; margin-bottom:5px; }
+  .card h2 em { color:var(--brass); font-style:normal; font-size:11.5px; letter-spacing:1.5px; margin-right:8px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; margin-bottom:12px; min-height:4.8em; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:12px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212  "; color:var(--danger); }
+  .cards3 { display:grid; grid-template-columns:repeat(3,1fr); gap:18px; align-items:start; }
+  .cards2 { display:grid; grid-template-columns:repeat(2,1fr); gap:18px; align-items:start; }
+  pre.term { background:#0b0f14; border:1px solid var(--edge); border-radius:6px; padding:11px 12px;
+             font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11.5px; line-height:1.75;
+             color:#c7d2de; white-space:pre-wrap; overflow-x:auto; margin:0; }
+  .term .p { color:var(--ok); } .term .d { color:var(--ink-dim); } .term .n { color:var(--danger); }
+  .term .w { color:var(--brass-bright); } .term .g { color:var(--ok); } .term .b { color:var(--select); }
+  .conf { background:#0b0f14; border:1px solid var(--edge); border-radius:6px; padding:9px 11px;
+          font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11px; color:#c7d2de; line-height:1.7; margin-bottom:9px; }
+  .conf b { color:var(--brass-bright); font-weight:normal; }
+  .conf .c { color:var(--ink-dim); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Cutting a release — <span>in a project that is not this one</span></h1>
+  <p>Cerebro's release procedure (<code>agents/orchestrator.md</code>) is shared by every project
+  that uses this harness, and three parts of it are about <b>Atlantis HUD specifically</b>:
+  it runs <code>pnpm run release &lt;bump&gt;</code>; it describes the gate as
+  <i>"lint, typecheck, unit tests, rustfmt, clippy, rust tests"</i>; and after the tag it watches a
+  GitHub Actions workflow literally named <code>Release</code> that <i>"builds the macOS
+  bundle"</i>.</p>
+  <p><code>ah-qled.1</code> already built the mechanism and the key is already declared —
+  <code>.claude/cerebro-project.conf</code> carries <code>release_cmd&nbsp;&nbsp;pnpm run
+  release</code> today. So the first of the three is settled and is not asked about below.</p>
+  <div class="conf">
+    <span class="c"># .claude/cerebro-project.conf, already on main</span><br>
+    project_name   <b>Atlantis HUD</b><br>
+    default_branch <b>main</b><br>
+    install        <b>pnpm install --frozen-lockfile</b><br>
+    release_cmd    <b>pnpm run release</b>
+  </div>
+  <p>What is left is the part that is not a command: <b>"there is a build to watch after tagging" is
+  an assumption, not a fact.</b> A consumer with no release workflow should not be told to watch one.</p>
+</header>
+
+<main>
+
+<h3 class="sec">1 · How Cerebro knows whether there is a build to watch</h3>
+
+<div class="cards3">
+  <div class="card">
+    <h2><em>A</em>A declared workflow name</h2>
+    <div class="concept">A new <code>release_watch</code> key names the workflow. Absent means there
+    is nothing to watch, and Cerebro says the release is done at the tag.</div>
+    <div class="conf">release_cmd    <b>pnpm run release</b><br>release_watch  <b>Release</b></div>
+    <pre class="term"><span class="d">this project:</span>
+<span class="g">v0.11.0 tagged.</span> Watching the
+<span class="w">Release</span> build ...
+<span class="g">done - the macOS bundle is up.</span>
+
+<span class="d">a consumer with no workflow:</span>
+<span class="g">v2.3.0 tagged and pushed.</span>
+<span class="d">Nothing further to watch.</span></pre>
+    <ul class="notes">
+      <li>Explicit: the consumer says whether there is a build and what it is called</li>
+      <li>Same pattern as every other project fact, in the file that already exists</li>
+      <li class="con">One more key to declare, and a consumer who forgets it is told nothing is watched when something is</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2><em>B</em>Look and see</h2>
+    <div class="concept">After the tag push, ask GitHub what started. If a run appeared, watch it,
+    whatever it is called; if nothing did within a short window, say so and stop.</div>
+    <pre class="term"><span class="p">$</span> gh run list --limit 1 \
+    --json databaseId,name,createdAt
+<span class="d">started since the tag?</span>
+<span class="g">yes - "Publish" #4821</span>
+watching ...
+
+<span class="d">a consumer with no workflow:</span>
+<span class="d">nothing started in 60s -</span>
+<span class="g">v2.3.0 tagged and pushed.</span></pre>
+    <ul class="notes">
+      <li>Nothing to declare, and it is right on the first release rather than the second</li>
+      <li>Works for a workflow whose name nobody remembered to update</li>
+      <li class="con">A slow-starting workflow looks like no workflow — a timing guess in a release</li>
+      <li class="con">Could latch onto an unrelated run that happened to start just then</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2><em>C</em>Ask the navigator</h2>
+    <div class="concept">After the tag, Cerebro says the tag is pushed and asks whether to watch a
+    build — offering what it can see in <code>gh run list</code>.</div>
+    <pre class="term"><span class="g">v0.11.0 tagged and pushed.</span>
+
+Two runs started just now:
+  <span class="w">1</span> Release  #4821
+  <span class="w">2</span> Docs     #4822
+Watch one, or stop here?</pre>
+    <ul class="notes">
+      <li>Never wrong, because it never guesses</li>
+      <li class="con">A question in the middle of a release you already asked for</li>
+      <li class="con">Cerebro is meant to relay a release, not conduct an interview during one</li>
+    </ul>
+  </div>
+</div>
+
+<h3 class="sec">2 · The gate description, and the release script's own flags</h3>
+<p>The prose says the gate is <i>"lint, typecheck, unit tests, rustfmt, clippy, rust tests"</i> — half
+of which is Rust, which most consumers will not have. It also names
+<code>--allow-any-branch</code> and <code>--dry-run</code>, which are flags of <b>this</b> project's
+release script and may not exist in another's.</p>
+<div class="cards2">
+  <div class="card">
+    <h2><em>i</em>Say what it is for, not what it contains</h2>
+    <div class="concept">"runs the project's full gate before it touches anything, so expect it to
+    take several minutes." The flags move to a sentence saying a project's release command
+    <i>may</i> offer a rehearsal, and to ask rather than assume.</div>
+    <pre class="term"><span class="d">Cerebro, in any project:</span>
+Running <span class="w">pnpm run release minor</span>.
+It runs the project's full gate
+first, so this takes a few minutes.
+<span class="d">
+(a rehearsal, if the command offers
+ one, only when you ask for it)</span></pre>
+    <ul class="notes">
+      <li>True in every project, and still tells the navigator why it is slow</li>
+      <li>Nothing to keep in step with a gate that changes</li>
+      <li class="con">Loses the detail that made a gate failure easy to place</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h2><em>ii</em>Keep the detail, as this project's example</h2>
+    <div class="concept">The generic sentence, followed by "in Atlantis HUD that is lint, typecheck,
+    unit tests, rustfmt, clippy and rust tests" marked plainly as an example.</div>
+    <pre class="term"><span class="d">Cerebro, in any project:</span>
+Running <span class="w">pnpm run release minor</span>.
+It runs the project's full gate
+first — here that is lint, typecheck,
+unit tests, rustfmt, clippy and
+rust tests — so this takes a few
+minutes.</pre>
+    <ul class="notes">
+      <li>Keeps the concreteness that makes a failure easy to place</li>
+      <li class="con">A named example of one project inside a shared file is the thing this epic is removing</li>
+      <li class="con">Goes stale the day this project's gate changes, silently</li>
+    </ul>
+  </div>
+</div>
+
+</main>
+
+<footer style="margin-top:34px; color:var(--ink-dim); font-size:12.5px;">
+  Mockup for bead <code>ah-qled.7.3</code>. Terminal panes are illustrative; the conf file and the
+  three project-specific passages are read from the repository.
+</footer>
+</body>
+</html>
