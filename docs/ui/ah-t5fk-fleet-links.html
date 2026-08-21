@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Linking a fleet's manifest (bead ah-t5fk)</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733; --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --ok:#4fb783; --danger:#d97070; --select:#4a9fd8; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1150px; margin-left:auto; margin-right:auto; }
+  h1 { font-size:25px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:96ch; margin-top:10px; font-size:14px; }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:0.9em; }
+  h2.sec { margin-top:32px; font-size:18px; color:var(--brass); } h2.sec small { color:var(--ink-dim); font-size:13px; margin-left:10px; }
+  .banner { border:1px solid var(--edge); border-left:3px solid var(--brass); background:var(--panel); padding:14px 16px; border-radius:6px; margin-top:16px; color:var(--ink-soft); font-size:13.5px; } .banner b { color:var(--ink); }
+  .banner.bad { border-left-color:var(--danger); } .banner.ok { border-left-color:var(--ok); }
+  .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(310px,1fr)); gap:20px; margin-top:16px; align-items:start; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; display:flex; flex-direction:column; gap:12px; }
+  .card h3 { font-size:16px; } .card h3 em { color:var(--brass); font-style:normal; font-size:11px; letter-spacing:1.6px; margin-right:8px; }
+  .notes { list-style:none; font-size:12px; color:var(--ink-soft); display:grid; gap:4px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; } .notes li.con::before { content:"\2212  "; color:var(--danger); }
+  .pane { font-family:'Helvetica Neue',Arial,sans-serif; font-size:12px; background:var(--raised); border:1px solid var(--edge); border-radius:5px; padding:9px 11px; color:var(--ink-soft); }
+  .pane .hd { color:var(--brass); font-size:10px; letter-spacing:.09em; text-transform:uppercase; margin-bottom:6px; }
+  a.gl { color:var(--brass); text-decoration:none; border-bottom:1px dotted var(--brass); cursor:pointer; }
+  .dead { color:var(--danger); border-bottom:1px dotted var(--danger); }
+  table { border-collapse:collapse; font-size:12.5px; width:100%; margin-top:14px; } th,td { text-align:left; padding:5px 8px; border-bottom:1px solid var(--edge-soft); } th { color:var(--brass); font-weight:normal; font-size:11px; letter-spacing:1px; text-transform:uppercase; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Linking a fleet's manifest &mdash; <span>proposals</span> (bead ah-t5fk)</h1>
+  <p>Your words: <i>&ldquo;When clicking on a fleet, the game data dialog comes up, but the search shown there is for the fleet summary, e.g. &lsquo;Galley, 40 Galleons, 11 Galleys, 10 Balloons&rsquo;. There should be different links for Galleons, Galleys and Balloons.&rdquo;</i></p>
+</header>
+<main>
+
+  <h2 class="sec">&sect;1 &nbsp;Today</h2>
+  <div class="pane"><div class="hd">Structures</div>
+    Frozen Tomb [194] : <span class="dead">Galley, 40 Galleons, 11 Galleys, 10 Balloons</span>
+  </div>
+  <div class="banner bad">The whole manifest is one link, asking the dictionary for a building called <code>Galley, 40 Galleons, 11 Galleys, 10 Balloons</code>. <b>Four real entries were named and you get a dead end.</b> Two things are wrong: the span, and the lookup &mdash; <code>buildingEntryId()</code> searches <i>buildings</i>, but every vessel is a <b>ship</b> entry.</div>
+  <div class="banner ok"><b>All nine vessel types are in the catalogue, singular, with tags:</b> Longship LONG, Raft RAFT, Cog COG, Galleon GALL, Galley GLLY, Corsair CORS, Balloon BALL, Airship AIRS, Cloudship CLOU. So every name in a manifest has somewhere real to go.</div>
+
+  <h2 class="sec">&sect;2 &nbsp;What gets linked</h2>
+  <div class="cards">
+    <div class="card">
+      <h3><em>A</em> The vessel names only</h3>
+      <div class="pane">Frozen Tomb [194] : <a class="gl">Galley</a>, 40&nbsp;<a class="gl">Galleons</a>, 11&nbsp;<a class="gl">Galleys</a>, 10&nbsp;<a class="gl">Balloons</a></div>
+      <ul class="notes">
+        <li><b>The link text is the thing the link opens.</b> Clicking <i>Galleons</i> opens Galleon; the count is yours, not the catalogue's.</li>
+        <li>Counts stay plain, so the numbers still read as a tally rather than as navigation.</li>
+        <li class="con">Small targets &mdash; four short words in a row, each its own link.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3><em>B</em> Count and name together</h3>
+      <div class="pane">Frozen Tomb [194] : <a class="gl">Galley</a>, <a class="gl">40 Galleons</a>, <a class="gl">11 Galleys</a>, <a class="gl">10 Balloons</a></div>
+      <ul class="notes">
+        <li>Bigger click targets, and each segment is one obvious unit.</li>
+        <li class="con"><b>The link text no longer matches what opens.</b> Clicking <i>40 Galleons</i> opens a page about one Galleon, which reads as a promise not kept.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2 class="sec">&sect;3 &nbsp;The leading word <small><code>vesselCount</code> drops it with <code>.slice(1)</code>, on purpose</small></h2>
+  <div class="banner">In <code>Galley, 40 Galleons, 11 Galleys, 10 Balloons</code> the first segment is the structure's <b>own vessel kind</b> &mdash; what the fleet is displayed as &mdash; not a counted entry. ah-3pr9 established that it is a label rather than a vessel: <code>Cloudship, 14 Cloudships&hellip;</code> totals <b>14</b>, not 15.</div>
+  <div class="cards">
+    <div class="card">
+      <h3><em>C</em> Link it, like any other vessel name</h3>
+      <div class="pane">Frozen Tomb [194] : <a class="gl">Galley</a>, 40&nbsp;<a class="gl">Galleons</a>, &hellip;</div>
+      <ul class="notes"><li>It <i>is</i> a vessel name, and it has a real catalogue entry.</li><li>Consistent: every vessel word in the line behaves the same way.</li><li class="con">It is not part of the tally, so linking it may imply it is one more Galley.</li></ul>
+    </div>
+    <div class="card">
+      <h3><em>D</em> Leave it plain</h3>
+      <div class="pane">Frozen Tomb [194] : Galley, 40&nbsp;<a class="gl">Galleons</a>, 11&nbsp;<a class="gl">Galleys</a>, 10&nbsp;<a class="gl">Balloons</a></div>
+      <ul class="notes"><li>Only the manifest is navigable; the label reads as a heading.</li><li class="con">The one word a player is most likely to click &mdash; the fleet's own kind &mdash; is the one that does nothing.</li><li class="con">A single-vessel structure (<code>Ship [623] : Galley</code>) would then have <b>no</b> link at all, losing behaviour it has today.</li></ul>
+    </div>
+  </div>
+
+  <h2 class="sec">&sect;4 &nbsp;Plural to singular <small>the report writes <code>Galleons</code>; the entry is <code>Galleon</code></small></h2>
+  <table>
+    <tr><th>In the report</th><th>Catalogue entry</th><th>Rule needed</th></tr>
+    <tr><td>40 Galleons</td><td>Galleon GALL</td><td>drop the S</td></tr>
+    <tr><td>11 Galleys</td><td>Galley GLLY</td><td>drop the S</td></tr>
+    <tr><td>10 Balloons</td><td>Balloon BALL</td><td>drop the S</td></tr>
+    <tr><td>6 Airships</td><td>Airship AIRS</td><td>drop the S</td></tr>
+    <tr><td>14 Cloudships</td><td>Cloudship CLOU</td><td>drop the S</td></tr>
+    <tr><td>8 Corsairs</td><td>Corsair CORS</td><td>drop the S</td></tr>
+  </table>
+  <div class="banner">A plain trailing-S strip covers every vessel in the fixtures &mdash; but the repository already has a better-tested rule for exactly this: <code>isKeyword</code> (<code>orderCase.ts:33</code>) tries the word <b>as written first</b>, then without <code>ES</code>, then without <code>S</code>, mirroring the Rust core's <code>item_spellings</code>. <b>I intend to reuse that</b> rather than write a second rule, so a vessel whose plural is irregular is looked up as written before anything is stripped.</div>
+
+  <h2 class="sec">&sect;5 &nbsp;A vessel the catalogue does not describe</h2>
+  <div class="banner">ah-5jkt.2 already decided this for structure kinds: an id the index does not hold <b>still opens the dialog and says the entry is absent</b> &mdash; <i>&ldquo;saying so is the whole point of landing there&rdquo;</i> (<code>gameDataDialogState.ts:66-69</code>). I propose the same here rather than silently dropping the link, so a manifest never has some words navigable and others not for reasons the player cannot see. Say if you would rather an unknown vessel stayed plain text.</div>
+
+</main>
+</body>
+</html>
