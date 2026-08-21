@@ -471,11 +471,40 @@ jobs:
 
       # The -dev packages are what `tauri build` links against; webkit2gtk-driver is the
       # WebKitWebDriver binary tauri-driver proxies to; xvfb gives the app a display.
+      #
+      # This is the last apt step in the workflow, and so the last place the stall class ah-3c80
+      # measured can still land: `apt-get update && install` sitting in_progress for 25-55 minutes,
+      # four times in five days. `smoke` and `pwa` escaped it by moving into the Playwright image
+      # (ah-f9q9); that image carries no Tauri or WebDriver packages, so it is not available here.
+      # The job's `timeout-minutes: 30` above does not help - a stalled apt burns most of half an
+      # hour and the suite it was meant to protect never runs at all.
+      #
+      # So the step bounds itself instead. Each attempt gets five minutes: the step has taken
+      # 20-45 seconds over ten real runs (measured 2026-08-21), so five is roughly seven times the
+      # worst working case - loose enough that a slow-but-working mirror is never killed, tight
+      # enough that a stall is a fast failure. One retry covers the common case of a single bad
+      # mirror. `timeout-minutes` on the step is the outer belt for the two attempts and the sleep.
+      #
+      # No apt cache: every option needs a third-party action, and this is the one job that builds
+      # a release binary. If the stall survives this bounding, the next step is a prebuilt image
+      # carrying these six packages - which removes the step entirely, and costs a registry, a
+      # publishing pipeline and a rebuild whenever the list changes. That is the known answer for
+      # a third sighting; it is deliberately not taken here (ah-j6j7).
       - name: Install system dependencies
+        timeout-minutes: 11
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libwebkit2gtk-4.1-dev libgtk-3-dev \
-            libssl-dev libxdo-dev webkit2gtk-driver xvfb
+          # `timeout` runs under sudo and apt runs under it, rather than the other way round: a
+          # timeout that has to kill a privileged grandchild cannot, and the stall would survive.
+          for attempt in 1 2; do
+            if sudo timeout 300 bash -c 'apt-get update && apt-get install -y --no-install-recommends \
+              libwebkit2gtk-4.1-dev libgtk-3-dev libssl-dev libxdo-dev webkit2gtk-driver xvfb'; then
+              exit 0
+            fi
+            echo "::warning::apt install attempt $attempt failed or timed out"
+            if [ "$attempt" = 1 ]; then sleep 10; fi
+          done
+          echo "::error::apt install failed twice; see the warnings above"
+          exit 1
 
       - name: Setup Node
         uses: actions/setup-node@v4
