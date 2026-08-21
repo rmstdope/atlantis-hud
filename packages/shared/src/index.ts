@@ -35,7 +35,7 @@ export * from "./workspace/GameGate";
 export * from "./workspace/GamePicker";
 export * from "./workspace/MergedFactionsPanel";
 export * from "./workspace/CollapsiblePanel";
-export * from "./workspace/LayerChips";
+export * from "./workspace/MapViewControls";
 export * from "./workspace/MapCanvas";
 export * from "./workspace/MapExportDialog";
 export * from "./workspace/SendOrdersDialog";

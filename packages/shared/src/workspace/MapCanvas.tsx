@@ -1,4 +1,13 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState
+} from "react";
 import type { Coordinate, HexNoteRecord, HexRisk } from "@atlantis/core-client";
 import { parseRegionId, regionIdOf, type HexMapModel, type HexNode } from "../hexMapModel";
 import { isMacPlatform } from "../shortcuts";
@@ -188,6 +197,22 @@ type MapCanvasProps = {
 };
 
 /**
+ * What the shell may do to the map from outside: the view controls land here.
+ *
+ * `zoomBy` and `frameAll` close over the map's own view state - the live view ref, its measured
+ * size, the hexes on the level and the overlay insets - so the buttons that drive them could not
+ * simply be moved as JSX when they joined the Badges chip in the shell's overlay strip (ah-ljil).
+ * The two actions cross the boundary instead; the state stays here. Modelled on
+ * `OrdersEditorHandle`.
+ */
+export type MapCanvasHandle = {
+  /** Zoom about the centre of the map, in whole steps: positive in, negative out. */
+  zoomBy(steps: number): void;
+  /** Frame every hex on the level into the strip of map the panes leave visible. */
+  frameAll(): void;
+};
+
+/**
  * The world map.
  *
  * Drawn in SVG rather than into a canvas, which is what makes the rest of it possible: the browser
@@ -210,26 +235,29 @@ type MapCanvasProps = {
  *   it arrives before the first fit and is the only insets any path reads. A pane changing later
  *   moves nothing until the next level or game (ah-lfo).
  */
-export function MapCanvas({
-  gameId,
-  model,
-  notes = [],
-  theme,
-  level,
-  selectedRegionId,
-  highlightedRegionId = null,
-  highlightMode = "peek",
-  keepClear = null,
-  selectionEpoch,
-  onSelectRegion,
-  showStaleness,
-  showTextures,
-  badges,
-  route = null,
-  arrow = null,
-  routeRisk = [],
-  onMarquee
-}: MapCanvasProps) {
+export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function MapCanvas(
+  {
+    gameId,
+    model,
+    notes = [],
+    theme,
+    level,
+    selectedRegionId,
+    highlightedRegionId = null,
+    highlightMode = "peek",
+    keepClear = null,
+    selectionEpoch,
+    onSelectRegion,
+    showStaleness,
+    showTextures,
+    badges,
+    route = null,
+    arrow = null,
+    routeRisk = [],
+    onMarquee
+  },
+  ref
+) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const rootRef = useRef<SVGSVGElement | null>(null);
   const worldRef = useRef<SVGGElement | null>(null);
@@ -670,6 +698,8 @@ export function MapCanvas({
       commit(fitted);
     }
   }, [onLevel, size, commit, insets]);
+
+  useImperativeHandle(ref, () => ({ zoomBy, frameAll }), [zoomBy, frameAll]);
 
   const onMapKeyDown = (event: React.KeyboardEvent<SVGPolygonElement>, from: Coordinate) => {
     if (event.key === "Enter" || event.key === " ") {
@@ -1523,29 +1553,12 @@ export function MapCanvas({
         </g>
       </svg>
 
-      {/*
-        Along the top, beside the layer chips. The inspector panels cover the rest of the map with
-        a full-bleed overlay that only clears the first forty-eight pixels, so controls anywhere
-        else are unreachable however visible they look.
-      */}
-      <div className="absolute right-2.5 top-2.5 flex gap-1">
-        <ZoomButton label="Zoom in" onClick={() => zoomBy(1)}>
-          +
-        </ZoomButton>
-        <ZoomButton label="Zoom out" onClick={() => zoomBy(-1)}>
-          −
-        </ZoomButton>
-        <ZoomButton label="Zoom to fit" onClick={frameAll}>
-          ⤢
-        </ZoomButton>
-      </div>
-
       {openNotesId !== null && (
         <NoteTagsDismiss onDismiss={() => setOpenNotesId(null)} />
       )}
     </div>
   );
-}
+});
 
 function translateAt(coordinate: Coordinate): string {
   const world = worldOf(coordinate);
@@ -1586,23 +1599,3 @@ function NoteTagsDismiss({ onDismiss }: { onDismiss: () => void }) {
   return null;
 }
 
-function ZoomButton({
-  label,
-  onClick,
-  children
-}: {
-  label: string;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      onClick={onClick}
-      className="h-7 w-7 rounded border border-edge bg-panel/95 text-ink-soft shadow hover:text-ink"
-    >
-      {children}
-    </button>
-  );
-}

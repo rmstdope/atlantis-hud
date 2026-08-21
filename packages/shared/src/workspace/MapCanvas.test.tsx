@@ -471,3 +471,16 @@ describe("the highlighted hex's brass ring", () => {
     expect(svg).toContain('data-testid="map-selection-ring"');
   });
 });
+
+describe("the map's view controls", () => {
+  it("are no longer drawn in the map's own corner", () => {
+    // ah-ljil moved the zoom buttons up into the overlay strip beside the Badges chip, where the
+    // shell's `data-map-overlay="top"` marking and its conditional z-lift already are. The map
+    // keeps the actions and exposes them through `MapCanvasHandle`; it no longer draws buttons.
+    const markup = draw();
+
+    expect(markup).not.toContain('aria-label="Zoom in"');
+    expect(markup).not.toContain('aria-label="Zoom to fit"');
+  });
+});
+

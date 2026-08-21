@@ -56,7 +56,7 @@ export function CollapsiblePanel({
       onPointerDown={confineSelection}
       // `pointer-events-auto` sits here rather than on the slot around it: the shell's overlay is
       // pointer-events-none, so the panel takes clicks and everything the panel is not - the gaps
-      // between panels, and the space a folded one gives up - stays live map. `LayerChips` does
+      // between panels, and the space a folded one gives up - stays live map. `MapViewControls` does
       // the same thing for the same reason.
       //
       // `h-full` only while open. Expanded, the section has to fill the slot it was given or it
