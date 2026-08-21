@@ -491,7 +491,7 @@ test("with Order OCD on, Enter dedents the closer the player has just finished",
   // `end` was opened at the block's inner depth, because it was inside the block when the line
   // began. Finishing it made it a closer, whose depth is the one outside the block - so the line
   // the player is leaving moves *left*, under its FORM, as well as being shouted.
-  await expectOrders(page, /^TURN\n[  ]FORM 1\n[  ]{2}MOVE N\n[  ]END\n[  ]$/);
+  await expectOrders(page, /^TURN\n[ \u00a0]FORM 1\n[ \u00a0]{2}MOVE N\n[ \u00a0]END\n[ \u00a0]$/);
 });
 
 test("the caret lands on the new line after a dedent, not offset by the spaces removed", async ({
@@ -517,7 +517,7 @@ test("the caret lands on the new line after a dedent, not offset by the spaces r
 
   await expectOrders(
     page,
-    /^TURN\n[  ]FORM 1\n[  ]{2}MOVE N\n[  ]END\n[  ]x\nendturn/
+    /^TURN\n[ \u00a0]FORM 1\n[ \u00a0]{2}MOVE N\n[ \u00a0]END\n[ \u00a0]x\nendturn/
   );
 });
 
@@ -532,7 +532,7 @@ test("with Order OCD on, ENDTURN at the outermost level stays at the margin", as
   await page.keyboard.press("Escape");
   await page.keyboard.press("Enter");
 
-  await expectOrders(page, /^TURN\n[  ]WORK\nENDTURN\n$/);
+  await expectOrders(page, /^TURN\n[ \u00a0]WORK\nENDTURN\n$/);
 });
 
 test("with Order OCD on, one undo hands back the closer exactly as it was typed", async ({
@@ -549,12 +549,12 @@ test("with Order OCD on, one undo hands back the closer exactly as it was typed"
   // Clear of the half-second window history groups a run of typing under.
   await page.waitForTimeout(700);
   await page.keyboard.press("Enter");
-  await expectOrders(page, /[  ]END\n[  ]$/);
+  await expectOrders(page, /[ \u00a0]END\n[ \u00a0]$/);
 
   // The newline, the shout and the dedent are one transaction, so one press gives back the line
   // lowercase and at the indentation it was typed at.
   await ordersInput(page).press("ControlOrMeta+z");
-  await expectOrders(page, /^TURN\n[  ]FORM 1\n[  ]{2}MOVE N\n[  ]{2}end$/);
+  await expectOrders(page, /^TURN\n[ \u00a0]FORM 1\n[ \u00a0]{2}MOVE N\n[ \u00a0]{2}end$/);
 });
 
 test("with Order OCD on, a stray closer with no opener stays where it is", async ({ page }) => {
