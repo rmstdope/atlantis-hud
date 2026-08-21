@@ -475,3 +475,100 @@ test("with Order OCD on, one undo takes back a newline and its indent together",
   await expectOrders(page, /^turn$/);
 });
 
+
+test("with Order OCD on, Enter dedents the closer the player has just finished", async ({ page }) => {
+  await loadReport(page);
+  await enableOrderOcd(page);
+  await selectUnit(page, OWN_UNIT);
+
+  await fillOrders(page, "");
+  await ordersInput(page).click();
+  await page.keyboard.type("turn\nform 1\nmove n\nend");
+  // The completion popup outranks the editor's own Enter; this walk is about the newline.
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Enter");
+
+  // `end` was opened at the block's inner depth, because it was inside the block when the line
+  // began. Finishing it made it a closer, whose depth is the one outside the block - so the line
+  // the player is leaving moves *left*, under its FORM, as well as being shouted.
+  await expectOrders(page, /^TURN\n[  ]FORM 1\n[  ]{2}MOVE N\n[  ]END\n[  ]$/);
+});
+
+test("the caret lands on the new line after a dedent, not offset by the spaces removed", async ({
+  page
+}) => {
+  await loadReport(page);
+  await enableOrderOcd(page);
+  await selectUnit(page, OWN_UNIT);
+
+  // A line after the caret, so an anchor computed on the *old* document overshoots into text
+  // instead of being clamped harmlessly at the end of the draft.
+  await fillOrders(page, "endturn");
+  await ordersInput(page).click();
+  // A blank line above it, so the block typed next ends at a line of its own rather than running
+  // straight into `endturn` and making one glued word of the two.
+  await page.keyboard.press("ControlOrMeta+Home");
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("ControlOrMeta+Home");
+  await page.keyboard.type("turn\nform 1\nmove n\nend");
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("x");
+
+  await expectOrders(
+    page,
+    /^TURN\n[  ]FORM 1\n[  ]{2}MOVE N\n[  ]END\n[  ]x\nendturn/
+  );
+});
+
+test("with Order OCD on, ENDTURN at the outermost level stays at the margin", async ({ page }) => {
+  await loadReport(page);
+  await enableOrderOcd(page);
+  await selectUnit(page, OWN_UNIT);
+
+  await fillOrders(page, "");
+  await ordersInput(page).click();
+  await page.keyboard.type("turn\nwork\nendturn");
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Enter");
+
+  await expectOrders(page, /^TURN\n[  ]WORK\nENDTURN\n$/);
+});
+
+test("with Order OCD on, one undo hands back the closer exactly as it was typed", async ({
+  page
+}) => {
+  await loadReport(page);
+  await enableOrderOcd(page);
+  await selectUnit(page, OWN_UNIT);
+
+  await fillOrders(page, "");
+  await ordersInput(page).click();
+  await page.keyboard.type("turn\nform 1\nmove n\nend");
+  await page.keyboard.press("Escape");
+  // Clear of the half-second window history groups a run of typing under.
+  await page.waitForTimeout(700);
+  await page.keyboard.press("Enter");
+  await expectOrders(page, /[  ]END\n[  ]$/);
+
+  // The newline, the shout and the dedent are one transaction, so one press gives back the line
+  // lowercase and at the indentation it was typed at.
+  await ordersInput(page).press("ControlOrMeta+z");
+  await expectOrders(page, /^TURN\n[  ]FORM 1\n[  ]{2}MOVE N\n[  ]{2}end$/);
+});
+
+test("with Order OCD on, a stray closer with no opener stays where it is", async ({ page }) => {
+  await loadReport(page);
+  await enableOrderOcd(page);
+  await selectUnit(page, OWN_UNIT);
+
+  await fillOrders(page, "");
+  await ordersInput(page).click();
+  await page.keyboard.type("work\nend");
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Enter");
+
+  // A closer that matches nothing changes no depth (`orderIndent`), so the running depth is 0 and
+  // the line is already where it belongs.
+  await expectOrders(page, /^WORK\nEND\n$/);
+});

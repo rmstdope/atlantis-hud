@@ -223,8 +223,27 @@ export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(fu
                   from - line.from,
                   latest.current.vocabulary
                 );
+                // The depth *this* line sits at, from the same walk one character earlier: without
+                // the appended newline the last entry is the caret's own line, computed from the
+                // text as it now reads. Typing `end` inside a FORM turns the line into a closer,
+                // whose depth is the one outside the block - so the line the player is leaving is
+                // usually moved *left*, and the general rule covers any other line whose depth
+                // changed as it was typed (ah-rj96).
+                const ownDepth = lineDepths(editor.state.doc.sliceString(0, from)).at(-1) ?? 0;
+                const indent = line.text.length - line.text.trimStart().length;
+                const wanted = " ".repeat(ownDepth);
+                // A blank line is left truly empty, as the whole-block tidy leaves it, and an
+                // already-correct line produces no change at all: an empty change still makes a
+                // history entry, and one Ctrl+Z would then hand back nothing visible.
+                const reindent =
+                  line.text.trim() !== "" && line.text.slice(0, indent) !== wanted
+                    ? { from: line.from, to: line.from + indent, insert: wanted }
+                    : null;
                 editor.dispatch({
                   changes: [
+                    // First: CodeMirror wants ascending, non-overlapping changes, and the leading
+                    // whitespace sits ahead of the word the case fix covers.
+                    ...(reindent ? [reindent] : []),
                     ...(finished
                       ? [
                           {
@@ -236,7 +255,11 @@ export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(fu
                       : []),
                     { from, to, insert }
                   ],
-                  selection: { anchor: from + insert.length },
+                  // `from` is a position in the *old* document and a dedent deletes characters
+                  // before it, so the anchor carries the indent's delta: a transaction's selection
+                  // is read against the new document, and the arithmetic alone would leave the
+                  // caret one column adrift per level removed.
+                  selection: { anchor: from + (reindent ? wanted.length - indent : 0) + insert.length },
                   scrollIntoView: true,
                   // Ordinary typing, so history groups a run of it as usual - and one Ctrl+Z takes
                   // back the newline and its indent together, in the one transaction.
