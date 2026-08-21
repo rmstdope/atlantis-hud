@@ -479,11 +479,12 @@ jobs:
       # The job's `timeout-minutes: 30` above does not help - a stalled apt burns most of half an
       # hour and the suite it was meant to protect never runs at all.
       #
-      # So the step bounds itself instead. Each attempt gets five minutes: the step has taken
-      # 20-45 seconds over ten real runs (measured 2026-08-21), so five is roughly seven times the
-      # worst working case - loose enough that a slow-but-working mirror is never killed, tight
-      # enough that a stall is a fast failure. One retry covers the common case of a single bad
-      # mirror. `timeout-minutes` on the step is the outer belt for the two attempts and the sleep.
+      # So the step bounds itself instead. Each attempt gets five minutes - two for `update`, three
+      # for `install`. The step has taken 20-45 seconds over ten real runs (measured 2026-08-21),
+      # so that is roughly seven times the worst working case: loose enough that a slow-but-working
+      # mirror is never killed, tight enough that a stall is a fast failure. One retry covers the
+      # common case of a single bad mirror. `timeout-minutes` on the step is the outer belt for the
+      # two attempts and the sleep.
       #
       # No apt cache: every option needs a third-party action, and this is the one job that builds
       # a release binary. If the stall survives this bounding, the next step is a prebuilt image
@@ -493,11 +494,16 @@ jobs:
       - name: Install system dependencies
         timeout-minutes: 11
         run: |
-          # `timeout` runs under sudo and apt runs under it, rather than the other way round: a
-          # timeout that has to kill a privileged grandchild cannot, and the stall would survive.
+          # Each apt command is `timeout`'s own direct child, and `timeout` runs under sudo rather
+          # than over it. Both matter: `timeout` signals only the process it started, so a shell
+          # wrapper would leave the stalled apt orphaned underneath it, and an unprivileged
+          # `timeout` could not kill a privileged apt even if it did reach it. `-k` follows an
+          # ignored TERM with a KILL, since a stall is exactly the state where a graceful stop may
+          # not arrive.
           for attempt in 1 2; do
-            if sudo timeout 300 bash -c 'apt-get update && apt-get install -y --no-install-recommends \
-              libwebkit2gtk-4.1-dev libgtk-3-dev libssl-dev libxdo-dev webkit2gtk-driver xvfb'; then
+            if sudo timeout -k 30s 120s apt-get update \
+              && sudo timeout -k 30s 180s apt-get install -y --no-install-recommends \
+                libwebkit2gtk-4.1-dev libgtk-3-dev libssl-dev libxdo-dev webkit2gtk-driver xvfb; then
               exit 0
             fi
             echo "::warning::apt install attempt $attempt failed or timed out"
