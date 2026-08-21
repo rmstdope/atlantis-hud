@@ -1,6 +1,6 @@
 import { Fragment } from "react";
 import type { Coordinate, CoreClient, MapLevel, OpenedGame, OrderDiagnostic } from "@atlantis/core-client";
-import { buildingEntryId, type GameDataIndex } from "../gameData";
+import { structureEntryId, type GameDataIndex } from "../gameData";
 import { abbreviateDirection, levelClause, regionIdOf, type HexNode } from "../hexMapModel";
 import { structureLabelParts } from "../structureLabel";
 import { useWorkspaceStore } from "../workspaceStore";
@@ -19,6 +19,7 @@ import {
   StaleBanner
 } from "./primitives";
 import { RegionNotes } from "./RegionNotes";
+import { manifestSegments } from "./vesselManifest";
 
 /**
  * Everything the report says about the selected hex, plus the one interactive exception: the
@@ -231,17 +232,28 @@ export function RegionPanel({
               region.structures.map((structure) => (
                 <p key={structure.structureId} className="m-0 text-ink-soft">
                   {/*
-                    The kind alone is the catalogue entry. The structure's own name and its number
-                    stay plain: linking `Odds and Ends` would look right and open nothing.
+                    Every NAME in the kind is a catalogue entry, and a fleet's kind names several:
+                    `Galley, 40 Galleons, 11 Galleys, 10 Balloons` is four vessels, each with an
+                    entry of its own, so each is its own link and the counts stay the player's
+                    plain text (ah-t5fk). An ordinary kind is one name and so one link, exactly as
+                    before. The structure's own name and its number stay plain: linking
+                    `Odds and Ends` would look right and open nothing.
                   */}
                   {structureLabelParts(structure).prefix}
-                  {linkable ? (
-                    <GameDataLink entryId={buildingEntryId(structure.kind)} onOpen={linkable}>
-                      {structure.kind}
-                    </GameDataLink>
-                  ) : (
-                    structure.kind
-                  )}
+                  {linkable !== null && gameData !== null
+                    ? manifestSegments(structure.kind).map((segment, index) => (
+                        <Fragment key={`${index}-${segment.name}`}>
+                          {index === 0 ? null : ", "}
+                          {segment.count === null ? null : `${segment.count} `}
+                          <GameDataLink
+                            entryId={structureEntryId(gameData, segment.name)}
+                            onOpen={linkable}
+                          >
+                            {segment.name}
+                          </GameDataLink>
+                        </Fragment>
+                      ))
+                    : structure.kind}
                   {structure.needs === null ? null : `, needs ${structure.needs}`}
                 </p>
               ))

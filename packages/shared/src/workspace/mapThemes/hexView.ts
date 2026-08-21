@@ -17,6 +17,7 @@
 import type { ReportRegion, ReportUnit, StructureInfo } from "@atlantis/core-client";
 import type { HexKnowledge, HexNode } from "../../hexMapModel";
 import { worldOf } from "../mapViewport";
+import { manifestSegments } from "../vesselManifest";
 import { hexPaint, terrainTexturePatternId, terrainTextureUrl } from "../mapHexView";
 
 /**
@@ -310,14 +311,14 @@ function noStructures(): StructureTally {
  * inventory is exactly what this needs.
  */
 function vesselCount(kind: string): number {
-  const parts = kind.split(",").slice(1);
+  // `manifestSegments` is shared with the region pane (ah-t5fk), which links EVERY segment while
+  // this drops the first: the leading word is the fleet's label, not a vessel. One parser, two
+  // deliberately different uses - see `vesselManifest.ts`.
+  const parts = manifestSegments(kind).slice(1);
   if (parts.length === 0) {
     return 1;
   }
-  const total = parts.reduce((sum, part) => {
-    const found = /^\s*(\d+)\b/u.exec(part);
-    return sum + (found ? Number(found[1]) : 0);
-  }, 0);
+  const total = parts.reduce((sum, part) => sum + (part.count ?? 0), 0);
   return total > 0 ? total : 1;
 }
 
