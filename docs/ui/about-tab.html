@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Settings → About — what the app says it is</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --ink:#dbe3ec;
+    --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --brass-bright:#eebe63;
+    --select:#4a9fd8; --ok:#4fb783; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1340px; margin:0 auto; }
+  h1 { font-size:26px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:96ch; margin-top:10px; font-size:14px; }
+  header p + p { margin-top:8px; }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:36px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:96ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; }
+  .card h2 { font-size:15.5px; margin-bottom:5px; }
+  .card h2 em { color:var(--brass); font-style:normal; font-size:11.5px; letter-spacing:1.5px; margin-right:8px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; margin-bottom:12px; min-height:3.4em; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:12px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212  "; color:var(--danger); }
+  .cards2 { display:grid; grid-template-columns:repeat(2,1fr); gap:18px; align-items:start; }
+  .cards3 { display:grid; grid-template-columns:repeat(3,1fr); gap:18px; align-items:start; }
+
+  /* the dialog pane, as the app draws it */
+  .dlg { background:var(--raised); border:1px solid var(--edge); border-radius:6px;
+         font-family:system-ui,-apple-system,'Segoe UI',sans-serif; font-size:12.5px; width:100%; }
+  .dlg .tabs { display:flex; gap:5px; padding:9px 11px 0; }
+  .dlg .tabs b { font-weight:normal; border:1px solid var(--edge); color:var(--ink-soft);
+                 border-radius:4px; padding:1px 7px; font-size:11.5px; }
+  .dlg .tabs b.on { border-color:var(--brass); color:var(--brass); }
+  .dlg .body { padding:11px; }
+  .dlg dl { display:grid; gap:3px; margin-bottom:9px; }
+  .dlg dl > div { display:flex; justify-content:space-between; align-items:baseline; gap:8px; }
+  .dlg dt { color:var(--ink-soft); } .dlg dd { color:var(--ink); }
+  .dlg .prose p { color:var(--ink-soft); line-height:1.55; }
+  .dlg .prose p + p { margin-top:8px; }
+  .dlg .rule { border-top:1px solid var(--edge); margin:9px 0; }
+  .dlg a { color:var(--select); text-decoration:underline; text-underline-offset:2px; }
+  .dlg .btn { display:block; width:100%; text-align:center; border:1px solid var(--edge);
+              background:var(--panel); color:var(--brass); border-radius:4px; padding:4px; }
+  .dlg .stat { color:var(--ink-soft); margin-top:6px; font-size:12px; }
+  .url { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11px; word-break:break-all; color:var(--ink-soft); }
+  .flag { color:var(--danger); }
+  .live { background:rgba(217,164,65,0.18); border-radius:3px; padding:0 3px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Settings &rarr; About — <span>what the app says it is</span></h1>
+  <p><b>Settings &rarr; About</b> shows a Version row, a Build row and the update button. Nothing
+  tells a player what Atlantis HUD is, what it needs to work, or where to report a problem. You
+  supplied the copy and invited suggestions; Cerebro proposed a revision it explicitly did not treat
+  as decided. Below are both, plus a third, in the dialog as it actually draws.</p>
+  <p>One of Cerebro's changes is <b>about accuracy rather than style</b>, and it is the reason this is
+  worth a real look: <span class="flag">"a web based client"</span> is not true of the build most
+  people will read it on. v0.10.0 shipped macOS, Linux and Windows bundles, and the
+  <b>Build</b> row directly above the sentence names the platform — so a player on the Windows
+  desktop app is told something the line above it contradicts.</p>
+</header>
+
+<main>
+
+<h3 class="sec">1 · The copy</h3>
+<p>Each pane below is the About tab exactly as it would ship.</p>
+
+<div class="cards3">
+
+  <div class="card">
+    <h2><em>N</em>Yours, verbatim</h2>
+    <div class="concept">The text as you supplied it, unedited. Nothing is second-guessed.</div>
+    <div class="dlg">
+      <div class="tabs"><b>Global</b><b>Game</b><b>Warnings</b><b class="on">About</b></div>
+      <div class="body">
+        <dl>
+          <div><dt>Version</dt><dd>0.10.0</dd></div>
+          <div><dt>Build</dt><dd>Desktop (Windows)</dd></div>
+        </dl>
+        <div class="rule"></div>
+        <div class="prose">
+          <p>Atlantis HUD is a <span class="flag">web based</span> client to the Atlantis
+          Play-by-email. For Atlantis HUD to work properly, it needs the rules and game data for the
+          specific variant/config of Atlantis to use it with. Right now, the client only supports the
+          New Origin variant.</p>
+          <p>If you experience bugs or have feature requests, feel free to describe your
+          experience/request in the project issue page on GitHub,
+          <span class="url">https://github.com/rmstdope/atlantis-hud/issues/new</span></p>
+        </div>
+        <div class="rule"></div>
+        <button class="btn">Check for updates</button>
+      </div>
+    </div>
+    <ul class="notes">
+      <li>Your words, in your voice, with nothing lost in an edit</li>
+      <li class="con">"web based" contradicts the Build row above it on every desktop build</li>
+      <li class="con">Bare URL, no closing full stop, and "client to the Atlantis Play-by-email" is missing its noun</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2><em>C</em>Cerebro's revision</h2>
+    <div class="concept">Your text tightened: the accuracy fix, the slashes removed, and the URL
+    turned into a link on the words.</div>
+    <div class="dlg">
+      <div class="tabs"><b>Global</b><b>Game</b><b>Warnings</b><b class="on">About</b></div>
+      <div class="body">
+        <dl>
+          <div><dt>Version</dt><dd>0.10.0</dd></div>
+          <div><dt>Build</dt><dd>Desktop (Windows)</dd></div>
+        </dl>
+        <div class="rule"></div>
+        <div class="prose">
+          <p>Atlantis HUD is a client for Atlantis, the play-by-email game. It runs in a browser and
+          as a desktop app.</p>
+          <p>To work properly it needs the rules and game data for the particular Atlantis variant
+          you are playing. At the moment only the New Origin variant is supported.</p>
+          <p>If you run into a bug or would like a feature added, please describe it on the
+          <a href="#">project's issue page on GitHub</a>.</p>
+        </div>
+        <div class="rule"></div>
+        <button class="btn">Check for updates</button>
+      </div>
+    </div>
+    <ul class="notes">
+      <li>Fixes the contradiction with the Build row</li>
+      <li>Link on the words, pointing at <code>/issues/new</code> — the form, not the list</li>
+      <li class="con">Three paragraphs where two would do; the longest of the three</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2><em>B</em>Shorter still</h2>
+    <div class="concept">Same facts, fewer words. A dialog is read standing up, and the update
+    button is what most people opened it for.</div>
+    <div class="dlg">
+      <div class="tabs"><b>Global</b><b>Game</b><b>Warnings</b><b class="on">About</b></div>
+      <div class="body">
+        <dl>
+          <div><dt>Version</dt><dd>0.10.0</dd></div>
+          <div><dt>Build</dt><dd>Desktop (Windows)</dd></div>
+        </dl>
+        <div class="rule"></div>
+        <div class="prose">
+          <p>A client for Atlantis, the play-by-email game. It runs in a browser and as a desktop
+          app.</p>
+          <p>To read your reports it needs the rules and game data for the Atlantis variant you
+          play. This build has <span class="live">NewOrigins</span>.</p>
+          <p>Found a bug, or want a feature? Describe it on the
+          <a href="#">project's issue page</a>.</p>
+        </div>
+        <div class="rule"></div>
+        <button class="btn">Check for updates</button>
+      </div>
+    </div>
+    <ul class="notes">
+      <li>Shortest, and says everything the other two say</li>
+      <li>Opens with what it is rather than repeating the app's own name back at you</li>
+      <li class="con">Drops "Atlantis HUD is", so the name appears nowhere in the tab</li>
+      <li class="con">"Found a bug, or want a feature?" is chattier than the rest of the app</li>
+    </ul>
+  </div>
+</div>
+
+<h3 class="sec">2 · The variant sentence — a fact, or read from the build?</h3>
+<p><code>packages/shared/src/rulesets.ts</code> already holds the answer:
+<code>RULESETS</code> is a list, each with a <code>label</code>, and today it has exactly one entry
+labelled <code>NewOrigins</code>. So the sentence can be written or it can be read.</p>
+<div class="cards2">
+  <div class="card">
+    <h2><em>i</em>Written as a sentence</h2>
+    <div class="concept">"At the moment only the New Origin variant is supported." — plain prose, in
+    the file with the rest of the copy.</div>
+    <div class="dlg"><div class="body"><div class="prose">
+      <p>To work properly it needs the rules and game data for the particular Atlantis variant you
+      are playing. At the moment only the New Origin variant is supported.</p>
+    </div></div></div>
+    <ul class="notes">
+      <li>Reads as English, and can be phrased however you like</li>
+      <li class="con">Goes stale silently the day a second ruleset is added</li>
+      <li class="con">"New Origin" here, <code>NewOrigins</code> in the code — two spellings of one thing</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h2><em>ii</em>Read from what the build ships</h2>
+    <div class="concept">The variant names come from <code>RULESETS</code>. Adding a second ruleset
+    is already "a scrape and a line here" — and this sentence updates itself when that line lands.</div>
+    <div class="dlg"><div class="body"><div class="prose">
+      <p>To read your reports it needs the rules and game data for the Atlantis variant you play.
+      This build has <span class="live">NewOrigins</span>.</p>
+      <p style="color:var(--ink-dim);font-size:11.5px;margin-top:10px">with two shipped, the same
+      sentence reads<br>&hellip; This build has <span class="live">NewOrigins</span> and
+      <span class="live">Otherworld</span>.</p>
+    </div></div></div>
+    <ul class="notes">
+      <li>Cannot go stale — no one has to remember to edit this tab</li>
+      <li>One spelling of the variant's name, everywhere in the app</li>
+      <li class="con">The sentence has to survive one, two or five names, so it is stiffer prose</li>
+      <li class="con"><code>NewOrigins</code> is how the code spells it; if you prefer "New Origin" the label changes too</li>
+    </ul>
+  </div>
+</div>
+
+<h3 class="sec">3 · Where the prose goes</h3>
+<p>The tab has three things in it now: the two rows, and the update control.</p>
+<div class="cards2">
+  <div class="card">
+    <h2><em>P1</em>Below the rows, above the update</h2>
+    <div class="concept">Version and Build stay at the top; the prose sits between them and the
+    button.</div>
+    <div class="dlg"><div class="body">
+      <dl><div><dt>Version</dt><dd>0.10.0</dd></div><div><dt>Build</dt><dd>Desktop (Windows)</dd></div></dl>
+      <div class="rule"></div>
+      <div class="prose"><p style="color:var(--ink-dim)">&hellip; the two or three paragraphs &hellip;</p></div>
+      <div class="rule"></div>
+      <button class="btn">Check for updates</button>
+    </div></div>
+    <ul class="notes">
+      <li>Version stays where anyone reporting a bug already looks for it</li>
+      <li class="con">The update button, which is why most people open this tab, is pushed down a screenful</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h2><em>P2</em>Last, under the update control</h2>
+    <div class="concept">Nothing existing moves. The prose is appended at the bottom of the tab.</div>
+    <div class="dlg"><div class="body">
+      <dl><div><dt>Version</dt><dd>0.10.0</dd></div><div><dt>Build</dt><dd>Desktop (Windows)</dd></div></dl>
+      <div class="rule"></div>
+      <button class="btn">Check for updates</button>
+      <p class="stat">You are on the latest version.</p>
+      <div class="rule"></div>
+      <div class="prose"><p style="color:var(--ink-dim)">&hellip; the two or three paragraphs &hellip;</p></div>
+    </div></div>
+    <ul class="notes">
+      <li>Everything that was there keeps its position exactly</li>
+      <li>The button stays one glance from the top</li>
+      <li class="con">The description of what the app is reads as an afterthought at the bottom</li>
+    </ul>
+  </div>
+</div>
+
+</main>
+
+<footer style="margin-top:34px; color:var(--ink-dim); font-size:12.5px;">
+  Mockup for bead <code>ah-o2li</code>. Amber highlight is text read from
+  <code>RULESETS</code> rather than written; red is the line that contradicts the Build row above it.
+</footer>
+</body>
+</html>

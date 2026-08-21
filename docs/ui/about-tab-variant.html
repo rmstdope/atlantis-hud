@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>About — the variant sentence</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --ink:#dbe3ec;
+    --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1340px; margin:0 auto; }
+  h1 { font-size:26px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:96ch; margin-top:10px; font-size:14px; }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; color:#eebe63; font-size:12.5px; }
+  h3.sec { margin:34px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:96ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; }
+  .card h2 { font-size:15.5px; margin-bottom:5px; }
+  .card h2 em { color:var(--brass); font-style:normal; font-size:11.5px; letter-spacing:1.5px; margin-right:8px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; margin-bottom:12px; min-height:3.6em; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:12px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212  "; color:var(--danger); }
+  .cards3 { display:grid; grid-template-columns:repeat(3,1fr); gap:18px; align-items:start; }
+  .dlg { background:var(--raised); border:1px solid var(--edge); border-radius:6px;
+         font-family:system-ui,-apple-system,'Segoe UI',sans-serif; font-size:12.5px; }
+  .dlg .body { padding:11px; }
+  .dlg dl { display:grid; gap:3px; }
+  .dlg dl > div { display:flex; justify-content:space-between; align-items:baseline; gap:8px; }
+  .dlg dt { color:var(--ink-soft); } .dlg dd { color:var(--ink); }
+  .dlg .prose p { color:var(--ink-soft); line-height:1.55; }
+  .dlg .prose p + p { margin-top:8px; }
+  .dlg .rule { border-top:1px solid var(--edge); margin:9px 0; }
+  .dlg a { color:var(--select); text-decoration:underline; text-underline-offset:2px; }
+  .dlg .btn { display:block; width:100%; text-align:center; border:1px solid var(--edge);
+              background:var(--panel); color:var(--brass); border-radius:4px; padding:4px; }
+  .live { background:rgba(217,164,65,0.18); border-radius:3px; padding:0 3px; }
+  .two { margin-top:10px; border-top:1px dashed var(--edge); padding-top:9px; }
+  .two b { display:block; font-size:10.5px; letter-spacing:1.2px; text-transform:uppercase;
+           color:var(--ink-dim); font-weight:normal; margin-bottom:6px; font-family:system-ui,sans-serif; }
+</style>
+</head>
+<body>
+<header>
+  <h1>About — <span>saying which variants the build has</span></h1>
+  <p>Settled: Cerebro's wording, spelled <b>New Origins</b> everywhere (the label in
+  <code>rulesets.ts</code> changes to match), prose <b>below the Version and Build rows and above the
+  update button</b>, and the variant names <b>read from <code>RULESETS</code></b> rather than typed
+  into the copy.</p>
+  <p>That last one is what still needs a shape. Cerebro's sentence — <i>"At the moment only the New
+  Origin variant is supported"</i> — has the singular built into it, so it has to be written to
+  survive a second entry. Each option is shown with one variant and again with two.</p>
+</header>
+
+<main>
+<h3 class="sec">The three shapes</h3>
+<div class="cards3">
+
+  <div class="card">
+    <h2><em>S1</em>The sentence branches</h2>
+    <div class="concept">Cerebro's line kept as closely as possible, with the singular and plural
+    both written out and the right one chosen at render.</div>
+    <div class="dlg"><div class="body">
+      <dl><div><dt>Version</dt><dd>0.10.0</dd></div><div><dt>Build</dt><dd>Desktop (Windows)</dd></div></dl>
+      <div class="rule"></div>
+      <div class="prose">
+        <p>Atlantis HUD is a client for Atlantis, the play-by-email game. It runs in a browser and as
+        a desktop app.</p>
+        <p>To work properly it needs the rules and game data for the particular Atlantis variant you
+        are playing. At the moment only the <span class="live">New Origins</span> variant is
+        supported.</p>
+        <p>If you run into a bug or would like a feature added, please describe it on the
+        <a href="#">project's issue page on GitHub</a>.</p>
+      </div>
+      <div class="rule"></div><button class="btn">Check for updates</button>
+      <div class="two"><b>with two shipped</b>
+        <div class="prose"><p>&hellip; At the moment the <span class="live">New Origins</span> and
+        <span class="live">Otherworld</span> variants are supported.</p></div>
+      </div>
+    </div></div>
+    <ul class="notes">
+      <li>Reads as ordinary English in both cases — closest to what you approved</li>
+      <li class="con">Two sentences to keep in step, and "only" has to vanish in the plural</li>
+      <li class="con">Three variants needs an Oxford comma rule nobody will think about until then</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2><em>S2</em>One shape, always</h2>
+    <div class="concept">A single sentence that does not care how many there are — the names are
+    simply listed after it.</div>
+    <div class="dlg"><div class="body">
+      <dl><div><dt>Version</dt><dd>0.10.0</dd></div><div><dt>Build</dt><dd>Desktop (Windows)</dd></div></dl>
+      <div class="rule"></div>
+      <div class="prose">
+        <p>Atlantis HUD is a client for Atlantis, the play-by-email game. It runs in a browser and as
+        a desktop app.</p>
+        <p>To work properly it needs the rules and game data for the particular Atlantis variant you
+        are playing. Supported variants: <span class="live">New Origins</span>.</p>
+        <p>If you run into a bug or would like a feature added, please describe it on the
+        <a href="#">project's issue page on GitHub</a>.</p>
+      </div>
+      <div class="rule"></div><button class="btn">Check for updates</button>
+      <div class="two"><b>with two shipped</b>
+        <div class="prose"><p>&hellip; Supported variants: <span class="live">New Origins</span>,
+        <span class="live">Otherworld</span>.</p></div>
+      </div>
+    </div></div>
+    <ul class="notes">
+      <li>One shape, one rule, nothing to keep in step</li>
+      <li>Any number of variants works without a thought</li>
+      <li class="con">"Supported variants:" is a label bolted onto the end of a sentence</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2><em>S3</em>A row, next to Version and Build</h2>
+    <div class="concept">The variants are a <b>fact about this build</b>, exactly like the version
+    and the platform — so they go where the other two facts are, and the prose drops the sentence
+    entirely.</div>
+    <div class="dlg"><div class="body">
+      <dl>
+        <div><dt>Version</dt><dd>0.10.0</dd></div>
+        <div><dt>Build</dt><dd>Desktop (Windows)</dd></div>
+        <div><dt>Variants</dt><dd><span class="live">New Origins</span></dd></div>
+      </dl>
+      <div class="rule"></div>
+      <div class="prose">
+        <p>Atlantis HUD is a client for Atlantis, the play-by-email game. It runs in a browser and as
+        a desktop app.</p>
+        <p>To work properly it needs the rules and game data for the particular Atlantis variant you
+        are playing.</p>
+        <p>If you run into a bug or would like a feature added, please describe it on the
+        <a href="#">project's issue page on GitHub</a>.</p>
+      </div>
+      <div class="rule"></div><button class="btn">Check for updates</button>
+      <div class="two"><b>with two shipped</b>
+        <div class="dlg" style="border:none;background:none"><div class="body" style="padding:0">
+        <dl><div><dt>Variants</dt><dd><span class="live">New Origins</span>,
+        <span class="live">Otherworld</span></dd></div></dl></div></div>
+      </div>
+    </div></div>
+    <ul class="notes">
+      <li>The prose stays prose — no generated text inside a paragraph at all</li>
+      <li>Sits with the other two things a bug reporter is asked to quote</li>
+      <li>Grows to any number without touching a word of copy</li>
+      <li class="con">Furthest from the sentence you approved — it is deleted rather than reworded</li>
+      <li class="con">A long list would wrap awkwardly against the right edge</li>
+    </ul>
+  </div>
+</div>
+</main>
+
+<footer style="margin-top:34px; color:var(--ink-dim); font-size:12.5px;">
+  Mockup for bead <code>ah-o2li</code>, second round. Amber is text read from <code>RULESETS</code>.
+</footer>
+</body>
+</html>
