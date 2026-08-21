@@ -403,13 +403,16 @@ export function AppShell({
   const [exportRect, setExportRect] = useState<MapRect | null>(null);
   const [exportBusy, setExportBusy] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
-  // The F8 walk's stop and its pending cross-unit landing. A ref for the stop: pressing F8
-  // twice must not wait a render between the steps.
-  // Where the F8 walk stands. `walkStop` renders (the counter in the orders header); `walkKey`
-  // is the document position it is carried across re-validations by, and stays a ref precisely
-  // because nothing renders from it - in state, the resume effect would depend on what it writes.
-  const [walkStop, setWalkStop] = useState<Resume>({ index: null, standing: false });
+  // The F8 walk's stop and its pending cross-unit landing.
+  //
+  // Refs are what the walk *steps* from - pressing F8 twice must not wait a render between the
+  // steps, and the keydown listener is registered from a passive effect, so a second press can
+  // still be running against the closure the first one had. `walkStop` is the same position
+  // mirrored for rendering (the counter in the orders header); `walkKey` is the document position
+  // it is carried across re-validations by, and nothing renders from that at all (ah-9ess).
+  const walkIndex = useRef<number | null>(null);
   const walkKey = useRef<StopKey | null>(null);
+  const [walkStop, setWalkStop] = useState<Resume>({ index: null, standing: false });
   const [pendingProblem, setPendingProblem] = useState<
     ReturnType<typeof diagnosticTargets>[number] | null
   >(null);
@@ -751,7 +754,9 @@ export function AppShell({
   // first one after where they stood (ah-9ess). Resetting to the top was the old behaviour, and it
   // moved the walk under the player without telling them - three CI failures were about that.
   useEffect(() => {
-    setWalkStop(resumeWalk(problemKeys, walkKey.current));
+    const resumed = resumeWalk(problemKeys, walkKey.current);
+    walkIndex.current = resumed.index;
+    setWalkStop(resumed);
   }, [problemKeys]);
 
   // A cross-unit F8 landing: the unit's editor mounts on the commit after goToUnit, so the
@@ -770,12 +775,13 @@ export function AppShell({
 
   const walkProblems = useCallback(
     (direction: 1 | -1) => {
-      const step = stepDiagnostic(problemTargets.length, walkStop.index, direction);
+      const step = stepDiagnostic(problemTargets.length, walkIndex.current, direction);
       if (step === null) {
         return;
       }
-      setWalkStop({ index: step, standing: true });
+      walkIndex.current = step;
       walkKey.current = problemKeys[step] ?? null;
+      setWalkStop({ index: step, standing: true });
       const target = problemTargets[step];
       if (unit?.unitId === target.unitId) {
         ordersEditor.current?.selectProblem(target.problem);
@@ -784,7 +790,7 @@ export function AppShell({
         setPendingProblem(target);
       }
     },
-    [problemTargets, problemKeys, walkStop.index, unit, goToUnit]
+    [problemTargets, problemKeys, unit, goToUnit]
   );
 
   const dispatchShortcut = useCallback(
