@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>A door into the game data (bead ah-u44o)</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733; --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --ok:#4fb783; --danger:#d97070; --select:#4a9fd8; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1160px; margin-left:auto; margin-right:auto; }
+  h1 { font-size:25px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:96ch; margin-top:10px; font-size:14px; }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:0.9em; }
+  h2.sec { margin-top:32px; font-size:18px; color:var(--brass); } h2.sec small { color:var(--ink-dim); font-size:13px; margin-left:10px; }
+  .banner { border:1px solid var(--edge); border-left:3px solid var(--brass); background:var(--panel); padding:14px 16px; border-radius:6px; margin-top:16px; color:var(--ink-soft); font-size:13.5px; } .banner b { color:var(--ink); }
+  .banner.ok { border-left-color:var(--ok); }
+  .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(310px,1fr)); gap:20px; margin-top:16px; align-items:start; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; display:flex; flex-direction:column; gap:12px; }
+  .card h3 { font-size:16px; } .card h3 em { color:var(--brass); font-style:normal; font-size:11px; letter-spacing:1.6px; margin-right:8px; }
+  .notes { list-style:none; font-size:12px; color:var(--ink-soft); display:grid; gap:4px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; } .notes li.con::before { content:"\2212  "; color:var(--danger); }
+  .kbd { font-family:'SF Mono',Menlo,monospace; background:var(--raised); border:1px solid var(--edge); border-bottom-width:2px; border-radius:4px; padding:2px 7px; font-size:13px; color:var(--brass); }
+  .dlg { font-family:'Helvetica Neue',Arial,sans-serif; font-size:11.5px; background:var(--raised); border:1px solid var(--edge); border-radius:5px; overflow:hidden; }
+  .tabs { display:flex; gap:2px; border-bottom:1px solid var(--edge); padding:3px 5px; flex-wrap:wrap; }
+  .tabs span { padding:2px 6px; border-radius:3px; color:var(--ink-dim); font-size:10.5px; }
+  .tabs span.on { background:var(--panel); color:var(--brass); }
+  .body { display:grid; grid-template-columns:130px 1fr; min-height:120px; }
+  .list { border-right:1px solid var(--edge); }
+  .filt { padding:3px 6px; border-bottom:1px solid var(--edge); color:var(--ink-dim); font-size:10.5px; }
+  .filt .cur { color:var(--brass); }
+  .row { padding:2px 6px; color:var(--ink-soft); }
+  .row.on { background:var(--panel); color:var(--ink); }
+  .det { padding:8px; color:var(--ink-soft); }
+  .det b { color:var(--ink); display:block; margin-bottom:4px; font-weight:normal; font-size:13px; }
+  .pal { font-family:'Helvetica Neue',Arial,sans-serif; font-size:11.5px; background:var(--raised); border:1px solid var(--edge); border-radius:5px; }
+  .pal .q { padding:5px 8px; border-bottom:1px solid var(--edge); color:var(--ink); }
+  .pal .r { display:flex; padding:3px 8px; gap:8px; }
+  .pal .r.on { background:rgba(217,164,65,.14); }
+  .pal .k { margin-left:auto; color:var(--ink-dim); font-size:10px; text-transform:uppercase; letter-spacing:.08em; }
+  table { border-collapse:collapse; font-size:12.5px; width:100%; margin-top:14px; } th,td { text-align:left; padding:5px 8px; border-bottom:1px solid var(--edge-soft); vertical-align:top; } th { color:var(--brass); font-weight:normal; font-size:11px; letter-spacing:1px; text-transform:uppercase; }
+  td.bad { color:var(--danger); } td.ok { color:var(--ok); }
+</style>
+</head>
+<body>
+<header>
+  <h1>A door into the game data &mdash; <span>proposals</span> (bead ah-u44o)</h1>
+  <p>Your words: <i>&ldquo;It should be possible to bring up the game data both using keyboard shortcut and through the palette.&rdquo;</i> Today both routes start from a specific thing &mdash; you search for &ldquo;Mining&rdquo;, or you click the word somewhere. There is no way in if you do not already know the name.</p>
+</header>
+<main>
+
+  <div class="banner ok"><b>Good news first: the cold-open state already exists in the code.</b> <code>openGameDataDialog(index, null)</code> already handles being opened with nothing named &mdash; it falls back to the first category and selects its first entry. <b>Nothing has ever called it with <code>null</code>.</b> So this bead is a door, not a new room: the dialog behind it is the one ah-5jkt.1 already built.</div>
+
+  <h2 class="sec">&sect;1 &nbsp;Which key <small>taken: <span class="kbd">&#8984;K</span> palette, <span class="kbd">&#8984;/</span> help, <span class="kbd">&#8997;&darr;&uarr;</span> units, <span class="kbd">F8</span> problems</small></h2>
+  <div class="cards">
+    <div class="card">
+      <h3><em>A</em> <span class="kbd">F2</span></h3>
+      <ul class="notes">
+        <li><b>No browser claims it</b>, on any platform &mdash; the only option here of which that is simply true.</li>
+        <li>Sits with <span class="kbd">F8</span>, which this app already owns, so the function-key row becomes &ldquo;the app&rsquo;s own keys&rdquo;.</li>
+        <li>Same chord on macOS and Windows; nothing to explain twice.</li>
+        <li class="con">Not mnemonic. Nothing about F2 says &ldquo;reference&rdquo;.</li>
+        <li class="con">Awkward on a Mac laptop, where the function row wants <span class="kbd">fn</span>.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3><em>B</em> <span class="kbd">&#8984;&#8679;K</span> / <span class="kbd">Ctrl+Shift+K</span></h3>
+      <ul class="notes">
+        <li><b>Reads as a sibling of the palette</b> &mdash; <span class="kbd">&#8984;K</span> finds a thing, <span class="kbd">&#8984;&#8679;K</span> browses everything. The nicest to remember of the three.</li>
+        <li>Free on macOS.</li>
+        <li class="con"><b>Firefox uses <span class="kbd">Ctrl+Shift+K</span> for its Web Console</b> on Windows and Linux. This app ships as a web app, so that is a real collision for some players &mdash; we can <code>preventDefault</code>, but only once focus is in our page.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3><em>C</em> <span class="kbd">F1</span></h3>
+      <ul class="notes">
+        <li>The oldest convention there is for &ldquo;reference&rdquo;.</li>
+        <li>No modifier, no platform split.</li>
+        <li class="con"><b>This app already has a help key</b> &mdash; <span class="kbd">&#8984;/</span> shows how to get around. Two help-shaped keys meaning different things is worse than one unmemorable key.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2 class="sec">&sect;2 &nbsp;What you land on when it opens cold</h2>
+  <div class="cards">
+    <div class="card">
+      <h3><em>D</em> Skills, first entry showing</h3>
+      <div class="dlg">
+        <div class="tabs"><span class="on">Skills</span><span>Men</span><span>Mounts</span><span>Ships</span><span>Monsters</span><span>Equipment</span><span>Buildings</span></div>
+        <div class="body">
+          <div class="list"><div class="filt">Filter skills&hellip;<span class="cur">|</span></div>
+            <div class="row on">Armorer ARMO</div><div class="row">Building BUIL</div><div class="row">Carpenter CARP</div><div class="row">Combat COMB</div></div>
+          <div class="det"><b>Armorer</b>Skill. Allows the production of armour&hellip;</div>
+        </div>
+      </div>
+      <ul class="notes">
+        <li><b>Already what the code does</b> &mdash; zero new behaviour, and the fix is one call passing <code>null</code>.</li>
+        <li>You always see the shape of the thing: tabs, a list, a page. Nothing looks broken or empty.</li>
+        <li class="con">Lands you on an arbitrary skill you did not ask for, which reads as a choice somebody made.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3><em>E</em> Skills, nothing selected, cursor in the filter</h3>
+      <div class="dlg">
+        <div class="tabs"><span class="on">Skills</span><span>Men</span><span>Mounts</span><span>Ships</span><span>Monsters</span><span>Equipment</span><span>Buildings</span></div>
+        <div class="body">
+          <div class="list"><div class="filt">Filter skills&hellip;<span class="cur">|</span></div>
+            <div class="row">Armorer ARMO</div><div class="row">Building BUIL</div><div class="row">Carpenter CARP</div><div class="row">Combat COMB</div></div>
+          <div class="det" style="color:var(--ink-dim)">Pick something on the left, or start typing.</div>
+        </div>
+      </div>
+      <ul class="notes">
+        <li><b>Honest</b>: you opened it without naming a thing, so nothing is pretending to be your answer.</li>
+        <li>The 96 skills are right there to scroll, and typing narrows immediately.</li>
+        <li class="con">An empty right-hand pane on open, which some readers find colder.</li>
+        <li class="con">Needs a new empty state, and <code>selectedId: null</code> to be a state the dialog handles on open rather than only after a bad id.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2 class="sec">&sect;3 &nbsp;What the palette entry says <small>it will sit among ~270 dictionary entries, so its wording is how you find it</small></h2>
+  <div class="cards">
+    <div class="card">
+      <h3><em>G</em> &ldquo;Browse game data&rdquo;</h3>
+      <div class="pal"><div class="q">game<span style="color:var(--brass)">|</span></div>
+        <div class="r on"><span>Browse game data</span><span class="k">action</span></div>
+        <div class="r"><span>Gateway to plain [1] &middot; plain (9,22)</span><span class="k">structure</span></div>
+      </div>
+      <ul class="notes"><li>The verb says it opens something to look around in, not a page about &ldquo;game data&rdquo;.</li><li>Matches <code>game</code>, <code>data</code> and <code>browse</code>.</li></ul>
+    </div>
+    <div class="card">
+      <h3><em>H</em> &ldquo;Game data&rdquo;</h3>
+      <div class="pal"><div class="q">game<span style="color:var(--brass)">|</span></div>
+        <div class="r on"><span>Game data</span><span class="k">action</span></div>
+      </div>
+      <ul class="notes"><li>Shortest, and matches what the dialog is called elsewhere.</li><li class="con">Reads like a dictionary entry rather than a command, sitting among 270 that are.</li></ul>
+    </div>
+    <div class="card">
+      <h3><em>I</em> &ldquo;Open the rules reference&rdquo;</h3>
+      <div class="pal"><div class="q">rul<span style="color:var(--brass)">|</span></div>
+        <div class="r on"><span>Open the rules reference</span><span class="k">action</span></div>
+      </div>
+      <ul class="notes"><li>&ldquo;Rules&rdquo; is what a player would call it, and it is what the data is scraped from.</li><li class="con">The app says &ldquo;game data&rdquo; everywhere else; a second name for one thing.</li></ul>
+    </div>
+  </div>
+  <div class="banner">Whichever wording you pick, the entry is an <code>action</code>, so it also inherits the palette&rsquo;s keybinding hint column &mdash; the chord from &sect;1 will show beside it, and in the <span class="kbd">&#8984;/</span> help overlay, automatically. Nothing extra to wire.</div>
+
+</main>
+</body>
+</html>
