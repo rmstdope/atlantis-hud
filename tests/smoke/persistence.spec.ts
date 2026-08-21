@@ -1,6 +1,14 @@
 import { expect, test, type Page } from "@playwright/test";
 import { readReport } from "@atlantis/fixtures";
-import { clearGames, createGame, expectOrders, expectOrdersNot, fillOrders, ordersInput } from "./gameSetup";
+import {
+  clearGames,
+  createGame,
+  expectOrders,
+  expectOrdersNot,
+  fillOrders,
+  ordersInput,
+  selectHex
+} from "./gameSetup";
 
 /**
  * The acceptance vectors of issue #34, end to end, in both shells.
@@ -49,11 +57,6 @@ async function openReport(page: Page) {
   await expect(load).toBeEnabled();
 }
 
-async function selectHex(page: Page, regionId: string) {
-  const hex = page.getByRole("button", { name: `hex ${regionId}` });
-  await hex.focus();
-  await hex.press("Enter");
-}
 
 /** Filtered down first, because the table only builds the rows that are on screen. */
 async function selectUnit(page: Page, unitId: string) {

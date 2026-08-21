@@ -5,7 +5,8 @@ import {
   createGame,
   fillOrders,
   loadReport,
-  ordersInput
+  ordersInput,
+  selectHex
 } from "./gameSetup";
 
 /**
@@ -25,11 +26,6 @@ const REPORT = readReport("g7f95t71");
 /** "Seven of Eight", the player's unit in Inholm at (7,53). */
 const OWN_UNIT = "18642";
 
-async function selectHex(page: Page, regionId: string) {
-  const hex = page.getByRole("button", { name: `hex ${regionId}` });
-  await hex.focus();
-  await hex.press("Enter");
-}
 
 async function selectUnit(page: Page, unitId: string) {
   const box = page.getByLabel("Filter units");

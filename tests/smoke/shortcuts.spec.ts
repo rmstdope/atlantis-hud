@@ -6,7 +6,8 @@ import {
   expectOrders,
   fillOrders,
   loadReport,
-  ordersInput
+  ordersInput,
+  selectHex
 } from "./gameSetup";
 
 /**
@@ -22,11 +23,6 @@ const OWN_UNIT = "18642";
 /** Another of the player's units, in the mountain at (26,52). */
 const OTHER_OWN_UNIT = "13401";
 
-async function selectHex(page: Page, regionId: string) {
-  const hex = page.getByRole("button", { name: `hex ${regionId}` });
-  await hex.focus();
-  await hex.press("Enter");
-}
 
 async function selectUnit(page: Page, unitId: string) {
   const box = page.getByLabel("Filter units");

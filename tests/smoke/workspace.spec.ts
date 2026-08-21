@@ -11,6 +11,7 @@ import {
   loadReport,
   ordersInput,
   ordersText,
+  selectHex,
   visibleStrip,
   waitForStableBox,
   waitForStableHeight
@@ -103,11 +104,6 @@ async function selectUnit(page: Page, unitId: string) {
  * `tabindex="0"` — the map is one tab stop, not several thousand — and `focus()` reaches the
  * others regardless, which is why this keeps working for any hex on the level.
  */
-async function selectHex(page: Page, regionId: string) {
-  const hex = page.getByRole("button", { name: `hex ${regionId}` });
-  await hex.focus();
-  await hex.press("Enter");
-}
 
 
 test("loads a report and shows the turn it describes", async ({ page }) => {

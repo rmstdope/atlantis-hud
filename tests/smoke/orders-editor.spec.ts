@@ -7,7 +7,8 @@ import {
   expectOrdersNot,
   fillOrders,
   loadReport,
-  ordersInput
+  ordersInput,
+  selectHex
 } from "./gameSetup";
 
 /**
@@ -40,11 +41,6 @@ async function textStartX(line: ReturnType<Page["locator"]>) {
   return box!.x + paddingLeft;
 }
 
-async function selectHex(page: Page, regionId: string) {
-  const hex = page.getByRole("button", { name: `hex ${regionId}` });
-  await hex.focus();
-  await hex.press("Enter");
-}
 
 async function selectUnit(page: Page, unitId: string) {
   const box = page.getByLabel("Filter units");

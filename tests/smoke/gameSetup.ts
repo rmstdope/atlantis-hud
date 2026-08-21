@@ -112,6 +112,18 @@ export async function loadReport(page: Page, gameName = "Smoke game", report = T
 }
 
 /**
+ * Selects a hex by reaching it the way a keyboard player does.
+ *
+ * Six specs carried this, character for character. Focus-then-Enter rather than a click: the map
+ * is a keyboard surface, and Enter is what the hex's own handler listens for.
+ */
+export async function selectHex(page: Page, regionId: string) {
+  const hex = page.getByRole("button", { name: `hex ${regionId}` });
+  await hex.focus();
+  await hex.press("Enter");
+}
+
+/**
  * The strip of the map the player can actually see: the map's own host, shrunk by the insets
  * `MapCanvas` fits and recentres against - not the geometric middle of the canvas, which the side
  * rails alone push well away from where a point actually lands on the map.

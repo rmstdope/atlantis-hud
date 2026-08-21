@@ -5,7 +5,8 @@ import {
   createGame,
   expectOrders,
   fillOrders,
-  importReport
+  importReport,
+  selectHex
 } from "./gameSetup";
 
 const TURN_70 = readReport("g7f95t70");
@@ -13,11 +14,6 @@ const TURN_71 = readReport("g7f95t71");
 const OWN_UNIT = "18642";
 
 
-async function selectHex(page: Page, regionId: string) {
-  const hex = page.getByRole("button", { name: `hex ${regionId}` });
-  await hex.focus();
-  await hex.press("Enter");
-}
 
 async function openOrders(page: Page) {
   await selectHex(page, "1:7,53");
