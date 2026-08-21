@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The problem walk — saying where you are</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --ink:#dbe3ec;
+    --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --select:#4a9fd8; --ok:#4fb783;
+    --warn:#d9a441; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1340px; margin:0 auto; }
+  h1 { font-size:26px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:98ch; margin-top:10px; font-size:14px; }
+  header p + p { margin-top:8px; }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; color:#eebe63; font-size:12.5px; }
+  h3.sec { margin:36px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:98ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; }
+  .card h2 { font-size:15.5px; margin-bottom:5px; }
+  .card h2 em { color:var(--brass); font-style:normal; font-size:11.5px; letter-spacing:1.5px; margin-right:8px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; margin-bottom:12px; min-height:4.2em; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:12px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212  "; color:var(--danger); }
+  .cards3 { display:grid; grid-template-columns:repeat(3,1fr); gap:18px; align-items:start; }
+  .cards2 { display:grid; grid-template-columns:repeat(2,1fr); gap:18px; align-items:start; }
+
+  .pane { background:var(--raised); border:1px solid var(--edge); border-radius:6px;
+          font-family:system-ui,-apple-system,'Segoe UI',sans-serif; font-size:12.5px; }
+  .pane .hd { display:flex; align-items:center; gap:8px; padding:7px 10px;
+              border-bottom:1px solid var(--edge); }
+  .pane .hd .t { color:var(--brass); font-size:12.5px; }
+  .pane .hd .h { color:var(--ink-dim); font-size:11.5px; }
+  .pane .hd .sp { flex:1; }
+  .walk { display:inline-flex; align-items:center; gap:3px; color:var(--ink-dim); }
+  .walk b { font-weight:normal; padding:0 3px; border-radius:3px; }
+  .pos { color:var(--brass); font-size:11px; font-family:'SF Mono',Menlo,Consolas,monospace;
+         background:rgba(217,164,65,0.14); border-radius:3px; padding:0 4px; }
+  .pane .bd { padding:9px 10px; }
+  .ed { background:#0b0f14; border:1px solid var(--edge); border-radius:4px; padding:7px 8px;
+        font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11.5px; line-height:1.7; color:#c7d2de; }
+  .ed .sel { background:rgba(74,159,216,0.28); }
+  .stat { display:flex; gap:12px; align-items:center; border-top:1px solid var(--edge);
+          margin-top:8px; padding-top:6px; color:var(--ink-soft); font-size:11.5px; }
+  .stat .e { color:var(--ok); } .stat .w { color:var(--warn); }
+  .chip { border:1px solid var(--edge); border-radius:10px; padding:0 7px; color:var(--warn); font-size:11px; }
+  .seq { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-top:10px; }
+  .seq h4 { font-size:10.5px; letter-spacing:1.2px; text-transform:uppercase; color:var(--ink-dim);
+            margin-bottom:5px; font-weight:normal; font-family:system-ui,sans-serif; }
+  .seq div.box { background:#0b0f14; border:1px solid var(--edge); border-radius:4px; padding:7px;
+                 font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11px; color:#c7d2de; line-height:1.7; }
+  .bad { color:var(--danger); } .good { color:var(--ok); }
+</style>
+</head>
+<body>
+<header>
+  <h1>The problem walk — <span>saying where you are</span></h1>
+  <p>The <code>‹ ›</code> buttons beside the Orders pane's title step through every problem in the
+  turn, and <kbd>F8</kbd>/<kbd>Shift-F8</kbd> do the same from the keyboard. A smoke test for them
+  has failed in CI three times, on three different beads, on diffs that cannot reach it — and the fix
+  the first two implementers agreed on is already in the file and did not hold.</p>
+  <p><b>Reading the code found why, and it is not a test problem.</b> The walk's current position
+  lives in <code>lastDiagnostic</code>, which is a <code>useRef</code> — so <b>nothing on screen ever
+  changes to say which stop you are on</b>, and the test has nothing to wait for. Worse, there is a
+  line that resets that ref to <code>null</code> <b>every time validation re-runs</b>, which is
+  debounced and fires while you are still stepping. The walk silently jumps back to the first
+  problem, and neither you nor the test is told.</p>
+  <p>So this bead has a player-facing side after all, and both questions below are yours.</p>
+</header>
+
+<main>
+
+<h3 class="sec">1 · Should the walk say where it is?</h3>
+<p>The walk wraps, so there is no end to bump into — which means today there is no way at all to tell
+whether you have seen everything.</p>
+
+<div class="cards3">
+
+  <div class="card">
+    <h2><em>A</em>Nothing visible</h2>
+    <div class="concept">The position becomes render state so the test can read it from an
+    attribute, but nothing on screen changes. The smallest possible fix.</div>
+    <div class="pane">
+      <div class="hd"><span class="t">Orders</span><span class="h">— unit 4117</span>
+        <span class="sp"></span><span class="walk"><b>‹</b><b>›</b></span></div>
+      <div class="bd">
+        <div class="ed">@WORK<br><span class="sel">TAX</span></div>
+        <div class="stat"><span class="e">0 errors</span><span class="w">2 warnings</span></div>
+      </div>
+    </div>
+    <ul class="notes">
+      <li>No new pixels to design, review or verify</li>
+      <li>Fixes the flake, which is what the bead is for</li>
+      <li class="con">The player still cannot tell how far through the turn's problems they are</li>
+      <li class="con">A testid that exists only for the test is a thing that can rot unnoticed</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2><em>B</em>A counter between the arrows</h2>
+    <div class="concept">The position sits where the walk already is: <code>‹ 3/7 ›</code>. Blank
+    before the first step, so it appears only once you are actually walking.</div>
+    <div class="pane">
+      <div class="hd"><span class="t">Orders</span><span class="h">— unit 4117</span>
+        <span class="sp"></span><span class="walk"><b>‹</b><span class="pos">3/7</span><b>›</b></span></div>
+      <div class="bd">
+        <div class="ed">@WORK<br><span class="sel">TAX</span></div>
+        <div class="stat"><span class="e">0 errors</span><span class="w">2 warnings</span></div>
+      </div>
+    </div>
+    <ul class="notes">
+      <li>You can tell when you have been round the whole turn</li>
+      <li>Sits with the controls it describes, and costs one small span</li>
+      <li>The signal the test waits on is the one the player reads — it cannot rot silently</li>
+      <li class="con">The header gains a third thing in a row that is already tight on a narrow window</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2><em>C</em>On the status line instead</h2>
+    <div class="concept">The counter joins the errors and warnings under the editor, where the other
+    numbers already live: <code>0 errors · 2 warnings · problem 3 of 7</code>.</div>
+    <div class="pane">
+      <div class="hd"><span class="t">Orders</span><span class="h">— unit 4117</span>
+        <span class="sp"></span><span class="walk"><b>‹</b><b>›</b></span></div>
+      <div class="bd">
+        <div class="ed">@WORK<br><span class="sel">TAX</span></div>
+        <div class="stat"><span class="e">0 errors</span><span class="w">2 warnings</span>
+          <span style="color:var(--brass)">problem 3 of 7</span></div>
+      </div>
+    </div>
+    <ul class="notes">
+      <li>Room for words rather than a cramped <code>3/7</code></li>
+      <li>The header stays exactly as it is</li>
+      <li class="con">Far from the buttons that change it, so the connection has to be inferred</li>
+      <li class="con">That line is per-unit; the walk is turn-wide, so two scopes sit side by side</li>
+    </ul>
+  </div>
+</div>
+
+<h3 class="sec">2 · What should re-validation do to a walk in progress?</h3>
+<p>You press <kbd>F8</kbd> three times, then type a character. Validation is debounced, so a moment
+later it re-runs and the problem list is rebuilt. <b>Today the walk silently returns to the
+start</b> — the next <kbd>F8</kbd> takes you to problem 1, not problem 4. This is the root cause of
+the CI flake, and it is also something a player feels.</p>
+
+<div class="cards2">
+  <div class="card">
+    <h2><em>R1</em>Keep your place by identity</h2>
+    <div class="concept">The walk remembers <i>which problem</i> it is on — the unit and the line —
+    rather than its index. After a re-validation it finds that problem again and carries on from
+    there. If it is gone (you fixed it), the walk resumes at the nearest one that is still there.</div>
+    <div class="seq">
+      <div><h4>F8 × 3</h4><div class="box">problem <span class="good">3</span> of 7</div></div>
+      <div><h4>you type</h4><div class="box">re-validated<br>now 6 problems</div></div>
+      <div><h4>F8</h4><div class="box">problem <span class="good">4</span> of 6<br><span style="color:var(--ink-dim)">carries on</span></div></div>
+    </div>
+    <ul class="notes">
+      <li>Fixing a problem and stepping on is the ordinary way this is used, and it now works</li>
+      <li>Nothing jumps under you while you are part-way through a turn</li>
+      <li class="con">"The nearest one still there" is a rule that has to be defined and tested</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h2><em>R2</em>Start again, but say so</h2>
+    <div class="concept">A re-validation still resets the walk — but the counter goes blank rather
+    than lying, so the next step visibly starts from <code>1/6</code>.</div>
+    <div class="seq">
+      <div><h4>F8 × 3</h4><div class="box">problem <span class="good">3</span> of 7</div></div>
+      <div><h4>you type</h4><div class="box">re-validated<br>counter blank</div></div>
+      <div><h4>F8</h4><div class="box">problem <span class="bad">1</span> of 6<br><span style="color:var(--ink-dim)">back to the top</span></div></div>
+    </div>
+    <ul class="notes">
+      <li>Keeps today's behaviour, which is simple and provably correct against a rebuilt list</li>
+      <li>The reset stops being invisible, which is the part that actually bites</li>
+      <li class="con">Fixing one problem still sends you back to the top of the turn</li>
+      <li class="con">On a long turn that is a lot of stepping to get back to where you were</li>
+    </ul>
+  </div>
+</div>
+
+</main>
+
+<footer style="margin-top:34px; color:var(--ink-dim); font-size:12.5px;">
+  Mockup for bead <code>ah-9ess</code>. Panes are drawn with the app's own tokens; counts are
+  illustrative.
+</footer>
+</body>
+</html>

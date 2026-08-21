@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The problem walk — the awkward cases</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --ink:#dbe3ec;
+    --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --select:#4a9fd8; --ok:#4fb783;
+    --warn:#d9a441; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1340px; margin:0 auto; }
+  h1 { font-size:26px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:98ch; margin-top:10px; font-size:14px; }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; color:#eebe63; font-size:12.5px; }
+  h3.sec { margin:36px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:98ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; }
+  .card h2 { font-size:15.5px; margin-bottom:5px; }
+  .card h2 em { color:var(--brass); font-style:normal; font-size:11.5px; letter-spacing:1.5px; margin-right:8px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; margin-bottom:12px; min-height:4em; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:12px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212  "; color:var(--danger); }
+  .cards3 { display:grid; grid-template-columns:repeat(3,1fr); gap:18px; align-items:start; }
+  .cards2 { display:grid; grid-template-columns:repeat(2,1fr); gap:18px; align-items:start; }
+  .pane { background:var(--raised); border:1px solid var(--edge); border-radius:6px;
+          font-family:system-ui,-apple-system,'Segoe UI',sans-serif; font-size:12.5px; }
+  .pane.narrow { max-width:250px; }
+  .pane .hd { display:flex; align-items:center; gap:7px; padding:7px 10px; border-bottom:1px solid var(--edge); }
+  .pane .hd .t { color:var(--brass); white-space:nowrap; }
+  .pane .hd .h { color:var(--ink-dim); font-size:11.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .pane .hd .sp { flex:1; min-width:4px; }
+  .walk { display:inline-flex; align-items:center; gap:3px; color:var(--ink-dim); flex:none; }
+  .pos { color:var(--brass); font-size:11px; font-family:'SF Mono',Menlo,Consolas,monospace;
+         background:rgba(217,164,65,0.14); border-radius:3px; padding:0 4px; white-space:nowrap; }
+  .list { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11px; line-height:1.85;
+          background:#0b0f14; border:1px solid var(--edge); border-radius:4px; padding:8px 9px; color:#c7d2de; }
+  .list .on { background:rgba(74,159,216,0.25); border-radius:2px; }
+  .list .gone { color:var(--ink-dim); text-decoration:line-through; }
+  .list .land { color:var(--ok); }
+  .cols { display:grid; grid-template-columns:1fr 1fr; gap:9px; }
+  .cols h4 { font-size:10.5px; letter-spacing:1.2px; text-transform:uppercase; color:var(--ink-dim);
+             margin-bottom:5px; font-weight:normal; font-family:system-ui,sans-serif; }
+</style>
+</head>
+<body>
+<header>
+  <h1>The problem walk — <span>the awkward cases</span></h1>
+  <p>Settled: a counter <b>between the arrows</b> in the Orders pane header, and the walk
+  <b>keeps its place by identity</b> across a re-validation rather than jumping back to the start.
+  What is left is what "keeps its place" means when the problem you were standing on is the one you
+  just fixed, what the counter says when there is nothing to count, and what gives way when the
+  window is narrow.</p>
+</header>
+
+<main>
+
+<h3 class="sec">1 · You fixed the problem you were standing on</h3>
+<p>You were on problem 3 of 7. You fixed it. Validation re-runs and there are now six. Where does the
+next <kbd>F8</kbd> take you?</p>
+
+<div class="cards3">
+  <div class="card">
+    <h2><em>K1</em>The next one down the document</h2>
+    <div class="concept">The walk remembers where it stood in the document. Its problem is gone, so
+    it resumes at the first problem <b>at or after</b> that position — the one that would have come
+    next anyway.</div>
+    <div class="cols">
+      <div><h4>before</h4><div class="list">1 unit 4117 line 2<br>2 unit 4117 line 5<br><span class="on">3 unit 4203 line 1</span><br>4 unit 4203 line 4<br>5 unit 4290 line 2</div></div>
+      <div><h4>after F8</h4><div class="list">1 unit 4117 line 2<br>2 unit 4117 line 5<br><span class="gone">3 unit 4203 line 1</span><br><span class="land">3 unit 4203 line 4</span><br>4 unit 4290 line 2</div></div>
+    </div>
+    <ul class="notes">
+      <li>Fix one, step on, and you land exactly where you would have without the edit</li>
+      <li>Nothing is skipped and nothing is repeated</li>
+      <li class="con">The most rules to write and test of the three</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h2><em>K2</em>Keep the number</h2>
+    <div class="concept">You were on 3, so you stay on 3 — of however many there now are. The next
+    step goes to 4.</div>
+    <div class="cols">
+      <div><h4>before</h4><div class="list">1 unit 4117 line 2<br>2 unit 4117 line 5<br><span class="on">3 unit 4203 line 1</span><br>4 unit 4203 line 4<br>5 unit 4290 line 2</div></div>
+      <div><h4>after F8</h4><div class="list">1 unit 4117 line 2<br>2 unit 4117 line 5<br>3 unit 4203 line 4<br><span class="land">4 unit 4290 line 2</span></div></div>
+    </div>
+    <ul class="notes">
+      <li>Simplest rule there is: one number, clamped</li>
+      <li class="con"><b>Skips one.</b> Old 4 slid into slot 3, and stepping to 4 jumps straight past it</li>
+      <li class="con">Only correct when the problem you fixed was before the one you are on</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h2><em>K3</em>Back to the top, only in this case</h2>
+    <div class="concept">Identity is kept whenever the problem still exists; when it has gone, the
+    walk restarts — today's behaviour, kept as the fallback only.</div>
+    <div class="cols">
+      <div><h4>before</h4><div class="list">1 unit 4117 line 2<br>2 unit 4117 line 5<br><span class="on">3 unit 4203 line 1</span><br>4 unit 4203 line 4<br>5 unit 4290 line 2</div></div>
+      <div><h4>after F8</h4><div class="list"><span class="land">1 unit 4117 line 2</span><br>2 unit 4117 line 5<br>3 unit 4203 line 4<br>4 unit 4290 line 2</div></div>
+    </div>
+    <ul class="notes">
+      <li>No "nearest" rule to define at all</li>
+      <li class="con">Fixing a problem is the one moment the walk restarts, which is backwards</li>
+      <li class="con">On a long turn you re-step everything you already dealt with</li>
+    </ul>
+  </div>
+</div>
+
+<h3 class="sec">2 · What the counter says when there is nothing to say</h3>
+<p>Three states have no position: before the first step, when the turn has no problems at all, and
+when the last problem is fixed while you are standing on it. The buttons stay enabled throughout —
+that is deliberate and already tested.</p>
+<div class="cards2">
+  <div class="card">
+    <h2><em>N1</em>Nothing at all</h2>
+    <div class="concept">The counter is absent until the walk has a position, and disappears again if
+    it loses one. The header looks exactly as it does today until you step.</div>
+    <div class="pane" style="margin-bottom:9px">
+      <div class="hd"><span class="t">Orders</span><span class="h">— unit 4117</span><span class="sp"></span>
+        <span class="walk">‹&nbsp;›</span></div></div>
+    <div class="pane">
+      <div class="hd"><span class="t">Orders</span><span class="h">— unit 4117</span><span class="sp"></span>
+        <span class="walk">‹<span class="pos">3/7</span>›</span></div></div>
+    <ul class="notes">
+      <li>No pixels spent saying nothing</li>
+      <li>Costs nothing on a turn with no problems, which is the goal state</li>
+      <li class="con">The header's width changes the moment you first press F8</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h2><em>N2</em>The total, with no position</h2>
+    <div class="concept">Before you step it shows how many there are — <code>7</code> — and gains the
+    position once you are walking. With none at all it shows <code>0</code>.</div>
+    <div class="pane" style="margin-bottom:9px">
+      <div class="hd"><span class="t">Orders</span><span class="h">— unit 4117</span><span class="sp"></span>
+        <span class="walk">‹<span class="pos">7</span>›</span></div></div>
+    <div class="pane">
+      <div class="hd"><span class="t">Orders</span><span class="h">— unit 4117</span><span class="sp"></span>
+        <span class="walk">‹<span class="pos">3/7</span>›</span></div></div>
+    <ul class="notes">
+      <li>The header never changes width, so nothing shifts under the cursor</li>
+      <li>Tells you there is something to walk before you walk it</li>
+      <li class="con">Duplicates the problems chip, which already counts the turn's problems</li>
+      <li class="con"><code>7</code> then <code>3/7</code> is two meanings for one small space</li>
+    </ul>
+  </div>
+</div>
+
+<h3 class="sec">3 · A narrow window</h3>
+<p>The header holds the title, the unit hint, and now the walk. Something has to give first.</p>
+<div class="cards2">
+  <div class="card">
+    <h2><em>W1</em>The unit hint truncates</h2>
+    <div class="concept">The title and the walk are fixed; the <code>— unit 4117</code> hint is the
+    flexible one and ellipsises.</div>
+    <div class="pane narrow">
+      <div class="hd"><span class="t">Orders</span><span class="h">— unit 41…</span><span class="sp"></span>
+        <span class="walk">‹<span class="pos">3/7</span>›</span></div></div>
+    <ul class="notes">
+      <li>The controls stay reachable at every width, which is what matters for a control</li>
+      <li>The unit id is also shown in the unit pane, so it is not the only copy</li>
+      <li class="con">A truncated unit id is worse than no unit id</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h2><em>W2</em>The counter drops out</h2>
+    <div class="concept">Below a width the counter is hidden and the arrows remain. The hint stays
+    whole.</div>
+    <div class="pane narrow">
+      <div class="hd"><span class="t">Orders</span><span class="h">— unit 4117</span><span class="sp"></span>
+        <span class="walk">‹&nbsp;›</span></div></div>
+    <ul class="notes">
+      <li>Nothing is ever shown truncated or half-readable</li>
+      <li class="con">The signal the test waits on vanishes at narrow widths, so it is only sometimes there</li>
+      <li class="con">A breakpoint to choose, and a second layout to verify</li>
+    </ul>
+  </div>
+</div>
+
+</main>
+
+<footer style="margin-top:34px; color:var(--ink-dim); font-size:12.5px;">
+  Mockup for bead <code>ah-9ess</code>, second round.
+</footer>
+</body>
+</html>
