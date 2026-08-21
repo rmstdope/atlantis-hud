@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { lineDepths } from "./orderIndent";
+import { buildVocabulary, type CaseChange } from "./orderCase";
+import {
+  indentBlock,
+  indentChanges,
+  lineDepths,
+  tidyChanges,
+  trailingNewlineChange,
+  withSingleTrailingNewline
+} from "./orderIndent";
 
 describe("lineDepths", () => {
   const cases: ReadonlyArray<readonly [string, string, number[]]> = [
@@ -26,4 +34,93 @@ describe("lineDepths", () => {
       expect(lineDepths(text)).toEqual(depths);
     });
   }
+});
+
+describe("indentChanges and indentBlock", () => {
+  it("indents each level of a nested block by one space", () => {
+    expect(
+      indentBlock('TURN\nNAME UNIT "Scout"\nFORM 1\nNAME UNIT "New"\nSTUDY COMBAT\nEND\nMOVE N\nENDTURN\nWORK')
+    ).toBe(
+      'TURN\n NAME UNIT "Scout"\n FORM 1\n  NAME UNIT "New"\n  STUDY COMBAT\n END\n MOVE N\nENDTURN\nWORK'
+    );
+  });
+
+  it("replaces whatever leading whitespace was there", () => {
+    expect(indentBlock("TURN\n    WORK\n\tMOVE N\nENDTURN")).toBe("TURN\n WORK\n MOVE N\nENDTURN");
+  });
+
+  it("has nothing to do for an already-correct block", () => {
+    const text = "TURN\n WORK\nENDTURN";
+    expect(indentChanges(text)).toEqual([]);
+    expect(indentBlock(text)).toBe(text);
+  });
+
+  it("leaves a blank line truly empty", () => {
+    expect(indentBlock("TURN\nWORK\n\nMOVE N\nENDTURN")).toBe("TURN\n WORK\n\n MOVE N\nENDTURN");
+  });
+
+  it("indents a comment line like any other", () => {
+    expect(indentBlock("TURN\n; note\n@; sent\nWORK\nENDTURN")).toBe(
+      "TURN\n ; note\n @; sent\n WORK\nENDTURN"
+    );
+  });
+
+  it("indents everything below an unclosed FORM by the running depth", () => {
+    expect(indentBlock("TURN\nFORM 1\nWORK\nMOVE N")).toBe("TURN\n FORM 1\n  WORK\n  MOVE N");
+  });
+});
+
+describe("withSingleTrailingNewline and trailingNewlineChange", () => {
+  const cases: ReadonlyArray<readonly [string, string]> = [
+    ["", ""],
+    ["WORK", "WORK\n"],
+    ["WORK\n", "WORK\n"],
+    ["WORK\n\n\n", "WORK\n"],
+    ["WORK\n   \n\t\n", "WORK\n"],
+    ["\n\n", ""]
+  ];
+
+  for (const [input, output] of cases) {
+    it(`${JSON.stringify(input)} ends as ${JSON.stringify(output)}`, () => {
+      expect(withSingleTrailingNewline(input)).toBe(output);
+    });
+  }
+
+  it("has no edit to make when the text already ends in exactly one newline", () => {
+    expect(trailingNewlineChange("WORK\n")).toBeNull();
+    expect(trailingNewlineChange("")).toBeNull();
+  });
+
+  it("describes the fix as one splice over the trailing blank run", () => {
+    expect(trailingNewlineChange("WORK\n\n\n")).toEqual({ from: 4, to: 7, insert: "\n" });
+  });
+});
+
+describe("tidyChanges", () => {
+  const vocabulary = buildVocabulary(["turn", "endturn", "form", "work", "move"]);
+
+  it("merges case, indent and trailing-newline edits into one ordered, non-overlapping list", () => {
+    const text = "turn\nwork\n\n\n";
+    const changes = tidyChanges(text, vocabulary, null);
+
+    expect(changes.length).toBeGreaterThan(2);
+    for (let i = 1; i < changes.length; i += 1) {
+      const previous = changes[i - 1] as CaseChange;
+      const current = changes[i] as CaseChange;
+      expect(current.from).toBeGreaterThanOrEqual(previous.to);
+    }
+
+    let result = text;
+    for (let i = changes.length - 1; i >= 0; i -= 1) {
+      const change = changes[i] as CaseChange;
+      result = result.slice(0, change.from) + change.insert + result.slice(change.to);
+    }
+    expect(result).toBe("TURN\n WORK\n");
+  });
+
+  it("leaves the word the caret is inside as typed", () => {
+    expect(tidyChanges("turn\nwork", vocabulary, 9).some((change) => change.insert === "WORK")).toBe(
+      false
+    );
+  });
 });

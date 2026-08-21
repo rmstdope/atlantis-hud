@@ -10,7 +10,13 @@
  * everything still open.
  */
 
-import { bareWords, type CaseChange } from "./orderCase";
+import {
+  bareWords,
+  keywordCaseChanges,
+  type CaseChange,
+  type Vocabulary
+} from "./orderCase";
+import { withoutTrailingBlankLines } from "./ordersDocument";
 
 type Block = "turn" | "form";
 
@@ -53,4 +59,87 @@ export function lineDepths(text: string): number[] {
   }
 
   return depths;
+}
+
+/**
+ * One space per level: the leading-whitespace replacements a block wants, in whole-block offsets.
+ *
+ * A line whose `trim()` is empty is left alone entirely, so a blank line stays truly empty and no
+ * invisible whitespace is ever written into an orders file.
+ */
+export function indentChanges(text: string): CaseChange[] {
+  const depths = lineDepths(text);
+  const changes: CaseChange[] = [];
+  let lineStart = 0;
+
+  text.split("\n").forEach((line, index) => {
+    const start = lineStart;
+    lineStart += line.length + 1;
+    if (line.trim() === "") {
+      return;
+    }
+    const existing = line.length - line.trimStart().length;
+    const wanted = " ".repeat(depths[index] ?? 0);
+    if (line.slice(0, existing) === wanted) {
+      return;
+    }
+    changes.push({ from: start, to: start + existing, insert: wanted });
+  });
+
+  return changes;
+}
+
+/** The block with every line indented to its depth. */
+export function indentBlock(text: string): string {
+  return applyChanges(text, indentChanges(text));
+}
+
+/** The block ending in exactly one newline - and an empty block left empty. */
+export function withSingleTrailingNewline(text: string): string {
+  const kept = withoutTrailingBlankLines(text);
+  return kept === "" ? "" : `${kept}\n`;
+}
+
+/** The one edit that achieves it, or null when there is nothing to do. */
+export function trailingNewlineChange(text: string): CaseChange | null {
+  if (withSingleTrailingNewline(text) === text) {
+    return null;
+  }
+  const kept = withoutTrailingBlankLines(text);
+  return kept === ""
+    ? { from: 0, to: text.length, insert: "" }
+    : { from: kept.length, to: text.length, insert: "\n" };
+}
+
+/**
+ * Every edit the whole-block tidy wants, in whole-block offsets, ordered by `from`.
+ *
+ * The three kinds can never overlap: a case change covers a bare word, which starts after the
+ * line's leading whitespace; an indent change covers exactly that leading whitespace; and the
+ * trailing-newline change covers only the run of blank lines at the end, which holds no bare words
+ * and is emitted no indent edits.
+ */
+export function tidyChanges(
+  text: string,
+  vocabulary: Vocabulary,
+  protect: number | null
+): CaseChange[] {
+  const changes = [...keywordCaseChanges(text, vocabulary, protect), ...indentChanges(text)];
+  const trailing = trailingNewlineChange(text);
+  if (trailing) {
+    changes.push(trailing);
+  }
+  // `to` breaks the tie so a zero-width indent insertion sorts ahead of a case change that starts
+  // at the same offset - the line's first word, on a line with no indentation yet.
+  return changes.sort((a, b) => a.from - b.from || a.to - b.to);
+}
+
+/** The changes applied back to front, exactly as `uppercaseKeywords` applies case changes. */
+function applyChanges(text: string, changes: readonly CaseChange[]): string {
+  let result = text;
+  for (let i = changes.length - 1; i >= 0; i -= 1) {
+    const change = changes[i] as CaseChange;
+    result = result.slice(0, change.from) + change.insert + result.slice(change.to);
+  }
+  return result;
 }
