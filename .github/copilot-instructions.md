@@ -43,7 +43,7 @@ an X-Man:
 
 ```bash
 git submodule update --init --recursive    # once per clone: the launchers live in the submodule
-.claude/cerebro/scripts/run-implementer Cyclops
+.claude/cerebro/scripts/launch Cyclops
 ```
 
 Every `.claude/cerebro/…` path below comes from that submodule. On a clone made without
@@ -65,7 +65,7 @@ review comments unanswered. A session of its own can simply block until the revi
 **Cerebro orchestrates them without starting them:**
 
 ```bash
-.claude/cerebro/scripts/run-orchestrator
+.claude/cerebro/scripts/launch Cerebro
 ```
 
 That session is interactive, runs on Fable, and does nothing until you ask. It cannot start an
@@ -100,7 +100,7 @@ sweeps are described in `.claude/agents/orchestrator.md`.
 **The planner is a session too, and it is Xavier:**
 
 ```bash
-.claude/cerebro/scripts/run-planner
+.claude/cerebro/scripts/launch Xavier
 ```
 
 Interactive, and it has to be: it must put a question and an HTML mockup in front of you and wait
@@ -118,7 +118,7 @@ is a floor under the fleet, not a ceiling on urgent work.
 **User feedback is Moira, and she owns the inbox:**
 
 ```bash
-.claude/cerebro/scripts/run-user-feedback
+.claude/cerebro/scripts/launch Moira
 ```
 
 Interactive for the same reason the planner is — she has to put an issue in front of you and wait.
@@ -149,7 +149,7 @@ she sleeps ten minutes and goes round again.
 **Verification is Psylocke, and closed stops being terminal:**
 
 ```bash
-.claude/cerebro/scripts/run-psylocke
+.claude/cerebro/scripts/launch Psylocke
 ```
 
 Interactive, for the same reason the planner and Moira are — she has to put a running application in
@@ -173,7 +173,7 @@ status comments.
 **Technical debt is Bishop, and it files rather than fixes:**
 
 ```bash
-.claude/cerebro/scripts/run-bishop
+.claude/cerebro/scripts/launch Forge
 ```
 
 Unlike the other five, Bishop is not part of the build-review-merge-verify cycle at all — it is the
@@ -186,7 +186,7 @@ finding lands at **P4**, unranked, for Xavier to triage with you like anything e
 Bishop never edits code and never sets a priority itself. It writes the same
 `.cerebro/state/<name>.state.json` file every other agent does, but holds no claim, lease or
 PR, so unlike every other role here it ends its own turn once the sweep is reported rather than
-looping — start it again with `.claude/cerebro/scripts/run-bishop` whenever you want another read.
+looping — start it again with `.claude/cerebro/scripts/launch Forge` whenever you want another read.
 
 All six roles are defined in `.claude/agents/`.
 
