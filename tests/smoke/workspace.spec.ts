@@ -1876,6 +1876,9 @@ test("the badge menu's lower rows take clicks, and give the map back when it clo
 
   // Closed, the strip must stop claiming that area: whatever the menu covered takes clicks again.
   const where = await lowest.boundingBox();
+  // Asserted rather than defaulted: a null box would otherwise send `elementFromPoint` to the
+  // window's top-left corner, where it finds no strip and the test passes having checked nothing.
+  expect(where).not.toBeNull();
   await page.keyboard.press("Escape");
   await expect(menu).toHaveCount(0);
   const under = await page.evaluate(
@@ -1883,7 +1886,7 @@ test("the badge menu's lower rows take clicks, and give the map back when it clo
       document
         .elementFromPoint(point.x, point.y)
         ?.closest("[data-testid='layer-chips']") === null,
-    { x: (where?.x ?? 0) + 4, y: (where?.y ?? 0) + 4 }
+    { x: where!.x + 4, y: where!.y + 4 }
   );
   expect(under).toBe(true);
 });
