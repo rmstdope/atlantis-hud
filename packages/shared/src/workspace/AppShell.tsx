@@ -778,6 +778,14 @@ export function AppShell({
         case "help":
           setHelpOpen((open) => !open);
           break;
+        // A toggle: open cold when closed, and when open simply close - never re-open, which
+        // would silently throw away a cross-reference the player had followed. Nothing at all
+        // without a ruleset, matching the palette, which offers no door onto empty tabs.
+        case "gameData":
+          if (gameData !== null) {
+            setGameDataOpen((open) => (open === null ? { entryId: null } : null));
+          }
+          break;
         case "nextUnit":
         case "prevUnit": {
           const target = nextOwnUnit(
@@ -798,7 +806,7 @@ export function AppShell({
           break;
       }
     },
-    [orderedOwnUnitIds, unit, goToUnit, walkProblems]
+    [orderedOwnUnitIds, unit, goToUnit, walkProblems, gameData]
   );
 
   // The global keyboard layer: one bubble-phase listener, so every widget's own keys - the
@@ -823,7 +831,7 @@ export function AppShell({
       // Behind an open dialog or palette the cycling chords stand down: walking the selection
       // under an overlay mutates what nobody can see. The palette and help stay reachable -
       // pressing their chord again is how they toggle closed.
-      if (id !== "palette" && id !== "help" && hasOpenDismissLayers()) {
+      if (id !== "palette" && id !== "help" && id !== "gameData" && hasOpenDismissLayers()) {
         return;
       }
       event.preventDefault();
@@ -837,6 +845,7 @@ export function AppShell({
   const paletteEntries = useMemo(() => {
     const mac = isMacPlatform();
     const helpSpec = SHORTCUTS.find((entry) => entry.id === "help");
+    const gameDataSpec = SHORTCUTS.find((entry) => entry.id === "gameData");
     return buildPaletteEntries({
       ownUnits: orderedOwnUnitIds.map((unitId) => {
         const owner = parsed?.regions
@@ -879,6 +888,20 @@ export function AppShell({
           binding: helpSpec ? (mac ? helpSpec.mac : helpSpec.other) : undefined,
           run: () => setHelpOpen(true)
         },
+        // Only once the ruleset has loaded: the palette already offers no game data at all in
+        // that state, and a door onto seven empty tabs is worse than no door.
+        ...(gameData
+          ? [
+              {
+                id: "browse-game-data",
+                // "Browse" says it opens something to look around in, rather than reading as one
+                // of the ~270 dictionary entries it sits among.
+                label: "Browse game data",
+                binding: gameDataSpec ? (mac ? gameDataSpec.mac : gameDataSpec.other) : undefined,
+                run: () => setGameDataOpen({ entryId: null })
+              }
+            ]
+          : []),
         // Only with a report on screen: an export needs a turn to name itself after and a map to
         // describe, and neither exists before one is imported.
         ...(parsed ? [{ id: "export-map", label: "Export map", run: () => openExport() }] : []),
