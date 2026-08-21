@@ -36,8 +36,9 @@ export function lineDepths(text: string): number[] {
     const trimmed = line.trimStart();
     const first = bareWords(line)[0]?.text.toUpperCase();
 
-    // A region banner or a unit header can only arrive by paste - the editor holds one unit's
-    // block - but `walk.rs` abandons everything open on both, so this does too.
+    // A `#` directive (`#atlantis`, `#end`) or a `unit` header can only arrive by paste - the
+    // editor holds one unit's block - but `walk.rs` abandons everything open on both, so this does
+    // too. A `;***` region banner is a comment line and abandons nothing, there or here.
     if (trimmed.startsWith("#") || first === "UNIT") {
       stack.length = 0;
       depths.push(0);
