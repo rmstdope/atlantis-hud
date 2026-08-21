@@ -53,8 +53,22 @@ const ROAD_DIRECTIONS = new Set<string>(Object.keys(ROAD_VECTORS));
  * Whether a structure can sail away: a ship is drawn as a hull, not as a building's roof. The
  * report offers no flag for this, only the kind's name, so the classic hull names are listed and
  * "ship"/"boat" catch the rest (Longship, Airship, Longboat and their kin).
+ *
+ * `fleet` is the word Atlantis writes when a stack of vessels has no single lead type to name it
+ * by - `Fleet, 8 Corsairs` - so it means exactly what `Galley, 2 Galleys` means (ah-3pr9). Six of
+ * the seven fleets in the fixtures drew as buildings without it, and the seventh only passed
+ * because `Airships` contains "ship".
  */
-const SHIP_KINDS = new Set(["galley", "raft", "cog", "clipper", "galleon", "corsair", "balloon"]);
+const SHIP_KINDS = new Set([
+  "galley",
+  "raft",
+  "cog",
+  "clipper",
+  "galleon",
+  "corsair",
+  "balloon",
+  "fleet"
+]);
 
 /**
  * A passage to another level. Shafts are the only non-magical way between the surface and the
@@ -251,6 +265,33 @@ function noStructures(): StructureTally {
   return { roads: [], ships: 0, shafts: 0, lairs: 0, buildings: 0 };
 }
 
+/**
+ * How many vessels a ship structure holds (ah-3pr9).
+ *
+ * The kind is a label followed by the fleet's inventory - `Cloudship, 14 Cloudships, 4 Airships`.
+ * The label is NOT a vessel: that example would otherwise read 15 cloudships where the report says
+ * 14. A kind with no inventory (`Galley`) is a fleet of exactly one.
+ *
+ * Only the leading integer of each segment is read, and a segment without one contributes nothing:
+ * the counts in a real report are always written as numerals. A kind whose inventory yields no
+ * number at all still counts 1 rather than 0 - a ship that is on the map must never tally as
+ * nothing, and under-counting a strange kind is far better than losing it.
+ *
+ * Read from the RAW kind: `classify` strips the inventory to match its bare-word sets, and the
+ * inventory is exactly what this needs.
+ */
+function vesselCount(kind: string): number {
+  const parts = kind.split(",").slice(1);
+  if (parts.length === 0) {
+    return 1;
+  }
+  const total = parts.reduce((sum, part) => {
+    const found = /^\s*(\d+)\b/u.exec(part);
+    return sum + (found ? Number(found[1]) : 0);
+  }, 0);
+  return total > 0 ? total : 1;
+}
+
 function tallyStructures(region: ReportRegion | null): StructureTally {
   const tally = noStructures();
   for (const structure of region?.structures ?? []) {
@@ -263,7 +304,7 @@ function tallyStructures(region: ReportRegion | null): StructureTally {
         break;
       }
       case "ship":
-        tally.ships += 1;
+        tally.ships += vesselCount(structure.kind);
         break;
       case "shaft":
         tally.shafts += 1;
