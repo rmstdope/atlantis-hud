@@ -6,6 +6,7 @@ import {
   expectOrders,
   fillOrders,
   loadReport,
+  mapTransform,
   ordersInput,
   selectHex,
   selectUnit
@@ -314,9 +315,6 @@ test("the map really answers the gestures the overlay describes", async ({ page 
 });
 
 /** Where the map is standing, read the same way `persistence.spec.ts` does. */
-async function mapTransform(page: Page): Promise<string> {
-  return (await page.getByTestId("map-world").getAttribute("transform")) ?? "";
-}
 
 test("right-click centres the view on a hex, without selecting it", async ({ page }) => {
   await loadReport(page);

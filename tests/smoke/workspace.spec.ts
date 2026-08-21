@@ -9,6 +9,7 @@ import {
   expectOrdersNot,
   fillOrders,
   loadReport,
+  mapTransform,
   ordersInput,
   ordersText,
   selectHex,
@@ -1379,10 +1380,6 @@ async function unfoldPanel(page: Page, panel: string) {
   await expect(section).toHaveAttribute("data-collapsed", "false");
 }
 
-/** Where the map is standing, read the same way `shortcuts.spec.ts` does. */
-async function mapTransform(page: Page): Promise<string> {
-  return (await page.getByTestId("map-world").getAttribute("transform")) ?? "";
-}
 
 test("a folded panel shrinks to its title bar", async ({ page }) => {
   await loadReport(page);

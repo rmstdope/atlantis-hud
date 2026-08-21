@@ -2,10 +2,19 @@ import { expect, type Page } from "@playwright/test";
 import { readReport } from "@atlantis/fixtures";
 
 /**
- * Getting a walk to the point where there is a game to work in.
+ * How a smoke walk reaches the application, in one place.
+ *
+ * Three kinds of thing live here. **Setting up**: clearing the browser, creating a game, loading a
+ * report. **Navigating**: selecting a hex or a unit, opening the orders editor, reading the map's
+ * transform. **Settling**: waiting for a panel to stop moving or resizing before it is measured.
  *
  * A module of its own rather than exports from a spec: Playwright refuses to let one spec import
  * another, and every walk in this suite now starts by passing through the create screen.
+ *
+ * One module rather than one per kind, deliberately (ah-2a96). The defect this file was widened to
+ * fix is a helper nobody could find - `waitForStableBox` took five retrospectives to arrive at and
+ * was reachable from one spec of twelve - and two places to look would be the same defect in
+ * smaller print.
  */
 
 /**
@@ -150,6 +159,11 @@ export async function openOrders(page: Page, unitId: string, regionId = "1:7,53"
   await selectHex(page, regionId);
   await selectUnit(page, unitId);
   await expect(page.getByTestId("orders-input")).toBeVisible();
+}
+
+/** Where the map is standing. */
+export async function mapTransform(page: Page): Promise<string> {
+  return (await page.getByTestId("map-world").getAttribute("transform")) ?? "";
 }
 
 /**
