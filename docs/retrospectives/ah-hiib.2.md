@@ -2,7 +2,7 @@
 
 - **Implementer:** Storm
 - **Date:** 2026-08-21
-- **PR:** rmstdope/cerebro#64, and the pin bump in this repository
+- **PR:** #496, and rmstdope/cerebro#64 for the work itself
 
 ## Copilot answered with its own error, for the third recorded time, and the rules still have no path for it
 
@@ -18,7 +18,7 @@ baseline until it cleared the bar it set (and with one interval could never be m
 nothing closed the last interval of a session that ended, so an agent that ran once would have been
 reported as running for ever. Both invert what the bead was for.
 
-**Why.** The Copilot error is not established and is not this PR's: `ah-yk6b` saw the same notice
+**Why.** The Copilot error is not established and is not this PR's: `ah-60m` saw the same notice
 resolve itself hours later when a GitHub incident ended. What *is* established is that the rules
 treat "no review" and "an errored review" as the same thing, and both earlier sightings ended in a
 question to the navigator rather than in a documented step.
@@ -36,26 +36,15 @@ review, not the twenty-minute escalation — escalation is for a reviewer that n
 parks finished work over an outage. This is the third sighting and the second time the fix has had
 to be invented at the terminal.
 
-**Seen before.** `ah-60m` (one authorised re-request, also errored; navigator reviewed by hand),
-`ah-yk6b` (three errored requests during a GitHub incident; the real review arrived three and a half
+**Seen before.** `ah-yk6b` (PR #485: one authorised re-request, also errored; the navigator then
+read the PR by hand and found nothing), `ah-60m` (PR #398: three errored requests during a GitHub
+incident, with `api.github.com` returning 503 outright; the real review arrived three and a half
 hours later and found a genuine defect). Both name the same missing rule.
 
-## A subagent review is worth its cost on a bead nobody else will look at
-
-**What happened.** The subagent reviewer was given the diff, the bead's rules, and licence to build
-fixtures and try to break the script. It did: it wrote its own log fixtures, pinned the clock, and
-produced a concrete failing scenario for each finding — "one 5-minute `asking`, then 685 minutes
-stuck, median 345, threshold 690, unmarked". Two findings were real defects, three were weak tests
-that were themselves the reason the defects got through, and it separately listed nine things it
-tried to break and could not.
-
-**Why.** Not a failure — recorded because the cost is now known and the alternative was nothing.
-
-**Cost.** About six minutes and 73k tokens, against two defects that inverted the feature's purpose
-and would have reached the navigator's own fleet view.
-
-**Prevent by.** Nothing to prevent. Worth knowing when the same choice comes up: a reviewer briefed
-with the *rules the implementation is supposed to honour* — not merely "review this diff" — is what
-produced the findings, since both defects were violations of stated rules rather than bugs visible
-from the code alone. Whoever writes the subagent-review step into `implement-bead` should carry that
-across.
+**What the remedy cost, for whoever writes it down.** The subagent review took six minutes and 73k
+tokens. It was briefed with the *rules the implementation was supposed to honour*, not merely
+"review this diff", and that is what produced the findings: both defects were violations of stated
+rules rather than bugs visible from the code alone. It gave a concrete failing scenario for each —
+"one 5-minute `asking`, then 685 minutes stuck, median 345, threshold 690, unmarked" — and listed
+nine things it tried to break and could not. It then caught two swapped citations in this very file
+on the pin PR. Whoever adds the step should carry the briefing across, not just the idea.
