@@ -349,6 +349,39 @@ describe("structures, split by what they mean rather than counted together", () 
     expect(withStructures(["Lair"]).lairs).toBe(1);
   });
 
+  it("knows a habitat the report qualified, which is how every real one arrives", () => {
+    // The parser only splits a description out of `kind` on a semicolon, and a lair's line never
+    // carries one - so the whole clause lands in `kind` verbatim, exactly as written here. Every
+    // string is taken from tests/fixtures/reports/*.rep; before ah-o0d3 all three drew as
+    // buildings and no theme had ever drawn a lair mark from a real report.
+    expect(withStructures(["Lair, closed to player units"]).lairs).toBe(1);
+    expect(withStructures(["Ruin, closed to player units"]).lairs).toBe(1);
+    expect(withStructures(["Crypt, closed to player units"]).lairs).toBe(1);
+  });
+
+  it("knows a hull the report qualified with the vessels it holds", () => {
+    // Also from the fixtures: a galley reports the stack it leads, and the tail defeated the exact
+    // match the same way the lair's qualifier did.
+    expect(withStructures(["Galley, 2 Galleys, 3 Galleons"]).ships).toBe(1);
+    expect(withStructures(["Galley, 40 Galleons, 11 Galleys, 10 Balloons"]).ships).toBe(1);
+  });
+
+  it("leaves a road and a half-built keep alone", () => {
+    // The parser already strips ", needs N" and the trailing stop, so a road arrives bare and its
+    // direction is read from the raw kind, unchanged by ah-o0d3.
+    expect(withStructures(["Road N"]).roads).toEqual(["n"]);
+    expect(withStructures(["Stockade"]).buildings).toBe(1);
+    expect(withStructures(["Stockade, needs 20"]).buildings).toBe(1);
+  });
+
+  it("still knows a fleet whose tail is the only thing naming a ship", () => {
+    // `Fleet, 6 Airships` (turn 71) is a ship ONLY because `isShip` scans the whole raw string and
+    // finds "ship" in "Airships" - `fleet` is in neither SHIP_KINDS nor the substring test. So the
+    // raw kind must keep reaching `isShip` even once the qualified kind is cleaned for the set
+    // lookups; drop `isShip(structure.kind)` and this hull becomes a roof (ah-o0d3).
+    expect(withStructures(["Fleet, 6 Airships"]).ships).toBe(1);
+  });
+
   it("counts an unvisited hex as holding nothing, rather than guessing", () => {
     const view = viewOf(hex({ knowledge: "named" }));
 
