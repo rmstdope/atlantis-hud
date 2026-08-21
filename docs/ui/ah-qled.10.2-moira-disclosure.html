@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>What Moira tells a stranger (bead ah-qled.10.2)</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733; --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --ok:#4fb783; --danger:#d97070; --gh:#0d1117; --ghb:#30363d; --ghl:#4493f8; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1120px; margin-left:auto; margin-right:auto; }
+  h1 { font-size:25px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:94ch; margin-top:10px; font-size:14px; }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:0.9em; }
+  h2.sec { margin-top:32px; font-size:18px; color:var(--brass); } h2.sec small { color:var(--ink-dim); font-size:13px; margin-left:10px; }
+  .banner { border:1px solid var(--edge); border-left:3px solid var(--brass); background:var(--panel); padding:14px 16px; border-radius:6px; margin-top:16px; color:var(--ink-soft); font-size:13.5px; } .banner b { color:var(--ink); }
+  .banner.bad { border-left-color:var(--danger); }
+  .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); gap:20px; margin-top:16px; align-items:start; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; display:flex; flex-direction:column; gap:12px; }
+  .card h3 { font-size:16px; } .card h3 em { color:var(--brass); font-style:normal; font-size:11px; letter-spacing:1.6px; margin-right:8px; }
+  .notes { list-style:none; font-size:12px; color:var(--ink-soft); display:grid; gap:4px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; } .notes li.con::before { content:"\2212  "; color:var(--danger); }
+  .gh { background:var(--gh); border:1px solid var(--ghb); border-radius:6px; font-family:-apple-system,'Segoe UI',Helvetica,Arial,sans-serif; font-size:13px; color:#e6edf3; overflow:hidden; }
+  .gh .hd { border-bottom:1px solid var(--ghb); padding:6px 10px; font-size:11.5px; color:#9198a1; }
+  .gh .hd b { color:#e6edf3; font-weight:600; }
+  .gh .body { padding:10px 12px; line-height:1.5; }
+  .gh em { color:#9198a1; font-style:italic; }
+  .gh strong { color:#e6edf3; }
+  .narrow { max-width:330px; }
+  .wrapdemo { font-family:'SF Mono',Menlo,monospace; font-size:11.5px; background:var(--raised); border:1px solid var(--edge); border-radius:5px; padding:8px 10px; color:var(--ink-soft); white-space:pre; overflow-x:auto; }
+  .wrapdemo .bad { color:var(--danger); }
+</style>
+</head>
+<body>
+<header>
+  <h1>What Moira tells a stranger &mdash; <span>proposals</span> (ah-qled.10.2)</h1>
+  <p><b>This is the one place cerebro's coupling reaches people outside the fleet.</b> Every comment Moira posts to a public GitHub issue opens with a mandated, exactly-worded disclosure line &mdash; and that line has &ldquo;Atlantis HUD&rdquo; written into a submodule shared with every other consumer.</p>
+  <p><b>The requirement to disclose is product and stays.</b> A reporter must be told they are reading an agent. What changes is where the name comes from.</p>
+</header>
+<main>
+
+  <h2 class="sec">&sect;1 &nbsp;Today, as a reporter sees it</h2>
+  <div class="gh">
+    <div class="hd"><b>moira-bot</b> commented on #31</div>
+    <div class="body"><em>Written by <strong>Moira</strong>, an AI agent that triages issues for Atlantis HUD. Replying here reaches a human maintainer.</em><br><br>Thank you for taking the time to write this up &mdash; feedback from people actually playing with Atlantis HUD is genuinely the most useful thing we get&hellip;</div>
+  </div>
+  <div class="banner">The name appears <b>three times</b> in mandated text (<code>:136</code>, <code>:153</code>, <code>:363</code>), and <code>:174</code> builds a whole long-line rule out of it: <i>&ldquo;a wrap that lands mid-name gives them Atlantis on one line and HUD on the next&rdquo;</i>.</div>
+
+  <h2 class="sec">&sect;2 &nbsp;The disclosure line</h2>
+  <div class="cards">
+    <div class="card">
+      <h3><em>A</em> Same sentence, name substituted</h3>
+      <div class="gh"><div class="body"><em>Written by <strong>Moira</strong>, an AI agent that triages issues for <strong>{project_name}</strong>. Replying here reaches a human maintainer.</em></div></div>
+      <ul class="notes">
+        <li><b>Nothing about what a reporter reads changes</b> for this project &mdash; the wording you already approved, with one hole in it.</li>
+        <li>Smallest possible change, and the promise ("replying reaches a human") is unaltered.</li>
+        <li class="con">Keeps a project name in a sentence about an agent, which is the thing being parameterised.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3><em>B</em> Drop the project, keep the promise</h3>
+      <div class="gh"><div class="body"><em>Written by <strong>Moira</strong>, an AI agent that triages issues for this project. Replying here reaches a human maintainer.</em></div></div>
+      <ul class="notes">
+        <li>No substitution at all, so nothing can be missing or wrong.</li>
+        <li>The repository name is already at the top of the page the reporter is on.</li>
+        <li class="con">Slightly colder, and a reporter who arrived from a link may not know which project they are in.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3><em>C</em> Name the maintainer's project and the agent's role</h3>
+      <div class="gh"><div class="body"><em>Written by <strong>Moira</strong>, an AI agent that reads and triages issues for <strong>{project_name}</strong>. A human maintainer sees every reply.</em></div></div>
+      <ul class="notes">
+        <li>&ldquo;A human maintainer sees every reply&rdquo; is a firmer promise than &ldquo;replying here reaches&rdquo;.</li>
+        <li class="con">New wording on a line reporters may already recognise, and a stronger promise is a stronger commitment.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2 class="sec">&sect;3 &nbsp;When <code>project_name</code> is not declared <small>a consumer that never set it</small></h2>
+  <div class="cards">
+    <div class="card">
+      <h3><em>D</em> Fall back to &ldquo;this project&rdquo;</h3>
+      <div class="gh"><div class="body"><em>Written by <strong>Moira</strong>, an AI agent that triages issues for this project. Replying here reaches a human maintainer.</em></div></div>
+      <ul class="notes"><li>Always posts something correct; a reporter never sees a gap.</li><li>The disclosure &mdash; the part that is product &mdash; is never at risk.</li><li class="con">A consumer may never notice the key is missing.</li></ul>
+    </div>
+    <div class="card">
+      <h3><em>E</em> Refuse to post until it is declared</h3>
+      <div class="gh"><div class="body" style="color:var(--danger)">(no comment posted &mdash; Moira stops and says the project name is not declared)</div></div>
+      <ul class="notes"><li>Impossible to ship a half-configured disclosure to strangers.</li><li class="con"><b>A reporter gets silence</b>, which is the thing Moira exists to prevent &mdash; and the fix is a config key they cannot set.</li></ul>
+    </div>
+    <div class="card">
+      <h3><em>F</em> Fall back, and warn the fleet</h3>
+      <div class="gh"><div class="body"><em>Written by <strong>Moira</strong>, an AI agent that triages issues for this project. Replying here reaches a human maintainer.</em></div></div>
+      <ul class="notes"><li>The reporter always gets a proper comment&hellip;</li><li>&hellip;and the missing key is said out loud where the navigator will see it.</li><li class="con">Two behaviours instead of one.</li></ul>
+    </div>
+  </div>
+
+  <h2 class="sec">&sect;4 &nbsp;The wrap rule <small><code>:174</code> exists because &ldquo;Atlantis HUD&rdquo; splits badly</small></h2>
+  <div class="banner bad">GitHub renders a newline inside a paragraph as a <b>line break</b>, so a hard-wrapped comment arrives ragged &mdash; and a wrap landing mid-name gives a reporter <code>Atlantis</code> on one line and <code>HUD</code> on the next. The current rule is written around that specific name.</div>
+  <div class="wrapdemo">a wrap that lands mid-name, today:
+
+  _Written by **Moira**, an AI agent that triages issues for <span class="bad">Atlantis</span>
+  <span class="bad">HUD</span>. Replying here reaches a human maintainer._</div>
+  <div class="banner"><b>Whatever you choose in &sect;2, the rule has to survive a name of any length</b> &mdash; a consumer called <code>a</code> or <code>The Very Long Name Of Someone's Weekend Project</code>. The honest fix is <b>&ldquo;never hard-wrap these heredocs at all&rdquo;</b>, which is already what the file says (<i>&ldquo;the long lines in these heredocs are deliberate; do not reflow them&rdquo;</i>) &mdash; stated as a rule about the heredocs rather than about one name. Say if you would rather it stayed a rule about names.</div>
+
+</main>
+</body>
+</html>
