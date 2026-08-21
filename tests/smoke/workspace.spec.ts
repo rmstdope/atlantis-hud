@@ -2,6 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import { readReport } from "@atlantis/fixtures";
 import {
+  boxOf,
   clearGames,
   createGame,
   expectOrders,
@@ -9,7 +10,9 @@ import {
   fillOrders,
   ordersInput,
   ordersText,
-  visibleStrip
+  visibleStrip,
+  waitForStableBox,
+  waitForStableHeight
 } from "./gameSetup";
 // The real constant, not a copy of it: this test exists to catch the rendered height and the
 // windowing arithmetic drifting apart, which a hard-coded 22 here would hide.
@@ -1401,52 +1404,6 @@ async function unfoldPanel(page: Page, panel: string) {
   const section = page.getByTestId(`panel-${panel}`);
   await section.getByRole("button", { expanded: false }).click();
   await expect(section).toHaveAttribute("data-collapsed", "false");
-}
-
-/** Where a panel is on screen, having asserted it is on screen at all. */
-async function boxOf(page: Page, panel: string) {
-  const box = await page.getByTestId(`panel-${panel}`).boundingBox();
-  expect(box).not.toBeNull();
-  return box!;
-}
-
-/**
- * Waits for a panel's height to stop changing before it is measured as a "before" baseline.
- * Selecting a hex opens the panels, and reading a size while that settles - slower or busier on
- * CI than locally - pins a mid-animation size rather than the resting one.
- */
-async function waitForStableHeight(page: Page, panel: string) {
-  let last: number | null = null;
-  await expect
-    .poll(async () => {
-      const height = (await boxOf(page, panel)).height;
-      const stable = last !== null && height === last;
-      last = height;
-      return stable;
-    })
-    .toBe(true);
-}
-
-/**
- * Waits for a panel to stop *moving* as well as stop resizing, before its position is measured.
- *
- * The header gains a row once the loaded report's counts render, and everything below it - the
- * map, and the panel column over it - drops by that row. On a slow runner that lands after the
- * first geometry read, so a baseline taken straight after `selectHex` is a position nothing ever
- * comes back to: `a folded panel shrinks to its title bar` failed in CI with `y` 36px out, exactly
- * one header row, while passing everywhere locally. Poll the whole box, not only the height.
- */
-async function waitForStableBox(page: Page, panel: string) {
-  let last: string | null = null;
-  await expect
-    .poll(async () => {
-      const box = await boxOf(page, panel);
-      const now = `${Math.round(box.x)},${Math.round(box.y)},${Math.round(box.width)},${Math.round(box.height)}`;
-      const stable = last !== null && now === last;
-      last = now;
-      return stable;
-    })
-    .toBe(true);
 }
 
 /** Where the map is standing, read the same way `shortcuts.spec.ts` does. */
