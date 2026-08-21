@@ -34,6 +34,10 @@ packages/browser-core/src/wasm/
 !.claude/agents/
 !.claude/settings.json
 !.claude/cerebro
+# The consumer's own project facts, read by .claude/cerebro/scripts/project-conf (ah-qled.1).
+# Tracked on purpose: unlike the personal .cerebro/models.conf these are facts every clone needs,
+# and an ignored copy would vanish on a fresh clone and take the install step with it.
+!.claude/cerebro-project.conf
 
 # Cerebro's own bookkeeping - agent state files, stop flags and the agents' worktrees. Live
 # machine state, never part of the project (ah-v82).
