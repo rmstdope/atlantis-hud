@@ -404,3 +404,74 @@ test("turning Order OCD on tidies the unit already on screen", async ({ page }) 
 
   await expectOrders(page, /^MOVE N\nSTUDY COMBAT/);
 });
+
+test("with Order OCD on, Enter opens the next line at the block's depth", async ({ page }) => {
+  await loadReport(page);
+  await enableOrderOcd(page);
+  await selectUnit(page, OWN_UNIT);
+
+  await fillOrders(page, "");
+  await ordersInput(page).click();
+  await page.keyboard.type("turn\nform 1\nwork");
+
+  // The keyword shouting and the auto-indent coexist in one run of typing: the newline that ends
+  // each keyword both shouts it and opens the next line one level deeper.
+  // `work` is still being typed - nothing has ended it - so it is not shouted yet, exactly as this
+  // setting has always behaved; `FORM` above it was ended by a space and is.
+  await expectOrders(page, /^TURN\n FORM 1\n {2}work/);
+});
+
+test("opening a unit with Order OCD on re-indents its whole block", async ({ page }) => {
+  await loadReport(page);
+  await fillOrders(page, "turn\nform 1\nstudy combat\nend\nendturn");
+  await enableOrderOcd(page);
+
+  // Each closer sits with its opener, so the pair brackets the indented run.
+  await expectOrders(page, /^TURN\n[ \u00a0]FORM 1\n[ \u00a0]{2}STUDY COMBAT\n[ \u00a0]END\nENDTURN/);
+});
+
+test("trailing blank lines survive Enter and collapse when the tidy next runs", async ({ page }) => {
+  await loadReport(page);
+  await enableOrderOcd(page);
+  await selectUnit(page, OWN_UNIT);
+
+  await fillOrders(page, "work");
+  await ordersInput(page).click();
+  await page.keyboard.press("ControlOrMeta+End");
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("Enter");
+
+  // Enter is never absorbed - the player opens as many lines as they press it for.
+  await expectOrders(page, /^WORK\n\n\n/);
+
+  // The tidy's clock, not a continuous rule: switching the setting off and on again runs it.
+  await page.getByTestId("settings-indicator").click();
+  await page.getByTestId("settings-order-ocd").uncheck();
+  await page.getByTestId("settings-order-ocd").check();
+  await page.getByTestId("settings-close").click();
+
+  await expectOrders(page, /^WORK\n$/);
+});
+
+test("with Order OCD on, one undo takes back a newline and its indent together", async ({ page }) => {
+  await loadReport(page);
+  await enableOrderOcd(page);
+  await selectUnit(page, OWN_UNIT);
+
+  await fillOrders(page, "");
+  await ordersInput(page).click();
+  await page.keyboard.type("turn");
+  // The completion popup is open on the half-typed keyword and its own Enter binding outranks the
+  // editor's, so accepting a completion is what Enter would do here. Dismiss it first: this walk
+  // is about the newline, not about completion.
+  await page.keyboard.press("Escape");
+  // Clear of the half-second window history groups typing under, as the walk above explains.
+  await page.waitForTimeout(700);
+  await page.keyboard.press("Enter");
+  await expectOrders(page, /^TURN\n[ \u00a0]$/);
+
+  await ordersInput(page).press("ControlOrMeta+z");
+  await expectOrders(page, /^turn$/);
+});
+

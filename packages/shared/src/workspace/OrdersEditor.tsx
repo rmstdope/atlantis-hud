@@ -13,7 +13,13 @@ import {
   useRef
 } from "react";
 import { minimalChange } from "../editorReconcile";
-import { buildVocabulary, keywordCaseChanges, keywordJustFinished } from "../orderCase";
+import { buildVocabulary, keywordJustFinished } from "../orderCase";
+import {
+  contentChanges,
+  lineDepths,
+  tidyInsertion,
+  trailingNewlineChange
+} from "../orderIndent";
 import { shownUnitText } from "../orderEditor";
 import { orderArgumentCompletions, orderCommandCompletions, type CaretLookup } from "../orderCompletion";
 import { toEditorDiagnostics } from "../orderLint";
@@ -189,6 +195,56 @@ export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(fu
           // history - which replays DOM records from before CodeMirror rewrote the surface -
           // can never answer it.
           keymap.of([
+            // Order OCD, as a line ends: the new line opens at the depth the block puts it at.
+            // Ahead of `editingKeymap` so it beats `insertNewlineAndIndent`; the completion popup's
+            // own Enter binding sits at a higher precedence still, so accepting a completion is
+            // unaffected.
+            {
+              key: "Enter",
+              run: (editor: EditorView) => {
+                if (!latest.current.orderOcd) {
+                  return false;
+                }
+                const { from, to } = editor.state.selection.main;
+                // The depth the *next* line will sit at. `lineDepths` reports an opener at the
+                // depth outside its own block, so asking it about a hypothetical empty line
+                // appended after the caret turns "the caret is on a FORM line" into "the next line
+                // is one level deeper". Computed from the text before the caret only, which is what
+                // makes the answer right while the block below is still being written.
+                const depth = lineDepths(`${editor.state.doc.sliceString(0, from)}\n`).at(-1) ?? 0;
+                const insert = `\n${" ".repeat(depth)}`;
+                // A keymap binding dispatches its own transaction, so the `inputHandler` above -
+                // which shouts the word a space or newline has just finished - never sees this
+                // newline. Shouting here keeps the setting's promise for the word Enter ends, and
+                // in the same transaction, so one Ctrl+Z still hands the line back as it was typed.
+                const line = editor.state.doc.lineAt(from);
+                const finished = keywordJustFinished(
+                  line.text,
+                  from - line.from,
+                  latest.current.vocabulary
+                );
+                editor.dispatch({
+                  changes: [
+                    ...(finished
+                      ? [
+                          {
+                            from: line.from + finished.from,
+                            to: line.from + finished.to,
+                            insert: finished.upper
+                          }
+                        ]
+                      : []),
+                    { from, to, insert }
+                  ],
+                  selection: { anchor: from + insert.length },
+                  scrollIntoView: true,
+                  // Ordinary typing, so history groups a run of it as usual - and one Ctrl+Z takes
+                  // back the newline and its indent together, in the one transaction.
+                  userEvent: "input"
+                });
+                return true;
+              }
+            },
             ...editingKeymap,
             ...historyKeymap,
             { key: "Mod-Shift-z", run: redo, preventDefault: true }
@@ -216,6 +272,31 @@ export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(fu
                 )(context),
               (context) => orderArgumentCompletions(latest.current.caretCompletions)(context)
             ]
+          }),
+          // Order OCD, as text lands: a paste is shouted and re-indented in the transaction that
+          // inserts it, so the setting stays true of everything on screen and one Ctrl+Z still
+          // removes the whole block. Declining leaves the browser's own paste exactly as it is.
+          EditorView.domEventHandlers({
+            paste(event, editor) {
+              if (!latest.current.orderOcd || latest.current.vocabulary.size === 0) {
+                return false;
+              }
+              const text = event.clipboardData?.getData("text/plain");
+              if (!text) {
+                return false;
+              }
+              const { from, to } = editor.state.selection.main;
+              const base = lineDepths(editor.state.doc.sliceString(0, from)).at(-1) ?? 0;
+              const insert = tidyInsertion(text, base, latest.current.vocabulary);
+              event.preventDefault();
+              editor.dispatch({
+                changes: { from, to, insert },
+                selection: { anchor: from + insert.length },
+                scrollIntoView: true,
+                userEvent: "input.paste"
+              });
+              return true;
+            }
           }),
           lintGutter(),
           EditorView.lineWrapping,
@@ -350,21 +431,47 @@ export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(fu
     // caret to protect - and selecting a unit row does not focus the editor, so that is the common
     // case, not the exotic one.
     const protect = editor.hasFocus ? editor.state.selection.main.head : null;
-    const changes = keywordCaseChanges(editor.state.doc.toString(), vocabulary, protect);
+    const changes = contentChanges(editor.state.doc.toString(), vocabulary, protect);
     if (changes.length === 0) {
       return;
     }
+    // Case replacements are exactly as long as what they replace; indent and trailing-newline edits
+    // are not. Restating a selection across a length-changing batch would put the caret in the
+    // wrong column, so CodeMirror's own mapping is left to answer in that case.
+    const lengthPreserving = changes.every(
+      (change) => change.insert.length === change.to - change.from
+    );
     editor.dispatch({
       changes,
-      // Every replacement is exactly as long as what it replaces, so every offset still means what
-      // it meant. Restated anyway when there is a caret, because CodeMirror maps a position sitting
-      // on a replacement boundary to the far side of it. Left untouched when unfocused: writing a
-      // selection there would paint one on an editor nobody is in.
-      ...(protect === null ? {} : { selection: editor.state.selection }),
+      // Restated when there is a caret and nothing changes length, because CodeMirror maps a
+      // position sitting on a replacement boundary to the far side of it. Left untouched when
+      // unfocused: writing a selection there would paint one on an editor nobody is in.
+      ...(protect === null || !lengthPreserving ? {} : { selection: editor.state.selection }),
       // Deliberately not External: this is a real edit to the draft, it must reach `onChange` and be
       // saved. Deliberately out of the history: the player did not type it, exactly as the tidy this
       // replaces was. And deliberately no `userEvent`, which is what history groups typing under.
       annotations: [Transaction.addToHistory.of(false)]
+    });
+  }, [externalRevision, unitId, orderOcd, vocabulary]);
+
+  // The other half of the tidy: the block ends in exactly one newline, so clicking in the empty
+  // space below the last order puts the caret on a fresh line ready to type. External, because the
+  // document cannot hold a blank line at the end of a block (`writeUnitOrders` drops it) - so this
+  // is what the editor shows rather than an edit to the draft, and sending it to `onChange` would
+  // mark every unit edited merely for being opened. Runs on the tidy's own clock, which is what
+  // leaves Enter free to open as many lines as the player presses it for.
+  useEffect(() => {
+    const editor = view.current;
+    if (!editor || !orderOcd) {
+      return;
+    }
+    const change = trailingNewlineChange(editor.state.doc.toString());
+    if (!change) {
+      return;
+    }
+    editor.dispatch({
+      changes: change,
+      annotations: [External.of(true), Transaction.addToHistory.of(false)]
     });
   }, [externalRevision, unitId, orderOcd, vocabulary]);
 

@@ -13,6 +13,7 @@
 import {
   bareWords,
   keywordCaseChanges,
+  uppercaseKeywords,
   type CaseChange,
   type Vocabulary
 } from "./orderCase";
@@ -112,26 +113,27 @@ export function trailingNewlineChange(text: string): CaseChange | null {
 }
 
 /**
- * Every edit the whole-block tidy wants, in whole-block offsets, ordered by `from`.
+ * Every edit the whole-block tidy makes to the orders themselves, in whole-block offsets, ordered
+ * by `from` - the case changes and the indentation.
  *
- * The three kinds can never overlap: a case change covers a bare word, which starts after the
- * line's leading whitespace; an indent change covers exactly that leading whitespace; and the
- * trailing-newline change covers only the run of blank lines at the end, which holds no bare words
- * and is emitted no indent edits.
+ * The trailing newline is deliberately not among them: the document cannot hold a blank line at the
+ * end of a block (`writeUnitOrders`), so it is a fact about what the editor shows rather than an
+ * edit to the draft, and the editor applies it as its own transaction that never reaches
+ * `onChange`. Merging it here would mark every unit edited merely for being opened.
+ *
+ * The two kinds that are here can never overlap: a case change covers a bare word, which starts
+ * after the line's leading whitespace, and an indent change covers exactly that whitespace.
  */
-export function tidyChanges(
+export function contentChanges(
   text: string,
   vocabulary: Vocabulary,
   protect: number | null
 ): CaseChange[] {
-  const changes = [...keywordCaseChanges(text, vocabulary, protect), ...indentChanges(text)];
-  const trailing = trailingNewlineChange(text);
-  if (trailing) {
-    changes.push(trailing);
-  }
   // `to` breaks the tie so a zero-width indent insertion sorts ahead of a case change that starts
   // at the same offset - the line's first word, on a line with no indentation yet.
-  return changes.sort((a, b) => a.from - b.from || a.to - b.to);
+  return [...keywordCaseChanges(text, vocabulary, protect), ...indentChanges(text)].sort(
+    (a, b) => a.from - b.from || a.to - b.to
+  );
 }
 
 /** The changes applied back to front, exactly as `uppercaseKeywords` applies case changes. */
@@ -142,4 +144,24 @@ function applyChanges(text: string, changes: readonly CaseChange[]): string {
     result = result.slice(0, change.from) + change.insert + result.slice(change.to);
   }
   return result;
+}
+
+/**
+ * Pasted text, uppercased and re-indented as if it had been typed at `baseDepth`.
+ *
+ * The first line keeps whatever leading whitespace it arrived with: it is continuing the line the
+ * caret was already on, and re-indenting it would move text the paste is not responsible for.
+ */
+export function tidyInsertion(text: string, baseDepth: number, vocabulary: Vocabulary): string {
+  const shouted = uppercaseKeywords(text, vocabulary);
+  const depths = lineDepths(shouted);
+  return shouted
+    .split("\n")
+    .map((line, index) => {
+      if (index === 0 || line.trim() === "") {
+        return line;
+      }
+      return `${" ".repeat(baseDepth + (depths[index] ?? 0))}${line.trimStart()}`;
+    })
+    .join("\n");
 }

@@ -375,7 +375,7 @@ export function GlobalSettings() {
 
       <SettingToggle
         title="Order OCD"
-        description="Uppercase the command keywords as you write, so MOVE, STUDY and ALL stand out from names. Text inside quotes is left alone."
+        description="Uppercase the command keywords as you write, indent each level of a nested FORM or TURN by one space, and end every unit's orders with a single blank line. Text inside quotes is left alone."
         testId="settings-order-ocd"
         checked={orderOcd}
         onChange={setOrderOcd}

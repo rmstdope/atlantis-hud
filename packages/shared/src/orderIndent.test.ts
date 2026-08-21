@@ -4,7 +4,8 @@ import {
   indentBlock,
   indentChanges,
   lineDepths,
-  tidyChanges,
+  contentChanges,
+  tidyInsertion,
   trailingNewlineChange,
   withSingleTrailingNewline
 } from "./orderIndent";
@@ -96,14 +97,14 @@ describe("withSingleTrailingNewline and trailingNewlineChange", () => {
   });
 });
 
-describe("tidyChanges", () => {
+describe("contentChanges", () => {
   const vocabulary = buildVocabulary(["turn", "endturn", "form", "work", "move"]);
 
-  it("merges case, indent and trailing-newline edits into one ordered, non-overlapping list", () => {
-    const text = "turn\nwork\n\n\n";
-    const changes = tidyChanges(text, vocabulary, null);
+  it("merges case and indent edits into one ordered, non-overlapping list", () => {
+    const text = "turn\nwork";
+    const changes = contentChanges(text, vocabulary, null);
 
-    expect(changes.length).toBeGreaterThan(2);
+    expect(changes.length).toBe(3);
     for (let i = 1; i < changes.length; i += 1) {
       const previous = changes[i - 1] as CaseChange;
       const current = changes[i] as CaseChange;
@@ -115,12 +116,34 @@ describe("tidyChanges", () => {
       const change = changes[i] as CaseChange;
       result = result.slice(0, change.from) + change.insert + result.slice(change.to);
     }
-    expect(result).toBe("TURN\n WORK\n");
+    expect(result).toBe("TURN\n WORK");
   });
 
   it("leaves the word the caret is inside as typed", () => {
-    expect(tidyChanges("turn\nwork", vocabulary, 9).some((change) => change.insert === "WORK")).toBe(
+    expect(contentChanges("turn\nwork", vocabulary, 9).some((change) => change.insert === "WORK")).toBe(
       false
     );
+  });
+});
+
+describe("tidyInsertion", () => {
+  const vocabulary = buildVocabulary(["form", "end", "study", "combat", "work", "move", "n"]);
+
+  it("indents every line after the first, relative to where the caret already is", () => {
+    expect(tidyInsertion("work\nmove n", 1, vocabulary)).toBe("WORK\n MOVE N");
+  });
+
+  it("re-indents a pasted block by its own structure", () => {
+    expect(tidyInsertion("form 1\nstudy combat\nend", 0, vocabulary)).toBe(
+      "FORM 1\n STUDY COMBAT\nEND"
+    );
+  });
+
+  it("leaves a single-line paste alone but for its keywords", () => {
+    expect(tidyInsertion("  study combat", 2, vocabulary)).toBe("  STUDY COMBAT");
+  });
+
+  it("leaves a blank line inside a paste truly empty", () => {
+    expect(tidyInsertion("form 1\n\nend", 1, vocabulary)).toBe("FORM 1\n\n END");
   });
 });
