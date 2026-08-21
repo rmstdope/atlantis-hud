@@ -599,18 +599,27 @@ test("following a cross-reference scrolls to it, and clicking a visible row does
     return row.y >= box.y - 1 && row.y + row.height <= box.y + box.height + 1;
   }).toBe(true);
 
-  // A row already on screen: the list must stay exactly where it is.
+  // A row already on screen, and NOT the selected one - so the selection really changes and the
+  // scroll effect really runs. The list must stay exactly where it is anyway.
   const before = await list.evaluate((node) => node.scrollTop);
-  const rows = page.locator('[data-testid^="game-data-entry-"]');
+  const rows = page.locator('[data-testid^="game-data-entry-"][aria-selected="false"]');
   const box = await list.boundingBox();
+  expect(box).not.toBeNull();
   const count = await rows.count();
+  let clicked = false;
   for (let at = 0; at < count; at += 1) {
     const candidate = rows.nth(at);
     const row = await candidate.boundingBox();
     if (row !== null && box !== null && row.y >= box.y && row.y + row.height <= box.y + box.height) {
+      // Pin it by test id before clicking: the `aria-selected="false"` locator is dynamic, and
+      // the row leaves that set the moment it becomes the selection.
+      const id = await candidate.getAttribute("data-testid");
       await candidate.click();
+      await expect(page.getByTestId(id ?? "")).toHaveAttribute("aria-selected", "true");
+      clicked = true;
       break;
     }
   }
+  expect(clicked, "no visible unselected row to click").toBe(true);
   expect(await list.evaluate((node) => node.scrollTop)).toBe(before);
 });
