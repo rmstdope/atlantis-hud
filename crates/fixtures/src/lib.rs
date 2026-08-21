@@ -38,6 +38,7 @@ pub const G7_F62_T0: Report = report!(G7_F62_T0, "neworigins-3.0.0-g7-f62-t0.rep
 pub const G7_F62_T17: Report = report!(G7_F62_T17, "neworigins-3.0.0-g7-f62-t17.rep");
 pub const G7_F62_T18: Report = report!(G7_F62_T18, "neworigins-3.0.0-g7-f62-t18.rep");
 pub const G7_F62_T20: Report = report!(G7_F62_T20, "neworigins-3.0.0-g7-f62-t20.rep");
+pub const G7_F95_T55: Report = report!(G7_F95_T55, "neworigins-3.0.0-g7-f95-t55.rep");
 pub const G7_F95_T70: Report = report!(G7_F95_T70, "neworigins-3.0.0-g7-f95-t70.rep");
 pub const G7_F95_T71: Report = report!(G7_F95_T71, "neworigins-3.0.0-g7-f95-t71.rep");
 pub const G7_F95_T72: Report = report!(G7_F95_T72, "neworigins-3.0.0-g7-f95-t72.rep");
@@ -67,6 +68,7 @@ pub const ALL: &[&Report] = &[
     &G7_F62_T17,
     &G7_F62_T18,
     &G7_F62_T20,
+    &G7_F95_T55,
     &G7_F95_T70,
     &G7_F95_T71,
     &G7_F95_T72,

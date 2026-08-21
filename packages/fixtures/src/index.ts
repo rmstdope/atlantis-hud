@@ -33,6 +33,7 @@ export const REPORTS = {
   g7f62t17: "neworigins-3.0.0-g7-f62-t17.rep",
   g7f62t18: "neworigins-3.0.0-g7-f62-t18.rep",
   g7f62t20: "neworigins-3.0.0-g7-f62-t20.rep",
+  g7f95t55: "neworigins-3.0.0-g7-f95-t55.rep",
   g7f95t70: "neworigins-3.0.0-g7-f95-t70.rep",
   g7f95t71: "neworigins-3.0.0-g7-f95-t71.rep",
   g7f95t72: "neworigins-3.0.0-g7-f95-t72.rep",

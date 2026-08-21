@@ -1,0 +1,1460 @@
+;Treasury:
+;
+;Item                                      Rank  Max        Total
+;=====================================================================
+;22 leaders [LEAD]                         28    302        2740
+;2 hill dwarves [HDWA]                     26    1376       4405
+;16372 silver [SILV]                       45    2917887    18187078
+;3 horses [HORS]                           34    15825      95432
+;17 dragons [DRAG]                         2     18         145
+;7 staves of fire [STAF]                   7     15         163
+;imp [IMP]                                 2     3          5
+;3 balrogs [BALR]                          2     5          30
+;5 gliders [GLID]                          19    561        1224
+;5 leather armor [LARM]                    33    2611       7422
+;2 goblins [GBLN]                          35    3327       16484
+;flaming sword [FSWO]                      23    52         279
+;windchime [WCHM]                          22    15         115
+;7 gate crystals [GTCR]                    2     9          58
+
+Atlantis Report For:
+Borg TNG (95) (Magic 5)
+August, Year 5
+
+Atlantis Engine Version: 5.2.5 (beta)
+NewOrigins, Version: 3.0.0 (beta)
+
+Faction Status:
+Regions: 0 (0)
+Quartermasters: 0 (0)
+Mages: 6 (6)
+Apprentices: 15 (15)
+
+Events during turn:
+Times reward of 200 silver.
+Three of Two (13401): Prepared item set to staff of fire.
+Seven of Eight (18642): Claims $50.
+Eight of Eight (13848): Prepared item set to staff of fire.
+Ten of Eight (13850): Prepared item set to staff of fire.
+Eleven of Eight (13856): Prepared item set to staff of fire.
+Twelve of Eight (13857): Prepared item set to staff of fire.
+Thirteen of Eight (13972): Prepared item set to staff of fire.
+Fourteen of Eight (13997): Prepared item set to staff of fire.
+Unit (12866) is caught attempting to steal from Unit (12866) in Maput.
+One of Eight (18636): Gives 186 silver [SILV] to Three of Two (13401).
+One of Eight (18636): Gives 50 silver [SILV] to Two of Eight (18637).
+One of Eight (18636): Gives 50 silver [SILV] to Three of Eight
+  (18638).
+One of Eight (18636): Gives 50 silver [SILV] to Four of Eight (18639).
+One of Eight (18636): Gives 50 silver [SILV] to Five of Eight (18640).
+One of Eight (18636): Gives 50 silver [SILV] to Six of Eight (18641).
+Six of Two (13402): Receives 850 silver [SILV] from Morning Crew
+  (8388).
+Nine of Eight (13403): Gives 50 silver [SILV] to Eight of Eight
+  (13848).
+Nine of Eight (13403): Gives 50 silver [SILV] to Ten of Eight (13850).
+Nine of Eight (13403): Gives 50 silver [SILV] to Eleven of Eight
+  (13856).
+Nine of Eight (13403): Gives 50 silver [SILV] to Twelve of Eight
+  (13857).
+Nine of Eight (13403): Gives 50 silver [SILV] to Thirteen of Eight
+  (13972).
+Nine of Eight (13403): Gives 50 silver [SILV] to Fourteen of Eight
+  (13997).
+Unit (1818) uses earth lore [EART] in jungle (9,51) in Maput.
+Unit (862) uses artifact lore [ARTI] in jungle (9,51) in Maput.
+Unit (1816) uses earth lore [EART] in jungle (9,51) in Maput.
+Macavity (1335) uses artifact lore [ARTI] in jungle (9,51) in Maput.
+Six of Seven (881): Casts Earth Lore, raising 91 silver.
+Six of Seven (881): Gets 5 days of practice with pattern [PATT].
+Two of Seven (12878): Casts Create Phantasmal Demons.
+Two of Seven (12878): Gets 5 days of practice with force [FORC].
+Three of Seven (12879): Casts Earth Lore, raising 91 silver.
+Three of Seven (12879): Gets 5 days of practice with pattern [PATT].
+One of Seven (20): Attempts to summon a dragon, but fails.
+Four of Seven (12880): Casts Earth Lore, raising 91 silver.
+Four of Seven (12880): Gets 5 days of practice with pattern [PATT].
+Five of Seven (12881): Casts Earth Lore, raising 91 silver.
+Five of Seven (12881): Gets 5 days of practice with pattern [PATT].
+LaGuardia (5452) uses earth lore [EART] in jungle (9,51) in Maput.
+Earth-Pawn (1962) uses earth lore [EART] in jungle (9,51) in Maput.
+Wizard-Rook (9703) uses artifact lore [ARTI] in jungle (9,51) in
+  Maput.
+Demon-Bishop (11083) uses artifact lore [ARTI] in jungle (9,51) in
+  Maput.
+Necro-Knight (7690) uses artifact lore [ARTI] in jungle (9,51) in
+  Maput.
+MM Ataturk (12610) uses artifact lore [ARTI] in jungle (9,51) in
+  Maput.
+MM Liman (12611) uses artifact lore [ARTI] in jungle (9,51) in Maput.
+MM Inonu (12612) uses artifact lore [ARTI] in jungle (9,51) in Maput.
+Belisarious (1336) uses illusion [ILLU] in jungle (9,51) in Maput.
+Mercator the Wise (14071) uses artifact lore [ARTI] in jungle (9,51)
+  in Maput.
+Mercator Master (14074) uses artifact lore [ARTI] in jungle (9,51) in
+  Maput.
+Mercator Jnr. (4598) uses artifact lore [ARTI] in jungle (9,51) in
+  Maput.
+Mercator Elder (14360) uses artifact lore [ARTI] in jungle (9,51) in
+  Maput.
+Mercator Senior (14361) uses artifact lore [ARTI] in jungle (9,51) in
+  Maput.
+WS Euclid [375] sails from jungle (9,51) in Maput to ocean (10,52) in
+  Atlantis Ocean
+WS Euclid [375] sails from ocean (10,52) in Atlantis Ocean to plain
+  (11,53) in Celcuhfo
+WS Euclid [375] sails from plain (11,53) in Celcuhfo to jungle (12,54)
+  in Tinscillar
+WS Euclid [375] sails from jungle (12,54) in Tinscillar to swamp
+  (13,53) in Prialto
+Six of Two (13402): Teaches stealth to One of Eight (18636).
+Six of Two (13402): Teaches stealth to Two of Eight (18637).
+Six of Two (13402): Teaches stealth to Three of Eight (18638).
+Six of Two (13402): Teaches stealth to Four of Eight (18639).
+Six of Two (13402): Teaches stealth to Five of Eight (18640).
+Six of Two (13402): Teaches stealth to Six of Eight (18641).
+Seven of Eight (18642): Studies stealth at a cost of 50 silver [SILV].
+Drone (13432): Earns 21 silver working in mountain (7,53) in Inhead.
+Six of Seven (881): Studies enchant armor and was taught for 30 days
+  at a cost of 100 silver [SILV].
+Three of Two (13401): Studies tactics and was taught for 30 days at a
+  cost of 200 silver [SILV].
+Two of Seven (12878): Studies spirit at a cost of 100 silver [SILV].
+Three of Seven (12879): Studies spirit at a cost of 100 silver [SILV].
+One of Seven (20): Studies artifact lore and was taught for 30 days at
+  a cost of 100 silver [SILV].
+Four of Seven (12880): Studies enchant armor and was taught for 30
+  days at a cost of 100 silver [SILV].
+Five of Seven (12881): Studies enchant armor and was taught for 30
+  days at a cost of 100 silver [SILV].
+One of Eight (18636): Studies stealth and was taught for 30 days at a
+  cost of 50 silver [SILV].
+Two of Eight (18637): Studies stealth and was taught for 30 days at a
+  cost of 50 silver [SILV].
+Three of Eight (18638): Studies stealth and was taught for 30 days at
+  a cost of 50 silver [SILV].
+Four of Eight (18639): Studies stealth and was taught for 30 days at a
+  cost of 50 silver [SILV].
+Five of Eight (18640): Studies stealth and was taught for 30 days at a
+  cost of 50 silver [SILV].
+Six of Eight (18641): Studies stealth and was taught for 30 days at a
+  cost of 50 silver [SILV].
+Eight of Eight (13848): Studies stealth at a cost of 50 silver [SILV].
+Ten of Eight (13850): Studies stealth at a cost of 50 silver [SILV].
+Eleven of Eight (13856): Studies stealth at a cost of 50 silver
+  [SILV].
+Twelve of Eight (13857): Studies stealth at a cost of 50 silver
+  [SILV].
+Thirteen of Eight (13972): Studies stealth at a cost of 50 silver
+  [SILV].
+Fourteen of Eight (13997): Studies stealth at a cost of 50 silver
+  [SILV].
+Nine of Eight (13403): Studies stealth at a cost of 50 silver [SILV].
+Drone (1688): Earns 2 silver working in desert (15,63) in Feltiuckfex.
+Nine of Eight (13403): Receives 1000 silver [SILV] from Wistful
+  Logistician (2973).
+Drone (13432): Consumes 10 silver [SILV] for maintenance.
+Six of Seven (881): Consumes 50 silver [SILV] for maintenance.
+Two of Seven (12878): Consumes 50 silver [SILV] for maintenance.
+Three of Seven (12879): Consumes 50 silver [SILV] for maintenance.
+One of Seven (20): Consumes 50 silver [SILV] for maintenance.
+Drones (9684): Consumes 10 silver [SILV] for maintenance.
+Four of Seven (12880): Consumes 50 silver [SILV] for maintenance.
+Five of Seven (12881): Consumes 50 silver [SILV] for maintenance.
+Six of Two (13402): Consumes 50 silver [SILV] for maintenance.
+One of Eight (18636): Consumes 50 silver [SILV] for maintenance.
+Drone (1688): Consumes 2 silver [SILV] for maintenance.
+Nine of Eight (13403): Consumes 50 silver [SILV] for maintenance.
+Seven of Eight (18642): Borrows 11 silver [SILV] from Drone (13432)
+  for maintenance.
+Drone (13432): Seven of Eight (18642) borrows 11 silver [SILV] for
+  maintenance.
+Three of Two (13401): Borrows 50 silver [SILV] from Six of Seven (881)
+  for maintenance.
+Six of Seven (881): Three of Two (13401) borrows 50 silver [SILV] for
+  maintenance.
+Drones (9684): Borrows 10 silver [SILV] from Six of Seven (881) for
+  maintenance.
+Six of Seven (881): Drones (9684) borrows 10 silver [SILV] for
+  maintenance.
+Two of Eight (18637): Borrows 50 silver [SILV] from Six of Seven (881)
+  for maintenance.
+Six of Seven (881): Two of Eight (18637) borrows 50 silver [SILV] for
+  maintenance.
+Three of Eight (18638): Borrows 50 silver [SILV] from Six of Seven
+  (881) for maintenance.
+Six of Seven (881): Three of Eight (18638) borrows 50 silver [SILV]
+  for maintenance.
+Four of Eight (18639): Borrows 50 silver [SILV] from Six of Seven
+  (881) for maintenance.
+Six of Seven (881): Four of Eight (18639) borrows 50 silver [SILV] for
+  maintenance.
+Five of Eight (18640): Borrows 50 silver [SILV] from Six of Seven
+  (881) for maintenance.
+Six of Seven (881): Five of Eight (18640) borrows 50 silver [SILV] for
+  maintenance.
+Six of Eight (18641): Borrows 50 silver [SILV] from Six of Seven (881)
+  for maintenance.
+Six of Seven (881): Six of Eight (18641) borrows 50 silver [SILV] for
+  maintenance.
+Drone (1688): Borrows 8 silver [SILV] from Nine of Eight (13403) for
+  maintenance.
+Nine of Eight (13403): Drone (1688) borrows 8 silver [SILV] for
+  maintenance.
+Eight of Eight (13848): Borrows 50 silver [SILV] from Nine of Eight
+  (13403) for maintenance.
+Nine of Eight (13403): Eight of Eight (13848) borrows 50 silver [SILV]
+  for maintenance.
+Ten of Eight (13850): Borrows 50 silver [SILV] from Nine of Eight
+  (13403) for maintenance.
+Nine of Eight (13403): Ten of Eight (13850) borrows 50 silver [SILV]
+  for maintenance.
+Eleven of Eight (13856): Borrows 50 silver [SILV] from Nine of Eight
+  (13403) for maintenance.
+Nine of Eight (13403): Eleven of Eight (13856) borrows 50 silver
+  [SILV] for maintenance.
+Twelve of Eight (13857): Borrows 50 silver [SILV] from Nine of Eight
+  (13403) for maintenance.
+Nine of Eight (13403): Twelve of Eight (13857) borrows 50 silver
+  [SILV] for maintenance.
+Thirteen of Eight (13972): Borrows 50 silver [SILV] from Nine of Eight
+  (13403) for maintenance.
+Nine of Eight (13403): Thirteen of Eight (13972) borrows 50 silver
+  [SILV] for maintenance.
+Fourteen of Eight (13997): Borrows 50 silver [SILV] from Nine of Eight
+  (13403) for maintenance.
+Nine of Eight (13403): Fourteen of Eight (13997) borrows 50 silver
+  [SILV] for maintenance.
+Seven of Eight (18642): Claims 39 silver for maintenance.
+
+Skill reports:
+
+enchant armor [EARM] 2: No skill report.
+
+Declared Attitudes (default Neutral):
+Hostile : Creatures (2), The Guardsmen (1).
+Unfriendly : none.
+Neutral : none.
+Friendly : none.
+Ally : Fon (8), Wistful Thinking (27), La Orden de la Sangre (9),
+  Elder Tree Forests (32), Archon Dominion (53), Mantzikert (103),
+  Frozen Sails (35), Stormbringer (46), Cartographers (69), Wanderers
+  (83), Red Skulls (10), Greywolf (33).
+
+Unclaimed silver: 5031.
+
+ocean (10,52) in Atlantis Ocean.
+------------------------------------------------------------
+  Wages: $0.
+  Wanted: none.
+  For Sale: none.
+  Products: 77 fish [FISH].
+
+Exits:
+  North : swamp (10,50) in Cebo.
+  Northeast : ocean (11,51) in Atlantis Ocean.
+  Southeast : plain (11,53) in Celcuhfo.
+  South : ocean (10,54) in Atlantis Ocean.
+  Southwest : swamp (9,53) in Dildte.
+  Northwest : jungle (9,51) in Maput.
+
+
+
+mountain (7,53) in Inhead, contains Inholm [city], 11787 peasants
+  (hill dwarves), $27110.
+------------------------------------------------------------
+  Wages: $21.5 (Max: $5422).
+  Wanted: 138 grain [GRAI] at $24, 118 livestock [LIVE] at $23, 138
+    fish [FISH] at $41, 35 spears [SPEA] at $82, 41 leather armor
+    [LARM] at $85, 45 spinning wheels [SPIN] at $96, 25 lassoes [LASS]
+    at $92, 82 jewelry [JEWE] at $555, 61 truffles [TRUF] at $357.
+  For Sale: 63 perfume [PERF] at $204, 53 gems [GEM] at $213, 471 hill
+    dwarves [HDWA] at $68, 94 leaders [LEAD] at $1204.
+  Entertainment available: $2025.
+  Products: 56 grain [GRAI], 37 iron [IRON], 17 stone [STON].
+
+Exits:
+  North : mountain (7,51) in Inhead.
+  Northeast : ocean (8,52) in Atlantis Ocean.
+  Southeast : ocean (8,54) in Atlantis Ocean.
+  South : ocean (7,55) in Atlantis Ocean.
+  Southwest : mountain (6,54) in Inhead.
+  Northwest : mountain (6,52) in Inhead.
+
+- Unit (5812), Wanderers (83), avoiding, behind, hill dwarf [HDWA].
+- Town jugglers (1807), 9 hill dwarves [HDWA].
+- scout (1605), Children of the Four Winds (4), avoiding, behind,
+  lizardman [LIZA].
+- scout (1272), Cartographers (69), avoiding, behind, orc [ORC].
+- Wistful Visitor (6370), Wistful Thinking (27), avoiding, behind,
+  lizardman [LIZA].
+- AactL (7013), Archon Dominion (53), avoiding, behind, lizardman
+  [LIZA].
+- Wandering Minstrel (10985), The Wandering Minstrels (70), avoiding,
+  behind, lizardman [LIZA]; Playin Lute for the enjoyment of all.
+- scout (14808), hill dwarf [HDWA].
+- AactCRO (15654), Archon Dominion (53), avoiding, behind, centaur
+  [CTAU], 2 winged horses [WING], 4 horses [HORS].
+- The Diplomat (16767), Mantzikert (103), behind, hill dwarf [HDWA], 2
+  horses [HORS].
+- Scout (8768), Silver Hand (25), avoiding, behind, hill dwarf [HDWA].
+- Worker (10770), Greywolf (33), avoiding, behind, hill dwarf [HDWA].
+- Town Jugglers (15347), 11 hill dwarves [HDWA].
+* Seven of Eight (18642), Borg TNG (95), avoiding, behind, revealing
+  faction, holding, sharing, sailing battle spoils, leader [LEAD],
+  horse [HORS]. Weight: 60. Capacity: 0/70/85/0. Skills: manipulation
+  [MANI] 3 (180), stealth [STEA] 2 (150).
+* Drone (13432), Borg TNG (95), avoiding, behind, revealing faction,
+  holding, sharing, sailing battle spoils, hill dwarf [HDWA]. Weight:
+  10. Capacity: 0/0/15/0. Skills: none.
+- Silent Bob (7741), Elder Tree Forests (32), behind, leader [LEAD].
+- Unit (2858), 18 orcs [ORC], pike [PIKE], 10 camels [CAME], 3 winged
+  horses [WING].
+- Unit (4623), hill dwarf [HDWA], camel [CAME].
+- Camel Tours (10767), gnoll [GNOL], 9 swords [SWOR], 30 camels
+  [CAME], 10 stone [STON].
+
++ Cartographers HQ [1] : Fort.
+  - Eastern Watch (14353), on guard, 120 hill dwarves [HDWA], 32
+    swords [SWOR], iron [IRON].
+
++ Ent Trade Emporium [2] : Caravanserai; A collection of tents, camel
+  corrals, and warehouses containing mysteries.  The Trade Factor
+  waits with open arms for your money....
+  - Trade Factor - Ent Enterprises (6186), hill dwarf [HDWA], 9 picks
+    [PICK], 2 admantium ring mails [ARNG], 13 swords [SWOR], 5 hammers
+    [HAMM], 8 axes [AXE], 4 admantium swords [ASWR], 12 spears [SPEA],
+    14 leather armor [LARM], 20 mithril swords [MSWO], 15 iron shields
+    [ISHD], 5 mithril armor [MARM], camel [CAME], 34 rootstone [ROOT],
+    38 bags [BAG], 32 stone [STON], 241 iron [IRON], 9 admantium
+    [ADMT], 5 wood [WOOD], 24 mithril [MITH], 20 furs [FUR], 6
+    spinning wheels [SPIN], 55 jewelry [JEWE].
+  - Armourers (13364), 9 hill dwarves [HDWA], 6 hammers [HAMM], 14
+    plate armor [PARM].
+  - Armourers (8075), 5 hill dwarves [HDWA], 5 hammers [HAMM], 6 plate
+    armor [PARM].
+  - Armourers (12282), Elder Tree Forests (32), avoiding, behind, 13
+    hill dwarves [HDWA], 9 hammers [HAMM], 20 plate armor [PARM].
+  - Outfitters (11582), 3 hill dwarves [HDWA], 3 hammers [HAMM], 4
+    plate armor [PARM].
+  - Body Armor Specialists (14356), Elder Tree Forests (32), avoiding,
+    behind, 6 hill dwarves [HDWA].
+  - carpenters (14340), 9 gnolls [GNOL], 5 spinning wheels [SPIN].
+  - New Wave Artificiers (12788), 12 hill dwarves [HDWA], 12 plate
+    armor [PARM].
+  - Advanced Carpentry Inc. (13762), 6 gnolls [GNOL], 4 camels [CAME],
+    128 furs [FUR], 30 rootstone [ROOT], 37 iron [IRON].
+  - Armourer Elite MARM (14369), 6 gnolls [GNOL], 5 hammers [HAMM].
+  - Armourer PARM (5287), Elder Tree Forests (32), avoiding, behind, 4
+    gnolls [GNOL], 7 hill dwarves [HDWA], 5 hammers [HAMM], 12 plate
+    armor [PARM].
+  - Armo (9728), Elder Tree Forests (32), avoiding, behind, 6 under
+    dwarves [UDWA], 6 hammers [HAMM], mithril armor [MARM], 12
+    admantium ring mails [ARNG], 4 winged horses [WING].
+  - miners (2338), Elder Tree Forests (32), avoiding, behind, 5 hill
+    dwarves [HDWA], 5 hammers [HAMM], 6 plate armor [PARM].
+  - Plates and Armor Inc. (11459), 18 hill dwarves [HDWA], 18 plate
+    armor [PARM], iron [IRON].
+  - Armourer Elite ARNG (13360), 2 gnolls [GNOL], 2 hammers [HAMM].
+
++ Building [3] : Magical Fortress.
+  - Bruenor Hammerhand (17569), Elder Tree Forests (32), behind,
+    leader [LEAD].
+
++ Mountain Road [4] : Road N.
+
++ Magical Tree House [5] : Magical Fortress.
+  - North Gate Watch (13812), on guard, 108 hill dwarves [HDWA], 16
+    swords [SWOR], 5 chain armor [CARM].
+  - Tree House Guards (12127), on guard, 49 hill dwarves [HDWA], 43
+    swords [SWOR], 21 chain armor [CARM].
+  - Dancing Elves (16011), 20 hill dwarves [HDWA].
+  - Reserve grunt force (16017), 100 hill dwarves [HDWA].
+  - Inholm Militia (12883), 12 hill dwarves [HDWA].
+  - Ent Factor Guards (12538), 23 humans [HUMN], 21 mithril swords
+    [MSWO], 153 plate armor [PARM], 9 spears [SPEA], 76 iron shields
+    [ISHD], 49 mithril armor [MARM], 30 axes [AXE], 30 hammers [HAMM],
+    47 swords [SWOR], 7 magic crossbows [MXBO], 7 chain armor [CARM],
+    javelin [JAVE], 2 battle axes [BAXE], 4 flaming swords [FSWO], 23
+    camels [CAME], 22 rootstone [ROOT], 81 stone [STON], iron [IRON],
+    54 bags [BAG], 48 lassoes [LASS], 88 healing potions [HPOT].
+  - Inholm Guards (14275), on guard, 120 hill dwarves [HDWA], 3 chain
+    armor [CARM], 63 swords [SWOR].
+  - Island Cavalry (15898), on guard, 3 humans [HUMN], 3 swords
+    [SWOR], 3 chain armor [CARM], 3 camels [CAME].
+  - Local Auxiliary 1 (12887), 18 orcs [ORC], wooden shield [WSHD].
+  - Orc Grunts 1 (10317), on guard, 18 orcs [ORC], 18 swords [SWOR].
+  - 2nd Field Ambulance (13746), on guard, Elder Tree Forests (32),
+    behind, 3 gnomes [GNOM], 3 magic crossbows [MXBO], 3 camels
+    [CAME].
+  - 1st Cavalry Division (10104), on guard, 6 humans [HUMN], 6 swords
+    [SWOR], 6 camels [CAME].
+  - Clauswitz' Ghost (13827), Elder Tree Forests (32), avoiding,
+    behind, leader [LEAD], skeleton [SKEL], steel defender [STED],
+    mithril sword [MSWO], wooden shield [WSHD], 10 plate armor [PARM],
+    pike [PIKE], horse [HORS], bag [BAG], wood [WOOD].
+  - Orc Grunts (14205), 18 orcs [ORC], 18 swords [SWOR].
+  - Cavalry Cohort 1 (13698), 9 humans [HUMN], 9 swords [SWOR], 9
+    camels [CAME].
+  - Whaaagh Cohort 5 (8633), on guard, 18 orcs [ORC], 18 mithril
+    swords [MSWO], 18 plate armor [PARM], 18 iron shields [ISHD].
+  - Orc CF Squad (8688), on guard, 18 orcs [ORC].
+  - Orc Grunts (14099), 18 orcs [ORC].
+  - Whaaagh Cohort alpha (6107), on guard, 18 orcs [ORC], 18 mithril
+    swords [MSWO], 18 plate armor [PARM].
+  - Orc Grunts (6127), on guard, 18 orcs [ORC], 18 chain armor [CARM].
+  - Orc Grunts (6977), on guard, 18 orcs [ORC], 8 swords [SWOR], 18
+    plate armor [PARM], 10 mithril swords [MSWO].
+  - Orc Grunts (6992), on guard, 18 orcs [ORC], 18 swords [SWOR], 18
+    chain armor [CARM].
+  - Orc Grunts (7791), 18 orcs [ORC].
+  - Orc Grunts (12275), 18 orcs [ORC].
+
++ Building [6] : Inn.
+  - Voyager (17608), leader [LEAD], winged horse [WING].
+  - Voyager (17611), leader [LEAD], mithril armor [MARM], winged horse
+    [WING].
+  - Voyager (17613), leader [LEAD], 2 mithril armor [MARM], mithril
+    sword [MSWO], winged horse [WING].
+  - Voyager (17089), leader [LEAD], mithril sword [MSWO], 2 winged
+    horses [WING].
+  - Unit (17090), 2 hill dwarves [HDWA], horse [HORS].
+  - Red Dwarf Band (5453), Elder Tree Forests (32), 4 hill dwarves
+    [HDWA].
+
++ Building [7] : Inn.
+
++ Ancient Druid Grove [8] : Mystic Quarry.
+  - Quarrymen (4925), 2 hill dwarves [HDWA], 2 picks [PICK], 7
+    rootstone [ROOT].
+  - Stone Cutters (13939), 3 hill dwarves [HDWA], 3 picks [PICK], 4
+    stone [STON].
+  - Inholm Junior Quarry (15996), 11 hill dwarves [HDWA], 13 stone
+    [STON].
+
++ Hwy No. 1 [9] : Road NW.
+  - Whaaagh Cohort 4 (14068), on guard, 18 orcs [ORC], 18 mithril
+    swords [MSWO], 18 plate armor [PARM], 18 iron shields [ISHD].
+
++ Central Mine Shaft [10] : Mine.
+  - Platinum Miners (13887), 6 hill dwarves [HDWA], 5 picks [PICK].
+
++ Ship [158] : Longship.
+  - Unit (2016), 2 lizardmen [LIZA], pick [PICK].
+
++ Ship [654] : Corsair.
+
++ Dwarf Undermine [11] : Mine.
+  - Miners (12531), Elder Tree Forests (32), behind, 15 hill dwarves
+    [HDWA], 11 picks [PICK], 37 iron [IRON].
+
++ Building [12] : Mine.
+
++ Garden Farms [13] : Farm.
+  - Pitchforks (8107), Elder Tree Forests (32), avoiding, 2 hill
+    dwarves [HDWA], 2 bags [BAG].
+  - Town Farmers (1213), Elder Tree Forests (32), avoiding, behind, 12
+    hill dwarves [HDWA].
+
++ Barley Farms [14] : Farm.
+  - farmers (2339), Elder Tree Forests (32), avoiding, behind, 5 hill
+    dwarves [HDWA], 5 bags [BAG].
+
++ Undermine No. 3 [15] : Mine.
+  - Dwarven Miners (14355), Elder Tree Forests (32), avoiding, behind,
+    6 hill dwarves [HDWA], 6 picks [PICK].
+
++ Tobacco Farms [16] : Farm.
+  - Spinach (11743), 5 hill dwarves [HDWA].
+
++ Lunar Mine [17] : Mine.
+
++ Berry Farms [18] : Farm.
+  - Berry Growers (11584), Elder Tree Forests (32), avoiding, behind,
+    5 hill dwarves [HDWA], 5 bags [BAG].
+
++ Benden Weyr [19] : Magical Castle, needs 140.
+  - Lego Master Builders (5773), 5 hill dwarves [HDWA], 4 hammers
+    [HAMM], 148 rootstone [ROOT].
+  - orc Grunts (5704), 18 orcs [ORC], 18 swords [SWOR].
+  - orc Grunts (5738), 18 orcs [ORC], 18 swords [SWOR].
+  - Orc Grunts (7790), 18 orcs [ORC], 18 swords [SWOR], 18 plate armor
+    [PARM], camel [CAME].
+  - Sun Tzu (14089), leader [LEAD], camel [CAME].
+  - Gnome Archers (7619), Elder Tree Forests (32), behind, 24 gnomes
+    [GNOM], 17 crossbows [XBOW].
+  - Orc Grunts (12276), 18 orcs [ORC], 9 swords [SWOR].
+  - Orc Grunts (12353), on guard, 18 orcs [ORC].
+  - Dock Custom Inspectors (12600), 20 orcs [ORC], 20 mithril swords
+    [MSWO], 20 iron shields [ISHD], 20 plate armor [PARM], 100
+    ironwood [IRWD], 11 floater hides [FLOA]; All goods must be
+    inspected before entering Inholm. Bribes not accepted... Sort of.
+  - Whaaagh Cohort 1 (16056), 3 orcs [ORC], 3 chain armor [CARM], 3
+    mithril swords [MSWO], 3 iron shields [ISHD].
+  - Unit (7549), on guard, 18 orcs [ORC].
+  - Unit (7563), 18 orcs [ORC].
+  - Orc Grunts (4564), 18 orcs [ORC].
+  - Dwarf Taxation (14878), on guard, Elder Tree Forests (32), behind,
+    15 hill dwarves [HDWA].
+
++ Dolphin View Road [20] : Road SW.
+  - weaponsmiths (4179), 5 gnomes [GNOM].
+
+
+plain (11,53) in Celcuhfo, 3751 peasants (centaurs), $2925.
+------------------------------------------------------------
+  Wages: $13.9 (Max: $585).
+  Wanted: none.
+  For Sale: 150 centaurs [CTAU] at $77, 30 leaders [LEAD] at $778.
+  Entertainment available: $228.
+  Products: 78 grain [GRAI], 20 horses [HORS].
+
+Exits:
+  North : ocean (11,51) in Atlantis Ocean.
+  Northeast : plain (12,52) in Celcuhfo.
+  Southeast : jungle (12,54) in Tinscillar.
+  South : plain (11,55) in Celcuhfo.
+  Southwest : ocean (10,54) in Atlantis Ocean.
+  Northwest : ocean (10,52) in Atlantis Ocean.
+
+- Taxer (1570), on guard, Archon Dominion (53), 30 high elves [HELF],
+  lizardman [LIZA], 27 centaurs [CTAU], gnoll [GNOL], orc [ORC], 30
+  horses [HORS].
+
++ Building [1] : Mythic Stables.
+
++ Building [2] : Inn.
+
++ Building [3] : Mythic Stables.
+
++ Building [4] : Farm.
+
++ Building [5] : Farm.
+
++ Building [6] : Farm.
+
++ Building [7] : Farm.
+
++ Building [8] : Road SE.
+
+
+swamp (13,53) in Prialto, 1862 peasants (gnolls), $2755.
+------------------------------------------------------------
+  Wages: $17.4 (Max: $1158).
+  Wanted: none.
+  For Sale: 74 gnolls [GNOL] at $55, 14 leaders [LEAD] at $974.
+  Entertainment available: $126.
+  Products: 17 livestock [LIVE], 16 wood [WOOD], 14 herbs [HERB].
+
+Exits:
+  North : plain (13,51) in Celcuhfo.
+  Northeast : jungle (14,52) in Dernglen.
+  Southeast : jungle (14,54) in Tinscillar.
+  South : jungle (13,55) in Tinscillar.
+  Southwest : jungle (12,54) in Tinscillar.
+  Northwest : plain (12,52) in Celcuhfo.
+
+- Aact (5296), Archon Dominion (53), avoiding, behind, gnome [GNOM],
+  157 horses [HORS].
+- Herb (5660), Archon Dominion (53), avoiding, behind, 3 gnomes
+  [GNOM], 3 bags [BAG].
+- Hunt (4506), Archon Dominion (53), avoiding, behind, 3 gnolls
+  [GNOL], 3 spears [SPEA], 11 floater hides [FLOA].
+- Weap (5662), Archon Dominion (53), avoiding, behind, 9 goblins
+  [GBLN], 9 axes [AXE], 54 crossbows [XBOW], 512 wood [WOOD].
+- Scout (4127), MalibuWest (59), high elf [HELF], horse [HORS].
+- Farm (7508), Archon Dominion (53), avoiding, behind, 6 humans
+  [HUMN], 6 lassoes [LASS], 241 livestock [LIVE].
+- Wood (7514), Archon Dominion (53), avoiding, behind, 6 orcs [ORC], 6
+  axes [AXE].
+- Mush (10872), Archon Dominion (53), avoiding, behind, 2 gnomes
+  [GNOM], 2 bags [BAG].
+- Heal (10877), Archon Dominion (53), behind, 3 gnomes [GNOM].
+- Carp (4500), Archon Dominion (53), avoiding, behind, wood elf
+  [WELF], axe [AXE], 292 furs [FUR].
+- Fish (15140), Archon Dominion (53), avoiding, behind, 9 high elves
+  [HELF], 9 spinning wheels [SPIN], 75 nets [NET].
+- Weap (10873), Archon Dominion (53), avoiding, behind, 6 goblins
+  [GBLN], 36 longbows [LBOW], 30 axes [AXE].
+- Armo (16654), Archon Dominion (53), avoiding, behind, 3 gnolls
+  [GNOL].
+- Heal (17768), Archon Dominion (53), behind, 3 gnomes [GNOM], 3
+  crossbows [XBOW].
+- Beye (17247), Archon Dominion (53), avoiding, behind, leader [LEAD].
+- Beyes (17246), Archon Dominion (53), avoiding, behind, 7 leaders
+  [LEAD].
+- RiderO (18316), Archon Dominion (53), behind, human [HUMN], winged
+  horse [WING].
+- SpoilCatcher (17420), Archon Dominion (53), behind, gnoll [GNOL], 38
+  horses [HORS].
+- Bsteye (18001), leader [LEAD].
+- Btiny (17992), Archon Dominion (53), avoiding, behind, 3 leaders
+  [LEAD].
+- Grunt (14105), Archon Dominion (53), behind, 54 gnolls [GNOL], 6
+  spears [SPEA], 49 battle axes [BAXE], 3 javelins [JAVE].
+- Wood (7515), Archon Dominion (53), avoiding, behind, 3 orcs [ORC], 3
+  axes [AXE].
+- Grunt (18807), Archon Dominion (53), behind, 60 gnolls [GNOL].
+- Ship (7512), Archon Dominion (53), avoiding, behind, 4 orcs [ORC],
+  39 floater hides [FLOA].
+- Rider (18335), Archon Dominion (53), avoiding, behind, 3 humans
+  [HUMN].
+- scoutC (17403), Archon Dominion (53), avoiding, behind, centaur
+  [CTAU].
+- Herb (14666), Archon Dominion (53), avoiding, behind, 2 gnomes
+  [GNOM], 2 spinning wheels [SPIN].
+- Porter (17614), Archon Dominion (53), avoiding, behind, gnoll
+  [GNOL], 151 horses [HORS].
+- Porter (16045), Archon Dominion (53), avoiding, behind, gnoll
+  [GNOL], 153 horses [HORS].
+- scoutROS (15537), Archon Dominion (53), avoiding, behind, gnoll
+  [GNOL], pike [PIKE], giant turtle [TURT], 11 winged horses [WING].
+- Porter (7960), Archon Dominion (53), avoiding, behind, orc [ORC],
+  horse [HORS], 8 winged horses [WING].
+- Rider (14682), Archon Dominion (53), behind, human [HUMN], winged
+  horse [WING].
+- Porter (16359), Archon Dominion (53), avoiding, behind, gnoll
+  [GNOL], under dwarf [UDWA], 244 plate armor [PARM], 30 iron shields
+  [ISHD], 40 winged horses [WING].
+
++ Shaft [1] : Shaft, contains an inner location.
+  - Taxer (2474), on guard, Archon Dominion (53), behind, human
+    [HUMN], 50 gnolls [GNOL], gnome [GNOM], 2 orcs [ORC], 306 horses
+    [HORS], 60 ironwood [IRWD].
+  - Scout (3822), MalibuWest (59), behind, human [HUMN].
+
++ Building [2] : Trapping Lodge.
+
++ Building [3] : Trapping Lodge.
+
++ Building [4] : Timber Yard.
+
++ Building [5] : Road N.
+
++ Building [6] : Timber Yard.
+
++ Building [7] : Road S.
+
++ Building [8] : Road SE.
+
++ Building [9] : Road SW.
+
++ Ship [610] : Airship.
+  - Sail (10537), Archon Dominion (53), avoiding, behind, 4 high elves
+    [HELF].
+  - Grunt (16357), Archon Dominion (53), 66 gnolls [GNOL], 60 battle
+    axes [BAXE], 120 mithril armor [MARM], 33 healing potions [HPOT].
+
++ Building [10] : Faerie Ring, needs 9.
+  - Herb (16991), Archon Dominion (53), avoiding, behind, 3 gnomes
+    [GNOM], 3 spinning wheels [SPIN].
+
++ WS Euclid [375] : Fleet, 8 Balloons, 7 Cloudships, 2 Airships.
+  - Wistful Aeronauts (13122), Wistful Thinking (27), avoiding,
+    behind, 15 goblins [GBLN], 2 crossbows [XBOW], 29 mithril armor
+    [MARM], 6 flaming swords [FSWO].
+  - Wistful Aeronauts (10407), Wistful Thinking (27), avoiding,
+    behind, 2 goblins [GBLN].
+  - Mistoffelees (1337), Wistful Thinking (27), behind, leader [LEAD],
+    balrog [BALR], 9 demons [DEMO], 75 floater hides [FLOA], 75
+    ironwood [IRWD].
+  - Unit (1818), Fon (8), behind, leader [LEAD], 3 dragons [DRAG],
+    balrog [BALR].
+  - Unit (862), Fon (8), behind, leader [LEAD], balrog [BALR], 66
+    plate armor [PARM], 10 mithril armor [MARM].
+  - Unit (1816), Fon (8), behind, leader [LEAD], 3 dragons [DRAG].
+  - Macavity (1335), Wistful Thinking (27), behind, leader [LEAD],
+    balrog [BALR], 10 mithril armor [MARM].
+  * Six of Seven (881), Borg TNG (95), behind, revealing faction,
+    holding, sharing, sailing battle spoils, leader [LEAD], 3 dragons
+    [DRAG], balrog [BALR] (illusion), windchime [WCHM], 2250 silver
+    [SILV]. Weight: 761. Capacity: 901/901/916/0. Skills: observation
+    [OBSE] 1 (35), force [FORC] 3 (205), pattern [PATT] 3 (245),
+    spirit [SPIR] 2 (120), gate lore [GATE] 1 (30), fire [FIRE] 2
+    (95), combat [COMB] 3 (180), illusion [ILLU] 3 (195), phantasmal
+    entertainment [PHEN] 1 (50), earth lore [EART] 3 (200), bird lore
+    [BIRD] 3 (180), true seeing [TRUE] 2 (90), wolf lore [WOLF] 3
+    (190), dragon lore [DRAG] 3 (180), create phantasmal demons [PHDE]
+    3 (180), artifact lore [ARTI] 2 (120), enchant armor [EARM] 2
+    (120). Combat spell: fire [FIRE]. Can Study: fire [FIRE],
+    earthquake [EQUA], force shield [FSHI], energy shield [ESHI],
+    spirit shield [SSHI], magical healing [MHEA], gate lore [GATE],
+    farsight [FARS], mind reading [MIND], weather lore [WEAT],
+    necromancy [NECR], demon lore [DEMO], phantasmal entertainment
+    [PHEN], create phantasmal beasts [PHBE], invisibility [INVI], true
+    seeing [TRUE], dispel illusions [DISP], enchant swords [ESWO],
+    enchant shields [ESHD], create cornucopia [CRCO], transmutation
+    [TRNS].
+  * Three of Two (13401), Borg TNG (95), behind, revealing faction,
+    holding, sharing, sailing battle spoils, leader [LEAD], gate
+    crystal [GTCR], staff of fire [STAF]. Weight: 10. Capacity:
+    0/0/15/0. Skills: observation [OBSE] 5 (450), manipulation [MANI]
+    3 (210), tactics [TACT] 2 (150). Ready item: staff of fire [STAF].
+  * Two of Seven (12878), Borg TNG (95), behind, revealing faction,
+    holding, sharing, sailing battle spoils, leader [LEAD], 3 dragons
+    [DRAG], balrog [BALR] (illusion), flaming sword [FSWO], 1674
+    silver [SILV]. Weight: 762. Capacity: 901/901/916/0. Skills: force
+    [FORC] 3 (185), pattern [PATT] 3 (250), earth lore [EART] 3 (180),
+    bird lore [BIRD] 3 (180), wolf lore [WOLF] 3 (195), dragon lore
+    [DRAG] 3 (180), illusion [ILLU] 3 (180), create phantasmal demons
+    [PHDE] 3 (180), spirit [SPIR] 1 (30). Can Study: fire [FIRE],
+    earthquake [EQUA], force shield [FSHI], energy shield [ESHI],
+    spirit shield [SSHI], magical healing [MHEA], gate lore [GATE],
+    farsight [FARS], mind reading [MIND], weather lore [WEAT],
+    necromancy [NECR], demon lore [DEMO], phantasmal entertainment
+    [PHEN], create phantasmal beasts [PHBE], invisibility [INVI], true
+    seeing [TRUE], dispel illusions [DISP], artifact lore [ARTI].
+  * Three of Seven (12879), Borg TNG (95), behind, revealing faction,
+    holding, sharing, sailing battle spoils, leader [LEAD], 3 dragons
+    [DRAG], balrog [BALR] (illusion), 3 gate crystals [GTCR], 1996
+    silver [SILV]. Weight: 761. Capacity: 901/901/916/0. Skills: force
+    [FORC] 3 (185), pattern [PATT] 3 (245), earth lore [EART] 3 (180),
+    bird lore [BIRD] 3 (180), wolf lore [WOLF] 3 (195), dragon lore
+    [DRAG] 3 (180), illusion [ILLU] 3 (180), create phantasmal demons
+    [PHDE] 3 (180), spirit [SPIR] 1 (30). Can Study: fire [FIRE],
+    earthquake [EQUA], force shield [FSHI], energy shield [ESHI],
+    spirit shield [SSHI], magical healing [MHEA], gate lore [GATE],
+    farsight [FARS], mind reading [MIND], weather lore [WEAT],
+    necromancy [NECR], demon lore [DEMO], phantasmal entertainment
+    [PHEN], create phantasmal beasts [PHBE], invisibility [INVI], true
+    seeing [TRUE], dispel illusions [DISP], artifact lore [ARTI].
+  * One of Seven (20), Borg TNG (95), behind, revealing faction,
+    holding, sharing, sailing battle spoils, leader [LEAD], imp [IMP]
+    (illusion), 2 dragons [DRAG], 1232 silver [SILV]. Weight: 511.
+    Capacity: 601/601/616/0. Skills: observation [OBSE] 1 (30), force
+    [FORC] 3 (215), pattern [PATT] 3 (250), spirit [SPIR] 2 (90), gate
+    lore [GATE] 1 (30), fire [FIRE] 1 (50), combat [COMB] 3 (180),
+    illusion [ILLU] 3 (180), earth lore [EART] 3 (185), wolf lore
+    [WOLF] 3 (180), bird lore [BIRD] 3 (180), create phantasmal demons
+    [PHDE] 3 (185), dragon lore [DRAG] 3 (180), artifact lore [ARTI] 1
+    (60). Combat spell: fire [FIRE]. Can Study: fire [FIRE],
+    earthquake [EQUA], force shield [FSHI], energy shield [ESHI],
+    spirit shield [SSHI], magical healing [MHEA], gate lore [GATE],
+    farsight [FARS], mind reading [MIND], weather lore [WEAT],
+    necromancy [NECR], demon lore [DEMO], phantasmal entertainment
+    [PHEN], create phantasmal beasts [PHBE], invisibility [INVI], true
+    seeing [TRUE], dispel illusions [DISP], artifact lore [ARTI],
+    enchant shields [ESHD], create cornucopia [CRCO], transmutation
+    [TRNS].
+  * Drones (9684), Borg TNG (95), avoiding, behind, revealing faction,
+    holding, sharing, won't cross water, sailing battle spoils, 2
+    goblins [GBLN]. Weight: 10. Capacity: 0/0/14/0. Skills: sailing
+    [SAIL] 2 (90), entertainment [ENTE] 1 (85).
+  - Unit (3256), Fon (8), avoiding, behind, gnome [GNOM].
+  - Unit (5690), Fon (8), avoiding, behind, leader [LEAD].
+  - Wistful Aeronauts (9178), Wistful Thinking (27), avoiding, behind,
+    2 goblins [GBLN].
+  * Four of Seven (12880), Borg TNG (95), behind, revealing faction,
+    holding, sharing, sailing battle spoils, leader [LEAD], 3 dragons
+    [DRAG], gate crystal [GTCR], 2325 silver [SILV]. Weight: 760.
+    Capacity: 900/900/915/0. Skills: force [FORC] 3 (180), pattern
+    [PATT] 3 (255), earth lore [EART] 3 (185), bird lore [BIRD] 3
+    (180), wolf lore [WOLF] 3 (195), dragon lore [DRAG] 3 (185),
+    illusion [ILLU] 3 (180), spirit [SPIR] 2 (90), artifact lore
+    [ARTI] 2 (120), enchant armor [EARM] 1 (60). Can Study: fire
+    [FIRE], earthquake [EQUA], force shield [FSHI], energy shield
+    [ESHI], spirit shield [SSHI], magical healing [MHEA], gate lore
+    [GATE], farsight [FARS], mind reading [MIND], weather lore [WEAT],
+    necromancy [NECR], demon lore [DEMO], phantasmal entertainment
+    [PHEN], create phantasmal beasts [PHBE], create phantasmal demons
+    [PHDE], invisibility [INVI], true seeing [TRUE], dispel illusions
+    [DISP], enchant swords [ESWO], enchant armor [EARM], enchant
+    shields [ESHD], create cornucopia [CRCO], transmutation [TRNS].
+  * Five of Seven (12881), Borg TNG (95), behind, revealing faction,
+    holding, sharing, sailing battle spoils, leader [LEAD], 3 dragons
+    [DRAG], 2370 silver [SILV]. Weight: 760. Capacity: 900/900/915/0.
+    Skills: force [FORC] 3 (240), pattern [PATT] 3 (260), earth lore
+    [EART] 3 (185), bird lore [BIRD] 3 (180), wolf lore [WOLF] 3
+    (190), dragon lore [DRAG] 3 (190), illusion [ILLU] 3 (180), spirit
+    [SPIR] 2 (90), artifact lore [ARTI] 2 (120), enchant armor [EARM]
+    1 (60). Can Study: fire [FIRE], earthquake [EQUA], force shield
+    [FSHI], energy shield [ESHI], spirit shield [SSHI], magical
+    healing [MHEA], gate lore [GATE], farsight [FARS], mind reading
+    [MIND], weather lore [WEAT], necromancy [NECR], demon lore [DEMO],
+    phantasmal entertainment [PHEN], create phantasmal beasts [PHBE],
+    create phantasmal demons [PHDE], invisibility [INVI], true seeing
+    [TRUE], dispel illusions [DISP], enchant swords [ESWO], enchant
+    armor [EARM], enchant shields [ESHD], create cornucopia [CRCO],
+    transmutation [TRNS].
+  - Wistful Sailors (9409), Wistful Thinking (27), avoiding, behind,
+    30 goblins [GBLN].
+  - Cpt Toby (15432), leader [LEAD], aegis [AEGS].
+  - scoutO (13970), Archon Dominion (53), avoiding, behind, hill dwarf
+    [HDWA].
+  - Unit (5454), leader [LEAD], winged horse [WING].
+  - Unit (12322), leader [LEAD], winged horse [WING].
+  - Gennaro (2120), Wanderers (83), behind, leader [LEAD], 2 dragons
+    [DRAG], 10 plate armor [PARM], winged horse [WING].
+  - LaGuardia (5452), Wanderers (83), behind, leader [LEAD], 3 dragons
+    [DRAG], winged horse [WING].
+  - Earth-Pawn (1962), Elder Tree Forests (32), behind, leader [LEAD],
+    2 dragons [DRAG], admantium ring mail [ARNG].
+  - Wizard-Rook (9703), Wanderers (83), behind, leader [LEAD], mithril
+    sword [MSWO], admantium ring mail [ARNG], 3 flaming swords [FSWO].
+  - Demon-Bishop (11083), Elder Tree Forests (32), behind, leader
+    [LEAD], admantium ring mail [ARNG].
+  - Necro-Knight (7690), Elder Tree Forests (32), behind, leader
+    [LEAD].
+  - MM Ataturk (12610), Mantzikert (103), behind, leader [LEAD], sword
+    [SWOR], 20 plate armor [PARM], 6 flaming swords [FSWO], horse
+    [HORS].
+  - MM Liman (12611), Mantzikert (103), behind, leader [LEAD], 20
+    plate armor [PARM], 6 flaming swords [FSWO], fur [FUR].
+  - MM Inonu (12612), Mantzikert (103), behind, leader [LEAD], sword
+    [SWOR], 20 plate armor [PARM], 6 flaming swords [FSWO].
+  - Belisarious (1336), Mantzikert (103), behind, leader [LEAD], imp
+    [IMP], 3 demons [DEMO], 3 dragons [DRAG], balrog [BALR], longbow
+    [LBOW], 2 swords [SWOR], crossbow [XBOW], admantium sword [ASWR],
+    wooden shield [WSHD], glider [GLID], bag [BAG].
+  - Mercator the Wise (14071), Cartographers (69), behind, leader
+    [LEAD], 20 mithril armor [MARM].
+  - Mercator Master (14074), Cartographers (69), behind, leader
+    [LEAD], flaming sword [FSWO].
+  - Mercator Jnr. (4598), Cartographers (69), behind, leader [LEAD], 3
+    swords [SWOR], 20 mithril armor [MARM].
+  - Silent Bill (15987), Elder Tree Forests (32), avoiding, behind,
+    leader [LEAD], 4 healing potions [HPOT].
+  - Voyager (18541), Cartographers (69), avoiding, behind, leader
+    [LEAD], mithril armor [MARM], flaming sword [FSWO].
+  - Voyager (18576), Cartographers (69), avoiding, behind, leader
+    [LEAD], flaming sword [FSWO].
+  - Voyager (18577), Cartographers (69), avoiding, behind, leader
+    [LEAD], flaming sword [FSWO].
+  - Voyager (18578), Cartographers (69), avoiding, behind, leader
+    [LEAD].
+  - Voyager (18579), Cartographers (69), avoiding, behind, leader
+    [LEAD].
+  - Sail (18002), Wistful Thinking (27), avoiding, behind, 4 high
+    elves [HELF].
+  - Mercator Elder (14360), Cartographers (69), behind, leader [LEAD],
+    flaming sword [FSWO].
+  - Mercator Senior (14361), Cartographers (69), behind, leader
+    [LEAD], flaming sword [FSWO].
+  - Morning Crew (8388), Elder Tree Forests (32), 6 lizardmen [LIZA].
+  - Sail (18307), Archon Dominion (53), avoiding, behind, 4 high elves
+    [HELF], horse [HORS].
+  - A Arcadius (15578), Mantzikert (103), avoiding, behind, leader
+    [LEAD].
+  - A Basil (15579), Mantzikert (103), avoiding, behind, leader
+    [LEAD].
+  - A Diocletian (15616), Mantzikert (103), avoiding, behind, leader
+    [LEAD].
+  - A Jovian (15617), Mantzikert (103), avoiding, behind, leader
+    [LEAD].
+  - A Julian (15623), Mantzikert (103), avoiding, behind, leader
+    [LEAD].
+  - A Justinian (15631), Mantzikert (103), avoiding, behind, leader
+    [LEAD].
+  - A Leo (15633), Mantzikert (103), avoiding, behind, leader [LEAD].
+  - A Marcian (15636), Mantzikert (103), avoiding, behind, leader
+    [LEAD].
+  - A Procopius (15641), Mantzikert (103), avoiding, behind, leader
+    [LEAD].
+  - A Theodosius (15649), Mantzikert (103), avoiding, behind, leader
+    [LEAD].
+  * Six of Two (13402), Borg TNG (95), avoiding, behind, sharing,
+    leader [LEAD], 800 silver [SILV]. Weight: 10. Capacity: 0/0/15/0.
+    Skills: stealth [STEA] 5 (450), combat [COMB] 4 (300).
+  * One of Eight (18636), Borg TNG (95), avoiding, behind, revealing
+    faction, holding, sharing, sailing battle spoils, leader [LEAD],
+    gate crystal [GTCR], leather armor [LARM], glider [GLID], 299
+    silver [SILV]. Weight: 16. Capacity: 15/0/15/0. Skills:
+    manipulation [MANI] 3 (180), stealth [STEA] 3 (270).
+  * Two of Eight (18637), Borg TNG (95), avoiding, behind, revealing
+    faction, holding, sharing, sailing battle spoils, leader [LEAD],
+    leather armor [LARM], gate crystal [GTCR], glider [GLID]. Weight:
+    16. Capacity: 15/0/15/0. Skills: manipulation [MANI] 3 (180),
+    stealth [STEA] 3 (270).
+  * Three of Eight (18638), Borg TNG (95), avoiding, behind, revealing
+    faction, holding, sharing, sailing battle spoils, leader [LEAD],
+    leather armor [LARM], glider [GLID]. Weight: 16. Capacity:
+    15/0/15/0. Skills: manipulation [MANI] 3 (180), stealth [STEA] 3
+    (270).
+  * Four of Eight (18639), Borg TNG (95), avoiding, behind, revealing
+    faction, holding, sharing, sailing battle spoils, leader [LEAD],
+    leather armor [LARM], glider [GLID]. Weight: 16. Capacity:
+    15/0/15/0. Skills: manipulation [MANI] 3 (180), stealth [STEA] 3
+    (270).
+  * Five of Eight (18640), Borg TNG (95), avoiding, behind, revealing
+    faction, holding, sharing, sailing battle spoils, leader [LEAD],
+    leather armor [LARM], glider [GLID]. Weight: 16. Capacity:
+    15/0/15/0. Skills: manipulation [MANI] 3 (180), stealth [STEA] 3
+    (270).
+  * Six of Eight (18641), Borg TNG (95), avoiding, behind, revealing
+    faction, holding, sharing, sailing battle spoils, leader [LEAD],
+    horse [HORS]. Weight: 60. Capacity: 0/70/85/0. Skills:
+    manipulation [MANI] 3 (180), stealth [STEA] 3 (270).
+  - Unit (12866), Wanderers (83), behind, leader [LEAD], winged horse
+    [WING].
+  - Unit (15261), Wanderers (83), behind, leader [LEAD], winged horse
+    [WING].
+  - Ajax (18626), Wanderers (83), avoiding, behind, leader [LEAD].
+  - Cleon (18627), Wanderers (83), avoiding, behind, leader [LEAD].
+  - Snow (18628), Wanderers (83), avoiding, behind, leader [LEAD].
+  - Cochise (18629), Wanderers (83), avoiding, behind, leader [LEAD].
+  - Cowboy (18630), Wanderers (83), avoiding, behind, leader [LEAD].
+  - Rembrandt (18631), Wanderers (83), avoiding, behind, leader
+    [LEAD].
+  - Vermin (18632), Wanderers (83), avoiding, behind, leader [LEAD].
+  - Mercy (18633), Wanderers (83), avoiding, behind, leader [LEAD].
+  - Luther (18634), Wanderers (83), avoiding, behind, leader [LEAD].
+  - a Tiberius (18168), Mantzikert (103), behind, leader [LEAD].
+  - A Valens (18169), Mantzikert (103), behind, leader [LEAD].
+  - A Vanentinian (18170), Mantzikert (103), behind, leader [LEAD].
+  - A Alexander (14414), Mantzikert (103), avoiding, behind, leader
+    [LEAD].
+  - a Zeno (18753), Mantzikert (103), avoiding, behind, leader [LEAD].
+
+
+jungle (12,54) in Tinscillar, 2048 peasants (orcs), $1515.
+------------------------------------------------------------
+  Wages: $13.7 (Max: $629).
+  Wanted: none.
+  For Sale: 81 orcs [ORC] at $43, 16 leaders [LEAD] at $767.
+  Entertainment available: $80.
+  Products: 46 livestock [LIVE], 23 wood [WOOD], 24 herbs [HERB].
+
+Exits:
+  North : plain (12,52) in Celcuhfo.
+  Northeast : swamp (13,53) in Prialto.
+  Southeast : jungle (13,55) in Tinscillar.
+  South : jungle (12,56) in Tinscillar.
+  Southwest : plain (11,55) in Celcuhfo.
+  Northwest : plain (11,53) in Celcuhfo.
+
+- Taxer (2473), on guard, Archon Dominion (53), human [HUMN], 32 orcs
+  [ORC], 19 horses [HORS].
+
++ Building [1] : Ranch.
+
++ Building [2] : Timber Yard.
+
++ Building [3] : Timber Yard.
+
++ Building [4] : Timber Yard.
+
++ Building [5] : Forest Preserve.
+
++ Building [6] : Road NE.
+
++ Building [7] : Road NW.
+
+
+desert (15,63) in Feltiuckfex, contains Trasicy [city], 11757 peasants
+  (goblins), $33154.
+------------------------------------------------------------
+  Wages: $24.1 (Max: $6630).
+  Wanted: 134 grain [GRAI] at $21, 172 livestock [LIVE] at $29, 106
+    fish [FISH] at $53, 32 longbows [LBOW] at $113, 29 lassoes [LASS]
+    at $70, 45 crossbows [XBOW] at $65, 47 nets [NET] at $112, 79
+    chocolate [CHOC] at $411, 62 truffles [TRUF] at $192.
+  For Sale: 96 wine [WINE] at $122, 57 perfume [PERF] at $135, 470
+    goblins [GBLN] at $57, 94 leaders [LEAD] at $1349.
+  Entertainment available: $2549.
+  Products: 20 livestock [LIVE], 11 iron [IRON], 12 stone [STON].
+
+Exits:
+  North : swamp (15,61) in Ieyock.
+  Northeast : desert (16,62) in Feltiuckfex.
+  Southeast : desert (16,64) in Feltiuckfex.
+  South : jungle (15,65) in Crillversqui.
+  Southwest : forest (14,64) in Angbo.
+  Northwest : forest (14,62) in Angbo.
+
+- Rustlers (1338), Wistful Thinking (27), avoiding, behind, 9 goblins
+  [GBLN], 4 lassoes [LASS].
+- Wistful Quarriers (2995), Wistful Thinking (27), avoiding, behind,
+  goblin [GBLN], pick [PICK], 4 stone [STON].
+- Wistful Miners (2999), Wistful Thinking (27), avoiding, behind, 6
+  goblins [GBLN], 11 iron [IRON].
+- Wistful Guards (3769), on guard, Wistful Thinking (27), 632 goblins
+  [GBLN], 99 pikes [PIKE], 468 horses [HORS], 10 camels [CAME].
+- Wistful Smiths (3384), Wistful Thinking (27), avoiding, behind, 6
+  goblins [GBLN], 6 hammers [HAMM], 7 mithril swords [MSWO].
+- Wistful Smiths (3023), Wistful Thinking (27), avoiding, behind, 3
+  goblins [GBLN], 5 double bows [DBOW].
+- Wistful Netweavers (4904), Wistful Thinking (27), avoiding, behind,
+  12 goblins [GBLN], 12 spinning wheels [SPIN], 48 nets [NET].
+- AactO (7031), Archon Dominion (53), avoiding, behind, wood elf
+  [WELF], winged horse [WING].
+- Wistful Elite (5680), Wistful Thinking (27), avoiding, behind,
+  leader [LEAD].
+- Wistful Elite (5684), Wistful Thinking (27), avoiding, behind,
+  leader [LEAD].
+- Wistful Elite (6428), Wistful Thinking (27), avoiding, behind,
+  leader [LEAD].
+- Wistful Lassomakers (7671), Wistful Thinking (27), avoiding, behind,
+  9 goblins [GBLN], 6 spinning wheels [SPIN], 42 lassoes [LASS].
+- Wistful Guards (4433), Wistful Thinking (27), behind, 9 goblins
+  [GBLN], 9 crossbows [XBOW].
+- Wistful Armorers (5722), Wistful Thinking (27), avoiding, behind, 8
+  gnolls [GNOL], 8 hammers [HAMM], 8 longbows [LBOW].
+- Wistful Smiths (8795), Wistful Thinking (27), avoiding, behind, 20
+  goblins [GBLN], 20 axes [AXE], 45 crossbows [XBOW].
+- Wistful Armorers (5760), Wistful Thinking (27), behind, 9 gnolls
+  [GNOL], 9 longbows [LBOW].
+- Wistful Smiths (2894), Wistful Thinking (27), avoiding, behind, 6
+  high elves [HELF], 3 wood elves [WELF], 9 axes [AXE], 9 longbows
+  [LBOW].
+- Wistful Smiths (6301), Wistful Thinking (27), avoiding, behind, 9
+  centaurs [CTAU], 9 axes [AXE], 9 hammers [HAMM], 27 swords [SWOR].
+- Wistful Carpenters (3287), Wistful Thinking (27), behind, 3 wood
+  elves [WELF], 3 axes [AXE], 3 crossbows [XBOW], 15 wood [WOOD].
+- Wistful Armorers (6397), Wistful Thinking (27), avoiding, behind, 30
+  gnolls [GNOL], 130 leather armor [LARM], 30 spinning wheels [SPIN].
+- Wistful Smiths (3525), Wistful Thinking (27), behind, 8 wood elves
+  [WELF], 8 axes [AXE], 8 hammers [HAMM], 6 crossbows [XBOW], 24
+  swords [SWOR].
+* Drone (1688), Borg TNG (95), avoiding, behind, revealing faction,
+  holding, sharing, consuming unit's food, hill dwarf [HDWA], horse
+  [HORS]. Weight: 60. Capacity: 0/70/85/0. Skills: none.
+- Wistful Armorer (10424), Wistful Thinking (27), behind, 13 gnolls
+  [GNOL], 13 hammers [HAMM], 13 longbows [LBOW].
+- Scout (13875), gnoll [GNOL], winged horse [WING].
+- Chief Geologist (5767), on guard, Wistful Thinking (27), behind,
+  leader [LEAD], winged horse [WING].
+- Wistful Healers (13113), Wistful Thinking (27), avoiding, behind, 3
+  gnomes [GNOM].
+- Wistful Smiths (9091), Wistful Thinking (27), behind, 6 goblins
+  [GBLN], 6 axes [AXE], 8 iron [IRON].
+- Carpenters (5401), Wistful Thinking (27), behind, 3 wood elves
+  [WELF], 3 crossbows [XBOW], 3 horses [HORS].
+- Wistful Archers (9092), Wistful Thinking (27), behind, 3 high elves
+  [HELF], 3 double bows [DBOW].
+* Eight of Eight (13848), Borg TNG (95), behind, revealing faction,
+  sharing, consuming faction's food, leader [LEAD], staff of fire
+  [STAF]. Weight: 10. Capacity: 0/0/15/0. Skills: manipulation [MANI]
+  3 (180), stealth [STEA] 4 (390). Ready item: staff of fire [STAF].
+* Ten of Eight (13850), Borg TNG (95), behind, revealing faction,
+  sharing, consuming faction's food, leader [LEAD], staff of fire
+  [STAF]. Weight: 10. Capacity: 0/0/15/0. Skills: manipulation [MANI]
+  3 (180), stealth [STEA] 4 (390). Ready item: staff of fire [STAF].
+* Eleven of Eight (13856), Borg TNG (95), behind, revealing faction,
+  sharing, consuming faction's food, leader [LEAD], staff of fire
+  [STAF]. Weight: 10. Capacity: 0/0/15/0. Skills: manipulation [MANI]
+  3 (180), stealth [STEA] 4 (390). Ready item: staff of fire [STAF].
+* Twelve of Eight (13857), Borg TNG (95), behind, revealing faction,
+  sharing, consuming faction's food, leader [LEAD], staff of fire
+  [STAF]. Weight: 10. Capacity: 0/0/15/0. Skills: manipulation [MANI]
+  3 (180), stealth [STEA] 4 (390). Ready item: staff of fire [STAF].
+* Thirteen of Eight (13972), Borg TNG (95), behind, revealing faction,
+  sharing, consuming faction's food, leader [LEAD], staff of fire
+  [STAF]. Weight: 10. Capacity: 0/0/15/0. Skills: manipulation [MANI]
+  3 (180), stealth [STEA] 4 (360). Ready item: staff of fire [STAF].
+* Fourteen of Eight (13997), Borg TNG (95), behind, revealing faction,
+  sharing, consuming faction's food, leader [LEAD], staff of fire
+  [STAF]. Weight: 10. Capacity: 0/0/15/0. Skills: manipulation [MANI]
+  3 (180), stealth [STEA] 4 (360). Ready item: staff of fire [STAF].
+* Nine of Eight (13403), Borg TNG (95), avoiding, behind, sharing,
+  leader [LEAD], 3426 silver [SILV]. Weight: 10. Capacity: 0/0/15/0.
+  Skills: manipulation [MANI] 4 (330), stealth [STEA] 4 (375).
+- Wistful Smiths (4912), Wistful Thinking (27), behind, 4 orcs [ORC],
+  4 axes [AXE], 4 crossbows [XBOW], 4 hammers [HAMM], 12 swords
+  [SWOR].
+- Wistful Smiths (4684), Wistful Thinking (27), avoiding, behind, 5
+  wood elves [WELF], 5 axes [AXE], 5 hammers [HAMM], 15 swords [SWOR].
+- Wistful Elite (13684), Wistful Thinking (27), behind, leader [LEAD],
+  winged horse [WING].
+- Wistful Bagmakers (9422), Wistful Thinking (27), avoiding, behind,
+  20 goblins [GBLN], 20 spinning wheels [SPIN].
+- Wistful Elite (6437), Wistful Thinking (27), avoiding, behind,
+  leader [LEAD].
+- Wistful Elite (5682), Wistful Thinking (27), avoiding, behind,
+  leader [LEAD].
+- Wistful Elite (14142), on guard, Wistful Thinking (27), behind,
+  leader [LEAD], winged horse [WING].
+- Wistful Netweavers (8995), Wistful Thinking (27), avoiding, behind,
+  16 goblins [GBLN], 16 spinning wheels [SPIN].
+- Wistful Elite (10314), Wistful Thinking (27), avoiding, behind,
+  leader [LEAD].
+- Wistful Healers (6695), Wistful Thinking (27), behind, 15 gnomes
+  [GNOM], 15 crossbows [XBOW], 20 healing potions [HPOT].
+- Wistful Lassomakers (4188), Wistful Thinking (27), avoiding, behind,
+  14 goblins [GBLN], 8 spinning wheels [SPIN].
+- Wistful Chefs (4137), Wistful Thinking (27), avoiding, behind, 10
+  gnolls [GNOL].
+- Wistful Wanderer (11658), Wistful Thinking (27), human [HUMN].
+- Wistful Archers (9289), Wistful Thinking (27), behind, 50 high elves
+  [HELF], 50 double bows [DBOW], 50 camels [CAME].
+- Wistful Archers (9087), Wistful Thinking (27), behind, 10 high elves
+  [HELF], 10 double bows [DBOW], 10 camels [CAME].
+- Wistful Laborers (7702), Wistful Thinking (27), avoiding, behind, 3
+  goblins [GBLN].
+- Wistful Wanderer (11015), wood elf [WELF], camel [CAME].
+- Wistful Wanderer (10371), Wistful Thinking (27), avoiding, behind,
+  human [HUMN], horse [HORS].
+- Wistful Elite (5528), Wistful Thinking (27), behind, leader [LEAD],
+  crossbow [XBOW], camel [CAME].
+- Wistful Wanderer (9551), Wistful Thinking (27), avoiding, behind,
+  human [HUMN], horse [HORS].
+- Wistful Cameldriver (10322), Wistful Thinking (27), avoiding,
+  behind, human [HUMN].
+- Wistful Soldiers (5887), Wistful Thinking (27), 750 orcs [ORC], 150
+  horses [HORS].
+- Wistful Archers (10894), Wistful Thinking (27), behind, 40 high
+  elves [HELF], 29 double bows [DBOW], 25 horses [HORS], 40 healing
+  potions [HPOT].
+- Wistful Soldiers III (4144), Wistful Thinking (27), 584 orcs [ORC],
+  584 swords [SWOR], 584 mithril armor [MARM], 584 camels [CAME].
+- Wistful Soldiers IV (10998), Wistful Thinking (27), 84 orcs [ORC],
+  84 mithril swords [MSWO], 84 admantium ring mails [ARNG], 63 iron
+  shields [ISHD], 84 horses [HORS].
+- Wistful Wanderer (10889), Wistful Thinking (27), avoiding, behind,
+  human [HUMN], 190 horses [HORS].
+- Unit (2880), Fon (8), avoiding, behind, 2 drow elves [DRLF], 5
+  winged horses [WING].
+- PorterWING (17458), Archon Dominion (53), avoiding, behind, gnoll
+  [GNOL], horse [HORS], 12 winged horses [WING].
+- Wistful Visitor (1332), Wistful Thinking (27), avoiding, behind,
+  goblin [GBLN], 700 horses [HORS].
+- Wistful Soldiers (4945), Wistful Thinking (27), 300 orcs [ORC], 150
+  horses [HORS].
+
++ Building [1] : Tower.
+
++ Building [2] : Caravanserai.
+  - Wistful Logistician (2973), Wistful Thinking (27), behind, goblin
+    [GBLN], crossbow [XBOW], 23 spears [SPEA], 9 picks [PICK], 2
+    hammers [HAMM], 18 swords [SWOR], 11 plate armor [PARM], 43
+    mithril swords [MSWO], 6 admantium ring mails [ARNG], camel
+    [CAME], 421 stone [STON], 37 spinning wheels [SPIN], 133 ironwood
+    [IRWD], 4 bags [BAG], 279 wood [WOOD], 129 furs [FUR], 69 iron
+    [IRON], 5 yew [YEW].
+
++ Building [3] : Magical Tower.
+  - Wistful Guards (2296), on guard, Wistful Thinking (27), behind, 8
+    wood elves [WELF].
+
++ Building [4] : Magical Tower.
+
++ The Lux [5] : Magical Tower; overlooks the park, best chef in town..
+
++ Building [6] : Magical Fortress.
+
++ Building [7] : Road NE.
+
++ Building [8] : Road SW.
+
++ Building [9] : Road SW.
+
++ Building [10] : Castle.
+  - Wistful Soldiers (10069), Wistful Thinking (27), 1191 orcs [ORC],
+    506 swords [SWOR], 64 admantium ring mails [ARNG], 108 plate armor
+    [PARM], 189 chain armor [CARM], 830 leather armor [LARM], 12
+    wooden shields [WSHD], mithril shield [MSHD], 28 mithril armor
+    [MARM], 9 winged horses [WING].
+
++ Building [11] : Inn.
+  - Jongleurs (1334), Wistful Thinking (27), avoiding, behind, 18
+    goblins [GBLN], 9 javelins [JAVE], 4 battle axes [BAXE], 606
+    leather armor [LARM], 8 giant turtles [TURT], 60 winged horses
+    [WING], 2 magic wagons [MWAG], 206 rootstone [ROOT], 5 gliders
+    [GLID], 47 healing potions [HPOT], 113 wood [WOOD], floater hide
+    [FLOA], 7 mithril [MITH], 9 lassoes [LASS], 10 nets [NET], 19
+    ironwood [IRWD], 12 admantium [ADMT].
+
++ Building [12] : Inn.
+
++ Building [13] : Inn.
+
++ Building [14] : Road NW.
+
++ Building [15] : Road N.
+
++ Building [16] : Road SE.
+
++ Ship [761] : 4 Balloons.
+  - Wistful Aeronauts (9472), Wistful Thinking (27), avoiding, behind,
+    7 goblins [GBLN].
+
+
+
+
+
+Orders Template (Long Format):
+
+#atlantis 95 "<password>"
+
+;*** mountain (7,53) in Inhead, contains Inholm [city] ***
+
+unit 18642
+;Seven of Eight (18642), avoiding, behind, revealing faction, holding,
+;  sharing, sailing battle spoils, leader [LEAD], horse [HORS]. Weight:
+;  60. Capacity: 0/70/85/0. Skills: manipulation [MANI] 3 (180),
+;  stealth [STEA] 2 (150).
+@study stea
+
+unit 13432
+;Drone (13432), avoiding, behind, revealing faction, holding, sharing,
+;  sailing battle spoils, hill dwarf [HDWA]. Weight: 10. Capacity:
+;  0/0/15/0. Skills: none.
+@work
+
+;*** swamp (13,53) in Prialto ***
+
+unit 881
+;Six of Seven (881), behind, revealing faction, holding, sharing,
+;  sailing battle spoils, leader [LEAD], 3 dragons [DRAG], balrog
+;  [BALR] (illusion), windchime [WCHM], 2250 silver [SILV]. Weight:
+;  761. Capacity: 901/901/916/0. Skills: observation [OBSE] 1 (35),
+;  force [FORC] 3 (205), pattern [PATT] 3 (245), spirit [SPIR] 2 (120),
+;  gate lore [GATE] 1 (30), fire [FIRE] 2 (95), combat [COMB] 3 (180),
+;  illusion [ILLU] 3 (195), phantasmal entertainment [PHEN] 1 (50),
+;  earth lore [EART] 3 (200), bird lore [BIRD] 3 (180), true seeing
+;  [TRUE] 2 (90), wolf lore [WOLF] 3 (190), dragon lore [DRAG] 3 (180),
+;  create phantasmal demons [PHDE] 3 (180), artifact lore [ARTI] 2
+;  (120), enchant armor [EARM] 2 (120). Combat spell: fire [FIRE]. Can
+;  Study: fire [FIRE], earthquake [EQUA], force shield [FSHI], energy
+;  shield [ESHI], spirit shield [SSHI], magical healing [MHEA], gate
+;  lore [GATE], farsight [FARS], mind reading [MIND], weather lore
+;  [WEAT], necromancy [NECR], demon lore [DEMO], phantasmal
+;  entertainment [PHEN], create phantasmal beasts [PHBE], invisibility
+;  [INVI], true seeing [TRUE], dispel illusions [DISP], enchant swords
+;  [ESWO], enchant shields [ESHD], create cornucopia [CRCO],
+;  transmutation [TRNS].
+@study earm
+@cast eart
+
+unit 13401
+;Three of Two (13401), behind, revealing faction, holding, sharing,
+;  sailing battle spoils, leader [LEAD], gate crystal [GTCR], staff of
+;  fire [STAF]. Weight: 10. Capacity: 0/0/15/0. Skills: observation
+;  [OBSE] 5 (450), manipulation [MANI] 3 (210), tactics [TACT] 2 (150).
+;  Ready item: staff of fire [STAF].
+@prepare staf
+@study tact
+
+unit 12878
+;Two of Seven (12878), behind, revealing faction, holding, sharing,
+;  sailing battle spoils, leader [LEAD], 3 dragons [DRAG], balrog
+;  [BALR] (illusion), flaming sword [FSWO], 1674 silver [SILV]. Weight:
+;  762. Capacity: 901/901/916/0. Skills: force [FORC] 3 (185), pattern
+;  [PATT] 3 (250), earth lore [EART] 3 (180), bird lore [BIRD] 3 (180),
+;  wolf lore [WOLF] 3 (195), dragon lore [DRAG] 3 (180), illusion
+;  [ILLU] 3 (180), create phantasmal demons [PHDE] 3 (180), spirit
+;  [SPIR] 1 (30). Can Study: fire [FIRE], earthquake [EQUA], force
+;  shield [FSHI], energy shield [ESHI], spirit shield [SSHI], magical
+;  healing [MHEA], gate lore [GATE], farsight [FARS], mind reading
+;  [MIND], weather lore [WEAT], necromancy [NECR], demon lore [DEMO],
+;  phantasmal entertainment [PHEN], create phantasmal beasts [PHBE],
+;  invisibility [INVI], true seeing [TRUE], dispel illusions [DISP],
+;  artifact lore [ARTI].
+@CAST Create_Phantasmal_Demons BALROG
+@study spir
+
+unit 12879
+;Three of Seven (12879), behind, revealing faction, holding, sharing,
+;  sailing battle spoils, leader [LEAD], 3 dragons [DRAG], balrog
+;  [BALR] (illusion), 3 gate crystals [GTCR], 1996 silver [SILV].
+;  Weight: 761. Capacity: 901/901/916/0. Skills: force [FORC] 3 (185),
+;  pattern [PATT] 3 (245), earth lore [EART] 3 (180), bird lore [BIRD]
+;  3 (180), wolf lore [WOLF] 3 (195), dragon lore [DRAG] 3 (180),
+;  illusion [ILLU] 3 (180), create phantasmal demons [PHDE] 3 (180),
+;  spirit [SPIR] 1 (30). Can Study: fire [FIRE], earthquake [EQUA],
+;  force shield [FSHI], energy shield [ESHI], spirit shield [SSHI],
+;  magical healing [MHEA], gate lore [GATE], farsight [FARS], mind
+;  reading [MIND], weather lore [WEAT], necromancy [NECR], demon lore
+;  [DEMO], phantasmal entertainment [PHEN], create phantasmal beasts
+;  [PHBE], invisibility [INVI], true seeing [TRUE], dispel illusions
+;  [DISP], artifact lore [ARTI].
+@cast EART
+@study spir
+
+unit 20
+;One of Seven (20), behind, revealing faction, holding, sharing,
+;  sailing battle spoils, leader [LEAD], imp [IMP] (illusion), 2
+;  dragons [DRAG], 1232 silver [SILV]. Weight: 511. Capacity:
+;  601/601/616/0. Skills: observation [OBSE] 1 (30), force [FORC] 3
+;  (215), pattern [PATT] 3 (250), spirit [SPIR] 2 (90), gate lore
+;  [GATE] 1 (30), fire [FIRE] 1 (50), combat [COMB] 3 (180), illusion
+;  [ILLU] 3 (180), earth lore [EART] 3 (185), wolf lore [WOLF] 3 (180),
+;  bird lore [BIRD] 3 (180), create phantasmal demons [PHDE] 3 (185),
+;  dragon lore [DRAG] 3 (180), artifact lore [ARTI] 1 (60). Combat
+;  spell: fire [FIRE]. Can Study: fire [FIRE], earthquake [EQUA], force
+;  shield [FSHI], energy shield [ESHI], spirit shield [SSHI], magical
+;  healing [MHEA], gate lore [GATE], farsight [FARS], mind reading
+;  [MIND], weather lore [WEAT], necromancy [NECR], demon lore [DEMO],
+;  phantasmal entertainment [PHEN], create phantasmal beasts [PHBE],
+;  invisibility [INVI], true seeing [TRUE], dispel illusions [DISP],
+;  artifact lore [ARTI], enchant shields [ESHD], create cornucopia
+;  [CRCO], transmutation [TRNS].
+@cast drag
+@study arti
+
+unit 9684
+;Drones (9684), avoiding, behind, revealing faction, holding, sharing,
+;  won't cross water, sailing battle spoils, 2 goblins [GBLN]. Weight:
+;  10. Capacity: 0/0/14/0. Skills: sailing [SAIL] 2 (90), entertainment
+;  [ENTE] 1 (85).
+@sail
+
+unit 12880
+;Four of Seven (12880), behind, revealing faction, holding, sharing,
+;  sailing battle spoils, leader [LEAD], 3 dragons [DRAG], gate crystal
+;  [GTCR], 2325 silver [SILV]. Weight: 760. Capacity: 900/900/915/0.
+;  Skills: force [FORC] 3 (180), pattern [PATT] 3 (255), earth lore
+;  [EART] 3 (185), bird lore [BIRD] 3 (180), wolf lore [WOLF] 3 (195),
+;  dragon lore [DRAG] 3 (185), illusion [ILLU] 3 (180), spirit [SPIR] 2
+;  (90), artifact lore [ARTI] 2 (120), enchant armor [EARM] 1 (60). Can
+;  Study: fire [FIRE], earthquake [EQUA], force shield [FSHI], energy
+;  shield [ESHI], spirit shield [SSHI], magical healing [MHEA], gate
+;  lore [GATE], farsight [FARS], mind reading [MIND], weather lore
+;  [WEAT], necromancy [NECR], demon lore [DEMO], phantasmal
+;  entertainment [PHEN], create phantasmal beasts [PHBE], create
+;  phantasmal demons [PHDE], invisibility [INVI], true seeing [TRUE],
+;  dispel illusions [DISP], enchant swords [ESWO], enchant armor
+;  [EARM], enchant shields [ESHD], create cornucopia [CRCO],
+;  transmutation [TRNS].
+@study earm
+@cast eart
+
+unit 12881
+;Five of Seven (12881), behind, revealing faction, holding, sharing,
+;  sailing battle spoils, leader [LEAD], 3 dragons [DRAG], 2370 silver
+;  [SILV]. Weight: 760. Capacity: 900/900/915/0. Skills: force [FORC] 3
+;  (240), pattern [PATT] 3 (260), earth lore [EART] 3 (185), bird lore
+;  [BIRD] 3 (180), wolf lore [WOLF] 3 (190), dragon lore [DRAG] 3
+;  (190), illusion [ILLU] 3 (180), spirit [SPIR] 2 (90), artifact lore
+;  [ARTI] 2 (120), enchant armor [EARM] 1 (60). Can Study: fire [FIRE],
+;  earthquake [EQUA], force shield [FSHI], energy shield [ESHI], spirit
+;  shield [SSHI], magical healing [MHEA], gate lore [GATE], farsight
+;  [FARS], mind reading [MIND], weather lore [WEAT], necromancy [NECR],
+;  demon lore [DEMO], phantasmal entertainment [PHEN], create
+;  phantasmal beasts [PHBE], create phantasmal demons [PHDE],
+;  invisibility [INVI], true seeing [TRUE], dispel illusions [DISP],
+;  enchant swords [ESWO], enchant armor [EARM], enchant shields [ESHD],
+;  create cornucopia [CRCO], transmutation [TRNS].
+@study earm
+@cast eart
+
+unit 13402
+;Six of Two (13402), avoiding, behind, sharing, leader [LEAD], 800
+;  silver [SILV]. Weight: 10. Capacity: 0/0/15/0. Skills: stealth
+;  [STEA] 5 (450), combat [COMB] 4 (300).
+@TEACH 18636 18637 18638 18639 18640 18641
+
+unit 18636
+;One of Eight (18636), avoiding, behind, revealing faction, holding,
+;  sharing, sailing battle spoils, leader [LEAD], gate crystal [GTCR],
+;  leather armor [LARM], glider [GLID], 299 silver [SILV]. Weight: 16.
+;  Capacity: 15/0/15/0. Skills: manipulation [MANI] 3 (180), stealth
+;  [STEA] 3 (270).
+@study stea
+
+unit 18637
+;Two of Eight (18637), avoiding, behind, revealing faction, holding,
+;  sharing, sailing battle spoils, leader [LEAD], leather armor [LARM],
+;  gate crystal [GTCR], glider [GLID]. Weight: 16. Capacity: 15/0/15/0.
+;  Skills: manipulation [MANI] 3 (180), stealth [STEA] 3 (270).
+@study stea
+
+unit 18638
+;Three of Eight (18638), avoiding, behind, revealing faction, holding,
+;  sharing, sailing battle spoils, leader [LEAD], leather armor [LARM],
+;  glider [GLID]. Weight: 16. Capacity: 15/0/15/0. Skills: manipulation
+;  [MANI] 3 (180), stealth [STEA] 3 (270).
+@study stea
+
+unit 18639
+;Four of Eight (18639), avoiding, behind, revealing faction, holding,
+;  sharing, sailing battle spoils, leader [LEAD], leather armor [LARM],
+;  glider [GLID]. Weight: 16. Capacity: 15/0/15/0. Skills: manipulation
+;  [MANI] 3 (180), stealth [STEA] 3 (270).
+@study stea
+
+unit 18640
+;Five of Eight (18640), avoiding, behind, revealing faction, holding,
+;  sharing, sailing battle spoils, leader [LEAD], leather armor [LARM],
+;  glider [GLID]. Weight: 16. Capacity: 15/0/15/0. Skills: manipulation
+;  [MANI] 3 (180), stealth [STEA] 3 (270).
+@study stea
+
+unit 18641
+;Six of Eight (18641), avoiding, behind, revealing faction, holding,
+;  sharing, sailing battle spoils, leader [LEAD], horse [HORS]. Weight:
+;  60. Capacity: 0/70/85/0. Skills: manipulation [MANI] 3 (180),
+;  stealth [STEA] 3 (270).
+@study stea
+
+;*** desert (15,63) in Feltiuckfex, contains Trasicy [city] ***
+
+unit 1688
+;Drone (1688), avoiding, behind, revealing faction, holding, sharing,
+;  consuming unit's food, hill dwarf [HDWA], horse [HORS]. Weight: 60.
+;  Capacity: 0/70/85/0. Skills: none.
+@work
+
+unit 13848
+;Eight of Eight (13848), behind, revealing faction, sharing, consuming
+;  faction's food, leader [LEAD], staff of fire [STAF]. Weight: 10.
+;  Capacity: 0/0/15/0. Skills: manipulation [MANI] 3 (180), stealth
+;  [STEA] 4 (390). Ready item: staff of fire [STAF].
+@study stea
+@behind 1
+@prepare staf
+
+unit 13850
+;Ten of Eight (13850), behind, revealing faction, sharing, consuming
+;  faction's food, leader [LEAD], staff of fire [STAF]. Weight: 10.
+;  Capacity: 0/0/15/0. Skills: manipulation [MANI] 3 (180), stealth
+;  [STEA] 4 (390). Ready item: staff of fire [STAF].
+@study stea
+@behind 1
+@prepare staf
+
+unit 13856
+;Eleven of Eight (13856), behind, revealing faction, sharing, consuming
+;  faction's food, leader [LEAD], staff of fire [STAF]. Weight: 10.
+;  Capacity: 0/0/15/0. Skills: manipulation [MANI] 3 (180), stealth
+;  [STEA] 4 (390). Ready item: staff of fire [STAF].
+@study stea
+@behind 1
+@prepare staf
+
+unit 13857
+;Twelve of Eight (13857), behind, revealing faction, sharing, consuming
+;  faction's food, leader [LEAD], staff of fire [STAF]. Weight: 10.
+;  Capacity: 0/0/15/0. Skills: manipulation [MANI] 3 (180), stealth
+;  [STEA] 4 (390). Ready item: staff of fire [STAF].
+@study stea
+@behind 1
+@prepare staf
+
+unit 13972
+;Thirteen of Eight (13972), behind, revealing faction, sharing,
+;  consuming faction's food, leader [LEAD], staff of fire [STAF].
+;  Weight: 10. Capacity: 0/0/15/0. Skills: manipulation [MANI] 3 (180),
+;  stealth [STEA] 4 (360). Ready item: staff of fire [STAF].
+@study stea
+@behind 1
+@prepare staf
+
+unit 13997
+;Fourteen of Eight (13997), behind, revealing faction, sharing,
+;  consuming faction's food, leader [LEAD], staff of fire [STAF].
+;  Weight: 10. Capacity: 0/0/15/0. Skills: manipulation [MANI] 3 (180),
+;  stealth [STEA] 4 (360). Ready item: staff of fire [STAF].
+@study stea
+@behind 1
+@prepare staf
+
+unit 13403
+;Nine of Eight (13403), avoiding, behind, sharing, leader [LEAD], 3426
+;  silver [SILV]. Weight: 10. Capacity: 0/0/15/0. Skills: manipulation
+;  [MANI] 4 (330), stealth [STEA] 4 (375).
+@declare 1 hostile
+@declare 2 hostile
+@declare 8 ally ; Fon
+@declare 9 ally ; La Orden de la Sangre
+@declare 27 ally ;Wistful Thinking Bilbin
+@declare 32 ally ; Elder Tree
+@declare 53 ally ; Archon
+@declare 103 ally ;Mantzikert
+@declare 35 ally ; Frozen Sails Ruri
+@declare 46 ally ; Stormbringer Elricz
+@declare 69 ally ; Cartographers
+@declare 83 ally ; Wanderers
+@study stea
+
+#end
+
