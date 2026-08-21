@@ -205,11 +205,23 @@ function isShip(kind: string): boolean {
 type StructureKind = "road" | "ship" | "shaft" | "lair" | "building";
 
 function classify(structure: StructureInfo): StructureKind {
-  const kind = structure.kind.trim().toLowerCase();
+  // The report sends a qualified kind - `Lair, closed to player units`, `Galley, 2 Galleys` - and
+  // `parse_structure` (crates/core/src/report/region.rs) only splits a description off `kind` on a
+  // semicolon, which a lair's line never carries. So the whole clause arrives here, while the sets
+  // below match bare words: the first segment is what they need. Before this, no theme had ever
+  // drawn a lair mark from a real report (ah-o0d3, found by PR #487).
+  const comma = structure.kind.indexOf(",");
+  const kind = (comma === -1 ? structure.kind : structure.kind.slice(0, comma))
+    .trim()
+    .toLowerCase();
   if (roadDirection(structure.kind) !== null) {
     return "road";
   }
-  if (isShip(structure.kind)) {
+  // `isShip` reads the RAW kind as well as the cleaned one, deliberately: it scans the whole string
+  // for "ship"/"boat" to catch tails, and `Fleet, 6 Airships` is a ship only because of `Airships`.
+  // Cleaning that to `fleet` - in neither SHIP_KINDS nor the substring test - would turn a fleet
+  // that draws correctly today into a building. The six fleets this still misses are ah-3pr9.
+  if (isShip(structure.kind) || isShip(kind)) {
     return "ship";
   }
   if (SHAFT_KINDS.has(kind)) {
