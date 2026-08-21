@@ -13,6 +13,7 @@ describe("SHORTCUTS", () => {
     expect(ids).toEqual([
       "palette",
       "help",
+      "gameData",
       "nextUnit",
       "prevUnit",
       "nextDiagnostic",
@@ -59,6 +60,18 @@ describe("matchShortcut", () => {
     expect(matchShortcut(key({ key: "F8", altKey: true }), true)).toBeNull();
   });
 
+  it("opens the game data on a bare F2", () => {
+    expect(matchShortcut(key({ key: "F2" }), true)).toBe("gameData");
+    expect(matchShortcut(key({ key: "F2" }), false)).toBe("gameData");
+  });
+
+  it("claims no modified F2 - a modified chord belongs to whatever else may want it", () => {
+    expect(matchShortcut(key({ key: "F2", shiftKey: true }), true)).toBeNull();
+    expect(matchShortcut(key({ key: "F2", altKey: true }), true)).toBeNull();
+    expect(matchShortcut(key({ key: "F2", metaKey: true }), true)).toBeNull();
+    expect(matchShortcut(key({ key: "F2", ctrlKey: true }), false)).toBeNull();
+  });
+
   it("claims nothing else - plain keys belong to whoever is focused", () => {
     expect(matchShortcut(key({ key: "ArrowDown" }), true)).toBeNull();
     expect(matchShortcut(key({ key: "Enter" }), true)).toBeNull();
@@ -75,10 +88,10 @@ describe("matchShortcut", () => {
 });
 
 describe("firesInContext", () => {
-  const everywhere: ShortcutId[] = ["palette", "help"];
+  const everywhere: ShortcutId[] = ["palette", "help", "gameData"];
   const editingAware: ShortcutId[] = ["nextUnit", "prevUnit", "nextDiagnostic", "prevDiagnostic"];
 
-  it("lets the palette and help fire from any focus at all", () => {
+  it("lets the palette, help and the game data fire from any focus at all", () => {
     for (const id of everywhere) {
       expect(firesInContext(id, { isTextInput: false, isOrdersEditor: false })).toBe(true);
       expect(firesInContext(id, { isTextInput: true, isOrdersEditor: false })).toBe(true);

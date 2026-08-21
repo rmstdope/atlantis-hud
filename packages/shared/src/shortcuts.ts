@@ -9,6 +9,7 @@
 export type ShortcutId =
   | "palette"
   | "help"
+  | "gameData"
   | "nextUnit"
   | "prevUnit"
   | "nextDiagnostic"
@@ -39,6 +40,13 @@ export const SHORTCUTS: readonly ShortcutSpec[] = [
     description: "Show how to get around, with the mouse and the keyboard",
     mac: "⌘/",
     other: "Ctrl+/"
+  },
+  {
+    id: "gameData",
+    group: "Navigation",
+    description: "Browse the game data - skills, items, buildings and the rest",
+    mac: "F2",
+    other: "F2"
   },
   {
     id: "nextUnit",
@@ -108,6 +116,10 @@ export function matchShortcut(event: KeyChord, isMac: boolean): ShortcutId | nul
     }
   }
 
+  if (event.key === "F2" && noMod && !event.altKey && !event.shiftKey) {
+    return "gameData";
+  }
+
   if (event.key === "F8" && noMod && !event.altKey) {
     return event.shiftKey ? "prevDiagnostic" : "nextDiagnostic";
   }
@@ -118,7 +130,10 @@ export function matchShortcut(event: KeyChord, isMac: boolean): ShortcutId | nul
 /**
  * Whether a matched shortcut may fire where the keydown happened.
  *
- * The palette and the help overlay answer from anywhere - they are how the keyboard gets around.
+ * The palette, the help overlay and the game data answer from anywhere - they are how the keyboard
+ * gets around, and F2 is an unmodified function key that produces no character, so it can never be
+ * something the player was trying to type. Looking a thing up mid-sentence while writing orders is
+ * exactly when the game data is wanted.
  * The cycling chords answer everywhere except foreign text inputs: in the snippet-body textarea
  * or the unit filter an arrow chord belongs to that input, but the orders editor is exactly where
  * walking units and problems is wanted, so it is carved back in.
@@ -127,7 +142,7 @@ export function firesInContext(
   id: ShortcutId,
   target: { isTextInput: boolean; isOrdersEditor: boolean }
 ): boolean {
-  if (id === "palette" || id === "help") {
+  if (id === "palette" || id === "help" || id === "gameData") {
     return true;
   }
   return !target.isTextInput || target.isOrdersEditor;

@@ -58,6 +58,13 @@ export const NAVIGATION_MOVES: readonly NavigationMove[] = [
     keys: chord("help")
   },
   {
+    id: "gameData",
+    group: EVERYWHERE,
+    description: "Browse the game data - skills, items, buildings and the rest",
+    mouse: null,
+    keys: chord("gameData")
+  },
+  {
     id: "dismiss",
     group: EVERYWHERE,
     description: "Close whatever is open on top",

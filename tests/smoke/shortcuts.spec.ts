@@ -623,3 +623,91 @@ test("following a cross-reference scrolls to it, and clicking a visible row does
   expect(clicked, "no visible unselected row to click").toBe(true);
   expect(await list.evaluate((node) => node.scrollTop)).toBe(before);
 });
+
+/**
+ * ah-u44o: the game data had no door of its own - both routes to it started from a thing you
+ * already had to name. F2 and a palette action open it cold, on Skills with the first entry
+ * showing, which is what `openGameDataDialog(index, null)` has always done for a caller that
+ * never existed.
+ */
+test("F2 opens the game data cold, on Skills with its first entry showing", async ({ page }) => {
+  await loadReport(page);
+
+  await page.keyboard.press("F2");
+
+  await expect(page.getByTestId("game-data-dialog")).toBeVisible();
+  await expect(page.getByTestId("game-data-tab-skill")).toHaveAttribute("aria-selected", "true");
+  // Not an empty pane: the first skill is showing, which is what a cold open lands on.
+  await expect(page.getByTestId("game-data-detail")).toContainText("Study cost");
+});
+
+test("the palette's Browse game data opens the same dialog, in the same cold state", async ({
+  page
+}) => {
+  await loadReport(page);
+
+  await page.keyboard.press("ControlOrMeta+k");
+  await page.getByTestId("palette-input").fill("browse game data");
+  await expect(page.getByTestId("palette-item").first()).toContainText("Browse game data");
+  // The chord is listed beside it because the action reads its binding from SHORTCUTS.
+  await expect(page.getByTestId("palette-item").first()).toContainText("F2");
+  await page.keyboard.press("Enter");
+
+  await expect(page.getByTestId("game-data-dialog")).toBeVisible();
+  await expect(page.getByTestId("game-data-tab-skill")).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByTestId("game-data-detail")).toContainText("Study cost");
+});
+
+test("F2 closes an open dialog, and opens it cold again afterwards", async ({ page }) => {
+  await loadReport(page);
+
+  await page.keyboard.press("F2");
+  const dialog = page.getByTestId("game-data-dialog");
+  await expect(dialog).toBeVisible();
+
+  // Move away from Skills, so the second open has something to be cold about.
+  await page.getByTestId("game-data-tab-building").click();
+  await expect(page.getByTestId("game-data-tab-building")).toHaveAttribute(
+    "aria-selected",
+    "true"
+  );
+
+  await page.keyboard.press("F2");
+  await expect(dialog).toHaveCount(0);
+
+  await page.keyboard.press("F2");
+  await expect(dialog).toBeVisible();
+  await expect(page.getByTestId("game-data-tab-skill")).toHaveAttribute("aria-selected", "true");
+});
+
+test("F2 fires from the orders editor and from the unit filter", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+  await selectUnit(page, OWN_UNIT);
+
+  await ordersInput(page).click();
+  await page.keyboard.press("F2");
+  await expect(page.getByTestId("game-data-dialog")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("game-data-dialog")).toHaveCount(0);
+
+  await page.getByLabel("Filter units").click();
+  await page.keyboard.press("F2");
+  await expect(page.getByTestId("game-data-dialog")).toBeVisible();
+});
+
+test("with no ruleset there is no door: F2 does nothing and the palette does not offer one", async ({
+  page
+}) => {
+  // A game with a ruleset that will not load - which is the state the palette already answers
+  // with no game data at all, and both doors must answer the same way.
+  await page.route("**/ruleset.json", (route) => route.fulfill({ status: 404, body: "" }));
+  await loadReport(page);
+
+  await page.keyboard.press("F2");
+  await expect(page.getByTestId("game-data-dialog")).toHaveCount(0);
+
+  await page.keyboard.press("ControlOrMeta+k");
+  await page.getByTestId("palette-input").fill("browse game data");
+  await expect(page.getByTestId("palette-item")).toHaveCount(0);
+});
