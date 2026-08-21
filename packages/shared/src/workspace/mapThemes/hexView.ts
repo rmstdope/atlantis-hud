@@ -210,7 +210,10 @@ function classify(structure: StructureInfo): StructureKind {
   // semicolon, which a lair's line never carries. So the whole clause arrives here, while the sets
   // below match bare words: the first segment is what they need. Before this, no theme had ever
   // drawn a lair mark from a real report (ah-o0d3, found by PR #487).
-  const kind = structure.kind.split(",")[0].trim().toLowerCase();
+  const comma = structure.kind.indexOf(",");
+  const kind = (comma === -1 ? structure.kind : structure.kind.slice(0, comma))
+    .trim()
+    .toLowerCase();
   if (roadDirection(structure.kind) !== null) {
     return "road";
   }
