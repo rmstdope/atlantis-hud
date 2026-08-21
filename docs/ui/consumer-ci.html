@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Proving the harness works somewhere else</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --edge:#26303d; --ink:#dbe3ec; --ink-soft:#a3b0c0;
+    --ink-dim:#8a97a8; --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1340px; margin:0 auto; }
+  h1 { font-size:26px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:98ch; margin-top:10px; font-size:14px; }
+  header p + p { margin-top:8px; }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:36px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:98ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; }
+  .card h2 { font-size:15.5px; margin-bottom:5px; }
+  .card h2 em { color:var(--brass); font-style:normal; font-size:11.5px; letter-spacing:1.5px; margin-right:8px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; margin-bottom:12px; min-height:5.2em; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:12px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212  "; color:var(--danger); }
+  .cards3 { display:grid; grid-template-columns:repeat(3,1fr); gap:18px; align-items:start; }
+  .checks { background:#0b0f14; border:1px solid var(--edge); border-radius:6px; padding:10px 12px;
+            font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11.5px; line-height:2; color:#c7d2de; }
+  .checks div { display:flex; gap:8px; align-items:center; }
+  .ok::before { content:"\2713"; color:var(--ok); width:1em; display:inline-block; }
+  .no::before { content:"\2715"; color:var(--danger); width:1em; display:inline-block; }
+  .sk::before { content:"\25CB"; color:var(--ink-dim); width:1em; display:inline-block; }
+  .merge { margin-top:9px; padding-top:8px; border-top:1px solid var(--edge); font-family:system-ui,sans-serif; font-size:12px; }
+  .merge.y { color:var(--ok); } .merge.n { color:var(--danger); }
+  .warn { background:rgba(217,112,112,0.12); border:1px solid rgba(217,112,112,0.4); border-radius:8px;
+          padding:12px 14px; margin-top:14px; font-size:13.5px; color:var(--ink); }
+  .warn b { color:var(--danger); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Proving the harness works <span>somewhere it has never been</span></h1>
+  <p>Nothing anywhere exercises cerebro <b>as a consumer's submodule</b>. Its CI runs the suites
+  <i>in place</i>, so the mount point, the tracker's program name, the default branch and the install
+  step are all invisible to it — which is why none of the coupling the sibling beads found was
+  noticed. This bead builds one CI job that stands up a consumer deliberately unlike this project and
+  drives the fleet against it.</p>
+  <p>The fixture is not a new invention: four bash suites already fabricate consumers under
+  <code>mktemp -d</code>, and an ERT test already symlinks <code>.claude/cerebro</code> into a temp
+  directory. Generalising those is the missing piece.</p>
+
+  <div class="warn">
+    <b>The bead's own recommendation cannot be taken literally.</b> It says to build the job
+    <i>red</i> and turn it green as the siblings land, because that "makes every sibling's definition
+    of done mechanical". But <b>nothing merges red</b> — a failing job blocks every pull request in
+    the repository until the last sibling lands. That is the whole fleet stopped for days, to gain a
+    checklist. So the question below is really: <i>how do we keep that property without the
+    blockage?</i>
+  </div>
+</header>
+
+<main>
+
+<h3 class="sec">How the job behaves while its siblings are still landing</h3>
+
+<div class="cards3">
+  <div class="card">
+    <h2><em>A</em>Red, and blocking</h2>
+    <div class="concept">The bead as written: assert everything the epic promises now, and let the
+    job fail until every sibling has landed.</div>
+    <div class="checks">
+      <div class="ok">ERT (Emacs 28.2)</div>
+      <div class="ok">ERT (Emacs 30.1)</div>
+      <div class="ok">Bash suites</div>
+      <div class="no">Consumer fixture</div>
+      <div class="merge n">✕ cannot merge — a check is failing</div>
+    </div>
+    <ul class="notes">
+      <li>Every sibling's definition of done is mechanical from day one</li>
+      <li class="con"><b>Blocks every PR in the repository</b> until the last sibling lands</li>
+      <li class="con">A check that is always red is a check people stop reading</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2><em>B</em>Green by construction</h2>
+    <div class="concept">The fixture is built now and asserts only what passes today. Each sibling
+    bead adds its own assertion as part of its own work, so the job grows and is never red.</div>
+    <div class="checks">
+      <div class="ok">ERT (Emacs 28.2)</div>
+      <div class="ok">ERT (Emacs 30.1)</div>
+      <div class="ok">Bash suites</div>
+      <div class="ok">Consumer fixture <span style="color:var(--ink-dim)">(4 of 9)</span></div>
+      <div class="merge y">✓ ready to merge</div>
+    </div>
+    <ul class="notes">
+      <li>CI stays honest — green means green, all the way through</li>
+      <li>The fixture is available to every sibling the day it is needed</li>
+      <li class="con">A sibling can land without adding its assertion, unless its own plan says to</li>
+      <li class="con">Nothing tells you which of the nine are still missing</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2><em>C</em>Red, but not blocking</h2>
+    <div class="concept">Every assertion is written now, and the job is marked
+    <code>continue-on-error</code>. It reports the truth without stopping anything, and the flag is
+    removed when the last sibling lands.</div>
+    <div class="checks">
+      <div class="ok">ERT (Emacs 28.2)</div>
+      <div class="ok">ERT (Emacs 30.1)</div>
+      <div class="ok">Bash suites</div>
+      <div class="sk">Consumer fixture <span style="color:var(--ink-dim)">(5 failing, advisory)</span></div>
+      <div class="merge y">✓ ready to merge</div>
+    </div>
+    <ul class="notes">
+      <li>The full checklist exists and says exactly what is still not true</li>
+      <li>Nothing is blocked, and the job's log is the epic's progress bar</li>
+      <li class="con">An advisory check is one nobody has to act on — it can rot green-ish for ever</li>
+      <li class="con">Removing the flag is a step someone must remember, in no bead but this one</li>
+    </ul>
+  </div>
+</div>
+
+</main>
+
+<footer style="margin-top:34px; color:var(--ink-dim); font-size:12.5px;">
+  Mockup for bead <code>ah-qled.11</code>. Check lists are drawn from cerebro's actual CI jobs —
+  ERT on two Emacs versions and one bash-suites job.
+</footer>
+</body>
+</html>
