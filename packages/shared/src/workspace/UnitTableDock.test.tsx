@@ -4,7 +4,7 @@ import type { RegionPreview, ReportRegion, ReportUnit } from "@atlantis/core-cli
 import { aReportRegion, aReportUnit } from "@atlantis/core-client";
 import type { HexNode } from "../hexMapModel";
 import { DEFAULT_COLUMN_SHARES, UNIT_COLUMNS, type UnitColumn } from "../unitTable";
-import { restoreStoresForTest, setStoreStateForTest } from "../testing/storeState";
+import { renderWithStoreState, restoreStoresForTest } from "../testing/storeState";
 import { resetWorkspaceStore, useWorkspaceStore } from "../workspaceStore";
 import { UnitTableDock } from "./UnitTableDock";
 
@@ -328,10 +328,13 @@ describe("column order (ah-1owr.3)", () => {
   });
 
   it("draws header, columns and rows in the stored order", () => {
-    // `renderToStaticMarkup` reads the store's `getInitialState()`, not its live state, so a
-    // preference has to be mirrored onto it - see `../testing/storeState.ts`.
-    setStoreStateForTest(useWorkspaceStore, { unitColumnOrder: swapped() });
-    const markup = draw(withUnits());
+    // A static render reads the store's `getInitialState()`, not its live state, so the preference
+    // has to be mirrored onto it - which is all `renderWithStoreState` does.
+    const markup = renderWithStoreState(
+      <UnitTableDock hex={withUnits()} preview={null} />,
+      useWorkspaceStore,
+      { unitColumnOrder: swapped() }
+    );
 
     const grips = [...markup.matchAll(/data-testid="column-reorder-(\w+)"/g)].map(
       (match) => match[1]
@@ -351,8 +354,12 @@ describe("column order (ah-1owr.3)", () => {
   it("falls back to the shipped order when the stored one does not fit this build", () => {
     // Not a permutation of this build's columns - the store's own `merge` rejects such a value on
     // load, and a render must not try to draw one either.
-    setStoreStateForTest(useWorkspaceStore, { unitColumnOrder: ["own", "name"] as UnitColumn[] });
-    const grips = [...draw(withUnits()).matchAll(/data-testid="column-reorder-(\w+)"/g)].map(
+    const markup = renderWithStoreState(
+      <UnitTableDock hex={withUnits()} preview={null} />,
+      useWorkspaceStore,
+      { unitColumnOrder: ["own", "name"] as UnitColumn[] }
+    );
+    const grips = [...markup.matchAll(/data-testid="column-reorder-(\w+)"/g)].map(
       (match) => match[1]
     );
 
