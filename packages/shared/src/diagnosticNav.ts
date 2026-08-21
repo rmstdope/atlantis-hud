@@ -57,19 +57,74 @@ export function diagnosticTargets(
   }
 
   return placed.sort((a, b) => {
-    const lineA = a.problem.lineStart ?? 0;
-    const lineB = b.problem.lineStart ?? 0;
-    // Document order, not block order: compare where they originally sat. Re-derive from the
-    // block-relative line plus the block's own position.
-    const blockA = blocks.find((candidate) => candidate.unitId === a.unitId);
-    const blockB = blocks.find((candidate) => candidate.unitId === b.unitId);
-    const absoluteA = (blockA?.firstLine ?? 0) + lineA;
-    const absoluteB = (blockB?.firstLine ?? 0) + lineB;
-    if (absoluteA !== absoluteB) {
-      return absoluteA - absoluteB;
+    const keyA = stopKey(blocks, a);
+    const keyB = stopKey(blocks, b);
+    if (keyA.line !== keyB.line) {
+      return keyA.line - keyB.line;
     }
-    return (a.problem.columnStart ?? 0) - (b.problem.columnStart ?? 0);
+    return keyA.column - keyB.column;
   });
+}
+
+/**
+ * Where a stop sits in the whole document, so two stops can be compared across two validations.
+ *
+ * Lines are absolute: a target's line is block-relative, so the block's own position is added
+ * back. `line` is what `diagnosticTargets` sorts by and what `resumeWalk` compares - one piece
+ * of arithmetic with one definition, because two copies of it drifting apart is the defect
+ * this walk was rebuilt to remove (ah-9ess).
+ */
+export type StopKey = { line: number; column: number };
+
+function stopKey(blocks: ReturnType<typeof findUnitBlocks>, target: DiagnosticTarget): StopKey {
+  const block = blocks.find((candidate) => candidate.unitId === target.unitId);
+  return {
+    line: (block?.firstLine ?? 0) + (target.problem.lineStart ?? 0),
+    column: target.problem.columnStart ?? 0
+  };
+}
+
+/** Each target's document position, in the order `diagnosticTargets` returned them. */
+export function stopKeys(text: string, targets: readonly DiagnosticTarget[]): StopKey[] {
+  const blocks = findUnitBlocks(text);
+  return targets.map((target) => stopKey(blocks, target));
+}
+
+/** Where the walk stands after the problem list was rebuilt. */
+export type Resume = {
+  /** The stop the walk is on, in `stepDiagnostic`'s terms. */
+  index: number | null;
+  /** Whether that is a problem the player stands on, or only a place to resume from. */
+  standing: boolean;
+};
+
+const NOWHERE: Resume = { index: null, standing: false };
+
+function compareKeys(a: StopKey, b: StopKey): number {
+  return a.line !== b.line ? a.line - b.line : a.column - b.column;
+}
+
+/**
+ * Where the walk resumes once a re-validation has rebuilt the problem list.
+ *
+ * The old index means nothing - the list it counted into is gone - but the player's place in the
+ * turn does, so it is carried across by document position. The problem they stood on, if it
+ * survived; otherwise the next one down the document, reached by standing one *before* it so the
+ * next step lands on it. Nothing after where they stood means the walk wraps, which is what a
+ * position of `null` already asks `stepDiagnostic` for.
+ */
+export function resumeWalk(keys: readonly StopKey[], remembered: StopKey | null): Resume {
+  if (remembered === null || keys.length === 0) {
+    return NOWHERE;
+  }
+  const survived = keys.findIndex((key) => compareKeys(key, remembered) === 0);
+  if (survived !== -1) {
+    return { index: survived, standing: true };
+  }
+  const after = keys.findIndex((key) => compareKeys(key, remembered) > 0);
+  // Nothing after it, or it is the very first: either way there is no stop to sit before, and
+  // stepping from nowhere already gives the top of the list.
+  return after > 0 ? { index: after - 1, standing: false } : NOWHERE;
 }
 
 /**

@@ -470,32 +470,56 @@ test("the walk buttons step to the next problem and back, and wrap at the end", 
 
   const next = page.getByTestId("walk-problem-next");
   const prev = page.getByTestId("walk-problem-prev");
+  const position = page.getByTestId("walk-position");
   const unitPane = page.getByTestId("panel-unit");
 
-  // Which unit each stop belongs to is the fixture's business and changes as checks are added, so
-  // the stops are read rather than named: what this pins is that next moves on, and that prev
-  // comes back to the stop next just left.
+  // The counter is the walk's own barrier: one attribute that changes exactly once per click, so
+  // nothing here waits on how much prose the unit pane happens to render (ah-9ess).
   await next.click();
+  await expect(position).toHaveAttribute("data-position", /^1\/\d+$/);
+  // It moved the view, not only the counter.
   await expect(unitPane).toContainText(/\(\d+\)/);
-  const first = (await unitPane.textContent()) ?? "";
 
   await next.click();
-  await expect(unitPane).not.toHaveText(first);
-  const second = (await unitPane.textContent()) ?? "";
+  await expect(position).toHaveAttribute("data-position", /^2\/\d+$/);
 
   await prev.click();
-  await expect(unitPane).toHaveText(first);
-  expect(second).not.toBe(first);
+  await expect(position).toHaveAttribute("data-position", /^1\/\d+$/);
 
-  // Past the last problem the walk comes round again rather than stopping - the buttons never die,
-  // so stepping on far enough returns to where it started.
-  let cameBack = false;
-  for (let step = 0; step < 12 && !cameBack; step += 1) {
+  // Past the last problem the walk comes round again rather than stopping: step the whole list and
+  // the counter is back at the top.
+  const total = Number(
+    ((await position.getAttribute("data-position")) ?? "1/1").split("/")[1]
+  );
+  expect(total).toBeGreaterThan(0);
+  for (let step = 0; step < total; step += 1) {
     await next.click();
-    await expect(unitPane).not.toHaveText("");
-    cameBack = step > 0 && ((await unitPane.textContent()) ?? "") === first;
   }
-  expect(cameBack).toBe(true);
+  await expect(position).toHaveAttribute("data-position", `1/${total}`);
+});
+
+test("the walk keeps its place when validation re-runs under it", async ({ page }) => {
+  await loadReport(page);
+  await onlyTheUnitsWithNoOrders(page);
+
+  await selectHex(page, "1:7,53");
+  await selectUnit(page, OWN_UNIT);
+  await fillOrders(page, "@work\nTAX");
+  await expect(page.getByTestId("orders-status")).toContainText("0 errors");
+  await expect(page.getByTestId("problems-chip")).toContainText(/[1-9]\d* problems?/);
+
+  const next = page.getByTestId("walk-problem-next");
+  const position = page.getByTestId("walk-position");
+
+  await next.click();
+  await next.click();
+  await expect(position).toHaveAttribute("data-position", /^2\/\d+$/);
+
+  // Typing re-validates, which used to send the walk silently back to problem 1 - the defect three
+  // CI failures were actually about (ah-9ess).
+  await fillOrders(page, "@work\nTAX\n");
+  await expect(page.getByTestId("orders-status")).toContainText("0 errors");
+  await expect(position).toHaveAttribute("data-position", /^2\/\d+$/);
 });
 
 test("the walk buttons stay enabled with no problems at all", async ({ page }) => {

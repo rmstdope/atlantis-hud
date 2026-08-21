@@ -151,7 +151,8 @@ import { parseGameData } from "../gameData";
 import { ShortcutHelp } from "./ShortcutHelp";
 import { buildPaletteEntries } from "../commandPalette";
 import { structurePaletteLabel } from "../structureLabel";
-import { diagnosticTargets, stepDiagnostic } from "../diagnosticNav";
+import type { Resume, StopKey } from "../diagnosticNav";
+import { diagnosticTargets, resumeWalk, stepDiagnostic, stopKeys } from "../diagnosticNav";
 import { hasOpenDismissLayers } from "../dismissStack";
 import { firesInContext, isMacPlatform, matchShortcut, SHORTCUTS } from "../shortcuts";
 import type { CaretLookup } from "../orderCompletion";
@@ -406,9 +407,16 @@ export function AppShell({
   const [exportRect, setExportRect] = useState<MapRect | null>(null);
   const [exportBusy, setExportBusy] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
-  // The F8 walk's stop and its pending cross-unit landing. A ref for the stop: pressing F8
-  // twice must not wait a render between the steps.
-  const lastDiagnostic = useRef<number | null>(null);
+  // The F8 walk's stop and its pending cross-unit landing.
+  //
+  // Refs are what the walk *steps* from - pressing F8 twice must not wait a render between the
+  // steps, and the keydown listener is registered from a passive effect, so a second press can
+  // still be running against the closure the first one had. `walkStop` is the same position
+  // mirrored for rendering (the counter in the orders header); `walkKey` is the document position
+  // it is carried across re-validations by, and nothing renders from that at all (ah-9ess).
+  const walkIndex = useRef<number | null>(null);
+  const walkKey = useRef<StopKey | null>(null);
+  const [walkStop, setWalkStop] = useState<Resume>({ index: null, standing: false });
   const [pendingProblem, setPendingProblem] = useState<
     ReturnType<typeof diagnosticTargets>[number] | null
   >(null);
@@ -739,10 +747,21 @@ export function AppShell({
     [validated]
   );
 
-  // A fresh validation is a fresh walk: the old stop indexes a list that no longer exists.
+  // The document position of each stop, for carrying the walk across a re-validation.
+  const problemKeys = useMemo(
+    () => stopKeys(validated.text, problemTargets),
+    [validated, problemTargets]
+  );
+
+  // A fresh validation rebuilds the list, so the old index means nothing - but the player's place
+  // in the turn does. Resume by document position: the same problem if it survived, otherwise the
+  // first one after where they stood (ah-9ess). Resetting to the top was the old behaviour, and it
+  // moved the walk under the player without telling them - three CI failures were about that.
   useEffect(() => {
-    lastDiagnostic.current = null;
-  }, [validated]);
+    const resumed = resumeWalk(problemKeys, walkKey.current);
+    walkIndex.current = resumed.index;
+    setWalkStop(resumed);
+  }, [problemKeys]);
 
   // A cross-unit F8 landing: the unit's editor mounts on the commit after goToUnit, so the
   // selection is placed from here rather than from the keydown that asked for it.
@@ -760,11 +779,13 @@ export function AppShell({
 
   const walkProblems = useCallback(
     (direction: 1 | -1) => {
-      const step = stepDiagnostic(problemTargets.length, lastDiagnostic.current, direction);
+      const step = stepDiagnostic(problemTargets.length, walkIndex.current, direction);
       if (step === null) {
         return;
       }
-      lastDiagnostic.current = step;
+      walkIndex.current = step;
+      walkKey.current = problemKeys[step] ?? null;
+      setWalkStop({ index: step, standing: true });
       const target = problemTargets[step];
       if (unit?.unitId === target.unitId) {
         ordersEditor.current?.selectProblem(target.problem);
@@ -773,7 +794,7 @@ export function AppShell({
         setPendingProblem(target);
       }
     },
-    [problemTargets, unit, goToUnit]
+    [problemTargets, problemKeys, unit, goToUnit]
   );
 
   const dispatchShortcut = useCallback(
@@ -3262,6 +3283,11 @@ export function AppShell({
                   caretCompletions={caretCompletions}
                   editorRef={ordersEditor}
                   onWalkProblems={walkProblems}
+                  walkPosition={
+                    walkStop.standing && walkStop.index !== null
+                      ? { at: walkStop.index + 1, of: problemTargets.length }
+                      : null
+                  }
                 />
               </div>
               <RailSplitter
