@@ -38,6 +38,11 @@ packages/browser-core/src/wasm/
 # Tracked on purpose: unlike the personal .cerebro/models.conf these are facts every clone needs,
 # and an ignored copy would vanish on a fresh clone and take the install step with it.
 !.claude/cerebro-project.conf
+# The consumer's own fleet, read by .claude/cerebro/scripts/roster (ah-qled.5.1). Tracked for the
+# same reason: which agents exist is a fact every clone needs, and a git-ignored file would vanish
+# on a fresh clone and silently revert the fleet to cerebro's own names. This repository ships no
+# such file - it wants the built-in fleet - but the path must stay trackable for one to be added.
+!.claude/cerebro-roster
 
 # Cerebro's own bookkeeping - agent state files, stop flags and the agents' worktrees. Live
 # machine state, never part of the project (ah-v82).
