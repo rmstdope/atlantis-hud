@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Where the Badges chip sits (bead ah-ljil)</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733; --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --ok:#4fb783; --danger:#d97070; --select:#4a9fd8; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1160px; margin-left:auto; margin-right:auto; }
+  h1 { font-size:25px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:96ch; margin-top:10px; font-size:14px; }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:0.9em; }
+  h2.sec { margin-top:32px; font-size:18px; color:var(--brass); } h2.sec small { color:var(--ink-dim); font-size:13px; margin-left:10px; }
+  .banner { border:1px solid var(--edge); border-left:3px solid var(--brass); background:var(--panel); padding:14px 16px; border-radius:6px; margin-top:16px; color:var(--ink-soft); font-size:13.5px; } .banner b { color:var(--ink); }
+  .banner.bad { border-left-color:var(--danger); }
+  .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); gap:20px; margin-top:16px; align-items:start; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; display:flex; flex-direction:column; gap:12px; }
+  .card h3 { font-size:16px; } .card h3 em { color:var(--brass); font-style:normal; font-size:11px; letter-spacing:1.6px; margin-right:8px; }
+  .notes { list-style:none; font-size:12px; color:var(--ink-soft); display:grid; gap:4px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; } .notes li.con::before { content:"\2212  "; color:var(--danger); }
+  .map { position:relative; height:150px; border:1px solid var(--edge); border-radius:6px; overflow:hidden;
+         background:repeating-linear-gradient(60deg,#16202a 0 14px,#141d26 14px 28px); font-family:'Helvetica Neue',Arial,sans-serif; }
+  .strip { position:absolute; top:8px; display:flex; gap:5px; align-items:center; }
+  .strip.right { right:8px; } .strip.centre { left:50%; transform:translateX(-50%); }
+  .pill { display:flex; align-items:center; gap:5px; border:1px solid var(--edge); background:rgba(23,29,38,.95); border-radius:6px; padding:3px 7px; box-shadow:0 2px 6px rgba(0,0,0,.4); }
+  .badges { border:1px solid var(--select); background:rgba(74,159,216,.15); color:var(--ink); border-radius:3px; padding:1px 6px; font-size:11px; }
+  .zb { width:24px; height:24px; border:1px solid var(--edge); background:rgba(23,29,38,.95); border-radius:4px; color:var(--ink-soft); font-size:13px; display:flex; align-items:center; justify-content:center; box-shadow:0 1px 3px rgba(0,0,0,.4); }
+  .panelbox { position:absolute; border:1px solid var(--edge); background:rgba(23,29,38,.9); border-radius:5px; color:var(--ink-dim); font-size:10px; padding:4px 6px; }
+  .menu { position:absolute; top:38px; right:8px; width:130px; border:1px solid var(--edge); background:var(--raised); border-radius:5px; padding:5px; font-size:10.5px; color:var(--ink-soft); box-shadow:0 6px 18px rgba(0,0,0,.6); z-index:5; }
+  .menu div { padding:1px 3px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Where the Badges chip sits &mdash; <span>proposals</span> (bead ah-ljil)</h1>
+  <p>Your words: move the badges selector next to the map zoom buttons, so every control that acts on the map view is in one place. <b>Position only</b> &mdash; the popover and the lit-when-something-is-hidden behaviour are not in question.</p>
+  <p>Today Badges sits <b>top-centre</b> (<code>AppShell.tsx:3103</code>) and the zoom cluster <b>top-right</b> (<code>MapCanvas.tsx:1531</code>). They are two different components in two different files.</p>
+</header>
+<main>
+
+  <h2 class="sec">&sect;1 &nbsp;Today</h2>
+  <div class="map">
+    <div class="strip centre"><div class="pill"><span class="badges">Badges &#9662;</span></div></div>
+    <div class="strip right"><div class="zb">+</div><div class="zb">&minus;</div><div class="zb">&#10530;</div></div>
+    <div class="panelbox" style="left:8px;top:44px;width:80px;height:64px">region</div>
+    <div class="panelbox" style="right:8px;top:44px;width:80px;height:64px">unit</div>
+  </div>
+
+  <h2 class="sec">&sect;2 &nbsp;Where it could go</h2>
+  <div class="cards">
+    <div class="card">
+      <h3><em>A</em> Left of the zoom buttons, keeping its pill</h3>
+      <div class="map">
+        <div class="strip right"><div class="pill"><span class="badges">Badges &#9662;</span></div><div class="zb">+</div><div class="zb">&minus;</div><div class="zb">&#10530;</div></div>
+        <div class="panelbox" style="left:8px;top:44px;width:80px;height:64px">region</div>
+        <div class="panelbox" style="right:8px;top:44px;width:80px;height:64px">unit</div>
+      </div>
+      <ul class="notes">
+        <li>Reading order matches how often each is used: badges first, then the three zoom keys.</li>
+        <li><b>The chip keeps its own bordered pill</b>, so its lit state still reads as a distinct thing rather than a fourth button.</li>
+        <li>The menu drops from a chip near the right edge, where there is room below it.</li>
+        <li class="con">Two container styles side by side &mdash; a pill and three bare buttons.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3><em>B</em> One pill around all four</h3>
+      <div class="map">
+        <div class="strip right"><div class="pill"><span class="badges">Badges &#9662;</span><span style="color:var(--edge)">|</span><span style="color:var(--ink-soft);font-size:12px">+</span><span style="color:var(--ink-soft);font-size:12px">&minus;</span><span style="color:var(--ink-soft);font-size:12px">&#10530;</span></div></div>
+        <div class="panelbox" style="left:8px;top:44px;width:80px;height:64px">region</div>
+        <div class="panelbox" style="right:8px;top:44px;width:80px;height:64px">unit</div>
+      </div>
+      <ul class="notes">
+        <li><b>Says most clearly that these belong together</b> &mdash; one object, one place the map is controlled from.</li>
+        <li>Narrower than two containers with a gap.</li>
+        <li class="con">The zoom buttons lose their own outlines, so this is a restyle as well as a move &mdash; more than the bead asked for.</li>
+        <li class="con">The lit Badges state now sits inside a shared box and reads less loudly.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3><em>C</em> Right of the zoom buttons, hard to the corner</h3>
+      <div class="map">
+        <div class="strip right"><div class="zb">+</div><div class="zb">&minus;</div><div class="zb">&#10530;</div><div class="pill"><span class="badges">Badges &#9662;</span></div></div>
+        <div class="panelbox" style="left:8px;top:44px;width:80px;height:64px">region</div>
+        <div class="panelbox" style="right:8px;top:44px;width:80px;height:64px">unit</div>
+      </div>
+      <ul class="notes">
+        <li>Zoom keeps exactly the position your hand already knows.</li>
+        <li class="con"><b>The widest control is furthest right</b>, so the cluster's edge moves as the chip lights and its border changes.</li>
+        <li class="con">The menu opens hard against the window edge.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2 class="sec">&sect;3 &nbsp;What the move must not break <small>three things the code comments warn about, all measured</small></h2>
+  <div class="banner bad"><b>1. Zoom-to-fit reads the strip's own box.</b> <code>data-map-overlay="top"</code> (<code>AppShell.tsx:3104</code>) tells the map which edge is covered, so <code>frameAll</code> frames the world into the part you can actually see. <code>BadgeMenu.tsx:20</code> warns that a panel which grew that box would make zoom-to-fit fit the map into a smaller one. <b>Moving the chip from centre to right changes what that element measures</b>, so zoom-to-fit has to be checked, not assumed.</div>
+  <div class="banner bad"><b>2. The open menu has to clear the panels, and only while open.</b> The strip is <code>z-20</code> and lifts to <code>z-30</code> only when something is expanded. <code>AppShell.tsx:3095</code> records what happened without it (ah-v09e): <i>&ldquo;the Badges menu's lower rows landed on the units dock's title bar and stopped taking clicks.&rdquo;</i> The comment is equally clear about why it is conditional: lifting it always <i>&ldquo;swallows clicks meant for whatever sits under it &mdash; twelve smoke tests' worth&rdquo;</i>. <b>The zoom cluster has none of this.</b> Moving the chip into it without carrying the z-handling reintroduces exactly that bug.</div>
+  <div class="banner bad"><b>3. Only the top 48px of the map takes clicks.</b> <code>MapCanvas.tsx:1527</code>: the inspector panels cover the rest with a full-bleed overlay that clears only the first forty-eight pixels, so <i>&ldquo;controls anywhere else are unreachable however visible they look&rdquo;</i>. Both controls are inside that band today and must stay inside it.</div>
+
+</main>
+</body>
+</html>
