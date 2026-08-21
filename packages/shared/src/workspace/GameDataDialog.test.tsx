@@ -126,4 +126,11 @@ describe("GameDataDialog", () => {
     expect(html).toContain("Game data");
     expect(html).toContain("Close");
   });
+  // ah-vwdi: the dialog opens at pt-[10vh], so its max height must leave a matching margin below
+  // rather than running to the bottom edge of the screen. A string assertion is all a
+  // renderToStaticMarkup suite can do; the real check is by hand and in the smoke suite.
+  it("stops short of the bottom edge, leaving a margin matching the one above", () => {
+    const html = markup(null);
+    expect(html).toContain("max-h-[80vh]");
+  });
 });

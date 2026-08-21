@@ -89,6 +89,23 @@ export function GameDataDialog({
     return true;
   };
 
+  // The selected row is scrolled into view whenever the selection changes (ah-vwdi). `block:
+  // "nearest"` scrolls only when the row is actually off screen, so stepping between visible rows
+  // does not jog the list. The palette's `byKeyboard` guard is deliberately NOT copied: it exists
+  // there because selection follows the pointer, which this dialog does not do - and it would
+  // suppress the one case that most wants scrolling, following a cross-reference to an entry far
+  // down the list.
+  const list = useRef<HTMLUListElement | null>(null);
+  useEffect(() => {
+    if (state.selectedId === null) {
+      return;
+    }
+    const row = list.current?.querySelector(
+      `[data-testid="game-data-entry-${CSS.escape(state.selectedId)}"]`
+    );
+    row?.scrollIntoView({ block: "nearest" });
+  }, [state.selectedId]);
+
   const stepTab = (by: number) => {
     const at = GAME_DATA_CATEGORIES.indexOf(state.category);
     const next =
@@ -113,7 +130,9 @@ export function GameDataDialog({
         role="dialog"
         aria-modal="true"
         aria-label="Game data"
-        className="grid max-h-[85vh] w-[56rem] max-w-[94vw] grid-rows-[auto_auto_1fr] rounded border border-edge bg-panel-raised text-pane whitespace-normal shadow-lg"
+        // 10vh below, matching the `pt-[10vh]` above (ah-vwdi). The two must be changed together:
+        // top offset + max height must leave a real margin, or the dialog runs to the screen edge.
+        className="grid max-h-[80vh] w-[56rem] max-w-[94vw] grid-rows-[auto_auto_1fr] rounded border border-edge bg-panel-raised text-pane whitespace-normal shadow-lg"
       >
         <div className="flex items-center gap-2 border-b border-edge px-2 py-1.5">
           <span className="text-ink-soft">Game data</span>
@@ -189,6 +208,7 @@ export function GameDataDialog({
               className="w-full border-b border-edge bg-transparent px-2 py-1 outline-none"
             />
             <ul
+              ref={list}
               data-testid="game-data-list"
               role="listbox"
               aria-label={GAME_DATA_CATEGORY_LABELS[state.category]}

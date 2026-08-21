@@ -518,3 +518,99 @@ test("the walk buttons stay enabled with no problems at all", async ({ page }) =
   await expect(page.getByTestId("panel-unit")).toContainText(OWN_UNIT);
   await expect(next).toBeEnabled();
 });
+
+/**
+ * ah-vwdi: the dictionary's left-hand list has far more in it than fits, and the keyboard must be
+ * able to drive the selection the whole way down - the list scrolling with it. The selection itself
+ * always moved (`paletteKeyReduce` was wired from the start); it was the view that did not follow.
+ * This cannot be a unit test: there is no jsdom here, so anything measuring scroll is Playwright's.
+ */
+test("arrowing past the fold keeps the selected entry in view", async ({ page }) => {
+  await loadReport(page);
+
+  await page.keyboard.press("ControlOrMeta+k");
+  await page.getByTestId("palette-input").fill("mining MINI");
+  await page.keyboard.press("Enter");
+  await expect(page.getByTestId("game-data-dialog")).toBeVisible();
+
+  const list = page.getByTestId("game-data-list");
+  const selected = page.locator('[data-testid^="game-data-entry-"][aria-selected="true"]');
+
+  const visible = async () => {
+    const row = await selected.boundingBox();
+    const box = await list.boundingBox();
+    if (row === null || box === null) {
+      return false;
+    }
+    return row.y >= box.y - 1 && row.y + row.height <= box.y + box.height + 1;
+  };
+
+  // Far past the fold, one row at a time.
+  for (let step = 0; step < 30; step += 1) {
+    await page.keyboard.press("ArrowDown");
+  }
+  await expect.poll(visible).toBe(true);
+
+  // A screenful at a time, and back again.
+  await page.keyboard.press("PageDown");
+  await expect.poll(visible).toBe(true);
+  await page.keyboard.press("PageUp");
+  await expect.poll(visible).toBe(true);
+
+  for (let step = 0; step < 40; step += 1) {
+    await page.keyboard.press("ArrowUp");
+  }
+  // ...and on the way back up, still in view. (Not asserting the list is scrolled fully to the top:
+  // rapid synthetic keypresses can outrun a re-render, so how far forty of them travel is not
+  // something to pin. What must hold is that wherever the selection is, it is on screen.)
+  await expect.poll(visible).toBe(true);
+});
+
+/**
+ * ah-vwdi: the palette's `byKeyboard` guard is deliberately not copied here - following a
+ * cross-reference selects an entry that may be far off screen, and scrolling to it is exactly what
+ * a reader wants. Clicking a row already on screen must still not jog the list, which is what
+ * `block: "nearest"` buys.
+ */
+test("following a cross-reference scrolls to it, and clicking a visible row does not jump", async ({
+  page
+}) => {
+  await loadReport(page);
+
+  await page.keyboard.press("ControlOrMeta+k");
+  await page.getByTestId("palette-input").fill("mining MINI");
+  await page.keyboard.press("Enter");
+  await expect(page.getByTestId("game-data-dialog")).toBeVisible();
+
+  const list = page.getByTestId("game-data-list");
+  const selected = page.locator('[data-testid^="game-data-entry-"][aria-selected="true"]');
+
+  await page.getByTestId("game-data-link-equipment:MITH").click();
+  await expect(page.getByTestId("game-data-tab-equipment")).toHaveAttribute(
+    "aria-selected",
+    "true"
+  );
+  await expect.poll(async () => {
+    const row = await selected.boundingBox();
+    const box = await list.boundingBox();
+    if (row === null || box === null) {
+      return false;
+    }
+    return row.y >= box.y - 1 && row.y + row.height <= box.y + box.height + 1;
+  }).toBe(true);
+
+  // A row already on screen: the list must stay exactly where it is.
+  const before = await list.evaluate((node) => node.scrollTop);
+  const rows = page.locator('[data-testid^="game-data-entry-"]');
+  const box = await list.boundingBox();
+  const count = await rows.count();
+  for (let at = 0; at < count; at += 1) {
+    const candidate = rows.nth(at);
+    const row = await candidate.boundingBox();
+    if (row !== null && box !== null && row.y >= box.y && row.y + row.height <= box.y + box.height) {
+      await candidate.click();
+      break;
+    }
+  }
+  expect(await list.evaluate((node) => node.scrollTop)).toBe(before);
+});
