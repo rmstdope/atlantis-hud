@@ -124,6 +124,35 @@ export async function selectHex(page: Page, regionId: string) {
 }
 
 /**
+ * Selects a unit by filtering the units table down to it and clicking its row.
+ *
+ * Five specs carried this identically; `backup.spec.ts` carried a sixth, weaker copy inlined into
+ * its own `openOrders`, holding the id in `OWN_UNIT` rather than `unitId` and skipping the
+ * one-row check. The strict version wins: the filter matching more than one row is exactly how
+ * this helper would click the wrong unit, and asserting the count is what makes the click
+ * unambiguous. A blanket edit that assumed the names matched shipped a ReferenceError to CI
+ * (ah-bu2c) - which is why the id is a parameter here and the caller passes its own constant.
+ */
+export async function selectUnit(page: Page, unitId: string) {
+  const box = page.getByLabel("Filter units");
+  await box.fill(unitId);
+  const row = page.getByTestId(`unit-row-${unitId}`);
+  await expect(row).toHaveCount(1);
+  await expect(row).toBeVisible();
+  // Named, not "the button in this row": a foreign unit's row also carries the faction name as a
+  // control (ah-bu2c), so a bare role lookup is ambiguous there.
+  await row.getByRole("button", { name: `unit ${unitId}` }).click();
+  await box.clear();
+}
+
+/** A unit selected with its orders on screen, from wherever the walk currently is. */
+export async function openOrders(page: Page, unitId: string, regionId = "1:7,53") {
+  await selectHex(page, regionId);
+  await selectUnit(page, unitId);
+  await expect(page.getByTestId("orders-input")).toBeVisible();
+}
+
+/**
  * The strip of the map the player can actually see: the map's own host, shrunk by the insets
  * `MapCanvas` fits and recentres against - not the geometric middle of the canvas, which the side
  * rails alone push well away from where a point actually lands on the map.

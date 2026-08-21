@@ -6,8 +6,10 @@ import {
   expectOrders,
   expectOrdersNot,
   fillOrders,
+  openOrders,
   ordersInput,
-  selectHex
+  selectHex,
+  selectUnit
 } from "./gameSetup";
 
 /**
@@ -59,24 +61,8 @@ async function openReport(page: Page) {
 
 
 /** Filtered down first, because the table only builds the rows that are on screen. */
-async function selectUnit(page: Page, unitId: string) {
-  const box = page.getByLabel("Filter units");
-  await box.fill(unitId);
-  const row = page.getByTestId(`unit-row-${unitId}`);
-  await expect(row).toHaveCount(1);
-  await expect(row).toBeVisible();
-  // Named, not "the button in this row": a foreign unit's row also carries the faction name as a
-  // control (ah-bu2c), so a bare role lookup is ambiguous there.
-  await row.getByRole("button", { name: `unit ${unitId}` }).click();
-  await box.clear();
-}
 
 /** Puts the orders editor for the player's own unit on screen. */
-async function openOrders(page: Page) {
-  await selectHex(page, "1:7,53");
-  await selectUnit(page, OWN_UNIT);
-  await expect(page.getByTestId("orders-input")).toBeVisible();
-}
 
 test("a game reopens on the turn that was loaded in it", async ({ page }) => {
   await clearGames(page);
@@ -225,7 +211,7 @@ test("orders typed into a game are still there after a reload", async ({ page })
   await clearGames(page);
   await createGame(page, "Typing game");
   await openReport(page);
-  await openOrders(page);
+  await openOrders(page, OWN_UNIT);
 
   await fillOrders(page, "@work\n@study combat");
 
@@ -235,7 +221,7 @@ test("orders typed into a game are still there after a reload", async ({ page })
 
   await page.reload();
   await expect(page.getByTestId("import-status")).toContainText("restored turn 71");
-  await openOrders(page);
+  await openOrders(page, OWN_UNIT);
 
   await expectOrders(page, /@study combat/u);
   // And it comes back knowing it is saved, rather than claiming never to have been.
@@ -248,7 +234,7 @@ test("a saved draft gains its missing trailing newline without moving the cursor
   await clearGames(page);
   await createGame(page, "Newline game");
   await openReport(page);
-  await openOrders(page);
+  await openOrders(page, OWN_UNIT);
 
   const editor = ordersInput(page);
   await fillOrders(page, "@work\n@study combat");
@@ -300,7 +286,7 @@ test("a slow ruleset fetch cannot wipe orders typed after an import", async ({ p
   await clearGames(page);
   await createGame(page, "Slow ruleset game");
   await openReport(page);
-  await openOrders(page);
+  await openOrders(page, OWN_UNIT);
   await fillOrders(page, "@work");
   await expectOrders(page, /^@work\n?$/u);
 
@@ -317,7 +303,7 @@ test("switching to another game and back loses neither the turn nor the orders",
   await clearGames(page);
   await createGame(page, "First game");
   await openReport(page);
-  await openOrders(page);
+  await openOrders(page, OWN_UNIT);
   await fillOrders(page, "@work\n@teach 18642");
 
   // Straight to another game, without waiting for the autosave: switching is one of the three
@@ -333,7 +319,7 @@ test("switching to another game and back loses neither the turn nor the orders",
   await page.getByRole("button", { name: "First game", exact: true }).click();
 
   await expect(page.getByTestId("import-status")).toContainText("restored turn 71");
-  await openOrders(page);
+  await openOrders(page, OWN_UNIT);
   await expectOrders(page, /@teach 18642/u);
 });
 
@@ -341,7 +327,7 @@ test("one game's orders never appear in another", async ({ page }) => {
   await clearGames(page);
   await createGame(page, "Alpha game");
   await openReport(page);
-  await openOrders(page);
+  await openOrders(page, OWN_UNIT);
   await fillOrders(page, "@work\n@build");
   await expect(page.getByTestId("orders-status")).toContainText(SAVED, { timeout: 20_000 });
 
@@ -349,7 +335,7 @@ test("one game's orders never appear in another", async ({ page }) => {
   await page.getByTestId("new-game").click();
   await createGame(page, "Beta game");
   await openReport(page);
-  await openOrders(page);
+  await openOrders(page, OWN_UNIT);
 
   // The same faction and the same turn, in a different game: its own database, its own template.
   await expectOrdersNot(page, /@build/u);
@@ -455,13 +441,13 @@ test("re-opening the same report keeps the orders already written for that turn"
   await clearGames(page);
   await createGame(page, "Re-import game");
   await openReport(page);
-  await openOrders(page);
+  await openOrders(page, OWN_UNIT);
   await fillOrders(page, "@work\n@entertain");
   await expect(page.getByTestId("orders-status")).toContainText(SAVED, { timeout: 20_000 });
 
   // There is no undo anywhere in this application, so a stray file-open must not erase an evening.
   await openReport(page);
-  await openOrders(page);
+  await openOrders(page, OWN_UNIT);
 
   await expectOrders(page, /@entertain/u);
 });

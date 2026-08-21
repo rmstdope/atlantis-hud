@@ -6,6 +6,7 @@ import {
   expectOrders,
   fillOrders,
   importReport,
+  openOrders,
   selectHex
 } from "./gameSetup";
 
@@ -15,18 +16,6 @@ const OWN_UNIT = "18642";
 
 
 
-async function openOrders(page: Page) {
-  await selectHex(page, "1:7,53");
-  const filter = page.getByLabel("Filter units");
-  await filter.fill(OWN_UNIT);
-  const row = page.getByTestId(`unit-row-${OWN_UNIT}`);
-  await expect(row).toBeVisible();
-  // Named, not "the button in this row": a foreign unit's row also carries the faction name as a
-  // control (ah-bu2c), so a bare role lookup is ambiguous there.
-  await row.getByRole("button", { name: `unit ${OWN_UNIT}` }).click();
-  await filter.clear();
-  await expect(page.getByTestId("orders-input")).toBeVisible();
-}
 
 async function gameIdentityFor(page: Page, gameName: string) {
   return page.evaluate(async (name) => {
@@ -98,7 +87,7 @@ test("a game backup restores turns, orders and remembered map after storage is c
   await importReport(page, "turn-71.rep", TURN_71);
   await expect(page.getByTestId("import-status")).toContainText("11 regions");
 
-  await openOrders(page);
+  await openOrders(page, OWN_UNIT);
   await fillOrders(page, "@work\n@study combat");
   await expect(page.getByTestId("orders-status")).toContainText(/saved \d/u, { timeout: 20_000 });
 
@@ -125,7 +114,7 @@ test("a game backup restores turns, orders and remembered map after storage is c
 
   await expect(page.getByTestId("game-indicator")).toContainText("Backup game");
   await expect(page.getByTestId("import-status")).toContainText("restored turn 71");
-  await openOrders(page);
+  await openOrders(page, OWN_UNIT);
   await expectOrders(page, /@study combat/u);
 
   const restoredGame = await gameIdentityFor(page, "Backup game");
@@ -146,7 +135,7 @@ async function toImportCollision(page: Page, testInfo: { outputPath: (name: stri
   await expect(page.getByTestId("import-status")).toContainText("1 region");
   await importReport(page, "turn-71.rep", TURN_71);
   await expect(page.getByTestId("import-status")).toContainText("11 regions");
-  await openOrders(page);
+  await openOrders(page, OWN_UNIT);
   await fillOrders(page, "@work");
   await expect(page.getByTestId("orders-status")).toContainText(/saved \d/u, { timeout: 20_000 });
 
@@ -180,7 +169,7 @@ test("importing a backup of a game that is already here can keep both", async ({
   await page.getByTestId("game-indicator").click();
   await expect(page.locator('[data-testid^="game-row-"]')).toHaveCount(2);
 
-  await openOrders(page);
+  await openOrders(page, OWN_UNIT);
   await expectOrders(page, /@work/u);
 });
 
@@ -197,7 +186,7 @@ test("importing a backup of a game that is already here can replace it", async (
   await page.getByTestId("game-indicator").click();
   await expect(page.locator('[data-testid^="game-row-"]')).toHaveCount(1);
 
-  await openOrders(page);
+  await openOrders(page, OWN_UNIT);
   await expectOrders(page, /@work/u);
 
   const after = await gameIdentityFor(page, "Backup game");

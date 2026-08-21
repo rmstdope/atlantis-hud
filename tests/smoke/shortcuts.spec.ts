@@ -7,7 +7,8 @@ import {
   fillOrders,
   loadReport,
   ordersInput,
-  selectHex
+  selectHex,
+  selectUnit
 } from "./gameSetup";
 
 /**
@@ -24,17 +25,6 @@ const OWN_UNIT = "18642";
 const OTHER_OWN_UNIT = "13401";
 
 
-async function selectUnit(page: Page, unitId: string) {
-  const box = page.getByLabel("Filter units");
-  await box.fill(unitId);
-  const row = page.getByTestId(`unit-row-${unitId}`);
-  await expect(row).toHaveCount(1);
-  await expect(row).toBeVisible();
-  // Named, not "the button in this row": a foreign unit's row also carries the faction name as a
-  // control (ah-bu2c), so a bare role lookup is ambiguous there.
-  await row.getByRole("button", { name: `unit ${unitId}` }).click();
-  await box.clear();
-}
 
 
 test("the palette opens on Mod+K, finds a unit, and Enter goes to it", async ({ page }) => {

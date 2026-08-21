@@ -6,7 +6,8 @@ import {
   fillOrders,
   loadReport,
   ordersInput,
-  selectHex
+  selectHex,
+  selectUnit
 } from "./gameSetup";
 
 /**
@@ -27,17 +28,6 @@ const REPORT = readReport("g7f95t71");
 const OWN_UNIT = "18642";
 
 
-async function selectUnit(page: Page, unitId: string) {
-  const box = page.getByLabel("Filter units");
-  await box.fill(unitId);
-  const row = page.getByTestId(`unit-row-${unitId}`);
-  await expect(row).toHaveCount(1);
-  await expect(row).toBeVisible();
-  // Named, not "the button in this row": a foreign unit's row also carries the faction name as a
-  // control (ah-bu2c), so a bare role lookup is ambiguous there.
-  await row.getByRole("button", { name: `unit ${unitId}` }).click();
-  await box.clear();
-}
 
 /** A loaded game with OWN_UNIT selected and its orders on screen - where every walk here starts. */
 async function openEditor(page: Page) {
