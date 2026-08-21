@@ -238,8 +238,9 @@ describe("the badge toggles, applied once so no theme can forget one", () => {
   });
 
   it("offers a badge for every mark a theme can draw, and none for one it cannot", () => {
-    // `battle` and `gate` are reserved fields that are always false, and a control that does
-    // nothing is worse than no control. `regions` is the one badge here a theme never draws -
+    // `battle` is a reserved field that is always false, and a control that does nothing is worse
+    // than no control. `gate` left that company in ah-lcyn: the parser reads a Gateway now, so the
+    // mark can be drawn and switched off. `regions` is the one badge here a theme never draws -
     // MapCanvas reads it directly, the way it already reads every other badge, to decorate the
     // map with province outlines rather than a per-hex mark.
     expect(BADGES.map(({ name }) => name)).toEqual([
@@ -252,6 +253,7 @@ describe("the badge toggles, applied once so no theme can forget one", () => {
       "buildings",
       "shafts",
       "lairs",
+      "gate",
       "roads",
       "regions",
       "notes"
@@ -417,6 +419,69 @@ describe("structures, split by what they mean rather than counted together", () 
     // raw kind must keep reaching `isShip` even once the qualified kind is cleaned for the set
     // lookups; drop `isShip(structure.kind)` and this hull becomes a roof (ah-o0d3).
     expect(withStructures(["Fleet, 6 Airships"]).ships).toBe(6);
+  });
+
+  it("knows every habitat the report qualified, not merely the three whose word is listed", () => {
+    // All seven of these draw as buildings if the bare word is all that is consulted: `Ice Cave`
+    // and `Demon Pit` because the qualifier defeats the exact match even though `cave` and `pit`
+    // are listed, and the rest because their word was never listed at all. Every string is taken
+    // verbatim from tests/fixtures/reports/*.rep.
+    expect(withStructures(["Ice Cave, closed to player units"]).lairs).toBe(1);
+    expect(withStructures(["Demon Pit, closed to player units"]).lairs).toBe(1);
+    expect(withStructures(["Whirlpool, closed to player units"]).lairs).toBe(1);
+    expect(withStructures(["Bog, closed to player units"]).lairs).toBe(1);
+    expect(withStructures(["Empowered Altar, closed to player units"]).lairs).toBe(1);
+    expect(withStructures(["Giant's Castle, closed to player units"]).lairs).toBe(1);
+    expect(withStructures(["Magician's Tower, closed to player units"]).lairs).toBe(1);
+  });
+
+  it("reads the report's own marker, so a habitat nobody has seen cannot fall through", () => {
+    // The rule is the marker, not a longer list of names: this kind appears in no fixture and in
+    // no set, and is a lair because the report says it is closed to player units.
+    expect(withStructures(["Sunken Palace, closed to player units"]).lairs).toBe(1);
+    expect(withStructures(["Sunken Palace, closed to player units"]).buildings).toBe(0);
+  });
+
+  it("draws a Gateway as the gate every theme reserved a slot for", () => {
+    // 28 of these in the fixtures, the most common qualified kind there is, every one of them an
+    // anonymous building until ah-lcyn.
+    const view = withStructures(["Gateway, contains an inner location"]);
+
+    expect(view.gate).toBe(true);
+    expect(view.buildings).toBe(0);
+    expect(view.shafts).toBe(0);
+  });
+
+  it("leaves the gate unlit for a hex holding no gateway", () => {
+    expect(withStructures(["Stockade"]).gate).toBe(false);
+  });
+
+  it("keeps a shaft a shaft, which its shared marker cannot do", () => {
+    // `contains an inner location` is carried by a Shaft as well as by a Gateway - it means "leads
+    // to an inner location" and cannot tell them apart, so this split keys on the kind word.
+    // Straight from neworigins-3.0.0-g7-f95-t55.rep, the one committed report with a Shaft in it.
+    const view = withStructures(["Shaft, contains an inner location"]);
+
+    expect(view.shafts).toBe(1);
+    expect(view.gate).toBe(false);
+  });
+
+  it("takes the gate away with its badge, and nothing else with it", () => {
+    const view = viewOf(
+      hex({
+        knowledge: "current",
+        region: region({
+          structures: [
+            structure("Gateway, contains an inner location"),
+            structure("Shaft, contains an inner location")
+          ]
+        })
+      }),
+      { badges: { gate: false } }
+    );
+
+    expect(view.gate).toBe(false);
+    expect(view.shafts).toBe(1);
   });
 
   it("counts an unvisited hex as holding nothing, rather than guessing", () => {

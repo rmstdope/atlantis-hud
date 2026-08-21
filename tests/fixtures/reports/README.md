@@ -16,8 +16,8 @@ played between 2021 and 2024 (surveyed at `~/Documents/Atlantis`, off this repos
 them is `NewOrigins, Version: 3.0.0 (beta)` - what varies between them is the *engine* version
 (5.2.4 or 5.2.5) and the game, never the ruleset.
 
-25 of the 209 are committed here: four from the original set this parser was first written against,
-and 21 added by ah-dyi so the parser is exercised against shapes none of those four could reach - a
+26 of the 209 are committed here: four from the original set this parser was first written against,
+and 21 added by ah-dyi and one by ah-lcyn so the parser is exercised against shapes none of those four could reach - a
 fresh faction, a report with no orders template, two factions of one game merging in the same turn,
 and a late-game report far larger than anything committed before. The other ~184 stay in the
 archive; the selection rule below says what would earn one a place here later.
@@ -70,6 +70,7 @@ already well covered.
 | `neworigins-3.0.0-g7-f62-t17.rep` | 7 | 62 | 17 | 5.2.5 | merging two factions of the same game, same turn - pairs with f39 t17 |
 | `neworigins-3.0.0-g7-f62-t18.rep` | 7 | 62 | 18 | 5.2.5 | merging two factions of the same game, same turn - pairs with f39 t18 |
 | `neworigins-3.0.0-g7-f62-t20.rep` | 7 | 62 | 20 | 5.2.5 | a report with no orders template at all |
+| `neworigins-3.0.0-g7-f95-t55.rep` | 7 | 95 | 55 | 5.2.5 | the only committed report containing a `Shaft` structure - the passage between levels every theme reserves a mark for (ah-lcyn) |
 | `neworigins-3.0.0-g7-f95-t70.rep` | 7 | 95 | 70 | 5.2.5 | the player's own faction, one turn before the next fixture |
 | `neworigins-3.0.0-g7-f95-t71.rep` | 7 | 95 | 71 | 5.2.5 | the main acceptance fixture: a full city, structures, battles, an orders template |
 | `neworigins-3.0.0-g7-f95-t72.rep` | 7 | 95 | 72 | 5.2.5 | turn-over-turn comparison, completes the 70-71-72 run; also the largest committed report |

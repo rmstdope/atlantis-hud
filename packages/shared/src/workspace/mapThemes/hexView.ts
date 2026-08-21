@@ -77,10 +77,27 @@ const SHIP_KINDS = new Set([
 const SHAFT_KINDS = new Set(["shaft"]);
 
 /**
+ * A magical passage to another level. A Gateway is the *magical* way between levels, distinct from
+ * a shaft, and it lights the `gate` mark every theme already reserves a slot for. The report gives
+ * it the same `contains an inner location` clause a shaft carries, so that marker cannot tell the
+ * two apart: the kind word is what splits them.
+ */
+const GATE_KINDS = new Set(["gateway"]);
+
+/**
+ * The report's own word for an unenterable monster habitat. This, rather than a list of names, is
+ * what a habitat actually has in common: `Ice Cave`, `Whirlpool`, `Giant's Castle` and whatever the
+ * next unseen kind is called all carry it, and none of them could be enumerated ahead of being
+ * seen (ah-lcyn).
+ */
+const CLOSED_TO_PLAYERS = "closed to player units";
+
+/**
  * An unenterable monster habitat. These monsters never wander but can attack whatever stands in
  * the hex - a standing danger, distinct from the monster faction's roaming units.
  */
 const LAIR_KINDS = new Set(["lair", "cave", "ruin", "ruins", "barrow", "crypt", "tomb", "pit"]);
+
 
 export type SettlementTier = "village" | "town" | "city";
 
@@ -119,10 +136,11 @@ export type HexView = {
   shafts: number;
   lairs: number;
   /**
-   * Reserved. Every theme's layout keeps a slot for a battle and for a gate; both turn true when
-   * the parser learns to read them, and no layout changes when they do.
+   * Reserved. Every theme's layout keeps a slot for a battle; it turns true when the parser learns
+   * to read one, and no layout changes when it does.
    */
   battle: boolean;
+  /** Whether the hex holds a gateway, the magical passage between levels. */
   gate: boolean;
 };
 
@@ -133,9 +151,9 @@ export type HexView = {
  * "structures" - across all nine, so hiding the buildings on a crowded level also took the ships,
  * the shafts, the lairs and the roads with them.
  *
- * `battle` and `gate` are deliberately absent: they are reserved fields that are always false, and
- * a control that does nothing is worse than no control. They join this list the day the parser
- * reads them.
+ * `battle` is deliberately absent: it is a reserved field that is always false, and a control that
+ * does nothing is worse than no control. It joins this list the day the parser reads it - which is
+ * what `gate` did in ah-lcyn, once a Gateway was read from the report.
  */
 export type BadgeName =
   | "settlements"
@@ -147,6 +165,7 @@ export type BadgeName =
   | "buildings"
   | "shafts"
   | "lairs"
+  | "gate"
   | "roads"
   | "regions"
   | "notes";
@@ -162,6 +181,7 @@ export const BADGES: ReadonlyArray<{ name: BadgeName; label: string }> = [
   { name: "buildings", label: "Buildings" },
   { name: "shafts", label: "Shafts" },
   { name: "lairs", label: "Lairs" },
+  { name: "gate", label: "Gates" },
   { name: "roads", label: "Roads" },
   { name: "regions", label: "Regions" },
   // The one entry `MapCanvas` reads to gate a mark it draws itself rather than one a theme does —
@@ -216,7 +236,7 @@ function isShip(kind: string): boolean {
 }
 
 /** What a structure is drawn as. Every structure is exactly one of these. */
-type StructureKind = "road" | "ship" | "shaft" | "lair" | "building";
+type StructureKind = "road" | "ship" | "shaft" | "gate" | "lair" | "building";
 
 function classify(structure: StructureInfo): StructureKind {
   // The report sends a qualified kind - `Lair, closed to player units`, `Galley, 2 Galleys` - and
@@ -241,7 +261,15 @@ function classify(structure: StructureInfo): StructureKind {
   if (SHAFT_KINDS.has(kind)) {
     return "shaft";
   }
-  if (LAIR_KINDS.has(kind)) {
+  if (GATE_KINDS.has(kind)) {
+    return "gate";
+  }
+  // The marker first, the word list second. A report marks every habitat `closed to player units`,
+  // which is what "unenterable monster habitat" actually means, so this catches the kinds nobody
+  // has listed - and lengthening the list instead is the bug rather than the fix (ah-lcyn).
+  // `LAIR_KINDS` stays as the fallback for a genuinely bare kind: no fixture sends one, but the
+  // marker is this ruleset's phrasing and another's may differ.
+  if (structure.kind.toLowerCase().includes(CLOSED_TO_PLAYERS) || LAIR_KINDS.has(kind)) {
     return "lair";
   }
   return "building";
@@ -251,6 +279,7 @@ type StructureTally = {
   roads: RoadDirection[];
   ships: number;
   shafts: number;
+  gates: number;
   lairs: number;
   buildings: number;
 };
@@ -262,7 +291,7 @@ type StructureTally = {
  * future theme would otherwise reorder the roads of every hex on the level at once.
  */
 function noStructures(): StructureTally {
-  return { roads: [], ships: 0, shafts: 0, lairs: 0, buildings: 0 };
+  return { roads: [], ships: 0, shafts: 0, gates: 0, lairs: 0, buildings: 0 };
 }
 
 /**
@@ -308,6 +337,9 @@ function tallyStructures(region: ReportRegion | null): StructureTally {
         break;
       case "shaft":
         tally.shafts += 1;
+        break;
+      case "gate":
+        tally.gates += 1;
         break;
       case "lair":
         tally.lairs += 1;
@@ -365,7 +397,14 @@ function guardOf(units: ReportUnit[]): "own" | "foreign" | null {
 
 /** Whether anything the tally produces is wanted, so an unwanted pass is not made at all. */
 function anyStructureBadge(badges: Record<BadgeName, boolean>): boolean {
-  return badges.roads || badges.ships || badges.buildings || badges.shafts || badges.lairs;
+  return (
+    badges.roads ||
+    badges.ships ||
+    badges.buildings ||
+    badges.shafts ||
+    badges.lairs ||
+    badges.gate
+  );
 }
 
 export function buildHexView(hex: HexNode, options: HexViewOptions): HexView {
@@ -405,7 +444,7 @@ export function buildHexView(hex: HexNode, options: HexViewOptions): HexView {
     shafts: badges.shafts ? structures.shafts : 0,
     lairs: badges.lairs ? structures.lairs : 0,
     battle: false,
-    gate: false
+    gate: badges.gate && structures.gates > 0
   };
 }
 
