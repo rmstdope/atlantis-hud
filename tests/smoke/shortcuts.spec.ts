@@ -711,3 +711,38 @@ test("with no ruleset there is no door: F2 does nothing and the palette does not
   await page.getByTestId("palette-input").fill("browse game data");
   await expect(page.getByTestId("palette-item")).toHaveCount(0);
 });
+
+/**
+ * ah-vwdi: the dialog must stop short of the bottom of the screen. The arithmetic (a `pt-[10vh]`
+ * backdrop plus a `max-h-[80vh]` dialog) reads correct, and verification still found the dialog
+ * touching the bottom edge - so the check that matters is a measured one, in a real browser, on
+ * more than one window height.
+ */
+test("the game data dialog stops short of the bottom edge", async ({ page }) => {
+  await loadReport(page);
+
+  const dialog = page.getByTestId("game-data-dialog");
+
+  for (const size of [
+    { width: 1280, height: 900 },
+    { width: 1280, height: 560 }
+  ]) {
+    await page.setViewportSize(size);
+
+    if ((await dialog.count()) === 0) {
+      await page.keyboard.press("ControlOrMeta+k");
+      await page.getByTestId("palette-input").fill("mining MINI");
+      await page.keyboard.press("Enter");
+    }
+    await expect(dialog).toBeVisible();
+
+    // A real margin below, not a rounding sliver: at least 5% of the window, whatever its height.
+    await expect
+      .poll(async () => {
+        const box = await dialog.boundingBox();
+        return box === null ? -1 : Math.round(size.height - (box.y + box.height));
+      })
+      .toBeGreaterThanOrEqual(Math.round(size.height * 0.05));
+  }
+});
+

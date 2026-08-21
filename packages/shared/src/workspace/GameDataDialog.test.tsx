@@ -131,6 +131,9 @@ describe("GameDataDialog", () => {
   // renderToStaticMarkup suite can do; the real check is by hand and in the smoke suite.
   it("stops short of the bottom edge, leaving a margin matching the one above", () => {
     const html = markup(null);
-    expect(html).toContain("max-h-[80vh]");
+    // The `!` is part of the assertion: theme.css caps every aria-modal dialog at 90vh with an
+    // attribute-pair selector, which outranks a plain utility class - so `max-h-[80vh]` without it
+    // is silently ignored and the dialog runs to the bottom edge (ah-vwdi, verification failure).
+    expect(html).toContain("max-h-[80vh]!");
   });
 });
