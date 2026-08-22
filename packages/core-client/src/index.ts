@@ -599,12 +599,19 @@ export interface CoreAdapter {
     rawReport: string | null,
     unitId: string | null
   ): Promise<CaretCompletions>;
+  /**
+   * `mapJson` is the game's own map shape - `{"width":..,"height":..,"wrapX":..,"wrapY":..}` - or
+   * the empty string for a game that never recorded one. It is what lets a route into unexplored
+   * country cross the wrap seam correctly rather than walking off the map; empty leaves the
+   * arithmetic exactly as it was, because a guessed width would put a seam where there is none.
+   */
   planRoute(
     rulesetJson: string,
     rawReport: string,
     rememberedJson: string,
     unitId: string,
-    destination: string
+    destination: string,
+    mapJson: string
   ): Promise<RoutePlanResponse>;
   /**
    * Where a unit's written movement order takes it, for the map's route overlay.
@@ -619,7 +626,8 @@ export interface CoreAdapter {
     rawReport: string,
     rememberedJson: string,
     unitId: string,
-    ordersDocument: string
+    ordersDocument: string,
+    mapJson: string
   ): Promise<MoveOrderTraceResponse>;
   exportMap(rawReport: string, rememberedJson: string, requestJson: string): Promise<string>;
   knownMap(rawReport: string, rulesetJson: string | null, rememberedJson: string): Promise<KnownMap>;
@@ -627,10 +635,16 @@ export interface CoreAdapter {
     rulesetJson: string,
     rawReport: string,
     rememberedJson: string,
-    ordersDocument: string
+    ordersDocument: string,
+    mapJson: string
   ): Promise<OrdersPreviewResponse>;
   /** Every trade worth making in the map the faction has seen, best first. */
-  tradeRoutes(rulesetJson: string, rawReport: string, rememberedJson: string): Promise<TradeRoute[]>;
+  tradeRoutes(
+    rulesetJson: string,
+    rawReport: string,
+    rememberedJson: string,
+    mapJson: string
+  ): Promise<TradeRoute[]>;
   loadRegionSightings(
     databasePath: string,
     gameId: string,

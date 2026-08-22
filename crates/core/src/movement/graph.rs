@@ -157,6 +157,23 @@ impl MapGeometry {
     }
 }
 
+/// Reads the map shape a shell passes across the boundary.
+///
+/// An empty string means the game never recorded one, which is the ordinary state for every game
+/// created before the app asked - so it is an answer rather than an error.
+///
+/// # Errors
+///
+/// Returns an error when the text is present but unreadable, rather than falling back to no
+/// wrapping: a shell sending malformed geometry has a defect worth hearing about, and a silent
+/// fallback would draw the seam wrong with nothing to say why.
+pub fn geometry_from_json(map_json: &str) -> Result<Option<MapGeometry>, String> {
+    if map_json.trim().is_empty() {
+        return Ok(None);
+    }
+    serde_json::from_str(map_json).map_err(|error| format!("the map shape could not be read: {error}"))
+}
+
 /// The coordinate a step lands on when the map itself cannot say.
 ///
 /// This is the arithmetic the module header warns against, kept as the deliberate exception: an

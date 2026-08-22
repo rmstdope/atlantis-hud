@@ -954,15 +954,17 @@ pub mod commands {
         remembered_json: &str,
         unit_id: &str,
         destination: &str,
+        map_json: &str,
     ) -> Result<atlantis_hud_core::movement::request::RoutePlanResponse, String> {
         atlantis_hud_core::cache::with_global(|cache| {
-            atlantis_hud_core::movement::request::plan_for_remembered_report(
+            atlantis_hud_core::movement::request::plan_on_map(
                 cache,
                 ruleset_json,
                 raw_report,
                 remembered_json,
                 unit_id,
                 destination,
+                map_json,
             )
         })
     }
@@ -1041,15 +1043,17 @@ pub mod commands {
         remembered_json: &str,
         unit_id: &str,
         orders_document: &str,
+        map_json: &str,
     ) -> Result<atlantis_hud_core::movement::request::MoveOrderTraceResponse, String> {
         atlantis_hud_core::cache::with_global(|cache| {
-            atlantis_hud_core::movement::request::trace_orders_for_remembered_report(
+            atlantis_hud_core::movement::request::trace_orders_on_map(
                 cache,
                 ruleset_json,
                 raw_report,
                 remembered_json,
                 unit_id,
                 orders_document,
+                map_json,
             )
         })
     }
@@ -1067,14 +1071,16 @@ pub mod commands {
         raw_report: &str,
         remembered_json: &str,
         orders_document: &str,
+        map_json: &str,
     ) -> Result<atlantis_hud_core::orders::effects::OrdersPreviewResponse, String> {
         atlantis_hud_core::cache::with_global(|cache| {
-            atlantis_hud_core::orders::effects::preview_orders_for_remembered_report(
+            atlantis_hud_core::orders::effects::preview_orders_on_map(
                 cache,
                 ruleset_json,
                 raw_report,
                 remembered_json,
                 orders_document,
+                map_json,
             )
         })
     }
@@ -1096,13 +1102,15 @@ pub mod commands {
         ruleset_json: &str,
         raw_report: &str,
         remembered_json: &str,
+        map_json: &str,
     ) -> Result<Vec<atlantis_hud_core::trade::TradeRoute>, String> {
         atlantis_hud_core::cache::with_global(|cache| {
-            atlantis_hud_core::trade::trade_routes_json(
+            atlantis_hud_core::trade::trade_routes_on_map(
                 cache,
                 ruleset_json,
                 raw_report,
                 remembered_json,
+                map_json,
             )
         })
     }
@@ -1432,7 +1440,7 @@ mod plan_route_command_tests {
         );
 
         let alone =
-            command_plan_route(RULESET, &current, "[]", "900", "1:3,3").expect("the ruleset loads");
+            command_plan_route(RULESET, &current, "[]", "900", "1:3,3", "").expect("the ruleset loads");
         assert!(
             alone
                 .plan
@@ -1443,7 +1451,7 @@ mod plan_route_command_tests {
             "one report cannot describe that far, so part of the route is invented"
         );
 
-        let together = command_plan_route(RULESET, &current, &remembered, "900", "1:3,3")
+        let together = command_plan_route(RULESET, &current, &remembered, "900", "1:3,3", "")
             .expect("the ruleset loads");
         assert_eq!(
             together

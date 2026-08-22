@@ -33,6 +33,7 @@ import {
 import { isOrdersFile, routeOrdersImport, type PendingOrdersImport } from "../ordersImport";
 import { ordersFileFaction } from "../ordersImport";
 import { rulesetById } from "../rulesets";
+import { mapShapeJson, mapShapeOfGame } from "../mapShape";
 import { ordersExportText } from "./ordersExport";
 import { deliverGameBackupExport, deliverMapExport, deliverOrdersExport } from "./exportActions";
 import {
@@ -552,6 +553,23 @@ export function AppShell({
   );
 
   const openGameId = game?.manifest.metadata.gameId ?? null;
+
+  /**
+   * The map this game is played on, as the core reads it.
+   *
+   * A game that recorded its own dimensions uses them; one that never did adopts the ruleset's
+   * declared default, and a ruleset that declares none yields the empty string, which is how the
+   * core hears "the game never said" and keeps computing neighbours exactly as it always did.
+   */
+  const mapJson = useMemo(
+    () =>
+      mapShapeJson(
+        game === null
+          ? null
+          : mapShapeOfGame(game.manifest.metadata.rulesetId, game.manifest.metadata.map).map
+      ),
+    [game?.manifest.metadata.rulesetId, game?.manifest.metadata.map]
+  );
 
   // Writes the whole map view whenever any part of it changes - level, hex or the map's own pan
   // and zoom, all held in one place by the store's `mapView` slice now (ah-ian). Guarded on a
@@ -1929,7 +1947,7 @@ export function AppShell({
     let cancelled = false;
     setPlanning(true);
     void client
-      .planRoute(ruleset.text, rawReport, rememberedJson, unit.unitId, destination)
+      .planRoute(ruleset.text, rawReport, rememberedJson, unit.unitId, destination, mapJson)
       .then((answer) => {
         if (!cancelled) {
           setRoute(answer);
@@ -1982,7 +2000,14 @@ export function AppShell({
     let cancelled = false;
     const timer = setTimeout(() => {
       void client
-        .traceMoveOrders(ruleset.text, rawReport, rememberedJson, unit.unitId, ordersDocument)
+        .traceMoveOrders(
+          ruleset.text,
+          rawReport,
+          rememberedJson,
+          unit.unitId,
+          ordersDocument,
+          mapJson
+        )
         .then((answer) => {
           if (!cancelled) {
             setOrderTrace(answer);
@@ -2194,7 +2219,7 @@ export function AppShell({
     }
     let cancelled = false;
     void client
-      .tradeRoutes(ruleset.text, rawReport, rememberedJson)
+      .tradeRoutes(ruleset.text, rawReport, rememberedJson, mapJson)
       .then((found) => {
         if (!cancelled) {
           setTradeRoutes(found);
@@ -2223,7 +2248,7 @@ export function AppShell({
     let cancelled = false;
     const timer = setTimeout(() => {
       void client
-        .previewOrders(ruleset.text, rawReport, rememberedJson, ordersDocument)
+        .previewOrders(ruleset.text, rawReport, rememberedJson, ordersDocument, mapJson)
         .then((answer) => {
           if (!cancelled) {
             setOrdersPreview(answer);
