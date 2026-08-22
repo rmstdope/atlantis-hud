@@ -668,8 +668,6 @@ export function createWebCoreAdapter(
       // ruleset. An empty string removes the key rather than storing a null: absence is what tells
       // the settings dialog the ruleset's default is only assumed, so it has to stay absence.
       const previous = game.manifest as GameManifest;
-      // Clearing removes the key rather than storing a null: absence is what tells the settings
-      // dialog the ruleset's default is only assumed, so it has to stay absence.
       const metadata = { ...previous.metadata };
       if (mapJson === "") {
         delete metadata.map;

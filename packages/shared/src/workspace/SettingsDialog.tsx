@@ -1,4 +1,5 @@
 import type { MapShape } from "@atlantis/core-client";
+import { type MapDraft, mapFromDraft } from "../mapShape";
 import { useState } from "react";
 import type { AdvisoryCheckCode } from "@atlantis/core-client";
 import { useEscapeToDismiss } from "./dismissLayer";
@@ -707,8 +708,21 @@ function GameMapSettings({
   busy: boolean;
   onChangeMap: (map: MapShape | undefined) => void;
 }) {
-  const shown = map ?? { width: 0, height: 0, wrapX: false, wrapY: false };
-  const edit = (change: Partial<MapShape>) => onChangeMap({ ...shown, ...change });
+  // Edited as text and committed on blur, through the same `mapFromDraft` the create form uses.
+  // Writing on every keystroke would store a half-typed "7" as a stated map seven hexes wide, and
+  // coercing a cleared field to zero would store a map no width at all - claimed, in both cases,
+  // as the player's own word. A cleared field means "I do not know", which records nothing and
+  // puts the game back to assuming its ruleset's default.
+  const [draft, setDraft] = useState<MapDraft>(() => draftOf(map));
+  // Keyed on the game's own values so switching games, or a change made elsewhere, refills the
+  // fields rather than leaving another game's numbers on screen.
+  const [shownFor, setShownFor] = useState(map);
+  if (shownFor !== map) {
+    setShownFor(map);
+    setDraft(draftOf(map));
+  }
+
+  const commit = (next: MapDraft) => onChangeMap(mapFromDraft(next) ?? undefined);
 
   return (
     <fieldset className="flex flex-col gap-2 rounded border border-edge p-2">
@@ -735,9 +749,10 @@ function GameMapSettings({
             data-testid="settings-map-width"
             aria-label="map width"
             inputMode="numeric"
-            value={map === null ? "" : String(shown.width)}
+            value={draft.width}
             disabled={busy}
-            onChange={(event) => edit({ width: Number(event.target.value) || 0 })}
+            onChange={(event) => setDraft({ ...draft, width: event.target.value })}
+            onBlur={() => commit(draft)}
             className="rounded border border-edge bg-panel px-2 py-1 text-ink disabled:opacity-50"
           />
         </label>
@@ -747,9 +762,10 @@ function GameMapSettings({
             data-testid="settings-map-height"
             aria-label="map height"
             inputMode="numeric"
-            value={map === null ? "" : String(shown.height)}
+            value={draft.height}
             disabled={busy}
-            onChange={(event) => edit({ height: Number(event.target.value) || 0 })}
+            onChange={(event) => setDraft({ ...draft, height: event.target.value })}
+            onBlur={() => commit(draft)}
             className="rounded border border-edge bg-panel px-2 py-1 text-ink disabled:opacity-50"
           />
         </label>
@@ -759,9 +775,14 @@ function GameMapSettings({
           data-testid="settings-map-wrap-x"
           aria-label="wraps east to west"
           type="checkbox"
-          checked={shown.wrapX}
+          checked={draft.wrapX}
           disabled={busy}
-          onChange={(event) => edit({ wrapX: event.target.checked })}
+          onChange={(event) => {
+            const next = { ...draft, wrapX: event.target.checked };
+            setDraft(next);
+            // A checkbox has no half-typed state, so it commits at once rather than on blur.
+            commit(next);
+          }}
         />
         <span className="text-ink-soft">Wraps east to west</span>
       </label>
@@ -770,14 +791,31 @@ function GameMapSettings({
           data-testid="settings-map-wrap-y"
           aria-label="wraps north to south"
           type="checkbox"
-          checked={shown.wrapY}
+          checked={draft.wrapY}
           disabled={busy}
-          onChange={(event) => edit({ wrapY: event.target.checked })}
+          onChange={(event) => {
+            const next = { ...draft, wrapY: event.target.checked };
+            setDraft(next);
+            commit(next);
+          }}
         />
         <span className="text-ink-soft">Wraps north to south</span>
       </label>
     </fieldset>
   );
+}
+
+/** The four fields as text, for a game that may have no map at all. */
+function draftOf(map: MapShape | null): MapDraft {
+  if (map === null) {
+    return { width: "", height: "", wrapX: false, wrapY: false };
+  }
+  return {
+    width: String(map.width),
+    height: String(map.height),
+    wrapX: map.wrapX,
+    wrapY: map.wrapY
+  };
 }
 
 /**

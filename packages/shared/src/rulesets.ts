@@ -9,18 +9,7 @@
  *
  * There is one entry today. Adding a second is a scrape and a line here.
  */
-/**
- * The map a server serves: how far it runs, and where it joins back onto itself.
- *
- * Held as four plain values rather than a class because that is all it is - the arithmetic that
- * uses it lives in the core, and this side only has to carry the numbers.
- */
-export type MapShape = {
-  width: number;
-  height: number;
-  wrapX: boolean;
-  wrapY: boolean;
-};
+import type { MapShape } from "@atlantis/core-client";
 
 export type Ruleset = {
   id: string;

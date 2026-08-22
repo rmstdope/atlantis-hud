@@ -1715,14 +1715,6 @@ export function AppShell({
   );
 
   /**
-   * Moves the open game to another ruleset, and re-reads the world under it.
-   *
-   * Handing `setGame` a fresh object is the second half of the change: the ruleset fetch effect is
-   * keyed on `game`, so the new identity makes it fetch the new ruleset, and the turn-restore
-   * effect then re-parses the stored turn under it. Without that, every unit count would silently
-   * keep the old ruleset's reading until the next manual reload.
-   */
-  /**
    * Records the map the open game is played on, from the per-game settings tab.
    *
    * `undefined` clears it, which puts the game back to assuming its ruleset's default - and stating
@@ -1746,6 +1738,14 @@ export function AppShell({
     [client, game, runGameAction, updateGameMapInStore]
   );
 
+  /**
+   * Moves the open game to another ruleset, and re-reads the world under it.
+   *
+   * Handing `setGame` a fresh object is the second half of the change: the ruleset fetch effect is
+   * keyed on `game`, so the new identity makes it fetch the new ruleset, and the turn-restore
+   * effect then re-parses the stored turn under it. Without that, every unit count would silently
+   * keep the old ruleset's reading until the next manual reload.
+   */
   const changeRuleset = useCallback(
     (rulesetId: string) => {
       if (!game) {

@@ -360,6 +360,8 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       updateGameName: (gameName) =>
         set((state) => (state.game ? { game: { ...state.game, gameName } } : state)),
 
+      // Clearing removes the key rather than setting it to undefined: absence is what makes the
+      // ruleset's default read as assumed, everywhere that asks.
       updateGameMap: (map) =>
         set((state) => {
           if (!state.game) {
@@ -368,8 +370,6 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           // Cleared means the key goes, not that it holds undefined: absence is what makes the
           // ruleset's default read as assumed, everywhere that asks.
           if (map === undefined) {
-            // The key goes rather than holding undefined: absence is what makes the ruleset's
-            // default read as assumed, everywhere that asks.
             const cleared = { ...state.game };
             delete cleared.map;
             return { game: cleared };
