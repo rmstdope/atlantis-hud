@@ -1975,6 +1975,14 @@ fn check_idle_units(hex: &Hex<'_>, options: &CheckOptions, findings: &mut Vec<Fi
         if ordered.unread {
             continue;
         }
+        // A unit with no men cannot spend a month on anything, so there is no order the player
+        // could add that would satisfy this - the advice would be unfollowable rather than merely
+        // unwelcome (ah-udff, revising ah-dwk6's "no exemptions"). Only when the count is a count:
+        // `men` is 0 on a unit whose items the ruleset could not read, and exempting that one
+        // would hide a real unit instead of a husk.
+        if ordered.unit.men == 0 && !ordered.unit.men_estimated {
+            continue;
+        }
         if ordered.intents().any(spends_the_month) {
             continue;
         }
@@ -6080,6 +6088,83 @@ mod tests {
             codes(&check_idle(
                 vec![region(vec![theirs, unit("4021")])],
                 "unit 4021\nWORK\n",
+            )),
+            Vec::<&str>::new()
+        );
+    }
+
+    /// ah-udff. A count that is a guess is `men: 0` on a unit whose items the ruleset could not
+    /// read, so exempting it would hide a real unit instead of a husk. Written first, because
+    /// every other case here passes a naive `men == 0`.
+    #[test]
+    fn a_unit_with_an_estimated_headcount_of_zero_is_still_warned() {
+        let mut husk = with_men(unit("4021"), 0);
+        husk.men_estimated = true;
+        assert_eq!(
+            codes(&check_idle(vec![region(vec![husk])], "unit 4021\n")),
+            vec![codes::UNIT_DOES_NOTHING.as_str()]
+        );
+    }
+
+    /// ah-udff, revising ah-dwk6's "no exemptions": a unit with no men cannot spend a month on
+    /// anything, so there is no order the player could add that would satisfy the warning.
+    #[test]
+    fn a_unit_with_no_men_is_not_warned() {
+        assert_eq!(
+            codes(&check_idle(
+                vec![region(vec![with_men(unit("4021"), 0)])],
+                "unit 4021\n"
+            )),
+            Vec::<&str>::new()
+        );
+    }
+
+    /// Decision A: the exemption keys on the men count alone. A unit with silver and a horse and
+    /// no men still cannot spend a month, so it still says nothing.
+    #[test]
+    fn a_unit_with_no_men_but_goods_is_not_warned() {
+        let laden = with_item(
+            with_silver(with_men(unit("4021"), 0), 7500),
+            1,
+            "horse",
+            "HORS",
+        );
+        assert_eq!(
+            codes(&check_idle(vec![region(vec![laden])], "unit 4021\n")),
+            Vec::<&str>::new()
+        );
+    }
+
+    #[test]
+    fn a_unit_with_one_man_and_nothing_to_do_is_still_warned() {
+        assert_eq!(
+            codes(&check_idle(
+                vec![region(vec![with_men(unit("4021"), 1)])],
+                "unit 4021\n"
+            )),
+            vec![codes::UNIT_DOES_NOTHING.as_str()]
+        );
+    }
+
+    /// The `unread` guard already covered this and still does - the exemption changes nothing
+    /// about a unit whose orders could not be read.
+    #[test]
+    fn a_men_less_unit_with_an_unreadable_line_is_silent() {
+        assert_eq!(
+            codes(&check_idle(
+                vec![region(vec![with_men(unit("4021"), 0)])],
+                "unit 4021\nFLIBBERTIGIBBET\n"
+            )),
+            Vec::<&str>::new()
+        );
+    }
+
+    #[test]
+    fn a_men_less_unit_that_works_is_silent() {
+        assert_eq!(
+            codes(&check_idle(
+                vec![region(vec![with_men(unit("4021"), 0)])],
+                "unit 4021\nWORK\n"
             )),
             Vec::<&str>::new()
         );
