@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Silver column</title><style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1440px; margin:0 auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; }
+  h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:94ch; margin-top:10px; font-size:14px; }
+  header p + p { margin-top:8px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; }
+  header code { color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:36px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:94ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:18px; }
+  .card h2 { font-size:16px; margin-bottom:5px; }
+  .card h2 em { color:var(--brass); font-style:normal; font-size:11.5px; letter-spacing:1.5px; margin-right:8px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; margin-bottom:11px; max-width:94ch; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; padding:10px; overflow-x:auto; position:relative; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:11px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212 "; color:var(--danger); }
+  .notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+
+  table.units { width:100%; table-layout:fixed; border-collapse:separate; border-spacing:0;
+                font:12.5px/1.4 'Helvetica Neue',Arial,sans-serif; font-variant-numeric:tabular-nums; }
+  table.units th { text-align:left; font-size:10.5px; text-transform:uppercase; letter-spacing:.06em;
+                   color:var(--ink-soft); font-weight:400; padding:2px 8px; border-bottom:1px solid var(--edge); }
+  table.units td { padding:2px 8px; border-bottom:1px solid var(--edge-soft); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .own { color:var(--ok); } .notown { color:var(--danger); }
+  .uid { color:var(--select); } .uidf { color:#8fa3bb; }
+  .dash { color:var(--danger); }
+  .colhi { outline:1px solid var(--brass); outline-offset:-1px; }
+  .num { text-align:right; }
+  .pos { color:var(--ok); }
+  .neg { color:var(--danger); }
+  .zero { color:var(--ink-dim); }
+  .unk { color:var(--ink-dim); }
+
+  .work { color:var(--ink-dim); font-size:11px; }
+  .tip { background:var(--raised); border:1px solid var(--edge); border-radius:6px;
+         padding:9px 11px; font:11.5px/1.5 'Helvetica Neue',Arial,sans-serif; color:var(--ink);
+         min-width:230px; }
+  .tip b { color:var(--brass-bright); font-weight:600; display:block; margin-bottom:5px; }
+  .tip .r { display:flex; justify-content:space-between; gap:24px; }
+  .tip .r span:last-child { font-variant-numeric:tabular-nums; }
+  .tip hr { border:0; border-top:1px solid var(--edge); margin:6px 0; }
+  .tip .note { color:var(--ink-dim); font-size:10.5px; margin-top:6px; line-height:1.45; }
+  .tip .sec2 { color:var(--brass); font-size:10px; letter-spacing:1.2px; text-transform:uppercase; margin:8px 0 3px; }
+  .split { display:grid; grid-template-columns:1fr 1fr; gap:18px; align-items:start; }
+  .split3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; align-items:start; }
+  .narrow { max-width:560px; }
+</style></head><body>
+<header><h1>The Silver column &mdash; <span>as agreed in planning</span></h1>
+<p>Every decision on this page was taken by the navigator during the planning of <code>ah-1wcw.1</code>, several of them against measurements from the committed turn-71 template. Rows are the shapes the column has to survive, not a happy path.</p></header>
+<main>
+<h3 class="sec">The column</h3>
+<p>A tenth column, headed <b>Silver</b>, last in the shipped order after Long order. It shows the silver each
+of your own units is expected to have <b>when the month ends</b>: what it holds now, plus what its orders
+earn, less what they spend. Right-aligned, tabular figures, sortable like Men and Long order.</p>
+<p>This bead models three sources &mdash; <code>TAX</code>, <code>WORK</code> and <code>STUDY</code>.
+Selling, buying, giving, receiving, entertainment, magic and upkeep follow in <code>ah-1wcw.2</code>,
+<code>.3</code> and <code>.4</code>, each as another term in the same arithmetic.</p>
+  <div class="stage ">
+    <table class="units">
+      <colgroup>
+        <col style="width:1.8%"><col style="width:5.4%"><col style="width:13%"><col style="width:12%"><col style="width:4.4%"><col style="width:14%"><col style="width:15.5%"><col style="width:10.5%"><col style="width:9%"><col style="width:7%">
+      </colgroup>
+      <thead><tr>
+        <th></th><th>Id</th><th>Unit</th><th>Faction</th><th class="num">Men</th><th>Skills</th><th>Items</th><th>Structure</th><th>Long order</th><th class="num colhi">Silver</th>
+      </tr></thead>
+      <tbody>
+      <tr><td class="own">*</td><td class="uid">1922</td><td>Tax Collector</td><td>Grey Wolves (12)</td><td class="num">8</td><td>COMB 2 (90)</td><td>8 LEAT, 400 SILV</td><td>&mdash;</td><td>@tax</td><td class="num">800</td></tr>
+      <tr><td class="own">*</td><td class="uid">2101</td><td>Scholar</td><td>Grey Wolves (12)</td><td class="num">2</td><td>STEA 1 (30)</td><td>2 LEAT, 60 SILV</td><td>Tower [3]</td><td>@study comb</td><td class="num neg"><span style="text-decoration:underline dotted;cursor:pointer">&#9888; &minus;140</span></td></tr>
+      <tr><td class="own">*</td><td class="uid">13848</td><td>Eight of Eight</td><td>Grey Wolves (12)</td><td class="num">1</td><td>FORC 3 (180)</td><td>1 LEAT</td><td>Tower [3]</td><td>@study forc</td><td class="num neg">&minus;100</td></tr>
+      <tr><td class="own">*</td><td class="uid">1877</td><td>Woodcutters</td><td>Grey Wolves (12)</td><td class="num">12</td><td>LUMB 1 (30)</td><td>12 LEAT, 3 AXE</td><td>&mdash;</td><td>@work</td><td class="num">144</td></tr>
+      <tr><td class="own">*</td><td class="uid">2044</td><td>Scout</td><td>Grey Wolves (12)</td><td class="num">1</td><td>OBSE 2 (90)</td><td>1 LEAT, 12 SILV</td><td>&mdash;</td><td>MOVE SW</td><td class="num">12</td></tr>
+      <tr><td class="own">*</td><td class="uid">1955</td><td>Camp Guard</td><td>Grey Wolves (12)</td><td class="num">4</td><td>COMB 1 (30)</td><td>4 LEAT, 4 SWOR</td><td>Fort [1]</td><td><span class="dash">&mdash;</span></td><td class="num zero">0</td></tr>
+      <tr><td class="own">*</td><td class="uid">1901</td><td>Roving Trader</td><td>Grey Wolves (12)</td><td class="num">5</td><td>&mdash;</td><td>5 LEAT, 120 SILV</td><td>&mdash;</td><td>@tax</td><td class="num unk">?</td></tr>
+      <tr><td class="notown">&nbsp;</td><td class="uidf">4102</td><td>Ninth Legion</td><td>Emperor (7)</td><td class="num">30</td><td>&mdash;</td><td>30 LEAT</td><td>&mdash;</td><td></td><td class="num"></td></tr>
+      </tbody>
+    </table>
+  </div>
+<div class="card"><table class="units" style="width:auto;font-size:12.5px">
+<thead><tr><th style="width:330px">Situation</th><th style="width:110px" class="num">Cell</th><th>Rule</th></tr></thead>
+<tbody>
+<tr><td>Holds 400, taxing with 8 men</td><td class="num">800</td><td>400 + (8 &times; $50), capped by the region's tax base</td></tr>
+<tr><td>Holds 60, studying Combat with 2 men</td><td class="num neg">&#9888; &minus;140</td><td>60 &minus; (2 &times; 10 &times; &hellip;); nothing in the hex covers it</td></tr>
+<tr><td>Holds nothing, studying, but shares a hex purse</td><td class="num neg">&minus;100</td><td>red, but no warning &mdash; the shared silver covers it</td></tr>
+<tr><td>Holds nothing, working 12 men at $12</td><td class="num">144</td><td>0 + (12 &times; 12), capped by the region's maximum</td></tr>
+<tr><td>Holds 12, moving</td><td class="num">12</td><td>unchanged &mdash; movement moves no silver</td></tr>
+<tr><td>Holds nothing, no long order</td><td class="num zero">0</td><td>a dim zero</td></tr>
+<tr><td>Taxing where the tax base is unstated</td><td class="num unk">?</td><td>a dim question mark &mdash; never a number that might be wrong</td></tr>
+<tr><td>Somebody else's unit</td><td class="num"></td><td>blank &mdash; we cannot see their orders</td></tr>
+</tbody></table></div>
+<h3 class="sec">Red and &#9888; mean different things</h3>
+<p>This is the decision that shapes the column, and it was taken against measurements of the committed
+turn-71 template.</p>
+<div class="card">
+<ul class="notes">
+<li><b>Red</b> &mdash; this unit, counted <b>on its own</b>, ends the month below zero. True of 17 of the 27
+units in that turn, because most of that faction's mages hold no silver at all: they are flagged
+<code>sharing</code> and funded from a purse unit standing beside them.</li>
+<li><b>&#9888;</b> &mdash; this unit carries the existing <code>not-enough-silver</code> finding. That check
+already counts what a unit holds, what its orders earn and spend, and pools it across every same-faction
+unit in the hex flagged <code>sharing</code>, exactly as the engine's own <code>GetSharedNum</code> rule
+does. It fires <b>zero</b> times on turn 71: that faction is solvent.</li>
+<li class="n"><b>No new advisory code is added by this bead.</b> The warning already existed; what was
+missing was the number. The cell and the Problems panel therefore agree by construction, and the existing
+<i>Not enough silver</i> switch under Settings &rarr; Warnings turns both off together.</li>
+<li class="n">Had the warning fired on any negative net change instead, it would have spoken about
+<b>22 of 27</b> units, against the ten findings every other check produces between them.</li>
+<li class="con">In a hex where units share, the existing finding is anchored to the <b>hex</b> rather than to
+one unit &mdash; deliberately, because blaming one of several would be as wrong as blaming the treasurer for
+holding the purse. No row carries a &#9888; in that case; the region panel carries the finding instead.</li>
+</ul></div>
+<h3 class="sec">The hover</h3>
+<p>The table already opens a panel when the pointer rests on a row, showing that unit's skills and items.
+The silver working joins it as a third section rather than opening a second panel on the cell &mdash; one
+hover surface per row, as today. A term that could not be priced shows <span class="unk">?</span>, and the
+section gains one dim line wherever the number needs explaining.</p>
+<div class="split"><div class="card"><h2><em>SHORT, AND NOTHING COVERS IT</em></h2><div class="tip"><b>Scholar (2101)</b><div class="sec2">Skills</div><div class="r"><span>Combat COMB</span><span>1 (30)</span></div><div class="sec2">Items</div><div class="r"><span>Leather Armor LEAT</span><span>2</span></div><div class="r"><span>Silver SILV</span><span>60</span></div><div class="sec2">Silver</div><div class="r"><span>Held now</span><span class="">60</span></div><div class="r"><span>In</span><span class="">0</span></div><div class="r"><span>Out</span><span class="">200</span></div><hr><div class="r"><span>At month end</span><span class="neg">&minus;140</span></div></div></div><div class="card"><h2><em>SHORT, BUT SHARED SILVER COVERS IT</em></h2><div class="tip"><b>Eight of Eight (13848)</b><div class="sec2">Skills</div><div class="r"><span>Combat COMB</span><span>1 (30)</span></div><div class="sec2">Items</div><div class="r"><span>Leather Armor LEAT</span><span>2</span></div><div class="r"><span>Silver SILV</span><span>60</span></div><div class="sec2">Silver</div><div class="r"><span>Held now</span><span class="">0</span></div><div class="r"><span>In</span><span class="">0</span></div><div class="r"><span>Out</span><span class="">100</span></div><hr><div class="r"><span>At month end</span><span class="neg">&minus;100</span></div><div class="note">Shared silver in this hex covers the shortfall.</div></div></div></div>
+<div class="split"><div class="card"><h2><em>CANNOT BE PRICED</em></h2><div class="tip"><b>Roving Trader (1901)</b><div class="sec2">Skills</div><div class="r"><span>Combat COMB</span><span>1 (30)</span></div><div class="sec2">Items</div><div class="r"><span>Leather Armor LEAT</span><span>2</span></div><div class="r"><span>Silver SILV</span><span>60</span></div><div class="sec2">Silver</div><div class="r"><span>Held now</span><span class="">120</span></div><div class="r"><span>In</span><span class="unk">?</span></div><div class="r"><span>Out</span><span class="">0</span></div><hr><div class="r"><span>At month end</span><span class="unk">?</span></div><div class="note">The report never said what this region&rsquo;s tax base is.</div></div></div><div class="card"><h2><em>NOTHING MOVES SILVER</em></h2><div class="tip"><b>Camp Guard (1955)</b><div class="sec2">Skills</div><div class="r"><span>Combat COMB</span><span>1 (30)</span></div><div class="sec2">Items</div><div class="r"><span>Leather Armor LEAT</span><span>2</span></div><div class="r"><span>Silver SILV</span><span>60</span></div><div class="sec2">Silver</div><div class="r"><span>Held now</span><span class="">0</span></div><div class="r"><span>In</span><span class="">0</span></div><div class="r"><span>Out</span><span class="">0</span></div><hr><div class="r"><span>At month end</span><span class="zero">0</span></div><div class="note">Nothing this unit is ordered to do moves silver.</div></div></div></div>
+<h3 class="sec">A warning on a positive number</h3>
+<p>The column counts what <code>WORK</code> earns, because wages really are paid and the unit really does end
+the month holding them. <code>not-enough-silver</code> deliberately does not, because wages arrive in the
+turn's last phase and cannot pay for anything ordered this month. So a unit that works and buys can read
+<b>positive</b> and still carry the &#9888;. Both are true, about different moments in the turn, and the
+hover says so rather than either one being hidden.</p>
+<div class="card"><div class="split"><div class="stage"><table class="units"><colgroup><col style="width:12%"><col style="width:34%"><col style="width:28%"><col style="width:26%"></colgroup><thead><tr><th>Id</th><th>Unit</th><th>Long order</th><th class="num colhi">Silver</th></tr></thead><tbody><tr><td class="uid">1877</td><td>Woodcutters</td><td>@work</td><td class="num"><span style="text-decoration:underline dotted;cursor:pointer">&#9888; 44</span></td></tr></tbody></table></div><div class="tip"><div class="r"><span>Held now</span><span class="">0</span></div><div class="r"><span>In</span><span class="">144</span></div><div class="r"><span>Out</span><span class="">100</span></div><hr><div class="r"><span>At month end</span><span class="">44</span></div><div class="note">Wages arrive at the end of the month, too late to pay for this month&rsquo;s orders.</div></div></div></div>
+<h3 class="sec">Where the warning already appears</h3>
+<p>Unchanged by this bead &mdash; drawn here only to show what the cell&rsquo;s &#9888; and its click lead to.</p>
+<div class="split">
+<div class="card"><h2><em>PROBLEMS PANEL</em></h2>
+<div class="stage" style="font:12px/1.6 'Helvetica Neue',Arial,sans-serif">
+<div style="color:var(--brass);font-size:11px;letter-spacing:1px">MOUNTAIN (7,53) IN INHEAD</div>
+<div style="margin-top:6px"><span style="color:#e0b458">&#9888;</span>
+<span class="uid">Scholar (2101)</span>
+<span style="color:var(--ink-soft)"> short $140: this unit can have $60 and its orders spend $200</span></div>
+</div></div>
+<div class="card"><h2><em>SETTINGS &rarr; WARNINGS &rarr; RESOURCES</em></h2>
+<div class="stage" style="font:12px/1.6 'Helvetica Neue',Arial,sans-serif">
+<div style="display:flex;gap:9px;align-items:flex-start">
+<input type="checkbox" checked style="margin-top:3px">
+<div><div>Not enough silver</div>
+<div style="color:var(--ink-soft);font-size:11px">The existing switch. This bead adds none.</div></div>
+</div></div></div>
+</div>
+<h3 class="sec">A narrow window</h3><p>The dock at 560px. Silver is last, so it is the first to be clipped &mdash; accepted.</p>
+  <div class="stage narrow">
+    <table class="units">
+      <colgroup>
+        <col style="width:1.8%"><col style="width:5.4%"><col style="width:13%"><col style="width:12%"><col style="width:4.4%"><col style="width:14%"><col style="width:15.5%"><col style="width:10.5%"><col style="width:9%"><col style="width:7%">
+      </colgroup>
+      <thead><tr>
+        <th></th><th>Id</th><th>Unit</th><th>Faction</th><th class="num">Men</th><th>Skills</th><th>Items</th><th>Structure</th><th>Long order</th><th class="num colhi">Silver</th>
+      </tr></thead>
+      <tbody>
+      <tr><td class="own">*</td><td class="uid">1922</td><td>Tax Collector</td><td>Grey Wolves (12)</td><td class="num">8</td><td>COMB 2 (90)</td><td>8 LEAT, 400 SILV</td><td>&mdash;</td><td>@tax</td><td class="num">800</td></tr>
+      <tr><td class="own">*</td><td class="uid">2101</td><td>Scholar</td><td>Grey Wolves (12)</td><td class="num">2</td><td>STEA 1 (30)</td><td>2 LEAT, 60 SILV</td><td>Tower [3]</td><td>@study comb</td><td class="num neg"><span style="text-decoration:underline dotted;cursor:pointer">&#9888; &minus;140</span></td></tr>
+      <tr><td class="own">*</td><td class="uid">13848</td><td>Eight of Eight</td><td>Grey Wolves (12)</td><td class="num">1</td><td>FORC 3 (180)</td><td>1 LEAT</td><td>Tower [3]</td><td>@study forc</td><td class="num neg">&minus;100</td></tr>
+      <tr><td class="own">*</td><td class="uid">1877</td><td>Woodcutters</td><td>Grey Wolves (12)</td><td class="num">12</td><td>LUMB 1 (30)</td><td>12 LEAT, 3 AXE</td><td>&mdash;</td><td>@work</td><td class="num">144</td></tr>
+      <tr><td class="own">*</td><td class="uid">2044</td><td>Scout</td><td>Grey Wolves (12)</td><td class="num">1</td><td>OBSE 2 (90)</td><td>1 LEAT, 12 SILV</td><td>&mdash;</td><td>MOVE SW</td><td class="num">12</td></tr>
+      <tr><td class="own">*</td><td class="uid">1955</td><td>Camp Guard</td><td>Grey Wolves (12)</td><td class="num">4</td><td>COMB 1 (30)</td><td>4 LEAT, 4 SWOR</td><td>Fort [1]</td><td><span class="dash">&mdash;</span></td><td class="num zero">0</td></tr>
+      <tr><td class="own">*</td><td class="uid">1901</td><td>Roving Trader</td><td>Grey Wolves (12)</td><td class="num">5</td><td>&mdash;</td><td>5 LEAT, 120 SILV</td><td>&mdash;</td><td>@tax</td><td class="num unk">?</td></tr>
+      <tr><td class="notown">&nbsp;</td><td class="uidf">4102</td><td>Ninth Legion</td><td>Emperor (7)</td><td class="num">30</td><td>&mdash;</td><td>30 LEAT</td><td>&mdash;</td><td></td><td class="num"></td></tr>
+      </tbody>
+    </table>
+  </div>
+</main></body></html>
