@@ -116,6 +116,14 @@ function summariseSilver(silver: UnitSilver, warned: boolean): SilverSummary {
   return { rows, note: silverNote(silver, warned) };
 }
 
+/** `"a"`, `"a and b"`, `"a, b and c"` - the way the Problems panel already lists a market. */
+function namesInAList(names: string[]): string {
+  if (names.length <= 1) {
+    return names.join("");
+  }
+  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+}
+
 function silverNote(silver: UnitSilver, warned: boolean): string | null {
   const end = silver.atMonthEnd;
 
@@ -130,6 +138,14 @@ function silverNote(silver: UnitSilver, warned: boolean): string | null {
   if (silver.doubt === "unpriced-skill") {
     return "The ruleset does not say what studying this skill costs.";
   }
+  if (silver.doubt === "unknown-goods") {
+    // The goods as the order wrote them: nothing resolved them to a catalogue name, so there is no
+    // other way to say which ones are meant.
+    return `The report does not say what ${silver.doubtSubject ?? "these goods"} are, so what this sale earns cannot be said.`;
+  }
+  if (silver.doubt === "unpriced-spell") {
+    return "The ruleset does not say what this spell earns.";
+  }
   if (silver.doubt === "estimated-men") {
     return "This unit's headcount is an estimate, so its month cannot be priced.";
   }
@@ -137,6 +153,11 @@ function silverNote(silver: UnitSilver, warned: boolean): string | null {
   // are paid in the turn's last phase. Both are true about different moments.
   if (warned && end !== null && end >= 0) {
     return "Wages arrive at the end of the month, too late to pay for this month's orders.";
+  }
+  // A gift is the one part of the figure that comes from somebody else's orders, so it is the one
+  // part a reader cannot find by looking at this unit's own block.
+  if (silver.received > 0 && silver.givers.length > 0) {
+    return `Includes ${silver.received} given by ${namesInAList(silver.givers)} in this hex.`;
   }
   if (silver.income === 0 && silver.expense === 0) {
     return "Nothing this unit is ordered to do moves silver.";

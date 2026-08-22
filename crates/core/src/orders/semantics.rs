@@ -26,7 +26,9 @@ use crate::movement::mode::{
 };
 use crate::movement::orders::MoveStep;
 use crate::movement::rules::{item_spellings, Ruleset};
-use crate::orders::silver::{forecast_unit, parse_wage_centis, RegionWages, UnitSilver};
+use crate::orders::silver::{
+    forecast_unit, parse_wage_centis, Receipts, RegionWages, SaleAnswer, UnitFacts, UnitSilver,
+};
 use crate::report::model::{ItemAmount, MarketItem, ReportRegion, ReportUnit, Structure};
 use crate::report::ParsedReport;
 
@@ -245,9 +247,14 @@ pub fn review_turn(
     let mut findings = Vec::new();
     let mut silver = Vec::new();
 
+    // Gifts of silver live in the *giver's* block, which may be anywhere in the document, so they
+    // are gathered once for the whole turn before any hex is priced. Per unit this would be
+    // quadratic in the size of a faction, on a path that runs on every keystroke.
+    let receipts = gather_receipts(report, &ordered, ruleset);
+
     for region in &report.regions {
         let hex = Hex::read(region, &ordered);
-        forecast_hex(&hex, ruleset, &mut silver);
+        forecast_hex(&hex, &receipts, ruleset, &mut silver);
         if hex.units.is_empty() {
             continue;
         }
@@ -286,24 +293,143 @@ pub fn review_turn(
 
 /// Every own unit in one hex, priced. Foreign units are not here to begin with: `Hex::read` has
 /// already filtered them out, so their cell is blank for free.
-fn forecast_hex(hex: &Hex<'_>, ruleset: Option<&Ruleset>, into: &mut Vec<UnitSilver>) {
+fn forecast_hex(
+    hex: &Hex<'_>,
+    receipts: &BTreeMap<String, Receipts>,
+    ruleset: Option<&Ruleset>,
+    into: &mut Vec<UnitSilver>,
+) {
     let region = RegionWages {
         tax_base: hex.region.tax_base,
         wage_centis: parse_wage_centis(hex.region.wages.as_deref()),
         max_wages: hex.region.max_wages,
+        entertainment: hex.region.entertainment,
     };
+    let nothing = Receipts::default();
 
     for ordered in &hex.units {
+        // The market's answer depends on the item each SELL names, and resolving an item name is
+        // this module's business - so the arithmetic is handed a closure rather than a value.
+        let sale = |item: &str| match market_answer(&hex.region.wanted, item, hex, ordered, ruleset)
+        {
+            MarketAnswer::Offered(line) => SaleAnswer::Wanted {
+                price: line.price,
+                market_takes: line.amount,
+                unit_holds: ordered.holding(&line.tag.to_ascii_uppercase()),
+            },
+            // `market` collapses these two into `None`; the column must tell them apart, because
+            // one earns nothing and the other cannot be priced at all.
+            MarketAnswer::NotTraded(_) => SaleAnswer::NotWanted,
+            MarketAnswer::Unknown => SaleAnswer::Unknown,
+        };
+
         into.push(forecast_unit(
-            &ordered.unit.unit_id,
-            &hex.region.region_id,
-            ordered.holding(SILVER),
-            ordered.unit.men,
-            ordered.unit.men_estimated,
+            UnitFacts {
+                unit_id: &ordered.unit.unit_id,
+                region_id: &hex.region.region_id,
+                held: ordered.holding(SILVER),
+                men: ordered.unit.men,
+                men_estimated: ordered.unit.men_estimated,
+                skills: &ordered.unit.skills,
+                intents: ordered.intents,
+                receipts: receipts.get(&ordered.unit.unit_id).unwrap_or(&nothing),
+            },
             region,
-            ordered.intents,
+            &sale,
             ruleset,
         ));
+    }
+}
+
+/// Every gift of silver in the document, credited to the unit it names.
+///
+/// Only a gift this pass can both read and place is counted: the giver must be a unit the report
+/// shows, in the same hex as the recipient, and an `ALL` amount needs the giver's own holding to
+/// price. Anything else is silently absent rather than doubted - understating a unit's income shows
+/// red where the truth may be black and never the reverse, and it agrees exactly with what the
+/// `not-enough-silver` finding already counts.
+fn gather_receipts(
+    report: &ParsedReport,
+    ordered: &OrderedUnits,
+    ruleset: Option<&Ruleset>,
+) -> BTreeMap<String, Receipts> {
+    let located = where_the_report_shows_each_unit(report);
+    let mut units: BTreeMap<&str, &ReportUnit> = BTreeMap::new();
+    for region in &report.regions {
+        for unit in &region.units {
+            units.insert(unit.unit_id.as_str(), unit);
+        }
+    }
+
+    // Document order, so a recipient's givers read in the order the orders were written.
+    let mut givers: Vec<(&String, &UnitOrders)> = ordered.by_unit.iter().collect();
+    givers.sort_by_key(|(id, orders)| (orders.block_line, id.as_str()));
+
+    let mut receipts: BTreeMap<String, Receipts> = BTreeMap::new();
+    for (giver_id, orders) in givers {
+        let (Some(giver), Some(from)) = (
+            units.get(giver_id.as_str()),
+            located
+                .get(giver_id.as_str())
+                .map(|region| &region.region_id),
+        ) else {
+            continue;
+        };
+
+        for placed in &orders.intents {
+            let Intent::Give {
+                to: Party::Unit(recipient),
+                what: Selector::Item(text),
+                amount,
+            } = &placed.intent
+            else {
+                // `GIVE 0` discards to nobody and a foreign unit is not ours; a class or the unit
+                // itself moves an amount that depends on classifying everything it holds.
+                continue;
+            };
+            if !names_silver(text, ruleset) {
+                continue;
+            }
+            // A gift from another hex is one this pass cannot see the far side of.
+            if located
+                .get(recipient.as_str())
+                .map(|region| &region.region_id)
+                != Some(from)
+            {
+                continue;
+            }
+
+            let held = giver
+                .items
+                .iter()
+                .find(|item| item.tag.eq_ignore_ascii_case(SILVER))
+                .map_or(0, |item| item.amount);
+            let quantity = match amount {
+                Amount::Exact(count) => *count,
+                Amount::All { except } => (held - except).max(0),
+            };
+            if quantity <= 0 {
+                continue;
+            }
+
+            let entry = receipts.entry(recipient.clone()).or_default();
+            entry.silver = entry.silver.saturating_add(quantity);
+            let label = format!("{} ({})", giver.name, giver.unit_id);
+            if !entry.givers.contains(&label) {
+                entry.givers.push(label);
+            }
+        }
+    }
+
+    receipts
+}
+
+/// Whether an order's item argument names silver, by the catalogue where there is one and by the
+/// item's own tag and name where there is not.
+fn names_silver(text: &str, ruleset: Option<&Ruleset>) -> bool {
+    match ruleset.and_then(|ruleset| ruleset.find_item(text)) {
+        Some(item) => item.tag.eq_ignore_ascii_case(SILVER),
+        None => names_the_same_item(text, SILVER, "silver"),
     }
 }
 
@@ -2790,6 +2916,186 @@ mod tests {
             check_turn(&report, source, None, CheckOptions::default()),
             "check_turn is the same answer it always was"
         );
+    }
+
+    #[test]
+    fn receipts_are_read_from_the_whole_document_not_one_hex() {
+        // Two hexes: a giver beside its recipient, and a giver a map away from another. Only the
+        // near one is counted, and the far one is silently absent rather than doubted.
+        let near_giver = with_silver(unit("2390"), 500);
+        let near_recipient = unit("2391");
+        let far_giver = with_silver(unit("4000"), 500);
+        let far_recipient = unit("4001");
+
+        let report = ParsedReport {
+            regions: vec![
+                region(vec![near_giver, near_recipient]),
+                region_at("1:9,53", 9, 53, vec![far_recipient]),
+                region_at("1:11,53", 11, 53, vec![far_giver]),
+            ],
+            ..Default::default()
+        };
+        let source = "unit 2390\nGIVE 2391 200 SILV\nunit 4000\nGIVE 4001 200 SILV\n";
+
+        let review = review_turn(&report, source, Some(&ruleset()), CheckOptions::default());
+        let forecast = |id: &str| {
+            review
+                .silver
+                .iter()
+                .find(|unit| unit.unit_id == id)
+                .expect("every own unit is forecast")
+        };
+
+        assert_eq!(forecast("2391").income, Some(200));
+        assert_eq!(forecast("2391").received, 200);
+        assert_eq!(
+            forecast("2391").givers,
+            vec!["Unit 2390 (2390)".to_string()]
+        );
+        assert_eq!(forecast("4001").income, Some(0));
+        assert_eq!(forecast("4001").received, 0);
+        assert_eq!(forecast("4001").doubt, None);
+    }
+
+    #[test]
+    fn a_gift_of_all_silver_counts_what_the_giver_holds() {
+        let report = ParsedReport {
+            regions: vec![region(vec![with_silver(unit("2390"), 500), unit("2391")])],
+            ..Default::default()
+        };
+
+        let review = review_turn(
+            &report,
+            "unit 2390\nGIVE 2391 ALL SILV\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        let recipient = review
+            .silver
+            .iter()
+            .find(|unit| unit.unit_id == "2391")
+            .expect("the recipient is forecast");
+        assert_eq!(recipient.received, 500);
+    }
+
+    #[test]
+    fn a_gift_of_all_silver_from_a_giver_we_cannot_price_is_not_counted() {
+        // 9999 is not a unit the report shows, so what `ALL` means for it is unknowable.
+        let report = ParsedReport {
+            regions: vec![region(vec![unit("2391")])],
+            ..Default::default()
+        };
+
+        let review = review_turn(
+            &report,
+            "unit 9999\nGIVE 2391 ALL SILV\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        let recipient = review
+            .silver
+            .iter()
+            .find(|unit| unit.unit_id == "2391")
+            .expect("the recipient is forecast");
+        assert_eq!(recipient.received, 0);
+        assert_eq!(recipient.doubt, None);
+    }
+
+    #[test]
+    fn a_gift_to_nobody_credits_nobody() {
+        // `GIVE 0 ALL SILV` discards, and it is 130 of the committed turn's 136 GIVE orders.
+        let report = ParsedReport {
+            regions: vec![region(vec![with_silver(unit("2390"), 500)])],
+            ..Default::default()
+        };
+
+        let review = review_turn(
+            &report,
+            "unit 2390\nGIVE 0 ALL SILV\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        assert!(review.silver.iter().all(|unit| unit.received == 0));
+        assert!(review.silver.iter().all(|unit| unit.givers.is_empty()));
+    }
+
+    #[test]
+    fn a_gift_of_something_that_is_not_silver_changes_no_silver() {
+        let report = ParsedReport {
+            regions: vec![region(vec![
+                with_item(unit("2390"), 20, "grain", "GRAI"),
+                unit("2391"),
+            ])],
+            ..Default::default()
+        };
+
+        let review = review_turn(
+            &report,
+            "unit 2390\nGIVE 2391 20 GRAI\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        assert!(review.silver.iter().all(|unit| unit.received == 0));
+    }
+
+    #[test]
+    fn several_givers_in_the_hex_are_all_named() {
+        let report = ParsedReport {
+            regions: vec![region(vec![
+                with_silver(unit("2390"), 500),
+                with_silver(unit("2392"), 500),
+                unit("2391"),
+            ])],
+            ..Default::default()
+        };
+
+        let review = review_turn(
+            &report,
+            "unit 2390\nGIVE 2391 200 SILV\nunit 2392\nGIVE 2391 100 SILV\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        let recipient = review
+            .silver
+            .iter()
+            .find(|unit| unit.unit_id == "2391")
+            .expect("the recipient is forecast");
+        assert_eq!(recipient.received, 300);
+        assert_eq!(
+            recipient.givers,
+            vec![
+                "Unit 2390 (2390)".to_string(),
+                "Unit 2392 (2392)".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn a_sale_the_market_wants_is_income_and_one_it_does_not_is_zero() {
+        let region = ReportRegion {
+            wanted: vec![MarketItem {
+                amount: 40,
+                name: "furs".to_string(),
+                tag: "FUR".to_string(),
+                price: 24,
+            }],
+            ..region(vec![with_item(unit("2390"), 200, "furs", "FUR")])
+        };
+
+        let review = review_turn(
+            &report(vec![region]),
+            "unit 2390\nSELL ALL FUR\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        assert_eq!(review.silver[0].income, Some(960));
+        assert_eq!(review.silver[0].doubt, None);
     }
 
     // --- fixtures ---------------------------------------------------------------------------

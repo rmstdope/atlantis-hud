@@ -6,6 +6,7 @@
 //! by construction. Anything this parser has to say about it is something the parser got wrong.
 
 use atlantis_hud_core::orders::semantics::{check_turn, review_turn, CheckOptions, Finding};
+use atlantis_hud_core::orders::silver::SilverDoubt;
 use atlantis_hud_core::report::orders::extract_orders_template;
 use atlantis_hud_core::report::{classify_units, parse_report_full, ParsedReport};
 use atlantis_hud_core::validate_orders;
@@ -372,5 +373,49 @@ fn the_committed_turn_forecasts_every_own_unit_and_none_of_the_others() {
         .map(|entry| entry.unit_id.as_str())
         .collect();
     assert_eq!(forecast, own);
+    assert_eq!(counts(&review.findings), expected_counts());
+}
+
+/// `ah-1wcw.2`: the committed turn contains no `SELL`, no `ENTERTAIN`, no earning `CAST` and no
+/// `GIVE` of silver to a unit - its 136 gifts all move items, 130 of them to nobody at all. So the
+/// income sources this bead adds must leave every figure in it exactly where `ah-1wcw.1` left them.
+///
+/// A green run here is evidence that nothing broke, not that anything works: the rules themselves
+/// are proved on the constructed fixtures in `orders::silver` and `orders::semantics`.
+#[test]
+fn the_committed_turn_has_no_sales_gifts_entertainment_or_earning_magic() {
+    let report = classified();
+    let review = review_turn(
+        &report,
+        &template(),
+        Some(&ruleset()),
+        CheckOptions::default(),
+    );
+
+    for unit in &review.silver {
+        assert_eq!(
+            unit.received, 0,
+            "{} is credited a gift the turn does not contain",
+            unit.unit_id
+        );
+        assert!(
+            unit.givers.is_empty(),
+            "{} names givers the turn does not contain",
+            unit.unit_id
+        );
+        assert!(
+            !matches!(
+                unit.doubt,
+                Some(SilverDoubt::UnknownGoods) | Some(SilverDoubt::UnpricedSpell)
+            ),
+            "{} is doubted for a source the turn does not contain: {:?}",
+            unit.unit_id,
+            unit.doubt
+        );
+    }
+
+    // The turn's own findings are untouched: this bead adds no check, and in particular does not
+    // move `not-traded-here`, which fires zero times here and would be the first sign that market
+    // resolution had changed rather than silver arithmetic.
     assert_eq!(counts(&review.findings), expected_counts());
 }

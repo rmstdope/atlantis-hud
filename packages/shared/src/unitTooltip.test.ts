@@ -151,6 +151,9 @@ describe("the silver section", () => {
     expense: 200,
     atMonthEnd: -140,
     doubt: null,
+    doubtSubject: null,
+    received: 0,
+    givers: [],
     ...overrides
   });
 
@@ -217,6 +220,53 @@ describe("the silver section", () => {
       forecast({ income: 0, expense: 0, atMonthEnd: 60 })
     );
     expect(summary.silver?.note).toBe("Nothing this unit is ordered to do moves silver.");
+  });
+
+  it("the_silver_section_explains_a_gift_and_an_unpriced_spell", () => {
+    const note = (silver: Partial<UnitSilver>) =>
+      summariseUnit(aReportUnit({ unitId: "1" }), forecast(silver)).silver?.note;
+
+    expect(
+      note({ income: null, atMonthEnd: null, doubt: "unknown-goods", doubtSubject: "herbs" })
+    ).toBe("The report does not say what herbs are, so what this sale earns cannot be said.");
+    expect(note({ income: null, atMonthEnd: null, doubt: "unpriced-spell" })).toBe(
+      "The ruleset does not say what this spell earns."
+    );
+    expect(
+      note({
+        income: 200,
+        expense: 0,
+        atMonthEnd: 260,
+        received: 200,
+        givers: ["Paymaster (2390)"]
+      })
+    ).toBe("Includes 200 given by Paymaster (2390) in this hex.");
+  });
+
+  it("names_every_giver_the_way_a_market_list_reads", () => {
+    const note = (givers: string[], received: number) =>
+      summariseUnit(
+        aReportUnit({ unitId: "1" }),
+        forecast({ income: received, expense: 0, atMonthEnd: 60 + received, received, givers })
+      ).silver?.note;
+
+    expect(note(["Paymaster (2390)", "Steward (2391)"], 300)).toBe(
+      "Includes 300 given by Paymaster (2390) and Steward (2391) in this hex."
+    );
+    expect(note(["Paymaster (2390)", "Steward (2391)", "Reeve (2392)"], 400)).toBe(
+      "Includes 400 given by Paymaster (2390), Steward (2391) and Reeve (2392) in this hex."
+    );
+  });
+
+  it("an_unsellable_sale_adds_no_note", () => {
+    // The sale earns nothing and that is the answer rather than a guess, so the column shows a
+    // number and the shipped `not-traded-here` finding is what says why. `ah-1wcw.2`.
+    const summary = summariseUnit(
+      aReportUnit({ unitId: "1" }),
+      forecast({ income: 0, expense: 100, atMonthEnd: -40 }),
+      true
+    );
+    expect(summary.silver?.note).toBeNull();
   });
 
   it("says_nothing_when_there_is_nothing_to_explain", () => {
