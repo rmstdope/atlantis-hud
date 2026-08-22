@@ -1,6 +1,15 @@
 import { expect, test, type Page } from "@playwright/test";
-import { readReport } from "@atlantis/fixtures";
-import { clearGames, createGame, expectOrders, expectOrdersNot, fillOrders, ordersInput } from "./gameSetup";
+import {
+  clearGames,
+  createGame,
+  expectOrders,
+  expectOrdersNot,
+  fillOrders,
+  loadReport,
+  ordersInput,
+  selectHex,
+  selectUnit
+} from "./gameSetup";
 
 /**
  * The orders editor itself: undo, completion, and diagnostics in the margin (#89).
@@ -10,8 +19,6 @@ import { clearGames, createGame, expectOrders, expectOrdersNot, fillOrders, orde
  * behaviour here - history, the completion popup, the lint gutter - is configuration that a
  * refactor could drop without any other test noticing.
  */
-
-const REPORT = readReport("g7f95t71");
 
 /** "Seven of Eight", the player's unit in Inholm at (7,53). */
 const OWN_UNIT = "18642";
@@ -32,39 +39,15 @@ async function textStartX(line: ReturnType<Page["locator"]>) {
   return box!.x + paddingLeft;
 }
 
-async function selectHex(page: Page, regionId: string) {
-  const hex = page.getByRole("button", { name: `hex ${regionId}` });
-  await hex.focus();
-  await hex.press("Enter");
-}
-
-async function selectUnit(page: Page, unitId: string) {
-  const box = page.getByLabel("Filter units");
-  await box.fill(unitId);
-  const row = page.getByTestId(`unit-row-${unitId}`);
-  await expect(row).toHaveCount(1);
-  await expect(row).toBeVisible();
-  // Named, not "the button in this row": a foreign unit's row also carries the faction name as a
-  // control (ah-bu2c), so a bare role lookup is ambiguous there.
-  await row.getByRole("button", { name: `unit ${unitId}` }).click();
-  await box.clear();
-}
-
-async function loadReport(page: Page) {
-  await clearGames(page);
-  await createGame(page, "Editor smoke");
-  await page.setInputFiles('input[type="file"]', {
-    name: "turn-71.rep",
-    mimeType: "text/plain",
-    buffer: Buffer.from(REPORT, "utf8")
-  });
-  await expect(page.getByTestId("import-status")).toContainText("11 regions");
+/** A loaded game with OWN_UNIT selected and its orders on screen - where every walk here starts. */
+async function openEditor(page: Page) {
+  await loadReport(page, "Editor smoke");
   await selectHex(page, "1:7,53");
   await selectUnit(page, OWN_UNIT);
 }
 
 test("typing can be undone and redone from the keyboard", async ({ page }) => {
-  await loadReport(page);
+  await openEditor(page);
 
   await fillOrders(page, "@work");
   await expectOrders(page, /@work/);
@@ -94,7 +77,7 @@ test("typing can be undone and redone from the keyboard", async ({ page }) => {
 });
 
 test("undo cannot resurrect another unit's orders", async ({ page }) => {
-  await loadReport(page);
+  await openEditor(page);
 
   await fillOrders(page, "@work");
   await expectOrders(page, /@work/);
@@ -116,7 +99,7 @@ test("undo cannot resurrect another unit's orders", async ({ page }) => {
 });
 
 test("a half-typed command offers its completions", async ({ page }) => {
-  await loadReport(page);
+  await openEditor(page);
 
   // The vocabulary arrives from the core asynchronously; typing before it lands would get
   // silence and prove nothing about completion.
@@ -145,7 +128,7 @@ test("a half-typed command offers its completions", async ({ page }) => {
 });
 
 test("an argument offers the keywords the rules allow there", async ({ page }) => {
-  await loadReport(page);
+  await openEditor(page);
 
   await expect(page.locator('[data-commands-ready="true"]')).toBeVisible();
 
@@ -167,7 +150,7 @@ test("an argument offers the keywords the rules allow there", async ({ page }) =
 });
 
 test("an item argument offers what the hex sells", async ({ page }) => {
-  await loadReport(page);
+  await openEditor(page);
 
   await expect(page.locator('[data-commands-ready="true"]')).toBeVisible();
 
@@ -189,7 +172,7 @@ test("an item argument offers what the hex sells", async ({ page }) => {
 });
 
 test("the caret follows the theme instead of defaulting to black", async ({ page }) => {
-  await loadReport(page);
+  await openEditor(page);
 
   // The editor uses the browser's native caret, and CodeMirror's base styles paint it black
   // unless told otherwise - invisible on the dark theme's near-black ground. Pinning the caret
@@ -202,7 +185,7 @@ test("the caret follows the theme instead of defaulting to black", async ({ page
 });
 
 test("a bad order is marked in the editor's own margin", async ({ page }) => {
-  await loadReport(page);
+  await openEditor(page);
 
   await fillOrders(page, "WROK");
 
@@ -215,7 +198,7 @@ test("a bad order is marked in the editor's own margin", async ({ page }) => {
 test("the order text starts within 6px of the editor's edge, marker still showing (gh-205)", async ({
   page
 }) => {
-  await loadReport(page);
+  await openEditor(page);
 
   const input = page.getByTestId("orders-input");
   const gutter = input.locator(".cm-gutter-lint");
@@ -264,7 +247,7 @@ test("the order text starts within 6px of the editor's edge, marker still showin
 test("the marker paints in the warning colour for a warning-severity diagnostic (gh-205)", async ({
   page
 }) => {
-  await loadReport(page);
+  await openEditor(page);
 
   // GIVE of an item outside the catalogue is a warning, not an error (it does not block
   // export) - one of the two severities the bar's colour must distinguish.
@@ -296,7 +279,7 @@ test("the marker paints in the warning colour for a warning-severity diagnostic 
 });
 
 test("an accepted snippet expands with a tab-through placeholder", async ({ page }) => {
-  await loadReport(page);
+  await openEditor(page);
 
   // The snippet is created through the same settings pane the player would use.
   await page.getByTestId("settings-indicator").click();
@@ -335,7 +318,7 @@ async function enableOrderOcd(page: Page) {
 test("with Order OCD on, a keyword uppercases as the word ends and a quoted name is left alone", async ({
   page
 }) => {
-  await loadReport(page);
+  await openEditor(page);
   await enableOrderOcd(page);
   await selectUnit(page, OWN_UNIT);
 
@@ -360,7 +343,7 @@ test("with Order OCD on, a keyword uppercases as the word ends and a quoted name
 });
 
 test("with Order OCD off, nothing is uppercased", async ({ page }) => {
-  await loadReport(page);
+  await openEditor(page);
 
   await fillOrders(page, "");
   await ordersInput(page).click();
@@ -372,7 +355,7 @@ test("with Order OCD off, nothing is uppercased", async ({ page }) => {
 test("orders written before the setting was on are tidied on the first unit opened after a reload", async ({
   page
 }) => {
-  await loadReport(page);
+  await openEditor(page);
   await fillOrders(page, "move n\nstudy combat");
   // The reload proves nothing until the draft has actually been written.
   await expect(page.getByTestId("orders-status")).toContainText(/saved \d/u, { timeout: 20_000 });
@@ -398,7 +381,7 @@ test("orders written before the setting was on are tidied on the first unit open
 });
 
 test("turning Order OCD on tidies the unit already on screen", async ({ page }) => {
-  await loadReport(page);
+  await openEditor(page);
   await fillOrders(page, "move n\nstudy combat");
   await enableOrderOcd(page);
 
@@ -406,7 +389,7 @@ test("turning Order OCD on tidies the unit already on screen", async ({ page }) 
 });
 
 test("with Order OCD on, Enter opens the next line at the block's depth", async ({ page }) => {
-  await loadReport(page);
+  await openEditor(page);
   await enableOrderOcd(page);
   await selectUnit(page, OWN_UNIT);
 
@@ -422,7 +405,7 @@ test("with Order OCD on, Enter opens the next line at the block's depth", async 
 });
 
 test("opening a unit with Order OCD on re-indents its whole block", async ({ page }) => {
-  await loadReport(page);
+  await openEditor(page);
   await fillOrders(page, "turn\nform 1\nstudy combat\nend\nendturn");
   await enableOrderOcd(page);
 
@@ -431,7 +414,7 @@ test("opening a unit with Order OCD on re-indents its whole block", async ({ pag
 });
 
 test("trailing blank lines survive Enter and collapse when the tidy next runs", async ({ page }) => {
-  await loadReport(page);
+  await openEditor(page);
   await enableOrderOcd(page);
   await selectUnit(page, OWN_UNIT);
 
@@ -455,7 +438,7 @@ test("trailing blank lines survive Enter and collapse when the tidy next runs", 
 });
 
 test("with Order OCD on, one undo takes back a newline and its indent together", async ({ page }) => {
-  await loadReport(page);
+  await openEditor(page);
   await enableOrderOcd(page);
   await selectUnit(page, OWN_UNIT);
 
@@ -475,9 +458,8 @@ test("with Order OCD on, one undo takes back a newline and its indent together",
   await expectOrders(page, /^turn$/);
 });
 
-
 test("with Order OCD on, Enter dedents the closer the player has just finished", async ({ page }) => {
-  await loadReport(page);
+  await openEditor(page);
   await enableOrderOcd(page);
   await selectUnit(page, OWN_UNIT);
 
@@ -497,7 +479,7 @@ test("with Order OCD on, Enter dedents the closer the player has just finished",
 test("the caret lands on the new line after a dedent, not offset by the spaces removed", async ({
   page
 }) => {
-  await loadReport(page);
+  await openEditor(page);
   await enableOrderOcd(page);
   await selectUnit(page, OWN_UNIT);
 
@@ -522,7 +504,7 @@ test("the caret lands on the new line after a dedent, not offset by the spaces r
 });
 
 test("with Order OCD on, ENDTURN at the outermost level stays at the margin", async ({ page }) => {
-  await loadReport(page);
+  await openEditor(page);
   await enableOrderOcd(page);
   await selectUnit(page, OWN_UNIT);
 
@@ -538,7 +520,7 @@ test("with Order OCD on, ENDTURN at the outermost level stays at the margin", as
 test("with Order OCD on, one undo hands back the closer exactly as it was typed", async ({
   page
 }) => {
-  await loadReport(page);
+  await openEditor(page);
   await enableOrderOcd(page);
   await selectUnit(page, OWN_UNIT);
 
@@ -558,7 +540,7 @@ test("with Order OCD on, one undo hands back the closer exactly as it was typed"
 });
 
 test("with Order OCD on, a stray closer with no opener stays where it is", async ({ page }) => {
-  await loadReport(page);
+  await openEditor(page);
   await enableOrderOcd(page);
   await selectUnit(page, OWN_UNIT);
 

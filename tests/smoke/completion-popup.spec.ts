@@ -1,6 +1,13 @@
 import { expect, test, type Page } from "@playwright/test";
-import { readReport } from "@atlantis/fixtures";
-import { clearGames, createGame, fillOrders, ordersInput } from "./gameSetup";
+import {
+  clearGames,
+  createGame,
+  fillOrders,
+  loadReport,
+  ordersInput,
+  selectHex,
+  selectUnit
+} from "./gameSetup";
 
 /**
  * Where the completion popup is allowed to be (ah-e4v).
@@ -14,38 +21,12 @@ import { clearGames, createGame, fillOrders, ordersInput } from "./gameSetup";
  * needs a browser to have a bounding box at all.
  */
 
-const REPORT = readReport("g7f95t71");
-
 /** "Seven of Eight", the player's unit in Inholm at (7,53). */
 const OWN_UNIT = "18642";
 
-async function selectHex(page: Page, regionId: string) {
-  const hex = page.getByRole("button", { name: `hex ${regionId}` });
-  await hex.focus();
-  await hex.press("Enter");
-}
-
-async function selectUnit(page: Page, unitId: string) {
-  const box = page.getByLabel("Filter units");
-  await box.fill(unitId);
-  const row = page.getByTestId(`unit-row-${unitId}`);
-  await expect(row).toHaveCount(1);
-  await expect(row).toBeVisible();
-  // Named, not "the button in this row": a foreign unit's row also carries the faction name as a
-  // control (ah-bu2c), so a bare role lookup is ambiguous there.
-  await row.getByRole("button", { name: `unit ${unitId}` }).click();
-  await box.clear();
-}
-
-async function loadReport(page: Page) {
-  await clearGames(page);
-  await createGame(page, "Completion popup smoke");
-  await page.setInputFiles('input[type="file"]', {
-    name: "turn-71.rep",
-    mimeType: "text/plain",
-    buffer: Buffer.from(REPORT, "utf8")
-  });
-  await expect(page.getByTestId("import-status")).toContainText("11 regions");
+/** A loaded game with OWN_UNIT selected and its orders on screen - where every walk here starts. */
+async function openEditor(page: Page) {
+  await loadReport(page, "Completion popup smoke");
   await selectHex(page, "1:7,53");
   await selectUnit(page, OWN_UNIT);
 }
@@ -72,7 +53,7 @@ async function openSkillCompletions(page: Page) {
 }
 
 test("the completion popup is not clipped by the orders editor", async ({ page }) => {
-  await loadReport(page);
+  await openEditor(page);
   const popup = await openSkillCompletions(page);
 
   // The `overflow-hidden` container, not `ordersInput`'s inner `.cm-content`: the container is
@@ -108,7 +89,7 @@ test("the completion popup is not clipped by the orders editor", async ({ page }
 });
 
 test("the completion popup stays inside the window", async ({ page }) => {
-  await loadReport(page);
+  await openEditor(page);
   const popup = await openSkillCompletions(page);
 
   const popupBox = await popup.boundingBox();

@@ -1,11 +1,14 @@
 import { expect, test, type Page } from "@playwright/test";
-import { readReport } from "@atlantis/fixtures";
 import {
   clearGames,
   createGame,
   expectOrders,
   fillOrders,
-  ordersInput
+  loadReport,
+  mapTransform,
+  ordersInput,
+  selectHex,
+  selectUnit
 } from "./gameSetup";
 
 /**
@@ -14,41 +17,10 @@ import {
  * because the layer under test is precisely the one that turns keydowns into actions.
  */
 
-const REPORT = readReport("g7f95t71");
-
 /** "Seven of Eight", the player's unit in Inholm at (7,53). */
 const OWN_UNIT = "18642";
 /** Another of the player's units, in the mountain at (26,52). */
 const OTHER_OWN_UNIT = "13401";
-
-async function selectHex(page: Page, regionId: string) {
-  const hex = page.getByRole("button", { name: `hex ${regionId}` });
-  await hex.focus();
-  await hex.press("Enter");
-}
-
-async function selectUnit(page: Page, unitId: string) {
-  const box = page.getByLabel("Filter units");
-  await box.fill(unitId);
-  const row = page.getByTestId(`unit-row-${unitId}`);
-  await expect(row).toHaveCount(1);
-  await expect(row).toBeVisible();
-  // Named, not "the button in this row": a foreign unit's row also carries the faction name as a
-  // control (ah-bu2c), so a bare role lookup is ambiguous there.
-  await row.getByRole("button", { name: `unit ${unitId}` }).click();
-  await box.clear();
-}
-
-async function loadReport(page: Page) {
-  await clearGames(page);
-  await createGame(page, "Shortcut smoke");
-  await page.setInputFiles('input[type="file"]', {
-    name: "turn-71.rep",
-    mimeType: "text/plain",
-    buffer: Buffer.from(REPORT, "utf8")
-  });
-  await expect(page.getByTestId("import-status")).toContainText("11 regions");
-}
 
 test("the palette opens on Mod+K, finds a unit, and Enter goes to it", async ({ page }) => {
   await loadReport(page);
@@ -335,11 +307,6 @@ test("the map really answers the gestures the overlay describes", async ({ page 
   await page.keyboard.up("Shift");
   await expect(page.getByTestId("map-export-panel")).toBeVisible();
 });
-
-/** Where the map is standing, read the same way `persistence.spec.ts` does. */
-async function mapTransform(page: Page): Promise<string> {
-  return (await page.getByTestId("map-world").getAttribute("transform")) ?? "";
-}
 
 test("right-click centres the view on a hex, without selecting it", async ({ page }) => {
   await loadReport(page);

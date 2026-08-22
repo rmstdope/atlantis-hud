@@ -2,14 +2,21 @@ import { expect, test, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import { readReport } from "@atlantis/fixtures";
 import {
+  boxOf,
   clearGames,
   createGame,
   expectOrders,
   expectOrdersNot,
   fillOrders,
+  loadReport,
+  mapTransform,
   ordersInput,
   ordersText,
-  visibleStrip
+  selectHex,
+  selectUnit,
+  visibleStrip,
+  waitForStableBox,
+  waitForStableHeight
 } from "./gameSetup";
 // The real constant, not a copy of it: this test exists to catch the rendered height and the
 // windowing arithmetic drifting apart, which a hard-coded 22 here would hide.
@@ -62,63 +69,6 @@ const F21_T24 = readReport("g5f21t24");
 /** Inholm: a city with 24 structures and 92 units, one of them the player's. */
 const OWN_UNIT = "18642";
 const FOREIGN_UNIT = "12538";
-
-/**
- * Clicks a unit in the table.
- *
- * Scoped to its row rather than found by accessible name: Playwright matches names by substring,
- * and the orders panel header also reads "unit 18642" once that unit is selected.
- *
- * Filtered down to the one unit first, because the table only builds the rows on screen and a unit
- * sitting three hundred rows down is not in the page to be clicked. This is also how a player
- * finds one unit among the three hundred in an ocean hex. The two waits matter: the filter matches
- * on structure id as well as unit id, and typing into it re-renders the table underneath the row
- * we are about to click.
- */
-async function selectUnit(page: Page, unitId: string) {
-  const box = page.getByLabel("Filter units");
-  await box.fill(unitId);
-  const row = page.getByTestId(`unit-row-${unitId}`);
-  await expect(row).toHaveCount(1);
-  await expect(row).toBeVisible();
-  // Named, not "the button in this row": a foreign unit's row also carries the faction name as a
-  // control (ah-bu2c), so a bare role lookup is ambiguous there.
-  await row.getByRole("button", { name: `unit ${unitId}` }).click();
-  await box.clear();
-}
-
-/**
- * Selects a hex the way assistive technology does.
- *
- * Each hex in the map is itself a button — an SVG shape carrying a role, a label and a tabindex.
- * It used to be a separate off-screen element, because a canvas says nothing to a screen reader,
- * but the map is SVG now and the shape and the control are the same thing.
- *
- * Focus plus Enter rather than a click: that is how a keyboard user selects a hex, so driving it
- * this way tests the accessible path instead of bypassing it. Only the focused hex carries
- * `tabindex="0"` — the map is one tab stop, not several thousand — and `focus()` reaches the
- * others regardless, which is why this keeps working for any hex on the level.
- */
-async function selectHex(page: Page, regionId: string) {
-  const hex = page.getByRole("button", { name: `hex ${regionId}` });
-  await hex.focus();
-  await hex.press("Enter");
-}
-
-async function loadReport(page: Page) {
-  await clearGames(page);
-  await expect(page.getByTestId("game-gate")).toBeVisible();
-  await createGame(page, "Smoke game");
-  await expect(page.getByTestId("app-header")).toBeVisible();
-
-  await page.setInputFiles('input[type="file"]', {
-    name: "turn-71.rep",
-    mimeType: "text/plain",
-    buffer: Buffer.from(REPORT, "utf8")
-  });
-
-  await expect(page.getByTestId("import-status")).toContainText("11 regions");
-}
 
 test("loads a report and shows the turn it describes", async ({ page }) => {
   await loadReport(page);
@@ -1403,57 +1353,6 @@ async function unfoldPanel(page: Page, panel: string) {
   await expect(section).toHaveAttribute("data-collapsed", "false");
 }
 
-/** Where a panel is on screen, having asserted it is on screen at all. */
-async function boxOf(page: Page, panel: string) {
-  const box = await page.getByTestId(`panel-${panel}`).boundingBox();
-  expect(box).not.toBeNull();
-  return box!;
-}
-
-/**
- * Waits for a panel's height to stop changing before it is measured as a "before" baseline.
- * Selecting a hex opens the panels, and reading a size while that settles - slower or busier on
- * CI than locally - pins a mid-animation size rather than the resting one.
- */
-async function waitForStableHeight(page: Page, panel: string) {
-  let last: number | null = null;
-  await expect
-    .poll(async () => {
-      const height = (await boxOf(page, panel)).height;
-      const stable = last !== null && height === last;
-      last = height;
-      return stable;
-    })
-    .toBe(true);
-}
-
-/**
- * Waits for a panel to stop *moving* as well as stop resizing, before its position is measured.
- *
- * The header gains a row once the loaded report's counts render, and everything below it - the
- * map, and the panel column over it - drops by that row. On a slow runner that lands after the
- * first geometry read, so a baseline taken straight after `selectHex` is a position nothing ever
- * comes back to: `a folded panel shrinks to its title bar` failed in CI with `y` 36px out, exactly
- * one header row, while passing everywhere locally. Poll the whole box, not only the height.
- */
-async function waitForStableBox(page: Page, panel: string) {
-  let last: string | null = null;
-  await expect
-    .poll(async () => {
-      const box = await boxOf(page, panel);
-      const now = `${Math.round(box.x)},${Math.round(box.y)},${Math.round(box.width)},${Math.round(box.height)}`;
-      const stable = last !== null && now === last;
-      last = now;
-      return stable;
-    })
-    .toBe(true);
-}
-
-/** Where the map is standing, read the same way `shortcuts.spec.ts` does. */
-async function mapTransform(page: Page): Promise<string> {
-  return (await page.getByTestId("map-world").getAttribute("transform")) ?? "";
-}
-
 test("a folded panel shrinks to its title bar", async ({ page }) => {
   await loadReport(page);
   await selectHex(page, "1:7,53");
@@ -1472,7 +1371,6 @@ test("a folded panel shrinks to its title bar", async ({ page }) => {
   expect(strip.width).toBeCloseTo(open.width, 0);
   expect(strip.y).toBeCloseTo(open.y, 0);
 });
-
 
 /**
  * The tallest the header may be at the pinned viewport, in pixels.

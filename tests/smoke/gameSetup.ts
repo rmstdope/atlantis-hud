@@ -1,10 +1,20 @@
 import { expect, type Page } from "@playwright/test";
+import { readReport } from "@atlantis/fixtures";
 
 /**
- * Getting a walk to the point where there is a game to work in.
+ * How a smoke walk reaches the application, in one place.
+ *
+ * Three kinds of thing live here. **Setting up**: clearing the browser, creating a game, loading a
+ * report. **Navigating**: selecting a hex or a unit, opening the orders editor, reading the map's
+ * transform. **Settling**: waiting for a panel to stop moving or resizing before it is measured.
  *
  * A module of its own rather than exports from a spec: Playwright refuses to let one spec import
  * another, and every walk in this suite now starts by passing through the create screen.
+ *
+ * One module rather than one per kind, deliberately (ah-2a96). The defect this file was widened to
+ * fix is a helper nobody could find - `waitForStableBox` took five retrospectives to arrive at and
+ * was reachable from one spec of twelve - and two places to look would be the same defect in
+ * smaller print.
  */
 
 /**
@@ -70,6 +80,105 @@ export async function createGame(page: Page, name: string) {
   await page.getByTestId("game-name").fill(name);
   await page.getByRole("button", { name: "Create game" }).click();
   await expect(page.getByTestId("game-indicator")).toContainText(name);
+}
+
+/**
+ * Hands a report to the file input, as a player dropping one in would.
+ *
+ * Says nothing about what the import produced: three specs carried a copy of this, and only
+ * `map-export.spec.ts` also asserted on the import status - that assertion stays at its call
+ * sites, where it is about that walk rather than about handing over a file.
+ */
+export async function importReport(page: Page, name: string, report: string) {
+  await page.setInputFiles('input[type="file"]', {
+    name,
+    mimeType: "text/plain",
+    buffer: Buffer.from(report, "utf8")
+  });
+}
+
+/** The turn every walk that just needs "a game with a map in it" loads. */
+const TURN_71 = readReport("g7f95t71");
+
+/**
+ * A fresh game with the standard turn loaded: the start of most walks in this suite.
+ *
+ * Four specs carried a copy of this. They differed in the game's name - which nothing asserts on,
+ * so one name serves all of them - and in how carefully they waited: only `workspace.spec.ts`
+ * checked that the gate appeared before creating and that the header appeared after. That is the
+ * version kept, because it is the correct one: both hold in every walk, since every walk starts
+ * from `clearGames`, and both are waits rather than claims about the walk under test.
+ */
+export async function loadReport(page: Page, gameName = "Smoke game", report = TURN_71) {
+  await clearGames(page);
+  await expect(page.getByTestId("game-gate")).toBeVisible();
+  await createGame(page, gameName);
+  await expect(page.getByTestId("app-header")).toBeVisible();
+
+  await importReport(page, "turn-71.rep", report);
+
+  await expect(page.getByTestId("import-status")).toContainText("11 regions");
+}
+
+/**
+ * Selects a hex the way assistive technology does.
+ *
+ * Each hex in the map is itself a button - an SVG shape carrying a role, a label and a tabindex.
+ * It used to be a separate off-screen element, because a canvas says nothing to a screen reader,
+ * but the map is SVG now and the shape and the control are the same thing.
+ *
+ * Focus plus Enter rather than a click: that is how a keyboard user selects a hex, so driving it
+ * this way tests the accessible path instead of bypassing it. Only the focused hex carries
+ * `tabindex="0"` - the map is one tab stop, not several thousand - and `focus()` reaches the
+ * others regardless, which is why this keeps working for any hex on the level.
+ */
+export async function selectHex(page: Page, regionId: string) {
+  const hex = page.getByRole("button", { name: `hex ${regionId}` });
+  await hex.focus();
+  await hex.press("Enter");
+}
+
+/**
+ * Clicks a unit in the table.
+ *
+ * Scoped to its row rather than found by accessible name: Playwright matches names by substring,
+ * and the orders panel header also reads "unit 18642" once that unit is selected.
+ *
+ * Filtered down to the one unit first, because the table only builds the rows on screen and a unit
+ * sitting three hundred rows down is not in the page to be clicked. This is also how a player
+ * finds one unit among the three hundred in an ocean hex. The two waits matter: the filter matches
+ * on structure id as well as unit id, and typing into it re-renders the table underneath the row
+ * we are about to click.
+ *
+ * Five specs carried this identically; `backup.spec.ts` carried a sixth, weaker copy inlined into
+ * its own `openOrders`, holding the id in `OWN_UNIT` rather than `unitId` and skipping the
+ * one-row check. The strict version wins: the filter matching more than one row is exactly how
+ * this helper would click the wrong unit, and asserting the count is what makes the click
+ * unambiguous. A blanket edit that assumed the names matched shipped a ReferenceError to CI
+ * (ah-bu2c) - which is why the id is a parameter here and the caller passes its own constant.
+ */
+export async function selectUnit(page: Page, unitId: string) {
+  const box = page.getByLabel("Filter units");
+  await box.fill(unitId);
+  const row = page.getByTestId(`unit-row-${unitId}`);
+  await expect(row).toHaveCount(1);
+  await expect(row).toBeVisible();
+  // Named, not "the button in this row": a foreign unit's row also carries the faction name as a
+  // control (ah-bu2c), so a bare role lookup is ambiguous there.
+  await row.getByRole("button", { name: `unit ${unitId}` }).click();
+  await box.clear();
+}
+
+/** A unit selected with its orders on screen, from wherever the walk currently is. */
+export async function openOrders(page: Page, unitId: string, regionId = "1:7,53") {
+  await selectHex(page, regionId);
+  await selectUnit(page, unitId);
+  await expect(page.getByTestId("orders-input")).toBeVisible();
+}
+
+/** Where the map is standing. */
+export async function mapTransform(page: Page): Promise<string> {
+  return (await page.getByTestId("map-world").getAttribute("transform")) ?? "";
 }
 
 /**
@@ -153,4 +262,50 @@ export async function expectOrders(page: Page, pattern: RegExp) {
 /** The negative twin of `expectOrders`, for "this text must not be in the draft". */
 export async function expectOrdersNot(page: Page, pattern: RegExp) {
   await expect.poll(() => ordersText(page)).not.toMatch(pattern);
+}
+
+/** Where a panel is on screen, having asserted it is on screen at all. */
+export async function boxOf(page: Page, panel: string) {
+  const box = await page.getByTestId(`panel-${panel}`).boundingBox();
+  expect(box).not.toBeNull();
+  return box!;
+}
+
+/**
+ * Waits for a panel's height to stop changing before it is measured as a "before" baseline.
+ * Selecting a hex opens the panels, and reading a size while that settles - slower or busier on
+ * CI than locally - pins a mid-animation size rather than the resting one.
+ */
+export async function waitForStableHeight(page: Page, panel: string) {
+  let last: number | null = null;
+  await expect
+    .poll(async () => {
+      const height = (await boxOf(page, panel)).height;
+      const stable = last !== null && height === last;
+      last = height;
+      return stable;
+    })
+    .toBe(true);
+}
+
+/**
+ * Waits for a panel to stop *moving* as well as stop resizing, before its position is measured.
+ *
+ * The header gains a row once the loaded report's counts render, and everything below it - the
+ * map, and the panel column over it - drops by that row. On a slow runner that lands after the
+ * first geometry read, so a baseline taken straight after `selectHex` is a position nothing ever
+ * comes back to: `a folded panel shrinks to its title bar` failed in CI with `y` 36px out, exactly
+ * one header row, while passing everywhere locally. Poll the whole box, not only the height.
+ */
+export async function waitForStableBox(page: Page, panel: string) {
+  let last: string | null = null;
+  await expect
+    .poll(async () => {
+      const box = await boxOf(page, panel);
+      const now = `${Math.round(box.x)},${Math.round(box.y)},${Math.round(box.width)},${Math.round(box.height)}`;
+      const stable = last !== null && now === last;
+      last = now;
+      return stable;
+    })
+    .toBe(true);
 }
