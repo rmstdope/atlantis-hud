@@ -27,7 +27,8 @@ use crate::movement::mode::{
 use crate::movement::orders::MoveStep;
 use crate::movement::rules::{item_spellings, Ruleset};
 use crate::orders::silver::{
-    forecast_unit, parse_wage_centis, Receipts, RegionWages, SaleAnswer, UnitFacts, UnitSilver,
+    forecast_unit, parse_wage_centis, Lookups, PurchaseAnswer, Receipts, RegionWages, SaleAnswer,
+    UnitFacts, UnitSilver,
 };
 use crate::report::model::{ItemAmount, MarketItem, ReportRegion, ReportUnit, Structure};
 use crate::report::ParsedReport;
@@ -323,6 +324,27 @@ fn forecast_hex(
             MarketAnswer::Unknown => SaleAnswer::Unknown,
         };
 
+        // The same question of the `For Sale` list, for what a BUY costs. A market with no line
+        // for the goods cannot price the purchase at all, so both kinds of no collapse into one -
+        // named as well as anything can name them, for the sentence the hover shows.
+        let purchase =
+            |item: &str| match market_answer(&hex.region.for_sale, item, hex, ordered, ruleset) {
+                MarketAnswer::Offered(line) => PurchaseAnswer::ForSale {
+                    price: line.price,
+                    market_has: line.amount,
+                },
+                MarketAnswer::NotTraded(tag) => PurchaseAnswer::NotSold {
+                    name: item_name(&tag, hex, ruleset).to_lowercase(),
+                },
+                MarketAnswer::Unknown => PurchaseAnswer::NotSold {
+                    name: item.to_lowercase(),
+                },
+            };
+
+        // Resolving an item an order names is this module's business, and a gift of silver and a
+        // priced withdrawal both need it.
+        let item_tag = |text: &str| resolve_item(text, hex, ordered, ruleset);
+
         into.push(forecast_unit(
             UnitFacts {
                 unit_id: &ordered.unit.unit_id,
@@ -335,7 +357,11 @@ fn forecast_hex(
                 receipts: receipts.get(&ordered.unit.unit_id).unwrap_or(&nothing),
             },
             region,
-            &sale,
+            Lookups {
+                sale: &sale,
+                purchase: &purchase,
+                item_tag: &item_tag,
+            },
             ruleset,
         ));
     }
