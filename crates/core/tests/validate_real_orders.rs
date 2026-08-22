@@ -40,9 +40,18 @@ use common::ruleset;
 /// - `study-at-maximum` (ah-1uj): unit 13402 is reported at combat [COMB] 5 (450) - the ruleset's
 ///   own maximum - and orders "@study comb" anyway, which is a real wasted month.
 /// - `not-enough-items` (ah-dbb.2): the enchant-armor mages are short plate armor between them.
+/// - `not-enough-silver` (ah-1wcw.4): the check now counts each unit's monthly maintenance, and
+///   two units cannot pay their own. Unit 18642, alone in `1:7,53`, is a leader owing $50 and
+///   holds neither silver nor food; unit 1688, alone in `1:15,63`, is a hill dwarf owing $10 and
+///   likewise holds nothing - and is flagged `consuming unit's food` with no food to consume.
+///   Both are real: their hexes hold no silver at all, so neither the hex's shared purse nor the
+///   game's own regional pooling of maintenance could cover them. The bead's plan predicted this
+///   table would not move, from a faction-wide $62,000 against $1,900 of upkeep; that sum is real
+///   but it is held in other hexes, and this check is per hex.
 const EXPECTED: &[(&str, usize)] = &[
     ("magic-study-outside-building", 6),
     ("not-enough-items", 1),
+    ("not-enough-silver", 2),
     ("study-at-maximum", 1),
     ("unit-does-nothing", 2),
 ];
@@ -473,4 +482,28 @@ fn the_committed_turn_has_no_purchases_withdrawals_or_gifts_of_silver() {
     );
 
     assert_eq!(counts(&review.findings), expected_counts());
+}
+
+/// `ah-1wcw.4`: every unit's monthly maintenance, summed over the committed turn.
+///
+/// The number is the one the rules produce over *this* report - 10 silver a character, 50 a
+/// leader, less any food a consuming unit spends on it - rather than a figure quoted anywhere: the
+/// bead's plan predicted 1,900 from a headcount of 38 leaders, and the classified turn is not made
+/// of that.
+#[test]
+fn the_committed_turns_upkeep_is_what_its_headcount_owes() {
+    let report = classified();
+    let review = review_turn(
+        &report,
+        &template(),
+        Some(&ruleset()),
+        CheckOptions::default(),
+    );
+
+    let owed: i64 = review.silver.iter().filter_map(|unit| unit.upkeep).sum();
+    assert_eq!(owed, 2_140);
+    assert!(
+        review.silver.iter().all(|unit| unit.upkeep.is_some()),
+        "every own unit in this turn is counted rather than estimated, so every one can be priced"
+    );
 }

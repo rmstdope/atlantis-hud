@@ -1,4 +1,4 @@
-import type { ReportUnit, StructureInfo } from "@atlantis/core-client";
+import type { ReportUnit, StructureInfo, UnitSilver } from "@atlantis/core-client";
 import { aReportUnit } from "@atlantis/core-client";
 import { describe, expect, it } from "vitest";
 import {
@@ -18,6 +18,7 @@ import {
   dragColumnShare,
   dropBoundaryX,
   orderOf,
+  silverShown,
   shareOf,
   REORDERABLE_COLUMNS,
   type SortState,
@@ -368,6 +369,36 @@ describe("sorts by the long order, ignoring case and a leading @", () => {
  * The column width model - shares of the table rather than pixels, which is what makes it
  * arithmetically impossible for a column to be pushed off the right edge (ah-1owr.2).
  */
+describe("silverShown", () => {
+  const forecast = (atMonthEnd: number | null, upkeep: number | null): UnitSilver =>
+    ({
+      unitId: "1",
+      regionId: "1:6,52",
+      held: 0,
+      income: 0,
+      expense: 0,
+      atMonthEnd,
+      upkeep,
+      doubt: null,
+      doubtSubject: null,
+      received: 0,
+      givers: []
+    }) satisfies UnitSilver;
+
+  it("subtracts upkeep only when the setting is on", () => {
+    expect(silverShown(forecast(100, 50), true)).toBe(50);
+    expect(silverShown(forecast(100, 50), false)).toBe(100);
+  });
+
+  it("propagates a null from either side", () => {
+    expect(silverShown(forecast(null, 50), true)).toBeNull();
+    expect(silverShown(forecast(100, null), true)).toBeNull();
+    // With the setting off an unpriceable upkeep is not consulted at all.
+    expect(silverShown(forecast(100, null), false)).toBe(100);
+    expect(silverShown(null, true)).toBeNull();
+  });
+});
+
 describe("column shares", () => {
   it("the default shares sum to exactly one", () => {
     const total = UNIT_COLUMNS.reduce((sum, column) => sum + DEFAULT_COLUMN_SHARES[column], 0);

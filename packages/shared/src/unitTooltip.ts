@@ -53,10 +53,12 @@ export function summariseUnit(
   unit: ReportUnit,
   silver: UnitSilver | null = null,
   /** Whether this unit carries the `not-enough-silver` finding, which the note explains. */
-  warned = false
+  warned = false,
+  /** Whether the Silver column is counting upkeep, which adds the fifth row (`ah-1wcw.4`). */
+  countUpkeep = false
 ): UnitSummary {
   return {
-    silver: silver === null ? null : summariseSilver(silver, warned),
+    silver: silver === null ? null : summariseSilver(silver, warned, countUpkeep),
     title: `${unit.name} (${unit.unitId})`,
     skills: unit.skills.map((skill) => ({
       label: `${skill.name} ${skill.tag}`,
@@ -100,20 +102,35 @@ function figure(amount: number | null): string {
 }
 
 /**
- * The Silver section's four rows and its one explaining line (`ah-1wcw.1`).
+ * The Silver section's four rows and its one explaining line (`ah-1wcw.1`) - five while the Silver
+ * column is counting upkeep (`ah-1wcw.4`).
  *
  * At most one note, and the first that applies: a panel that stacks three explanations under one
  * small number explains nothing. The order is the order of how much the reader needs it.
  */
-function summariseSilver(silver: UnitSilver, warned: boolean): SilverSummary {
+function summariseSilver(
+  silver: UnitSilver,
+  warned: boolean,
+  countUpkeep: boolean
+): SilverSummary {
+  const end = countUpkeep ? shownEnd(silver) : silver.atMonthEnd;
   const rows: TooltipEntry[] = [
     { label: "Held now", value: String(silver.held) },
     { label: "In", value: figure(silver.income) },
     { label: "Out", value: figure(silver.expense) },
-    { label: "At month end", value: figure(silver.atMonthEnd) }
+    ...(countUpkeep ? [{ label: "Upkeep", value: figure(silver.upkeep) }] : []),
+    { label: "At month end", value: figure(end) }
   ];
 
   return { rows, note: silverNote(silver, warned) };
+}
+
+/** The month-end figure with upkeep taken off, or `null` where either term is unpriceable. */
+function shownEnd(silver: UnitSilver): number | null {
+  if (silver.atMonthEnd === null || silver.upkeep === null) {
+    return null;
+  }
+  return silver.atMonthEnd - silver.upkeep;
 }
 
 /** `"a"`, `"a and b"`, `"a, b and c"` - the way the Problems panel already lists a market. */

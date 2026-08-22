@@ -108,6 +108,14 @@ export type SettingsState = {
    */
   orderOcd: boolean;
   /**
+   * Whether the Silver column charges each unit its monthly maintenance (`ah-1wcw.4`).
+   *
+   * On by default: upkeep is a real cost every month and a player who ignores it starves. It is a
+   * setting at all because the fee is pooled regionally by the game, so a per-unit figure is
+   * pessimistic and some players will prefer the column without it.
+   */
+  countUpkeep: boolean;
+  /**
    * Whether the keyboard shortcuts overlay shows itself when the application starts.
    *
    * On by default, and the only piece of the interface that appears uninvited. It earns that: the
@@ -129,6 +137,7 @@ export type SettingsState = {
   setAdvisoryCheck: (code: AdvisoryCheckCode, enabled: boolean) => void;
   setMovementPlanner: (enabled: boolean) => void;
   setOrderOcd: (value: boolean) => void;
+  setCountUpkeep: (value: boolean) => void;
   setShowShortcutsAtStartup: (enabled: boolean) => void;
   addSnippet: (snippet: OrderSnippet) => void;
   updateSnippet: (id: string, changes: Pick<OrderSnippet, "name" | "body">) => void;
@@ -145,6 +154,7 @@ type Persisted = Pick<
   | "advisoryChecks"
   | "movementPlanner"
   | "orderOcd"
+  | "countUpkeep"
   | "showShortcutsAtStartup"
   | "snippets"
 >;
@@ -303,6 +313,7 @@ const DEFAULTS: Persisted = {
   advisoryChecks: DEFAULT_ADVISORY_CHECKS,
   movementPlanner: false,
   orderOcd: false,
+  countUpkeep: true,
   showShortcutsAtStartup: true,
   snippets: []
 };
@@ -355,6 +366,10 @@ export const useSettingsStore = create<SettingsState>()(
         set({ orderOcd });
       },
 
+      setCountUpkeep: (countUpkeep) => {
+        set({ countUpkeep });
+      },
+
       setShowShortcutsAtStartup: (showShortcutsAtStartup) => {
         set({ showShortcutsAtStartup });
       },
@@ -389,6 +404,7 @@ export const useSettingsStore = create<SettingsState>()(
         advisoryChecks: state.advisoryChecks,
         movementPlanner: state.movementPlanner,
         orderOcd: state.orderOcd,
+        countUpkeep: state.countUpkeep,
         showShortcutsAtStartup: state.showShortcutsAtStartup,
         snippets: state.snippets
       })

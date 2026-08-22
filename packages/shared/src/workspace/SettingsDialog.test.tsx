@@ -216,6 +216,33 @@ describe("the map layer settings", () => {
   });
 });
 
+describe("the upkeep setting (ah-1wcw.4)", () => {
+  afterEach(() => {
+    restoreStoresForTest();
+    resetSettingsStore();
+  });
+
+  it("offers it in the Global tab, checked, saying what it charges and how food pays", () => {
+    const html = renderToStaticMarkup(<GlobalSettings />);
+
+    expect(html).toContain("Count upkeep in the Silver column");
+    expect(html).toContain(
+      "Charge each unit its monthly maintenance - 10 silver a character, 50 a leader - paid with food first where the unit is set to consume it."
+    );
+    expect(tag(html, "settings-count-upkeep")).toContain('type="checkbox"');
+    // On by default: upkeep is a real cost every month.
+    expect(tag(html, "settings-count-upkeep")).toContain("checked");
+  });
+
+  it("reflects the setting turned off", () => {
+    const html = renderWithStoreState(<GlobalSettings />, useSettingsStore, {
+      countUpkeep: false
+    });
+
+    expect(tag(html, "settings-count-upkeep")).not.toContain("checked");
+  });
+});
+
 describe("About", () => {
   const html = () =>
     renderToStaticMarkup(

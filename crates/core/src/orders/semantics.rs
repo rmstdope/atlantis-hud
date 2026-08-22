@@ -27,8 +27,8 @@ use crate::movement::mode::{
 use crate::movement::orders::MoveStep;
 use crate::movement::rules::{item_spellings, Ruleset};
 use crate::orders::silver::{
-    forecast_unit, parse_wage_centis, Lookups, PurchaseAnswer, Receipts, RegionWages, SaleAnswer,
-    UnitFacts, UnitSilver,
+    forecast_unit, parse_wage_centis, unit_upkeep, Lookups, PurchaseAnswer, Receipts, RegionWages,
+    SaleAnswer, UnitFacts, UnitSilver,
 };
 use crate::report::model::{ItemAmount, MarketItem, ReportRegion, ReportUnit, Structure};
 use crate::report::ParsedReport;
@@ -352,6 +352,9 @@ fn forecast_hex(
                 held: ordered.holding(SILVER),
                 men: ordered.unit.men,
                 men_estimated: ordered.unit.men_estimated,
+                men_by_race: &ordered.unit.men_by_race,
+                items: &ordered.unit.items,
+                flags: &ordered.unit.flags,
                 skills: &ordered.unit.skills,
                 intents: ordered.intents,
                 receipts: receipts.get(&ordered.unit.unit_id).unwrap_or(&nothing),
@@ -771,7 +774,44 @@ fn ledger_for<'a>(hex: &Hex<'_>, ruleset: Option<&'a Ruleset>) -> Ledger<'a> {
         }
     }
 
+    charge_upkeep(&mut ledger, hex);
+
     ledger
+}
+
+/// Charges every unit its monthly maintenance, after the orders have run.
+///
+/// Deliberately not through `charge`: upkeep belongs to no order, and `charged_at` is read only to
+/// point a finding at the line that drew a balance down. Deliberately not following the display
+/// setting either (`ah-1wcw.4`) - a display preference must not silently change which warnings
+/// fire, so the check always counts it. A unit whose headcount is a guess is charged nothing rather
+/// than a guess.
+fn charge_upkeep(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
+    for ordered in &hex.units {
+        let facts = UnitFacts {
+            unit_id: &ordered.unit.unit_id,
+            region_id: &hex.region.region_id,
+            held: ordered.holding(SILVER),
+            men: ordered.unit.men,
+            men_estimated: ordered.unit.men_estimated,
+            men_by_race: &ordered.unit.men_by_race,
+            items: &ordered.unit.items,
+            flags: &ordered.unit.flags,
+            skills: &ordered.unit.skills,
+            intents: ordered.intents,
+            receipts: &Receipts::default(),
+        };
+        let Some(owed) = unit_upkeep(&facts) else {
+            continue;
+        };
+        if owed <= 0 {
+            continue;
+        }
+        *ledger
+            .balance
+            .entry((ordered.unit.unit_id.clone(), SILVER.to_string()))
+            .or_insert(0) -= owed;
+    }
 }
 
 fn check_resources(
@@ -3160,8 +3200,28 @@ mod tests {
             // The checks that price a study are entitled to an exact headcount, so the fixtures
             // give them one; `an_estimated_headcount_prices_no_study` covers the other case.
             men_estimated: false,
+            // Every unit owes maintenance now (`ah-1wcw.4`), and a fixture that did not pay it
+            // would warn `not-enough-silver` in a hundred tests about something else. These
+            // fixtures feed themselves: the flag and the grain pay the fee in food, so no
+            // fixture's *silver* moves and every existing assertion still means what it did.
+            flags: vec!["consuming unit's food".to_string()],
+            items: vec![ItemAmount {
+                amount: 1,
+                name: "grain".to_string(),
+                tag: "GRAI".to_string(),
+            }],
             ..Default::default()
         }
+    }
+
+    /// A fixture unit with its maintenance grain taken away again, for the handful of tests that
+    /// weigh or move everything a unit carries and would otherwise weigh the grain too. It pays
+    /// its maintenance in silver instead - which weighs nothing, so no fleet's load moves.
+    fn unfed(mut unit: ReportUnit) -> ReportUnit {
+        unit.items
+            .retain(|item| !item.tag.eq_ignore_ascii_case("GRAI"));
+        unit.flags.clear();
+        with_silver(unit, 10_000)
     }
 
     fn with_silver(mut unit: ReportUnit, amount: i64) -> ReportUnit {
@@ -3184,6 +3244,13 @@ mod tests {
 
     fn with_men(mut unit: ReportUnit, men: i64) -> ReportUnit {
         unit.men = men;
+        // More men owe more maintenance, so a fixture that feeds itself has to feed all of them -
+        // one grain for each 50 silver owed, or the fee spills over into silver and warns.
+        for item in &mut unit.items {
+            if item.tag.eq_ignore_ascii_case("GRAI") {
+                item.amount = (men * 10 + 49) / 50;
+            }
+        }
         unit
     }
 
@@ -3654,6 +3721,40 @@ mod tests {
             finding.message.contains("short $70")
                 && finding.message.contains("the units in this hex"),
             "it names the shortfall and says whose it is: {}",
+            finding.message
+        );
+    }
+
+    /// Maintenance is a real monthly cost, so `not-enough-silver` counts it (`ah-1wcw.4`): a unit
+    /// that can pay its orders but not its upkeep is short, and the check says so.
+    #[test]
+    fn a_unit_that_cannot_pay_its_upkeep_is_warned_about() {
+        let regions = vec![region(vec![with_men(
+            with_silver(unfed(unit("5")), 30),
+            10,
+        )])];
+
+        let finding = only(check(regions, "unit 5\nWORK\n"));
+        assert_eq!(finding.code.as_str(), "not-enough-silver");
+        assert!(
+            finding.message.contains("short $70"),
+            "ten men owe $100 and the unit holds $30: {}",
+            finding.message
+        );
+    }
+
+    /// The display setting is `ah-1wcw.4`'s and lives in the shell; the core has no such switch at
+    /// all, which is the guarantee this test pins - upkeep is charged even where the orders
+    /// themselves spend nothing.
+    #[test]
+    fn upkeep_is_charged_whatever_the_display_setting_says() {
+        let regions = vec![region(vec![with_men(with_silver(unfed(unit("5")), 0), 3)])];
+
+        let finding = only(check(regions, "unit 5\nWORK\n"));
+        assert_eq!(finding.code.as_str(), "not-enough-silver");
+        assert!(
+            finding.message.contains("short $30"),
+            "three men owe $30 and WORK spends nothing: {}",
             finding.message
         );
     }
@@ -7278,8 +7379,8 @@ mod tests {
         let region = ReportRegion {
             structures: vec![longship("329")],
             ..region(vec![
-                with_item(aboard("11125", "329", 300, 4), 20, "grain", "GRAI"),
-                unit("8801"),
+                with_item(unfed(aboard("11125", "329", 300, 4)), 20, "grain", "GRAI"),
+                unfed(unit("8801")),
             ])
         };
 
@@ -7359,7 +7460,7 @@ mod tests {
         let mut hex = ReportRegion {
             structures: vec![longship("329")],
             ..region(vec![with_item(
-                aboard("11125", "329", 300, 4),
+                unfed(aboard("11125", "329", 300, 4)),
                 40,
                 "grain",
                 "GRAI",
@@ -7403,8 +7504,8 @@ mod tests {
         let region = ReportRegion {
             structures: vec![longship("329")],
             ..region(vec![
-                with_item(aboard("11125", "329", 100, 4), 20, "grain", "GRAI"),
-                aboard("12590", "329", 50, 0),
+                with_item(unfed(aboard("11125", "329", 100, 4)), 20, "grain", "GRAI"),
+                unfed(aboard("12590", "329", 50, 0)),
             ])
         };
 
@@ -7422,8 +7523,8 @@ mod tests {
         let region = ReportRegion {
             structures: vec![longship("329")],
             ..region(vec![
-                aboard("11125", "329", 50, 4),
-                with_men(with_item(unit("8801"), 20, "gnoll", "GNOL"), 20),
+                unfed(aboard("11125", "329", 50, 4)),
+                with_men(with_item(unfed(unit("8801")), 20, "gnoll", "GNOL"), 20),
             ])
         };
 

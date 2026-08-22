@@ -1,4 +1,4 @@
-import type { ReportUnit, StructureInfo } from "@atlantis/core-client";
+import type { ReportUnit, StructureInfo, UnitSilver } from "@atlantis/core-client";
 
 import { unitStructureLabel } from "./structureLabel";
 
@@ -320,6 +320,24 @@ export type ColumnShares = Partial<Record<UnitColumn, number>>;
  * any of the nine that were here before it.
  */
 const NOMINAL_TABLE_PX = 1440;
+
+/**
+ * The silver figure the column shows: the forecast, less upkeep when the setting says so.
+ *
+ * `null` propagates - a forecast that could not be priced, or an upkeep that could not be, is not
+ * a number - which is what puts the row's `?` in the column and sorts it last. With the setting
+ * off the upkeep is not consulted at all, so a unit nobody could price a fee for still shows the
+ * figure `ah-1wcw.1` shipped.
+ */
+export function silverShown(silver: UnitSilver | null, countUpkeep: boolean): number | null {
+  if (silver === null || silver.atMonthEnd === null) {
+    return null;
+  }
+  if (!countUpkeep) {
+    return silver.atMonthEnd;
+  }
+  return silver.upkeep === null ? null : silver.atMonthEnd - silver.upkeep;
+}
 
 export const DEFAULT_COLUMN_SHARES: Record<UnitColumn, number> = {
   own: 24 / NOMINAL_TABLE_PX,

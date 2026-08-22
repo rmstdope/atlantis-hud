@@ -19,8 +19,18 @@ income: number | null,
 expense: number | null, 
 /**
  * `held + income - expense`, or `None` when either side is `None`.
+ *
+ * **Never includes `upkeep`**, deliberately: whether maintenance counts toward the figure a
+ * player sees is a setting (`ah-1wcw.4`), and computing both answers here means toggling it
+ * needs no round trip through the core.
  */
 atMonthEnd: number | null, 
+/**
+ * What this unit owes in maintenance this month, in silver, after any food it will spend on
+ * it. `None` when it cannot be priced - an estimated headcount, or a report that never said
+ * what the unit is made of.
+ */
+upkeep: number | null, 
 /**
  * Why a term could not be priced, for the hover to explain. `None` when nothing was doubted.
  */

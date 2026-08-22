@@ -117,6 +117,24 @@ describe("settings store", () => {
     expect(store().orderOcd).toBe(true);
   });
 
+  it("counts upkeep by default, and persists the preference", async () => {
+    expect(store().countUpkeep).toBe(true);
+    store().setCountUpkeep(false);
+    expect(store().countUpkeep).toBe(false);
+
+    const storage = useSettingsStore.persist.getOptions().storage;
+    const persisted = await storage?.getItem("atlantis-hud-settings");
+    if (!storage || !persisted) {
+      throw new Error("settings storage was not available");
+    }
+
+    useSettingsStore.setState({ countUpkeep: true });
+    await storage.setItem("atlantis-hud-settings", persisted);
+    await useSettingsStore.persist.rehydrate();
+
+    expect(store().countUpkeep).toBe(false);
+  });
+
   it("reconciles garbage advisory values to the defaults", () => {
     useSettingsStore.setState({
       advisoryChecks: {
