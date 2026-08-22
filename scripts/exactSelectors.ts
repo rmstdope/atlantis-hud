@@ -208,3 +208,45 @@ function readLiteral(source: string, at: number): { text: string; interpolated: 
   }
   return null;
 }
+
+/**
+ * The loose selectors that have not said why they are loose.
+ *
+ * A deliberately loose selector exists - a container's accessible name is built from everything
+ * inside it, so it can never equal the label of one child - and the point is to tell those apart
+ * from the ones that simply forgot. An `// exact-selector-exempt: <reason>` line in the comment
+ * block directly above is that statement: one line, greppable, and next to the selector rather than
+ * in a list somewhere that nobody opens.
+ */
+export function unexplainedSelectors(file: string, source: string): LooseSelector[] {
+  const lines = source.split("\n");
+  return looseSelectors(file, source).filter((selector) => !isExempt(lines, selector.line));
+}
+
+/** Whether the comment block immediately above `line` (1-based) grants an exemption. */
+function isExempt(lines: string[], line: number): boolean {
+  // Upwards while the lines are still comments: a reason worth writing rarely fits on one line, and
+  // the formatter may reflow it so the marker is no longer on the line nearest the selector.
+  for (let above = line - 2; above >= 0; above -= 1) {
+    const text = (lines[above] ?? "").trim();
+    if (!text.startsWith("//")) return false;
+    if (text.includes(EXEMPTION_MARKER)) return true;
+  }
+  return false;
+}
+
+/**
+ * What to tell somebody who has never heard of this rule.
+ *
+ * They are adding an unrelated feature and a test they did not write has just failed, so the
+ * message has to carry the whole story: where, what, what to do, and why it matters at all.
+ */
+export function complain(selector: LooseSelector): string {
+  return [
+    `${selector.file}:${selector.line} - getByRole(..., { name: ${JSON.stringify(selector.name)} }) matches by substring.`,
+    `Add \`exact: true\`, or \`// ${EXEMPTION_MARKER} <why>\` above it.`,
+    `Accessible names are a shared namespace: a new control named "Move the Men column" makes a`,
+    `selector for "Men" match two elements and fail in a spec that has nothing to do with the`,
+    `change (ah-1owr.3).`
+  ].join("\n");
+}

@@ -71,7 +71,7 @@ test("arrowing down a long list keeps the highlight on screen", async ({ page })
   expect(await items.count()).toBeGreaterThan(12);
 
   // The dialog fits the window however many rows matched.
-  const dialog = page.getByRole("dialog", { name: "Command palette" });
+  const dialog = page.getByRole("dialog", { name: "Command palette", exact: true });
   const box = (await dialog.boundingBox())!;
   expect(box.y + box.height).toBeLessThanOrEqual(page.viewportSize()!.height);
 
@@ -200,7 +200,7 @@ test("F8 walks to a problem in another unit's orders", async ({ page }) => {
   // walk would otherwise stop at first, so it goes off for the same reason. And the fixture's two
   // units with no orders at all - 14451 and 13432 - are `unit-does-nothing` findings (ah-dwk6)
   // that sort ahead of this one, so that check goes off for the third time for the same reason.
-  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
   await page.getByTestId("settings-tab-warnings").click();
   await page.getByTestId("settings-warning-study-at-maximum").uncheck();
   await page.getByTestId("settings-warning-magic-study-outside-building").uncheck();
@@ -311,7 +311,7 @@ test("the map really answers the gestures the overlay describes", async ({ page 
 test("right-click centres the view on a hex, without selecting it", async ({ page }) => {
   await loadReport(page);
   await selectHex(page, "1:7,53");
-  await expect(page.getByRole("button", { name: "hex 1:7,53" })).toHaveAttribute(
+  await expect(page.getByRole("button", { name: "hex 1:7,53", exact: true })).toHaveAttribute(
     "aria-pressed",
     "true"
   );
@@ -349,7 +349,7 @@ test("right-click centres the view on a hex, without selecting it", async ({ pag
   ).toBe(true);
 
   // Centring, not selecting: the hex chosen earlier keeps the ring.
-  await expect(page.getByRole("button", { name: "hex 1:7,53" })).toHaveAttribute(
+  await expect(page.getByRole("button", { name: "hex 1:7,53", exact: true })).toHaveAttribute(
     "aria-pressed",
     "true"
   );
@@ -370,7 +370,7 @@ test("right-click centres the view on a hex, without selecting it", async ({ pag
  * offending word to select, which is what the landing below is about.
  */
 async function onlyTheUnitsWithNoOrders(page: Page) {
-  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
   await page.getByTestId("settings-tab-warnings").click();
   await page.getByTestId("settings-warning-study-at-maximum").uncheck();
   await page.getByTestId("settings-warning-magic-study-outside-building").uncheck();
@@ -492,7 +492,7 @@ test("the walk keeps its place when validation re-runs under it", async ({ page 
 test("the walk buttons stay enabled with no problems at all", async ({ page }) => {
   await loadReport(page);
   await onlyTheUnitsWithNoOrders(page);
-  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
   await page.getByTestId("settings-tab-warnings").click();
   await page.getByTestId("settings-warning-unit-does-nothing").uncheck();
   await page.keyboard.press("Escape");

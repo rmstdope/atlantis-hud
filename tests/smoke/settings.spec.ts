@@ -263,7 +263,7 @@ test("the panes grow when the interface size does", async ({ page }) => {
   await createGame(page, "Settings game");
   await openReport(page);
 
-  await page.getByRole("button", { name: "hex 1:7,53" }).click();
+  await page.getByRole("button", { name: "hex 1:7,53", exact: true }).click();
 
   const pane = page.getByTestId("app-header");
   // The ruler ticks, not `.region-name`: that class is hidden outright at a far zoom band

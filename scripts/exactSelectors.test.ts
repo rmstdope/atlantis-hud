@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { looseSelectors } from "./exactSelectors";
+import { readdirSync, readFileSync, statSync } from "node:fs";
+import { join } from "node:path";
+import { EXEMPTION_MARKER, complain, looseSelectors, unexplainedSelectors } from "./exactSelectors";
 
 /**
  * Accessible names are a shared namespace, and Playwright matches them by substring.
@@ -74,5 +76,73 @@ describe("looseSelectors", () => {
 
   it("is not fooled by a getByRole written inside a string", () => {
     expect(looseSelectors("a.spec.ts", 'const s = \'page.getByRole("button", { name: "Men" })\';')).toEqual([]);
+  });
+});
+
+describe("unexplainedSelectors", () => {
+  it("passes over a loose selector whose reason is on the line above it", () => {
+    const source = `// ${EXEMPTION_MARKER} the name legitimately varies\npage.getByRole("button", { name: "Men" })`;
+    expect(unexplainedSelectors("a.spec.ts", source)).toEqual([]);
+  });
+
+  it("accepts a reason anywhere in the comment block above, not only the last line", () => {
+    // A reason worth writing rarely fits on one line, and a formatter may reflow it.
+    const source = [
+      `// ${EXEMPTION_MARKER} a columnheader's name is built from everything inside it,`,
+      "// so it can never be exactly this.",
+      'page.getByRole("columnheader", { name: "Men" })'
+    ].join("\n");
+    expect(unexplainedSelectors("a.spec.ts", source)).toEqual([]);
+  });
+
+  it("does not let a reason carry across a blank line to a later selector", () => {
+    const source = [`// ${EXEMPTION_MARKER} for the one below`, "", 'page.getByRole("button", { name: "Men" })'].join(
+      "\n"
+    );
+    expect(unexplainedSelectors("a.spec.ts", source).map((s) => s.name)).toEqual(["Men"]);
+  });
+
+  it("still reports a loose selector with an ordinary comment above it", () => {
+    const source = '// click the sort control\npage.getByRole("button", { name: "Men" })';
+    expect(unexplainedSelectors("a.spec.ts", source).map((s) => s.name)).toEqual(["Men"]);
+  });
+});
+
+describe("complain", () => {
+  it("names the file, the line, the selector and both ways out", () => {
+    const message = complain({ file: "tests/smoke/units.spec.ts", line: 214, name: "Men" });
+
+    expect(message).toContain("tests/smoke/units.spec.ts:214");
+    expect(message).toContain('{ name: "Men" }');
+    expect(message).toContain("exact: true");
+    expect(message).toContain(EXEMPTION_MARKER);
+    // The person reading this is adding an unrelated feature and has never heard of the rule.
+    expect(message).toContain("substring");
+  });
+});
+
+/** Every `.ts` file under a directory, recursively. */
+function testSources(dir: string): string[] {
+  return readdirSync(dir).flatMap((entry) => {
+    const path = join(dir, entry);
+    if (statSync(path).isDirectory()) return testSources(path);
+    return path.endsWith(".ts") ? [path] : [];
+  });
+}
+
+/**
+ * The ratchet: a selector written after this bead is exact, or says in a comment why it is not.
+ *
+ * A count-based baseline was considered and rejected. A number says nothing about *which* selectors
+ * are intentional, and it drifts upward one grudging increment at a time; a reason on the line above
+ * costs one line, is greppable, and puts it where the next reader already is.
+ */
+describe("the browser suites' role-and-name selectors", () => {
+  it("all match exactly, or carry a reason for not doing so", () => {
+    const offenders = testSources("tests").flatMap((file) =>
+      unexplainedSelectors(file, readFileSync(file, "utf8")).map(complain)
+    );
+
+    expect(offenders).toEqual([]);
   });
 });

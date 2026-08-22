@@ -78,7 +78,7 @@ export async function forgetSettings(page: Page) {
 /** Creates a game from whichever form is on screen, and waits for the workspace to follow. */
 export async function createGame(page: Page, name: string) {
   await page.getByTestId("game-name").fill(name);
-  await page.getByRole("button", { name: "Create game" }).click();
+  await page.getByRole("button", { name: "Create game", exact: true }).click();
   await expect(page.getByTestId("game-indicator")).toContainText(name);
 }
 
