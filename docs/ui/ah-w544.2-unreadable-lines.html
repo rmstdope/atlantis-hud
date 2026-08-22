@@ -96,11 +96,11 @@
     <div class="drop">
       <h4>Lines that could not be read <span class="x">✕</span></h4>
       <div class="lines">
-        <div class="lineitem"><span class="lineno">998–999</span><span class="kind region">Region</span><span class="linetext big">mountain (,53) in Liou'ecpu, contains Rihead [city], 7922 peasants (hill dwarves), $4753.<span class="costnote">The whole hex was lost — 34 further lines, including 9 units.</span></span></div>
+        <div class="lineitem"><span class="lineno">86</span><span class="kind">Attitude</span><span class="linetext">Hostile : ?? (), Creatures (2).</span></div>
         <div class="lineitem"><span class="lineno">412</span><span class="kind">Unit</span><span class="linetext">* Smiley :( (100), Wanderers (29), 10 humans [HUMN].</span></div>
         <div class="lineitem"><span class="lineno">1077</span><span class="kind">Unit</span><span class="linetext">- ?? (), Wanderers (29).</span></div>
+        <div class="lineitem"><span class="lineno">998–999</span><span class="kind region">Region</span><span class="linetext big">mountain (,53) in Liou'ecpu, contains Rihead [city], 7922 peasants (hill dwarves), $4753.<span class="costnote">The whole hex was lost — 34 further lines, including 9 units.</span></span></div>
         <div class="lineitem"><span class="lineno">1512</span><span class="kind">Structure</span><span class="linetext">+ Ruin [0] : closed.</span></div>
-        <div class="lineitem"><span class="lineno">86</span><span class="kind">Attitude</span><span class="linetext">Hostile : ?? (), Creatures (2).</span></div>
         <div class="lineitem"><span class="lineno">2244</span><span class="kind">Battle</span><span class="linetext">?? (, on guard, 12 orcs [ORC].</span></div>
       </div>
       <p class="foot">None of this reached the map. <span class="btn">Copy all</span></p>
@@ -176,12 +176,12 @@
     <div class="drop"><h4>Lines that could not be read <span class="x">✕</span></h4>
       <div class="lines">
         <div class="lineitem stacked">
-          <div class="meta"><span class="lineno">998–999</span><span class="kind region">Region</span></div>
-          <span class="linetext big">mountain (,53) in Liou'ecpu, contains Rihead [city], 7922 peasants (hill dwarves), $4753.<span class="costnote">The whole hex was lost — 34 further lines, including 9 units.</span></span>
-        </div>
-        <div class="lineitem stacked">
           <div class="meta"><span class="lineno">412</span><span class="kind">Unit</span></div>
           <span class="linetext">* Smiley :( (100), Wanderers (29), 10 humans [HUMN].</span>
+        </div>
+        <div class="lineitem stacked">
+          <div class="meta"><span class="lineno">998–999</span><span class="kind region">Region</span></div>
+          <span class="linetext big">mountain (,53) in Liou'ecpu, contains Rihead [city], 7922 peasants (hill dwarves), $4753.<span class="costnote">The whole hex was lost — 34 further lines, including 9 units.</span></span>
         </div>
       </div>
       <p class="foot">None of this reached the map. <span class="btn">Copy all</span></p>
@@ -224,12 +224,12 @@
   <h2 class="rule"><em>The clipboard</em> shaped to paste into a bug report</h2>
   <pre class="clip">6 lines of neworigins-g8-f73-t71.rep could not be read:
 
-  region   998-999: mountain (,53) in Liou'ecpu, contains Rihead [city], 7922 peasants (hill dwarves), $4753.
-                    (the whole hex was lost - 34 further lines, including 9 units)
+  attitude      86: Hostile : ?? (), Creatures (2).
   unit         412: * Smiley :( (100), Wanderers (29), 10 humans [HUMN].
   unit        1077: - ?? (), Wanderers (29).
+  region   998-999: mountain (,53) in Liou'ecpu, contains Rihead [city], 7922 peasants (hill dwarves), $4753.
+                    (the whole hex was lost - 34 further lines, including 9 units)
   structure   1512: + Ruin [0] : closed.
-  attitude      86: Hostile : ?? (), Creatures (2).
   battle      2244: ?? (, on guard, 12 orcs [ORC].</pre>
   <div class="absent">ASCII throughout — a plain hyphen in the range and in the cost note, not the en dash the panel uses.
   A maintainer reading a pasted block has no panel to look at, so the kind stays in the clipboard whatever the panel shows.</div>
@@ -261,6 +261,7 @@
     <tr><td>Shortcut</td><td>None. The header has no single-key shortcuts today and this does not introduce the first.</td></tr>
     <tr><td>Copy all</td><td>In the panel's tab order after the list; label becomes <code>Copied</code> for two seconds.</td></tr>
     <tr><td>Persistence</td><td>None. The chip is rebuilt from the loaded report, follows a turn switch, returns on reload, and cannot be dismissed.</td></tr>
+    <tr><td>Ordering</td><td><strong>File order</strong> — ascending by first line number, kinds interleaved. A lost hex is not floated to the top; the kind column and its red note are what make it stand out, and file order is the one rule that needs no explaining when you go and look at the report.</td></tr>
   </table>
 </section>
 
