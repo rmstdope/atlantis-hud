@@ -78,6 +78,25 @@ export type GameMetadata = {
    * no such key at all.
    */
   activeFactionId?: string | null;
+  /**
+   * The map this game is played on, when the player has said.
+   *
+   * Optional, and the absence carries meaning: a game whose manifest has no `map` was never told
+   * one, so the ruleset's declared default is only *assumed* for it - which is what Settings shows
+   * and what the core treats as "dimensions unknown". Writing a default in here would destroy that
+   * distinction permanently, so `newGameManifest` omits the key rather than filling it.
+   *
+   * No `manifestVersion` bump: an optional field an older manifest simply lacks is the migration.
+   */
+  map?: MapShape;
+};
+
+/** How far a map runs, and where it joins back onto itself. */
+export type MapShape = {
+  width: number;
+  height: number;
+  wrapX: boolean;
+  wrapY: boolean;
 };
 
 export type ReportSourceRef = {
