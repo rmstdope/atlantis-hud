@@ -104,6 +104,7 @@ export function aParsedReport(overrides: Partial<ParsedReport> = {}): ParsedRepo
     regions: [],
     battles: [],
     ordersTemplate: null,
+    unreadableLines: [],
     ...overrides
   };
 }

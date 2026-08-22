@@ -67,7 +67,8 @@ export async function prepareBatch(
         fileName: chosen.name,
         factionId: report.header.factionId,
         turnNumber: report.header.turnNumber,
-        usable: judgeReportUsable(report)
+        usable: judgeReportUsable(report),
+        unreadableCount: report.unreadableLines.length
       });
     } catch (error) {
       read.push(null);
@@ -80,7 +81,9 @@ export async function prepareBatch(
         fileName: chosen.name,
         factionId: null,
         turnNumber: null,
-        usable: { ok: false, reason }
+        usable: { ok: false, reason },
+        // Nothing of it parsed, so there are no individual lines to count.
+        unreadableCount: 0
       });
       unreadable.push({ index, fileName: chosen.name, reason });
     }

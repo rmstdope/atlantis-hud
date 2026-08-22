@@ -20,14 +20,29 @@ export type BatchCandidate = {
   turnNumber: number | null;
   /** `judgeReportUsable`'s answer for this file. `{ ok: false }` for one that would not even parse. */
   usable: ReportUsability;
+  /** How many lines of this report the parser could not read. Zero for one it never parsed. */
+  unreadableCount: number;
 };
 
 /** One report the batch will act on, and how. */
 export type BatchStep =
   /** The viewer's own report: committed as their turn. */
-  | { kind: "import"; index: number; fileName: string; turnNumber: number }
+  | {
+      kind: "import";
+      index: number;
+      fileName: string;
+      turnNumber: number;
+      /** How many lines of this report the parser could not read. */
+      unreadableCount: number;
+    }
   /** Somebody else's: folded into the viewer's map for the turn it describes. */
-  | { kind: "merge"; index: number; fileName: string; turnNumber: number };
+  | {
+      kind: "merge";
+      index: number;
+      fileName: string;
+      turnNumber: number;
+      unreadableCount: number;
+    };
 
 /**
  * One report the batch will not act on, in the words the summary will use.
@@ -196,7 +211,8 @@ export function planReportBatch(
       kind: entry.own ? "import" : "merge",
       index: entry.index,
       fileName: entry.candidate.fileName,
-      turnNumber: entry.turnNumber
+      turnNumber: entry.turnNumber,
+      unreadableCount: entry.candidate.unreadableCount
     });
   }
 

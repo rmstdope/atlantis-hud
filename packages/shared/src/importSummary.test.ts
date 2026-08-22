@@ -8,13 +8,15 @@ const imported = (fileName: string, turnNumber: number): BatchStep => ({
   kind: "import",
   index: next++,
   fileName,
-  turnNumber
+  turnNumber,
+  unreadableCount: 0
 });
 const merged = (fileName: string, turnNumber: number): BatchStep => ({
   kind: "merge",
   index: next++,
   fileName,
-  turnNumber
+  turnNumber,
+  unreadableCount: 0
 });
 const skip = (fileName: string, reason: string) => ({ index: next++, fileName, reason });
 
@@ -121,5 +123,36 @@ describe("the file-by-file account of an import", () => {
       "a.txt — skipped: the report does not name its turn",
       "b.txt — skipped: turn 72 is newer than your own turn 71"
     ]);
+  });
+});
+
+describe("the lines a batch could not read", () => {
+  it("names the lines a batch could not read", () => {
+    const copy = importSummaryCopy({
+      steps: [
+        { kind: "import", index: 0, fileName: "a.rep", turnNumber: 71, unreadableCount: 4 },
+        { kind: "merge", index: 1, fileName: "b.rep", turnNumber: 71, unreadableCount: 2 },
+        { kind: "merge", index: 2, fileName: "c.rep", turnNumber: 70, unreadableCount: 0 }
+      ],
+      skipped: [],
+      finalTurn: 71,
+      viewerFactionLabel: "Borg (73)"
+    });
+
+    expect(copy.lines.at(-1)).toEqual({
+      index: -1,
+      text: "6 lines across 2 of these reports could not be read."
+    });
+  });
+
+  it("says nothing at all when every report was read completely", () => {
+    const copy = importSummaryCopy({
+      steps: [{ kind: "import", index: 0, fileName: "a.rep", turnNumber: 71, unreadableCount: 0 }],
+      skipped: [],
+      finalTurn: 71,
+      viewerFactionLabel: "Borg (73)"
+    });
+
+    expect(copy.lines.some((line) => line.text.includes("could not be read"))).toBe(false);
   });
 });

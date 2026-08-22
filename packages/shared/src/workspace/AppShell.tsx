@@ -183,6 +183,9 @@ import { PlannerPanel } from "./PlannerPanel";
 import { chooseRouteOverlay } from "./routeOverlay";
 import { RegionPanel } from "./RegionPanel";
 import { ProblemsPanel } from "./ProblemsPanel";
+import { UnreadableLinesPanel } from "./UnreadableLinesPanel";
+import { unreadableFactionLabel } from "../unreadableLines";
+import type { UnreadableLine } from "@atlantis/core-client";
 import { TradePanel } from "./TradePanel";
 import { arrowFor } from "./tradeArrow";
 import { TurnMessagesPanel, type TurnMessagesTab } from "./TurnMessagesPanel";
@@ -2101,6 +2104,9 @@ export function AppShell({
    * headings would read as two separate problems.
    */
   const problemsByHex = useMemo(() => findingsByHex(validated.diagnostics), [validated]);
+  // Derived from the loaded report and nothing else: that is what makes it follow a turn switch,
+  // come back after a reload, and have nothing to dismiss permanently.
+  const unreadable: readonly UnreadableLine[] = parsed?.unreadableLines ?? [];
 
   /**
    * Every trade route worth making across the known map, for the header's Trade chip (ah-1j5.2).
@@ -3031,6 +3037,15 @@ export function AppShell({
             onDismiss={() => closePopover("problems")}
             known={knownUnitIds}
             onSelectUnit={(unitId) => goToUnit(unitId, "problems")}
+          />
+        }
+        unreadableCount={unreadable.length}
+        unreadablePanel={
+          <UnreadableLinesPanel
+            entries={unreadable}
+            turnNumber={parsed?.header.turnNumber ?? null}
+            factionLabel={parsed ? unreadableFactionLabel(parsed.header) : null}
+            onDismiss={() => closePopover("unreadable")}
           />
         }
         tradeCount={tradeRoutes.length}

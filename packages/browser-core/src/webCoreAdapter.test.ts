@@ -28,7 +28,8 @@ const EMPTY_PARSED_REPORT: ParsedReport = {
   header: aReportHeaderInfo(),
   regions: [],
   battles: [],
-  ordersTemplate: null
+  ordersTemplate: null,
+  unreadableLines: []
 };
 
 /** A single fixed answer `trade_routes_state` hands back, so a test can assert it passed straight through. */
