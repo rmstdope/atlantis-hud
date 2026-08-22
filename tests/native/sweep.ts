@@ -69,6 +69,13 @@ export const SWEEP: SweepEntry[] = [
   // exactly as good a binding proof as a success.
   { command: "import_game", args: () => ({ backup_json: "{}", opened_at: ISO }) },
   { command: "set_game_ruleset", args: () => ({ game_id: GAME_ID, ruleset_id: "neworigins" }) },
+  {
+    command: "set_game_map",
+    args: () => ({
+      game_id: GAME_ID,
+      map_json: '{"width":72,"height":96,"wrapX":true,"wrapY":false}'
+    })
+  },
   { command: "set_game_name", args: () => ({ game_id: GAME_ID, game_name: "Binding sweep" }) },
   { command: "set_active_faction", args: () => ({ game_id: GAME_ID, faction_id: "95" }) },
   { command: "parse_report", args: () => ({ raw_report: REPORT }) },

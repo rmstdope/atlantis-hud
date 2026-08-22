@@ -171,7 +171,8 @@ pub fn geometry_from_json(map_json: &str) -> Result<Option<MapGeometry>, String>
     if map_json.trim().is_empty() {
         return Ok(None);
     }
-    serde_json::from_str(map_json).map_err(|error| format!("the map shape could not be read: {error}"))
+    serde_json::from_str(map_json)
+        .map_err(|error| format!("the map shape could not be read: {error}"))
 }
 
 /// The coordinate a step lands on when the map itself cannot say.

@@ -5,7 +5,8 @@
 use atlantis_hud_core_tauri::{
     command_create_game, command_delete_game, command_export_game, command_import_game,
     command_list_games, command_open_game, command_reset_game, command_set_active_faction,
-    command_set_game_name, command_set_game_ruleset, GameManifestDto, OpenedGameDto,
+    command_set_game_map, command_set_game_name, command_set_game_ruleset, GameManifestDto,
+    OpenedGameDto,
 };
 
 #[cfg(all(
@@ -126,6 +127,19 @@ fn set_game_ruleset(
     feature = "desktop-runtime"
 ))]
 #[tauri::command(rename_all = "snake_case")]
+fn set_game_map(
+    app: tauri::AppHandle,
+    game_id: String,
+    map_json: String,
+) -> Result<GameManifestDto, String> {
+    command_set_game_map(&games_root(&app)?, &game_id, &map_json)
+}
+
+#[cfg(all(
+    any(target_os = "linux", target_os = "macos", target_os = "windows"),
+    feature = "desktop-runtime"
+))]
+#[tauri::command(rename_all = "snake_case")]
 fn set_game_name(
     app: tauri::AppHandle,
     game_id: String,
@@ -173,6 +187,7 @@ fn main() {
             export_game,
             import_game,
             set_game_ruleset,
+            set_game_map,
             set_game_name,
             set_active_faction,
             atlantis_hud_core_tauri::command_parse_report,

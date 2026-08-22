@@ -11,6 +11,7 @@ import type {
   CoreAdapter,
   EngineInfo,
   GameManifest,
+  MapShape,
   HexNoteRecord,
   KnownMap,
   MoveOrderTraceResponse,
@@ -653,6 +654,29 @@ export function createWebCoreAdapter(
         ...(game.manifest as GameManifest),
         metadata: { ...(game.manifest as GameManifest).metadata, rulesetId }
       };
+      await store.putGame({ ...game, manifest });
+      return manifest;
+    },
+
+    async setGameMap(gameId: string, mapJson: string) {
+      const game = await store.getGame(gameId);
+      if (!game) {
+        throw new Error(`no game with id ${gameId}`);
+      }
+
+      // The registry's copy of the manifest is what every later open reads, as it is for the
+      // ruleset. An empty string removes the key rather than storing a null: absence is what tells
+      // the settings dialog the ruleset's default is only assumed, so it has to stay absence.
+      const previous = game.manifest as GameManifest;
+      // Clearing removes the key rather than storing a null: absence is what tells the settings
+      // dialog the ruleset's default is only assumed, so it has to stay absence.
+      const metadata = { ...previous.metadata };
+      if (mapJson === "") {
+        delete metadata.map;
+      } else {
+        metadata.map = JSON.parse(mapJson) as MapShape;
+      }
+      const manifest: GameManifest = { ...previous, metadata };
       await store.putGame({ ...game, manifest });
       return manifest;
     },

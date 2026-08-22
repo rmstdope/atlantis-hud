@@ -3,7 +3,9 @@
  * without rendering — the same split `gameSession.ts` makes for the shell.
  */
 
+import type { MapShape } from "@atlantis/core-client";
 import { RULESETS } from "../rulesets";
+import { mapShapeOfGame } from "../mapShape";
 import type { WorkspaceGame } from "../workspaceStore";
 
 export type SettingsTabId = "global" | "game" | "warnings" | "snippets" | "about";
@@ -55,7 +57,22 @@ export function rulesetOptions(currentId: string): RulesetOption[] {
 
 export type GameSettingsPresentation =
   | { kind: "empty" }
-  | { kind: "ruleset"; gameName: string; rulesetId: string };
+  | {
+      kind: "ruleset";
+      gameName: string;
+      rulesetId: string;
+      /** The map this game is played on, or `null` when neither it nor its ruleset names one. */
+      map: MapShape | null;
+      /**
+       * Whether the game itself recorded that map, as opposed to inheriting its ruleset's default.
+       *
+       * The tab must show an assumed map *as assumed*: a game created before the app asked adopts
+       * the default silently rather than interrupting, so this is the one place a player can find
+       * out that nobody ever confirmed it. Editing a value writes it, which turns the assumption
+       * into a statement.
+       */
+      mapStated: boolean;
+    };
 
 /**
  * What the per-game tab shows. The dialog is reachable from the gate screen, where there is no
@@ -65,5 +82,12 @@ export function gameSettingsPresentation(game: WorkspaceGame | null): GameSettin
   if (!game) {
     return { kind: "empty" };
   }
-  return { kind: "ruleset", gameName: game.gameName, rulesetId: game.rulesetId };
+  const shape = mapShapeOfGame(game.rulesetId, game.map);
+  return {
+    kind: "ruleset",
+    gameName: game.gameName,
+    rulesetId: game.rulesetId,
+    map: shape.map,
+    mapStated: shape.stated
+  };
 }

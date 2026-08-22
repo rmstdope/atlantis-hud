@@ -539,6 +539,14 @@ export interface CoreAdapter {
   exportGame(gameId: string, exportedAt: string): Promise<string>;
   importGame(backupJson: string, openedAt: string): Promise<OpenedGame>;
   setGameRuleset(gameId: string, rulesetId: string): Promise<GameManifest>;
+  /**
+   * Records the map a game is played on, or clears it with `""`.
+   *
+   * Clearing puts the game back to *assuming* its ruleset's declared default, which is the state
+   * every game created before the app asked is already in; stating a value is what turns that
+   * assumption into the player's own word.
+   */
+  setGameMap(gameId: string, mapJson: string): Promise<GameManifest>;
   setGameName(gameId: string, gameName: string): Promise<GameManifest>;
   setActiveFaction(gameId: string, factionId: string): Promise<GameManifest>;
   parseReport(rawReport: string): Promise<ReportParseResult>;

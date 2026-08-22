@@ -7,6 +7,7 @@ use atlantis_hud_core::backup::{
     encode_game_backup, GameBackupContent, GameBackupHexNote, GameBackupImportedTurn,
     GameBackupMergedReport, GameBackupOrderDraft, GameBackupRegionSighting,
 };
+use atlantis_hud_core::movement::graph::MapGeometry;
 use atlantis_hud_core::reopen::{latest_turn, TurnRef};
 use atlantis_hud_core::{diff_imported_turn_fields, ImportedTurnSnapshotRef};
 use rusqlite::{params, Connection, ErrorCode, OptionalExtension};
@@ -352,6 +353,36 @@ pub fn set_game_ruleset(
     Ok(manifest)
 }
 
+/// Records the map a game is played on, after creation.
+///
+/// `None` clears it, which puts the game back to assuming its ruleset's default - the state every
+/// game created before the app asked is already in.
+///
+/// The manifest is the only place this lives. Unlike the ruleset and the name there is no mirrored
+/// database column to keep in step, because nothing in the database is keyed by the map.
+///
+/// # Errors
+///
+/// Returns an error when no game exists under this id, when its manifest cannot be read, or when
+/// the manifest cannot be written back.
+pub fn set_game_map(
+    games_root: &Path,
+    game_id: &str,
+    map: Option<MapGeometry>,
+) -> Result<GameManifest, PersistenceError> {
+    let game_file_path = game_home(games_root, game_id).join(GAME_MANIFEST_FILE_NAME);
+    if !game_file_path.exists() {
+        return Err(PersistenceError::GameNotFound(game_id.to_string()));
+    }
+
+    let mut manifest = load_game_manifest(&game_file_path)?;
+    ensure_supported_manifest_version(manifest.manifest_version)?;
+    manifest.metadata.map = map;
+    save_game_manifest(&game_file_path, &manifest)?;
+
+    Ok(manifest)
+}
+
 /// Renames a game, after creation.
 ///
 /// The name is stored as given: trimming and the refusal of an empty name are the shell's
@@ -516,6 +547,7 @@ pub fn reset_game(
             game_name: manifest.metadata.game_name.clone(),
             ruleset_id: manifest.metadata.ruleset_id.clone(),
             active_faction_id: None,
+            map: None,
         },
         report_sources: Vec::new(),
         created_at: now.to_string(),
@@ -1719,6 +1751,7 @@ mod tests {
                 game_name: game_name.to_string(),
                 ruleset_id: "neworigins".to_string(),
                 active_faction_id: None,
+                map: None,
             },
             report_sources: vec![
                 ReportSourceRef {
@@ -1861,6 +1894,50 @@ mod tests {
             .query_row("SELECT ruleset_id FROM game_metadata", [], |row| row.get(0))
             .expect("the ruleset should be mirrored into the database");
         assert_eq!(stored, "magicdeep");
+    }
+
+    /// A player who guessed wrong at creation, or who imported an existing game mid-stream, must be
+    /// able to correct the map without starting over - and the correction is what turns an assumed
+    /// map into a stated one.
+    #[test]
+    fn stating_a_games_map_records_it_in_the_manifest() {
+        let dir = tempdir().expect("tempdir");
+        create_game(dir.path(), &fixture_manifest()).expect("creation should succeed");
+        let shape = MapGeometry {
+            width: 40,
+            height: 40,
+            wrap_x: true,
+            wrap_y: true,
+        };
+
+        let updated =
+            set_game_map(dir.path(), GAME_ID, Some(shape)).expect("the map change should succeed");
+        assert_eq!(updated.metadata.map, Some(shape));
+
+        let reopened = open_game(dir.path(), GAME_ID, CREATED_AT).expect("reopen should succeed");
+        assert_eq!(reopened.manifest.metadata.map, Some(shape));
+    }
+
+    /// A game created before the app asked has no map at all, and must stay that way until someone
+    /// says otherwise: absence is what makes the ruleset's default read as *assumed*.
+    #[test]
+    fn a_game_that_was_never_told_a_map_has_none() {
+        let dir = tempdir().expect("tempdir");
+        create_game(dir.path(), &fixture_manifest()).expect("creation should succeed");
+
+        let reopened = open_game(dir.path(), GAME_ID, CREATED_AT).expect("reopen should succeed");
+
+        assert_eq!(reopened.manifest.metadata.map, None);
+    }
+
+    #[test]
+    fn changing_the_map_of_a_missing_game_names_it() {
+        let dir = tempdir().expect("tempdir");
+
+        let error = set_game_map(dir.path(), "no-such-game", None)
+            .expect_err("changing a missing game should fail");
+
+        assert!(matches!(error, PersistenceError::GameNotFound(ref id) if id == "no-such-game"));
     }
 
     #[test]
@@ -2989,6 +3066,7 @@ mod region_sighting_tests {
                     game_name: "Borg TNG".to_string(),
                     ruleset_id: "neworigins".to_string(),
                     active_faction_id: None,
+                    map: None,
                 },
                 report_sources: Vec::new(),
                 created_at: "2026-08-01T09:00:00Z".to_string(),
@@ -3146,6 +3224,7 @@ mod region_sighting_tests {
                     game_name: "Alpha".to_string(),
                     ruleset_id: "neworigins".to_string(),
                     active_faction_id: None,
+                    map: None,
                 },
                 report_sources: Vec::new(),
                 created_at: "2026-08-01T09:00:00Z".to_string(),
@@ -3283,6 +3362,7 @@ mod region_sighting_tests {
                     game_name: "Gamma".to_string(),
                     ruleset_id: "neworigins".to_string(),
                     active_faction_id: None,
+                    map: None,
                 },
                 report_sources: Vec::new(),
                 created_at: "2026-08-01T09:00:00Z".to_string(),
@@ -3336,6 +3416,7 @@ mod region_sighting_tests {
                 game_name: "Pre Hex Notes".to_string(),
                 ruleset_id: "neworigins".to_string(),
                 active_faction_id: None,
+                map: None,
             },
             report_sources: Vec::new(),
             created_at: "2026-08-01T09:00:00Z".to_string(),
@@ -3382,6 +3463,7 @@ mod region_sighting_tests {
                     game_name: "Future".to_string(),
                     ruleset_id: "neworigins".to_string(),
                     active_faction_id: None,
+                    map: None,
                 },
                 report_sources: Vec::new(),
                 created_at: "2026-08-01T09:00:00Z".to_string(),
@@ -3422,6 +3504,7 @@ mod merged_report_tests {
                     game_name: "Borg TNG".to_string(),
                     ruleset_id: "neworigins".to_string(),
                     active_faction_id: None,
+                    map: None,
                 },
                 report_sources: Vec::new(),
                 created_at: "2026-08-01T09:00:00Z".to_string(),

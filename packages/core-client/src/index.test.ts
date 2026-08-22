@@ -82,6 +82,7 @@ function fakeAdapter(overrides: Partial<CoreAdapter> = {}): CoreAdapter {
     exportGame: vi.fn().mockResolvedValue("{}"),
     importGame: vi.fn().mockResolvedValue(openedGame),
     setGameRuleset: vi.fn().mockResolvedValue(gameManifest),
+    setGameMap: vi.fn().mockResolvedValue(gameManifest),
     setGameName: vi.fn().mockResolvedValue(gameManifest),
     setActiveFaction: vi.fn().mockResolvedValue(gameManifest),
     parseReport: vi.fn().mockResolvedValue(reportParseResult),

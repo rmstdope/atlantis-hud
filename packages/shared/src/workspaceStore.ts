@@ -7,6 +7,7 @@
  * nothing could be linked to anything else. One store fixes that.
  */
 
+import type { MapShape } from "@atlantis/core-client";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { allBadges, type BadgeName } from "./workspace/mapThemes/hexView";
@@ -56,6 +57,13 @@ export type WorkspaceGame = {
   gameName: string;
   databasePath: string;
   rulesetId: string;
+  /**
+   * The map this game recorded, when it recorded one.
+   *
+   * Optional, and the absence carries meaning: a game whose manifest never named a map is only
+   * *assuming* its ruleset's default, which is what the per-game settings tab says out loud.
+   */
+  map?: MapShape;
 };
 
 /**
@@ -154,6 +162,12 @@ export type WorkspaceState = {
    * unit the player was looking at are still there.
    */
   updateGameName: (gameName: string) => void;
+  /**
+   * Records the map the open game is played on, or clears it back to the ruleset's assumed default.
+   *
+   * Like a rename, this keeps the selection: correcting the map is not a game switch.
+   */
+  updateGameMap: (map: MapShape | undefined) => void;
   /**
    * Selects a hex, and with it a unit inside that hex.
    *
@@ -345,6 +359,23 @@ export const useWorkspaceStore = create<WorkspaceState>()(
 
       updateGameName: (gameName) =>
         set((state) => (state.game ? { game: { ...state.game, gameName } } : state)),
+
+      updateGameMap: (map) =>
+        set((state) => {
+          if (!state.game) {
+            return state;
+          }
+          // Cleared means the key goes, not that it holds undefined: absence is what makes the
+          // ruleset's default read as assumed, everywhere that asks.
+          if (map === undefined) {
+            // The key goes rather than holding undefined: absence is what makes the ruleset's
+            // default read as assumed, everywhere that asks.
+            const cleared = { ...state.game };
+            delete cleared.map;
+            return { game: cleared };
+          }
+          return { game: { ...state.game, map } };
+        }),
 
       // Moving to another hex abandons the unit that was selected in the old one: keeping it would
       // leave the detail panel and the orders editor describing a unit that is no longer in the list.
