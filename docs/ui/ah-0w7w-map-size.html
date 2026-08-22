@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Telling the app the map's size (bead ah-0w7w)</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733; --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --ok:#4fb783; --danger:#d97070; --select:#4a9fd8; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1130px; margin-left:auto; margin-right:auto; }
+  h1 { font-size:25px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:94ch; margin-top:10px; font-size:14px; }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:0.9em; }
+  h2.sec { margin-top:32px; font-size:18px; color:var(--brass); } h2.sec small { color:var(--ink-dim); font-size:13px; margin-left:10px; }
+  .banner { border:1px solid var(--edge); border-left:3px solid var(--brass); background:var(--panel); padding:14px 16px; border-radius:6px; margin-top:16px; color:var(--ink-soft); font-size:13.5px; } .banner b { color:var(--ink); }
+  .banner.bad { border-left-color:var(--danger); }
+  .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:20px; margin-top:16px; align-items:start; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; display:flex; flex-direction:column; gap:12px; }
+  .card h3 { font-size:16px; } .card h3 em { color:var(--brass); font-style:normal; font-size:11px; letter-spacing:1.6px; margin-right:8px; }
+  .notes { list-style:none; font-size:12px; color:var(--ink-soft); display:grid; gap:4px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; } .notes li.con::before { content:"\2212  "; color:var(--danger); }
+  .form { font-family:'Helvetica Neue',Arial,sans-serif; font-size:12px; background:var(--raised); border:1px solid var(--edge); border-radius:5px; padding:11px 13px; }
+  .form h4 { font-size:13px; color:var(--ink); font-weight:normal; margin-bottom:8px; }
+  .fr { display:flex; align-items:center; gap:9px; margin-bottom:6px; }
+  .fr label { color:var(--ink-dim); min-width:6.5em; flex:none; }
+  .fr .inp { background:var(--ground); border:1px solid var(--edge); border-radius:3px; padding:2px 7px; color:var(--ink); min-width:5.5em; }
+  .fr .inp.w { min-width:11em; }
+  .fr .cb { width:12px; height:12px; border:1px solid var(--edge); border-radius:2px; display:inline-block; }
+  .fr .cb.on { background:var(--select); border-color:var(--select); }
+  .hint { color:var(--ink-dim); font-size:10.5px; margin-top:5px; }
+  .seam { font-family:'SF Mono',Menlo,monospace; font-size:11px; background:var(--raised); border:1px solid var(--edge); border-radius:5px; padding:8px 10px; color:var(--ink-soft); white-space:pre; overflow-x:auto; }
+  .seam .bad { color:var(--danger); } .seam .ok { color:var(--ok); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Telling the app the map's size &mdash; <span>proposals</span> (ah-0w7w)</h1>
+  <p>Your words: <i>&ldquo;when starting a new game, you should define width and height as well as if it wraps on x and y. Default should be 72x96, wrapping on only x.&rdquo;</i></p>
+</header>
+<header>
+  <p><b>This is not only a setup form.</b> <code>movement/graph.rs</code> already names the gap: <i>&ldquo;Atlantis maps wrap east to west, the rules page never says where the seam is, and a computed neighbour would be wrong exactly at the edge &mdash; where being wrong matters most.&rdquo;</i></p>
+</header>
+<main>
+
+  <div class="seam">a movement drawn into unexplored country, today:
+
+  from (71,40) heading east  &rarr;  computed (72,40)   <span class="bad">&#10007; no such hex; the map wraps to (0,40)</span>
+                             with a known width of 72  <span class="ok">&#10003; (0,40)</span></div>
+  <div class="banner">The module already works around it by taking adjacency from the coordinates the report <i>states</i> &mdash; which works wherever you have been. <code>geometric_neighbour()</code> is the deliberate exception for unexplored country, and its own comment concedes: <i>&ldquo;drawing the intent roughly right everywhere except across the wrap seam beats drawing nothing.&rdquo;</i></p></div>
+
+  <h2 class="sec">&sect;1 &nbsp;Where it is asked</h2>
+  <div class="cards">
+    <div class="card">
+      <h3><em>The create screen</em></h3>
+      <div class="form">
+        <h4>New game</h4>
+        <div class="fr"><label>Name</label><span class="inp w">My game</span></div>
+        <div class="fr"><label>Ruleset</label><span class="inp w">New Origins 3.0.0</span></div>
+        <div class="fr"><label>Map size</label><span class="inp">72</span><span style="color:var(--ink-dim)">&times;</span><span class="inp">96</span></div>
+        <div class="fr"><label>Wraps</label><span class="cb on"></span><span style="color:var(--ink-soft)">east&ndash;west</span> &nbsp; <span class="cb"></span><span style="color:var(--ink-soft)">north&ndash;south</span></div>
+        <div class="hint">The map's dimensions. Correctable later in Settings &rsaquo; Per game.</div>
+      </div>
+    </div>
+    <div class="card">
+      <h3><em>Settings &rsaquo; Per game</em></h3>
+      <div class="form">
+        <h4>Per game</h4>
+        <div class="fr"><label>Map size</label><span class="inp">72</span><span style="color:var(--ink-dim)">&times;</span><span class="inp">96</span></div>
+        <div class="fr"><label>Wraps</label><span class="cb on"></span><span style="color:var(--ink-soft)">east&ndash;west</span> &nbsp; <span class="cb"></span><span style="color:var(--ink-soft)">north&ndash;south</span></div>
+        <div class="hint">A player who guessed wrong, or imported an existing game, should not have to start over.</div>
+      </div>
+      <ul class="notes"><li>The tab already exists (<code>settingsTabs.ts</code>) and is where per-game facts belong.</li></ul>
+    </div>
+  </div>
+
+  <h2 class="sec">&sect;2 &nbsp;Where the default comes from</h2>
+  <div class="cards">
+    <div class="card">
+      <h3><em>A</em> Fixed at 72&times;96, wrap x</h3>
+      <ul class="notes">
+        <li>Exactly what you asked for, and one number to remember.</li>
+        <li>Nothing new to declare or maintain.</li>
+        <li class="con">72&times;96 is New Origins. Another variant gets a wrong default silently &mdash; and the ruleset is chosen on the same screen, so the app could have known better.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3><em>B</em> From the chosen ruleset</h3>
+      <div class="form">
+        <div class="fr"><label>Ruleset</label><span class="inp w">New Origins 3.0.0</span></div>
+        <div class="fr"><label>Map size</label><span class="inp">72</span><span style="color:var(--ink-dim)">&times;</span><span class="inp">96</span></div>
+        <div class="hint">Filled from the ruleset; change if your game differs.</div>
+      </div>
+      <ul class="notes">
+        <li><b>The ruleset is already picked on that screen</b>, so the right default is knowable.</li>
+        <li>A second variant later gets its own correct default rather than a wrong one.</li>
+        <li class="con">The ruleset contract gains a field, and a ruleset that omits it needs a fallback anyway.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2 class="sec">&sect;3 &nbsp;Games that already exist <small>and backups restored from before this change</small></h2>
+  <div class="cards">
+    <div class="card">
+      <h3><em>C</em> Adopt the default silently</h3>
+      <ul class="notes"><li>Nothing interrupts you; today's games keep working.</li><li class="con"><b>A wrong default is invisible</b> &mdash; and its only symptom is a movement line drawn wrong at the seam, which you would not connect to this.</li></ul>
+    </div>
+    <div class="card">
+      <h3><em>D</em> Ask once, when the game is next opened</h3>
+      <div class="form"><h4>This game's map</h4><div class="hint" style="margin-top:0">This game was created before map dimensions were recorded. 72&times;96 wrapping east&ndash;west is assumed &mdash; correct it if your game differs.</div><div class="fr" style="margin-top:7px"><span class="inp">72</span><span style="color:var(--ink-dim)">&times;</span><span class="inp">96</span><span class="cb on"></span><span style="color:var(--ink-soft)">E&ndash;W</span></div></div>
+      <ul class="notes"><li>You find out the assumption exists, once, at a moment you can act on it.</li><li class="con">An interruption on opening a game you only wanted to look at.</li></ul>
+    </div>
+    <div class="card">
+      <h3><em>E</em> Adopt silently, and say so in Settings</h3>
+      <ul class="notes"><li>No interruption, and the Per game tab shows the assumed values plainly rather than as facts.</li><li class="con">Only found by someone who goes looking.</li></ul>
+    </div>
+  </div>
+
+  <h2 class="sec">&sect;4 &nbsp;North&ndash;south wrap</h2>
+  <div class="banner bad">You asked for the flag on both axes, defaulting off for y. <b>Worth settling before it is built:</b> if a y-wrap is not a thing an Atlantis map does, an honoured flag is a way to make the movement planner confidently wrong, and a refused one is a checkbox that does nothing. The third option is to offer it and honour it &mdash; costing nothing if nobody turns it on.</div>
+
+</main>
+</body>
+</html>
