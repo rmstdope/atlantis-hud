@@ -34,7 +34,7 @@ use std::collections::{BTreeMap, BinaryHeap};
 
 use serde::{Deserialize, Serialize};
 
-use crate::movement::graph::{geometric_neighbour, Direction, KnownHex, MapKnowledge};
+use crate::movement::graph::{Direction, KnownHex, MapKnowledge};
 use crate::movement::mode::{fleet_of, fleet_sailing, mobility, Mobility};
 use crate::movement::orders::{render_move, render_sail, MoveStep};
 use crate::movement::rules::{MovementMode, Ruleset};
@@ -553,7 +553,7 @@ fn ways_out(map: &MapKnowledge, here: Coordinate) -> Vec<(Direction, Coordinate)
     let mut ways: Vec<(Direction, Coordinate)> = map.neighbours(here).collect();
     let in_the_fog = map.hex(here).is_none();
     for direction in Direction::ALL {
-        let guessed = geometric_neighbour(here, direction);
+        let guessed = map.geometric_neighbour(here, direction);
         if (in_the_fog || map.hex(guessed).is_none())
             && !ways.iter().any(|(stated, _)| *stated == direction)
         {
