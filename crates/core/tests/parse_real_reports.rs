@@ -551,3 +551,22 @@ fn the_largest_newly_imported_turn_parses_without_falling_over() {
         "an established, sprawling faction"
     );
 }
+
+/// The strongest available check that the producers added by ah-w544.2 do not fire spuriously: a
+/// real report the parser handles is a report with nothing to say about it.
+#[test]
+fn every_committed_report_is_read_completely() {
+    for report in atlantis_hud_fixtures::ALL {
+        let parsed = parse_regions(report.text);
+        let unreadable: Vec<&str> = parsed
+            .unreadable_lines
+            .iter()
+            .map(|entry| entry.text.as_str())
+            .collect();
+        assert!(
+            unreadable.is_empty(),
+            "{} has unreadable lines: {unreadable:#?}",
+            report.file
+        );
+    }
+}

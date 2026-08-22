@@ -3,6 +3,7 @@ import type { Battle } from "./Battle";
 import type { OrdersTemplate } from "./OrdersTemplate";
 import type { ReportHeaderInfo } from "./ReportHeaderInfo";
 import type { ReportRegion } from "./ReportRegion";
+import type { UnreadableLine } from "./UnreadableLine";
 
 /**
  * Everything the parser recovers from one turn report.
@@ -17,4 +18,8 @@ export type ParsedReport = { header: ReportHeaderInfo, regions: Array<ReportRegi
 /**
  * The orders document for the coming turn, when the report carries one.
  */
-ordersTemplate: OrdersTemplate | null, };
+ordersTemplate: OrdersTemplate | null, 
+/**
+ * Every record the parser could not read, in file order. Empty for a healthy report.
+ */
+unreadableLines: Array<UnreadableLine>, };
