@@ -256,10 +256,10 @@
   <table class="q">
     <tr><th>Behaviour</th><th>Agreed</th></tr>
     <tr><td>Tab order</td><td>A real button in the header's natural order, immediately after the events chip.</td></tr>
-    <tr><td>Open</td><td><code>Enter</code> or <code>Space</code>. Focus moves to the panel heading.</td></tr>
+    <tr><td>Open</td><td><code>Enter</code> or <code>Space</code>. <strong>Focus stays on the chip</strong> — neither existing chip panel moves focus on open, and the two chips sitting side by side must behave identically. Making all three move focus is worth doing, and is its own bead rather than part of this one.</td></tr>
     <tr><td>Close</td><td><code>Escape</code>, the ✕, or a click outside. Focus returns to the chip in every case.</td></tr>
     <tr><td>Shortcut</td><td>None. The header has no single-key shortcuts today and this does not introduce the first.</td></tr>
-    <tr><td>Copy all</td><td>In the panel's tab order after the list; label becomes <code>Copied</code> for two seconds.</td></tr>
+    <tr><td>Copy all</td><td>In the panel's tab order after the list; label becomes <code>Copied</code> for two seconds. This is the first copy-to-clipboard in the application — there is no helper and the desktop shell has no Tauri clipboard plugin — so it is written web-first on <code>navigator.clipboard</code> and verified in the desktop shell before the bead closes.</td></tr>
     <tr><td>Persistence</td><td>None. The chip is rebuilt from the loaded report, follows a turn switch, returns on reload, and cannot be dismissed.</td></tr>
     <tr><td>Ordering</td><td><strong>File order</strong> — ascending by first line number, kinds interleaved. A lost hex is not floated to the top; the kind column and its red note are what make it stand out, and file order is the one rule that needs no explaining when you go and look at the report.</td></tr>
   </table>
