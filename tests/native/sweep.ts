@@ -20,6 +20,12 @@ const REPORT = readReport("g7f95t71");
 const ALLY_REPORT = readReport("g8f73t71");
 const RULESET = readRuleset();
 
+/**
+ * A map shape for the commands that take one. Any well-formed shape proves the binding; what the
+ * arithmetic does with it is the core's own tests' business.
+ */
+const MAP = '{"width":72,"height":96,"wrapX":true,"wrapY":false}';
+
 /** The shell owns no clock; every timestamp crosses IPC from the frontend. */
 export const ISO = "2026-08-10T12:00:00Z";
 export const GAME_ID = "native-binding-sweep";
@@ -69,13 +75,7 @@ export const SWEEP: SweepEntry[] = [
   // exactly as good a binding proof as a success.
   { command: "import_game", args: () => ({ backup_json: "{}", opened_at: ISO }) },
   { command: "set_game_ruleset", args: () => ({ game_id: GAME_ID, ruleset_id: "neworigins" }) },
-  {
-    command: "set_game_map",
-    args: () => ({
-      game_id: GAME_ID,
-      map_json: '{"width":72,"height":96,"wrapX":true,"wrapY":false}'
-    })
-  },
+  { command: "set_game_map", args: () => ({ game_id: GAME_ID, map_json: MAP }) },
   { command: "set_game_name", args: () => ({ game_id: GAME_ID, game_name: "Binding sweep" }) },
   { command: "set_active_faction", args: () => ({ game_id: GAME_ID, faction_id: "95" }) },
   { command: "parse_report", args: () => ({ raw_report: REPORT }) },
@@ -118,7 +118,8 @@ export const SWEEP: SweepEntry[] = [
       raw_report: REPORT,
       remembered_json: "[]",
       unit_id: "18642",
-      destination: "1:9,53"
+      destination: "1:9,53",
+      map_json: MAP
     })
   },
   {
@@ -129,7 +130,8 @@ export const SWEEP: SweepEntry[] = [
       remembered_json: "[]",
       unit_id: "18642",
       // The whole document, not one unit's block: a passenger's route is the hull's (ah-048).
-      orders_document: "unit 18642\nMOVE N"
+      orders_document: "unit 18642\nMOVE N",
+      map_json: MAP
     })
   },
   {
@@ -164,12 +166,18 @@ export const SWEEP: SweepEntry[] = [
       ruleset_json: RULESET,
       raw_report: REPORT,
       remembered_json: "[]",
-      orders_document: "unit 18642\nGUARD 1"
+      orders_document: "unit 18642\nGUARD 1",
+      map_json: MAP
     })
   },
   {
     command: "trade_routes",
-    args: () => ({ ruleset_json: RULESET, raw_report: REPORT, remembered_json: "[]" })
+    args: () => ({
+      ruleset_json: RULESET,
+      raw_report: REPORT,
+      remembered_json: "[]",
+      map_json: MAP
+    })
   },
   {
     command: "preview_report_import",
