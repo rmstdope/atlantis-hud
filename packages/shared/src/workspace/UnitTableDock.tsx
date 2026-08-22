@@ -71,6 +71,18 @@ const SORTABLE_COLUMNS: ReadonlySet<UnitColumn> = new Set<UnitColumn>([
  * arithmetic and the rendering read the same number, so they cannot drift apart and leave the list
  * misaligned - including as the Interface size setting scales it (ah-46p.2).
  */
+/**
+ * The empty column maps, shared rather than built per render.
+ *
+ * `visible` is memoised on these, and the hover that opens a unit's tooltip is cancelled whenever
+ * `visible` becomes a fresh array - deliberately, so a tooltip cannot outlive its row. A `new Map()`
+ * built afresh each time the memo re-ran made that fire on nothing at all: `getSilver` changes
+ * identity on every validation, so the table rebuilt its rows and cancelled the hover 300ms after
+ * it began, and the tooltip never appeared (`ah-1wcw.1`, fixed in `ah-1wcw.6`).
+ */
+const NO_LONG_ORDERS: ReadonlyMap<string, string | null> = new Map();
+const NO_SILVER: ReadonlyMap<string, number | null> = new Map();
+
 export function UnitTableDock({
   hex,
   preview = null,
@@ -141,14 +153,14 @@ export function UnitTableDock({
   // once per unit for an answer nothing compares.
   const longOrders = useMemo(() => {
     if (sort.column !== "longOrder" || !getLongOrder) {
-      return new Map<string, string | null>();
+      return NO_LONG_ORDERS;
     }
     return new Map(units.filter((entry) => entry.own).map((entry) => [entry.unitId, getLongOrder(entry.unitId)]));
   }, [units, sort.column, getLongOrder]);
   // Same bargain as `longOrders` above: built only when the table actually sorts on it.
   const silverByUnit = useMemo(() => {
     if (sort.column !== "silver" || !getSilver) {
-      return new Map<string, number | null>();
+      return NO_SILVER;
     }
     return new Map(
       units
