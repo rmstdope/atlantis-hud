@@ -80,6 +80,14 @@ export type ItemEntry = {
    */
   sailingSkill?: number;
   /**
+   * What WITHDRAW costs per unit of this item, in silver - `costs 37 silver to withdraw`.
+   *
+   * Absent for anything the page states no price for, which is every item that is not a basic one:
+   * "If you do not have sufficient unclaimed, or if you try withdraw any other than a basic item,
+   * an error will be given." Absent, never zero - a zero would claim the page had said so.
+   */
+  withdrawCost?: number;
+  /**
    * What the page says about it, after the preamble of name, tag, weight and capacity that the
    * fields above already carry. Absent when the entry is nothing but that preamble.
    *
@@ -297,6 +305,12 @@ function sailingOf(kind: ItemKind, text: string): { sailingSkill?: number } {
   return skill === null ? {} : { sailingSkill: skill };
 }
 
+/** The withdrawal price, as a spreadable field so an item with none carries no key. */
+function withdrawOf(paragraph: string): { withdrawCost?: number } {
+  const cost = readNumber(paragraph, /costs (\d+) silver to withdraw/i);
+  return cost === null ? {} : { withdrawCost: cost };
+}
+
 /** The prose of an item entry, as a spreadable field so an entry with none carries no key. */
 function descriptionOf(paragraph: string): { description?: string } {
   const text = prose(paragraph);
@@ -347,6 +361,7 @@ export function parseItemReference(html: string): ItemReference {
       capacity,
       selfMobile,
       ...conditionOf(paragraph),
+      ...withdrawOf(paragraph),
       ...cargoOf(kind, paragraph),
       ...sailingOf(kind, paragraph),
       ...descriptionOf(paragraph),

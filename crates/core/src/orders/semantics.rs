@@ -342,7 +342,7 @@ fn spends_the_month(intent: &Intent) -> bool {
         | Intent::Sell { .. }
         | Intent::Guard(_)
         | Intent::Claim(_)
-        | Intent::Withdraw
+        | Intent::Withdraw { .. }
         | Intent::Form { .. }
         | Intent::Enter { .. }
         | Intent::Leave => false,
@@ -771,10 +771,18 @@ fn apply(
         Intent::Sell { amount, item } => sell(ledger, hex, actor, placed, amount, item, ruleset),
         Intent::Study { skill } => study(ledger, actor, placed, skill, ruleset),
         Intent::Cast { spell, arguments } => cast(ledger, actor, placed, spell, arguments, ruleset),
-        // The ruleset carries no withdrawal prices. Spending an amount nobody can count is exactly
-        // the case for declining to judge the unit.
-        Intent::Withdraw => {
-            ledger.doubted.insert(who.clone());
+        // The ruleset prices a withdrawal (`ah-1wcw.6`), so it is charged. A price it does not
+        // carry - an item that is not a basic one, or a ruleset cached before that bead - is still
+        // an amount nobody can count, which is exactly the case for declining to judge the unit.
+        Intent::Withdraw { count, item } => {
+            match resolve_item(item, hex, actor, ruleset)
+                .and_then(|tag| ruleset?.items.get(&tag)?.withdraw_cost)
+            {
+                Some(cost) => charge(ledger, who, SILVER, count.saturating_mul(cost), placed),
+                None => {
+                    ledger.doubted.insert(who.clone());
+                }
+            }
         }
         // Wages and takings from entertaining are paid in the last phase of the turn, after study
         // has been paid for, so they can fund nothing this month.
@@ -2142,7 +2150,8 @@ fn could_captain(ordered: &Ordered<'_>, fleet_id: &str) -> bool {
 /// BUILD and WORK are phase 10, after the fleet has gone, and touch no balance here anyway.
 ///
 /// An order the ledger could not price changed no balance at all - `transfer`, `buy` and the
-/// WITHDRAW arm record their doubt and return before charging anything - so it contributes nothing
+/// WITHDRAW arm (for an item the ruleset prices nowhere) record their doubt and return before
+/// charging anything - so it contributes nothing
 /// here and the unit keeps the report's weight for that part. That is the navigator's answer to
 /// "silence or fall back": fall back. `None` only when the report never said what the unit weighs.
 fn weight_after_orders(
@@ -2281,8 +2290,9 @@ fn check_transfer_targets(
 /// the game merges them and recomputes the receiving unit's skill and that is not modelled here.
 /// Two different kinds of "cannot price" behave differently, deliberately: a MOVE touching the
 /// fleet, a foreign unit aboard, or a report that never states a unit's weight silences the whole
-/// fleet - never a guess. A single transfer the ledger or the ruleset cannot price (a WITHDRAW, an
-/// item with no catalogue weight) instead falls back to that unit's report weight for its own
+/// fleet - never a guess. A single transfer the ledger or the ruleset cannot price (an
+/// item with no catalogue weight, a WITHDRAW of something the ruleset prices nowhere) instead
+/// falls back to that unit's report weight for its own
 /// contribution (`weight_after_orders`'s doc comment), rather than silencing the fleet outright.
 fn check_sailing(
     hex: &Hex<'_>,
@@ -3326,7 +3336,10 @@ mod tests {
         ])];
 
         assert_eq!(
-            check(regions, "unit 5\nSTUDY combat\nunit 7\nWITHDRAW 10 grain\n"),
+            check(
+                regions,
+                "unit 5\nSTUDY combat\nunit 7\nWITHDRAW 1 longship\n"
+            ),
             vec![]
         );
     }
@@ -3463,16 +3476,45 @@ mod tests {
         );
     }
 
-    /// The ruleset carries no withdrawal prices, so a unit that withdraws spends an amount nobody
-    /// can count. Silence is the only honest answer.
+    /// `ah-1wcw.6`: the ruleset prices a withdrawal, so it is charged like any other spending -
+    /// `count * withdrawCost`, which is $370 for ten grain at $37.
     #[test]
-    fn a_unit_spending_an_amount_we_cannot_price_is_left_alone() {
+    fn a_withdrawing_unit_is_charged_the_rulesets_price() {
+        assert_eq!(
+            codes(&check(
+                vec![region(vec![with_silver(unit("5"), 370)])],
+                "unit 5\nWITHDRAW 10 grain\n"
+            )),
+            [] as [&str; 0],
+            "$370 covers ten grain exactly"
+        );
+    }
+
+    /// The behaviour change `ah-1wcw.6` carries: `not-enough-silver` declined to judge a withdrawing
+    /// unit only because the price was unknown, and now that it is known it speaks.
+    #[test]
+    fn a_withdrawing_unit_that_cannot_pay_is_warned_about() {
+        assert_eq!(
+            codes(&check(
+                vec![region(vec![with_silver(unit("5"), 369)])],
+                "unit 5\nWITHDRAW 10 grain\n"
+            )),
+            ["not-enough-silver"],
+            "one silver short of ten grain"
+        );
+    }
+
+    /// The old path stays, and stays reachable: a ruleset that prices an item nowhere - as one
+    /// cached before `ah-1wcw.6` prices everything - still declines to judge the unit.
+    #[test]
+    fn a_withdrawal_the_ruleset_cannot_price_is_still_doubted() {
         assert_eq!(
             check_ignoring_transfer_targets(
                 vec![region(vec![with_silver(unit("5"), 0)])],
-                "unit 5\nWITHDRAW 10 grain\nGIVE 7 100 SILV\n"
+                "unit 5\nWITHDRAW 1 longship\nGIVE 7 100 SILV\n"
             ),
-            vec![]
+            vec![],
+            "the page prices no ship for withdrawal, so there is no sum to check"
         );
     }
 
@@ -3854,7 +3896,7 @@ mod tests {
         assert_eq!(
             check_ignoring_transfer_targets(
                 regions,
-                "unit 5\nGIVE 9 30 swords\nunit 7\nWITHDRAW 10 grain\n"
+                "unit 5\nGIVE 9 30 swords\nunit 7\nWITHDRAW 1 longship\n"
             ),
             vec![]
         );
@@ -7072,7 +7114,7 @@ mod tests {
 
         let finding = only(check(
             vec![region],
-            "unit 11125\nWITHDRAW 20 GRAI\nSAIL N\n",
+            "unit 11125\nWITHDRAW 20 LONG\nSAIL N\n",
         ));
         assert_eq!(finding.code.as_str(), "fleet-overloaded");
         assert_eq!(

@@ -191,6 +191,10 @@ pub struct ItemEntry {
     pub capacity_condition: Option<String>,
     #[serde(default)]
     pub sailing_skill: Option<i64>,
+    /// What WITHDRAW costs per unit of this item, in silver. `None` for an item the page prices
+    /// nowhere - anything that is not a basic item - and for a ruleset cached before `ah-1wcw.6`.
+    #[serde(default)]
+    pub withdraw_cost: Option<i64>,
     /// What the data page says about it, after the preamble of name, tag, weight and capacity the
     /// fields above already carry. `None` for an entry that is nothing but that preamble, and for
     /// a ruleset cached before ah-3cj4.2, which carried no prose at all.
@@ -947,6 +951,24 @@ mod tests {
         let entry: ItemEntry =
             serde_json::from_str(json).expect("an entry missing sailingSkill should still parse");
         assert_eq!(entry.sailing_skill, None);
+    }
+
+    /// A ruleset cached before `ah-1wcw.6` carries no withdrawal prices at all, and must still
+    /// load - which is what `#[serde(default)]` on `withdraw_cost` is for.
+    #[test]
+    fn a_ruleset_without_withdrawal_prices_still_loads() {
+        let json = r#"{
+            "tag": "GRAI",
+            "name": "grain",
+            "kind": "equipment",
+            "weight": 5,
+            "capacity": { "walk": 0, "ride": 0, "fly": 0, "swim": 0 },
+            "selfMobile": { "walk": false, "ride": false, "fly": false, "swim": false },
+            "moves": 0
+        }"#;
+        let entry: ItemEntry =
+            serde_json::from_str(json).expect("an entry missing withdrawCost should still parse");
+        assert_eq!(entry.withdraw_cost, None);
     }
 
     /// force, pattern, spirit, necromancy, teleportation and illusion are magic; mining, lumberjack,

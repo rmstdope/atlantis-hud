@@ -68,6 +68,20 @@ describe("parseItemReference", () => {
     expect(items.GRAI).toMatchObject({ kind: "equipment", weight: 5 });
   });
 
+  it("reads the withdrawal price", () => {
+    const items = parseItemReference(DATA_HTML);
+
+    // "grain [GRAI], weight 5, costs 37 silver to withdraw."
+    expect(items.GRAI.withdrawCost).toBe(37);
+  });
+
+  it("an item the page prices nowhere carries no withdrawal price", () => {
+    const items = parseItemReference(DATA_HTML);
+
+    // "Longship [LONG]. This is a ship ..." - the page prices no ship for withdrawal.
+    expect(items.LONG).not.toHaveProperty("withdrawCost");
+  });
+
   it("classifies a monster and reads the numbers the risk heuristic needs", () => {
     const items = parseItemReference(DATA_HTML);
 
