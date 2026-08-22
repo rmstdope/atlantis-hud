@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join, relative } from "node:path";
+import { fileURLToPath } from "node:url";
 import { EXEMPTION_MARKER, complain, looseSelectors, unexplainedSelectors } from "./exactSelectors";
 
 /**
@@ -139,8 +140,14 @@ function testSources(dir: string): string[] {
  */
 describe("the browser suites' role-and-name selectors", () => {
   it("all match exactly, or carry a reason for not doing so", () => {
-    const offenders = testSources("tests").flatMap((file) =>
-      unexplainedSelectors(file, readFileSync(file, "utf8")).map(complain)
+    // Anchored to this file rather than to the working directory: the guard is about the suite in
+    // this repository, and a cwd-relative path would throw ENOENT - or quietly scan somebody else's
+    // tree - the first time vitest is launched from anywhere but the root.
+    const suite = join(dirname(fileURLToPath(import.meta.url)), "..", "tests");
+    const offenders = testSources(suite).flatMap((file) =>
+      // Named relative to the repository, because an absolute path in the failure message is one
+      // more thing to read past before the reader reaches what is actually wrong.
+      unexplainedSelectors(relative(join(suite, ".."), file), readFileSync(file, "utf8")).map(complain)
     );
 
     expect(offenders).toEqual([]);
