@@ -448,7 +448,7 @@ test("imports a run of turns and an ally's report in one action", async ({ page 
   await expect(dialog).toContainText("f95-t71.rep — imported as turn 71");
   await expect(dialog).toContainText("f73-t71.rep — merged into turn 71");
 
-  await dialog.getByRole("button", { name: "Close" }).click();
+  await dialog.getByRole("button", { name: "Close", exact: true }).click();
   await expect(dialog).toHaveCount(0);
 
   // The newest own turn is what is left on screen, and the ally of that turn is on the chip.
@@ -491,7 +491,7 @@ async function loadTwoTurns(page: Page) {
 
   const dialog = page.getByTestId("import-summary");
   await expect(dialog).toBeVisible();
-  await dialog.getByRole("button", { name: "Close" }).click();
+  await dialog.getByRole("button", { name: "Close", exact: true }).click();
   await expect(dialog).toHaveCount(0);
   await expect(page.getByTestId("app-header")).toContainText(/Turn\s*71\b/);
 }
@@ -513,7 +513,7 @@ test("a second turn can be compared and dismissed", async ({ page }) => {
   await selectUnit(page, OWN_UNIT);
   await expect(page.getByTestId("panel-unit")).toContainText("Seven of Eight");
 
-  await page.getByRole("button", { name: "stop comparing" }).click();
+  await page.getByRole("button", { name: "stop comparing", exact: true }).click();
   await expect(page.getByTestId("app-header")).not.toContainText("⇄");
   await expect(page.getByTestId("app-header")).toContainText(/Turn\s*71\b/);
 });
@@ -583,7 +583,7 @@ test("comparing does not disturb the working turn's orders", async ({ page }) =>
   await page.getByTestId("turn-chip").click();
   await page.getByTestId("turn-row-70").click();
   await expect(page.getByTestId("app-header")).toContainText("⇄ 70");
-  await page.getByRole("button", { name: "stop comparing" }).click();
+  await page.getByRole("button", { name: "stop comparing", exact: true }).click();
 
   await page.reload();
   await expect(page.getByTestId("app-header")).toContainText(/Turn\s*71\b/);
@@ -614,7 +614,7 @@ test("asks which faction is yours when the batch cannot say", async ({ page }) =
   // Nothing is written until it is answered: no summary, and no turn on the header.
   await expect(page.getByTestId("import-summary")).toHaveCount(0);
 
-  await question.getByRole("button", { name: "Borg TNG (95)" }).click();
+  await question.getByRole("button", { name: "Borg TNG (95)", exact: true }).click();
 
   const dialog = page.getByTestId("import-summary");
   await expect(dialog).toBeVisible();
@@ -623,7 +623,7 @@ test("asks which faction is yours when the batch cannot say", async ({ page }) =
   // An ally's account of a turn you never played still fills in ground you have not stood on.
   await expect(dialog).toContainText("f73-t2.rep — merged into turn 2");
 
-  await dialog.getByRole("button", { name: "Close" }).click();
+  await dialog.getByRole("button", { name: "Close", exact: true }).click();
   await expect(page.getByTestId("app-header")).toContainText("Borg TNG (95)");
   await expect(page.getByTestId("app-header")).toContainText("71");
 });
@@ -924,7 +924,7 @@ test("a unit told to spend silver it has not got is warned about, without blocki
  * faction stands in on the committed turn-71 report.
  */
 async function warnAboutUnguardedHexes(page: Page) {
-  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
   await page.getByTestId("settings-tab-warnings").click();
   await page.getByTestId("settings-warning-hex-unguarded").check();
   await page.keyboard.press("Escape");
@@ -939,7 +939,7 @@ async function warnAboutUnguardedHexes(page: Page) {
  * has its own coverage in the Rust suite and its own toggle test above.
  */
 async function silenceIdleUnits(page: Page) {
-  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
   await page.getByTestId("settings-tab-warnings").click();
   await page.getByTestId("settings-warning-unit-does-nothing").uncheck();
   await page.keyboard.press("Escape");
@@ -1016,7 +1016,7 @@ test("a silenced advisory check disappears everywhere at once", async ({ page })
   await expect(page.getByTestId("region-problems")).toContainText("short");
   await expect(page.getByTestId("problems-chip")).toContainText("9 problems");
 
-  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
   await page.getByTestId("settings-tab-warnings").click();
   await page.getByTestId("settings-warning-not-enough-silver").uncheck();
   await page.keyboard.press("Escape");
@@ -1024,7 +1024,7 @@ test("a silenced advisory check disappears everywhere at once", async ({ page })
   await expect(page.getByTestId("region-problems")).toHaveCount(0);
   await expect(page.getByTestId("problems-chip")).toContainText("8 problems");
 
-  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
   await page.getByTestId("settings-tab-warnings").click();
   await page.getByTestId("settings-warning-not-enough-silver").check();
   await page.keyboard.press("Escape");
@@ -1736,10 +1736,10 @@ test("every control that acts on the map view sits in one strip", async ({ page 
   // ah-ljil: the zoom buttons moved up from the map's own top-right corner into the strip that
   // holds the Badges chip, so the two halves of one job are no longer in two corners.
   const chips = page.getByTestId("layer-chips");
-  await expect(chips.getByRole("button", { name: "Badges" })).toBeVisible();
-  await expect(chips.getByRole("button", { name: "Zoom in" })).toBeVisible();
-  await expect(chips.getByRole("button", { name: "Zoom out" })).toBeVisible();
-  await expect(chips.getByRole("button", { name: "Zoom to fit" })).toBeVisible();
+  await expect(chips.getByRole("button", { name: "Badges", exact: true })).toBeVisible();
+  await expect(chips.getByRole("button", { name: "Zoom in", exact: true })).toBeVisible();
+  await expect(chips.getByRole("button", { name: "Zoom out", exact: true })).toBeVisible();
+  await expect(chips.getByRole("button", { name: "Zoom to fit", exact: true })).toBeVisible();
 
   // Exactly one element marked as covering the top edge, which is what zoom-to-fit measures: two
   // would ask `useOverlayInsets` to union a pair on one edge, and none would let the fit frame the
@@ -1764,7 +1764,7 @@ test("the badge menu's lower rows take clicks, and give the map back when it clo
 }) => {
   await loadReport(page);
 
-  const trigger = page.getByTestId("layer-chips").getByRole("button", { name: "Badges" });
+  const trigger = page.getByTestId("layer-chips").getByRole("button", { name: "Badges", exact: true });
   await trigger.click();
   const menu = page.getByTestId("badge-menu");
   const lowest = menu.getByRole("checkbox").last();
@@ -1796,7 +1796,7 @@ test("the layer toggles live in settings, not over the map", async ({ page }) =>
   // map. The strip survives with the badge chip alone.
   const chips = page.getByTestId("layer-chips");
   await expect(chips.getByRole("checkbox")).toHaveCount(0);
-  await expect(chips.getByRole("button", { name: "Badges" })).toBeVisible();
+  await expect(chips.getByRole("button", { name: "Badges", exact: true })).toBeVisible();
 
   await page.getByTestId("settings-indicator").click();
   const staleness = page.getByTestId("settings-layer-staleness");
@@ -1880,7 +1880,7 @@ test("the level selector in the header changes level", async ({ page }) => {
 
   // The nexus hex, which exists on the nexus level and nowhere else - so it is the map's own
   // answer to which level is being drawn, rather than the selector repeating itself back.
-  const nexusHex = page.getByRole("button", { name: "hex 0:0,0" });
+  const nexusHex = page.getByRole("button", { name: "hex 0:0,0", exact: true });
 
   const current = await selector.inputValue();
   const other = values.find((value) => value !== current) ?? current;
@@ -1909,21 +1909,21 @@ test("each badge can be turned off on its own, and the set survives a reload", a
   // cares about mark detail already does (see "the map carries less detail the further out it is
   // zoomed").
   for (let step = 0; step < 3; step += 1) {
-    await page.getByRole("button", { name: "Zoom in" }).click();
+    await page.getByRole("button", { name: "Zoom in", exact: true }).click();
   }
   // The atlas draws a settlement as a keep; the committed turn 71 has towns on it.
   const settlements = map.locator('[data-mark="settlement"]');
   const units = map.locator('[data-shield="own"]');
   await expect(settlements.first()).toBeVisible();
 
-  const trigger = page.getByTestId("layer-chips").getByRole("button", { name: "Badges" });
+  const trigger = page.getByTestId("layer-chips").getByRole("button", { name: "Badges", exact: true });
   await expect(trigger).toHaveAttribute("data-badges-all", "true");
 
   await trigger.click();
   const badges = page.getByTestId("badge-menu");
-  await expect(badges.getByRole("checkbox", { name: "Settlements" })).toBeChecked();
+  await expect(badges.getByRole("checkbox", { name: "Settlements", exact: true })).toBeChecked();
 
-  await badges.getByRole("checkbox", { name: "Settlements" }).uncheck();
+  await badges.getByRole("checkbox", { name: "Settlements", exact: true }).uncheck();
   // The chip itself says the map is showing less than everything, without the panel being open.
   await expect(trigger).toHaveAttribute("data-badges-all", "false");
   await expect(settlements).toHaveCount(0);
@@ -1939,13 +1939,13 @@ test("each badge can be turned off on its own, and the set survives a reload", a
     page.getByTestId("map-canvas").locator('[data-shield="own"]').first()
   ).toBeVisible();
   await expect(page.getByTestId("map-canvas").locator('[data-mark="settlement"]')).toHaveCount(0);
-  await page.getByTestId("layer-chips").getByRole("button", { name: "Badges" }).click();
+  await page.getByTestId("layer-chips").getByRole("button", { name: "Badges", exact: true }).click();
   await expect(
-    page.getByTestId("badge-menu").getByRole("checkbox", { name: "Settlements" })
+    page.getByTestId("badge-menu").getByRole("checkbox", { name: "Settlements", exact: true })
   ).not.toBeChecked();
 
   // And All brings the whole set back, which is the way out of a map cleared down to its terrain.
-  await page.getByTestId("badge-menu").getByRole("button", { name: "All" }).click();
+  await page.getByTestId("badge-menu").getByRole("button", { name: "All", exact: true }).click();
   await expect(
     page.getByTestId("map-canvas").locator('[data-mark="settlement"]').first()
   ).toBeVisible();
@@ -1964,18 +1964,18 @@ test("region decorations can be turned off from the Badges menu, and the choice 
   const decorations = page.getByTestId("map-canvas").getByTestId("region-decorations");
   await expect(decorations).toBeVisible();
 
-  await page.getByTestId("layer-chips").getByRole("button", { name: "Badges" }).click();
+  await page.getByTestId("layer-chips").getByRole("button", { name: "Badges", exact: true }).click();
   const badges = page.getByTestId("badge-menu");
-  await expect(badges.getByRole("checkbox", { name: "Regions" })).toBeChecked();
+  await expect(badges.getByRole("checkbox", { name: "Regions", exact: true })).toBeChecked();
 
-  await badges.getByRole("checkbox", { name: "Regions" }).uncheck();
+  await badges.getByRole("checkbox", { name: "Regions", exact: true }).uncheck();
   await expect(decorations).toHaveCount(0);
 
   await page.reload();
   await expect(page.getByTestId("map-canvas").getByTestId("region-decorations")).toHaveCount(0);
-  await page.getByTestId("layer-chips").getByRole("button", { name: "Badges" }).click();
+  await page.getByTestId("layer-chips").getByRole("button", { name: "Badges", exact: true }).click();
   await expect(
-    page.getByTestId("badge-menu").getByRole("checkbox", { name: "Regions" })
+    page.getByTestId("badge-menu").getByRole("checkbox", { name: "Regions", exact: true })
   ).not.toBeChecked();
 });
 
@@ -2215,7 +2215,7 @@ test("a route crosses ground only an earlier turn described", async ({ page }) =
   const dialog = page.getByTestId("import-summary");
   await expect(dialog).toBeVisible();
   await expect(dialog).toContainText("Imported 3 turns for The Disinherited Knights (42)");
-  await dialog.getByRole("button", { name: "Close" }).click();
+  await dialog.getByRole("button", { name: "Close", exact: true }).click();
   await expect(dialog).toHaveCount(0);
 
   await enableMovementPlanner(page);
@@ -2733,6 +2733,9 @@ test("sorting by a column reorders the table, own units still first", async ({ p
   await men.click();
 
   await expect(
+    // exact-selector-exempt: a columnheader's accessible name is built from everything inside it,
+    // and each header now holds a reorder grip labelled "Move the Men column" - so this cell's name
+    // can never be exactly "Men". The button above is the exact one; this is its container.
     page.getByTestId("panel-units").getByRole("columnheader", { name: "Men" })
   ).toHaveAttribute("aria-sort", "descending");
   await expect(ownRow).toHaveAttribute("aria-rowindex", "2");
@@ -2761,7 +2764,7 @@ test("the ownership toggle releases the own-units-first grouping", async ({ page
   const ownRow = page.getByTestId(`unit-row-${OWN_UNIT}`);
   await expect(ownRow).toHaveAttribute("aria-rowindex", "2");
 
-  const grouping = page.getByRole("button", { name: "Group own units first" });
+  const grouping = page.getByRole("button", { name: "Group own units first", exact: true });
   await expect(grouping).toHaveAttribute("aria-pressed", "true");
   await grouping.click();
   await expect(grouping).toHaveAttribute("aria-pressed", "false");
@@ -3047,12 +3050,12 @@ test("zooming in and back out returns the map to the scale it started at", async
 
   const before = await scale();
   for (let step = 0; step < 3; step += 1) {
-    await page.getByRole("button", { name: "Zoom in" }).click();
+    await page.getByRole("button", { name: "Zoom in", exact: true }).click();
   }
   expect(await scale()).not.toBe(before);
 
   for (let step = 0; step < 3; step += 1) {
-    await page.getByRole("button", { name: "Zoom out" }).click();
+    await page.getByRole("button", { name: "Zoom out", exact: true }).click();
   }
 
   // The old renderer multiplied by 1.1 in and 0.9 out, so it never came back to where it started.
@@ -3062,7 +3065,7 @@ test("zooming in and back out returns the map to the scale it started at", async
 test("fitting the map puts every hex clear of the panes drawn over it", async ({ page }) => {
   await loadReport(page);
 
-  await page.getByRole("button", { name: "Zoom to fit" }).click();
+  await page.getByRole("button", { name: "Zoom to fit", exact: true }).click();
 
   // The panes float over the canvas rather than beside it, so fitting to the canvas centred the
   // world underneath them: the hexes were on screen and behind a panel, which is not "fitted" to
@@ -3125,12 +3128,12 @@ test("the map carries less detail the further out it is zoomed", async ({ page }
   const map = page.locator("[data-testid='map-canvas'] svg");
 
   for (let step = 0; step < 8; step += 1) {
-    await page.getByRole("button", { name: "Zoom out" }).click();
+    await page.getByRole("button", { name: "Zoom out", exact: true }).click();
   }
   await expect(map).toHaveClass(/map-far/);
 
   for (let step = 0; step < 12; step += 1) {
-    await page.getByRole("button", { name: "Zoom in" }).click();
+    await page.getByRole("button", { name: "Zoom in", exact: true }).click();
   }
   await expect(map).toHaveClass(/map-near/);
 });
@@ -3141,7 +3144,7 @@ test("arrow keys walk from hex to neighbouring hex", async ({ page }) => {
 
   // North of Inholm is (7,51), which this turn knows only from a neighbour's exits. Flat-top
   // geometry is what gives a hex a direct northern neighbour at all.
-  await page.getByRole("button", { name: "hex 1:7,53" }).press("ArrowUp");
+  await page.getByRole("button", { name: "hex 1:7,53", exact: true }).press("ArrowUp");
   await expect(page.locator("polygon:focus")).toHaveAttribute("aria-label", "hex 1:7,51");
   await page.locator("polygon:focus").press("ArrowDown");
   await expect(page.locator("polygon:focus")).toHaveAttribute("aria-label", "hex 1:7,53");
@@ -3160,7 +3163,7 @@ test("the cursor may wander as far into the unexplored as it likes", async ({ pa
 
   // Coordinates an ally names can lie a long way outside anything the faction has seen, so the
   // cursor is not fenced in. The view follows it, and focus never falls through to the body.
-  await page.getByRole("button", { name: "hex 1:7,53" }).press("ArrowUp");
+  await page.getByRole("button", { name: "hex 1:7,53", exact: true }).press("ArrowUp");
   for (let step = 0; step < 40; step += 1) {
     await page.locator("polygon:focus").press("ArrowUp");
   }
@@ -3366,7 +3369,7 @@ test("the selected hex is marked by the double ring", async ({ page }) => {
   // assert directly.
   const ring = page.getByTestId("map-selection-ring");
   await expect(ring).toBeAttached();
-  const hexButton = page.getByRole("button", { name: "hex 1:7,53" });
+  const hexButton = page.getByRole("button", { name: "hex 1:7,53", exact: true });
   await expect(hexButton).toHaveAttribute("transform", /.+/);
   const hexTransform = await hexButton.getAttribute("transform");
   await expect(ring).toHaveAttribute("transform", hexTransform ?? "");
@@ -3424,7 +3427,7 @@ test("unexplored ground can be selected from the keyboard, and the way back stil
 }) => {
   await loadReport(page);
   await selectHex(page, "1:7,53");
-  await expect(page.getByRole("button", { name: "hex 1:7,53" })).toHaveAttribute(
+  await expect(page.getByRole("button", { name: "hex 1:7,53", exact: true })).toHaveAttribute(
     "aria-pressed",
     "true"
   );
@@ -3440,7 +3443,7 @@ test("unexplored ground can be selected from the keyboard, and the way back stil
   await page.locator("polygon:focus").press("Enter");
   await expect(page.getByTestId("panel-region")).toContainText("unexplored (7,49)");
   await expect(page.getByTestId("panel-region")).toContainText("Nothing is known");
-  await expect(page.getByRole("button", { name: "hex 1:7,53" })).toHaveAttribute(
+  await expect(page.getByRole("button", { name: "hex 1:7,53", exact: true })).toHaveAttribute(
     "aria-pressed",
     "false"
   );
@@ -3475,7 +3478,7 @@ test("clicking empty ground names the hex that was clicked", async ({ page }) =>
   await unfoldPanel(page, "region");
 
   await expect(page.getByTestId("panel-region")).toContainText("unexplored (7,49)");
-  await expect(page.getByRole("button", { name: "hex 1:7,53" })).toHaveAttribute(
+  await expect(page.getByRole("button", { name: "hex 1:7,53", exact: true })).toHaveAttribute(
     "aria-pressed",
     "false"
   );
@@ -3490,7 +3493,7 @@ test("a move can be planned into unexplored country, and says it is a guess", as
   // (7,51) is a mountain the report names; (7,49) beyond it is unexplored, and a friend's
   // coordinates are exactly the case this exists for.
   await page.getByTestId("planner-arm").click();
-  await page.getByRole("button", { name: "hex 1:7,51" }).focus();
+  await page.getByRole("button", { name: "hex 1:7,51", exact: true }).focus();
   await page.locator("polygon:focus").press("ArrowUp");
   await page.locator("polygon:focus").press("Enter");
 
@@ -3516,11 +3519,11 @@ test("the unexplored lattice keeps a constant hairline at every zoom", async ({ 
 
   const atRest = await measure();
   for (let step = 0; step < 4; step += 1) {
-    await page.getByRole("button", { name: "Zoom in" }).click();
+    await page.getByRole("button", { name: "Zoom in", exact: true }).click();
   }
   const zoomedIn = await measure();
   for (let step = 0; step < 8; step += 1) {
-    await page.getByRole("button", { name: "Zoom out" }).click();
+    await page.getByRole("button", { name: "Zoom out", exact: true }).click();
   }
   const zoomedOut = await measure();
 
@@ -3548,7 +3551,7 @@ test("unsurveyed ground is rimmed as such, and stays rimmed at the furthest zoom
   const atRest = await rims.count();
 
   for (let step = 0; step < 8; step += 1) {
-    await page.getByRole("button", { name: "Zoom out" }).click();
+    await page.getByRole("button", { name: "Zoom out", exact: true }).click();
   }
 
   // Still *visible*, not merely present. The map draws every hex on the level whatever the zoom
@@ -3598,11 +3601,11 @@ test("a road and the route over it keep their proportion to the hex at every zoo
 
   const atRest = await measure();
   for (let step = 0; step < 4; step += 1) {
-    await page.getByRole("button", { name: "Zoom in" }).click();
+    await page.getByRole("button", { name: "Zoom in", exact: true }).click();
   }
   const zoomedIn = await measure();
   for (let step = 0; step < 8; step += 1) {
-    await page.getByRole("button", { name: "Zoom out" }).click();
+    await page.getByRole("button", { name: "Zoom out", exact: true }).click();
   }
   const zoomedOut = await measure();
 
@@ -3783,10 +3786,10 @@ test("a note pinned on the map opens its tags and selects the hex", async ({ pag
   // The pin is hidden at the far band, and a freshly imported report frames every explored hex -
   // usually far. Right-click recentres on the selected hex (the map's own gesture), then zoom in
   // about the viewport centre keeps it in view while the band changes.
-  await page.getByRole("button", { name: "hex 1:7,53" }).click({ button: "right" });
+  await page.getByRole("button", { name: "hex 1:7,53", exact: true }).click({ button: "right" });
   const map = page.locator("[data-testid='map-canvas'] svg");
   for (let step = 0; step < 12; step += 1) {
-    await page.getByRole("button", { name: "Zoom in" }).click();
+    await page.getByRole("button", { name: "Zoom in", exact: true }).click();
   }
   await expect(map).not.toHaveClass(/map-far/);
 
@@ -3823,9 +3826,9 @@ test("a note pinned on the map opens its tags and selects the hex", async ({ pag
   await page.mouse.click(10, 10);
   await expect(page.getByTestId("map-note-tags")).toHaveCount(0);
 
-  await page.getByTestId("layer-chips").getByRole("button", { name: "Badges" }).click();
+  await page.getByTestId("layer-chips").getByRole("button", { name: "Badges", exact: true }).click();
   const badges = page.getByTestId("badge-menu");
-  const notesCheckbox = badges.getByRole("checkbox", { name: "Notes" });
+  const notesCheckbox = badges.getByRole("checkbox", { name: "Notes", exact: true });
   await expect(notesCheckbox).toBeChecked();
   // Toggled by keyboard rather than a pointer click: this fixture's own always-on finding
   // (ah-1uj) grows the header by a chip's width, which pushes this popover's anchor - and with it

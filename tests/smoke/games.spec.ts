@@ -44,7 +44,7 @@ test("a game will not be created without a name", async ({ page }) => {
   await clearGames(page);
 
   await page.getByTestId("game-name").fill("   ");
-  await page.getByRole("button", { name: "Create game" }).click();
+  await page.getByRole("button", { name: "Create game", exact: true }).click();
 
   await expect(page.getByTestId("game-form-error")).toContainText("name");
   await expect(page.getByTestId("game-gate")).toBeVisible();
@@ -135,7 +135,7 @@ test("the remove confirmation wraps inside the picker rather than running off it
   await createGame(page, "A game with a fairly long name");
 
   await page.getByTestId("game-indicator").click();
-  await page.getByRole("button", { name: "remove A game with a fairly long name" }).click();
+  await page.getByRole("button", { name: "remove A game with a fairly long name", exact: true }).click();
 
   // The box is constrained by its parent either way; what escapes is the text inside it, so the
   // question is whether the line is wider than the box that holds it.
@@ -165,7 +165,7 @@ test("deleting a game asks first, then falls back to the one that is left", asyn
   await createGame(page, "Doomed game");
 
   await page.getByTestId("game-indicator").click();
-  await page.getByRole("button", { name: "remove Doomed game" }).click();
+  await page.getByRole("button", { name: "remove Doomed game", exact: true }).click();
   await expect(page.getByTestId("game-picker")).toContainText("erased");
 
   await page.getByRole("button", { name: "Delete", exact: true }).click();
@@ -185,7 +185,7 @@ test("resetting a game keeps it in the list and empties it", async ({ page }) =>
   await expect(page.getByTestId("import-status")).toContainText("11 regions");
 
   await page.getByTestId("game-indicator").click();
-  await page.getByRole("button", { name: "remove Emptied game" }).click();
+  await page.getByRole("button", { name: "remove Emptied game", exact: true }).click();
   await page.getByRole("button", { name: "Reset", exact: true }).click();
 
   // Same game, same name - and nothing left in it.
@@ -200,7 +200,7 @@ test("Escape closes the remove panel and puts focus back on the control that ope
   await createGame(page, "Kept whole");
 
   await page.getByTestId("game-indicator").click();
-  const remove = page.getByRole("button", { name: "remove Kept whole" });
+  const remove = page.getByRole("button", { name: "remove Kept whole", exact: true });
   await remove.click();
   await expect(page.getByTestId(/^game-delete-confirm-/u).first()).toBeVisible();
 
@@ -217,7 +217,7 @@ test("deleting the last game leaves the create screen", async ({ page }) => {
   await createGame(page, "Only game");
 
   await page.getByTestId("game-indicator").click();
-  await page.getByRole("button", { name: "remove Only game" }).click();
+  await page.getByRole("button", { name: "remove Only game", exact: true }).click();
   await page.getByRole("button", { name: "Delete", exact: true }).click();
 
   await expect(page.getByTestId("game-gate")).toBeVisible();

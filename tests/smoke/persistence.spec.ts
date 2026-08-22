@@ -97,13 +97,13 @@ async function mapView(page: Page): Promise<{ transform: string; scale: string }
 
 /** Zooms in and pans far enough that the selected hex is nowhere near the middle any more. */
 async function moveTheMap(page: Page) {
-  const zoomIn = page.getByRole("button", { name: "Zoom in" });
+  const zoomIn = page.getByRole("button", { name: "Zoom in", exact: true });
   await zoomIn.click();
   await zoomIn.click();
   await zoomIn.click();
   await zoomIn.click();
 
-  const hex = page.getByRole("button", { name: "hex 1:7,53" });
+  const hex = page.getByRole("button", { name: "hex 1:7,53", exact: true });
   await hex.focus();
   for (let nudge = 0; nudge < 10; nudge += 1) {
     // Shift+Arrow pans without moving focus, so the selection stays put while the view leaves it.
@@ -125,7 +125,7 @@ test("a game reopens on the map view it was left at", async ({ page }) => {
 
   // The hex the player was working on comes back selected, and the map does not travel to it: the
   // player had deliberately panned away, and pulling the view back is the reset this is about.
-  await expect(page.getByRole("button", { name: "hex 1:7,53" })).toHaveAttribute(
+  await expect(page.getByRole("button", { name: "hex 1:7,53", exact: true })).toHaveAttribute(
     "aria-pressed",
     "true"
   );
