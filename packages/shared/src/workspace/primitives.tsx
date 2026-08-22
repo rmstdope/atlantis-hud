@@ -54,8 +54,13 @@ export function SeverityMark({ severity }: { severity: OrderDiagnosticSeverity }
 const GAME_DATA_LINK_CLASS =
   "inline select-text border-b border-dotted border-ink-dim align-baseline text-left hover:text-select hover:border-select focus-visible:outline focus-visible:outline-1 focus-visible:outline-select";
 
-/** The shared look of a unit id you can go and look at, so one gesture reads the same everywhere. */
-const UNIT_LINK_CLASS =
+/**
+ * The shared look of a unit id you can go and look at, so one gesture reads the same everywhere.
+ *
+ * Exported for the units table's Silver cell (`ah-1wcw.1`), which is the same gesture in another
+ * pane: a second copy of these classes is exactly the drift this constant exists to prevent.
+ */
+export const UNIT_LINK_CLASS =
   "shrink-0 rounded text-left tabular-nums text-brass hover:underline focus-visible:outline focus-visible:outline-1 focus-visible:outline-brass";
 
 /**

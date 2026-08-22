@@ -29,6 +29,7 @@ describe("orderEditor policy", () => {
 
   it("summarizes validation and blocks export when errors are present", () => {
     const result: OrderValidationResult = {
+      silver: [],
       diagnostics: [
         {
           code: "unknown-command",
@@ -66,6 +67,7 @@ describe("orderEditor policy", () => {
 
   it("allows export for warnings only and triggers autosave after the interval", () => {
     const result: OrderValidationResult = {
+      silver: [],
       diagnostics: [
         {
           code: "extra-arguments",

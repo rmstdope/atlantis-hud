@@ -78,7 +78,7 @@ function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
       rulesetJson: string | null,
       rawReport: string | null,
       disabledCodes: readonly string[]
-    ) => ({ diagnostics: [], rawOrders, rulesetJson, rawReport, disabledCodes }),
+    ) => ({ diagnostics: [], silver: [], rawOrders, rulesetJson, rawReport, disabledCodes }),
     order_commands_state: () => ["GIVE", "MOVE", "WORK"],
     order_vocabulary_state: () => ["ALL", "MOVE", "SILV"],
     order_argument_completions_state: () => [],
@@ -365,6 +365,7 @@ describe("web core adapter", () => {
       await adapter.validateOrders("MOVE R1 R2", null, "the report", ["hex-unguarded"])
     ).toEqual({
       diagnostics: [],
+      silver: [],
       rawOrders: "MOVE R1 R2",
       rulesetJson: null,
       rawReport: "the report",

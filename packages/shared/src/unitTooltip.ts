@@ -1,4 +1,4 @@
-import type { ReportUnit } from "@atlantis/core-client";
+import type { ReportUnit, UnitSilver } from "@atlantis/core-client";
 
 /**
  * What resting the pointer on a unit says, and where that is put.
@@ -24,11 +24,16 @@ const GAP = 12;
 /** One line of the summary: what it is on the left, how much or how good on the right. */
 export type TooltipEntry = { label: string; value: string };
 
+/** The silver section of the panel: the working, and one line explaining it where it needs one. */
+export type SilverSummary = { rows: TooltipEntry[]; note: string | null };
+
 export type UnitSummary = {
   /** The unit's name and id, as the report writes it. */
   title: string;
   skills: TooltipEntry[];
   items: TooltipEntry[];
+  /** What this unit's month does to its silver, or null for a unit that has no forecast. */
+  silver: SilverSummary | null;
 };
 
 export type Point = { x: number; y: number };
@@ -44,8 +49,14 @@ export type Placement = { left: number; top: number };
  * shows. Items are ordered by holding, largest first, matching the unit panel: a tooltip that
  * ranked them differently from the panel would be read as a different list.
  */
-export function summariseUnit(unit: ReportUnit): UnitSummary {
+export function summariseUnit(
+  unit: ReportUnit,
+  silver: UnitSilver | null = null,
+  /** Whether this unit carries the `not-enough-silver` finding, which the note explains. */
+  warned = false
+): UnitSummary {
   return {
+    silver: silver === null ? null : summariseSilver(silver, warned),
     title: `${unit.name} (${unit.unitId})`,
     skills: unit.skills.map((skill) => ({
       label: `${skill.name} ${skill.tag}`,
@@ -81,4 +92,54 @@ export function placeTooltip(pointer: Point, size: Size, viewport: Size): Placem
     left: along(pointer.x, size.width, viewport.width),
     top: along(pointer.y, size.height, viewport.height)
   };
+}
+
+/** A figure the forecast is sure of, or `?` for a term that could not be priced. */
+function figure(amount: number | null): string {
+  return amount === null ? "?" : String(amount);
+}
+
+/**
+ * The Silver section's four rows and its one explaining line (`ah-1wcw.1`).
+ *
+ * At most one note, and the first that applies: a panel that stacks three explanations under one
+ * small number explains nothing. The order is the order of how much the reader needs it.
+ */
+function summariseSilver(silver: UnitSilver, warned: boolean): SilverSummary {
+  const rows: TooltipEntry[] = [
+    { label: "Held now", value: String(silver.held) },
+    { label: "In", value: figure(silver.income) },
+    { label: "Out", value: figure(silver.expense) },
+    { label: "At month end", value: figure(silver.atMonthEnd) }
+  ];
+
+  return { rows, note: silverNote(silver, warned) };
+}
+
+function silverNote(silver: UnitSilver, warned: boolean): string | null {
+  const end = silver.atMonthEnd;
+
+  // Counted alone this unit runs out, yet no finding names it - which in this hex means the units
+  // that share have it covered, exactly as the engine's own borrowing rule would.
+  if (end !== null && end < 0 && !warned) {
+    return "Shared silver in this hex covers the shortfall.";
+  }
+  if (silver.doubt === "unknown-tax-base") {
+    return "The report never said what this region's tax base is.";
+  }
+  if (silver.doubt === "unpriced-skill") {
+    return "The ruleset does not say what studying this skill costs.";
+  }
+  if (silver.doubt === "estimated-men") {
+    return "This unit's headcount is an estimate, so its month cannot be priced.";
+  }
+  // The column counts what WORK earns; `not-enough-silver` deliberately does not, because wages
+  // are paid in the turn's last phase. Both are true about different moments.
+  if (warned && end !== null && end >= 0) {
+    return "Wages arrive at the end of the month, too late to pay for this month's orders.";
+  }
+  if (silver.income === 0 && silver.expense === 0) {
+    return "Nothing this unit is ordered to do moves silver.";
+  }
+  return null;
 }

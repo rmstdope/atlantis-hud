@@ -95,6 +95,12 @@ pub struct OrderDiagnostic {
 #[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub struct OrderValidationResult {
     pub diagnostics: Vec<OrderDiagnostic>,
+    /// One entry per own unit the report shows, whether or not it has orders. `ah-1wcw.1`.
+    ///
+    /// `#[serde(default)]` so a cached or older payload deserialises to an empty list rather than
+    /// failing.
+    #[serde(default)]
+    pub silver: Vec<crate::orders::silver::UnitSilver>,
 }
 
 impl OrderValidationResult {
