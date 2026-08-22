@@ -456,3 +456,52 @@ describe("our own faction's name in the faction column (ah-bu2c)", () => {
     expect(markup).not.toContain("open-dossier");
   });
 });
+
+describe("a skill's study points in the units-in-hex list (ah-ded4)", () => {
+  it("renders TAG level (points), the notation the report itself uses", () => {
+    const markup = draw(
+      hex({
+        region: region({
+          units: [unit({ skills: [{ name: "mining", tag: "MINI", level: 2, points: 90 }] })]
+        })
+      })
+    );
+
+    expect(markup).toContain("MINI 2 (90)");
+  });
+
+  it("tells apart two units at the same level a month apart in study", () => {
+    const markup = draw(
+      hex({
+        region: region({
+          units: [
+            unit({ unitId: "1", name: "Early", skills: [{ name: "mining", tag: "MINI", level: 2, points: 90 }] }),
+            unit({ unitId: "2", name: "Later", skills: [{ name: "mining", tag: "MINI", level: 2, points: 150 }] })
+          ]
+        })
+      })
+    );
+
+    expect(markup).toContain("MINI 2 (90)");
+    expect(markup).toContain("MINI 2 (150)");
+  });
+
+  it("renders (0) for a skill with no points yet, because zero is a real value", () => {
+    const markup = draw(
+      hex({
+        region: region({
+          units: [unit({ skills: [{ name: "mining", tag: "MINI", level: 0, points: 0 }] })]
+        })
+      })
+    );
+
+    expect(markup).toContain("MINI 0 (0)");
+  });
+
+  it("says nothing odd for a unit with no skills at all", () => {
+    const markup = draw(hex({ region: region({ units: [unit({ skills: [] })] }) }));
+
+    expect(markup).not.toContain("(undefined)");
+    expect(markup).not.toContain("NaN");
+  });
+});

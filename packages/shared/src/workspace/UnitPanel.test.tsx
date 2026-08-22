@@ -67,3 +67,28 @@ describe("naming game data in the unit pane", () => {
     expect(draw({ gameData: null, onOpenGameData: () => {} })).not.toContain("data-game-data-entry");
   });
 });
+
+describe("a skill's study points in the unit pane (ah-ded4)", () => {
+  it("renders level (points), the notation the report and the rest of the app use", () => {
+    const html = renderToStaticMarkup(
+      <UnitPanel
+        unit={aReportUnit({ skills: [{ name: "mining", tag: "MINI", level: 2, points: 90 }], items: [] })}
+        hex={HEX}
+      />
+    );
+
+    expect(html).toContain("2 (90)");
+    expect(html).not.toContain("2 · 90");
+  });
+
+  it("renders (0) for a skill with no points yet", () => {
+    const html = renderToStaticMarkup(
+      <UnitPanel
+        unit={aReportUnit({ skills: [{ name: "mining", tag: "MINI", level: 0, points: 0 }], items: [] })}
+        hex={HEX}
+      />
+    );
+
+    expect(html).toContain("0 (0)");
+  });
+});

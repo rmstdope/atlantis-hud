@@ -684,7 +684,7 @@ function UnitRow({
   /** Wraps a foreign faction's name so it can open that faction's dossier (ah-bu2c). */
   renderFactionName?: (factionId: string, label: ReactNode) => ReactNode;
 }) {
-  const skills = unit.skills.map((skill) => `${skill.tag} ${skill.level}`).join(", ");
+  const skills = unit.skills.map((skill) => `${skill.tag} ${skill.level} (${skill.points})`).join(", ");
   const items = unit.items.map((item) => `${item.amount} ${item.tag}`).join(", ");
 
   // Which cells the orders changed, so each one can say so and show what the report said.
