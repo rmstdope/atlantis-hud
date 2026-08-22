@@ -1,5 +1,4 @@
 import { expect, test, type Page } from "@playwright/test";
-import { readReport } from "@atlantis/fixtures";
 import {
   clearGames,
   createGame,
@@ -18,15 +17,10 @@ import {
  * because the layer under test is precisely the one that turns keydowns into actions.
  */
 
-const REPORT = readReport("g7f95t71");
-
 /** "Seven of Eight", the player's unit in Inholm at (7,53). */
 const OWN_UNIT = "18642";
 /** Another of the player's units, in the mountain at (26,52). */
 const OTHER_OWN_UNIT = "13401";
-
-
-
 
 test("the palette opens on Mod+K, finds a unit, and Enter goes to it", async ({ page }) => {
   await loadReport(page);
@@ -313,8 +307,6 @@ test("the map really answers the gestures the overlay describes", async ({ page 
   await page.keyboard.up("Shift");
   await expect(page.getByTestId("map-export-panel")).toBeVisible();
 });
-
-/** Where the map is standing, read the same way `persistence.spec.ts` does. */
 
 test("right-click centres the view on a hex, without selecting it", async ({ page }) => {
   await loadReport(page);

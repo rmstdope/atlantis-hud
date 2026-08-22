@@ -121,10 +121,16 @@ export async function loadReport(page: Page, gameName = "Smoke game", report = T
 }
 
 /**
- * Selects a hex by reaching it the way a keyboard player does.
+ * Selects a hex the way assistive technology does.
  *
- * Six specs carried this, character for character. Focus-then-Enter rather than a click: the map
- * is a keyboard surface, and Enter is what the hex's own handler listens for.
+ * Each hex in the map is itself a button - an SVG shape carrying a role, a label and a tabindex.
+ * It used to be a separate off-screen element, because a canvas says nothing to a screen reader,
+ * but the map is SVG now and the shape and the control are the same thing.
+ *
+ * Focus plus Enter rather than a click: that is how a keyboard user selects a hex, so driving it
+ * this way tests the accessible path instead of bypassing it. Only the focused hex carries
+ * `tabindex="0"` - the map is one tab stop, not several thousand - and `focus()` reaches the
+ * others regardless, which is why this keeps working for any hex on the level.
  */
 export async function selectHex(page: Page, regionId: string) {
   const hex = page.getByRole("button", { name: `hex ${regionId}` });
@@ -133,7 +139,16 @@ export async function selectHex(page: Page, regionId: string) {
 }
 
 /**
- * Selects a unit by filtering the units table down to it and clicking its row.
+ * Clicks a unit in the table.
+ *
+ * Scoped to its row rather than found by accessible name: Playwright matches names by substring,
+ * and the orders panel header also reads "unit 18642" once that unit is selected.
+ *
+ * Filtered down to the one unit first, because the table only builds the rows on screen and a unit
+ * sitting three hundred rows down is not in the page to be clicked. This is also how a player
+ * finds one unit among the three hundred in an ocean hex. The two waits matter: the filter matches
+ * on structure id as well as unit id, and typing into it re-renders the table underneath the row
+ * we are about to click.
  *
  * Five specs carried this identically; `backup.spec.ts` carried a sixth, weaker copy inlined into
  * its own `openOrders`, holding the id in `OWN_UNIT` rather than `unitId` and skipping the

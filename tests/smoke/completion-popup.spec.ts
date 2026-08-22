@@ -1,5 +1,4 @@
 import { expect, test, type Page } from "@playwright/test";
-import { readReport } from "@atlantis/fixtures";
 import {
   clearGames,
   createGame,
@@ -22,12 +21,8 @@ import {
  * needs a browser to have a bounding box at all.
  */
 
-const REPORT = readReport("g7f95t71");
-
 /** "Seven of Eight", the player's unit in Inholm at (7,53). */
 const OWN_UNIT = "18642";
-
-
 
 /** A loaded game with OWN_UNIT selected and its orders on screen - where every walk here starts. */
 async function openEditor(page: Page) {

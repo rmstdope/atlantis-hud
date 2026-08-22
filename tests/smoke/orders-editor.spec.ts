@@ -1,5 +1,4 @@
 import { expect, test, type Page } from "@playwright/test";
-import { readReport } from "@atlantis/fixtures";
 import {
   clearGames,
   createGame,
@@ -21,8 +20,6 @@ import {
  * refactor could drop without any other test noticing.
  */
 
-const REPORT = readReport("g7f95t71");
-
 /** "Seven of Eight", the player's unit in Inholm at (7,53). */
 const OWN_UNIT = "18642";
 /** Another of the player's units, in the mountain at (26,52) - a different editor entirely. */
@@ -41,8 +38,6 @@ async function textStartX(line: ReturnType<Page["locator"]>) {
   );
   return box!.x + paddingLeft;
 }
-
-
 
 /** A loaded game with OWN_UNIT selected and its orders on screen - where every walk here starts. */
 async function openEditor(page: Page) {
@@ -462,7 +457,6 @@ test("with Order OCD on, one undo takes back a newline and its indent together",
   await ordersInput(page).press("ControlOrMeta+z");
   await expectOrders(page, /^turn$/);
 });
-
 
 test("with Order OCD on, Enter dedents the closer the player has just finished", async ({ page }) => {
   await openEditor(page);
